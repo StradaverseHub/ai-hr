@@ -88,8 +88,8 @@ describe('8ec63139: the HR-admin leave page drops the ESS blocks', () => {
     // UPDATED BY r397: both are asked for every card at once — the batched twins (leaveTypeApplySummaries in
     // core/leave.ts, leaveEntitlementBreakdowns in core/read.ts) answer, item for item, what the single reads
     // answer (test/r397-my-leave-equivalence.test.ts compares them). The owners of the figures are unchanged.
-    expect(myLeave).toContain('leaveTypeApplySummaries(ctx, employmentId, shownPlans.filter((p) => p.isCurrentCycle).map((p) => p.b.leaveTypeId))');
-    expect(myLeave).toContain('leaveEntitlementBreakdowns(ctx, employmentId, shownPlans.map((p) => ({ leaveTypeId: p.storyId, asOf: p.asOf })), locale)');
+    expect(myLeave).toContain('leaveTypeApplySummaries(ctx, employmentId, shownPlans.filter((p) => p.isCurrentCycle).map((p) => p.b.leaveTypeId), existingTx)');
+    expect(myLeave).toContain('leaveEntitlementBreakdowns(ctx, employmentId, shownPlans.map((p) => ({ leaveTypeId: p.storyId, asOf: p.asOf })), locale, existingTx)');
     // afd0a87c — AdminCancelLeaveDialog went with the request table, and is NOT a loss: cancelling
     // someone else's leave lives on Employee Leave Record and on the dashboard calendar. Asserted at both
     // surviving homes rather than merely dropped, so a later edit cannot quietly leave it homeless.

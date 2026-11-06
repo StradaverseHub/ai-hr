@@ -174,7 +174,14 @@ export async function prepareMixedWorkflows({context,visit,fixture,employee,hr,d
      order by q.id`;
    assert(expected.length>25,'Bulk selection fixture must exceed one page');
    const table=page.locator('main table').filter({has:page.getByRole('checkbox',{name:'Select all requests in this view'})});
-   await table.getByRole('checkbox',{name:'Select all requests in this view'}).check();
+   await table.getByRole('checkbox',{name:'Select request',exact:true}).first().check();
+   await page.getByText('Selected: 1 request',{exact:true}).waitFor();
+   await Promise.all([
+    page.waitForURL(url=>url.searchParams.get('claimsPage')==='1'),
+    page.getByRole('link',{name:'Next page',exact:true}).click(),
+   ]);
+   await page.getByText('Selected: 1 request',{exact:true}).waitFor();
+   await table.getByRole('checkbox',{name:'Select all requests in this view'}).click();
    await page.getByRole('button',{name:'Approve selected',exact:true}).click();
    const confirmation=page.getByRole('dialog',{name:'Confirm bulk approval'});
    const items=JSON.parse(await confirmation.locator('input[name="items"]').inputValue());

@@ -62,10 +62,10 @@ describe('R37 e5a158d3: same source, scoped to the viewer (no data change)', () 
   it('feeds the dashboard from the per-employment leaveBalances + leaveEntitlementBreakdown', () => {
     // /leave uses the VIEWER's own employment — the self-service view, not the admin pivot. r302 moved the two
     // reads into core/my-leave.ts; they are the same reads, per leave year.
-    expect(myLeave).toMatch(/leaveBalances\(ctx, employmentId, locale, \{ includeArchived: false \}\)/);
+    expect(myLeave).toMatch(/leaveBalances\(ctx, employmentId, locale, \{ includeArchived: false \}, existingTx\)/);
     // UPDATED BY r397: one BATCHED read for every card (leaveEntitlementBreakdowns, core/read.ts), whose items
     // run leaveEntitlementBreakdown's own body — the same source, per card and per year.
-    expect(myLeave).toMatch(/leaveEntitlementBreakdowns\(ctx, employmentId, shownPlans\.map\(\(p\) => \(\{ leaveTypeId: p\.storyId, asOf: p\.asOf \}\)\), locale\)/);
+    expect(myLeave).toMatch(/leaveEntitlementBreakdowns\(ctx, employmentId, shownPlans\.map\(\(p\) => \(\{ leaveTypeId: p\.storyId, asOf: p\.asOf \}\)\), locale, existingTx\)/);
     // a7cbd895 (My Absence): the ENTIRE /me Leave tab has since moved to /leave, so /me reads no leave
     // sources at all anymore.
     expect(mePage.includes('leaveBalances(')).toBe(false);

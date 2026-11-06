@@ -385,8 +385,8 @@ describe('r397 · statement budget for one My Leave load', () => {
     expect(datedReads(before.statements)).toBe(budget.calendarReads);
     expect(datedReads(after.statements)).toBe(budget.calendarReads/2);
     expect(txCount(before.statements)).toBe(46);
-    expect(before.statements.length).toBe(budget.beforeStatements);
-    expect(txCount(after.statements), 'transactions').toBe(18);
+    expect.soft(before.statements.length).toBe(budget.beforeStatements);
+    expect.soft(txCount(after.statements), 'transactions').toBe(18);
     expect(after.statements.length, 'statements').toBe(budget.afterStatements);
     } finally { await owner.db.update(schema.leaveType).set({counting:original.counting}).where(eq(schema.leaveType.id,types.annual)); }
   }, 60_000);

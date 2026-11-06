@@ -36,6 +36,7 @@ type Ctx = {
 };
 
 const BulkCtx = createContext<Ctx | null>(null);
+const isClaimKey = (key: string) => key.startsWith('claim:');
 
 function useBulk(): Ctx {
   const ctx = useContext(BulkCtx);
@@ -74,10 +75,14 @@ export function BulkSelectionProvider({
   const validKeys = useMemo(() => new Set(availableRows.map(bulkRowKey)), [availableRows]);
   useEffect(() => {
     setSelected(prev => {
-      const next = new Set([...prev].filter(key => validKeys.has(key)));
+      // Claims selected on another page retain only their IDs. The service
+      // rechecks every ID when a decision is submitted.
+      const next = new Set([...prev].filter(key =>
+        validKeys.has(key) || (claimSelectionScope !== undefined && isClaimKey(key))
+      ));
       return next.size === prev.size ? prev : next;
     });
-  }, [validKeys]);
+  }, [validKeys, claimSelectionScope]);
 
   const value = useMemo<Ctx>(() => {
     const toggle = (key: string) =>
@@ -92,7 +97,8 @@ export function BulkSelectionProvider({
       if (selecting) return;
       const matches = (row: BulkRow) => type === undefined || row.type === type;
       const apply = (selectionRows: BulkRow[], replaceClaims = false) => setSelected(prev => {
-        const next = new Set(replaceClaims ? [...prev].filter(key => !key.startsWith('claim:')) : prev);
+        const resetClaims = replaceClaims || (!on && (type === undefined || type === 'claim'));
+        const next = new Set(resetClaims ? [...prev].filter(key => !isClaimKey(key)) : prev);
         for (const row of selectionRows.filter(matches)) {
           const key = bulkRowKey(row);
           if (on) next.add(key);
@@ -126,8 +132,15 @@ export function BulkSelectionProvider({
       setSelectionError(false);
     };
     const selectedRows = availableRows.filter(row => selected.has(bulkRowKey(row)));
+    if (claimSelectionScope !== undefined) {
+      for (const key of selected) {
+        if (isClaimKey(key) && !validKeys.has(key)) {
+          selectedRows.push({id:key.slice('claim:'.length),type:'claim',category:'claim'});
+        }
+      }
+    }
     return { rows: availableRows, selected, toggle, selectAll, clearAll, selectedRows, claimsUnloaded, selecting };
-  }, [availableRows, selected, allClaims, claimsOutsidePage, claimSelectionScope, selecting]);
+  }, [availableRows, validKeys, selected, allClaims, claimsOutsidePage, claimSelectionScope, selecting]);
 
   return (
     <BulkCtx.Provider value={value}>

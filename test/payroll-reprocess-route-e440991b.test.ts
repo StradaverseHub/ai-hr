@@ -124,7 +124,7 @@ describe('e440991b — the way in: the payroll run screen', () => {
   it('Reprocess is in the HEADER now, not at the bottom of the page', () => {
     expect(RUN_PAGE).toContain("t('reprocessHeaderAction')");
     expect(RUN_PAGE).toMatch(/\/payroll\/\$\{batch\.id\}\/reprocess/);
-    expect(RUN_PAGE).toMatch(/batch\.status === 'processed' && multiCycleOn && slips\.length > 0 && \(/);
+    expect(RUN_PAGE).toMatch(/batch\.status === 'processed' && multiCycleOn && slipCount > 0 && \(/);
   });
 
   it('the selection panel and the Recalculation History card are OFF this screen', () => {

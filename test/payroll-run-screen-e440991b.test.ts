@@ -142,8 +142,8 @@ describe('e440991b point 4 — History came off the run screen, the live control
   it('but the events are still READ, because the publication line depends on them', () => {
     // ef31d251's "published by X on Y" finds the most recent payroll-batch.closed event in this read.
     // Removing the read along with the card would have downgraded every closed run to "no record".
-    expect(BATCH_PAGE).toContain('auditEvents(s, { aggregateId: batchId');
-    expect(BATCH_PAGE).toContain("'payroll-batch.closed'");
+    expect(BATCH_PAGE).toContain("auditEvents(s, { aggregateType: 'payroll-batch', aggregateId: batchId, eventType: 'payroll-batch.closed', limit: 1 })");
+    expect(BATCH_PAGE).toContain("const [closeEv] = pubState === 'published' || pubState === 'scheduled'");
   });
 
   it('the recalculation banner and the Close-blocked-by-recalc guard survive (49e7e0a2)', () => {

@@ -240,8 +240,11 @@ describe('AI centre messages', () => {
       expect(named, `login-editorial ${locale}`).toEqual([...LOGIN_NOVERI_KEYS]);
     }
     // On the Ask page the name is used only by the How it works view.
-    for (const line of read('app/assistant/page.tsx').split('\n').filter(line => /AI_PRODUCT_NAME|AI_ARCHITECTURE_LABEL/.test(line) && !/^import /.test(line)))
-      expect(line).toMatch(/sp\.view === 'how'/);
+    const assistantPage = read('app/assistant/page.tsx');
+    expect(assistantPage).toContain("const tc = sp.view === 'how' ? await getTranslations('aiCentre.how') : null;");
+    const nameLines = assistantPage.split('\n').filter(line => /AI_PRODUCT_NAME|AI_ARCHITECTURE_LABEL/.test(line) && !/^import /.test(line));
+    expect(nameLines).toHaveLength(1);
+    expect(nameLines[0]).toMatch(/\{tc && .*AI_ARCHITECTURE_LABEL/);
     expect(AI_ARCHITECTURE_LABEL).toBe(`${AI_PRODUCT_NAME} OS`);
     expect(read('lib/ai-centre/brand.ts')).not.toMatch(/'Noveri OS'/);
     for (const locale of ['en', 'ms', 'zh', 'vi', 'ta', 'th'])
