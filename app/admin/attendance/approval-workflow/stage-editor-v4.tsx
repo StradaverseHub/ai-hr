@@ -1,4 +1,5 @@
 'use client';
+import { Combobox } from '@/components/ui/combobox';
 import {useEffect,useRef,useState} from 'react';
 import {useTranslations} from 'next-intl';
 import {Button,inputCls} from '@/components/ui';
@@ -9,15 +10,28 @@ type Employee={id:string;name:string;employeeCode?:string|null};
 export const emptyAttendanceV4Level=(index:number):AttendanceV4Level=>({name:attendanceLevelName(index),mode:'any_one',sources:[{kind:'direct_manager',depth:1}],hrAlternative:false});
 function SourceFields({id,source,employees,onChange,allowCustom=false}:{id:string;source:AttendanceCcSource;employees:Employee[];onChange:(source:AttendanceCcSource)=>void;allowCustom?:boolean}) {
  const t=useTranslations('attendanceWorkflow'),v3=useTranslations('attendanceWorkflow.v3'),v4=useTranslations('attendanceWorkflow.v4');
- const [query,setQuery]=useState(''),[addresses,setAddresses]=useState(source.kind==='custom_email'?source.addresses.join('\n'):'');
+ const [addresses,setAddresses]=useState(source.kind==='custom_email'?source.addresses.join('\n'):'');
  const label=(key:string)=>{const person=employees.find(e=>e.id===key);return person?[person.employeeCode,person.name].filter(Boolean).join(' · '):t('unavailable',{value:key});};
  const selected=source.kind==='specific_employee'?source.employmentIds:[];
  const move=(index:number,offset:number)=>{if(source.kind!=='specific_employee')return;const ids=[...source.employmentIds],next=index+offset;if(next<0||next>=ids.length)return;[ids[index],ids[next]]=[ids[next],ids[index]];onChange({...source,employmentIds:ids});};
  return <div className="space-y-3"><label className="block text-sm">{v3('source')}<select className={inputCls} value={source.kind} onChange={event=>onChange(event.target.value==='direct_manager'?{kind:'direct_manager',depth:1}:event.target.value==='specific_employee'?{kind:'specific_employee',employmentIds:[]}:{kind:'custom_email',addresses:[]})}><option value="direct_manager">{v3('directSuperior')}</option><option value="specific_employee">{v3('selectedEmployees')}</option>{allowCustom&&<option value="custom_email">{v4('customEmail')}</option>}</select></label>
  {source.kind==='direct_manager'?<div><label className="block text-sm">{v3('depth')}<select aria-describedby={`${id}-depth-help`} className={inputCls} value={source.depth} onChange={e=>onChange({...source,depth:Number(e.target.value)})}>{[1,2,3,4,5].map(number=><option key={number} value={number}>{v3('depthOption',{number})}</option>)}</select></label><p id={`${id}-depth-help`} className="mt-1 text-xs text-muted-foreground">{v3('depthHelp')}</p></div>:source.kind==='custom_email'?<label className="block text-sm">{v4('customEmail')}<textarea className={`${inputCls} min-h-24`} maxLength={16050} value={addresses} onChange={e=>{setAddresses(e.target.value);onChange({kind:'custom_email',addresses:e.target.value.split(/[,;\n]/).map(s=>s.trim()).filter(Boolean)});}}/><span className="mt-1 block text-xs text-muted-foreground">{v4('emailHelp')}</span></label>:<div className="space-y-3">
   <ol className="space-y-2">{selected.map((key,index)=><li key={key} className="flex flex-wrap items-center gap-2 rounded-md border border-border p-2 text-sm"><span className="min-w-0 flex-1 break-words">{index+1}. {label(key)}</span><Button type="button" variant="secondary" disabled={index===0} aria-label={v3('personUp',{name:label(key)})} onClick={()=>move(index,-1)}>{t('moveUp')}</Button><Button type="button" variant="secondary" disabled={index===selected.length-1} aria-label={v3('personDown',{name:label(key)})} onClick={()=>move(index,1)}>{v3('moveDown')}</Button><Button type="button" variant="secondary" aria-label={v3('removePerson',{name:label(key)})} onClick={()=>onChange({kind:'specific_employee',employmentIds:selected.filter(value=>value!==key)})}>{t('remove')}</Button></li>)}</ol>
-  <label className="block text-sm" htmlFor={`${id}-search`}>{v4('searchEmployees')}</label><input id={`${id}-search`} type="search" className={inputCls} value={query} onChange={e=>setQuery(e.target.value)}/>
-  <label className="block text-sm">{v3('addPerson')}<select className={inputCls} value="" disabled={selected.length>=20} onChange={e=>{if(e.target.value)onChange({kind:'specific_employee',employmentIds:[...selected,e.target.value]});}}><option value="">{v3('choosePerson')}</option>{employees.filter(employee=>!selected.includes(employee.id)&&[employee.employeeCode,employee.name].join(' ').toLocaleLowerCase().includes(query.toLocaleLowerCase())).map(employee=><option key={employee.id} value={employee.id}>{label(employee.id)}</option>)}</select></label>
+  {selected.length < 20 && <Combobox
+    key={selected.join(',')}
+    value=""
+    placeholder={v3('choosePerson')}
+    searchPlaceholder={v4('searchEmployees')}
+    noResultsLabel={v4('noEligible')}
+    legacySuffix=""
+    options={employees.filter(employee => !selected.includes(employee.id)).map(employee => ({
+      value: employee.id,
+      label: [employee.employeeCode, employee.name].filter(Boolean).join(' · '),
+    }))}
+    onValueChange={value => {
+      if (value && !selected.includes(value)) onChange({kind:'specific_employee',employmentIds:[...selected,value]});
+    }}
+  />}
   {!employees.length&&<p role="status" className="text-sm text-muted-foreground">{v4('noEligible')}</p>}
  </div>}</div>;
 }
