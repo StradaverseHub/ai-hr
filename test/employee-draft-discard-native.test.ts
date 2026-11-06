@@ -1,8 +1,8 @@
 /** Native transaction composition only. A returned source reference is not a deletion custody proof. */
 import { randomUUID } from 'node:crypto';
 import { and, eq, sql } from 'drizzle-orm';
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { withTenant, type SessionContext } from '../db/client';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { client, withTenant, type SessionContext } from '../db/client';
 import * as s from '../db/schema';
 import { createConfig } from '../core/employee-id-config';
 import {
@@ -249,28 +249,28 @@ it('keeps a queued draft edit out of PostgreSQL and lets it proceed after an ear
   }
 }, 15000);
 
-it('retries a standalone discard after Access admission times out and records one native event', async () => {
+it('releases the standalone discard transaction before retrying busy Access and records one native event', async () => {
   const { id } = await saveEmployeeDraft(ctx, { data: {}, currentStep: 1 });
+  const begins = vi.spyOn(client, 'begin');
   let result: Promise<PromiseSettledResult<void>[]> | undefined;
   try {
     await owner.db.transaction(async tx => {
-      const [holder] = await tx.execute<{ pid: number }>(sql`select pg_backend_pid() as pid`);
       await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${'access-configuration:'+b.tenantId},0))`);
       result = Promise.allSettled([discardEmployeeDraft(ctx, id)]);
-      await expect.poll(async () => {
-        const [row] = await tx.execute<{ waiting: boolean }>(sql`select exists(
-          select 1 from pg_locks l where l.locktype='advisory' and not l.granted
-           and ${holder.pid}::int=any(pg_blocking_pids(l.pid))) as waiting`);
-        return row.waiting;
-      }, { timeout: 2000 }).toBe(true);
-      // Hold past the existing 500ms statement lock bound, then release before
-      // the next bounded attempt expires.
-      await new Promise(resolve => setTimeout(resolve, 600));
+      await expect.poll(() => begins.mock.results.length, { timeout: 1000 }).toBeGreaterThanOrEqual(1);
+      // The first application transaction must finish while the other session
+      // still holds the lock. A timed-out blocking attempt also fails this assertion.
+      await expect(begins.mock.results[0].value).rejects.toThrow('Draft discard is waiting for Workforce access.');
+      const [row] = await tx.execute<{ remaining: number }>(sql`
+        select count(*)::int as remaining from employee_draft where id=${id}::uuid
+      `);
+      expect(row.remaining).toBe(1);
     });
     expect(await result).toEqual([{ status: 'fulfilled', value: undefined }]);
     expect((await snapshot()).drafts).toHaveLength(0);
     expect(await discardedEvents(id)).toHaveLength(1);
   } finally {
     await result;
+    begins.mockRestore();
   }
 }, 12000);
