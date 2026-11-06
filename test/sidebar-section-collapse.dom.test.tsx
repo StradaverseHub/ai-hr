@@ -1,5 +1,5 @@
 import {afterEach,describe,expect,it,vi} from 'vitest';
-import {cleanup,fireEvent,render,screen,within} from '@testing-library/react';
+import {act,cleanup,fireEvent,render,screen,within} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import {NextIntlClientProvider} from 'next-intl';
 import {enWithAiCentre as messages} from './helpers/ai-centre-messages';
@@ -8,10 +8,56 @@ vi.mock('next/navigation',()=>({usePathname:()=>route.pathname,useSearchParams:(
 vi.mock('../lib/session',()=>({getSession:vi.fn()}));
 vi.mock('../core/entitlements',()=>({isModuleEnabled:vi.fn()}));
 import {Sidebar} from '../components/sidebar';
+import {NavIndexProvider,useNavIndex} from '../components/nav-index-context';
+import {ShellApprovalFactsProvider,type ShellApprovalResult} from '../components/shell-approval-facts';
 const ui=(props:Partial<Parameters<typeof Sidebar>[0]>={})=><NextIntlClientProvider locale="en" messages={messages} onError={error=>{throw error;}}>
  <Sidebar isAdmin canApprove canAccessTeam onboardingAccess onboardingMaster onboardingRequisitionsAccess enabledModules={null} defaultCollapsed={false} {...props}/>
 </NextIntlClientProvider>;
 afterEach(()=>{cleanup();document.documentElement.removeAttribute('data-ui-theme');route.pathname='/';route.search='';});
+
+it('keeps the rail interactive while streaming and never republishes an old scope assignment',async()=>{
+ const deferred=()=>{
+  let resolve!:(result:ShellApprovalResult)=>void;
+  const source=new Promise<ShellApprovalResult>(done=>{resolve=done;});
+  return {source,resolve};
+ };
+ const first=deferred(),oldScope=deferred(),currentScope=deferred();
+ const assigned=(attendance:boolean):ShellApprovalResult=>({state:'ready',items:[],total:3,approvalCount:2,claimTotal:0,
+  hasAssignedAttendanceApproval:attendance,hasAssignedApproval:!attendance});
+ function IndexWitness(){
+  const {entries}=useNavIndex();
+  return <output data-testid="approval-in-navigation-index">{String(entries.some(entry=>entry.href==='/approvals'))}</output>;
+ }
+ const tree=(source:Promise<ShellApprovalResult>)=><ShellApprovalFactsProvider source={source} canOpenApprovalsWithoutAssignment={false}>
+  <NavIndexProvider>
+   {ui({isAdmin:false,canApprove:false,canAccessTeam:false,onboardingAccess:false,onboardingMaster:false,onboardingRequisitionsAccess:false,enabledModules:['attendance','leave'],taskCount:1})}
+   <IndexWitness/>
+   <main>Already usable content</main>
+  </NavIndexProvider>
+ </ShellApprovalFactsProvider>;
+ const view=render(tree(first.source));
+ expect(screen.getByText('Already usable content')).toBeVisible();
+ fireEvent.click(screen.getByRole('button',{name:messages.nav.inbox}));
+ expect(screen.getByRole('link',{name:messages.nav.myTasks})).toHaveAttribute('href','/tasks');
+ expect(screen.queryByRole('link',{name:/Approval Items/})).toBeNull();
+ await act(async()=>first.resolve(assigned(true)));
+ expect(await screen.findByRole('link',{name:/Approval Items/})).toHaveAttribute('href','/approvals');
+ expect(screen.getByTestId('approval-in-navigation-index')).toHaveTextContent('true');
+ expect(screen.queryByRole('link',{name:messages.nav.myTeam})).toBeNull();
+
+ view.rerender(tree(oldScope.source));
+ expect(screen.queryByRole('link',{name:/Approval Items/})).toBeNull();
+ expect(screen.getByTestId('approval-in-navigation-index')).toHaveTextContent('false');
+ view.rerender(tree(currentScope.source));
+ await act(async()=>oldScope.resolve(assigned(true)));
+ expect(screen.queryByRole('link',{name:/Approval Items/})).toBeNull();
+ expect(screen.getByTestId('approval-in-navigation-index')).toHaveTextContent('false');
+ await act(async()=>currentScope.resolve(assigned(false)));
+ expect(await screen.findByRole('link',{name:/Approval Items/})).toHaveAttribute('href','/approvals');
+ expect(screen.getByTestId('approval-in-navigation-index')).toHaveTextContent('true');
+ expect(screen.getByRole('link',{name:/My tasks.*4/})).toHaveAttribute('href','/tasks');
+});
+
 it('Atelier ignores the Classic collapsed preference for the Ops/Strat switch',()=>{
  document.documentElement.setAttribute('data-ui-theme','atelier');render(ui({defaultCollapsed:true}));
  expect(screen.getByRole('group',{name:messages.nav.workspaceSwitch})).not.toHaveClass('flex-col');

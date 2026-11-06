@@ -1,6 +1,7 @@
 'use client';
 
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
+import {useShellApprovalFacts} from '@/components/shell-approval-facts';
 
 /**
  * Atelier round 1 — THE NAV INDEX: the destinations the rail is showing THIS viewer, published by
@@ -42,7 +43,17 @@ export function NavIndexProvider({ children }: { children: ReactNode }) {
 }
 
 export function useNavIndex(): NavIndex {
-  return useContext(NavIndexContext).index;
+  const {index}=useContext(NavIndexContext);
+  const approvalFacts=useShellApprovalFacts();
+  const approvalResult=approvalFacts?.result;
+  const hideAssignedOnly=approvalFacts!==undefined&&!approvalFacts.canOpenApprovalsWithoutAssignment&&
+    (approvalResult?.state!=='ready'||!approvalResult.hasAssignedApproval&&!approvalResult.hasAssignedAttendanceApproval);
+  return useMemo(()=>{
+    if(!hideAssignedOnly)return index;
+    // The publisher runs in an effect. Do not expose a previous approval link in that gap
+    // when a new scope starts streaming or refuses the viewer's old assignment.
+    return {entries:index.entries.filter(entry=>entry.href!=='/approvals'),active:index.active?.href==='/approvals'?null:index.active};
+  },[index,hideAssignedOnly]);
 }
 
 /** The rail calls this every render; it republishes only when the visible set or the active row changed. */

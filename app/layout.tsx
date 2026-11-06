@@ -66,6 +66,7 @@ import { isModuleEnabledOrFalse, settingEnabledOrDefault } from '@/core/entitlem
 import { currentUiTheme } from '@/lib/ui-theme-server';
 import { UiThemeProvider } from '@/components/ui-theme-context';
 import { NavIndexProvider } from '@/components/nav-index-context';
+import {ShellApprovalFactsProvider,type ShellApprovalResult} from '@/components/shell-approval-facts';
 import { AiAskAvailability } from '@/components/ai-centre/ask-availability';
 import { BackToInbox } from '@/components/ai-centre/back-to-inbox';
 import { IntentBar } from '@/components/intent-bar';
@@ -182,6 +183,8 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
     ? await letterNavigation(session,scopeIds) : [];
   const tours = toursForRoles(session.roles);
   const canApprove = isAdmin(session) || (session.roles ?? []).includes('manager');
+  const canOpenAdminRail=isAdmin(session)||canManagePayroll(session)||canManagePerfComp(session);
+  const shellScopeKey=personnelImportBrowserKey(session,scopeIds);
   // ADR-0034 34-3: when notifications are on, the bell shows the viewer's own notifications (everyone), not
   // just the approvals queue. Opportunistic catch-up — an admin loading any page dispatches the tenant's new
   // events when the cursor is free. The scheduled sweep owns queued projection; non-admins only read.
@@ -197,7 +200,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
     await dispatchNotifications(session, { skipIfBusy: true }).catch(() => {});
   }
   // D-P1-32 PT-X5 — where the sidebar's Performance admin entry opens: the admin area's first tab for the latest
-  // cycle this OneHR administrator administers, started here so it overlaps the task-list reads below. No cycle, a
+  // cycle this OneHR administrator administers, started here so it overlaps other shell reads. No cycle, a
   // viewer who is not a OneHR administrator, the module off or a failed read all leave the pack's /performance.
   const performanceAdminHref = canAdminOnehr(session) && isModuleEnabledOrFalse(session, 'performance')
     ? latestOnehrAdminCycleId(session).then(id => (id ? adminSectionHref(id, 'cycle') : undefined), () => undefined)
@@ -212,16 +215,6 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   // authenticated route. `listPendingTasks` takes the answer rather than asking, so the loud/quiet choice
   // belongs to whichever surface calls it.
   const claimsEnabled = isModuleEnabledOrFalse(session, 'claims');
-  const approvalSummary = await pendingTaskSummary(session, scopeIds, {
-    attendance: isModuleEnabledOrFalse(session, 'attendance'),
-    claims: claimsEnabled,
-    performance: isModuleEnabledOrFalse(session, 'performance'),
-    rewards: isModuleEnabledOrFalse(session, 'rewards'),
-  }, { deferClaimPreview: true });
-  // The canonical inbox admits ordinary employees only for an actionable, non-self v3/v4 assignment.
-  // Reuse that result; do not promote the viewer to manager or query the assignment owner twice.
-  const approvalTasks=approvalSummary.items;
-  const hasAssignedAttendanceApproval = !canApprove && approvalTasks.some(task => task.kind === 'attendance');
   const lifecycleEnabled=isModuleEnabledOrFalse(session,'lifecycle');
   const [onboardingNav,onboardingQueue,onboardingNotices,scopedLifecycleNavigation]=await Promise.all([
     lifecycleEnabled?onboardingNavigation(session):Promise.resolve({module:false,v9:false,v9Navigation:{onboarding:false,offboarding:false,administration:false},master:false,requisitions:false,joiners:0,checklists:0}),
@@ -230,13 +223,9 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
     lifecycleModuleNavigation(session),
   ]);
   const onboardingAccess=onboardingNav.module;
-  // Profile Changes now has its own Personnel queue. Count only tasks this inbox actually opens;
-  // My tasks and the bell still contain every canonical task, without another query.
-  const legacyApprovalCount = approvalSummary.approvalCount;
-  const hasAssignedApproval = !canApprove && legacyApprovalCount>0;
   const lifecycleInbox=await lifecycleModuleInbox(session,scopedLifecycleNavigation);
-  const pendingTasks:NotificationTaskItem[]=[...approvalTasks,...onboardingQueue.map(onboardingNotificationTask),...lifecycleInbox.items];
-  const pendingTaskCount=approvalSummary.total+onboardingQueue.length+lifecycleInbox.count;
+  const lifecycleTasks:NotificationTaskItem[]=[...onboardingQueue.map(onboardingNotificationTask),...lifecycleInbox.items];
+  const lifecycleTaskCount=onboardingQueue.length+lifecycleInbox.count;
   const { unread: notifUnread, taskCount: taskNotifCount, items: notifItems, tasks: taskNotifs, read: readNotifs } =
     bellNotificationsEnabled
       ? await notificationBellSummary(session, notificationScope)
@@ -248,6 +237,27 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   ]);
   // 0696 — an operator can hide the Feedback menu for this customer. Nav fails open; /feedback fails closed.
   const feedbackAccess = settingEnabledOrDefault(session, 'feedback.menu_enabled');
+  const [identityEmailAvailable,performanceAdminPath]=await Promise.all([canConfigureIdentityEmail(session),performanceAdminHref]);
+  // Start the queue after the blocking shell reads. Its module owners must not queue ahead of
+  // those reads when the connection pool is busy; the result is streamed independently.
+  const approvalFacts:Promise<ShellApprovalResult> = pendingTaskSummary(session, scopeIds, {
+    attendance: isModuleEnabledOrFalse(session, 'attendance'),
+    claims: claimsEnabled,
+    performance: isModuleEnabledOrFalse(session, 'performance'),
+    rewards: isModuleEnabledOrFalse(session, 'rewards'),
+  }, { deferClaimPreview: true }).then((approvalSummary):ShellApprovalResult=>({
+    state:'ready',
+    items:approvalSummary.items,
+    total:approvalSummary.total,
+    approvalCount:approvalSummary.approvalCount,
+    claimTotal:approvalSummary.claimTotal,
+    // Ordinary employees keep their native assignment eligibility without acquiring manager authority.
+    hasAssignedAttendanceApproval:!canApprove&&approvalSummary.items.some(task=>task.kind==='attendance'),
+    hasAssignedApproval:!canApprove&&approvalSummary.approvalCount>0,
+  }),():ShellApprovalResult=>{
+    console.error('Shared shell approval facts unavailable');
+    return {state:'unavailable'};
+  });
   return (
     <html
       lang={locale}
@@ -265,6 +275,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
               float separately on the canvas with gutters between them. */}
           {/* Atelier round 1 — the rail publishes its visible destinations here for the command bar's "Go to"
               list and the Atelier breadcrumb (components/nav-index-context.tsx). */}
+          <ShellApprovalFactsProvider source={approvalFacts} canOpenApprovalsWithoutAssignment={canOpenAdminRail||canApprove}>
           <NavIndexProvider>
           {/* AI v2 W4 — the command bar offers "Ask AI Centre" only to a login with Assistant access (presentation only). */}
           <AiAskAvailability available={assistantAccess}>
@@ -278,12 +289,10 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
               // each page's route guard (requirePayrollAccess / requirePerfCompAccess) 403/redirects
               // the pages it can't enter. The cap ORs isAdmin into every partner capability so a user
               // who is BOTH hr_admin and a partner is never narrower than a plain admin (union rule).
-              canConfigureIdentityEmail={await canConfigureIdentityEmail(session)}
+              canConfigureIdentityEmail={identityEmailAvailable}
               canPreviewIdentityEmail={isAdmin(session)}
-              isAdmin={isAdmin(session) || canManagePayroll(session) || canManagePerfComp(session)}
+              isAdmin={canOpenAdminRail}
               canApprove={(session.roles ?? []).includes('manager')}
-              hasAssignedAttendanceApproval={hasAssignedAttendanceApproval}
-              hasAssignedApproval={hasAssignedApproval}
               canReviewProfileChanges={isAdmin(session)}
               canAdministerAi={isAdmin(session)}
               canAdministerSecurity={isAdmin(session)}
@@ -296,14 +305,8 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
               canAdministerOnehr={canAdminOnehr(session)}
               // D-P1-32 PT-X5 — Performance & Talent needs no flag (the module gate is its gate); calibration,
               // talent and development are tabs inside the area, so the rail no longer reads the worklist.
-              performanceAdminHref={await performanceAdminHref}
-              // Pending-approval badge on the "Approval Items" row (feedback 836118c4). Reuses the
-              // pendingTasks already resolved above for the bell — ZERO extra queries — so the badge is
-              // by construction the same user-scoped queue: only items awaiting THIS viewer's decision,
-              // self-excluding, admin-only categories gated inside listPendingTasks. NOT the bell's
-              // taskCount below, which also folds in unread action notifications (not approval records).
-              approvalCount={legacyApprovalCount}
-              taskCount={pendingTaskCount}
+              performanceAdminHref={performanceAdminPath}
+              taskCount={lifecycleTaskCount}
               onboardingAccess={onboardingAccess}
               probationAccess={scopedLifecycleNavigation.probation}
               contractStaffAccess={scopedLifecycleNavigation.contractStaff}
@@ -447,13 +450,13 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
                       Task tab covers its purpose (and works even with NOTIFICATIONS_ENABLED off, where
                       only the notification reads are dark). */}
                   <NotificationCenter
+                    key={shellScopeKey}
                     unread={notifUnread + onboardingNotices.unreadCount}
                     items={[...notifItems,...onboardingNotices.unread]}
-                    tasks={pendingTasks}
+                    tasks={lifecycleTasks}
                     taskNotifications={taskNotifs}
-                    claimTaskCount={approvalSummary.claimTotal}
                     claimPreviewRevision={claimsEnabled ? crypto.randomUUID() : undefined}
-                    taskCount={pendingTaskCount+taskNotifCount}
+                    taskCount={lifecycleTaskCount+taskNotifCount}
                     readItems={[...readNotifs,...onboardingNotices.read]}
                     canApprove={canApprove}
                   />
@@ -484,7 +487,8 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
           </AiAskAvailability>
           </NavIndexProvider>
           <OnboardingTour tours={tours} autoStartTourId={onboarded || (pathname==='/'&&!isAdmin(session)) ? null : WELCOME_TOUR_ID} />
-          <AssistantReplyClientEntry>{launcher && <AssistantLauncher key={personnelImportBrowserKey(session,scopeIds)} position={launcher.position} hiddenAreas={launcher.hiddenAreas} inboxCount={approvalTasks.length} />}</AssistantReplyClientEntry>
+          <AssistantReplyClientEntry>{launcher && <AssistantLauncher key={shellScopeKey} position={launcher.position} hiddenAreas={launcher.hiddenAreas} />}</AssistantReplyClientEntry>
+          </ShellApprovalFactsProvider>
           {/* 6e122302 — the after-login notice popup, mounted beside the onboarding tour because that is
               the existing "show something once after login and remember the dismissal" surface. At most
               ONE notice, chosen server-side; the slot renders null when nothing is due, so this costs an

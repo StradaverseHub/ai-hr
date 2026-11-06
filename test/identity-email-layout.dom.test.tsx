@@ -42,6 +42,7 @@ vi.mock('../components/company-switcher',()=>({CompanySwitcher:()=>null}));
 import Layout from '../app/layout';
 import {NotificationCenter} from '../components/notification-center';
 import {Sidebar} from '../components/sidebar';
+import {ShellApprovalFactsProvider,type ShellApprovalResult} from '../components/shell-approval-facts';
 import {OnboardingTour} from '../components/onboarding-tour';
 import {NoticePopupSlot} from '../components/notice/notice-surfaces';
 import {WELCOME_TOUR_ID} from '../lib/onboarding-tour';
@@ -54,6 +55,7 @@ function propsOf(node:React.ReactNode,target:unknown):Record<string,unknown>|und
  return propsOf(node.props.children,target);
 }
 const sidebarProps=(node:React.ReactNode)=>propsOf(node,Sidebar);
+const approvalSource=(node:React.ReactNode)=>propsOf(node,ShellApprovalFactsProvider)!.source as Promise<ShellApprovalResult>;
 describe('root layout SMTP preview authority',()=>{
  it.each([[null,true],['company',false]] as const)('only attempts notification catch-up for group grants (%s)',async(companyId,expected)=>{
   const session={tenantId:'tenant',userId:'user',roles:['hr_admin'],grants:[{role:'hr_admin',companyId}]};
@@ -106,14 +108,13 @@ describe('root layout assigned Attendance inbox navigation',()=>{
   m.session.mockResolvedValue({tenantId:'tenant',userId:'employee',roles:['employee'],grants:[]});
   m.operator.mockResolvedValue(false);
   m.tasks.mockResolvedValue([{id:'fictional-task',kind,subjectName:'Fictional colleague',createdAt:new Date().toISOString(),linkPath:'/approvals'}]);
-  const props=sidebarProps(await Layout({children:null}));
+  const tree=await Layout({children:null}),props=sidebarProps(tree);
   expect(m.tasks).toHaveBeenCalledTimes(1);
-  expect(props!.hasAssignedAttendanceApproval).toBe(kind==='attendance');
-  expect(props!.hasAssignedApproval).toBe(true);
+  await expect(approvalSource(tree)).resolves.toMatchObject({state:'ready',approvalCount:1,
+   hasAssignedAttendanceApproval:kind==='attendance',hasAssignedApproval:true});
   expect(props!.canApprove).toBe(false);
   expect(props!.canAccessTeam).toBe(false);
   expect(props!.isAdmin).toBe(false);
-  expect(props!.approvalCount).toBe(1);
  });
  it('keeps relocated Profile Changes in My tasks while counting only Approval Items destinations',async()=>{
   m.session.mockResolvedValue({tenantId:'tenant',userId:'hr',roles:['hr_admin'],grants:[{role:'hr_admin',companyId:null}]});
@@ -123,12 +124,10 @@ describe('root layout assigned Attendance inbox navigation',()=>{
    {id:'fictional-attendance',kind:'attendance',subjectName:'Fictional colleague',createdAt,linkPath:'/approvals#attendance'},
    {id:'fictional-profile',kind:'profile',subjectName:'Fictional colleague',createdAt,linkPath:'/admin/personnel/profile-changes#request-fictional-profile'},
   ]);
-  const props=sidebarProps(await Layout({children:null}));
+  const tree=await Layout({children:null}),props=sidebarProps(tree);
   expect(m.tasks).toHaveBeenCalledTimes(1);
-  expect(props!.taskCount).toBe(2);
-  expect(props!.approvalCount).toBe(1);
-  expect(props!.hasAssignedAttendanceApproval).toBe(false);
-  expect(props!.hasAssignedApproval).toBe(false);
+  await expect(approvalSource(tree)).resolves.toMatchObject({state:'ready',total:2,approvalCount:1,
+   hasAssignedAttendanceApproval:false,hasAssignedApproval:false});
   expect(props!.canApprove).toBe(false);
   expect(props!.isAdmin).toBe(true);
  });
@@ -141,11 +140,37 @@ it('keeps exact Claims totals and accepted Lifecycle inbox counts together in th
  const items=[{id:'leave-preview',kind:'leave',subjectName:'Fictional colleague',createdAt:new Date().toISOString(),linkPath:'/approvals'}];
  m.tasks.mockResolvedValue(items);m.summaryOverride={items,total:10002,approvalCount:10001,claimTotal:10000};m.lifecycleCount=7;
  const tree=await Layout({children:null});
- expect(m.tasks).toHaveBeenCalledTimes(1);expect(sidebarProps(tree)?.taskCount).toBe(10009);expect(sidebarProps(tree)?.approvalCount).toBe(10001);
+ expect(m.tasks).toHaveBeenCalledTimes(1);
+ await expect(approvalSource(tree)).resolves.toMatchObject({state:'ready',items,total:10002,approvalCount:10001,claimTotal:10000});
+ expect(sidebarProps(tree)?.taskCount).toBe(7);
  expect(m.tasks.mock.calls[0]?.[3]).toEqual({deferClaimPreview:true});
- expect(propsOf(tree,NotificationCenter)?.claimTaskCount).toBe(10000);expect(propsOf(tree,NotificationCenter)?.taskCount).toBe(10009);
+ expect(propsOf(tree,NotificationCenter)?.taskCount).toBe(7);
  expect(propsOf(tree,NotificationCenter)?.claimPreviewRevision).toEqual(expect.any(String));
- expect(propsOf(tree,NotificationCenter)?.tasks).toEqual(items);
+ expect(propsOf(tree,NotificationCenter)?.tasks).toEqual([]);
+});
+
+it('returns the authenticated shell while the approval owner is still pending',async()=>{
+ m.session.mockResolvedValue({tenantId:'tenant',userId:'employee',roles:['employee'],grants:[]});m.operator.mockResolvedValue(false);
+ let finish:(items:unknown[])=>void=()=>{};
+ m.tasks.mockImplementation(()=>new Promise(resolve=>{finish=resolve;}));
+ const tree=await Layout({children:<main>Available before approvals</main>});
+ expect(sidebarProps(tree)).toBeDefined();
+ expect(propsOf(tree,NotificationCenter)).toBeDefined();
+ expect(m.tasks).toHaveBeenCalledTimes(1);
+ finish([]);
+ await expect(approvalSource(tree)).resolves.toMatchObject({state:'ready',total:0});
+});
+
+it('reports a failed approval read without exposing its details or failing the page',async()=>{
+ m.session.mockResolvedValue({tenantId:'tenant',userId:'employee',roles:['employee'],grants:[]});m.operator.mockResolvedValue(false);
+ m.tasks.mockRejectedValueOnce(Error('Private failure'));
+ const log=vi.spyOn(console,'error').mockImplementation(()=>{});
+ try{
+  const tree=await Layout({children:<main>Available despite approvals</main>});
+  expect(sidebarProps(tree)).toBeDefined();
+  await expect(approvalSource(tree)).resolves.toEqual({state:'unavailable'});
+  expect(log).toHaveBeenCalledExactlyOnceWith('Shared shell approval facts unavailable');
+ }finally{log.mockRestore();}
 });
 
 describe('personal Home opens without automatic overlays',()=>{

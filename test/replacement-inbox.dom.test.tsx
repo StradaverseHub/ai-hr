@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { render, screen, within } from '@testing-library/react';
+import { act, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { NextIntlClientProvider } from 'next-intl';
 import en from '../messages/en.json';
@@ -9,6 +9,7 @@ import ta from '../messages/ta.json';
 import th from '../messages/th.json';
 import viMessages from '../messages/vi.json';
 import { NotificationCenter, type NotificationTaskItem } from '../components/notification-center';
+import {ShellApprovalFactsProvider,type ShellApprovalResult} from '../components/shell-approval-facts';
 
 vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh: vi.fn(), push: vi.fn() }) }));
 vi.mock('../app/notification-actions', () => ({ markAllNotificationsReadAction: vi.fn(), markNotificationReadAction: vi.fn() }));
@@ -86,4 +87,31 @@ it('loads the bounded Claims preview only when Tasks opens and retains the full-
   } finally {
     vi.unstubAllGlobals();
   }
+});
+
+it('keeps the bell usable during shell streaming, then shows the exact combined count and clears stale data',async()=>{
+ let settle!:(result:ShellApprovalResult)=>void;
+ const source=new Promise<ShellApprovalResult>(resolve=>{settle=resolve;});
+ const item={id:'approval',kind:'leave' as const,subjectName:'Fictional scoped approval',
+  createdAt:new Date().toISOString(),linkPath:'/approvals'};
+ const view=(facts:Promise<ShellApprovalResult>)=><NextIntlClientProvider locale="en" messages={en} onError={error=>{throw error;}}>
+  <ShellApprovalFactsProvider source={facts} canOpenApprovalsWithoutAssignment={false}>
+   <NotificationCenter unread={1} items={[]} taskCount={2}/>
+  </ShellApprovalFactsProvider>
+ </NextIntlClientProvider>;
+ const rendered=render(view(source));
+ const user=userEvent.setup();
+ await user.click(screen.getByRole('button',{name:'Notifications, 1 unread'}));
+ await user.click(screen.getByRole('button',{name:en.notifications.tabTasks}));
+ expect(screen.getByRole('status')).toHaveTextContent(en.common.loading);
+ expect(screen.queryByText(en.notifications.tasksEmpty)).toBeNull();
+ await act(async()=>settle({state:'ready',items:[item],total:5,approvalCount:5,claimTotal:4,
+  hasAssignedApproval:true,hasAssignedAttendanceApproval:false}));
+ expect(await screen.findByText(item.subjectName)).toBeVisible();
+ expect(screen.getByRole('button',{name:'Notifications, 8 waiting: 1 unread and 7 open tasks'})).toBeVisible();
+ rendered.rerender(view(Promise.resolve({state:'unavailable'})));
+ expect(screen.queryByText(item.subjectName)).toBeNull();
+ expect(await screen.findByRole('alert')).toHaveTextContent(en.commandBar.loadError);
+ expect(screen.queryByText(en.notifications.tasksEmpty)).toBeNull();
+ expect(screen.getByRole('button',{name:'Notifications, 1 unread'})).toBeVisible();
 });

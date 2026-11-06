@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { useIsMonolith } from '@/components/ui-theme-context';
+import {useShellApprovalFacts} from '@/components/shell-approval-facts';
 import { Bell, Search } from 'lucide-react';
 import { markAllNotificationsReadAction, markNotificationReadAction } from '@/app/notification-actions';
 import type { NotificationRow as StoredNotificationRow } from '@/core/notifications';
@@ -56,10 +57,10 @@ function relTime(d: Date): string {
 export function NotificationCenter({
   unread,
   items,
-  tasks = [],
+  tasks:baseTasks = [],
   taskNotifications = [],
-  taskCount = 0,
-  claimTaskCount=0,
+  taskCount:baseTaskCount = 0,
+  claimTaskCount:baseClaimTaskCount=0,
   claimPreviewRevision,
   readItems = [],
   canApprove = false,
@@ -82,6 +83,11 @@ export function NotificationCenter({
   readItems?: NotificationRow[];
   canApprove?: boolean;
 }) {
+  const approvals=useShellApprovalFacts()?.result;
+  const tasksKnown=!approvals||approvals.state==='ready';
+  const tasks=useMemo(()=>approvals?.state==='ready'?[...approvals.items,...baseTasks]:baseTasks,[approvals,baseTasks]);
+  const taskCount=approvals?.state==='ready'?baseTaskCount+approvals.total:baseTaskCount;
+  const claimTaskCount=approvals?.state==='ready'?approvals.claimTotal:baseClaimTaskCount;
   const t = useTranslations('notifications');
   const tH = useTranslations('approvalHistory');
   const tCommon = useTranslations('common');
@@ -128,8 +134,8 @@ export function NotificationCenter({
     revision: string;
     result: { items: ApprovalTaskItem[]; total: number } | 'unavailable';
   } | null>(null);
-  const loadClaimPreview = open && tab === 'tasks' && Boolean(claimPreviewRevision);
-  const claimPreviewResult = claimPreview?.revision === claimPreviewRevision ? claimPreview?.result : undefined;
+  const loadClaimPreview = tasksKnown && open && tab === 'tasks' && Boolean(claimPreviewRevision);
+  const claimPreviewResult = tasksKnown && claimPreview?.revision === claimPreviewRevision ? claimPreview?.result : undefined;
 
   useEffect(() => {
     if (!loadClaimPreview || !claimPreviewRevision) return;
@@ -275,7 +281,7 @@ export function NotificationCenter({
 
   // ── Bell badge (feedback f71dcafd): ONE combined count, so the old unread + task bubbles can no
   // longer collide on the same 36px button. The per-tab pills below keep the two figures separate. ──
-  const total = unread + taskCount;
+  const total = unread + (tasksKnown?taskCount:0);
   // r398 — Monolith's top line shows the count as mono text, the number in signal-text (README §3).
   const monolith = useIsMonolith();
 
@@ -312,7 +318,7 @@ export function NotificationCenter({
           }
           setOpen(!open);
         }}
-        aria-label={t('ariaBell', { total, unread, tasks: taskCount })}
+        aria-label={tasksKnown?t('ariaBell', { total, unread, tasks: taskCount }):t('aria',{count:unread})}
         className="relative inline-flex size-9 items-center justify-center min-h-11 max-sm:min-w-11 rounded-full text-muted-foreground transition-colors hover:bg-accent hover:text-foreground monolith:w-auto monolith:gap-1.5 monolith:rounded-none monolith:px-1 monolith:font-mono monolith:text-[11px] monolith:uppercase monolith:tracking-[0.12em] monolith:text-mid monolith:hover:bg-transparent monolith:hover:text-ink"
       >
         {monolith ? (
@@ -344,7 +350,7 @@ export function NotificationCenter({
             <div className="border-b border-border px-3 pb-2 pt-2.5">
               <div className="grid grid-cols-3 gap-1 rounded-lg bg-muted/60 p-1">
                 {tabBtn('notifications', t('tabNotifications'), unread)}
-                {tabBtn('tasks', t('tabTasks'), taskCount)}
+                {tabBtn('tasks', t('tabTasks'), tasksKnown?taskCount:undefined)}
                 {tabBtn('history', t('tabHistory'))}
               </div>
             </div>
@@ -366,15 +372,15 @@ export function NotificationCenter({
               </>
             )}
 
-            {loadClaimPreview && !claimPreviewResult && (
+            {tab==='tasks' && (approvals?.state==='pending'||(loadClaimPreview && !claimPreviewResult)) && (
               <p role="status" className="px-4 py-2 text-sm text-muted-foreground">{tCommon('loading')}</p>
             )}
-            {loadClaimPreview && claimPreviewResult === 'unavailable' && (
+            {tab==='tasks' && (approvals?.state==='unavailable'||(loadClaimPreview && claimPreviewResult === 'unavailable')) && (
               <p role="alert" className="px-4 py-2 text-sm text-muted-foreground">{tLoad('loadError')}</p>
             )}
             {tab === 'tasks' &&
               (taskEntries.length === 0 ? (
-                (!loadClaimPreview || (claimPreviewResult && claimPreviewResult !== 'unavailable')) &&
+                tasksKnown && (!loadClaimPreview || (claimPreviewResult && claimPreviewResult !== 'unavailable')) &&
                 <p className="px-4 py-8 text-center text-sm text-muted-foreground">{t('tasksEmpty')}</p>
               ) : (
                 <ul className="max-h-[22rem] divide-y divide-border overflow-y-auto">
@@ -382,7 +388,7 @@ export function NotificationCenter({
                 </ul>
               ))}
 
-            {tab==='tasks'&&availableClaimCount>shownClaimCount&&(
+            {tab==='tasks'&&tasksKnown&&availableClaimCount>shownClaimCount&&(
               <div className="border-t border-border px-4 py-2.5 text-center">
                 <Link href="/approvals?category=claim" onClick={()=>setOpen(false)} className="text-xs font-medium text-primary hover:underline">
                   {tApprovals('claims')} ({availableClaimCount})
