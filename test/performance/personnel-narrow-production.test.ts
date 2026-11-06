@@ -9,8 +9,9 @@ import {createPersonnelPrivateSearch} from '../../core/personnel-private-search'
 import {readPersonnelOverview} from '../../core/read';
 import {withTenant} from '../../db/client';
 import {todayInKualaLumpur} from '../../lib/hr-date';
+import {pgSqlState} from '../../lib/db-error';
 import {adminCtx,closeAll,migrateTestDb,owner,resetDb,seedBase} from '../harness';
-import {seedPersonnelCorrectionFixture} from './personnel-native-fixture';
+import {seedPersonnelCorrectionFixture,seedPersonnelNativeFixture} from './personnel-native-fixture';
 import {provePersonnelSingleAssignmentConstraint} from './personnel-dated-tags-prototype';
 
 const selected:unknown=JSON.parse(process.env.AIHR_FOCUSED_TESTS??'[]');
@@ -103,3 +104,55 @@ it.skipIf(!requested)('preserves the real overview rows, facets, scope, dated as
   await owner.client.unsafe('drop function app.personnel_overview_narrow_rows(date,uuid[]), app.personnel_overview_page_rows(date,uuid[],uuid[])');
  }
 },60000);
+
+it.skipIf(!requested)('times the real Personnel overview at fifty thousand employees', async () => {
+ const count = 50_000;
+ const started = performance.now();
+ const report: Record<string, unknown> = {
+  kind:'PERSONNEL_REAL_OVERVIEW_50K_COMPONENT_ONLY',
+  releaseEligible:false,
+  targetEmployees:count,
+  limitations:'Single synthetic tenant and caller. Measures the real application reader, without browser or concurrent traffic.',
+ };
+ const save = () => writeFileSync(join(process.env.AIHR_FOCUSED_EVIDENCE_DIR!,'personnel-real-overview-50k.json'),JSON.stringify(report,null,2));
+ const phase = (name:string) => { report.phase=name; report.elapsedMs=performance.now()-started; save(); };
+ const {b,ctx,expectedFirst,expectedLast} = await seedPersonnelNativeFixture(count,report,phase,save);
+ report.assignmentConstraint = await provePersonnelSingleAssignmentConstraint();
+ const base = {companyIds:[b.companyId],limit:25,offset:0};
+ const cases = [
+  {name:'initial',input:base,ids:expectedFirst,total:count},
+  {name:'selective-search',input:{...base,q:'PERF000050000'},ids:expectedLast.slice(-1),total:1},
+  {name:'deep-page',input:{...base,offset:count-25},ids:expectedLast,total:count},
+ ];
+ const results: {name:string;reader:string;ms:number;status:string;rows?:number}[] = [];
+ report.results = results;
+ await owner.client.unsafe(readFileSync(new URL('./personnel-narrow-production-draft.sql',import.meta.url),'utf8'));
+ try {
+  for (const {name,input,ids,total} of cases) {
+   let baseline: Awaited<ReturnType<typeof readPersonnelOverview>> | undefined;
+   for (const reader of ['existing','narrow'] as const) {
+    phase(name+'-'+reader);
+    const begin = performance.now();
+    let overview;
+    try {
+     overview = await readPersonnelOverview(ctx,input,{},reader==='narrow'?{hostedNarrowProbe:true}:undefined);
+    } catch (error) {
+     if (reader!=='existing' || pgSqlState(error)!=='57014') throw error;
+     results.push({name,reader,ms:performance.now()-begin,status:'statement-timeout'});
+     save();
+     continue;
+    }
+    const ms = performance.now()-begin;
+    expect(overview.employees.rows.map(row=>row.employmentId)).toEqual(ids);
+    expect(overview.employees.total).toBe(total);
+    if (reader==='existing') baseline=overview;
+    else if (baseline) expect(overview).toEqual(baseline);
+    results.push({name,reader,ms,status:'completed',rows:overview.employees.rows.length});
+    save();
+   }
+  }
+  phase('completed');
+ } finally {
+  await owner.client.unsafe('drop function app.personnel_overview_narrow_rows(date,uuid[]), app.personnel_overview_page_rows(date,uuid[],uuid[])');
+ }
+},600000);
