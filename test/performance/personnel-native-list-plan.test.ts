@@ -9,6 +9,10 @@ import {foldEmployeeCode,EMPLOYEE_SEARCH_RESULT_CAP} from '../../lib/employee-se
 import {pgSqlState} from '../../lib/db-error';
 import {todayInKualaLumpur} from '../../lib/hr-date';
 import {withPersonnelRead} from '../../core/personnel-read-bounds';
+import {hireEmployee} from '../../core/org';
+import {correctInformationTx,previewInformationCorrection} from '../../core/information-correction';
+import {assignLabelToCompanies} from '../../core/system-labels';
+import {company} from '../../db/schema';
 import {lockAccessConfigurationTx,lockAccessConfigurationReadTx} from '../../core/access-configuration-lock';
 import {withTenant,type SessionContext} from '../../db/client';
 import {adminCtx,closeAll,migrateTestDb,owner,resetDb,seedBase} from '../harness';
@@ -155,21 +159,26 @@ it.skipIf(!requested)('profiles initial/search/deep Personnel pages with fifty t
     {mode:'requested-foreign',date:asOf,scope:[b.companyId,foreign.companyId],ids:[...sample,foreignEmployment],expected:sample},
     {mode:'foreign-only',date:asOf,scope:[foreign.companyId],ids:[foreignEmployment],expected:[]},
    ];
-   const parity:{mode:string;baselineMs:number;candidateMs:number;rows:number}[]=[];
+   const parity:{mode:string;baselineMs:number;candidateMs:number;effectiveCompanyMs:number;rows:number}[]=[];
    for(const {mode,date,scope,ids,expected} of parityCases){
-    const read=(variant:'baseline'|'candidate')=>withPersonnelRead(ctx,tx=>tx.execute<{role:string;value:{employmentId:string}}>(sql`
+    const read=(variant:'baseline'|'candidate'|'effectiveCompany')=>withPersonnelRead(ctx,tx=>tx.execute<{role:string;value:{employmentId:string}}>(sql`
      select current_user as role,value from ${prototype.source(variant,date,scope,ids)}
      order by value->>'employmentId'
     `),{sharedAccessLock:true});
     const baselineStart=performance.now(),original=Array.from(await read('baseline')),baselineMs=performance.now()-baselineStart;
     const candidateStart=performance.now(),candidate=Array.from(await read('candidate')),candidateMs=performance.now()-candidateStart;
+    const effectiveStart=performance.now(),effective=Array.from(await read('effectiveCompany')),effectiveCompanyMs=performance.now()-effectiveStart;
     expect(candidate).toEqual(original);
+    expect(effective).toEqual(original);
     expect(candidate.map(row=>row.value.employmentId)).toEqual([...expected].sort());
     expect(candidate.every(row=>row.role==='ai_hr_app')).toBe(true);
-    parity.push({mode,baselineMs,candidateMs,rows:candidate.length});report.liveOverviewDatedPrototypeParity=parity;save();
+    parity.push({mode,baselineMs,candidateMs,effectiveCompanyMs,rows:candidate.length});report.liveOverviewDatedPrototypeParity=parity;save();
    }
    await measureProjectionStage('batched-dated-directory-json',sql`
     select count(*)::int as rows from ${prototype.source('candidate',asOf,[b.companyId],null)}
+   `,count);
+   await measureProjectionStage('set-effective-company-directory-json',sql`
+    select count(*)::int as rows from ${prototype.source('effectiveCompany',asOf,[b.companyId],null)}
    `,count);
   }finally{await prototype.drop();}
   report.liveOverviewExplainStatementTimeoutMs=45000;
@@ -313,3 +322,38 @@ it.skipIf(!requested)('profiles initial/search/deep Personnel pages with fifty t
  }catch(error){report.errorType=(error as Error).name;phase('failed');throw error;}
  finally{report.queries=measurements;save();}
 },600000);
+
+it.skipIf(!requested)('preserves the first future information correction for a dated Personnel read',async()=>{
+ await resetDb();
+ const base=await seedBase();
+ const ctx:SessionContext={...adminCtx(base),grants:[{role:'hr_admin',companyId:null}]};
+ const destinations=await owner.db.insert(company).values([
+  {tenantId:base.tenantId,legalName:'Fictional intermediate Personnel company',companyLabel:'INTERMEDIATE'},
+  {tenantId:base.tenantId,legalName:'Fictional final Personnel company',companyLabel:'FINAL'},
+ ]).returning({id:company.id});
+ expect(destinations).toHaveLength(2);
+ const companies=[base.companyId,...destinations.map(destination=>destination.id)];
+ await assignLabelToCompanies(ctx,{kind:'department',labelId:base.deptA,companyIds:companies});
+ const hiredOn='2020-01-01';
+ const {employmentId}=await hireEmployee(ctx,{
+  person:{fullName:'Fictional corrected Personnel employee',primaryEmail:randomUUID()+'@example.test'},
+  companyId:base.companyId,departmentId:base.deptA,employmentType:'full_time',hiredOn,
+ });
+ for(const destination of destinations){
+  const correction={employmentId,changes:{companyId:destination.id},reason:'Verify the original dated company after correction'};
+  const preview=await previewInformationCorrection(ctx,correction);
+  const result=await withTenant(ctx,tx=>correctInformationTx(tx,ctx,{...correction,fingerprint:preview.fingerprint,method:'manual'}));
+  expect(result.changed).toBe(true);
+ }
+ const prototype=await personnelDatedTagsPrototype();
+ try{
+  for(const [date,companyId] of [[hiredOn,base.companyId],[todayInKualaLumpur(),destinations[1].id]]){
+   const read=(variant:'baseline'|'effectiveCompany')=>withPersonnelRead(ctx,tx=>tx.execute<{value:{companyId:string}}>(sql`
+    select value from ${prototype.source(variant,date,companies,[employmentId])}
+   `),{sharedAccessLock:true});
+   const baseline=await read('baseline'),batched=await read('effectiveCompany');
+   expect(baseline.map(row=>row.value.companyId)).toEqual([companyId]);
+   expect(Array.from(batched)).toEqual(Array.from(baseline));
+  }
+ }finally{await prototype.drop();}
+},60000);

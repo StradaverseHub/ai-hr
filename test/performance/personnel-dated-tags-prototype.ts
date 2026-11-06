@@ -59,10 +59,67 @@ const batchedTagged = ` dated AS MATERIALIZED (
    ) recorded ON true
  ),`;
 
+const scalarDated = ` dated AS MATERIALIZED (
+   SELECT b.*,app.company_org_employment_company(b.id,p_as_of) AS dated_company
+   FROM candidates b
+ ),`;
+
+const effectiveCompanyDated = ` dated_assignments AS MATERIALIZED (
+   SELECT a.id,a.employment_id,a.company_id,a.business_unit_id,a.valid_from,
+          a.department_id,a.position_id,a.cost_center_id,a.location_id,a.employment_type
+   FROM candidates b
+   JOIN public.assignment a ON a.tenant_id=b.tenant_id AND a.employment_id=b.id
+   WHERE a.superseded_at IS NULL AND a.valid_from<=p_as_of
+     AND (a.valid_to IS NULL OR a.valid_to>p_as_of)
+ ),
+ earliest_tied_assignment AS MATERIALIZED (
+   SELECT DISTINCT ON (a.employment_id) a.employment_id,a.company_id,a.business_unit_id
+   FROM dated_assignments a ORDER BY a.employment_id,a.valid_from DESC,a.id
+ ),
+ latest_tied_assignment AS MATERIALIZED (
+   SELECT DISTINCT ON (a.employment_id) a.employment_id,a.department_id,a.position_id,a.cost_center_id,
+          a.location_id,a.employment_type,a.business_unit_id
+   FROM dated_assignments a ORDER BY a.employment_id,a.valid_from DESC,a.id DESC
+ ),
+ future_information_correction AS MATERIALIZED (
+   SELECT DISTINCT ON (ev.subject_employment_id) ev.subject_employment_id,
+          nullif(ev.payload->'before'->>'companyId','')::uuid AS previous_company
+   FROM candidates b
+   JOIN public.domain_event ev ON ev.tenant_id=b.tenant_id AND ev.subject_employment_id=b.id
+   WHERE ev.event_type='employment.information.corrected' AND ev.payload->>'effectiveOn'>p_as_of::text
+   ORDER BY ev.subject_employment_id,ev.sequence
+ ),
+ dated AS MATERIALIZED (
+   SELECT b.*,a.business_unit_id AS legacy_business_unit_id,
+          coalesce(c.previous_company,a.company_id,b.company_id) AS dated_company
+   FROM candidates b
+   LEFT JOIN future_information_correction c ON c.subject_employment_id=b.id
+   LEFT JOIN earliest_tied_assignment a ON a.employment_id=b.id
+ ),`;
+
+const legacyAssignment = `   LEFT JOIN LATERAL (
+     SELECT a.business_unit_id FROM public.assignment a
+     WHERE t.tags->>'status'='legacy' AND a.employment_id=d.id AND a.tenant_id=d.tenant_id
+       AND a.superseded_at IS NULL AND a.valid_from<=p_as_of AND (a.valid_to IS NULL OR a.valid_to>p_as_of)
+     ORDER BY a.valid_from DESC,a.id LIMIT 1
+   ) legacy ON true
+`;
+const visibleAssignment = `   LEFT JOIN LATERAL (
+     SELECT x.department_id,x.position_id,x.business_unit_id,x.cost_center_id,x.location_id,x.employment_type
+     FROM public.assignment x
+     WHERE x.employment_id=b.id AND x.tenant_id=b.tenant_id AND x.superseded_at IS NULL
+       AND x.valid_from<=p_as_of AND (x.valid_to IS NULL OR x.valid_to>p_as_of)
+     ORDER BY x.valid_from DESC,x.id DESC LIMIT 1
+   ) a ON true`;
+
 export async function personnelDatedTagsPrototype() {
  const suffix=randomUUID().replaceAll('-','');
  const canonical='app.personnel_filter_rows(date,uuid[])';
- const names={baseline:'app.perf_personnel_dated_base_'+suffix,candidate:'app.perf_personnel_dated_batch_'+suffix};
+ const names={
+  baseline:'app.perf_personnel_dated_base_'+suffix,
+  candidate:'app.perf_personnel_dated_batch_'+suffix,
+  effectiveCompany:'app.perf_personnel_dated_set_'+suffix,
+ };
  const signature='(date,uuid[],uuid[])';
  const scopeFence='   WHERE p_scope IS NULL OR pc.id=ANY(p_scope)';
  await owner.client.begin(async tx=>{
@@ -73,7 +130,16 @@ export async function personnelDatedTagsPrototype() {
   // Only the disposable fixture accepts an explicit sample. It narrows the already authorized admission.
   const sampled=original.body.replace(scopeFence,`   WHERE (p_scope IS NULL OR pc.id=ANY(p_scope))
      AND (p_subjects IS NULL OR (a.value->>'employmentId')::uuid=ANY(p_subjects))`);
-  for(const [name,body] of [[names.baseline,sampled],[names.candidate,sampled.replace(originalTagged,batchedTagged)]]){
+  const batched=sampled.replace(originalTagged,batchedTagged);
+  expect(batched.split(scalarDated)).toHaveLength(2);
+  expect(batched.split(legacyAssignment)).toHaveLength(2);
+  expect(batched.split(visibleAssignment)).toHaveLength(2);
+  // The original reads the first future correction, even if its company value is null. It then
+  // falls back to the dated assignment and finally the current company. Preserve both tie orders.
+  const effective=batched.replace(scalarDated,effectiveCompanyDated)
+   .replace(legacyAssignment,'').replace('legacy.business_unit_id','d.legacy_business_unit_id')
+   .replace(visibleAssignment,'   LEFT JOIN latest_tied_assignment a ON a.employment_id=b.id');
+  for(const [name,body] of [[names.baseline,sampled],[names.candidate,batched],[names.effectiveCompany,effective]]){
    await tx.unsafe('create function '+name+'(p_as_of date,p_scope uuid[],p_subjects uuid[]) returns setof jsonb language sql stable security definer set search_path=pg_catalog,public,app as $prototype$'+body+'$prototype$');
    await tx.unsafe('revoke all on function '+name+signature+' from public; grant execute on function '+name+signature+' to ai_hr_app');
    const [properties]=await tx<{owner:string;definer:boolean;app:boolean;public_execute:boolean}[]>`select proowner::regrole::text as owner,prosecdef as definer,
@@ -87,6 +153,6 @@ export async function personnelDatedTagsPrototype() {
  return {
   source:(mode:keyof typeof names,date:string,scope:string[],subjects:string[]|null)=>
    sql`${sql.raw(names[mode])}(${date}::date,${array(scope)},${array(subjects)}) as r(value)`,
-  drop:async()=>{await owner.client.unsafe('drop function '+names.baseline+signature+','+names.candidate+signature);},
+  drop:async()=>{await owner.client.unsafe('drop function '+Object.values(names).map(name=>name+signature).join(','));},
  };
 }
