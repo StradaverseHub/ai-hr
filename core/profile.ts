@@ -63,7 +63,7 @@ import {
 import { profileChangeAllowedKeys, profileChangeApprover } from './tenant-settings';
 import { isGroupAdmin } from '../lib/authz-model';
 // 23ad620e — the emergency contact lives in its own per-person register; /me reads and writes the primary.
-import { primaryEmergencyContactSql, writeSingleEmergencyContactInTx } from './emergency-contacts';
+import { primaryEmergencyContactRow, writeSingleEmergencyContactInTx } from './emergency-contacts';
 // 35b7af0a — the person master lists, defined in a CLIENT-SAFE module and re-exported below (see the note
 // there). Client components render the same lists this module validates saves against.
 import { GENDERS, MARITAL_STATUSES } from '../lib/person-vocabulary';
@@ -273,6 +273,7 @@ export class ProfileChangeFieldClosedError extends Error {
 export function myProfile(ctx: SessionContext) {
   return withTenant(ctx, async (tx) => {
     if (!ctx.personId||!await isOwnPersonTx(tx,ctx)) return null;
+    const emergencyContact = primaryEmergencyContactRow(tx);
     const [p] = await tx
       .select({
         fullName: person.fullName,
@@ -284,8 +285,8 @@ export function myProfile(ctx: SessionContext) {
         maritalStatus: person.maritalStatus,
         // 23ad620e — the emergency contact moved to its own per-person register; /me still shows ONE, so
         // these five resolve to the highest-priority live record (Primary → Secondary → Other).
-        emergencyContactName: primaryEmergencyContactSql('full_name'),
-        emergencyContactPhone: primaryEmergencyContactSql('mobile_phone'),
+        emergencyContactName: emergencyContact.fullName,
+        emergencyContactPhone: emergencyContact.mobilePhone,
         // b4682879 — structured home address + extended emergency contact (self-maintained on /me).
         personalEmail: person.personalEmail,
         addressLine1: person.addressLine1,
@@ -295,11 +296,12 @@ export function myProfile(ctx: SessionContext) {
         city: person.city,
         state: person.state,
         country: person.country,
-        emergencyContactRelationship: primaryEmergencyContactSql('relationship'),
-        emergencyContactPhone2: primaryEmergencyContactSql('home_phone'),
-        emergencyContactAddress: primaryEmergencyContactSql('address'),
+        emergencyContactRelationship: emergencyContact.relationship,
+        emergencyContactPhone2: emergencyContact.homePhone,
+        emergencyContactAddress: emergencyContact.address,
       })
       .from(person)
+      .leftJoinLateral(emergencyContact, sql`true`)
       .where(and(ownPersonPredicate(ctx),eq(person.id, ctx.personId)))
       .limit(1);
     const [stat] = await tx
