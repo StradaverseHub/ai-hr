@@ -5020,6 +5020,13 @@
       "when": 1793330001803,
       "tag": "2403_personnel_bounded_overview",
       "breakpoints": true
+    },
+    {
+      "idx": 1703,
+      "version": "7",
+      "when": 1793330001903,
+      "tag": "2503_attendance_pending_visible_headers",
+      "breakpoints": true
     }
   ]
 }

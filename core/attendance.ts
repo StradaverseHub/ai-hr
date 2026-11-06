@@ -7471,9 +7471,8 @@ export function pendingAttendanceTaskMetadata(ctx:SessionContext,companyIds?:str
     // The role hint chooses a query shape only. Every fast-path company is proved by
     // the existing native administrator owner; other subjects retain the exact scalar
     // frozen-workflow/delegation reader. RLS and the final decision owner remain live.
-    const nativeHeaders=sql`select q.id,q.employment_id,q.created_at
-      from public.attendance_correction q where q.tenant_id=${ctx.tenantId}::uuid and q.status='pending'
-      ${requestId===undefined?sql``:sql`and q.id=${requestId}::uuid`}`;
+    const nativeHeaders=sql`select id,employment_id,created_at
+      from app.attendance_pending_visible_headers(${requestId??null}::uuid)`;
     const administratorHint=ctx.roles?.some(role=>role==='hr_admin'||role==='super_admin')===true;
     // Ordinary visibility is one arm of the native subject predicate. Only those
     // subjects can reuse metadata across requests. Frozen participants and delegates

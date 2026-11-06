@@ -1,5 +1,21 @@
 # Coordinated migration reservations
 
+## Pending Attendance headers — 6 November 2026 (provisional source reservation)
+
+`codex/performance-staging-integration-20261105` reserves
+`2503_attendance_pending_visible_headers`, idx 1703, when 1793330001903.
+SQL SHA-256 `332b126d2b6287e2767c0f32e0956d545c0e9a6ade07ad5c0baac649c93be4d6`.
+The remote/local tip and 325 readable worktree scan observed maxima 2502,
+idx 1702, and when 1793330001902. The previously missing staging release
+tip was fetched and has a lower journal index. Recheck remote reservations
+and the installed ledger after the independent staging release settles.
+
+The new reader returns only pending request headers and checks the reviewed
+policy predicates before installation. Subject projection and actual
+decision authorization remain with their existing owners. Application
+role tests and populated upgrade rehearsal are required. No deployment is
+authorized by this reservation.
+
 ## Bounded Personnel overview — 6 November 2026 (provisional source reservation)
 
 `codex/personnel-narrow-production-20261106` reserves `2403_personnel_bounded_overview`,
