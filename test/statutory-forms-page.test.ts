@@ -1364,10 +1364,10 @@ describe('what the shelves say about the forms that are not built', () => {
 describe('the menu row the reporter actually asked for', () => {
   const NODE = payrollPack.navNodes!.find((n) => n.group === 'admin')!;
 
-  it('exists, and sits after Reports — filing is the last thing you do with a month', () => {
+  it('lists Statutory Forms as the sole statutory reporting menu entry', () => {
     const hrefs = NODE.children.map((c) => c.href);
     expect(hrefs).toContain('/payroll/statutory-forms');
-    expect(hrefs.indexOf('/payroll/statutory-forms')).toBeGreaterThan(hrefs.indexOf('/payroll/reports'));
+    expect(hrefs).not.toContain('/payroll/reports');
   });
 
   // r91's design: a row is placed by declaring a rank, never by splicing it into the literal list.
