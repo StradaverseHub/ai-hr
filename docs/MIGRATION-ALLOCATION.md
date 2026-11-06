@@ -15,6 +15,13 @@ A subsequent fresh scan (334 readable worktrees) found maxima 2507 / 1827 /
 SQL SHA-256 `07eeadfb1db236283f2bcb7206e8a8274cfb637a3d1b53ddac75d40879ad6d3b` to remove inherited broad table grants.
 
 
+The next candidate appends `2509_principal_statement_plan_reuse`, idx 1829, when
+1793330002129, SQL SHA-256 `09135ed32933b61236c2dee1c05e39824155cedf8089364ef970755ca198bb88`.
+It preserves both principal queries and their grants. PostgreSQL reuses statement
+plans while evaluating identity and permissions on every call. The fresh scan
+included 2,977 distinct heads, 665 migration trees, 473 journals and 339 readable
+worktrees. Reconcile with the current installed ledger before any release.
+
 ## Minimal Workforce picker projection — 6 November 2026 (uninstalled candidate)
 
 `codex/personnel-snapshot-reads-20261106` reserves `2505_workforce_picker_facts`,

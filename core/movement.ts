@@ -6,7 +6,7 @@ import { withExitDateAuthorityTx } from './exit-date-authority';
 import { isDatabaseError } from '../lib/db-error';
 import { hasClosedPayrollCorrectionAuthorityTx, withClosedPayrollCorrectionAuthorityTx } from './closed-payroll-correction-authority';
 import {assertWorkforceCompanyTx,assertWorkforceEmploymentTx,workforceEmploymentPredicate,WorkforceAccessError} from './workforce-access';
-import {lockAccessConfigurationReadTx} from './access-configuration-lock';
+import {withPersonnelRead} from './personnel-read-bounds';
 import {ownPersonPredicate} from './own-person';
 /**
  * Employment History — Movement tab redesign (78853b97).
@@ -1534,10 +1534,9 @@ export async function movementHistoryWithTypes(ctx:SessionContext,employmentId:s
 }
 
 function readWorkforceMovementHistory(ctx:SessionContext,employmentId:string,includeResignation=false){
-  return withTenant(ctx, async tx => {
-    // This entry point owns a read-only operation. Caller-owned transactions
-    // continue through movementHistoryTx and its exclusive barrier.
-    await lockAccessConfigurationReadTx(tx, ctx.tenantId);
+  // Read authority, events and payroll affordances from one Personnel snapshot.
+  // Caller-owned transactions still use movementHistoryTx and its command barrier.
+  return withPersonnelRead(ctx, async tx => {
     const [row] = await tx.execute<{ allowed: boolean }>(
       sql`select ${workforceEmploymentPredicate(sql`${employmentId}::uuid`)} as allowed`,
     );
