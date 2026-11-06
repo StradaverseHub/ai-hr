@@ -39,10 +39,6 @@ export async function legacyApplicationForAttendancePolicyTx(tx:Tx,ctx:SessionCo
 export type RecordedAttendanceGroupPolicySelection={state:'none'}|{state:'unavailable'}|{state:'legacyApplication';applicationId:string}|{state:'policy';selected:ResolvedAttendanceGroupPolicy;attested?:NonNullable<Awaited<ReturnType<typeof recordedAttestedPolicyWorkTx>>>};
 export async function recordedAttendanceGroupPolicyTx(tx:Tx,ctx:SessionContext,p:{employmentId:string;date:string}):Promise<RecordedAttendanceGroupPolicySelection>{
  overtimeUuid(p.employmentId,'employmentId');overtimeDate(p.date,'attendanceDate');
- const current=async()=>{
-  const [principal]=await tx.execute(sql`select app.attendance_policy_principal_current() as allowed`) as unknown as {allowed:boolean}[];
-  if(!principal?.allowed)throw Error('Current Attendance principal required.');
- };
  // Check the principal and read the day in the same snapshot. The lateral read
  // remains under the caller's RLS and is gated by the canonical principal check.
  const [day]=await tx.execute<{
@@ -59,6 +55,19 @@ export async function recordedAttendanceGroupPolicyTx(tx:Tx,ctx:SessionContext,p
   ) day on true`);
  if(!day?.allowed)throw Error('Current Attendance principal required.');
  if(!day.dayId)return {state:'none'};
+ return resolveRecordedAttendanceGroupPolicyFromDayTx(tx,ctx,p,day);
+}
+
+/** Continue from a day projected with the canonical principal check under caller RLS. */
+export async function resolveRecordedAttendanceGroupPolicyFromDayTx(
+ tx:Tx,ctx:SessionContext,p:{employmentId:string;date:string},
+ day:{allowed:boolean;trace:unknown;attestedWorkCorrectionId:string|null},
+):Promise<RecordedAttendanceGroupPolicySelection>{
+ if(!day.allowed)throw Error('Current Attendance principal required.');
+ const current=async()=>{
+  const [principal]=await tx.execute(sql`select app.attendance_policy_principal_current() as allowed`) as unknown as {allowed:boolean}[];
+  if(!principal?.allowed)throw Error('Current Attendance principal required.');
+ };
  if(day.attestedWorkCorrectionId){
   const attested=await recordedAttestedPolicyWorkTx(tx,ctx,p);
   await current();

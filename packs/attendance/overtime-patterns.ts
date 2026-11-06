@@ -24,7 +24,7 @@ import {actorOf,appendEvent,appendEvents} from '../../db/events';
 import * as s from '../../db/schema';
 import {assertModuleGate,withAttendanceTenant} from '../../core/module-gate';
 import {provenCompanyDatesTx} from '../../core/employment-company';
-import {hasRecordedAttendanceGroupPolicyTx} from './policy-selection';
+import {hasRecordedAttendanceGroupPolicyTx,resolveRecordedAttendanceGroupPolicyFromDayTx} from './policy-selection';
 import type {ResolvedAttendanceGroupPolicy} from '../../core/attendance-group-policy';
 import type {AttendancePolicyExecutionContext} from '../../core/attendance';
 import type {RecordedPolicyClockSource} from './policy-clock-input';
@@ -543,17 +543,32 @@ export async function hasOvertimePatternForDayTx(tx:Tx,ctx:SessionContext,p:{emp
  * under the current transaction authority, including after approval status changes. */
 export async function readOvertimeRefreshDayTx(tx:Tx,ctx:SessionContext,p:{employmentId:string;date:string}){
  const recorded=retainedOvertimeCalculation(tx,ctx,p);
- const [day]=await tx.select({
-  id:s.attendance.id,
-  retained:sql<boolean>`case when exists (${recorded}) then true else coalesce(${refusedOvertimeMarker},false) end`,
- }).from(s.attendance).where(overtimeRefreshDayWhere(ctx,p)).limit(1);
+ // Materialize the scoped day once so the retained path does not run a principal check.
+ const [day]=await tx.execute<{id:string;retained:boolean;allowed:boolean;trace:unknown;attestedWorkCorrectionId:string|null}>(sql`
+  with day as materialized (
+   select ${s.attendance.id} as id, ${s.attendance.calcTrace} as trace,
+    ${s.attendance.attestedWorkCorrectionId} as "attestedWorkCorrectionId",
+    case when exists (${recorded}) then true else coalesce(${refusedOvertimeMarker},false) end as retained
+   from ${s.attendance}
+   where ${overtimeRefreshDayWhere(ctx,p)}
+   limit 1
+  )
+  select day.*, case when retained then false else app.attendance_policy_principal_current() end as allowed
+  from day
+ `);
  if(!day)return null;
  uuid(p.employmentId);date(p.date);
- return {id:day.id,hasPattern:day.retained || await hasDatedOvertimePatternForDayTx(tx,ctx,p)};
+ if(day.retained)return {id:day.id,hasPattern:true};
+ const policy=await resolveRecordedAttendanceGroupPolicyFromDayTx(tx,ctx,p,day);
+ return {id:day.id,hasPattern:policy.state==='policy'||policy.state==='unavailable'
+  ||await hasDatedOvertimeFormulaForDayTx(tx,ctx,p)};
 }
 
 async function hasDatedOvertimePatternForDayTx(tx:Tx,ctx:SessionContext,p:{employmentId:string;date:string}):Promise<boolean>{
- if(await hasRecordedAttendanceGroupPolicyTx(tx,ctx,p))return true;
+ return await hasRecordedAttendanceGroupPolicyTx(tx,ctx,p)||await hasDatedOvertimeFormulaForDayTx(tx,ctx,p);
+}
+
+async function hasDatedOvertimeFormulaForDayTx(tx:Tx,ctx:SessionContext,p:{employmentId:string;date:string}):Promise<boolean>{
  // Company proof can only narrow the formula candidates. A canonical input with
  // no possible candidate needs no dated assignment read. The invoker proof still
  // decides every remaining case, including unknown companies and noncanonical IDs.
