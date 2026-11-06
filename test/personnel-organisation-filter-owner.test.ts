@@ -161,6 +161,8 @@ it('keeps Architecture navigation equivalent for Workforce access, unseated empl
   }
   await expectNavigation(ctx, true);
   await expectNavigation(actor, false);
+  await assignArchitectureSeat(ctx, {userId, companyId:b.companyId, role:'org_design', validFrom:'2023-01-01', validTo:'2023-12-31'});
+  await expectNavigation(actor, false);
   await assignArchitectureSeat(ctx, {userId, companyId:b.companyId, role:'org_design', validFrom:'2024-01-01', validTo:null});
   await expectNavigation(actor, true);
 });
