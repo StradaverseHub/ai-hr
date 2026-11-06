@@ -4,7 +4,7 @@ import {writeFileSync} from 'node:fs';
 import {join} from 'node:path';
 import {eq,sql} from 'drizzle-orm';
 import {afterAll,beforeAll,expect,it} from 'vitest';
-import {closeAll,migrateTestDb,resetDb,seedBase,entitledCtx,owner} from './harness';
+import {closeAll,migrateTestDb,resetDb,seedBase,entitledCtx,owner,setModule} from './harness';
 import * as s from '../db/schema';
 import {withTenant} from '../db/client';
 import {hireEmployee} from '../core/org';
@@ -14,7 +14,8 @@ import {approvedRewardFixtures} from '../scripts/fixtures/reward-approved';
 import {saveRewardPlanConfiguration,saveRewardSetupPlan,submitRewardSetupPlan,approveRewardSetupPlan} from '../packs/rewards/plan-configuration';
 beforeAll(async()=>{await migrateTestDb();await resetDb();});afterAll(closeAll);
 it('keeps all current salaries visible through native Payroll after Rewards setup',async()=>{
- const b=await seedBase(),base=await entitledCtx(b),today=todayInKualaLumpur(),year=Number(today.slice(0,4));
+ const b=await seedBase();await setModule(b.tenantId,'rewards','active');
+ const base=await entitledCtx(b),today=todayInKualaLumpur(),year=Number(today.slice(0,4));
  const actor=await hireEmployee(base,{companyId:b.companyId,departmentId:b.deptA,hiredOn:'2021-01-01',employmentType:'full_time',person:{fullName:'Fictional payroll actor',primaryEmail:randomUUID()+'@example.test'}});
  await owner.db.update(s.appUser).set({personId:actor.personId}).where(eq(s.appUser.id,b.adminUserId));
  const ctx={...base,personId:actor.personId,grants:[{role:'hr_admin',companyId:null}]};
