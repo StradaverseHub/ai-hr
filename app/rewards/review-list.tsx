@@ -5,6 +5,7 @@ import {rewardDueWording} from '@/packs/rewards/calendar';
 import {rewardStages} from '@/packs/rewards/model';
 import {filterRewardReviews,rewardReviewHref,rewardReviewUpcoming,type RewardReviewFilters} from '@/packs/rewards/review-list-model';
 import {Button,Card,inputCls,tableWrapCls,theadCls,thCls,tbodyCls} from '@/components/ui';
+import { deskMoney } from './[unitId]/desk/salary-increase-table';
 import {RewardStageLabel} from './returned-status';
 
 type Props={rows:RewardReviewListRow[];filters:RewardReviewFilters;emptyReason:'noScope'|'noCycle'|'noRole'|'otherScope'|null;year:number;canConfigure:boolean;overview?:boolean;canOpenApprovals?:boolean;companyGroups?:Readonly<Record<string,{groupId:string;groupName:string}>>};
@@ -15,6 +16,8 @@ export function RewardReviewList({rows:all,filters,emptyReason,year,canConfigure
  const percent=(bp:number|null|undefined)=>bp==null?'—':new Intl.NumberFormat(locale,{style:'percent',minimumFractionDigits:1,maximumFractionDigits:1}).format(bp/10000);
  const date=(iso:string)=>new Intl.DateTimeFormat(locale,{dateStyle:'medium',timeZone:'UTC'}).format(new Date(`${iso}T00:00:00Z`));
  const relative=(days:number)=>{const phrase=rewardDueWording(days);return t(`board.${phrase.key}`,{days:phrase.days});};
+ const budgetRows = overview ? rows.filter(row => row.kind === 'annual' &&
+   row.roles.some(role => role === 'gr' || role === 'ctro' || role === 'ec') && (row.salary || row.bonus)) : [];
  return <>
   <Link href={rewardReviewHref({...filters,waiting:filters.waiting==='1'?undefined:'1'})} aria-current={filters.waiting==='1'?'page':undefined} className="inline-flex rounded-md border px-4 py-3 font-medium text-primary hover:bg-accent">{t('reviewList.waiting',{count:waiting})}</Link>
   {rewardReviewUpcoming(all).map(({seat,count})=><p key={seat} className="text-sm text-muted-foreground">{t('reviewList.upcoming',{count,stage:t(`board.seat.${seat}`)})}</p>)}
@@ -30,6 +33,28 @@ export function RewardReviewList({rows:all,filters,emptyReason,year,canConfigure
    <label className="flex min-h-10 items-center gap-2 text-sm"><input type="checkbox" name="waiting" value="1" defaultChecked={filters.waiting==='1'}/>{t('reviewList.waitingOnly')}</label>
    <Button type="submit">{t('reviewList.apply')}</Button><Link href="/rewards" className="py-2 text-sm text-primary hover:underline">{t('reviewList.clear')}</Link>
   </form>}
+  {budgetRows.length > 0 && <details className="rounded-lg border border-border p-4">
+    <summary className="cursor-pointer font-semibold">{t('budget')} · {t('reviewList.all')}</summary>
+    <div className="mt-3 overflow-x-auto"><table className="w-full text-sm">
+      <thead className={theadCls}><tr>
+        <th scope="col" className={thCls}>{t('unit')}</th>
+        <th scope="col" className={thCls}>{t('reviewList.salary')}</th>
+        <th scope="col" className={thCls}>{t('reviewList.bonus')}</th>
+      </tr></thead>
+      <tbody className={tbodyCls}>{budgetRows.map(row => <tr key={row.id}>
+        <td className="p-3"><Link className="font-medium text-primary hover:underline" href={`/rewards/${row.id}#salary-increase`}>{row.unit}</Link>
+          <div className="text-muted-foreground">{row.company} · {row.cycle}</div></td>
+        <td className="p-3 text-right tabular-nums">
+          {row.salary ? <>{deskMoney(row.salary.increaseCents, locale)} / {deskMoney(row.salary.poolCents, locale)}
+            <div className={row.salary.overLimit ? 'text-destructive' : 'text-muted-foreground'}>{percent(row.salary.poolShareBp)}</div></> : t('reviewList.unavailable')}
+        </td>
+        <td className="p-3 text-right tabular-nums">
+          {row.bonus ? <>{deskMoney(row.bonus.totalCents, locale)} / {deskMoney(row.bonus.budgetCents, locale)}
+            <div className={row.bonus.overLimit ? 'text-destructive' : 'text-muted-foreground'}>{percent(row.bonus.budgetShareBp)}</div></> : t('reviewList.unavailable')}
+        </td>
+      </tr>)}</tbody>
+    </table></div>
+  </details>}
   {overview && rows.length > 0 && <ul className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
     {rows.map(row => {
       const approvalQuery = new URLSearchParams({ group: row.companyId, ...(row.cycleId ? { cycle: row.cycleId } : {}), ...(row.businessUnitId ? { unit: row.businessUnitId } : {}) });

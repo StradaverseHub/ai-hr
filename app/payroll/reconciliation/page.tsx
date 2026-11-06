@@ -24,7 +24,7 @@ export default async function PayrollReconciliationPage({
   const reports = (await listCustomReports(s, { category: 'payroll', companyIds: scopeIds }))
     .filter(report => report.spec.payrollComparison);
   const timestamp = new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeStyle: 'short', timeZone: 'Asia/Kuala_Lumpur' });
-  const chosen = reports.find(report => report.id === template) ?? reports[0];
+  const chosen = reports.find(report => report.id === template);
 
   return (
     <div className={pageWideCls}>
@@ -34,7 +34,8 @@ export default async function PayrollReconciliationPage({
         <Link className="text-sm text-primary underline" href="/reports?cat=payroll">{t('customReports')}</Link>
         {reports.length > 0 && <form className="flex flex-wrap items-end gap-3">
           <label className="grid gap-1 text-sm">{t('reportName')}
-            <select name="template" className={inputCls} defaultValue={chosen?.id}>
+            <select name="template" className={inputCls} defaultValue={chosen?.id ?? ''}>
+              <option value="">{t('title')}</option>
               {reports.map(report => <option key={report.id} value={report.id}>{report.name}</option>)}
             </select>
           </label>
@@ -63,9 +64,7 @@ export default async function PayrollReconciliationPage({
                     {row.cycles.length > 0 && <div className="text-xs text-muted-foreground">{row.cycles.join(' · ')}</div>}
                   </td>
                   <td className="p-3">{row.lastProcessed ? timestamp.format(new Date(row.lastProcessed)) : t('notAvailable')}</td>
-                  <td className="p-3">{row.requiresReprocessing ? t('needsReview') : chosen
-                    ? <Link className="text-primary underline" href={`/reports/payroll-comparison/${chosen.id}?${query}`}>{t('comparisonTable')}</Link>
-                    : t('notAvailable')}</td>
+                  <td className="p-3">{row.requiresReprocessing ? t('needsReview') : <Link className="text-primary underline" href={`/reports/payroll-comparison/${chosen?.id ?? 'reconciliation'}?${query}`}>{t('comparisonTable')}</Link>}</td>
                 </tr>;
               })}
               {!periods.length && <tr><td className="p-3" colSpan={6}>{t('unavailable')}</td></tr>}

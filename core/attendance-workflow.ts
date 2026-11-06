@@ -154,7 +154,7 @@ export async function saveAttendanceWorkflow(ctx: SessionContext, raw: unknown, 
         if (!lineageId && autoPriority) {
             const current = await tx.select({ priority: template.priority }).from(template).where(and(
                 eq(template.companyId, input.companyId), eq(template.applicationType, input.applicationType),
-                eq(template.active, true), isNull(template.supersededAt),
+                isNull(template.supersededAt),
             ));
             const priority = nextAttendanceWorkflowPriority(current.map(row => row.priority));
             if (priority > 9999) throw new AttendanceWorkflowError('overlap', 'All automatic workflow priorities are in use.');

@@ -3,7 +3,7 @@ import {notFound} from 'next/navigation';
 import {getTranslations} from 'next-intl/server';
 import {scopedAdmin} from '@/lib/scope';
 import {getCustomReport,runPayrollComparisonReport,recordPayrollComparisonRun} from '@/core/custom-reports';
-import {payrollComparisonOptions} from '@/core/report-payroll-comparison';
+import {payrollComparisonOptions,payrollComparisonSpec} from '@/core/report-payroll-comparison';
 import {MasterReportAccessError} from '@/core/employee-master-access';
 import {PageHeader,Card,ErrorBanner} from '@/components/ui';
 import {payrollComparisonColumns,payrollComparisonCell} from '@/lib/payroll-comparison-presentation';
@@ -16,13 +16,15 @@ export default async function PayrollComparisonPage({params,searchParams}:{param
   let options:Awaited<ReturnType<typeof payrollComparisonOptions>>;
   try{options=await payrollComparisonOptions(s,scopeIds);}
   catch(error){if(error instanceof MasterReportAccessError)notFound();throw error;}
+  const builtIn = id === 'reconciliation';
   if(sp.edit==='1'){
+    if (builtIn) notFound();
     const report=await getCustomReport(s,id,scopeIds,'edit').catch(()=>null);if(!report?.spec.payrollComparison)notFound();
     return <div className="space-y-5"><PageHeader title={t('editReport')} back={{href:'/reports/payroll-comparison/'+id,label:t('back')}}/>{sp.error&&<ErrorBanner message={typeof sp.error === 'string' ? sp.error : undefined}/>}<Card className="p-6"><PayrollComparisonEditor key={id+':'+report.version} id={id} version={report.version} name={report.name} description={report.spec.layout?.description??''} initial={report.spec.payrollComparison} payItems={options.payItems}/></Card></div>;
   }
   const raw=Object.fromEntries(Object.entries(sp).filter(([key,value])=>key!=='error'&&key!=='edit'&&value!==undefined));
   let run:Awaited<ReturnType<typeof runPayrollComparisonReport>>;
-  try{run=await runPayrollComparisonReport(s,scopeIds,{id,filters:raw});await recordPayrollComparisonRun(s,run,'run');}
+  try{run=await runPayrollComparisonReport(s,scopeIds,{...(builtIn ? { spec: payrollComparisonSpec() } : { id }),filters:raw});await recordPayrollComparisonRun(s,run,builtIn?'preview':'run');}
   catch(error){if(error instanceof MasterReportAccessError)notFound();return <div className="space-y-4"><PageHeader title={t('title')} back={{href:'/reports?cat=payroll',label:t('back')}}/><ErrorBanner message={publicErrorMessage(error)}/><Link href={'/reports/payroll-comparison/'+id}>{t('reset')}</Link></div>;}
   const {result,filters}=run,columns=payrollComparisonColumns(run.definition);
   const query=(changes:Record<string,string|number|null>={})=>{
@@ -32,8 +34,8 @@ export default async function PayrollComparisonPage({params,searchParams}:{param
   const input='mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm';
   return <div className="space-y-5">
     <nav aria-label={t('breadcrumb')} className="text-sm text-muted-foreground"><Link href="/reports">{t('reports')}</Link> › <Link href="/reports?cat=payroll">{t('payroll')}</Link> › {t('customReports')}</nav>
-    <PageHeader title={run.name} description={run.description||t('reportHelp')}/>
-    <div className="flex flex-wrap items-center justify-between gap-3"><span className="rounded-full bg-primary/10 px-3 py-1 text-xs font-medium text-primary">{t('customTag')}</span><div className="flex gap-3 text-sm">{run.canEdit&&<Link className="rounded-lg border border-border px-3 py-2" href={'/reports/payroll-comparison/'+id+'?edit=1'}>{t('editReport')}</Link>}{run.canExport&&(['pdf','xlsx']as const).map(format=><a key={format} className="rounded-lg bg-primary px-3 py-2 text-primary-foreground" href={'/reports/payroll-comparison/export?id='+id+'&format='+format+'&'+query()}>{t(format==='pdf'?'exportPdf':'exportExcel')}</a>)}</div></div>
+    <PageHeader title={builtIn ? t('title') : run.name} description={run.description||t('reportHelp')}/>
+    <div className="flex flex-wrap items-center justify-between gap-3">{!builtIn && <span className="rounded-full bg-primary/10 px-3 py-1 text-xs font-medium text-primary">{t('customTag')}</span>}<div className="flex gap-3 text-sm">{!builtIn&&run.canEdit&&<Link className="rounded-lg border border-border px-3 py-2" href={'/reports/payroll-comparison/'+id+'?edit=1'}>{t('editReport')}</Link>}{!builtIn&&run.canExport&&(['pdf','xlsx']as const).map(format=><a key={format} className="rounded-lg bg-primary px-3 py-2 text-primary-foreground" href={'/reports/payroll-comparison/export?id='+id+'&format='+format+'&'+query()}>{t(format==='pdf'?'exportPdf':'exportExcel')}</a>)}</div></div>
     {result.provisional&&<div role="status" className="rounded-xl border border-border bg-muted/50 p-4 text-sm text-foreground">{t('provisional')}</div>}
     {!result.available&&<div role="alert" className="rounded-xl border border-destructive/30 bg-destructive/5 p-4 text-sm"><p className="font-semibold">{t('unavailable')}</p><ul className="mt-2 list-inside list-disc">{result.issues.map((issue,index)=><li key={index}>{t(`issues.${issue.code}`)} · {issue.period} · {options.companies.find(company=>company.id===issue.companyId)?.name??issue.companyId}</li>)}</ul></div>}
     {run.contextUnavailable&&<p role="status" className="rounded-lg border border-border p-3 text-sm text-muted-foreground">{t('contextUnavailable')}</p>}
