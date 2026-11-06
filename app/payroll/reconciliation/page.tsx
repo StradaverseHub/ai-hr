@@ -49,7 +49,8 @@ export default async function PayrollReconciliationPage({
               <th className="p-3">{t('currentPeriod')}</th>
               <th className="p-3">{t('previousPeriod')}</th>
               <th className="p-3">{t('runs')}</th>
-              <th className="p-3">{t('sourceUpdated')}</th>
+              <th className="p-3">{t('reconciliationCaptured')}</th>
+              <th className="p-3">{t('reconciliationStatus')}</th>
               <th className="p-3">{t('comparisonTable')}</th>
             </tr></thead>
             <tbody className="divide-y divide-border">
@@ -63,11 +64,12 @@ export default async function PayrollReconciliationPage({
                   <td className="p-3 tabular-nums">{row.runCount}
                     {row.cycles.length > 0 && <div className="text-xs text-muted-foreground">{row.cycles.join(' · ')}</div>}
                   </td>
-                  <td className="p-3">{row.lastProcessed ? timestamp.format(new Date(row.lastProcessed)) : t('notAvailable')}</td>
+                  <td className="p-3">{row.generatedAt ? timestamp.format(new Date(row.generatedAt)) : '—'}</td>
+                  <td className="p-3">{row.requiresReprocessing ? t('needsReview') : !row.previousReady ? t('unavailable') : t('reconciliationReady')}</td>
                   <td className="p-3">{row.requiresReprocessing ? t('needsReview') : !row.previousReady ? t('notAvailable') : <Link className="text-primary underline" href={`/reports/payroll-comparison/${chosen?.id ?? 'reconciliation'}?${query}`}>{t('comparisonTable')}</Link>}</td>
                 </tr>;
               })}
-              {!periods.length && <tr><td className="p-3" colSpan={6}>{t('unavailable')}</td></tr>}
+              {!periods.length && <tr><td className="p-3" colSpan={7}>{t('unavailable')}</td></tr>}
             </tbody>
           </table>
         </div>

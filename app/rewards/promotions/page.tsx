@@ -39,13 +39,13 @@ export default async function RewardPromotionsPage({ searchParams }: {
         <button className={btnPrimary}>{t('reviewList.apply')}</button>
       </form>
       <div className="overflow-x-auto"><table className="w-full text-left text-sm">
-        <thead className="border-y border-border"><tr>{['employee', 'company', 'unit', 'cycle', 'grade'].map(key => <th className="p-3" key={key} scope="col">{t(key)}</th>)}</tr></thead>
+        <thead className="border-y border-border"><tr>{['employee', 'company', 'unit', 'cycle', 'grade', 'decisionReason'].map(key => <th className="p-3" key={key} scope="col">{t(key)}</th>)}</tr></thead>
         <tbody className="divide-y divide-border">{nominations.map(row => <tr key={row.id}>
           <td className="p-3"><Link className="text-primary underline" href={`/rewards/${row.reviewId}?person=${row.id}`}>{row.name}</Link></td>
           <td className="p-3">{row.company}</td><td className="p-3">{row.unit}</td><td className="p-3">{row.cycle}</td>
-          <td className="p-3 whitespace-nowrap">{row.grade} → {row.proposed}</td>
+          <td className="p-3 whitespace-nowrap">{row.grade} → {row.proposed}</td><td className="p-3">{row.reason || '—'}</td>
         </tr>)}
-        {!nominations.length && <tr><td className="p-3" colSpan={5}>{t('noPromotionNominations')}</td></tr>}</tbody>
+        {!nominations.length && <tr><td className="p-3" colSpan={6}>{t('noPromotionNominations')}</td></tr>}</tbody>
       </table></div>
       {maxPage > 1 && <nav className="flex gap-4 text-sm" aria-label={t('promotionNominations')}>
         {page > 1 && <Link href={url(page - 1)} className="text-primary underline">{t('promotionPrevious')}</Link>}

@@ -31292,6 +31292,9 @@
     }
   },
   "payrollComparison": {
+    "reconciliationCaptured": "Versi sumber direkodkan",
+    "reconciliationStatus": "Status perbandingan",
+    "reconciliationReady": "Sedia disemak",
     "hrRemark": "Catatan HR",
     "hrRemarkEdit": "Edit catatan HR",
     "hrRemarkSave": "Simpan catatan",

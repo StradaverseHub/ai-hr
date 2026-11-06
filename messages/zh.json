@@ -31292,6 +31292,9 @@
     }
   },
   "payrollComparison": {
+    "reconciliationCaptured": "来源版本记录时间",
+    "reconciliationStatus": "比较状态",
+    "reconciliationReady": "可供审核",
     "hrRemark": "人力资源备注",
     "hrRemarkEdit": "编辑人力资源备注",
     "hrRemarkSave": "保存备注",

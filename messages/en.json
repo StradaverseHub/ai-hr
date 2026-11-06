@@ -31292,6 +31292,9 @@
     }
   },
   "payrollComparison": {
+    "reconciliationCaptured": "Source version captured",
+    "reconciliationStatus": "Comparison status",
+    "reconciliationReady": "Ready to review",
     "hrRemark": "HR remark",
     "hrRemarkEdit": "Edit HR remark",
     "hrRemarkSave": "Save remark",

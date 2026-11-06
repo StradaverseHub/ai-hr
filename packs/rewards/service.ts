@@ -1797,14 +1797,14 @@ export async function rewardPromotionNominations(ctx: SessionContext, companyIds
     const companies = await tx.selectDistinct({ id: company.id, name: company.legalName })
       .from(company).innerJoin(rewardUnit, eq(rewardUnit.companyId, company.id))
       .where(and(inArray(company.id, companyIds), eq(rewardUnit.tenantId, ctx.tenantId), isNull(rewardUnit.deletedAt),
-        sql`app.reward_capability(${rewardUnit.id},'review.view') and exists(select 1 from app.reward_roles(${rewardUnit.id}))`))
+        sql`app.reward_capability(${rewardUnit.id},'review.view') and 'gr' in (select app.reward_roles(${rewardUnit.id}))`))
       .orderBy(asc(company.legalName), asc(company.id));
     const ids = companies.map(c => c.id);
     if (!ids.length) return { year, page: 1, maxPage: 1, companies, nominations: [] };
     const where = and(inArray(rewardUnit.companyId, ids), eq(rewardUnit.tenantId, ctx.tenantId), isNull(rewardUnit.deletedAt),
       eq(rewardUnit.kind, 'annual'), eq(rewardCycle.year, year),
       filters.companyId ? eq(rewardUnit.companyId, filters.companyId) : undefined,
-      sql`app.reward_capability(${rewardUnit.id},'review.view') and exists(select 1 from app.reward_roles(${rewardUnit.id}))`);
+      sql`app.reward_capability(${rewardUnit.id},'review.view') and 'gr' in (select app.reward_roles(${rewardUnit.id}))`);
     const [count] = await tx.select({ n: sql<number>`count(*)::int` }).from(rewardUnit)
       .innerJoin(rewardCycle, eq(rewardCycle.id, rewardUnit.cycleId)).where(where);
     const maxPage = Math.max(1, Math.ceil((count?.n ?? 0) / perPage));
@@ -1813,14 +1813,14 @@ export async function rewardPromotionNominations(ctx: SessionContext, companyIds
       .innerJoin(rewardCycle, eq(rewardCycle.id, rewardUnit.cycleId)).where(where)
       .orderBy(asc(rewardCycle.name), asc(rewardUnit.companyId), asc(rewardUnit.businessUnitId), asc(rewardUnit.id))
       .limit(perPage).offset((page - 1) * perPage);
-    const nominations: { id: string; reviewId: string; company: string; unit: string; cycle: string; name: string; grade: string; proposed: string }[] = [];
+    const nominations: { id: string; reviewId: string; company: string; unit: string; cycle: string; name: string; grade: string; proposed: string; reason: string }[] = [];
     for (const unit of units) {
       try {
         const review = await reviewProjectionTx(tx, ctx, unit.id);
         for (const row of review.rows) {
           const proposed = row.recommendation.promotionGrade;
           if (proposed) nominations.push({ id: row.id, reviewId: unit.id, company: review.companyName,
-            unit: review.name, cycle: unit.cycle, name: row.source.name, grade: row.source.grade, proposed });
+            unit: review.name, cycle: unit.cycle, name: row.source.name, grade: row.source.grade, proposed, reason: row.recommendation.reason });
         }
       } catch (error) {
         // A seat can be unavailable until uploads or senior selection are independently checked.

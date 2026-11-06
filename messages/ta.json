@@ -31292,6 +31292,9 @@
     }
   },
   "payrollComparison": {
+    "reconciliationCaptured": "மூலப் பதிப்பு பதிவான நேரம்",
+    "reconciliationStatus": "ஒப்பீட்டு நிலை",
+    "reconciliationReady": "மதிப்பாய்வுக்குத் தயார்",
     "hrRemark": "மனிதவளக் குறிப்பு",
     "hrRemarkEdit": "மனிதவளக் குறிப்பைத் திருத்து",
     "hrRemarkSave": "குறிப்பைச் சேமி",

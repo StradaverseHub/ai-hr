@@ -85,6 +85,7 @@ describe('Payroll comparison consumes generated paid results under the saved rep
     const months = await payrollReconciliationPeriods(ctx, [b.companyId]);
     expect(months[0]).toMatchObject({ companyId: b.companyId, period: currentPeriod, runCount: 1, previousReady: true, requiresReprocessing: false });
     expect(months[0].lastProcessed).toBeTruthy();
+    expect(months[0].generatedAt).toBeTruthy(); // No report has been opened yet.
     expect(months[1]).toMatchObject({ period: previousPeriod, previousReady: false });
     const builtIn = await runPayrollComparisonReport(ctx, [b.companyId], { id: 'reconciliation', filters: { currentPeriod, previousPeriod } });
     expect(builtIn.result.available).toBe(true);

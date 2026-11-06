@@ -31292,6 +31292,9 @@
     }
   },
   "payrollComparison": {
+    "reconciliationCaptured": "เวลาบันทึกเวอร์ชันต้นทาง",
+    "reconciliationStatus": "สถานะการเปรียบเทียบ",
+    "reconciliationReady": "พร้อมตรวจสอบ",
     "hrRemark": "หมายเหตุฝ่ายบุคคล",
     "hrRemarkEdit": "แก้ไขหมายเหตุฝ่ายบุคคล",
     "hrRemarkSave": "บันทึกหมายเหตุ",

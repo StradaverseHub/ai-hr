@@ -31292,6 +31292,9 @@
     }
   },
   "payrollComparison": {
+    "reconciliationCaptured": "Đã ghi phiên bản nguồn",
+    "reconciliationStatus": "Trạng thái so sánh",
+    "reconciliationReady": "Sẵn sàng xem xét",
     "hrRemark": "Ghi chú nhân sự",
     "hrRemarkEdit": "Sửa ghi chú nhân sự",
     "hrRemarkSave": "Lưu ghi chú",

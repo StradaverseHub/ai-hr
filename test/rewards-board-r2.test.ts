@@ -73,6 +73,7 @@ describe('Rewards board items 8ad87ae8, 4e3e1af7, c28db2f0', () => {
     });
     const result = await rewardPromotionNominations(admin, [b.companyId], { companyId: '', year, page: 1 });
     expect(result.nominations).toEqual([expect.objectContaining({ id: row.id, reviewId: unitId, name: 'Reward Employee', grade: '12', proposed: '13' })]);
+    expect(await rewardPromotionNominations(bu, [b.companyId], { companyId: '', year, page: 1 })).toMatchObject({ nominations: [] });
     expect(await rewardPromotionNominations(admin, [], { companyId: '', year, page: 1 })).toMatchObject({ nominations: [] });
   });
 

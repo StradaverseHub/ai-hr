@@ -164,6 +164,10 @@ export async function payrollReconciliationPeriods(ctx: SessionContext, scope: r
           and (prior.history_import_attempt_id is null or prior.employee_count > 0)
           and prior.pay_period = to_char(to_date(${groups.period}, 'YYYY-MM') - interval '1 month', 'YYYY-MM')
       ), false)`,
+      generatedAt: sql<string | null>`(
+        select max(g.generated_at)::text from payroll_reconciliation_generation g
+        where g.tenant_id = ${ctx.tenantId}::uuid and g.company_id = ${groups.companyId} and g.current_period = ${groups.period}
+      )`,
       lastProcessed: sql<string | null>`max(${domainEvent.occurredAt})::text`,
       cycles: sql<string[]>`coalesce(array_agg(distinct ${payrollCycle.name} order by ${payrollCycle.name}) filter (where ${payrollCycle.name} is not null), '{}'::text[])`,
     }).from(groups).innerJoin(payrollHistoryEffectiveBatch, and(

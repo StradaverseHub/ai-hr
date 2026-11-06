@@ -18,7 +18,7 @@ export default async function RewardsPage({searchParams}:{searchParams:Promise<R
  ]);
  const setup=await getTranslations('rewardSetup');
  return <div className="w-full space-y-6"><PageHeader title={nav('rewardsReviewing')} description={t('description')} actions={<>
-  {list.rows.some(row => row.kind === 'annual' && row.roles.length > 0) && <Link href="/rewards/promotions" className="inline-flex text-sm font-medium text-primary hover:underline">{t('promotionNominations')}</Link>}
+  {list.rows.some(row => row.kind === 'annual' && row.roles.includes('gr')) && <Link href="/rewards/promotions" className="inline-flex text-sm font-medium text-primary hover:underline">{t('promotionNominations')}</Link>}
   {destinations.includes('/rewards/analytics') && <Link href="/rewards/analytics" className="inline-flex text-sm font-medium text-primary hover:underline">{nav('rewardsAnalytics')}</Link>}
   {destinations.includes('/rewards/approvals') && <Link href="/rewards/approvals" className="inline-flex text-sm font-medium text-primary hover:underline">{nav('rewardsApprovalsBoard')}</Link>}
   {destinations.includes('/rewards/rules') && <Link href="/rewards/rules" className="inline-flex text-sm font-medium text-primary hover:underline">{nav('rewardsRules')}</Link>}
