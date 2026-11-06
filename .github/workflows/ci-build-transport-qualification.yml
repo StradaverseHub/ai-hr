@@ -20,7 +20,7 @@ on:
         required: true
         type: string
       producer_controller_branch:
-        description: Frozen owned codex controller branch, or alpha for an actual final alpha-push producer
+        description: Frozen owned codex controller, main/alpha canonical build-only dispatch, or actual alpha-push producer
         required: true
         type: string
       artifact_id:
@@ -36,6 +36,7 @@ concurrency:
   group: ci-build-transport-qualification-${{ github.ref }}
   cancel-in-progress: false
 env:
+  PYTHONDONTWRITEBYTECODE: '1'
   CI: 'true'
   AIHR_CI_BUILD_TRANSPORT: consumer
   AIHR_CI_HEAD: ${{ inputs.source_sha }}
@@ -62,6 +63,8 @@ jobs:
         with: {node-version: '22.23.3'}
       - name: Run explicit CI and legacy diagnostic transport refusal controls
         run: node --test automation/.github/ci/build-transport.test.mjs automation/.github/ci/ci-build-transport-policy.test.mjs
+      - name: Verify Python readers preserve the frozen controller under this workflow's settings
+        run: python3 automation/.github/ci/build-helper-cleanliness.test.py
       - name: Authenticate immutable origin and consumer metadata before candidate checkout
         env: {GH_TOKEN: '${{ github.token }}'}
         run: node automation/.github/ci/ci-build-transport-qualification.mjs --metadata-only

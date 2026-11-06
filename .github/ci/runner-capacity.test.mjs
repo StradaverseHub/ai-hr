@@ -129,3 +129,20 @@ test('focused setup uses the same suite margins only in its actual first-attempt
   for(const change of [{AIHR_FOCUSED_SUITE_CAPACITY:'false'},{GITHUB_RUN_ATTEMPT:'2'},{GITHUB_EVENT_NAME:'push'},{GITHUB_JOB:'linux-build'},{GITHUB_WORKFLOW_REF:e.GITHUB_WORKFLOW_REF.replace('alpha-focused-checks','other')},{DATABASE_URL:'postgres://live'},{GITHUB_REPOSITORY_ID:'1'},{AIHR_CI_CONTROL_HEAD:'b'.repeat(40)}])assert.throws(()=>validateCapacityScope(profile,{...e,...change}));
  }
 });
+
+test('immutable repair selection retains suite margins only in its explicit hosted diagnostic context',()=>{
+ const ref='codex/parity-v3-impact-selection-frozen',e={GITHUB_ACTIONS:'true',CI:'true',RUNNER_ENVIRONMENT:'github-hosted',GITHUB_REPOSITORY:'StradaverseHub/ai-hr',GITHUB_REPOSITORY_ID:'1333414856',GITHUB_RUN_ATTEMPT:'1',GITHUB_JOB:'runner-diagnostics',GITHUB_EVENT_NAME:'workflow_dispatch',
+  GITHUB_WORKFLOW_REF:'StradaverseHub/ai-hr/.github/workflows/alpha-staging.yml@refs/heads/'+ref,GITHUB_REF:'refs/heads/'+ref,GITHUB_SHA:'a'.repeat(40),AIHR_CI_CONTROL_HEAD:'a'.repeat(40),
+  AIHR_DIAGNOSTICS_ONLY:'true',AIHR_CONTROLLER_ONLY:'false',AIHR_BUILD_ONLY:'false',AIHR_REPAIR_IMPACT_BASE:'b'.repeat(40),AIHR_CI_HEAD:'c'.repeat(40),
+  ...Object.fromEntries(['DATABASE_URL','MIGRATION_DATABASE_URL','TEST_DATABASE_URL','TEST_MIGRATION_DATABASE_URL'].map(k=>[k,'postgres://nobody:nothing@127.0.0.1:1/no_database']))};
+ for(const [profile,floor]of [['bounded-suite-setup',24*1024**2],['bounded-suite-ready',21*1024**2]]){
+  assert(validateCapacityScope(profile,e));assert.equal(capacityDecision(profile,floor).decision,'enough');assert.equal(capacityDecision(profile,floor-1).decision,'clean');
+  for(const change of [{GITHUB_ACTIONS:'false'},{CI:'false'},{RUNNER_ENVIRONMENT:'self-hosted'},{GITHUB_REPOSITORY_ID:'1'},
+   {GITHUB_REPOSITORY:'other/repo'},{GITHUB_RUN_ATTEMPT:'2'},{GITHUB_JOB:'build'},{GITHUB_EVENT_NAME:'push'},
+   {GITHUB_WORKFLOW_REF:e.GITHUB_WORKFLOW_REF.replace('alpha-staging.yml','unrelated.yml')},{GITHUB_WORKFLOW_REF:e.GITHUB_WORKFLOW_REF.replace(ref,'main')},
+   {GITHUB_REF:'refs/heads/codex/other'},{AIHR_DIAGNOSTICS_ONLY:'false'},{AIHR_CONTROLLER_ONLY:'true'},{AIHR_BUILD_ONLY:'true'},
+   {AIHR_REPAIR_IMPACT_BASE:''},{AIHR_REPAIR_IMPACT_BASE:'alpha'},{AIHR_REPAIR_IMPACT_BASE:e.AIHR_CI_HEAD},{AIHR_CI_HEAD:'branch'},
+   {AIHR_CI_CONTROL_HEAD:'d'.repeat(40)},...['DATABASE_URL','MIGRATION_DATABASE_URL','TEST_DATABASE_URL','TEST_MIGRATION_DATABASE_URL'].map(k=>({[k]:'postgres://live'}))])
+    assert.throws(()=>validateCapacityScope(profile,{...e,...change}));
+ }
+});
