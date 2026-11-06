@@ -31259,6 +31259,8 @@
     }
   },
   "payrollComparison": {
+    "payCycles": "Pay cycles",
+    "sourceUpdated": "Payroll last processed",
     "comparisonTable": "Comparison results",
     "saveFailed": "Could not save the report. Your draft is kept. Try again.",
     "rolesRequired": "Select at least one role allowed to run this report.",

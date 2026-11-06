@@ -31259,6 +31259,8 @@
     }
   },
   "payrollComparison": {
+    "payCycles": "Chu kỳ trả lương",
+    "sourceUpdated": "Lần xử lý bảng lương gần nhất",
     "comparisonTable": "Kết quả so sánh",
     "saveFailed": "Không thể lưu báo cáo. Bản nháp được giữ lại. Vui lòng thử lại.",
     "rolesRequired": "Chọn ít nhất một vai trò được phép chạy báo cáo này.",

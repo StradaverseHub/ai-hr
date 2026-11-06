@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { getTranslations } from 'next-intl/server';
+import { getLocale, getTranslations } from 'next-intl/server';
 import { Card, PageHeader, btnPrimary, inputCls, pageWideCls } from '@/components/ui';
 import { listCustomReports } from '@/core/custom-reports';
 import { MasterReportAccessError } from '@/core/employee-master-access';
@@ -14,8 +14,8 @@ export default async function PayrollReconciliationPage({
   searchParams: Promise<{ template?: string }>;
 }) {
   const { s, scopeIds } = await scopedAdmin();
-  const [t, nav, { template }] = await Promise.all([
-    getTranslations('payrollComparison'), getTranslations('nav'), searchParams,
+  const [t, nav, locale, { template }] = await Promise.all([
+    getTranslations('payrollComparison'), getTranslations('nav'), getLocale(), searchParams,
   ]);
   const periods = await payrollReconciliationPeriods(s, scopeIds).catch(error => {
     if (error instanceof MasterReportAccessError) notFound();
@@ -23,6 +23,7 @@ export default async function PayrollReconciliationPage({
   });
   const reports = (await listCustomReports(s, { category: 'payroll', companyIds: scopeIds }))
     .filter(report => report.spec.payrollComparison);
+  const timestamp = new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeStyle: 'short', timeZone: 'Asia/Kuala_Lumpur' });
   const chosen = reports.find(report => report.id === template) ?? reports[0];
 
   return (
@@ -47,6 +48,7 @@ export default async function PayrollReconciliationPage({
               <th className="p-3">{t('currentPeriod')}</th>
               <th className="p-3">{t('previousPeriod')}</th>
               <th className="p-3">{t('runs')}</th>
+              <th className="p-3">{t('sourceUpdated')}</th>
               <th className="p-3">{t('comparisonTable')}</th>
             </tr></thead>
             <tbody className="divide-y divide-border">
@@ -57,13 +59,16 @@ export default async function PayrollReconciliationPage({
                   <td className="p-3">{row.companyName}</td>
                   <td className="p-3 tabular-nums">{row.period}</td>
                   <td className="p-3 tabular-nums">{previous}</td>
-                  <td className="p-3 tabular-nums">{row.runCount}</td>
+                  <td className="p-3 tabular-nums">{row.runCount}
+                    {row.cycles.length > 0 && <div className="text-xs text-muted-foreground">{row.cycles.join(' · ')}</div>}
+                  </td>
+                  <td className="p-3">{row.lastProcessed ? timestamp.format(new Date(row.lastProcessed)) : t('notAvailable')}</td>
                   <td className="p-3">{row.requiresReprocessing ? t('needsReview') : chosen
                     ? <Link className="text-primary underline" href={`/reports/payroll-comparison/${chosen.id}?${query}`}>{t('comparisonTable')}</Link>
                     : t('notAvailable')}</td>
                 </tr>;
               })}
-              {!periods.length && <tr><td className="p-3" colSpan={5}>{t('unavailable')}</td></tr>}
+              {!periods.length && <tr><td className="p-3" colSpan={6}>{t('unavailable')}</td></tr>}
             </tbody>
           </table>
         </div>

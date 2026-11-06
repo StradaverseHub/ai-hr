@@ -31259,6 +31259,8 @@
     }
   },
   "payrollComparison": {
+    "payCycles": "Kitaran gaji",
+    "sourceUpdated": "Gaji terakhir diproses",
     "comparisonTable": "Keputusan perbandingan",
     "saveFailed": "Laporan tidak dapat disimpan. Draf anda dikekalkan. Cuba lagi.",
     "rolesRequired": "Pilih sekurang-kurangnya satu peranan yang dibenarkan menjalankan laporan ini.",

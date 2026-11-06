@@ -11,14 +11,14 @@ import {PAYROLL_COMPARISON_REASON_FILTERS} from '@/lib/payroll-period-comparison
 import {PayrollComparisonEditor} from '../PayrollComparisonEditor';
 import {publicErrorMessage} from '@/lib/public-error';
 export const dynamic='force-dynamic';
-export default async function PayrollComparisonPage({params,searchParams}:{params:Promise<{id:string}>;searchParams:Promise<Record<string,string|undefined>>}){
+export default async function PayrollComparisonPage({params,searchParams}:{params:Promise<{id:string}>;searchParams:Promise<Record<string,string|string[]|undefined>>}){
   const {s,scopeIds}=await scopedAdmin(),{id}=await params,sp=await searchParams,t=await getTranslations('payrollComparison');
   let options:Awaited<ReturnType<typeof payrollComparisonOptions>>;
   try{options=await payrollComparisonOptions(s,scopeIds);}
   catch(error){if(error instanceof MasterReportAccessError)notFound();throw error;}
   if(sp.edit==='1'){
     const report=await getCustomReport(s,id,scopeIds,'edit').catch(()=>null);if(!report?.spec.payrollComparison)notFound();
-    return <div className="space-y-5"><PageHeader title={t('editReport')} back={{href:'/reports/payroll-comparison/'+id,label:t('back')}}/>{sp.error&&<ErrorBanner message={sp.error}/>}<Card className="p-6"><PayrollComparisonEditor key={id+':'+report.version} id={id} version={report.version} name={report.name} description={report.spec.layout?.description??''} initial={report.spec.payrollComparison} payItems={options.payItems}/></Card></div>;
+    return <div className="space-y-5"><PageHeader title={t('editReport')} back={{href:'/reports/payroll-comparison/'+id,label:t('back')}}/>{sp.error&&<ErrorBanner message={typeof sp.error === 'string' ? sp.error : undefined}/>}<Card className="p-6"><PayrollComparisonEditor key={id+':'+report.version} id={id} version={report.version} name={report.name} description={report.spec.layout?.description??''} initial={report.spec.payrollComparison} payItems={options.payItems}/></Card></div>;
   }
   const raw=Object.fromEntries(Object.entries(sp).filter(([key,value])=>key!=='error'&&key!=='edit'&&value!==undefined));
   let run:Awaited<ReturnType<typeof runPayrollComparisonReport>>;
@@ -42,6 +42,11 @@ export default async function PayrollComparisonPage({params,searchParams}:{param
       <label className="text-sm font-medium">{t('previousPeriod')}<input className={input} type="month" name="previousPeriod" defaultValue={filters.previousPeriod??''} required/></label>
       <label className="text-sm font-medium">{t('currentPeriod')}<input className={input} type="month" name="currentPeriod" defaultValue={filters.currentPeriod??''} required/></label>
       <label className="text-sm font-medium">{t('runs')}<select className={input} name="runType" defaultValue={filters.runType}><option value="regular">{t('regular')}</option><option value="all">{t('allRuns')}</option></select></label>
+      <label className="text-sm font-medium">{t('payCycles')}
+        <select className={input} name="cycleIds" multiple size={Math.min(4, Math.max(2, options.cycles.length))} defaultValue={filters.cycleIds ?? []}>
+          {options.cycles.map(cycle => <option key={cycle.id} value={cycle.id}>{cycle.name} · {options.companies.find(company => company.id === cycle.companyId)?.name}</option>)}
+        </select>
+      </label>
       <label className="text-sm font-medium">{t('department')}<select className={input} name="departmentId" defaultValue={filters.departmentId??''}><option value="">{t('allDepartments')}</option>{options.departments.map(department=><option key={department.id} value={department.id}>{department.name}</option>)}</select></label>
       <label className="text-sm font-medium">{t('minimum')}<input className={input} type="number" name="minVariance" min="0" step="0.01" defaultValue={filters.minVariance} required/></label>
       <label className="text-sm font-medium">{t('onlyVariances')}<select className={input} name="onlyVariances" defaultValue={filters.onlyVariances?'1':'0'}><option value="1">{t('yes')}</option><option value="0">{t('no')}</option></select></label>

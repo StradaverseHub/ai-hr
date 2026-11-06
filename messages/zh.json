@@ -31259,6 +31259,8 @@
     }
   },
   "payrollComparison": {
+    "payCycles": "薪资周期",
+    "sourceUpdated": "薪资最近处理时间",
     "comparisonTable": "对比结果",
     "saveFailed": "无法保存报表。草稿已保留，请重试。",
     "rolesRequired": "请至少选择一个获准运行此报表的角色。",

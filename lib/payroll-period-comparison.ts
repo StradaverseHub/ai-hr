@@ -63,20 +63,25 @@ export function validatePayrollComparisonDefinition(value:unknown):PayrollCompar
   minVariance:payrollMinorDecimal(minimum),autoTag:v.autoTag,onlyVariances:v.onlyVariances,columns,roles};
 }
 export type PayrollComparisonFilters={currentPeriod:string|null;previousPeriod:string|null;companyId:string|null;departmentId:string|null;
- runType:'regular'|'all';minVariance:string;onlyVariances:boolean;reason:PayrollComparisonReasonFilter|null;page:number;pageSize:number};
+ runType:'regular'|'all';cycleIds?:string[];minVariance:string;onlyVariances:boolean;reason:PayrollComparisonReasonFilter|null;page:number;pageSize:number};
 const id=(value:unknown)=>value==null||value===''?null:typeof value==='string'&&/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value)?value:fail('identity');
 export function payrollComparisonFilters(values:Record<string,unknown>,definition:PayrollComparisonDefinition):PayrollComparisonFilters{
- exactKeys(values,['currentPeriod','previousPeriod','companyId','departmentId','runType','minVariance','onlyVariances','reason','page','pageSize']);
+ exactKeys(values,['currentPeriod','previousPeriod','companyId','departmentId','runType','cycleIds','minVariance','onlyVariances','reason','page','pageSize']);
  const month=(value:unknown)=>value==null||value===''?null:isPayrollComparisonPeriod(value)?value:fail('period');
  const currentPeriod=month(values.currentPeriod),previousPeriod=month(values.previousPeriod)??(definition.compareMode==='specific'?definition.previousPeriod:currentPeriod?previousPayrollComparisonPeriod(currentPeriod):null);
  if(currentPeriod&&previousPeriod&&previousPeriod>=currentPeriod)fail('periodOrder');
  const runType=values.runType??definition.runType;if(runType!=='all'&&runType!=='regular')fail('runType');
+ const rawCycles = values.cycleIds;
+ const cycleValues = rawCycles == null || rawCycles === '' ? []
+   : typeof rawCycles === 'string' ? rawCycles.split(',') : Array.isArray(rawCycles) ? rawCycles : fail('identity');
+ if (cycleValues.length > 20) fail('identity');
+ const cycleIds = [...new Set(cycleValues.map(value => id(value) ?? fail('identity')))];
  const minimum=payrollAmountMinor(values.minVariance??definition.minVariance);if(minimum<BigInt('0')||minimum>BigInt('99999999999999'))fail('minVariance');
  const only=values.onlyVariances??definition.onlyVariances;
  if(![true,false,'1','0'].includes(only as never))fail('boolean');
  const reason=values.reason==null||values.reason===''?null:PAYROLL_COMPARISON_REASON_FILTERS.includes(values.reason as PayrollComparisonReasonFilter)?values.reason as PayrollComparisonReasonFilter:fail('reason');
  const integer=(value:unknown,fallback:number,max:number)=>{if(value==null||value==='')return fallback;if(typeof value!=='number'&&(typeof value!=='string'||!/^\d+$/.test(value)))fail('pagination');const n=Number(value);if(!Number.isSafeInteger(n)||n<1||n>max)fail('pagination');return n;};
- return {currentPeriod,previousPeriod,companyId:id(values.companyId),departmentId:id(values.departmentId),runType,minVariance:payrollMinorDecimal(minimum),onlyVariances:only===true||only==='1',reason,page:integer(values.page,1,1000000),pageSize:integer(values.pageSize,50,200)};
+ return {currentPeriod,previousPeriod,companyId:id(values.companyId),departmentId:id(values.departmentId),runType,...(cycleIds.length ? {cycleIds} : {}),minVariance:payrollMinorDecimal(minimum),onlyVariances:only===true||only==='1',reason,page:integer(values.page,1,1000000),pageSize:integer(values.pageSize,50,200)};
 }
 /** These are already projected, applied facts from Movement, never raw event-name guesses. */
 export type PayrollComparisonMovement={id:string;sequence:number;effectiveDate:string;kind:'increment'|'promotion'|'demotion'|'transfer'|'exit';salaryChanged:boolean;status:'applied'|'pending'|'superseded'|'reversed'};
