@@ -16,6 +16,7 @@ const ui=(props:Partial<Parameters<typeof Sidebar>[0]>={})=><NextIntlClientProvi
 afterEach(()=>{cleanup();document.documentElement.removeAttribute('data-ui-theme');route.pathname='/';route.search='';});
 
 it('keeps the rail interactive while streaming and never republishes an old scope assignment',async()=>{
+ document.documentElement.setAttribute('data-ui-theme','monolith');
  const deferred=()=>{
   let resolve!:(result:ShellApprovalResult)=>void;
   const source=new Promise<ShellApprovalResult>(done=>{resolve=done;});
@@ -37,8 +38,11 @@ it('keeps the rail interactive while streaming and never republishes an old scop
  </ShellApprovalFactsProvider>;
  const view=render(tree(first.source));
  expect(screen.getByText('Already usable content')).toBeVisible();
- fireEvent.click(screen.getByRole('button',{name:messages.nav.inbox}));
- expect(screen.getByRole('link',{name:messages.nav.myTasks})).toHaveAttribute('href','/tasks');
+ const inbox=screen.getByRole('button',{name:messages.nav.inbox});
+ await userEvent.setup().click(inbox);
+ expect(inbox).toHaveAttribute('aria-expanded','true');
+ const panel=screen.getByRole('navigation',{name:messages.nav.inbox});
+ expect(within(panel).getByRole('link',{name:messages.nav.myTasks})).toHaveAttribute('href','/tasks');
  expect(screen.queryByRole('link',{name:/Approval Items/})).toBeNull();
  await act(async()=>first.resolve(assigned(true)));
  expect(await screen.findByRole('link',{name:/Approval Items/})).toHaveAttribute('href','/approvals');
