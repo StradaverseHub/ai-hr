@@ -279,7 +279,7 @@ try{
    }
    (report.lifecycleStaffHub??=[]).push({phase,role:user.role,open,pending});save();
   }
-  let homeCards=null,homeCardIds=[],todaySectionIds=[];
+  let homeCards=null,homeCardIds=[],todaySectionIds=[],cardFailures=0;
   visitStage='home-cards';
   if(path==='/'||(path==='/me/calendar'&&['employee','manager'].includes(user.role))){
    const personal=['employee','manager'].includes(user.role),attribute=personal?'data-home-card':'data-dashboard-card';
@@ -288,7 +288,8 @@ try{
    await page.waitForFunction(()=>document.querySelectorAll('main [aria-busy="true"]').length===0,{},{timeout:90000});
    const failures=await page.locator('main [role="alert"], main [data-today-unavailable], main [data-read-unavailable]').allTextContents();
    if(path==='/'){todaySectionIds=await page.locator('main [data-today-section]').evaluateAll(sections=>sections.map(section=>section.getAttribute('data-today-section')).sort());assert(todaySectionIds.length>0,'current Today sections missing');}
-   if(failures.length)report.homeCardFailures.push({role:user.role,phase,messages:failures});
+   cardFailures=failures.length;
+   if(cardFailures)report.homeCardFailures.push({role:user.role,phase,messages:failures});
    // Keep collecting independent workflow and load evidence. A handled card error
    // still fails the run even if the other journeys meet their targets.
    homeCardIds=await cards.evaluateAll((cards,attribute)=>cards.map(card=>card.getAttribute(attribute)).sort(),attribute);
@@ -315,12 +316,16 @@ try{
   if(signIn){
    const cardsCheckedAt=performance.now();
    const result={phase,role:user.role,homeCards,homeCardIds,todaySectionIds,elapsedMs:cardsCheckedAt-start,
-    startedWith,allCardsReadyWith:loadState?.(),
-    passwordSubmitToAllCardsMs:cardsCheckedAt-signInTiming.passwordSubmittedAt,
+    startedWith,cardsCheckedWith:loadState?.(),
+    passwordSubmitToCardsCheckedMs:cardsCheckedAt-signInTiming.passwordSubmittedAt,
     mfaSubmitToHomeUrlMs:signInTiming.homeUrlSettledAt-signInTiming.mfaSubmittedAt,
-    mfaSubmitToAllCardsMs:cardsCheckedAt-signInTiming.mfaSubmittedAt,
-    completeCardInventory:true,
-    cardFailures:report.homeCardFailures.filter(row=>row.role===user.role&&row.phase===phase).length};
+    mfaSubmitToCardsCheckedMs:cardsCheckedAt-signInTiming.mfaSubmittedAt,
+    completeCardInventory:true,cardFailures};
+   if(cardFailures===0){
+    result.allCardsReadyWith=result.cardsCheckedWith;
+    result.passwordSubmitToAllCardsMs=result.passwordSubmitToCardsCheckedMs;
+    result.mfaSubmitToAllCardsMs=result.mfaSubmitToCardsCheckedMs;
+   }
    const key=phase==='loaded'?'loadedBrowserSignIns':'preflightBrowserSignIns';
    (report[key]??=[]).push(result);
    if(phase==='loaded'&&user.index===employee.index)report.loadedBrowserSignIn=result;
@@ -880,7 +885,8 @@ try{
  assert(['employee','manager','companyHR','groupHR'].every(role=>report.loadedBrowserSignIns?.some(row=>
   row.role===role&&row.homeCards>0&&row.todaySectionIds.length>0&&row.cardFailures===0
   &&row.startedWith?.active===500&&row.startedWith.inSteadyWindow
- )),'all four role dashboards must load after real sign-in started during steady 500-user load');
+  &&row.allCardsReadyWith?.active===500&&row.allCardsReadyWith.inSteadyWindow
+ )),'all four role dashboards must finish loading after real sign-in during steady 500-user load');
  if(suite==='whole-system'){
   const duringSteady500=row=>row.startedWith?.active===500&&row.startedWith.inSteadyWindow;
   assert(report.browser.some(row=>row.phase==='loaded'&&row.path==='/admin/personnel'&&duringSteady500(row)),
