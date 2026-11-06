@@ -7839,6 +7839,8 @@ async function editLeaveRequestInTransaction(
         subjectPersonId: employment.personId,
         hasDateRows: sql<boolean>`exists(select 1 from ${leaveRequestDate}
           where ${leaveRequestDate.leaveRequestId} = ${leaveRequest.id})`,
+        hasApprovalSteps: sql<boolean>`exists(select 1 from ${leaveApprovalStep}
+          where ${leaveApprovalStep.leaveRequestId} = ${leaveRequest.id})`,
       })
       .from(leaveRequest)
       .leftJoin(employment, eq(employment.id, leaveRequest.employmentId))
@@ -8107,6 +8109,9 @@ async function editLeaveRequestInTransaction(
     const employeeRemark = p.employeeRemark?.trim() || null;
     if (lt.employeeRemarkRequired && !employeeRemark) throw new LeaveRemarkRequiredError(lt.name);
 
+    // Resolve the new chain under the existing subject/configuration locks before writing any rows.
+    const approvalSteps = await prepareApprovalSteps(tx, ctx.tenantId, req.id, req.employmentId, p.leaveTypeId, days);
+
     // ── Apply the edit ───────────────────────────────────────────────────────────────────────────────────
     const before = {
       leaveTypeId: req.leaveTypeId,
@@ -8138,9 +8143,8 @@ async function editLeaveRequestInTransaction(
       .where(eq(leaveRequest.id, req.id));
 
     // Regenerate the approval-step chain from scratch — the day count / leave type may now resolve a different
-    // scoped chain. Only pending steps existed (the request is pending), so deleting + regenerating is safe.
-    await tx.delete(leaveApprovalStep).where(eq(leaveApprovalStep.leaveRequestId, req.id));
-    const approvalSteps = await prepareApprovalSteps(tx, ctx.tenantId, req.id, req.employmentId, p.leaveTypeId, days);
+    // scoped chain. A previous step may already have approved the old version of the pending request.
+    if (row.hasApprovalSteps) await tx.delete(leaveApprovalStep).where(eq(leaveApprovalStep.leaveRequestId, req.id));
     if (approvalSteps.length > 0) await tx.insert(leaveApprovalStep).values(approvalSteps);
 
     const after = {
