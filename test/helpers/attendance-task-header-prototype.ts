@@ -1,12 +1,52 @@
 import {sql} from 'drizzle-orm';
 import {expect} from 'vitest';
 import {withTenant,type SessionContext} from '../../db/client';
+import {owner} from '../harness';
 
 type ExplainNode = {'Actual Rows'?:number;'Shared Hit Blocks'?:number};
 
-/** Compare the installed reader against actual RLS in the same statement snapshot. */
+const originalJoin = 'FROM public.attendance_correction q JOIN visibility v ON q.tenant_id=v.tenant_id';
+const originalPolicies = `app.attendance_workflow_delegate_request(q.id)
+  OR app.attendance_workflow_v2_read(q.id)
+  OR app.attendance_workflow_v3_read(q.id)
+  OR app.unrouted_attendance_delegate(q.id)`;
+
+// Only the policy that handles the recorded routing version can admit this row.
+const versionedPolicies = `CASE
+  WHEN workflow.routing_version IS NULL THEN app.unrouted_attendance_delegate(q.id)
+  WHEN workflow.routing_version=1 THEN app.attendance_workflow_delegate_request(q.id)
+  WHEN workflow.routing_version=2 THEN app.attendance_workflow_delegate_request(q.id) OR app.attendance_workflow_v2_read(q.id)
+  WHEN workflow.routing_version IN (3,4) THEN app.attendance_workflow_v3_read(q.id)
+  ELSE false
+ END`;
+
+async function withVersionedPendingHeaders<T>(read: () => Promise<T>): Promise<T> {
+ const [row] = await owner.client<{definition:string}[]>`
+  select pg_get_functiondef('app.attendance_pending_visible_headers(uuid)'::regprocedure) as definition
+ `;
+ expect(row.definition).toContain(originalJoin);
+ expect(row.definition).toContain(originalPolicies);
+ const candidate=row.definition
+  .replace(originalJoin,originalJoin+`
+ LEFT JOIN public.attendance_workflow_request workflow
+  ON workflow.correction_id=q.id AND workflow.tenant_id=q.tenant_id`)
+  .replace(originalPolicies,versionedPolicies);
+ await owner.client.unsafe(candidate);
+ try { return await read(); }
+ finally { await owner.client.unsafe(row.definition); }
+}
+
+/** Compare both plans against actual RLS. The test database restores its installed function after the experiment. */
 export async function comparePendingHeaderPrototype(actors:Record<string,SessionContext>,requestId?:string){
-  const comparisons:Record<string,unknown>={};
+ const installed=await comparePendingHeaders(actors,requestId);
+ const routed=await withVersionedPendingHeaders(()=>comparePendingHeaders(actors,requestId));
+ return Object.fromEntries(Object.entries(installed).map(([name,measurements])=>[
+  name,{...measurements,routed:routed[name].prototype},
+ ]));
+}
+
+async function comparePendingHeaders(actors:Record<string,SessionContext>,requestId?:string){
+  const comparisons:Record<string,{rows:number;differences:number;rls:unknown;prototype:unknown}>={};
   for(const [name,actor] of Object.entries(actors)){
    const [row]=await withTenant(actor,tx=>tx.execute<{db_role:string;expected:number;differences:number}>(sql`
     with expected as materialized (
