@@ -1,5 +1,9 @@
 # CI staging verification policy
 
+## Version 18 build packet
+
+Version 18 proposes profile 4 for canonical build bytes. The producer archives one representative of each identical hash, size and file mode. The receiver verifies each representative and creates separate regular files for every logical path before the full inventory check. Existing archive, ZIP, per-file, manifest, unpacked byte and entry bounds apply. Profile 3 remains historical evidence. Repository, trusted controller branch, candidate, runtime, migration baseline, complete test evidence and independent staging acceptance checks remain required. The successful fresh-runner transport diagnostic supplies producer and receiver evidence. Release admission requires a complete authenticated version 18 witness from main or alpha. [Canonical packet](CI-CANONICAL-BUILD-PROTOCOL.md#profile-4-duplicate-payload-storage).
+
 ## Owner recovery decision — 30 October 2026
 
 The owner reaffirmed failed-area-only recovery in the Board chat: after the complete frozen run finishes, rerun failed areas and repair-invalidated checks, retaining valid successful evidence. Do not dispatch a new whole gate as the default response to one failure. This decision supersedes the older blanket fresh-whole-run language below for recovery after that completed gate. A broader run must be justified by actual invalidation or a new owner instruction.
