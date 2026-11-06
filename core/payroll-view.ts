@@ -1369,12 +1369,24 @@ export function listPayrollRegisterAcross(
       .orderBy(desc(payrollBatch.payPeriod), asc(payrollBatch.runSeq), asc(person.fullName));
 
     const retained=await informationPayslipDocuments(tx,{...p,cycle});
-    for(const document of retained){
-      const saved=informationDocumentRow(document),index=rows.findIndex(r=>r.correctionSlipId===saved.id);
-      if(index>=0)rows[index]=overlayInformationDocument(rows[index],document);
-      else rows.push({correctionSlipId:saved.id,employeeCode:saved.employeeCode,employeeName:saved.employeeName,company:saved.company,currency:saved.currency,department:saved.department,position:saved.position,jobGrade:saved.jobGrade,employmentStatus:saved.employmentStatus,employmentType:saved.employmentType,payPeriod:saved.payPeriod,payrollCycle:saved.runType,runSeq:saved.runSeq,historyImportAttemptId:saved.historyImportAttemptId??null,historyImportCycleName:saved.historyImportCycleName??null,daysWorked:saved.daysWorked??null,basic:saved.basic,allowance:saved.allowance,overtime:saved.overtime,bonus:saved.bonus,gross:saved.gross,statutory:saved.statutory,otherDeductions:saved.otherDeductions,totalDeductions:saved.totalDeductions,net:saved.net,employerCost:saved.employerCost});
+    if(retained.length){
+      const firstIndexBySlipId = new Map<string, number>();
+      for (const [index, row] of rows.entries()) {
+        // Preserve the first match when more than one live row has the same slip ID.
+        if (!firstIndexBySlipId.has(row.correctionSlipId)) firstIndexBySlipId.set(row.correctionSlipId, index);
+      }
+      for (const document of retained) {
+        const saved = informationDocumentRow(document);
+        const index = firstIndexBySlipId.get(saved.id);
+        if (index !== undefined) {
+          rows[index] = overlayInformationDocument(rows[index], document);
+        } else {
+          firstIndexBySlipId.set(saved.id, rows.length);
+          rows.push({correctionSlipId:saved.id,employeeCode:saved.employeeCode,employeeName:saved.employeeName,company:saved.company,currency:saved.currency,department:saved.department,position:saved.position,jobGrade:saved.jobGrade,employmentStatus:saved.employmentStatus,employmentType:saved.employmentType,payPeriod:saved.payPeriod,payrollCycle:saved.runType,runSeq:saved.runSeq,historyImportAttemptId:saved.historyImportAttemptId??null,historyImportCycleName:saved.historyImportCycleName??null,daysWorked:saved.daysWorked??null,basic:saved.basic,allowance:saved.allowance,overtime:saved.overtime,bonus:saved.bonus,gross:saved.gross,statutory:saved.statutory,otherDeductions:saved.otherDeductions,totalDeductions:saved.totalDeductions,net:saved.net,employerCost:saved.employerCost});
+        }
+      }
+      rows.sort((a,b)=>b.payPeriod.localeCompare(a.payPeriod)||a.runSeq-b.runSeq||a.employeeName.localeCompare(b.employeeName));
     }
-    if(retained.length)rows.sort((a,b)=>b.payPeriod.localeCompare(a.payPeriod)||a.runSeq-b.runSeq||a.employeeName.localeCompare(b.employeeName));
     return rows.map((r) => {
       const st = (r.statutory ?? {}) as Record<string, unknown>;
       const n = (k: string): number => {
