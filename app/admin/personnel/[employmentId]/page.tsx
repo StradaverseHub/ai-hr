@@ -278,19 +278,22 @@ export default async function EmployeePage({
   // rebuild the CURRENT query string and preserve every param it does not own, rather than dropping the
   // reader back onto a bare tab.
   const rawSearchParams = await searchParams;
-  const movementPage=rawSearchParams.movementPage;
-  // Dedicated Movement screens return only their action card. Profile-only
-  // catalogs and employee records cannot affect that card's scope or options.
-  const readProfileCards = admin && !movementPage;
-  const readMovementEditorChoices = admin && (!movementPage || movementPage === 'new' || movementPage === 'edit');
+  const requestedMovementPage=rawSearchParams.movementPage;
   const movementContext={showCorrected:rawSearchParams.showCorrected,from:rawSearchParams.from};
-  const historyHref=movementPage
-    ? movementPageHref(employmentId,'history',undefined,movementContext)
-    : movementHistoryHref(employmentId,movementContext);
-  if(!movementPage){
+  if(!requestedMovementPage){
     const legacy=rawSearchParams.newEvent?'new':rawSearchParams.correctHire?'correct-hire':rawSearchParams.editMovement?'edit':rawSearchParams.movement?'view':null;
     if(legacy)redirect(movementPageHref(employmentId,legacy,rawSearchParams.editMovement??rawSearchParams.movement,movementContext));
   }
+  // A direct history link needs the movement projection and header, not every profile tab.
+  // Other profile-specific query parameters still use their existing profile flow.
+  const directMovementHistory=!requestedMovementPage && rawSearchParams.tab==='careerMovement'
+    && Object.keys(rawSearchParams).every(key=>['tab','showCorrected','from','error'].includes(key));
+  const movementPage=requestedMovementPage??(directMovementHistory?'history':undefined);
+  const readProfileCards = admin && !movementPage;
+  const readMovementEditorChoices = admin && (!movementPage || movementPage === 'new' || movementPage === 'edit');
+  const historyHref=requestedMovementPage
+    ? movementPageHref(employmentId,'history',undefined,movementContext)
+    : movementHistoryHref(employmentId,movementContext);
   const retiredDestination = rawSearchParams.tab === 'others' ? RETIRED_PERSONNEL_TABS.others : undefined;
   if (retiredDestination) {
     const query = new URLSearchParams();
@@ -557,7 +560,7 @@ export default async function EmployeePage({
   // (?movement=<id>) adds an as-of Before/After reconstruction at the event's effective date.
   // Only the history table, the pending banner, and the edit lookup need the full projection.
   const movementProjection = admin && (!movementPage || movementPage === 'history' || movementPage === 'edit')
-    ? await movementHistoryWithTypes(s, employmentId, { includeResignation: readProfileCards })
+    ? await movementHistoryWithTypes(s, employmentId, { includeResignation: readProfileCards || directMovementHistory })
     : null;
   const movements = movementProjection?.movements ?? [];
   // 95d17761 — the DEFAULT view drops the correction artefacts (rolled back / corrected / cancelled /
@@ -572,7 +575,7 @@ export default async function EmployeePage({
   // The Show / Hide link keeps the reader exactly where they are: same tab, same open detail view, same
   // every other param. Only `showCorrected` is rewritten.
   const movementVisibilityHref = (show: boolean): string => {
-    if(movementPage==='history')return movementPageHref(employmentId,'history',undefined,{
+    if(requestedMovementPage==='history')return movementPageHref(employmentId,'history',undefined,{
       ...movementContext,showCorrected:show?'1':undefined,
     });
     const qs = new URLSearchParams();
@@ -3677,7 +3680,12 @@ export default async function EmployeePage({
   if(movementPage==='history'){
     return <div className="mx-auto max-w-[100rem] space-y-6">
       <PageHeader back={{href:`/admin/personnel/${employmentId}${from==='org'?'?from=org':''}`,label:t('tabs.profile')}}
-        title={emp.name} description={`${emp.employeeCode??'—'} · ${emp.company}`}/>
+        title={emp.name} description={`${emp.employeeCode??'—'} · ${emp.company}`}
+        actions={directMovementHistory ? <>
+          <EmployeeSwitcher remote currentEmploymentId={emp.employmentId} tab="careerMovement" />
+          <Link href={`/admin/audit?employment=${emp.employmentId}`} className={btnGhost}>{t('employeeAuditLink')}</Link>
+          <StatusBadge status={derivedStatus} label={derivedStatusLabel} />
+        </> : undefined}/>
       <ErrorBanner message={error}/>
       {employmentHistoryCard}
     </div>;
