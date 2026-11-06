@@ -2,8 +2,8 @@ import {randomUUID} from 'node:crypto';
 import {afterAll, beforeAll, beforeEach, describe, expect, it} from 'vitest';
 import {claimRequest} from '../db/schema';
 import {hireEmployee} from '../core/org';
-import {createClaimType, pendingClaimTaskSummary, listClaimHistoryPage, listPendingClaimsPage, listClaimDraftsForEmployment, listClaimsForEmployment} from '../packs/claims/service';
-import {adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base} from './harness';
+import {createClaimType, pendingClaimTaskSummary, listClaimHistoryPage, listPendingClaimsPage, listPendingClaimSelection, listClaimDraftsForEmployment, listClaimsForEmployment} from '../packs/claims/service';
+import {adminCtx, closeAll, createAppUser, migrateTestDb, owner, resetDb, seedBase, type Base} from './harness';
 import {ALL_ROW_CEILING} from '../lib/pagination';
 let base: Base;
 beforeAll(() => migrateTestDb());
@@ -50,6 +50,15 @@ describe('claims history database pagination', () => {
     expect(first.rows.map(row=>row.id)).toEqual(expected.slice(0,25));
     expect(second.rows.map(row=>row.id)).toEqual(expected.slice(25,50));
     expect((await listPendingClaimsPage(ctx,{companyIds:[]})).page.total).toBe(0);
+  });
+  it('captures the exact actionable claim IDs across pages under the same authority',async()=>{
+    const {ctx,subject,ids}=await fixture(),expected=ids.slice(0,60).sort();
+    expect(await listPendingClaimSelection(ctx,[base.companyId])).toEqual(expected);
+    expect(await listPendingClaimSelection(ctx,[])).toEqual([]);
+    const ownAdmin=await createAppUser(base.tenantId,subject.personId,'hr_admin');
+    expect(await listPendingClaimSelection({...ctx,userId:ownAdmin,personId:subject.personId},[base.companyId])).toEqual([]);
+    const foreign=await seedBase();
+    expect(await listPendingClaimSelection(adminCtx(foreign),[base.companyId])).toEqual([]);
   });
   it('returns a counted task preview without transporting the complete Claims queue',async()=>{
     const {ctx,ids}=await fixture(),expected=ids.slice(0,60).sort();

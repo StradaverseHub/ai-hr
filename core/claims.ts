@@ -3548,29 +3548,50 @@ export async function listPendingClaims(ctx: SessionContext,opts:{requestId?:str
   });
 }
 
+async function pendingClaimQueueSubjectsTx(tx:Tx,ctx:SessionContext,companyIds?:string[]){
+  await assertAssignedWorkPrincipalTx(tx,ctx);
+  if(companyIds?.length===0)return [];
+  const subjects=await tx.execute<{employmentId:string;name:string;personId:string}>(sql`
+   with candidates as materialized (
+    select unnest(app.visible_employment_ids()) as employment_id
+    union select unnest(app.delegated_subject_ids('claims','claims.claim')) as employment_id
+   )
+   select candidate.employment_id as "employmentId",header.employee as name,header.person_id as "personId"
+   from candidates candidate
+   join lateral app.delegated_approval_subject(candidate.employment_id,'claims','claims.claim') header on true
+   where ${companyIds===undefined?sql`true`:sql`header.company_id=any(${'{'+companyIds.join(',')+'}'}::uuid[])`}
+  `);
+  return filterDelegationOrgScopeTx(tx,ctx,subjects,row=>row.employmentId);
+}
+
+function pendingClaimQueuePredicate(ctx:SessionContext,ids:string[]){
+  return and(eq(claimRequest.tenantId,ctx.tenantId),eq(claimRequest.status,'pending'),
+   sql`${claimRequest.employmentId}=any(${'{'+ids.join(',')+'}'}::uuid[])`);
+}
+
+/** Capture the actionable queue on explicit selection. Off-page private details
+ * and attachment records stay on their ordinary paged read path. */
+export function listPendingClaimSelection(ctx:SessionContext,companyIds:string[]){
+  return withTenant(ctx,async tx=>{
+    const subjects=await pendingClaimQueueSubjectsTx(tx,ctx,companyIds);
+    const ids=subjects.filter(subject=>subject.personId!==ctx.personId).map(subject=>subject.employmentId);
+    if(!ids.length)return [];
+    const rows=await tx.select({id:claimRequest.id}).from(claimRequest)
+      .innerJoin(claimType,eq(claimType.id,claimRequest.claimTypeId))
+      .where(pendingClaimQueuePredicate(ctx,ids)).orderBy(asc(claimRequest.id));
+    return rows.map(row=>row.id);
+  },{readOnlySnapshot:true});
+}
+
 /** Page the authorized queue before reading private details or attachments. */
 export function listPendingClaimsPage(ctx:SessionContext,opts:{
  page?:string;size?:string;sort?:'latest'|'oldest'|'name_asc'|'name_desc';companyIds?:string[];
 }={}){
  const page=parsePageQuery(opts);
  return withTenant(ctx,async tx=>{
-  await assertAssignedWorkPrincipalTx(tx,ctx);
-  if(opts.companyIds?.length===0)return {rows:[] as ClaimRow[],page:pageState(page,0,0)};
-  const subjects=await tx.execute<{employmentId:string;name:string}>(sql`
-   with candidates as materialized (
-    select unnest(app.visible_employment_ids()) as employment_id
-    union select unnest(app.delegated_subject_ids('claims','claims.claim')) as employment_id
-   )
-   select candidate.employment_id as "employmentId",header.employee as name
-   from candidates candidate
-   join lateral app.delegated_approval_subject(candidate.employment_id,'claims','claims.claim') header on true
-   where ${opts.companyIds===undefined?sql`true`:sql`header.company_id=any(${'{'+opts.companyIds.join(',')+'}'}::uuid[])`}
-  `);
-  const scoped=await filterDelegationOrgScopeTx(tx,ctx,subjects,row=>row.employmentId);
+  const scoped=await pendingClaimQueueSubjectsTx(tx,ctx,opts.companyIds);
   if(!scoped.length)return {rows:[] as ClaimRow[],page:pageState(page,0,0)};
-  const ids='{'+scoped.map(row=>row.employmentId).join(',')+'}';
-  const where=and(eq(claimRequest.tenantId,ctx.tenantId),eq(claimRequest.status,'pending'),
-   sql`${claimRequest.employmentId}=any(${ids}::uuid[])`);
+  const where=pendingClaimQueuePredicate(ctx,scoped.map(row=>row.employmentId));
   const names=[...new Set(scoped.map(row=>row.name))].sort((a,b)=>a.localeCompare(b));
   let rank=0;
   const ranks=new Map(names.map((name,index)=>{

@@ -164,6 +164,26 @@ export async function prepareMixedWorkflows({context,visit,fixture,employee,hr,d
    evidence.push({workflow:'attendance correction/approval/applied punches',persisted:true});save();
   }finally{await reviewCtx.close();}
  }
+ if(report.suite==='workflow-preflight'){
+  const actor=fixture.users.find(user=>user.role==='groupHR');
+  const ctx=await context(actor),page=await ctx.newPage();
+  try{
+   await visit(page,actor,'/approvals?category=claim');
+   const expected=await db`select q.id from claim_request q join employment e on e.id=q.employment_id and e.tenant_id=q.tenant_id
+     where q.tenant_id=${fixture.tenants[actor.tenant].tenantId}::uuid and q.status='pending' and e.person_id<>${actor.personId}::uuid
+     order by q.id`;
+   assert(expected.length>25,'Bulk selection fixture must exceed one page');
+   const table=page.locator('main table').filter({has:page.getByRole('checkbox',{name:'Select all requests in this view'})});
+   await table.getByRole('checkbox',{name:'Select all requests in this view'}).check();
+   await page.getByRole('button',{name:'Approve selected',exact:true}).click();
+   const confirmation=page.getByRole('dialog',{name:'Confirm bulk approval'});
+   const items=JSON.parse(await confirmation.locator('input[name="items"]').inputValue());
+   assert(items.every(item=>item.type==='claim'));
+   assert.deepEqual(items.map(item=>item.id).sort(),expected.map(row=>row.id));
+   await confirmation.getByRole('button',{name:'Cancel',exact:true}).click();
+   evidence.push({workflow:'Claims queue-wide bulk selection',selected:items.length,pageLimit:25,submitted:false});save();
+  }finally{await ctx.close();}
+ }
  {
   const actor=fixture.users.find(user=>user.role==='groupHR'),batchId=fixture.tenants[actor.tenant].companies[1].batchId;
   const ctx=await context(actor),page=await ctx.newPage();

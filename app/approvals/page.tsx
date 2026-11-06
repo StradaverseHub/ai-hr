@@ -467,8 +467,12 @@ export default async function ApprovalsPage({
     { key: 'cancelled', label: t('summaryCancelled'), value: bucket(decided.cancelled) },
   ];
 
+  const claimSelectionScope = !focus && claimsOn && visible('claims') ? [...scopeIds].sort().join(',') : undefined;
   return (
-    <BulkSelectionProvider rows={bulkRows} sort={sortParam ?? ''} category={nav.category}>
+    <BulkSelectionProvider rows={bulkRows} sort={sortParam ?? ''} category={nav.category}
+      key={JSON.stringify([s.userId, scopeIds, nav.category, focus?.id])}
+      claimSelectionScope={claimSelectionScope}
+      claimsOutsidePage={claimSelectionScope !== undefined && claimResult.page.total > claims.length}>
     <div className={`mx-auto flex max-w-7xl flex-col gap-6 lg:flex-row lg:items-start${bulkRows.length > 0 ? ' pb-24' : ''}`}>
       {/* 2dec6406: internal approval-task panel — INSIDE the page, between the main sidebar and the content.
           Sticky + independently scrollable on lg; below lg the same markup stacks above the content. */}
