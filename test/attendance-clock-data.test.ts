@@ -11,7 +11,7 @@ import { and, eq, isNull, sql } from 'drizzle-orm';
 import * as schema from '../db/schema';
 import { hireEmployee, setReportingLine, transferEmploymentCompanyTx } from '../core/org';
 import { createPolicy, assignPolicy } from '../core/payroll-policy';
-import { checkIn, checkOut, requestAttendanceCorrection, decideAttendanceCorrection, attendancePunchesForRange, attendancePunchesForDays } from '../core/attendance';
+import { checkIn, checkOut, requestAttendanceCorrection, decideAttendanceCorrection, attendancePunchesForRange, attendancePunchesForDays, hasPendingAttendanceCorrectionInDayHistory, myAttendanceCorrections } from '../core/attendance';
 import { attendanceClockData } from '../core/attendance-clock-data';
 import { ClockDataChangedError, AttendancePayrollClosedError, lockAttendancePayrollTx, markAttendancePayrollTx, validateClockEntries } from '../core/attendance-punch-change';
 import { createBatch, generatePayslips } from '../packs/payroll/service';
@@ -43,6 +43,34 @@ async function save(a: ReturnType<typeof adminCtx>, employmentId: string, entrie
   return correctionId;
 }
 describe('approved attendance clock-data corrections', () => {
+  it('checks pending day form state with the same scope and newest-100 window as correction history', async () => {
+    const { a, employmentId, personId } = await fixture();
+    const userId = await createAppUser(b.tenantId, personId, 'employee');
+    const employee = { ...a, userId, personId, roles: ['employee'], grants: [{ role: 'employee' as const, companyId: b.companyId }] };
+    const pending = () => hasPendingAttendanceCorrectionInDayHistory(employee, employmentId, date);
+    expect(await pending()).toBe(false);
+    const { correctionId } = await requestAttendanceCorrection(employee, { employmentId, date, checkIn: '09:00', checkOut: '18:00', reason: 'Fictional day request' });
+    expect(await pending()).toBe(true);
+    const foreign = adminCtx(await seedBase());
+    expect(await hasPendingAttendanceCorrectionInDayHistory(foreign, employmentId, date)).toBe(false);
+    const [request] = await owner.db.select({ createdAt: schema.attendanceCorrection.createdAt })
+      .from(schema.attendanceCorrection).where(eq(schema.attendanceCorrection.id, correctionId));
+    const later = {
+      tenantId: b.tenantId, employmentId, attendanceDate: date, proposedCheckIn: '09:00',
+      reason: 'Fictional later historical request', status: 'rejected' as const,
+      rejectReason: 'Fictional historical decision', createdAt: new Date(request.createdAt.getTime() + 1000),
+    };
+    await owner.db.insert(schema.attendanceCorrection).values(Array.from({ length: 99 }, () => later));
+    const oldPending = async () => (await myAttendanceCorrections(employee, employmentId, { date, limit: 100 }))
+      .some(row => row.status === 'pending');
+    expect(await oldPending()).toBe(true);
+    expect(await pending()).toBe(true);
+    await owner.db.insert(schema.attendanceCorrection).values(later);
+    expect(await oldPending()).toBe(false);
+    expect(await pending()).toBe(false);
+    await decideAttendanceCorrection(a, { correctionId, decision: 'approved' });
+    expect(await pending()).toBe(false);
+  });
   it('edits retain original evidence and all effective readers agree with the corrected day', async () => {
     const { a, employmentId } = await fixture();
     const before = await attendanceClockData(a, employmentId, date);

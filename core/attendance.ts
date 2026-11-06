@@ -6166,6 +6166,28 @@ export type MyAttendanceRequestRow = {
  */
 export const MY_ATTENDANCE_REQUEST_ROW_CEILING = 500;
 
+/** Keep the day form's existing newest-100 history window without loading request details. */
+export function hasPendingAttendanceCorrectionInDayHistory(ctx: SessionContext, employmentId: string, date: string): Promise<boolean> {
+  return withTenant(ctx, async tx => {
+    const [row] = await tx.execute<{ pending: boolean }>(sql`
+      select exists (
+        select 1 from public.attendance_correction pending
+        where pending.employment_id = ${employmentId}::uuid
+          and pending.attendance_date = ${date}::date
+          and pending.status = 'pending'
+          and not exists (
+            select 1 from public.attendance_correction newer
+            where newer.employment_id = pending.employment_id
+              and newer.attendance_date = pending.attendance_date
+              and (newer.created_at, newer.id) > (pending.created_at, pending.id)
+            limit 1 offset 99
+          )
+      ) as pending
+    `);
+    return row?.pending === true;
+  });
+}
+
 /**
  * An employee's OWN attendance requests, newest first — the "My requests" list on My Attendance.
  *

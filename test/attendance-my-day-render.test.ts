@@ -4,7 +4,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { readFileSync } from 'node:fs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createTranslator, NextIntlClientProvider } from 'next-intl';
-const state = vi.hoisted(() => ({ locale: 'en', own: vi.fn(), selected:vi.fn(), rows: vi.fn(), punches: vi.fn(), requests: vi.fn() }));
+const state = vi.hoisted(() => ({ locale: 'en', own: vi.fn(), selected:vi.fn(), rows: vi.fn(), punches: vi.fn(), pending: vi.fn() }));
 vi.mock('next-intl/server', () => ({
   getLocale: async () => state.locale,
   getTranslations: async (namespace: string = 'attendance') => createTranslator({ locale: state.locale, namespace, messages: JSON.parse(readFileSync(new URL(`../messages/${state.locale}.json`, import.meta.url), 'utf8')) }),
@@ -18,7 +18,7 @@ vi.mock('../components/attendance-figure-cells', () => ({ AttendanceFigureCells:
 vi.mock('../packs/attendance/service', async () => ({
   attendanceForEmploymentRange: state.rows,
   attendancePunchesForRange: state.punches,
-  myAttendanceCorrections: state.requests,
+  hasPendingAttendanceCorrectionInDayHistory: state.pending,
   ...(await import('../core/attendance-derive')),
   ...(await import('../core/attendance-explain')),
 }));
@@ -28,7 +28,7 @@ beforeEach(() => {
   state.selected.mockResolvedValue([{employmentId:'8cfa58c2-dd92-4eb6-8f8c-ab19406115fd',personName:'Own second',company:'Fictional second employer',employeeCode:'SECOND'}]);
   state.own.mockResolvedValue({ employmentId: 'manager-own', name: 'Own day' });
   state.rows.mockResolvedValue([{ date: '2025-06-04', attendanceId: 'own-row', status: 'present', context: null, dayType: 'workday', shiftCode: 'AM01', shiftStart: '09:00', shiftEnd: '18:00', scheduledMinutes: 480, workedMinutes: 480, checkInAt: '09:00', checkOutAt: '18:00', lateMinutes: 0, earlyOutMinutes: 0, otMinutes: 0, calcTrace: null }]);
-  state.punches.mockResolvedValue(new Map()); state.requests.mockResolvedValue([]);
+  state.punches.mockResolvedValue(new Map()); state.pending.mockResolvedValue(false);
 });
 const render = async (extra = {}) => {
   const page = await Page({ params: Promise.resolve({ date: '2025-06-04' }), searchParams: Promise.resolve({ from: '2025-06-01', to: '2025-06-30', ...extra }) });
@@ -60,7 +60,7 @@ describe('employee day render', () => {
     const html = await render({ emp: 'report-employment' });
     expect(state.rows).toHaveBeenCalledWith(expect.anything(), 'manager-own', '2025-06-04', '2025-06-04');
     expect(state.punches).toHaveBeenCalledWith(expect.anything(), 'manager-own', '2025-06-04', '2025-06-04');
-    expect(state.requests).toHaveBeenCalledWith(expect.anything(), 'manager-own', { date: '2025-06-04', limit: 100 });
+    expect(state.pending).toHaveBeenCalledWith(expect.anything(), 'manager-own', '2025-06-04');
     expect(html).toContain('Own day');
     expect(html).not.toContain('report-employment');
     const back=new URL(/href="([^"]*\/attendance\/my-roster[^"]*)"/.exec(html)![1].replaceAll('&amp;','&'),'https://local.invalid');
@@ -69,6 +69,7 @@ describe('employee day render', () => {
   it('retains the selected own subject in reads, Home return and correction form',async()=>{
     const html=await render({employmentId:'8cfa58c2-dd92-4eb6-8f8c-ab19406115fd',home:'1'});
     expect(state.rows).toHaveBeenCalledWith(expect.anything(),'8cfa58c2-dd92-4eb6-8f8c-ab19406115fd','2025-06-04','2025-06-04');expect(state.own).not.toHaveBeenCalled();
+    expect(state.pending).toHaveBeenCalledWith(expect.anything(), '8cfa58c2-dd92-4eb6-8f8c-ab19406115fd', '2025-06-04');
     expect(html).toContain('Fictional second employer');expect(html).toContain('SECOND');
     expect(html).toContain('/?employmentId=8cfa58c2-dd92-4eb6-8f8c-ab19406115fd');expect(html).toContain('name="employmentId" value="8cfa58c2-dd92-4eb6-8f8c-ab19406115fd"');
   });
@@ -83,12 +84,11 @@ describe('employee day render', () => {
     expect(html).toContain('name="calendarDate" value="2025-06-02"');
   });
   it.each(['en', 'ms', 'zh', 'ta', 'th', 'vi'])('renders pending state and all five sections in %s', async (locale) => {
-    state.locale = locale; state.requests.mockResolvedValue([{ id: 'pending', status: 'pending', createdAt: new Date('2025-06-04T01:00:00Z'), proposedCheckIn: '09:00', proposedCheckOut: '18:00', originalClockSnapshot: null, reason: 'Fixture correction', rejectReason: null, decidedAt: null }]);
+    state.locale = locale; state.pending.mockResolvedValue(true);
     const html = await render();
     expect(html).toContain('<fieldset disabled=""');
     expect(html).not.toMatch(/MISSING_MESSAGE|FORMATTING_ERROR/);
     expect(html).toContain('AM01');
-    expect(html).not.toContain('Fixture correction'); // Request history belongs to Application History.
     expect(html).toContain('name="checkIn" value="09:00"');
     expect(html).toContain('name="checkOut" value="18:00"');
     const catalogue = JSON.parse(readFileSync(new URL(`../messages/${locale}.json`, import.meta.url), 'utf8')).attendance;
