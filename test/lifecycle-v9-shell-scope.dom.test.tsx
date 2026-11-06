@@ -5,7 +5,7 @@ import messages from '../messages/en.json';
 import {v9HtmlWorkspace,v9HtmlCase} from './helpers/v9-html-fixture';
 vi.mock('next/navigation',()=>({useRouter:()=>({refresh:vi.fn(),push:vi.fn()})}));
 vi.mock('../components/user-menu',()=>({UserMenu:()=> <button>Account menu</button>}));
-vi.mock('../app/lifecycle/v9/actions',()=>({readV9Email:vi.fn(),readV9UpdatedEmail:vi.fn(),readV9Workflow:vi.fn(),readV9Case:vi.fn(),commandV9:vi.fn(),createV9Offboarding:vi.fn(),saveV9Config:vi.fn(),setupV9:vi.fn()}));
+vi.mock('../app/lifecycle/v9/actions',()=>({readV9PersonnelPreview:vi.fn().mockResolvedValue({ok:true,values:{}}),readV9Email:vi.fn(),readV9UpdatedEmail:vi.fn(),readV9Workflow:vi.fn(),readV9Case:vi.fn(),commandV9:vi.fn(),createV9Offboarding:vi.fn(),saveV9Config:vi.fn(),setupV9:vi.fn()}));
 import {V9Workspace} from '../app/lifecycle/v9/workspace';
 // jsdom lacks modal methods; keep the real workflow editor and restore the test-local shim.
 const dialogMethods = ['showModal', 'close'] as const;

@@ -11,7 +11,7 @@ import type {EmailPreview,Case,Workflow} from '../lib/lifecycle-v9-model';
 
 vi.mock('next/navigation',()=>({useRouter:()=>({refresh:vi.fn(),push:vi.fn()})}));
 vi.mock('../components/user-menu',()=>({UserMenu:()=>null}));
-vi.mock('../app/lifecycle/v9/actions',()=>({readV9Email:vi.fn(),readV9Workflow:vi.fn(),readV9Case:vi.fn().mockResolvedValue({ok:false,error:'Fictional calculation unavailable'}),commandV9:vi.fn(),createV9Offboarding:vi.fn(),saveV9Config:vi.fn(),setupV9:vi.fn()}));
+vi.mock('../app/lifecycle/v9/actions',()=>({readV9PersonnelPreview:vi.fn().mockResolvedValue({ok:true,values:{}}),readV9Email:vi.fn(),readV9Workflow:vi.fn(),readV9Case:vi.fn().mockResolvedValue({ok:false,error:'Fictional calculation unavailable'}),commandV9:vi.fn(),createV9Offboarding:vi.fn(),saveV9Config:vi.fn(),setupV9:vi.fn()}));
 beforeAll(()=>{HTMLDialogElement.prototype.showModal=function(){this.setAttribute('open','');};HTMLDialogElement.prototype.close=function(){this.removeAttribute('open');};});
 const messages=JSON.parse(readFileSync('messages/en.json','utf8'));
 function fixture(){
