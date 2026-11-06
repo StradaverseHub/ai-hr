@@ -717,6 +717,7 @@ try{
  const resourceCpuBefore=resourceCpu(),appCpuBefore=appCpu(),driverCpuBefore=process.cpuUsage();
  const offset=samples.length,started=performance.now(),steadyStart=started+10000,steadyUntil=steadyStart+steadyHoldMs;
  const progress={launched:0,active:0,peakActive:0,completed:0,failed:0,iterations:0};
+ let fullConcurrencyAt=null,earlyLaneExits=0;
  report.trafficSettled=false;report.functionalAccountingComplete=false;
  report.measurementWindow={startPerformanceMs:started,steadyStartPerformanceMs:steadyStart,steadyUntilPerformanceMs:steadyUntil};
  report.telemetry={querySnapshotIntervalMs:30000,resourceCounterIntervalMs:30000,holderQueries:'bounded native pid/state/query-id; up to128normalizedrootquerytexts withoutparameters',appConnections:'sampled PostgreSQL backends for ai_hr_app; excludes application-side queue length',partialSamplesAreAcceptance:false};
@@ -805,6 +806,7 @@ try{
  })()]):null;
  const results=await Promise.allSettled(fixture.users.map(async(user,i)=>{
   await pause(i*20);progress.launched++;progress.active++;progress.peakActive=Math.max(progress.peakActive,progress.active);
+  if(progress.active===500)fullConcurrencyAt??=performance.now();
   let iteration=0;
   try{do{
   const pool=routePool(user);
@@ -836,7 +838,10 @@ try{
   await pause(thinkTimeMs);iteration++;progress.iterations++;
   }while(performance.now()<steadyUntil);
   progress.completed++;
-  }catch(error){progress.failed++;throw error;}finally{progress.active--;}
+  }catch(error){progress.failed++;throw error;}finally{
+   if(performance.now()<steadyUntil)earlyLaneExits++;
+   progress.active--;
+  }
  }));
  const browserResults=await browserLoad;
  const rejectionResults=await attendanceRejectionLoad;
@@ -866,13 +871,17 @@ try{
  report.concurrentRouteCoverage=[...new Set(Object.values(routePools).flat())].map(route=>({route,requests:loaded.filter(sample=>sample.method==='GET'&&sample.route===route).length,users:new Set(loaded.filter(sample=>sample.method==='GET'&&sample.route===route).map(sample=>sample.user)).size}));
  const steady=loaded.filter(sample=>sample.startedMs>=steadyStart&&sample.startedMs<steadyUntil);
  report.pageInteractions=pageInteractions;
- report.steady={durationMs:steadyHoldMs,roles:Object.fromEntries(['employee','manager','companyHR','groupHR'].map(role=>[role,{
+ report.steady={durationMs:steadyHoldMs,concurrency:{
+  reached500:fullConcurrencyAt!==null,
+  rampOverrunMs:fullConcurrencyAt===null?null:Math.max(0,fullConcurrencyAt-steadyStart),
+  earlyLaneExits,
+ },roles:Object.fromEntries(['employee','manager','companyHR','groupHR'].map(role=>[role,{
   navigation:summary(pageInteractions.filter(v=>v.role===role&&v.startedMs>=steadyStart&&v.startedMs<steadyUntil).map(v=>v.durationMs)),
   read:summary(steady.filter(v=>v.role===role&&v.method==='GET').map(v=>v.durationMs)),
   write:summary(steady.filter(v=>v.role===role&&v.method==='POST').map(v=>v.durationMs)),
  }]))};
  report.steady.routeLatency=routeLatency({samples:loaded,pageInteractions,routePools:measuredRoutePools,homeTemplates:suite==='whole-system'?report.homeApiTraffic.templates:[],steadyStart,steadyUntil});
- report.latencyTargetMet=progress.peakActive===500&&report.steady.routeLatency.targetMet&&Object.values(report.steady.roles).every(role=>role.navigation.samples>0&&role.navigation.p95Ms<1000&&role.read.samples>0&&role.write.samples>0&&role.read.p95Ms<1000&&role.write.p95Ms<500);
+ report.latencyTargetMet=progress.peakActive===500&&earlyLaneExits===0&&report.steady.routeLatency.targetMet&&Object.values(report.steady.roles).every(role=>role.navigation.samples>0&&role.navigation.p95Ms<1000&&role.read.samples>0&&role.write.samples>0&&role.read.p95Ms<1000&&role.write.p95Ms<500);
  writeFileSync(join(out,'http-samples.json'),JSON.stringify(samples));writeFileSync(join(out,'database-waits.json'),JSON.stringify(waits));
  report.concurrentHomeApiCoverage=report.homeApiTraffic.templates.flatMap(({role,requests})=>requests.map(({path})=>({role,path,requests:loaded.filter(sample=>sample.role===role&&sample.method==='GET'&&sample.route===path).length})));
  await databaseSnapshot('loaded');await verifyAudit();save();
