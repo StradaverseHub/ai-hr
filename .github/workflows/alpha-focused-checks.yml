@@ -285,6 +285,7 @@ jobs:
       PERF_HTTP_HOLD_MS: ${{ inputs.system_hold_time == '5m' && '300000' || '30000' }}
       PERF_APP_WORKERS: ${{ inputs.system_workers || '1' }}
       PERF_APP_POOL_CONNECTIONS: ${{ inputs.system_pool_connections || '10' }}
+      PERF_APP_TOTAL_HEAP_MIB: '8192'
       PERF_ATTENDANCE_DAYS: ${{ inputs.system_attendance_days || '180' }}
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
