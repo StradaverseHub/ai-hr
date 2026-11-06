@@ -1788,14 +1788,14 @@ export type EmployeeClaimType = {
 
 /** A navigation capability, not a budget check. Mirrors the form's active-type catalogue without
  * loading reimbursement amounts, grade rates, receipts or balances. Submission still owns policy. */
-export function ownClaimFormAvailable(ctx:SessionContext,employmentId:string):Promise<boolean>{
+export function ownClaimFormAvailable(ctx:SessionContext,employmentId:string,signal?:AbortSignal):Promise<boolean>{
  return withTenant(ctx,async tx=>{
   if(!ctx.userId||!ctx.personId||typeof employmentId!=='string'
    ||!/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/.test(employmentId)
    ||!await isOwnProfileEditEmploymentTx(tx,ctx,employmentId))throw new ClaimError('The own claim context is unavailable');
   const [row]=await tx.select({id:claimType.id}).from(claimType).where(isNull(claimType.archivedAt)).limit(1);
   return Boolean(row);
- });
+ },{readSignal:signal});
 }
 
 /**

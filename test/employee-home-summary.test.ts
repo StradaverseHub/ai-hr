@@ -38,7 +38,7 @@ describe('Own Home deterministic summary and current action capability',()=>{
   state.types.mockResolvedValue(true);state.claims.mockResolvedValue(true);state.profile.mockResolvedValue({editable:new Set(['person.firstName'])});
   const result=await read();expect(result.items).toHaveLength(4);expect(result.items[0]).toMatchObject({key:'tasks',message:'Tasks waiting for you: 2.'});expect(result.calm).toBeNull();
   expect(JSON.stringify(result)).not.toMatch(/private|medical|amount|subjectName/);expect(result.quickActions.every(row=>row.reason===null)).toBe(true);
-  expect(state.payroll).toHaveBeenCalledWith(ctx,'own');expect(state.claims).toHaveBeenCalledWith(ctx,'own');
+  expect(state.payroll).toHaveBeenCalledWith(ctx,'own',undefined);expect(state.claims).toHaveBeenCalledWith(ctx,'own',undefined);
  });
  it('does not invent a calm day when HR disabled the templates for existing facts',async()=>{
   const configuration=defaultEmployeeHomeConfiguration();configuration.templates.find(row=>row.key==='tasksPending')!.enabled=false;state.config.mockResolvedValue({configuration});state.tasks.mockResolvedValue(1);

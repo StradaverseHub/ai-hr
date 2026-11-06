@@ -100,10 +100,10 @@ import {isProfileVisibilityPolicyValue,profileTabPolicyKey,profileSectionPolicyK
 import {essVisibleFields} from '../lib/personnel-ess-contract';
 
 /** One immutable policy generation for the initial own-profile presentation. Independent actions re-read. */
-export function readProfilePresentationPolicy(ctx:SessionContext){return withTenant(ctx,async tx=>{
+export function readProfilePresentationPolicy(ctx:SessionContext,signal?:AbortSignal){return withTenant(ctx,async tx=>{
  await tx.execute(sql`SET TRANSACTION READ ONLY`);
  return freshProfilePresentationPolicyTx(tx,ctx);
-});}
+},{readSignal:signal});}
 export type ProfilePresentationPolicy=Awaited<ReturnType<typeof freshProfileEditPolicyTx>>;
 
 /** Disabling submission withdraws pending photos in the same locked policy transaction. */

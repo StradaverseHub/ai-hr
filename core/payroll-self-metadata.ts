@@ -28,7 +28,7 @@ export type OwnPayrollHomeMetadata={
  * own-row/login check runs in this transaction, so a stale card cannot survive unlink/archive/block.
  * Metadata is projected by SQL rather than stripping amounts from the existing full payslip read.
  */
-export function readOwnPayrollHomeMetadata(ctx:SessionContext,employmentId:string):Promise<OwnPayrollHomeMetadata>{
+export function readOwnPayrollHomeMetadata(ctx:SessionContext,employmentId:string,signal?:AbortSignal):Promise<OwnPayrollHomeMetadata>{
  return withPayrollTenant(ctx,async tx=>{
   await requireOwnPayrollSubjectTx(tx,ctx,employmentId);
   const rows=await tx.select({id:payslip.id,period:payrollBatch.payPeriod,runType:payrollBatch.runType,
@@ -46,7 +46,7 @@ export function readOwnPayrollHomeMetadata(ctx:SessionContext,employmentId:strin
   const next=payments[0];
   return {version:1,employmentId,payslips:published.slice(0,12).map(row=>({id:row.id,period:row.period,runType:row.runType,runSequence:row.runSequence})),
    nextPayment:next?{date:next.paymentDate,period:next.period,runType:next.runType}:null};
- });
+ },{readSignal:signal});
 }
 
 /** Earliest recorded payment date for the own Today card, without loading payslip history. */

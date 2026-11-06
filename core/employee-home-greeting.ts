@@ -19,7 +19,7 @@ export type EmployeeHomeGreeting={version:1;employmentId:string;serverNow:string
 /** Positive evidence only: today must be scheduled work and not approved leave. Look back through
  * intervening non-work days for the preceding scheduled day, bounded to a fortnight. If no such day is
  * established, use the ordinary greeting; absence of this optional event never asserts attendance. */
-async function returnFromLeave(ctx:SessionContext,employmentId:string,today:string){
+async function returnFromLeave(ctx:SessionContext,employmentId:string,today:string,signal?:AbortSignal){
  if(!isModuleEnabled(ctx,'attendance'))return false;
  return withTenant(ctx,async tx=>{
   const days=(await approvedLeavePresenceByEmploymentTx(tx,[employmentId],addDaysIso(today,-14),today)).get(employmentId);
@@ -28,11 +28,12 @@ async function returnFromLeave(ctx:SessionContext,employmentId:string,today:stri
   if(!days||days.has(today)||![...days.values()].includes('full_day'))return false;
   if(await workedDayKindForTx(tx,employmentId,today)!=='workday')return false;
   for(let distance=1;distance<=14;distance++){
+   signal?.throwIfAborted();
    const prior=addDaysIso(today,-distance);
    if(await workedDayKindForTx(tx,employmentId,prior)==='workday')return days.get(prior)==='full_day';
   }
   return false;
- });
+ },{readSignal:signal});
 }
 
 /** Display time follows the saved account preference (default platform timezone). Employment/leave
@@ -54,7 +55,7 @@ export async function readEmployeeHomeGreeting(ctx:SessionContext,employmentId:s
   },{readSignal:configurationRead?.signal}),
  ]);
  configurationRead?.signal?.throwIfAborted();
- const returnedFromLeave=await returnFromLeave(ctx,view.employmentId,today);
+ const returnedFromLeave=await returnFromLeave(ctx,view.employmentId,today,configurationRead?.signal);
  const firstDay=view.hiredOn===today,years=Number(today.slice(0,4))-Number(view.hiredOn.slice(0,4));
  const anniversary=years>0&&view.hiredOn.slice(5)===today.slice(5);
  const template=homeGreetingTemplate({hour:display.hour,birthday,firstDay,anniversary,returnedFromLeave},view.configuration.templates);
