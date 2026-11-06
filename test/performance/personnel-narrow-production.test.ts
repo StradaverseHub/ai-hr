@@ -3,12 +3,12 @@ import {randomUUID} from 'node:crypto';
 import {readFileSync,writeFileSync} from 'node:fs';
 import {join} from 'node:path';
 import {sql} from 'drizzle-orm';
-import {afterAll,beforeAll,expect,it} from 'vitest';
+import {afterAll,beforeAll,expect,it,vi} from 'vitest';
 import {hireEmployee,setEmploymentAssignment} from '../../core/org';
 import {createPersonnelPrivateSearch} from '../../core/personnel-private-search';
 import {readPersonnelOverview} from '../../core/read';
 import {headcountFilters,parsePersonnelListQuery} from '../../app/admin/personnel/list-query';
-import {withTenant} from '../../db/client';
+import {client,withTenant} from '../../db/client';
 import {todayInKualaLumpur} from '../../lib/hr-date';
 import {pgSqlState} from '../../lib/db-error';
 import {adminCtx,closeAll,migrateTestDb,owner,resetDb,seedBase} from '../harness';
@@ -148,10 +148,24 @@ it.skipIf(!requested)('times the real Personnel overview at fifty thousand emplo
  try {
   for (const {name,input,query,ids,total} of cases) {
    let baseline: Awaited<ReturnType<typeof readPersonnelOverview>> | undefined;
-   for (const reader of ['existing','narrow'] as const) {
+   let narrow: Awaited<ReturnType<typeof readPersonnelOverview>> | undefined;
+   for (const reader of ['existing','narrow','narrow-jit-off','narrow-jit-restored'] as const) {
     phase(name+'-'+reader);
     const begin = performance.now();
     let overview;
+    let observed: string | undefined;
+    const nativeBegin = client.begin;
+    const instrument = reader.startsWith('narrow-jit-') ? vi.spyOn(client,'begin').mockImplementation(((...args:unknown[])=>{
+     const index=args.findIndex(arg=>typeof arg==='function');
+     const callback=args[index] as (tx:typeof client)=>Promise<unknown>;
+     args[index]=async (tx:typeof client)=>{
+      if(reader==='narrow-jit-off')await tx`set local jit=off`;
+      const [row]=await tx`show jit`;
+      observed=row.jit;
+      return callback(tx);
+     };
+     return Reflect.apply(nativeBegin,client,args);
+    }) as typeof client.begin) : undefined;
     try {
      overview = await readPersonnelOverview(ctx,{...input,...query.filters},headcountFilters(query),reader==='existing'?{compareExact:true}:undefined);
     } catch (error) {
@@ -159,12 +173,15 @@ it.skipIf(!requested)('times the real Personnel overview at fifty thousand emplo
      results.push({name,reader,ms:performance.now()-begin,status:'statement-timeout'});
      save();
      continue;
-    }
+    } finally {instrument?.mockRestore();}
     const ms = performance.now()-begin;
+    if(instrument)expect(observed).toBe(reader==='narrow-jit-off'?'off':'on');
     expect(overview.employees.rows.map(row=>row.employmentId)).toEqual(ids);
     expect(overview.employees.total).toBe(total);
     if (reader==='existing') baseline=overview;
     else if (baseline) expect(overview).toEqual(baseline);
+    if(reader==='narrow')narrow=overview;
+    else if(instrument)expect(overview).toEqual(narrow);
     results.push({name,reader,ms,status:'completed',rows:overview.employees.rows.length});
     save();
    }
