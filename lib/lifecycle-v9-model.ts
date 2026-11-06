@@ -1,3 +1,4 @@
+import { personnelMergeLabels } from '@/lib/lifecycle-v9-personnel-merge-fields';
 import type { Note as LifecycleNote } from './onboarding-model';
 import { resolveV9CaseFields, missingV9CaseFields, offCaseFormValues, type CaseField } from './lifecycle-v9-case-form';
 import { v9LiteralAddress } from './lifecycle-v9-recipient';
@@ -264,12 +265,12 @@ export function completeTask(c: Case, id: string, status: Task['status'], reason
   if (task.documentTemplate && status === 'done') throw new V9Error('Complete the linked document to finish this task.');
   task.status = status; task.reason = reason.trim(); appendLog(c, env, 'task.updated', `${task.name}: ${status}${reason ? ` · ${reason}` : ''}`);
 }
-export function merge(text: string, values: Record<string, string>, sensitive: ReadonlySet<string> = new Set()): { text: string; missing: string[] } {
+export function merge(text: string, values: Record<string, string>, sensitive: ReadonlySet<string> = new Set(), readableMissing = false): { text: string; missing: string[] } {
   const missing: string[] = [];
   const result = text.replace(/\{([a-zA-Z][a-zA-Z0-9_]*(?:\.[a-zA-Z0-9_]+)?)\}/g, (_, key: string) => {
     if (sensitive.has(key)) throw new V9Error('Sensitive fields cannot be included in an email.');
     if (values[key] !== undefined && values[key] !== '') return values[key];
-    if (!missing.includes(key)) missing.push(key); return `[${key}]`;
+    if (!missing.includes(key)) missing.push(key); return `[${(readableMissing && personnelMergeLabels.get(key)) || key}]`;
   });
   return { text: result, missing };
 }
@@ -298,6 +299,13 @@ export function documentMergeValues(document: Pick<Document,'blocks'|'fields'> &
   for(const field of document.fields)if(field.pmKey?.startsWith('case.'))used.add(field.pmKey);
   return Object.fromEntries(Object.entries(values).filter(([key])=>!key.startsWith('case.')||used.has(key)));
 }
+export function personnelFieldSourceValue(field: Field, values: Readonly<Record<string, string>>): string {
+  const value = field.pmKey ? values[field.pmKey] ?? '' : '';
+  if (field.type !== 'date') return value;
+  const date = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(value);
+  const iso = date ? `${date[3]}-${date[2]}-${date[1]}` : value;
+  return validDate(iso) ? iso : '';
+}
 export function generate(c: Case, config: Config, templateId: string, env: Environment): Document {
   const existing = activeDocument(c, templateId); if (existing) return existing;
   const template = config.templates.find(t => t.id === templateId && t.module === c.module);
@@ -306,7 +314,7 @@ export function generate(c: Case, config: Config, templateId: string, env: Envir
   if (!template) throw new V9Error('No document template is available for this module.');
   const version = currentVersion(template); if (!version) throw new V9Error('Publish the document template before using it.');
   const values: Record<string, string> = {};
-  for (const field of version.fields) if (field.pmKey) values[field.id] = env.mergeValues[field.pmKey] ?? '';
+  for (const field of version.fields) if (field.pmKey) values[field.id] = personnelFieldSourceValue(field, env.mergeValues);
   const doc: Document = { id: env.nextId(), templateId, version: version.version, name: template.name, status: 'draft', blocks: structuredClone(version.blocks), fields: structuredClone(version.fields), values, edits: {}, hrSignature: null, employeeSignature: null, createdAt: env.now, sentAt: null, mergeValues: documentMergeValues(version,env.mergeValues), templateType: template.type, hrStep: template.hrStep, employeeAck: template.employeeAck, signatoryUserId: env.signatoryUserId ?? null };
   c.documents.push(doc); appendLog(c, env, 'document.generated', `${doc.name} version ${doc.version}`); return doc;
 }
@@ -334,6 +342,47 @@ function linkedTasks(c: Case, doc: Document, action: TaskDefinition['documentAct
 }
 export function documentDeliveryReserved(c: Pick<Case, 'mails'>, documentId: string): boolean {
   return c.mails.some(mail => !mail.test && ['pending', 'sending', 'uncertain'].includes(mail.status) && mail.documentIds.includes(documentId));
+}
+export function missingDocumentPersonnelValues(doc: Document): string[] {
+  const values = { ...doc.mergeValues, ...doc.values };
+  const missing = doc.blocks.flatMap(block => [
+    doc.edits[block.id] ?? block.text, block.rows ?? '', block.label ?? '',
+  ].flatMap(text => merge(text, values).missing));
+  for (const field of doc.fields) {
+    if (field.owner === 'pmLocked' && field.pmKey && !doc.values[field.id]?.trim() &&
+        (!field.when || doc.values[field.when.field] === field.when.value) &&
+        doc.blocks.some(block => block.type === 'field' && block.fieldId === field.id ||
+          block.type === 'fields' && block.section === field.section)) missing.push(field.pmKey);
+  }
+  return [...new Set(missing)].filter(key => personnelMergeLabels.has(key));
+}
+function documentPersonnelHold(doc: Document): string | null {
+  const missing = missingDocumentPersonnelValues(doc);
+  return missing.length ? 'Complete missing Personnel values for ' + doc.name + ': ' +
+    missing.map(key => personnelMergeLabels.get(key)).join(', ') + '.' : null;
+}
+export function fillDocumentPersonnelValues(c: Case, id: string, values: Record<string, string>, env: Environment): void {
+  const doc = c.documents.find(document => document.id === id);
+  if (!doc) throw new V9Error('Document not found.', 'not_found');
+  if (c.state !== 'submitted' || doc.status !== 'draft' || doc.hrSignature || doc.employeeSignature ||
+      documentDeliveryReserved(c, id)) throw new V9Error('Only an unsigned draft can be filled in.', 'conflict');
+  const missing = new Set(missingDocumentPersonnelValues(doc));
+  for (const [key, value] of Object.entries(values)) {
+    if (!missing.has(key) || !value.trim() || value.length > 20000) {
+      throw new V9Error('Choose a missing Personnel value and enter a value for this document.');
+    }
+    for (const field of doc.fields) {
+      if (field.owner === 'pmLocked' && field.pmKey === key) validateFieldValue(field, value.trim());
+    }
+  }
+  doc.mergeValues ??= {};
+  for (const [key, value] of Object.entries(values)) {
+    doc.mergeValues[key] = value.trim();
+    for (const field of doc.fields) {
+      if (field.owner === 'pmLocked' && field.pmKey === key && !doc.values[field.id]?.trim()) doc.values[field.id] = value.trim();
+    }
+  }
+  appendLog(c, env, 'document.saved', doc.name);
 }
 export function saveDocument(c: Case, id: string, values: Record<string, string>, owner: 'employee' | 'hr', env: Environment): void {
   const doc = c.documents.find(d => d.id === id); if (!doc) throw new V9Error('Document not found.', 'not_found');
@@ -373,6 +422,8 @@ export function signDocument(c: Case, config: Config, id: string, role: 'employe
   if (role === 'hr' && documentDeliveryReserved(c, id)) throw new V9Error('This document is frozen for email delivery.', 'conflict');
   if (!signature.consent || !validV9SignatureValue(signature.method, signature.value) || signature.by.id !== env.actor.id) throw new V9Error('Confirm consent and provide your own signature.');
   const missing = doc.blocks.filter(b => ['heading', 'subheading', 'text'].includes(b.type)).flatMap(b => merge(doc.edits[b.id] ?? b.text, { ...doc.mergeValues, ...doc.values }).missing);
+  const personnelHold = documentPersonnelHold(doc);
+  if (personnelHold) throw new V9Error(personnelHold, 'conflict');
   if (missing.length) throw new V9Error(`Complete missing document fields: ${[...new Set(missing)].join(', ')}.`);
   if (role === 'employee') {
     if (!['sent', 'opened'].includes(doc.status)) throw new V9Error('This document is not ready for employee completion.', 'conflict');
@@ -580,6 +631,8 @@ function enqueue(c: Case, config: Config, step: Extract<Step, { type: 'email' | 
       const d = activeDocument(c, id) ?? (test ? null : generate(c, config, id, env)), template = config.templates.find(t => t.id === id);
       if (!d) return [];
       if ((d.hrStep ?? template?.hrStep) === 'before' && d.status === 'draft' && !test) throw new V9Error('HR must sign the letter before it can be sent.');
+      const hold = !test && documentPersonnelHold(d);
+      if (hold) throw new V9Error(hold, 'conflict');
       return [d];
     });
     const cc = test ? [] : ccTargets.filter(id => id !== target);
@@ -672,7 +725,10 @@ export function runWorkflow(c: Case, config: Config, workflow: Workflow, env: En
         const doc = generate(c, config, step.template, env), template = config.templates.find(t => t.id === step.template);
         if (step.release && ['draft', 'hrsigned'].includes(doc.status)) {
           if ((doc.hrStep ?? template?.hrStep) === 'before' && !doc.hrSignature) waiting = 'HR must sign before release.';
-          else { doc.status = 'sent'; doc.sentAt = env.now; linkedTasks(c, doc, 'sent'); appendLog(c, env, 'document.released', doc.name); }
+          else {
+            waiting = documentPersonnelHold(doc) ?? '';
+            if (!waiting) { doc.status = 'sent'; doc.sentAt = env.now; linkedTasks(c, doc, 'sent'); appendLog(c, env, 'document.released', doc.name); }
+          }
         }
       } else if (step.type === 'waitSign') { const d = activeDocument(c, step.template); if (!(step.by === 'hr' ? d?.hrSignature : d && documentFinal(d))) waiting = `Waiting for ${step.by === 'hr' ? 'HR' : 'the employee'} to sign.`; }
       else if (step.type === 'waitFile') { if (!c.files.some(f => f.slot === step.slot)) waiting = `Waiting for ${step.label}.`; }

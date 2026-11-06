@@ -67,6 +67,13 @@ describe('native payroll BASIC private analysis source adapter',()=>{
    return 'Fictional protected explanation';
   });expect(await run()).toBe('Fictional protected explanation');
  });
+ it('keeps native individual, cycle and template selectors outside the provider cohort interface',async()=>{
+  for(const extra of [{employeeSearch:'FICTIONAL EMPLOYEE'},{employmentId:companyId},{cycleIds:[companyId]},{groupBy:'businessUnit'}])
+   await expect(run({...raw,...extra})).rejects.toThrow('private payroll comparison source');
+  const template=spec();template.payrollComparison!.defaults={employmentId:companyId};
+  await expect(generatePrivatePayrollComparisonAnalysis(ctx,template,scope,raw)).rejects.toThrow('private payroll comparison source');
+  expect(state.native).not.toHaveBeenCalled();expect(state.analysis).not.toHaveBeenCalled();
+ });
  it('retains the shared percentage band for the native +7.25 percent result without recalculating pay',async()=>{
   Object.assign(summary().totals[0],{previous:'100000.00',current:'107250.00',variance:'7250.00',variancePct:'7.25'});state.analysis.mockImplementation(async(_cfg:unknown,read:(tx:Tx,ctx:SessionContext)=>Promise<unknown>)=>{const aggregate=await read(replay.tx,current) as Aggregate;expect(aggregate.cohorts[0].metrics[0].changeBand).toBe('increase_5_to_10_percent');return 'Explanation';});await run();
  });

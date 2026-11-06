@@ -48,6 +48,8 @@ describe('Reward Desk step 2 — people and safe actions',()=>{
   expect(panel.getByRole('link',{name:/Previous/}).getAttribute('href')).toBe('/rewards/unit?person=a');
   expect(panel.getByRole('link',{name:/Next/}).getAttribute('href')).toBe('/rewards/unit?person=c');
   expect(panel.getByRole('link',{name:'Open full record to edit'}).getAttribute('href')).toBe('/rewards/unit/people/b');
+  fireEvent.keyDown(window,{key:'ArrowRight'});
+  expect(ports.replace).toHaveBeenCalledWith('/rewards/unit?person=c',{scroll:false});
  });
  it('ignores a ?person the viewer cannot see',async()=>{
   await show({person:'not-visible'});expect(screen.queryByRole('dialog')).toBeNull();

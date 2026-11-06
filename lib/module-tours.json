@@ -193,7 +193,7 @@
       {
         "id": "reports",
         "target": "[data-tour=\"payroll-reports\"]",
-        "route": "/payroll/reports",
+        "route": "/payroll/statutory-forms/filing-history",
         "titleKey": "tour.payroll.reports.title",
         "bodyKey": "tour.payroll.reports.body",
         "placement": "bottom",
@@ -210,7 +210,7 @@
       {
         "id": "generate",
         "target": "[data-tour=\"payroll-generate\"]",
-        "route": "/payroll/reports",
+        "route": "/payroll/statutory-forms/filing-history",
         "titleKey": "tour.payroll.generate.title",
         "bodyKey": "tour.payroll.generate.body",
         "placement": "top",

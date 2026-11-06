@@ -1,9 +1,9 @@
 'use server';
 import { revalidatePath } from 'next/cache';
 import { requireModule } from '@/lib/authz';
-import { v9CaseDetail, v9PreviewWorkflow, v9PreviewEmail, v9PreviewUpdatedEmail, v9Command, v9CreateOffboarding, v9SaveConfig, v9Setup } from '@/packs/lifecycle/service';
+import { v9CaseDetail, v9PreviewPersonnelValues, v9PreviewWorkflow, v9PreviewEmail, v9PreviewUpdatedEmail, v9Command, v9CreateOffboarding, v9SaveConfig, v9Setup } from '@/packs/lifecycle/service';
 import type { LifecycleV9Command as Command } from '@/packs/lifecycle/service';
-import type { ExitType } from '@/lib/lifecycle-v9-model';
+import type { ExitType, Module } from '@/lib/lifecycle-v9-model';
 async function execute<T>(work: () => Promise<T>) {
   try { const result = await work(); revalidatePath('/lifecycle/v9'); return { ok: true as const, result }; }
   catch (error) { return { ok: false as const, error: error instanceof Error && ['V9Error', 'ZodError'].includes(error.name) ? error.message : 'The change could not be saved. Refresh and try again.' }; }
@@ -30,4 +30,9 @@ export async function readV9UpdatedEmail(caseId:string,mailId:string) {
 export async function readV9Workflow(caseId:string,workflowId:string) {
   try {return {ok:true as const,preview:await v9PreviewWorkflow(await requireModule('lifecycle'),caseId,workflowId)};}
   catch {return {ok:false as const,error:'The workflow preview could not be loaded. Try again.'};}
+}
+
+export async function readV9PersonnelPreview(caseId: string, module: Module) {
+  try { return { ok: true as const, values: await v9PreviewPersonnelValues(await requireModule('lifecycle'), caseId, module) }; }
+  catch { return { ok: false as const, error: 'The Personnel preview could not be loaded.' }; }
 }

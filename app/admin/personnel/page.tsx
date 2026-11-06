@@ -1,4 +1,5 @@
 import {personnelPrivateSearchAvailable} from '@/core/personnel-private-search';
+import { organisationChoiceLabels } from '@/lib/organisation-choice-label';
 import {personnelMaintenanceCompanyIds} from '@/core/workforce-access';
 import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
@@ -6,6 +7,7 @@ import { PROFILE_REQUEST_OPTION_NAMESPACE } from '@/lib/profile-requestable-fiel
 import {requireWorkforceAccess} from '@/lib/workforce-authz';
 import {
   listCompanies,
+  listDepartments,
   readPersonnelOverview,
 } from '@/core/read';
 // r260 stage two (9583deac) — the shared approve/reject control whose Reject cannot be submitted
@@ -105,7 +107,6 @@ async function renderPersonnelPage(sp: PersonnelSearchParams) {
   const t = await getTranslations('people.list');
   const tStatus = await getTranslations('people.employeeStatus');
   const to = await getTranslations('personnelOrganisationFilters');
-  const choiceMessages = await getTranslations('allowanceV4');
   // r260 — Personnel Management's own field labels, so a proposed profile change is named in this
   // queue exactly as the employee reads it on their record and HR reads it on the Personnel card.
   const tPeopleDetail = await getTranslations('people.detail');
@@ -134,9 +135,10 @@ async function renderPersonnelPage(sp: PersonnelSearchParams) {
     limit: pq.limit,
     offset: pq.offset,
   }, headcountFilters(query));
-  const { employees: { rows: employeeRows, total: employeeTotal }, headcount, duplicateFilterUnavailable } = overview;
-  const [companies, { rows: drafts, count: draftCardCount }, savedColumns, idConfigs] = await Promise.all([
+  const { employees: { rows: employeeRows, total: employeeTotal }, headcount, organisationChoices } = overview;
+  const [companies, departments, { rows: drafts, count: draftCardCount }, savedColumns, idConfigs] = await Promise.all([
     listCompanies(session).then(rows=>rows.filter(row=>workforceIds.has(row.id))),
+    scopeIds.length?listDepartments(session,{companyIds:scopeIds}):Promise.resolve([]),
     // b1b1879d — drafts follow the TOP-BAR company scope exactly as the employees above do. They used to
     // be read with no scope at all, so choosing one company still listed every company's drafts.
     isAdmin ? readPersonnelDraftList(session, draftListScope(scopeIds, allowedCount), query, pq.offset === 0) : Promise.resolve({ rows: [], count: 0 }),
@@ -191,16 +193,15 @@ async function renderPersonnelPage(sp: PersonnelSearchParams) {
   // badge in the same table prints, plus Draft) on the `bucket` param, instead of the lifecycle
   // active/terminated query on `status`. The old param is still honoured for existing links; nothing
   // writes it any more. See ./list-query.ts.
-  const scopedCompanyIds = new Set(scopeIds);
   const filterFields: FilterField[] = [
-    {kind:'multi',name:'companies',label:t('company'),ariaLabel:t('filterCompany'),options:companies.filter(c=>scopedCompanyIds.has(c.id)).map(c=>({value:c.id,label:c.name})),removeAriaLabel:t('removeFilter',{label:t('company')})},
+    {kind:'multi',name:'companies',label:t('company'),ariaLabel:t('filterCompany'),options:organisationChoices.companies.map(c=>({value:c.id,label:c.name})),removeAriaLabel:t('removeFilter',{label:t('company')})},
     {
       kind: 'select',
       name: 'dept',
       label: t('department'),
       ariaLabel: t('filterDepartment'),
       allLabel: t('allDepartments'),
-      options: [],
+      options: organisationChoiceLabels(departments).map((d) => ({ value: d.id, label: d.displayLabel })),
       removeAriaLabel: t('removeFilter', { label: t('department') }),
     },
     {
@@ -227,13 +228,14 @@ async function renderPersonnelPage(sp: PersonnelSearchParams) {
       removeAriaLabel: t('removeFilter', { label: t('employmentType') }),
     },
   ];
+  const uniqueOptions=(items:{value:string|null|undefined;label:string|null|undefined}[])=>{const unique=[...new Map(items.filter((item):item is {value:string;label:string}=>!!item.value&&!!item.label).map(item=>[item.value,item])).values()];return unique.map(item=>({...item,label:unique.some(other=>other.value!==item.value&&other.label===item.label)?item.label+' · '+item.value.slice(0,8):item.label})).sort((a,b)=>a.label.localeCompare(b.label));};
   const multi=(name:string,label:string,options:{value:string;label:string}[]):FilterField=>({kind:'multi',name,label,ariaLabel:label,options,removeAriaLabel:t('removeFilter',{label})});
   filterFields.push(
-   multi('bu',to('businessUnit'),[]),
-   multi('parent',to('parentCompany'),[]),
-   multi('group',to('businessGroup'),[]),
+   multi('bu',to('businessUnit'),uniqueOptions([...organisationChoices.companies.map(c=>({value:c.businessUnitId,label:c.businessUnit})),...organisationChoices.rows.map(row=>({value:row.businessUnitId,label:row.businessUnit}))])),
+   multi('parent',to('parentCompany'),uniqueOptions(organisationChoices.companies.map(c=>({value:c.parentCompanyId,label:c.parentCompany})))),
+   multi('group',to('businessGroup'),uniqueOptions(organisationChoices.companies.map(c=>({value:c.businessGroupId,label:c.businessGroup})))),
    multi('grade',to('jobGrade'),['H',...Array.from({length:12},(_,i)=>String(i+12))].map(value=>({value,label:value}))),
-   multi('position',to('position'),[]),
+   multi('position',to('position'),uniqueOptions(organisationChoices.rows.map(row=>({value:row.positionId,label:row.position})))),
    {kind:'select',name:'confirmation',label:to('confirmation'),ariaLabel:to('confirmation'),allLabel:to('all'),options:[{value:'confirmed',label:to('confirmed')},{value:'unconfirmed',label:to('unconfirmed')}],removeAriaLabel:t('removeFilter',{label:to('confirmation')})},
    ...(['joinedFrom','joinedTo','probationFrom','probationTo'] as const).map(name=>({kind:'date' as const,name,label:to(name),ariaLabel:to(name),removeAriaLabel:t('removeFilter',{label:to(name)})})),
    multi('quality',to('quality'),(['missing_business_unit','missing_job_grade','missing_direct_superior','company_not_in_structure','suspected_duplicate'] as const).map(value=>({value,label:to(value)}))),
@@ -375,7 +377,7 @@ async function renderPersonnelPage(sp: PersonnelSearchParams) {
                 keys in all six locales — and r336's two kernel pins (core/payroll.ts and
                 core/payroll-view.ts both read child_relief_mode) would have to be rehomed first. */}
             {/* One list search below; the filter panel holds only ordinary shareable selections. */}
-            <PersonnelOrganisationFilters key={scopeIds.slice().sort().join(',')+'?'+personnelQueryParams(sp).toString()} fields={filterFields} values={filterValues} loadOptions={{ error: choiceMessages('loadError'), retry: to('retryRead') }} labels={filterLabels} companySearchLabel={to('companySearch')} duplicateHint={to('duplicateHint')} dataTour="people-search"/>
+            <PersonnelOrganisationFilters key={scopeIds.slice().sort().join(',')+'?'+personnelQueryParams(sp).toString()} fields={filterFields} values={filterValues} companies={organisationChoices.companies} labels={filterLabels} companySearchLabel={to('companySearch')} canInspectDuplicates={organisationChoices.canInspectDuplicates} duplicateHint={to('duplicateHint')} dataTour="people-search"/>
             <ColumnPicker
               columns={pickerColumns}
               selected={columns}
@@ -455,7 +457,7 @@ async function renderPersonnelPage(sp: PersonnelSearchParams) {
       </div>
 
       <PersonnelPrivateSearch key={scopeIds.slice().sort().join(',')+'?'+personnelQueryParams(sp).toString()} parameters={[...personnelQueryParams(sp)]} active={!!query.filters.privateSearch} labels={{label:to('search'),placeholder:to('searchPlaceholder'),submit:to('searchButton'),privateHint:to('privateHint'),active:to(searchAvailable?'privateActive':'privateUnavailable'),clear:to('clearSearch'),share:to('shareView')}}/>
-      {duplicateFilterUnavailable&&<p role="status" className="text-sm text-muted-foreground">{to('duplicateUnavailable')}</p>}
+      {!organisationChoices.canInspectDuplicates&&query.filters.qualityFlags?.includes('suspected_duplicate')&&<p role="status" className="text-sm text-muted-foreground">{to('duplicateUnavailable')}</p>}
       <FilterChips
         action="/admin/personnel"
         fields={filterFields}

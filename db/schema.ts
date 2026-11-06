@@ -4803,6 +4803,7 @@ export type ShiftOtRule = { eligible: boolean; minMinutes?: number; dailyCapMinu
 // allowance into the shift's canonical break_minutes scalar so scheduled hours, the punch import and the
 // payroll hourly clamp keep agreeing with what the engine deducts.
 export type BreakPeriod = {
+  breakType?: 'in_shift' | 'before_shift' | 'after_shift';
   start: string;
   end: string;
   flexible?: boolean;
@@ -8231,6 +8232,11 @@ export const customReportRun = pgTable('custom_report_run',{
   kind:text('kind').notNull(),format:text('format'),scopeIds:uuid('scope_ids').array().notNull().default(sql`ARRAY[]::uuid[]`),
   rowCount:integer('row_count').notNull().default(0),outcome:text('outcome').notNull(),reason:text('reason'),ranAt:timestamp('ran_at',{withTimezone:true}).notNull().defaultNow(),
 },t=>[index('custom_report_run_report_idx').on(t.tenantId,t.reportId,t.ranAt)]);
+export const payrollReconciliationRemark = pgTable('payroll_reconciliation_remark', {
+  id:id(),tenantId:tenantId(),companyId:uuid('company_id').notNull(),employmentId:uuid('employment_id').notNull(),
+  actorUserId:uuid('actor_user_id').notNull(),previousPeriod:text('previous_period').notNull(),currentPeriod:text('current_period').notNull(),
+  scopeDigest:text('scope_digest').notNull(),body:text('body').notNull(),revision:integer('revision').notNull(),createdAt:createdAt(),
+});
 export const customReportSchedule = pgTable('custom_report_schedule',{
   id:id(),tenantId:tenantId(),reportId:uuid('report_id').notNull().references(()=>customReport.id,{onDelete:'cascade'}),
   enabled:boolean('enabled').notNull().default(false),config:jsonb('config').$type<CustomReportScheduleConfig>().notNull(),recipients:jsonb('recipients').$type<{userId:string;employmentId:string}[]>().notNull().default(sql`'[]'::jsonb`),

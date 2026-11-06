@@ -5,7 +5,8 @@ import { useEffect, useRef, useState } from 'react';
 import { DocumentTextEditor } from './document-text-editor';
 import { DocumentBody } from '@/components/lifecycle-v9/document-body';
 import { SignatureInput } from '@/components/lifecycle-v9/signature-input';
-import { documentDeliveryReserved, documentFinal, type Actor, type Case, type Document, type Template } from '@/lib/lifecycle-v9-model';
+import { personnelMergeLabels } from '@/lib/lifecycle-v9-personnel-merge-fields';
+import { documentDeliveryReserved, documentFinal, missingDocumentPersonnelValues, type Actor, type Case, type Document, type Template } from '@/lib/lifecycle-v9-model';
 import type { LifecycleV9Command } from '@/packs/lifecycle/service';
 
 export function CaseDocument({ c, document, template, actor, busy, command, config, users = [], eligibleSignatoryIds }: {
@@ -14,6 +15,8 @@ export function CaseDocument({ c, document, template, actor, busy, command, conf
   command: (command: LifecycleV9Command) => void | Promise<{ ok: boolean; error?: string }>;
 }) {
   const [values, setValues] = useState({ ...document.values }), [editingText,setEditingText] = useState(false), [error,setError]=useState('');
+  const [personnel, setPersonnel] = useState<Record<string, string>>({});
+  const missingPersonnel = missingDocumentPersonnelValues(document);
   const errorRef=useRef<HTMLParagraphElement>(null);
   useEffect(()=>{if(error)errorRef.current?.focus();},[error]);
   async function execute(value:LifecycleV9Command){setError('');try{const result=await command(value);if(result&&!result.ok)setError(result.error??'The document could not be saved.');return result??{ok:true};}catch{const result={ok:false,error:'The document could not be saved. Your edits are still here.'};setError(result.error);return result;}}
@@ -26,7 +29,20 @@ export function CaseDocument({ c, document, template, actor, busy, command, conf
   const needsSignature = editable && (document.templateType ?? template?.type) !== 'Attachment' && (hrStep === 'before' && document.status === 'draft' || hrStep === 'after' && document.status === 'countersign');
   const allowed=(config&&c.facts?v9CompanySigners(config,c.facts.company):[]).filter(id=>eligibleSignatoryIds===undefined||eligibleSignatoryIds.includes(id));
   const signatory = hrStep === 'after' || document.signatoryUserId === actor.id && (!config||allowed.includes(actor.id));
-  return <div className="v9-stack">{reserved && <p className="v9-notice">This document is frozen for email delivery.</p>}{c.id && <a className="v9-button" href={`/lifecycle/v9/documents/${encodeURIComponent(c.id)}/${encodeURIComponent(document.id)}`}>Download PDF</a>}<DocumentBody document={document} values={values} editableBy="hr" disabled={busy || !canEditFields} change={(id, value) => setValues(previous => ({ ...previous, [id]: value }))}/>{error&&<p ref={errorRef} tabIndex={-1} role="alert" className="v9-notice v9-error">{error}</p>}
+  return <div className="v9-stack">{reserved && <p className="v9-notice">This document is frozen for email delivery.</p>}{c.id && <a className="v9-button" href={`/lifecycle/v9/documents/${encodeURIComponent(c.id)}/${encodeURIComponent(document.id)}`}>Download PDF</a>}<DocumentBody document={document} values={{ ...document.values, ...Object.fromEntries(fields.map(field => [field.id, values[field.id] ?? document.values[field.id] ?? ''])) }} editableBy="hr" disabled={busy || !canEditFields} change={(id, value) => setValues(previous => ({ ...previous, [id]: value }))}/>{error&&<p ref={errorRef} tabIndex={-1} role="alert" className="v9-notice v9-error">{error}</p>}
+    {canEditFields && missingPersonnel.length > 0 && <section className="v9-panel v9-stack">
+      <strong>Complete missing Personnel values</strong>
+      <p>These values apply to this document only.</p>
+      {missingPersonnel.map(key => <label className="v9-field" key={key}>
+        <span>{personnelMergeLabels.get(key)}</span>
+        <input className="v9-input" disabled={busy} value={personnel[key] ?? ''} onChange={event => setPersonnel(previous => ({ ...previous, [key]: event.target.value }))} />
+      </label>)}
+      <button type="button" className="v9-button" disabled={busy || !missingPersonnel.some(key => personnel[key]?.trim())}
+        onClick={async () => {
+          const values = Object.fromEntries(missingPersonnel.filter(key => personnel[key]?.trim()).map(key => [key, personnel[key]]));
+          if ((await execute({ type: 'documentFillPersonnel', id: document.id, values })).ok) setPersonnel({});
+        }}>Save values for this document</button>
+    </section>}
     {canEditFields && (document.templateType ?? template?.type) !== 'Attachment' && document.blocks.some(block => ['heading','subheading','text'].includes(block.type)) && <button type="button" className="v9-button" disabled={busy || dirty} onClick={() => setEditingText(true)}>Edit for this person</button>}
     {editingText && canEditFields && <DocumentTextEditor document={document} person={c.facts?.name ?? 'this person'} busy={busy} command={execute} close={() => setEditingText(false)}/>}
     {canEditFields && fields.length > 0 && <button type="button" className="v9-button" disabled={busy || !dirty} onClick={() => execute({ type: 'documentSave', id: document.id, values: Object.fromEntries(fields.filter(f => values[f.id] !== undefined).map(f => [f.id, values[f.id]])) })}>Save HR fields</button>}

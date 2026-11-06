@@ -2,6 +2,7 @@ import {expect, it, vi} from 'vitest';
 import {render, screen, within} from '@testing-library/react';
 import {createTranslator, NextIntlClientProvider} from 'next-intl';
 import en from '../messages/en.json';
+vi.mock('next/navigation', () => ({useRouter:()=>({refresh:vi.fn()})}));
 vi.mock('../lib/authz', () => ({requireAdmin:async()=>({})}));
 vi.mock('../components/attendance-settings-navigation', () => ({AttendanceSettingsNavigation:()=>null}));
 vi.mock('../core/attendance-rule', () => ({listAttendanceRules:async()=>[]}));

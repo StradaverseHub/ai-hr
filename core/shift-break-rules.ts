@@ -27,6 +27,21 @@
 
 /** The three facts about a shift a break row is judged against. Times are 'HH:MM' or 'HH:MM:SS' — only
  *  lexicographic comparison and the first five characters are used, so either shape works unmodified. */
+export type ShiftBreakType = 'in_shift' | 'before_shift' | 'after_shift';
+type BreakClock = { start: string; end: string; breakType?: ShiftBreakType };
+
+export function externalBreakBounds(row: BreakClock, shiftStart: number, shiftEnd: number) {
+  const duration = breakRowMinutes(row.start, row.end);
+  const start = toMin(row.start);
+  if (row.breakType === 'before_shift') {
+    const end = start + duration;
+    const to = end + Math.floor((shiftStart - end) / 1440) * 1440;
+    return { from: to - duration, to };
+  }
+  const from = start + Math.ceil((shiftEnd - start) / 1440) * 1440;
+  return { from, to: from + duration };
+}
+
 export type BreakRuleShift = { startTime: string; endTime: string; crossesMidnight: boolean; durationOnly?: boolean };
 
 /** One row's classification. `ok` is the only shape that carries a usable duration. */
@@ -58,7 +73,7 @@ export const breakRowMinutes = (start: string, end: string): number => {
  * that is dropped rather than posted (a blank row saves nothing, per the plan). A row with exactly ONE
  * time is `half` and is REFUSED, never silently dropped — the plan's own correction of today's behaviour.
  */
-export function checkBreakRow(row: { start: string; end: string }, shift: BreakRuleShift): BreakRowCheck {
+export function checkBreakRow(row: BreakClock, shift: BreakRuleShift): BreakRowCheck {
   const hasStart = row.start.trim() !== '';
   const hasEnd = row.end.trim() !== '';
   if (!hasStart && !hasEnd) return { kind: 'blank' };
@@ -67,6 +82,14 @@ export function checkBreakRow(row: { start: string; end: string }, shift: BreakR
   const end = row.end.slice(0, 5);
   if (start === end) return { kind: 'zero' };
   const wrapped = end < start;
+  if (row.breakType && row.breakType !== 'in_shift') {
+    if (shift.durationOnly || !shift.startTime || !shift.endTime) return { kind: 'outside' };
+    const shiftStart = toMin(shift.startTime), shiftEnd = toMin(shift.endTime) + (shift.crossesMidnight ? 1440 : 0);
+    const { from, to } = externalBreakBounds(row, shiftStart, shiftEnd);
+    // A pre/post window must fit entirely in the gap around this shift, before the next scheduled span.
+    if (from < shiftEnd - 1440 || to > shiftStart + 1440) return { kind: 'outside' };
+    return { kind: 'ok', wrapped, minutes: to - from };
+  }
   if(shift.durationOnly)return {kind:'ok',wrapped,minutes:breakRowMinutes(start,end)};
   if (wrapped && !shift.crossesMidnight) return { kind: 'reversed' };
   const shiftStart = shift.startTime.slice(0, 5);
@@ -92,7 +115,7 @@ export function checkBreakRow(row: { start: string; end: string }, shift: BreakR
  * intervals in a set overlap, at least one adjacent pair in start order does too, so nothing real is missed.
  */
 export function findBreakOverlaps(
-  rows: readonly { start: string; end: string }[],
+  rows: readonly BreakClock[],
   shift: BreakRuleShift,
 ): Array<[number, number]> {
   const startAbs = shift.durationOnly?0:toMin(shift.startTime);
@@ -100,6 +123,10 @@ export function findBreakOverlaps(
     .map((r, i) => {
       const check = checkBreakRow(r, shift);
       if (check.kind !== 'ok') return null;
+      if (r.breakType && r.breakType !== 'in_shift') {
+        const { from, to } = externalBreakBounds(r, startAbs, toMin(shift.endTime) + (shift.crossesMidnight ? 1440 : 0));
+        return { i, s: from, e: to };
+      }
       let s = toMin(r.start);
       if (s < startAbs - 720) s += 1440;
       return { i, s, e: s + check.minutes };
@@ -136,7 +163,7 @@ export type BreakRowIssue =
   | { code: 'flexibleMinutesRange'; max: number };
 
 export function breakRowIssues(
-  rows: readonly { start: string; end: string; paid?: boolean; flexible?: boolean; flexibleMinutes?: number | null }[],
+  rows: readonly (BreakClock & { paid?: boolean; flexible?: boolean; flexibleMinutes?: number | null })[],
   shift: BreakRuleShift,
 ): Map<number, BreakRowIssue> {
   const out = new Map<number, BreakRowIssue>();

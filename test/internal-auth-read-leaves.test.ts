@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import ts from 'typescript';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const singleton = vi.hoisted(() => ({ begin: vi.fn() }));
-vi.mock('../db/client', () => ({ client: singleton }));
+vi.mock('../db/client', () => ({ client: singleton, withPoolWork: <T>(_tenant: string, work: () => PromiseLike<T>) => work() }));
 import * as legacyStore from '../lib/internal-auth/store';
 import * as legacyService from '../lib/internal-auth/service';
 import { readRecord, writeRecord, deleteRecord, revokeCredentialsSessions, type AuthSql } from '../lib/internal-auth/record-store';

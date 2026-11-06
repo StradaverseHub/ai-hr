@@ -215,5 +215,5 @@ it('retains unpaginated totals, status counts and company choices past the last 
   expect(pastEnd.employees).toEqual({ rows: [], total: 1 });
   expect(pastEnd.headcount).toEqual(await countEmployeesByStatus(ctx, { companyIds, ...filter }, 'workforce'));
   expect(pastEnd.headcount.total).toBe(1);
-  expect((await personnelFilterChoices(ctx, companyIds)).companies.map(company => company.id)).toContain(b.companyId);
+  expect(pastEnd.organisationChoices.companies.map(company => company.id)).toContain(b.companyId);
 });

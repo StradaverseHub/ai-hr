@@ -1,6 +1,7 @@
 import {withBackgroundDatabaseWork} from '../db/workload';
 import {createDatabaseAdmission} from '../db/admission';
 import {applicationDatabaseBudget} from '../db/capacity';
+import { externalBreakBounds } from './shift-break-rules';
 import { withCanonicalAiReadTx } from './ai-read-transaction';
 import { lockAccessConfigurationReadTx, lockAccessConfigurationTx, tryLockAccessConfigurationTx } from './access-configuration-lock';
 import { LeaveDependencyUnavailable, lockLeaveDependenciesTx, lockLeaveDependencyConfigurationTx, lockLeaveDependencyReadConfigurationTx } from './leave-dependency-lock';
@@ -1493,11 +1494,26 @@ function deriveAttendance(
   // one allowance for the whole shift and that answer must not change (core/roster.ts refuses to store
   // both at once, so in practice they can never both be present — the order here says which would win if
   // a row were ever written past the service). NULL ⇒ the line below is the line that has always run.
-  const perRowBreak = w ? perRowBreakMinutes(s.breakPeriods, s.breakMinutes, w, s.dailyCutoffMinutes, span) : null;
+  const external = w ? (s.breakPeriods ?? []).filter(bp => bp.paid !== true &&
+    (bp.breakType === 'before_shift' || bp.breakType === 'after_shift')) : [];
+  const regularBreaks = external.length ? s.breakPeriods!.filter(bp =>
+    bp.breakType !== 'before_shift' && bp.breakType !== 'after_shift') : s.breakPeriods;
+  const externalDeductions = w ? external.flatMap(bp => {
+    const { from, to } = externalBreakBounds(bp, w.startAbs, w.endAbs);
+    const inAbs = Math.max(w.inAbs, from);
+    const overlap = Math.max(0, Math.min(w.outAbs, to) - inAbs);
+    const minutes = bp.flexible && bp.flexibleMinutes != null ? Math.min(overlap, bp.flexibleMinutes) : overlap;
+    return minutes > 0 ? [{ inAbs, outAbs: inAbs + minutes, type: bp.breakType }] : [];
+  }).sort((a, b) => a.inAbs - b.inAbs) : [];
+  const beforeBreak = externalDeductions.filter(row => row.type === 'before_shift').reduce((sum, row) => sum + row.outAbs - row.inAbs, 0);
+  const afterBreak = externalDeductions.filter(row => row.type === 'after_shift').reduce((sum, row) => sum + row.outAbs - row.inAbs, 0);
+  const perRowBreak = w ? perRowBreakMinutes(regularBreaks, s.breakMinutes, w, s.dailyCutoffMinutes, span) : null;
   const spannedBreak =
-    flexibleBreak ?? perRowBreak ?? (w ? spannedBreakMinutes(s.breakPeriods, s.breakMinutes, w, s.dailyCutoffMinutes) : null);
+    flexibleBreak ?? perRowBreak ?? (w ? spannedBreakMinutes(regularBreaks, s.breakMinutes, w, s.dailyCutoffMinutes) : null);
   const durationBreak=intervals?fullFlexiBreakMinutes(intervals,s.breakPeriods,s.breakMinutes,s.flexibleBreakMinutes):null;
-  const workedMinutes = durationBreak!=null?Math.max(0,span-durationBreak):spannedBreak != null ? Math.max(0, span - spannedBreak) : workedFromSpan(span, s.breakMinutes);
+  const regularWorked = durationBreak != null ? Math.max(0, span - durationBreak) :
+    spannedBreak != null ? Math.max(0, span - spannedBreak) : workedFromSpan(span, s.breakMinutes);
+  const workedMinutes = Math.max(0, regularWorked - beforeBreak - afterBreak);
   // b7b886e2 — workday OT is the time worked BEYOND the shift's time-out, not the amount by which the day's
   // TOTAL overshot the scheduled duration. The old duration comparison ignored where the minutes fell, so a
   // late arrival who stayed an hour past the shift end accrued nothing, while an early arrival who left dead
@@ -1530,7 +1546,18 @@ function deriveAttendance(
     // already counts them, and adding them again through the rule's applyToEarlyOt would pay them twice.
     earlyOtMinutes = w?Math.max(0, Math.min(w.outAbs, w.startAbs) - w.inAbs):0;
     const firstInterval=intervals?.[0];
-    const fromWindows = otMinutesFromWindows(s.otWindows, w?{inAbs:w.inAbs,outAbs:w.outAbs}:firstInterval!, w?.startAbs??firstInterval!.inAbs,intervals);
+    let qualifyingIntervals = intervals;
+    if (w && externalDeductions.length) {
+      let cursor = w.inAbs;
+      const remaining: ClosedClockInterval[] = [];
+      for (const deduction of externalDeductions) {
+        if (cursor < deduction.inAbs) remaining.push({ inAbs: cursor, outAbs: deduction.inAbs });
+        cursor = Math.max(cursor, deduction.outAbs);
+      }
+      if (cursor < w.outAbs) remaining.push({ inAbs: cursor, outAbs: w.outAbs });
+      qualifyingIntervals = remaining;
+    }
+    const fromWindows = otMinutesFromWindows(s.otWindows, w?{inAbs:w.inAbs,outAbs:w.outAbs}:firstInterval!, w?.startAbs??firstInterval!.inAbs,qualifyingIntervals);
     otMinutes = fromWindows.total;
     otWindowRows = fromWindows.rows;
     otBasis = 'shiftWindows';
@@ -1539,8 +1566,8 @@ function deriveAttendance(
     // to be past, so it never takes this branch. In practice its override is required, which would route
     // it to `duration` anyway; the flag is checked here too so the basis cannot silently change if a shift
     // is ever saved without one.
-    otMinutes = Math.max(0, w.outAbs - Math.max(w.inAbs, w.endAbs));
-    earlyOtMinutes = Math.max(0, Math.min(w.outAbs, w.startAbs) - w.inAbs);
+    otMinutes = Math.max(0, w.outAbs - Math.max(w.inAbs, w.endAbs) - afterBreak);
+    earlyOtMinutes = Math.max(0, Math.min(w.outAbs, w.startAbs) - w.inAbs - beforeBreak);
     otBasis = 'window';
   } else {
     otMinutes = Math.max(0, workedMinutes - (s.normalMinutesOverride ?? s.scheduledMinutes));

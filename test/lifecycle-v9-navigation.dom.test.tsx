@@ -9,7 +9,7 @@ vi.mock('next/navigation',()=>({usePathname:()=>'/lifecycle/v9',useSearchParams:
 vi.mock('../lib/session',()=>({getSession:vi.fn()}));
 vi.mock('../core/entitlements',()=>({isModuleEnabled:vi.fn()}));
 vi.mock('../components/user-menu',()=>({UserMenu:()=>null}));
-vi.mock('../app/lifecycle/v9/actions',()=>({readV9Email:vi.fn(),readV9UpdatedEmail:vi.fn(),readV9Workflow:vi.fn(),readV9Case:vi.fn(),commandV9:vi.fn(),createV9Offboarding:vi.fn(),saveV9Config:vi.fn(),setupV9:vi.fn()}));
+vi.mock('../app/lifecycle/v9/actions',()=>({readV9PersonnelPreview:vi.fn().mockResolvedValue({ok:true,values:{}}),readV9Email:vi.fn(),readV9UpdatedEmail:vi.fn(),readV9Workflow:vi.fn(),readV9Case:vi.fn(),commandV9:vi.fn(),createV9Offboarding:vi.fn(),saveV9Config:vi.fn(),setupV9:vi.fn()}));
 import {Sidebar} from '../components/sidebar';
 import {V9Workspace} from '../app/lifecycle/v9/workspace';
 const permissions={onboarding:true,offboarding:true,administration:true};

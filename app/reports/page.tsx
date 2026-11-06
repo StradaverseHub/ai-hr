@@ -37,7 +37,7 @@ const PREDEFINED: Record<ReportCategory, { href: string; key: string }[]> = {
   ],
   leave: [{ href: '/analytics#leave', key: 'leaveAnalytics' }],
   payroll: [
-    { href: '/payroll/reports', key: 'payrollReports' },
+    { href: '/payroll/statutory-forms', key: 'payrollReports' },
     { href: '/payroll/transactions/view', key: 'payrollView' },
   ],
   claim: [{ href: '/claims', key: 'claims' }],

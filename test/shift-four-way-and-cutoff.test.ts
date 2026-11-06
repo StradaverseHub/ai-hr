@@ -451,6 +451,25 @@ describe('b8aa3466 item 7 — the daily cut-off', () => {
    * shift has its OWN cut-off clock instead of the hard-coded 12-hour guess. Pinned because the plan's own
    * BUILD NOTES call this combination out by name.
    */
+  it('keeps external breaks out of scheduled minutes and deducts their captured time once', async () => {
+    const shift = await nightShift({
+      dailyCutoffEnabled: true,
+      dailyCutoffTime: '02:00:00',
+      breakPeriods: [
+        { start: '21:15:00', end: '21:30:00', breakType: 'before_shift' },
+        { start: '23:45:00', end: '00:15:00' },
+        { start: '06:15:00', end: '06:45:00', breakType: 'after_shift', flexible: true, flexibleMinutes: 20 },
+        { start: '06:45:00', end: '07:00:00', breakType: 'after_shift', paid: true },
+      ],
+    });
+    const [row] = await owner.db.select().from(schema.shift).where(eq(schema.shift.id, shift.id));
+    expect(row.breakMinutes).toBe(30);
+    expect(row.breakPeriods?.map(bp => bp.breakType ?? 'in_shift')).toEqual(['before_shift', 'in_shift', 'after_shift', 'after_shift']);
+    const { out } = await punchDay(shift.id, TUE, '21:00:00', '07:00:00', `external_${randomUUID()}@t.local`);
+    expect(out.workedMinutes).toBe(535);
+    expect(out.otMinutes).toBe(40);
+  });
+
   it('a break that crosses midnight is still deducted correctly with the daily cut-off ALSO on', async () => {
     const shift = await nightShift({
       dailyCutoffEnabled: true,

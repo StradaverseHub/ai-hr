@@ -73,6 +73,10 @@
     "copyHint": "Copies every shift and rest day from the source dates onto the target, keeping each day's position. Re-running overwrites the same target dates.",
     "copiedDone": "Copied {rows} roster entries onto the target dates.",
     "copiedEmpty": "No roster entries found in the source dates to copy.",
+    "breakType": "Break type",
+    "breakTypeInShift": "In shift",
+    "breakTypeBeforeShift": "Before shift",
+    "breakTypeAfterShift": "After shift",
     "breakPaid": "Paid",
     "monthlyRoster": "Monthly roster",
     "legend": "Legend",
@@ -336,6 +340,7 @@
     "payrollTransactions": "Transaction Entry",
     "payrollTransactionView": "Transaction View",
     "payrollReports": "Reports",
+    "payrollReconciliation": "Payroll Reconciliation",
     "payrollStatutoryForms": "Statutory Forms",
     "payrollPaymentSubmission": "Payment Submission",
     "payrollSettings": "Settings",
@@ -15705,6 +15710,8 @@
     "builderOrdinaryRate": "Ordinary-rate divisor",
     "builderContextHint": "Set only the bindings used by this formula. Test the saved formula in Formula Builder with its employee, period and cycle.",
     "builderNoFormula": "Choose an active tested formula",
+    "builderNoneEligible": "No formulas are ready to use. Test and activate a formula in Pay Formula Builder.",
+    "builderSavedUnavailable": "{formulaId} (saved selection, currently unavailable)",
     "builderFormula": "Formula ID",
     "kind_formula_builder": "Pay Formula Builder"
   },
@@ -23394,6 +23401,11 @@
       "desc": "Overtime rates and backup-shift coverage.",
       "cta": "Open"
     },
+    "offlineClocking": {
+      "title": "Offline clocking",
+      "desc": "Lets employees clock in the mobile app without a connection. Punches upload later and are checked before they count.",
+      "cta": "Open"
+    },
     "registeredDevices": {
       "title": "Registered Clocking Devices",
       "desc": "View registered devices and revoke registrations.",
@@ -23442,6 +23454,18 @@
     }
   },
   "rewards": {
+    "compaRatio": "Compa-ratio",
+    "compaRatioBefore": "Salary vs midpoint before",
+    "compaRatioAfter": "Salary vs midpoint after",
+    "promotionNominations": "Promotion nominations",
+    "noPromotionNominations": "No visible nominations for these reviews.",
+    "promotionPrevious": "Previous reviews",
+    "promotionNext": "Next reviews",
+    "prelaunchDataCheck": "Data readiness check",
+    "dataCheckReady": "Ready",
+    "recommendationSaved": "Recommendation saved.",
+    "recommendationSaveFailed": "The recommendation could not be saved.",
+    "resetRecommendation": "Reset",
     "unitBonus": {
       "noReduction": "Salary reductions are not allowed in the salary review.",
       "appliesOnlyTo": "Applies only to this review: {company} / {unit}",
@@ -30634,6 +30658,30 @@
     "acknowledgementDate": "Date"
   },
   "rewardsAccess": {
+    "reviewActivity": {
+      "subject": "Person affected",
+      "clearSubject": "Clear person filter",
+      "title": "Review activity",
+      "review": "Review",
+      "actor": "Changed by",
+      "time": "Time",
+      "event": "Change",
+      "reason": "Reason",
+      "empty": "No matching activity.",
+      "events": {
+        "access-changed": "Access changed",
+        "cancelled": "Review cancelled",
+        "facts-imported": "Facts imported",
+        "final-pool-changed": "Final pool changed",
+        "lump-updated": "Lump sum updated",
+        "onehr-results-imported": "OneHR results imported",
+        "posted": "Awards posted",
+        "recommendation-updated": "Recommendation updated",
+        "routed": "Review moved",
+        "senior-membership-updated": "Senior membership updated",
+        "upload-source-refreshed": "Upload source refreshed"
+      }
+    },
     "wholeGroup": {
       "title": "Whole-group roles",
       "description": "Grant access for the whole group to eligible oversight role holders.",
@@ -31275,6 +31323,30 @@
     }
   },
   "payrollComparison": {
+    "employmentStatus": "Employment status at period end",
+    "previousPayCycles": "Pay cycles in the comparison period",
+    "previousPayCyclesHelp": "Leave blank to use the same cycles as the payroll period.",
+    "sourceVersionHistory": "Earlier source versions",
+    "newComparison": "New comparison",
+    "allRecordedItems": "All recorded pay items",
+    "itemsUnavailable": "Some pay items could not be compared from the recorded payroll: {codes}",
+    "saveTemplate": "Save as reconciliation template",
+    "businessUnit": "Business unit",
+    "position": "Position",
+    "employmentType": "Employment type",
+    "employeeSearch": "Find employee by name or code",
+    "groupBy": "Group by",
+    "noGrouping": "All / no grouping",
+    "reconciliationCaptured": "Source version captured",
+    "reconciliationStatus": "Comparison status",
+    "reconciliationReady": "Ready to review",
+    "hrRemark": "HR remark",
+    "hrRemarkEdit": "Edit HR remark",
+    "hrRemarkSave": "Save remark",
+    "hrRemarkConflict": "This remark changed. Review the latest version and try again.",
+    "hrRemarkFailed": "The remark could not be saved. Review the comparison and try again.",
+    "payCycles": "Pay cycles",
+    "sourceUpdated": "Payroll last processed",
     "comparisonTable": "Comparison results",
     "saveFailed": "Could not save the report. Your draft is kept. Try again.",
     "rolesRequired": "Select at least one role allowed to run this report.",
@@ -31351,6 +31423,7 @@
       "super_admin": "Super Admin"
     },
     "columns": {
+      "payItemCode": "Pay item code",
       "employeeCode": "Emp no.",
       "employeeName": "Employee",
       "department": "Department",
@@ -31367,6 +31440,8 @@
       "remarks": "Remarks"
     },
     "reasons": {
+      "noChange": "No change",
+      "payItemChanged": "Recorded pay item changed",
       "unexplained": "Unexplained",
       "increment": "Increment",
       "promotion": "Promotion",

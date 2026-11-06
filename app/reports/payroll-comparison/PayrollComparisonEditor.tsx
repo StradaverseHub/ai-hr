@@ -5,7 +5,7 @@ import * as Dialog from '@radix-ui/react-dialog';
 import {useTranslations} from 'next-intl';
 import {unstable_rethrow} from 'next/navigation';
 import Link from 'next/link';
-import {DEFAULT_PAYROLL_COMPARISON,PAYROLL_COMPARISON_COLUMNS,type PayrollComparisonDefinition} from '@/lib/payroll-period-comparison';
+import {ALL_RECORDED_PAY_ITEMS,DEFAULT_PAYROLL_COMPARISON,PAYROLL_COMPARISON_COLUMNS,type PayrollComparisonDefinition} from '@/lib/payroll-period-comparison';
 import {savePayrollComparisonAction,createPayrollComparisonSampleAction} from './actions';
 
 function Submit({pending}:{pending:boolean}){const t=useTranslations('payrollComparison');return <button disabled={pending} className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground disabled:opacity-50" type="submit">{t('saveRun')}</button>;}
@@ -30,7 +30,7 @@ export function PayrollComparisonEditor({payItems,initial=DEFAULT_PAYROLL_COMPAR
     <input type="hidden" name="id" value={id??''}/><input type="hidden" name="version" value={version??''}/>
     <div className="grid gap-4 sm:grid-cols-2">
       <label className="text-sm font-medium">{t('reportName')}<input className={field} name="name" required maxLength={150} value={draft.name} onChange={event=>change({name:event.target.value})}/></label>
-      <label className="text-sm font-medium">{t('payItem')}<select className={field} name="payItemCode" value={draft.payItemCode} onChange={event=>change({payItemCode:event.target.value})}>{items.map(item=><option key={item.code} value={item.code}>{item.code} · {item.name}</option>)}</select></label>
+      <label className="text-sm font-medium">{t('payItem')}<select className={field} name="payItemCode" value={draft.payItemCode} onChange={event=>change({payItemCode:event.target.value})}>{items.map(item=><option key={item.code} value={item.code}>{item.code===ALL_RECORDED_PAY_ITEMS?t('allRecordedItems'):`${item.code} · ${item.name}`}</option>)}</select></label>
       <label className="text-sm font-medium">{t('compareAgainst')}<select className={field} name="compareMode" value={draft.compareMode} onChange={event=>change({compareMode:event.target.value as 'previous'|'specific'})}><option value="previous">{t('automaticPrevious')}</option><option value="specific">{t('specificPeriod')}</option></select></label>
       {draft.compareMode==='specific'&&<label className="text-sm font-medium">{t('previousPeriod')}<input type="month" className={field} name="previousPeriod" required value={draft.previousPeriod??''} onChange={event=>change({previousPeriod:event.target.value})}/></label>}
       <label className="text-sm font-medium">{t('runs')}<select className={field} name="runType" value={draft.runType} onChange={event=>change({runType:event.target.value as 'regular'|'all'})}><option value="regular">{t('regular')}</option><option value="all">{t('allRuns')}</option></select></label>
