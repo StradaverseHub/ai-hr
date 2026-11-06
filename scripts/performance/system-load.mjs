@@ -157,9 +157,73 @@ const roleCounts=new Map(),roleOrdinals=new Map(fixture.users.map(user=>{const o
 const firstGroupRoutes=suite==='whole-system'?firstGroupNavigationRoutes(routePools,roleCounts):[];
 const pendingBrowserRequests=new WeakMap(),browserPdfRequests=new WeakMap();
 let browser,sampling,progressTimer,sqlSnapshotTimer,browserDiagnosticTimer,contextTemplates,lastPage,runMixedWorkflow;
+async function prepareDatabaseLockScope(){
+ const lockKeys=[];
+ for(const [index,tenant]of fixture.tenants.entries()){
+  for(const [kind,key]of [['access-configuration','access-configuration:'+tenant.tenantId],['payroll-history','payroll-history:'+tenant.tenantId],['pay-component-catalog',tenant.tenantId+':pay-component-catalog']])lockKeys.push({label:kind+':fixture-tenant-'+index,key});
+ }
+ for(const user of fixture.users)lockKeys.push({label:'employment:fixture-user-'+user.index,key:fixture.tenants[user.tenant].tenantId+':'+user.employmentId});
+ const hashedLocks=await db`select k,((hashtextextended(k,0)>>32)&4294967295)::text as classid,(hashtextextended(k,0)&4294967295)::text as objid from unnest(${lockKeys.map(row=>row.key)}::text[])k`;
+ const labelsByKey=new Map(lockKeys.map(row=>[row.key,row.label])),lockLabels=new Map(hashedLocks.map(row=>[row.classid+':'+row.objid+':1',labelsByKey.get(row.k)]));
+ // Audit's native key uses hashtext (int4), unlike the other bigint advisory namespaces.
+ for(const [index,tenant]of fixture.tenants.entries()){
+  const [row]=await db`select ((hashtext(${'audit-chain:'+tenant.tenantId})::bigint>>32)&4294967295)::text as classid,(hashtext(${'audit-chain:'+tenant.tenantId})::bigint&4294967295)::text as objid`;
+  lockLabels.set(row.classid+':'+row.objid+':1','audit-chain:fixture-tenant-'+index);
+ }
+ const accessLocks=[...lockLabels].filter(([,label])=>label.startsWith('access-configuration:')).map(([key])=>key);
+ return {lockLabels,accessLocks};
+}
+
+const waits=[];
+let samplingBusy=false;
+function sampleDatabaseLocks({lockLabels,accessLocks},phase,interval){
+ const rootStatements=new Map();
+ sampling=setInterval(async()=>{
+  if(samplingBusy)return;samplingBusy=true;
+  try{
+   const activity=await db`select state,coalesce(wait_event_type,'CPU-or-ready') as kind,count(*)::int as connections,
+      (count(*) filter(where usename='ai_hr_app'))::int as app_connections
+     from pg_stat_activity where datname=current_database() and backend_type='client backend' group by 1,2`;
+   const rows=activity.filter(row=>row.state==='active').map(({kind,connections})=>({kind,connections}));
+   const appConnections={
+    open:activity.reduce((total,row)=>total+row.app_connections,0),
+    active:activity.filter(row=>row.state==='active').reduce((total,row)=>total+row.app_connections,0),
+    idleInTransaction:activity.filter(row=>row.state?.startsWith('idle in transaction')).reduce((total,row)=>total+row.app_connections,0),
+    waitingOnLock:activity.filter(row=>row.state==='active'&&row.kind==='Lock').reduce((total,row)=>total+row.app_connections,0),
+   };
+   const locks=await db`select a.pid,pg_blocking_pids(a.pid)as blockers,l.mode,l.granted,l.classid::text,l.objid::text,l.objsubid,
+     a.usename='ai_hr_app' as app_session from pg_locks l join pg_stat_activity a on a.pid=l.pid
+     where a.datname=current_database()and l.database=(select oid from pg_database where datname=current_database())
+       and l.locktype='advisory' and (not l.granted or (
+       ${phase==='preflight'}::boolean and l.mode='ExclusiveLock'
+       and concat(l.classid,':',l.objid,':',l.objsubid)=any(${accessLocks}::text[])
+       )) order by l.granted desc,a.pid limit 20`;
+   const queuedLocks=locks.filter(row=>!row.granted);
+   appConnections.sampledAdvisoryWaiters=new Set(queuedLocks.filter(row=>row.app_session).map(row=>row.pid)).size;
+   const pids=[...new Set(locks.flatMap(row=>row.granted?[row.pid]:row.blockers??[]))].filter(pid=>Number.isSafeInteger(pid)&&pid>0).slice(0,20);
+   // Native holder state and normalized query IDs only; never capture statement parameters.
+   const holders=pids.length?await db.unsafe('select pid,state,wait_event_type,wait_event,query_id::text,extract(epoch from(clock_timestamp()-xact_start))as transaction_age_seconds from pg_stat_activity where datname=current_database()and pid in('+pids.map((_,i)=>'$'+(i+1)).join(',')+')',pids):[];
+   if(phase!=='preflight'||locks.length)waits.push({at:Date.now(),phase,rows,appConnections,blockingSessions:holders,
+     grantedAccessHolders:locks.filter(row=>row.granted).map(row=>({pid:row.pid,namespace:lockLabels.get(row.classid+':'+row.objid+':'+row.objsubid)})),
+     advisoryWaiters:queuedLocks.map(row=>({pid:row.pid,blockers:row.blockers,mode:row.mode,namespace:lockLabels.get(row.classid+':'+row.objid+':'+row.objsubid)??'unclassified'}))});
+   // The top-statement summary can omit rare root holders. Resolve only sampled root IDs,
+   // never queued waiters or parameters; all data belongs to the fictional runner fixture.
+   const queued=new Set(queuedLocks.map(row=>row.pid));
+   const missing=[...new Set(holders.filter(row=>!queued.has(row.pid)&&/^-?[0-9]+$/.test(row.query_id??'')&&!rootStatements.has(row.query_id)).map(row=>row.query_id))].slice(0,128-rootStatements.size);
+   if(missing.length)try{
+    const statements=await db`select queryid::text,left(query,2400) as normalized_query from pg_stat_statements where dbid=(select oid from pg_database where datname=current_database()) and queryid=ANY(${missing}::bigint[])`;
+    for(const row of statements)rootStatements.set(row.queryid,{...row,firstSeenAt:Date.now()});
+    writeFileSync(join(out,phase==='preflight'?'preflight-blocking-statements.json':'blocking-statements.json'),JSON.stringify({scope:'Normalized sampled root advisory-lock-holder queries only; no parameters; correlation is not exclusive causal attribution',maxQueries:128,statements:[...rootStatements.values()]},null,2));
+   }catch{report.blockingStatementCaptureUnavailable=true;}
+
+  }catch{}finally{samplingBusy=false;}
+ },interval);
+}
+
 async function main(){
 try{
  save();await db`select pg_stat_statements_reset()`;
+ const lockScope=await prepareDatabaseLockScope();
  const anonymous=await request(null,'/claims',undefined,307,false);assert(String(anonymous.headers.location).includes('/login'));report.boundaries.push({kind:'anonymous',passed:true});
  // Bound independent preflight roles to four lanes; every role still visits its full route pool.
  const pilotResults=await Promise.allSettled([employee,manager,hr,group].map(async user=>{
@@ -379,6 +443,7 @@ try{
    (report.browserLanguageSwitches??=[]).push({role:user.role,path,phase,locale,startedWith,usableWith:loadState?.(),elapsedMs:performance.now()-start,translatedHeading:true,usable:true,draftRetained:!!draft,draftReadyWaitMs});save();
   }
  }
+ sampleDatabaseLocks(lockScope,'preflight',250);
  // These six independent read-only contexts run concurrently, matching the loaded browser bound.
  // Route/role assertions, per-request deadlines and the overall driver deadline stay unchanged.
  await Promise.all([employee,manager,hr,group,fixture.users[254],fixture.users[251]].map(async user=>{
@@ -388,6 +453,7 @@ try{
   await page.screenshot({path:join(out,'browser-'+user.index+'.png'),fullPage:false});
   }finally{await ctx.close();}
  }));
+ clearInterval(sampling);sampling=null;
  // Additional concrete pages have explicit rendered checks, separate from HTTP route counts.
  await Promise.all([employee,manager,hr,group].map(async user=>{
   const ctx=await context(user),page=await ctx.newPage();
@@ -666,54 +732,9 @@ try{
   assert.equal(report.homeCardFailures.length,0,'Home rendered a handled card/summary failure');
   report.preflightPassed=true;save();return;
  }
- const lockKeys=[];
- for(const [index,tenant]of fixture.tenants.entries()){
-  for(const [kind,key]of [['access-configuration','access-configuration:'+tenant.tenantId],['payroll-history','payroll-history:'+tenant.tenantId],['pay-component-catalog',tenant.tenantId+':pay-component-catalog']])lockKeys.push({label:kind+':fixture-tenant-'+index,key});
- }
- for(const user of fixture.users)lockKeys.push({label:'employment:fixture-user-'+user.index,key:fixture.tenants[user.tenant].tenantId+':'+user.employmentId});
- const hashedLocks=await db`select k,((hashtextextended(k,0)>>32)&4294967295)::text as classid,(hashtextextended(k,0)&4294967295)::text as objid from unnest(${lockKeys.map(row=>row.key)}::text[])k`;
- const labelsByKey=new Map(lockKeys.map(row=>[row.key,row.label])),lockLabels=new Map(hashedLocks.map(row=>[row.classid+':'+row.objid+':1',labelsByKey.get(row.k)]));
- // Audit's native key uses hashtext (int4), unlike the other bigint advisory namespaces.
- for(const [index,tenant]of fixture.tenants.entries()){
-  const [row]=await db`select ((hashtext(${'audit-chain:'+tenant.tenantId})::bigint>>32)&4294967295)::text as classid,(hashtext(${'audit-chain:'+tenant.tenantId})::bigint&4294967295)::text as objid`;
-  lockLabels.set(row.classid+':'+row.objid+':1','audit-chain:fixture-tenant-'+index);
- }
+ clearInterval(sampling);
  await db`select pg_stat_statements_reset()`;
- const waits=[],rootStatements=new Map();let samplingBusy=false;
- sampling=setInterval(async()=>{
-  if(samplingBusy)return;samplingBusy=true;
-  try{
-   const activity=await db`select state,coalesce(wait_event_type,'CPU-or-ready') as kind,count(*)::int as connections,
-      (count(*) filter(where usename='ai_hr_app'))::int as app_connections
-     from pg_stat_activity where datname=current_database() and backend_type='client backend' group by 1,2`;
-   const rows=activity.filter(row=>row.state==='active').map(({kind,connections})=>({kind,connections}));
-   const appConnections={
-    open:activity.reduce((total,row)=>total+row.app_connections,0),
-    active:activity.filter(row=>row.state==='active').reduce((total,row)=>total+row.app_connections,0),
-    idleInTransaction:activity.filter(row=>row.state?.startsWith('idle in transaction')).reduce((total,row)=>total+row.app_connections,0),
-    waitingOnLock:activity.filter(row=>row.state==='active'&&row.kind==='Lock').reduce((total,row)=>total+row.app_connections,0),
-   };
-   const locks=await db`select a.pid,pg_blocking_pids(a.pid)as blockers,l.mode,l.classid::text,l.objid::text,l.objsubid,
-     a.usename='ai_hr_app' as app_session from pg_locks l join pg_stat_activity a on a.pid=l.pid
-     where a.datname=current_database()and l.database=(select oid from pg_database where datname=current_database())
-       and l.locktype='advisory'and not l.granted order by a.pid limit 20`;
-   appConnections.sampledAdvisoryWaiters=new Set(locks.filter(row=>row.app_session).map(row=>row.pid)).size;
-   const pids=[...new Set(locks.flatMap(row=>row.blockers??[]))].filter(pid=>Number.isSafeInteger(pid)&&pid>0).slice(0,20);
-   // Native holder state and normalized query IDs only; never capture statement parameters.
-   const holders=pids.length?await db.unsafe('select pid,state,wait_event_type,wait_event,query_id::text,extract(epoch from(clock_timestamp()-xact_start))as transaction_age_seconds from pg_stat_activity where datname=current_database()and pid in('+pids.map((_,i)=>'$'+(i+1)).join(',')+')',pids):[];
-   waits.push({at:Date.now(),rows,appConnections,blockingSessions:holders,advisoryWaiters:locks.map(row=>({pid:row.pid,blockers:row.blockers,mode:row.mode,namespace:lockLabels.get(row.classid+':'+row.objid+':'+row.objsubid)??'unclassified'}))});
-   // The top-statement summary can omit rare root holders. Resolve only sampled root IDs,
-   // never queued waiters or parameters; all data belongs to the fictional runner fixture.
-   const queued=new Set(locks.map(row=>row.pid));
-   const missing=[...new Set(holders.filter(row=>!queued.has(row.pid)&&/^-?[0-9]+$/.test(row.query_id??'')&&!rootStatements.has(row.query_id)).map(row=>row.query_id))].slice(0,128-rootStatements.size);
-   if(missing.length)try{
-    const statements=await db`select queryid::text,left(query,2400) as normalized_query from pg_stat_statements where dbid=(select oid from pg_database where datname=current_database()) and queryid=ANY(${missing}::bigint[])`;
-    for(const row of statements)rootStatements.set(row.queryid,{...row,firstSeenAt:Date.now()});
-    writeFileSync(join(out,'blocking-statements.json'),JSON.stringify({scope:'Normalized sampled root advisory-lock-holder queries only; no parameters; correlation is not exclusive causal attribution',maxQueries:128,statements:[...rootStatements.values()]},null,2));
-   }catch{report.blockingStatementCaptureUnavailable=true;}
-
-  }catch{}finally{samplingBusy=false;}
- },1000);
+ sampleDatabaseLocks(lockScope,'loaded',1000);
  const resourceCpuBefore=resourceCpu(),appCpuBefore=appCpu(),driverCpuBefore=process.cpuUsage();
  const offset=samples.length,started=performance.now(),steadyStart=started+10000,steadyUntil=steadyStart+steadyHoldMs;
  const progress={launched:0,active:0,peakActive:0,completed:0,failed:0,iterations:0};
@@ -950,7 +971,7 @@ try{
   )),'Claims and Personnel language switches must start during steady 500-user load');
  }
  assert.equal(report.browserErrors.length,0,'browser runtime errors');assert.equal(report.browserLoad.errors.length,0,'loaded browser journeys');if(suite==='whole-system')assert(['baseline','loaded'].every(phase=>report.orgExplorerJourneys?.some(row=>row.phase===phase&&row.status==='passed')),'Org browser scope and language journeys did not finish');if(fixture.assistantHistory)assert(aiBrowserActors.every(user=>['saved-history-list','saved-history-open','saved-history-return'].every(step=>report.browserAssistantHistory?.some(row=>row.phase==='loaded'&&row.userIndex===user.index&&row.step===step&&row.targetMet))),'populated saved-history browser navigation incomplete or above1s target');assert(report.latencyTargetMet,'500-user HTTP p95 latency target was not met');
-}catch(error){report.browserPendingRequests??=[...(pendingBrowserRequests.get(lastPage)?.values()??[])].map(row=>({...row,elapsedMs:performance.now()-row.startedMs}));if(lastPage&&!lastPage.isClosed())await lastPage.screenshot({path:join(out,'browser-failure.png'),fullPage:false}).catch(()=>{});report.error=String(error.message).slice(0,350);writeFileSync(join(out,'http-samples.json'),JSON.stringify(samples));await databaseSnapshot('failure').catch(()=>{});save();throw error;}
+}catch(error){report.browserPendingRequests??=[...(pendingBrowserRequests.get(lastPage)?.values()??[])].map(row=>({...row,elapsedMs:performance.now()-row.startedMs}));if(lastPage&&!lastPage.isClosed())await lastPage.screenshot({path:join(out,'browser-failure.png'),fullPage:false}).catch(()=>{});report.error=String(error.message).slice(0,350);writeFileSync(join(out,'http-samples.json'),JSON.stringify(samples));writeFileSync(join(out,'database-waits.json'),JSON.stringify(waits));await databaseSnapshot('failure').catch(()=>{});save();throw error;}
 finally{
  if(sqlSnapshotTimer)clearInterval(sqlSnapshotTimer);if(browserDiagnosticTimer)clearInterval(browserDiagnosticTimer);if(progressTimer)clearInterval(progressTimer);if(sampling)clearInterval(sampling);
  report.shutdown={browserClosed:false,nativeAuditPoolClosed:nativeAuditClient===undefined,driverPoolClosed:false};
