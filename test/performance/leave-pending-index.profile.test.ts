@@ -26,7 +26,7 @@ it.skipIf(!requested)('compares a partial Leave pending header index against the
   kind:'LEAVE_PENDING_HEADER_INDEX_AB_COMPONENT_ONLY',
   releaseEligible:false,
   fixture:{tenants:2,retainedPerTenant,pendingPerTenant},
-  limitations:'Synthetic sparse queue, one authorized actor, no concurrent traffic or write-cost measurement.',
+  limitations:'Synthetic sparse queue and one authorized actor, without concurrent traffic. Write probes measure isolated table DML under application RLS, with RETURNING to verify affected rows. They exclude service workflow, audit and commit latency.',
  };
  const save=()=>writeFileSync(join(evidenceDir,'leave-pending-index.json'),JSON.stringify(report,null,2));
  const date=addDaysIso(todayInKualaLumpur(),-180);
@@ -60,7 +60,8 @@ it.skipIf(!requested)('compares a partial Leave pending header index against the
  expect(counts[0]).toEqual({total:2*(retainedPerTenant+pendingPerTenant),pending:2*pendingPerTenant});
  await owner.client`analyze public.leave_request`;
  report.counts=counts[0];
- const phases:unknown[]=[];
+ const phases:unknown[]=[],writes:unknown[]=[];
+ report.writes=writes;
  const read=()=>pendingLeaveTaskMetadata(ctx,[base.companyId,foreign.companyId]);
  let reference:Awaited<ReturnType<typeof read>>|undefined;
  async function measure(phase:string){
@@ -88,10 +89,12 @@ it.skipIf(!requested)('compares a partial Leave pending header index against the
   report.phases=phases;
   save();
  }
+ const createCandidateIndex=()=>owner.client`create index performance_leave_pending_header_ab on public.leave_request
+  (tenant_id,employment_id) include (id,created_at) where status='pending'`;
+ const dropCandidateIndex=()=>owner.client`drop index public.performance_leave_pending_header_ab`;
  await measure('baseline');
  const started=performance.now();
- await owner.client`create index performance_leave_pending_header_ab on public.leave_request
-  (tenant_id,employment_id) include (id,created_at) where status='pending'`;
+ await createCandidateIndex();
  try{
   report.indexBuildMs=performance.now()-started;
   const [size]=await owner.client<{bytes:number}[]>`select pg_relation_size('public.performance_leave_pending_header_ab')::int as bytes`;
@@ -99,7 +102,60 @@ it.skipIf(!requested)('compares a partial Leave pending header index against the
   await measure('candidate');
   await measure('candidate-repeat');
  }finally{
-  await owner.client`drop index public.performance_leave_pending_header_ab`;
+  await dropCandidateIndex();
  }
  await measure('baseline-repeat');
+
+ const rolledBack=Error('Rollback synthetic Leave write probe');
+ const targetIds=sql.join(own.ids.map(id=>sql`${id}::uuid`),sql`, `);
+ const target=sql`tenant_id=${base.tenantId}::uuid and status='pending' and id in (${targetIds})`;
+ const operations={
+  insertPending:sql`insert into public.leave_request
+   (tenant_id,employment_id,leave_type_id,start_date,end_date,days,status)
+   select ${base.tenantId}::uuid,${own.employee.employmentId}::uuid,${base.annualLeaveTypeId}::uuid,
+          ${date}::date,${date}::date,1,'pending'
+   from generate_series(1,${pendingPerTenant}::integer) returning id`,
+  decidePending:sql`update public.leave_request set status='rejected',decided_at=now()
+   where ${target} returning id`,
+  deletePending:sql`delete from public.leave_request where ${target} returning id`,
+ };
+ type WritePlan={
+  Plan:{'Actual Rows':number;'WAL Records'?:number;'WAL Bytes'?:number};
+  'Execution Time':number;
+ };
+ async function measureWrites(phase:string){
+  for(const [operation,query] of Object.entries(operations)){
+   try{
+    await withTenant(ctx,async tx=>{
+     const [identity]=await tx.execute<{role:string}>(sql`select current_user as role`);
+     expect(identity.role).toBe('ai_hr_app');
+     const started=performance.now();
+     const [row]=await tx.execute<{'QUERY PLAN':WritePlan[]}>(sql`explain(analyze,buffers,wal,format json) ${query}`);
+     const elapsedMs=performance.now()-started;
+     const [plan]=row['QUERY PLAN'];
+     expect(plan.Plan['Actual Rows']).toBe(pendingPerTenant);
+     writes.push({phase,operation,elapsedMs,executionMs:plan['Execution Time'],role:identity.role,
+      walRecords:plan.Plan['WAL Records']??0,walBytes:plan.Plan['WAL Bytes']??0,plan});
+     throw rolledBack;
+    });
+   }catch(error){if(error!==rolledBack)throw error;}
+   save();
+  }
+ }
+ // Separate write rounds leave the original read comparison free of rolled-back tuple versions.
+ await measureWrites('baseline');
+ await createCandidateIndex();
+ try{
+  await measureWrites('candidate');
+  await measureWrites('candidate-repeat');
+ }finally{
+  await dropCandidateIndex();
+ }
+ await measureWrites('baseline-repeat');
+ const [remaining]=await owner.client<{total:number;pending:number}[]>`select count(*)::int as total,
+  count(*) filter(where status='pending')::int as pending from public.leave_request`;
+ expect(remaining).toEqual(counts[0]);
+ expect((await read()).map(row=>row.id)).toEqual(reference?.map(row=>row.id));
+ report.writeProbesRolledBack=true;
+ save();
 },180_000);
