@@ -32,5 +32,5 @@ export default async function RewardsPage({searchParams}:{searchParams:Promise<R
       </li>)}
     </ul>
   </details>}
-  <RewardReviewList {...list} companyGroups={companyGroups} filters={sp} canConfigure={choices.companies.length>0}/></div>;
+  <RewardReviewList {...list} overview canOpenApprovals={destinations.includes('/rewards/approvals')} companyGroups={companyGroups} filters={sp} canConfigure={choices.companies.length>0}/></div>;
 }

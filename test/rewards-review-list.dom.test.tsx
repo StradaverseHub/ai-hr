@@ -19,6 +19,14 @@ describe('Rewards review overview',()=>{
   expect(screen.getByRole('link',{name:'Waiting for my action: 1'}).getAttribute('href')).toBe('/rewards?waiting=1');
   expect(screen.getByText(/1 review is in progress.*Executive Chairman/)).toBeTruthy();
  });
+ it('opens each visible overview card and only offers approvals to an admitted viewer', () => {
+  render(<NextIntlClientProvider locale="en" messages={en}><RewardReviewList rows={[base, {...second, roles: [], blocking: null}]} filters={{}} emptyReason={null} canConfigure={false} year={2026} overview canOpenApprovals/></NextIntlClientProvider>);
+  const [retail, wholesale] = screen.getAllByRole('listitem');
+  expect(within(retail).getByRole('link', { name: 'Open review' })).toHaveAttribute('href', '/rewards/r1');
+  expect(within(retail).getByRole('link', { name: 'Approvals Board' })).toHaveAttribute('href', '/rewards/approvals?group=co&cycle=cycle&unit=bu');
+  expect(within(wholesale).queryByRole('link', { name: 'Approvals Board' })).toBeNull();
+  expect(within(wholesale).queryByText('76.2%')).toBeNull();
+ });
  it('keeps the walkthrough anchor on the rendered review table and empty state',()=>{
   const populated=show([base]);
   const tableAnchor=populated.container.querySelector('[data-tour="rewards-review-units"]');
