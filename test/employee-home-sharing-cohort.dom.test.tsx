@@ -7,6 +7,9 @@ import {HomeTeamCard} from '../components/employee-home/team-card';
 import {HomeCelebrationsCard} from '../components/employee-home/celebrations-card';
 import {HomeNoticesCard} from '../components/employee-home/notices-card';
 import {HomeTimeOffCard} from '../components/employee-home/time-off-card';
+import {HomeGreetingCard} from '../components/employee-home/greeting-card';
+import {HomeSummaryOverview} from '../components/employee-home/summary-overview';
+import {HomeTasksCard} from '../components/employee-home/tasks-card';
 import en from '../messages/en.json';
 import ms from '../messages/ms.json';
 import {todayInKualaLumpur} from '../lib/hr-date';
@@ -122,10 +125,16 @@ it('keeps Team paging and return to first page on the standalone route',async()=
 });
 
 
-it('renders four Home cards from one stream while a failed card retries alone',async()=>{
+it('delivers seven Home reads in one stream while a failed card retries alone',async()=>{
  const stream=responseStream();
  const notices={version:1,employmentId:own,total:0,unread:0,acknowledgementRequired:0,items:[]};
  const timeOff={version:1,employmentId:own,asOf:date,canApply:false,balances:[],nextApproved:null};
+ const serverNow=new Date().toISOString();
+ const greeting={version:1,employmentId:own,serverNow,displayDate:date,timeZone:'Asia/Kuala_Lumpur',
+  message:'Fictional greeting',templateKey:'greetingMorning',photoHref:null};
+ const summary={version:1,employmentId:own,serverNow,items:[],calm:'Fictional calm update',quickActions:[]};
+ const tasks={version:1,employmentId:own,grain:'account',asOf:date,total:0,overdue:0,effortMinutes:0,
+  unestimated:0,page:1,pages:1,pageSize:12,items:[]};
  fetcher.mockResolvedValueOnce(stream.response);
  render(<NextIntlClientProvider locale="en" messages={en} timeZone="Asia/Kuala_Lumpur">
   <HomeInitialSharing employmentId={own}>
@@ -133,13 +142,18 @@ it('renders four Home cards from one stream while a failed card retries alone',a
    <HomeCelebrationsCard employmentId={own}/>
    <HomeNoticesCard employmentId={own}/>
    <HomeTimeOffCard employmentId={own}/>
+   <HomeGreetingCard employmentId={own}><HomeSummaryOverview employmentId={own}/></HomeGreetingCard>
+   <HomeTasksCard employmentId={own}/>
   </HomeInitialSharing>
  </NextIntlClientProvider>);
  await waitFor(()=>expect(fetcher).toHaveBeenCalledOnce());
  const initial=new URL(fetcher.mock.calls[0][0],'http://local');
  expect(initial.pathname).toBe('/api/home/sharing-initial');
- expect(initial.searchParams.getAll('card').sort()).toEqual(['celebrations','notices','team','timeOff']);
+ expect(initial.searchParams.getAll('card').sort()).toEqual(['celebrations','greeting','notices','summary','tasks','team','timeOff']);
  stream.push({version:1,card:'timeOff',status:200,value:timeOff});
+ stream.push({version:1,card:'greeting',status:200,value:greeting});
+ stream.push({version:1,card:'summary',status:200,value:summary});
+ stream.push({version:1,card:'tasks',status:503});
  expect(await screen.findByText(labels.timeOff.empty)).toBeVisible();
  const noticeCard=screen.getByRole('region',{name:en.notices.myTitle});
  expect(noticeCard).toHaveAttribute('aria-busy','true');
@@ -148,12 +162,20 @@ it('renders four Home cards from one stream while a failed card retries alone',a
  stream.push({version:1,card:'notices',status:503});
  stream.close();
  await within(noticeCard).findByRole('alert');
+ const taskCard=screen.getByRole('region',{name:labels.tasks.title});
+ await within(taskCard).findByRole('alert');
  expect(await screen.findByText(labels.team.off)).toBeVisible();
  expect(await screen.findByText(labels.celebrations.off)).toBeVisible();
+ expect(await screen.findByText(greeting.message)).toBeVisible();
+ expect(await screen.findByText(summary.calm)).toBeVisible();
  fetcher.mockResolvedValueOnce(Response.json(notices));
  fireEvent.click(within(noticeCard).getByRole('button',{name:labels.notices.retry+': '+en.notices.myTitle}));
  expect(await within(noticeCard).findByText(en.notices.myEmpty)).toBeVisible();
+ fetcher.mockResolvedValueOnce(Response.json(tasks));
+ fireEvent.click(within(taskCard).getByRole('button',{name:labels.tasks.retry+': '+labels.tasks.title}));
+ expect(await within(taskCard).findByText(labels.tasks.empty)).toBeVisible();
  expect(fetcher.mock.calls.map(([url])=>new URL(url,'http://local').pathname)).toEqual([
-  '/api/home/sharing-initial','/api/home/notices',
+  '/api/home/sharing-initial','/api/home/notices','/api/home/tasks',
  ]);
+ expect(new URL(fetcher.mock.calls[2][0],'http://local').searchParams.get('page')).toBe('1');
 });

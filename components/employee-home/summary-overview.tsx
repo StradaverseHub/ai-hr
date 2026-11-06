@@ -7,11 +7,13 @@ import {Button} from '@/components/ui';
 import {useNavIndex} from '@/components/nav-index-context';
 import {deliverHomeCard,type HomeCardDelivery} from '@/lib/employee-home-delivery';
 import {homeQuickActionHref,homeSummaryHref,validateEmployeeHomeSummary,type EmployeeHomeSummary} from '@/lib/employee-home-summary';
+import {useHomeInitialSharing} from './sharing-cohort';
 
 /** An independently delivered subsection: a greeting failure cannot prevent these reads, and a
  * summary failure cannot replace the greeting/search or assert a calm day. No write on mount. */
 export function HomeSummaryOverview({employmentId}:{employmentId:string}){
  const t=useTranslations('employeeHome.summary'),actions=useTranslations('employeeHome.quickActions'),locale=useLocale();
+ const subscribe=useHomeInitialSharing();
  const {entries}=useNavIndex(),titleId=React.useId(),quickId=React.useId();
  const [attempt,setAttempt]=React.useState(0),[refresh,setRefresh]=React.useState(0);
  const key=JSON.stringify([employmentId,locale,attempt,refresh]);
@@ -26,12 +28,16 @@ export function HomeSummaryOverview({employmentId}:{employmentId:string}){
  React.useEffect(()=>{
   const controller=new AbortController();let current=true;
   void deliverHomeCard(async signal=>{
-   const response=await fetch('/api/home/summary?'+new URLSearchParams({employmentId}),{signal,cache:'no-store',credentials:'same-origin'});
-   if(!response.ok)throw Error('Home summary unavailable');
-   return validateEmployeeHomeSummary(await response.json(),employmentId);
+   async function standalone():Promise<unknown>{
+    const response=await fetch('/api/home/summary?'+new URLSearchParams({employmentId}),{signal,cache:'no-store',credentials:'same-origin'});
+    if(!response.ok)throw Error('Home summary unavailable');
+    return response.json();
+   }
+   const value=subscribe&&attempt===0&&refresh===0?await subscribe('summary',signal,standalone):await standalone();
+   return validateEmployeeHomeSummary(value,employmentId);
   },{signal:controller.signal}).then(result=>{if(current&&result.state!=='cancelled')setView({key,result});});
   return ()=>{current=false;controller.abort();};
- },[key,employmentId]);
+ },[key,employmentId,subscribe,attempt,refresh]);
  const routes=new Set(entries.map(row=>row.href.split('?')[0]));
  // The rail is the owner of visible navigation. Notices/calendar/payslip/profile are own-profile children;
  // they additionally require the server's current subject/module/field/publication capability.

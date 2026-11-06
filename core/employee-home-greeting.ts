@@ -3,7 +3,7 @@ import {and,eq,sql} from 'drizzle-orm';
 import {withTenant,type SessionContext} from '../db/client';
 import {person} from '../db/schema';
 import {readEmployeeHomeGreetingIdentityTx} from './employee-home';
-import {readOwnEmployeeHomeConfiguration} from './employee-home-configuration';
+import {readOwnEmployeeHomeConfiguration,type OwnHomeConfigurationRead} from './employee-home-configuration';
 import {getEmployeeHomeDisplayPreferences} from './dashboard-prefs';
 import {approvedLeavePresenceByEmploymentTx} from '../packs/leave/service';
 import {workedDayKindForTx} from '../packs/attendance/service';
@@ -38,11 +38,11 @@ async function returnFromLeave(ctx:SessionContext,employmentId:string,today:stri
 /** Display time follows the saved account preference (default platform timezone). Employment/leave
  * dates stay on their canonical business clock. Birthday is matched by month/day in the display zone;
  * Feb29 has no invented Feb28/Mar1 substitute. Anniversary uses this selected employment's hire date. */
-export async function readEmployeeHomeGreeting(ctx:SessionContext,employmentId:string,locale:Locale,now=new Date()):Promise<EmployeeHomeGreeting>{
+export async function readEmployeeHomeGreeting(ctx:SessionContext,employmentId:string,locale:Locale,now=new Date(),configurationRead?:OwnHomeConfigurationRead):Promise<EmployeeHomeGreeting>{
  // Configuration already binds the exact own employment and reads its hire date.
  const today=todayInKualaLumpur(now);
  const [view,{identity,display,birthday}]=await Promise.all([
-  readOwnEmployeeHomeConfiguration(ctx,employmentId),
+  configurationRead?.read(ctx,employmentId)??readOwnEmployeeHomeConfiguration(ctx,employmentId),
   withTenant(ctx,async tx=>{
    const identity=await readEmployeeHomeGreetingIdentityTx(tx,ctx,employmentId);
    const preferences=await getEmployeeHomeDisplayPreferences(ctx,tx);

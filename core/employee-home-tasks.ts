@@ -1,6 +1,6 @@
 /** Home projects the existing workflow owners. It never creates tasks, decisions or capabilities. */
 import type {SessionContext} from '../db/client';
-import {readOwnEmployeeHomeConfiguration} from './employee-home-configuration';
+import {readOwnEmployeeHomeConfiguration,type OwnHomeConfigurationRead} from './employee-home-configuration';
 import {countPendingTasks,listPendingTasks,pendingTaskSummary} from './approvals-inbox';
 import {pendingStandardFeedbackTaskMetadata,pendingOnehrFeedbackTaskMetadata} from '../packs/performance/service';
 import {onboardingAssignedTaskMetadata} from '../packs/lifecycle/service';
@@ -22,8 +22,8 @@ export async function countEmployeeHomeTasks(ctx:SessionContext):Promise<number>
  return inboxCount+standardFeedback.length+onehrFeedback.length+onboarding.length;
 }
 
-export async function readEmployeeHomeTasks(ctx:SessionContext,employmentId?:string,page?:number):Promise<EmployeeHomeTasks>{
- const {configuration, employmentId: subjectId} = await readOwnEmployeeHomeConfiguration(ctx, employmentId);
+export async function readEmployeeHomeTasks(ctx:SessionContext,employmentId?:string,page?:number,configurationRead?:OwnHomeConfigurationRead):Promise<EmployeeHomeTasks>{
+ const {configuration, employmentId: subjectId} = await (configurationRead?.read(ctx,employmentId)??readOwnEmployeeHomeConfiguration(ctx,employmentId));
  // Selection chooses the company's presentation configuration. Work remains account-grained: a
  // selected own employment must not hide assignments addressed to another of the actor's employments.
  // listPendingTasks already carries replacement-leave decisions; reading them again here duplicated every one,

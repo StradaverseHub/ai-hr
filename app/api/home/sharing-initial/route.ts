@@ -1,10 +1,16 @@
 import {getSession} from '@/lib/session';
+import {getLocale,getTranslations} from 'next-intl/server';
+import {isLocale} from '@/i18n/config';
+import {OwnHomeConfigurationRead} from '@/core/employee-home-configuration';
+import {readEmployeeHomeGreeting} from '@/core/employee-home-greeting';
+import {readEmployeeHomeSummary} from '@/core/employee-home-summary';
+import {readEmployeeHomeTasks} from '@/core/employee-home-tasks';
+import {validateEmployeeHomeSummary} from '@/lib/employee-home-summary';
 import {
- DEFAULT_HOME_SHARING_CARDS,HOME_SHARING_MAX_FRAME_BYTES,isHomeSharingCard,HOME_SHARING_STREAM,type HomeSharingFrame,
+ DEFAULT_HOME_SHARING_CARDS,HOME_SHARING_MAX_FRAME_BYTES,isHomeSharingCard,HOME_SHARING_STREAM,type HomeSharingCard,type HomeSharingFrame,
 } from '@/lib/employee-home-sharing-cohort';
 import {celebrationsResponse,noticesResponse,sharingError,sharingHeaders,teamResponse,timeOffResponse} from '../sharing-responses';
-
-const readers={team:teamResponse,celebrations:celebrationsResponse,notices:noticesResponse,timeOff:timeOffResponse};
+import {greetingProjection,tasksProjection} from '../personal-projections';
 
 /** One fresh web session and independent live reads for the requested Home cards. */
 export async function GET(request:Request){
@@ -18,6 +24,27 @@ export async function GET(request:Request){
    return Response.json({error:'invalid'},{status:400,headers:sharingHeaders});
   }
   const cards=selected.length?selected.filter(isHomeSharingCard):DEFAULT_HOME_SHARING_CARDS;
+  const configurationRead=new OwnHomeConfigurationRead(session,employmentId);
+  const readLocale=async()=>{
+   const value=await getLocale();
+   if(!isLocale(value))throw Error('Home locale unavailable');
+   return value;
+  };
+  let language:ReturnType<typeof readLocale>|undefined;
+  const locale=()=>language??=readLocale();
+  const readers:Record<HomeSharingCard,()=>Promise<unknown>>={
+   team:()=>teamResponse(session,employmentId),
+   celebrations:()=>celebrationsResponse(session,employmentId),
+   notices:()=>noticesResponse(session,employmentId),
+   timeOff:()=>timeOffResponse(session,employmentId),
+   greeting:async()=>greetingProjection(await readEmployeeHomeGreeting(session,employmentId,await locale(),undefined,configurationRead)),
+   summary:async()=>{
+    const [language,t]=await Promise.all([locale(),getTranslations('employeeHome.calendar')]);
+    const value=await readEmployeeHomeSummary(session,employmentId,language,t('replacement'),configurationRead);
+    return validateEmployeeHomeSummary(value,employmentId);
+   },
+   tasks:async()=>tasksProjection(await readEmployeeHomeTasks(session,employmentId,1,configurationRead)),
+  };
   const encoder=new TextEncoder();
   let detach=()=>{};
   const body=new ReadableStream<Uint8Array>({
@@ -35,7 +62,7 @@ export async function GET(request:Request){
     const reads=cards.map(async card=>{
      let encoded:Uint8Array;
      try{
-      const value=await readers[card](session,employmentId);
+      const value=await readers[card]();
       const frame:HomeSharingFrame={version:1,card,status:200,value};
       encoded=encoder.encode(JSON.stringify(frame)+'\n');
       if(encoded.byteLength>HOME_SHARING_MAX_FRAME_BYTES)throw new Error('Home sharing frame too large');

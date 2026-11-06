@@ -21,7 +21,11 @@ function fixture(){
  const report={boundaries:[]};
  const request=vi.fn();
  const replay=createHomeHttpReplay({base,request,report});
- const observe=(path:string)=>page.emit('request',{method:()=> 'GET',url:()=>base+path+'?employmentId='+user.employmentId});
+ const observe=(path:string,cards:readonly string[]=[])=>{
+  const query=new URLSearchParams({employmentId:user.employmentId});
+  for(const card of cards)query.append('card',card);
+  page.emit('request',{method:()=> 'GET',url:()=>base+path+'?'+query});
+ };
  return {page,report,request,replay,observe};
 }
 
@@ -51,6 +55,31 @@ it('discovers the actual shared request, validates both frames, and separately c
   {kind:'foreign-own-home-sharing-cohort',role:'employee',passed:true},
  ]);
  expect(report).toMatchObject({homeApiTraffic:{sharingFrames:{'employee:team':1,'employee:celebrations':1}}});
+});
+
+it('verifies the requested greeting, summary, and account task frames and refuses every foreign frame',async()=>{
+ const {page,report,request,replay,observe}=fixture();
+ const selected=['greeting','summary','tasks'] as const;
+ const stop=replay.track(page,user,'/');
+ observe(cohort,selected);
+ stop();
+ const serverNow=new Date().toISOString();
+ const own={version:1,employmentId:user.employmentId};
+ const projections={
+  greeting:{...own,serverNow,displayDate:date,timeZone:'Asia/Kuala_Lumpur',message:'Fictional greeting',templateKey:'greetingMorning',photoHref:null},
+  summary:{...own,serverNow,items:[],calm:null,quickActions:[]},
+  tasks:{...own,grain:'account',asOf:date,total:0,items:[]},
+ };
+ request.mockImplementation(async(_actor,path)=>{
+  const denied=path.includes(foreign.employmentId);
+  return {headers,content:frames(selected.map(card=>denied
+   ?{version:1,card,status:403}
+   :{version:1,card,status:200,value:projections[card]}))};
+ });
+ await replay.read(user);
+ await replay.boundary(user,foreign);
+ expect(report).toMatchObject({homeApiTraffic:{sharingFrames:{'employee:greeting':1,'employee:summary':1,'employee:tasks':1}}});
+ expect(report.boundaries).toEqual([{kind:'foreign-own-home-sharing-cohort',role:'employee',passed:true}]);
 });
 
 it.each([

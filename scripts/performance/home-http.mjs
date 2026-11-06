@@ -64,6 +64,9 @@ export function createHomeHttpReplay({base,request,report}){
      else if(card==='celebrations')validateHomeCelebrationResponse(value,user.employmentId);
      else if(card==='notices'){assert(Array.isArray(value.items));assert(Number.isSafeInteger(value.total)&&value.total>=value.items.length);}
      else if(card==='timeOff'){assert(Array.isArray(value.balances));assert.equal(typeof value.canApply,'boolean');liveDate(value.asOf,'asOf');}
+     else if(card==='summary')validateEmployeeHomeSummary(value,user.employmentId);
+     else if(card==='tasks'){assert.equal(value.grain,'account');assert(Array.isArray(value.items));assert(Number.isSafeInteger(value.total)&&value.total>=value.items.length);liveDate(value.asOf,'asOf');}
+     else if(card==='greeting'){liveDate(value.displayDate,'displayDate');assert(value.message===null||typeof value.message==='string'&&value.message.trim());}
      else assert.fail('Unknown Home card');
      const frameKey=user.role+':'+card;
      report.homeApiTraffic.sharingFrames[frameKey]=(report.homeApiTraffic.sharingFrames[frameKey]??0)+1;

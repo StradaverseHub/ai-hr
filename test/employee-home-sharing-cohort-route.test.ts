@@ -1,12 +1,19 @@
 import {beforeEach,expect,it,vi} from 'vitest';
 import {AuthRequiredError} from '../lib/auth-errors';
 
-const state=vi.hoisted(()=>({session:vi.fn(),team:vi.fn(),celebrations:vi.fn(),notices:vi.fn(),timeOff:vi.fn()}));
+const state=vi.hoisted(()=>({session:vi.fn(),team:vi.fn(),celebrations:vi.fn(),notices:vi.fn(),timeOff:vi.fn(),
+ greeting:vi.fn(),summary:vi.fn(),tasks:vi.fn()}));
 vi.mock('@/lib/session',()=>({getSession:state.session}));
 vi.mock('@/core/employee-home-sharing',()=>({readHomeTeamPage:state.team,readHomeCelebrationPage:state.celebrations}));
 vi.mock('@/core/employee-home-notices',()=>({readEmployeeHomeNotices:state.notices}));
 vi.mock('@/core/employee-home-time-off',()=>({readEmployeeHomeTimeOff:state.timeOff}));
-vi.mock('next-intl/server',()=>({getLocale:async()=>'en'}));
+vi.mock('next-intl/server',()=>({getLocale:async()=>'en',getTranslations:async()=>()=> 'Replacement holiday'}));
+vi.mock('@/core/employee-home-configuration',()=>({OwnHomeConfigurationRead:class{
+ constructor(readonly session:unknown,readonly employmentId:string){}
+}}));
+vi.mock('@/core/employee-home-greeting',()=>({readEmployeeHomeGreeting:state.greeting}));
+vi.mock('@/core/employee-home-summary',()=>({readEmployeeHomeSummary:state.summary}));
+vi.mock('@/core/employee-home-tasks',()=>({readEmployeeHomeTasks:state.tasks}));
 vi.mock('@/core/employee-home',()=>({HomeAccessError:class extends Error{constructor(readonly code:string){super('Private error');}}}));
 import {HomeAccessError} from '@/core/employee-home';
 import {GET} from '../app/api/home/sharing-initial/route';
@@ -57,6 +64,36 @@ it('preserves signed-out refusal and never calls the owners',async()=>{
  expect(await response.json()).toEqual({error:'authentication'});
  expect(state.team).not.toHaveBeenCalled();
  expect(state.celebrations).not.toHaveBeenCalled();
+ expect(state.greeting).not.toHaveBeenCalled();
+ expect(state.summary).not.toHaveBeenCalled();
+ expect(state.tasks).not.toHaveBeenCalled();
+});
+
+it('reuses the exact request configuration carrier while independently projecting greeting, summary, and tasks',async()=>{
+ const serverNow=new Date().toISOString();
+ const greeting={version:1,employmentId:'own',serverNow,displayDate:date,timeZone:'Asia/Kuala_Lumpur',
+  message:'Fictional greeting',templateKey:'greetingMorning',photoHref:null};
+ const tasks={version:1,employmentId:'own',grain:'account',asOf:date,total:0,overdue:0,effortMinutes:0,
+  unestimated:0,page:1,pages:1,pageSize:12,items:[]};
+ state.greeting.mockResolvedValue({...greeting,privateDateOfBirth:date});
+ state.tasks.mockResolvedValue({...tasks,privateReason:'not sent'});
+ state.summary.mockRejectedValue(Error('Private summary failure'));
+ const response=await GET(request('employmentId=own&card=greeting&card=summary&card=tasks'));
+ const frames=(await response.text()).trim().split('\n').map(line=>JSON.parse(line)).sort((a,b)=>a.card.localeCompare(b.card));
+ expect(frames).toEqual([
+  {version:1,card:'greeting',status:200,value:greeting},
+  {version:1,card:'summary',status:503},
+  {version:1,card:'tasks',status:200,value:tasks},
+ ]);
+ expect(state.session).toHaveBeenCalledOnce();
+ const carrier=state.greeting.mock.calls[0][4];
+ expect(carrier).toMatchObject({session:ctx,employmentId:'own'});
+ expect(state.greeting).toHaveBeenCalledWith(ctx,'own','en',undefined,carrier);
+ expect(state.summary).toHaveBeenCalledWith(ctx,'own','en','Replacement holiday',carrier);
+ expect(state.tasks).toHaveBeenCalledWith(ctx,'own',1,carrier);
+ expect(state.summary.mock.calls[0][4]).toBe(carrier);
+ expect(state.tasks.mock.calls[0][3]).toBe(carrier);
+ expect(state.team).not.toHaveBeenCalled();
 });
 
 it('drops unfinished output when the browser cancels the stream',async()=>{

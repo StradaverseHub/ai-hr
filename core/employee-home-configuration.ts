@@ -60,6 +60,17 @@ export async function readOwnEmployeeHomeConfiguration(ctx:SessionContext,reques
   return {...view,employmentId,hiredOn};
  },{readOnlySnapshot:true});
 }
+
+/** A single response can reuse the native proof for the exact session and subject that requested it. */
+export class OwnHomeConfigurationRead {
+ private pending?: ReturnType<typeof readOwnEmployeeHomeConfiguration>;
+ constructor(private readonly session:SessionContext,private readonly employmentId:string){}
+
+ read(session:SessionContext,employmentId?:string){
+  if(session!==this.session||employmentId!==this.employmentId)throw new HomeAccessError('employmentUnavailable');
+  return this.pending??=readOwnEmployeeHomeConfiguration(session,employmentId);
+ }
+}
 export async function saveEmployeeHomeConfiguration(ctx:SessionContext,p:{companyId:string;audienceRole:string;expectedOrdinal:number;configuration:unknown;reason:string}){
  const audienceRole=role(p.audienceRole),configuration=validateEmployeeHomeConfiguration(p.configuration);
  if(!Number.isSafeInteger(p.expectedOrdinal)||p.expectedOrdinal<0||typeof p.reason!=='string'||!p.reason.trim()||p.reason.trim().length>500)throw Error('Provide the saved version and a reason of at most 500 characters.');
