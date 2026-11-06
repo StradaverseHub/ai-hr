@@ -4,6 +4,7 @@ import {execFileSync} from 'node:child_process';
 import {createHomeHttpReplay} from './home-http.mjs';
 import {browserFailureLocation} from './browser-failure.ts';
 import {routeLatency} from './route-latency.mjs';
+import {centreTabsFor} from '../../lib/ai-centre/centre-nav.ts';
 import {firstGroupNavigationRoutes,navigationRoutesForIteration} from './route-scheduling.mjs';
 import {prepareMixedWorkflows} from './mixed-workflows.mjs';
 import {attendanceRejectionProbeEnabled,prepareAttendanceRejection} from './attendance-rejection-browser.mjs';
@@ -503,8 +504,11 @@ try{
   }
   const documents=[];const onRequest=request=>{if(request.resourceType()==='document')documents.push(request.url());};page.on('request',onRequest);
   try{
-   const targets=[['jobs','/assistant?view=jobs'],['policies','/policies'],['insights','/assistant?view=insights'],['how','/assistant?view=how'],['ask','/assistant']];
-   if(user.role==='companyHR')targets.splice(2,0,['operations','/control-tower'],['administration','/control-tower/agents/features']);
+   // Exercise the approved navigation owner: Jobs is retired, Insights is admin-only,
+   // and Operations opens Loops. Keep every available tab and return to Ask at the end.
+   const tabs=centreTabsFor({isAdmin:['companyHR','groupHR'].includes(user.role)});
+   const targets=[...tabs.filter(tab=>tab.key!=='ask'),...tabs.filter(tab=>tab.key==='ask')].map(tab=>[tab.key,tab.href]);
+   assert.equal(await page.locator('[data-ai-centre-tabs] a[href="/assistant?view=jobs"]').count(),0,'retired Jobs tab must stay absent');
    for(const [tab,path] of targets){
     const readinessStarted=performance.now();
     const link=page.locator('[data-ai-centre-tabs] a[data-ai-centre-link-ready="true"][href="'+path+'"]');
