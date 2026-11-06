@@ -23426,6 +23426,9 @@
     }
   },
   "rewards": {
+    "recommendationSaved": "建议已保存。",
+    "recommendationSaveFailed": "无法保存建议。",
+    "resetRecommendation": "重置",
     "unitBonus": {
       "noReduction": "薪资审核中不允许降低薪资。",
       "appliesOnlyTo": "仅适用于本次审核：{company} / {unit}",

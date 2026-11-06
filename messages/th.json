@@ -23426,6 +23426,9 @@
     }
   },
   "rewards": {
+    "recommendationSaved": "บันทึกข้อเสนอแนะแล้ว",
+    "recommendationSaveFailed": "ไม่สามารถบันทึกข้อเสนอแนะได้",
+    "resetRecommendation": "รีเซ็ต",
     "unitBonus": {
       "noReduction": "ไม่อนุญาตให้ลดเงินเดือนในการทบทวนเงินเดือน",
       "appliesOnlyTo": "ใช้กับการทบทวนนี้เท่านั้น: {company} / {unit}",

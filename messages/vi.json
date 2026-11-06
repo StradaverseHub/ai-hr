@@ -23426,6 +23426,9 @@
     }
   },
   "rewards": {
+    "recommendationSaved": "Đã lưu đề xuất.",
+    "recommendationSaveFailed": "Không thể lưu đề xuất.",
+    "resetRecommendation": "Đặt lại",
     "unitBonus": {
       "noReduction": "Không được phép giảm lương trong đợt xét duyệt lương.",
       "appliesOnlyTo": "Chỉ áp dụng cho đợt xét duyệt này: {company} / {unit}",

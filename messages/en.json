@@ -23426,6 +23426,9 @@
     }
   },
   "rewards": {
+    "recommendationSaved": "Recommendation saved.",
+    "recommendationSaveFailed": "The recommendation could not be saved.",
+    "resetRecommendation": "Reset",
     "unitBonus": {
       "noReduction": "Salary reductions are not allowed in the salary review.",
       "appliesOnlyTo": "Applies only to this review: {company} / {unit}",

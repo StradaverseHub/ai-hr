@@ -23426,6 +23426,9 @@
     }
   },
   "rewards": {
+    "recommendationSaved": "Cadangan disimpan.",
+    "recommendationSaveFailed": "Cadangan tidak dapat disimpan.",
+    "resetRecommendation": "Tetapkan semula",
     "unitBonus": {
       "noReduction": "Pengurangan gaji tidak dibenarkan dalam semakan gaji.",
       "appliesOnlyTo": "Hanya terpakai untuk semakan ini: {company} / {unit}",
