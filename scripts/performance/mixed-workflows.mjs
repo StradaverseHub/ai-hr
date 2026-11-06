@@ -155,8 +155,8 @@ export async function prepareMixedWorkflows({context,visit,fixture,employee,hr,d
   const approver=approverFor(employee),reviewCtx=await context(approver),review=await reviewCtx.newPage();
   try{
    await visit(review,approver,'/attendance/application-history/'+correction.id);
-   const form=review.locator('form').filter({has:review.locator('[name="action"][value="approved"]')});
-   await capture(review,()=>form.locator('button[type="submit"]').click(),'attendanceApprove');await review.waitForLoadState('networkidle');
+   const approve=review.locator('form:has(input[name="action"][value="approved"]) button[type="submit"]');
+   await capture(review,()=>approve.click(),'attendanceApprove');await review.waitForLoadState('networkidle');
    const [row]=await db`select status from attendance_correction where id=${correction.id}::uuid`;assert.equal(row.status,'approved');
    const [day]=await db`select check_in_at,check_out_at from attendance where employment_id=${employee.employmentId}::uuid and attendance_date=${fixture.today}::date`;assert.equal(day.check_in_at,'09:15:00');assert.equal(day.check_out_at,'18:15:00');
    evidence.push({workflow:'attendance correction/approval/applied punches',persisted:true});save();
