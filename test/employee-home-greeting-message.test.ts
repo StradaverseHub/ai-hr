@@ -72,6 +72,8 @@ describe('Home greeting uses current own facts and saved templates',()=>{
   try{
    value=await readEmployeeHomeGreeting(e.ctx,e.employmentId,'en',at(monday));
    expect(value.templateKey).toBe('greetingMorning');
+   // Configuration, own presentation, and return-from-leave each borrow one connection.
+   expect(observer).toHaveBeenCalledTimes(3);
   }finally{observer.mockRestore();}
   expect(statements.some(query=>query.includes('app.leave_calendar_presence('))).toBe(true);
   expect(statements.some(query=>query.includes('"attendance_policy"'))).toBe(false);

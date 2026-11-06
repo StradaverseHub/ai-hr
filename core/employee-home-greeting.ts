@@ -2,7 +2,7 @@
 import {and,eq,sql} from 'drizzle-orm';
 import {withTenant,type SessionContext} from '../db/client';
 import {person} from '../db/schema';
-import {readEmployeeHomeGreetingIdentity} from './employee-home';
+import {readEmployeeHomeGreetingIdentityTx} from './employee-home';
 import {readOwnEmployeeHomeConfiguration} from './employee-home-configuration';
 import {getEmployeeHomeDisplayPreferences} from './dashboard-prefs';
 import {approvedLeavePresenceByEmploymentTx} from '../packs/leave/service';
@@ -40,20 +40,20 @@ async function returnFromLeave(ctx:SessionContext,employmentId:string,today:stri
  * Feb29 has no invented Feb28/Mar1 substitute. Anniversary uses this selected employment's hire date. */
 export async function readEmployeeHomeGreeting(ctx:SessionContext,employmentId:string,locale:Locale,now=new Date()):Promise<EmployeeHomeGreeting>{
  // Configuration already binds the exact own employment and reads its hire date.
- const [view,identity,preferences]=await Promise.all([
+ const today=todayInKualaLumpur(now);
+ const [view,{identity,display,birthday}]=await Promise.all([
   readOwnEmployeeHomeConfiguration(ctx,employmentId),
-  readEmployeeHomeGreetingIdentity(ctx,employmentId),
-  getEmployeeHomeDisplayPreferences(ctx),
- ]);
- const display=homeDisplayClock(now,preferences.timeZone??'Asia/Kuala_Lumpur'),today=todayInKualaLumpur(now);
- const [birthday,returnedFromLeave]=await Promise.all([
   withTenant(ctx,async tx=>{
+   const identity=await readEmployeeHomeGreetingIdentityTx(tx,ctx,employmentId);
+   const preferences=await getEmployeeHomeDisplayPreferences(ctx,tx);
+   const display=homeDisplayClock(now,preferences.timeZone??'Asia/Kuala_Lumpur');
    const [row]=await tx.select({birthday:sql<boolean>`coalesce(to_char(${person.dateOfBirth},'MM-DD')=${display.date.slice(5)},false)`})
     .from(person).where(and(eq(person.id,ctx.personId!),eq(person.tenantId,ctx.tenantId),sql`app.principal_snapshot_current() AND app.is_self_person(${person.id})`)).limit(1);
-   if(!row)throw Error('Own greeting identity unavailable');return row.birthday;
+   if(!row)throw Error('Own greeting identity unavailable');
+   return {identity,display,birthday:row.birthday};
   }),
-  returnFromLeave(ctx,view.employmentId,today),
  ]);
+ const returnedFromLeave=await returnFromLeave(ctx,view.employmentId,today);
  const firstDay=view.hiredOn===today,years=Number(today.slice(0,4))-Number(view.hiredOn.slice(0,4));
  const anniversary=years>0&&view.hiredOn.slice(5)===today.slice(5);
  const template=homeGreetingTemplate({hour:display.hour,birthday,firstDay,anniversary,returnedFromLeave},view.configuration.templates);
