@@ -560,7 +560,7 @@ export function personnelFilterChoices(ctx: SessionContext, companyIds: string[]
   }, { sharedAccessLock: true });
 }
 
-async function workforcePersonnelPageTx(
+async function workforcePersonnelPageQueryTx(
   tx: Tx, ctx: SessionContext, input: PersonnelListInput, asOf: string,
   facets?: { headcount: EmployeeListFilters; choiceIds: string[] },
 ) {
@@ -581,9 +581,7 @@ async function workforcePersonnelPageTx(
   const sameScope = input.companyIds !== undefined && input.companyIds.length === choiceIds.length &&
     input.companyIds.every(id => choiceIds.includes(id));
   const choiceSource = sameScope ? source : personnelListSource(choiceIds, asOf);
-  const [result] = await tx.execute<{
-    rows: EmployeeListRow[]; total: number; byStatus: Partial<Record<EmploymentStatus, number>>; choices: PersonnelChoiceRow[];
-  }>(sql`
+  return sql`
     with personnel_source as materialized (select value from ${personnelListSource(input.companyIds, asOf)}),
     matching as materialized (select value from ${source} where ${filters ?? sql`true`}),
     page as (select value from matching as workforce_row order by ${order} limit ${input.limit} offset ${input.offset})
@@ -598,28 +596,69 @@ async function workforcePersonnelPageTx(
         (select coalesce(jsonb_agg(to_jsonb(choice)), '[]'::jsonb) from (
           ${personnelAssignmentChoices(choiceSource, choiceIds, asOf)}
         ) as choice) as choices` : sql``}
-  `);
+  `;
+}
+
+type PersonnelOverviewInput = PersonnelListInput & { companyIds: string[] };
+
+async function personnelOverviewQueryTx(
+  tx: Tx, ctx: SessionContext, input: PersonnelOverviewInput, headcount: Omit<EmployeeListFilters, 'companyIds'>,
+) {
+  const asOf = todayInKualaLumpur();
+  const choices = await personnelCompanyChoicesTx(tx, input.companyIds, asOf);
+  const query = await workforcePersonnelPageQueryTx(tx, ctx, input, asOf, {
+    headcount: { ...headcount, companyIds: input.companyIds },
+    choiceIds: choices.companies.map(company => company.id),
+  });
+  return { choices, query };
+}
+
+async function workforcePersonnelPageTx(
+  tx: Tx, ctx: SessionContext, input: PersonnelListInput, asOf: string,
+) {
+  const query = await workforcePersonnelPageQueryTx(tx, ctx, input, asOf);
+  const [result] = await tx.execute<PersonnelPageResult>(query);
   return result;
 }
+
+type PersonnelPageResult = {
+  rows: EmployeeListRow[];
+  total: number;
+  byStatus: Partial<Record<EmploymentStatus, number>>;
+  choices: PersonnelChoiceRow[];
+};
 
 /** List, headcount and filter choices share one admission lock and one authorised page projection. */
 export function readPersonnelOverview(
   ctx: SessionContext,
-  input: PersonnelListInput & { companyIds: string[] },
+  input: PersonnelOverviewInput,
   headcount: Omit<EmployeeListFilters, 'companyIds'>,
 ) {
   return withPersonnelRead(ctx, async tx => {
-    const asOf = todayInKualaLumpur();
-    const choices = await personnelCompanyChoicesTx(tx, input.companyIds, asOf);
-    const result = await workforcePersonnelPageTx(tx, ctx, input, asOf, {
-      headcount: { ...headcount, companyIds: input.companyIds },
-      choiceIds: choices.companies.map(company => company.id),
-    });
+    const { choices, query } = await personnelOverviewQueryTx(tx, ctx, input, headcount);
+    const [result] = await tx.execute<PersonnelPageResult>(query);
     return {
       employees: { rows: result.rows, total: result.total },
       headcount: { total: Object.values(result.byStatus).reduce((sum, count) => sum + count, 0), byStatus: result.byStatus },
       organisationChoices: { ...choices, rows: result.choices },
     };
+  }, { sharedAccessLock: true });
+}
+
+/** Hosted benchmark diagnostic for the exact overview query, under the same Access read fence. */
+export function explainPersonnelOverview(
+  ctx: SessionContext,
+  input: PersonnelOverviewInput,
+  headcount: Omit<EmployeeListFilters, 'companyIds'>,
+) {
+  return withPersonnelRead(ctx, async tx => {
+    const [identity] = await tx.execute<{ role: string }>(sql`select current_user as role`);
+    if (identity.role !== 'ai_hr_app') throw new Error('Personnel plan must use the application role');
+    const { query } = await personnelOverviewQueryTx(tx, ctx, input, headcount);
+    // Allow a bounded plan capture even when the live reader hits its 20-second statement ceiling.
+    await tx.execute(sql`select set_config('statement_timeout', '45000', true)`);
+    const rows = await tx.execute<{ 'QUERY PLAN': unknown }>(sql`explain (analyze, buffers, format json) ${query}`);
+    return { role: identity.role, plan: rows[0]?.['QUERY PLAN'] };
   }, { sharedAccessLock: true });
 }
 

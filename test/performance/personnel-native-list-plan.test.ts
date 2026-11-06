@@ -4,8 +4,9 @@ import {writeFileSync} from 'node:fs';
 import {join} from 'node:path';
 import {afterAll,beforeAll,expect,it} from 'vitest';
 import {sql} from 'drizzle-orm';
-import {personnelListPage,personnelListPageSql,readPersonnelOverview,searchWorkforceEmployeesTx,readWorkforcePickRowsTx} from '../../core/read';
+import {explainPersonnelOverview,personnelListPage,personnelListPageSql,readPersonnelOverview,searchWorkforceEmployeesTx,readWorkforcePickRowsTx} from '../../core/read';
 import {foldEmployeeCode,EMPLOYEE_SEARCH_RESULT_CAP} from '../../lib/employee-search';
+import {pgSqlState} from '../../lib/db-error';
 import {lockAccessConfigurationTx,lockAccessConfigurationReadTx} from '../../core/access-configuration-lock';
 import {withTenant,type SessionContext} from '../../db/client';
 import {adminCtx,closeAll,migrateTestDb,owner,resetDb,seedBase} from '../harness';
@@ -64,12 +65,25 @@ it.skipIf(!requested)('profiles initial/search/deep Personnel pages with fifty t
    measurements.push({mode,elapsedMs,total:result.total,pageRows:result.rows.length,targetMet:elapsedMs<1000});report.queries=measurements;save();
   }
   const overviewMeasurements:typeof measurements=[];
-  for(const mode of ['initial','selective-search','deep-page']){
-   const q=mode==='selective-search'?'PERF000050000':undefined,offset=mode==='deep-page'?count-25:0;
-   const expectedTotal=q?1:count,expectedIds=q?[expectedLast.at(-1)!]:offset?expectedLast:expectedFirst;
+  const overviewPlans:{mode:string;role:string;plan:unknown}[]=[];
+  const overviewFailures:{mode:string;step:'native-read'|'explain';elapsedMs:number;errorType:string;sqlState:string|null}[]=[];
+  const liveOverviewCases=[
+   {mode:'initial',offset:0,expectedIds:expectedFirst},
+   {mode:'selective-search',q:'PERF000050000',offset:0,expectedIds:[expectedLast.at(-1)!]},
+   {mode:'deep-page',offset:count-25,expectedIds:expectedLast},
+  ];
+  const recordOverviewFailure=(mode:string,step:'native-read'|'explain',began:number,error:unknown)=>{
+   overviewFailures.push({mode,step,elapsedMs:performance.now()-began,errorType:error instanceof Error?error.name:typeof error,sqlState:pgSqlState(error)??null});
+   report.liveOverviewFailures=overviewFailures;save();
+  };
+  for(const {mode,q,offset,expectedIds} of liveOverviewCases){
+   const expectedTotal=q?1:count;
+   const input={companyIds:[b.companyId],q,limit:25,offset};
    phase('live-overview-'+mode);
    const began=performance.now();
-   const result=await readPersonnelOverview(ctx,{companyIds:companies,q,limit:25,offset},{q});
+   let result;
+   try{result=await readPersonnelOverview(ctx,input,{q});}
+   catch(error){recordOverviewFailure(mode,'native-read',began,error);continue;}
    const elapsedMs=performance.now()-began;
    expect(result.employees.total).toBe(expectedTotal);
    expect(result.headcount.total).toBe(expectedTotal);
@@ -78,6 +92,24 @@ it.skipIf(!requested)('profiles initial/search/deep Personnel pages with fifty t
    overviewMeasurements.push({mode,elapsedMs,total:result.employees.total,pageRows:result.employees.rows.length,targetMet:elapsedMs<1000});
    report.liveOverview=overviewMeasurements;save();
   }
+  report.liveOverviewExplainStatementTimeoutMs=45000;
+  for(const {mode,q,offset} of liveOverviewCases){
+   phase('live-overview-plan-'+mode);
+   const began=performance.now();
+   let explained;
+   try{explained=await explainPersonnelOverview(ctx,{companyIds:[b.companyId],q,limit:25,offset},{q});}
+   catch(error){recordOverviewFailure(mode,'explain',began,error);continue;}
+   const {role,plan}=explained;
+   expect(role).toBe('ai_hr_app');
+   expect(plan).toEqual([expect.objectContaining({'Plan':expect.any(Object),'Execution Time':expect.any(Number)})]);
+   overviewPlans.push({mode,role,plan});report.liveOverviewPlans=overviewPlans;save();
+  }
+  phase('live-overview-foreign-company');
+  const denied=await readPersonnelOverview(ctx,{companyIds:[foreign.companyId],limit:25,offset:0},{});
+  expect(denied.employees).toEqual({rows:[],total:0});
+  expect(denied.headcount).toEqual({total:0,byStatus:{}});
+  expect(denied.organisationChoices).toEqual({companies:[],canInspectDuplicates:false,rows:[]});
+  report.liveOverviewForeignCompanyExcluded=true;save();
   const pickerMeasurements:{mode:string;originalElapsedMs:number;elapsedMs:number;rows:number;targetMet:boolean}[]=[];
   // Frozen original query is an independent oracle. Only native purpose APIs are read under ai_hr_app.
   const originalSearch=(query:string)=>withTenant(ctx,async tx=>{
@@ -195,6 +227,7 @@ it.skipIf(!requested)('profiles initial/search/deep Personnel pages with fifty t
    expect(after).toEqual(factsOwner);report.originalFactsFunctionUnchanged=true;report.prototypeViewDropped=true;save();
   }
   phase('measured');
+  expect(overviewFailures,'Live Personnel reads and independent plan captures').toEqual([]);
   expect(measurements.every(row=>row.targetMet),'Each observed retained-data Personnel native query under1000ms').toBe(true);
   phase('complete');
  }catch(error){report.errorType=(error as Error).name;phase('failed');throw error;}
