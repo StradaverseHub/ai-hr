@@ -126,14 +126,10 @@ describe('core/leave.ts: the new read-only exports', () => {
     expect(doc.lastIndexOf('substrate: read-only, no event')).toBeGreaterThan(doc.lastIndexOf('appendEvent'));
   });
 
-  it('reuses leaveBalance for Balance — no third balance formula', () => {
-    // UPDATED for cdf9ca48 (Balance Deduction Source). The call now passes the SOURCE type rather than
-    // the applied type, because a leave type may borrow another type's balance — that is the item. The
-    // property this test exists to protect is unchanged and still asserted: the summary reads the ONE
-    // shared balance function, and invents no second way of computing a balance.
+  it('uses the canonical pooled balance projection for the popup', () => {
     const fn = core.slice(core.indexOf('export async function leaveTypeApplySummary'));
     const body = fn.slice(0, fn.indexOf('\n}\n'));
-    expect(body.includes('leaveBalance(tx, p.employmentId, sourceTypeId)')).toBe(true);
+    expect(body).toContain('readLeaveBalancePositionTx(tx,p.employmentId,p.leaveTypeId)');
     expect(body.includes('leaveEntitlementBreakdown')).toBe(false);
     expect(body.includes('deriveSummaryBalance')).toBe(false);
   });
@@ -145,24 +141,18 @@ describe('core/leave.ts: the new read-only exports', () => {
     // balance (the borrowers), so an Emergency Leave request in flight reduces the Annual figure the
     // popup shows. Asserting the shared helpers rather than one literal argument list, so the next
     // legitimate signature change does not fail a test whose subject is agreement, not spelling.
-    expect(core.includes('async function pendingLeaveDays(')).toBe(true);
-    expect(core.includes('async function balanceSpenderTypeIds(')).toBe(true);
     const avail = core.slice(core.indexOf('export async function availableLeaveBalance'));
     const availBody = avail.slice(0, avail.indexOf('\n}\n'));
     const summary = core.slice(core.indexOf('export async function leaveTypeApplySummary'));
     const summaryBody = summary.slice(0, summary.indexOf('\n}\n'));
     for (const body of [availBody, summaryBody]) {
-      expect(body.includes('resolveBalanceSourceTypeId')).toBe(true);
-      expect(body.includes('balanceSpenderTypeIds')).toBe(true);
-      expect(body.includes('pendingLeaveDays(')).toBe(true);
+      expect(body).toContain('readLeaveBalancePositionTx(');
     }
   });
 
   it('rest and off day stay ONE popup bucket, resolved from the same dated schedule as deduction', () => {
     const start = core.indexOf('export type LeaveApplyDayStatus =');
-    // End marker: the docblock that follows resolveApplyDayRows. The Phase-B #15 warning helper it used
-    // to name became the dated-calendar owner leaveHolidayCompletenessTx.
-    const end = core.indexOf('/** One dated-calendar owner for read-only previews', start);
+    const end = core.indexOf('async function readLeaveHolidayWarningWindows(', start);
     expect(start).toBeGreaterThanOrEqual(0);
     expect(end).toBeGreaterThan(start);
     const popup = core.slice(start, end);
@@ -244,15 +234,14 @@ describe('LeaveDurationFields: summary + day-by-day disclosure', () => {
     expect(body.includes('view.taken ? s.taken : null')).toBe(true);
     expect(body.includes('balance: s.balance')).toBe(true);
     // The r72 (cdf9ca48) invariant: Available on the popup is derived exactly as availableLeaveBalance
-    // derives the submit-time guard's figure — same pendingLeaveDays over the same balanceSpenderTypeIds,
+    // derives the submit-time guard's figure — the same pooled reservation read and the
     // same unclamped subtraction. (The end-to-end equality is asserted against a real DB in
     // test/r75-leave-apply-available.test.ts: popup.available === availableLeaveBalance. Removing two
     // columns must not have gone near either.)
     const core = read('core/leave.ts');
     const summaryFn = core.slice(core.indexOf('export async function leaveTypeApplySummary'));
     const summaryBody = summaryFn.slice(0, summaryFn.indexOf('\n}\n'));
-    expect(summaryBody.includes('pendingLeaveDays(')).toBe(true);
-    expect(summaryBody.includes('balanceSpenderTypeIds(')).toBe(true);
+    expect(summaryBody).toContain('readLeaveBalancePositionTx(');
     expect(summaryBody.includes('available: round2(balance - pending),')).toBe(true);
   });
 

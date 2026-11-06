@@ -1,7 +1,7 @@
 import {assertWorkforcePersonTx} from './workforce-access';
 import {createHash} from 'node:crypto';
 import {isAdmin} from '../lib/authz-model';
-import {freshProfileEditPolicyTx,lockProfileEditPolicyTx} from './profile-edit-policy';
+import {freshProfileEditPolicyTx,freshProfilePresentationPolicyTx,lockProfileEditPolicyTx} from './profile-edit-policy';
 import {getSetting} from './entitlements';
 import {EssProfileError} from '../lib/personnel-ess-model';
 import type {Tx} from '../db/client';
@@ -180,7 +180,7 @@ async function photoReadPredicateTx(tx:Tx,ctx:SessionContext){
   const [principal]=await tx.execute<{current:boolean}>(sql`select app.principal_snapshot_current() as current`);
   if(principal?.current!==true)return sql`false`;
   if(!isAdmin(ctx)){
-    const policy=await freshProfileEditPolicyTx(tx,ctx);
+    const policy=await freshProfilePresentationPolicyTx(tx,ctx);
     if(!policy.visible.has('profile.personal_details.photo'))return sql`NOT app.is_self_person(${personPhoto.personId})`;
   }
   return sql`true`;
@@ -192,6 +192,7 @@ export async function getPersonPhoto(
   personId: string,
 ): Promise<{ content: Buffer; fileName: string; mimeType: string } | null> {
   return withTenant(ctx, async (tx) => {
+    await tx.execute(sql`SET TRANSACTION READ ONLY`);
     const visible=await photoReadPredicateTx(tx,ctx);
     const [row] = await tx
       .select({ content: personPhoto.content, fileName: personPhoto.fileName, mimeType: personPhoto.mimeType })
@@ -206,14 +207,20 @@ export async function getPersonPhoto(
  *  photo the caller may see (RLS-scoped). */
 export async function hasPersonPhoto(ctx: SessionContext, personId: string): Promise<boolean> {
   return withTenant(ctx, async (tx) => {
-    const visible=await photoReadPredicateTx(tx,ctx);
-    const [row] = await tx
-      .select({ id: personPhoto.id })
-      .from(personPhoto)
-      .where(and(eq(personPhoto.personId, personId),visible))
-      .limit(1);
-    return row != null;
+    await tx.execute(sql`SET TRANSACTION READ ONLY`);
+    return hasPersonPhotoTx(tx, ctx, personId);
   });
+}
+
+/** Existence-only read for an existing read-only composition. */
+export async function hasPersonPhotoTx(tx: Tx, ctx: SessionContext, personId: string): Promise<boolean> {
+  const visible = await photoReadPredicateTx(tx, ctx);
+  const [row] = await tx
+    .select({ id: personPhoto.id })
+    .from(personPhoto)
+    .where(and(eq(personPhoto.personId, personId), visible))
+    .limit(1);
+  return row != null;
 }
 
 /**
@@ -254,6 +261,7 @@ export async function employmentPhotoIds(
   const ids = [...new Set(employmentIds.filter((id): id is string => typeof id === 'string' && id.length > 0))];
   if (ids.length === 0) return new Map();
   return withTenant(ctx, async (tx) => {
+    await tx.execute(sql`SET TRANSACTION READ ONLY`);
     const visible=await photoReadPredicateTx(tx,ctx);
     const rows = await tx
       .select({ employmentId: employment.id, personId: personPhoto.personId })

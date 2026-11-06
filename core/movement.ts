@@ -5,7 +5,8 @@ import {withProbationPersonnelIntentTx,withProbationDateShiftIntentTx,probationM
 import { withExitDateAuthorityTx } from './exit-date-authority';
 import { isDatabaseError } from '../lib/db-error';
 import { hasClosedPayrollCorrectionAuthorityTx, withClosedPayrollCorrectionAuthorityTx } from './closed-payroll-correction-authority';
-import {assertWorkforceCompanyTx,assertWorkforceEmploymentTx,WorkforceAccessError} from './workforce-access';
+import {assertWorkforceCompanyTx,assertWorkforceEmploymentTx,workforceEmploymentPredicate,WorkforceAccessError} from './workforce-access';
+import {lockAccessConfigurationReadTx} from './access-configuration-lock';
 import {ownPersonPredicate} from './own-person';
 /**
  * Employment History — Movement tab redesign (78853b97).
@@ -68,10 +69,11 @@ import {
   INTERCHANGEABLE_COMPARISON_KINDS,
   MOVEMENT_KINDS,
   isComparisonKind,
+  movementNeedsEntitlementReprojection,
   type ComparisonKind,
   type MovementKind,
 } from './movement-kinds';
-import { lockMovementTypeCatalogueTx, resolveMovementEventTypeTx, resolveMovementEventTypeRows } from './movement-type';
+import { lockMovementTypeCatalogueTx, resolveMovementEventTypeTx, resolveMovementEventTypeRows, movementEventTypeChoices } from './movement-type';
 // 1d58019a Step 2 (ADR-0166) — the per-type controls the writer enforces (offered reasons, Field Controls)
 // and the movement's supporting documents. Both modules are leaves: neither imports this one.
 import { assertTerminationReasonOfferedForTypeTx, movementFieldRulesTx } from './movement-type-controls';
@@ -97,6 +99,7 @@ import {
 } from './hire-correction';
 import {
   closedPeriodsTx,
+  movementPayrollPeriodsTx,
   nextMonthStart,
   overlapsClosedPeriod,
   processedPeriodsTx,
@@ -668,7 +671,8 @@ async function projectRows(tx: Tx, tenantId: string, employmentId: string, today
    *
    * A tenant with no configured types gets an empty set and the built-in list, i.e. today's behaviour.
    */
-  const catalogue = input?.catalogue ?? await tx.select().from(movementEventType).where(eq(movementEventType.tenantId, tenantId));
+  const catalogue = input?.catalogue ?? await tx.select().from(movementEventType).where(eq(movementEventType.tenantId, tenantId))
+    .orderBy(asc(movementEventType.sortOrder),asc(movementEventType.code));
   const tenantCodes = new Set(catalogue.map(r=>r.code));
   // Keep recorded codes for identity/projection, and resolve behavior separately for correction.
   // Reuse this existing catalogue read; inactive/custom history must not cause per-row queries.
@@ -1035,7 +1039,7 @@ async function projectRows(tx: Tx, tenantId: string, employmentId: string, today
 
   const superseded = supersededScheduledIds(rows, today);
   const statusOf = (r: ProjectedRow): MovementStatus => statusOfRow(r, superseded);
-  return { emp, events, rows, statusOf, today, resolvedTypes };
+  return { emp, events, rows, statusOf, today, resolvedTypes, catalogue };
 }
 
 /** Batched canonical lifecycle projection for an already-authorized report snapshot. All database
@@ -1485,7 +1489,22 @@ export async function movementAutomationFactsTx(tx:Tx,input:{tenantId:string;com
 
 /** Read-side correction overlay only. Existing effective-dated payroll/report reconstruction is untouched. */
 async function personnelCorrectionViewTx(tx:Tx,events:RawEvent[],rows:ProjectedRow[]){
- const beforeRows=rows.filter(row=>row.kind!=='hired').map(row=>({...row,id:row.id+':before',groupId:null,scheduled:false,appliedAt:null,sequence:Math.min(row.sequence,...events.filter(event=>row.groupId&&tagOf(event)?.groupId===row.groupId).map(event=>event.sequence))-.5}));
+ const hasCorrections=events.some(event=>event.eventType==='employment.information.corrected');
+ const firstSequenceByGroup=new Map<string,number>();
+ if(hasCorrections){
+  for(const event of events){
+   const groupId=tagOf(event)?.groupId;
+   if(!groupId)continue;
+   const first=firstSequenceByGroup.get(groupId);
+   if(first===undefined||event.sequence<first)firstSequenceByGroup.set(groupId,event.sequence);
+  }
+ }
+ const beforeRows=hasCorrections
+  ? rows.filter(row=>row.kind!=='hired').map(row=>{
+   const first=row.groupId?firstSequenceByGroup.get(row.groupId):undefined;
+   return {...row,id:row.id+':before',groupId:null,scheduled:false,appliedAt:null,sequence:Math.min(row.sequence,first??row.sequence)-.5};
+  })
+  : [];
  const corrections=personnelInformationCorrections(events,[...rows,...beforeRows]);
  const companyIds=new Set<string>(),gradeIds=new Set<string>();
  for(const list of corrections.values())for(const item of list){if(item.values.companyId)companyIds.add(item.values.companyId);if(item.values.gradeId)gradeIds.add(item.values.gradeId);}
@@ -1505,8 +1524,26 @@ async function personnelCorrectionViewTx(tx:Tx,events:RawEvent[],rows:ProjectedR
 }
 
 /** The Employment History list — a Hired-first, date-ascending projection over the event ledger. */
-export function movementHistory(ctx: SessionContext, employmentId: string): Promise<MovementHistoryRow[]> {
-  return withTenant(ctx, tx => movementHistoryTx(tx, ctx, employmentId));
+export async function movementHistory(ctx: SessionContext, employmentId: string): Promise<MovementHistoryRow[]> {
+  return (await readWorkforceMovementHistory(ctx,employmentId)).movements;
+}
+
+export async function movementHistoryWithTypes(ctx:SessionContext,employmentId:string,options:{includeResignation?:boolean}={}){
+  const {movements,catalogue,resignation}=await readWorkforceMovementHistory(ctx,employmentId,options.includeResignation);
+  return {movements,movementTypes:movementEventTypeChoices(catalogue),resignation};
+}
+
+function readWorkforceMovementHistory(ctx:SessionContext,employmentId:string,includeResignation=false){
+  return withTenant(ctx, async tx => {
+    // This entry point owns a read-only operation. Caller-owned transactions
+    // continue through movementHistoryTx and its exclusive barrier.
+    await lockAccessConfigurationReadTx(tx, ctx.tenantId);
+    const [row] = await tx.execute<{ allowed: boolean }>(
+      sql`select ${workforceEmploymentPredicate(sql`${employmentId}::uuid`)} as allowed`,
+    );
+    if (!row?.allowed) throw new WorkforceAccessError();
+    return projectMovementHistoryTx(tx, ctx, employmentId, includeResignation);
+  });
 }
 
 async function assertOwnMovementEmploymentTx(tx:Tx,ctx:SessionContext,employmentId:string){
@@ -1523,21 +1560,21 @@ export function ownMovementHistory(ctx:SessionContext,employmentId:string):Promi
 
 export async function ownMovementHistoryTx(tx:Tx,ctx:SessionContext,employmentId:string):Promise<MovementHistoryRow[]>{
   await assertOwnMovementEmploymentTx(tx,ctx,employmentId);
-  return projectMovementHistoryTx(tx,ctx,employmentId);
+  return (await projectMovementHistoryTx(tx,ctx,employmentId)).movements;
 }
 
 /** Explicit owner read seam for a caller-held scoped report snapshot. */
 export async function movementHistoryTx(tx: Tx, ctx: SessionContext, employmentId: string): Promise<MovementHistoryRow[]> {
   await assertWorkforceEmploymentTx(tx,ctx,employmentId,'view');
-  return projectMovementHistoryTx(tx,ctx,employmentId);
+  return (await projectMovementHistoryTx(tx,ctx,employmentId)).movements;
 }
 
-async function projectMovementHistoryTx(tx:Tx,ctx:SessionContext,employmentId:string):Promise<MovementHistoryRow[]>{
-    const { emp, events, rows, statusOf, resolvedTypes } = await projectRows(tx, ctx.tenantId, employmentId);
+async function projectMovementHistoryTx(tx:Tx,ctx:SessionContext,employmentId:string,includeResignation=false){
+    const projection = await projectRows(tx, ctx.tenantId, employmentId);
+    const { emp, events, rows, statusOf, resolvedTypes, catalogue } = projection;
     // 66a63bd6 — the two payroll period sets come from core/comp.ts, so the per-row affordance runs the
     // SAME rule the service refuses on (the Basic Salary card's precedent).
-    const closed = await closedPeriodsTx(tx, employmentId);
-    const processed = await processedPeriodsTx(tx, employmentId);
+    const { closed, processed } = await movementPayrollPeriodsTx(tx, employmentId);
     const placementAt = await placementColumnsTx(tx, employmentId, emp.companyId, events);
     // c063eea9 — one trace, resolved once, worn by the Hired row only.
     const hireTrace = await hireCorrectionTraceTx(
@@ -1545,10 +1582,19 @@ async function projectMovementHistoryTx(tx:Tx,ctx:SessionContext,employmentId:st
       events.filter((e) => e.eventType === HIRE_CORRECTED_EVENT),
     );
     const correctionView=await personnelCorrectionViewTx(tx,events,rows);
-    const eventsById = new Map(events.map(event => [event.id, event]));
-    return rows.map((r) => {
+    const eventsById = new Map<string, RawEvent>();
+    const eventsByGroup = new Map<string, RawEvent[]>();
+    for (const event of events) {
+      eventsById.set(event.id, event);
+      const groupId = tagOf(event)?.groupId;
+      if (!groupId) continue;
+      const group = eventsByGroup.get(groupId);
+      if (group) group.push(event);
+      else eventsByGroup.set(groupId, [event]);
+    }
+    const movements: MovementHistoryRow[] = rows.map((r) => {
       const primaryEvent = eventsById.get(r.id);
-      const g = groupEventsOf(events, r);
+      const g = r.groupId ? eventsByGroup.get(r.groupId) ?? [] : primaryEvent ? [primaryEvent] : [];
       const spanEnd = g.length ? Math.max(...g.map((e) => e.sequence)) : -1;
       const status = statusOf(r);
       // 646355e5 — older events are editable too: the correction steps back over the later movements and
@@ -1595,6 +1641,8 @@ async function projectMovementHistoryTx(tx:Tx,ctx:SessionContext,employmentId:st
         recordedResignation:primaryEvent?movementRecordedResignationOf(primaryEvent):null,
       };
     });
+    const resignation=includeResignation?await resignationInformationFromProjection(tx,employmentId,projection):null;
+    return {movements,catalogue,resignation};
   }
 
 /** The grade in force just before/at an event, replayed from employment.grade.changed events (gradeId is
@@ -3071,12 +3119,12 @@ async function resolveInputTypeTx<T extends CreateMovementInput>(
  * state. NOTE (ADR-0015): subject-scoped events are readable by the employee themselves — like the
  * existing termination reason, movement remarks are staff-visible by design.
  */
-export function createMovementEvent(ctx: SessionContext, rawInput: CreateMovementInput) {
-  return withTenant(ctx,tx=>createMovementEventTx(tx,ctx,rawInput));
+export function createMovementEvent(ctx: SessionContext, rawInput: CreateMovementInput, options?: {captureGradeBefore?:boolean}) {
+  return withTenant(ctx,tx=>createMovementEventTx(tx,ctx,rawInput,options));
 }
 
 /** Canonical dispatcher in a caller-owned transaction; every writer/ledger leg shares this Tx. */
-export async function createMovementEventTx(tx:Tx,ctx:SessionContext,rawInput:CreateMovementInput){
+export async function createMovementEventTx(tx:Tx,ctx:SessionContext,rawInput:CreateMovementInput,options?:{captureGradeBefore?:boolean}){
   rawInput = { ...rawInput };
   await assertWorkforceEmploymentTx(tx,ctx,rawInput.employmentId,'maintain');
   // The tenant catalogue resolves custom codes to their actual effect. Own configuration before
@@ -3085,10 +3133,10 @@ export async function createMovementEventTx(tx:Tx,ctx:SessionContext,rawInput:Cr
   if (!probationMovementAuthorityTx(tx, rawInput) && isCalendarDate(rawInput.effectiveDate) && rawInput.effectiveDate < todayInKualaLumpur()) {
     const input = await resolveInputTypeTx(tx, ctx, rawInput, 'record');
     if (isComparisonKind(input.kind)) {
-      return recordComparisonInEffectiveOrderTx(tx, ctx, rawInput, input.kind);
+      return recordComparisonInEffectiveOrderTx(tx, ctx, rawInput, input.kind, options?.captureGradeBefore);
     }
   }
-  return dispatchMovementEventTx(tx,ctx,rawInput);
+  return dispatchMovementEventTx(tx,ctx,rawInput,undefined,undefined,options?.captureGradeBefore);
 }
 
 /** Only an assignment/company input can require dated organisation normalization.
@@ -3099,7 +3147,7 @@ function movementHasOrganisationInput(p:CreateMovementInput){
 }
 
 /** Private admission data never comes from a form or caller-supplied baseline. */
-async function dispatchMovementEventTx(tx:Tx,ctx:SessionContext,rawInput:CreateMovementInput,futureAdmission?:{baseline?:MovementCurrentState;capture?:(baseline:MovementCurrentState)=>void;expectedBehaviour?:string},correction?:{fromGroupId:string|null;allowInactive?:boolean}){
+async function dispatchMovementEventTx(tx:Tx,ctx:SessionContext,rawInput:CreateMovementInput,futureAdmission?:{baseline?:MovementCurrentState;capture?:(baseline:MovementCurrentState)=>void;expectedBehaviour?:string},correction?:{fromGroupId:string|null;allowInactive?:boolean},captureGradeBefore=false){
   const roles = ctx.roles ?? [];
   if (!(roles.includes('super_admin') || roles.includes('hr_admin'))&&!probationMovementAuthorityTx(tx,rawInput)) {
     throw new Error('Only an admin can record a movement.');
@@ -3120,6 +3168,10 @@ async function dispatchMovementEventTx(tx:Tx,ctx:SessionContext,rawInput:CreateM
     if(managed||tags.status!=='legacy')p.businessUnitId=organisationBusinessUnit(tags,managed,p.businessUnitId,p.kind==='entityTransfer'&&companyId!==current.companyId?null:current.businessUnitId);
   }
   if(futureAdmission?.expectedBehaviour!==undefined&&p.kind!==futureAdmission.expectedBehaviour)throw new Error('preview_stale_revalidate');
+  const needsGradeBefore = captureGradeBefore && movementNeedsEntitlementReprojection(p.kind);
+  const [previousGrade] = needsGradeBefore
+    ? await tx.select({gradeId:employment.gradeId}).from(employment).where(eq(employment.id,p.employmentId)).limit(1)
+    : [];
   const execute=async()=>{
   if (p.kind !== 'blacklist' && !/^\d{4}-\d{2}-\d{2}$/.test(p.effectiveDate ?? '')) {
     throw new Error('A valid effective date (YYYY-MM-DD) is required.');
@@ -3268,7 +3320,10 @@ async function dispatchMovementEventTx(tx:Tx,ctx:SessionContext,rawInput:CreateM
   };
   const result=await execute();
   if(!result)throw new Error('Unsupported movement event type.');
-  return {...result,behaviourKind:p.kind};
+  const gradeBefore = needsGradeBefore
+    ? {gradeId:previousGrade?.gradeId??null}
+    : undefined;
+  return {...result,behaviourKind:p.kind,...(gradeBefore?{gradeBefore}:{})};
 }
 
 /** A single ordered create function; no caller can pass a comparison baseline or replay token. */
@@ -3698,16 +3753,16 @@ async function laterReplayPlanTx(
 }
 
 /** Insert before later movements without letting the most recently written row win. */
-async function recordComparisonInEffectiveOrderTx(tx: Tx, ctx: SessionContext, input: CreateMovementInput, behaviour: string) {
+async function recordComparisonInEffectiveOrderTx(tx: Tx, ctx: SessionContext, input: CreateMovementInput, behaviour: string, captureGradeBefore?: boolean) {
   assertMovementAdmin(ctx, 'record a backdated movement');
   await lockEmploymentStatutoryOwnerTx(tx, input.employmentId);
   const { emp, events, rows, statusOf, resolvedTypes } = await projectRows(tx, ctx.tenantId, input.employmentId);
   if (input.effectiveDate < emp.hiredOn) {
-    if (behaviour === 'confirmation') return dispatchMovementEventTx(tx, ctx, input);
+    if (behaviour === 'confirmation') return dispatchMovementEventTx(tx, ctx, input, undefined, undefined, captureGradeBefore);
     throw new Error('Use Historical Hire to record dates before the current Group Join Date.');
   }
   const later = await laterReplayPlanTx(tx, events, rows, statusOf, resolvedTypes, null, -1, input.effectiveDate);
-  if (!later.length) return dispatchMovementEventTx(tx, ctx, input);
+  if (!later.length) return dispatchMovementEventTx(tx, ctx, input, undefined, undefined, captureGradeBefore);
 
   const reason = input.remarks?.trim();
   if (!reason) throw new MovementReasonRequiredError('Record a reason for inserting this earlier movement.');
@@ -3717,7 +3772,7 @@ async function recordComparisonInEffectiveOrderTx(tx: Tx, ctx: SessionContext, i
   for (const step of [...later].sort((a, b) => b.sequence - a.sequence)) {
     await reverseMovementTx(tx, ctx, input.employmentId, step.movementId, reason, true);
   }
-  const created = await dispatchMovementEventTx(tx, ctx, input);
+  const created = await dispatchMovementEventTx(tx, ctx, input, undefined, undefined, captureGradeBefore);
   await replayLaterMovementsTx(tx, ctx, input.employmentId, later);
   return created;
 }
@@ -4741,27 +4796,32 @@ export type ResignationInformation = Record<typeof RESIGNATION_INFO_FIELDS[numbe
 export function resignationInformation(ctx:SessionContext,employmentId:string):Promise<ResignationInformation>{
   return withTenant(ctx,async tx=>{
     await assertWorkforceEmploymentTx(tx,ctx,employmentId,'view');
-    const [current]=await tx.select({tenderResignationDate:employment.tenderResignationDate,resignationDate:employment.resignationDate,lastWorkingDate:employment.lastWorkingDate}).from(employment).where(eq(employment.id,employmentId));
-    if(!current)throw new Error('Employment not found.');
-    const {events,rows,statusOf}=await projectRows(tx,ctx.tenantId,employmentId);
-    const eventOwners=new Map<string,ProjectedRow>();
-    for(const movement of rows)for(const event of groupEventsOf(events,movement))eventOwners.set(event.id,movement);
-    return Object.fromEntries(RESIGNATION_INFO_FIELDS.map(field=>{
-      const value=current[field];
-      const latest=[...events].reverse().find(event=>{
-        if(event.eventType!=='employment.info.updated')return false;
-        const payload=event.payload as {fields?:unknown};if(!Array.isArray(payload?.fields)||!payload.fields.includes(field))return false;
-        const source=eventOwners.get(event.id),tag=tagOf(event);
-        // A compensating companion restores the prior ledger owner; reversed effects do not own today.
-        if(tag?.secondary&&!source)return false;
-        return !source||statusOf(source)==='applied';
-      });
-      const source=latest?eventOwners.get(latest.id):undefined;
-      const after=(latest?.payload as {after?:Record<string,unknown>})?.after;
-      const owner=source&&after?.[field]===value?source:undefined;
-      return [field,{value,source:owner?{kind:'movement',movementId:owner.id,effectiveDate:owner.effectiveDate}:value?{kind:'legacy'}:{kind:'empty'}}];
-    })) as ResignationInformation;
+    return resignationInformationFromProjection(tx,employmentId,await projectRows(tx,ctx.tenantId,employmentId));
   });
+}
+
+async function resignationInformationFromProjection(
+  tx:Tx,employmentId:string,{events,rows,statusOf}:Awaited<ReturnType<typeof projectRows>>,
+):Promise<ResignationInformation>{
+  const [current]=await tx.select({tenderResignationDate:employment.tenderResignationDate,resignationDate:employment.resignationDate,lastWorkingDate:employment.lastWorkingDate}).from(employment).where(eq(employment.id,employmentId));
+  if(!current)throw new Error('Employment not found.');
+  const eventOwners=new Map<string,ProjectedRow>();
+  for(const movement of rows)for(const event of groupEventsOf(events,movement))eventOwners.set(event.id,movement);
+  return Object.fromEntries(RESIGNATION_INFO_FIELDS.map(field=>{
+    const value=current[field];
+    const latest=[...events].reverse().find(event=>{
+      if(event.eventType!=='employment.info.updated')return false;
+      const payload=event.payload as {fields?:unknown};if(!Array.isArray(payload?.fields)||!payload.fields.includes(field))return false;
+      const source=eventOwners.get(event.id),tag=tagOf(event);
+      // A compensating companion restores the prior ledger owner; reversed effects do not own today.
+      if(tag?.secondary&&!source)return false;
+      return !source||statusOf(source)==='applied';
+    });
+    const source=latest?eventOwners.get(latest.id):undefined;
+    const after=(latest?.payload as {after?:Record<string,unknown>})?.after;
+    const owner=source&&after?.[field]===value?source:undefined;
+    return [field,{value,source:owner?{kind:'movement',movementId:owner.id,effectiveDate:owner.effectiveDate}:value?{kind:'legacy'}:{kind:'empty'}}];
+  })) as ResignationInformation;
 }
 
 /** Fixed source port: no arbitrary movement payload, authority role or field set is accepted. */

@@ -42,7 +42,7 @@ export default async function RewardUnitPage({ params, searchParams }: { params:
     const query=new URLSearchParams({... (sp.q?{q:sp.q}:{}),... (sp.check?{check:sp.check}:{}),... (sp.person?{person:sp.person}:{})}).toString();
     redirect(`/rewards/${encodeURIComponent(unitId)}${query?'?'+query:''}#${anchor}`);
   }
-  const [choices,batches,list,governance]=await Promise.all([rewardSetupChoices(s,scopeIds),rewardPayrollChoices(s,unitId),unit.kind==='annual'?listRewardUnits(s,[unit.companyId]):Promise.resolve([]),getRewardUnitGovernance(s,unitId)]);
+  const [choices,batches,list,governance]=await Promise.all([rewardSetupChoices(s,[unit.companyId].filter(id=>scopeIds.includes(id)),{fields:[]}),rewardPayrollChoices(s,unitId),unit.kind==='annual'?listRewardUnits(s,[unit.companyId]):Promise.resolve([]),getRewardUnitGovernance(s,unitId)]);
   const listMeta=list.find(row=>row.id===unitId);
   const tab = ['review', 'budget', 'approvals', 'data', 'excluded', 'rules'].includes(sp.view ?? '') ? sp.view! : 'review';
   const fields = <><input type="hidden" name="unitId" value={unitId} /><input type="hidden" name="revision" value={unit.revision} /></>;

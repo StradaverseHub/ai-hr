@@ -171,7 +171,7 @@ export async function ownClaimsPage(
 
 /** The row, only when it is the caller's own on `employmentId` (verified upstream). */
 async function ownRow(ctx: SessionContext, employmentId: string, id: string): Promise<ClaimRow | null> {
-  return (await claims.listClaimsForEmployment(ctx, employmentId)).find((r) => r.id === id) ?? null;
+  return (await claims.listClaimsForEmployment(ctx, employmentId, {claimId: id}))[0] ?? null;
 }
 
 // ── One claim ──────────────────────────────────────────────────────────────────────────────────────────────────

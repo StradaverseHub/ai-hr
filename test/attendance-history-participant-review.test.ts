@@ -6,7 +6,7 @@ import * as schema from '../db/schema';
 import { hireEmployee } from '../core/org';
 import { checkIn, checkOut, requestAttendanceCorrection, addAttendanceCorrectionAttachment, decideAttendanceCorrection, listAttendanceCorrections } from '../core/attendance';
 import { saveAttendanceWorkflow, setAttendanceWorkflowEnabled } from '../core/attendance-workflow';
-import { attendanceApplicationDetail, listAttendanceApplicationHistory } from '../core/attendance-application-history';
+import { attendanceApplicationDecision, attendanceApplicationDetail, listAttendanceApplicationHistory } from '../core/attendance-application-history';
 import { decideAttendanceHistorySelection } from '../packs/attendance/history-decisions';
 import { todayInKualaLumpur } from '../lib/hr-date';
 import { adminCtx, createAppUser, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
@@ -42,6 +42,7 @@ describe('Request-bound history review and original Overview visibility', () => 
     expect(future.find(row => row.id === f.id)).toMatchObject({ canDecide: false, hasAttachment: true, requestedOtMinutes: 60, systemOtMinutes: null, canReadRawComparison: false });
     expect((await listAttendanceCorrections(unrelated.ctx, { companyIds: [b.companyId], status: 'pending' })).map(row => row.id)).not.toContain(f.id);
     await expect(listAttendanceApplicationHistory(f.second.ctx, [b.companyId], { status: 'pending' })).rejects.toThrow();
+    await expect(attendanceApplicationDecision(f.second.ctx, [b.companyId], f.id)).rejects.toThrow('requires an HR administrator');
     expect(await projection(f.second.ctx, f.id)).toHaveLength(0);
     await expect(decideAttendanceCorrection(f.second.ctx, { correctionId: f.id, decision: 'approved', expectedStageIndex: 0, expectedParticipantSlot: '0:1' })).rejects.toThrow();
     await decideAttendanceCorrection(f.first.ctx, { correctionId: f.id, decision: 'approved', expectedStageIndex: 0, expectedParticipantSlot: '0:0' });
@@ -74,9 +75,13 @@ describe('Request-bound history review and original Overview visibility', () => 
     const otherScope: SessionContext = { ...otherHr.ctx, roles: ['hr_admin'], grants: [{ role: 'hr_admin', companyId: otherCompany.id }] };
     expect(await projection(otherScope, f.id)).toHaveLength(0);
     expect(await attendanceApplicationDetail(otherScope, [b.companyId], f.id)).toBeNull();
+    expect(await attendanceApplicationDecision(otherScope, [b.companyId], f.id)).toBeNull();
+    expect(await attendanceApplicationDecision(f.root, [], f.id)).toBeNull();
+    expect(await attendanceApplicationDecision(f.root, [b.companyId], 'invalid-id')).toBeNull();
     const foreign = await seedBase();
     expect(await projection(adminCtx(foreign), f.id)).toHaveLength(0);
     expect(await attendanceApplicationDetail(adminCtx(foreign), [b.companyId], f.id)).toBeNull();
+    expect(await attendanceApplicationDecision(adminCtx(foreign), [b.companyId], f.id)).toBeNull();
   });
   it('does not advertise a revoked assignment as the next sequential actor or skip it', async () => {
     const f = await fixture();
@@ -92,6 +97,8 @@ describe('Request-bound history review and original Overview visibility', () => 
     const hr: SessionContext = { ...f.first.ctx, roles: ['hr_admin'], grants: [{ role: 'hr_admin', companyId: b.companyId }] };
     const listing = await listAttendanceApplicationHistory(hr, [b.companyId], { status: 'pending' });
     expect(listing.rows.find(row => row.id === f.id)).toMatchObject({ selectable: true, currentParticipantSlot: '0:0' });
+    expect(await attendanceApplicationDecision(hr, [b.companyId], f.id)).toEqual({ canDecide: true });
+    expect((await attendanceApplicationDetail(hr, [b.companyId], f.id))?.canDecide).toBe(true);
     for (const participantSlot of [undefined, '0:1']) {
       expect(await decideAttendanceHistorySelection(hr, [b.companyId], { items: [{ id: f.id, stage: 0, participantSlot }], decision: 'approved', reason: 'Fictional reviewed selection' }))
         .toMatchObject([{ id: f.id, status: 'failed' }]);
@@ -100,6 +107,8 @@ describe('Request-bound history review and original Overview visibility', () => 
     expect(await decideAttendanceHistorySelection(hr, [b.companyId], { items: [{ id: f.id, stage: 0, participantSlot: '0:0' }], decision: 'approved', reason: 'Fictional reviewed selection' }))
       .toMatchObject([{ id: f.id, status: 'pending' }]);
     expect((await attendanceApplicationDetail(f.root, [b.companyId], f.id))?.workflow?.participantDecisions).toHaveLength(1);
+    expect(await attendanceApplicationDecision(hr, [b.companyId], f.id)).toEqual({ canDecide: false });
+    expect((await attendanceApplicationDetail(hr, [b.companyId], f.id))?.canDecide).toBe(false);
   });
   it('retains a hybrid HR and employee participant request outside that person’s HR company scope', async () => {
     const f = await fixture();

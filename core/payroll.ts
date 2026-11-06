@@ -31,7 +31,8 @@ import { payrollHistoryEffectiveBatch } from '../db/schema';
  * every statutory contribution to the company's country pack. Each mutation appends an event.
  */
 import { createHash, randomUUID } from 'node:crypto';
-import { and, desc, eq, gt, gte, inArray, isNotNull, isNull, like, lt, lte, ne, or, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gt, gte, inArray, isNotNull, isNull, like, lt, lte, ne, or, sql } from 'drizzle-orm';
+import { pageState, type PageQuery } from '../lib/pagination';
 import { type SessionContext, type Tx } from '../db/client';
 // ADR-0077 D3 SERVICE GATE (r292). `withTenant` here is `withPayrollTenant` — all 38 exported entry
 // points, THE ENGINE included, refuse a tenant without the Payroll module. The `tx`-taking helpers
@@ -8894,17 +8895,28 @@ async function assertNoOutstandingCloseWorkTx(tx: Tx, ctx: SessionContext, batch
  * `closeBatch` remains the authority.
  */
 export function payrollCloseCompanyIds(ctx: SessionContext, companyIds: readonly string[]): Promise<Set<string>> {
+  const requested = companyIds.slice();
+  if (requested.length === 0) return Promise.resolve(new Set());
+  return withTenant(ctx, tx => payrollCloseCompanyIdsTx(tx, ctx, requested));
+}
+
+/** The caller supplies its existing Payroll-gated transaction and the same principal. */
+export async function payrollCloseCompanyIdsTx(
+  tx: Tx,
+  ctx: SessionContext,
+  companyIds: readonly string[],
+): Promise<Set<string>> {
   const ids = [...new Set(companyIds)];
-  if (ids.length === 0) return Promise.resolve(new Set());
-  return withTenant(ctx, async (tx) => {
-    const scoped = await tx
-      .select({ id: company.id })
-      .from(company)
-      .where(and(inArray(company.id, ids), sql`app.can_admin_payroll_for(${company.id})`));
-    const allowed = new Set<string>();
-    for (const row of scoped) if (await resolvePayrollPermission(tx, ctx, 'payroll.close', row.id)) allowed.add(row.id);
-    return allowed;
-  });
+  const allowed = new Set<string>();
+  if (ids.length === 0) return allowed;
+  const scoped = await tx
+    .select({ id: company.id })
+    .from(company)
+    .where(and(inArray(company.id, ids), sql`app.can_admin_payroll_for(${company.id})`));
+  for (const row of scoped) {
+    if (await resolvePayrollPermission(tx, ctx, 'payroll.close', row.id)) allowed.add(row.id);
+  }
+  return allowed;
 }
 
 export async function closeBatch(ctx: SessionContext, p: { batchId: string }) {
@@ -10692,6 +10704,22 @@ export async function removeEmployeePayrollTx(
   };
 }
 
+/** All-time dashboard warning/empty-state counts without materialising payroll money and run DTOs.
+ * Same effective-history source, company visibility and empty company-filter semantics as listBatches.
+ * The unpublished count follows payrollPublicationState, excluding imported history, drafts and closed runs. */
+export function payrollDashboardCounts(ctx:SessionContext,companyIds?:string[]){
+ return withTenant(ctx,async tx=>{
+  const [row]=await tx.select({
+   totalCount:sql<number>`count(*)`.mapWith(Number),
+   unpublishedCount:sql<number>`count(*) filter (where ${payrollBatch.historyImportAttemptId} is null and ${payrollBatch.status} not in ('draft','closed'))`.mapWith(Number),
+  }).from(payrollHistoryEffectiveBatch)
+   .innerJoin(company,eq(company.id,payrollBatch.companyId))
+   .leftJoin(payrollCycle,eq(payrollCycle.id,payrollBatch.payrollCycleId))
+   .where(and(companyIds&&companyIds.length?inArray(payrollBatch.companyId,companyIds):undefined,or(isNull(payrollBatch.historyImportAttemptId),gt(payrollBatch.employeeCount,0))));
+  return row??{totalCount:0,unpublishedCount:0};
+ });
+}
+
 // Read-only list (no events.append per the CLAUDE.md skip rule). `payPeriod` is an OPTIONAL
 // additive filter: when a non-empty string is passed it is AND-ed onto the existing tenant-RLS +
 // companyIds guard, so it can only NARROW the result (Build #10). Omitting it (or passing '')
@@ -10708,6 +10736,7 @@ export function listBatches(
   ctx: SessionContext,
   companyIds?: string[],
   payPeriod?: string | readonly string[],
+  statuses?: readonly (typeof payrollBatch.$inferSelect.status)[],
 ) {
   const periodFilter = Array.isArray(payPeriod)
     ? inArray(payrollBatch.payPeriod, payPeriod as string[])
@@ -10772,6 +10801,7 @@ export function listBatches(
         and(
           companyIds && companyIds.length ? inArray(payrollBatch.companyId, companyIds) : undefined,
           periodFilter,
+          statuses ? inArray(payrollBatch.status, statuses) : undefined,
           or(isNull(payrollBatch.historyImportAttemptId),gt(payrollBatch.employeeCount,0)),
         ),
       )
@@ -11483,9 +11513,22 @@ export function preProcessAdvisoryForSelection(
   });
 }
 
+async function readBatchHeaderTx(tx: Tx, batchId: string) {
+  const [batch] = await tx.select().from(payrollHistoryEffectiveBatch).where(eq(payrollBatch.id, batchId)).limit(1);
+  return batch ?? null;
+}
+
+/** Same Payroll gate and effective-history header as batchDetail, without reading employee money rows. */
+export function batchHeader(ctx: SessionContext, batchId: string) {
+  return withTenant(ctx, async (tx) => {
+    const batch = await readBatchHeaderTx(tx, batchId);
+    return batch ? { batch } : null;
+  });
+}
+
 export function batchDetail(ctx: SessionContext, batchId: string) {
   return withTenant(ctx, async (tx) => {
-    const [batch] = await tx.select().from(payrollHistoryEffectiveBatch).where(eq(payrollBatch.id, batchId)).limit(1);
+    const batch = await readBatchHeaderTx(tx, batchId);
     if (!batch) return null;
     const slips = await tx
       .select({
@@ -11512,6 +11555,95 @@ export function batchDetail(ctx: SessionContext, batchId: string) {
       .where(eq(payslip.batchId, batchId))
       .orderBy(person.fullName);
     return { batch, slips };
+  });
+}
+
+/** Count and page the exact joined register in one SQL snapshot after the history barrier. */
+export function payrollRunRegisterPage(ctx: SessionContext, batchId: string, page: PageQuery) {
+  return withTenant(ctx, async tx => {
+    const batch = await readBatchHeaderTx(tx, batchId);
+    if (!batch) return null;
+    // Both consumers reference the same CTE, so Postgres materializes one narrow RLS-visible set.
+    // The payload stays on payslip and is fetched only for the requested page.
+    const visibleRegister = tx.$with('visible_register').as(tx.select({
+      id: payslip.id,
+      employmentId: payslip.employmentId,
+      name: person.fullName,
+      employeeCode: employment.employeeCode,
+    }).from(payslip)
+      .innerJoin(employment, eq(employment.id, payslip.employmentId))
+      .innerJoin(person, eq(person.id, employment.personId))
+      .where(eq(payslip.batchId, batchId)));
+    const registerTotal = tx.select({ total: sql<number>`count(*)`.mapWith(Number).as('total') })
+      .from(visibleRegister).as('register_total');
+    const registerPage = tx.select().from(visibleRegister)
+      .orderBy(asc(visibleRegister.name), asc(visibleRegister.id)).limit(page.limit)
+      // An oversized URL offset cannot address a real row, but must still fit Postgres bigint.
+      .offset(Math.min(page.offset, Number.MAX_SAFE_INTEGER))
+      .as('register_page');
+    const pageSlip = tx.select({
+      id: payslip.id,
+      basic: payslip.basicSalary,
+      bonus: payslip.bonus,
+      daysWorked: payslip.daysWorked,
+      gross: payslip.grossPay,
+      statutory: payslip.statutory,
+      net: payslip.netPay,
+      version: payslip.version,
+    }).from(payslip).where(eq(payslip.id, registerPage.id)).limit(1).as('page_slip');
+    // The close prompt needs one cycle label. Keep it in this register query instead of
+    // listing every run in the company and period after the access audit.
+    const closeCycleName = batch.status === 'processed' && batch.payrollCycleId &&
+      (!batch.historyImportAttemptId || batch.employeeCount > 0)
+      ? sql<string|null>`(${tx.select({name:payrollCycle.name}).from(payrollCycle)
+        .innerJoin(company,eq(company.id,batch.companyId))
+        .where(eq(payrollCycle.id,batch.payrollCycleId)).limit(1)})`
+      : sql<string|null>`null`;
+    const entries = await tx.with(visibleRegister).select({
+      total: registerTotal.total,
+      closeCycleName,
+      employmentId: registerPage.employmentId,
+      name: registerPage.name,
+      employeeCode: registerPage.employeeCode,
+      slip: {
+        id: pageSlip.id,
+        basic: pageSlip.basic,
+        bonus: pageSlip.bonus,
+        daysWorked: pageSlip.daysWorked,
+        gross: pageSlip.gross,
+        statutory: pageSlip.statutory,
+        net: pageSlip.net,
+        version: pageSlip.version,
+      },
+    }).from(registerTotal)
+      .leftJoin(registerPage, sql`true`)
+      .leftJoinLateral(pageSlip, sql`true`)
+      .orderBy(asc(registerPage.name), asc(registerPage.id));
+    const rows = entries.flatMap(({ slip, employmentId, name, employeeCode }) =>
+      slip === null || employmentId === null || name === null ? [] : [{ ...slip, employmentId, name, employeeCode }]);
+    return { batch, closeCycleName:entries[0].closeCycleName, slipPage: { rows, state: pageState(page, entries[0].total, rows.length) } };
+  });
+}
+
+/** Run-wide stale banner identities, including people outside the visible register page. */
+export function listBatchRecalcPayslipIdentities(ctx: SessionContext, batchId: string, employmentIds: readonly string[]) {
+  // The prior JS join matched the exact lowercase IDs returned by Postgres. Invalid or differently
+  // formatted IDs in a retained event did not match any payslip.
+  const ids = employmentIds.filter(id => /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/.test(id));
+  if (ids.length === 0) return Promise.resolve([]);
+  return withTenant(ctx, async tx => {
+    const batch = await readBatchHeaderTx(tx, batchId);
+    if (!batch) return [];
+    const selectedIds = '{' + ids.join(',') + '}';
+    return tx.select({
+      employmentId: payslip.employmentId,
+      name: person.fullName,
+      employeeCode: employment.employeeCode,
+    }).from(payslip)
+      .innerJoin(employment, eq(employment.id, payslip.employmentId))
+      .innerJoin(person, eq(person.id, employment.personId))
+      .where(and(eq(payslip.batchId, batchId), sql`${payslip.employmentId} = any(${selectedIds}::uuid[])`))
+      .orderBy(asc(person.fullName), asc(payslip.id));
   });
 }
 

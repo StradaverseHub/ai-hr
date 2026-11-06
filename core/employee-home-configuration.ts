@@ -7,8 +7,8 @@ import {actorOf,appendEvent} from '../db/events';
 import {DASHBOARD_LAYOUT_ROLES,type DashboardLayoutRole} from '../lib/dashboard-layout';
 import {validateEmployeeHomeConfiguration,type EmployeeHomeConfiguration} from '../lib/employee-home';
 import {defaultEmployeeHomeConfiguration} from '../lib/employee-home-defaults';
-import {readEmployeeHomeIdentity,HomeAccessError} from './employee-home';
-import {myOwnEmploymentSubjects} from './read';
+import {readEmployeeHomeIdentityContextTx,HomeAccessError} from './employee-home';
+import {isOwnProfileEditEmploymentTx} from './read';
 
 export class HomeConfigurationAccessError extends Error{
  constructor(){super('This employee Home configuration is outside your company scope.');this.name='HomeConfigurationAccessError';}
@@ -47,17 +47,31 @@ export function readEmployeeHomeConfigurationEditor(ctx:SessionContext,p:{compan
 }
 /** A caller cannot choose a different company or role. Both come from current own active employment
  * and the same deterministic dashboard-role resolver used by the shell. No salary projection is read. */
-export async function readOwnEmployeeHomeConfiguration(ctx:SessionContext,requestedEmploymentId?:string){
- const identity=await readEmployeeHomeIdentity(ctx,requestedEmploymentId);
- if(identity.employmentState!=='selected')throw new HomeAccessError(identity.employmentState==='choose'?'chooseEmployment':'employmentUnavailable');
- const own=await myOwnEmploymentSubjects(ctx,{profileEdit:true}),subject=own.find(row=>row.employmentId===identity.selectedEmploymentId);
- if(!subject?.companyProof.companyId)throw new HomeAccessError('employmentUnavailable');
+export async function readOwnEmployeeHomeConfiguration(ctx:SessionContext,requestedEmploymentId?:string,signal?:AbortSignal){
  return withTenant(ctx,async tx=>{
+  const {identity,companyId,hiredOn}=await readEmployeeHomeIdentityContextTx(tx,ctx,requestedEmploymentId);
+  if(identity.employmentState!=='selected')throw new HomeAccessError(identity.employmentState==='choose'?'chooseEmployment':'employmentUnavailable');
+  const employmentId=identity.selectedEmploymentId;
+  if(!companyId||!employmentId||!hiredOn||!await isOwnProfileEditEmploymentTx(tx,ctx,employmentId))
+   throw new HomeAccessError('employmentUnavailable');
   const [proof]=await tx.execute(sql`SELECT app.principal_snapshot_current() AS allowed`) as unknown as {allowed:boolean}[];
   if(!proof?.allowed)throw new HomeConfigurationAccessError();
-  const view=await currentTx(tx,ctx,subject.companyProof.companyId!,identity.role);
-  return {...view,employmentId:subject.employmentId};
- });
+  signal?.throwIfAborted();
+  const view=await currentTx(tx,ctx,companyId,identity.role);
+  return {...view,employmentId,hiredOn};
+ },{readOnlySnapshot:true,readSignal:signal});
+}
+
+/** A single response can reuse the native proof for the exact session and subject that requested it. */
+export class OwnHomeConfigurationRead {
+ private pending?: ReturnType<typeof readOwnEmployeeHomeConfiguration>;
+ constructor(private readonly session:SessionContext,private readonly employmentId:string,readonly signal?:AbortSignal){}
+
+ read(session:SessionContext,employmentId?:string){
+  if(session!==this.session||employmentId!==this.employmentId)throw new HomeAccessError('employmentUnavailable');
+  this.signal?.throwIfAborted();
+  return this.pending??=readOwnEmployeeHomeConfiguration(session,employmentId,this.signal);
+ }
 }
 export async function saveEmployeeHomeConfiguration(ctx:SessionContext,p:{companyId:string;audienceRole:string;expectedOrdinal:number;configuration:unknown;reason:string}){
  const audienceRole=role(p.audienceRole),configuration=validateEmployeeHomeConfiguration(p.configuration);

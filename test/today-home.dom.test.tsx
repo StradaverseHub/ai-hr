@@ -17,7 +17,7 @@ const fx=vi.hoisted(()=>{
  class FixtureEntitlementsResolutionFailedError extends Error{}
  const empty={answeredForYou:0,answeredForOthers:0,leaveChecks:0,preparedForYou:0};
  return {FixtureHomeAccessError,FixtureEntitlementsResolutionFailedError,empty,state:{} as {
-  tasks:{id:string;kind:string;subjectName:string|null;createdAt:string;linkPath:string;companyId:string}[];tasksFail:boolean;
+  tasks:{id:string;kind:string;subjectName:string|null;createdAt:string;linkPath:string;companyId:string}[];tasksFail:boolean;claimTotal?:number;
   ownLeave:{actionId:string;state:string;createdAt:string;expiresAt:string}[];reopened:Record<string,unknown>;reopenCalls:string[];cancellations:{actionId:string;state:string;createdAt:string;expiresAt:string}[];
   decisions:{actionId:string;state:string;createdAt:string;expiresAt:string}[];
   proposals:{count:number}[];readiness:{employees:number;ready:number};digest:unknown;recommender:boolean;
@@ -46,8 +46,14 @@ vi.mock('@/db/client',()=>({withTenant:async(_s:unknown,run:(tx:unknown)=>unknow
 // resolution-failed error, as core/entitlements.ts does.
 vi.mock('@/core/entitlements',()=>({EntitlementsResolutionFailedError:fx.FixtureEntitlementsResolutionFailedError,
  isModuleEnabled:(_s:unknown,code:string)=>{if(S.entitlementsFail)throw new fx.FixtureEntitlementsResolutionFailedError('Fixture snapshot outage');return S.modules.has(code);}}));
-vi.mock('@/core/approvals-inbox',()=>({listPendingTasks:async(_s:unknown,scope:string[])=>{S.calls.tasks.push(scope);if(S.tasksFail)throw Error('Fixture queue outage');
- return S.tasks.filter(task=>scope.includes(task.companyId)).map(({companyId:_companyId,...task})=>task);}}));
+vi.mock('@/core/approvals-inbox',()=>{
+ const listPendingTasks=async(_s:unknown,scope:string[])=>{S.calls.tasks.push(scope);if(S.tasksFail)throw Error('Fixture queue outage');
+  return S.tasks.filter(task=>scope.includes(task.companyId)).map(({companyId:_companyId,...task})=>task);};
+ return {listPendingTasks,pendingTaskSummary:async(s:unknown,scope:string[])=>{
+  const items=await listPendingTasks(s,scope),claims=items.filter(task=>task.kind==='claim');let seen=0;
+  return {items:items.filter(task=>task.kind!=='claim'||seen++<25),total:items.length-claims.length+(S.claimTotal??claims.length),claimTotal:S.claimTotal??claims.length};
+ }};
+});
 // The owners' own reopen of the caller's review, as the review page reads it; a missing fixture is the owner refusing.
 const reopen=async(id:string)=>{S.reopenCalls.push(id);if(!(id in S.reopened))throw Error('Fixture review unavailable');return S.reopened[id];};
 vi.mock('@/core/assistant-actions/own-leave-store',()=>({listOwnLeaveReviewsTx:async()=>({kind:'review_index',reviews:S.ownLeave}),reopenOwnLeaveReviewTx:async(_tx:unknown,_s:unknown,id:string)=>reopen(id)}));
@@ -123,7 +129,7 @@ const PAYROLL_PARTNER=ctx(['payroll_partner'],[{role:'payroll_partner',companyId
 const text=(el:Element|null|undefined)=>(el?.textContent??'').replace(/\s+/g,' ').trim();
 
 beforeEach(()=>{
- Object.assign(S,{tasks:[],tasksFail:false,ownLeave:[],reopened:{},reopenCalls:[],cancellations:[],decisions:[],proposals:[],readiness:{employees:0,ready:0},digest:null,recommender:false,
+ Object.assign(S,{tasks:[],tasksFail:false,claimTotal:undefined,ownLeave:[],reopened:{},reopenCalls:[],cancellations:[],decisions:[],proposals:[],readiness:{employees:0,ready:0},digest:null,recommender:false,
   summary:{...fx.empty},summaryFail:false,worklist:{},exceptions:{rows:[],total:0},passports:[],timeOff:{version:1,employmentId:'emp-own',asOf:'2026-11-04',canApply:true,balances:[],nextApproved:null},
   timeOffError:null,pay:{version:1,employmentId:'emp-own',payslips:[],nextPayment:null},payError:null,managers:[],calendarDays:[],assistant:true,name:'Ravi Fictional',
   modules:new Set(['leave','payroll','attendance','claims','performance','rewards']),entitlementsFail:false,push:vi.fn(),loops:[],loopsFail:false,letterRequests:0,
@@ -746,4 +752,15 @@ describe('Today at phone width',()=>{
    cleanup();
   }
  });
+});
+
+it('Home keeps a 500000-Claim count without reading the entire queue into its five cards',async()=>{
+ S.tasks=Array.from({length:25},(_,i)=>({id:'claim-'+i,kind:'claim',subjectName:'Fictional claimant '+i,createdAt:'2026-11-02T02:00:00Z',linkPath:'/approvals?category=claim',companyId:'co-a'}));
+ S.claimTotal=500000;
+ const view=await show(MANAGER,['co-a']);
+ expect(view.container.querySelectorAll('[data-today-task="claim"]')).toHaveLength(5);
+ const needs=view.section('today-needs-you')!;
+ expect(text(needs.querySelector('[data-today-count]'))).toBe('500000');
+ expect(text(needs.querySelector('a[href="/?needs=all"]'))).toContain('500000');
+ expect(S.calls.tasks).toEqual([['co-a']]);
 });

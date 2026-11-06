@@ -12,9 +12,10 @@ export type MovementActionLabels = {
 };
 
 /** Used by the actual history table. Every write remains a server action and the service repeats scope checks. */
-export function MovementHistoryActions({employmentId, row, eventLabel, canCorrect, labels, reverseAction, context}: {
+export function MovementHistoryActions({employmentId, row, eventLabel, canCorrect, labels, reverseAction, context, standalone = false}: {
   employmentId: string;
   context?: MovementPageContext;
+  standalone?: boolean;
   row: Pick<MovementHistoryRow,'id'|'kind'|'status'|'canEdit'|'canReverse'|'payrollLocked'|'payrollWarning'>;
   eventLabel: string;
   canCorrect: boolean;
@@ -33,6 +34,11 @@ export function MovementHistoryActions({employmentId, row, eventLabel, canCorrec
     {canCorrect && !terminal && row.canReverse && <form action={reverseAction} className="inline-flex">
       <input type="hidden" name="employmentId" value={employmentId}/>
       <input type="hidden" name="movementId" value={row.id}/>
+      {standalone && <>
+        <input type="hidden" name="movementPage" value="history"/>
+        <input type="hidden" name="showCorrected" value={context?.showCorrected??''}/>
+        <input type="hidden" name="from" value={context?.from??''}/>
+      </>}
       <ConfirmSubmit title={labels.deleteTitle} subtitle={eventLabel}
         description={row.status === 'pending' ? labels.deletePendingDescription : `${labels.deleteDescription}${row.payrollWarning ? ` ${labels.processedWarning}` : ''}`}
         confirmLabel={labels.delete} cancelLabel={labels.keepEvent}

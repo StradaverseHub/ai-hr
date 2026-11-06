@@ -17,6 +17,8 @@ import {createClaimType,setClaimPolicy,submitClaim,decideClaim,cancelClaimTx} fr
 import {prepareClaimCancellationReview,confirmClaimCancellationReview,reopenClaimCancellationReview,discardClaimCancellationReview,listClaimCancellationReviews,readClaimCancellationChoices} from '../core/assistant-actions/claim-cancellation-review-store';
 import {OWN_CLAIM_CANCELLATION_ACTION as action} from '../lib/assistant-actions/own-claim-cancellation-contract';
 import {todayInKualaLumpur} from '../lib/hr-date';
+import {pgSqlState} from '../lib/db-error';
+import {assertAiPrincipalTx} from '../core/ai-principal';
 import {adminCtx,closeAll,createAppUser,entitledCtx,migrateTestDb,owner,resetDb,seedBase,setModule,type Base} from './harness';
 let b:Base,ctx:SessionContext,subject:{personId:string;employmentId:string},typeId:string,claimId:string;
 const group=()=>({...adminCtx(b),grants:[{role:'hr_admin' as const,companyId:null}]});
@@ -38,6 +40,33 @@ const confirm=(r:{actionId:string;reviewedDigest:string},who=ctx)=>confirmClaimC
 async function state(){return{claims:await owner.db.select({id:s.claimRequest.id,status:s.claimRequest.status}).from(s.claimRequest).where(eq(s.claimRequest.tenantId,b.tenantId)).orderBy(s.claimRequest.id),
  cancelled:await owner.db.select({id:s.domainEvent.id}).from(s.domainEvent).where(and(eq(s.domainEvent.tenantId,b.tenantId),eq(s.domainEvent.eventType,'claim-request.cancelled'))).orderBy(s.domainEvent.id)};}
 async function custody(id:string){const [row]=await owner.db.execute(sql`select r.action_kind,r.state,r.receipt_subject_kind,r.receipt_subject_id,r.receipt_event_id,r.intent_digest,r.reviewed_digest,(select count(*)::int from app.assistant_own_leave_review_content c where c.action_id=r.id) as bodies from app.assistant_own_leave_review r where r.id=${id}::uuid`);return row;}
+
+it('lists actual own metadata alongside an independent reader without changing custody or confirmation',async()=>{
+ const r=await prepare(),before=await state(),expected=await listClaimCancellationReviews(ctx);
+ expect(expected.reviews.map(row=>row.actionId)).toEqual([r.actionId]);
+ await owner.client.begin(async holder=>{
+  await holder`select pg_advisory_xact_lock_shared(hashtextextended(${'access-configuration:'+b.tenantId},0))`;
+  expect(await listClaimCancellationReviews(ctx)).toEqual(expected);
+ });
+ expect(await state()).toEqual(before);expect(await custody(r.actionId)).toMatchObject({state:'awaiting_confirmation',bodies:1});
+ expect((await confirm(r)).kind).toBe('completed');expect((await state()).cancelled).toHaveLength(1);
+});
+
+it('allows two full read-only native action guards after both acquired the shared feature-policy lock',async()=>{
+ let arrived=0,release!:()=>void;const ready=new Promise<void>(resolve=>{release=resolve;});
+ const check=()=>withTenant(ctx,async tx=>{
+  try{
+   await tx.execute(sql`set transaction read only`);await tx.execute(sql`set local lock_timeout='1500ms'`);
+   await assertAiPrincipalTx(tx,ctx);
+   const [policy]=await tx.execute<{allowed:boolean}>(sql`select app.ai_action_unpaused('hr_assistant',false)as allowed`);
+   expect(policy.allowed).toBe(true);if(++arrived===2)release();await ready;
+   await withAgentActionGuard(tx,ctx,action,'confirm');
+  }catch(error){release();throw error;}
+ });
+ const settled=await Promise.allSettled([check(),check()]);
+ const observed=settled.map(result=>result.status==='fulfilled'?{status:'fulfilled'}:{status:'rejected',code:pgSqlState(result.reason)});
+ expect(observed).toEqual([{status:'fulfilled'},{status:'fulfilled'}]);
+});
 
 describe('ADR-0151 own claim cancellation custody',()=>{
  it('lists the own pending claim and prepares a sealed review without any effect',async()=>{

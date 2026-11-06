@@ -86,7 +86,8 @@ import {
   listEmployeeDrafts,
   saveEmployeeDraft,
 } from '../core/employee-draft';
-import { draftListScope } from '../app/admin/personnel/list-query';
+import { draftListScope, draftMatchesQuery, parsePersonnelListQuery } from '../app/admin/personnel/list-query';
+import { readPersonnelDraftList } from '../app/admin/personnel/draft-list-read';
 import PeoplePage from '../app/admin/personnel/page';
 import { GET as exportPersonnel } from '../app/admin/personnel/export/route';
 import { GET as loadPersonnelFilterOptions } from '../app/admin/personnel/filter-options/route';
@@ -162,6 +163,34 @@ describe('§1 listEmployeeDrafts follows the selected companies', () => {
 
   it('an empty selection selects nothing', async () => {
     expect(await listEmployeeDrafts(groupAdmin(), { companyIds: [], includeWithoutCompany: true })).toEqual([]);
+  });
+
+  it('keeps exact native scope, literal search and pinned row details when only the Draft count is needed', async () => {
+    await insertDraft(A, 'İnce %_ candidate');
+    const all = draftListScope([A, B], 2), narrow = draftListScope([A], 2);
+    const cases: { actor: SessionContext; scope: typeof all; params: Record<string, string>; show: boolean }[] = [
+      { actor: groupAdmin(), scope: all, params: {}, show: true },
+      { actor: groupAdmin(), scope: all, params: {}, show: false },
+      { actor: groupAdmin(), scope: all, params: { q: 'i\u0307' }, show: false },
+      { actor: groupAdmin(), scope: narrow, params: { q: '%_' }, show: false },
+      { actor: groupAdmin(), scope: all, params: { q: 'Bravo Holdings' }, show: false },
+      { actor: groupAdmin(), scope: all, params: { company: B }, show: true },
+      { actor: groupAdmin(), scope: all, params: { company: 'not-in-scope' }, show: false },
+      { actor: adminOfA(), scope: all, params: { q: 'Bravo' }, show: false },
+      { actor: adminOfA(), scope: all, params: {}, show: false },
+      { actor: groupAdmin(), scope: all, params: { bucket: 'active' }, show: true },
+      { actor: groupAdmin(), scope: all, params: { dept: b.deptA }, show: true },
+      { actor: groupAdmin(), scope: all, params: { type: 'full_time' }, show: false },
+      { actor: groupAdmin(), scope: all, params: { status: 'active' }, show: false },
+      { actor: groupAdmin(), scope: { companyIds: [], includeWithoutCompany: true }, params: {}, show: false },
+    ];
+    for (const { actor, scope, params, show } of cases) {
+      const query = parsePersonnelListQuery(params), reference = await listEmployeeDrafts(actor, scope);
+      expect(await readPersonnelDraftList(actor, scope, query, show)).toEqual({
+        rows: show ? reference.filter(row => draftMatchesQuery(row, query)) : [],
+        count: reference.filter(row => draftMatchesQuery(row, { ...query, bucket: undefined })).length,
+      });
+    }
   });
 
   it('decides "narrowed" from distinct companies, against what the reader may reach', () => {
@@ -247,9 +276,27 @@ describe('§2 the Personnel screen: list, Draft card and Filter options follow t
 
   it('the Draft card under another bucket still previews the scoped drafts only', async () => {
     SCOPE_COOKIE = A;
-    const r = await renderPersonnel({});
+    const r = await renderPersonnel({ bucket: 'active' });
     expect(r.draftCard).toBe(1);
-    expect(r.draftRows).toEqual([draftA]);
+    expect(r.draftRows).toEqual([]);
+  });
+
+  it('counts matching drafts on later pages without repeating the pinned rows', async () => {
+    const r = await renderPersonnel({ page: '2', q: 'ALPHA001' });
+    expect(r.draftCard).toBe(1);
+    expect(r.draftRows).toEqual([]);
+  });
+
+  it('keeps live status cards on the Draft view while hiding live employee rows', async () => {
+    const [p] = await owner.db.insert(schema.person).values({ tenantId: b.tenantId, fullName: 'Live Employee Marker', primaryEmail: 'live-marker@example.invalid' }).returning();
+    await owner.db.insert(schema.employment).values({ tenantId: b.tenantId, personId: p.id, companyId: A, hiredOn: '2020-01-01' });
+    const regular = await renderPersonnel(), drafts = await renderPersonnel({ bucket: 'draft' });
+    const liveCounts = (html: string) => [...html.matchAll(/data-headcount="([^"]+)"[^>]*>[\s\S]*?tabular-nums">(\d+)</g)]
+      .filter(match => match[1] !== 'draft').map(match => [match[1], Number(match[2])]);
+    expect(regular.html).toContain('Live Employee Marker');
+    expect(drafts.html).not.toContain('Live Employee Marker');
+    expect(liveCounts(regular.html).some(([, count]) => Number(count) > 0)).toBe(true);
+    expect(liveCounts(drafts.html)).toEqual(liveCounts(regular.html));
   });
 
   it('the Filter panel offers only the companies being viewed', async () => {

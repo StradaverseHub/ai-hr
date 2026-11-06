@@ -59,7 +59,7 @@ import {companySegmentsForPeriod,companySegmentsForPeriodBulk,type CompanySegmen
 // unlike every resolver above, which runs inside the caller's tx. `withTenant` is the only addition.
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { todayInKualaLumpur } from '../lib/hr-date';
-import { appendEvent, actorOf } from '../db/events';
+import { appendEvents, actorOf } from '../db/events';
 import { company, employment, holiday, holidayGroup, holidayGroupHoliday } from '../db/schema';
 
 // R18 a519a96e — group INHERITANCE: the employment's assigned group may point at a PARENT group
@@ -242,6 +242,14 @@ export async function effectiveHolidayState(
   return { country: emp.country, state,states:Array.isArray(effEmpGroupStates)?effEmpGroupStates:state?[state]:[] };
 }
 
+type HolidayCompletenessEvent = {
+  module: string;
+  aggregateType: string;
+  aggregateId: string;
+  subjectEmploymentId?: string | null;
+  context?: Record<string, unknown>;
+};
+
 /**
  * The high-value safety net (Phase-B #15 Part A). For each (state, year) the given window spans, check
  * whether the loaded gazette meets the s.60D minimum; if not, append a NON-BLOCKING warning domain event
@@ -252,22 +260,21 @@ export async function effectiveHolidayState(
 export async function warnIfHolidaysIncomplete(
   tx: Tx,
   ctx: SessionContext,
-  args: {
-    country: string;
-    state: string | null;
-    years: number[];
-    module: string;
-    aggregateType: string;
-    aggregateId: string;
-    subjectEmploymentId?: string | null;
-    context?: Record<string, unknown>;
-  },
+  args: HolidayCompletenessEvent & { country: string; state: string | null; years: number[] },
 ): Promise<HolidayCompletenessWarning[]> {
   const warnings = await readHolidayCompletenessWarnings(tx, args.country, args.state, args.years);
-  for (const warning of warnings) {
-    // NON-BLOCKING: the gazetted-holiday count is below the s.60D minimum for this (state, year). Loud,
-    // not fatal — the leave/payroll write still commits; HR must finish loading the state gazette.
-    await appendEvent(tx, {
+  await appendHolidayCompletenessWarnings(tx, ctx, args, warnings);
+  return warnings;
+}
+
+export async function appendHolidayCompletenessWarnings(
+  tx: Tx,
+  ctx: SessionContext,
+  args: HolidayCompletenessEvent,
+  warnings: readonly HolidayCompletenessWarning[],
+): Promise<void> {
+  // Keep one audit event per warning, with one insert for the ordered batch.
+  await appendEvents(tx, warnings.map(warning => ({
       tenantId: ctx.tenantId,
       aggregateType: args.aggregateType,
       aggregateId: args.aggregateId,
@@ -283,9 +290,7 @@ export async function warnIfHolidaysIncomplete(
         required: warning.required,
         ...(args.context ?? {}),
       },
-    });
-  }
-  return warnings;
+  })));
 }
 
 /** The set of holiday dates in [startDate, endDate] for an employment, resolved business-group → state →

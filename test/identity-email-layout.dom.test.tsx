@@ -1,6 +1,7 @@
 import React, {isValidElement} from 'react';
 import {beforeEach,describe,expect,it,vi} from 'vitest';
-const m=vi.hoisted(()=>({session:vi.fn(),operator:vi.fn(),tasks:vi.fn(),pathname:'/admin/settings/email',theme:'monolith',onboarded:true,scopeIds:[] as string[],module:vi.fn(),feedback:vi.fn(),notifications:vi.fn(),unread:vi.fn(),privateCases:vi.fn()}));
+const m=vi.hoisted(()=>({session:vi.fn(),operator:vi.fn(),tasks:vi.fn(),pathname:'/admin/settings/email',theme:'monolith',onboarded:true,scopeIds:[] as string[],module:vi.fn(),feedback:vi.fn(),notificationBell:vi.fn(),dispatch:vi.fn(),privateCases:vi.fn(),lifecycleCount:0,summaryOverride:null as null|{items:unknown[];total:number;approvalCount:number;claimTotal:number}}));
+
 vi.mock('next/font/google',()=>{const font=()=>({variable:'fixture-font'});return {Plus_Jakarta_Sans:font,Geist_Mono:font,DM_Mono:font};});
 vi.mock('next/font/local',()=>({default:()=>({variable:'fixture-schibsted-font'})}));
 vi.mock('next/headers',()=>({headers:async()=>new Headers({'x-pathname':m.pathname}),cookies:async()=>({get:()=>undefined})}));
@@ -10,24 +11,28 @@ vi.mock('../lib/identity/email-settings',()=>({canConfigureIdentityEmail:m.opera
 vi.mock('../lib/viewer',()=>({viewerIdentity:async()=>({name:'Fixture',employeeCode:null,employed:false})}));
 vi.mock('../lib/principals',()=>({listPrincipals:async()=>[]}));
 vi.mock('../lib/demo-mode',()=>({demoSwitcherEnabled:()=>true,isDemoDeployment:()=>true}));
-vi.mock('../lib/scope',()=>({getScopeIds:async()=>m.scopeIds}));
+vi.mock('../lib/scope',()=>({companyContextForPage:async()=>({allowed:[],scopeIds:m.scopeIds})}));
 vi.mock('../lib/ui-theme-server',()=>({currentUiTheme:async()=>m.theme}));
 vi.mock('../core/read',()=>({allowedCompanies:async()=>[],listApprovalHistory:async()=>[]}));
-vi.mock('../core/onboarding',()=>({getOnboardingStatus:async()=>m.onboarded}));
-vi.mock('../packs/lifecycle/service',()=>({onboardingTasks:async()=>[],onboardingUnreadNoticeCount:async()=>0,onboardingNotices:async()=>[],onboardingNavigation:async()=>({module:false,master:false,requisitions:false,joiners:0,checklists:0})}));
+vi.mock('../packs/lifecycle/service',()=>({onboardingTasks:async()=>[],onboardingNoticeSummary:async()=>({unread:[],read:[],unreadCount:0}),onboardingNavigation:async()=>({module:false,master:false,requisitions:false,joiners:0,checklists:0})}));
 vi.mock('../components/onboarding-tour',()=>({OnboardingTour:()=>null}));
-vi.mock('../core/assistant-launcher',()=>({assistantLauncherFor:async()=>null}));
-vi.mock('../core/assistant-grant',()=>({mayUseAssistant:async()=>({allowed:false,reason:'no_grant'})}));
+vi.mock('../core/assistant-launcher',()=>({assistantShellFor:async()=>({allowed:false,launcher:null})}));
 // New capability owners are independent of SMTP installation enrollment and the legacy rail.
 // This shell test controls those boundaries; their actual permission algebra is covered by DB cases.
-vi.mock('../core/access-configuration-editor',()=>({canConfigureAccess:async()=>false}));
-vi.mock('../core/workforce-access',()=>({workforceViewScope:async()=>({canOpen:false,companyIds:[]})}));
-vi.mock('../core/approvals-inbox',()=>({listPendingTasks:m.tasks}));
+vi.mock('../core/shell-navigation-access',()=>({readShellNavigationAccess:async()=>({
+ accessConfigurationAvailable:false,workforceAvailable:false,onboarded:m.onboarded,
+})}));
+vi.mock('../core/approvals-inbox',()=>({listPendingTasks:m.tasks,pendingTaskSummary:async(...args:unknown[])=>{
+ const items=await m.tasks(...args);return m.summaryOverride??{items,total:items.length,approvalCount:items.filter((item:{linkPath:string})=>item.linkPath.split(/[?#]/,1)[0]==='/approvals').length,claimTotal:items.filter((item:{kind:string})=>item.kind==='claim').length};
+}}));
+vi.mock('../app/lifecycle/workflow-availability',()=>({lifecycleModuleNavigation:async()=>({probation:{page:false,configure:false},contractStaff:{page:false,configure:false}})}));
+vi.mock('../app/lifecycle/module-inbox',()=>({lifecycleModuleInbox:async()=>({count:m.lifecycleCount,items:[]})}));
 // AI v2 W11: the rail's "Private cases" row asks the private-case owner (a database read) on every page. Unmocked,
 // this no-database shell test sent it to the closed CI port, and postgres.js's shared reconnect backoff made each
 // later Layout call wait longer, up to the 5 s timeout (run 41626195537). The owner's rule has its own DB tests.
 vi.mock('../core/private-cases',()=>({handlesPrivateCases:m.privateCases}));
-vi.mock('../core/notifications',()=>({dispatchNotifications:async()=>{},listNotifications:m.notifications,unreadNotificationCount:m.unread}));
+
+vi.mock('../core/notifications',()=>({dispatchNotifications:m.dispatch,notificationBellSummary:m.notificationBell}));
 vi.mock('../core/entitlements',()=>({isModuleEnabled:m.module,isModuleEnabledOrFalse:m.module,settingEnabledOrDefault:m.feedback}));
 vi.mock('../components/command-bar',()=>({CommandBar:()=>null}));
 vi.mock('../components/notice/notice-surfaces',()=>({NoticePopupSlot:()=>null}));
@@ -37,10 +42,12 @@ vi.mock('../components/company-switcher',()=>({CompanySwitcher:()=>null}));
 import Layout from '../app/layout';
 import {NotificationCenter} from '../components/notification-center';
 import {Sidebar} from '../components/sidebar';
+import {ShellApprovalFactsProvider,type ShellApprovalResult} from '../components/shell-approval-facts';
 import {OnboardingTour} from '../components/onboarding-tour';
 import {NoticePopupSlot} from '../components/notice/notice-surfaces';
 import {WELCOME_TOUR_ID} from '../lib/onboarding-tour';
-beforeEach(()=>{m.theme='monolith';m.scopeIds=[];m.module.mockReset();m.module.mockReturnValue(false);m.feedback.mockReset();m.feedback.mockReturnValue(true);m.notifications.mockReset();m.notifications.mockResolvedValue([]);m.unread.mockReset();m.unread.mockResolvedValue(0);m.tasks.mockReset();m.tasks.mockResolvedValue([]);m.privateCases.mockReset();m.privateCases.mockResolvedValue(false);m.pathname='/admin/settings/email';m.onboarded=true;});
+beforeEach(()=>{m.dispatch.mockReset();m.dispatch.mockResolvedValue(undefined);m.lifecycleCount=0;m.summaryOverride=null;m.privateCases.mockReset();m.privateCases.mockResolvedValue(false);m.theme='monolith';m.scopeIds=[];m.module.mockReset();m.module.mockReturnValue(false);m.feedback.mockReset();m.feedback.mockReturnValue(true);m.notificationBell.mockReset();m.notificationBell.mockResolvedValue({unread:0,taskCount:0,items:[],tasks:[],read:[]});m.tasks.mockReset();m.tasks.mockResolvedValue([]);m.pathname='/admin/settings/email';m.onboarded=true;});
+
 function propsOf(node:React.ReactNode,target:unknown):Record<string,unknown>|undefined{
  if(Array.isArray(node)){for(const child of node){const found=propsOf(child,target);if(found)return found;}return;}
  if(!isValidElement<{children?:React.ReactNode}>(node))return;
@@ -48,7 +55,15 @@ function propsOf(node:React.ReactNode,target:unknown):Record<string,unknown>|und
  return propsOf(node.props.children,target);
 }
 const sidebarProps=(node:React.ReactNode)=>propsOf(node,Sidebar);
+const approvalSource=(node:React.ReactNode)=>propsOf(node,ShellApprovalFactsProvider)!.source as Promise<ShellApprovalResult>;
 describe('root layout SMTP preview authority',()=>{
+ it.each([[null,true],['company',false]] as const)('only attempts notification catch-up for group grants (%s)',async(companyId,expected)=>{
+  const session={tenantId:'tenant',userId:'user',roles:['hr_admin'],grants:[{role:'hr_admin',companyId}]};
+  m.session.mockResolvedValue(session);m.operator.mockResolvedValue(false);
+  m.module.mockImplementation((_session,module)=>module==='notifications');
+  await Layout({children:<span>Fixture content</span>});
+  expect(m.dispatch).toHaveBeenCalledTimes(expected?1:0);
+ });
  it.each([false,true])('passes the current tenant Feedback setting to the rail when enabled=%s',async(enabled)=>{
   const session={tenantId:'tenant',userId:'user',roles:['employee'],grants:[]};
   m.session.mockResolvedValue(session);m.operator.mockResolvedValue(false);m.feedback.mockReturnValue(enabled);
@@ -93,14 +108,13 @@ describe('root layout assigned Attendance inbox navigation',()=>{
   m.session.mockResolvedValue({tenantId:'tenant',userId:'employee',roles:['employee'],grants:[]});
   m.operator.mockResolvedValue(false);
   m.tasks.mockResolvedValue([{id:'fictional-task',kind,subjectName:'Fictional colleague',createdAt:new Date().toISOString(),linkPath:'/approvals'}]);
-  const props=sidebarProps(await Layout({children:null}));
+  const tree=await Layout({children:null}),props=sidebarProps(tree);
   expect(m.tasks).toHaveBeenCalledTimes(1);
-  expect(props!.hasAssignedAttendanceApproval).toBe(kind==='attendance');
-  expect(props!.hasAssignedApproval).toBe(true);
+  await expect(approvalSource(tree)).resolves.toMatchObject({state:'ready',approvalCount:1,
+   hasAssignedAttendanceApproval:kind==='attendance',hasAssignedApproval:true});
   expect(props!.canApprove).toBe(false);
   expect(props!.canAccessTeam).toBe(false);
   expect(props!.isAdmin).toBe(false);
-  expect(props!.approvalCount).toBe(1);
  });
  it('keeps relocated Profile Changes in My tasks while counting only Approval Items destinations',async()=>{
   m.session.mockResolvedValue({tenantId:'tenant',userId:'hr',roles:['hr_admin'],grants:[{role:'hr_admin',companyId:null}]});
@@ -110,17 +124,54 @@ describe('root layout assigned Attendance inbox navigation',()=>{
    {id:'fictional-attendance',kind:'attendance',subjectName:'Fictional colleague',createdAt,linkPath:'/approvals#attendance'},
    {id:'fictional-profile',kind:'profile',subjectName:'Fictional colleague',createdAt,linkPath:'/admin/personnel/profile-changes#request-fictional-profile'},
   ]);
-  const props=sidebarProps(await Layout({children:null}));
+  const tree=await Layout({children:null}),props=sidebarProps(tree);
   expect(m.tasks).toHaveBeenCalledTimes(1);
-  expect(props!.taskCount).toBe(2);
-  expect(props!.approvalCount).toBe(1);
-  expect(props!.hasAssignedAttendanceApproval).toBe(false);
-  expect(props!.hasAssignedApproval).toBe(false);
+  await expect(approvalSource(tree)).resolves.toMatchObject({state:'ready',total:2,approvalCount:1,
+   hasAssignedAttendanceApproval:false,hasAssignedApproval:false});
   expect(props!.canApprove).toBe(false);
   expect(props!.isAdmin).toBe(true);
  });
 });
 
+
+it('keeps exact Claims totals and accepted Lifecycle inbox counts together in the shared shell',async()=>{
+ m.session.mockResolvedValue({tenantId:'tenant',userId:'hr',roles:['hr_admin'],grants:[{role:'hr_admin',companyId:null}]});m.operator.mockResolvedValue(false);
+ m.module.mockImplementation((_ctx:unknown,module:string)=>module==='claims');
+ const items=[{id:'leave-preview',kind:'leave',subjectName:'Fictional colleague',createdAt:new Date().toISOString(),linkPath:'/approvals'}];
+ m.tasks.mockResolvedValue(items);m.summaryOverride={items,total:10002,approvalCount:10001,claimTotal:10000};m.lifecycleCount=7;
+ const tree=await Layout({children:null});
+ expect(m.tasks).toHaveBeenCalledTimes(1);
+ await expect(approvalSource(tree)).resolves.toMatchObject({state:'ready',items,total:10002,approvalCount:10001,claimTotal:10000});
+ expect(sidebarProps(tree)?.taskCount).toBe(7);
+ expect(m.tasks.mock.calls[0]?.[3]).toEqual({deferClaimPreview:true});
+ expect(propsOf(tree,NotificationCenter)?.taskCount).toBe(7);
+ expect(propsOf(tree,NotificationCenter)?.claimPreviewRevision).toEqual(expect.any(String));
+ expect(propsOf(tree,NotificationCenter)?.tasks).toEqual([]);
+});
+
+it('returns the authenticated shell while the approval owner is still pending',async()=>{
+ m.session.mockResolvedValue({tenantId:'tenant',userId:'employee',roles:['employee'],grants:[]});m.operator.mockResolvedValue(false);
+ let finish:(items:unknown[])=>void=()=>{};
+ m.tasks.mockImplementation(()=>new Promise(resolve=>{finish=resolve;}));
+ const tree=await Layout({children:<main>Available before approvals</main>});
+ expect(sidebarProps(tree)).toBeDefined();
+ expect(propsOf(tree,NotificationCenter)).toBeDefined();
+ expect(m.tasks).toHaveBeenCalledTimes(1);
+ finish([]);
+ await expect(approvalSource(tree)).resolves.toMatchObject({state:'ready',total:0});
+});
+
+it('reports a failed approval read without exposing its details or failing the page',async()=>{
+ m.session.mockResolvedValue({tenantId:'tenant',userId:'employee',roles:['employee'],grants:[]});m.operator.mockResolvedValue(false);
+ m.tasks.mockRejectedValueOnce(Error('Private failure'));
+ const log=vi.spyOn(console,'error').mockImplementation(()=>{});
+ try{
+  const tree=await Layout({children:<main>Available despite approvals</main>});
+  expect(sidebarProps(tree)).toBeDefined();
+  await expect(approvalSource(tree)).resolves.toEqual({state:'unavailable'});
+  expect(log).toHaveBeenCalledExactlyOnceWith('Shared shell approval facts unavailable');
+ }finally{log.mockRestore();}
+});
 
 describe('personal Home opens without automatic overlays',()=>{
  it('suppresses the first-login tour and Notice popup on the employee landing path',async()=>{
@@ -144,8 +195,7 @@ it('loads account notifications for selected company entitlements without an emp
  m.module.mockImplementation((_ctx:unknown,code:string,companyId?:string)=>code==='notifications'&&companyId===active);
  m.session.mockResolvedValue({tenantId:'tenant',userId:'account-only-reviewer',roles:['employee'],grants:[]});m.operator.mockResolvedValue(false);
  const tree=await Layout({children:null});expect(propsOf(tree,NotificationCenter)).toBeDefined();
- expect(m.notifications).toHaveBeenCalledTimes(3);for(const [,employmentId,opts]of m.notifications.mock.calls){expect(employmentId).toBeUndefined();expect(opts).toMatchObject({letterCompanyIds:[active]});}
- expect(m.unread).toHaveBeenCalledTimes(2);for(const [,,opts]of m.unread.mock.calls)expect(opts).toMatchObject({letterCompanyIds:[active]});
+ expect(m.notificationBell).toHaveBeenCalledExactlyOnceWith(expect.anything(),{letterCompanyIds:[active]});
 });
 
 // Actual async RootLayout, not a standalone Sidebar fixture: V9 must keep the customer shell.

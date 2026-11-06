@@ -1,3 +1,5 @@
+import {setTimeout as delay} from 'node:timers/promises';
+import {pgSqlState} from '../lib/db-error';
 import {boundNativeOutcomeTransactionTx} from './module-native-outcome-bounds';
 import {lockAccessConfigurationTx} from './access-configuration-lock';
 import {lockLeaveDependencyConfigurationTx} from './leave-dependency-lock';
@@ -307,36 +309,64 @@ export type DraftListScope = {
  *  AUTHORITY: an administrator sees a company's drafts only when they administer that company, a draft with
  *  no company only when they administer every company, and an author always sees their own. The scope can
  *  only ever be narrower than RLS; it never grants anything. */
-export function listEmployeeDrafts(ctx: SessionContext, scope: DraftListScope): Promise<EmployeeDraftRow[]> {
-  const ids = [...new Set(scope.companyIds)];
-  // An empty selection selects nothing. Without this, `includeWithoutCompany` alone would answer with the
-  // unassigned drafts under a scope that names no company at all.
-  if (ids.length === 0) return Promise.resolve([]);
+export function listEmployeeDrafts(
+  ctx: SessionContext, scope: DraftListScope, matches?: (row: EmployeeDraftSearchFields) => boolean,
+): Promise<EmployeeDraftRow[]> {
+  const where = employeeDraftScopeWhere(scope);
+  if (!where) return Promise.resolve([]);
   return withTenant(ctx, async (tx) => {
     const rows = await tx
       .select({
+        ...draftSearchFields,
         id: employeeDraft.id,
-        label: employeeDraft.label,
-        companyId: employeeDraft.companyId,
-        companyName: company.legalName,
         currentStep: employeeDraft.currentStep,
         createdByName: person.fullName,
         createdAt: employeeDraft.createdAt,
         updatedAt: employeeDraft.updatedAt,
-        reservedEmployeeCode: employeeDraft.reservedEmployeeCode,
         data: employeeDraft.data,
       })
       .from(employeeDraft)
       .leftJoin(company, eq(company.id, employeeDraft.companyId))
       .leftJoin(person, eq(person.id, employeeDraft.createdByPersonId))
-      .where(
-        scope.includeWithoutCompany
-          ? or(inArray(employeeDraft.companyId, ids), isNull(employeeDraft.companyId))
-          : inArray(employeeDraft.companyId, ids),
-      )
+      .where(where)
       // `id` breaks a tie on `updated_at`, so two drafts saved in the same instant keep one order.
       .orderBy(desc(employeeDraft.updatedAt), desc(employeeDraft.id));
-    return rows.map(({ data, ...r }) => ({ ...r, missing: missingForCreation(asData(data)) }));
+    const visible = matches ? rows.filter(matches) : rows;
+    return visible.map(({ data, ...r }) => ({ ...r, missing: missingForCreation(asData(data)) }));
+  });
+}
+
+type EmployeeDraftSearchFields = Pick<EmployeeDraftRow, 'label' | 'companyId' | 'companyName' | 'reservedEmployeeCode'>;
+const draftSearchFields = {
+  label: employeeDraft.label,
+  companyId: employeeDraft.companyId,
+  companyName: company.legalName,
+  reservedEmployeeCode: employeeDraft.reservedEmployeeCode,
+};
+
+function employeeDraftScopeWhere(scope: DraftListScope) {
+  const ids = [...new Set(scope.companyIds)];
+  // Empty scope excludes even unassigned drafts. The same RLS policy applies to every projection.
+  if (ids.length === 0) return undefined;
+  const selected = inArray(employeeDraft.companyId, ids);
+  return scope.includeWithoutCompany ? or(selected, isNull(employeeDraft.companyId)) : selected;
+}
+
+/** Count without fetching draft forms or creator details. A literal search reuses the caller's
+ * existing JavaScript predicate over four small fields, including company labels from the same RLS join. */
+export function countEmployeeDrafts(
+  ctx: SessionContext, scope: DraftListScope, matches?: (row: EmployeeDraftSearchFields) => boolean,
+): Promise<number> {
+  const where = employeeDraftScopeWhere(scope);
+  if (!where) return Promise.resolve(0);
+  return withTenant(ctx, async (tx) => {
+    if (matches) {
+      const rows = await tx.select(draftSearchFields).from(employeeDraft)
+        .leftJoin(company, eq(company.id, employeeDraft.companyId)).where(where);
+      return rows.reduce((count, row) => count + Number(matches(row)), 0);
+    }
+    const [row] = await tx.select({ count: sql<number>`count(*)::int` }).from(employeeDraft).where(where);
+    return Number(row.count);
   });
 }
 
@@ -405,6 +435,22 @@ async function draftCreationDefaultsTx(tx:Tx,ctx:SessionContext,input:EmployeeDr
  return next;
 }
 
+// The database already serializes these draft writes by tenant. Queue standalone
+// edits and discards before borrowing a connection.
+const pendingDraftWrites = new Map<string, Promise<unknown>>();
+
+async function queueDraftWrite<T>(tenantId: string, write: () => Promise<T>): Promise<T> {
+  const key = tenantId.toLowerCase();
+  const preceding = pendingDraftWrites.get(key);
+  const pending = preceding ? preceding.catch(() => undefined).then(write) : write();
+  pendingDraftWrites.set(key, pending);
+  try {
+    return await pending;
+  } finally {
+    if (pendingDraftWrites.get(key) === pending) pendingDraftWrites.delete(key);
+  }
+}
+
 export async function saveEmployeeDraft(
   ctx: SessionContext,
   p: { id?: string; data: EmployeeDraftData; currentStep: number },
@@ -463,7 +509,10 @@ export async function saveEmployeeDraft(
     await onboardingSyncDraftTx(ctx,tx,id,'save');
     return { id };
   };
-  return outerTx?run(outerTx):withTenant(ctx,run);
+  if (outerTx) return run(outerTx);
+  if (!p.id) return withTenant(ctx, run);
+
+  return queueDraftWrite(ctx.tenantId, () => withTenant(ctx, run));
 }
 
 /**
@@ -679,8 +728,18 @@ export async function discardEmployeeDraft(
   assertAdmin(ctx);
   const capture = options?.returnResult === true;
   if (capture && !outerTx) throw new Error('Draft discard result requires an enclosing transaction.');
+  let admissionFailure: unknown;
   const run = async (tx: Tx): Promise<void | EmployeeDraftDiscardResult> => {
     await boundNativeOutcomeTransactionTx(tx);
+    // Match create/save: authority precedes Onboarding's audit and case locks.
+    // The closed delete port repeats this native barrier; taking it here prevents
+    // a discard from holding audit custody while another writer holds authority.
+    try {
+      await tx.execute(sql`select app.access_workforce_write_lock()`);
+    } catch (error) {
+      if (!outerTx && pgSqlState(error) === '55P03') admissionFailure = error;
+      throw error;
+    }
     const [row] = await tx
       .select({
         reservedEmployeeCode: employeeDraft.reservedEmployeeCode,
@@ -723,7 +782,21 @@ export async function discardEmployeeDraft(
       return { draftId: deleted[0].id, reservedEmployeeCode: row?.reservedEmployeeCode ?? null, released, eventId };
     }
   };
-  return outerTx ? run(outerTx) : withTenant(ctx, run);
+  if (outerTx) return run(outerTx);
+  return queueDraftWrite(ctx.tenantId, async () => {
+    for (const backoff of [75, 200]) {
+      admissionFailure = undefined;
+      try {
+        return await withTenant(ctx, run);
+      } catch (error) {
+        // The failed transaction is already closed. Only a refusal before
+        // the first native effect can retry, with no connection held here.
+        if (admissionFailure === undefined || error !== admissionFailure) throw error;
+        await delay(backoff);
+      }
+    }
+    return withTenant(ctx, run);
+  });
 }
 
 /**

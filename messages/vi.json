@@ -803,7 +803,8 @@
       "placeholder": "Tìm mã nhân viên hoặc tên…",
       "resultsLabel": "Kết quả tìm nhân viên",
       "noMatches": "Không có nhân viên nào khớp.",
-      "currentTag": "Hiện tại"
+      "currentTag": "Hiện tại",
+      "loadFailed": "Không thể tải tìm kiếm nhân viên. Vui lòng thử lại."
     },
     "detail": {
       "incentiveDeclarations": {
@@ -4770,6 +4771,33 @@
       "active": "Đang làm",
       "probation": "Thử việc",
       "notice": "Báo trước"
+    },
+    "explorer": {
+      "hint": "Khám phá tổ chức lớn theo từng phần. Tìm kiếm bao gồm mọi người trong các công ty đã chọn.",
+      "topLevel": "Cấp cao nhất",
+      "allPeople": "Tất cả mọi người",
+      "search": "Tìm kiếm",
+      "searchResults": "Kết quả tìm kiếm",
+      "reports": "Nhân viên trực tiếp",
+      "managers": "Quản lý",
+      "connections": "Tất cả quan hệ",
+      "history": "Người đã xem",
+      "loading": "Đang tải tổ chức…",
+      "loaded": "Đã tải {loaded} trên trang này · {total} kết quả phù hợp · {people} người trong các công ty đã chọn",
+      "accessChanged": "Quyền truy cập đã thay đổi. Tải lại để tiếp tục.",
+      "changed": "Tổ chức đã thay đổi. Làm mới phần này để tiếp tục.",
+      "failed": "Không thể tải phần này. Vui lòng thử lại.",
+      "refresh": "Tải lại",
+      "retry": "Thử lại",
+      "multipleAssignments": "Nhiều phân công hiện tại",
+      "profile": "Xem hồ sơ",
+      "relationships": "Quan hệ báo cáo",
+      "outsideScope": "Quan hệ ngoài các công ty đã chọn",
+      "incoming": "Báo cáo cho người này",
+      "outgoing": "Người này báo cáo cho",
+      "explore": "Khám phá",
+      "back": "Quay lại",
+      "next": "Trang tiếp theo"
     }
   },
   "me": {
@@ -5445,7 +5473,7 @@
     "submitDecisions": "Gửi",
     "employeeRemark": "Ghi chú của nhân viên",
     "closeDialog": "Đóng",
-    "bulkSelectAll": "Chọn tất cả",
+    "bulkSelectAll": "Chọn tất cả trên trang này",
     "bulkSelectRow": "Chọn yêu cầu",
     "bulkSelected": "Đã chọn: {count, plural, other {# yêu cầu}}",
     "bulkClear": "Xóa",

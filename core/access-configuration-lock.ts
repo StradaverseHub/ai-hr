@@ -19,7 +19,7 @@ export async function tryLockAccessConfigurationTx(tx: Tx, tenantId: string): Pr
   return row.acquired;
 }
 
-/** Read-only Personnel transactions may overlap, while access writers remain exclusive. */
+/** Standalone Personnel reads fail fast behind a configuration writer and can overlap each other. */
 export async function tryLockAccessConfigurationReadTx(tx: Tx, tenantId: string): Promise<boolean> {
   const [row] = await tx.execute<{ acquired: boolean }>(sql`select pg_try_advisory_xact_lock_shared(hashtextextended(${accessConfigurationKey(tenantId)},0)) as acquired`);
   return row.acquired;

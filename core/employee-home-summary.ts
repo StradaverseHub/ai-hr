@@ -1,11 +1,10 @@
 /** Rendered, deterministic sentences over canonical owners. No salary, reason, peer record or model
  * context is transported. A failed owner fails this section; it never supplies a false calm state. */
 import {withTenant,type SessionContext} from '../db/client';
-import {requireOwnHomeSubject} from './employee-home';
-import {readOwnEmployeeHomeConfiguration} from './employee-home-configuration';
-import {readEmployeeHomeTasks} from './employee-home-tasks';
+import {readOwnEmployeeHomeConfiguration,type OwnHomeConfigurationRead} from './employee-home-configuration';
+import {countEmployeeHomeTasks,type OwnHomeTaskSourceRead} from './employee-home-tasks';
 import {isModuleEnabled} from './entitlements';
-import {listEligibleLeaveTypesFor} from './read';
+import {hasEligibleLeaveTypeForTx} from './read';
 import {nextApprovedLeavePresenceTx} from '../packs/leave/service';
 import {readOwnPayrollHomeMetadata} from '../packs/payroll/service';
 import {ownClaimFormAvailable} from '../packs/claims/service';
@@ -19,28 +18,30 @@ import type {Locale} from '../i18n/config';
 
 /** Seven civil business dates ahead is a presentation window, not an eligibility or payroll rule. */
 export const HOME_SUMMARY_LOOKAHEAD_DAYS=7;
-export async function readEmployeeHomeSummary(ctx:SessionContext,employmentId:string,locale:Locale,replacementHolidayName:string):Promise<EmployeeHomeSummary>{
- const subject=await requireOwnHomeSubject(ctx,employmentId);
- // Also establishes current active own employment and the actual selected-company/role config.
- const {configuration}=await readOwnEmployeeHomeConfiguration(ctx,subject.employmentId);
+export async function readEmployeeHomeSummary(ctx:SessionContext,employmentId:string,locale:Locale,replacementHolidayName:string,configurationRead?:OwnHomeConfigurationRead,taskSourceRead?:OwnHomeTaskSourceRead):Promise<EmployeeHomeSummary>{
+ // The configuration owner already proves the exact current own employment and its company role.
+ const {configuration,employmentId:subjectId}=await (configurationRead?.read(ctx,employmentId)??readOwnEmployeeHomeConfiguration(ctx,employmentId));
+ configurationRead?.signal?.throwIfAborted();
  const now=new Date(),today=todayInKualaLumpur(now),through=new Date(Date.parse(today+'T00:00:00Z')+HOME_SUMMARY_LOOKAHEAD_DAYS*86400000).toISOString().slice(0,10);
  const leaveOn=isModuleEnabled(ctx,'leave'),payrollOn=isModuleEnabled(ctx,'payroll'),claimsOn=isModuleEnabled(ctx,'claims');
  const configured=new Set(configuration.quickActions);
- const [tasks,leave,holidays,replacements,payroll,leaveTypes,claimAvailable,profile]=await Promise.all([
-  readEmployeeHomeTasks(ctx,subject.employmentId),
-  leaveOn?withTenant(ctx,tx=>nextApprovedLeavePresenceTx(tx,subject.employmentId,today)):Promise.resolve(null),
-  withTenant(ctx,tx=>originalHolidayCalendarFor(tx,{employmentId:subject.employmentId,startDate:today,endDate:through})),
-  withTenant(ctx,tx=>replacementHolidayCalendarProjectionsTx(tx,{employmentIds:[subject.employmentId],startDate:today,endDate:through})),
-  payrollOn?readOwnPayrollHomeMetadata(ctx,subject.employmentId):Promise.resolve(null),
-  leaveOn&&configured.has('leave')?listEligibleLeaveTypesFor(ctx,subject.employmentId,locale):Promise.resolve([]),
-  claimsOn&&configured.has('claim')?ownClaimFormAvailable(ctx,subject.employmentId):Promise.resolve(false),
+ const [taskCount,[leave,holidays,replacements,leaveAvailable],payroll,claimAvailable,profile]=await Promise.all([
+  taskSourceRead?.count(ctx,subjectId)??countEmployeeHomeTasks(ctx),
+  withTenant(ctx,tx=>Promise.all([
+   leaveOn?nextApprovedLeavePresenceTx(tx,subjectId,today):null,
+   originalHolidayCalendarFor(tx,{employmentId:subjectId,startDate:today,endDate:through}),
+   replacementHolidayCalendarProjectionsTx(tx,{employmentIds:[subjectId],startDate:today,endDate:through}),
+   leaveOn&&configured.has('leave')?hasEligibleLeaveTypeForTx(tx,subjectId):false,
+  ]),{readSignal:configurationRead?.signal}),
+  payrollOn?readOwnPayrollHomeMetadata(ctx,subjectId):Promise.resolve(null),
+  claimsOn&&configured.has('claim')?ownClaimFormAvailable(ctx,subjectId):Promise.resolve(false),
   configured.has('profile')?readProfilePresentationPolicy(ctx):Promise.resolve(null),
  ]);
  const date=(day:string)=>new Intl.DateTimeFormat(locale,{day:'numeric',month:'short',year:'numeric',timeZone:'UTC'}).format(new Date(day+'T00:00:00Z'));
  const candidates:HomeSummaryCandidate[]=[];
  // Actionable work precedes informational reminders. This is presentation ranking, not an invented
  // due date or overdue assertion; the task owner alone supplies those facts in Waiting for You.
- if(tasks.total>0)candidates.push({key:'tasks',templateKey:'tasksPending',importance:'urgent',destination:'tasks',values:{count:tasks.total}});
+ if(taskCount>0)candidates.push({key:'tasks',templateKey:'tasksPending',importance:'urgent',destination:'tasks',values:{count:taskCount}});
  if(leave&&leave.date<=through)candidates.push({key:'leave:'+leave.requestId,templateKey:'leaveApproved',importance:'goodNews',destination:'leave',values:{dates:date(leave.date)}});
  const holiday=[...holidays.filter(row=>!row.tentative&&row.active).map(row=>({key:'holiday:'+row.id,date:row.date,name:row.name})),
   ...replacements.map(row=>({key:'replacement:'+row.id,date:row.replacementDate,name:replacementHolidayName}))]
@@ -54,12 +55,12 @@ export async function readEmployeeHomeSummary(ctx:SessionContext,employmentId:st
  const templates=new Map(configuration.templates.map(row=>[row.key,row]));
  const calm=templates.get('calm');
  const reasons:Record<HomeQuickAction,HomeActionRefusal|null>={
-  leave:!leaveOn?'moduleUnavailable':!leaveTypes.length?'notConfigured':null,
+  leave:!leaveOn?'moduleUnavailable':!leaveAvailable?'notConfigured':null,
   claim:!claimsOn?'moduleUnavailable':!claimAvailable?'notConfigured':null,
   payslip:!payrollOn?'moduleUnavailable':!slip?'noPayslip':null,
   profile:profile&&profile.editable.size>0?null:'detailsLocked',calendar:null,notices:null,
  };
- return {version:1,employmentId:subject.employmentId,serverNow:now.toISOString(),
+ return {version:1,employmentId:subjectId,serverNow:now.toISOString(),
   items:homeSummaryCandidates(candidates,configuration.templates).map(row=>({key:row.key,destination:row.destination,message:renderHomeTemplate(templates.get(row.templateKey)!,locale,row.values)})),
   // Disabled positive templates do not establish an empty day; never satisfy a sentence quota with
   // an invented fact. All underlying reads must have succeeded to reach this branch.

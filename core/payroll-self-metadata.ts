@@ -3,16 +3,20 @@
  * cycle, draft scope or calendar-month end alone cannot establish that this person is being paid.
  */
 import {and,asc,desc,eq,gte,lte,isNull,ne} from 'drizzle-orm';
-import type {SessionContext} from '../db/client';
+import type {SessionContext,Tx} from '../db/client';
 import {payslip,payrollBatch} from '../db/schema';
 import {withPayrollTenant} from './module-gate';
-import {myOwnEmploymentSubjectsTx} from './read';
+import {isOwnProfileEditEmploymentTx} from './read';
 import {payrollPublicationState} from '../lib/payroll-publication';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {calendarWindowDates} from '../lib/calendar-window';
 
 export class OwnPayrollSubjectUnavailableError extends Error{
  constructor(){super('The own payroll context is unavailable.');this.name='OwnPayrollSubjectUnavailableError';}
+}
+async function requireOwnPayrollSubjectTx(tx:Tx,ctx:SessionContext,employmentId:string){
+ if(!ctx.userId||!ctx.personId||!/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/.test(employmentId)
+  ||!await isOwnProfileEditEmploymentTx(tx,ctx,employmentId))throw new OwnPayrollSubjectUnavailableError();
 }
 export type OwnPayrollHomeMetadata={
  version:1;employmentId:string;
@@ -26,9 +30,7 @@ export type OwnPayrollHomeMetadata={
  */
 export function readOwnPayrollHomeMetadata(ctx:SessionContext,employmentId:string):Promise<OwnPayrollHomeMetadata>{
  return withPayrollTenant(ctx,async tx=>{
-  if(!ctx.userId||!ctx.personId)throw new OwnPayrollSubjectUnavailableError();
-  const own=await myOwnEmploymentSubjectsTx(tx,ctx,{profileEdit:true});
-  if(!own.some(subject=>subject.employmentId===employmentId))throw new OwnPayrollSubjectUnavailableError();
+  await requireOwnPayrollSubjectTx(tx,ctx,employmentId);
   const rows=await tx.select({id:payslip.id,period:payrollBatch.payPeriod,runType:payrollBatch.runType,
    runSequence:payrollBatch.runSeq,paymentDate:payrollBatch.batchDate,status:payrollBatch.status,releasedAt:payrollBatch.releasedAt,needsRecalcAt:payrollBatch.needsRecalcAt})
    .from(payslip).innerJoin(payrollBatch,and(eq(payrollBatch.id,payslip.batchId),eq(payrollBatch.tenantId,payslip.tenantId)))
@@ -47,14 +49,25 @@ export function readOwnPayrollHomeMetadata(ctx:SessionContext,employmentId:strin
  });
 }
 
+/** Earliest recorded payment date for the own Today card, without loading payslip history. */
+export function readOwnNextPayrollPaymentDate(ctx:SessionContext,employmentId:string):Promise<string|null>{
+ return withPayrollTenant(ctx,async tx=>{
+  await requireOwnPayrollSubjectTx(tx,ctx,employmentId);
+  const [payment]=await tx.select({date:payrollBatch.batchDate})
+   .from(payslip).innerJoin(payrollBatch,and(eq(payrollBatch.id,payslip.batchId),eq(payrollBatch.tenantId,payslip.tenantId)))
+   .where(and(isNull(payrollBatch.historyImportAttemptId),eq(payslip.tenantId,ctx.tenantId),eq(payslip.employmentId,employmentId),
+    ne(payrollBatch.status,'draft'),isNull(payrollBatch.needsRecalcAt),gte(payrollBatch.batchDate,todayInKualaLumpur())))
+   .orderBy(asc(payrollBatch.batchDate)).limit(1);
+  return payment?.date??null;
+ });
+}
+
 /** Recorded run dates for a bounded own calendar. Actual result membership is required; a draft,
  * stale calculation or company cycle alone supplies no payday. Never selects an amount or bank fact. */
 export function readOwnPayrollCalendarPayments(ctx:SessionContext,employmentId:string,from:string,to:string){
  calendarWindowDates(from,to);
  return withPayrollTenant(ctx,async tx=>{
-  if(!ctx.userId||!ctx.personId)throw new OwnPayrollSubjectUnavailableError();
-  const own=await myOwnEmploymentSubjectsTx(tx,ctx,{profileEdit:true});
-  if(!own.some(subject=>subject.employmentId===employmentId))throw new OwnPayrollSubjectUnavailableError();
+  await requireOwnPayrollSubjectTx(tx,ctx,employmentId);
   const rows=await tx.selectDistinct({date:payrollBatch.batchDate})
    .from(payslip).innerJoin(payrollBatch,and(eq(payrollBatch.id,payslip.batchId),eq(payrollBatch.tenantId,payslip.tenantId)))
    .where(and(isNull(payrollBatch.historyImportAttemptId),eq(payslip.tenantId,ctx.tenantId),eq(payslip.employmentId,employmentId),

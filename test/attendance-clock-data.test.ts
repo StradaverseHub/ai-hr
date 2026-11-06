@@ -6,18 +6,19 @@ import { commitClockingImport, getClockingImportRun } from '../core/attendance-c
 import { BUILTIN_MAPPING_ID } from '../lib/clocking-file';
 import { setAttendancePhotoSetting } from '../core/clocking-location';
 import { todayInKualaLumpur } from '../lib/hr-date';
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { and, eq, isNull, sql } from 'drizzle-orm';
 import * as schema from '../db/schema';
 import { hireEmployee, setReportingLine, transferEmploymentCompanyTx } from '../core/org';
 import { createPolicy, assignPolicy } from '../core/payroll-policy';
-import { checkIn, checkOut, requestAttendanceCorrection, decideAttendanceCorrection, attendancePunchesForRange, attendancePunchesForDays } from '../core/attendance';
+import { checkIn, checkOut, requestAttendanceCorrection, decideAttendanceCorrection, attendanceForEmploymentRange, attendancePunchesForRange, attendancePunchesForDays, readAttendanceRecordDay, myAttendanceCorrections } from '../core/attendance';
 import { attendanceClockData } from '../core/attendance-clock-data';
 import { ClockDataChangedError, AttendancePayrollClosedError, lockAttendancePayrollTx, markAttendancePayrollTx, validateClockEntries } from '../core/attendance-punch-change';
 import { createBatch, generatePayslips } from '../packs/payroll/service';
-import { withTenant } from '../db/client';
+import { client, withTenant } from '../db/client';
+import { lockAccessConfigurationReadTx } from '../core/access-configuration-lock';
 import { setCompensation } from '../core/comp';
-import { adminCtx, createAppUser, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
+import { adminCtx, createAppUser, closeAll, entitledCtx, migrateTestDb, owner, resetDb, seedBase, setModule, type Base } from './harness';
 let b: Base;
 const date = '2026-07-15';
 beforeAll(migrateTestDb);
@@ -42,6 +43,44 @@ async function save(a: ReturnType<typeof adminCtx>, employmentId: string, entrie
   return correctionId;
 }
 describe('approved attendance clock-data corrections', () => {
+  it('reads the same scoped day projections and newest-100 pending state in one transaction', async () => {
+    const { a, employmentId, personId } = await fixture();
+    const userId = await createAppUser(b.tenantId, personId, 'employee');
+    const employee = { ...a, userId, personId, roles: ['employee'], grants: [{ role: 'employee' as const, companyId: b.companyId }] };
+    const pending = async () => (await readAttendanceRecordDay(employee, employmentId, date)).pending;
+    expect(await pending()).toBe(false);
+    const { correctionId } = await requestAttendanceCorrection(employee, { employmentId, date, checkIn: '09:00', checkOut: '18:00', reason: 'Fictional day request' });
+    const [row] = await attendanceForEmploymentRange(employee, employmentId, date, date);
+    expect(row?.attendanceId).toBeTruthy();
+    const punches = (await attendancePunchesForRange(employee, employmentId, date, date)).get(row.attendanceId!);
+    expect(punches?.map(punch => punch.punchAt)).toEqual(['08:00:00', '17:00:00']);
+    const begin = vi.spyOn(client, 'begin');
+    try {
+      expect(await readAttendanceRecordDay(employee, employmentId, date)).toEqual({ row, punches, pending: true });
+      expect(begin).toHaveBeenCalledTimes(1);
+    } finally {
+      begin.mockRestore();
+    }
+    const foreign = adminCtx(await seedBase());
+    expect(await readAttendanceRecordDay(foreign, employmentId, date)).toEqual({ row: null, punches: [], pending: false });
+    const [request] = await owner.db.select({ createdAt: schema.attendanceCorrection.createdAt })
+      .from(schema.attendanceCorrection).where(eq(schema.attendanceCorrection.id, correctionId));
+    const later = {
+      tenantId: b.tenantId, employmentId, attendanceDate: date, proposedCheckIn: '09:00',
+      reason: 'Fictional later historical request', status: 'rejected' as const,
+      rejectReason: 'Fictional historical decision', createdAt: new Date(request.createdAt.getTime() + 1000),
+    };
+    await owner.db.insert(schema.attendanceCorrection).values(Array.from({ length: 99 }, () => later));
+    const oldPending = async () => (await myAttendanceCorrections(employee, employmentId, { date, limit: 100 }))
+      .some(row => row.status === 'pending');
+    expect(await oldPending()).toBe(true);
+    expect(await pending()).toBe(true);
+    await owner.db.insert(schema.attendanceCorrection).values(later);
+    expect(await oldPending()).toBe(false);
+    expect(await pending()).toBe(false);
+    await decideAttendanceCorrection(a, { correctionId, decision: 'approved' });
+    expect(await pending()).toBe(false);
+  });
   it('edits retain original evidence and all effective readers agree with the corrected day', async () => {
     const { a, employmentId } = await fixture();
     const before = await attendanceClockData(a, employmentId, date);
@@ -76,6 +115,184 @@ describe('approved attendance clock-data corrections', () => {
     const raw = await attendanceClockData(a, employmentId, date);
     expect(raw.rows.filter(r => !r.voidedAt).map(r => r.punchAt)).toEqual(['09:00:00', '18:00:00']);
     expect(raw.rows.filter(r => r.voidedAt)).toHaveLength(2);
+  });
+  it('approves a clock correction with TOIL disabled while an Access reader holds the tenant lock', async () => {
+    const { a, employmentId } = await fixture();
+    const { correctionId } = await requestAttendanceCorrection(a, { employmentId, date, checkIn: '09:00', checkOut: '18:00', reason: 'Gate log' });
+    let approval: ReturnType<typeof decideAttendanceCorrection> | undefined;
+    try {
+      const completed = await withTenant(a, async tx => {
+        await lockAccessConfigurationReadTx(tx, a.tenantId);
+        approval = decideAttendanceCorrection(a, { correctionId, decision: 'approved' });
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        try {
+          return await Promise.race([approval, new Promise<null>(resolve => { timer = setTimeout(() => resolve(null), 3000); })]);
+        } finally {
+          clearTimeout(timer);
+        }
+      });
+      expect(completed).toMatchObject({ status: 'approved' });
+    } finally {
+      await approval;
+    }
+    expect((await day(employmentId)).checkInAt).toBe('09:00:00');
+  });
+  it('approves a different employee while the first approval waits on its subject lock', async () => {
+    const { a, employmentId } = await fixture();
+    const second = await hireEmployee(a, {
+      person: { fullName: 'Independent clock worker', primaryEmail: 'independent-clock@test.local' },
+      companyId: b.companyId, departmentId: b.deptA, employmentType: 'full_time', hiredOn: '2020-01-01',
+    });
+    const request = (subjectId: string) => requestAttendanceCorrection(a, {
+      employmentId: subjectId, date, checkIn: '09:00', checkOut: '18:00', reason: 'Verified independent gate log',
+    });
+    const firstRequest = await request(employmentId);
+    const secondRequest = await request(second.employmentId);
+    const approve = (correctionId: string) => decideAttendanceCorrection(a, { correctionId, decision: 'approved' });
+    const timings = globalThis as typeof globalThis & {
+      __aihrPerfBeginAttendanceApproval?: () => { acquired: () => void; finished: () => void };
+    };
+    const previousTiming = timings.__aihrPerfBeginAttendanceApproval;
+    let notifyAdmitted!: () => void;
+    const firstAdmitted = new Promise<void>(resolve => { notifyAdmitted = resolve; });
+    timings.__aihrPerfBeginAttendanceApproval = () => ({ acquired: notifyAdmitted, finished() {} });
+    const approvals: ReturnType<typeof approve>[] = [];
+    const beginApproval = (id: string) => {
+      const approval = approve(id);
+      approvals.push(approval);
+      void approval.catch(() => {});
+      return approval;
+    };
+    try {
+      const completed = await owner.db.transaction(async tx => {
+        await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${a.tenantId + ':' + employmentId},0))`);
+        void beginApproval(firstRequest.correctionId);
+        await firstAdmitted;
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        try {
+          return await Promise.race([
+            beginApproval(secondRequest.correctionId),
+            new Promise<null>(resolve => { timer = setTimeout(() => resolve(null), 3000); }),
+          ]);
+        } finally {
+          clearTimeout(timer);
+        }
+      });
+      expect(completed).toMatchObject({ status: 'approved' });
+    } finally {
+      timings.__aihrPerfBeginAttendanceApproval = previousTiming;
+      await Promise.all(approvals);
+    }
+    expect((await day(employmentId)).checkInAt).toBe('09:00:00');
+    expect((await day(second.employmentId)).checkInAt).toBe('09:00:00');
+  });
+  it('records one decision when the same correction is approved concurrently', async () => {
+    const { a, employmentId } = await fixture();
+    const { correctionId } = await requestAttendanceCorrection(a, {
+      employmentId, date, checkIn: '09:00', checkOut: '18:00', reason: 'One verified correction',
+    });
+    const decide = () => decideAttendanceCorrection(a, { correctionId, decision: 'approved' });
+    const outcomes = await Promise.allSettled([decide(), decide()]);
+    expect(outcomes.filter(outcome => outcome.status === 'fulfilled')).toHaveLength(1);
+    expect(outcomes.filter(outcome => outcome.status === 'rejected')).toHaveLength(1);
+    const events = await owner.db.select({id:schema.domainEvent.id}).from(schema.domainEvent).where(and(
+      eq(schema.domainEvent.aggregateId, correctionId),
+      eq(schema.domainEvent.eventType, 'attendance-correction.approved'),
+    ));
+    expect(events).toHaveLength(1);
+  });
+  it.each(['submission', 'approval'] as const)('releases the native pool connection between exclusive %s admission attempts', async operation => {
+    const { a, employmentId } = await fixture();
+    const input = { employmentId, date, checkIn: '09:00', checkOut: '18:00', reason: 'Fictional exclusive admission' };
+    const approval = operation === 'approval'
+      ? await requestAttendanceCorrection(a, input)
+      : undefined;
+    // A TOIL-capable approval must retain the original exclusive path.
+    if (approval) await setModule(b.tenantId, 'toil', 'active');
+    const actor = approval ? await entitledCtx(b) : a;
+    const timings = globalThis as typeof globalThis & {
+      __aihrPerfBeginTransaction?: (poolMax: number) => { acquired: () => void; finished: () => void };
+      __aihrPerfAttendanceExclusiveAdmission?: (operation: string, outcome: string) => void;
+    };
+    const previousTiming = timings.__aihrPerfBeginTransaction;
+    const previousAdmission = timings.__aihrPerfAttendanceExclusiveAdmission;
+    const attempts: { started: number; acquired?: number; finished?: number }[] = [];
+    const admissions: [string, string][] = [];
+    let command: Promise<unknown> | undefined;
+    try {
+      await owner.db.transaction(async tx => {
+        const [holder] = await tx.execute<{ pid: number }>(sql`select pg_backend_pid() as pid`);
+        await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${'access-configuration:' + b.tenantId},0))`);
+        timings.__aihrPerfAttendanceExclusiveAdmission = (kind, outcome) => admissions.push([kind, outcome]);
+        timings.__aihrPerfBeginTransaction = () => {
+          const attempt: typeof attempts[number] = { started: performance.now() };
+          attempts.push(attempt);
+          return {
+            acquired: () => { attempt.acquired = performance.now(); },
+            finished: () => { attempt.finished = performance.now(); },
+          };
+        };
+        command = approval
+          ? decideAttendanceCorrection(actor, { correctionId: approval.correctionId, decision: 'approved' })
+          : requestAttendanceCorrection(actor, input);
+        void command.catch(() => {});
+        // The blocking fallback appears only after the two distinct try transactions ended.
+        await expect.poll(async () => {
+          const [row] = await tx.execute<{ n: number }>(sql`select count(*)::int as n from pg_locks l
+            where l.locktype = 'advisory' and not l.granted and ${holder.pid}::int = any(pg_blocking_pids(l.pid))`);
+          return row.n;
+        }, { timeout: 5000 }).toBe(1);
+        expect(attempts).toHaveLength(3);
+        expect(attempts[0].acquired).toBeDefined();
+        expect(attempts[0].finished).toBeDefined();
+        expect(attempts[1].started - attempts[0].finished!).toBeGreaterThanOrEqual(75);
+        expect(attempts[1].finished).toBeDefined();
+        expect(attempts[2].started).toBeGreaterThanOrEqual(attempts[1].finished!);
+        expect(attempts[2].finished).toBeUndefined();
+        expect(admissions).toEqual([[operation, 'miss'], [operation, 'miss'], [operation, 'blockingFallback']]);
+      });
+      await command;
+    } finally {
+      timings.__aihrPerfBeginTransaction = previousTiming;
+      timings.__aihrPerfAttendanceExclusiveAdmission = previousAdmission;
+      await command;
+    }
+    const rows = await owner.db.select({ id: schema.attendanceCorrection.id, status: schema.attendanceCorrection.status })
+      .from(schema.attendanceCorrection).where(eq(schema.attendanceCorrection.employmentId, employmentId));
+    expect(rows).toHaveLength(1);
+    const [row] = rows;
+    expect(row.status).toBe(approval ? 'approved' : 'pending');
+    const events = await owner.db.select({ id: schema.domainEvent.id }).from(schema.domainEvent).where(and(
+      eq(schema.domainEvent.aggregateId, row.id),
+      eq(schema.domainEvent.eventType, approval ? 'attendance-correction.approved' : 'attendance-correction.requested'),
+    ));
+    expect(events).toHaveLength(1);
+  }, 20000);
+  it('reads the original clock and workflow setting once per ordinary submission', async () => {
+    const { a, employmentId } = await fixture();
+    const statements: string[] = [];
+    const nativeBegin = client.begin;
+    const begin = vi.spyOn(client, 'begin').mockImplementation(((...args: unknown[]) => {
+      const callbackIndex = args.findIndex(arg => typeof arg === 'function');
+      const callback = args[callbackIndex] as (native: typeof client) => unknown;
+      args[callbackIndex] = (native: typeof client) => callback(new Proxy(native, {
+        get(target, key, receiver) {
+          if (key !== 'unsafe') return Reflect.get(target, key, receiver);
+          return (query: string, ...values: unknown[]) => {
+            statements.push(query);
+            return Reflect.apply(target.unsafe, target, [query, ...values]);
+          };
+        },
+      }));
+      return Reflect.apply(nativeBegin, client, args);
+    }) as typeof client.begin);
+    try {
+      await requestAttendanceCorrection(a, { employmentId, date, checkIn: '09:00', checkOut: '18:00', reason: 'Verified gate log' });
+    } finally {
+      begin.mockRestore();
+    }
+    expect(statements.filter(query => query.includes('xmin::text') && query.includes('from "attendance"'))).toHaveLength(1);
+    expect(statements.filter(query => query.includes('from "attendance_workflow_setting"'))).toHaveLength(1);
   });
   it('rejects stale approval atomically when new clocking arrived after the request', async () => {
     const { a, employmentId } = await fixture();

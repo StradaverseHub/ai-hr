@@ -1,17 +1,21 @@
 /** Canonical storage/lifecycle regressions. Source-only until the shared release hold is lifted. */
 import {afterAll,beforeAll,beforeEach,describe,expect,it} from 'vitest';
 import {randomUUID} from 'node:crypto';
-import {asc,eq,sql} from 'drizzle-orm';
-import {db,withTenant} from '../db/client';
+import {and,asc,eq,gt,isNull,lte,or,sql} from 'drizzle-orm';
+import {db,withTenant,type SessionContext,type Tx} from '../db/client';
 import * as s from '../db/schema';
 import {adminCtx,closeAll,createAppUser,entitledCtx,migrateTestDb,owner,resetDb,seedBase,setModule,type Base} from './harness';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {lockLeaveDependenciesTx} from '../core/leave-dependency-lock';
 import {createCompany} from '../core/admin';
+import {provenCompanyDatesTx} from '../core/employment-company';
+import {ATTENDANCE_TRACE_VERSION} from '../core/attendance-trace';
+import {lockAttendanceLeaveDependenciesTx} from '../core/attendance';
+import {hasRecordedAttendanceGroupPolicyTx} from '../packs/attendance/policy-selection';
 import {readOvertimeStarterSeed,prepareOvertimeStarter} from '../lib/overtime-pattern-starters';
 import type {OvertimePattern} from '../lib/overtime-pattern-model';
-import {activateOvertimePattern,archiveOvertimePattern,ensureOvertimePatternStarters,captureOvertimePersonnelContextTx,createOvertimeCalculationOwner,forkOvertimePatternDraft,getOvertimePattern,listOvertimePatterns,overtimePatternWorkspaceCompanies,readOvertimeCalculationTx,readOvertimeDurationsTx,listCoveredOvertimeDaysTx,readOvertimePersonnelContextTx,readOvertimeSettlementForDayTx,releaseOvertimeSettlementsForDraftTeardownTx,releaseOvertimeSettlementTx,reserveOvertimeSettlementTx,saveOvertimePatternAssignment,saveOvertimePatternDraft,stopOvertimePatternVersion,validateOvertimePatternActivation,type CanonicalOvertimeSnapshot} from '../packs/attendance/overtime-patterns';
-import {requestAttendanceCorrection,decideAttendanceCorrection,saveAttendanceWorkflow,setAttendanceWorkflowEnabled} from '../packs/attendance/service';
+import {hasOvertimePatternForDayTx,readOvertimeRefreshDayTx,activateOvertimePattern,archiveOvertimePattern,ensureOvertimePatternStarters,captureOvertimePersonnelContextTx,createOvertimeCalculationOwner,forkOvertimePatternDraft,getOvertimePattern,listOvertimePatterns,overtimePatternWorkspaceCompanies,readOvertimeCalculationTx,readOvertimeDurationsTx,listCoveredOvertimeDaysTx,readOvertimePersonnelContextTx,readOvertimeSettlementForDayTx,releaseOvertimeSettlementsForDraftTeardownTx,releaseOvertimeSettlementTx,reserveOvertimeSettlementTx,saveOvertimePatternAssignment,saveOvertimePatternDraft,stopOvertimePatternVersion,validateOvertimePatternActivation,type CanonicalOvertimeSnapshot} from '../packs/attendance/overtime-patterns';
+import {requestAttendanceCorrection,decideAttendanceCorrection,refreshOvertimePatternDayTx,saveAttendanceWorkflow,setAttendanceWorkflowEnabled} from '../packs/attendance/service';
 let b:Base,employmentId:string,attendanceId:string,earningId:string;const day=()=>todayInKualaLumpur();
 const plus=(n:number)=>{const d=new Date(day()+'T00:00:00Z');d.setUTCDate(d.getUTCDate()+n);return d.toISOString().slice(0,10);};
 const yes=(id:string)=>({id,type:'constant' as const,value:true});
@@ -201,6 +205,26 @@ describe('Retained settlement lifecycle and DDL authority',()=>{
 });
 
 describe('Serialization and legacy owner continuity',()=>{
+ it('clears obsolete overtime markers without rewriting a clean legacy day',async()=>{
+  const ctx=adminCtx(b);
+  const refresh=()=>withTenant(ctx,tx=>refreshOvertimePatternDayTx(tx,ctx,{employmentId,date:day(),reason:'Legacy refresh'}));
+  const snapshot=async()=> (await owner.db.select({version:sql<string>`xmin::text`,trace:s.attendance.calcTrace})
+   .from(s.attendance).where(eq(s.attendance.id,attendanceId)))[0];
+  const setTrace=(trace:unknown)=>owner.db.update(s.attendance)
+   .set({calcTrace:trace===null?null:sql`${JSON.stringify(trace)}::jsonb`}).where(eq(s.attendance.id,attendanceId));
+
+  for(const trace of [null,{legacy:'preserved'}]){
+   await setTrace(trace);
+   const before=await snapshot();
+   expect(await refresh()).toBeNull();
+   expect(await snapshot()).toEqual(before);
+  }
+
+  await setTrace({legacy:'preserved',overtimePattern:{status:'recorded'}});
+  expect(await refresh()).toBeNull();
+  expect((await snapshot()).trace).toEqual({legacy:'preserved'});
+ });
+
  it('refuses an overtime configuration save as busy while a leave-dependency command holds the leave lock, saving nothing',async()=>{
   const ctx=adminCtx(b);let holding!:()=>void,release!:()=>void;const held=new Promise<void>(resolve=>holding=resolve),done=new Promise<void>(resolve=>release=resolve);
   const leave=withTenant(ctx,async tx=>{await lockLeaveDependenciesTx(tx,ctx.tenantId,[employmentId]);holding();await done;});
@@ -285,5 +309,96 @@ describe('only actual formula inputs are protected by a TOIL claim',()=>{
   expect((await owner.db.select().from(s.attendance).where(eq(s.attendance.id,attendanceId)))[0].checkInAt).toBe('09:00:00');
   await expect(withTenant(ctx,tx=>tx.insert(s.attendanceCorrection).values({tenantId:b.tenantId,employmentId,attendanceDate:day(),requestedOtMinutes:60,status:'rejected',reason:'Raw OT input remains protected'}))).rejects.toMatchObject({cause:expect.objectContaining({message:expect.stringMatching(/TOIL/)})});
   expect((await withTenant(ctx,tx=>readOvertimeSettlementForDayTx(tx,ctx,{employmentId,date:day()})))?.settlement).toMatchObject({mode:'toil',toilAccrualId:credit.id});
+ });
+});
+
+/** Previous point and ordered candidate reads, compared under the actual app role. */
+async function previousCoverage(tx:Tx,ctx:SessionContext,p:{employmentId:string;date:string}){
+ const [recorded]=await tx.select({id:s.attendanceOvertimeSource.id}).from(s.attendanceOvertimeSource).where(and(eq(s.attendanceOvertimeSource.tenantId,ctx.tenantId),eq(s.attendanceOvertimeSource.employmentId,p.employmentId),eq(s.attendanceOvertimeSource.attendanceDate,p.date),sql`${s.attendanceOvertimeSource.currentCalculationId} is not null`)).limit(1);if(recorded)return true;
+ const [marker]=await tx.select({id:s.attendance.id}).from(s.attendance).where(and(eq(s.attendance.tenantId,ctx.tenantId),eq(s.attendance.employmentId,p.employmentId),eq(s.attendance.attendanceDate,p.date),sql`${s.attendance.calcTrace}->'overtimePattern'->>'status'='refused' and ${s.attendance.calcTrace}->'overtimePattern'->>'reason'='sourceUnavailable'`)).limit(1);if(marker)return true;
+ if(await hasRecordedAttendanceGroupPolicyTx(tx,ctx,p))return true;
+ const proof=(await provenCompanyDatesTx(tx,[{employmentId:p.employmentId,date:p.date}])).get(p.employmentId+'|'+p.date);
+ const [candidate]=await tx.select({id:s.overtimePatternAssignment.id}).from(s.overtimePatternAssignment).innerJoin(s.overtimePatternVersion,eq(s.overtimePatternVersion.id,s.overtimePatternAssignment.versionId)).innerJoin(s.overtimePattern,eq(s.overtimePattern.id,s.overtimePatternVersion.patternId)).where(and(eq(s.overtimePatternAssignment.tenantId,ctx.tenantId),eq(s.overtimePatternVersion.kind,'formula'),isNull(s.overtimePattern.archivedAt),isNull(s.overtimePatternAssignment.supersededAt),lte(s.overtimePatternAssignment.validFrom,p.date),or(isNull(s.overtimePatternAssignment.validTo),gt(s.overtimePatternAssignment.validTo,p.date)),sql`(${s.overtimePatternAssignment.target}->>'type'='group' OR ${s.overtimePatternAssignment.target}->'employmentIds' ? ${p.employmentId})`,proof?.companyId?sql`exists(select 1 from overtime_pattern_version_company co where co.version_id=${s.overtimePatternVersion.id} and co.company_id=${proof.companyId}::uuid)`:undefined,sql`(select state from overtime_pattern_version_state st where st.version_id=${s.overtimePatternVersion.id} and st.effective_from<=${p.date}::date order by effective_from desc,sequence desc limit 1)='active'`)).orderBy(asc(s.overtimePatternAssignment.id)).limit(1);return !!candidate;
+}
+
+describe('Attendance OT-stage detection point reads',()=>{
+ const point=()=>({employmentId,date:day()});
+ async function parity(ctx:SessionContext,expected:boolean,dayVisible=true){
+  await withTenant(ctx,async tx=>{
+   expect(await previousCoverage(tx,ctx,point())).toBe(expected);
+   expect(await hasOvertimePatternForDayTx(tx,ctx,point())).toBe(expected);
+   expect(await readOvertimeRefreshDayTx(tx,ctx,point())).toEqual(dayVisible?{id:attendanceId,hasPattern:expected}:null);
+  });
+ }
+
+ it('retains exact legacy, malformed-trace, refused-marker and visible recorded decisions',async()=>{
+  const ctx=adminCtx(b);
+  await parity(ctx,false);
+  for(const value of ['not a trace',['overtimePattern'],{overtimePattern:{status:'refused',reason:'anotherReason'}},{overtimePattern:{status:123,reason:'sourceUnavailable'}}]){
+   await owner.db.execute(sql`update attendance set calc_trace=${JSON.stringify(value)}::jsonb where id=${attendanceId}::uuid`);
+   await parity(ctx,false);
+  }
+  await owner.db.execute(sql`update attendance set calc_trace='{"overtimePattern":{"status":"refused","reason":"sourceUnavailable"}}'::jsonb where id=${attendanceId}::uuid`);
+  await parity(ctx,true);
+  await owner.db.execute(sql`update attendance set calc_trace=null where id=${attendanceId}::uuid`);
+  await recorded();
+  await parity(ctx,true);
+
+  const [employment]=await owner.db.select({personId:s.employment.personId}).from(s.employment).where(eq(s.employment.id,employmentId));
+  const userId=await createAppUser(b.tenantId,employment.personId,'employee');
+  await parity({...ctx,userId,personId:employment.personId,roles:['employee']},true);
+  const foreign=await seedBase();
+  await parity(adminCtx(foreign),false,false);
+  await withTenant(ctx,async tx=>{
+   expect(await readOvertimeRefreshDayTx(tx,ctx,{employmentId,date:plus(1)})).toBeNull();
+  });
+ });
+
+ it('keeps a visible formula candidate when dated company is unknown and skips inactive assignments',async()=>{
+  const ctx=adminCtx(b);
+  const saved=await activated();
+  await parity(ctx,true);
+  // Move the only dated assignment after the read point without changing the current company.
+  await owner.db.update(s.assignment).set({validFrom:plus(1)}).where(eq(s.assignment.employmentId,employmentId));
+  await withTenant(ctx,async tx=>{
+   expect((await provenCompanyDatesTx(tx,[point()])).get(employmentId+'|'+day())).toMatchObject({companyId:null});
+  });
+  await parity(ctx,true);
+  const detail=await getOvertimePattern(ctx,saved.patternId);
+  const version=detail?.versions.find(row=>row.id===saved.versionId);
+  expect(version).toBeDefined();
+  await stopOvertimePatternVersion(ctx,{versionId:saved.versionId,expectedRevision:version!.revision,effectiveFrom:day(),reason:'Fixture stops the formula today'});
+  await parity(ctx,false);
+ });
+
+ it('preserves an incomplete proof for an uppercase input key before formula selection',async()=>{
+  const ctx=adminCtx(b),p={...point(),employmentId:employmentId.toUpperCase()};
+  expect(p.employmentId).not.toBe(employmentId);
+  // A known no-Schedule-Group trace skips the earlier group-policy dated read.
+  const trace={v:ATTENDANCE_TRACE_VERSION,schedule:{ruleId:null},punch:{}};
+  await owner.db.execute(sql`update attendance set calc_trace=${JSON.stringify(trace)}::jsonb where id=${attendanceId}::uuid`);
+  await withTenant(ctx,async tx=>{
+   await expect(previousCoverage(tx,ctx,p)).rejects.toThrow('Dated company proof is incomplete.');
+   await expect(hasOvertimePatternForDayTx(tx,ctx,p)).rejects.toThrow('Dated company proof is incomplete.');
+   await expect(readOvertimeRefreshDayTx(tx,ctx,p)).rejects.toThrow('Dated company proof is incomplete.');
+  });
+ });
+
+ it('compares before, candidate and restored control while the existing Attendance writer barriers are held',async()=>{
+  const ctx=adminCtx(b);
+  await withTenant(ctx,async tx=>{
+   await lockAttendanceLeaveDependenciesTx(tx,ctx,[employmentId]);
+   const phases=[];
+   for(const [phase,reader] of [['before',previousCoverage],['candidate',hasOvertimePatternForDayTx],['candidate-warm',hasOvertimePatternForDayTx],['restored',previousCoverage]] as const){
+    const start=performance.now();
+    for(let i=0;i<25;i++)expect(await reader(tx,ctx,point())).toBe(false);
+    phases.push({phase,elapsedMs:performance.now()-start,reads:25});
+   }
+   if(process.env.AIHR_FOCUSED_EVIDENCE_DIR){
+    const {writeFileSync}=await import('node:fs');
+    const {join}=await import('node:path');
+    writeFileSync(join(process.env.AIHR_FOCUSED_EVIDENCE_DIR,'attendance-overtime-point.json'),JSON.stringify({phases,lockScope:'Access and Attendance leave dependencies',releaseEligible:false},null,2));
+   }
+  });
  });
 });

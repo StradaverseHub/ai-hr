@@ -70,14 +70,19 @@ export async function tenantStoppedTx(tx:Tx,tenantId:string):Promise<boolean>{
 }
 
 export type WorkerGate=Readonly<{run:boolean;reasons:readonly ('not_registered'|'switched_off'|'stopped')[]}>;
+/** Evaluate already-read display facts. Execution paths still read their current gates. */
+export function workerGateFromState(on:boolean,stopped:boolean):WorkerGate{
+ const reasons:('switched_off'|'stopped')[]=[];
+ if(!on)reasons.push('switched_off');
+ if(stopped)reasons.push('stopped');
+ return Object.freeze({run:reasons.length===0,reasons:Object.freeze(reasons)});
+}
 /** Registered, switched on and not stopped, all read in the caller's transaction. */
 export async function workerRunGateTx(tx:Tx,ctx:SessionContext,workerId:string):Promise<WorkerGate>{
  const worker=registeredWorker(workerId);
  if(!worker)return Object.freeze({run:false,reasons:Object.freeze(['not_registered' as const])});
- const reasons:('switched_off'|'stopped')[]=[];
- if(!(await workerSwitchStateTx(tx,ctx,worker)).on)reasons.push('switched_off');
- if(await tenantStoppedTx(tx,ctx.tenantId))reasons.push('stopped');
- return Object.freeze({run:reasons.length===0,reasons:Object.freeze(reasons)});
+ const {on}=await workerSwitchStateTx(tx,ctx,worker);
+ return workerGateFromState(on,await tenantStoppedTx(tx,ctx.tenantId));
 }
 export const workerRunGate=(ctx:SessionContext,workerId:string)=>withTenant(ctx,tx=>workerRunGateTx(tx,ctx,workerId));
 /** One worker's gate as workerRunGatesTx reads it: the gate, its switch, and (a teras_worker_control switch that is on)
@@ -100,10 +105,7 @@ export async function workerRunGatesTx(tx:Tx,ctx:SessionContext,workerIds:readon
   if(!worker){out.set(id,Object.freeze({gate:Object.freeze({run:false,reasons:Object.freeze(['not_registered' as const])}),on:false,changedByUserId:null}));continue;}
   const sw=worker.switch,row=sw.kind==='worker_control'?control.get(sw.workerId):undefined;
   const on=sw.kind==='worker_control'?row?.enabled===true:(await workerSwitchStateTx(tx,ctx,worker)).on;
-  const reasons:('switched_off'|'stopped')[]=[];
-  if(!on)reasons.push('switched_off');
-  if(stopped)reasons.push('stopped');
-  out.set(id,Object.freeze({gate:Object.freeze({run:reasons.length===0,reasons:Object.freeze(reasons)}),on,changedByUserId:on?row?.changedByUserId??null:null}));
+  out.set(id,Object.freeze({gate:workerGateFromState(on,stopped),on,changedByUserId:on?row?.changedByUserId??null:null}));
  }
  return out;
 }

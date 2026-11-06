@@ -1,6 +1,6 @@
 import { withCanonicalAiReadTx } from './ai-read-transaction';
-import { lockAccessConfigurationTx } from './access-configuration-lock';
-import { lockLeaveDependenciesTx, lockLeaveDependencyConfigurationTx } from './leave-dependency-lock';
+import { lockAccessConfigurationReadTx, lockAccessConfigurationTx, tryLockAccessConfigurationTx } from './access-configuration-lock';
+import { LeaveDependencyUnavailable, lockLeaveDependenciesTx, lockLeaveDependencyConfigurationTx, lockLeaveDependencyReadConfigurationTx } from './leave-dependency-lock';
 import {attendancePolicyAttestedRawTrace} from '../lib/attendance-policy-attested-trace';
 import {assessGeofence,type GeofenceAssessment} from '../lib/geofence-assessment';
 import {attendancePolicyUnclockedWorkDates,validateAttendancePolicyUnclockedWork,type AttendancePolicyUnclockedWork} from '../lib/attendance-policy-unclocked-work';
@@ -14,7 +14,7 @@ import { provenCompanyDatesTx } from './employment-company';
 import { fullFlexiIntervals, fullFlexiBreakMinutes, type ClosedClockInterval } from '../lib/full-flexi-time';
 import { exceptionRevisionOn } from '../lib/schedule-exception';
 import { lockPayrollForOwnAttendanceRemoval } from '../packs/payroll/service';
-import { retainedAttendancePolicyPlanCancellationTx,attendancePolicyCompleteApprovedPlanSetTx,attendancePolicyPlanProtectionDatesTx, readOvertimeSettlementForDayTx, retainedAttestedPolicyCancellationTx, lockOvertimeDayForAttendanceWriteTx, attendancePolicyUnclockedWorkComparison, attendancePolicySystemEligibleMinutes, attendancePolicyTraceBinding, lockAttendancePolicyImportTx, attendancePolicyImportRoutesTx, attendancePolicyUncapturedRawDay, attendancePolicyRawInputTx, attendancePolicyRawDay, captureCanonicalOvertimePersonnelContextTx, refreshOvertimePatternDayTx, formulaOvertimeForRowsTx, hasRecordedAttendanceGroupPolicyTx } from '../packs/attendance/service';
+import { retainedAttendancePolicyPlanCancellationTx,attendancePolicyCompleteApprovedPlanSetTx,attendancePolicyPlanProtectionDatesTx, readOvertimeSettlementForDayTx, retainedAttestedPolicyCancellationTx, lockOvertimeDayForAttendanceWriteTx, attendancePolicyUnclockedWorkComparison, attendancePolicySystemEligibleMinutes, attendancePolicyTraceBinding, lockAttendancePolicyImportTx, attendancePolicyImportRoutesTx, attendancePolicyUncapturedRawDay, attendancePolicyRawInputTx, attendancePolicyRawDay, captureCanonicalOvertimePersonnelContextTx, refreshOvertimePatternDayTx, refreshOvertimePatternDaysTx, formulaOvertimeForRowsTx, hasRecordedAttendanceGroupPolicyTx } from '../packs/attendance/service';
 import { clockCommandContext } from '../lib/clock-command-context';
 import {resolveOwnClockEmployment} from './attendance-clock-subject';
 import { removalPreservesSequence } from '../lib/attendance-removal';
@@ -31,8 +31,8 @@ import { applyClockChangesTx, clockFingerprint, punchesForCorrectionTx, validate
 import { rotationLookupTx, rotationScheduleRow } from './attendance-rotation';
 import { isDeepStrictEqual } from 'node:util';
 import { hasGrantFor, withEffectiveGrants } from '../lib/authz-model';
-import { prepareAttendanceWorkflowSnapshotTx, snapshotAttendanceWorkflowTx, assertCanDecideAttendanceApplicationTx, decideAttendanceWorkflowStageTx, attendanceWorkflowsForTx } from './attendance-workflow';
-import { attendanceApplicationType, AttendanceWorkflowError } from '../lib/attendance-workflow';
+import { prepareAttendanceWorkflowSnapshotTx, snapshotAttendanceWorkflowTx, assertCanDecideAttendanceApplicationTx, actionableAttendanceApplicationIdsTx, decideAttendanceWorkflowStageTx, attendanceWorkflowsForTx } from './attendance-workflow';
+import { attendanceApplicationType } from '../lib/attendance-workflow';
 import { plannedOvertimeMinutes } from '../lib/overtime-duration';
 import { and, asc, desc, eq, gt, gte, ilike, inArray, isNotNull, isNull, lte, or, sql } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
@@ -49,9 +49,10 @@ import { type SessionContext, type Tx } from '../db/client';
 // which is what keeps Leave and the roster working for a tenant without Attendance. See
 // core/module-gate.ts.
 import { assertModuleGate, withAttendanceTenant as withTenant } from './module-gate';
+import { EntitlementError, isModuleEnabled } from './entitlements';
 import { actorOf, appendEvent, appendEvents } from '../db/events';
 import { createHash, randomUUID } from 'node:crypto';
-import { filterDelegationOrgScopeTx, assertAssignedWorkPrincipalTx, isApprovalDecisionRefusal } from './approvals';
+import { filterDelegationOrgScopeTx, assertAssignedWorkPrincipalTx } from './approvals';
 import type {AssignedApprovalMetadata} from '../lib/assigned-work';
 import { scopeOf } from '../lib/delegation-scope';
 import { enforceDeviceGateTx } from './attendance-device';
@@ -464,9 +465,10 @@ type Policy = typeof DEFAULTS;
  * resolver `holidayDatesFor` (ADR-0055), so attendance classifies the same calendar leave does and the
  * country/state inputs that used to be carried on the Policy are gone.
  */
-async function policyFor(tx: Tx, employmentId: string): Promise<Policy> {
+async function policyFor(tx: Tx, employmentId: string, includeScheduleGroup = false): Promise<Policy & { scheduleGroupId: string | null }> {
   const [row] = await tx
     .select({
+      ...(includeScheduleGroup ? { scheduleGroupId: employment.attendanceRuleId } : {}),
       lateAfter: attendancePolicy.lateAfter,
       halfDayBefore: attendancePolicy.halfDayBefore,
       workStart: attendancePolicy.workStart,
@@ -480,6 +482,7 @@ async function policyFor(tx: Tx, employmentId: string): Promise<Policy> {
     .where(eq(employment.id, employmentId))
     .limit(1);
   return {
+    scheduleGroupId: row?.scheduleGroupId ?? null,
     lateAfter: row?.lateAfter ?? DEFAULTS.lateAfter,
     halfDayBefore: row?.halfDayBefore ?? DEFAULTS.halfDayBefore,
     workStart: row?.workStart ?? DEFAULTS.workStart,
@@ -926,7 +929,7 @@ async function scheduleFor(tx: Tx, employmentId: string, date: string, memo?: Sc
 }
 
 async function scheduleBaseFor(tx: Tx, employmentId: string, date: string, memo?: ScheduleMemo, datedShiftId?:string): Promise<ResolvedSchedule> {
-  const pol = await memoized(memo, `pol|${employmentId}`, () => policyFor(tx, employmentId));
+  const pol = await memoized(memo, `pol|${employmentId}`, () => policyFor(tx, employmentId, true));
   const grace = Math.max(0, toMinutes(pol.lateAfter) - toMinutes(pol.workStart)); // 15m by default
   // ADR-0055: the day-type holiday flag comes from the unified resolver — business-group → state →
   // national, single-winner replacement — the SAME calendar the leave engine resolves (leave.ts
@@ -943,7 +946,6 @@ async function scheduleBaseFor(tx: Tx, employmentId: string, date: string, memo?
   // AND as the fallback when a resolved shift carries no explicit rule_id. Null when the tenant has no rule
   // yet ⇒ byte-identical legacy behaviour. 6da67ab7: one Standard per TENANT, not per company — the rule is
   // chosen by the shift, and shifts are tenant-wide, so the employee's company no longer selects it.
-  const defaultRule = await memoized(memo, 'rule|default', () => resolveRuleTx(tx, { ruleId: null }));
   /**
    * 870b79e2 (r277, migration 0464) — THE EMPLOYEE'S SCHEDULE GROUP, and the ONE line of this item that
    * touches the engine.
@@ -971,12 +973,12 @@ async function scheduleBaseFor(tx: Tx, employmentId: string, date: string, memo?
    * unrepresentable, and if RLS or a missing row ever made the rule unreadable, `resolveRuleTx` returns
    * null and the employee falls through to the pre-existing chain rather than losing their rules.
    */
-  const [empRow] = await memoized(memo, `emprule|${employmentId}`, () =>
-    tx.select({ ruleId: employment.attendanceRuleId }).from(employment).where(eq(employment.id, employmentId)).limit(1),
-  );
-  const groupRule = empRow?.ruleId
-    ? await memoized(memo, `rule|${empRow.ruleId}`, () => resolveRuleTx(tx, { ruleId: empRow.ruleId! }))
+  const groupId = pol.scheduleGroupId;
+  const groupRule = groupId
+    ? await memoized(memo, `rule|${groupId}`, () => resolveRuleTx(tx, { ruleId: groupId }))
     : null;
+  // A readable group owns every branch; the Standard is only a fallback.
+  const defaultRule = groupRule ? null : await memoized(memo, 'rule|default', () => resolveRuleTx(tx, { ruleId: null }));
   /** The rule for a branch with NO shift of its own (company policy, rest day): the group's, else Standard. */
   const baseRule = groupRule ?? defaultRule;
   // The effective late/early grace for a shift branch: an explicit per-shift grace wins (R17, unchanged); else
@@ -1928,8 +1930,9 @@ function punchGeoValues(geo: GeofenceCheck) {
  * calendar recompute owners; ordinary clock mutations retain the day classification already stored.
  * The helper does not write a raw day or grant approval and never accepts a posted day type. */
 async function policyRawDayProjectionTx(tx:Tx,ctx:SessionContext,p:{employmentId:string;date:string;
- fallbackIn:string|null;fallbackOut:string|null;classification?:'stored'|'currentSchedule'}){
-  const raw=await attendancePolicyRawInputTx(tx,ctx,p);
+ fallbackIn:string|null;fallbackOut:string|null;classification?:'stored'|'currentSchedule'},
+ rawInput?: Awaited<ReturnType<typeof attendancePolicyRawInputTx>>){
+  const raw=rawInput ?? await attendancePolicyRawInputTx(tx,ctx,p);
   if(raw.state==='unavailable')throw Error('Canonical raw Attendance inputs are unavailable.');
   if(raw.state!=='policy')return {state:'legacy' as const};
   const current=await scheduleFor(tx,p.employmentId,p.date);
@@ -1961,6 +1964,7 @@ async function policyRawDayProjectionTx(tx:Tx,ctx:SessionContext,p:{employmentId
 async function recomputeDayFromPunches(
   tx: Tx, ctx: SessionContext,
   p: { employmentId:string; attendanceId: string; attendanceDate: string; sched: ResolvedSchedule; fallbackCheckInAt: string | null },
+  rawInput?: Awaited<ReturnType<typeof attendancePolicyRawInputTx>>,
 ): Promise<{
   status: 'present' | 'late' | 'half_day';
   workedMinutes: number | null;
@@ -1976,7 +1980,7 @@ async function recomputeDayFromPunches(
   const ins=punches.filter(row=>row.direction==='in').map(row=>row.punchAt).sort();
   const outs=punches.filter(row=>row.direction==='out').map(row=>row.punchAt).sort();
   const projected=await policyRawDayProjectionTx(tx,ctx,{employmentId:p.employmentId,date:p.attendanceDate,
-    fallbackIn:ins[0]??p.fallbackCheckInAt,fallbackOut:outs.at(-1)??null});
+    fallbackIn:ins[0]??p.fallbackCheckInAt,fallbackOut:outs.at(-1)??null},rawInput);
   if(projected.state==='policy'){
     const set=projected.columns;
     await tx.update(attendance).set(set).where(and(eq(attendance.id,p.attendanceId),eq(attendance.tenantId,ctx.tenantId)));
@@ -3050,7 +3054,13 @@ export function attendanceForEmploymentsRange(
   ctx: SessionContext, employmentIds: string[], from: string, to: string,
   opts: {includePunchReviews?:boolean} = {},
 ): Promise<Map<string, AttendanceRangeRow[]>> {
-  return withTenant(ctx, async (tx) => {
+  return withTenant(ctx, tx => attendanceForEmploymentsRangeTx(tx, ctx, employmentIds, from, to, opts));
+}
+
+async function attendanceForEmploymentsRangeTx(
+  tx: Tx, ctx: SessionContext, employmentIds: string[], from: string, to: string,
+  opts: {includePunchReviews?:boolean} = {},
+): Promise<Map<string, AttendanceRangeRow[]>> {
     const result = new Map<string, AttendanceRangeRow[]>();
     if (from > to || employmentIds.length === 0) return result;
     const employees = await tx.select({id:employment.id, companyId:employment.companyId,
@@ -3185,7 +3195,6 @@ export function attendanceForEmploymentsRange(
       result.set(emp.id,out);
     }
     return result;
-  });
 }
 
 /** R45 92bdf77a — one punch (a single clock-in or clock-out) of a multi-clocking day. Feedback af552c5d
@@ -3214,7 +3223,12 @@ export function attendancePunchesForRange(
   from: string,
   to: string,
 ): Promise<Map<string, AttendancePunchRow[]>> {
-  return withTenant(ctx, async (tx) => {
+  return withTenant(ctx, tx => attendancePunchesForRangeTx(tx, employmentId, from, to));
+}
+
+async function attendancePunchesForRangeTx(
+  tx: Tx, employmentId: string, from: string, to: string,
+): Promise<Map<string, AttendancePunchRow[]>> {
     const byAttendance = new Map<string, AttendancePunchRow[]>();
     if (from > to) return byAttendance;
     const punches = await tx
@@ -3246,7 +3260,6 @@ export function attendancePunchesForRange(
       byAttendance.set(pch.attendanceId, list);
     }
     return byAttendance;
-  });
 }
 
 export type MonthSummaryRow = {
@@ -3598,16 +3611,44 @@ function normalizeAttendanceCorrectionRequest(input:AttendanceCorrectionRequestI
 
  return {p,hasOt,clockChanges,checkIn,checkOut,requestedOtMinutes,reason,plannedStartTime,plannedEndTime,otReasonCategory,remark,requestKind,unclockedWork};
 }
-/** Full canonical preflight with no correction/workflow/event INSERT. Infrastructure policy-epoch
- * initialization remains the existing canonical barrier, not a request or an approval effect. */
-export async function prepareAttendanceCorrectionRequestTx(tx:Tx,ctx:SessionContext,input:AttendanceCorrectionRequestInput){
+const retryAttendanceSubmissionExclusively = new Error('Attendance submission requires the exclusive configuration path.');
+
+async function prepareAttendanceCorrectionInputTx(
+ tx:Tx,ctx:SessionContext,input:AttendanceCorrectionRequestInput,access:'shared'|'exclusive'|'exclusive-held'='exclusive',
+){
  ctx=captureAttendanceContext(ctx);assertModuleGate(ctx,'attendance');
  const {p,hasOt,clockChanges,checkIn,checkOut,requestedOtMinutes,reason,plannedStartTime,plannedEndTime,otReasonCategory,remark,requestKind,unclockedWork}=normalizeAttendanceCorrectionRequest(input);
- await lockAccessConfigurationTx(tx,ctx.tenantId);
- const [subject]=await tx.select({id:employment.id}).from(employment).where(and(eq(employment.id,p.employmentId),eq(employment.tenantId,ctx.tenantId))).limit(1);if(!subject)throw Error('Attendance subject is unavailable.');
+ const sharedAccess=access==='shared';
+ if(sharedAccess){
+  // Only this owned submission transaction shares Access. Native configuration writers
+  // still conflict with it; the subject, workflow, policy epoch and audit fences remain.
+  await tx.execute(sql`select pg_advisory_xact_lock_shared(hashtextextended(${'access-configuration:'+ctx.tenantId},0))`);
+ }else if(access==='exclusive')await lockAccessConfigurationTx(tx,ctx.tenantId);
+ const [subject]=await tx.select({id:employment.id,companyId:employment.companyId}).from(employment)
+  .where(and(eq(employment.id,p.employmentId),eq(employment.tenantId,ctx.tenantId),sharedAccess?and(
+   eq(employment.personId,ctx.personId!),
+   sql`app.principal_snapshot_current() AND app.is_self_person(${employment.personId})`,
+   lte(employment.hiredOn,todayInKualaLumpur()),isNull(employment.blacklistedAt),
+   or(isNull(employment.terminatedOn),gt(employment.terminatedOn,todayInKualaLumpur())),
+  ):undefined)).limit(1);
+ if(!subject){
+  if(sharedAccess)throw retryAttendanceSubmissionExclusively;
+  throw Error('Attendance subject is unavailable.');
+ }
  p.employmentId=subject.id; // Canonical UUID spelling owns every shared source/credit lock key.
- await lockLeaveDependenciesTx(tx,ctx.tenantId,[p.employmentId]);
+ try{
+  await lockLeaveDependenciesTx(tx,ctx.tenantId,[p.employmentId]);
+ }catch(error){
+  if(sharedAccess&&error instanceof LeaveDependencyUnavailable&&error.reason==='busy')throw retryAttendanceSubmissionExclusively;
+  throw error;
+ }
  await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${ctx.tenantId+':'+p.employmentId},0))`);
+ if(sharedAccess){
+  // Unavailable, ambiguous or different dated employers retain the original exclusive path.
+  // This routing proof grants no write authority and does not replace native epoch capture.
+  const companies=await provenCompanyDatesTx(tx,[{employmentId:p.employmentId,date:p.date}]);
+  if(companies.get(p.employmentId+'|'+p.date)?.companyId!==subject.companyId)throw retryAttendanceSubmissionExclusively;
+ }
  // Normal OT may consult the policy to position an additional approved plan before the legacy
  // insertion owner. Own its existing epoch before that first lookup; unclocked work already takes
  // its actual protected day locks then this epoch in the canonical branch below.
@@ -3715,16 +3756,29 @@ export async function prepareAttendanceCorrectionRequestTx(tx:Tx,ctx:SessionCont
       }
     }
  const pending=await tx.select({id:attendanceCorrection.id}).from(attendanceCorrection).where(and(eq(attendanceCorrection.employmentId,p.employmentId),eq(attendanceCorrection.attendanceDate,p.date),eq(attendanceCorrection.status,'pending'))).limit(1);if(pending.length)throw new AttendanceCorrectionPendingError();
- const data={employmentId:p.employmentId,date:p.date,clockChanges,checkIn,checkOut,requestedOtMinutes,reason,plannedStartTime,plannedEndTime,otReasonCategory,remark,requestKind,unclockedWork};
- const source=await prepareAttendanceCorrectionInsertSourceTx(tx,ctx,data);
- const workflow=await prepareAttendanceWorkflowSnapshotTx(tx,ctx,p.employmentId,attendanceApplicationType({requestKind,proposedCheckIn:checkIn,proposedCheckOut:checkOut,clockChanges,requestedOtMinutes}));
+ return {employmentId:p.employmentId,date:p.date,clockChanges,checkIn,checkOut,requestedOtMinutes,reason,plannedStartTime,plannedEndTime,otReasonCategory,remark,requestKind,unclockedWork};
+}
+/** Canonical preflight for supplied transactions and reviewed work always takes exclusive Access. */
+export async function prepareAttendanceCorrectionRequestTx(tx:Tx,ctx:SessionContext,input:AttendanceCorrectionRequestInput){
+ const current=captureAttendanceContext(ctx);
+ const data=await prepareAttendanceCorrectionInputTx(tx,current,input);
+ const source=await prepareAttendanceCorrectionInsertSourceTx(tx,current,data);
+ const workflow=await prepareAttendanceWorkflowSnapshotTx(tx,current,data.employmentId,attendanceApplicationType({
+  requestKind:data.requestKind,proposedCheckIn:data.checkIn,proposedCheckOut:data.checkOut,
+  clockChanges:data.clockChanges,requestedOtMinutes:data.requestedOtMinutes,
+ }));
  return {data,source,workflow,asOf:todayInKualaLumpur()};
 }
 export function attendanceCorrectionPreparedDigest(ctx:SessionContext,prepared:Awaited<ReturnType<typeof prepareAttendanceCorrectionRequestTx>>){return createHash('sha256').update(JSON.stringify({version:1,tenantId:ctx.tenantId,userId:ctx.userId,personId:ctx.personId,prepared})).digest('hex');}
 /** Reviewed digest is refusal-only, never a source of policy, clocks, routing, actor or approval. */
 export async function requestAttendanceCorrectionTx(tx:Tx,ctx:SessionContext,input:AttendanceCorrectionRequestInput,reviewed?:{expectedDigest:string}){
- const current=captureAttendanceContext(ctx),captured=structuredClone(input),expected=reviewed?.expectedDigest,prepared=await prepareAttendanceCorrectionRequestTx(tx,current,captured);
- if(reviewed&&(typeof expected!=='string'||attendanceCorrectionPreparedDigest(current,prepared)!==expected))throw Error('Attendance source changed; review it again.');
+ const current=captureAttendanceContext(ctx),captured=structuredClone(input),expected=reviewed?.expectedDigest;
+ if(!reviewed){
+  const data=await prepareAttendanceCorrectionInputTx(tx,current,captured);
+  return insertAttendanceCorrectionRequestTx(tx,current,data,{returnEventId:true});
+ }
+ const prepared=await prepareAttendanceCorrectionRequestTx(tx,current,captured);
+ if(typeof expected!=='string'||attendanceCorrectionPreparedDigest(current,prepared)!==expected)throw Error('Attendance source changed; review it again.');
  return insertAttendanceCorrectionRequestTx(tx,current,prepared.data,{returnEventId:true});
 }
 function attendanceCorrectionSubmissionFailure(error:unknown):never{
@@ -3743,9 +3797,33 @@ function attendanceCorrectionSubmissionFailure(error:unknown):never{
  *  claim resolution in packs/attendance/mobile-offline-claim-review.ts; the mobile command receipt). Omitted: its
  *  own transaction, as before. Both paths run the same preparation, locks and insert (requestAttendanceCorrectionTx). */
 export async function requestAttendanceCorrection(ctx:SessionContext,p:AttendanceCorrectionRequestInput,existingTx?:Tx){
- const current=captureAttendanceContext(ctx),captured=structuredClone(p);normalizeAttendanceCorrectionRequest(captured);
- const run=async(tx:Tx)=>{const result=await requestAttendanceCorrectionTx(tx,current,captured);return {correctionId:result.correctionId};};
- return (existingTx?run(existingTx):withTenant(current,run)).catch(attendanceCorrectionSubmissionFailure);
+ const current=captureAttendanceContext(ctx),captured=structuredClone(p);
+ const normalized=normalizeAttendanceCorrectionRequest(captured);
+ const run=async(tx:Tx,access:'exclusive'|'exclusive-held'='exclusive')=>{
+  const data=await prepareAttendanceCorrectionInputTx(tx,current,captured,access);
+  return insertAttendanceCorrectionRequestTx(tx,current,data);
+ };
+ if(existingTx)return run(existingTx).catch(attendanceCorrectionSubmissionFailure);
+ const sharedCandidate=current.userId&&current.personId&&!current.agent&&isCalendarDate(captured.date)&&
+  /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(captured.employmentId)&&
+  !normalized.clockChanges&&normalized.requestedOtMinutes===null&&!normalized.unclockedWork&&
+  normalized.plannedStartTime===null&&normalized.plannedEndTime===null&&normalized.otReasonCategory===null&&
+  ['short_hours','incomplete_entry','absent','other'].includes(normalized.requestKind);
+ return queueAttendanceWrite(attendanceSubmissionQueues,current.tenantId,async()=>{
+  if(sharedCandidate){
+   try{
+    return await withTenant(current,async tx=>{
+     const data=await prepareAttendanceCorrectionInputTx(tx,current,captured,'shared');
+     const {correctionId}=await insertAttendanceCorrectionRequestTx(tx,current,data);
+     return {correctionId};
+    });
+   }catch(error){
+    if(error!==retryAttendanceSubmissionExclusively)attendanceCorrectionSubmissionFailure(error);
+    // The shared attempt has rolled back. Never upgrade Access or retry an effect failure.
+   }
+  }
+  return withOwnedExclusiveAttendanceWrite(current,'submission',tx=>run(tx,'exclusive-held')).catch(attendanceCorrectionSubmissionFailure);
+ });
 }
 
 /**
@@ -3919,21 +3997,7 @@ export const AMENDED_FIGURE_KEYS = Object.keys(AMENDED_FIGURE_COLUMNS) as readon
 
 export type AmendedFigures = { [K in keyof typeof AMENDED_FIGURE_COLUMNS]: unknown };
 
-/** The day's figures BY (employment, date) — the pair the correction's upsert targets, and the only handle
- *  available before the row exists. `null` means NO ROW EXISTED, which is not an empty object and not a row
- *  of nulls: "nothing was recorded" and "an explicit zero" are different befores, so `before: null` is the
- *  honest answer and `describePayload` renders each key as "— → value" from it. */
-async function attendanceFiguresTx(tx: Tx, employmentId: string, date: string): Promise<AmendedFigures | null> {
-  const [row] = await tx
-    .select(AMENDED_FIGURE_COLUMNS)
-    .from(attendance)
-    .where(and(eq(attendance.employmentId, employmentId), eq(attendance.attendanceDate, date)))
-    .limit(1);
-  return row ?? null;
-}
-
-/** The same projection BY ROW ID, for the after-image and for `applyApprovedOtPlanTx` (which is handed the
- *  attendance id). Exact rather than re-resolving (employment, date) after a write. */
+/** Re-read the final figures by row ID after all effect writers have finished. */
 async function attendanceFiguresByIdTx(tx: Tx, attendanceId: string): Promise<AmendedFigures | null> {
   const [row] = await tx
     .select(AMENDED_FIGURE_COLUMNS)
@@ -3946,17 +4010,71 @@ async function attendanceFiguresByIdTx(tx: Tx, attendanceId: string): Promise<Am
 /** Decision/cancellation writers use subject -> correction -> workflow/payroll -> audit order. Discovering
  * the subject does not lock the request: clock-out/import can hold the subject lock while landing OT
  * on this same correction. Re-read after waiting, so status/authority checks never use the first image. */
-async function lockAttendanceApplicationTx(tx: Tx, ctx: SessionContext, correctionId: string) {
-  await lockAttendanceLeaveDependenciesTx(tx, ctx, []);
-  const [visible] = await tx.select({ employmentId: attendanceCorrection.employmentId })
-    .from(attendanceCorrection).where(eq(attendanceCorrection.id, correctionId)).limit(1);
-  if (!visible) return undefined;
-  await lockLeaveDependenciesTx(tx, ctx.tenantId, [visible.employmentId]);
-  await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${ctx.tenantId + ':' + visible.employmentId}, 0))`);
-  const [locked] = await tx.select().from(attendanceCorrection)
-    .where(and(eq(attendanceCorrection.id, correctionId), eq(attendanceCorrection.employmentId, visible.employmentId)))
-    .limit(1).for('update');
-  return locked;
+const retryAttendanceApprovalExclusively = new Error('Attendance approval requires the exclusive Access path.');
+const retryAttendanceRejectionExclusively = new Error('Attendance rejection requires the exclusive configuration path.');
+const nonOvertimeRejectionKinds: readonly AttendanceRequestKind[] = ['short_hours', 'incomplete_entry', 'absent', 'other'];
+const rejectionShape = {
+  requestKind: attendanceCorrection.requestKind,
+  requestedOtMinutes: attendanceCorrection.requestedOtMinutes,
+  approvedOtMinutes: attendanceCorrection.approvedOtMinutes,
+  plannedStartTime: attendanceCorrection.plannedStartTime,
+  plannedEndTime: attendanceCorrection.plannedEndTime,
+  originalClockSnapshot: attendanceCorrection.originalClockSnapshot,
+};
+function isOrdinaryNonOvertimeRejection(row: Pick<typeof attendanceCorrection.$inferSelect, keyof typeof rejectionShape>) {
+  return row.requestKind !== null && nonOvertimeRejectionKinds.includes(row.requestKind) &&
+    row.requestedOtMinutes === null && row.approvedOtMinutes === null &&
+    row.plannedStartTime === null && row.plannedEndTime === null && !row.originalClockSnapshot?.unclockedWork;
+}
+
+async function lockAttendanceApplicationTx(
+  tx: Tx, ctx: SessionContext, correctionId: string, rejectionSubject?: string, approvalAccess?: 'shared' | 'exclusive-held',
+) {
+  const sharedApproval = approvalAccess === 'shared';
+  try {
+    if (sharedApproval) {
+      await lockAccessConfigurationReadTx(tx, ctx.tenantId);
+      await lockLeaveDependencyReadConfigurationTx(tx, ctx.tenantId);
+    } else if (approvalAccess === 'exclusive-held') {
+      await lockLeaveDependencyConfigurationTx(tx, ctx.tenantId);
+    } else if (rejectionSubject === undefined) {
+      await lockAttendanceLeaveDependenciesTx(tx, ctx, []);
+    } else {
+      // This private path writes decision and audit rows only. Configuration writers still
+      // conflict on the same keys. Keep both subject locks and the correction row fence.
+      await tx.execute(sql`select pg_advisory_xact_lock_shared(hashtextextended(${'access-configuration:' + ctx.tenantId},0))`);
+      await lockLeaveDependencyReadConfigurationTx(tx, ctx.tenantId);
+    }
+    const [visible] = await tx.select({ employmentId: attendanceCorrection.employmentId })
+      .from(attendanceCorrection).where(and(eq(attendanceCorrection.id, correctionId),
+        rejectionSubject === undefined ? undefined :
+          sql`app.principal_snapshot_current() AND (${ctx.personId ?? null}::uuid IS NULL OR app.is_self_person(${ctx.personId ?? null}::uuid))`))
+      .limit(1);
+    if (rejectionSubject !== undefined && visible?.employmentId !== rejectionSubject) throw retryAttendanceRejectionExclusively;
+    if (!visible) return undefined;
+    await lockLeaveDependenciesTx(tx, ctx.tenantId, [visible.employmentId]);
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${ctx.tenantId + ':' + visible.employmentId}, 0))`);
+    const [locked] = await tx.select().from(attendanceCorrection)
+      .where(and(eq(attendanceCorrection.id, correctionId), eq(attendanceCorrection.employmentId, visible.employmentId)))
+      .limit(1).for('update');
+    if (rejectionSubject !== undefined && (!locked || !isOrdinaryNonOvertimeRejection(locked))) {
+      throw retryAttendanceRejectionExclusively;
+    }
+    if (sharedApproval && (!locked || locked.adminAmendment || !isOrdinaryNonOvertimeRejection(locked))) {
+      throw retryAttendanceApprovalExclusively;
+    }
+    return locked;
+  } catch (error) {
+    if (sharedApproval && error instanceof LeaveDependencyUnavailable && error.reason === 'busy') {
+      throw retryAttendanceApprovalExclusively;
+    }
+    // No effect has started. Preserve the original serialization/refusal semantics
+    // by releasing the shared attempt before trying the original exclusive path.
+    if (rejectionSubject !== undefined && error instanceof LeaveDependencyUnavailable && error.reason === 'busy') {
+      throw retryAttendanceRejectionExclusively;
+    }
+    throw error;
+  }
 }
 
 /** NULL appliedAt predates deferred OT and cannot prove that an old approval never reached attendance.
@@ -3990,6 +4108,78 @@ export class MissingAttendanceRejectReasonError extends Error {
   constructor() { super('A rejection explanation of 1–1000 characters is required.'); }
 }
 
+// Bound application admission before borrowing a connection. PostgreSQL still serializes each
+// employee and excludes configuration writers across all application processes.
+type AttendanceWriteQueues = Map<string, { active: number; waiting: Array<() => void> }>;
+const attendanceApprovalQueues: AttendanceWriteQueues = new Map();
+const attendanceSubmissionQueues: AttendanceWriteQueues = new Map();
+const clockingImportQueues: AttendanceWriteQueues = new Map();
+const attendancePerformance = globalThis as typeof globalThis & {
+  __aihrPerfBeginAttendanceApproval?: () => { acquired: () => void; finished: () => void };
+  __aihrPerfAttendanceExclusiveAdmission?: (operation:'submission'|'approval'|'clockingImport',outcome:'immediate'|'miss'|'recovered'|'blockingFallback') => void;
+};
+
+const attendanceExclusiveAccessBusy = new Error('Attendance exclusive Access admission is busy.');
+
+/** A failed try rolls back before the retry delay, returning the connection to the pool.
+ * Keep the original blocking lock after the bounded retry. */
+async function withOwnedExclusiveAttendanceWrite<T>(ctx: SessionContext, operation:'submission'|'approval'|'clockingImport', write: (tx: Tx) => Promise<T>): Promise<T> {
+  const record=attendancePerformance.__aihrPerfAttendanceExclusiveAdmission;
+  for (const delayMs of [0, 100]) {
+    if (delayMs) await new Promise<void>(resolve => setTimeout(resolve, delayMs));
+    try {
+      return await withTenant(ctx, async tx => {
+        if (!await tryLockAccessConfigurationTx(tx, ctx.tenantId)) throw attendanceExclusiveAccessBusy;
+        record?.(operation,delayMs?'recovered':'immediate');
+        return write(tx);
+      });
+    } catch (error) {
+      if (error !== attendanceExclusiveAccessBusy) throw error;
+      record?.(operation,'miss');
+    }
+  }
+  record?.(operation,'blockingFallback');
+  return withTenant(ctx, async tx => {
+    await lockAccessConfigurationTx(tx, ctx.tenantId);
+    return write(tx);
+  });
+}
+
+async function queueAttendanceWrite<T>(
+  queues: AttendanceWriteQueues, tenantId: string, write: () => Promise<T>,
+  timing?: { acquired: () => void; finished: () => void }, capacity = 2,
+): Promise<T> {
+  const key = tenantId.toLowerCase();
+  const queue = queues.get(key) ?? { active: 0, waiting: [] };
+  queues.set(key, queue);
+  if (queue.active < capacity) {
+    queue.active++;
+  } else {
+    await new Promise<void>(resolve => queue.waiting.push(resolve));
+  }
+  try {
+    timing?.acquired();
+    return await write();
+  } finally {
+    const next = queue.waiting.shift();
+    if (next) {
+      next();
+    } else if (--queue.active === 0) {
+      queues.delete(key);
+    }
+    timing?.finished();
+  }
+}
+
+/** Imports own their transaction. Admit one per tenant per worker before checking out a connection. */
+export function withClockingImportWrite<T>(ctx: SessionContext, write: (tx: Tx) => Promise<T>): Promise<T> {
+  return queueAttendanceWrite(clockingImportQueues, ctx.tenantId, () =>
+    withOwnedExclusiveAttendanceWrite(ctx, 'clockingImport', async tx => {
+      await lockLeaveDependencyConfigurationTx(tx, ctx.tenantId);
+      return write(tx);
+    }), undefined, 1);
+}
+
 export async function decideAttendanceCorrection(
   ctx: SessionContext,
   p: { correctionId: string; decision: 'approved' | 'rejected'; rejectReason?: string; remarks?: string; expectedStageIndex?: number; expectedParticipantSlot?: string; deciderEmploymentId?: string; today?: string },
@@ -3997,24 +4187,38 @@ export async function decideAttendanceCorrection(
 ) {
   p = structuredClone(p); ctx = captureAttendanceContext(ctx);
   ctx = {...ctx, roles:ctx.roles ?? (ctx.grants ?? []).map(grant=>grant.role)};
-  const decide=async (tx:Tx) => {
-    const original = await lockAttendanceApplicationTx(tx, ctx, p.correctionId);
+  const decide=async (tx:Tx, rejectionSubject?: string, approvalAccess?: 'shared' | 'exclusive-held') => {
+    const original = await lockAttendanceApplicationTx(tx, ctx, p.correctionId, rejectionSubject, approvalAccess);
     const cor=original?.adminAmendment?{...original,proposedCheckIn:original.adminAmendment.checkIn,proposedCheckOut:original.adminAmendment.checkOut}:original;
     if (!cor) throw new Error('correction request not found (or not visible)');
     if (cor.status !== 'pending') throw new Error(`correction request is already ${cor.status}`);
 
-    await assertCanDecideAttendanceApplicationTx(tx, ctx, cor.id, cor.employmentId);
-    if (!['approved', 'rejected'].includes(p.decision)) throw new Error('Invalid attendance decision');
     const rejectReason = p.decision === 'rejected' ? (p.rejectReason ?? '').trim() : null;
-    if (p.decision === 'rejected' && (!rejectReason || rejectReason.length > 1000)) throw new MissingAttendanceRejectReasonError();
-    if (p.remarks && p.remarks.trim().length > 1000) throw new Error('Approval remarks must be at most 1000 characters.');
-    // Identity is resolved from the authenticated actor, never from a caller-supplied employment id.
-    const [actualDecider] = ctx.personId ? await tx.select({ id: employment.id }).from(employment).where(eq(employment.personId, ctx.personId)).orderBy(asc(employment.id)).limit(1) : [];
-    let actualDeciderEmploymentId:string|null = actualDecider?.id ?? null;
+    const validationError = !['approved', 'rejected'].includes(p.decision)
+      ? new Error('Invalid attendance decision')
+      : p.decision === 'rejected' && (!rejectReason || rejectReason.length > 1000)
+        ? new MissingAttendanceRejectReasonError()
+        : p.remarks && p.remarks.trim().length > 1000
+          ? new Error('Approval remarks must be at most 1000 characters.')
+          : null;
+    if (validationError) {
+      await assertCanDecideAttendanceApplicationTx(tx, ctx, cor.id, cor.employmentId);
+      throw validationError;
+    }
     const workflowStage = await decideAttendanceWorkflowStageTx(tx, ctx, { correctionId: cor.id, employmentId: cor.employmentId, decision: p.decision, remarks: p.decision === 'rejected' ? rejectReason ?? undefined : p.remarks, expectedStageIndex: p.expectedStageIndex, expectedParticipantSlot: p.expectedParticipantSlot });
-    if (workflowStage.actualDeciderEmploymentId !== undefined) actualDeciderEmploymentId = workflowStage.actualDeciderEmploymentId;
+    if (rejectionSubject !== undefined && (workflowStage.versionedFinalEffect || workflowStage.delegatedFinalStageIndex != null)) {
+      throw retryAttendanceRejectionExclusively;
+    }
     if (!workflowStage.final) return { status: 'pending' as const, deferred: false };
-
+    // Routed decisions already prove the actual actor. Only final legacy paths without
+    // that result need the canonical employment lookup under the original identity.
+    const [legacyDecider] = workflowStage.actualDeciderEmploymentId === undefined && ctx.personId
+      ? await tx.select({ id: employment.id }).from(employment)
+        .where(eq(employment.personId, ctx.personId)).orderBy(asc(employment.id)).limit(1)
+      : [];
+    const actualDeciderEmploymentId = workflowStage.actualDeciderEmploymentId === undefined
+      ? legacyDecider?.id ?? null
+      : workflowStage.actualDeciderEmploymentId;
 
     // 1e9145d4 — true when this approval was HELD ON THE PLAN rather than written to an attendance day.
     // Surfaced in the decision event's payload and in the return value, so a caller (and an auditor) can
@@ -4109,7 +4313,11 @@ export async function decideAttendanceCorrection(
         }
       }
       const payrollBatches = deferred ? null : await lockAttendancePayrollTx(tx, cor.employmentId, unclockedProtectedDates??plannedProtectedDates??cor.attendanceDate);
-      const [lockedDay] = deferred ? [] : await tx.select({id:attendance.id}).from(attendance).where(and(eq(attendance.employmentId,cor.employmentId),eq(attendance.attendanceDate,cor.attendanceDate))).limit(1).for('update');
+      const [lockedDay] = deferred ? [] : await tx
+        .select({ id: attendance.id, figures: AMENDED_FIGURE_COLUMNS })
+        .from(attendance)
+        .where(and(eq(attendance.employmentId, cor.employmentId), eq(attendance.attendanceDate, cor.attendanceDate)))
+        .limit(1).for('update');
       // ADR-0069: resolve the APPROVED OT once, up front, so the SAME value is written to attendance.otMinutes,
       // stamped on the correction row, and (crucially) read by maybeAutoAccrueOnApprovalTx below. The auto-accrual
       // reads attendance.otMinutes AFTER we write it — so the DECISION (tested & documented in ADR-0069) is: TOIL
@@ -4118,6 +4326,7 @@ export async function decideAttendanceCorrection(
       let approvedOtMinutes: number | null = null;
       let otApprovalMethod: OtApprovalMethod | null = null;
       let systemOtForComparison: number | null = null;
+      let overtimeOnlyRaw: Awaited<ReturnType<typeof attendancePolicyRawInputTx>> | undefined;
       if (hasOtRequest) {
         otApprovalMethod = await otApprovalCalculationFor(tx, cor.employmentId, cor.id);
         // The system-calculated comparison figure: derive live from the punches that WILL be authoritative for the
@@ -4137,18 +4346,10 @@ export async function decideAttendanceCorrection(
         } else if (hasClockCorrection) {
           systemOtForComparison = deriveAttendance(sched, cor.proposedCheckIn!, cor.proposedCheckOut, cor.attendanceDate).otMinutes;
         } else {
-          const [existing] = await tx
-            .select({ checkInAt: attendance.checkInAt, checkOutAt: attendance.checkOutAt })
-            .from(attendance)
-            .where(
-              and(
-                eq(attendance.employmentId, cor.employmentId),
-                eq(attendance.attendanceDate, cor.attendanceDate),
-              ),
-            )
-            .limit(1);
+          const existing = lockedDay?.figures;
           if(existing?.checkInAt!=null){
             const raw=await attendancePolicyRawInputTx(tx,ctx,{employmentId:cor.employmentId,date:cor.attendanceDate});
+            overtimeOnlyRaw = raw;
             if(raw.state==='unavailable')throw Error('Canonical overtime comparison inputs are unavailable.');
             if(raw.state==='policy'){
               const comparison=attendancePolicySystemEligibleMinutes(raw.context,raw.work);
@@ -4177,8 +4378,10 @@ export async function decideAttendanceCorrection(
       // Skipped for a DEFERRED approval, which writes nothing to attendance and emits no
       // `attendance.amended` at all: its before/after is taken at the moment the plan LANDS, in
       // applyApprovedOtPlanTx, because that is the moment a figure actually moves.
-      const beforeFigures = deferred ? null : await attendanceFiguresTx(tx, cor.employmentId, cor.attendanceDate);
-      const beforePunches = deferred ? [] : (await punchesForCorrectionTx(tx,cor.employmentId,cor.attendanceDate)).filter(row => !row.voidedAt).map(row=>({id:row.id,punchAt:row.punchAt,direction:row.direction}));
+      const beforeFigures = lockedDay?.figures ?? null;
+      const originalPunchRows = deferred ? [] : await punchesForCorrectionTx(tx,cor.employmentId,cor.attendanceDate);
+      const beforePunches = originalPunchRows.filter(row => !row.voidedAt)
+        .map(row=>({id:row.id,punchAt:row.punchAt,direction:row.direction}));
 
       let amendedId: string | null = null;
       let eventPayload: Record<string, unknown>;
@@ -4300,9 +4503,9 @@ export async function decideAttendanceCorrection(
           })
           .returning({ id: attendance.id });
         amendedId = amended.id;
-        // Legacy pair corrections now reconcile the effective punches too. Original evidence is retained.
-        const originals = await punchesForCorrectionTx(tx,cor.employmentId,cor.attendanceDate);
-        await applyClockChangesTx(tx,ctx,{attendanceId:amended.id,employmentId:cor.employmentId,date:cor.attendanceDate,reason:cor.reason ?? 'Attendance correction',correctionId:cor.id,changes:{version:1,baseline:clockFingerprint(originals),entries:[{punchAt:cor.proposedCheckIn!,direction:'in'},...(cor.proposedCheckOut ? [{punchAt:cor.proposedCheckOut,direction:'out' as const}] : [])]}});
+        // The day upsert changes figures, not punch rows. Reuse the locked audit preimage;
+        // applyClockChangesTx still re-reads and verifies the fingerprint before editing.
+        await applyClockChangesTx(tx,ctx,{attendanceId:amended.id,employmentId:cor.employmentId,date:cor.attendanceDate,reason:cor.reason ?? 'Attendance correction',correctionId:cor.id,changes:{version:1,baseline:clockFingerprint(originalPunchRows),entries:[{punchAt:cor.proposedCheckIn!,direction:'in'},...(cor.proposedCheckOut ? [{punchAt:cor.proposedCheckOut,direction:'out' as const}] : [])]}});
         // 1e9145d4 — an approved clock correction RE-DERIVES the day from the proposed punches, which would
         // quietly wipe the hours of an OT plan that had already landed on it. Re-assert them (and, if the
         // correction is what finally gives the day its punches, LAND a plan that was waiting for exactly
@@ -4314,7 +4517,7 @@ export async function decideAttendanceCorrection(
         const raw=await attendancePolicyRawInputTx(tx,ctx,{employmentId:cor.employmentId,date:cor.attendanceDate});
         if(raw.state==='unavailable')throw Error('Canonical corrected Attendance inputs are unavailable.');
         const policyDerived=raw.state==='policy'?await recomputeDayFromPunches(tx,ctx,{employmentId:cor.employmentId,
-          attendanceId:amended.id,attendanceDate:cor.attendanceDate,sched,fallbackCheckInAt:cor.proposedCheckIn}):null;
+          attendanceId:amended.id,attendanceDate:cor.attendanceDate,sched,fallbackCheckInAt:cor.proposedCheckIn},raw):null;
         if(policyDerived)otMinutes=policyDerived.otMinutes;
         if (!hasOtRequest&&!policyDerived) {
           const planned = await applyApprovedOtPlanTx(tx, ctx, {
@@ -4340,23 +4543,15 @@ export async function decideAttendanceCorrection(
         // OT-only request: there MUST already be an attendance row (you cannot bank OT against a day with no
         // recorded work). Frozen legacy days retain scalar landing. A bound policy day replays
         // captured raw inputs and retains the approved scalar only on its decision, not on raw work.
-        const [existing] = await tx
-          .select({ id: attendance.id })
-          .from(attendance)
-          .where(
-            and(
-              eq(attendance.employmentId, cor.employmentId),
-              eq(attendance.attendanceDate, cor.attendanceDate),
-            ),
-          )
-          .limit(1);
+        const existing = lockedDay;
         if (!existing) {
           // 1e9145d4: reachable ONLY for a date that is today or in the past — a future-dated plan took the
           // deferred branch above and never gets here. So this still means what it has always meant:
           // overtime is being claimed for a day on which no work was ever recorded.
           throw new Error('No attendance record exists for this date to attach overtime to.');
         }
-        const raw=await attendancePolicyRawInputTx(tx,ctx,{employmentId:cor.employmentId,date:cor.attendanceDate});
+        // No Attendance or punch write precedes this branch. Reuse the comparison input.
+        const raw=overtimeOnlyRaw ?? await attendancePolicyRawInputTx(tx,ctx,{employmentId:cor.employmentId,date:cor.attendanceDate});
         if(raw.state==='unavailable')throw Error('Canonical overtime decision inputs are unavailable.');
         if(raw.state==='policy'){
           if(!workflowStage.versionedFinalEffect)throw Error('A dated policy overtime decision requires its frozen versioned workflow.');
@@ -4366,7 +4561,7 @@ export async function decideAttendanceCorrection(
           if(!binding||!submission?.policyBinding||!isDeepStrictEqual(submission.policyBinding,binding))
             throw Error('The submitted Attendance policy changed. Withdraw and resubmit the request.');
           const derived=await recomputeDayFromPunches(tx,ctx,{employmentId:cor.employmentId,attendanceId:existing.id,
-            attendanceDate:cor.attendanceDate,sched,fallbackCheckInAt:null});
+            attendanceDate:cor.attendanceDate,sched,fallbackCheckInAt:null},raw);
           if(!derived.policyRaw||derived.workedMinutes===null||derived.checkOutAt===null)
             throw Error('A captured complete Attendance day is required for this policy decision.');
           policyRawDecision=true;
@@ -4454,8 +4649,19 @@ export async function decideAttendanceCorrection(
         // after the upsert, so the row is the only thing that knows what the day now says.
         const afterFigures = await attendanceFiguresByIdTx(tx, amendedId);
         const afterPunchFingerprint = clockFingerprint(await punchesForCorrectionTx(tx,cor.employmentId,cor.attendanceDate));
-        await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'attendance-correction',aggregateId:cor.id,eventType:'attendance-correction.effect.recorded',actor:actorOf(ctx),subjectEmploymentId:cor.employmentId,payload:{attendanceId:amendedId,date:cor.attendanceDate,before:beforeFigures,after:afterFigures,beforePunches,afterPunchFingerprint,clockChanged:hasClockCorrection}});
-        await appendEvent(tx, {
+        await appendEvents(tx, [{
+          tenantId: ctx.tenantId,
+          aggregateType: 'attendance-correction',
+          aggregateId: cor.id,
+          eventType: 'attendance-correction.effect.recorded',
+          actor: actorOf(ctx),
+          subjectEmploymentId: cor.employmentId,
+          payload: {
+            attendanceId: amendedId, date: cor.attendanceDate,
+            before: beforeFigures, after: afterFigures, beforePunches, afterPunchFingerprint,
+            clockChanged: hasClockCorrection,
+          },
+        }, {
           tenantId: ctx.tenantId,
           aggregateType: 'attendance',
           aggregateId: amendedId,
@@ -4469,7 +4675,7 @@ export async function decideAttendanceCorrection(
           // election applies here. Nesting the pair would drop describePayload through to the flat dump and
           // render it as JSON truncated at 120 characters.
           payload: { ...eventPayload, before: beforeFigures, after: afterFigures },
-        });
+        }]);
       }
 
       // Deferred plans bank only when actual work lands. Immediate decisions bank after their
@@ -4558,7 +4764,47 @@ export async function decideAttendanceCorrection(
     });
     return { status: p.decision, deferred: deferredApproval };
   };
-  return existingTx?decide(existingTx):withTenant(ctx,decide);
+  if (existingTx) return decide(existingTx);
+  const correctionIdIsCanonical = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(p.correctionId);
+  if (p.decision === 'approved') {
+    return queueAttendanceWrite(attendanceApprovalQueues, ctx.tenantId, async () => {
+      // Ordinary corrections with TOIL disabled cannot create leave configuration. They can
+      // share both configuration locks while retaining the subject, Payroll and audit fences.
+      let toilDisabled = false;
+      if (ctx.userId && !ctx.agent && correctionIdIsCanonical && ctx.entitlements) {
+        ctx = {...ctx, entitlements: structuredClone(ctx.entitlements)};
+        try {
+          toilDisabled = !isModuleEnabled(ctx, 'toil');
+        } catch (error) {
+          if (!(error instanceof EntitlementError)) throw error;
+        }
+      }
+      if (toilDisabled) {
+        try {
+          return await withTenant(ctx, tx => decide(tx, undefined, 'shared'));
+        } catch (error) {
+          if (error !== retryAttendanceApprovalExclusively) throw error;
+        }
+      }
+      // The shared attempt rolled back before any effect. Acquire exclusive Access in a fresh Tx.
+      return withOwnedExclusiveAttendanceWrite(ctx, 'approval', tx => decide(tx, undefined, 'exclusive-held'));
+    }, attendancePerformance.__aihrPerfBeginAttendanceApproval?.());
+  }
+  if (p.decision !== 'rejected' || !ctx.userId || ctx.agent || !correctionIdIsCanonical) return withTenant(ctx, decide);
+  try {
+    return await withTenant(ctx, async tx => {
+      // Use only a positively visible pending correction. Workflow visibility is not a
+      // classifier. Every version and delegation still goes through its original owner.
+      const [candidate] = await tx.select({employmentId:attendanceCorrection.employmentId,...rejectionShape})
+        .from(attendanceCorrection).where(and(eq(attendanceCorrection.tenantId, ctx.tenantId),
+          eq(attendanceCorrection.id, p.correctionId), eq(attendanceCorrection.status, 'pending'))).limit(1);
+      return decide(tx, candidate && isOrdinaryNonOvertimeRejection(candidate) ? candidate.employmentId : undefined);
+    });
+  } catch (error) {
+    if (error !== retryAttendanceRejectionExclusively) throw error;
+    // The owned transaction has rolled back. Never upgrade a held shared lock.
+    return withTenant(ctx, decide);
+  }
 }
 
 /** Correction inbox — RLS trims to what the viewer may see (admin all in scope, manager
@@ -5972,6 +6218,40 @@ export type MyAttendanceRequestRow = {
  */
 export const MY_ATTENDANCE_REQUEST_ROW_CEILING = 500;
 
+/** The day page already selected an own employment. Read the three established
+ * RLS-scoped projections on one connection with the usual read-committed semantics. */
+export function readAttendanceRecordDay(ctx: SessionContext, employmentId: string, date: string) {
+  return withTenant(ctx, async tx => {
+    const [range, punchesByAttendance, pending] = await Promise.all([
+      attendanceForEmploymentsRangeTx(tx, ctx, [employmentId], date, date),
+      attendancePunchesForRangeTx(tx, employmentId, date, date),
+      hasPendingAttendanceCorrectionInDayHistoryTx(tx, employmentId, date),
+    ]);
+    const row = range.get(employmentId)?.[0] ?? null;
+    return { row, punches: row?.attendanceId ? punchesByAttendance.get(row.attendanceId) ?? [] : [], pending };
+  });
+}
+
+/** Keep the day form's existing newest-100 history window without loading request details. */
+async function hasPendingAttendanceCorrectionInDayHistoryTx(tx: Tx, employmentId: string, date: string): Promise<boolean> {
+  const [row] = await tx.execute<{ pending: boolean }>(sql`
+      select exists (
+        select 1 from public.attendance_correction pending
+        where pending.employment_id = ${employmentId}::uuid
+          and pending.attendance_date = ${date}::date
+          and pending.status = 'pending'
+          and not exists (
+            select 1 from public.attendance_correction newer
+            where newer.employment_id = pending.employment_id
+              and newer.attendance_date = pending.attendance_date
+              and (newer.created_at, newer.id) > (pending.created_at, pending.id)
+            limit 1 offset 99
+          )
+      ) as pending
+  `);
+  return row?.pending === true;
+}
+
 /**
  * An employee's OWN attendance requests, newest first — the "My requests" list on My Attendance.
  *
@@ -6711,7 +6991,7 @@ export async function addImportedPunchesBatchTx(
     if (planned != null) plannedBy.set(keyOf(o.employmentId, o.day), planned);
   }
 
-  for (const d of days) if (!plannedBy.has(keyOf(d.employmentId,d.day))) await refreshOvertimePatternDayTx(tx,ctx,{employmentId:d.employmentId,date:d.day,reason:'Imported clocking day'});
+  await refreshOvertimePatternDaysTx(tx,ctx,days.filter(d=>!plannedBy.has(keyOf(d.employmentId,d.day))).map(d=>({employmentId:d.employmentId,date:d.day,reason:'Imported clocking day'})));
   // Work arrival, not public recalculation, triggers the existing opted-in credit owner.
   // Batched plan metadata supplies only Request Date; the owner replays the complete
   // current approved union, independent duration and original physical source again.
@@ -6852,7 +7132,7 @@ async function deriveStoredAttendanceTx(tx:Tx,schedule:ResolvedSchedule,p:{emplo
 /** Presentation/command anchoring only; calculation remains in the existing writer. */
 export async function clockScheduleForTx(tx: Tx, employmentId: string, date: string) {
   const schedule = await scheduleFor(tx, employmentId, date);
-  return { crossesMidnight: schedule.crossesMidnight, durationOnly: schedule.durationOnly === true, start: schedule.shiftStart, end: schedule.shiftEnd, code: schedule.displayShiftCode ?? null };
+  return { crossesMidnight: schedule.crossesMidnight, durationOnly: schedule.durationOnly === true, start: schedule.shiftStart, end: schedule.shiftEnd, code: schedule.displayShiftCode ?? null, dayKind: workedDayKindForSchedule(schedule) };
 }
 
 
@@ -7179,27 +7459,82 @@ export async function rawScheduleDaysTx(tx:Tx,employmentId:string,from:string,to
 }
 
 
-export function pendingAttendanceTaskMetadata(ctx:SessionContext,companyIds?:string[]):Promise<AssignedApprovalMetadata[]>{
+export function pendingAttendanceTaskMetadata(ctx:SessionContext,companyIds?:string[],requestId?:string):Promise<AssignedApprovalMetadata[]>{
   return withTenant(ctx,async tx=>{
     await assertAssignedWorkPrincipalTx(tx,ctx);
-    const rows=await tx.select({id:attendanceCorrection.id,employmentId:attendanceCorrection.employmentId,
-      personId:sql<string>`subject.person_id`,employee:sql<string|null>`subject.employee`,createdAt:attendanceCorrection.createdAt})
-      .from(attendanceCorrection)
-      .innerJoin(sql`LATERAL app.attendance_application_subject(${attendanceCorrection.id}) AS subject`,sql`true`)
-      .where(and(eq(attendanceCorrection.tenantId,ctx.tenantId),eq(attendanceCorrection.status,'pending'),
-        sql`NOT app.is_self_person(subject.person_id)`,companyIds===undefined?undefined:companyIds.length===0?sql`false`:
-          sql`(subject.company_id IN (${sql.join(companyIds.map(id=>sql`${id}::uuid`),sql`,`)}) OR app.attendance_workflow_v3_decision_slot(${attendanceCorrection.id}) IS NOT NULL)`))
-      .orderBy(desc(attendanceCorrection.createdAt),attendanceCorrection.id);
-    const result:AssignedApprovalMetadata[]=[];
-    for(const row of rows){
-      try{await assertCanDecideAttendanceApplicationTx(tx,ctx,row.id,row.employmentId);result.push(row);}
-      catch(error){
-        if(error instanceof AttendanceWorkflowError&&error.code==='notApprover')continue;
-        if(isApprovalDecisionRefusal(error,'attendance application'))continue;
-        throw error;
-      }
-    }
-    return result;
+    if(companyIds?.length===0)return [];
+    if(requestId!==undefined&&!/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(requestId))return [];
+    // A negative result proves no possible assignment source. Positives retain every native
+    // request RLS and live decision proof below; this result never authorizes a command or is cached.
+    const [candidate]=await tx.execute<{possible:boolean}>(sql`select app.may_have_attendance_task_metadata() as possible`);
+    if(candidate?.possible===false)return [];
+    // The role hint chooses a query shape only. Every fast-path company is proved by
+    // the existing native administrator owner; other subjects retain the exact scalar
+    // frozen-workflow/delegation reader. RLS and the final decision owner remain live.
+    const nativeHeaders=sql`select id,employment_id,created_at
+      from app.attendance_pending_visible_headers(${requestId??null}::uuid)`;
+    const administratorHint=ctx.roles?.some(role=>role==='hr_admin'||role==='super_admin')===true;
+    // Ordinary visibility is one arm of the native subject predicate. Only those
+    // subjects can reuse metadata across requests. Frozen participants and delegates
+    // outside that set still require the original request-specific projection.
+    const source=administratorHint?sql`(
+      with headers as materialized(${nativeHeaders}),
+      distinct_subjects as(select distinct employment_id from headers),
+      numbered_subjects as(select employment_id,(row_number()over(order by employment_id)-1)/1000 as bucket from distinct_subjects),
+      subject_batches as(select array_agg(employment_id order by employment_id)as ids from numbered_subjects group by bucket),
+      subject_rows as materialized(
+        select s.* from subject_batches b cross join lateral app.delegated_approval_subjects(b.ids,'attendance','attendance.correction')s
+      ), subject_companies as(select distinct company_id from subject_rows),
+      administrator_companies as materialized(select company_id,app.is_admin_for(company_id)as allowed from subject_companies),
+      administrator_subjects as materialized(
+        select s.* from subject_rows s join administrator_companies c on c.company_id=s.company_id where c.allowed
+      )
+      select h.id,h.employment_id,h.created_at,s.person_id,s.employee,s.company_id
+      from headers h join administrator_subjects s on s.employment_id=h.employment_id
+      union all
+      select h.id,h.employment_id,h.created_at,s.person_id,s.employee,s.company_id
+      from headers h cross join lateral app.attendance_application_subject(h.id)s
+      where not exists(select 1 from administrator_subjects a where a.employment_id=h.employment_id)
+    )as pending_attendance`:sql`(
+      with headers as materialized(${nativeHeaders}),
+      visible_set as materialized(
+        select app.visible_employment_ids() as ids where exists(select 1 from headers)
+      ),
+      visible_subjects as(
+        select distinct h.employment_id from headers h cross join visible_set v where h.employment_id=any(v.ids)
+      ),
+      numbered_subjects as(
+        select employment_id,(row_number() over(order by employment_id)-1)/1000 as bucket from visible_subjects
+      ),
+      subject_batches as(
+        select array_agg(employment_id order by employment_id) as ids from numbered_subjects group by bucket
+      ),
+      ordinary_subjects as materialized(
+        select s.* from subject_batches b
+        cross join lateral app.delegated_approval_subjects(b.ids,'attendance','attendance.correction')s
+      )
+      select h.id,h.employment_id,h.created_at,s.person_id,s.employee,s.company_id
+      from headers h join ordinary_subjects s on s.employment_id=h.employment_id
+      union all
+      select h.id,h.employment_id,h.created_at,s.person_id,s.employee,s.company_id
+      from headers h cross join lateral app.attendance_application_subject(h.id)s
+      where not exists(select 1 from ordinary_subjects s where s.employment_id=h.employment_id)
+    )as pending_attendance`;
+    const id=sql<string>`pending_attendance.id`,employmentId=sql<string>`pending_attendance.employment_id`,
+      personId=sql<string>`pending_attendance.person_id`,employee=sql<string|null>`pending_attendance.employee`,
+      createdAt=sql<Date>`pending_attendance.created_at`.mapWith(attendanceCorrection.createdAt);
+    // Resolve the current person's binding once in this statement, including for sessions
+    // without a person hint. A missing binding or a null subject has no self match.
+    const otherPerson=sql`coalesce(pending_attendance.person_id <> (
+      select p.person_id from app.principal(app.current_user_id()) p
+      where p.tenant_id=app.current_tenant_id()
+    ),true)`;
+    const rows=await tx.select({id,employmentId,personId,employee,createdAt}).from(source)
+      .where(and(otherPerson,companyIds===undefined?undefined:
+        sql`(pending_attendance.company_id IN (${sql.join(companyIds.map(id=>sql`${id}::uuid`),sql`,`)}) OR app.attendance_workflow_v3_decision_slot(pending_attendance.id) IS NOT NULL)`))
+      .orderBy(desc(createdAt),id);
+    const allowed=await actionableAttendanceApplicationIdsTx(tx,ctx,rows);
+    return rows.filter(row=>allowed.has(row.id));
   });
 }
 

@@ -14,7 +14,7 @@ export default async function RewardsPage({searchParams}:{searchParams:Promise<R
  const companies=await rewardVisibleCompanies(s),allowedIds=companies.map(c=>c.id),scopeIds=companies.some(c=>c.wholeGroup)?allowedIds:await getScopeIds(allowedIds);
  const t=await getTranslations('rewards'), nav=await getTranslations('nav'), sp=await searchParams;
  const [list,choices,destinations,plans,companyGroups]=await Promise.all([
-   listRewardReviewStatus(s,scopeIds),rewardSetupChoices(s,scopeIds),rewardNavigation(s,isAdmin(s)),rewardWholeGroupPlans(s),rewardReviewCompanyGroups(s,scopeIds),
+   listRewardReviewStatus(s,scopeIds),rewardSetupChoices(s,scopeIds,{fields:[]}),rewardNavigation(s,isAdmin(s)),rewardWholeGroupPlans(s),rewardReviewCompanyGroups(s,scopeIds),
  ]);
  const setup=await getTranslations('rewardSetup');
  return <div className="w-full space-y-6"><PageHeader title={nav('rewardsReviewing')} description={t('description')} actions={<>

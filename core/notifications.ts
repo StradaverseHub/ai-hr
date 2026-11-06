@@ -26,6 +26,7 @@ import { randomUUID } from 'node:crypto';
 import { notificationEmailCategory, type NotificationEmailCategory } from '../lib/notification-email-model';
 import {assertNotificationSweepConnection,noticeNotificationRecipientsTx,noticeSnapshotIdsTx,type NoticeRecipientReader,type NoticeEventReader,probationSweepRecipientsForTx,type NoticeSweepAccess,type NotificationSweepConnection} from './notice-projection';
 import { and, asc, desc, eq, gt, inArray, isNotNull, isNull, lte, ne, or, sql } from 'drizzle-orm';
+import { unionAll } from 'drizzle-orm/pg-core';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import {
   appUser,
@@ -1101,18 +1102,28 @@ const REGISTRY: Record<string, Spec | Spec[]> = {
 
 export type DispatchResult = { processed: number; created: number };
 
+// Opportunistic page catch-up can skip a concurrent attempt before it borrows a pool connection.
+const pageCatchUps = new Set<string>();
+
 /** Complete global projection is owned by a fresh group administrator or the authenticated sweep.
  * A company-scoped web request cannot consume a partially visible global event stream. */
-export async function dispatchNotifications(ctx:SessionContext,opts:{limit?:number}={}):Promise<DispatchResult>{
+export async function dispatchNotifications(ctx:SessionContext,opts:{limit?:number;skipIfBusy?:boolean}={}):Promise<DispatchResult>{
   const allCategories=enabled(ctx);
   if(!allCategories&&!hasScopedReminders(ctx))return {processed:0,created:0};
-  return withTenant(ctx,async tx=>{
-    if(allCategories){
-      const [scope]=await tx.execute(sql`select app.principal_snapshot_current() AND app.is_group_admin() AS allowed`) as unknown as {allowed:boolean}[];
-      if(!scope?.allowed)return {processed:0,created:0};
-    }
-    return projectNotificationsTx(tx,ctx,allCategories,projectionLimit(opts.limit));
-  });
+  const catchUpKey = opts.skipIfBusy ? ctx.tenantId.toLowerCase() : undefined;
+  if(catchUpKey !== undefined && pageCatchUps.has(catchUpKey))return {processed:0,created:0};
+  if(catchUpKey !== undefined)pageCatchUps.add(catchUpKey);
+  try{
+    return await withTenant(ctx,async tx=>{
+      if(allCategories){
+        const [scope]=await tx.execute(sql`select app.principal_snapshot_current() AND app.is_group_admin() AS allowed`) as unknown as {allowed:boolean}[];
+        if(!scope?.allowed)return {processed:0,created:0};
+      }
+      return projectNotificationsTx(tx,ctx,allCategories,projectionLimit(opts.limit),{skipIfBusy:opts.skipIfBusy});
+    });
+  }finally{
+    if(catchUpKey !== undefined)pageCatchUps.delete(catchUpKey);
+  }
 }
 
 /** Cron already holds this explicit owner connection. Keep projection and cursor in one transaction;
@@ -1125,13 +1136,22 @@ export async function dispatchNotificationsFromSweep(ctx:SessionContext,connecti
     const priorRole=await assertNotificationSweepConnection(tx);
     const [scope]=await tx.execute(sql`select app.is_group_admin() AS allowed`) as unknown as {allowed:boolean}[];
     if(!scope?.allowed)throw Error('Notification sweep requires the complete tenant scope.');
-    return projectNotificationsTx(tx,ctx,allCategories,projectionLimit(opts.limit),priorRole);
+    return projectNotificationsTx(tx,ctx,allCategories,projectionLimit(opts.limit),{priorRole});
   });
 }
 function hasScopedReminders(ctx:SessionContext){return (ctx.entitlements?.scopedModules.notifications??[]).some(companyId=>isModuleEnabled(ctx,'notifications',companyId));}
 function projectionLimit(value?:number){return Math.min(Math.max(value??1000,1),5000);}
-async function projectNotificationsTx(tx:Tx,ctx:SessionContext,allCategories:boolean,limit:number,priorRole?:string):Promise<DispatchResult>{
-    await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`notification-cursor:${ctx.tenantId}`},0))`);
+async function projectNotificationsTx(
+  tx:Tx,ctx:SessionContext,allCategories:boolean,limit:number,
+  {priorRole,skipIfBusy}:{priorRole?:string;skipIfBusy?:boolean},
+):Promise<DispatchResult>{
+    const cursorKey=`notification-cursor:${ctx.tenantId}`;
+    if(skipIfBusy){
+      const [lock]=await tx.execute<{acquired:boolean}>(sql`select pg_try_advisory_xact_lock(hashtextextended(${cursorKey},0)) as acquired`);
+      if(!lock?.acquired)return {processed:0,created:0};
+    }else{
+      await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${cursorKey},0))`);
+    }
     const [cur] = await tx.select().from(notificationCursor).where(eq(notificationCursor.tenantId, ctx.tenantId)).limit(1);
     const cursor=allCategories?cur?.lastSequence:cur?.assessmentLastSequence;
     const after=cursor!=null?gt(domainEvent.sequence,cursor):undefined;
@@ -1265,6 +1285,19 @@ export async function projectHomeGreetingInTx(tx:Tx,greetingId:string):Promise<v
 // ─── recipient reads (RLS scopes every query to the caller's own notifications, across all the person's
 // employments; pass employmentId only to narrow to one) ──────────────────────────────────────────────
 
+/** Indexed candidate narrowing only. The notification table's unchanged RLS still adjudicates every
+ * returned row. Resolve actual account ownership from the database, never a posted person/role or
+ * an active-employment filter: old notifications across ended own employments remain reachable. */
+async function notificationRecipientCandidatesTx(tx:Tx,ctx:SessionContext){
+ const own=await tx.select({id:employment.id}).from(employment).innerJoin(appUser,
+  and(eq(appUser.personId,employment.personId),eq(appUser.tenantId,employment.tenantId)))
+  .where(and(eq(employment.tenantId,ctx.tenantId),eq(appUser.tenantId,ctx.tenantId),sql`${appUser.id}=app.current_user_id()`));
+ return and(eq(notification.tenantId,ctx.tenantId),or(
+  own.length?inArray(notification.recipientEmploymentId,own.map(row=>row.id)):sql`false`,
+  eq(notification.recipientUserId,ctx.userId??'00000000-0000-0000-0000-000000000000'),
+ ));
+}
+
 /** 3-tab bell (feedback 1514d366): `action` splits the severity-'action' task notices ("do something")
  *  from the informational rest — true ⇒ only action, false ⇒ only non-action, undefined ⇒ all (the
  *  pre-existing behaviour, so every current caller is unchanged). */
@@ -1278,11 +1311,13 @@ export function unreadNotificationCount(
 
 
   return withCanonicalAiReadTx(ctx, existingTx, 'notifications', withTenant, async (tx) => {
+    const recipients=await notificationRecipientCandidatesTx(tx,ctx);
     const [r] = await tx
       .select({ n: sql<number>`count(*)::int` })
       .from(notification)
       .where(
         and(
+          recipients,
           isNull(notification.readAt),
           employmentId ? or(eq(notification.recipientEmploymentId, employmentId),eq(notification.recipientUserId,ctx.userId??'00000000-0000-0000-0000-000000000000')) : undefined,
           opts.letterCompanyIds!==undefined?and(isNotNull(notification.recipientUserId),inArray(notification.companyId,opts.letterCompanyIds)):undefined,
@@ -1343,14 +1378,49 @@ export function listNotifications(
   ctx = { ...ctx, roles: ctx.roles?.slice(), grants: ctx.grants?.map(grant => ({ ...grant })) };
   opts = { ...opts, letterCompanyIds:opts.letterCompanyIds?.slice(), after: opts.after ? { ...opts.after } : opts.after };
 
-  return withCanonicalAiReadTx(ctx, existingTx, 'notifications', withTenant, (tx) =>
-    tx
-      .select(notificationColumns)
-      .from(notification)
-      .where(notificationWhere(ctx, employmentId, opts))
-      .orderBy(desc(notification.createdAt), desc(notification.id))
-      .limit(Math.min(Math.max(opts.limit ?? 20, 1), 100)),
-  );
+  return withCanonicalAiReadTx(ctx, existingTx, 'notifications', withTenant, async (tx) => {
+    const recipients=await notificationRecipientCandidatesTx(tx,ctx);
+    return notificationRowsTx(tx, recipients, ctx, employmentId, opts);
+  });
+}
+
+function notificationRowsTx(
+  tx: Tx,
+  recipients: Awaited<ReturnType<typeof notificationRecipientCandidatesTx>>,
+  ctx: SessionContext,
+  employmentId: string | undefined,
+  opts: NotificationFilter & { limit?: number },
+) {
+  return tx
+    .select(notificationColumns)
+    .from(notification)
+    .where(and(recipients, notificationWhere(ctx, employmentId, opts)))
+    .orderBy(desc(notification.createdAt), desc(notification.id))
+    .limit(Math.min(Math.max(opts.limit ?? 20, 1), 100));
+}
+
+/** The bell's three lists and two badges share one tenant connection and recipient lookup. */
+export function notificationBellSummary(ctx: SessionContext, scope: { letterCompanyIds?: string[] } = {}) {
+  ctx = { ...ctx, roles: ctx.roles?.slice(), grants: ctx.grants?.map(grant => ({ ...grant })) };
+  scope = { letterCompanyIds: scope.letterCompanyIds?.slice() };
+  return withTenant(ctx, async tx => {
+    const recipients = await notificationRecipientCandidatesTx(tx, ctx);
+    const [counts] = await tx.select({
+      unread: sql<number>`count(*) filter (where ${notification.severity} <> 'action')::int`,
+      taskCount: sql<number>`count(*) filter (where ${notification.severity} = 'action')::int`,
+    }).from(notification).where(and(recipients, notificationWhere(ctx, undefined, { ...scope, read: false })));
+    // Bound each tab before combining it so history cannot crowd out unread or action items.
+    const previews = unionAll(
+      notificationRowsTx(tx, recipients, ctx, undefined, { ...scope, limit: 12, read: false, action: false }),
+      notificationRowsTx(tx, recipients, ctx, undefined, { ...scope, limit: 12, read: false, action: true }),
+      notificationRowsTx(tx, recipients, ctx, undefined, { ...scope, limit: 12, read: true }),
+    ).as('bell_previews');
+    const rows = await tx.select().from(previews).orderBy(desc(previews.createdAt), desc(previews.id));
+    const items = rows.filter(row => row.readAt === null && row.severity !== 'action');
+    const tasks = rows.filter(row => row.readAt === null && row.severity === 'action');
+    const read = rows.filter(row => row.readAt !== null);
+    return { unread: counts?.unread ?? 0, taskCount: counts?.taskCount ?? 0, items, tasks, read };
+  });
 }
 
 /** D5 — one keyset page in listNotifications' order, each row with its exact cursor text. The caller asks
@@ -1360,14 +1430,17 @@ export function listNotificationsPage(
   ctx: SessionContext,
   opts: { limit: number; after?: NotificationCursor | null; read?: boolean; ids?: readonly string[]; employmentId?: string },
 ): Promise<(NotificationRow & { cursorAt: string })[]> {
-  return withTenant(ctx, (tx) =>
-    tx
+  ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
+  opts={...opts,ids:opts.ids?.slice(),after:opts.after?{...opts.after}:opts.after};
+  return withTenant(ctx, async (tx) => {
+    const recipients=await notificationRecipientCandidatesTx(tx,ctx);
+    return tx
       .select({ ...notificationColumns, cursorAt: sql<string>`to_char(${notification.createdAt} at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"')` })
       .from(notification)
-      .where(notificationWhere(ctx, opts.employmentId, opts))
+      .where(and(recipients,notificationWhere(ctx, opts.employmentId, opts)))
       .orderBy(desc(notification.createdAt), desc(notification.id))
-      .limit(Math.min(Math.max(opts.limit, 1), 101)),
-  );
+      .limit(Math.min(Math.max(opts.limit, 1), 101));
+  });
 }
 
 /** Mark one notification read. RLS confines the update to the caller's own rows. */

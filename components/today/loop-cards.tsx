@@ -1,3 +1,4 @@
+import {dateTimeFormatter} from '@/lib/date-time-formatter';
 import {getTranslations} from 'next-intl/server';
 import {CalendarCheck,ClipboardCheck,ClipboardList,Clock,UserCheck} from 'lucide-react';
 import {ArrowDown,CheckCircle2,ListChecks} from 'lucide-react';
@@ -14,7 +15,7 @@ import {AutoFixLoopCard,type AutoFixCardCopy} from './auto-fix-loop-card';
  * for HR is a "finding", as the other findings on Today are. Values come from components/today/reads.ts. */
 
 /** An HR calendar date (yyyy-mm-dd) is a day, not an instant: format it as UTC so no offset moves it. */
-const day=(locale:string,iso:string,style:'short'|'medium'='medium')=>new Intl.DateTimeFormat(locale,
+const day=(locale:string,iso:string,style:'short'|'medium'='medium')=>dateTimeFormatter(locale,
  style==='short'?{weekday:'short',day:'numeric',month:'short',timeZone:'UTC'}:{dateStyle:'medium',timeZone:'UTC'}).format(new Date(`${iso}T00:00:00Z`));
 /** payroll.guide.check<Key>Title, the readiness report's own check names, already in every catalogue. */
 const checkTitle=(key:string)=>`check${key.charAt(0).toUpperCase()}${key.slice(1)}Title`;
@@ -38,7 +39,7 @@ export async function LoopCards({cards,locale}:{cards:readonly LoopCard[];locale
  const autoFix:AutoFixCardCopy={undo:ta('undo'),undoing:ta('undoing'),undone:ta('undone'),error:ta('refused.unavailable'),actionsLabel:ta('actionsLabel'),
   refused:{not_confirmed:ta('refused.unavailable'),invalid:ta('refused.unavailable'),unavailable:ta('refused.unavailable'),expired:ta('refused.expired'),
    changed:ta('refused.changed'),access:ta('refused.access'),ask_hr:ta('refused.ask_hr')}};
- const instant=(iso:string)=>new Intl.DateTimeFormat(locale,{dateStyle:'medium',timeStyle:'short',timeZone:'Asia/Kuala_Lumpur'}).format(new Date(iso));
+ const instant=(iso:string)=>dateTimeFormatter(locale,{dateStyle:'medium',timeStyle:'short',timeZone:'Asia/Kuala_Lumpur'}).format(new Date(iso));
  return <>{cards.map(card=>{
   if(card.kind==='clockOut')return <li key={card.caseId} data-today-loop="clockOut">
    <ClockOutLoopCard caseId={card.caseId} icon={<Clock/>} title={t('clockOutTitle',{time:card.proposedCheckOut,date:day(locale,card.date,'short')})} awaitingLabel={t('awaiting')}

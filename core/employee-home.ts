@@ -1,9 +1,11 @@
 /** Salary-free self identity for employee Home. This is a read projection, not another personnel owner. */
 import {and,eq,sql} from 'drizzle-orm';
-import {withTenant,type SessionContext} from '../db/client';
+import {withTenant,type SessionContext,type Tx} from '../db/client';
+import {lockAccessConfigurationReadTx} from './access-configuration-lock';
+import {isAiPrincipalCurrentTx} from './ai-principal';
 import {person} from '../db/schema';
-import {myOwnEmploymentSubjects,type OwnEmploymentSubject} from './read';
-import {hasPersonPhoto} from './person-photo';
+import {isCurrentOwnHomeEmploymentTx,isOwnProfileEditEmploymentTx,myOwnEmploymentSubjectsTx,type OwnEmploymentSubject} from './read';
+import {hasPersonPhotoTx} from './person-photo';
 import {isAdmin} from '../lib/authz-model';
 import {resolveDashboardRole} from '../lib/dashboard-cards';
 import {employeeHomeGreetingName} from '../lib/employee-home';
@@ -24,13 +26,16 @@ type OwnSelection=
  * Multiple own employments require an explicit choice; a foreign/stale selector never falls back.
  */
 export async function ownHomeSubjectSelection(ctx:SessionContext,requestedEmploymentId?:string):Promise<OwnSelection>{
+ return withTenant(ctx,tx=>ownHomeSubjectSelectionTx(tx,ctx,requestedEmploymentId),{readOnlySnapshot:true});
+}
+async function ownHomeSubjectSelectionTx(tx:Tx,ctx:SessionContext,requestedEmploymentId?:string):Promise<OwnSelection>{
  if(!ctx.userId)throw new HomeAccessError('authentication');
  // The role/scope snapshot does not attest a caller's personId. Bind it independently through the
  // canonical actual-login predicate before an HR principal can query the own-subject inventory.
- const [principal]=await withTenant(ctx,tx=>tx.execute(sql`SELECT (app.principal_snapshot_current()
-  AND (${ctx.personId??null}::uuid IS NULL OR app.is_self_person(${ctx.personId??null}::uuid))) AS ok`)) as unknown as {ok:boolean}[];
+ const [principal]=await tx.execute<{ok:boolean}>(sql`SELECT (app.principal_snapshot_current()
+   AND (${ctx.personId??null}::uuid IS NULL OR app.is_self_person(${ctx.personId??null}::uuid))) AS ok`);
  if(!principal?.ok)throw new HomeAccessError('employmentUnavailable');
- const subjects=await myOwnEmploymentSubjects(ctx);
+ const subjects=await myOwnEmploymentSubjectsTx(tx,ctx);
  if(requestedEmploymentId!==undefined){
   const subject=subjects.find(row=>row.employmentId===requestedEmploymentId);
   if(!subject)throw new HomeAccessError('employmentUnavailable');
@@ -45,44 +50,106 @@ export async function ownHomeSubjectSelection(ctx:SessionContext,requestedEmploy
  * still apply; this own-only check is deliberately narrower than an administrator's Personnel reach.
  */
 export async function requireOwnHomeSubject(ctx:SessionContext,employmentId?:string):Promise<OwnEmploymentSubject>{
- const selection=await ownHomeSubjectSelection(ctx,employmentId);
+ return selectedHomeSubject(await ownHomeSubjectSelection(ctx,employmentId));
+}
+/** A card with an explicit selection can prove ownership without projecting the whole inventory. */
+export async function requireSelectedOwnHomeEmploymentId(ctx:SessionContext,employmentId:string):Promise<string>{
+ if(!ctx.userId)throw new HomeAccessError('authentication');
+ return withTenant(ctx,tx=>requireSelectedOwnHomeEmploymentIdTx(tx,ctx,employmentId),{readOnlySnapshot:true});
+}
+export async function requireSelectedOwnHomeEmploymentIdTx(tx:Tx,ctx:SessionContext,employmentId:string):Promise<string>{
+ if(!ctx.userId)throw new HomeAccessError('authentication');
+ if(!await isCurrentOwnHomeEmploymentTx(tx,ctx,employmentId))throw new HomeAccessError('employmentUnavailable');
+ return employmentId;
+}
+async function assertReadOnlyHomePrincipalTx(tx:Tx,ctx:SessionContext):Promise<void>{
+ const [snapshot]=await tx.execute<{safe:boolean}>(sql`select current_setting('transaction_isolation')='read committed'
+  and current_setting('transaction_read_only')='on' as safe`);
+ if(snapshot?.safe!==true)throw new HomeAccessError('employmentUnavailable');
+ if(!ctx.userId)throw new HomeAccessError('authentication');
+ if(await isAiPrincipalCurrentTx(tx,ctx)!==true)throw new HomeAccessError('employmentUnavailable');
+}
+/** Only complete read-only compositions can reuse the native own-subject proof in their carrier. */
+export async function requireOwnHomeSubjectTx(tx:Tx,ctx:SessionContext,employmentId?:string):Promise<OwnEmploymentSubject>{
+ await assertReadOnlyHomePrincipalTx(tx,ctx);
+ return selectedHomeSubject(await ownHomeSubjectSelectionTx(tx,ctx,employmentId));
+}
+
+/** Use the exact active-employment predicate for a selected card that only needs its subject ID. */
+export async function requireActiveOwnHomeEmploymentIdTx(tx:Tx,ctx:SessionContext,employmentId?:string):Promise<string>{
+ await assertReadOnlyHomePrincipalTx(tx,ctx);
+ const id=employmentId===undefined
+  ? selectedHomeSubject(await ownHomeSubjectSelectionTx(tx,ctx)).employmentId
+  : employmentId;
+ if(typeof id!=='string'||!/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/.test(id)
+  ||!await isOwnProfileEditEmploymentTx(tx,ctx,id))throw new HomeAccessError('employmentUnavailable');
+ return id;
+}
+
+function selectedHomeSubject(selection:OwnSelection):OwnEmploymentSubject{
  if(selection.state!=='selected')throw new HomeAccessError(selection.state==='choose'?'chooseEmployment':'employmentUnavailable');
  return selection.subject;
 }
 
 export async function readEmployeeHomeIdentity(ctx:SessionContext,requestedEmploymentId?:string):Promise<EmployeeHomeIdentity>{
- const selection=await ownHomeSubjectSelection(ctx,requestedEmploymentId);
+ return withTenant(ctx,tx=>readEmployeeHomeIdentityTx(tx,ctx,requestedEmploymentId),{readOnlySnapshot:true});
+}
+/** Compose only inside a complete read-only snapshot; never carry this identity across requests.
+ * All subject, actual-login, role and dated-company owners remain inside the same transaction. */
+export async function readEmployeeHomeIdentityTx(tx:Tx,ctx:SessionContext,requestedEmploymentId?:string):Promise<EmployeeHomeIdentity>{
+ return (await readEmployeeHomeIdentityContextTx(tx,ctx,requestedEmploymentId)).identity;
+}
+
+/** Keep the dated company proof inside the authorized Home read for configuration callers. */
+export async function readEmployeeHomeIdentityContextTx(tx:Tx,ctx:SessionContext,requestedEmploymentId?:string):Promise<{
+ identity:EmployeeHomeIdentity;companyId:string|null;hiredOn:string|null;
+}>{
+ const [snapshot]=await tx.execute<{safe:boolean}>(sql`select current_setting('transaction_isolation')='repeatable read'
+  and current_setting('transaction_read_only')='on' as safe`);
+ if(snapshot?.safe!==true)throw new HomeAccessError('employmentUnavailable');
+ // This barrier belongs to the composed read. Ordinary subject preflight is also used by
+ // greeting commands, whose canonical native command must retain its original first lock.
+ await lockAccessConfigurationReadTx(tx,ctx.tenantId);
+ const selection=await ownHomeSubjectSelectionTx(tx,ctx,requestedEmploymentId);
  // Flattened roles discard their company scope. For a selected employment use the canonical SQL
  // grant/subtree predicates so a manager or HR grant elsewhere cannot choose this company's policy.
  let role=resolveDashboardRole({admin:isAdmin(ctx),managerRole:(ctx.roles??[]).includes('manager'),hasDirectReports:false});
  if(selection.subject){
-  const [proof]=await withTenant(ctx,tx=>tx.execute(sql`SELECT app.own_home_dashboard_role(${selection.subject.employmentId}::uuid) AS role`)) as unknown as {role:EmployeeHomeIdentity['role']|null}[];
+  const [proof]=await tx.execute(sql`SELECT app.own_home_dashboard_role(${selection.subject.employmentId}::uuid) AS role`) as unknown as {role:EmployeeHomeIdentity['role']|null}[];
   if(!proof?.role||!['employee','manager','hr_admin'].includes(proof.role))throw new HomeAccessError('employmentUnavailable');
   role=proof.role;
  }
- return {version:1,
+ const companyId=selection.subject?.companyProof.companyId??null;
+ return {companyId,hiredOn:selection.subject?.hiredOn??null,identity:{version:1,
   role,
   employmentState:selection.state,selectedEmploymentId:selection.subject?.employmentId??null,
-  companyEstablished:Boolean(selection.subject?.companyProof.companyId),
-  employments:selection.subjects.map(row=>({employmentId:row.employmentId,employeeCode:row.employeeCode,company:row.company}))};
+  companyEstablished:Boolean(companyId),
+  employments:selection.subjects.map(row=>({employmentId:row.employmentId,employeeCode:row.employeeCode,company:row.company}))}};
 }
 
 /** A failure in greeting presentation belongs to that card, not to the selection/role context. The
  * independent reader still repeats the own-employment proof before retrieving any presentation fact.
  * Null means no recorded name/photo, never a swallowed read failure or a guessed fallback value.
  */
-export async function readEmployeeHomeGreetingIdentity(ctx:SessionContext,requestedEmploymentId?:string):Promise<EmployeeHomeGreetingIdentity>{
- const subject=await requireOwnHomeSubject(ctx,requestedEmploymentId);
+export function readEmployeeHomeGreetingIdentity(ctx:SessionContext,requestedEmploymentId?:string):Promise<EmployeeHomeGreetingIdentity>{
+ return withTenant(ctx,tx=>readEmployeeHomeGreetingIdentityTx(tx,ctx,requestedEmploymentId));
+}
+
+/** Call before presentation queries so the photo policy retains its read-committed read-only transaction. */
+export async function readEmployeeHomeGreetingIdentityTx(tx:Tx,ctx:SessionContext,requestedEmploymentId?:string):Promise<EmployeeHomeGreetingIdentity>{
+ await tx.execute(sql`SET TRANSACTION READ ONLY`);
+ const employmentId=requestedEmploymentId===undefined
+  ? selectedHomeSubject(await ownHomeSubjectSelectionTx(tx,ctx)).employmentId
+  : await requireSelectedOwnHomeEmploymentIdTx(tx,ctx,requestedEmploymentId);
  const personId=ctx.personId;
- const [name,photo]=await Promise.all([
-  personId?withTenant(ctx,async tx=>{
-   const [row]=await tx.select({preferredName:person.preferredName,firstName:person.firstName,fullName:person.fullName})
-    .from(person).where(and(eq(person.tenantId,ctx.tenantId),eq(person.id,personId))).limit(1);
-   return row?employeeHomeGreetingName(row):null;
-  }):Promise.resolve(null),
-  personId?hasPersonPhoto(ctx,personId):Promise.resolve(false),
+ if(!personId)return {version:1,employmentId,name:null,photoHref:null};
+ const [rows,photo]=await Promise.all([
+  tx.select({preferredName:person.preferredName,firstName:person.firstName,fullName:person.fullName})
+   .from(person).where(and(eq(person.tenantId,ctx.tenantId),eq(person.id,personId))).limit(1),
+  hasPersonPhotoTx(tx,ctx,personId),
  ]);
- return {version:1,employmentId:subject.employmentId,name,photoHref:photo&&personId?`/personnel/photo/${encodeURIComponent(personId)}`:null};
+ return {version:1,employmentId,name:rows[0]?employeeHomeGreetingName(rows[0]):null,
+  photoHref:photo?`/personnel/photo/${encodeURIComponent(personId)}`:null};
 }
 
 /** Independent pay hint reader. Payroll repeats own-active/login and publication enforcement and

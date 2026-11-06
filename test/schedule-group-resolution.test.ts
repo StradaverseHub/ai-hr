@@ -22,9 +22,10 @@ import {hireEmployee} from '../core/org';
  * ('late' vs 'present') from a single check-in, with no dependence on the clock or on a future date.
  */
 import { randomUUID } from 'node:crypto';
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { eq, inArray, isNull } from 'drizzle-orm';
 import * as schema from '../db/schema';
+import { client } from '../db/client';
 import { checkIn, checkOut } from '../core/attendance';
 import {
   createAttendanceRule,
@@ -185,7 +186,27 @@ describe('870b79e2 — the group, when set, outranks the shift', () => {
     // the assertion above therefore cannot be passing because grace is ignored altogether.
     await setGroup(emp, lenient.id);
     await owner.db.delete(schema.attendance).where(eq(schema.attendance.employmentId, emp));
-    expect((await checkIn(a, { employmentId: emp, date: WED, time: '09:20:00' })).status).toBe('present');
+    const statements: string[] = [];
+    const begin = client.begin;
+    const spy = vi.spyOn(client, 'begin').mockImplementation(((...args: unknown[]) => {
+      const index = args.findIndex(arg => typeof arg === 'function');
+      const callback = args[index] as (native: typeof client) => unknown;
+      args[index] = (native: typeof client) => callback(new Proxy(native, { get(target, key, receiver) {
+        if (key === 'unsafe') return (...query: unknown[]) => {
+          if (typeof query[0] === 'string') statements.push(query[0]);
+          return Reflect.apply(target.unsafe, target, query);
+        };
+        return Reflect.get(target, key, receiver);
+      } }));
+      return Reflect.apply(begin, client, args);
+    }) as typeof client.begin);
+    try {
+      expect((await checkIn(a, { employmentId: emp, date: WED, time: '09:20:00' })).status).toBe('present');
+    } finally { spy.mockRestore(); }
+    const groupReads = statements.filter(query => /select[^]*"attendance_rule_id"[^]*from "employment"/i.test(query));
+    expect(groupReads.some(query => query.includes('join "attendance_policy"'))).toBe(true);
+    expect(groupReads.some(query => /^select "attendance_rule_id" from "employment"/i.test(query))).toBe(false);
+    expect(statements.some(query => /from "attendance_rule" where "attendance_rule"\."is_default"/i.test(query))).toBe(false);
 
     // CLEARED → back to the shift's rule. The column is additive in both directions, not a one-way door.
     await setGroup(emp, null);

@@ -16,7 +16,7 @@ import type {LoopId} from '../loops/types';
 import {isGroupAdmin} from '../../lib/authz-model';
 import {agreementView,type AgreementView} from '../control-tower';
 import {mandateState,type MandateState} from '../mandates/mandates';
-import {tenantStoppedTx,workerRunGateTx,workerSwitchStateTx,type WorkerGate,type WorkerSwitchState} from './controls';
+import {tenantStoppedTx,workerGateFromState,workerSwitchStateTx,type WorkerGate,type WorkerSwitchState} from './controls';
 import {registeredWorker,registeredWorkers,type WorkerDeclaration} from './workers';
 
 export class WorkerRegistryRefused extends Error{constructor(readonly reason:'not_administrator'|'not_found'){super('Worker registry refused: '+reason);this.name='WorkerRegistryRefused';}}
@@ -95,9 +95,10 @@ async function rowsFor(ctx:SessionContext,workers:readonly WorkerDeclaration[]):
     :Object.freeze({measured:false,acceptanceRate:null,reversalRate:null,decided:0,reason:worker.metrics.kind==='not_measurable'?worker.metrics.reason
      :worker.metrics.kind==='loop_cases'?'Measured from its cards on Operations, Loops.':'Not measured.'});
    const own=worker.authority.kind==='mandate'?mandates.filter(row=>row.jobType===(worker.authority as {jobType:string}).jobType):null;
+   const switchState=await workerSwitchStateTx(tx,ctx,worker);
    out.push(Object.freeze({id:worker.id,label:worker.label,family:worker.family,trigger:worker.trigger,readScope:worker.readScope,effect:worker.effect,
-    authority:worker.authority,owners:worker.owners,switch:await workerSwitchStateTx(tx,ctx,worker),stopped,stopHonoured:worker.stop.honoured,
-    stopPending:worker.stop.honoured?null:worker.stop.pending,gate:await workerRunGateTx(tx,ctx,worker.id),lastRunAt:await lastRunTx(tx,ctx.tenantId,worker),metrics,
+    authority:worker.authority,owners:worker.owners,switch:switchState,stopped,stopHonoured:worker.stop.honoured,
+    stopPending:worker.stop.honoured?null:worker.stop.pending,gate:workerGateFromState(switchState.on,stopped),lastRunAt:await lastRunTx(tx,ctx.tenantId,worker),metrics,
     mandates:own?Object.freeze({active:own.filter(row=>mandateState(row,now)==='active').length,total:own.length}):null}));
   }
   return out;

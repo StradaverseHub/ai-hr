@@ -4,7 +4,7 @@ import { and, eq, inArray, sql } from 'drizzle-orm';
 import { type Tx, type SessionContext } from '../db/client';
 import { companyPayrollConfig, payrollBatch, payslip } from '../db/schema';
 import { resolveAssignedPolicy } from './payroll-policy';
-import { cutOffWindowFor, type CompanyCutOffConfig, type PayrollPolicyConfig } from './payroll-policy-config';
+import { anchorWindowFor, calendarWindowFor, cutOffWindowFor, type CompanyCutOffConfig, type PayrollPolicyConfig } from './payroll-policy-config';
 
 /**
  * r424 (50ed39e1) — the CLOSED sibling of `batchesCoveringAttendanceDates` (core/payroll.ts), with the same
@@ -22,11 +22,23 @@ export async function closedBatchesCoveringAttendanceDates(
   p: { companyId: string; entries: { employmentId: string; date: string }[] },
 ): Promise<{ batchId: string; payPeriod: string; batchDate: string; employmentIds: string[]; entries: { employmentId: string; date: string }[] }[]> {
   if (p.entries.length === 0) return [];
-  const batches = await tx
+  const closedBatches = await tx
     .select({ id: payrollBatch.id, payPeriod: payrollBatch.payPeriod, batchDate: payrollBatch.batchDate })
     .from(payrollBatch)
     .where(and(eq(payrollBatch.companyId, p.companyId), eq(payrollBatch.status, 'closed')))
     .orderBy(payrollBatch.payPeriod);
+  let firstDate = p.entries[0].date, lastDate = firstDate;
+  for (const { date } of p.entries) {
+    if (date < firstDate) firstDate = date;
+    if (date > lastDate) lastDate = date;
+  }
+  // Every cutoff for a canonical payroll month fits between the start of the
+  // prior month and the end of this one. Keep the exact policy check for overlaps
+  // and preserve the existing path for historical noncanonical period strings.
+  const batches = closedBatches.filter(({ payPeriod }) => {
+    if (!/^[1-9]\d{3}-(0[1-9]|1[0-2])$/.test(payPeriod) || payPeriod === '1000-01') return true;
+    return lastDate >= anchorWindowFor(payPeriod, 1).start && firstDate <= calendarWindowFor(payPeriod).end;
+  });
   if (batches.length === 0) return [];
   const slips = await tx
     .select({ batchId: payslip.batchId, employmentId: payslip.employmentId })

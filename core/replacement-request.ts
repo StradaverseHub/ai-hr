@@ -52,7 +52,7 @@ import {isOwnPersonTx,ownPersonPredicate} from './own-person';
 import {scopeOf} from '../lib/delegation-scope';
 import {withDelegatedRequestEffectTx} from './delegated-request-effect';
 import { actorOf, appendEvent } from '../db/events';
-import { assertCanDecide,assertAssignedWorkPrincipalTx,isApprovalDecisionRefusal } from './approvals';
+import { assertCanDecide,assertAssignedWorkPrincipalTx,decisionEmploymentAuthorityTx } from './approvals';
 import {
   company,
   compensation,domainEvent,
@@ -1364,20 +1364,33 @@ function pendingReplacementHeads(tx: Tx, opts: { companyIds?: string[];requestId
 export function listPendingReplacementLeaveTasks(ctx:SessionContext,opts:{companyIds?:string[]}={}):Promise<{id:string;personId:string;employee:string|null;createdAt:Date}[]>{
  return withTenant(ctx,async tx=>{
   await assertAssignedWorkPrincipalTx(tx,ctx);
-  const candidates=await tx.select({id:replacementLeaveRequest.id,employmentId:replacementLeaveRequest.employmentId,
-   personId:sql<string>`approval_subject.person_id`,employee:sql<string>`approval_subject.employee`,createdAt:replacementLeaveRequest.createdAt})
-   .from(replacementLeaveRequest).innerJoin(sql`LATERAL app.delegated_approval_subject(${replacementLeaveRequest.employmentId},'leave','leave.replacement') AS approval_subject`,sql`true`)
-   .where(and(eq(replacementLeaveRequest.status,'pending'),eq(replacementLeaveRequest.tenantId,ctx.tenantId),
-    sql`NOT app.is_self_person(approval_subject.person_id)`,
-    opts.companyIds===undefined?undefined:sql`approval_subject.company_id = ANY(ARRAY[${sql.join(opts.companyIds.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[])`))
-   .orderBy(desc(replacementLeaveRequest.createdAt),replacementLeaveRequest.id);
-  const result=[];
-  for(const row of candidates){
-   try{await assertCanDecide(tx,ctx,row.employmentId,'replacement leave request',scopeOf('leave.replacement'));}
-   catch(error){if(isApprovalDecisionRefusal(error,'replacement leave request'))continue;throw error;}
-   result.push({id:row.id,personId:row.personId,employee:row.employee,createdAt:row.createdAt});
-  }
-  return result;
+  const rows=await tx.execute<{id:string;employmentId:string;personId:string;employee:string|null;createdAt:Date|string}>(sql`
+   with headers as materialized (
+    select id,employment_id,created_at from public.replacement_leave_request
+    where tenant_id=${ctx.tenantId}::uuid and status='pending'
+   ), subjects as (
+    select distinct employment_id from headers
+   ), numbered as (
+    select employment_id,(row_number() over(order by employment_id)-1)/1000 as bucket from subjects
+   ), batches as (
+    select array_agg(employment_id order by employment_id) as ids from numbered group by bucket
+   ), labels as materialized (
+    select label.* from batches
+    cross join lateral app.delegated_approval_subjects(batches.ids,'leave','leave.replacement') label
+    where not app.is_self_person(label.person_id)
+      and ${opts.companyIds===undefined?sql`true`:sql`label.company_id=ANY(ARRAY[${sql.join(opts.companyIds.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[])`}
+   )
+   select headers.id,headers.employment_id as "employmentId",labels.person_id as "personId",
+    labels.employee,headers.created_at as "createdAt"
+   from headers join labels using(employment_id)
+   order by headers.created_at desc,headers.id
+  `);
+  const {allowed}=await decisionEmploymentAuthorityTx(tx,ctx,rows.map(row=>row.employmentId),scopeOf('leave.replacement'));
+  return rows.filter(row=>allowed.has(row.employmentId)).map(({id,personId,employee,createdAt})=>{
+   const timestamp=createdAt instanceof Date?createdAt:replacementLeaveRequest.createdAt.mapFromDriverValue(createdAt);
+   if(!(timestamp instanceof Date)||!Number.isFinite(timestamp.getTime()))throw new TypeError('Invalid Leave Credit task timestamp');
+   return {id,personId,employee,createdAt:timestamp};
+  });
  });
 }
 

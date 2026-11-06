@@ -54,6 +54,7 @@ import {
   collectableCycleIds,
   intendedCycleFilter,
   listPayslipLessEligible,
+  payrollCloseCompanyIdsTx,
   resolveBatchScopeFilter,
   type BatchScope,
   type PayrollSkipReason,
@@ -1368,12 +1369,24 @@ export function listPayrollRegisterAcross(
       .orderBy(desc(payrollBatch.payPeriod), asc(payrollBatch.runSeq), asc(person.fullName));
 
     const retained=await informationPayslipDocuments(tx,{...p,cycle});
-    for(const document of retained){
-      const saved=informationDocumentRow(document),index=rows.findIndex(r=>r.correctionSlipId===saved.id);
-      if(index>=0)rows[index]=overlayInformationDocument(rows[index],document);
-      else rows.push({correctionSlipId:saved.id,employeeCode:saved.employeeCode,employeeName:saved.employeeName,company:saved.company,currency:saved.currency,department:saved.department,position:saved.position,jobGrade:saved.jobGrade,employmentStatus:saved.employmentStatus,employmentType:saved.employmentType,payPeriod:saved.payPeriod,payrollCycle:saved.runType,runSeq:saved.runSeq,historyImportAttemptId:saved.historyImportAttemptId??null,historyImportCycleName:saved.historyImportCycleName??null,daysWorked:saved.daysWorked??null,basic:saved.basic,allowance:saved.allowance,overtime:saved.overtime,bonus:saved.bonus,gross:saved.gross,statutory:saved.statutory,otherDeductions:saved.otherDeductions,totalDeductions:saved.totalDeductions,net:saved.net,employerCost:saved.employerCost});
+    if(retained.length){
+      const firstIndexBySlipId = new Map<string, number>();
+      for (const [index, row] of rows.entries()) {
+        // Preserve the first match when more than one live row has the same slip ID.
+        if (!firstIndexBySlipId.has(row.correctionSlipId)) firstIndexBySlipId.set(row.correctionSlipId, index);
+      }
+      for (const document of retained) {
+        const saved = informationDocumentRow(document);
+        const index = firstIndexBySlipId.get(saved.id);
+        if (index !== undefined) {
+          rows[index] = overlayInformationDocument(rows[index], document);
+        } else {
+          firstIndexBySlipId.set(saved.id, rows.length);
+          rows.push({correctionSlipId:saved.id,employeeCode:saved.employeeCode,employeeName:saved.employeeName,company:saved.company,currency:saved.currency,department:saved.department,position:saved.position,jobGrade:saved.jobGrade,employmentStatus:saved.employmentStatus,employmentType:saved.employmentType,payPeriod:saved.payPeriod,payrollCycle:saved.runType,runSeq:saved.runSeq,historyImportAttemptId:saved.historyImportAttemptId??null,historyImportCycleName:saved.historyImportCycleName??null,daysWorked:saved.daysWorked??null,basic:saved.basic,allowance:saved.allowance,overtime:saved.overtime,bonus:saved.bonus,gross:saved.gross,statutory:saved.statutory,otherDeductions:saved.otherDeductions,totalDeductions:saved.totalDeductions,net:saved.net,employerCost:saved.employerCost});
+        }
+      }
+      rows.sort((a,b)=>b.payPeriod.localeCompare(a.payPeriod)||a.runSeq-b.runSeq||a.employeeName.localeCompare(b.employeeName));
     }
-    if(retained.length)rows.sort((a,b)=>b.payPeriod.localeCompare(a.payPeriod)||a.runSeq-b.runSeq||a.employeeName.localeCompare(b.employeeName));
     return rows.map((r) => {
       const st = (r.statutory ?? {}) as Record<string, unknown>;
       const n = (k: string): number => {
@@ -2996,22 +3009,41 @@ export function listBatchProcessedDates(
   batchIds: readonly string[],
 ): Promise<Map<string, string>> {
   if (batchIds.length === 0) return Promise.resolve(new Map());
-  return withTenant(ctx, async (tx) => {
-    const rows = await tx
-      .select({
-        batchId: domainEvent.aggregateId,
-        processedOn: sql<string>`to_char(max(${domainEvent.occurredAt}) at time zone ${HR_LOCAL_TZ}::text, 'YYYY-MM-DD')`,
-      })
-      .from(domainEvent)
-      .where(
-        and(
-          eq(domainEvent.aggregateType, 'payroll-batch'),
-          eq(domainEvent.eventType, 'payroll-batch.processed'),
-          inArray(domainEvent.aggregateId, batchIds as string[]),
-        ),
-      )
-      .groupBy(domainEvent.aggregateId);
-    return new Map(rows.map((r) => [r.batchId, r.processedOn]));
+  return withTenant(ctx, tx => listBatchProcessedDatesTx(tx, batchIds));
+}
+
+async function listBatchProcessedDatesTx(tx: Tx, batchIds: readonly string[]): Promise<Map<string, string>> {
+  if (batchIds.length === 0) return new Map();
+  const rows = await tx
+    .select({
+      batchId: domainEvent.aggregateId,
+      processedOn: sql<string>`to_char(max(${domainEvent.occurredAt}) at time zone ${HR_LOCAL_TZ}::text, 'YYYY-MM-DD')`,
+    })
+    .from(domainEvent)
+    .where(
+      and(
+        eq(domainEvent.aggregateType, 'payroll-batch'),
+        eq(domainEvent.eventType, 'payroll-batch.processed'),
+        inArray(domainEvent.aggregateId, batchIds as string[]),
+      ),
+    )
+    .groupBy(domainEvent.aggregateId);
+  return new Map(rows.map((row) => [row.batchId, row.processedOn]));
+}
+
+/** Only visible-page metadata, using one Payroll history barrier and the original close authority. */
+export function payrollDashboardBatchMetadata(
+  ctx: SessionContext,
+  batchIds: readonly string[],
+  processedCompanyIds: readonly string[],
+): Promise<{ processedOn: Map<string, string>; closeCompanies: Set<string> }> {
+  if (batchIds.length === 0 && processedCompanyIds.length === 0) {
+    return Promise.resolve({ processedOn: new Map(), closeCompanies: new Set() });
+  }
+  return withTenant(ctx, async tx => {
+    const processedOn = await listBatchProcessedDatesTx(tx, batchIds);
+    const closeCompanies = await payrollCloseCompanyIdsTx(tx, ctx, processedCompanyIds);
+    return { processedOn, closeCompanies };
   });
 }
 

@@ -4,27 +4,36 @@ import * as React from 'react';
 import {useLocale,useTranslations} from 'next-intl';
 import {Button} from '@/components/ui';
 import {IndependentHomeCard} from './home-card';
+import {useHomeInitialSharing} from './sharing-cohort';
 import {HomeGreetingComposer} from './greeting-composer';
 import {sendHomeGreetingCommand} from './send-greeting';
-import {validateHomeCelebrationResponse,type HomeCelebrationPage} from '@/lib/employee-home-sharing';
+import {validateHomeCelebrationResponse} from '@/lib/employee-home-sharing';
 
 /** Occurrences, not dates of birth. Each page repeats live policy and person-wide privacy checks.
  * Greeting composition/delivery has a separate command owner; this reader has no write side effect. */
 export function HomeCelebrationsCard({employmentId,greetingsEnabled=false}:{employmentId:string;greetingsEnabled?:boolean}){
  const t=useTranslations('employeeHome.celebrations'),locale=useLocale();
+ const subscribe=useHomeInitialSharing();
+ const [hasPaged,setHasPaged]=React.useState(false);
  const [pages,setPages]=React.useState<(string|undefined)[]>([undefined]);
  const region=React.useRef<HTMLDivElement>(null),after=pages.at(-1);
- function changePage(next:(string|undefined)[]){setPages(next);region.current?.focus();}
- const read=React.useCallback(async(signal:AbortSignal):Promise<HomeCelebrationPage>=>{
+ function changePage(next:(string|undefined)[]){setHasPaged(true);setPages(next);region.current?.focus();}
+ const readResponse=React.useCallback(async(signal:AbortSignal):Promise<unknown>=>{
   const query=new URLSearchParams({employmentId});if(after)query.set('after',after);
   const response=await fetch('/api/home/celebrations?'+query,{signal,cache:'no-store',credentials:'same-origin'});
   if(!response.ok)throw Error('Celebrations unavailable');
-  return validateHomeCelebrationResponse(await response.json(),employmentId).page;
+  return response.json() as Promise<unknown>;
  },[employmentId,after]);
+ const parse=React.useCallback((value:unknown)=>validateHomeCelebrationResponse(value,employmentId).page,[employmentId]);
+ const read=React.useCallback(async(signal:AbortSignal)=>parse(await readResponse(signal)),[parse,readResponse]);
+ const initialRead=React.useCallback(async(signal:AbortSignal)=>{
+  if(!subscribe)return read(signal);
+  return parse(await subscribe('celebrations',signal,()=>readResponse(signal)));
+ },[subscribe,read,parse,readResponse]);
  const formatDate=(value:string)=>new Intl.DateTimeFormat(locale,{day:'numeric',month:'short',timeZone:'UTC'}).format(new Date(value+'T00:00:00Z'));
  return <IndependentHomeCard card="celebrations" title={t('title')}
   labels={{loading:t('loading'),failed:t('failed'),timeout:t('timeout'),retry:t('retry'),refresh:t('refresh')}}
-  requestKey={JSON.stringify([employmentId,after,locale])} read={read} regionRef={region}
+  requestKey={JSON.stringify([employmentId,after,locale])} read={read} initialRead={!hasPaged?initialRead:undefined} regionRef={region}
   footer={after?<Button type="button" variant="outline" className="min-h-11 whitespace-normal" onClick={()=>changePage([undefined])}>{t('firstPage')}</Button>:undefined}>
   {value=><div className="space-y-4">
    {value.scope==='off'?<p className="text-sm leading-relaxed text-muted-foreground">{t('off')}</p>:<>

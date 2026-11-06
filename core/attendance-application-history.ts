@@ -3,7 +3,7 @@ import { attendanceApplicationReviewTx, attendanceProgressTx, attendanceApprover
 import type { AttendanceProgress } from '../lib/attendance-progress';
 /** One scoped read model over attendance_correction; no copied application records. */
 import { and, asc, eq, inArray, isNull, sql, type SQL } from 'drizzle-orm';
-import { type SessionContext } from '../db/client';
+import { type SessionContext, type Tx } from '../db/client';
 import { withAttendanceTenant as withTenant } from './module-gate';
 import { attendanceCorrection as correction, employment, person, company, department, businessUnit, jobGrade, profileOption, domainEvent, appUser, position } from '../db/schema';
 import { CATEGORY_EMPLOYMENT_COLUMN, EMPLOYMENT_PROFILE_CATEGORIES } from './profile-options';
@@ -109,24 +109,62 @@ export async function listAttendanceApplicationHistory(ctx: SessionContext, comp
 
     });
 }
+async function attendanceApplicationInScopeTx(tx: Tx, companyIds: string[], id: string) {
+    if (!companyIds.length)
+        return null;
+    const [row] = await tx.select({ application: correction, employee: person.fullName, personId: employment.personId, employeeCode: employment.employeeCode, company: company.legalName, companyId: employment.companyId, hasAttachment: sql<boolean> `exists(select 1 from attendance_correction_attachment f where f.attendance_correction_id=${correction.id})`, allowed: sql<boolean> `app.is_admin_for(${employment.companyId})` }).from(correction).innerJoin(employment, eq(employment.id, correction.employmentId)).innerJoin(person, eq(person.id, employment.personId)).innerJoin(company, eq(company.id, employment.companyId)).where(and(eq(correction.id, id), inArray(employment.companyId, companyIds))).limit(1);
+    return row?.allowed ? row : null;
+}
+
+async function attendanceApplicationCanDecideTx(
+    tx: Tx,
+    id: string,
+    status: typeof correction.$inferSelect.status,
+    self: boolean,
+    workflow: Awaited<ReturnType<typeof attendanceWorkflowForTx>>,
+) {
+    if (self || status !== 'pending')
+        return false;
+    if (workflow?.routingVersion === 3 || workflow?.routingVersion === 4)
+        return workflow.currentParticipantSlot != null;
+    if (workflow?.routingVersion === 2) {
+        const [authority] = await tx.execute<{ ok: boolean }>(sql`select app.attendance_workflow_v2_decide(${id}::uuid) as ok`);
+        return authority?.ok === true;
+    }
+    return true;
+}
+
+/** Scope and live decision checks for the History command. Display evidence is read by the page. */
+export async function attendanceApplicationDecision(ctx: SessionContext, companyIds: string[], id: string) {
+    admin(ctx);
+    if (!attendanceHistoryId(id))
+        return null;
+    return withTenant(ctx, async tx => {
+        const row = await attendanceApplicationInScopeTx(tx, companyIds, id);
+        if (!row)
+            return null;
+        const self = !!ctx.personId && ctx.personId === row.personId;
+        const workflow = await attendanceWorkflowForTx(tx, id);
+        return { canDecide: await attendanceApplicationCanDecideTx(tx, id, row.application.status, self, workflow) };
+    });
+}
+
 export async function attendanceApplicationDetail(ctx: SessionContext, companyIds: string[], id: string) {
     admin(ctx);
     if (!attendanceHistoryId(id))
         return null;
     return withTenant(ctx, async (tx) => {
-        if (!companyIds.length)
-            return null;
-        const [row] = await tx.select({ application: correction, employee: person.fullName, personId: employment.personId, employeeCode: employment.employeeCode, company: company.legalName, companyId: employment.companyId, hasAttachment: sql<boolean> `exists(select 1 from attendance_correction_attachment f where f.attendance_correction_id=${correction.id})`, allowed: sql<boolean> `app.is_admin_for(${employment.companyId})` }).from(correction).innerJoin(employment, eq(employment.id, correction.employmentId)).innerJoin(person, eq(person.id, employment.personId)).innerJoin(company, eq(company.id, employment.companyId)).where(and(eq(correction.id, id), inArray(employment.companyId, companyIds))).limit(1);
-        if (!row?.allowed)
+        const row = await attendanceApplicationInScopeTx(tx, companyIds, id);
+        if (!row)
             return null;
         const workflow = await attendanceWorkflowForTx(tx, id);
         const events = await tx.select({ id: domainEvent.id, eventType: domainEvent.eventType, actorId: domainEvent.actorId, actorType: domainEvent.actorType, actorName: person.fullName, occurredAt: domainEvent.occurredAt, payload: domainEvent.payload }).from(domainEvent).leftJoin(appUser, eq(appUser.id, domainEvent.actorId)).leftJoin(person, eq(person.id, appUser.personId)).where(and(eq(domainEvent.subjectEmploymentId, row.application.employmentId), sql `(${domainEvent.aggregateId}=${id} OR (${domainEvent.payload}->>'correctionId')=${id})`)).orderBy(asc(domainEvent.occurredAt), asc(domainEvent.sequence), asc(domainEvent.id));
         const self = !!ctx.personId && ctx.personId === row.personId;
-        const [v2Authority] = (workflow?.routingVersion === 3 || workflow?.routingVersion === 4) ? [{ ok: workflow.currentParticipantSlot != null }] : workflow?.routingVersion === 2 ? await tx.execute(sql`select app.attendance_workflow_v2_decide(${id}::uuid) as ok`) as unknown as { ok: boolean }[] : [];
+        const canDecide = await attendanceApplicationCanDecideTx(tx, id, row.application.status, self, workflow);
         const review=await attendanceApplicationReviewTx(tx,{employmentId:row.application.employmentId,date:row.application.attendanceDate});
         const progress=await attendanceProgressTx(tx,workflow,row.application.status);
         const approverCodes=await attendanceApproverCodesTx(tx,[...([...(workflow?.stages??[]),...(workflow?.effectiveStages??[])].flatMap(stage=>stage.approvers.flatMap(actor=>actor.employmentId?[actor.employmentId]:[]))),...([...(workflow?.decisions??[]),...(workflow?.participantDecisions??[])].flatMap(record=>record.actualEmploymentId?[record.actualEmploymentId]:[]))]);
-        return { ...row, applicationType: attendanceApplicationType(row.application), workflow, events, review, progress, approverCodes, canReassign: !self && row.application.status === 'pending' && (workflow?.routingVersion === 2 || (workflow?.routingVersion === 3 || workflow?.routingVersion === 4)) && workflow.currentStage < workflow.stages.length, canDecide: !self && row.application.status === 'pending' && ((workflow?.routingVersion !== 2 && (workflow?.routingVersion !== 3 && workflow?.routingVersion !== 4)) || v2Authority?.ok === true), canCancel: !self && (row.application.status === 'pending' || row.application.status === 'approved') };
+        return { ...row, applicationType: attendanceApplicationType(row.application), workflow, events, review, progress, approverCodes, canReassign: !self && row.application.status === 'pending' && (workflow?.routingVersion === 2 || (workflow?.routingVersion === 3 || workflow?.routingVersion === 4)) && workflow.currentStage < workflow.stages.length, canDecide, canCancel: !self && (row.application.status === 'pending' || row.application.status === 'approved') };
     });
 }
 export function attendanceApplicationFilterOptions(ctx: SessionContext, companyIds: string[]) {

@@ -19,7 +19,7 @@ describe('ordinary v3/v4 admission and exact assignment keep unrelated detail lo
         expect(loaders).toContain("attendanceOnly||!include('leave') ? Promise.resolve([]) : listLeaveRequests");
         expect(loaders).toContain("attendanceOnly||!include('leaveCancellation') ? Promise.resolve([]) : listPendingLeaveCancellations");
         expect(loaders).toContain("attendanceOnly||!include('replacementLeave') ? Promise.resolve([]) : listPendingReplacementLeaveRequests");
-        expect(loaders).toContain("claimsOn && !attendanceOnly&&include('claim') ? listPendingClaims");
+        expect(loaders).toMatch(/claimsOn\s*&&\s*!attendanceOnly\s*&&\s*include\('claim'\)\s*\?\s*focus\s*\?\s*listPendingClaims\(s,\{requestId:focusedId\('claim'\)\}\)[^\n]*\n\s*:\s*listPendingClaimsPage\(/);
         expect(page).toContain('const own=!focus&&!attendanceOnly&&s.personId?await myOwnEmploymentSubjects');
     });
     it('proves exact assignment before any focus bypass and keeps the ordinary narrow v3/v4 presentation', () => {

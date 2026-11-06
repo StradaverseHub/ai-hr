@@ -13,7 +13,7 @@ beforeEach(()=>{vi.clearAllMocks();state.session.mockResolvedValue({personId:'ow
 describe('Home Today private transport',()=>{
  it('whitelists nested metadata and prevents shared caching',async()=>{
   const response=await request();expect(response.status).toBe(200);expect(response.headers.get('cache-control')).toBe('private, no-store');expect(response.headers.get('vary')).toContain('Cookie');
-  expect(JSON.stringify(await response.json())).not.toMatch(/secret|captures|latitude|salary|net/);expect(state.read).toHaveBeenCalledWith({personId:'own-person'},'own');
+  expect(JSON.stringify(await response.json())).not.toMatch(/secret|captures|latitude|salary|net/);expect(state.read).toHaveBeenCalledWith({personId:'own-person'},'own',expect.any(AbortSignal));
  });
  it.each(['','employmentId=','employmentId=own&employmentId=own','employmentId=own&role=admin','employmentId=own&lat=3'])('refuses selector/extra input %s',async query=>{expect((await request(query)).status).toBe(400);expect(state.read).not.toHaveBeenCalled();});
  it('returns an own-subject refusal without private error text',async()=>{state.read.mockRejectedValue(new HomeAccessError('employmentUnavailable'));const response=await request();expect(response.status).toBe(403);expect(await response.json()).toEqual({error:'employmentUnavailable'});});

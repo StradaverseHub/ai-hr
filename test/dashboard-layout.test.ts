@@ -17,6 +17,7 @@ import * as schema from '../db/schema';
 import {
   getDashboardLayout,
   getEmployeeHomePreferences,
+  getEmployeeHomeDisplayPreferences,
   setEmployeeHomePreferences,
   resetEmployeeHomePreferences,
   resetDashboardLayout,
@@ -309,10 +310,13 @@ describe('Home cosmetic preferences share the canonical dashboard owner',()=>{
     expect(await getEmployeeHomePreferences(ctx,HOME_CARDS)).toEqual(preferences);
     const raw=await rawLayout(ctx) as Record<string,unknown>;
     expect(raw.homeDisplay).toEqual({version:1,timeZone:'America/New_York',weekStartsOn:0});
+    expect(await getEmployeeHomeDisplayPreferences(ctx)).toEqual({timeZone:'America/New_York',weekStartsOn:0});
     expect(raw).not.toHaveProperty('hiddenCards');expect(raw).not.toHaveProperty('cardOrder');
     expect((await getDashboardLayout(ctx,HOME_CARDS,'employee')).selected).not.toContain('tasks');
     expect((await getDashboardLayout(ctx,managerCards,'manager')).selected).toEqual(['teamAwayToday']);
     expect(await getEmployeeHomePreferences(other,HOME_CARDS)).toEqual(defaultEmployeeHomePreferences());
+    const {timeZone,weekStartsOn}=defaultEmployeeHomePreferences();
+    expect(await getEmployeeHomeDisplayPreferences(other)).toEqual({timeZone,weekStartsOn});
     await resetEmployeeHomePreferences(ctx);
     expect(await getEmployeeHomePreferences(ctx,HOME_CARDS)).toEqual(defaultEmployeeHomePreferences());
     expect((await getDashboardLayout(ctx,managerCards,'manager')).selected).toEqual(['teamAwayToday']);
@@ -344,6 +348,8 @@ describe('Home cosmetic preferences share the canonical dashboard owner',()=>{
   it('falls back on corrupt stored display data without overwriting it during read or another role save',async()=>{
     const ctx=await newEmployeeCtx(),invalid={version:99,timeZone:'invalid/timezone',weekStartsOn:9};
     await withRawSeam(ctx,{homeDisplay:invalid});
+    const {timeZone,weekStartsOn}=defaultEmployeeHomePreferences();
+    expect(await getEmployeeHomeDisplayPreferences(ctx)).toEqual({timeZone,weekStartsOn});
     expect(await getEmployeeHomePreferences(ctx,HOME_CARDS)).toEqual(defaultEmployeeHomePreferences());
     expect(await rawLayout(ctx)).toEqual({homeDisplay:invalid});
     await setDashboardLayout(ctx,{selected:['teamAwayToday'],order:['teamAwayToday']},BUILTIN_ROLE_DASHBOARD_CARDS.manager,'manager');

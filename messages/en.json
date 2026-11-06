@@ -803,7 +803,8 @@
       "placeholder": "Search employee ID or name…",
       "resultsLabel": "Employee search results",
       "noMatches": "No employee matches that.",
-      "currentTag": "Current"
+      "currentTag": "Current",
+      "loadFailed": "Employee search could not be loaded. Try again."
     },
     "detail": {
       "incentiveDeclarations": {
@@ -4770,6 +4771,33 @@
       "active": "Active",
       "probation": "Probation",
       "notice": "Notice"
+    },
+    "explorer": {
+      "hint": "Explore a large organization one section at a time. Search reaches everyone in your selected companies.",
+      "topLevel": "Top level",
+      "allPeople": "All people",
+      "search": "Search",
+      "searchResults": "Search results",
+      "reports": "Direct reports",
+      "managers": "Managers",
+      "connections": "All connections",
+      "history": "Visited people",
+      "loading": "Loading organization…",
+      "loaded": "Loaded {loaded} on this page · {total} matching results · {people} people in your selected companies",
+      "accessChanged": "Your access changed. Reload to continue.",
+      "changed": "The organization changed. Refresh this section to continue.",
+      "failed": "This section could not load. Please try again.",
+      "refresh": "Reload",
+      "retry": "Try again",
+      "multipleAssignments": "Multiple current assignments",
+      "profile": "View profile",
+      "relationships": "Reporting relationships",
+      "outsideScope": "Connection outside your selected companies",
+      "incoming": "Reports to this person",
+      "outgoing": "This person reports to",
+      "explore": "Explore",
+      "back": "Back",
+      "next": "Next page"
     }
   },
   "me": {
@@ -5445,7 +5473,7 @@
     "submitDecisions": "Submit",
     "employeeRemark": "Employee remark",
     "closeDialog": "Close",
-    "bulkSelectAll": "Select all",
+    "bulkSelectAll": "Select all on this page",
     "bulkSelectRow": "Select request",
     "bulkSelected": "Selected: {count, plural, one {# request} other {# requests}}",
     "bulkClear": "Clear",
