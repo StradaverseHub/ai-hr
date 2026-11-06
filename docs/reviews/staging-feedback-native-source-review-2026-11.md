@@ -62,6 +62,20 @@ approved records. Historical reviewer, evidence and review timestamps are
 preserved. Pending records, disclosure contracts and the admission logic stay
 as before. This is the exact-source decision record for the staging refresh.
 
+### Installed Personnel integration
+
+On 6 November 2026 the repository owner approved binding the same 28 contracts
+to `13a58dbab7ecea03cefdbb4761dee841c50905d4084617a3e8df0e2e7436297c` for fictional-data staging verification in the feedback-board chat.
+The reviewed combined source is `26d6f2f28c8541391330753a4dd99f0745a581a3`.
+Compared with the earlier feedback approval, only `core/read.ts` changed within
+the provider closure. It defers Personnel company filter reads and preserves
+authorized projections. Contracts, transport, historical review metadata and
+pending dispositions are unchanged. This approval covers fictional-data staging only.
+
+The combined candidate preserves all 699 verified ledger entries of installed
+source `b29d13e4c5a36062158db5cf2582bbc15eea1e49` and appends the three feedback
+migrations. The earlier Personnel acceptance failure is a separate record.
+
 ## Reward Desk evidence
 
 Reference: `Reward-Desk-offline-v3_3.html`, submitted on the Rewards parity report,
