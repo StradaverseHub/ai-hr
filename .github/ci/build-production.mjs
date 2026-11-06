@@ -54,14 +54,24 @@ export function assertCiCandidateBuildInvocation(e){
   if(e[key]!=='postgres://nobody:nothing@127.0.0.1:1/no_database')fail('CI candidate build database must remain closed');
  return true;
 }
+const archiveDiagnosticBranch='codex/architecture-build-dedup-20261107';
+const archiveDiagnosticRef='StradaverseHub/ai-hr/.github/workflows/alpha-staging-diagnostics.yml@refs/heads/'+archiveDiagnosticBranch;
+
+export function diagnosticBuildBranch(environment){
+ return environment.GITHUB_WORKFLOW_REF===archiveDiagnosticRef?archiveDiagnosticBranch:'codex/test-suite-efficiency-review-20261025';
+}
+
 export function assertDiagnosticBuildInvocation(environment){
  assertBuildIdentity(environment);
  const original=environment.GITHUB_WORKFLOW_REF==='StradaverseHub/ai-hr/.github/workflows/alpha-staging-diagnostics.yml@refs/heads/codex/test-suite-efficiency-review-20261025'&&environment.AIHR_NEXT_BUILD_CACHE_MODE===undefined;
+ const archive=environment.GITHUB_WORKFLOW_REF===archiveDiagnosticRef&&environment.AIHR_NEXT_BUILD_CACHE_MODE===undefined
+  &&['build-transport-producer','build-transport-consumer'].includes(environment.GITHUB_JOB)
+  &&['DATABASE_URL','MIGRATION_DATABASE_URL','TEST_DATABASE_URL','TEST_MIGRATION_DATABASE_URL'].every(key=>environment[key]==='postgres://nobody:nothing@127.0.0.1:1/no_database');
  const cache=environment.GITHUB_WORKFLOW_REF==='StradaverseHub/ai-hr/.github/workflows/alpha-staging-diagnostics.yml@refs/heads/codex/test-suite-efficiency-review-20261025'&&environment.GITHUB_JOB==='next-build-cache'&&['cold','warm','recover'].includes(environment.AIHR_NEXT_BUILD_CACHE_MODE);
  if(environment.CI!=='true'||environment.RUNNER_ENVIRONMENT!=='github-hosted'||environment.GITHUB_EVENT_NAME!=='workflow_dispatch'
   ||environment.AIHR_CI_HEAD!==environment.AIHR_CI_CONTROL_HEAD||environment.AIHR_BUILD_DIAGNOSTIC!=='transport-producer'
   ||typeof environment.RUNNER_NAME!=='string'||!environment.RUNNER_NAME.length||environment.RUNNER_NAME.length>200
-  ||!(original||cache))fail('manual diagnostic producer identity');
+  ||!(original||cache||archive))fail('manual diagnostic producer identity');
  return true;
 }
 

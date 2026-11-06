@@ -11,7 +11,7 @@ import {Transform} from 'node:stream';
 import {pipeline} from 'node:stream/promises';
 import {isDeepStrictEqual} from 'node:util';
 import {brotliDecompressSync} from 'node:zlib';
-import {assertBuildRuntime,assertDiagnosticBuildInvocation,assertSuccessfulObservation,BUILD_CAPACITY_PROFILE,assertBuildCapacityProfile,assertBuildPacketAggregate} from './build-production.mjs';
+import {assertBuildRuntime,assertDiagnosticBuildInvocation,diagnosticBuildBranch,assertSuccessfulObservation,BUILD_CAPACITY_PROFILE,assertBuildCapacityProfile,assertBuildPacketAggregate} from './build-production.mjs';
 
 import {assertCiTransportInvocation,validateCiTransportRefs,validateCiTransportConsumerRun,validateCiTransportMetadata,validateCiTransportProvenance} from './ci-build-transport-policy.mjs';
 
@@ -45,7 +45,7 @@ export function validateTransportMetadata({run,jobs,artifact},env){
  const runId=originRunId(env),artifactId=Number(env.AIHR_BUILD_ARTIFACT_ID);
  requireValue(Number.isSafeInteger(artifactId)&&artifactId>0,'artifact selector');
  requireValue(run.id===runId&&run.run_attempt===1&&run.event==='workflow_dispatch'&&run.head_sha===env.AIHR_CI_HEAD
-  &&run.path===WORKFLOW&&run.head_branch==='codex/test-suite-efficiency-review-20261025'
+  &&run.path===WORKFLOW&&run.head_branch===diagnosticBuildBranch(env)
   &&run.repository?.full_name===REPO&&run.repository.id===1333414856,'authenticated run identity');
  const producers=jobs.filter(j=>j.name==='build-transport-producer');
  requireValue(producers.length===1,'unique producer job');
@@ -193,7 +193,7 @@ export async function consumeBuild({source=process.cwd(),output=join(process.env
   }else{
    run=api('actions/runs/'+originRunId(env));jobsResponse=api('actions/runs/'+originRunId(env)+'/attempts/1/jobs?per_page=100');
    consumerRun=api('actions/runs/'+env.GITHUB_RUN_ID);
-   requireValue(consumerRun.id===Number(env.GITHUB_RUN_ID)&&consumerRun.run_attempt===1&&consumerRun.event==='workflow_dispatch'&&consumerRun.head_sha===env.AIHR_CI_CONTROL_HEAD&&consumerRun.path===WORKFLOW&&consumerRun.head_branch==='codex/test-suite-efficiency-review-20261025'&&consumerRun.repository?.full_name===REPO&&consumerRun.repository.id===1333414856,'authenticated consumer run identity');
+   requireValue(consumerRun.id===Number(env.GITHUB_RUN_ID)&&consumerRun.run_attempt===1&&consumerRun.event==='workflow_dispatch'&&consumerRun.head_sha===env.AIHR_CI_CONTROL_HEAD&&consumerRun.path===WORKFLOW&&consumerRun.head_branch===diagnosticBuildBranch(env)&&consumerRun.repository?.full_name===REPO&&consumerRun.repository.id===1333414856,'authenticated consumer run identity');
    requireValue(jobsResponse.total_count===jobsResponse.jobs.length&&jobsResponse.jobs.length<100,'bounded complete jobs inventory');
    artifact=api('actions/artifacts/'+env.AIHR_BUILD_ARTIFACT_ID);
    producer=validateTransportMetadata({run,jobs:jobsResponse.jobs,artifact},env);

@@ -36,6 +36,17 @@ test('diagnostic producer uses its actual manual workflow identity and cannot sa
  for(const [key,value]of Object.entries({CI:'false',RUNNER_ENVIRONMENT:'self-hosted',GITHUB_EVENT_NAME:'push',AIHR_CI_HEAD:'c'.repeat(40),AIHR_BUILD_DIAGNOSTIC:'other',RUNNER_NAME:'',GITHUB_WORKFLOW_REF:e.GITHUB_WORKFLOW_REF.replace('review-20261025','other')}))assert.throws(()=>assertDiagnosticBuildInvocation({...e,[key]:value}));
 });
 
+test('archive qualification admits only its manual, database-closed producer and consumer',()=>{
+ const e={...environment,AIHR_CI_HEAD:environment.AIHR_CI_CONTROL_HEAD,CI:'true',RUNNER_ENVIRONMENT:'github-hosted',GITHUB_EVENT_NAME:'workflow_dispatch',
+  AIHR_BUILD_DIAGNOSTIC:'transport-producer',RUNNER_NAME:'GitHub Actions fixture',
+  GITHUB_WORKFLOW_REF:'StradaverseHub/ai-hr/.github/workflows/alpha-staging-diagnostics.yml@refs/heads/codex/architecture-build-dedup-20261107',
+  ...Object.fromEntries(['DATABASE_URL','MIGRATION_DATABASE_URL','TEST_DATABASE_URL','TEST_MIGRATION_DATABASE_URL'].map(key=>[key,'postgres://nobody:nothing@127.0.0.1:1/no_database']))};
+ for(const GITHUB_JOB of ['build-transport-producer','build-transport-consumer'])assert.equal(assertDiagnosticBuildInvocation({...e,GITHUB_JOB}),true);
+ const producer={...e,GITHUB_JOB:'build-transport-producer'};
+ assert.throws(()=>assertBuildInvocation(producer));
+ for(const changes of [{GITHUB_JOB:'build'},{DATABASE_URL:'postgres://localhost/live'},{AIHR_CI_HEAD:'c'.repeat(40)},{GITHUB_EVENT_NAME:'push'}])assert.throws(()=>assertDiagnosticBuildInvocation({...producer,...changes}));
+});
+
 test('new canonical-build diagnostic cannot satisfy release or unrelated diagnostic contexts',()=>{
  const e={...environment,AIHR_CI_HEAD:environment.AIHR_CI_CONTROL_HEAD,CI:'true',RUNNER_ENVIRONMENT:'github-hosted',GITHUB_EVENT_NAME:'workflow_dispatch',AIHR_BUILD_DIAGNOSTIC:'transport-producer',RUNNER_NAME:'GitHub Actions fixture',
  GITHUB_WORKFLOW_REF:'StradaverseHub/ai-hr/.github/workflows/alpha-staging-diagnostics.yml@refs/heads/codex/test-suite-efficiency-review-20261025',GITHUB_JOB:'next-build-cache',AIHR_NEXT_BUILD_CACHE_MODE:'cold'};
