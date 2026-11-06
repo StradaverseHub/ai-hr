@@ -33,8 +33,6 @@ export type OrgAssignment = {
     employmentType?: string;
 };
 export type JobInput = {
-    jobUnitId?: string;
-    companyVariant?: boolean;
     companyId: string;
     jobCode: string;
     title: string;
@@ -47,7 +45,7 @@ export type JobInput = {
     approverId: string;
     reviewerIds: string[];
 };
-export const STATUSES = ['draft', 'submitted', 'approved', 'superseded', 'inactive'] as const;
+export const STATUSES = ['draft', 'submitted', 'approved', 'inactive'] as const;
 export type JobStatus = typeof STATUSES[number];
 export class JobDocumentError extends Error {
     constructor(message: string) { super(message); this.name = 'JobDocumentError'; }

@@ -34,10 +34,13 @@ export const APPROVED_UPGRADE_TAIL=[
  {idx:1420,when:1793330001620,tag:'2208_rewards_uploaded_awards'},
  {idx:1421,when:1793330001621,tag:'2209_company_registration_classification'},
  {idx:1422,when:1793330001622,tag:'2211_company_retention_approved_expansion'},
+ {idx:1450,when:1793330001650,tag:'2250_rewards_whole_group_grants'},
+ {idx:1451,when:1793330001651,tag:'2251_company_display_group'},
+ {idx:1500,when:1793330001700,tag:'2300_retire_job_architecture_workflows'},
  // ADR-0174 follow-up: every definer path ends with pg_temp, and the remaining company references keep their tenant.
- {idx:1440,when:1793330001640,tag:'2240_definer_search_path_pin'},
- {idx:1441,when:1793330001641,tag:'2241_company_reference_tenant_fk_not_valid'},
- {idx:1442,when:1793330001642,tag:'2242_company_reference_tenant_fk_validate'},
+ {idx:1600,when:1793330001800,tag:'2400_definer_search_path_pin'},
+ {idx:1601,when:1793330001801,tag:'2401_company_reference_tenant_fk_not_valid'},
+ {idx:1602,when:1793330001802,tag:'2402_company_reference_tenant_fk_validate'},
 ] as const;
 // Final pending 2109/2126 bytes reviewed from engine 128bc2539; no applied-prefix hashes change.
 const APPROVED_UPGRADE_HASHES:Record<string,string>={
@@ -64,9 +67,12 @@ const APPROVED_UPGRADE_HASHES:Record<string,string>={
  '2208_rewards_uploaded_awards':'97012d64969a58fe52f611aee883d61822e3021d5ed49bccac276f217119eefb',
  '2209_company_registration_classification':'9685fcef72990612baedf333b4af3fe8c4d3e0a6ebe9611bcc7eabea466ad0e0',
  '2211_company_retention_approved_expansion':'5e336a948b9490d9355eba65d6f341618334a031c7bdc66562ed9139b7c5f0c4',
- '2240_definer_search_path_pin':'c5ded8ca417c4d007f554bf1b2c2ae921137ad52607d87a51e222140cbca0198',
- '2241_company_reference_tenant_fk_not_valid':'37da9438cd8e81f71bada50e523b314c67ef150ce1921abf61862cb4e6c2e684',
- '2242_company_reference_tenant_fk_validate':'88376b2bf6fde6e10d6a08fc577397ee76a057e662be188a0efb136812f655a4',
+ '2250_rewards_whole_group_grants':'dc3437a768104a0be69f38adc395d7d814efb01f0feb66d7fc1af84c971f9e27',
+ '2251_company_display_group':'3015af6a8183b9e01fbb42c165fe2ce83eb6d167d0b7cd61210144cd6d292a8a',
+ '2300_retire_job_architecture_workflows':'0baf5adae50036cb20634ec362c1302b8c6c45f38ec8610f68e5c1bdc9ebedda',
+ '2400_definer_search_path_pin':'9d650b032c52171869ca270f3d718dc813091bac8896254380bf4232db5ec018',
+ '2401_company_reference_tenant_fk_not_valid':'26796e4dc9238c9232d9a2271b9a972215d043ddfc723c54585b54dea6c7d965',
+ '2402_company_reference_tenant_fk_validate':'e31b5a4b6567fd7f32a616a9ce7d59c68697faad87dfed689b6745aa5c0f4e28',
 };
 export function assertApprovedUpgradeTail(entries:{idx:number;when:number;tag:string}[]){
  expect(entries).toHaveLength(671+APPROVED_UPGRADE_TAIL.length);
@@ -132,6 +138,8 @@ export async function migrateApprovedUpgrade(db:Database):Promise<ApprovedUpgrad
   });
   expect(await table(db,'public.access_group')).toEqual(groups);expect(await table(db,'public.app_user')).toEqual(users);
   await migrate(db.db,{migrationsFolder:'db/migrations'});
+  expect(await db.client`select id from public.company where display_group_field is not null or display_group_option_id is not null`).toEqual([]);
+  expect(await db.client`select user_id from public.reward_group_role_grant`).toEqual([]);
   expect(await table(db,'public.domain_event')).toEqual(eventsAfter);
   expect(await table(db,'public.access_group_grant')).toEqual(groupAfter);expect(await table(db,'public.access_user_override')).toEqual(overrideAfter);
   expect(await table(db,'public.access_configuration')).toEqual(configsAfter);expect(await table(db,'app.access_profile_write_generation')).toEqual(generationsAfter);
@@ -148,6 +156,10 @@ export function retainedUpgradeRows(name:string,rows:unknown[],witness?:Approved
   const field=wrapper&&typeof wrapper==='object'&&Object.keys(wrapper).length===1&&('row' in wrapper||'value' in wrapper)?('row' in wrapper?'row':'value'):null;
   const row=(field?wrapper[field]:parsed) as Row;
   let normalized=row;
+  if(tableName==='company'&&row.display_group_field===null&&row.display_group_option_id===null){
+   const {display_group_field:_field,display_group_option_id:_option,...original}=row;
+   normalized=original;
+  }
   if(witness){
    const additions=tableName==='domain_event'||tableName==='audit'?witness.events:tableName==='access_group_grant'?witness.grants:tableName==='access_user_override'?witness.overrides:[];
    const added=additions.find(value=>value.id===row.id);

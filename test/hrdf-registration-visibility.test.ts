@@ -156,9 +156,10 @@ describe('(c) Organization — the companies with no statutory record are listed
     expect(PAGE).toContain("t('registration.levyHint')");
   });
 
-  it('shows a read-only alert linked to the missing-registration filter', () => {
-    const card = PAGE.match(/\{missingStatutory\.length\s*>\s*0\s*&&\s*(<div role="status"[\s\S]*?<\/div>)\}/)?.[1];
+  it('shows read-only registration details linked to the missing-registration filter', () => {
+    const card = PAGE.match(/\{missingStatutory\.length\s*>\s*0\s*&&\s*\(\s*(<details\b[\s\S]*?<\/details>)/)?.[1];
     expect(card).toBeDefined();
+    expect(card).toContain("missingStatutory.map");
     expect(card).toContain('href="/admin/organization?statutory=missing"');
     expect(card).not.toContain('<form');
     expect(card).not.toContain('Action');

@@ -44,6 +44,7 @@ export type CompanyRow = {
   archived: boolean;
   statutoryStatus?: CompanyRegistrationStatus;
   activeEmployees?: number;
+  displayGroup?: string;
 };
 
 /** Sort keys are a CLOSED set — an unknown `?sort=` falls back to name rather than throwing or
@@ -151,6 +152,7 @@ export function CompanyRows({
   rows,
   labels,
   archiveAction,
+  showDisplayGroup = false,
   basePath = '/admin/organization',
 }: {
   rows: readonly CompanyRow[];
@@ -167,11 +169,12 @@ export function CompanyRows({
   /** The server action behind the Archive / Unarchive button. Bound by the page that owns the route. */
   archiveAction: (fd: FormData) => void | Promise<void>;
   basePath?: string;
+  showDisplayGroup?: boolean;
 }) {
   if (rows.length === 0) {
     return (
       <tr>
-        <td colSpan={labels.registration?7:6} className="px-3 py-8 text-center text-sm text-muted-foreground">
+        <td colSpan={6 + Number(!!labels.registration) + Number(showDisplayGroup)} className="px-3 py-8 text-center text-sm text-muted-foreground">
           {labels.empty}
         </td>
       </tr>
@@ -195,6 +198,7 @@ export function CompanyRows({
               {r.statutoryStatus==='missing' && <Link href={`${basePath}/${r.id}?tab=statutory`} className="inline-flex min-h-11 items-center text-xs text-primary underline underline-offset-2 sm:min-h-7">{labels.registration.completeAction}</Link>}
             </div>
           </td>}
+          {showDisplayGroup && <td className="px-3 py-2 text-muted-foreground">{r.displayGroup ?? '—'}</td>}
           <td className="px-3 py-2 text-muted-foreground">{r.parentName ?? '—'}</td>
           <td className="px-3 py-2">
             <span

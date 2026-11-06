@@ -2,5 +2,3 @@
 export * from './owner';
 export * from './model';
 export { exportJobText } from './export';
-
-export {renderJobDescriptionPdf} from './pdf';

@@ -58,7 +58,7 @@ export function navigationPlacement(href:string):NavigationPlacement | undefined
   if(path.startsWith('/letters/settings'))return modulePlacement('eLetter','config');
   if(path.startsWith('/letters'))return modulePlacement('eLetter','hr');
   if(path==='/manage/my-team')return modulePlacement('people','team');
-  if(path.startsWith('/admin/personnel')||path.startsWith('/admin/job-descriptions')||path==='/admin/job-architecture'||path==='/admin/notice-board')return modulePlacement('people','hr');
+  if(path.startsWith('/admin/personnel')||path.startsWith('/admin/job-descriptions')||path==='/admin/notice-board')return modulePlacement('people','hr');
   // Issue 17: every /control-tower page (Operations, and Administration under /control-tower/agents) renders inside
   // AI Centre, so it is placed with the shared AI Centre row, which owns these addresses in the sidebar.
   if(path==='/control-tower'||path.startsWith('/control-tower/'))return {area:'shared'};
@@ -83,7 +83,7 @@ export function navigationPlacement(href:string):NavigationPlacement | undefined
   // Performance admin: the cycle list (no cycle yet) and the admin area of one cycle, /performance/<cycle>/….
   if(path==='/performance'||PERFORMANCE_CYCLE_PATH.test(path))return modulePlacement('performanceAdmin','hr');
   if(path.startsWith('/performance'))return modulePlacement('performance','mine');
-  if(path.startsWith('/admin/rewards'))return modulePlacement('rewards','config');
+  if(path==='/rewards/rules'||path.startsWith('/admin/rewards'))return modulePlacement('rewards','config');
   if(path.startsWith('/rewards'))return modulePlacement('rewards','mine');
   if(path==='/analytics'||path.startsWith('/reports'))return modulePlacement('workforceInsights','hr');
   return undefined;

@@ -55,6 +55,13 @@ async function labelsTx(tx:Tx,v:InformationValues):Promise<InformationValues>{
  const [grade]=v.gradeId?await tx.select({name:jobGrade.name}).from(jobGrade).where(eq(jobGrade.id,v.gradeId)):[];
  return {...v,companyId:co?.name??v.companyId,gradeId:grade?.name??v.gradeId};
 }
+/** Loading the form may expose invalid legacy values so the user can correct them. */
+export function readInformationCorrection(ctx:SessionContext,employmentId:string){
+ return withTenant(ctx,async tx=>{
+  const state=await stateTx(tx,ctx,employmentId),before=values(state),beforeLabels=await labelsTx(tx,before);
+  return {effectiveOn:todayInKualaLumpur(),before,beforeLabels};
+ });
+}
 async function validateTx(tx:Tx,ctx:SessionContext,s:Awaited<ReturnType<typeof stateTx>>,changes:InformationChanges){
  const before=values(s),after={...before};
  for(const field of INFORMATION_FIELDS){const value=changes[field];if(value!==undefined){if(typeof value!=='string'||!value.trim())fail('Empty correction values cannot clear existing information.');after[field]=value.trim();}}

@@ -2,7 +2,6 @@ Use [My Workspace](/me) for personal information and [My performance](/me/perfor
 
 ## View your job description
 
-Open [My job description](/me/job-description) from your profile to see the approved description for your current position. If you have more than one employment, choose the one you want to view. If the description is missing or your position looks wrong, ask HR to check the position assignment.
 
 ## Update personal information
 

@@ -1,4 +1,4 @@
-import type { PayslipAbsenceLines } from './payslip-absence-lines';
+import { payslipAbsenceLines, type PayslipAbsenceLines } from './payslip-absence-lines';
 /**
  * b240c0ff — THE PAY ITEM LINES AN IMPORTED PAYROLL-HISTORY MONTH KEEPS, and how a payslip surface reads them.
  *
@@ -16,9 +16,12 @@ import type { PayslipAbsenceLines } from './payslip-absence-lines';
  * Pure and DB-free (client-safe), like core/payslip-earning-lines.ts beside it.
  */
 import {
+  groupNamedPayItemLines,
   payItemLinesForBuckets,
   payItemLinesReconcile,
   storedComponentLines,
+  restorePayItemQuantities,
+  type PayslipQuantitySource,
   type NamedPayItemLine,
   type StoredComponentLine,
 } from './payslip-earning-lines';
@@ -41,15 +44,40 @@ export function displayComponentLines(statutory: unknown): StoredComponentLine[]
 
 /** Named saved deduction items shared by History, Review and the PDF. Replace a grouped residual only
  * when their stored contributions reconcile; the named absence carve is applied once on every surface. */
-export function deductionLinesFor(statutory: unknown, residual: unknown, absence?: PayslipAbsenceLines): NamedPayItemLine[] {
+export function deductionLinesFor(statutory: unknown, residual: unknown, absence?: PayslipAbsenceLines, sources: readonly PayslipQuantitySource[] = []): NamedPayItemLine[] {
   const lines = payItemLinesForBuckets(displayComponentLines(statutory), ['deduct']);
-  if (payItemLinesReconcile(lines, residual)) return lines;
-  // Same carve as History: a named absence row already owns this money. Never print it twice.
-  const remaining = [...lines];
-  for (const named of [absence?.unpaidLeave, absence?.absent]) {
+  // Group ABSENT separately from unrelated deductions and preserve their order.
+  const recorded = restorePayItemQuantities(lines, sources, 'deduction').map(line => {
+    if (line.code !== 'ABSENT' || line.detail || line.inputQuantity?.unit !== null) return line;
+    return { ...line, inputQuantity: { qty: line.inputQuantity.qty, unit: 'days' as const } };
+  });
+  const items = groupNamedPayItemLines(recorded, 'ABSENT');
+  if (payItemLinesReconcile(items, residual)) return items;
+  // A named stamp can already account for a saved component. Confirm the
+  // remaining total before suppressing that component.
+  const remaining = [...items];
+  for (const [code, named] of [['UPL', absence?.unpaidLeave], ['ABSENT', absence?.absent]] as const) {
     if (!named) continue;
-    const at = remaining.findIndex(line => Math.round(line.amount * 100) === Math.round(named.amount * 100));
+    const at = remaining.findIndex(line => line.code === code && Math.round(line.amount * 100) === Math.round(named.amount * 100));
     if (at >= 0) remaining.splice(at, 1);
   }
-  return remaining.length < lines.length && payItemLinesReconcile(remaining, residual) ? remaining : [];
+  return remaining.length < items.length && payItemLinesReconcile(remaining, residual) ? remaining : [];
+}
+
+/** Present a single Absent row when both the stamp and a separate paid
+ * ABSENT component contribute to the same slip. The residual was reconciled
+ * independently before the stamp is moved into the itemized rows. */
+export function payslipDeductionBreakdown(statutory: unknown, otherDeductions: unknown, sources: readonly PayslipQuantitySource[] = []) {
+  const absence = payslipAbsenceLines(statutory, otherDeductions);
+  const deductionLines = deductionLinesFor(statutory, absence.residual, absence, sources);
+  if (!absence.absent || !deductionLines.some(line => line.code === 'ABSENT')) return { absence, deductionLines };
+
+  const { days, amount } = absence.absent;
+  return {
+    absence: { ...absence, absent: null, residual: Math.round((absence.residual + amount) * 100) / 100 },
+    deductionLines: groupNamedPayItemLines([
+      ...deductionLines,
+      { code: 'ABSENT', name: '', amount, ...(days > 0 ? { inputQuantity: { qty: days, unit: 'days' as const } } : {}) },
+    ], 'ABSENT'),
+  };
 }

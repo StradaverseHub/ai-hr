@@ -43,7 +43,8 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
  const native=async()=>{
   const rows:Record<string,unknown>={};
   for(const table of ['tenant','company','person','app_user','role_assignment','department','position','cost_center','location','employment']){
-   rows[table]=await storage.client.unsafe(`select to_jsonb(t) as row from public.${table} t where ${table==='tenant'?'id':'tenant_id'}=any($1::uuid[]) order by to_jsonb(t)::text`,[[tenantA,tenantB]]);
+   const facts=table==='company'?"to_jsonb(t)-ARRAY['display_group_field','display_group_option_id']":"to_jsonb(t)";
+   rows[table]=await storage.client.unsafe(`select ${facts} as row from public.${table} t where ${table==='tenant'?'id':'tenant_id'}=any($1::uuid[]) order by to_jsonb(t)::text`,[[tenantA,tenantB]]);
   }
   return rows;
  };
@@ -135,7 +136,7 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    'reward_pat_version', 'reward_plan_company', 'reward_setup_grant',
   ];
   const expansionNames = new Set(expansionRelations.map(rel => rel + '_company_tenant_fk'));
-  // The ADR-0174 follow-up (2241/2242) keys the seven company references not called company_id.
+  // The ADR-0174 follow-up (2401/2402) keys the seven company references not called company_id.
   const followUp = [
    ['company', 'company_parent_company_tenant_fk'], ['notice', 'notice_owner_company_tenant_fk'],
    ['overtime_pattern', 'overtime_pattern_creation_company_tenant_fk'],

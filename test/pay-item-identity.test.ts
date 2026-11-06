@@ -30,6 +30,7 @@ import {
   payItemLabel,
   payItemLinesForBuckets,
   payItemLinesReconcile,
+  payslipOvertimeLines,
   recordLineIdentity,
   storedComponentLines,
 } from '../core/payslip-earning-lines';
@@ -37,6 +38,22 @@ import { payslipSkbbkLineShown, payslipSkbbkSubject } from '../core/payslip-skbb
 import { buildPayslipPdfData } from '../lib/payslip-pdf';
 import { deriveHistoryBreakdown } from '../app/payroll/transaction-view/history-breakdown';
 import type { ProcessedPayslipViewRow } from '../core/payroll-view';
+
+it('restores the saved overtime label and hours when the original lines lack a display category', () => {
+  const lines = Array.from({ length: 14 }, () => ({
+    code: 'OT1_5', name: 'Overtime 1.5', amount: 4.33, buckets: [{ bucket: 'bonus', amount: 4.33 }],
+  }));
+  const sources = lines.map(() => ({
+    componentCode: 'OT1_5', consumedByThisRun: true, quantityEvidenceCurrent: true,
+    kind: 'earning', amount: '4.33', quantity: '1', unit: 'hours',
+  }));
+
+  expect(payslipOvertimeLines(lines, { displayEarnings: { overtime: 60.62, bonus: 0 } }, sources)).toEqual([
+    { code: 'OT1_5', name: 'Overtime 1.5', amount: 60.62, inputQuantity: { qty: 14, unit: 'hours' } },
+  ]);
+  expect(payslipOvertimeLines(lines, { displayEarnings: { overtime: 60.62, bonus: 60.62 } }, sources)).toEqual([]);
+  expect(payslipOvertimeLines(lines, {}, sources)).toEqual([]);
+});
 
 /**
  * A0002's January payslip, in the shape production stores it: a one-off keyed as B0001 / ANGPOW that the
@@ -336,7 +353,7 @@ describe('every payroll-result surface asks before it itemises (6b134681)', () =
     const breakdown = code('app/payroll/transaction-view/history-breakdown.ts');
     expect(breakdown).toContain('payItemLinesReconcile(lines, total) ? lines : []');
     // 5a5309d5 — the source falls back to the attendance legs; the gate is the same.
-    expect(breakdown).toContain('overtimeLines: reconciled(overtimeSourceLines(componentLines, row.statutory), disp.overtime)');
+    expect(breakdown).toContain('overtimeLines: reconciled(payslipOvertimeLines(componentLines, row.statutory, sources).map(asSubLine), disp.overtime)');
     expect(breakdown).toContain("bonusLines: reconciled(payItemLinesForCategory(componentLines, 'bonus').map(asSubLine), disp.bonus)");
 
     // THE MISS ITSELF: mapping `componentsByBucket.ot` / `.bonus` beside a figure that comes from

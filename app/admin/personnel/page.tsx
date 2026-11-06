@@ -1,7 +1,7 @@
 import {personnelPrivateSearchAvailable} from '@/core/personnel-private-search';
 import { organisationChoiceLabels } from '@/lib/organisation-choice-label';
-import {PersonnelReadBusyError, withPersonnelRead} from '@/core/personnel-read-bounds';
-import {workforceCompanies} from '@/core/workforce-access';
+import {PersonnelReadBusyError} from '@/core/personnel-read-bounds';
+import {personnelMaintenanceCompanyIds} from '@/core/workforce-access';
 import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
 import { PROFILE_REQUEST_OPTION_NAMESPACE } from '@/lib/profile-requestable-fields';
@@ -138,7 +138,7 @@ async function renderPersonnelPage(sp: PersonnelSearchParams) {
   // Employee Status redesign (R43 c26c3ce5): the People list shows the SYSTEM-DERIVED status (from each
   // employee's lifecycle dates + blacklist override), not the legacy stored assignment.status.
   const workforceIds=new Set(companyIds);
-  const maintainIds=new Set(await withPersonnelRead(session, tx => workforceCompanies(session, 'maintain', tx)));
+  const maintainIds=new Set(await personnelMaintenanceCompanyIds(session));
   const today = todayInKualaLumpur();
   const isAdmin = (session.roles ?? []).some((r) => r === 'hr_admin' || r === 'super_admin');
   const canCreate=isAdmin&&maintainIds.size>0;

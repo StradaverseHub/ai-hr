@@ -14,6 +14,7 @@ describe('Ops and Strata placement never grants authority',()=>{
  });
  it.each([
   ['/lifecycle/probation','ops','probation','hr'],['/lifecycle/probation/case/part','ops','probation','hr'],['/lifecycle/probation/workflows','ops','probation','config'],['/lifecycle/contracts','ops','contracts','hr'],['/lifecycle/contracts/templates','ops','contracts','config'],
+  ['/rewards','strata','rewards','mine'],['/rewards/analytics','strata','rewards','mine'],['/rewards/rules','strata','rewards','config'],
   ['/personnel','ops','people','mine'],['/admin/personnel','ops','people','hr'],
   // 7baeb78e — letters belong to the E-Letter module, not People.
   ['/me/letters','ops','eLetter','mine'],['/letters/templates','ops','eLetter','hr'],['/letters/register/abc','ops','eLetter','hr'],['/letters/settings/policy','ops','eLetter','config'],

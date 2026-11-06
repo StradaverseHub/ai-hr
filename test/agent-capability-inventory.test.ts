@@ -89,7 +89,6 @@ describe('ADR-0151 agent capability inventory',()=>{
    ['app/payroll/actions.ts','resetAction','registered:payroll.reset'],
    ['app/approvals/actions.ts','decideResignationAction','handoff:employment_exit_or_discipline'],
    ['app/control-tower/agents/actions.ts','setAiAllowanceAction','handoff:ai_governance'],
-   ['app/admin/job-architecture/actions.ts','architectureAction','handoff:access_and_authentication'],
    ['app/admin/rewards/access/policy-actions.ts','beginRewardViewAsAction','handoff:access_and_authentication'],
    ['app/admin/rewards/setup-access/actions.ts','setupGrantAction','handoff:access_and_authentication'],
    ['app/rewards/[unitId]/advisor/actions.ts','advisorAction','handoff:ai_governance'],

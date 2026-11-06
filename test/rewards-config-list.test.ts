@@ -1,4 +1,4 @@
-import {createApprovedRewardUnit} from './rewards-setup-fixture';
+import {createApprovedRewardUnit,setupCompanyStructureFixture} from './rewards-setup-fixture';
 import {establishRewardMembership,migrateRewardMembershipFixture} from './rewards-shared-policy-fixture';
 import {configureRewardFixture,refreshRewardFixtureBudget,changeRewardFixtureInputs,completeRewardFixturePolicy} from './rewards-governance-fixture';
 import {setRewardMember} from './rewards-access-fixture';
@@ -9,7 +9,7 @@ import * as schema from '../db/schema';
 import { hireEmployee } from '../core/org';
 import { setCompensation } from '../core/comp';
 import { cancelRewardReviewTx, cancelRewardReview, createRewardUnit, decideRewardUnit, emptyRewardCalendar, getRewardUnit, listRewardReviewStatus, listRewardUnits, pendingRewardTasks, rewardApprovalsBoard, saveRewardCalendar, saveRewardEntry, saveRewardPolicy } from '../packs/rewards/service';
-import { emptyFacts, type RewardRole } from '../packs/rewards/model';
+import { defaultPolicy, emptyFacts, type RewardRole } from '../packs/rewards/model';
 import { closeAll, createAppUser, entitledCtx, owner, resetDb, seedBase, setModule, type Base } from './harness';
 import { todayInKualaLumpur } from '../lib/hr-date';
 
@@ -164,17 +164,30 @@ describe('Rewards configuration list (7a8102a7) and review cancellation (62e743e
     expect(Object.keys((policy.payload as { after: object }).after)).not.toContain('patActual');
     expect(Object.keys((policy.payload as { after: object }).after)).not.toContain('meritMatrix');
   });
-  // Allow time for 49 approved admissions on shared runners. The metric times only the list read.
+  // The list must project both current admissions and preserved annual reviews.
   it('9040c2eb: measures one projection per review with a 50-company annual-review fixture',async()=>{
     const companyIds=[b.companyId],targets:{companyId:string;businessUnitId:string}[]=[];
     for(let i=1;i<50;i++){
       const [company]=await owner.db.insert(schema.company).values({tenantId:b.tenantId,legalName:`Overview company ${i}`}).returning();companyIds.push(company.id);
       const [bu]=await owner.db.insert(schema.businessUnit).values({tenantId:b.tenantId,companyId:company.id,code:`OVERVIEW-${i}`,label:`Fictional unit ${i}`,name:`Fictional unit ${i}`}).returning();
-      await establishRewardMembership(admin,{tenantId:b.tenantId,companyId:company.id,businessUnitId:bu.id,year});targets.push({companyId:company.id,businessUnitId:bu.id});
+      targets.push({companyId:company.id,businessUnitId:bu.id});
     }
-    const first=await createApprovedRewardUnit(admin,{name:'Fictional overview review',year,...targets[0],snapshotDate:today},undefined,targets);
-    const versionId=(await getRewardUnit(admin,first)).unit.policyGroupVersionId!;
-    for(const target of targets.slice(1))await createApprovedRewardUnit(admin,{name:'Fictional overview review',year,...target,snapshotDate:today,sharedPolicyVersionId:versionId});
+    await setupCompanyStructureFixture(admin, targets, today);
+    for (const target of targets) {
+      await establishRewardMembership(admin, { ...target, tenantId: b.tenantId, year, hiredOn: today });
+    }
+    await owner.withTenant(admin, async tx => {
+      const [cycle] = await tx.insert(schema.rewardCycle).values({
+        tenantId: b.tenantId, createdBy: admin.userId!, year, name: 'Fictional historical review cycle',
+      }).returning();
+      const reviews = await tx.insert(schema.rewardUnit).values(targets.map(target => ({
+        ...target, tenantId: b.tenantId, createdBy: admin.userId!, cycleId: cycle.id,
+        snapshotDate: today, policy: defaultPolicy(year),
+      }))).returning({ id: schema.rewardUnit.id });
+      await tx.insert(schema.rewardMember).values(reviews.map(review => ({
+        tenantId: b.tenantId, unitId: review.id, userId: admin.userId!, role: 'gr' as const,
+      })));
+    });
     const started=performance.now(),overview=await listRewardReviewStatus(admin,companyIds),elapsed=performance.now()-started;
     expect(overview.rows).toHaveLength(50);expect(new Set(overview.rows.map(row=>row.id)).size).toBe(50);
     console.info(`Rewards review list 50-review fixture: ${elapsed.toFixed(1)} ms`);

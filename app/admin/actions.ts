@@ -329,10 +329,18 @@ const LEAVE_REPLACEMENT = '/admin/leave-config/leave-credit/rules';
 // `returnTo` collapses to (lib/return-to.ts workLocationsReturnTo).
 const LOCATIONS = LOCATIONS_LIST;
 
+function companyDisplayGroupFromForm(data: FormData) {
+  return data.get('displayGroupingMethod') === 'field'
+    ? { field: String(data.get('displayGroupField') ?? ''), id: String(data.get('displayGroupOptionId') ?? '') }
+    : undefined;
+}
+
 export async function createCompanyAction(formData: FormData) {
   const s = await getSession();
   try {
     await createCompany(s, {
+      displayGroup: companyDisplayGroupFromForm(formData),
+      parentCompanyId: String(formData.get('parentCompanyId') ?? '') || undefined,
       legalName: String(formData.get('legalName') ?? '').trim(),
       country: String(formData.get('country') ?? 'MY'),
       currency: String(formData.get('currency') ?? 'MYR'),
@@ -435,10 +443,11 @@ export async function removeCompanyLogoAction(formData: FormData) {
 
 /** 65b22c00 — see applyDefaultCycleSection. Empty ⇒ null, i.e. "this company is a group root". */
 async function applyParentSection(s: Session, formData: FormData): Promise<void> {
-  const parent = String(formData.get('parentCompanyId') ?? '');
+  const grouping = companyDisplayGroupFromForm(formData);
   await setCompanyParent(s, {
     companyId: String(formData.get('companyId')),
-    parentCompanyId: parent || null,
+    parentCompanyId: grouping ? undefined : String(formData.get('parentCompanyId') ?? '') || null,
+    displayGroup: grouping ?? (formData.get('displayGroupingMethod') === 'parent' ? null : undefined),
   });
 }
 

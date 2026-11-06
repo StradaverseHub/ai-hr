@@ -10,11 +10,13 @@ function cell(value: unknown): string {
 }
 export async function GET(request: Request, { params }: { params: Promise<{ unitId: string }> }) {
   const s = await getSession(), { unitId } = await params;
-  const v = await exportRewardReview(s, unitId).catch(() => null);
+  const search = new URL(request.url).searchParams;
+  const format = search.get('excluded') === '1' ? 'excluded' : search.get('template') === '1' ? 'template' : 'review';
+  const v = await exportRewardReview(s, unitId, format).catch(() => null);
   if (!v) return new Response('Group Rewards export is unavailable.', { status: 403 });
-  const template = new URL(request.url).searchParams.get('template') === '1';
+  const template = format === 'template';
   // 8ad87ae8: everyone with a basic-salary change in the review's exclusion window, and Group Rewards' decision.
-  if (new URL(request.url).searchParams.get('excluded') === '1') {
+  if (format === 'excluded') {
     const kept = v.unit.policy.payWindowKeep ?? {};
     const rows = v.rows.filter(e => e.payChange).map(e => [e.source.employeeCode, e.source.name, e.plan, e.payChange!.kind ?? '', e.payChange!.on, e.source.basicCents / 100, e.bonusBasicCents / 100,
       e.payWindowKept ? 'kept eligible' : payWindowReasons.includes(e.incrementReason) ? 'excluded from salary increase' : e.incrementReason, kept[e.source.employmentId] ?? '']);

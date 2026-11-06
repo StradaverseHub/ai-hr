@@ -11,6 +11,8 @@ const ports = vi.hoisted(() => ({ list: vi.fn(), choices: vi.fn(), shared: vi.fn
 vi.mock('next-intl/server', () => ({ getLocale: async () => 'en-GB', getTranslations: async (namespace: string) => createTranslator({ locale: 'en', messages: en, namespace: namespace as 'rewards' }) }));
 vi.mock('next/link', () => ({ default: ({ children, ...props }: any) => <a {...props}>{children}</a> }));
 vi.mock('../lib/scope', () => ({ scopedAdmin: async () => ({ s: { tenantId: 'tenant', userId: 'actor' }, scopeIds: ['company'] }) }));
+vi.mock('../lib/session', () => ({ getSession: async () => ({ tenantId: 'tenant', userId: 'actor' }) }));
+vi.mock('../packs/rewards/group-roles', () => ({ rewardWholeGroupSetupCompanies: async () => [] }));
 vi.mock('../lib/authz', () => ({ requireModule: vi.fn() }));
 vi.mock('../packs/rewards/service', async () => ({ listRewardUnits: ports.list, rewardCoverageForUnits: async () => [], rewardPolicyMemberships:vi.fn(async()=>[{companyId:'company',businessUnitId:'bu-1'},{companyId:'company',businessUnitId:'bu-2'}]),rewardSetupChoices: ports.choices, rewardSharedPolicyChoices: ports.shared, rewardDueWording: (await import('../packs/rewards/calendar')).rewardDueWording }));
 vi.mock('../app/rewards/actions', () => ({ createRewardAction: vi.fn(), deleteRewardAction: vi.fn() }));

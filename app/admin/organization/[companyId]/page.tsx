@@ -1,3 +1,4 @@
+import { companyDisplayGroupOptions, companyDisplayGroups } from '@/core/company-display-group';
 import { companyRegistrationOverview } from '@/core/company-registration-readiness';
 import { RegistrationClassification } from '../registration-classification';
 import { notFound } from 'next/navigation';
@@ -88,6 +89,8 @@ export default async function CompanyMaintenancePage({
    * `null` is the section's absence, not an empty list: `[]` still draws the form (disabled, with its
    * "no active cycles" warning), which would tell a customer who never bought Payroll to go and set one up.
    */
+  const [groupOptions, groupValues] = await Promise.all([companyDisplayGroupOptions(s, companyId), companyDisplayGroups(s)]);
+  const displayGroup = groupValues.find(value => value.companyId === companyId);
   const payrollOn = isModuleEnabledOrFalse(s, 'payroll');
 
   const [statutory, bankProfiles, authorities, signatories, stateOpts, cycles, deleteStatus] = await Promise.all([
@@ -167,6 +170,8 @@ export default async function CompanyMaintenancePage({
         // shows. Re-parenting into a company you cannot administer is refused by the service anyway;
         // not offering it keeps the screen from disclosing that the company exists.
         companies={companies}
+        displayGroup={displayGroup}
+        displayGroupOptions={groupOptions}
         // 7d2df42a — the codes already in use, for the warning under the Company Code field. Derived from
         // the SAME `adminOnly` read above (no second query, no second source), and `companyCodeHolders`
         // drops the archived ones: a code recycled from a company retired years ago is not a collision

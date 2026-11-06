@@ -465,6 +465,18 @@ if [ "$MIGRATE_ONLY" = "1" ]; then
   exit 0
 fi
 
+# The Rewards deletion guard runs as the migration owner and reads policies that call a
+# function owned by a restricted role. The installation DBA supplies the exact grant.
+if ! rewards_grant=$(psql --dbname="$MIGRATION_DATABASE_URL" -X -qAt --no-password \
+  -v ON_ERROR_STOP=1 --command="SELECT pg_catalog.has_function_privilege('ai_hr_owner', 'app.reward_setup_allowed(uuid,text)', 'EXECUTE')"); then
+  echo "✗ Could not verify the Rewards database prerequisite. See deploy/DEPLOY.md." >&2
+  exit 1
+fi
+if [ "$rewards_grant" != "t" ]; then
+  echo "✗ Missing Rewards database prerequisite. Ask the installation DBA to run deploy/runner-control/rewards-deletion-role-prerequisite.sql before activation." >&2
+  exit 1
+fi
+
 # THE DEMO SEEDER — the one branch that differs between the two deployments, and the only place in this
 # script that can reach db/seed.ts. In customer mode `$DEMO` is 0, so neither the psql probe nor the
 # seeder is ever evaluated; `$DEV_TENANT_ID` is not even expanded, which is why customer mode does not

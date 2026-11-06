@@ -80,7 +80,8 @@ it('upgrades the exact 648-entry populated Noveri baseline without rewriting nat
  const native=async()=>{
   const rows:Record<string,unknown>={};
   for(const table of ['tenant','company','person','app_user','role_assignment','employment','compensation','employee_draft']){
-   rows[table]=await storage.client.unsafe(`select to_jsonb(t) as row from public.${table} t where ${table==='tenant'?'id':'tenant_id'}=$1 order by to_jsonb(t)::text`,[tenant]);
+   const facts=table==='company'?"to_jsonb(t)-ARRAY['display_group_field','display_group_option_id']":"to_jsonb(t)";
+   rows[table]=await storage.client.unsafe(`select ${facts} as row from public.${table} t where ${table==='tenant'?'id':'tenant_id'}=$1 order by to_jsonb(t)::text`,[tenant]);
   }
   rows.identities=await storage.client`select issuer,subject,app_user_id,revoked_at from public.app_external_identity where app_user_id=${user} order by issuer,subject`;
   return rows;
@@ -161,6 +162,7 @@ it('upgrades the exact 648-entry populated Noveri baseline without rewriting nat
   // Then this integration's eight AI v2 Phase 2 migrations (2004-2011), the ADR-0174 hardening (2100-2102) and the combined release tail, by the ordinary migrator over the whole journal.
   // Their when values sit above Phase 1's 1793330001403, so none is skipped.
   await migrateApprovedUpgrade(storage);
+  expect(await storage.client`select display_group_field,display_group_option_id from company where id=${company}`).toEqual([{display_group_field:null,display_group_option_id:null}]);
   const afterLedger=await ledger();expect(afterLedger).toHaveLength(671+APPROVED_UPGRADE_TAIL.length);expect(afterLedger.slice(0,660)).toEqual(phaseOneLedger);
   expect(afterLedger.slice(660,671).map(row=>({hash:row.hash,created_at:row.created_at}))).toEqual([
    {hash:'b6bdeac1995dad6df759ce9a537c98e9a3666bf01aef716a7f6cac9a9134b132',created_at:'1793330001404'},

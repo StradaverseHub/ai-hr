@@ -542,24 +542,10 @@ describe('/admin/organization/new — the create form has its own screen', () =>
     expect(forms[0].props.action).toBe(createCompanyAction);
 
     const html = renderToStaticMarkup(tree as never);
-    /**
-     * ⚠️ UPDATED BY ITEM 3783fd87 — A SIXTH FIELD ADDED, AND THE GUARD TIGHTENED RATHER THAN LOOSENED.
-     *
-     * This case pinned five names with the note "a sixth would be a field whose value is silently
-     * discarded the moment the operator types into it". That risk is unchanged and the note still
-     * stands; what changed is that `createCompanyAction` now reads a SIXTH — `companyLabel`, the
-     * Company Code, which `company.company_label` has always stored and which the listing has always
-     * headed "Code". It was reachable only AFTER creation, which is why 7 of the 13 production
-     * companies carry no code and two of the six that do hold something that is not one.
-     *
-     * The list is now an EXACT SET both ways: every name below is present AND no name that is not
-     * below appears in the form. A `toContain` per name could never have caught the fault it was
-     * written for — an extra input the action ignores — because it only ever looked for what it
-     * expected. The end-to-end proof that the value is actually STORED (and that a blank one still
-     * creates a company) lives in test/organization-company-code.test.ts; this half is the contract
-     * between the form and the action, pinned in the file that owns the create screen's shape.
-     */
-    const EXPECTED = ['legalName', 'companyLabel', 'registrationNo', 'country', 'currency', 'defaultPayrollCycle'];
+    // The initial form includes the grouping method. The employment field and option are
+    // mounted only when the administrator selects grouping by Employment Field.
+    const EXPECTED = ['legalName', 'companyLabel', 'registrationNo', 'country', 'currency',
+      'defaultPayrollCycle', 'parentCompanyId', 'displayGroupingMethod'];
     for (const name of EXPECTED) {
       expect(html, name).toContain(`name="${name}"`);
     }
