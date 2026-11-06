@@ -229,3 +229,86 @@ it('preserves the Claims audit digest when payroll membership and expense dates 
   });
  });
 }, 60000);
+
+const auditProfileFile = 'test/payroll-audit-processing-rc.test.ts';
+const focusedTests: unknown = JSON.parse(process.env.AIHR_FOCUSED_TESTS ?? '[]');
+const auditProfileRequested = process.env.GITHUB_ACTIONS === 'true'
+ && Array.isArray(focusedTests) && focusedTests.length === 1 && focusedTests[0] === auditProfileFile;
+
+it.skipIf(!auditProfileRequested)('profiles the Claims audit hash against one million retained claims', async () => {
+ const {root, worker, batchId, b} = await loadAuditFixture(1);
+ const evidenceDir = process.env.AIHR_FOCUSED_EVIDENCE_DIR;
+ if (!evidenceDir) throw Error('Focused evidence directory is required');
+ const [type] = await owner.db.insert(schema.claimType).values({
+  tenantId: b.tenantId, code: 'AUDIT_RETAINED', name: 'Fictional retained claim',
+ }).returning({id: schema.claimType.id});
+
+ await owner.db.transaction(async tx => {
+  // Synthetic retained history only. The paid subject and the three selected rows
+  // below keep the ordinary fixture owners and checks.
+  await tx.execute(sql`set local session_replication_role = replica`);
+  await tx.execute(sql`with people as (
+   insert into public.person (tenant_id,full_name)
+   select ${b.tenantId},'Retained claimant '||n from generate_series(1,1000) n returning id
+  ), subjects as (
+   insert into public.employment (tenant_id,company_id,person_id,hired_on)
+   select ${b.tenantId},${b.companyId},id,date '2020-01-01' from people returning id
+  )
+  insert into public.claim_request (tenant_id,employment_id,claim_type_id,amount,incurred_on)
+  select ${b.tenantId},id,${type.id},1,date '2024-01-01'+(n%730)
+  from subjects cross join generate_series(1,1000) n`);
+ });
+ const claim = {tenantId:b.tenantId, employmentId:worker.employmentId, claimTypeId:type.id, amount:'12.34'};
+ await owner.db.insert(schema.claimRequest).values([
+  {...claim, incurredOn:'2025-12-15', payrollBatchId:batchId},
+  {...claim, incurredOn:'2026-01-15', payrollBatchId:batchId},
+  {...claim, incurredOn:'2026-01-16'},
+  {...claim, incurredOn:'2025-12-16'},
+ ]);
+ await owner.db.execute(sql`analyze public.claim_request`);
+ const [retained] = await owner.db.execute<{n:number}>(sql`
+  select count(*)::int as n from public.claim_request where tenant_id=${b.tenantId}::uuid`);
+ expect(retained.n).toBe(1000004);
+
+ const month = {start:'2026-01-01',end:'2026-01-31'};
+ const windows = {attendance:month,overtime:month,leave:month,claim:month};
+ const membership = paidMembership(batchId);
+ const linked = sql`select c.* from public.claim_request c where c.payroll_batch_id=${batchId}::uuid`;
+ const unlinked = sql`c.payroll_batch_id is distinct from ${batchId}::uuid
+  and c.incurred_on between ${month.start}::date and ${month.end}::date`;
+ const baseline = groupRows(sql`${linked} union all select c.* from public.claim_request c
+  where ${unlinked} and c.employment_id in (${membership})`);
+ const byMember = groupRows(sql`${linked} union all select matched.*
+  from (select distinct employment_id from (${membership}) paid) member
+  cross join lateral (
+   select c.* from public.claim_request c where ${unlinked} and c.employment_id=member.employment_id offset 0
+  ) matched`);
+ const phases = await processingTx(root,batchId,async tx => {
+  const [identity] = await tx.execute<{role:string}>(sql`select current_user as role`);
+  expect(identity.role).toBe('ai_hr_app');
+  const oracle = await runInputsTx(tx,{batchId,payPeriod:'2026-01',windows});
+  const expected = await tx.execute<{e:string;n:number;h:string}>(baseline);
+  expect(expected).toHaveLength(1);
+  expect(expected[0]).toMatchObject({e:worker.employmentId,n:3});
+  expect(oracle.components.claims).toEqual({
+   rows:3,
+   hash:createHash('sha256').update(`${expected[0].e}:${expected[0].n}:${expected[0].h}\n`).digest('hex'),
+  });
+  const results = [];
+  for (const [phase,query] of [['baseline',baseline],['by-member',byMember],['baseline-restored',baseline]] as const) {
+   expect(Array.from(await tx.execute(query))).toEqual(Array.from(expected));
+   const plans = [];
+   for (let attempt=0; attempt<3; attempt++) {
+    const [plan] = await tx.execute(sql`explain (analyze,buffers,format json) ${query}`);
+    plans.push(plan['QUERY PLAN']);
+   }
+   results.push({phase,plans});
+  }
+  return results;
+ });
+ writeFileSync(join(evidenceDir,'payroll-audit-claims-retained.json'), JSON.stringify({
+  kind:'PAYROLL_AUDIT_CLAIM_LOOKUP_COMPONENT_ONLY',releaseEligible:false,
+  retained:retained.n,members:1,selected:3,phases,
+  limitations:'Synthetic retained history, one paid member, app-role read under native processing barriers. No concurrency or release claims.',
+ },null,2));
+}, 600000);
