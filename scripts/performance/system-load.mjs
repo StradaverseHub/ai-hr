@@ -79,15 +79,17 @@ async function request(user,path,fields,expectedStatus=200,record=true,actionHea
  assert(path.startsWith('/')&&!path.startsWith('//'));const started=performance.now();let body,contentType;
  if(Array.isArray(fields)){body=Buffer.from(JSON.stringify(fields));contentType='text/plain;charset=UTF-8';}
  else if(fields){const encoded=new Response(actionFormData(fields,fieldOrder));contentType=encoded.headers.get('content-type');body=Buffer.from(await encoded.arrayBuffer());}
+ let responseHeaders;
  const response=await new Promise((resolve,reject)=>{
   const req=https.request(base+path,{agent,signal:AbortSignal.timeout(90000),method:fields?'POST':'GET',headers:{Host:'localhost:3443',Origin:base,
    Cookie:`__Host-aihr_internal=${user?.token??''}; NEXT_LOCALE=en`,'Accept-Encoding':'gzip',...actionHeaders,...(body?{'Content-Type':contentType,'Content-Length':body.length}:{})}},res=>{
    let wireBytes=0,decodedBytes=0,content='';const ttfbMs=performance.now()-started;
+   responseHeaders={status:res.statusCode,ttfbMs,hasActionRedirect:Boolean(res.headers['x-action-redirect'])};
    res.on('data',chunk=>{wireBytes+=chunk.length;});const stream=res.headers['content-encoding']==='gzip'?res.pipe(createGunzip()):res;
    stream.on('data',chunk=>{decodedBytes+=chunk.length;if(decodedBytes>12*1024*1024){stream.destroy(new Error('Decoded response exceeded the 12MiB measurement ceiling'));return;}content+=chunk.toString();});
    stream.on('error',reject);stream.on('end',()=>resolve({status:res.statusCode,headers:res.headers,content,wireBytes,decodedBytes,ttfbMs}));
   });req.on('error',reject);req.end(body);
- }).catch(error=>{(report.requestErrors??=[]).push({user:user?.index??null,role:user?.role??'anonymous',route:readRouteForMeasurement(path),method:fields?'POST':'GET',action,startedMs:started,elapsedMs:performance.now()-started,error:String(error.message).slice(0,180)});throw error;});
+ }).catch(error=>{(report.requestErrors??=[]).push({user:user?.index??null,role:user?.role??'anonymous',route:readRouteForMeasurement(path),method:fields?'POST':'GET',action,startedMs:started,elapsedMs:performance.now()-started,responseHeaders:responseHeaders??null,error:String(error.message).slice(0,180)});throw error;});
  response.durationMs=performance.now()-started;
  if(record)samples.push({user:user?.index??null,role:user?.role??'anonymous',route:readRouteForMeasurement(path),method:fields?'POST':'GET',action,status:response.status,startedMs:started,durationMs:response.durationMs,ttfbMs:response.ttfbMs,wireBytes:response.wireBytes,decodedBytes:response.decodedBytes});
  assert.equal(response.status,expectedStatus,`Unexpected HTTP status for ${path.split('?')[0]}`);
