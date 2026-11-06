@@ -1,7 +1,7 @@
 import {setTimeout as delay} from 'node:timers/promises';
 import {pgSqlState} from '../lib/db-error';
 import {boundNativeOutcomeTransactionTx} from './module-native-outcome-bounds';
-import {lockAccessConfigurationTx} from './access-configuration-lock';
+import {lockAccessConfigurationTx,tryLockAccessConfigurationTx} from './access-configuration-lock';
 import {lockLeaveDependencyConfigurationTx} from './leave-dependency-lock';
 import {assertWorkforceCompanyTx} from './workforce-access';
 import {hireEmployee,setEmploymentInfo} from './workforce-commands';
@@ -728,6 +728,7 @@ export async function discardEmployeeDraft(
   assertAdmin(ctx);
   const capture = options?.returnResult === true;
   if (capture && !outerTx) throw new Error('Draft discard result requires an enclosing transaction.');
+  const accessBusy = new Error('Draft discard is waiting for Workforce access.');
   let admissionFailure: unknown;
   const run = async (tx: Tx): Promise<void | EmployeeDraftDiscardResult> => {
     await boundNativeOutcomeTransactionTx(tx);
@@ -784,14 +785,19 @@ export async function discardEmployeeDraft(
   };
   if (outerTx) return run(outerTx);
   return queueDraftWrite(ctx.tenantId, async () => {
-    for (const backoff of [75, 200]) {
+    for (const backoff of [75, 200, 400, 800]) {
       admissionFailure = undefined;
       try {
-        return await withTenant(ctx, run);
+        return await withTenant(ctx, async tx => {
+          // Give up the connection while another transaction holds the tenant fence.
+          // The native port still checks policy generation and executes the delete.
+          if (!await tryLockAccessConfigurationTx(tx, ctx.tenantId)) throw accessBusy;
+          return run(tx);
+        });
       } catch (error) {
         // The failed transaction is already closed. Only a refusal before
         // the first native effect can retry, with no connection held here.
-        if (admissionFailure === undefined || error !== admissionFailure) throw error;
+        if (error !== accessBusy && (admissionFailure === undefined || error !== admissionFailure)) throw error;
         await delay(backoff);
       }
     }
