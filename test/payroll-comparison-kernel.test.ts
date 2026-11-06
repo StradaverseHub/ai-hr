@@ -13,7 +13,7 @@ import {
   getCustomReport, recordPayrollComparisonRun, runPayrollComparisonReport,
   saveCustomReport, updateCustomReport,
 } from '../core/custom-reports';
-import { payrollComparisonSpec } from '../core/report-payroll-comparison';
+import { payrollComparisonSpec, payrollReconciliationPeriods } from '../core/report-payroll-comparison';
 import {
   closeBatch, createBatch, createIndividualTxn, generatePayslips, setPayrollPermissionGrant,
   seedPayComponentCatalog, backfillEmploymentComponentsFromCompensation,
@@ -76,6 +76,18 @@ async function payrollSnapshot() {
 }
 
 describe('Payroll comparison consumes generated paid results under the saved report authority', () => {
+  it('automatically exposes a new processed month only against a complete prior payroll', async () => {
+    const f = await fixture();
+    expect((await payrollReconciliationPeriods(ctx, [b.companyId])).map(row => row.period)).toEqual([previousPeriod]);
+    await closeBatch(ctx, { batchId: f.previous.batchId });
+    await generatePayslips(ctx, { batchId: f.current.batchId });
+    const months = await payrollReconciliationPeriods(ctx, [b.companyId]);
+    expect(months[0]).toMatchObject({ companyId: b.companyId, period: currentPeriod, runCount: 1, previousReady: true, requiresReprocessing: false });
+    expect(months[0].lastProcessed).toBeTruthy();
+    expect(months[1]).toMatchObject({ period: previousPeriod, previousReady: false });
+    const builtIn = await runPayrollComparisonReport(ctx, [b.companyId], { spec: payrollComparisonSpec(), filters: { currentPeriod, previousPeriod } });
+    expect(builtIn.result.available).toBe(true);
+  });
   it('compares another recorded pay item to the cent without substituting later compensation', async () => {
     const f = await fixture({ typed: true, allowance: 10.10 });
     await closeBatch(ctx, { batchId: f.previous.batchId });

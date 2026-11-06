@@ -64,7 +64,7 @@ export default async function PayrollReconciliationPage({
                     {row.cycles.length > 0 && <div className="text-xs text-muted-foreground">{row.cycles.join(' · ')}</div>}
                   </td>
                   <td className="p-3">{row.lastProcessed ? timestamp.format(new Date(row.lastProcessed)) : t('notAvailable')}</td>
-                  <td className="p-3">{row.requiresReprocessing ? t('needsReview') : <Link className="text-primary underline" href={`/reports/payroll-comparison/${chosen?.id ?? 'reconciliation'}?${query}`}>{t('comparisonTable')}</Link>}</td>
+                  <td className="p-3">{row.requiresReprocessing ? t('needsReview') : !row.previousReady ? t('notAvailable') : <Link className="text-primary underline" href={`/reports/payroll-comparison/${chosen?.id ?? 'reconciliation'}?${query}`}>{t('comparisonTable')}</Link>}</td>
                 </tr>;
               })}
               {!periods.length && <tr><td className="p-3" colSpan={6}>{t('unavailable')}</td></tr>}

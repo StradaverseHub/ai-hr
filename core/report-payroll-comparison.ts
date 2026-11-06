@@ -2,7 +2,7 @@
  * Organisation reads; there is no second pay calculator or saved-definition store. */
 import { and, asc, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import type { SessionContext, Tx } from '../db/client';
-import { company, department, employment, jobGrade, person, costCenter, payrollBatch, domainEvent, payrollCycle, type CustomReportSpec } from '../db/schema';
+import { company, department, employment, jobGrade, person, costCenter, payrollBatch, payrollHistoryEffectiveBatch, domainEvent, payrollCycle, type CustomReportSpec } from '../db/schema';
 import { payrollComparisonSourcesTx, listPayComponents } from '../packs/payroll/service';
 import { assignmentVersionsForReportTx } from './org';
 import { provenCompanyDatesTx, dayBefore } from './employment-company';
@@ -141,11 +141,13 @@ export async function payrollReconciliationPeriods(ctx: SessionContext, scope: r
       companyId: payrollBatch.companyId,
       companyName: company.legalName,
       period: payrollBatch.payPeriod,
-      runCount: sql<number>`count(*)::int`.as('run_count'),
-      requiresReprocessing: sql<boolean>`bool_or(${payrollBatch.needsRecalcAt} is not null)`.as('requires_reprocessing'),
-    }).from(payrollBatch)
+      runCount: sql<number>`count(*) filter (where ${payrollBatch.status} in ('processed', 'closed'))::int`.as('run_count'),
+      requiresReprocessing: sql<boolean>`bool_or(${payrollBatch.needsRecalcAt} is not null or ${payrollBatch.status} = 'draft')`.as('requires_reprocessing'),
+    }).from(payrollHistoryEffectiveBatch)
       .innerJoin(company, eq(company.id, payrollBatch.companyId))
-      .where(and(inArray(payrollBatch.companyId, ids), inArray(payrollBatch.status, ['processed', 'closed'])))
+      .where(and(inArray(payrollBatch.companyId, ids),
+        sql`(${payrollBatch.historyImportAttemptId} is null or ${payrollBatch.employeeCount} > 0)`))
+      .having(sql`bool_or(${payrollBatch.status} in ('processed', 'closed'))`)
       .groupBy(payrollBatch.companyId, company.legalName, payrollBatch.payPeriod)
       .orderBy(desc(payrollBatch.payPeriod), asc(company.legalName), asc(payrollBatch.companyId))
       .limit(120));
@@ -155,6 +157,13 @@ export async function payrollReconciliationPeriods(ctx: SessionContext, scope: r
       period: groups.period,
       runCount: groups.runCount,
       requiresReprocessing: groups.requiresReprocessing,
+      previousReady: sql<boolean>`coalesce((
+        select bool_and(prior.status = 'closed' and prior.needs_recalc_at is null)
+        from payroll_history_effective_batch prior
+        where prior.tenant_id = ${ctx.tenantId}::uuid and prior.company_id = ${groups.companyId}
+          and (prior.history_import_attempt_id is null or prior.employee_count > 0)
+          and prior.pay_period = to_char(to_date(${groups.period}, 'YYYY-MM') - interval '1 month', 'YYYY-MM')
+      ), false)`,
       lastProcessed: sql<string | null>`max(${domainEvent.occurredAt})::text`,
       cycles: sql<string[]>`coalesce(array_agg(distinct ${payrollCycle.name} order by ${payrollCycle.name}) filter (where ${payrollCycle.name} is not null), '{}'::text[])`,
     }).from(groups).innerJoin(payrollBatch, and(
