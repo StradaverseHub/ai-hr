@@ -35,6 +35,7 @@ it.skipIf(!requested)('measures narrow dated Personnel facts and bounded native 
   ];
   phase('install-prototype');
   const prototype=await personnelDatedTagsPrototype();
+  report.assignmentConstraint=prototype.assignmentConstraint;save();
   try{
    const narrowParity=[
     {mode:'initial',limit:10,offset:0,ids:sample.slice(0,10),total:25},
@@ -50,6 +51,8 @@ it.skipIf(!requested)('measures narrow dated Personnel facts and bounded native 
     const inline=await personnelNarrowOverviewProbe(ctx,prototype,'inlineNarrow',query);
     expect(candidate).toEqual(baseline);
     expect(inline).toEqual(baseline);
+    const single=await personnelNarrowOverviewProbe(ctx,prototype,'singleAssignment',query);
+    expect(single).toEqual(baseline);
     expect(candidate.pageIds).toEqual(ids);
     expect(candidate.rows.map(row=>row?.employmentId)).toEqual(ids);
     expect(candidate.total).toBe(total);
@@ -57,16 +60,17 @@ it.skipIf(!requested)('measures narrow dated Personnel facts and bounded native 
     expect(candidate.options).not.toHaveLength(0);
    }
    report.liveOverviewNarrowSampleParity=narrowParity.map(({mode})=>mode);save();
-   const narrowMeasurements:{variant:string;mode:string;elapsedMs:number;total:number;pageRows:number;targetMet:boolean}[]=[];
-   for(const variant of ['narrow','inlineNarrow'] as const){
+   const narrowMeasurements:{variant:string;mode:string;elapsedMs:number;summaryMs:number;detailsMs:number;total:number;pageRows:number;targetMet:boolean}[]=[];
+   for(const variant of ['inlineNarrow','singleAssignment'] as const){
     for(const {mode,q,offset,expectedIds} of liveOverviewCases){
-     if(variant==='narrow'&&mode!=='initial')continue; // Same-run control, prior full control has all three modes.
+     if(variant==='inlineNarrow'&&mode!=='initial')continue; // Same-run control, prior full control has all three modes.
      phase('live-overview-'+variant+'-'+mode);
      const began=performance.now();
      let result;
+     let timing:{summaryMs:number;detailsMs:number}|undefined;
      try{result=await personnelNarrowOverviewProbe(ctx,prototype,variant,{
       date:asOf,scope:[b.companyId],subjects:null,pageQuery:q,facetQuery:q,limit:25,offset,
-     });}
+     },observed=>{timing=observed;});}
      catch(error){
       failures.push({mode:variant+'-'+mode,elapsedMs:performance.now()-began,errorType:error instanceof Error?error.name:typeof error,sqlState:pgSqlState(error)??null});
       report.liveOverviewNarrowFailures=failures;save();continue;
@@ -76,7 +80,8 @@ it.skipIf(!requested)('measures narrow dated Personnel facts and bounded native 
      expect(result.rows.map(row=>row?.employmentId)).toEqual(expectedIds);
      expect(result.total).toBe(expectedTotal);
      expect(Object.values(result.byStatus).reduce((sum,value)=>sum+value,0)).toBe(expectedTotal);
-     narrowMeasurements.push({variant,mode,elapsedMs,total:result.total,pageRows:result.rows.length,targetMet:elapsedMs<1000});
+     expect(timing).toBeDefined();
+     narrowMeasurements.push({variant,mode,elapsedMs,summaryMs:timing!.summaryMs,detailsMs:timing!.detailsMs,total:result.total,pageRows:result.rows.length,targetMet:elapsedMs<1000});
      report.liveOverviewNarrow=narrowMeasurements;save();
     }
    }
@@ -91,7 +96,10 @@ it.skipIf(!requested)('measures narrow dated Personnel facts and bounded native 
     const inline=await personnelNarrowOverviewProbe(correction.ctx,correctionPrototype,'inlineNarrow',query);
     expect(baseline.rows).toEqual([expect.objectContaining({companyId:expectedCompanyId})]);
     expect(inline).toEqual(baseline);
+    const single=await personnelNarrowOverviewProbe(correction.ctx,correctionPrototype,'singleAssignment',query);
+    expect(single).toEqual(baseline);
    }
+   report.liveOverviewSingleAssignmentCorrectionParity=true;
    report.liveOverviewInlineCorrectionParity=true;save();
   }finally{await correctionPrototype.drop();}
   expect(failures,'Narrow Personnel observations').toEqual([]);

@@ -66,6 +66,13 @@ const scalarDated = ` dated AS MATERIALIZED (
 
 // Resolve corrections only if this tenant has a future correction on the requested day.
 // Per employee, keep the first event by sequence even if its company value is null.
+const inlineEffectiveAssignment = `   LEFT JOIN LATERAL (
+     SELECT a.company_id,a.business_unit_id FROM public.assignment a
+     WHERE a.tenant_id=b.tenant_id AND a.employment_id=b.id AND a.superseded_at IS NULL
+       AND a.valid_from<=p_as_of AND (a.valid_to IS NULL OR a.valid_to>p_as_of)
+     ORDER BY a.valid_from DESC,a.id LIMIT 1
+   ) a ON true`;
+
 const inlineDated = ` future_correction_presence AS MATERIALIZED (
    SELECT EXISTS (
      SELECT 1 FROM public.domain_event ev
@@ -85,12 +92,7 @@ const inlineDated = ` future_correction_presence AS MATERIALIZED (
        AND ev.event_type='employment.information.corrected' AND ev.payload->>'effectiveOn'>p_as_of::text
      ORDER BY ev.sequence LIMIT 1
    ) c ON true
-   LEFT JOIN LATERAL (
-     SELECT a.company_id,a.business_unit_id FROM public.assignment a
-     WHERE a.tenant_id=b.tenant_id AND a.employment_id=b.id AND a.superseded_at IS NULL
-       AND a.valid_from<=p_as_of AND (a.valid_to IS NULL OR a.valid_to>p_as_of)
-     ORDER BY a.valid_from DESC,a.id LIMIT 1
-   ) a ON true
+${inlineEffectiveAssignment}
  ),`;
 
 const effectiveCompanyDated = ` dated_assignments AS MATERIALIZED (
@@ -173,7 +175,24 @@ const narrowOutput = ` SELECT v.value||jsonb_build_object(
  LEFT JOIN public.position pos ON pos.id=v.position_id AND pos.tenant_id=v.tenant_id
 `;
 
+export async function provePersonnelSingleAssignmentConstraint() {
+ const [proof]=await owner.client<{
+  definition:string;predicate:string;validated:boolean;deferrable:boolean;
+  validIndex:boolean;readyIndex:boolean;immediateIndex:boolean;
+ }[]>`select pg_get_constraintdef(c.oid,true) as definition,pg_get_expr(i.indpred,i.indrelid) as predicate,
+    c.convalidated as validated,c.condeferrable as deferrable,
+    i.indisvalid as "validIndex",i.indisready as "readyIndex",i.indimmediate as "immediateIndex"
+   from pg_constraint c join pg_index i on i.indexrelid=c.conindid
+   where c.conrelid='public.assignment'::regclass and c.conname='assignment_no_overlap' and c.contype='x'`;
+ expect(proof).toMatchObject({validated:true,deferrable:false,validIndex:true,readyIndex:true,immediateIndex:true});
+ const definition=proof.definition.replace(/\s/g,'').replaceAll('::text','');
+ expect(definition.startsWith("EXCLUDEUSINGgist(employment_idWITH=,daterange(valid_from,valid_to,'[)')WITH&&)WHERE")).toBe(true);
+ expect(proof.predicate.replace(/[\s()]/g,'')).toBe('superseded_atISNULL');
+ return proof;
+}
+
 export async function personnelDatedTagsPrototype() {
+ const assignmentConstraint=await provePersonnelSingleAssignmentConstraint();
  const suffix=randomUUID().replaceAll('-','');
  const canonical='app.personnel_filter_rows(date,uuid[])';
  const names={
@@ -182,6 +201,7 @@ export async function personnelDatedTagsPrototype() {
   effectiveCompany:'app.perf_personnel_dated_set_'+suffix,
   narrow:'app.perf_personnel_dated_narrow_'+suffix,
   inlineNarrow:'app.perf_personnel_dated_inline_'+suffix,
+  singleAssignment:'app.perf_personnel_assignment_'+suffix,
   pageDetails:'app.perf_personnel_page_details_'+suffix,
  };
  const signature='(date,uuid[],uuid[])';
@@ -212,12 +232,29 @@ export async function personnelDatedTagsPrototype() {
   const narrow=batched.slice(0,admissionStart)+narrowCandidates+batched.slice(datedStart,outputStart)+narrowOutput;
   const inline=narrow.replace(scalarDated,inlineDated)
    .replace(legacyAssignment,'').replace('legacy.business_unit_id','d.legacy_business_unit_id');
+  // A validated exclusion constraint proves that the native ASC/DESC lookups have at most
+  // one matching assignment. Carry that row forward without per-employee LIMIT or sort.
+  const singleJoinRewrites=[
+   [inlineEffectiveAssignment,`   LEFT JOIN public.assignment a ON a.tenant_id=b.tenant_id AND a.employment_id=b.id
+     AND a.superseded_at IS NULL AND a.valid_from<=p_as_of AND (a.valid_to IS NULL OR a.valid_to>p_as_of)`],
+   ['SELECT b.*,a.business_unit_id AS legacy_business_unit_id,',
+    'SELECT b.*,a.business_unit_id AS legacy_business_unit_id,a.department_id,a.position_id,a.cost_center_id,a.location_id,a.employment_type,'],
+   ['d.confirmation_date,d.final_confirmation_date,','d.confirmation_date,d.final_confirmation_date,\n          d.legacy_business_unit_id,d.department_id,d.position_id,d.cost_center_id,d.location_id,d.employment_type,'],
+   ['a.department_id,a.position_id,a.cost_center_id,a.location_id,a.employment_type,b.tags,',
+    'b.department_id,b.position_id,b.cost_center_id,b.location_id,b.employment_type,b.tags,'],
+   ['ELSE a.business_unit_id END AS dated_bu_id','ELSE b.legacy_business_unit_id END AS dated_bu_id'],
+   [visibleAssignment,''],
+  ];
+  const singleAssignment=singleJoinRewrites.reduce((body,[from,to])=>{
+   expect(body.split(from)).toHaveLength(2);
+   return body.replace(from,to);
+  },inline);
   const baseCall='app.access_workforce_list_rows() AS a(value)';
   expect(sampled.split(baseCall)).toHaveLength(2);
   // Keep the complete native DTO; the canonical private row owner sees only the chosen page IDs.
   const pageDetails=sampled.replace(baseCall,'app._access_workforce_list_rows(p_subjects) AS a(value)');
   for(const [name,body] of [[names.baseline,sampled],[names.candidate,batched],[names.effectiveCompany,effective],
-      [names.narrow,narrow],[names.inlineNarrow,inline],[names.pageDetails,pageDetails]]){
+      [names.narrow,narrow],[names.inlineNarrow,inline],[names.singleAssignment,singleAssignment],[names.pageDetails,pageDetails]]){
    await tx.unsafe('create function '+name+'(p_as_of date,p_scope uuid[],p_subjects uuid[]) returns setof jsonb language sql stable security definer set search_path=pg_catalog,public,app as $prototype$'+body+'$prototype$');
    await tx.unsafe('revoke all on function '+name+signature+' from public; grant execute on function '+name+signature+' to ai_hr_app');
    const [properties]=await tx<{owner:string;definer:boolean;app:boolean;public_execute:boolean}[]>`select proowner::regrole::text as owner,prosecdef as definer,
@@ -229,6 +266,7 @@ export async function personnelDatedTagsPrototype() {
  });
  const array=(ids:string[]|null)=>ids===null?sql`null::uuid[]`:sql`array[${sql.join(ids.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[]`;
  return {
+  assignmentConstraint,
   source:(mode:keyof typeof names,date:string,scope:string[],subjects:string[]|null)=>
    sql`${sql.raw(names[mode])}(${date}::date,${array(scope)},${array(subjects)}) as r(value)`,
   drop:async()=>{await owner.client.unsafe('drop function '+Object.values(names).map(name=>name+signature).join(','));},

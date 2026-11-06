@@ -14,7 +14,8 @@ type Summary={pageIds:string[];total:number;byStatus:Record<string,number>;optio
 type Detail={employmentId:string};
 
 export function personnelNarrowOverviewProbe(
- ctx:SessionContext,prototype:Prototype,variant:'baseline'|'narrow'|'inlineNarrow',input:ProbeInput,
+ ctx:SessionContext,prototype:Prototype,variant:'baseline'|'narrow'|'inlineNarrow'|'singleAssignment',input:ProbeInput,
+ measure?: (timings:{summaryMs:number;detailsMs:number})=>void,
 ) {
  const {date,scope,subjects,limit,offset,pageQuery,facetQuery,companySort}=input;
  const field=(key:string)=>sql`value->>${key}`;
@@ -32,6 +33,7 @@ export function personnelNarrowOverviewProbe(
  };
  const ordering=companySort?sql`lower(company),lower(name),id`:sql`name,id`;
  return withPersonnelRead(ctx,async tx=>{
+  const began=performance.now();
   const [summary]=await tx.execute<Summary>(sql`
    with facts as materialized (
     select (${field('employmentId')})::uuid as id,${field('name')} as name,${field('company')} as company,
@@ -50,9 +52,11 @@ export function personnelNarrowOverviewProbe(
     (select coalesce(jsonb_object_agg(status,count),'{}'::jsonb) from status_counts) as "byStatus",
     (select coalesce(jsonb_agg(to_jsonb(o) order by to_jsonb(o)::text),'[]'::jsonb) from options o) as options
   `);
+  const summaryFinished=performance.now();
   const rows=summary.pageIds.length?await tx.execute<{value:Detail}>(sql`
    select value from ${prototype.source(variant==='baseline'?'baseline':'pageDetails',date,scope,summary.pageIds)}
   `):[];
+  measure?.({summaryMs:summaryFinished-began,detailsMs:performance.now()-summaryFinished});
   const details=new Map(rows.map(row=>[row.value.employmentId,row.value]));
   return {...summary,rows:summary.pageIds.map(id=>details.get(id)??null)};
  },{sharedAccessLock:true});
