@@ -7,17 +7,19 @@ owning release gate.
 
 ## Payroll reconciliation remarks — 6 November 2026 (provisional)
 
-The feedback candidate reserves `2404_payroll_reconciliation_remark`, idx `1604`,
-when `1793330001804`, SQL SHA-256
+The feedback candidate reserves `2404_payroll_reconciliation_remark`, idx `1654`,
+when `1793330001854`, SQL SHA-256
 `a0b5e3df73af733fd19ec72c1333cbdf21e9a932123be476ea86b4bfafda3974`, and
-`2405_rewards_review_activity`, idx `1605`, when `1793330001805`, SHA-256
+`2405_rewards_review_activity`, idx `1655`, when `1793330001855`, SHA-256
 `fb8f6d1be9e24589969329324174f74a2c3516dedf041ae8dad37f60d19afc20`, and
-`2406_payroll_reconciliation_generation`, idx `1606`, when `1793330001806`, SHA-256
+`2406_payroll_reconciliation_generation`, idx `1656`, when `1793330001856`, SHA-256
 `38979689c8df2b486fdd1c104de7dd94e872ba8e0838e1d51cc8be119fa99113`.
-The fresh main/alpha source and exact read-only staging ledger match at 697 entries
-with installed maximum `1793330001700`. Readable peer worktree claims extend
-through 2403 / idx 1603. Recheck the integration refs, peer claims and installed
-ledger again before merging or applying. No migration has been deployed.
+The prior staging ledger matched all 697 entries through `1793330001700`.
+The new installed source `dc36b7f0278001e1f57754f66ea5ce4ca24971ea` appends
+`2450_personnel_search_projection` at idx 1550 / timestamp `1793330001850`.
+The exact read-only staging ledger matches all 698 entries. The feedback candidate
+preserves that entry and changes only the journal positions
+of its three unapplied files. Recheck the installed ledger at release admission.
 
 ## Rewards whole-group grant foundation — 5 November 2026 (unapplied)
 

@@ -3,9 +3,10 @@
 This is a technical evidence packet for the eight staging feedback items. It is not
 provider approval, reporter acceptance, or permission to install the candidate.
 
-The verified installed baseline is commit `167746604919fd5b85918256f1396bb796afbab9`.
-The read-only staging check matched all 697 migration entries, in order and by
-checksum, through timestamp `1793330001700`. The candidate appends three migrations:
+The verified installed baseline is commit `dc36b7f0278001e1f57754f66ea5ce4ca24971ea`.
+The read-only staging check matched all 698 migration entries, in order and by
+checksum, through timestamp `1793330001850`. The intervening release changed
+migration history and an upgrade fixture outside the approved provider closure. The candidate appends three migrations:
 private payroll remarks, a narrow Rewards activity projection, and reconciliation
 source version receipts. See the [migration register](../MIGRATION-ALLOCATION.md)
 for the exact filenames, timestamps, and hashes.
