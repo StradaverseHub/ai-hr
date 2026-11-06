@@ -1167,7 +1167,7 @@ async function projectNotificationsTx(
       .from(domainEvent)
       .innerJoin(notificationEventProcessing,and(eq(notificationEventProcessing.eventId,domainEvent.id),eq(notificationEventProcessing.tenantId,domainEvent.tenantId)))
       .where(and(eq(domainEvent.tenantId,ctx.tenantId),eq(notificationEventProcessing.consumer,consumer),isNull(notificationEventProcessing.disposition)))
-      .orderBy(asc(domainEvent.sequence))
+      .orderBy(asc(notificationEventProcessing.eventSequence))
       .limit(limit);
     if (rows.length === 0) return { processed: 0, created: 0 };
 
