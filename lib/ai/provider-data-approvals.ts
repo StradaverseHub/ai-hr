@@ -2,8 +2,8 @@
 import type {ProviderDataReviewRecord} from './provider-data-reviews';
 export const PROVIDER_DATA_REVIEW_RECORDS:readonly ProviderDataReviewRecord[]=Object.freeze(
 [
-  {contractId:"authored_pay_formula_v2",status:"approved",sourceDigest:"5fe92a9d398e52077d790046673b96ca77bbb0d5cbc4af0a09669e66bed23952",reviewer:"human:zenlam repository-owner provisional",evidence:"docs/reviews/approved-personnel-source-binding-2026-11.md#formula-v2-scope",reviewedAt:"2026-11-04T15:10:32Z"},
-  {"contractId":"authored_pay_formula_v1","status":"approved","sourceDigest":"5fe92a9d398e52077d790046673b96ca77bbb0d5cbc4af0a09669e66bed23952","reviewer":"human:zenlam repository-owner provisional","evidence":"docs/reviews/ai-provider-owner-approval-2026-10.md#board-nine-source-binding","reviewedAt":"2026-11-02T18:19:31Z"},
+  {contractId:"authored_pay_formula_v2",status:"approved",sourceDigest:"4ba548433e40cdb97185e9007fb59c8df2c65e4f9a1aa3387e32ddd299e8fc6a",reviewer:"human:zenlam repository-owner provisional",evidence:"docs/reviews/approved-personnel-source-binding-2026-11.md#formula-v2-scope",reviewedAt:"2026-11-04T15:10:32Z"},
+  {"contractId":"authored_pay_formula_v1","status":"approved","sourceDigest":"4ba548433e40cdb97185e9007fb59c8df2c65e4f9a1aa3387e32ddd299e8fc6a","reviewer":"human:zenlam repository-owner provisional","evidence":"docs/reviews/ai-provider-owner-approval-2026-10.md#board-nine-source-binding","reviewedAt":"2026-11-02T18:19:31Z"},
   {
     "contractId": "structured_canonical_records_v1",
     "status": "pending",
@@ -23,7 +23,7 @@ export const PROVIDER_DATA_REVIEW_RECORDS:readonly ProviderDataReviewRecord[]=Ob
   {
     "contractId": "aggregate_comparison_analysis_v1",
     "status": "approved",
-    "sourceDigest": "5fe92a9d398e52077d790046673b96ca77bbb0d5cbc4af0a09669e66bed23952",
+    "sourceDigest": "4ba548433e40cdb97185e9007fb59c8df2c65e4f9a1aa3387e32ddd299e8fc6a",
     "reviewer": "human:zenlam repository-owner provisional",
     "evidence": "docs/reviews/ai-provider-owner-approval-2026-10.md#owner-approval",
     "reviewedAt": "2026-10-30T06:19:30Z"
@@ -31,7 +31,7 @@ export const PROVIDER_DATA_REVIEW_RECORDS:readonly ProviderDataReviewRecord[]=Ob
   {
     "contractId": "aggregate_snapshot_analysis_v1",
     "status": "approved",
-    "sourceDigest": "5fe92a9d398e52077d790046673b96ca77bbb0d5cbc4af0a09669e66bed23952",
+    "sourceDigest": "4ba548433e40cdb97185e9007fb59c8df2c65e4f9a1aa3387e32ddd299e8fc6a",
     "reviewer": "human:zenlam repository-owner provisional",
     "evidence": "docs/reviews/ai-provider-owner-approval-2026-10.md#owner-approval",
     "reviewedAt": "2026-10-30T06:19:30Z"
@@ -39,7 +39,7 @@ export const PROVIDER_DATA_REVIEW_RECORDS:readonly ProviderDataReviewRecord[]=Ob
   {
     "contractId": "assistant_closed_references_v1",
     "status": "approved",
-    "sourceDigest": "5fe92a9d398e52077d790046673b96ca77bbb0d5cbc4af0a09669e66bed23952",
+    "sourceDigest": "4ba548433e40cdb97185e9007fb59c8df2c65e4f9a1aa3387e32ddd299e8fc6a",
     "reviewer": "human:zenlam repository-owner provisional",
     "evidence": "docs/reviews/ai-provider-owner-approval-2026-10.md#owner-approval",
     "reviewedAt": "2026-10-30T06:19:30Z"
@@ -47,7 +47,7 @@ export const PROVIDER_DATA_REVIEW_RECORDS:readonly ProviderDataReviewRecord[]=Ob
   {
     "contractId": "synthetic_protocol_echo_v1",
     "status": "approved",
-    "sourceDigest": "5fe92a9d398e52077d790046673b96ca77bbb0d5cbc4af0a09669e66bed23952",
+    "sourceDigest": "4ba548433e40cdb97185e9007fb59c8df2c65e4f9a1aa3387e32ddd299e8fc6a",
     "reviewer": "human:zenlam repository-owner provisional",
     "evidence": "docs/reviews/ai-provider-owner-approval-2026-10.md#owner-approval",
     "reviewedAt": "2026-10-30T06:19:30Z"
@@ -55,7 +55,7 @@ export const PROVIDER_DATA_REVIEW_RECORDS:readonly ProviderDataReviewRecord[]=Ob
   {
     "contractId": "synthetic_protocol_tools_v1",
     "status": "approved",
-    "sourceDigest": "5fe92a9d398e52077d790046673b96ca77bbb0d5cbc4af0a09669e66bed23952",
+    "sourceDigest": "4ba548433e40cdb97185e9007fb59c8df2c65e4f9a1aa3387e32ddd299e8fc6a",
     "reviewer": "human:zenlam repository-owner provisional",
     "evidence": "docs/reviews/ai-provider-owner-approval-2026-10.md#owner-approval",
     "reviewedAt": "2026-10-30T06:19:30Z"
@@ -63,7 +63,7 @@ export const PROVIDER_DATA_REVIEW_RECORDS:readonly ProviderDataReviewRecord[]=Ob
   {
     "contractId": "synthetic_read_plan_v1",
     "status": "approved",
-    "sourceDigest": "5fe92a9d398e52077d790046673b96ca77bbb0d5cbc4af0a09669e66bed23952",
+    "sourceDigest": "4ba548433e40cdb97185e9007fb59c8df2c65e4f9a1aa3387e32ddd299e8fc6a",
     "reviewer": "human:zenlam repository-owner provisional",
     "evidence": "docs/reviews/ai-provider-owner-approval-2026-10.md#owner-approval",
     "reviewedAt": "2026-10-30T06:19:30Z"
@@ -71,7 +71,7 @@ export const PROVIDER_DATA_REVIEW_RECORDS:readonly ProviderDataReviewRecord[]=Ob
   {
     "contractId": "synthetic_assistant_conversation_v1",
     "status": "approved",
-    "sourceDigest": "5fe92a9d398e52077d790046673b96ca77bbb0d5cbc4af0a09669e66bed23952",
+    "sourceDigest": "4ba548433e40cdb97185e9007fb59c8df2c65e4f9a1aa3387e32ddd299e8fc6a",
     "reviewer": "human:zenlam repository-owner provisional",
     "evidence": "docs/reviews/ai-provider-owner-approval-2026-10.md#owner-approval",
     "reviewedAt": "2026-10-30T06:19:30Z"
@@ -79,7 +79,7 @@ export const PROVIDER_DATA_REVIEW_RECORDS:readonly ProviderDataReviewRecord[]=Ob
   {
     "contractId": "readiness_message_v1",
     "status": "approved",
-    "sourceDigest": "5fe92a9d398e52077d790046673b96ca77bbb0d5cbc4af0a09669e66bed23952",
+    "sourceDigest": "4ba548433e40cdb97185e9007fb59c8df2c65e4f9a1aa3387e32ddd299e8fc6a",
     "reviewer": "human:zenlam repository-owner provisional",
     "evidence": "docs/reviews/ai-provider-owner-approval-2026-10.md#owner-approval",
     "reviewedAt": "2026-10-30T06:19:30Z"
@@ -87,7 +87,7 @@ export const PROVIDER_DATA_REVIEW_RECORDS:readonly ProviderDataReviewRecord[]=Ob
   {
     "contractId": "claim_detail_triage_v1",
     "status": "approved",
-    "sourceDigest": "5fe92a9d398e52077d790046673b96ca77bbb0d5cbc4af0a09669e66bed23952",
+    "sourceDigest": "4ba548433e40cdb97185e9007fb59c8df2c65e4f9a1aa3387e32ddd299e8fc6a",
     "reviewer": "human:zenlam repository-owner provisional",
     "evidence": "docs/reviews/ai-provider-owner-approval-2026-10.md#owner-approval",
     "reviewedAt": "2026-10-30T06:19:30Z"
@@ -95,7 +95,7 @@ export const PROVIDER_DATA_REVIEW_RECORDS:readonly ProviderDataReviewRecord[]=Ob
   {
     "contractId": "payroll_feature_hypothesis_v1",
     "status": "approved",
-    "sourceDigest": "5fe92a9d398e52077d790046673b96ca77bbb0d5cbc4af0a09669e66bed23952",
+    "sourceDigest": "4ba548433e40cdb97185e9007fb59c8df2c65e4f9a1aa3387e32ddd299e8fc6a",
     "reviewer": "human:zenlam repository-owner provisional",
     "evidence": "docs/reviews/ai-provider-owner-approval-2026-10.md#owner-approval",
     "reviewedAt": "2026-10-30T06:19:30Z"
@@ -103,7 +103,7 @@ export const PROVIDER_DATA_REVIEW_RECORDS:readonly ProviderDataReviewRecord[]=Ob
   {
     "contractId": "payroll_detector_explanation_v1",
     "status": "approved",
-    "sourceDigest": "5fe92a9d398e52077d790046673b96ca77bbb0d5cbc4af0a09669e66bed23952",
+    "sourceDigest": "4ba548433e40cdb97185e9007fb59c8df2c65e4f9a1aa3387e32ddd299e8fc6a",
     "reviewer": "human:zenlam repository-owner provisional",
     "evidence": "docs/reviews/ai-provider-owner-approval-2026-10.md#owner-approval",
     "reviewedAt": "2026-10-30T06:19:30Z"
@@ -111,7 +111,7 @@ export const PROVIDER_DATA_REVIEW_RECORDS:readonly ProviderDataReviewRecord[]=Ob
   {
     "contractId": "authored_pay_rule_v1",
     "status": "approved",
-    "sourceDigest": "5fe92a9d398e52077d790046673b96ca77bbb0d5cbc4af0a09669e66bed23952",
+    "sourceDigest": "4ba548433e40cdb97185e9007fb59c8df2c65e4f9a1aa3387e32ddd299e8fc6a",
     "reviewer": "human:zenlam repository-owner provisional",
     "evidence": "docs/reviews/ai-provider-owner-approval-2026-10.md#owner-approval",
     "reviewedAt": "2026-10-30T06:19:30Z"
@@ -119,7 +119,7 @@ export const PROVIDER_DATA_REVIEW_RECORDS:readonly ProviderDataReviewRecord[]=Ob
   {
     "contractId": "authored_report_plan_v1",
     "status": "approved",
-    "sourceDigest": "5fe92a9d398e52077d790046673b96ca77bbb0d5cbc4af0a09669e66bed23952",
+    "sourceDigest": "4ba548433e40cdb97185e9007fb59c8df2c65e4f9a1aa3387e32ddd299e8fc6a",
     "reviewer": "human:zenlam repository-owner provisional",
     "evidence": "docs/reviews/ai-provider-owner-approval-2026-10.md#owner-approval",
     "reviewedAt": "2026-10-30T06:19:30Z"
@@ -127,7 +127,7 @@ export const PROVIDER_DATA_REVIEW_RECORDS:readonly ProviderDataReviewRecord[]=Ob
   {
     "contractId": "feedback_task_outline_v1",
     "status": "approved",
-    "sourceDigest": "5fe92a9d398e52077d790046673b96ca77bbb0d5cbc4af0a09669e66bed23952",
+    "sourceDigest": "4ba548433e40cdb97185e9007fb59c8df2c65e4f9a1aa3387e32ddd299e8fc6a",
     "reviewer": "human:zenlam repository-owner provisional",
     "evidence": "docs/reviews/ai-provider-owner-approval-2026-10.md#owner-approval",
     "reviewedAt": "2026-10-30T06:19:30Z"
@@ -135,7 +135,7 @@ export const PROVIDER_DATA_REVIEW_RECORDS:readonly ProviderDataReviewRecord[]=Ob
   {
     "contractId": "personnel_header_mapping_v1",
     "status": "approved",
-    "sourceDigest": "5fe92a9d398e52077d790046673b96ca77bbb0d5cbc4af0a09669e66bed23952",
+    "sourceDigest": "4ba548433e40cdb97185e9007fb59c8df2c65e4f9a1aa3387e32ddd299e8fc6a",
     "reviewer": "human:zenlam repository-owner provisional",
     "evidence": "docs/reviews/ai-provider-owner-approval-2026-10.md#owner-approval",
     "reviewedAt": "2026-10-30T06:19:30Z"
@@ -143,7 +143,7 @@ export const PROVIDER_DATA_REVIEW_RECORDS:readonly ProviderDataReviewRecord[]=Ob
   {
     "contractId": "performance_narrative_selection_v1",
     "status": "approved",
-    "sourceDigest": "5fe92a9d398e52077d790046673b96ca77bbb0d5cbc4af0a09669e66bed23952",
+    "sourceDigest": "4ba548433e40cdb97185e9007fb59c8df2c65e4f9a1aa3387e32ddd299e8fc6a",
     "reviewer": "human:zenlam repository-owner provisional",
     "evidence": "docs/reviews/ai-provider-owner-approval-2026-10.md#owner-approval",
     "reviewedAt": "2026-10-30T06:19:30Z"
@@ -151,7 +151,7 @@ export const PROVIDER_DATA_REVIEW_RECORDS:readonly ProviderDataReviewRecord[]=Ob
   {
     "contractId": "performance_text_layout_v1",
     "status": "approved",
-    "sourceDigest": "5fe92a9d398e52077d790046673b96ca77bbb0d5cbc4af0a09669e66bed23952",
+    "sourceDigest": "4ba548433e40cdb97185e9007fb59c8df2c65e4f9a1aa3387e32ddd299e8fc6a",
     "reviewer": "human:zenlam repository-owner provisional",
     "evidence": "docs/reviews/ai-provider-owner-approval-2026-10.md#owner-approval",
     "reviewedAt": "2026-10-30T06:19:30Z"
@@ -159,7 +159,7 @@ export const PROVIDER_DATA_REVIEW_RECORDS:readonly ProviderDataReviewRecord[]=Ob
   {
     "contractId": "performance_fact_selection_v1",
     "status": "approved",
-    "sourceDigest": "5fe92a9d398e52077d790046673b96ca77bbb0d5cbc4af0a09669e66bed23952",
+    "sourceDigest": "4ba548433e40cdb97185e9007fb59c8df2c65e4f9a1aa3387e32ddd299e8fc6a",
     "reviewer": "human:zenlam repository-owner provisional",
     "evidence": "docs/reviews/ai-provider-owner-approval-2026-10.md#owner-approval",
     "reviewedAt": "2026-10-30T06:19:30Z"
@@ -167,7 +167,7 @@ export const PROVIDER_DATA_REVIEW_RECORDS:readonly ProviderDataReviewRecord[]=Ob
   {
     "contractId": "performance_calibration_read_v1",
     "status": "approved",
-    "sourceDigest": "5fe92a9d398e52077d790046673b96ca77bbb0d5cbc4af0a09669e66bed23952",
+    "sourceDigest": "4ba548433e40cdb97185e9007fb59c8df2c65e4f9a1aa3387e32ddd299e8fc6a",
     "reviewer": "human:zenlam repository-owner provisional",
     "evidence": "docs/reviews/ai-provider-owner-approval-2026-10.md#owner-approval",
     "reviewedAt": "2026-10-30T06:19:30Z"
@@ -175,7 +175,7 @@ export const PROVIDER_DATA_REVIEW_RECORDS:readonly ProviderDataReviewRecord[]=Ob
   {
     "contractId": "performance_admin_selection_v1",
     "status": "approved",
-    "sourceDigest": "5fe92a9d398e52077d790046673b96ca77bbb0d5cbc4af0a09669e66bed23952",
+    "sourceDigest": "4ba548433e40cdb97185e9007fb59c8df2c65e4f9a1aa3387e32ddd299e8fc6a",
     "reviewer": "human:zenlam repository-owner provisional",
     "evidence": "docs/reviews/ai-provider-owner-approval-2026-10.md#owner-approval",
     "reviewedAt": "2026-10-30T06:19:30Z"
@@ -183,7 +183,7 @@ export const PROVIDER_DATA_REVIEW_RECORDS:readonly ProviderDataReviewRecord[]=Ob
   {
     "contractId": "performance_literal_command_v1",
     "status": "approved",
-    "sourceDigest": "5fe92a9d398e52077d790046673b96ca77bbb0d5cbc4af0a09669e66bed23952",
+    "sourceDigest": "4ba548433e40cdb97185e9007fb59c8df2c65e4f9a1aa3387e32ddd299e8fc6a",
     "reviewer": "human:zenlam repository-owner provisional",
     "evidence": "docs/reviews/ai-provider-owner-approval-2026-10.md#owner-approval",
     "reviewedAt": "2026-10-30T06:19:30Z"
@@ -191,7 +191,7 @@ export const PROVIDER_DATA_REVIEW_RECORDS:readonly ProviderDataReviewRecord[]=Ob
 {
   "contractId": "performance_native_outline_v1",
   "status": "approved",
-  "sourceDigest": "5fe92a9d398e52077d790046673b96ca77bbb0d5cbc4af0a09669e66bed23952",
+  "sourceDigest": "4ba548433e40cdb97185e9007fb59c8df2c65e4f9a1aa3387e32ddd299e8fc6a",
   "reviewer": "human:zenlam repository-owner provisional",
   "evidence": "docs/reviews/ai-provider-owner-approval-2026-10.md#owner-approval",
   "reviewedAt": "2026-10-30T06:19:30Z"
@@ -199,7 +199,7 @@ export const PROVIDER_DATA_REVIEW_RECORDS:readonly ProviderDataReviewRecord[]=Ob
 {
   "contractId": "performance_explicit_commands_v1",
   "status": "approved",
-  "sourceDigest": "5fe92a9d398e52077d790046673b96ca77bbb0d5cbc4af0a09669e66bed23952",
+  "sourceDigest": "4ba548433e40cdb97185e9007fb59c8df2c65e4f9a1aa3387e32ddd299e8fc6a",
   "reviewer": "human:zenlam repository-owner provisional",
   "evidence": "docs/reviews/ai-provider-owner-approval-2026-10.md#owner-approval",
   "reviewedAt": "2026-10-30T06:19:30Z"
@@ -207,7 +207,7 @@ export const PROVIDER_DATA_REVIEW_RECORDS:readonly ProviderDataReviewRecord[]=Ob
 {
   "contractId": "performance_starter_selection_v1",
   "status": "approved",
-  "sourceDigest": "5fe92a9d398e52077d790046673b96ca77bbb0d5cbc4af0a09669e66bed23952",
+  "sourceDigest": "4ba548433e40cdb97185e9007fb59c8df2c65e4f9a1aa3387e32ddd299e8fc6a",
   "reviewer": "human:zenlam repository-owner provisional",
   "evidence": "docs/reviews/ai-provider-owner-approval-2026-10.md#owner-approval",
   "reviewedAt": "2026-10-30T06:19:30Z"
@@ -215,7 +215,7 @@ export const PROVIDER_DATA_REVIEW_RECORDS:readonly ProviderDataReviewRecord[]=Ob
 {
   "contractId": "teras_harness_turn_v1",
   "status": "approved",
-  "sourceDigest": "5fe92a9d398e52077d790046673b96ca77bbb0d5cbc4af0a09669e66bed23952",
+  "sourceDigest": "4ba548433e40cdb97185e9007fb59c8df2c65e4f9a1aa3387e32ddd299e8fc6a",
   "reviewer": "human:zenlam repository-owner provisional",
   "evidence": "docs/reviews/ai-provider-owner-approval-2026-10.md#ai-centre-restructure-binding",
   "reviewedAt": "2026-11-05T06:09:20Z"
@@ -223,7 +223,7 @@ export const PROVIDER_DATA_REVIEW_RECORDS:readonly ProviderDataReviewRecord[]=Ob
 {
   "contractId": "handbook_policy_values_v1",
   "status": "approved",
-  "sourceDigest": "5fe92a9d398e52077d790046673b96ca77bbb0d5cbc4af0a09669e66bed23952",
+  "sourceDigest": "4ba548433e40cdb97185e9007fb59c8df2c65e4f9a1aa3387e32ddd299e8fc6a",
   "reviewer": "human:zenlam repository-owner provisional",
   "evidence": "docs/reviews/ai-provider-owner-approval-2026-10.md#ai-centre-restructure-binding",
   "reviewedAt": "2026-11-05T06:09:20Z"
