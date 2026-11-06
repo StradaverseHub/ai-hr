@@ -17,6 +17,7 @@ import {provePersonnelSingleAssignmentConstraint} from './personnel-dated-tags-p
 const selected:unknown=JSON.parse(process.env.AIHR_FOCUSED_TESTS??'[]');
 const requested=process.env.GITHUB_ACTIONS==='true'&&Array.isArray(selected)&&selected.length===1&&
  selected[0]==='test/performance/personnel-narrow-production.test.ts';
+const draftSql=readFileSync(new URL('./personnel-narrow-production-draft.sql',import.meta.url),'utf8');
 beforeAll(migrateTestDb);
 afterAll(closeAll);
 
@@ -54,8 +55,12 @@ it.skipIf(!requested)('preserves the real overview rows, facets, scope, dated as
  }
 
  await expect(readPersonnelOverview(ctx,scope,{},mode)).rejects.toThrow();
+ await expect(owner.client.begin(async tx=>{
+  await tx`alter table public.assignment rename constraint assignment_no_overlap to assignment_unreviewed`;
+  await tx.unsafe(draftSql);
+ })).rejects.toMatchObject({code:'55000'});
  const assignmentConstraint=await provePersonnelSingleAssignmentConstraint();
- await owner.client.unsafe(readFileSync(new URL('./personnel-narrow-production-draft.sql',import.meta.url),'utf8'));
+ await owner.client.unsafe(draftSql);
  try{
   const cases=[
    {name:'first page',input:scope,expected:[first.employmentId,second.employmentId],total:2},
@@ -98,7 +103,7 @@ it.skipIf(!requested)('preserves the real overview rows, facets, scope, dated as
   writeFileSync(join(process.env.AIHR_FOCUSED_EVIDENCE_DIR!,'personnel-narrow-production-parity.json'),JSON.stringify({
    kind:'PERSONNEL_NARROW_APPLICATION_PARITY_COMPONENT_ONLY',releaseEligible:false,assignmentConstraint,
    exactOverviewCases:cases.map(({name})=>name),exactFallbackCases:fallbackCases.map(({name})=>name),
-   foreignScopeDenied:true,emptySubjectsDenied:true,datedCorrectionParity:true,
+   foreignScopeDenied:true,emptySubjectsDenied:true,datedCorrectionParity:true,assignmentDriftRefused:true,
   },null,2));
  }finally{
   await owner.client.unsafe('drop function app.personnel_overview_narrow_rows(date,uuid[]), app.personnel_overview_page_rows(date,uuid[],uuid[])');
@@ -126,7 +131,7 @@ it.skipIf(!requested)('times the real Personnel overview at fifty thousand emplo
  ];
  const results: {name:string;reader:string;ms:number;status:string;rows?:number}[] = [];
  report.results = results;
- await owner.client.unsafe(readFileSync(new URL('./personnel-narrow-production-draft.sql',import.meta.url),'utf8'));
+ await owner.client.unsafe(draftSql);
  try {
   for (const {name,input,ids,total} of cases) {
    let baseline: Awaited<ReturnType<typeof readPersonnelOverview>> | undefined;

@@ -1,4 +1,23 @@
 -- Disposable hosted qualification only. Allocation and application route enablement are separate.
+-- The narrow join must never multiply an employment across overlapping assignments.
+DO $personnel_assignment_prerequisite$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_catalog.pg_constraint c
+    JOIN pg_catalog.pg_index i ON i.indexrelid=c.conindid AND i.indrelid=c.conrelid
+    WHERE c.conrelid='public.assignment'::regclass AND c.conname='assignment_no_overlap'
+      AND c.contype='x' AND c.convalidated AND NOT c.condeferrable
+      AND i.indisvalid AND i.indisready AND i.indimmediate
+      AND pg_catalog.pg_get_constraintdef(c.oid,true)=
+        'EXCLUDE USING gist (employment_id WITH =, daterange(valid_from, valid_to, ''[)''::text) WITH &&) WHERE (superseded_at IS NULL)'
+  ) THEN
+    RAISE EXCEPTION 'Personnel overview requires the reviewed immediate assignment exclusion constraint' USING ERRCODE='55000';
+  END IF;
+END;
+$personnel_assignment_prerequisite$;
+--> statement-breakpoint
+
 -- The canonical Personnel projection remains the owner of full DTOs. The only change in the
 -- bounded reader is narrowing its authorized base rows before assembling the dated DTO.
 CREATE FUNCTION app.personnel_overview_page_rows(p_as_of date,p_scope uuid[],p_subjects uuid[]) RETURNS SETOF jsonb
