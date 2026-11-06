@@ -1,3 +1,4 @@
+import {comparePendingHeaderPrototype} from './helpers/attendance-task-header-prototype';
 import {legacyPendingAttendanceTaskMetadata} from './helpers/attendance-task-original';
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
@@ -204,6 +205,12 @@ describe('v3 database authority refuses bypasses and committed/released proof', 
         const crossCompanyTasks = await pendingAttendanceTaskMetadata(f.first.ctx, otherCompanyContext);
         expect(crossCompanyTasks.map(row => row.id)).toEqual([f.id]);
         expect(crossCompanyTasks).toEqual(await legacyPendingAttendanceTaskMetadata(f.first.ctx, otherCompanyContext));
+        const [visibility] = await withTenant(f.first.ctx, tx => tx.execute<{ ordinary: boolean }>(sql`
+          select ${f.worker.employmentId}::uuid = any(app.visible_employment_ids()) as ordinary
+        `));
+        expect(visibility.ordinary).toBe(false);
+        const headers = await comparePendingHeaderPrototype({ assigned: f.first.ctx, unrelated: unrelated.ctx }, f.id);
+        expect(headers).toMatchObject({ assigned: { rows: 1, differences: 0 }, unrelated: { rows: 0, differences: 0 } });
         expect(await pendingAttendanceTaskMetadata(unrelated.ctx, otherCompanyContext)).toEqual([]);
         expect((await listAttendanceCorrections(f.first.ctx, { companyIds: otherCompanyContext, status: 'pending' })).map(row => row.id)).toContain(f.id);
         expect((await listAttendanceCorrections(unrelated.ctx, { companyIds: otherCompanyContext, status: 'pending' })).map(row => row.id)).not.toContain(f.id);
