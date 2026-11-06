@@ -56,8 +56,22 @@ export async function exerciseSavedReport({ page, user, fixture, db, base, phase
   async function record(operation, action) {
     const startedMs = performance.now();
     const startedWith = loadState?.();
-    await action();
-    timings.push({ operation, startedMs, visibleByMs: performance.now() - startedMs, startedWith, completedWith: loadState?.() });
+    let actionResponse;
+    const observe = response => {
+      const request = response.request();
+      if (request.method() === 'POST' && request.headers()['next-action']
+          && new URL(request.url()).origin === base && !actionResponse) {
+        actionResponse = { status: response.status(), headersByMs: performance.now() - startedMs };
+      }
+    };
+    page.on('response', observe);
+    try {
+      await action();
+    } finally {
+      page.off('response', observe);
+      timings.push({ operation, startedMs, visibleByMs: performance.now() - startedMs,
+        startedWith, completedWith: loadState?.(), actionResponse: actionResponse ?? null });
+    }
   }
 
   async function remove(id, measured) {
