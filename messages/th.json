@@ -30639,9 +30639,10 @@
         "lump-updated": "อัปเดตเงินก้อน",
         "onehr-results-imported": "นำเข้าผล OneHR",
         "posted": "บันทึกรางวัล",
-        "recommendation-updated": "ย้ายการตรวจสอบ",
-        "routed": "อัปเดตสมาชิกระดับอาวุโส",
-        "senior-membership-updated": "รีเฟรชแหล่งข้อมูลอัปโหลด"
+        "recommendation-updated": "อัปเดตข้อเสนอแนะ",
+        "routed": "ย้ายการตรวจสอบ",
+        "senior-membership-updated": "อัปเดตสมาชิกระดับอาวุโส",
+        "upload-source-refreshed": "รีเฟรชแหล่งข้อมูลอัปโหลด"
       }
     },
     "wholeGroup": {

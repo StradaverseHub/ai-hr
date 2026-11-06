@@ -30639,9 +30639,10 @@
         "lump-updated": "一次性奖金已更新",
         "onehr-results-imported": "OneHR 结果已导入",
         "posted": "奖励已过账",
-        "recommendation-updated": "评审已流转",
-        "routed": "高级成员资格已更新",
-        "senior-membership-updated": "上传来源已刷新"
+        "recommendation-updated": "建议已更新",
+        "routed": "评审已流转",
+        "senior-membership-updated": "高级成员资格已更新",
+        "upload-source-refreshed": "上传来源已刷新"
       }
     },
     "wholeGroup": {

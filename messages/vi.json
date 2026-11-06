@@ -30639,9 +30639,10 @@
         "lump-updated": "Đã cập nhật khoản một lần",
         "onehr-results-imported": "Đã nhập kết quả OneHR",
         "posted": "Đã ghi nhận thưởng",
-        "recommendation-updated": "Đã chuyển bước xét duyệt",
-        "routed": "Đã cập nhật thành viên cấp cao",
-        "senior-membership-updated": "Đã làm mới nguồn tải lên"
+        "recommendation-updated": "Đã cập nhật đề xuất",
+        "routed": "Đã chuyển bước xét duyệt",
+        "senior-membership-updated": "Đã cập nhật thành viên cấp cao",
+        "upload-source-refreshed": "Đã làm mới nguồn tải lên"
       }
     },
     "wholeGroup": {
