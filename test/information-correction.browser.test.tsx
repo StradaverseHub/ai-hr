@@ -32,6 +32,17 @@ it('requires a reason and an explicit before/after confirmation before saving th
  await waitFor(()=>expect(actions.save).toHaveBeenCalledWith({employmentId:preview.employmentId,changes:{hiredOn:'2025-01-01'},reason:preview.reason,fingerprint:preview.fingerprint}));
  expect(await screen.findByText(en.people.informationCorrection.saved)).toBeVisible();
 });
+it('shows why an employee cannot be loaded for an information correction', async () => {
+  const message = 'A unique current assignment is required. Review Employment Movement.';
+  actions.context.mockResolvedValue({ correctionError: message });
+  render(
+    <NextIntlClientProvider locale="en" messages={en}>
+      <HireCorrectionModes employmentId={preview.employmentId}><p>Existing correction form</p></HireCorrectionModes>
+    </NextIntlClientProvider>,
+  );
+  fireEvent.click(screen.getByRole('radio', { name: en.people.informationCorrection.title }));
+  expect(await screen.findByRole('alert')).toHaveTextContent(message);
+});
 it('shows Excel row errors before confirmation and displays durable batch results',async()=>{
  actions.upload.mockResolvedValue({attemptId:'attempt-fixture',plan:{version:1,previewHash:'checked',counts:{total:2,valid:1,invalid:1},issues:[],rows:[{row:2,companyCode:'DEMO',employeeCode:'EMP-001',values:{},errors:[],preview},{row:3,companyCode:'DEMO',employeeCode:'MISSING',values:{},errors:['Employee ID is unavailable.']}]}});
  actions.confirm.mockResolvedValue({attemptId:'attempt-fixture',succeeded:1,failed:1,unchanged:0,rows:[{row:2,status:'applied',errors:[]},{row:3,status:'failed',errors:['Employee ID is unavailable.']}]});

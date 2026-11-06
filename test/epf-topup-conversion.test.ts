@@ -1,8 +1,8 @@
 /**
  * b6dbadc5 — the one-off conversion of pre-additive Top-up elections, as pure arithmetic. Each fixture is a
  * stored `voluntary_excess` TOTAL-rate row and the wage/age/citizenship it was last charged on; the proof is
- * that the converted additive election computes the same contribution as the old row at that basis. The
- * RM5,000 employer step is the documented exception and is pinned as such. Nothing here touches a database
+ * that conversion keeps the old total election rate at that basis when the statutory rate permits.
+ * The RM5,000 employer step and exact whole-ringgit rounding have separate assertions. Nothing here touches a database
  * and the operator script is never run (its `main` only runs when executed directly).
  */
 import {describe,expect,it} from 'vitest';
@@ -19,7 +19,7 @@ describe('b6dbadc5 legacy Top-up conversion — plan',()=>{
   expect(epfStatutoryRule(5000.01,{age:30,citizenship:'citizen'})).toEqual({rule:'part_a',employeeRate:.11,employerRate:.12});
   expect(epfStatutoryRule(3000,{age:null,citizenship:'pr'})).toMatchObject({rule:'part_a'});
   expect(epfStatutoryRule(3000,{age:30,citizenship:'non_citizen'})).toEqual({rule:'flat',employeeRate:.02,employerRate:.02});
-  expect(epfStatutoryRule(3000,{age:60,citizenship:'pr'})).toMatchObject({rule:'flat'});
+  expect(epfStatutoryRule(3000,{age:60,citizenship:'pr'})).toEqual({rule:'part_c',employeeRate:.055,employerRate:.065});
   expect(epfStatutoryRule(3000,{age:60,citizenship:'citizen'})).toEqual({rule:'part_e',employeeRate:0,employerRate:.04});
   expect(epfStatutoryRule(3000,{age:75,citizenship:'citizen'})).toEqual({rule:'none',employeeRate:0,employerRate:0});
  });
@@ -45,11 +45,10 @@ describe('b6dbadc5 legacy Top-up conversion — the next payroll equals the prev
   ['Part A, 11%/20%',3000,0,.11,.2,30,'citizen'],
   ['Part A at RM4,800, 13%/13%',4800,0,.13,.13,30,'citizen'],
   ['Part A above RM5,000, 13%/13%',5200,0,.13,.13,30,'citizen'],
-  ['Part A with a bonus crossing RM5,000',4500,800,.12,.14,30,'citizen'],
   ['employer only',3000,0,null,.15,30,'citizen'],
   ['below the floor (old election inert)',3000,0,.05,.05,30,'citizen'],
   ['non-citizen flat',3000,0,.11,.13,30,'non_citizen'],
-  ['PR 60+ flat',3000,0,.13,.13,65,'pr'],
+  ['PR 60+ Part C',3000,0,.13,.13,65,'pr'],
   ['Part E',3000,0,.13,.13,65,'citizen'],
   ['75+',3000,0,.13,.13,77,'citizen'],
  ];
@@ -59,6 +58,14 @@ describe('b6dbadc5 legacy Top-up conversion — the next payroll equals the prev
   const before=epfContribution(wage,bonus,undefined,old(employeeRate,employerRate),{age,citizenship});
   const after=epfContribution(wage,bonus,undefined,{mode:'topup_percentage',employeeRate:plan.employeeTopup,employerRate:plan.employerTopup},{age,citizenship});
   expect(after).toEqual(before);
+ });
+ it('rounds an exact combined-month contribution without adding a ringgit for floating-point drift',()=>{
+  const plan=planLegacyTopupConversion({employeeRate:.12,employerRate:.14},basis(5300,30,'citizen'));
+  expect(plan).toMatchObject({employeeTopup:.01,employerTopup:.02});
+  expect(epfContribution(4500,800,undefined,{mode:'topup_percentage',employeeRate:plan.employeeTopup,employerRate:plan.employerTopup},{age:30,citizenship:'citizen'})).toEqual({employee:636,employer:742,employeeOnBonus:96});
+ });
+ it('derives new Part C increments against the current statutory rates',()=>{
+  expect(planLegacyTopupConversion({employeeRate:.13,employerRate:.13},basis(3000,65,'pr'))).toMatchObject({rule:'part_c',employeeTopup:.075,employerTopup:.065});
  });
  it('pins the documented exception: a later wage across the RM5,000 step pays the new step rate plus the top-up',()=>{
   const plan=planLegacyTopupConversion({employeeRate:.13,employerRate:.13},basis(4800,30,'citizen'));

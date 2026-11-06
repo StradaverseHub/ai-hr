@@ -262,18 +262,6 @@
         "placement": "bottom"
       },
       {
-        "id": "orgTree",
-        "target": "[data-tour=\"people-org-tree\"]",
-        "route": "/admin/organization",
-        "titleKey": "tour.people.orgTree.title",
-        "bodyKey": "tour.people.orgTree.body",
-        "placement": "bottom",
-        "roles": [
-          "hr_admin",
-          "super_admin"
-        ]
-      },
-      {
         "id": "orgCompanies",
         "target": "[data-tour=\"people-org-companies\"]",
         "route": "/admin/organization",

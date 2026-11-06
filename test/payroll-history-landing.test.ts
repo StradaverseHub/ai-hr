@@ -138,7 +138,7 @@ describe('862ed0ad — the itemised section no longer claims "no cash impact"', 
     // 5a5309d5 — UPDATED, NOT DELETED: the overtime source now falls back to the attendance legs
     // (`statutory.otDetail`) when no pay item fed the figure; the reconciliation gate is unchanged.
     expect(BREAKDOWN, 'the ot/bonus lines are handed out only when they reconcile').toContain(
-      'overtimeLines: reconciled(overtimeSourceLines(componentLines, row.statutory), disp.overtime)',
+      'overtimeLines: reconciled(payslipOvertimeLines(componentLines, row.statutory, sources).map(asSubLine), disp.overtime)',
     );
     expect(BREAKDOWN).toContain("bonusLines: reconciled(payItemLinesForCategory(componentLines, 'bonus').map(asSubLine), disp.bonus)");
     expect(BREAKDOWN, 'and “reconciled” is the shared predicate, not a local re-implementation').toContain(

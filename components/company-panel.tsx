@@ -1,4 +1,6 @@
 'use client';
+import { CompanyDisplayGroupFields } from './company-display-group-fields';
+import type { CompanyDisplayGroup, CompanyDisplayGroupOption } from '@/lib/company-display-group';
 
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
@@ -611,6 +613,8 @@ function StatutoryBodyRow({
 export function CompanyPanel({
   company,
   companies,
+  displayGroup,
+  displayGroupOptions,
   codesInUse = [],
   statutory,
   bankProfiles,
@@ -623,6 +627,8 @@ export function CompanyPanel({
 }: {
   company: PanelCompany;
   companies: { id: string; name: string }[];
+  displayGroup?: CompanyDisplayGroup;
+  displayGroupOptions?: readonly CompanyDisplayGroupOption[];
   /**
    * 7d2df42a — the companies that already hold a Company Code, so the General tab can warn (and NAME
    * the other company) when the operator types one that is taken. Built on the server by
@@ -1080,6 +1086,7 @@ export function CompanyPanel({
         <form action={actions.setParent} data-save-section="parent" className="space-y-2.5 rounded-lg border border-border bg-card p-3">
           <SubHeader>{t('groupParent')}</SubHeader>
           <input type="hidden" name="companyId" value={c.id} />
+          <CompanyDisplayGroupFields options={displayGroupOptions ?? []} saved={displayGroup}>
           <Field label={t('parentCompany')}>
             <select name="parentCompanyId" defaultValue={c.parentId ?? ''} className={inputCls}>
               <option value="">{t('noneGroupRoot')}</option>
@@ -1092,6 +1099,7 @@ export function CompanyPanel({
                 ))}
             </select>
           </Field>
+          </CompanyDisplayGroupFields>
         </form>
         </TabSaveScope>
 

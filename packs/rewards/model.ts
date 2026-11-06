@@ -164,10 +164,10 @@ export function withConfidentialityFloor(source: RewardSource, floor: { level: '
   return floor ? { ...rest, confidentialityFloor: floor.level, confidentialityReason: floor.reason } : rest;
 }
 
-export function visibleEntry(entry: RewardEntry, roles: readonly RewardRole[], personId?: string | null): boolean {
+export function visibleEntry(entry: RewardEntry & { groupEcDirectReport?: boolean }, roles: readonly RewardRole[], personId?: string | null): boolean {
   if (entry.source.personId === personId) return false;
   if (!entry.facts.reviewed && !roles.includes('gr')) return false;
-  if (entry.facts.confidentiality === 'ec') return roles.some(r => ['gr', 'ctro', 'ec'].includes(r));
+  if (entry.groupEcDirectReport || entry.facts.confidentiality === 'ec') return roles.some(r => ['gr', 'ctro', 'ec'].includes(r));
   if (entry.facts.confidentiality === 'bg' && roles.every(r => r === 'bu' || r === 'pbp')) return false;
   return true;
 }

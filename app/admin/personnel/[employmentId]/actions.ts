@@ -646,9 +646,14 @@ export async function correctHireDetailsAction(formData: FormData) {
   const s = await requireAdmin();
   const employmentId = String(formData.get('employmentId'));
   try {
+    const salary = formData.get('hireBasicSalary');
+    if (salary !== null && (typeof salary !== 'string' || !/^\d{1,10}(?:\.\d{1,2})?$/.test(salary.trim()))) {
+      throw Error('Enter a valid Basic Salary amount.');
+    }
     const res = await correctHireDetails(s, {
       employmentId,
       changes: parseHireCorrectionForm(formData),
+      basicSalary: salary === null ? undefined : Number(salary),
       reason: orNull(formData.get('reason')),
     });
     await recomputeEntitlement(s, employmentId, 'hire_corrected', { changeEffectiveOn: res.hiredOn });

@@ -18,6 +18,9 @@ export function rewardRequiredRoles(unit: RewardCoverageUnit, entries: RewardEnt
 /** A seat counts only while its login is neither archived nor blocked (suspended, past last working day). */
 export const activeRewardLogin = () => and(isNull(appUser.archivedAt), sql `not app.login_blocked(${appUser.id})`);
 export const missingRewardRoles = (required: readonly RewardRole[], active: readonly { role: string }[]) => required.filter(role => !active.some(m => m.role === role));
+export function wholeGroupCoverageTx(tx: Tx, unitId: string) {
+    return tx.execute<{ role: RewardRole }>(sql`select app.reward_group_coverage_roles(${unitId}::uuid) as role`);
+}
 export type RewardRoleCoverage = { role: RewardRole; required: boolean; activeHolders: { userId: string; name: string | null; email: string | null }[] };
 export type RewardUnitCoverage = { unitId: string; roles: RewardRoleCoverage[]; missing: RewardRole[] };
 /** Per-unit coverage for units the caller can already read (RLS decides). No roster or pay fact is loaded. */
@@ -25,10 +28,14 @@ export async function rewardUnitCoverage(tx: Tx, unitIds: string[]): Promise<Rew
     if (!unitIds.length) return [];
     const units = await tx.select({ id: rewardUnit.id, kind: rewardUnit.kind, offcycle: rewardUnit.offcycle }).from(rewardUnit).where(inArray(rewardUnit.id, unitIds));
     const holders = await tx.select({ unitId: rewardMember.unitId, role: rewardMember.role, userId: rewardMember.userId, name: person.fullName, email: person.primaryEmail }).from(rewardMember).innerJoin(appUser, and(eq(appUser.id, rewardMember.userId), eq(appUser.tenantId, rewardMember.tenantId))).leftJoin(person, and(eq(person.id, appUser.personId), sql `app.access_workforce_person(${person.id}, 'workforce.view')`)).where(and(inArray(rewardMember.unitId, unitIds), sql`app.reward_member_eligible(${rewardMember.id})`)).orderBy(asc(person.fullName), asc(appUser.id));
+    const coverage = await tx.execute<{ unitId: string; role: RewardRole }>(sql`
+      select id as "unitId", app.reward_group_coverage_roles(id) as role
+      from reward_unit where id = any(array[${sql.join(units.map(u => sql`${u.id}::uuid`), sql`, `)}]::uuid[])
+    `);
     const byId = new Map(units.map(u => [u.id, u]));
     return unitIds.filter(id => byId.has(id)).map(unitId => {
         const required = rewardRequiredRoles(byId.get(unitId)!), mine = holders.filter(h => h.unitId === unitId);
         const roles = rewardRoles.map(role => ({ role, required: required.includes(role), activeHolders: mine.filter(h => h.role === role).map(({ userId, name, email }) => ({ userId, name, email })) }));
-        return { unitId, roles, missing: missingRewardRoles(required, mine) };
+        return { unitId, roles, missing: missingRewardRoles(required, [...mine, ...coverage.filter(row => row.unitId === unitId)]) };
     });
 }

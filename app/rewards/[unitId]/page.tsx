@@ -35,6 +35,7 @@ export default async function RewardUnitPage({ params, searchParams }: { params:
   await requireModule('rewards'); const { s, scopeIds } = await scopedSession();
   const { unitId } = await params; const sp = await searchParams; const t = await getTranslations('rewards');
   if (sp.view === 'configuration') redirect(`/admin/rewards/${encodeURIComponent(unitId)}`);
+  const nav = await getTranslations('nav');
   const v = await getRewardUnit(s, unitId); const { unit } = v;const u=await getTranslations('rewardUploaded'),a=await getTranslations('rewardAdvisor');
   if(unit.kind==='annual'&&sp.view&&['review','budget','approvals','data','excluded','rules'].includes(sp.view)){
     const anchor=sp.check?'checks':({review:'people',budget:'salary-increase',approvals:'approvals',data:'data',excluded:'excluded',rules:'rules'} as Record<string,string>)[sp.view];
@@ -63,7 +64,7 @@ export default async function RewardUnitPage({ params, searchParams }: { params:
   const openIndex = sp.person ? rows.findIndex(r => r.id === sp.person) : -1; const open = openIndex >= 0 ? rows[openIndex] : null;
   const decisionTargets = annual ? (['submit', 'approve', 'return'] as const).filter(a => a === 'submit' ? canSubmit : a === 'approve' ? canApprove : canApprove || (unit.status === 'approved' && v.roles.some(r => ['gr', 'ctro', 'ec'].includes(r)))).flatMap(a => { try { return [{ action: a, to: t(`stages.${transition(unit.status, v.roles, a)}`) }]; } catch { return []; } }) : [];
   return <div className="w-full space-y-5">
-    <Link href="/rewards" className="text-sm text-primary hover:underline">← {t('title')}</Link>
+    <Link href="/rewards" className="text-sm text-primary hover:underline">← {nav('rewardsReviewing')}</Link>
     <PageHeader title={rewardReviewTitle(v.cycle?.name ?? t('title'), v.companyName, v.name)} description={`${t(`kinds.${unit.kind}`)} · ${v.returned ? t(`returnedTo.${v.returned.toSeat}`) : t(`stages.${unit.status}`)}${v.due ? ` · ${t('dueOn', { date: v.due })}` : ''} · ${t('snapshotDate')}: ${unit.snapshotDate}`} />
     <ErrorBanner message={sp.error} /><Link href={`/rewards/rules?unit=${unitId}`} className="inline-block text-sm text-primary underline underline-offset-2">{t('rules')}</Link>
     <div className="flex flex-wrap gap-4 text-sm">{v.uploaded?<Link href={`/rewards/${unitId}/uploaded`} className="text-primary underline">{u('open')}</Link>:annual&&v.libraryBound&&<Link href={`/rewards/${unitId}/advisor`} className="text-primary underline">{a('title')}</Link>}</div>

@@ -1,3 +1,5 @@
+import { correctHireBasicSalaryTx } from './comp';
+import { compensation } from '../db/schema';
 import {organisationManagedTx} from './organisation-write-policy';
 import {deriveCompanyOrganisationTx,recordEmploymentOrganisationTagsTx} from './company-organisation';
 import {assertWorkforceEmploymentTx} from './workforce-access';
@@ -547,6 +549,7 @@ export type HireCorrectionView = {
   gradeName: string | null;
   employmentType: string | null;
   fields: HireCorrectionFieldView[];
+  salaryAtHire?: { amount: string; currency: string };
 };
 
 export function hireCorrectionView(ctx: SessionContext, employmentId: string): Promise<HireCorrectionView> {
@@ -605,6 +608,11 @@ export async function hireCorrectionViewTx(tx: Tx, ctx: SessionContext, employme
       const [g] = await tx.select({ name: jobGrade.name }).from(jobGrade).where(eq(jobGrade.id, hireGradeId)).limit(1);
       gradeName = g?.name ?? null;
     }
+    const [salaryAtHire] = await tx.select({ amount: compensation.basicSalary, currency: compensation.currency })
+      .from(compensation)
+      .where(and(eq(compensation.employmentId, employmentId), eq(compensation.tenantId, ctx.tenantId),
+        eq(compensation.validFrom, plan.anchor), isNull(compensation.supersededAt),
+        sql`app.can_admin_employment(${employmentId}::uuid)`));
     return {
       hiredOn: plan.anchor,
       companyId: v1.companyId,
@@ -613,6 +621,7 @@ export async function hireCorrectionViewTx(tx: Tx, ctx: SessionContext, employme
       joinDate: plan.emp.joinDate,
       gradeName,
       employmentType: v1.row.employmentType,
+      salaryAtHire,
       fields,
     };
 }
@@ -668,6 +677,7 @@ async function labelValidForCompany(
 
 export type CorrectHireDetailsInput = {
   employmentId: string;
+  basicSalary?: number;
   /** Loosely typed ON PURPOSE: only the allow-listed fields are ever read from it (see the module header). */
   changes: HireCorrectionChanges & Record<string, unknown>;
   reason?: string | null;
@@ -709,6 +719,7 @@ export async function correctHireDetails(
   if (requested.departmentId === null) throw new HireCorrectionError('Department is required.');
 
   return withTenant(ctx, async (tx) => {
+    if (input.basicSalary !== undefined) await tx.execute(sql`select app.access_workforce_write_lock()`);
     await assertWorkforceEmploymentTx(tx,ctx,input.employmentId,'maintain');
     // Same lock order as every movement writer: the person's statutory owner, then the employment row.
     // Holding the employment row for the whole correction serialises two corrections of one hire.
@@ -733,7 +744,11 @@ export async function correctHireDetails(
       if (after === before) continue;
       changes.push({ field: f, before, after });
     }
-    if (!changes.length) throw new HireCorrectionNoChangeError();
+    const salaryCorrection = input.basicSalary === undefined ? null :
+      await correctHireBasicSalaryTx(tx, ctx, {
+        employmentId: input.employmentId, hireDate: plan.anchor, basicSalary: input.basicSalary, reason,
+      });
+    if (!changes.length && !salaryCorrection) throw new HireCorrectionNoChangeError();
     const changed = new Map(changes.map((c) => [c.field, c.after]));
 
     // ── which assignment versions take which fields ──
@@ -901,6 +916,7 @@ export async function correctHireDetails(
         hiredOn: plan.anchor,
         reason,
         changes,
+        ...(salaryCorrection ? { salaryCorrection } : {}),
         assignment: replaced,
         reportingLine: rlRecord,
         currentRecordChanged,

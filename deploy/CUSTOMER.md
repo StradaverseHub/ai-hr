@@ -59,6 +59,8 @@ cd /opt/ai-hr
 
 Despite its name, this installs dependencies, validates configuration, builds, migrates and seeds catalogs; it stops before service restart. Customer preflight refuses unsafe identity/audit/TLS/configuration before install/build/migration. It cannot prove credentials work or validate actual DB grants.
 
+After migrations, have the installation DBA apply the [Rewards database prerequisite](DEPLOY.md#rewards-database-prerequisite) before activating the release.
+
 Never run db:seed, --demo or --reseed. Verify migration count, ordered hashes and watermark against the shipping journal. On failure, keep traffic blocked; inspect deployment state and restore/rebuild a complete artifact before any restart.
 
 ## 5. Create the first customer and pending administrator

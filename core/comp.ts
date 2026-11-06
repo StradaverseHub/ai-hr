@@ -316,6 +316,41 @@ async function markPayrollRunsForCompensationTx(
   return markRunsAffectedByEmploymentChangeTx(tx, ctx, p);
 }
 
+/** Replace only the dated salary interval established at hire. The prior row is audit evidence. */
+export async function correctHireBasicSalaryTx(tx: Tx, ctx: SessionContext, input: {
+  employmentId: string; hireDate: string; basicSalary: number; reason: string;
+}) {
+  if (!Number.isFinite(input.basicSalary) || input.basicSalary < 0 || input.basicSalary > 9_999_999_999.99) {
+    throw Error('Enter a valid Basic Salary amount.');
+  }
+  await ownCompensationDependenciesTx(tx, ctx, input.employmentId);
+  const [previous] = await tx.select().from(compensation)
+    .where(and(eq(compensation.tenantId, ctx.tenantId), eq(compensation.employmentId, input.employmentId),
+      eq(compensation.validFrom, input.hireDate), isNull(compensation.supersededAt)))
+    .for('update');
+  if (!previous) throw Error('The dated salary at hire is unavailable.');
+  const amount = money(input.basicSalary);
+  if (previous.basicSalary === amount) return null;
+  const paid = await processedPeriodsTx(tx, input.employmentId);
+  if (overlapsClosedPeriod(paid, previous.validFrom, previous.validTo)) {
+    throw Error('Payroll already used this salary. Use the payroll adjustment process to amend the result.');
+  }
+
+  await tx.update(compensation).set({ supersededAt: new Date() }).where(eq(compensation.id, previous.id));
+  const [replacement] = await tx.insert(compensation).values({
+    tenantId: previous.tenantId, employmentId: previous.employmentId,
+    basicSalary: amount, currency: previous.currency, monthlyAllowance: previous.monthlyAllowance,
+    payMode: previous.payMode, paymentTerm: previous.paymentTerm, rateAmount: previous.rateAmount,
+    validFrom: previous.validFrom, validTo: previous.validTo, remarks: input.reason,
+  }).returning({ id: compensation.id });
+  await appendEvent(tx, {
+    tenantId: ctx.tenantId, aggregateType: 'compensation', aggregateId: replacement.id,
+    eventType: 'compensation.hire-corrected', actor: actorOf(ctx), subjectEmploymentId: input.employmentId,
+    payload: { supersededId: previous.id, effectiveFrom: previous.validFrom, fieldsChanged: ['basicSalary'] },
+  });
+  return { supersededId: previous.id, replacementId: replacement.id, validFrom: previous.validFrom };
+}
+
 export async function setCompensation(
   ctx: SessionContext,
   p: {

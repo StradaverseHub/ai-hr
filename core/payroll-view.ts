@@ -588,6 +588,8 @@ export type PayslipSourceTxnRow = {
   consumedBatchId: string | null;
   /** True when THIS run is the one that marked it paid — the agreement the reporter asked to be able to see. */
   consumedByThisRun: boolean;
+  /** True when the dated input has not been edited after its first consumption. */
+  quantityEvidenceCurrent?: boolean;
 };
 
 export function listPayslipSourceTxns(
@@ -614,6 +616,8 @@ export function listPayslipSourceTxns(
         source: payrollIndividualTxn.source,
         notes: payrollIndividualTxn.notes,
         consumedBatchId: payrollIndividualTxn.consumedBatchId,
+        quantityEvidenceCurrent: sql<boolean>`(${payrollIndividualTxn.consumedAt} is not null and
+          (${payrollIndividualTxn.updatedAt} is null or ${payrollIndividualTxn.updatedAt} <= ${payrollIndividualTxn.consumedAt}))`,
       })
       .from(payrollIndividualTxn)
       .innerJoin(payrollBatch, eq(payrollBatch.id, payrollIndividualTxn.batchId))

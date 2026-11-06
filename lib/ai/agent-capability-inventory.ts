@@ -47,7 +47,6 @@ export type RegisteredAgentActionPolicies={[K in AgentActionId]:AgentActionOf<K>
 
 export const AGENT_CAPABILITY_INVENTORY:Readonly<Record<string,Readonly<Record<string,AgentCapabilityClass>>>>=Object.freeze({
  "app/admin/organization/organisation-tagging-actions.ts":{"prepareOrganisationAction":"backlog:approve","decideOrganisationAction":"backlog:approve","processOrganisationAction":"backlog:approve"},
- "app/admin/personnel/approved-position-architecture-action.ts":{"readApprovedPositionArchitecture":"backlog:automatic"},
  "app/admin/personnel/derived-organisation-actions.ts":{"derivedOrganisationAction":"internal:session_and_presentation"},
  "app/admin/personnel/search/route.ts#route":{"POST":"internal:session_and_presentation"},
  "app/admin/users/[userId]/account/actions.ts":{"accountAction":"handoff:access_and_authentication"},
@@ -92,8 +91,6 @@ export const AGENT_CAPABILITY_INVENTORY:Readonly<Record<string,Readonly<Record<s
  "app/admin/claims/mileage/actions.ts":{"setMileageRateTableAction":"backlog:confirm"},
  "app/admin/claims/reimbursements/actions.ts":{"markReimbursementsPaidAction":"backlog:approve"},
  "app/admin/holidays/replacements/actions.ts":{"adjustReplacementAction":"backlog:confirm","saveReplacementPolicyAction":"backlog:confirm"},
- // The native multiplexer includes seat grants and independent checker decisions.
- "app/admin/job-architecture/actions.ts":{"architectureAction":"handoff:access_and_authentication"},
  "app/admin/job-descriptions/actions.ts":{"configureAction":"backlog:confirm","removeAttachmentAction":"backlog:confirm","saveDraftAction":"backlog:confirm","transitionAction":"backlog:confirm","uploadAction":"backlog:confirm"},
  "app/admin/leave-approval/actions.ts":{"assignApprovalTemplateAction":"backlog:approve","deleteApprovalTemplateAction":"backlog:approve","duplicateApprovalTemplateAction":"backlog:approve","saveApprovalTemplateAction":"backlog:approve","saveLeaveEscalationPolicyAction":"backlog:approve","setApprovalTemplateActiveAction":"backlog:approve","setTenantDefaultTemplateAction":"backlog:approve","unassignApprovalTemplateAction":"backlog:approve"},
  "app/admin/leave-config/bf-import/actions.ts":{"commitLeaveBfImportAction":"backlog:approve","reverseLeaveBfImportAction":"backlog:approve","validateLeaveBfImportAction":"backlog:automatic"},
@@ -150,6 +147,7 @@ export const AGENT_CAPABILITY_INVENTORY:Readonly<Record<string,Readonly<Record<s
  "app/admin/privacy/actions.ts":{"erasePersonPiiAction":"handoff:privacy_erasure"},
  "app/admin/privacy/case-handlers/actions.ts":{"designateCaseHandlerAction":"handoff:access_and_authentication","revokeCaseHandlerAction":"handoff:access_and_authentication"},
  "app/admin/rewards/access/actions.ts":{"decideRewardAccessRequestAction":"handoff:access_and_authentication","previewRewardAccessBatchAction":"backlog:automatic","previewRewardAccessCopyAction":"backlog:automatic","saveRewardAccessBatchAction":"handoff:access_and_authentication"},
+ "app/admin/rewards/access/group-role-actions.ts":{"saveRewardGroupRoleAction":"handoff:access_and_authentication"},
  "app/admin/rewards/access/policy-actions.ts":{
   "beginRewardViewAsAction":"handoff:access_and_authentication","endRewardViewAsAction":"handoff:access_and_authentication",
   "resetRewardPermissionsAction":"handoff:access_and_authentication","rewardPermissionAction":"handoff:access_and_authentication",
