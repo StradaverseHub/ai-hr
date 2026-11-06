@@ -14,10 +14,10 @@ import { payPeriodBounds } from './payslip-segment';
 import { todayInKualaLumpur } from '../lib/hr-date';
 import { isCalendarDate } from '../lib/calendar-date';
 import {
-  DEFAULT_PAYROLL_COMPARISON, PAYROLL_COMPARISON_DATASET, payrollComparisonFilters,
+  ALL_RECORDED_PAY_ITEMS, DEFAULT_PAYROLL_COMPARISON, PAYROLL_COMPARISON_DATASET, payrollComparisonFilters,
   validatePayrollComparisonDefinition, type PayrollComparisonMovement,
 } from '../lib/payroll-period-comparison';
-import {payrollComparisonDatedSubjects} from '../lib/payroll-comparison-source';
+import {payrollComparisonDatedSubjects,recordedPayrollComparisonAmount,recordedPayrollComparisonCodes} from '../lib/payroll-comparison-source';
 import { comparePayrollResults, type ComparisonIdentity, type ComparisonResult } from '../lib/payroll-comparison-result';
 import { MasterReportAccessError } from './employee-master-access';
 const object=(value:unknown):Record<string,unknown>=>value&&typeof value==='object'&&!Array.isArray(value)?value as Record<string,unknown>:{};
@@ -43,7 +43,7 @@ export async function payrollComparisonOptions(ctx:SessionContext,scope:readonly
     return {companies,departments,businessUnits,positions,cycles,periods:periods.map(row=>row.period)};
   },{readOnlySnapshot:true});
   const items=await listPayComponents(ctx,{readyOnly:true});
-  return {...choices,payItems:[{code:'BASIC',name:'Basic Salary actually paid'},...items.filter(item=>item.code!=='BASIC').map(item=>({code:item.code,name:item.name}))]};
+  return {...choices,payItems:[{code:ALL_RECORDED_PAY_ITEMS,name:'All recorded pay items'},{code:'BASIC',name:'Basic Salary actually paid'},...items.filter(item=>item.code!=='BASIC').map(item=>({code:item.code,name:item.name}))]};
 }
 export type PayrollComparisonExecution={filters:ReturnType<typeof payrollComparisonFilters>;definition:ReturnType<typeof validatePayrollComparisonDefinition>;
   result:ComparisonResult;companyIds:string[];sourceRevisions:{id:string;version:number;runId:string}[];contextUnavailable:boolean};
@@ -137,9 +137,47 @@ export async function executePayrollComparisonTx(tx:Tx,ctx:SessionContext,spec:C
         grade:placement&&grade?.gradeId?gradeNames.get(grade.gradeId)??null:null,movements,verifiedTransferIds});
     }
   }
-  const result=comparePayrollResults({definition,filters,companyIds:ids,runs,sources,identities,
-    previousFrom:previous.from,currentFrom:current.from,currentTo:current.to,paginate:verb!=='export'});
+  const input={definition,filters,companyIds:ids,runs,sources,identities,
+    previousFrom:previous.from,currentFrom:current.from,currentTo:current.to,paginate:verb!=='export'};
+  const result=definition.payItemCode===ALL_RECORDED_PAY_ITEMS
+    ? compareRecordedPayItems(input, sources) : comparePayrollResults(input);
   return {definition,filters,result,companyIds:ids,sourceRevisions:sources.map(({id,version,runId})=>({id,version,runId})),contextUnavailable};
+}
+
+function compareRecordedPayItems(input:Parameters<typeof comparePayrollResults>[0], sources: Awaited<ReturnType<typeof payrollComparisonSourcesTx>>['sources']):ComparisonResult {
+  const found=new Set<string>();
+  for(const source of sources)for(const code of recordedPayrollComparisonCodes(source.recordedItems)){
+    if(code==='BASIC'||code===ALL_RECORDED_PAY_ITEMS)continue;
+    found.add(code);
+    if ((found.size+1)*sources.length>100000) throw new Error('This comparison has too many employee and pay item combinations. Choose one company, pay cycle or pay item.');
+  }
+  const codes=[...found].sort();
+  const compare = (code:string) => comparePayrollResults({...input,definition:{...input.definition,payItemCode:code},paginate:false,
+    sources:code==='BASIC'?sources:sources.map(source=>({...source,proratedCoverage:undefined,
+      amount:recordedPayrollComparisonAmount('0',source.recordedItems,code,source.companyId)}))});
+  const basic=compare('BASIC');
+  if(!basic.available)return basic;
+  const rows=basic.rows.map(row=>({...row,payItemCode:'BASIC'}));
+  const unavailablePayItems:string[]=[];
+  if(basic.summary)basic.summary.totals=basic.summary.totals.map(total=>({...total,payItemCode:'BASIC'}));
+  for(const code of codes){
+    const item=compare(code);
+    if(!item.available){unavailablePayItems.push(code);continue;}
+    rows.push(...item.rows.map(row=>({...row,payItemCode:code})));
+    basic.comparisonRows+=item.comparisonRows;
+    basic.displayedRows+=item.displayedRows;
+    for(const reason of Object.keys(item.reasonCounts) as (keyof typeof item.reasonCounts)[])basic.reasonCounts[reason]+=item.reasonCounts[reason];
+    for(const filter of Object.keys(item.reasonFilterCounts) as (keyof typeof item.reasonFilterCounts)[])basic.reasonFilterCounts[filter]+=item.reasonFilterCounts[filter];
+    if(basic.summary&&item.summary){
+      basic.summary.unexplained+=item.summary.unexplained;
+      basic.summary.totals.push(...item.summary.totals.map(total=>({...total,payItemCode:code})));
+    }
+  }
+  const group=input.filters.groupBy;
+  rows.sort((a,b)=>(group?(a[group]??'').localeCompare(b[group]??''):0)||
+    (a.employeeCode??a.employeeName).localeCompare(b.employeeCode??b.employeeName)||a.payItemCode.localeCompare(b.payItemCode));
+  basic.rows=input.paginate===false?rows:rows.slice((input.filters.page-1)*input.filters.pageSize,input.filters.page*input.filters.pageSize);
+  return {...basic,unavailablePayItems};
 }
 
 /** Processed periods visible to a caller with current financial report authority. */

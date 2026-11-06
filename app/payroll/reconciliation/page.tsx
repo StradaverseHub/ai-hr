@@ -6,7 +6,7 @@ import { listCustomReports } from '@/core/custom-reports';
 import { MasterReportAccessError } from '@/core/employee-master-access';
 import { payrollReconciliationPeriods } from '@/core/report-payroll-comparison';
 import { scopedAdmin } from '@/lib/scope';
-import { isPayrollComparisonPeriod, previousPayrollComparisonPeriod } from '@/lib/payroll-period-comparison';
+import { ALL_RECORDED_PAY_ITEMS, isPayrollComparisonPeriod, previousPayrollComparisonPeriod } from '@/lib/payroll-period-comparison';
 
 export default async function PayrollReconciliationPage({
   searchParams,
@@ -29,7 +29,8 @@ export default async function PayrollReconciliationPage({
   return (
     <div className={pageWideCls}>
       <PageHeader title={nav('payrollReconciliation')} description={t('basis')}
-        back={{ href: '/payroll', label: t('payroll') }} />
+        back={{ href: '/payroll', label: t('payroll') }}
+        actions={<Link className={btnPrimary} href={`/reports/payroll-comparison/reconciliation?payItemCode=${ALL_RECORDED_PAY_ITEMS}`}>{t('newComparison')}</Link>} />
       <Card className="space-y-4 p-5">
         <Link className="text-sm text-primary underline" href="/reports?cat=payroll">{t('customReports')}</Link>
         {reports.length > 0 && <form className="flex flex-wrap items-end gap-3">
@@ -57,6 +58,7 @@ export default async function PayrollReconciliationPage({
               {periods.filter(row => isPayrollComparisonPeriod(row.period)).map(row => {
                 const previous = previousPayrollComparisonPeriod(row.period);
                 const query = new URLSearchParams({ currentPeriod: row.period, previousPeriod: previous, companyId: row.companyId, runType: 'all' });
+                if(!chosen)query.set('payItemCode',ALL_RECORDED_PAY_ITEMS);
                 return <tr key={row.companyId + row.period}>
                   <td className="p-3">{row.companyName}</td>
                   <td className="p-3 tabular-nums">{row.period}</td>

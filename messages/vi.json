@@ -31292,6 +31292,9 @@
     }
   },
   "payrollComparison": {
+    "newComparison": "So sánh mới",
+    "allRecordedItems": "Tất cả khoản lương đã ghi",
+    "itemsUnavailable": "Không thể so sánh một số khoản lương từ dữ liệu đã ghi: {codes}",
     "saveTemplate": "Lưu làm mẫu đối chiếu",
     "businessUnit": "Đơn vị kinh doanh",
     "position": "Vị trí",
@@ -31385,6 +31388,7 @@
       "super_admin": "Quản trị cấp cao"
     },
     "columns": {
+      "payItemCode": "Mã khoản lương",
       "employeeCode": "Mã nhân viên",
       "employeeName": "Nhân viên",
       "department": "Phòng ban",
@@ -31401,6 +31405,8 @@
       "remarks": "Ghi chú"
     },
     "reasons": {
+      "noChange": "Không thay đổi",
+      "payItemChanged": "Khoản lương đã ghi thay đổi",
       "unexplained": "Chưa giải thích",
       "increment": "Tăng lương",
       "promotion": "Thăng chức",

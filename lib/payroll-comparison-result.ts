@@ -29,6 +29,7 @@ export type ComparisonIdentity = {
   verifiedTransferIds: readonly string[];
 };
 export type ComparisonIssue = {
+  payItemCode?: string;
   code: 'missingPayroll' | 'draftPayroll' | 'previousNotClosed' | 'stalePayroll' | 'itemNotRecorded';
   period: string; companyId: string; runId?: string; resultId?: string;
 };
@@ -37,10 +38,12 @@ export type ComparisonRow = Omit<ComparisonIdentity, 'movements' | 'verifiedTran
   /** Unknown currency does not establish that the two periods share a monetary unit. */
   variance: string | null; variancePct: string | null; reason: PayrollReasonEvidence;
   previousPresent: boolean; currentPresent: boolean;
+  payItemCode?: string;
   hrRemark?: { body: string; revision: number };
   sources: { id: string; version: number; runId: string }[];
 };
 export type ComparisonTotal = {
+  payItemCode?: string;
   currency: string | null;
   /** Unknown-currency totals stay separated by employer, never combined into one nominal currency. */
   companyId: string | null;
@@ -54,6 +57,7 @@ export type ComparisonResult = {
   summary: { previousHeadcount: number; currentHeadcount: number; joiners: number; leavers: number;
     unexplained: number; totals: ComparisonTotal[] } | null;
   page: number; pageSize: number;
+  unavailablePayItems?: string[];
 };
 const key = (employmentId: string, companyId: string, currency: string | null) =>
   JSON.stringify([employmentId, companyId, currency]);
@@ -71,7 +75,8 @@ export function payrollComparisonAvailability(
   for (const companyId of companyIds) {
     for (const period of [previousPeriod, currentPeriod]) {
       const periodRuns = selected.filter(run => run.companyId === companyId && run.period === period);
-      if (!periodRuns.length) issues.push({ code: 'missingPayroll', period, companyId });
+      if (!periodRuns.length) issues.push({ payItemCode?: string;
+  code: 'missingPayroll', period, companyId });
       for (const run of periodRuns) {
         const base = { period, companyId, runId: run.id };
         if (run.stale) issues.push({ ...base, code: 'stalePayroll' });
@@ -158,9 +163,12 @@ export function comparePayrollResults(input: {
       previousCoverage: group.previous.sources.map(source => source.coverage),
       currentCoverage: group.current.sources.map(source => source.coverage),
       proratedCoverage: group.current.sources.flatMap(source => source.proratedCoverage ? [source.proratedCoverage] : []),
-      movements: identity.movements, verifiedTransferIds: identity.verifiedTransferIds };
+      movements: input.definition.payItemCode==='BASIC'?identity.movements:identity.movements.filter(m=>m.kind==='exit'||m.kind==='transfer'), verifiedTransferIds: identity.verifiedTransferIds };
     const verified = payrollComparisonReason(evidenceInput);
-    const reason = input.definition.autoTag ? verified : payrollComparisonReason({ ...evidenceInput, autoTag: false });
+    const reason = !input.definition.autoTag ? payrollComparisonReason({ ...evidenceInput, autoTag: false })
+      : verified.reason==='unexplained' && group.currency && group.previous.amount===group.current.amount ? {...verified,reason:'noChange' as const}
+      : verified.reason==='unexplained' && group.currency && input.definition.payItemCode!=='BASIC' ? {...verified,reason:'payItemChanged' as const}
+      : verified;
     // Headcount changes concern persisted paid-result presence, independent of the chosen item amount.
     if (!group.previous.sources.length && group.current.sources.length &&
       identity.hireDate >= input.currentFrom && identity.hireDate <= input.currentTo) joiners.add(group.employmentId);

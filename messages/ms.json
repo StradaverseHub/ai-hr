@@ -31292,6 +31292,9 @@
     }
   },
   "payrollComparison": {
+    "newComparison": "Perbandingan baharu",
+    "allRecordedItems": "Semua item gaji yang direkodkan",
+    "itemsUnavailable": "Sesetengah item gaji tidak dapat dibandingkan daripada rekod gaji: {codes}",
     "saveTemplate": "Simpan sebagai templat rekonsiliasi",
     "businessUnit": "Unit perniagaan",
     "position": "Jawatan",
@@ -31385,6 +31388,7 @@
       "super_admin": "Pentadbir Super"
     },
     "columns": {
+      "payItemCode": "Kod item gaji",
       "employeeCode": "No. pekerja",
       "employeeName": "Pekerja",
       "department": "Jabatan",
@@ -31401,6 +31405,8 @@
       "remarks": "Catatan"
     },
     "reasons": {
+      "noChange": "Tiada perubahan",
+      "payItemChanged": "Item gaji yang direkodkan berubah",
       "unexplained": "Belum dijelaskan",
       "increment": "Kenaikan gaji",
       "promotion": "Kenaikan pangkat",

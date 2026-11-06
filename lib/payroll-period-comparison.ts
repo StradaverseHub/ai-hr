@@ -1,10 +1,11 @@
 /** Declarative report contract and exact arithmetic; never calculates an employee's pay. */
 import { PERSONNEL_EMPLOYMENT_TYPES } from './personnel-choice-vocabulary';
 
+export const ALL_RECORDED_PAY_ITEMS='__ALL_RECORDED__';
 export const PAYROLL_COMPARISON_DATASET='payroll_period_comparison';
 export const PAYROLL_COMPARISON_COLUMNS=['employeeCode','employeeName','department','grade','company','costCentre','variancePct','effectiveDate','remarks'] as const;
 export type PayrollComparisonColumn=typeof PAYROLL_COMPARISON_COLUMNS[number];
-export const PAYROLL_COMPARISON_REASONS=['unexplained','increment','promotion','demotion','newHire','resigned','proratedLeaving','transfer','unclassified'] as const;
+export const PAYROLL_COMPARISON_REASONS=['unexplained','increment','promotion','demotion','newHire','resigned','proratedLeaving','transfer','noChange','payItemChanged','unclassified'] as const;
 export type PayrollComparisonReason=typeof PAYROLL_COMPARISON_REASONS[number];
 export const PAYROLL_COMPARISON_REASON_FILTERS=[...PAYROLL_COMPARISON_REASONS,'incrementPromotion','prorated'] as const;
 export type PayrollComparisonReasonFilter=typeof PAYROLL_COMPARISON_REASON_FILTERS[number];

@@ -21,7 +21,7 @@ import {
 } from '../packs/payroll/service';
 import { requirePackFor } from '../localization/registry';
 import { todayInKualaLumpur } from '../lib/hr-date';
-import { previousPayrollComparisonPeriod } from '../lib/payroll-period-comparison';
+import { ALL_RECORDED_PAY_ITEMS, previousPayrollComparisonPeriod } from '../lib/payroll-period-comparison';
 import { serializePayrollComparison } from '../lib/payroll-comparison-export';
 import {
   closeAll, entitledCtx, migrateTestDb, owner, resetDb, seedBase, setModule, type Base,
@@ -147,6 +147,13 @@ describe('Payroll comparison consumes generated paid results under the saved rep
     const before = await payrollSnapshot(), view = await run(f.report.id), exported = await run(f.report.id, 'export');
     const builtIn = await runPayrollComparisonReport(ctx, [b.companyId], { id: 'reconciliation', verb: 'export', filters: { currentPeriod, previousPeriod, payItemCode: 'ALLOWANCE' } });
     expect(builtIn.result.rows).toEqual(exported.result.rows);
+    const allItems = await runPayrollComparisonReport(ctx, [b.companyId], { id: 'reconciliation', verb: 'export',
+      filters: { currentPeriod, previousPeriod, payItemCode: ALL_RECORDED_PAY_ITEMS, onlyVariances: '0' } });
+    expect(allItems.result.rows).toEqual(expect.arrayContaining([
+      expect.objectContaining({ payItemCode: 'BASIC', previous: '3000.00', current: '3000.00', reason: expect.objectContaining({ reason:'noChange' }) }),
+      expect.objectContaining({ payItemCode: 'ALLOWANCE', previous: '10.10', current: '10.11', variance: '0.01', reason: expect.objectContaining({ reason:'payItemChanged' }) }),
+    ]));
+
     expect(view.result.available).toBe(true);
     expect(view.result.rows).toHaveLength(1);
     expect(view.result.rows[0]).toMatchObject({ employmentId: f.employee.employmentId,

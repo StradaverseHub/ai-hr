@@ -43,14 +43,14 @@ export async function createPayrollComparisonSampleAction(){
 }
 
 export async function savePayrollReconciliationRemarkAction(query: string, companyId: string, employmentId: string,
-  currency: string | null, revision: number, form: FormData) {
+  currency: string | null, rowPayItem: string | null, revision: number, form: FormData) {
   const {s,scopeIds}=await scopedAdmin();
   const values=new URLSearchParams(query);
   values.delete('noteError');
   const body=form.get('remark');
   try {
     if (typeof body !== 'string') throw new Error('Invalid remark.');
-    await savePayrollReconciliationRemark(s,scopeIds,{filters:Object.fromEntries(values),companyId,employmentId,currency,revision,body});
+    await savePayrollReconciliationRemark(s,scopeIds,{filters:Object.fromEntries(values),companyId,employmentId,currency,rowPayItem:rowPayItem??undefined,revision,body});
   } catch (error) {
     // SQL errors can contain the confidential remark as a bound parameter.
     values.set('noteError',error instanceof PayrollReconciliationRemarkConflict?'conflict':'failed');

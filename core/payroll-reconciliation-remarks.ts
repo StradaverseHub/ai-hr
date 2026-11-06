@@ -8,14 +8,14 @@ import { payrollComparisonAccessTx } from './report-payroll-access';
 import { DEFAULT_PAYROLL_COMPARISON, validatePayrollComparisonDefinition } from '../lib/payroll-period-comparison';
 import type { ComparisonRow } from '../lib/payroll-comparison-result';
 
-function scopeDigest(run: PayrollComparisonExecution, currency: string | null) {
-  return createHash('sha256').update(JSON.stringify([run.definition.payItemCode,
-    run.filters.runType, [...(run.filters.cycleIds ?? [])].sort(), currency])).digest('hex');
+function scopeDigest(run: PayrollComparisonExecution, row: ComparisonRow) {
+  return createHash('sha256').update(JSON.stringify([row.payItemCode??run.definition.payItemCode,
+    run.filters.runType, [...(run.filters.cycleIds ?? [])].sort(), row.currency])).digest('hex');
 }
 
 function keys(run: PayrollComparisonExecution, row: ComparisonRow) {
   return { companyId: row.companyId, employmentId: row.employmentId, previousPeriod: run.filters.previousPeriod!,
-    currentPeriod: run.filters.currentPeriod!, scopeDigest: scopeDigest(run, row.currency) };
+    currentPeriod: run.filters.currentPeriod!, scopeDigest: scopeDigest(run, row) };
 }
 
 export function builtInPayrollReconciliationSpec(payItemCode: unknown) {
@@ -27,7 +27,7 @@ export async function attachPayrollReconciliationRemarks(tx: Tx, ctx: SessionCon
   if (!run.result.available || !run.result.rows.length) return;
   const rows = run.result.rows;
   const subjects = [...new Set(rows.map(row => row.employmentId))];
-  const scopes = [...new Set(rows.map(row => scopeDigest(run, row.currency)))];
+  const scopes = [...new Set(rows.map(row => scopeDigest(run, row)))];
   const current = await tx.selectDistinctOn([remark.companyId, remark.employmentId, remark.scopeDigest], {
     companyId: remark.companyId, employmentId: remark.employmentId, scopeDigest: remark.scopeDigest,
     body: remark.body, revision: remark.revision,
@@ -46,7 +46,7 @@ export async function attachPayrollReconciliationRemarks(tx: Tx, ctx: SessionCon
 export class PayrollReconciliationRemarkConflict extends Error {}
 
 export async function savePayrollReconciliationRemark(ctx: SessionContext, scope: readonly string[], input: {
-  filters: Record<string, unknown>; companyId: string; employmentId: string; currency: string | null; revision: number; body: string;
+  filters: Record<string, unknown>; companyId: string; employmentId: string; currency: string | null; rowPayItem?: string; revision: number; body: string;
 }) {
   const uuid = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i;
   if (!ctx.userId || !scope.includes(input.companyId) || !uuid.test(input.employmentId) ||
@@ -58,7 +58,7 @@ export async function savePayrollReconciliationRemark(ctx: SessionContext, scope
     await payrollComparisonAccessTx(tx, ctx, spec, 'edit', [input.companyId]);
     const run = await executePayrollComparisonTx(tx, ctx, spec, scope, filters, 'view');
     const row = run.result.available && run.result.rows.find(row => row.companyId === input.companyId &&
-      row.employmentId === input.employmentId && row.currency === input.currency);
+      row.employmentId === input.employmentId && row.currency === input.currency && row.payItemCode === input.rowPayItem);
     if (!row) throw new MasterReportAccessError();
     const key = keys(run, row);
     const lock = JSON.stringify(['payroll-reconciliation-remark', ctx.tenantId, key]);
