@@ -15,7 +15,7 @@ import time
 
 MAX_FILES = 40000
 MAX_UNPACKED = 2 * 1024**3
-CAPACITY_PROFILE = {"profileVersion": 3, "archiveMaxBytes": 285212672, "zipMaxBytes": 293601280}
+CAPACITY_PROFILE = {"profileVersion": 4, "archiveMaxBytes": 285212672, "zipMaxBytes": 293601280}
 MAX_ARCHIVE = CAPACITY_PROFILE["archiveMaxBytes"]
 MAX_ZIP = CAPACITY_PROFILE["zipMaxBytes"]
 MAX_FILE = 256 * 1024**2
@@ -270,12 +270,18 @@ def emit_pack_inventory_diagnostic(rows, directories, aliases, archive_bytes):
     # One ASCII JSON line; only validated relative paths/counts/digests, no code, absolute paths or environment.
     sys.stderr.write(encoded.decode("ascii"))
 
+def content_identity(row):
+    # Mode is part of the identity, so the archive still carries and checks
+    # independent physical representatives for identical bytes with different modes.
+    return row["sha256"], row["size"], row["mode"]
+
+
 def pack(source, output):
     source, output = Path(source).absolute(), Path(output).absolute()
     require(output.parent.resolve() == output.parent and not output.is_relative_to(source / ".next"), "unsafe bundle output directory")
     files, dirs, aliases = scan(source)
     owned=OwnedOutput(output)  # Never overwrite or merge output from another attempt.
-    archive = output / "build-bundle.tar.gz"; rows = []
+    archive = output / "build-bundle.tar.gz"; rows = []; represented = set()
     try:
         with archive.open("xb") as raw, gzip.GzipFile(filename="", mode="wb", fileobj=raw, compresslevel=COMPRESSION_LEVEL, mtime=0) as gz, tarfile.open(fileobj=gz, mode="w", format=tarfile.USTAR_FORMAT, encoding="utf-8") as tar:
             for path, expected, mode in files:
@@ -284,9 +290,23 @@ def pack(source, output):
                 with os.fdopen(fd, "rb") as stream:
                     require(identity(os.fstat(stream.fileno())) == expected, "build changed before packaging")
                     info = tarfile.TarInfo(path); info.size = expected[2]; info.mode = 0o755 if mode & 0o111 else 0o644
-                    reader = HashReader(stream); tar.addfile(info, reader)
-                    require(reader.count == info.size and identity(os.fstat(stream.fileno())) == expected, "build changed during packaging")
-                    rows.append({"path": path, "size": info.size, "sha256": reader.hash.hexdigest(), "mode": info.mode})
+                    probe = HashReader(stream)
+                    remaining = info.size
+                    while remaining:
+                        block = probe.read(min(remaining, 1024 * 1024))
+                        require(block, "build truncated while hashing")
+                        remaining -= len(block)
+                    require(not probe.read(1), "build grew while hashing")
+                    row = {"path": path, "size": info.size, "sha256": probe.hash.hexdigest(), "mode": info.mode}
+                    key = content_identity(row)
+                    if key not in represented:
+                        stream.seek(0)
+                        reader = HashReader(stream)
+                        tar.addfile(info, reader)
+                        require(reader.count == info.size and reader.hash.hexdigest() == row["sha256"], "build changed during packaging")
+                        represented.add(key)
+                    require(identity(os.fstat(stream.fileno())) == expected, "build changed during packaging")
+                    rows.append(row)
         require(scan(source) == (files, dirs, aliases), "build inventory changed during packaging")
         emit_pack_inventory_diagnostic(rows, dirs, aliases, archive.lstat().st_size)
         regular(archive, MAX_ARCHIVE, context="compressed-build-archive", root=output)
@@ -360,7 +380,18 @@ def unpack(archive, manifest_path, destination, runtime_source, producer_source=
     owned=OwnedOutput(destination)  # Existing/symlink destinations refuse before any cleanup.
     try:
         for directory in m['directories']:(destination/directory).mkdir(mode=0o755)
-        expected={r['path']:r for r in m['files']};seen=set()
+        expected = {}
+        representatives = {}
+        duplicates = []
+        for row in m['files']:
+            key = content_identity(row)
+            representative = representatives.get(key)
+            if representative is None:
+                representatives[key] = row['path']
+                expected[row['path']] = row
+            else:
+                duplicates.append((row, representative))
+        seen = set()
         with archive.open('rb') as raw:
             require(identity(os.fstat(raw.fileno()))==identity(st),'archive changed before extraction')
             header=raw.read(10);require(len(header)==10 and header[:4]==b'\x1f\x8b\x08\x00' and header[4:8]==b'\0'*4,'unsupported gzip header')
@@ -388,6 +419,26 @@ def unpack(archive, manifest_path, destination, runtime_source, producer_source=
             require(identity(os.fstat(raw.fileno()))==identity(st),'archive changed during extraction')
             gz.close()
         require(seen==set(expected),'missing build files')
+        # The manifest names all logical paths. Restore repeated bytes as
+        # independent regular files, never by trusting a tar link or leaving
+        # hard-linked state behind in the installed tree.
+        for row, representative in duplicates:
+            original = destination / representative
+            target = destination / row['path']
+            fd = os.open(original, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+            with os.fdopen(fd, 'rb') as stream, target.open('xb') as out:
+                prior = os.fstat(stream.fileno())
+                require(stat.S_ISREG(prior.st_mode) and prior.st_size == row['size'] and stat.S_IMODE(prior.st_mode) == row['mode'], 'invalid duplicate representative')
+                reader = HashReader(stream)
+                remaining = row['size']
+                while remaining:
+                    block = reader.read(min(remaining, 1024 * 1024))
+                    require(block, 'truncated duplicate representative')
+                    out.write(block)
+                    remaining -= len(block)
+                require(not reader.read(1) and reader.hash.hexdigest() == row['sha256']
+                        and identity(os.fstat(stream.fileno())) == identity(prior), 'duplicate representative changed')
+            os.chmod(target, row['mode'])
         require((destination/'BUILD_ID').read_text().strip()==m['nextBuildId'],'installed build ID differs')
         for alias in m['aliases']:
             actual,target=(package_identity(runtime_source,alias['package']) if producer_source is None else package_identity(runtime_source,alias['package'],producer_source=producer_source))
