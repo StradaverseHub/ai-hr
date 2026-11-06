@@ -30624,6 +30624,8 @@
   },
   "rewardsAccess": {
     "reviewActivity": {
+      "subject": "Người bị ảnh hưởng",
+      "clearSubject": "Xóa bộ lọc theo người",
       "title": "Hoạt động xét duyệt",
       "review": "Xét duyệt",
       "actor": "Người thay đổi",

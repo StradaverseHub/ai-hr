@@ -8,6 +8,7 @@ import * as schema from '../db/schema';
 import { hireEmployee } from '../core/org';
 import { setCompensation } from '../core/comp';
 import { createRewardUnit, getRewardUnit, previewRewardLump, saveRewardEntry, saveRewardPolicy, setRewardPayWindowKeep, setRewardUnitLump } from '../packs/rewards/service';
+import { rewardReviewActivity } from '../packs/rewards/activity';
 import { emptyFacts } from '../packs/rewards/model';
 import { closeAll, createAppUser, entitledCtx, owner, resetDb, seedBase, setModule, type Base } from './harness';
 import { todayInKualaLumpur } from '../lib/hr-date';
@@ -48,6 +49,13 @@ describe('Rewards board items 8ad87ae8, 4e3e1af7, c28db2f0', () => {
     await refreshRewardFixtureBudget(admin,unitId);
   });
   afterAll(closeAll);
+
+  it('lets Group Rewards audit a recommendation by person without disclosing the activity to a BU reviewer', async () => {
+    const entries = await rewardReviewActivity(admin, [unitId], undefined, employmentId);
+    expect(entries).toEqual([expect.objectContaining({ unitId, subjectId: employmentId, subjectName: 'Reward Employee', eventType: 'reward-unit.recommendation-updated' })]);
+    expect(entries[0]).not.toHaveProperty('payload');
+    expect(await rewardReviewActivity(bu, [unitId], undefined, employmentId)).toEqual([]);
+  });
 
   describe('8ad87ae8 pay-change exclusion', () => {
     it('reads every basic change in the window, including after the snapshot, and skips a same-basic re-save', async () => {

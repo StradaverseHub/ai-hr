@@ -30624,6 +30624,8 @@
   },
   "rewardsAccess": {
     "reviewActivity": {
+      "subject": "பாதிக்கப்பட்ட நபர்",
+      "clearSubject": "நபர் வடிகட்டியை நீக்கு",
       "title": "மதிப்பாய்வு செயல்பாடு",
       "review": "மதிப்பாய்வு",
       "actor": "மாற்றியவர்",

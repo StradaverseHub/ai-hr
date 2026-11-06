@@ -30624,6 +30624,8 @@
   },
   "rewardsAccess": {
     "reviewActivity": {
+      "subject": "Individu terlibat",
+      "clearSubject": "Kosongkan penapis individu",
       "title": "Aktiviti semakan",
       "review": "Semakan",
       "actor": "Diubah oleh",

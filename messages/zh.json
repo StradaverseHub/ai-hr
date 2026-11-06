@@ -30624,6 +30624,8 @@
   },
   "rewardsAccess": {
     "reviewActivity": {
+      "subject": "受影响人员",
+      "clearSubject": "清除人员筛选",
       "title": "评审活动",
       "review": "评审",
       "actor": "更改人",

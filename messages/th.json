@@ -30624,6 +30624,8 @@
   },
   "rewardsAccess": {
     "reviewActivity": {
+      "subject": "ผู้ได้รับผลกระทบ",
+      "clearSubject": "ล้างตัวกรองบุคคล",
       "title": "กิจกรรมการตรวจสอบ",
       "review": "การตรวจสอบ",
       "actor": "ผู้เปลี่ยนแปลง",

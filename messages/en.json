@@ -30624,6 +30624,8 @@
   },
   "rewardsAccess": {
     "reviewActivity": {
+      "subject": "Person affected",
+      "clearSubject": "Clear person filter",
       "title": "Review activity",
       "review": "Review",
       "actor": "Changed by",
