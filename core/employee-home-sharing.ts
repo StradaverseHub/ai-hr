@@ -28,12 +28,12 @@ export async function readHomeTeamPage(ctx:SessionContext,employmentId:string,p:
   return validateHomeTeamPage(row?.projection,on);
  },signal);
 }
-export async function readHomeTeamCalendar(ctx:SessionContext,employmentId:string,from:string,to:string){
+export async function readHomeTeamCalendar(ctx:SessionContext,employmentId:string,from:string,to:string,signal?:AbortSignal){
  return withOwnHomeSharingRead(ctx,employmentId,async tx=>{
   calendarWindowDates(from,to);
   const [row]=await tx.execute(sql`SELECT app.home_team_calendar(${employmentId}::uuid,${from}::date,${to}::date) AS projection`) as unknown as {projection:unknown}[];
   return validateHomeTeamCalendar(row?.projection,from,to);
- });
+ },signal);
 }
 export async function readHomeCelebrationPage(ctx:SessionContext,employmentId:string,p:{after?:string;limit?:number}={},signal?:AbortSignal){
  return withOwnHomeSharingRead(ctx,employmentId,async tx=>{
