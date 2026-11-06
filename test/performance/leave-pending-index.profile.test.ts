@@ -36,7 +36,7 @@ it.skipIf(!requested)('compares a partial Leave pending header index against the
  const ctx=adminCtx(base);
  async function seedQueue(b:Base){
   const employee=await hireEmployee(adminCtx(b),{
-   person:{fullName:'Fictional retained Leave employee'},
+   person:{fullName:'Fictional retained Leave employee',primaryEmail:`leave-index-${b.tenantId}@example.invalid`},
    companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',
    hiredOn:addDaysIso(date,-365),
   });
