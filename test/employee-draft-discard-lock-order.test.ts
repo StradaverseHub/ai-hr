@@ -42,7 +42,7 @@ it('takes Workforce authority before Onboarding audit custody during native draf
 });
 
 it('retries an owned draft discard after an audit lock timeout and commits one delete event',async()=>{
- await resetDb();const b=await seedBase();await setModule(b.tenantId,'lifecycle','active');const ctx=await entitledCtx(adminCtx(b));
+ await resetDb();const b=await seedBase();await setModule(b.tenantId,'lifecycle','active');const ctx=await entitledCtx(b);
  const draft=await saveEmployeeDraft(ctx,{data:{},currentStep:1});
  const holding=signal(),release=signal();let holderPid=0;
  const holder=withTenant(ctx,async tx=>{
