@@ -3,6 +3,7 @@ import {useEffect,useRef,useState} from 'react';
 import {useTranslations} from 'next-intl';
 import Link from 'next/link';
 import {toCsv} from '@/lib/csv';
+import {movementPageHref} from '@/lib/personnel-movement-navigation';
 import {Button,Card,Field,inputCls} from '@/components/ui';
 import {movementImportFieldLabel,movementImportIssueText} from '@/lib/movement-import-issues';
 import {movementEmployeeKey,type MovementImportPreview,type MovementImportResult,type MovementImportRow} from '@/lib/movement-import-contract';
@@ -73,7 +74,7 @@ export function MovementImport({onCommitPendingChange}:{onCommitPendingChange?:(
      {!!row.closedPayrollPeriods?.length&&<p className="text-xs text-amber-700 dark:text-amber-400">{t('sheet.closedPayrollRow',{periods:row.closedPayrollPeriods.join(', ')})}</p>}
      {!!row.warnings?.length&&<p className="text-xs text-amber-700 dark:text-amber-400">{issueText(row.warnings)}</p>}
      {row.proposed&&<><div className="grid grid-cols-3 text-xs font-medium"><span>{t('field')}</span><span>{t('current')}</span><span>{t('proposed')}</span></div>{compare(row)}</>}</li>)}</ul>
-    {result&&employee.employmentId&&<Link className="text-sm underline" href={'/admin/personnel/'+employee.employmentId+'?tab=careerMovement'}>{t('viewHistory')}</Link>}
+    {result&&employee.employmentId&&<Link className="text-sm underline" href={movementPageHref(employee.employmentId,'history')}>{t('viewHistory')}</Link>}
    </section>;})}
    {result?<>{result.attemptId&&<Link className="block text-sm text-primary underline" href={`${HISTORY}/${result.attemptId}`}>{word('viewImport','View this import in Import History')}</Link>}<Button type="button" variant="secondary" onClick={()=>{reset();setFile(null);if(input.current)input.current.value='';}}>{t('startAgain')}</Button></>:<>
     {excludedEmployees>0&&<label className="flex items-start gap-2 text-sm"><input className="mt-1" type="checkbox" disabled={busy} checked={acknowledge} onChange={e=>setAcknowledge(e.target.checked)}/>{t('excludeConfirmation',{count:preview!.employees.filter(e=>!selected.includes(movementEmployeeKey(e))).reduce((n,e)=>n+e.rows.length,0)})}</label>}

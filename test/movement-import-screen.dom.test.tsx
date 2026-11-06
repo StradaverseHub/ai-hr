@@ -37,6 +37,7 @@ describe('single-template Movement import screen (ac6645ec)',()=>{
   mocks.fetch.mockResolvedValueOnce(response({ok:true,result:{...preview,attemptId:'attempt-1',imported:1,failed:0,excluded:2,byEventType:[],employees:preview.employees.map(e=>({...e,rows:e.rows.map(r=>({...r,status:e.employeeCode==='GOOD'?'imported':'excluded'}))}))}}));fireEvent.click(save);
   await screen.findByRole('heading',{name:'Import result'});const body=mocks.fetch.mock.calls[1][1].body as FormData;
   expect(body.get('attemptId')).toBe('attempt-1');expect(body.get('previewHash')).toBe('hash-1');expect(JSON.parse(String(body.get('employees')))).toEqual(['company-a|GOOD']);expect(body.get('fingerprints')).toBeNull();expect(body.get('selection')).toBeNull();
+  expect(screen.getAllByRole('link',{name:en.people.import.movement.viewHistory}).map(link=>link.getAttribute('href'))).toContain('/admin/personnel/good/movement/history');
   expect(screen.getByRole('link',{name:'View this import in Import History'})).toHaveAttribute('href','/admin/personnel/import/history/attempt-1');
  });
  it('lists file-level issues distinctly: an unchanged template has no entries, not an unsupported structure (d9e33556)',async()=>{
