@@ -105,9 +105,13 @@ it('refuses queued Personnel scope, list and export reads while the tenant acces
     await expect(personnelMaintenanceCompanyIds(ctx)).rejects.toBeInstanceOf(PersonnelReadBusyError);
     await expect(readPersonnelOverview(ctx, input, {})).rejects.toBeInstanceOf(PersonnelReadBusyError);
     await expect(listEmployeesPage(ctx, input, 'workforce')).rejects.toBeInstanceOf(PersonnelReadBusyError);
+    await expect(createPersonnelPrivateSearch(ctx, { text: 'Fictional', companyIds: [b.companyId] }))
+      .rejects.toMatchObject({ reason: 'access-lock' });
   });
   expect((await workforceViewScope(ctx, { personnelList: true })).companyIds).toContain(b.companyId);
   await expect(readPersonnelOverview(ctx, input, {})).resolves.toHaveProperty('employees.rows');
+  const token = await createPersonnelPrivateSearch(ctx, { text: 'Fictional', companyIds: [b.companyId] });
+  expect(await personnelPrivateSearchAvailable(ctx, token, [b.companyId])).toBe(true);
 });
 
 it('opens Personnel scope, maintenance choices and the list while another authorised reader holds the same tenant lock', async () => {
@@ -120,7 +124,8 @@ it('opens Personnel scope, maintenance choices and the list while another author
     expect(await personnelMaintenanceCompanyIds(ctx)).toContain(b.companyId);
     const overview = await readPersonnelOverview(ctx, input, {});
     expect(overview.employees.rows.map(row => row.employmentId)).toEqual([employee.employmentId]);
-    await expect(createPersonnelPrivateSearch(ctx, { text: 'Fictional', companyIds: [b.companyId] })).rejects.toBeInstanceOf(PersonnelReadBusyError);
+    const token = await createPersonnelPrivateSearch(ctx, { text: 'Fictional', companyIds: [b.companyId] });
+    expect(await personnelPrivateSearchAvailable(ctx, token, [b.companyId])).toBe(true);
   });
 });
 
