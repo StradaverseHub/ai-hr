@@ -2,7 +2,7 @@
  * context is transported. A failed owner fails this section; it never supplies a false calm state. */
 import {withTenant,type SessionContext} from '../db/client';
 import {readOwnEmployeeHomeConfiguration,type OwnHomeConfigurationRead} from './employee-home-configuration';
-import {countEmployeeHomeTasks} from './employee-home-tasks';
+import {countEmployeeHomeTasks,type OwnHomeTaskSourceRead} from './employee-home-tasks';
 import {isModuleEnabled} from './entitlements';
 import {hasEligibleLeaveTypeForTx} from './read';
 import {nextApprovedLeavePresenceTx} from '../packs/leave/service';
@@ -18,14 +18,14 @@ import type {Locale} from '../i18n/config';
 
 /** Seven civil business dates ahead is a presentation window, not an eligibility or payroll rule. */
 export const HOME_SUMMARY_LOOKAHEAD_DAYS=7;
-export async function readEmployeeHomeSummary(ctx:SessionContext,employmentId:string,locale:Locale,replacementHolidayName:string,configurationRead?:OwnHomeConfigurationRead):Promise<EmployeeHomeSummary>{
+export async function readEmployeeHomeSummary(ctx:SessionContext,employmentId:string,locale:Locale,replacementHolidayName:string,configurationRead?:OwnHomeConfigurationRead,taskSourceRead?:OwnHomeTaskSourceRead):Promise<EmployeeHomeSummary>{
  // The configuration owner already proves the exact current own employment and its company role.
  const {configuration,employmentId:subjectId}=await (configurationRead?.read(ctx,employmentId)??readOwnEmployeeHomeConfiguration(ctx,employmentId));
  const now=new Date(),today=todayInKualaLumpur(now),through=new Date(Date.parse(today+'T00:00:00Z')+HOME_SUMMARY_LOOKAHEAD_DAYS*86400000).toISOString().slice(0,10);
  const leaveOn=isModuleEnabled(ctx,'leave'),payrollOn=isModuleEnabled(ctx,'payroll'),claimsOn=isModuleEnabled(ctx,'claims');
  const configured=new Set(configuration.quickActions);
  const [taskCount,[leave,holidays,replacements,leaveAvailable],payroll,claimAvailable,profile]=await Promise.all([
-  countEmployeeHomeTasks(ctx),
+  taskSourceRead?.count(ctx,subjectId)??countEmployeeHomeTasks(ctx),
   withTenant(ctx,tx=>Promise.all([
    leaveOn?nextApprovedLeavePresenceTx(tx,subjectId,today):null,
    originalHolidayCalendarFor(tx,{employmentId:subjectId,startDate:today,endDate:through}),

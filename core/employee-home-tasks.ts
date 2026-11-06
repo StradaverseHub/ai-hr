@@ -1,7 +1,8 @@
 /** Home projects the existing workflow owners. It never creates tasks, decisions or capabilities. */
 import type {SessionContext} from '../db/client';
+import {HomeAccessError} from './employee-home';
 import {readOwnEmployeeHomeConfiguration,type OwnHomeConfigurationRead} from './employee-home-configuration';
-import {countPendingTasks,listPendingTasks,pendingTaskSummary} from './approvals-inbox';
+import {countPendingTasks,createAccountTaskPreviewRead,listPendingTasks,pendingTaskSummary} from './approvals-inbox';
 import {pendingStandardFeedbackTaskMetadata,pendingOnehrFeedbackTaskMetadata} from '../packs/performance/service';
 import {onboardingAssignedTaskMetadata} from '../packs/lifecycle/service';
 import {isModuleEnabled} from './entitlements';
@@ -9,33 +10,73 @@ import {todayInKualaLumpur} from '../lib/hr-date';
 import {projectHomeAssignedWork,type EmployeeHomeTasks} from '../lib/employee-home-tasks';
 import {ASSIGNED_APPROVAL_KINDS,assignedApprovalHref,type AssignedApprovalKind} from '../lib/assigned-approval-focus';
 
+const taskModules=(ctx:SessionContext)=>({attendance:isModuleEnabled(ctx,'attendance'),claims:isModuleEnabled(ctx,'claims'),
+ performance:isModuleEnabled(ctx,'performance'),rewards:isModuleEnabled(ctx,'rewards')});
+
+async function loadAdditionalTasks(ctx:SessionContext,performance:boolean){
+ const lifecycle=isModuleEnabled(ctx,'lifecycle');
+ return Promise.all([
+  performance?pendingStandardFeedbackTaskMetadata(ctx):Promise.resolve([]),
+  performance?pendingOnehrFeedbackTaskMetadata(ctx):Promise.resolve([]),
+  lifecycle?onboardingAssignedTaskMetadata(ctx):Promise.resolve([]),
+ ]);
+}
+
 /** Summary needs the exact account total, without materializing the full Claims queue. */
 export async function countEmployeeHomeTasks(ctx:SessionContext):Promise<number>{
- const modules={attendance:isModuleEnabled(ctx,'attendance'),claims:isModuleEnabled(ctx,'claims'),
-  performance:isModuleEnabled(ctx,'performance'),rewards:isModuleEnabled(ctx,'rewards')};
- const [inboxCount,standardFeedback,onehrFeedback,onboarding]=await Promise.all([
-  countPendingTasks(ctx,undefined,modules),
-  modules.performance?pendingStandardFeedbackTaskMetadata(ctx):Promise.resolve([]),
-  modules.performance?pendingOnehrFeedbackTaskMetadata(ctx):Promise.resolve([]),
-  isModuleEnabled(ctx,'lifecycle')?onboardingAssignedTaskMetadata(ctx):Promise.resolve([]),
+ const modules=taskModules(ctx);
+ const [inboxCount,[standardFeedback,onehrFeedback,onboarding]]=await Promise.all([
+  countPendingTasks(ctx,undefined,modules),loadAdditionalTasks(ctx,modules.performance),
  ]);
  return inboxCount+standardFeedback.length+onehrFeedback.length+onboarding.length;
 }
 
-export async function readEmployeeHomeTasks(ctx:SessionContext,employmentId?:string,page?:number,configurationRead?:OwnHomeConfigurationRead):Promise<EmployeeHomeTasks>{
+/** This carrier is created by one Home response and used after each card's own-subject proof. */
+export class OwnHomeTaskSourceRead {
+ private pending?:{
+  inbox:ReturnType<typeof createAccountTaskPreviewRead>;
+  additional:ReturnType<typeof loadAdditionalTasks>;
+ };
+ constructor(private readonly session:SessionContext,private readonly employmentId:string){}
+
+ private read(session:SessionContext,employmentId:string){
+  if(session!==this.session||employmentId!==this.employmentId)throw new HomeAccessError('employmentUnavailable');
+  if(!this.pending){
+   const modules=taskModules(session);
+   this.pending={inbox:createAccountTaskPreviewRead(session,modules),additional:loadAdditionalTasks(session,modules.performance)};
+  }
+  return this.pending;
+ }
+
+ async count(session:SessionContext,employmentId:string){
+  const {inbox,additional}=this.read(session,employmentId);
+  const [inboxCount,[standardFeedback,onehrFeedback,onboarding]]=await Promise.all([inbox.count(),additional]);
+  return inboxCount+standardFeedback.length+onehrFeedback.length+onboarding.length;
+ }
+
+ summary(session:SessionContext,employmentId:string){
+  const {inbox,additional}=this.read(session,employmentId);
+  return Promise.all([inbox.summary(),additional]);
+ }
+}
+
+function readTaskPage(ctx:SessionContext,page:number|undefined){
+ const modules=taskModules(ctx);
+ return Promise.all([
+  (page??1)<=1?pendingTaskSummary(ctx,undefined,modules)
+   :listPendingTasks(ctx,undefined,modules).then(items=>({items,total:items.length})),
+  loadAdditionalTasks(ctx,modules.performance),
+ ]);
+}
+
+export async function readEmployeeHomeTasks(ctx:SessionContext,employmentId?:string,page?:number,configurationRead?:OwnHomeConfigurationRead,taskSourceRead?:OwnHomeTaskSourceRead):Promise<EmployeeHomeTasks>{
  const {configuration, employmentId: subjectId} = await (configurationRead?.read(ctx,employmentId)??readOwnEmployeeHomeConfiguration(ctx,employmentId));
  // Selection chooses the company's presentation configuration. Work remains account-grained: a
  // selected own employment must not hide assignments addressed to another of the actor's employments.
  // listPendingTasks already carries replacement-leave decisions; reading them again here duplicated every one,
  // and the projection rightly refuses a duplicate owner identity, which failed the whole list.
- const [inbox,standardFeedback,onehrFeedback,onboarding]=await Promise.all([
-  (page??1)<=1
-   ? pendingTaskSummary(ctx,undefined,{attendance:isModuleEnabled(ctx,'attendance'),claims:isModuleEnabled(ctx,'claims'),performance:isModuleEnabled(ctx,'performance'),rewards:isModuleEnabled(ctx,'rewards')})
-   : listPendingTasks(ctx,undefined,{attendance:isModuleEnabled(ctx,'attendance'),claims:isModuleEnabled(ctx,'claims'),performance:isModuleEnabled(ctx,'performance'),rewards:isModuleEnabled(ctx,'rewards')}).then(items=>({items,total:items.length})),
-  isModuleEnabled(ctx,'performance')?pendingStandardFeedbackTaskMetadata(ctx):Promise.resolve([]),
-  isModuleEnabled(ctx,'performance')?pendingOnehrFeedbackTaskMetadata(ctx):Promise.resolve([]),
-  isModuleEnabled(ctx,'lifecycle')?onboardingAssignedTaskMetadata(ctx):Promise.resolve([]),
- ]);
+ const [inbox,[standardFeedback,onehrFeedback,onboarding]]=await (taskSourceRead&&(page??1)<=1
+  ?taskSourceRead.summary(ctx,subjectId):readTaskPage(ctx,page));
  return projectHomeAssignedWork([
   ...inbox.items.map(row=>ASSIGNED_APPROVAL_KINDS.some(kind=>kind===row.kind)?{...row,linkPath:assignedApprovalHref({kind:row.kind as AssignedApprovalKind,id:row.id})}:
    row.kind==='profile'?{...row,linkPath:`/admin/personnel/profile-changes?requestId=${row.id}&assigned=1#request-${row.id}`}:row),

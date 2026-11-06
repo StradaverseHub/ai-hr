@@ -1,12 +1,13 @@
 import {randomUUID} from 'node:crypto';
 import {sql} from 'drizzle-orm';
-import {afterAll,beforeAll,beforeEach,describe,expect,it} from 'vitest';
+import {afterAll,beforeAll,beforeEach,describe,expect,it,vi} from 'vitest';
 import {withTenant} from '../db/client';
 import * as s from '../db/schema';
 import {hireEmployee} from '../core/org';
 import {pendingLeaveTaskMetadata,pendingLeaveCancellationTaskMetadata} from '../packs/leave/service';
 import {createClaimType,pendingClaimTaskMetadata,pendingClaimTaskSummary} from '../packs/claims/service';
-import {countPendingTasks,pendingTaskSummary} from '../core/approvals-inbox';
+import {countPendingTasks,createAccountTaskPreviewRead,pendingTaskSummary} from '../core/approvals-inbox';
+import * as attendance from '../packs/attendance/service';
 import {pendingProfileTaskMetadata,decideProfileChange} from '../core/profile';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {adminCtx,closeAll,migrateTestDb,owner,resetDb,seedBase,setModule,type Base} from './harness';
@@ -65,6 +66,12 @@ describe('Home assigned-decision metadata is an uncapped projection at its sourc
    expect(previewTotal).toBe(211);
    expect(await countPendingTasks(ctx,undefined,modules)).toBe(previewTotal);
    expect(await countPendingTasks(ctx,[],modules)).toBe(0);
+   const attendanceRead=vi.spyOn(attendance,'pendingAttendanceTaskMetadata');
+   try{
+    const request=createAccountTaskPreviewRead(ctx,{...modules,attendance:true});
+    await Promise.all([expect(request.count()).resolves.toBe(211),expectDenied(request.summary())]);
+    expect(attendanceRead).toHaveBeenCalledExactlyOnceWith(ctx,undefined);
+   }finally{attendanceRead.mockRestore();}
   });
  });
  it('reads every stored profile task without proposed values or before/after review projection, then removes a real decision',async()=>{

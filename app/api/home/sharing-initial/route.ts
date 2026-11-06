@@ -4,7 +4,7 @@ import {isLocale} from '@/i18n/config';
 import {OwnHomeConfigurationRead} from '@/core/employee-home-configuration';
 import {readEmployeeHomeGreeting} from '@/core/employee-home-greeting';
 import {readEmployeeHomeSummary} from '@/core/employee-home-summary';
-import {readEmployeeHomeTasks} from '@/core/employee-home-tasks';
+import {OwnHomeTaskSourceRead,readEmployeeHomeTasks} from '@/core/employee-home-tasks';
 import {validateEmployeeHomeSummary} from '@/lib/employee-home-summary';
 import {
  DEFAULT_HOME_SHARING_CARDS,HOME_SHARING_MAX_FRAME_BYTES,isHomeSharingCard,HOME_SHARING_STREAM,type HomeSharingCard,type HomeSharingFrame,
@@ -23,8 +23,9 @@ export async function GET(request:Request){
     || (selected.length>0&&(selected.length<2||new Set(selected).size!==selected.length||!selected.every(isHomeSharingCard)))){
    return Response.json({error:'invalid'},{status:400,headers:sharingHeaders});
   }
-  const cards=selected.length?selected.filter(isHomeSharingCard):DEFAULT_HOME_SHARING_CARDS;
+  const cards:readonly HomeSharingCard[]=selected.length?selected.filter(isHomeSharingCard):DEFAULT_HOME_SHARING_CARDS;
   const configurationRead=new OwnHomeConfigurationRead(session,employmentId);
+  const taskSourceRead=cards.includes('summary')&&cards.includes('tasks')?new OwnHomeTaskSourceRead(session,employmentId):undefined;
   const readLocale=async()=>{
    const value=await getLocale();
    if(!isLocale(value))throw Error('Home locale unavailable');
@@ -40,10 +41,10 @@ export async function GET(request:Request){
    greeting:async()=>greetingProjection(await readEmployeeHomeGreeting(session,employmentId,await locale(),undefined,configurationRead)),
    summary:async()=>{
     const [language,t]=await Promise.all([locale(),getTranslations('employeeHome.calendar')]);
-    const value=await readEmployeeHomeSummary(session,employmentId,language,t('replacement'),configurationRead);
+    const value=await readEmployeeHomeSummary(session,employmentId,language,t('replacement'),configurationRead,taskSourceRead);
     return validateEmployeeHomeSummary(value,employmentId);
    },
-   tasks:async()=>tasksProjection(await readEmployeeHomeTasks(session,employmentId,1,configurationRead)),
+   tasks:async()=>tasksProjection(await readEmployeeHomeTasks(session,employmentId,1,configurationRead,taskSourceRead)),
   };
   const encoder=new TextEncoder();
   let detach=()=>{};

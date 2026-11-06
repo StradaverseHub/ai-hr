@@ -145,8 +145,9 @@ async function loadDecisionHeaders(ctx:SessionContext,scopeIds:string[]|undefine
   ]);
 }
 
-async function loadPendingTaskSources(ctx:SessionContext,scopeIds:string[]|undefined,modules:InboxModules,
-  options:{noticeAcknowledgements?:boolean;preview?:true;countOnly?:true;deferClaimPreview?:true}){
+type TaskSourceOptions={noticeAcknowledgements?:boolean;preview?:true;countOnly?:true;deferClaimPreview?:true};
+async function loadCommonTaskSources(ctx:SessionContext,scopeIds:string[]|undefined,modules:InboxModules,
+  options:TaskSourceOptions){
   // Each owner proves actual current assignment without selecting its private decision workspace.
   // A platform role or broad read permission alone is not an actionable task assignment.
   return Promise.all([
@@ -154,22 +155,44 @@ async function loadPendingTaskSources(ctx:SessionContext,scopeIds:string[]|undef
     listPendingReplacementLeaveTasks(ctx,{companyIds:scopeIds}),
     modules.attendance?pendingAttendanceTaskMetadata(ctx,scopeIds):Promise.resolve([]),
     pendingProfileTaskMetadata(ctx,scopeIds),
-    modules.claims
-      ? options.countOnly || options.deferClaimPreview ? countPendingClaimTasks(ctx,scopeIds).then(total=>({items:[],total}))
-        : options.preview ? pendingClaimTaskSummary(ctx,scopeIds,25)
-        : pendingClaimTaskMetadata(ctx,scopeIds).then(items=>({items,total:items.length}))
-      : Promise.resolve({items:[],total:0}),
     options.noticeAcknowledgements===false?Promise.resolve([]):pendingNoticeAcknowledgementTasks(ctx),
     Promise.all(PACK_TASK_SOURCES.map(source=>modules[source.module]?source.load(ctx,scopeIds):Promise.resolve([]))),
   ]);
 }
 
-export async function countPendingTasks(ctx:SessionContext,scopeIds:string[]|undefined,modules:InboxModules):Promise<number>{
-  const [leave,decisionHeaders,replacement,attendance,profile,claims,notices,packTasks]=await loadPendingTaskSources(
-    ctx,scopeIds,modules,{preview:true,countOnly:true},
-  );
+type CommonTaskSources=ReturnType<typeof loadCommonTaskSources>;
+function loadClaimTaskSource(ctx:SessionContext,scopeIds:string[]|undefined,modules:InboxModules,options:TaskSourceOptions){
+  return modules.claims
+    ? options.countOnly || options.deferClaimPreview ? countPendingClaimTasks(ctx,scopeIds).then(total=>({items:[],total}))
+      : options.preview ? pendingClaimTaskSummary(ctx,scopeIds,25)
+      : pendingClaimTaskMetadata(ctx,scopeIds).then(items=>({items,total:items.length}))
+    : Promise.resolve({items:[],total:0});
+}
+
+export function countPendingTasks(ctx:SessionContext,scopeIds:string[]|undefined,modules:InboxModules):Promise<number>{
+  return countTaskSources(ctx,scopeIds,modules);
+}
+
+async function countTaskSources(ctx:SessionContext,scopeIds:string[]|undefined,modules:InboxModules,common?:CommonTaskSources){
+  const options={preview:true,countOnly:true} as const;
+  const [[leave,decisionHeaders,replacement,attendance,profile,notices,packTasks],claims]=await Promise.all([
+    common??loadCommonTaskSources(ctx,scopeIds,modules,options),
+    loadClaimTaskSource(ctx,scopeIds,modules,options),
+  ]);
   return claims.total+leave.length+replacement.length+attendance.length+profile.length+notices.length+
     decisionHeaders.reduce((total,rows)=>total+rows.length,0)+packTasks.reduce((total,rows)=>total+rows.length,0);
+}
+
+/** Reuse the live account-wide preview sources within one Home response. The Claims count and
+ * Claims preview use separate owners, so a preview failure cannot turn the exact count into a failure. */
+export function createAccountTaskPreviewRead(ctx:SessionContext,modules:InboxModules){
+  const options={preview:true} as const;
+  let pending:CommonTaskSources|undefined;
+  const common=()=>pending??=loadCommonTaskSources(ctx,undefined,modules,options);
+  return {
+    count:()=>countTaskSources(ctx,undefined,modules,common()),
+    summary:()=>loadPendingTasks(ctx,undefined,modules,options,common()),
+  };
 }
 
 const projectTasks = (rows:readonly Pick<AssignedApprovalMetadata,'id'|'employee'|'createdAt'>[],kind:AssignedApprovalKind):PendingTaskItem[] =>
@@ -181,9 +204,12 @@ export async function pendingBellClaimPreview(ctx:SessionContext,scopeIds:string
 }
 
 async function loadPendingTasks(ctx:SessionContext,scopeIds:string[]|undefined,modules:InboxModules,
-  options:{noticeAcknowledgements?:boolean;preview?:true;deferClaimPreview?:true}){
-  const [leave,[cancellations,resignations,managerReviews,hrReviews],replacement,attendance,profile,claimResult,noticeAcknowledgements,packTaskLists]=
-    await loadPendingTaskSources(ctx,scopeIds,modules,options);
+  options:TaskSourceOptions,common?:CommonTaskSources){
+  const [[leave,[cancellations,resignations,managerReviews,hrReviews],replacement,attendance,profile,noticeAcknowledgements,packTaskLists],claimResult]=
+    await Promise.all([
+      common??loadCommonTaskSources(ctx,scopeIds,modules,options),
+      loadClaimTaskSource(ctx,scopeIds,modules,options),
+    ]);
   const packTasks:PackTaskItem[]=packTaskLists.flat();
   const iso=(value:Date|string)=>value instanceof Date?value.toISOString():new Date(value).toISOString();
   const items:PendingTaskItem[]=[

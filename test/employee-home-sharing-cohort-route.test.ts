@@ -13,7 +13,9 @@ vi.mock('@/core/employee-home-configuration',()=>({OwnHomeConfigurationRead:clas
 }}));
 vi.mock('@/core/employee-home-greeting',()=>({readEmployeeHomeGreeting:state.greeting}));
 vi.mock('@/core/employee-home-summary',()=>({readEmployeeHomeSummary:state.summary}));
-vi.mock('@/core/employee-home-tasks',()=>({readEmployeeHomeTasks:state.tasks}));
+vi.mock('@/core/employee-home-tasks',()=>({readEmployeeHomeTasks:state.tasks,OwnHomeTaskSourceRead:class{
+ constructor(readonly session:unknown,readonly employmentId:string){}
+}}));
 vi.mock('@/core/employee-home',()=>({HomeAccessError:class extends Error{constructor(readonly code:string){super('Private error');}}}));
 import {HomeAccessError} from '@/core/employee-home';
 import {GET} from '../app/api/home/sharing-initial/route';
@@ -87,12 +89,16 @@ it('reuses the exact request configuration carrier while independently projectin
  ]);
  expect(state.session).toHaveBeenCalledOnce();
  const carrier=state.greeting.mock.calls[0][4];
+ const taskCarrier=state.summary.mock.calls[0][5];
  expect(carrier).toMatchObject({session:ctx,employmentId:'own'});
+ expect(taskCarrier).toMatchObject({session:ctx,employmentId:'own'});
+ expect(taskCarrier).not.toBe(carrier);
  expect(state.greeting).toHaveBeenCalledWith(ctx,'own','en',undefined,carrier);
- expect(state.summary).toHaveBeenCalledWith(ctx,'own','en','Replacement holiday',carrier);
- expect(state.tasks).toHaveBeenCalledWith(ctx,'own',1,carrier);
+ expect(state.summary).toHaveBeenCalledWith(ctx,'own','en','Replacement holiday',carrier,taskCarrier);
+ expect(state.tasks).toHaveBeenCalledWith(ctx,'own',1,carrier,taskCarrier);
  expect(state.summary.mock.calls[0][4]).toBe(carrier);
  expect(state.tasks.mock.calls[0][3]).toBe(carrier);
+ expect(state.tasks.mock.calls[0][4]).toBe(taskCarrier);
  expect(state.team).not.toHaveBeenCalled();
 });
 
