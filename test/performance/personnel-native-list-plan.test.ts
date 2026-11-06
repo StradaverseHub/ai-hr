@@ -4,7 +4,7 @@ import {writeFileSync} from 'node:fs';
 import {join} from 'node:path';
 import {afterAll,beforeAll,expect,it} from 'vitest';
 import {sql} from 'drizzle-orm';
-import {personnelListPage,personnelListPageSql,searchWorkforceEmployeesTx,readWorkforcePickRowsTx} from '../../core/read';
+import {personnelListPage,personnelListPageSql,readPersonnelOverview,searchWorkforceEmployeesTx,readWorkforcePickRowsTx} from '../../core/read';
 import {foldEmployeeCode,EMPLOYEE_SEARCH_RESULT_CAP} from '../../lib/employee-search';
 import {lockAccessConfigurationTx,lockAccessConfigurationReadTx} from '../../core/access-configuration-lock';
 import {withTenant,type SessionContext} from '../../db/client';
@@ -62,6 +62,21 @@ it.skipIf(!requested)('profiles initial/search/deep Personnel pages with fifty t
    expect(Object.values(result.headcount.byStatus).reduce((sum,value)=>sum+Number(value??0),0)).toBe(expectedTotal);
    expect(result.rows.map(row=>row.employmentId)).toEqual(expectedIds);expect(result.rows.every(row=>row.employmentId!==foreignEmployment)).toBe(true);
    measurements.push({mode,elapsedMs,total:result.total,pageRows:result.rows.length,targetMet:elapsedMs<1000});report.queries=measurements;save();
+  }
+  const overviewMeasurements:typeof measurements=[];
+  for(const mode of ['initial','selective-search','deep-page']){
+   const q=mode==='selective-search'?'PERF000050000':undefined,offset=mode==='deep-page'?count-25:0;
+   const expectedTotal=q?1:count,expectedIds=q?[expectedLast.at(-1)!]:offset?expectedLast:expectedFirst;
+   phase('live-overview-'+mode);
+   const began=performance.now();
+   const result=await readPersonnelOverview(ctx,{companyIds:companies,q,limit:25,offset},{q});
+   const elapsedMs=performance.now()-began;
+   expect(result.employees.total).toBe(expectedTotal);
+   expect(result.headcount.total).toBe(expectedTotal);
+   expect(result.employees.rows.map(row=>row.employmentId)).toEqual(expectedIds);
+   expect(result.organisationChoices.companies.map(company=>company.id)).toEqual([b.companyId]);
+   overviewMeasurements.push({mode,elapsedMs,total:result.employees.total,pageRows:result.employees.rows.length,targetMet:elapsedMs<1000});
+   report.liveOverview=overviewMeasurements;save();
   }
   const pickerMeasurements:{mode:string;originalElapsedMs:number;elapsedMs:number;rows:number;targetMet:boolean}[]=[];
   // Frozen original query is an independent oracle. Only native purpose APIs are read under ai_hr_app.
