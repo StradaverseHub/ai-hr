@@ -23,13 +23,15 @@ async function readAiPrincipalTx(tx:Tx,supplied:SessionContext,isolation:'read c
   // Command/admission/settlement callers remain exclusive.
   await (carrier.read_only===true?lockAccessConfigurationReadTx:lockAccessConfigurationTx)(tx,ctx.tenantId);
  }
+ const requiredMode=isolation==='read committed'
+  ? sql`current_setting('transaction_isolation')='read committed'`
+  : sql`current_setting('transaction_isolation')='repeatable read' and current_setting('transaction_read_only')='on'`;
  const [row]=await tx.execute<{allowed:boolean}>(sql`select exists(select 1 from public.app_user u
   where u.id=${ctx.userId}::uuid and u.tenant_id=${ctx.tenantId}::uuid
    and u.id=app.current_user_id() and u.tenant_id=app.current_tenant_id()
    and u.archived_at is null and not app.login_blocked(u.id)
    and u.person_id is not distinct from ${ctx.personId??null}::uuid
-   and current_setting('transaction_isolation')=${isolation}
-   and (${isolation}='read committed' or current_setting('transaction_read_only')='on')
+   and ${requiredMode}
    and current_setting('app.roles',true)=${roles.join(',')}
    and current_setting('app.grants',true)::jsonb=${JSON.stringify(grants)}::jsonb
    and app.principal_snapshot_current()) as allowed`);
