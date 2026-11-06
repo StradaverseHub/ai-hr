@@ -70,20 +70,20 @@ async function createPerformance({base,page,user,target,tenantId,db,report,save}
 }
 
 async function createRewards({base,page,user,target,tenantId,db,report,save}){
- const path='/admin/rewards',name='Fictional Rewards draft '+randomUUID();
+ const path='/admin/rewards',name=target.planName;
+ assert(target.planVersionId&&name,'missing independently approved Rewards fixture plan');
+ await open(page,base,path+'/plans');
+ await page.locator('main a[href="?version='+target.planVersionId+'"]').click({timeout:budgetMs});
+ const form=formWith(page,'button[name="operation"][value="create"]');
+ const start=performance.now();
+ await form.getByRole('button',{name:english.rewardSetup.createReviews,exact:true}).click({timeout:remaining(start)});
+ await page.waitForURL(url=>url.pathname===path+'/plans'&&(url.searchParams.has('saved')||url.searchParams.has('error')),{timeout:remaining(start)});
+ assert.equal(new URL(page.url()).searchParams.get('error'),null,'approved Rewards plan creation was refused');
  await open(page,base,path);
- // The action timer starts at submit. Let the controlled setup form hydrate first.
- await page.waitForLoadState('networkidle',{timeout:budgetMs});
- const form=formWith(page,'input[name="snapshotDate"]');
- const company=form.locator('select[name="companyId"]'),unit=form.locator('select[name="businessUnitId"]');
- await company.selectOption(target.companyId);
- // A hydrated company picker must populate the actual compatible BU before we fill controlled fields.
- await unit.selectOption(target.businessUnitId);
- await form.locator('input[name="name"]').fill(name);
- await form.locator('input[name="snapshotDate"]').fill(target.snapshotDate);
- assert.equal(await form.locator('input[name="year"]').inputValue(),String(target.year),'Rewards fixture year differs from the live form year');
-
- const start=performance.now(),id=await submittedId(page,form,rewardsCopy.createUnit,path,start);
+ const draftRow=page.locator('main tr').filter({has:page.getByText(name,{exact:true})});
+ await draftRow.locator('a[href$="?mode=view"]').click({timeout:remaining(start)});
+ await page.waitForURL(url=>url.pathname.startsWith(path+'/')&&uuid.test(url.pathname.slice(path.length+1)),{timeout:remaining(start)});
+ const id=new URL(page.url()).pathname.slice(path.length+1);
  await page.locator('main h1').filter({hasText:name}).waitFor({state:'visible',timeout:remaining(start)});
  const visibleByMs=performance.now()-start;
  const rows=await db`select u.id,u.tenant_id,u.company_id,u.business_unit_id,u.created_by,u.status,u.kind,
@@ -95,7 +95,7 @@ async function createRewards({base,page,user,target,tenantId,db,report,save}){
   &&row.status==='draft'&&row.kind==='annual'&&row.name===name&&row.year===target.year
   &&row.snapshot_date===target.snapshotDate&&row.posted_batch_id===null,'Rewards draft state or scope mismatch');
  const entries=await db`select employment_id from reward_entry where tenant_id=${tenantId}::uuid and unit_id=${id}::uuid`;
- assert(entries.length===1&&entries[0].employment_id===target.employmentId,'Rewards draft snapshotted the wrong roster');
+ assert.deepEqual(entries.map(row=>row.employment_id).sort(),[...target.expectedEmploymentIds].sort(),'Rewards draft snapshotted the wrong dated company roster');
  const seats=await db`select user_id,role from reward_member where tenant_id=${tenantId}::uuid and unit_id=${id}::uuid`;
  assert(seats.length===1&&seats[0].role==='gr'&&seats[0].user_id===user.userId,'Rewards draft did not assign its canonical creator seat');
  const payload=await audit(db,tenantId,user,'reward-unit',id,'reward-unit.created');
@@ -150,16 +150,16 @@ export async function exercisePerformanceRewardsDrafts({base,context,fixture,db,
     assert.equal(await page.locator('main').getByText(performanceDraft.name,{exact:true}).count(),0);
    }
    await open(page,base,'/admin/rewards');
-   await page.getByRole('heading',{name:rewardsCopy.adminTitle,exact:true}).waitFor({state:'visible',timeout:budgetMs});
+   await page.getByRole('heading',{name:english.nav.rewardsReviewCycles,exact:true}).waitFor({state:'visible',timeout:budgetMs});
    const table=page.locator('main [data-tour="rewards-admin-units"]');
    await table.waitFor({state:'visible',timeout:budgetMs});
    assert.equal(await table.getByText(rewardsDraft.name,{exact:true}).count(),0,'out-of-scope Rewards draft is listed');
-   const companies=formWith(page,'input[name="snapshotDate"]').locator('select[name="companyId"]');
-   await companies.waitFor({state:'visible',timeout:budgetMs});
-   assert.equal(await companies.locator('option[value="'+actor.companyId+'"]').count(),1,'own Rewards company option is missing');
-   assert.equal(await companies.locator('option[value="'+target.companyId+'"]').count(),0,
-    'out-of-scope Rewards company is offered for draft creation');
-   (report.browserDraftWriteBoundaries??=[]).push({scope,performanceBoundary:scope==='other-company'?'lifecycle-write-denied':'detail-denied',rewardsListHidden:true,rewardsCompanyOptionDenied:true});
+   // Setup now requires an explicit Group Rewards grant; HR alone must not expose the plan.
+   await open(page,base,'/admin/rewards/plans');
+   await page.getByText(english.rewardSetup.noAccess,{exact:true}).waitFor({state:'visible',timeout:budgetMs});
+   assert.equal(await page.locator('main').getByText(target.planName,{exact:false}).count(),0,'out-of-scope approved Rewards plan is exposed');
+   assert.equal(await page.locator('main button[name="operation"][value="create"]').count(),0,'out-of-scope plan creation is offered');
+   (report.browserDraftWriteBoundaries??=[]).push({scope,performanceBoundary:scope==='other-company'?'lifecycle-write-denied':'detail-denied',rewardsListHidden:true,rewardsPlanDenied:true});
    save();
   }finally{await boundaryContext.close();}
  }

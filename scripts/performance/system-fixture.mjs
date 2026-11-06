@@ -177,7 +177,7 @@ try{
    // Company 2's historical register is already closed. Leave the active
    // processing and publication rosters in companies 1, 3 and 4 intact.
    tenants[t].rewardDraft=await fixturePhase(t,'rewards-draft-prerequisites',()=>
-    prepareRewardDraftFixture({owner,schema:s,ctx,tenant:tenants[t],company:companies[2],today}));
+    prepareRewardDraftFixture({owner,schema:s,ctx,tenant:tenants[t],company:companies[2],today,actor:cohort.find(u=>u.role==='groupHR'),expectedCompanyEmploymentIds:cohort.filter(u=>u.companyId===companies[2].companyId).map(u=>u.employmentId)}));
   }
   for(const company of companies){
    const approver=cohort.find(u=>u.companyId===company.companyId&&['companyHR','groupHR'].includes(u.role));assert(approver);

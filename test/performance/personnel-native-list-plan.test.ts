@@ -228,7 +228,10 @@ it.skipIf(!requested)('profiles initial/search/deep Personnel pages with fifty t
     // Compare that declared subset to the current canonical Personnel oracle; never report it
     // as complete current Personnel page acceptance (dated/quality fields are absent here).
     const legacyKeys=['employmentId','name','email','employeeCode','department','departmentId','position','company','companyId','hiredOn','terminatedOn','confirmationDate','finalConfirmationDate','probationEndDate','provisionalEndOn','resignationDate','lastWorkingDate','blacklistedAt','jobGrade','employmentType','businessUnit','costCenter','workLocation','joinDate','reportingTo'] as const;
-    const legacyShape=(result:Awaited<ReturnType<typeof personnelListPage>>)=>({...result,rows:result.rows.map(row=>Object.fromEntries(legacyKeys.map(key=>[key,row[key]])))});
+    const legacyShape=(result:Awaited<ReturnType<typeof personnelListPage>>)=>({...result,rows:result.rows.map(row=>{
+      const fields:Record<string,unknown>={...row};
+      return Object.fromEntries(legacyKeys.map(key=>{expect(Object.hasOwn(fields,key),`missing diagnostic field ${key}`).toBe(true);return [key,fields[key]];}));
+    })});
     const facets={companyIds:companies,q},expected=legacyShape(await personnelListPage(ctx,page,facets));
     const samples:unknown[]=[];
     for(const variant of [
