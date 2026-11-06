@@ -99,6 +99,15 @@ describe('Payroll comparison consumes generated paid results under the saved rep
     expect(months[1]).toMatchObject({ period: previousPeriod, previousReady: false });
     const builtIn = await runPayrollComparisonReport(ctx, [b.companyId], { id: 'reconciliation', filters: { currentPeriod, previousPeriod } });
     expect(builtIn.result.available).toBe(true);
+    await generatePayslips(ctx, {batchId:f.current.batchId,reprocessSubset:{
+      employmentIds:[f.employee.employmentId],reason:'Fictional reconciliation refresh',
+    }});
+    const refreshed=(await payrollReconciliationPeriods(ctx,[b.companyId])).find(row=>row.period===currentPeriod);
+    expect(refreshed?.captures).toHaveLength(2);
+    const receipts=await owner.client`select source_fingerprint from payroll_reconciliation_generation
+      where tenant_id=${b.tenantId} and company_id=${b.companyId} and current_period=${currentPeriod}`;
+    expect(new Set(receipts.map(row=>row.source_fingerprint)).size).toBe(2);
+
   });
   it('compares periods on different named cycles and filters the native period-end employment status', async () => {
     const f = await fixture({ distinctCycles: true });
