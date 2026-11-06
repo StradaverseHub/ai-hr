@@ -5,6 +5,8 @@ import {afterEach,beforeEach,expect,it,vi} from 'vitest';
 import {HomeInitialSharing} from '../components/employee-home/sharing-cohort';
 import {HomeTeamCard} from '../components/employee-home/team-card';
 import {HomeCelebrationsCard} from '../components/employee-home/celebrations-card';
+import {HomeNoticesCard} from '../components/employee-home/notices-card';
+import {HomeTimeOffCard} from '../components/employee-home/time-off-card';
 import en from '../messages/en.json';
 import ms from '../messages/ms.json';
 import {todayInKualaLumpur} from '../lib/hr-date';
@@ -117,4 +119,41 @@ it('keeps Team paging and return to first page on the standalone route',async()=
  fireEvent.click(screen.getByRole('button',{name:labels.team.firstPage}));
  await waitFor(()=>expect(fetcher).toHaveBeenCalledTimes(3));
  expect(fetcher.mock.calls[2][0]).toBe('/api/home/team?employmentId=own');
+});
+
+
+it('renders four Home cards from one stream while a failed card retries alone',async()=>{
+ const stream=responseStream();
+ const notices={version:1,employmentId:own,total:0,unread:0,acknowledgementRequired:0,items:[]};
+ const timeOff={version:1,employmentId:own,asOf:date,canApply:false,balances:[],nextApproved:null};
+ fetcher.mockResolvedValueOnce(stream.response);
+ render(<NextIntlClientProvider locale="en" messages={en} timeZone="Asia/Kuala_Lumpur">
+  <HomeInitialSharing employmentId={own}>
+   <HomeTeamCard employmentId={own}/>
+   <HomeCelebrationsCard employmentId={own}/>
+   <HomeNoticesCard employmentId={own}/>
+   <HomeTimeOffCard employmentId={own}/>
+  </HomeInitialSharing>
+ </NextIntlClientProvider>);
+ await waitFor(()=>expect(fetcher).toHaveBeenCalledOnce());
+ const initial=new URL(fetcher.mock.calls[0][0],'http://local');
+ expect(initial.pathname).toBe('/api/home/sharing-initial');
+ expect(initial.searchParams.getAll('card').sort()).toEqual(['celebrations','notices','team','timeOff']);
+ stream.push({version:1,card:'timeOff',status:200,value:timeOff});
+ expect(await screen.findByText(labels.timeOff.empty)).toBeVisible();
+ const noticeCard=screen.getByRole('region',{name:en.notices.myTitle});
+ expect(noticeCard).toHaveAttribute('aria-busy','true');
+ stream.push({version:1,card:'team',status:200,value:team()});
+ stream.push({version:1,card:'celebrations',status:200,value:celebrations()});
+ stream.push({version:1,card:'notices',status:503});
+ stream.close();
+ await within(noticeCard).findByRole('alert');
+ expect(await screen.findByText(labels.team.off)).toBeVisible();
+ expect(await screen.findByText(labels.celebrations.off)).toBeVisible();
+ fetcher.mockResolvedValueOnce(Response.json(notices));
+ fireEvent.click(within(noticeCard).getByRole('button',{name:labels.notices.retry+': '+en.notices.myTitle}));
+ expect(await within(noticeCard).findByText(en.notices.myEmpty)).toBeVisible();
+ expect(fetcher.mock.calls.map(([url])=>new URL(url,'http://local').pathname)).toEqual([
+  '/api/home/sharing-initial','/api/home/notices',
+ ]);
 });
