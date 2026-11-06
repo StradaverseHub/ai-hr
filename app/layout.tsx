@@ -53,6 +53,7 @@ import { demoSwitcherEnabled, isDemoDeployment } from '@/lib/demo-mode';
 import {readShellNavigationAccess} from '@/core/shell-navigation-access';
 import { companyContextForPage } from '@/lib/scope';
 import {pendingTaskSummary} from '@/core/approvals-inbox';
+import {withBackgroundDatabaseWork} from '@/db/workload';
 import {lifecycleModuleInbox} from './lifecycle/module-inbox';
 import {lifecycleModuleNavigation} from './lifecycle/workflow-availability';
 import { onboardingTasks, onboardingNavigation } from '@/packs/lifecycle/service';
@@ -237,14 +238,14 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   // 0696 — an operator can hide the Feedback menu for this customer. Nav fails open; /feedback fails closed.
   const feedbackAccess = settingEnabledOrDefault(session, 'feedback.menu_enabled');
   const [identityEmailAvailable,performanceAdminPath]=await Promise.all([canConfigureIdentityEmail(session),performanceAdminHref]);
-  // Start the queue after the blocking shell reads. Its module owners must not queue ahead of
-  // those reads when the connection pool is busy; the result is streamed independently.
-  const approvalFacts:Promise<ShellApprovalResult> = pendingTaskSummary(session, scopeIds, {
+  // The passive badge and task preview stream separately from navigation. Reserve
+  // interactive database capacity for the active page and the user's explicit actions.
+  const approvalFacts:Promise<ShellApprovalResult> = withBackgroundDatabaseWork(() => pendingTaskSummary(session, scopeIds, {
     attendance: isModuleEnabledOrFalse(session, 'attendance'),
     claims: claimsEnabled,
     performance: isModuleEnabledOrFalse(session, 'performance'),
     rewards: isModuleEnabledOrFalse(session, 'rewards'),
-  }, { deferClaimPreview: true }).then((approvalSummary):ShellApprovalResult=>({
+  }, { deferClaimPreview: true })).then((approvalSummary):ShellApprovalResult=>({
     state:'ready',
     items:approvalSummary.items,
     total:approvalSummary.total,

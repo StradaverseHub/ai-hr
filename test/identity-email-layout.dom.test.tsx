@@ -1,4 +1,5 @@
 import React, {isValidElement} from 'react';
+import {currentDatabaseWorkload} from '../db/workload';
 import {beforeEach,describe,expect,it,vi} from 'vitest';
 const m=vi.hoisted(()=>({session:vi.fn(),operator:vi.fn(),tasks:vi.fn(),pathname:'/admin/settings/email',theme:'monolith',onboarded:true,scopeIds:[] as string[],module:vi.fn(),feedback:vi.fn(),notificationBell:vi.fn(),dispatch:vi.fn(),privateCases:vi.fn(),lifecycleCount:0,summaryOverride:null as null|{items:unknown[];total:number;approvalCount:number;claimTotal:number}}));
 
@@ -155,8 +156,13 @@ it('keeps exact Claims totals and accepted Lifecycle inbox counts together in th
 it('returns the authenticated shell while the approval owner is still pending',async()=>{
  m.session.mockResolvedValue({tenantId:'tenant',userId:'employee',roles:['employee'],grants:[]});m.operator.mockResolvedValue(false);
  let finish:(items:unknown[])=>void=()=>{};
- m.tasks.mockImplementation(()=>new Promise(resolve=>{finish=resolve;}));
+ m.tasks.mockImplementation(async()=>{
+  await Promise.resolve();
+  expect(currentDatabaseWorkload()).toBe('background');
+  return new Promise(resolve=>{finish=resolve;});
+ });
  const tree=await Layout({children:<main>Available before approvals</main>});
+ expect(currentDatabaseWorkload()).toBe('interactive');
  expect(sidebarProps(tree)).toBeDefined();
  expect(propsOf(tree,ShellNotificationCenter)).toBeDefined();
  expect(m.tasks).toHaveBeenCalledTimes(1);
