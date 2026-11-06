@@ -181,11 +181,13 @@ try{
    // Check the actual drafts used by the browser. Earlier periods retain legacy
    // grouping while the current period uses the approved mapping.
    await fixturePhase(t,'payroll-readiness-after-organisation-publication',async()=>{
-    for(const company of companies){
-     for(const batchId of [company.batchId,company.publicationBatchId,company.concurrentCloseBatchId].filter(Boolean)){
+    for(const [index,company] of companies.entries()){
+     const drafts={current:company.batchId,publication:company.publicationBatchId,concurrentClose:company.concurrentCloseBatchId};
+     for(const [kind,batchId] of Object.entries(drafts)){
+      if(!batchId)continue;
       const checks=await preProcessAdvisory(ctx,batchId);
-      assert.equal(checks.missingCompensation.length,0,'Fictional payroll salary coverage is incomplete');
-      assert.equal(checks.organisationGrouping?.length??0,0,'Fictional payroll organisation grouping is incomplete');
+      assert.equal(checks.missingCompensation.length,0,`Fictional company ${index} ${kind} payroll salary coverage is incomplete`);
+      assert.equal(checks.organisationGrouping?.length??0,0,`Fictional company ${index} ${kind} payroll organisation grouping is incomplete`);
      }
     }
    });

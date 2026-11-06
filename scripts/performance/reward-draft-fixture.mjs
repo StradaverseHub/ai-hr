@@ -4,6 +4,7 @@ import {randomUUID} from 'node:crypto';
 import {approvedRewardFixtures} from '../fixtures/reward-approved.ts';
 import {saveRewardPlanConfiguration,saveRewardSetupPlan,submitRewardSetupPlan,approveRewardSetupPlan} from '../../packs/rewards/plan-configuration.ts';
 import {establishRewardMembership} from '../../test/rewards-shared-policy-fixture.ts';
+import {setCompensation} from '../../core/comp.ts';
 
 export async function prepareRewardDraftFixture({owner,schema,ctx,tenant,companies,company,today,actor,expectedCompanyEmploymentIds}){
  assert.equal(process.env.PERF_HTTP_SUITE,'workflow-preflight','draft witness fixture must stay out of the load workload');
@@ -28,6 +29,7 @@ export async function prepareRewardDraftFixture({owner,schema,ctx,tenant,compani
  const person=await establishRewardMembership(ctx,{
   tenantId:tenant.tenantId,companyId:company.companyId,businessUnitId:unit.id,departmentId:company.departmentId,year,
  });
+ await setCompensation(ctx,{employmentId:person.employmentId,basicSalary:5000,effectiveFrom:today});
  const maker={...ctx,userId:actor.userId,personId:actor.personId,roles:['hr_admin'],grants:[{role:'hr_admin',companyId:null}]};
  const fixtures=approvedRewardFixtures(owner),checker=await fixtures.setupChecker(maker);
  await fixtures.setupCompanyStructureFixture(maker,targets,today,checker);
