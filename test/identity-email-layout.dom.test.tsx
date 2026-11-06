@@ -138,11 +138,15 @@ describe('root layout assigned Attendance inbox navigation',()=>{
 
 it('keeps exact Claims totals and accepted Lifecycle inbox counts together in the shared shell',async()=>{
  m.session.mockResolvedValue({tenantId:'tenant',userId:'hr',roles:['hr_admin'],grants:[{role:'hr_admin',companyId:null}]});m.operator.mockResolvedValue(false);
- const items=[{id:'claim-preview',kind:'claim',subjectName:'Fictional colleague',createdAt:new Date().toISOString(),linkPath:'/approvals#claims'}];
+ m.module.mockImplementation((_ctx:unknown,module:string)=>module==='claims');
+ const items=[{id:'leave-preview',kind:'leave',subjectName:'Fictional colleague',createdAt:new Date().toISOString(),linkPath:'/approvals'}];
  m.tasks.mockResolvedValue(items);m.summaryOverride={items,total:10002,approvalCount:10001,claimTotal:10000};m.lifecycleCount=7;
  const tree=await Layout({children:null});
  expect(m.tasks).toHaveBeenCalledTimes(1);expect(sidebarProps(tree)?.taskCount).toBe(10009);expect(sidebarProps(tree)?.approvalCount).toBe(10001);
+ expect(m.tasks.mock.calls[0]?.[3]).toEqual({deferClaimPreview:true});
  expect(propsOf(tree,NotificationCenter)?.claimTaskCount).toBe(10000);expect(propsOf(tree,NotificationCenter)?.taskCount).toBe(10009);
+ expect(propsOf(tree,NotificationCenter)?.claimPreviewRevision).toEqual(expect.any(String));
+ expect(propsOf(tree,NotificationCenter)?.tasks).toEqual(items);
 });
 
 describe('personal Home opens without automatic overlays',()=>{

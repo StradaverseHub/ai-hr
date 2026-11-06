@@ -60,6 +60,7 @@ export function NotificationCenter({
   taskNotifications = [],
   taskCount = 0,
   claimTaskCount=0,
+  claimPreviewRevision,
   readItems = [],
   canApprove = false,
 }: {
@@ -75,6 +76,8 @@ export function NotificationCenter({
   taskCount?: number;
   /** Exact claim total when the shell supplies a bounded preview. */
   claimTaskCount?:number;
+  /** Present when the authenticated shell loads the Claims rows on demand. */
+  claimPreviewRevision?:string;
   /** Read notifications — the History tab's "past notifications" half. */
   readItems?: NotificationRow[];
   canApprove?: boolean;
@@ -121,6 +124,29 @@ export function NotificationCenter({
     return () => controller.abort();
   }, [loadApprovalHistory]);
 
+  const [claimPreview, setClaimPreview] = useState<{
+    revision: string;
+    result: { items: ApprovalTaskItem[]; total: number } | 'unavailable';
+  } | null>(null);
+  const loadClaimPreview = open && tab === 'tasks' && Boolean(claimPreviewRevision);
+  const claimPreviewResult = claimPreview?.revision === claimPreviewRevision ? claimPreview?.result : undefined;
+
+  useEffect(() => {
+    if (!loadClaimPreview || !claimPreviewRevision) return;
+    const controller = new AbortController();
+    void fetch('/api/notifications/claim-tasks', {
+      cache: 'no-store', credentials: 'same-origin', signal: controller.signal,
+    }).then(response => {
+      if (!response.ok) throw new Error('Claim tasks unavailable');
+      return response.json() as Promise<{ items: ApprovalTaskItem[]; total: number }>;
+    }).then(result => {
+      if (!controller.signal.aborted) setClaimPreview({ revision: claimPreviewRevision, result });
+    }).catch(() => {
+      if (!controller.signal.aborted) setClaimPreview({ revision: claimPreviewRevision, result: 'unavailable' });
+    });
+    return () => controller.abort();
+  }, [loadClaimPreview, claimPreviewRevision]);
+
   const [, start] = useTransition();
 
   const markRead = (id: string) => start(async () => { await markNotificationReadAction(id); router.refresh(); });
@@ -128,13 +154,25 @@ export function NotificationCenter({
 
   // ── Task tab: merge the approvals queue with the action notifications, newest first. ──
   const taskEntries = useMemo(() => {
+    const claimRows = claimPreviewResult && claimPreviewResult !== 'unavailable' ? claimPreviewResult.items : [];
     const entries: ({ type: 'queue'; at: number|null; item: NotificationTaskItem } | { type: 'notif'; at: number; item: NotificationRow })[] = [
-      ...tasks.map((item) => ({ type: 'queue' as const, at: item.createdAt ? Date.parse(item.createdAt) : null, item })),
+      ...[...tasks, ...claimRows].map((item) => ({ type: 'queue' as const, at: item.createdAt ? Date.parse(item.createdAt) : null, item })),
       ...taskNotifications.map((item) => ({ type: 'notif' as const, at: new Date(item.createdAt).getTime(), item })),
     ];
     // Keep genuine recorded instants newest first. Undated queue entries follow in stable ID order.
-    return entries.sort((a, b) => a.at === null ? b.at === null ? a.item.id.localeCompare(b.item.id) : 1 : b.at === null ? -1 : b.at - a.at);
-  }, [tasks, taskNotifications]);
+    return entries.sort((a, b) => {
+      if (a.at === null) return b.at === null ? a.item.id.localeCompare(b.item.id) : 1;
+      if (b.at === null) return -1;
+      if (a.at !== b.at) return b.at - a.at;
+      if (a.type === 'queue' && b.type === 'queue') {
+        return a.item.kind.localeCompare(b.item.kind) || a.item.id.localeCompare(b.item.id);
+      }
+      return 0;
+    });
+  }, [tasks, taskNotifications, claimPreviewResult]);
+  const availableClaimCount = claimPreviewResult && claimPreviewResult !== 'unavailable' ? claimPreviewResult.total : claimTaskCount;
+  const shownClaimCount = claimPreviewResult && claimPreviewResult !== 'unavailable'
+    ? claimPreviewResult.items.length : tasks.filter(task => task.kind === 'claim').length;
 
   // ── History tab: read notifications + approval decisions, merged newest first, searchable. ──
   const historyEntries = useMemo(() => {
@@ -246,6 +284,7 @@ export function NotificationCenter({
       type="button"
       onClick={() => {
         if (key === 'history' && key !== tab) setApprovalHistory(null);
+        if (key === 'tasks' && key !== tab) setClaimPreview(null);
         setTab(key);
       }}
       aria-pressed={tab === key}
@@ -267,7 +306,10 @@ export function NotificationCenter({
       <button
         type="button"
         onClick={() => {
-          if (!open) setApprovalHistory(null);
+          if (!open) {
+            setApprovalHistory(null);
+            setClaimPreview(null);
+          }
           setOpen(!open);
         }}
         aria-label={t('ariaBell', { total, unread, tasks: taskCount })}
@@ -324,8 +366,15 @@ export function NotificationCenter({
               </>
             )}
 
+            {loadClaimPreview && !claimPreviewResult && (
+              <p role="status" className="px-4 py-2 text-sm text-muted-foreground">{tCommon('loading')}</p>
+            )}
+            {loadClaimPreview && claimPreviewResult === 'unavailable' && (
+              <p role="alert" className="px-4 py-2 text-sm text-muted-foreground">{tLoad('loadError')}</p>
+            )}
             {tab === 'tasks' &&
               (taskEntries.length === 0 ? (
+                (!loadClaimPreview || (claimPreviewResult && claimPreviewResult !== 'unavailable')) &&
                 <p className="px-4 py-8 text-center text-sm text-muted-foreground">{t('tasksEmpty')}</p>
               ) : (
                 <ul className="max-h-[22rem] divide-y divide-border overflow-y-auto">
@@ -333,10 +382,10 @@ export function NotificationCenter({
                 </ul>
               ))}
 
-            {tab==='tasks'&&claimTaskCount>tasks.filter(task=>task.kind==='claim').length&&(
+            {tab==='tasks'&&availableClaimCount>shownClaimCount&&(
               <div className="border-t border-border px-4 py-2.5 text-center">
                 <Link href="/approvals?category=claim" onClick={()=>setOpen(false)} className="text-xs font-medium text-primary hover:underline">
-                  {tApprovals('claims')} ({claimTaskCount})
+                  {tApprovals('claims')} ({availableClaimCount})
                 </Link>
               </div>
             )}

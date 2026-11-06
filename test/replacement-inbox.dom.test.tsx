@@ -62,3 +62,28 @@ it('reads approval history only when an authorized viewer opens History', async 
     vi.unstubAllGlobals();
   }
 });
+
+it('loads the bounded Claims preview only when Tasks opens and retains the full-queue link', async () => {
+  const fetcher = vi.fn().mockResolvedValue(Response.json({ total: 40, items: [{
+    id: 'claim', kind: 'claim', subjectName: 'Fictional claim requester',
+    createdAt: new Date().toISOString(), linkPath: '/approvals?category=claim&requestId=claim',
+  }] }));
+  vi.stubGlobal('fetch', fetcher);
+  try {
+    render(<NextIntlClientProvider locale="en" messages={en} onError={error => { throw error; }}>
+      <NotificationCenter unread={0} items={[]} taskCount={40} claimTaskCount={40} claimPreviewRevision="revision" />
+    </NextIntlClientProvider>);
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button'));
+    expect(fetcher).not.toHaveBeenCalled();
+    await user.click(screen.getByText(en.notifications.tabTasks, { exact: true }));
+    expect(await screen.findByText('Fictional claim requester')).toBeVisible();
+    expect(fetcher).toHaveBeenCalledExactlyOnceWith('/api/notifications/claim-tasks', expect.objectContaining({
+      cache: 'no-store', credentials: 'same-origin',
+    }));
+    expect(screen.getByRole('link', { name: `${en.approvals.claims} (40)` }))
+      .toHaveAttribute('href', '/approvals?category=claim');
+  } finally {
+    vi.unstubAllGlobals();
+  }
+});

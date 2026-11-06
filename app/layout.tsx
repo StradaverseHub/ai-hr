@@ -214,12 +214,13 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   // same reason `notifEnabled` two lines above uses it: this is the root layout and a throw 500s every
   // authenticated route. `listPendingTasks` takes the answer rather than asking, so the loud/quiet choice
   // belongs to whichever surface calls it.
+  const claimsEnabled = isModuleEnabledOrFalse(session, 'claims');
   const approvalSummary = await pendingTaskSummary(session, scopeIds, {
     attendance: isModuleEnabledOrFalse(session, 'attendance'),
-    claims: isModuleEnabledOrFalse(session, 'claims'),
+    claims: claimsEnabled,
     performance: isModuleEnabledOrFalse(session, 'performance'),
     rewards: isModuleEnabledOrFalse(session, 'rewards'),
-  });
+  }, { deferClaimPreview: true });
   // The canonical inbox admits ordinary employees only for an actionable, non-self v3/v4 assignment.
   // Reuse that result; do not promote the viewer to manager or query the assignment owner twice.
   const approvalTasks=approvalSummary.items;
@@ -454,6 +455,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
                     tasks={pendingTasks}
                     taskNotifications={taskNotifs}
                     claimTaskCount={approvalSummary.claimTotal}
+                    claimPreviewRevision={claimsEnabled ? crypto.randomUUID() : undefined}
                     taskCount={pendingTaskCount+taskNotifCount}
                     readItems={[...readNotifs,...onboardingNotices.read]}
                     canApprove={canApprove}

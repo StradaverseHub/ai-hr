@@ -115,7 +115,7 @@ export async function listPendingTasks(
   return (await loadPendingTasks(ctx,scopeIds,modules,options)).items;
 }
 
-export function pendingTaskSummary(ctx:SessionContext,scopeIds:string[]|undefined,modules:InboxModules,options:{noticeAcknowledgements?:boolean}={}){
+export function pendingTaskSummary(ctx:SessionContext,scopeIds:string[]|undefined,modules:InboxModules,options:{noticeAcknowledgements?:boolean;deferClaimPreview?:true}={}){
   return loadPendingTasks(ctx,scopeIds,modules,{...options,preview:true});
 }
 
@@ -146,7 +146,7 @@ async function loadDecisionHeaders(ctx:SessionContext,scopeIds:string[]|undefine
 }
 
 async function loadPendingTaskSources(ctx:SessionContext,scopeIds:string[]|undefined,modules:InboxModules,
-  options:{noticeAcknowledgements?:boolean;preview?:true;countOnly?:true}){
+  options:{noticeAcknowledgements?:boolean;preview?:true;countOnly?:true;deferClaimPreview?:true}){
   // Each owner proves actual current assignment without selecting its private decision workspace.
   // A platform role or broad read permission alone is not an actionable task assignment.
   return Promise.all([
@@ -155,7 +155,7 @@ async function loadPendingTaskSources(ctx:SessionContext,scopeIds:string[]|undef
     modules.attendance?pendingAttendanceTaskMetadata(ctx,scopeIds):Promise.resolve([]),
     pendingProfileTaskMetadata(ctx,scopeIds),
     modules.claims
-      ? options.countOnly ? countPendingClaimTasks(ctx,scopeIds).then(total=>({items:[],total}))
+      ? options.countOnly || options.deferClaimPreview ? countPendingClaimTasks(ctx,scopeIds).then(total=>({items:[],total}))
         : options.preview ? pendingClaimTaskSummary(ctx,scopeIds,25)
         : pendingClaimTaskMetadata(ctx,scopeIds).then(items=>({items,total:items.length}))
       : Promise.resolve({items:[],total:0}),
@@ -172,23 +172,29 @@ export async function countPendingTasks(ctx:SessionContext,scopeIds:string[]|und
     decisionHeaders.reduce((total,rows)=>total+rows.length,0)+packTasks.reduce((total,rows)=>total+rows.length,0);
 }
 
+const projectTasks = (rows:readonly Pick<AssignedApprovalMetadata,'id'|'employee'|'createdAt'>[],kind:AssignedApprovalKind):PendingTaskItem[] =>
+  rows.map(row=>({id:row.id,kind,subjectName:row.employee,createdAt:row.createdAt instanceof Date?row.createdAt.toISOString():new Date(row.createdAt).toISOString(),linkPath:assignedApprovalHref({kind,id:row.id})}));
+
+export async function pendingBellClaimPreview(ctx:SessionContext,scopeIds:string[]){
+  const {items,total}=await pendingClaimTaskSummary(ctx,scopeIds);
+  return {items:projectTasks(items,'claim'),total};
+}
+
 async function loadPendingTasks(ctx:SessionContext,scopeIds:string[]|undefined,modules:InboxModules,
-  options:{noticeAcknowledgements?:boolean;preview?:true}){
+  options:{noticeAcknowledgements?:boolean;preview?:true;deferClaimPreview?:true}){
   const [leave,[cancellations,resignations,managerReviews,hrReviews],replacement,attendance,profile,claimResult,noticeAcknowledgements,packTaskLists]=
     await loadPendingTaskSources(ctx,scopeIds,modules,options);
   const packTasks:PackTaskItem[]=packTaskLists.flat();
   const iso=(value:Date|string)=>value instanceof Date?value.toISOString():new Date(value).toISOString();
-  const project=(rows:readonly Pick<AssignedApprovalMetadata,'id'|'employee'|'createdAt'>[],kind:AssignedApprovalKind):PendingTaskItem[]=>
-    rows.map(row=>({id:row.id,kind,subjectName:row.employee,createdAt:iso(row.createdAt),linkPath:assignedApprovalHref({kind,id:row.id})}));
   const items:PendingTaskItem[]=[
     ...noticeAcknowledgements.map(row=>({id:`${row.noticeId}:${row.employmentId}:${row.contentVersion}`,kind:'noticeAcknowledgement' as const,subjectName:row.title,createdAt:iso(row.sourceUpdatedAt),linkPath:`/notices/${row.noticeId}?employmentId=${row.employmentId}`})),
-    ...project(leave,'leave'),
-    ...project(cancellations,'leaveCancellation'),
-    ...project(replacement,'replacementLeave'),
-    ...project(attendance,'attendance'),
+    ...projectTasks(leave,'leave'),
+    ...projectTasks(cancellations,'leaveCancellation'),
+    ...projectTasks(replacement,'replacementLeave'),
+    ...projectTasks(attendance,'attendance'),
     ...profile.map(row=>({id:row.id,kind:'profile' as const,subjectName:row.employee,createdAt:iso(row.createdAt),linkPath:`/admin/personnel/profile-changes?assigned=1&requestId=${row.id}#request-${row.id}`})),
-    ...project(claimResult.items,'claim'),...project(resignations,'resignation'),
-    ...project(managerReviews,'managerReview'),...project(hrReviews,'hrReview'),
+    ...projectTasks(claimResult.items,'claim'),...projectTasks(resignations,'resignation'),
+    ...projectTasks(managerReviews,'managerReview'),...projectTasks(hrReviews,'hrReview'),
     ...packTasks.map(({id,kind,subjectName,createdAt,linkPath})=>({id,kind,subjectName,createdAt,linkPath})),
   ];
   items.sort((a,b)=>a.createdAt<b.createdAt?1:a.createdAt>b.createdAt?-1:a.kind.localeCompare(b.kind)||a.id.localeCompare(b.id));
