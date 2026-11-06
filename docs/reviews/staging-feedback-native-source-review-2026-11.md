@@ -76,6 +76,14 @@ The combined candidate preserves all 699 verified ledger entries of installed
 source `b29d13e4c5a36062158db5cf2582bbc15eea1e49` and appends the three feedback
 migrations. The earlier Personnel acceptance failure is a separate record.
 
+### Forward revert of deferred Personnel filters
+
+The owner requested removal of the deferred Personnel behavior before staging
+acceptance. The candidate restores the previous list, filter, and authority
+paths while retaining the applied `2451` migration and its historical record.
+The provider closure matches the previously approved fictional staging digest
+`ddfdd95e41caa57e468007a7c97564ead57bfcf1d4a0c1b1f2aa3628edd81603` exactly.
+
 ## Reward Desk evidence
 
 Reference: `Reward-Desk-offline-v3_3.html`, submitted on the Rewards parity report,

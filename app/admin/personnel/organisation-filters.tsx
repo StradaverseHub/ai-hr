@@ -4,63 +4,12 @@ import type {FilterField,FilterPanelLabels} from '@/components/filter-panel';
 import type {PersonnelCompanyChoice} from '@/core/read';
 type Values=Record<string,string|string[]|undefined>;
 const array=(value:Values[string])=>value===undefined?[]:Array.isArray(value)?value:value.split(',');
-type FilterOptions = {
- companies: PersonnelCompanyChoice[];
- canInspectDuplicates: boolean;
- options: Partial<Record<string, {value:string;label:string}[]>>;
-};
-
-const panelClass = 'absolute right-0 z-30 mt-2 max-h-[80dvh] w-[min(42rem,calc(100vw-2rem))] space-y-4 overflow-y-auto rounded-xl border border-border bg-card p-4 shadow-lg';
-
-export function PersonnelOrganisationFilters({fields: baseFields,values,companies: initialCompanies=[],labels,companySearchLabel,dataTour,canInspectDuplicates: initialDuplicateAuthority=true,duplicateHint,loadOptions}:{
- fields:FilterField[];
- values:Values;
- companies?:PersonnelCompanyChoice[];
- labels:FilterPanelLabels;
- companySearchLabel:string;
- dataTour?:string;
- canInspectDuplicates?:boolean;
- duplicateHint?:string;
- loadOptions?:{busy:string;retry:string};
-}){
+export function PersonnelOrganisationFilters({fields,values,companies,labels,companySearchLabel,dataTour,canInspectDuplicates=true,duplicateHint}:{fields:FilterField[];values:Values;companies:PersonnelCompanyChoice[];labels:FilterPanelLabels;companySearchLabel:string;dataTour?:string;canInspectDuplicates?:boolean;duplicateHint?:string}){
  const [open,setOpen]=useState(false),[search,setSearch]=useState(''),[selected,setSelected]=useState(new Set([...array(values.companies),...array(values.company)]));
- const [options,setOptions]=useState<FilterOptions>();
- const [loadState,setLoadState]=useState<'idle'|'loading'|'failed'>('idle');
-
- async function load() {
-  setLoadState('loading');
-  try {
-   const response = await fetch('/admin/personnel/filter-options', { cache: 'no-store' });
-   if (!response.ok) throw new Error('Personnel filter options unavailable');
-   setOptions(await response.json() as FilterOptions);
-   setLoadState('idle');
-  } catch {
-   setLoadState('failed');
-  }
- }
-
- const companies = options?.companies ?? initialCompanies;
- const canInspectDuplicates = options?.canInspectDuplicates ?? initialDuplicateAuthority;
- const fields = baseFields.map(field => {
-  const available = options?.options[field.name];
-  return available && (field.kind === 'select' || field.kind === 'multi')
-   ? { ...field, options: available }
-   : field;
- });
  const groups=new Map<string,{name:string;companies:PersonnelCompanyChoice[]}>();
  for(const company of companies){const name=company.businessGroup??company.parentCompany??company.name,key=company.businessGroupId??company.parentCompanyId??company.id;const group=groups.get(key)??{name,companies:[]};group.companies.push(company);groups.set(key,group);}
  const toggle=(ids:string[],checked:boolean)=>setSelected(previous=>{const next=new Set(previous);for(const id of ids)checked?next.add(id):next.delete(id);return next;});
- return <details className="relative" data-tour={dataTour} open={open} onToggle={event=>{
-  const next = event.currentTarget.open;
-  setOpen(next);
-  if (next && loadOptions && !options && loadState === 'idle') void load();
- }}><summary className="cursor-pointer rounded-lg border border-border px-3 py-2 text-sm font-medium">{labels.filter}</summary>
- {open && loadOptions && !options && <div className={panelClass} aria-busy={loadState !== 'failed'}>
-  {loadState === 'failed'
-   ? <><p role="status" className="text-sm">{loadOptions.busy}</p><button type="button" className="text-sm underline" onClick={()=>void load()}>{loadOptions.retry}</button></>
-   : <div aria-hidden="true" className="h-5 w-32 animate-pulse rounded bg-muted"/>}
- </div>}
- {open && (!loadOptions || options) && <form action="/admin/personnel" className={panelClass}>
+ return <details className="relative" data-tour={dataTour} open={open} onToggle={event=>setOpen(event.currentTarget.open)}><summary className="cursor-pointer rounded-lg border border-border px-3 py-2 text-sm font-medium">{labels.filter}</summary>{open&&<form action="/admin/personnel" className="absolute right-0 z-30 mt-2 max-h-[80dvh] w-[min(42rem,calc(100vw-2rem))] space-y-4 overflow-y-auto rounded-xl border border-border bg-card p-4 shadow-lg">
   {values.search&&<input type="hidden" name="search" value={String(values.search)}/>}
   {!canInspectDuplicates&&array(values.quality).includes('suspected_duplicate')&&<input type="hidden" name="quality" value="suspected_duplicate"/>}
   {values.status&&<input type="hidden" name="status" value={String(values.status)}/>}
