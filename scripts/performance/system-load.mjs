@@ -191,20 +191,23 @@ function sampleDatabaseLocks({lockLabels,accessLocks},phase,interval){
     idleInTransaction:activity.filter(row=>row.state?.startsWith('idle in transaction')).reduce((total,row)=>total+row.app_connections,0),
     waitingOnLock:activity.filter(row=>row.state==='active'&&row.kind==='Lock').reduce((total,row)=>total+row.app_connections,0),
    };
-   const locks=await db`select a.pid,pg_blocking_pids(a.pid)as blockers,l.mode,l.granted,l.classid::text,l.objid::text,l.objsubid,
+   const locks=await db`select a.pid,case when not l.granted then pg_blocking_pids(a.pid) end as blockers,l.mode,l.granted,l.classid::text,l.objid::text,l.objsubid,
      a.usename='ai_hr_app' as app_session from pg_locks l join pg_stat_activity a on a.pid=l.pid
      where a.datname=current_database()and l.database=(select oid from pg_database where datname=current_database())
        and l.locktype='advisory' and (not l.granted or (
-       ${phase==='preflight'}::boolean and l.mode='ExclusiveLock'
-       and concat(l.classid,':',l.objid,':',l.objsubid)=any(${accessLocks}::text[])
-       )) order by l.granted desc,a.pid limit 20`;
+       concat(l.classid,':',l.objid,':',l.objsubid)=any(${accessLocks}::text[])
+       and (${phase==='loaded'}::boolean or l.mode='ExclusiveLock')
+       )) order by l.granted,a.pid limit 40`;
    const queuedLocks=locks.filter(row=>!row.granted);
    appConnections.sampledAdvisoryWaiters=new Set(queuedLocks.filter(row=>row.app_session).map(row=>row.pid)).size;
-   const pids=[...new Set(locks.flatMap(row=>row.granted?[row.pid]:row.blockers??[]))].filter(pid=>Number.isSafeInteger(pid)&&pid>0).slice(0,20);
+   const pids=[...new Set([
+    ...queuedLocks.flatMap(row=>row.blockers??[]),
+    ...(phase==='preflight'?locks.filter(row=>row.granted).map(row=>row.pid):[]),
+   ])].filter(pid=>Number.isSafeInteger(pid)&&pid>0).slice(0,20);
    // Native holder state and normalized query IDs only; never capture statement parameters.
    const holders=pids.length?await db.unsafe('select pid,state,wait_event_type,wait_event,query_id::text,extract(epoch from(clock_timestamp()-xact_start))as transaction_age_seconds from pg_stat_activity where datname=current_database()and pid in('+pids.map((_,i)=>'$'+(i+1)).join(',')+')',pids):[];
    if(phase!=='preflight'||locks.length)waits.push({at:Date.now(),phase,rows,appConnections,blockingSessions:holders,
-     grantedAccessHolders:locks.filter(row=>row.granted).map(row=>({pid:row.pid,namespace:lockLabels.get(row.classid+':'+row.objid+':'+row.objsubid)})),
+     grantedAccessHolders:locks.filter(row=>row.granted).map(row=>({pid:row.pid,mode:row.mode,namespace:lockLabels.get(row.classid+':'+row.objid+':'+row.objsubid)})),
      advisoryWaiters:queuedLocks.map(row=>({pid:row.pid,blockers:row.blockers,mode:row.mode,namespace:lockLabels.get(row.classid+':'+row.objid+':'+row.objsubid)??'unclassified'}))});
    // The top-statement summary can omit rare root holders. Resolve only sampled root IDs,
    // never queued waiters or parameters; all data belongs to the fictional runner fixture.
@@ -290,13 +293,30 @@ try{
   const code=page.locator('input[name="code"]');
   await code.waitFor({state:'visible',timeout:90000});
   await code.fill(await generate({strategy:'totp',secret:user.secret}));
+  const mfaTransport={};
+  // App Router may carry the redirected Home render in the action response.
+  // Record a separate Home request only when the browser actually makes one.
+  function observeMfaResponse(response){
+   const request=response.request(),url=new URL(request.url());
+   if(url.origin!==base)return;
+   if(url.pathname==='/login'&&request.method()==='POST'){
+    mfaTransport.loginPostResponseMs??=performance.now()-mfaSubmittedAt;
+   }else if(url.pathname==='/'&&request.method()==='GET'){
+    mfaTransport.homeGetResponseMs??=performance.now()-mfaSubmittedAt;
+   }
+  }
+  page.on('response',observeMfaResponse);
   const mfaSubmittedAt=performance.now();
-  await page.locator('form').filter({has:code}).locator('button[type="submit"]').click();
-  await page.waitForURL(url=>url.origin===base&&url.pathname==='/',{timeout:90000});
+  try{
+   await page.locator('form').filter({has:code}).locator('button[type="submit"]').click();
+   await page.waitForURL(url=>url.origin===base&&url.pathname==='/',{timeout:90000});
+  }finally{
+   page.off('response',observeMfaResponse);
+  }
   const homeUrlSettledAt=performance.now();
   const session=(await page.context().cookies()).find(cookie=>cookie.name==='__Host-aihr_internal');
   assert(session&&session.value!==user.token,'browser sign-in did not establish a new session');
-  return {passwordSubmittedAt,mfaSubmittedAt,homeUrlSettledAt};
+  return {passwordSubmittedAt,mfaSubmittedAt,homeUrlSettledAt,mfaTransport};
  }
  async function visit(page,user,path,phase='baseline',signIn=false,loadState){
   lastPage=page;const stopHomeTracking=homeHttp.track(page,user,path);
@@ -383,6 +403,7 @@ try{
     startedWith,cardsCheckedWith:loadState?.(),
     passwordSubmitToCardsCheckedMs:cardsCheckedAt-signInTiming.passwordSubmittedAt,
     mfaSubmitToHomeUrlMs:signInTiming.homeUrlSettledAt-signInTiming.mfaSubmittedAt,
+    mfaTransport:signInTiming.mfaTransport,
     mfaSubmitToCardsCheckedMs:cardsCheckedAt-signInTiming.mfaSubmittedAt,
     completeCardInventory:true,cardFailures};
    if(cardFailures===0){
