@@ -30618,6 +30618,27 @@
     "acknowledgementDate": "วันที่"
   },
   "rewardsAccess": {
+    "reviewActivity": {
+      "title": "กิจกรรมการตรวจสอบ",
+      "review": "การตรวจสอบ",
+      "actor": "ผู้เปลี่ยนแปลง",
+      "time": "เวลา",
+      "event": "การเปลี่ยนแปลง",
+      "reason": "เหตุผล",
+      "empty": "ไม่พบกิจกรรมที่ตรงกัน",
+      "events": {
+        "access-changed": "เปลี่ยนสิทธิ์เข้าถึง",
+        "cancelled": "ยกเลิกการตรวจสอบ",
+        "facts-imported": "นำเข้าข้อมูล",
+        "final-pool-changed": "เปลี่ยนวงเงินสุดท้าย",
+        "lump-updated": "อัปเดตเงินก้อน",
+        "onehr-results-imported": "นำเข้าผล OneHR",
+        "posted": "บันทึกรางวัล",
+        "recommendation-updated": "ย้ายการตรวจสอบ",
+        "routed": "อัปเดตสมาชิกระดับอาวุโส",
+        "senior-membership-updated": "รีเฟรชแหล่งข้อมูลอัปโหลด"
+      }
+    },
     "wholeGroup": {
       "title": "บทบาททั้งกลุ่ม",
       "description": "ให้สิทธิ์ทั่วทั้งกลุ่มแก่ผู้ถือบทบาทกำกับดูแลที่มีคุณสมบัติ",

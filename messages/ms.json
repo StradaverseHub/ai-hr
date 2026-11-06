@@ -30618,6 +30618,27 @@
     "acknowledgementDate": "Tarikh"
   },
   "rewardsAccess": {
+    "reviewActivity": {
+      "title": "Aktiviti semakan",
+      "review": "Semakan",
+      "actor": "Diubah oleh",
+      "time": "Masa",
+      "event": "Perubahan",
+      "reason": "Sebab",
+      "empty": "Tiada aktiviti sepadan.",
+      "events": {
+        "access-changed": "Akses diubah",
+        "cancelled": "Semakan dibatalkan",
+        "facts-imported": "Fakta diimport",
+        "final-pool-changed": "Kumpulan akhir diubah",
+        "lump-updated": "Bayaran sekali gus dikemas kini",
+        "onehr-results-imported": "Keputusan OneHR diimport",
+        "posted": "Ganjaran disiarkan",
+        "recommendation-updated": "Semakan dipindahkan",
+        "routed": "Keahlian kanan dikemas kini",
+        "senior-membership-updated": "Sumber muat naik dikemas kini"
+      }
+    },
     "wholeGroup": {
       "title": "Peranan seluruh kumpulan",
       "description": "Berikan akses seluruh kumpulan kepada pemegang peranan penyeliaan yang layak.",

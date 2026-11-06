@@ -30618,6 +30618,27 @@
     "acknowledgementDate": "日期"
   },
   "rewardsAccess": {
+    "reviewActivity": {
+      "title": "评审活动",
+      "review": "评审",
+      "actor": "更改人",
+      "time": "时间",
+      "event": "更改",
+      "reason": "原因",
+      "empty": "没有符合条件的活动。",
+      "events": {
+        "access-changed": "访问权限已更改",
+        "cancelled": "评审已取消",
+        "facts-imported": "事实已导入",
+        "final-pool-changed": "最终奖金池已更改",
+        "lump-updated": "一次性奖金已更新",
+        "onehr-results-imported": "OneHR 结果已导入",
+        "posted": "奖励已过账",
+        "recommendation-updated": "评审已流转",
+        "routed": "高级成员资格已更新",
+        "senior-membership-updated": "上传来源已刷新"
+      }
+    },
     "wholeGroup": {
       "title": "全集团角色",
       "description": "为符合资格的监督角色持有人授予全集团访问权限。",

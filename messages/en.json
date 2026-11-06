@@ -30618,6 +30618,28 @@
     "acknowledgementDate": "Date"
   },
   "rewardsAccess": {
+    "reviewActivity": {
+      "title": "Review activity",
+      "review": "Review",
+      "actor": "Changed by",
+      "time": "Time",
+      "event": "Change",
+      "reason": "Reason",
+      "empty": "No matching activity.",
+      "events": {
+        "access-changed": "Access changed",
+        "cancelled": "Review cancelled",
+        "facts-imported": "Facts imported",
+        "final-pool-changed": "Final pool changed",
+        "lump-updated": "Lump sum updated",
+        "onehr-results-imported": "OneHR results imported",
+        "posted": "Awards posted",
+        "recommendation-updated": "Recommendation updated",
+        "routed": "Review moved",
+        "senior-membership-updated": "Senior membership updated",
+        "upload-source-refreshed": "Upload source refreshed"
+      }
+    },
     "wholeGroup": {
       "title": "Whole-group roles",
       "description": "Grant access for the whole group to eligible oversight role holders.",

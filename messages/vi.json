@@ -30618,6 +30618,27 @@
     "acknowledgementDate": "Ngày"
   },
   "rewardsAccess": {
+    "reviewActivity": {
+      "title": "Hoạt động xét duyệt",
+      "review": "Xét duyệt",
+      "actor": "Người thay đổi",
+      "time": "Thời gian",
+      "event": "Thay đổi",
+      "reason": "Lý do",
+      "empty": "Không có hoạt động phù hợp.",
+      "events": {
+        "access-changed": "Đã thay đổi quyền truy cập",
+        "cancelled": "Đã huỷ xét duyệt",
+        "facts-imported": "Đã nhập dữ kiện",
+        "final-pool-changed": "Đã thay đổi quỹ cuối cùng",
+        "lump-updated": "Đã cập nhật khoản một lần",
+        "onehr-results-imported": "Đã nhập kết quả OneHR",
+        "posted": "Đã ghi nhận thưởng",
+        "recommendation-updated": "Đã chuyển bước xét duyệt",
+        "routed": "Đã cập nhật thành viên cấp cao",
+        "senior-membership-updated": "Đã làm mới nguồn tải lên"
+      }
+    },
     "wholeGroup": {
       "title": "Vai trò toàn tập đoàn",
       "description": "Cấp quyền toàn tập đoàn cho người giữ vai trò giám sát đủ điều kiện.",
