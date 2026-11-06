@@ -21,12 +21,13 @@
  * All writes go through the server actions passed in from the page; each still appends its DomainEvent.
  */
 
+import { labelCodeConflicts } from '@/lib/label-code-conflicts';
 import { refreshEditableRows } from '@/lib/refresh-editable-rows';
 import { useEffect, useCallback, useMemo, useRef, useState, useTransition } from 'react';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 import { ArrowDown, ArrowUp, ChevronDown, ChevronUp, Trash2, X } from 'lucide-react';
-import { pageOfIndex, paginateRows } from '@/lib/pagination';
+import { paginateRows } from '@/lib/pagination';
 import { Button, ErrorBanner, inputCls, tableWrapCls, tbodyCls, thCls, theadCls } from './ui';
 import {
   ClientPager,
@@ -128,6 +129,7 @@ export function ProfileOptionsGrid({
   const [confirmDelete, setConfirmDelete] = useState<RowState | null>(null);
   const [pending, startTransition] = useTransition();
   const draftSeq = useRef(0);
+  const focusDraft = useRef<string | null>(null);
   // Paging rides in the address (?page=&size=), exactly as it does on the server-paged screens, which is
   // what keeps your place across the save round trip and makes the view a shareable link.
   const pq = useClientPageQuery();
@@ -170,13 +172,9 @@ export function ProfileOptionsGrid({
       isNew: true,
       dirty: true,
     };
-    const next = [...rows, draft];
-    patchRows(next);
-    // A draft is appended to the end and then SORTED, so on a paged list it lands wherever the current
-    // ordering puts it — usually a page you are not looking at, which reads as "Add Row did nothing".
-    // Follow it. (An active search hides a still-empty draft, as it always has; findIndex answers -1 and
-    // pageOfIndex turns that into page one rather than a negative page.)
-    goToPage(pageOfIndex(applyView(next).findIndex((r) => r.key === draft.key), pq.size));
+    focusDraft.current = draft.key;
+    patchRows([draft, ...rows]);
+    goToPage(0);
   }
   function removeDraft(key: string) {
     patchRows(rows.filter((r) => r.key !== key));
@@ -228,9 +226,14 @@ export function ProfileOptionsGrid({
     const localErrors: Record<string, string> = {};
     for (const c of creates) if (!c.value) localErrors[c.key] = t('valueRequired');
     for (const u of updates) if (!u.label) localErrors[u.key] = t('labelRequired');
+    const duplicates = labelCodeConflicts(rows.map(row => ({
+      key: row.key, code: row.value.trim(), scope: cat, changed: row.isNew,
+    })));
+    const duplicateMessage = 'This code is already in use. Enter a different code.';
+    for (const key of duplicates) localErrors[key] = duplicateMessage;
     if (Object.keys(localErrors).length > 0) {
       setRowErrors(localErrors);
-      setError(t('saveFailed'));
+      setError(duplicates.length ? duplicateMessage : t('saveFailed'));
       return;
     }
     const updatedKeys = new Set(updates.map((u) => u.key));
@@ -254,7 +257,7 @@ export function ProfileOptionsGrid({
         const map: Record<string, string> = {};
         for (const e of res.rowErrors) map[e.key] = e.message;
         setRowErrors(map);
-        setError(res.message ?? t('saveFailed'));
+        setError(res.message ?? res.rowErrors[0]?.message ?? t('saveFailed'));
       }
     });
   }
@@ -271,9 +274,10 @@ export function ProfileOptionsGrid({
     }
   }
 
-  /** Filter + sort, as a function rather than only a memo: addRow needs to ask where a new draft landed. */
   const applyView = useCallback((source: RowState[]) => {
+    const drafts = source.filter((r) => r.isNew);
     let v = source.filter((r) => {
+      if (r.isNew) return false;
       if (statusFilter === 'active' && !r.isActive) return false;
       if (statusFilter === 'inactive' && r.isActive) return false;
       if (search) {
@@ -291,7 +295,7 @@ export function ProfileOptionsGrid({
         return sortDir === 'asc' ? av.localeCompare(bv) : bv.localeCompare(av);
       });
     }
-    return v;
+    return [...drafts, ...v];
   }, [statusFilter, search, sortField, sortDir]);
 
   const view = useMemo(() => applyView(rows), [applyView, rows]);
@@ -300,6 +304,18 @@ export function ProfileOptionsGrid({
   // A page that no longer exists (rows deleted off the end, or a stale bookmark) draws nothing at all —
   // land the reader on the last page that has rows instead.
   useClampPagePastEnd(pgState);
+  useEffect(() => {
+    const key = focusDraft.current;
+    if (!key) return;
+    const input = document.querySelector<HTMLInputElement>(
+      `[data-row-key="${key}"] input[data-cell^="value:"]`,
+    );
+    if (input) {
+      input.focus();
+      focusDraft.current = null;
+    }
+  }, [pageRows]);
+
 
   function toggleSort(field: typeof sortField) {
     if (sortField === field) setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
@@ -462,7 +478,7 @@ export function ProfileOptionsGrid({
               {pageRows.map((r, rowIdx) => {
                 const err = rowErrors[r.key];
                 return (
-                  <tr key={r.key} className={`${r.isActive ? '' : 'opacity-60'} ${err ? 'bg-destructive/5' : ''}`}>
+                  <tr key={r.key} data-row-key={r.key} className={`${r.isActive ? '' : 'opacity-60'} ${err ? 'bg-destructive/5' : ''}`}>
                     {/* Code = immutable value; editable only while the row is a new draft. */}
                     <td className="px-3 py-1.5">
                       {r.isNew ? (
@@ -472,6 +488,7 @@ export function ProfileOptionsGrid({
                           onChange={(e) => updateCell(r.key, 'value', e.target.value)}
                           onKeyDown={(e) => onCellKey(e, rowIdx, 'value')}
                           placeholder={t('valuePlaceholder')}
+                          aria-invalid={!!err || undefined}
                           className={`${cellInput} w-full min-w-0 font-mono text-xs ${err ? 'border-destructive' : ''}`}
                         />
                       ) : (
@@ -479,6 +496,7 @@ export function ProfileOptionsGrid({
                           {r.value}
                         </span>
                       )}
+                      {err && <p className="mt-1 text-xs text-destructive">{err}</p>}
                     </td>
                     <td className="px-3 py-1.5">
                       <input
