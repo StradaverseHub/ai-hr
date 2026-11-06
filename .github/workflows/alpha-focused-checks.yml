@@ -43,7 +43,7 @@ on:
         description: Development app workers sharing the selected total connection budget and fixed heap
         default: '1'
         type: choice
-        options: ['1', '2']
+        options: ['1', '2', '4', '8']
       system_pool_connections:
         description: Total application DB connections on the isolated performance runner
         default: '10'
