@@ -3,6 +3,13 @@
 DO $personnel_assignment_prerequisite$
 BEGIN
   IF NOT EXISTS (
+    SELECT 1 FROM pg_catalog.pg_proc p
+    WHERE p.oid='app.personnel_filter_rows(date,uuid[])'::regprocedure
+      AND p.prosecdef AND pg_catalog.pg_get_userbyid(p.proowner)=current_user
+  ) THEN
+    RAISE EXCEPTION 'Personnel overview must use the existing projection owner' USING ERRCODE='55000';
+  END IF;
+  IF NOT EXISTS (
     SELECT 1
     FROM pg_catalog.pg_constraint c
     JOIN pg_catalog.pg_index i ON i.indexrelid=c.conindid AND i.indrelid=c.conrelid
@@ -102,7 +109,6 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,app AS $$
 $$;
 REVOKE ALL ON FUNCTION app.personnel_overview_page_rows(date,uuid[],uuid[]) FROM PUBLIC,ai_hr_app;
 GRANT EXECUTE ON FUNCTION app.personnel_overview_page_rows(date,uuid[],uuid[]) TO ai_hr_app;
-ALTER FUNCTION app.personnel_overview_page_rows(date,uuid[],uuid[]) OWNER TO ai_hr_owner;
 
 -- A single non-superseded assignment can cover an employment on any date. The validated,
 -- immediate assignment_no_overlap constraint is an explicit installation prerequisite.
@@ -212,4 +218,3 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,app AS $$
 $$;
 REVOKE ALL ON FUNCTION app.personnel_overview_narrow_rows(date,uuid[]) FROM PUBLIC,ai_hr_app;
 GRANT EXECUTE ON FUNCTION app.personnel_overview_narrow_rows(date,uuid[]) TO ai_hr_app;
-ALTER FUNCTION app.personnel_overview_narrow_rows(date,uuid[]) OWNER TO ai_hr_owner;

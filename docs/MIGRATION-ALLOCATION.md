@@ -3,7 +3,7 @@
 ## Bounded Personnel overview — 6 November 2026 (provisional source reservation)
 
 `codex/personnel-narrow-production-20261106` reserves `2403_personnel_bounded_overview`,
-idx 1603, when 1793330001803. SQL SHA-256 `fe92211e7b6d96d422ca4eb7c79e882c1ae69ff81125c50034e86a5f8e1b31a5`.
+idx 1603, when 1793330001803. SQL SHA-256 `1eac5d0a075e4505f69ac75f19e99e19f24fd189c93f82fd35b1c49f97ba228f`.
 The local ref and worktree scan found claims through tag 2402, idx 1602 and
 when 1793330001802. One foreign worktree has an invalid journal. Its literal
 index and timestamp claims and SQL filenames were included, and its files

@@ -51,13 +51,14 @@ it.skipIf(!requested)('preserves the real overview rows, facets, scope, dated as
   {name:'unbounded page',input:{...scope,limit:2000},expected:[first.employmentId,second.employmentId]},
  ];
  // Prove the migrated functions are installed and private to their approved role.
- const installed=await owner.db.execute<{owner:string;appCanExecute:boolean;publicCanExecute:boolean}>(sql`
-  select pg_get_userbyid(p.proowner) as owner, has_function_privilege('ai_hr_app',p.oid,'EXECUTE') as "appCanExecute",
+ const installed=await owner.db.execute<{canonicalOwner:boolean;appCanExecute:boolean;publicCanExecute:boolean}>(sql`
+  select p.proowner=(select proowner from pg_proc where oid='app.personnel_filter_rows(date,uuid[])'::regprocedure) as "canonicalOwner",
+    has_function_privilege('ai_hr_app',p.oid,'EXECUTE') as "appCanExecute",
     exists(select 1 from aclexplode(p.proacl) a where a.grantee=0 and a.privilege_type='EXECUTE') as "publicCanExecute"
   from pg_proc p where p.oid in ('app.personnel_overview_narrow_rows(date,uuid[])'::regprocedure,
     'app.personnel_overview_page_rows(date,uuid[],uuid[])'::regprocedure)
  `);
- expect(Array.from(installed)).toEqual(Array.from({length:2},()=>({owner:'ai_hr_owner',appCanExecute:true,publicCanExecute:false})));
+ expect(Array.from(installed)).toEqual(Array.from({length:2},()=>({canonicalOwner:true,appCanExecute:true,publicCanExecute:false})));
  await owner.client.unsafe(dropNarrowFunctions);
  // Prove unsupported filters use the existing owner without either narrow function.
  for(const {input,expected} of fallbackCases){
