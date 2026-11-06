@@ -10,7 +10,7 @@ import {overtimeDate,overtimeUuid} from '../../lib/overtime-pattern-schema';
 import {OVERTIME_LIMITS, type OvertimeInput, type OvertimeEvaluation, type OvertimeDurationEvaluation} from '../../lib/overtime-pattern-model';
 import {parseRecordedOvertimeEvaluation, parseRecordedOvertimeDurationEvaluation} from '../../lib/overtime-pattern-result';
 import {canonicalOvertimeInputTx} from './overtime-input';
-import {createOvertimeCalculationOwner, readOvertimeCalculationTx, hasOvertimePatternForDayTx, OvertimeOwnerError, type OvertimeRecordOutcome} from './overtime-patterns';
+import {createOvertimeCalculationOwner, readOvertimeCalculationTx, readOvertimeRefreshDayTx, OvertimeOwnerError, type OvertimeRecordOutcome} from './overtime-patterns';
 
 const calculationOwner = createOvertimeCalculationOwner(canonicalOvertimeInputTx);
 export function previewOvertimePatternEmployee(ctx: SessionContext, p: {patternId: string; versionId: string; employmentId: string; date: string}) {
@@ -53,9 +53,9 @@ async function storeResultMarkerTx(tx:Tx,dayId:string,result:OvertimeRecordOutco
 /** Automatic OT stage after the canonical raw day/approval writer. Legacy quantities stay under
  * their existing owner; a formula reference selects the separately stored exact result. */
 export async function refreshOvertimePatternDayTx(tx: Tx, ctx: SessionContext, p: {employmentId: string; date: string; reason: string}) {
-  const [day] = await tx.select({id:attendance.id}).from(attendance).where(and(eq(attendance.tenantId,ctx.tenantId),eq(attendance.employmentId,p.employmentId),eq(attendance.attendanceDate,p.date))).limit(1);
+  const day = await readOvertimeRefreshDayTx(tx,ctx,p);
   if (!day) return null;
-  if (!await hasOvertimePatternForDayTx(tx,ctx,p)) {
+  if (!day.hasPattern) {
     await clearOvertimePatternMarkerTx(tx,day.id);
     return null;
   }

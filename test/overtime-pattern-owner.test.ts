@@ -14,7 +14,7 @@ import {lockAttendanceLeaveDependenciesTx} from '../core/attendance';
 import {hasRecordedAttendanceGroupPolicyTx} from '../packs/attendance/policy-selection';
 import {readOvertimeStarterSeed,prepareOvertimeStarter} from '../lib/overtime-pattern-starters';
 import type {OvertimePattern} from '../lib/overtime-pattern-model';
-import {hasOvertimePatternForDayTx,activateOvertimePattern,archiveOvertimePattern,ensureOvertimePatternStarters,captureOvertimePersonnelContextTx,createOvertimeCalculationOwner,forkOvertimePatternDraft,getOvertimePattern,listOvertimePatterns,overtimePatternWorkspaceCompanies,readOvertimeCalculationTx,readOvertimeDurationsTx,listCoveredOvertimeDaysTx,readOvertimePersonnelContextTx,readOvertimeSettlementForDayTx,releaseOvertimeSettlementsForDraftTeardownTx,releaseOvertimeSettlementTx,reserveOvertimeSettlementTx,saveOvertimePatternAssignment,saveOvertimePatternDraft,stopOvertimePatternVersion,validateOvertimePatternActivation,type CanonicalOvertimeSnapshot} from '../packs/attendance/overtime-patterns';
+import {hasOvertimePatternForDayTx,readOvertimeRefreshDayTx,activateOvertimePattern,archiveOvertimePattern,ensureOvertimePatternStarters,captureOvertimePersonnelContextTx,createOvertimeCalculationOwner,forkOvertimePatternDraft,getOvertimePattern,listOvertimePatterns,overtimePatternWorkspaceCompanies,readOvertimeCalculationTx,readOvertimeDurationsTx,listCoveredOvertimeDaysTx,readOvertimePersonnelContextTx,readOvertimeSettlementForDayTx,releaseOvertimeSettlementsForDraftTeardownTx,releaseOvertimeSettlementTx,reserveOvertimeSettlementTx,saveOvertimePatternAssignment,saveOvertimePatternDraft,stopOvertimePatternVersion,validateOvertimePatternActivation,type CanonicalOvertimeSnapshot} from '../packs/attendance/overtime-patterns';
 import {requestAttendanceCorrection,decideAttendanceCorrection,refreshOvertimePatternDayTx,saveAttendanceWorkflow,setAttendanceWorkflowEnabled} from '../packs/attendance/service';
 let b:Base,employmentId:string,attendanceId:string,earningId:string;const day=()=>todayInKualaLumpur();
 const plus=(n:number)=>{const d=new Date(day()+'T00:00:00Z');d.setUTCDate(d.getUTCDate()+n);return d.toISOString().slice(0,10);};
@@ -323,10 +323,11 @@ async function previousCoverage(tx:Tx,ctx:SessionContext,p:{employmentId:string;
 
 describe('Attendance OT-stage detection point reads',()=>{
  const point=()=>({employmentId,date:day()});
- async function parity(ctx:SessionContext,expected:boolean){
+ async function parity(ctx:SessionContext,expected:boolean,dayVisible=true){
   await withTenant(ctx,async tx=>{
    expect(await previousCoverage(tx,ctx,point())).toBe(expected);
    expect(await hasOvertimePatternForDayTx(tx,ctx,point())).toBe(expected);
+   expect(await readOvertimeRefreshDayTx(tx,ctx,point())).toEqual(dayVisible?{id:attendanceId,hasPattern:expected}:null);
   });
  }
 
@@ -347,7 +348,10 @@ describe('Attendance OT-stage detection point reads',()=>{
   const userId=await createAppUser(b.tenantId,employment.personId,'employee');
   await parity({...ctx,userId,personId:employment.personId,roles:['employee']},true);
   const foreign=await seedBase();
-  await parity(adminCtx(foreign),false);
+  await parity(adminCtx(foreign),false,false);
+  await withTenant(ctx,async tx=>{
+   expect(await readOvertimeRefreshDayTx(tx,ctx,{employmentId,date:plus(1)})).toBeNull();
+  });
  });
 
  it('keeps a visible formula candidate when dated company is unknown and skips inactive assignments',async()=>{
@@ -376,6 +380,7 @@ describe('Attendance OT-stage detection point reads',()=>{
   await withTenant(ctx,async tx=>{
    await expect(previousCoverage(tx,ctx,p)).rejects.toThrow('Dated company proof is incomplete.');
    await expect(hasOvertimePatternForDayTx(tx,ctx,p)).rejects.toThrow('Dated company proof is incomplete.');
+   await expect(readOvertimeRefreshDayTx(tx,ctx,p)).rejects.toThrow('Dated company proof is incomplete.');
   });
  });
 
