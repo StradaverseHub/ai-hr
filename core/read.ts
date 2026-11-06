@@ -138,7 +138,7 @@ import type { EmployeePickOption } from '../lib/employment-selection';
 // drifted into the bug both items describe.
 import { leaveTypeInUseSqlText } from './leave-type-refs';
 // 23ad620e — "the" emergency contact is now the highest-priority row of the per-person register.
-import { primaryEmergencyContactSql } from './emergency-contacts';
+import { primaryEmergencyContactRow } from './emergency-contacts';
 // ADR-0082 §6 C4 — the per-employment holiday resolver behind `holidayDatesForEmployment` below.
 import { holidayDatesFor } from './holidays';
 import {
@@ -2666,6 +2666,7 @@ export function employmentCompanyEditable(ctx: SessionContext, employmentId: str
 export function employeeDetail(ctx: SessionContext, employmentId: string,purpose?:'workforce', existingTx?: Tx) {
   return withReadTx(ctx, existingTx, async (tx) => {
     if(purpose)await lockAccessConfigurationTx(tx,ctx.tenantId);
+    const emergencyContact = primaryEmergencyContactRow(tx);
     const [row] = await tx
       .select({
         employmentId: employment.id,
@@ -2736,11 +2737,11 @@ export function employeeDetail(ctx: SessionContext, employmentId: string,purpose
         // five names are kept exactly as they were so every consumer of employeeDetail is untouched; they
         // now resolve to the HIGHEST-PRIORITY live record (Primary → Secondary → Other) instead of the
         // retired person.emergency_contact_* columns. The full list is read with listEmergencyContacts.
-        emergencyContactName: primaryEmergencyContactSql('full_name'),
-        emergencyContactRelationship: primaryEmergencyContactSql('relationship'),
-        emergencyContactPhone: primaryEmergencyContactSql('mobile_phone'),
-        emergencyContactPhone2: primaryEmergencyContactSql('home_phone'),
-        emergencyContactAddress: primaryEmergencyContactSql('address'),
+        emergencyContactName: emergencyContact.fullName,
+        emergencyContactRelationship: emergencyContact.relationship,
+        emergencyContactPhone: emergencyContact.mobilePhone,
+        emergencyContactPhone2: emergencyContact.homePhone,
+        emergencyContactAddress: emergencyContact.address,
         // 2.1 Payroll Policy: the assigned named pay-processing template (null = monthly default).
         payrollPolicyId: employment.payrollPolicyId,
         payrollPolicyName: payrollPolicy.name,
@@ -2813,6 +2814,7 @@ export function employeeDetail(ctx: SessionContext, employmentId: string,purpose
       })
       .from(employment)
       .innerJoin(person, eq(person.id, employment.personId))
+      .leftJoinLateral(emergencyContact, sql`true`)
       .innerJoin(company, eq(company.id, employment.companyId))
       .leftJoin(jobGrade, eq(jobGrade.id, employment.gradeId))
       .leftJoin(holidayGroup, eq(holidayGroup.id, employment.holidayGroupId))
