@@ -28,8 +28,8 @@ it.skipIf(!requested)('preserves the real overview rows, facets, scope, dated as
   person:{fullName:name,primaryEmail:randomUUID()+'@example.test'},companyId:base.companyId,
   departmentId:base.deptA,employmentType:'full_time',hiredOn:'2020-01-01',employeeCode,
  });
- const first=await hire('Fictional first','A_01');
- const second=await hire('Fictional second','B_02');
+ const first=await hire('Fictional first','A-01');
+ const second=await hire('Fictional second','B-02');
  await setEmploymentAssignment(ctx,{employmentId:second.employmentId,effectiveDate:'2099-01-01',departmentId:base.deptB});
  const scope={companyIds:[base.companyId],limit:25,offset:0};
  const privateSearch=await createPersonnelPrivateSearch(ctx,{text:'Fictional second',companyIds:scope.companyIds});
@@ -58,7 +58,7 @@ it.skipIf(!requested)('preserves the real overview rows, facets, scope, dated as
  try{
   const cases=[
    {name:'first page',input:scope,expected:[first.employmentId,second.employmentId],total:2},
-   {name:'literal wildcard and independent facets',input:{...scope,q:'B_02',sort:'company' as const},expected:[second.employmentId],total:1},
+   {name:'literal wildcard and independent facets',input:{...scope,q:'B-02',sort:'company' as const},expected:[second.employmentId],total:1},
    {name:'second page',input:{...scope,limit:1,offset:1},expected:[second.employmentId],total:2},
    {name:'empty page',input:{...scope,offset:10},expected:[],total:2},
   ];
