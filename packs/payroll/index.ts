@@ -231,6 +231,7 @@ const PAYROLL_ADMIN_NAV: NavNodeGroupDescriptor = {
     { href: '/payroll/statutory-adjustment', labelKey: 'payrollStatutoryAdjustment', icon: SlidersHorizontal },
     // 956cec85 — the reporter asked for "a centralized location" for the statutory forms. The forms
     // themselves already existed on Reports; this row is the home they were missing.
+    { href: '/payroll/reconciliation', labelKey: 'payrollReconciliation', icon: ArrowLeftRight },
     { href: '/payroll/statutory-forms', labelKey: 'payrollStatutoryForms', icon: Landmark },
     // 20f6c6a8 — Payment Submission. The reporter asked for one place to generate the files a month is
     // filed and paid with, grouped by who receives them. The FILES already existed, scattered: the KWSP

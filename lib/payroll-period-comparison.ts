@@ -38,7 +38,10 @@ const roundedRatio=(numerator:bigint,denominator:bigint)=>{
 };
 export function payrollVariance(previous:bigint,current:bigint){
  const difference=current-previous;
- return {difference:payrollMinorDecimal(difference),percentage:previous===BigInt('0')?null:payrollMinorDecimal(roundedRatio(difference*BigInt('10000'),previous))};
+ const denominator = previous < 0 ? -previous : previous;
+ const percentage = denominator ? payrollMinorDecimal(roundedRatio(difference * BigInt('10000'), denominator))
+   : current ? null : '0.00';
+ return {difference:payrollMinorDecimal(difference),percentage};
 }
 function exactKeys(value:Record<string,unknown>,allowed:readonly string[]){if(Object.keys(value).some(key=>!allowed.includes(key)))fail('unknownField');}
 function selected<T extends string>(value:unknown,allowed:readonly T[],code:string):T[]{

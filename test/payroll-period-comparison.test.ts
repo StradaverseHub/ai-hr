@@ -38,6 +38,8 @@ describe('payroll comparison exact arithmetic and validation', () => {
     expect(payrollVariance(BigInt('20000'), BigInt('20001'))).toEqual({ difference: '0.01', percentage: '0.01' });
     expect(payrollVariance(BigInt('20000'), BigInt('19999'))).toEqual({ difference: '-0.01', percentage: '-0.01' });
     expect(payrollVariance(BigInt('0'), BigInt('500')).percentage).toBeNull();
+    expect(payrollVariance(BigInt('0'), BigInt('0')).percentage).toBe('0.00');
+    expect(payrollVariance(BigInt('-50000'), BigInt('-20000'))).toEqual({ difference: '300.00', percentage: '60.00' });
   });
   it.each([NaN, Infinity, '1e3', '0.001', true, null])('rejects an unsupported amount %s', value => {
     expect(() => payrollAmountMinor(value)).toThrow();

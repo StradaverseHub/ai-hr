@@ -31,7 +31,8 @@ describe('Reward Desk step 1',()=>{
   expect(screen.getByRole('link',{name:'Approval history'}).getAttribute('href')).toBe('#approvals');
  });
  it('links each plain-language flag to its person or budget and to its applied rule',()=>{
-  render(wrap(<FlagsPanel unitId="unit" filtered={false} flags={[{severity:'block',code:'SAL-01',message:'Fictional person needs a salary correction.',entryId:'entry'},{severity:'warning',code:'BUD-01',message:'Bonus exceeds its pool.'}]}/>));
+  render(wrap(<FlagsPanel unitId="unit" filtered={false} flags={[{severity:'warning',code:'BUD-01',message:'Bonus exceeds its pool.'},{severity:'block',code:'SAL-01',message:'Fictional person needs a salary correction.',entryId:'entry'}]}/>));
+  expect(screen.getAllByRole('listitem')[0].textContent).toContain('Fictional person');
   expect(screen.getByRole('link',{name:/Fictional person/}).getAttribute('href')).toBe('/rewards/unit/people/entry');
   expect(screen.getByRole('link',{name:/Bonus exceeds/}).getAttribute('href')).toBe('#bonus');
   expect(screen.getByRole('link',{name:'SAL-01'}).getAttribute('href')).toBe('/rewards/rules?unit=unit#SAL-01');
