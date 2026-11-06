@@ -166,9 +166,10 @@ export async function payrollReconciliationPeriods(ctx: SessionContext, scope: r
       ), false)`,
       lastProcessed: sql<string | null>`max(${domainEvent.occurredAt})::text`,
       cycles: sql<string[]>`coalesce(array_agg(distinct ${payrollCycle.name} order by ${payrollCycle.name}) filter (where ${payrollCycle.name} is not null), '{}'::text[])`,
-    }).from(groups).innerJoin(payrollBatch, and(
+    }).from(groups).innerJoin(payrollHistoryEffectiveBatch, and(
       eq(payrollBatch.companyId, groups.companyId), eq(payrollBatch.payPeriod, groups.period),
       inArray(payrollBatch.status, ['processed', 'closed']),
+      sql`(${payrollBatch.historyImportAttemptId} is null or ${payrollBatch.employeeCount} > 0)`,
     )).leftJoin(domainEvent, and(
       eq(domainEvent.tenantId, ctx.tenantId), eq(domainEvent.aggregateType, 'payroll-batch'),
       eq(domainEvent.aggregateId, payrollBatch.id), inArray(domainEvent.eventType, ['payroll-batch.processed', 'payroll-batch.selective-reprocessed']),

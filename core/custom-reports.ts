@@ -404,13 +404,14 @@ export async function runPayrollComparisonReport(ctx:SessionContext,scopeIds:rea
   id?:string;spec?:CustomReportSpec;filters?:Record<string,unknown>;verb?:'view'|'export';
 }){
   if(!!p.id===!!p.spec)throw new Error('Choose a saved report or one unsaved definition.');
+  const builtIn=p.id==='reconciliation';
   return withTenant(ctx,async tx=>{
-    const [saved]=p.id?await tx.select().from(customReport).where(eq(customReport.id,p.id)).limit(1):[];
-    if(p.id&&!saved)throw new MasterReportAccessError();
-    const spec=saved?.spec??p.spec!;
+    const [saved]=p.id&&!builtIn?await tx.select().from(customReport).where(eq(customReport.id,p.id)).limit(1):[];
+    if(p.id&&!builtIn&&!saved)throw new MasterReportAccessError();
+    const spec=builtIn?payrollComparisonSpec():saved?.spec??p.spec!;
     assertValid(spec);
     if(spec.datasetId!==PAYROLL_COMPARISON_DATASET)throw new MasterReportAccessError();
-    if(!saved)await comparisonAccess(tx,ctx,spec,'create',scopeIds);
+    if(!saved&&!builtIn)await comparisonAccess(tx,ctx,spec,'create',scopeIds);
     const execution=await executePayrollComparisonTx(tx,ctx,spec,scopeIds,p.filters??{},p.verb??'view');
     let canEdit=true;try{await comparisonAccess(tx,ctx,spec,'edit',execution.companyIds);}catch(error){if(error instanceof MasterReportAccessError)canEdit=false;else throw error;}
     let canExport=true;try{await comparisonAccess(tx,ctx,spec,'export',execution.companyIds);}catch(error){if(error instanceof MasterReportAccessError)canExport=false;else throw error;}
