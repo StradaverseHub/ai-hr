@@ -23,6 +23,13 @@ describe('visible Payroll Save as draft',()=>{
   const form=calls.save.mock.calls[0][0] as FormData;expect(form.getAll('companyIds')).toEqual(['a','b']);expect(form.getAll('employmentIds')).toEqual(['employee-a','employee-b']);expect(form.get('filtersTouched')).toBe('true');expect(form.get('payPeriod')).toBe(props.thisMonth);expect(form.get('payrollCycleId')).toBe('regular-a');expect(form.get('paymentDate')).toBe('2026-05-25');expect(form.get('from')).toBe(props.from);
   await act(async()=>{finish();});
  });
+ it('loads the resumed employee selection once with the effective cycle',async()=>{
+  render(<Wizard {...props} resumeBatch={{id:'draft-a',companyId:'a',payPeriod:'2026-04',cycle:'regular',paymentDate:'2026-04-25',remarks:'',scope:null}}/>);
+  await waitFor(()=>expect(calls.employees).toHaveBeenCalledWith(['a'],'2026-04','regular-a'));
+  fireEvent.click(screen.getByText('continue'));
+  expect(screen.getByText('Choose exact employees')).toBeVisible();
+  expect(calls.employees).toHaveBeenCalledTimes(1);
+ });
  it('retains normal Process as a separate action with the same explicit selection',async()=>{
   await review();fireEvent.click(screen.getByText('processPayroll'));await waitFor(()=>expect(calls.process).toHaveBeenCalledTimes(1));expect(calls.save).not.toHaveBeenCalled();
   const form=calls.process.mock.calls[0][0] as FormData;expect(form.getAll('companyIds')).toEqual(['a','b']);expect(form.getAll('employmentIds')).toEqual(['employee-a','employee-b']);expect(form.get('filtersTouched')).toBe('true');

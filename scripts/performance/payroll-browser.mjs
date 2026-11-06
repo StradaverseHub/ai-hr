@@ -30,6 +30,7 @@ export async function exercisePayrollBrowser({base,page,user,fixture,report,save
  const target=ownedTarget(fixture,user),main=page.locator('main');
  const {process:processCopy,batch:batchCopy,transactions}=english.payroll,anomaly=english.anomaly;
  const data=report.browserPayrollReadiness??=[];
+ let resumeTrace;
  const heading=title=>main.getByRole('heading',{name:title,level:1,exact:true});
  const batchForms=id=>main.locator('form').filter({has:page.locator('input[name="batchId"][value="'+id+'"]')});
  const action=(id,name)=>batchForms(id).getByRole('button',{name,exact:true});
@@ -41,26 +42,59 @@ export async function exercisePayrollBrowser({base,page,user,fixture,report,save
    assert(response&&new URL(page.url()).origin===base&&!new URL(page.url()).pathname.startsWith('/login'),'Payroll browser lost its authenticated context');
    await verify(response.status(),remaining);
    const elapsedMs=performance.now()-start;remaining();
-   data.push({phase,role:user.role,surface,elapsedMs,loadAtStart,loadAtReady:loadState?.(),status:response.status(),usable:user.role==='groupHR',scopeDenied:user.role==='companyHR',mutations:0});save();
-  }catch(error){data.push({phase,role:user.role,surface,elapsedMs:performance.now()-start,loadAtStart,loadAtFailure:loadState?.(),usable:false,failed:true,errorType:error.name});save();throw error;}
+   data.push({phase,role:user.role,surface,elapsedMs,loadAtStart,loadAtReady:loadState?.(),status:response.status(),usable:user.role==='groupHR',scopeDenied:user.role==='companyHR',mutations:0,...(resumeTrace?{trace:resumeTrace}:{})});save();
+  }catch(error){data.push({phase,role:user.role,surface,elapsedMs:performance.now()-start,loadAtStart,loadAtFailure:loadState?.(),usable:false,failed:true,errorType:error.name,...(resumeTrace?{trace:resumeTrace}:{})});save();throw error;}
  }
  if(user.role==='groupHR'){
-  if(surface===undefined||surface==='resume')await check('resume',resumePath(target.batchId),async(status,remaining)=>{
-   assert.equal(status,200);
-   await heading(processCopy.title).waitFor({state:'visible',timeout:remaining()});
-   await main.getByText(processCopy.resumeStep1Note,{exact:true}).waitFor({state:'visible',timeout:remaining()});
-   await main.getByText(target.companyLabel,{exact:true}).waitFor({state:'visible',timeout:remaining()});
-   await main.getByText(fixture.month,{exact:true}).waitFor({state:'visible',timeout:remaining()});
-   // Continue is a hydrated wizard step, not a submit. Require the actual scoped employee data.
-   await main.getByRole('button',{name:processCopy.continue,exact:true}).click({timeout:remaining()});
-   const labels=main.locator('label').filter({has:page.locator('input[type="checkbox"]')});
-   await labels.filter({hasText:target.own.name}).waitFor({state:'visible',timeout:remaining()});
-   const scope=new Set(fixture.users.filter(actor=>actor.tenant===user.tenant&&actor.companyId===target.companyId).map(actor=>'PERF'+String(actor.index).padStart(4,'0')));
-   const rendered=(await labels.allTextContents()).flatMap(text=>text.match(/PERF[0-9]{4}/g)??[]);
-   assert(rendered.length>0&&rendered.every(code=>scope.has(code)),'Payroll wizard returned an employee outside the draft company');
-   assert.equal(await labels.filter({hasText:target.other.name}).count(),0,'Payroll wizard exposed an employee from another company');
-   assert.equal(await labels.filter({hasText:target.foreign.name}).count(),0,'Payroll wizard exposed an employee from another tenant');
-  });
+  if(surface===undefined||surface==='resume'){
+   const started=performance.now(),elapsed=()=>performance.now()-started;
+   resumeTrace={serverActions:[]};
+   const actions=new Map();
+   const onRequest=request=>{
+    if(request.method()!=='POST'||!request.headers()['next-action']||new URL(request.url()).pathname!=='/payroll/process')return;
+    const action={startedMs:elapsed()};
+    actions.set(request,action);
+    resumeTrace.serverActions.push(action);
+   };
+   const onResponse=response=>{
+    const action=actions.get(response.request());
+    if(action)Object.assign(action,{responseMs:elapsed(),status:response.status()});
+   };
+   const onRequestFailed=request=>{
+    const action=actions.get(request);
+    if(action)action.failedMs=elapsed();
+   };
+   page.on('request',onRequest);
+   page.on('response',onResponse);
+   page.on('requestfailed',onRequestFailed);
+   try{
+    await check('resume',resumePath(target.batchId),async(status,remaining)=>{
+     resumeTrace.documentReadyMs=elapsed();
+     assert.equal(status,200);
+     await heading(processCopy.title).waitFor({state:'visible',timeout:remaining()});
+     await main.getByText(processCopy.resumeStep1Note,{exact:true}).waitFor({state:'visible',timeout:remaining()});
+     await main.getByText(target.companyLabel,{exact:true}).waitFor({state:'visible',timeout:remaining()});
+     await main.getByText(fixture.month,{exact:true}).waitFor({state:'visible',timeout:remaining()});
+     resumeTrace.reviewVisibleMs=elapsed();
+     // Continue is a hydrated wizard step, not a submit. Require the actual scoped employee data.
+     await main.getByRole('button',{name:processCopy.continue,exact:true}).click({timeout:remaining()});
+     resumeTrace.continueClickedMs=elapsed();
+     const labels=main.locator('label').filter({has:page.locator('input[type="checkbox"]')});
+     await labels.filter({hasText:target.own.name}).waitFor({state:'visible',timeout:remaining()});
+     resumeTrace.expectedEmployeeVisibleMs=elapsed();
+     const scope=new Set(fixture.users.filter(actor=>actor.tenant===user.tenant&&actor.companyId===target.companyId).map(actor=>'PERF'+String(actor.index).padStart(4,'0')));
+     const rendered=(await labels.allTextContents()).flatMap(text=>text.match(/PERF[0-9]{4}/g)??[]);
+     assert(rendered.length>0&&rendered.every(code=>scope.has(code)),'Payroll wizard returned an employee outside the draft company');
+     assert.equal(await labels.filter({hasText:target.other.name}).count(),0,'Payroll wizard exposed an employee from another company');
+     assert.equal(await labels.filter({hasText:target.foreign.name}).count(),0,'Payroll wizard exposed an employee from another tenant');
+    });
+   }finally{
+    page.off('request',onRequest);
+    page.off('response',onResponse);
+    page.off('requestfailed',onRequestFailed);
+    resumeTrace=undefined;
+   }
+  }
   if(surface===undefined||surface==='anomalies')await check('anomalies',anomalyPath(target.historicalBatchId),async(status,remaining)=>{
    assert.equal(status,200);
    await heading(anomaly.title).waitFor({state:'visible',timeout:remaining()});

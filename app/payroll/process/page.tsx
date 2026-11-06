@@ -101,8 +101,8 @@ export default async function PayrollProcessPage({
     listPositions(s, { companyIds: scopeIds }),
     listCostCenters(s, { companyIds: scopeIds }),
     listJobGrades(s),
-    listPayrollConfigs(s, scopeIds),
-    listBatches(s, scopeIds),
+    resumeBatch || resumeError ? [] : listPayrollConfigs(s, scopeIds),
+    resumeBatch || resumeError ? [] : listBatches(s, scopeIds),
   ]);
 
   const payDayByCompany = Object.fromEntries(payrollConfigs.map((c) => [c.companyId, c.payDay]));
@@ -111,9 +111,11 @@ export default async function PayrollProcessPage({
   // catalog (active only) instead of a hardcoded list. Fetch per scoped company and build a map the
   // client filters by the selected company. The multiCycle flag still gates non-regular visibility in
   // step-period.tsx (an admin can pre-configure custom cycles on a flag-off company without risk).
-  const cycleLists = await Promise.all(scopeIds.map((id) => listPayrollCycles(s, id, { activeOnly: true })));
+  // A resumed draft only uses its own cycle options. Keep the original active-scope fence.
+  const cycleCompanyIds = resumeError ? [] : resumeBatch ? scopeIds.filter(id => id === resumeBatch.companyId) : scopeIds;
+  const cycleLists = await Promise.all(cycleCompanyIds.map((id) => listPayrollCycles(s, id, { activeOnly: true })));
   const cyclesByCompany: Record<string, CycleOption[]> = {};
-  scopeIds.forEach((id, i) => {
+  cycleCompanyIds.forEach((id, i) => {
     cyclesByCompany[id] = cycleLists[i].map((c) => ({ id: c.id, name: c.name, runType: c.runType, remarks: c.remarks, description: c.description }));
   });
 
