@@ -21,7 +21,7 @@ export function PersonnelOrganisationFilters({fields: baseFields,values,companie
  dataTour?:string;
  canInspectDuplicates?:boolean;
  duplicateHint?:string;
- loadOptions?:{busy:string;retry:string};
+ loadOptions?:{error:string;retry:string};
 }){
  const [open,setOpen]=useState(false),[search,setSearch]=useState(''),[selected,setSelected]=useState(new Set([...array(values.companies),...array(values.company)]));
  const [options,setOptions]=useState<FilterOptions>();
@@ -57,7 +57,7 @@ export function PersonnelOrganisationFilters({fields: baseFields,values,companie
  }}><summary className="cursor-pointer rounded-lg border border-border px-3 py-2 text-sm font-medium">{labels.filter}</summary>
  {open && loadOptions && !options && <div className={panelClass} aria-busy={loadState !== 'failed'}>
   {loadState === 'failed'
-   ? <><p role="status" className="text-sm">{loadOptions.busy}</p><button type="button" className="text-sm underline" onClick={()=>void load()}>{loadOptions.retry}</button></>
+   ? <><p role="status" className="text-sm">{loadOptions.error}</p><button type="button" className="text-sm underline" onClick={()=>void load()}>{loadOptions.retry}</button></>
    : <div aria-hidden="true" className="h-5 w-32 animate-pulse rounded bg-muted"/>}
  </div>}
  {open && (!loadOptions || options) && <form action="/admin/personnel" className={panelClass}>

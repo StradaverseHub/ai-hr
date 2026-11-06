@@ -697,7 +697,7 @@ type PersonnelPageResult = {
   choices: PersonnelChoiceRow[];
 };
 
-/** List, headcount and filter choices share one admission lock and one authorised page projection. */
+/** List, headcount and filter choices share one authorised snapshot and one page projection. */
 export function readPersonnelOverview(
   ctx: SessionContext,
   input: PersonnelOverviewInput,
@@ -725,7 +725,7 @@ export function readPersonnelOverview(
   });
 }
 
-/** Hosted benchmark diagnostic for the exact overview query, under the same Access read fence. */
+/** Hosted benchmark diagnostic for the exact overview query, under the same authorized snapshot. */
 export function explainPersonnelOverview(
   ctx: SessionContext,
   input: PersonnelOverviewInput,

@@ -37,7 +37,7 @@ it('keeps a denied duplicate filter fail-closed while offering no unapproved evi
  expect(view.container.querySelector('input[type="checkbox"][value="suspected_duplicate"]')).toBeNull();expect(new FormData(view.container.querySelector('form')!).getAll('quality')).toEqual(['suspected_duplicate']);expect(screen.getByText(copy.duplicateUnavailable)).toBeVisible();
 });
 
-it('loads filter choices only when opened and allows a local retry after a busy response', async () => {
+it('loads filter choices only when opened and allows a local retry after a failed response', async () => {
  const load = vi.fn()
   .mockResolvedValueOnce(new Response(null, { status: 503 }))
   .mockResolvedValueOnce(Response.json({ companies: [], canInspectDuplicates: false, options: {} }));
@@ -49,11 +49,11 @@ it('loads filter choices only when opened and allows a local retry after a busy 
    privateHint: 'Private search', active: 'Search applied', clear: 'Clear search', share: 'Share view',
   }}/>
   <PersonnelOrganisationFilters fields={[]} values={{}} labels={labels} companySearchLabel="Companies"
-   loadOptions={{ busy: 'Filters are busy', retry: 'Try again' }}/>
+   loadOptions={{ error: 'The choices could not be loaded.', retry: 'Try again' }}/>
  </>);
  expect(load).not.toHaveBeenCalled();
  fireEvent.click(screen.getByText('Filter'));
- expect(await screen.findByText('Filters are busy')).toBeVisible();
+ expect(await screen.findByText('The choices could not be loaded.')).toBeVisible();
  expect(screen.getByRole('searchbox', { name: 'Search employees' })).toBeEnabled();
  expect(screen.queryByRole('button', { name: 'Apply' })).not.toBeInTheDocument();
  fireEvent.click(screen.getByRole('button', { name: 'Try again' }));

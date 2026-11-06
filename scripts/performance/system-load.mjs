@@ -274,8 +274,10 @@ try{
    page.on('requestfinished',req=>{if(homeRequest(req))report.browserHomeRequests.push({role:user.role,path:new URL(req.url()).pathname,elapsedMs:performance.now()-(started.get(req)??performance.now()),outcome:'finished'});});
    page.on('requestfailed',req=>{if(homeRequest(req))report.browserHomeRequests.push({role:user.role,path:new URL(req.url()).pathname,elapsedMs:performance.now()-(started.get(req)??performance.now()),outcome:'failed',error:req.failure()?.errorText});});
    page.on('response',response=>{if(homeRequest(response.request())&&!response.ok())report.browserHomeRequests.push({role:user.role,path:new URL(response.url()).pathname,status:response.status(),outcome:'http-error'});});
-   page.on('pageerror',error=>report.browserErrors.push({role:user.role,locale,error:error.name+': '+error.message.slice(0,150)}));
-   page.on('console',message=>{if(message.type()==='error')report.browserErrors.push({role:user.role,locale,error:message.text().slice(0,150)});});
+   // Associate failures with a route and monotonic time without publishing query parameters.
+   const errorContext=()=>{let path='<unavailable>';try{const url=new URL(page.url());path=url.origin===base?url.pathname:'<external>';}catch{}return {role:user.role,locale,path,atMs:performance.now()};};
+   page.on('pageerror',error=>report.browserErrors.push({...errorContext(),kind:'pageerror',error:error.name+': '+error.message.slice(0,300)}));
+   page.on('console',message=>{if(message.type()==='error')report.browserErrors.push({...errorContext(),kind:'console',error:message.text().slice(0,300)});});
   });
   return context;
  }
@@ -752,6 +754,7 @@ try{
   await verifyAudit();save();
   assert(report.preflightHomeReady,'all four preflight sign-ins must load their dashboards');
   assert.equal(report.homeCardFailures.length,0,'Home rendered a handled card/summary failure');
+  assert.equal(report.browserErrors.length,0,'all preflight journeys must finish without browser runtime errors');
   report.preflightPassed=true;save();return;
  }
  clearInterval(sampling);

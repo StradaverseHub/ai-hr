@@ -105,6 +105,7 @@ async function renderPersonnelPage(sp: PersonnelSearchParams) {
   const t = await getTranslations('people.list');
   const tStatus = await getTranslations('people.employeeStatus');
   const to = await getTranslations('personnelOrganisationFilters');
+  const choiceMessages = await getTranslations('allowanceV4');
   // r260 — Personnel Management's own field labels, so a proposed profile change is named in this
   // queue exactly as the employee reads it on their record and HR reads it on the Personnel card.
   const tPeopleDetail = await getTranslations('people.detail');
@@ -374,7 +375,7 @@ async function renderPersonnelPage(sp: PersonnelSearchParams) {
                 keys in all six locales — and r336's two kernel pins (core/payroll.ts and
                 core/payroll-view.ts both read child_relief_mode) would have to be rehomed first. */}
             {/* One list search below; the filter panel holds only ordinary shareable selections. */}
-            <PersonnelOrganisationFilters key={scopeIds.slice().sort().join(',')+'?'+personnelQueryParams(sp).toString()} fields={filterFields} values={filterValues} loadOptions={{ busy: to('readBusy'), retry: to('retryRead') }} labels={filterLabels} companySearchLabel={to('companySearch')} duplicateHint={to('duplicateHint')} dataTour="people-search"/>
+            <PersonnelOrganisationFilters key={scopeIds.slice().sort().join(',')+'?'+personnelQueryParams(sp).toString()} fields={filterFields} values={filterValues} loadOptions={{ error: choiceMessages('loadError'), retry: to('retryRead') }} labels={filterLabels} companySearchLabel={to('companySearch')} duplicateHint={to('duplicateHint')} dataTour="people-search"/>
             <ColumnPicker
               columns={pickerColumns}
               selected={columns}
