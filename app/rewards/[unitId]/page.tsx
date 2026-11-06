@@ -1,5 +1,6 @@
 import { BonusBudgetCards } from './bonus-budget';
 import { RewardSubmit } from '../submit-button';
+import { ScopedCommandIndex } from '@/components/scoped-command-index';
 import Link from 'next/link';
 import { getLocale, getTranslations } from 'next-intl/server';
 import { scopedSession } from '@/lib/scope';
@@ -74,9 +75,11 @@ export default async function RewardUnitPage({ params, searchParams }: { params:
   const nominations = annual ? rows.filter(row => row.recommendation.promotionGrade && !hidden(row)) : [];
   const decisionTargets = annual ? (['submit', 'approve', 'return'] as const).filter(a => a === 'submit' ? canSubmit : a === 'approve' ? canApprove : canApprove || (unit.status === 'approved' && v.roles.some(r => ['gr', 'ctro', 'ec'].includes(r)))).flatMap(a => { try { return [{ action: a, to: t(`stages.${transition(unit.status, v.roles, a)}`) }]; } catch { return []; } }) : [];
   return <div className="w-full space-y-5">
+    <ScopedCommandIndex entries={v.rows.map(row=>({href:`/rewards/${unitId}?person=${row.id}`,label:row.source.name,context:row.source.employeeCode??''}))}/>
+
     <Link href="/rewards" className="text-sm text-primary hover:underline">← {nav('rewardsReviewing')}</Link>
     <PageHeader title={rewardReviewTitle(v.cycle?.name ?? t('title'), v.companyName, v.name)} description={`${t(`kinds.${unit.kind}`)} · ${v.returned ? t(`returnedTo.${v.returned.toSeat}`) : t(`stages.${unit.status}`)}${v.due ? ` · ${t('dueOn', { date: v.due })}` : ''} · ${t('snapshotDate')}: ${unit.snapshotDate}`} />
-    {(v.roles.includes('gr') || v.roles.includes('pbp')) && <Link href={`/rewards/${unitId}/data-check`} className="text-sm font-medium text-primary hover:underline">{t('prelaunchDataCheck')}</Link>}
+    {((v.roles.includes('gr') && v.capabilities?.dataCheck!==false) || v.roles.includes('pbp')) && <Link href={`/rewards/${unitId}/data-check`} className="text-sm font-medium text-primary hover:underline">{t('prelaunchDataCheck')}</Link>}
     <ErrorBanner message={sp.error} /><Link href={`/rewards/rules?unit=${unitId}`} className="inline-block text-sm text-primary underline underline-offset-2">{t('rules')}</Link>
     <div className="flex flex-wrap gap-4 text-sm">{v.uploaded?<Link href={`/rewards/${unitId}/uploaded`} className="text-primary underline">{u('open')}</Link>:annual&&v.libraryBound&&<Link href={`/rewards/${unitId}/advisor`} className="text-primary underline">{a('title')}</Link>}</div>
     {v.uploadedSummary&&<Card className="p-5"><h2 className="font-semibold">{u('summary',{people:v.uploadedSummary.people,increment:(v.uploadedSummary.incrementCents/100).toFixed(2),bonus:(v.uploadedSummary.bonusCents/100).toFixed(2)})}</h2><p className="mt-1 text-sm tabular-nums">{u('lump')}: {(v.uploadedSummary.lumpCents/100).toFixed(2)}</p></Card>}
@@ -178,6 +181,14 @@ function PersonCalculation({ row: r, hidden, flags, t, rm, pct }: { row: Row; hi
       {line(t('lumpSum'), rm(r.lumpCents))}
       {line(t('bonusEligibility'), r.bonusReason || t('eligible'))}
     </dl></section>
+    {!hidden&&(r.recommendation.reason||r.facts.erCase||r.facts.pipCase)&&<section><h3 className="mb-1 font-semibold">{t('recommendation')}</h3>
+      {r.recommendation.reason&&<p className="mb-2 whitespace-pre-wrap">{r.recommendation.reason}</p>}
+      <dl className="divide-y divide-border">
+        {r.facts.erCase&&line(t('erDecision'),t(`case.${r.facts.erDecision}`))}
+        {r.facts.pipCase&&line(t('pipDecision'),t(`case.${r.facts.pipDecision}`))}
+        {r.facts.caseReason&&line(t('caseReason'),r.facts.caseReason)}
+      </dl>
+    </section>}
     <section><h3 className="mb-1 font-semibold">{t('desk.flags')}</h3>{flags.length ? <ul className="space-y-2">{flags.map((f, i) => <li key={i} className="flex gap-2"><span className={`h-fit shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${chipCls[f.severity]}`}>{t(`severity.${f.severity}`)}</span><span>{f.code==='ARCH-01'?t('architectureMismatch'):f.message}</span></li>)}</ul> : <p className="text-muted-foreground">{t('desk.person.noFlags')}</p>}</section>
   </div>;
 }

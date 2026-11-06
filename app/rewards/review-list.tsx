@@ -69,7 +69,7 @@ export function RewardReviewList({rows:all,filters,emptyReason,year,canConfigure
           <div><dt className="text-muted-foreground">{t('reviewList.bonus')}</dt><dd>{percent(row.bonus?.budgetShareBp)}</dd></div>
         </dl>}
         {row.blocking !== null && <p className={'text-sm ' + (row.blocking ? 'font-medium text-destructive' : 'text-muted-foreground')}>
-          {t('reviewList.blocking', { count: row.blocking })} · {t('reviewList.exceptions', { count: row.exceptions ?? 0 })}
+          <Link className="hover:underline" href={`/rewards/${row.id}#checks`}>{t('reviewList.blocking', { count: row.blocking })} · {t('reviewList.exceptions', { count: row.exceptions ?? 0 })}</Link>
         </p>}
         <div className="mt-auto flex flex-wrap gap-3 text-sm font-medium text-primary">
           <Link className="hover:underline" href={`/rewards/${row.id}`}>{t('openReview')}</Link>

@@ -12,6 +12,7 @@ import { OPEN_COMMAND_BAR_EVENT, askAiCentre, type OpenCommandBarDetail } from '
 import { resolvePageContext } from '@/lib/ai/page-context';
 import { storeAskHandoff } from '@/lib/today/ask-handoff';
 import { useAiAskAvailable } from '@/components/ai-centre/ask-availability';
+import { useScopedCommandEntries } from '@/components/scoped-command-index';
 import { useNavIndex } from '@/components/nav-index-context';
 
 /**
@@ -59,7 +60,8 @@ export function CommandBar() {
   const tAsk = useTranslations('aiAsk.commandBar');
   const areas = useTranslations('assistant.launcher.areas');
   const askAvailable = useAiAskAvailable();
-  const pageContext = resolvePageContext(usePathname() ?? '');
+  const pathname = usePathname() ?? '';
+  const pageContext = resolvePageContext(pathname);
   const [askStatus, setAskStatus] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
@@ -70,6 +72,7 @@ export function CommandBar() {
   // Published by the rail from its own filtered graph, so this lists nothing the viewer's rail hides; each
   // destination still enforces its own route guard. Every theme gets it: it is the same command bar.
   const { entries: navEntries } = useNavIndex();
+  const scopedEntries = useScopedCommandEntries();
   const router = useRouter();
 
   // Cmd/Ctrl-K opens the bar from anywhere; Escape is handled by the Dialog itself.
@@ -121,12 +124,13 @@ export function CommandBar() {
   const navResults = navEntries
     .filter((e) => !q || [e.label, e.parent ?? '', e.section ?? ''].join(' ').toLowerCase().includes(q))
     .slice(0, q ? 20 : 10);
+  const scopedResults = q ? scopedEntries.filter(entry => [entry.label,entry.context].join(' ').toLowerCase().includes(q)).slice(0,12) : [];
   const go = (href: string) => {
     onOpenChange(false);
     router.push(href);
   };
   const typed = query.trim().slice(0, 2000);
-  const askOffered = askAvailable && typed.length > 0;
+  const askOffered = askAvailable && typed.length > 0 && !(/^\/rewards(?:\/|$)/.test(pathname));
   // The question goes to the side panel or, on Ask, to the open chat (lib/command-bar-events.ts). Nothing on this page
   // takes it: it is carried, in this tab's storage and never the address, to a new Ask chat. No action runs from the
   // words: a reply can hold a prepared card, which waits for the person's Confirm.
@@ -187,10 +191,10 @@ export function CommandBar() {
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
                   onKeyDown={(e) => {
-                    // Enter takes the first match: an action first (as before), then Ask AI Centre when it is
-                    // offered ("Enter to prepare", approved mock-up), else the first destination.
+                    // Rewards directory matches stay local. Elsewhere Enter retains the existing action order.
                     if (e.key !== 'Enter' || e.nativeEvent.isComposing) return;
-                    if (results[0]) setActive(results[0].id);
+                    if (scopedResults[0]) go(scopedResults[0].href);
+                    else if (results[0]) setActive(results[0].id);
                     else if (askOffered) ask();
                     else if (navResults[0]) go(navResults[0].href);
                   }}
@@ -220,7 +224,7 @@ export function CommandBar() {
                     {askStatus && <p role="status" className="px-3 text-xs">{askStatus}</p>}
                   </div>
                 )}
-                {results.length === 0 && navResults.length === 0 && !askOffered ? (
+                {results.length === 0 && navResults.length === 0 && scopedResults.length === 0 && !askOffered ? (
                   <div className="px-3 py-6 text-center text-sm text-muted-foreground">{t('noResults')}</div>
                 ) : (
                   <ul className="space-y-1">
@@ -246,6 +250,12 @@ export function CommandBar() {
                     ))}
                   </ul>
                 )}
+                {scopedResults.length > 0 && <ul className="space-y-0.5" aria-label={t('goTo')}>
+                  {scopedResults.map(entry => <li key={entry.href}><Link href={entry.href} onClick={() => onOpenChange(false)}
+                    className="flex w-full items-center justify-between gap-2 rounded-lg px-3 py-2 text-sm hover:bg-accent">
+                    <span className="min-w-0 truncate font-medium">{entry.label}</span><span className="max-w-[45%] truncate text-xs text-muted-foreground">{entry.context}</span>
+                  </Link></li>)}
+                </ul>}
                 {navResults.length > 0 && (
                   <>
                     <div className="px-3 pb-1 pt-3 text-xs font-medium text-muted-foreground">{t('goTo')}</div>

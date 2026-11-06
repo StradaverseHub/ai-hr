@@ -6,7 +6,7 @@ import en from '../messages/en.json';
 import {defaultPolicy} from '../packs/rewards/model';
 const ports=vi.hoisted(()=>({read:vi.fn(),redirect:vi.fn((href:string)=>{throw new Error(href);})}));
 vi.mock('next/link',()=>({default:({children,...props}:any)=><a {...props}>{children}</a>}));
-vi.mock('next/navigation',()=>({redirect:ports.redirect}));
+vi.mock('next/navigation',()=>({redirect:ports.redirect,usePathname:()=>'/rewards/unit'}));
 vi.mock('next-intl/server',()=>({getLocale:async()=>'en',getTranslations:async(namespace:string)=>createTranslator({locale:'en',messages:en,namespace:namespace as 'rewards'})}));
 vi.mock('../lib/scope',()=>({scopedSession:async()=>({s:{tenantId:'t',userId:'actor'},scopeIds:['company']})}));
 vi.mock('../lib/authz',()=>({requireModule:vi.fn()}));

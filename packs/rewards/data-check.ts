@@ -14,7 +14,8 @@ export async function rewardPrelaunchDataCheck(ctx: SessionContext, unitId: stri
       .from(rewardUnit).innerJoin(company, eq(company.id, rewardUnit.companyId))
       .innerJoin(businessUnit, eq(businessUnit.id, rewardUnit.businessUnitId))
       .where(and(eq(rewardUnit.id, id), eq(rewardUnit.tenantId, ctx.tenantId), isNull(rewardUnit.deletedAt),
-        sql`('gr' in (select app.reward_roles(${rewardUnit.id})) or 'pbp' in (select app.reward_roles(${rewardUnit.id})))
+        sql`((('gr' in (select app.reward_roles(${rewardUnit.id}))) and app.reward_capability(${rewardUnit.id},'data.check'))
+          or 'pbp' in (select app.reward_roles(${rewardUnit.id})))
           and app.reward_capability(${rewardUnit.id},'review.view')`));
     if (!unit) return null;
     const [permissions] = await tx.execute<{ groupRewards: boolean }>(sql`select 'gr' in (select app.reward_roles(${id}::uuid)) as "groupRewards"`);

@@ -1,5 +1,6 @@
 import {rewardReviewCompanyGroups,rewardWholeGroupPlans} from '@/packs/rewards/group-roles';
 import {rewardNavigation,rewardVisibleCompanies} from '@/packs/rewards/access-policy';
+import { ScopedCommandIndex } from '@/components/scoped-command-index';
 import Link from 'next/link';
 import {getTranslations} from 'next-intl/server';
 import {scopedSession,getScopeIds} from '@/lib/scope';
@@ -22,7 +23,9 @@ export default async function RewardsPage({searchParams}:{searchParams:Promise<R
   {destinations.includes('/rewards/analytics') && <Link href="/rewards/analytics" className="inline-flex text-sm font-medium text-primary hover:underline">{nav('rewardsAnalytics')}</Link>}
   {destinations.includes('/rewards/approvals') && <Link href="/rewards/approvals" className="inline-flex text-sm font-medium text-primary hover:underline">{nav('rewardsApprovalsBoard')}</Link>}
   {destinations.includes('/rewards/rules') && <Link href="/rewards/rules" className="inline-flex text-sm font-medium text-primary hover:underline">{nav('rewardsRules')}</Link>}
- </>}/><ErrorBanner message={sp.error}/>
+ </>}/>
+  <ScopedCommandIndex entries={list.rows.filter(row=>row.roles.length>0).map(row=>({href:`/rewards/${row.id}`,label:row.unit,context:`${row.company} · ${row.cycle}`}))}/>
+  <ErrorBanner message={sp.error}/>
   {plans.length>0&&<details className="rounded-lg border border-border p-4">
     <summary className="cursor-pointer font-medium">{setup('plans')} ({plans.length})</summary>
     <ul className="mt-3 divide-y divide-border">
