@@ -1,3 +1,4 @@
+import {withBackgroundDatabaseWork} from '../db/workload';
 import { withCanonicalAiReadTx } from './ai-read-transaction';
 import { lockAccessConfigurationReadTx, lockAccessConfigurationTx, tryLockAccessConfigurationTx } from './access-configuration-lock';
 import { LeaveDependencyUnavailable, lockLeaveDependenciesTx, lockLeaveDependencyConfigurationTx, lockLeaveDependencyReadConfigurationTx } from './leave-dependency-lock';
@@ -4173,11 +4174,11 @@ async function queueAttendanceWrite<T>(
 
 /** Imports own their transaction. Admit one per tenant per worker before checking out a connection. */
 export function withClockingImportWrite<T>(ctx: SessionContext, write: (tx: Tx) => Promise<T>): Promise<T> {
-  return queueAttendanceWrite(clockingImportQueues, ctx.tenantId, () =>
+  return withBackgroundDatabaseWork(() => queueAttendanceWrite(clockingImportQueues, ctx.tenantId, () =>
     withOwnedExclusiveAttendanceWrite(ctx, 'clockingImport', async tx => {
       await lockLeaveDependencyConfigurationTx(tx, ctx.tenantId);
       return write(tx);
-    }), undefined, 1);
+    }), undefined, 1));
 }
 
 export async function decideAttendanceCorrection(

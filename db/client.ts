@@ -9,6 +9,10 @@
 import { drizzle } from 'drizzle-orm/postgres-js';
 import { sql } from 'drizzle-orm';
 import postgres from 'postgres';
+import {createDatabaseAdmission} from './admission';
+import {currentDatabaseWorkload} from './workload';
+import {applicationDatabaseBudget} from './capacity';
+const applicationBudget = applicationDatabaseBudget(process.env);
 import { chainArmingDecision } from '../core/audit-chain-arming';
 import type { EntitlementSnapshot, EntitlementsExemptReason } from '../core/entitlement-types';
 // Value import, and safe: core/entitlement-types.ts imports NOTHING, so there is no cycle back here.
@@ -75,9 +79,11 @@ export type AgentEnablement = { feature: 'readiness_reminders' | 'claims_triage'
 // Reuse pools across hot-reloads (dev) so HMR doesn't leak Postgres connections.
 const globalForPg = globalThis as unknown as {
   __aihrPgPools?: Map<string, ReturnType<typeof postgres>>;
+  __aihrDbAdmission?: WeakMap<ReturnType<typeof postgres>, ReturnType<typeof createDatabaseAdmission>>;
   __aihrPerfBeginTransaction?: (poolMax: number) => { acquired: () => void; finished: () => void };
 };
 const pgPools = (globalForPg.__aihrPgPools ??= new Map<string, ReturnType<typeof postgres>>());
+const admissionByPool = (globalForPg.__aihrDbAdmission ??= new WeakMap());
 
 /**
  * Is the ADR-0030 hash chain armed for this process?
@@ -179,6 +185,13 @@ export function createDb(connectionString: string, options?: { max?: number }) {
   // every table here eagerly rebuilds unused db.query helpers in every transaction.
   const db = drizzle(client);
   const configuredPoolMax = client.options.max;
+  let admission = admissionByPool.get(client);
+  if (!admission) {
+    admission = createDatabaseAdmission({capacity: configuredPoolMax,
+      backgroundCapacity: Math.max(1, Math.floor(configuredPoolMax / 4)), maxWaiting: applicationBudget.maxWaiting, waitMs: applicationBudget.waitMs});
+    admissionByPool.set(client, admission);
+  }
+  const poolAdmission = admission;
   type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
   /** Run `fn` in a transaction scoped to the session's tenant/user/roles.
@@ -199,7 +212,10 @@ export function createDb(connectionString: string, options?: { max?: number }) {
     const roleNames = ctx.roles ?? Array.from(new Set(grants.map((g) => g.role)));
     options?.readSignal?.throwIfAborted();
     const timing = globalForPg.__aihrPerfBeginTransaction?.(configuredPoolMax);
-    const result = db.transaction(async (tx) => {
+    let release: (() => void) | undefined;
+    try {
+      release = await poolAdmission.acquire(ctx.tenantId, currentDatabaseWorkload(), options?.readSignal);
+      return await db.transaction(async (tx) => {
       timing?.acquired();
       // A queued read may have disconnected while waiting for a connection.
       options?.readSignal?.throwIfAborted();
@@ -282,7 +298,10 @@ export function createDb(connectionString: string, options?: { max?: number }) {
       options?.readSignal?.throwIfAborted();
       return fn(tx);
     }, options?.readOnlySnapshot ? { isolationLevel: 'repeatable read', accessMode: 'read only' } : undefined);
-    return timing ? result.finally(timing.finished) : result;
+    } finally {
+      release?.();
+      timing?.finished();
+    }
   }
 
   return { db, client, withTenant };
@@ -296,10 +315,4 @@ if (!url) throw new Error('DATABASE_URL is not set');
 
 // App singleton (non-privileged role). Keep the default for deployments that do
 // not explicitly divide a connection budget among application workers.
-const poolMax = process.env.AIHR_DB_POOL_MAX;
-if (poolMax !== undefined && !/^(?:[1-9]|[1-4][0-9]|50)$/.test(poolMax)) {
-  throw new Error('AIHR_DB_POOL_MAX must be an integer from 1 to 50');
-}
-export const { db, client, withTenant } = createDb(url, {
-  max: poolMax === undefined ? undefined : Number(poolMax),
-});
+export const { db, client, withTenant } = createDb(url, {max: applicationBudget.poolMax});
