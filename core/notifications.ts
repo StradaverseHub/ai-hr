@@ -1102,18 +1102,28 @@ const REGISTRY: Record<string, Spec | Spec[]> = {
 
 export type DispatchResult = { processed: number; created: number };
 
+// Opportunistic page catch-up can skip a concurrent attempt before it borrows a pool connection.
+const pageCatchUps = new Set<string>();
+
 /** Complete global projection is owned by a fresh group administrator or the authenticated sweep.
  * A company-scoped web request cannot consume a partially visible global event stream. */
 export async function dispatchNotifications(ctx:SessionContext,opts:{limit?:number;skipIfBusy?:boolean}={}):Promise<DispatchResult>{
   const allCategories=enabled(ctx);
   if(!allCategories&&!hasScopedReminders(ctx))return {processed:0,created:0};
-  return withTenant(ctx,async tx=>{
-    if(allCategories){
-      const [scope]=await tx.execute(sql`select app.principal_snapshot_current() AND app.is_group_admin() AS allowed`) as unknown as {allowed:boolean}[];
-      if(!scope?.allowed)return {processed:0,created:0};
-    }
-    return projectNotificationsTx(tx,ctx,allCategories,projectionLimit(opts.limit),{skipIfBusy:opts.skipIfBusy});
-  });
+  const catchUpKey = opts.skipIfBusy ? ctx.tenantId.toLowerCase() : undefined;
+  if(catchUpKey !== undefined && pageCatchUps.has(catchUpKey))return {processed:0,created:0};
+  if(catchUpKey !== undefined)pageCatchUps.add(catchUpKey);
+  try{
+    return await withTenant(ctx,async tx=>{
+      if(allCategories){
+        const [scope]=await tx.execute(sql`select app.principal_snapshot_current() AND app.is_group_admin() AS allowed`) as unknown as {allowed:boolean}[];
+        if(!scope?.allowed)return {processed:0,created:0};
+      }
+      return projectNotificationsTx(tx,ctx,allCategories,projectionLimit(opts.limit),{skipIfBusy:opts.skipIfBusy});
+    });
+  }finally{
+    if(catchUpKey !== undefined)pageCatchUps.delete(catchUpKey);
+  }
 }
 
 /** Cron already holds this explicit owner connection. Keep projection and cursor in one transaction;
