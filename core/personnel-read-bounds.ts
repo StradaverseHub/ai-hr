@@ -1,43 +1,29 @@
-import { setTimeout as delay } from 'node:timers/promises';
 import { sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
-import { tryLockAccessConfigurationReadTx } from './access-configuration-lock';
+import { lockAccessConfigurationTx } from './access-configuration-lock';
+import { assertAiPrincipalTx } from './ai-principal';
 
-export class PersonnelReadBusyError extends Error {
-  constructor(readonly reason: 'access-lock' | 'statement-timeout', options?: ErrorOptions) {
-    super('Personnel is temporarily busy.', options);
-    this.name = 'PersonnelReadBusyError';
-  }
+/** Keep tighter caller deadlines; a real database failure is never an empty result or Busy page. */
+export async function boundPersonnelStatementTx(tx: Tx) {
+  await tx.execute(sql`select set_config('statement_timeout', least(
+    coalesce(nullif(setting::int, 0), 20000), 20000)::text, true)
+    from pg_catalog.pg_settings where name = 'statement_timeout'`);
 }
 
-// Retry admission misses after the transaction returns its connection to the pool.
-const retryDelays = [40, 100, 220];
-
+/** Standalone projections read authority and data from one REPEATABLE READ / READ ONLY snapshot.
+ * They linearize at snapshot admission, not behind an unrelated tenant writer. Committed revocations
+ * apply to the next snapshot; already admitted reads may finish. No cross-request result cache.
+ * A borrowed transaction may write later: retain its exclusive command barrier and current principal.
+ */
 export async function withPersonnelRead<T>(ctx: SessionContext, read: (tx: Tx) => Promise<T>, options: { existingTx?: Tx } = {}): Promise<T> {
-  const boundedRead = async (tx: Tx) => {
-    if (!await tryLockAccessConfigurationReadTx(tx, ctx.tenantId)) throw new PersonnelReadBusyError('access-lock');
-    // Keep any tighter caller deadline. SET LOCAL is cleared with this transaction.
-    await tx.execute(sql`select set_config('statement_timeout', least(
-      coalesce(nullif(setting::int, 0), 20000), 20000)::text, true)
-      from pg_catalog.pg_settings where name = 'statement_timeout'`);
-    return read(tx);
-  };
-  try {
-    if (options.existingTx) return await boundedRead(options.existingTx);
-    for (const retryDelay of retryDelays) {
-      try {
-        return await withTenant(ctx, boundedRead);
-      } catch (error) {
-        if (!(error instanceof PersonnelReadBusyError) || error.reason !== 'access-lock') throw error;
-        await delay(retryDelay);
-      }
-    }
-    return await withTenant(ctx, boundedRead);
-  } catch (error) {
-    for (let cause = error; cause instanceof Error; cause = cause.cause) {
-      if ('code' in cause && cause.code === '57014') throw new PersonnelReadBusyError('statement-timeout', { cause: error });
-      if (cause.cause === cause) break;
-    }
-    throw error;
+  if (options.existingTx) {
+    await assertAiPrincipalTx(options.existingTx, ctx);
+    await lockAccessConfigurationTx(options.existingTx, ctx.tenantId);
+    await boundPersonnelStatementTx(options.existingTx);
+    return read(options.existingTx);
   }
+  return withTenant(ctx, async tx => {
+    await boundPersonnelStatementTx(tx);
+    return read(tx);
+  }, { readOnlySnapshot: true });
 }

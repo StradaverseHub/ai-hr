@@ -2,7 +2,7 @@
 import {createHash,randomBytes} from 'node:crypto';
 import {sql} from 'drizzle-orm';
 import {withTenant,type SessionContext} from '../db/client';
-import {withPersonnelRead} from './personnel-read-bounds';
+import {boundPersonnelStatementTx} from './personnel-read-bounds';
 const TOKEN=/^[A-Za-z0-9_-]{43}$/;
 export const privateSearchHash=(token:string)=>TOKEN.test(token)?createHash('sha256').update(token).digest('hex'):null;
 export class PersonnelSearchLimitError extends Error{constructor(){super('Narrow the top company scope before searching this many records.');}}
@@ -13,7 +13,8 @@ export async function createPersonnelPrivateSearch(ctx:SessionContext,p:{text:st
  // The native NRIC owner stores twelve digits. Only a complete plausible NRIC gains
  // separator normalization; letters/punctuation and literal passport/public matching do not.
  const nricNeedle=/^[0-9]{6}[ -]?[0-9]{2}[ -]?[0-9]{4}$/.test(needle)?needle.replace(/[ -]/g,''):null;
- return withPersonnelRead(ctx,async tx=>{
+ return withTenant(ctx,async tx=>{
+  await boundPersonnelStatementTx(tx);
   const source=await tx.execute<{row:SearchRow}>(sql`select value as row from app.personnel_search_rows(ARRAY[${sql.join(p.companyIds.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[]) as search_row(value) limit 100001`);
   if(source.length>100000)throw new PersonnelSearchLimitError();
   const matches=source.flatMap(({row})=>{

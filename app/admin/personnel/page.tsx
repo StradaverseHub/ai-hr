@@ -1,5 +1,4 @@
 import {personnelPrivateSearchAvailable} from '@/core/personnel-private-search';
-import {PersonnelReadBusyError} from '@/core/personnel-read-bounds';
 import {personnelMaintenanceCompanyIds} from '@/core/workforce-access';
 import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
@@ -98,27 +97,7 @@ export default async function PeoplePage({
 }: {
   searchParams: Promise<PersonnelSearchParams>;
 }) {
-  const sp = await searchParams;
-  try {
-    return await renderPersonnelPage(sp);
-  } catch (error) {
-    if (!(error instanceof PersonnelReadBusyError)) throw error;
-    const t = await getTranslations('people.list');
-    const to = await getTranslations('personnelOrganisationFilters');
-    const pq = parsePageQuery(sp);
-    const params = personnelQueryParams(sp);
-    params.set('size', String(pq.size));
-    params.set('page', String(pq.page));
-    return (
-      <div className="mx-auto max-w-[100rem] space-y-4">
-        <PageHeader title={t('adminTitle')} />
-        <div role="alert" data-personnel-busy={error.reason} className="space-y-2 rounded-md border p-4">
-          <p>{to('readBusy')}</p>
-          <a className="text-primary underline" href={`/admin/personnel?${params}`}>{to('retryRead')}</a>
-        </div>
-      </div>
-    );
-  }
+  return renderPersonnelPage(await searchParams);
 }
 
 async function renderPersonnelPage(sp: PersonnelSearchParams) {

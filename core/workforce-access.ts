@@ -1,7 +1,7 @@
 /** Workforce-purpose adapter. Existing record, financial, self-service and approval owners remain independent. */
 import {sql,type SQL} from 'drizzle-orm';
-import {withTenant,type SessionContext,type Tx} from '../db/client';
-import {lockAccessConfigurationTx,lockAccessConfigurationReadTx} from './access-configuration-lock';
+import {type SessionContext,type Tx} from '../db/client';
+import {lockAccessConfigurationTx} from './access-configuration-lock';
 import {withPersonnelRead} from './personnel-read-bounds';
 export type WorkforceOperation='view'|'maintain';
 export class WorkforceAccessError extends Error{
@@ -37,13 +37,9 @@ async function readWorkforceCompanyIds(tx:Tx,operation:WorkforceOperation){
  return rows.map(row=>row.id);
 }
 
-/** Scope metadata only. Actual reads/writes repeat their check under the same access lock. */
+/** Scope metadata only. Actual reads use their own authorized snapshot; commands recheck under a write barrier. */
 export function workforceCompanies(ctx:SessionContext,operation:WorkforceOperation='view',outerTx?:Tx){
- const run=async (tx:Tx)=>{
-  await (outerTx?lockAccessConfigurationTx:lockAccessConfigurationReadTx)(tx,ctx.tenantId);
-  return readWorkforceCompanyIds(tx,operation);
- };
- return outerTx?run(outerTx):withTenant(ctx,run);
+ return withPersonnelRead(ctx,tx=>readWorkforceCompanyIds(tx,operation),{existingTx:outerTx});
 }
 
 export function personnelMaintenanceCompanyIds(ctx:SessionContext){
@@ -51,8 +47,7 @@ export function personnelMaintenanceCompanyIds(ctx:SessionContext){
 }
 
 export function workforceEmploymentAccess(ctx:SessionContext,employmentId:string,operation:WorkforceOperation){
- return withTenant(ctx,async tx=>{
-  await lockAccessConfigurationReadTx(tx,ctx.tenantId);
+ return withPersonnelRead(ctx,async tx=>{
   const [row]=await tx.execute<{allowed:boolean}>(sql`select app.access_workforce_employment(${employmentId}::uuid,${'workforce.'+operation}) as allowed`);
   return row?.allowed===true;
  });
@@ -60,8 +55,7 @@ export function workforceEmploymentAccess(ctx:SessionContext,employmentId:string
 
 /** Availability of the implemented fixed-command lane; never a raw-row or legacy-role grant. */
 export function workforceCommandAccess(ctx:SessionContext,employmentId:string){
- return withTenant(ctx,async tx=>{
-  await lockAccessConfigurationReadTx(tx,ctx.tenantId);
+ return withPersonnelRead(ctx,async tx=>{
   const [row]=await tx.execute<{allowed:boolean}>(sql`select app.access_workforce_command_allowed(${employmentId}::uuid) as allowed`);
   return row?.allowed===true;
  });
@@ -80,8 +74,7 @@ export const workforceNavigationAllowedSql = sql`(
 
 /** The shared navigation only needs to know whether any Workforce scope is visible. */
 export function canOpenWorkforce(ctx:SessionContext){
- return withTenant(ctx,async tx=>{
-  await lockAccessConfigurationReadTx(tx,ctx.tenantId);
+ return withPersonnelRead(ctx,async tx=>{
   const [row]=await tx.execute<{allowed:boolean}>(sql`select ${workforceNavigationAllowedSql} as allowed`);
   return row?.allowed===true;
  });
@@ -99,8 +92,5 @@ export function workforceViewScope(ctx: SessionContext, options?: { personnelLis
   const companyIds = scope?.company_ids ?? [];
   return {companyIds, canOpen: companyIds.length > 0 || scope?.unassigned === true};
  };
- return options?.personnelList ? withPersonnelRead(ctx, read) : withTenant(ctx,async tx=>{
-  await lockAccessConfigurationReadTx(tx,ctx.tenantId);
-  return read(tx);
- });
+ return withPersonnelRead(ctx, read);
 }

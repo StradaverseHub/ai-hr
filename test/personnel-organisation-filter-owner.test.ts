@@ -7,7 +7,6 @@ import {hireEmployee,setEmploymentAssignment} from '../core/org';
 import {listEmployeesPage,countEmployeesByStatus,personnelFilterChoices,readPersonnelOverview} from '../core/read';
 import {createPersonnelPrivateSearch,personnelPrivateSearchAvailable,privateSearchHash} from '../core/personnel-private-search';
 import {lockAccessConfigurationReadTx,lockAccessConfigurationTx,tryLockAccessConfigurationReadTx} from '../core/access-configuration-lock';
-import {PersonnelReadBusyError} from '../core/personnel-read-bounds';
 import {canOpenWorkforce,personnelMaintenanceCompanyIds,workforceViewScope} from '../core/workforce-access';
 import {canConfigureAccess} from '../core/access-configuration-editor';
 import {readShellNavigationAccess} from '../core/shell-navigation-access';
@@ -99,28 +98,27 @@ it('scoped company options and duplicate evidence cannot expose another company 
  expect((await listEmployeesPage(scoped,{companyIds:[b.companyId,company.id],limit:100,offset:0},'workforce')).rows.map(row=>row.employmentId)).toEqual([mine.employmentId]);expect(rows.rows.map(row=>row.employmentId)).not.toContain(theirs.employmentId);
 });
 
-it('refuses queued Personnel scope, list and export reads while the tenant access lock is held', async () => {
+it('completes authorized Personnel scope, list, export and private search while a tenant writer is active', async () => {
+  const employee=await hire('Fictional nonblocking reader');
   const input = { companyIds: [b.companyId], limit: 1, offset: 0 };
   await owner.withTenant(ctx, async tx => {
     await lockAccessConfigurationTx(tx, ctx.tenantId);
-    await expect(workforceViewScope(ctx, { personnelList: true })).rejects.toBeInstanceOf(PersonnelReadBusyError);
-    await expect(personnelMaintenanceCompanyIds(ctx)).rejects.toBeInstanceOf(PersonnelReadBusyError);
-    await expect(readPersonnelOverview(ctx, input, {})).rejects.toBeInstanceOf(PersonnelReadBusyError);
-    await expect(listEmployeesPage(ctx, input, 'workforce')).rejects.toBeInstanceOf(PersonnelReadBusyError);
-    await expect(createPersonnelPrivateSearch(ctx, { text: 'Fictional', companyIds: [b.companyId] }))
-      .rejects.toMatchObject({ reason: 'access-lock' });
+    let timer:ReturnType<typeof setTimeout>|undefined;
+    try {
+      await Promise.race([
+        (async()=>{
+          expect((await workforceViewScope(ctx, { personnelList: true })).companyIds).toContain(b.companyId);
+          expect(await personnelMaintenanceCompanyIds(ctx)).toContain(b.companyId);
+          expect((await readPersonnelOverview(ctx, input, {})).employees.rows).toEqual([expect.objectContaining({employmentId:employee.employmentId})]);
+          expect((await listEmployeesPage(ctx, input, 'workforce')).rows).toEqual([expect.objectContaining({employmentId:employee.employmentId})]);
+          const token=await createPersonnelPrivateSearch(ctx, { text: 'Fictional nonblocking reader', companyIds: [b.companyId] });
+          expect(await personnelPrivateSearchAvailable(ctx,token,[b.companyId])).toBe(true);
+          expect((await listEmployeesPage(ctx,{...input,privateSearch:token},'workforce')).rows).toEqual([expect.objectContaining({employmentId:employee.employmentId})]);
+        })(),
+        new Promise<never>((_,reject)=>{timer=setTimeout(()=>reject(new Error('Personnel waited for an unrelated tenant writer')),4000);}),
+      ]);
+    } finally {clearTimeout(timer);}
   });
-  await owner.withTenant(ctx, async tx => {
-    await lockAccessConfigurationReadTx(tx, ctx.tenantId);
-    await expect(personnelMaintenanceCompanyIds(ctx)).resolves.toContain(b.companyId);
-    await expect(workforceViewScope(ctx, { personnelList: true })).resolves.toHaveProperty('companyIds');
-    await expect(readPersonnelOverview(ctx, input, {})).resolves.toHaveProperty('employees.rows');
-    await expect(listEmployeesPage(ctx, input, 'workforce')).resolves.toHaveProperty('rows');
-  });
-  expect((await workforceViewScope(ctx, { personnelList: true })).companyIds).toContain(b.companyId);
-  await expect(readPersonnelOverview(ctx, input, {})).resolves.toHaveProperty('employees.rows');
-  const token = await createPersonnelPrivateSearch(ctx, { text: 'Fictional', companyIds: [b.companyId] });
-  expect(await personnelPrivateSearchAvailable(ctx, token, [b.companyId])).toBe(true);
 });
 
 it('creates private searches alongside Personnel readers and retains only the native token limit', async () => {

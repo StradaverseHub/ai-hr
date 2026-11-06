@@ -46,10 +46,10 @@ async function withReadTx<T>(ctx: SessionContext, existingTx: Tx | undefined, re
   return read(existingTx);
 }
 
-/** Complete owned projections only read. A supplied transaction may write later, so it
- * retains the exclusive barrier and never introduces a shared-to-exclusive upgrade. */
-function lockProjectionConfigurationTx(tx:Tx,tenantId:string,existingTx?:Tx){
- return existingTx?lockAccessConfigurationTx(tx,tenantId):lockAccessConfigurationReadTx(tx,tenantId);
+/** Workforce projections own a consistent read-only snapshot. Other legacy read owners retain
+ * their established transaction contract; borrowed command transactions remain exclusive. */
+function withProjectionTx<T>(ctx:SessionContext,existingTx:Tx|undefined,purpose:'workforce'|undefined,read:(tx:Tx)=>Promise<T>){
+ return purpose?withPersonnelRead(ctx,read,{existingTx}):withReadTx(ctx,existingTx,read);
 }
 
 import { companyDeleteBlockSqlText } from './company-refs';
@@ -210,7 +210,7 @@ import { todayInKualaLumpur } from '../lib/hr-date';
 // etc.). Do NOT swap in the paginated `listEmployeesPage`: the payroll picker needs every active
 // employee, not a page, or the checkbox set would silently drop people past the page boundary.
 export function listEmployees(ctx: SessionContext, companyIds?: string[],purpose?:'workforce',existingTx?:Tx) {
-  return withReadTx(ctx,existingTx,async tx=>{if(purpose)await lockProjectionConfigurationTx(tx,ctx.tenantId,existingTx);return listEmployeesTx(tx,companyIds,purpose);});
+  return withProjectionTx(ctx,existingTx,purpose,tx=>listEmployeesTx(tx,companyIds,purpose));
 }
 export function listEmployeesTx(tx: Tx, companyIds?: string[],purpose?:'workforce') {
   return tx
@@ -755,8 +755,7 @@ function workforcePickerColumns(){return {
   terminatedOn: workforceListValue<string | null>('terminatedOn'),
 };}
 export function listWorkforcePickOptions(ctx: SessionContext, companyIds?: string[]) {
-  return withTenant(ctx, async tx => {
-    await lockAccessConfigurationReadTx(tx, ctx.tenantId);
+  return withPersonnelRead(ctx, async tx => {
     return tx.select(workforcePickerColumns()).from(workforceListSource).where(workforceListWhere({ companyIds }, workforceListColumns()))
       .orderBy(workforceListValue('name'), workforceListUuid('employmentId'));
   });
@@ -796,10 +795,9 @@ async function workforcePickPageTx(ctx:SessionContext,tx:Tx,input:WorkforcePickP
 }
 
 
-/** Standalone, read-only switcher search. Readers may overlap; Access changes still use the
- * exclusive side of the same lock and the native projection checks Workforce scope again. */
+/** Standalone switcher: authority and matching fields share one nonblocking read-only snapshot. */
 export function searchWorkforceEmployees(ctx:SessionContext,companyIds:string[],query:string){
-  return withTenant(ctx,tx=>searchWorkforceMatchesTx(ctx,tx,companyIds,query,lockAccessConfigurationReadTx));
+  return withPersonnelRead(ctx,tx=>searchWorkforceMatchesTx(ctx,tx,companyIds,query));
 }
 
 /** A borrowed transaction may later write, so keep its exclusive Access lock. */
@@ -808,11 +806,11 @@ export function searchWorkforceEmployeesTx(ctx:SessionContext,tx:Tx,companyIds:s
 }
 
 /** This deliberately offers no continuation: the switcher is an eight-result jump control. */
-async function searchWorkforceMatchesTx(ctx:SessionContext,tx:Tx,companyIds:string[],query:string,lock:typeof lockAccessConfigurationTx){
+async function searchWorkforceMatchesTx(ctx:SessionContext,tx:Tx,companyIds:string[],query:string,lock?:typeof lockAccessConfigurationTx){
   if(query.length>200)throw new RangeError('Invalid employee search');
   const raw=query.trim().toLowerCase(),folded=foldEmployeeCode(query);
   if(!raw||!companyIds.length)return [];
-  await lock(tx,ctx.tenantId);
+  if(lock)await lock(tx,ctx.tenantId);
   const columns=workforcePickerColumns(),name=sql`workforce_row.search_name`,code=sql`workforce_row.search_code`;
   const compact=sql`workforce_row.search_compact`;
   const rank=sql<number>`case
@@ -1005,8 +1003,7 @@ export async function personnelListPage(
 ){
   if(!Number.isSafeInteger(page.limit)||page.limit<0||page.limit>ALL_ROW_CEILING||
      !Number.isSafeInteger(page.offset)||page.offset<0)throw new RangeError('Invalid Personnel page');
-  return withTenant(ctx,async tx=>{
-    await lockAccessConfigurationReadTx(tx,ctx.tenantId);
+  return withPersonnelRead(ctx,async tx=>{
     const [result]=await tx.execute<{
       rows:EmployeeListRow[];total:number;status_counts:{status:EmploymentStatus;count:number}[];
     }>(personnelListPageSql(page,facets,{source:sql`app.access_workforce_list_facts()`,materialized:true,projectPageFacts:true}));
@@ -3020,8 +3017,7 @@ export function employmentCompanyEditable(ctx: SessionContext, employmentId: str
 }
 
 export function employeeDetail(ctx: SessionContext, employmentId: string,purpose?:'workforce', existingTx?: Tx) {
-  return withReadTx(ctx, existingTx, async (tx) => {
-    if(purpose)await lockProjectionConfigurationTx(tx,ctx.tenantId,existingTx);
+  return withProjectionTx(ctx, existingTx, purpose, async (tx) => {
     const emergencyContact = primaryEmergencyContactRow(tx);
     const [row] = await tx
       .select({
