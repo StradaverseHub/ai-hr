@@ -973,6 +973,7 @@ export const SCREENS: readonly ScreenEntry[] = [
       '/attendance/import/logs/[runId]',
       '/admin/attendance/new',
       '/admin/attendance/schedule',
+      '/admin/attendance/settings/offline-clocking',
       '/admin/attendance/schedule/new',
       '/admin/attendance/schedule/[ruleId]',
       '/admin/attendance/schedule/[ruleId]/edit',

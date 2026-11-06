@@ -23366,6 +23366,11 @@
       "desc": "Mức làm thêm và phạm vi ca dự phòng.",
       "cta": "Mở"
     },
+    "offlineClocking": {
+      "title": "Chấm công ngoại tuyến",
+      "desc": "Cho phép nhân viên chấm công trong ứng dụng di động khi không có kết nối. Lượt chấm công được tải lên sau và được kiểm tra trước khi được tính.",
+      "cta": "Mở"
+    },
     "registeredDevices": {
       "title": "Thiết bị chấm công đã đăng ký",
       "desc": "Xem thiết bị và thu hồi đăng ký.",

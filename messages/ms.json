@@ -23366,6 +23366,11 @@
       "desc": "Kadar kerja lebih masa dan liputan syif sandaran.",
       "cta": "Buka"
     },
+    "offlineClocking": {
+      "title": "Rekod kehadiran luar talian",
+      "desc": "Membolehkan pekerja merekod kehadiran dalam aplikasi mudah alih tanpa sambungan. Rekod dimuat naik kemudian dan disemak sebelum dikira.",
+      "cta": "Buka"
+    },
     "registeredDevices": {
       "title": "Peranti Kehadiran Berdaftar",
       "desc": "Lihat peranti berdaftar dan batalkan pendaftaran.",
