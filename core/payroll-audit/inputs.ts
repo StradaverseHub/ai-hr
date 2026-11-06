@@ -42,10 +42,15 @@ function componentDigest(){
 }
 
 /** One component: one short count/hash row per employment, folded in native UUID order. */
-async function componentTx(tx:Tx,query:SQL):Promise<InputComponent>{
+async function componentTx(tx:Tx,query:SQL,serializeArray=false):Promise<InputComponent>{
  const digest=componentDigest();
+ // jsonb renders arrays with canonical element text and a comma-space separator.
+ // Dense Claims windows can hash those exact bytes without building a second JSONB value.
+ const array=serializeArray
+  ?sql`'[' || string_agg(to_jsonb(x)::text, ', ' order by x.id) || ']'`
+  :sql`jsonb_agg(to_jsonb(x) order by x.id)::text`;
  for(const row of await rows(tx,sql`select x.employment_id::text as e,count(*)::int as n,
-  app.payroll_audit_hash(jsonb_agg(to_jsonb(x) order by x.id)::text) as h from (${query}) x group by x.employment_id order by x.employment_id`))digest.add(row);
+  app.payroll_audit_hash(${array}) as h from (${query}) x group by x.employment_id order by x.employment_id`))digest.add(row);
  return digest.finish();
 }
 
@@ -110,7 +115,7 @@ async function runInputsUtcTx(tx:Tx,p:InputQuery,processing:boolean):Promise<Run
  };
  const components:Record<string,InputComponent>={};
  for(const key of INPUT_COMPONENTS){
-  components[key]=grouped&&(key==='attendance'||key==='overtime')?grouped[key]:await componentTx(tx,queries[key]);
+  components[key]=grouped&&(key==='attendance'||key==='overtime')?grouped[key]:await componentTx(tx,queries[key],key==='claims');
  }
  const results=await componentTx(tx,sql`select s.* from public.payslip s where s.batch_id=${batchId}::uuid`);
  return Object.freeze({employments,windows,components:Object.freeze(components),results});
