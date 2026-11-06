@@ -44,8 +44,8 @@ describe('Personnel list search and profile switcher remain scoped RSC-safe isla
     expect(src).toContain('<EmployeeSwitcher');
     expect(src).toContain("from '../employee-switcher'");
     expect(src).toContain('tab={tab ?? null}');
-    // NO NEW READ: the switcher list is the already-loaded listEmployees set, narrowed by scope.
-    expect(src).toContain('scopeIds.includes(e.companyId)');
+    expect(src).toMatch(/<EmployeeSwitcher\s+remote\b/);
+    expect(src).not.toContain('employees={switcherEmployees}');
     // …and the route's own guard is untouched: this is what refuses an out-of-scope id.
     expect(src).toContain("const emp = await employeeDetail(s,employmentId,'workforce');");
     expect(src).toContain('if(!emp)return <WorkforceScopedRecord');
