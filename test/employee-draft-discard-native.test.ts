@@ -248,3 +248,29 @@ it('keeps a queued draft edit out of PostgreSQL and lets it proceed after an ear
     await writes;
   }
 }, 15000);
+
+it('retries a standalone discard after Access admission times out and records one native event', async () => {
+  const { id } = await saveEmployeeDraft(ctx, { data: {}, currentStep: 1 });
+  let result: Promise<PromiseSettledResult<void>[]> | undefined;
+  try {
+    await owner.db.transaction(async tx => {
+      const [holder] = await tx.execute<{ pid: number }>(sql`select pg_backend_pid() as pid`);
+      await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${'access-configuration:'+b.tenantId},0))`);
+      result = Promise.allSettled([discardEmployeeDraft(ctx, id)]);
+      await expect.poll(async () => {
+        const [row] = await tx.execute<{ waiting: boolean }>(sql`select exists(
+          select 1 from pg_locks l where l.locktype='advisory' and not l.granted
+           and ${holder.pid}::int=any(pg_blocking_pids(l.pid))) as waiting`);
+        return row.waiting;
+      }, { timeout: 2000 }).toBe(true);
+      // Hold past the existing 500ms statement lock bound, then release before
+      // the next bounded attempt expires.
+      await new Promise(resolve => setTimeout(resolve, 600));
+    });
+    expect(await result).toEqual([{ status: 'fulfilled', value: undefined }]);
+    expect((await snapshot()).drafts).toHaveLength(0);
+    expect(await discardedEvents(id)).toHaveLength(1);
+  } finally {
+    await result;
+  }
+}, 12000);

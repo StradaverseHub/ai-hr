@@ -1,3 +1,5 @@
+import {setTimeout as delay} from 'node:timers/promises';
+import {pgSqlState} from '../lib/db-error';
 import {boundNativeOutcomeTransactionTx} from './module-native-outcome-bounds';
 import {lockAccessConfigurationTx} from './access-configuration-lock';
 import {lockLeaveDependencyConfigurationTx} from './leave-dependency-lock';
@@ -433,9 +435,21 @@ async function draftCreationDefaultsTx(tx:Tx,ctx:SessionContext,input:EmployeeDr
  return next;
 }
 
-// The database already serializes draft writes by tenant. Queue standalone edits
-// before borrowing a connection so other application work can still use the pool.
-const pendingDraftEdits = new Map<string, Promise<unknown>>();
+// The database already serializes these draft writes by tenant. Queue standalone
+// edits and discards before borrowing a connection.
+const pendingDraftWrites = new Map<string, Promise<unknown>>();
+
+async function queueDraftWrite<T>(tenantId: string, write: () => Promise<T>): Promise<T> {
+  const key = tenantId.toLowerCase();
+  const preceding = pendingDraftWrites.get(key);
+  const pending = preceding ? preceding.catch(() => undefined).then(write) : write();
+  pendingDraftWrites.set(key, pending);
+  try {
+    return await pending;
+  } finally {
+    if (pendingDraftWrites.get(key) === pending) pendingDraftWrites.delete(key);
+  }
+}
 
 export async function saveEmployeeDraft(
   ctx: SessionContext,
@@ -498,17 +512,7 @@ export async function saveEmployeeDraft(
   if (outerTx) return run(outerTx);
   if (!p.id) return withTenant(ctx, run);
 
-  const key = ctx.tenantId.toLowerCase();
-  const preceding = pendingDraftEdits.get(key);
-  const pending = preceding
-    ? preceding.catch(() => undefined).then(() => withTenant(ctx, run))
-    : withTenant(ctx, run);
-  pendingDraftEdits.set(key, pending);
-  try {
-    return await pending;
-  } finally {
-    if (pendingDraftEdits.get(key) === pending) pendingDraftEdits.delete(key);
-  }
+  return queueDraftWrite(ctx.tenantId, () => withTenant(ctx, run));
 }
 
 /**
@@ -724,12 +728,18 @@ export async function discardEmployeeDraft(
   assertAdmin(ctx);
   const capture = options?.returnResult === true;
   if (capture && !outerTx) throw new Error('Draft discard result requires an enclosing transaction.');
+  let admissionFailure: unknown;
   const run = async (tx: Tx): Promise<void | EmployeeDraftDiscardResult> => {
     await boundNativeOutcomeTransactionTx(tx);
     // Match create/save: authority precedes Onboarding's audit and case locks.
     // The closed delete port repeats this native barrier; taking it here prevents
     // a discard from holding audit custody while another writer holds authority.
-    await tx.execute(sql`select app.access_workforce_write_lock()`);
+    try {
+      await tx.execute(sql`select app.access_workforce_write_lock()`);
+    } catch (error) {
+      if (!outerTx && pgSqlState(error) === '55P03') admissionFailure = error;
+      throw error;
+    }
     const [row] = await tx
       .select({
         reservedEmployeeCode: employeeDraft.reservedEmployeeCode,
@@ -772,7 +782,21 @@ export async function discardEmployeeDraft(
       return { draftId: deleted[0].id, reservedEmployeeCode: row?.reservedEmployeeCode ?? null, released, eventId };
     }
   };
-  return outerTx ? run(outerTx) : withTenant(ctx, run);
+  if (outerTx) return run(outerTx);
+  return queueDraftWrite(ctx.tenantId, async () => {
+    for (const backoff of [75, 200]) {
+      admissionFailure = undefined;
+      try {
+        return await withTenant(ctx, run);
+      } catch (error) {
+        // The failed transaction is already closed. Only a refusal before
+        // the first native effect can retry, with no connection held here.
+        if (admissionFailure === undefined || error !== admissionFailure) throw error;
+        await delay(backoff);
+      }
+    }
+    return withTenant(ctx, run);
+  });
 }
 
 /**
