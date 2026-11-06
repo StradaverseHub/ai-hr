@@ -1,5 +1,21 @@
 # Coordinated migration reservations
 
+## Bounded Personnel overview — 6 November 2026 (provisional source reservation)
+
+`codex/personnel-narrow-production-20261106` reserves `2403_personnel_bounded_overview`,
+idx 1603, when 1793330001803. SQL SHA-256 `1eac5d0a075e4505f69ac75f19e99e19f24fd189c93f82fd35b1c49f97ba228f`.
+The local ref and worktree scan found claims through tag 2402, idx 1602 and
+when 1793330001802. One foreign worktree has an invalid journal. Its literal
+index and timestamp claims and SQL filenames were included, and its files
+were preserved. Reconcile competing remote reservations and the actual
+installed ledger before staging admission. The change has not been applied.
+
+The append installs the guarded summary and bounded DTO functions. The
+Personnel overview uses them for the qualified filters and retains the
+existing query for other filters and scopes. Hosted parity and the 50,000
+employee benchmark are component evidence. Populated upgrade, integrated
+browser and concurrency verification remain required.
+
 ## Shared Attendance workflow submission lock — 6 November 2026 (unapplied)
 
 `codex/performance-staging-integration-20261105` reserves
