@@ -61,7 +61,7 @@ const GROUP=['org.people_general.change'];
 const IMPORTS=['import:employee_records','import:employee_profile','import:employee_movement','import:bank_statutory','import:employee_family',
  'import:employee_qualifications','import:employee_emergency_contacts','import:cost_allocation','import:information_correction','import:leave_balances',
  'import:leave_history','import:leave_brought_forward','import:payroll_history','import:fixed_transactions','import:individual_transactions',
- 'import:run_pay_components','import:pay_codes','import:attendance_clockings','import:shift_roster','import:clocking_cards','import:system_labels'];
+ 'import:run_pay_components','import:pay_codes','import:attendance_clockings','import:shift_definitions','import:shift_roster','import:clocking_cards','import:system_labels'];
 /** The reports hub is administrator-only; performance reports need the performance module (off). */
 const REPORTS=['report:master','report:attendance_ot','report:attendance_daily','report:leave_balances','report:payroll_register','report:payroll_history',
  'report:claim_types','report:payroll_period_comparison'];
