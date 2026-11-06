@@ -89,6 +89,7 @@ import {
 import { draftListScope } from '../app/admin/personnel/list-query';
 import PeoplePage from '../app/admin/personnel/page';
 import { GET as exportPersonnel } from '../app/admin/personnel/export/route';
+import { GET as loadPersonnelFilterOptions } from '../app/admin/personnel/filter-options/route';
 
 const en = JSON.parse(readFileSync(fileURLToPath(new URL('../messages/en.json', import.meta.url)), 'utf8'));
 
@@ -220,10 +221,18 @@ async function renderPersonnel(sp: Record<string, string> = {}) {
   const card = html.match(/data-headcount="draft"[^>]*>[\s\S]*?tabular-nums">(\d+)</);
   expect(card, 'the Draft card rendered').not.toBeNull();
   const draftRows = [...html.matchAll(/data-draft-id="([0-9a-f-]{36})"/g)].map((m) => m[1]);
-  // The hierarchy selector receives only native-admitted companies, including empty companies.
-  const hierarchy=findByProp(tree,'companySearchLabel')[0];
-  const companyOptions=(hierarchy?.companies as {id:string}[]|undefined)?.map(company=>company.id)??[];
-  return { html, draftCard: Number(card![1]), draftRows, companyOptions };
+  const hierarchy = findByProp(tree, 'companySearchLabel')[0];
+  expect(hierarchy?.loadOptions).toBeDefined();
+  expect(hierarchy?.companies).toBeUndefined();
+  return { html, draftCard: Number(card![1]), draftRows };
+}
+
+async function companyOptions() {
+  const response = await loadPersonnelFilterOptions();
+  expect(response.status).toBe(200);
+  expect(response.headers.get('Cache-Control')).toBe('private, no-store');
+  const payload: { companies: { id: string }[] } = await response.json();
+  return payload.companies.map(company => company.id);
 }
 
 describe('§2 the Personnel screen: list, Draft card and Filter options follow the top-bar company', () => {
@@ -245,15 +254,14 @@ describe('§2 the Personnel screen: list, Draft card and Filter options follow t
 
   it('the Filter panel offers only the companies being viewed', async () => {
     SCOPE_COOKIE = A;
-    const r = await renderPersonnel({ bucket: 'draft' });
-    expect(r.companyOptions).toEqual([A]);
+    expect(await companyOptions()).toEqual([A]);
   });
 
   it('un-narrowed, every draft is listed, the unplaced one included, and both companies are offered', async () => {
     const r = await renderPersonnel({ bucket: 'draft' });
     expect([...r.draftRows].sort()).toEqual([draftA, draftB, draftNone].sort());
     expect(r.draftCard).toBe(3);
-    expect([...r.companyOptions].sort()).toEqual([A, B].sort());
+    expect((await companyOptions()).sort()).toEqual([A, B].sort());
   });
 
   it('the Filter panel company still narrows inside the scope (draftMatchesQuery kept)', async () => {
