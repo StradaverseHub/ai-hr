@@ -15677,6 +15677,8 @@
     "builderOrdinaryRate": "普通费率除数",
     "builderContextHint": "仅设置此公式使用的绑定。请在公式构建器中选择员工、月份及周期测试已保存公式。",
     "builderNoFormula": "选择已启用且已测试的公式",
+    "builderNoneEligible": "目前没有可用的公式。请在薪资公式生成器中测试并启用公式。",
+    "builderSavedUnavailable": "{formulaId}（已保存，目前不可用）",
     "builderFormula": "公式编号",
     "kind_formula_builder": "薪资公式构建器"
   },

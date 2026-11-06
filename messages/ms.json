@@ -15677,6 +15677,8 @@
     "builderOrdinaryRate": "Pembahagi kadar biasa",
     "builderContextHint": "Tetapkan hanya ikatan yang digunakan oleh formula ini. Uji formula tersimpan dalam pembina formula dengan pekerja, tempoh dan kitarannya.",
     "builderNoFormula": "Pilih formula aktif yang diuji",
+    "builderNoneEligible": "Tiada formula sedia digunakan. Uji dan aktifkan formula dalam Pembina Formula Gaji.",
+    "builderSavedUnavailable": "{formulaId} (pilihan disimpan, tidak tersedia buat masa ini)",
     "builderFormula": "ID formula",
     "kind_formula_builder": "Pembina Formula Gaji"
   },

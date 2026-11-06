@@ -15677,6 +15677,8 @@
     "builderOrdinaryRate": "Số chia mức thông thường",
     "builderContextHint": "Chỉ đặt các liên kết được công thức sử dụng. Kiểm thử công thức đã lưu trong trình tạo với nhân viên, kỳ và chu kỳ.",
     "builderNoFormula": "Chọn công thức đã kiểm thử và đang dùng",
+    "builderNoneEligible": "Chưa có công thức sẵn sàng. Hãy kiểm thử và kích hoạt công thức trong Trình tạo công thức lương.",
+    "builderSavedUnavailable": "{formulaId} (lựa chọn đã lưu, hiện không khả dụng)",
     "builderFormula": "Mã công thức",
     "kind_formula_builder": "Trình tạo công thức lương"
   },

@@ -15677,6 +15677,8 @@
     "builderOrdinaryRate": "Ordinary-rate divisor",
     "builderContextHint": "Set only the bindings used by this formula. Test the saved formula in Formula Builder with its employee, period and cycle.",
     "builderNoFormula": "Choose an active tested formula",
+    "builderNoneEligible": "No formulas are ready to use. Test and activate a formula in Pay Formula Builder.",
+    "builderSavedUnavailable": "{formulaId} (saved selection, currently unavailable)",
     "builderFormula": "Formula ID",
     "kind_formula_builder": "Pay Formula Builder"
   },
