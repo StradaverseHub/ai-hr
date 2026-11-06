@@ -19,6 +19,31 @@ const selected:unknown=JSON.parse(process.env.AIHR_FOCUSED_TESTS??'[]');
 const requested=process.env.GITHUB_ACTIONS==='true'&&Array.isArray(selected)&&selected.length===1&&
  selected[0]==='test/performance/personnel-narrow-production.test.ts';
 const draftSql=readFileSync(new URL('../../db/migrations/2403_personnel_bounded_overview.sql',import.meta.url),'utf8');
+/** Test-only replacement with the same native return values and one JSON assembly. */
+function compactPersonnelProjection(ddl:string){
+ const replace=(source:string,find:RegExp,next:string)=>{
+  if(!find.test(source))throw Error('Unexpected Personnel benchmark definition');
+  return source.replace(find,next);
+ };
+ let body=replace(ddl,/SELECT jsonb_build_object\('employmentId',e.id[\s\S]+?e.final_confirmation_date
+   FROM public.employment/,`
+   SELECT e.id,e.tenant_id,e.company_id,e.hired_on,e.grade_id,e.confirmation_date,e.final_confirmation_date,
+          p.full_name,p.primary_email,e.employee_code,e.probation_end_date,e.provisional_end_on,
+          e.resignation_date,e.last_working_date,e.terminated_on,e.blacklisted_at
+   FROM public.employment`);
+ body=replace(body,/SELECT d.value,d.id,[\s\S]+?          CASE
+/,`SELECT d.*,
+          CASE
+`);
+ body=replace(body,/SELECT b.value,b.id,[\s\S]+?          dated.id AS dated_company_id,/,`SELECT b.*,
+          dated.id AS dated_company_id,`);
+ return replace(body,/SELECT v.value\|\|jsonb_build_object\(/,`SELECT jsonb_build_object(
+   'employmentId',v.id,'name',v.full_name,'email',v.primary_email,'employeeCode',v.employee_code,
+   'finalConfirmationDate',v.final_confirmation_date,'confirmationDate',v.confirmation_date,
+   'probationEndDate',v.probation_end_date,'provisionalEndOn',v.provisional_end_on,
+   'resignationDate',v.resignation_date,'lastWorkingDate',v.last_working_date,
+   'terminatedOn',v.terminated_on,'blacklistedAt',v.blacklisted_at,`);
+}
 const dropNarrowFunctions='drop function app.personnel_overview_narrow_rows(date,uuid[]), app.personnel_overview_page_rows(date,uuid[],uuid[])';
 beforeAll(migrateTestDb);
 afterAll(closeAll);
@@ -143,6 +168,7 @@ it.skipIf(!requested)('times the real Personnel overview at fifty thousand emplo
   {name:'deep-page',input:{...base,offset:count-25},query:parsePersonnelListQuery({}),ids:expectedLast,total:count},
  ];
  const results: {name:string;reader:string;ms:number;status:string;rows?:number}[] = [];
+ const controls=new Map<string,Awaited<ReturnType<typeof readPersonnelOverview>>>();
  report.results = results;
  await owner.client.unsafe(draftSql);
  try {
@@ -165,6 +191,28 @@ it.skipIf(!requested)('times the real Personnel overview at fifty thousand emplo
     expect(overview.employees.total).toBe(total);
     if (reader==='existing') baseline=overview;
     else if (baseline) expect(overview).toEqual(baseline);
+    if (reader==='narrow')controls.set(name,overview);
+    results.push({name,reader,ms,status:'completed',rows:overview.employees.rows.length});
+    save();
+   }
+  }
+  const [definition]=await owner.client<{ddl:string}[]>`
+   select pg_get_functiondef('app.personnel_overview_narrow_rows(date,uuid[])'::regprocedure) as ddl`;
+  const candidate=compactPersonnelProjection(definition.ddl);
+  const normalized=(overview:Awaited<ReturnType<typeof readPersonnelOverview>>)=>({
+   ...overview,organisationChoices:{...overview.organisationChoices,
+    rows:overview.organisationChoices.rows.map(row=>JSON.stringify(row)).sort()},
+  });
+  for(const [reader,ddl] of [['one-assembly',candidate],['restored',definition.ddl]] as const){
+   await owner.client.unsafe(ddl);
+   for(const {name,input,query} of cases){
+    phase(name+'-'+reader);
+    const start=performance.now();
+    const overview=await readPersonnelOverview(ctx,{...input,...query.filters},headcountFilters(query));
+    const ms=performance.now()-start;
+    const expected=controls.get(name);
+    expect(expected).toBeDefined();
+    expect(normalized(overview)).toEqual(normalized(expected!));
     results.push({name,reader,ms,status:'completed',rows:overview.employees.rows.length});
     save();
    }
