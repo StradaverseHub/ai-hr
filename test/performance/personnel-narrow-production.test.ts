@@ -18,7 +18,8 @@ import {provePersonnelSingleAssignmentConstraint} from './personnel-dated-tags-p
 const selected:unknown=JSON.parse(process.env.AIHR_FOCUSED_TESTS??'[]');
 const requested=process.env.GITHUB_ACTIONS==='true'&&Array.isArray(selected)&&selected.length===1&&
  selected[0]==='test/performance/personnel-narrow-production.test.ts';
-const draftSql=readFileSync(new URL('./personnel-narrow-production-draft.sql',import.meta.url),'utf8');
+const draftSql=readFileSync(new URL('../../db/migrations/2403_personnel_bounded_overview.sql',import.meta.url),'utf8');
+const dropNarrowFunctions='drop function app.personnel_overview_narrow_rows(date,uuid[]), app.personnel_overview_page_rows(date,uuid[],uuid[])';
 beforeAll(migrateTestDb);
 afterAll(closeAll);
 
@@ -37,7 +38,7 @@ it.skipIf(!requested)('preserves the real overview rows, facets, scope, dated as
  const defaultQuery=parsePersonnelListQuery({});
  const scope={companyIds:[base.companyId],limit:25,offset:0,...defaultQuery.filters};
  const privateSearch=await createPersonnelPrivateSearch(ctx,{text:'Fictional second',companyIds:scope.companyIds});
- const mode={hostedNarrowProbe:true} as const;
+ const exactMode={compareExact:true} as const;
  const normalize=(data:Awaited<ReturnType<typeof readPersonnelOverview>>)=>({
   ...data,
   organisationChoices:{...data.organisationChoices,rows:data.organisationChoices.rows
@@ -49,14 +50,23 @@ it.skipIf(!requested)('preserves the real overview rows, facets, scope, dated as
   {name:'foreign requested scope',input:{...scope,companyIds:[base.companyId,foreign.companyId]},expected:[first.employmentId,second.employmentId]},
   {name:'unbounded page',input:{...scope,limit:2000},expected:[first.employmentId,second.employmentId]},
  ];
- // Prove these paths use only the old owner by exercising them before either draft function exists.
+ // Prove the migrated functions are installed and private to their approved role.
+ const installed=await owner.db.execute<{owner:string;appCanExecute:boolean;publicCanExecute:boolean}>(sql`
+  select pg_get_userbyid(p.proowner) as owner, has_function_privilege('ai_hr_app',p.oid,'EXECUTE') as "appCanExecute",
+    exists(select 1 from aclexplode(p.proacl) a where a.grantee=0 and a.privilege_type='EXECUTE') as "publicCanExecute"
+  from pg_proc p where p.oid in ('app.personnel_overview_narrow_rows(date,uuid[])'::regprocedure,
+    'app.personnel_overview_page_rows(date,uuid[],uuid[])'::regprocedure)
+ `);
+ expect(Array.from(installed)).toEqual(Array.from({length:2},()=>({owner:'ai_hr_owner',appCanExecute:true,publicCanExecute:false})));
+ await owner.client.unsafe(dropNarrowFunctions);
+ // Prove unsupported filters use the existing owner without either narrow function.
  for(const {input,expected} of fallbackCases){
-  const exact=await readPersonnelOverview(ctx,input,{});
+  const exact=await readPersonnelOverview(ctx,input,{},exactMode);
   expect(exact.employees.rows.map(row=>row.employmentId)).toEqual(expected);
-  expect(normalize(await readPersonnelOverview(ctx,input,{},mode))).toEqual(normalize(exact));
+  expect(normalize(await readPersonnelOverview(ctx,input,{}))).toEqual(normalize(exact));
  }
 
- await expect(readPersonnelOverview(ctx,scope,headcountFilters(defaultQuery),mode)).rejects.toThrow();
+ await expect(readPersonnelOverview(ctx,scope,headcountFilters(defaultQuery))).rejects.toThrow();
  await expect(owner.client.begin(async tx=>{
   await tx`alter table public.assignment rename constraint assignment_no_overlap to assignment_unreviewed`;
   await tx.unsafe(draftSql);
@@ -71,8 +81,8 @@ it.skipIf(!requested)('preserves the real overview rows, facets, scope, dated as
    {name:'empty page',input:{...scope,offset:10},expected:[],total:2},
   ];
   for(const {input,expected,total} of cases){
-   const exact=await readPersonnelOverview(ctx,input,{});
-   const narrow=await readPersonnelOverview(ctx,input,{},mode);
+   const exact=await readPersonnelOverview(ctx,input,{},exactMode);
+   const narrow=await readPersonnelOverview(ctx,input,{});
    expect(normalize(narrow)).toEqual(normalize(exact));
    expect(narrow.employees.rows.map(row=>row.employmentId)).toEqual(expected);
    expect(narrow.employees.total).toBe(total);
@@ -108,7 +118,7 @@ it.skipIf(!requested)('preserves the real overview rows, facets, scope, dated as
    foreignScopeDenied:true,emptySubjectsDenied:true,datedCorrectionParity:true,assignmentDriftRefused:true,
   },null,2));
  }finally{
-  await owner.client.unsafe('drop function app.personnel_overview_narrow_rows(date,uuid[]), app.personnel_overview_page_rows(date,uuid[],uuid[])');
+  await owner.client.unsafe(dropNarrowFunctions);
  }
 },60000);
 
@@ -142,7 +152,7 @@ it.skipIf(!requested)('times the real Personnel overview at fifty thousand emplo
     const begin = performance.now();
     let overview;
     try {
-     overview = await readPersonnelOverview(ctx,{...input,...query.filters},headcountFilters(query),reader==='narrow'?{hostedNarrowProbe:true}:undefined);
+     overview = await readPersonnelOverview(ctx,{...input,...query.filters},headcountFilters(query),reader==='existing'?{compareExact:true}:undefined);
     } catch (error) {
      if (reader!=='existing' || pgSqlState(error)!=='57014') throw error;
      results.push({name,reader,ms:performance.now()-begin,status:'statement-timeout'});
@@ -160,6 +170,6 @@ it.skipIf(!requested)('times the real Personnel overview at fifty thousand emplo
   }
   phase('completed');
  } finally {
-  await owner.client.unsafe('drop function app.personnel_overview_narrow_rows(date,uuid[]), app.personnel_overview_page_rows(date,uuid[],uuid[])');
+  await owner.client.unsafe(dropNarrowFunctions);
  }
 },600000);

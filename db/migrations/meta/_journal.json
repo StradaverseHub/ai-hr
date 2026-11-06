@@ -5013,6 +5013,13 @@
       "when": 1793330001704,
       "tag": "2304_payroll_grant_direct_scan",
       "breakpoints": true
+    },
+    {
+      "idx": 1603,
+      "version": "7",
+      "when": 1793330001803,
+      "tag": "2403_personnel_bounded_overview",
+      "breakpoints": true
     }
   ]
 }

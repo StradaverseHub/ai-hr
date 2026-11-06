@@ -1,4 +1,4 @@
--- Disposable hosted qualification only. Allocation and application route enablement are separate.
+-- Bounded overview summary and page projection. The existing full Personnel projection is retained.
 -- The narrow join must never multiply an employment across overlapping assignments.
 DO $personnel_assignment_prerequisite$
 BEGIN
@@ -102,6 +102,7 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,app AS $$
 $$;
 REVOKE ALL ON FUNCTION app.personnel_overview_page_rows(date,uuid[],uuid[]) FROM PUBLIC,ai_hr_app;
 GRANT EXECUTE ON FUNCTION app.personnel_overview_page_rows(date,uuid[],uuid[]) TO ai_hr_app;
+ALTER FUNCTION app.personnel_overview_page_rows(date,uuid[],uuid[]) OWNER TO ai_hr_owner;
 
 -- A single non-superseded assignment can cover an employment on any date. The validated,
 -- immediate assignment_no_overlap constraint is an explicit installation prerequisite.
@@ -211,3 +212,4 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,app AS $$
 $$;
 REVOKE ALL ON FUNCTION app.personnel_overview_narrow_rows(date,uuid[]) FROM PUBLIC,ai_hr_app;
 GRANT EXECUTE ON FUNCTION app.personnel_overview_narrow_rows(date,uuid[]) TO ai_hr_app;
+ALTER FUNCTION app.personnel_overview_narrow_rows(date,uuid[]) OWNER TO ai_hr_owner;

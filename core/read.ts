@@ -697,19 +697,18 @@ export function readPersonnelOverview(
   ctx: SessionContext,
   input: PersonnelOverviewInput,
   headcount: Omit<EmployeeListFilters, 'companyIds'>,
-  options?: { hostedNarrowProbe: true },
+  options?: { compareExact: true },
 ) {
   return withPersonnelRead(ctx, async tx => {
     const { choices, query, asOf } = await personnelOverviewQueryTx(tx, ctx, input, headcount);
-    // Opt-in from disposable hosted qualification only until the native functions are allocated.
-    const narrowQuery = options?.hostedNarrowProbe ? personnelNarrowOverviewQuery(
+    // The exact reader is also used as the oracle in hosted performance qualification.
+    const narrowQuery = options?.compareExact ? null : personnelNarrowOverviewQuery(
       input, { ...headcount, companyIds: input.companyIds }, choices.companies.map(company => company.id), asOf,
-    ) : null;
+    );
     const [narrow] = narrowQuery
       ? await tx.execute<PersonnelPageResult & { pageDetailsComplete: boolean }>(narrowQuery)
       : [];
-    if (narrowQuery && !narrow?.pageDetailsComplete) throw new Error('Incomplete Personnel page detail probe');
-    const result = narrow ?? (await tx.execute<PersonnelPageResult>(query))[0];
+    const result = narrow?.pageDetailsComplete ? narrow : (await tx.execute<PersonnelPageResult>(query))[0];
     return {
       employees: { rows: result.rows, total: result.total },
       headcount: { total: Object.values(result.byStatus).reduce((sum, count) => sum + count, 0), byStatus: result.byStatus },
