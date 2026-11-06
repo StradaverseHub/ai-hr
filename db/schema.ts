@@ -4803,6 +4803,7 @@ export type ShiftOtRule = { eligible: boolean; minMinutes?: number; dailyCapMinu
 // allowance into the shift's canonical break_minutes scalar so scheduled hours, the punch import and the
 // payroll hourly clamp keep agreeing with what the engine deducts.
 export type BreakPeriod = {
+  breakType?: 'in_shift' | 'before_shift' | 'after_shift';
   start: string;
   end: string;
   flexible?: boolean;

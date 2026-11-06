@@ -384,8 +384,8 @@ function normalizeShiftInput(p: Omit<ShiftInput, 'companyId'>): NormalizedShift 
     const posted = p.breakPeriods
       .map((bp, i) => ({ bp, i, start: (bp.start ?? '').trim(), end: (bp.end ?? '').trim() }))
       .filter(({ start, end }) => !(start === '' && end === ''));
-    for (const { i, start, end } of posted) {
-      const check = checkBreakRow({ start, end }, shiftShape);
+    for (const { bp, i, start, end } of posted) {
+      const check = checkBreakRow({ start, end, breakType: bp.breakType }, shiftShape);
       if (check.kind === 'half') {
         throw new Error(`${rowLabel(i)} needs ${check.missing === 'end' ? 'an end time' : 'a start time'}, or delete the row.`);
       }
@@ -403,7 +403,7 @@ function normalizeShiftInput(p: Omit<ShiftInput, 'companyId'>): NormalizedShift 
     // minute is nonsense whether or not either is paid, and two IDENTICAL rows are an overlap by
     // construction (core/shift-break-rules.ts).
     const overlaps = findBreakOverlaps(
-      posted.map(({ start, end }) => ({ start, end })),
+      posted.map(({ bp, start, end }) => ({ start, end, breakType: bp.breakType })),
       shiftShape,
     );
     if (overlaps.length > 0) {
@@ -419,6 +419,7 @@ function normalizeShiftInput(p: Omit<ShiftInput, 'companyId'>): NormalizedShift 
       const startN = asShiftTime(start, `${rowLabel(i)} start`);
       const endN = asShiftTime(end, `${rowLabel(i)} end`);
       const out: BreakPeriod = { start: startN, end: endN };
+      if (bp.breakType === 'before_shift' || bp.breakType === 'after_shift') out.breakType = bp.breakType;
       // Semi-Flexi overrides the flags; otherwise persist only flags that were explicitly set (keep the
       // stored JSON minimal so a plain break is { start, end } exactly as before).
       //
@@ -497,7 +498,7 @@ function normalizeShiftInput(p: Omit<ShiftInput, 'companyId'>): NormalizedShift 
     // figures depending on which screen you asked. With no row carrying an allowance — every shift that
     // exists today — `?? the window length` makes this the identical expression it has always been.
     breakMinutes = breakPeriods
-      .filter((bp) => bp.paid !== true)
+      .filter((bp) => bp.paid !== true && (!bp.breakType || bp.breakType === 'in_shift'))
       .reduce((acc, bp) => acc + (bp.flexibleMinutes ?? breakRowMinutes(bp.start, bp.end)), 0);
   }
 

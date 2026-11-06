@@ -119,6 +119,7 @@ export async function ShiftForm({
       ? editing.breakPeriods.map((bp) => ({
           start: bp.start.slice(0, 5),
           end: bp.end.slice(0, 5),
+          breakType: bp.breakType,
           paid: bp.paid === true,
           flexible: bp.flexible === true,
           flexibleMinutes: bp.flexibleMinutes != null ? String(bp.flexibleMinutes) : '',

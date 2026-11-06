@@ -1,10 +1,11 @@
 /** Positioned schedule inputs for the canonical dated-policy reader. No approval or financial effect. */
 import type {AttendanceGroupPolicy} from '../lib/attendance-group-policy';
 import {unionAttendancePolicyIntervals as union,intersectAttendancePolicyIntervals as intersect,type AttendancePolicyInterval} from '../lib/attendance-policy-intervals';
+import { externalBreakBounds, type ShiftBreakType } from './shift-break-rules';
 import {anchorAttendanceClockMinute} from './attendance-timeline';
 import {shiftOvertimeWindowBounds,type ShiftOtWindowSpec} from './shift-ot-window';
 
-type Break={start:string;end:string;paid?:boolean;flexible?:boolean;flexibleMinutes?:number};
+type Break={breakType?:ShiftBreakType;start:string;end:string;paid?:boolean;flexible?:boolean;flexibleMinutes?:number};
 export type PolicySchedulePlacement=
  |{state:'unavailable';authority:'sourceOnly';reason:'durationOwner'|'scheduleBoundaryUnavailable'|'unpositionedBreak'|'windowCountAttributionRequired'}
  |{state:'known';authority:'sourceOnly';periodMinutes:4320;scheduled:AttendancePolicyInterval;
@@ -47,19 +48,22 @@ export function attendancePolicyWorkPlacement(s:PolicySchedulePlacementInput):Po
   return unavailable('scheduleBoundaryUnavailable');
  if(s.flexibleBreakMinutes!==null||s.breakPeriods?.some(row=>!row.paid&&row.flexible&&row.flexibleMinutes!==undefined))
   return unavailable('unpositionedBreak');
- const breaks:AttendancePolicyInterval[]=[];
+ const breaks:AttendancePolicyInterval[]=[], regularBreaks:AttendancePolicyInterval[]=[];
  for(const row of s.breakPeriods??[]){
   if(row.paid)continue;
   const a=clock(row.start),b=clock(row.end);
   if(a===null||b===null)return unavailable('unpositionedBreak');
   // Exactly the existing fixed-shift break owner's anchor, including its explicit daily cutoff.
-  const from=anchorAttendanceClockMinute(a,start,s.dailyCutoffMinutes),to=anchorAttendanceClockMinute(b,start,s.dailyCutoffMinutes);
+  const external = row.breakType === 'before_shift' || row.breakType === 'after_shift';
+  const {from,to} = external ? externalBreakBounds(row,start,boundary.scheduled.to) :
+    {from:anchorAttendanceClockMinute(a,start,s.dailyCutoffMinutes),to:anchorAttendanceClockMinute(b,start,s.dailyCutoffMinutes)};
   if(to<=from||to>4320)return unavailable('unpositionedBreak');
   breaks.push({from,to});
+  if (!external) regularBreaks.push({from,to});
  }
  const unpaidWindows=union(breaks,4320);
  // Existing scalar/capped allowances have a count, but no independent physical placement proof.
- if(unpaidWindows.reduce((n,row)=>n+row.to-row.from,0)!==s.breakMinutes)return unavailable('unpositionedBreak');
+ if(union(regularBreaks,4320).reduce((n,row)=>n+row.to-row.from,0)!==s.breakMinutes)return unavailable('unpositionedBreak');
  return {state:'known',authority:'sourceOnly',periodMinutes:4320,scheduled:boundary.scheduled,unpaidWindows,
   fixedClock:boundary.fixedClock,includeGraceInLateness:boundary.includeGraceInLateness,includeGraceInEarlyOut:boundary.includeGraceInEarlyOut};
 }

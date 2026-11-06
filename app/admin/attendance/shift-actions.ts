@@ -64,7 +64,7 @@ const optNum = (formData: FormData, key: string): number | null => {
  * `flexible` are carried through ONLY when true, so an unpaid, fixed row is the byte-identical { start,
  * end } it has always been.
  */
-type PostedBreak = { start: string; end: string; paid?: boolean; flexible?: boolean; flexibleMinutes?: number };
+type PostedBreak = { breakType?: 'before_shift' | 'after_shift'; start: string; end: string; paid?: boolean; flexible?: boolean; flexibleMinutes?: number };
 const parseBreakPeriods = (raw: string): PostedBreak[] | null => {
   if (!raw) return null;
   try {
@@ -74,6 +74,7 @@ const parseBreakPeriods = (raw: string): PostedBreak[] | null => {
       .filter((x): x is Record<string, unknown> => !!x && typeof x === 'object' && 'start' in x && 'end' in x)
       .map((x) => {
         const row: PostedBreak = { start: norm(String(x.start ?? '').trim()), end: norm(String(x.end ?? '').trim()) };
+        if (x.breakType === 'before_shift' || x.breakType === 'after_shift') row.breakType = x.breakType;
         if (x.paid === true) row.paid = true;
         // The "Flexible" tick (D4 — one way to set a break, per row). Carried through ONLY when true, so a
         // window saved before this release round-trips as the byte-identical { start, end } it always was.
