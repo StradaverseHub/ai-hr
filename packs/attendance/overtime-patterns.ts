@@ -512,23 +512,47 @@ export async function readOvertimeCashDefinitionTx(tx:Tx,ctx:SessionContext,p:{v
  return {definition:validateOvertimePattern(version.definition),versionId:version.id,assignmentId:assignment.id,companyIds};
 }
 
+function overtimeRefreshDayWhere(ctx:SessionContext,p:{employmentId:string;date:string}){
+ const day=s.attendance;
+ return and(eq(day.tenantId,ctx.tenantId),eq(day.employmentId,p.employmentId),eq(day.attendanceDate,p.date));
+}
+
+function retainedOvertimeCalculation(tx:Tx,ctx:SessionContext,p:{employmentId:string;date:string}){
+ const source=s.attendanceOvertimeSource;
+ return tx.select({id:source.id}).from(source).where(and(
+  eq(source.tenantId,ctx.tenantId),eq(source.employmentId,p.employmentId),
+  eq(source.attendanceDate,p.date),sql`${source.currentCalculationId} is not null`,
+ ));
+}
+
+const refusedOvertimeMarker=sql`${s.attendance.calcTrace}->'overtimePattern'->>'status'='refused' and ${s.attendance.calcTrace}->'overtimePattern'->>'reason'='sourceUnavailable'`;
+
 /** Cheap canonical OT-stage detection. No salary/currency reader and no source creation.
  * Unknown dated company is not proof of absence when visible formula candidates exist. */
 export async function hasOvertimePatternForDayTx(tx:Tx,ctx:SessionContext,p:{employmentId:string;date:string}):Promise<boolean>{
  uuid(p.employmentId);date(p.date);
- const source = s.attendanceOvertimeSource, day = s.attendance;
- const recorded = tx.select({id:source.id}).from(source).where(and(
-  eq(source.tenantId,ctx.tenantId),eq(source.employmentId,p.employmentId),
-  eq(source.attendanceDate,p.date),sql`${source.currentCalculationId} is not null`,
- ));
- const refused = tx.select({id:day.id}).from(day).where(and(
-  eq(day.tenantId,ctx.tenantId),eq(day.employmentId,p.employmentId),eq(day.attendanceDate,p.date),
-  sql`${day.calcTrace}->'overtimePattern'->>'status'='refused' and ${day.calcTrace}->'overtimePattern'->>'reason'='sourceUnavailable'`,
- ));
- const [retained] = await tx.execute<{present:boolean}>(sql`
+ const recorded=retainedOvertimeCalculation(tx,ctx,p);
+ const refused=tx.select({id:s.attendance.id}).from(s.attendance).where(and(overtimeRefreshDayWhere(ctx,p),refusedOvertimeMarker));
+ const [retained]=await tx.execute<{present:boolean}>(sql`
   select case when exists (${recorded}) then true else exists (${refused}) end as present
  `);
- if(retained?.present)return true;
+ return retained?.present===true || await hasDatedOvertimePatternForDayTx(tx,ctx,p);
+}
+
+/** Refresh requires a visible day. Read its identity and retained coverage together
+ * under the current transaction authority, including after approval status changes. */
+export async function readOvertimeRefreshDayTx(tx:Tx,ctx:SessionContext,p:{employmentId:string;date:string}){
+ const recorded=retainedOvertimeCalculation(tx,ctx,p);
+ const [day]=await tx.select({
+  id:s.attendance.id,
+  retained:sql<boolean>`case when exists (${recorded}) then true else coalesce(${refusedOvertimeMarker},false) end`,
+ }).from(s.attendance).where(overtimeRefreshDayWhere(ctx,p)).limit(1);
+ if(!day)return null;
+ uuid(p.employmentId);date(p.date);
+ return {id:day.id,hasPattern:day.retained || await hasDatedOvertimePatternForDayTx(tx,ctx,p)};
+}
+
+async function hasDatedOvertimePatternForDayTx(tx:Tx,ctx:SessionContext,p:{employmentId:string;date:string}):Promise<boolean>{
  if(await hasRecordedAttendanceGroupPolicyTx(tx,ctx,p))return true;
  // Company proof can only narrow the formula candidates. A canonical input with
  // no possible candidate needs no dated assignment read. The invoker proof still
