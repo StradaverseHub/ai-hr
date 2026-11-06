@@ -18,7 +18,7 @@ import {withTenant,type SessionContext} from '../../db/client';
 import {adminCtx,closeAll,migrateTestDb,owner,resetDb,seedBase} from '../harness';
 import {personnelNativeAggregatePrototype} from './personnel-native-aggregate-prototype';
 import {personnelDatedTagsPrototype} from './personnel-dated-tags-prototype';
-import {personnelNarrowOverviewProbe} from './personnel-narrow-overview-probe';
+import {seedPersonnelNativeFixture} from './personnel-native-fixture';
 const file='test/performance/personnel-native-list-plan.test.ts';
 const selected:unknown=JSON.parse(process.env.AIHR_FOCUSED_TESTS??'[]');
 const requested=process.env.GITHUB_ACTIONS==='true'&&Array.isArray(selected)&&selected.length===1&&selected[0]===file;
@@ -31,39 +31,9 @@ it.skipIf(!requested)('profiles initial/search/deep Personnel pages with fifty t
  const measurements:{mode:string;elapsedMs:number;total:number;pageRows:number;targetMet:boolean}[]=[];
  try{
   expect(process.env.AIHR_FOCUSED_EVIDENCE_DIR).toBeTruthy();
-  await resetDb();const b=await seedBase(),foreign=await seedBase();
-  const ctx:SessionContext={...adminCtx(b),grants:[{role:'hr_admin',companyId:null}]};
-  const expectedFirst:string[]=[],expectedLast:string[]=[],organisationTagSample:string[]=[];
-  for(let offset=0;offset<count;offset+=5000){
-   const end=offset+5000,personPrefix=randomUUID().slice(0,24),employmentPrefix=randomUUID().slice(0,24);
-   report.currentFixtureBatch={from:offset+1,to:end};phase('fixture');
-   await owner.client.begin(async tx=>{
-    await tx`insert into person(id,tenant_id,full_name,primary_email)
-     select (${personPrefix}||lpad(n::text,12,'0'))::uuid,${b.tenantId}::uuid,
-      'Fictional retained Personnel '||lpad(n::text,9,'0'),(${personPrefix}||lpad(n::text,12,'0'))||'@example.invalid'
-     from generate_series(${offset+1}::integer,${end}::integer)n`;
-    await tx`insert into employment(id,tenant_id,person_id,company_id,employee_code,hired_on,terminated_on)
-     select (${employmentPrefix}||lpad(n::text,12,'0'))::uuid,${b.tenantId}::uuid,(${personPrefix}||lpad(n::text,12,'0'))::uuid,
-      ${b.companyId}::uuid,'PERF'||lpad(n::text,9,'0'),'2020-01-01'::date,
-      case when n%5=0 then '2024-01-01'::date else null end from generate_series(${offset+1}::integer,${end}::integer)n`;
-    await tx`insert into assignment(tenant_id,employment_id,company_id,department_id,employment_type,valid_from)
-     select ${b.tenantId}::uuid,(${employmentPrefix}||lpad(n::text,12,'0'))::uuid,${b.companyId}::uuid,
-      ${b.deptA}::uuid,'full_time','2020-01-01'::date from generate_series(${offset+1}::integer,${end}::integer)n`;
-   });
-   if(offset===0){
-    for(let n=1;n<=500;n++)organisationTagSample.push(employmentPrefix+String(n).padStart(12,'0'));
-    expectedFirst.push(...organisationTagSample.slice(0,25));
-   }
-   if(end===count)for(let n=count-24;n<=count;n++)expectedLast.push(employmentPrefix+String(n).padStart(12,'0'));
-   report.committedFixtureEmployees=end;save();
-  }
-  const foreignPerson=randomUUID(),foreignEmployment=randomUUID();
-  await owner.client`insert into person(id,tenant_id,full_name,primary_email) values(${foreignPerson}::uuid,${foreign.tenantId}::uuid,'Fictional outside Personnel',${foreignPerson+'@example.invalid'})`;
-  await owner.client`insert into employment(id,tenant_id,person_id,company_id,hired_on) values(${foreignEmployment}::uuid,${foreign.tenantId}::uuid,${foreignPerson}::uuid,${foreign.companyId}::uuid,'2020-01-01')`;
-  for(const table of ['person','employment','assignment','company','department','app_user','role_assignment'])await owner.client.unsafe('analyze '+table);
-  const [counts]=await owner.client`select (select count(*)::int from employment where tenant_id=${b.tenantId}::uuid) as employees,(select count(*)::int from assignment where tenant_id=${b.tenantId}::uuid)as assignments`;
-  expect(counts).toEqual({employees:count,assignments:count});report.retainedCounts=counts;report.fixturePreparationMs=performance.now()-started;
-  const [identity]=await withTenant(ctx,tx=>tx.execute<{role:string}>(sql`select current_user as role`));expect(identity.role).toBe('ai_hr_app');
+  const {b,foreign,ctx,foreignEmployment,expectedFirst,expectedLast,organisationTagSample}=
+   await seedPersonnelNativeFixture(count,report,phase,save);
+  report.fixturePreparationMs=performance.now()-started;
   const companies=[b.companyId,foreign.companyId];
   for(const mode of ['initial','selective-search','deep-page']){
    const q=mode==='selective-search'?'PERF000050000':undefined,offset=mode==='deep-page'?count-25:0;
@@ -181,42 +151,6 @@ it.skipIf(!requested)('profiles initial/search/deep Personnel pages with fifty t
    await measureProjectionStage('set-effective-company-directory-json',sql`
     select count(*)::int as rows from ${prototype.source('effectiveCompany',asOf,[b.companyId],null)}
    `,count);
-   const narrowParity=[
-    {mode:'initial',limit:10,offset:0,ids:sample.slice(0,10),total:25},
-    {mode:'independent-facets',limit:10,offset:0,pageQuery:'PERF000000025',companySort:true as const,ids:sample.slice(-1),total:1},
-    {mode:'deep',limit:10,offset:20,ids:sample.slice(20),total:25},
-    {mode:'empty',limit:10,offset:30,ids:[],total:25},
-   ];
-   for(const {mode,ids,total,...input} of narrowParity){
-    phase('live-overview-narrow-parity-'+mode);
-    const query={...input,date:asOf,scope:[b.companyId],subjects:sample};
-    const baseline=await personnelNarrowOverviewProbe(ctx,prototype,'baseline',query);
-    const candidate=await personnelNarrowOverviewProbe(ctx,prototype,'narrow',query);
-    expect(candidate).toEqual(baseline);
-    expect(candidate.pageIds).toEqual(ids);
-    expect(candidate.rows.map(row=>row?.employmentId)).toEqual(ids);
-    expect(candidate.total).toBe(total);
-    expect(Object.values(candidate.byStatus).reduce((sum,value)=>sum+value,0)).toBe(25);
-    expect(candidate.options).not.toHaveLength(0);
-   }
-   report.liveOverviewNarrowSampleParity=narrowParity.map(({mode})=>mode);save();
-   const narrowMeasurements:{mode:string;elapsedMs:number;total:number;pageRows:number;targetMet:boolean}[]=[];
-   for(const {mode,q,offset,expectedIds} of liveOverviewCases){
-    phase('live-overview-narrow-'+mode);
-    const began=performance.now();
-    let result;
-    try{result=await personnelNarrowOverviewProbe(ctx,prototype,'narrow',{
-     date:asOf,scope:[b.companyId],subjects:null,pageQuery:q,facetQuery:q,limit:25,offset,
-    });}
-    catch(error){recordOverviewFailure('narrow-'+mode,'projection-stage',began,error);continue;}
-    const elapsedMs=performance.now()-began,expectedTotal=q?1:count;
-    expect(result.pageIds).toEqual(expectedIds);
-    expect(result.rows.map(row=>row?.employmentId)).toEqual(expectedIds);
-    expect(result.total).toBe(expectedTotal);
-    expect(Object.values(result.byStatus).reduce((sum,value)=>sum+value,0)).toBe(expectedTotal);
-    narrowMeasurements.push({mode,elapsedMs,total:result.total,pageRows:result.rows.length,targetMet:elapsedMs<1000});
-    report.liveOverviewNarrow=narrowMeasurements;save();
-   }
   }finally{await prototype.drop();}
   report.liveOverviewExplainStatementTimeoutMs=45000;
   for(const {mode,q,offset} of liveOverviewCases){
