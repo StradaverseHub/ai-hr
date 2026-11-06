@@ -20,17 +20,22 @@ export function createDatabaseAdmission(options: {
   backgroundCapacity: number;
   maxWaiting: number;
   waitMs: number;
+  perTenantCapacity?: number;
 }) {
   const {capacity, backgroundCapacity, maxWaiting, waitMs} = options;
   if (![capacity, backgroundCapacity, maxWaiting, waitMs].every(Number.isSafeInteger)
     || capacity < 1 || backgroundCapacity < 1 || backgroundCapacity > capacity || maxWaiting < 0 || waitMs < 1) {
     throw new Error('Invalid database admission budget.');
   }
+  const perTenantCapacity = options.perTenantCapacity ?? capacity;
+  if (!Number.isSafeInteger(perTenantCapacity) || perTenantCapacity < 1 || perTenantCapacity > capacity)
+    throw new Error('Invalid per-tenant admission budget.');
   let active = 0, background = 0, interactiveTurns = 0;
   const waiting: Waiter[] = [];
   const activeByTenant = new Map<string, number>();
-  const eligible = (workload: DatabaseWorkload) => active < capacity
-    && (workload !== 'background' || background < backgroundCapacity);
+  const eligible = (workload: DatabaseWorkload, tenant?: string) => active < capacity
+    && (workload !== 'background' || background < backgroundCapacity)
+    && (tenant === undefined || (activeByTenant.get(tenant) ?? 0) < perTenantCapacity);
   function grant(waiter: Waiter) {
     waiter.clean();
     active++;
@@ -63,7 +68,7 @@ export function createDatabaseAdmission(options: {
         for (let i = 0; i < waiting.length; i++) {
           const w = waiting[i];
           const count = activeByTenant.get(w.tenant) ?? 0;
-          if (w.workload === lane && count < least) { index = i; least = count; }
+          if (w.workload === lane && eligible(lane, w.tenant) && count < least) { index = i; least = count; }
         }
         if (index !== -1) break;
       }
@@ -73,8 +78,9 @@ export function createDatabaseAdmission(options: {
   }
   async function acquire(tenant: string, workload: DatabaseWorkload, signal?: AbortSignal): Promise<() => void> {
     signal?.throwIfAborted();
+    tenant = tenant.toLowerCase();
     // A full queue cannot reject a new eligible lane while all queued work is lane-blocked.
-    const immediate = eligible(workload) && !waiting.some(w => eligible(w.workload));
+    const immediate = eligible(workload, tenant) && !waiting.some(w => eligible(w.workload, w.tenant));
     if (!immediate && waiting.length >= maxWaiting) throw new DatabaseAdmissionError('queue-full');
     return new Promise((resolve, reject) => {
       let timer: ReturnType<typeof setTimeout> | undefined;

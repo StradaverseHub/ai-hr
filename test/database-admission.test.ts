@@ -53,6 +53,13 @@ describe('database work admission',()=>{
   (await pending[0])();(await pending[1])();(await pending[2])();
   expect(order).toEqual(['b1','a3','b2']);
  });
+ it('bounds a hot tenant without blocking another tenant that has available capacity',async()=>{
+  const q=gate({perTenantCapacity:1}),first=await q.acquire('A','interactive');let hotEntered=false;
+  const hot=q.acquire('a','interactive').then(release=>{hotEntered=true;return release;});
+  const other=await q.acquire('b','interactive');
+  expect(hotEntered).toBe(false);expect(q.snapshot()).toMatchObject({active:2,waiting:1});
+  first();(await hot)();other();expect(q.snapshot().active).toBe(0);
+ });
  it('gives background work bounded turns under a continuous interactive queue',async()=>{
   const q=gate({capacity:1}),first=await q.acquire('a','interactive'),order:string[]=[];
   const tasks=Array.from({length:6},(_,i)=>q.acquire('a','interactive').then(release=>{order.push('i'+i);release();}));

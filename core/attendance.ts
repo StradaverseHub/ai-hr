@@ -1,4 +1,6 @@
 import {withBackgroundDatabaseWork} from '../db/workload';
+import {createDatabaseAdmission} from '../db/admission';
+import {applicationDatabaseBudget} from '../db/capacity';
 import { withCanonicalAiReadTx } from './ai-read-transaction';
 import { lockAccessConfigurationReadTx, lockAccessConfigurationTx, tryLockAccessConfigurationTx } from './access-configuration-lock';
 import { LeaveDependencyUnavailable, lockLeaveDependenciesTx, lockLeaveDependencyConfigurationTx, lockLeaveDependencyReadConfigurationTx } from './leave-dependency-lock';
@@ -3810,7 +3812,7 @@ export async function requestAttendanceCorrection(ctx:SessionContext,p:Attendanc
   !normalized.clockChanges&&normalized.requestedOtMinutes===null&&!normalized.unclockedWork&&
   normalized.plannedStartTime===null&&normalized.plannedEndTime===null&&normalized.otReasonCategory===null&&
   ['short_hours','incomplete_entry','absent','other'].includes(normalized.requestKind);
- return queueAttendanceWrite(attendanceSubmissionQueues,current.tenantId,async()=>{
+ return admitAttendanceWrite('submission',current.tenantId,async()=>{
   if(sharedCandidate){
    try{
     return await withTenant(current,async tx=>{
@@ -4111,10 +4113,13 @@ export class MissingAttendanceRejectReasonError extends Error {
 
 // Bound application admission before borrowing a connection. PostgreSQL still serializes each
 // employee and excludes configuration writers across all application processes.
-type AttendanceWriteQueues = Map<string, { active: number; waiting: Array<() => void> }>;
-const attendanceApprovalQueues: AttendanceWriteQueues = new Map();
-const attendanceSubmissionQueues: AttendanceWriteQueues = new Map();
-const clockingImportQueues: AttendanceWriteQueues = new Map();
+const attendanceBudget = applicationDatabaseBudget(process.env);
+const attendanceWriteCapacity = Math.max(1, Math.floor(attendanceBudget.poolMax / 2));
+const attendanceWriteAdmission = createDatabaseAdmission({
+  capacity: attendanceWriteCapacity, backgroundCapacity: 1,
+  perTenantCapacity: Math.min(2, attendanceWriteCapacity),
+  maxWaiting: attendanceBudget.maxWaiting, waitMs: attendanceBudget.waitMs,
+});
 const attendancePerformance = globalThis as typeof globalThis & {
   __aihrPerfBeginAttendanceApproval?: () => { acquired: () => void; finished: () => void };
   __aihrPerfAttendanceExclusiveAdmission?: (operation:'submission'|'approval'|'clockingImport',outcome:'immediate'|'miss'|'recovered'|'blockingFallback') => void;
@@ -4146,39 +4151,31 @@ async function withOwnedExclusiveAttendanceWrite<T>(ctx: SessionContext, operati
   });
 }
 
-async function queueAttendanceWrite<T>(
-  queues: AttendanceWriteQueues, tenantId: string, write: () => Promise<T>,
-  timing?: { acquired: () => void; finished: () => void }, capacity = 2,
+async function admitAttendanceWrite<T>(
+  operation: 'approval' | 'submission' | 'clockingImport', tenantId: string, write: () => Promise<T>,
+  timing?: { acquired: () => void; finished: () => void },
 ): Promise<T> {
-  const key = tenantId.toLowerCase();
-  const queue = queues.get(key) ?? { active: 0, waiting: [] };
-  queues.set(key, queue);
-  if (queue.active < capacity) {
-    queue.active++;
-  } else {
-    await new Promise<void>(resolve => queue.waiting.push(resolve));
-  }
+  let release: (() => void) | undefined;
   try {
+    // Preserve the per-tenant/per-operation limit of two interactive writers; imports have
+    // one background slot across this process. All three operations share a bounded queue.
+    release = await attendanceWriteAdmission.acquire(tenantId + ':' + operation,
+      operation === 'clockingImport' ? 'background' : 'interactive');
     timing?.acquired();
     return await write();
   } finally {
-    const next = queue.waiting.shift();
-    if (next) {
-      next();
-    } else if (--queue.active === 0) {
-      queues.delete(key);
-    }
+    release?.();
     timing?.finished();
   }
 }
 
 /** Imports own their transaction. Admit one per tenant per worker before checking out a connection. */
 export function withClockingImportWrite<T>(ctx: SessionContext, write: (tx: Tx) => Promise<T>): Promise<T> {
-  return withBackgroundDatabaseWork(() => queueAttendanceWrite(clockingImportQueues, ctx.tenantId, () =>
+  return withBackgroundDatabaseWork(() => admitAttendanceWrite('clockingImport', ctx.tenantId, () =>
     withOwnedExclusiveAttendanceWrite(ctx, 'clockingImport', async tx => {
       await lockLeaveDependencyConfigurationTx(tx, ctx.tenantId);
       return write(tx);
-    }), undefined, 1));
+    })));
 }
 
 export async function decideAttendanceCorrection(
@@ -4768,7 +4765,7 @@ export async function decideAttendanceCorrection(
   if (existingTx) return decide(existingTx);
   const correctionIdIsCanonical = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(p.correctionId);
   if (p.decision === 'approved') {
-    return queueAttendanceWrite(attendanceApprovalQueues, ctx.tenantId, async () => {
+    return admitAttendanceWrite('approval', ctx.tenantId, async () => {
       // Ordinary corrections with TOIL disabled cannot create leave configuration. They can
       // share both configuration locks while retaining the subject, Payroll and audit fences.
       let toilDisabled = false;
