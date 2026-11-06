@@ -155,7 +155,7 @@ export async function prepareMixedWorkflows({context,visit,fixture,employee,hr,d
   const approver=approverFor(employee),reviewCtx=await context(approver),review=await reviewCtx.newPage();
   try{
    await visit(review,approver,'/attendance/application-history/'+correction.id);
-   const approve=review.locator('form:visible').filter({has:review.locator('input[name="action"][value="approved"]')}).getByRole('button',{name:'Approve',exact:true});
+   const approve=review.locator('form:visible').filter({has:review.locator('input[name="action"][value="approved"]')}).getByRole('button',{name:'Approve current stage',exact:true});
    await approve.waitFor({state:'visible',timeout:90000});
    assert.equal(await approve.count(),1,'Expected one visible Attendance approval control');
    await capture(review,()=>approve.click(),'attendanceApprove');await review.waitForLoadState('networkidle');
