@@ -1457,6 +1457,7 @@ export const SCREENS: readonly ScreenEntry[] = [
       '/payroll/transactions/individual',
       '/payroll/transactions/individual/imports',
       '/payroll/transactions/individual/imports/[attemptId]',
+      '/payroll/transactions/individual/imports/batches/[jobId]',
       '/payroll/transactions/tp1',
       // 3e3d3fb2: the dedicated Add / View / Edit page for ONE employee's TP1 declaration for ONE
       // assessment year, replacing the form that opened by itself the moment somebody was selected.

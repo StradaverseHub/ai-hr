@@ -43,6 +43,7 @@ export const APPROVED_UPGRADE_TAIL=[
  {idx:1654,when:1793330001854,tag:'2404_payroll_reconciliation_remark'},
  {idx:1655,when:1793330001855,tag:'2405_rewards_review_activity'},
  {idx:1656,when:1793330001856,tag:'2406_payroll_reconciliation_generation'},
+ {idx:1660,when:1793330001860,tag:'2460_payroll_individual_import_queue'},
  ...PERFORMANCE_MIGRATION_IDENTITIES.map(({idx,when,tag})=>({idx,when,tag})),
 ] as const;
 // Final pending 2109/2126 bytes reviewed from engine 128bc2539; no applied-prefix hashes change.
@@ -78,6 +79,7 @@ const APPROVED_UPGRADE_HASHES:Record<string,string>={
  '2404_payroll_reconciliation_remark':'a0b5e3df73af733fd19ec72c1333cbdf21e9a932123be476ea86b4bfafda3974',
  '2405_rewards_review_activity':'fb8f6d1be9e24589969329324174f74a2c3516dedf041ae8dad37f60d19afc20',
  '2406_payroll_reconciliation_generation':'38979689c8df2b486fdd1c104de7dd94e872ba8e0838e1d51cc8be119fa99113',
+ '2460_payroll_individual_import_queue':'5919c5fde5796a08c13d2a37174becaa20f86abb896e2aa66be5d3b222a79f4c',
  ...Object.fromEntries(PERFORMANCE_MIGRATION_IDENTITIES.map(({tag,hash})=>[tag,hash])),
 };
 export function assertApprovedUpgradeTail(entries:{idx:number;when:number;tag:string}[]){

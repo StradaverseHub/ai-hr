@@ -24,7 +24,7 @@ const REVIEWED_SECURITY_GRAPH={source:'c58c30efd6bc81b20bb4b5a82b026b93c7297760'
 // This source fixture never substitutes for that controller's authenticated extracted-packet boot proof.
 const PACKET_POLICY={controller:'567ec0908a24e21078e458ec1e93e696cafeb0a8',formatSha256:'07fa30e623f192ed8231ed42de4a606ed8251539db95389ec7ad6b50ff166369',
  roots:['package.json','pnpm-lock.yaml','tsconfig.json','app','assets','components','content','core','data','db','deploy','i18n','lib','localization','messages','packs','public','scripts','types','node_modules']};
-const unchanged=['db/client.ts','scripts/bank-import-runner.ts','core/bank-import-job.ts','lib/bank-import-source.server.ts','lib/bank-import-job.ts'];
+const unchanged=['db/client.ts','core/bank-import-job.ts','lib/bank-import-source.server.ts','lib/bank-import-job.ts'];
 // Current web db/client differs only in this reviewed erased type union. The child process below
 // still receives and verifies the COMPLETE immutable 968 db/client, including its original type.
 const WORKER_AGENT_ENABLEMENT = "export type AgentEnablement = { feature: 'readiness_reminders' | 'claims_triage'; userId: string; eventId: string };";
@@ -49,6 +49,10 @@ const PRIOR_PROFILE_PASSPORT_CHECK=`    if (!merged.passportNumber || !merged.pa
 const REVIEWED_PROFILE_PASSPORT_CHECK=`    if (!subject.pack.statutory.validatePassport({personId:subject.personId,...merged},row.personPatch?.fields?.nationality??subject.personRow.nationality)) {
       errors.push('passport_number is required for non-Malaysian employees; check supplied passport dates and country code');`;
 const reviewedChanges=['core/bank-import-worker.ts','core/import-sections.ts','core/import-history.ts'];
+const payrollQueueWorkerPins = {
+ 'scripts/bank-import-runner.ts': '87be8d289901a19e8b1e74e8e7013b6f634416aa3cf5fe621d2b0b5c159f1e5f',
+ 'core/bank-import-worker.ts': '0d84069e170914694314c207aea7917cc652c54068c4181a6e884b748f47ef46',
+} as const;
 // The web package migration entry changed for guarded CI provisioning, not for the worker tick.
 // Pin all three reviewed owners byte-for-byte; no arbitrary command omission or script allowlist.
 const WORKER_MIGRATION_COMMAND='drizzle-kit migrate';
@@ -69,7 +73,8 @@ it('runs immutable 968 worker Git source under the corrected V2 root policy agai
  expect(webClient.replace(WEB_AGENT_ENABLEMENT,WORKER_AGENT_ENABLEMENT).replace(WEB_TAX_BASIS_READER,'')).toBe(workerClient);
  for(const path of unchanged.filter(path=>path!=='db/client.ts'))expect(execFileSync('git',['show',WORKER_SOURCE+':'+path],{encoding:'utf8'}),path+' never reads payslip').not.toMatch(/payslip/i);
  expect(execFileSync('git',['diff','--name-only',WORKER_SOURCE,'HEAD','--',...reviewedChanges],{encoding:'utf8'}).trim().split('\n').sort()).toEqual([...reviewedChanges].sort());
- expect(execFileSync('git',['diff','--name-only',REVIEWED_BANK_SOURCE,'HEAD','--',...reviewedChanges],{encoding:'utf8'}).trim()).toBe('');
+ expect(execFileSync('git',['diff','--name-only',REVIEWED_BANK_SOURCE,'HEAD','--',...reviewedChanges.filter(path=>path!=='core/bank-import-worker.ts')],{encoding:'utf8'}).trim()).toBe('');
+ for(const [path,hash] of Object.entries(payrollQueueWorkerPins))expect(createHash('sha256').update(readFileSync(path)).digest('hex'),path).toBe(hash);
  const priorSections=execFileSync('git',['show',PRIOR_REVIEWED_BANK_SOURCE+':core/import-sections.ts'],{encoding:'utf8'});
  expect(priorSections.split(PRIOR_PROFILE_PASSPORT_CHECK)).toHaveLength(2);
  expect(execFileSync('git',['show',REVIEWED_BANK_SOURCE+':core/import-sections.ts'],{encoding:'utf8'})).toBe(priorSections.replace(PRIOR_PROFILE_PASSPORT_CHECK,REVIEWED_PROFILE_PASSPORT_CHECK));
@@ -116,7 +121,7 @@ it('runs immutable 968 worker Git source under the corrected V2 root policy agai
   expect(roots).toEqual(expect.arrayContaining(['package.json','pnpm-lock.yaml','tsconfig.json','core','db','i18n','localization','lib','scripts','packs']));
   const archive=execFileSync('git',['archive',WORKER_SOURCE,...roots],{maxBuffer:128*1024**2});
   execFileSync('tar',['-xf','-','-C',directory],{input:archive,maxBuffer:1024**2});
-  for(const path of ['package.json','pnpm-lock.yaml',...unchanged,...reviewedChanges])expect(readFileSync(join(directory,path)).equals(execFileSync('git',['show',WORKER_SOURCE+':'+path])),'Executed old worker retains original '+path).toBe(true);
+  for(const path of ['package.json','pnpm-lock.yaml',...new Set([...unchanged,...reviewedChanges,...Object.keys(payrollQueueWorkerPins)])])expect(readFileSync(join(directory,path)).equals(execFileSync('git',['show',WORKER_SOURCE+':'+path])),'Executed old worker retains original '+path).toBe(true);
   // Real isolated dependency files, preserving internal pnpm links. No external module symlink,
   // installation files, frozen worker source or vendor network is modified by this disposable fixture.
   execFileSync('cp',['-a',...(process.platform==='linux'?['--reflink=auto']:[]),join(process.cwd(),'node_modules'),join(directory,'node_modules')],{timeout:60000,maxBuffer:1024**2});

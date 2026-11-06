@@ -113,7 +113,7 @@ const sessionFor = (role: 'employee' | 'manager' | 'hr_admin', n: number) => ({
 });
 const ROLES = [['employee', sessionFor('employee', 1)], ['manager', sessionFor('manager', 2)], ['hr_admin', sessionFor('hr_admin', 3)]] as const;
 const OTHER_PERSON = sessionFor('employee', 9);
-const now = Date.now();
+const now = Date.parse('2026-11-07T04:00:00Z');
 const at = (hoursAgo: number) => new Date(now - hoursAgo * 3_600_000);
 const chatId = (n: number) => `7a000000-0000-4000-8000-0000000003${String(n).padStart(2, '0')}`;
 /** Each login's own chats, as the owner would return them, newest first. The other person's are never asked for. */
@@ -133,6 +133,7 @@ async function showAsk(searchParams: Record<string, string> = {}) {
 }
 
 beforeEach(() => {
+  vi.setSystemTime(now);
   state.session = ROLES[0][1]; state.path = '/assistant'; state.groupAdmin = false; state.route = { route: 'closed' }; state.importKinds = [];
   for (const fn of [state.push, state.refresh, state.listOwnChats, state.readChatRetention, state.legacyList, state.workspace, state.listChats, state.deleteChat, state.setRetention, state.openStoredChat, state.askWorkspace, state.askLauncher]) fn.mockReset();
   state.legacyList.mockResolvedValue({chats:[],nextCursor:null,scopeDigest:'fixture'});
@@ -143,7 +144,7 @@ beforeEach(() => {
   window.sessionStorage.clear();
   window.history.replaceState(null, '', '/assistant');
 });
-afterEach(() => { cleanup(); window.history.replaceState(null, '', '/'); });
+afterEach(() => { cleanup(); vi.useRealTimers(); window.history.replaceState(null, '', '/'); });
 
 describe('Chats grouping (lib/ai-centre/chat-groups.ts)', () => {
   it('groups by Kuala Lumpur day, in the owner order, and searches the visible label', () => {

@@ -20,7 +20,7 @@ import type {SectionRowResult} from '../lib/import-sections';
 
 type QueueRow={ordinal:number;record:ImportRecord;preview:SectionRowResult;company_id:string|null;employment_id:string|null;binding:string;state:string;error:string|null};
 async function sourceTx(tx:Tx,id:string){const parts=await tx.execute<{content:Buffer}>(sql`select content from bank_import_chunk where job_id=${id}::uuid order by part`);return Buffer.concat(parts.map(p=>p.content));}
-async function freshContext(context:SessionContext):Promise<SessionContext>{
+export async function freshImportContext(context:SessionContext):Promise<SessionContext>{
  const ctx=structuredClone(context);
  ctx.entitlements=await withBackgroundDatabaseWork(()=>withPoolWork(ctx.tenantId,()=>client.begin(async transaction=>resolveEntitlementsInTenantTx(async(q,params)=>[...await transaction.unsafe(q,params as postgres.ParameterOrJSON<never>[])],ctx.tenantId))));
  return ctx;
@@ -125,7 +125,7 @@ export async function runBankImportTick(owner:postgres.Sql):Promise<boolean>{
   try{
    const [job]=await connection<BankImportJobRow[]>`select * from bank_import_job where state in ('queued','validating','importing') order by updated_at,created_at limit 1`;
    if(!job)return false;
-   try{await processBankImportJob(await freshContext(job.context),job.id);}
+   try{await processBankImportJob(await freshImportContext(job.context),job.id);}
    catch(error){
     if(error instanceof DatabaseAdmissionError)return false;
     const message=error instanceof ImportFileError?(error.code==='FILE_TOO_LARGE'?'The file exceeds the import size or worksheet limits. Use up to 250,000 rows and 128 MiB.':'The file could not be read. Use the Bank & Statutory template and its reference sheets.'):

@@ -78,6 +78,7 @@ export {listCp38} from '../../core/cp38';
 export { selectPayslipInformation, payslipInformationData } from '../../core/payslip-information';
 export { payslipSegmentOf } from '../../core/payslip-segment';
 export * from '../../core/individual-txn-import';
+export * from '../../core/individual-import-job';
 
 export {lockNativePayrollPeriodsTx} from '../../core/payroll-period-lock';
 export {rewardPayrollProvenance} from './reward-provenance';

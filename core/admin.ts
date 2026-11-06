@@ -2948,7 +2948,12 @@ export { isDatabaseError };
 /** Classify a caught row failure into the per-row error the grid renders. Returns undefined for anything
  *  this function does not recognise, which the caller re-throws rather than dressing up. */
 function labelRowError(e: unknown, key: string, field: string): LabelRowError | undefined {
-  if (isUniqueViolation(e)) return { key, field, message: 'A label with this code / name already exists in the company.' };
+  if (isUniqueViolation(e)) {
+    const message = field === 'code'
+      ? 'This code is already in use for this company. Enter a different code.'
+      : 'This name is already in use for this company. Enter a different name.';
+    return { key, field, message };
+  }
   // Order matters: an RLS refusal is ALSO a 42501, and it is not about the Criteria cell.
   if (isRlsWriteRefusal(e))
     return { key, code: 'notAdminForCompany', message: 'This label belongs to a company you do not administer.' };

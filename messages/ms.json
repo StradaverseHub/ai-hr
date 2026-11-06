@@ -9826,6 +9826,27 @@
       "importNewOnly": "Import rekod baharu sahaja"
     },
     "individualImport": {
+      "submitWorkbook": "Muat naik buku kerja",
+      "downloadWorkbook": "Muat turun buku kerja asal",
+      "progress": "Kemajuan",
+      "startedAt": "Masa mula",
+      "finishedAt": "Masa selesai",
+      "completedWithErrors": "Selesai dengan ralat",
+      "confirmationUnavailable": "Kelompok ini tidak lagi boleh disahkan.",
+      "queueFull": "Tunggu sehingga salah satu kelompok semasa selesai sebelum memuat naik lagi.",
+      "fileReadError": "Buku kerja tidak dapat dibaca. Gunakan templat Excel yang sepadan.",
+      "noValidRows": "Tiada baris yang sah. Semak ralat baris sebelum memuat naik semula.",
+      "importFailed": "Kelompok dihentikan. Semak buku kerja atau akses anda sebelum mencuba lagi.",
+      "batchCounts": "{total} baris · {written} diimport · {failed} gagal",
+      "batchState": {
+        "pending": "Menunggu",
+        "validating": "Memproses buku kerja",
+        "ready": "Sedia untuk disahkan",
+        "confirmed": "Menunggu import",
+        "importing": "Mengimport",
+        "completed": "Selesai",
+        "failed": "Gagal"
+      },
       "open": "Import Excel",
       "log": "Log import",
       "logHint": "Semak import transaksi individu dan hasil asal setiap baris.",

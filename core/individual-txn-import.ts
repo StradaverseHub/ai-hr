@@ -66,7 +66,7 @@ export async function validateIndividualImport(ctx:SessionContext,p:{operationId
  });
 }
 /** Confirmation revalidates and commits each successful row and its ownership atomically. */
-export async function confirmIndividualImport(ctx:SessionContext,p:{id:string;scopeIds:string[]}):Promise<IndividualImportAttempt>{
+export async function confirmIndividualImport(ctx:SessionContext,p:{id:string;scopeIds:string[]}, reportProgress?: (processed: number) => Promise<void>):Promise<IndividualImportAttempt>{
  const initial=await withTenant(ctx,tx=>owned(tx,ctx,p.id,p.scopeIds));
  if(initial.state!=='validated')return project(initial);
  if(initial.preview.fileError)throw new IndividualImportError(initial.preview.fileError);
@@ -82,6 +82,7 @@ export async function confirmIndividualImport(ctx:SessionContext,p:{id:string;sc
   analysis.preview=safePreview(analysis.preview);
   const outcomes:IndividualImportOutcome[]=[],recalc=new Set<string>();
   for(const row of analysis.preview.rows){
+   if(reportProgress && outcomes.length > 0 && outcomes.length % 25 === 0) await reportProgress(outcomes.length);
    const resolved=analysis.resolved.get(row.rowNum);
    const originally=r.preview.rows.find(old=>old.rowNum===row.rowNum);
    const originalBinding=r.bindings[String(row.rowNum)];
@@ -117,10 +118,10 @@ export async function confirmIndividualImport(ctx:SessionContext,p:{id:string;sc
   await stamp(tx,ctx,r.id,'confirmed',{written,failed:outcomes.filter(o=>o.state==='failed').length});return project(saved);
  });
 }
-export async function listIndividualImports(ctx:SessionContext,scopeIds:string[],before?:{at:string;id:string}):Promise<IndividualImportAttempt[]>{
+export async function listIndividualImports(ctx:SessionContext,scopeIds:string[],before?:{at:string;id:string}, legacyOnly = false):Promise<IndividualImportAttempt[]>{
  await scope(ctx,scopeIds);if(before){z.iso.datetime().parse(before.at);uuid.parse(before.id);}
  return withTenant(ctx,async tx=>{
-  const rows=await tx.select().from(attempt).where(and(eq(attempt.tenantId,ctx.tenantId),sql`${attempt.companyIds} <@ ${JSON.stringify(scopeIds)}::jsonb`,before?or(lt(attempt.createdAt,new Date(before.at)),and(eq(attempt.createdAt,new Date(before.at)),lt(attempt.id,before.id))):undefined)).orderBy(desc(attempt.createdAt),desc(attempt.id)).limit(101);
+  const rows=await tx.select().from(attempt).where(and(eq(attempt.tenantId,ctx.tenantId),sql`${attempt.companyIds} <@ ${JSON.stringify(scopeIds)}::jsonb`,legacyOnly ? sql`not exists (select 1 from payroll_individual_import_job job where job.attempt_id = ${attempt.id})` : undefined,before?or(lt(attempt.createdAt,new Date(before.at)),and(eq(attempt.createdAt,new Date(before.at)),lt(attempt.id,before.id))):undefined)).orderBy(desc(attempt.createdAt),desc(attempt.id)).limit(101);
   return rows.filter(r=>r.companyIds.every(c=>scopeIds.includes(c))).map(project);
  });
 }
