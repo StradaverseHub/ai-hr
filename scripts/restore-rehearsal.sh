@@ -178,6 +178,8 @@ APP_URL_TPL="${REHEARSAL_APP_DATABASE_URL:-}"
 m() { awk -F'\t' -v k="$1" '$1==k {print $2; exit}' "$MANIFEST"; }
 M_DB="$(m database)"; M_SHA="$(m dump_sha256)"; M_BYTES="$(m dump_bytes)"
 M_CLIENT_MAJOR="$(m dump_client_major)"; M_SERVER_MAJOR="$(m server_major)"
+M_PROBE_PRINCIPAL="$(m probe_principal)"
+[ -n "$M_PROBE_PRINCIPAL" ] || M_PROBE_PRINCIPAL='{}'
 M_APP_ROLE="$(m app_role)"; M_PROBE_STATUS="$(m probe_status)"; M_TAKEN="$(m taken_at)"
 [ -n "$M_SHA" ] || die 3 preflight "$MANIFEST carries no dump_sha256; it is not a manifest this script wrote."
 
@@ -374,7 +376,7 @@ else
   PROBE_VERDICT=ok
   blib_write_probe_sql_local "$WORK/probe.sql"
   TENANT="$(scratch -c "SELECT coalesce((SELECT id::text FROM public.tenant ORDER BY id LIMIT 1), '')" 2>/dev/null)"
-  if blib_pg_run_db "$APP_URL_TPL" "$SCRATCH" "$PGBIN/psql" -X -q -At -v ON_ERROR_STOP=1 -v snap=unused -v tenant="$TENANT" \
+  if blib_pg_run_db "$APP_URL_TPL" "$SCRATCH" "$PGBIN/psql" -X -q -At -v ON_ERROR_STOP=1 -v snap=unused -v tenant="$TENANT" -v principal="$M_PROBE_PRINCIPAL" \
        -f "$WORK/probe.sql" > "$WORK/probe.tsv" 2> "$WORK/probe.err"; then
     sort "$WORK/probe.tsv" > "$WORK/probe.sorted"
     grep -E '^probe_(ctx|noctx)	' "$MANIFEST" | sort > "$WORK/probe.expected"

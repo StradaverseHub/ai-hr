@@ -257,7 +257,21 @@ cat > "$1" <<'SQL'
 \set ON_ERROR_STOP on
 BEGIN ISOLATION LEVEL REPEATABLE READ;
 SET TRANSACTION SNAPSHOT :'snap';
-SELECT set_config('app.tenant_id', :'tenant', true) \gset ignore_
+\if :{?principal}
+\else
+\set principal '{}'
+\endif
+SELECT (:'principal'::jsonb<>'{}'::jsonb) AS native_principal \gset
+SELECT set_config('app.tenant_id',coalesce(:'principal'::jsonb->>'tenantId',:'tenant'),true) AS tenant,
+ set_config('app.user_id',coalesce(:'principal'::jsonb->>'userId',''),true) AS actor,
+ set_config('app.roles',coalesce(:'principal'::jsonb->>'roles',''),true) AS roles,
+ set_config('app.grants',coalesce((:'principal'::jsonb->'grants')::text,'[]'),true) AS grants,
+ set_config('app.agent_principal_id','',true) AS agent \gset ignore_
+\if :native_principal
+-- Reject an archived/revoked/forged snapshot rather than measuring an empty successful read.
+SELECT 1/(app.principal_snapshot_current()::integer) AS principal_valid \gset current_
+SELECT 'probe_ctx' || E'\tapp\taccess_workforce_picker_facts\t' || count(*) FROM app.access_workforce_picker_facts(NULL);
+\endif
 SELECT 'probe_ctx' || E'\t' || n.nspname || E'\t' || c.relname || E'\t'
     || (xpath('/row/c/text()', query_to_xml(format('select count(*) as c from %I.%I', n.nspname, c.relname), false, true, '')))[1]::text
   FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
@@ -266,7 +280,10 @@ SELECT 'probe_ctx' || E'\t' || n.nspname || E'\t' || c.relname || E'\t'
    AND has_table_privilege(current_user, c.oid, 'SELECT')
    AND EXISTS (SELECT 1 FROM pg_attribute a WHERE a.attrelid = c.oid AND a.attname = 'tenant_id' AND a.attnum > 0 AND NOT a.attisdropped)
  ORDER BY 1;
-SELECT set_config('app.tenant_id', '', true) \gset ignore_
+SELECT set_config('app.tenant_id','',true) AS tenant,set_config('app.user_id','',true) AS actor,set_config('app.roles','',true) AS roles,set_config('app.grants','[]',true) AS grants \gset ignore_
+\if :native_principal
+SELECT 'probe_noctx' || E'\tapp\taccess_workforce_picker_facts\t' || count(*) FROM app.access_workforce_picker_facts(NULL);
+\endif
 SELECT 'probe_noctx' || E'\t' || n.nspname || E'\t' || c.relname || E'\t'
     || (xpath('/row/c/text()', query_to_xml(format('select count(*) as c from %I.%I', n.nspname, c.relname), false, true, '')))[1]::text
   FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace

@@ -22,7 +22,7 @@ it('restores the complete candidate with original authority, then reads and comm
  const own=await hireEmployee(adminCtx(a),{companyId:a.companyId,departmentId:a.deptA,person:{fullName:'Recovery owner',primaryEmail:'recovery-a@example.test'},employmentType:'full_time',hiredOn:'2026-01-01'});
  const foreign=await hireEmployee(adminCtx(b),{companyId:b.companyId,departmentId:b.deptA,person:{fullName:'Recovery foreign',primaryEmail:'recovery-b@example.test'},employmentType:'full_time',hiredOn:'2026-01-01'});
  const destination=join(temporary,'backups');
- const backup=run('/bin/bash',['scripts/backup-db.sh'],{BACKUP_DATABASE_URL:process.env.TEST_MIGRATION_DATABASE_URL!,BACKUP_APP_DATABASE_URL:process.env.TEST_DATABASE_URL!,BACKUP_DEST:destination,BACKUP_ALLOW_LOCAL_DEST:'1',BACKUP_STAGING:join(temporary,'stage')});
+ const backup=run('/bin/bash',['scripts/backup-db.sh'],{BACKUP_DATABASE_URL:process.env.TEST_MIGRATION_DATABASE_URL!,BACKUP_APP_DATABASE_URL:process.env.TEST_DATABASE_URL!,BACKUP_PROBE_USER_ID:a.adminUserId,BACKUP_DEST:destination,BACKUP_ALLOW_LOCAL_DEST:'1',BACKUP_STAGING:join(temporary,'stage')});
  expect(backup).toContain('BACKUP_RESULT=PASS');
  const dump=join(destination,readdirSync(destination).find(file=>file.endsWith('.dump'))!);
  const restored=run('/bin/bash',['scripts/restore-rehearsal.sh','--dump',dump,'--scratch',scratch,'--keep'],{REHEARSAL_DATABASE_URL:inDb(process.env.TEST_MIGRATION_DATABASE_URL!,'postgres'),REHEARSAL_APP_DATABASE_URL:inDb(process.env.TEST_DATABASE_URL!,'postgres'),REHEARSAL_LOG:join(temporary,'restore.log')});

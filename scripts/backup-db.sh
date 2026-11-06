@@ -52,6 +52,8 @@
 #   BACKUP_APP_DATABASE_URL  the APPLICATION role's connection (falls back to DATABASE_URL). Optional,
 #                         but without it the manifest cannot record what the app can see through RLS
 #                         and the rehearsal's strongest check is skipped.
+#   BACKUP_PROBE_USER_ID  optional existing HR principal UUID for current native-read contracts.
+#                         Its actual tenant/grants are captured in the exported snapshot. No new grant.
 #   BACKUP_DEST           REQUIRED. `user@host:/path` (rsync over ssh), or a local path (refused
 #                         unless BACKUP_ALLOW_LOCAL_DEST=1), or anything at all when BACKUP_SHIP_CMD
 #                         is set.
@@ -279,6 +281,9 @@ SECURITY_OUT="$WORK/security.tsv"; TABLES_OUT="$WORK/tables.tsv"; ROLES_OUT="$WO
 PROBE_OUT="$WORK/probe.tsv"; PROBE_ERR="$WORK/probe.err"
 : > "$DUMP_RC"; : > "$PROBE_RC"; : > "$PROBE_OUT"
 
+PROBE_USER="${BACKUP_PROBE_USER_ID:-}"
+[[ -z "$PROBE_USER" || "$PROBE_USER" =~ ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$ ]] || die 2 preflight 'BACKUP_PROBE_USER_ID must be an existing principal UUID.'
+PRINCIPAL_OUT="$WORK/probe-principal.json"
 blib_write_probe_sql "$WORK/probe.sql"
 
 export AIHR_PGBIN="$PGBIN" AIHR_DUMP="$DUMP" AIHR_DUMP_RC="$DUMP_RC" AIHR_DB_URL="$DB_URL"
@@ -288,14 +293,27 @@ export AIHR_PROBE_ERR="$PROBE_ERR" AIHR_PROBE_RC="$PROBE_RC" AIHR_CONNECTION_HEL
 # The owner session opens a repeatable-read transaction, exports its snapshot, shells out to pg_dump
 # AND to the application-role probe with that snapshot, and only then counts. Everything below the
 # BEGIN describes one instant.
-blib_pg_run "$DB_URL" "$PGBIN/psql" -X -q -At -v ON_ERROR_STOP=1 > "$WORK/psql.log" 2>&1 <<PSQLEOF
+blib_pg_run "$DB_URL" "$PGBIN/psql" -X -q -At -v ON_ERROR_STOP=1 -v probe_user="$PROBE_USER" > "$WORK/psql.log" 2>&1 <<PSQLEOF
 BEGIN ISOLATION LEVEL REPEATABLE READ;
 SELECT pg_export_snapshot() AS snap \gset
-SELECT coalesce((SELECT id::text FROM public.tenant ORDER BY id LIMIT 1), '') AS probe_tenant \gset
+SELECT (length(:'probe_user')>0) AS has_probe_user \gset
+\if :has_probe_user
+SELECT jsonb_build_object('tenantId',u.tenant_id,'userId',u.id,
+ 'roles',coalesce((SELECT string_agg(DISTINCT r.role::text,',' ORDER BY r.role::text) FROM public.role_assignment r WHERE r.app_user_id=u.id AND r.tenant_id=u.tenant_id),''),
+ 'grants',coalesce((SELECT jsonb_agg(jsonb_build_object('role',r.role,'companyId',r.company_id) ORDER BY r.role,r.company_id) FROM public.role_assignment r WHERE r.app_user_id=u.id AND r.tenant_id=u.tenant_id),'[]'::jsonb)) AS probe_principal
+ FROM public.app_user u WHERE u.id=:'probe_user'::uuid AND u.archived_at IS NULL \gset
+\else
+\set probe_principal '{}'
+\endif
+SELECT coalesce(nullif(:'probe_principal'::jsonb->>'tenantId',''),(SELECT id::text FROM public.tenant ORDER BY id LIMIT 1),'') AS probe_tenant \gset
+\o $PRINCIPAL_OUT
+SELECT :'probe_principal';
+\o
+\setenv AIHR_PROBE_PRINCIPAL :probe_principal
 \setenv AIHR_SNAP :snap
 \setenv AIHR_TENANT :probe_tenant
 \! python3 "\$AIHR_CONNECTION_HELPER" --url-env AIHR_DB_URL -- "\$AIHR_PGBIN/pg_dump" --format=custom --compress=9 --no-password --snapshot="\$AIHR_SNAP" --file="\$AIHR_DUMP"; echo \$? > "\$AIHR_DUMP_RC"
-\! if [ -n "\$AIHR_APP_URL" ]; then python3 "\$AIHR_CONNECTION_HELPER" --url-env AIHR_APP_URL -- "\$AIHR_PGBIN/psql" -X -q -At -v ON_ERROR_STOP=1 -v snap="\$AIHR_SNAP" -v tenant="\$AIHR_TENANT" -f "\$AIHR_PROBE_SQL" > "\$AIHR_PROBE_OUT" 2> "\$AIHR_PROBE_ERR"; echo \$? > "\$AIHR_PROBE_RC"; else echo skipped > "\$AIHR_PROBE_RC"; fi
+\! if [ -n "\$AIHR_APP_URL" ]; then python3 "\$AIHR_CONNECTION_HELPER" --url-env AIHR_APP_URL -- "\$AIHR_PGBIN/psql" -X -q -At -v ON_ERROR_STOP=1 -v snap="\$AIHR_SNAP" -v tenant="\$AIHR_TENANT" -v principal="\$AIHR_PROBE_PRINCIPAL" -f "\$AIHR_PROBE_SQL" > "\$AIHR_PROBE_OUT" 2> "\$AIHR_PROBE_ERR"; echo \$? > "\$AIHR_PROBE_RC"; else echo skipped > "\$AIHR_PROBE_RC"; fi
 \o $TABLES_OUT
 $(blib_tables_sql)
 \o $SECURITY_OUT
@@ -363,6 +381,7 @@ TABLE_COUNT=$(grep -c '^table' "$TABLES_OUT" 2>/dev/null || echo 0)
   printf 'toc_entries\t%s\n' "$TOC"
   printf 'app_role\t%s\n' "$([ -n "${APP_URL:-}" ] && blib_url_user "$APP_URL" || echo '')"
   printf 'probe_status\t%s\n' "$PROBE_STATUS"
+  printf 'probe_principal\t%s\n' "$(cat "$PRINCIPAL_OUT")"
   cat "$HEAD_OUT"
   sort "$ROLES_OUT"
   sort "$TABLES_OUT"
