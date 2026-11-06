@@ -28,7 +28,7 @@ export default async function PayrollComparisonPage({params,searchParams}:{param
   catch(error){if(error instanceof MasterReportAccessError)notFound();return <div className="space-y-4"><PageHeader title={t('title')} back={{href:'/reports?cat=payroll',label:t('back')}}/><ErrorBanner message={publicErrorMessage(error)}/><Link href={'/reports/payroll-comparison/'+id}>{t('reset')}</Link></div>;}
   const {result,filters}=run,columns=payrollComparisonColumns(run.definition);
   const query=(changes:Record<string,string|number|null>={})=>{
-    const values={...filters,onlyVariances:filters.onlyVariances?'1':'0',...changes},search=new URLSearchParams();
+    const values={...filters,...(builtIn?{payItemCode:run.definition.payItemCode}:{}),onlyVariances:filters.onlyVariances?'1':'0',...changes},search=new URLSearchParams();
     for(const [key,value]of Object.entries(values))if(value!==null)search.set(key,String(value));return search.toString();
   };
   const input='mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm';
@@ -43,6 +43,9 @@ export default async function PayrollComparisonPage({params,searchParams}:{param
       <label className="text-sm font-medium">{t('company')}<select className={input} name="companyId" defaultValue={filters.companyId??''}><option value="">{t('allCompanies')}</option>{options.companies.map(company=><option key={company.id} value={company.id}>{company.name}</option>)}</select></label>
       <label className="text-sm font-medium">{t('previousPeriod')}<input className={input} type="month" name="previousPeriod" defaultValue={filters.previousPeriod??''} required/></label>
       <label className="text-sm font-medium">{t('currentPeriod')}<input className={input} type="month" name="currentPeriod" defaultValue={filters.currentPeriod??''} required/></label>
+      {builtIn&&<label className="text-sm font-medium">{t('payItem')}<select className={input} name="payItemCode" defaultValue={run.definition.payItemCode}>
+        {options.payItems.map(item=><option key={item.code} value={item.code}>{item.name}</option>)}
+      </select></label>}
       <label className="text-sm font-medium">{t('runs')}<select className={input} name="runType" defaultValue={filters.runType}><option value="regular">{t('regular')}</option><option value="all">{t('allRuns')}</option></select></label>
       <label className="text-sm font-medium">{t('payCycles')}
         <select className={input} name="cycleIds" multiple size={Math.min(4, Math.max(2, options.cycles.length))} defaultValue={filters.cycleIds ?? []}>

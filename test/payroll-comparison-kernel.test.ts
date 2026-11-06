@@ -104,6 +104,8 @@ describe('Payroll comparison consumes generated paid results under the saved rep
     await setCompensation(ctx, { employmentId: f.employee.employmentId, basicSalary: 9999,
       monthlyAllowance: 999, effectiveFrom: todayInKualaLumpur().slice(0, 7) + '-01' });
     const before = await payrollSnapshot(), view = await run(f.report.id), exported = await run(f.report.id, 'export');
+    const builtIn = await runPayrollComparisonReport(ctx, [b.companyId], { id: 'reconciliation', verb: 'export', filters: { currentPeriod, previousPeriod, payItemCode: 'ALLOWANCE' } });
+    expect(builtIn.result.rows).toEqual(exported.result.rows);
     expect(view.result.available).toBe(true);
     expect(view.result.rows).toHaveLength(1);
     expect(view.result.rows[0]).toMatchObject({ employmentId: f.employee.employmentId,
