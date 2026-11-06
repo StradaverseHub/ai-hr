@@ -354,8 +354,16 @@ try{
  async function languageJourney(page,user,path,phase,loadState){
   const catalog=locale=>JSON.parse(readFileSync(new URL('../../messages/'+locale+'.json',import.meta.url),'utf8'));
   const names={zh:'简体中文',en:'English'};
-  const draft=path==='/claims'?claimDraftForm(page).locator('textarea[name="description"]:visible'):null;
-  if(draft)await draft.fill('PERF_UNSUBMITTED_LANGUAGE_DRAFT');
+  const draft=path==='/claims'
+   ?claimDraftForm(page).and(page.locator('[data-claim-form-ready="true"]')).locator('textarea[name="description"]:visible')
+   :null;
+  let draftReadyWaitMs;
+  if(draft){
+   const readyStarted=performance.now();
+   await draft.waitFor({state:'visible',timeout:90000});
+   draftReadyWaitMs=performance.now()-readyStarted;
+   await draft.fill('PERF_UNSUBMITTED_LANGUAGE_DRAFT');
+  }
   for(const locale of ['zh','en']){
    await page.getByRole('button',{name:'Change language',exact:true}).click();
    const start=performance.now(),startedWith=loadState?.();
@@ -368,7 +376,7 @@ try{
    await page.getByRole('heading',{level:1,name:expected,exact:true}).waitFor({timeout:90000});
    await page.locator('main tbody tr').first().waitFor({state:'visible',timeout:90000});
    if(draft)assert.equal(await draft.inputValue(),'PERF_UNSUBMITTED_LANGUAGE_DRAFT','language switch discarded an unsubmitted draft');
-   (report.browserLanguageSwitches??=[]).push({role:user.role,path,phase,locale,startedWith,usableWith:loadState?.(),elapsedMs:performance.now()-start,translatedHeading:true,usable:true,draftRetained:!!draft});save();
+   (report.browserLanguageSwitches??=[]).push({role:user.role,path,phase,locale,startedWith,usableWith:loadState?.(),elapsedMs:performance.now()-start,translatedHeading:true,usable:true,draftRetained:!!draft,draftReadyWaitMs});save();
   }
  }
  // These six independent read-only contexts run concurrently, matching the loaded browser bound.
