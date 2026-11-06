@@ -49,15 +49,15 @@ export function readEmployeeHomeConfigurationEditor(ctx:SessionContext,p:{compan
  * and the same deterministic dashboard-role resolver used by the shell. No salary projection is read. */
 export async function readOwnEmployeeHomeConfiguration(ctx:SessionContext,requestedEmploymentId?:string){
  return withTenant(ctx,async tx=>{
-  const {identity,companyId}=await readEmployeeHomeIdentityContextTx(tx,ctx,requestedEmploymentId);
+  const {identity,companyId,hiredOn}=await readEmployeeHomeIdentityContextTx(tx,ctx,requestedEmploymentId);
   if(identity.employmentState!=='selected')throw new HomeAccessError(identity.employmentState==='choose'?'chooseEmployment':'employmentUnavailable');
   const employmentId=identity.selectedEmploymentId;
-  if(!companyId||!employmentId||!await isOwnProfileEditEmploymentTx(tx,ctx,employmentId))
+  if(!companyId||!employmentId||!hiredOn||!await isOwnProfileEditEmploymentTx(tx,ctx,employmentId))
    throw new HomeAccessError('employmentUnavailable');
   const [proof]=await tx.execute(sql`SELECT app.principal_snapshot_current() AS allowed`) as unknown as {allowed:boolean}[];
   if(!proof?.allowed)throw new HomeConfigurationAccessError();
   const view=await currentTx(tx,ctx,companyId,identity.role);
-  return {...view,employmentId};
+  return {...view,employmentId,hiredOn};
  },{readOnlySnapshot:true});
 }
 export async function saveEmployeeHomeConfiguration(ctx:SessionContext,p:{companyId:string;audienceRole:string;expectedOrdinal:number;configuration:unknown;reason:string}){

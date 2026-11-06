@@ -2,7 +2,6 @@
 import {and,eq,sql} from 'drizzle-orm';
 import {withTenant,type SessionContext} from '../db/client';
 import {person} from '../db/schema';
-import {requireOwnHomeSubject} from './employee-home';
 import {readEmployeeHomeGreetingIdentity} from './employee-home';
 import {readOwnEmployeeHomeConfiguration} from './employee-home-configuration';
 import {getEmployeeHomeDisplayPreferences} from './dashboard-prefs';
@@ -40,10 +39,10 @@ async function returnFromLeave(ctx:SessionContext,employmentId:string,today:stri
  * dates stay on their canonical business clock. Birthday is matched by month/day in the display zone;
  * Feb29 has no invented Feb28/Mar1 substitute. Anniversary uses this selected employment's hire date. */
 export async function readEmployeeHomeGreeting(ctx:SessionContext,employmentId:string,locale:Locale,now=new Date()):Promise<EmployeeHomeGreeting>{
- const subject=await requireOwnHomeSubject(ctx,employmentId);
- const [identity,view,preferences]=await Promise.all([
-  readEmployeeHomeGreetingIdentity(ctx,subject.employmentId),
-  readOwnEmployeeHomeConfiguration(ctx,subject.employmentId),
+ // Configuration already binds the exact own employment and reads its hire date.
+ const [view,identity,preferences]=await Promise.all([
+  readOwnEmployeeHomeConfiguration(ctx,employmentId),
+  readEmployeeHomeGreetingIdentity(ctx,employmentId),
   getEmployeeHomeDisplayPreferences(ctx),
  ]);
  const display=homeDisplayClock(now,preferences.timeZone??'Asia/Kuala_Lumpur'),today=todayInKualaLumpur(now);
@@ -53,13 +52,13 @@ export async function readEmployeeHomeGreeting(ctx:SessionContext,employmentId:s
     .from(person).where(and(eq(person.id,ctx.personId!),eq(person.tenantId,ctx.tenantId),sql`app.principal_snapshot_current() AND app.is_self_person(${person.id})`)).limit(1);
    if(!row)throw Error('Own greeting identity unavailable');return row.birthday;
   }),
-  returnFromLeave(ctx,subject.employmentId,today),
+  returnFromLeave(ctx,view.employmentId,today),
  ]);
- const firstDay=subject.hiredOn===today,years=Number(today.slice(0,4))-Number(subject.hiredOn.slice(0,4));
- const anniversary=years>0&&subject.hiredOn.slice(5)===today.slice(5);
+ const firstDay=view.hiredOn===today,years=Number(today.slice(0,4))-Number(view.hiredOn.slice(0,4));
+ const anniversary=years>0&&view.hiredOn.slice(5)===today.slice(5);
  const template=homeGreetingTemplate({hour:display.hour,birthday,firstDay,anniversary,returnedFromLeave},view.configuration.templates);
  // No recorded personal name is replaced with a guessed first token from the legal full name.
  const message=template&&identity.name?renderHomeTemplate(template,locale,template.key==='greetingAnniversary'?{name:identity.name,years}:{name:identity.name}):null;
- return {version:1,employmentId:subject.employmentId,serverNow:now.toISOString(),displayDate:display.date,timeZone:display.timeZone,
+ return {version:1,employmentId:view.employmentId,serverNow:now.toISOString(),displayDate:display.date,timeZone:display.timeZone,
   message,templateKey:message?template!.key as HomeGreetingTemplateKey:null,photoHref:identity.photoHref};
 }

@@ -102,7 +102,7 @@ export async function readEmployeeHomeIdentityTx(tx:Tx,ctx:SessionContext,reques
 
 /** Keep the dated company proof inside the authorized Home read for configuration callers. */
 export async function readEmployeeHomeIdentityContextTx(tx:Tx,ctx:SessionContext,requestedEmploymentId?:string):Promise<{
- identity:EmployeeHomeIdentity;companyId:string|null;
+ identity:EmployeeHomeIdentity;companyId:string|null;hiredOn:string|null;
 }>{
  const [snapshot]=await tx.execute<{safe:boolean}>(sql`select current_setting('transaction_isolation')='repeatable read'
   and current_setting('transaction_read_only')='on' as safe`);
@@ -120,7 +120,7 @@ export async function readEmployeeHomeIdentityContextTx(tx:Tx,ctx:SessionContext
   role=proof.role;
  }
  const companyId=selection.subject?.companyProof.companyId??null;
- return {companyId,identity:{version:1,
+ return {companyId,hiredOn:selection.subject?.hiredOn??null,identity:{version:1,
   role,
   employmentState:selection.state,selectedEmploymentId:selection.subject?.employmentId??null,
   companyEstablished:Boolean(companyId),
