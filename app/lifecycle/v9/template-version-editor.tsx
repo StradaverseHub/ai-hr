@@ -1,7 +1,8 @@
 'use client';
 import { useRef, useState, type ReactNode } from 'react';
-import { personnelMergeGroups } from './personnel-merge-fields';
+import { personnelMergeGroups, personnelMergeLabels } from '@/lib/lifecycle-v9-personnel-merge-fields';
 import { DocumentBody } from '@/components/lifecycle-v9/document-body';
+import { merge } from '@/lib/lifecycle-v9-model';
 import type { Block, Document, Field, TemplateVersion } from '@/lib/lifecycle-v9-model';
 
 function Input({ label, children }: { label: string; children: ReactNode }) { return <label className="v9-field"><span>{label}</span>{children}</label>; }
@@ -46,8 +47,12 @@ export function TemplateVersionEditor({ version, name, disabled, change,labels=d
   const updateField = (index: number, patch: Partial<Field>) => change(v => { Object.assign(v.fields[index], patch); });
   function addField() { change(v => { const id = crypto.randomUUID(); v.fields.push({ id, label: l('newField'), type: 'text', owner: defaultFieldOwner, pmKey: null, required: false, sensitive: false, options: [], section: 'main', width: 'full', columns: [], when: null }); v.blocks.push({ id: crypto.randomUUID(), type: 'field', fieldId: id, text: '', section: 'main' }); }); }
   const preview: Document = { id: 'preview', templateId: 'preview', version: version.version, name, status: 'draft', mergeValues: previewValues??{ 'company.name': '[Employee’s company]' }, blocks: version.blocks, fields: version.fields, values: {}, edits: {}, hrSignature: null, employeeSignature: null, createdAt: '', sentAt: null };
+  const missing = personnelPicker && previewValues ? Array.from(new Set([
+    ...version.blocks.flatMap(block => merge(block.text, previewValues).missing),
+    ...version.fields.flatMap(field => field.owner === 'pmLocked' && field.pmKey && !previewValues[field.pmKey] ? [field.pmKey] : []),
+  ])) : [];
   return <div className="v9-stack"><div role="tablist" aria-label={l('version')} className="v9-tabs">{(['content', 'fields', 'preview'] as const).map(t => <button type="button" role="tab" aria-selected={tab === t} key={t} onClick={() => setTab(t)}>{l(t)}</button>)}</div>
-    {tab === 'preview' ? <DocumentBody document={preview}/> : tab === 'content' ? <div className={personnelPicker ? 'grid gap-4 lg:grid-cols-[minmax(0,1fr)_18rem]' : ''}><div><ol className="v9-list">{version.blocks.map((block, index) => <li className="v9-stack" key={block.id}><h3>{index + 1}. {blockNames[block.type]}</h3>{['heading', 'subheading', 'text'].includes(block.type) && <Input label={`${blockNames[block.type]} ${index + 1}`}><textarea rows={block.type === 'text' ? 5 : 2} value={block.text} disabled={disabled} onFocus={event => { selection.current = { blockId: block.id, node: event.currentTarget }; }} onChange={e => updateBlock(index, { text: e.target.value })}/></Input>}
+    {tab === 'preview' ? <>{missing.length > 0 && <aside className="v9-panel" role="status"><strong>Missing Personnel values</strong><ul>{missing.map(key => <li key={key}>{personnelMergeLabels.get(key) ?? key}</li>)}</ul></aside>}<DocumentBody document={preview}/></> : tab === 'content' ? <div className={personnelPicker ? 'grid gap-4 lg:grid-cols-[minmax(0,1fr)_18rem]' : ''}><div><ol className="v9-list">{version.blocks.map((block, index) => <li className="v9-stack" key={block.id}><h3>{index + 1}. {blockNames[block.type]}</h3>{['heading', 'subheading', 'text'].includes(block.type) && <Input label={`${blockNames[block.type]} ${index + 1}`}><textarea rows={block.type === 'text' ? 5 : 2} value={block.text} disabled={disabled} onFocus={event => { selection.current = { blockId: block.id, node: event.currentTarget }; }} onChange={e => updateBlock(index, { text: e.target.value })}/></Input>}
       {block.type === 'field' && <Input label={l('fieldForBlock',index+1)}><select value={block.fieldId ?? ''} disabled={disabled} onChange={e => updateBlock(index, { fieldId: e.target.value })}><option value="">{l('choose')}</option>{version.fields.map(f => <option key={f.id} value={f.id}>{f.label}</option>)}</select></Input>}
       {block.type === 'fields' && <Input label={l('sectionForBlock',index+1)}><input className="v9-input" disabled={disabled} value={block.section} onChange={e => updateBlock(index, { section: e.target.value })}/></Input>}
       {block.type === 'table' && <><Input label={l('columnsForBlock',index+1)}><input className="v9-input" value={block.columns ?? ''} disabled={disabled} placeholder={l('columnPlaceholder')} onChange={e => updateBlock(index, { columns: e.target.value })}/></Input><Input label={l('rowsForBlock',index+1)}><textarea rows={4} value={block.rows ?? ''} disabled={disabled} placeholder={l('rowsPlaceholder')} onChange={e => updateBlock(index, { rows: e.target.value })}/></Input></>}

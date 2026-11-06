@@ -21,3 +21,5 @@ export const personnelMergeGroups: { label: string; fields: MergeField[] }[] = [
     { key: 'joiner.joinDate', label: 'Join date', type: 'date' }, { key: 'leaver.lastDay', label: 'Last working date', type: 'date' },
   ] },
 ];
+
+export const personnelMergeLabels = new Map(personnelMergeGroups.flatMap(group => group.fields.map(field => [field.key, field.label] as const)));

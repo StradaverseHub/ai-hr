@@ -1,3 +1,4 @@
+import { personnelMergeLabels } from '@/lib/lifecycle-v9-personnel-merge-fields';
 import type { Note as LifecycleNote } from './onboarding-model';
 import { resolveV9CaseFields, missingV9CaseFields, offCaseFormValues, type CaseField } from './lifecycle-v9-case-form';
 import { v9LiteralAddress } from './lifecycle-v9-recipient';
@@ -264,12 +265,12 @@ export function completeTask(c: Case, id: string, status: Task['status'], reason
   if (task.documentTemplate && status === 'done') throw new V9Error('Complete the linked document to finish this task.');
   task.status = status; task.reason = reason.trim(); appendLog(c, env, 'task.updated', `${task.name}: ${status}${reason ? ` · ${reason}` : ''}`);
 }
-export function merge(text: string, values: Record<string, string>, sensitive: ReadonlySet<string> = new Set()): { text: string; missing: string[] } {
+export function merge(text: string, values: Record<string, string>, sensitive: ReadonlySet<string> = new Set(), readableMissing = false): { text: string; missing: string[] } {
   const missing: string[] = [];
   const result = text.replace(/\{([a-zA-Z][a-zA-Z0-9_]*(?:\.[a-zA-Z0-9_]+)?)\}/g, (_, key: string) => {
     if (sensitive.has(key)) throw new V9Error('Sensitive fields cannot be included in an email.');
     if (values[key] !== undefined && values[key] !== '') return values[key];
-    if (!missing.includes(key)) missing.push(key); return `[${key}]`;
+    if (!missing.includes(key)) missing.push(key); return `[${(readableMissing && personnelMergeLabels.get(key)) || key}]`;
   });
   return { text: result, missing };
 }
