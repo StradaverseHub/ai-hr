@@ -55,6 +55,14 @@ describe('Rewards board items 8ad87ae8, 4e3e1af7, c28db2f0', () => {
     expect(entries).toEqual([expect.objectContaining({ unitId, subjectId: employmentId, subjectName: 'Reward Employee', eventType: 'reward-unit.recommendation-updated' })]);
     expect(entries[0]).not.toHaveProperty('payload');
     expect(await rewardReviewActivity(bu, [unitId], undefined, employmentId)).toEqual([]);
+    const [operator] = await owner.db.insert(schema.person).values({ tenantId: b.tenantId, fullName: 'Group Rewards operator', primaryEmail: 'group-operator@rewards.test' }).returning();
+    const userId = await createAppUser(b.tenantId, operator.id, 'employee');
+    await owner.db.insert(schema.rewardMember).values({ tenantId: b.tenantId, unitId, userId, role: 'gr' });
+    const gr = { ...admin, userId, personId: operator.id, roles: ['employee'], grants: [{role:'employee',companyId:null}] } satisfies SessionContext;
+    expect(await rewardReviewActivity(gr, [unitId], undefined, employmentId)).toEqual([
+      expect.objectContaining({ unitId, subjectId: employmentId, subjectName: 'Reward Employee' }),
+    ]);
+
   });
 
   it('lists a saved promotion across reviews using the same visible person and grade as the unit', async () => {

@@ -9,7 +9,9 @@ owning release gate.
 
 The feedback candidate reserves `2404_payroll_reconciliation_remark`, idx `1604`,
 when `1793330001804`, SQL SHA-256
-`a0b5e3df73af733fd19ec72c1333cbdf21e9a932123be476ea86b4bfafda3974`.
+`a0b5e3df73af733fd19ec72c1333cbdf21e9a932123be476ea86b4bfafda3974`, and
+`2405_rewards_review_activity`, idx `1605`, when `1793330001805`, SHA-256
+`fb8f6d1be9e24589969329324174f74a2c3516dedf041ae8dad37f60d19afc20`.
 The fresh main/alpha source and exact read-only staging ledger match at 697 entries
 with installed maximum `1793330001700`. Readable peer worktree claims extend
 through 2403 / idx 1603. Recheck the integration refs, peer claims and installed

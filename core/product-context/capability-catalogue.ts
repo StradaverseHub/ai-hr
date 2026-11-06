@@ -83,7 +83,7 @@ const PERSONNEL='/admin/personnel/import';
 /** Every import a person can run from a product page. A new import owner must be added here or to IMPORT_SUPPORT_FILES
  * (test/capability-catalogue-drift.test.ts fails otherwise). */
 export const IMPORT_OWNERS:readonly ImportOwner[]=Object.freeze(([
- {id:'shift_definitions',area:'attendance',title:'Import shift definitions from an Excel workbook',page:'/admin/attendance',template:'/admin/attendance/shift-import/template',owner:'core/shift-import.ts#confirmShiftImport',access:'admin',module:null},
+ {id:'shift_definitions',area:'attendance',title:'Import shift definitions from an Excel workbook',page:'/admin/attendance',template:'/admin/attendance/shift-import/template',owner:'core/shift-import.ts#confirmShiftImport',access:'admin',module:'attendance'},
  {id:'employee_records',area:'people',title:'Import new employees with every detail from a spreadsheet',page:PERSONNEL,template:null,owner:'core/import.ts#commitEmployeeImport',access:'admin',module:null,action:'employees.import'},
  {id:'employee_profile',area:'people',title:'Import profile updates for existing employees',page:PERSONNEL,template:null,owner:'core/import-sections.ts#commitSectionImport',access:'admin',module:null},
  {id:'employee_movement',area:'people',title:'Import employee movements (transfers, promotions and other dated changes)',page:PERSONNEL,template:'/admin/personnel/import/movement',owner:'core/movement-import.ts#commitMovementImport',access:'admin',module:null},

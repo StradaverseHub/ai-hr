@@ -43,7 +43,7 @@ export async function RewardReviewActivity({ session, value, reviewId, actorId, 
         {(['time', 'review', 'actor', 'subject', 'event', 'reason'] as const).map(key => <th className="p-3" scope="col" key={key}>{t(key)}</th>)}
       </tr></thead>
       <tbody className="divide-y divide-border">{entries.map(entry => <tr key={entry.id}>
-        <td className="p-3 whitespace-nowrap">{date.format(entry.time)}</td>
+        <td className="p-3 whitespace-nowrap">{date.format(new Date(entry.time))}</td>
         <td className="p-3">{reviews.get(entry.unitId)?.unit}</td>
         <td className="p-3">{entry.actorName ?? rewards('reviewList.restrictedName')}</td>
         <td className="p-3">{entry.subjectId && entry.subjectName ? <Link className="text-primary underline" href={activityUrl(entry.subjectId)}>{entry.subjectName}</Link> : '—'}</td>

@@ -150,7 +150,7 @@ const AREA_MODULE:Readonly<Record<string,string>>={'/attendance':'attendance','/
 const under=(route:string,area:string)=>route===area||route.startsWith(area+'/');
 /** AI Centre restructure (owner decisions 26–29, 4 Nov 2026): the guarded forward stubs of removed pages. Each only runs
  * its guard and forwards to the page that owns the fact now, so it is not a link target; a reply links the owner. */
-export const FORWARD_STUBS:ReadonlySet<string>=new Set(['/control-tower','/control-tower/actions','/control-tower/opportunities',
+export const FORWARD_STUBS:ReadonlySet<string>=new Set(['/control-tower','/control-tower/actions','/control-tower/opportunities','/payroll/reports',
  '/control-tower/agents/inventory','/control-tower/agents/orchestrator']);
 /** Native workflow grants and an active View As session cannot be inferred from a coarse role or module. */
 export const NATIVE_SCOPE_ONLY_PAGES:ReadonlySet<string>=new Set([
