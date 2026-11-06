@@ -18,6 +18,7 @@ import {withTenant,type SessionContext} from '../../db/client';
 import {adminCtx,closeAll,migrateTestDb,owner,resetDb,seedBase} from '../harness';
 import {personnelNativeAggregatePrototype} from './personnel-native-aggregate-prototype';
 import {personnelDatedTagsPrototype} from './personnel-dated-tags-prototype';
+import {personnelNarrowOverviewProbe} from './personnel-narrow-overview-probe';
 const file='test/performance/personnel-native-list-plan.test.ts';
 const selected:unknown=JSON.parse(process.env.AIHR_FOCUSED_TESTS??'[]');
 const requested=process.env.GITHUB_ACTIONS==='true'&&Array.isArray(selected)&&selected.length===1&&selected[0]===file;
@@ -180,6 +181,42 @@ it.skipIf(!requested)('profiles initial/search/deep Personnel pages with fifty t
    await measureProjectionStage('set-effective-company-directory-json',sql`
     select count(*)::int as rows from ${prototype.source('effectiveCompany',asOf,[b.companyId],null)}
    `,count);
+   const narrowParity=[
+    {mode:'initial',limit:10,offset:0,ids:sample.slice(0,10),total:25},
+    {mode:'independent-facets',limit:10,offset:0,pageQuery:'PERF000000025',companySort:true as const,ids:sample.slice(-1),total:1},
+    {mode:'deep',limit:10,offset:20,ids:sample.slice(20),total:25},
+    {mode:'empty',limit:10,offset:30,ids:[],total:25},
+   ];
+   for(const {mode,ids,total,...input} of narrowParity){
+    phase('live-overview-narrow-parity-'+mode);
+    const query={...input,date:asOf,scope:[b.companyId],subjects:sample};
+    const baseline=await personnelNarrowOverviewProbe(ctx,prototype,'baseline',query);
+    const candidate=await personnelNarrowOverviewProbe(ctx,prototype,'narrow',query);
+    expect(candidate).toEqual(baseline);
+    expect(candidate.pageIds).toEqual(ids);
+    expect(candidate.rows.map(row=>row?.employmentId)).toEqual(ids);
+    expect(candidate.total).toBe(total);
+    expect(Object.values(candidate.byStatus).reduce((sum,value)=>sum+value,0)).toBe(25);
+    expect(candidate.options).not.toHaveLength(0);
+   }
+   report.liveOverviewNarrowSampleParity=narrowParity.map(({mode})=>mode);save();
+   const narrowMeasurements:{mode:string;elapsedMs:number;total:number;pageRows:number;targetMet:boolean}[]=[];
+   for(const {mode,q,offset,expectedIds} of liveOverviewCases){
+    phase('live-overview-narrow-'+mode);
+    const began=performance.now();
+    let result;
+    try{result=await personnelNarrowOverviewProbe(ctx,prototype,'narrow',{
+     date:asOf,scope:[b.companyId],subjects:null,pageQuery:q,facetQuery:q,limit:25,offset,
+    });}
+    catch(error){recordOverviewFailure('narrow-'+mode,'projection-stage',began,error);continue;}
+    const elapsedMs=performance.now()-began,expectedTotal=q?1:count;
+    expect(result.pageIds).toEqual(expectedIds);
+    expect(result.rows.map(row=>row?.employmentId)).toEqual(expectedIds);
+    expect(result.total).toBe(expectedTotal);
+    expect(Object.values(result.byStatus).reduce((sum,value)=>sum+value,0)).toBe(expectedTotal);
+    narrowMeasurements.push({mode,elapsedMs,total:result.total,pageRows:result.rows.length,targetMet:elapsedMs<1000});
+    report.liveOverviewNarrow=narrowMeasurements;save();
+   }
   }finally{await prototype.drop();}
   report.liveOverviewExplainStatementTimeoutMs=45000;
   for(const {mode,q,offset} of liveOverviewCases){

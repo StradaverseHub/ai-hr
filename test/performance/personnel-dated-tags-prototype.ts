@@ -112,6 +112,38 @@ const visibleAssignment = `   LEFT JOIN LATERAL (
      ORDER BY x.valid_from DESC,x.id DESC LIMIT 1
    ) a ON true`;
 
+// The narrow variant intentionally supports only name/code/email search, dated company, and
+// lifecycle status facets. It retains enough dated assignment facts for exact option tuples.
+const narrowCandidates = ` candidates AS MATERIALIZED (
+   SELECT jsonb_build_object('employmentId',e.id,'name',p.full_name,'email',p.primary_email,
+      'employeeCode',e.employee_code,'finalConfirmationDate',e.final_confirmation_date,
+      'confirmationDate',e.confirmation_date,'probationEndDate',e.probation_end_date,
+      'provisionalEndOn',e.provisional_end_on,'resignationDate',e.resignation_date,
+      'lastWorkingDate',e.last_working_date,'terminatedOn',e.terminated_on,
+      'blacklistedAt',e.blacklisted_at) AS value,
+      e.id,e.tenant_id,e.company_id,e.hired_on,e.grade_id,e.confirmation_date,e.final_confirmation_date
+   FROM public.employment e
+   JOIN public.person p ON p.id=e.person_id AND p.tenant_id=e.tenant_id
+   JOIN permitted_companies pc ON pc.id=e.company_id
+   WHERE e.tenant_id=app.current_tenant_id() AND e.voided_at IS NULL
+     AND (p_scope IS NULL OR pc.id=ANY(p_scope))
+     AND (p_subjects IS NULL OR e.id=ANY(p_subjects))
+ ),
+ -- Fence the scoped candidates before the raising resolver, then retain its result once per row.
+`;
+
+const narrowOutput = ` SELECT v.value||jsonb_build_object(
+   'companyId',v.dated_company_id,'company',co.legal_name,
+   'departmentId',v.department_id,'employmentType',v.employment_type,
+   'businessUnitId',v.dated_bu_id,'businessUnit',bu.name,
+   'positionId',v.position_id,'position',COALESCE(NULLIF(btrim(pos.label),''),pos.title)
+ )
+ FROM visible v
+ JOIN public.company co ON co.id=v.dated_company_id AND co.tenant_id=v.tenant_id
+ LEFT JOIN public.business_unit bu ON bu.id=v.dated_bu_id AND bu.tenant_id=v.tenant_id
+ LEFT JOIN public.position pos ON pos.id=v.position_id AND pos.tenant_id=v.tenant_id
+`;
+
 export async function personnelDatedTagsPrototype() {
  const suffix=randomUUID().replaceAll('-','');
  const canonical='app.personnel_filter_rows(date,uuid[])';
@@ -119,6 +151,8 @@ export async function personnelDatedTagsPrototype() {
   baseline:'app.perf_personnel_dated_base_'+suffix,
   candidate:'app.perf_personnel_dated_batch_'+suffix,
   effectiveCompany:'app.perf_personnel_dated_set_'+suffix,
+  narrow:'app.perf_personnel_dated_narrow_'+suffix,
+  pageDetails:'app.perf_personnel_page_details_'+suffix,
  };
  const signature='(date,uuid[],uuid[])';
  const scopeFence='   WHERE p_scope IS NULL OR pc.id=ANY(p_scope)';
@@ -139,7 +173,19 @@ export async function personnelDatedTagsPrototype() {
   const effective=batched.replace(scalarDated,effectiveCompanyDated)
    .replace(legacyAssignment,'').replace('legacy.business_unit_id','d.legacy_business_unit_id')
    .replace(visibleAssignment,'   LEFT JOIN latest_tied_assignment a ON a.employment_id=b.id');
-  for(const [name,body] of [[names.baseline,sampled],[names.candidate,batched],[names.effectiveCompany,effective]]){
+  const admissionStart=batched.indexOf(' admitted AS MATERIALIZED (');
+  const datedStart=batched.indexOf(scalarDated);
+  const outputStart=batched.indexOf(" SELECT v.value||jsonb_build_object(");
+  expect(admissionStart).toBeGreaterThan(0);
+  expect(datedStart).toBeGreaterThan(admissionStart);
+  expect(outputStart).toBeGreaterThan(datedStart);
+  const narrow=batched.slice(0,admissionStart)+narrowCandidates+batched.slice(datedStart,outputStart)+narrowOutput;
+  const baseCall='app.access_workforce_list_rows() AS a(value)';
+  expect(sampled.split(baseCall)).toHaveLength(2);
+  // Keep the complete native DTO; the canonical private row owner sees only the chosen page IDs.
+  const pageDetails=sampled.replace(baseCall,'app._access_workforce_list_rows(p_subjects) AS a(value)');
+  for(const [name,body] of [[names.baseline,sampled],[names.candidate,batched],[names.effectiveCompany,effective],
+      [names.narrow,narrow],[names.pageDetails,pageDetails]]){
    await tx.unsafe('create function '+name+'(p_as_of date,p_scope uuid[],p_subjects uuid[]) returns setof jsonb language sql stable security definer set search_path=pg_catalog,public,app as $prototype$'+body+'$prototype$');
    await tx.unsafe('revoke all on function '+name+signature+' from public; grant execute on function '+name+signature+' to ai_hr_app');
    const [properties]=await tx<{owner:string;definer:boolean;app:boolean;public_execute:boolean}[]>`select proowner::regrole::text as owner,prosecdef as definer,
