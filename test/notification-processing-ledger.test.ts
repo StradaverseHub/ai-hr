@@ -61,6 +61,15 @@ it('does not expose or acknowledge another actor’s projection work through the
  });
  const [pending]=await owner.client`select disposition from notification_event_processing where event_id=${id}::uuid`;expect(pending.disposition).toBeNull();
 });
+it('allows owner event retention while retaining already delivered notifications',async()=>{
+ const {b,ctx,subject}=await fixture(),id=await insert(b.tenantId,subject.employmentId);
+ expect((await dispatchNotifications(ctx)).created).toBe(1);
+ expect(await owner.client`select event_id from notification_event_processing where event_id=${id}::uuid`).toHaveLength(1);
+ await expect(withTenant(ctx,tx=>tx.execute(sql`delete from notification_event_processing where event_id=${id}::uuid`))).rejects.toThrow();
+ expect(await owner.client`delete from domain_event where id=${id}::uuid returning id`).toEqual([{id}]);
+ expect(await owner.client`select event_id from notification_event_processing where event_id=${id}::uuid`).toHaveLength(0);
+ expect(await owner.client`select source_event_id from notification where source_event_id=${id}::uuid`).toEqual([{source_event_id:id}]);
+});
 it('upgrades a populated cursor without replaying historical events and enqueues later writes atomically',async()=>{
  const {b,subject}=await fixture();const stop=new Error('Rollback isolated migration rehearsal');
  await expect(owner.client.begin(async tx=>{

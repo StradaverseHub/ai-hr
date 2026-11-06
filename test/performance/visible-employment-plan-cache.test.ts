@@ -103,7 +103,8 @@ it('reuses visibility plans without caching a caller or changing native results'
   await owner.client.unsafe(installed.ddl);
  }
  expect(await definition()).toEqual(installed);
- writeFileSync(join(process.env.AIHR_FOCUSED_EVIDENCE_DIR!,'visibility-plan-cache.json'),
+ const evidenceDir=process.env.AIHR_FOCUSED_EVIDENCE_DIR;
+ if(evidenceDir)writeFileSync(join(evidenceDir,'visibility-plan-cache.json'),
   JSON.stringify({kind:'COMPONENT_ONLY',principals:users.length,activeProbes:probes.length,phases,onlyDeliberateAttributeChange:'prolang; SQL body and configuration preserved',installedFunctionRestored:true},null,2));
  }finally{await owner.client.unsafe(installed.ddl);expect(await definition()).toEqual(installed);}
 },480000);

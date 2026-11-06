@@ -45,6 +45,13 @@ describe('Home other assigned-decision metadata owners',()=>{
    expect(new Set(rows.map(r=>r.id))).toEqual(new Set(heads.map(r=>r.id)));
    expect(await pendingAttendanceTaskMetadata(ctx,[])).toEqual([]);
    await expect(pendingAttendanceTaskMetadata({...ctx,personId:e.personId})).rejects.toThrow(AssignedWorkPrincipalUnavailableError);
+   await owner.db.execute(sql`REVOKE SELECT(status) ON public.attendance_correction FROM ai_hr_app`);
+   try {
+    await expect(withTenant(ctx,tx=>tx.execute(sql`select * from app.attendance_pending_visible_headers(null::uuid)`)))
+      .rejects.toMatchObject({cause:{code:'42501'}});
+   } finally {
+    await owner.db.execute(sql`GRANT SELECT(status) ON public.attendance_correction TO ai_hr_app`);
+   }
   });
   const inbox=await listPendingTasks(ctx,undefined,{attendance:true,claims:false,performance:false,rewards:false});
   expect(inbox.filter(t=>t.kind==='attendance')).toHaveLength(1201);

@@ -5673,7 +5673,7 @@ export const notificationCursor = pgTable(
 
 // Durable per-consumer projection intent; created atomically by the source-event trigger.
 export const notificationEventProcessing = pgTable('notification_event_processing', {
- tenantId:tenantId(),eventId:uuid('event_id').notNull().references(()=>domainEvent.id),
+ tenantId:tenantId(),eventId:uuid('event_id').notNull().references(()=>domainEvent.id,{onDelete:'cascade'}),
  consumer:text('consumer').notNull(),eventSequence:bigint('event_sequence',{mode:'number'}).notNull(),
  disposition:text('disposition'),processedAt:timestamp('processed_at',{withTimezone:true}),
 },t=>[primaryKey({columns:[t.eventId,t.consumer]}),

@@ -67,5 +67,6 @@ it('skips impossible Contract roles while retaining native navigation and live a
   for(const original of originals)await owner.client.unsafe(original.ddl);
   await measure('restored');
  }finally{for(const original of originals){await owner.client.unsafe(original.ddl);expect(await definition(original.signature)).toEqual({ddl:original.ddl,attributes:original.attributes});}}
- writeFileSync(join(process.env.AIHR_FOCUSED_EVIDENCE_DIR!,'contract-navigation-guards.json'),JSON.stringify({kind:'COMPONENT_ONLY',principals:500,activeProbes:100,phases,ownerAclConfigPreserved:true,allDefinitionsRestored:true,limitations:'No Contract cases or canonical GBS/PBP fixture; positive workflow/assignment functional suites remain required before integration.'},null,2));
+ const evidenceDir=process.env.AIHR_FOCUSED_EVIDENCE_DIR;
+ if(evidenceDir)writeFileSync(join(evidenceDir,'contract-navigation-guards.json'),JSON.stringify({kind:'COMPONENT_ONLY',principals:500,activeProbes:100,phases,ownerAclConfigPreserved:true,allDefinitionsRestored:true,limitations:'No Contract cases or canonical GBS/PBP fixture; positive workflow/assignment functional suites remain required before integration.'},null,2));
 },480000);

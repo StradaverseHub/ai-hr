@@ -5097,6 +5097,20 @@
       "when": 1793330002125,
       "tag": "2505_workforce_picker_facts",
       "breakpoints": true
+    },
+    {
+      "idx": 1826,
+      "version": "7",
+      "when": 1793330002126,
+      "tag": "2506_notification_receipt_retention",
+      "breakpoints": true
+    },
+    {
+      "idx": 1827,
+      "version": "7",
+      "when": 1793330002127,
+      "tag": "2507_attendance_header_column_grants",
+      "breakpoints": true
     }
   ]
 }

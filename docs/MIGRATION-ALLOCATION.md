@@ -1,5 +1,15 @@
 # Coordinated migration reservations
 
+## Architecture correctness repairs — 7 November 2026 (uninstalled)
+
+- `2506_notification_receipt_retention`, idx 1826, when 1793330002126, SQL SHA-256 `764bd405d99e398e35f2282202f07daf9c5f732cdbd67d19b35862849bfc88cf`.
+- `2507_attendance_header_column_grants`, idx 1827, when 1793330002127, SQL SHA-256 `66f567a34ad2fd9cf17f181d7ec15b6b19f435890c0a55e6be219ddb3c28f8aa`.
+
+Fresh main/alpha and local claims covered 2,962 distinct heads, 663 migration trees,
+471 journals and 333 readable worktrees. The prior maxima were 2505 / 1825 /
+1793330002125, including literal claims from one malformed foreign journal.
+Recheck the target ledger and current reservations before installation.
+
 ## Minimal Workforce picker projection — 6 November 2026 (uninstalled candidate)
 
 `codex/personnel-snapshot-reads-20261106` reserves `2505_workforce_picker_facts`,

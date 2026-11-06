@@ -26,4 +26,6 @@ export const PERFORMANCE_MIGRATION_IDENTITIES = [
  {idx:1823,version:'7',when:1793330002123,tag:'2503_attendance_pending_visible_headers',breakpoints:true,hash:'fca8d6436f259f4955e78da75155836083f5f970d9f5640377ffb89ce7ca7718'},
  {idx:1824,version:'7',when:1793330002124,tag:'2504_notification_event_processing',breakpoints:true,hash:'a473a533cd967d7ad2ac971e24b5141af87d25967b84b3ca491e42fa9f1d81ce'},
  {idx:1825,version:'7',when:1793330002125,tag:'2505_workforce_picker_facts',breakpoints:true,hash:'af1fa920e5ded85fbb0c5f4aa5d016d341a519d38e461e5926301780a0ee49d4'},
+ {idx:1826,version:'7',when:1793330002126,tag:'2506_notification_receipt_retention',breakpoints:true,hash:'764bd405d99e398e35f2282202f07daf9c5f732cdbd67d19b35862849bfc88cf'},
+ {idx:1827,version:'7',when:1793330002127,tag:'2507_attendance_header_column_grants',breakpoints:true,hash:'66f567a34ad2fd9cf17f181d7ec15b6b19f435890c0a55e6be219ddb3c28f8aa'},
 ] as const;
