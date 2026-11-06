@@ -333,6 +333,15 @@ try{
  }
  async function visit(page,user,path,phase='baseline',signIn=false,loadState){
   lastPage=page;const stopHomeTracking=homeHttp.track(page,user,path);
+  const trackHomePrefetch=path==='/'&&phase==='baseline'&&!signIn;
+  let rscRequests=0,prefetchRequests=0;
+  const observePrefetch=request=>{
+   if(new URL(request.url()).origin!==base)return;
+   const headers=request.headers();
+   if(headers.rsc==='1')rscRequests++;
+   if(headers['next-router-prefetch']!==undefined||headers['next-router-segment-prefetch']!==undefined)prefetchRequests++;
+  };
+  if(trackHomePrefetch)page.on('request',observePrefetch);
   const start=performance.now();let response,signInTiming,visitStage=signIn?'sign-in':'navigation';
   const startedWith=loadState?.();
   try{
@@ -445,7 +454,14 @@ try{
    detail.dom=await page.locator('body').evaluate(body=>({readyState:document.readyState,headingCount:body.querySelectorAll('h1').length,mainCount:body.querySelectorAll('main').length,
     iframeCount:body.querySelectorAll('iframe').length,busyCount:body.querySelectorAll('[aria-busy="true"]').length,alertCount:body.querySelectorAll('[role="alert"]').length}),undefined,{timeout:3000}).catch(()=>null);
    save();throw error;
-  }finally{stopHomeTracking();}
+  }finally{
+   stopHomeTracking();
+   if(trackHomePrefetch){
+    page.off('request',observePrefetch);
+    (report.homeNavigationPrefetch??=[]).push({role:user.role,rscRequests,prefetchRequests});
+    save();
+   }
+  }
  }
  function claimDraftForm(page){
   // Scope interactions to the active composer, excluding retained/overlay form copies.
