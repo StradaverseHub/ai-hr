@@ -783,6 +783,10 @@ function shiftUniqueError(e: unknown, n: { name: string; code: string }): Error 
   return e as Error;
 }
 
+export function validateShiftImportInput(input: ShiftInput): void {
+  normalizeShiftInput(input);
+}
+
 export async function createShift(ctx: SessionContext, p: ShiftInput) {
   p=structuredClone(p);
   ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
@@ -881,7 +885,7 @@ export async function createShift(ctx: SessionContext, p: ShiftInput) {
 // tenant-wide library, so "create the same template in several companies" is meaningless — a template is
 // created once and assignable to any employee. Use createShift (tenant-global).
 
-export async function updateShift(ctx: SessionContext, p: { shiftId: string } & Omit<ShiftInput, 'companyId'>) {
+export async function updateShift(ctx: SessionContext, p: { shiftId: string; expectedImportSnapshot?: string } & Omit<ShiftInput, 'companyId'>) {
   p=structuredClone(p);
   ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   const n = normalizeShiftInput(p);
@@ -899,8 +903,14 @@ export async function updateShift(ctx: SessionContext, p: { shiftId: string } & 
       .select()
       .from(shift)
       .where(eq(shift.id, p.shiftId))
-      .limit(1);
+      .limit(1)
+      .for('update');
     if (!before) throw new Error('Shift not found (or not visible)');
+    if (p.expectedImportSnapshot !== undefined &&
+        (before.archivedAt || p.expectedImportSnapshot !== JSON.stringify(before))) {
+      throw new Error('This shift changed after preview. Preview the workbook again.');
+    }
+
     if(n.ruleId!==undefined) await assertRotationPoolWriteTx(tx,before.ruleId,n.ruleId);
     // r429 — THE WHOLE-SHIFT SWITCH CAN NO LONGER BE TURNED ON. The form never offers it; the only shifts
     // still carrying flexible_break_enabled = true are the ones migration 0519 could not convert exactly,
