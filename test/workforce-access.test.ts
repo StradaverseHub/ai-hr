@@ -134,6 +134,9 @@ describe('fresh Workforce-purpose record consumers',()=>{
   // Screen pickers receive fewer identifiers than the independent payroll/attendance picker.
   const picker=await listWorkforcePickOptions(admin(),[b.companyId]);
   expect(picker.map(row=>row.employmentId).sort()).toEqual([a.employmentId,z.employmentId].sort());
+  const pickerKeys=['employmentId','name','employeeCode','companyId','company','department','terminatedOn'];
+  const projected=rows.map(({value})=>Object.fromEntries(pickerKeys.map(key=>[key,value[key]])));
+  expect(picker).toEqual(expect.arrayContaining(projected));expect(picker).toHaveLength(projected.length);
   for(const row of picker)expect(Object.keys(row).sort()).toEqual(['employmentId','name','employeeCode','companyId','company','department','terminatedOn'].sort());
  });
  it('applies a new read denial to the row, count, switcher and detail in the same signed-in context',async()=>{

@@ -1,5 +1,16 @@
 # Coordinated migration reservations
 
+## Minimal Workforce picker projection — 6 November 2026 (uninstalled candidate)
+
+`codex/personnel-snapshot-reads-20261106` reserves `2505_workforce_picker_facts`,
+idx 1825 / when 1793330002125 / SQL SHA-256 `af1fa920e5ded85fbb0c5f4aa5d016d341a519d38e461e5926301780a0ee49d4`.
+Fresh main/alpha refs plus all available refs/worktrees covered 5415 refs, 468 journals,
+660 migration trees and 330 readable worktrees. Observed maxima 2504 / 1824 /
+1793330002124; one invalid foreign journal was preserved and literal claims included.
+This projection preserves the full authorized picker population with seven existing fields;
+it avoids building unused full-profile JSON. Recheck installed ledger and reservations before
+integration or installation. Production deployment is held.
+
 ## Complete notification consumption — 6 November 2026 (uninstalled candidate)
 
 `codex/architecture-correctness-20261106` reserves `2504_notification_event_processing`,

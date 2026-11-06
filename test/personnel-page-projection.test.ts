@@ -5,7 +5,7 @@ import {afterAll,beforeAll,expect,it} from 'vitest';
 import {sql} from 'drizzle-orm';
 import * as s from '../db/schema';
 import {withTenant} from '../db/client';
-import {countEmployeesByStatus,listEmployeesPage,personnelListPage,type EmployeeListFilters} from '../core/read';
+import {countEmployeesByStatus,listEmployeesPage,personnelListPage,personnelListPageSql,type EmployeeListFilters} from '../core/read';
 import {headcountFilters,parsePersonnelListQuery,type PersonnelSearchParams} from '../app/admin/personnel/list-query';
 import {adminCtx,closeAll,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
 
@@ -85,3 +85,9 @@ it('retains native scope, exact rows/order, pager and status facets while evalua
  if(process.env.AIHR_FOCUSED_EVIDENCE_DIR)writeFileSync(process.env.AIHR_FOCUSED_EVIDENCE_DIR+'/personnel-page-projection.json',JSON.stringify(report));
  if(profile){expect(before).toBeGreaterThanOrEqual(3);expect(after!-before!).toBe(1);}
 },240000);
+
+it('does not broaden meaningful filters that the typed diagnostic projection cannot represent',()=>{
+ const page={limit:25,offset:0};
+ expect(()=>personnelListPageSql({...page,qualityFlags:['missing_business_unit']},{})).toThrow('does not support');
+ expect(()=>personnelListPageSql(page,{privateSearch:'a'.repeat(43)})).toThrow('does not support');
+});

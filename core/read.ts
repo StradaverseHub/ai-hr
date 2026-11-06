@@ -756,8 +756,14 @@ function workforcePickerColumns(){return {
 };}
 export function listWorkforcePickOptions(ctx: SessionContext, companyIds?: string[]) {
   return withPersonnelRead(ctx, async tx => {
-    return tx.select(workforcePickerColumns()).from(workforceListSource).where(workforceListWhere({ companyIds }, workforceListColumns()))
-      .orderBy(workforceListValue('name'), workforceListUuid('employmentId'));
+    const scope=companyIds===undefined?sql`null::uuid[]`:sql`array[${sql.join(companyIds.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[]`;
+    return tx.select({
+      employmentId:sql<string>`workforce_row.employment_id`,name:sql<string>`workforce_row.name`,
+      employeeCode:sql<string|null>`workforce_row.employee_code`,companyId:sql<string>`workforce_row.company_id`,
+      company:sql<string>`workforce_row.company`,department:sql<string|null>`workforce_row.department`,
+      terminatedOn:sql<string|null>`workforce_row.terminated_on::text`,
+    }).from(sql`app.access_workforce_picker_facts(${scope}) workforce_row`)
+      .orderBy(sql`workforce_row.name`,sql`workforce_row.employment_id`);
   });
 }
 /** Resolve an explicit bounded identity set through the same current Workforce projection. */
@@ -946,8 +952,11 @@ export function personnelListPageSql(
 ):SQL{
   if(!Number.isSafeInteger(page.limit)||page.limit<0||page.limit>ALL_ROW_CEILING||
      !Number.isSafeInteger(page.offset)||page.offset<0)throw new RangeError('Invalid Personnel page');
+    // The shared query parser emits [] for absent multiselect filters. These are no-op filters,
+    // not unsupported restrictions. Nonempty unsupported filters must still be refused.
+    const active=(value:EmployeeListFilters[keyof EmployeeListFilters])=>value!==undefined&&(!Array.isArray(value)||value.length>0);
     if (personnelFactFilterKeys.some(key => !personnelFactFilterSupport[key]
-      && (page[key] !== undefined || facets[key] !== undefined))) {
+      && (active(page[key]) || active(facets[key])))) {
       throw new RangeError('The typed Personnel projection does not support these filters');
     }
     const columns=personnelFactColumns();

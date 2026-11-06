@@ -5069,6 +5069,13 @@
       "when": 1793330002124,
       "tag": "2504_notification_event_processing",
       "breakpoints": true
+    },
+    {
+      "idx": 1825,
+      "version": "7",
+      "when": 1793330002125,
+      "tag": "2505_workforce_picker_facts",
+      "breakpoints": true
     }
   ]
 }

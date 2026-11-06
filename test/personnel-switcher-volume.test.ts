@@ -59,12 +59,12 @@ it('keeps the exact authorized search matches with bounded response at retained 
  expect(legacy).toHaveLength(employees.length);
  const fields=({employmentId,name,employeeCode,company,department}:typeof legacy[number])=>({employmentId,name,employeeCode,company,department});
  const legacyBytes=Buffer.byteLength(JSON.stringify(legacy.map(fields)));
- const search=Reflect.get(readers,'searchWorkforceEmployeesTx') as undefined | ((ctx:ReturnType<typeof adminCtx>,tx:Tx,companies:string[],query:string)=>Promise<typeof legacy>);
+ const search=Reflect.get(readers,'searchWorkforceEmployees') as undefined | ((ctx:ReturnType<typeof adminCtx>,companies:string[],query:string)=>Promise<typeof legacy>);
  const report:Record<string,unknown>={kind:'RETAINED_SEARCH_COMPONENT_NOT_SYSTEM_CAPACITY',visibleEmployments:employees.length,legacyRows:legacy.length,legacyMs,legacyBytes,searchImplemented:typeof search==='function',timeoutSeconds:240};
  const save=()=>{if(process.env.AIHR_FOCUSED_EVIDENCE_DIR)writeFileSync(process.env.AIHR_FOCUSED_EVIDENCE_DIR+'/personnel-switcher-volume.json',JSON.stringify(report));};
  save();expect(typeof search,'bounded search must replace eager whole-population navigation data').toBe('function');
  if(!search)throw new Error('Missing search reader');
- const read=(q:string,companies=[b.companyId])=>withTenant(ctx,tx=>search(ctx,tx,companies,q));
+ const read=(q:string,companies=[b.companyId])=>search(ctx,companies,q);
  for(const q of ['MAIN0000','main000008','00008','fictional personnel main','%_','   ']){
   expect((await read(q)).map(fields)).toEqual(matchEmployees(legacy,q,8).map(fields));
  }
