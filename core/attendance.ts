@@ -7371,6 +7371,7 @@ export async function rawScheduleDaysTx(tx:Tx,employmentId:string,from:string,to
 export function pendingAttendanceTaskMetadata(ctx:SessionContext,companyIds?:string[]):Promise<AssignedApprovalMetadata[]>{
   return withTenant(ctx,async tx=>{
     await assertAssignedWorkPrincipalTx(tx,ctx);
+    if(companyIds?.length===0)return [];
     // A negative result proves no possible assignment source. Positives retain every native
     // request RLS and live decision proof below; this result never authorizes a command or is cached.
     const [candidate]=await tx.execute<{possible:boolean}>(sql`select app.may_have_attendance_task_metadata() as possible`);
@@ -7430,8 +7431,14 @@ export function pendingAttendanceTaskMetadata(ctx:SessionContext,companyIds?:str
     const id=sql<string>`pending_attendance.id`,employmentId=sql<string>`pending_attendance.employment_id`,
       personId=sql<string>`pending_attendance.person_id`,employee=sql<string|null>`pending_attendance.employee`,
       createdAt=sql<Date>`pending_attendance.created_at`.mapWith(attendanceCorrection.createdAt);
+    // Resolve the current person's binding once in this statement, including for sessions
+    // without a person hint. A missing binding or a null subject has no self match.
+    const otherPerson=sql`coalesce(pending_attendance.person_id <> (
+      select p.person_id from app.principal(app.current_user_id()) p
+      where p.tenant_id=app.current_tenant_id()
+    ),true)`;
     const rows=await tx.select({id,employmentId,personId,employee,createdAt}).from(source)
-      .where(and(sql`NOT app.is_self_person(pending_attendance.person_id)`,companyIds===undefined?undefined:companyIds.length===0?sql`false`:
+      .where(and(otherPerson,companyIds===undefined?undefined:
         sql`(pending_attendance.company_id IN (${sql.join(companyIds.map(id=>sql`${id}::uuid`),sql`,`)}) OR app.attendance_workflow_v3_decision_slot(pending_attendance.id) IS NOT NULL)`))
       .orderBy(desc(createdAt),id);
     const allowed=await actionableAttendanceApplicationIdsTx(tx,ctx,rows);
