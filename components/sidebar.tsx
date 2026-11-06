@@ -999,7 +999,7 @@ export function Sidebar({
       <div key={item.labelKey} data-rail-module={item.labelKey} data-tour={item.tour}>
         {item.defaultHref ? (
           <div className={cn(railRow, 'pr-0', (active || expanded) && 'text-ink', active && 'border-ink')}>
-            <Link href={item.defaultHref} className="min-w-0 flex-1 text-inherit no-underline">
+            <Link prefetchOnIntentOnly href={item.defaultHref} className="min-w-0 flex-1 text-inherit no-underline">
               {label}
             </Link>
             <button
@@ -1033,7 +1033,7 @@ export function Sidebar({
               return (
                 <Fragment key={child.href}>
                 {!child.submenuKey&&heading&&heading!==sectionLabel(children[index-1]?.href??'')&&<p className="mb-0 mt-2 px-3 text-xs text-muted-foreground">{t(heading)}</p>}
-                <Link
+                <Link prefetchOnIntentOnly
                   key={child.href}
                   href={child.navigationHref??child.href}
                   data-tour={child.tour==='nav-admin'||child.tour==='nav-approvals'?undefined:child.tour}
@@ -1054,7 +1054,7 @@ export function Sidebar({
   };
   const monolithRail = () => (
     <>
-      <Link
+      <Link prefetchOnIntentOnly
         href="/"
         aria-label={t('home')}
         className="block shrink-0 font-mono text-[11px] font-medium uppercase tracking-[0.12em] text-ink no-underline"
@@ -1095,7 +1095,7 @@ export function Sidebar({
                   const rowCount = item.href === '/tasks' ? taskCount : approvalCount;
                   const showApprovalCount = (item.href === '/approvals' || item.href === '/tasks') && rowCount > 0;
                   return (
-                    <Link
+                    <Link prefetchOnIntentOnly
                       key={item.href}
                       href={item.navigationHref ?? item.href}
                       data-tour={item.tour}
@@ -1160,7 +1160,7 @@ export function Sidebar({
         <div key={item.labelKey} data-atelier-module={item.labelKey} onPointerEnter={event => { if (item.labelKey === 'securityCenter' && event.pointerType === 'mouse') setOpenKey(item.labelKey); }}>
           {item.defaultHref && !collapsed ? (
             <div className={cn('atelier-row pr-0', active&&'bg-accent font-medium text-foreground')}>
-              <Link href={item.defaultHref} onClick={()=>setMobileNavigationOpen(false)} className="flex min-w-0 flex-1 items-center gap-2.5 text-inherit no-underline">
+              <Link prefetchOnIntentOnly href={item.defaultHref} onClick={()=>setMobileNavigationOpen(false)} className="flex min-w-0 flex-1 items-center gap-2.5 text-inherit no-underline">
                 <Icon aria-hidden /><span className="truncate">{label}</span>
               </Link>
               <button ref={register} type="button" aria-label={label} aria-expanded={expanded} aria-controls={kidsId} onClick={flip}
@@ -1188,7 +1188,7 @@ export function Sidebar({
       </button>
       <div id="atelier-mobile-navigation" className={cn('atelier-navigation-shell relative h-full shrink-0 sm:flex', mobileNavigationOpen?'flex':'hidden', openNode && 'atelier-flyout-open z-50', collapsed && 'atelier-collapsed')}>
         <aside data-app-sidebar data-atelier-navigation className="atelier-rail">
-          <Link href="/" aria-label={t('home')} className="atelier-workspace">
+          <Link prefetchOnIntentOnly href="/" aria-label={t('home')} className="atelier-workspace">
             <span data-brand-tile aria-hidden>AI</span>
             <span className="atelier-label">{tCommon('appName')}</span>
           </Link>
@@ -1227,7 +1227,7 @@ export function Sidebar({
                     );
                     const count = atelierCount(item.href);
                     return (
-                      <Link key={item.href} href={item.navigationHref ?? item.href} onClick={()=>setMobileNavigationOpen(false)} data-tour={item.tour}
+                      <Link prefetchOnIntentOnly key={item.href} href={item.navigationHref ?? item.href} onClick={()=>setMobileNavigationOpen(false)} data-tour={item.tour}
                         aria-label={count ? `${label}, ${t('approvalsCount', { count })}` : label}
                         aria-current={isRowActive(item) ? 'page' : undefined} title={collapsed ? label : undefined} className="atelier-row">
                         <Icon aria-hidden /><span className="atelier-label truncate">{label}</span>
@@ -1306,7 +1306,7 @@ export function Sidebar({
         )}
       >
         {monolith ? monolithRail() : (<>
-        <Link
+        <Link prefetchOnIntentOnly
           href="/"
           aria-label={t('home')}
           className={cn(
@@ -1382,10 +1382,10 @@ export function Sidebar({
                     const Icon = item.icon;
                     return <div key={item.labelKey}>
                       <div className={cn(rowBase, 'w-full gap-1 px-3 py-1', active && 'bg-accent')}>
-                        <Link href={item.defaultHref} className="flex min-h-11 min-w-0 flex-1 items-center gap-3"><Icon className="size-5 shrink-0" aria-hidden /><span className="text-sm">{t(item.labelKey)}</span></Link>
+                        <Link prefetchOnIntentOnly href={item.defaultHref} className="flex min-h-11 min-w-0 flex-1 items-center gap-3"><Icon className="size-5 shrink-0" aria-hidden /><span className="text-sm">{t(item.labelKey)}</span></Link>
                         <button type="button" aria-label={t(item.labelKey)} aria-expanded={expanded} aria-controls={`inline-${item.labelKey}`} className="flex size-11 shrink-0 items-center justify-center" onClick={() => setInlineOpen(old=>({...old,[item.labelKey]:!expanded}))}><ChevronDown className={cn('size-4', !expanded && '-rotate-90')} aria-hidden /></button>
                       </div>
-                      {expanded && <nav id={`inline-${item.labelKey}`} aria-label={t(item.labelKey)} className="ml-7 flex flex-col gap-1">{children.map((child) => <Link key={child.href} href={child.href} aria-current={isRowActive(child) ? 'page' : undefined} className={cn('flex min-h-11 items-center rounded-xl px-3 text-sm', isRowActive(child) ? 'bg-accent font-medium text-accent-foreground' : 'text-muted-foreground hover:bg-accent')}>{childCaption(child)}</Link>)}</nav>}
+                      {expanded && <nav id={`inline-${item.labelKey}`} aria-label={t(item.labelKey)} className="ml-7 flex flex-col gap-1">{children.map((child) => <Link prefetchOnIntentOnly key={child.href} href={child.href} aria-current={isRowActive(child) ? 'page' : undefined} className={cn('flex min-h-11 items-center rounded-xl px-3 text-sm', isRowActive(child) ? 'bg-accent font-medium text-accent-foreground' : 'text-muted-foreground hover:bg-accent')}>{childCaption(child)}</Link>)}</nav>}
                     </div>;
                   }
                   return (
@@ -1426,7 +1426,7 @@ export function Sidebar({
                 const rowCount = item.href === '/tasks' ? taskCount : approvalCount;
                   const showApprovalCount = (item.href === '/approvals' || item.href === '/tasks') && rowCount > 0;
                 return (
-                  <Link
+                  <Link prefetchOnIntentOnly
                     key={item.href}
                     href={item.navigationHref ?? item.href}
                     data-tour={item.tour}
