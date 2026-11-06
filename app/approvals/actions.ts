@@ -17,9 +17,9 @@ import { decideLeave, decideLeaveDate, decideLeaveDates, decideLeaveCancellation
 import { parseBulkItems, runBulkDecide, type BulkDecideItem } from '@/lib/approvals-bulk';
 import { approvalsReturnUrl } from '@/lib/approvals-categories';
 import { localizeLeaveError } from '@/app/me/actions';
-import { decideAttendanceCorrection, MissingAttendanceRejectReasonError } from '@/core/attendance';
+import { decideAttendanceCorrection, MissingAttendanceRejectReasonError } from '@/packs/attendance/service';
 import { decideProfileChange } from '@/core/profile';
-import { ClaimError, decideClaim } from '@/core/claims';
+import { ClaimError, decideClaim, listPendingClaimSelection } from '@/packs/claims/service';
 import { decideResignation } from '@/core/offboarding';
 import {
   decideReview,
@@ -323,6 +323,16 @@ async function dispatchBulkItem(
       await decideAttendanceCorrection(s, { correctionId: item.id, decision, rejectReason, deciderEmploymentId, expectedStageIndex: item.expectedStageIndex, expectedParticipantSlot: item.expectedParticipantSlot });
       return;
   }
+}
+
+/** Re-read the current company selection from the session, then capture only
+ * authorized pending identities. The decide action still reauthorizes each ID. */
+export async function selectPendingClaimsAction(companyScope: string) {
+  const { s, scopeIds } = await scopedSession();
+  if ([...scopeIds].sort().join(',') !== companyScope || !isModuleEnabledOrFalse(s, 'claims')) {
+    return { ok: false as const };
+  }
+  return { ok: true as const, ids: await listPendingClaimSelection(s, scopeIds) };
 }
 
 export async function bulkDecideAction(formData: FormData) {

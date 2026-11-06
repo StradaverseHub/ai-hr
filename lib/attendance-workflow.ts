@@ -130,3 +130,10 @@ export function attendanceWorkflowCriteriaFields(options: AttendanceWorkflowOpti
     ];
     return fields;
 }
+
+export function nextAttendanceWorkflowPriority(priorities: Iterable<number>): number {
+  const occupied = new Set(priorities);
+  let priority = 1;
+  while (occupied.has(priority) && priority <= 9999) priority++;
+  return priority;
+}

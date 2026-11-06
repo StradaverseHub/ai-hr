@@ -118,16 +118,23 @@ export async function ownAssistantConversationContext(supplied:SessionContext,ex
 export async function assertOwnAssistantConversationContextCurrentTx(tx:Tx,ctx:SessionContext,context:OwnAssistantConversationContext):Promise<void>{
  const source=sources.get(context);
  if(!source||source.tenantId!==ctx.tenantId||source.userId!==ctx.userId||source.principal!==assistantConversationScopeDigest(ctx,source.conversationScope))return unavailable();
- let current=false;
  try{
   await lockAccessConfigurationTx(tx,source.tenantId);
-  const found=await tx.select({id:assistantExchange.id,question:assistantExchange.question,answer:assistantExchange.answer,receipt:assistantExchange.disclosureReceipt}).from(assistantExchange)
-   .where(and(inArray(assistantExchange.id,source.rows.map(row=>row.id)),eq(assistantExchange.tenantId,source.tenantId),eq(assistantExchange.appUserId,source.userId),
-    isNull(assistantExchange.contentRetiredAt),sql`${assistantExchange.askedAt}>clock_timestamp()-interval '30 days'`));
-  const byId=new Map(found.map(row=>[row.id,row]));
-  current=source.rows.length>0&&source.rows.every((row,index)=>{const current=byId.get(row.id);return current?.question===row.question&&context.questions[index]===row.question&&(current.answer===row.answer&&current.receipt===row.receipt);})&&context.questions.length===source.rows.length;
- }catch{/* A database failure is never current source authority. */}
- if(!current)return unavailable();
+  await assertConversationRowsCurrentTx(tx,source.tenantId,source.userId,source.rows,context.questions);
+ }catch{return unavailable();}
+}
+
+async function assertConversationRowsCurrentTx(
+ tx:Tx,tenantId:string,userId:string,rows:readonly SourceRow[],questions:readonly string[],
+):Promise<void>{
+ const found=await tx.select({id:assistantExchange.id,question:assistantExchange.question,answer:assistantExchange.answer,receipt:assistantExchange.disclosureReceipt}).from(assistantExchange)
+  .where(and(inArray(assistantExchange.id,rows.map(row=>row.id)),eq(assistantExchange.tenantId,tenantId),eq(assistantExchange.appUserId,userId),
+   isNull(assistantExchange.contentRetiredAt),sql`${assistantExchange.askedAt}>clock_timestamp()-interval '30 days'`));
+ const byId=new Map(found.map(row=>[row.id,row]));
+ if(!rows.length||questions.length!==rows.length||!rows.every((row,index)=>{
+  const current=byId.get(row.id);
+  return current?.question===row.question&&questions[index]===row.question&&current.answer===row.answer&&current.receipt===row.receipt;
+ }))return unavailable();
 }
 
 /** Resume is a fresh own-row read. The durable receipt supplies scope proof, never a stored token.
@@ -152,9 +159,9 @@ export async function resumeOwnAssistantConversation(supplied:SessionContext,exc
    rows.unshift(Object.freeze({id:row!.id,question:row!.question,answer:row!.answer!,receipt:row!.receipt!}));next=row!.continues;
   }
   if(!thread||!rows.length)return unavailable();
-  const issued:OwnAssistantConversationContext=Object.freeze({questions:Object.freeze(rows.map(row=>row.question))});
-  sources.set(issued,Object.freeze({tenantId:ctx.tenantId,userId,exchangeId,rows:Object.freeze(rows),conversationScope,principal:scopeDigest,threadId:thread.threadId}));
-  await assertOwnAssistantConversationContextCurrentTx(tx,ctx,issued);
+  // The read-only principal proof already holds shared Access. Erasure and revocation
+  // take the exclusive lock, so a resume must not upgrade and deadlock with another reader.
+  await assertConversationRowsCurrentTx(tx,ctx.tenantId,userId,rows,rows.map(row=>row.question));
   const conversationToken=sealConversationToken(ctx,rows.map(row=>row.id),conversationScope);if(!conversationToken)return unavailable();
   return Object.freeze({exchangeId,conversationToken,threadId:thread.threadId,scopeDigest});
  });}catch{return unavailable();}

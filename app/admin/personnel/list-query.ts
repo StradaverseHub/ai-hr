@@ -133,6 +133,15 @@ export function headcountFilters(query: PersonnelListQuery): Omit<EmployeeListFi
   return { ...query.filters, employmentStatuses: undefined };
 }
 
+/** Filters that require a live employment can never match a draft. */
+export function draftFiltersPermitRows(query: PersonnelListQuery): boolean {
+  const filters = query.filters;
+  return !(query.dept || query.type || query.legacyStatus || query.bucket || filters.privateSearch
+    || filters.businessUnitIds?.length || filters.parentCompanyIds?.length || filters.businessGroupIds?.length
+    || filters.jobGrades?.length || filters.positionIds?.length || filters.qualityFlags?.length
+    || filters.confirmationState || filters.joinedFrom || filters.joinedTo || filters.probationEndFrom || filters.probationEndTo);
+}
+
 /**
  * Whether an unfinished draft record survives the current narrowing (feedback 06f0cb8f, preserved here).
  *
@@ -150,9 +159,9 @@ export function draftMatchesQuery(
   },
   query: PersonnelListQuery,
 ): boolean {
-  if (query.dept || query.type || query.legacyStatus || query.filters.privateSearch || query.filters.businessUnitIds?.length || query.filters.parentCompanyIds?.length || query.filters.businessGroupIds?.length || query.filters.jobGrades?.length || query.filters.positionIds?.length || query.filters.qualityFlags?.length || query.filters.confirmationState || query.filters.joinedFrom || query.filters.joinedTo || query.filters.probationEndFrom || query.filters.probationEndTo) return false;
-  if(query.filters.filterCompanyIds?.length&&(!d.companyId||!query.filters.filterCompanyIds.includes(d.companyId)))return false;
-  if (query.bucket) return false; // a derived employment bucket can never contain a draft
+  if (!draftFiltersPermitRows(query)) return false;
+  const companyIds = query.filters.filterCompanyIds;
+  if (companyIds?.length && (!d.companyId || !companyIds.includes(d.companyId))) return false;
   if (query.company && d.companyId !== query.company) return false;
   if (query.q) {
     const needle = query.q.trim().toLowerCase();

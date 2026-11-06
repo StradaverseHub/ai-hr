@@ -82,7 +82,6 @@ describe('a1d82340 step 3 — the menu is ordered by the sequence, not by hand',
     // That is what is asserted here now, and it is a strictly sharper statement than the one it
     // replaces: Settings must come before the REVIEW and OUTPUT screens, and must not be last.
     expect(at('/payroll/setup')).toBeLessThan(at('/payroll/transaction-view'));
-    expect(at('/payroll/setup')).toBeLessThan(at('/payroll/reports'));
     expect(at('/payroll/setup')).toBeLessThan(at('/payroll/statutory-forms'));
     expect(at('/payroll/setup'), 'Settings is stranded at the end of the menu again').toBeLessThan(
       NODE.children.length - 1,

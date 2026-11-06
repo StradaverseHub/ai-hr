@@ -7,7 +7,7 @@ import {hireEmployee} from '../core/org';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {defaultEmployeeHomeConfiguration} from '../lib/employee-home-defaults';
 import {validateEmployeeHomeConfiguration,HOME_TEMPLATE_FIELDS,HOME_QUICK_ACTIONS} from '../lib/employee-home';
-import {employeeHomeConfigurationCompanies,readEmployeeHomeConfigurationEditor,readOwnEmployeeHomeConfiguration,
+import {employeeHomeConfigurationCompanies,readEmployeeHomeConfigurationEditor,readOwnEmployeeHomeConfiguration,OwnHomeConfigurationRead,
  saveEmployeeHomeConfiguration,employeeHomeConfigurationHistory,readEmployeeHomeConfigurationVersion} from '../core/employee-home-configuration';
 import {adminCtx,closeAll,createAppUser,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
 let b:Base;
@@ -45,6 +45,21 @@ describe('validated deterministic Home configuration',()=>{
  });
 });
 describe('scoped immutable company/role Home versions',()=>{
+ it('reuses only the exact request principal and selected subject proof',async()=>{
+  const employee=await worker(),other=await worker();
+  const read=new OwnHomeConfigurationRead(employee.ctx,employee.employmentId);
+  expect(()=>read.read({...employee.ctx},employee.employmentId)).toThrow();
+  expect(()=>read.read(employee.ctx,other.employmentId)).toThrow();
+  expect(()=>read.read(other.ctx,employee.employmentId)).toThrow();
+  const first=read.read(employee.ctx,employee.employmentId);
+  expect(read.read(employee.ctx,employee.employmentId)).toBe(first);
+  await expect(first).resolves.toMatchObject({employmentId:employee.employmentId,companyId:b.companyId,audienceRole:'employee'});
+  const foreign=new OwnHomeConfigurationRead(employee.ctx,other.employmentId);
+  await expect(foreign.read(employee.ctx,other.employmentId)).rejects.toMatchObject({code:'employmentUnavailable'});
+  await owner.db.update(s.appUser).set({archivedAt:new Date()}).where(eq(s.appUser.id,employee.ctx.userId!));
+  const next=new OwnHomeConfigurationRead(employee.ctx,employee.employmentId);
+  await expect(next.read(employee.ctx,employee.employmentId)).rejects.toThrow();
+ });
  it('saves/reopens a version and resolves own company/role without accepting a caller-picked company',async()=>{
   const hr=await worker('hr_admin'),employee=await worker(),configuration=defaultEmployeeHomeConfiguration();
   configuration.quickActions=['leave','profile'];configuration.templates.find(row=>row.key==='calm')!.text.en='Fictional scoped wording.';

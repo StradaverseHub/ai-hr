@@ -1,3 +1,4 @@
+import {PERFORMANCE_MIGRATION_IDENTITIES} from './performance-migration-identities';
 import {APPROVED_UPGRADE_TAIL,assertApprovedUpgradeTail,migrateApprovedUpgrade} from './helpers/approved-upgrade';
 /** ADR-0174 populated upgrade through 2100–2102, on an owned disposable localhost database only.
  * A cross-tenant row present at the boundary must stop the whole upgrade with a readable report and leave
@@ -102,7 +103,7 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
   const upgradeNative=await native();
   await migrate(storage.db,{migrationsFolder:folder});
   const afterLedger=await ledger();
-  expect(afterLedger).toHaveLength(671);expect(afterLedger.slice(0,668)).toEqual(beforeLedger);
+  expect(afterLedger).toHaveLength(668+TAIL.length);expect(afterLedger.slice(0,668)).toEqual(beforeLedger);
   expect(afterLedger.slice(668).map(row=>({hash:row.hash,created_at:row.created_at}))).toEqual(
    TAIL.map(row=>({hash:hash(readFileSync('db/migrations/'+row.tag+'.sql')),created_at:String(row.when)})));
   expect(await native()).toEqual(upgradeNative);
@@ -124,8 +125,80 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
 
   const beforeRerun=await native();await migrate(storage.db,{migrationsFolder:folder});
   expect(await ledger()).toEqual(afterLedger);expect(await native()).toEqual(beforeRerun);
-  await migrateApprovedUpgrade(storage);
+  // Rehearse from the combined staging baseline as well as the historical defect boundary.
+  const performanceStart=journal.entries.length-PERFORMANCE_MIGRATION_IDENTITIES.length;
+  const stagingPrefix=journal.entries.slice(0,performanceStart);
+  for(const row of stagingPrefix.slice(prefix.length+TAIL.length)){
+   copyFileSync('db/migrations/'+row.tag+'.sql',join(folder,row.tag+'.sql'));
+  }
+  writeFileSync(join(folder,'meta/_journal.json'),JSON.stringify({...journal,entries:stagingPrefix}));
+  await migrateApprovedUpgrade(storage,folder);
+  const beforePerformanceLedger=await ledger();
+  expect(beforePerformanceLedger).toHaveLength(stagingPrefix.length);
+  const beforePerformancePrivileges=await privileges();
+  await migrate(storage.db,{migrationsFolder:'db/migrations'});
+  const afterPerformancePrivileges=await privileges();
+  const privateFunctions=['app._ai_control_context_for_purpose(text,boolean,boolean)','app._access_workforce_list_rows(uuid[])','app._assistant_assigned_index_login(uuid,boolean)','app.notification_event_processing_enqueue()'];
+  const addedFunctions=[...privateFunctions,'app.access_profile_policy_read_lock()','app.access_workforce_list_facts()','app.access_workforce_list_rows_for_ids(uuid[])','app.attendance_frozen_actor_identity_keys(jsonb,text)','app.delegated_approval_subjects(uuid[],text,text)',
+   'app.may_have_attendance_task_metadata()',
+   'app.attendance_pending_visible_headers(uuid)',
+   'app.personnel_overview_narrow_rows(date,uuid[])',
+   'app.personnel_overview_page_rows(date,uuid[],uuid[])',
+   'app.access_workforce_picker_facts(uuid[])',
+   'app.notification_projection_exists(uuid,uuid,text)',
+  ].sort();
+  const beforeFunctions=new Set(beforePerformancePrivileges.functions.map(row=>row.fn));
+  expect(afterPerformancePrivileges.functions.filter(row=>!beforeFunctions.has(row.fn)).map(row=>row.fn).sort()).toEqual(addedFunctions);
+  for(const fn of addedFunctions){
+   const [permission]=await storage.client`select has_function_privilege('ai_hr_app',p.oid,'EXECUTE') as app_execute,
+    exists(select 1 from aclexplode(coalesce(p.proacl,acldefault('f',p.proowner))) a where a.grantee=0 and a.privilege_type='EXECUTE') as public_execute
+    from pg_proc p where p.oid=to_regprocedure(${fn})`;
+   expect(permission).toEqual({app_execute:!privateFunctions.includes(fn),public_execute:false});
+  }
+  // Independently parse both reviewed Claim expressions against this table. No broad policy
+  // exception: only this exact USING representation may differ; WITH CHECK and every other field stay.
+  const expectedClaimQuals=await storage.client.begin(async tx=>{
+   const expressions=[
+    "tenant_id=app.current_tenant_id() and employment_id=any((select app.visible_employment_ids())::uuid[])",
+    "tenant_id=app.current_tenant_id() and employment_id in(select unnest(app.visible_employment_ids()))",
+   ],qualifiers:string[]=[];
+   for(const expression of expressions){
+    await tx.unsafe('create policy performance_expected_claim_membership on public.claim_request for select to ai_hr_app using ('+expression+')');
+    const [row]=await tx<{qual:string}[]>`select qual from pg_policies where schemaname='public' and tablename='claim_request' and policyname='performance_expected_claim_membership'`;
+    qualifiers.push(row.qual);await tx.unsafe('drop policy performance_expected_claim_membership on public.claim_request');
+   }
+   return qualifiers;
+  });
+  const isClaimPolicy=(row:(typeof beforePerformancePrivileges.policies)[number])=>row.schemaname==='public'&&row.tablename==='claim_request'&&row.policyname==='claim_request_rls';
+  expect(beforePerformancePrivileges.policies.find(isClaimPolicy)?.qual).toBe(expectedClaimQuals[0]);
+  expect(afterPerformancePrivileges.policies.find(isClaimPolicy)?.qual).toBe(expectedClaimQuals[1]);
+  // Inspect the new receipt table separately, then compare every pre-existing ACL and policy.
+  const receiptTable='notification_event_processing';
+  const receiptRelation=afterPerformancePrivileges.relations.find(row=>row.rel===receiptTable);
+  expect(receiptRelation).toMatchObject({rls:true,force:false});
+  const receiptColumns=afterPerformancePrivileges.columns.filter(row=>row.rel===receiptTable);
+  expect(receiptColumns.map(row=>row.col)).toEqual(['disposition','processed_at']);
+  const receiptPolicies=afterPerformancePrivileges.policies.filter(row=>row.schemaname==='public'&&row.tablename===receiptTable);
+  expect(receiptPolicies.map(({policyname,cmd})=>({policyname,cmd}))).toEqual([
+   {policyname:'notification_event_processing_complete',cmd:'UPDATE'},
+   {policyname:'notification_event_processing_read',cmd:'SELECT'},
+  ]);
+  expect(await storage.client`select
+   has_table_privilege('ai_hr_app','public.notification_event_processing','SELECT') as can_read,
+   has_table_privilege('ai_hr_app','public.notification_event_processing','UPDATE') as can_update_all,
+   has_table_privilege('ai_hr_app','public.notification_event_processing','INSERT') as can_insert,
+   has_table_privilege('ai_hr_app','public.notification_event_processing','DELETE') as can_delete,
+   has_column_privilege('ai_hr_app','public.notification_event_processing','disposition','UPDATE') as can_complete,
+   has_column_privilege('ai_hr_app','public.notification_event_processing','processed_at','UPDATE') as can_stamp`)
+   .toEqual([{can_read:true,can_update_all:false,can_insert:false,can_delete:false,can_complete:true,can_stamp:true}]);
+  expect({
+   relations:afterPerformancePrivileges.relations.filter(row=>row.rel!==receiptTable),
+   columns:afterPerformancePrivileges.columns.filter(row=>row.rel!==receiptTable),
+   functions:afterPerformancePrivileges.functions.filter(row=>!addedFunctions.includes(row.fn)),
+   policies:afterPerformancePrivileges.policies.filter(row=>!receiptPolicies.includes(row)).map(row=>isClaimPolicy(row)?{...row,qual:expectedClaimQuals[0]}:row),
+  }).toEqual(beforePerformancePrivileges);
   const complete=await ledger();expect(complete).toHaveLength(671+APPROVED_UPGRADE_TAIL.length);expect(complete.slice(0,671)).toEqual(afterLedger);
+  expect(complete.slice(0,performanceStart)).toEqual(beforePerformanceLedger);
   expect(complete.slice(671).map(row=>({hash:row.hash,created_at:row.created_at}))).toEqual(APPROVED_UPGRADE_TAIL.map(entry=>({hash:hash(readFileSync('db/migrations/'+entry.tag+'.sql')),created_at:String(entry.when)})));
   expect(await native()).toEqual(beforeRerun);
   // The final 2211 expansion adds validated tenant matches beside the original NO ACTION keys.

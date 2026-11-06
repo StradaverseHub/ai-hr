@@ -70,7 +70,7 @@ export type PayrollPeriod=Readonly<{payPeriod:string;start:string;cutOff:string|
 export type GroupStatus='done'|'todo'|'waiting'|'unknown'|'off';
 export type GroupState=Readonly<{group:PayrollItemGroup;status:GroupStatus}>;
 
-export type PayrollReadiness=Readonly<{period:PayrollPeriod;items:readonly PayrollItem[];approvals:readonly PayrollItem[];groups:readonly GroupState[];failed:boolean}>;
+export type PayrollReadiness=Readonly<{period:PayrollPeriod;items:readonly PayrollItem[];approvals:readonly PayrollItem[];approvalTotal?:number;approvalClaimTotal?:number;groups:readonly GroupState[];failed:boolean}>;
 
 const STATE_ORDER:Readonly<Record<PayrollItemState,number>>={todo:0,check:1,waiting:2};
 /** Todo first, then check, then waiting; within each, the soonest due, then the item's own day, then kind. Pure. */

@@ -24,7 +24,7 @@ export const rewardsReturnReviews=createGenericAssignedCompatibilityStore<
  z.infer<typeof Human>,z.infer<typeof Binding>,Stored,Source,Awaited<ReturnType<typeof prepareRewardsReturnSourceTx>>,Awaited<ReturnType<typeof confirmNative>>,
  z.infer<typeof RewardsReturnPreparedReview>,z.infer<typeof RewardsReturnCompletedReview>,z.infer<typeof RewardsReturnRetiredReview>,z.infer<typeof RewardsReturnReviewIndex>
 >({
- action,tier:'approve',human:RewardsReturnReviewPrepare,metadata:Metadata,stored:Stored,
+ action,tier:'approve',human:RewardsReturnReviewPrepare,metadata:Metadata,stored:Stored,readOnlyIndex:true,
  confirmation:RewardsReturnReviewConfirmation,retirement:RewardsReturnReviewRetirement,retired:RewardsReturnRetiredReview,index:RewardsReturnReviewIndex,indexKind:'rewards_return_review_index',
  async withInterval(tx,ctx,nomination,work){return withRewardsReturnBoundsTx(tx,async()=>{let unitId:string,actor=ctx;if(nomination.human)unitId=nomination.human.unitId;else{actor=await assertRewardsReturnActorTx(tx,ctx);const [row]=await tx.execute<{subject:unknown}>(sql`select app.assistant_rewards_return_review_subject(${z.guid().parse(nomination.actionId)}::uuid) as subject`);unitId=z.guid().parse(row?.subject);}return withRewardsReturnIntervalTx(tx,actor,unitId,nomination.actionId??null,work);});},
  binding:(ctx,source)=>Binding.parse({tenantId:ctx.tenantId,userId:ctx.userId,personId:ctx.personId??null,employmentId:null,companyId:source.companyId,unitId:source.unitId}),

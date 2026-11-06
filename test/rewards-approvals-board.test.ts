@@ -1,7 +1,7 @@
 import {createApprovedRewardUnit} from './rewards-setup-fixture';
 import {establishRewardMembership,migrateRewardMembershipFixture} from './rewards-shared-policy-fixture';
 import {configureRewardFixture,refreshRewardFixtureBudget,changeRewardFixtureInputs} from './rewards-governance-fixture';
-import {setRewardMember} from './rewards-access-fixture';
+import {previewRewardAccessChange, saveRewardAccessChange, setRewardMember} from './rewards-access-fixture';
 /**
  * P1 WP-H1 (truthful Post) and WP-G (Rewards approvals board, reward calendar 0646). Fictional fixtures only.
  * Every service call runs through withTenant as the app role (ai_hr_app, NOBYPASSRLS); direct RLS probes too.
@@ -82,6 +82,56 @@ describe('Rewards approvals board, posting authority and reward calendar', () =>
     }
   });
   afterAll(closeAll);
+
+  it('walks one fictional annual cycle through all seven Reward Desk roles', async () => {
+    const id = await unit('DESK', [{salary: 5000}, {salary: 7000, confidentiality: 'bg'}]);
+    const proxyPerson = await person('BG proxy');
+    const proxy: SessionContext = {
+      ...actors.bg!,
+      userId: await createAppUser(b.tenantId, proxyPerson.id, 'employee'),
+      personId: proxyPerson.id,
+    };
+    const {digest, ...request} = await previewRewardAccessChange(admin, {
+      unitId: id,
+      revision: (await getRewardUnit(admin, id)).unit.revision,
+      before: null,
+      after: {userId: proxy.userId, role: 'bg', validFrom: today, validTo: today, coversUserId: actors.bg!.userId},
+    });
+    await saveRewardAccessChange(admin, request, digest);
+
+    async function read(who: SessionContext, role: RewardRole, stage: string, waiting: boolean) {
+      const view = await getRewardUnit(who, id);
+      const overview = (await listRewardReviewStatus(who, [b.companyId])).rows.find(row => row.id === id);
+      expect(view.roles).toContain(role);
+      expect(view.unit.status).toBe(stage);
+      expect(overview).toMatchObject({id, status: stage, waiting});
+      expect(view.rows.length).toBeGreaterThan(0);
+      return view;
+    }
+
+    await read(actors.bu!, 'bu', 'draft', true);
+    await submit(id);
+    const bg = await read(actors.bg!, 'bg', 'bg', true);
+    const cover = await read(proxy, 'bg', 'bg', true);
+    expect(cover.rows).toEqual(bg.rows);
+    await decideRewardUnit(actors.bg!, id, bg.unit.revision, 'return', 'Please review the fictional recommendations again');
+    await submit(id);
+    const resubmitted = await read(proxy, 'bg', 'bg', true);
+    await expect(decideRewardUnit(actors.pbp!, id, resubmitted.unit.revision, 'approve', OK)).rejects.toThrow();
+    await decideRewardUnit(proxy, id, resubmitted.unit.revision, 'approve', OK);
+
+    for (const [who, role] of [[actors.grOnly!, 'gr'], [actors.ctro!, 'ctro'], [actors.ec!, 'ec']] as const) {
+      const view = await read(who, role, role, true);
+      await decideRewardUnit(who, id, view.unit.revision, 'approve', OK);
+    }
+    const partner = await read(actors.pbp!, 'pbp', 'approved', false);
+    expect(partner.rows.map(row => row.source.basicCents)).toEqual([500000]);
+    expect(await decisions(id)).toEqual(expect.arrayContaining([
+      expect.objectContaining({actorId: actors.bg!.userId, action: 'return', fromStage: 'bg', toStage: 'draft'}),
+      expect.objectContaining({actorId: proxy.userId, action: 'approve', fromStage: 'bg', toStage: 'gr'}),
+      expect.objectContaining({actorId: actors.ec!.userId, action: 'approve', fromStage: 'ec', toStage: 'approved'}),
+    ]));
+  });
 
   // ── H1 ────────────────────────────────────────────────────────────────────────────────────────────────
   describe('H1: Post is offered only when postRewardUnit would accept', () => {

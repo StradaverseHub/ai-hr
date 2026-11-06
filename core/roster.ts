@@ -384,8 +384,8 @@ function normalizeShiftInput(p: Omit<ShiftInput, 'companyId'>): NormalizedShift 
     const posted = p.breakPeriods
       .map((bp, i) => ({ bp, i, start: (bp.start ?? '').trim(), end: (bp.end ?? '').trim() }))
       .filter(({ start, end }) => !(start === '' && end === ''));
-    for (const { i, start, end } of posted) {
-      const check = checkBreakRow({ start, end }, shiftShape);
+    for (const { bp, i, start, end } of posted) {
+      const check = checkBreakRow({ start, end, breakType: bp.breakType }, shiftShape);
       if (check.kind === 'half') {
         throw new Error(`${rowLabel(i)} needs ${check.missing === 'end' ? 'an end time' : 'a start time'}, or delete the row.`);
       }
@@ -403,7 +403,7 @@ function normalizeShiftInput(p: Omit<ShiftInput, 'companyId'>): NormalizedShift 
     // minute is nonsense whether or not either is paid, and two IDENTICAL rows are an overlap by
     // construction (core/shift-break-rules.ts).
     const overlaps = findBreakOverlaps(
-      posted.map(({ start, end }) => ({ start, end })),
+      posted.map(({ bp, start, end }) => ({ start, end, breakType: bp.breakType })),
       shiftShape,
     );
     if (overlaps.length > 0) {
@@ -419,6 +419,7 @@ function normalizeShiftInput(p: Omit<ShiftInput, 'companyId'>): NormalizedShift 
       const startN = asShiftTime(start, `${rowLabel(i)} start`);
       const endN = asShiftTime(end, `${rowLabel(i)} end`);
       const out: BreakPeriod = { start: startN, end: endN };
+      if (bp.breakType === 'before_shift' || bp.breakType === 'after_shift') out.breakType = bp.breakType;
       // Semi-Flexi overrides the flags; otherwise persist only flags that were explicitly set (keep the
       // stored JSON minimal so a plain break is { start, end } exactly as before).
       //
@@ -497,7 +498,7 @@ function normalizeShiftInput(p: Omit<ShiftInput, 'companyId'>): NormalizedShift 
     // figures depending on which screen you asked. With no row carrying an allowance — every shift that
     // exists today — `?? the window length` makes this the identical expression it has always been.
     breakMinutes = breakPeriods
-      .filter((bp) => bp.paid !== true)
+      .filter((bp) => bp.paid !== true && (!bp.breakType || bp.breakType === 'in_shift'))
       .reduce((acc, bp) => acc + (bp.flexibleMinutes ?? breakRowMinutes(bp.start, bp.end)), 0);
   }
 
@@ -782,6 +783,10 @@ function shiftUniqueError(e: unknown, n: { name: string; code: string }): Error 
   return e as Error;
 }
 
+export function validateShiftImportInput(input: ShiftInput): void {
+  normalizeShiftInput(input);
+}
+
 export async function createShift(ctx: SessionContext, p: ShiftInput) {
   p=structuredClone(p);
   ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
@@ -880,7 +885,7 @@ export async function createShift(ctx: SessionContext, p: ShiftInput) {
 // tenant-wide library, so "create the same template in several companies" is meaningless — a template is
 // created once and assignable to any employee. Use createShift (tenant-global).
 
-export async function updateShift(ctx: SessionContext, p: { shiftId: string } & Omit<ShiftInput, 'companyId'>) {
+export async function updateShift(ctx: SessionContext, p: { shiftId: string; expectedImportSnapshot?: string } & Omit<ShiftInput, 'companyId'>) {
   p=structuredClone(p);
   ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   const n = normalizeShiftInput(p);
@@ -898,8 +903,14 @@ export async function updateShift(ctx: SessionContext, p: { shiftId: string } & 
       .select()
       .from(shift)
       .where(eq(shift.id, p.shiftId))
-      .limit(1);
+      .limit(1)
+      .for('update');
     if (!before) throw new Error('Shift not found (or not visible)');
+    if (p.expectedImportSnapshot !== undefined &&
+        (before.archivedAt || p.expectedImportSnapshot !== JSON.stringify(before))) {
+      throw new Error('This shift changed after preview. Preview the workbook again.');
+    }
+
     if(n.ruleId!==undefined) await assertRotationPoolWriteTx(tx,before.ruleId,n.ruleId);
     // r429 — THE WHOLE-SHIFT SWITCH CAN NO LONGER BE TURNED ON. The form never offers it; the only shifts
     // still carrying flexible_break_enabled = true are the ones migration 0519 could not convert exactly,

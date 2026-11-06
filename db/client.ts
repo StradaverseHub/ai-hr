@@ -9,7 +9,10 @@
 import { drizzle } from 'drizzle-orm/postgres-js';
 import { sql } from 'drizzle-orm';
 import postgres from 'postgres';
-import * as schema from './schema';
+import {createDatabaseAdmission} from './admission';
+import {currentDatabaseWorkload} from './workload';
+import {applicationDatabaseBudget} from './capacity';
+const applicationBudget = applicationDatabaseBudget(process.env);
 import { chainArmingDecision } from '../core/audit-chain-arming';
 import type { EntitlementSnapshot, EntitlementsExemptReason } from '../core/entitlement-types';
 // Value import, and safe: core/entitlement-types.ts imports NOTHING, so there is no cycle back here.
@@ -76,8 +79,11 @@ export type AgentEnablement = { feature: 'readiness_reminders' | 'claims_triage'
 // Reuse pools across hot-reloads (dev) so HMR doesn't leak Postgres connections.
 const globalForPg = globalThis as unknown as {
   __aihrPgPools?: Map<string, ReturnType<typeof postgres>>;
+  __aihrDbAdmission?: WeakMap<ReturnType<typeof postgres>, ReturnType<typeof createDatabaseAdmission>>;
+  __aihrPerfBeginTransaction?: (poolMax: number) => { acquired: () => void; finished: () => void };
 };
 const pgPools = (globalForPg.__aihrPgPools ??= new Map<string, ReturnType<typeof postgres>>());
+const admissionByPool = (globalForPg.__aihrDbAdmission ??= new WeakMap());
 
 /**
  * Is the ADR-0030 hash chain armed for this process?
@@ -175,14 +181,34 @@ export function createDb(connectionString: string, options?: { max?: number }) {
     client = postgres(connectionString, { max: options?.max ?? 10 });
     pgPools.set(connectionString, client);
   }
-  const db = drizzle(client, { schema });
+  // Direct table-based select/insert/update/delete retain their own schema and types. Registering
+  // every table here eagerly rebuilds unused db.query helpers in every transaction.
+  const db = drizzle(client);
+  const configuredPoolMax = client.options.max;
+  let admission = admissionByPool.get(client);
+  if (!admission) {
+    admission = createDatabaseAdmission({capacity: configuredPoolMax,
+      backgroundCapacity: Math.max(1, Math.floor(configuredPoolMax / 4)), maxWaiting: applicationBudget.maxWaiting, waitMs: applicationBudget.waitMs});
+    admissionByPool.set(client, admission);
+  }
+  const poolAdmission = admission;
   type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
+
+  /** For existing raw SQL owners only. This adds no transaction, GUC, retry or authority.
+   * Open queries inside work; do not pass an already-running promise or nest withTenant here.
+   */
+  async function withPoolWork<T>(tenant: string, work: () => PromiseLike<T>, signal?: AbortSignal): Promise<T> {
+    const release = await poolAdmission.acquire(tenant, currentDatabaseWorkload(), signal);
+    try { signal?.throwIfAborted(); return await work(); }
+    finally { release(); }
+  }
+
 
   /** Run `fn` in a transaction scoped to the session's tenant/user/roles.
    * Explicit readOnlySnapshot starts REPEATABLE READ / READ ONLY at BEGIN, before session GUCs.
    * Owner readers must receive this tx explicitly; nested withTenant calls never auto-join.
    */
-  async function withTenant<T>(ctx: SessionContext, fn: (tx: Tx) => Promise<T>, options?: { readOnlySnapshot: true }): Promise<T> {
+  async function withTenant<T>(ctx: SessionContext, fn: (tx: Tx) => Promise<T>, options?: { readOnlySnapshot?: true; readSignal?: AbortSignal }): Promise<T> {
     // Fail fast with a clear, diagnosable error rather than a cryptic "reading 'grants'/'tenantId'"
     // TypeError if a caller ever passes an unresolved session (e.g. a swallowed getSession failure).
     if (!ctx || !ctx.tenantId) {
@@ -194,14 +220,26 @@ export function createDb(connectionString: string, options?: { max?: number }) {
     // Backward-compat: a context with only `roles` becomes group-wide grants (companyId null).
     const grants = ctx.grants ?? (ctx.roles ?? []).map((role) => ({ role, companyId: null as string | null }));
     const roleNames = ctx.roles ?? Array.from(new Set(grants.map((g) => g.role)));
-    return db.transaction(async (tx) => {
+    options?.readSignal?.throwIfAborted();
+    const timing = globalForPg.__aihrPerfBeginTransaction?.(configuredPoolMax);
+    let release: (() => void) | undefined;
+    try {
+      release = await poolAdmission.acquire(ctx.tenantId, currentDatabaseWorkload(), options?.readSignal);
+      return await db.transaction(async (tx) => {
+      timing?.acquired();
+      // A queued read may have disconnected while waiting for a connection.
+      options?.readSignal?.throwIfAborted();
+      // The existing sticky fact only moves from unknown to on. An already known chain can
+      // share the identity bootstrap statement; first activation still decides after this await.
+      const auditAlreadyArmed = tenantHasChainedHistory(ctx.tenantId);
+      const auditBootstrap = auditAlreadyArmed ? sql`, set_config('app.audit_hash_chain', 'on', true)` : sql``;
       // set_config(name, value, is_local=true) === SET LOCAL — cleared at COMMIT.
       // r394: ONE round trip, not four. Every withTenant transaction paid four sequential statements
       // before its first real query (measured: 145 of 366 statements on one employee navigation to
       // My Leave). The four are independent and all evaluated in this one row, so the outcome is the
       // same; test/r394-with-tenant-one-round-trip.test.ts pins both the values and the single statement.
       await tx.execute(
-        sql`select set_config('app.tenant_id', ${ctx.tenantId}, true), set_config('app.user_id', ${ctx.userId ?? ''}, true), set_config('app.roles', ${roleNames.join(',')}, true), set_config('app.grants', ${JSON.stringify(grants)}, true), set_config('app.agent_principal_id', ${ctx.agent?.principalId ?? ''}, true), set_config('app.payroll_tax_basis_reader', '1', true)`,
+        sql`select set_config('app.tenant_id', ${ctx.tenantId}, true), set_config('app.user_id', ${ctx.userId ?? ''}, true), set_config('app.roles', ${roleNames.join(',')}, true), set_config('app.grants', ${JSON.stringify(grants)}, true), set_config('app.agent_principal_id', ${ctx.agent?.principalId ?? ''}, true), set_config('app.payroll_tax_basis_reader', '1', true)${auditBootstrap}`,
       );
       // ADR-0030 Layer 2 gate: the domain_event hash-chain trigger only fires when this GUC is 'on'.
       // Off by default → chain columns stay NULL → byte-identical behaviour (deployment flag).
@@ -236,7 +274,7 @@ export function createDb(connectionString: string, options?: { max?: number }) {
       });
       if (chainDecision.refusedDisarm) warnChainDisarmRefused(ctx.tenantId, chainDecision.reason);
       if (chainDecision.armed) {
-        await tx.execute(sql`select set_config('app.audit_hash_chain', 'on', true)`);
+        if (!auditAlreadyArmed) await tx.execute(sql`select set_config('app.audit_hash_chain', 'on', true)`);
         // Remembered the moment we arm: the next transaction for this tenant must see that history now
         // exists, or a settings flip between the two could still open a one-transaction hole.
         markTenantChained(ctx.tenantId);
@@ -267,11 +305,16 @@ export function createDb(connectionString: string, options?: { max?: number }) {
         // are SELECTs, which do not close the window for SET TRANSACTION.
         await tx.execute(sql`SET TRANSACTION READ ONLY`);
       }
+      options?.readSignal?.throwIfAborted();
       return fn(tx);
     }, options?.readOnlySnapshot ? { isolationLevel: 'repeatable read', accessMode: 'read only' } : undefined);
+    } finally {
+      release?.();
+      timing?.finished();
+    }
   }
 
-  return { db, client, withTenant };
+  return { db, client, withTenant, withPoolWork };
 }
 
 export type Db = ReturnType<typeof createDb>['db'];
@@ -280,5 +323,6 @@ export type Tx = Parameters<Parameters<Db['transaction']>[0]>[0];
 const url = process.env.DATABASE_URL;
 if (!url) throw new Error('DATABASE_URL is not set');
 
-// App singleton (non-privileged role).
-export const { db, client, withTenant } = createDb(url);
+// App singleton (non-privileged role). Keep the default for deployments that do
+// not explicitly divide a connection budget among application workers.
+export const { db, client, withTenant, withPoolWork } = createDb(url, {max: applicationBudget.poolMax});

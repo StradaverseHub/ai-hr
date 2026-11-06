@@ -128,6 +128,9 @@ describe('minimal Home sharing under actual application RLS',()=>{
    'employmentId=x&after=2026-02-31|birthday|'+peer.employmentId,'employmentId=x&after=a&after=b'])
    expect((await celebrationGET(new Request('http://localhost/api/home/celebrations?'+query))).status).toBe(400);
   expect((await celebrationGET(new Request('http://localhost/api/home/celebrations?employmentId='+peer.employmentId))).status).toBe(403);
+  expect((await celebrationGET(new Request('http://localhost/api/home/celebrations?employmentId=invalid'))).status).toBe(403);
+  await expect(readHomeCelebrationPage({...own.ctx,personId:peer.personId},peer.employmentId)).rejects.toMatchObject({code:'employmentUnavailable'});
+  await expect(readHomeCelebrationPage({...own.ctx,personId:undefined},own.employmentId)).rejects.toMatchObject({code:'employmentUnavailable'});
   const secondLogin:SessionContext={...peer.ctx,userId:await createAppUser(b.tenantId,peer.personId,'employee')};
   await saveOwnHomePersonPrivacy(secondLogin,{expectedOrdinal:0,hideBirthday:true,hideAnniversary:false});
   expect((await readHomeCelebrationPage(own.ctx,own.employmentId)).items.map(row=>row.kind)).toEqual(['anniversary']);

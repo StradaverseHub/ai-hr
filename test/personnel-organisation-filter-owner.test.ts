@@ -1,21 +1,31 @@
 import {randomUUID} from 'node:crypto';
 import {and,eq,sql} from 'drizzle-orm';
-import {afterAll,beforeAll,beforeEach,expect,it} from 'vitest';
-import {withTenant,type SessionContext} from '../db/client';
+import {afterAll,beforeAll,beforeEach,expect,it,vi} from 'vitest';
+import {client,withTenant,type SessionContext} from '../db/client';
 import * as s from '../db/schema';
 import {hireEmployee,setEmploymentAssignment} from '../core/org';
 import {listEmployeesPage,countEmployeesByStatus,personnelFilterChoices,readPersonnelOverview} from '../core/read';
 import {createPersonnelPrivateSearch,personnelPrivateSearchAvailable,privateSearchHash} from '../core/personnel-private-search';
-import {lockAccessConfigurationTx,tryLockAccessConfigurationReadTx} from '../core/access-configuration-lock';
-import {PersonnelReadBusyError} from '../core/personnel-read-bounds';
-import {personnelMaintenanceCompanyIds,workforceViewScope} from '../core/workforce-access';
+import {lockAccessConfigurationReadTx,lockAccessConfigurationTx,tryLockAccessConfigurationReadTx} from '../core/access-configuration-lock';
+import {canOpenWorkforce,personnelMaintenanceCompanyIds,workforceViewScope} from '../core/workforce-access';
+import {canConfigureAccess} from '../core/access-configuration-editor';
+import {readShellNavigationAccess} from '../core/shell-navigation-access';
+import {getOnboardingStatus} from '../core/onboarding';
 import {personnelGroupingReadinessTx} from '../core/personnel-quality';
-import {canViewJobArchitecture} from '../packs/job-architecture/owner';
 import {adminCtx,closeAll,createAppUser,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
 let b:Base,ctx:SessionContext;
 beforeAll(migrateTestDb);afterAll(closeAll);beforeEach(async()=>{await resetDb();b=await seedBase();ctx=adminCtx(b);});
 const hire=(name:string,extra:Partial<Parameters<typeof hireEmployee>[1]>={})=>hireEmployee(ctx,{person:{fullName:name,primaryEmail:randomUUID()+'@fixture.test'},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:'2024-01-01',...extra});
-const list=(filters:Partial<Parameters<typeof listEmployeesPage>[1]>={})=>listEmployeesPage(ctx,{companyIds:[b.companyId],limit:100,offset:0,...filters},'workforce');
+const list=async(filters:Partial<Parameters<typeof listEmployeesPage>[1]>={})=>{
+ const input={companyIds:[b.companyId],limit:100,offset:0,...filters};
+ const exact=await listEmployeesPage(ctx,input,'workforce');
+ if(input.privateSearch&&input.companyIds){
+  const overview=await readPersonnelOverview(ctx,{...input,companyIds:input.companyIds},filters);
+  expect(overview.employees).toEqual(exact);
+  expect(overview.headcount.total).toBe(exact.total);
+ }
+ return exact;
+};
 async function identity(personId:string,icNumber:string){await owner.db.insert(s.employeeStatutoryMy).values({tenantId:b.tenantId,personId,icNumber}).onConflictDoUpdate({target:s.employeeStatutoryMy.personId,set:{icNumber}});}
 it('searches permitted identity only through private results; page/count/export-size read agree and no identity enters row JSON',async()=>{
  const employee=await hire('Fictional Identity Owner',{employeeCode:'FILTER-1'});await identity(employee.personId,'900101-01-4321');
@@ -97,21 +107,88 @@ it('scoped company options and duplicate evidence cannot expose another company 
  expect((await listEmployeesPage(scoped,{companyIds:[b.companyId,company.id],limit:100,offset:0},'workforce')).rows.map(row=>row.employmentId)).toEqual([mine.employmentId]);expect(rows.rows.map(row=>row.employmentId)).not.toContain(theirs.employmentId);
 });
 
-it('refuses queued Personnel scope, list and export reads while the tenant access lock is held', async () => {
+it('completes authorized Personnel scope, list, export and private search while a tenant writer is active', async () => {
+  const employee=await hire('Fictional nonblocking reader');
   const input = { companyIds: [b.companyId], limit: 1, offset: 0 };
   await owner.withTenant(ctx, async tx => {
     await lockAccessConfigurationTx(tx, ctx.tenantId);
-    await expect(workforceViewScope(ctx, { personnelList: true })).rejects.toBeInstanceOf(PersonnelReadBusyError);
-    await expect(personnelMaintenanceCompanyIds(ctx)).rejects.toBeInstanceOf(PersonnelReadBusyError);
-    await expect(readPersonnelOverview(ctx, input, {})).rejects.toBeInstanceOf(PersonnelReadBusyError);
-    await expect(listEmployeesPage(ctx, input, 'workforce')).rejects.toBeInstanceOf(PersonnelReadBusyError);
-    await expect(createPersonnelPrivateSearch(ctx, { text: 'Fictional', companyIds: [b.companyId] }))
-      .rejects.toMatchObject({ reason: 'access-lock' });
+    let timer:ReturnType<typeof setTimeout>|undefined;
+    try {
+      await Promise.race([
+        (async()=>{
+          expect((await workforceViewScope(ctx, { personnelList: true })).companyIds).toContain(b.companyId);
+          expect(await personnelMaintenanceCompanyIds(ctx)).toContain(b.companyId);
+          expect((await readPersonnelOverview(ctx, input, {})).employees.rows).toEqual([expect.objectContaining({employmentId:employee.employmentId})]);
+          expect((await listEmployeesPage(ctx, input, 'workforce')).rows).toEqual([expect.objectContaining({employmentId:employee.employmentId})]);
+          const token=await createPersonnelPrivateSearch(ctx, { text: 'Fictional nonblocking reader', companyIds: [b.companyId] });
+          expect(await personnelPrivateSearchAvailable(ctx,token,[b.companyId])).toBe(true);
+          expect((await listEmployeesPage(ctx,{...input,privateSearch:token},'workforce')).rows).toEqual([expect.objectContaining({employmentId:employee.employmentId})]);
+        })(),
+        new Promise<never>((_,reject)=>{timer=setTimeout(()=>reject(new Error('Personnel waited for an unrelated tenant writer')),4000);}),
+      ]);
+    } finally {clearTimeout(timer);}
   });
-  expect((await workforceViewScope(ctx, { personnelList: true })).companyIds).toContain(b.companyId);
-  await expect(readPersonnelOverview(ctx, input, {})).resolves.toHaveProperty('employees.rows');
-  const token = await createPersonnelPrivateSearch(ctx, { text: 'Fictional', companyIds: [b.companyId] });
-  expect(await personnelPrivateSearchAvailable(ctx, token, [b.companyId])).toBe(true);
+});
+
+it('creates private searches alongside Personnel readers and retains only the native token limit', async () => {
+  await hire('Fictional Shared Search');
+  const tokens = await owner.withTenant(ctx, async tx => {
+    await lockAccessConfigurationReadTx(tx, ctx.tenantId);
+    return Promise.all(Array.from({ length: 10 }, () =>
+      createPersonnelPrivateSearch(ctx, { text: 'Fictional Shared Search', companyIds: [b.companyId] })));
+  });
+  expect(new Set(tokens).size).toBe(10);
+  const available = await Promise.all(tokens.map(token => personnelPrivateSearchAvailable(ctx, token, [b.companyId])));
+  expect(available.filter(Boolean)).toHaveLength(8);
+});
+
+it('batches current shell navigation permissions and onboarding status in one transaction', async () => {
+  const employee = await hire('Fictional Navigation Viewer');
+  const userId = await createAppUser(b.tenantId, employee.personId, 'employee');
+  const actor = {...ctx, userId, personId: employee.personId, roles: ['employee'], grants: [{role:'employee',companyId:null}]};
+  for (const session of [ctx, actor]) {
+    const [accessConfigurationAvailable, workforceAvailable, onboarded] = await Promise.all([
+      canConfigureAccess(session), canOpenWorkforce(session), getOnboardingStatus(session),
+    ]);
+    const begins = vi.spyOn(client, 'begin');
+    try {
+      expect(await readShellNavigationAccess(session, true)).toEqual({
+        accessConfigurationAvailable, workforceAvailable, onboarded,
+      });
+      expect(begins).toHaveBeenCalledTimes(1);
+    } finally {
+      begins.mockRestore();
+    }
+  }
+});
+
+it('reads the shared navigation hints while an Access writer holds the tenant lock', async () => {
+  const expected = await readShellNavigationAccess(ctx, true);
+  await owner.withTenant(ctx, async tx => {
+    await lockAccessConfigurationTx(tx, ctx.tenantId);
+    let deadline: ReturnType<typeof setTimeout> | undefined;
+    try {
+      await expect(Promise.race([
+        readShellNavigationAccess(ctx, true),
+        new Promise<never>((_, reject) => {
+          deadline = setTimeout(() => reject(new Error('Navigation waited for the Access lock')), 2000);
+        }),
+      ])).resolves.toEqual(expected);
+    } finally {
+      clearTimeout(deadline);
+    }
+  });
+});
+
+it('recovers a standalone Personnel read when a brief Access writer releases its lock', async () => {
+  let read: ReturnType<typeof workforceViewScope> | undefined;
+  await owner.withTenant(ctx, async tx => {
+    await lockAccessConfigurationTx(tx, ctx.tenantId);
+    read = workforceViewScope(ctx, { personnelList: true });
+    // The first attempts encounter the writer, then the successful attempt opens a fresh transaction.
+    await new Promise(resolve => setTimeout(resolve, 80));
+  });
+  await expect(read).resolves.toMatchObject({ companyIds: [b.companyId] });
 });
 
 it('opens Personnel scope, maintenance choices and the list while another authorised reader holds the same tenant lock', async () => {
@@ -119,7 +196,6 @@ it('opens Personnel scope, maintenance choices and the list while another author
   const input = { companyIds: [b.companyId], limit: 1, offset: 0 };
   await owner.withTenant(ctx, async tx => {
     expect(await tryLockAccessConfigurationReadTx(tx, ctx.tenantId)).toBe(true);
-    expect(await canViewJobArchitecture(ctx)).toBe(true);
     expect((await workforceViewScope(ctx, { personnelList: true })).companyIds).toContain(b.companyId);
     expect(await personnelMaintenanceCompanyIds(ctx)).toContain(b.companyId);
     const overview = await readPersonnelOverview(ctx, input, {});

@@ -156,7 +156,7 @@
  * via `modulePackById('payroll')` and fails closed (D3) — and the country calculators already fail
  * closed on an unresolvable pack (D3, `countryPackInactive`). No entitlement machinery is built here.
  */
-import { ArrowLeftRight, Banknote, FileText, FileUp, History, Landmark, ReceiptText, Settings2, SlidersHorizontal, Table2, Wallet } from 'lucide-react';
+import { ArrowLeftRight, Banknote, FileUp, History, Landmark, ReceiptText, Settings2, SlidersHorizontal, Table2, Wallet } from 'lucide-react';
 import { registerPack, type ModulePack, type NavNodeGroupDescriptor } from '../registry';
 import { payrollNavRank } from './phases';
 
@@ -229,9 +229,9 @@ const PAYROLL_ADMIN_NAV: NavNodeGroupDescriptor = {
     // literally after it, so it lands beside the result it corrects. `sort` is stable, so its literal
     // position is what decides it within the rank.
     { href: '/payroll/statutory-adjustment', labelKey: 'payrollStatutoryAdjustment', icon: SlidersHorizontal },
-    { href: '/payroll/reports', labelKey: 'payrollReports', icon: FileText },
     // 956cec85 — the reporter asked for "a centralized location" for the statutory forms. The forms
     // themselves already existed on Reports; this row is the home they were missing.
+    { href: '/payroll/reconciliation', labelKey: 'payrollReconciliation', icon: ArrowLeftRight },
     { href: '/payroll/statutory-forms', labelKey: 'payrollStatutoryForms', icon: Landmark },
     // 20f6c6a8 — Payment Submission. The reporter asked for one place to generate the files a month is
     // filed and paid with, grouped by who receives them. The FILES already existed, scattered: the KWSP

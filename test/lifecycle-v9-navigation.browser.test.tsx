@@ -17,7 +17,7 @@ vi.mock('../components/intent-link',async()=>{
 });
 vi.mock('next/link',async()=>{const React=await import('react');return {default:({prefetch,...props}:any)=>React.createElement('a',props,props.children)};});
 vi.mock('../components/user-menu',()=>({UserMenu:()=>null}));
-vi.mock('../app/lifecycle/v9/actions',()=>({readV9Email:vi.fn(),readV9UpdatedEmail:vi.fn(),readV9Workflow:vi.fn(),readV9Case:vi.fn(),commandV9:vi.fn(),createV9Offboarding:vi.fn(),saveV9Config:vi.fn(),setupV9:vi.fn()}));
+vi.mock('../app/lifecycle/v9/actions',()=>({readV9PersonnelPreview:vi.fn().mockResolvedValue({ok:true,values:{}}),readV9Email:vi.fn(),readV9UpdatedEmail:vi.fn(),readV9Workflow:vi.fn(),readV9Case:vi.fn(),commandV9:vi.fn(),createV9Offboarding:vi.fn(),saveV9Config:vi.fn(),setupV9:vi.fn()}));
 vi.mock('../app/lifecycle/onboarding/v31-actions',()=>({changeOnboarding:vi.fn(),saveOnboardingConfig:vi.fn(),saveOnboardingChecklistTasks:vi.fn(),writeOnboardingNote:vi.fn(),setupOnboarding:vi.fn(),loadOnboardingTask:vi.fn(),markOnboardingSeen:vi.fn()}));
 const {RequestRecords}=await import('../app/lifecycle/v9/request-records');
 const {useState}=await import('react');

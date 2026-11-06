@@ -8,7 +8,7 @@ import { generateSecret, verify } from 'otplib';
 import { client } from '../../db/client';
 import { internalConfig, internalIssuer } from './config';
 import { digest, opaque, validOpaque, passwordMatches, DUMMY_PASSWORD_HASH } from './crypto';
-import { authTransaction, readRecord, writeRecord, deleteRecord, revokeCredentialsSessions, type AuthSql } from './store';
+import { authTransaction, readRecord, readRecordPair, writeRecord, deleteRecord, revokeCredentialsSessions, type AuthSql } from './store';
 import { InternalAuthError } from './errors';
 import { assertActiveCredential, type Credential } from './credential';
 import { idleTimeoutMinutesFor } from '../session-policy-server';
@@ -112,14 +112,21 @@ export async function startLogin(input: { organization: string; username: string
   if(!outcome)throw new InternalAuthError('invalidLogin');
   return outcome;
 }
-async function withChallenge(raw: string, native: boolean, operation: (tx: AuthSql, c: Credential, challenge: Challenge, key: string) => Promise<AuthReply | { failure: true }>) {
+async function withChallenge(
+  raw: string, native: boolean,
+  operation: (tx: AuthSql, c: Credential, challenge: Challenge, key: string) => Promise<AuthReply | { failure: true }>,
+  beforeLock?: (subject: string) => Promise<void>,
+) {
   if (!validOpaque(raw)) throw new InternalAuthError('invalidChallenge');
   const key = `challenge:${digest(raw)}`, initial = await readRecord<Challenge>(client, key);
   if (!initial) throw new InternalAuthError('invalidChallenge');
+  // MFA admission commits independently of the challenge outcome.
+  if (beforeLock) await beforeLock(initial.subject);
   const result = await authTransaction(initial.subject, async tx => {
     const challenge = await readRecord<Challenge>(tx, key, true);
+    if (!challenge) throw new InternalAuthError('invalidChallenge');
     const c = await readRecord<Credential>(tx, credentialKey(initial.subject), true);
-    if (!challenge || challenge.native !== native || !c || c.version !== challenge.version || challenge.attempts >= 5 || challenge.subject !== c.subject || (!accountAvailable(c) && !challenge.invitation) || !temporaryPasswordAvailable(c)) throw new InternalAuthError('invalidChallenge');
+    if (challenge.native !== native || !c || c.version !== challenge.version || challenge.attempts >= 5 || challenge.subject !== c.subject || (!accountAvailable(c) && !challenge.invitation) || !temporaryPasswordAvailable(c)) throw new InternalAuthError('invalidChallenge');
     const outcome = await operation(tx, c, challenge, key);
     if ('failure' in outcome) {
       challenge.attempts++;
@@ -162,8 +169,6 @@ function consumeFactor(c: Credential, factor: { step?: number; recovery?: number
   if (factor.recovery !== undefined) c.recoveryHashes.splice(factor.recovery, 1);
 }
 export async function verifyMfa(raw: string, code: string, native = false, rememberDevice = false): Promise<AuthReply> {
-  const initial = validOpaque(raw) ? await readRecord<Challenge>(client, `challenge:${digest(raw)}`) : null;
-  if (initial) await takeRate(`mfa:${initial.subject}`, 15);
   return withChallenge(raw, native, async (tx, c, ch, key) => {
     if (!['enroll', 'mfa'].includes(ch.phase)) throw new InternalAuthError('invalidChallenge');
     const factor = await checkFactor(c, code, ch.phase === 'enroll' ? ch.secret : c.totpSecret);
@@ -207,7 +212,7 @@ export async function verifyMfa(raw: string, code: string, native = false, remem
       return { ...session, ...remembered };
     }
     return session;
-  });
+  }, subject => takeRate(`mfa:${subject}`, 15));
 }
 /** Web sessions also end after the organization's idle limit (ADR-0171); that check revokes and audits them. */
 async function loadSession(token: string | undefined, native: boolean) {
@@ -216,8 +221,9 @@ async function loadSession(token: string | undefined, native: boolean) {
   if (!validOpaque(raw)) return null;
   const key = `session:${digest(raw)}`, session = await readRecord<Session>(client, key);
   if (!session || session.native !== native || session.absoluteExpiry <= Date.now()) return null;
-  const c = await readRecord<Credential>(client, credentialKey(session.subject));
-  if (!c || c.version !== session.version || !await readRecord(client, `family:${session.family}`)) return null;
+  const c = await readRecordPair<Credential>(client, credentialKey(session.subject), `family:${session.family}`,
+    credential => credential.version === session.version);
+  if (!c) return null;
   if(c.accountActiveUntil&&!accountAvailable(c)){await authTransaction(c.subject,tx=>observeStoredAccountExpiry(tx,c.subject));return null;}
   try { await assertActiveCredential(client, c); } catch (e) { if (e instanceof InternalAuthError) return null; throw e; }
   if (native) return { key, session, c, idleMs: null };

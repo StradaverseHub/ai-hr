@@ -8,6 +8,7 @@ import { formatBreakDisplay } from '@/core/shift-break-display';
 import { weekPatternFor, weekPatternGroupFor } from '@/core/week-pattern';
 import { Card, ErrorBanner, PageHeader, SectionHeader, btnPrimary, pageWideCls } from '@/components/ui';
 import { shiftChipClass, shiftChipStyle } from '@/lib/shift-visual';
+import { ShiftImportPanel } from './shift-import-panel';
 import { scheduleGroupSectionHref } from './schedule/sections';
 import { archiveShiftAction, copyShiftAction, deleteShiftAction, unarchiveShiftAction } from './shift-actions';
 
@@ -74,6 +75,7 @@ export default async function ShiftSettingsPage({
         }
       />
       <ErrorBanner message={error} />
+      <ShiftImportPanel />
 
       <Card id="shift-schedules" className="scroll-mt-6">
         <SectionHeader title={t('shiftsSectionTitle')} count={shifts.length} />

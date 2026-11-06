@@ -1,3 +1,4 @@
+import { ALL_RECORDED_PAY_ITEMS } from '../lib/payroll-period-comparison';
 import {frozenPayslipInformation,informationPayslipDocument,informationPayslipDocuments,informationDocumentRow,overlayInformationDocument} from './information-correction-history';
 import {payrollComparisonAvailability} from '../lib/payroll-comparison-result';
 import {recordedPayrollComparisonAmount, recordedPayrollComparisonCurrency, recordedPayrollProrationCoverage} from '../lib/payroll-comparison-source';
@@ -54,6 +55,7 @@ import {
   collectableCycleIds,
   intendedCycleFilter,
   listPayslipLessEligible,
+  payrollCloseCompanyIdsTx,
   resolveBatchScopeFilter,
   type BatchScope,
   type PayrollSkipReason,
@@ -1368,12 +1370,24 @@ export function listPayrollRegisterAcross(
       .orderBy(desc(payrollBatch.payPeriod), asc(payrollBatch.runSeq), asc(person.fullName));
 
     const retained=await informationPayslipDocuments(tx,{...p,cycle});
-    for(const document of retained){
-      const saved=informationDocumentRow(document),index=rows.findIndex(r=>r.correctionSlipId===saved.id);
-      if(index>=0)rows[index]=overlayInformationDocument(rows[index],document);
-      else rows.push({correctionSlipId:saved.id,employeeCode:saved.employeeCode,employeeName:saved.employeeName,company:saved.company,currency:saved.currency,department:saved.department,position:saved.position,jobGrade:saved.jobGrade,employmentStatus:saved.employmentStatus,employmentType:saved.employmentType,payPeriod:saved.payPeriod,payrollCycle:saved.runType,runSeq:saved.runSeq,historyImportAttemptId:saved.historyImportAttemptId??null,historyImportCycleName:saved.historyImportCycleName??null,daysWorked:saved.daysWorked??null,basic:saved.basic,allowance:saved.allowance,overtime:saved.overtime,bonus:saved.bonus,gross:saved.gross,statutory:saved.statutory,otherDeductions:saved.otherDeductions,totalDeductions:saved.totalDeductions,net:saved.net,employerCost:saved.employerCost});
+    if(retained.length){
+      const firstIndexBySlipId = new Map<string, number>();
+      for (const [index, row] of rows.entries()) {
+        // Preserve the first match when more than one live row has the same slip ID.
+        if (!firstIndexBySlipId.has(row.correctionSlipId)) firstIndexBySlipId.set(row.correctionSlipId, index);
+      }
+      for (const document of retained) {
+        const saved = informationDocumentRow(document);
+        const index = firstIndexBySlipId.get(saved.id);
+        if (index !== undefined) {
+          rows[index] = overlayInformationDocument(rows[index], document);
+        } else {
+          firstIndexBySlipId.set(saved.id, rows.length);
+          rows.push({correctionSlipId:saved.id,employeeCode:saved.employeeCode,employeeName:saved.employeeName,company:saved.company,currency:saved.currency,department:saved.department,position:saved.position,jobGrade:saved.jobGrade,employmentStatus:saved.employmentStatus,employmentType:saved.employmentType,payPeriod:saved.payPeriod,payrollCycle:saved.runType,runSeq:saved.runSeq,historyImportAttemptId:saved.historyImportAttemptId??null,historyImportCycleName:saved.historyImportCycleName??null,daysWorked:saved.daysWorked??null,basic:saved.basic,allowance:saved.allowance,overtime:saved.overtime,bonus:saved.bonus,gross:saved.gross,statutory:saved.statutory,otherDeductions:saved.otherDeductions,totalDeductions:saved.totalDeductions,net:saved.net,employerCost:saved.employerCost});
+        }
+      }
+      rows.sort((a,b)=>b.payPeriod.localeCompare(a.payPeriod)||a.runSeq-b.runSeq||a.employeeName.localeCompare(b.employeeName));
     }
-    if(retained.length)rows.sort((a,b)=>b.payPeriod.localeCompare(a.payPeriod)||a.runSeq-b.runSeq||a.employeeName.localeCompare(b.employeeName));
     return rows.map((r) => {
       const st = (r.statutory ?? {}) as Record<string, unknown>;
       const n = (k: string): number => {
@@ -2996,22 +3010,41 @@ export function listBatchProcessedDates(
   batchIds: readonly string[],
 ): Promise<Map<string, string>> {
   if (batchIds.length === 0) return Promise.resolve(new Map());
-  return withTenant(ctx, async (tx) => {
-    const rows = await tx
-      .select({
-        batchId: domainEvent.aggregateId,
-        processedOn: sql<string>`to_char(max(${domainEvent.occurredAt}) at time zone ${HR_LOCAL_TZ}::text, 'YYYY-MM-DD')`,
-      })
-      .from(domainEvent)
-      .where(
-        and(
-          eq(domainEvent.aggregateType, 'payroll-batch'),
-          eq(domainEvent.eventType, 'payroll-batch.processed'),
-          inArray(domainEvent.aggregateId, batchIds as string[]),
-        ),
-      )
-      .groupBy(domainEvent.aggregateId);
-    return new Map(rows.map((r) => [r.batchId, r.processedOn]));
+  return withTenant(ctx, tx => listBatchProcessedDatesTx(tx, batchIds));
+}
+
+async function listBatchProcessedDatesTx(tx: Tx, batchIds: readonly string[]): Promise<Map<string, string>> {
+  if (batchIds.length === 0) return new Map();
+  const rows = await tx
+    .select({
+      batchId: domainEvent.aggregateId,
+      processedOn: sql<string>`to_char(max(${domainEvent.occurredAt}) at time zone ${HR_LOCAL_TZ}::text, 'YYYY-MM-DD')`,
+    })
+    .from(domainEvent)
+    .where(
+      and(
+        eq(domainEvent.aggregateType, 'payroll-batch'),
+        eq(domainEvent.eventType, 'payroll-batch.processed'),
+        inArray(domainEvent.aggregateId, batchIds as string[]),
+      ),
+    )
+    .groupBy(domainEvent.aggregateId);
+  return new Map(rows.map((row) => [row.batchId, row.processedOn]));
+}
+
+/** Only visible-page metadata, using one Payroll history barrier and the original close authority. */
+export function payrollDashboardBatchMetadata(
+  ctx: SessionContext,
+  batchIds: readonly string[],
+  processedCompanyIds: readonly string[],
+): Promise<{ processedOn: Map<string, string>; closeCompanies: Set<string> }> {
+  if (batchIds.length === 0 && processedCompanyIds.length === 0) {
+    return Promise.resolve({ processedOn: new Map(), closeCompanies: new Set() });
+  }
+  return withTenant(ctx, async tx => {
+    const processedOn = await listBatchProcessedDatesTx(tx, batchIds);
+    const closeCompanies = await payrollCloseCompanyIdsTx(tx, ctx, processedCompanyIds);
+    return { processedOn, closeCompanies };
   });
 }
 
@@ -3228,17 +3261,20 @@ export function listFilableRunsForPeriod(
 /** Recorded comparison inputs for a caller-held, freshly authorized report snapshot. The service owns
  * permissions and audit; this owner owns saved payroll semantics. No live company-currency fallback. */
 export async function payrollComparisonSourcesTx(tx: Tx, ctx: SessionContext, p: {
-  companyIds: readonly string[]; previousPeriod: string; currentPeriod: string; runType: 'regular' | 'all'; payItemCode: string;
+  companyIds: readonly string[]; previousPeriod: string; currentPeriod: string; runType: 'regular' | 'all'; cycleIds?: string[]; previousCycleIds?: string[]; payItemCode: string;
 }) {
   if (!p.companyIds.length) return { runs: [], sources: [] };
   if (p.companyIds.length > 1000) throw new Error('Payroll comparison exceeds 1000 companies. Narrow the scope.');
+  const priorCycles = p.previousCycleIds?.length ? p.previousCycleIds : p.cycleIds;
+  const cyclesFor=(period:string,ids?:string[])=>and(eq(payrollBatch.payPeriod,period),ids?.length?inArray(payrollBatch.payrollCycleId,ids):undefined);
   const batches = await tx.select({ id: payrollBatch.id, companyId: payrollBatch.companyId,
     period: payrollBatch.payPeriod, runType: payrollBatch.runType, status: payrollBatch.status,
     needsRecalcAt: payrollBatch.needsRecalcAt, expectedResults:payrollBatch.employeeCount }).from(payrollHistoryEffectiveBatch)
     .where(and(eq(payrollBatch.tenantId, ctx.tenantId), inArray(payrollBatch.companyId, [...p.companyIds]),
       or(isNull(payrollBatch.historyImportAttemptId),sql`${payrollBatch.employeeCount}>0`),
       inArray(payrollBatch.payPeriod, [p.previousPeriod, p.currentPeriod]),
-      p.runType === 'regular' ? eq(payrollBatch.runType, 'regular') : undefined))
+      p.runType === 'regular' ? eq(payrollBatch.runType, 'regular') : undefined,
+      (priorCycles?.length||p.cycleIds?.length)?or(cyclesFor(p.previousPeriod,priorCycles),cyclesFor(p.currentPeriod,p.cycleIds)):undefined))
     .orderBy(asc(payrollBatch.companyId), asc(payrollBatch.payPeriod), asc(payrollBatch.runSeq)).limit(10001);
   if (batches.length > 10000) throw new Error('Payroll comparison exceeds 10000 runs. Narrow the scope.');
   const runs = batches.map(({needsRecalcAt, ...run}) => ({...run, stale: needsRecalcAt !== null}));
@@ -3258,12 +3294,14 @@ export async function payrollComparisonSourcesTx(tx: Tx, ctx: SessionContext, p:
     const batch = batchById.get(slip.runId)!;
     const period = payPeriodBounds(batch.period);
     if (!period) throw new Error('Saved payroll period is invalid.');
+    const allItems = p.payItemCode === ALL_RECORDED_PAY_ITEMS;
     return { id: slip.id, version: slip.version, runId: slip.runId, employmentId: slip.employmentId,
       companyId: batch.companyId, currency: recordedPayrollComparisonCurrency(slip.statutory, batch.companyId),
-      amount: recordedPayrollComparisonAmount(slip.basicSalary, slip.statutory, p.payItemCode,batch.companyId),
+      amount: recordedPayrollComparisonAmount(slip.basicSalary, slip.statutory, allItems?'BASIC':p.payItemCode,batch.companyId),
+      recordedItems: allItems ? slip.statutory : undefined,
       coverage: payslipCoverage(slip, period),
       // The recorded factor describes Basic. It cannot prove a different item's proration.
-      proratedCoverage: recordedPayrollProrationCoverage(slip.statutory,batch.companyId,period,p.payItemCode) };
+      proratedCoverage: recordedPayrollProrationCoverage(slip.statutory,batch.companyId,period,allItems?'BASIC':p.payItemCode) };
   });
   return { runs, sources };
 }

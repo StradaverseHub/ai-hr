@@ -26,6 +26,10 @@ Open [Attendance settings](/admin/attendance/settings), choose **Locations**, th
 
 Web/mobile clocking may require location permission, an allowed location and the configured device checks. A denied browser permission or an out-of-range location needs investigation; creating a manual punch is not a substitute for diagnosing the clocking policy.
 
+## Review offline clocking
+
+Open [Offline Clocking](/admin/attendance/settings/offline-clocking) under Attendance settings. Choose the company, review whether offline punches are allowed, and save the limits. Check the company before saving: the policy applies only to that company.
+
 ## Set up overtime patterns
 
 Open [Overtime patterns](/admin/attendance/settings/overtime-patterns) from Attendance settings. The setup has four steps: **General Settings**, **Overtime Rates**, **Eligibility** and **Preview**. Enter the general settings, review the applicable rates, define eligibility, then inspect the complete preview. Resolve validation messages before continuing.

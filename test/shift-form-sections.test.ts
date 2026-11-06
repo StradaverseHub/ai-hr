@@ -129,7 +129,7 @@ describe('r429 (f6819e19) — the screen the plan asked for', () => {
     expect(FORM).toContain("t('shiftInformationLegend')");
     expect(TIME_FIELDS).toContain("t('workingTimeLegend')");
     expect(TIME_FIELDS).toContain("t('breaksLabel')");
-    expect(FORM).toContain("t('shiftOvertimePayLegend')");
+    expect(FORM).not.toContain("/admin/attendance/settings/work-schedule-overtime#shift-pay");
   });
 
   it('surfaces the half-day pair in Working Time (request point 9, carried forward)', () => {

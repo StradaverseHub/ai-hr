@@ -14,7 +14,7 @@ export function TodaySection({id,title,count,empty,emptyText,unavailable,childre
    <h2 id={id} className="text-[0.9375rem] font-semibold">{title}</h2>
    {count!==undefined&&count>0&&<span data-today-count className="text-xs font-medium tabular-nums text-muted-foreground">{count}</span>}
   </div>
-  {unavailable&&<p role="status" className="rounded-lg border border-border bg-muted/50 p-3 text-sm text-muted-foreground">{unavailable}</p>}
+  {unavailable&&<p data-today-unavailable role="status" className="rounded-lg border border-border bg-muted/50 p-3 text-sm text-muted-foreground">{unavailable}</p>}
   {empty?<p data-today-empty className="rounded-xl border border-dashed border-border p-4 text-sm text-muted-foreground">{emptyText}</p>
    :<ul className="space-y-2">{children}</ul>}
   {footer}

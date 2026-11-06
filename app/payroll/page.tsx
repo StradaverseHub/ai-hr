@@ -3,8 +3,8 @@ import { payrollRunLabel } from '@/core/payslip-cycle-label';
 import { getLocale, getTranslations } from 'next-intl/server';
 import { scopedAdmin } from '@/lib/scope';
 import { requireModule } from '@/lib/authz';
-import { listBatches, payrollCloseCompanyIds } from '@/core/payroll';
-import { listBatchProcessedDates } from '@/core/payroll-view';
+import { listBatches, payrollDashboardCounts } from '@/core/payroll';
+import { payrollDashboardBatchMetadata } from '@/core/payroll-view';
 import { listCompanies } from '@/core/read';
 import { Button, Card, ErrorBanner, PageHeader, SectionHeader, pageWideCls } from '@/components/ui';
 import { ConfirmSubmit } from '@/components/ui/confirm-submit';
@@ -144,7 +144,7 @@ export default async function PayrollPage({
   // Encoded once here; re-validated BY SHAPE at the other end (lib/return-to.ts), never echoed raw.
   const fromQuery = encodeURIComponent(dashboardHref(filters));
 
-  const [yearBatches, allBatches, companies] = await Promise.all([
+  const [yearBatches, allTimeCounts, companies] = await Promise.all([
     // The GRID + TIMELINE read: exactly the twelve periods of the selected year, pushed into SQL through
     // listBatches' widened period-set argument. Bounded by construction, and it is the whole year rather
     // than only the ticked months on purpose — every month cell shows its own run count, so an untick
@@ -154,9 +154,9 @@ export default async function PayrollPage({
     // processed and never closed, so no employee ever saw a payslip — "a skipped one cannot sit
     // unnoticed for months". That warning has to span ALL TIME: counted off the year's rows instead, a
     // run left unpublished last December would stop being warned about the moment the clock ticked over
-    // to January, which is precisely the failure it was written to prevent. If this read ever becomes
-    // expensive the fix is to make it a COUNT — not to scope it to the selected year.
-    listBatches(s, scopeIds),
+    // to January, which is precisely the failure it was written to prevent. The aggregate retains
+    // all-time coverage without loading historical run/money DTOs.
+    payrollDashboardCounts(s, scopeIds),
     // Company filter options. Sourced from the authorised company list rather than from the year's runs,
     // so the dropdown does not change shape as you step through years and a selected company cannot
     // vanish underneath you. Narrowed to scopeIds: a view filter must never widen the access fence.
@@ -184,19 +184,16 @@ export default async function PayrollPage({
 
   // fc776376 — payroll runs accumulate every period, so the list pages like every other list.
   const { rows: batchPage, state: pgState } = paginateRows(rows, parsePageQuery(sp));
-  // Only the VISIBLE page's runs are dated: the event read is keyed on the batch ids actually rendered,
-  // so it costs one small indexed query no matter how many runs the year holds.
-  const processedOn = await listBatchProcessedDates(s, batchPage.map((b) => b.id));
-  // cdb1c6ca — WHERE CLOSE BATCH IS OFFERED: the companies on this page where the operator may close
-  // payroll (payroll scope + the granular payroll.close key). Resolved once per COMPANY on the server —
-  // never per row in the client — and only for the processed rows actually rendered. Visibility only;
-  // closeBatch re-asserts the permission on every close.
-  const closeCompanies = await payrollCloseCompanyIds(
+  // The visible runs need the HR-local processed date and, for processed rows, the companies
+  // offering Close Batch. Both reads share the Payroll carrier. The close action still authorizes
+  // each attempted close independently.
+  const { processedOn, closeCompanies } = await payrollDashboardBatchMetadata(
     s,
+    batchPage.map((b) => b.id),
     batchPage.filter((b) => b.status === 'processed').map((b) => b.companyId),
   );
 
-  const unpublishedCount = allBatches.filter((b) => payrollPublicationState(b) === 'unpublished').length;
+  const unpublishedCount = allTimeCounts.unpublishedCount;
 
   // Month names are CALENDAR DATA, not product copy — Intl already knows them in every locale this app
   // ships, so putting twelve more strings × six catalogs into the message files would be inventing a
@@ -574,7 +571,7 @@ export default async function PayrollPage({
                   <td colSpan={9} className="px-4 py-8 text-center text-muted-foreground">
                     {/* `year` is passed as a STRING: ICU formats a number argument with grouping, and
                         "2,026" is not a year. */}
-                    {allBatches.length === 0 ? t('empty') : t('filteredEmpty', { year: String(filters.year) })}
+                    {allTimeCounts.totalCount === 0 ? t('empty') : t('filteredEmpty', { year: String(filters.year) })}
                   </td>
                 </tr>
               )}

@@ -330,31 +330,42 @@ export function exportRewardReview(ctx:SessionContext,unitId:string,format:'revi
     return projection;
   });
 }
+
+/** The single owner of complete unit calculation, current authority and monetary privacy filtering.
+ * Compact lists and full reviews both retain the same native role/roster reads, governance passes,
+ * independent Senior confirmation and hidden-record flags. Nothing here is cached between calls. */
+async function reviewFinancialProjectionTx(tx: Tx, ctx: SessionContext, unitId: string, capability: import('./access-policy-model').RewardCapability = 'review.view') {
+  const { unit, roles, entries } = await load(tx, unitId, false, capability);
+  const [caps]=await tx.execute<{value:{figuresEdit:boolean;reviewDecide:boolean;batch:boolean;dataCheck:boolean;snapshotRefresh:boolean;offcycleRaise:boolean;notesAdd:boolean;casesDecide:boolean}}>(sql`select jsonb_build_object('figuresEdit',app.reward_capability(${unitId}::uuid,'figures.edit') and (not exists(select 1 from app.reward_current_group_roles()) or app.reward_group_figures_stage_allowed(${unitId}::uuid)),'reviewDecide',app.reward_capability(${unitId}::uuid,'review.decide'),'batch',app.reward_capability(${unitId}::uuid,'review.batch'),'dataCheck',app.reward_capability(${unitId}::uuid,'data.check'),'snapshotRefresh',app.reward_capability(${unitId}::uuid,'snapshot.refresh'),'offcycleRaise',app.reward_capability(${unitId}::uuid,'offcycle.raise'),'notesAdd',app.reward_capability(${unitId}::uuid,'notes.add'),'casesDecide',app.reward_capability(${unitId}::uuid,'cases.decide')) as value`);
+  const [uploadedReview]=await tx.execute<{present:boolean;pending:boolean}>(sql`select true as present,(current_version=0 or checked_version is distinct from current_version) as pending from reward_uploaded_review where unit_id=${unitId}::uuid and tenant_id=app.current_tenant_id()`);
+  const [groupScope]=await tx.execute<{wholeGroup:boolean}>(sql`select exists(select 1 from app.reward_current_group_roles()) as "wholeGroup"`);
+  if(uploadedReview?.pending&&!roles.includes('gr')&&!groupScope?.wholeGroup)throw new RewardError('This upload awaits independent Group Rewards confirmation before the BU review opens.');
+
+  const calculated = await calculateUnit(tx, unit, entries);
+  const state=await governanceStateTx(tx,unitId),publicState=await governancePublicTx(tx,unitId),effectivePolicy=state?effectiveRewardPolicy(unit.policy,state):publicState?{...unit.policy,multiplierBp:publicState.multiplierBp,branchRatings:publicState.branchRatings,targetMonthsBp:publicState.targetMonthsBp}:unit.policy;
+  if(publicState&&!publicState.selectionConfirmed&&roles.includes('bu')&&!roles.includes('gr'))throw new RewardError('Senior plan membership awaits independent Group Rewards confirmation before the BU review can open.');
+  const visible = calculated.rows.filter(e => visibleEntry(e, roles, ctx.personId)).map(entry=>{
+    if(maySeeSeniorAmounts(roles)||!isSeniorPlanMember(unit.policy,entry.facts,entry.source.grade))return entry;
+    return {...entry,recommendation:emptyRecommendation(),newBasicCents:entry.source.basicCents,bonusCents:0,meritCents:0,promotionCents:0,specialCents:0,lumpCents:0};
+  });
+  const visibleIds = new Set(visible.map(e => e.id));
+  const flags = calculated.flags.filter(f => !f.entryId || visibleIds.has(f.entryId));
+  const hiddenBlocks = calculated.flags.filter(f => f.entryId && !visibleIds.has(f.entryId) && f.severity === 'block').length;
+  if (hiddenBlocks) flags.push({ severity: 'block', code: 'ACCESS-01', message: 'A restricted record needs review by its authorised reviewer.' });
+  const route: RewardRole[] = unit.kind === 'annual' ? ['bu', 'bg', 'gr', 'ctro', 'ec'] : offcycleRoute(unit.kind, unit.offcycle!, entries);
+  const canEdit = !!caps?.value.figuresEdit && (canEditStage(unit.status, roles) || unit.kind !== 'annual' && unit.status === 'draft' && roles.includes('bg'));
+  return { unit, roles, entries, calculated, publicState, effectivePolicy, visible, visibleIds, flags, route, canEdit, caps, uploadedReview, groupScope };
+}
+
 /**
- * The review read path. getRewardUnit and the Approvals board (rewardApprovalsBoard) both read a review
- * through this one function, so membership, entry visibility (visibleEntry, including the own-person
- * exclusion) and flag filtering are decided in one place.
+ * Full review metadata for getRewardUnit and the Approvals board. Financial calculation, current
+ * authority, own-person exclusion and flag filtering are owned by reviewFinancialProjectionTx above,
+ * which the compact list also uses. Detail-only reads remain here.
  */
 async function reviewProjectionTx(tx: Tx, ctx: SessionContext, unitId: string,capability:import('./access-policy-model').RewardCapability='review.view') {
   {
-    const { unit, roles, entries } = await load(tx, unitId,false,capability);
-    const [caps]=await tx.execute<{value:{figuresEdit:boolean;reviewDecide:boolean;batch:boolean;dataCheck:boolean;snapshotRefresh:boolean;offcycleRaise:boolean;notesAdd:boolean;casesDecide:boolean}}>(sql`select jsonb_build_object('figuresEdit',app.reward_capability(${unitId}::uuid,'figures.edit') and (not exists(select 1 from app.reward_current_group_roles()) or app.reward_group_figures_stage_allowed(${unitId}::uuid)),'reviewDecide',app.reward_capability(${unitId}::uuid,'review.decide'),'batch',app.reward_capability(${unitId}::uuid,'review.batch'),'dataCheck',app.reward_capability(${unitId}::uuid,'data.check'),'snapshotRefresh',app.reward_capability(${unitId}::uuid,'snapshot.refresh'),'offcycleRaise',app.reward_capability(${unitId}::uuid,'offcycle.raise'),'notesAdd',app.reward_capability(${unitId}::uuid,'notes.add'),'casesDecide',app.reward_capability(${unitId}::uuid,'cases.decide')) as value`);
-    const calculated = await calculateUnit(tx, unit, entries);
-    const [uploadedReview]=await tx.execute<{present:boolean;pending:boolean}>(sql`select true as present,(current_version=0 or checked_version is distinct from current_version) as pending from reward_uploaded_review where unit_id=${unitId}::uuid and tenant_id=app.current_tenant_id()`);
-    const [groupScope] = await tx.execute<{ wholeGroup:boolean }>(sql`
-      select exists(select 1 from app.reward_current_group_roles()) as "wholeGroup"
-    `);
-    if(uploadedReview?.pending&&!roles.includes('gr')&&!groupScope?.wholeGroup)throw new RewardError('This upload awaits independent Group Rewards confirmation before the BU review opens.');
-    const state=await governanceStateTx(tx,unitId),publicState=await governancePublicTx(tx,unitId),effectivePolicy=state?effectiveRewardPolicy(unit.policy,state):publicState?{...unit.policy,multiplierBp:publicState.multiplierBp,branchRatings:publicState.branchRatings,targetMonthsBp:publicState.targetMonthsBp}:unit.policy;
-    if(publicState&&!publicState.selectionConfirmed&&roles.includes('bu')&&!roles.includes('gr'))throw new RewardError('Senior plan membership awaits independent Group Rewards confirmation before the BU review can open.');
-    const visible = calculated.rows.filter(e => visibleEntry(e, roles, ctx.personId)).map(entry=>{
-      if(maySeeSeniorAmounts(roles)||!isSeniorPlanMember(unit.policy,entry.facts,entry.source.grade))return entry;
-      return {...entry,recommendation:emptyRecommendation(),newBasicCents:entry.source.basicCents,bonusCents:0,meritCents:0,promotionCents:0,specialCents:0,lumpCents:0};
-    });
-    const visibleIds = new Set(visible.map(e => e.id));
-    const flags = calculated.flags.filter(f => !f.entryId || visibleIds.has(f.entryId));
-    const hiddenBlocks = calculated.flags.filter(f => f.entryId && !visibleIds.has(f.entryId) && f.severity === 'block').length;
-    if (hiddenBlocks) flags.push({ severity: 'block', code: 'ACCESS-01', message: 'A restricted record needs review by its authorised reviewer.' });
+    const { unit, roles, entries, calculated, publicState, effectivePolicy, visible, visibleIds, flags,
+      route, canEdit, caps, uploadedReview, groupScope } = await reviewFinancialProjectionTx(tx, ctx, unitId, capability);
     const [cycle] = await tx.select().from(rewardCycle).where(eq(rewardCycle.id, unit.cycleId));
     const [bu] = await tx.select({ name: businessUnitDisplayName }).from(businessUnit).where(eq(businessUnit.id, unit.businessUnitId));
     // 9070acae: a review is always one company and one unit; the page names both on every save.
@@ -362,7 +373,6 @@ async function reviewProjectionTx(tx: Tx, ctx: SessionContext, unitId: string,ca
     const members = await tx.select({ id: rewardMember.id, role: rewardMember.role, userId: rewardMember.userId }).from(rewardMember).where(eq(rewardMember.unitId, unitId)).orderBy(asc(rewardMember.role), asc(rewardMember.userId));
     const decisions = await decisionHistory(tx, unitId, members);
     const returned = returnedProjection(unit, decisions[0]);
-    const route: RewardRole[] = unit.kind === 'annual' ? ['bu', 'bg', 'gr', 'ctro', 'ec'] : offcycleRoute(unit.kind, unit.offcycle!, entries);
     // The latest decision is the one that moved the review to its current step (or returned it).
     const entered = decisions[0] && decisions[0].toStage === unit.status ? todayInKualaLumpur(new Date(decisions[0].createdAt)) : null;
     const calendar = await calendarTx(tx, unit.cycleId, unit.companyId);
@@ -399,7 +409,7 @@ async function reviewProjectionTx(tx: Tx, ctx: SessionContext, unitId: string,ca
       suggestedMultiplierBp: calculated.suggestedMultiplierBp, suggestion: (roles.includes('gr')&&'suggestion' in calculated ? calculated.suggestion : null) as RewardMultiplierSuggestion | null, lumpWorking: calculated.lumpWorking,
       approvalStageEdit: !!groupScope?.wholeGroup && !uploadedReview?.present &&
         !!caps?.value.figuresEdit && ['gr','ctro','ec'].includes(unit.status) && roles.includes(unit.status as RewardRole),
-      canEdit: !!caps?.value.figuresEdit&&(canEditStage(unit.status, roles) || unit.kind !== 'annual' && unit.status === 'draft' && roles.includes('bg')), canConfigure: roles.includes('gr') && unit.status === 'draft' && unit.kind === 'annual',
+      canEdit, canConfigure: roles.includes('gr') && unit.status === 'draft' && unit.kind === 'annual',
       posting: await rewardPostingAuthorityTx(tx, unit, roles),
     };
   }
@@ -495,14 +505,15 @@ async function listRewardUnitsTx(tx:Tx,companyIds:string[]){
     });
 }
 
-export async function rewardSetupChoices(ctx: SessionContext, companyIds: string[],options:{includeArchived?:boolean;sharedPolicy?:boolean}={}) {
+export async function rewardSetupChoices(ctx: SessionContext, companyIds: string[],options:{includeArchived?:boolean;sharedPolicy?:boolean;fields?:readonly ('units'|'users'|'cycles')[]}={}) {
   return withRewardsTenant(ctx, async tx => {
     // Outer qualifiers stay literal: Drizzle strips Column qualifiers in single-table SELECT fields.
     const companies = companyIds.length ? await tx.select({ id: company.id, name: company.legalName,archived:sql<boolean>`${company.archivedAt} is not null`,excludedYears:sql<number[]>`array(select e.year from reward_company_exclusion e where e.tenant_id="company"."tenant_id" and e.company_id="company"."id" and e.ended_at is null order by e.year)` }).from(company).where(and(options.sharedPolicy?undefined:isNull(company.archivedAt),inArray(company.id, companyIds),sql`app.reward_admin(${company.id})`,options.sharedPolicy?eq(company.currency,'MYR'):undefined)).orderBy(asc(company.legalName)) : [];
     if (!companies.length) return { companies: [], units: [], users: [], cycles: [] };
-    const units = await tx.select({ id: businessUnit.id, companyId: businessUnit.companyId, name:businessUnitDisplayName, global: businessUnit.isGlobal,archived:sql<boolean>`${businessUnit.archivedAt} is not null` }).from(businessUnit).where(and(options.includeArchived?undefined:isNull(businessUnit.archivedAt), or(inArray(businessUnit.companyId, companies.map(c => c.id)), eq(businessUnit.isGlobal, true)))).orderBy(asc(businessUnit.code),asc(businessUnit.id));
-    const users = await tx.select({ id: appUser.id, name: person.fullName, email: person.primaryEmail }).from(appUser).innerJoin(person, and(eq(person.id, appUser.personId),sql`app.access_workforce_person(${person.id}, 'workforce.view')`)).where(and(isNull(appUser.archivedAt), sql`not app.login_blocked(${appUser.id})`)).orderBy(asc(person.fullName), asc(appUser.id));
-    const cycles = await tx.select({ id: rewardCycle.id, name: rewardCycle.name, year: rewardCycle.year }).from(rewardCycle).orderBy(desc(rewardCycle.year), asc(rewardCycle.name));
+    const fields = options.fields ?? ['units', 'users', 'cycles'];
+    const units = fields.includes('units') ? await tx.select({ id: businessUnit.id, companyId: businessUnit.companyId, name:businessUnitDisplayName, global: businessUnit.isGlobal,archived:sql<boolean>`${businessUnit.archivedAt} is not null` }).from(businessUnit).where(and(options.includeArchived?undefined:isNull(businessUnit.archivedAt), or(inArray(businessUnit.companyId, companies.map(c => c.id)), eq(businessUnit.isGlobal, true)))).orderBy(asc(businessUnit.code),asc(businessUnit.id)) : [];
+    const users = fields.includes('users') ? await tx.select({ id: appUser.id, name: person.fullName, email: person.primaryEmail }).from(appUser).innerJoin(person, and(eq(person.id, appUser.personId),sql`app.access_workforce_person(${person.id}, 'workforce.view')`)).where(and(isNull(appUser.archivedAt), sql`not app.login_blocked(${appUser.id})`)).orderBy(asc(person.fullName), asc(appUser.id)) : [];
+    const cycles = fields.includes('cycles') ? await tx.select({ id: rewardCycle.id, name: rewardCycle.name, year: rewardCycle.year }).from(rewardCycle).orderBy(desc(rewardCycle.year), asc(rewardCycle.name)) : [];
     return { companies, units, users, cycles };
   });
 }
@@ -1578,15 +1589,18 @@ export type RewardBoardRow = {
 };
 
 /**
- * One board row from the review projection the review page itself renders (reviewProjectionTx): its `rows`
- * are already filtered by visibleEntry for THIS viewer, and its `flags` already withhold hidden records'
- * flags (a hidden block becomes ACCESS-01). Money is summed from those visible rows only — never from the
- * full roster — and only over the pooled plans (standard and JG H); the Executive plan consumes no pool.
+ * A summary of the canonical financial projection: `rows` and `flags` already enforce THIS viewer's
+ * visibility and hidden-record blocks. Money is summed only from visible pooled plans (standard/JG H);
+ * the Executive plan consumes no pool. The full board adds detail metadata separately.
  */
-function boardRow(v: ReviewProjection, meta: { cycle: string; company: string }, today: string): RewardBoardRow {
-  const { unit } = v, status = unit.status as typeof BOARD_STAGES[number];
-  const seat = rewardStageSeat(unit.status, v.route), step = rewardStageStep(unit.status, v.route);
-  const waiting = seat === 'payroll' ? v.posting === 'allowed' : v.capabilities?.reviewDecide!==false&&!!seat && v.roles.includes(seat) && (unit.status !== 'draft' || v.canEdit);
+type BoardSummaryInput = Pick<ReviewProjection, 'rows' | 'flags' | 'budgets' | 'roles' | 'route' | 'canEdit' | 'posting' | 'uploaded' | 'capabilities'> & {
+  unit: Pick<ReviewProjection['unit'], 'kind' | 'status'>;
+};
+/** Shared summary arithmetic and stage authority: never a second implementation of review truth. */
+function boardSummary(v: BoardSummaryInput): Pick<RewardBoardRow, 'waiting' | 'action' | 'canReturn' | 'ready' | 'people' | 'salary' | 'bonus' | 'exceptions' | 'blocking' | 'batchAllowed'> {
+  const { unit } = v;
+  const seat = rewardStageSeat(unit.status, v.route);
+  const waiting = seat === 'payroll' ? v.posting === 'allowed' : v.capabilities?.reviewDecide !== false && !!seat && v.roles.includes(seat) && (unit.status !== 'draft' || v.canEdit);
   const action: RewardBoardAction | null = !waiting ? null : unit.status === 'draft' ? 'submit' : unit.status === 'approved' ? 'post' : 'approve';
   const blocking = v.flags.filter(f => f.severity === 'block').length, exceptions = v.flags.filter(f => f.severity === 'exception').length;
   const needsReason = v.flags.some(f => f.severity === 'exception' || f.severity === 'warning');
@@ -1603,10 +1617,6 @@ function boardRow(v: ReviewProjection, meta: { cycle: string; company: string },
   const bonusOf = (plan: 'standard' | 'h') => pooled.filter(r => r.plan === plan).reduce((n, r) => n + r.bonusCents + r.lumpCents, 0);
   const totalCents = v.uploaded?pooled.reduce((sum,row)=>sum+row.bonusCents+row.lumpCents,0):plans.reduce((n, p) => n + bonusOf(p), 0), budgetCents = plans.reduce((n, p) => n + v.budgets[p].bonusPoolCents, 0);
   return {
-    id: unit.id, kind: unit.kind, name: v.name, cycle: meta.cycle, cycleId: unit.cycleId, businessUnitId: unit.businessUnitId, companyId: unit.companyId, company: meta.company,
-    status, revision: unit.revision, returnedTo: v.returned?.toSeat ?? null, seat, step,
-    progress: rewardRouteProgress(unit.status, v.route, v.decisions), nextSeat: rewardNextSeat(unit.status, v.route),
-    due: v.due, daysUntilDue: v.due ? rewardDaysUntil(v.due, today) : null, payrollDue: v.payrollDue,
     waiting, action, canReturn: waiting && action === 'approve',
     ready: waiting && (action === 'approve' || action === 'submit') && blocking === 0 && !needsReason && !needsAcknowledgement,
     people: v.rows.length,batchAllowed:v.capabilities?.batch!==false,
@@ -1614,6 +1624,31 @@ function boardRow(v: ReviewProjection, meta: { cycle: string; company: string },
     bonus: seen && annual ? { totalCents, budgetCents, budgetShareBp: budgetCents > 0 ? Math.round(totalCents * 10000 / budgetCents) : null, overLimit: !v.uploaded&&plans.some(p => bonusOf(p) > v.budgets[p].bonusPoolCents) } : null,
     exceptions, blocking,
   };
+}
+
+function boardRow(v: ReviewProjection, meta: { cycle: string; company: string }, today: string): RewardBoardRow {
+  const { unit } = v, status = unit.status as typeof BOARD_STAGES[number];
+  const seat = rewardStageSeat(unit.status, v.route), step = rewardStageStep(unit.status, v.route);
+  return {
+    id: unit.id, kind: unit.kind, name: v.name, cycle: meta.cycle, cycleId: unit.cycleId, businessUnitId: unit.businessUnitId, companyId: unit.companyId, company: meta.company,
+    status, revision: unit.revision, returnedTo: v.returned?.toSeat ?? null, seat, step,
+    progress: rewardRouteProgress(unit.status, v.route, v.decisions), nextSeat: rewardNextSeat(unit.status, v.route),
+    due: v.due, daysUntilDue: v.due ? rewardDaysUntil(v.due, today) : null, payrollDue: v.payrollDue,
+    ...boardSummary(v),
+  };
+}
+
+/** Lists need financial checks, not full detail names, participant/history DTOs or per-unit calendars. */
+async function reviewListSummaryTx(tx: Tx, ctx: SessionContext, unitId: string) {
+  const facts = await reviewFinancialProjectionTx(tx, ctx, unitId);
+  const summary = boardSummary({
+    unit: facts.unit, roles: facts.roles, route: facts.route, canEdit: facts.canEdit, uploaded: facts.uploadedReview?.present ?? false,
+    capabilities: facts.caps?.value,
+    rows: facts.visible, flags: facts.flags,
+    budgets: { standard: facts.calculated.budgets.standard, h: facts.calculated.budgets.h },
+    posting: await rewardPostingAuthorityTx(tx, facts.unit, facts.roles),
+  });
+  return { status: facts.unit.status, route: facts.route, summary, flags: facts.flags, verified: facts.visible.filter(row => row.facts.reviewed).length };
 }
 
 /**
@@ -1639,7 +1674,8 @@ export async function rewardApprovalsBoard(ctx: SessionContext, companyIds: stri
   });
 }
 
-/** 9040c2eb / b4729de7: the list uses exactly the review/board projection for seated viewers.
+/** 9040c2eb / b4729de7: the list shares the canonical review/board financial and privacy projection.
+ * Detail-only metadata is not hydrated just to discard it.
  * An administrator without a seat receives metadata only. Empty-state scope checks return booleans,
  * never names or counts from reviews outside the selected company scope. */
 export async function listRewardReviewStatus(ctx:SessionContext,companyIds:string[]){
@@ -1651,10 +1687,19 @@ export async function listRewardReviewStatus(ctx:SessionContext,companyIds:strin
    if(roles.length){const [cap]=await tx.execute<{allowed:boolean}>(sql`select app.reward_capability(${unit.id}::uuid,'review.view') as allowed`);if(!cap?.allowed)continue;}
    if(unit.uploadPending&&!roles.includes('gr')){rows.push({...unit,people:null,verified:null,roles,waiting:false,salary:null,bonus:null,blocking:null,exceptions:null,laterSeats:[] as RewardRole[]});continue;}
    if(!roles.length){rows.push({...unit,roles,waiting:false,salary:null,bonus:null,blocking:null,exceptions:null,laterSeats:[] as RewardRole[]});continue;}
-   const projection=await reviewProjectionTx(tx,ctx,unit.id),board=boardRow(projection,{cycle:unit.cycle,company:unit.company},today);
-   const step=rewardStageStep(projection.unit.status,projection.route);
+   const projection=await reviewListSummaryTx(tx,ctx,unit.id),board=projection.summary;
+   const step=rewardStageStep(projection.status,projection.route);
    const laterSeats=step?([...projection.route,'payroll'] as RewardRole[]).filter((seat,index)=>index>=step.step&&roles.includes(seat)):[];
-   rows.push({...unit,people:projection.rows.length,verified:projection.rows.filter(row=>row.facts.reviewed).length,roles,waiting:board.waiting,salary:board.salary,bonus:board.bonus,blocking:board.blocking,exceptions:board.exceptions,laterSeats});
+   const byRule=new Map<string,{code:string;severity:(typeof projection.flags)[number]['severity'];count:number}>();
+   for(const flag of projection.flags){
+    const key=flag.severity+':'+flag.code;
+    const group=byRule.get(key)??{code:flag.code,severity:flag.severity,count:0};
+    group.count++;
+    byRule.set(key,group);
+   }
+   const priority={block:0,exception:1,warning:2,review:3};
+   const flagSummary=[...byRule.values()].sort((a,b)=>priority[a.severity]-priority[b.severity]||a.code.localeCompare(b.code));
+   rows.push({...unit,people:board.people,verified:projection.verified,roles,waiting:board.waiting,salary:board.salary,bonus:board.bonus,blocking:board.blocking,exceptions:board.exceptions,laterSeats,flagSummary});
   }
   let emptyReason:'noScope'|'noCycle'|'noRole'|'otherScope'|null=null;
   if(!rows.length){
@@ -1785,3 +1830,48 @@ export async function withRewardReviewExtension<T>(ctx:SessionContext,unitId:str
 export function readOnlyRewardProjection(ctx:SessionContext,unitId:string){return withRewardsTenant(ctx,async tx=>{await tx.execute(sql`SET TRANSACTION READ ONLY`);return reviewProjectionTx(tx,ctx,unitId);});}
 
 export async function rewardAnalyticsProjection(ctx:SessionContext,id:string){return withRewardsTenant(ctx,tx=>reviewProjectionTx(tx,ctx,id,'analytics.view'));}
+
+/** Cross-unit nominations reuse the unit review's native row and senior confidentiality rules. */
+export async function rewardPromotionNominations(ctx: SessionContext, companyIds: string[], filters: {
+  companyId: string; year?: number; page: number;
+}) {
+  const year = filters.year ?? Number(todayInKualaLumpur().slice(0, 4));
+  const perPage = 8;
+  if (!companyIds.length) return { year, page: 1, maxPage: 1, companies: [], nominations: [] };
+  return withRewardsTenant(ctx, async tx => {
+    const companies = await tx.selectDistinct({ id: company.id, name: company.legalName })
+      .from(company).innerJoin(rewardUnit, eq(rewardUnit.companyId, company.id))
+      .where(and(inArray(company.id, companyIds), eq(rewardUnit.tenantId, ctx.tenantId), isNull(rewardUnit.deletedAt),
+        sql`app.reward_capability(${rewardUnit.id},'review.view') and 'gr' in (select app.reward_roles(${rewardUnit.id}))`))
+      .orderBy(asc(company.legalName), asc(company.id));
+    const ids = companies.map(c => c.id);
+    if (!ids.length) return { year, page: 1, maxPage: 1, companies, nominations: [] };
+    const where = and(inArray(rewardUnit.companyId, ids), eq(rewardUnit.tenantId, ctx.tenantId), isNull(rewardUnit.deletedAt),
+      eq(rewardUnit.kind, 'annual'), eq(rewardCycle.year, year),
+      filters.companyId ? eq(rewardUnit.companyId, filters.companyId) : undefined,
+      sql`app.reward_capability(${rewardUnit.id},'review.view') and 'gr' in (select app.reward_roles(${rewardUnit.id}))`);
+    const [count] = await tx.select({ n: sql<number>`count(*)::int` }).from(rewardUnit)
+      .innerJoin(rewardCycle, eq(rewardCycle.id, rewardUnit.cycleId)).where(where);
+    const maxPage = Math.max(1, Math.ceil((count?.n ?? 0) / perPage));
+    const page = Math.max(1, Math.min(maxPage, filters.page));
+    const units = await tx.select({ id: rewardUnit.id, cycle: rewardCycle.name }).from(rewardUnit)
+      .innerJoin(rewardCycle, eq(rewardCycle.id, rewardUnit.cycleId)).where(where)
+      .orderBy(asc(rewardCycle.name), asc(rewardUnit.companyId), asc(rewardUnit.businessUnitId), asc(rewardUnit.id))
+      .limit(perPage).offset((page - 1) * perPage);
+    const nominations: { id: string; reviewId: string; company: string; unit: string; cycle: string; name: string; grade: string; proposed: string; reason: string }[] = [];
+    for (const unit of units) {
+      try {
+        const review = await reviewProjectionTx(tx, ctx, unit.id);
+        for (const row of review.rows) {
+          const proposed = row.recommendation.promotionGrade;
+          if (proposed) nominations.push({ id: row.id, reviewId: unit.id, company: review.companyName,
+            unit: review.name, cycle: unit.cycle, name: row.source.name, grade: row.source.grade, proposed, reason: row.recommendation.reason });
+        }
+      } catch (error) {
+        // A seat can be unavailable until uploads or senior selection are independently checked.
+        if (!(error instanceof RewardError)) throw error;
+      }
+    }
+    return { year, page, maxPage, companies, nominations };
+  });
+}

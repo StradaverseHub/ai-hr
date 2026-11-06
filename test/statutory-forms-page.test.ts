@@ -56,7 +56,7 @@ const code = (p: string) =>
 const PAGE = code('app/payroll/statutory-forms/page.tsx');
 const FORM_PAGE = code('app/payroll/statutory-forms/[formId]/page.tsx');
 const EXPORT_ROUTE = code('app/payroll/statutory-forms/[formId]/export/route.ts');
-const REPORTS_PAGE = code('app/payroll/reports/page.tsx');
+const REPORTS_PAGE = code('app/payroll/statutory-forms/filing-history/page.tsx');
 const byId = new Map(MY_REPORTS.map((r) => [r.id, r]));
 
 describe('the pack declares where each form is filed, and by when', () => {
@@ -1364,10 +1364,10 @@ describe('what the shelves say about the forms that are not built', () => {
 describe('the menu row the reporter actually asked for', () => {
   const NODE = payrollPack.navNodes!.find((n) => n.group === 'admin')!;
 
-  it('exists, and sits after Reports — filing is the last thing you do with a month', () => {
+  it('lists Statutory Forms as the sole statutory reporting menu entry', () => {
     const hrefs = NODE.children.map((c) => c.href);
     expect(hrefs).toContain('/payroll/statutory-forms');
-    expect(hrefs.indexOf('/payroll/statutory-forms')).toBeGreaterThan(hrefs.indexOf('/payroll/reports'));
+    expect(hrefs).not.toContain('/payroll/reports');
   });
 
   // r91's design: a row is placed by declaring a rank, never by splicing it into the literal list.

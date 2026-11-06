@@ -35,6 +35,15 @@ export function recordedPayrollComparisonCurrency(statutory: unknown, companyId:
   return stamp?.version === 1 && stamp.payingCompanyId === companyId &&
     typeof stamp.currency === 'string' && /^[A-Z]{3}$/.test(stamp.currency) ? stamp.currency : null;
 }
+export function recordedPayrollComparisonCodes(statutory: unknown): string[] {
+  const lines = object(statutory)?.componentLines;
+  if (!Array.isArray(lines)) return [];
+  return lines.flatMap(entry => {
+    const code = object(entry)?.code;
+    return typeof code === 'string' && /^[-A-Za-z0-9_/.]{1,64}$/.test(code) ? [code] : [];
+  });
+}
+
 /** Recorded lines establish their own amounts. Only an explicit complete-itemization stamp proves that
  * an absent code paid zero: legacy arrays may contain just formula OT while other pay has no item code. */
 export function recordedPayrollComparisonAmount(basicSalary: string, statutory: unknown, code: string, companyId?:string): string | null {

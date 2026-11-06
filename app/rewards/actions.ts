@@ -8,7 +8,8 @@ import { getSession } from '@/lib/session';
 import { publicErrorMessage } from '@/lib/public-error';
 import {rewardPolicyFromForm} from './policy-input';
 import { rewardCalendarStages, rewardOffcycleSlaStages, saveRewardCalendar, RewardMaintenanceError, previewRewardAccessChange, saveRewardAccessChange, deleteRewardReview, RewardPolicyGroupError, previewRewardSeniorMembership, saveRewardSeniorMembership, importOnehrRewardResults, createOffcycleReview, createRewardUnit, decideRewardUnit, getRewardUnit, getRewardConfiguration,importRewardFacts, postRewardUnit, saveRewardEntry, saveRewardPolicy, previewRewardMultiplier, saveRewardMultiplier, setRewardMember, setRewardUnitLump, previewRewardLump, setRewardPayWindowKeep, previewRewardSourceRefresh, saveRewardSourceRefresh } from '@/packs/rewards/service';
-import { emptyFacts, isSalaryReductionAttempt, performances, talents, type RewardPolicy, type RewardRole } from '@/packs/rewards/model';
+import { payWindowReasons } from '@/packs/rewards/engine';
+import { emptyFacts, isSalaryReductionAttempt, isSeniorPlanMember, performances, talents, type RewardPolicy, type RewardRole } from '@/packs/rewards/model';
 
 const str = (f: FormData, key: string) => String(f.get(key) ?? '').trim();
 const number = (f: FormData, key: string) => Number(str(f, key));
@@ -170,4 +171,27 @@ export async function deleteRewardAction(f:FormData){
  try{await deleteRewardReview(await getSession(),str(f,'unitId'),number(f,'revision'),str(f,'confirmation'));}
  catch(error){redirect(`/admin/rewards?deletionError=${maintenanceErrorCode(error)}`);}
  revalidatePath('/rewards','layout');revalidatePath('/admin/rewards','layout');redirect('/admin/rewards?deleted=1');
+}
+
+/** A cell edit changes only its own override. The review owner still validates the revision and amount. */
+export async function saveInlineRewardIncrease(unitId: string, revision: number, entryId: string,
+  field: 'meritBp' | 'promotionBp' | 'specialBp', value: string) {
+  try {
+    if (!['meritBp', 'promotionBp', 'specialBp'].includes(field) || typeof value !== 'string' ||
+        value !== '' && !/^\d{1,3}(?:\.\d{1,2})?$/.test(value)) throw new Error('Enter a percentage with up to two decimal places.');
+    const session = await getSession();
+    const view = await getRewardUnit(session, unitId);
+    const entry = view.rows.find(row => row.id === entryId);
+    if (!entry || view.uploaded || view.unit.kind !== 'annual' || view.unit.status !== 'draft' || !view.canEdit ||
+        isSeniorPlanMember(view.unit.policy, entry.facts, entry.source.grade) ||
+        entry.payChange && payWindowReasons.includes(entry.incrementReason)) {
+      throw new Error('This recommendation cannot be edited here.');
+    }
+    const override = value === '' ? null : Math.round(Number(value) * 100);
+    await saveRewardEntry(session, unitId, revision, entryId, { ...entry.recommendation, [field]: override });
+    revalidatePath('/rewards', 'layout');
+    return { ok: true as const, override };
+  } catch (error) {
+    return { ok: false as const, error: await rewardErrorText(error) };
+  }
 }

@@ -1,6 +1,6 @@
 /** Workforce-purpose adapter. Existing record, financial, self-service and approval owners remain independent. */
 import {sql,type SQL} from 'drizzle-orm';
-import {withTenant,type SessionContext,type Tx} from '../db/client';
+import {type SessionContext,type Tx} from '../db/client';
 import {lockAccessConfigurationTx} from './access-configuration-lock';
 import {withPersonnelRead} from './personnel-read-bounds';
 export type WorkforceOperation='view'|'maintain';
@@ -37,13 +37,9 @@ async function readWorkforceCompanyIds(tx:Tx,operation:WorkforceOperation){
  return rows.map(row=>row.id);
 }
 
-/** Scope metadata only. Actual reads/writes repeat their check under the same access lock. */
-export function workforceCompanies(ctx:SessionContext,operation:WorkforceOperation='view', outerTx?:Tx){
- const run=async (tx:Tx)=>{
-  await lockAccessConfigurationTx(tx,ctx.tenantId);
-  return readWorkforceCompanyIds(tx,operation);
- };
- return outerTx?run(outerTx):withTenant(ctx,run);
+/** Scope metadata only. Actual reads use their own authorized snapshot; commands recheck under a write barrier. */
+export function workforceCompanies(ctx:SessionContext,operation:WorkforceOperation='view',outerTx?:Tx){
+ return withPersonnelRead(ctx,tx=>readWorkforceCompanyIds(tx,operation),{existingTx:outerTx});
 }
 
 export function personnelMaintenanceCompanyIds(ctx:SessionContext){
@@ -51,8 +47,7 @@ export function personnelMaintenanceCompanyIds(ctx:SessionContext){
 }
 
 export function workforceEmploymentAccess(ctx:SessionContext,employmentId:string,operation:WorkforceOperation){
- return withTenant(ctx,async tx=>{
-  await lockAccessConfigurationTx(tx,ctx.tenantId);
+ return withPersonnelRead(ctx,async tx=>{
   const [row]=await tx.execute<{allowed:boolean}>(sql`select app.access_workforce_employment(${employmentId}::uuid,${'workforce.'+operation}) as allowed`);
   return row?.allowed===true;
  });
@@ -60,9 +55,27 @@ export function workforceEmploymentAccess(ctx:SessionContext,employmentId:string
 
 /** Availability of the implemented fixed-command lane; never a raw-row or legacy-role grant. */
 export function workforceCommandAccess(ctx:SessionContext,employmentId:string){
- return withTenant(ctx,async tx=>{
-  await lockAccessConfigurationTx(tx,ctx.tenantId);
+ return withPersonnelRead(ctx,async tx=>{
   const [row]=await tx.execute<{allowed:boolean}>(sql`select app.access_workforce_command_allowed(${employmentId}::uuid) as allowed`);
+  return row?.allowed===true;
+ });
+}
+
+// Dormant company access requires a claimed administrative grant. Everyone else
+// uses the current-principal capability owner over the same RLS-visible companies.
+export const workforceNavigationAllowedSql = sql`(
+   case when exists(select 1 from app.current_grants() where role in ('hr_admin','super_admin')) then
+    exists(select 1 from company where tenant_id=app.current_tenant_id() and app.access_workforce_projection_company(id))
+   when app.principal_snapshot_current() then
+    exists(select 1 from company where tenant_id=app.current_tenant_id() and app.access_capability_allowed('workforce.view',id))
+   else false end
+   or app.access_workforce_unassigned('workforce.view')
+  )`;
+
+/** The shared navigation only needs to know whether any Workforce scope is visible. */
+export function canOpenWorkforce(ctx:SessionContext){
+ return withPersonnelRead(ctx,async tx=>{
+  const [row]=await tx.execute<{allowed:boolean}>(sql`select ${workforceNavigationAllowedSql} as allowed`);
   return row?.allowed===true;
  });
 }
@@ -70,12 +83,14 @@ export function workforceCommandAccess(ctx:SessionContext,employmentId:string){
 /** Page-scope metadata only. This does not widen the shared company switcher or other modules' scope. */
 export function workforceViewScope(ctx: SessionContext, options?: { personnelList: true }) {
  const read=async (tx: Tx)=>{
-  const companies=await tx.execute<{id:string}>(sql`select id from company where tenant_id=app.current_tenant_id() and app.access_workforce_projection_company(id) order by id`);
-  const [unassigned]=await tx.execute<{allowed:boolean}>(sql`select app.access_workforce_unassigned('workforce.view') as allowed`);
-  return {companyIds:companies.map(row=>row.id),canOpen:companies.length>0||unassigned?.allowed===true};
+  const [scope] = await tx.execute<{company_ids: string[]; unassigned: boolean}>(sql`
+    select coalesce(jsonb_agg(id order by id), '[]'::jsonb) as company_ids,
+      app.access_workforce_unassigned('workforce.view') as unassigned
+    from company
+    where tenant_id = app.current_tenant_id() and app.access_workforce_projection_company(id)
+  `);
+  const companyIds = scope?.company_ids ?? [];
+  return {companyIds, canOpen: companyIds.length > 0 || scope?.unassigned === true};
  };
- return options?.personnelList ? withPersonnelRead(ctx, read) : withTenant(ctx,async tx=>{
-  await lockAccessConfigurationTx(tx,ctx.tenantId);
-  return read(tx);
- });
+ return withPersonnelRead(ctx, read);
 }

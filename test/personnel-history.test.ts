@@ -44,5 +44,6 @@ describe('personnel display chronology and correction ownership',()=>{
  it('allowlists list context and never accepts an external return URL',()=>{
   expect(movementHistoryHref('employee',{showCorrected:'1',from:'org'})).toBe('/admin/personnel/employee?tab=careerMovement&showCorrected=1&from=org#section-assignment-history');
   expect(movementPageHref('employee','view','event',{from:'https://evil.example',showCorrected:'yes'})).toBe('/admin/personnel/employee/movement/view/event');
+  expect(movementPageHref('employee','history',undefined,{showCorrected:'1',from:'org'})).toBe('/admin/personnel/employee/movement/history?showCorrected=1&from=org');
  });
 });

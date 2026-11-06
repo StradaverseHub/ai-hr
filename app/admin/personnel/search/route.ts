@@ -1,17 +1,9 @@
-import {PersonnelReadBusyError} from '@/core/personnel-read-bounds';
 import {isSameOriginBrowserRequest} from '@/lib/request-origin';
 import {requireWorkforceAccess} from '@/lib/workforce-authz';
 import {createPersonnelPrivateSearch,PersonnelSearchLimitError} from '@/core/personnel-private-search';
 import {personnelQueryParams,type PersonnelSearchParams} from '../list-query';
 export async function POST(request: Request) {
- try {
-  return await searchPersonnel(request);
- } catch (error) {
-  if (!(error instanceof PersonnelReadBusyError)) throw error;
-  return new Response('Search is temporarily busy. Try again.', {
-   status: 503, headers: { 'Retry-After': '5', 'X-Personnel-Busy-Reason': error.reason, 'Cache-Control': 'private, no-store' },
-  });
- }
+ return searchPersonnel(request);
 }
 
 async function searchPersonnel(request: Request) {
@@ -25,5 +17,5 @@ async function searchPersonnel(request: Request) {
  const form=new URLSearchParams(parts.join('')),params:PersonnelSearchParams={};
  for(const key of ['companies','bu','parent','group','grade','position','quality','dept','type','bucket','status','company','confirmation','joinedFrom','joinedTo','probationFrom','probationTo'] as const){const values=form.getAll(key).filter((value):value is string=>typeof value==='string');if(values.length)Object.assign(params,{[key]:['companies','bu','parent','group','grade','position','quality'].includes(key)&&values.length>1?values:values[0]});}
  try{const token=await createPersonnelPrivateSearch(s,{text:String(form.get('term')??''),companyIds:scopeIds});const target=personnelQueryParams(params);target.set('search',token);return new Response(null,{status:303,headers:{Location:'/admin/personnel?'+target.toString(),'Cache-Control':'private, no-store','Referrer-Policy':'no-referrer'}});}
- catch(error){if(error instanceof PersonnelReadBusyError)throw error;return new Response(error instanceof PersonnelSearchLimitError?error.message:'Search unavailable. Try again.',{status:400,headers:{'Cache-Control':'private, no-store'}});}
+ catch(error){return new Response(error instanceof PersonnelSearchLimitError?error.message:'Search unavailable. Try again.',{status:400,headers:{'Cache-Control':'private, no-store'}});}
 }

@@ -88,6 +88,7 @@ describe('r395 — per-row visibility functions are gone from every policy USING
     const employmentFixture=FIXTURE.policies.find(p=>key(p.table,p.policy)==='employment.employment_rls');
     expect(employmentFixture).toBeTruthy();
     const bankEmploymentQual=await bankPointReadQual(voidNarrowedQual(employmentFixture!.newQual));
+    const claimMembershipQual = '((tenant_id = app.current_tenant_id()) AND (employment_id IN ( SELECT unnest(app.visible_employment_ids()) AS unnest)))';
     const reconciledFeedbackKeys = new Set<string>();
     for (const p of FIXTURE.policies) {
       // These historical invariants still apply to all 57 fixture entries, including the five 0560/0561 cases.
@@ -105,7 +106,7 @@ describe('r395 — per-row visibility functions are gone from every policy USING
         const r = live.get(historicalKey);
         expect(r, `${historicalKey} exists`).toBeTruthy();
         const attachment=p.table==='performance_attachment'&&p.policy==='performance_attachment_rls';
-        const expectedQual=attachment?assessmentAttachment.qual:historicalKey==='employment.employment_rls'?bankEmploymentQual:importVoidNarrowed.has(historicalKey)?voidNarrowedQual(p.newQual):p.newQual;
+        const expectedQual=attachment?assessmentAttachment.qual:historicalKey==='employment.employment_rls'?bankEmploymentQual:historicalKey==='claim_request.claim_request_rls'?claimMembershipQual:importVoidNarrowed.has(historicalKey)?voidNarrowedQual(p.newQual):p.newQual;
         expect(r!.qual, `${historicalKey} USING`).toBe(expectedQual);
         expect(r!.with_check ?? null, `${historicalKey} WITH CHECK`).toBe(attachment?assessmentAttachment.withCheck:p.withCheck);
       }

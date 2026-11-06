@@ -22,7 +22,6 @@ import { getTranslations } from 'next-intl/server';
 import {getScopeIds} from '@/lib/scope';
 import { isAdmin } from '@/lib/authz';
 import { listEmployeesPage } from '@/core/read';
-import { PersonnelReadBusyError } from '@/core/personnel-read-bounds';
 import { getEmployeeListColumns } from '@/core/employee-list-prefs';
 import { listEmployeeDrafts } from '@/core/employee-draft';
 import { deriveEmploymentStatus } from '@/core/employment-status';
@@ -63,16 +62,7 @@ const EMPLOYMENT_TYPE_KEY: Record<string, string> = {
 const ROW_CAP = 10_000;
 
 export async function GET(req: Request) {
-  try {
-    return await exportPersonnel(req);
-  } catch (error) {
-    if (!(error instanceof PersonnelReadBusyError)) throw error;
-    const messages = await getTranslations('personnelOrganisationFilters');
-    return new Response(messages('readBusy'), {
-      status: 503,
-      headers: { 'Retry-After': '5', 'Cache-Control': 'private, no-store', Vary: 'Cookie' },
-    });
-  }
+  return exportPersonnel(req);
 }
 
 async function exportPersonnel(req: Request) {

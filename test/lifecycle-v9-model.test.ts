@@ -549,3 +549,28 @@ it('retains a draft referenced by failed or test delivery history and permits an
  expect(c.documents).toHaveLength(2);expect(draft).toMatchObject({status:'superseded',supersededBy:next.id});expect(c.mails[0].documentIds).toEqual([draft.id]);
  next.status='draft';c.mails.push({test:false,status:'failed',documentIds:[next.id]} as M.Mail);M.regenerate(c,config,next.id,environment);expect(c.documents.find(document=>document.id===next.id)?.status).toBe('superseded');
 });
+
+it('holds email delivery until HR fills the missing Personnel value on the draft', () => {
+  const { c, config, environment } = fixture();
+  const definition = template();
+  definition.versions[0].blocks = [
+    { id: 'contact', type: 'text', section: 'main', text: 'Home phone: {homePhone}' },
+    { id: 'answer-block', type: 'field', section: 'main', text: '', fieldId: 'answer' },
+  ];
+  Object.assign(definition.versions[0].fields[0], { pmKey: 'homePhone', owner: 'pmLocked' });
+  config.templates = [definition];
+  config.emails = [{ id: 'queued', name: 'Queued form', module: 'off', active: true, sender: 'hr', subject: 'Review', body: 'Review your form.', cc: [], links: [definition.id], attachments: [], slots: [] }];
+  const doc = M.generate(c, config, definition.id, environment);
+  expect(M.missingDocumentPersonnelValues(doc)).toEqual(['homePhone']);
+  expect(() => M.queueEmail(c, config, 'queued', environment)).toThrow('Home phone number');
+  expect(c.mails).toHaveLength(0);
+  expect(() => M.fillDocumentPersonnelValues(c, doc.id, { 'employee.name': 'Changed' }, environment)).toThrow();
+  M.fillDocumentPersonnelValues(c, doc.id, { homePhone: '03-5555-0100' }, environment);
+  expect(doc.values.answer).toBe('03-5555-0100');
+  expect(doc.mergeValues?.homePhone).toBe('03-5555-0100');
+  expect(environment.mergeValues.homePhone).toBeUndefined();
+  expect(c.pmChanges).toEqual([]);
+  M.queueEmail(c, config, 'queued', environment);
+  expect(c.mails[0].documentIds).toEqual([doc.id]);
+  expect(() => M.fillDocumentPersonnelValues(c, doc.id, { homePhone: 'Changed' }, environment)).toThrow('unsigned draft');
+});

@@ -7,6 +7,7 @@ import {PAY_FORMULA_SAMPLE_VARIABLES,payFormulaSampleFields,type PayFormulaSampl
 import {PayFormulaError,type PayFormulaContext,type PayFormulaMethod} from '@/lib/pay-formula-model';
 import {PayFormulaError as FormulaLanguageError} from '@/lib/pay-formula-language';
 const PAGE='/payroll/formula-builder';
+const PAY_ITEMS='/admin/pay-components';
 export type FormulaActionResult<T>={ok:true;value:T}|{ok:false;error:string;line?:number;column?:number};
 async function execute<T>(operation:()=>Promise<T>):Promise<FormulaActionResult<T>>{
  try{return {ok:true,value:await operation()};}catch(error){
@@ -26,10 +27,10 @@ export async function sampleFormulaAction(input:{source:string;values:PayFormula
  return execute(async()=>{const values:PayFormulaSampleValues={};for(const name of PAY_FORMULA_SAMPLE_VARIABLES){const value=input?.values?.[name];if(typeof value==='string')values[name]=value.slice(0,40);}const source=String(input?.source??'');values.fields={};for(const field of payFormulaSampleFields(source)){const raw=input?.values?.fields?.[field.key];if(typeof raw==='string')values.fields[field.key]=raw.slice(0,501);}return samplePayFormula(await getSession(),{source,values});});
 }
 export async function formulaStateAction(input:{id:string;revisionId?:string;testId?:string;active:boolean}){
- return execute(async()=>{const ctx=await getSession();await setPayFormulaActive(ctx,{id:input.id,revisionId:input.revisionId,testId:input.testId,active:input.active});revalidatePath(PAGE);revalidatePath(PAGE+'/'+input.id);return await getPayFormula(ctx,input.id);});
+ return execute(async()=>{const ctx=await getSession();await setPayFormulaActive(ctx,{id:input.id,revisionId:input.revisionId,testId:input.testId,active:input.active});revalidatePath(PAGE);revalidatePath(PAGE+'/'+input.id);revalidatePath(PAY_ITEMS,'layout');return await getPayFormula(ctx,input.id);});
 }
 export async function deleteFormulaAction(input:{id:string;reason:string}){
- return execute(async()=>{await deletePayFormula(await getSession(),{id:input.id,reason:input.reason});revalidatePath(PAGE);return {id:input.id};});
+ return execute(async()=>{await deletePayFormula(await getSession(),{id:input.id,reason:input.reason});revalidatePath(PAGE);revalidatePath(PAY_ITEMS,'layout');return {id:input.id};});
 }
 export async function saveAccumulationAction(input:{code:string;members:string[]}){
  return execute(async()=>{const saved=await saveFormulaAccumulationGroup(await getSession(),{code:input.code,members:input.members});revalidatePath(PAGE);return saved;});

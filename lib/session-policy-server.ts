@@ -3,14 +3,33 @@ import { DEFAULT_IDLE_TIMEOUT_MINUTES, validateIdleTimeoutMinutes } from './sess
 
 const CACHE_MS = 60_000;
 const cached = new Map<string, { minutes: number; at: number }>();
+const loading = new Map<string, Promise<number>>();
 
 /** An administrator's change reaches every server process within CACHE_MS; this process sees it at once. */
-export function forgetIdleTimeout(tenantId: string) { cached.delete(tenantId); }
+export function forgetIdleTimeout(tenantId: string) {
+  cached.delete(tenantId);
+  loading.delete(tenantId);
+}
 
 /** Never fails open: an unreadable policy enforces the default rather than no limit. */
 export async function idleTimeoutMinutesFor(tenantId: string): Promise<number> {
   const hit = cached.get(tenantId);
   if (hit && Date.now() - hit.at < CACHE_MS) return hit.minutes;
+  const existing = loading.get(tenantId);
+  if (existing) return existing;
+  const read = readIdleTimeout(tenantId).then(minutes => {
+    // An invalidation can replace this load while the database is responding.
+    if (loading.get(tenantId) === read) {
+      cached.set(tenantId, { minutes, at: Date.now() });
+      loading.delete(tenantId);
+    }
+    return minutes;
+  });
+  loading.set(tenantId, read);
+  return read;
+}
+
+async function readIdleTimeout(tenantId: string): Promise<number> {
   let minutes = DEFAULT_IDLE_TIMEOUT_MINUTES;
   try {
     const { client } = await import('../db/client');
@@ -19,6 +38,5 @@ export async function idleTimeoutMinutesFor(tenantId: string): Promise<number> {
   } catch {
     console.error('Idle sign-out policy unreadable; enforcing the default limit.');
   }
-  cached.set(tenantId, { minutes, at: Date.now() });
   return minutes;
 }

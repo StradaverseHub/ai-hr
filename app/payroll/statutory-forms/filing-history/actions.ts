@@ -16,10 +16,10 @@ export async function recordReportAction(formData: FormData) {
   try {
     await recordReport(s, { companyId, reportId, periodKey });
   } catch (e) {
-    redirect(`/payroll/reports?${qs}&error=${encodeURIComponent(publicErrorMessage(e))}`);
+    redirect(`/payroll/statutory-forms/filing-history?${qs}&error=${encodeURIComponent(publicErrorMessage(e))}`);
   }
-  revalidatePath('/payroll/reports');
-  redirect(`/payroll/reports?${qs}&toast=Report%20recorded`);
+  revalidatePath('/payroll/statutory-forms/filing-history');
+  redirect(`/payroll/statutory-forms/filing-history?${qs}&toast=Report%20recorded`);
 }
 
 /**
@@ -62,7 +62,7 @@ export async function markFiledAction(formData: FormData) {
   const reportId = String(formData.get('reportId') ?? '');
   const ackRef = String(formData.get('ackRef') ?? '');
   const filedOn = String(formData.get('filedOn') ?? '');
-  const home = `/payroll/reports?companyId=${encodeURIComponent(companyId)}`;
+  const home = `/payroll/statutory-forms/filing-history?companyId=${encodeURIComponent(companyId)}`;
   let toastKey = 'markFiledDoneSubmitted';
   try {
     const r = await markReportFiled(s, { reportId, ackRef, filedOn });
@@ -71,7 +71,7 @@ export async function markFiledAction(formData: FormData) {
     redirect(`${home}&error=${encodeURIComponent(await filingErrorCopy(e))}`);
   }
   const t = await getTranslations('payroll.reports');
-  revalidatePath('/payroll/reports');
+  revalidatePath('/payroll/statutory-forms/filing-history');
   redirect(`${home}&toast=${encodeURIComponent(t(toastKey))}`);
 }
 
@@ -81,13 +81,13 @@ export async function reverseFilingAction(formData: FormData) {
   const companyId = String(formData.get('companyId') ?? '');
   const reportId = String(formData.get('reportId') ?? '');
   const reason = String(formData.get('reason') ?? '');
-  const home = `/payroll/reports?companyId=${encodeURIComponent(companyId)}`;
+  const home = `/payroll/statutory-forms/filing-history?companyId=${encodeURIComponent(companyId)}`;
   try {
     await reverseReportFiling(s, { reportId, reason });
   } catch (e) {
     redirect(`${home}&error=${encodeURIComponent(await filingErrorCopy(e))}`);
   }
   const t = await getTranslations('payroll.reports');
-  revalidatePath('/payroll/reports');
+  revalidatePath('/payroll/statutory-forms/filing-history');
   redirect(`${home}&toast=${encodeURIComponent(t('reverseFilingDone'))}`);
 }

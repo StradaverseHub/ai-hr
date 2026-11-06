@@ -67,7 +67,7 @@ describe('Rewards administration and review destinations', () => {
   });
   it('shows authorized review shortcuts and leaves configuration in the menu', async () => {
     show(await ReviewsPage({ searchParams: Promise.resolve({}) }));
-    expect(screen.getByRole('link', { name: 'Open review' }).getAttribute('href')).toBe('/rewards/review');
+    expect(screen.getAllByRole('link', { name: 'Open review' }).map(link => link.getAttribute('href'))).toContain('/rewards/review');
     expect(screen.getByRole('heading', { name: 'Reviewing Team Rewards' })).toBeTruthy();
     expect(screen.getByRole('link', { name: 'Rules' }).getAttribute('href')).toBe('/rewards/rules');
     expect(screen.queryByRole('link', { name: 'Rewards Analytics' })).toBeNull();
@@ -77,7 +77,7 @@ describe('Rewards administration and review destinations', () => {
     expect(ports.visibleCompanies).toHaveBeenCalledWith(session);
     expect(ports.scope).toHaveBeenCalledWith(['company']);
     expect(ports.reviewStatus).toHaveBeenCalledWith(session, ['company']);
-    expect(ports.choices).toHaveBeenCalledWith(session, ['company']);
+    expect(ports.choices).toHaveBeenCalledWith(session, ['company'], { fields: [] });
     expect(ports.list).not.toHaveBeenCalled();
   });
   it('renders View with disabled policy fields and no mutation forms, even for an authorised owner',async()=>{

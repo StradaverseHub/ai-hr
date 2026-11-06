@@ -1,10 +1,11 @@
+import {verifyWorkflowOnlyAttendanceHeader} from './helpers/attendance-task-header-prototype';
 import {restorePreOrgRootReportingLines} from './helpers/pre-org-root-reporting-fixture';
 import {listPendingTasks} from '../core/approvals-inbox';
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { and, asc, eq, sql } from 'drizzle-orm';
 import * as schema from '../db/schema';
-import { withTenant, type SessionContext, type Tx } from '../db/client';
+import { client, withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
 import { hireEmployee, setReportingLine } from '../core/org';
 import { checkIn, checkOut, requestAttendanceCorrection, decideAttendanceCorrection, cancelAttendanceApplication, cancelOwnAttendanceCorrection, cancelPlannedOvertime, listAttendanceCorrections, allowanceScheduleFactsTx } from '../core/attendance';
@@ -57,6 +58,18 @@ const correction = async (id: string) => (await owner.db.select().from(schema.at
 const decisions = async () => owner.db.select().from(schema.attendanceWorkflowDecision).orderBy(asc(schema.attendanceWorkflowDecision.stageIndex));
 const events = async (id: string, type: string) => owner.db.select().from(schema.domainEvent).where(and(eq(schema.domainEvent.aggregateId, id), eq(schema.domainEvent.eventType, type))).orderBy(asc(schema.domainEvent.sequence));
 describe('Attendance approval routing and exactly-once effects', () => {
+    it('reserves distinct automatic priorities when two draft saves run concurrently', async () => {
+        const { a } = await fixture();
+        const [first, second] = await Promise.all([
+            saveAttendanceWorkflow(a, input(['hr_admin'], { code: 'AUTO_A', active: false }), undefined, undefined, true),
+            saveAttendanceWorkflow(a, input(['hr_admin'], { code: 'AUTO_B', active: false }), undefined, undefined, true),
+        ]);
+        expect([first.priority, second.priority].sort((a, b) => a - b)).toEqual([1, 2]);
+        const edited = await saveAttendanceWorkflow(a, input(['hr_admin'], {
+            code: first.code, priority: first.priority, name: 'Edited draft', active: false,
+        }), first.lineageId);
+        expect(edited.priority).toBe(first.priority);
+    });
     it('previews ordered resolved names using the same route frozen on submission', async () => {
         const { a, worker, manager } = await fixture();
         const value = input(), saved = await enable(a, value);
@@ -190,6 +203,41 @@ describe('Attendance approval routing and exactly-once effects', () => {
         await expect(decideAttendanceCorrection(a, { correctionId: id, decision: 'approved', expectedStageIndex: 1 })).rejects.toThrow(/already approved/);
         expect(await events(id, 'attendance-correction.effect.recorded')).toHaveLength(1);
     });
+    it('keeps a connection available when same-tenant approvals wait on Access', async () => {
+        const { a, worker } = await fixture();
+        await enable(a, input(['hr_admin']));
+        const id = await submit(a, worker.employmentId);
+        const key = 'access-configuration:' + a.tenantId;
+        let approvals: Promise<PromiseSettledResult<unknown>[]> | undefined;
+        let reader: Promise<unknown> | undefined;
+        try {
+            await owner.db.transaction(async tx => {
+                const [blocker] = await tx.execute<{ pid: number }>(sql`select pg_backend_pid() as pid`);
+                await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${key},0))`);
+                approvals = Promise.allSettled(Array.from({length:client.options.max + 1}, () =>
+                    decideAttendanceCorrection(a, { correctionId:id, decision:'approved', expectedStageIndex:0 }),
+                ));
+                const directWaiters = async () => {
+                    const [row] = await owner.db.execute<{ count: number }>(sql`select count(*)::int as count
+                        from pg_stat_activity where ${blocker.pid}=any(pg_blocking_pids(pid)) and wait_event='advisory'`);
+                    return row.count;
+                };
+                // Both admitted approvals can wait for the exclusive Access writer. The
+                // remaining burst must stay queued outside the database pool.
+                await expect.poll(directWaiters, {timeout:5000}).toBe(2);
+                let readFinished = false;
+                reader = withTenant(a, tx => tx.execute(sql`select 1`)).then(() => { readFinished = true; }, () => {});
+                await expect.poll(() => readFinished, {timeout:5000}).toBe(true);
+                expect(await directWaiters()).toBe(2);
+            });
+        } finally {
+            await reader;
+            await approvals;
+        }
+        const results = await approvals;
+        expect(results?.filter(result => result.status === 'fulfilled')).toHaveLength(1);
+        expect((await correction(id)).status).toBe('approved');
+    });
     it('keeps a frozen manager after an org move and allows scoped HR handoff', async () => {
         const { a, worker, mgr } = await fixture();
         await enable(a, input(['direct_manager']));
@@ -232,6 +280,7 @@ describe('request-bound delegated final effects', () => {
         await expect(withTenant(delegate, tx => tx.update(schema.attendanceCorrection).set({ reason: 'Forged delegate edit' }).where(eq(schema.attendanceCorrection.id, id)))).rejects.toThrow();
         expect((await correction(id)).reason).toBe('Verified clock correction');
         expect(await read()).toHaveLength(0); // Non-vacuity: the actor really has delegation-only access.
+        await verifyWorkflowOnlyAttendanceHeader(delegate,id,worker.employmentId);
         await decideAttendanceCorrection(delegate, { correctionId: id, decision: 'approved', expectedStageIndex: 0 });
         expect(await read()).toHaveLength(0);
         expect(await withTenant(delegate, tx => tx.select().from(schema.payslip).where(eq(schema.payslip.employmentId, worker.employmentId)))).toHaveLength(0);
@@ -285,7 +334,28 @@ describe('scoped application history and reversible cancellation', () => {
         const { a, worker } = await fixture();
         await enable(a, input(['hr_admin']));
         const before = await day(worker.employmentId), id = await submit(a, worker.employmentId);
+        const originals = (await attendanceClockData(a, worker.employmentId, date)).rows;
         await decideAttendanceCorrection(a, { correctionId: id, decision: 'approved', expectedStageIndex: 0 });
+        const correctedPunches = (await attendanceClockData(a, worker.employmentId, date)).rows;
+        const activePunches = correctedPunches.filter(p => !p.voidedAt);
+        expect(correctedPunches.filter(p => p.voidedAt).map(p => p.id)).toEqual(originals.map(p => p.id));
+        const voided = await owner.db.select({id: schema.domainEvent.aggregateId, payload: schema.domainEvent.payload, sequence: schema.domainEvent.sequence})
+            .from(schema.domainEvent).where(and(eq(schema.domainEvent.eventType, 'attendance.punch.voided'),
+                sql`${schema.domainEvent.payload}->>'correctionId'=${id}`)).orderBy(asc(schema.domainEvent.sequence));
+        expect(voided.map(event => event.id)).toEqual(originals.map(p => p.id));
+        expect(voided.map(event => event.payload)).toMatchObject(originals.map(punch => ({
+            before: {punchAt: punch.punchAt, direction: punch.direction},
+            after: {voidedBy: a.userId, voidReason: 'Verified clock correction'},
+        })));
+        const added = await owner.db.select({ id: schema.domainEvent.aggregateId, payload: schema.domainEvent.payload, sequence: schema.domainEvent.sequence })
+            .from(schema.domainEvent).where(and(eq(schema.domainEvent.eventType, 'attendance.punch.added'),
+                sql`${schema.domainEvent.payload}->>'correctionId'=${id}`)).orderBy(asc(schema.domainEvent.sequence));
+        expect(added.map(event => event.id)).toEqual(activePunches.map(punch => punch.id));
+        expect(added.map(event => event.payload)).toMatchObject([
+            { before: null, after: { punchAt: '09:00:00', direction: 'in', method: 'admin' } },
+            { before: null, after: { punchAt: '18:00:00', direction: 'out', method: 'admin' } },
+        ]);
+        expect(voided.at(-1)!.sequence < added[0].sequence).toBe(true);
         const trail = await decisions();
         expect(await cancelAttendanceApplication(a, { correctionId: id, kind: 'cancelled', reason: 'Approved in error' })).toEqual({ status: 'cancelled', reversed: true });
         const after = await day(worker.employmentId);

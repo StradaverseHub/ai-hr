@@ -1,14 +1,15 @@
 import { clockFingerprint, punchesForCorrectionTx } from './attendance-punch-change';
 /** Own live clock read model. This never writes or derives payable payroll figures. */
-import { and, asc, desc, eq, isNotNull, isNull, type SQL } from 'drizzle-orm';
+import { and, asc, desc, eq, gte, isNotNull, isNull, type SQL } from 'drizzle-orm';
 import { attendance, attendancePunch, attendanceClockCapture, attendanceCorrection, clockingLocation, employment } from '../db/schema';
 import type { SessionContext, Tx } from '../db/client';
-import { withAttendanceTenant as withTenant } from './module-gate';
+import { assertModuleGate, withAttendanceTenant as withTenant } from './module-gate';
 import {resolveOwnClockEmployment,OwnClockEmploymentUnavailableError} from './attendance-clock-subject';
-import { clockScheduleForTx, resolveGeofence,OutsideGeofenceError,GeofenceQualityError } from './attendance';
+import { clockScheduleForTx, workedDayKindForTx, resolveGeofence,OutsideGeofenceError,GeofenceQualityError } from './attendance';
 import { todayInKualaLumpur } from '../lib/hr-date';
 import { clockCommandContext } from '../lib/clock-command-context';
 import { clockCaptureInstantTx } from './attendance-clock';
+import { isOwnProfileEditEmploymentTx } from './read';
 
 type ClockGeo={lat:number;lng:number;accuracy:number};
 
@@ -38,10 +39,19 @@ export async function previewOwnClockLocation(ctx:SessionContext,selectedEmploym
 /** Shared live punch calculation; neither reader creates a capture or payable figure. */
 async function ownClockCoreTx(tx:Tx,employmentId:string,geo?:ClockGeo){
     const now = new Date();
-    let date = todayInKualaLumpur(now);
-    const [openDay] = await tx.select({ date: attendance.attendanceDate }).from(attendance).where(and(eq(attendance.employmentId, employmentId), isNotNull(attendance.checkInAt), isNull(attendance.checkOutAt))).orderBy(desc(attendance.attendanceDate)).limit(1);
-    if (openDay && openDay.date === todayInKualaLumpur(new Date(now.getTime() - 86400000)) && (await clockScheduleForTx(tx, employmentId, openDay.date)).crossesMidnight) date = openDay.date;
-    const schedule = await clockScheduleForTx(tx, employmentId, date);
+    const today = todayInKualaLumpur(now);
+    const yesterday = todayInKualaLumpur(new Date(now.getTime() - 86400000));
+    // Older open rows cannot select the live date. Keep newer rows in the probe so they
+    // still take precedence over yesterday, even if a future import left one open.
+    const [openDay] = await tx.select({ date: attendance.attendanceDate }).from(attendance)
+      .where(and(eq(attendance.employmentId, employmentId), gte(attendance.attendanceDate, yesterday),
+        isNotNull(attendance.checkInAt), isNull(attendance.checkOutAt)))
+      .orderBy(desc(attendance.attendanceDate)).limit(1);
+    const overnightSchedule = openDay?.date === yesterday
+      ? await clockScheduleForTx(tx, employmentId, yesterday) : null;
+    const date = overnightSchedule?.crossesMidnight ? yesterday : today;
+    const schedule = overnightSchedule?.crossesMidnight
+      ? overnightSchedule : await clockScheduleForTx(tx, employmentId, today);
     const [day] = await tx.select({ id: attendance.id, checkIn: attendance.checkInAt, checkOut: attendance.checkOutAt, checkInMethod: attendance.checkInMethod }).from(attendance).where(and(eq(attendance.employmentId, employmentId), eq(attendance.attendanceDate, date))).limit(1);
     // A capture's true instant orders and times the day: an offline capture's server_recorded_at is its arrival.
     // Typed nullable: a raw SQL field is not widened by the left join, and a punch without a capture reads NULL.
@@ -81,7 +91,7 @@ async function ownClockCoreTx(tx:Tx,employmentId:string,geo?:ClockGeo){
     if (geo && [geo.lat,geo.lng,geo.accuracy].every(Number.isFinite) && Math.abs(geo.lat)<=90 && Math.abs(geo.lng)<=180 && geo.accuracy>=0) {
       try { const result = await resolveGeofence(tx,{employmentId:employmentId,date,time:new Intl.DateTimeFormat('en-GB',{timeZone:'Asia/Kuala_Lumpur',hour:'2-digit',minute:'2-digit',hour12:false}).format(now),lat:geo.lat,lng:geo.lng,accuracy:geo.accuracy,punch:anchor==null?'in':'out'}); locationValid = result.enforced ? !!result.clockingLocationId : true; } catch { /* explanatory prerequisite; command rechecks */ }
     }
- return {date,live,crossesMidnight:schedule.crossesMidnight,summary:{serverNow:now.toISOString(),date,clockedIn:anchor!=null,openSince:anchor==null?null:new Date(anchor).toISOString(),workedSeconds:Math.floor(workedMs/1000),locationValid,locationAvailable,geofencingRequired,attendancePhotoSetting,shift:{code:schedule.code,start:schedule.start,end:schedule.end}}};
+ return {date,live,crossesMidnight:schedule.crossesMidnight,businessDate:today,todayKind:date===today?schedule.dayKind:null,summary:{serverNow:now.toISOString(),date,clockedIn:anchor!=null,openSince:anchor==null?null:new Date(anchor).toISOString(),workedSeconds:Math.floor(workedMs/1000),locationValid,locationAvailable,geofencingRequired,attendancePhotoSetting,shift:{code:schedule.code,start:schedule.start,end:schedule.end}}};
 }
 
 /** The live clock state ownClockToday reports (clocking date, clocked in, open-since instant), in the caller's
@@ -109,10 +119,26 @@ export async function ownClockToday(ctx: SessionContext, geo?: { lat: number; ln
   });
 }
 
+async function readClockSummaryTx(tx:Tx,employmentId:string){
+ const value=await ownClockCoreTx(tx,employmentId);
+ return {...value.summary,crossesMidnight:value.crossesMidnight};
+}
+
+/** Explicit own-subject summary for an existing request transaction. */
+export async function ownClockTodaySummaryTx(tx:Tx,ctx:SessionContext,employmentId:string){
+ if(!ctx.userId||!ctx.personId||typeof employmentId!=='string'||!/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/.test(employmentId)
+  ||!await isOwnProfileEditEmploymentTx(tx,ctx,employmentId))throw new OwnClockEmploymentUnavailableError();
+ assertModuleGate(ctx,'attendance');
+ const {summary,crossesMidnight,businessDate,todayKind}=await ownClockCoreTx(tx,employmentId);
+ // An open overnight clock uses yesterday's shift, while Home describes today's schedule.
+ const dayKind=todayKind??await workedDayKindForTx(tx,employmentId,businessDate);
+ return {...summary,crossesMidnight,businessDate,dayKind};
+}
+
 /** Own clock summary without selecting capture coordinates, photographs or removal commands. */
 export async function ownClockTodaySummary(ctx:SessionContext,selectedEmploymentId:string){
  if(typeof selectedEmploymentId!=='string')throw new OwnClockEmploymentUnavailableError();
  const me=await resolveOwnClockEmployment(ctx,selectedEmploymentId);
  if(!me)throw new OwnClockEmploymentUnavailableError();
- return withTenant(ctx,async tx=>{const value=await ownClockCoreTx(tx,me.employmentId);return {...value.summary,crossesMidnight:value.crossesMidnight};});
+ return withTenant(ctx,tx=>readClockSummaryTx(tx,me.employmentId));
 }

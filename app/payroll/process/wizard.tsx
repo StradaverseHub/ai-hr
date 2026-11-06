@@ -132,6 +132,8 @@ export function Wizard({
   // empty/absent scope ⇒ filtersTouched=false so the whole-company default applies (step-selection.tsx).
   const seededEmploymentIds = resumeBatch?.scope?.employmentIds ?? [];
   const [step, setStep] = useState(wizardInitialStep(isResume));
+  const [hydrated, setHydrated] = useState(false);
+  useEffect(() => { setHydrated(true); }, []);
   // Multi-company (3653d14b): a fresh run selects ONE, SEVERAL, or ALL companies. In resume mode the batch's
   // single company is fixed, so the array holds exactly that one id. `companyIds[0]` is the "primary" company
   // that drives the cycle catalog, per-company masters, and the payment-date default (all per-company today).
@@ -173,6 +175,7 @@ export function Wizard({
   // is no longer active falls through gracefully to the regular/first fallback (no blank selection). Clear
   // the pick when the current company has no options.
   useEffect(() => {
+    if (isResume) return;
     if (cycleOptions.length === 0) {
       if (cycleId !== '') setCycleId('');
       return;
@@ -180,7 +183,7 @@ export function Wizard({
     if (!cycleOptions.some((c) => c.id === cycleId)) {
       setCycleId(preferredCycleId(cycleOptions, defaultCycleByCompany[companyId]));
     }
-  }, [cycleOptions, cycleId, defaultCycleByCompany, companyId]);
+  }, [cycleOptions, cycleId, defaultCycleByCompany, companyId, isResume]);
 
   // A stable key for the SET of selected companies, so the reset/fetch effects fire when the multi-select
   // changes (an array reference alone would not be a reliable dependency). Order-independent.
@@ -196,17 +199,20 @@ export function Wizard({
     setEmployees([]);
   }, [companyKey, payPeriod, cycleId, isResume]);
 
+  // Resume has a fixed company. Use the same preferred eligibility cycle directly, without
+  // first fetching the unselected cycle and discarding that result after hydration.
+  const employeeCycleId = isResume ? preferredCycleId(cycleOptions, defaultCycleByCompany[companyId]) : cycleId;
   useEffect(() => {
     if (companyIds.length === 0 || !/^\d{4}-\d{2}$/.test(payPeriod)) return;
     let current=true;
     setLoadingEmployees(true);
-    fetchPayrollRunEmployees(companyIds,payPeriod,cycleId||undefined)
+    fetchPayrollRunEmployees(companyIds,payPeriod,employeeCycleId||undefined)
       .then(rows=>{if(current)setEmployees(rows);})
       .catch(()=>{if(current)setEmployees([]);})
       .finally(() => {if(current)setLoadingEmployees(false);});
     return ()=>{current=false;};
     // eslint-disable-next-line react-hooks/exhaustive-deps -- companyKey is the stable dependency for the set
-  }, [companyKey,payPeriod,cycleId]);
+  }, [companyKey,payPeriod,employeeCycleId]);
 
   // Step-2 filter catalogs span the WHOLE selected company set (multi-company): a filter dropdown must offer
   // every selected company's departments / BUs / positions / cost centres, not just the primary company's.
@@ -236,7 +242,8 @@ export function Wizard({
   // Continue is a per-step gate now that there are three steps: Step 1 (period) requires a valid selection
   // (resume uses the seeded-identity check); Step 2 (employee selection) never blocks — an empty selection
   // means "whole company" only while untouched; an explicit empty selection is refused. The final Process button lives on Step 3 (Validation) and has its own gate.
-  const canContinue = step === 0 ? (isResume ? step2Valid : step1Valid) : true;
+  // Do not offer an enabled client-only button before React can handle its click.
+  const canContinue = hydrated && (step !== 0 || (isResume ? step2Valid : step1Valid));
   // Process is blocked while the validation check is still running or when it found hard blockers (missing
   // compensation / missing BASIC component) — the operator must fix those before the run can proceed.
   const canProcess = step2Valid && !isPending && !validation.loading && !validation.hasBlockers;

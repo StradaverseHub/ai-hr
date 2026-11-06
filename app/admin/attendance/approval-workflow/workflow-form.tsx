@@ -14,8 +14,9 @@ import { companyWorkflowHref } from './navigation';
 import { Button, Card, inputCls } from '@/components/ui';
 import { attendanceWorkflowCriteriaFields, attendanceLevelName, type AttendanceWorkflowOptions, type AttendanceWorkflowInput, type AttendanceResolvedStage } from '@/lib/attendance-workflow';
 import { previewAttendanceWorkflowAction, saveAttendanceWorkflowAction } from './actions';
-export function WorkflowForm({ initial, lineageId, context, options }: {
+export function WorkflowForm({ initial, lineageId, context, options, defaultPriority = 1 }: {
     initial: AnyAttendanceWorkflowInput | null;
+    defaultPriority?: number;
     lineageId: string | null;
     context: Pick<AttendanceWorkflowInput, 'companyId' | 'applicationType'>;
     options: AttendanceWorkflowOptions;
@@ -23,7 +24,7 @@ export function WorkflowForm({ initial, lineageId, context, options }: {
     const employmentTypeLabel = useTranslations('people.wizard.employmentType');
     const v3 = useTranslations('attendanceWorkflow.v3');
     const t = useTranslations('attendanceWorkflow'), choices = useTranslations('admin.leave'), router = useRouter();
-    const [input, setInput] = useState<AnyAttendanceWorkflowInput>(initial ?? { ...context, routingVersion: 4, cc:[], code: '', name: '', description: '', priority: 100, criteria: {}, stages: [emptyAttendanceV4Level(0)], active: false });
+    const [input, setInput] = useState<AnyAttendanceWorkflowInput>(initial ?? { ...context, routingVersion: 4, cc:[], code: '', name: '', description: '', priority: defaultPriority, criteria: {}, stages: [emptyAttendanceV4Level(0)], active: false });
     const [levelProblems, setLevelProblems] = useState<AttendanceLevelProblem[]>([]);
     const [error, setError] = useState(''), [pending, start] = useTransition();
     const [savedRevision, setSavedRevision] = useState(0);
@@ -47,10 +48,11 @@ export function WorkflowForm({ initial, lineageId, context, options }: {
         }[];
         truncated: boolean;
     } | null>(null);
-    const baseline = JSON.stringify(initial ?? { ...context, routingVersion: 4, cc:[], code: '', name: '', description: '', priority: 100, criteria: {}, stages: [emptyAttendanceV4Level(0)], active: false });
+    const baseline = JSON.stringify(initial ?? { ...context, routingVersion: 4, cc:[], code: '', name: '', description: '', priority: defaultPriority, criteria: {}, stages: [emptyAttendanceV4Level(0)], active: false });
     const dirty = JSON.stringify(input) !== baseline;
     const change = <K extends keyof AnyAttendanceWorkflowInput>(k: K, v: AnyAttendanceWorkflowInput[K]) => { setInput(p => ({ ...p, [k]: v } as AnyAttendanceWorkflowInput)); setPreview(null); };
     const inFlight = useRef(false);
+    const priorityEdited = useRef(false);
     const run = (save: boolean) => {
       if (inFlight.current) return;
       inFlight.current = true;
@@ -59,7 +61,7 @@ export function WorkflowForm({ initial, lineageId, context, options }: {
         setError('');
         setLevelProblems([]);
         if (save) {
-            const result = await saveAttendanceWorkflowAction(lineageId, input);
+            const result = await saveAttendanceWorkflowAction(lineageId, input, !lineageId && !priorityEdited.current);
             if (result.ok) {
                 setSavedRevision(revision => revision + 1);
                 setSavedDestination(`/admin/attendance/approval-workflow/${result.lineageId}`);
@@ -91,7 +93,7 @@ export function WorkflowForm({ initial, lineageId, context, options }: {
    <label>{t('code')}<input name="code" required maxLength={40} pattern="[A-Za-z0-9_-]+" className={inputCls} value={input.code} onChange={e => change('code', e.target.value)}/></label>
    <label>{t('name')}<input name="name" required maxLength={120} className={inputCls} value={input.name} onChange={e => change('name', e.target.value)}/></label>
   </div><label className="block">{t('description')}<textarea name="description" maxLength={1000} className={inputCls} value={input.description ?? ''} onChange={e => change('description', e.target.value)}/></label></Card>
-  <div className="grid items-start gap-5 xl:grid-cols-2"><Card className="space-y-4 p-5"><h2 className="font-semibold">{t('assignment')}</h2><p className="text-sm text-muted-foreground">{t('assignmentHelp')}</p><label className="block max-w-xs">{t('priority')}<input name="priority" required type="number" min={0} max={9999} className={inputCls} value={input.priority} onChange={e => change('priority', Number(e.target.value))}/></label><div className="grid gap-4 sm:grid-cols-2">{fields.map(({ key, label, options: items }) => {
+  <div className="grid items-start gap-5 xl:grid-cols-2"><Card className="space-y-4 p-5"><h2 className="font-semibold">{t('assignment')}</h2><p className="text-sm text-muted-foreground">{t('assignmentHelp')}</p><label className="block max-w-xs">{t('priority')}<input name="priority" required type="number" min={0} max={9999} className={inputCls} value={input.priority} onChange={e => { priorityEdited.current = true; change('priority', Number(e.target.value)); }}/></label><div className="grid gap-4 sm:grid-cols-2">{fields.map(({ key, label, options: items }) => {
     const selected = input.criteria[key] ?? [];
     const unavailable = selected.filter(id => !items.some(item => item.id === id));
     return <ChipMultiSelect key={key} name={key} label={t(label)}

@@ -1,5 +1,5 @@
 'use client';
-import type { ReactNode } from 'react';
+import { useEffect, type ReactNode } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
@@ -15,6 +15,20 @@ export function PersonDrawer({ title, description, prevId, nextId, position, chi
   const t = useTranslations('rewards.desk.person');
   const router = useRouter(); const pathname = usePathname(); const params = useSearchParams();
   const hrefFor = (id: string | null) => { const q = new URLSearchParams(params.toString()); if (id) q.set('person', id); else q.delete('person'); const s = q.toString(); return `${pathname}${s ? `?${s}` : ''}`; };
+  const previousHref = prevId ? hrefFor(prevId) : null;
+  const nextHref = nextId ? hrefFor(nextId) : null;
+  useEffect(() => {
+    function onArrow(event: KeyboardEvent) {
+      if (event.defaultPrevented || event.ctrlKey || event.metaKey || event.altKey || event.shiftKey ||
+        (event.target instanceof Element && event.target.closest('input, textarea, select, [contenteditable]'))) return;
+      const href = event.key === 'ArrowLeft' ? previousHref : event.key === 'ArrowRight' ? nextHref : null;
+      if (!href) return;
+      event.preventDefault();
+      router.replace(href, { scroll: false });
+    }
+    window.addEventListener('keydown', onArrow);
+    return () => window.removeEventListener('keydown', onArrow);
+  }, [nextHref, previousHref, router]);
   const nav = 'rounded-md border border-border px-3 py-1.5 text-sm font-medium hover:bg-accent';
   return <Drawer open onOpenChange={open => { if (!open) router.replace(hrefFor(null), { scroll: false }); }} title={title} description={description} closeLabel={t('close')}
     footer={<div className="flex flex-wrap items-center gap-2">

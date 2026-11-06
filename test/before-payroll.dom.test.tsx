@@ -95,7 +95,7 @@ describe('Today: "Before payroll on <date>"',()=>{
   // "See all" opens the person's own page (owner decision 27).
   expect(within(card).getByRole('link',{name:'See all'})).toHaveAttribute('href','/me/payroll-readiness');
   expect(card.textContent).not.toMatch(/RM|\d+\.\d{2}/);
-  expect(fx.calls).toEqual([[{employmentId:'emp-own',scopeIds:['co-1'],locale:'en',today:'2026-11-10'}]]);
+  expect(fx.calls).toEqual([[{employmentId:'emp-own',scopeIds:['co-1'],locale:'en',today:'2026-11-10',includeApprovals:false}]]);
  });
  it('manager whose only items are decisions waiting on them: no card, because Needs you already lists those decisions',async()=>{
   const view=await today(MANAGER);
@@ -135,7 +135,7 @@ describe('Today: "Before payroll on <date>"',()=>{
 describe('My payroll readiness, the person\'s own page (/me/payroll-readiness)',()=>{
  it('employee: every item by group with the status in words, the clock-out Confirm card in its group, no approvals',async()=>{
   const view=await page(EMPLOYEE);
-  expect(fx.calls).toEqual([[{scopeIds:['co-1'],locale:'en'}]]);
+  expect(fx.calls).toEqual([[{scopeIds:['co-1'],locale:'en',approvalPreview:true}]]);
   const section=view.container.querySelector('#my-payroll-readiness') as HTMLElement;
   // The page's own title, with the way back to Today.
   expect(within(section).getByRole('heading',{level:1}).textContent).toBe('My payroll readiness');
@@ -208,4 +208,20 @@ describe('AI Centre › Insights is for administrators only (owner decision 27)'
   const employee=render(<NextIntlClientProvider locale="en" messages={messages}><AiCentreTabs active={null} isAdmin={false}/></NextIntlClientProvider>);
   expect(employee.container.querySelector('a[href="/assistant?view=insights"]')).toBeNull();
  });
+});
+
+it('My payroll readiness shows a bounded Claim approval preview with its exact count and paginated owner link',async()=>{
+ const claim=MANAGER.approvals.find(row=>row.kind==='approve_claim')!;
+ const result={...MANAGER,approvalTotal:500000,approvalClaimTotal:500000,approvals:Array.from({length:25},(_,i)=>({...claim,key:'approve_claim:'+i}))};
+ const view=await page(result);
+ expect(fx.calls).toEqual([[{scopeIds:['co-1'],locale:'en',approvalPreview:true}]]);
+ const section=view.container.querySelector('[data-payroll-group="approvals"]') as HTMLElement;
+ expect(section.querySelectorAll('[data-payroll-item="approve_claim"]')).toHaveLength(25);
+ expect(section.textContent).toContain('Showing the first 25 of 500,000 rows.');
+ expect(section.querySelector('a[href="/approvals?category=claim"]')).not.toBeNull();
+});
+it('Today leaves even a large approval queue to Needs you',async()=>{
+ const result={...MANAGER,approvalTotal:500000,approvalClaimTotal:500000};
+ const view=await today(result);
+ expect(view.container.querySelector('[data-today-section="today-before-payroll"]')).toBeNull();
 });

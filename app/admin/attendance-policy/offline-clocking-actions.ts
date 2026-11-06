@@ -2,7 +2,6 @@
 import {revalidatePath} from 'next/cache';
 import {requireAdmin} from '@/lib/authz';
 import {OfflineClockingSettingsError,setOfflineClockingPolicy} from '@/packs/attendance/service';
-import {SCHEDULE} from './schedule-panel';
 
 /** A value result, so a refused save keeps the card's typing (useActionState; see app/admin/holidays/holiday-dialog). */
 export type OfflineClockingSaveResult={ok:true;savedAt:number;savedReceipt:string|null}|{ok:false;error:'minutesRange'|'forbidden'|'unavailable'|'failed'}|null;
@@ -21,7 +20,7 @@ export async function saveOfflineClockingAction(_previous:OfflineClockingSaveRes
   if(error instanceof OfflineClockingSettingsError)return {ok:false,error:error.reason==='invalid_input'?'failed':error.reason};
   throw error;
  }
- revalidatePath(SCHEDULE);
+ revalidatePath('/admin/attendance/settings/offline-clocking');
  // The unsaved-changes guard's receipt (components/attendance-settings-navigation): echoed only after the write.
  const nonce=String(fd.get('__attendanceSaveNonce')??'');
  return {ok:true,savedAt:Date.now(),savedReceipt:/^[a-f0-9]{32}$/.test(nonce)?nonce:null};

@@ -1,10 +1,11 @@
 'use client';
 
-import { useCallback,useMemo, useState, useTransition } from 'react';
+import { useCallback, useEffect, useMemo, useState, useTransition } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { useIsMonolith } from '@/components/ui-theme-context';
+import {useShellApprovalFacts} from '@/components/shell-approval-facts';
 import { Bell, Search } from 'lucide-react';
 import { markAllNotificationsReadAction, markNotificationReadAction } from '@/app/notification-actions';
 import type { NotificationRow as StoredNotificationRow } from '@/core/notifications';
@@ -56,11 +57,12 @@ function relTime(d: Date): string {
 export function NotificationCenter({
   unread,
   items,
-  tasks = [],
+  tasks:baseTasks = [],
   taskNotifications = [],
-  taskCount = 0,
+  taskCount:baseTaskCount = 0,
+  claimTaskCount:baseClaimTaskCount=0,
+  claimPreviewRevision,
   readItems = [],
-  history = [],
   canApprove = false,
 }: {
   /** Unread informational (non-action) notifications — the Notification tab badge. */
@@ -73,14 +75,24 @@ export function NotificationCenter({
   taskNotifications?: NotificationRow[];
   /** Full open-task count (queue + action notices) — the Task tab badge. */
   taskCount?: number;
+  /** Exact claim total when the shell supplies a bounded preview. */
+  claimTaskCount?:number;
+  /** Present when the authenticated shell loads the Claims rows on demand. */
+  claimPreviewRevision?:string;
   /** Read notifications — the History tab's "past notifications" half. */
   readItems?: NotificationRow[];
-  /** Recent approval decisions — the History tab's "completed activities" half (canApprove only). */
-  history?: ApprovalHistoryItem[];
   canApprove?: boolean;
 }) {
+  const approvals=useShellApprovalFacts()?.result;
+  const tasksKnown=!approvals||approvals.state==='ready';
+  const tasks=useMemo(()=>approvals?.state==='ready'?[...approvals.items,...baseTasks]:baseTasks,[approvals,baseTasks]);
+  const taskCount=approvals?.state==='ready'?baseTaskCount+approvals.total:baseTaskCount;
+  const claimTaskCount=approvals?.state==='ready'?approvals.claimTotal:baseClaimTaskCount;
   const t = useTranslations('notifications');
   const tH = useTranslations('approvalHistory');
+  const tCommon = useTranslations('common');
+  const tLoad = useTranslations('commandBar');
+  const tApprovals=useTranslations('approvals');
   const tGreeting=useTranslations('employeeHome.greetingNotification');
   const tLetter=useTranslations('letters.notifications');
   // AI v2 Phase 2 hardening: the automatic payroll cut-off reminder is stored as message keys (core/notifications.ts) and
@@ -99,6 +111,48 @@ export function NotificationCenter({
   const [open, setOpen] = useState(false);
   const [tab, setTab] = useState<TabKey>('notifications');
   const [query, setQuery] = useState('');
+  const [approvalHistory, setApprovalHistory] = useState<ApprovalHistoryItem[] | 'unavailable' | null>(null);
+  const loadApprovalHistory = open && tab === 'history' && canApprove;
+
+  useEffect(() => {
+    if (!loadApprovalHistory) return;
+    const controller = new AbortController();
+    void fetch('/api/notifications/approval-history', {
+      cache: 'no-store', credentials: 'same-origin', signal: controller.signal,
+    }).then(response => {
+      if (!response.ok) throw new Error('Approval history unavailable');
+      return response.json() as Promise<ApprovalHistoryItem[]>;
+    }).then(items => {
+      if (!controller.signal.aborted) setApprovalHistory(items);
+    }).catch(() => {
+      if (!controller.signal.aborted) setApprovalHistory('unavailable');
+    });
+    return () => controller.abort();
+  }, [loadApprovalHistory]);
+
+  const [claimPreview, setClaimPreview] = useState<{
+    revision: string;
+    result: { items: ApprovalTaskItem[]; total: number } | 'unavailable';
+  } | null>(null);
+  const loadClaimPreview = tasksKnown && open && tab === 'tasks' && Boolean(claimPreviewRevision);
+  const claimPreviewResult = tasksKnown && claimPreview?.revision === claimPreviewRevision ? claimPreview?.result : undefined;
+
+  useEffect(() => {
+    if (!loadClaimPreview || !claimPreviewRevision) return;
+    const controller = new AbortController();
+    void fetch('/api/notifications/claim-tasks', {
+      cache: 'no-store', credentials: 'same-origin', signal: controller.signal,
+    }).then(response => {
+      if (!response.ok) throw new Error('Claim tasks unavailable');
+      return response.json() as Promise<{ items: ApprovalTaskItem[]; total: number }>;
+    }).then(result => {
+      if (!controller.signal.aborted) setClaimPreview({ revision: claimPreviewRevision, result });
+    }).catch(() => {
+      if (!controller.signal.aborted) setClaimPreview({ revision: claimPreviewRevision, result: 'unavailable' });
+    });
+    return () => controller.abort();
+  }, [loadClaimPreview, claimPreviewRevision]);
+
   const [, start] = useTransition();
 
   const markRead = (id: string) => start(async () => { await markNotificationReadAction(id); router.refresh(); });
@@ -106,13 +160,25 @@ export function NotificationCenter({
 
   // ── Task tab: merge the approvals queue with the action notifications, newest first. ──
   const taskEntries = useMemo(() => {
+    const claimRows = claimPreviewResult && claimPreviewResult !== 'unavailable' ? claimPreviewResult.items : [];
     const entries: ({ type: 'queue'; at: number|null; item: NotificationTaskItem } | { type: 'notif'; at: number; item: NotificationRow })[] = [
-      ...tasks.map((item) => ({ type: 'queue' as const, at: item.createdAt ? Date.parse(item.createdAt) : null, item })),
+      ...[...tasks, ...claimRows].map((item) => ({ type: 'queue' as const, at: item.createdAt ? Date.parse(item.createdAt) : null, item })),
       ...taskNotifications.map((item) => ({ type: 'notif' as const, at: new Date(item.createdAt).getTime(), item })),
     ];
     // Keep genuine recorded instants newest first. Undated queue entries follow in stable ID order.
-    return entries.sort((a, b) => a.at === null ? b.at === null ? a.item.id.localeCompare(b.item.id) : 1 : b.at === null ? -1 : b.at - a.at);
-  }, [tasks, taskNotifications]);
+    return entries.sort((a, b) => {
+      if (a.at === null) return b.at === null ? a.item.id.localeCompare(b.item.id) : 1;
+      if (b.at === null) return -1;
+      if (a.at !== b.at) return b.at - a.at;
+      if (a.type === 'queue' && b.type === 'queue') {
+        return a.item.kind.localeCompare(b.item.kind) || a.item.id.localeCompare(b.item.id);
+      }
+      return 0;
+    });
+  }, [tasks, taskNotifications, claimPreviewResult]);
+  const availableClaimCount = claimPreviewResult && claimPreviewResult !== 'unavailable' ? claimPreviewResult.total : claimTaskCount;
+  const shownClaimCount = claimPreviewResult && claimPreviewResult !== 'unavailable'
+    ? claimPreviewResult.items.length : tasks.filter(task => task.kind === 'claim').length;
 
   // ── History tab: read notifications + approval decisions, merged newest first, searchable. ──
   const historyEntries = useMemo(() => {
@@ -123,7 +189,7 @@ export function NotificationCenter({
         text: `${notificationText(item).title} ${notificationText(item).body}`.toLowerCase(),
         item,
       })),
-      ...history.map((item) => ({
+      ...(canApprove && Array.isArray(approvalHistory) ? approvalHistory : []).map((item) => ({
         type: 'decision' as const,
         at: Date.parse(item.occurredAt),
         text: `${item.moduleKey} ${item.subjectName ?? ''} ${item.deciderName ?? ''} ${item.actionKey}`.toLowerCase(),
@@ -132,7 +198,7 @@ export function NotificationCenter({
     ];
     const q = query.trim().toLowerCase();
     return entries.filter((e) => (q ? e.text.includes(q) : true)).sort((a, b) => b.at - a.at);
-  }, [readItems, history, query,notificationText]);
+  }, [readItems, approvalHistory, canApprove, query, notificationText]);
 
   const notifRow = (n: NotificationRow) => {
     const copy=notificationText(n);
@@ -215,14 +281,18 @@ export function NotificationCenter({
 
   // ── Bell badge (feedback f71dcafd): ONE combined count, so the old unread + task bubbles can no
   // longer collide on the same 36px button. The per-tab pills below keep the two figures separate. ──
-  const total = unread + taskCount;
+  const total = unread + (tasksKnown?taskCount:0);
   // r398 — Monolith's top line shows the count as mono text, the number in signal-text (README §3).
   const monolith = useIsMonolith();
 
   const tabBtn = (key: TabKey, label: string, count?: number) => (
     <button
       type="button"
-      onClick={() => setTab(key)}
+      onClick={() => {
+        if (key === 'history' && key !== tab) setApprovalHistory(null);
+        if (key === 'tasks' && key !== tab) setClaimPreview(null);
+        setTab(key);
+      }}
       aria-pressed={tab === key}
       className={`flex items-center justify-center gap-1 rounded-md px-1 py-1.5 text-xs font-semibold transition-colors ${
         tab === key ? selectedTabCls[key] : 'text-muted-foreground hover:text-foreground'
@@ -241,8 +311,14 @@ export function NotificationCenter({
     <div className="relative">
       <button
         type="button"
-        onClick={() => setOpen((o) => !o)}
-        aria-label={t('ariaBell', { total, unread, tasks: taskCount })}
+        onClick={() => {
+          if (!open) {
+            setApprovalHistory(null);
+            setClaimPreview(null);
+          }
+          setOpen(!open);
+        }}
+        aria-label={tasksKnown?t('ariaBell', { total, unread, tasks: taskCount }):t('aria',{count:unread})}
         className="relative inline-flex size-9 items-center justify-center min-h-11 max-sm:min-w-11 rounded-full text-muted-foreground transition-colors hover:bg-accent hover:text-foreground monolith:w-auto monolith:gap-1.5 monolith:rounded-none monolith:px-1 monolith:font-mono monolith:text-[11px] monolith:uppercase monolith:tracking-[0.12em] monolith:text-mid monolith:hover:bg-transparent monolith:hover:text-ink"
       >
         {monolith ? (
@@ -274,7 +350,7 @@ export function NotificationCenter({
             <div className="border-b border-border px-3 pb-2 pt-2.5">
               <div className="grid grid-cols-3 gap-1 rounded-lg bg-muted/60 p-1">
                 {tabBtn('notifications', t('tabNotifications'), unread)}
-                {tabBtn('tasks', t('tabTasks'), taskCount)}
+                {tabBtn('tasks', t('tabTasks'), tasksKnown?taskCount:undefined)}
                 {tabBtn('history', t('tabHistory'))}
               </div>
             </div>
@@ -296,14 +372,29 @@ export function NotificationCenter({
               </>
             )}
 
+            {tab==='tasks' && (approvals?.state==='pending'||(loadClaimPreview && !claimPreviewResult)) && (
+              <p role="status" className="px-4 py-2 text-sm text-muted-foreground">{tCommon('loading')}</p>
+            )}
+            {tab==='tasks' && (approvals?.state==='unavailable'||(loadClaimPreview && claimPreviewResult === 'unavailable')) && (
+              <p role="alert" className="px-4 py-2 text-sm text-muted-foreground">{tLoad('loadError')}</p>
+            )}
             {tab === 'tasks' &&
               (taskEntries.length === 0 ? (
+                tasksKnown && (!loadClaimPreview || (claimPreviewResult && claimPreviewResult !== 'unavailable')) &&
                 <p className="px-4 py-8 text-center text-sm text-muted-foreground">{t('tasksEmpty')}</p>
               ) : (
                 <ul className="max-h-[22rem] divide-y divide-border overflow-y-auto">
                   {taskEntries.map((e) => (e.type === 'queue' ? taskQueueRow(e.item) : notifRow(e.item)))}
                 </ul>
               ))}
+
+            {tab==='tasks'&&tasksKnown&&availableClaimCount>shownClaimCount&&(
+              <div className="border-t border-border px-4 py-2.5 text-center">
+                <Link href="/approvals?category=claim" onClick={()=>setOpen(false)} className="text-xs font-medium text-primary hover:underline">
+                  {tApprovals('claims')} ({availableClaimCount})
+                </Link>
+              </div>
+            )}
 
             {tab === 'history' && (
               <>
@@ -319,7 +410,14 @@ export function NotificationCenter({
                     />
                   </div>
                 </div>
+                {loadApprovalHistory && approvalHistory === null && (
+                  <p role="status" className="px-4 py-2 text-sm text-muted-foreground">{tCommon('loading')}</p>
+                )}
+                {loadApprovalHistory && approvalHistory === 'unavailable' && (
+                  <p role="alert" className="px-4 py-2 text-sm text-muted-foreground">{tLoad('loadError')}</p>
+                )}
                 {historyEntries.length === 0 ? (
+                  (!canApprove || Array.isArray(approvalHistory)) &&
                   <p className="px-4 py-8 text-center text-sm text-muted-foreground">{t('historyEmpty')}</p>
                 ) : (
                   <ul className="max-h-[19rem] divide-y divide-border overflow-y-auto">

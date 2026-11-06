@@ -13,8 +13,8 @@ import {WorkforceAccessError} from '../core/workforce-access';
  * too: resubmitting the current values writes nothing, and one submit spanning org + grade + a flat
  * column + pay commits atomically as ONE history row.
  */
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { and, eq, isNull } from 'drizzle-orm';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+import { and, eq, isNull, sql } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 import {
   adminCtx,
@@ -35,6 +35,8 @@ import { createLocation } from '../core/location';
 import { createMovementEvent, movementCurrentState, movementDetail, movementHistory } from '../core/movement';
 import { sweepDueMovements } from '../core/movement-apply';
 import * as schema from '../db/schema';
+import * as database from '../db/client';
+import { pgSqlState } from '../lib/db-error';
 import { expectNoLeakedValue } from './helpers/leaf-values';
 
 let b: Base;
@@ -78,6 +80,36 @@ async function openAssignment(employmentId: string) {
 }
 
 describe('movementHistory — projection over the domain_event ledger', () => {
+  it('shares the Access lock with readers and waits for exclusive owners', async () => {
+    const employee = await hireOne();
+    const ctx = adminCtx(b);
+    const read = () => movementHistory(ctx, employee.employmentId);
+    const expected = await read();
+    expect(expected.some(row => row.kind === 'hired')).toBe(true);
+
+    const key = 'access-configuration:' + b.tenantId;
+    const withTenant = database.withTenant;
+    const spy = vi.spyOn(database, 'withTenant').mockImplementation(
+      <T>(context: database.SessionContext, run: (tx: database.Tx) => Promise<T>, options?: Parameters<typeof database.withTenant>[2]) =>
+        withTenant(context, async tx => {
+          await tx.execute(sql`set local lock_timeout='500ms'`);
+          return run(tx);
+        }, options),
+    );
+    try {
+      await owner.client.begin(async holder => {
+        await holder`select pg_advisory_xact_lock_shared(hashtextextended(${key},0))`;
+        expect(await read()).toEqual(expected);
+      });
+      await owner.client.begin(async holder => {
+        await holder`select pg_advisory_xact_lock(hashtextextended(${key},0))`;
+        await expect(read()).rejects.toSatisfy(error => pgSqlState(error) === '55P03');
+      });
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
   it('begins with Hired and suppresses the initial compensation.set at the hire date', async () => {
     const hire = await hireOne();
     // Initial salary AT the hire date is part of Hired, not a movement (import path parity).

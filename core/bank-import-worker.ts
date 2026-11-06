@@ -1,8 +1,10 @@
 /** Queue coordinator. Owner connection discovers/locks jobs only; HR writes ALWAYS use app RLS. */
 import {createHash} from 'node:crypto';
+import {withBackgroundDatabaseWork} from '../db/workload';
+import {DatabaseAdmissionError} from '../db/admission';
 import {sql} from 'drizzle-orm';
 import type postgres from 'postgres';
-import {client,withTenant,type SessionContext,type Tx} from '../db/client';
+import {client,withTenant,withPoolWork,type SessionContext,type Tx} from '../db/client';
 import {resolveEntitlementsInTenantTx} from './entitlements';
 import {bankJobTx,type BankImportJobRow} from './bank-import-job';
 import {ImportFileError} from '../lib/import-file';
@@ -10,7 +12,7 @@ import {PersonnelImportHeaderError} from '../lib/personnel-import-contract';
 import {PersonnelCsvError} from '../lib/personnel-csv';
 import {decodeBankImportSource} from '../lib/bank-import-source.server';
 import {BANK_IMPORT_BATCH_ROWS,BANK_IMPORT_VALIDATION_ROWS} from '../lib/bank-import-job';
-import {analyzeBankImportBatch,applyBankImportRowTx} from './import-sections';
+import {analyzeBankImportBatch,applyBankImportRowTx,BankImportRowRejectedError} from './import-sections';
 import {createImportAttemptTx,recordImportEventTx,sealImportPlan} from './import-history';
 import type {ImportPlanBase} from '../lib/import-history';
 import type {ImportRecord} from '../lib/import-schema';
@@ -20,11 +22,14 @@ type QueueRow={ordinal:number;record:ImportRecord;preview:SectionRowResult;compa
 async function sourceTx(tx:Tx,id:string){const parts=await tx.execute<{content:Buffer}>(sql`select content from bank_import_chunk where job_id=${id}::uuid order by part`);return Buffer.concat(parts.map(p=>p.content));}
 async function freshContext(context:SessionContext):Promise<SessionContext>{
  const ctx=structuredClone(context);
- ctx.entitlements=await client.begin(async transaction=>resolveEntitlementsInTenantTx(async(q,params)=>[...await transaction.unsafe(q,params as postgres.ParameterOrJSON<never>[])],ctx.tenantId));
+ ctx.entitlements=await withBackgroundDatabaseWork(()=>withPoolWork(ctx.tenantId,()=>client.begin(async transaction=>resolveEntitlementsInTenantTx(async(q,params)=>[...await transaction.unsafe(q,params as postgres.ParameterOrJSON<never>[])],ctx.tenantId))));
  return ctx;
 }
 /** One bounded phase. Exported for real DB recovery/concurrency tests. */
-export async function processBankImportJob(ctx:SessionContext,id:string):Promise<void>{
+export function processBankImportJob(ctx:SessionContext,id:string):Promise<void>{
+ return withBackgroundDatabaseWork(()=>processBankImportPhase(ctx,id));
+}
+async function processBankImportPhase(ctx:SessionContext,id:string):Promise<void>{
  const job=await withTenant(ctx,tx=>bankJobTx(tx,id));
  if(job.state==='queued'){
   const content=await withTenant(ctx,tx=>sourceTx(tx,id));
@@ -90,6 +95,9 @@ export async function processBankImportJob(ctx:SessionContext,id:string):Promise
     await tx.execute(sql`update bank_import_job set processed=processed+1,saved=saved+${saved?1:0},updated_at=now() where id=${id}::uuid`);
    });
   }catch(error){
+   // Only the canonical analyzer can reject employee data. SQL/connection/unknown failures
+   // stop the job with its atomic checkpoints intact; they must never consume a valid row.
+   if(!(error instanceof BankImportRowRejectedError))throw error;
    // Permission revocation/infrastructure faults fail the job rather than pretending every row failed.
    await withTenant(ctx,async tx=>{
     const [proof]=await tx.execute<{ok:boolean}>(sql`select app.principal_snapshot_current() as ok`);if(!proof?.ok)throw error;
@@ -119,6 +127,7 @@ export async function runBankImportTick(owner:postgres.Sql):Promise<boolean>{
    if(!job)return false;
    try{await processBankImportJob(await freshContext(job.context),job.id);}
    catch(error){
+    if(error instanceof DatabaseAdmissionError)return false;
     const message=error instanceof ImportFileError?(error.code==='FILE_TOO_LARGE'?'The file exceeds the import size or worksheet limits. Use up to 250,000 rows and 128 MiB.':'The file could not be read. Use the Bank & Statutory template and its reference sheets.'):
      error instanceof PersonnelImportHeaderError||error instanceof PersonnelCsvError?error.message.slice(0,1000):'Import stopped. Rows already saved are retained. Review the result and your access before trying again.';
     // Bounded message only; raw DB failures can contain employee values. Already saved rows stay saved.

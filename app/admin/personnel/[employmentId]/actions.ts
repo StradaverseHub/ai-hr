@@ -6,7 +6,7 @@ import {movementNeedsEntitlementReprojection} from '@/core/movement-kinds';
 import { randomUUID } from 'node:crypto';
 import { revalidatePath } from 'next/cache';
 import { redirect,unstable_rethrow } from 'next/navigation';
-import {movementHistoryHref} from '@/lib/personnel-movement-navigation';
+import {movementPageHref} from '@/lib/personnel-movement-navigation';
 import { getTranslations } from 'next-intl/server';
 import { setEmploymentCardId } from '@/core/attendance-card';
 import { requireAdmin } from '@/lib/authz';
@@ -90,9 +90,10 @@ import { todayInKualaLumpur } from '@/lib/hr-date';
 function withTab(formData: FormData, url: string): string {
   if(formData.get('movementPage')){
     const id=String(formData.get('employmentId')??'');
-    const destination=movementHistoryHref(id,{showCorrected:String(formData.get('showCorrected')??''),from:String(formData.get('from')??'')});
+    const destination=movementPageHref(id,'history',undefined,{showCorrected:String(formData.get('showCorrected')??''),from:String(formData.get('from')??'')});
     const parsed=new URL(url,'https://personnel.invalid'),target=new URL(destination,'https://personnel.invalid');
     if(parsed.searchParams.has('toast'))target.searchParams.set('toast',parsed.searchParams.get('toast')!);
+    if(parsed.searchParams.has('error'))target.searchParams.set('error',parsed.searchParams.get('error')!);
     return target.pathname+target.search+target.hash;
   }
   const tab = String(formData.get('tab') ?? '').trim();
@@ -489,12 +490,9 @@ export async function createMovementEventAction(formData: FormData) {
   let payrollFlagged: string[] = [];
   try {
     const p = parseMovementForm(formData);
-    // 9e2a89e9 — READ BEFORE THE WRITE. After createMovementEvent has committed, employment.grade_id is
-    // the NEW grade and the old one is unrecoverable without replaying the event trail, so the history
-    // row could only ever have named one of the two. One indexed read, on the path that already opens
-    // several transactions.
-    const gradeBefore = { gradeId: await employmentGradeId(s, employmentId) };
-    const res = await createMovementEvent(s, { employmentId, ...p, documents: await parseMovementDocuments(formData) });
+    const res = await createMovementEvent(s, {
+      employmentId, ...p, documents: await parseMovementDocuments(formData),
+    }, {captureGradeBefore:true});
     if (res && 'payrollFlaggedPeriods' in res && Array.isArray(res.payrollFlaggedPeriods)) {
       payrollFlagged = res.payrollFlaggedPeriods as string[];
     }
@@ -521,7 +519,7 @@ export async function createMovementEventAction(formData: FormData) {
       // recorded as having taken effect on 1 July. It reaches the AUDIT row only — the ledger row keeps
       // the posting date, because re-dating money is a separate decision (see the migration's header).
       await recomputeEntitlement(s, employmentId, 'movement_recorded', {
-        gradeBefore,
+        gradeBefore: res.gradeBefore,
         changeEffectiveOn: p.effectiveDate ?? null,
       });
     }

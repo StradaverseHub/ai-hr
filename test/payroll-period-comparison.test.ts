@@ -38,6 +38,8 @@ describe('payroll comparison exact arithmetic and validation', () => {
     expect(payrollVariance(BigInt('20000'), BigInt('20001'))).toEqual({ difference: '0.01', percentage: '0.01' });
     expect(payrollVariance(BigInt('20000'), BigInt('19999'))).toEqual({ difference: '-0.01', percentage: '-0.01' });
     expect(payrollVariance(BigInt('0'), BigInt('500')).percentage).toBeNull();
+    expect(payrollVariance(BigInt('0'), BigInt('0')).percentage).toBe('0.00');
+    expect(payrollVariance(BigInt('-50000'), BigInt('-20000'))).toEqual({ difference: '300.00', percentage: '60.00' });
   });
   it.each([NaN, Infinity, '1e3', '0.001', true, null])('rejects an unsupported amount %s', value => {
     expect(() => payrollAmountMinor(value)).toThrow();
@@ -48,6 +50,11 @@ describe('payroll comparison exact arithmetic and validation', () => {
     for (const page of [true, '1e2', -1, '2.5']) expect(() => payrollComparisonFilters({ page }, definition)).toThrow();
     expect(() => payrollComparisonFilters({ currentPeriod: '2026-10', previousPeriod: '2026-11' }, definition)).toThrow();
     expect(payrollComparisonFilters({ currentPeriod: '2026-01' }, definition).previousPeriod).toBe('2025-12');
+    const first = '00000000-0000-0000-0000-000000000001', second = '00000000-0000-0000-0000-000000000002';
+    expect(payrollComparisonFilters({ cycleIds: [first, second, first] }, definition).cycleIds).toEqual([first, second]);
+    expect(payrollComparisonFilters({ cycleIds: first + ',' + second }, definition).cycleIds).toEqual([first, second]);
+    expect(() => payrollComparisonFilters({ cycleIds: [first, 'unknown'] }, definition)).toThrow();
+
   });
 });
 

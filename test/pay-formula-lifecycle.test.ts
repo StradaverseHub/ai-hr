@@ -8,7 +8,7 @@ import * as schema from '../db/schema';
 import {hireEmployee} from '../core/org';
 import {setCompensation} from '../core/comp';
 import {seedPayComponentCatalog,upsertPayComponent,listPayComponents,deletePayComponent,PayComponentInUseError} from '../core/pay-components';
-import {savePayFormula,testPayFormula,setPayFormulaActive,getPayFormula,deletePayFormula,loadActiveFormulaProgramTx,saveFormulaAccumulationGroup} from '../core/pay-formula';
+import {savePayFormula,testPayFormula,setPayFormulaActive,getPayFormula,deletePayFormula,loadActiveFormulaProgramTx,payFormulaOptions,saveFormulaAccumulationGroup} from '../core/pay-formula';
 import {closeAll,entitledCtx,migrateTestDb,owner,resetDb,seedBase,setModule,type Base} from './harness';
 import type {PayFormulaContext} from '../lib/pay-formula-model';
 let base:Base,ctx:SessionContext,context:PayFormulaContext;
@@ -30,6 +30,21 @@ it('requires an exact successful saved revision and retains the old active revis
  const view=await getPayFormula(ctx,s.id);expect(view?.activeRevisionId).toBe(s.revisionId);expect(view?.versions).toHaveLength(2);
  await expect(setPayFormulaActive(ctx,{...newer,testId:t.id,active:true})).rejects.toThrow(/successful test/);
  await expect(testPayFormula(ctx,{...s,context})).rejects.toThrow(/Save/);
+});
+it('only offers tested and active formulas for new Pay Item assignments', async () => {
+ const formula = await saved('PICKABLE', 'Return 25');
+ const offered = async () => (await payFormulaOptions(ctx)).activeFormulas.map(option => option.formulaId);
+ expect(await offered()).not.toContain('PICKABLE');
+ const receipt = await testPayFormula(ctx, { ...formula, context });
+ expect(receipt.passed).toBe(true);
+ expect(await offered()).not.toContain('PICKABLE');
+ await setPayFormulaActive(ctx, { ...formula, active: true, testId: receipt.id });
+ expect(await offered()).toContain('PICKABLE');
+ await upsertPayComponent(ctx, { ...settings, code: 'PICKED', rule: { kind: 'formula_builder', formulaId: 'PICKABLE', dependencies: [] } });
+ expect((await listPayComponents(ctx)).find(item => item.code === 'PICKED')?.rule).toMatchObject({ formulaId: 'PICKABLE' });
+ await setPayFormulaActive(ctx, { id: formula.id, active: false });
+ expect(await offered()).not.toContain('PICKABLE');
+ expect((await listPayComponents(ctx)).find(item => item.code === 'PICKED')?.rule).toMatchObject({ formulaId: 'PICKABLE' });
 });
 it('binds server dependencies and locks a used identity while retaining receipts after deactivation',async()=>{
  const s=await activated('LINKED','Return {#PayItem}("BASIC") / 10');

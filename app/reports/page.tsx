@@ -13,7 +13,7 @@ import {MasterReportAccessError} from '@/core/employee-master-access';
 import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
 import { scopedAdmin } from '@/lib/scope';
-import { listEmployeeMasterReports } from '@/core/employee-master-reports';
+import { readEmployeeMasterReportHub } from '@/core/employee-master-reports';
 import { MasterReportList } from './employee-master/MasterReportList';
 import { MASTER_STARTERS } from '@/lib/employee-master-starters';
 import { listCustomReports } from '@/core/custom-reports';
@@ -37,7 +37,7 @@ const PREDEFINED: Record<ReportCategory, { href: string; key: string }[]> = {
   ],
   leave: [{ href: '/analytics#leave', key: 'leaveAnalytics' }],
   payroll: [
-    { href: '/payroll/reports', key: 'payrollReports' },
+    { href: '/payroll/statutory-forms', key: 'payrollReports' },
     { href: '/payroll/transactions/view', key: 'payrollView' },
   ],
   claim: [{ href: '/claims', key: 'claims' }],
@@ -51,11 +51,9 @@ export default async function ReportsPage({
 }) {
   const { s, scopeIds } = await scopedAdmin();
   const mt=await getTranslations('employeeMasterReports');
-  const visibleMasterReports=await listEmployeeMasterReports(s,scopeIds,{all:true});
-  const masterReports=visibleMasterReports.slice(0,5);
-  const t = await getTranslations('reports');
   const sp = await searchParams;
-  const savedMasterReport=sp.saved?visibleMasterReports.find(report=>report.id===sp.saved):undefined;
+  const {reports:masterReports,total:masterReportCount,savedReport:savedMasterReport}=await readEmployeeMasterReportHub(s,scopeIds,sp.saved);
+  const t = await getTranslations('reports');
   const only = sp.cat as ReportCategory | undefined;
   const categories = only && REPORT_CATEGORIES.includes(only) ? [only] : REPORT_CATEGORIES;
 
@@ -118,7 +116,7 @@ export default async function ReportsPage({
                 </div>
               )}
 
-              {cat==='master'&&<div className="space-y-3"><div className="flex items-center justify-between"><h3 className="text-sm font-medium">{mt('recent')}</h3><Link className="text-sm text-primary hover:underline" href="/reports/employee-master" aria-label={mt('viewAllCountLabel',{count:visibleMasterReports.length})}>{mt('viewAllCount',{count:visibleMasterReports.length})}</Link></div><MasterReportList reports={masterReports}/><div className="flex flex-wrap gap-2">{MASTER_STARTERS.map(starter=><Link key={starter} href={'/reports/employee-master/new?starter='+starter} className="rounded border border-border px-2 py-1 text-xs hover:bg-accent">{mt('starter.'+starter)}</Link>)}</div></div>}
+              {cat==='master'&&<div className="space-y-3"><div className="flex items-center justify-between"><h3 className="text-sm font-medium">{mt('recent')}</h3><Link className="text-sm text-primary hover:underline" href="/reports/employee-master" aria-label={mt('viewAllCountLabel',{count:masterReportCount})}>{mt('viewAllCount',{count:masterReportCount})}</Link></div><MasterReportList reports={masterReports}/><div className="flex flex-wrap gap-2">{MASTER_STARTERS.map(starter=><Link key={starter} href={'/reports/employee-master/new?starter='+starter} className="rounded border border-border px-2 py-1 text-xs hover:bg-accent">{mt('starter.'+starter)}</Link>)}</div></div>}
               {/* Custom reports */}
               <div>
                 <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/80">

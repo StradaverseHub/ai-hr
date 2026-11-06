@@ -73,6 +73,10 @@
     "copyHint": "Sao chép mọi ca và ngày nghỉ từ ngày nguồn sang mục tiêu, giữ nguyên vị trí mỗi ngày. Chạy lại sẽ ghi đè cùng ngày mục tiêu.",
     "copiedDone": "Đã sao chép {rows} mục lịch trực sang ngày mục tiêu.",
     "copiedEmpty": "Không tìm thấy mục lịch trực nào trong ngày nguồn để sao chép.",
+    "breakType": "Loại giờ nghỉ",
+    "breakTypeInShift": "Trong ca",
+    "breakTypeBeforeShift": "Trước ca",
+    "breakTypeAfterShift": "Sau ca",
     "breakPaid": "Có lương",
     "monthlyRoster": "Lịch làm việc theo tháng",
     "legend": "Chú giải",
@@ -336,6 +340,7 @@
     "payrollTransactions": "Nhập liệu giao dịch",
     "payrollTransactionView": "Xem giao dịch",
     "payrollReports": "Báo cáo",
+    "payrollReconciliation": "Đối soát bảng lương",
     "payrollStatutoryForms": "Biểu mẫu luật định",
     "payrollPaymentSubmission": "Nộp thanh toán",
     "payrollSettings": "Cài đặt",
@@ -803,7 +808,8 @@
       "placeholder": "Tìm mã nhân viên hoặc tên…",
       "resultsLabel": "Kết quả tìm nhân viên",
       "noMatches": "Không có nhân viên nào khớp.",
-      "currentTag": "Hiện tại"
+      "currentTag": "Hiện tại",
+      "loadFailed": "Không thể tải tìm kiếm nhân viên. Vui lòng thử lại."
     },
     "detail": {
       "incentiveDeclarations": {
@@ -4770,6 +4776,33 @@
       "active": "Đang làm",
       "probation": "Thử việc",
       "notice": "Báo trước"
+    },
+    "explorer": {
+      "hint": "Khám phá tổ chức lớn theo từng phần. Tìm kiếm bao gồm mọi người trong các công ty đã chọn.",
+      "topLevel": "Cấp cao nhất",
+      "allPeople": "Tất cả mọi người",
+      "search": "Tìm kiếm",
+      "searchResults": "Kết quả tìm kiếm",
+      "reports": "Nhân viên trực tiếp",
+      "managers": "Quản lý",
+      "connections": "Tất cả quan hệ",
+      "history": "Người đã xem",
+      "loading": "Đang tải tổ chức…",
+      "loaded": "Đã tải {loaded} trên trang này · {total} kết quả phù hợp · {people} người trong các công ty đã chọn",
+      "accessChanged": "Quyền truy cập đã thay đổi. Tải lại để tiếp tục.",
+      "changed": "Tổ chức đã thay đổi. Làm mới phần này để tiếp tục.",
+      "failed": "Không thể tải phần này. Vui lòng thử lại.",
+      "refresh": "Tải lại",
+      "retry": "Thử lại",
+      "multipleAssignments": "Nhiều phân công hiện tại",
+      "profile": "Xem hồ sơ",
+      "relationships": "Quan hệ báo cáo",
+      "outsideScope": "Quan hệ ngoài các công ty đã chọn",
+      "incoming": "Báo cáo cho người này",
+      "outgoing": "Người này báo cáo cho",
+      "explore": "Khám phá",
+      "back": "Quay lại",
+      "next": "Trang tiếp theo"
     }
   },
   "me": {
@@ -5445,7 +5478,8 @@
     "submitDecisions": "Gửi",
     "employeeRemark": "Ghi chú của nhân viên",
     "closeDialog": "Đóng",
-    "bulkSelectAll": "Chọn tất cả",
+    "bulkSelectAll": "Chọn tất cả yêu cầu trong chế độ xem này",
+    "bulkSelectionUnavailable": "Không thể chọn các yêu cầu chi phí đang chờ duyệt. Hãy thử lại.",
     "bulkSelectRow": "Chọn yêu cầu",
     "bulkSelected": "Đã chọn: {count, plural, other {# yêu cầu}}",
     "bulkClear": "Xóa",
@@ -6745,6 +6779,7 @@
       },
       "preChecksOpenProfile": "Mở hồ sơ",
       "preChecksBlockedError": "Không thể xử lý lương: {n} nhân viên không có hồ sơ lương hiện tại. Vui lòng khắc phục các mục kiểm tra trước khi xử lý.",
+      "preChecksNotReady": "Hãy xử lý các mục kiểm tra đang chặn trước khi chạy bảng lương.",
       "preChecksBlockedPayModeError": "Không thể xử lý lương: {n} nhân viên có cơ cấu lương Kỳ tùy chỉnh mà bảng lương không tính được. Hãy đổi Chế độ lương trên hồ sơ Lương cơ bản của họ, hoặc loại họ khỏi kỳ chạy này.",
       "preChecksBlockedTp3Error": "Không thể xử lý lương: {n} nhân viên có Mẫu TP3 của năm nay chưa vào các con số bảng lương. Hãy mở Mẫu TP3 của từng người và lưu lại trước.",
       "generatedWithSkipped": "Đã tạo phiếu lương — bỏ qua {n} nhân viên. Danh sách bên dưới nêu tên và lý do.",
@@ -15677,6 +15712,8 @@
     "builderOrdinaryRate": "Số chia mức thông thường",
     "builderContextHint": "Chỉ đặt các liên kết được công thức sử dụng. Kiểm thử công thức đã lưu trong trình tạo với nhân viên, kỳ và chu kỳ.",
     "builderNoFormula": "Chọn công thức đã kiểm thử và đang dùng",
+    "builderNoneEligible": "Chưa có công thức sẵn sàng. Hãy kiểm thử và kích hoạt công thức trong Trình tạo công thức lương.",
+    "builderSavedUnavailable": "{formulaId} (lựa chọn đã lưu, hiện không khả dụng)",
     "builderFormula": "Mã công thức",
     "kind_formula_builder": "Trình tạo công thức lương"
   },
@@ -23366,6 +23403,11 @@
       "desc": "Mức làm thêm và phạm vi ca dự phòng.",
       "cta": "Mở"
     },
+    "offlineClocking": {
+      "title": "Chấm công ngoại tuyến",
+      "desc": "Cho phép nhân viên chấm công trong ứng dụng di động khi không có kết nối. Lượt chấm công được tải lên sau và được kiểm tra trước khi được tính.",
+      "cta": "Mở"
+    },
     "registeredDevices": {
       "title": "Thiết bị chấm công đã đăng ký",
       "desc": "Xem thiết bị và thu hồi đăng ký.",
@@ -23414,6 +23456,18 @@
     }
   },
   "rewards": {
+    "compaRatio": "Tỷ lệ lương so với trung điểm",
+    "compaRatioBefore": "Lương so với trung điểm trước điều chỉnh",
+    "compaRatioAfter": "Lương so với trung điểm sau điều chỉnh",
+    "promotionNominations": "Đề cử thăng chức",
+    "noPromotionNominations": "Không có đề cử nào được phép xem trong các đợt đánh giá này.",
+    "promotionPrevious": "Các đợt trước",
+    "promotionNext": "Các đợt tiếp theo",
+    "prelaunchDataCheck": "Kiểm tra dữ liệu",
+    "dataCheckReady": "Sẵn sàng",
+    "recommendationSaved": "Đã lưu đề xuất.",
+    "recommendationSaveFailed": "Không thể lưu đề xuất.",
+    "resetRecommendation": "Đặt lại",
     "unitBonus": {
       "noReduction": "Không được phép giảm lương trong đợt xét duyệt lương.",
       "appliesOnlyTo": "Chỉ áp dụng cho đợt xét duyệt này: {company} / {unit}",
@@ -30606,6 +30660,30 @@
     "acknowledgementDate": "Ngày"
   },
   "rewardsAccess": {
+    "reviewActivity": {
+      "subject": "Người bị ảnh hưởng",
+      "clearSubject": "Xóa bộ lọc theo người",
+      "title": "Hoạt động xét duyệt",
+      "review": "Xét duyệt",
+      "actor": "Người thay đổi",
+      "time": "Thời gian",
+      "event": "Thay đổi",
+      "reason": "Lý do",
+      "empty": "Không có hoạt động phù hợp.",
+      "events": {
+        "access-changed": "Đã thay đổi quyền truy cập",
+        "cancelled": "Đã huỷ xét duyệt",
+        "facts-imported": "Đã nhập dữ kiện",
+        "final-pool-changed": "Đã thay đổi quỹ cuối cùng",
+        "lump-updated": "Đã cập nhật khoản một lần",
+        "onehr-results-imported": "Đã nhập kết quả OneHR",
+        "posted": "Đã ghi nhận thưởng",
+        "recommendation-updated": "Đã cập nhật đề xuất",
+        "routed": "Đã chuyển bước xét duyệt",
+        "senior-membership-updated": "Đã cập nhật thành viên cấp cao",
+        "upload-source-refreshed": "Đã làm mới nguồn tải lên"
+      }
+    },
     "wholeGroup": {
       "title": "Vai trò toàn tập đoàn",
       "description": "Cấp quyền toàn tập đoàn cho người giữ vai trò giám sát đủ điều kiện.",
@@ -31247,6 +31325,30 @@
     }
   },
   "payrollComparison": {
+    "employmentStatus": "Tình trạng việc làm cuối kỳ",
+    "previousPayCycles": "Chu kỳ lương của kỳ so sánh",
+    "previousPayCyclesHelp": "Để trống để dùng cùng chu kỳ với kỳ lương hiện tại.",
+    "sourceVersionHistory": "Các phiên bản nguồn trước",
+    "newComparison": "So sánh mới",
+    "allRecordedItems": "Tất cả khoản lương đã ghi",
+    "itemsUnavailable": "Không thể so sánh một số khoản lương từ dữ liệu đã ghi: {codes}",
+    "saveTemplate": "Lưu làm mẫu đối chiếu",
+    "businessUnit": "Đơn vị kinh doanh",
+    "position": "Vị trí",
+    "employmentType": "Loại việc làm",
+    "employeeSearch": "Tìm nhân viên theo tên hoặc mã",
+    "groupBy": "Nhóm theo",
+    "noGrouping": "Tất cả / không nhóm",
+    "reconciliationCaptured": "Đã ghi phiên bản nguồn",
+    "reconciliationStatus": "Trạng thái so sánh",
+    "reconciliationReady": "Sẵn sàng xem xét",
+    "hrRemark": "Ghi chú nhân sự",
+    "hrRemarkEdit": "Sửa ghi chú nhân sự",
+    "hrRemarkSave": "Lưu ghi chú",
+    "hrRemarkConflict": "Ghi chú đã thay đổi. Hãy xem bản mới nhất và thử lại.",
+    "hrRemarkFailed": "Không thể lưu ghi chú. Hãy xem lại bảng so sánh và thử lại.",
+    "payCycles": "Chu kỳ trả lương",
+    "sourceUpdated": "Lần xử lý bảng lương gần nhất",
     "comparisonTable": "Kết quả so sánh",
     "saveFailed": "Không thể lưu báo cáo. Bản nháp được giữ lại. Vui lòng thử lại.",
     "rolesRequired": "Chọn ít nhất một vai trò được phép chạy báo cáo này.",
@@ -31323,6 +31425,7 @@
       "super_admin": "Quản trị cấp cao"
     },
     "columns": {
+      "payItemCode": "Mã khoản lương",
       "employeeCode": "Mã nhân viên",
       "employeeName": "Nhân viên",
       "department": "Phòng ban",
@@ -31339,6 +31442,8 @@
       "remarks": "Ghi chú"
     },
     "reasons": {
+      "noChange": "Không thay đổi",
+      "payItemChanged": "Khoản lương đã ghi thay đổi",
       "unexplained": "Chưa giải thích",
       "increment": "Tăng lương",
       "promotion": "Thăng chức",

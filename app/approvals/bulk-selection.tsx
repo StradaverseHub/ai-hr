@@ -1,10 +1,10 @@
 'use client';
 
-import { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { createContext, useContext, useEffect, useMemo, useRef, useState, useTransition } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
 import { useTranslations } from 'next-intl';
 import { Button, inputCls } from '@/components/ui';
-import { bulkDecideAction } from './actions';
+import { bulkDecideAction, selectPendingClaimsAction } from './actions';
 import {
   bulkRowKey,
   computeBulkBreakdown,
@@ -28,12 +28,15 @@ type Ctx = {
   rows: BulkRow[];
   selected: Set<string>;
   toggle: (key: string) => void;
-  setMany: (keys: string[], on: boolean) => void;
+  selectAll: (type: BulkDecideType | undefined, on: boolean) => void;
+  claimsUnloaded: boolean;
+  selecting: boolean;
   clearAll: () => void;
   selectedRows: BulkRow[];
 };
 
 const BulkCtx = createContext<Ctx | null>(null);
+const isClaimKey = (key: string) => key.startsWith('claim:');
 
 function useBulk(): Ctx {
   const ctx = useContext(BulkCtx);
@@ -45,6 +48,8 @@ export function BulkSelectionProvider({
   rows,
   sort,
   category,
+  claimSelectionScope,
+  claimsOutsidePage = false,
   children,
 }: {
   rows: BulkRow[];
@@ -52,49 +57,94 @@ export function BulkSelectionProvider({
   sort?: string;
   /** Current ?category= value (2dec6406) — threaded exactly like sort so the redirect keeps the filter. */
   category?: string;
+  claimSelectionScope?: string;
+  claimsOutsidePage?: boolean;
   children: React.ReactNode;
 }) {
   const [selected, setSelected] = useState<Set<string>>(() => new Set());
+  const [allClaims, setAllClaims] = useState<BulkRow[]>();
+  const [selectionError, setSelectionError] = useState(false);
+  const [selecting, startSelection] = useTransition();
+  const t = useTranslations('approvals');
 
-  // A row that disappears from the queue (already decided elsewhere, filtered out) must not linger in the
-  // selection. Reconcile whenever the row set changes so counts/breakdown never reference a stale id.
-  const validKeys = useMemo(() => new Set(rows.map(bulkRowKey)), [rows]);
+  const availableRows = useMemo(() => {
+    if (!allClaims) return rows;
+    const claimKeys = new Set(allClaims.map(bulkRowKey));
+    return [...rows.filter(row => !claimKeys.has(bulkRowKey(row))), ...allClaims];
+  }, [rows, allClaims]);
+  const validKeys = useMemo(() => new Set(availableRows.map(bulkRowKey)), [availableRows]);
   useEffect(() => {
-    setSelected((prev) => {
-      let changed = false;
-      const next = new Set<string>();
-      for (const k of prev) {
-        if (validKeys.has(k)) next.add(k);
-        else changed = true;
-      }
-      return changed ? next : prev;
+    setSelected(prev => {
+      // Claims selected on another page retain only their IDs. The service
+      // rechecks every ID when a decision is submitted.
+      const next = new Set([...prev].filter(key =>
+        validKeys.has(key) || (claimSelectionScope !== undefined && isClaimKey(key))
+      ));
+      return next.size === prev.size ? prev : next;
     });
-  }, [validKeys]);
+  }, [validKeys, claimSelectionScope]);
 
   const value = useMemo<Ctx>(() => {
     const toggle = (key: string) =>
-      setSelected((prev) => {
+      setSelected(prev => {
         const next = new Set(prev);
         if (next.has(key)) next.delete(key);
         else next.add(key);
         return next;
       });
-    const setMany = (keys: string[], on: boolean) =>
-      setSelected((prev) => {
-        const next = new Set(prev);
-        for (const k of keys) {
-          if (on) next.add(k);
-          else next.delete(k);
+    const claimsUnloaded = claimsOutsidePage && allClaims === undefined;
+    const selectAll = (type: BulkDecideType | undefined, on: boolean) => {
+      if (selecting) return;
+      const matches = (row: BulkRow) => type === undefined || row.type === type;
+      const apply = (selectionRows: BulkRow[], replaceClaims = false) => setSelected(prev => {
+        const resetClaims = replaceClaims || (!on && (type === undefined || type === 'claim'));
+        const next = new Set(resetClaims ? [...prev].filter(key => !isClaimKey(key)) : prev);
+        for (const row of selectionRows.filter(matches)) {
+          const key = bulkRowKey(row);
+          if (on) next.add(key);
+          else next.delete(key);
         }
         return next;
       });
-    const clearAll = () => setSelected(new Set());
-    const selectedRows = rows.filter((r) => selected.has(bulkRowKey(r)));
-    return { rows, selected, toggle, setMany, clearAll, selectedRows };
-  }, [rows, selected]);
+      if (!on || !claimsOutsidePage || claimSelectionScope === undefined || (type !== undefined && type !== 'claim')) {
+        apply(availableRows);
+        return;
+      }
+      setSelectionError(false);
+      startSelection(async () => {
+        try {
+          const result = await selectPendingClaimsAction(claimSelectionScope);
+          if (!result.ok) {
+            setSelectionError(true);
+            return;
+          }
+          const capturedClaims = result.ids.map(id => ({ id, type: 'claim' as const, category: 'claim' as const }));
+          setAllClaims(capturedClaims);
+          apply([...availableRows.filter(row => row.type !== 'claim'), ...capturedClaims], true);
+        } catch {
+          setSelectionError(true);
+        }
+      });
+    };
+    const clearAll = () => {
+      setSelected(new Set());
+      setAllClaims(undefined);
+      setSelectionError(false);
+    };
+    const selectedRows = availableRows.filter(row => selected.has(bulkRowKey(row)));
+    if (claimSelectionScope !== undefined) {
+      for (const key of selected) {
+        if (isClaimKey(key) && !validKeys.has(key)) {
+          selectedRows.push({id:key.slice('claim:'.length),type:'claim',category:'claim'});
+        }
+      }
+    }
+    return { rows: availableRows, selected, toggle, selectAll, clearAll, selectedRows, claimsUnloaded, selecting };
+  }, [availableRows, validKeys, selected, allClaims, claimsOutsidePage, claimSelectionScope, selecting]);
 
   return (
     <BulkCtx.Provider value={value}>
+      {selectionError && <p role="alert" className="mb-2 text-sm text-destructive">{t('bulkSelectionUnavailable')}</p>}
       {children}
       <BulkActionBar sort={sort} category={category} />
     </BulkCtx.Provider>
@@ -105,11 +155,13 @@ export function BulkSelectionProvider({
 function TriCheckbox({
   checked,
   indeterminate,
+  disabled,
   onChange,
   ariaLabel,
 }: {
   checked: boolean;
   indeterminate?: boolean;
+  disabled?: boolean;
   onChange: () => void;
   ariaLabel: string;
 }) {
@@ -122,6 +174,7 @@ function TriCheckbox({
       ref={ref}
       type="checkbox"
       checked={checked}
+      disabled={disabled}
       onChange={onChange}
       aria-label={ariaLabel}
       className="size-4 cursor-pointer rounded border-border accent-primary"
@@ -131,27 +184,29 @@ function TriCheckbox({
 
 /** Per-row selection checkbox (rendered in each actionable pending row). */
 export function BulkRowCheckbox({ id, type }: { id: string; type: BulkDecideType }) {
-  const { selected, toggle } = useBulk();
+  const { selected, toggle, selecting } = useBulk();
   const t = useTranslations('approvals');
   const key = bulkRowKey({ type, id });
   return (
-    <TriCheckbox checked={selected.has(key)} onChange={() => toggle(key)} ariaLabel={t('bulkSelectRow')} />
+    <TriCheckbox checked={selected.has(key)} disabled={selecting} onChange={() => toggle(key)} ariaLabel={t('bulkSelectRow')} />
   );
 }
 
 /** Per-section header select-all: toggles every actionable row of one type. */
 export function BulkSectionSelectAll({ type }: { type: BulkDecideType }) {
-  const { rows, selected, setMany } = useBulk();
+  const { rows, selected, selectAll, claimsUnloaded, selecting } = useBulk();
   const t = useTranslations('approvals');
   const keys = useMemo(() => rows.filter((r) => r.type === type).map(bulkRowKey), [rows, type]);
-  if (keys.length === 0) return null;
+  const unloaded = type === 'claim' && claimsUnloaded;
+  if (keys.length === 0 && !unloaded) return null;
   const selectedCount = keys.filter((k) => selected.has(k)).length;
-  const allOn = selectedCount === keys.length;
+  const allOn = !unloaded && selectedCount === keys.length;
   return (
     <TriCheckbox
       checked={allOn}
       indeterminate={selectedCount > 0}
-      onChange={() => setMany(keys, !allOn)}
+      disabled={selecting}
+      onChange={() => selectAll(type, !allOn)}
       ariaLabel={t('bulkSelectAll')}
     />
   );
@@ -160,18 +215,19 @@ export function BulkSectionSelectAll({ type }: { type: BulkDecideType }) {
 /** Global "Select all" across every section (rendered in the page header actions). Hidden when there is
  *  nothing selectable, so an empty queue shows no dangling control. */
 export function BulkSelectAllToggle() {
-  const { rows, selected, setMany, clearAll } = useBulk();
+  const { rows, selected, selectAll, clearAll, claimsUnloaded, selecting } = useBulk();
   const t = useTranslations('approvals');
   const allKeys = useMemo(() => rows.map(bulkRowKey), [rows]);
-  if (allKeys.length === 0) return null;
+  if (allKeys.length === 0 && !claimsUnloaded) return null;
   const selectedCount = allKeys.filter((k) => selected.has(k)).length;
-  const allOn = selectedCount === allKeys.length;
+  const allOn = !claimsUnloaded && selectedCount === allKeys.length;
   return (
     <label className="flex cursor-pointer items-center gap-2 text-xs text-muted-foreground">
       <TriCheckbox
         checked={allOn}
         indeterminate={selectedCount > 0}
-        onChange={() => (allOn ? clearAll() : setMany(allKeys, true))}
+        disabled={selecting}
+        onChange={() => (allOn ? clearAll() : selectAll(undefined, true))}
         ariaLabel={t('bulkSelectAll')}
       />
       <span className="whitespace-nowrap">{t('bulkSelectAll')}</span>
@@ -189,7 +245,7 @@ const CATEGORY_LABEL_KEY: Record<BulkCategory, string> = {
 
 /** Sticky bar + confirmation dialog. Rendered once by the provider; returns null when nothing is selected. */
 function BulkActionBar({ sort, category }: { sort?: string; category?: string }) {
-  const { selectedRows, clearAll } = useBulk();
+  const { selectedRows, clearAll, selecting } = useBulk();
   const t = useTranslations('approvals');
   const [decision, setDecision] = useState<'approved' | 'rejected' | null>(null);
   const [reason, setReason] = useState('');
@@ -198,7 +254,7 @@ function BulkActionBar({ sort, category }: { sort?: string; category?: string })
   const breakdown = useMemo(() => computeBulkBreakdown(selectedRows), [selectedRows]);
   // Snapshot the exact items to POST at the moment the dialog opens — read from current selection.
   const items = useMemo(
-    () => selectedRows.map((r) => ({ type: r.type, id: r.id, ...(r.expectedStageIndex != null ? {expectedStageIndex:r.expectedStageIndex} : {}), ...(r.recommendationRecordId ? { recommendationRecordId: r.recommendationRecordId } : {}) })),
+    () => selectedRows.map((r) => ({ type: r.type, id: r.id, ...(r.expectedStageIndex != null ? {expectedStageIndex:r.expectedStageIndex} : {}), ...(r.expectedParticipantSlot ? {expectedParticipantSlot:r.expectedParticipantSlot} : {}), ...(r.recommendationRecordId ? { recommendationRecordId: r.recommendationRecordId } : {}) })),
     [selectedRows],
   );
 
@@ -219,6 +275,7 @@ function BulkActionBar({ sort, category }: { sort?: string; category?: string })
             <span className="font-medium">{t('bulkSelected', { count })}</span>
             <button
               type="button"
+              disabled={selecting}
               onClick={clearAll}
               className="text-xs text-muted-foreground underline-offset-2 hover:underline"
             >
@@ -226,10 +283,10 @@ function BulkActionBar({ sort, category }: { sort?: string; category?: string })
             </button>
           </div>
           <div className="flex items-center gap-2">
-            <Button type="button" size="sm" onClick={() => setDecision('approved')}>
+            <Button type="button" size="sm" disabled={selecting} onClick={() => setDecision('approved')}>
               {t('bulkApproveSelected')}
             </Button>
-            <Button type="button" size="sm" variant="outline" onClick={() => setDecision('rejected')}>
+            <Button type="button" size="sm" variant="outline" disabled={selecting} onClick={() => setDecision('rejected')}>
               {t('bulkRejectSelected')}
             </Button>
           </div>

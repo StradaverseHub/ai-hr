@@ -7,7 +7,7 @@ import { scopedSession } from '@/lib/scope';
 import { canManagePerfComp, isAdmin, isOnehrOnlyPerformanceAdmin } from '@/lib/authz';
 import { todayInKualaLumpur } from '@/lib/hr-date';
 import { listCompanies } from '@/core/read';
-import { listCycles, listOnehrAdminCycles, type OnehrAdminCycleSummary } from '@/core/performance';
+import { listCyclePage, listOnehrAdminCyclePage, type OnehrAdminCycleSummary } from '@/core/performance';
 import { NewCycleForm } from '../new-cycle-form';
 
 export type CycleRow = OnehrAdminCycleSummary & { pendingComp?: number };
@@ -17,8 +17,8 @@ export type CycleRow = OnehrAdminCycleSummary & { pendingComp?: number };
  * the page and the admin area's Cycle › All cycles draw one copy (D-P1-32 PT-X4). `admin` is the HR / perf-comp
  * administrator: the pending-pay column and cycle creation are theirs; the OneHR performance partner sees neither.
  */
-export async function PerformanceCyclesAdmin({ cycles, rows, pgState, basePath, admin, companies, today }: {
-  cycles: readonly CycleRow[];
+export async function PerformanceCyclesAdmin({ cycleCount, rows, pgState, basePath, admin, companies, today }: {
+  cycleCount: number;
   rows: readonly CycleRow[];
   pgState: PageState;
   basePath: string;
@@ -30,10 +30,10 @@ export async function PerformanceCyclesAdmin({ cycles, rows, pgState, basePath, 
   return (
     <>
     <Card className="overflow-hidden" data-tour="performance-cycles">
-      <SectionHeader title={t('reviewCycles')} count={cycles.length} />
+      <SectionHeader title={t('reviewCycles')} count={cycleCount} />
       <div className="border-b border-border px-4 py-2 text-sm"><Link href="/performance/leaders" className="text-primary hover:underline">{to('leaders.title')} →</Link> <span className="text-muted-foreground">{to('leaders.listHint')}</span></div>
       <Pager basePath={basePath} state={pgState} />
-      {cycles.length === 0 ? (
+      {cycleCount === 0 ? (
         <p className="px-4 py-8 text-center text-sm text-muted-foreground">
           {t('noCycles')}
         </p>
@@ -106,10 +106,10 @@ export async function PerformanceCyclesAdmin({ cycles, rows, pgState, basePath, 
 export async function AdminAllCycles({ basePath, query }: { basePath: string; query: { page?: string; size?: string } }) {
   const { s, scopeIds } = await scopedSession();
   const admin = isAdmin(s) || canManagePerfComp(s), onehrOnly = isOnehrOnlyPerformanceAdmin(s);
-  const [cycles, companies] = await Promise.all([
-    (admin ? listCycles(s) : onehrOnly ? listOnehrAdminCycles(s) : Promise.resolve([])) as Promise<CycleRow[]>,
+  const [result, companies] = await Promise.all([
+    admin ? listCyclePage(s, query) : onehrOnly ? listOnehrAdminCyclePage(s, query) : Promise.resolve(paginateRows([], parsePageQuery(query))),
     admin ? listCompanies(s) : Promise.resolve([]),
   ]);
-  const { rows, state } = paginateRows(cycles, parsePageQuery(query));
-  return <PerformanceCyclesAdmin cycles={cycles} rows={rows} pgState={state} basePath={basePath} admin={admin} companies={companies.filter((c) => scopeIds.includes(c.id)).map((c) => ({ id: c.id, name: c.name }))} today={todayInKualaLumpur()} />;
+  const { rows, state } = result;
+  return <PerformanceCyclesAdmin cycleCount={state.total} rows={rows} pgState={state} basePath={basePath} admin={admin} companies={companies.filter((c) => scopeIds.includes(c.id)).map((c) => ({ id: c.id, name: c.name }))} today={todayInKualaLumpur()} />;
 }

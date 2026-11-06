@@ -26,6 +26,7 @@ import {SpecialistJobComposer} from '@/components/assistant/module-specialist-re
 import { WorkspaceConversation } from '@/components/assistant/workspace-conversation';
 import { ExchangeReply } from '@/components/assistant/exchange-reply';
 import Link from 'next/link';
+import {CentreNavigationLink} from '@/components/ai-centre/centre-navigation-link';
 import { isGroupAdmin } from '@/lib/authz';
 import { Card, ErrorBanner, PageHeader } from '@/components/ui';
 import { viewerIdentity } from '@/lib/viewer';
@@ -74,9 +75,7 @@ export default async function AssistantPage({
 }: {
   searchParams: Promise<{ view?: string; recommend?: string; e?: string; chat?: string; error?: string;job?:string;governed?:string;proposal?:string;planning?:string;importHistory?:string;nativeOutcome?:string;nativeLink?:string;historyPrivacy?:string;ownClear?:string;chatReset?:string;chatCursor?:string }>;
 }) {
-  const s = await getSession();
-  const t = await getTranslations('assistant');
-  const sp = await searchParams;
+  const [s, sp] = await Promise.all([getSession(), searchParams]);
   // AI centre (docs/design/ai-centre/PLAN.md): Delegated jobs and How it works are views of this route, behind
   // the same layout session check. They read nothing that depends on the Assistant grant; the conversation
   // below keeps its own checks. (The Inbox view read native owners as the caller; Today now does.)
@@ -90,7 +89,7 @@ export default async function AssistantPage({
   if (sp.view === 'jobs') redirect('/assistant');
   if (sp.view === 'insights' && !admin) redirect('/me/payroll-readiness');
   if (isCentreView(sp.view)) {
-    const tc = await getTranslations('aiCentre.how');
+    const tc = sp.view === 'how' ? await getTranslations('aiCentre.how') : null;
     return (
       <div data-ai-centre={sp.view} className="mx-auto max-w-6xl space-y-6">
         <AiCentreTabs active={sp.view === 'jobs' ? null : sp.view} isAdmin={admin} />
@@ -99,11 +98,11 @@ export default async function AssistantPage({
         {sp.view === 'insights' && <AiCentreInsights session={s} isAdmin={admin} payroll={isModuleEnabledOrFalse(s, 'payroll')} capacityQuery={sp as Readonly<Record<string, string | undefined>>} qualityQuery={sp as Readonly<Record<string, string | undefined>>} />}
         {/* How it works is the explainer. Administrators get a link to Workers, the one list of AI pieces, instead of a
             second live list here. */}
-        {sp.view === 'how' && <><PageHeader title={AI_PRODUCT_NAME ? tc('titleNamed', { name: AI_PRODUCT_NAME }) : tc('title')} description={AI_ARCHITECTURE_LABEL ? tc('taglineNamed', { osName: AI_ARCHITECTURE_LABEL }) : tc('description')} /><HowItWorks adminHref={admin ? '/control-tower/agents/features' : undefined} /></>}
+        {tc && <><PageHeader title={AI_PRODUCT_NAME ? tc('titleNamed', { name: AI_PRODUCT_NAME }) : tc('title')} description={AI_ARCHITECTURE_LABEL ? tc('taglineNamed', { osName: AI_ARCHITECTURE_LABEL }) : tc('description')} /><HowItWorks adminHref={admin ? '/control-tower/agents/features' : undefined} /></>}
       </div>
     );
   }
-  const a = await getTranslations('aiAsk');
+  const [a, t] = await Promise.all([getTranslations('aiAsk'), getTranslations('assistant')]);
   // AI v2 W4 (issue 14): Ask is chat-only. What sat beside the chat moved, nothing deleted: the own-data controls to
   // Your data and privacy (?view=privacy, ADR-0169 rights), the tools and shortcuts to More tools (?view=tools).
   // Their actions still return to /assistant with their closed status codes, so those addresses open the view
@@ -111,15 +110,9 @@ export default async function AssistantPage({
   const privacyOutcome = Boolean(sp.historyPrivacy || sp.importHistory || sp.ownClear || (sp.nativeOutcome && !sp.governed));
   const toolsRequested = sp.view === 'tools' || sp.job !== undefined || Boolean(sp.governed || sp.proposal || sp.planning);
   const privacyView = sp.view === 'privacy' || (sp.view === undefined && privacyOutcome);
-  // AI Centre navigation speed (4 Nov 2026): every view but Your data and privacy reads the workspace, so that read starts
-  // with the retention read instead of after it. The same reads with the same arguments and checks; only the waiting overlaps.
-  const loadWorkspace = () => loadAiWorkspace(s,{includeHistory:sp.job===undefined&&sp.governed===undefined&&sp.proposal===undefined,includeGovernance:false,selectedExchangeId:sp.e,governedJobId:sp.governed,proposalId:sp.proposal});
-  const workspaceRead = privacyView ? null : loadWorkspace();
-  // Awaited below; this only keeps a failure from being reported as unhandled while the retention read finishes.
-  workspaceRead?.catch(() => undefined);
   // Your data and privacy works without the Assistant grant: own-data erasure survives access removal.
-  const keepDays = await readChatRetention(s).then(value => value.keepDays).catch(() => null);
-  const privacyControls = (
+  const retentionDays = () => readChatRetention(s).then(value => value.keepDays).catch(() => null);
+  const privacyControls = (keepDays: number | null) => (
     <section id="assistant-privacy" aria-labelledby="assistant-privacy-heading" className="scroll-mt-4 space-y-3">
       <h2 id="assistant-privacy-heading" className="text-base font-semibold">{a('privacy.title')}</h2>
       <p className="text-sm text-muted-foreground">{t('home.privacyHelp')}</p>
@@ -142,7 +135,7 @@ export default async function AssistantPage({
         <AiCentreTabs active={null} isAdmin={admin} />
         <div className="mx-auto max-w-3xl space-y-5">
           <PageHeader title={a('privacy.title')} description={a('privacy.description')} back={{ href: '/assistant', label: a('backToAsk') }} />
-          <Card className="p-5">{privacyControls}</Card>
+          <Card className="p-5">{privacyControls(await retentionDays())}</Card>
         </div>
       </div>
     );
@@ -150,25 +143,27 @@ export default async function AssistantPage({
   const centreTabs = <AiCentreTabs active="ask" isAdmin={admin} />;
   const errorMessage=sp.error==='clarification_unavailable'?t('workspace.conversation.unavailable'):
     sp.error&&/^[a-z_]{1,40}$/.test(sp.error)&&t.has(`err_${sp.error}`)?t(`err_${sp.error}`):undefined;
-  const workspace = await (workspaceRead ?? loadWorkspace());
+  const askRetentionRead = toolsRequested ? null : retentionDays();
+  const workspace = await loadAiWorkspace(s,{includeHistory:false,includeGovernance:false,includePlanning:toolsRequested,selectedExchangeId:sp.e,governedJobId:sp.governed,proposalId:sp.proposal});
   const access = workspace.access;
 
   // The denied-access fallback retains own work/calendar. The active chat never preloads those
-  // unrelated records; More tools links to the dashboard instead. Its two own-identity reads run together.
-  const clock = homeDisplayClock(new Date(), 'Asia/Kuala_Lumpur');
-  const [name, employmentId] = access.allowed ? [null, null] as const : await Promise.all([
-    viewerIdentity(s).then(viewer => viewer.name?.trim() || null).catch(() => null),
-    readEmployeeHomeIdentity(s).then(identity => identity.selectedEmploymentId).catch(() => null),
-  ]);
-  const greeting = clock.hour < 12 ? (name ? t('home.morning', { name }) : t('home.morningNoName'))
-    : clock.hour < 18 ? (name ? t('home.afternoon', { name }) : t('home.afternoonNoName'))
-    : (name ? t('home.evening', { name }) : t('home.eveningNoName'));
-  const homeTabs = employmentId ? <AssistantHomeTabs labels={{tabs:t('home.tabs'),work:t('home.myWork'),calendar:t('home.calendar')}}
-    work={<HomeTasksCard employmentId={employmentId}/>}
-    calendar={<HomeCalendarCard employmentId={employmentId} initialMonth={clock.date.slice(0,7)}/>}/>
-    : <p className="text-center text-sm text-muted-foreground">{t('home.noEmployment')}</p>;
-
+  // unrelated records; More tools links to the dashboard instead.
   if (!access.allowed) {
+    const [name, employmentId, keepDays] = await Promise.all([
+      viewerIdentity(s).then(viewer => viewer.name?.trim() || null).catch(() => null),
+      readEmployeeHomeIdentity(s).then(identity => identity.selectedEmploymentId).catch(() => null),
+      askRetentionRead ?? retentionDays(),
+    ]);
+    const clock = homeDisplayClock(new Date(), 'Asia/Kuala_Lumpur');
+    const greeting = clock.hour < 12 ? (name ? t('home.morning', { name }) : t('home.morningNoName'))
+      : clock.hour < 18 ? (name ? t('home.afternoon', { name }) : t('home.afternoonNoName'))
+      : (name ? t('home.evening', { name }) : t('home.eveningNoName'));
+    const homeTabs = employmentId ? <AssistantHomeTabs labels={{tabs:t('home.tabs'),work:t('home.myWork'),calendar:t('home.calendar')}}
+      work={<HomeTasksCard employmentId={employmentId}/>}
+      calendar={<HomeCalendarCard employmentId={employmentId} initialMonth={clock.date.slice(0,7)}/>}/>
+      : <p className="text-center text-sm text-muted-foreground">{t('home.noEmployment')}</p>;
+
     // Same home as the full view, without the question box: why the Assistant is unavailable and who can
     // change it (three reasons, three next steps), the person's own work and calendar, and every own-data
     // control, which stays usable after access is removed.
@@ -186,7 +181,7 @@ export default async function AssistantPage({
           {homeTabs}
           <PersonnelReviewNavigation ctx={s}/>
         </div>
-        <div className="border-t border-border pt-4">{privacyControls}</div>
+        <div className="border-t border-border pt-4">{privacyControls(keepDays)}</div>
       </div>
     );
   }
@@ -210,7 +205,7 @@ export default async function AssistantPage({
           <h2 id="ai-ask-shortcuts" className="text-base font-semibold">{a('tools.shortcuts')}</h2>
           <ul className="flex flex-wrap gap-2">
             <li><Link href="/" className="inline-flex min-h-11 items-center rounded-full border border-border px-4 text-sm hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{t('home.tabs')}</Link></li>
-            <li><Link href="/assistant?view=privacy" className="inline-flex min-h-11 items-center rounded-full border border-border px-4 text-sm hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{a('privacyLink')}</Link></li>
+            <li><CentreNavigationLink intent={false} href="/assistant?view=privacy" className="inline-flex min-h-11 items-center rounded-full border border-border px-4 text-sm hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{a('privacyLink')}</CentreNavigationLink></li>
           </ul>
           <PersonnelReviewNavigation ctx={s}/>
         </section>
@@ -239,7 +234,7 @@ export default async function AssistantPage({
   const scopeReset=assistantConversationScopeDigest(s,conversationScope);
   // AI Centre navigation speed: the chat reads below are independent, so they run together. Each reads only within
   // this conversation scope and keeps its own checks and failure handling.
-  const [savedChats,selectedChat,storedChats,storedChat]=await Promise.all([
+  const [savedChats,selectedChat,storedChats,storedChat,chatImport,keepDays]=await Promise.all([
     listOwnAssistantChats(s,{cursor:sp.chatCursor},conversationScope).catch(()=>null),
     sp.e?loadOwnAssistantChat(s,{exchangeId:sp.e},conversationScope).catch(()=>null):null,
     // AI v2 W4: the Chats column lists the person's stored AI Centre chats (core/teras-chats.ts, re-authorised there).
@@ -247,13 +242,14 @@ export default async function AssistantPage({
     // AI Centre issue 18: the floating panel's "Open in AI Centre" opens its stored chat here (?chat=<id>) and, while the
     // Noveri conversation switch admits this caller, the next question continues that same chat.
     sp.chat&&!sp.e?launcher.then(owner=>owner.openStoredChatAction({chatId:sp.chat})).then(reply=>reply.ok?reply:null).catch(()=>null):null,
+    chatImportRead,
+    askRetentionRead,
   ]);
   const chatSummaries:AskChatSummary[]=(storedChats?.chats??[]).map(chat=>({chatId:chat.chatId,title:chat.title,lastMessageAt:chat.lastMessageAt.toISOString(),turns:chat.turns,withheldTurns:chat.withheldTurns}));
   const initialTurns=selectedChat?selectedChat.turns.map(exchange=>({id:exchange.id,question:exchange.question,
     clarificationRequired:exchange.grounded?.conversation?.plan.mode==='clarify'&&exchange.grounded?.conversation?.clarificationAllowed!==false,
     answer:<ExchangeReply exchange={exchange} ctx={s}/>})):storedChat?.turns;
   const storedResume=storedChat?.conversationToken?{exchangeId:'teras-chat-'+storedChat.chatId,conversationToken:storedChat.conversationToken}:undefined;
-  const chatImport=await chatImportRead;
   const today = todayInKualaLumpur();
   const tasks = workspace.taskIds.map(id => ({
     id, label: t(`workspace.${id}_label`), prompt: t(`workspace.${id}_prompt`, { date: today }),

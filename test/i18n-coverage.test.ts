@@ -7,7 +7,7 @@
  *   B. Namespace existence — every getTranslations/useTranslations('ns') in code resolves to en.json.
  *   C. Static-key resolution — every literal t('a.b') in a single-namespace file resolves in en.json.
  *
- * "en.json" means the catalogue the app serves: i18n/request.ts merges messages/ai-centre/<locale>.json over
+ * "en.json" means the catalogue the app serves: i18n/catalogs.ts merges messages/ai-centre/<locale>.json over
  * messages/<locale>.json, so the catalogue file list is read from that file rather than restated here.
  *
  * NOTE: dynamic keys (t(`status.${x}`)) can't be checked statically — that class is covered by the
@@ -26,7 +26,7 @@ type Dict = Record<string, unknown>;
 const ROOT = path.resolve(__dirname, '..');
 const readJson = (file: string): Dict => JSON.parse(fs.readFileSync(file, 'utf8'));
 
-// Every catalogue i18n/request.ts imports, as `messages/…/<locale>.json` templates, in its merge order (main first).
+// Every catalogue i18n/catalogs.ts imports, as `messages/…/<locale>.json` templates, in its merge order (main first).
 function runtimeCatalogues(requestSource: string): string[] {
   const out: string[] = [];
   for (const m of requestSource.matchAll(/['"`]\.\.\/(messages\/(?:[a-z-]+\/)?)(?:en|\$\{locale\})\.json['"`]/g)) {
@@ -35,7 +35,7 @@ function runtimeCatalogues(requestSource: string): string[] {
   }
   return out;
 }
-const CATALOGUES = runtimeCatalogues(fs.readFileSync(path.join(ROOT, 'i18n/request.ts'), 'utf8'));
+const CATALOGUES = runtimeCatalogues(fs.readFileSync(path.join(ROOT, 'i18n/catalogs.ts'), 'utf8'));
 
 // Later catalogues overlay earlier ones key by key. Unlike the runtime's English fallback, nothing fills a gap,
 // so check A still sees a locale's own missing or blank keys.

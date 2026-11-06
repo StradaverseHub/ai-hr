@@ -3,11 +3,13 @@ import {randomUUID} from 'node:crypto';
 import {eq,sql} from 'drizzle-orm';
 import * as s from '../db/schema';
 import {withTenant,type SessionContext} from '../db/client';
-import {saveLetterPolicy,getLetterPolicy,listLetterPolicies,saveLetterPermission,readLetterPermissions,addLetterAsset,listLetterSignatories,letterCompanyAccess,listLetterSettingAssets,readLetterAsset} from '../core/letters';
+import {saveLetterPolicy,getLetterPolicy,listLetterPolicies,saveLetterPermission,readLetterPermissions,addLetterAsset,listLetterSignatories,letterCompanyAccess,listLetterEmployeeChoices,listLetterSettingAssets,readLetterAsset} from '../core/letters';
 import type {LetterPolicy} from '../lib/letter-workflow';
 import type {NotificationEmailTransport} from '../core/notification-email-delivery';
 import {letterNavigation} from '../core/letter-navigation';
-import {companyDeleteStatus} from '../core/read';
+import {lockAccessConfigurationReadTx,lockAccessConfigurationTx} from '../core/access-configuration-lock';
+import {companyDeleteStatus,listReadOnlyWorkforcePickPageTx} from '../core/read';
+import {hireEmployee} from '../core/org';
 import {createCompany,deleteCompany} from '../core/admin';
 import {visibleModuleCodes} from '../lib/nav-entitlements';
 import type {NotificationEmailStatus} from '../lib/notification-email-model';
@@ -78,4 +80,50 @@ it('resolves real navigation permissions only in the selected company and immedi
 
 it('refuses activation of a reference format whose company code is unavailable without allocating a counter',async()=>{
  await expect(saveLetterPolicy(ctx,{companyId:b.companyId,category:'confirmation',enabled:true,policy:{...policy(),referenceFormat:'{COMPANY}/{YYYY}/{SEQ:6}'},expectedOrdinal:0})).rejects.toMatchObject({code:'configuration',detail:'companyCode'});expect(await owner.db.select().from(s.letterPolicyVersion)).toHaveLength(0);expect(await owner.db.select().from(s.letterCounter)).toHaveLength(0);
+});
+
+
+it.each(['company permissions','employee picker'] as const)('shares the %s read lock and still waits for Access writers',async kind=>{
+ const input={companyId:b.companyId,limit:1,search:'Fictional letter picker employee'};
+ const hired=kind==='employee picker'?await hireEmployee(ctx,{person:{fullName:input.search,primaryEmail:'letter-picker@fixture.test'},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:'2020-01-01'}):null;
+ const readSelection=()=>kind==='employee picker'?listLetterEmployeeChoices(ctx,input):letterCompanyAccess(ctx);
+ const expected=await readSelection();
+ if(hired)expect(expected).toMatchObject({rows:[{employmentId:hired.employmentId}],nextCursor:null});
+ else expect(expected).toContainEqual(expect.objectContaining({id:b.companyId,read:true,settings:true}));
+ if(hired)await expect(withTenant(ctx,tx=>listReadOnlyWorkforcePickPageTx(ctx,tx,{companyIds:[b.companyId],limit:1}))).rejects.toThrow('read-only transaction');
+ const barrier=()=>{let release!:()=>void;const reached=new Promise<void>(resolve=>{release=resolve;});return {reached,release};};
+ const deadline=async<T>(promise:Promise<T>)=>{
+  let timer:ReturnType<typeof setTimeout>|undefined;
+  try{return await Promise.race([promise,new Promise<never>((_,reject)=>{timer=setTimeout(()=>reject(Error('Letter permission lock test timed out')),5000);})]);}
+  finally{clearTimeout(timer);}
+ };
+ for(const lock of [lockAccessConfigurationReadTx,lockAccessConfigurationTx]){
+  const entered=barrier(),release=barrier();
+  let pid=0,read:ReturnType<typeof readSelection>|undefined;
+  const held=withTenant(ctx,async tx=>{
+   await lock(tx,b.tenantId);
+   const [row]=await tx.execute<{pid:number}>(sql`select pg_backend_pid() as pid`);pid=row.pid;
+   entered.release();await release.reached;
+  });
+  try{
+   await deadline(entered.reached);
+   read=readSelection();
+   if(lock===lockAccessConfigurationReadTx)expect(await deadline<Awaited<ReturnType<typeof readSelection>>>(read)).toEqual(expected);
+   else{
+    const until=Date.now()+4000;
+    let waiting=false;
+    while(Date.now()<until&&!waiting){
+     const [row]=await owner.client`select exists(
+      select 1 from pg_locks waiter join pg_locks holder using(locktype,database,classid,objid,objsubid)
+      where holder.pid=${pid} and holder.granted and holder.locktype='advisory'
+        and not waiter.granted and waiter.mode='ShareLock'
+     ) as waiting`;
+     waiting=row.waiting===true;
+     if(!waiting)await new Promise(resolve=>setTimeout(resolve,20));
+    }
+    expect(waiting).toBe(true);
+    release.release();await held;expect(await deadline<Awaited<ReturnType<typeof readSelection>>>(read)).toEqual(expected);
+   }
+  }finally{release.release();await Promise.allSettled([held,...(read?[read]:[])]);}
+ }
 });

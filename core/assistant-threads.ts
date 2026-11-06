@@ -1,6 +1,6 @@
 /** Saved chats are owned retained exchanges, never a second transcript or provider history store.
  * V3 receipts authenticate grouping/scope. Display pagination and six-turn intent context are separate. */
-import {and,desc,eq,isNull,lt,or,sql} from 'drizzle-orm';
+import {and,desc,eq,inArray,isNull,lt,or,sql} from 'drizzle-orm';
 import {withTenant,type SessionContext,type Tx} from '../db/client';
 import {assistantExchange} from '../db/schema';
 import {assertAiPrincipalTx} from './ai-principal';
@@ -48,7 +48,7 @@ export async function listOwnAssistantChats(supplied:SessionContext,options:{cur
    if(group)group.candidates.push(candidate);else groups.set(threadId,{threadId,candidates:[candidate],firstIndex:index});
   }
   const orderedGroups=[...groups.values()],selectedGroups=orderedGroups.slice(0,limit),chats:OwnAssistantChatSummary[]=[];
-  for(const group of selectedGroups){
+  const selected=selectedGroups.map(group=>{
    const ancestors=new Set<string>();
    for(const candidate of group.candidates){
     if(!candidate.authenticated)continue;
@@ -60,9 +60,18 @@ export async function listOwnAssistantChats(supplied:SessionContext,options:{cur
    }
    // Among concurrent leaves, retain the existing deterministic recent-row order. Neither leaf is
    // silently made the parent of the other; load/resume remain bound to the chosen exchange itself.
-   const chosen=group.candidates.find(candidate=>!ancestors.has(candidate.row.id))??group.candidates[0],row=chosen.row;
-   let label=title(row.question);
-   if(chosen.authenticated&&group.threadId!==row.id){const [root]=await tx.select(fields).from(assistantExchange).where(and(owned(ctx),eq(assistantExchange.id,group.threadId))).limit(1);const rootProof=root?proofFor(ctx,root):null;if(root&&rootProof?.thread?.threadId===group.threadId&&rootProof.thread.scopeDigest===scopeDigest)label=title(root.question);}
+   const chosen=group.candidates.find(candidate=>!ancestors.has(candidate.row.id))??group.candidates[0];
+   return {group,chosen};
+  });
+  // Re-read only this bounded page's authenticated roots under the same live owner/retention
+  // predicate. Keep a fresh root read even when the scan contained it; no result or permission
+  // survives this request, and every title still needs its own exact owner/body/scope proof.
+  const rootIds=[...new Set(selected.filter(({group,chosen})=>chosen.authenticated&&group.threadId!==chosen.row.id).map(({group})=>group.threadId))];
+  const roots=rootIds.length?await tx.select(fields).from(assistantExchange).where(and(owned(ctx),inArray(assistantExchange.id,rootIds))):[];
+  const rootsById=new Map(roots.map(root=>[root.id,root]));
+  for(const {group,chosen}of selected){
+   const row=chosen.row;let label=title(row.question);
+   if(chosen.authenticated&&group.threadId!==row.id){const root=rootsById.get(group.threadId),rootProof=root?proofFor(ctx,root):null;if(root&&rootProof?.thread?.threadId===group.threadId&&rootProof.thread.scopeDigest===scopeDigest)label=title(root.question);}
    chats.push(Object.freeze({threadId:group.threadId,exchangeId:row.id,title:label,updatedAt:row.askedAt,resumable:chosen.resumable}));
   }
   // Refinement may look beyond this page's consumed prefix, but it must not consume an unreturned

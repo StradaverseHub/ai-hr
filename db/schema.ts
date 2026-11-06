@@ -4803,6 +4803,7 @@ export type ShiftOtRule = { eligible: boolean; minMinutes?: number; dailyCapMinu
 // allowance into the shift's canonical break_minutes scalar so scheduled hours, the punch import and the
 // payroll hourly clamp keep agreeing with what the engine deducts.
 export type BreakPeriod = {
+  breakType?: 'in_shift' | 'before_shift' | 'after_shift';
   start: string;
   end: string;
   flexible?: boolean;
@@ -5545,6 +5546,7 @@ export const notification = pgTable(
     createdAt: createdAt(),
   },
   (t) => [
+    index('notification_source_recipient_kind_idx').on(t.tenantId,t.sourceEventId,t.recipientEmploymentId,t.kind).where(sql`source_event_id is not null`),
     uniqueIndex('notification_letter_job_uq').on(t.letterJobId).where(sql`letter_job_id is not null`),
     index('notification_user_recipient_idx').on(t.tenantId,t.recipientUserId,t.createdAt),
     index('notification_recipient_idx').on(t.tenantId, t.recipientEmploymentId, t.createdAt),
@@ -5655,9 +5657,8 @@ export const notificationEmailPolicy = pgTable('notification_email_policy', {
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 }, t => [uniqueIndex('notification_email_policy_tenant_id_category_key').on(t.tenantId, t.category)]);
 
-// Dispatcher state: the last domain_event.sequence (a monotonic bigserial — exact, unlike a timestamp which
-// loses sub-millisecond precision on the JS Date round-trip and would re-process events) processed per
-// tenant. The event log stays append-only — no mutable column on domain_event.
+// Legacy high-water marks retained for old/new dispatcher overlap and operations only.
+// Complete consumption is owned by notificationEventProcessing, never serial commit assumptions.
 export const notificationCursor = pgTable(
   'notification_cursor',
   {
@@ -5669,6 +5670,14 @@ export const notificationCursor = pgTable(
   },
   (t) => [uniqueIndex('notification_cursor_tenant_uq').on(t.tenantId)],
 );
+
+// Durable per-consumer projection intent; created atomically by the source-event trigger.
+export const notificationEventProcessing = pgTable('notification_event_processing', {
+ tenantId:tenantId(),eventId:uuid('event_id').notNull().references(()=>domainEvent.id,{onDelete:'cascade'}),
+ consumer:text('consumer').notNull(),eventSequence:bigint('event_sequence',{mode:'number'}).notNull(),
+ disposition:text('disposition'),processedAt:timestamp('processed_at',{withTimezone:true}),
+},t=>[primaryKey({columns:[t.eventId,t.consumer]}),
+ index('notification_event_processing_pending_idx').on(t.tenantId,t.consumer,t.eventSequence).where(sql`disposition is null`)]);
 
 // ─────────────────────── Notice Board (6e122302) ───────────────────────
 //
@@ -8223,6 +8232,11 @@ export const customReportRun = pgTable('custom_report_run',{
   kind:text('kind').notNull(),format:text('format'),scopeIds:uuid('scope_ids').array().notNull().default(sql`ARRAY[]::uuid[]`),
   rowCount:integer('row_count').notNull().default(0),outcome:text('outcome').notNull(),reason:text('reason'),ranAt:timestamp('ran_at',{withTimezone:true}).notNull().defaultNow(),
 },t=>[index('custom_report_run_report_idx').on(t.tenantId,t.reportId,t.ranAt)]);
+export const payrollReconciliationRemark = pgTable('payroll_reconciliation_remark', {
+  id:id(),tenantId:tenantId(),companyId:uuid('company_id').notNull(),employmentId:uuid('employment_id').notNull(),
+  actorUserId:uuid('actor_user_id').notNull(),previousPeriod:text('previous_period').notNull(),currentPeriod:text('current_period').notNull(),
+  scopeDigest:text('scope_digest').notNull(),body:text('body').notNull(),revision:integer('revision').notNull(),createdAt:createdAt(),
+});
 export const customReportSchedule = pgTable('custom_report_schedule',{
   id:id(),tenantId:tenantId(),reportId:uuid('report_id').notNull().references(()=>customReport.id,{onDelete:'cascade'}),
   enabled:boolean('enabled').notNull().default(false),config:jsonb('config').$type<CustomReportScheduleConfig>().notNull(),recipients:jsonb('recipients').$type<{userId:string;employmentId:string}[]>().notNull().default(sql`'[]'::jsonb`),
@@ -8978,7 +8992,10 @@ export const claimRequest = pgTable(
     payoutRef: text('payout_ref'),
     createdAt: createdAt(),
   },
-  (t) => [index('claim_request_employment_idx').on(t.employmentId, t.status)],
+  (t) => [index('claim_request_employment_idx').on(t.employmentId, t.status),
+    index('claim_request_preview_order_idx').on(t.tenantId,t.employmentId,t.status,t.createdAt.desc(),t.id),
+    index('claim_request_payroll_batch_idx').on(t.payrollBatchId).where(sql`payroll_batch_id is not null`),
+    index('claim_request_employment_incurred_idx').on(t.employmentId, t.incurredOn)],
 );
 
 export const claimAttachment = pgTable(

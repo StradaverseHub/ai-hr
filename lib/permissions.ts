@@ -161,8 +161,8 @@ export const SCREENS: readonly ScreenEntry[] = [
   {screenKey:'emailTemplates',href:'/admin/settings/email-templates',labelKey:'nav.emailTemplates',guard:'scopedAdmin',routes:['/admin/settings/email-templates'],hasScopeNote:true},
   { screenKey: 'identityEmail', href: '/admin/settings/email', labelKey: 'nav.identityEmail', guard: 'scopedSession', routes: ['/admin/settings/email'], hasScopeNote: true },
   {screenKey:'rewards',href:'/rewards',labelKey:'nav.rewards',guard:'scopedSession',hasScopeNote:true,conditionalAccess:true,routes:[
-    '/rewards','/rewards/[unitId]','/rewards/[unitId]/people/[entryId]','/rewards/[unitId]/advisor',
-    '/rewards/[unitId]/advisor/fairness','/rewards/[unitId]/uploaded','/rewards/analytics','/rewards/rules',
+    '/rewards','/rewards/[unitId]','/rewards/[unitId]/data-check','/rewards/[unitId]/people/[entryId]','/rewards/[unitId]/advisor',
+    '/rewards/[unitId]/advisor/fairness','/rewards/[unitId]/uploaded','/rewards/analytics','/rewards/promotions','/rewards/rules',
   ]},
   { screenKey: 'rewardsApprovals', href: '/rewards/approvals', labelKey: 'rewards.board.title', guard: 'scopedSession', routes: ['/rewards/approvals'] },
   { screenKey: 'rewardsAdmin', href: '/admin/rewards', labelKey: 'rewards.adminTitle', guard: 'scopedAdmin', routes: ['/admin/rewards','/admin/rewards/shared'] },
@@ -973,6 +973,7 @@ export const SCREENS: readonly ScreenEntry[] = [
       '/attendance/import/logs/[runId]',
       '/admin/attendance/new',
       '/admin/attendance/schedule',
+      '/admin/attendance/settings/offline-clocking',
       '/admin/attendance/schedule/new',
       '/admin/attendance/schedule/[ruleId]',
       '/admin/attendance/schedule/[ruleId]/edit',
@@ -1268,7 +1269,8 @@ export const SCREENS: readonly ScreenEntry[] = [
       '/payroll/statutory-detail',
       '/payroll/process',
       '/payroll/process/result',
-      '/payroll/reports',
+      '/payroll/statutory-forms/filing-history',
+      '/payroll/reconciliation',
       // bdf7d248 (r209): the ADR-0024 §7 Multi-Cycle Statutory Worksheet. Registered on the SAME
       // scopedAdmin key as the Reports screen that links to it — it lists per-employee EPF/SOCSO/EIS/PCB
       // figures for months that had more than one payroll run, so it is admin-scoped exactly like Reports

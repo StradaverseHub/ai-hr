@@ -232,7 +232,10 @@ describe('570e3311 — employee detail page wiring pins', () => {
   );
 
   it('scopes the departments load to the employee company (resolver-aware read)', () => {
-    expect(PAGE).toMatch(/listDepartments\(s,\s*\{\s*companyIds:\s*\[emp\.companyId\]\s*\}\)/);
+    const options = PAGE.slice(PAGE.indexOf('const readOrganisationOptions'),PAGE.indexOf('const emptyOrganisationOptions'));
+    expect(options).toContain('const companyIds = [companyId]');
+    expect(options).toContain('listDepartments(s, { companyIds }, tx)');
+    expect(PAGE).toContain('readOrganisationOptions(emp.companyId)');
   });
 
   // 8ebabbf2 SUPERSEDES the pinned-current-option guard that stood here. 570e3311's problem was specific to

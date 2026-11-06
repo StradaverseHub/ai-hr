@@ -342,10 +342,16 @@ describe('§B · the history carries the date the change took effect; the ledger
     const actions = read('app/admin/personnel/[employmentId]/actions.ts');
     // Read BEFORE the write, or the "previous" grade is the new one.
     const create = actions.slice(actions.indexOf('export async function createMovementEventAction'));
-    const head = create.slice(0, create.indexOf('await createMovementEvent('));
-    expect(head).toContain('await employmentGradeId(s, employmentId)');
+    const createCall = create.slice(create.indexOf('await createMovementEvent('),create.indexOf('if (res &&'));
+    expect(createCall).toContain('captureGradeBefore:true');
     expect(create).toContain('changeEffectiveOn: p.effectiveDate ?? null');
-    expect(create).toContain('gradeBefore,');
+    expect(create).toContain('gradeBefore: res.gradeBefore');
+    const movement = read('core/movement.ts');
+    const previous = movement.indexOf('const [previousGrade] = needsGradeBefore');
+    const apply = movement.indexOf('const result=await execute();',previous);
+    expect(previous).toBeGreaterThan(0);
+    expect(apply).toBeGreaterThan(previous);
+    expect(movement.slice(previous,apply)).toContain('await tx.select({gradeId:employment.gradeId})');
 
     // The sweep: the movement's own effective date, never the morning the cron ran.
     const sweep = read('core/movement-apply.ts');

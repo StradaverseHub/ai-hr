@@ -1,3 +1,5 @@
+import {verifyWorkflowOnlyAttendanceHeader} from './helpers/attendance-task-header-prototype';
+import {legacyPendingAttendanceTaskMetadata} from './helpers/attendance-task-original';
 import {assignedApprovalHref} from '../lib/assigned-approval-focus';
 import {listPendingTasks} from '../core/approvals-inbox';
 import {randomUUID} from 'node:crypto';
@@ -6,7 +8,7 @@ import {and,asc,eq,sql} from 'drizzle-orm';
 import {withTenant,type SessionContext,type Tx} from '../db/client';
 import * as schema from '../db/schema';
 import {hireEmployee,setReportingLine} from '../core/org';
-import {checkIn,checkOut,requestAttendanceCorrection,decideAttendanceCorrection,cancelAttendanceApplication,listAttendanceCorrections,myOvertimePlans} from '../core/attendance';
+import {checkIn,checkOut,requestAttendanceCorrection,pendingAttendanceTaskMetadata,decideAttendanceCorrection,cancelAttendanceApplication,listAttendanceCorrections,myOvertimePlans} from '../core/attendance';
 import {saveAttendanceWorkflow,setAttendanceWorkflowEnabled,previewAttendanceWorkflow,retireAttendanceWorkflow,restoreAttendanceWorkflow,listAttendanceWorkflows,listRetiredAttendanceWorkflows,decideAttendanceWorkflowStageTx} from '../core/attendance-workflow';
 import {attendanceApplicationDetail,attendanceApplicationFilterOptions} from '../core/attendance-application-history';
 import {saveNotificationEmailPolicy,saveNotificationEmailPreferences} from '../core/notification-email';
@@ -37,6 +39,50 @@ const detail=async(f:Fixture)=>(await attendanceApplicationDetail(f.root,[base.c
 const decide=(f:Fixture,who:Fixture['first'],slot:string,decision:'approved'|'rejected'='approved')=>decideAttendanceCorrection(who.ctx,{correctionId:f.id,expectedStageIndex:0,expectedParticipantSlot:slot,decision,...(decision==='rejected'?{rejectReason:'Fictional rejection'}:{})});
 const day=async(f:Fixture)=>(await owner.db.select().from(schema.attendance).where(and(eq(schema.attendance.employmentId,f.worker.employmentId),eq(schema.attendance.attendanceDate,f.on))).orderBy(asc(schema.attendance.id)))[0];
 describe('v4 uses the immutable participant and final Attendance owners',()=>{
+ it('submits a frozen workflow while another submission holds the company configuration lock',async()=>{
+  const f=await fixture();
+  const prior=new Date(f.on+'T12:00:00Z');prior.setUTCDate(prior.getUTCDate()-1);
+  const key=base.tenantId+':attendance-workflow:'+base.companyId+':irregularity';
+  let submission:ReturnType<typeof requestAttendanceCorrection>|undefined;
+  try{
+   const completed=await owner.db.transaction(async tx=>{
+    await tx.execute(sql`select pg_advisory_xact_lock_shared(hashtextextended(${key},0))`);
+    submission=requestAttendanceCorrection(f.worker.ctx,{employmentId:f.worker.employmentId,date:prior.toISOString().slice(0,10),
+     checkIn:'09:00',checkOut:'18:00',reason:'Fictional overlapping workflow submission'});
+    let timer:ReturnType<typeof setTimeout>|undefined;
+    try{
+     return await Promise.race([submission,new Promise<null>(resolve=>{timer=setTimeout(()=>resolve(null),3000);})]);
+    }finally{clearTimeout(timer);}
+   });
+   expect(completed).not.toBeNull();
+   expect((await detail({...f,id:completed!.correctionId})).workflow).toMatchObject({templateVersion:1});
+  }finally{await submission;}
+ });
+
+ it('makes a workflow configuration edit wait for the shared submission lock',async()=>{
+  const f=await fixture();
+  const key=base.tenantId+':attendance-workflow:'+base.companyId+':irregularity';
+  let update:ReturnType<typeof setAttendanceWorkflowEnabled>|undefined;
+  try{
+   await owner.db.transaction(async tx=>{
+    await tx.execute(sql`select pg_advisory_xact_lock_shared(hashtextextended(${key},0))`);
+    update=setAttendanceWorkflowEnabled(f.root,base.companyId,'irregularity',false);
+    const deadline=Date.now()+3000;
+    while(Date.now()<deadline){
+     const [result]=await tx.execute<{blocked:boolean}>(sql`select exists(
+      select 1 from pg_stat_activity activity where activity.datname=current_database()
+       and pg_backend_pid()=any(pg_blocking_pids(activity.pid))
+     ) as blocked`);
+     if(result.blocked)return;
+     await new Promise<void>(resolve=>setTimeout(resolve,20));
+    }
+    throw new Error('Workflow edit did not wait for the shared submission lock');
+   });
+  }finally{await update;}
+  expect((await owner.db.select({enabled:schema.attendanceWorkflowSetting.enabled})
+   .from(schema.attendanceWorkflowSetting).where(eq(schema.attendanceWorkflowSetting.companyId,base.companyId)))[0]?.enabled).toBe(false);
+ });
+
  it('shows the saved current overtime level instead of substituting the live reporting-line superior',async()=>{
   const f=await fixture('all_required','self_overtime');
   const plan=async()=> (await myOvertimePlans(f.worker.ctx,f.worker.employmentId)).find(row=>row.id===f.id);
@@ -47,6 +93,8 @@ describe('v4 uses the immutable participant and final Attendance owners',()=>{
  it('exposes a real named v4 assignment through the canonical inbox without granting unrelated queues',async()=>{
   const f=await fixture('all_required');
   const modules={attendance:true,claims:true,performance:false,rewards:false};
+  expect(await pendingAttendanceTaskMetadata(f.second.ctx,[base.companyId])).toEqual(await legacyPendingAttendanceTaskMetadata(f.second.ctx,[base.companyId]));
+  await verifyWorkflowOnlyAttendanceHeader(f.second.ctx,f.id,f.worker.employmentId);
   expect(await listPendingTasks(f.second.ctx,[base.companyId],modules)).toEqual([
    expect.objectContaining({id:f.id,kind:'attendance',linkPath:assignedApprovalHref({kind:'attendance',id:f.id})})
   ]);

@@ -236,10 +236,6 @@ export async function myEditLeave(formData: FormData) {
   const toTime = String(formData.get('toTime') ?? '').trim();
   const reason = String(formData.get('reason') ?? '').trim() || undefined;
   const employeeRemark = String(formData.get('employeeRemark') ?? '').trim() || undefined;
-  // Resolve the selected type's localized name for any validation error message (mirrors myRequestLeave).
-  const locale = await getLocale();
-  const types = await listEligibleLeaveTypesFor(s, employmentId, locale);
-  const selected = types.find((t) => t.id === leaveTypeId);
   try {
     await editLeaveRequest(s, {
       leaveRequestId,
@@ -254,6 +250,9 @@ export async function myEditLeave(formData: FormData) {
       today: todayInKualaLumpur(),
     });
   } catch (e) {
+    const locale = await getLocale();
+    const types = await listEligibleLeaveTypesFor(s, employmentId, locale);
+    const selected = types.find((t) => t.id === leaveTypeId);
     redirect(
       `/leave?error=${encodeURIComponent(
         await localizeLeaveError(e, selected?.name, { ctx: s, employmentId, leaveTypeId, subject: 'self' }),

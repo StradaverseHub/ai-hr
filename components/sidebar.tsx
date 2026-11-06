@@ -68,6 +68,7 @@ import { modulePackById } from '@/packs/registry';
 import {LETTER_NAV_ITEMS} from '@/lib/letter-navigation';
 import { NAVIGATION_MODULES, NAVIGATION_SECTIONS, placeNavigation, navigationPlacement, navigationRouteOwner, type NavigationWorkspace } from '@/lib/navigation-workspaces';
 import { usePublishNavIndex, type NavIndexEntry } from '@/components/nav-index-context';
+import {useShellApprovalFacts} from '@/components/shell-approval-facts';
 import {SECURITY_CENTER,SECURITY_PAGES,isSecurityDestination,securityDestinationAllowed} from '@/lib/security-center-navigation';
 import { openCommandBar } from '@/lib/command-bar-events';
 import { V9_NAVIGATION, V9_SHARED_NAVIGATION, type V9NavigationPermissions } from '@/lib/lifecycle-v9-navigation';
@@ -546,8 +547,8 @@ export function Sidebar({
   canConfigurePasswordPolicy = false,
   canPreviewIdentityEmail = false,
   canApprove = false,
-  hasAssignedAttendanceApproval = false,
-  hasAssignedApproval = false,
+  hasAssignedAttendanceApproval:assignedAttendanceFromProps = false,
+  hasAssignedApproval:assignedApprovalFromProps = false,
   canReviewProfileChanges = false,
   canAdministerAi = false,
   canAdministerSecurity = false,
@@ -559,8 +560,8 @@ export function Sidebar({
   rewardDestinations = [],
   canAdministerOnehr = false,
   performanceAdminHref,
-  approvalCount = 0,
-  taskCount = 0,
+  approvalCount:baseApprovalCount = 0,
+  taskCount:baseTaskCount = 0,
   probationAccess = {page:false,configure:false},
   contractStaffAccess = {page:false,configure:false},
   onboardingAccess = false,
@@ -650,6 +651,11 @@ export function Sidebar({
   viewerName?: string | null;
   viewerCode?: string | null;
 }) {
+  const approvals=useShellApprovalFacts()?.result;
+  const hasAssignedAttendanceApproval=approvals?approvals.state==='ready'&&approvals.hasAssignedAttendanceApproval:assignedAttendanceFromProps;
+  const hasAssignedApproval=approvals?approvals.state==='ready'&&approvals.hasAssignedApproval:assignedApprovalFromProps;
+  const approvalCount=approvals?approvals.state==='ready'?approvals.approvalCount:0:baseApprovalCount;
+  const taskCount=approvals?approvals.state==='ready'?baseTaskCount+approvals.total:0:baseTaskCount;
   const pathname = usePathname();
   // Query-aware active matching (fdc20776): usePathname excludes the query string, so the six
   // Reports children (/reports?cat=…) need the search params to light up. Safe without a Suspense

@@ -11,6 +11,7 @@ import {NextIntlClientProvider} from 'next-intl';
 import en from '../messages/en.json';
 import {withAiCentre} from './helpers/ai-centre-messages';
 import {resolveServerTree} from './helpers/server-tree';
+import {pageState,parsePageQuery} from '../lib/pagination';
 
 const messages=withAiCentre('en',en);
 const OWN=vi.hoisted(()=>'5b9c9f7f-bd09-4d8d-a34d-201b1abf79e2');
@@ -26,7 +27,7 @@ vi.mock('@/lib/session',()=>({getSession:async()=>({tenantId:'fictional-tenant',
 vi.mock('@/lib/authz',()=>({requireModule:async()=>undefined}));
 vi.mock('next/navigation',()=>({notFound:()=>{throw Error('notFound');},useRouter:()=>({push:vi.fn()})}));
 vi.mock('@/core/read',()=>({myEmployment:async()=>null,myOwnEmploymentSubjects:async()=>[{employmentId:OWN,personName:'Fictional owner',company:'Fictional Ceria Sdn Bhd',employeeCode:'F-1'}]}));
-vi.mock('@/packs/claims/service',()=>({getEmployeeClaimTypes:state.types,listClaimsForEmployment:async()=>[],claimRecordFacts:async()=>new Map()}));
+vi.mock('@/packs/claims/service',()=>({getEmployeeClaimTypes:state.types,listClaimDraftsForEmployment:async()=>[],listClaimHistoryPage:async()=>({rows:[],state:pageState(parsePageQuery(),0,0)}),claimRecordFacts:async()=>new Map()}));
 vi.mock('@/app/claims/actions',()=>({cancelClaimAction:vi.fn(),deleteDraftAction:vi.fn(),submitClaimAction:vi.fn(),submitDraftsAction:vi.fn()}));
 vi.mock('@/core/assistant-grant',()=>({mayUseAssistant:async()=>({allowed:state.assistant})}));
 vi.mock('@/core/mobile-claims',()=>({currencyOfEmployment:state.currency}));

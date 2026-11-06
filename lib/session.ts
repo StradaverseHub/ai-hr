@@ -2,7 +2,7 @@ import { internalSelected } from './internal-auth/config';
 import { keycloakSelected } from './identity/config';
 import { cache } from 'react';
 import { cookies, headers } from 'next/headers';
-import { client, type Grant, type SessionContext } from '../db/client';
+import { client, withPoolWork, type Grant, type SessionContext } from '../db/client';
 import { TENANT_STATUS_UNRESOLVED, resolveEntitlementsInTenantTx } from '../core/entitlements';
 import { AuthRequiredError } from './auth-errors';
 import { demoSwitcherEnabled, isDemoDeployment } from './demo-mode';
@@ -157,7 +157,7 @@ function perRequest<A extends readonly string[], R>(read: (...args: A) => Promis
  * (resolveEntitlementsTx inside their withTenant) are untouched: they are each owner's current check in its own
  * transaction, not this request snapshot. */
 const tenantSnapshotOnce = perRequest((tenantId: string) =>
-  client.begin((tx) => resolveEntitlementsInTenantTx((q, params) => tx.unsafe(q, params as never[]), tenantId)));
+  withPoolWork(tenantId, () => client.begin((tx) => resolveEntitlementsInTenantTx((q, params) => tx.unsafe(q, params as never[]), tenantId))));
 
 /**
  * Attach the tenant's entitlement snapshot to a resolved session (ADR-0077 slice 2).
