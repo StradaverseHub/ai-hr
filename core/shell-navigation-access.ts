@@ -8,14 +8,16 @@ import {workforceNavigationAllowedSql} from './workforce-access';
 export function readShellNavigationAccess(ctx:SessionContext,includeWorkforce:boolean){
  if(!ctx.userId)throw new ArchitectureError('forbidden','Sign in to continue.');
  return withTenant(ctx,async tx=>{
-  const [row]=await tx.execute<{access_configuration:boolean;workforce:boolean;architecture:boolean}>(sql`select
+  const [row]=await tx.execute<{access_configuration:boolean;workforce:boolean;architecture:boolean;onboarded:boolean}>(sql`select
    ${accessConfigurationNavigationAllowedSql} as access_configuration,
    ${includeWorkforce?workforceNavigationAllowedSql:sql`false`} as workforce,
-   ${jobArchitectureNavigationAllowedSql} as architecture`);
+   ${jobArchitectureNavigationAllowedSql} as architecture,
+   app.onboarding_status() as onboarded`);
   return {
    accessConfigurationAvailable:row?.access_configuration===true,
    workforceAvailable:row?.workforce===true,
    architectureAvailable:row?.architecture===true,
+   onboarded:row?.onboarded===true,
   };
  });
 }

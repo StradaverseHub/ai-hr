@@ -52,7 +52,6 @@ import { listPrincipals } from '@/lib/principals';
 import { demoSwitcherEnabled, isDemoDeployment } from '@/lib/demo-mode';
 import {readShellNavigationAccess} from '@/core/shell-navigation-access';
 import { companyContextForPage } from '@/lib/scope';
-import { getOnboardingStatus } from '@/core/onboarding';
 import {pendingTaskSummary} from '@/core/approvals-inbox';
 import {lifecycleModuleInbox} from './lifecycle/module-inbox';
 import {lifecycleModuleNavigation} from './lifecycle/workflow-availability';
@@ -176,13 +175,11 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   // identity at all. It always resolves to something renderable — an employed viewer, a named principal
   // with no employment (an admin never hired, or a leaver), or a login attached to no person at all.
   // Memoised, so the NoticePopupSlot below shares the employment row rather than re-reading it.
-  const [viewer,{accessConfigurationAvailable,workforceAvailable,architectureAvailable}]=await Promise.all([
+  const [viewer,{accessConfigurationAvailable,workforceAvailable,architectureAvailable,onboarded}]=await Promise.all([
     viewerIdentity(session),readShellNavigationAccess(session,!isAdmin(session)),
   ]);
-  const [letterDestinations,onboarded]=await Promise.all([
-    isModuleEnabledOrFalse(session,'employees')?letterNavigation(session,scopeIds):Promise.resolve([]),
-    getOnboardingStatus(session),
-  ]);
+  const letterDestinations=isModuleEnabledOrFalse(session,'employees')
+    ? await letterNavigation(session,scopeIds) : [];
   const tours = toursForRoles(session.roles);
   const canApprove = isAdmin(session) || (session.roles ?? []).includes('manager');
   // ADR-0034 34-3: when notifications are on, the bell shows the viewer's own notifications (everyone), not

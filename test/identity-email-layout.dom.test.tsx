@@ -14,14 +14,13 @@ vi.mock('../lib/demo-mode',()=>({demoSwitcherEnabled:()=>true,isDemoDeployment:(
 vi.mock('../lib/scope',()=>({companyContextForPage:async()=>({allowed:[],scopeIds:m.scopeIds})}));
 vi.mock('../lib/ui-theme-server',()=>({currentUiTheme:async()=>m.theme}));
 vi.mock('../core/read',()=>({allowedCompanies:async()=>[],listApprovalHistory:async()=>[]}));
-vi.mock('../core/onboarding',()=>({getOnboardingStatus:async()=>m.onboarded}));
 vi.mock('../packs/lifecycle/service',()=>({onboardingTasks:async()=>[],onboardingNoticeSummary:async()=>({unread:[],read:[],unreadCount:0}),onboardingNavigation:async()=>({module:false,master:false,requisitions:false,joiners:0,checklists:0})}));
 vi.mock('../components/onboarding-tour',()=>({OnboardingTour:()=>null}));
 vi.mock('../core/assistant-launcher',()=>({assistantShellFor:async()=>({allowed:false,launcher:null})}));
 // New capability owners are independent of SMTP installation enrollment and the legacy rail.
 // This shell test controls those boundaries; their actual permission algebra is covered by DB cases.
 vi.mock('../core/shell-navigation-access',()=>({readShellNavigationAccess:async()=>({
- accessConfigurationAvailable:false,workforceAvailable:false,architectureAvailable:false,
+ accessConfigurationAvailable:false,workforceAvailable:false,architectureAvailable:false,onboarded:m.onboarded,
 })}));
 vi.mock('../core/approvals-inbox',()=>({listPendingTasks:m.tasks,pendingTaskSummary:async(...args:unknown[])=>{
  const items=await m.tasks(...args);return m.summaryOverride??{items,total:items.length,approvalCount:items.filter((item:{linkPath:string})=>item.linkPath.split(/[?#]/,1)[0]==='/approvals').length,claimTotal:items.filter((item:{kind:string})=>item.kind==='claim').length};

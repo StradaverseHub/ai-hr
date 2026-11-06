@@ -11,6 +11,7 @@ import {PersonnelReadBusyError} from '../core/personnel-read-bounds';
 import {canOpenWorkforce,personnelMaintenanceCompanyIds,workforceViewScope} from '../core/workforce-access';
 import {canConfigureAccess} from '../core/access-configuration-editor';
 import {readShellNavigationAccess} from '../core/shell-navigation-access';
+import {getOnboardingStatus} from '../core/onboarding';
 import {personnelGroupingReadinessTx} from '../core/personnel-quality';
 import {assignArchitectureSeat,canViewJobArchitecture} from '../packs/job-architecture/owner';
 import {adminCtx,closeAll,createAppUser,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
@@ -147,10 +148,11 @@ it('keeps Architecture navigation equivalent for Workforce access, unseated empl
     const [accessConfigurationAvailable, workforceAvailable] = await Promise.all([
       canConfigureAccess(session), canOpenWorkforce(session),
     ]);
+    const onboarded = await getOnboardingStatus(session);
     const begins = vi.spyOn(client, 'begin');
     try {
       expect(await readShellNavigationAccess(session, true)).toEqual({
-        accessConfigurationAvailable, workforceAvailable, architectureAvailable:expected,
+        accessConfigurationAvailable, workforceAvailable, architectureAvailable:expected, onboarded,
       });
       expect(begins).toHaveBeenCalledTimes(1);
     } finally {
