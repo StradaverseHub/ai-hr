@@ -17,9 +17,11 @@ when `1793330001854`, SQL SHA-256
 The prior staging ledger matched all 697 entries through `1793330001700`.
 The new installed source `dc36b7f0278001e1f57754f66ea5ce4ca24971ea` appends
 `2450_personnel_search_projection` at idx 1550 / timestamp `1793330001850`.
-The exact read-only staging ledger matches all 698 entries. The feedback candidate
-preserves that entry and changes only the journal positions
-of its three unapplied files. Recheck the installed ledger at release admission.
+The next installed source `b29d13e4c5a36062158db5cf2582bbc15eea1e49` appends
+`2451_personnel_company_filter_choices` at idx 1551 / timestamp `1793330001851`.
+The read-only staging ledger matches all 699 entries. The feedback candidate
+preserves both Personnel migrations and keeps its three unapplied files above
+the installed watermark. Recheck the installed ledger at release admission.
 
 ## Rewards whole-group grant foundation — 5 November 2026 (unapplied)
 
