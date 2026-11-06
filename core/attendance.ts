@@ -1,5 +1,5 @@
 import { withCanonicalAiReadTx } from './ai-read-transaction';
-import { lockAccessConfigurationReadTx, lockAccessConfigurationTx } from './access-configuration-lock';
+import { lockAccessConfigurationReadTx, lockAccessConfigurationTx, tryLockAccessConfigurationTx } from './access-configuration-lock';
 import { LeaveDependencyUnavailable, lockLeaveDependenciesTx, lockLeaveDependencyConfigurationTx, lockLeaveDependencyReadConfigurationTx } from './leave-dependency-lock';
 import {attendancePolicyAttestedRawTrace} from '../lib/attendance-policy-attested-trace';
 import {assessGeofence,type GeofenceAssessment} from '../lib/geofence-assessment';
@@ -3605,15 +3605,16 @@ function normalizeAttendanceCorrectionRequest(input:AttendanceCorrectionRequestI
 const retryAttendanceSubmissionExclusively = new Error('Attendance submission requires the exclusive configuration path.');
 
 async function prepareAttendanceCorrectionInputTx(
- tx:Tx,ctx:SessionContext,input:AttendanceCorrectionRequestInput,sharedAccess=false,
+ tx:Tx,ctx:SessionContext,input:AttendanceCorrectionRequestInput,access:'shared'|'exclusive'|'exclusive-held'='exclusive',
 ){
  ctx=captureAttendanceContext(ctx);assertModuleGate(ctx,'attendance');
  const {p,hasOt,clockChanges,checkIn,checkOut,requestedOtMinutes,reason,plannedStartTime,plannedEndTime,otReasonCategory,remark,requestKind,unclockedWork}=normalizeAttendanceCorrectionRequest(input);
+ const sharedAccess=access==='shared';
  if(sharedAccess){
   // Only this owned submission transaction shares Access. Native configuration writers
   // still conflict with it; the subject, workflow, policy epoch and audit fences remain.
   await tx.execute(sql`select pg_advisory_xact_lock_shared(hashtextextended(${'access-configuration:'+ctx.tenantId},0))`);
- }else await lockAccessConfigurationTx(tx,ctx.tenantId);
+ }else if(access==='exclusive')await lockAccessConfigurationTx(tx,ctx.tenantId);
  const [subject]=await tx.select({id:employment.id,companyId:employment.companyId}).from(employment)
   .where(and(eq(employment.id,p.employmentId),eq(employment.tenantId,ctx.tenantId),sharedAccess?and(
    eq(employment.personId,ctx.personId!),
@@ -3789,8 +3790,8 @@ function attendanceCorrectionSubmissionFailure(error:unknown):never{
 export async function requestAttendanceCorrection(ctx:SessionContext,p:AttendanceCorrectionRequestInput,existingTx?:Tx){
  const current=captureAttendanceContext(ctx),captured=structuredClone(p);
  const normalized=normalizeAttendanceCorrectionRequest(captured);
- const run=async(tx:Tx)=>{
-  const data=await prepareAttendanceCorrectionInputTx(tx,current,captured);
+ const run=async(tx:Tx,access:'exclusive'|'exclusive-held'='exclusive')=>{
+  const data=await prepareAttendanceCorrectionInputTx(tx,current,captured,access);
   return insertAttendanceCorrectionRequestTx(tx,current,data);
  };
  if(existingTx)return run(existingTx).catch(attendanceCorrectionSubmissionFailure);
@@ -3803,7 +3804,7 @@ export async function requestAttendanceCorrection(ctx:SessionContext,p:Attendanc
   if(sharedCandidate){
    try{
     return await withTenant(current,async tx=>{
-     const data=await prepareAttendanceCorrectionInputTx(tx,current,captured,true);
+     const data=await prepareAttendanceCorrectionInputTx(tx,current,captured,'shared');
      const {correctionId}=await insertAttendanceCorrectionRequestTx(tx,current,data);
      return {correctionId};
     });
@@ -3812,7 +3813,7 @@ export async function requestAttendanceCorrection(ctx:SessionContext,p:Attendanc
     // The shared attempt has rolled back. Never upgrade Access or retry an effect failure.
    }
   }
-  return withTenant(current,run).catch(attendanceCorrectionSubmissionFailure);
+  return withOwnedExclusiveAttendanceWrite(current,tx=>run(tx,'exclusive-held')).catch(attendanceCorrectionSubmissionFailure);
  });
 }
 
@@ -4017,11 +4018,16 @@ function isOrdinaryNonOvertimeRejection(row: Pick<typeof attendanceCorrection.$i
     row.plannedStartTime === null && row.plannedEndTime === null && !row.originalClockSnapshot?.unclockedWork;
 }
 
-async function lockAttendanceApplicationTx(tx: Tx, ctx: SessionContext, correctionId: string, rejectionSubject?: string, sharedApproval = false) {
+async function lockAttendanceApplicationTx(
+  tx: Tx, ctx: SessionContext, correctionId: string, rejectionSubject?: string, approvalAccess?: 'shared' | 'exclusive-held',
+) {
+  const sharedApproval = approvalAccess === 'shared';
   try {
     if (sharedApproval) {
       await lockAccessConfigurationReadTx(tx, ctx.tenantId);
       await lockLeaveDependencyReadConfigurationTx(tx, ctx.tenantId);
+    } else if (approvalAccess === 'exclusive-held') {
+      await lockLeaveDependencyConfigurationTx(tx, ctx.tenantId);
     } else if (rejectionSubject === undefined) {
       await lockAttendanceLeaveDependenciesTx(tx, ctx, []);
     } else {
@@ -4102,6 +4108,28 @@ const attendancePerformance = globalThis as typeof globalThis & {
   __aihrPerfBeginAttendanceApproval?: () => { acquired: () => void; finished: () => void };
 };
 
+const attendanceExclusiveAccessBusy = new Error('Attendance exclusive Access admission is busy.');
+
+/** A failed try rolls back before the retry delay, returning the connection to the pool.
+ * Keep the original blocking lock after the bounded retry. */
+async function withOwnedExclusiveAttendanceWrite<T>(ctx: SessionContext, write: (tx: Tx) => Promise<T>): Promise<T> {
+  for (const delayMs of [0, 100]) {
+    if (delayMs) await new Promise<void>(resolve => setTimeout(resolve, delayMs));
+    try {
+      return await withTenant(ctx, async tx => {
+        if (!await tryLockAccessConfigurationTx(tx, ctx.tenantId)) throw attendanceExclusiveAccessBusy;
+        return write(tx);
+      });
+    } catch (error) {
+      if (error !== attendanceExclusiveAccessBusy) throw error;
+    }
+  }
+  return withTenant(ctx, async tx => {
+    await lockAccessConfigurationTx(tx, ctx.tenantId);
+    return write(tx);
+  });
+}
+
 async function queueAttendanceWrite<T>(
   queues: AttendanceWriteQueues, tenantId: string, write: () => Promise<T>,
   timing?: { acquired: () => void; finished: () => void },
@@ -4135,8 +4163,8 @@ export async function decideAttendanceCorrection(
 ) {
   p = structuredClone(p); ctx = captureAttendanceContext(ctx);
   ctx = {...ctx, roles:ctx.roles ?? (ctx.grants ?? []).map(grant=>grant.role)};
-  const decide=async (tx:Tx, rejectionSubject?: string, sharedApproval = false) => {
-    const original = await lockAttendanceApplicationTx(tx, ctx, p.correctionId, rejectionSubject, sharedApproval);
+  const decide=async (tx:Tx, rejectionSubject?: string, approvalAccess?: 'shared' | 'exclusive-held') => {
+    const original = await lockAttendanceApplicationTx(tx, ctx, p.correctionId, rejectionSubject, approvalAccess);
     const cor=original?.adminAmendment?{...original,proposedCheckIn:original.adminAmendment.checkIn,proposedCheckOut:original.adminAmendment.checkOut}:original;
     if (!cor) throw new Error('correction request not found (or not visible)');
     if (cor.status !== 'pending') throw new Error(`correction request is already ${cor.status}`);
@@ -4729,13 +4757,13 @@ export async function decideAttendanceCorrection(
       }
       if (toilDisabled) {
         try {
-          return await withTenant(ctx, tx => decide(tx, undefined, true));
+          return await withTenant(ctx, tx => decide(tx, undefined, 'shared'));
         } catch (error) {
           if (error !== retryAttendanceApprovalExclusively) throw error;
         }
       }
       // The shared attempt rolled back before any effect. Acquire exclusive Access in a fresh Tx.
-      return withTenant(ctx, decide);
+      return withOwnedExclusiveAttendanceWrite(ctx, tx => decide(tx, undefined, 'exclusive-held'));
     }, attendancePerformance.__aihrPerfBeginAttendanceApproval?.());
   }
   if (p.decision !== 'rejected' || !ctx.userId || ctx.agent || !correctionIdIsCanonical) return withTenant(ctx, decide);

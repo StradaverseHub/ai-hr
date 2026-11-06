@@ -18,7 +18,7 @@ import { createBatch, generatePayslips } from '../packs/payroll/service';
 import { client, withTenant } from '../db/client';
 import { lockAccessConfigurationReadTx } from '../core/access-configuration-lock';
 import { setCompensation } from '../core/comp';
-import { adminCtx, createAppUser, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
+import { adminCtx, createAppUser, closeAll, entitledCtx, migrateTestDb, owner, resetDb, seedBase, setModule, type Base } from './harness';
 let b: Base;
 const date = '2026-07-15';
 beforeAll(migrateTestDb);
@@ -191,6 +191,67 @@ describe('approved attendance clock-data corrections', () => {
     ));
     expect(events).toHaveLength(1);
   });
+  it.each(['submission', 'approval'] as const)('releases the native pool connection between exclusive %s admission attempts', async operation => {
+    const { a, employmentId } = await fixture();
+    const input = { employmentId, date, checkIn: '09:00', checkOut: '18:00', reason: 'Fictional exclusive admission' };
+    const approval = operation === 'approval'
+      ? await requestAttendanceCorrection(a, input)
+      : undefined;
+    // A TOIL-capable approval must retain the original exclusive path.
+    if (approval) await setModule(b.tenantId, 'toil', 'active');
+    const actor = approval ? await entitledCtx(b) : a;
+    const timings = globalThis as typeof globalThis & {
+      __aihrPerfBeginTransaction?: (poolMax: number) => { acquired: () => void; finished: () => void };
+    };
+    const previousTiming = timings.__aihrPerfBeginTransaction;
+    const attempts: { started: number; acquired?: number; finished?: number }[] = [];
+    let command: Promise<unknown> | undefined;
+    try {
+      await owner.db.transaction(async tx => {
+        const [holder] = await tx.execute<{ pid: number }>(sql`select pg_backend_pid() as pid`);
+        await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${'access-configuration:' + b.tenantId},0))`);
+        timings.__aihrPerfBeginTransaction = () => {
+          const attempt: typeof attempts[number] = { started: performance.now() };
+          attempts.push(attempt);
+          return {
+            acquired: () => { attempt.acquired = performance.now(); },
+            finished: () => { attempt.finished = performance.now(); },
+          };
+        };
+        command = approval
+          ? decideAttendanceCorrection(actor, { correctionId: approval.correctionId, decision: 'approved' })
+          : requestAttendanceCorrection(actor, input);
+        void command.catch(() => {});
+        // The blocking fallback appears only after the two distinct try transactions ended.
+        await expect.poll(async () => {
+          const [row] = await tx.execute<{ n: number }>(sql`select count(*)::int as n from pg_locks l
+            where l.locktype = 'advisory' and not l.granted and ${holder.pid}::int = any(pg_blocking_pids(l.pid))`);
+          return row.n;
+        }, { timeout: 5000 }).toBe(1);
+        expect(attempts).toHaveLength(3);
+        expect(attempts[0].acquired).toBeDefined();
+        expect(attempts[0].finished).toBeDefined();
+        expect(attempts[1].started - attempts[0].finished!).toBeGreaterThanOrEqual(75);
+        expect(attempts[1].finished).toBeDefined();
+        expect(attempts[2].started).toBeGreaterThanOrEqual(attempts[1].finished!);
+        expect(attempts[2].finished).toBeUndefined();
+      });
+      await command;
+    } finally {
+      timings.__aihrPerfBeginTransaction = previousTiming;
+      await command;
+    }
+    const rows = await owner.db.select({ id: schema.attendanceCorrection.id, status: schema.attendanceCorrection.status })
+      .from(schema.attendanceCorrection).where(eq(schema.attendanceCorrection.employmentId, employmentId));
+    expect(rows).toHaveLength(1);
+    const [row] = rows;
+    expect(row.status).toBe(approval ? 'approved' : 'pending');
+    const events = await owner.db.select({ id: schema.domainEvent.id }).from(schema.domainEvent).where(and(
+      eq(schema.domainEvent.aggregateId, row.id),
+      eq(schema.domainEvent.eventType, approval ? 'attendance-correction.approved' : 'attendance-correction.requested'),
+    ));
+    expect(events).toHaveLength(1);
+  }, 20000);
   it('reads the original clock and workflow setting once per ordinary submission', async () => {
     const { a, employmentId } = await fixture();
     const statements: string[] = [];
