@@ -601,6 +601,64 @@ async function workforcePersonnelPageQueryTx(
 
 type PersonnelOverviewInput = PersonnelListInput & { companyIds: string[] };
 
+const narrowPersonnelFilters = new Set([
+  'companyIds', 'companyId', 'filterCompanyIds', 'q', 'status', 'employmentStatuses',
+  'sort', 'limit', 'offset',
+]);
+
+function personnelNarrowOverviewQuery(
+  input: PersonnelOverviewInput, facets: EmployeeListFilters, choiceIds: string[], asOf: string,
+): SQL | null {
+  if (!Number.isSafeInteger(input.limit) || input.limit < 0 || input.limit > 200 ||
+      !Number.isSafeInteger(input.offset) || input.offset < 0 ||
+      input.companyIds.length === 0 || input.companyIds.length !== choiceIds.length ||
+      !input.companyIds.every(id => choiceIds.includes(id)) ||
+      ![input, facets].every(filters => Object.entries(filters)
+        .every(([key, value]) => value === undefined || narrowPersonnelFilters.has(key)))) return null;
+
+  const columns = workforceListColumns(asOf);
+  const scope = sql`array[${sql.join(input.companyIds.map(id => sql`${id}::uuid`), sql`, `)}]::uuid[]`;
+  const order = input.sort === 'company'
+    ? sql`company_sort, name_sort, employment_id`
+    : sql`name_sort, employment_id`;
+  const pageWhere = workforceListWhere(input, columns) ?? sql`true`;
+  const facetWhere = workforceListWhere(facets, columns) ?? sql`true`;
+  return sql`
+    with personnel_facts as materialized (
+      select ${workforceListUuid('employmentId')} as employment_id,
+        lower(${workforceListValue('company')}) as company_sort,
+        ${input.sort === 'company' ? sql`lower(${columns.name})` : columns.name} as name_sort,
+        (${pageWhere}) as page_matches, (${facetWhere}) as facet_matches,
+        ${columns.status} as status,
+        ${workforceListUuid('businessUnitId')} as "businessUnitId",
+        ${workforceListValue('businessUnit')} as "businessUnit",
+        ${workforceListUuid('positionId')} as "positionId",
+        ${workforceListValue('position')} as position
+      from app.personnel_overview_narrow_rows(${asOf}::date, ${scope}) as workforce_row(value)
+      where ${workforceListWhere({ companyIds: choiceIds }, columns) ?? sql`true`}
+    ), page as materialized (
+      select employment_id, company_sort, name_sort from personnel_facts
+      where page_matches order by ${order} limit ${input.limit} offset ${input.offset}
+    ), page_details as materialized (
+      select page.*, details.value from page
+      join app.personnel_overview_page_rows(${asOf}::date, ${scope},
+        array(select employment_id from page)) as details(value)
+        on (details.value->>'employmentId')::uuid=page.employment_id
+    )
+    select
+      (select coalesce(jsonb_agg(value order by ${order}), '[]'::jsonb) from page_details) as rows,
+      (select count(distinct employment_id)::int from personnel_facts where page_matches) as total,
+      (select coalesce(jsonb_object_agg(status, count), '{}'::jsonb) from (
+        select status, count(distinct employment_id)::int as count from personnel_facts
+        where facet_matches group by status
+      ) as counts) as "byStatus",
+      (select coalesce(jsonb_agg(to_jsonb(choice)), '[]'::jsonb) from (
+        select distinct "businessUnitId", "businessUnit", "positionId", position from personnel_facts
+      ) as choice) as choices,
+      (select count(*) from page_details)=(select count(*) from page) as "pageDetailsComplete"
+  `;
+}
+
 async function personnelOverviewQueryTx(
   tx: Tx, ctx: SessionContext, input: PersonnelOverviewInput, headcount: Omit<EmployeeListFilters, 'companyIds'>,
 ) {
@@ -610,7 +668,7 @@ async function personnelOverviewQueryTx(
     headcount: { ...headcount, companyIds: input.companyIds },
     choiceIds: choices.companies.map(company => company.id),
   });
-  return { choices, query };
+  return { choices, query, asOf };
 }
 
 async function workforcePersonnelPageTx(
@@ -633,10 +691,19 @@ export function readPersonnelOverview(
   ctx: SessionContext,
   input: PersonnelOverviewInput,
   headcount: Omit<EmployeeListFilters, 'companyIds'>,
+  options?: { hostedNarrowProbe: true },
 ) {
   return withPersonnelRead(ctx, async tx => {
-    const { choices, query } = await personnelOverviewQueryTx(tx, ctx, input, headcount);
-    const [result] = await tx.execute<PersonnelPageResult>(query);
+    const { choices, query, asOf } = await personnelOverviewQueryTx(tx, ctx, input, headcount);
+    // Opt-in from disposable hosted qualification only until the native functions are allocated.
+    const narrowQuery = options?.hostedNarrowProbe ? personnelNarrowOverviewQuery(
+      input, { ...headcount, companyIds: input.companyIds }, choices.companies.map(company => company.id), asOf,
+    ) : null;
+    const [narrow] = narrowQuery
+      ? await tx.execute<PersonnelPageResult & { pageDetailsComplete: boolean }>(narrowQuery)
+      : [];
+    if (narrowQuery && !narrow?.pageDetailsComplete) throw new Error('Incomplete Personnel page detail probe');
+    const result = narrow ?? (await tx.execute<PersonnelPageResult>(query))[0];
     return {
       employees: { rows: result.rows, total: result.total },
       headcount: { total: Object.values(result.byStatus).reduce((sum, count) => sum + count, 0), byStatus: result.byStatus },
