@@ -128,7 +128,7 @@ it.each([['legacy',WORKER_SOURCE],['staged',STAGING_BASELINE]] as const)(
   expect(roots).toEqual(expect.arrayContaining(['package.json','pnpm-lock.yaml','tsconfig.json','core','db','i18n','localization','lib','scripts','packs']));
   const archive=execFileSync('git',['archive',workerSource,...roots],{maxBuffer:128*1024**2});
   execFileSync('tar',['-xf','-','-C',directory],{input:archive,maxBuffer:1024**2});
-  for(const path of ['package.json','pnpm-lock.yaml',...new Set([...unchanged,...reviewedChanges,...Object.keys(payrollQueueWorkerPins)])])expect(readFileSync(join(directory,path)).equals(execFileSync('git',['show',WORKER_SOURCE+':'+path])),'Executed old worker retains original '+path).toBe(true);
+  for(const path of ['package.json','pnpm-lock.yaml',...new Set([...unchanged,...reviewedChanges,...Object.keys(payrollQueueWorkerPins)])])expect(readFileSync(join(directory,path)).equals(archived(workerSource,path)),'Executed worker retains its original '+path).toBe(true);
   // Real isolated dependency files, preserving internal pnpm links. No external module symlink,
   // installation files, frozen worker source or vendor network is modified by this disposable fixture.
   execFileSync('cp',['-a',...(process.platform==='linux'?['--reflink=auto']:[]),join(process.cwd(),'node_modules'),join(directory,'node_modules')],{timeout:60000,maxBuffer:1024**2});
