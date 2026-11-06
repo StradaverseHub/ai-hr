@@ -11,7 +11,7 @@ if(process.env.GITHUB_ACTIONS==='true'&&path){
  let pending=0,holding=0,peakPending=0,peakHolding=0,failedBeforeCallback=0;
  let approvalPending=0,approvalRunning=0,peakApprovalPending=0;
  const admissionCounts=()=>({immediate:0,miss:0,recovered:0,blockingFallback:0});
- const admissionWindow=()=>({submission:admissionCounts(),approval:admissionCounts()});
+ const admissionWindow=()=>({submission:admissionCounts(),approval:admissionCounts(),clockingImport:admissionCounts()});
  let attendanceExclusiveAdmission=admissionWindow();
  const record=(histogram,ms)=>histogram.record(Math.max(1,Math.round(ms*1e6)));
  const describe=histogram=>({

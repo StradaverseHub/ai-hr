@@ -4113,16 +4113,17 @@ export class MissingAttendanceRejectReasonError extends Error {
 type AttendanceWriteQueues = Map<string, { active: number; waiting: Array<() => void> }>;
 const attendanceApprovalQueues: AttendanceWriteQueues = new Map();
 const attendanceSubmissionQueues: AttendanceWriteQueues = new Map();
+const clockingImportQueues: AttendanceWriteQueues = new Map();
 const attendancePerformance = globalThis as typeof globalThis & {
   __aihrPerfBeginAttendanceApproval?: () => { acquired: () => void; finished: () => void };
-  __aihrPerfAttendanceExclusiveAdmission?: (operation:'submission'|'approval',outcome:'immediate'|'miss'|'recovered'|'blockingFallback') => void;
+  __aihrPerfAttendanceExclusiveAdmission?: (operation:'submission'|'approval'|'clockingImport',outcome:'immediate'|'miss'|'recovered'|'blockingFallback') => void;
 };
 
 const attendanceExclusiveAccessBusy = new Error('Attendance exclusive Access admission is busy.');
 
 /** A failed try rolls back before the retry delay, returning the connection to the pool.
  * Keep the original blocking lock after the bounded retry. */
-async function withOwnedExclusiveAttendanceWrite<T>(ctx: SessionContext, operation:'submission'|'approval', write: (tx: Tx) => Promise<T>): Promise<T> {
+async function withOwnedExclusiveAttendanceWrite<T>(ctx: SessionContext, operation:'submission'|'approval'|'clockingImport', write: (tx: Tx) => Promise<T>): Promise<T> {
   const record=attendancePerformance.__aihrPerfAttendanceExclusiveAdmission;
   for (const delayMs of [0, 100]) {
     if (delayMs) await new Promise<void>(resolve => setTimeout(resolve, delayMs));
@@ -4146,12 +4147,12 @@ async function withOwnedExclusiveAttendanceWrite<T>(ctx: SessionContext, operati
 
 async function queueAttendanceWrite<T>(
   queues: AttendanceWriteQueues, tenantId: string, write: () => Promise<T>,
-  timing?: { acquired: () => void; finished: () => void },
+  timing?: { acquired: () => void; finished: () => void }, capacity = 2,
 ): Promise<T> {
   const key = tenantId.toLowerCase();
   const queue = queues.get(key) ?? { active: 0, waiting: [] };
   queues.set(key, queue);
-  if (queue.active < 2) {
+  if (queue.active < capacity) {
     queue.active++;
   } else {
     await new Promise<void>(resolve => queue.waiting.push(resolve));
@@ -4168,6 +4169,15 @@ async function queueAttendanceWrite<T>(
     }
     timing?.finished();
   }
+}
+
+/** Imports own their transaction. Admit one per tenant per worker before checking out a connection. */
+export function withClockingImportWrite<T>(ctx: SessionContext, write: (tx: Tx) => Promise<T>): Promise<T> {
+  return queueAttendanceWrite(clockingImportQueues, ctx.tenantId, () =>
+    withOwnedExclusiveAttendanceWrite(ctx, 'clockingImport', async tx => {
+      await lockLeaveDependencyConfigurationTx(tx, ctx.tenantId);
+      return write(tx);
+    }), undefined, 1);
 }
 
 export async function decideAttendanceCorrection(
