@@ -4992,6 +4992,13 @@
       "when": 1793330001701,
       "tag": "2301_attendance_workflow_submission_shared_lock",
       "breakpoints": true
+    },
+    {
+      "idx": 1502,
+      "version": "7",
+      "when": 1793330001702,
+      "tag": "2302_company_ancestry_early_exit",
+      "breakpoints": true
     }
   ]
 }
