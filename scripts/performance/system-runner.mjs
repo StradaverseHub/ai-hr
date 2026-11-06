@@ -27,10 +27,16 @@ const env={...process.env,AIHR_PERFORMANCE_ROLE_FIXTURE:'true',AIHR_FOCUSED_SUIT
  TEST_DATABASE_URL:'postgres://ai_hr_app@127.0.0.1:5433/ai_hr_test',TEST_MIGRATION_DATABASE_URL:'postgres://postgres@127.0.0.1:5433/ai_hr_test'};
 for(const key of Object.keys(env))if(key.startsWith('WORKOS_')||key==='SHARE_PASSWORD'||key==='DEV_USER_ID')delete env[key];
 env.SHARE_PASSWORD='';env.DEV_USER_ID='';
-const {workers,totalApplicationPool,poolPerWorker,heapPerWorker}=isolatedWorkerBudget(process.env.PERF_APP_WORKERS,process.env.PERF_APP_POOL_CONNECTIONS);
+const {workers,totalApplicationPool,poolPerWorker,heapPerWorker,totalHeapMiB}=isolatedWorkerBudget(
+ process.env.PERF_APP_WORKERS,process.env.PERF_APP_POOL_CONNECTIONS,process.env.PERF_APP_TOTAL_HEAP_MIB);
+const host={cpus:os.availableParallelism(),memoryBytes:os.totalmem()};
+if(totalHeapMiB===8192){
+ assert.equal(process.env.RUNNER_ENVIRONMENT,'github-hosted','larger diagnostic heap requires a hosted runner');
+ assert(host.cpus===4&&host.memoryBytes>=15*1024**3&&host.memoryBytes<=17*1024**3,'larger diagnostic heap requires the standard hosted 4-CPU / 16-GB runner');
+}
 const ports=Array.from({length:workers},(_,index)=>3174+index);
 const report={kind:'ISOLATED_HTTP_BROWSER_DEVELOPMENT_ONLY',releaseEligible:false,sha,controller:process.env.AIHR_CI_CONTROL_HEAD,
- run:process.env.GITHUB_RUN_ID,runtime:{node:process.version,productionObservedNode:'v24.22.1'},productionEquivalent:false,topology:{workers,poolPerWorker,totalApplicationPool,heapMiBPerWorker:heapPerWorker,totalHeapMiB:4096,upstreamKeepAlive:false,proxyUpstreamMaxSockets:4000},proxyErrors:[],host:{cpus:os.availableParallelism(),memoryBytes:os.totalmem()},phases:[],exitCode:1};
+ run:process.env.GITHUB_RUN_ID,runtime:{node:process.version,productionObservedNode:'v24.22.1'},productionEquivalent:false,topology:{workers,poolPerWorker,totalApplicationPool,heapMiBPerWorker:heapPerWorker,totalHeapMiB,upstreamKeepAlive:false,proxyUpstreamMaxSockets:4000},proxyErrors:[],host,phases:[],exitCode:1};
 const save=()=>writeFileSync(join(out,'runner.json'),JSON.stringify(report,null,2));
 save();
 async function assertPortFree(port){const server=net.createServer();await new Promise((resolve,reject)=>{server.once('error',reject);server.listen(port,'127.0.0.1',resolve);});await new Promise(resolve=>server.close(resolve));}
@@ -72,9 +78,11 @@ function summarizeCpu(){
 }
 function summarizeNativeFailures(){
  // The raw logs remain private. Publish only generated references, SQLSTATEs and fixed diagnostic flags.
- const failures=[];
+ const failures=[],workers=[];
  for(const name of readdirSync(privateDir).filter(name=>/^server-[0-9]+\.log$/.test(name))){
   const text=readFileSync(join(privateDir,name),'utf8');
+  const worker=Number(name.match(/[0-9]+/)[0]);
+  workers.push({worker,v8HeapOutOfMemory:/FATAL ERROR:[^\n]*JavaScript heap out of memory/.test(text)});
   // The public-error owner logs one explicit SQLSTATE beside each generated reference.
   // Publish that closed metadata only; never the surrounding SQL, values or stack.
   for(const match of text.matchAll(/\[database error (DB-[A-Z]-[A-F0-9]{6})\] sqlstate=([0-9A-Z]{5}|none)/g)){
@@ -91,6 +99,7 @@ function summarizeNativeFailures(){
     deadlockMessage:/deadlock detected/.test(block),permissionDeniedMessage:/permission denied/.test(block)});
   }
  }
+ report.workerFatalDiagnostics=workers.sort((a,b)=>a.worker-b.worker);
  writeFileSync(join(out,'server-native-failures.json'),JSON.stringify({scope:'Exact public-error reference/SQLSTATE metadata plus bounded native Draft marker blocks; Draft block errors may overlap; raw logs and SQL excluded',failures},null,2));
 }
 const apps=[],appFds=[];let proxy,upstream,dbStarted=false;
