@@ -57,7 +57,14 @@ DROP TABLE pg_temp.attendance_header_policy_reference;
 
 CREATE FUNCTION app.attendance_pending_visible_headers(wanted uuid)
 RETURNS TABLE(id uuid, employment_id uuid, created_at timestamptz)
-LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $headers$
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $headers$
+BEGIN
+ -- The original invoker query required this grant. A direct revoke must
+ -- also close the optimized path, even though the function runs as owner.
+ IF NOT pg_catalog.has_table_privilege('ai_hr_app','public.attendance_correction','SELECT') THEN
+  RAISE EXCEPTION 'Attendance correction read privilege is unavailable' USING ERRCODE='42501';
+ END IF;
+ RETURN QUERY
  WITH actor AS MATERIALIZED (
   SELECT app.current_tenant_id() AS tenant_id
   WHERE app.current_user_id() IS NOT NULL AND app.principal_snapshot_current()
@@ -72,7 +79,8 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp A
   OR app.attendance_workflow_v2_read(q.id)
   OR app.attendance_workflow_v3_read(q.id)
   OR app.unrouted_attendance_delegate(q.id)
- END
+ END;
+END;
 $headers$;
 REVOKE ALL ON FUNCTION app.attendance_pending_visible_headers(uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.attendance_pending_visible_headers(uuid) TO ai_hr_app;
