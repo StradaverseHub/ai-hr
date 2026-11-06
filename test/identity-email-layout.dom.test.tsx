@@ -41,6 +41,7 @@ vi.mock('../components/dev-identity-switcher',()=>({DevIdentitySwitcher:()=>null
 vi.mock('../components/company-switcher',()=>({CompanySwitcher:()=>null}));
 import Layout from '../app/layout';
 import {NotificationCenter} from '../components/notification-center';
+import {ShellNotificationCenter} from '../app/shell-notification-center';
 import {Sidebar} from '../components/sidebar';
 import {ShellApprovalFactsProvider,type ShellApprovalResult} from '../components/shell-approval-facts';
 import {OnboardingTour} from '../components/onboarding-tour';
@@ -54,6 +55,7 @@ function propsOf(node:React.ReactNode,target:unknown):Record<string,unknown>|und
  if(node.type===target)return node.props;
  return propsOf(node.props.children,target);
 }
+const bellElement=async(tree:React.ReactNode)=>ShellNotificationCenter(propsOf(tree,ShellNotificationCenter) as Parameters<typeof ShellNotificationCenter>[0]);
 const sidebarProps=(node:React.ReactNode)=>propsOf(node,Sidebar);
 const approvalSource=(node:React.ReactNode)=>propsOf(node,ShellApprovalFactsProvider)!.source as Promise<ShellApprovalResult>;
 describe('root layout SMTP preview authority',()=>{
@@ -61,7 +63,7 @@ describe('root layout SMTP preview authority',()=>{
   const session={tenantId:'tenant',userId:'user',roles:['hr_admin'],grants:[{role:'hr_admin',companyId}]};
   m.session.mockResolvedValue(session);m.operator.mockResolvedValue(false);
   m.module.mockImplementation((_session,module)=>module==='notifications');
-  await Layout({children:<span>Fixture content</span>});
+  await bellElement(await Layout({children:<span>Fixture content</span>}));
   expect(m.dispatch).toHaveBeenCalledTimes(expected?1:0);
  });
  it.each([false,true])('passes the current tenant Feedback setting to the rail when enabled=%s',async(enabled)=>{
@@ -144,9 +146,10 @@ it('keeps exact Claims totals and accepted Lifecycle inbox counts together in th
  await expect(approvalSource(tree)).resolves.toMatchObject({state:'ready',items,total:10002,approvalCount:10001,claimTotal:10000});
  expect(sidebarProps(tree)?.taskCount).toBe(7);
  expect(m.tasks.mock.calls[0]?.[3]).toEqual({deferClaimPreview:true});
- expect(propsOf(tree,NotificationCenter)?.taskCount).toBe(7);
- expect(propsOf(tree,NotificationCenter)?.claimPreviewRevision).toEqual(expect.any(String));
- expect(propsOf(tree,NotificationCenter)?.tasks).toEqual([]);
+ const bell=await bellElement(tree);
+ expect(propsOf(bell,NotificationCenter)?.taskCount).toBe(7);
+ expect(propsOf(bell,NotificationCenter)?.claimPreviewRevision).toEqual(expect.any(String));
+ expect(propsOf(bell,NotificationCenter)?.tasks).toEqual([]);
 });
 
 it('returns the authenticated shell while the approval owner is still pending',async()=>{
@@ -155,7 +158,7 @@ it('returns the authenticated shell while the approval owner is still pending',a
  m.tasks.mockImplementation(()=>new Promise(resolve=>{finish=resolve;}));
  const tree=await Layout({children:<main>Available before approvals</main>});
  expect(sidebarProps(tree)).toBeDefined();
- expect(propsOf(tree,NotificationCenter)).toBeDefined();
+ expect(propsOf(tree,ShellNotificationCenter)).toBeDefined();
  expect(m.tasks).toHaveBeenCalledTimes(1);
  finish([]);
  await expect(approvalSource(tree)).resolves.toMatchObject({state:'ready',total:0});
@@ -190,11 +193,23 @@ describe('personal Home opens without automatic overlays',()=>{
  });
 });
 
+it('returns the authenticated shell before starting notification reads',async()=>{
+ m.module.mockImplementation((_ctx:unknown,code:string)=>code==='notifications');
+ m.session.mockResolvedValue({tenantId:'tenant',userId:'login',roles:['employee'],grants:[]});
+ m.operator.mockResolvedValue(false);
+ const tree=await Layout({children:<main>Available before notifications</main>});
+ expect(sidebarProps(tree)).toBeDefined();
+ expect(m.notificationBell).not.toHaveBeenCalled();
+ await bellElement(tree);
+ expect(m.notificationBell).toHaveBeenCalledTimes(1);
+});
+
 it('loads account notifications for selected company entitlements without an employment or tenant-wide module',async()=>{
  const active='00000000-0000-4000-8000-000000000001',inactive='00000000-0000-4000-8000-000000000002';m.scopeIds=[active,inactive];
  m.module.mockImplementation((_ctx:unknown,code:string,companyId?:string)=>code==='notifications'&&companyId===active);
  m.session.mockResolvedValue({tenantId:'tenant',userId:'account-only-reviewer',roles:['employee'],grants:[]});m.operator.mockResolvedValue(false);
- const tree=await Layout({children:null});expect(propsOf(tree,NotificationCenter)).toBeDefined();
+ const tree=await Layout({children:null});expect(propsOf(tree,ShellNotificationCenter)).toBeDefined();
+ await bellElement(tree);
  expect(m.notificationBell).toHaveBeenCalledExactlyOnceWith(expect.anything(),{letterCompanyIds:[active]});
 });
 

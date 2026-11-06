@@ -55,12 +55,12 @@ import { companyContextForPage } from '@/lib/scope';
 import {pendingTaskSummary} from '@/core/approvals-inbox';
 import {lifecycleModuleInbox} from './lifecycle/module-inbox';
 import {lifecycleModuleNavigation} from './lifecycle/workflow-availability';
-import { onboardingTasks, onboardingNoticeSummary, onboardingNavigation } from '@/packs/lifecycle/service';
+import { onboardingTasks, onboardingNavigation } from '@/packs/lifecycle/service';
 import { adminSectionHref, latestOnehrAdminCycleId } from '@/packs/performance/service';
-import { NotificationCenter, type NotificationTaskItem } from '@/components/notification-center';
+import type { NotificationTaskItem } from '@/components/notification-center';
+import { ShellNotificationCenter } from './shell-notification-center';
 import { onboardingNotificationTask } from '@/lib/onboarding-notification-task';
 import { CommandBar } from '@/components/command-bar';
-import { dispatchNotifications, notificationBellSummary } from '@/core/notifications';
 import { toursForRoles, WELCOME_TOUR_ID } from '@/lib/onboarding-tour';
 import { isModuleEnabledOrFalse, settingEnabledOrDefault } from '@/core/entitlements';
 import { currentUiTheme } from '@/lib/ui-theme-server';
@@ -200,10 +200,9 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   // malformed or mis-attributed context, which is a wiring bug and must stay loud.
   const notifEnabled = isModuleEnabledOrFalse(session, 'notifications');
   const letterNotificationCompanies=scopeIds.filter(id=>isModuleEnabledOrFalse(session,'notifications',id));
-  const bellNotificationsEnabled=notifEnabled||letterNotificationCompanies.length>0,notificationScope=notifEnabled?{}:{letterCompanyIds:letterNotificationCompanies};
-  if (notifEnabled && isAdmin(session) && (session.grants === undefined || isGroupAdmin(session))) {
-    await dispatchNotifications(session, { skipIfBusy: true }).catch(() => {});
-  }
+  const notificationScope = notifEnabled ? {} :
+    letterNotificationCompanies.length > 0 ? { letterCompanyIds: letterNotificationCompanies } : null;
+  const catchUpNotifications = notifEnabled && isAdmin(session) && (session.grants === undefined || isGroupAdmin(session));
   // D-P1-32 PT-X5 — where the sidebar's Performance admin entry opens: the admin area's first tab for the latest
   // cycle this OneHR administrator administers, started here so it overlaps other shell reads. No cycle, a
   // viewer who is not a OneHR administrator, the module off or a failed read all leave the pack's /performance.
@@ -221,20 +220,15 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   // belongs to whichever surface calls it.
   const claimsEnabled = isModuleEnabledOrFalse(session, 'claims');
   const lifecycleEnabled=isModuleEnabledOrFalse(session,'lifecycle');
-  const [onboardingNav,onboardingQueue,onboardingNotices,scopedLifecycleNavigation]=await Promise.all([
+  const [onboardingNav,onboardingQueue,scopedLifecycleNavigation]=await Promise.all([
     lifecycleEnabled?onboardingNavigation(session):Promise.resolve({module:false,v9:false,v9Navigation:{onboarding:false,offboarding:false,administration:false},master:false,requisitions:false,joiners:0,checklists:0}),
     lifecycleEnabled?onboardingTasks(session):Promise.resolve([]),
-    lifecycleEnabled?onboardingNoticeSummary(session):Promise.resolve({unread:[],read:[],unreadCount:0}),
     lifecycleModuleNavigation(session),
   ]);
   const onboardingAccess=onboardingNav.module;
   const lifecycleInbox=await lifecycleModuleInbox(session,scopedLifecycleNavigation);
   const lifecycleTasks:NotificationTaskItem[]=[...onboardingQueue.map(onboardingNotificationTask),...lifecycleInbox.items];
   const lifecycleTaskCount=onboardingQueue.length+lifecycleInbox.count;
-  const { unread: notifUnread, taskCount: taskNotifCount, items: notifItems, tasks: taskNotifs, read: readNotifs } =
-    bellNotificationsEnabled
-      ? await notificationBellSummary(session, notificationScope)
-      : { unread: 0, taskCount: 0, items: [], tasks: [], read: [] };
   // Navigation and the floating launcher share the current Assistant grant read.
   const [{launcher,allowed:assistantAccess},privateCaseHandler] = await Promise.all([
     assistantShellFor(session),
@@ -454,17 +448,19 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
                   {/* 3-tab bell for EVERY role (1514d366). The legacy count-only bell is retired — the
                       Task tab covers its purpose (and works even with NOTIFICATIONS_ENABLED off, where
                       only the notification reads are dark). */}
-                  <NotificationCenter
-                    key={shellScopeKey}
-                    unread={notifUnread + onboardingNotices.unreadCount}
-                    items={[...notifItems,...onboardingNotices.unread]}
-                    tasks={lifecycleTasks}
-                    taskNotifications={taskNotifs}
-                    claimPreviewRevision={claimsEnabled ? crypto.randomUUID() : undefined}
-                    taskCount={lifecycleTaskCount+taskNotifCount}
-                    readItems={[...readNotifs,...onboardingNotices.read]}
-                    canApprove={canApprove}
-                  />
+                  <Suspense fallback={<span aria-hidden="true" className="size-9 min-h-11 shrink-0 max-sm:min-w-11" />}>
+                    <ShellNotificationCenter
+                      key={shellScopeKey}
+                      session={session}
+                      scope={notificationScope}
+                      catchUp={catchUpNotifications}
+                      lifecycleEnabled={lifecycleEnabled}
+                      tasks={lifecycleTasks}
+                      claimPreviewRevision={claimsEnabled ? crypto.randomUUID() : undefined}
+                      taskCount={lifecycleTaskCount}
+                      canApprove={canApprove}
+                    />
+                  </Suspense>
                   <span data-tour="language">
                     <LanguageSwitcher />
                   </span>
