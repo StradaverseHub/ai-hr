@@ -5111,6 +5111,13 @@
       "when": 1793330002127,
       "tag": "2507_attendance_header_column_grants",
       "breakpoints": true
+    },
+    {
+      "idx": 1828,
+      "version": "7",
+      "when": 1793330002128,
+      "tag": "2508_notification_receipt_grants",
+      "breakpoints": true
     }
   ]
 }

@@ -10,6 +10,11 @@ Fresh main/alpha and local claims covered 2,962 distinct heads, 663 migration tr
 1793330002125, including literal claims from one malformed foreign journal.
 Recheck the target ledger and current reservations before installation.
 
+A subsequent fresh scan (334 readable worktrees) found maxima 2507 / 1827 /
+1793330002127. Append `2508_notification_receipt_grants`, idx 1828, when 1793330002128,
+SQL SHA-256 `07eeadfb1db236283f2bcb7206e8a8274cfb637a3d1b53ddac75d40879ad6d3b` to remove inherited broad table grants.
+
+
 ## Minimal Workforce picker projection — 6 November 2026 (uninstalled candidate)
 
 `codex/personnel-snapshot-reads-20261106` reserves `2505_workforce_picker_facts`,
