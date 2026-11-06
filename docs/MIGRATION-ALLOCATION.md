@@ -4,7 +4,7 @@
 
 `codex/performance-staging-integration-20261105` reserves
 `2503_attendance_pending_visible_headers`, idx 1703, when 1793330001903.
-SQL SHA-256 `d5ea8867b331c3598a132c545dbccf7b5ac032d9b8b1b0a818d5923ad2e67ef8`.
+SQL SHA-256 `a8e52319d829d9e8b99a699937d45916dbf44b5ebfec01662a1b8d3e13989b45`.
 The remote/local tip and 325 readable worktree scan observed maxima 2502,
 idx 1702, and when 1793330001902. The previously missing staging release
 tip was fetched and has a lower journal index. Recheck remote reservations

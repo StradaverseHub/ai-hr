@@ -13,6 +13,11 @@ CREATE POLICY attendance_workflow_v3_correction_read ON attendance_header_policy
  USING (tenant_id=app.current_tenant_id() AND app.attendance_workflow_v3_read(id));
 CREATE POLICY attendance_unrouted_delegate_read ON attendance_header_policy_reference FOR SELECT TO ai_hr_app
  USING (tenant_id=app.current_tenant_id() AND app.unrouted_attendance_delegate(id));
+-- The internal overtime proof owner has a separate read policy. It never
+-- participates in this application-role projection.
+CREATE POLICY overtime_capture_proof_owner_read ON attendance_header_policy_reference FOR SELECT
+ USING (current_user=pg_get_userbyid((SELECT proowner FROM pg_proc
+  WHERE oid='app.attendance_policy_captured_coverage(uuid)'::regprocedure)));
 
 DO $verify$
 DECLARE target record; policy_drift jsonb;
@@ -23,6 +28,11 @@ BEGIN
   RAISE EXCEPTION 'Unexpected Attendance correction table ownership or RLS mode'
    USING ERRCODE='55000', DETAIL=format('Owner %s, migration role %s, RLS %s, forced RLS %s',
     target.owner,current_user,target.relrowsecurity,target.relforcerowsecurity);
+ END IF;
+ IF EXISTS (SELECT 1 FROM pg_catalog.pg_proc p
+  WHERE p.oid='app.attendance_policy_captured_coverage(uuid)'::regprocedure
+    AND pg_catalog.pg_has_role('ai_hr_app',p.proowner,'MEMBER')) THEN
+  RAISE EXCEPTION 'Application role can assume the internal overtime proof owner' USING ERRCODE='55000';
  END IF;
  SELECT jsonb_agg(to_jsonb(difference)) INTO policy_drift FROM (
   WITH actual AS (
