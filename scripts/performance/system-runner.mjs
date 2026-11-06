@@ -72,9 +72,16 @@ function summarizeCpu(){
 }
 function summarizeNativeFailures(){
  // The raw logs remain private. Publish only generated references, SQLSTATEs and fixed diagnostic flags.
- const failures=[];
+ const failures=[],payrollReadiness=[];
  for(const name of readdirSync(privateDir).filter(name=>/^server-[0-9]+\.log$/.test(name))){
   const text=readFileSync(join(privateDir,name),'utf8');
+  for(const match of text.matchAll(/^\[fictional-payroll-diagnostic\] (\{[^\r\n]{1,500}\})$/gm)){
+   if(payrollReadiness.length>=30)break;
+   const {payPeriod,population,missing,principal_current,company_admin,company_payroll,global_grants,visible_salary_rows,effective_salary_rows}=JSON.parse(match[1]);
+   if(!/^\d{4}-\d{2}$/.test(payPeriod)||![population,missing,global_grants,visible_salary_rows,effective_salary_rows].every(Number.isInteger)
+    ||![principal_current,company_admin,company_payroll].every(value=>typeof value==='boolean'))continue;
+   payrollReadiness.push({payPeriod,population,missing,principal_current,company_admin,company_payroll,global_grants,visible_salary_rows,effective_salary_rows});
+  }
   // The public-error owner logs one explicit SQLSTATE beside each generated reference.
   // Publish that closed metadata only; never the surrounding SQL, values or stack.
   for(const match of text.matchAll(/\[database error (DB-[A-Z]-[A-F0-9]{6})\] sqlstate=([0-9A-Z]{5}|none)/g)){
@@ -91,6 +98,7 @@ function summarizeNativeFailures(){
     deadlockMessage:/deadlock detected/.test(block),permissionDeniedMessage:/permission denied/.test(block)});
   }
  }
+ if(payrollReadiness.length)writeFileSync(join(out,'payroll-browser-readiness.json'),JSON.stringify(payrollReadiness,null,2));
  writeFileSync(join(out,'server-native-failures.json'),JSON.stringify({scope:'Exact public-error reference/SQLSTATE metadata plus bounded native Draft marker blocks; Draft block errors may overlap; raw logs and SQL excluded',failures},null,2));
 }
 const apps=[],appFds=[];let proxy,upstream,dbStarted=false;
