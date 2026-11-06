@@ -12,7 +12,7 @@ let temporary='';
 const inDb=(value:string,name:string)=>{const url=new URL(value);url.pathname='/'+name;return url.toString();};
 beforeAll(async()=>{await migrateTestDb();await resetDb();temporary=mkdtempSync(join(tmpdir(),'architecture-restore-'));});
 afterAll(async()=>{try{await owner.client.unsafe(`DROP DATABASE IF EXISTS "${scratch}" WITH (FORCE)`);}finally{await closeAll();if(temporary)rmSync(temporary,{recursive:true,force:true});}});
-function run(command:string,args:string[],env:NodeJS.ProcessEnv){
+function run(command:string,args:string[],env:Partial<NodeJS.ProcessEnv>){
  const result=spawnSync(command,args,{env:{...process.env,...env},encoding:'utf8',timeout:180_000,maxBuffer:4*1024*1024});
  expect(result.error).toBeUndefined();expect(result.status,(result.stdout+result.stderr).slice(-12000)).toBe(0);
  return result.stdout;
