@@ -11,6 +11,7 @@ import {createCompany,createDepartment} from '../core/admin';
 import {setCompensation} from '../core/comp';
 import {setRestDay} from '../core/roster';
 import {grantAssistant} from '../core/assistant-grant';
+import {decisionEmploymentAuthorityTx} from '../core/approvals';
 import {withApprovalDelegatesTx} from '../core/notifications';
 import {withDelegatedRequestEffectTx} from '../core/delegated-request-effect';
 import {createClaimType,setClaimPolicy,submitClaim,decideClaim,listPendingClaims,listPendingClaimsPage,pendingClaimTaskMetadata} from '../packs/claims/service';
@@ -96,6 +97,27 @@ describe.each(Object.keys(kinds) as (keyof typeof kinds)[])('delegated %s decisi
 });
 
 describe('request-bound delegated approval effects',()=>{
+ it('keeps batched assignment equal to live scalar delegation after a scope change',async()=>{
+  const unrelated=await hire('Fictional unrelated assignment'),missing=randomUUID();
+  const candidates=[subject.employmentId,unrelated.employmentId,missing];
+  const read=(scope?:{module:string;taskType:string})=>withTenant(delegate,async tx=>{
+   const expected=await tx.execute<{id:string}>(sql`select candidate.id
+    from unnest(array[${sql.join(candidates.map(id=>sql`${id}::uuid`),sql`,`)}]::uuid[]) candidate(id)
+    where app.can_decide_via_delegation(candidate.id,${scope?.module??null},${scope?.taskType??null})`);
+   const batch=await decisionEmploymentAuthorityTx(tx,delegate,candidates,scope);
+   expect(batch.allowed).toEqual(new Set(expected.map(row=>row.id)));
+   return [...batch.allowed];
+  });
+  const claims={module:'claims',taskType:'claims.claim'};
+  expect(await read(claims)).toEqual([subject.employmentId]);
+  expect(await read()).toEqual([subject.employmentId]);
+  await owner.db.insert(schema.reportingLineScope).values({tenantId:b.tenantId,reportingLineId:lineId,module:'leave',taskType:'leave.application'});
+  expect(await read(claims)).toEqual([]);
+  expect(await read({module:'leave',taskType:'leave.application'})).toEqual([subject.employmentId]);
+  await owner.db.update(schema.reportingLine).set({validTo:day(-1)}).where(eq(schema.reportingLine.id,lineId));
+  expect(await read()).toEqual([]);
+ });
+
  it('lists narrow names in native claims and replacement inboxes and task metadata',async()=>{
   const c=await claim(),t=await toil();
   expect((await listPendingClaims(delegate)).map(r=>r.id)).toContain(c);

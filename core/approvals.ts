@@ -142,11 +142,12 @@ export async function decisionEmploymentAuthorityTx(
    ));
   managers.forEach(row=>allowed.add(row.id));
   const delegated=candidates.filter(id=>!allowed.has(id));if(!delegated.length)continue;
-  // Always the canonical three-argument owner: current direct manager, active one-hop edge,
-  // optional task/module coverage and delegation org coverage. Self remains excluded above.
-  const rows=await tx.execute(sql`select subject.id,app.can_decide_via_delegation(subject.id,${scope?.module??null},${scope?.taskType??null}) as ok
-   from (values ${sql.join(delegated.map(id=>sql`(${id}::uuid)`),sql`,`)}) as subject(id)`);
-  for(const row of rows as unknown as {id:string;ok:boolean}[])if(row.ok)allowed.add(row.id);
+  // The native set used by Claim RLS evaluates the same current direct-manager,
+  // one-hop and module/organisation predicates as the scalar command owner.
+  const rows=await tx.execute<{id:string}>(sql`select subject.id
+   from unnest(app.delegated_subject_ids(${scope?.module??null},${scope?.taskType??null})) as subject(id)
+   where subject.id=any(array[${sql.join(delegated.map(id=>sql`${id}::uuid`),sql`,`)}]::uuid[])`);
+  for(const row of rows)allowed.add(row.id);
  }
  return {allowed,self};
 }
