@@ -1,4 +1,4 @@
-import {afterEach,expect,it} from 'vitest';
+import {afterEach,expect,it,vi} from 'vitest';
 import {cleanup,fireEvent,render,screen,waitFor,within} from '@testing-library/react';
 import {NextIntlClientProvider} from 'next-intl';
 import en from '../messages/en.json';import ms from '../messages/ms.json';import zh from '../messages/zh.json';import ta from '../messages/ta.json';import th from '../messages/th.json';import viMessages from '../messages/vi.json';
@@ -7,7 +7,7 @@ import {EmployeeRow} from '../app/admin/personnel/employee-row';
 import {FilterChips,type FilterField} from '../components/filter-panel';
 import {aiReviewDomHtml,captureAiReviewScreenshots} from './helpers/ai-review-screenshots';
 const catalogues={en,ms,zh,ta,th,vi:viMessages};
-afterEach(cleanup);
+afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 const a='11111111-1111-4111-8111-111111111111',b='22222222-2222-4222-8222-222222222222',c='33333333-3333-4333-8333-333333333333';
 it.each(Object.keys(catalogues) as (keyof typeof catalogues)[])('%s renders one private employee search, scoped three-level company tree, removable chips and full BU names',async locale=>{
  const messages=catalogues[locale],copy=messages.personnelOrganisationFilters,base=messages.people.list;
@@ -35,4 +35,28 @@ it('keeps a denied duplicate filter fail-closed while offering no unapproved evi
  const view=render(<PersonnelOrganisationFilters fields={[field]} values={{quality:['suspected_duplicate']}} companies={[]} labels={{filter:'Filter',apply:'Apply',clearAll:'Clear all',activeCount:'1'}} companySearchLabel="Companies" duplicateHint={copy.duplicateUnavailable} canInspectDuplicates={false}/>);
  fireEvent.click(screen.getByText('Filter'));await waitFor(()=>expect(view.container.querySelector('form')).not.toBeNull());
  expect(view.container.querySelector('input[type="checkbox"][value="suspected_duplicate"]')).toBeNull();expect(new FormData(view.container.querySelector('form')!).getAll('quality')).toEqual(['suspected_duplicate']);expect(screen.getByText(copy.duplicateUnavailable)).toBeVisible();
+});
+
+it('loads filter choices only when opened and allows a local retry after a busy response', async () => {
+ const load = vi.fn()
+  .mockResolvedValueOnce(new Response(null, { status: 503 }))
+  .mockResolvedValueOnce(Response.json({ companies: [], canInspectDuplicates: false, options: {} }));
+ vi.stubGlobal('fetch', load);
+ const labels = { filter: 'Filter', apply: 'Apply', clearAll: 'Clear all', activeCount: '0' };
+ render(<>
+  <PersonnelPrivateSearch parameters={[]} active={false} labels={{
+   label: 'Search employees', placeholder: 'Search employees', submit: 'Search',
+   privateHint: 'Private search', active: 'Search applied', clear: 'Clear search', share: 'Share view',
+  }}/>
+  <PersonnelOrganisationFilters fields={[]} values={{}} labels={labels} companySearchLabel="Companies"
+   loadOptions={{ busy: 'Filters are busy', retry: 'Try again' }}/>
+ </>);
+ expect(load).not.toHaveBeenCalled();
+ fireEvent.click(screen.getByText('Filter'));
+ expect(await screen.findByText('Filters are busy')).toBeVisible();
+ expect(screen.getByRole('searchbox', { name: 'Search employees' })).toBeEnabled();
+ expect(screen.queryByRole('button', { name: 'Apply' })).not.toBeInTheDocument();
+ fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+ expect(await screen.findByRole('button', { name: 'Apply' })).toBeEnabled();
+ expect(load).toHaveBeenCalledTimes(2);
 });

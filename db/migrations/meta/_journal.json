@@ -4887,6 +4887,13 @@
       "when": 1793330001850,
       "tag": "2450_personnel_search_projection",
       "breakpoints": true
+    },
+    {
+      "idx": 1551,
+      "version": "7",
+      "when": 1793330001851,
+      "tag": "2451_personnel_company_filter_choices",
+      "breakpoints": true
     }
   ]
 }
