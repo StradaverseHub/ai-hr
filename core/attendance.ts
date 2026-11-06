@@ -3054,7 +3054,13 @@ export function attendanceForEmploymentsRange(
   ctx: SessionContext, employmentIds: string[], from: string, to: string,
   opts: {includePunchReviews?:boolean} = {},
 ): Promise<Map<string, AttendanceRangeRow[]>> {
-  return withTenant(ctx, async (tx) => {
+  return withTenant(ctx, tx => attendanceForEmploymentsRangeTx(tx, ctx, employmentIds, from, to, opts));
+}
+
+async function attendanceForEmploymentsRangeTx(
+  tx: Tx, ctx: SessionContext, employmentIds: string[], from: string, to: string,
+  opts: {includePunchReviews?:boolean} = {},
+): Promise<Map<string, AttendanceRangeRow[]>> {
     const result = new Map<string, AttendanceRangeRow[]>();
     if (from > to || employmentIds.length === 0) return result;
     const employees = await tx.select({id:employment.id, companyId:employment.companyId,
@@ -3189,7 +3195,6 @@ export function attendanceForEmploymentsRange(
       result.set(emp.id,out);
     }
     return result;
-  });
 }
 
 /** R45 92bdf77a — one punch (a single clock-in or clock-out) of a multi-clocking day. Feedback af552c5d
@@ -3218,7 +3223,12 @@ export function attendancePunchesForRange(
   from: string,
   to: string,
 ): Promise<Map<string, AttendancePunchRow[]>> {
-  return withTenant(ctx, async (tx) => {
+  return withTenant(ctx, tx => attendancePunchesForRangeTx(tx, employmentId, from, to));
+}
+
+async function attendancePunchesForRangeTx(
+  tx: Tx, employmentId: string, from: string, to: string,
+): Promise<Map<string, AttendancePunchRow[]>> {
     const byAttendance = new Map<string, AttendancePunchRow[]>();
     if (from > to) return byAttendance;
     const punches = await tx
@@ -3250,7 +3260,6 @@ export function attendancePunchesForRange(
       byAttendance.set(pch.attendanceId, list);
     }
     return byAttendance;
-  });
 }
 
 export type MonthSummaryRow = {
@@ -6199,10 +6208,23 @@ export type MyAttendanceRequestRow = {
  */
 export const MY_ATTENDANCE_REQUEST_ROW_CEILING = 500;
 
-/** Keep the day form's existing newest-100 history window without loading request details. */
-export function hasPendingAttendanceCorrectionInDayHistory(ctx: SessionContext, employmentId: string, date: string): Promise<boolean> {
+/** The day page already selected an own employment. Read the three established
+ * RLS-scoped projections on one connection with the usual read-committed semantics. */
+export function readAttendanceRecordDay(ctx: SessionContext, employmentId: string, date: string) {
   return withTenant(ctx, async tx => {
-    const [row] = await tx.execute<{ pending: boolean }>(sql`
+    const [range, punchesByAttendance, pending] = await Promise.all([
+      attendanceForEmploymentsRangeTx(tx, ctx, [employmentId], date, date),
+      attendancePunchesForRangeTx(tx, employmentId, date, date),
+      hasPendingAttendanceCorrectionInDayHistoryTx(tx, employmentId, date),
+    ]);
+    const row = range.get(employmentId)?.[0] ?? null;
+    return { row, punches: row?.attendanceId ? punchesByAttendance.get(row.attendanceId) ?? [] : [], pending };
+  });
+}
+
+/** Keep the day form's existing newest-100 history window without loading request details. */
+async function hasPendingAttendanceCorrectionInDayHistoryTx(tx: Tx, employmentId: string, date: string): Promise<boolean> {
+  const [row] = await tx.execute<{ pending: boolean }>(sql`
       select exists (
         select 1 from public.attendance_correction pending
         where pending.employment_id = ${employmentId}::uuid
@@ -6216,9 +6238,8 @@ export function hasPendingAttendanceCorrectionInDayHistory(ctx: SessionContext, 
             limit 1 offset 99
           )
       ) as pending
-    `);
-    return row?.pending === true;
-  });
+  `);
+  return row?.pending === true;
 }
 
 /**
