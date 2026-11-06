@@ -9796,6 +9796,27 @@
       "importNewOnly": "Chỉ nhập bản ghi mới"
     },
     "individualImport": {
+      "submitWorkbook": "Tải lên sổ làm việc",
+      "downloadWorkbook": "Tải xuống sổ làm việc gốc",
+      "progress": "Tiến độ",
+      "startedAt": "Bắt đầu lúc",
+      "finishedAt": "Kết thúc lúc",
+      "completedWithErrors": "Hoàn tất có lỗi",
+      "confirmationUnavailable": "Không thể xác nhận lô này nữa.",
+      "queueFull": "Hãy đợi một lô hiện tại hoàn tất trước khi tải lên tệp khác.",
+      "fileReadError": "Không thể đọc sổ làm việc. Hãy dùng mẫu Excel phù hợp.",
+      "noValidRows": "Không có dòng hợp lệ. Hãy xem lỗi từng dòng trước khi tải lên lại.",
+      "importFailed": "Lô đã dừng. Hãy kiểm tra sổ làm việc hoặc quyền truy cập trước khi thử lại.",
+      "batchCounts": "{total} dòng · đã nhập {written} · lỗi {failed}",
+      "batchState": {
+        "pending": "Đang chờ",
+        "validating": "Đang xử lý sổ làm việc",
+        "ready": "Chờ xác nhận",
+        "confirmed": "Chờ nhập",
+        "importing": "Đang nhập",
+        "completed": "Hoàn tất",
+        "failed": "Thất bại"
+      },
       "open": "Nhập Excel",
       "log": "Nhật ký nhập",
       "logHint": "Xem các lô nhập giao dịch cá nhân và kết quả gốc từng dòng.",
