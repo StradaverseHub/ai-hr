@@ -1,3 +1,4 @@
+import {readFileSync} from 'node:fs';
 import {randomUUID} from 'node:crypto';
 import {sql} from 'drizzle-orm';
 import {afterAll,beforeAll,beforeEach,expect,it} from 'vitest';
@@ -45,4 +46,17 @@ it('uses UUID-native frozen actor keys and a private stable precheck with no cal
  expect(attrs.proconfig).toContain('search_path=pg_catalog, public, pg_temp');
  const [acl]=await owner.client`select exists(select 1 from pg_proc p,lateral aclexplode(p.proacl)a where p.oid='app.may_have_attendance_task_metadata()'::regprocedure and a.grantee=0 and a.privilege_type='EXECUTE')as public_execute`;
  expect(acl.public_execute).toBe(false);
+});
+
+it('refuses a changed Attendance SELECT policy before installing the optimized reader',async()=>{
+ const source=readFileSync(new URL('../db/migrations/2503_attendance_pending_visible_headers.sql',import.meta.url),'utf8');
+ const end=source.indexOf('CREATE FUNCTION app.attendance_pending_visible_headers');
+ expect(end).toBeGreaterThan(0);
+ await expect(owner.client.begin(async tx=>{
+  await tx.unsafe('create policy test_unreviewed_attendance_read on public.attendance_correction for select using (true)');
+  await tx.unsafe(source.slice(0,end));
+ })).rejects.toMatchObject({code:'55000',message:'Attendance correction read policies differ from the reviewed source'});
+ const [drift]=await owner.client`select count(*)::int as count from pg_policies
+  where schemaname='public' and tablename='attendance_correction' and policyname='test_unreviewed_attendance_read'`;
+ expect(drift.count).toBe(0);
 });
