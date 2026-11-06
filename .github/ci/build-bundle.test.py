@@ -71,6 +71,41 @@ class BundleTests(unittest.TestCase):
         self.assertNotIn('\n',str(error))
         return json.loads(str(error)[len(prefix):])
 
+    def test_duplicate_payload_is_transferred_once_and_restored_as_regular_files(self):
+        build = self.source / '.next'
+        content = (build / 'server/app/page.js').read_bytes()
+        duplicate = build / 'server/app/zz-copy.js'
+        duplicate.write_bytes(content)
+        executable = build / 'server/app/zz-executable.js'
+        executable.write_bytes(content)
+        executable.chmod(0o755)
+
+        manifest, archive, manifest_path = self.packed()
+        with tarfile.open(archive, 'r:gz') as tar:
+            names = tar.getnames()
+        self.assertIn('server/app/page.js', names)
+        self.assertNotIn('server/app/zz-copy.js', names)
+        self.assertIn('server/app/zz-executable.js', names)
+        self.assertIn('server/app/zz-copy.js', [row['path'] for row in manifest['files']])
+        self.assertEqual(manifest['unpackedBytes'], sum(row['size'] for row in manifest['files']))
+
+        bundle.unpack(archive, manifest_path, self.destination, self.target)
+        original = self.destination / 'server/app/page.js'
+        restored = self.destination / 'server/app/zz-copy.js'
+        self.assertEqual(restored.read_bytes(), content)
+        self.assertFalse(restored.is_symlink())
+        self.assertNotEqual(original.stat().st_ino, restored.stat().st_ino)
+        self.assertEqual(restored.stat().st_mode & 0o777, 0o644)
+        self.assertEqual((self.destination / 'server/app/zz-executable.js').stat().st_mode & 0o777, 0o755)
+        bundle.verify_directory(self.destination, manifest_path, self.target)
+
+    def test_noncanonical_duplicate_archive_member_is_refused(self):
+        build = self.source / '.next'
+        (build / 'server/app/zz-copy.js').write_bytes((build / 'server/app/page.js').read_bytes())
+        manifest, archive, manifest_path = self.packed()
+        self.rewritten(manifest, archive, manifest_path, self.members(manifest))
+        self.refuses_extract(archive, manifest_path)
+
     def test_oversized_member_refusal_identifies_exact_bound_without_reading_payload(self):
         file=self.source/'.next/server/oversized.js'
         with file.open('wb') as stream:stream.truncate(bundle.MAX_FILE+1)
@@ -384,7 +419,7 @@ class BundleTests(unittest.TestCase):
         script='import {BUILD_CAPACITY_PROFILE} from '+json.dumps(javascript)+';console.log(JSON.stringify(BUILD_CAPACITY_PROFILE));'
         actual=json.loads(subprocess.run(['node','--input-type=module','-e',script],capture_output=True,text=True,check=True).stdout)
         self.assertEqual(actual,bundle.CAPACITY_PROFILE)
-        self.assertEqual(bundle.CAPACITY_PROFILE,{'profileVersion':3,'archiveMaxBytes':285212672,'zipMaxBytes':293601280})
+        self.assertEqual(bundle.CAPACITY_PROFILE,{'profileVersion':4,'archiveMaxBytes':285212672,'zipMaxBytes':293601280})
         self.assertEqual((bundle.MAX_ARCHIVE,bundle.MAX_ZIP),(285212672,293601280))
         self.assertEqual((bundle.MAX_FILE,bundle.MAX_PACKAGE,bundle.MAX_MANIFEST,bundle.MAX_UNPACKED,bundle.MAX_FILES),
                          (256*1024**2,32*1024**2,16*1024**2,2*1024**3,40000))
@@ -394,7 +429,8 @@ class BundleTests(unittest.TestCase):
         for size in [256*1024**2+1,264*1024**2+1,bundle.MAX_ARCHIVE]:
             current=json.loads(json.dumps(original));current['archiveBytes']=size
             self.assertIs(bundle.validate_manifest(current),current)
-        mutations=[lambda d:d.update(capacityProfile={'profileVersion':2,'archiveMaxBytes':276824064,'zipMaxBytes':293601280}),
+        mutations=[lambda d:d['capacityProfile'].update(profileVersion=3),
+            lambda d:d.update(capacityProfile={'profileVersion':2,'archiveMaxBytes':276824064,'zipMaxBytes':293601280}),
             lambda d:d['capacityProfile'].update(profileVersion=2),lambda d:d['capacityProfile'].update(archiveMaxBytes=276824064),
             lambda d:d.update(format=1),lambda d:d.update(format=True),lambda d:d.pop('capacityProfile'),
             lambda d:d['capacityProfile'].update(profileVersion=True),lambda d:d['capacityProfile'].update(profileVersion=1),
