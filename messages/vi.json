@@ -31288,6 +31288,11 @@
     }
   },
   "payrollComparison": {
+    "hrRemark": "Ghi chú nhân sự",
+    "hrRemarkEdit": "Sửa ghi chú nhân sự",
+    "hrRemarkSave": "Lưu ghi chú",
+    "hrRemarkConflict": "Ghi chú đã thay đổi. Hãy xem bản mới nhất và thử lại.",
+    "hrRemarkFailed": "Không thể lưu ghi chú. Hãy xem lại bảng so sánh và thử lại.",
     "payCycles": "Chu kỳ trả lương",
     "sourceUpdated": "Lần xử lý bảng lương gần nhất",
     "comparisonTable": "Kết quả so sánh",

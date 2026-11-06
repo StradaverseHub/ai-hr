@@ -36,6 +36,7 @@ export type ComparisonRow = Omit<ComparisonIdentity, 'movements' | 'verifiedTran
   /** Unknown currency does not establish that the two periods share a monetary unit. */
   variance: string | null; variancePct: string | null; reason: PayrollReasonEvidence;
   previousPresent: boolean; currentPresent: boolean;
+  hrRemark?: { body: string; revision: number };
   sources: { id: string; version: number; runId: string }[];
 };
 export type ComparisonTotal = {

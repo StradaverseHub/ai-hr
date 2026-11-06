@@ -1,8 +1,9 @@
 import {createHash} from 'node:crypto';
+import { attachPayrollReconciliationRemarks, builtInPayrollReconciliationSpec } from './payroll-reconciliation-remarks';
 import {executePayrollComparisonTx,payrollComparisonSpec} from './report-payroll-comparison';
 import {payrollComparisonAccessTx} from './report-payroll-access';
 import {MasterReportAccessError} from './employee-master-access';
-import {DEFAULT_PAYROLL_COMPARISON,PAYROLL_COMPARISON_DATASET,validatePayrollComparisonDefinition} from '../lib/payroll-period-comparison';
+import {PAYROLL_COMPARISON_DATASET} from '../lib/payroll-period-comparison';
 /**
  * Custom Report Builder service (ADR-0074, feedback c440b365) — CRUD over user-defined reports plus the
  * runner. A report is a name + a dataset id from the CLOSED registry (core/report-registry.ts) + a
@@ -409,11 +410,12 @@ export async function runPayrollComparisonReport(ctx:SessionContext,scopeIds:rea
   return withTenant(ctx,async tx=>{
     const [saved]=p.id&&!builtIn?await tx.select().from(customReport).where(eq(customReport.id,p.id)).limit(1):[];
     if(p.id&&!builtIn&&!saved)throw new MasterReportAccessError();
-    const spec=builtIn?payrollComparisonSpec(payItemCode===undefined?undefined:validatePayrollComparisonDefinition({...DEFAULT_PAYROLL_COMPARISON,payItemCode})):saved?.spec??p.spec!;
+    const spec=builtIn?builtInPayrollReconciliationSpec(payItemCode):saved?.spec??p.spec!;
     assertValid(spec);
     if(spec.datasetId!==PAYROLL_COMPARISON_DATASET)throw new MasterReportAccessError();
     if(!saved&&!builtIn)await comparisonAccess(tx,ctx,spec,'create',scopeIds);
     const execution=await executePayrollComparisonTx(tx,ctx,spec,scopeIds,builtIn?builtInFilters:p.filters??{},p.verb??'view');
+    if(builtIn)await attachPayrollReconciliationRemarks(tx,ctx,execution);
     let canEdit=true;try{await comparisonAccess(tx,ctx,spec,'edit',execution.companyIds);}catch(error){if(error instanceof MasterReportAccessError)canEdit=false;else throw error;}
     let canExport=true;try{await comparisonAccess(tx,ctx,spec,'export',execution.companyIds);}catch(error){if(error instanceof MasterReportAccessError)canExport=false;else throw error;}
     const [preparer]=ctx.personId?await tx.select({name:person.fullName}).from(person).where(eq(person.id,ctx.personId)).limit(1):[];

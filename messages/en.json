@@ -31288,6 +31288,11 @@
     }
   },
   "payrollComparison": {
+    "hrRemark": "HR remark",
+    "hrRemarkEdit": "Edit HR remark",
+    "hrRemarkSave": "Save remark",
+    "hrRemarkConflict": "This remark changed. Review the latest version and try again.",
+    "hrRemarkFailed": "The remark could not be saved. Review the comparison and try again.",
     "payCycles": "Pay cycles",
     "sourceUpdated": "Payroll last processed",
     "comparisonTable": "Comparison results",

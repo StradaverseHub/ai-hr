@@ -31288,6 +31288,11 @@
     }
   },
   "payrollComparison": {
+    "hrRemark": "人力资源备注",
+    "hrRemarkEdit": "编辑人力资源备注",
+    "hrRemarkSave": "保存备注",
+    "hrRemarkConflict": "此备注已更改。请查看最新版本后重试。",
+    "hrRemarkFailed": "无法保存备注。请查看比较结果后重试。",
     "payCycles": "薪资周期",
     "sourceUpdated": "薪资最近处理时间",
     "comparisonTable": "对比结果",

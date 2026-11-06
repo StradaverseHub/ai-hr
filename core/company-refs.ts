@@ -185,6 +185,7 @@ export const COMPANY_REFERRERS: readonly CompanyRef[] = [
   {table:'bank_import_row',column:'company_id',disposition:'other',note:'Bank and Statutory import source rows, validation and application outcomes retain their company; deleting a company must not cascade this import history.'},
   {table:'payroll_history_import_record',column:'company_id',disposition:'payroll',note:'An imported payroll identity and every correction or recovery retain their original company permanently.'},
   // 929ea296 (PR126) — tax-basis corrections are audited payroll tax evidence: previews, batches, events and revisions refuse the delete.
+  {table:'payroll_reconciliation_remark',column:'company_id',disposition:'payroll',existsFunction:'app.payroll_reconciliation_company_in_use',note:'HR remarks retain their paying company with the reconciliation record.'},
   {table:'payroll_tax_basis_preview',column:'company_id',disposition:'payroll',note:'A tax-basis recalculation preview over the company\'s closed payroll.'},
   {table:'payroll_tax_basis_batch',column:'company_id',disposition:'payroll',note:'A confirmed tax-basis correction batch.'},
   {table:'payroll_tax_basis_event',column:'company_id',disposition:'payroll',note:'The append-only audit trail of a tax-basis correction batch.'},

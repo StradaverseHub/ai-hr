@@ -4,7 +4,8 @@ import { randomUUID } from 'node:crypto';
 import { and, asc, eq } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import * as XLSX from 'xlsx';
-import type { SessionContext } from '../db/client';
+import { withTenant, type SessionContext } from '../db/client';
+import { PayrollReconciliationRemarkConflict, savePayrollReconciliationRemark } from '../core/payroll-reconciliation-remarks';
 import * as s from '../db/schema';
 import { hireEmployee } from '../core/org';
 import { setCompensation } from '../core/comp';
@@ -88,6 +89,26 @@ describe('Payroll comparison consumes generated paid results under the saved rep
     const builtIn = await runPayrollComparisonReport(ctx, [b.companyId], { id: 'reconciliation', filters: { currentPeriod, previousPeriod } });
     expect(builtIn.result.available).toBe(true);
   });
+  it('keeps private HR remarks with the same comparison, refusing stale writes and revoked access', async () => {
+    const f = await fixture();
+    await closeBatch(ctx, { batchId: f.previous.batchId });
+    await generatePayslips(ctx, { batchId: f.current.batchId });
+    const filters = { companyId: b.companyId, currentPeriod, previousPeriod, onlyVariances: '0' };
+    const opened = await runPayrollComparisonReport(ctx, [b.companyId], { id: 'reconciliation', filters });
+    expect(opened.result.rows).toHaveLength(1);
+    const row = opened.result.rows[0];
+    const input = { filters, companyId: b.companyId, employmentId: f.employee.employmentId, currency: row.currency,
+      revision: 0, body: 'Fictional reconciliation remark' };
+    await savePayrollReconciliationRemark(ctx, [b.companyId], input);
+    await expect(savePayrollReconciliationRemark(ctx, [b.companyId], input)).rejects.toBeInstanceOf(PayrollReconciliationRemarkConflict);
+    const exported = await runPayrollComparisonReport(ctx, [b.companyId], { id: 'reconciliation', filters, verb: 'export' });
+    expect(exported.result.rows[0].hrRemark).toEqual({ body: input.body, revision: 1 });
+    expect((await run(f.report.id)).result.rows.every(row => !row.hrRemark)).toBe(true);
+    await setPayrollPermissionGrant(ctx, { companyId: b.companyId, permissionKey: 'report.read.compensation', role: 'hr_admin', allowed: false });
+    expect(await withTenant(ctx, tx => tx.select({ id: s.payrollReconciliationRemark.id }).from(s.payrollReconciliationRemark))).toEqual([]);
+    await expect(savePayrollReconciliationRemark(ctx, [b.companyId], { ...input, revision: 1 })).rejects.toThrow();
+  });
+
   it('compares another recorded pay item to the cent without substituting later compensation', async () => {
     const f = await fixture({ typed: true, allowance: 10.10 });
     await closeBatch(ctx, { batchId: f.previous.batchId });

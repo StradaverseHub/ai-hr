@@ -31288,6 +31288,11 @@
     }
   },
   "payrollComparison": {
+    "hrRemark": "Catatan HR",
+    "hrRemarkEdit": "Edit catatan HR",
+    "hrRemarkSave": "Simpan catatan",
+    "hrRemarkConflict": "Catatan ini telah berubah. Semak versi terkini dan cuba lagi.",
+    "hrRemarkFailed": "Catatan tidak dapat disimpan. Semak perbandingan dan cuba lagi.",
     "payCycles": "Kitaran gaji",
     "sourceUpdated": "Gaji terakhir diproses",
     "comparisonTable": "Keputusan perbandingan",

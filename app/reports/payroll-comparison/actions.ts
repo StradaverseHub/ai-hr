@@ -3,6 +3,7 @@ import {redirect} from 'next/navigation';
 import {revalidatePath} from 'next/cache';
 import {scopedAdmin} from '@/lib/scope';
 import {saveCustomReport,updateCustomReport,getCustomReport,ensurePayrollBasicVarianceSample} from '@/core/custom-reports';
+import {PayrollReconciliationRemarkConflict,savePayrollReconciliationRemark} from '@/core/payroll-reconciliation-remarks';
 import {payrollComparisonSpec} from '@/core/report-payroll-comparison';
 import {validatePayrollComparisonDefinition} from '@/lib/payroll-period-comparison';
 import {publicErrorMessage} from '@/lib/public-error';
@@ -38,4 +39,21 @@ export async function createPayrollComparisonSampleAction(){
     revalidatePath('/reports');destination='/reports/payroll-comparison/'+saved.id;
   }catch(error){destination+='&error='+encodeURIComponent(publicErrorMessage(error));}
   redirect(destination);
+}
+
+export async function savePayrollReconciliationRemarkAction(query: string, companyId: string, employmentId: string,
+  currency: string | null, revision: number, form: FormData) {
+  const {s,scopeIds}=await scopedAdmin();
+  const values=new URLSearchParams(query);
+  values.delete('noteError');
+  const body=form.get('remark');
+  try {
+    if (typeof body !== 'string') throw new Error('Invalid remark.');
+    await savePayrollReconciliationRemark(s,scopeIds,{filters:Object.fromEntries(values),companyId,employmentId,currency,revision,body});
+  } catch (error) {
+    // SQL errors can contain the confidential remark as a bound parameter.
+    values.set('noteError',error instanceof PayrollReconciliationRemarkConflict?'conflict':'failed');
+  }
+  revalidatePath('/reports/payroll-comparison/reconciliation');
+  redirect('/reports/payroll-comparison/reconciliation?'+values);
 }
