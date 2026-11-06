@@ -83,7 +83,9 @@ it('isolates Home role and reporting-visibility query planning with fresh native
    finally{await owner.db.update(s.reportingLine).set({supersededAt:null}).where(eq(s.reportingLine.managerEmploymentId,users[2].employmentId));}
    expect(await read(context(users[2]),users[2].employmentId)).toBe('manager');
    phases[phase]={principalInventory:500,activeProbes:100,elapsedMs,p50Ms:times[49],p95Ms:times[94],maxMs:times.at(-1),errors,liveBoundaryChecks:true};
-   writeFileSync(join(process.env.AIHR_FOCUSED_EVIDENCE_DIR!,'home-role-query.json'),JSON.stringify({kind:'REVERSIBLE_HOME_ROLE_PLAN_EXPERIMENT',releaseEligible:false,roleBaseline:'0584_employee_home_sharing.sql',installedRoleGuarded:roleDefinition.installedBody.trim()===guardedBody.trim(),phases},null,2));expect(errors).toEqual([]);
+   const evidenceDir=process.env.AIHR_FOCUSED_EVIDENCE_DIR;
+   if(evidenceDir)writeFileSync(join(evidenceDir,'home-role-query.json'),JSON.stringify({kind:'REVERSIBLE_HOME_ROLE_PLAN_EXPERIMENT',releaseEligible:false,roleBaseline:'0584_employee_home_sharing.sql',installedRoleGuarded:roleDefinition.installedBody.trim()===guardedBody.trim(),phases},null,2));
+   expect(errors).toEqual([]);
   }
  }finally{for(const definition of definitions)await owner.client.unsafe(definition.installed);}
 },480000);

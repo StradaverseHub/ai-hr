@@ -8,7 +8,7 @@ export async function GET(request:Request){
   const session=await getSession(),query=new URL(request.url).searchParams;
   if([...query.keys()].some(key=>key!=='employmentId')||query.getAll('employmentId').length!==1)
    return Response.json({error:'invalid'},{status:400,headers});
-  return Response.json(await noticesResponse(session,query.get('employmentId')!),{headers});
+  return Response.json(await noticesResponse(session,query.get('employmentId')!,request.signal),{headers});
  }catch(error){
   const code=error instanceof AuthRequiredError?'authentication':error instanceof HomeAccessError?error.code:'unavailable';
   return Response.json({error:code},{status:code==='authentication'?401:code==='employmentUnavailable'?403:503,headers});
