@@ -248,8 +248,8 @@ it.skipIf(!auditProfileRequested)('profiles the Claims audit hash against one mi
   // below keep the ordinary fixture owners and checks.
   await tx.execute(sql`set local session_replication_role = replica`);
   await tx.execute(sql`with people as (
-   insert into public.person (tenant_id,full_name)
-   select ${b.tenantId},'Retained claimant '||n from generate_series(1,1000) n returning id
+   insert into public.person (tenant_id,full_name,primary_email)
+   select ${b.tenantId},'Retained claimant '||n,'payroll-retained-'||n||'@example.test' from generate_series(1,1000) n returning id
   ), subjects as (
    insert into public.employment (tenant_id,company_id,person_id,hired_on)
    select ${b.tenantId},${b.companyId},id,date '2020-01-01' from people returning id
