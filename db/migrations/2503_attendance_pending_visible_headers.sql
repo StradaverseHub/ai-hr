@@ -15,12 +15,16 @@ CREATE POLICY attendance_unrouted_delegate_read ON attendance_header_policy_refe
  USING (tenant_id=app.current_tenant_id() AND app.unrouted_attendance_delegate(id));
 
 DO $verify$
+DECLARE target record; policy_drift jsonb;
 BEGIN
- IF NOT EXISTS (
-  SELECT 1 FROM pg_catalog.pg_class c
-  WHERE c.oid='public.attendance_correction'::regclass AND c.relrowsecurity
-    AND NOT c.relforcerowsecurity AND pg_catalog.pg_get_userbyid(c.relowner)=current_user
- ) OR EXISTS (
+ SELECT c.relrowsecurity, c.relforcerowsecurity, pg_catalog.pg_get_userbyid(c.relowner) AS owner
+ INTO STRICT target FROM pg_catalog.pg_class c WHERE c.oid='public.attendance_correction'::regclass;
+ IF NOT target.relrowsecurity OR target.relforcerowsecurity OR target.owner<>current_user THEN
+  RAISE EXCEPTION 'Unexpected Attendance correction table ownership or RLS mode'
+   USING ERRCODE='55000', DETAIL=format('Owner %s, migration role %s, RLS %s, forced RLS %s',
+    target.owner,current_user,target.relrowsecurity,target.relforcerowsecurity);
+ END IF;
+ SELECT jsonb_agg(to_jsonb(difference)) INTO policy_drift FROM (
   WITH actual AS (
    SELECT polname,polcmd,polpermissive,polroles,pg_catalog.pg_get_expr(polqual,polrelid) AS predicate
    FROM pg_catalog.pg_policy WHERE polrelid='public.attendance_correction'::regclass AND polcmd IN ('r','*')
@@ -31,8 +35,10 @@ BEGIN
   (SELECT * FROM actual EXCEPT ALL SELECT * FROM expected)
   UNION ALL
   (SELECT * FROM expected EXCEPT ALL SELECT * FROM actual)
- ) THEN
-  RAISE EXCEPTION 'Attendance correction read policies differ from the reviewed source' USING ERRCODE='55000';
+) difference;
+ IF policy_drift IS NOT NULL THEN
+  RAISE EXCEPTION 'Attendance correction read policies differ from the reviewed source'
+   USING ERRCODE='55000', DETAIL=policy_drift::text;
  END IF;
 END;
 $verify$;
