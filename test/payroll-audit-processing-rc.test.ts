@@ -270,16 +270,25 @@ it.skipIf(!auditProfileRequested).each([
    from (${paidMembership(batchId)}) paid cross join generate_series(1,${memberClaims}::int) n`);
  });
  const claim = {tenantId:b.tenantId, employmentId:worker.employmentId, claimTypeId:type.id, amount:'12.34'};
+ // Batch-linked rows need not belong to a paid subject, even outside the date window.
+ const linkedNonmember = shape==='dense'
+  ? (await owner.db.execute<{id:string}>(sql`
+      select id from public.employment where tenant_id=${b.tenantId}::uuid
+       and id not in (${paidMembership(batchId)}) order by id limit 1`
+    ))[0]?.id
+  : undefined;
+ if(shape==='dense')expect(linkedNonmember).toBeDefined();
  await owner.db.insert(schema.claimRequest).values([
   {...claim, incurredOn:'2025-12-15', payrollBatchId:batchId},
   {...claim, incurredOn:'2026-01-15', payrollBatchId:batchId},
-  {...claim, incurredOn:'2026-01-16'},
+  {...claim, incurredOn:'2026-01-16', description:'Fictional travel “review” [quote: "]\nsecond line'},
   {...claim, incurredOn:'2025-12-16'},
+  ...(linkedNonmember?[{...claim,employmentId:linkedNonmember,incurredOn:'2025-12-17',payrollBatchId:batchId}]:[]),
  ]);
  await owner.db.execute(sql`analyze public.claim_request`);
  const [retained] = await owner.db.execute<{n:number}>(sql`
   select count(*)::int as n from public.claim_request where tenant_id=${b.tenantId}::uuid`);
- expect(retained.n).toBe(1000004);
+ expect(retained.n).toBe(1000004+Number(Boolean(linkedNonmember)));
 
  const month = {start:'2026-01-01',end:'2026-01-31'};
  const windows = {attendance:month,overtime:month,leave:month,claim:month};
@@ -287,28 +296,62 @@ it.skipIf(!auditProfileRequested).each([
  const linked = sql`select c.* from public.claim_request c where c.payroll_batch_id=${batchId}::uuid`;
  const unlinked = sql`c.payroll_batch_id is distinct from ${batchId}::uuid
   and c.incurred_on between ${month.start}::date and ${month.end}::date`;
- const baseline = sql`${groupRows(sql`${linked} union all select c.* from public.claim_request c
-  where ${unlinked} and c.employment_id in (${membership})`)} order by e`;
+ const selectedClaims=sql`${linked} union all select c.* from public.claim_request c
+  where ${unlinked} and c.employment_id in (${membership})`;
+ const baseline = sql`${groupRows(selectedClaims)} order by e`;
  const byMember = sql`${groupRows(sql`${linked} union all select matched.*
   from (select distinct employment_id from (${membership}) paid) member
   cross join lateral (
    select c.* from public.claim_request c where ${unlinked} and c.employment_id=member.employment_id offset 0
   ) matched`)} order by e`;
- const selected=members*memberClaims+3;
+ // jsonb renders an array with the same canonical element text and ", " separator.
+ const serializedArray=sql`'[' || string_agg(to_jsonb(x)::text, ', ' order by x.id) || ']'`;
+ const jsonArray=sql`jsonb_agg(to_jsonb(x) order by x.id)::text`;
+ const serialized=sql`select x.employment_id as e,count(*)::int as n,
+  app.payroll_audit_hash(${serializedArray}) as h
+  from (${selectedClaims}) x group by x.employment_id order by x.employment_id`;
+ const groupedPerMember=(array:SQL)=>sql`
+  with paid as materialized (select distinct employment_id from (${membership}) p),
+  subjects as (
+   select employment_id from paid
+   union
+   select c.employment_id from public.claim_request c where c.payroll_batch_id=${batchId}::uuid
+  )
+  select subject.employment_id as e,component.n,component.h
+  from subjects subject left join paid on paid.employment_id=subject.employment_id
+  cross join lateral (
+   select count(*)::int as n,app.payroll_audit_hash(${array}) as h
+   from (
+    select c.* from public.claim_request c
+    where c.payroll_batch_id=${batchId}::uuid and c.employment_id=subject.employment_id
+    union all
+    select c.* from public.claim_request c
+    where paid.employment_id is not null and c.employment_id=subject.employment_id and ${unlinked}
+   ) x
+   having count(*)>0
+  ) component
+  order by subject.employment_id`;
+ const selected=members*memberClaims+3+Number(Boolean(linkedNonmember));
  const phases = await processingTx(root,batchId,async tx => {
   const [identity] = await tx.execute<{role:string}>(sql`select current_user as role`);
   expect(identity.role).toBe('ai_hr_app');
   const oracle = await runInputsTx(tx,{batchId,payPeriod:'2026-01',windows});
   const expected=await exactRows(tx,baseline);
   expect(oracle.employments).toBe(members);
-  expect(expected).toHaveLength(members);
+  expect(expected).toHaveLength(members+Number(Boolean(linkedNonmember)));
   expect(expected.find(row=>row.e===worker.employmentId)?.n).toBe(memberClaims+3);
-  expect(expected.filter(row=>row.e!==worker.employmentId).every(row=>row.n===memberClaims)).toBe(true);
+  if(linkedNonmember)expect(expected.find(row=>row.e===linkedNonmember)?.n).toBe(1);
+  expect(expected.filter(row=>row.e!==worker.employmentId&&row.e!==linkedNonmember)
+   .every(row=>row.n===memberClaims)).toBe(true);
   const digest=fold(expected);
   expect(digest.rows).toBe(selected);
   expect(oracle.components.claims).toEqual(digest);
   const results = [];
-  for (const [phase,query] of [['baseline',baseline],['by-member',byMember],['baseline-restored',baseline]] as const) {
+  for (const [phase,query] of [
+   ['baseline',baseline],['by-member',byMember],['grouped-per-member',groupedPerMember(jsonArray)],
+   ['serialized-array',serialized],['grouped-per-member-serialized',groupedPerMember(serializedArray)],
+   ['baseline-restored',baseline],
+  ] as const) {
    expect(Array.from(await tx.execute(query))).toEqual(Array.from(expected));
    const plans = [], elapsedMs=[];
    for (let attempt=0; attempt<3; attempt++) {
