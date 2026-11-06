@@ -3813,7 +3813,7 @@ export async function requestAttendanceCorrection(ctx:SessionContext,p:Attendanc
     // The shared attempt has rolled back. Never upgrade Access or retry an effect failure.
    }
   }
-  return withOwnedExclusiveAttendanceWrite(current,tx=>run(tx,'exclusive-held')).catch(attendanceCorrectionSubmissionFailure);
+  return withOwnedExclusiveAttendanceWrite(current,'submission',tx=>run(tx,'exclusive-held')).catch(attendanceCorrectionSubmissionFailure);
  });
 }
 
@@ -4106,24 +4106,29 @@ const attendanceApprovalQueues: AttendanceWriteQueues = new Map();
 const attendanceSubmissionQueues: AttendanceWriteQueues = new Map();
 const attendancePerformance = globalThis as typeof globalThis & {
   __aihrPerfBeginAttendanceApproval?: () => { acquired: () => void; finished: () => void };
+  __aihrPerfAttendanceExclusiveAdmission?: (operation:'submission'|'approval',outcome:'immediate'|'miss'|'recovered'|'blockingFallback') => void;
 };
 
 const attendanceExclusiveAccessBusy = new Error('Attendance exclusive Access admission is busy.');
 
 /** A failed try rolls back before the retry delay, returning the connection to the pool.
  * Keep the original blocking lock after the bounded retry. */
-async function withOwnedExclusiveAttendanceWrite<T>(ctx: SessionContext, write: (tx: Tx) => Promise<T>): Promise<T> {
+async function withOwnedExclusiveAttendanceWrite<T>(ctx: SessionContext, operation:'submission'|'approval', write: (tx: Tx) => Promise<T>): Promise<T> {
+  const record=attendancePerformance.__aihrPerfAttendanceExclusiveAdmission;
   for (const delayMs of [0, 100]) {
     if (delayMs) await new Promise<void>(resolve => setTimeout(resolve, delayMs));
     try {
       return await withTenant(ctx, async tx => {
         if (!await tryLockAccessConfigurationTx(tx, ctx.tenantId)) throw attendanceExclusiveAccessBusy;
+        record?.(operation,delayMs?'recovered':'immediate');
         return write(tx);
       });
     } catch (error) {
       if (error !== attendanceExclusiveAccessBusy) throw error;
+      record?.(operation,'miss');
     }
   }
+  record?.(operation,'blockingFallback');
   return withTenant(ctx, async tx => {
     await lockAccessConfigurationTx(tx, ctx.tenantId);
     return write(tx);
@@ -4763,7 +4768,7 @@ export async function decideAttendanceCorrection(
         }
       }
       // The shared attempt rolled back before any effect. Acquire exclusive Access in a fresh Tx.
-      return withOwnedExclusiveAttendanceWrite(ctx, tx => decide(tx, undefined, 'exclusive-held'));
+      return withOwnedExclusiveAttendanceWrite(ctx, 'approval', tx => decide(tx, undefined, 'exclusive-held'));
     }, attendancePerformance.__aihrPerfBeginAttendanceApproval?.());
   }
   if (p.decision !== 'rejected' || !ctx.userId || ctx.agent || !correctionIdIsCanonical) return withTenant(ctx, decide);

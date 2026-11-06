@@ -202,14 +202,18 @@ describe('approved attendance clock-data corrections', () => {
     const actor = approval ? await entitledCtx(b) : a;
     const timings = globalThis as typeof globalThis & {
       __aihrPerfBeginTransaction?: (poolMax: number) => { acquired: () => void; finished: () => void };
+      __aihrPerfAttendanceExclusiveAdmission?: (operation: string, outcome: string) => void;
     };
     const previousTiming = timings.__aihrPerfBeginTransaction;
+    const previousAdmission = timings.__aihrPerfAttendanceExclusiveAdmission;
     const attempts: { started: number; acquired?: number; finished?: number }[] = [];
+    const admissions: [string, string][] = [];
     let command: Promise<unknown> | undefined;
     try {
       await owner.db.transaction(async tx => {
         const [holder] = await tx.execute<{ pid: number }>(sql`select pg_backend_pid() as pid`);
         await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${'access-configuration:' + b.tenantId},0))`);
+        timings.__aihrPerfAttendanceExclusiveAdmission = (kind, outcome) => admissions.push([kind, outcome]);
         timings.__aihrPerfBeginTransaction = () => {
           const attempt: typeof attempts[number] = { started: performance.now() };
           attempts.push(attempt);
@@ -235,10 +239,12 @@ describe('approved attendance clock-data corrections', () => {
         expect(attempts[1].finished).toBeDefined();
         expect(attempts[2].started).toBeGreaterThanOrEqual(attempts[1].finished!);
         expect(attempts[2].finished).toBeUndefined();
+        expect(admissions).toEqual([[operation, 'miss'], [operation, 'miss'], [operation, 'blockingFallback']]);
       });
       await command;
     } finally {
       timings.__aihrPerfBeginTransaction = previousTiming;
+      timings.__aihrPerfAttendanceExclusiveAdmission = previousAdmission;
       await command;
     }
     const rows = await owner.db.select({ id: schema.attendanceCorrection.id, status: schema.attendanceCorrection.status })

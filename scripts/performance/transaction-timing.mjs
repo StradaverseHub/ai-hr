@@ -10,6 +10,9 @@ if(process.env.GITHUB_ACTIONS==='true'&&path){
  let windowStart=Date.now();
  let pending=0,holding=0,peakPending=0,peakHolding=0,failedBeforeCallback=0;
  let approvalPending=0,approvalRunning=0,peakApprovalPending=0;
+ const admissionCounts=()=>({immediate:0,miss:0,recovered:0,blockingFallback:0});
+ const admissionWindow=()=>({submission:admissionCounts(),approval:admissionCounts()});
+ let attendanceExclusiveAdmission=admissionWindow();
  const record=(histogram,ms)=>histogram.record(Math.max(1,Math.round(ms*1e6)));
  const describe=histogram=>({
   count:histogram.count,
@@ -61,17 +64,23 @@ if(process.env.GITHUB_ACTIONS==='true'&&path){
    },
   };
  };
+ globalThis.__aihrPerfAttendanceExclusiveAdmission=(operation,outcome)=>{
+  attendanceExclusiveAdmission[operation][outcome]++;
+ };
  const save=()=>{
   try{
    const capturedAt=Date.now();
    windows.push({from:windowStart,to:capturedAt,pending,holding,startDelay:describe(startDelay),held:describe(held),
-    attendanceApproval:{pending:approvalPending,running:approvalRunning,queueWait:describe(approvalWait),afterAdmission:describe(approvalWork)}});
+    attendanceApproval:{pending:approvalPending,running:approvalRunning,queueWait:describe(approvalWait),afterAdmission:describe(approvalWork)},
+    attendanceExclusiveAdmission});
    if(windows.length>180)windows.shift();
    windowStart=capturedAt;
+   attendanceExclusiveAdmission=admissionWindow();
    startDelay.reset();held.reset();approvalWait.reset();approvalWork.reset();
    writeFileSync(path+'.tmp',JSON.stringify({
     scope:'Application withTenant transactions in bounded five-second windows. Start delay includes pool wait, database BEGIN and callback scheduling. Held includes callback and transaction completion.',
     attendanceApprovalScope:'Process-local native approvals only. Queue wait ends before requesting a connection. After admission includes pool, locks, transaction and any fallback. No identities.',
+    attendanceExclusiveAdmissionScope:'Owned exclusive Attendance writes only. Miss counts failed tries, including both tries before blocking fallback. No identities.',
     peakApprovalPending,capturedAt:new Date(capturedAt).toISOString(),observedPoolSizes:[...observedPoolSizes],peakPending,peakHolding,failedBeforeCallback,windows,
    }));
    renameSync(path+'.tmp',path);
