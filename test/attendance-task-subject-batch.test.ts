@@ -2,15 +2,59 @@
 import {randomUUID} from 'node:crypto';
 import {writeFileSync} from 'node:fs';
 import {join} from 'node:path';
-import {eq} from 'drizzle-orm';
+import {eq,sql} from 'drizzle-orm';
 import {roleAssignment} from '../db/schema';
-import {afterAll,beforeAll,expect,it} from 'vitest';
-import type {SessionContext} from '../db/client';
+import {afterAll,beforeAll,expect,it,vi} from 'vitest';
+import {client,withTenant,type SessionContext} from '../db/client';
 import {hireEmployee,setReportingLine} from '../core/org';
 import {pendingAttendanceTaskMetadata,requestAttendanceCorrection} from '../core/attendance';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {adminCtx,closeAll,createAppUser,migrateTestDb,owner,resetDb,seedBase,setModule} from './harness';
 import {legacyPendingAttendanceTaskMetadata} from './helpers/attendance-task-original';
+
+type ExplainNode = {
+ 'Node Type':string;
+ 'Function Name'?:string;
+ 'Actual Loops'?:number;
+ 'Actual Rows'?:number;
+ 'Shared Hit Blocks'?:number;
+ Plans?:ExplainNode[];
+};
+
+async function attendanceSubjectPlan(actor:SessionContext,companyId:string){
+ const captured:{query:string;params:unknown[]}[]=[];
+ const nativeBegin=client.begin;
+ const begin=vi.spyOn(client,'begin').mockImplementation(((...args:unknown[])=>{
+  const callbackIndex=args.findIndex(arg=>typeof arg==='function');
+  const callback=args[callbackIndex] as (native:typeof client)=>unknown;
+  args[callbackIndex]=(native:typeof client)=>callback(new Proxy(native,{
+   get(target,key,receiver){
+    if(key!=='unsafe')return Reflect.get(target,key,receiver);
+    return (query:string,...values:unknown[])=>{
+     if(query.startsWith('select pending_attendance.id'))captured.push({query,params:values[0] as unknown[]});
+     return Reflect.apply(target.unsafe,target,[query,...values]);
+    };
+   },
+  }));
+  return Reflect.apply(nativeBegin,client,args);
+ }) as typeof client.begin);
+ try{
+  await pendingAttendanceTaskMetadata(actor,[companyId]);
+ }finally{
+  begin.mockRestore();
+ }
+ expect(captured).toHaveLength(1);
+ const [{query,params}]=captured;
+ const fragments=query.split(/(\$\d+)/).map((part,index)=>index%2?sql`${params[Number(part.slice(1))-1]}`:sql.raw(part));
+ const [row]=await withTenant(actor,tx=>tx.execute<{'QUERY PLAN':{Plan:ExplainNode}[]}>(sql`
+  explain (analyze, buffers, format json) ${sql.join(fragments,sql.raw(''))}
+ `));
+ const compact=(node:ExplainNode):unknown=>({
+  type:node['Node Type'],function:node['Function Name'],loops:node['Actual Loops'],
+  rows:node['Actual Rows'],sharedHits:node['Shared Hit Blocks'],children:node.Plans?.map(compact),
+ });
+ return compact(row['QUERY PLAN'][0].Plan);
+}
 
 beforeAll(migrateTestDb);afterAll(closeAll);
 it('keeps the exact uncapped actionable queue while reducing repeated administrator and manager subject work',async()=>{
@@ -50,6 +94,10 @@ it('keeps the exact uncapped actionable queue while reducing repeated administra
   const control=Math.min(phases[0].elapsedMs,phases[3].elapsedMs);
   const candidate=Math.max(phases[1].elapsedMs,phases[2].elapsedMs);
   improvementRatios[name]=candidate/control;
+ }
+ if(process.env.AIHR_FOCUSED_EVIDENCE_DIR){
+  const plans={administrator:await attendanceSubjectPlan(admin,b.companyId),manager:await attendanceSubjectPlan(reviewer,b.companyId)};
+  writeFileSync(join(process.env.AIHR_FOCUSED_EVIDENCE_DIR,'attendance-task-subject-plans.json'),JSON.stringify(plans,null,2));
  }
  await owner.db.delete(roleAssignment).where(eq(roleAssignment.appUserId,reviewer.userId!));
  await expect(legacyPendingAttendanceTaskMetadata(reviewer,[b.companyId])).rejects.toThrow();
