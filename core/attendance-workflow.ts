@@ -274,20 +274,28 @@ export async function actionableAttendanceApplicationIdsTx(tx:Tx,ctx:SessionCont
  // Bound transport parameters, never the number of returned tasks.
  for(let offset=0;offset<rows.length;offset+=1000){
   const chunk=rows.slice(offset,offset+1000);
-  const flows=await tx.select({correctionId:request.correctionId,employmentId:request.employmentId,version:request.routingVersion})
-   .from(request).where(inArray(request.correctionId,chunk.map(row=>row.id)));
+  // Resolve the routed version and its native decision proof in one statement.
+  const flows=await tx.select({
+   correctionId:request.correctionId,
+   employmentId:request.employmentId,
+   version:request.routingVersion,
+   allowed:sql<boolean|null>`case
+    when ${request.routingVersion}=2 then app.attendance_workflow_v2_decide(${request.correctionId})
+    when ${request.routingVersion} in (3,4) then app.attendance_workflow_v3_decision_slot(${request.correctionId}) is not null
+    else null end`,
+  }).from(request).where(inArray(request.correctionId,chunk.map(row=>row.id)));
   const byId=new Map(flows.map(flow=>[flow.correctionId,flow]));
-  const versioned=chunk.filter(row=>{const flow=byId.get(row.id);return flow&&[2,3,4].includes(flow.version);});
-  for(const row of versioned)if(byId.get(row.id)!.employmentId!==row.employmentId)
-   throw new AttendanceWorkflowError('scope','The application subject does not match its frozen workflow.');
-  for(const version of [2,3]){
-   const ids=versioned.filter(row=>version===2?byId.get(row.id)!.version===2:byId.get(row.id)!.version!==2).map(row=>row.id);
-   if(!ids.length)continue;
-   const proof=version===2?sql`app.attendance_workflow_v2_decide(q.id)`:sql`app.attendance_workflow_v3_decision_slot(q.id) IS NOT NULL`;
-   const proofs=await tx.execute<{id:string;ok:boolean}>(sql`select q.id,(${proof}) as ok from(values ${sql.join(ids.map(id=>sql`(${id}::uuid)`),sql`,`)})q(id)`);
-   for(const row of proofs)if(row.ok)allowed.add(row.id);
+  const legacy=[];
+  for(const row of chunk){
+   const flow=byId.get(row.id);
+   if(!flow||![2,3,4].includes(flow.version)){
+    legacy.push(row);
+    continue;
+   }
+   if(flow.employmentId!==row.employmentId)
+    throw new AttendanceWorkflowError('scope','The application subject does not match its frozen workflow.');
+   if(flow.allowed)allowed.add(row.id);
   }
-  const versionedIds=new Set(versioned.map(row=>row.id)),legacy=chunk.filter(row=>!versionedIds.has(row.id));
   if(legacy.length){
    const authority=await decisionEmploymentAuthorityTx(tx,ctx,legacy.map(row=>row.employmentId),scopeOf('attendance.correction'));
    for(const row of legacy)if(authority.allowed.has(row.employmentId)&&!authority.self.has(row.employmentId))allowed.add(row.id);
