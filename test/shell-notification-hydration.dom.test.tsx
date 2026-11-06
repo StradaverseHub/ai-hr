@@ -39,28 +39,29 @@ async function probe({delayBell,total,monolith}:{delayBell:boolean;total:number;
  host.innerHTML=renderToString(<Tree/>);
  const serverBell=host.querySelector('button')!.outerHTML;
  const errors:string[]=[];let root:Root|undefined;
+ const warnings:string[]=[];const consoleError=vi.spyOn(console,'error').mockImplementation((...args)=>warnings.push(args.map(String).join(' ')));
  try{
   client=true;
   await act(async()=>{root=hydrateRoot(host,<Tree/>,{onRecoverableError(error,info){errors.push(String(error)+'\n'+info.componentStack);}});});
   await act(async()=>{source.resolve({state:'ready',items:[],total,approvalCount:total,claimTotal:0,hasAssignedAttendanceApproval:total>0,hasAssignedApproval:total>0});await source.promise;});
   await act(async()=>{blocked=false;gate.resolve();await gate.promise;});
   const clientBell=host.querySelector('button')!.outerHTML;
-  console.log(JSON.stringify({delayBell,total,monolith,serverBell,clientBell,errors}));
-  return {errors,label:host.querySelector('button')!.getAttribute('aria-label')};
- }finally{await act(async()=>root?.unmount());host.remove();}
+  console.log(JSON.stringify({delayBell,total,monolith,serverBell,clientBell,errors,warnings}));
+  return {errors,warnings,label:host.querySelector('button')!.getAttribute('aria-label')};
+ }finally{await act(async()=>root?.unmount());host.remove();consoleError.mockRestore();}
 }
 
 describe('approval facts and notification bell hydration ordering',()=>{
  it('hydrates the previous inline bell before approval facts publish',async()=>{
   const result=await probe({delayBell:false,total:3,monolith:true});
-  expect(result.errors).toEqual([]);expect(result.label).toContain('3 open tasks');
+  expect(result.errors).toEqual([]);expect(result.warnings).toEqual([]);expect(result.label).toContain('3 open tasks');
  });
  it.each([true,false])('hydrates a delayed bell with pending task count without mismatch (monolith=%s)',async monolith=>{
   const result=await probe({delayBell:true,total:3,monolith});
-  expect(result.errors).toEqual([]);expect(result.label).toContain('3 open tasks');
+  expect(result.errors).toEqual([]);expect(result.warnings).toEqual([]);expect(result.label).toContain('3 open tasks');
  });
  it('hydrates a delayed bell with no assigned task count without mismatch',async()=>{
   const result=await probe({delayBell:true,total:0,monolith:true});
-  expect(result.errors).toEqual([]);
+  expect(result.errors).toEqual([]);expect(result.warnings).toEqual([]);expect(result.label).toContain('0 open tasks');
  });
 });
