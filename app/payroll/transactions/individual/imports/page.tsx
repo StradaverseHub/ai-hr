@@ -46,7 +46,7 @@ export default async function IndividualImportLogPage({searchParams}: {
           <td className="p-3">{t(item.method)}</td>
           <td className="p-3">{f.dateTime(new Date(item.at), {dateStyle: 'medium', timeStyle: 'short'})}</td>
           <td className="p-3 font-mono text-xs">{item.by}</td>
-          <td className="p-3"><p>{item.status}</p><p className="text-xs text-muted-foreground">{t('batchCounts', item)}</p></td>
+          <td className="p-3"><p>{item.status}</p><p className="text-xs text-muted-foreground">{t('batchCounts', {total: item.total, written: item.written, failed: item.failed})}</p></td>
           <td className="p-3">{item.progress === null ? '—' : `${item.progress}%`}</td>
           <td className="p-3"><Link className="text-primary underline" href={item.href}>{t('details')}</Link></td>
         </tr>)}</tbody>
