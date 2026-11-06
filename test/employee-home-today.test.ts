@@ -2,21 +2,21 @@ import {beforeEach,describe,expect,it,vi} from 'vitest';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {liveClockSeconds} from '../lib/clock-elapsed';
 import {validateEmployeeHomeToday,type EmployeeHomeToday} from '../lib/employee-home-today';
-const state=vi.hoisted(()=>({subject:vi.fn(),enabled:vi.fn(),clock:vi.fn(),kind:vi.fn(),locations:vi.fn(),leave:vi.fn(),payroll:vi.fn()}));
+const state=vi.hoisted(()=>({subject:vi.fn(),enabled:vi.fn(),clock:vi.fn(),locations:vi.fn(),leave:vi.fn(),payroll:vi.fn()}));
 vi.mock('../db/client',()=>({withTenant:async(_ctx:unknown,read:(tx:unknown)=>unknown)=>read({})}));
 vi.mock('../core/employee-home',()=>({requireSelectedOwnHomeEmploymentId:state.subject}));
 vi.mock('../core/entitlements',()=>({isModuleEnabled:state.enabled}));
-vi.mock('../packs/attendance/service',()=>({ownClockTodaySummaryTx:state.clock,workedDayKindForTx:state.kind,employeeClockingLocationLabelsTx:state.locations}));
+vi.mock('../packs/attendance/service',()=>({ownClockTodaySummaryTx:state.clock,employeeClockingLocationLabelsTx:state.locations}));
 vi.mock('../packs/leave/service',()=>({approvedLeavePresenceByEmploymentTx:state.leave}));
 vi.mock('../packs/payroll/service',()=>({readOwnNextPayrollPaymentDate:state.payroll}));
 import {readEmployeeHomeToday} from '../core/employee-home-today';
 const now=new Date().toISOString(),date=todayInKualaLumpur(new Date(now)),ctx={tenantId:'tenant',personId:'person',userId:'login',roles:['employee']} as Parameters<typeof readEmployeeHomeToday>[0];
 export function todayData():EmployeeHomeToday{return {version:1,employmentId:'own',serverNow:now,businessDate:date,attendanceEnabled:true,payrollEnabled:true,clock:{date,clockedIn:false,openSince:null,workedSeconds:300,crossesMidnight:false,shift:{code:'SF',start:'09:00',end:'18:00'},geofencingRequired:false,photoRequired:false},dayKind:'workday',leavePresence:null,workLocations:{total:1,names:['Fictional HQ']},payday:{date,daysAway:0}};}
-beforeEach(()=>{vi.clearAllMocks();state.subject.mockResolvedValue('own');state.enabled.mockReturnValue(true);state.clock.mockResolvedValue({...todayData().clock,serverNow:now,attendancePhotoSetting:'not_required',captureGPS:'private'});state.kind.mockResolvedValue('workday');state.locations.mockResolvedValue({total:1,names:['Fictional HQ']});state.leave.mockResolvedValue(new Map());state.payroll.mockResolvedValue(date);});
+beforeEach(()=>{vi.clearAllMocks();state.subject.mockResolvedValue('own');state.enabled.mockReturnValue(true);state.clock.mockResolvedValue({...todayData().clock,serverNow:now,businessDate:date,dayKind:'workday',attendancePhotoSetting:'not_required',captureGPS:'private'});state.locations.mockResolvedValue({total:1,names:['Fictional HQ']});state.leave.mockResolvedValue(new Map());state.payroll.mockResolvedValue(date);});
 describe('Your Day independent own metadata',()=>{
  it('uses canonical owners and sends only the small clock and recorded payment facts',async()=>{
   const value=await readEmployeeHomeToday(ctx,'own');expect(validateEmployeeHomeToday(value,'own')).toEqual(todayData());
-  expect(state.leave.mock.calls[0][0]).toBe(state.kind.mock.calls[0][0]);
+  expect(state.leave).toHaveBeenCalledWith(state.clock.mock.calls[0][0],['own'],date,date);
   expect(state.subject).toHaveBeenCalledWith(ctx,'own');expect(state.clock).toHaveBeenCalledWith(expect.any(Object),ctx,'own');
   const [attendanceTx]=state.clock.mock.calls[0];
   expect(state.locations).toHaveBeenCalledWith(attendanceTx,'own');
@@ -26,15 +26,16 @@ describe('Your Day independent own metadata',()=>{
  it('does not read disabled attendance or payroll owners',async()=>{
   state.enabled.mockReturnValue(false);const value=await readEmployeeHomeToday(ctx,'own');
   expect(validateEmployeeHomeToday(value,'own')).toMatchObject({clock:null,dayKind:null,payday:null,workLocations:{total:0,names:[]}});
-  for(const reader of [state.clock,state.kind,state.locations,state.leave,state.payroll])expect(reader).not.toHaveBeenCalled();
+  for(const reader of [state.clock,state.locations,state.leave,state.payroll])expect(reader).not.toHaveBeenCalled();
  });
  it('unavailable own identity stops all domain reads',async()=>{
   state.subject.mockRejectedValue(Error('unavailable'));await expect(readEmployeeHomeToday(ctx,'foreign')).rejects.toThrow('unavailable');expect(state.clock).not.toHaveBeenCalled();
  });
  it('does not turn an owner failure into a false empty day',async()=>{state.clock.mockRejectedValue(Error('offline'));await expect(readEmployeeHomeToday(ctx,'own')).rejects.toThrow('offline');});
  it('retains approved part-day presence and an open overnight date',async()=>{
-  state.leave.mockResolvedValue(new Map([['own',new Map([[date,'part_day']])]]));state.clock.mockResolvedValue({...todayData().clock,serverNow:now,clockedIn:true,openSince:now,crossesMidnight:true,attendancePhotoSetting:'required'});
-  expect(await readEmployeeHomeToday(ctx,'own')).toMatchObject({leavePresence:'part_day',clock:{clockedIn:true,crossesMidnight:true,photoRequired:true}});
+  const overnightDate=todayInKualaLumpur(new Date(Date.parse(now)-86400000));
+  state.leave.mockResolvedValue(new Map([['own',new Map([[date,'part_day']])]]));state.clock.mockResolvedValue({...todayData().clock,date:overnightDate,serverNow:now,businessDate:date,dayKind:'rest_day',clockedIn:true,openSince:now,crossesMidnight:true,attendancePhotoSetting:'required'});
+  expect(await readEmployeeHomeToday(ctx,'own')).toMatchObject({businessDate:date,dayKind:'rest_day',leavePresence:'part_day',clock:{date:overnightDate,clockedIn:true,crossesMidnight:true,photoRequired:true}});
  });
  it.each([
   (v:EmployeeHomeToday)=>({...v,employmentId:'foreign'}),

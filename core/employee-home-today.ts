@@ -1,7 +1,7 @@
 import {withTenant,type SessionContext} from '../db/client';
 import {requireSelectedOwnHomeEmploymentId} from './employee-home';
 import {isModuleEnabled} from './entitlements';
-import {ownClockTodaySummaryTx,workedDayKindForTx,employeeClockingLocationLabelsTx} from '../packs/attendance/service';
+import {ownClockTodaySummaryTx,employeeClockingLocationLabelsTx} from '../packs/attendance/service';
 import {approvedLeavePresenceByEmploymentTx} from '../packs/leave/service';
 import {readOwnNextPayrollPaymentDate} from '../packs/payroll/service';
 import {todayInKualaLumpur} from '../lib/hr-date';
@@ -15,9 +15,8 @@ export async function readEmployeeHomeToday(ctx:SessionContext,employmentId:stri
  const [attendance,paymentDate]=await Promise.all([
   attendanceEnabled?withTenant(ctx,async tx=>{
    const clock=await ownClockTodaySummaryTx(tx,ctx,subjectId);
-   const businessDate=todayInKualaLumpur(new Date(clock.serverNow));
-   const [dayKind,presence,workLocations]=await Promise.all([
-    workedDayKindForTx(tx,subjectId,businessDate),
+   const {businessDate,dayKind}=clock;
+   const [presence,workLocations]=await Promise.all([
     approvedLeavePresenceByEmploymentTx(tx,[subjectId],businessDate,businessDate),
     employeeClockingLocationLabelsTx(tx,subjectId),
    ]);

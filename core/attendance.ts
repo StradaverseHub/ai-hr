@@ -7041,7 +7041,7 @@ async function deriveStoredAttendanceTx(tx:Tx,schedule:ResolvedSchedule,p:{emplo
 /** Presentation/command anchoring only; calculation remains in the existing writer. */
 export async function clockScheduleForTx(tx: Tx, employmentId: string, date: string) {
   const schedule = await scheduleFor(tx, employmentId, date);
-  return { crossesMidnight: schedule.crossesMidnight, durationOnly: schedule.durationOnly === true, start: schedule.shiftStart, end: schedule.shiftEnd, code: schedule.displayShiftCode ?? null };
+  return { crossesMidnight: schedule.crossesMidnight, durationOnly: schedule.durationOnly === true, start: schedule.shiftStart, end: schedule.shiftEnd, code: schedule.displayShiftCode ?? null, dayKind: workedDayKindForSchedule(schedule) };
 }
 
 

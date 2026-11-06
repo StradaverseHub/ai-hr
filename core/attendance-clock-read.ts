@@ -5,7 +5,7 @@ import { attendance, attendancePunch, attendanceClockCapture, attendanceCorrecti
 import type { SessionContext, Tx } from '../db/client';
 import { assertModuleGate, withAttendanceTenant as withTenant } from './module-gate';
 import {resolveOwnClockEmployment,OwnClockEmploymentUnavailableError} from './attendance-clock-subject';
-import { clockScheduleForTx, resolveGeofence,OutsideGeofenceError,GeofenceQualityError } from './attendance';
+import { clockScheduleForTx, workedDayKindForTx, resolveGeofence,OutsideGeofenceError,GeofenceQualityError } from './attendance';
 import { todayInKualaLumpur } from '../lib/hr-date';
 import { clockCommandContext } from '../lib/clock-command-context';
 import { clockCaptureInstantTx } from './attendance-clock';
@@ -91,7 +91,7 @@ async function ownClockCoreTx(tx:Tx,employmentId:string,geo?:ClockGeo){
     if (geo && [geo.lat,geo.lng,geo.accuracy].every(Number.isFinite) && Math.abs(geo.lat)<=90 && Math.abs(geo.lng)<=180 && geo.accuracy>=0) {
       try { const result = await resolveGeofence(tx,{employmentId:employmentId,date,time:new Intl.DateTimeFormat('en-GB',{timeZone:'Asia/Kuala_Lumpur',hour:'2-digit',minute:'2-digit',hour12:false}).format(now),lat:geo.lat,lng:geo.lng,accuracy:geo.accuracy,punch:anchor==null?'in':'out'}); locationValid = result.enforced ? !!result.clockingLocationId : true; } catch { /* explanatory prerequisite; command rechecks */ }
     }
- return {date,live,crossesMidnight:schedule.crossesMidnight,summary:{serverNow:now.toISOString(),date,clockedIn:anchor!=null,openSince:anchor==null?null:new Date(anchor).toISOString(),workedSeconds:Math.floor(workedMs/1000),locationValid,locationAvailable,geofencingRequired,attendancePhotoSetting,shift:{code:schedule.code,start:schedule.start,end:schedule.end}}};
+ return {date,live,crossesMidnight:schedule.crossesMidnight,businessDate:today,todayKind:date===today?schedule.dayKind:null,summary:{serverNow:now.toISOString(),date,clockedIn:anchor!=null,openSince:anchor==null?null:new Date(anchor).toISOString(),workedSeconds:Math.floor(workedMs/1000),locationValid,locationAvailable,geofencingRequired,attendancePhotoSetting,shift:{code:schedule.code,start:schedule.start,end:schedule.end}}};
 }
 
 /** The live clock state ownClockToday reports (clocking date, clocked in, open-since instant), in the caller's
@@ -129,7 +129,10 @@ export async function ownClockTodaySummaryTx(tx:Tx,ctx:SessionContext,employment
  if(!ctx.userId||!ctx.personId||typeof employmentId!=='string'||!/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/.test(employmentId)
   ||!await isOwnProfileEditEmploymentTx(tx,ctx,employmentId))throw new OwnClockEmploymentUnavailableError();
  assertModuleGate(ctx,'attendance');
- return readClockSummaryTx(tx,employmentId);
+ const {summary,crossesMidnight,businessDate,todayKind}=await ownClockCoreTx(tx,employmentId);
+ // An open overnight clock uses yesterday's shift, while Home describes today's schedule.
+ const dayKind=todayKind??await workedDayKindForTx(tx,employmentId,businessDate);
+ return {...summary,crossesMidnight,businessDate,dayKind};
 }
 
 /** Own clock summary without selecting capture coordinates, photographs or removal commands. */
