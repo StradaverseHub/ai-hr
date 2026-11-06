@@ -224,7 +224,12 @@ it.skipIf(!requested)('profiles initial/search/deep Personnel pages with fifty t
     const page:Parameters<typeof personnelListPage>[1]={companyIds:companies,q,limit:mode==='zero-page'?0:25,offset};
     if(mode==='active-page-all-status-facets')page.status='active';
     if(mode==='company-sort'){page.sort='company';page.departmentId=b.deptA;page.employmentType='full_time';}
-    const facets={companyIds:companies,q},expected=await personnelListPage(ctx,page,facets);
+    // This retained SQL experiment represents the historical 25-field Workforce DTO only.
+    // Compare that declared subset to the current canonical Personnel oracle; never report it
+    // as complete current Personnel page acceptance (dated/quality fields are absent here).
+    const legacyKeys=['employmentId','name','email','employeeCode','department','departmentId','position','company','companyId','hiredOn','terminatedOn','confirmationDate','finalConfirmationDate','probationEndDate','provisionalEndOn','resignationDate','lastWorkingDate','blacklistedAt','jobGrade','employmentType','businessUnit','costCenter','workLocation','joinDate','reportingTo'] as const;
+    const legacyShape=(result:Awaited<ReturnType<typeof personnelListPage>>)=>({...result,rows:result.rows.map(row=>Object.fromEntries(legacyKeys.map(key=>[key,row[key]])))});
+    const facets={companyIds:companies,q},expected=legacyShape(await personnelListPage(ctx,page,facets));
     const samples:unknown[]=[];
     for(const variant of [
      {source:'view',materialized:true,projectPageFacts:false},
@@ -262,7 +267,7 @@ it.skipIf(!requested)('profiles initial/search/deep Personnel pages with fifty t
        expect(denied).toEqual({rows:[],total:0,status_counts:[]});
       }finally{await owner.client`update app_user set archived_at=null where id=${b.adminUserId}::uuid`;}
       const foreignCtx={...adminCtx(foreign),grants:[{role:'hr_admin' as const,companyId:null}]};
-      const foreignExpected=await personnelListPage(foreignCtx,page,facets);
+      const foreignExpected=legacyShape(await personnelListPage(foreignCtx,page,facets));
       const [foreignObserved]=await withTenant(foreignCtx,tx=>tx.execute<{rows:typeof expected.rows;total:number;status_counts:{status:keyof typeof expected.headcount.byStatus;count:number}[]}>(prototype.query));
       const foreignByStatus:typeof expected.headcount.byStatus={};let foreignTotal=0;
       for(const row of foreignObserved.status_counts){foreignByStatus[row.status]=Number(row.count);foreignTotal+=Number(row.count);}

@@ -567,12 +567,15 @@ export function personnelFilterChoices(ctx: SessionContext, companyIds: string[]
 
 async function workforcePersonnelPageQueryTx(
   tx: Tx, ctx: SessionContext, input: PersonnelListInput, asOf: string,
-  facets?: { headcount: EmployeeListFilters; choiceIds: string[] },
+  facets?: { headcount: EmployeeListFilters; choiceIds?: string[] },
+  sourceScope?: { companyIds: string[] | undefined },
 ) {
   const columns = workforceListColumns(asOf);
-  const duplicateIds = (input.qualityFlags?.includes('suspected_duplicate') ||
-    facets?.headcount.qualityFlags?.includes('suspected_duplicate'))
-    ? await personnelDuplicateIdsTx(tx, ctx, { companyIds: input.companyIds, asOf })
+  const duplicateIds = input.qualityFlags?.includes('suspected_duplicate')
+    ? await personnelDuplicateIdsTx(tx, ctx, { companyIds: input.companyIds, asOf }) : [];
+  const facetDuplicateIds = facets?.headcount.qualityFlags?.includes('suspected_duplicate')
+    ? input.qualityFlags?.includes('suspected_duplicate') && JSON.stringify(input.companyIds) === JSON.stringify(facets.headcount.companyIds)
+      ? duplicateIds : await personnelDuplicateIdsTx(tx, ctx, { companyIds: facets.headcount.companyIds, asOf })
     : [];
   const filters = workforceListWhere(input, columns, duplicateIds);
   const sort = input.sort === 'company'
@@ -587,7 +590,7 @@ async function workforcePersonnelPageQueryTx(
     input.companyIds.every(id => choiceIds.includes(id));
   const choiceSource = sameScope ? source : personnelListSource(choiceIds, asOf);
   return sql`
-    with personnel_source as materialized (select value from ${personnelListSource(input.companyIds, asOf)}),
+    with personnel_source as materialized (select value from ${personnelListSource(sourceScope ? sourceScope.companyIds : input.companyIds, asOf)}),
     matching as materialized (select value from ${source} where ${filters ?? sql`true`}),
     page as (select value from matching as workforce_row order by ${order} limit ${input.limit} offset ${input.offset})
     select
@@ -596,11 +599,11 @@ async function workforcePersonnelPageQueryTx(
       ${facets ? sql`,
         (select coalesce(jsonb_object_agg(status, count), '{}'::jsonb) from (
           select ${columns.status} as status, count(distinct ${workforceListUuid('employmentId')})::int as count
-          from ${source} where ${workforceListWhere(facets.headcount, columns, duplicateIds) ?? sql`true`} group by 1
+          from ${source} where ${workforceListWhere(facets.headcount, columns, facetDuplicateIds) ?? sql`true`} group by 1
         ) as counts) as "byStatus",
-        (select coalesce(jsonb_agg(to_jsonb(choice)), '[]'::jsonb) from (
+        ${facets.choiceIds ? sql`(select coalesce(jsonb_agg(to_jsonb(choice)), '[]'::jsonb) from (
           ${personnelAssignmentChoices(choiceSource, choiceIds, asOf)}
-        ) as choice) as choices` : sql``}
+        ) as choice)` : sql`'[]'::jsonb`} as choices` : sql``}
   `;
 }
 
@@ -944,7 +947,7 @@ function samePersonnelFilters(page:EmployeeListFilters,facets:EmployeeListFilter
 
 /** One caller-scoped statement for authorized typed facts, exact total/facets and bounded detail rows.
  * No cached permissions/results or raw-table grant; both native projections recheck Workforce purpose. */
-/** Trusted server-side query composition shared by the app and native EXPLAIN experiments.
+/** Legacy typed-fact diagnostic for native EXPLAIN comparisons; not the current Personnel row contract.
  * Source SQL never comes from a request. Alternate relations must preserve the native purpose owner. */
 export function personnelListPageSql(
   page:Parameters<typeof listEmployeesPage>[1],facets:EmployeeListFilters,
@@ -1013,11 +1016,14 @@ export async function personnelListPage(
   if(!Number.isSafeInteger(page.limit)||page.limit<0||page.limit>ALL_ROW_CEILING||
      !Number.isSafeInteger(page.offset)||page.offset<0)throw new RangeError('Invalid Personnel page');
   return withPersonnelRead(ctx,async tx=>{
-    const [result]=await tx.execute<{
-      rows:EmployeeListRow[];total:number;status_counts:{status:EmploymentStatus;count:number}[];
-    }>(personnelListPageSql(page,facets,{source:sql`app.access_workforce_list_facts()`,materialized:true,projectPageFacts:true}));
-    const byStatus:Partial<Record<EmploymentStatus,number>>={};let total=0;
-    for(const row of result.status_counts){const count=Number(row.count);byStatus[row.status]=count;total+=count;}
+    // Page and facets may intentionally request different scopes. Materialize their authorized
+    // union once, then apply each exact filter independently through the current projection owner.
+    const companyIds=page.companyIds===undefined||facets.companyIds===undefined
+      ?undefined:[...new Set([...page.companyIds,...facets.companyIds])];
+    const query=await workforcePersonnelPageQueryTx(tx,ctx,page,todayInKualaLumpur(),{headcount:facets},{companyIds});
+    const [result]=await tx.execute<PersonnelPageResult>(query);
+    const byStatus=result.byStatus;
+    const total=Object.values(byStatus).reduce((sum,count)=>sum+Number(count),0);
     return {rows:result.rows,total:Number(result.total),headcount:{total,byStatus}};
   });
 }
