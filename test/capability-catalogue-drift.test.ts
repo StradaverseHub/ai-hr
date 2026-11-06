@@ -53,6 +53,8 @@ const support=(why:string):Surface=>({support:why});
 const servedBy=(value:Surface):readonly string[]=>typeof value==='string'?[value]:'support' in value?[]:value;
 const PERSONNEL_PAGE=['employee_records','employee_profile','employee_movement','bank_statutory','employee_family','employee_qualifications','employee_emergency_contacts','cost_allocation','information_correction'];
 const SURFACES:Readonly<Record<string,Surface>>={
+ 'app/admin/attendance/shift-import/route.ts':'shift_definitions',
+ 'app/admin/attendance/shift-import/template/route.ts':'shift_definitions',
  'app/admin/card-assignment/import/route.ts':'clocking_cards',
  'app/admin/leave-config/bf-import/actions.ts':'leave_brought_forward',
  'app/admin/leave-config/bf-import/page.tsx':'leave_brought_forward',
