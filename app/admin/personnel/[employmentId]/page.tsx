@@ -242,7 +242,7 @@ export default async function EmployeePage({
   const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
   if (!UUID_RE.test(employmentId)) notFound();
   if(!isAdmin(s)&&(await searchParams).movementPage)notFound();
-  if(!isAdmin(s))return <WorkforceScopedRecord session={s} employmentId={employmentId} scopeIds={scopeIds} feedback={(await searchParams).workforceCode} editFeedback={(await searchParams).workforceEdit}/>;
+  if(!isAdmin(s))return <WorkforceScopedRecord session={s} employmentId={employmentId} feedback={(await searchParams).workforceCode} editFeedback={(await searchParams).workforceEdit}/>;
   const t = await getTranslations('people.detail');
   const tPersonnel=await getTranslations();
   const personnelLabel=(id:string)=>personnelFormLabel(id,(key,fallback)=>tPersonnel.has(key)?tPersonnel(key):fallback);
@@ -336,7 +336,7 @@ export default async function EmployeePage({
   // only stops a malformed id from becoming a crash instead of the "no such employee" it means. Worth
   // fixing here because this item puts a control on the page whose whole job is to hand this route ids.
   const emp = await employeeDetail(s,employmentId,'workforce');
-  if(!emp)return <WorkforceScopedRecord session={s} employmentId={employmentId} scopeIds={scopeIds} feedback={rawSearchParams.workforceCode} editFeedback={rawSearchParams.workforceEdit}/>;
+  if(!emp)return <WorkforceScopedRecord session={s} employmentId={employmentId} feedback={rawSearchParams.workforceCode} editFeedback={rawSearchParams.workforceEdit}/>;
   const canMaintainWorkforce=await workforceEmploymentAccess(s,employmentId,'maintain');
   const tAccess=await getTranslations('accessConfiguration');
   const today = todayInKualaLumpur();
