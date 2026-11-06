@@ -4,7 +4,7 @@ import {liveClockSeconds} from '../lib/clock-elapsed';
 import {validateEmployeeHomeToday,type EmployeeHomeToday} from '../lib/employee-home-today';
 const state=vi.hoisted(()=>({subject:vi.fn(),enabled:vi.fn(),clock:vi.fn(),locations:vi.fn(),leave:vi.fn(),payroll:vi.fn()}));
 vi.mock('../db/client',()=>({withTenant:async(_ctx:unknown,read:(tx:unknown)=>unknown)=>read({})}));
-vi.mock('../core/employee-home',()=>({requireSelectedOwnHomeEmploymentId:state.subject}));
+vi.mock('../core/employee-home',()=>({requireSelectedOwnHomeEmploymentIdTx:state.subject}));
 vi.mock('../core/entitlements',()=>({isModuleEnabled:state.enabled}));
 vi.mock('../packs/attendance/service',()=>({ownClockTodaySummaryTx:state.clock,employeeClockingLocationLabelsTx:state.locations}));
 vi.mock('../packs/leave/service',()=>({approvedLeavePresenceByEmploymentTx:state.leave}));
@@ -17,8 +17,9 @@ describe('Your Day independent own metadata',()=>{
  it('uses canonical owners and sends only the small clock and recorded payment facts',async()=>{
   const value=await readEmployeeHomeToday(ctx,'own');expect(validateEmployeeHomeToday(value,'own')).toEqual(todayData());
   expect(state.leave).toHaveBeenCalledWith(state.clock.mock.calls[0][0],['own'],date,date);
-  expect(state.subject).toHaveBeenCalledWith(ctx,'own');expect(state.clock).toHaveBeenCalledWith(expect.any(Object),ctx,'own');
   const [attendanceTx]=state.clock.mock.calls[0];
+  expect(state.subject).toHaveBeenCalledWith(attendanceTx,ctx,'own');
+  expect(state.clock).toHaveBeenCalledWith(attendanceTx,ctx,'own');
   expect(state.locations).toHaveBeenCalledWith(attendanceTx,'own');
   expect(state.payroll).toHaveBeenCalledWith(ctx,'own');
   expect(JSON.stringify(value)).not.toMatch(/private|amount|captureGPS/);

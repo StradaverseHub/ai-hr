@@ -1,5 +1,5 @@
 import {withTenant,type SessionContext} from '../db/client';
-import {requireSelectedOwnHomeEmploymentId} from './employee-home';
+import {HomeAccessError,requireSelectedOwnHomeEmploymentIdTx} from './employee-home';
 import {isModuleEnabled} from './entitlements';
 import {ownClockTodaySummaryTx,employeeClockingLocationLabelsTx} from '../packs/attendance/service';
 import {approvedLeavePresenceByEmploymentTx} from '../packs/leave/service';
@@ -10,20 +10,21 @@ import type {EmployeeHomeToday} from '../lib/employee-home-today';
 /** Independent own facts only. Displaying this projection cannot capture location, clock a person,
  * change attendance/leave/payroll policy, or declare that a bank payment occurred. */
 export async function readEmployeeHomeToday(ctx:SessionContext,employmentId:string):Promise<EmployeeHomeToday>{
- const subjectId=await requireSelectedOwnHomeEmploymentId(ctx,employmentId);
- const attendanceEnabled=isModuleEnabled(ctx,'attendance'),payrollEnabled=isModuleEnabled(ctx,'payroll');
- const [attendance,paymentDate]=await Promise.all([
-  attendanceEnabled?withTenant(ctx,async tx=>{
-   const clock=await ownClockTodaySummaryTx(tx,ctx,subjectId);
-   const {businessDate,dayKind}=clock;
-   const [presence,workLocations]=await Promise.all([
-    approvedLeavePresenceByEmploymentTx(tx,[subjectId],businessDate,businessDate),
-    employeeClockingLocationLabelsTx(tx,subjectId),
-   ]);
-   return {clock,businessDate,dayKind,leavePresence:presence.get(subjectId)?.get(businessDate)??null,workLocations};
-  }):null,
-  payrollEnabled?readOwnNextPayrollPaymentDate(ctx,subjectId):null,
- ]);
+ if(!ctx.userId)throw new HomeAccessError('authentication');
+ const {subjectId,attendanceEnabled,payrollEnabled,attendance}=await withTenant(ctx,async tx=>{
+  const subjectId=await requireSelectedOwnHomeEmploymentIdTx(tx,ctx,employmentId);
+  const attendanceEnabled=isModuleEnabled(ctx,'attendance'),payrollEnabled=isModuleEnabled(ctx,'payroll');
+  if(!attendanceEnabled)return {subjectId,attendanceEnabled,payrollEnabled,attendance:null};
+  const clock=await ownClockTodaySummaryTx(tx,ctx,subjectId);
+  const {businessDate,dayKind}=clock;
+  const [presence,workLocations]=await Promise.all([
+   approvedLeavePresenceByEmploymentTx(tx,[subjectId],businessDate,businessDate),
+   employeeClockingLocationLabelsTx(tx,subjectId),
+  ]);
+  return {subjectId,attendanceEnabled,payrollEnabled,
+   attendance:{clock,businessDate,dayKind,leavePresence:presence.get(subjectId)?.get(businessDate)??null,workLocations}};
+ },{readOnlySnapshot:true});
+ const paymentDate=payrollEnabled?await readOwnNextPayrollPaymentDate(ctx,subjectId):null;
  const clock=attendance?.clock??null;
  const serverNow=clock?.serverNow??new Date().toISOString();
  const businessDate=attendance?.businessDate??todayInKualaLumpur(new Date(serverNow));
