@@ -1,5 +1,6 @@
-/** Immutable Bank worker Git source vs the new AI-review schema/web contract. GHA disposable DB only.
- * This supplies compatibility evidence for an owner decision, never permission to retain/update a live service. */
+/** Immutable historical worker sources against current web commands and the migrated schema.
+ * This proves ordinary overlap while draining jobs. Release requires the matching worker package,
+ * including the new admission and infrastructure-failure semantics. GHA disposable DB only. */
 import {createHash} from 'node:crypto';
 import {execFileSync,spawnSync} from 'node:child_process';
 import {mkdtempSync,mkdirSync,readFileSync,rmSync,writeFileSync} from 'node:fs';
@@ -15,6 +16,11 @@ import {parseCsvRecords} from '../lib/csv';
 import * as s from '../db/schema';
 import {adminCtx,closeAll,migrateTestDb,owner,resetDb,seedBase} from './harness';
 const WORKER_SOURCE='968354c00a71df7baccd499eb60757a3307ed61e';
+// Observed staging web and worker source before the architecture release. Freeze the
+// historical compatibility pins here so future replacements cannot relabel their bytes.
+const STAGING_BASELINE='a4bd903840cdae2a94e67d5f57e3b54c9e2a86ac';
+const archived=(ref:string,path:string)=>execFileSync('git',['show',ref+':'+path]);
+
 // The dependency security update is an exact reviewed graph, not permission for arbitrary drift.
 // The archived worker below retains its original package/lock while executing copied current deps.
 const REVIEWED_SECURITY_GRAPH={source:'c58c30efd6bc81b20bb4b5a82b026b93c7297760',baseline:'8b676f25c006dd9a95dfd30bb6005e558923980a',
@@ -25,8 +31,8 @@ const REVIEWED_SECURITY_GRAPH={source:'c58c30efd6bc81b20bb4b5a82b026b93c7297760'
 const PACKET_POLICY={controller:'567ec0908a24e21078e458ec1e93e696cafeb0a8',formatSha256:'07fa30e623f192ed8231ed42de4a606ed8251539db95389ec7ad6b50ff166369',
  roots:['package.json','pnpm-lock.yaml','tsconfig.json','app','assets','components','content','core','data','db','deploy','i18n','lib','localization','messages','packs','public','scripts','types','node_modules']};
 const unchanged=['db/client.ts','core/bank-import-job.ts','lib/bank-import-source.server.ts','lib/bank-import-job.ts'];
-// Current web db/client differs only in this reviewed erased type union. The child process below
-// still receives and verifies the COMPLETE immutable 968 db/client, including its original type.
+// The staged baseline differs from 968 only in the reviewed type union and tax-reader setting.
+// Each child still receives and verifies its complete immutable db/client.
 const WORKER_AGENT_ENABLEMENT = "export type AgentEnablement = { feature: 'readiness_reminders' | 'claims_triage'; userId: string; eventId: string };";
 const WEB_AGENT_ENABLEMENT = "export type AgentEnablement = { feature: 'readiness_reminders' | 'claims_triage' | 'approval_chasers' | 'review_chasers' | 'clock_reminders' | 'document_reminders' | 'lifecycle_chasers'; userId: string; eventId: string };";
 // 929ea296 (PR126): web transactions declare the correction-aware income-tax reader. Without it a reader fails
@@ -63,18 +69,19 @@ const REVIEWED_MIGRATION_INPUTS=[
  {path:'test/helpers/personnel-draft-discard-ci-role-fixture.ts',sha256:'32aaff3dc2f8a80bfe3e69769422b234e0f607a5dad7c0f4b4cb27e5946a3c54'},
 ] as const;
 beforeAll(migrateTestDb);beforeEach(resetDb);afterAll(closeAll);
-it('runs immutable 968 worker Git source under the corrected V2 root policy against the AI schema and web contract',async()=>{
+it.each([['legacy',WORKER_SOURCE],['staged',STAGING_BASELINE]] as const)(
+ 'runs immutable %s worker source against the migrated database and current web commands',async(label,workerSource)=>{
  expect(execFileSync('git',['diff','--name-only',WORKER_SOURCE,'HEAD','--',...unchanged.filter(path=>path!=='db/client.ts')],{encoding:'utf8'}).trim()).toBe('');
- const workerClient=execFileSync('git',['show',WORKER_SOURCE+':db/client.ts'],{encoding:'utf8'}),webClient=readFileSync('db/client.ts','utf8');
+ const workerClient=archived(WORKER_SOURCE,'db/client.ts').toString('utf8'),webClient=archived(STAGING_BASELINE,'db/client.ts').toString('utf8');
  expect(workerClient.split(WORKER_AGENT_ENABLEMENT)).toHaveLength(2);
  expect(webClient.split(WEB_AGENT_ENABLEMENT)).toHaveLength(2);
  // No arbitrary type/comment stripping: ANY other runtime, import, context, transaction or type delta fails.
  expect(webClient.split(WEB_TAX_BASIS_READER)).toHaveLength(2);
  expect(webClient.replace(WEB_AGENT_ENABLEMENT,WORKER_AGENT_ENABLEMENT).replace(WEB_TAX_BASIS_READER,'')).toBe(workerClient);
  for(const path of unchanged.filter(path=>path!=='db/client.ts'))expect(execFileSync('git',['show',WORKER_SOURCE+':'+path],{encoding:'utf8'}),path+' never reads payslip').not.toMatch(/payslip/i);
- expect(execFileSync('git',['diff','--name-only',WORKER_SOURCE,'HEAD','--',...reviewedChanges],{encoding:'utf8'}).trim().split('\n').sort()).toEqual([...reviewedChanges].sort());
- expect(execFileSync('git',['diff','--name-only',REVIEWED_BANK_SOURCE,'HEAD','--',...reviewedChanges.filter(path=>path!=='core/bank-import-worker.ts')],{encoding:'utf8'}).trim()).toBe('');
- for(const [path,hash] of Object.entries(payrollQueueWorkerPins))expect(createHash('sha256').update(readFileSync(path)).digest('hex'),path).toBe(hash);
+ expect(execFileSync('git',['diff','--name-only',WORKER_SOURCE,STAGING_BASELINE,'--',...reviewedChanges],{encoding:'utf8'}).trim().split('\n').sort()).toEqual([...reviewedChanges].sort());
+ expect(execFileSync('git',['diff','--name-only',REVIEWED_BANK_SOURCE,STAGING_BASELINE,'--',...reviewedChanges.filter(path=>path!=='core/bank-import-worker.ts')],{encoding:'utf8'}).trim()).toBe('');
+ for(const [path,hash] of Object.entries(payrollQueueWorkerPins))expect(createHash('sha256').update(archived(STAGING_BASELINE,path)).digest('hex'),path).toBe(hash);
  const priorSections=execFileSync('git',['show',PRIOR_REVIEWED_BANK_SOURCE+':core/import-sections.ts'],{encoding:'utf8'});
  expect(priorSections.split(PRIOR_PROFILE_PASSPORT_CHECK)).toHaveLength(2);
  expect(execFileSync('git',['show',REVIEWED_BANK_SOURCE+':core/import-sections.ts'],{encoding:'utf8'})).toBe(priorSections.replace(PRIOR_PROFILE_PASSPORT_CHECK,REVIEWED_PROFILE_PASSPORT_CHECK));
@@ -116,10 +123,10 @@ it('runs immutable 968 worker Git source under the corrected V2 root policy agai
 
  const directory=mkdtempSync(join(tmpdir(),'aihr-worker-compat-'));
  try{
-  const available=new Set(execFileSync('git',['ls-tree','--name-only',WORKER_SOURCE],{encoding:'utf8'}).trim().split('\n'));
+  const available=new Set(execFileSync('git',['ls-tree','--name-only',workerSource],{encoding:'utf8'}).trim().split('\n'));
   const roots=PACKET_POLICY.roots.filter(path=>available.has(path));
   expect(roots).toEqual(expect.arrayContaining(['package.json','pnpm-lock.yaml','tsconfig.json','core','db','i18n','localization','lib','scripts','packs']));
-  const archive=execFileSync('git',['archive',WORKER_SOURCE,...roots],{maxBuffer:128*1024**2});
+  const archive=execFileSync('git',['archive',workerSource,...roots],{maxBuffer:128*1024**2});
   execFileSync('tar',['-xf','-','-C',directory],{input:archive,maxBuffer:1024**2});
   for(const path of ['package.json','pnpm-lock.yaml',...new Set([...unchanged,...reviewedChanges,...Object.keys(payrollQueueWorkerPins)])])expect(readFileSync(join(directory,path)).equals(execFileSync('git',['show',WORKER_SOURCE+':'+path])),'Executed old worker retains original '+path).toBe(true);
   // Real isolated dependency files, preserving internal pnpm links. No external module symlink,
@@ -180,11 +187,11 @@ it('runs immutable 968 worker Git source under the corrected V2 root policy agai
    expect(await owner.db.select().from(s.importAttemptItem).where(eq(s.importAttemptItem.attemptId,done.attemptId!))).toEqual(history);
   }
   const evidence=process.env.AIHR_FOCUSED_EVIDENCE_DIR;
-  if(evidence){mkdirSync(evidence,{recursive:true});writeFileSync(join(evidence,'worker-cross-version.json'),JSON.stringify({
-   kind:'GIT_SOURCE_CROSS_VERSION_FIXTURE_NOT_PACKET_OR_LIVE_ACCEPTANCE',workerSource:WORKER_SOURCE,webSource:process.env.AIHR_CI_HEAD,
+  if(evidence){mkdirSync(evidence,{recursive:true});writeFileSync(join(evidence,'worker-cross-version-'+label+'.json'),JSON.stringify({
+   kind:'GIT_SOURCE_CROSS_VERSION_FIXTURE_NOT_PACKET_OR_LIVE_ACCEPTANCE',workerSource,webSource:process.env.AIHR_CI_HEAD,reviewedHistoricalBaseline:STAGING_BASELINE,matchingWorkerRequired:true,
    reviewedCurrentDependencyGraph:REVIEWED_SECURITY_GRAPH,executedDependencyOrigin:'copied-current-reviewed-node_modules-not-historical-worker-packet',
    correctedRootPolicy:PACKET_POLICY,actualPacketExecuted:false,authenticatedCorrectedPacketProofRequired:true,
-   schemaEntries:schema.ledger,unchangedSourcePaths:unchanged.filter(path=>path!=='db/client.ts'),reviewedWebTypeOnlyChange:{path:'db/client.ts',workerDeclaration:WORKER_AGENT_ENABLEMENT,webDeclaration:WEB_AGENT_ENABLEMENT,allOtherBytesIdentical:true,executedArchivedBytes:WORKER_SOURCE},reviewedChangedPathContracts:{source:REVIEWED_BANK_SOURCE,paths:reviewedChanges,executedWorkerBytes:WORKER_SOURCE},reviewedWebMigrationEntryChange:{workerCommand:WORKER_MIGRATION_COMMAND,webCommand:WEB_MIGRATION_COMMAND,inputs:REVIEWED_MIGRATION_INPUTS,executedArchivedPackageAndLock:WORKER_SOURCE,workerTickUsesPackageMigrationCommand:false},sourceArchiveSha256:createHash('sha256').update(archive).digest('hex'),
+   schemaEntries:schema.ledger,unchangedSourcePaths:unchanged.filter(path=>path!=='db/client.ts'),reviewedHistoricalClientDelta:{path:'db/client.ts',legacySource:WORKER_SOURCE,stagedSource:STAGING_BASELINE,legacyDeclaration:WORKER_AGENT_ENABLEMENT,stagedDeclaration:WEB_AGENT_ENABLEMENT,taxBasisReaderAdded:true,allOtherBytesIdentical:true},reviewedChangedPathContracts:{source:REVIEWED_BANK_SOURCE,paths:reviewedChanges,executedWorkerBytes:workerSource},reviewedWebMigrationEntryChange:{workerCommand:WORKER_MIGRATION_COMMAND,webCommand:WEB_MIGRATION_COMMAND,inputs:REVIEWED_MIGRATION_INPUTS,executedArchivedPackageAndLock:workerSource,workerTickUsesPackageMigrationCommand:false},sourceArchiveSha256:createHash('sha256').update(archive).digest('hex'),
    newWebAdmission:true,humanCommandFixture:true,canonicalWrite:true,tenantDenial:true,newProcessReplay:true,historyItems:history.length,
    reviewedWebPassportChange:{priorSource:PRIOR_REVIEWED_BANK_SOURCE,source:REVIEWED_BANK_SOURCE,changedBranch:'buildProfile',webProfileNumberOnlyApplied:true,archivedWorkerBankTaxPreservedNumberOnlyPassport:true,passportOnlyAndMixedBankSourcesRefused:true,refusedSourcesCreatedNoAttemptOrPersonnelMutation:true},
    protectedServiceVerified:false,liveRestartVerified:false,deploymentAuthorized:false,
