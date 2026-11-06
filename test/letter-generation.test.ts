@@ -17,6 +17,7 @@ import {sweepLetterAutomationFromSweep} from '../core/letter-automation';
 import {readLetterAutomationSourcesTx} from '../core/letter-automation-sources';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {LetterWorkflowError,type LetterPolicy} from '../lib/letter-workflow';
+import {setupCompanyStructureFixture} from './rewards-setup-fixture';
 import {closeAll,createAppUser,entitledCtx,owner,resetDb,seedBase,setModule,type Base} from './harness';
 let b:Base,ctx:SessionContext,reviewer:SessionContext,templateId:string,templateVersionId:string,templateRevision:number,employees:string[];
 const today=()=>todayInKualaLumpur();
@@ -34,6 +35,29 @@ beforeEach(async()=>{
  await saveLetterPolicy(ctx,{companyId:b.companyId,category:'confirmation',policy,enabled:true});
 });afterAll(async()=>{vi.unstubAllEnvs();await closeAll();});
 describe('letter generation snapshots and complete-batch readiness',()=>{
+ it('creates and refreshes the current letter source after approved assignment supersession',async()=>{
+  const [maker]=await owner.db.insert(s.person).values({tenantId:b.tenantId,fullName:'Fictional organisation maker',primaryEmail:'letter-structure-maker@fixture.test'}).returning();
+  await owner.db.update(s.appUser).set({personId:maker.id}).where(eq(s.appUser.id,ctx.userId!));
+  ctx={...ctx,personId:maker.id};
+  const [businessUnit]=await owner.db.insert(s.businessUnit).values({tenantId:b.tenantId,companyId:b.companyId,code:'LETTER-MAPPED',name:'Fictional mapped unit'}).returning();
+  await setupCompanyStructureFixture(ctx,[{companyId:b.companyId,businessUnitId:businessUnit.id}],today(),reviewer);
+  const employmentId=employees[0];
+  const overlapping=await owner.db.select().from(s.assignment).where(and(eq(s.assignment.employmentId,employmentId),
+   sq`${s.assignment.validFrom}<=${today()}::date and (${s.assignment.validTo} is null or ${s.assignment.validTo}>${today()}::date)`));
+  expect(overlapping).toHaveLength(2);
+  expect(overlapping.filter(row=>row.supersededAt===null)).toMatchObject([{businessUnitId:businessUnit.id}]);
+  const [authorPerson]=await owner.db.insert(s.person).values({tenantId:b.tenantId,fullName:'Fictional company author',primaryEmail:'letter-company-author@fixture.test'}).returning();
+  const [authorUser]=await owner.db.insert(s.appUser).values({tenantId:b.tenantId,personId:authorPerson.id,workosUserId:randomUUID()}).returning();
+  await owner.db.insert(s.roleAssignment).values({tenantId:b.tenantId,appUserId:authorUser.id,role:'hr_admin',companyId:b.companyId});
+  const author={...ctx,userId:authorUser.id,personId:authorPerson.id,roles:['hr_admin'],grants:[{role:'hr_admin',companyId:b.companyId}]} satisfies SessionContext;
+  const made=await createLetterDraftBatch(author,{companyId:b.companyId,templateVersionId,employmentIds:[employmentId],customValues:custom([employmentId]),operationKey:randomUUID()});
+  const [created]=(await getLetterGenerationBatch(author,made.batchId))!.rows;
+  expect(created.revision).toMatchObject({ordinal:1,values:{employeeName:{kind:'text',value:'Fictional subject 1'},effectiveDate:{kind:'date',value:today()}}});
+  const refreshed=await refreshLetterDraft(author,{letterId:created.record.id,expectedLockVersion:created.record.lockVersion,
+   customValues:{effectiveDate:{kind:'date',value:'2030-01-01'}}});
+  expect(refreshed).toMatchObject({ordinal:2,values:{employeeName:{kind:'text',value:'Fictional subject 1'},effectiveDate:{kind:'date',value:'2030-01-01'}}});
+ });
+
  it('queues one creation notice for a whole manual batch and preserves retry identity',async()=>{
   await setModule(b.tenantId,'notifications','active');ctx=await entitledCtx(b);const [existing]=await owner.db.select().from(s.letterPolicyVersion);await saveLetterPolicy(ctx,{companyId:b.companyId,category:'confirmation',enabled:true,policy:{...existing.policy,portalNotifications:true}});const input={companyId:b.companyId,templateVersionId,employmentIds:employees,customValues:custom(employees),operationKey:randomUUID()},made=await createLetterDraftBatch(ctx,input);expect(await createLetterDraftBatch(ctx,input)).toMatchObject({batchId:made.batchId,alreadyCreated:true});const jobs=await owner.db.select().from(s.letterJob).where(sq`${s.letterJob.payload}->>'purpose'='draftCreated'`);expect(jobs).toHaveLength(1);expect(jobs[0].payload).toEqual({purpose:'draftCreated',batchId:made.batchId,portal:true,email:false});
   const system={tenantId:b.tenantId,roles:[]};expect(await projectLetterNotificationsFromSweep(system,owner)).toMatchObject({created:1,failed:0});const notices=await listNotifications(ctx);expect(notices).toHaveLength(1);expect(notices[0]).toMatchObject({kind:'letter.created',severity:'info',linkPath:'/letters/generate/'+made.batchId});expect(JSON.stringify(notices)).not.toContain('Fictional subject');expect(await projectLetterNotificationsFromSweep(system,owner)).toMatchObject({created:0,failed:0});expect(await listNotifications(reviewer)).toHaveLength(0);

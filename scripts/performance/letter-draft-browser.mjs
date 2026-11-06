@@ -59,10 +59,15 @@ export async function exerciseLetterDraft({base,context,visit,fixture,db,report,
    evidence.currentAction=action;
    save();
    const start=performance.now();
-   await Promise.all([
-    page.waitForURL(url=>url.origin===base&&batchRoute.test(url.pathname)&&(!expectedPath||url.pathname===expectedPath)&&url.searchParams.get('notice')===notice,{timeout}),
-    button.click({timeout}),
-   ]);
+   const redirected=page.waitForURL(url=>url.origin===base&&batchRoute.test(url.pathname)&&(!expectedPath||url.pathname===expectedPath)&&url.searchParams.get('notice')===notice,{waitUntil:'domcontentloaded',timeout});
+   const alert=button.locator('xpath=ancestor::form').getByRole('alert').first();
+   const rejected=alert.waitFor({state:'visible',timeout}).then(async()=>{
+    const text=await alert.textContent();
+    evidence.actionError=Object.entries(letters.generate.errors).find(([,message])=>text===message||text?.startsWith(message+':'))?.[0]??'unknown';
+    save();
+    throw Error('E-Letter '+action+' rendered '+evidence.actionError);
+   });
+   await Promise.all([Promise.race([redirected,rejected]),button.click({timeout})]);
    await main.getByRole('heading',{name:seed.name,exact:true}).waitFor({state:'visible',timeout});
    evidence.actions.push({action,usableMs:performance.now()-start});
    save();
