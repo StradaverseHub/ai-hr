@@ -163,6 +163,24 @@ it('keeps Architecture navigation equivalent for Workforce access, unseated empl
   await expectNavigation(actor, true);
 });
 
+it('reads the shared navigation hints while an Access writer holds the tenant lock', async () => {
+  const expected = await readShellNavigationAccess(ctx, true);
+  await owner.withTenant(ctx, async tx => {
+    await lockAccessConfigurationTx(tx, ctx.tenantId);
+    let deadline: ReturnType<typeof setTimeout> | undefined;
+    try {
+      await expect(Promise.race([
+        readShellNavigationAccess(ctx, true),
+        new Promise<never>((_, reject) => {
+          deadline = setTimeout(() => reject(new Error('Navigation waited for the Access lock')), 2000);
+        }),
+      ])).resolves.toEqual(expected);
+    } finally {
+      clearTimeout(deadline);
+    }
+  });
+});
+
 it('recovers a standalone Personnel read when a brief Access writer releases its lock', async () => {
   let read: ReturnType<typeof workforceViewScope> | undefined;
   await owner.withTenant(ctx, async tx => {
