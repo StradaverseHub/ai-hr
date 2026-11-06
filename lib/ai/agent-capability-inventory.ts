@@ -367,7 +367,7 @@ export const AGENT_CAPABILITY_INVENTORY:Readonly<Record<string,Readonly<Record<s
  "app/reports/employee-master/actions.ts":{"deleteEmployeeMaster":"backlog:confirm","duplicateEmployeeMaster":"backlog:confirm","masterScheduleRecipients":"backlog:confirm","previewEmployeeMaster":"backlog:automatic","saveEmployeeMaster":"backlog:confirm","saveMasterSchedule":"backlog:confirm"},
  "app/reports/employee-master/export/route.ts#route":{"POST":"backlog:confirm"},
  "app/reports/export/route.ts#route":{"POST":"backlog:confirm"},
- "app/reports/payroll-comparison/actions.ts":{"createPayrollComparisonSampleAction":"backlog:confirm","savePayrollComparisonAction":"backlog:confirm","savePayrollReconciliationRemarkAction":"backlog:approve"},
+ "app/reports/payroll-comparison/actions.ts":{"createPayrollComparisonSampleAction":"backlog:confirm","savePayrollComparisonAction":"backlog:confirm","savePayrollReconciliationRemarkAction":"backlog:approve","saveReconciliationTemplateAction":"backlog:confirm"},
  // The advisor action includes generation, review decisions and settings changes.
  "app/rewards/[unitId]/advisor/actions.ts":{"advisorAction":"handoff:ai_governance"},
  "app/rewards/[unitId]/uploaded/actions.ts":{

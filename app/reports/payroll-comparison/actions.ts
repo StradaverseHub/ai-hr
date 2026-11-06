@@ -5,7 +5,7 @@ import {scopedAdmin} from '@/lib/scope';
 import {saveCustomReport,updateCustomReport,getCustomReport,ensurePayrollBasicVarianceSample} from '@/core/custom-reports';
 import {PayrollReconciliationRemarkConflict,savePayrollReconciliationRemark} from '@/core/payroll-reconciliation-remarks';
 import {payrollComparisonSpec} from '@/core/report-payroll-comparison';
-import {validatePayrollComparisonDefinition} from '@/lib/payroll-period-comparison';
+import {DEFAULT_PAYROLL_COMPARISON,payrollComparisonFilters,validatePayrollComparisonDefinition} from '@/lib/payroll-period-comparison';
 import {publicErrorMessage} from '@/lib/public-error';
 import {getTranslations} from 'next-intl/server';
 import {PayrollComparisonInputError} from '@/lib/payroll-period-comparison';
@@ -24,6 +24,7 @@ export async function savePayrollComparisonAction(form:FormData):Promise<{error:
     const previous=id?await getCustomReport(s,id,scopeIds,'edit'):null;
     if(id&&!previous)throw new Error('Report unavailable.');
     const spec=payrollComparisonSpec(definition);spec.layout={...previous?.spec.layout,description};
+    if(previous?.spec.payrollComparison?.defaults) spec.payrollComparison!.defaults=previous.spec.payrollComparison.defaults;
     if(id){await updateCustomReport(s,{id,name,spec,shared:previous!.shared,version:Number(form.get('version')),companyIds:scopeIds});destination='/reports/payroll-comparison/'+id;}
     else{const saved=await saveCustomReport(s,{name,datasetId:spec.datasetId,spec,companyIds:scopeIds});destination='/reports/payroll-comparison/'+saved.id;}
     revalidatePath('/reports');
@@ -56,4 +57,31 @@ export async function savePayrollReconciliationRemarkAction(query: string, compa
   }
   revalidatePath('/reports/payroll-comparison/reconciliation');
   redirect('/reports/payroll-comparison/reconciliation?'+values);
+}
+
+export async function saveReconciliationTemplateAction(query: string, form: FormData) {
+  const {s,scopeIds}=await scopedAdmin();
+  const search=new URLSearchParams(query);
+  let destination='/reports/payroll-comparison/reconciliation?'+search;
+  try {
+    const name=form.get('name');
+    if(typeof name!=='string'||!name.trim()||name.length>150)throw new Error('Invalid template name.');
+    const {payItemCode='BASIC',...raw}=Object.fromEntries(search);
+    const filters=payrollComparisonFilters(raw,DEFAULT_PAYROLL_COMPARISON);
+    if(filters.companyId&&!scopeIds.includes(filters.companyId))throw new Error('Company unavailable.');
+    const definition=validatePayrollComparisonDefinition({...DEFAULT_PAYROLL_COMPARISON,payItemCode,
+      compareMode:filters.previousPeriod?'specific':'previous',previousPeriod:filters.previousPeriod,
+      runType:filters.runType,minVariance:filters.minVariance,onlyVariances:filters.onlyVariances,
+      defaults:{currentPeriod:filters.currentPeriod,companyId:filters.companyId,departmentId:filters.departmentId,
+        businessUnitId:filters.businessUnitId,positionId:filters.positionId,employmentId:filters.employmentId,
+        employmentType:filters.employmentType,groupBy:filters.groupBy,cycleIds:filters.cycleIds}});
+    const spec=payrollComparisonSpec(definition);
+    const saved=await saveCustomReport(s,{name:name.trim(),datasetId:spec.datasetId,spec,companyIds:scopeIds});
+    revalidatePath('/payroll/reconciliation');
+    destination='/reports/payroll-comparison/'+saved.id;
+  } catch {
+    search.set('templateError','1');
+    destination='/reports/payroll-comparison/reconciliation?'+search;
+  }
+  redirect(destination);
 }

@@ -22,6 +22,7 @@ export type ComparisonSource = {
 };
 export type ComparisonIdentity = {
   employmentId: string; companyId: string; employeeCode: string | null; employeeName: string;
+  businessUnitId?: string | null; businessUnit?: string | null; positionId?: string | null; employmentType?: string | null;
   departmentId: string | null; department: string | null; grade: string | null;
   company: string; costCentre: string | null; hireDate: string; exitDate: string | null;
   movements: readonly PayrollComparisonMovement[];
@@ -139,6 +140,15 @@ export function comparePayrollResults(input: {
     const identity = identityByKey.get(key(group.employmentId, group.companyId, null));
     if (!identity) throw new PayrollComparisonInputError('missingDatedIdentity');
     if (filters.departmentId && identity.departmentId !== filters.departmentId) continue;
+    if (filters.employmentId && identity.employmentId !== filters.employmentId) continue;
+    if (filters.businessUnitId && identity.businessUnitId !== filters.businessUnitId) continue;
+    if (filters.positionId && identity.positionId !== filters.positionId) continue;
+    if (filters.employmentType && identity.employmentType !== filters.employmentType) continue;
+    if (filters.employeeSearch) {
+      const query = filters.employeeSearch.normalize('NFKC').toLocaleLowerCase();
+      if (![identity.employeeName, identity.employeeCode].some(text => text?.normalize('NFKC').toLocaleLowerCase().includes(query))) continue;
+    }
+
     if (group.previous.sources.length) previousHeadcount.add(group.employmentId);
     if (group.current.sources.length) currentHeadcount.add(group.employmentId);
     const evidenceInput = { autoTag: true,
@@ -188,7 +198,7 @@ export function comparePayrollResults(input: {
   const displayed = rows.filter(row => (!filters.reason || payrollReasonMatches(row.reason, filters.reason)) &&
     // Unknown currency rows stay visible: their difference cannot truthfully be tested against a monetary threshold.
     (!filters.onlyVariances || row.variance === null || abs(payrollAmountMinor(row.variance)) >= minimum));
-  displayed.sort((a, b) => Number(b.reason.reason === 'unexplained') - Number(a.reason.reason === 'unexplained') ||
+  displayed.sort((a, b) => (filters.groupBy ? (a[filters.groupBy] ?? '').localeCompare(b[filters.groupBy] ?? '') : 0) || Number(b.reason.reason === 'unexplained') - Number(a.reason.reason === 'unexplained') ||
     a.reason.reason.localeCompare(b.reason.reason) ||
     compareMagnitude(a.variance, b.variance) || key(a.employmentId, a.companyId, a.currency).localeCompare(key(b.employmentId, b.companyId, b.currency)));
   result.displayedRows = displayed.length;

@@ -2,7 +2,7 @@
  * Organisation reads; there is no second pay calculator or saved-definition store. */
 import { and, asc, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import type { SessionContext, Tx } from '../db/client';
-import { company, department, employment, jobGrade, person, costCenter, payrollBatch, payrollHistoryEffectiveBatch, domainEvent, payrollCycle, type CustomReportSpec } from '../db/schema';
+import { businessUnit, position, company, department, employment, jobGrade, person, costCenter, payrollBatch, payrollHistoryEffectiveBatch, domainEvent, payrollCycle, type CustomReportSpec } from '../db/schema';
 import { payrollComparisonSourcesTx, listPayComponents } from '../packs/payroll/service';
 import { assignmentVersionsForReportTx } from './org';
 import { provenCompanyDatesTx, dayBefore } from './employment-company';
@@ -32,11 +32,15 @@ export async function payrollComparisonOptions(ctx:SessionContext,scope:readonly
     const companies=await tx.select({id:company.id,name:company.legalName}).from(company).where(inArray(company.id,ids)).orderBy(asc(company.legalName),asc(company.id));
     const departments=await tx.select({id:department.id,name:department.name}).from(department)
       .where(visibleLabelIdsCondition(department,'department',ids)).orderBy(asc(department.name),asc(department.id));
+    const businessUnits=await tx.select({id:businessUnit.id,name:businessUnit.name}).from(businessUnit)
+      .where(visibleLabelIdsCondition(businessUnit,'business_unit',ids)).orderBy(asc(businessUnit.name),asc(businessUnit.id));
+    const positions=await tx.select({id:position.id,name:position.title}).from(position)
+      .where(visibleLabelIdsCondition(position,'position',ids)).orderBy(asc(position.title),asc(position.id));
     const periods=await tx.selectDistinct({period:payrollBatch.payPeriod}).from(payrollBatch)
       .where(inArray(payrollBatch.companyId,ids)).orderBy(desc(payrollBatch.payPeriod)).limit(1200);
     const cycles = await tx.select({ id: payrollCycle.id, name: payrollCycle.name, companyId: payrollCycle.companyId })
       .from(payrollCycle).where(inArray(payrollCycle.companyId, ids)).orderBy(asc(payrollCycle.name), asc(payrollCycle.id));
-    return {companies,departments,cycles,periods:periods.map(row=>row.period)};
+    return {companies,departments,businessUnits,positions,cycles,periods:periods.map(row=>row.period)};
   },{readOnlySnapshot:true});
   const items=await listPayComponents(ctx,{readyOnly:true});
   return {...choices,payItems:[{code:'BASIC',name:'Basic Salary actually paid'},...items.filter(item=>item.code!=='BASIC').map(item=>({code:item.code,name:item.name}))]};
@@ -80,6 +84,8 @@ export async function executePayrollComparisonTx(tx:Tx,ctx:SessionContext,spec:C
     const factsByEmployment=new Map(movementFacts.map(fact=>[fact.employmentId,fact]));
     const companyNames=new Map((await tx.select({id:company.id,name:company.legalName}).from(company).where(inArray(company.id,ids))).map(row=>[row.id,row.name]));
     const departmentNames=new Map((await tx.select({id:department.id,name:department.name}).from(department).where(visibleLabelIdsCondition(department,'department',ids))).map(row=>[row.id,row.name]));
+    const unitNames=new Map((await tx.select({id:businessUnit.id,name:businessUnit.name}).from(businessUnit)
+      .where(visibleLabelIdsCondition(businessUnit,'business_unit',ids))).map(row=>[row.id,row.name]));
     const centreNames=new Map((await tx.select({id:costCenter.id,name:costCenter.name}).from(costCenter).where(visibleLabelIdsCondition(costCenter,'cost_center',ids))).map(row=>[row.id,row.name]));
     const gradeIds=[...new Set(movementFacts.flatMap(fact=>fact.placements.flatMap(placement=>placement.gradeId?[placement.gradeId]:[])))];
     const gradeNames=new Map((gradeIds.length?await tx.select({id:jobGrade.id,name:jobGrade.name}).from(jobGrade).where(inArray(jobGrade.id,gradeIds)):[]).map(row=>[row.id,row.name]));
@@ -123,6 +129,9 @@ export async function executePayrollComparisonTx(tx:Tx,ctx:SessionContext,spec:C
       }
       identities.push({employmentId:pair.employmentId,companyId:pair.companyId,employeeCode:employee.employeeCode,
         employeeName:employee.employeeName,company:companyNames.get(pair.companyId)??'',hireDate:employee.hiredOn,exitDate,
+        businessUnitId:placement?.businessUnitId??null,
+        businessUnit:placement?.businessUnitId?unitNames.get(placement.businessUnitId)??null:null,
+        positionId:placement?.positionId??null,employmentType:placement?.employmentType??null,
         departmentId:placement?.departmentId??null,department:placement?departmentNames.get(placement.departmentId)??null:null,
         costCentre:placement?.costCenterId?centreNames.get(placement.costCenterId)??null:null,
         grade:placement&&grade?.gradeId?gradeNames.get(grade.gradeId)??null:null,movements,verifiedTransferIds});

@@ -31292,6 +31292,13 @@
     }
   },
   "payrollComparison": {
+    "saveTemplate": "บันทึกเป็นเทมเพลตการกระทบยอด",
+    "businessUnit": "หน่วยธุรกิจ",
+    "position": "ตำแหน่ง",
+    "employmentType": "ประเภทการจ้าง",
+    "employeeSearch": "ค้นหาพนักงานด้วยชื่อหรือรหัส",
+    "groupBy": "จัดกลุ่มตาม",
+    "noGrouping": "ทั้งหมด / ไม่จัดกลุ่ม",
     "reconciliationCaptured": "เวลาบันทึกเวอร์ชันต้นทาง",
     "reconciliationStatus": "สถานะการเปรียบเทียบ",
     "reconciliationReady": "พร้อมตรวจสอบ",

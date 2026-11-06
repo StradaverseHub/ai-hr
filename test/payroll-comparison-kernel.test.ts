@@ -110,6 +110,25 @@ describe('Payroll comparison consumes generated paid results under the saved rep
     await expect(savePayrollReconciliationRemark(ctx, [b.companyId], { ...input, revision: 1 })).rejects.toThrow();
   });
 
+  it('reuses dated and individual filters from a reconciliation template without saving the search text', async () => {
+    const f = await fixture();
+    await closeBatch(ctx, { batchId: f.previous.batchId });
+    await generatePayslips(ctx, { batchId: f.current.batchId });
+    const spec = payrollComparisonSpec();
+    spec.payrollComparison!.defaults = { currentPeriod, companyId: b.companyId, employmentId: f.employee.employmentId,
+      departmentId: b.deptA, employmentType: 'full_time', groupBy: 'department' };
+    spec.payrollComparison!.onlyVariances = false;
+    const saved = await saveCustomReport(ctx, { name: 'Fictional reconciliation template', datasetId: spec.datasetId, spec, companyIds: [b.companyId] });
+    const comparison = await runPayrollComparisonReport(ctx, [b.companyId], { id: saved.id, filters: { employeeSearch: 'COMPARE-001' } });
+    expect(comparison.filters).toMatchObject({ currentPeriod, previousPeriod, groupBy: 'department' });
+    expect(comparison.result.rows.map(row => row.employmentId)).toEqual([f.employee.employmentId]);
+    await recordPayrollComparisonRun(ctx, comparison, 'run');
+    const events = await owner.db.select({ payload: s.domainEvent.payload }).from(s.domainEvent)
+      .where(and(eq(s.domainEvent.aggregateId, saved.id), eq(s.domainEvent.eventType, 'custom-report.comparison-recorded')));
+    expect(events).toHaveLength(1);
+    expect(JSON.stringify(events[0].payload)).not.toContain('COMPARE-001');
+  });
+
   it('compares another recorded pay item to the cent without substituting later compensation', async () => {
     const f = await fixture({ typed: true, allowance: 10.10 });
     await closeBatch(ctx, { batchId: f.previous.batchId });

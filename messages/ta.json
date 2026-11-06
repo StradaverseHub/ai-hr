@@ -31292,6 +31292,13 @@
     }
   },
   "payrollComparison": {
+    "saveTemplate": "ஒப்பீட்டு வார்ப்புருவாகச் சேமி",
+    "businessUnit": "வணிகப் பிரிவு",
+    "position": "பதவி",
+    "employmentType": "வேலைவகை",
+    "employeeSearch": "பெயர் அல்லது குறியீட்டால் பணியாளரைத் தேடு",
+    "groupBy": "இதன்படி குழுவாக்கு",
+    "noGrouping": "அனைத்தும் / குழுவாக்கம் இல்லை",
     "reconciliationCaptured": "மூலப் பதிப்பு பதிவான நேரம்",
     "reconciliationStatus": "ஒப்பீட்டு நிலை",
     "reconciliationReady": "மதிப்பாய்வுக்குத் தயார்",

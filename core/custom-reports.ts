@@ -434,14 +434,16 @@ export async function recordPayrollComparisonRun(ctx:SessionContext,run:Awaited<
     if(run.reportId&&(!saved||saved.version!==run.version))throw new MasterReportAccessError();
     const spec=saved?.spec??run.spec;
     await comparisonAccess(tx,ctx,spec,kind==='export'?'export':'view',run.companyIds);
-    const snapshot={payItemCode:run.definition.payItemCode,filters:run.filters,runs:run.result.runs,sourceRevisions:run.sourceRevisions,generatedAt:run.generatedAt};
+    const {employeeSearch,employmentId,...filters}=run.filters;
+    const auditFilters={...filters,employeeFilterApplied:!!(employeeSearch||employmentId)};
+    const snapshot={payItemCode:run.definition.payItemCode,filters:auditFilters,runs:run.result.runs,sourceRevisions:run.sourceRevisions,generatedAt:run.generatedAt};
     const digest=createHash('sha256').update(JSON.stringify(snapshot)).digest('hex');
     const scopes=sql`ARRAY[${sql.join(run.companyIds.map(id=>sql`${id}::uuid`),sql`, `)}]`;
     const [audit]=await tx.execute(sql`select app.record_custom_report_run(${run.reportId}::uuid,${run.version}::integer,
       ${kind},${format},${scopes},${run.result.displayedRows},${run.result.available?'success':'skipped'},${'comparison:'+digest}) as id`) as unknown as {id:string}[];
     await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'custom-report',aggregateId:run.reportId??audit.id,
       eventType:'custom-report.comparison-recorded',actor:actorOf(ctx),payload:{auditId:audit.id,reportVersion:run.version,kind,format,
-        payItemCode:run.definition.payItemCode,filters:run.filters,sourceRuns:run.result.runs,sourceRevisions:run.sourceRevisions,generatedAt:run.generatedAt,digest}});
+        payItemCode:run.definition.payItemCode,filters:auditFilters,sourceRuns:run.result.runs,sourceRevisions:run.sourceRevisions,generatedAt:run.generatedAt,digest}});
     return audit.id;
   });
 }

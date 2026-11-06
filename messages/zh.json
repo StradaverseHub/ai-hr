@@ -31292,6 +31292,13 @@
     }
   },
   "payrollComparison": {
+    "saveTemplate": "另存为核对模板",
+    "businessUnit": "业务单位",
+    "position": "职位",
+    "employmentType": "雇佣类型",
+    "employeeSearch": "按姓名或编号查找员工",
+    "groupBy": "分组依据",
+    "noGrouping": "全部／不分组",
     "reconciliationCaptured": "来源版本记录时间",
     "reconciliationStatus": "比较状态",
     "reconciliationReady": "可供审核",

@@ -31292,6 +31292,13 @@
     }
   },
   "payrollComparison": {
+    "saveTemplate": "Save as reconciliation template",
+    "businessUnit": "Business unit",
+    "position": "Position",
+    "employmentType": "Employment type",
+    "employeeSearch": "Find employee by name or code",
+    "groupBy": "Group by",
+    "noGrouping": "All / no grouping",
     "reconciliationCaptured": "Source version captured",
     "reconciliationStatus": "Comparison status",
     "reconciliationReady": "Ready to review",

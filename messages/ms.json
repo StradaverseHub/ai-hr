@@ -31292,6 +31292,13 @@
     }
   },
   "payrollComparison": {
+    "saveTemplate": "Simpan sebagai templat rekonsiliasi",
+    "businessUnit": "Unit perniagaan",
+    "position": "Jawatan",
+    "employmentType": "Jenis pekerjaan",
+    "employeeSearch": "Cari pekerja mengikut nama atau kod",
+    "groupBy": "Kumpulkan mengikut",
+    "noGrouping": "Semua / tiada pengumpulan",
     "reconciliationCaptured": "Versi sumber direkodkan",
     "reconciliationStatus": "Status perbandingan",
     "reconciliationReady": "Sedia disemak",
