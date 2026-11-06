@@ -84,10 +84,13 @@ it.skipIf(!requested)('preserves the real overview rows, facets, scope, dated as
   for(const [day,companyId] of [[corrected.hiredOn,corrected.beforeCompanyId],[todayInKualaLumpur(),corrected.afterCompanyId]]){
    const companyIds=sql`array[${sql.join(corrected.companies.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[]`;
    const [parity]=await withTenant(corrected.ctx,tx=>tx.execute<{summaryCompany:string;detailCompany:string;detailsEqual:boolean}>(sql`
-    select (select value->>'companyId' from app.personnel_overview_narrow_rows(${day}::date,${companyIds})) as "summaryCompany",
+    select (select summary.value->>'companyId'
+      from app.personnel_overview_narrow_rows(${day}::date,${companyIds}) summary(value)
+      where summary.value->>'employmentId'=${corrected.employmentId}::text) as "summaryCompany",
       bounded.value->>'companyId' as "detailCompany", bounded.value=exact.value as "detailsEqual"
     from app.personnel_overview_page_rows(${day}::date,${companyIds},array[${corrected.employmentId}::uuid]) bounded(value)
-    cross join app.personnel_filter_rows(${day}::date,${companyIds}) exact(value)
+    join app.personnel_filter_rows(${day}::date,${companyIds}) exact(value)
+      on exact.value->>'employmentId'=bounded.value->>'employmentId'
    `));
    expect(parity).toEqual({summaryCompany:companyId,detailCompany:companyId,detailsEqual:true});
   }
