@@ -15,9 +15,9 @@ for the exact filenames, timestamps, and hashes.
 The baseline provider transform digest is
 `e6d8787efa5cd0051baad6afe5b59cc3c6f27d7b2ff2e3dc03b757e1decec907`.
 This candidate computes
-`b370f618f86b122c1982d6c222f1619a9236a6f682a2c10dd57399e148c91961`
+`8152667372789bb0f82f837a824f3eed57487c4318902cacd63d3d4aabecc232`
 over 1,456 files. The module-agent digest is
-`c3f40c8417344310525c30b7c76ad33b2b404c55427efc9eb5a64baadc0e1ce8`
+`e703990e5dc540ed649e0e9bcaf7c9857aca677af776fd78d177f10c76a98984`
 over 467 files. The existing approval records remain unchanged. Tests that
 require current provider approval fail closed while the exact source has no
 approved binding.

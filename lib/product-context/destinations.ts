@@ -154,6 +154,8 @@ export const FORWARD_STUBS:ReadonlySet<string>=new Set(['/control-tower','/contr
  '/control-tower/agents/inventory','/control-tower/agents/orchestrator']);
 /** Native workflow grants and an active View As session cannot be inferred from a coarse role or module. */
 export const NATIVE_SCOPE_ONLY_PAGES:ReadonlySet<string>=new Set([
+ '/admin/attendance/settings/offline-clocking',
+ '/payroll/statutory-forms/filing-history',
  '/admin/rewards/access/view-as',
  '/admin/rewards/bonus-matrices',
  '/admin/rewards/pat-inputs',
@@ -184,7 +186,7 @@ export const LINKABLE_PAGES:readonly PageRow[]=Object.freeze(([
  ['/admin/attendance/schedule','admin',null],['/admin/attendance/schedule-assignment','admin',null],
  ['/admin/attendance/schedule-assignment/bulk','admin',null],['/admin/attendance/schedule/new','admin',null],
  ['/admin/attendance/settings','admin',null],['/admin/attendance/settings/company-policy','admin',null],
- ['/admin/attendance/settings/offline-clocking','admin',null],['/admin/attendance/settings/overtime-patterns','admin',null],['/admin/attendance/settings/registered-devices','admin',null],
+ ['/admin/attendance/settings/overtime-patterns','admin',null],['/admin/attendance/settings/registered-devices','admin',null],
  ['/admin/attendance/settings/work-schedule-overtime','admin',null],['/admin/audit','admin',null],['/admin/card-assignment','admin','attendance'],
  ['/admin/claims','admin',null],['/admin/claims/forms','admin',null],['/admin/claims/limits','admin',null],['/admin/claims/mileage','admin',null],
  ['/admin/claims/reimbursements','admin',null],['/admin/holidays','admin',null],['/admin/holidays/groups','admin',null],
@@ -266,7 +268,7 @@ export const LINKABLE_PAGES:readonly PageRow[]=Object.freeze(([
  ['/payroll/process/result','admin','payroll'],['/payroll/reconciliation','admin','payroll'],['/payroll/setup','admin','payroll'],['/payroll/setup/correction-controls','admin','payroll'],
  ['/payroll/sip-contribution/preview','admin','payroll'],['/payroll/statutory-adjustment','admin','payroll'],
  ['/payroll/statutory-detail','admin','payroll'],['/payroll/statutory-forms','admin','payroll'],['/payroll/statutory-forms/ea','admin','payroll'],
- ['/payroll/statutory-forms/ea/view','admin','payroll'],['/payroll/statutory-forms/event','admin','payroll'],['/payroll/statutory-forms/filing-history','admin','payroll'],
+ ['/payroll/statutory-forms/ea/view','admin','payroll'],['/payroll/statutory-forms/event','admin','payroll'],
  ['/payroll/statutory-forms/open','admin','payroll'],['/payroll/statutory-forms/pcb2ii','admin','payroll'],
  ['/payroll/statutory-forms/pcb2ii/receipts','admin','payroll'],['/payroll/statutory-forms/pcb2ii/view','admin','payroll'],
  ['/payroll/transaction-view','admin','payroll'],['/payroll/transactions','admin','payroll'],['/payroll/transactions/adjustments','admin','payroll'],
