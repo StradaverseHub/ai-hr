@@ -4880,6 +4880,13 @@
       "when": 1793330001700,
       "tag": "2300_retire_job_architecture_workflows",
       "breakpoints": true
+    },
+    {
+      "idx": 1550,
+      "version": "7",
+      "when": 1793330001850,
+      "tag": "2450_personnel_search_projection",
+      "breakpoints": true
     }
   ]
 }
