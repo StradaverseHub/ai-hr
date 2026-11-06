@@ -18,6 +18,7 @@ afterAll(closeAll);
 
 const dialect=new PgDialect();
 const lockStatement='select pg_advisory_xact_lock(hashtextextended($1,0))';
+const sharedLockStatement='select pg_advisory_xact_lock_shared(hashtextextended($1,0))';
 
 function observedCarrier(tx:Tx,tenantId:string,companyId:string,shared:boolean,afterEpoch?:()=>Promise<void>){
  let access=0,workflow=0;
@@ -25,14 +26,18 @@ function observedCarrier(tx:Tx,tenantId:string,companyId:string,shared:boolean,a
   if(key==='execute')return async(statement:Parameters<Tx['execute']>[0])=>{
    if(typeof statement==='string')return target.execute(statement);
    const query=dialect.sqlToQuery(statement.getSQL());
-   const key=query.sql.replace(/\s+/g,' ').trim()===lockStatement&&query.params.length===1?query.params[0]:undefined;
-   if(key==='access-configuration:'+tenantId){
+   const statementText=query.sql.replace(/\s+/g,' ').trim().replace(/\( /g,'(');
+   const key=query.params.length===1?query.params[0]:undefined;
+   if(statementText===lockStatement&&key==='access-configuration:'+tenantId){
     access++;
     if(shared)return target.execute(sql`select pg_advisory_xact_lock_shared(hashtextextended(${key},0))`);
    }
    const result=await target.execute(statement);
-   // The second prepare starts only after correction INSERT has frozen its epoch.
-   if(key===tenantId+':attendance-workflow:'+companyId+':irregularity'&&++workflow===2)await afterEpoch?.();
+   // The one application snapshot follows correction INSERT, which already froze the epoch.
+   if(statementText===sharedLockStatement&&key===tenantId+':attendance-workflow:'+companyId+':irregularity'){
+    workflow++;
+    await afterEpoch?.();
+   }
    return result;
   };
   const value=Reflect.get(target,key,target);
@@ -87,13 +92,13 @@ it('allows independent ordinary submissions to overlap before audit while retain
    const [backend]=await tx.execute<{pid:number}>(sql`select pg_backend_pid() as pid`);
    const {carrier,counts}=observedCarrier(tx,base.tenantId,subject.companyId,shared,afterEpoch?()=>afterEpoch(backend.pid):undefined);
    const {correctionId}=await requestAttendanceCorrection(subject.ctx,subject.input,carrier);
-   expect(counts()).toEqual({access:1,workflow:2});
+   expect(counts()).toEqual({access:1,workflow:1});
    const expectedLocks=[
     ['access-configuration:'+base.tenantId,shared?'ShareLock':'ExclusiveLock'],
     ['leave-dependency-configuration:'+base.tenantId,'ShareLock'],
     ['leave-dependency-employment:'+base.tenantId+':'+subject.input.employmentId,'ExclusiveLock'],
     [base.tenantId+':'+subject.input.employmentId,'ExclusiveLock'],
-    [base.tenantId+':attendance-workflow:'+subject.companyId+':irregularity','ExclusiveLock'],
+    [base.tenantId+':attendance-workflow:'+subject.companyId+':irregularity','ShareLock'],
    ];
    for(const [key,mode]of expectedLocks){
     const held=await tx.execute<{mode:string}>(sql`with k as(select hashtextextended(${key},0)as value)
