@@ -15,13 +15,14 @@ export function todayData():EmployeeHomeToday{return {version:1,employmentId:'ow
 beforeEach(()=>{vi.clearAllMocks();state.subject.mockResolvedValue('own');state.enabled.mockReturnValue(true);state.clock.mockResolvedValue({...todayData().clock,serverNow:now,businessDate:date,dayKind:'workday',attendancePhotoSetting:'not_required',captureGPS:'private'});state.locations.mockResolvedValue({total:1,names:['Fictional HQ']});state.leave.mockResolvedValue(new Map());state.payroll.mockResolvedValue(date);});
 describe('Your Day independent own metadata',()=>{
  it('uses canonical owners and sends only the small clock and recorded payment facts',async()=>{
-  const value=await readEmployeeHomeToday(ctx,'own');expect(validateEmployeeHomeToday(value,'own')).toEqual(todayData());
+  const signal=new AbortController().signal;
+  const value=await readEmployeeHomeToday(ctx,'own',signal);expect(validateEmployeeHomeToday(value,'own')).toEqual(todayData());
   expect(state.leave).toHaveBeenCalledWith(state.clock.mock.calls[0][0],['own'],date,date);
   const [attendanceTx]=state.clock.mock.calls[0];
   expect(state.subject).toHaveBeenCalledWith(attendanceTx,ctx,'own');
   expect(state.clock).toHaveBeenCalledWith(attendanceTx,ctx,'own');
   expect(state.locations).toHaveBeenCalledWith(attendanceTx,'own');
-  expect(state.payroll).toHaveBeenCalledWith(ctx,'own');
+  expect(state.payroll).toHaveBeenCalledWith(ctx,'own',signal);
   expect(JSON.stringify(value)).not.toMatch(/private|amount|captureGPS/);
  });
  it('does not read disabled attendance or payroll owners',async()=>{
