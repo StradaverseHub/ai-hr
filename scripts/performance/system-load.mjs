@@ -955,7 +955,10 @@ try{
  await databaseSnapshot('loaded');
  if(mixedWorkflows){
   try{report.mixedWorkflows.failedAttendanceEffects={status:'checked',rows:await mixedWorkflows.verifyFailedAttendanceActions()};}
-  catch{report.mixedWorkflows.failedAttendanceEffects={status:'unavailable'};}
+  catch(error){
+   const code=typeof error?.code==='string'&&/^[A-Z0-9_]{1,40}$/.test(error.code)?error.code:null;
+   report.mixedWorkflows.failedAttendanceEffects={status:'unavailable',code};
+  }
   save();
  }
  await verifyAudit();save();
