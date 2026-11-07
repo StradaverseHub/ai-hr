@@ -18,4 +18,14 @@ describe('unlocked display snapshots', () => {
     expect(store.get('me')).toBeUndefined();
     expect(createReadSnapshots().get('me')).toBeUndefined();
   });
+  it('notifies only matching live consumers and drops subscriptions on close', () => {
+    const store=createReadSnapshots();let header=0,other=0;
+    const stop=store.subscribe('own/me',()=>header++);
+    store.subscribe('other/me',()=>other++);
+    store.put('own/me',{name:'Recovered'});expect(header).toBe(1);expect(other).toBe(0);
+    store.remove('own/me');expect(header).toBe(2);
+    stop();store.put('own/me',{name:'Later'});expect(header).toBe(2);
+    store.dispose();store.put('other/me',{name:'Late private response'});expect(other).toBe(0);
+    store.activate();store.put('other/me',{name:'New unlocked tree'});expect(other).toBe(0);
+  });
 });

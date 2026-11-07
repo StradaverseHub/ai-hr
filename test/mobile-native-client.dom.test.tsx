@@ -504,6 +504,20 @@ it('reuses profile display data only inside the same unlocked tree and bypasses 
   await screen.findByText('Employment one');expect(f.response).toHaveBeenCalledTimes(3);
 });
 
+it('repairs a mounted failed header from a later same-scope profile read without another request',async()=>{
+  const f=clientFixture(),onAuth=vi.fn();
+  f.response.mockResolvedValueOnce(new Response('',{status:503}));
+  function Identity({label}:{label:string}){const r=f.api.useApi('me',{},onAuth) as any;return <span>{label}: {r.data?.person.name??(r.error?'Unavailable':'Loading')}</span>;}
+  function App(){const [profile,setProfile]=React.useState(false);return <><Identity label="Header"/><button onClick={()=>setProfile(true)}>Open Me</button>{profile&&<Identity label="Profile"/>}</>;}
+  render(<React.StrictMode><f.api.ReadSnapshotBoundary><App/></f.api.ReadSnapshotBoundary></React.StrictMode>);
+  await screen.findByText('Header: Unavailable');expect(f.response).toHaveBeenCalledOnce();
+  f.response.mockResolvedValueOnce(Response.json(employee('Recovered identity')));
+  fireEvent.click(screen.getByText('Open Me'));
+  await screen.findByText('Profile: Recovered identity');
+  expect(screen.getByText('Header: Recovered identity')).toBeTruthy();
+  expect(f.response).toHaveBeenCalledTimes(2);expect(onAuth).not.toHaveBeenCalled();
+});
+
 it('does not fetch an invisible optional panel and hides its prior data when disabled',async()=>{
  const f=clientFixture(),onAuth=vi.fn();
  function View({enabled}:{enabled:boolean}){const r=f.api.useApi('me',{},onAuth,{enabled});return <span>{r.data?.person.name??(r.loading?'Loading':'Hidden')}</span>;}

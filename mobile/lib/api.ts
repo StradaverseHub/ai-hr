@@ -336,6 +336,18 @@ export function useApi<P extends keyof Endpoints>(
   const [result, setResult] = useState<{ key: string; data: Endpoints[P] | null; error: Error | null; loading: boolean } | null>(() => cached === undefined ? null : {key,data:cached,error:null,loading:false});
   const [tick, setTick] = useState(0);
 
+  // A successful peer read (for example Me after a resume-time outage) also
+  // repairs the already-mounted header. No extra request or retained lock cache.
+  useEffect(() => {
+    if (!enabled || !reusable || !snapshots) return;
+    return snapshots.subscribe(key, () => {
+      if (authGeneration() !== owner || identityNamespace() !== namespace || config.apiUrl !== origin || appLocale() !== locale) return;
+      const data = snapshots.get<Endpoints[P]>(key);
+      if (data !== undefined) setResult({key,data,error:null,loading:false});
+      else setResult(prior => prior?.key === key ? {...prior,data:null} : prior);
+    });
+  }, [enabled, reusable, snapshots, key]);
+
   useEffect(() => {
     if (!enabled) return;
     const available = tick === 0 && reusable ? snapshots?.get<Endpoints[P]>(key) : undefined;
