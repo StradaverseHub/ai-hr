@@ -630,7 +630,7 @@ export async function onboardingSyncDraftTx(ctx: SessionContext, tx: Tx, draftId
         }
         return;
     }
-    if (!draft?.companyId || row && !['pending','submitted'].includes(row.data.state))
+    if (!draft?.companyId || row?.data.state === 'cancelled' && !active)
         return;
     if (mode === 'save' && row?.data.sourceVersion === draft.updatedAt.toISOString())
         return;
@@ -648,13 +648,19 @@ export async function onboardingSyncDraftTx(ctx: SessionContext, tx: Tx, draftId
     const c = row?.data ?? M.blankCase(randomUUID(), number, draftId, source, env);
     if (row) {
         const [privateRow] = await tx.select().from(secrets).where(eq(secrets.caseId, row.id));
-        if (privateRow)
+        if (privateRow) {
             Object.assign(c.local, privateRow.data.local);
+            if (c.state === 'cancelled') Object.assign(c.source, privateRow.data.source);
+        }
     }
     const old = JSON.stringify(Object.entries(c.source).sort());
-    c.source = source;
-    c.syncedAt = now;
-    c.sourceVersion = draft.updatedAt.toISOString();
+    // Activation must retain the canonical identity link even for a cancelled case.
+    // Its displayed facts, private snapshot and work remain historical.
+    if (c.state !== 'cancelled') {
+        c.source = source;
+        c.syncedAt = now;
+        c.sourceVersion = draft.updatedAt.toISOString();
+    }
     if (row && old !== JSON.stringify(Object.entries(stripPrivate(c).value.source).sort()) && c.state === 'submitted')
         c.reconcileNeeded = true;
     if (active) {
@@ -664,10 +670,10 @@ export async function onboardingSyncDraftTx(ctx: SessionContext, tx: Tx, draftId
     }
     const a: M.Actor = ctx.userId ? await actorTx(tx, ctx, config, draft.companyId) : { id: 'system', name: 'Personnel Management', module: true, hr: true, master: true };
     M.log(c, a, env, active ? 'personnel.activated' : row ? 'personnel.updated' : 'personnel.synced');
-    if (active)
+    if (active && c.state !== 'cancelled')
         await assignRoleTasksTx(tx, c);
     if (row)
-        await storeTx(tx, ctx, { ...row, companyId: draft.companyId }, c, a.hr);
+        await storeTx(tx, ctx, { ...row, companyId: c.state === 'cancelled' ? row.companyId : draft.companyId }, c, a.hr);
     else {
         const { value, data: secretData } = stripPrivate(c);
         await tx.insert(cases).values({ id: c.id, tenantId: ctx.tenantId, companyId: draft.companyId, sourceDraftId: draftId, data: value, employmentId: c.employmentId });
