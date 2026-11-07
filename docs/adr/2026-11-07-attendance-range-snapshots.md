@@ -1,6 +1,6 @@
 # Attendance Records pages read one bounded snapshot
 
-Status: candidate; hosted native, compiler and rendered qualification pending. Production remains held.
+Status: candidate; integrated release qualification and rendered acceptance pending. Production remains held.
 
 Individual Attendance and Breakdown use one enforced REPEATABLE READ / READ ONLY transaction. The current calling login, tenant, person and grant snapshot is checked before native employment/person visibility. A foreign or otherwise invisible employment supplies neither day rows nor a positive date total. The page's existing server selection and role guards remain: Individual uses scopedSession; Breakdown uses scopedAdmin.
 
