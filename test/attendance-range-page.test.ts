@@ -27,7 +27,7 @@ beforeEach(async()=>{
 });
 
 /** Observe real .values() results, preserving their native execution and mapping. */
-function observeDayQueries(afterRows?:(params:unknown[])=>Promise<void>){
+function observeDayQueries(afterRows?:(params:unknown[],native:typeof client)=>Promise<void>){
  const begin=client.begin.bind(client),queries:{params:unknown[];rows:number}[]=[];
  const spy=vi.spyOn(client,'begin').mockImplementation(((...args:unknown[])=>{
   const index=args.findIndex(arg=>typeof arg==='function'),callback=args[index] as (native:typeof client)=>unknown;
@@ -37,7 +37,7 @@ function observeDayQueries(afterRows?:(params:unknown[])=>Promise<void>){
     if(typeof query[0]==='string'&&query[0].includes('from "attendance"'))return new Proxy(pending,{get(result,key){
      if(key==='values')return async(...args:unknown[])=>{
       const rows=await Reflect.apply(result.values,result,args);if(!Array.isArray(rows))throw Error('Native values expected');
-      const params=Array.isArray(query[1])?query[1]:[];queries.push({params,rows:rows.length});await afterRows?.(params);return rows;
+      const params=Array.isArray(query[1])?query[1]:[];queries.push({params,rows:rows.length});await afterRows?.(params,native);return rows;
      };
      const value=Reflect.get(result,key,result);return typeof value==='function'?value.bind(result):value;
     }});
@@ -106,6 +106,23 @@ it('preserves missing-day holiday and schedule context across the visible-page b
  expect(last.dayPage[1]).toMatchObject({date:'2026-07-27',attendanceId:null,context:null,shiftCode:'PREG',scheduledMinutes:480,shiftStart:'09:00',shiftEnd:'18:00'});
  expect(last.dayPage[2]).toMatchObject({date:'2026-07-28',attendanceId:null,context:null,shiftCode:'PROS',scheduledMinutes:300,shiftStart:'10:00',shiftEnd:'16:00'});
  expect(last.total).toBe(31);expect(last.punchesByAttendance.size).toBe(0);
+});
+
+it('enforces native repeatable-read/read-only mode even if a child read attempts a write',async()=>{
+ let attempted=false;
+ const {spy}=observeDayQueries(async(_params,native)=>{
+  expect(await native.unsafe("select current_setting('transaction_isolation') as isolation,current_setting('transaction_read_only') as mode"))
+   .toMatchObject([{isolation:'repeatable read',mode:'on'}]);
+  attempted=true;
+  await native.unsafe('update attendance set worked_minutes=999 where employment_id=$1::uuid',[employmentId]);
+ });
+ let caught:unknown;
+ try{await attendanceEmploymentRangePage(ctx,employmentId,from,to,parsePageQuery());}catch(error){caught=error;}finally{spy.mockRestore();}
+ const codes:string[]=[];
+ for(let cause=caught;cause instanceof Error;cause=cause.cause){if('code' in cause)codes.push(String(cause.code));if(cause.cause===cause)break;}
+ expect(attempted).toBe(true);expect(codes).toContain('25006');
+ const persisted=await owner.client`select worked_minutes from attendance where employment_id=${employmentId}::uuid`;
+ expect(persisted).toHaveLength(31);expect(persisted.map(row=>row.worked_minutes)).toEqual(Array(31).fill(480));
 });
 
 it('preserves native own and foreign visibility, rejects forged callers and keeps empty-page counts truthful',async()=>{
