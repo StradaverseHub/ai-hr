@@ -296,7 +296,11 @@
       "rule": "This change was refused by a safeguard that protects existing records, such as a closed payroll. Reference {ref}.",
       "busy": "The system was busy and the change was not completed. Please try again. Reference {ref}.",
       "nricDuplicate": "This NRIC already exists in another employee record. Duplicate NRIC numbers are not allowed under the current People General Settings. Reference {ref}."
-    }
+    },
+    "moreActions": "More actions",
+    "noSearchResults": "No results match your search.",
+    "sectionFilter": "Section",
+    "allSections": "All sections"
   },
   "nav": {
     "roster": "Roster",
@@ -3894,7 +3898,7 @@
       "panelLaterOther": "This leave year only. The Available Balance on the card also counts entries dated after this leave year",
       "sharedFromPool": "These days come from the {pool} balance.",
       "sharedPoolHolder": "These days are shared with {types}.",
-      "takenOnlyCaption": "Taken — no entitlement",
+      "takenOnlyCaption": "No entitlement — usage shown",
       "cycleDates": "Leave year {from} – {to}",
       "details": "Details",
       "detailsFor": "Details for {type}",
@@ -3947,7 +3951,10 @@
     "replacementRequest": {
       "viewMyRequests": "[retired r389 — the 'View my leave credit requests' link beside the Leave Credit request button on My Leave. Item ba039150 removed it: the list it opened is now the Leave Credit History page, reached from the My Leave menu]"
     },
-    "historyHeading": "Leave Request Status"
+    "historyHeading": "Leave Request Status",
+    "submittingRequest": "Submitting…",
+    "submitUnconfirmed": "The result could not be confirmed. Check request status before trying again.",
+    "zeroDaysHint": "This selection deducts no leave. Choose a working date before submitting."
   },
   "leaveTracker": {
     "title": "Team Leave Tracker",
@@ -4779,7 +4786,7 @@
   },
   "me": {
     "title": "My Profile",
-    "notLinked": "This account isn’t linked to an employee profile. Use the identity switcher in the top bar to act as an employee (e.g. Aisyah or Daniel).",
+    "notLinked": "This account is not linked to an employee profile. Ask HR to link your login to the correct employee profile.",
     "todayHeading": "Today",
     "checkIn": "Check in",
     "checkedInAt": "Checked in at <time></time>",
@@ -5749,7 +5756,7 @@
       "colEmployees": "Employees",
       "colNetPay": "Net pay",
       "colStatus": "Status",
-      "empty": "No payroll processes yet — create one below.",
+      "empty": "No payroll processes yet. Select Create Payroll Run Cycle to start.",
       "runType": {
         "regular": "Regular",
         "off_cycle": "Off-cycle",
@@ -11517,7 +11524,7 @@
       "title": "Claims configuration",
       "subtitle": "Define the expense/benefit claim types employees can submit, their default tax treatment, and optional budgets.",
       "typesTitle": "Claim types",
-      "empty": "No claim types yet. Add one below.",
+      "empty": "No claim types yet. Select Add new to create one.",
       "newTitle": "New claim type",
       "codeLabel": "Code",
       "nameLabel": "Name",
@@ -13697,7 +13704,9 @@
     "scope": "Scope",
     "breadcrumb": "Breadcrumb",
     "details": "Details",
-    "homePreferences": "Home preferences"
+    "homePreferences": "Home preferences",
+    "chooseCompanies": "Choose a new selection",
+    "pendingCompanySelection": "Choose a company to update the view. The current company scope is unchanged."
   },
   "components": {
     "plannedAbsences": {
@@ -14292,7 +14301,7 @@
   "payComponents": {
     "title": "Pay Items",
     "description": "Define configurable pay items and their statutory treatment (EPF / SOCSO / PCB / HRDF).",
-    "previewNotice": "Preview. The catalog is ready to use; payroll switches to typed components only when enabled (TYPED_PAY_COMPONENTS_ENABLED). Until then payroll runs on basic + allowance + overtime + bonus as today.",
+    "previewNotice": "Preview. The catalog is available. Payroll continues to use basic pay, allowances, overtime and bonuses until the new pay component setup is enabled.",
     "catalogTitle": "Catalog",
     "seedDefaults": "Seed Malaysia defaults",
     "colCode": "Pay Code",
@@ -22530,7 +22539,8 @@
     "saving": "[retired r392 — part of the Today tiles or the Needs your attention panel on My Team, removed at the reporter's request (item 33930be9). Leave is decided in Approval Items]",
     "attentionCount": "[retired r392 — part of the Today tiles or the Needs your attention panel on My Team, removed at the reporter's request (item 33930be9). Leave is decided in Approval Items]",
     "status_exempt": "Exempt",
-    "exemptCode": "EX"
+    "exemptCode": "EX",
+    "balanceContext": "These are recorded balances. Entitlement setup is not shown here; a zero does not confirm that entitlement is configured. Ask HR if a balance needs checking."
   },
   "lifecycle": {
     "title": "Onboarding & IT",

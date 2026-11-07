@@ -7,12 +7,12 @@ import { createManualAccountAction,resumeManualAccountAction,cancelManualAccount
 import { ManualSubmit } from './manual-submit';
 import { AccountTargetFields } from './account-target-fields';
 
-export async function ManualAccountSetup({available,people,companies,roles,pending,selectedPerson}:{
- available:boolean;people:{id:string;name:string|null;code:string|null}[];
+export async function ManualAccountSetup({hideHeading=false,available,people,companies,roles,pending,selectedPerson}:{
+ hideHeading?:boolean;available:boolean;people:{id:string;name:string|null;code:string|null}[];
  companies:{id:string;name:string}[];roles:{value:string;label:string}[];pending:ManualIdentityEnrollment[];selectedPerson?:{id:string;name:string|null;email:string|null};
 }) {
  const t=await getTranslations('admin.users.manual');
- return <Card id="manual-account-setup" data-testid="manual-account-setup"><SectionHeader title={t('title')}/><div className="space-y-5 p-4">
+ return <Card id="manual-account-setup" data-testid="manual-account-setup">{!hideHeading&&<SectionHeader title={t('title')}/>}<div className="space-y-5 p-4">
   <p className="text-sm text-muted-foreground">{available?t('description'):t('notEnabled')}</p>
   {available&&<>
    <form action={createManualAccountAction} className="grid gap-4 sm:grid-cols-2">
