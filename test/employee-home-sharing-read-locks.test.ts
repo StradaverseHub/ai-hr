@@ -18,7 +18,7 @@ import {todayInKualaLumpur} from '../lib/hr-date';
 import {pgSqlState} from '../lib/db-error';
 import {adminCtx,closeAll,createAppUser,harnessSnapshot,migrateTestDb,owner,resetDb,seedBase} from './harness';
 beforeAll(migrateTestDb);afterAll(closeAll);
-it('lets actual Home card aggregations coexist with an access reader',async()=>{
+it.each(['reader','writer'] as const)('lets actual Home card aggregations coexist with an access %s',async(mode)=>{
  await resetDb();const b=await seedBase(),on=todayInKualaLumpur();
  const hire=(name:string)=>hireEmployee(adminCtx(b),{person:{fullName:name,primaryEmail:randomUUID()+'@example.invalid'},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:'2020-01-01'});
  const own=await hire('Fictional Home reader');await hire('Fictional Home peer');
@@ -33,14 +33,15 @@ it('lets actual Home card aggregations coexist with an access reader',async()=>{
  const names=Object.keys(readers) as (keyof typeof readers)[];
  const baseline=await Promise.all(names.map(name=>readers[name]()));expect(baseline[0]).toMatchObject({totalPeople:1});
  await owner.client.begin(async holder=>{
-  await holder`select pg_advisory_xact_lock_shared(hashtextextended(${'access-configuration:'+b.tenantId},0))`;
+  if(mode==='reader')await holder`select pg_advisory_xact_lock_shared(hashtextextended(${'access-configuration:'+b.tenantId},0))`;
+  else await holder`select pg_advisory_xact_lock(hashtextextended(${'access-configuration:'+b.tenantId},0))`;
   const actual=database.withTenant;
   const spy=vi.spyOn(database,'withTenant').mockImplementation(<T>(context:SessionContext,read:(tx:Tx)=>Promise<T>,options?: Parameters<typeof database.withTenant>[2])=>actual(context,async tx=>{
    await tx.execute(sql`set local lock_timeout='300ms'`);await tx.execute(sql`set local statement_timeout='3s'`);return read(tx);
   },options));
   try{
    const results=await Promise.allSettled(names.map(name=>readers[name]()));
-   if(process.env.AIHR_FOCUSED_EVIDENCE_DIR)writeFileSync(join(process.env.AIHR_FOCUSED_EVIDENCE_DIR,'home-sharing-read-locks.json'),JSON.stringify({kind:'ACTUAL_HOME_SHARING_READ_CONCURRENCY_COMPONENT_ONLY',releaseEligible:false,results:results.map((row,i)=>({reader:names[i],status:row.status,sqlState:row.status==='rejected'?pgSqlState(row.reason):null}))},null,2));
+   if(process.env.AIHR_FOCUSED_EVIDENCE_DIR)writeFileSync(join(process.env.AIHR_FOCUSED_EVIDENCE_DIR,'home-sharing-'+mode+'-locks.json'),JSON.stringify({kind:'ACTUAL_HOME_SHARING_READ_CONCURRENCY_COMPONENT_ONLY',releaseEligible:false,heldAccessMode:mode,results:results.map((row,i)=>({reader:names[i],status:row.status,sqlState:row.status==='rejected'?pgSqlState(row.reason):null}))},null,2));
    expect(results.map(row=>row.status)).toEqual(names.map(()=>'fulfilled'));
    for(const [i,row]of results.entries())if(row.status==='fulfilled')expect(row.value).toEqual(baseline[i]);
   }finally{spy.mockRestore();}
