@@ -88,7 +88,9 @@ it('enforces native RR/RO and retains command/audited-view barriers and durable 
 it('rechecks native setup grants and actual login grants with retained contexts and denies foreign IDs',async()=>{
  const f=await fixture(),foreign=await seedBase();await setModule(foreign.tenantId,'rewards','active');
  await expect(rewardSetupPlan(adminCtx(foreign),f.binding.plan_version_id)).rejects.toThrow();
- const [grant]=await owner.client<{id:string}[]>`select id from reward_setup_grant where tenant_id=${f.b.tenantId}::uuid and user_id=${f.ctx.userId}::uuid and active`;
+ const userId=f.ctx.userId;if(typeof userId!=='string'||!userId)throw Error('A concrete native fixture administrator is required');
+ expect(userId).toBe(f.b.adminUserId);
+ const [grant]=await owner.client<{id:string}[]>`select id from reward_setup_grant where tenant_id=${f.b.tenantId}::uuid and user_id=${userId}::uuid and active`;
  await owner.client`update reward_setup_grant set active=false where id=${grant.id}::uuid`;
  await expect(rewardLibraryGradeChoices(f.ctx)).rejects.toThrow(/not available/);await expect(rewardSetupPlanChoices(f.ctx)).rejects.toThrow(/not available/);
  await owner.client`update reward_setup_grant set active=true where id=${grant.id}::uuid`;
