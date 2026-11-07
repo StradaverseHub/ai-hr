@@ -122,7 +122,7 @@ export function TaskRow({ item }: { item: TaskItemV2 }) {
 export function HomeApprovalQueue({ refreshToken }: { refreshToken: number }) {
   const { palette } = useTenantDesign();
   const { signOut } = useSession();
-  const list = usePagedResource(TASKS, { native: 'expanded' }, keyOf, signOut);
+  const list = usePagedResource(TASKS, { native: 'expanded', limit:'3' }, keyOf, signOut);
   useEffect(() => { if (refreshToken) list.refresh(); }, [refreshToken, list.refresh]);
   return <View>
     <LoadState loading={list.loading} hasData={list.items.length > 0} error={list.error} onRetry={list.retry} />

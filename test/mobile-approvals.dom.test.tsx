@@ -92,6 +92,13 @@ function fixture(copy: { t?: (k: string, v?: Record<string, unknown>) => string;
 afterEach(cleanup);
 
 describe('approvals list', () => {
+  it('bounds Home preview reads without changing native detail navigation',async()=>{
+    const f=fixture();render(<f.HomeApprovalQueue refreshToken={0}/>);
+    const row=await screen.findByRole('button',{name:'task_leave · Aisyah'});
+    expect(f.apiGetPage.mock.calls[0][2]).toEqual({native:'expanded',limit:'3'});
+    fireEvent.click(row);expect(f.push).toHaveBeenCalledWith({pathname:'/approvals/[kind]/[id]',params:{kind:'leave',id:ID}});
+    expect(f.apiPostV2).not.toHaveBeenCalled();
+  });
   it('a native kind opens its detail; a read-only kind shows an Open on web chip that opens the company origin', async () => {
     const f = fixture();
     f.apiGetPage.mockResolvedValueOnce({ items: [
@@ -102,6 +109,7 @@ describe('approvals list', () => {
     render(<f.ApprovalsScreen />);
     await screen.findByText('task_resignation');
     expect((f.apiGetPage.mock.calls[0][0] as { path: string }).path).toBe('v2/tasks');
+    expect(f.apiGetPage.mock.calls[0][2]).toEqual({native:'expanded'});
     expect(screen.getAllByRole('link')).toHaveLength(1);
     fireEvent.click(screen.getByRole('button', { name: 'task_leave · Aisyah' }));
     expect(f.push).toHaveBeenCalledWith({ pathname: '/approvals/[kind]/[id]', params: { kind: 'leave', id: ID } });
