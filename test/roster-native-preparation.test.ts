@@ -1,8 +1,8 @@
 import {randomUUID} from 'node:crypto';
 import {eq,sql} from 'drizzle-orm';
-// jsdom is a test runtime dependency without a bundled TypeScript declaration.
-// @ts-expect-error TS7016 — native response DOM assertions use the installed runtime.
-import {JSDOM} from 'jsdom';
+import {createRequire} from 'node:module';
+// The installed test runtime has no declaration; assert only the constructor surface used here.
+const JSDOM=createRequire(import.meta.url)('jsdom').JSDOM as new(html:string)=>{window:{document:Document}};
 import {afterAll,beforeAll,beforeEach,expect,it,vi} from 'vitest';
 import {createTranslator} from 'next-intl';
 import type {SessionContext} from '../db/client';
