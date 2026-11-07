@@ -193,10 +193,15 @@ it.skipIf(!requested)('captures real nested native plans on a separate bound app
  await preserveDiagnosticFailure(async()=>{
  logging=await employeeChoicePlanLogging(installation!.database);report.instrumentationConfig={beforeSha256:logging.beforeSha256,instrumentedSha256:logging.instrumentedSha256,settings:logging.settings};
  const identities=(report.identities??=[])as unknown[];plansSession=await employeeChoicePurposeSession('plans',active,value=>identities.push(value),poison);expect(plansSession.defaults.pid).not.toBe(timing!.defaults.pid);
- report.planBackend=plansSession.defaults;const [configuration]=await plansSession.single.client`select current_setting('session_preload_libraries') as libraries,
-  current_setting('auto_explain.log_min_duration') as duration,current_setting('auto_explain.log_parameter_max_length') as parameters,current_setting('auto_explain.log_nested_statements') as nested,
+ report.planBackend=plansSession.defaults;
+ // session_preload_libraries is privileged inspection even for a genuine app
+ // LOGIN. The owner verified its exact database setting before this NEW backend
+ // opened; registered module settings below and actual PID-bound nested plans
+ // prove the module loaded. Never grant pg_read_all_settings to inspect it.
+ const [configuration]=await plansSession.single.client`select current_setting('auto_explain.log_min_duration') as duration,current_setting('auto_explain.log_parameter_max_length') as parameters,current_setting('auto_explain.log_nested_statements') as nested,
   current_setting('auto_explain.log_analyze') as analyze,current_setting('auto_explain.log_buffers') as buffers,current_setting('auto_explain.log_settings') as settings,current_setting('auto_explain.log_format') as format,current_setting('auto_explain.log_timing') as timing`;
- expect(configuration).toEqual({libraries:'auto_explain',duration:'0',parameters:'0',nested:'on',analyze:'on',buffers:'on',settings:'on',format:'json',timing:'off'});
+ expect(configuration).toEqual({duration:'0',parameters:'0',nested:'on',analyze:'on',buffers:'on',settings:'on',format:'json',timing:'off'});
+ report.planBackendSettings=configuration;report.preloadLibraryProof='Exact owner-verified database settings before new app backend plus actual same-PID nested plans; no application privilege added';save();
  const markers:PlanMarker[]=[],startedAt=new Date().toISOString(),spy=plansSession.install();restoreSpy=()=>spy.mockRestore();
   for(const variant of variants)await matrix(variant,plansSession!,'plans',markers);
   const container=evidence(),logs=spawnSync('docker',['logs','--since',startedAt,container.name],{encoding:'utf8',timeout:20000,maxBuffer:64*1024*1024});
