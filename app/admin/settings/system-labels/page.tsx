@@ -9,7 +9,7 @@ import {
   listDepartmentsForLabels,
   listPositionsForLabels,
 } from '@/core/admin';
-import {labelMaintenanceCompanies,labelMaintenanceHeadOptions} from '@/core/system-labels';
+import {labelMaintenanceCompanies,labelMaintenanceHeadSelections} from '@/core/system-labels';
 import { EMPLOYMENT_PROFILE_CATEGORIES, listAllProfileOptions } from '@/core/profile-options';
 // 9a65f808 — grade groups, through the leave PACK FACADE. `listGradeGroups` lives in core/benefit-scheme
 // (a filename that is a leftover — see its header), which is a guarded leave-pack boundary module: the
@@ -64,13 +64,17 @@ export default async function SystemLabelsPage({
   // ⚠️ A NAME ADDED TO THIS DESTRUCTURE MUST BE ADDED TO THE ARRAY BELOW IN THE SAME POSITION. Every
   // element is an array, so a mismatch shifts each later variable by one slot and NOTHING type-errors —
   // each catalogue silently becomes a different one.
-  const [companies, departments, positions, costCenters, businessUnits, grades, profileOptions, gradeGroups, employees] =
+  const companyRows=labelMaintenanceCompanies(s),departmentRows=listDepartmentsForLabels(s),businessUnitRows=listBusinessUnitsForLabels(s);
+  // Names depend only on the two configured head-bearing catalogues, not on slower unrelated ones.
+  const headRows=Promise.all([departmentRows,businessUnitRows]).then(([departments,units])=>
+    labelMaintenanceHeadSelections(s,[...new Set([...departments,...units].flatMap(row=>row.headEmploymentId?[row.headEmploymentId]:[]))]));
+  const [companies, departments, positions, costCenters, businessUnits, grades, profileOptions, gradeGroups, retainedHeads] =
     await Promise.all([
-      labelMaintenanceCompanies(s),
-      listDepartmentsForLabels(s),
+      companyRows,
+      departmentRows,
       listPositionsForLabels(s),
       listCostCentersForLabels(s),
-      listBusinessUnitsForLabels(s),
+      businessUnitRows,
       // b1b81a08 — Grades moved here from Leave Config. Archived rows load too so the grid can show and
       // restore them. NOTE: grades are TENANT-WIDE, so they must NOT pass through company Criteria —
       // job_grade has no company_id to narrow on.
@@ -83,8 +87,7 @@ export default async function SystemLabelsPage({
       // through company Criteria. Archived groups arrive too — the editor badges them and the editor is
       // the only surface that can un-archive one.
       listGradeGroups(s),
-      // Head choices are database-admin scoped independently of the common workspace's company cookie.
-      labelMaintenanceHeadOptions(s),
+      headRows,
     ]);
 
 
@@ -140,10 +143,10 @@ export default async function SystemLabelsPage({
   // after that commit no `name="headEmploymentId"` control existed anywhere in the app. So department_head
   // and business_unit_head stayed selectable approval steps that could never fire (generateApprovalSteps
   // drops a head step whose head is unset), and on the live tenant 0 of 25 departments and 0 of 7 business
-  // units had a head. The select, its per-company options and the same-company guard behind them are the
-  // ones that shipped with 6fadb036; only the surface had gone missing.
+  // units had a head. Keep that edit surface and its same-company writer guard; initial labels now
+  // contain only exact configured heads, while the row-owned chooser browses identities on demand.
   const headByCompany: Record<string, { id: string; label: string }[]> = {};
-  for (const e of employees) {
+  for (const e of retainedHeads) {
     (headByCompany[e.companyId] ??= []).push({
       id: e.employmentId,
       label: e.employeeCode ? `${e.name} (${e.employeeCode})` : e.name,

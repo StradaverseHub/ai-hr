@@ -35,8 +35,8 @@
  * Scope, inherited from every dom test here: jsdom applies no CSS and computes no layout. What this
  * proves is rendering and interaction logic, not pixels.
  */
-import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { NextIntlClientProvider } from 'next-intl';
 import type { ReactNode } from 'react';
@@ -57,6 +57,7 @@ vi.mock('next/navigation', () => ({
 }));
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
+afterEach(()=>vi.unstubAllGlobals());
 beforeEach(() => {
   replace.mockClear();
   window.localStorage.clear();
@@ -100,16 +101,17 @@ const row = (over: Partial<GridRecord> & { id: string; companyId: string }): Gri
   ...over,
 });
 
-const CO = 'co-a';
+const CO = '00000000-0000-0000-0000-000000000001';
+const EMP_LINA='00000001-0000-0000-0000-000000000001',EMP_RAVI='00000001-0000-0000-0000-000000000002';
 const HEADS = {
   [CO]: [
-    { id: 'emp-lina', label: 'Lina Tan (E001)' },
-    { id: 'emp-ravi', label: 'Ravi Kumar (E002)' },
+    { id: EMP_LINA, label: 'Lina Tan (E001)' },
+    { id: EMP_RAVI, label: 'Ravi Kumar (E002)' },
   ],
 };
 
 const FINANCE = row({ id: 'dep-fin', companyId: CO, name: 'Finance' });
-const OPS = row({ id: 'dep-ops', companyId: CO, name: 'Operations', headEmploymentId: 'emp-ravi' });
+const OPS = row({ id: 'dep-ops', companyId: CO, name: 'Operations', headEmploymentId: EMP_RAVI });
 const BU_NORTH = row({ id: 'bu-n', companyId: CO, code: 'BU-N', name: 'North' });
 const POS_CLERK = row({ id: 'pos-1', companyId: CO, title: 'Clerk' });
 const CC_ONE = row({ id: 'cc-1', companyId: CO, code: 'CC1', name: 'Head Office' });
@@ -174,8 +176,9 @@ describe('r285 — the Head (leave approver) column is back on System Labels', (
     const blank = selects[0].options[0];
     expect(blank.value).toBe('');
     expect(blank.textContent).toBe(en.admin.organization.headNone);
-    // …and the company's employments follow it, by name.
-    expect([...selects[0].options].map((o) => o.value)).toEqual(['', 'emp-lina', 'emp-ravi']);
+    // Only None and the row's retained head render before demand browsing opens.
+    expect([...selects[0].options].map((o) => o.value)).toEqual(['']);
+    expect([...selects[1].options].map((o) => o.value)).toEqual(['', EMP_RAVI]);
     // The header says what the column is FOR, in the same words the Approval Workflow footnote uses.
     expect(screen.getByRole('columnheader', { name: en.admin.organization.fieldHead })).toBeInTheDocument();
   });
@@ -201,13 +204,21 @@ describe('r285 — the Head (leave approver) column is back on System Labels', (
     const save = vi.fn(async () => ({ ok: true as const, created: 0, updated: 1, createdIds: [] })) as GridSave;
     const { container } = renderGrid({ save });
 
-    await user.selectOptions(heads(container)[0], 'emp-lina');
+    vi.stubGlobal('fetch',vi.fn(async(_url:unknown,init:RequestInit)=>{
+      const input=JSON.parse(String(init.body));
+      const rows=[{employmentId:EMP_LINA,companyId:CO,name:'Lina Tan',employeeCode:'E001'},{employmentId:EMP_RAVI,companyId:CO,name:'Ravi Kumar',employeeCode:'E002'}];
+      return {ok:true,json:async()=>({companyId:CO,query:input.query.trim(),offset:input.offset,limit:25,total:2,rows,selected:rows.find(row=>row.employmentId===input.selectedId)??null})};
+    }));
+    const cell=heads(container)[0].parentElement!;
+    await user.click(within(cell).getByText(en.employeePanel.searchLabel));
+    await within(cell).findByRole('option',{name:'Lina Tan (E001)'});
+    await user.selectOptions(heads(container)[0], EMP_LINA);
     expect(saveBtn()).toBeEnabled();
     await user.click(saveBtn());
 
     const payload = lastPayload(save);
     expect(payload.updates).toHaveLength(1);
-    expect(payload.updates[0]).toMatchObject({ id: 'dep-fin', headEmploymentId: 'emp-lina' });
+    expect(payload.updates[0]).toMatchObject({ id: 'dep-fin', headEmploymentId: EMP_LINA });
   });
 
   it('sends null when None is chosen — an explicit CLEAR, not an untouched field', async () => {
@@ -229,18 +240,18 @@ describe('r285 — the Head (leave approver) column is back on System Labels', (
   it('a row that already has a head shows that head, and never blank', () => {
     const { container } = renderGrid();
     expect(heads(container)[0].value).toBe(''); // Finance genuinely has none
-    expect(heads(container)[1].value).toBe('emp-ravi'); // Operations does
+    expect(heads(container)[1].value).toBe(EMP_RAVI); // Operations does
   });
 
   it('shows a stored head that is missing from the option list rather than drawing blank', () => {
     // The hazard: a `<select>` whose value matches no option renders EMPTY, which on this column reads
     // as "this department has no head" about a department that has one.
-    const { container } = renderGrid({ headByCompany: { [CO]: [{ id: 'emp-lina', label: 'Lina Tan (E001)' }] } });
+    const { container } = renderGrid({ headByCompany: { [CO]: [{ id: EMP_LINA, label: 'Lina Tan (E001)' }] } });
     const ops = heads(container)[1];
-    expect(ops.value).toBe('emp-ravi');
-    expect([...ops.options].map((o) => o.value)).toContain('emp-ravi');
+    expect(ops.value).toBe(EMP_RAVI);
+    expect([...ops.options].map((o) => o.value)).toContain(EMP_RAVI);
     expect(ops.selectedOptions[0].textContent).toBe(en.admin.systemLabels.headUnavailable);
-    expect(ops.selectedOptions[0].textContent).not.toContain('emp-ravi');
+    expect(ops.selectedOptions[0].textContent).not.toContain(EMP_RAVI);
   });
 
   it('a text-only edit re-sends the loaded head unchanged — renaming a unit cannot unroute it', async () => {
@@ -253,7 +264,7 @@ describe('r285 — the Head (leave approver) column is back on System Labels', (
 
     const u = lastPayload(save).updates.find((x) => x.id === 'dep-ops')!;
     expect(u.name).toBe('Operations & Logistics');
-    expect(u.headEmploymentId).toBe('emp-ravi');
+    expect(u.headEmploymentId).toBe(EMP_RAVI);
   });
 
   it('states the head instead of offering it on a row whose company this admin does not administer', () => {

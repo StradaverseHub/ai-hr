@@ -50,6 +50,7 @@ import {
 } from './client-pager';
 
 import { ORGANISATION_LABEL_KINDS, ORGANISATION_LABEL_COLUMNS, type OrganisationLabelKind } from '@/lib/system-label-definition';
+import {SystemLabelHeadChoice} from './system-label-head-choice';
 export type GridKind = OrganisationLabelKind;
 
 export type GridCompany = { id: string; name: string; archived?:boolean };
@@ -217,10 +218,9 @@ export function SystemLabelsGrid({
    * drops a head step whose head is unset (core/leave.ts), so every such step was silently skipped. On
    * the live tenant that was 0 of 25 departments and 0 of 7 business units.
    *
-   * NOT filtered to active employments on purpose: a select whose current value is absent from its
-   * options renders BLANK, which on this column would state "no head" about a department that has one.
-   * The list therefore has to be a superset of whatever is stored. Absent ⇒ the column renders with the
-   * None option alone (the shape the DOM tests that do not exercise heads see).
+   * Only exact configured, authorized head labels are supplied initially. The row-owned chooser
+   * browses employees on demand; ended employments stay eligible for browsing under the same native
+   * population. A retained head missing from these labels stays explicitly unavailable, never None.
    */
   headByCompany?: Record<string, { id: string; label: string }[]>;
   isGroupAdmin: boolean;
@@ -625,15 +625,6 @@ export function SystemLabelsGrid({
     if (!r.headEmploymentId) return to('headNone');
     return (headByCompany[r.companyId] ?? []).find((o) => o.id === r.headEmploymentId)?.label ?? t('headUnavailable');
   }
-  /** r285 — the options a row's Head select offers. The row's CURRENT head is always among them, even
-   *  when it is missing from the company's option list: a `<select>` whose value matches no option
-   *  renders blank, and blank on this column means "no head". The one thing this cell may never do is
-   *  say a unit has no head when it has one. */
-  function headOptions(r: RowState): { id: string; label: string }[] {
-    const opts = headByCompany[r.companyId] ?? [];
-    if (!r.headEmploymentId || opts.some((o) => o.id === r.headEmploymentId)) return opts;
-    return [{ id: r.headEmploymentId, label: headLabel(r) }, ...opts];
-  }
   const kindHasHead = kind === 'department' || kind === 'business_unit';
 
   function exportCsv() {
@@ -997,20 +988,11 @@ export function SystemLabelsGrid({
                             {headLabel(r)}
                           </span>
                         ) : (
-                          <select
-                            name="headEmploymentId"
-                            aria-label={to('fieldHead')}
-                            value={r.headEmploymentId ?? ''}
-                            onChange={(e) => updateCell(r.key, 'headEmploymentId', e.target.value || null)}
+                          <SystemLabelHeadChoice companyId={r.companyId} value={r.headEmploymentId} label={to('fieldHead')}
+                            noneLabel={to('headNone')} unavailableLabel={t('headUnavailable')} selectedLabel={headLabel(r)}
+                            onChange={(value) => updateCell(r.key, 'headEmploymentId', value)}
                             className={`${cellInput} w-full min-w-0 ${err?.field === 'headEmploymentId' ? 'border-destructive' : ''}`}
-                          >
-                            <option value="">{to('headNone')}</option>
-                            {headOptions(r).map((o) => (
-                              <option key={o.id} value={o.id}>
-                                {o.label}
-                              </option>
-                            ))}
-                          </select>
+                          />
                         )}
                       </td>
                     )}
