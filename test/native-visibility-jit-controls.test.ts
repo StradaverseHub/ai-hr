@@ -229,8 +229,7 @@ it.skipIf(!requested)('attributes five same-backend full-port/planning/JIT varia
  }finally{p.endCapture();spy.mockRestore();await p.restore();}
 },300000);
 
-it.skipIf(!requested)('preserves canonical employee/manager/HOD/date/transfer/partner/isolation and revocation controls in every variant',async()=>{
- expect(probe,'Performance stage must establish the controlled fixture and backend').toBeTruthy();const p=probe!,spy=p.install();
+async function prepareAuthority(p:NonNullable<typeof probe>){
  const {b,ctx,foreign,foreignEmployment,expectedFirst}=p.fixture,ids=expectedFirst.slice(0,2);
  const people=await owner.db.select({id:employment.id,personId:employment.personId}).from(employment).where(inArray(employment.id,ids));
  const personFor=(id:string)=>people.find(row=>row.id===id)!.personId;
@@ -253,8 +252,29 @@ it.skipIf(!requested)('preserves canonical employee/manager/HOD/date/transfer/pa
   partnerContexts.push({tenantId:b.tenantId,userId:user,grants:[{role,companyId:otherCompany}]});
  }
  const results:Record<string,unknown>={};p.report.authorityResults=results;
+ const assertBaseline=async()=>{
+  const [actual]=await owner.client`select
+   (select department_id from assignment where employment_id=${ids[1]}::uuid and valid_to is null and superseded_at is null) as manager_department,
+   (select valid_from::text from reporting_line where id=${edge.id}::uuid) as edge_valid_from,
+   (select archived_at from app_user where id=${employeeUser}::uuid) as employee_archived,
+   (select voided_at from employment where id=${otherEmployment}::uuid) as employment_voided,
+   (select voided_at from person where id=${otherPerson}::uuid) as person_voided,
+   (select count(*)::int from role_assignment where app_user_id=${employeeUser}::uuid and role='employee' and company_id is null) as employee_grants`;
+  expect(actual).toEqual({manager_department:b.deptA,edge_valid_from:'2020-01-01',employee_archived:null,employment_voided:null,person_voided:null,employee_grants:1});
+ };
+ await assertBaseline();
+ return {b,ctx,foreign,foreignEmployment,expectedFirst,ids,employeeUser,managerUser,edge,employeeCtx,managerCtx,
+  otherCompany,otherPerson,otherEmployment,selfCtx,scopedCtx,partnerContexts,results,assertBaseline};
+}
+let authorityFixture:Awaited<ReturnType<typeof prepareAuthority>>|undefined;
+
+it.skipIf(!requested).each(variants)('preserves every native authority control for $name',async(variant)=>{
+ expect(probe,'Performance stage must establish the controlled fixture and backend').toBeTruthy();const p=probe!;
+ authorityFixture??=await prepareAuthority(p);
+ const {b,ctx,foreign,foreignEmployment,expectedFirst,ids,employeeUser,edge,employeeCtx,managerCtx,
+  otherCompany,otherPerson,otherEmployment,selfCtx,scopedCtx,partnerContexts,results,assertBaseline}=authorityFixture;
+ await assertBaseline();const spy=p.install(),started=performance.now();
  try{
-  for(const variant of variants){
    await p.choose(variant);
    await owner.db.update(assignment).set({departmentId:b.deptB}).where(eq(assignment.employmentId,ids[1]));
    const employee=await readEmployeeChoices(employeeCtx,{companyIds:[],selectedId:ids[1]});expect(employee.total).toBe(1);expect(employee.rows.map(row=>row.employmentId)).toEqual([ids[0]]);expect(employee.selected).toBeNull();
@@ -297,9 +317,13 @@ it.skipIf(!requested)('preserves canonical employee/manager/HOD/date/transfer/pa
    await expect(readEmployeeChoices({...ctx,personId:randomUUID()},{companyIds:[b.companyId]})).rejects.toThrow('calling authority');
    const observed={employee:stablePage(employee),manager:stablePage(manager),hod:stablePage(hod!),future:stablePage(future!),transferred:stablePage(transferred),deniedCompany:stablePage(deniedCompany),deniedTenant:stablePage(deniedTenant),partnerPages,voidedEmployment:stablePage(voidedEmployment!),voidedPerson:stablePage(voidedPerson!),restored:stablePage(restored)};
    if(results.any_jit_on)expect(observed).toEqual(results.any_jit_on);results[variant.name]=observed;await p.resetSettings();p.save();
-  }
-  expect(p.pids.size).toBe(1);p.report.authorityStageComplete=true;p.report.phase='complete';p.save();
+  expect(p.pids.size).toBe(1);
+  const caseTimings=(p.report.authorityCaseMs??={})as Record<string,number>;caseTimings[variant.name]=performance.now()-started;
+  p.report.authorityStageComplete=variants.every(item=>Object.hasOwn(results,item.name));
+  if(p.report.authorityStageComplete)p.report.phase='complete';p.save();
  }finally{
-  spy.mockRestore();await owner.db.update(assignment).set({departmentId:b.deptA}).where(eq(assignment.employmentId,ids[1]));await p.restore();
+  spy.mockRestore();
+  try{await owner.db.update(assignment).set({departmentId:b.deptA}).where(eq(assignment.employmentId,ids[1]));await assertBaseline();}
+  finally{await p.restore();}
  }
 },300000);
