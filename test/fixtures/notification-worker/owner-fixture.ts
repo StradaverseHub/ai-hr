@@ -1,10 +1,11 @@
-/** One serialized test file owns the cluster-wide fixed LOGIN for both native
+/** One serialized test file owns the cluster-wide fixed LOGIN for all native
  * capability stages. Per-worker databases alone do not isolate PostgreSQL roles. */
 import {randomUUID} from 'node:crypto';
 import postgres from 'postgres';
 import {expect} from 'vitest';
 import {closeAll,migrateTestDb,owner} from '../../harness';
 import {notificationWorkerFixtureDatabase} from './database';
+import {assessmentReminderTaskKeys} from '../../../lib/assessment-reminder-mail';
 type RegistryContract=readonly{eventType:string;kind:string;category:string|null;recipientPort:string|null;audience:string;guard:{field:string;equals:true;not?:true}|null;implemented:boolean}[];
 export function notificationWorkerFixtureOwner(){
  const role='ai_hr_notification_worker',password=randomUUID(),sockets=new Set<ReturnType<typeof postgres>>(),jobs=new Set<string>();
@@ -32,7 +33,7 @@ export function notificationWorkerFixtureOwner(){
    await owner.client.unsafe(`CREATE ROLE ai_hr_notification_worker LOGIN PASSWORD '${password}' NOINHERIT NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE NOREPLICATION`);created=true;
    url=new URL(binding.migrationUrl);url.username=role;url.password=password;
   },
-  async install(sources:readonly string[],version:1|2,contract?:RegistryContract){
+  async install(sources:readonly string[],version:1|2|3,contract?:RegistryContract){
    const target=configured();
    if(stageInstalled)throw Error('Previous native notification stage is still installed');
    await owner.client.begin(async tx=>{
@@ -47,6 +48,11 @@ export function notificationWorkerFixtureOwner(){
       from notification_worker_private.registry_contract order by event_type collate "C",kind collate "C"`;
      const compare=(a:string,b:string)=>a<b?-1:a>b?1:0;
      expect(Array.from(stored)).toEqual([...contract].sort((a,b)=>compare(a.eventType,b.eventType)||compare(a.kind,b.kind)));
+    }
+    if(version===3){
+     await tx`insert into notification_worker_private.assessment_task_key(key) select value from jsonb_array_elements_text(${JSON.stringify(assessmentReminderTaskKeys)}::jsonb)`;
+     const stored=await tx`select key from notification_worker_private.assessment_task_key order by key collate "C"`;
+     expect(stored.map(row=>row.key)).toEqual([...assessmentReminderTaskKeys].sort());
     }
    });
    stageInstalled=true;

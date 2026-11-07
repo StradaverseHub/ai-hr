@@ -1,3 +1,4 @@
+import {prepareNativeAssessmentReminder} from './reminder';
 /** Uncommissioned fixed-API prototype. No application pool, service facade or Drizzle carrier. */
 import type {Sql,TransactionSql} from 'postgres';
 import {z} from 'zod';
@@ -22,7 +23,7 @@ const nativeReaders:NotificationRecipientReaders<Reader>={
  probation:unsupported,
  contract:(r,e)=>ids(r,e,'contract-audience'),
  onboardingDigest:(r,e)=>ids(r,e,'onboarding-audience'),
- assessmentReminder:unsupported,
+ assessmentReminder:(r,e)=>{if(!e.id)throw new UnsupportedNotificationFacts();return prepareNativeAssessmentReminder(r.tx,r.batch,e.id);},
  rewardSuspension:(r,e)=>ids(r,e,'rewards-audience'),
  rewardUploadChecker:(r,e)=>ids(r,e,'rewards-audience'),
  rewardUploadReady:(r,e)=>ids(r,e,'rewards-audience'),
@@ -54,11 +55,13 @@ const nativeReaders:NotificationRecipientReaders<Reader>={
 const registry=createNotificationRegistry(nativeReaders);
 /** Owner-installed closed metadata, derived from the single canonical registry.
  * The service has no installation API or authority to alter this contract. */
-export const notificationWorkerProjectionContract=Object.entries(registry).flatMap(([eventType,entry])=>(Array.isArray(entry)?entry:[entry]).map(spec=>({
+function projectionContract(version:2|3){return Object.entries(registry).flatMap(([eventType,entry])=>(Array.isArray(entry)?entry:[entry]).map(spec=>({
  eventType,kind:spec.kind,category:spec.category,recipientPort:spec.recipientPort??null,
  audience:spec.recipientPort?'reader':spec.recipientAudience??'subject',guard:spec.recipientGuard??null,
- implemented:!spec.recipientPort||nativeReaders[spec.recipientPort]!==unsupported&&spec.recipientPort!=='approvalChase',
-})));
+ implemented:(!spec.recipientPort||nativeReaders[spec.recipientPort]!==unsupported&&spec.recipientPort!=='approvalChase')&&(spec.recipientPort!=='assessmentReminder'||version===3),
+})));}
+export const notificationWorkerProjectionContract=projectionContract(2);
+export const notificationWorkerAssessmentContract=projectionContract(3);
 
 /** Commit is awaited before native counters leave this method. Unsupported facts
  * and any project/preparation/settlement error roll back the complete admission. */
