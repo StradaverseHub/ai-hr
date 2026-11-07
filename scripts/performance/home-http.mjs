@@ -67,6 +67,8 @@ export function createHomeHttpReplay({base,request,report}){
      else if(card==='summary')validateEmployeeHomeSummary(value,user.employmentId);
      else if(card==='tasks'){assert.equal(value.grain,'account');assert(Array.isArray(value.items));assert(Number.isSafeInteger(value.total)&&value.total>=value.items.length);liveDate(value.asOf,'asOf');}
      else if(card==='greeting'){liveDate(value.displayDate,'displayDate');assert(value.message===null||typeof value.message==='string'&&value.message.trim());}
+     else if(card==='today'){validateEmployeeHomeToday(value,user.employmentId);liveDate(value.businessDate,'businessDate');}
+     else if(card==='calendar'){validateHomeCalendar(value,user.employmentId,url.searchParams.get('month')??value.month);liveDate(value.today,'today');}
      else assert.fail('Unknown Home card');
      const frameKey=user.role+':'+card;
      report.homeApiTraffic.sharingFrames[frameKey]=(report.homeApiTraffic.sharingFrames[frameKey]??0)+1;

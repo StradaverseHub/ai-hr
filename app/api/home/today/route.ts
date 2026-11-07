@@ -5,6 +5,7 @@ import {OwnClockEmploymentUnavailableError} from '@/packs/attendance/service';
 import {OwnPayrollSubjectUnavailableError} from '@/packs/payroll/service';
 import {readEmployeeHomeToday} from '@/core/employee-home-today';
 import {withDatabaseReadCancellation} from '@/db/workload';
+import {todayProjection} from '../personal-projections';
 
 const headers={'Cache-Control':'private, no-store','Vary':'Cookie, Authorization','X-Content-Type-Options':'nosniff'};
 export async function GET(request:Request){
@@ -12,13 +13,7 @@ export async function GET(request:Request){
   const session=await getSession(),query=new URL(request.url).searchParams;
   if([...query.keys()].some(key=>key!=='employmentId')||query.getAll('employmentId').length!==1||!query.get('employmentId'))return Response.json({error:'invalid'},{status:400,headers});
   const value=await withDatabaseReadCancellation(request.signal,()=>readEmployeeHomeToday(session,query.get('employmentId')!,request.signal));
-  return Response.json({version:1,employmentId:value.employmentId,serverNow:value.serverNow,businessDate:value.businessDate,
-   attendanceEnabled:value.attendanceEnabled,payrollEnabled:value.payrollEnabled,
-   clock:value.clock?{date:value.clock.date,clockedIn:value.clock.clockedIn,openSince:value.clock.openSince,workedSeconds:value.clock.workedSeconds,
-    crossesMidnight:value.clock.crossesMidnight,shift:{code:value.clock.shift.code,start:value.clock.shift.start,end:value.clock.shift.end},
-    geofencingRequired:value.clock.geofencingRequired,photoRequired:value.clock.photoRequired}:null,
-   dayKind:value.dayKind,leavePresence:value.leavePresence,workLocations:{total:value.workLocations.total,names:[...value.workLocations.names]},
-   payday:value.payday?{date:value.payday.date,daysAway:value.payday.daysAway}:null},{headers});
+  return Response.json(todayProjection(value),{headers});
  }catch(error){
   const code=error instanceof AuthRequiredError?'authentication':error instanceof HomeAccessError?error.code:
    error instanceof OwnClockEmploymentUnavailableError||error instanceof OwnPayrollSubjectUnavailableError?'employmentUnavailable':'unavailable';

@@ -2,11 +2,15 @@ import {beforeEach,expect,it,vi} from 'vitest';
 import {AuthRequiredError} from '../lib/auth-errors';
 
 const state=vi.hoisted(()=>({session:vi.fn(),team:vi.fn(),celebrations:vi.fn(),notices:vi.fn(),timeOff:vi.fn(),
- greeting:vi.fn(),summary:vi.fn(),tasks:vi.fn()}));
+ greeting:vi.fn(),summary:vi.fn(),tasks:vi.fn(),today:vi.fn(),calendar:vi.fn()}));
 vi.mock('@/lib/session',()=>({getSession:state.session}));
 vi.mock('@/core/employee-home-sharing',()=>({readHomeTeamPage:state.team,readHomeCelebrationPage:state.celebrations}));
 vi.mock('@/core/employee-home-notices',()=>({readEmployeeHomeNotices:state.notices}));
 vi.mock('@/core/employee-home-time-off',()=>({readEmployeeHomeTimeOff:state.timeOff}));
+vi.mock('@/core/employee-home-today',()=>({readEmployeeHomeToday:state.today}));
+vi.mock('@/core/employee-home-calendar',()=>({readEmployeeHomeCalendar:state.calendar}));
+vi.mock('@/packs/attendance/service',()=>({OwnClockEmploymentUnavailableError:class extends Error{}}));
+vi.mock('@/packs/payroll/service',()=>({OwnPayrollSubjectUnavailableError:class extends Error{}}));
 vi.mock('next-intl/server',()=>({getLocale:async()=>'en',getTranslations:async()=>()=> 'Replacement holiday'}));
 vi.mock('@/core/employee-home-configuration',()=>({OwnHomeConfigurationRead:class{
  constructor(readonly session:unknown,readonly employmentId:string,readonly signal?:AbortSignal){}
@@ -21,6 +25,7 @@ import {HomeAccessError} from '@/core/employee-home';
 import {GET} from '../app/api/home/sharing-initial/route';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {addDaysIso} from '../lib/roster-month';
+import {homeCalendarGrid} from '../lib/employee-home-calendar';
 
 const ctx={userId:'login',personId:'person'};
 const date=todayInKualaLumpur();
@@ -52,11 +57,14 @@ it('authenticates once and delivers a healthy card before the failed sibling set
  expect(state.celebrations).toHaveBeenCalledWith(ctx,'own',{},expect.any(AbortSignal));
 });
 
-it.each(['employmentId=own&employmentId=other','employmentId=own&after=anything','employmentId=own&card=team','employmentId=own&card=team&card=team','employmentId=own&card=team&card=unknown','employmentId='])(
+it.each(['employmentId=own&employmentId=other','employmentId=own&after=anything','employmentId=own&card=team','employmentId=own&card=team&card=team','employmentId=own&card=team&card=unknown','employmentId=',
+ 'employmentId=own&month=2026-11','employmentId=own&card=today&card=calendar&month=wrong',
+ 'employmentId=own&card=today&card=calendar&month=2026-11&month=2026-12'])(
  'refuses non-default or ambiguous input %s',async query=>{
   expect((await GET(request(query))).status).toBe(400);
   expect(state.team).not.toHaveBeenCalled();
   expect(state.celebrations).not.toHaveBeenCalled();
+  expect(state.today).not.toHaveBeenCalled();expect(state.calendar).not.toHaveBeenCalled();
  });
 
 it('preserves signed-out refusal and never calls the owners',async()=>{
@@ -69,6 +77,22 @@ it('preserves signed-out refusal and never calls the owners',async()=>{
  expect(state.greeting).not.toHaveBeenCalled();
  expect(state.summary).not.toHaveBeenCalled();
  expect(state.tasks).not.toHaveBeenCalled();
+});
+
+it('shares one fresh session for Today and a pinned Calendar month and preserves their strict projections',async()=>{
+ const month=date.slice(0,7),days=homeCalendarGrid(month,1),serverNow=new Date().toISOString();
+ const today={version:1,employmentId:'own',serverNow,businessDate:date,attendanceEnabled:false,payrollEnabled:false,
+  clock:null,dayKind:null,leavePresence:null,workLocations:{total:0,names:[]},payday:null};
+ const calendar={version:1,employmentId:'own',month,today:date,weekStartsOn:1,payrollEnabled:false,
+  team:{scope:'off',from:days[0],to:days[days.length-1],days:days.map(date=>({date,available:false,totalPeople:null,items:[],nextCursor:null}))},
+  days:days.map(date=>({date,canRequestLeave:false,entries:[]}))};
+ state.today.mockResolvedValue({...today,privateSalary:5000});state.calendar.mockResolvedValue({...calendar,privateReason:'withheld'});
+ const response=await GET(request('employmentId=own&card=today&card=calendar&month='+month));
+ const frames=(await response.text()).trim().split('\n').map(line=>JSON.parse(line)).sort((a,b)=>a.card.localeCompare(b.card));
+ expect(frames).toEqual([{version:1,card:'calendar',status:200,value:calendar},{version:1,card:'today',status:200,value:today}]);
+ expect(state.session).toHaveBeenCalledOnce();expect(state.today).toHaveBeenCalledWith(ctx,'own',expect.any(AbortSignal));
+ expect(state.calendar).toHaveBeenCalledWith(ctx,'own',month,undefined,expect.any(AbortSignal));
+ expect(state.team).not.toHaveBeenCalled();expect(state.greeting).not.toHaveBeenCalled();
 });
 
 it('reuses the exact request configuration carrier while independently projecting greeting, summary, and tasks',async()=>{

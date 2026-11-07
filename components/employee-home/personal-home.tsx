@@ -28,6 +28,7 @@ export async function EmployeePersonalHome({session,employmentId,greetingsEnable
  });
  const [identity,{catalogue,preferences},t]=await Promise.all([ownIdentity,getEmployeeHomePresentation(session),getTranslations('employeeHome')]);
  const selected=identity.selectedEmploymentId;
+ const initialMonth=homeDisplayClock(new Date(),preferences.timeZone??'Asia/Kuala_Lumpur').date.slice(0,7);
  const permitted=new Set(catalogue.map(card=>card.cardKey));
  const available:Partial<Record<EmployeeHomeCard,ReactNode>>=selected?{
   summary:<HomeGreetingCard employmentId={selected}><HomeSummaryOverview key={selected} employmentId={selected}/></HomeGreetingCard>,
@@ -37,7 +38,7 @@ export async function EmployeePersonalHome({session,employmentId,greetingsEnable
   timeOff:<HomeTimeOffCard employmentId={selected}/>,
   team:<HomeTeamCard key={selected} employmentId={selected}/>,
   celebrations:<HomeCelebrationsCard key={selected} employmentId={selected} greetingsEnabled={greetingsEnabled}/>,
-  calendar:<HomeCalendarCard key={JSON.stringify([selected,preferences.timeZone,preferences.weekStartsOn])} employmentId={selected} initialMonth={homeDisplayClock(new Date(),preferences.timeZone??'Asia/Kuala_Lumpur').date.slice(0,7)}/>,
+  calendar:<HomeCalendarCard key={JSON.stringify([selected,preferences.timeZone,preferences.weekStartsOn])} employmentId={selected} initialMonth={initialMonth}/>,
  }:{};
  const cards=Object.fromEntries(Object.entries(available).filter(([key])=>permitted.has(key)));
  const surface=<EmployeeHomeSurface identity={identity} preferences={preferences} cards={cards} lead={lead} labels={{title:t('title'),employment:t('employment'),chooseEmployment:t('chooseEmployment'),chooseHelp:t('chooseHelp'),showEmployment:t('showEmployment'),noEmployment:t('noEmployment'),companyUnavailable:t('companyUnavailable'),employeeCodeUnavailable:t('employeeCodeUnavailable')}}/>;
@@ -46,6 +47,6 @@ export async function EmployeePersonalHome({session,employmentId,greetingsEnable
    {identity.role==='manager'&&<Link href={'/?'+new URLSearchParams({workspace:'team',...(selected?{employmentId:selected}:{})})} className="inline-flex min-h-11 items-center text-sm font-medium text-primary underline underline-offset-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{t('teamWorkbench')}</Link>}
    <Link href="/me/home" className="inline-flex min-h-11 items-center text-sm font-medium text-primary underline underline-offset-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{t('preferences.title')}</Link>
   </nav>
-  {selected?<HomeInitialSharing employmentId={selected}>{surface}</HomeInitialSharing>:surface}
+  {selected?<HomeInitialSharing employmentId={selected} month={initialMonth}>{surface}</HomeInitialSharing>:surface}
  </div>;
 }

@@ -20,6 +20,7 @@ async function streamSharing(
  employmentId:string,
  subscribers:Map<HomeSharingCard,Subscriber>,
  controller:AbortController,
+ month?:string,
 ){
  const requested=[...subscribers.keys()];
  const seen=new Set<HomeSharingCard>();
@@ -44,10 +45,22 @@ async function streamSharing(
  let reader:ReadableStreamDefaultReader<Uint8Array>|undefined;
  try{
   const query=new URLSearchParams({employmentId});
+  if(requested.includes('calendar')&&month)query.set('month',month);
   if(requested.length!==DEFAULT_HOME_SHARING_CARDS.length||!DEFAULT_HOME_SHARING_CARDS.every(card=>requested.includes(card))){
    for(const card of requested)query.append('card',card);
   }
   const response=await fetch('/api/home/sharing-initial?'+query,{signal:controller.signal,cache:'no-store',credentials:'same-origin'});
+  // An older server rejects the two newly requested card kinds (or month) at
+  // validation, before invoking readers. Preserve its individual read protocol.
+  // Authority/availability errors and malformed streams never trigger fallback.
+  if(response.status===400&&requested.some(card=>card==='today'||card==='calendar')){
+   await response.body?.cancel();
+   await Promise.allSettled([...subscribers.values()].map(async subscriber=>{
+    if(subscriber.signal.aborted)return;
+    try{subscriber.complete(await subscriber.fallback());}catch{subscriber.fail();}
+   }));
+   return;
+  }
   if(!response.ok||!response.body||response.headers.get('content-type')!==HOME_SHARING_STREAM)throw unavailable();
   reader=response.body.getReader();
   const decoder=new TextDecoder('utf-8',{fatal:true});
@@ -81,7 +94,7 @@ async function streamSharing(
  }
 }
 
-function createSharingSubscription(employmentId:string):Subscribe {
+function createSharingSubscription(employmentId:string,month?:string):Subscribe {
  let waiting:Map<HomeSharingCard,Subscriber>|undefined;
  return (card,signal,fallback)=>new Promise((resolve,reject)=>{
   if(signal.aborted){reject(unavailable());return;}
@@ -101,7 +114,7 @@ function createSharingSubscription(employmentId:string):Subscribe {
        if(!batch.size)controller.abort();
       },{once:true,signal:controller.signal});
      }
-     void streamSharing(employmentId,batch,controller)
+     void streamSharing(employmentId,batch,controller,month)
       .catch(()=>{/* The stream settles all outstanding subscribers. */})
       .finally(()=>controller.abort());
     }
@@ -125,9 +138,9 @@ function createSharingSubscription(employmentId:string):Subscribe {
  });
 }
 
-export function HomeInitialSharing({employmentId,children}:{employmentId:string;children:React.ReactNode}){
+export function HomeInitialSharing({employmentId,month,children}:{employmentId:string;month?:string;children:React.ReactNode}){
  const locale=useLocale();
- const subscribe=React.useMemo(()=>createSharingSubscription(employmentId),[employmentId,locale]);
+ const subscribe=React.useMemo(()=>createSharingSubscription(employmentId,month),[employmentId,month,locale]);
  return <SharingCohort.Provider value={subscribe}>{children}</SharingCohort.Provider>;
 }
 

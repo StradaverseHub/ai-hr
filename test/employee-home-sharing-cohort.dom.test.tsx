@@ -2,7 +2,11 @@ import * as React from 'react';
 import {cleanup,fireEvent,render,screen,waitFor,within} from '@testing-library/react';
 import {NextIntlClientProvider} from 'next-intl';
 import {afterEach,beforeEach,expect,it,vi} from 'vitest';
-import {HomeInitialSharing} from '../components/employee-home/sharing-cohort';
+import {HomeInitialSharing,useHomeInitialSharing} from '../components/employee-home/sharing-cohort';
+import {HomeTodayCard} from '../components/employee-home/today-card';
+import {HomeCalendarCard} from '../components/employee-home/calendar-card';
+import {homeCalendarGrid} from '../lib/employee-home-calendar';
+import type {HomeSharingCard} from '../lib/employee-home-sharing-cohort';
 import {HomeTeamCard} from '../components/employee-home/team-card';
 import {HomeCelebrationsCard} from '../components/employee-home/celebrations-card';
 import {HomeNoticesCard} from '../components/employee-home/notices-card';
@@ -178,4 +182,60 @@ it('delivers seven Home reads in one stream while a failed card retries alone',a
   '/api/home/sharing-initial','/api/home/notices','/api/home/tasks',
  ]);
  expect(new URL(fetcher.mock.calls[2][0],'http://local').searchParams.get('page')).toBe('1');
+});
+
+it('delivers all nine initial native cards through one fresh streamed request',async()=>{
+ const stream=responseStream(),month=date.slice(0,7),days=homeCalendarGrid(month,1),serverNow=new Date().toISOString();
+ const values={team:team(),celebrations:celebrations(),notices:{version:1,employmentId:own,total:0,unread:0,acknowledgementRequired:0,items:[]},
+  timeOff:{version:1,employmentId:own,asOf:date,canApply:false,balances:[],nextApproved:null},
+  greeting:{version:1,employmentId:own,serverNow,displayDate:date,timeZone:'Asia/Kuala_Lumpur',message:'Fictional all-card greeting',templateKey:'greetingMorning',photoHref:null},
+  summary:{version:1,employmentId:own,serverNow,items:[],calm:'Fictional all-card update',quickActions:[]},
+  tasks:{version:1,employmentId:own,grain:'account',asOf:date,total:0,overdue:0,effortMinutes:0,unestimated:0,page:1,pages:1,pageSize:12,items:[]},
+  today:{version:1,employmentId:own,serverNow,businessDate:date,attendanceEnabled:false,payrollEnabled:false,clock:null,dayKind:null,leavePresence:null,workLocations:{total:0,names:[]},payday:null},
+  calendar:{version:1,employmentId:own,month,today:date,weekStartsOn:1,payrollEnabled:false,
+   team:{scope:'off',from:days[0],to:days[days.length-1],days:days.map(date=>({date,available:false,totalPeople:null,items:[],nextCursor:null}))},
+   days:days.map(date=>({date,canRequestLeave:false,entries:[]}))},
+ };
+ fetcher.mockResolvedValueOnce(stream.response);
+ render(<NextIntlClientProvider locale="en" messages={en} timeZone="Asia/Kuala_Lumpur">
+  <HomeInitialSharing employmentId={own} month={month}>
+   <HomeTeamCard employmentId={own}/><HomeCelebrationsCard employmentId={own}/><HomeNoticesCard employmentId={own}/><HomeTimeOffCard employmentId={own}/>
+   <HomeGreetingCard employmentId={own}><HomeSummaryOverview employmentId={own}/></HomeGreetingCard><HomeTasksCard employmentId={own}/>
+   <HomeTodayCard employmentId={own} employmentLabel="Fictional own employment" timeZone="Asia/Kuala_Lumpur"/>
+   <HomeCalendarCard employmentId={own} initialMonth={month}/>
+  </HomeInitialSharing>
+ </NextIntlClientProvider>);
+ await waitFor(()=>expect(fetcher).toHaveBeenCalledOnce());
+ const request=new URL(fetcher.mock.calls[0][0],'http://local');
+ expect(request.searchParams.get('month')).toBe(month);
+ expect(request.searchParams.getAll('card').sort()).toEqual(Object.keys(values).sort());
+ for(const [card,value] of Object.entries(values))stream.push({version:1,card,status:200,value});stream.close();
+ await waitFor(()=>expect(document.querySelectorAll('main [aria-busy="true"], [data-home-card][aria-busy="true"]').length).toBe(0));
+ expect(screen.queryAllByRole('alert')).toHaveLength(0);expect(await screen.findByText(values.greeting.message)).toBeVisible();
+ expect(screen.getByRole('region',{name:labels.today.title})).toHaveAttribute('aria-busy','false');
+ expect(screen.getByRole('region',{name:labels.calendar.title})).toHaveAttribute('aria-busy','false');
+ expect(fetcher).toHaveBeenCalledOnce();
+});
+
+function SubscriptionProbe({card,fallback}:{card:HomeSharingCard;fallback:()=>Promise<unknown>}){
+ const subscribe=useHomeInitialSharing(),[state,setState]=React.useState('loading');
+ React.useEffect(()=>{
+  const controller=new AbortController();let live=true;
+  void subscribe!(card,controller.signal,fallback).then(()=>{if(live)setState('ready');},()=>{if(live)setState('failed');});
+  return()=>{live=false;controller.abort();};
+ },[subscribe,card,fallback]);
+ return <output data-testid={card}>{state}</output>;
+}
+
+it.each([400,401,403,503])('uses old-server individual reads only for the new-card protocol refusal (%s)',async status=>{
+ fetcher.mockResolvedValueOnce(Response.json({error:'fixture'},{status}));
+ const today=vi.fn(async()=>({source:'native today'})),calendar=vi.fn(async()=>({source:'native calendar'}));
+ render(<NextIntlClientProvider locale="en" messages={en} timeZone="Asia/Kuala_Lumpur">
+  <HomeInitialSharing employmentId={own} month={date.slice(0,7)}>
+   <SubscriptionProbe card="today" fallback={today}/><SubscriptionProbe card="calendar" fallback={calendar}/>
+  </HomeInitialSharing>
+ </NextIntlClientProvider>);
+ await waitFor(()=>expect(screen.getByTestId('today')).toHaveTextContent(status===400?'ready':'failed'));
+ expect(screen.getByTestId('calendar')).toHaveTextContent(status===400?'ready':'failed');
+ expect(fetcher).toHaveBeenCalledOnce();expect(today).toHaveBeenCalledTimes(status===400?1:0);expect(calendar).toHaveBeenCalledTimes(status===400?1:0);
 });

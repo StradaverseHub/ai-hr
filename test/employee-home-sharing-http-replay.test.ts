@@ -3,6 +3,7 @@ import {expect,it,vi} from 'vitest';
 import {createHomeHttpReplay} from '../scripts/performance/home-http.mjs';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {addDaysIso} from '../lib/roster-month';
+import {homeCalendarGrid} from '../lib/employee-home-calendar';
 
 const base='https://example.invalid',cohort='/api/home/sharing-initial';
 const user={role:'employee',employmentId:'fixture-own'},foreign={...user,employmentId:'fixture-foreign'};
@@ -21,13 +22,32 @@ function fixture(){
  const report={boundaries:[]};
  const request=vi.fn();
  const replay=createHomeHttpReplay({base,request,report});
- const observe=(path:string,cards:readonly string[]=[])=>{
+ const observe=(path:string,cards:readonly string[]=[],month?:string)=>{
   const query=new URLSearchParams({employmentId:user.employmentId});
   for(const card of cards)query.append('card',card);
+  if(month)query.set('month',month);
   page.emit('request',{method:()=> 'GET',url:()=>base+path+'?'+query});
  };
  return {page,report,request,replay,observe};
 }
+
+it('replays the observed combined Today/Calendar request with full native validators and foreign frame denial',async()=>{
+ const {page,report,request,replay,observe}=fixture(),month=date.slice(0,7),days=homeCalendarGrid(month,1);
+ const stop=replay.track(page,user,'/');observe(cohort,['today','calendar'],month);stop();
+ const today={version:1,employmentId:user.employmentId,serverNow:new Date().toISOString(),businessDate:date,attendanceEnabled:false,payrollEnabled:false,
+  clock:null,dayKind:null,leavePresence:null,workLocations:{total:0,names:[]},payday:null};
+ const calendar={version:1,employmentId:user.employmentId,month,today:date,weekStartsOn:1,payrollEnabled:false,
+  team:{scope:'off',from:days[0],to:days[days.length-1],days:days.map(date=>({date,available:false,totalPeople:null,items:[],nextCursor:null}))},
+  days:days.map(date=>({date,canRequestLeave:false,entries:[]}))};
+ request.mockImplementation(async(_actor,path)=>({headers,content:frames(path.includes(foreign.employmentId)
+  ?[{version:1,card:'today',status:403},{version:1,card:'calendar',status:403}]
+  :[{version:1,card:'today',status:200,value:today},{version:1,card:'calendar',status:200,value:calendar}])}));
+ await replay.read(user);await replay.boundary(user,foreign);
+ expect(report).toMatchObject({homeApiTraffic:{sharingFrames:{'employee:today':1,'employee:calendar':1}}});
+ expect(report.boundaries).toEqual([{kind:'foreign-own-home-sharing-cohort',role:'employee',passed:true}]);
+ request.mockResolvedValueOnce({headers,content:frames([{version:1,card:'today',status:200,value:today},{version:1,card:'calendar',status:200,value:{...calendar,month:'1999-01'}}])});
+ await expect(replay.read(user)).rejects.toThrow();
+});
 
 it('discovers the actual shared request, validates both frames, and separately checks foreign denial',async()=>{
  const {page,report,request,replay,observe}=fixture();

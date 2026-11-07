@@ -10,8 +10,14 @@ import {
  DEFAULT_HOME_SHARING_CARDS,HOME_SHARING_MAX_FRAME_BYTES,isHomeSharingCard,HOME_SHARING_STREAM,type HomeSharingCard,type HomeSharingFrame,
 } from '@/lib/employee-home-sharing-cohort';
 import {celebrationsResponse,noticesResponse,sharingError,sharingHeaders,teamResponse,timeOffResponse} from '../sharing-responses';
-import {greetingProjection,tasksProjection} from '../personal-projections';
+import {greetingProjection,tasksProjection,todayProjection,calendarProjection} from '../personal-projections';
 import {withDatabaseReadCancellation} from '@/db/workload';
+import {readEmployeeHomeToday} from '@/core/employee-home-today';
+import {readEmployeeHomeCalendar} from '@/core/employee-home-calendar';
+import {homeCalendarMonth} from '@/lib/employee-home-calendar';
+import {OwnClockEmploymentUnavailableError} from '@/packs/attendance/service';
+import {OwnPayrollSubjectUnavailableError} from '@/packs/payroll/service';
+import {HomeAccessError} from '@/core/employee-home';
 
 /** One fresh web session and independent live reads for the requested Home cards. */
 export async function GET(request:Request){
@@ -20,11 +26,14 @@ export async function GET(request:Request){
   const query=new URL(request.url).searchParams;
   const employmentId=query.get('employmentId');
   const selected=query.getAll('card');
-  if(!employmentId||query.getAll('employmentId').length!==1||[...query.keys()].some(key=>key!=='employmentId'&&key!=='card')
+  if(!employmentId||query.getAll('employmentId').length!==1||[...query.keys()].some(key=>!['employmentId','card','month'].includes(key))
+    ||query.getAll('month').length>1||query.has('month')&&!selected.includes('calendar')
     || (selected.length>0&&(selected.length<2||new Set(selected).size!==selected.length||!selected.every(isHomeSharingCard)))){
    return Response.json({error:'invalid'},{status:400,headers:sharingHeaders});
   }
   const cards:readonly HomeSharingCard[]=selected.length?selected.filter(isHomeSharingCard):DEFAULT_HOME_SHARING_CARDS;
+  const month=query.get('month')??undefined;
+  if(month!==undefined){try{homeCalendarMonth(month);}catch{return Response.json({error:'invalid'},{status:400,headers:sharingHeaders});}}
   const readLifetime=new AbortController();
   const signal=readLifetime.signal;
   const configurationRead=new OwnHomeConfigurationRead(session,employmentId,signal);
@@ -48,6 +57,14 @@ export async function GET(request:Request){
     return validateEmployeeHomeSummary(value,employmentId);
    },
    tasks:async()=>tasksProjection(await readEmployeeHomeTasks(session,employmentId,1,configurationRead,taskSourceRead)),
+   today:async()=>{
+    try{return todayProjection(await readEmployeeHomeToday(session,employmentId,signal));}
+    catch(error){
+     if(error instanceof OwnClockEmploymentUnavailableError||error instanceof OwnPayrollSubjectUnavailableError)throw new HomeAccessError('employmentUnavailable');
+     throw error;
+    }
+   },
+   calendar:async()=>calendarProjection(await readEmployeeHomeCalendar(session,employmentId,month,undefined,signal)),
   };
   const encoder=new TextEncoder();
   let detach=()=>{};
