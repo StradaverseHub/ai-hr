@@ -29,6 +29,21 @@ Latest prepared implementation: **aihr-staging-ci/v12**. The actual v11 existing
 
 Policy identifier: `aihr-staging-ci/v17`. This controller revision requires a fresh reviewed whole validation witness before operator use; draft code and focused diagnostics do not establish that witness. Version6 introduced the reviewed build-once installer contract; version7 retains it and binds duration-balanced DB grouping; version8 retains complete membership and adds duration-first within-job ordering. This policy implements the owner's authorization to use a complete validated CI gate for Board 3 staging instead of repeating the full gate on the Mac. It does not enable automatic deployment or main/live deployment.
 
+### Unchanged-source database recovery v3
+
+`exact-recovery.mjs` adds a separately versioned `aihr-exact-source-recovery/v3` route; v1 and cross-source v2 keep their refusal rules. It accepts only an unchanged clean candidate and the original published producer, policy, runtime, complete plan and baseline. It retains the original first-attempt failed full run, all successful build/compiler/migration/controller/browser evidence and every original failure. Each failed Node or DB unit requires a successful authenticated focused execution of that entire original unit, with identical assertion names and no skipped/failed/overlapping coverage. DB replacements require a fresh job-owned PG16 instance, matching resource/JIT/patch evidence and terminal capture within its real producing execution.
+
+The independently reviewed verifier has its own exact SHA and hosted controller-only refusal checks. Complete source/focused history refuses unaccounted active, later failed or superseding runs. API/archive digests, the original source-bound successful build, current alpha/baseline, populated migration history, private installation grant, lease, rendered journeys and human acceptance remain mandatory. Verification never rewrites the original failed receipt. Original application source and provider approval bindings do not change when the operator controller is updated separately.
+
+```sh
+AIHR_RECOVERY_CONTROLLER_RUN_ID=CONTROLLER_ONLY_RUN \
+AIHR_EXACT_RECOVERY_REVIEWED_CONTROLLER=EXACT_REVIEWED_VERIFIER_SHA \
+node --import tsx .github/ci/operator-release.mjs verify-exact-recovery \
+  /ABSOLUTE/UNCHANGED_CANDIDATE ORIGINAL_FAILED_FULL_RUN '[FOCUSED_WHOLE_UNIT_RUN]'
+```
+
+Use `deploy-exact-recovery` only with the same independently revalidated evidence, actual matching staging lease and existing deployment authority. Controller validation alone supplies no application gate or deployment permission.
+
 ## Evidence authority
 
 The operator must use a clean, reviewed controller at the exact commit that ran the witness, and an unchanged clean candidate. The authenticated GitHub API must identify repository `StradaverseHub/ai-hr` (ID 1333414856), workflow `alpha-staging-ci` (ID 395777276), the exact controller commit and a first-attempt completed successful run less than 24 hours old. Manual dispatch from main or alpha is accepted; a push witness must be on alpha with candidate and controller equal. PR, fork, rerun, incomplete and diagnostic-only results cannot authorize release.
