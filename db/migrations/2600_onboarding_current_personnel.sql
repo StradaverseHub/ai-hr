@@ -12,18 +12,19 @@ BEGIN
  private_access:=app.is_admin_for(c.company_id) AND (coalesce(cfg->'access'->'onboarding','[]'::jsonb) ? app.current_user_id()::text OR app.onboarding_v9_sections() IS NULL OR app.onboarding_v9_sections()->>'hr'='view');
  IF c.employment_id IS NOT NULL THEN
    SELECT jsonb_build_object('fullName',coalesce(p.full_name,''),'employeeId',coalesce(e.employee_code,''),'email',coalesce(p.primary_email,''),
-    'joinDate',coalesce(e.join_date,e.hired_on)::text,'company',e.company_id::text,
+    'joinDate',coalesce(e.join_date,e.hired_on)::text,'company',org.company_id::text,
     'department',coalesce(a.department_id::text,''),'title',coalesce(a.position_id::text,''),
     'businessGroup',coalesce(app.company_org_employment_unchecked(e.id,greatest(p_day,e.hired_on))->>'businessUnitId',''),
-    'supervisor',coalesce(rl.manager_employment_id::text,'')) || CASE WHEN private_access THEN jsonb_build_object(
+    'supervisor',coalesce(rl.manager_employment_id::text,'')) || CASE WHEN private_access AND app.is_admin_for(org.company_id) THEN jsonb_build_object(
     'costCentre',coalesce(a.cost_center_id::text,''),'ic',coalesce(st.ic_number,''),'passport',coalesce(st.passport_number,'')) ELSE '{}'::jsonb END
    INTO source FROM public.employment e JOIN public.person p ON p.id=e.person_id AND p.tenant_id=e.tenant_id
-   LEFT JOIN LATERAL (SELECT x.* FROM public.assignment x WHERE x.employment_id=e.id AND x.tenant_id=e.tenant_id AND x.superseded_at IS NULL
+   JOIN LATERAL (SELECT app.company_org_employment_company(e.id,greatest(p_day,e.hired_on)) AS company_id) org ON true
+   LEFT JOIN LATERAL (SELECT x.* FROM public.assignment x WHERE x.employment_id=e.id AND x.tenant_id=e.tenant_id AND x.company_id=org.company_id AND x.superseded_at IS NULL
     AND (x.valid_to IS NULL OR x.valid_to>p_day) ORDER BY (x.valid_from<=p_day) DESC,CASE WHEN x.valid_from<=p_day THEN x.valid_from END DESC,x.valid_from,x.id LIMIT 1) a ON true
    LEFT JOIN LATERAL (SELECT x.manager_employment_id FROM public.reporting_line x WHERE x.subordinate_employment_id=e.id AND x.tenant_id=e.tenant_id AND x.line_type='administrative' AND x.superseded_at IS NULL
     AND (x.valid_to IS NULL OR x.valid_to>p_day) ORDER BY (x.valid_from<=p_day) DESC,CASE WHEN x.valid_from<=p_day THEN x.valid_from END DESC,x.valid_from,x.id LIMIT 1) rl ON true
    LEFT JOIN public.employee_statutory_my st ON st.person_id=e.person_id AND st.tenant_id=e.tenant_id AND private_access
-   WHERE e.id=c.employment_id AND e.tenant_id=c.tenant_id AND (e.company_id=c.company_id OR app.is_admin_for(c.company_id) AND app.is_admin_for(e.company_id));
+   WHERE e.id=c.employment_id AND e.tenant_id=c.tenant_id AND (org.company_id=c.company_id OR app.is_admin_for(c.company_id) AND app.is_admin_for(org.company_id));
  ELSE
    SELECT * INTO d FROM public.employee_draft WHERE id=c.source_draft_id AND tenant_id=c.tenant_id AND company_id=c.company_id;
    IF NOT FOUND THEN RETURN NULL; END IF;

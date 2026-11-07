@@ -1218,8 +1218,8 @@ export async function refreshOnboardingPersonnel(ctx: SessionContext, runTenant:
             const a: M.Actor = { id: ctx.userId ?? 'system', name: 'Personnel Management', module: true, hr: true, master: true };
             M.log(c, a, { ...clock(), id: randomUUID, nextNumber: () => '', leave: {}, taskLoads: {}, lastTaskAssignment: {}, pendingApprovals: {}, lifetimeApprovals: {}, users: [] }, 'personnel.updated');
             await assignRoleTasksTx(tx, c);
-            await storeTx(tx, ctx, { ...row, companyId: snapshot.company_id }, c, true);
-            await tx.update(cases).set({ companyId: snapshot.company_id }).where(eq(cases.id, c.id));
+            await storeTx(tx, ctx, { ...row, companyId: c.source.company || snapshot.company_id }, c, true);
+            await tx.update(cases).set({ companyId: c.source.company || snapshot.company_id }).where(eq(cases.id, c.id));
             await auditTx(tx, ctx, c, 'personnel_updated');
         }
     });

@@ -244,6 +244,9 @@ describe('V3.1 onboarding database and authorization', () => {
         expect((await onboardingDetail(admin,before.case.id)).case.source.businessGroup ?? '').toBe('');
         const [destination]=await owner.db.insert(schema.company).values({tenantId:b.tenantId,legalName:'Fictional destination company'}).returning();
         await owner.db.execute(sql`update employment set company_id=${destination!.id}::uuid where id=${active.employmentId}::uuid`);
+        // A raw employment correction must not override the effective company assignment.
+        expect((await onboardingDetail(admin,before.case.id)).case.source.company).toBe(b.companyId);
+        await owner.db.execute(sql`update assignment set company_id=${destination!.id}::uuid,department_id=null,cost_center_id=null where employment_id=${active.employmentId}::uuid and superseded_at is null`);
         const transferred=await onboardingDetail(admin,before.case.id);
         expect(transferred.case.source.company).toBe(destination!.id);
         const [rebound]=await owner.db.select().from(schema.lcOnboardingCase).where(eq(schema.lcOnboardingCase.id,before.case.id));
