@@ -1,6 +1,14 @@
 import {expect,it} from 'vitest';
-import {isolatedWorkerBudget} from '../scripts/performance/worker-budget.mjs';
+import {isolatedWorkerBudget,isolatedWorkerCpuAdmission} from '../scripts/performance/worker-budget.mjs';
 import {applicationDatabaseBudget} from '../db/capacity';
+it('separates a correctly sized CPU comparison from explicit oversubscription diagnostics',()=>{
+ expect(isolatedWorkerCpuAdmission({workers:4,availableCpus:4,suite:'whole-system'})).toMatchObject({oversubscribed:false});
+ expect(isolatedWorkerCpuAdmission({workers:8,availableCpus:16,suite:'whole-system'})).toMatchObject({oversubscribed:false});
+ expect(()=>isolatedWorkerCpuAdmission({workers:8,availableCpus:4,suite:'whole-system'})).toThrow(/exceeds/);
+ expect(()=>isolatedWorkerCpuAdmission({workers:8,availableCpus:4,oversubscriptionDiagnostic:true,suite:'whole-system'})).toThrow(/exceeds/);
+ expect(isolatedWorkerCpuAdmission({workers:8,availableCpus:4,oversubscriptionDiagnostic:true,suite:'workflow-preflight'}))
+  .toMatchObject({oversubscribed:true,interpretation:'CPU_OVERSUBSCRIPTION_DIAGNOSTIC'});
+});
 it.each([2,4,8].flatMap(workers=>[4096,8192].map(heap=>[workers,heap] as const)))('holds connection, waiting and heap totals fixed for %i workers and %i MiB', (workers,heap)=>{
  const budget=isolatedWorkerBudget(String(workers),'16',String(heap));
  expect(budget.poolPerWorker*workers).toBe(16);expect(budget.heapPerWorker*workers).toBe(heap);

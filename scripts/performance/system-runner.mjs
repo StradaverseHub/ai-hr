@@ -12,7 +12,7 @@ import {setTimeout as pause} from 'node:timers/promises';
 import {postgresLockFailures} from './lock-failure-log.mjs';
 import {admissionFailureMarkers} from './admission-failure-log.mjs';
 import {systemBuildEnvironment} from './build-environment.mjs';
-import {isolatedWorkerBudget} from './worker-budget.mjs';
+import {isolatedWorkerBudget,isolatedWorkerCpuAdmission} from './worker-budget.mjs';
 assert.equal(process.env.GITHUB_ACTIONS,'true');assert.equal(process.env.RUNNER_ENVIRONMENT,'github-hosted');
 assert.equal(process.env.GITHUB_REPOSITORY,'StradaverseHub/ai-hr');
 const git=(...args)=>execFileSync('git',args,{encoding:'utf8'}).trim();
@@ -31,13 +31,15 @@ env.SHARE_PASSWORD='';env.DEV_USER_ID='';
 const {workers,totalApplicationPool,poolPerWorker,heapPerWorker,totalHeapMiB}=isolatedWorkerBudget(
  process.env.PERF_APP_WORKERS,process.env.PERF_APP_POOL_CONNECTIONS,process.env.PERF_APP_TOTAL_HEAP_MIB);
 const host={cpus:os.availableParallelism(),memoryBytes:os.totalmem()};
+const cpuAdmission=isolatedWorkerCpuAdmission({workers,availableCpus:host.cpus,
+ oversubscriptionDiagnostic:process.env.PERF_ALLOW_CPU_OVERSUBSCRIPTION_DIAGNOSTIC==='true',suite:process.env.PERF_HTTP_SUITE});
 if(totalHeapMiB===8192){
  assert.equal(process.env.RUNNER_ENVIRONMENT,'github-hosted','larger diagnostic heap requires a hosted runner');
  assert(host.cpus===4&&host.memoryBytes>=15*1024**3&&host.memoryBytes<=17*1024**3,'larger diagnostic heap requires the standard hosted 4-CPU / 16-GB runner');
 }
 const ports=Array.from({length:workers},(_,index)=>3174+index);
 const report={kind:'ISOLATED_HTTP_BROWSER_DEVELOPMENT_ONLY',releaseEligible:false,sha,controller:process.env.AIHR_CI_CONTROL_HEAD,
- run:process.env.GITHUB_RUN_ID,runtime:{node:process.version,productionObservedNode:'v24.22.1'},productionEquivalent:false,topology:{workers,poolPerWorker,totalApplicationPool,heapMiBPerWorker:heapPerWorker,totalHeapMiB,upstreamKeepAlive:false,proxyUpstreamMaxSockets:4000},proxyErrors:[],host,phases:[],exitCode:1};
+ run:process.env.GITHUB_RUN_ID,runtime:{node:process.version,productionObservedNode:'v24.22.1'},productionEquivalent:false,topology:{workers,poolPerWorker,totalApplicationPool,heapMiBPerWorker:heapPerWorker,totalHeapMiB,upstreamKeepAlive:false,proxyUpstreamMaxSockets:4000},proxyErrors:[],host,cpuAdmission,phases:[],exitCode:1};
 const save=()=>writeFileSync(join(out,'runner.json'),JSON.stringify(report,null,2));
 save();
 async function assertPortFree(port){const server=net.createServer();await new Promise((resolve,reject)=>{server.once('error',reject);server.listen(port,'127.0.0.1',resolve);});await new Promise(resolve=>server.close(resolve));}

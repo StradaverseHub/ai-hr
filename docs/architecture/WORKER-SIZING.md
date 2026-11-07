@@ -89,3 +89,21 @@ container. It is not the two-VM production topology. Current Home preflight and
 from cold/steady latency, whole-process memory, event-loop delay, query/lock waits,
 committed outcomes and zero page Busy; a hardware formula alone cannot prove them.
 Production maintenance testing and deployment remain held.
+
+## Resource-first correction, 7 November 2026
+
+The owner directed that worker counts be calculated from resources before choosing
+the comparison. Qualification on the standard4-vCPU host now uses2and4workers.
+The8-worker runs on that host are retained as oversubscription diagnostics and
+cannot establish production worker sizing or impose an8-worker production result.
+The new Home8-worker run42350162510 was cancelled under this correction; its
+source/evidence identity is retained. The same-source4-worker replacement is
+42350733226. Production-sized8-worker or higher comparisons remain in the separate
+maintenance-window plan after staging and safeguard review.
+
+`isolatedWorkerCpuAdmission` refuses more application workers than available CPUs
+before database setup or application startup. An explicit preflight-only diagnostic
+can retain oversubscription evidence, labelled as such; it cannot run the sustained
+qualification suite. This guard is a starting-envelope policy, not a claim that
+operating systems cannot schedule more processes or that asynchronous workloads
+always peak at one process per CPU.
