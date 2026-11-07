@@ -155,7 +155,7 @@ BEGIN
  OR a.owner_oid<>(SELECT relowner FROM pg_class WHERE oid='public.domain_event'::regclass)
  THEN RAISE EXCEPTION 'Owned Rewards audit profile unavailable' USING ERRCODE='55000';END IF;
  FOR login IN SELECT * FROM pg_roles WHERE oid IN(a.reader_oid,a.projector_oid) LOOP
-  IF login.rolname IS DISTINCT FROM CASE WHEN login.oid=a.reader_oid THEN 'ai_hr_reward_audit_read' ELSE 'ai_hr_reward_audit_projector' END
+  IF login.rolname IS DISTINCT FROM (CASE WHEN login.oid=a.reader_oid THEN 'ai_hr_reward_audit_read' ELSE 'ai_hr_reward_audit_projector' END)
   OR NOT login.rolcanlogin OR login.rolinherit OR login.rolsuper OR login.rolbypassrls OR login.rolcreatedb OR login.rolcreaterole OR login.rolreplication
   OR login.rolvaliduntil<=clock_timestamp()
   OR EXISTS(SELECT 1 FROM pg_auth_members WHERE roleid=login.oid OR member=login.oid)
