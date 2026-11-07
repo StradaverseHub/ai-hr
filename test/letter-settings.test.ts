@@ -83,7 +83,7 @@ it('refuses activation of a reference format whose company code is unavailable w
 });
 
 
-it.each(['company permissions','employee picker'] as const)('shares the %s read lock and still waits for Access writers',async kind=>{
+it.each(['company permissions','employee picker'] as const)('finishes the %s display snapshot while Access readers and writers are held',async kind=>{
  const input={companyId:b.companyId,limit:1,search:'Fictional letter picker employee'};
  const hired=kind==='employee picker'?await hireEmployee(ctx,{person:{fullName:input.search,primaryEmail:'letter-picker@fixture.test'},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:'2020-01-01'}):null;
  const readSelection=()=>kind==='employee picker'?listLetterEmployeeChoices(ctx,input):letterCompanyAccess(ctx);
@@ -99,31 +99,15 @@ it.each(['company permissions','employee picker'] as const)('shares the %s read 
  };
  for(const lock of [lockAccessConfigurationReadTx,lockAccessConfigurationTx]){
   const entered=barrier(),release=barrier();
-  let pid=0,read:ReturnType<typeof readSelection>|undefined;
+  let read:ReturnType<typeof readSelection>|undefined;
   const held=withTenant(ctx,async tx=>{
    await lock(tx,b.tenantId);
-   const [row]=await tx.execute<{pid:number}>(sql`select pg_backend_pid() as pid`);pid=row.pid;
    entered.release();await release.reached;
   });
   try{
    await deadline(entered.reached);
    read=readSelection();
-   if(lock===lockAccessConfigurationReadTx)expect(await deadline<Awaited<ReturnType<typeof readSelection>>>(read)).toEqual(expected);
-   else{
-    const until=Date.now()+4000;
-    let waiting=false;
-    while(Date.now()<until&&!waiting){
-     const [row]=await owner.client`select exists(
-      select 1 from pg_locks waiter join pg_locks holder using(locktype,database,classid,objid,objsubid)
-      where holder.pid=${pid} and holder.granted and holder.locktype='advisory'
-        and not waiter.granted and waiter.mode='ShareLock'
-     ) as waiting`;
-     waiting=row.waiting===true;
-     if(!waiting)await new Promise(resolve=>setTimeout(resolve,20));
-    }
-    expect(waiting).toBe(true);
-    release.release();await held;expect(await deadline<Awaited<ReturnType<typeof readSelection>>>(read)).toEqual(expected);
-   }
+   expect(await deadline<Awaited<ReturnType<typeof readSelection>>>(read)).toEqual(expected);
   }finally{release.release();await Promise.allSettled([held,...(read?[read]:[])]);}
  }
 });

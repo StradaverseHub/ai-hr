@@ -36,7 +36,7 @@ import {
 import { alias } from 'drizzle-orm/pg-core';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { assertModuleGate } from './module-gate';
-import { assertAiPrincipalTx } from './ai-principal';
+import { assertAiPrincipalTx, assertAiPresentationPrincipalTx } from './ai-principal';
 import {assertReadCompositionPrincipalTx} from './read-composition-principal';
 
 /** Optional caller-owned read seam. Supplied transactions must bind an actual current login;
@@ -783,8 +783,17 @@ export function listWorkforcePickOptions(ctx: SessionContext, companyIds?: strin
 }
 /** Resolve an explicit bounded identity set through the same current Workforce projection. */
 export async function readWorkforcePickRowsTx(ctx:SessionContext,tx:Tx,ids:string[]){
+ return workforcePickRowsTx(ctx,tx,ids,lockAccessConfigurationTx);
+}
+/** Display-only counterpart: native identity and rows belong to an enforced RR/RO snapshot. */
+export async function readPresentationWorkforcePickRowsTx(ctx:SessionContext,tx:Tx,ids:string[]){
+ ctx=structuredClone(ctx);ids=ids.slice();
+ await assertAiPresentationPrincipalTx(tx,ctx);
+ return workforcePickRowsTx(ctx,tx,ids,async()=>{});
+}
+async function workforcePickRowsTx(ctx:SessionContext,tx:Tx,ids:string[],lock:typeof lockAccessConfigurationTx){
  if(ids.length>500||ids.some(id=>!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)))throw new RangeError('Invalid workforce identity selection');
- if(!ids.length)return [];await lockAccessConfigurationTx(tx,ctx.tenantId);const columns=workforcePickerColumns();
+ if(!ids.length)return [];await lock(tx,ctx.tenantId);const columns=workforcePickerColumns();
  const source=sql`app.access_workforce_list_rows_for_ids(array[${sql.join(ids.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[]) as workforce_row(value)`;
  return tx.select(columns).from(source).orderBy(columns.employmentId);
 }
@@ -799,6 +808,12 @@ export async function listReadOnlyWorkforcePickPageTx(ctx:SessionContext,tx:Tx,i
  const [state]=await tx.execute<{read_only:boolean}>(sql`select current_setting('transaction_read_only')='on' as read_only`);
  if(state?.read_only!==true)throw Error('Workforce picker requires a read-only transaction.');
  return workforcePickPageTx(ctx,tx,input,lockAccessConfigurationReadTx);
+}
+/** Explicit pure presentation seam. Existing borrowed command/shared-barrier callers stay unchanged. */
+export async function listPresentationWorkforcePickPageTx(ctx:SessionContext,tx:Tx,input:WorkforcePickPageInput){
+ ctx=structuredClone(ctx);input=structuredClone(input);
+ await assertAiPresentationPrincipalTx(tx,ctx);
+ return workforcePickPageTx(ctx,tx,input,async()=>{});
 }
 
 /** Resolve a cursor only inside this exact authorized search. Equal names are ordered by employment ID. */
