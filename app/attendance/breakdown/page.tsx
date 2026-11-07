@@ -3,7 +3,9 @@ import { getLocale, getTranslations } from 'next-intl/server';
 import { placeStickyColumns } from '@/lib/sticky-columns';
 import { cookies } from 'next/headers';
 import { scopedAdmin } from '@/lib/scope';
-import { attendanceForEmploymentRange, attendancePunchesForRange } from '@/core/attendance';
+import { ATTENDANCE_RANGE_MAX_DAYS } from '@/packs/attendance/service';
+import {readIndividualAttendance} from '../individual/read';
+import {resolveMyAttendanceRange} from '../my-records/range';
 import { otByRate, flagOf, statusOf, type AttendanceStatus, type AttendanceFlag } from '@/core/attendance-derive';
 import { explainAttendanceDay } from '@/core/attendance-explain';
 import { listEmployees } from '@/core/read';
@@ -15,7 +17,7 @@ import {
 } from '@/components/collapsible-employee-panel';
 import { fmtMin, fmtDayDate, fmtDayName } from '@/components/attendance-format';
 import { Pager } from '@/components/pager';
-import { paginateRows, parsePageQuery } from '@/lib/pagination';
+import { parsePageQuery } from '@/lib/pagination';
 import { todayInKualaLumpur } from '@/lib/hr-date';
 
 /**
@@ -75,10 +77,12 @@ export default async function AttendanceBreakdownPage({
   const { s, scopeIds } = await scopedAdmin();
   const sp = await searchParams;
 
-  const dateRe = /^\d{4}-\d{2}-\d{2}$/;
   const todayIso = todayInKualaLumpur();
-  const from = sp.from && dateRe.test(sp.from) ? sp.from : `${todayIso.slice(0, 7)}-01`;
-  const to = sp.to && dateRe.test(sp.to) ? sp.to : todayIso;
+  const range=resolveMyAttendanceRange(sp,todayIso,ATTENDANCE_RANGE_MAX_DAYS);
+  const {from,to}=range;
+  const rangeError=range.refusal==='invalid'?t('myCalendar.invalidRange'):
+    range.refusal==='inverted'?t('myRecords.rangeInverted'):
+    range.refusal==='too_long'?t('myRecords.rangeTooLong',{days:range.days,max:ATTENDANCE_RANGE_MAX_DAYS}):undefined;
 
   const employees = await listEmployees(s, scopeIds);
   const selectedEmp = sp.emp && employees.some((e) => e.employmentId === sp.emp) ? sp.emp : undefined;
@@ -106,14 +110,7 @@ export default async function AttendanceBreakdownPage({
   // this is not client state: otherwise the panel flashes open and then folds.
   const panelDefaultOpen = (await cookies()).get(PANEL_COOKIE)?.value !== '0';
 
-  const rows = selectedEmp ? await attendanceForEmploymentRange(s, selectedEmp, from, to) : [];
-  const punchesByAttendance = selectedEmp
-    ? await attendancePunchesForRange(s, selectedEmp, from, to)
-    : new Map();
-
-  // paginateRows fetches then SLICES and hands back the page state with it — the same call shape
-  // Individual Attendance uses, so the two screens page identically.
-  const { rows: dayPage, state: pgState } = paginateRows(rows, parsePageQuery(sp));
+  const {dayPage,pgState,punchesByAttendance}=await readIndividualAttendance(s,selectedEmp,range,parsePageQuery(sp));
 
   const statusText: Record<AttendanceStatus, string> = {
     present: t('statusPresent'),
@@ -224,6 +221,8 @@ export default async function AttendanceBreakdownPage({
 
       {!selectedEmp ? (
         <Card className="p-6 text-sm text-muted-foreground">{t('breakdownPickEmployee')}</Card>
+      ) : rangeError ? (
+        <Card role="alert" className="p-6 text-sm text-muted-foreground">{rangeError}</Card>
       ) : (
         <Card className="overflow-hidden">
           <div className="border-b border-border px-4 py-3 text-sm font-medium">

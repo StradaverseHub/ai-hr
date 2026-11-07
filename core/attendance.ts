@@ -12,6 +12,9 @@ import {perRowAttendanceBreakMinutes} from '../lib/attendance-break-count';
 import {attendancePolicyClockPlacement,attendancePolicyWorkPlacement,attendancePolicySchedulePlacement,type PolicyClockPlacement,type PolicyWorkPlacement,type PolicySchedulePlacement} from './attendance-policy-schedule';
 import {anchorAttendanceClockMinute as anchorToShift} from './attendance-timeline';
 import {isCalendarDate} from '../lib/calendar-date';
+import {assertAiPresentationPrincipalTx} from './ai-principal';
+import {settleReadGroup} from '../lib/settle-read-group';
+import {parsePageQuery,pageState,type PageQuery,type PageState} from '../lib/pagination';
 import {summarizeOvertimeRecords,type FormulaOvertimeRecord,type OvertimeRecordSummary} from '../lib/overtime-records';
 import { exceptionDecisionsTx } from './schedule-group-controls';
 import { provenCompanyDatesTx } from './employment-company';
@@ -3079,6 +3082,31 @@ export async function attendanceForEmploymentRange(
   return (await attendanceForEmploymentsRange(ctx, [employmentId], from, to)).get(employmentId) ?? [];
 }
 
+/** Records presentation: one authorized snapshot, canonical day derivation for only the
+ * visible dates and matching punch details. Legacy full-range/export owners stay unchanged. */
+export async function attendanceEmploymentRangePage(
+ ctx:SessionContext,employmentId:string,from:string,to:string,requested:PageQuery,
+):Promise<{dayPage:AttendanceRangeRow[];pgState:PageState;total:number;punchesByAttendance:Map<string,AttendancePunchRow[]>}>{
+ const days=isCalendarDate(from)&&isCalendarDate(to)&&from<=to
+  ?Math.round((Date.parse(to+'T00:00:00Z')-Date.parse(from+'T00:00:00Z'))/86400000)+1:0;
+ if(days<1||days>ATTENDANCE_RANGE_MAX_DAYS)throw Error('Choose a valid Attendance range of at most '+ATTENDANCE_RANGE_MAX_DAYS+' days.');
+ const page=parsePageQuery({page:String(requested.page),size:String(requested.size)});
+ return withTenant(ctx,async tx=>{
+  await assertAiPresentationPrincipalTx(tx,ctx);
+  // The canonical range owner requires both employment and person visibility. A date
+  // count must not turn an invisible selected employment into an apparently readable one.
+  const [visible]=await tx.select({id:employment.id}).from(employment)
+   .innerJoin(person,eq(person.id,employment.personId)).where(eq(employment.id,employmentId)).limit(1);
+  const total=visible?days:0;
+  if(page.offset>=total)return {dayPage:[],pgState:pageState(page,total,0),total,punchesByAttendance:new Map()};
+  const dayAt=(offset:number)=>new Date(Date.parse(from+'T00:00:00Z')+offset*86400000).toISOString().slice(0,10);
+  const first=dayAt(page.offset),last=dayAt(Math.min(total,page.offset+page.limit)-1);
+  const dayPage=(await attendanceForEmploymentsRangeTx(tx,ctx,[employmentId],first,last)).get(employmentId)??[];
+  const punchesByAttendance=await attendancePunchesForRangeTx(tx,employmentId,first,last);
+  return {dayPage,pgState:pageState(page,total,dayPage.length),total,punchesByAttendance};
+ },{readOnlySnapshot:true});
+}
+
 /** Canonical Records projection for a team: input reads are bounded by source groups, not cells. */
 export function attendanceForEmploymentsRange(
   ctx: SessionContext, employmentIds: string[], from: string, to: string,
@@ -3099,8 +3127,8 @@ async function attendanceForEmploymentsRangeTx(
       .innerJoin(person,eq(person.id,employment.personId)).where(inArray(employment.id,[...new Set(employmentIds)]));
     if (employees.length === 0) return result;
     const ids=employees.map(e=>e.id),companyIds=[...new Set(employees.map(e=>e.companyId))];
-    const [rows,policies,approvedDates,holidaySets,rosters,arrangements,deducted] = await Promise.all([
-      tx.select({employmentId:attendance.employmentId,date:attendance.attendanceDate,attendanceId:attendance.id,
+    const [rows,policies,approvedDates,holidaySets,rosters,arrangements,deducted] = await settleReadGroup([
+      ()=>tx.select({employmentId:attendance.employmentId,date:attendance.attendanceDate,attendanceId:attendance.id,
         checkInAt:attendance.checkInAt,checkOutAt:attendance.checkOutAt,status:attendance.status,dayType:attendance.dayType,
         workedMinutes:attendance.workedMinutes,otMinutes:attendance.otMinutes,lateMinutes:attendance.lateMinutes,
         earlyOutMinutes:attendance.earlyOutMinutes,underMinutes:attendance.underMinutes,
@@ -3117,18 +3145,18 @@ async function attendanceForEmploymentsRangeTx(
         } : {}),
       }).from(attendance).where(and(inArray(attendance.employmentId,ids),
           gte(attendance.attendanceDate,from),lte(attendance.attendanceDate,to))),
-      tx.select({companyId:attendancePolicy.companyId,workingDays:attendancePolicy.workingDays,
+      ()=>tx.select({companyId:attendancePolicy.companyId,workingDays:attendancePolicy.workingDays,
         halfWorkingDays:attendancePolicy.halfWorkingDays,workStart:attendancePolicy.workStart,
         workEnd:attendancePolicy.workEnd,breakMinutes:attendancePolicy.breakMinutes})
         .from(attendancePolicy).where(inArray(attendancePolicy.companyId,companyIds)),
-      approvedLeaveDates(tx,ids,from,to),
-      holidayDatesByEmployment(tx,{employmentIds:ids,startDate:from,endDate:to}),
-      tx.select({employmentId:rosterAssignment.employmentId,shiftDate:rosterAssignment.shiftDate,
+      ()=>approvedLeaveDates(tx,ids,from,to),
+      ()=>holidayDatesByEmployment(tx,{employmentIds:ids,startDate:from,endDate:to}),
+      ()=>tx.select({employmentId:rosterAssignment.employmentId,shiftDate:rosterAssignment.shiftDate,
         isRestDay:rosterAssignment.isRestDay,code:shift.code,shiftType:shift.type,override:shift.normalMinutesOverride,start:shift.startTime,end:shift.endTime,
         brk:shift.breakMinutes,crosses:shift.crossesMidnight,rounding:shift.normalHoursRoundingMinutes})
         .from(rosterAssignment).leftJoin(shift,eq(shift.id,rosterAssignment.shiftId))
         .where(and(inArray(rosterAssignment.employmentId,ids),gte(rosterAssignment.shiftDate,from),lte(rosterAssignment.shiftDate,to))),
-      liveArrangementsTx(tx,ids),deductAbsentDaysByEmployment(tx,ids),
+      ()=>liveArrangementsTx(tx,ids),()=>deductAbsentDaysByEmployment(tx,ids),
     ]);
     const shiftIds=[...new Set(employees.flatMap(e=>{
       const periods=arrangements.get(e.id)??[];
