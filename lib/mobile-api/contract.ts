@@ -142,7 +142,9 @@ export type ErrorResponse = z.infer<typeof ErrorResponse>;
 
 // GET /api/mobile/v1/design: append-only presentation contract, no HR data or draft.
 export const MobileDesignResponse = z.object({
-  tenantId: z.string().uuid(), revision: z.number().int().nonnegative(), publishedAt: z.string(),
+  // Tenant keys are PostgreSQL UUIDs, including legacy deterministic fixture IDs.
+  // This response does not grant authority; tenant scope still comes only from the verified session.
+  tenantId: z.guid(), revision: z.number().int().nonnegative(), publishedAt: z.string(),
   config: z.custom<MobileDesign>(value => { try { parseMobileDesign(value); return true; } catch { return false; } }),
   artwork: z.custom<MobileBackgrounds>(mobileArtworkValid).optional(),
 });

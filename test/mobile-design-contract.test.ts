@@ -1,8 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { composeMobileDesign, DEFAULT_MOBILE_DESIGN, MOBILE_ACCENTS, mobilePalette, parseMobileDesign, resolveMobileDesign } from '../lib/mobile-design';
+import { DEMO_TENANT_ID } from '../db/seed-guard';
 import { MobileDesignResponse } from '../lib/mobile-api/contract';
 
 describe('shared tenant mobile presentation contract', () => {
+  it('accepts the stored demo tenant UUID without accepting arbitrary tenant strings',()=>{
+    const response={tenantId:DEMO_TENANT_ID,revision:0,publishedAt:'',config:DEFAULT_MOBILE_DESIGN};
+    expect(MobileDesignResponse.safeParse(response).success).toBe(true);
+    for(const tenantId of ['tenant-demo','https://other.example/tenant',DEMO_TENANT_ID+'x'])expect(MobileDesignResponse.safeParse({...response,tenantId}).success).toBe(false);
+  });
   it('rejects executable content, remote assets, policy changes, omissions and unsupported versions', () => {
     for (const value of [null, [], { ...DEFAULT_MOBILE_DESIGN, permission: 'super_admin' },
       { ...DEFAULT_MOBILE_DESIGN, schemaVersion: 2 }, { ...DEFAULT_MOBILE_DESIGN, logo: 'https://other-tenant.test/logo' },
