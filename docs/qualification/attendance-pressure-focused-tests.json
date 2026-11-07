@@ -1,0 +1,6 @@
+[
+  "test/performance-route-manifest.test.ts",
+  "test/performance-route-scheduling.test.ts",
+  "test/performance-route-latency.test.ts",
+  "test/navigation-entry.test.ts"
+]
