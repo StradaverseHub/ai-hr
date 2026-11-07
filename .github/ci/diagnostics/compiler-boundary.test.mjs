@@ -2,7 +2,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {BOUNDARY_SOURCE,BOUNDARY_LIMITS,admitBoundaryInputs,remainingCompilerMs,stronglyConnected,planBoundary,ambientEntries,orderedBoundaryRoots,assertDeclarationBytes,sha256,
+import {BOUNDARY_SOURCE,BOUNDARY_LIMITS,admitBoundaryInputs,remainingCompilerMs,stronglyConnected,planBoundary,ambientEntries,orderedBoundaryRoots,resolutionLeafTargets,assertResolutionLeafBytes,assertDeclarationBytes,sha256,
  validateDeclarationCoverage,contractSource,NEGATIVE_CONTRACTS,expectContractRefusals} from './compiler-boundary-policy.mjs';
 import {exactCoverage,validatePhase,boundaryArguments,experiment} from './compiler-boundary.mjs';
 import {boundaryWorker} from './compiler-boundary-worker.mjs';
@@ -61,6 +61,17 @@ test('declaration provenance refuses missing, duplicate and foreign outputs',()=
  const bytes=Buffer.from('export declare const value: string;'),row={sha256:sha256(bytes)};
  assert.doesNotThrow(()=>assertDeclarationBytes(row,bytes));assert.throws(()=>assertDeclarationBytes(row,Buffer.concat([bytes,Buffer.from('\nforeign')])));
 });
+test('opaque native resolution targets retain distinct identity and never become checked sources',()=>{
+ const files=[{id:'checked.d.ts'}],edges=[{kind:'import',from:'checked.d.ts',to:'opaque.js',extension:'.js',packageId:{name:'opaque',version:'1'}},
+  {kind:'import',from:'checked.d.ts',to:'checked.d.ts',extension:'.d.ts'},
+  {kind:'import',from:'checked.d.ts',to:'opaque.js',extension:'.js',packageId:{name:'opaque',version:'1'}}];
+ const leaves=resolutionLeafTargets(files,edges,['checked.d.ts']);
+ assert.deepEqual(leaves,[{id:'opaque.js',extensions:['.js'],resolutionKinds:['import'],packageIds:[{name:'opaque',version:'1'}],checkedByOriginalProgram:false,nativeSourceParsed:false}]);
+ assert.throws(()=>resolutionLeafTargets(files,edges,['checked.d.ts','opaque.js']));
+ const bytes=Buffer.from('module.exports = Object.freeze({});'),row={sha256:sha256(bytes)};
+ assert.doesNotThrow(()=>assertResolutionLeafBytes(row,bytes));assert.throws(()=>assertResolutionLeafBytes(row,Buffer.concat([bytes,Buffer.from('\nchanged')])));
+ assert.equal(files.length,1);assert(!files.some(file=>file.id==='opaque.js'));
+});
 test('native API contracts require exact distinct diagnostic codes, positions and owning file',()=>{
  const text=contractSource()+NEGATIVE_CONTRACTS.map(row=>row.line).join('\n')+'\n',file='__aihr_boundary_contract__.ts';
  const errors=NEGATIVE_CONTRACTS.map(row=>({code:row.code,line:text.slice(0,text.indexOf(row.line)).split('\n').length,file}));
@@ -97,6 +108,7 @@ test('workflow keeps25 inputs, old attributionfull-only and every other job outs
  assert(worker.includes('Consumer fell back to runtime implementation source'));
  assert(worker.includes('Native reversed merge/overload ordering must actually refuse'));
  assert(worker.includes('Original external module/package/resolution mode changed'));
+ assert(worker.includes('A resolution-only opaque leaf cannot become a checked SourceFile'));
 });
 test('both executable paths refuse outside hosted route before loading TypeScript or candidate sources',async()=>{
  const previous=process.env.GITHUB_ACTIONS;try{process.env.GITHUB_ACTIONS='false';await assert.rejects(experiment(),/Managed diagnostic/);

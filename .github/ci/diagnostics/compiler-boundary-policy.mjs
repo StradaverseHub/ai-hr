@@ -126,6 +126,21 @@ export function validateDeclarationCoverage(plan,inventory,declarations){
  assert(declarations.every(row=>plan.producerSourceIds.includes(row.source)),'Foreign emitted declaration');
 }
 export function assertDeclarationBytes(row,bytes){assert.equal(sha256(bytes),row.sha256,'Stale or foreign generated declaration bytes');}
+/** Resolved opaque targets are not necessarily checked SourceFiles (for example
+ * vendor JS under maxNodeModuleJsDepth=0). Keep both inventories distinct. */
+export function resolutionLeafTargets(files,edges,firstLoads){
+ const sourceIds=new Set(files.map(file=>file.id)),parsed=new Set(firstLoads),leaves=new Map();
+ for(const edge of edges){if(!edge.to||sourceIds.has(edge.to))continue;
+  assert(!parsed.has(edge.to),'A resolution-only leaf was parsed by the original native program');
+  const leaf=leaves.get(edge.to)??{id:edge.to,extensions:[],resolutionKinds:[],packageIds:[],checkedByOriginalProgram:false,nativeSourceParsed:false};
+  if(!leaf.extensions.includes(edge.extension??null))leaf.extensions.push(edge.extension??null);
+  if(!leaf.resolutionKinds.includes(edge.kind))leaf.resolutionKinds.push(edge.kind);
+  if(!leaf.packageIds.some(value=>JSON.stringify(value)===JSON.stringify(edge.packageId??null)))leaf.packageIds.push(edge.packageId??null);
+  leaves.set(edge.to,leaf);
+ }
+ return [...leaves.values()];
+}
+export function assertResolutionLeafBytes(row,bytes){assert.equal(sha256(bytes),row.sha256,'Original native resolution leaf bytes changed');}
 export function contractSource(base='.'){
  return `import {withTenant,type SessionContext} from ${JSON.stringify(base+'/db/client')};
 import {employment} from ${JSON.stringify(base+'/db/schema')};

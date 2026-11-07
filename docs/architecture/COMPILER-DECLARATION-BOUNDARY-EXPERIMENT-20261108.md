@@ -47,6 +47,9 @@ fontkit declaration, jest-dom/Vitest augmentations and generated Next route type
 remain part of the actual graph. Native ambient declaration order and dependency package/module identities
 are checked rather than inferred from directory names. The original ambient-file
 sequence must match in every checked program; a different merge order refuses.
+A separate pinned resolution-only inventory preserves native opaque targets that
+are not checked SourceFiles. Those bytes may satisfy native resolution but may
+never become roots or parsed/checked sources; they do not inflate11268 coverage.
 
 ## Real checked declarations and strict receivers
 

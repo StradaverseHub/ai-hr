@@ -1,7 +1,7 @@
 {
   "kind": "DEVELOPMENT_ONLY_CHECKED_DECLARATION_BOUNDARY_NOT_RELEASE",
-  "controllerBase": "1a52835352bdd30becc3fc1b7c67515906baae08",
-  "controllerRef": "codex/compiler38-ambient-context-recovery-20261108",
+  "controllerBase": "88dae55cad5c4b2374a803396af1413c63004e85",
+  "controllerRef": "codex/compiler38-resolution-leaf-recovery-20261108",
   "source": "38b047c9f465990e3f26295c035ab9f69b3001d7",
   "sourceRef": "codex/compiler-proven-message-boundaries-20261108",
   "workflow": "alpha-staging-diagnostics.yml",
@@ -72,16 +72,17 @@
   },
   "sourceSha256": {
     ".github/ci/diagnostics/compiler-boundary.mjs": "a22845af414e50ba6df066edb63490d824db465a55ddce2ed18816521cce95ec",
-    ".github/ci/diagnostics/compiler-boundary-worker.mjs": "3f22d6228cfa85cd6da6325b5a382507f02d8a156a4f987fe41c270681f5776c",
-    ".github/ci/diagnostics/compiler-boundary-policy.mjs": "150a5d8d825017143363cce964939806916d9856c15ec866be0ec1e3ef4e1a49",
-    ".github/ci/diagnostics/compiler-boundary.test.mjs": "6596971dc3ce7d7352e450dabc3ac7e11f42203e9c9f86cad6fa359e09bb6041",
+    ".github/ci/diagnostics/compiler-boundary-worker.mjs": "0ac401868d949c7dc10012d7337497486bae012c56e498f54dd8f77d9936078f",
+    ".github/ci/diagnostics/compiler-boundary-policy.mjs": "baaf81e48ccb9747398889005c798f91f922c33ac53292e72a62d249bdb4e98d",
+    ".github/ci/diagnostics/compiler-boundary.test.mjs": "1d9e73b54417a10a77e46fef50c9f97c12cd9b52a32910f5ad7f2fb2e3351ae2",
     ".github/ci/diagnostics/compiler-attribution.mjs": "21fecd10f733fc7a610cca8cd45b5776ea06deb6851b9053ed101ad8c8507767",
     ".github/ci/diagnostics/compiler-attribution.test.mjs": "50f86f858f5052215b2902d28207c2d2e1c3ee5ce580e3034991f464046da235",
     ".github/workflows/alpha-staging-diagnostics.yml": "0b434389f67376c1628f1f8b78657cd4c9ea7f60f1e143e243762054f9aee53e",
-    "docs/architecture/COMPILER-DECLARATION-BOUNDARY-EXPERIMENT-20261108.md": "2c3e8e3babb286b15c94a33e8b0f8642ad3d213399f92098bdd27d32b446ba5b",
-    "docs/qualification/compiler-native-ambient-context-recovery-20261108.md": "8872cb3484429ffc4b7f25ebc3b1a86a46f1e04446dea3bdfe78424b3bb9fcfa"
+    "docs/architecture/COMPILER-DECLARATION-BOUNDARY-EXPERIMENT-20261108.md": "3640deda39d542cc876928c32e9decebdbcf480c08181e3287ed309dca4b01e2",
+    "docs/qualification/compiler-native-ambient-context-recovery-20261108.md": "8872cb3484429ffc4b7f25ebc3b1a86a46f1e04446dea3bdfe78424b3bb9fcfa",
+    "docs/qualification/compiler-native-resolution-leaves-recovery-20261108.md": "977298fb5ad15ee137a7a395eb4243e83ed0235aede84973a54b7e023b13ad6d"
   },
-  "qualification": "NOT_RUN ambient-order recovery; original42405727772 remains FAIL before semantic checking. Static syntax/diff/hash analysis only. Root and independent reviews required before hosted Actions.",
+  "qualification": "NOT_RUN resolution-only-leaf recovery; original42407473358 remains FAIL before application semantic checking. Exact224 ambient order and real native overload controls passed at88; no compiler acceptance. Static syntax/diff/hash only. Root and independent review required before Actions.",
   "retainedFailure": {
     "run": 42402718235,
     "source": "38b047c9f465990e3f26295c035ab9f69b3001d7",
@@ -126,5 +127,29 @@
       "isolatedFromApplicationProgram": true
     },
     "allOriginalBodiesStillRequirePrimaryOwner": true
+  },
+  "resolutionLeafRecovery": {
+    "originalRun": 42407473358,
+    "originalController": "88dae55cad5c4b2374a803396af1413c63004e85",
+    "inventory": {
+      "elapsedMs": 26604,
+      "sampledPeakRssKiB": 3507608,
+      "roots": 8823,
+      "checkedProgramFiles": 11268
+    },
+    "producer": {
+      "elapsedMs": 17922,
+      "sampledPeakRssKiB": 1874984,
+      "exactAmbientOrderPassed": true,
+      "realMergeOrderControlsPassed": true,
+      "beforeApplicationSemanticChecking": true,
+      "refusal": "original external resolution targets became missing"
+    },
+    "originalOpaqueResolutionTargets": 7,
+    "separateUncheckedInventory": true,
+    "leafSourceParsingDenied": true,
+    "originalDependencyTypingUnchanged": true,
+    "programCoverageCountUnchanged": true,
+    "exactExternalEdgeGuardRetained": true
   }
 }

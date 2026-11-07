@@ -5,7 +5,7 @@ import {readFileSync,writeFileSync,mkdirSync,realpathSync,lstatSync,existsSync} 
 import {resolve,relative,dirname,join,sep} from 'node:path';
 import {execFileSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
-import {BOUNDARY_SOURCE,sha256,planBoundary,orderedBoundaryRoots,validateDeclarationCoverage,assertDeclarationBytes,contractSource,NEGATIVE_CONTRACTS,expectContractRefusals} from './compiler-boundary-policy.mjs';
+import {BOUNDARY_SOURCE,sha256,planBoundary,orderedBoundaryRoots,validateDeclarationCoverage,assertDeclarationBytes,resolutionLeafTargets,assertResolutionLeafBytes,contractSource,NEGATIVE_CONTRACTS,expectContractRefusals} from './compiler-boundary-policy.mjs';
 
 export async function boundaryWorker(mode,out,index){
  assert(process.platform==='linux'&&process.env.GITHUB_ACTIONS==='true'&&process.env.RUNNER_ENVIRONMENT==='github-hosted'
@@ -46,6 +46,7 @@ export async function boundaryWorker(mode,out,index){
    const text=read(path);if(text!==undefined&&path.endsWith('/package.json'))packages.set(id(path),{id:id(path),real:id(realpathSync(path)),sha256:sha256(text)});return text;
   };
   const nativeSourceFile=host.getSourceFile;host.getSourceFile=(...args)=>{
+   assert(!access?.resolutionOnly?.(args[0]),'A resolution-only opaque leaf cannot become a checked SourceFile');
    const file=nativeSourceFile(...args);if(file&&!loaded.has(file.fileName)){loaded.add(file.fileName);firstLoads.push(id(file.fileName));}return file;
   };
   host.resolveModuleNameLiterals=(literals,from,redirected,options,sourceFile)=>literals.map(literal=>{
@@ -86,12 +87,18 @@ export async function boundaryWorker(mode,out,index){
    assert.equal(sha256(inventoryText),'64150993b2990e6b4b405a1211037cca665887fb5068f97bebfb3e1e54a5dbbd','Exact original ordered program inventory changed');
    assert.equal(identity.configHash,'0ee72fb11a698bad9b18c39223569adf5758727272b35bfa99ec7bfa57c3530a');
    assert.equal(identity.lockHash,'0413a070eca23d390fabdcd78cb63b2dcf4b0b69fe90408c7b57a4f672d21dbd');
-   const inventory={kind:'EXACT_TS593_SOURCE_GRAPH',identity,roots:parsed.fileNames.map(id),files,edges,firstLoads,packages:[...packages.values()],
+   const parsedRealFiles=new Set(firstLoads.map(key=>id(realpathSync(join(cwd,key)))));
+   const resolutionLeaves=resolutionLeafTargets(files,edges,firstLoads).map(leaf=>{
+    const path=join(cwd,leaf.id),stat=lstatSync(path);assert(stat.isFile()&&!stat.isSymbolicLink());
+    const real=id(realpathSync(path));assert(!parsedRealFiles.has(real),'Resolution-only leaf aliases a native parsed file');
+    return{...leaf,real,sha256:sha256(readFileSync(path))};
+   });
+   const inventory={kind:'EXACT_TS593_SOURCE_GRAPH',identity,roots:parsed.fileNames.map(id),files,edges,firstLoads,resolutionLeaves,packages:[...packages.values()],
     options:parsed.options,buildRoots:config('tsconfig.build.json').fileNames.map(id)};
    const plan=planBoundary(inventory);
    writeFileSync(join(out,'inventory.json'),JSON.stringify(inventory,null,2)+'\n',{flag:'wx',mode:0o600});
    writeFileSync(join(out,'plan.json'),JSON.stringify(plan,null,2)+'\n',{flag:'wx',mode:0o600});
-   result.rootNames=inventory.roots.length;result.resolvedFiles=files.length;result.ambient=plan.ambient.length;result.consumers=plan.consumers.length;
+   result.rootNames=inventory.roots.length;result.resolvedFiles=files.length;result.ambient=plan.ambient.length;result.consumers=plan.consumers.length;result.resolutionOnlyLeaves=resolutionLeaves.length;
    // inventory.json is the phase result itself; preserve its complete graph instead of overwriting it.
    result.complete=true;writeFileSync(join(out,'inventory-phase.json'),JSON.stringify(result,null,2)+'\n',{flag:'wx',mode:0o600});return;
   }
@@ -120,6 +127,14 @@ export async function boundaryWorker(mode,out,index){
   }
   const original=new Map(inventory.files.map(file=>[file.id,file])),metadata=new Map(inventory.packages.map(file=>[file.id,file]));
   const originalReal=new Map(inventory.files.map(file=>[file.real,file])),metadataReal=new Map(inventory.packages.map(file=>[file.real,file]));
+  const leafTargets=resolutionLeafTargets(inventory.files,inventory.edges,inventory.firstLoads);
+  assert.deepEqual(inventory.resolutionLeaves.map(({real,sha256,...leaf})=>leaf),leafTargets,'Resolution-only inventory differs from actual native targets');
+  const leaves=new Map(inventory.resolutionLeaves.map(leaf=>[leaf.id,leaf])),leavesReal=new Map(inventory.resolutionLeaves.map(leaf=>[leaf.real,leaf]));
+  for(const leaf of leaves.values()){
+   assert(!originalReal.has(leaf.real),'Opaque resolution leaf aliases a checked implementation');
+   const path=join(cwd,leaf.id);assert.equal(id(realpathSync(path)),leaf.real);assert(lstatSync(path).isFile()&&!lstatSync(path).isSymbolicLink());assertResolutionLeafBytes(leaf,readFileSync(path));
+  }
+  result.resolutionOnlyLeaves=leaves.size;
   const producer=new Set(plan.producerSourceIds),sourceNegative=mode==='source-negative',isProducer=mode==='producer';
   const declarationPhase=mode==='declarations',negative=sourceNegative||mode==='declaration-negative';
   const batch=mode==='consumer'?plan.consumers[index]:undefined;if(mode==='consumer')assert(batch,'Unregistered consumer partition');
@@ -155,19 +170,29 @@ export async function boundaryWorker(mode,out,index){
    const file=original.get(key)??originalReal.get(real);
    if(file){if(!isProducer&&!sourceNegative&&producer.has(file.id)&&!file.declaration&&!file.json)return undefined;
     if(file.external||file.json||file.declaration||shared.has(file.id)||allowedSources.has(file.id))return {file};return undefined;}
+   const leaf=leaves.get(key)??leavesReal.get(real);if(leaf)return {file:leaf,resolutionOnly:true};
    const meta=metadata.get(key)??metadataReal.get(real);return meta?{file:meta}:undefined;
   };
   const allowed=path=>locate(path)!==undefined;
   const readFile=path=>{
    const location=locate(path);if(!location)return undefined;if(location.contract)return contract;if(location.declarationControl)return declarationControl;if(location.sidecar)return location.sidecar.text;
    if(location.output)return declarationBytes(location.output).toString('utf8');
-   const bytes=readFileSync(path);assert.equal(sha256(bytes),location.file.sha256,'Original source changed during diagnostic');return bytes.toString('utf8');
+   const bytes=readFileSync(path);if(location.resolutionOnly)assertResolutionLeafBytes(location.file,bytes);else assert.equal(sha256(bytes),location.file.sha256,'Original source changed during diagnostic');return bytes.toString('utf8');
   };
   const options={...parsed.options,incremental:false};
   if(isProducer)Object.assign(options,{noEmit:false,declaration:true,emitDeclarationOnly:true,noEmitOnError:true,sourceMap:false,declarationMap:false,rootDir:cwd,outDir:join(out,'emitted')});
   if(declarationPhase)options.skipLibCheck=false; // Below checks only owned emitted declarations, not skipped third-party declarations.
   const {host,edges}=compilerHost(options,{readFile,fileExists:allowed,
+   resolutionOnly:path=>locate(path)?.resolutionOnly===true,
    realpath:path=>[contractId,declarationControlId].includes(id(path))||sidecars.has(id(path))||mapped(id(path))?resolve(path):realpathSync(path)});
+  if(leaves.size){
+   for(const leaf of leaves.values()){
+    const path=join(cwd,leaf.id);assert.equal(host.fileExists(path),true);assertResolutionLeafBytes(leaf,Buffer.from(host.readFile(path)));
+    assert.throws(()=>host.getSourceFile(path,ts.ScriptTarget.ES2017),/resolution-only opaque leaf/);
+    assert.throws(()=>assertResolutionLeafBytes(leaf,Buffer.concat([readFileSync(path),Buffer.from('\nforeign')])));
+   }
+   result.resolutionLeafControls={exactBytesResolve:true,allLeafSourceParsesRefused:true,mutatedBytesRefused:true,leavesCheckedByCompiler:false};
+  }
   if(!isProducer&&!sourceNegative){
    const row=declarations.find(row=>row.source==='core/employee-choice.ts');assert(row,'Real public API declaration required');
    assert.equal(host.fileExists(join(cwd,row.source)),false);assert.equal(host.readFile(join(cwd,row.source)),undefined);
@@ -202,9 +227,10 @@ export async function boundaryWorker(mode,out,index){
    if(![contractId,declarationControlId].includes(key)&&!sidecars.has(key)&&!back.has(key))assert(original.has(key),'Compiler loaded a file outside original resolved graph');
    if(original.has(key))assert.equal(file.impliedNodeFormat??null,original.get(key).impliedNodeFormat,'Original module format changed');
   }
-  const edgeIdentity=edge=>JSON.stringify({kind:edge.kind,from:edge.from,specifier:edge.specifier,mode:edge.mode,to:edge.to,packageId:edge.packageId});
+  const edgeIdentity=edge=>JSON.stringify({kind:edge.kind,from:edge.from,specifier:edge.specifier,mode:edge.mode,to:edge.to,extension:edge.extension,packageId:edge.packageId,external:edge.external});
   const originalEdges=new Set(inventory.edges.map(edgeIdentity));let checkedExternalEdges=0;
   for(const edge of edges)if(original.get(edge.from)?.external){assert(originalEdges.has(edgeIdentity(edge)),'Original external module/package/resolution mode changed');checkedExternalEdges++;}
+  if(isProducer)for(const edge of edges)if(original.has(edge.from))assert(originalEdges.has(edgeIdentity(edge)),'Original producer source module/package/resolution mode changed');
   result.originalExternalResolutionsChecked=checkedExternalEdges;
   if(batch)for(const root of batch.roots)assert(observed.includes(root),'Consumer original root was not checked');
   const owned=declarationPhase?programFiles.filter(file=>virtuals.has(id(file.fileName))||id(file.fileName)===declarationControlId):undefined;
