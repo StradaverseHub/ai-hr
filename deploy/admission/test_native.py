@@ -150,6 +150,163 @@ def ready_worker(unit):
     return next((row for row in status()['workers'] if row['unit'] == unit and row['phase'] == 'READY' and row['admitted']), None)
 
 
+def qualify_interrupted_lifecycle(profile):
+    """Real owned systemd/Nginx faults, without weakening the installed helper."""
+    unit, slot = UNITS[1], 2
+    unit_path = pathlib.Path('/etc/systemd/system', unit)
+    original = unit_path.read_text()
+    delayed = original.replace('Restart=on-failure', 'Restart=no').replace(
+        'ExecStartPost=+/usr/bin/python3 -I /usr/local/lib/aihr-admission/controller.py admit ' + unit,
+        'ExecStartPost=+/usr/bin/python3 -I /usr/local/lib/aihr-admission/fixture_poststart.py 2').replace(
+        'ExecStopPost=+/usr/bin/python3 -I /usr/local/lib/aihr-admission/controller.py cleanup ' + unit + '\n', '')
+    post_gate = pathlib.Path('/run/aihr-admission/ports/post-2')
+    stopped_proxy = None
+    controller('drain', unit)
+    systemctl('stop', unit)
+    controller('reconcile')
+    try:
+        phase('native-start-timeout-during-successful-health')
+        write(unit_path, delayed.replace('TimeoutStartSec=30', 'TimeoutStartSec=1'), 0o644)
+        post_gate.unlink(missing_ok=True)
+        gate(slot, 'hold-stop')
+        gate(slot, 'release-stop', False)
+        gate(slot, 'ready')
+        systemctl('daemon-reload')
+        systemctl('start', '--no-block', unit)
+        warming = until(lambda: next((row for row in status()['workers'] if row['unit'] == unit and row['phase'] == 'WARMING'), None), 'timeout worker reservation')
+        invocation = properties(unit)['InvocationID']
+        until(lambda: C.LinuxHost(profile).worker(unit, invocation, warming['port']), 'native start-post listener before timeout')
+        proof = {'healthyBeforeTimeout': False}
+
+        class TimeoutAfterHealth(C.LinuxHost):
+            def health(self, port):
+                healthy = super().health(port)
+                if healthy and port == warming['port']:
+                    proof['healthyBeforeTimeout'] = True
+                    until(lambda: properties(unit)['ActiveState'] == 'deactivating', 'actual native start timeout', seconds=3)
+                    proof['heldIdentity'] = C.process_identity(int(properties(unit)['MainPID']))
+                    assert proof['heldIdentity'] is not None and self.owns_listener(proof['heldIdentity'], port)
+                return healthy
+
+        try:
+            C.Controller(profile, TimeoutAfterHealth(profile)).admit(unit, invocation)
+            raise AssertionError('A timed-out deactivating worker completed readiness admission')
+        except C.Refused:
+            pass
+        assert proof['healthyBeforeTimeout'] and C.alive(proof['heldIdentity'])
+        assert not next(row for row in status()['workers'] if row['unit'] == unit)['admitted']
+        timed_out = inventory()['current'][unit]
+        assert inventory()['generations'][timed_out]['process'] is None
+        controller('reconcile')
+        assert inventory()['generations'][timed_out]['phase'] != 'RELEASED'
+        gate(slot, 'release-stop')
+        until(lambda: properties(unit)['MainPID'] == '0' and properties(unit)['ActiveState'] in ('failed', 'inactive'), 'native failed startup shutdown')
+        def released(item):
+            controller('reconcile')
+            return inventory()['generations'][item]['phase'] == 'RELEASED'
+        until(lambda: released(timed_out), 'native dead unrecorded WARMING endpoint release')
+        report.update({'nativeStartTimeoutRejectedAfterHealthyProbe': True,
+                       'nativeUnrecordedLiveProcessRetained': True,
+                       'nativeDeadWarmingCleanupRecovered': True})
+        save()
+
+        phase('interrupted-add-late-old-config-child-and-restart')
+        gate(slot, 'hold-stop', False)
+        gate(slot, 'release-stop', False)
+        write(unit_path, delayed, 0o644)
+        systemctl('daemon-reload')
+        systemctl('reset-failed', unit, check=False)
+        systemctl('start', '--no-block', unit)
+        candidate = until(lambda: next((row for row in status()['workers'] if row['unit'] == unit and row['phase'] == 'WARMING'), None), 'interrupted ADD reservation')
+        invocation = properties(unit)['InvocationID']
+        until(lambda: C.LinuxHost(profile).worker(unit, invocation, candidate['port']), 'native interrupted ADD listener')
+
+        class InterruptedAdd(C.LinuxHost):
+            def reload_proxy(self, master):
+                before = self.proxy_workers(master)
+                super().reload_proxy(master)
+                until(lambda: any(row not in before for row in self.proxy_workers(master)), 'real ADD proxy generation')
+                raise OSError('Controlled interruption after native ADD reload')
+
+        try:
+            C.Controller(profile, InterruptedAdd(profile)).admit(unit, invocation)
+            raise AssertionError('ADD interruption did not occur')
+        except OSError:
+            pass
+        state = inventory()
+        assert candidate['generation'] in state['pending']['ready']
+        assert candidate['generation'] not in state['published']['ready']
+        expected_revision = state['pending']['revision']
+        until(lambda: C.LinuxHost(profile).request(profile.value['controlPort'], '/__aihr_admission_revision') ==
+              (200, (expected_revision + '\n').encode()), 'actual exposed interrupted ADD configuration')
+        systemctl('stop', unit)  # Deliberately missing cleanup in this owned fault fixture.
+        assert properties(unit)['MainPID'] == '0'
+
+        class LateOldConfigChild(C.LinuxHost):
+            injected = False
+            late = None
+            def reload_proxy(self, master):
+                if not self.injected:
+                    self.injected = True
+                    before = self.proxy_workers(master)
+                    # Kill only an actual worker in the owned fixture Nginx
+                    # cgroup. Its master forks a real old-config replacement
+                    # AFTER the controller's recovery snapshot, BEFORE HUP.
+                    victim = next(row for row in reversed(before) if C.alive(row) and
+                                  b'shutting down' not in pathlib.Path('/proc', str(row['pid']), 'cmdline').read_bytes())
+                    assert C.alive(victim)
+                    os.kill(victim['pid'], signal.SIGKILL)
+                    self.late = until(lambda: next((row for row in self.proxy_workers(master) if row not in before), None), 'actual old-config respawn after recovery snapshot')
+                    os.kill(self.late['pid'], signal.SIGSTOP)
+                super().reload_proxy(master)
+
+        recovering = LateOldConfigChild(profile)
+        try:
+            C.Controller(profile, recovering).reconcile()
+        finally:
+            stopped_proxy = recovering.late
+        assert stopped_proxy is not None and C.alive(stopped_proxy)
+        state = inventory()
+        assert stopped_proxy in state['generations'][candidate['generation']]['readers']
+        assert state['generations'][candidate['generation']]['phase'] != 'RELEASED'
+        assert candidate['generation'] not in state['published']['ready']
+        gate(slot, 'ready', False)
+        systemctl('start', '--no-block', unit)
+        replacement = until(lambda: next((row for row in status()['workers'] if row['unit'] == unit and row['phase'] == 'WARMING' and row['generation'] != candidate['generation']), None), 'cold replacement after interrupted ADD')
+        assert replacement['port'] != candidate['port'] and not replacement['admitted']
+        controller('reconcile')
+        assert inventory()['generations'][candidate['generation']]['phase'] != 'RELEASED'
+        os.kill(stopped_proxy['pid'], signal.SIGCONT)
+        until(lambda: not C.alive(stopped_proxy), 'retained old-config proxy child quiescence')
+        stopped_proxy = None
+        until(lambda: released(candidate['generation']), 'endpoint release after newer native family and all old readers quiesce')
+        gate(slot, 'ready')
+        write(post_gate, 'release owned fixture poststart\n', 0o644)
+        until(lambda: ready_worker(unit), 'replacement admission through real installed poststart')
+        report.update({'nativeInterruptedAddLateChildRetained': True,
+                       'nativeInterruptedAddColdPortNotReused': True,
+                       'nativeNewInvocationDeadGenerationReaped': True})
+        save()
+
+        phase('native-dead-draining-with-interrupted-cleanup')
+        generation = inventory()['current'][unit]
+        C.Controller(profile, C.LinuxHost(profile)).withdraw(unit, properties(unit)['InvocationID'])
+        assert inventory()['generations'][generation]['phase'] == 'DRAINING'
+        systemctl('stop', unit)
+        until(lambda: released(generation), 'native dead DRAINING endpoint release without cleanup')
+        report['nativeDeadDrainingCleanupRecovered'] = True
+        save()
+    finally:
+        if stopped_proxy is not None and C.alive(stopped_proxy):
+            os.kill(stopped_proxy['pid'], signal.SIGCONT)
+        gate(slot, 'release-stop')
+        write(unit_path, original, 0o644)
+        systemctl('daemon-reload')
+        systemctl('reset-failed', unit, check=False)
+    systemctl('start', unit)
+    until(lambda: ready_worker(unit), 'restored native worker')
+
+
 def create_fixture():
     global profile_value
     assert os.geteuid() == 0 and sys.platform == 'linux'
@@ -183,6 +340,9 @@ def create_fixture():
     backend = C.INSTALLED.with_name('fixture_backend.py')
     shutil.copyfile(pathlib.Path(__file__).with_name('fixture_backend.py'), backend)
     backend.chmod(0o644)
+    poststart = C.INSTALLED.with_name('fixture_poststart.py')
+    shutil.copyfile(pathlib.Path(__file__).with_name('fixture_poststart.py'), poststart)
+    poststart.chmod(0o644)
     nobody = pwd.getpwnam('nobody')
     for slot in (1, 2):
         data(slot).mkdir(mode=0o700)
@@ -498,6 +658,8 @@ assert cache.read_text()=='fictional writable application cache'
     assert request()['invocation'] in {properties(unit)['InvocationID'] for unit in UNITS}
     report['interruptedPublicationReconciled'] = True
     save()
+
+    qualify_interrupted_lifecycle(profile)
 
     phase('endpoint-exhaustion-is-an-explicit-startup-failure')
     controller('drain', UNITS[1])

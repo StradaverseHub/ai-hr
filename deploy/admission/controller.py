@@ -81,6 +81,11 @@ def alive(identity: dict[str, int]) -> bool:
     return process_identity(identity['pid']) == identity
 
 
+def admitting_phase(properties: dict[str, str]) -> bool:
+    return (properties.get('ActiveState'), properties.get('SubState')) in {
+        ('active', 'running'), ('activating', 'start-post')}
+
+
 def secure_path(path: pathlib.Path, uid: int, *, directory: bool = False) -> None:
     require(path.is_absolute() and '..' not in path.parts, 'Unsafe managed path')
     current = pathlib.Path(path.anchor)
@@ -233,7 +238,7 @@ class LinuxHost:
 
     def properties(self, unit: str) -> dict[str, str]:
         require(unit in self.profile.value['units'] or unit == self.profile.value['nginxUnit'], 'Service is not in the installation profile')
-        keys = ['InvocationID', 'MainPID', 'User', 'WorkingDirectory', 'ExecStart', 'ExecReload', 'ActiveState', 'SubState', 'ControlGroup',
+        keys = ['InvocationID', 'MainPID', 'ControlPID', 'KillMode', 'Delegate', 'User', 'WorkingDirectory', 'ExecStart', 'ExecReload', 'ActiveState', 'SubState', 'ControlGroup',
                 'Environment', 'EnvironmentFiles', 'PassEnvironment', 'PAMName', 'RootDirectory', 'RootImage',
                 'DynamicUser', 'FragmentPath', 'DropInPaths', 'LoadCredential', 'LoadCredentialEncrypted',
                 'SetCredential', 'SetCredentialEncrypted', 'ImportCredential']
@@ -263,6 +268,8 @@ class LinuxHost:
                 raise Refused('Unexpected worker principal') from None
             require(uid == spec['workerUid'] and uid > 0 and props.get('DynamicUser') == 'no',
                     'A fixed nonroot worker principal is required')
+            require(props.get('KillMode') == 'control-group' and props.get('Delegate') == 'no',
+                    'Worker process containment is not qualified')
             require(props.get('WorkingDirectory') == spec['releaseDirectory']
                     and command_identity(props.get('ExecStart', '')) == spec['commandDigest'],
                     'Worker service identity differs from its profile')
@@ -340,11 +347,14 @@ class LinuxHost:
             raise Refused('Unexpected worker principal') from None
         require(uid == spec['workerUid'] and props.get('WorkingDirectory') == spec['releaseDirectory']
                 and command_identity(props.get('ExecStart', '')) == spec['commandDigest'], 'Worker service identity differs from its profile')
+        require(props.get('KillMode') == 'control-group' and props.get('Delegate') == 'no',
+                'Worker process containment is not qualified')
         self.release(spec)
         return props
 
     def worker(self, unit: str, invocation: str, port: int) -> dict[str, int]:
         props = self.invocation(unit, invocation)
+        require(admitting_phase(props), 'Worker service is not in an admitting phase')
         require(props.get('MainPID', '').isdigit(), 'Worker has no process identity')
         pid = int(props['MainPID'])
         identity = process_identity(pid)
@@ -361,7 +371,90 @@ class LinuxHost:
                 raise EndpointNotReady('Worker has not opened its generation endpoint')
             raise Refused('Another process owns the generation endpoint')
         require(alive(identity), 'Worker process changed during inspection')
+        final = self.invocation(unit, invocation)
+        require(admitting_phase(final) and final.get('MainPID') == str(pid),
+                'Worker service stopped or changed during inspection')
         return identity
+
+    def reservation_invocation(self, unit: str, invocation: str) -> dict[str, str]:
+        props = self.invocation(unit, invocation)
+        require((props.get('ActiveState'), props.get('SubState')) == ('activating', 'start-pre'),
+                'Worker reservation requires its native prestart phase')
+        group = props.get('ControlGroup', '')
+        require(group.startswith('/') and group != '/' and '..' not in pathlib.Path(group).parts,
+                'Worker has no native control group')
+        return props
+
+    def generation_dead(self, generation: dict[str, Any]) -> bool:
+        """Positive native proof only. False includes all uncertainty.
+
+        A missing saved PID is not proof: a worker may have bound its socket
+        before a readiness callback recorded MainPID. Inspect the original
+        native cgroup, unit state, current process family and endpoint instead.
+        """
+        try:
+            if generation.get('process') is not None and alive(generation['process']):
+                return False
+            props = self.properties(generation['unit'])
+            group = generation.get('controlGroup', '')
+            require(group.startswith('/') and group != '/' and '..' not in pathlib.Path(group).parts,
+                    'Original worker control group is unknown')
+            require(props.get('KillMode') == 'control-group' and props.get('Delegate') == 'no',
+                    'Worker process containment is not qualified')
+            directory = pathlib.Path('/sys/fs/cgroup', group.lstrip('/'))
+            secure_path(directory.parent, 0, directory=True)
+            try:
+                directory.lstat()
+            except FileNotFoundError:
+                members = []
+            else:
+                secure_path(directory, 0, directory=True)
+                secure_path(directory / 'cgroup.procs', 0)
+                members = (directory / 'cgroup.procs').read_text().split()
+            require(len(members) <= 1024 and all(value.isdigit() for value in members),
+                    'Unbounded or invalid worker control group')
+            require(props.get('MainPID', '').isdigit() and props.get('ControlPID', '').isdigit(),
+                    'Worker unit process inventory is unknown')
+            main, control = int(props['MainPID']), int(props['ControlPID'])
+            if not members:
+                require(main == control == 0 and props.get('ActiveState') in ('inactive', 'failed'),
+                        'Worker generation is not natively quiescent')
+            else:
+                # A newer invocation may already be running by the time the
+                # timer notices an interrupted old cleanup. Every cgroup member
+                # must positively belong to the current MainPID/ControlPID
+                # family; an old/orphan/uninspectable process retains the port.
+                require(props.get('InvocationID') != generation['invocation']
+                        and matches(HEX32, props.get('InvocationID')) and admitting_phase(props)
+                        and props.get('ControlGroup') == group and main > 1,
+                        'Original worker invocation may still be live')
+                processes = {}
+                for value in members:
+                    pid = int(value)
+                    identity = process_identity(pid)
+                    require(identity is not None, 'Worker cgroup changed during inspection')
+                    raw = pathlib.Path('/proc', value, 'stat').read_text()
+                    fields = raw[raw.rfind(')') + 2:].split()
+                    require(int(fields[19]) == identity['startTicks'], 'Worker process identity changed')
+                    processes[pid] = (identity, int(fields[1]))
+                roots = {pid for pid in (main, control) if pid > 1}
+                require(roots <= set(processes), 'Current worker process family is incomplete')
+                for pid in processes:
+                    cursor, visited = pid, set()
+                    while cursor not in roots:
+                        require(cursor in processes and cursor not in visited, 'An unrelated worker process remains')
+                        visited.add(cursor)
+                        cursor = processes[cursor][1]
+                require(all(alive(identity) for identity, _parent in processes.values())
+                        and set((directory / 'cgroup.procs').read_text().split()) == set(members),
+                        'Worker cgroup changed during inspection')
+            after = self.properties(generation['unit'])
+            keys = ('InvocationID', 'MainPID', 'ControlPID', 'ActiveState', 'SubState', 'ControlGroup', 'KillMode', 'Delegate')
+            require(all(after.get(key) == props.get(key) for key in keys), 'Worker unit changed during inspection')
+            require(self.port_free(generation['port']), 'Generation endpoint is still bound')
+            return generation.get('process') is None or not alive(generation['process'])
+        except (Refused, OSError, ValueError, IndexError):
+            return False
 
     def owns_listener(self, identity: dict[str, int], port: int) -> bool:
         try:
@@ -542,26 +635,35 @@ class Controller:
             state['pending'] = None
             self.store.save(state)
 
-    def publish(self, state: dict[str, Any], ready: list[str], *, force: bool = False) -> None:
+    def publish(self, state: dict[str, Any], ready: list[str], *, force: bool = False,
+                recover_pending: bool = False) -> None:
         """Caller holds the common lock, including for external Nginx reloads.
 
         Persist intent before touching config. On uncertainty retain every port
         and block ordinary transitions until explicit reconciliation succeeds.
         """
-        require(state['pending'] is None, 'Proxy publication requires reconciliation')
+        prior_pending = copy.deepcopy(state['pending'])
+        require(prior_pending is None or recover_pending and not prior_pending.get('bootstrap'),
+                'Proxy publication requires reconciliation')
         require(len(set(ready)) == len(ready) and all(item in state['generations'] for item in ready),
                 'Unknown ready generation')
-        if not force and state['published']['revision'] is not None and ready == state['published']['ready']:
+        if prior_pending is None and not force and state['published']['revision'] is not None and ready == state['published']['ready']:
             self.store.save(state)
             return
         master = self.host.proxy_master()
-        previous_ready = state['published']['ready'].copy()
+        previous_ready = set(state['published']['ready'])
+        if prior_pending:
+            previous_ready.update(prior_pending['ready'])
+            previous_ready.update(prior_pending.get('previousReady', []))
+        require(previous_ready <= set(state['generations']), 'Unknown possibly exposed generation')
         readers = self.host.proxy_workers(master)
         for generation in state['generations'].values():
-            if generation['id'] in state['published']['ready']:
-                generation['readers'] = merge_readers(generation['readers'], readers)
+            if generation['id'] in previous_ready:
+                generation['readers'] = merge_readers(generation['readers'], readers,
+                                                      prior_pending['readers'] if prior_pending else [])
         revision = secrets.token_hex(16)
-        state['pending'] = {'revision': revision, 'ready': ready, 'master': master, 'readers': readers}
+        state['pending'] = {'revision': revision, 'ready': ready, 'previousReady': sorted(previous_ready),
+                            'master': master, 'readers': readers}
         self.store.save(state)
         path = pathlib.Path(self.profile.value['managedInclude'])
         previous = path.read_bytes() if path.exists() else None
@@ -573,7 +675,7 @@ class Controller:
                 atomic_write(path, previous, self.profile.uid)
             else:
                 path.unlink()
-            state['pending'] = None
+            state['pending'] = prior_pending
             self.store.save(state)
             raise
         self.host.reload_proxy(master)
@@ -589,16 +691,23 @@ class Controller:
             generation = state['generations'][item]
             generation['readers'] = merge_readers(generation['readers'], new_readers)
         state['published'] = {'revision': revision, 'ready': ready}
-        state['pending'] = None
+        removing = set(previous_ready) - set(ready)
+        # First activation proves no future child can inherit the removed
+        # config, but its conservative reader superset still needs a barrier.
+        # Journal that obligation BEFORE acknowledging/starting its second HUP.
+        # A crash or validation failure must not leave current false-positive
+        # readers permanently retaining the endpoint with no recovery work.
+        state['pending'] = {'revision': revision, 'ready': ready, 'previousReady': ready,
+                            'master': master, 'readers': new_readers, 'retirementBarrier': True} if removing else None
         self.store.save(state)
-        if set(previous_ready) - set(ready):
+        if removing:
             # Between the first snapshot and HUP the master could have forked
             # another old-config child. Conservatively retain all post-proof
             # children above, then retire that superset with a same-config
             # barrier. After the first revision proof no future child can be
             # born from the removed config. The barrier's newer children never
             # inherit the retired endpoint and need not block its drain.
-            self.publish(state, ready, force=True)
+            self.publish(state, ready, force=True, recover_pending=True)
 
     def begin(self) -> None:
         with self.store.locked():
@@ -613,7 +722,7 @@ class Controller:
 
     def reserve(self, unit: str, invocation: str) -> dict[str, Any]:
         require(unit in self.profile.value['units'], 'Unknown worker service')
-        self.host.invocation(unit, invocation)
+        native = self.host.reservation_invocation(unit, invocation)
         with self.store.locked():
             state = self.state()
             require(state['pending'] is None and state['epoch'] == self.profile.value['epoch'], 'Deployment admission is not current')
@@ -630,7 +739,8 @@ class Controller:
                                  ('PORT=' + str(prior['port']) + '\n').encode(), self.profile.uid)
                     return copy.deepcopy(prior)
                 require(prior.get('process') is None or not alive(prior['process']), 'Drain and stop the previous worker before replacement')
-                prior['phase'] = 'RETIRED'
+                if prior['phase'] != 'RELEASED':
+                    prior['phase'] = 'RETIRED'
             ready = [item for item in state['published']['ready'] if item != prior_id]
             self.publish(state, ready)
             reserved = {generation['port'] for generation in state['generations'].values() if generation['phase'] != 'RELEASED'}
@@ -642,7 +752,7 @@ class Controller:
             generation = {'id': generation_id, 'unit': unit, 'invocation': invocation, 'epoch': state['epoch'],
                           'source': self.profile.value['source'], 'build': self.profile.value['build'],
                           'profile': self.profile.sha, 'port': port, 'phase': 'WARMING', 'process': None,
-                          'readers': [], 'sequence': state['sequence']}
+                          'readers': [], 'sequence': state['sequence'], 'controlGroup': native['ControlGroup']}
             state['generations'][generation_id] = generation
             state['current'][unit] = generation_id
             self.store.save(state)
@@ -690,6 +800,14 @@ class Controller:
             current['process'] = identity
             self.store.save(state)
             self.publish(state, [*state['published']['ready'], generation['id']])
+            try:
+                require(self.host.worker(unit, invocation, generation['port']) == identity,
+                        'Worker stopped or changed during proxy publication')
+            except Refused:
+                current['phase'] = 'RETIRED'
+                self.store.save(state)
+                self.publish(state, [item for item in state['published']['ready'] if item != generation['id']])
+                raise
             current['phase'] = 'READY'
             self.store.save(state)
 
@@ -733,37 +851,37 @@ class Controller:
                 for generation in state['generations'].values():
                     generation['phase'], generation['process'], generation['readers'] = 'RETIRED', None, []
                 state['published']['ready'] = []
-            # An interrupted publication may have reached its readers. Retain
-            # all known candidates/readers, then conservatively remove candidates
-            # whose admission never completed. No endpoint is released here.
+            # Preserve the entire durable pending/exposed endpoint union into
+            # publish. Clearing it after one reader snapshot would lose an ADD
+            # candidate absent from the acknowledged list and miss a later fork.
             if state['pending']:
-                pending = state['pending']
-                require(not pending.get('bootstrap'), 'Proxy bootstrap must be confirmed before reconciliation')
-                # A crash after reload can leave new proxy workers that were not
-                # in the pre-reload snapshot. Attach every current cgroup worker
-                # to every possibly published endpoint before excluding it.
-                readers = self.host.proxy_workers(self.host.proxy_master())
-                for item in pending['ready']:
-                    state['generations'][item]['readers'] = merge_readers(
-                        state['generations'][item]['readers'], pending['readers'], readers)
-                state['pending'] = None
+                require(not state['pending'].get('bootstrap'), 'Proxy bootstrap must be confirmed before reconciliation')
             ready = []
             for item in state['published']['ready']:
                 generation = state['generations'][item]
-                if generation['phase'] == 'READY' and generation['process'] and alive(generation['process']):
-                    ready.append(item)
-                else:
-                    generation['phase'] = 'RETIRED'
+                if generation['phase'] == 'READY' and generation['process'] is not None:
+                    try:
+                        require(self.host.worker(generation['unit'], generation['invocation'], generation['port'])
+                                == generation['process'], 'Ready worker identity changed')
+                        ready.append(item)
+                        continue
+                    except Refused:
+                        pass  # Unpublish known stopping or uncertain services.
+                generation['phase'] = 'WARMING'
             # The ready list can equal the last acknowledged list even while a
             # different unacknowledged config is serving. Always replace/prove a
             # fresh revision after uncertainty; equality is not activation proof.
-            self.publish(state, ready, force=publication_uncertain)
+            self.publish(state, ready, force=publication_uncertain, recover_pending=state['pending'] is not None)
             for generation in state['generations'].values():
+                native_dead = generation['id'] not in state['published']['ready'] and generation['phase'] != 'RELEASED' \
+                    and self.host.generation_dead(generation)
+                if native_dead:
+                    generation['phase'] = 'RETIRED'
                 if generation['phase'] == 'WARMING' and generation['process'] is not None \
                         and generation['epoch'] == state['epoch'] and generation['profile'] == self.profile.sha:
                     recover.append((generation['unit'], generation['invocation']))
                 if generation['phase'] in ('RETIRED', 'DRAINED') and not any(alive(reader) for reader in generation['readers']) \
-                        and (generation['process'] is None or not alive(generation['process'])):
+                        and native_dead:
                     generation['phase'] = 'RELEASED'
             # Keep a bounded recent history. No live, uncertain, or currently
             # referenced generation is removed; sequence numbers never reset.

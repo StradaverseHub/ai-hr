@@ -25,6 +25,10 @@ validated target facts, not an application request or a caller-supplied URL.
 3. Worker `ExecStartPost` checks the real process, start ticks, executable,
    working directory, source/build and ownership of the reserved loopback
    listener. The fixed `/health` probe runs outside the configuration lock.
+   Admission accepts only native `active/running` or `activating/start-post`,
+   checked again after socket inspection and around final publication. Reservation
+   is permitted only in the unit's actual `activating/start-pre` phase. A live PID
+   in a deactivating service cannot establish or preserve UP.
 4. After health succeeds, compare-and-swap verifies the same epoch, profile,
    systemd InvocationID, process and socket. A durable publication intent
    precedes atomic include replacement, Nginx validation and reload. A new
@@ -41,12 +45,30 @@ validated target facts, not an application request or a caller-supplied URL.
    and all observed Nginx cgroup worker identities, then requires a fresh proved
    revision. Port reuse requires both the old application process and every
    referring proxy process identity to be gone. Pool exhaustion refuses startup.
+   Recovery carries the union of acknowledged and possibly exposed pending
+   endpoints through publication and its removal barrier, including interrupted
+   ADD candidates absent from the acknowledged list. It never discards pending
+   exposure after a single process snapshot.
+
+Nonpublished WARMING/DRAINING generations whose cleanup was interrupted are
+retired only after positive native death proof. A missing saved PID is not
+death: the unit may already have a live listener. The proof requires a free
+endpoint, no live recorded process, root-controlled nondelegated cgroup
+containment and a stable native unit/process inventory. It accepts an inactive
+empty cgroup, or a disjoint newer invocation whose entire current cgroup is
+positively within its MainPID/ControlPID process families. Unknown metadata,
+unrelated/orphan processes, bound endpoints or any remaining proxy reader retain
+the reservation. Old inventories without original cgroup identity remain
+conservative and require a verified quiescent transition before adoption.
 
 Endpoint removal includes a second same-config barrier reload. A master can fork
 an old-config child after the initial process snapshot but before handling HUP.
 The first activation proof captures that conservative reader superset; the
 second reload retires it without making the newly current children block the
 removed endpoint forever. Native proof uses two actual Nginx workers.
+The barrier obligation is itself journaled before acknowledging the first
+activation, so a crash or failed validation before the second reload remains
+recoverable and cannot leave a permanently retained false-positive reader set.
 
 Nginx HUP replaces workers while old workers continue their existing clients;
 the old workers keep their old configuration. Merely marking a server DOWN and
@@ -117,6 +139,14 @@ failed nonroot writes to helper/profile/PORT/release; allowed cache/receipt writ
 POST with one durable receipt and explicit 502; drain expiry; stale callbacks;
 reload validation and after-HUP interruption; exhaustion and startup failure;
 proxy restart beginning DOWN; and preservation of an unrelated fixture vhost.
+It also induces a real systemd startup timeout after a successful health probe,
+briefly holds the deactivating application alive and verifies rejection; then
+uses a root-owned fixture poststart gate and deliberately interrupted cleanup to
+prove eventual dead WARMING/DRAINING recovery. Interrupted ADD recovery includes
+an actual old-config Nginx respawn after the recovery snapshot: the owned fixture
+worker is held stopped until no-premature-reuse checks pass, then resumed to
+quiesce. These faults target disposable owned fixture processes only, with no
+installed controller test mode and no larger timeout budgets.
 The restart test is not a physical host reboot test. Keep original failed and
 successful run/artifact identities; repair only failed or invalidated coverage.
 

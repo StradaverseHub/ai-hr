@@ -6,6 +6,7 @@ import http.server
 import json
 import os
 import pathlib
+import signal
 import socket
 import time
 
@@ -14,6 +15,14 @@ parser.add_argument('--data', required=True)
 arguments = parser.parse_args()
 ROOT = pathlib.Path(arguments.data)
 INVOCATION = os.environ['INVOCATION_ID']
+def stopping(_signal, _frame):
+    # Native qualification can hold a real deactivating process briefly. This
+    # is fictional-backend behavior, not a controller/installed-policy bypass.
+    deadline = time.monotonic() + 3
+    while (ROOT / 'hold-stop').exists() and not (ROOT / 'release-stop').exists() and time.monotonic() < deadline:
+        time.sleep(0.01)
+    raise SystemExit(0)
+signal.signal(signal.SIGTERM, stopping)
 while not (ROOT / 'bind').exists():
     time.sleep(0.01)
 

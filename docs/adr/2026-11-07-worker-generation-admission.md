@@ -22,6 +22,17 @@ before stop, not a failing ExecStop hook. Reconciliation retains uncertain state
 and forces a new proved revision after interrupted publication. A new Nginx
 master always starts DOWN. See [Nginx process control](https://nginx.org/en/docs/control.html).
 
+Admission requires native active/running or activating/start-post at the process/
+socket proof and final publication; a known stopping service cannot remain UP
+merely because its PID is alive. Recovery preserves every acknowledged or
+possibly exposed pending endpoint through its second retirement barrier,
+including an interrupted ADD never acknowledged UP. Interrupted cleanup of a
+nonpublished WARMING/DRAINING generation requires positive native unit/cgroup
+death proof, a free endpoint and all proxy readers gone; process=None is never
+treated as proof of death. Nondelegated root-owned cgroups and a disjoint current
+MainPID/ControlPID process family permit eventual recovery after automatic
+restart without freeing an orphaned or uncertain endpoint.
+
 This costs private endpoint headroom, a small privileged lifecycle component and
 an explicit immutable installation contract. It avoids a second proxy product,
 application-level proxy semantics and unsafe same-port restart races. Long-lived
