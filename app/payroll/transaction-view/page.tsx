@@ -9,9 +9,10 @@ import { listCompanies, listPayrollTransactionEmployees } from '@/core/read';
 import { listPayComponents } from '@/core/pay-components';
 import {
   INDIVIDUAL_TXN_STATUS_FILTERS,
-  listFixedTransactionsAcross,
+  listFixedTransactionsPage,
   listIndividualTxnCreators,
-  listIndividualTxnsAcross,
+  listIndividualTxnsPage,
+  parseIndividualInquirySort,
   listPayslipSourceTxns,
   listProcessedPayslipsAcross,
   listUnattachedTxnSummary,
@@ -23,6 +24,8 @@ import { CollapsibleEmployeePanel, EmployeeScopePanel, type ScopeEmployee } from
 import { payrollProcessBack } from '../back';
 import { packFor } from '@/localization/registry';
 import { IndividualTxnTable } from './individual-table';
+import {Pager} from '@/components/pager';
+import {pageState,parsePageQuery} from '@/lib/pagination';
 import { OutstandingTable } from './outstanding-table';
 import { HistoryTable } from './history-table';
 import { HistoryGrid } from './history-grid';
@@ -134,6 +137,7 @@ export default async function TransactionViewPage({
 }: {
   searchParams: Promise<{
     tab?: string;
+    page?:string;size?:string;txnSort?:string;txnDir?:string;
     companyId?: string;
     employmentId?: string;
     componentId?: string;
@@ -226,12 +230,14 @@ export default async function TransactionViewPage({
   const createdTo = sp.createdTo && ISO_DATE.test(sp.createdTo) ? sp.createdTo : undefined;
 
   // Only the active tab's query runs — the others stay empty (single round-trip per view).
-  const [fixedRows, individualRows, historyRows, statutoryMatches, gridPayslips, outstandingRows] = await Promise.all([
+  const inquiryQuery=parsePageQuery(sp),inquirySort=parseIndividualInquirySort(sp.txnSort,sp.txnDir);
+  const inquiryParams={...sp,tab,months:Array.isArray(sp.months)?sp.months.join(','):sp.months};
+  const [fixedPage, individualPage, historyRows, statutoryMatches, gridPayslips, outstandingRows] = await Promise.all([
     tab === 'fixed'
-      ? listFixedTransactionsAcross(s, { companyIds, employmentId, componentId, status })
-      : Promise.resolve([]),
+      ? listFixedTransactionsPage(s, { companyIds, employmentId, componentId, status },inquiryQuery)
+      : Promise.resolve({rows:[],total:0}),
     tab === 'individual'
-      ? listIndividualTxnsAcross(s, {
+      ? listIndividualTxnsPage(s, {
           companyIds,
           year,
           month,
@@ -242,8 +248,8 @@ export default async function TransactionViewPage({
           createdBy,
           createdFrom,
           createdTo,
-        })
-      : Promise.resolve([]),
+        },inquiryQuery,inquirySort)
+      : Promise.resolve({rows:[],total:0}),
     // 862ed0ad — bounded, because History is now the landing tab. One row more than we mean to show, so
     // truncation can be STATED rather than silently applied. See HISTORY_ROW_CAP.
     tab === 'history'
@@ -268,6 +274,7 @@ export default async function TransactionViewPage({
       ? listUnattachedTxnSummary(s, { companyIds, year, month, employmentId })
       : Promise.resolve([]),
   ]);
+  const fixedRows=fixedPage.rows,individualRows=individualPage.rows;
 
   // Feedback efece4ce — which companies are actually registered for the HRD Corp levy. The breakdown used
   // to drop its HRDF line whenever the amount was 0, so a company that legitimately pays nothing (no HRDF
@@ -488,6 +495,7 @@ export default async function TransactionViewPage({
       : tab === 'individual'
         ? {
             tab: 'individual',
+            txnSort:inquirySort.key,txnDir:inquirySort.direction,
             ...periodPreserve,
             ...(kind ? { kind } : {}),
             ...(departmentId ? { departmentId } : {}),
@@ -780,7 +788,8 @@ export default async function TransactionViewPage({
           {/* ── 1. Fixed Transaction View ── */}
           {tab === 'fixed' && (
             <Card className="overflow-hidden">
-              <SectionHeader title={t('view.tabs.fixed')} count={fixedRows.length} />
+              <SectionHeader title={t('view.tabs.fixed')} count={fixedPage.total} />
+              <Pager basePath="/payroll/transaction-view" params={inquiryParams} state={pageState(inquiryQuery,fixedPage.total,fixedRows.length)}/>
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
@@ -846,7 +855,7 @@ export default async function TransactionViewPage({
           {tab === 'individual' && (
             <Card className="overflow-hidden">
               <div className="flex items-center justify-between gap-3 pr-4">
-                <SectionHeader title={t('view.tabs.individual')} count={individualRows.length} />
+                <SectionHeader title={t('view.tabs.individual')} count={individualPage.total} />
                 {/* CSV export honouring the current (scope-guarded) filters — opens in Excel. */}
                 <a
                   href={`/payroll/transaction-view/export?${new URLSearchParams({
@@ -868,7 +877,7 @@ export default async function TransactionViewPage({
               </div>
               {/* Sortable + searchable grid (feedback 7b2d4228): GET filters above narrow the set; this client table
                   adds column sorting over the fetched rows. */}
-              <IndividualTxnTable rows={individualRows} />
+              <IndividualTxnTable rows={individualRows} serverSort={inquirySort} pager={<Pager basePath="/payroll/transaction-view" params={inquiryParams} state={pageState(inquiryQuery,individualPage.total,individualRows.length)}/>}/>
             </Card>
           )}
 

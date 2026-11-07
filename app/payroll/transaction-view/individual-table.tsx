@@ -1,11 +1,12 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
+import {useRouter,useSearchParams} from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { Badge } from '@/components/ui';
 import { paginateRows } from '@/lib/pagination';
 import { ClientPager, useClientPageQuery } from '@/components/client-pager';
-import type { IndividualTxnViewRow } from '@/core/payroll-view';
+import type { IndividualTxnViewRow,IndividualInquirySort,IndividualInquirySortKey } from '@/core/payroll-view';
 
 /**
  * Individual Transaction History grid (feedback 7b2d4228) — a client component so the columns are SORTABLE
@@ -14,16 +15,23 @@ import type { IndividualTxnViewRow } from '@/core/payroll-view';
  * that set. Adds the Created By / Created Date audit columns.
  */
 
-type SortKey = 'payPeriod' | 'txnDate' | 'employeeName' | 'company' | 'kind' | 'amount' | 'batchStatus' | 'createdBy' | 'createdOn';
+type SortKey = IndividualInquirySortKey;
 type SortDir = 'asc' | 'desc';
 
-export function IndividualTxnTable({ rows }: { rows: IndividualTxnViewRow[] }) {
+export function IndividualTxnTable({ rows,serverSort,pager }: { rows: IndividualTxnViewRow[];serverSort?:IndividualInquirySort;pager?:ReactNode }) {
   const t = useTranslations('payroll.transactions');
   const tList = useTranslations('payroll.list');
-  const [sortKey, setSortKey] = useState<SortKey>('payPeriod');
-  const [sortDir, setSortDir] = useState<SortDir>('desc');
+  const [localKey, setSortKey] = useState<SortKey>('payPeriod');
+  const [localDir, setSortDir] = useState<SortDir>('desc');
+  const sortKey=serverSort?.key??localKey,sortDir=serverSort?.direction??localDir;
+  const router=useRouter(),search=useSearchParams();
 
   const toggle = (key: SortKey) => {
+    if(serverSort){
+      const next=new URLSearchParams(search.toString());
+      next.set('txnSort',key);next.set('txnDir',key===sortKey?(sortDir==='asc'?'desc':'asc'):'asc');
+      router.replace('?'+next.toString(),{scroll:false});return;
+    }
     if (key === sortKey) setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
     else {
       setSortKey(key);
@@ -32,6 +40,7 @@ export function IndividualTxnTable({ rows }: { rows: IndividualTxnViewRow[] }) {
   };
 
   const sorted = useMemo(() => {
+    if(serverSort)return rows;
     const dir = sortDir === 'asc' ? 1 : -1;
     const val = (r: IndividualTxnViewRow): string | number => {
       switch (sortKey) {
@@ -67,7 +76,7 @@ export function IndividualTxnTable({ rows }: { rows: IndividualTxnViewRow[] }) {
       if (av > bv) return 1 * dir;
       return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
     });
-  }, [rows, sortKey, sortDir]);
+  }, [rows, sortKey, sortDir,serverSort]);
 
   const arrow = (key: SortKey) => (key === sortKey ? (sortDir === 'asc' ? ' ▲' : ' ▼') : '');
   const th = (key: SortKey, label: string, extra = '') => (
@@ -87,11 +96,12 @@ export function IndividualTxnTable({ rows }: { rows: IndividualTxnViewRow[] }) {
   );
 
   const q = useClientPageQuery();
-  const { rows: pageRows, state } = paginateRows(sorted, q);
+  const { rows: legacyRows, state } = paginateRows(sorted, q);
+  const pageRows=serverSort?rows:legacyRows;
 
   return (
     <div className="overflow-x-auto">
-      <ClientPager state={state} />
+      {pager??<ClientPager state={state} />}
       <table className="w-full text-sm">
         <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
           <tr>
