@@ -1,7 +1,7 @@
 {
   "kind": "DEVELOPMENT_SELECTED_CONSUMER_TRACE_NOT_RELEASE",
-  "controllerBase": "95550f3fffa6cb0e46df6bd004a65dc184e958e5",
-  "controllerRef": "codex/compiler-trace-controller-source-binding-20261108",
+  "controllerBase": "2de6aac1fe369543c9220c292c162845022503a1",
+  "controllerRef": "codex/compiler-post-translator-whole-trace-20261108",
   "source": "f2b1ae1a9af20bdb30f28ed9b537aa08994dfc10",
   "sourceRef": "codex/compiler-rewards-fixture-principal-20261108",
   "workflow": "alpha-staging-diagnostics.yml",
@@ -120,15 +120,15 @@
     ".github/ci/diagnostics/compiler-boundary.test.mjs": "a5212a34f5c84b22b102b537827f559b14be15f86ecd61dad4e9fb9b0b9b3e3f",
     ".github/ci/diagnostics/compiler-consumer-trace.mjs": "ba70a418a2cf86c7d203938fdbbca4c73441448ab97860c7b3616175c296892a",
     ".github/ci/diagnostics/compiler-consumer-trace.test.mjs": "67cd4a24cea03aff5c35d58db0ec751a27e7189123bee953ead39f7303b6ea1b",
-    ".github/workflows/alpha-staging-diagnostics.yml": "c868bb6a0a035941a280e37b83cd53c8c99feeac2a24dbce9ecdea188310ed86",
+    ".github/workflows/alpha-staging-diagnostics.yml": "15106067287787e896b7b34273c95ee7968f386d0111af8ffbf88814a27e9872",
     "test/compiler-diagnostic-controller.test.ts": "89bae4add29cd290ffca55b0faa1d3a1af309be340257882713adefcfab56081",
     "docs/architecture/COMPILER-SELECTED-CONSUMER-TRACE-20261108.md": "aa3f494b7e65f8b5cc5513d135dc491121131bb4b59f1e74184c01241aaf5c32",
     "docs/qualification/compiler-selected-consumer-trace-20261108.md": "fbaa920a9145c4bc56a67ae9e654800ae65a525994b7742a04d319b6caa20451",
-    ".github/ci/diagnostics/compiler-attribution.test.mjs": "d1137c86948791caa7f2c5f4275233fa7a0e0dcde11c6e8d940151bb46b2eaab"
+    ".github/ci/diagnostics/compiler-attribution.test.mjs": "0dc8bd8013482cfdb07316fc52cd97ec554b0484a9a77eb80b1cf27b77947e62"
   },
   "freshMain": "b7c0393aa3c7606a33dd15103426e5c535324065",
   "freshAlpha": "b7c0393aa3c7606a33dd15103426e5c535324065",
-  "qualification": "NOT_RUN current-controller source binding only; actual successful trace42418174429 remains bound to controller68, no trace rerun or relabel",
+  "qualification": "NOT_RUN prospective current-controller source binding; f2 selected trace remains at68; new whole trace separately pins13d",
   "applicationSourceChanged": false,
   "ordinaryCompilerChanged": false,
   "completeSuite": false,
