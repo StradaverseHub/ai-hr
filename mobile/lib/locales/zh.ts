@@ -4,6 +4,10 @@ import type { CompanyCopy } from '../company-connection';
 
 const messages: Record<MessageKey, string> = {
   attemptNotRecorded: "打卡尝试已保存，尚未记录考勤。",
+  fieldWorkplaceTitle: "您的\n工作场所。",
+  fieldChooseWorkplace: "选择工作场所以继续。",
+  fieldAccountTitle: "您的账户",
+  fieldOneMoreStep: "最后一步",
   fieldLeaveTitle: "休假\n时光。",
   fieldMeTitle: "你的\n工作空间。",
   fieldReviewTitle: "待你\n审核。",

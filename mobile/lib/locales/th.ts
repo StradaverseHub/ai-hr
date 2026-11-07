@@ -4,6 +4,10 @@ import type { CompanyCopy } from '../company-connection';
 
 const messages: Record<MessageKey, string> = {
   attemptNotRecorded: "บันทึกความพยายามแล้ว แต่ยังไม่ได้บันทึกเวลาเข้างาน",
+  fieldWorkplaceTitle: "สถานที่ทำงาน\nของคุณ",
+  fieldChooseWorkplace: "เลือกสถานที่ทำงานเพื่อดำเนินการต่อ",
+  fieldAccountTitle: "บัญชีของคุณ",
+  fieldOneMoreStep: "อีกขั้นตอนเดียว",
   fieldLeaveTitle: "เวลา\nพักผ่อน",
   fieldMeTitle: "พื้นที่ทำงาน\nของคุณ",
   fieldReviewTitle: "รอคุณ\nตรวจสอบ",

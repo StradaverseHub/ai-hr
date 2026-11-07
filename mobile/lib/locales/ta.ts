@@ -4,6 +4,10 @@ import type { CompanyCopy } from '../company-connection';
 
 const messages: Record<MessageKey, string> = {
   attemptNotRecorded: "முயற்சி சேமிக்கப்பட்டது — வருகை பதிவு செய்யப்படவில்லை.",
+  fieldWorkplaceTitle: "உங்கள்\nபணியிடம்.",
+  fieldChooseWorkplace: "தொடர உங்கள் பணியிடத்தைத் தேர்ந்தெடுக்கவும்.",
+  fieldAccountTitle: "உங்கள் கணக்கு",
+  fieldOneMoreStep: "இன்னும் ஒரு படி",
   fieldLeaveTitle: "விடுப்பு\nநேரம்.",
   fieldMeTitle: "உங்கள்\nபணியிடம்.",
   fieldReviewTitle: "உங்கள்\nபரிசீலனைக்கு.",

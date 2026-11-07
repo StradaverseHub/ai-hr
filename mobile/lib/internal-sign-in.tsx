@@ -64,22 +64,21 @@ export function InternalSignIn() {
   if (state === 'login') return <View style={{ flex: 1, backgroundColor: palette.bg }}><SignInBackground/>
     <ScrollView keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag" automaticallyAdjustKeyboardInsets contentContainerStyle={[styles.entry, { paddingTop: insets.top + 16, paddingBottom: insets.bottom + 24 }]}>
       <PublicHeader />
-      <Pressable accessibilityRole="button" accessibilityLabel={companyCopy().change} disabled={busy} onPress={() => router.push('/company')} style={styles.workplace}>
-        <Text style={styles.workplaceText}>{company?.name || companyCopy().change}</Text><Icon name="chevronDown" color={palette.text} size={14}/>
-      </Pressable>
       <Text accessibilityRole="header" style={styles.entryTitle}>{t('fieldSignInTitle')}</Text>
-      <Text style={styles.label}>{copy.loginTitle}</Text>
+      <Text style={[styles.label,{fontWeight:'700'}]}>{copy.loginTitle}</Text>
+      <Pressable accessibilityRole="button" accessibilityLabel={companyCopy().change} disabled={busy} onPress={() => router.push('/company')} style={[styles.workplace,{borderTopWidth:1,borderBottomWidth:1,borderColor:palette.border}]}>
+        <Text style={[styles.workplaceText,{flex:1,fontWeight:'600'}]}>{company?.name || companyCopy().change}{workplaceOrganization?` · ${workplaceOrganization}`:''}</Text><Icon name="chevronDown" color={palette.accent} size={14}/>
+      </Pressable>
+      <Text style={styles.editorial}>{t('fieldAccountTitle')}</Text>
       <View style={styles.pass}>
-        {workplaceOrganization ? <Text style={styles.body}>{copy.organization}: {workplaceOrganization}</Text> : <View style={styles.passField}>
+        {!workplaceOrganization&&<View style={styles.passField}>
           <Text style={styles.label}>{copy.organization}</Text><TextInput accessibilityLabel={copy.organization} autoCapitalize="none" autoCorrect={false} maxLength={64} value={organization} onChangeText={setOrganization} editable={!busy} style={[{ fontFamily: 'FieldRegular' }, styles.passInput]}/>
         </View>}
         <View style={styles.passField}><Text style={styles.label}>{copy.username}</Text>
           <TextInput accessibilityLabel={copy.username} autoCapitalize="none" autoCorrect={false} autoComplete="username" textContentType="username" maxLength={64} value={username} onChangeText={setUsername} editable={!busy} style={[{ fontFamily: 'FieldRegular' }, styles.passInput]}/>
         </View>
         <View style={styles.passField}>
-          <View style={styles.fieldHeader}><Text style={styles.label}>{copy.password}</Text>
-            <Pressable accessibilityRole="link" disabled={busy} onPress={() => void WebBrowser.openBrowserAsync(config.apiUrl + '/reset-password')} style={{ minHeight: 44, justifyContent: 'center' }}><Text style={styles.recovery}>{copy.forgot}</Text></Pressable>
-          </View>
+          <Text style={styles.label}>{copy.password}</Text>
           <View style={{ flexDirection: 'row', alignItems: 'center' }}>
             <TextInput accessibilityLabel={copy.password} secureTextEntry={!showPassword} autoCapitalize="none" autoCorrect={false} autoComplete="current-password" textContentType="password" maxLength={128} value={password} onChangeText={setPassword} editable={!busy} style={[{ fontFamily: 'FieldRegular' }, [styles.passInput, { flex: 1 }]]} returnKeyType="go" onSubmitEditing={() => { if (!loginDisabled) void submit(); }}/>
             <Pressable accessibilityRole="button" accessibilityLabel={showPassword ? copy.hidePassword : copy.showPassword} accessibilityState={{ checked: showPassword }} disabled={busy} onPress={() => setShowPassword(value => !value)} style={{ minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center' }}><Icon name={showPassword ? 'eyeOff' : 'eye'} color={palette.muted} size={20}/></Pressable>
@@ -87,6 +86,7 @@ export function InternalSignIn() {
         </View>
         {!!error && <Text accessibilityRole="alert" style={styles.error}>{errorText}</Text>}
         <Button title={busy ? copy.working : copy.signIn} disabled={!!loginDisabled} onPress={() => void submit()} />
+        <Pressable accessibilityRole="link" disabled={busy} onPress={() => void WebBrowser.openBrowserAsync(config.apiUrl + '/reset-password')} style={{minHeight:44,justifyContent:'center',alignItems:'center'}}><Text style={styles.recovery}>{copy.forgot}</Text></Pressable>
 
       </View>
     </ScrollView>
@@ -94,6 +94,7 @@ export function InternalSignIn() {
   return <View style={{ flex: 1, backgroundColor: palette.bg }}><SignInBackground /><ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={[styles.wrap, { paddingTop: insets.top + 16, paddingBottom: insets.bottom + 24 }]} keyboardDismissMode="on-drag" automaticallyAdjustKeyboardInsets>
     <PublicHeader /><Text accessibilityRole="header" style={styles.title}>{state === 'complete' && hasRecoveryCodes ? copy.codesTitle : state === 'password' ? copy.passwordTitle : state === 'enroll' ? copy.enrollTitle : state === 'mfa' ? copy.mfaTitle : copy.loginTitle}</Text>
     {company && <Text style={styles.body}>{company.name} · {new URL(company.apiOrigin).hostname}</Text>}
+    {state==='mfa'&&<Text style={styles.editorial}>{t('fieldOneMoreStep')}</Text>}
     {error && <Text accessibilityRole="alert" style={styles.error}>{errorText}</Text>}
     {state === 'complete' ? <View style={styles.fields}>
       {hasRecoveryCodes && <><Text style={styles.body}>{copy.codesHelp}</Text><Text selectable style={styles.codes}>{step?.recoveryCodes?.join('\n')}</Text></>}
@@ -119,16 +120,17 @@ export function InternalSignIn() {
   </ScrollView></View>;
 }
 const signInStyles = (palette: { bg: string; card: string; text: string; muted: string; border: string; accent: string }) => StyleSheet.create({
-  entry: { flexGrow: 1, paddingHorizontal: 24, gap: 20, width: '100%', maxWidth: 520, alignSelf: 'center' },
-  workplace: { minHeight: 44, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 16, flexDirection: 'row', gap: 6, alignItems: 'center', maxWidth: '100%' },
+  entry: { flexGrow: 1, paddingHorizontal: 24, gap: 14, width: '100%', maxWidth: 520, alignSelf: 'center' },
+  workplace: { minHeight: 52, paddingHorizontal: 0, paddingVertical: 10, borderRadius: 0, flexDirection: 'row', gap: 6, alignItems: 'center', maxWidth: '100%' },
   workplaceText: { color: palette.text, fontSize: 13, flexShrink: 1 },
-  entryTitle: { color: palette.text, fontSize: 46, fontWeight: '800', letterSpacing: -1.3 },
-  pass: { paddingVertical: 20, gap: 16, borderTopWidth: 1, borderColor: palette.border },
+  entryTitle: { color: palette.text, fontSize: 42,lineHeight:43, fontWeight: '800', letterSpacing: -1.3 },
+  pass: { paddingVertical: 0, gap: 14 },
   passField: { borderBottomWidth: 1, borderColor: palette.border, gap: 2 },
   fieldHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' },
-  passInput: { minHeight: 48, fontSize: 19, color: palette.text, paddingVertical: 10, paddingHorizontal: 0 },
+  passInput: { minHeight: 48, fontSize: 17, color: palette.text, paddingVertical: 10, paddingHorizontal: 0 },
   recovery: { color: palette.accent, fontSize: 13, fontWeight: '500', textDecorationLine: 'underline' },
-  wrap: { flexGrow: 1, padding: 24, paddingTop: 32, paddingBottom: 40, gap: 24, width: '100%', maxWidth: 520, alignSelf: 'center' },
-  brand: { color: palette.text, fontSize: 20, fontWeight: '700', textAlign: 'center', marginBottom: 16 }, title: { fontSize: 42, fontWeight: '800', letterSpacing: -1, color: palette.text },
+  wrap: { flexGrow: 1, padding: 24, paddingTop: 32, paddingBottom: 40, gap: 16, width: '100%', maxWidth: 520, alignSelf: 'center' },
+  brand: { color: palette.text, fontSize: 20, fontWeight: '700', textAlign: 'center', marginBottom: 16 }, title: { fontSize: 40,lineHeight:42, fontWeight: '800', letterSpacing: -1, color: palette.text },
+  editorial:{fontFamily:'FieldEditorial',fontWeight:'normal',fontSize:27,lineHeight:30,color:palette.text,borderBottomWidth:1,borderColor:palette.border,paddingBottom:10},
   body: { color: palette.muted, fontSize: 15, lineHeight: 23 }, label: { color: palette.text, fontSize: 14, fontWeight: '500', marginTop: 4 }, fields: { gap: 12 }, input: { minHeight: 56, borderBottomWidth: 1, borderColor: palette.border, borderRadius: 0, paddingVertical: 14, paddingHorizontal: 0, color: palette.text, fontSize: 16 },
   error: { color: palette.text, fontSize: 15, borderTopWidth: 1, borderColor: palette.border, paddingTop: 12 }, key: { color: palette.text, fontFamily: 'monospace', fontSize: 15, padding: 12, backgroundColor: palette.card }, codes: { color: palette.text, fontFamily: 'monospace', fontSize: 12, lineHeight: 28 }, qr: { width: 224, height: 224, alignSelf: 'center', backgroundColor: '#fff' } });

@@ -34,10 +34,10 @@ function fixture() {
     throw new Error('Unexpected drafts dependency '+id);
   }});
  const ports:Record<string,unknown>={'./public-header':{PublicHeader:()=>null},react:React,'react/jsx-runtime':jsx,
-  'react-native':{ActivityIndicator:()=> <div>Loading</div>,BackHandler:{addEventListener:(_type:string,handler:()=>boolean)=>{back.handler=handler;return{remove(){if(back.handler===handler)back.handler=null;}};}},ScrollView:Container,Text:Container,View:Container,TextInput:({accessibilityLabel,value,onChangeText,editable}:any)=><input aria-label={accessibilityLabel} value={value} onChange={e=>onChangeText(e.target.value)} disabled={editable===false}/>,StyleSheet:{create:(x:unknown)=>x}},
+  'react-native':{Pressable:({children,accessibilityLabel,onPress,disabled}:any)=><button aria-label={accessibilityLabel} onClick={onPress} disabled={disabled}>{children}</button>,ActivityIndicator:()=> <div>Loading</div>,BackHandler:{addEventListener:(_type:string,handler:()=>boolean)=>{back.handler=handler;return{remove(){if(back.handler===handler)back.handler=null;}};}},ScrollView:Container,Text:Container,View:Container,TextInput:({accessibilityLabel,value,onChangeText,editable}:any)=><input aria-label={accessibilityLabel} value={value} onChange={e=>onChangeText(e.target.value)} disabled={editable===false}/>,StyleSheet:{create:(x:unknown)=>x}},
   'expo-linking':{getInitialURL,clearInitialURL:vi.fn(),addEventListener:(_type:string,listener:typeof linking.listener)=>{linking.listener=listener;return{remove(){linking.listener=null;}};}},
   'react-native-safe-area-context':{SafeAreaView:Container},'expo-file-system':{File,Directory,Paths:{document:'doc',cache:'cache'}},'expo-document-picker':{getDocumentAsync:picker},'expo-router':{router:{replace:vi.fn(),back:vi.fn()},SplashScreen:{hideAsync:vi.fn(async()=>{})}},
-  './auth':{signOut:clear},'./config':{runtimeConnections:true,applyCompanyConnection:(p:unknown)=>{applied=p;}},'./company-profile':companyProfile,'./connection-state':{createConnectionState},'./i18n':{appLocale:()=> 'en',intlLocale:()=> 'en-MY'},'./locales/zh':{company:{}},'./locales/ta':{company:{}},'./locales/th':{company:{}},'./locales/vi':{company:{}},
+  './auth':{signOut:clear},'./config':{runtimeConnections:true,applyCompanyConnection:(p:unknown)=>{applied=p;}},'./company-profile':companyProfile,'./connection-state':{createConnectionState},'./i18n':{appLocale:()=> 'en',intlLocale:()=> 'en-MY',t:(key:string)=>key==='fieldWorkplaceTitle'?'Your workplace.':'Choose where you work to continue.'},'./locales/zh':{company:{}},'./locales/ta':{company:{}},'./locales/th':{company:{}},'./locales/vi':{company:{}},
   '../../lib/mobile-workplace-setup':workplaceSetup,
   './design':{DesignText:Container,Atmosphere:()=>null,useTenantDesign:()=>({palette:{}})},
   './ui':{colors:{},Button:({title,onPress,disabled}:any)=><button onClick={onPress} disabled={disabled}>{title}</button>},'../connections/trust.json':trust,'../connections/profiles.json':[setup('Test cloud','https://cloud.example.test')]};
@@ -55,6 +55,13 @@ function fixture() {
  return {Provider,PrivateView,DraftProvider,DraftEditor,LeaveDraftEditor,files,deleted,clear,picker,linking,back,getInitialURL,applied:()=>applied};
 }
 afterEach(cleanup);
+async function revealSetup(user:ReturnType<typeof userEvent.setup>){
+ await waitFor(()=>expect(screen.queryByText('Loading')).toBeNull());
+ if(screen.queryByLabelText('Paste setup link'))return;
+ const choose=screen.queryByRole('button',{name:'Choose another company'});
+ if(choose)await user.click(choose);
+}
+
 describe('shipped company setup screen',()=>{
  it('reviews the approved server before saving, and restores on restart',async()=>{const f=fixture(),user=userEvent.setup();let view=render(<f.Provider><f.PrivateView/></f.Provider>);await user.click(await screen.findByRole('button',{name:/Test cloud/}));expect(screen.getByText('Check your company connection')).toBeInTheDocument();expect(screen.getAllByText('https://cloud.example.test')).toHaveLength(1);expect(f.files.has('doc/aihr-company-v1.json')).toBe(false);await user.click(screen.getByRole('button',{name:'Use this company'}));await screen.findByText('Signed-out connection: Test cloud');expect(f.clear).toHaveBeenCalledTimes(1);expect(f.deleted).toContain('cache/aihr-journeys');expect(f.files.has('doc/aihr-company-v1.json')).toBe(true);view.unmount();view=render(<f.Provider><f.PrivateView/></f.Provider>);await screen.findByText('Signed-out connection: Test cloud');expect(f.clear).toHaveBeenCalledTimes(1);});
  it('reviews a cold-launch workplace link before saving the signed organization',async()=>{
@@ -103,7 +110,7 @@ describe('shipped company setup screen',()=>{
  it('pastes and verifies an on-prem setup link without opening another host or sending credentials',async()=>{
   const f=fixture(),user=userEvent.setup();render(<f.Provider><f.PrivateView/></f.Provider>);
   const link=workplaceSetupLinks(JSON.stringify(setup('Private customer','https://private.example.test','private'))).web;
-  await user.type(await screen.findByLabelText('Paste setup link'),link);await user.click(screen.getByRole('button',{name:'Review setup link'}));
+  await revealSetup(user);await user.type(await screen.findByLabelText('Paste setup link'),link);await user.click(screen.getByRole('button',{name:'Review setup link'}));
   await screen.findByText('private');expect(f.clear).not.toHaveBeenCalled();
   await user.click(screen.getByRole('button',{name:'Use this company'}));await screen.findByText('Signed-out connection: Private customer');
   expect(f.applied()).toMatchObject({organization:'private'});
@@ -141,7 +148,7 @@ describe('shipped company setup screen',()=>{
   const f=fixture(),user=userEvent.setup();render(<f.Provider><f.PrivateView/></f.Provider>);
   const signedSetup=JSON.stringify(setup('Acme','https://cloud.example.test','acme'));
   const field=()=>screen.getByLabelText('Paste setup link');
-  await screen.findByLabelText('Paste setup link');
+  await revealSetup(user);await screen.findByLabelText('Paste setup link');
   await user.type(field(),workplaceSetupLinks(signedSetup).app);await user.click(screen.getByRole('button',{name:'Review setup link'}));
   await screen.findByText('acme');await user.click(screen.getByRole('button',{name:'Choose another company'}));
   // The file's own text pasted into the same field.
@@ -161,5 +168,5 @@ describe('shipped company setup screen',()=>{
   expect(await screen.findByText(/could not be read/)).toBeInTheDocument();
   expect(f.clear).not.toHaveBeenCalled();expect(f.applied()).toBeNull();
  });
- it('rejects a forged setup file before changing the current company',async()=>{const f=fixture(),user=userEvent.setup();f.files.set('cache/company.json','{"keyId":"attacker","payload":"abc","signature":"abc"}');render(<f.Provider><f.PrivateView/></f.Provider>);await user.click(await screen.findByRole('button',{name:'Import company setup'}));await screen.findByText(/signed with a key this app does not trust/);expect(f.clear).not.toHaveBeenCalled();expect(f.applied()).toBeNull();expect(f.files.has('doc/aihr-company-v1.json')).toBe(false);});
+ it('rejects a forged setup file before changing the current company',async()=>{const f=fixture(),user=userEvent.setup();f.files.set('cache/company.json','{"keyId":"attacker","payload":"abc","signature":"abc"}');render(<f.Provider><f.PrivateView/></f.Provider>);await revealSetup(user);await user.click(await screen.findByRole('button',{name:'Import company setup'}));await screen.findByText(/signed with a key this app does not trust/);expect(f.clear).not.toHaveBeenCalled();expect(f.applied()).toBeNull();expect(f.files.has('doc/aihr-company-v1.json')).toBe(false);});
 });

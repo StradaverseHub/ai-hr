@@ -1,0 +1,68 @@
+name: mobile-field-notes-refresh
+run-name: Field Notes JS review · ${{ github.sha }}
+on:
+  push:
+    branches: [codex/mobile-field-notes-20261107]
+    paths:
+      - mobile/app/**
+      - mobile/lib/**
+      - .github/ci/field-notes-refresh.py
+      - .github/workflows/mobile-field-notes-refresh.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: field-notes-refresh-${{ github.sha }}
+  cancel-in-progress: false
+jobs:
+  refresh:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: ios
+            os: macos-26
+          - platform: android
+            os: ubuntu-24.04
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    env:
+      CI: '1'
+      EXPO_NO_TELEMETRY: '1'
+      EXPO_PUBLIC_RUNTIME_CONNECTIONS: '1'
+      EXPO_PUBLIC_AUTH_PROVIDER: internal
+      NODE_OPTIONS: --max-old-space-size=4096
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with:
+          node-version: '22.23.3'
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+      - name: Verify exact unchanged native base
+        id: native
+        run: python3 .github/ci/field-notes-refresh.py prepare ${{ matrix.platform }}
+      - name: Install locked JavaScript dependencies
+        run: |
+          npm ci --prefix mobile --no-audit --no-fund
+          npm --prefix mobile run eas-build-post-install
+      - name: Prepare public Android review signer
+        if: matrix.platform == 'android'
+        working-directory: mobile
+        run: npm exec --offline -- expo prebuild --platform android --no-install
+      - name: Export exact production Hermes bundle and assets
+        working-directory: mobile
+        run: npm exec --offline -- expo export:embed --platform ${{ matrix.platform }} --dev false --bytecode --max-workers 2 --bundle-output "${{ steps.native.outputs.review_root }}/new.bundle" --assets-dest "${{ matrix.platform == 'ios' && format('{0}/app/OneHR.app', steps.native.outputs.review_root) || format('{0}/export-assets', steps.native.outputs.review_root) }}"
+      - name: Package and verify simulator review signature
+        run: python3 .github/ci/field-notes-refresh.py package ${{ matrix.platform }}
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: onehr-field-notes-refresh-${{ matrix.platform }}-${{ github.sha }}
+          path: ${{ steps.native.outputs.review_root }}/package/
+          retention-days: 1
+          if-no-files-found: error

@@ -3,7 +3,14 @@ run-name: Field Notes Android review · ${{ github.sha }}
 on:
   push:
     branches: [codex/mobile-field-notes-20261107]
-    paths: [mobile/**, .github/workflows/mobile-field-notes-android.yml]
+    paths:
+      - mobile/package.json
+      - mobile/package-lock.json
+      - mobile/app.json
+      - mobile/app.config.js
+      - mobile/build-config/**
+      - mobile/modules/**
+      - mobile/assets/**
   workflow_dispatch:
 permissions:
   contents: read

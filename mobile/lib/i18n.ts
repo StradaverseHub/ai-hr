@@ -20,6 +20,10 @@ import th from './locales/th';
 import vi from './locales/vi';
 
 const en = {
+  fieldWorkplaceTitle: "Your\nworkplace.",
+  fieldChooseWorkplace: "Choose where you work to continue.",
+  fieldAccountTitle: "Your account",
+  fieldOneMoreStep: "One more step",
   attemptNotRecorded: "Clock attempt saved — attendance not recorded.",
   fieldLeaveTitle: "Time\naway.",
   fieldMeTitle: "Your\nworkspace.",
@@ -894,6 +898,10 @@ export type MessageKey = keyof typeof en;
 
 const ms: Record<MessageKey, string> = {
   attemptNotRecorded: "Cubaan disimpan — kehadiran belum direkodkan.",
+  fieldWorkplaceTitle: "Tempat kerja\nanda.",
+  fieldChooseWorkplace: "Pilih tempat kerja anda untuk meneruskan.",
+  fieldAccountTitle: "Akaun anda",
+  fieldOneMoreStep: "Satu langkah lagi",
   fieldLeaveTitle: "Masa\nbercuti.",
   fieldMeTitle: "Ruang kerja\nanda.",
   fieldReviewTitle: "Untuk\nsemakan anda.",

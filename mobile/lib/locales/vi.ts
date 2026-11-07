@@ -4,6 +4,10 @@ import type { CompanyCopy } from '../company-connection';
 
 const messages: Record<MessageKey, string> = {
   attemptNotRecorded: "Đã lưu lần thử — chưa ghi nhận chấm công.",
+  fieldWorkplaceTitle: "Nơi làm việc\ncủa bạn.",
+  fieldChooseWorkplace: "Chọn nơi làm việc để tiếp tục.",
+  fieldAccountTitle: "Tài khoản của bạn",
+  fieldOneMoreStep: "Thêm một bước",
   fieldLeaveTitle: "Thời gian\nnghỉ phép.",
   fieldMeTitle: "Không gian\nlàm việc.",
   fieldReviewTitle: "Chờ bạn\nxem xét.",

@@ -4,8 +4,13 @@ on:
   push:
     branches: [codex/mobile-field-notes-20261107]
     paths:
-      - mobile/**
-      - .github/workflows/mobile-ios-simulator-review.yml
+      - mobile/package.json
+      - mobile/package-lock.json
+      - mobile/app.json
+      - mobile/app.config.js
+      - mobile/build-config/**
+      - mobile/modules/**
+      - mobile/assets/**
       - .github/ci/native-ios-simulator-review.sh
       - .github/ci/package-ios-simulator-review.py
   workflow_dispatch:
