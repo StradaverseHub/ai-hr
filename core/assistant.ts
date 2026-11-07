@@ -1,4 +1,3 @@
-import {aiCentreReadAllowed} from './ai-centre-control';
 import {withAiCentreActivity,assertAiCentreRunningTx} from './ai-centre-control';
 import {AiPrivacyGateError} from '../lib/ai/provider-privacy-request';
 /**
@@ -63,7 +62,7 @@ import { resolveActiveAiConfig } from './ai-config';
 import {bindAiSpendTaskTx} from './ai-spend-task';
 import {assistantQuestionBudgetBinding,AssistantQuestionBudgetError,completeAssistantQuestionBudgetTx,type AssistantQuestionBudget} from './assistant-question-budget';
 import { assertMayUseAssistant } from './assistant-grant';
-import { withAssistantRead,type AssistantReadSession } from './assistant-read-session';
+import { assistantFunctionAllowed,withAssistantRead,type AssistantReadSession } from './assistant-read-session';
 import {withGovernedSpecialistReadBatch} from './module-agent-releases';
 import {isAgentModuleCode,type AgentModuleCode} from '../lib/ai/module-agents';
 import { ASSISTANT_PUBLIC_REPLIES, assistantPublicToolResult } from '../lib/ai/assistant-public-replies';
@@ -378,7 +377,7 @@ async function runTools(
   // No per-tool catch inside the carrier: a storage/partial-reservation error MUST unwind the
   // complete source transaction before any bounded reply or source evidence can be returned.
   const key='read:'+call.name;
-  if(!await aiCentreReadAllowed(ctx,key)||call.name==='my_module_work'&&typeof (call.input as {module?:unknown})?.module==='string'&&!await aiCentreReadAllowed(ctx,'module:'+String((call.input as {module:string}).module)))return{id:call.id,name:call.name,content:ASSISTANT_PUBLIC_REPLIES.tool,isError:true};
+  if(!await assistantFunctionAllowed(ctx,session,key)||call.name==='my_module_work'&&typeof (call.input as {module?:unknown})?.module==='string'&&!await assistantFunctionAllowed(ctx,session,'module:'+String((call.input as {module:string}).module)))return{id:call.id,name:call.name,content:ASSISTANT_PUBLIC_REPLIES.tool,isError:true};
   const outcome=await tool.run(ctx,call.input,session),publicOutcome=assistantPublicToolResult(outcome),content=serializeAgentReadResult(publicOutcome);
   reads.push(Object.freeze({name:call.name,input:call.input,digest:assistantSourceDigest(publicOutcome)}));
   observations.push({name:call.name,input:call.input,rowCount:rowCountOf(outcome),...(outcome.ok?{}:{refusal:outcome.refusal})});return{id:call.id,name:call.name,content};

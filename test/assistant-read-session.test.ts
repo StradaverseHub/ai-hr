@@ -6,7 +6,8 @@ import * as tenantDb from '../db/client';
 import { withTenant, type SessionContext } from '../db/client';
 import * as schema from '../db/schema';
 import * as canonical from '../core/read';
-import { withAssistantRead, withAssistantReadTx, type AssistantReadSession } from '../core/assistant-read-session';
+import { assistantFunctionAllowed,withAssistantRead, withAssistantReadTx, type AssistantReadSession } from '../core/assistant-read-session';
+import { setAiCentreReadControl } from '../core/ai-centre-inventory';
 import { ASSISTANT_TOOLS } from '../core/assistant-tools';
 import { grantAssistant, revokeAssistant } from '../core/assistant-grant';
 import { lockAccessConfigurationTx } from '../core/access-configuration-lock';
@@ -43,6 +44,29 @@ async function observeWaiting() {
 }
 
 describe('explicit Assistant read ownership', () => {
+  it('checks function and module switches on the existing real read carrier and refuses forged or expired ownership', async () => {
+    const { a,ctx } = await fixture(), group={...a,grants:[{role:'hr_admin',companyId:null}]};
+    let saved:AssistantReadSession|undefined;
+    const transactions=vi.spyOn(tenantDb,'withTenant');
+    try {
+      await withAssistantRead(ctx,null,async session=>{
+        saved=session;
+        expect(await assistantFunctionAllowed(ctx,session,'read:my_leave_balances')).toBe(true);
+        expect(await assistantFunctionAllowed(ctx,session,'module:employees')).toBe(true);
+        expect(await assistantFunctionAllowed(ctx,session,'read:unknown_future')).toBe(false);
+        await expect(assistantFunctionAllowed(ctx,{...session},'read:my_leave_balances')).rejects.toThrow('data access');
+        await expect(assistantFunctionAllowed({...ctx,userId:randomUUID()},session,'read:my_leave_balances')).rejects.toThrow('data access');
+      });
+      expect(transactions).toHaveBeenCalledTimes(1);
+      await expect(assistantFunctionAllowed(ctx,saved!,'read:my_leave_balances')).rejects.toThrow('data access');
+    } finally { transactions.mockRestore(); }
+    for(const key of ['read:my_leave_balances','module:employees']){
+      await setAiCentreReadControl(group,key,false);
+      expect(await withAssistantRead(ctx,null,session=>assistantFunctionAllowed(ctx,session,key))).toBe(false);
+      await setAiCentreReadControl(group,key,true);
+      expect(await withAssistantRead(ctx,null,session=>assistantFunctionAllowed(ctx,session,key))).toBe(true);
+    }
+  });
   it('runs two actual tools through one Read Committed/read-only backend and preserves RLS refusal', async () => {
     const { ctx, mine, other } = await fixture();
     const original = canonical.employeeDetail;

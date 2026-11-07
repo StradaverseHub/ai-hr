@@ -134,6 +134,17 @@ const performanceOwners:Record<string,Record<string,string>>={
     "getAssessmentWrittenRemarks": "generatePerformanceNativeOutline"
   }
 };
+// The public owner narrows execution through its explicit child switch before its private
+// implementation reaches the provider. Keep both the public entry and concrete dispatch checked.
+const controlledPerformanceOwners:Record<string,{implementation:string;key:string}>={
+ askAssessmentAdmin:{implementation:'askAssessmentAdminActivity',key:'read:operation_performance_admin'},
+ suggestAssessmentCareerPlan:{implementation:'suggestAssessmentCareerPlanActivity',key:'read:operation_career_plan'},
+ getAssessmentCompetencyInsight:{implementation:'getAssessmentCompetencyInsightActivity',key:'read:operation_competency_insight'},
+ suggestAssessmentDevelopmentGoals:{implementation:'suggestAssessmentDevelopmentGoalsActivity',key:'read:operation_development_goals'},
+ askPerformanceGuide:{implementation:'askPerformanceGuideActivity',key:'read:operation_performance_guide'},
+ getAssessmentPerformanceInsight:{implementation:'getAssessmentPerformanceInsightActivity',key:'read:operation_performance_insight'},
+ rewriteAssessmentField:{implementation:'rewriteAssessmentFieldActivity',key:'read:operation_performance_rewrite'},
+};
 const protectedOwners:Record<string,Record<string,string>>={
  'packs/job-architecture/owner.ts':{generateArchitectureAdvice:'generateDraft'},
  'packs/rewards/advisor.ts':{generateRewardAdvisor:'generateDraft'},
@@ -242,7 +253,15 @@ describe('complete AI management inventory and boundary',()=>{
    const collect=(node:ts.Node)=>{if(ts.isFunctionDeclaration(node)&&node.name)declarations.set(node.name.text,node);ts.forEachChild(node,collect);};collect(tree);
    for(const [owner,call] of Object.entries(owners)){
     const declaration=declarations.get(owner);expect(declaration,`${file} retains native owner ${owner}`).toBeDefined();
-    expect(declaration?.body?.getText(tree),`${file}#${owner} invokes ${call}`).toMatch(new RegExp(`\\b${call}\\s*\\(`));
+    const controlled=controlledPerformanceOwners[owner];
+    if(controlled){
+     expect(declaration?.modifiers?.some(modifier=>modifier.kind===ts.SyntaxKind.ExportKeyword),owner+' stays public').toBe(true);
+     expect(declaration?.body?.getText(tree)).toContain(`withAiCentreFunction(args[0],'${controlled.key}',()=>${controlled.implementation}(...args))`);
+     const implementation=declarations.get(controlled.implementation);
+     expect(implementation,owner+' retains its private implementation').toBeDefined();
+     expect(implementation?.modifiers?.some(modifier=>modifier.kind===ts.SyntaxKind.ExportKeyword)??false).toBe(false);
+     expect(implementation?.body?.getText(tree),`${file}#${owner} dispatches through its controlled implementation`).toMatch(new RegExp(`\\b${call}\\s*\\(`));
+    }else expect(declaration?.body?.getText(tree),`${file}#${owner} invokes ${call}`).toMatch(new RegExp(`\\b${call}\\s*\\(`));
    }
   }
   // Since the provider snapshot owner (ADR-0131, 64651f101) the tenant row and platform fallback are one
@@ -302,7 +321,11 @@ describe('complete AI management inventory and boundary',()=>{
   // The live definition of a function is its LAST redefinition in journal (apply) order; 0568, 0621 and 0648 replaced ai_admit.
   const journal:string[]=JSON.parse(read('db/migrations/meta/_journal.json')).entries.map((e:{tag:string})=>`db/migrations/${e.tag}.sql`);
   const live=(marker:string)=>{const files=journal.filter(f=>read(f).includes(marker));expect(files.length,marker).toBeGreaterThan(0);return read(files.at(-1)!);};
-  const guard=live('FUNCTION app.ai_control_policy_guard()'),admit=live('FUNCTION app.ai_admit('),context=live('FUNCTION app._ai_control_context(');
+  const guard=live('FUNCTION app.ai_control_policy_guard()'),admit=live('FUNCTION app.ai_admit('),wrapper=live('FUNCTION app._ai_control_context(');
+  expect(wrapper).toContain('ALTER FUNCTION app._ai_control_context(text,boolean) RENAME TO _ai_control_context_before_centre;');
+  expect(wrapper).toContain('FROM app._ai_control_context_before_centre(wanted_feature,forced_pause) c');
+  expect(wrapper).toContain('c.feature_paused OR EXISTS(SELECT 1 FROM public.teras_mandate_control t WHERE t.tenant_id=app.current_tenant_id() AND t.stopped)');
+  const context=read('db/migrations/0812_ai_feature_switch_owner.sql');
   expect(journal.filter(f=>read(f).includes('FUNCTION app.ai_admit(')).length).toBeGreaterThanOrEqual(2);
   // 0648 replaced ai_admit again; the live admission owns no feature list of its own and resolves the
   // feature through the live control context (0621), which refuses every unlisted feature.

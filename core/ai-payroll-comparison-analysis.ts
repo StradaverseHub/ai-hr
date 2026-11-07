@@ -43,9 +43,10 @@ function capture<T>(input:T):T{
  * Employment counts are checked against native headcounts, never substituted for person support.
  * Native headcount has no native percentage/band, so it is deliberately not emitted as a metric.
  */
-export async function generatePrivatePayrollComparisonAnalysis(...args:Parameters<typeof generatePrivatePayrollComparisonAnalysisActivity>):Promise<Awaited<ReturnType<typeof generatePrivatePayrollComparisonAnalysisActivity>>>{
- args=structuredClone(args);
- return withAiCentreFunction(args[0],'read:operation_payroll_comparison',()=>generatePrivatePayrollComparisonAnalysisActivity(...args));
+export async function generatePrivatePayrollComparisonAnalysis(supplied:SessionContext,spec:CustomReportSpec,scope:readonly string[],raw:Record<string,unknown>):Promise<string>{
+ const ctx={...supplied,roles:supplied.roles?.slice(),grants:supplied.grants?.map(grant=>({...grant}))};
+ const capturedSpec=capture(spec),capturedScope=capture(scope),requested=capture(raw);
+ return withAiCentreFunction(ctx,'read:operation_payroll_comparison',()=>generatePrivatePayrollComparisonAnalysisActivity(ctx,capturedSpec,capturedScope,requested));
 }
 async function generatePrivatePayrollComparisonAnalysisActivity(ctx:SessionContext,spec:CustomReportSpec,scope:readonly string[],raw:Record<string,unknown>):Promise<string>{
  const capturedSpec=capture(spec),capturedScope=capture(scope),requested=capture(raw);

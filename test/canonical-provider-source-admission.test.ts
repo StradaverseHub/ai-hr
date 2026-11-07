@@ -1,6 +1,7 @@
 /** Authored UNRUN: actual app-role source replay/admission/settlement. Only transport is mocked.
  * Fictional stored rows are not production payroll calculation or benchmark proof. */
 import {randomUUID} from 'node:crypto';
+import {AsyncResource} from 'node:async_hooks';
 import {and,eq,sql} from 'drizzle-orm';
 import {afterAll,afterEach,beforeAll,beforeEach,describe,expect,it,vi,type MockInstance} from 'vitest';
 import {withTenant,type SessionContext,type Tx} from '../db/client';
@@ -212,12 +213,16 @@ describe('exact native source ownership at callback tail',()=>{
  });
  it('prevents actual standard manager-review writes at callback tail, then permits native submission after admission',async()=>{
   const f=await performanceFixture(),[before]=await owner.db.select().from(schema.performanceReview).where(eq(schema.performanceReview.id,f.reviewId)),submission={reviewId:f.reviewId,managerRating:4,overallRating:4,managerComments:'Actual fictional native manager decision.'};
-  afterSourceReplay=async()=>{await expect(submitManagerReview(f.ctx,submission)).rejects.toThrow();expect((await owner.db.select().from(schema.performanceReview).where(eq(schema.performanceReview.id,f.reviewId)))[0]).toEqual(before);};
+  // This competing human request starts outside the AI activity. A callback-tail test hook must
+  // not make the independent native writer inherit the provider request's async control context.
+  const humanSubmit=AsyncResource.bind(()=>submitManagerReview(f.ctx,submission));
+  afterSourceReplay=async()=>{await expect(humanSubmit()).rejects.toThrow();expect((await owner.db.select().from(schema.performanceReview).where(eq(schema.performanceReview.id,f.reviewId)))[0]).toEqual(before);};
   await draftManagerReview(f.ctx,{reviewId:f.reviewId});expect(transport).toHaveBeenCalledOnce();await submitManagerReview(f.ctx,submission);expect((await owner.db.select().from(schema.performanceReview).where(eq(schema.performanceReview.id,f.reviewId)))[0].managerComments).toBe(submission.managerComments);
  });
  it('protects the Assistant own-claim list against native deletion and insertion phantoms without granting other claims',async()=>{
   const employmentId=await makeEmp('Actual fictional claim-list owner'),[employment]=await owner.db.select().from(schema.employment).where(eq(schema.employment.id,employmentId)),userId=await createAppUser(b.tenantId,employment.personId,'employee');await grantAssistant(a,{appUserId:userId});const self:SessionContext={...await entitledCtx(b,['employee']),userId,personId:employment.personId,roles:['employee'],grants:[{role:'employee',companyId:null}]},[type]=await owner.db.insert(schema.claimType).values({tenantId:b.tenantId,code:'SOURCE_LIST',name:'Fictional own claim type'}).returning(),input={employmentId,claimTypeId:type.id,amount:12,incurredOn:todayInKualaLumpur(),description:'Fictional own draft.'},draft=await saveClaimDraft(self,input);
   const chat=vi.spyOn(openaiAdapter,'converse').mockResolvedValue({text:'{"version":1,"mode":"answer","blocks":[{"kind":"fact","read":0,"card":0,"fact":0}]}',stop:'end',toolCalls:[],usage:{inputTokens:0,outputTokens:0,cachedInputTokens:0},usageReported:true});
+  const humanDelete=AsyncResource.bind(()=>deleteClaimDraft(self,draft.id)),humanSave=AsyncResource.bind(()=>saveClaimDraft(self,input));
   // Source preparation and provider admission both replay the native list. Observe its REAL reader
   // only inside the actual conversation admission, independent of derived config/check identities.
   let admitting=false,tailReads=0;const originalConverse=ai.converse,originalRead=assistantReads.withAssistantAdmissionReadsTx;
@@ -226,7 +231,7 @@ describe('exact native source ownership at callback tail',()=>{
    const result=await originalRead(context,tx,consume);
    if(admitting){tailReads++;expect(tailReads).toBe(1);expect(result).toBe(true);expect(chat).not.toHaveBeenCalled();
     // The caller's actual admission transaction still owns native list row/phantom protections.
-    await expect(deleteClaimDraft(self,draft.id)).rejects.toThrow();await expect(saveClaimDraft(self,input)).rejects.toThrow();
+    await expect(humanDelete()).rejects.toThrow();await expect(humanSave()).rejects.toThrow();
     expect(await owner.db.select().from(schema.claimRequest).where(eq(schema.claimRequest.employmentId,employmentId))).toHaveLength(1);
    }
    return result;

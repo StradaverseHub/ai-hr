@@ -12,6 +12,13 @@ const state=vi.hoisted(()=>({native:vi.fn(),analysis:vi.fn(),config:vi.fn(),tena
 vi.mock('../core/report-payroll-comparison',()=>({executePayrollComparisonTx:state.native}));
 vi.mock('../core/ai-governance',()=>({generatePrivateAiAnalysis:state.analysis}));
 vi.mock('../core/ai-config',()=>({resolveActiveAiConfig:state.config}));
+// This suite explicitly doubles database boundaries. Stop/generation/function authority is
+// exercised against the real database in ai-centre-controls and assistant-read-session tests.
+vi.mock('../core/ai-centre-control',()=>({
+ withAiCentreActivity:async(_ctx:unknown,work:()=>Promise<unknown>)=>work(),
+ withAiCentreFunction:async(_ctx:unknown,_key:unknown,work:()=>Promise<unknown>)=>work(),
+ assertAiCentreRunningTx:async()=>0,
+}));
 vi.mock('../db/client',()=>({withTenant:state.tenant}));
 import {generatePrivatePayrollComparisonAnalysis} from '../core/ai-payroll-comparison-analysis';
 const companyId='20000000-0000-0000-0000-000000000001',departmentId='20000000-0000-0000-0000-000000000002';

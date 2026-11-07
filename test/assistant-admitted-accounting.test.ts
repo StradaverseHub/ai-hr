@@ -97,6 +97,13 @@ const h=vi.hoisted(()=>{
  return {state,runInTenant,converse,prepareStrategy,recheckContinuation,completeStrategy,retireStrategy,completeBudget,seal,bridge,thread,sourceId,contextSource};
 });
 
+// This suite explicitly doubles database boundaries. Stop/generation/function authority is
+// exercised against the real database in ai-centre-controls and assistant-read-session tests.
+vi.mock('../core/ai-centre-control',()=>({
+ withAiCentreActivity:async(_ctx:unknown,work:()=>Promise<unknown>)=>work(),
+ withAiCentreFunction:async(_ctx:unknown,_key:unknown,work:()=>Promise<unknown>)=>work(),
+ assertAiCentreRunningTx:async()=>0,
+}));
 vi.mock('../db/client',()=>({withTenant:h.runInTenant}));
 vi.mock('../lib/ai',()=>({converse:h.converse}));
 vi.mock('../core/assistant-grant',()=>({assertMayUseAssistant:async()=>undefined}));
@@ -126,7 +133,7 @@ vi.mock('../core/assistant-clarification',()=>({ownAssistantClarification:async(
 // Preserve the real context module except this explicit fake-owner boundary. Real custody is DB-tested.
 vi.mock('../core/assistant-conversation-context',async importOriginal=>({...await importOriginal<typeof import('../core/assistant-conversation-context')>(),assistantConversationContextFromClarification:h.bridge}));
 vi.mock('../core/assistant-tools',()=>{const tool={module:'leave',sensitivity:'ordinary',spec:{name:'my_leave_balances',description:'Fictional bounded own read',inputSchema:{type:'object',properties:{},additionalProperties:false}},run:async()=>({ok:true,employments:[{employmentId:'fixture-employment',company:'Fixture Company',balances:[{leaveType:'Annual leave',available:113.75,taken:0,pending:0}]}]})};return{ASSISTANT_TOOLS:[tool],toolsFor:()=>[tool],specsFor:()=>[tool.spec]};});
-vi.mock('../core/assistant-read-session',()=>({withAssistantRead:async(_ctx:unknown,_module:unknown,read:(session:unknown)=>Promise<unknown>)=>read({}),withAssistantAdmissionReadsTx:async(_ctx:unknown,_tx:unknown,read:(session:unknown)=>Promise<unknown>)=>read({})}));
+vi.mock('../core/assistant-read-session',()=>({assistantFunctionAllowed:async()=>true,withAssistantRead:async(_ctx:unknown,_module:unknown,read:(session:unknown)=>Promise<unknown>)=>read({}),withAssistantAdmissionReadsTx:async(_ctx:unknown,_tx:unknown,read:(session:unknown)=>Promise<unknown>)=>read({})}));
 vi.mock('../lib/ai/assistant-disclosure',()=>({sealAssistantDisclosure:h.seal,assistantSourceDigest:()=>'fixture-digest'}));
 vi.mock('../lib/ai/assistant-tool-answer-evidence',()=>({assistantToolAnswerExplanations:()=>[]}));
 vi.mock('../lib/ai/assistant-answer-explanations',()=>({assistantAnswerExplanationAvailability:()=>[]}));

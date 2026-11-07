@@ -38,8 +38,14 @@ describe('one switch owner per AI feature (0692)', () => {
   });
 
   it('reads the live switch key from the table, with no hard-coded CASE left', () => {
-    const context = live('FUNCTION app._ai_control_context(');
-    expect(context.file).toBe(MIGRATION);
+    const wrapper = live('FUNCTION app._ai_control_context(');
+    expect(wrapper.file).toBe('db/migrations/2700_ai_centre_controls.sql');
+    expect(read(wrapper.file)).toContain('ALTER FUNCTION app._ai_control_context(text,boolean) RENAME TO _ai_control_context_before_centre;');
+    expect(wrapper.body).toContain('FROM app._ai_control_context_before_centre(wanted_feature,forced_pause) c');
+    expect(wrapper.body).toContain('c.feature_paused OR EXISTS(SELECT 1 FROM public.teras_mandate_control t WHERE t.tenant_id=app.current_tenant_id() AND t.stopped)');
+    // The wrapper only adds stop; 0812 remains the unchanged canonical feature-switch owner.
+    const source=read(MIGRATION),at=source.lastIndexOf('FUNCTION app._ai_control_context(');
+    const context={body:source.slice(at,source.indexOf('$$;',source.indexOf('$$',at)+2))};
     expect(context.body).not.toMatch(/CASE\s+wanted_feature/);
     for (const [, key] of settingBacked) expect(context.body).not.toContain(`'${key}'`);
     expect(context.body).toContain('SELECT s.setting_key INTO switch_key FROM app.ai_feature_setting s WHERE s.feature_id=wanted_feature');
