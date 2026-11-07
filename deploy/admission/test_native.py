@@ -535,7 +535,13 @@ assert cache.read_text()=='fictional writable application cache'
                    capture_output=True, text=True, timeout=5, env=C.SAFE_ENV,
                    user=nobody.pw_uid, group=nobody.pw_gid, extra_groups=[])
     report['nonrootWriteBoundaryVerified'] = True
+    inactive_before = properties(UNITS[1])
+    assert inactive_before['ActiveState'] == 'inactive' and inactive_before['MainPID'] == '0'
     checked = json.loads(controller('check-only').stdout)
+    inactive_after = properties(UNITS[1])
+    assert inactive_after['ActiveState'] == 'inactive' and inactive_after['MainPID'] == '0'
+    assert inactive_after['InvocationID'] == inactive_before['InvocationID']
+    report['inactiveUnitInspectedWithoutStart'] = True
     assert checked['kind'] == 'ADMISSION_CHECKONLY' and checked['installationAvailable'] is False
     assert checked['releaseEligible'] is False and checked['rootBoundaryInspected'] is True
     assert checked['typedEmptyCredentialsVerified'] is True

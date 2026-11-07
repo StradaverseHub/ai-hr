@@ -158,6 +158,8 @@ class StateTests(unittest.TestCase):
         host.busctl = empty_reply
         host.assert_empty_credentials('aihr-web@1.service')
         self.assertEqual(len(calls), 5)
+        self.assertEqual(calls[0], ['call', 'org.freedesktop.systemd1', '/org/freedesktop/systemd1',
+                                  'org.freedesktop.systemd1.Manager', 'LoadUnit', 's', 'aihr-web@1.service'])
         self.assertEqual({arguments[-1] for arguments in calls[1:]},
                          {'LoadCredential', 'LoadCredentialEncrypted', 'SetCredential', 'SetCredentialEncrypted'})
         for invalid in [None, {}, {'type': 's', 'data': []}, {'type': 'a(ss)'},
@@ -185,8 +187,8 @@ class StateTests(unittest.TestCase):
         unit = 'aihr-web@1.service'
         path = '/org/freedesktop/systemd1/unit/aihr_2dweb_401_2eservice'
         get_unit = ['call', 'org.freedesktop.systemd1', '/org/freedesktop/systemd1',
-                    'org.freedesktop.systemd1.Manager', 'GetUnit', 's', unit]
-        operations = [('GetUnit', get_unit), *[(field, ['get-property', 'org.freedesktop.systemd1', path,
+                    'org.freedesktop.systemd1.Manager', 'LoadUnit', 's', unit]
+        operations = [('LoadUnit', get_unit), *[(field, ['get-property', 'org.freedesktop.systemd1', path,
                     'org.freedesktop.systemd1.Service', field]) for field in C.CREDENTIAL_PROPERTIES]]
         for stage, arguments in operations:
             for failure, error in [
@@ -209,7 +211,7 @@ class StateTests(unittest.TestCase):
             with patch.object(C.subprocess, 'run', side_effect=subprocess.CalledProcessError(1, [], stderr=raw)):
                 with self.assertRaises(C.Refused) as refused:
                     host.busctl(get_unit)
-            self.assertEqual(str(refused.exception), 'Typed credential inspection failed: GetUnit/' + failure)
+            self.assertEqual(str(refused.exception), 'Typed credential inspection failed: LoadUnit/' + failure)
         with patch.object(C.subprocess, 'run', return_value=subprocess.CompletedProcess([], 0, json.dumps({'type': 'o', 'data': [path]}), '')) as run:
             self.assertEqual(host.busctl(get_unit), {'type': 'o', 'data': [path]})
             run.assert_called_once_with(['/usr/bin/busctl', '--system', '--json=short', *get_unit], env=C.SAFE_ENV,
@@ -231,7 +233,7 @@ class StateTests(unittest.TestCase):
                 self.assertEqual(safe, {'code': 'CREDENTIAL_' + stage.upper() + '_' + failure,
                                        'reason': 'Typed credential inspection failed: ' + stage + '/' + failure})
         for value in ['private never-export-secret', 'Admission refused: never-export-secret\n',
-                      'Admission refused: Typed credential inspection failed: GetUnit/never-export-secret',
+                      'Admission refused: Typed credential inspection failed: LoadUnit/never-export-secret',
                       'Admission refused: Typed credential inspection failed: never-export-secret/COMMAND', 'x' * 513, None]:
             safe = native.safe_controller_failure(value)
             self.assertEqual(safe['code'], 'CONTROLLER_ERROR_UNCLASSIFIED')

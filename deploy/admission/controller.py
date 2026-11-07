@@ -37,7 +37,7 @@ PATH = re.compile(r'^/[A-Za-z0-9_./@-]+$')
 SAFE_ENV = {'PATH': '/usr/sbin:/usr/bin:/sbin:/bin', 'LANG': 'C', 'LC_ALL': 'C'}
 CREDENTIAL_PROPERTIES = {'LoadCredential': 'a(ss)', 'LoadCredentialEncrypted': 'a(ss)',
                          'SetCredential': 'a(say)', 'SetCredentialEncrypted': 'a(say)'}
-CREDENTIAL_INSPECTION_STAGES = ('GetUnit', *CREDENTIAL_PROPERTIES)
+CREDENTIAL_INSPECTION_STAGES = ('LoadUnit', *CREDENTIAL_PROPERTIES)
 CREDENTIAL_INSPECTION_FAILURES = ('EXECUTION', 'TIMEOUT', 'COMMAND', 'UNIT_NOT_LOADED', 'BUS_UNAVAILABLE', 'INVALID_JSON')
 
 
@@ -259,9 +259,9 @@ class LinuxHost:
         # A fixed operation stage and failure class diagnose a refused read without
         # exposing command arguments, credential values, stdout or raw stderr.
         if len(arguments) == 7 and arguments[:6] == ['call', 'org.freedesktop.systemd1',
-                '/org/freedesktop/systemd1', 'org.freedesktop.systemd1.Manager', 'GetUnit', 's'] \
+                '/org/freedesktop/systemd1', 'org.freedesktop.systemd1.Manager', 'LoadUnit', 's'] \
                 and arguments[6] in self.profile.value['units']:
-            stage = 'GetUnit'
+            stage = 'LoadUnit'
         elif len(arguments) == 5 and arguments[:2] == ['get-property', 'org.freedesktop.systemd1'] \
                 and re.fullmatch(r'/org/freedesktop/systemd1/unit/[A-Za-z0-9_]+', arguments[2]) is not None \
                 and arguments[3] == 'org.freedesktop.systemd1.Service' and arguments[4] in CREDENTIAL_PROPERTIES:
@@ -280,7 +280,7 @@ class LinuxHost:
             # Recognize only complete fixed messages for an allowlisted operation.
             # Unknown or appended private contents remain the generic COMMAND class.
             if isinstance(error.stderr, str) and len(error.stderr) <= 512:
-                if stage == 'GetUnit' and error.stderr.strip() == 'Call failed: Unit ' + arguments[6] + ' not loaded.':
+                if stage == 'LoadUnit' and error.stderr.strip() == 'Call failed: Unit ' + arguments[6] + ' not loaded.':
                     failure = 'UNIT_NOT_LOADED'
                 elif error.stderr.strip() == 'Failed to connect to bus: No such file or directory':
                     failure = 'BUS_UNAVAILABLE'
@@ -294,8 +294,11 @@ class LinuxHost:
 
     def assert_empty_credentials(self, unit: str) -> None:
         require(unit in self.profile.value['units'], 'Unknown worker service')
+        # Inactive configured units can be garbage-collected between systemctl
+        # and D-Bus reads. LoadUnit loads their definition without StartUnit;
+        # typed property dispatch also resolves the exact unit path afresh.
         value = self.busctl(['call', 'org.freedesktop.systemd1', '/org/freedesktop/systemd1',
-                             'org.freedesktop.systemd1.Manager', 'GetUnit', 's', unit])
+                             'org.freedesktop.systemd1.Manager', 'LoadUnit', 's', unit])
         require(isinstance(value, dict) and value.get('type') == 'o'
                 and isinstance(value.get('data'), list) and len(value['data']) == 1
                 and isinstance(value['data'][0], str)
@@ -310,7 +313,7 @@ class LinuxHost:
                     'Privileged-hook credential source is not qualified')
 
     def check_only(self) -> dict[str, Any]:
-        """Read-only boundary inspection, never an installation/grant receipt.
+        """Non-starting boundary inspection, never an installation/grant receipt.
 
         Run initially from an already trusted, clean root environment. Merely
         placing a privileged Python hook in an unsafe service would be too late:
