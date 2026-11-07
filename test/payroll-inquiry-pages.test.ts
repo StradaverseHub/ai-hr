@@ -7,6 +7,7 @@ import {eq,sql} from 'drizzle-orm';
 import {afterAll,beforeAll,beforeEach,expect,it,vi} from 'vitest';
 import type {SessionContext,Tx} from '../db/client';
 import * as moduleGate from '../core/module-gate';
+import {lockPayrollHistoryWriteTx} from '../core/payroll-history-lock';
 import * as s from '../db/schema';
 import {hireEmployee} from '../core/org';
 import {setCompensation} from '../core/comp';
@@ -47,6 +48,33 @@ it('keeps both native page roots READ COMMITTED and READ ONLY after their normal
   expect((await listIndividualTxnsPage(a,{companyIds:[b.companyId]},parsePageQuery())).rows.map(row=>row.id)).toEqual([individual.id]);
   expect(modes).toEqual([{isolation:'read committed',readonly:'on',role:'ai_hr_app'},{isolation:'read committed',readonly:'on',role:'ai_hr_app'}]);
  }finally{spy.mockRestore();}
+});
+
+it('sees the committed correction after actually waiting for the native history writer barrier',async()=>{
+ const a=adminCtx(b),employee=await hire('Fictional history barrier employee');
+ const batch=await createBatch(a,{companyId:b.companyId,payPeriod:'2026-05'});
+ const initial=await createIndividualTxn(a,{batchId:batch.batchId,employmentId:employee.employmentId,kind:'earning',txnDate:'2026-05-10',amount:12.25});
+ let entered!:()=>void,release!:()=>void,pid=0;
+ const ready=new Promise<void>(yes=>{entered=yes;}),resume=new Promise<void>(yes=>{release=yes;});
+ const writing=owner.db.transaction(async tx=>{
+  await lockPayrollHistoryWriteTx(tx,b.tenantId);
+  const [backend]=await tx.execute<{pid:number}>(sql`select pg_backend_pid() as pid`);pid=backend.pid;
+  await tx.update(s.payrollIndividualTxn).set({amount:'13.50'}).where(eq(s.payrollIndividualTxn.id,initial.id));
+  entered();await resume;
+ });void writing.catch(()=>undefined);
+ let reading:ReturnType<typeof listIndividualTxnsPage>|undefined;
+ try{
+  await Promise.race([ready,writing.then(()=>{throw Error('Writer did not hold the history barrier.');})]);
+  reading=listIndividualTxnsPage(a,{companyIds:[b.companyId]},parsePageQuery());void reading.catch(()=>undefined);
+  let waiting=false;
+  for(let n=0;n<250&&!waiting;n++){
+   const [state]=await owner.db.execute<{waiting:boolean}>(sql`select exists(select 1 from pg_stat_activity q where ${pid}=any(pg_blocking_pids(q.pid)) and q.wait_event_type='Lock') as waiting`);
+   waiting=state.waiting;if(!waiting)await new Promise(yes=>setTimeout(yes,10));
+  }
+  expect(waiting,'The real page reader must wait on the held history writer, not infer ordering from elapsed time.').toBe(true);
+  release();await writing;
+  const page=await reading;expect(page.total).toBe(1);expect(page.rows.map(row=>[row.id,row.amount])).toEqual([[initial.id,'13.50']]);
+ }finally{release();await writing;await reading;}
 });
 
 it('pages Fixed rows in native order with exact strings, full counts, status and company filters',async()=>{
