@@ -34,7 +34,7 @@ export function employeeChoiceNativeBody(source:string){
  if(begin<0||end<=begin)throw Error('Fixed native purpose body missing');
  return source.slice(begin+' RETURN QUERY '.length,end).trim();
 }
-export type NativeCallExpectation={port:'page'|'ids'|'project';rows:number};
+export type NativeCallExpectation={port:'page'|'ids'|'project';rows:number;matchedIds?:number};
 export type PlanMarker={label:string;begin:string;end:string;native:boolean;expectedNativeRows?:number;expectedNativeCalls?:readonly NativeCallExpectation[]};
 /** Require both the real nested statement and its actual function invocation.
  * An outer Function Scan alone cannot establish the work performed inside it. */
@@ -74,9 +74,45 @@ export function employeeChoiceNativeInvocations(entries:readonly AutoExplainMess
   const entry=entries[outer],ports=[...entry.query.matchAll(/\/\* employee-choice-native:(page|ids|project) \*\//g)].map(match=>match[1]);
   if(ports.length!==1||ports[0]!==call.port)throw Error('Actual native purpose differs from independently expected call sequence');
   if(!entries[inner].context.includes('employee_choice_native_prototype(')||!/at RETURN QUERY/i.test(entries[inner].context))throw Error('Actual native call body context required');
-  result.push({port:call.port,...employeeChoiceNativeInvocation([entries[inner],entry],body,call.rows)});previous=outer;
+  const invocation=employeeChoiceNativeInvocation([entries[inner],entry],body,call.rows);
+  const membership=call.port==='project'?employeeChoiceNativeProjectMembership(entries[inner].document.Plan,call.matchedIds):undefined;
+  result.push({port:call.port,...invocation,...(membership?{membership}:{})});previous=outer;
  }
  return result;
+}
+/** A row/loop envelope cannot bound per-row ScalarArrayOp comparisons. For each
+ * real projection, bind the independently expected COMPLETE match set to the
+ * materialized unnest and its one-time hashed membership subplan. This oracle
+ * alone is synthetic; its caller must first bind actual PID/source/body/port. */
+export function employeeChoiceNativeProjectMembership(plan:unknown,matchedIds:unknown){
+ if(typeof matchedIds!=='number'||!Number.isSafeInteger(matchedIds)||matchedIds<1)throw Error('Independent complete projection match count required');
+ type Node=Record<string,unknown>;
+ const nodes:Node[]=[],children=new Map<Node,Node[]>();
+ function visit(value:unknown):Node{
+  if(!value||typeof value!=='object'||Array.isArray(value))throw Error('Actual projection plan node required');
+  const node=value as Node;nodes.push(node);if(nodes.length>100000)throw Error('Projection plan node bound exceeded');
+  if(node.Plans!==undefined&&!Array.isArray(node.Plans))throw Error('Projection plan children required');
+  children.set(node,(node.Plans??[]).map(visit));return node;
+ }
+ visit(plan);
+ const predicates=['Filter','Index Cond','Recheck Cond','Hash Cond','Merge Cond','Join Filter','TID Cond','One-Time Filter'];
+ for(const node of nodes)for(const key of predicates){const expression=node[key];
+  if(typeof expression==='string'&&/\bANY\s*\(\s*\(*\s*(?:\$20\b|p_matched_ids\b)/i.test(expression))throw Error('Linear matched-ID ScalarArray membership refused');
+ }
+ const materialized=nodes.filter(node=>node['Subplan Name']==='CTE employee_choice_project_ids');
+ if(materialized.length!==1)throw Error('One actual materialized projection set required');
+ const descendants=(node:Node):Node[]=>[node,...(children.get(node)??[]).flatMap(descendants)];
+ const unnest=descendants(materialized[0]).filter(node=>node['Node Type']==='Function Scan'&&node['Function Name']==='unnest');
+ if(unnest.length!==1||unnest[0]['Actual Loops']!==1||unnest[0]['Actual Rows']!==matchedIds)throw Error('Complete projection set must be unnested exactly once');
+ const scans=nodes.filter(node=>node['Node Type']==='CTE Scan'&&node['CTE Name']==='employee_choice_project_ids');
+ if(scans.length!==1||scans[0]['Actual Loops']!==1||scans[0]['Actual Rows']!==matchedIds
+  ||scans[0]['Parent Relationship']!=='SubPlan'||typeof scans[0]['Subplan Name']!=='string'
+  ||!/^SubPlan [1-9][0-9]*$/.test(scans[0]['Subplan Name']))throw Error('Complete one-time projection membership scan required');
+ const hashed=new RegExp('\\bhashed '+scans[0]['Subplan Name']+'\\b');
+ const employment=nodes.filter(node=>node['Relation Name']==='employment'&&typeof node.Filter==='string'&&hashed.test(node.Filter));
+ if(employment.length!==1||employment[0]['Actual Loops']!==1)throw Error('Actual employment filter must use its complete hashed projection set');
+ return{kind:'ACTUAL_COMPLETE_MATERIALIZED_HASHED_MEMBERSHIP',matchedIds,unnestRows:unnest[0]['Actual Rows'],unnestLoops:1,
+  membershipRows:scans[0]['Actual Rows'],membershipLoops:1,hashedSubplan:scans[0]['Subplan Name'],linearMatchedArrayRefused:true};
 }
 export function bindEmployeeChoiceNativePlans(messages:readonly AutoExplainMessage[],markers:readonly PlanMarker[],body:string){
  const known=new Map<string,{marker:PlanMarker;edge:'begin'|'end'}>();

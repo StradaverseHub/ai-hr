@@ -40,13 +40,17 @@ let timing:Awaited<ReturnType<typeof employeeChoicePurposeSession>>|undefined,pl
 let logging:Awaited<ReturnType<typeof employeeChoicePlanLogging>>|undefined;
 let fixture:Awaited<ReturnType<typeof seedPersonnelNativeFixture>>|undefined,representedBu='',emptyBu='',output='';
 let cardinalities:Awaited<ReturnType<typeof employeeChoiceActualCardinalities>>;
-const report:Record<string,unknown>={kind:'NATIVE_EMPLOYEE_CHOICE_MINIMAL_SEARCH_PROTOTYPE_V2',releaseEligible:false,productionPolicyApproved:false,migrationAllocated:false,
+const report:Record<string,unknown>={kind:'NATIVE_EMPLOYEE_CHOICE_PROJECT_SET_PROTOTYPE_V3',releaseEligible:false,productionPolicyApproved:false,migrationAllocated:false,
  complete:false,employees:50000,variants,wholePortsPerVariant:16,caseBudgetMs:300000,statementTimeoutMs:20000,lockTimeoutMs:300,targetMs:1000,
  control:{commit:'f1515376df082438ca025fb65d01a8a3330a8796',sourceSha256:'ce1e3559addbffa4b4e780594ebcc5fcf917ddffde79a6155cc7fbcecdbcfbd5'},
  topology:'Timing variants share one actual app backend; plan-only variants share a second actual app backend. PIDs are distinct and never relabeled.',
  registration:'TEMPORARY_SOLE_FOCUSED_DEVELOPMENT_ONLY; complete normal-CI singleton admission remains pending',
  supplementalPlanPortsPerVariant:1,expectedActualPlanPhases:38,
  retainedOriginalProof:{source:'9f51857dbc439f21a9ed6f4a0fc4b6aec4c5500c',run:42405537839,actualPlanPhases:34,allUnderTarget:false},
+ retainedMinimalSearchProof:{source:'124274a3fa96769d7b593a26be160a9fcc8aafed',run:42409116168,actualPlanPhases:38,actualNativeCallPairs:23,allUnderTarget:false,
+  broadSearchMs:7543.329861999955,deepBroadSearchMs:7972.917247000034,deepMs:1126.5117709999904,
+  nativeLogSha256:'2dd23c7623840eb9a832368b1e29ea2f5d97e235d680e73305de6d078c16cff3'},
+ projectionExpressionCostProof:'Every actual project must materialize its complete independently expected1/50000-ID set once and use its exact hashed subplan in the employment filter; linear parameter ScalarArray membership refuses independently of row-work counts.',
  nativeCallAccounting:'Each minimal-candidate and bounded-projection body/invocation/row count is bound separately; every native statement is inspected and distinct main-body work/buffers are additionally combined per phase.',
  instrumentation:'Normal timings have no auto_explain. Plan-only auto_explain has analyze/buffers/settings/nested enabled and per-node timing/parameter values disabled. Instrumented duration is never a latency claim.',
  limitations:'Fixed current-root-first ordering, warm fixture/statistics and few samples are not p95/capacity or whole-browser proof. No index, RLS, grant, JIT threshold, work_mem or global setting changes. Only the fixed native function scopes jit=off.',
@@ -110,8 +114,8 @@ const expectedNativeRows=(name:string)=>{
 };
 const expectedNativeCalls=(name:string):NativeCallExpectation[]=>{
  const first:NativeCallExpectation={port:name==='complete-ids'?'ids':'page',rows:expectedNativeRows(name)};
- if(name==='search'||name==='organisation-search')return[first,{port:'project',rows:2}];
- if(name==='broad-search'||name==='deep-broad-search')return[first,{port:'project',rows:26}];
+ if(name==='search'||name==='organisation-search')return[first,{port:'project',rows:2,matchedIds:1}];
+ if(name==='broad-search'||name==='deep-broad-search')return[first,{port:'project',rows:26,matchedIds:50000}];
  return[first];
 };
 

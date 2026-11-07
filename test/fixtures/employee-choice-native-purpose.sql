@@ -74,6 +74,9 @@ BEGIN
  THEN RAISE EXCEPTION 'Current native employee-choice presentation authority required' USING ERRCODE='42501';END IF;
 
  RETURN QUERY WITH
+ employee_choice_project_ids AS MATERIALIZED(
+  SELECT matched.id FROM unnest(p_matched_ids) AS matched(id) WHERE p_port='project'
+ ),
  employee_choice_employments AS MATERIALIZED(
   SELECT e.id AS "employmentId",e.person_id AS "personId",e.company_id AS "companyId",e.employee_code AS "employeeCode",
    CASE WHEN e.terminated_on IS NULL THEN 'active' ELSE 'ended' END AS status
@@ -81,7 +84,7 @@ BEGIN
    AND (cardinality(p_company_scope)=0 OR e.company_id=ANY(p_company_scope))
    AND (p_terminated_after IS NULL OR e.terminated_on IS NULL OR e.terminated_on>p_terminated_after)
    AND (p_employee_scope IS NULL OR e.id=ANY(p_employee_scope))
-   AND (p_port<>'project' OR e.id=ANY(p_matched_ids))
+   AND (p_port<>'project' OR (e.id IN(SELECT matched.id FROM employee_choice_project_ids matched)) IS TRUE)
  ),
  employee_choice_people AS MATERIALIZED(
   SELECT p.id AS "personId",p.full_name AS name FROM public.person p
