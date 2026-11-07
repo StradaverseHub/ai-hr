@@ -2,14 +2,61 @@
  * No release, installation, alternate-origin or packet-supplied authority. */
 import assert from 'node:assert/strict';
 import {execFileSync} from 'node:child_process';
-import {mkdirSync,realpathSync,lstatSync,writeFileSync,readFileSync,openSync,closeSync,fstatSync,constants} from 'node:fs';
+import {mkdirSync,realpathSync,lstatSync,readFileSync,openSync,closeSync,fstatSync,constants} from 'node:fs';
+import {createHash} from 'node:crypto';
 import {join} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {BUILD_ARTIFACT,BUILD_ZIP_MAX,inspectCiNativeBuildPacket,bindCiBuildSource} from './build-artifact.mjs';
 import {downloadCiArchives} from './archive-downloads.mjs';
 import {nativePreparationEnvironment} from './candidate-environment.mjs';
 import {nativeNextUnit,validateNativeBuildPrerequisite} from './singleton-protocol.mjs';
+import {NATIVE_HELPER_SOURCES} from './native-next-helper-sources.mjs';
+import {captureInstallation,readProtectedBootstrap} from './native-next-installation.mjs';
+export {NATIVE_HELPER_SOURCES} from './native-next-helper-sources.mjs';
 const REPOSITORY='StradaverseHub/ai-hr',REPOSITORY_ID=1333414856,WORKFLOW_ID=395777276;
+// The native workflow protects this owner closure before package invocation.
+// Cache reviewed controller bytes before classifier/migration/test children. Missing
+// future fixtures do not affect metadata tests, but actual native provisioning
+// refuses them. Paths are never reopened as privileged code after preparation.
+const NATIVE_HELPER_BYTES=new Map(Object.entries(NATIVE_HELPER_SOURCES).map(([name,path])=>{
+ let fd;try{
+  fd=openSync(new URL('../../'+path,import.meta.url),constants.O_RDONLY|constants.O_NOFOLLOW|constants.O_NONBLOCK);
+  const before=fstatSync(fd);assert(before.isFile()&&before.nlink===1&&before.size>0&&before.size<=1024**2&&(before.mode&0o022)===0);
+  const bytes=readFileSync(fd),after=fstatSync(fd);assert.equal(bytes.length,before.size);
+  for(const key of ['dev','ino','size','mtimeMs','ctimeMs'])assert.equal(after[key],before[key]);
+  return[name,bytes];
+ }catch(error){if(error.code==='ENOENT')return[name,null];throw error;}finally{if(fd!==undefined)closeSync(fd);}
+}));
+const NATIVE_BUILD_SEALER=NATIVE_HELPER_BYTES.get('next_build_binding.py')?.toString('utf8');
+assert(typeof NATIVE_BUILD_SEALER==='string');
+assert(Buffer.byteLength(NATIVE_BUILD_SEALER)>0&&Buffer.byteLength(NATIVE_BUILD_SEALER)<=1024*1024);
+export function nativeHelperClosure(plan,source){
+ assert(/^[a-f0-9]{40}$/.test(plan?.sha)&&/^[a-f0-9]{40}$/.test(plan?.controller),'Exact native helper source/controller required');
+ const automation=realpathSync(fileURLToPath(new URL('../../',import.meta.url))),helpers={};let total=0;
+ for(const [name,path]of Object.entries(NATIVE_HELPER_SOURCES)){
+  const bytes=NATIVE_HELPER_BYTES.get(name);assert(Buffer.isBuffer(bytes),'Native helper closure is incomplete');total+=bytes.length;assert(total<=2*1024**2);
+  const from=(directory,sha)=>execFileSync('git',['-c','safe.directory='+directory,'-c','core.fsmonitor=false','-c','core.hooksPath=/dev/null','-C',directory,'show','--end-of-options',sha+':'+path],{env:nativePreparationEnvironment(process.env),timeout:30000,maxBuffer:1024**2});
+  assert(bytes.equals(from(automation,plan.controller))&&bytes.equals(from(source,plan.sha)),'Native candidate/controller helper bytes differ from their committed identities');
+  helpers[name]={sourcePath:path,sha256:createHash('sha256').update(bytes).digest('hex'),
+   gitBlobId:createHash('sha1').update(Buffer.from('blob '+bytes.length+'\0')).update(bytes).digest('hex'),base64:bytes.toString('base64')};
+ }
+ return helpers;
+}
+const INSTALLATIONS=new WeakSet();
+/** Full native job only. Must run BEFORE createPlan invokes the classifier. */
+export function captureNativeNextInstallation(env=process.env){
+ if(env.GITHUB_JOB!=='native-test')return null;
+ for(const [key,value]of Object.entries({GITHUB_ACTIONS:'true',CI:'true',RUNNER_ENVIRONMENT:'github-hosted',GITHUB_REPOSITORY:REPOSITORY,GITHUB_REPOSITORY_ID:String(REPOSITORY_ID),GITHUB_RUN_ATTEMPT:'1'}))assert.equal(env[key],value);
+ const plan={sha:env.AIHR_CI_HEAD,controller:env.AIHR_CI_CONTROL_HEAD};
+ assert.equal(env.GITHUB_SHA,plan.controller);
+ const workspace=realpathSync(env.GITHUB_WORKSPACE),source=realpathSync(process.cwd());assert.equal(source,join(workspace,'source'));
+ const bootstrap=readProtectedBootstrap(env),helpers=nativeHelperClosure(plan,source);
+ assert.equal(realpathSync(fileURLToPath(new URL('../../',import.meta.url))),bootstrap.automation);
+ const git=(directory,...args)=>execFileSync('git',['-c','safe.directory='+directory,'-c','core.fsmonitor=false','-c','core.hooksPath=/dev/null','-C',directory,...args],{env:nativePreparationEnvironment(env),encoding:'utf8',timeout:30000,maxBuffer:1048576}).trim();
+ assert.equal(git(source,'rev-parse','HEAD'),plan.sha);assert.equal(git(source,'status','--porcelain'),'');
+ const snapshot={source,sha:plan.sha,controller:plan.controller,helpers,...captureInstallation({source,helpers,bootstrap},env)};
+ INSTALLATIONS.add(snapshot);return snapshot;
+}
 const positive=value=>Number.isSafeInteger(value)&&value>0;
 const stamp=value=>typeof value==='string'?Date.parse(value):NaN;
 const repo=value=>value?.id===REPOSITORY_ID&&value.full_name===REPOSITORY;
@@ -67,8 +114,10 @@ function pages(path,key){
 }
 /** Called by the authenticated full-CI unit owner before any application child.
  * Actual singleton host/plan admission remains a separate mandatory operation. */
-export async function provisionNativeNextBuild(plan,unit,directory,env=process.env){
+export async function provisionNativeNextBuild(plan,unit,directory,env=process.env,snapshot){
  assert(nativeNextUnit(unit),'Actual registered hybrid unit required');
+ assert(snapshot&&INSTALLATIONS.has(snapshot)&&snapshot.sha===plan.sha&&snapshot.controller===plan.controller
+  &&snapshot.source===realpathSync(process.cwd()),'Original pre-classifier installation capture required');
  for(const [key,value]of Object.entries({GITHUB_ACTIONS:'true',CI:'true',RUNNER_ENVIRONMENT:'github-hosted',GITHUB_REPOSITORY:REPOSITORY,GITHUB_REPOSITORY_ID:String(REPOSITORY_ID),GITHUB_JOB:'native-test',GITHUB_RUN_ATTEMPT:'1'}))assert.equal(env[key],value);
  assert.equal(env.AIHR_CI_HEAD,plan.sha);assert.equal(env.AIHR_CI_CONTROL_HEAD,plan.controller);assert.equal(env.GITHUB_SHA,plan.controller);
  const runId=Number(env.GITHUB_RUN_ID);assert(positive(runId));
@@ -80,6 +129,7 @@ export async function provisionNativeNextBuild(plan,unit,directory,env=process.e
  // This tree is deliberately OUTSIDE the uploaded unit-evidence directory.
  const temporary=realpathSync(env.RUNNER_TEMP);assert.equal(directory,join(temporary,'aihr-ci'));
  const root=join(temporary,unit.id+'-native-build-private');mkdirSync(root,{mode:0o700});
+ const helpers=snapshot.helpers;
  const downloads=join(root,'archives');mkdirSync(downloads,{mode:0o700});
  const actualRun=api(`actions/runs/${runId}`);assert.equal(actualRun.event,env.GITHUB_EVENT_NAME);
  const metadata=validateNativeBuildMetadata({run:actualRun,jobs:pages(`actions/runs/${runId}/jobs?filter=all`,'jobs'),artifacts:pages(`actions/runs/${runId}/artifacts`,'artifacts'),...(pr?{pullRequest:api('pulls/'+pr[1])}:{})},
@@ -90,6 +140,7 @@ export async function provisionNativeNextBuild(plan,unit,directory,env=process.e
  execFileSync('python3',['-I','-B',fileURLToPath(new URL('./build-transport-extract.py',import.meta.url)),transfer.artifacts[0].path,packetDirectory,metadata.artifact.digest.slice(7)],{timeout:60000,maxBuffer:1048576});
  assert.equal(realpathSync(packetDirectory),packetDirectory);assert.equal(lstatSync(packetDirectory).mode&0o777,0o700);
  const inspected=inspectCiNativeBuildPacket(packetDirectory,metadata.expected);
+ assert.equal(inspected.lockSha256,snapshot.installation.lockSha256);assert.equal(inspected.packageSha256,snapshot.installation.packageSha256);
  // Canonical preparation executes candidate code only in a credential-free
  // fixed child. The API owner never imports that code into its own process.
  const source=realpathSync(process.cwd()),preparedPath=join(root,'canonical-prepared.json');
@@ -97,16 +148,22 @@ export async function provisionNativeNextBuild(plan,unit,directory,env=process.e
  execFileSync('pnpm',['exec','tsx',fileURLToPath(new URL('./native-next-build-inputs.mjs',import.meta.url)),source,preparedPath,plan.sha,inspected.buildRecordId],{cwd:source,env:preparationEnv,timeout:60000,maxBuffer:1048576,stdio:['ignore','pipe','pipe']});
  const fd=openSync(preparedPath,constants.O_RDONLY|constants.O_NOFOLLOW);
  let preparedBytes;try{const st=fstatSync(fd);assert(st.isFile()&&st.nlink===1&&st.uid===process.getuid()&&(st.mode&0o777)===0o600&&st.size>0&&st.size<=80*1024);preparedBytes=readFileSync(fd);assert.equal(preparedBytes.length,st.size);}finally{closeSync(fd);}
- const packet=bindCiBuildSource(inspected,{lockBytes:readFileSync(join(source,'pnpm-lock.yaml')),packageBytes:readFileSync(join(source,'package.json')),preparedBytes});
+ const packet=bindCiBuildSource(inspected,{lockBytes:snapshot.lockBytes,packageBytes:snapshot.packageBytes,preparedBytes});
  assert.equal(packet.canonicalCandidateInputsVerified,true);
  assert.equal(packet.kind,'VERIFIED_NATIVE_NEXT_PACKET_NOT_RELEASE');
  const prerequisite={kind:'same-run-canonical-next-build',source:plan.sha,controller:plan.controller,runId:String(runId),attempt:'1',
   artifactId:String(metadata.artifact.id),artifactDigest:metadata.artifact.digest,producerJobId:String(metadata.producer.id),nextBuildId:packet.nextBuildId,
   archiveSha256:packet.archiveSha256,manifestSha256:packet.manifestSha256,provenanceSha256:packet.provenanceSha256};
  validateNativeBuildPrerequisite(prerequisite,{source:plan.sha,controller:plan.controller,runId:String(runId),attempt:'1'});
- const bindingPath=join(root,'build-binding.json');
- writeFileSync(bindingPath,JSON.stringify({schemaVersion:1,kind:'AUTHENTICATED_SAME_RUN_NATIVE_NEXT_BUILD_NOT_RELEASE',expected:metadata.expected,
+ const binding={schemaVersion:1,kind:'AUTHENTICATED_SAME_RUN_NATIVE_NEXT_BUILD_NOT_RELEASE',expected:metadata.expected,
   artifact:{id:metadata.artifact.id,digest:metadata.artifact.digest,runId},producerJob:{id:metadata.producer.id,name:'build'},
-  packet:{archiveSha256:packet.archiveSha256,manifestSha256:packet.manifestSha256,provenanceSha256:packet.provenanceSha256,nextBuildId:packet.nextBuildId},releaseAuthorized:false},null,2)+'\n',{flag:'wx',mode:0o600});
- return {prerequisite,packetDirectory,bindingPath};
+  packet:{archiveSha256:packet.archiveSha256,manifestSha256:packet.manifestSha256,provenanceSha256:packet.provenanceSha256,nextBuildId:packet.nextBuildId},installation:snapshot.installation,releaseAuthorized:false};
+ // Deliver the API owner's in-memory expected hashes directly, never a
+ // candidate-writable binding file. The fixed stdlib root receiver copies only
+ // exact five-member bytes into an exclusive root-owned immutable handoff.
+ const sealed=JSON.parse(execFileSync('sudo',['-n','/usr/bin/python3','-I','-B','-c',NATIVE_BUILD_SEALER,'--seal'],
+  {input:JSON.stringify({binding,unit:unit.id,runnerTemp:temporary,runnerUid:process.getuid(),helpers}),encoding:'utf8',timeout:60000,maxBuffer:65536,stdio:['pipe','pipe','pipe']}));
+ const sealedRoot='/var/lib/aihr-native-build/'+runId+'/'+unit.id;
+ assert.deepEqual(sealed,{packetDirectory:sealedRoot+'/packet',bindingPath:sealedRoot+'/build-binding.json'});
+ return {prerequisite,...sealed};
 }

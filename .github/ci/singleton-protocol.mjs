@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
 import {validatePostgresEvidence} from './postgres-evidence.mjs';
 import {CI_POLICY} from './policy-version.mjs';
+import {NATIVE_HELPER_SOURCES} from './native-next-helper-sources.mjs';
 export const SINGLETON_VERSION=1;
 const measured=[
  'test/analytics-termination-lateral.test.ts',
@@ -27,6 +28,7 @@ export const SINGLETON_FILES=Object.freeze({
 });
 export const singletonProfile=file=>Object.hasOwn(SINGLETON_FILES,file)?SINGLETON_FILES[file]:null;
 export const nativeNextUnit=unit=>unit?.singleton?.profile==='linux-next-postgres-v1';
+export const singletonControllerPath=(unit,workspace,runId)=>nativeNextUnit(unit)?'/var/lib/aihr-native-controller/'+runId+'/automation':workspace+'/automation';
 export const singletonJobName=unit=>nativeNextUnit(unit)?`native-test (${unit.id})`:unit.kind==='browser'?`browser (${unit.engine})`:`test (${unit.id})`;
 export const singletonKind=profile=>profile==='linux-systemd-nginx-v1'?'nodb':'db';
 export function assertSingletonSelection(files){assert(!files.some(file=>singletonProfile(file))||files.length===1,'Infrastructure-sensitive focused tests require an actual sole-file selection');}
@@ -49,7 +51,10 @@ export function singletonSources(unit){
  assertSingletonUnit(unit);
  return [unit.files[0],'test/helpers/ci-singleton-admission.ts','.github/ci/singleton-protocol.mjs','.github/ci/policy-version.mjs',
   'vitest.config.ts','vitest.nodb.config.ts',...(unit.kind==='db'?['test/db-names.ts','test/global-setup.ts','test/env.ts']:['deploy/admission/test_native.py']),
-  ...(nativeNextUnit(unit)?['deploy/admission/test_next_native.py','deploy/admission/next_profile.py','deploy/admission/controller.py','.github/ci/runtime_inventory.py','.github/ci/native-next-build-packet.mjs','.github/ci/native-next-build-inputs.mjs','.github/ci/candidate-environment.mjs','.github/ci/build-artifact.mjs']:[])].sort();
+  ...(nativeNextUnit(unit)?[...Object.values(NATIVE_HELPER_SOURCES),'.github/ci/native-next-helper-sources.mjs','.github/ci/native-next-build-packet.mjs',
+   '.github/ci/native-next-installation.mjs','.github/ci/native-next-build-inputs.mjs','.github/ci/candidate-environment.mjs','.github/ci/build-artifact.mjs',
+   'test/helpers/native-next-fixture.ts','scripts/performance/native-next-boot-browser.mjs',
+   'scripts/performance/fixture-workload.mjs','scripts/performance/next-source-proof.mjs']:[])].sort();
 }
 export const protocolHash=value=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const fullSha=value=>typeof value==='string'&&/^[a-f0-9]{40}$/.test(value);
@@ -114,7 +119,7 @@ export function validateSingletonHost({env,event,layout,plan,unit}){
  for(const [key,value]of Object.entries({GITHUB_ACTIONS:'true',CI:'true',RUNNER_ENVIRONMENT:'github-hosted',RUNNER_OS:'Linux',GITHUB_REPOSITORY:'StradaverseHub/ai-hr',GITHUB_REPOSITORY_ID:'1333414856',GITHUB_WORKFLOW:'alpha-staging-ci',GITHUB_JOB:nativeNextUnit(unit)?'native-test':'test',GITHUB_RUN_ATTEMPT:'1'}))assert.equal(env[key],value,key);
  assert(positive(env.GITHUB_RUN_ID));assert.equal(env.AIHR_CI_HEAD,plan.sha);assert.equal(env.AIHR_CI_CONTROL_HEAD,plan.controller);assert.equal(env.GITHUB_SHA,plan.controller);
  assert.equal(layout.platform,'linux');assert.equal(layout.sourceHead,plan.sha);assert.equal(layout.controllerHead,plan.controller);assert.equal(layout.sourceClean,true);assert.equal(layout.controllerClean,true);
- assert.equal(layout.source,layout.workspace+'/source');assert.equal(layout.automation,layout.workspace+'/automation');assert.equal(layout.cwd,layout.source);assert.equal(layout.evidence,layout.temp+'/aihr-ci');
+ assert.equal(layout.source,layout.workspace+'/source');assert.equal(layout.automation,singletonControllerPath(unit,layout.workspace,env.GITHUB_RUN_ID));assert.equal(layout.cwd,layout.source);assert.equal(layout.evidence,layout.temp+'/aihr-ci');
  assert(!Object.keys(env).some(key=>key.startsWith('AIHR_FOCUSED_')),'Focused and full singleton intent cannot mix');
  assert(env.TEST_DB_NAMESPACE===undefined||env.TEST_DB_NAMESPACE==='');
  assert.equal(event?.repository?.full_name,'StradaverseHub/ai-hr');assert.equal(String(event.repository.id),'1333414856');
