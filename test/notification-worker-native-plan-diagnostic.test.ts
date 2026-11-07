@@ -14,7 +14,7 @@ import {adminCtx,createAppUser,owner,resetDb,seedBase,setModule,type Base} from 
 import {notificationWorkerFixtureOwner} from './fixtures/notification-worker/owner-fixture';
 import {notificationPlanLogging} from './fixtures/notification-worker/plan-logging';
 import {notificationAutoExplainMessages} from './fixtures/notification-worker/auto-explain';
-import {reviewedAdmissionExpression,notificationAdmissionSummary} from './fixtures/notification-worker/admission-plan-summary';
+import {reviewedAdmissionExpression,notificationAdmissionSummary,notificationHelperContractScans} from './fixtures/notification-worker/admission-plan-summary';
 import {notificationDiagnosticOwnership} from './fixtures/notification-worker/diagnostic-ownership';
 import {capturePostgresEvidence,postgresProfileFromEnv,validatePostgresEvidence} from '../.github/ci/postgres-evidence.mjs';
 const filename='test/notification-worker-native-plan-diagnostic.test.ts';
@@ -26,8 +26,8 @@ const beforeGuardCounts=new Map<string,number>();
 beforeAll(()=>fixture.setup(),300000);
 afterAll(async()=>{await ownership.drain();await fixture.close();});
 for(const queryShapeVariant of ['baseline','candidate']as const)describe.sequential('fresh native guard '+queryShapeVariant,()=>{
-const names=queryShapeVariant==='baseline'?['lifecycle','projection','assessment','process']:['lifecycle','projection','assessment','process','query-shape'],sources=names.map(name=>readFileSync('test/fixtures/notification-worker/'+name+'.sql','utf8'));
-const expectedAdmission=reviewedAdmissionExpression(readFileSync('test/fixtures/notification-worker/'+(queryShapeVariant==='baseline'?'assessment':'query-shape')+'.sql','utf8'));
+const names=queryShapeVariant==='baseline'?['lifecycle','projection','assessment','process','query-shape']:['lifecycle','projection','assessment','process','query-shape','exact-source'],sources=names.map(name=>readFileSync('test/fixtures/notification-worker/'+name+'.sql','utf8'));
+const expectedAdmission=reviewedAdmissionExpression(readFileSync('test/fixtures/notification-worker/'+(queryShapeVariant==='baseline'?'query-shape':'exact-source')+'.sql','utf8'));
 const admissionSummary=(entries:ReturnType<typeof notificationAutoExplainMessages>)=>notificationAdmissionSummary(entries,expectedAdmission);
 const nativeSourceHashes=Object.fromEntries(names.map((name,index)=>[name,createHash('sha256').update(sources[index]).digest('hex')]));
 let b:Base,employment:string,recipient:string,output='';
@@ -62,7 +62,7 @@ async function guard(){
 function container(){const profile=postgresProfileFromEnv(process.env),actual=capturePostgresEvidence(process.env.AIHR_CI_UNIT??'db-1',profile);validatePostgresEvidence(actual,{postgres:profile});return actual;}
 describe.sequential('real native notification nested SQL attribution',()=>{
  it.for(['open','empty','twenty']as const)('captures %s without changing native guards, budgets or JIT',{timeout:30000},(mode,context)=>ownership.run(context,async()=>{
-  const report:Record<string,unknown>={kind:'NATIVE_NOTIFICATION_SQL_ATTRIBUTION_NOT_RELEASE',releaseAuthorized:false,complete:false,mode,queryShapeVariant,nativeSourceHashes,comparison:'same frozen candidate; baseline native SQL and worker bytes unchanged from dd6; not a relabeled historical run',source:process.env.AIHR_CI_HEAD,controller:process.env.AIHR_CI_CONTROL_HEAD,run:process.env.GITHUB_RUN_ID,attempt:process.env.GITHUB_RUN_ATTEMPT,database:fixture.binding.database,
+  const report:Record<string,unknown>={kind:'NATIVE_NOTIFICATION_SQL_ATTRIBUTION_NOT_RELEASE',releaseAuthorized:false,complete:false,mode,queryShapeVariant,nativeSourceHashes,comparison:'same frozen candidate; baseline native SQL and worker bytes unchanged from7a; not a relabeled historical run',source:process.env.AIHR_CI_HEAD,controller:process.env.AIHR_CI_CONTROL_HEAD,run:process.env.GITHUB_RUN_ID,attempt:process.env.GITHUB_RUN_ATTEMPT,database:fixture.binding.database,
    baseline:{source:'5869b4e6168263404ed054da0433fa2e94a36e94',run:'42407886480',passed:50,failed:1},caseBudgetMs:30000,statementTimeoutMs:20000,lockTimeoutMs:300,
    host:{logicalCpus:cpus().length,ramBytes:totalmem(),node:process.version},
    instrumentation:'Plan-only auto_explain; nested/analyze/buffers/settings, parameters and per-node timing off. Inclusive nested durations must not be summed across nesting. Not a throughput comparison.'};
@@ -71,7 +71,10 @@ describe.sequential('real native notification nested SQL attribution',()=>{
    const events=await owner.db.insert(schema.domainEvent).values(Array.from({length:20},()=>({tenantId:b.tenantId,aggregateType:'fixture',aggregateId:randomUUID(),eventType:'leave-request.approved',actorType:'system'as const,subjectEmploymentId:employment,payload:{}}))).returning({id:schema.domainEvent.id});
    report.expectedEvents=events.map(row=>row.id);
   }
-  const original=await guard();report.guardsBefore=original;expect(original.find(row=>row.signature==='notification_worker_private.admit_login()')?.body,'actual sealed native admission body matches reviewed query owner').toBe(expectedAdmission.bodyMd5);report.containerBefore=container();save();
+  const original=await guard();report.guardsBefore=original;
+  report.helperContract=await owner.client`select count(*)::int as rows,sum(octet_length(p.prosrc))::text as canonical_bytes,max(octet_length(p.prosrc))::int as maximum_body_bytes from notification_worker_private.helper_contract c join pg_proc p on p.oid=c.signature`;
+  if(queryShapeVariant==='candidate'){const [actual]=await owner.client`select count(*)::int as rows,count(*)filter(where(c.body_source collate "C")is distinct from(p.prosrc collate "C")or md5(c.body_source)<>c.body_md5)::int as drift,sum(octet_length(c.body_source))::text as source_bytes from notification_worker_private.helper_contract c left join pg_proc p on p.oid=c.signature`;expect(actual.rows).toBe(2300);expect(actual.drift).toBe(0);report.exactSourceContract=actual;}
+  expect(original.find(row=>row.signature==='notification_worker_private.admit_login()')?.body,'actual sealed native admission body matches reviewed query owner').toBe(expectedAdmission.bodyMd5);report.containerBefore=container();save();
   const logging=await notificationPlanLogging(fixture.binding);
   let connection:ReturnType<typeof fixture.connect>;
   try{report.logging={settings:logging.settings,beforeSha256:logging.beforeSha256,instrumentedSha256:logging.instrumentedSha256};save();connection=fixture.connect();}catch(error){try{await logging.restore();}catch(restore){ownership.poison(restore instanceof Error?restore:Error('Native logging restoration refused'));}throw error;}
@@ -125,7 +128,7 @@ describe.sequential('real native notification nested SQL attribution',()=>{
     writeFileSync(join(output,mode+'-native.log'),raw,{flag:'wx',mode:0o600});save();
     if(logs.error||logs.status!==0||Buffer.byteLength(raw)>64*1024*1024)throw Error('Bounded native plan capture incomplete');
     if(pid){
-     const messages=notificationAutoExplainMessages(raw,pid);report.actualPlanCount=messages.length;report.actualPlansFile=mode+'-native.log';report.admissionSummary=admissionSummary(messages);actualAdmissionCalls=admissionSummary(messages).calls;save();
+     const messages=notificationAutoExplainMessages(raw,pid);report.actualPlanCount=messages.length;report.actualPlansFile=mode+'-native.log';report.admissionSummary=admissionSummary(messages);report.helperContractScanProof=notificationHelperContractScans(messages,expectedAdmission);actualAdmissionCalls=admissionSummary(messages).calls;save();expect(actualAdmissionCalls,'retained actual open2/empty10/twenty132 fresh admissions').toBe(mode==='twenty'?132:mode==='empty'?10:2);
      if(queryShapeVariant==='candidate'){const expected=beforeGuardCounts.get(mode);expect(expected,'complete same-job baseline call count').toBeTypeOf('number');expect(admissionSummary(messages).calls,'every original fresh native admission remains').toBe(expected);}
      expect(messages.length).toBeLessThanOrEqual(10000);
      expect(messages.length).toBeGreaterThan(0);
