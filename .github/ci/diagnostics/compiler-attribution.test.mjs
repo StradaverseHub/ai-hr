@@ -49,7 +49,7 @@ test('existing selector stays within25 inputs and reserves only the pinned sourc
  const attribution=workflow.slice(workflow.indexOf('\n  compiler-attribution:'),workflow.indexOf('\n  compiler-incremental:'));
  const incremental=workflow.slice(workflow.indexOf('\n  compiler-incremental:'),workflow.indexOf('\n  build-transport-producer:'));
  assert(attribution.includes("inputs.compiler_probe && inputs.installer_fixture_phase == 'full' && inputs.expected_sha == '"+ATTRIBUTION_SOURCE+"'"));
- assert(incremental.includes("inputs.installer_fixture_phase != 'compiler-boundary' && (inputs.compiler_probe && inputs.expected_sha != '"+ATTRIBUTION_SOURCE+"'"));
+ assert(incremental.includes("inputs.installer_fixture_phase != 'compiler-boundary' && inputs.installer_fixture_phase != 'compiler-consumer-trace' && (inputs.compiler_probe && inputs.expected_sha != '"+ATTRIBUTION_SOURCE+"'"));
  assert.match(workflow,/compiler-attribution:[\s\S]*?runs-on: ubuntu-24.04[\s\S]*?timeout-minutes: 20/);
  assert.match(workflow,/name: diagnostic-compiler-attribution\n\s+path: \$\{\{ runner.temp \}\}\/diagnostic-compiler-attribution\//);
 });
