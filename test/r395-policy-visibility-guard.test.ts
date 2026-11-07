@@ -13,7 +13,8 @@
  *   2. the policies 0515 rewrote are exactly the fixture's 57 (test/fixtures/r395-policy-quals.json,
  *      generated from pg_policies before and after 0515), each with the fixture's post-0515 USING text and
  *      its WITH CHECK text UNCHANGED from before 0515, except the explicitly pinned 0540 assessment-file, 0560 own-Profile and 0561 user-only Feedback extensions,
- *      the 0676 import-void narrowing (ADR-0157), and the 0691 authorized Bank point-read arm.
+ *      the 0676 import-void narrowing (ADR-0157), the 0691 authorized Bank point-read arm,
+ *      and the 3001 scalar-InitPlan positive Employment membership.
  *   3. the migration file's ALTER POLICY statements name exactly those 57 and set no WITH CHECK.
  *   4. the set form really is planned as an InitPlan (the `(SELECT …)` wrapper is load-bearing).
  */
@@ -57,6 +58,14 @@ async function bankPointReadQual(original: string): Promise<string> {
  expect(normalized).not.toBe('');return normalized;
 }
 
+function employmentInitPlanQual(historical:string):string {
+ // Keep the historical0515 fixture immutable. This is the independently reviewed
+ // current positive-membership expression, still evaluated once per statement.
+ const old='(id = ANY (( SELECT app.visible_employment_ids() AS visible_employment_ids)::uuid[]))';
+ expect(historical.split(old)).toHaveLength(2);
+ return historical.replace(old,'(id IN (SELECT unnest((SELECT app.visible_employment_ids()))))');
+}
+
 
 afterAll(async () => {
   await closeAll();
@@ -87,7 +96,8 @@ describe('r395 — per-row visibility functions are gone from every policy USING
     );
     const employmentFixture=FIXTURE.policies.find(p=>key(p.table,p.policy)==='employment.employment_rls');
     expect(employmentFixture).toBeTruthy();
-    const bankEmploymentQual=await bankPointReadQual(voidNarrowedQual(employmentFixture!.newQual));
+    const bankEmploymentQual=await bankPointReadQual(voidNarrowedQual(employmentInitPlanQual(employmentFixture!.newQual)));
+    expect(bankEmploymentQual.match(/SELECT unnest\(\( SELECT app\.visible_employment_ids\(\) AS visible_employment_ids\)\) AS unnest/g)).toHaveLength(2);
     const claimMembershipQual = '((tenant_id = app.current_tenant_id()) AND (employment_id IN ( SELECT unnest(app.visible_employment_ids()) AS unnest)))';
     const reconciledFeedbackKeys = new Set<string>();
     for (const p of FIXTURE.policies) {
@@ -131,19 +141,22 @@ describe('r395 — per-row visibility functions are gone from every policy USING
   });
 
   it('the set form is an InitPlan (evaluated once per statement), not a per-row call', async () => {
-    const plans: string[] = [];
+    const plans: {table:string;plan:string}[] = [];
     await owner.client.begin(async (tx) => {
       await tx.unsafe(`select set_config('app.tenant_id', gen_random_uuid()::text, true), set_config('app.user_id', gen_random_uuid()::text, true)`);
       await tx.unsafe(`set local role ai_hr_app`);
       for (const t of ['feedback_request', 'leave_request', 'person', 'employment',
         'attendance_workflow_template', 'attendance_workflow_setting', 'attendance_workflow_request', 'attendance_workflow_decision', 'performance_kpi_library']) {
-        const rows = (await tx.unsafe(`explain (costs off) select * from "${t}"`)) as unknown as Row[];
-        plans.push(rows.map((r) => r['QUERY PLAN']).join('\n'));
+        const rows = (await tx.unsafe(`explain (${t==='employment'?'verbose, ':''}costs off) select * from "${t}"`)) as unknown as Row[];
+        plans.push({table:t,plan:rows.map((r) => r['QUERY PLAN']).join('\n')});
       }
     });
-    for (const p of plans) {
+    for (const {table,plan:p} of plans) {
       expect(p).toMatch(/InitPlan/);
-      expect(p).toMatch(/ANY \(\$\d+\)|= ANY \(\(InitPlan/);
+      if(table==='employment'){
+        expect(p).toMatch(/hashed SubPlan/);
+        expect(p).toMatch(/Function Call: unnest\(\$\d+\)/);
+      }else expect(p).toMatch(/ANY \(\$\d+\)|= ANY \(\(InitPlan/);
       expect(p).not.toMatch(/can_see_(employment|person)/);
     }
   });
