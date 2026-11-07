@@ -41,6 +41,187 @@ class BundleTests(unittest.TestCase):
             (package/'index.js').write_text('module.exports='+repr(name)+';')
             (modules/name).symlink_to(package,target_is_directory=True)
 
+    def legacy_inventory(self, name):
+        # Frozen historical comparison only, never an executable release owner.
+        source = Path(__file__).with_name('fixtures') / 'runtime-inventory-format2' / name
+        expected = {'build-bundle.py': '59ea07f197164943e2c487fa097bfb2b55a9b2622d5d29e5e6859116623a0caa',
+                    'approve_staging.py': 'fdca8d8576e1fc0f81999aeb0c31e9b9a7345e1ea2bf9ea505aa3a53e1818b9d'}
+        self.assertEqual(hashlib.sha256(source.read_bytes()).hexdigest(), expected[name])
+        spec = importlib.util.spec_from_file_location('legacy_inventory_' + name.replace('.', '_'), source)
+        old = importlib.util.module_from_spec(spec); spec.loader.exec_module(old)
+        return old
+
+    def test_shared_inventory_preserves_exact_format2_manifest_archive_and_external_package_hashes(self):
+        old = self.legacy_inventory('build-bundle.py')
+        build = self.source / '.next'
+        (build / 'server/app/duplicate.js').write_bytes((build / 'server/app/page.js').read_bytes())
+        (build / 'server/app/executable.js').write_bytes(b'fixture executable'); (build / 'server/app/executable.js').chmod(0o755)
+        self.assertEqual(bundle.scan(self.source), old.scan(self.source))
+        for name in ('sharp', 'fontkit'):
+            self.assertEqual(bundle.package_identity(self.source, name), old.package_identity(self.source, name))
+        historical = self.root / 'historical'
+        before = old.pack(self.source, historical)
+        actual, archive, manifest = self.packed()
+        self.assertEqual(actual, before)
+        self.assertEqual(manifest.read_bytes(), (historical / 'build-bundle-files.json').read_bytes())
+        self.assertEqual(archive.read_bytes(), (historical / 'build-bundle.tar.gz').read_bytes())
+        bundle.unpack(archive, manifest, self.destination, self.target)
+        self.assertEqual(bundle.verify_directory(self.destination, manifest, self.target), actual)
+        self.assertEqual(old.verify_directory(self.destination, manifest, self.target), before)
+
+    def test_shared_inventory_keeps_pnpm_relative_chains_and_rejects_escape_cycle_dangling_and_package_links(self):
+        modules = self.source / 'node_modules'; alias = modules / 'sharp'
+        alias.unlink(); alias.symlink_to('link-to-sharp'); (modules / 'link-to-sharp').symlink_to('.store/sharp')
+        old = self.legacy_inventory('build-bundle.py')
+        self.assertEqual(bundle.package_identity(self.source, 'sharp'), old.package_identity(self.source, 'sharp'))
+        for target in ('../../outside', 'sharp', 'missing'):
+            alias.unlink(); alias.symlink_to(target)
+            with self.subTest(target=target), self.assertRaises((ValueError, OSError)):
+                bundle.package_identity(self.source, 'sharp')
+        alias.unlink(); alias.symlink_to('.store/sharp')
+        internal = modules / '.store/sharp/linked.js'; internal.symlink_to('index.js')
+        with self.assertRaisesRegex(ValueError, 'unsupported symlink inside external package'):
+            bundle.package_identity(self.source, 'sharp')
+
+    def test_sharp_installer_origin_and_resolved_semver_spellings_keep_the_exact_historical_identity(self):
+        old = self.legacy_inventory('build-bundle.py')
+        def installer(source, spelling):
+            modules = source / 'node_modules'; sharp = modules / '.store/sharp'
+            (sharp / 'package.json').write_text(json.dumps({'name': 'sharp', 'version': '0.35.5'}))
+            (sharp / 'node_modules/.bin').mkdir(parents=True)
+            (modules / '.store/semver/bin').mkdir(parents=True)
+            (modules / '.store/semver/bin/semver.js').write_text('fixture semver')
+            (modules / '.store/semver-link').symlink_to('semver', target_is_directory=True)
+            raw = '#!/bin/sh\nbasedir="fixture"\nexport NODE_PATH="' + str(modules) + '"\nexec node "$basedir/../../../' + spelling + '/bin/semver.js" "$@"\n'
+            (sharp / 'node_modules/.bin/semver').write_text(raw)
+        installer(self.source, 'semver'); installer(self.target, 'semver-link/../semver')
+        expected, _ = old.package_identity(self.source, 'sharp')
+        self.assertEqual(bundle.package_identity(self.source, 'sharp')[0], expected)
+        self.assertEqual(old.package_identity(self.target, 'sharp', str(self.source))[0], expected)
+        self.assertEqual(bundle.package_identity(self.target, 'sharp', str(self.source))[0], expected)
+        repeated = self.source / 'node_modules/.store/sharp/node_modules/.bin/semver'
+        repeated.write_text(repeated.read_text().replace('../../../semver/bin/semver.js',
+                            '../../../semver-link/../semver-link/bin/semver.js'))
+        # This is an actual package wrapper, not merely a resolver unit example:
+        # both traversals reach the same regular target, without a link cycle.
+        self.assertEqual(old.package_identity(self.source, 'sharp')[0], expected)
+        self.assertEqual(bundle.package_identity(self.source, 'sharp')[0], expected)
+        manifest, archive, manifest_path = self.packed()
+        bundle.unpack(archive, manifest_path, self.destination, self.target, str(self.source))
+        self.assertEqual(bundle.verify_directory(self.destination, manifest_path, self.target, str(self.source)), manifest)
+
+    def test_descriptor_inventory_refuses_ancestor_replacement_without_reading_the_replacement(self):
+        root = self.root / 'pinned'; (root / 'parent').mkdir(parents=True); (root / 'parent/member').write_bytes(b'original')
+        outside = self.root / 'outside'; outside.mkdir(); (outside / 'member').write_bytes(b'private replacement')
+        with self.assertRaises((ValueError, OSError)):
+            with bundle.inventory.PinnedTree(root) as tree:
+                expected = bundle.identity(tree.metadata('parent/member'))
+                (root / 'parent').rename(root / 'moved'); (root / 'parent').symlink_to(outside, target_is_directory=True)
+                with mock.patch.object(os, 'fdopen', side_effect=AssertionError('replacement payload must not be opened')):
+                    tree.read_bytes('parent/member', 64, expected=expected)
+        self.assertEqual((outside / 'member').read_bytes(), b'private replacement')
+        self.assertEqual((root / 'moved/member').read_bytes(), b'original')
+
+    def test_descriptor_inventory_detects_in_place_mutation_and_namespace_arrivals(self):
+        root = self.root / 'pinned'; root.mkdir(); member = root / 'member'; member.write_bytes(b'first')
+        with self.assertRaisesRegex(ValueError, 'changed while reading'):
+            with bundle.inventory.PinnedTree(root) as tree:
+                with tree.open_regular('member', 64) as (stream, _):
+                    self.assertEqual(stream.read(), b'first'); member.write_bytes(b'other')
+        with self.assertRaisesRegex(ValueError, 'directory changed'):
+            with bundle.inventory.PinnedTree(root) as tree:
+                self.assertEqual(len(tree.entries(maximum=2)), 1); (root / 'arrival').write_bytes(b'late')
+
+    def test_descriptor_inventory_rechecks_a_previously_read_file_before_returning_a_snapshot(self):
+        root = self.root / 'pinned'; root.mkdir(); member = root / 'member'; member.write_bytes(b'first')
+        with self.assertRaisesRegex(ValueError, 'changed after reading'):
+            with bundle.inventory.PinnedTree(root) as tree:
+                self.assertEqual(tree.read_bytes('member', 64), b'first')
+                member.write_bytes(b'other')
+
+    def test_descriptor_inventory_refuses_replaced_root_and_special_members_without_reading_them(self):
+        root = self.root / 'pinned'; root.mkdir(); (root / 'member').write_bytes(b'first')
+        with self.assertRaisesRegex(ValueError, 'root or ancestor replaced'):
+            with bundle.inventory.PinnedTree(root) as tree:
+                root.rename(self.root / 'moved-root'); root.mkdir(); (root / 'member').write_bytes(b'foreign')
+                tree.read_bytes('member', 64)
+        os.mkfifo(root / 'fifo')
+        with bundle.inventory.PinnedTree(root) as tree:
+            with mock.patch.object(os, 'fdopen', side_effect=AssertionError('FIFO must not be opened')):
+                with self.assertRaisesRegex(ValueError, 'nonregular or oversized'):
+                    tree.read_bytes('fifo', 64)
+
+    def test_descriptor_inventory_refuses_last_component_symlink_race_before_reading_the_target(self):
+        root = self.root / 'pinned'; root.mkdir(); member = root / 'member'; member.write_bytes(b'original')
+        secret = self.root / 'outside-secret'; secret.write_bytes(b'private replacement')
+        original_open = os.open; changed = False
+        def raced_open(name, *args, **kwargs):
+            nonlocal changed
+            if name == 'member' and kwargs.get('dir_fd') is not None and not changed:
+                changed = True; member.rename(root / 'preserved'); member.symlink_to(secret)
+            return original_open(name, *args, **kwargs)
+        with self.assertRaises(OSError):
+            with bundle.inventory.PinnedTree(root) as tree:
+                expected = bundle.identity(tree.metadata('member'))
+                with mock.patch.object(os, 'open', side_effect=raced_open), mock.patch.object(os, 'fdopen', side_effect=AssertionError('raced target must not be read')):
+                    tree.read_bytes('member', 64, expected=expected)
+        self.assertTrue(changed); self.assertEqual(secret.read_bytes(), b'private replacement')
+        self.assertEqual((root / 'preserved').read_bytes(), b'original')
+
+    def test_descriptor_inventory_bounds_entry_collection_and_dependency_link_depth(self):
+        root = self.root / 'pinned'; root.mkdir()
+        for name in ('a', 'b', 'c'):
+            (root / name).write_bytes(b'fixture')
+        with bundle.inventory.PinnedTree(root) as tree:
+            with self.assertRaisesRegex(ValueError, 'entry count exceeds bound'):
+                tree.entries(maximum=2)
+        modules = self.source / 'node_modules'
+        for index in range(102):
+            (modules / ('chain' + str(index))).symlink_to('chain' + str(index + 1) if index < 101 else '.store/sharp')
+        with bundle.inventory.PinnedTree(modules) as tree:
+            with self.assertRaisesRegex(ValueError, 'excessive dependency link'):
+                tree.resolve('chain0')
+
+    def test_shared_inventory_alias_resolver_retains_dependency_symlink_dotdot_semantics(self):
+        modules = self.source / 'node_modules'
+        # A dependency's parent is its resolved store directory, not the lexical
+        # parent of the public pnpm link. Never collapse pkg/.. before resolving it.
+        (modules / '.store/fontkit/neighbor').mkdir()
+        (modules / 'package-link').symlink_to('.store/fontkit')
+        with bundle.inventory.PinnedTree(modules) as tree:
+            self.assertEqual(tree.resolve('package-link/../fontkit/neighbor'), '.store/fontkit/neighbor')
+        self.assertEqual(bundle.inventory.build_alias_target(self.source, '.next/node_modules/fontkit-aaaaaaaa',
+                         '../../node_modules/package-link/../fontkit/neighbor'), modules / '.store/fontkit/neighbor')
+        for target in ('/etc/secret', '../../../outside', '../../node_modules/missing'):
+            with self.subTest(target=target), self.assertRaises((ValueError, OSError)):
+                bundle.inventory.build_alias_target(self.source, '.next/node_modules/fontkit-aaaaaaaa', target)
+
+    def test_fixed_inventory_import_works_from_unrelated_cwd_and_ignores_pythonpath_shadow(self):
+        shadow = self.root / 'shadow'; shadow.mkdir(); (shadow / 'runtime_inventory.py').write_text('raise RuntimeError("ambient module executed")')
+        env = {k: v for k, v in os.environ.items() if k not in {'PYTHONDONTWRITEBYTECODE', 'PYTHONPYCACHEPREFIX'}}
+        env['PYTHONPATH'] = str(shadow)
+        def probe(entry, bytecode_flags):
+            code = 'import importlib.util; p=' + repr(str(entry.resolve())) + '; s=importlib.util.spec_from_file_location("bundle",p); m=importlib.util.module_from_spec(s); s.loader.exec_module(m); print(sorted(m.inventory.EXTERNAL_PACKAGES))'
+            return subprocess.run([sys.executable, '-I', *bytecode_flags, '-c', code], cwd=shadow, env=env, capture_output=True, text=True, check=True)
+        def controller_status():
+            return subprocess.check_output(['git', '-C', str(path.resolve().parent), 'status', '--porcelain', '--untracked-files=all'], env=env, text=True)
+        before = controller_status()
+        completed = probe(path, ['-B'])
+        self.assertEqual(completed.stdout.strip(), "['fontkit', 'sharp']")
+        self.assertEqual(controller_status(), before, 'Isolated source import changed the exact controller status')
+        # -I ignores caller PYTHON* settings. Demonstrate the susceptibility in
+        # disposable exact-closure copies, never by dirtying the real controller.
+        for label, flags, expected_cache in [('isolated-only', [], True), ('isolated-no-bytecode', ['-B'], False)]:
+            directory = self.root / label; directory.mkdir()
+            for name, source in [('build-bundle.py', path), ('runtime_inventory.py', path.with_name('runtime_inventory.py'))]:
+                (directory / name).write_bytes(source.read_bytes())
+            result = probe(directory / 'build-bundle.py', flags)
+            self.assertEqual(result.stdout.strip(), "['fontkit', 'sharp']")
+            cache = directory / '__pycache__'
+            self.assertEqual(cache.exists(), expected_cache)
+            self.assertEqual(bool(list(cache.glob('runtime_inventory.*.pyc'))), expected_cache)
+        self.assertEqual(controller_status(), before, 'Private comparison changed the exact controller status')
+
     def packed(self):
         m=bundle.pack(self.source,self.output)
         return m,self.output/'build-bundle.tar.gz',self.output/'build-bundle-files.json'
