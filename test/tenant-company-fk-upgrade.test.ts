@@ -145,6 +145,7 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    'app.personnel_overview_narrow_rows(date,uuid[])',
    'app.personnel_overview_page_rows(date,uuid[],uuid[])',
    'app.access_workforce_picker_facts(uuid[])',
+   'app.personnel_overview_filter_fields(date,uuid[])',
    'app.notification_projection_exists(uuid,uuid,text)',
   ].sort();
   const beforeFunctions=new Set(beforePerformancePrivileges.functions.map(row=>row.fn));
@@ -172,6 +173,34 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
   const isClaimPolicy=(row:(typeof beforePerformancePrivileges.policies)[number])=>row.schemaname==='public'&&row.tablename==='claim_request'&&row.policyname==='claim_request_rls';
   expect(beforePerformancePrivileges.policies.find(isClaimPolicy)?.qual).toBe(expectedClaimQuals[0]);
   expect(afterPerformancePrivileges.policies.find(isClaimPolicy)?.qual).toBe(expectedClaimQuals[1]);
+  // Independently pin the complete Employment authority graph on BOTH sides of
+  // 3001. Only the two positive membership terms change representation; the
+  // outer/inner tenant and void guards, Bank CASE and partner arms stay exact.
+  const expectedEmploymentQuals=await storage.client.begin(async tx=>{
+   const memberships=[
+    'id=any((select app.visible_employment_ids())::uuid[])',
+    'id in(select unnest((select app.visible_employment_ids())))',
+   ],qualifiers:string[]=[];
+   for(const membership of memberships){
+    const inherited=`(voided_at is null) and ((tenant_id=app.current_tenant_id()) and ((${membership}) or app.can_admin_payroll_for(company_id) or app.can_admin_perfcomp_for(company_id)))`;
+    const expression=`(voided_at is null) and (tenant_id=app.current_tenant_id()) and case
+     when (select current_setting('app.bank_import_point_read',true))='on'
+     then case when app.is_admin_for(company_id) then true else (${inherited}) end
+     else (${inherited}) end`;
+    await tx.unsafe('create policy performance_expected_employment_membership on public.employment for select to ai_hr_app using ('+expression+')');
+    const [row]=await tx<{qual:string}[]>`select qual from pg_policies where schemaname='public' and tablename='employment' and policyname='performance_expected_employment_membership'`;
+    qualifiers.push(row.qual);await tx.unsafe('drop policy performance_expected_employment_membership on public.employment');
+   }
+   return qualifiers;
+  });
+  const isEmploymentPolicy=(row:(typeof beforePerformancePrivileges.policies)[number])=>row.schemaname==='public'&&row.tablename==='employment'&&row.policyname==='employment_rls';
+  const beforeEmployment=beforePerformancePrivileges.policies.find(isEmploymentPolicy),afterEmployment=afterPerformancePrivileges.policies.find(isEmploymentPolicy);
+  expect(beforeEmployment?.qual).toBe(expectedEmploymentQuals[0]);
+  expect(afterEmployment?.qual).toBe(expectedEmploymentQuals[1]);
+  const wrappedMembership='(id IN ( SELECT unnest(( SELECT app.visible_employment_ids() AS visible_employment_ids)) AS unnest))';
+  expect(afterEmployment?.qual?.split(wrappedMembership)).toHaveLength(3);
+  expect(beforeEmployment).toMatchObject({permissive:'PERMISSIVE',roles:'{ai_hr_app}',cmd:'ALL',with_check:'((tenant_id = app.current_tenant_id()) AND app.is_admin_for(company_id))'});
+  expect({...afterEmployment,qual:expectedEmploymentQuals[0]}).toEqual(beforeEmployment);
   // Inspect the new receipt table separately, then compare every pre-existing ACL and policy.
   const receiptTable='notification_event_processing';
   const receiptRelation=afterPerformancePrivileges.relations.find(row=>row.rel===receiptTable);
@@ -195,7 +224,8 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    relations:afterPerformancePrivileges.relations.filter(row=>row.rel!==receiptTable),
    columns:afterPerformancePrivileges.columns.filter(row=>row.rel!==receiptTable),
    functions:afterPerformancePrivileges.functions.filter(row=>!addedFunctions.includes(row.fn)),
-   policies:afterPerformancePrivileges.policies.filter(row=>!receiptPolicies.includes(row)).map(row=>isClaimPolicy(row)?{...row,qual:expectedClaimQuals[0]}:row),
+   policies:afterPerformancePrivileges.policies.filter(row=>!receiptPolicies.includes(row)).map(row=>
+    isClaimPolicy(row)?{...row,qual:expectedClaimQuals[0]}:isEmploymentPolicy(row)?{...row,qual:expectedEmploymentQuals[0]}:row),
   }).toEqual(beforePerformancePrivileges);
   const complete=await ledger();expect(complete).toHaveLength(671+APPROVED_UPGRADE_TAIL.length);expect(complete.slice(0,671)).toEqual(afterLedger);
   expect(complete.slice(0,performanceStart)).toEqual(beforePerformanceLedger);

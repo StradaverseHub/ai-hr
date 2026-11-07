@@ -2354,3 +2354,21 @@ correction found during isolated correctness review. It changes no historical SQ
 or native notification content, action or recipient rule. Earlier receipt identity,
 retention and least-privilege grants stay intact. Recheck the installed ledger and
 all allocations at admission. No installation or production authority is claimed.
+
+## Statement-local Employment membership — 7 November 2026 (uninstalled candidate)
+
+Reserve `3001_employment_membership_initplan`, idx2301 / when1793330002601,
+SQL SHA-256 `cd25b675ca404c364d4aef1f436f2e8a89ddeff8d4c63c355cd1fb28dc1507d0`.
+Fresh origin fetch including tags and the all-ref/root-tree/captured-WIP scan covered
+5,778 refs, 3,085 distinct root trees, 675 migration trees, 481 committed journals and
+388 readable worktrees. Maximum prior claims were3000 /2300 /1793330002600.
+The unrelated malformed foreign journal remains untouched; its literal bounds were
+included. All737 predecessor journal entries and historical SQL bytes are preserved.
+
+The append guards the complete native Employment policy predecessor and visibility
+function identity before replacing exactly two positive membership terms. It retains
+the scalar InitPlan around the same visibility function. No function, grant, WITH CHECK,
+tenant/void/bank/partner authority or database setting changes. Actual appended-policy
+authority, populated replay and representative performance qualification remain required;
+the diagnostic alone is not deployment authority. Reconcile current reservations and the
+actual ordered installed ledger/watermark before staging. Production remains on hold.
