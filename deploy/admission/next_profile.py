@@ -171,7 +171,7 @@ class NextRuntime:
         database = urlsplit(environment.get('DATABASE_URL', ''))
         require(database.scheme in ('postgres', 'postgresql') and database.username == 'ai_hr_app'
                 and database.hostname == '127.0.0.1' and database.port == 5433
-                and database.path in ('/ai_hr_dev', '/ai_hr_test') and not database.query and not database.fragment,
+                and database.path == '/ai_hr_test_w1' and not database.query and not database.fragment,
                 'Owned hosted app-role database required')
         secure_path(pathlib.Path(environment['HOME']), uid, directory=True)
         require(not any((pathlib.Path(environment['HOME']) / name).exists()

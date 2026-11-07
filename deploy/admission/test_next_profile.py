@@ -89,7 +89,7 @@ class NextProfileTests(unittest.TestCase):
         self.gather()
         self.environment = {'version': 1, 'values': {'NODE_ENV': 'production', 'HOME': '/var/empty/aihr',
             'PATH': '/usr/bin:/bin', 'NEXT_TELEMETRY_DISABLED': '1', 'AUTH_PROVIDER': 'internal',
-            'ALLOW_DEMO_SESSION': 'false', 'DATABASE_URL': 'postgres://ai_hr_app@127.0.0.1:5433/ai_hr_dev',
+            'ALLOW_DEMO_SESSION': 'false', 'DATABASE_URL': 'postgres://ai_hr_app@127.0.0.1:5433/ai_hr_test_w1',
             'AUTH_SESSION_KEY': 'a' * 64, 'AUTH_PUBLIC_ORIGIN': 'https://localhost:3443', 'AUDIT_HASH_CHAIN_ENABLED': 'true'}}
         self.envelope = {'version': 1, 'kind': 'HOSTED_NEXT_SAME_BUILD_V1', 'workers': 2,
             'suite': 'workflow-preflight', 'cpuOversubscriptionDiagnostic': False, 'slice': 'aihr-native-next.slice',
@@ -198,6 +198,21 @@ class NextProfileTests(unittest.TestCase):
         self.assertEqual(set(runtime.value['units']), {'aihr-web@1.service', 'aihr-web@2.service'})
         self.assertEqual(runtime.private_environment['values']['AUTH_DEFAULT_ORGANIZATION'], 'native-a')
         self.assertEqual(len(runtime.system_files), 1)
+
+    def test_hosted_profile_uses_only_exact_canonical_worker_database(self):
+        self.runtime()  # Canonical worker1 positive; no DB connection is opened.
+        for url in ('postgres://ai_hr_app@127.0.0.1:5433/ai_hr_dev',
+                    'postgres://ai_hr_app@127.0.0.1:5433/ai_hr_test',
+                    'postgres://ai_hr_app@127.0.0.1:5433/ai_hr_test_w2',
+                    'postgres://ai_hr_app@127.0.0.1:5433/ai_hr_test_w1_foreign',
+                    'postgres://postgres@127.0.0.1:5433/ai_hr_test_w1',
+                    'postgres://ai_hr_app@outside.invalid:5433/ai_hr_test_w1',
+                    'postgres://ai_hr_app@127.0.0.1:5432/ai_hr_test_w1',
+                    'postgres://ai_hr_app@127.0.0.1:5433/ai_hr_test_w1?options=unsafe'):
+            self.environment['values']['DATABASE_URL'] = url
+            self.write_metadata()
+            with self.subTest(url=url), self.assertRaises(C.Refused):
+                self.runtime()
 
     def test_unknown_member_writable_code_and_hardlink_are_not_cache_exceptions(self):
         for kind in ('unknown', 'writable', 'hardlink', 'cache-file'):
