@@ -1,6 +1,11 @@
 name: mobile-ios-phone-review
 run-name: Field Notes iPhone staging build · ${{ github.sha }}
 on:
+  push:
+    branches: [codex/mobile-field-notes-20261107]
+    paths:
+      - .github/workflows/mobile-ios-phone-review.yml
+      - .github/ci/native-ios-phone-review.sh
   workflow_dispatch:
 permissions:
   contents: read
