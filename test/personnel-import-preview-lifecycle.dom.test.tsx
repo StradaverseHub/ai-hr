@@ -23,11 +23,12 @@ function mount(kind:'section'|'employee') {render(<NextIntlClientProvider locale
 beforeEach(()=>{vi.resetAllMocks();mocks.read.mockImplementation(async(file:File)=>({name:file.name,text:file.name,dependentsText:'',extraTexts:{}}));
   // 524303d9 — an employee file upload posts its original bytes to the Import History upload route; the
   // fixture answers that route with the same commit mock, so success and failure stay the commit's own.
-  vi.stubGlobal('fetch',vi.fn(async()=>new Response(JSON.stringify(await mocks.commit()),{status:200})));});
+  vi.stubGlobal('fetch',vi.fn(async()=>{const result=await mocks.commit();return new Response(JSON.stringify(result),{status:result&&'error' in result?400:200});}));});
 describe.each(['section','employee'] as const)('%s import input ownership',kind=>{
   const preview=kind==='section'?sectionPreview:employeePreview;
   it('removes an old ready preview while reading a replacement and after its server validation refuses',async()=>{
-    mocks.validate.mockResolvedValueOnce(preview).mockRejectedValueOnce(new Error('At most 500 rows.'));
+    mocks.validate.mockResolvedValueOnce(preview);
+    if(kind==='employee')mocks.validate.mockResolvedValueOnce({error:'At most 500 rows.'});else mocks.validate.mockRejectedValueOnce(new Error('At most 500 rows.'));
     mount(kind);pick('valid.csv');expect(await screen.findByRole('button',{name:'Import 1 valid'})).toBeEnabled();
     const reading=deferred<{name:string;text:string;dependentsText:string;extraTexts:Record<string,string>}>();mocks.read.mockReturnValueOnce(reading.promise);
     pick('oversized.csv');expect(screen.queryByRole('button',{name:'Import 1 valid'})).toBeNull();
@@ -60,7 +61,7 @@ describe.each(['section','employee'] as const)('%s import input ownership',kind=
     if(outcome==='success'){
       const result=kind==='section'?{section:'qualification',updated:1,skipped:0,failed:[],fileErrors:[],runId:null}:{companyId:'c1',imported:1,failed:[],skipped:0,dependentsImported:0,superiorFailed:[],fileErrors:[],runId:null};
       await act(async()=>saving.resolve(result));await screen.findByText(kind==='section'?'1 register record saved':'Imported 1 employee');
-    }else{await act(async()=>saving.reject(new Error('Fixture save failed.')));await screen.findByText('Fixture save failed.');expect(screen.queryByText(/register record saved|Imported 1 employee/)).toBeNull();}
+    }else{await act(async()=>kind==='employee'?saving.resolve({error:'Fixture save failed.'}):saving.reject(new Error('Fixture save failed.')));await screen.findByText('Fixture save failed.');expect(screen.queryByText(/register record saved|Imported 1 employee/)).toBeNull();}
     expect(screen.getByText('submitted.csv loaded')).toBeInTheDocument();expect(screen.queryByText('replacement.csv loaded')).toBeNull();expect(screen.getByLabelText('CSV data')).toBeEnabled();for(const radio of screen.getAllByRole('radio'))expect(radio).toBeEnabled();
   });
 });
@@ -68,4 +69,23 @@ describe.each(['section','employee'] as const)('%s import input ownership',kind=
 it('uses the register descriptor labels for the changed fields',async()=>{
   mocks.validate.mockResolvedValue(sectionPreview);mount('section');pick('valid.csv');await screen.findByRole('button',{name:'Import 1 valid'});
   expect(screen.getByText('From (year & month), Highest qualification')).toBeInTheDocument();expect(screen.queryByText('From Ym, Is Highest')).toBeNull();
+});
+
+it('shows a safe retry message for an unexpected employee validation transport failure',async()=>{
+  mocks.validate.mockRejectedValue(new Error('Minified React error #441; PRIVATE details'));
+  mount('employee');pick('fixture.csv');
+  await screen.findByText('The import could not be checked. Try again. If it keeps failing, contact your administrator.');
+  expect(screen.queryByText(/#441|PRIVATE/)).toBeNull();
+  expect(screen.queryByRole('button',{name:/Import .* valid/})).toBeNull();
+  expect(mocks.commit).not.toHaveBeenCalled();
+});
+
+it('shows a returned action refusal for pasted employee data without claiming success',async()=>{
+  mocks.validate.mockResolvedValue(employeePreview);mocks.commit.mockResolvedValue({error:'Employee import inputs changed. Preview the complete file again.'});
+  mount('employee');fireEvent.click(screen.getByText('Or paste CSV instead'));
+  fireEvent.change(screen.getByLabelText('CSV data'),{target:{value:'pasted fixture'}});
+  fireEvent.click(screen.getByRole('button',{name:'Validate'}));
+  const apply=await screen.findByRole('button',{name:'Import 1 valid'});await waitFor(()=>expect(apply).toBeEnabled());fireEvent.click(apply);
+  await screen.findByText('Employee import inputs changed. Preview the complete file again.');
+  expect(screen.queryByText('Imported 1 employee')).toBeNull();expect(mocks.commit).toHaveBeenCalledOnce();
 });
