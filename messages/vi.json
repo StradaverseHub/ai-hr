@@ -15711,8 +15711,8 @@
     "builderRate": "Hệ số",
     "builderOrdinaryRate": "Số chia mức thông thường",
     "builderContextHint": "Chỉ đặt các liên kết được công thức sử dụng. Kiểm thử công thức đã lưu trong trình tạo với nhân viên, kỳ và chu kỳ.",
-    "builderNoFormula": "Chọn công thức đã kiểm thử và đang dùng",
-    "builderNoneEligible": "Chưa có công thức sẵn sàng. Hãy kiểm thử và kích hoạt công thức trong Trình tạo công thức lương.",
+    "builderNoFormula": "Chọn công thức đã lưu",
+    "builderNoneEligible": "Chưa có công thức đã lưu. Tạo và lưu trong Trình tạo công thức lương.",
     "builderSavedUnavailable": "{formulaId} (lựa chọn đã lưu, hiện không khả dụng)",
     "builderFormula": "Mã công thức",
     "kind_formula_builder": "Trình tạo công thức lương"
@@ -26898,7 +26898,18 @@
       "noEmployees": "Không có hồ sơ làm việc trong công ty này hoặc công ty mẹ được phép.",
       "noActiveEmployees": "Hiện không có nhân viên đáp ứng điều kiện ngày làm việc và trạng thái hoạt động.",
       "noLinkedLogin": "Có nhân viên nhưng không ai có tài khoản liên kết đang hoạt động. HR cần kiểm tra liên kết tài khoản trước khi họ có thể duyệt."
-    }
+    },
+    "chooseCompanies": "Chọn công ty",
+    "searchCompanies": "Tìm công ty được phép",
+    "removeCompany": "Bỏ {value}",
+    "sharedCompanyHelp": "Thay đổi quy trình dùng chung áp dụng cho mọi công ty đã chọn.",
+    "hierarchyWarning": "Một số quan hệ báo cáo chưa đầy đủ. Có thể lưu quy trình hợp lệ; đơn bị ảnh hưởng phải xác định đủ người phê duyệt trước khi tiếp tục.",
+    "loadingEmployees": "Đang tải nhân viên…",
+    "retryEmployees": "Thử lại",
+    "notEligibleForCompanies": "Không đủ điều kiện duyệt cho mọi công ty đã chọn. Kiểm tra việc làm, tài khoản và quyền duyệt.",
+    "noEmployeeMatches": "Không có nhân viên phù hợp.",
+    "previousEmployees": "Nhân viên trước",
+    "nextEmployees": "Thêm nhân viên"
   },
   "attendanceHistory": {
     "title": "Lịch sử đơn",
@@ -31440,7 +31451,9 @@
       "variancePct": "Chênh lệch %",
       "reason": "Lý do",
       "effectiveDate": "Ngày hiệu lực",
-      "remarks": "Ghi chú"
+      "remarks": "Ghi chú",
+      "comparisonStatus": "Trạng thái đối chiếu",
+      "comparisonResults": "Kết quả đối chiếu"
     },
     "reasons": {
       "noChange": "Không thay đổi",
@@ -31518,7 +31531,20 @@
       "draft": "Bản nháp",
       "processed": "Đã xử lý",
       "closed": "Đã đóng"
-    }
+    },
+    "reconciliationTitle": "Đối soát lương",
+    "summaryNetPay": "Cơ sở tổng hợp nhân viên: lương thực nhận đã ghi nhận",
+    "allPayCycles": "Tất cả chu kỳ lương",
+    "basicView": "Xem tổng hợp",
+    "statusVariance": "Có chênh lệch",
+    "statusNoVariance": "Không chênh lệch",
+    "statusNewJoiner": "Nhân viên mới",
+    "statusLeaver": "Nghỉ việc / Chấm dứt",
+    "statusOnePeriod": "Chỉ trả một kỳ — nhân sự kiểm tra",
+    "backToReconciliation": "Quay lại đối soát lương",
+    "searchPayItems": "Tìm khoản lương",
+    "removePayItem": "Bỏ {value}",
+    "newAmount": "Mới"
   },
   "loginPresentation": {
     "headline": "Con người. Công việc. Cùng một nơi.",
@@ -33458,10 +33484,10 @@
     "currentPayItem": "Khoản lương hiện tại",
     "input": "Đầu vào mẫu",
     "testSaved": "Kiểm thử bản đã lưu",
-    "saveBeforeTest": "Lưu thay đổi trước khi kiểm thử hoặc kích hoạt.",
+    "saveBeforeTest": "Lưu thay đổi trước khi kiểm thử.",
     "passed": "Đạt",
     "failed": "Không đạt",
-    "staleReceipt": "Kết quả không thể kích hoạt phiên bản và ngữ cảnh hiện tại. Hãy kiểm thử lại.",
+    "staleReceipt": "Kiểm thử thuộc phiên bản hoặc bối cảnh khác. Kiểm thử lại nếu cần.",
     "working": "Đang xử lý…",
     "save": "Lưu phiên bản",
     "saved": "Đã lưu phiên bản.",

@@ -24,6 +24,7 @@ export function payrollComparisonRemarks(row:ComparisonRow,t?:PayrollComparisonT
   return notes.join(' ');
 }
 export function payrollComparisonCell(row:ComparisonRow,id:string,t?:PayrollComparisonTranslate):string|null{
+  if(id==='variancePct'&&row.variancePct===null&&row.currency!==null&&row.previous==='0.00'&&row.current!=='0.00')return t?t('newAmount'):'New';
   if(id==='reason')return t?t('reasons.'+row.reason.reason):PAYROLL_REASON_LABELS[row.reason.reason];
   if(id==='effectiveDate')return row.reason.effectiveDate;
   if(id==='remarks')return [payrollComparisonRemarks(row,t),row.hrRemark?.body].filter(Boolean).join(' ');

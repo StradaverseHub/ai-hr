@@ -19,8 +19,7 @@ function keys(run: PayrollComparisonExecution, row: ComparisonRow) {
 }
 
 export function builtInPayrollReconciliationSpec(payItemCode: unknown) {
-  return payrollComparisonSpec(payItemCode === undefined ? undefined
-    : validatePayrollComparisonDefinition({ ...DEFAULT_PAYROLL_COMPARISON, payItemCode }));
+  return payrollComparisonSpec(validatePayrollComparisonDefinition({...DEFAULT_PAYROLL_COMPARISON,runType:'all',minVariance:'0.00',onlyVariances:false,payItemCode:payItemCode??'__NETPAY__'}));
 }
 
 export async function attachPayrollReconciliationRemarks(tx: Tx, ctx: SessionContext, run: PayrollComparisonExecution) {

@@ -1,6 +1,6 @@
 import {personnelFormulaDependencyTx,personnelFormulaLibraryTx} from './pay-formula-personnel';
 import {PAY_FORMULA_PERSONNEL_ADAPTERS} from '../lib/pay-formula-personnel';
-/** Native owner of reusable formula identities, immutable evidence and activation. */
+/** Native owner of reusable saved formula identities and immutable calculation evidence. */
 import {createHash,randomUUID} from 'node:crypto';
 import {sql} from 'drizzle-orm';
 import {withTenant,type SessionContext,type Tx} from '../db/client';
@@ -80,7 +80,7 @@ async function dependencySnapshotTx(tx:Tx,ctx:SessionContext,program:FormulaProg
   for(const raw of dependencies){const dependency=raw.toUpperCase();if(!outputCodes.has(dependency)){outputCodes.add(dependency);codes.add(dependency);queue.push(dependency);}}
  }
  const catalog=rows.filter(r=>codes.has(r.code.toUpperCase())).map(r=>({...r,rule:r.rule?.kind==='formula_builder'&&r.rule.formulaId===selfId?{...r.rule,dependencies:undefined}:r.rule}));
- const active=await tx.execute<{code:string;revisionId:string;hash:string}>(sql`select f.formula_id as code,r.id as "revisionId",r.content_hash as hash from pay_formula f join lateral(select * from pay_formula_event e where e.formula_id=f.id and e.kind in ('activated','deactivated','deleted') order by sequence desc limit 1)e on e.kind='activated' join pay_formula_revision r on r.id=e.revision_id where f.tenant_id=${ctx.tenantId}::uuid and f.formula_id<>${selfId??''} order by f.formula_id`);
+ const active=await tx.execute<{code:string;revisionId:string;hash:string}>(sql`select a.code,a.revision_id as "revisionId",a.content_hash as hash from pay_formula f join lateral app.pay_formula_saved(f.formula_id) a on true where f.tenant_id=${ctx.tenantId}::uuid and f.formula_id<>${selfId??''} order by f.formula_id`);
  const personnel=await personnelFormulaDependencyTx(tx,program,ctx);
  return {...(personnel?{personnel}:{}),catalog,groups:selectedGroups,active:active.filter(r=>relevantFormulas.has(r.code)),registry:PAY_FORMULA_REGISTRY_VERSION,provider:PAY_FORMULA_PROVIDER_VERSION,evaluator:PAY_FORMULA_EVALUATOR_VERSION,...(fixedAllowanceBasis?{fixedAllowanceBasis}:{})};
 }
@@ -90,14 +90,22 @@ async function graph(tx:Tx,ctx:SessionContext,formulaId:string,dependencies:stri
  const nodes=rows.map(r=>({...r,rule:r.rule?.kind==='formula_builder'&&r.rule.formulaId===formulaId?{...r.rule,dependencies}:r.rule}));
  const planned=planResolutionOrder(nodes);if(!planned.ok)throw new PayFormulaError('The formula creates a circular or invalid Pay Item dependency.');return {nodes,planned};
 }
-export async function loadActiveFormulaProgramTx(tx:Tx,ctx:SessionContext,formulaId:string,companyId?:string):Promise<ActiveFormula>{
+/** The latest successfully saved non-deleted revision is the calculation authority.
+ * The caller holds the catalogue lock; private source permissions are checked at actual use. */
+export async function loadSavedFormulaProgramTx(tx:Tx,ctx:SessionContext,formulaId:string,companyId?:string):Promise<ActiveFormula>{
  await authority(tx,ctx,companyId);const n=code(formulaId);
- const [r]=await tx.execute<{id:string;code:string;revision_id:string;ordinal:number;program:FormulaProgram;content_hash:string;dependencies:string[];test_id:string;dependency_fingerprint:string;evaluator_version:string;registry_version:string}>(sql`select * from app.pay_formula_active(${n})`);
- if(!r||r.evaluator_version!==PAY_FORMULA_EVALUATOR_VERSION||r.registry_version!==PAY_FORMULA_REGISTRY_VERSION)throw new PayFormulaError('The linked formula is inactive, untested or requires a compatible evaluator.');
+ const [r]=await tx.execute<{id:string;code:string;revision_id:string;ordinal:number;program:FormulaProgram;content_hash:string;dependencies:string[];evaluator_version:string;registry_version:string}>(sql`select * from app.pay_formula_saved(${n})`);
+ if(!r||r.evaluator_version!==PAY_FORMULA_EVALUATOR_VERSION||r.registry_version!==PAY_FORMULA_REGISTRY_VERSION)throw new PayFormulaError('The linked saved formula is unavailable or requires a compatible evaluator.');
  const [retained]=await tx.execute<{source:string}>(sql`select source from pay_formula_revision where id=${r.revision_id}::uuid and tenant_id=${ctx.tenantId}::uuid`);if(!retained)throw new PayFormulaError('The saved formula revision is unavailable.');assertPayFormulaCompleteSource(retained.source);
- const dependencyFingerprint=await formulaDependencyFingerprintTx(tx,ctx,r.program,n);if(dependencyFingerprint!==r.dependency_fingerprint)throw new PayFormulaError('Formula dependencies changed. Retest and activate the saved formula before calculating payroll.');
- return {id:r.id,formulaId:n,revisionId:r.revision_id,ordinal:r.ordinal,program:r.program,contentHash:r.content_hash,dependencies:r.dependencies,evaluatorVersion:r.evaluator_version,registryVersion:r.registry_version,dependencyFingerprint};
+ const dependencies=await dependenciesTx(tx,ctx,r.program);
+ if(canonical(dependencies)!==canonical(r.dependencies))throw new PayFormulaError('Formula dependency membership changed. Save a new formula revision before calculating payroll.');
+ await graph(tx,ctx,n,dependencies);
+ const dependencyFingerprint=await formulaDependencyFingerprintTx(tx,ctx,r.program,n);
+ return {id:r.id,formulaId:n,revisionId:r.revision_id,ordinal:r.ordinal,program:r.program,contentHash:r.content_hash,dependencies,evaluatorVersion:r.evaluator_version,registryVersion:r.registry_version,dependencyFingerprint};
 }
+/** Compatibility export for existing consumers. Availability no longer depends on activation. */
+export const loadActiveFormulaProgramTx=loadSavedFormulaProgramTx;
+
 async function identity(tx:Tx,ctx:SessionContext,id:string){if(!uuid.test(id))throw new PayFormulaError('Formula is unavailable.');const [f]=await tx.execute<{id:string;formulaId:string}>(sql`select id,formula_id as "formulaId" from pay_formula where id=${id}::uuid and tenant_id=${ctx.tenantId}::uuid for update`);if(!f)throw new PayFormulaError('Formula is unavailable.');const [deleted]=await tx.execute(sql`select 1 from pay_formula_event where formula_id=${id}::uuid and kind='deleted'`);if(deleted)throw new PayFormulaError('This formula has been deleted.');return f;}
 async function latest(tx:Tx,id:string){const [r]=await tx.execute<PayFormulaRevision>(sql`select id,ordinal,description,method,source,program,content_hash as "contentHash",dependencies,dependency_snapshot as "dependencySnapshot",created_at::text as "createdAt" from pay_formula_revision where formula_id=${id}::uuid order by ordinal desc limit 1`);return r;}
 export async function savePayFormula(ctx:SessionContext,input:{id?:string;expectedRevisionId?:string;formulaId:string;description:string;method:'write'|'conditions';source:string;program?:FormulaProgram}){
@@ -113,7 +121,14 @@ export async function savePayFormula(ctx:SessionContext,input:{id?:string;expect
  if(id){const f=await identity(tx,ctx,id),before=await latest(tx,id);if(!before||before.id!==input.expectedRevisionId)throw new PayFormulaError('The saved formula changed. Reopen it before saving.');if(before.source!==source)refuseConstantZeroDivisor();if(f.formulaId!==formulaId)await tx.execute(sql`update pay_formula set formula_id=${formulaId} where id=${id}::uuid`);}else{id=randomUUID();await tx.execute(sql`insert into pay_formula(id,tenant_id,formula_id,created_by) values(${id}::uuid,${ctx.tenantId}::uuid,${formulaId},${ctx.userId!}::uuid)`);await event(tx,ctx,{id,kind:'created'});}
  await graph(tx,ctx,formulaId,dependencies);const dependencySnapshot=await dependencySnapshotTx(tx,ctx,program,formulaId),old=await latest(tx,id),revisionId=randomUUID(),contentHash=digest({source,program,description,method:input.method,dependencySnapshot,registry:analysis.registryVersion,evaluator:analysis.evaluatorVersion});
  if(old?.contentHash===contentHash)return {id,revisionId:old.id};
- await tx.execute(sql`insert into pay_formula_revision(id,tenant_id,formula_id,ordinal,description,method,source,program,content_hash,dependencies,dependency_snapshot,created_by) values(${revisionId}::uuid,${ctx.tenantId}::uuid,${id}::uuid,${(old?.ordinal??0)+1},${description},${input.method},${source},${JSON.stringify(program)}::jsonb,${contentHash},${JSON.stringify(dependencies)}::jsonb,${JSON.stringify(dependencySnapshot)}::jsonb,${ctx.userId!}::uuid)`);await event(tx,ctx,{id,kind:'saved',revisionId});return {id,revisionId};
+ await tx.execute(sql`insert into pay_formula_revision(id,tenant_id,formula_id,ordinal,description,method,source,program,content_hash,dependencies,dependency_snapshot,created_by) values(${revisionId}::uuid,${ctx.tenantId}::uuid,${id}::uuid,${(old?.ordinal??0)+1},${description},${input.method},${source},${JSON.stringify(program)}::jsonb,${contentHash},${JSON.stringify(dependencies)}::jsonb,${JSON.stringify(dependencySnapshot)}::jsonb,${ctx.userId!}::uuid)`);await event(tx,ctx,{id,kind:'saved',revisionId});
+ // The new immutable revision and every linked dependency plan become visible atomically.
+ const {nodes,planned}=await graph(tx,ctx,formulaId,dependencies);
+ for(const node of nodes){
+  if(node.rule?.kind==='formula_builder'&&node.rule.formulaId===formulaId){await tx.execute(sql`update pay_component set rule=${JSON.stringify(node.rule)}::jsonb where id=${node.id}::uuid`);await markRunsAffectedByPayComponentTx(tx,ctx,{componentId:node.id,code:node.code});}
+  await tx.execute(sql`update pay_component set resolution_order=${planned.order.get(node.code.toUpperCase())??0} where id=${node.id}::uuid`);
+ }
+ return {id,revisionId};
  });
 }
 /** 02472802 — sample-value test of unsaved source. Formula catalogue access only (the same authority as
@@ -138,7 +153,7 @@ export async function setPayFormulaActive(ctx:SessionContext,p:{id:string;revisi
  for(const n of nodes){if(n.rule?.kind==='formula_builder'&&n.rule.formulaId===f.formulaId){await tx.execute(sql`update pay_component set rule=${JSON.stringify(n.rule)}::jsonb where id=${n.id}::uuid`);await markRunsAffectedByPayComponentTx(tx,ctx,{componentId:n.id,code:n.code});}await tx.execute(sql`update pay_component set resolution_order=${planned.order.get(n.code.toUpperCase())??0} where id=${n.id}::uuid`);}
  return {id:p.id};
  });}
-export async function deletePayFormula(ctx:SessionContext,p:{id:string;reason:string}){return locked(ctx,async tx=>{await identity(tx,ctx,p.id);if(!p.reason?.trim())throw new PayFormulaError('A deletion reason is required.');const used=await tx.execute(sql`select 1 from pay_formula_event where formula_id=${p.id}::uuid and kind in ('linked','activated') limit 1`);if(used.length)throw new PayFormulaError('Referenced or previously active formulas must be retained. Deactivate the formula instead.');await event(tx,ctx,{id:p.id,kind:'deleted',detail:{reason:p.reason.trim().slice(0,1000)}});return {id:p.id};});}
+export async function deletePayFormula(ctx:SessionContext,p:{id:string;reason:string}){return locked(ctx,async tx=>{await identity(tx,ctx,p.id);if(!p.reason?.trim())throw new PayFormulaError('A deletion reason is required.');const used=await tx.execute(sql`select 1 from pay_formula_event where formula_id=${p.id}::uuid and kind in ('linked','activated') limit 1`);if(used.length)throw new PayFormulaError('Referenced or previously active formulas must be retained for payroll history.');await event(tx,ctx,{id:p.id,kind:'deleted',detail:{reason:p.reason.trim().slice(0,1000)}});return {id:p.id};});}
 export async function saveFormulaAccumulationGroup(ctx:SessionContext,p:{code:string;members:string[]}){return locked(ctx,async tx=>{
  const n=code(p.code),members=[...new Set(p.members.map(itemCode))].sort();if(members.length>250||members.length!==p.members.length)throw new PayFormulaError('Choose up to 250 distinct Pay Items.');
  const catalog=await tx.execute<{code:string;kind:string;archived:boolean}>(sql`select code,kind,archived_at is not null as archived from pay_component where tenant_id=${ctx.tenantId}::uuid`);
@@ -181,7 +196,7 @@ async function viewTx(tx:Tx,ctx:SessionContext,id:string,includeEvaluations=fals
  const recent=includeEvaluations?await tx.execute<{id:string;revisionId:string;companyId:string;employmentId:string;readRequirements:FormulaReadRequirements;componentCode:string;period:string;amount:string;createdAt:string}>(sql`select id,revision_id as "revisionId",company_id as "companyId",employment_id as "employmentId",read_requirements as "readRequirements",component_code as "componentCode",period,amount,created_at::text as "createdAt" from pay_formula_evaluation where formula_id=${id}::uuid and tenant_id=${ctx.tenantId}::uuid order by created_at desc,id desc limit 100`):[],evaluations:PayFormulaEvaluationSummary[]=[];
  for(const evaluation of recent)if(await formulaReadRequirementsAllowedTx(tx,ctx,evaluation.companyId,evaluation.employmentId,evaluation.readRequirements)){const {companyId:_company,employmentId:_employment,readRequirements:_requirements,...summary}=evaluation;evaluations.push({...summary,...await evaluationDisplayContextTx(tx,ctx,evaluation.companyId,evaluation.employmentId)});}
  const status=lifecycle?.kind==='deleted'?'deleted':activeRevisionId?'active':lifecycle?.kind==='deactivated'?'inactive':events.some(e=>e.kind==='tested'&&e.revisionId===latest.id&&e.detail.passed)?'tested':'draft';
- return {id:f.id,formulaId:f.formulaId,status,activeRevisionId,latest,versions,tests,evaluations,usage,idLocked,updatedAt:events[0]?.createdAt??f.createdAt,capabilities:{view:true,edit:status!=='deleted',test:status!=='deleted',activate:status!=='deleted'&&tests.some(t=>t.revisionId===latest.id&&t.passed)&&activeRevisionId!==latest.id,deactivate:!!activeRevisionId,delete:!idLocked&&status!=='deleted'}};
+ return {id:f.id,formulaId:f.formulaId,status,activeRevisionId,latest,versions,tests,evaluations,usage,idLocked,updatedAt:events[0]?.createdAt??f.createdAt,capabilities:{view:true,edit:status!=='deleted',test:status!=='deleted',activate:false,deactivate:false,delete:!idLocked&&status!=='deleted'}};
 }
 export async function getPayFormula(ctx:SessionContext,id:string){if(!uuid.test(id))return null;return withTenant(ctx,async tx=>{await authority(tx,ctx);return viewTx(tx,ctx,id,true);});}
 export async function listPayFormulas(ctx:SessionContext,filters:{search?:string;status?:string;method?:string}={}){return withTenant(ctx,async tx=>{
@@ -203,7 +218,7 @@ export async function searchPayFormulaEmployees(ctx:SessionContext,query:string,
 export async function payFormulaOptions(ctx:SessionContext){return withTenant(ctx,async tx=>{
  await authority(tx,ctx);const companies=await tx.execute<{id:string;name:string}>(sql`select id,legal_name as name from company where tenant_id=${ctx.tenantId}::uuid and archived_at is null and app.can_admin_payroll_for(id) order by legal_name`),employees=await tx.execute<{id:string;companyId:string;code:string;name:string}>(sql`select e.id,e.company_id as "companyId",coalesce(e.employee_code,'') as code,p.full_name as name from employment e join person p on p.id=e.person_id and p.tenant_id=e.tenant_id where e.tenant_id=${ctx.tenantId}::uuid and app.can_admin_payroll_for(e.company_id) and app.access_workforce_employment(e.id,'workforce.view') order by e.employee_code,e.id limit 50`),cycles=await tx.execute<{id:string;companyId:string;code:string;label:string}>(sql`select id,company_id as "companyId",coalesce(code,id::text) as code,name as label from payroll_cycle where tenant_id=${ctx.tenantId}::uuid and archived_at is null and app.can_admin_payroll_for(company_id) order by code`),payItems=await tx.execute<{code:string;name:string}>(sql`select code,name from pay_component where tenant_id=${ctx.tenantId}::uuid and archived_at is null and kind<>'contribution' order by code`),formulas=await tx.execute<{formulaId:string}>(sql`select formula_id as "formulaId" from pay_formula where tenant_id=${ctx.tenantId}::uuid order by formula_id`),activeFormulas:{id:string;formulaId:string;description:string;revisionId:string;dependencies:string[]}[]=[];
  for(const f of formulas){try{const a=await loadActiveFormulaProgramTx(tx,ctx,f.formulaId);const [r]=await tx.execute<{description:string}>(sql`select description from pay_formula_revision where id=${a.revisionId}::uuid`);activeFormulas.push({id:a.id,formulaId:a.formulaId,revisionId:a.revisionId,description:r.description,dependencies:a.dependencies});}catch(e){if(!(e instanceof PayFormulaError))throw e;}}
- return {personnelFields:await personnelFormulaLibraryTx(tx,ctx,companies),companies,employees,cycles,payItems:payItems.filter(p=>!isStatutoryComponent(p.code)),activeFormulas,accumulations:await loadFormulaAccumulationGroupsTx(tx,ctx),capabilities:{view:true,edit:true,test:true,activate:true,deactivate:true,delete:true}};
+ return {personnelFields:await personnelFormulaLibraryTx(tx,ctx,companies),companies,employees,cycles,payItems:payItems.filter(p=>!isStatutoryComponent(p.code)),activeFormulas,accumulations:await loadFormulaAccumulationGroupsTx(tx,ctx),capabilities:{view:true,edit:true,test:true,activate:false,deactivate:false,delete:true}};
  });}
 
 export async function listPayFormulaBatches(ctx:SessionContext,p:{companyId:string;period:string;cycleId:string}){return withTenant(ctx,async tx=>{

@@ -10,7 +10,7 @@ const LIST = '/admin/attendance/approval-workflow';
 async function publicError(e: unknown) { if(e instanceof AttendanceCcError)return(await getTranslations('attendanceWorkflow.v4'))(e.code);if(e instanceof AttendanceWorkflowError&&e.code==='inUse')return(await getTranslations('attendanceWorkflow.v4'))('deletePending');if(e instanceof AttendanceWorkflowError&&e.code==='stale')return(await getTranslations('attendanceWorkflow.v4'))('deleteChanged'); if (e instanceof AttendanceLevelError) return (await getTranslations('attendanceWorkflow.v3'))(attendanceLevelProblemMessageKey(e.problem)); return e instanceof AttendanceWorkflowError ? e.message : 'The workflow could not be saved. Check the configuration and try again.'; }
 export async function saveAttendanceWorkflowAction(lineageId: string | null, input: AnyAttendanceWorkflowInput, autoPriority = false) {
     const { s, scopeIds } = await scopedAdmin();
-    if (!scopeIds.includes(input.companyId))
+    if ((input.companyIds??[input.companyId]).some(id=>!scopeIds.includes(id)))
         return { ok: false as const, error: 'Select a company in your active access scope.' };
     try {
         const row = await saveAttendanceWorkflow(s, input, lineageId ?? undefined, undefined, autoPriority === true);
@@ -25,7 +25,7 @@ export async function saveAttendanceWorkflowAction(lineageId: string | null, inp
 }
 export async function previewAttendanceWorkflowAction(lineageId: string | null, input: AnyAttendanceWorkflowInput) {
     const { s, scopeIds } = await scopedAdmin();
-    if (!scopeIds.includes(input.companyId))
+    if ((input.companyIds??[input.companyId]).some(id=>!scopeIds.includes(id)))
         return { ok: false as const, error: 'Select a company in your active access scope.' };
     try {
         return { ok: true as const, preview: await previewAttendanceWorkflow(s, input, lineageId ?? undefined) };
@@ -57,4 +57,13 @@ export async function restoreAttendanceWorkflowAction(lineageId:string,version:n
  const {s,scopeIds}=await scopedAdmin();
  try{const row=await restoreAttendanceWorkflow(s,lineageId,version,scopeIds);revalidatePath(LIST);revalidatePath(`${LIST}/${lineageId}`);return{ok:true as const,lineageId:row.lineageId};}
  catch(error){return{ok:false as const,error:await publicError(error)};}
+}
+
+export async function searchAttendanceApproversAction(input:{companyIds:string[];query:string;page:number;selectedIds?:string[]}){
+ const {s,scopeIds}=await scopedAdmin();
+ try{
+  if(input.companyIds.some(id=>!scopeIds.includes(id)))throw new AttendanceWorkflowError('scope','Select companies in your permitted scope.');
+  const {searchAttendanceApprovers}=await import('@/packs/attendance/service');
+  return {ok:true as const,value:await searchAttendanceApprovers(s,input)};
+ }catch(error){return {ok:false as const,error:await publicError(error)};}
 }

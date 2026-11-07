@@ -9,10 +9,13 @@ import { companyWorkflowHref, workflowContext, workflowRoot, type WorkflowQuery 
 export default async function NewAttendanceWorkflowPage({ searchParams }: { searchParams: Promise<WorkflowQuery> }) {
   const { s, scopeIds } = await scopedAdmin(), t = await getTranslations('attendanceWorkflow');
   let context;
-  try { context = workflowContext(await searchParams, scopeIds); } catch { notFound(); }
+  const query=await searchParams;
+  const applicationType=query.applicationType??'irregularity';
+  if(applicationType!=='irregularity'&&applicationType!=='self_overtime')notFound();
+  try { context = typeof query.companyId==='string'?workflowContext({...query,applicationType}, scopeIds):scopeIds[0]?{companyId:scopeIds[0],applicationType}:null; } catch { notFound(); }
   if (!context) redirect(workflowRoot);
   const [options, workflows] = await Promise.all([
-    attendanceApplicationFilterOptions(s, [context.companyId]),
+    attendanceApplicationFilterOptions(s, scopeIds),
     listAttendanceWorkflows(s, [context.companyId]),
   ]);
   const defaultPriority = nextAttendanceWorkflowPriority(workflows

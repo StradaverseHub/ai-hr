@@ -18,7 +18,7 @@ import {
   ALL_RECORDED_PAY_ITEMS, DEFAULT_PAYROLL_COMPARISON, PAYROLL_COMPARISON_DATASET, payrollComparisonFilters,
   validatePayrollComparisonDefinition, type PayrollComparisonMovement,
 } from '../lib/payroll-period-comparison';
-import {payrollComparisonDatedSubjects,recordedPayrollComparisonAmount,recordedPayrollComparisonCodes} from '../lib/payroll-comparison-source';
+import {RECORDED_PAYROLL_TOTALS,payrollComparisonDatedSubjects,recordedPayrollComparisonAmount,recordedPayrollComparisonCodes} from '../lib/payroll-comparison-source';
 import { comparePayrollResults, type ComparisonIdentity, type ComparisonResult } from '../lib/payroll-comparison-result';
 import { MasterReportAccessError } from './employee-master-access';
 const object=(value:unknown):Record<string,unknown>=>value&&typeof value==='object'&&!Array.isArray(value)?value as Record<string,unknown>:{};
@@ -44,7 +44,7 @@ export async function payrollComparisonOptions(ctx:SessionContext,scope:readonly
     return {companies,departments,businessUnits,positions,cycles,periods:periods.map(row=>row.period)};
   },{readOnlySnapshot:true});
   const items=await listPayComponents(ctx,{readyOnly:true});
-  return {...choices,payItems:[{code:ALL_RECORDED_PAY_ITEMS,name:'All recorded pay items'},{code:'BASIC',name:'Basic Salary actually paid'},...items.filter(item=>item.code!=='BASIC').map(item=>({code:item.code,name:item.name}))]};
+  return {...choices,payItems:[{code:ALL_RECORDED_PAY_ITEMS,name:'All recorded pay items'},{code:'BASIC',name:'Basic Salary actually paid'},...Object.entries(RECORDED_PAYROLL_TOTALS).map(([code,name])=>({code,name})),...items.filter(item=>item.code!=='BASIC').map(item=>({code:item.code,name:item.name}))]};
 }
 export type PayrollComparisonExecution={filters:ReturnType<typeof payrollComparisonFilters>;definition:ReturnType<typeof validatePayrollComparisonDefinition>;
   result:ComparisonResult;companyIds:string[];sourceRevisions:{id:string;version:number;runId:string}[];contextUnavailable:boolean};
@@ -153,13 +153,15 @@ function compareRecordedPayItems(input:Parameters<typeof comparePayrollResults>[
     found.add(code);
     if ((found.size+1)*sources.length>100000) throw new Error('This comparison has too many employee and pay item combinations. Choose one company, pay cycle or pay item.');
   }
-  const codes=[...found].sort();
+  const codes=[...found].sort().filter(code=>!input.filters.payItemCodes?.length||input.filters.payItemCodes.includes(code));
   const compare = (code:string) => comparePayrollResults({...input,definition:{...input.definition,payItemCode:code},paginate:false,
     sources:code==='BASIC'?sources:sources.map(source=>({...source,proratedCoverage:undefined,
       amount:recordedPayrollComparisonAmount('0',source.recordedItems,code,source.companyId)}))});
   const basic=compare('BASIC');
   if(!basic.available)return basic;
-  const rows=basic.rows.map(row=>({...row,payItemCode:'BASIC'}));
+  const includeBasic=!input.filters.payItemCodes?.length||input.filters.payItemCodes.includes('BASIC');
+  const rows=includeBasic?basic.rows.map(row=>({...row,payItemCode:'BASIC'})):[];
+  if(!includeBasic){basic.comparisonRows=0;basic.displayedRows=0;for(const key of Object.keys(basic.reasonCounts))basic.reasonCounts[key as keyof typeof basic.reasonCounts]=0;for(const key of Object.keys(basic.reasonFilterCounts))basic.reasonFilterCounts[key as keyof typeof basic.reasonFilterCounts]=0;if(basic.summary){basic.summary.totals=[];basic.summary.unexplained=0;}}
   const unavailablePayItems:string[]=[];
   if(basic.summary)basic.summary.totals=basic.summary.totals.map(total=>({...total,payItemCode:'BASIC'}));
   for(const code of codes){

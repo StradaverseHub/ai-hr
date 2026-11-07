@@ -15711,8 +15711,8 @@
     "builderRate": "Rate multiplier",
     "builderOrdinaryRate": "Ordinary-rate divisor",
     "builderContextHint": "Set only the bindings used by this formula. Test the saved formula in Formula Builder with its employee, period and cycle.",
-    "builderNoFormula": "Choose an active tested formula",
-    "builderNoneEligible": "No formulas are ready to use. Test and activate a formula in Pay Formula Builder.",
+    "builderNoFormula": "Choose a saved formula",
+    "builderNoneEligible": "No saved formulas are available. Create and save a formula in Pay Formula Builder.",
     "builderSavedUnavailable": "{formulaId} (saved selection, currently unavailable)",
     "builderFormula": "Formula ID",
     "kind_formula_builder": "Pay Formula Builder"
@@ -26840,7 +26840,7 @@
       "directSuperior": "Direct Superior",
       "selectedEmployees": "Selected Employees",
       "depth": "Superior depth",
-      "depthOption": "Direct Superior {number}",
+      "depthOption": "{number, select, 1 {First-Level Direct Superior} 2 {Second-Level Direct Superior} 3 {Third-Level Direct Superior} 4 {Fourth-Level Direct Superior} 5 {Fifth-Level Direct Superior} other {Direct Superior Level {number}}}",
       "depthHelp": "Depth is measured from the applicant, independently of the other approval levels.",
       "hrAlternative": "Offer an explicit HR alternative for this superior level",
       "selectedHelp": "Keep each selected employee required. To replace someone later, HR must record a reasoned change to that outstanding slot.",
@@ -26898,7 +26898,18 @@
       "noEmployees": "No employment records are available in this company or its permitted parent companies.",
       "noActiveEmployees": "No employment currently meets the employment-date and active-status requirements.",
       "noLinkedLogin": "Employees are available, but none has an active linked login. HR must review account links before these employees can approve."
-    }
+    },
+    "chooseCompanies": "Choose companies",
+    "searchCompanies": "Search permitted companies",
+    "removeCompany": "Remove {value}",
+    "sharedCompanyHelp": "Changes to this shared workflow apply to every selected company.",
+    "hierarchyWarning": "Some reporting relationships are incomplete. You can save a valid workflow; affected applications must resolve every required approver before proceeding.",
+    "loadingEmployees": "Loading employees…",
+    "retryEmployees": "Try again",
+    "notEligibleForCompanies": "Not eligible to approve for every selected company. Check employment, linked login and company approval rights.",
+    "noEmployeeMatches": "No employees match your search.",
+    "previousEmployees": "Previous employees",
+    "nextEmployees": "More employees"
   },
   "attendanceHistory": {
     "title": "Application History",
@@ -31440,7 +31451,9 @@
       "variancePct": "Variance %",
       "reason": "Reason",
       "effectiveDate": "Effective date",
-      "remarks": "Remarks"
+      "remarks": "Remarks",
+      "comparisonStatus": "Comparison Status",
+      "comparisonResults": "Comparison Results"
     },
     "reasons": {
       "noChange": "No change",
@@ -31518,7 +31531,20 @@
       "draft": "Draft",
       "processed": "Processed",
       "closed": "Closed"
-    }
+    },
+    "reconciliationTitle": "Payroll Reconciliation",
+    "summaryNetPay": "Employee summary basis: recorded Net Pay",
+    "allPayCycles": "All Pay Cycles",
+    "basicView": "Basic View",
+    "statusVariance": "Variance",
+    "statusNoVariance": "No Variance",
+    "statusNewJoiner": "New Joiner",
+    "statusLeaver": "Resigned / Terminated",
+    "statusOnePeriod": "Payment in one period — HR review",
+    "backToReconciliation": "Back to Payroll Reconciliation",
+    "searchPayItems": "Search Pay Items",
+    "removePayItem": "Remove {value}",
+    "newAmount": "New"
   },
   "loginPresentation": {
     "headline": "Your people. Your work. One place.",
@@ -33458,10 +33484,10 @@
     "currentPayItem": "Current Pay Item",
     "input": "Sample input",
     "testSaved": "Test saved revision",
-    "saveBeforeTest": "Save your changes before testing or activating.",
+    "saveBeforeTest": "Save your changes before testing.",
     "passed": "Passed",
     "failed": "Failed",
-    "staleReceipt": "This result cannot activate the current revision and context. Test again.",
+    "staleReceipt": "This test belongs to a different revision or context. Test again if needed.",
     "working": "Working…",
     "save": "Save revision",
     "saved": "Revision saved.",

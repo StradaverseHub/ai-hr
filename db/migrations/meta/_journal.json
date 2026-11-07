@@ -4929,6 +4929,20 @@
       "when": 1793330002200,
       "tag": "2600_onboarding_current_personnel",
       "breakpoints": true
+    },
+    {
+      "idx": 2400,
+      "version": "7",
+      "when": 1793330002700,
+      "tag": "3100_pay_formula_saved_availability",
+      "breakpoints": true
+    },
+    {
+      "idx": 2401,
+      "version": "7",
+      "when": 1793330002701,
+      "tag": "3101_attendance_shared_workflow",
+      "breakpoints": true
     }
   ]
 }

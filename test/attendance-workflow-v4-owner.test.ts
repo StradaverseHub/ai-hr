@@ -293,3 +293,38 @@ it('private CC delivery derives its tenant from the validated lease even with ab
  const proofs=await owner.client`select app.company_org_descendant_for_tenant(${base.tenantId}::uuid,${company.id}::uuid,${company.id}::uuid) as wrong_tenant,app.company_org_descendant_for_tenant(${foreign.id}::uuid,${base.companyId}::uuid,${base.companyId}::uuid) as wrong_child`;
  expect(proofs[0]).toEqual({wrong_tenant:false,wrong_child:false});
 });
+
+describe('approved shared workflows and actor-scoped approver search',()=>{
+ it('saves a shared definition with missing dynamic superiors, previews warnings and refuses an unresolved application',async()=>{
+  const root=adminCtx(base),worker=await actor('Fictional missing-superior applicant','employee',base.deptA);
+  const [other]=await owner.db.insert(schema.company).values({tenantId:base.tenantId,legalName:'Fictional shared company'}).returning();
+  const input={companyId:base.companyId,companyIds:[base.companyId,other.id],applicationType:'irregularity' as const,routingVersion:4 as const,code:'SHARED_WARNING',name:'Shared warning workflow',priority:1,active:true,criteria:{employeeIds:[worker.employmentId]},stages:[{name:'Level 1',mode:'any_one' as const,sources:[{kind:'direct_manager' as const,depth:1}],hrAlternative:false}],cc:[]};
+  const saved=await saveAttendanceWorkflow(root,input);
+  expect(saved.companyIds.sort()).toEqual([base.companyId,other.id].sort());
+  const assignments=await owner.client`select company_id from attendance_workflow_company where template_id=${saved.id} order by company_id`;
+  expect(assignments.map(row=>row.company_id)).toEqual([base.companyId,other.id].sort());
+  const preview=await previewAttendanceWorkflow(root,input,saved.lineageId);
+  expect(preview.rows.find(row=>row.employmentId===worker.employmentId)).toMatchObject({employeeCode:expect.anything(),levelProblem:{code:'missing_superior',levelIndex:0}});
+  await setAttendanceWorkflowEnabled(root,base.companyId,'irregularity',true);
+  const on=todayInKualaLumpur();await checkIn(root,{employmentId:worker.employmentId,date:on,time:'08:00',manual:true});await checkOut(root,{employmentId:worker.employmentId,date:on,time:'17:00',manual:true});
+  await expect(requestAttendanceCorrection(worker.ctx,{employmentId:worker.employmentId,date:on,checkIn:'09:00',checkOut:'18:00',reason:'No silent approval bypass'})).rejects.toThrow();
+  expect(await owner.db.select().from(schema.attendanceWorkflowRequest)).toHaveLength(0);
+  const updated=await saveAttendanceWorkflow(root,{...input,name:'Shared revision',expectedVersion:1},saved.lineageId);
+  expect(updated.version).toBe(2);
+  await expect(saveAttendanceWorkflow(root,{...input,expectedVersion:1},saved.lineageId)).rejects.toMatchObject({code:'stale'});
+ });
+ it('discovers an authorized sibling-company approver but does not grant an unqualified candidate new rights',async()=>{
+  const root=adminCtx(base),worker=await actor('Fictional group applicant','employee',base.deptA),reviewer=await actor('Fictional group reviewer');
+  const [other]=await owner.db.insert(schema.company).values({tenantId:base.tenantId,legalName:'Fictional sibling approval company'}).returning();
+  await owner.db.update(schema.employment).set({companyId:other.id}).where(eq(schema.employment.id,reviewer.employmentId));
+  const {searchAttendanceApprovers}=await import('../core/attendance-workflow');
+  const search=await searchAttendanceApprovers(root,{companyIds:[base.companyId],query:'Fictional group reviewer',page:0});
+  expect(search.rows).toEqual([expect.objectContaining({id:reviewer.employmentId,eligible:true,company:'Fictional sibling approval company'})]);
+  const input={companyId:base.companyId,routingVersion:4 as const,applicationType:'irregularity' as const,code:'SIBLING_SELECTED',name:'Authorized sibling reviewer',priority:1,active:true,criteria:{employeeIds:[worker.employmentId]},stages:[{name:'Level 1',mode:'any_one' as const,sources:[{kind:'specific_employee' as const,employmentIds:[reviewer.employmentId]}],hrAlternative:false}],cc:[]};
+  const saved=await saveAttendanceWorkflow(root,input);
+  expect((await previewAttendanceWorkflow(root,input,saved.lineageId)).rows[0].resolvedStages[0].approvers[0].employmentId).toBe(reviewer.employmentId);
+  await owner.db.update(schema.roleAssignment).set({companyId:other.id}).where(eq(schema.roleAssignment.appUserId,reviewer.ctx.userId!));
+  expect((await searchAttendanceApprovers(root,{companyIds:[base.companyId],query:'Fictional group reviewer',page:0})).rows[0].eligible).toBe(false);
+  await expect(saveAttendanceWorkflow(root,{...input,expectedVersion:1},saved.lineageId)).rejects.toThrow();
+ });
+});

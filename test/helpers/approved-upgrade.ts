@@ -44,9 +44,14 @@ export const APPROVED_UPGRADE_TAIL=[
  {idx:1656,when:1793330001856,tag:'2406_payroll_reconciliation_generation'},
  {idx:1660,when:1793330001860,tag:'2460_payroll_individual_import_queue'},
  {idx:1900,when:1793330002200,tag:'2600_onboarding_current_personnel'},
+ {idx:2400,when:1793330002700,tag:'3100_pay_formula_saved_availability'},
+ {idx:2401,when:1793330002701,tag:'3101_attendance_shared_workflow'},
 ] as const;
 // Final pending 2109/2126 bytes reviewed from engine 128bc2539; no applied-prefix hashes change.
 const APPROVED_UPGRADE_HASHES:Record<string,string>={
+ '3100_pay_formula_saved_availability':'c2d36a2cb4526170642915136346cc7d17dbca38235e92760be5fc24052c4233',
+ '3101_attendance_shared_workflow':'1ff35258ed557cbc011760c4f85100a3e6bb56afa3e3315773696768c247d320',
+
  '2106_account_management_subject':'d4bbd5d20d9b40294b31d022a3ec0cf29e9a290f10749493c4934db31c5cdd67',
  '2107_probation_module_permission':'da94777be8e2b3f4365851eb785a64baaf9c54e9fb64808f7c72379ee94732f8',
  '2108_rewards_entity_classification':'8f485227fba437d5a24bc8b762630c670c38364d98d10e85802ce6e05bddd1c6',

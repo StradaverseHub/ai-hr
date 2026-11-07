@@ -1,5 +1,5 @@
 'use client';
-import { Combobox } from '@/components/ui/combobox';
+import {ApproverPicker} from './approver-picker';
 import {useEffect,useRef,useState} from 'react';
 import {useTranslations} from 'next-intl';
 import {Button,inputCls} from '@/components/ui';
@@ -16,23 +16,9 @@ function SourceFields({id,source,employees,onChange,allowCustom=false}:{id:strin
  const move=(index:number,offset:number)=>{if(source.kind!=='specific_employee')return;const ids=[...source.employmentIds],next=index+offset;if(next<0||next>=ids.length)return;[ids[index],ids[next]]=[ids[next],ids[index]];onChange({...source,employmentIds:ids});};
  return <div className="space-y-3"><label className="block text-sm">{v3('source')}<select className={inputCls} value={source.kind} onChange={event=>onChange(event.target.value==='direct_manager'?{kind:'direct_manager',depth:1}:event.target.value==='specific_employee'?{kind:'specific_employee',employmentIds:[]}:{kind:'custom_email',addresses:[]})}><option value="direct_manager">{v3('directSuperior')}</option><option value="specific_employee">{v3('selectedEmployees')}</option>{allowCustom&&<option value="custom_email">{v4('customEmail')}</option>}</select></label>
  {source.kind==='direct_manager'?<div><label className="block text-sm">{v3('depth')}<select aria-describedby={`${id}-depth-help`} className={inputCls} value={source.depth} onChange={e=>onChange({...source,depth:Number(e.target.value)})}>{[1,2,3,4,5].map(number=><option key={number} value={number}>{v3('depthOption',{number})}</option>)}</select></label><p id={`${id}-depth-help`} className="mt-1 text-xs text-muted-foreground">{v3('depthHelp')}</p></div>:source.kind==='custom_email'?<label className="block text-sm">{v4('customEmail')}<textarea className={`${inputCls} min-h-24`} maxLength={16050} value={addresses} onChange={e=>{setAddresses(e.target.value);onChange({kind:'custom_email',addresses:e.target.value.split(/[,;\n]/).map(s=>s.trim()).filter(Boolean)});}}/><span className="mt-1 block text-xs text-muted-foreground">{v4('emailHelp')}</span></label>:<div className="space-y-3">
-  <ol className="space-y-2">{selected.map((key,index)=><li key={key} className="flex flex-wrap items-center gap-2 rounded-md border border-border p-2 text-sm"><span className="min-w-0 flex-1 break-words">{index+1}. {label(key)}</span><Button type="button" variant="secondary" disabled={index===0} aria-label={v3('personUp',{name:label(key)})} onClick={()=>move(index,-1)}>{t('moveUp')}</Button><Button type="button" variant="secondary" disabled={index===selected.length-1} aria-label={v3('personDown',{name:label(key)})} onClick={()=>move(index,1)}>{v3('moveDown')}</Button><Button type="button" variant="secondary" aria-label={v3('removePerson',{name:label(key)})} onClick={()=>onChange({kind:'specific_employee',employmentIds:selected.filter(value=>value!==key)})}>{t('remove')}</Button></li>)}</ol>
-  {selected.length < 20 && <Combobox
-    key={selected.join(',')}
-    value=""
-    placeholder={v3('choosePerson')}
-    searchPlaceholder={v4('searchEmployees')}
-    noResultsLabel={v4('noEligible')}
-    legacySuffix=""
-    options={employees.filter(employee => !selected.includes(employee.id)).map(employee => ({
-      value: employee.id,
-      label: [employee.employeeCode, employee.name].filter(Boolean).join(' · '),
-    }))}
-    onValueChange={value => {
-      if (value && !selected.includes(value)) onChange({kind:'specific_employee',employmentIds:[...selected,value]});
-    }}
-  />}
-  {!employees.length&&<p role="status" className="text-sm text-muted-foreground">{v4('noEligible')}</p>}
+  <ApproverPicker value={selected} employees={employees} onChange={ids=>onChange({kind:'specific_employee',employmentIds:ids})}/>
+
+
  </div>}</div>;
 }
 export function AttendanceStageEditorV4({stages,employees,problems,onChange}:{stages:AttendanceV4Level[];employees:Employee[];problems:readonly AttendanceLevelProblem[];onChange:(levels:AttendanceV4Level[])=>void}) {

@@ -35,21 +35,34 @@ export function recordedPayrollComparisonCurrency(statutory: unknown, companyId:
   return stamp?.version === 1 && stamp.payingCompanyId === companyId &&
     typeof stamp.currency === 'string' && /^[A-Z]{3}$/.test(stamp.currency) ? stamp.currency : null;
 }
+export const RECORDED_PAYROLL_TOTALS = {
+ __NETPAY__:'Net Pay',__GROSS__:'Gross Pay',__TOTAL_DEDUCTIONS__:'Total Deductions',__EMPLOYER_COST__:'Employer Cost',
+ __epfEmployee__:'EPF Employee',__epfEmployer__:'EPF Employer',__socsoEmployee__:'SOCSO Employee',__socsoEmployer__:'SOCSO Employer',
+ __eisEmployee__:'EIS Employee',__eisEmployer__:'EIS Employer',__pcb__:'PCB',__cp38__:'CP38',__zakat__:'Zakat',__hrdf__:'HRDF',__lp__:'Levy',__socsoSkbbk__:'SOCSO SKBBK',
+} as const;
+/** Totals are explicit saved columns/keys, never a reconstruction from current payroll settings. */
+export function recordedPayrollReconciliationItems(statutory:unknown,totals:Record<string,string>){
+ const saved=object(statutory)??{},amounts:Record<string,unknown>={...totals};
+ for(const code of Object.keys(RECORDED_PAYROLL_TOTALS)){
+  const field=code.slice(2,-2);if(Object.prototype.hasOwnProperty.call(saved,field))amounts[code]=saved[field];
+ }
+ return {...saved,reconciliationAmounts:amounts};
+}
 export function recordedPayrollComparisonCodes(statutory: unknown): string[] {
-  const lines = object(statutory)?.componentLines;
-  if (!Array.isArray(lines)) return [];
-  return lines.flatMap(entry => {
-    const code = object(entry)?.code;
-    return typeof code === 'string' && /^[-A-Za-z0-9_/.]{1,64}$/.test(code) ? [code] : [];
-  });
+  const saved=object(statutory),lines=[...(Array.isArray(saved?.componentLines)?saved.componentLines:[]),...(Array.isArray(saved?.importedLines)?saved.importedLines:[])];
+  const codes=lines.flatMap(entry=>{const code=object(entry)?.code;return typeof code==='string'&&/^[-A-Za-z0-9_/.]{1,64}$/.test(code)?[code]:[];});
+  return [...new Set([...codes,...Object.keys(object(saved?.reconciliationAmounts)??{})])];
 }
 
 /** Recorded lines establish their own amounts. Only an explicit complete-itemization stamp proves that
  * an absent code paid zero: legacy arrays may contain just formula OT while other pay has no item code. */
 export function recordedPayrollComparisonAmount(basicSalary: string, statutory: unknown, code: string, companyId?:string): string | null {
   if (code === 'BASIC') return payrollMinorDecimal(payrollAmountMinor(basicSalary));
-  const lines = object(statutory)?.componentLines;
-  if (!Array.isArray(lines)) return null;
+  const saved=object(statutory),totals=object(saved?.reconciliationAmounts);
+  if(Object.prototype.hasOwnProperty.call(RECORDED_PAYROLL_TOTALS,code)){try{return totals&&Object.prototype.hasOwnProperty.call(totals,code)?payrollMinorDecimal(payrollAmountMinor(totals[code])):null;}catch{return null;}}
+  const native=saved?.componentLines,imported=saved?.importedLines;
+  if(!Array.isArray(native)&&!Array.isArray(imported))return null;
+  const lines=[...(Array.isArray(native)?native:[]),...(Array.isArray(imported)?imported:[])];
   let amount = BigInt('0'),matched=false;
   for (const entry of lines) {
     const line = object(entry);

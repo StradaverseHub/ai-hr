@@ -268,6 +268,7 @@ describe('v3 exact tenant/company, live identity and immutable history boundary'
         const [department] = await owner.db.insert(schema.department).values({ tenantId: b.tenantId, companyId: company.id, name: 'Fictional sibling department' }).returning();
         const siblingBase = { ...b, companyId: company.id, deptB: department.id };
         const sibling = await actor('Fictional sibling company employee', 'employee', department.id, siblingBase);
+        await owner.db.update(schema.roleAssignment).set({companyId:company.id}).where(eq(schema.roleAssignment.appUserId,sibling.ctx.userId!));
         const otherBase = await seedBase();
         const foreign = await actor('Fictional separate tenant employee', 'employee', otherBase.deptB, otherBase);
         for (const outsider of [sibling, foreign]) {

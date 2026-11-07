@@ -1755,3 +1755,7 @@ journals were also checked; none had a higher competing claim. The original
 alpha journal prefix and SQL bytes are preserved. This is an unapplied source
 reservation: recheck freshly fetched integration journals, peer WIP and the exact
 installed ordered ledger before integration or release admission.
+
+## Four approved feedback items — 7 November 2026 (unapplied)
+
+Branch codex/approved-four-20261107 reserves 3100_pay_formula_saved_availability at idx2400 / when1793330002700 and 3101_attendance_shared_workflow at idx2401 / when1793330002701. Fresh main/alpha are 4a5a9de8c. A scan of local/remote ref journals and readable registered worktree journals found highest competing timestamp1793330002601 (3001_employment_membership_initplan). Read-only staging reports704 applied entries through1793330002200. Preserve all existing SQL bytes and the canonical journal prefix; recheck the exact ordered installation ledger and peer reservations at integration/admission. Neither reservation grants installation priority or deployment authority.

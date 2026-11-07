@@ -1,4 +1,5 @@
 'use client';
+import {WorkflowCompanyContext} from './approver-picker';
 import type {AnyAttendanceWorkflowInput} from '@/lib/attendance-workflow-config';
 import { useEffect, useRef, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
@@ -24,7 +25,7 @@ export function WorkflowForm({ initial, lineageId, context, options, defaultPrio
     const employmentTypeLabel = useTranslations('people.wizard.employmentType');
     const v3 = useTranslations('attendanceWorkflow.v3');
     const t = useTranslations('attendanceWorkflow'), choices = useTranslations('admin.leave'), router = useRouter();
-    const [input, setInput] = useState<AnyAttendanceWorkflowInput>(initial ?? { ...context, routingVersion: 4, cc:[], code: '', name: '', description: '', priority: defaultPriority, criteria: {}, stages: [emptyAttendanceV4Level(0)], active: false });
+    const [input, setInput] = useState<AnyAttendanceWorkflowInput>(initial ?? { ...context, companyIds:[context.companyId], routingVersion: 4, cc:[], code: '', name: '', description: '', priority: defaultPriority, criteria: {}, stages: [emptyAttendanceV4Level(0)], active: false });
     const [levelProblems, setLevelProblems] = useState<AttendanceLevelProblem[]>([]);
     const [error, setError] = useState(''), [pending, start] = useTransition();
     const [savedRevision, setSavedRevision] = useState(0);
@@ -48,7 +49,7 @@ export function WorkflowForm({ initial, lineageId, context, options, defaultPrio
         }[];
         truncated: boolean;
     } | null>(null);
-    const baseline = JSON.stringify(initial ?? { ...context, routingVersion: 4, cc:[], code: '', name: '', description: '', priority: defaultPriority, criteria: {}, stages: [emptyAttendanceV4Level(0)], active: false });
+    const baseline = JSON.stringify(initial ?? { ...context, companyIds:[context.companyId], routingVersion: 4, cc:[], code: '', name: '', description: '', priority: defaultPriority, criteria: {}, stages: [emptyAttendanceV4Level(0)], active: false });
     const dirty = JSON.stringify(input) !== baseline;
     const change = <K extends keyof AnyAttendanceWorkflowInput>(k: K, v: AnyAttendanceWorkflowInput[K]) => { setInput(p => ({ ...p, [k]: v } as AnyAttendanceWorkflowInput)); setPreview(null); };
     const inFlight = useRef(false);
@@ -75,7 +76,7 @@ export function WorkflowForm({ initial, lineageId, context, options, defaultPrio
             const result = await previewAttendanceWorkflowAction(lineageId, input);
             if (result.ok) {
                 setPreview(result.preview);
-                setLevelProblems(result.preview.rows.flatMap(row => row.levelProblem ? [row.levelProblem] : []));
+                setLevelProblems([]);
             }
             else {
                 setError(result.error);
@@ -86,9 +87,9 @@ export function WorkflowForm({ initial, lineageId, context, options, defaultPrio
       });
     };
     const fields = attendanceWorkflowCriteriaFields(options, employmentTypeLabel);
-    return <><AttendanceSettingsNavigation formId="attendance-workflow-form" savedRevision={savedRevision}/><form id="attendance-workflow-form" className="space-y-5" onSubmit={e => { e.preventDefault(); run(true); }}><fieldset disabled={pending} className="space-y-5">
+    return <WorkflowCompanyContext.Provider value={input.companyIds??[input.companyId]}><AttendanceSettingsNavigation formId="attendance-workflow-form" savedRevision={savedRevision}/><form id="attendance-workflow-form" className="space-y-5" onSubmit={e => { e.preventDefault(); run(true); }}><fieldset disabled={pending} className="space-y-5">
   <Card className="space-y-4 p-5"><h2 className="font-semibold">{t('information')}</h2><div className="grid gap-4 sm:grid-cols-2">
-   <label>{t('company')}<select name="companyId" className={inputCls} value={input.companyId} disabled onChange={e => change('companyId', e.target.value)}>{options.companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></label>
+   <div><ChipMultiSelect name="companyIds" label={t('company')} options={options.companies.map(c=>({value:c.id,label:c.name}))} defaultSelected={input.companyIds??[input.companyId]} addPlaceholder={t('chooseCompanies')} searchPlaceholder={t('searchCompanies')} removeLabelFor={value=>t('removeCompany',{value})} onSelectionChange={companyIds=>{setInput(old=>({...old,companyIds,companyId:companyIds.includes(old.companyId)?old.companyId:companyIds[0]??old.companyId}));setPreview(null);}}/><p className="mt-2 text-xs text-muted-foreground">{t('sharedCompanyHelp')}</p></div>
    <label>{t('applicationType')}<select name="applicationType" className={inputCls} value={input.applicationType} disabled onChange={e => change('applicationType', e.target.value as AttendanceWorkflowInput['applicationType'])}><option value="irregularity">{t('types.irregularity')}</option><option value="self_overtime">{t('types.self_overtime')}</option></select></label>
    <label>{t('code')}<input name="code" required maxLength={40} pattern="[A-Za-z0-9_-]+" className={inputCls} value={input.code} onChange={e => change('code', e.target.value)}/></label>
    <label>{t('name')}<input name="name" required maxLength={120} className={inputCls} value={input.name} onChange={e => change('name', e.target.value)}/></label>
@@ -102,7 +103,7 @@ export function WorkflowForm({ initial, lineageId, context, options, defaultPrio
       searchPlaceholder={choices('adjustmentsSearchPlaceholder')} selectAllLabel={choices('adjustmentsSelectAll')} clearAllLabel={choices('adjustmentsDeselectAll')}
       onSelectionChange={values => change('criteria', { ...input.criteria, [key]: values })}/>;
   })}</div></Card>
-  <Card className="space-y-4 p-5"><h2 className="font-semibold">{t('stages')}</h2>{options.approverEmployees?.length===0&&<p role="status" className="text-sm text-muted-foreground">{t(options.approverAvailability==='noLinkedLogin'?'v4.noLinkedLogin':options.approverAvailability==='noEmployees'?'v4.noEmployees':options.approverAvailability==='noActiveEmployees'?'v4.noActiveEmployees':'v4.noEligible')}</p>}{input.routingVersion === 4
+  <Card className="space-y-4 p-5"><h2 className="font-semibold">{t('stages')}</h2>{input.routingVersion === 4
     ? <><AttendanceStageEditorV4 stages={input.stages} employees={options.approverEmployees ?? []} problems={levelProblems} onChange={stages=>change('stages',stages)}/><AttendanceCcEditor sources={input.cc} employees={options.approverEmployees ?? []} onChange={cc=>{setInput(old=>old.routingVersion===4?{...old,cc}:old);setPreview(null);}}/></>
     : input.routingVersion === 3
     ? <><AttendanceStageEditorV3 id="attendance-workflow-v3" stages={input.stages} employees={options.approverEmployees ?? []} problems={levelProblems} onChange={stages => change('stages', stages)}/><p className="text-xs text-muted-foreground">{t('v4.conversionHelp')}</p><Button type="button" variant="secondary" onClick={()=>{setInput(old=>old.routingVersion===3?{...old,routingVersion:4,cc:[],stages:old.stages.map(level=>({name:level.name,mode:level.mode,sources:[level.source],hrAlternative:level.hrAlternative}))}:old);setPreview(null);setLevelProblems([]);}}>{t('v4.convert')}</Button></>
@@ -111,8 +112,8 @@ export function WorkflowForm({ initial, lineageId, context, options, defaultPrio
             if (!dirty || window.confirm(t('discard')))
                 router.push(companyWorkflowHref(input.companyId, input.applicationType));
         }}>{t('cancel')}</button></div></Card>
-  {preview && <Card className="space-y-3 p-5"><h2 className="font-semibold">{t('previewTitle', { count: preview.total })}</h2><ul className="divide-y divide-border">{preview.rows.map(row => <li key={row.employmentId} className="py-2 text-sm">{row.name} — {row.selectedCode}{row.problem && <p className="text-red-700">{row.problem}</p>}{row.levelProblem && <p className="text-destructive">{row.levelProblem.levelIndex == null ? '' : `${t('stageNumber', { number: row.levelProblem.levelIndex + 1 })}: `}{v3(attendanceLevelProblemMessageKey(row.levelProblem))}</p>}<AttendanceResolvedRoutePreview stages={row.resolvedStages ?? []} routingVersion={row.routingVersion ?? 1} levelName={number => t('stageNumber', { number })} hrLabel={t('hr')} alternativeLabel={t('or')} sequentialLabel={t('v3.sequential')} anyOneLabel={t('v3.anyOne')} allRequiredLabel={t('v4.allRequired')} depthLabel={number => t('v3.depthOption', { number })}/></li>)}</ul>{preview.truncated && <p>{t('previewTruncated')}</p>}</Card>}
- </fieldset></form></>;
+  {preview && <Card className="space-y-3 p-5"><h2 className="font-semibold">{t('previewTitle', { count: preview.total })}</h2>{preview.rows.some(row=>row.levelProblem||row.problem)&&<p role="status" className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">{t('hierarchyWarning')}</p>}<ul className="divide-y divide-border">{preview.rows.map(row => <li key={row.employmentId} className="py-2 text-sm">{'employeeCode' in row&&typeof row.employeeCode==='string'?row.employeeCode+' · ':''}{row.name} — {row.selectedCode}{row.problem && <p className="text-red-700">{row.problem}</p>}{row.levelProblem && <p className="text-amber-800">{row.levelProblem.levelIndex == null ? '' : `${t('stageNumber', { number: row.levelProblem.levelIndex + 1 })}: `}{v3(attendanceLevelProblemMessageKey(row.levelProblem))}</p>}<AttendanceResolvedRoutePreview stages={row.resolvedStages ?? []} routingVersion={row.routingVersion ?? 1} levelName={number => t('stageNumber', { number })} hrLabel={t('hr')} alternativeLabel={t('or')} sequentialLabel={t('v3.sequential')} anyOneLabel={t('v3.anyOne')} allRequiredLabel={t('v4.allRequired')} depthLabel={number => t('v3.depthOption', { number })}/></li>)}</ul>{preview.truncated && <p>{t('previewTruncated')}</p>}</Card>}
+ </fieldset></form></WorkflowCompanyContext.Provider>;
 }
 export function RoutingSwitch({ companyId, type, enabled }: {
     companyId: string;

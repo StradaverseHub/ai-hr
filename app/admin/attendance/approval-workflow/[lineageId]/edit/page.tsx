@@ -16,6 +16,6 @@ export default async function EditAttendanceWorkflowPage({ params }: {
     const row = await getAttendanceWorkflow(s, lineageId, scopeIds);
     if (!row)
         notFound();
-    const options = await attendanceApplicationFilterOptions(s, [row.companyId]);
+    const options = await attendanceApplicationFilterOptions(s, scopeIds);
     return <div className={pageWideCls}><PageHeader title={t('editTitle', { name: row.name })} description={t('newVersionHelp')} back={{ href: `/admin/attendance/approval-workflow/${lineageId}`, label: t('back') }}/><WorkflowForm key={lineageId} context={{ companyId: row.companyId, applicationType: row.applicationType }} initial={attendanceWorkflowConfiguration(row)} lineageId={lineageId} options={options}/></div>;
 }

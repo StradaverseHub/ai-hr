@@ -172,7 +172,7 @@ export function attendanceApplicationFilterOptions(ctx: SessionContext, companyI
             terminatedOn:string|null; departmentId:string|null; department:string|null;
             businessUnitId:string|null; businessUnit:string|null;
           }[];
-        const approverEmployees = await tx.execute(sql`select id,name,employee_code as "employeeCode" from app.attendance_workflow_v3_approver_options(ARRAY[${sql.join(companies.map(row => sql`${row.id}::uuid`), sql`, `)}]::uuid[])`) as unknown as { id: string; name: string; employeeCode: string | null }[];
+        const approverEmployees = await tx.execute(sql`select id,name,employee_code as "employeeCode" from app.attendance_workflow_v3_approver_options(ARRAY[${sql.join(companies.map(row => sql`${row.id}::uuid`), sql`, `)}]::uuid[]) limit 50`) as unknown as { id: string; name: string; employeeCode: string | null }[];
         const availability=companies.length===1?await tx.execute(sql`select app.attendance_workflow_approver_availability(${companies[0].id}::uuid) as reason`) as unknown as {reason:'available'|'noEmployees'|'noActiveEmployees'|'noLinkedLogin'|'noEligible'|null}[]:[];
         return { companies, departments, businessUnits, grades, divisions, employees, approverEmployees, approverAvailability:availability[0]?.reason??undefined, positions, profileFields };
     });

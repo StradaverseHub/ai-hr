@@ -9,9 +9,10 @@ import {EMPLOYMENT_STATUSES} from '@/core/employment-status';
 import {MasterReportAccessError} from '@/core/employee-master-access';
 import {PageHeader,Card,ErrorBanner} from '@/components/ui';
 import {payrollComparisonColumns,payrollComparisonCell} from '@/lib/payroll-comparison-presentation';
-import {ALL_RECORDED_PAY_ITEMS,PAYROLL_COMPARISON_REASON_FILTERS,PAYROLL_COMPARISON_EMPLOYMENT_TYPES,PAYROLL_COMPARISON_GROUPS} from '@/lib/payroll-period-comparison';
+import {payrollComparisonFilters,DEFAULT_PAYROLL_COMPARISON,ALL_RECORDED_PAY_ITEMS,PAYROLL_COMPARISON_REASON_FILTERS,PAYROLL_COMPARISON_EMPLOYMENT_TYPES,PAYROLL_COMPARISON_GROUPS} from '@/lib/payroll-period-comparison';
 import {savePayrollReconciliationRemarkAction,saveReconciliationTemplateAction} from '../actions';
 import {PayrollComparisonEditor} from '../PayrollComparisonEditor';
+import {ReconciliationPayItemFilter} from '../pay-item-filter';
 import {publicErrorMessage} from '@/lib/public-error';
 export const dynamic='force-dynamic';
 export default async function PayrollComparisonPage({params,searchParams}:{params:Promise<{id:string}>;searchParams:Promise<Record<string,string|string[]|undefined>>}){
@@ -25,7 +26,9 @@ export default async function PayrollComparisonPage({params,searchParams}:{param
     const report=await getCustomReport(s,id,scopeIds,'edit').catch(()=>null);if(!report?.spec.payrollComparison)notFound();
     return <div className="space-y-5"><PageHeader title={t('editReport')} back={{href:'/reports/payroll-comparison/'+id,label:t('back')}}/>{sp.error&&<ErrorBanner message={typeof sp.error === 'string' ? sp.error : undefined}/>}<Card className="p-6"><PayrollComparisonEditor key={id+':'+report.version} id={id} version={report.version} name={report.name} description={report.spec.layout?.description??''} initial={report.spec.payrollComparison} payItems={options.payItems}/></Card></div>;
   }
-  const raw=Object.fromEntries(Object.entries(sp).filter(([key,value])=>key!=='error'&&key!=='edit'&&key!=='noteError'&&key!=='templateError'&&value!==undefined));
+  let returnQuery='';
+  if(builtIn&&typeof sp.returnQuery==='string'&&sp.returnQuery.length<=8000){try{const parsed=payrollComparisonFilters(Object.fromEntries(new URLSearchParams(sp.returnQuery)),DEFAULT_PAYROLL_COMPARISON);const q=new URLSearchParams();for(const [key,value]of Object.entries(parsed))if(value!==null&&value!==undefined)q.set(key,key==='onlyVariances'?(value?'1':'0'):String(value));returnQuery=q.toString();}catch{}}
+  const raw=Object.fromEntries(Object.entries(sp).filter(([key,value])=>key!=='error'&&key!=='edit'&&key!=='noteError'&&key!=='templateError'&&key!=='returnQuery'&&value!==undefined));
   let run:Awaited<ReturnType<typeof runPayrollComparisonReport>>;
   try{run=await runPayrollComparisonReport(s,scopeIds,{id,filters:raw});await recordPayrollComparisonRun(s,run,builtIn?'preview':'run');}
   catch(error){if(error instanceof MasterReportAccessError)notFound();return <div className="space-y-4"><PageHeader title={t('title')} back={{href:'/reports?cat=payroll',label:t('back')}}/><ErrorBanner message={publicErrorMessage(error)}/><Link href={'/reports/payroll-comparison/'+id}>{t('reset')}</Link></div>;}
@@ -33,12 +36,12 @@ export default async function PayrollComparisonPage({params,searchParams}:{param
   const {result,filters}=run,columns=payrollComparisonColumns(run.definition);
   const query=(changes:Record<string,string|number|null>={})=>{
     const values={...filters,...(builtIn?{payItemCode:run.definition.payItemCode}:{}),onlyVariances:filters.onlyVariances?'1':'0',...changes},search=new URLSearchParams();
-    for(const [key,value]of Object.entries(values))if(value!==null)search.set(key,String(value));return search.toString();
+    for(const [key,value]of Object.entries(values))if(value!==null)search.set(key,String(value));if(returnQuery)search.set('returnQuery',returnQuery);return search.toString();
   };
   const input='mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm';
   return <div className="space-y-5">
     <nav aria-label={t('breadcrumb')} className="text-sm text-muted-foreground"><Link href="/reports">{t('reports')}</Link> › <Link href="/reports?cat=payroll">{t('payroll')}</Link> › {t('customReports')}</nav>
-    <PageHeader title={builtIn ? t('title') : run.name} description={run.description||t('reportHelp')}/>
+    <PageHeader title={builtIn ? t('title') : run.name} description={run.description||t('reportHelp')} back={builtIn?{href:'/payroll/reconciliation'+(returnQuery?'?'+returnQuery:''),label:t('backToReconciliation')}:undefined}/>
     <div className="flex flex-wrap items-center justify-between gap-3">{!builtIn && <span className="rounded-full bg-primary/10 px-3 py-1 text-xs font-medium text-primary">{t('customTag')}</span>}<div className="flex gap-3 text-sm">{!builtIn&&run.canEdit&&<Link className="rounded-lg border border-border px-3 py-2" href={'/reports/payroll-comparison/'+id+'?edit=1'}>{t('editReport')}</Link>}{run.canExport&&(['pdf','xlsx']as const).map(format=><a key={format} className="rounded-lg bg-primary px-3 py-2 text-primary-foreground" href={'/reports/payroll-comparison/export?id='+id+'&format='+format+'&'+query()}>{t(format==='pdf'?'exportPdf':'exportExcel')}</a>)}</div></div>
     {builtIn&&sp.noteError&&<ErrorBanner message={t(sp.noteError==='conflict'?'hrRemarkConflict':'hrRemarkFailed')}/>}
     {builtIn&&sp.templateError&&<ErrorBanner message={t('saveFailed')}/>}
@@ -48,6 +51,8 @@ export default async function PayrollComparisonPage({params,searchParams}:{param
     {run.contextUnavailable&&<p role="status" className="rounded-lg border border-border p-3 text-sm text-muted-foreground">{t('contextUnavailable')}</p>}
     {builtIn&&run.canEdit&&<details className="rounded-lg border border-border p-4"><summary className="cursor-pointer text-sm font-medium">{t('saveTemplate')}</summary><form action={saveReconciliationTemplateAction.bind(null,query({employeeSearch:null,page:1}))} className="mt-3 flex flex-wrap items-end gap-2"><label className="text-sm">{t('reportName')}<input className={input} name="name" required maxLength={150}/></label><button className="rounded-md border border-border px-3 py-2 text-sm">{t('saveTemplate')}</button></form></details>}
     <Card className="p-5"><form key={query()} className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4" method="get">
+      {returnQuery&&<input type="hidden" name="returnQuery" value={returnQuery}/>}
+      {builtIn&&run.definition.payItemCode===ALL_RECORDED_PAY_ITEMS&&<ReconciliationPayItemFilter items={options.payItems.filter(item=>item.code!==ALL_RECORDED_PAY_ITEMS)} selected={filters.payItemCodes??[]}/>}
       <label className="text-sm font-medium">{t('company')}<select className={input} name="companyId" defaultValue={filters.companyId??''}><option value="">{t('allCompanies')}</option>{options.companies.map(company=><option key={company.id} value={company.id}>{company.name}</option>)}</select></label>
       <label className="text-sm font-medium">{t('previousPeriod')}<input className={input} type="month" name="previousPeriod" defaultValue={filters.previousPeriod??''} required/></label>
       <label className="text-sm font-medium">{t('currentPeriod')}<input className={input} type="month" name="currentPeriod" defaultValue={filters.currentPeriod??''} required/></label>
