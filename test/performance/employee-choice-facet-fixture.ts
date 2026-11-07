@@ -11,7 +11,7 @@ export async function createFacetRepresentationFixture(){
  await owner.db.update(department).set({name:'D-B',label:'Shared department'}).where(eq(department.id,f.b.deptB));
  await owner.db.insert(department).values({id:endedDepartment,tenantId:f.b.tenantId,companyId:f.b.companyId,name:'D-END',label:'Shared department'});
  await owner.db.update(businessUnit).set({code:'U-A',name:'Unit native',label:'Shared unit'}).where(eq(businessUnit.id,f.unit));
- await owner.db.insert(businessUnit).values({id:endedUnit,tenantId:f.b.tenantId,companyId:f.otherCompany,code:'U-END',name:'Unit historical',label:'Shared unit'});
+ await owner.db.insert(businessUnit).values({id:endedUnit,tenantId:f.b.tenantId,companyId:f.b.companyId,code:'U-END',name:'Unit historical',label:'Shared unit'});
  await owner.db.update(employment).set({terminatedOn:'2024-01-01'}).where(eq(employment.id,f.gamma.id));
  await owner.db.update(assignment).set({departmentId:endedDepartment,businessUnitId:endedUnit}).where(eq(assignment.id,f.gamma.assignmentId!));
  await owner.db.update(assignment).set({businessUnitId:f.unit}).where(eq(assignment.id,f.transferred.assignmentId!));
@@ -24,7 +24,7 @@ export async function createFacetRepresentationFixture(){
  await owner.db.insert(employment).values([{id:nullEmployment,tenantId:f.b.tenantId,personId:nullPerson,companyId:emptyCompany,hiredOn:'2020-01-01'},{id:hiddenEmployment,tenantId:f.b.tenantId,personId:hiddenPerson,companyId:emptyCompany,hiredOn:'2020-01-01'}]);
  await owner.db.insert(assignment).values([
   {tenantId:f.b.tenantId,employmentId:nullEmployment,companyId:emptyCompany,validFrom:'2020-01-01',employmentType:'full_time'},
-  {tenantId:f.b.tenantId,employmentId:nullEmployment,companyId:emptyCompany,departmentId:emptyDepartments[0].id,businessUnitId:emptyUnits[0].id,validFrom:'2010-01-01',validTo:'2011-01-01',employmentType:'full_time'},
+  {tenantId:f.b.tenantId,employmentId:nullEmployment,companyId:emptyCompany,departmentId:emptyDepartments[2].id,businessUnitId:emptyUnits[2].id,validFrom:'2010-01-01',validTo:'2011-01-01',employmentType:'full_time'},
   {tenantId:f.b.tenantId,employmentId:nullEmployment,companyId:emptyCompany,departmentId:emptyDepartments[1].id,businessUnitId:emptyUnits[1].id,validFrom:'2020-01-01',supersededAt:new Date('2021-01-01T00:00:00Z'),employmentType:'full_time'},
   {tenantId:f.b.tenantId,employmentId:hiddenEmployment,companyId:emptyCompany,departmentId:emptyDepartments[2].id,businessUnitId:emptyUnits[2].id,validFrom:'2020-01-01',employmentType:'full_time'},
  ]);
