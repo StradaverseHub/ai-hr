@@ -348,3 +348,30 @@ it('refuses a partial-scope edit and serializes shared automatic priorities acro
  ]);
  expect(created.map(row=>row.priority).sort()).toEqual([2,3]);
 });
+
+
+it('lists approvers with forced RLS under a non-superuser schema-owner identity',async()=>{
+ const eligible=await actor('Fictional real-owner approver');
+ const ctx=adminCtx(base),role='pr233_owner_'+randomUUID().replaceAll('-','');
+ const rollback=new Error('Rollback only this ownership-parity fixture');
+ await expect(owner.client.begin(async connection=>{
+  await connection.unsafe(`CREATE ROLE "${role}" NOLOGIN NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE INHERIT`);
+  const [identity]=await connection`select pg_get_userbyid(relowner) as name from pg_class where oid='public.app_user'::regclass`;
+  const parent=String(identity.name);expect(parent).toMatch(/^[A-Za-z_][A-Za-z0-9_]*$/);
+  // Object ownership is inherited; SUPERUSER/BYPASSRLS attributes are not. The role has no login
+  // or application membership, and every ownership/membership change rolls back with this tx.
+  await connection.unsafe(`GRANT "${parent}" TO "${role}"`);
+  const [attributes]=await connection`select rolsuper,rolbypassrls from pg_roles where rolname=${role}`;
+  expect(attributes).toMatchObject({rolsuper:false,rolbypassrls:false});
+  const functions=await connection`select p.oid::regprocedure::text as signature from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='app' and p.prosecdef and p.prokind='f' order by p.oid`;
+  expect(functions.length).toBeGreaterThan(0);
+  for(const fn of functions)await connection.unsafe(`ALTER FUNCTION ${String(fn.signature)} OWNER TO "${role}"`);
+  await connection.unsafe('SET LOCAL ROLE ai_hr_app');
+  await connection.unsafe('SET LOCAL row_security=on');
+  const grants=ctx.grants??ctx.roles.map(value=>({role:value,companyId:null}));
+  await connection`select set_config('app.tenant_id',${ctx.tenantId},true),set_config('app.user_id',${ctx.userId??''},true),set_config('app.roles',${ctx.roles.join(',')},true),set_config('app.grants',${JSON.stringify(grants)},true),set_config('app.agent_principal_id','',true),set_config('app.payroll_tax_basis_reader','1',true)`;
+  const rows=await connection.unsafe('select id from app.attendance_workflow_v3_approver_options($1::uuid[])',['{'+base.companyId+'}']);
+  expect(rows.map(row=>row.id)).toContain(eligible.employmentId);
+  throw rollback;
+ })).rejects.toBe(rollback);
+});
