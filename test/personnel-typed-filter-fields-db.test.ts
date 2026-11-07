@@ -32,11 +32,16 @@ it('retains exact full DTOs, independently expected pages/facets and native date
   expect(actual.headcount.total).toBe(2);expect(actual.employees.rows.every(row=>row.departmentId===base.deptA)).toBe(true);
  }
  const scope=sql`array[${base.companyId}::uuid]`,day=todayInKualaLumpur();
+ // Keep non-null date facts in raw parity: a timestamp return type would
+ // silently coerce the blacklist date and conceal a native fact mismatch.
+ await owner.client`update employment set blacklisted_at=${day}::date where id=${first.employmentId}::uuid`;
  const parity=await withTenant(ctx,tx=>tx.execute<{same:boolean}>(sql`
   select to_jsonb(t)=n.value as same from app.personnel_overview_filter_fields(${day}::date,${scope}) t
   join app.personnel_overview_narrow_rows(${day}::date,${scope}) n(value) on n.value->>'employmentId'=t."employmentId"::text
  `));
  expect(parity).toHaveLength(2);expect(parity.every(row=>row.same)).toBe(true);
+ const [blacklisted]=await withTenant(ctx,tx=>tx.execute<{value:string}>(sql`select "blacklistedAt"::text as value from app.personnel_overview_filter_fields(${day}::date,${scope}) where "employmentId"=${first.employmentId}::uuid`));
+ expect(blacklisted.value).toBe(day);
  expect(await withTenant(ctx,tx=>tx.execute(sql`select * from app.personnel_overview_filter_fields(${day}::date,array[${foreign.companyId}::uuid])`))).toHaveLength(0);
  const corrected=await seedPersonnelCorrectionFixture();
  for(const at of [corrected.hiredOn,day]){

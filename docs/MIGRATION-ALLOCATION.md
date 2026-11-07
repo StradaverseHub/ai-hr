@@ -3,7 +3,7 @@
 ## Typed Personnel overview filters — 7 November 2026 (uninstalled)
 
 `2701_personnel_typed_overview_filter_fields`, idx2001 / when1793330002301,
-SQL SHA-256 `3c4605f4a235898d4e381d7f16c2332555e07bc91ce2455bc6f701e773ece4bf`.
+SQL SHA-256 `87b1b0a0dd532eda1211dddcd5af2a8b14013a66615527cffa3c1be449d0daf8`.
 A fresh full origin fetch and scan covered3005 distinct heads,669 migration trees,
 476 journals and344 readable worktrees. Competing maxima were2700 /2000 /
 1793330002300, including literal bounds from one preserved malformed foreign journal.

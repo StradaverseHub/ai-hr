@@ -45,7 +45,7 @@ $typed_projection_predecessor$;
 CREATE FUNCTION app.personnel_overview_filter_fields(p_as_of date,p_scope uuid[]) RETURNS TABLE (
  "employmentId" uuid,name text,email text,"employeeCode" text,
  "finalConfirmationDate" date,"confirmationDate" date,"probationEndDate" date,"provisionalEndOn" date,
- "resignationDate" date,"lastWorkingDate" date,"terminatedOn" date,"blacklistedAt" timestamptz,
+ "resignationDate" date,"lastWorkingDate" date,"terminatedOn" date,"blacklistedAt" date,
  "companyId" uuid,company text,"departmentId" uuid,"employmentType" text,
  "businessUnitId" uuid,"businessUnit" text,"positionId" uuid,"position" text
 )
