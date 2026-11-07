@@ -1,3 +1,4 @@
+import {withAiCentreActivity} from './ai-centre-control';
 import {assertClaimsProviderSourceTx} from './claims-provider-source';
 import { agentHolds, isAgentContext } from './agent-principal';
 import {withAiAdmissionCheck} from './ai-governance';
@@ -339,7 +340,10 @@ async function pendingClaimAiSourceTx(tx:Tx,supplied:SessionContext,sinceValue:D
  return pendingClaimNativeSourceTx(tx,since,claimId);
 }
 
-export async function triagePendingClaims(ctx: SessionContext): Promise<TriageRun> {
+export async function triagePendingClaims(...args:Parameters<typeof triagePendingClaimsActivity>):Promise<Awaited<ReturnType<typeof triagePendingClaimsActivity>>>{
+ return withAiCentreActivity(args[0],()=>triagePendingClaimsActivity(...args));
+}
+async function triagePendingClaimsActivity(ctx: SessionContext): Promise<TriageRun> {
   ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(g=>({...g}))};
   // The literal, not TRIAGE_SETTING_KEY — see that constant's note.
   if (!settingEnabled(ctx, 'claims.input_triage_enabled')) return { ...EMPTY, disabled: true };

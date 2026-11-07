@@ -1,3 +1,4 @@
+import {lockAccessConfigurationTx} from '../access-configuration-lock';
 /** ADR-0170 §3.10, step 5a — work-job mandates: grant, renew, revoke, the two keys and the stop switch.
  *
  * Off by default. Two keys: a group administrator enables a job type, with ceilings (key 1, default none
@@ -51,15 +52,22 @@ export async function setJobTypeEnablement(supplied:SessionContext,input:Readonl
  });
 }
 
-export async function setMandateStopSwitch(supplied:SessionContext,stopped:boolean){
+export async function setMandateStopSwitch(supplied:SessionContext,stopped:boolean,options:Readonly<{expectedGeneration?:number;reason?:string}>={}){
  const ctx=capture(supplied);requireGroupAdmin(ctx);
  if(typeof stopped!=='boolean')throw new MandateRefused('invalid');
+ if(options.expectedGeneration!==undefined&&(!Number.isSafeInteger(options.expectedGeneration)||options.expectedGeneration<0)||options.reason!==undefined&&(typeof options.reason!=='string'||options.reason.length>200))throw new MandateRefused('invalid');
  return withTenant(ctx,async tx=>{
+  await lockAccessConfigurationTx(tx,ctx.tenantId);
+  await tx.execute(sql`select pg_advisory_xact_lock(hashtext('ai-control'),hashtext(${ctx.tenantId}::text))`);
+  const [authority]=await tx.execute<{ok:boolean}>(sql`select app.principal_snapshot_current() is true and app.is_group_admin() is true as ok`);
+  if(authority?.ok!==true)throw new MandateRefused('not_administrator');
+  const [current]=await tx.select({version:terasMandateControl.version}).from(terasMandateControl).where(eq(terasMandateControl.tenantId,ctx.tenantId)).limit(1);
+  if(options.expectedGeneration!==undefined&&options.expectedGeneration!==(current?.version??0))throw new MandateRefused('invalid');
   const values={stopped,changedByUserId:ctx.userId!,changedAt:sql`now()`};
   const [row]=await tx.insert(terasMandateControl).values({tenantId:ctx.tenantId,...values})
    .onConflictDoUpdate({target:terasMandateControl.tenantId,set:values}).returning();
   await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'teras-mandate-control',aggregateId:ctx.tenantId,
-   eventType:stopped?'teras-mandate.stopped':'teras-mandate.resumed',actor:actorOf(ctx),payload:{version:row.version}});
+   eventType:stopped?'teras-mandate.stopped':'teras-mandate.resumed',actor:actorOf(ctx),payload:{version:row.version,...(options.reason?{reason:options.reason}:{})}});
   return Object.freeze(row);
  });
 }

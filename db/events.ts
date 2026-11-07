@@ -1,3 +1,4 @@
+import {aiCentreActivity,aiCentreEvent} from '../lib/ai/centre-activity';
 /**
  * Domain-event substrate (ADR-0006). `appendEvent` writes an immutable event in the
  * CURRENT transaction, so a state change and its audit record commit together —
@@ -64,6 +65,12 @@ export function appendEvent(tx: Tx, e: AppendEventArgs, options: { returnId: boo
 export async function appendEvent(
   tx: Tx, e: AppendEventArgs, options?: { returnId: boolean },
 ): Promise<string | void> {
+  if(aiCentreEvent(e.eventType)){
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${"access-configuration:"+e.tenantId},0))`);
+    const [control]=await tx.execute<{generation:number}>(sql`select app.ai_centre_assert_running(${aiCentreActivity(e.tenantId)?.generation??null}::integer) as generation`);
+    if(!control)throw Error('AI controls unavailable');
+    e={...e,payload:{...(e.payload&&typeof e.payload==='object'?e.payload:{}),aiCentreGeneration:control.generation}};
+  }
   const insert = tx.insert(domainEvent).values({
     id: e.id,
     tenantId: e.tenantId,

@@ -1,3 +1,4 @@
+import {assertAiCentreRunningTx} from './ai-centre-control';
 import {privateLocalData} from '../lib/ai/provider-policy-shape';
 import {privateTaskDescriptor} from '../lib/ai/provider-task-registry';
 import {adjudicateSnapshotAnalysis,SNAPSHOT_ANALYSIS_CONTRACT} from '../lib/ai/provider-snapshot-policy';
@@ -46,6 +47,7 @@ async function forcedPauseTx(tx:Tx,ctx:SessionContext,feature:AiFeatureId):Promi
  */
 export async function assertAiActionUnpausedTx(tx:Tx,ctx:SessionContext,feature:AiFeatureId):Promise<void>{
  if(!isAiFeature(feature))throw new AiGatewayError('Unknown AI feature.');
+ await assertAiCentreRunningTx(tx,ctx);
  // WP13: template-only scheduled agents have no model admission at all.
  if(isTemplateOnlyAiFeature(feature))throw new AiGatewayError('This feature makes no model call.');
  const forcedPause=await forcedPauseTx(tx,ctx,feature);
@@ -84,6 +86,7 @@ function createGovernedAiConfig(ctx:SessionContext,snapshot:AiProviderSnapshot,f
    (capturedRequest.inputDigest!==undefined&&!/^[a-f0-9]{64}$/.test(capturedRequest.inputDigest)))throw new AiGatewayError('The prepared AI request could not be confirmed.');
   const preparedAdmission=await withTenant(ctx,async tx=>{
    await assertCurrentAiProviderSnapshotTx(tx,ctx,snapshot,outgoing);
+   const generation=await assertAiCentreRunningTx(tx,ctx);
    if(check)try{await check(tx,capturedRequest);}catch(error){
     if(error instanceof AiAllowanceError||error instanceof AiPrivacyGateError)throw error;
     throw new AiGatewayError('The current AI source access could not be confirmed.');
@@ -107,7 +110,7 @@ function createGovernedAiConfig(ctx:SessionContext,snapshot:AiProviderSnapshot,f
    // Unknown unpriced history persists; a later finite cap cannot retrospectively count it as zero.
    if(rows[0]?.allowed)await aiSpendAdmissionStep(()=>tx.execute(sql`select app.ai_spend_record_admission(${rows[0].run_id}::uuid,${spendRoot?.rootTaskId??null}::uuid,${spendRoot?.kind??null},${capturedRequest.inputDigest??null},${aiSpendConfigurationDigest(outgoing)})`));
    if(rows[0]?.allowed&&lifecycle?.admitted)await lifecycle.admitted(tx,Object.freeze({runId:rows[0].run_id,request:capturedRequest}));
-   return{rows,envelope};
+   return{rows,envelope,generation};
   });
   const[admission]=preparedAdmission.rows,spendEnvelope=preparedAdmission.envelope;
   if(!admission?.allowed){
@@ -120,7 +123,9 @@ function createGovernedAiConfig(ctx:SessionContext,snapshot:AiProviderSnapshot,f
   const record=(usage:AiUsage)=>{const values=[usage.inputTokens,usage.outputTokens,usage.cachedInputTokens];if(values.every(n=>Number.isSafeInteger(n)&&n>=0))actual=values.reduce((a,b)=>a+b,0);};
   const scope=spendRoot&&spendEnvelope&&ctx.userId?createAiSpendReceiptScope({tenantId:ctx.tenantId,userId:ctx.userId,runId:admission.run_id,rootTaskId:spendRoot.rootTaskId,requestDigest:spendEnvelope.requestDigest,capabilityDigest:spendEnvelope.capabilityDigest,configurationDigest:aiSpendConfigurationDigest(outgoing)}):null;
   let succeeded=false;
-  try{const dispatch=()=>scope?scope.run(()=>call(record,accounting.observe)):call(record,accounting.observe);const result=await(spendEnvelope?withReviewedAiSpendDispatch(spendEnvelope,outgoing,capturedRequest,dispatch):dispatch());succeeded=true;return result;}
+  try{
+   await withTenant(ctx,tx=>assertAiCentreRunningTx(tx,ctx,preparedAdmission.generation));
+   const dispatch=()=>scope?scope.run(()=>call(record,accounting.observe)):call(record,accounting.observe);const result=await(spendEnvelope?withReviewedAiSpendDispatch(spendEnvelope,outgoing,capturedRequest,dispatch):dispatch());await withTenant(ctx,tx=>assertAiCentreRunningTx(tx,ctx,preparedAdmission.generation));succeeded=true;return result;}
   finally{
    // A failed write is visible and leaves the reservation held; it must never erase unconfirmed usage.
    let breach=false;

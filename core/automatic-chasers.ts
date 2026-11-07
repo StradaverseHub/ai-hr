@@ -1,3 +1,4 @@
+import {withAiCentreActivity} from './ai-centre-control';
 import {assertAgentActionUnpausedTx} from './agent-action-pause';
 import {AiAllowanceError} from '../lib/ai/types';
 /**
@@ -212,11 +213,17 @@ async function runChasers(ctx: SessionContext, specialist: 'approval_chasers'|'r
 }
 
 /** Nightly: remind current approvers of overdue claims, attendance corrections and replacement leave requests. */
-export async function runApprovalChasers(ctx: SessionContext, opts: ChaserRunOptions): Promise<ChaseRunResult> {
+export async function runApprovalChasers(...args:Parameters<typeof runApprovalChasersActivity>):Promise<Awaited<ReturnType<typeof runApprovalChasersActivity>>>{
+ return withAiCentreActivity(args[0],()=>runApprovalChasersActivity(...args));
+}
+async function runApprovalChasersActivity(ctx: SessionContext, opts: ChaserRunOptions): Promise<ChaseRunResult> {
   return runChasers(ctx, 'approval_chasers', opts);
 }
 
 /** Nightly: remind the manager or HR about probation, contract and internship reviews undecided after their end date. */
-export async function runReviewChasers(ctx: SessionContext, opts: ChaserRunOptions): Promise<ChaseRunResult> {
+export async function runReviewChasers(...args:Parameters<typeof runReviewChasersActivity>):Promise<Awaited<ReturnType<typeof runReviewChasersActivity>>>{
+ return withAiCentreActivity(args[0],()=>runReviewChasersActivity(...args));
+}
+async function runReviewChasersActivity(ctx: SessionContext, opts: ChaserRunOptions): Promise<ChaseRunResult> {
   return runChasers(ctx, 'review_chasers', opts);
 }

@@ -210,6 +210,7 @@ export async function AiManagementScreen({session:s,section,searchParams,childre
         {attention.blocked.length>0&&<section><h3 className="text-sm font-medium">{t('attentionBlocked')}</h3><ul className="mt-1 divide-y divide-border">{attention.blocked.map(b=><li key={b.id} className="py-2"><Link href={userLink(b.label)} className="break-words text-sm text-primary hover:underline">{b.label}</Link><p className="mt-1 text-xs text-muted-foreground">{t('blockedToday',{count:b.count})}{b.reason&&t.has(`reasons.${b.reason}`)?` · ${t(`reasons.${b.reason}`)}`:''}</p></li>)}</ul></section>}
       </div>}
     </Card>}
+    {section==='features'&&children}
     {section==='features'&&registry&&<WorkerRegistry rows={registry.rows} summary={registry.summary} detail={registry.detail}/>}
     {section==='features'&&<Card id="ai-features" className="scroll-mt-4 overflow-hidden">
       <div className="p-5"><SectionHeader title={t('inventory')}/><p className="mt-1 max-w-4xl text-sm text-muted-foreground">{t('inventoryHelp')}</p>{!isGroupAdmin(s)&&<p className="mt-2 text-sm text-muted-foreground">{t('scopedNotice')}</p>}</div>

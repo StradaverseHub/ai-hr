@@ -1,3 +1,4 @@
+import {withAiCentreActivity} from '../ai-centre-control';
 /** AI v2 W8 — the loop runner: one run of one loop for one tenant, at the Prepare level.
  *
  * Every run, in order:
@@ -84,7 +85,10 @@ async function pausedTx(tx:Tx,tenantId:string,workerId:LoopId):Promise<Set<strin
 }
 
 /** One run of one loop for one tenant. Never throws for a refusal; a database failure while preparing propagates. */
-export async function runLoop(workerId:LoopId,options:LoopRunOptions):Promise<LoopRunResult>{
+export async function runLoop(...args:Parameters<typeof runLoopActivity>):Promise<Awaited<ReturnType<typeof runLoopActivity>>>{
+ return withAiCentreActivity(agentContext(args[1].tenantId,args[1].principalId,args[1].entitlements),()=>runLoopActivity(...args)).catch(error=>{if(error instanceof Error&&error.name==='AiAllowanceError')return Object.freeze({workerId:args[0],status:'not_run' as const,reasons:Object.freeze(['stopped'])});throw error;});
+}
+async function runLoopActivity(workerId:LoopId,options:LoopRunOptions):Promise<LoopRunResult>{
  const def=LOOP_DEFINITIONS[workerId],today=options.today??todayInKualaLumpur(),runId=randomUUID(),startedAt=options.now??new Date();
  const agent=agentContext(options.tenantId,options.principalId,options.entitlements),module=workerModule(workerId);
  // 1 and 2: gate and sponsor, as the agent principal.

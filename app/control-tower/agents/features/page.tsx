@@ -1,3 +1,4 @@
+import {AiCentreControls} from '../centre-controls';
 import { isGroupAdmin, requireAdmin } from '@/lib/authz';
 import { agentStatuses } from '@/core/control-domains';
 import { listWorkers, workerDetail } from '@/core/agent-registry/views';
@@ -16,5 +17,5 @@ export default async function AiManagementFeaturesPage({searchParams}:{searchPar
     outcomeSummary(session).catch(() => null),
     typeof sp.worker === 'string' && /^[a-z_]{1,64}$/.test(sp.worker) ? workerDetail(session, sp.worker).catch(() => null) : Promise.resolve(null),
   ]).then(([rows, summary, detail]) => ({ rows, summary, detail })).catch(() => null) : null;
-  return AiManagementScreen({session,section:'features',searchParams:Promise.resolve(sp),builtInChecks,registry});
+  return AiManagementScreen({session,section:'features',searchParams:Promise.resolve(sp),builtInChecks,registry,children:isGroupAdmin(session)?await AiCentreControls({session}):undefined});
 }

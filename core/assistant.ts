@@ -1,3 +1,5 @@
+import {aiCentreReadAllowed} from './ai-centre-control';
+import {withAiCentreActivity,assertAiCentreRunningTx} from './ai-centre-control';
 import {AiPrivacyGateError} from '../lib/ai/provider-privacy-request';
 /**
  * ADR-0082 slice 3 — THE LOOP. The caller that finally joins `converse()` (r221) to the tool registry
@@ -153,7 +155,10 @@ function rowCountOf(outcome: ToolOutcome): number | null {
  * `now` controls the bounded exchange deadline. Quota days and periods come from the database's
  * Malaysia business clock at the native question reservation, never from caller-supplied dates.
  */
-export async function askAssistant(
+export async function askAssistant(...args:Parameters<typeof askAssistantActivity>):Promise<Awaited<ReturnType<typeof askAssistantActivity>>>{
+ return withAiCentreActivity(args[0],()=>askAssistantActivity(...args));
+}
+async function askAssistantActivity(
   ctx: SessionContext,
   p: { question: string; now?: Date; clarificationExchangeId?:string; previousExchangeId?:string; previousConversationToken?:string; conversationScope?:string },
 ): Promise<AssistantAnswer> {
@@ -371,6 +376,8 @@ async function runTools(
   if(call.input===undefined){observations.push({name:call.name,input:null,rowCount:null,refusal:'unparseable_input'});return{id:call.id,name:call.name,content:ASSISTANT_PUBLIC_REPLIES.arguments,isError:true};}
   // No per-tool catch inside the carrier: a storage/partial-reservation error MUST unwind the
   // complete source transaction before any bounded reply or source evidence can be returned.
+  const key='read:'+call.name;
+  if(!await aiCentreReadAllowed(ctx,key)||call.name==='my_module_work'&&typeof (call.input as {module?:unknown})?.module==='string'&&!await aiCentreReadAllowed(ctx,'module:'+String((call.input as {module:string}).module)))return{id:call.id,name:call.name,content:ASSISTANT_PUBLIC_REPLIES.tool,isError:true};
   const outcome=await tool.run(ctx,call.input,session),publicOutcome=assistantPublicToolResult(outcome),content=serializeAgentReadResult(publicOutcome);
   reads.push(Object.freeze({name:call.name,input:call.input,digest:assistantSourceDigest(publicOutcome)}));
   observations.push({name:call.name,input:call.input,rowCount:rowCountOf(outcome),...(outcome.ok?{}:{refusal:outcome.refusal})});return{id:call.id,name:call.name,content};
@@ -451,6 +458,7 @@ async function persistWithContent(ctx: SessionContext, id: string, p: PersistInp
   const disclosureReceipt = sealAssistantDisclosure({ tenantId: ctx.tenantId, userId: p.appUserId,
     exchangeId: id, question: p.question, answer: p.answer }, p.sourceReads, p.answerPlan,{threadId:p.threadId??id,scopeDigest:assistantConversationScopeDigest(ctx,p.conversationScope)});
   await withTenant(ctx, async (tx) => {
+    await assertAiCentreRunningTx(tx,ctx);
     // Keep the owner Access interval through INSERT + marker completion + accounting COMMIT.
     // A source erased during the sole provider call must never acquire fresh retained content.
     if(p.continuationCheck)await p.continuationCheck(tx);

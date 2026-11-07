@@ -1,3 +1,4 @@
+import {withAiCentreActivity} from './ai-centre-control';
 import {withAiAdmissionCheck} from './ai-governance';
 import {bindAiSpendTaskTx} from './ai-spend-task';
 import {draftInputDigest} from '../lib/ai/draft-input';
@@ -574,7 +575,10 @@ async function hypothesisSourceTx(tx:Tx,supplied:SessionContext,p:{batchId:strin
  const digest=digestOf({contexts:[...contexts].sort((a,b)=>a.employmentId.localeCompare(b.employmentId)),features:[...features].sort(([a],[b])=>a.localeCompare(b)),verdicts});return{contexts,features,verdicts,digest};
 }
 
-export async function proposeHypotheses(
+export async function proposeHypotheses(...args:Parameters<typeof proposeHypothesesActivity>):Promise<Awaited<ReturnType<typeof proposeHypothesesActivity>>>{
+ return withAiCentreActivity(args[0],()=>proposeHypothesesActivity(...args));
+}
+async function proposeHypothesesActivity(
   ctx: SessionContext,
   p: { batchId: string },
 ): Promise<HypothesisRun> {

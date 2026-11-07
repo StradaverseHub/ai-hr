@@ -1,3 +1,4 @@
+import {aiCentreReadAllowed,withAiCentreActivity,assertAiCentreRunningTx} from '../ai-centre-control';
 /** ADR-0170 step 1 — the tools a turn may offer, bound to their existing native owners.
  *
  * A ToolProvider returns the CANDIDATE bindings for one caller; the runner then applies the gate, the spec's
@@ -253,7 +254,18 @@ export const nativeToolProvider:ToolProvider=async(ctx,scope,actions)=>{
  const importKinds=actions?await chatImportKindsFor(ctx):[];
  const imports:ToolBinding[]=importKinds.length?[{name:PREPARE_IMPORT_TOOL,kind:'suggest',entity:'chat_import',spec:prepareImportSpec(importKinds),identifierInputs:[],
   async run(input){const result=await runPrepareImport(ctx,importKinds,input,scope);return{ok:result.ok,content:result.content,...(result.refusal?{refusal:result.refusal}:{}),...(result.proposal?{proposal:result.proposal}:{})};}}]:[];
- return Object.freeze({bindings:Object.freeze([...context,...reads,...teras,...topics,...suggest,...capabilities,...imports]),reviewRoutes:Object.freeze(catalogue.map(row=>row.reviewRoute)),
+ const bindings=[...context,...reads,...teras,...topics,...suggest,...capabilities,...imports].map(binding=>Object.freeze({...binding,
+  async run(input:Record<string,unknown>){return withAiCentreActivity(ctx,async()=>{
+   const key=topicRead(binding.name,input.topic)?.name??binding.name;
+   const allowed=await aiCentreReadAllowed(ctx,key);
+   const moduleAllowed=binding.name!=='my_module_work'||typeof input.module!=='string'||await aiCentreReadAllowed(ctx,'module:'+input.module);
+   if(!allowed||!moduleAllowed)return {ok:false as const,refusal:'not_permitted',content:{ok:false,refusal:'not_permitted',message:'This AI function is switched off. Use its normal page or contact your administrator.'}};
+   const result=await binding.run(input);
+   await withTenant(ctx,tx=>assertAiCentreRunningTx(tx,ctx));
+   return result;
+  });}
+ }));
+ return Object.freeze({bindings:Object.freeze(bindings),reviewRoutes:Object.freeze(catalogue.map(row=>row.reviewRoute)),
   destinations:linkablePathsFor(ctx,visibleModuleCodes(ctx)??undefined)});
 };
 
@@ -277,6 +289,7 @@ export function topicBindings(ctx:SessionContext,permitted:readonly TerasCapabil
     const own:Record<string,unknown>=Object.fromEntries(read.input.filter(row=>input[row.name]!==undefined).map(row=>[row.name,input[row.name]]));
     const problem=invalidInput(readInputSchema(read) as unknown as Record<string,unknown>,own);
     if(problem)return{ok:false,refusal:'invalid_input',content:{ok:false,refusal:'invalid_input',message:'Invalid arguments for '+String(input.topic)+': '+problem+'.'}};
+    if(!await aiCentreReadAllowed(ctx,capability.name))return{ok:false,refusal:'not_permitted',content:{ok:false,refusal:'not_permitted',message:TOPIC_NOT_PERMITTED}};
     const outcome=await capability.run(ctx,own,scope);
     return outcome.ok?{ok:true,content:outcome}:{ok:false,content:outcome,refusal:outcome.refusal};}}];
  });

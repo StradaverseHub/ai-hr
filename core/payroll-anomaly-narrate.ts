@@ -1,3 +1,4 @@
+import {withAiCentreActivity,assertAiCentreRunningTx} from './ai-centre-control';
 import {withAiAdmissionCheck} from './ai-governance';
 import {draftInputDigest} from '../lib/ai/draft-input';
 import {assertAiPrincipalTx} from './ai-principal';
@@ -136,7 +137,10 @@ async function narrationSourceTx(tx:Tx,supplied:SessionContext,verdictId:string)
  return{verdict,findings};
 }
 
-export async function narrateVerdict(
+export async function narrateVerdict(...args:Parameters<typeof narrateVerdictActivity>):Promise<Awaited<ReturnType<typeof narrateVerdictActivity>>>{
+ return withAiCentreActivity(args[0],()=>narrateVerdictActivity(...args));
+}
+async function narrateVerdictActivity(
   ctx: SessionContext,
   p: { verdictId: string },
 ): Promise<NarrateOutcome> {
@@ -160,7 +164,8 @@ export async function narrateVerdict(
       if(!fields.length)continue;
       let expectedInput:string|undefined;
       const bound=withAiAdmissionCheck(cfg,'payroll_explanation',async(tx,request)=>{if(request.operation!=='draft'||request.inputDigest!==expectedInput||digestOf(await narrationSourceTx(tx,ctx,p.verdictId))!==sourceDigest)throw Error('Current payroll source unavailable.');});
-      const task=await preparePrivateAiTask(bound,'payroll_detector_explanation_v1',async tx=>{if(digestOf(await narrationSourceTx(tx,ctx,p.verdictId))!==sourceDigest)throw Error('Current payroll source unavailable.');return {detector:f.detectorId,fields,source:sourceDigest};});
+      const task=await preparePrivateAiTask(bound,'payroll_detector_explanation_v1',async tx=>{await assertAiCentreRunningTx(tx,ctx);
+      if(digestOf(await narrationSourceTx(tx,ctx,p.verdictId))!==sourceDigest)throw Error('Current payroll source unavailable.');return {detector:f.detectorId,fields,source:sourceDigest};});
       try{
        if(task.operation!=='draft')throw Error('Protected payroll explanation unavailable.');expectedInput=draftInputDigest(task.args as GenerateArgs);
        const selected:unknown=JSON.parse(await generateDraft(task.configuration,task.args as GenerateArgs));

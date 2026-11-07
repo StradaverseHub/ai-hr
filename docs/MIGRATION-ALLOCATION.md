@@ -5,6 +5,15 @@ journals and the actual staging watermark before journal integration or applicat
 applied SQL/hash and exact journal prefix. Reservations do not authorize deployment or skipping the
 owning release gate.
 
+## AI centre controls — 7 November 2026 (unapplied source reservation)
+
+Branch `codex/ai-centre-controls-stop-all-20261107` reserves
+`2700_ai_centre_controls`, idx 2000, when 1793330002300. A read-only scan
+of 5520 refs, 474 distinct journals and registered worktree journals found
+maximum tag 2600, idx 1900 and when 1793330002200. Preserve the current
+alpha journal prefix through 2406. Recheck peer claims and the actual installed
+watermark before integration or application. This is source allocation only.
+
 ## Payroll reconciliation remarks — 6 November 2026 (provisional)
 
 The feedback candidate reserves `2404_payroll_reconciliation_remark`, idx `1654`,

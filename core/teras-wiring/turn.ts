@@ -1,3 +1,4 @@
+import {withAiCentreActivity} from '../ai-centre-control';
 /** ADR-0169 §5.1 and ADR-0170 §11.3 change 4 — one live-chat turn through the Teras harness.
  *
  * Reached only from the chat command when ./switch.ts routed this caller to the harness (the tenant's Noveri
@@ -70,7 +71,10 @@ export function conversationTools(explainers:boolean):ToolProvider{
   return Object.freeze({...candidates,bindings:Object.freeze(candidates.bindings.filter(binding=>!withheld.has(binding.name)))});};
 }
 
-export async function runConversationTurn(supplied:SessionContext,route:Readonly<{permit:HarnessPermit;attestedProvider:TerasAttestedProvider|null;explainers:boolean}>,
+export async function runConversationTurn(...args:Parameters<typeof runConversationTurnActivity>):Promise<Awaited<ReturnType<typeof runConversationTurnActivity>>>{
+ return withAiCentreActivity(args[0],()=>runConversationTurnActivity(...args));
+}
+async function runConversationTurnActivity(supplied:SessionContext,route:Readonly<{permit:HarnessPermit;attestedProvider:TerasAttestedProvider|null;explainers:boolean}>,
  input:Readonly<{question:unknown;continuation?:unknown;companyId:string;locale:string;
   /** AI v2 slice 3: a file attached to this turn for an import (lib/chat-import.ts). Only prepare_import's native
    * preparer reads it; it is never sent to the model, stored with the chat or traced. */
