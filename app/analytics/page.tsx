@@ -160,6 +160,7 @@ export default async function AnalyticsPage({
             managerEmploymentId: filters.managerEmploymentId,
           }}
           managerSelection={managerSelection}
+          preservedParams={sp}
           options={{
             companies: companies.map((c) => ({ value: c.id, label: c.name })),
             departments: organisationChoiceLabels(departments).map((d) => ({ value: d.id, label: d.displayLabel })),

@@ -7,12 +7,15 @@ import {EMPLOYEE_CHOICE_PAGE_SIZE, employeeChoiceKey, isEmployeeChoicePage, type
 /** A form-GET field: loading navigation options never submits the report or changes its filters.
  * The first list is requested only when opened. The selected label is an independent server read,
  * so a deep selection remains visible without serializing the whole workforce into the form. */
-export function EmployeeChoiceField({name, label, allLabel, selectedId, selected}: {
+export function EmployeeChoiceField({name, label, allLabel, selectedId, selected, fallbackAction, fallbackContext}: {
   name:string;
   label:string;
   allLabel:string;
   selectedId?:string;
   selected:{employmentId:string;name:string}|null;
+  /** Module-owned native read flow, available before hydration as well as without JS. */
+  fallbackAction?:string;
+  fallbackContext?:string;
 }) {
   const t=useTranslations('employeePanel'), id=useId();
   const [open,setOpen]=useState(false), [query,setQuery]=useState(''), [offset,setOffset]=useState(0), [retry,setRetry]=useState(0);
@@ -43,7 +46,7 @@ export function EmployeeChoiceField({name, label, allLabel, selectedId, selected
   const rows=current?.data?.rows??[];
   const selectedChoice=current?.data?.selected??selected;
   const selectedOutsidePage=value&&!rows.some(row=>row.employmentId===value);
-  return <details className="space-y-1" open={open} onToggle={event=>{
+  return <div className="space-y-1"><details className="space-y-1" open={open} onToggle={event=>{
     const next=event.currentTarget.open;
     if(!next)setResult(null);
     setOpen(next);
@@ -69,5 +72,8 @@ export function EmployeeChoiceField({name, label, allLabel, selectedId, selected
       </div>}
       {current?.data&&rows.length===0&&<p className="text-xs text-muted-foreground">{t('noEmployees')}</p>}
     </div>
-  </details>;
+  </details>
+    {fallbackAction&&<button type="submit" formAction={fallbackAction} formMethod="post" name="choiceContext" value={fallbackContext??'{}'}
+      className="min-h-9 text-xs text-muted-foreground underline underline-offset-2">{t('searchLabel')}</button>}
+  </div>;
 }
