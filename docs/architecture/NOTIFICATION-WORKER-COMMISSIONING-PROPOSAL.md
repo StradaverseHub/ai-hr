@@ -17,12 +17,12 @@ immutable-release patterns. Reuse the existing scheduler controller; do not intr
 scheduler. Keep the current scheduling prerequisite fail-closed until real installed boundary and
 scheduled invocation evidence qualifies.
 
-For the long-term native authority, prefer a dedicated nonowner notification maintenance login and
-small owner-defined database capabilities for the privileged slices described below. This requires
-the controller to design, allocate and own a migration and DBA installation prerequisite. A protected
-fixed-command executor holding the existing owner URL is a smaller intermediate alternative, but
-it does **not** establish database least privilege. Do not label that alternative as closing the
-least-privilege gap. Do not expose a generic SQL or arbitrary-transaction broker.
+The controller selected a dedicated nonowner notification maintenance login and small owner-defined
+database capabilities. **No SET edge to `ai_hr_app` is allowed**: that would let a compromised worker
+forge an administrative GUC context and invoke unrelated writes. The concrete native proposal is
+[NOTIFICATION-WORKER-NATIVE-API.md](NOTIFICATION-WORKER-NATIVE-API.md), with an unnumbered SQL review
+draft alongside it. The controller owns migration/role/journal allocation. An owner-URL executor is
+not the release solution. Do not expose a generic SQL or arbitrary-transaction broker.
 
 ## Verified source facts
 
@@ -52,7 +52,7 @@ flowchart TD
   S --> P[Immutable projection-only process; dedicated nonlogin OS user]
   P --> D[Dedicated nonowner database login]
   D --> N[Fixed native maintenance capabilities]
-  D --> A[Explicit app-role canonical projection under tenant RLS]
+  D --> A[Closed event-bound fact/projection APIs; no app-role escape]
   N --> J[Owner-protected job_run start and terminal CAS]
   N --> B[Bounded event/audience reads, disposition/cursor and backlog]
   S --> R[Protected invocation collector and atomic operational receipt]
@@ -81,12 +81,13 @@ A request/response proxy between independent transactions would break that atomi
 simply launches the existing sweep with owner credentials still executes broad owner authority and
 SMTP-capable code. Neither is the preferred final boundary.
 
-The recommended design keeps privileged database ownership in reviewed SECURITY DEFINER functions,
-not in the JavaScript process or an arbitrary-query service. The worker login has no owner membership,
-SUPERUSER, BYPASSRLS, CREATEROLE, CREATEDB or DDL authority. It can explicitly SET to `ai_hr_app` for the
-existing canonical registry path, with INHERIT FALSE / SET TRUE / ADMIN FALSE, and return to its own
-restricted login role. This preserves the app's existing domain authority; it is not a claim that a
-maintenance process can have less authority than every canonical operation it legitimately invokes.
+The selected design keeps privileged database ownership in reviewed SECURITY DEFINER functions,
+not in the JavaScript process or an arbitrary-query service. The worker login has no app/owner/platform
+membership, SUPERUSER, BYPASSRLS, CREATEROLE, CREATEDB, DDL or direct source-table privileges. It has
+USAGE only on its isolated API schema and EXECUTE only on closed capabilities. Withhold `app` schema
+USAGE, following the explicit precedent in migration 0525: older helpers there inherit PUBLIC EXECUTE.
+Canonical pure recipient/content decisions share a typed read adapter; their fixed data queries and
+the existing preparation writes have event-bound native ports. General app-role access is forbidden.
 
 Candidate native capability families for controller review (names and SQL are not allocated here):
 
@@ -106,7 +107,7 @@ Candidate native capability families for controller review (names and SQL are no
 
 All privileged functions must authenticate the actual login, have a safe explicit search path,
 revoke PUBLIC and ordinary `ai_hr_app` execution, validate exact tenant/consumer/event relationships,
-bound arguments/results and prevent reverse app-to-maintenance/owner SET membership. A SECURITY
+bound arguments/results and forbid every worker-to-app/owner/platform membership and reverse edge. A SECURITY
 DEFINER's `current_user` is not proof of the original caller. Existing owner sweep paths must retain
 their current behavior until deliberately migrated; do not weaken the owner assertion to an
 arbitrary role-name string. These native changes need hostile-login tests on PostgreSQL 16, not only
@@ -123,8 +124,10 @@ The projection-only entrypoint must call the canonical dispatcher and bounded dr
 It must not import the combined sweep or delivery adapters, or invoke lifecycle mutation, Letter
 delivery, notification delivery, SMTP or provider effects. The canonical dispatcher currently imports
 recipient resolvers from broad Probation, Contracts and Performance service modules. Audit this
-transitive graph; if necessary extract the existing read-only resolver functions without changing
-their semantics, rather than claiming that a new CLI filename alone isolates the effects.
+transitive graph and extract canonical read/decision ports without changing semantics, rather than
+claiming that a new CLI filename alone isolates effects. Performance reminder recipient resolution
+also writes preparation state; preserve it behind the bounded admitted-event capability in the
+native API proposal rather than incorrectly treating every resolver as read-only.
 Preserve notification/outbox creation: projection-only
 means no external delivery, not suppressing a durable outbox row the current semantics require.
 Set a bounded database connection total, bounded per-tenant batches, graceful stop between committed
@@ -196,11 +199,11 @@ snapshot is not a mathematical guarantee against future events, failures or arri
 | --- | --- |
 | Package and Linux install | Disposable Linux archive→install→actual fixed service/timer invocation. Reject changed source/build/package/lock/runtime, traversal/symlinks, unsafe parents, mutable dependency/env/loader, unexpected overrides, unknown/shared/root web identity and wrong DB target. Show isolated first-install failure and safe drain/restart/upgrade refusal without destructive cleanup. |
 | Invocation binding | Genuine scheduled trigger produces one bound native run. Manual process, forged metadata/receipt/UID claim, unaccepted package, old boot/invocation, stale schedule revision and changed current web identity all refuse. Source deployment or observed process exit alone never passes. |
-| Native role boundary | Nonsuperuser login topology; web cannot write job_run or invoke maintenance capabilities; worker cannot become owner, bypass RLS, DDL, change other jobs or call arbitrary maintenance. Verify allowed app downgrade plus forbidden reverse edges. Login identity must be checked independently of SECURITY DEFINER effective user. |
+| Native role boundary | Nonsuperuser login topology; web cannot write job_run or invoke maintenance capabilities; worker cannot become app/owner/platform, bypass RLS, DDL, change other jobs or call arbitrary maintenance. Forged user/tenant/admin GUCs cannot authorize unrelated HR writes or app-schema helper calls. Login identity must be checked independently of SECURITY DEFINER effective user. |
 | Atomic semantics | Fictional events produce exactly the current recipients, actions, translated content and outbox intent. Fault before/after each batch commit, terminal CAS and receipt publication; late event commit behind cursor remains pending and later drains exactly once. No cursor/receipt advance on rollback; retention still respects pending intent. |
 | Backlog and concurrency | Multi-tenant enabled/scoped/disabled/suspended/closed/system-tenant cases, same-tenant competing projection, mixed legacy/narrow execution, cap exhaustion, backlog increase after an earlier success and graceful stop. Complete scope and zero native pending required for the sampled success; no unbounded pool or loop. |
 | Freshness and recovery | Missing/newest failed/newest running/interrupted/stale/future timestamp/wrong capability/wrong source/wrong DB target all refuse. Restart and timer edits require new bound evidence. Force a controlled fictional failure and missed scheduled run; demonstrate received failure/recovery/missed-run alert without SMTP/provider/real HR calls. |
-| No external effects | Install/package/runtime fixture cannot call SMTP/providers or unrelated lifecycle/Letter mutation services, including through transitive imports. Preserve canonical read-only recipient resolvers and enqueue semantics. Assert explicit connection totals including module-global client pools and bounded memory/process resources. |
+| No external effects | Install/package/runtime fixture cannot call SMTP/providers or unrelated lifecycle/Letter mutation services, including through transitive imports. Preserve canonical recipient decisions, bounded reminder preparation and enqueue semantics. Assert explicit connection totals including module-global client pools and bounded memory/process resources. |
 | Browser and load | Keep existing page catch-up until commissioning; then independently verify rendered browser freshness and actions with fictional fixtures. Only qualified exact source proceeds to resource-matched worker tests; zero sampled Busy/crashes/blocking locks is measured evidence, not a universal promise. |
 
 The two pending AI contracts and their original disclosure provenance are untouched. Notification
