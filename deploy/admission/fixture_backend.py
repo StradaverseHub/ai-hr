@@ -15,6 +15,11 @@ parser.add_argument('--data', required=True)
 arguments = parser.parse_args()
 ROOT = pathlib.Path(arguments.data)
 INVOCATION = os.environ['INVOCATION_ID']
+# Establish a readable empty receipt stream before serving, and preserve it on
+# process restart. A worker that received no POST still has a real zero-row log;
+# permission/path errors fail startup rather than being treated as zero writes.
+receipt_fd = os.open(ROOT / 'writes.jsonl', os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o600)
+os.close(receipt_fd)
 def stopping(_signal, _frame):
     # Native qualification can hold a real deactivating process briefly. This
     # is fictional-backend behavior, not a controller/installed-policy bypass.
@@ -94,7 +99,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                                              'forwardedProto': self.headers.get('X-Forwarded-Proto')}).encode())
         value = json.loads(body)
         receipt = {'id': value['id'], 'invocation': INVOCATION}
-        fd = os.open(ROOT / 'writes.jsonl', os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o600)
+        fd = os.open(ROOT / 'writes.jsonl', os.O_WRONLY | os.O_APPEND)
         try:
             os.write(fd, (json.dumps(receipt) + '\n').encode())
         finally:

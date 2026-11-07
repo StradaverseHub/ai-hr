@@ -566,13 +566,14 @@ assert cache.read_text()=='fictional writable application cache'
     second = until(lambda: next((row for row in status()['workers'] if row['unit'] == UNITS[1] and row['phase'] == 'WARMING'), None), 'second reservation')
     assert first['port'] != second['port'] and not second['admitted']
     invocation2 = properties(UNITS[1])['InvocationID']
+    until(lambda: (data(2) / 'writes.jsonl').is_file(), 'second worker receipt stream startup')
     def cold_traffic(index):
         assert request()['invocation'] == invocation1
         receipt = request('/write', body=json.dumps({'id': 'fictional-' + str(index)}).encode(), headers={'Content-Type': 'application/json'})
         assert receipt['invocation'] == invocation1
     with ThreadPoolExecutor(max_workers=8) as clients:
         list(clients.map(cold_traffic, range(30)))
-    assert not (data(2) / 'writes.jsonl').exists()
+    assert (data(2) / 'writes.jsonl').read_text() == ''
     def transition_traffic(index):
         assert request()['invocation'] in {invocation1, invocation2}
         return request('/write', body=json.dumps({'id': 'fictional-' + str(index)}).encode(), headers={'Content-Type': 'application/json'})
@@ -587,7 +588,7 @@ assert cache.read_text()=='fictional writable application cache'
     until(lambda: ready_worker(UNITS[1]), 'second worker admission')
     assert properties(UNITS[1])['InvocationID'] == invocation2
     assert {request()['invocation'] for _ in range(30)} == {invocation1, invocation2}
-    writes = [json.loads(line) for slot in (1, 2) if (data(slot) / 'writes.jsonl').exists()
+    writes = [json.loads(line) for slot in (1, 2)
               for line in (data(slot) / 'writes.jsonl').read_text().splitlines()]
     assert sorted(row['id'] for row in writes) == sorted('fictional-' + str(index) for index in range(90))
     assert len(writes) == 90
