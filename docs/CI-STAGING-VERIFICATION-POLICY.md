@@ -119,3 +119,34 @@ The current source contract uses only format2 manifest/provenance/packet/grant w
 The sourceM `b8134d487cce89cb974f87956e1d1a24f6d42fbc` build-only diagnostic41144224936, using diagnostic controllerC5 `9bc12d7005d09e702715bec737c6147528f44246`, observed a282168278-byte maximum-compression archive and correctly refused the v16 cap. The profile3 sublimit leaves3044394 bytes above that observed archive. Neither that difference nor the retained source-only proposal proves a new build fits: all five actual serialized members and the independently measured actual outer ZIP must still each satisfy the unchanged280MiB aggregate/ZIP checks. Oversized metadata or wrapper bytes refuse; no compressibility assumption is an allowance.
 
 Entire profile2, format1, mixed profile/cap combinations and malformed bounds are not current candidates. Existing installed baseline records remain opaque immutable recovery evidence; no legacy decoder or current acceptance fallback is added. Original failed runs remain failed on their original source/controller. V17 requires independently reviewed controls, an actual complete producer, an independently authenticated fresh-VM native/static consumer and the actual full-policy witness before release admission. That transport consumer does not prove authenticated application journeys or database health; real staging migration/health and changed authenticated rendered journeys remain separate required acceptance evidence. No prior diagnostic or profile2 witness is relabelled v17 PASS.
+
+
+### Cross-source recovery v3: independently reviewed test-fixture corrections
+
+The default product-repair boundary is unchanged. Explicit `repairKind:"test-fixtures"`
+additionally admits only 1–8 modified existing regular nonexecutable flat Node/DOM
+`test/*.test.ts(x)` files. Mixed product edits, new/deleted/renamed files, helpers,
+browser tests, SQL, manifests, CI, lockfiles and permission owners refuse. This is
+separately versioned `aihr-cross-source-recovery/v3`; old certificates are not relabelled.
+
+The complete original frozen full gate must finish before repair. Every original raw
+failure remains retained. Independently reconstructed impact keeps its conservative
+selection and full/unknown/browser/PDF refusals. The complete suite and unit membership,
+original expanded case names, controller, baseline, runtime and PostgreSQL resource
+identities remain unchanged. Rerun entire failed/invalidated database units on their own
+fresh database, all affected checks, the whole compiler and the exact source-bound
+canonical build. Obtain a matching authenticated worker package separately when needed.
+
+Case counts alone do not authorize changed test source. Supply `fixtureReview` with
+format1 / `INDEPENDENT_FIXTURE_REVIEW`, exact original/candidate SHAs and full diff hash,
+two actual independent reviewers, original private evidence reference, each path's
+old/new Git blobs and concrete reason. The four explicit attestations preserve case
+registration, substantive assertions, isolation/permissions and skips/timeouts. The
+adapter checks and binds this exact review into the recovery certificate; missing
+review remains visibly noninstallable. Prelaunch reauthentication recomputes it and
+rejects changed source, review or evidence. Do not invent reviewer decisions.
+
+Use a separately reviewed frozen verifier, successful actual hosted controller-only
+regressions, and the existing `verify-repair`/`deploy-repair` route. This source proposal
+is not a qualification or release. Grant, shared lease, immutable migration ledger,
+canonical byte transport, actual arrival and rendered acceptance remain mandatory.

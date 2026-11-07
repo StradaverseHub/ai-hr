@@ -6,7 +6,7 @@ import {hash} from './manifest.mjs';
 import {verifyRepairRecovery,repairDisposition,validateRepairFocusedMetadata,validateRepairBuildMetadata,validateRepairGrantEvidence} from './repair-recovery-policy.mjs';
 import {createInstallGrant} from './ci-install-grant.mjs';
 import {installationFixture} from './staging-install-test-fixture.mjs';
-import {validateRepairDelta,validateRepairArchiveInventory} from './repair-recovery.mjs';
+import {validateRepairDelta,validateRepairArchiveInventory,validateFixtureReview} from './repair-recovery.mjs';
 import {mkdtempSync,mkdirSync,writeFileSync,rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
@@ -97,4 +97,47 @@ test('Failure diagnostics remain their own bounded original namespace and cannot
  const m={run,jobs:[j],artifacts:[a]};assert.doesNotThrow(()=>validateRepairArchiveInventory(m,new Set([a.name]),()=> 'build',now));
  assert.throws(()=>validateRepairArchiveInventory(m,new Set(['production-build-v1','next-application-state-v1']),()=> 'build',now));
  for(const change of [m=>m.artifacts[0].workflow_run.id++,m=>m.artifacts[0].name='unknown',m=>m.artifacts[0].created_at=time(30),m=>m.artifacts.push(structuredClone(m.artifacts[0]))]){const bad=structuredClone(m);change(bad);assert.throws(()=>validateRepairArchiveInventory(bad,new Set([a.name]),()=> 'build',now));}
+});
+
+test('v3 fixture repair is explicit and excludes helpers, browser, product, mode and inventory changes',()=>{
+ const root=mkdtempSync(join(tmpdir(),'aihr-fixture-delta-'));
+ const git=(...args)=>execFileSync('git',args,{cwd:root,encoding:'utf8',env:{...process.env,GIT_AUTHOR_NAME:'Controller fixture',GIT_AUTHOR_EMAIL:'fixture@example.invalid',GIT_COMMITTER_NAME:'Controller fixture',GIT_COMMITTER_EMAIL:'fixture@example.invalid'}}).trim();
+ const write=(path,text)=>{const p=join(root,path);mkdirSync(join(p,'..'),{recursive:true});writeFileSync(p,text);};
+ const paths=['test/guard.test.ts','test/view.dom.test.tsx','test/guard.browser.test.tsx','test/fixtures/guard.ts','test/harness.ts','core/guard.ts','db/migrations/0001.sql','.github/workflows/alpha-staging.yml','pnpm-lock.yaml',...Array.from({length:9},(_,i)=>`test/bound${i}.test.ts`)];
+ try{
+  git('init','-q');for(const path of paths)write(path,'original\n');git('add','.');git('commit','-qm','immutable fixture base');const original=git('rev-parse','HEAD');
+  for(const path of paths.slice(0,9)){
+   git('checkout','--detach',original);write(path,'fixture repair\n');git('add',path);git('commit','-qm','fixture repair');const candidate=git('rev-parse','HEAD');
+   const options={cwd:root,original,candidate,repairKind:'test-fixtures'};
+   if(['test/guard.test.ts','test/view.dom.test.tsx'].includes(path)){
+    const delta=validateRepairDelta(options);assert.equal(delta.repairKind,'test-fixtures');assert.deepEqual(delta.changed,[path]);assert.match(delta.diffSha256,/^[a-f0-9]{64}$/);
+    assert.throws(()=>validateRepairDelta({...options,repairKind:'product'}));
+   }else assert.throws(()=>validateRepairDelta(options));
+  }
+  git('checkout','--detach',original);for(const path of paths.slice(-9))write(path,'changed\n');git('add','.');git('commit','-qm','over bound');assert.throws(()=>validateRepairDelta({cwd:root,original,candidate:git('rev-parse','HEAD'),repairKind:'test-fixtures'}),/Bounded/);
+  git('checkout','--detach',original);git('update-index','--chmod=+x','test/guard.test.ts');git('commit','-qm','mode drift');assert.throws(()=>validateRepairDelta({cwd:root,original,candidate:git('rev-parse','HEAD'),repairKind:'test-fixtures'}),/nonexecutable/);
+  git('checkout','--detach',original);git('mv','test/guard.test.ts','test/renamed.test.ts');git('commit','-qm','renamed fixture');assert.throws(()=>validateRepairDelta({cwd:root,original,candidate:git('rev-parse','HEAD'),repairKind:'test-fixtures'}),/modified existing/);
+  git('checkout','--detach',original);write('test/added.test.ts','new case\n');git('add','.');git('commit','-qm','added fixture');assert.throws(()=>validateRepairDelta({cwd:root,original,candidate:git('rev-parse','HEAD'),repairKind:'test-fixtures'}));
+  assert.throws(()=>validateRepairDelta({cwd:root,original,candidate:git('rev-parse','HEAD'),repairKind:'unknown'}),/Unknown/);
+ }finally{rmSync(root,{recursive:true,force:true});}
+});
+test('v3 fixture review binds both exact blobs, source/diff, independent reasons and substantive guarantees',()=>{
+ const root=mkdtempSync(join(tmpdir(),'aihr-fixture-review-'));
+ const git=(...args)=>execFileSync('git',args,{cwd:root,encoding:'utf8',env:{...process.env,GIT_AUTHOR_NAME:'Controller fixture',GIT_AUTHOR_EMAIL:'fixture@example.invalid',GIT_COMMITTER_NAME:'Controller fixture',GIT_COMMITTER_EMAIL:'fixture@example.invalid'}}).trim();
+ try{
+  mkdirSync(join(root,'test'));writeFileSync(join(root,'test/native.test.ts'),'original fixture\n');git('init','-q');git('add','.');git('commit','-qm','base');const original=git('rev-parse','HEAD');
+  writeFileSync(join(root,'test/native.test.ts'),'legitimate fixture correction\n');git('add','.');git('commit','-qm','repair');const candidate=git('rev-parse','HEAD');
+  const delta=validateRepairDelta({cwd:root,original,candidate,repairKind:'test-fixtures'});
+  const review={format:1,kind:'INDEPENDENT_FIXTURE_REVIEW',original,candidate,diffSha256:delta.diffSha256,reviewedBy:['independent-agent:standards','independent-agent:spec'],evidence:'/private/original-review-evidence.json#sha256-retained',files:[{path:'test/native.test.ts',beforeBlob:git('rev-parse',original+':test/native.test.ts'),afterBlob:git('rev-parse',candidate+':test/native.test.ts'),reason:'Supply the actual native fixture owner while preserving every permission assertion.'}],attestations:{caseRegistrationsPreserved:true,assertionsNotWeakened:true,isolationAndPermissionsPreserved:true,noSkipsOrTimeoutRelaxation:true}};
+  const options={cwd:root,original,candidate,delta};assert.equal(validateFixtureReview(options),null);assert.deepEqual(validateFixtureReview({...options,review}),review);
+  for(const mutate of [r=>r.candidate='f'.repeat(40),r=>r.diffSha256='0'.repeat(64),r=>r.files[0].beforeBlob='f'.repeat(40),r=>r.files[0].afterBlob='f'.repeat(40),r=>r.files=[],r=>r.files[0].reason='fixed',r=>r.reviewedBy=['same','same'],r=>r.attestations.assertionsNotWeakened=false,r=>r.attestations.extra=true,r=>r.extra=true]){const bad=structuredClone(review);mutate(bad);assert.throws(()=>validateFixtureReview({...options,review:bad}));}
+  assert.throws(()=>validateFixtureReview({...options,delta:{...delta,repairKind:'product'},review}));
+ }finally{rmSync(root,{recursive:true,force:true});}
+});
+test('v3 fixture grant refuses omitted or changed review even with a forged outer PASS',()=>{
+ const f=input(),c=verifyRepairRecovery(f),g=installationFixture();c.delta={repairKind:'test-fixtures',diffSha256:'a'.repeat(64),fixtureReview:null};c.pendingFixtureReview=true;
+ const make=()=>({...g.evidence,...c,recovery:c,fingerprint:hash(c),fixtureReview:c.delta.fixtureReview,build:{...g.evidence.build,...f.build}}),run={...g.run,id:c.runId,head_sha:c.controller};
+ assert.throws(()=>validateRepairGrantEvidence(make(),run),/fixture review/);
+ c.pendingFixtureReview=false;c.delta.fixtureReview={diffSha256:c.delta.diffSha256};const valid=make();assert.equal(validateRepairGrantEvidence(valid,run),true);
+ const bad={...valid,fixtureReview:{diffSha256:'b'.repeat(64)}};assert.throws(()=>validateRepairGrantEvidence(bad,run),/fixture review/);
 });

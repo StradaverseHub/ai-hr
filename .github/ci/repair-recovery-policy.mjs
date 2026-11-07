@@ -1,4 +1,4 @@
-/** Cross-source v2 accounting. API/archive/source authentication belongs to the adapter. */
+/** Cross-source v3 accounting. API/archive/source authentication belongs to the adapter. */
 import assert from 'node:assert/strict';
 import {isDeepStrictEqual} from 'node:util';
 import {relative} from 'node:path';
@@ -6,7 +6,7 @@ import {hash,requiredEvidence} from './manifest.mjs';
 import {verifyUnitReport} from './verify-shards.mjs';
 import {validatePostgresEvidence} from './postgres-evidence.mjs';
 import {REPOSITORY,REPOSITORY_ID,WORKFLOW_ID,WORKFLOW_PATH} from './release-policy.mjs';
-export const REPAIR_RECOVERY_POLICY='aihr-cross-source-recovery/v2';
+export const REPAIR_RECOVERY_POLICY='aihr-cross-source-recovery/v3';
 const same=(a,b,message)=>assert(isDeepStrictEqual(a,b),message);
 const sha=x=>typeof x==='string'&&/^[a-f0-9]{40}$/.test(x);
 const id=x=>Number.isSafeInteger(x)&&x>0;
@@ -125,6 +125,7 @@ export function verifyRepairRecovery({sourcePlan,plan,assessment,sourceRun,repor
 export function validateRepairGrantEvidence(evidence,run){
  const c=evidence.recovery;assert(c?.kind==='AUTHENTICATED_CROSS_SOURCE_RECOVERY'&&c.recoveryPolicy===REPAIR_RECOVERY_POLICY&&c.originalConclusion==='failure'&&c.originalSha!==c.sha&&c.originalRunId!==c.runId&&evidence.fingerprint===hash(c),'Cross-source recovery certificate required');
  assert(c.pendingReview===false&&c.reviewedController===c.verificationController&&c.releaseAuthorized===false,'Pending-review diagnostic cannot authorize an installation grant');
+ if(c.delta?.repairKind==='test-fixtures')assert(c.pendingFixtureReview===false&&c.delta.fixtureReview?.diffSha256===c.delta.diffSha256&&isDeepStrictEqual(evidence.fixtureReview,c.delta.fixtureReview),'Exact independent fixture review required for installation');
  for(const key of ['sha','controller','verificationController','baseline','runId','policyVersion','suiteFiles','browserFiles','tests'])same(evidence[key],c[key],'Recovery grant identity differs: '+key);
  assert(run.id===c.runId&&run.head_sha===c.controller&&run.conclusion==='success'&&run.status==='completed'&&run.run_attempt===1&&c.verificationDiagnostic?.controller===c.verificationController&&id(c.verificationDiagnostic.runId)&&c.compilers?.length>0&&c.focusedSources?.length>0&&c.units?.some(u=>u.kind==='repaired-source'),'Missing replacement build/compiler/controller provenance');return true;
 }
