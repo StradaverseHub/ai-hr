@@ -100,6 +100,15 @@ export async function captureAiReviewScreenshots(html:string,locale:string,secti
    if(overlaps)throw Error('Mobile Probation case fields overlap.');
    return{caseFieldsDoNotOverlap:true};
   }):null;
+  const howControlsGeometry=section==='ai-centre-how'?await page.evaluate(()=>{
+   const steps=Array.from(document.querySelectorAll<HTMLButtonElement>('[data-how-controls] button[role="tab"]'));
+   const boxes=steps.map(step=>{const box=step.getBoundingClientRect(),style=getComputedStyle(step);return{left:box.left,right:box.right,top:box.top,bottom:box.bottom,width:box.width,height:box.height,visible:style.visibility==='visible'&&style.display!=='none'&&box.width>0&&box.height>0};});
+   const visibleAndInViewport=boxes.length===9&&boxes.every(box=>box.visible&&box.left>=-.5&&box.right<=window.innerWidth+.5);
+   const touchTargets=window.innerWidth<=640||matchMedia('(pointer: coarse)').matches;
+   const adequateTargets=!touchTargets||boxes.every(box=>box.width>=43.5&&box.height>=43.5);
+   const nonoverlapping=boxes.every((a,i)=>boxes.slice(i+1).every(b=>a.right<=b.left+.5||b.right<=a.left+.5||a.bottom<=b.top+.5||b.bottom<=a.top+.5));
+   return{steps:boxes.length,visibleAndInViewport,adequateTargets,nonoverlapping,touchTargets,boxes};
+  }):null;
   const overflow=await page.evaluate(()=>document.documentElement.scrollWidth>window.innerWidth+1);
   const scrollRegions=await page.locator('[data-function-access-scroll]').evaluateAll(nodes=>nodes.map(node=>({width:node.clientWidth,content:node.scrollWidth,scrollable:getComputedStyle(node).overflowX==='auto'})));
   if(width===390&&scrollRegions.some(region=>!region.scrollable||region.width>=region.content))throw Error('The wide function guide must remain horizontally scrollable on a phone.');
@@ -107,7 +116,7 @@ export async function captureAiReviewScreenshots(html:string,locale:string,secti
   if(section==='people-configuration-navigation')await page.locator('a[href="/admin/settings/system-labels"]').scrollIntoViewIfNeeded();
   const file=`${locale}-${section}-${device}.png`;await page.screenshot({path:join(out,file),fullPage:true});
   if(section==='security-functions')await page.screenshot({path:join(out,`${locale}-${section}-${device}-viewport.png`),fullPage:false});
-  rows.push({locale,section,device,width,height,overflow,file,browser:browser.version(),candidate:process.env.AIHR_CI_HEAD,runId:process.env.GITHUB_RUN_ID,theme,scrollRegions,fixture,scriptFontProof,chartGeometry,trackerGeometry,...(section==='chat-card-rewards-calendar'?{cellsVisible:!clippedCalendarCells}:{})});
+  rows.push({locale,section,device,width,height,overflow,file,browser:browser.version(),candidate:process.env.AIHR_CI_HEAD,runId:process.env.GITHUB_RUN_ID,theme,scrollRegions,fixture,scriptFontProof,chartGeometry,trackerGeometry,...(howControlsGeometry?{howControlsGeometry}:{}),...(section==='chat-card-rewards-calendar'?{cellsVisible:!clippedCalendarCells}:{})});
   if(clippedCalendarCells)throw Error('Calendar before/after value is clipped; inspect the captured evidence.');
   // This existing table intentionally scrolls horizontally on small screens. Capture its action
   // column too, so the mobile evidence shows the real controls rather than only the left-hand labels.
@@ -119,6 +128,7 @@ export async function captureAiReviewScreenshots(html:string,locale:string,secti
   await page.close();
  }}finally{await browser.close();}
  writeFileSync(join(out,`${locale}-${section}.json`),JSON.stringify(rows,null,2)+'\n');
+ if(rows.some(row=>'howControlsGeometry' in row&&row.howControlsGeometry&&(!row.howControlsGeometry.visibleAndInViewport||!row.howControlsGeometry.adequateTargets||!row.howControlsGeometry.nonoverlapping)))throw Error('How it works step targets must all fit, remain touch sized and never overlap; inspect the captured geometry.');
  if(rows.some(row=>row.overflow))throw Error('Rendered fixture overflows its viewport; inspect the captured evidence.');
 }
 

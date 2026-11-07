@@ -51,5 +51,15 @@ describe('How it works fits the screen',()=>{
   expect(inside(controls.getBoundingClientRect(),frame),'controls in view').toBe(true);
   expect(tabs.getBoundingClientRect().top).toBeGreaterThanOrEqual(frame.top-.5);
   expect(document.documentElement.scrollWidth).toBeLessThanOrEqual(390);
+  const steps=Array.from(controls.querySelectorAll<HTMLButtonElement>('button[role="tab"]'));
+  expect(steps).toHaveLength(9);
+  const boxes=steps.map(step=>step.getBoundingClientRect());
+  for(const box of boxes){
+   expect(box.width).toBeGreaterThanOrEqual(43.5);expect(box.height).toBeGreaterThanOrEqual(43.5);
+   expect(box.left).toBeGreaterThanOrEqual(0);expect(box.right).toBeLessThanOrEqual(390);
+  }
+  for(let i=0;i<boxes.length;i++)for(let j=i+1;j<boxes.length;j++){
+   const a=boxes[i],b=boxes[j];expect(a.right<=b.left+.5||b.right<=a.left+.5||a.bottom<=b.top+.5||b.bottom<=a.top+.5,'step targets do not overlap').toBe(true);
+  }
  });
 });

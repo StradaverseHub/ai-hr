@@ -194,7 +194,7 @@ function RequestJourney() {
           <li className="inline-flex items-center gap-1.5"><span aria-hidden className="size-3 rounded-full shadow-[inset_0_0_0_2px_rgb(138_90_46)]" />{t('legend.person')}</li>
         </ul>
       </div>
-      <section data-how-steps className="order-first rounded-2xl border border-border bg-card p-5 lg:sticky lg:top-4 lg:order-none">
+      <section data-how-steps className="order-first min-w-0 rounded-2xl border border-border bg-card p-5 lg:sticky lg:top-4 lg:order-none">
         {/* The panel the step tabs control; announced politely as the step changes. */}
         <div role="tabpanel" id="how-step-panel" aria-labelledby={`how-step-tab-${HOW_STEPS[step]}`} aria-live="polite" aria-atomic="true">
           <p className="text-xs tabular-nums text-muted-foreground">{t('stepOf', { n: step + 1, total: HOW_STEPS.length })}</p>
@@ -212,7 +212,7 @@ function RequestJourney() {
             {playing ? <Pause aria-hidden className="size-4" /> : <Play aria-hidden className="size-4" />}{playing ? t('pause') : t('play')}</button>}
           <button type="button" onClick={() => { setPlaying(false); go(step + 1); }} disabled={step === last}
             className="inline-flex min-h-9 items-center gap-1 rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{t('next')}<ChevronRight aria-hidden className="size-4" /></button>
-          <div role="tablist" aria-label={t('stepsLabel')} className="ml-auto flex">
+          <div role="tablist" aria-label={t('stepsLabel')} className="ml-auto flex max-w-full flex-wrap justify-end">
             {HOW_STEPS.map((key, index) => (
               <button key={key} ref={element => { dots.current[index] = element; }} type="button" role="tab" id={`how-step-tab-${key}`} aria-controls="how-step-panel" aria-selected={index === step} aria-label={t(`steps.${key}`)}
                 tabIndex={index === step ? 0 : -1} onClick={() => { setPlaying(false); go(index); }} onKeyDown={onDotKey}

@@ -1,0 +1,51 @@
+{
+  "kind": "AI_CENTRE_MOBILE_STEP_LAYOUT_RECOVERY",
+  "releaseAuthorized": false,
+  "productionAuthorized": false,
+  "base": "8c04174dc059ab3753fb4a06d0554a0da76ac729",
+  "failedRun": 42410720570,
+  "qualification": "NOT_RUN; static source/hash only",
+  "retained": {
+    "linuxBuild": "PASS_AT_8c",
+    "database": {
+      "passed": 146,
+      "failed": 13,
+      "knownReadinessBindingFailures": 13,
+      "nativePresentationPassed": 13,
+      "populatedAndEmptyShadowPassed": 1
+    },
+    "nodb": {
+      "passed": 78,
+      "failed": 6,
+      "allFailures": "six-locale HowItWorks mobile viewport overflow"
+    },
+    "skipped": 0
+  },
+  "focusedSelectors": [
+    "test/ai-centre-evidence.dom.test.tsx",
+    "test/ai-centre-how-it-works.dom.test.tsx"
+  ],
+  "browserSelectors": [
+    "test/ai-centre-how-it-works-fit.browser.test.tsx"
+  ],
+  "buildRequired": true,
+  "unchanged": [
+    "allSQL/journal/nativeAPI/core/approvals/generatedsourcebindings",
+    "global44pxmobiletargets",
+    "viewportoverflowassertion",
+    "controlorderandkeyboardbehavior"
+  ],
+  "geometry": [
+    "actual9visibletargets",
+    "viewportbounds",
+    "44pxtouchminimum",
+    "pairwisenonoverlap",
+    "bothscreenshots+geometrybeforeassertions"
+  ],
+  "sourceSha256": {
+    "components/ai-centre/how-it-works.tsx": "bfa7c2854805f88d891977b0aa63cda7347fa77adb006c8e2ae8b9b7e6e8f4fe",
+    "test/helpers/ai-review-screenshots.ts": "a9803f13f8b26eb3cfc5f9eaabf5e7ca5d3f4065df542aaff7c60a55b0855141",
+    "test/ai-centre-how-it-works-fit.browser.test.tsx": "18dce7270f36e3ae50b91af8f3f0985e329d42061206d588b900857590ac3c2c",
+    "docs/qualification/ai-centre-how-mobile-controls-recovery-20261108.md": "7376261b8490d95bc92369af4eec90883a59e357cabdd68fe157a65cf62d4d3e"
+  }
+}
