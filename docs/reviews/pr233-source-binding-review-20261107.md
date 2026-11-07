@@ -31,4 +31,4 @@ The corrected exact provider digest is `babb939b9b10a0292344552cd3c65d2a2740a48f
 
 The independent immutable-source impact classifier records `tier: full`, `risk: high` because the unapplied migration SQL changed. A new complete gate is required for the corrected schema; the old successful units are not relabelled onto it. This is explicit repair invalidation rather than a default whole rerun after a failure.
 
-This corrected binding is a concrete proposal and awaits actual owner approval before editing the literal registry.
+On 8 November 2026 (Asia/Kuala_Lumpur), the repository owner answered “Approve corrected exact binding” to the question explicitly naming corrected digest `babb939b9b10a0292344552cd3c65d2a2740a48f11148b5236a28a0b88e0bc06`, the same 28 approved contracts, unchanged permissions and original approval metadata, and both pending contracts remaining blocked. This records actual approval for only those exact 28 fingerprint replacements. The earlier approval and failed gate remain historical evidence.
