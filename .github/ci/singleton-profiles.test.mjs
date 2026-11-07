@@ -81,6 +81,11 @@ test('discovered future focused-only guards fail planning until their actual ful
  const future='test/employee-choice-unified-plan.test.ts',legacy="const requested=JSON.parse(process.env.AIHR_FOCUSED_TESTS);it.skipIf(!requested)('required',()=>{});";
  assert.throws(()=>assertSingletonCoverage([future],()=>legacy));assert.throws(()=>assertSingletonCoverage(['test/analytics-termination-lateral.test.ts'],()=>legacy));
  assert.throws(()=>assertSingletonCoverage(['test/analytics-termination-lateral.test.ts'],()=>"it('required',()=>{});"));
+ // The formerly future fixed-LOGIN file now exists. A dedicated descriptor alone
+ // must not let it execute without validating the real invocation capability.
+ const notification='test/notification-worker-lifecycle.test.ts';
+ assert.throws(()=>assertSingletonCoverage([notification],()=>"it('required',()=>{});"));
+ assertSingletonCoverage([notification],()=>"beforeAll(()=>admitSingletonTest('test/notification-worker-lifecycle.test.ts')); ");
  const root=fileURLToPath(new URL('../../',import.meta.url)),files=execFileSync('git',['ls-files','test'],{cwd:root,encoding:'utf8'}).trim().split('\n').filter(f=>/\.test\.ts$|\.dom\.test\.tsx$/.test(f));
  assertSingletonCoverage(files,file=>readFileSync(new URL('../../'+file,import.meta.url),'utf8'));
  assertSingletonSelection(['test/runtime-ready-admission-native.test.ts']);assertSingletonSelection(['test/ordinary-a.test.ts','test/ordinary-b.test.ts']);

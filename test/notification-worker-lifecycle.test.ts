@@ -15,10 +15,11 @@ import {owner,resetDb,seedBase,type Base} from './harness';
 import {notificationWorkerFixtureOwner} from './fixtures/notification-worker/owner-fixture';
 import {registerNotificationProjectionCases} from './fixtures/notification-worker/projection-cases';
 import {registerNotificationAssessmentCases} from './fixtures/notification-worker/assessment-cases';
+import {admitSingletonTest} from './helpers/ci-singleton-admission';
 // A single test file and explicit sequential suites own this one cluster LOGIN.
 const fixtureOwner=notificationWorkerFixtureOwner();
 describe.sequential('native notification worker capabilities',()=>{
-beforeAll(()=>fixtureOwner.setup(),300000);
+beforeAll(()=>{admitSingletonTest('test/notification-worker-lifecycle.test.ts');return fixtureOwner.setup();},300000);
 afterAll(()=>fixtureOwner.close());
 describe.sequential('native notification lifecycle authority (stage1)',()=>{
 const role='ai_hr_notification_worker',fixture=readFileSync('test/fixtures/notification-worker/lifecycle.sql','utf8');

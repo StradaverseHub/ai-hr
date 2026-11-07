@@ -32,7 +32,7 @@ export function assertSingletonCoverage(suite,read){
   const text=read(file),profile=singletonProfile(file);
   const focusedGuard=/AIHR_FOCUSED_(?:TESTS|SUITE_CAPACITY|EVIDENCE_DIR)/.test(text)&&/\.(?:skipIf|runIf)\s*\(/.test(text);
   assert(!focusedGuard,'Focused-only conditional cases require registered full-CI singleton admission: '+file);
-  if(profile==='controlled-database-v1'||profile==='linux-systemd-nginx-v1')assert(/\badmitSingletonTest\s*\(/.test(text),'Registered singleton lacks actual full/focused admission: '+file);
+  if(profile)assert(/\badmitSingletonTest\s*\(/.test(text),'Registered singleton lacks actual full/focused admission: '+file);
  }
 }
 export const singletonDescriptor=file=>{const profile=singletonProfile(file);return profile?{version:SINGLETON_VERSION,profile,workers:1,isolation:profile==='linux-systemd-nginx-v1'?'job-host':'job-postgres-cluster'}:null;};
