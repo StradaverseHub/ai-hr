@@ -95,6 +95,12 @@ processed before Python isolation begins. A privileged hook must not be added to
 a service whose environment boundary is still application-writable.
 [systemd execution environment](https://www.freedesktop.org/software/systemd/man/255/systemd.exec.html).
 
+Credential absence is proved through typed system D-Bus reads: empty `a(ss)`
+arrays for LoadCredential/LoadCredentialEncrypted and empty `a(say)` arrays for
+SetCredential/SetCredentialEncrypted. The display string `[unprintable]` does not
+prove presence or absence. Missing, nonempty, malformed and wrong-type replies
+refuse. This matches the existing authenticated staging environment verifier.
+
 All service reload paths, including external certificate/config reload owners,
 must use the same guarded controller. Direct privileged HUP/config changes
 outside that protocol invalidate its endpoint-reader proof and must be excluded
@@ -118,6 +124,12 @@ not a promise that hardware/process failures cannot occur.
 No tests or systemd/Nginx processes are run locally. Freeze the source, obtain
 independent review, then use the existing focused Actions route with these
 selectors as separate planned units:
+
+Source-side Python qualification uses both `-I` and `-B`: isolation alone does
+not prevent imports from writing `__pycache__`. The final exact-source/clean-tree
+guard remains unchanged and must pass after the tests. Unexpected native
+controller failures record only bounded catalogued fixed error codes/reasons;
+uncatalogued stderr, environment values and command contents are withheld.
 
 | Selector | Purpose | Required runner capability |
 | --- | --- | --- |

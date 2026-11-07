@@ -41,6 +41,46 @@ evidence = None
 profile_value = None
 
 
+def safe_controller_failure(stderr):
+    """Only catalogued fixed helper errors may enter public fixture evidence."""
+    catalog = {
+        'Managed path is missing': 'PATH_MISSING',
+        'Managed paths must not be symlinks': 'PATH_SYMLINK',
+        'Managed path has an unexpected owner': 'PATH_OWNER',
+        'Managed path is writable by another principal': 'PATH_WRITABLE',
+        'Unexpected managed path type': 'PATH_TYPE',
+        'Worker service identity differs from its profile': 'UNIT_IDENTITY',
+        'Worker process containment is not qualified': 'CGROUP_CONTAINMENT',
+        'A fixed nonroot worker principal is required': 'WORKER_PRINCIPAL',
+        'Privileged-hook environment source is not qualified': 'ENVIRONMENT_SOURCE',
+        'Privileged-hook loader environment is not qualified': 'LOADER_ENVIRONMENT',
+        'Unsupported privileged-hook environment file syntax': 'ENVIRONMENT_SYNTAX',
+        'Required privileged-hook environment file is missing': 'ENVIRONMENT_MISSING',
+        'Privileged-hook environment file exceeds its bound': 'ENVIRONMENT_SIZE',
+        'Unsupported worker unit configuration path': 'UNIT_PATH',
+        'Cannot inspect typed privileged-hook credentials': 'CREDENTIAL_INSPECTION',
+        'Typed credential metadata exceeds its bound': 'CREDENTIAL_SIZE',
+        'Typed worker unit object is not qualified': 'CREDENTIAL_UNIT_OBJECT',
+        'Privileged-hook credential source is not qualified': 'CREDENTIAL_SOURCE',
+        'Cannot inspect the complete immutable release inventory': 'RELEASE_INSPECTION',
+        'Immutable release inventory exceeds its supported bound': 'RELEASE_SIZE',
+        'Release does not match the admitted source and build': 'RELEASE_IDENTITY',
+        'Installed controller differs from its accepted profile': 'CONTROLLER_IDENTITY',
+        'Worker service is not in an admitting phase': 'WORKER_PHASE',
+        'Worker service stopped or changed during inspection': 'WORKER_STOPPED',
+        'Worker did not establish readiness': 'WORKER_READINESS',
+        'Proxy publication requires reconciliation': 'PUBLICATION_PENDING',
+        'Proxy rejected the proposed configuration': 'PROXY_CONFIGURATION',
+        'Proxy activation is unverified; reconciliation required': 'PROXY_ACTIVATION',
+        'Some workers remain unadmitted after reconciliation': 'RECOVERY_INCOMPLETE',
+    }
+    if isinstance(stderr, str) and len(stderr) <= 512:
+        for reason, code in catalog.items():
+            if stderr.strip() == 'Admission refused: ' + reason:
+                return {'code': code, 'reason': reason}
+    return {'code': 'CONTROLLER_ERROR_UNCLASSIFIED', 'reason': 'Uncatalogued controller failure withheld'}
+
+
 def save():
     if evidence is not None:
         evidence.write_text(json.dumps(report, indent=2) + '\n')
@@ -74,7 +114,17 @@ def controller(operation, unit=None, invocation=None, *, check=True):
     env = C.SAFE_ENV.copy()
     if invocation is not None:
         env['INVOCATION_ID'] = invocation
-    return command(arguments, check=check, timeout=20, env=env)
+    try:
+        result = command(arguments, check=False, timeout=20, env=env)
+    except subprocess.TimeoutExpired:
+        report['controllerFailure'] = {'code': 'CONTROLLER_TIMEOUT', 'reason': 'Bounded controller operation timed out'}
+        save()
+        raise AssertionError('Native controller failure: CONTROLLER_TIMEOUT') from None
+    if check and result.returncode != 0:
+        report['controllerFailure'] = safe_controller_failure(result.stderr)
+        save()
+        raise AssertionError('Native controller failure: ' + report['controllerFailure']['code'])
+    return result
 
 
 def status():
@@ -485,6 +535,8 @@ assert cache.read_text()=='fictional writable application cache'
     checked = json.loads(controller('check-only').stdout)
     assert checked['kind'] == 'ADMISSION_CHECKONLY' and checked['installationAvailable'] is False
     assert checked['releaseEligible'] is False and checked['rootBoundaryInspected'] is True
+    assert checked['typedEmptyCredentialsVerified'] is True
+    report['typedEmptyCredentialsVerified'] = True
     build_identity = pathlib.Path('/var/lib/aihr-admission/release/.next/BUILD_ID')
     build_identity.chmod(0o666)
     try:

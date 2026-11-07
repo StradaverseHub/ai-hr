@@ -145,6 +145,51 @@ class StateTests(unittest.TestCase):
             self.controller.admit(generation['unit'], generation['invocation'])
         self.assertEqual(self.controller.store.read()['published']['ready'], [])
 
+    def test_typed_empty_credentials_are_required_instead_of_systemctl_display(self):
+        host = C.LinuxHost(self.profile)
+        path = '/org/freedesktop/systemd1/unit/aihr_2dweb_401_2eservice'
+        calls = []
+        def empty_reply(arguments):
+            calls.append(arguments)
+            if arguments[0] == 'call':
+                return {'type': 'o', 'data': [path]}
+            return {'type': 'a(say)' if arguments[-1].startswith('Set') else 'a(ss)', 'data': []}
+        host.busctl = empty_reply
+        host.assert_empty_credentials('aihr-web@1.service')
+        self.assertEqual(len(calls), 5)
+        self.assertEqual({arguments[-1] for arguments in calls[1:]},
+                         {'LoadCredential', 'LoadCredentialEncrypted', 'SetCredential', 'SetCredentialEncrypted'})
+        for invalid in [None, {}, {'type': 's', 'data': []}, {'type': 'a(ss)'},
+                        {'type': 'a(ss)', 'data': None}, {'type': 'a(ss)', 'data': [['fixture', 'never-export-secret']]}]:
+            host.busctl = lambda arguments: empty_reply(arguments) if arguments[0] == 'call' else invalid
+            with self.assertRaises(C.Refused) as error:
+                host.assert_empty_credentials('aihr-web@1.service')
+            self.assertNotIn('never-export-secret', str(error.exception))
+        for invalid in [{'type': 's', 'data': [path]}, {'type': 'o', 'data': []},
+                        {'type': 'o', 'data': ['https://never-export-secret']}]:
+            host.busctl = lambda _arguments: invalid
+            with self.assertRaises(C.Refused):
+                host.assert_empty_credentials('aihr-web@1.service')
+        for field in ('LoadCredential', 'LoadCredentialEncrypted', 'SetCredential', 'SetCredentialEncrypted'):
+            for invalid in [{'type': 's', 'data': []},
+                            {'type': 'a(say)' if field.startswith('Set') else 'a(ss)',
+                             'data': [['fixture', 'never-export-secret']]}]:
+                host.busctl = lambda arguments: invalid if arguments[0] == 'get-property' and arguments[-1] == field else empty_reply(arguments)
+                with self.assertRaises(C.Refused) as error:
+                    host.assert_empty_credentials('aihr-web@1.service')
+                self.assertNotIn('never-export-secret', str(error.exception))
+
+    def test_native_diagnostics_only_publish_catalogued_fixed_reasons(self):
+        specification = importlib.util.spec_from_file_location('admission_native_fixture', pathlib.Path(__file__).with_name('test_native.py'))
+        native = importlib.util.module_from_spec(specification)
+        specification.loader.exec_module(native)
+        self.assertEqual(native.safe_controller_failure('Admission refused: Privileged-hook credential source is not qualified\n'),
+                         {'code': 'CREDENTIAL_SOURCE', 'reason': 'Privileged-hook credential source is not qualified'})
+        for value in ['private never-export-secret', 'Admission refused: never-export-secret\n', 'x' * 513, None]:
+            safe = native.safe_controller_failure(value)
+            self.assertEqual(safe['code'], 'CONTROLLER_ERROR_UNCLASSIFIED')
+            self.assertNotIn('never-export-secret', json.dumps(safe))
+
     def test_reservation_rewrites_overlay_after_interrupted_first_write(self):
         generation = self.reserve()
         environment = pathlib.Path(self.value['units'][generation['unit']]['environmentFile'])

@@ -251,6 +251,33 @@ class LinuxHost:
         require(len(result.stdout) <= 32768, 'Service metadata exceeds its bound')
         return dict(line.split('=', 1) for line in result.stdout.splitlines() if '=' in line)
 
+    def busctl(self, arguments: list[str]) -> dict[str, Any]:
+        try:
+            result = subprocess.run(['/usr/bin/busctl', '--system', '--json=short', *arguments], env=SAFE_ENV,
+                                    capture_output=True, text=True, timeout=3, check=True)
+            require(len(result.stdout) <= 32768, 'Typed credential metadata exceeds its bound')
+            return json.loads(result.stdout)
+        except (OSError, subprocess.SubprocessError, ValueError):
+            raise Refused('Cannot inspect typed privileged-hook credentials') from None
+
+    def assert_empty_credentials(self, unit: str) -> None:
+        require(unit in self.profile.value['units'], 'Unknown worker service')
+        value = self.busctl(['call', 'org.freedesktop.systemd1', '/org/freedesktop/systemd1',
+                             'org.freedesktop.systemd1.Manager', 'GetUnit', 's', unit])
+        require(isinstance(value, dict) and value.get('type') == 'o'
+                and isinstance(value.get('data'), list) and len(value['data']) == 1
+                and isinstance(value['data'][0], str)
+                and re.fullmatch(r'/org/freedesktop/systemd1/unit/[A-Za-z0-9_]+', value['data'][0]) is not None,
+                'Typed worker unit object is not qualified')
+        object_path = value['data'][0]
+        for key, signature in {'LoadCredential': 'a(ss)', 'LoadCredentialEncrypted': 'a(ss)',
+                               'SetCredential': 'a(say)', 'SetCredentialEncrypted': 'a(say)'}.items():
+            typed = self.busctl(['get-property', 'org.freedesktop.systemd1', object_path,
+                                'org.freedesktop.systemd1.Service', key])
+            require(isinstance(typed, dict) and typed.get('type') == signature
+                    and isinstance(typed.get('data'), list) and typed['data'] == [],
+                    'Privileged-hook credential source is not qualified')
+
     def check_only(self) -> dict[str, Any]:
         """Read-only boundary inspection, never an installation/grant receipt.
 
@@ -273,9 +300,13 @@ class LinuxHost:
             require(props.get('WorkingDirectory') == spec['releaseDirectory']
                     and command_identity(props.get('ExecStart', '')) == spec['commandDigest'],
                     'Worker service identity differs from its profile')
-            for key in ('PassEnvironment', 'PAMName', 'RootDirectory', 'RootImage', 'LoadCredential',
-                        'LoadCredentialEncrypted', 'SetCredential', 'SetCredentialEncrypted', 'ImportCredential'):
+            for key in ('PassEnvironment', 'PAMName', 'RootDirectory', 'RootImage', 'ImportCredential'):
                 require(props.get(key) == '', 'Privileged-hook environment source is not qualified')
+            # systemctl's binary-array display can be [unprintable] even when
+            # empty. Never interpret the display as absence; independently
+            # require all four typed D-Bus arrays to be empty, as the existing
+            # authenticated staging environment verifier already does.
+            self.assert_empty_credentials(unit)
             def reject_loader(text: str) -> None:
                 require(re.search(r'(?:^|[\s\"\x27])(?:export\s+)?(?:LD_[A-Za-z0-9_]*|DYLD_[A-Za-z0-9_]*|PYTHON[A-Za-z0-9_]*)\s*=', text) is None,
                         'Privileged-hook loader environment is not qualified')
@@ -316,7 +347,7 @@ class LinuxHost:
         secure_path(pathlib.Path(self.profile.value['nginxConfig']), 0)
         secure_path(pathlib.Path(self.profile.value['nginxBinary']), 0)
         return {'kind': 'ADMISSION_CHECKONLY', 'installationAvailable': False, 'releaseEligible': False,
-                'rootBoundaryInspected': True, 'immutableEntriesInspected': inspected,
+                'rootBoundaryInspected': True, 'typedEmptyCredentialsVerified': True, 'immutableEntriesInspected': inspected,
                 'remainingInstallationGates': ['authenticated-format3-grant-and-shared-lease',
                     'complete-nginx-runtime-and-include-inventory', 'resource-envelope-admission',
                     'old-new-build-and-server-action-compatibility', 'real-next-transport-and-worker-qualification']}
