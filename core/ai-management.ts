@@ -7,13 +7,14 @@ import { isAdmin, isGroupAdmin } from '../lib/authz-model';
 import { AI_FEATURES, isAiFeature, type AiFeatureId } from '../lib/ai/features';
 import { resolveEntitlementsTx, isModuleEnabled, getSetting } from './entitlements';
 import { SETTING_CATALOG } from '../packs/catalog';
-import { getAiConfigView, resolveActiveAiConfig } from './ai-config';
+import { getAiConfigView, getAiConfigPresentationTx, resolveActiveAiConfig } from './ai-config';
 import { grantAssistant, revokeAssistant } from './assistant-grant';
 import { lockAccessConfigurationTx } from './access-configuration-lock';
 import { setTenantSetting } from './tenant-settings';
-import { assertAiPrincipalTx } from './ai-principal';
+import { assertAiPrincipalTx, assertAiPresentationPrincipalTx } from './ai-principal';
 import { isZeroCapped } from './ai-zero-cap';
-import {aiSpendStatusTx} from './ai-spend-management';
+import {resolveAiProviderDisplayTx} from './ai-provider-snapshot';
+import {aiSpendStatusTx,aiSpendPresentationStatusTx} from './ai-spend-management';
 import { agentSwitchStatesTx, type AgentFeature } from './agent-principal';
 
 export class AiControlError extends Error {}
@@ -91,19 +92,27 @@ const strictest = (rows:readonly PolicyLimits[]):PolicyLimits => {
   const least = (values:(number|null|undefined)[]) => { const set = values.filter((v):v is number=>v!=null); return set.length ? Math.min(...set) : null; };
   return {enabled:rows.every(r=>r.enabled),dailyRequests:least(rows.map(r=>r.dailyRequests)),monthlyTokens:least(rows.map(r=>r.monthlyTokens)),maxConcurrent:least(rows.map(r=>r.maxConcurrent))};
 };
-export async function aiManagementView(ctx: SessionContext, search = '', runFilter: AiRunFilter = {}) {
+export function aiManagementView(ctx: SessionContext, search = '', runFilter: AiRunFilter = {}) {
+  return readAiManagementView(ctx,search,runFilter,false);
+}
+/** Explicit read-only prototype API; no existing page/default reader is redirected here. */
+export function aiManagementPresentationView(ctx: SessionContext, search = '', runFilter: AiRunFilter = {}) {
+  return readAiManagementView(ctx,search,runFilter,true);
+}
+async function readAiManagementView(ctx: SessionContext, search: string, runFilter: AiRunFilter, presentation: boolean) {
   ctx=captureControlContext(ctx);assertAdmin(ctx);
   // Tenant key/routing configuration needs fresh group-wide authority (getAiConfigView). A company
   // administrator still manages its own scope here and sees only the provider/model its resolved
   // configuration would use, never the tenant configuration view.
-  const provider = isGroupAdmin(ctx) ? await getAiConfigView(ctx) : null;
+  const legacyProvider = !presentation&&isGroupAdmin(ctx) ? await getAiConfigView(ctx) : null;
   return withTenant(ctx, async tx => {
-    await currentControlAdminTx(tx,ctx,false);
+    if(presentation)await assertAiPresentationPrincipalTx(tx,ctx);else await currentControlAdminTx(tx,ctx,false);
+    const provider=presentation&&isGroupAdmin(ctx)?await getAiConfigPresentationTx(tx,ctx):legacyProvider;
     const fresh = { ...ctx, entitlements: await resolveEntitlementsTx(tx, ctx.tenantId) };
     const policies = await tx.select().from(aiControlPolicy).orderBy(asc(aiControlPolicy.scopeKey));
     const activeProvider = provider?.providers.find(p => p.isActive);
     let resolved: Pick<NonNullable<Awaited<ReturnType<typeof resolveActiveAiConfig>>>,'provider'|'model'> | null = null;
-    try { const cfg = await resolveActiveAiConfig(tx,ctx); resolved = cfg ? {provider:cfg.provider,model:cfg.model} : null; } catch { /* Render an unavailable state; never expose key/decryption errors. */ }
+    try { const cfg = await (presentation?resolveAiProviderDisplayTx(tx,ctx):resolveActiveAiConfig(tx,ctx)); resolved = cfg ? {provider:cfg.provider,model:cfg.model} : null; } catch { /* Render an unavailable state; never expose key/decryption errors. */ }
     const usable = resolved !== null;
     const selectedProvider = !usable ? null : provider ? activeProvider ? {provider:activeProvider.provider,model:activeProvider.model} : provider.envFallback : resolved;
     // Only provider/model metadata crosses to the view, after checking that its key can be resolved.
@@ -218,8 +227,8 @@ export async function aiManagementView(ctx: SessionContext, search = '', runFilt
       blocked: activity.filter(r=>Number(r.blocked_today)>0).map(r=>({id:r.id,label:r.label,count:Number(r.blocked_today),reason:r.last_reason}))
         .sort((a,b)=>b.count-a.count||a.label.localeCompare(b.label)),
     };
-    return {spend:await aiSpendStatusTx(tx,ctx),features,agentSwitches,policies,userDefault,companies,companyUsage,usage:Array.from(usage),users,moreUsers:userRows.length>50,attention,groups:isGroupAdmin(ctx)?groups:[],runs,runFilter,provider:selectedProvider,mayWriteUsers:isGroupAdmin(ctx),legacyBudget:legacyBudgets[0]??null};
-  });
+    return {spend:await (presentation?aiSpendPresentationStatusTx(tx,ctx):aiSpendStatusTx(tx,ctx)),features,agentSwitches,policies,userDefault,companies,companyUsage,usage:Array.from(usage),users,moreUsers:userRows.length>50,attention,groups:isGroupAdmin(ctx)?groups:[],runs,runFilter,provider:selectedProvider,mayWriteUsers:isGroupAdmin(ctx),legacyBudget:legacyBudgets[0]??null};
+  },presentation?{readOnlySnapshot:true}:undefined);
 }
 
 export async function setAiFeature(ctx: SessionContext, feature: AiFeatureId, enabled: boolean) {

@@ -10,6 +10,7 @@ import { OpenRouterModel, OpenRouterTransportConfiguration } from '../lib/ai/pro
 import { assertProviderProtocolEvaluation, runProviderProtocolEvaluation, type ProviderProtocolSummary } from '../lib/ai/provider-protocol';
 import { openProviderEvaluationReceipt, sealProviderEvaluationReceipt } from '../lib/ai/provider-evaluation-receipt';
 import { currentAiProviderAdminTx } from './ai-provider-authority';
+import { assertAiPresentationPrincipalTx } from './ai-principal';
 import { bindStrictAiSpendRoot, governedAiConfig } from './ai-governance';
 import { resolveAiProviderCandidateSnapshotTx } from './ai-provider-snapshot';
 
@@ -22,16 +23,25 @@ const unavailable = (): never => { throw new AiProviderReadinessError('unavailab
 const captured = (ctx: SessionContext) => ({ ...ctx, roles: ctx.roles?.slice(), grants: ctx.grants?.map(grant => ({ ...grant })) });
 async function authority(tx: Tx, ctx: SessionContext) { if (!(await currentAiProviderAdminTx(tx, ctx))) return unavailable(); }
 export type AiProviderCandidateView = Readonly<{ id: string; version: string; provider: 'openrouter'; model: string; keyLast4: string; providerOptions: OpenRouterOptions; updatedAt: string }>;
+type CandidateViewRow = { id: string; version_token: string; provider: string; model: string; key_last4: string; provider_options: unknown; updated_at: Date };
+function candidateViews(rows: readonly CandidateViewRow[]): AiProviderCandidateView[] {
+  return rows.map(row => {
+    if (row.provider !== 'openrouter' || !OpenRouterModel.safeParse(row.model).success) return unavailable();
+    return Object.freeze({ id: row.id, version: row.version_token, provider: 'openrouter' as const, model: row.model, keyLast4: row.key_last4,
+      providerOptions: readOpenRouterOptions(row.provider_options), updatedAt: new Date(row.updated_at).toISOString() });
+  });
+}
 export async function providerCandidatesTx(tx: Tx, ctx: SessionContext): Promise<AiProviderCandidateView[]> {
   await authority(tx, ctx);
-  try {
-    const rows = await tx.execute<{ id: string; version_token: string; provider: string; model: string; key_last4: string; provider_options: unknown; updated_at: Date }>(sql`select * from app.ai_provider_candidate_view_v1()`);
-    return rows.map(row => {
-      if (row.provider !== 'openrouter' || !OpenRouterModel.safeParse(row.model).success) return unavailable();
-      return Object.freeze({ id: row.id, version: row.version_token, provider: 'openrouter' as const, model: row.model, keyLast4: row.key_last4,
-        providerOptions: readOpenRouterOptions(row.provider_options), updatedAt: new Date(row.updated_at).toISOString() });
-    });
-  } catch { return unavailable(); }
+  try { return candidateViews(await tx.execute<CandidateViewRow>(sql`select * from app.ai_provider_candidate_view_v1()`)); }
+  catch { return unavailable(); }
+}
+/** Explicit presentation-only native projection; never candidate evaluation custody. */
+export async function providerCandidatesPresentationTx(tx: Tx, supplied: SessionContext): Promise<AiProviderCandidateView[]> {
+  const ctx=captured(supplied);
+  await assertAiPresentationPrincipalTx(tx, ctx);
+  try { return candidateViews(await tx.execute<CandidateViewRow>(sql`select * from app.ai_provider_candidate_presentation_v1()`)); }
+  catch { return unavailable(); }
 }
 
 /** Save only a candidate; an existing live provider/key stays unchanged until explicit promotion. */

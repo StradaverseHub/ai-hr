@@ -10,7 +10,7 @@ import { envFallbackConfig, isProvider } from '../lib/ai/registry';
 import { readOpenRouterOptions } from '../lib/ai/providers/openrouter-configuration';
 import { readGatewayOptions } from '../lib/ai/providers/gateway-options';
 import { OpenRouterTransportConfiguration } from '../lib/ai/providers/openrouter-transport';
-import { assertAiPrincipalTx } from './ai-principal';
+import { assertAiPrincipalTx, assertAiPresentationPrincipalTx } from './ai-principal';
 import { currentAiProviderAdminTx } from './ai-provider-authority';
 
 const issued = new WeakSet<object>();
@@ -41,29 +41,48 @@ const parameters = (cfg: ResolvedAiConfig) => digest([
  * failure never falls through to an environment key. Origin/ciphertext/options changes invalidate
  * a prepared binding even when a fallback happens to use the same plaintext key and model.
  */
-export async function resolveAiProviderSnapshotTx(tx: Tx, ctx: SessionContext): Promise<AiProviderSnapshot | null> {
-  await assertAiPrincipalTx(tx, ctx);
-  let rows: { provider: string; model: string; api_key_ciphertext: string; provider_options: unknown }[];
-  try { rows = await tx.execute(sql`select provider, model, api_key_ciphertext, provider_options from app.ai_active_provider_config_v2()`) as unknown as typeof rows; }
+type ActiveProviderRow = { provider: string; model: string; api_key_ciphertext: string; provider_options: unknown };
+async function activeProviderRowTx(tx: Tx): Promise<ActiveProviderRow | undefined> {
+  let rows: ActiveProviderRow[];
+  try { rows = await tx.execute<ActiveProviderRow>(sql`select provider, model, api_key_ciphertext, provider_options from app.ai_active_provider_config_v2()`); }
   catch { return refuse(); }
   if (rows.length > 1) return refuse();
-  const row = rows[0];
+  return rows[0];
+}
+/** One private decoder for actual provider use and display. No issuer or policy state is changed. */
+function activeProviderConfiguration(row: ActiveProviderRow, ctx: SessionContext): ResolvedAiConfig {
+  if (!isProvider(row.provider) || typeof row.model !== 'string' || !row.model.trim() || row.model !== row.model.trim()) return refuse();
+  let providerOptions: ResolvedAiConfig['providerOptions'];
+  try {
+    let gatewayBaseUrl: string | undefined;
+    if (row.provider === 'openrouter') providerOptions = readOpenRouterOptions(row.provider_options);
+    else if (row.provider === 'ai_gateway') gatewayBaseUrl = readGatewayOptions(row.provider_options).baseUrl;
+    else if (!row.provider_options || typeof row.provider_options !== 'object' || Array.isArray(row.provider_options) || Object.keys(row.provider_options).length) return refuse();
+    const apiKey = decryptSecret(row.api_key_ciphertext, ctx.tenantId);
+    if (row.provider === 'openrouter' && !OpenRouterTransportConfiguration.safeParse({ model: row.model, apiKey, routing: providerOptions!.routing }).success) return refuse();
+    return Object.freeze({ provider: row.provider, model: row.model, apiKey, ...(providerOptions ? { providerOptions } : {}), ...(gatewayBaseUrl ? { gatewayBaseUrl } : {}) });
+  } catch { return refuse(); }
+}
+
+/** Minimal presentation data, never an issued provider snapshot or governed configuration.
+ * A corrupt active row refuses; only an actually absent active row can use the environment. */
+export type AiProviderDisplay = Readonly<{ provider: ResolvedAiConfig['provider']; model: string }>;
+export async function resolveAiProviderDisplayTx(tx: Tx, supplied: SessionContext): Promise<AiProviderDisplay | null> {
+  const ctx = { ...supplied, roles: supplied.roles?.slice(), grants: supplied.grants?.map(grant => ({ ...grant })) };
+  await assertAiPresentationPrincipalTx(tx, ctx);
+  const row = await activeProviderRowTx(tx);
+  const configuration = row ? activeProviderConfiguration(row, ctx) : envFallbackConfig();
+  return configuration ? Object.freeze({ provider: configuration.provider, model: configuration.model }) : null;
+}
+
+export async function resolveAiProviderSnapshotTx(tx: Tx, ctx: SessionContext): Promise<AiProviderSnapshot | null> {
+  await assertAiPrincipalTx(tx, ctx);
+  const row = await activeProviderRowTx(tx);
   let configuration: ResolvedAiConfig;
   let fingerprint: string;
   if (row) {
-    if (!isProvider(row.provider) || typeof row.model !== 'string' || !row.model.trim() || row.model !== row.model.trim()) return refuse();
-    let providerOptions: ResolvedAiConfig['providerOptions'];
-    try {
-      let gatewayBaseUrl: string | undefined;
-      if (row.provider === 'openrouter') providerOptions = readOpenRouterOptions(row.provider_options);
-      // 0661: the gateway's address is its only option; it is re-validated on read and before every call.
-      else if (row.provider === 'ai_gateway') gatewayBaseUrl = readGatewayOptions(row.provider_options).baseUrl;
-      else if (!row.provider_options || typeof row.provider_options !== 'object' || Array.isArray(row.provider_options) || Object.keys(row.provider_options).length) return refuse();
-      const apiKey = decryptSecret(row.api_key_ciphertext, ctx.tenantId);
-      if (row.provider === 'openrouter' && !OpenRouterTransportConfiguration.safeParse({ model: row.model, apiKey, routing: providerOptions!.routing }).success) return refuse();
-      configuration = Object.freeze({ provider: row.provider, model: row.model, apiKey, ...(providerOptions ? { providerOptions } : {}), ...(gatewayBaseUrl ? { gatewayBaseUrl } : {}) });
-      fingerprint = digest(['stored-v1', ctx.tenantId, row.provider, row.model, row.api_key_ciphertext, providerOptions ?? gatewayBaseUrl ?? {}]);
-    } catch { return refuse(); }
+    configuration = activeProviderConfiguration(row, ctx);
+    fingerprint = digest(['stored-v1', ctx.tenantId, row.provider, row.model, row.api_key_ciphertext, configuration.providerOptions ?? configuration.gatewayBaseUrl ?? {}]);
   } else {
     const fallback = envFallbackConfig();
     if (!fallback) return null;

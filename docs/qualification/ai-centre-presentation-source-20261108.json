@@ -1,0 +1,44 @@
+{
+  "kind": "AI_CENTRE_PRESENTATION_UNNUMBERED_PROTOTYPE_SOURCE_ONLY",
+  "releaseAuthorized": false,
+  "base": "f1515376df082438ca025fb65d01a8a3330a8796",
+  "nativeCasesPrepared": 13,
+  "prototypeMigrationAllocated": false,
+  "getAdoption": false,
+  "baseline": {
+    "file": "test/fixtures/ai-management-locked-baseline.ts",
+    "sha256": "fdd12d1bf9048ea433b45c3c6ad4abe588551340d534bae4adf36e135b786897",
+    "reconstructedOriginalSha256": "2e2c25f9ad2685ed6072da4aaa4929604ddecb4d5a323b3acf9966ab63473a01",
+    "transforms": "one provenance line; import paths ../\u2192../../ and ./\u2192../../core/ only"
+  },
+  "sourceSha256": {
+    "core/ai-config.ts": "de11b7736d6b3673ab39d68324f41147c9fef46f1eaf950d4d71c6154bfab59c",
+    "core/ai-management.ts": "482b1704731986a7c38a785837be6034470bf6b29cd2e40b7c8d160a6c006590",
+    "core/ai-provider-readiness.ts": "e4d470e994f2985b7a998477b6acd012c2456d2c5aaf21d31b22ff55f05d9943",
+    "core/ai-provider-snapshot.ts": "07c4548b59d12ba1b56e3ceafd8e20f8816d94d2d16c8df105c42a12ec430c91",
+    "core/ai-spend-management.ts": "d2e5a6ca0a6dd928d8560d34bdd47ef7d138f6b15734f8270184de55ed388c47",
+    "test/ai-centre-presentation-native.test.ts": "930b66bc36385c6b34926383c3c222f8e645f0a5749149bf41c0bf15a30e11c9",
+    "test/fixtures/ai-management-locked-baseline.ts": "fdd12d1bf9048ea433b45c3c6ad4abe588551340d534bae4adf36e135b786897",
+    "test/prototypes/ai-centre-presentation.sql": "6129a791faa784098fac9b36de62a532b9319cfe2ba3987f98b72c7ecf75089c"
+  },
+  "qualification": "UNRUN: independent source/security review then standard hosted native/focused/compiler/build qualification; no application/runtime/provider/network/local verification or installation.",
+  "expectedNativePredecessorProsrcMd5": {
+    "ai_provider_candidate_view_v1": "fbc841dcc882fb47fd029c0266d98a79",
+    "ai_spend_status": "a823975bb8f40ba340bd0d00b40b61b1",
+    "ai_optional_spend_status": "3987ee8ae3edf9653977fe0ffd3f547f",
+    "_ai_provider_evaluation_actor_valid": "7dc7f619cef60de2c0a2515b5df0b074"
+  },
+  "freshRemoteMain": "b7c0393aa3c7606a33dd15103426e5c535324065",
+  "freshRemoteAlpha": "b7c0393aa3c7606a33dd15103426e5c535324065",
+  "oldNativeWrapperPurpose": "READ COMMITTED remains; complete metadata/ACL preserved; query-only helper factoring guarded and requires runtime parity qualification",
+  "appFrameworkSourceChanged": false,
+  "newProjectionHelpersExecutableByAppOrPublic": false,
+  "financialProjectionExpressionsChanged": false,
+  "productionOrLiveDataChanged": false,
+  "existingCommandAndCandidatePreparationSourceSuffixesUnchanged": true,
+  "existingAttentionUsageSwitchSourceBlockUnchanged": true,
+  "pureProjectionExtractionExactStaticCheck": true,
+  "focusedSelectorCount": 15,
+  "ownedHostedWorkerInstallFence": true,
+  "newProjectionValueHelpers": "VOLATILE for original RC statement freshness; SELECT/RETURN only, no locks/admission/writes"
+}

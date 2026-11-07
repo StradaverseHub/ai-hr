@@ -1,0 +1,17 @@
+[
+  "test/ai-centre-presentation-native.test.ts",
+  "test/ai-management.test.ts",
+  "test/ai-config.test.ts",
+  "test/ai-provider-snapshot.test.ts",
+  "test/ai-provider-readiness.test.ts",
+  "test/ai-provider-custody-owner.test.ts",
+  "test/ai-principal.test.ts",
+  "test/ai-spend-allocation-db.test.ts",
+  "test/ai-optional-usd-policy-db.test.ts",
+  "test/ai-concurrency-controls.test.ts",
+  "test/ai-admission-lifecycle.test.ts",
+  "test/ai-management-contract.test.ts",
+  "test/ai-management-page.dom.test.tsx",
+  "test/ai-config-page-lifetime.dom.test.tsx",
+  "test/ai-provider-browser-actions.test.ts"
+]

@@ -35,7 +35,8 @@ import {
 } from '../lib/ai';
 import { encryptSecret, keyLast4 } from '../lib/ai/crypto';
 import { currentAiProviderAdminTx } from './ai-provider-authority';
-import { activateOpenRouterCandidateTx, providerCandidatesTx, removeOpenRouterCandidateTx, saveOpenRouterCandidateTx } from './ai-provider-readiness';
+import { assertAiPresentationPrincipalTx } from './ai-principal';
+import { activateOpenRouterCandidateTx, providerCandidatesTx, providerCandidatesPresentationTx, removeOpenRouterCandidateTx, saveOpenRouterCandidateTx } from './ai-provider-readiness';
 import { readOpenRouterOptions, type OpenRouterOptions } from '../lib/ai/providers/openrouter-configuration';
 import { readGatewayOptions } from '../lib/ai/providers/gateway-options';
 import { OpenRouterModel } from '../lib/ai/providers/openrouter-transport';
@@ -101,6 +102,22 @@ export function getAiConfigView(ctx: SessionContext): Promise<AiConfigView> {
   ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   return withTenant(ctx, async (tx) => {
     await assertConfigurationAdminTx(tx,ctx);
+    return configViewTx(tx, ctx, false);
+  });
+}
+/** New purpose is opt-in only; existing commands/default readers keep their RC authority. */
+export async function getAiConfigPresentationTx(tx: Tx, supplied: SessionContext): Promise<AiConfigView> {
+  const ctx={...supplied,roles:supplied.roles?.slice(),grants:supplied.grants?.map(grant=>({...grant}))};
+  assertAdmin(ctx);await assertAiPresentationPrincipalTx(tx,ctx);
+  const [group]=await tx.execute<{allowed:boolean}>(sql`select app.is_group_admin() as allowed`);
+  if(group?.allowed!==true)throw new AiConfigError('Only a current group-wide administrator can manage AI configuration.');
+  return configViewTx(tx, ctx, true);
+}
+export function getAiConfigPresentationView(supplied: SessionContext): Promise<AiConfigView> {
+  const ctx={...supplied,roles:supplied.roles?.slice(),grants:supplied.grants?.map(grant=>({...grant}))};
+  return withTenant(ctx, tx=>getAiConfigPresentationTx(tx,ctx), {readOnlySnapshot:true});
+}
+async function configViewTx(tx: Tx, ctx: SessionContext, presentation: boolean): Promise<AiConfigView> {
     // Explicit column list — the ciphertext is not even granted to the app role, but be unambiguous.
     const rows = await tx
       .select({
@@ -112,7 +129,7 @@ export function getAiConfigView(ctx: SessionContext): Promise<AiConfigView> {
       })
       .from(aiProviderConfig);
     const byProvider = new Map(rows.map((r) => [r.provider, r]));
-    const candidate = (await providerCandidatesTx(tx, ctx))[0];
+    const candidate = (await (presentation ? providerCandidatesPresentationTx(tx, ctx) : providerCandidatesTx(tx, ctx)))[0];
     const providers: AiProviderView[] = PROVIDERS.map((p) => {
       const meta = PROVIDER_META[p];
       const row = byProvider.get(p), draft = p === 'openrouter' ? candidate : undefined;
@@ -142,7 +159,7 @@ export function getAiConfigView(ctx: SessionContext): Promise<AiConfigView> {
       envFallback: env ? { provider: env.provider, model: env.model } : null,
       usingEnvFallback: !anyActive && Boolean(env),
     };
-  });
+
 }
 
 /**
