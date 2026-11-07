@@ -50,3 +50,11 @@ fixture and exercise the actual joined capability. No source test, synthetic
 metadata case, declaration of a future selector, or commissioning subset establishes
 browser/load/installation/release acceptance. Cross-source native recovery remains
 explicitly refused until a fresh authenticated replacement route is implemented.
+
+An additional independent review of960667 found alternate database capabilities
+were still inherited. The next narrow tail strips PLATFORM_DATABASE_URL and other
+DB URL/URI/DSN/connection-string names plus PG environment defaults, preserving
+only the four explicitly declared purpose-owned URLs for migrations/tests.
+Canonical preparation then closes those four. Actual typed-child regressions
+include fictional platform and alternate owner URLs and PG credentials. This
+closes an inherited-capability gap; it grants no new database or release authority.

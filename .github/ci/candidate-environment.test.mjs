@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {spawnSync} from 'node:child_process';
-import {candidateEnvironment} from './candidate-environment.mjs';
+import {candidateEnvironment,nativePreparationEnvironment} from './candidate-environment.mjs';
 import {fullCiRoleMigrationEnvironment} from './run-unit.mjs';
 test('all candidate execution contexts drop platform/provider credentials without mutating owner authentication',()=>{
  const source={GH_TOKEN:'private',GITHUB_TOKEN:'private',ACTIONS_RUNTIME_TOKEN:'private',ACTIONS_ID_TOKEN_REQUEST_TOKEN:'private',OPENAI_API_KEY:'private',AI_CONFIG_SECRET:'private',AWS_ACCESS_KEY_ID:'private',SSH_AUTH_SOCK:'/private/agent',GITHUB_REPOSITORY:'StradaverseHub/ai-hr',GITHUB_RUN_ID:'123',DATABASE_URL:'postgres://fictional@127.0.0.1:5433/test',NODE_OPTIONS:'--max-old-space-size=4096',PATH:'/usr/bin:/bin'};
@@ -14,8 +14,17 @@ test('all candidate execution contexts drop platform/provider credentials withou
 });
 
 test('actual classifier/migration-shaped child sees only sanitized metadata and purpose database capability',()=>{
- const parent={...process.env,GH_TOKEN:'fictional-private-token',ACTIONS_RUNTIME_TOKEN:'fictional-runtime-token',OPENAI_API_KEY:'fictional-provider-key'};
- const child=spawnSync(process.execPath,['-e',"process.stdout.write(JSON.stringify({github:process.env.GH_TOKEN??null,runtime:process.env.ACTIONS_RUNTIME_TOKEN??null,provider:process.env.OPENAI_API_KEY??null,repository:process.env.GITHUB_REPOSITORY??null}))"],{env:candidateEnvironment({...parent,GITHUB_REPOSITORY:'StradaverseHub/ai-hr'}),encoding:'utf8'});
- assert.equal(child.status,0);assert.deepEqual(JSON.parse(child.stdout),{github:null,runtime:null,provider:null,repository:'StradaverseHub/ai-hr'});
+ const parent={...process.env,GH_TOKEN:'fictional-private-token',ACTIONS_RUNTIME_TOKEN:'fictional-runtime-token',OPENAI_API_KEY:'fictional-provider-key',PLATFORM_DATABASE_URL:'postgres://fictional-owner@control.invalid/secret',OTHER_OWNER_DATABASE_URL:'postgres://fictional-owner@other.invalid/secret',CONTROL_DB_DSN:'postgres://fictional-owner@other.invalid/secret',POSTGRES_URL_NON_POOLING:'postgres://fictional-owner@other.invalid/secret',PGPASSWORD:'fictional-pg-password',PGPASSFILE:'/fictional/private-passfile'};
+ const child=spawnSync(process.execPath,['-e',"process.stdout.write(JSON.stringify({github:process.env.GH_TOKEN??null,runtime:process.env.ACTIONS_RUNTIME_TOKEN??null,provider:process.env.OPENAI_API_KEY??null,platform:process.env.PLATFORM_DATABASE_URL??null,alternate:process.env.OTHER_OWNER_DATABASE_URL??null,dsn:process.env.CONTROL_DB_DSN??null,unpooled:process.env.POSTGRES_URL_NON_POOLING??null,password:process.env.PGPASSWORD??null,passfile:process.env.PGPASSFILE??null,repository:process.env.GITHUB_REPOSITORY??null}))"],{env:candidateEnvironment({...parent,GITHUB_REPOSITORY:'StradaverseHub/ai-hr'}),encoding:'utf8'});
+ assert.equal(child.status,0);assert.deepEqual(JSON.parse(child.stdout),{github:null,runtime:null,provider:null,platform:null,alternate:null,dsn:null,unpooled:null,password:null,passfile:null,repository:'StradaverseHub/ai-hr'});
  assert.equal(parent.GH_TOKEN,'fictional-private-token');
+});
+
+test('only the four declared purpose database URLs survive; preparation closes all four',()=>{
+ const keys=['DATABASE_URL','MIGRATION_DATABASE_URL','TEST_DATABASE_URL','TEST_MIGRATION_DATABASE_URL'];
+ const owned=Object.fromEntries(keys.map(k=>[k,'postgres://fictional-purpose@127.0.0.1/owned']));
+ const result=candidateEnvironment({...owned,PLATFORM_DATABASE_URL:'postgres://fictional-owner@control.invalid/other',RANDOM_DATABASE_URL:'postgres://fictional-owner@control.invalid/other',PGHOST:'outside.invalid'});
+ assert.deepEqual(result,owned);
+ const prepared=nativePreparationEnvironment({...owned,PLATFORM_DATABASE_URL:'postgres://fictional-owner@control.invalid/other',RANDOM_DATABASE_URL:'postgres://fictional-owner@control.invalid/other',PGHOST:'outside.invalid'});
+ assert.deepEqual(prepared,Object.fromEntries(keys.map(k=>[k,'postgres://nobody:nothing@127.0.0.1:1/no_database'])));
 });

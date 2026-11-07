@@ -14,7 +14,7 @@ test('real fixed preparation child binds frozen typed source with closed DB and 
   mkdirSync(source);mkdirSync(privateDir,{mode:0o700});mkdirSync(join(source,'scripts/improve'),{recursive:true});mkdirSync(join(source,'lib/system-testing'),{recursive:true});
   writeFileSync(join(source,'package.json'),'{"type":"module"}');
   writeFileSync(join(source,'scripts/improve/system-testing-manifest.ts'),`export function prepareSystemTestingBuild(p:{worktree:string;candidate:string;buildRecordId:string}){
-   if(process.env.GH_TOKEN||process.env.ACTIONS_RUNTIME_TOKEN||process.env.OPENAI_API_KEY)throw Error('Credentials reached candidate');
+   if(process.env.GH_TOKEN||process.env.ACTIONS_RUNTIME_TOKEN||process.env.OPENAI_API_KEY||process.env.PLATFORM_DATABASE_URL||process.env.OTHER_OWNER_DATABASE_URL||process.env.PGPASSWORD)throw Error('Credentials reached candidate');
    if(process.env.MIGRATION_DATABASE_URL!=='postgres://nobody:nothing@127.0.0.1:1/no_database')throw Error('Open DB reached candidate');
    return{format:1,identity:{sourceRef:p.candidate,buildRecordId:p.buildRecordId},sourceHashRecord:[],activeServiceVerified:false};}
   `);
@@ -22,7 +22,7 @@ test('real fixed preparation child binds frozen typed source with closed DB and 
   const git=(...args)=>execFileSync('git',args,{cwd:source,encoding:'utf8',stdio:['ignore','pipe','pipe']}).trim();
   git('init','-q');git('add','.');git('-c','user.name=CI fixture','-c','user.email=fixture@example.invalid','commit','-qm','fictional canonical inputs');
   const sha=git('rev-parse','HEAD'),record='00000000-0000-4000-8000-000000000001',output=join(privateDir,'canonical-prepared.json');
-  const env=nativePreparationEnvironment({...process.env,GH_TOKEN:'fictional-owner-token',ACTIONS_RUNTIME_TOKEN:'fictional-runtime-token',OPENAI_API_KEY:'fictional-key',MIGRATION_DATABASE_URL:'postgres://fictional-owner@outside.invalid/closed',GITHUB_ACTIONS:'true',RUNNER_ENVIRONMENT:'github-hosted',GITHUB_JOB:'native-test',GITHUB_RUN_ATTEMPT:'1',RUNNER_TEMP:root});
+  const env=nativePreparationEnvironment({...process.env,GH_TOKEN:'fictional-owner-token',ACTIONS_RUNTIME_TOKEN:'fictional-runtime-token',OPENAI_API_KEY:'fictional-key',PLATFORM_DATABASE_URL:'postgres://fictional-control-owner@control.invalid/live',OTHER_OWNER_DATABASE_URL:'postgres://fictional-owner@other.invalid/live',PGPASSWORD:'fictional-pg-secret',MIGRATION_DATABASE_URL:'postgres://fictional-owner@outside.invalid/closed',GITHUB_ACTIONS:'true',RUNNER_ENVIRONMENT:'github-hosted',GITHUB_JOB:'native-test',GITHUB_RUN_ATTEMPT:'1',RUNNER_TEMP:root});
   const child=spawnSync(process.execPath,['--experimental-strip-types',helper,source,output,sha,record],{cwd:source,env,encoding:'utf8'});
   assert.equal(child.status,0,child.stderr);assert.equal(child.stdout,'');
   assert.deepEqual(JSON.parse(readFileSync(output,'utf8')),{format:1,identity:{sourceRef:sha,buildRecordId:record},sourceHashRecord:[],activeServiceVerified:false});
