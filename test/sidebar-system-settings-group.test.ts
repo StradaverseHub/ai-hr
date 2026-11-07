@@ -259,7 +259,7 @@ describe('sidebar System Settings group (a4e49748 consolidation)', () => {
   // this guard keeps the machinery from silently coming back half-wired (a reintroduced cookieKey
   // with no SSR read was the original always-closed bug).
   it('per-group nav cookies stay fully removed (no cookieKey without an SSR read coming back)', () => {
-    const rail = source('components/sidebar.tsx');
+    const rail = fs.readFileSync(path.resolve(__dirname, '../components/sidebar.tsx'), 'utf8');
     const keys = [...rail.matchAll(/cookieKey: '([^']+)'/g)].map((m) => m[1]);
     for (const key of keys) {
       expect(
