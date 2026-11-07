@@ -2,7 +2,9 @@ import { Fragment } from 'react';
 import Link from 'next/link';
 import { getLocale, getTranslations } from 'next-intl/server';
 import { scopedSession } from '@/lib/scope';
-import { attendanceForEmploymentRange, attendancePunchesForRange } from '@/core/attendance';
+import { ATTENDANCE_RANGE_MAX_DAYS } from '@/core/attendance';
+import {resolveMyAttendanceRange} from '../my-records/range';
+import {readIndividualAttendance} from './read';
 import { flagOf, statusOf } from '@/core/attendance-derive';
 import { listEmployees } from '@/core/read';
 import { Button, Card, EmployeeName, ErrorBanner, PageHeader, SectionHeader, inputCls, pageWideCls } from '@/components/ui';
@@ -16,11 +18,9 @@ import {
   type ScopeEmployee,
 } from '@/components/collapsible-employee-panel';
 import { Pager } from '@/components/pager';
-import { paginateRows, parsePageQuery } from '@/lib/pagination';
+import { parsePageQuery } from '@/lib/pagination';
 
 import { todayInKualaLumpur } from '@/lib/hr-date';
-
-const firstOfMonth = (iso: string) => `${iso.slice(0, 7)}-01`;
 
 /**
  * dae7a10f — this screen's OWN panel cookie. Collapsing the list here says nothing about Attendance
@@ -59,19 +59,16 @@ export default async function IndividualAttendancePage({
   // r432 — status/flag wording and the cells/trail are shared with Daily Attendance (components/attendance-day-cells).
   const labels = dayCellLabels(t);
   const todayIso = todayInKualaLumpur();
-  const dateRe = /^\d{4}-\d{2}-\d{2}$/;
-  const from = sp.from && dateRe.test(sp.from) ? sp.from : firstOfMonth(todayIso);
-  const to = sp.to && dateRe.test(sp.to) ? sp.to : todayIso;
+  const range=resolveMyAttendanceRange(sp,todayIso,ATTENDANCE_RANGE_MAX_DAYS);
+  const {from,to}=range;
+  const rangeError=range.refusal==='invalid'?t('myCalendar.invalidRange'):
+    range.refusal==='inverted'?t('myRecords.rangeInverted'):
+    range.refusal==='too_long'?t('myRecords.rangeTooLong',{days:range.days,max:ATTENDANCE_RANGE_MAX_DAYS}):undefined;
 
   const employees = await listEmployees(s, scopeIds);
   const selectedEmp = sp.emp && employees.some((e) => e.employmentId === sp.emp) ? sp.emp : undefined;
   const selected = employees.find((e) => e.employmentId === selectedEmp);
-  const rows = selectedEmp ? await attendanceForEmploymentRange(s, selectedEmp, from, to) : [];
-  // fc776376 — one row per day over the chosen range: a genuine list that grows with the range.
-  const { rows: dayPage, state: pgState } = paginateRows(rows, parsePageQuery(sp));
-  // R45 92bdf77a — the full punch trail per day (multiple clocking). Keyed by attendanceId; the summary
-  // columns still use the row's first-in / last-out, this only expands the audit detail below a multi-punch day.
-  const punchesByAttendance = selectedEmp ? await attendancePunchesForRange(s, selectedEmp, from, to) : new Map();
+  const {dayPage,pgState,total,punchesByAttendance}=await readIndividualAttendance(s,selectedEmp,range,parsePageQuery(sp));
 
   /**
    * The panel is fed from the SAME `listEmployees(s, scopeIds)` the dropdown used — it must never become a
@@ -152,7 +149,7 @@ export default async function IndividualAttendancePage({
       <Card className="overflow-hidden">
         <SectionHeader
           title={selected ? selected.name : t('individualTitle')}
-          count={selectedEmp ? rows.length : undefined}
+          count={selectedEmp && !range.refusal ? total : undefined}
         />
         {/* Filter panel — plain GET form: Select Employee · Date From · Date To. Unchanged. */}
         <form method="GET" className="flex flex-wrap items-end gap-3 border-b border-border px-4 py-3">
@@ -175,6 +172,8 @@ export default async function IndividualAttendancePage({
 
         {!selectedEmp ? (
           <p className="px-4 py-10 text-center text-sm text-muted-foreground">{t('filters.pickEmployeePrompt')}</p>
+        ) : rangeError ? (
+          <p role="alert" className="px-4 py-6 text-sm text-muted-foreground">{rangeError}</p>
         ) : (
           <>
           <Pager
