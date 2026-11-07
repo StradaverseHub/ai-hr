@@ -17596,7 +17596,13 @@
     "selectedTag": "Đã chọn",
     "allEmployees": "Tất cả nhân viên",
     "allEmployeesHint": "Xóa lựa chọn và hiển thị tất cả nhân viên.",
-    "showingCapped": "Hiển thị {cap} trong số {total} kết quả — hãy thu hẹp tìm kiếm."
+    "showingCapped": "Hiển thị {cap} trong số {total} kết quả — hãy thu hẹp tìm kiếm.",
+    "loadingEmployees": "Đang tải nhân viên…",
+    "loadFailed": "Không thể tải nhân viên. Vui lòng thử lại.",
+    "retry": "Thử lại",
+    "previousPage": "Trước",
+    "nextPage": "Tiếp",
+    "pageRange": "{from}–{to} trên {total, number}"
   },
   "appliedInPayroll": {
     "searchPlaceholder": "Tìm tháng, nhân viên, công ty hoặc số tiền",

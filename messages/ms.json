@@ -17596,7 +17596,13 @@
     "selectedTag": "Dipilih",
     "allEmployees": "Semua pekerja",
     "allEmployeesHint": "Kosongkan pilihan dan tunjukkan semua pekerja.",
-    "showingCapped": "Memaparkan {cap} pertama daripada {total} padanan — perhalusi carian anda."
+    "showingCapped": "Memaparkan {cap} pertama daripada {total} padanan — perhalusi carian anda.",
+    "loadingEmployees": "Memuatkan pekerja…",
+    "loadFailed": "Pekerja tidak dapat dimuatkan. Cuba lagi.",
+    "retry": "Cuba lagi",
+    "previousPage": "Sebelumnya",
+    "nextPage": "Seterusnya",
+    "pageRange": "{from}–{to} daripada {total, number}"
   },
   "appliedInPayroll": {
     "searchPlaceholder": "Cari bulan, pekerja, syarikat atau amaun",

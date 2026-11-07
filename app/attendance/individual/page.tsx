@@ -2,11 +2,11 @@ import { Fragment } from 'react';
 import Link from 'next/link';
 import { getLocale, getTranslations } from 'next-intl/server';
 import { scopedSession } from '@/lib/scope';
-import { ATTENDANCE_RANGE_MAX_DAYS } from '@/core/attendance';
+import { ATTENDANCE_RANGE_MAX_DAYS } from '@/packs/attendance/service';
 import {resolveMyAttendanceRange} from '../my-records/range';
 import {readIndividualAttendance} from './read';
 import { flagOf, statusOf } from '@/core/attendance-derive';
-import { listEmployees } from '@/core/read';
+import {readEmployeeChoices} from '@/core/employee-choice';
 import { Button, Card, EmployeeName, ErrorBanner, PageHeader, SectionHeader, inputCls, pageWideCls } from '@/components/ui';
 import { AttendanceTabs } from '@/components/attendance-tabs';
 import { fmtDayDate, fmtDayName } from '@/components/attendance-format';
@@ -15,7 +15,6 @@ import { cookies } from 'next/headers';
 import {
   CollapsibleEmployeePanel,
   EmployeeScopePanel,
-  type ScopeEmployee,
 } from '@/components/collapsible-employee-panel';
 import { Pager } from '@/components/pager';
 import { parsePageQuery } from '@/lib/pagination';
@@ -65,28 +64,13 @@ export default async function IndividualAttendancePage({
     range.refusal==='inverted'?t('myRecords.rangeInverted'):
     range.refusal==='too_long'?t('myRecords.rangeTooLong',{days:range.days,max:ATTENDANCE_RANGE_MAX_DAYS}):undefined;
 
-  const employees = await listEmployees(s, scopeIds);
-  const selectedEmp = sp.emp && employees.some((e) => e.employmentId === sp.emp) ? sp.emp : undefined;
-  const selected = employees.find((e) => e.employmentId === selectedEmp);
+  const choices=await readEmployeeChoices(s,{companyIds:scopeIds,labelMode:'names',selectedId:sp.emp});
+  const selected=choices.selected;
+  const selectedEmp=selected?.employmentId;
   const {dayPage,pgState,total,punchesByAttendance}=await readIndividualAttendance(s,selectedEmp,range,parsePageQuery(sp));
 
-  /**
-   * The panel is fed from the SAME `listEmployees(s, scopeIds)` the dropdown used — it must never become a
-   * second, wider source of employees. `selectedEmp` above is still re-guarded against this very list
-   * before any read uses it, so the list is what is DISPLAYED and never what grants access.
-   */
-  const panelEmployees: ScopeEmployee[] = employees.map((e) => ({
-    employmentId: e.employmentId,
-    name: e.name,
-    employeeCode: e.employeeCode,
-    company: e.company,
-    companyId: e.companyId,
-    department: e.department,
-    departmentId: e.departmentId,
-    businessUnit: e.businessUnit,
-    businessUnitId: e.businessUnitId,
-    status: e.terminatedOn == null ? 'active' : 'ended',
-  }));
+  // Selection is independently authorized outside the current picker page/search.
+  // The rail shares the old native population and never grants detail access.
   /** Read on the SERVER, so the first paint is already right rather than opening and folding (r320). */
   const panelDefaultOpen = (await cookies()).get(PANEL_COOKIE)?.value !== '0';
 
@@ -136,7 +120,7 @@ export default async function IndividualAttendancePage({
             <p className="mt-1 text-xs text-muted-foreground">{t('panel.hintIndividual')}</p>
             <div className="mt-3">
               <EmployeeScopePanel
-                employees={panelEmployees}
+                remote={{initial:choices}}
                 selectedId={selectedEmp ?? null}
                 basePath="/attendance/individual"
                 selectParam="emp"

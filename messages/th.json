@@ -17596,7 +17596,13 @@
     "selectedTag": "เลือกแล้ว",
     "allEmployees": "พนักงานทั้งหมด",
     "allEmployeesHint": "ล้างการเลือกและแสดงพนักงานทุกคน",
-    "showingCapped": "แสดง {cap} รายการแรกจาก {total} รายการที่ตรงกัน — โปรดปรับการค้นหา"
+    "showingCapped": "แสดง {cap} รายการแรกจาก {total} รายการที่ตรงกัน — โปรดปรับการค้นหา",
+    "loadingEmployees": "กำลังโหลดพนักงาน…",
+    "loadFailed": "ไม่สามารถโหลดพนักงานได้ โปรดลองอีกครั้ง",
+    "retry": "ลองอีกครั้ง",
+    "previousPage": "ก่อนหน้า",
+    "nextPage": "ถัดไป",
+    "pageRange": "{from}–{to} จาก {total, number}"
   },
   "appliedInPayroll": {
     "searchPlaceholder": "ค้นหาเดือน พนักงาน บริษัท หรือจำนวนเงิน",
