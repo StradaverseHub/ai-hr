@@ -22,7 +22,7 @@ import {androidEnrollmentFixture} from './helpers/mobile-android-enrollment-fixt
 
 /** Execute the shipped client/hook. Only the native ports are replaced, not the request logic. */
 const employee = (name:string) => ({apiVersion:'v1',person:{name,email:null},employments:[],roles:[],modules:{payroll:false,notifications:false}});
-function clientFixture(credentialState?: ReturnType<typeof createAuthState>) {
+function clientFixture(credentialState?: ReturnType<typeof createAuthState>, diagnostics = false) {
   let generation = 0;
   let namespace='company-one',monotonic=0,locale='en';
   const appState={currentState:'active'};
@@ -40,8 +40,10 @@ function clientFixture(credentialState?: ReturnType<typeof createAuthState>) {
     apiGetPage: (resource:unknown,cursor:string|null,params?:Record<string,string>,signal?:AbortSignal)=>Promise<{items:unknown[];nextCursor:string|null}>;
     apiDownload: (resource:unknown,params?:Record<string,string>,signal?:AbortSignal)=>Promise<{outcome:string;code?:string;document?:{uri:string}}> } };
   const written = vi.fn((bytes: Uint8Array, mimeType: string) => ({ uri: 'cache/aihr-protected/random.pdf', mimeType, size: bytes.byteLength, delete: vi.fn() }));
+  const diagnosticLog=vi.fn();
   const code = transpileModule(readFileSync('mobile/lib/api.ts', 'utf8'), { compilerOptions: { module: ModuleKind.CommonJS } }).outputText;
   runInNewContext(code, { exports: output.exports, module: output, fetch: response, AbortController, FormData, TextDecoder, setTimeout, clearTimeout,
+    process:{env:{EXPO_PUBLIC_LOCAL_READ_DIAGNOSTICS:diagnostics?'1':'0'}},console:{warn:diagnosticLog},
     require: (id: string) => {
       if (id === 'react') return React;
       if (id === './read-snapshot') return {createReadSnapshots};
@@ -60,7 +62,7 @@ function clientFixture(credentialState?: ReturnType<typeof createAuthState>) {
       if (id === './protected-document') return { writeProtectedDocument: written };
       throw new Error(`Unexpected native client dependency: ${id}`);
     } });
-  return { api: output.exports, config, response, auth, appState, written, changeSession() { generation += 1; },changeConnection(){namespace='company-two';},changeLocale(){locale='ms';},advanceCooldown(ms:number){monotonic+=ms;} };
+  return { api: output.exports, config, response, auth, appState, written, diagnosticLog, changeSession() { generation += 1; },changeConnection(){namespace='company-two';},changeLocale(){locale='ms';},advanceCooldown(ms:number){monotonic+=ms;} };
 }
 afterEach(()=>{cleanup();vi.useRealTimers();});
 
@@ -508,4 +510,27 @@ it('does not fetch an invisible optional panel and hides its prior data when dis
  const ui=render(<View enabled={false}/>);expect(screen.getByText('Hidden')).toBeTruthy();expect(f.response).not.toHaveBeenCalled();
  ui.rerender(<View enabled/>);await screen.findByText('Employment one');expect(f.response).toHaveBeenCalledOnce();
  ui.rerender(<View enabled={false}/>);expect(screen.getByText('Hidden')).toBeTruthy();expect(screen.queryByText('Employment one')).toBeNull();
+});
+
+
+describe('temporary local read diagnostics',()=>{
+  it('is silent by default and never records account contents, query values or credentials when enabled',async()=>{
+    const off=clientFixture();await off.api.apiGet('me');expect(off.diagnosticLog).not.toHaveBeenCalled();
+    const f=clientFixture(undefined,true);
+    f.response.mockResolvedValueOnce(Response.json(employee('PRIVATE_PERSON_MARKER')));
+    await f.api.apiGet('me',{employmentId:'PRIVATE_EMPLOYMENT_MARKER'});
+    const records=f.diagnosticLog.mock.calls.map(([line])=>JSON.parse(String(line).replace('ONEHR_READ_DIAGNOSTIC ','')));
+    expect(records.map(r=>r.outcome)).toEqual(['headers','pass']);
+    expect(records.every(r=>r.endpoint==='me'&&r.status===200&&Number.isFinite(r.elapsedMs))).toBe(true);
+    const serialized=JSON.stringify(records);
+    for(const secret of ['PRIVATE_PERSON_MARKER','PRIVATE_EMPLOYMENT_MARKER','access-token','rotated-token','https://hr.example.com'])expect(serialized).not.toContain(secret);
+    expect(records.every(r=>Object.keys(r).sort().join(',')==='elapsedMs,endpoint,outcome,phase,status')).toBe(true);
+  });
+  it('distinguishes a contract failure after HTTP success without printing its body',async()=>{
+    const f=clientFixture(undefined,true);f.response.mockResolvedValueOnce(Response.json({privateValue:'PRIVATE_BODY_MARKER'}));
+    await expect(f.api.apiGet('me')).rejects.toBeInstanceOf(UnavailableError);
+    const lines=f.diagnosticLog.mock.calls.map(([line])=>String(line));
+    expect(lines.some(line=>line.includes('"phase":"validate"')&&line.includes('"outcome":"fail"'))).toBe(true);
+    expect(lines.join('')).not.toContain('PRIVATE_BODY_MARKER');
+  });
 });
