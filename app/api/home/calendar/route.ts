@@ -4,6 +4,7 @@ import {HomeAccessError} from '@/core/employee-home';
 import {readEmployeeHomeCalendar} from '@/core/employee-home-calendar';
 import {homeCalendarMonth} from '@/lib/employee-home-calendar';
 import {validateHomeTeamCalendar} from '@/lib/employee-home-sharing';
+import {withDatabaseReadCancellation} from '@/db/workload';
 
 const headers={'Cache-Control':'private, no-store','Vary':'Cookie, Authorization','X-Content-Type-Options':'nosniff'};
 export async function GET(request:Request){
@@ -13,7 +14,7 @@ export async function GET(request:Request){
    ||!query.get('employmentId')||query.getAll('month').length>1)return Response.json({error:'invalid'},{status:400,headers});
   const month=query.get('month')??undefined;
   if(month!==undefined){try{homeCalendarMonth(month);}catch{return Response.json({error:'invalid'},{status:400,headers});}}
-  const value=await readEmployeeHomeCalendar(session,query.get('employmentId')!,month,undefined,request.signal);
+  const value=await withDatabaseReadCancellation(request.signal,()=>readEmployeeHomeCalendar(session,query.get('employmentId')!,month,undefined,request.signal));
   return Response.json({version:1,employmentId:value.employmentId,month:value.month,today:value.today,
    weekStartsOn:value.weekStartsOn,payrollEnabled:value.payrollEnabled,
    team:validateHomeTeamCalendar(value.team,value.days[0].date,value.days[value.days.length-1].date),days:value.days.map(day=>({date:day.date,canRequestLeave:day.canRequestLeave,

@@ -11,6 +11,7 @@ import {
 } from '@/lib/employee-home-sharing-cohort';
 import {celebrationsResponse,noticesResponse,sharingError,sharingHeaders,teamResponse,timeOffResponse} from '../sharing-responses';
 import {greetingProjection,tasksProjection} from '../personal-projections';
+import {withDatabaseReadCancellation} from '@/db/workload';
 
 /** One fresh web session and independent live reads for the requested Home cards. */
 export async function GET(request:Request){
@@ -66,7 +67,7 @@ export async function GET(request:Request){
     const reads=cards.map(async card=>{
      let encoded:Uint8Array;
      try{
-      const value=await readers[card]();
+      const value=await withDatabaseReadCancellation(signal,readers[card]);
       const frame:HomeSharingFrame={version:1,card,status:200,value};
       encoded=encoder.encode(JSON.stringify(frame)+'\n');
       if(encoded.byteLength>HOME_SHARING_MAX_FRAME_BYTES)throw new Error('Home sharing frame too large');

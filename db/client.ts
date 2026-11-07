@@ -10,7 +10,7 @@ import { drizzle } from 'drizzle-orm/postgres-js';
 import { sql } from 'drizzle-orm';
 import postgres from 'postgres';
 import {createDatabaseAdmission} from './admission';
-import {currentDatabaseWorkload} from './workload';
+import {currentDatabaseWorkload,databaseReadSignal} from './workload';
 import {applicationDatabaseBudget} from './capacity';
 const applicationBudget = applicationDatabaseBudget(process.env);
 import { chainArmingDecision } from '../core/audit-chain-arming';
@@ -198,6 +198,7 @@ export function createDb(connectionString: string, options?: { max?: number }) {
    * Open queries inside work; do not pass an already-running promise or nest withTenant here.
    */
   async function withPoolWork<T>(tenant: string, work: () => PromiseLike<T>, signal?: AbortSignal): Promise<T> {
+    signal = databaseReadSignal(signal);
     const release = await poolAdmission.acquire(tenant, currentDatabaseWorkload(), signal);
     try { signal?.throwIfAborted(); return await work(); }
     finally { release(); }
@@ -209,6 +210,7 @@ export function createDb(connectionString: string, options?: { max?: number }) {
    * Owner readers must receive this tx explicitly; nested withTenant calls never auto-join.
    */
   async function withTenant<T>(ctx: SessionContext, fn: (tx: Tx) => Promise<T>, options?: { readOnlySnapshot?: true; readSignal?: AbortSignal }): Promise<T> {
+    const readSignal = databaseReadSignal(options?.readSignal);
     // Fail fast with a clear, diagnosable error rather than a cryptic "reading 'grants'/'tenantId'"
     // TypeError if a caller ever passes an unresolved session (e.g. a swallowed getSession failure).
     if (!ctx || !ctx.tenantId) {
@@ -220,15 +222,15 @@ export function createDb(connectionString: string, options?: { max?: number }) {
     // Backward-compat: a context with only `roles` becomes group-wide grants (companyId null).
     const grants = ctx.grants ?? (ctx.roles ?? []).map((role) => ({ role, companyId: null as string | null }));
     const roleNames = ctx.roles ?? Array.from(new Set(grants.map((g) => g.role)));
-    options?.readSignal?.throwIfAborted();
+    readSignal?.throwIfAborted();
     const timing = globalForPg.__aihrPerfBeginTransaction?.(configuredPoolMax);
     let release: (() => void) | undefined;
     try {
-      release = await poolAdmission.acquire(ctx.tenantId, currentDatabaseWorkload(), options?.readSignal);
+      release = await poolAdmission.acquire(ctx.tenantId, currentDatabaseWorkload(), readSignal);
       return await db.transaction(async (tx) => {
       timing?.acquired();
       // A queued read may have disconnected while waiting for a connection.
-      options?.readSignal?.throwIfAborted();
+      readSignal?.throwIfAborted();
       // The existing sticky fact only moves from unknown to on. An already known chain can
       // share the identity bootstrap statement; first activation still decides after this await.
       const auditAlreadyArmed = tenantHasChainedHistory(ctx.tenantId);
@@ -305,7 +307,7 @@ export function createDb(connectionString: string, options?: { max?: number }) {
         // are SELECTs, which do not close the window for SET TRANSACTION.
         await tx.execute(sql`SET TRANSACTION READ ONLY`);
       }
-      options?.readSignal?.throwIfAborted();
+      readSignal?.throwIfAborted();
       return fn(tx);
     }, options?.readOnlySnapshot ? { isolationLevel: 'repeatable read', accessMode: 'read only' } : undefined);
     } finally {
