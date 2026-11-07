@@ -12,7 +12,7 @@
   "nativeSelector": "docs/qualification/notification-native-plan-diagnostic-tests.json",
   "pureSelector": "docs/qualification/notification-native-plan-parser-tests.json",
   "newNativeCases": 3,
-  "newPureAssertions": 2,
+  "newPureAssertions": 5,
   "caseBudgetMs": 30000,
   "statementBudgetMs": 20000,
   "lockBudgetMs": 300,
@@ -21,7 +21,7 @@
   "sha256": {
     "test/fixtures/notification-worker/auto-explain.ts": "dec68fe9737894c0c63b8ff9788cb1130704f64f03aab6b7752e5283cac79466",
     "test/fixtures/notification-worker/plan-logging.ts": "07763433141a6c33e752194669b9772788c8fe5ca91ce6b116da069c053e74e3",
-    "test/notification-worker-native-plan-diagnostic.test.ts": "46a269d22709d2466518503e2ead91ec21cb07c2cc5239425549375e9831a2c2",
+    "test/notification-worker-native-plan-diagnostic.test.ts": "a7d20a38ebb397a9fe643b0b876ac39fec259f73a4df8ecf39bde05dd7a1710c",
     "test/notification-worker-plan-parser.test.ts": "59499c5c7be4cdf3d995701e820bd558e82fcd69808ccafc4eab2fc0c90a2a1e",
     "lib/notification-worker/lifecycle.ts": "b895d5ca866f42321e6c57860eb8696b931da7e025a8e785ad9690df08c91910",
     "lib/notification-worker/process.ts": "8236c48b43d6139793a9d85fbf1f35568dd3c81bd4828fa4c7778e971eebd8d3",
@@ -33,6 +33,10 @@
     "test/fixtures/notification-worker/lifecycle.sql": "ba87f475a0962dc1652db47976a1947becffb39de9d6294608438baa7f3918f1",
     "test/fixtures/notification-worker/projection.sql": "6973be154cec863908cc6439cf4edbe9de8b571a1ee1484d25f25fe1ed3ca9f9",
     "test/fixtures/notification-worker/assessment.sql": "cf029fdae7af2eeeae723a200d21943f3cbc8a4c873ad03d3f9a3f63f14e43ff",
-    "test/fixtures/notification-worker/process.sql": "6d112effc849efc8395505ba28c5b52a30aee62bd32372d8389b6829a4cb0442"
-  }
+    "test/fixtures/notification-worker/process.sql": "6d112effc849efc8395505ba28c5b52a30aee62bd32372d8389b6829a4cb0442",
+    "test/fixtures/notification-worker/diagnostic-ownership.ts": "6ad059743db90ad0e4991d7b825471870069802650ae2dda6d564b0085c4c640",
+    "test/notification-worker-diagnostic-ownership.test.ts": "cdd41537023411edc2b5003fb71c8f756a136f106b9c1c6656162b9afa79b92c"
+  },
+  "repairBase": "e42d4281ee2bb1c3ec318bc04fd033d014d905ec",
+  "drainRecovery": "UNRUN review P2 ownership repair; e42 never dispatched"
 }

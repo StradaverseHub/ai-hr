@@ -1,3 +1,4 @@
 [
-  "test/notification-worker-plan-parser.test.ts"
+  "test/notification-worker-plan-parser.test.ts",
+  "test/notification-worker-diagnostic-ownership.test.ts"
 ]

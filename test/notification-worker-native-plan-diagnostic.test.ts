@@ -14,11 +14,13 @@ import {adminCtx,createAppUser,owner,resetDb,seedBase,setModule,type Base} from 
 import {notificationWorkerFixtureOwner} from './fixtures/notification-worker/owner-fixture';
 import {notificationPlanLogging} from './fixtures/notification-worker/plan-logging';
 import {notificationAutoExplainMessages} from './fixtures/notification-worker/auto-explain';
+import {notificationDiagnosticOwnership} from './fixtures/notification-worker/diagnostic-ownership';
 import {capturePostgresEvidence,postgresProfileFromEnv,validatePostgresEvidence} from '../.github/ci/postgres-evidence.mjs';
 const filename='test/notification-worker-native-plan-diagnostic.test.ts';
 const selection:unknown=JSON.parse(process.env.AIHR_FOCUSED_TESTS??'[]');
 if(process.env.GITHUB_ACTIONS!=='true'||process.env.CI!=='true'||process.env.RUNNER_ENVIRONMENT!=='github-hosted'||process.env.GITHUB_REPOSITORY!=='StradaverseHub/ai-hr'||process.env.GITHUB_RUN_ATTEMPT!=='1'||!Array.isArray(selection)||selection.length!==1||selection[0]!==filename)throw Error('Exact sole hosted notification diagnostic required; no normal-CI witness');
 const fixture=notificationWorkerFixtureOwner(),sources=['lifecycle','projection','assessment','process'].map(name=>readFileSync('test/fixtures/notification-worker/'+name+'.sql','utf8'));
+const ownership=notificationDiagnosticOwnership();
 let b:Base,employment:string,recipient:string,output='';
 beforeAll(async()=>{
  await fixture.setup();await fixture.install(sources,3,notificationWorkerAssessmentContract);
@@ -27,6 +29,7 @@ beforeAll(async()=>{
  output=join(directory!,'notification-native-plans');mkdirSync(output,{mode:0o700});
 },300000);
 beforeEach(async()=>{
+ ownership.beforeCase(); // BEFORE truncate/reset/fixture writes; aborted work cannot be overtaken.
  await owner.client`truncate notification_worker_private.run cascade`;await owner.client`update notification_worker_private.authority set active_run=NULL,enabled=true,max_run_batches=10`;
  await resetDb();b=await seedBase();await setModule(b.tenantId,'notifications','active');
  const email=randomUUID()+'@example.invalid',employee=await hireEmployee(adminCtx(b),{person:{fullName:'Fictional native plan employee',primaryEmail:email},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:'2024-01-01'});employment=employee.employmentId;
@@ -35,8 +38,8 @@ beforeEach(async()=>{
  await saveNotificationEmailPreferences({...adminCtx(b),userId:recipient,personId:employee.personId,roles:['employee']},employment,['leave'],'en',{issuer,subject,email,emailVerified:true});
  await owner.client`update public.notification_event_processing set disposition='legacy-cursor',processed_at=now()`;
 });
-afterEach(()=>fixture.finishCase());
-afterAll(async()=>{await owner.client`select notification_worker_private.assert_process_profile()`;await fixture.close();});
+afterEach(async()=>{await ownership.drain();try{await fixture.finishCase();}catch(error){ownership.poison(error instanceof Error?error:Error('Native fixture teardown refused'));throw error;}});
+afterAll(async()=>{await ownership.drain();await owner.client`select notification_worker_private.assert_process_profile()`;await fixture.close();});
 const fingerprint=(text:string)=>createHash('sha256').update(text.trim().replace(/;$/,'').replace(/\s+/g,' ')).digest('hex');
 function statementSummary(entries:ReturnType<typeof notificationAutoExplainMessages>){
  const groups=new Map<string,{fingerprint:string;context:string[];calls:number;inclusiveTotalMs:number;maximumMs:number;jitDocuments:number;maximumJit:unknown}>();
@@ -49,7 +52,7 @@ async function guard(){
 }
 function container(){const profile=postgresProfileFromEnv(process.env),actual=capturePostgresEvidence(process.env.AIHR_CI_UNIT??'db-1',profile);validatePostgresEvidence(actual,{postgres:profile});return actual;}
 describe.sequential('real native notification nested SQL attribution',()=>{
- it.for(['open','empty','twenty']as const)('captures %s without changing native guards, budgets or JIT',{timeout:30000},async(mode,context)=>{
+ it.for(['open','empty','twenty']as const)('captures %s without changing native guards, budgets or JIT',{timeout:30000},(mode,context)=>ownership.run(context,async()=>{
   const report:Record<string,unknown>={kind:'NATIVE_NOTIFICATION_SQL_ATTRIBUTION_NOT_RELEASE',releaseAuthorized:false,complete:false,mode,source:process.env.AIHR_CI_HEAD,controller:process.env.AIHR_CI_CONTROL_HEAD,run:process.env.GITHUB_RUN_ID,attempt:process.env.GITHUB_RUN_ATTEMPT,database:fixture.binding.database,
    baseline:{source:'5869b4e6168263404ed054da0433fa2e94a36e94',run:'42407886480',passed:50,failed:1},caseBudgetMs:30000,statementTimeoutMs:20000,lockTimeoutMs:300,
    host:{logicalCpus:cpus().length,ramBytes:totalmem(),node:process.version},
@@ -60,9 +63,12 @@ describe.sequential('real native notification nested SQL attribution',()=>{
    report.expectedEvents=events.map(row=>row.id);
   }
   const original=await guard();report.guardsBefore=original;report.containerBefore=container();save();
-  const logging=await notificationPlanLogging(fixture.binding);report.logging={settings:logging.settings,beforeSha256:logging.beforeSha256,instrumentedSha256:logging.instrumentedSha256};save();
-  const connection=fixture.connect(),api=notificationWorkerLifecycle(connection),projection=notificationWorkerProjection(connection),startedAt=new Date().toISOString();
-  const abort=()=>{void connection.end({timeout:0});};context.signal.addEventListener('abort',abort,{once:true});
+  const logging=await notificationPlanLogging(fixture.binding);
+  let connection:ReturnType<typeof fixture.connect>;
+  try{report.logging={settings:logging.settings,beforeSha256:logging.beforeSha256,instrumentedSha256:logging.instrumentedSha256};save();connection=fixture.connect();}catch(error){try{await logging.restore();}catch(restore){ownership.poison(restore instanceof Error?restore:Error('Native logging restoration refused'));}throw error;}
+  const api=notificationWorkerLifecycle(connection),projection=notificationWorkerProjection(connection),startedAt=new Date().toISOString();
+  let stopping:Promise<void>|undefined;
+  const abort=()=>{stopping=connection.end({timeout:0}).catch(()=>{});};context.signal.addEventListener('abort',abort,{once:true});if(context.signal.aborted)abort();
   let run='',pid=0,failed:unknown,phaseStarted=false;
   try{
    context.signal.throwIfAborted();const openedAt=performance.now();run=await api.openRun(); // FIRST native query proves actual dedicated LOGIN authority.
@@ -97,7 +103,8 @@ describe.sequential('real native notification nested SQL attribution',()=>{
    expect(truth[0]).toMatchObject({state:'failed',outcome:'failed',error:'interrupted',committed_batches:mode==='open'?0:1,processed_events:mode==='twenty'?'20':'0',created_notifications:mode==='twenty'?'20':'0',committed_receipts:mode==='twenty'?20:0,notices:mode==='twenty'?20:0,deliveries:mode==='twenty'?20:0});
   }catch(error){failed=error;report.failure=error instanceof Error?{name:error.name,message:error.message}:'Native diagnostic refused';save();}
   finally{
-   context.signal.removeEventListener('abort',abort);await connection.end({timeout:0});
+   context.signal.removeEventListener('abort',abort);
+   try{await stopping;await connection.end({timeout:0});}catch(error){failed??=error;report.closeFailure=error instanceof Error?error.message:'Native close refused';ownership.poison(error instanceof Error?error:Error('Native close refused'));save();}
    try{
     report.afterDisconnect=Array.from(await owner.client`select r.run_id,r.state,r.backend_pid,r.backend_started_at::text as backend_start,r.committed_batches,r.processed_events,r.created_notifications,j.outcome,j.error,
      exists(select 1 from pg_stat_activity a where a.pid=r.backend_pid and a.backend_start=r.backend_started_at)as exact_backend_present
@@ -125,10 +132,11 @@ describe.sequential('real native notification nested SQL attribution',()=>{
    }catch(error){failed??=error;report.captureFailure=error instanceof Error?error.message:'Native capture refused';save();}
    finally{
     try{await logging.restore();report.loggingRestored=true;expect(await guard()).toEqual(original);report.guardsRestored=true;report.containerAfter=container();}
-    catch(error){failed??=error;report.restoreFailure=error instanceof Error?error.message:'Native restoration refused';}
-    report.complete=!failed;save();
+    catch(error){failed??=error;report.restoreFailure=error instanceof Error?error.message:'Native restoration refused';ownership.poison(error instanceof Error?error:Error('Native restoration refused'));}
+    report.caseAborted=context.signal.aborted;report.ownerPoisoned=ownership.poisoned;report.complete=!failed&&!context.signal.aborted&&!ownership.poisoned;save();
    }
   }
   if(failed)throw failed;
- });
+  context.signal.throwIfAborted();
+ }));
 });
