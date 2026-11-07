@@ -18,6 +18,56 @@ Existing-draft saves and standalone discards use the pool-owned tenant-write adm
 
 Passive read operations that fan out use `withBackgroundReadWork` before opening any transaction. This bounds whole logical reads without holding a connection while they wait. Their children still use the physical pool gate, whose background pending allowance preserves room for interactive work. Await all children before returning. Same-tenant nested composition shares the logical admission, and each child retains its native authorization and transaction. An owned Home response carries its cancellation through nested readers. Cancellation prevents later checkouts and does not revoke an executing transaction or replay an uncertain command.
 
+## Structural changes and read models
+
+Fix a table, relation, index or model when actual plans or correctness evidence
+show a structural cause. First name the authoritative business fact, every writer
+(web, import, worker, pack and native SQL), effective-date rules and the existing
+permission owner. Preserve internal IDs and history. A presentation requirement
+must not redefine employment, organisation, payroll or access truth.
+
+Treat each independently owned nullable field as its own state contract. For
+example, settling a notifications cursor must preserve an unrelated assessment
+cursor, including NULL. Initializing an unrelated field to zero is a business
+state change unless its owner explicitly defines that equivalence.
+
+Authorize and narrow the native population before costly detail projection.
+Bounded pages do not permit full-list client filtering. Counts, represented
+facets and independent selected-item hydration may have different populations;
+state those contracts explicitly instead of narrowing one to make another fast.
+Review native RLS plans as well as the visible SQL: a precise-looking predicate
+can still execute tens of thousands of correlated index probes. Compare complete
+native calls on the same backend, data, statistics, resources and settings, with
+actual rows, loops, rows removed, buffers, spills, planning and JIT time. Include
+dense, sparse, empty and forbidden scopes. A better query shape or complexity
+bound is not a latency pass.
+
+An index must match the actual tenant/scope/effective-state predicate and ordering;
+verify its write cost and selectivity before allocating it. Do not weaken a
+constraint, erase NULL state, increase timeouts or lift memory limits to obtain a
+passing fixture. A planning setting is a separately measured execution policy:
+keep it local to its proven purpose, preserve security and resource bounds, and
+prove restoration and isolation from concurrently composed readers. Never hide a
+changed planning policy in an otherwise identical comparison.
+
+Use a read projection when repeated joins are the demonstrated bottleneck and its
+maintenance has a clear owner. Declare the source facts, minimal disclosed fields,
+unique identity, tenant/company isolation, freshness contract and repair protocol.
+For immediate-truth screens, every canonical writer must update the projection
+atomically or readers must verify the source revision; an unchecked asynchronous
+copy is insufficient. Delayed projections need a documented watermark and visible
+freshness semantics appropriate to the feature. Financial and permission decisions
+continue to use their authoritative current owners. A projection is not a new grant.
+
+Append guarded migrations after inspecting the current global allocation and
+watermarks. Review all writers, new RLS and grants, populated backfill, duplicate
+and orphan handling, interruption, rerun and rollback limits. Rehearse the complete
+populated prefix with exact SQL hashes and an adversarial predecessor refusal;
+verify facts, constraints, privileges and history before and after. Shipping source
+or applying a migration does not establish a valid backfill or an installed ready
+projection. Startup and release admission must verify required schema/read-model
+versions before admitting traffic.
+
 ## Reference workflow proofs
 
 Attendance approval uses the Attendance service from the Approvals adapter. The workflow owner still enforces current stage/participant, delegated authority, rejection reasons, no self-approval and final-effect uniqueness. Corrected punches and deferred overtime preserve their original semantics. `attendance-workflow-v4-owner`, `attendance-workflow`, `attendance-pack` and the actual browser correction/approval/punch witness test these distinct claims.
