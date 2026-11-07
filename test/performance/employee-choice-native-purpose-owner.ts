@@ -4,9 +4,9 @@ import {createHash} from 'node:crypto';
 import {expect} from 'vitest';
 import {owner} from '../harness';
 import {workerDb} from '../db-names';
-export const employeeChoicePrototypeSignature='app.employee_choice_native_prototype(uuid,uuid,uuid,text[],jsonb,uuid[],date,uuid[],uuid,uuid,uuid,text,text,text,uuid,bigint,integer,text,text)';
+export const employeeChoicePrototypeSignature='app.employee_choice_native_prototype(uuid,uuid,uuid,text[],jsonb,uuid[],date,uuid[],uuid,uuid,uuid,text,text,text,uuid,bigint,integer,text,text,uuid[])';
 const sha=(file:string)=>createHash('sha256').update(readFileSync(file)).digest('hex');
-export const employeeChoicePrototypeSqlSha256='f5beb1748ff7bddbc3791ec58a76ea2bd04d466c9fc92eac682a9f71db6ab5ab';
+export const employeeChoicePrototypeSqlSha256='69bc0aa70c26348872ede3cf193146cf1779cf22bfd26265d45ab3280839c6e5';
 export async function employeeChoiceNativeSecurity(){
  return {functions:Array.from(await owner.client`select p.oid::regprocedure::text as signature,md5(to_jsonb(p)::text) as identity
    from pg_proc p where p.pronamespace='app'::regnamespace and p.proname<>'employee_choice_native_prototype' order by p.oid::regprocedure::text`),
@@ -37,7 +37,7 @@ export async function installEmployeeChoiceNativePrototype(){
   (select count(*)::int from aclexplode(coalesce(p.proacl,acldefault('f',p.proowner)))) as acl_count
   from pg_proc p where p.oid=${employeeChoicePrototypeSignature}::regprocedure`;
  expect(created).toMatchObject({prosecdef:false,provolatile:'s',proparallel:'u',proconfig:['search_path=pg_catalog, pg_temp','jit=off'],
-  pronargs:19,proisstrict:false,proleakproof:false,prokind:'f',owner:'postgres',app:true,public:false,acl_count:2});
+  pronargs:20,proisstrict:false,proleakproof:false,prokind:'f',owner:'postgres',app:true,public:false,acl_count:2});
  const acl=await tx`select a.grantor::regrole::text as grantor,a.grantee::regrole::text as grantee,a.privilege_type,a.is_grantable from pg_proc p,aclexplode(p.proacl) a where p.oid=${employeeChoicePrototypeSignature}::regprocedure order by a.grantee::regrole::text`;
  expect(Array.from(acl)).toEqual([{grantor:'postgres',grantee:'ai_hr_app',privilege_type:'EXECUTE',is_grantable:false},{grantor:'postgres',grantee:'postgres',privilege_type:'EXECUTE',is_grantable:false}]);
  expect(await employeeChoiceNativeSecurity()).toEqual(security);

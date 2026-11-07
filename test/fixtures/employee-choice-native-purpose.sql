@@ -16,7 +16,7 @@ CREATE FUNCTION app.employee_choice_native_prototype(
  p_tenant uuid,p_actor uuid,p_person uuid,p_roles text[],p_grants jsonb,
  p_company_scope uuid[],p_terminated_after date,p_employee_scope uuid[],
  p_company uuid,p_department uuid,p_unit uuid,p_status text,p_search_mode text,p_pattern text,
- p_selected uuid,p_offset bigint,p_limit integer,p_label_mode text,p_port text)
+ p_selected uuid,p_offset bigint,p_limit integer,p_label_mode text,p_port text,p_matched_ids uuid[])
 RETURNS TABLE(phase integer,kind text,"employmentId" uuid,name text,"employeeCode" text,"companyId" uuid,
  "departmentId" uuid,"businessUnitId" uuid,status text,label text,code text,total integer)
 LANGUAGE plpgsql STABLE SECURITY INVOKER SET search_path=pg_catalog,pg_temp SET jit=off AS $employee_choice$
@@ -24,11 +24,12 @@ DECLARE observed_grants text;
 BEGIN
  IF p_company_scope IS NULL OR (cardinality(p_company_scope)>0 AND array_ndims(p_company_scope) IS DISTINCT FROM 1)
  OR (p_employee_scope IS NOT NULL AND cardinality(p_employee_scope)>0 AND array_ndims(p_employee_scope) IS DISTINCT FROM 1)
+ OR (p_matched_ids IS NOT NULL AND cardinality(p_matched_ids)>0 AND array_ndims(p_matched_ids) IS DISTINCT FROM 1)
  OR p_roles IS NULL
  OR (cardinality(p_roles)>0 AND array_ndims(p_roles) IS DISTINCT FROM 1)
  THEN RAISE EXCEPTION 'Invalid native employee-choice arrays' USING ERRCODE='22023';END IF;
  IF array_position(p_company_scope,NULL) IS NOT NULL OR array_position(p_employee_scope,NULL) IS NOT NULL
- OR array_position(p_roles,NULL) IS NOT NULL
+ OR array_position(p_roles,NULL) IS NOT NULL OR array_position(p_matched_ids,NULL) IS NOT NULL
  OR jsonb_typeof(p_grants) IS DISTINCT FROM 'array'
  OR p_status IS NULL OR p_status NOT IN('','active','ended')
  OR p_search_mode IS NULL OR p_search_mode NOT IN('none','ascii','unicode','impossible')
@@ -37,11 +38,15 @@ BEGIN
  OR p_offset IS NULL OR p_offset<0 OR p_offset>9007199254740991
  OR p_limit IS NULL OR p_limit<1 OR p_limit>2000
  OR p_label_mode IS NULL OR p_label_mode NOT IN('names','labels')
- OR p_port IS NULL OR p_port NOT IN('page','ids')
+ OR p_port IS NULL OR p_port NOT IN('page','ids','project')
  OR (p_port='ids' AND (p_offset<>0 OR p_selected IS NOT NULL OR p_label_mode<>'names'))
+ OR (p_port='project' AND (p_matched_ids IS NULL OR p_search_mode<>'none' OR p_selected IS NOT NULL OR p_label_mode<>'names'))
+ OR (p_port<>'project' AND p_matched_ids IS NOT NULL)
  OR (p_terminated_after IS NOT NULL AND (NOT isfinite(p_terminated_after)
   OR p_terminated_after<'0001-01-01'::date OR p_terminated_after>'9999-12-31'::date))
  THEN RAISE EXCEPTION 'Invalid native employee-choice parameters' USING ERRCODE='22023';END IF;
+ IF p_matched_ids IS NOT NULL AND cardinality(p_matched_ids)<>(SELECT count(DISTINCT id) FROM unnest(p_matched_ids) id)
+ THEN RAISE EXCEPTION 'Invalid native employee-choice projection set' USING ERRCODE='22023';END IF;
  IF EXISTS(SELECT 1 FROM jsonb_array_elements(p_grants) g WHERE jsonb_typeof(g) IS DISTINCT FROM 'object'
   OR jsonb_typeof(g->'role') IS DISTINCT FROM 'string' OR NOT (g?'companyId')
   OR jsonb_typeof(g->'companyId') NOT IN('string','null')
@@ -76,6 +81,7 @@ BEGIN
    AND (cardinality(p_company_scope)=0 OR e.company_id=ANY(p_company_scope))
    AND (p_terminated_after IS NULL OR e.terminated_on IS NULL OR e.terminated_on>p_terminated_after)
    AND (p_employee_scope IS NULL OR e.id=ANY(p_employee_scope))
+   AND (p_port<>'project' OR e.id=ANY(p_matched_ids))
  ),
  employee_choice_people AS MATERIALIZED(
   SELECT p.id AS "personId",p.full_name AS name FROM public.person p
@@ -91,7 +97,7 @@ BEGIN
   WHERE c.tenant_id=p_tenant AND (c.id IN(SELECT e."companyId" FROM employee_choice_employments e)) IS TRUE
  ),
  employee_choice_population AS MATERIALIZED(
-  SELECT e."employmentId",p.name,e."employeeCode",e."companyId",c.company,a."departmentId",a."businessUnitId",e.status
+  SELECT e."employmentId",p.name,e."employeeCode",e."companyId",a."departmentId",a."businessUnitId",e.status
   FROM employee_choice_employments e JOIN employee_choice_people p ON p."personId"=e."personId"
    JOIN employee_choice_companies c ON c."companyId"=e."companyId"
    LEFT JOIN employee_choice_assignments a ON a."employmentId"=e."employmentId"
@@ -104,11 +110,15 @@ BEGIN
    AND (p_department IS NULL OR p."departmentId"=p_department) AND (p_unit IS NULL OR p."businessUnitId"=p_unit)
    AND (p_status='' OR p.status=p_status)
  ),
- employee_choice_result AS (
-  (SELECT m.* FROM employee_choice_matching m WHERE p_port='page' AND p_search_mode='none'
-   ORDER BY m.name,m."employmentId" LIMIT p_limit OFFSET p_offset)
+ employee_choice_page_keys AS MATERIALIZED(
+  SELECT m."employmentId",m.name FROM employee_choice_matching m WHERE p_port IN('page','project') AND p_search_mode='none'
+   ORDER BY m.name,m."employmentId" LIMIT p_limit OFFSET p_offset
+ ),employee_choice_result AS (
+  SELECT m.* FROM employee_choice_matching m
+   WHERE p_port IN('page','project') AND p_search_mode='none'
+    AND (m."employmentId" IN(SELECT k."employmentId" FROM employee_choice_page_keys k)) IS TRUE
   UNION ALL
-  SELECT m.* FROM employee_choice_matching m WHERE (p_port='ids' OR p_search_mode<>'none') AND
+  SELECT m.* FROM employee_choice_matching m WHERE (p_port='ids' OR (p_port='page' AND p_search_mode<>'none')) AND
    CASE p_search_mode WHEN 'none' THEN true WHEN 'impossible' THEN false
     WHEN 'unicode' THEN ((m.name COLLATE "C") ~ '[^ -~]' OR (coalesce(m."employeeCode",'') COLLATE "C") ~ '[^ -~]')
     ELSE ((m.name COLLATE "C") ~ '[^ -~]' OR (coalesce(m."employeeCode",'') COLLATE "C") ~ '[^ -~]'
@@ -118,10 +128,10 @@ BEGIN
   SELECT 0::integer AS phase,'count'::text AS kind,NULL::uuid AS "employmentId",NULL::text AS name,NULL::text AS "employeeCode",
    NULL::uuid AS "companyId",NULL::uuid AS "departmentId",NULL::uuid AS "businessUnitId",NULL::text AS status,NULL::text AS label,NULL::text AS code,
    CASE WHEN p_search_mode='none' THEN (SELECT count(*)::integer FROM employee_choice_matching m) ELSE NULL::integer END AS total
-   WHERE p_port='page'
+   WHERE p_port IN('page','project')
   UNION ALL
-  SELECT DISTINCT 1,'company',NULL::uuid,NULL::text,NULL::text,p."companyId",NULL::uuid,NULL::uuid,NULL::text,p.company,NULL::text,NULL::integer
-   FROM employee_choice_population p WHERE p_port='page'
+  SELECT 1,'company',NULL::uuid,NULL::text,NULL::text,c."companyId",NULL::uuid,NULL::uuid,NULL::text,c.company,NULL::text,NULL::integer
+   FROM employee_choice_companies c WHERE p_port='page' AND EXISTS(SELECT 1 FROM employee_choice_population p WHERE p."companyId"=c."companyId")
   UNION ALL
   SELECT DISTINCT 2,'department',NULL::uuid,NULL::text,NULL::text,o."companyId",d.id,NULL::uuid,NULL::text,
    CASE WHEN p_label_mode='labels' THEN coalesce(nullif(trim(d.label),''),nullif(trim(d.description),''),d.name) ELSE d.name END,
@@ -136,11 +146,12 @@ BEGIN
   SELECT 4,'selected',p."employmentId",p.name,p."employeeCode",p."companyId",p."departmentId",p."businessUnitId",p.status,NULL::text,NULL::text,NULL::integer
    FROM employee_choice_population p WHERE p_port='page' AND p."employmentId"=p_selected
   UNION ALL
-  SELECT 5,'candidate',r."employmentId",r.name,r."employeeCode",CASE WHEN p_port='page' THEN r."companyId" ELSE NULL::uuid END,
-   CASE WHEN p_port='page' THEN r."departmentId" ELSE NULL::uuid END,CASE WHEN p_port='page' THEN r."businessUnitId" ELSE NULL::uuid END,
-   CASE WHEN p_port='page' THEN r.status ELSE NULL::text END,NULL::text,NULL::text,NULL::integer FROM employee_choice_result r
+  SELECT 5,'candidate',r."employmentId",r.name,r."employeeCode",CASE WHEN p_port='project' OR (p_port='page' AND p_search_mode='none') THEN r."companyId" ELSE NULL::uuid END,
+   CASE WHEN p_port='project' OR (p_port='page' AND p_search_mode='none') THEN r."departmentId" ELSE NULL::uuid END,
+   CASE WHEN p_port='project' OR (p_port='page' AND p_search_mode='none') THEN r."businessUnitId" ELSE NULL::uuid END,
+   CASE WHEN p_port='project' OR (p_port='page' AND p_search_mode='none') THEN r.status ELSE NULL::text END,NULL::text,NULL::text,NULL::integer FROM employee_choice_result r
  ) stream;
 END;
 $employee_choice$;
-REVOKE ALL ON FUNCTION app.employee_choice_native_prototype(uuid,uuid,uuid,text[],jsonb,uuid[],date,uuid[],uuid,uuid,uuid,text,text,text,uuid,bigint,integer,text,text) FROM PUBLIC,ai_hr_app;
-GRANT EXECUTE ON FUNCTION app.employee_choice_native_prototype(uuid,uuid,uuid,text[],jsonb,uuid[],date,uuid[],uuid,uuid,uuid,text,text,text,uuid,bigint,integer,text,text) TO ai_hr_app;
+REVOKE ALL ON FUNCTION app.employee_choice_native_prototype(uuid,uuid,uuid,text[],jsonb,uuid[],date,uuid[],uuid,uuid,uuid,text,text,text,uuid,bigint,integer,text,text,uuid[]) FROM PUBLIC,ai_hr_app;
+GRANT EXECUTE ON FUNCTION app.employee_choice_native_prototype(uuid,uuid,uuid,text[],jsonb,uuid[],date,uuid[],uuid,uuid,uuid,text,text,text,uuid,bigint,integer,text,text,uuid[]) TO ai_hr_app;

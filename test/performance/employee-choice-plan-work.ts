@@ -39,13 +39,14 @@ export function employeeChoicePlanLimits(counts:EmployeeChoiceCardinalities){
   metric:'Actual Loops * (Actual Rows + four Rows Removed counters); PostgreSQL per-loop averages may be rounded'};
 }
 export function employeeChoicePlanWork(plan:Record<string,unknown>,counts:EmployeeChoiceCardinalities){
- const limits=employeeChoicePlanLimits(counts),nodes:Record<string,unknown>[]=[],rejectionReasons:string[]=[];
+ const limits=employeeChoicePlanLimits(counts),nodes:Record<string,unknown>[]=[],rejectionReasons:string[]=[];let maximumNodeWork=0;
  const counter=(node:Record<string,unknown>,key:string,required=false)=>{
   const value=node[key]??(required?NaN:0);if(typeof value!=='number'||!Number.isFinite(value)||value<0)throw Error('Invalid actual plan counter: '+key);return value;
  };
  const visit=(node:Record<string,unknown>,path:string)=>{
   const loops=counter(node,'Actual Loops',true),rows=counter(node,'Actual Rows',true),removed=Object.fromEntries(removedFields.map(key=>[key,counter(node,key)]));
   const work=loops*(rows+Object.values(removed).reduce((sum,value)=>sum+value,0));
+  maximumNodeWork=Math.max(maximumNodeWork,work);
   if(!Number.isFinite(work)||work>limits.maxNodeWork)rejectionReasons.push(path+':node-work');
   nodes.push({path,nodeType:node['Node Type'],relation:node['Relation Name']??null,index:node['Index Name']??null,cte:node['CTE Name']??null,loops,rows,removed,work});
   if(node.Plans!==undefined&&!Array.isArray(node.Plans))throw Error('Invalid actual plan children');
@@ -54,5 +55,5 @@ export function employeeChoicePlanWork(plan:Record<string,unknown>,counts:Employ
  visit(plan,'root');
  const rootSharedBlocks=counter(plan,'Shared Hit Blocks',true)+counter(plan,'Shared Read Blocks',true);
  if(rootSharedBlocks>limits.maxRootSharedBlocks)rejectionReasons.push('root:shared-blocks');
- return{kind:'DEVELOPMENT_COMPLEXITY_REJECTION_ONLY',limits,rootSharedBlocks,nodes,rejectionReasons};
+ return{kind:'DEVELOPMENT_COMPLEXITY_REJECTION_ONLY',limits,rootSharedBlocks,maximumNodeWork,nodes,rejectionReasons};
 }

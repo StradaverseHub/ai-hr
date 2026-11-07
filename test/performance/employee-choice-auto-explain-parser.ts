@@ -34,7 +34,8 @@ export function employeeChoiceNativeBody(source:string){
  if(begin<0||end<=begin)throw Error('Fixed native purpose body missing');
  return source.slice(begin+' RETURN QUERY '.length,end).trim();
 }
-export type PlanMarker={label:string;begin:string;end:string;native:boolean;expectedNativeRows?:number};
+export type NativeCallExpectation={port:'page'|'ids'|'project';rows:number};
+export type PlanMarker={label:string;begin:string;end:string;native:boolean;expectedNativeRows?:number;expectedNativeCalls?:readonly NativeCallExpectation[]};
 /** Require both the real nested statement and its actual function invocation.
  * An outer Function Scan alone cannot establish the work performed inside it. */
 export function employeeChoiceNativeInvocation(entries:readonly AutoExplainMessage[],body:string,expectedRows:number){
@@ -57,6 +58,26 @@ export function employeeChoiceNativeInvocation(entries:readonly AutoExplainMessa
  visit(invocations[0].document.Plan);if(scans.length!==1||scans[0]['Function Name']!=='employee_choice_native_prototype')throw Error('One actual outer native Function Scan required');actual(scans[0]);
  return {expectedRows,nestedRows:nativeBodyPlan['Actual Rows'],functionRows:scans[0]['Actual Rows'],nestedDurationMs:bodies[0].durationMs};
 }
+/** Every real body and outer invocation is paired in native log order. A second
+ * projection scan is measured separately, never folded into the old single-call proof. */
+export function employeeChoiceNativeInvocations(entries:readonly AutoExplainMessage[],body:string,expected:readonly NativeCallExpectation[]){
+ const hash=employeeChoiceSqlFingerprint(body),bodyIndices:number[]=[],outerIndices:number[]=[];
+ for(const [index,entry]of entries.entries()){
+  if(employeeChoiceSqlFingerprint(entry.query)===hash)bodyIndices.push(index);
+  else if(/\bapp\.employee_choice_native_prototype\s*\(/i.test(entry.query))outerIndices.push(index);
+ }
+ if(bodyIndices.length!==expected.length||outerIndices.length!==expected.length)throw Error('Every actual native call/body must be accounted separately');
+ const result=[];let previous=-1;
+ for(const [index,call]of expected.entries()){
+  const inner=bodyIndices[index],outer=outerIndices[index];
+  if(inner<=previous||inner>=outer)throw Error('Native body/outer invocation sequence is unbound');
+  const entry=entries[outer],ports=[...entry.query.matchAll(/\/\* employee-choice-native:(page|ids|project) \*\//g)].map(match=>match[1]);
+  if(ports.length!==1||ports[0]!==call.port)throw Error('Actual native purpose differs from independently expected call sequence');
+  if(!entries[inner].context.includes('employee_choice_native_prototype(')||!/at RETURN QUERY/i.test(entries[inner].context))throw Error('Actual native call body context required');
+  result.push({port:call.port,...employeeChoiceNativeInvocation([entries[inner],entry],body,call.rows)});previous=outer;
+ }
+ return result;
+}
 export function bindEmployeeChoiceNativePlans(messages:readonly AutoExplainMessage[],markers:readonly PlanMarker[],body:string){
  const known=new Map<string,{marker:PlanMarker;edge:'begin'|'end'}>();
  for(const marker of markers)for(const edge of ['begin','end']as const){const key=employeeChoiceSqlFingerprint(marker[edge]);if(known.has(key))throw Error('Duplicate native plan marker');known.set(key,{marker,edge});}
@@ -78,7 +99,9 @@ export function bindEmployeeChoiceNativePlans(messages:readonly AutoExplainMessa
   const entries=results.get(marker.label)!;if(!entries.length)throw Error('Missing actual phase plans');
   const bodies=entries.filter(entry=>employeeChoiceSqlFingerprint(entry.query)===bodyHash);
   if(marker.native){
-   if(bodies.length!==1||!bodies[0].context.includes('employee_choice_native_prototype(')||!/at RETURN QUERY/i.test(bodies[0].context))throw Error('Actual nested native body/context proof required');
+   const expected=marker.expectedNativeCalls?.length??1;
+   if(bodies.length!==expected||bodies.some(entry=>!entry.context.includes('employee_choice_native_prototype(')||!/at RETURN QUERY/i.test(entry.context)))throw Error('Actual nested native body/context proof required for every call');
+   if(marker.expectedNativeCalls)employeeChoiceNativeInvocations(entries,body,marker.expectedNativeCalls);
   }else if(bodies.length)throw Error('Current-root control unexpectedly used the prototype');
  }
  return results;

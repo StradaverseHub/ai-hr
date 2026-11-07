@@ -31,20 +31,23 @@ function prepare(p:EmployeeChoiceServerInput,maximum:number):Prepared{
 }
 const uuidArray=(values:readonly string[]|undefined)=>values===undefined?null:'{'+values.join(',')+'}';
 const textArray=(values:readonly string[])=>'{'+values.map(value=>'"'+value.replace(/\\/g,'\\\\').replace(/"/g,'\\"')+'"').join(',')+'}';
-export function nativeEmployeeChoiceQuery(ctx:SessionContext,p:EmployeeChoiceServerInput,prepared:Prepared,port:'page'|'ids'){
+export type NativeEmployeeChoicePort='page'|'ids'|'project';
+export function nativeEmployeeChoiceQuery(ctx:SessionContext,p:EmployeeChoiceServerInput,prepared:Prepared,port:NativeEmployeeChoicePort,matchedIds?:readonly string[]){
  const {filters,offset,limit,labelMode,q}=prepared;
  const grants=ctx.grants??(ctx.roles??[]).map(role=>({role,companyId:null})),roles=ctx.roles??Array.from(new Set(grants.map(grant=>grant.role)));
- const mode=!q?'none':q.includes('\0')?'impossible':/^[\x00-\x7f]*$/.test(q)?'ascii':'unicode';
+ const mode=port==='project'||!q?'none':q.includes('\0')?'impossible':/^[\x00-\x7f]*$/.test(q)?'ascii':'unicode';
  const pattern=mode==='ascii'?'%'+q.replace(/[\\%_]/g,char=>'\\'+char)+'%':null;
  // Raw NUL and non-ASCII search text never enter a PostgreSQL text parameter.
  // Exact ECMAScript matching still runs below, including complete-ID reads.
- return sql`select * from app.employee_choice_native_prototype(${ctx.tenantId}::uuid,${ctx.userId??null}::uuid,${ctx.personId??null}::uuid,
+ const marker=port==='page'?sql`/* employee-choice-native:page */`:port==='ids'?sql`/* employee-choice-native:ids */`:sql`/* employee-choice-native:project */`;
+ const page=port==='page'||port==='project';
+ const order=port==='page'&&q?sql``:sql`order by f.phase,case when f.phase between 1 and 3 then f."companyId" end,
+   case when f.phase=2 then f."departmentId" end,case when f.phase=3 then f."businessUnitId" end,f.name,f."employmentId"`;
+ return sql`${marker} select * from app.employee_choice_native_prototype(${ctx.tenantId}::uuid,${ctx.userId??null}::uuid,${ctx.personId??null}::uuid,
   ${textArray(roles)}::text[],${JSON.stringify(grants)}::jsonb,${uuidArray(p.companyIds)}::uuid[],${p.terminatedAfter??null}::date,${uuidArray(p.employmentIds)}::uuid[],
   ${filters.companyId||null}::uuid,${filters.departmentId||null}::uuid,${filters.businessUnitId||null}::uuid,${filters.status}::text,${mode}::text,${pattern}::text,
-  ${port==='page'&&p.selectedId&&uuid.test(p.selectedId)?p.selectedId:null}::uuid,${port==='page'?offset:0}::bigint,${port==='page'?limit:1}::integer,
-  ${port==='page'?labelMode:'names'}::text,${port}::text) f
-  order by f.phase,case when f.phase between 1 and 3 then f."companyId" end,
-   case when f.phase=2 then f."departmentId" end,case when f.phase=3 then f."businessUnitId" end,f.name,f."employmentId"`;
+  ${port==='page'&&p.selectedId&&uuid.test(p.selectedId)?p.selectedId:null}::uuid,${page?offset:0}::bigint,${page?limit:1}::integer,
+  ${port==='page'?labelMode:'names'}::text,${port}::text,${uuidArray(matchedIds)}::uuid[]) f ${order}`;
 }
 type BoundaryRow={phase:number;kind:'count'|'company'|'department'|'unit'|'selected'|'candidate';employmentId:string|null;name:string|null;employeeCode:string|null;
  companyId:string|null;departmentId:string|null;businessUnitId:string|null;status:'active'|'ended'|null;label:string|null;code:string|null;total:number|null};
@@ -76,21 +79,46 @@ async function readPage(tx:Tx,ctx:SessionContext,p:EmployeeChoiceServerInput,max
  signal?.throwIfAborted();await assertAiPresentationPrincipalTx(tx,ctx);signal?.throwIfAborted();
  if(labelMode==='labels'&&!isAdmin(ctx))throw new EmployeeChoiceAccessError('Employee catalogue labels require current administration access');
  const query=nativeEmployeeChoiceQuery(ctx,p,prepared,'page'),raw:Identity[]=[],options:Options[]=[],companies=new Map<string,string>();
+ const catalogue:BoundaryRow[]=[],matchedIds:string[]=[];
  const departments=new Map<string,{name:string|null;code:string|null}>(),units=new Map<string,{name:string|null;code:string|null}>();
  let selected:Identity|null=null,total=0;
  const receive=(row:BoundaryRow)=>{
   if(row.kind==='count'){if(!q){if(row.total===null||!Number.isSafeInteger(row.total)||row.total<0)throw Error('Invalid native employee count');total=row.total;}return;}
   if(row.kind==='candidate'){
-   const value=identity(row);
-   if(!q){raw.push(value);return;}
-   if(value.name.toLowerCase().includes(q)||(value.employeeCode??'').toLowerCase().includes(q)){if(total>=offset&&raw.length<limit)raw.push(value);total++;}
+   if(!q){raw.push(identity(row));return;}
+   if(!row.employmentId||row.name===null)throw Error('Invalid native employee candidate');
+   if(row.companyId!==null||row.departmentId!==null||row.businessUnitId!==null||row.status!==null||row.label!==null||row.code!==null||row.total!==null)throw Error('Native search candidate exceeded minimal identity contract');
+   if(row.name.toLowerCase().includes(q)||(row.employeeCode??'').toLowerCase().includes(q))matchedIds.push(row.employmentId);
    return;
   }
   if(row.kind==='selected'){selected=identity(row);return;}
+  catalogue.push(row);
+ };
+ if(!q){const result=await tx.execute<BoundaryRow>(query);signal?.throwIfAborted();for(const row of result)receive(row);}
+ else await visit(tx,query,receive,signal);
+ if(q){
+  total=matchedIds.length;
+  if(matchedIds.length){
+   signal?.throwIfAborted();
+   // The same native owner rechecks principal/RLS/population. PostgreSQL alone
+   // orders exact matches; the browser query never substitutes JS locale order.
+   const projected=await tx.execute<BoundaryRow>(nativeEmployeeChoiceQuery(ctx,p,prepared,'project',matchedIds));signal?.throwIfAborted();
+   const counts=projected.filter(row=>row.kind==='count');if(counts.length!==1||counts[0].total!==matchedIds.length)throw Error('Native exact employee projection population changed');
+   const ids=new Set(matchedIds);
+   for(const row of projected)if(row.kind==='candidate'){const value=identity(row);if(!ids.has(value.employmentId))throw Error('Native projection returned an unmatched employee');raw.push(value);}
+   else if(row.kind!=='count')throw Error('Unexpected native employee projection stream');
+   if(raw.length!==Math.min(limit,Math.max(0,total-offset)))throw Error('Native employee projection page incomplete');
+  }
+ }
+ // UUID text returned by PostgreSQL is canonical lowercase; byte-order UUID
+ // comparison retains its original catalogue insertion order, without text/name collation.
+ const uuidOrder=(a:string|null,b:string|null)=>(a??'')<(b??'')?-1:(a??'')>(b??'')?1:0;
+ catalogue.sort((a,b)=>a.phase-b.phase||uuidOrder(a.companyId,b.companyId)||uuidOrder(a.departmentId,b.departmentId)||uuidOrder(a.businessUnitId,b.businessUnitId));
+ for(const row of catalogue){
   if(!row.companyId)throw Error('Invalid native employee catalogue');
   if(row.kind==='company'){
    if(row.label===null)throw Error('Invalid native employee company');companies.set(row.companyId,row.label);
-   options.push({companyId:row.companyId,company:row.label,departmentId:null,department:null,departmentCode:null,businessUnitId:null,businessUnit:null,businessUnitCode:null});return;
+   options.push({companyId:row.companyId,company:row.label,departmentId:null,department:null,departmentCode:null,businessUnitId:null,businessUnit:null,businessUnitCode:null});continue;
   }
   const companyName=companies.get(row.companyId);if(companyName===undefined)throw Error('Missing native employee company');
   if(row.kind==='department'&&row.departmentId){
@@ -100,9 +128,7 @@ async function readPage(tx:Tx,ctx:SessionContext,p:EmployeeChoiceServerInput,max
    units.set(row.businessUnitId,{name:row.label,code:row.code});
    options.push({companyId:row.companyId,company:companyName,departmentId:null,department:null,departmentCode:null,businessUnitId:row.businessUnitId,businessUnit:row.label,businessUnitCode:row.code});
   }else throw Error('Invalid native employee organisation');
- };
- if(!q){const result=await tx.execute<BoundaryRow>(query);signal?.throwIfAborted();for(const row of result)receive(row);}
- else await visit(tx,query,receive,signal);
+ }
  const project=(value:Identity):EmployeeChoice=>{
   const companyName=companies.get(value.companyId);if(companyName===undefined)throw Error('Missing native employee company');
   const d=value.departmentId?departments.get(value.departmentId):undefined,u=value.businessUnitId?units.get(value.businessUnitId):undefined;

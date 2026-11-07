@@ -16,7 +16,7 @@ import {assertAiPresentationPrincipalTx} from '../core/ai-principal';
 import {installEmployeeChoiceNativePrototype} from './performance/employee-choice-native-purpose-owner';
 import {employeeChoicePurposeSession,preserveDiagnosticFailure} from './performance/employee-choice-native-purpose-session';
 import {employeeChoicePlanLogging} from './performance/employee-choice-auto-explain';
-import {employeeChoiceAutoExplainMessages,employeeChoiceNativeBody,employeeChoiceSqlFingerprint,bindEmployeeChoiceNativePlans,employeeChoiceNativeInvocation,type PlanMarker} from './performance/employee-choice-auto-explain-parser';
+import {employeeChoiceAutoExplainMessages,employeeChoiceNativeBody,employeeChoiceSqlFingerprint,bindEmployeeChoiceNativePlans,employeeChoiceNativeInvocations,type PlanMarker,type NativeCallExpectation} from './performance/employee-choice-auto-explain-parser';
 import {employeeChoiceActualCardinalities,employeeChoiceAuthorizedPopulationFacts,employeeChoicePlanWork} from './performance/employee-choice-plan-work';
 import {employeeChoicePlannerSnapshot} from './performance/employee-choice-planner-snapshot';
 import {createAssignmentAuthorityFixture,assertAssignmentAuthority} from './performance/employee-choice-assignment-authority';
@@ -40,12 +40,14 @@ let timing:Awaited<ReturnType<typeof employeeChoicePurposeSession>>|undefined,pl
 let logging:Awaited<ReturnType<typeof employeeChoicePlanLogging>>|undefined;
 let fixture:Awaited<ReturnType<typeof seedPersonnelNativeFixture>>|undefined,representedBu='',emptyBu='',output='';
 let cardinalities:Awaited<ReturnType<typeof employeeChoiceActualCardinalities>>;
-const report:Record<string,unknown>={kind:'NATIVE_EMPLOYEE_CHOICE_PURPOSE_PROTOTYPE',releaseEligible:false,productionPolicyApproved:false,migrationAllocated:false,
- complete:false,employees:50000,variants,wholePortsPerVariant:14,caseBudgetMs:300000,statementTimeoutMs:20000,lockTimeoutMs:300,targetMs:1000,
+const report:Record<string,unknown>={kind:'NATIVE_EMPLOYEE_CHOICE_MINIMAL_SEARCH_PROTOTYPE_V2',releaseEligible:false,productionPolicyApproved:false,migrationAllocated:false,
+ complete:false,employees:50000,variants,wholePortsPerVariant:16,caseBudgetMs:300000,statementTimeoutMs:20000,lockTimeoutMs:300,targetMs:1000,
  control:{commit:'f1515376df082438ca025fb65d01a8a3330a8796',sourceSha256:'ce1e3559addbffa4b4e780594ebcc5fcf917ddffde79a6155cc7fbcecdbcfbd5'},
  topology:'Timing variants share one actual app backend; plan-only variants share a second actual app backend. PIDs are distinct and never relabeled.',
  registration:'TEMPORARY_SOLE_FOCUSED_DEVELOPMENT_ONLY; complete normal-CI singleton admission remains pending',
- supplementalPlanPortsPerVariant:1,expectedActualPlanPhases:34,
+ supplementalPlanPortsPerVariant:1,expectedActualPlanPhases:38,
+ retainedOriginalProof:{source:'9f51857dbc439f21a9ed6f4a0fc4b6aec4c5500c',run:42405537839,actualPlanPhases:34,allUnderTarget:false},
+ nativeCallAccounting:'Each minimal-candidate and bounded-projection body/invocation/row count is bound separately; every native statement is inspected and distinct main-body work/buffers are additionally combined per phase.',
  instrumentation:'Normal timings have no auto_explain. Plan-only auto_explain has analyze/buffers/settings/nested enabled and per-node timing/parameter values disabled. Instrumented duration is never a latency claim.',
  limitations:'Fixed current-root-first ordering, warm fixture/statistics and few samples are not p95/capacity or whole-browser proof. No index, RLS, grant, JIT threshold, work_mem or global setting changes. Only the fixed native function scopes jit=off.',
  host:{node:process.version,logicalCpus:cpus().length,ramBytes:totalmem(),cpuModels:[...new Set(cpus().map(cpu=>cpu.model))]}};
@@ -88,6 +90,8 @@ function cases():Case[]{
   {name:'organisation-search',input:{...scope,departmentId:b.deptA,businessUnitId:representedBu,query:'PERF000000001'},total:1,ids:[organisationTagSample[0]],repeat:1,selected:last},
   {name:'empty-unit',input:{...scope,departmentId:b.deptA,businessUnitId:emptyBu},total:0,ids:[],repeat:1,selected:last},
   {name:'missing-search',input:{...scope,query:'no fictional organisation employee matches'},total:0,ids:[],repeat:1,selected:last},
+  {name:'broad-search',input:{...scope,query:'fictional retained'},total:50000,ids:expectedFirst,repeat:1,selected:last},
+  {name:'deep-broad-search',input:{...scope,query:'fictional retained',offset:49975},total:50000,ids:expectedLast,repeat:1,selected:last},
   {name:'foreign-company',input:{companyIds:[fixture!.foreign.companyId],selectedId:last},total:0,ids:[],repeat:1,selected:null},
  ];
 }
@@ -96,13 +100,19 @@ function cases():Case[]{
 // so exact JS search must inspect every conservatively admitted matching identity.
 const expectedNativeRows=(name:string)=>{
  const candidates:Record<string,number>={initial:25,deep:25,search:50000,'department-active':25,'department-and-unit':25,
-  'unit-active':25,'organisation-deep':25,'organisation-search':500,'empty-unit':0,'missing-search':50000};
+  'unit-active':25,'organisation-deep':25,'organisation-search':500,'empty-unit':0,'missing-search':50000,'broad-search':50000,'deep-broad-search':50000};
  if(name==='foreign-company')return 1; // Count only; no authorized population/selection/catalogue.
  if(name==='complete-ids')return 400;
  if(name==='sparse-server-population')return 7; // Three identities + count/company/department/unit; no selected row.
  if(name==='held-access'||name==='held-history')return 30;
  if(!Object.hasOwn(candidates,name))throw Error('Missing independent native stream fixture');
  return 5+candidates[name]; // Count + company + department + unit + independently selected identity.
+};
+const expectedNativeCalls=(name:string):NativeCallExpectation[]=>{
+ const first:NativeCallExpectation={port:name==='complete-ids'?'ids':'page',rows:expectedNativeRows(name)};
+ if(name==='search'||name==='organisation-search')return[first,{port:'project',rows:2}];
+ if(name==='broad-search'||name==='deep-broad-search')return[first,{port:'project',rows:26}];
+ return[first];
 };
 
 function assertPage(page:Page,c:Case){
@@ -121,7 +131,7 @@ async function matrix(variant:Variant,session:Awaited<ReturnType<typeof employee
  const markerCall=async(label:string,edge:'begin'|'end')=>{session.assertIdle();await session.single.db.execute(marker(label,edge));};
  const call=async<T>(name:string,sample:number,read:()=>Promise<T>):Promise<T>=>{
   active();const label=variant+':'+name+':'+sample;
-  if(phase==='plans'){markers.push({label,begin:dialect.sqlToQuery(marker(label,'begin')).sql,end:dialect.sqlToQuery(marker(label,'end')).sql,native:variant==='native',expectedNativeRows:variant==='native'?expectedNativeRows(name):undefined});await markerCall(label,'begin');}
+  if(phase==='plans'){markers.push({label,begin:dialect.sqlToQuery(marker(label,'begin')).sql,end:dialect.sqlToQuery(marker(label,'end')).sql,native:variant==='native',expectedNativeCalls:variant==='native'?expectedNativeCalls(name):undefined});await markerCall(label,'begin');}
   const value=await read();if(phase==='plans')await markerCall(label,'end');return value;
  };
  for(const c of cases()){
@@ -181,7 +191,7 @@ it.skipIf(!requested)('prepares exactly50k fictional current-root facts and a gu
  report.timingBackend=timing.defaults;report.preparationComplete=true;await installation.unchanged();save();
 },true));
 
-it.skipIf(!requested).for(variants)('measures all14 actual whole ports with %s implementation',{timeout:300000},(variant,context)=>bounded(context,async()=>{
+it.skipIf(!requested).for(variants)('measures all16 actual whole ports with %s implementation',{timeout:300000},(variant,context)=>bounded(context,async()=>{
  expect(timing).toBeTruthy();const spy=timing!.install();
  await preserveDiagnosticFailure(async()=>{const stats=(report.plannerStatistics??={})as Record<string,unknown>;stats['timing:'+variant]=await employeeChoicePlannerSnapshot();
   await matrix(variant,timing!,'timing');const complete=(report.performanceVariants??=[])as string[];complete.push(variant);save();
@@ -214,21 +224,28 @@ it.skipIf(!requested)('captures real nested native plans on a separate bound app
   for(const [label,entries]of bound){
    const bodies=entries.filter(entry=>employeeChoiceSqlFingerprint(entry.query)===employeeChoiceSqlFingerprint(body));
    if(label.startsWith('native:')){
-    const expected=markers.find(marker=>marker.label===label)?.expectedNativeRows;
+    const expected=markers.find(marker=>marker.label===label)?.expectedNativeCalls;
     if(expected===undefined)throw Error('Independent actual native stream expectation required');
-    try{actual.push({label,invocation:employeeChoiceNativeInvocation(entries,body,expected)});}
+    try{actual.push({label,invocations:employeeChoiceNativeInvocations(entries,body,expected)});}
     catch(error){failures.push({label,kind:'actual-native-invocation',details:error instanceof Error?error.message:'Unknown native invocation failure'});}
    }
-   if(label.startsWith('native:'))for(const entry of bodies){
+   if(label.startsWith('native:'))for(const entry of entries){
     const plan=entry.document.Plan;if(!plan||typeof plan!=='object'||Array.isArray(plan))throw Error('Native body plan required');
-    const work=employeeChoicePlanWork(plan as Record<string,unknown>,cardinalities);actual.push({label,...entry,work});
+    const work=employeeChoicePlanWork(plan as Record<string,unknown>,cardinalities);actual.push({label,...entry,work,mainBody:bodies.includes(entry)});
     if(work.rejectionReasons.length)failures.push({label,kind:'work',details:work.rejectionReasons});
-    const settings=entry.document.Settings;if(!settings||typeof settings!=='object'||!('jit'in settings)||settings.jit!=='off'||entry.document.JIT!==undefined)failures.push({label,kind:'native-function-jit-scope'});
+    if(bodies.includes(entry)){const settings=entry.document.Settings;if(!settings||typeof settings!=='object'||!('jit'in settings)||settings.jit!=='off'||entry.document.JIT!==undefined)failures.push({label,kind:'native-function-jit-scope'});}
+   }
+   if(label.startsWith('native:')){
+    const disjoint=bodies.map(entry=>employeeChoicePlanWork(entry.document.Plan as Record<string,unknown>,cardinalities));
+    const combinedRootSharedBlocks=disjoint.reduce((sum,work)=>sum+work.rootSharedBlocks,0),combinedMaxNodeWork=disjoint.reduce((sum,work)=>sum+work.maximumNodeWork,0);
+    const limits=disjoint[0]?.limits;if(!limits)throw Error('Every native phase requires real body work');
+    if(combinedRootSharedBlocks>limits.maxRootSharedBlocks||combinedMaxNodeWork>limits.maxNodeWork)failures.push({label,kind:'combined-native-calls-work'});
+    actual.push({label,combinedDistinctBodies:{calls:bodies.length,combinedRootSharedBlocks,combinedMaxNodeWork,limits},overlapPolicy:'Only distinct native main bodies combined; nested and outer copies never summed.'});
    }
    actual.push({label,statements:entries});
   }
   report.markers=markers;report.actualPlans=actual;report.planVerificationFailures=failures;report.actualPlanCases=bound.size;save();
-  expect(bound.size).toBe(34);expect(failures).toEqual([]);report.actualPlansComplete=true;save();
+  expect(bound.size).toBe(38);expect(failures).toEqual([]);report.actualPlansComplete=true;save();
  },async()=>{restoreSpy();await plansSession?.close();await logging?.restore();if(logging)report.instrumentationRestored=true;await installation!.unchanged();save();});
 }));
 
@@ -250,6 +267,6 @@ afterAll(async()=>{
  report.complete=!failedCase&&!blocked&&report.preparationComplete===true&&report.actualPlansComplete===true&&report.instrumentationRestored===true&&report.authorityComplete===true&&report.cleanupComplete===true
   &&variants.every(variant=>(report.performanceVariants as string[]|undefined)?.includes(variant));
  report.wholePortTargets=Object.fromEntries(variants.map(variant=>{const ports=Object.entries((report.ports??{})as Record<string,{samples?:number[];ms?:number}>).filter(([key])=>key.startsWith(variant+':'));
-  return [variant,{targetMs:1000,measuredPorts:ports.length,allUnderTarget:report.complete===true?ports.length===14&&ports.every(([,port])=>port.samples?.length?port.samples.every(ms=>ms<1000):typeof port.ms==='number'&&port.ms<1000):null}];}));
+  return [variant,{targetMs:1000,measuredPorts:ports.length,allUnderTarget:report.complete===true?ports.length===16&&ports.every(([,port])=>port.samples?.length?port.samples.every(ms=>ms<1000):typeof port.ms==='number'&&port.ms<1000):null}];}));
  report.phase=report.complete?'complete':'incomplete';save();if(failures.length)throw new AggregateError(failures,'Owned prototype cleanup failed');
 });

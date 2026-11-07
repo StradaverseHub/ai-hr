@@ -25,5 +25,14 @@ it('preserves legacy empty company scope, explicit empty employee scope and safe
  const unspecified=query('');expect(unspecified.params[5]).toBe('{}');expect(unspecified.params[7]).toBeNull();
  const empty=query('',Number.MAX_SAFE_INTEGER,2000,{companyIds:[],employmentIds:[]});
  expect(empty.params[5]).toBe('{}');expect(empty.params[7]).toBe('{}');expect(empty.params[15]).toBe(Number.MAX_SAFE_INTEGER);expect(empty.params[16]).toBe(2000);
- expect(empty.sql).toContain('app.employee_choice_native_prototype(');expect(empty.params).toHaveLength(19);
+ expect(empty.sql).toContain('app.employee_choice_native_prototype(');expect(empty.params).toHaveLength(20);expect(empty.params[19]).toBeNull();
+});
+it('streams search candidates unordered and binds a separate exact projection purpose without raw search text',()=>{
+ const input={companyIds:[]},prepared={filters:{query:'人員',companyId:'',departmentId:'',businessUnitId:'',status:''},offset:5,limit:25,labelMode:'names' as const,q:'人員'};
+ const candidate=new PgDialect().sqlToQuery(nativeEmployeeChoiceQuery(ctx,input,prepared,'page'));
+ expect(candidate.sql).not.toContain('order by');expect(candidate.sql).toContain('/* employee-choice-native:page */');
+ const projection=new PgDialect().sqlToQuery(nativeEmployeeChoiceQuery(ctx,input,prepared,'project',[user]));
+ expect(projection.params[12]).toBe('none');expect(projection.params[13]).toBeNull();expect(projection.params[14]).toBeNull();
+ expect(projection.params[15]).toBe(5);expect(projection.params[16]).toBe(25);expect(projection.params[18]).toBe('project');expect(projection.params[19]).toBe('{'+user+'}');
+ expect(projection.sql).toContain('order by');expect(projection.sql).toContain('/* employee-choice-native:project */');
 });

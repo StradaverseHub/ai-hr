@@ -1,6 +1,6 @@
 /** Synthetic parser/refusal coverage only. No native plan or timing claim. */
 import {expect,it} from 'vitest';
-import {employeeChoiceAutoExplainMessages,employeeChoiceSqlFingerprint,bindEmployeeChoiceNativePlans,employeeChoiceNativeInvocation,type AutoExplainMessage,type PlanMarker} from './performance/employee-choice-auto-explain-parser';
+import {employeeChoiceAutoExplainMessages,employeeChoiceSqlFingerprint,bindEmployeeChoiceNativePlans,employeeChoiceNativeInvocation,employeeChoiceNativeInvocations,type AutoExplainMessage,type PlanMarker} from './performance/employee-choice-auto-explain-parser';
 const pid=123,body='WITH employee_choice_employments AS MATERIALIZED(select 1) select * from employee_choice_employments';
 const marker:PlanMarker={label:'native:initial',begin:'select 1 as "aihr_emp_marker_native_initial_begin"',end:'select 1 as "aihr_emp_marker_native_initial_end"',native:true};
 function message(query:string,backend=pid,context=''){
@@ -42,4 +42,18 @@ it('requires both actual inner stream and outer Function Scan row counts against
   expect(()=>employeeChoiceNativeInvocation(entries,body,1)).toThrow();
  }
  expect(()=>employeeChoiceNativeInvocation([nested,outer],body,-1)).toThrow('Independent native stream count');
+});
+it('accounts candidate and projection body/outer calls separately and refuses missing, reordered, extra or wrong-purpose work',()=>{
+ const nested=employeeChoiceAutoExplainMessages(message(body,pid,nativeContext),pid)[0];
+ const outer=(port:'page'|'project'):AutoExplainMessage=>({...nested,query:'/* employee-choice-native:'+port+' */ select * from app.employee_choice_native_prototype($1)',context:'',
+  document:{Plan:{'Node Type':'Function Scan','Function Name':'employee_choice_native_prototype','Actual Rows':1,'Actual Loops':1}}});
+ const candidate=outer('page'),projection=outer('project'),entries=[nested,candidate,nested,projection];
+ const expected=[{port:'page' as const,rows:1},{port:'project' as const,rows:1}];
+ expect(employeeChoiceNativeInvocations(entries,body,expected).map(call=>call.port)).toEqual(['page','project']);
+ for(const changed of [[nested,candidate],[nested,candidate,nested,candidate],[nested,projection,nested,candidate],
+  [nested,nested,candidate,projection],[...entries,nested,projection]])expect(()=>employeeChoiceNativeInvocations(changed,body,expected)).toThrow();
+ const plan={...marker,expectedNativeCalls:expected};
+ const boundaries=employeeChoiceAutoExplainMessages(message(plan.begin)+message(plan.end),pid);
+ expect(()=>bindEmployeeChoiceNativePlans([boundaries[0],...entries,boundaries[1]],[plan],body)).not.toThrow();
+ expect(()=>bindEmployeeChoiceNativePlans([boundaries[0],nested,candidate,boundaries[1]],[plan],body)).toThrow();
 });

@@ -58,20 +58,43 @@ it('natively refuses wrong actor/person and read-committed callers before exposi
  await installation!.unchanged();
 });
 
+it('keeps candidate matching and exact native projection in one snapshot and independently re-admits every submitted identity',async()=>{
+ const f=await createAssignmentAuthorityFixture(),input={companyIds:[f.b.companyId],query:'fictional',selectedId:f.gamma.id};
+ await database.withTenant(f.employeeCtx,async tx=>{
+  const observe=async()=>(await tx.execute(sql`select pg_backend_pid()as pid,txid_current_snapshot()::text as snapshot,
+   current_setting('transaction_isolation')as isolation,current_setting('transaction_read_only')as mode`))[0];
+  const before=await observe(),page=await prototype.readEmployeeChoicesTx(tx,f.employeeCtx,input);
+  expect(page.rows.map(row=>row.employmentId)).toEqual([f.alpha.id]);expect(page.total).toBe(1);expect(page.selected).toBeNull();
+  expect(await observe()).toEqual(before);expect(before).toMatchObject({isolation:'repeatable read',mode:'on'});
+  const projected=await tx.execute(prototype.nativeEmployeeChoiceQuery(f.employeeCtx,input,prepared(),'project',[f.alpha.id,f.gamma.id,randomUUID()]));
+  expect(projected.filter(row=>row.kind==='count').map(row=>row.total)).toEqual([1]);
+  expect(projected.filter(row=>row.kind==='candidate').map(row=>row.employmentId)).toEqual([f.alpha.id]);
+ },{readOnlySnapshot:true});
+ await database.withTenant(f.ctx,async tx=>{
+  const scope={companyIds:[f.b.companyId],employmentIds:[f.alpha.id]};
+  const projected=await tx.execute(prototype.nativeEmployeeChoiceQuery(f.ctx,scope,prepared(),'project',[f.alpha.id,f.gamma.id]));
+  expect(projected.filter(row=>row.kind==='count').map(row=>row.total)).toEqual([1]);
+  expect(projected.filter(row=>row.kind==='candidate').map(row=>row.employmentId)).toEqual([f.alpha.id]);
+ },{readOnlySnapshot:true});
+ await installation!.unchanged();
+},120000);
+
 it('natively rejects malformed closed parameters and bypassed label admission without altering sibling settings',async()=>{
  const ctx=actor();
- const call=(args:{roles?:SQL;grants?:SQL;companyScope?:SQL;employeeScope?:SQL;date?:SQL;mode?:SQL;pattern?:SQL;offset?:SQL;limit?:SQL;label?:SQL;port?:SQL}={})=>
+ const call=(args:{roles?:SQL;grants?:SQL;companyScope?:SQL;employeeScope?:SQL;date?:SQL;mode?:SQL;pattern?:SQL;offset?:SQL;limit?:SQL;label?:SQL;port?:SQL;matched?:SQL}={})=>
   sql`select * from app.employee_choice_native_prototype(${ctx.tenantId}::uuid,${ctx.userId}::uuid,null::uuid,
    ${args.roles??sql`array['hr_admin']::text[]`},${args.grants??sql`${JSON.stringify(ctx.grants)}::jsonb`},
    ${args.companyScope??sql`array[${b.companyId}::uuid]`},${args.date??sql`null::date`},${args.employeeScope??sql`null::uuid[]`},
    null::uuid,null::uuid,null::uuid,''::text,${args.mode??sql`'none'::text`},${args.pattern??sql`null::text`},null::uuid,
-   ${args.offset??sql`0::bigint`},${args.limit??sql`25::integer`},${args.label??sql`'names'::text`},${args.port??sql`'page'::text`})`;
+   ${args.offset??sql`0::bigint`},${args.limit??sql`25::integer`},${args.label??sql`'names'::text`},${args.port??sql`'page'::text`},${args.matched??sql`null::uuid[]`})`;
  const malformed=[{roles:sql`null::text[]`},{roles:sql`array[['hr_admin']]::text[]`},
   {companyScope:sql`null::uuid[]`},{companyScope:sql`array[null]::uuid[]`},{employeeScope:sql`array[[${b.companyId}::uuid]]`},
   {grants:sql`'{}'::jsonb`},{grants:sql`'[1]'::jsonb`},{grants:sql`'[ {"role":"hr_admin","companyId":null,"extra":true} ]'::jsonb`},
   {date:sql`'infinity'::date`},{date:sql`'0001-01-01 BC'::date`},{date:sql`'10000-01-01'::date`},
   {mode:sql`'arbitrary'::text`},{mode:sql`'ascii'::text`},{pattern:sql`'%x%'::text`},
-  {offset:sql`9007199254740992::bigint`},{limit:sql`2001::integer`},{label:sql`'arbitrary'::text`},{port:sql`'arbitrary'::text`}];
+  {offset:sql`9007199254740992::bigint`},{limit:sql`2001::integer`},{label:sql`'arbitrary'::text`},{port:sql`'arbitrary'::text`},
+  {port:sql`'project'::text`},{matched:sql`array[]::uuid[]`},{port:sql`'project'::text`,matched:sql`array[null]::uuid[]`},
+  {port:sql`'project'::text`,matched:sql`array[[${b.companyId}::uuid]]`},{port:sql`'project'::text`,matched:sql`array[${b.companyId}::uuid,${b.companyId}::uuid]`}];
  await database.withTenant(ctx,async tx=>{
   const [before]=await tx.execute<{pid:number;jit:string}>(sql`select pg_backend_pid() as pid,current_setting('jit') as jit`);
   for(const args of malformed){
@@ -124,17 +147,25 @@ it('preserves server All2000, complete IDs beyond2000, empty population and inde
   const request={companyIds:[b.companyId],query,selectedId},old=await current.readEmployeeChoices(ctx,request),next=await prototype.readEmployeeChoices(ctx,request);
   expect(stable(next)).toEqual(stable(old));expect(next.total).toBe(0);expect(next.selected?.employmentId).toBe(selectedId);
  }
- const names=['İstanbul Example','i\u0307zmir Example','STRASSE Example','Straße Example','Literal % _ \\ Example','人員 😀 Example'];
+ const names=['İstanbul Example','i\u0307zmir Example','STRASSE Example','Straße Example','Literal % _ \\ Example','人員 😀 Example','Tied 人員 Name','Tied 人員 Name'];
  for(const [index,name]of names.entries())await owner.client`update person set full_name=${name} where id=${personPrefix+String(index+3).padStart(12,'0')}::uuid`;
  const ordered=await owner.client`select e.id as id,p.full_name as name from employment e join person p on p.id=e.person_id
   where e.id=any(${ids.slice(2,2+names.length)}::uuid[]) order by p.full_name,e.id`;
  const peopleBefore=await owner.client`select md5(coalesce(jsonb_agg(to_jsonb(p) order by p.id),'[]'::jsonb)::text) as hash from person p`;
- for(const query of ['i\u0307','\u0307','strasse','ß','%','_','\\','人員','😀']){
+ for(const query of ['i\u0307','\u0307','strasse','ß','%','_','\\','人員','😀','Tied']){
   const expectedIds=ordered.filter(row=>row.name.toLowerCase().includes(query.toLowerCase())).map(row=>row.id);
   expect(expectedIds.length).toBeGreaterThan(0);
   const request={companyIds:[b.companyId],query,selectedId},old=await current.readEmployeeChoices(ctx,request),next=await prototype.readEmployeeChoices(ctx,request);
   expect(stable(next)).toEqual(stable(old));expect(next.rows.map(row=>row.employmentId)).toEqual(expectedIds);expect(next.total).toBe(expectedIds.length);
+  expect(await database.withTenant(ctx,tx=>prototype.readEmployeeChoiceIdsTx(tx,ctx,request),{readOnlySnapshot:true})).toEqual(expectedIds);
  }
+ const tiedIds=ordered.filter(row=>row.name==='Tied 人員 Name').map(row=>row.id);expect(tiedIds).toHaveLength(2);
+ const tiedRequest={companyIds:[b.companyId],query:'Tied',offset:1,limit:1,selectedId};
+ const tied=await prototype.readEmployeeChoices(ctx,tiedRequest);expect(stable(tied)).toEqual(stable(await current.readEmployeeChoices(ctx,tiedRequest)));
+ expect(tied.rows.map(row=>row.employmentId)).toEqual(tiedIds.slice(1));expect(tied.total).toBe(2);expect(tied.selected?.employmentId).toBe(selectedId);
+ const completeBroad=await database.withTenant(ctx,tx=>prototype.readEmployeeChoiceIdsTx(tx,ctx,{companyIds:[],query:'native'}),{readOnlySnapshot:true});
+ const expectedBroad=await owner.client`select e.id from employment e join person p on p.id=e.person_id where e.tenant_id=${b.tenantId}::uuid order by p.full_name,e.id`;
+ expect(completeBroad).toEqual(expectedBroad.map(row=>row.id));expect(completeBroad.length).toBe(count);
  expect(await owner.client`select md5(coalesce(jsonb_agg(to_jsonb(p) order by p.id),'[]'::jsonb)::text) as hash from person p`).toEqual(peopleBefore);
  expect(await owner.client`select md5(coalesce(jsonb_agg(to_jsonb(e) order by e.id),'[]'::jsonb)::text) as hash from employment e`).toEqual(before);
  await installation!.unchanged();

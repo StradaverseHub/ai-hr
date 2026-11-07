@@ -1,6 +1,6 @@
 # Native employee-choice purpose prototype
 
-Status: development prototype prepared; unmeasured and not adopted. No migration is allocated. Production remains held.
+Status: historical parent direction, retained at9f518 and its actual34-phase run42405537839. The successor [minimal-search ADR](2026-11-08-employee-choice-minimal-search.md) owns the new20-argument/multiple-call source contract and38-phase qualification. Counts and single-call descriptions below document the original parent; they are not a V2 acceptance claim. No migration is allocated. Production remains held.
 
 ## Decision and evidence
 
