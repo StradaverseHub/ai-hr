@@ -1,9 +1,9 @@
 /** Separately versioned repair operator. Original archives and source identities remain immutable. */
 import assert from 'node:assert/strict';
 import {execFileSync} from 'node:child_process';
-import {readFileSync,writeFileSync} from 'node:fs';
+import {readFileSync,writeFileSync,realpathSync,openSync,fstatSync,closeSync,constants} from 'node:fs';
 import {join,resolve} from 'node:path';
-import {randomUUID} from 'node:crypto';
+import {randomUUID,createHash} from 'node:crypto';
 import {isDeepStrictEqual} from 'node:util';
 import {createPlan,hash} from './plan.mjs';
 import {requiredEvidence} from './manifest.mjs';
@@ -16,7 +16,7 @@ import {assessResumeSource} from './resume-source.mjs';
 import {reconstructRepairImpact} from './repair-impact.mjs';
 import {collectRecoveryEvidence} from './focused-recovery.mjs';
 import {validateRecoveryControllerDiagnostic} from './focused-recovery-policy.mjs';
-import {verifyRepairRecovery,repairDisposition,validateRepairFocusedMetadata,validateRepairBuildMetadata} from './repair-recovery-policy.mjs';
+import {verifyRepairRecovery,repairDisposition,validateRepairFocusedMetadata,validateRepairBuildMetadata,validateFixtureReviewShape} from './repair-recovery-policy.mjs';
 const api=path=>JSON.parse(execFileSync('gh',['api',`repos/${REPOSITORY}/${path}`],{encoding:'utf8',maxBuffer:128*1024**2,timeout:60000}));
 function pages(path,key){const rows=[];for(let page=1;page<=10;page++){const r=api(`${path}${path.includes('?')?'&':'?'}per_page=100&page=${page}`);assert(Array.isArray(r[key]),'Missing complete API inventory');rows.push(...r[key]);if(r[key].length<100)return rows;}throw Error('Repair API inventory exceeds bound');}
 const git=(cwd,...args)=>execFileSync('git',args,{cwd,encoding:'utf8',maxBuffer:64*1024**2,timeout:60000}).trim();
@@ -36,15 +36,37 @@ function planAt(path,{controller,baseline,runtime}){
  try{const local=createPlan(path),{fingerprint,...body}={...local,controller,migrationBase:baseline,runtime};return {...body,fingerprint:hash(body)};}
  finally{if(previous===undefined)delete process.env.AIHR_CI_CLASSIFIER_RUNTIME;else process.env.AIHR_CI_CLASSIFIER_RUNTIME=previous;}
 }
+const UPGRADE_PIN_HELPER='test/helpers/approved-upgrade.ts';
+function validateAppendedUpgradePins({cwd,original,candidate,path}){
+ const blocks=text=>{
+  const tail='export const APPROVED_UPGRADE_TAIL=[\n',hashes='const APPROVED_UPGRADE_HASHES:Record<string,string>={\n';
+  const a=text.indexOf(tail),b=text.indexOf('] as const;',a),c=text.indexOf(hashes,b),d=text.indexOf('\n};',c);
+  assert(a>=0&&b>a&&c>b&&d>c&&text.indexOf(tail,a+1)===-1&&text.indexOf(hashes,c+1)===-1,'Exact existing upgrade pin blocks required');
+  return {tail:text.slice(a+tail.length,b),hashes:text.slice(c+hashes.length,d),skeleton:text.slice(0,a+tail.length)+'<PINS>'+text.slice(b,c+hashes.length)+'<HASHES>'+text.slice(d)};
+ };
+ const before=blocks(git(cwd,'show',original+':'+path)),after=blocks(git(cwd,'show',candidate+':'+path));
+ assert(before.skeleton===after.skeleton&&after.tail.startsWith(before.tail)&&after.hashes.startsWith(before.hashes),'Only append-only migration pin data may change in the shared helper');
+ const added=after.tail.slice(before.tail.length),addedHashes=after.hashes.slice(before.hashes.length);
+ const tuples=/\s*\{idx:(\d+),when:(\d+),tag:'([A-Za-z0-9_]+)'\},/g,hashRows=/\s*'([A-Za-z0-9_]+)':'([a-f0-9]{64})',/g;
+ const entries=[...added.matchAll(tuples)],hashes=[...addedHashes.matchAll(hashRows)];
+ assert(entries.length>0&&entries.length<=8&&entries.length===hashes.length&&added.replace(tuples,'').trim()===''&&addedHashes.replace(hashRows,'').trim()===''&&new Set(entries.map(m=>m[3])).size===entries.length,'Closed bounded appended migration tuples/hashes required');
+ const journal=JSON.parse(git(cwd,'show',candidate+':db/migrations/meta/_journal.json'));
+ for(const [index,row]of entries.entries()){
+  const tag=row[3],entry=journal.entries.filter(e=>e.tag===tag);assert(entry.length===1&&entry[0].idx===Number(row[1])&&entry[0].when===Number(row[2])&&hashes[index][1]===tag&&!before.tail.includes("tag:'"+tag+"'"),'Appended pin must match the original qualified migration identity');
+  const sql=execFileSync('git',['show',candidate+':db/migrations/'+tag+'.sql'],{cwd,maxBuffer:16*1024**2,timeout:60000});
+  assert(createHash('sha256').update(sql).digest('hex')===hashes[index][2],'Appended pin must match immutable qualified SQL bytes');
+ }
+}
 export function validateRepairDelta({cwd,original,candidate,repairKind='product'}){
  assert(['product','test-fixtures'].includes(repairKind),'Unknown repair kind');
  execFileSync('git',['merge-base','--is-ancestor',original,candidate],{cwd,stdio:'ignore'});
  const records=git(cwd,'diff','--name-status','--no-renames',original,candidate).split('\n').filter(Boolean);
- assert(records.length>0&&records.length<=(repairKind==='test-fixtures'?8:64),'Bounded nonempty repair delta required');
+ assert(records.length>0&&records.length<=(repairKind==='test-fixtures'?16:64),'Bounded nonempty repair delta required');
  const changed=records.map(line=>{const [status,path,...extra]=line.split('\t');assert(status==='M'&&extra.length===0,'Only modified existing repair inputs supported');
   if(repairKind==='test-fixtures'){
-   assert(/^test\/[A-Za-z0-9_-]+(?:\.dom)?\.test\.(?:ts|tsx)$/.test(path),'Only existing flat Node/DOM test files supported');
+   assert(/^test\/[A-Za-z0-9_-]+(?:\.dom)?\.test\.(?:ts|tsx)$/.test(path)||path===UPGRADE_PIN_HELPER,'Only existing flat Node/DOM tests or the closed upgrade-pin helper supported');
    for(const ref of [original,candidate])assert(/^100644 blob /.test(git(cwd,'ls-tree',ref,'--',path)),'Regular nonexecutable test source required');
+   if(path===UPGRADE_PIN_HELPER)validateAppendedUpgradePins({cwd,original,candidate,path});
    return path;
   }
   assert(/^(app|components|core|lib|packs)\/[A-Za-z0-9_./()\[\]-]+\.(ts|tsx)$/.test(path),'Only existing product TypeScript repairs supported');
@@ -56,19 +78,17 @@ export function validateRepairDelta({cwd,original,candidate,repairKind='product'
 export function validateFixtureReview({cwd,original,candidate,delta,review=null}){
  if(delta.repairKind==='product'){assert(review===null,'Fixture review cannot change product-repair authority');return null;}
  if(review===null)return null; // Read-only diagnostics remain noninstallable until actual independent review.
- const keys=(value,names)=>assert(value&&typeof value==='object'&&!Array.isArray(value)&&isDeepStrictEqual(Object.keys(value).sort(),names.slice().sort()),'Closed fixture review record required');
- keys(review,['format','kind','original','candidate','diffSha256','reviewedBy','evidence','files','attestations']);
- assert(review.format===1&&review.kind==='INDEPENDENT_FIXTURE_REVIEW'&&review.original===original&&review.candidate===candidate&&review.diffSha256===delta.diffSha256,'Fixture review source/diff differs');
- assert(Array.isArray(review.reviewedBy)&&review.reviewedBy.length===2&&new Set(review.reviewedBy).size===2&&review.reviewedBy.every(x=>typeof x==='string'&&x.length>=8&&x.length<=160),'Two identified independent fixture reviewers required');
- assert(typeof review.evidence==='string'&&review.evidence.length>=20&&review.evidence.length<=2000,'Original private review evidence required');
- const guarantees=['caseRegistrationsPreserved','assertionsNotWeakened','isolationAndPermissionsPreserved','noSkipsOrTimeoutRelaxation'];
- keys(review.attestations,guarantees);assert(guarantees.every(name=>review.attestations[name]===true),'Fixture review must preserve substantive checks and authority');
- assert(Array.isArray(review.files)&&isDeepStrictEqual(review.files.map(x=>x.path).sort(),delta.changed),'Complete reviewed fixture inventory required');
+ validateFixtureReviewShape(review,{original,candidate,diffSha256:delta.diffSha256,changed:delta.changed});
  for(const file of review.files){
-  keys(file,['path','beforeBlob','afterBlob','reason']);
   assert(file.beforeBlob===git(cwd,'rev-parse',original+':'+file.path)&&file.afterBlob===git(cwd,'rev-parse',candidate+':'+file.path),'Reviewed fixture blob differs');
-  assert(typeof file.reason==='string'&&file.reason.trim().length>=25&&file.reason.length<=2000,'Concrete fixture correction reason required');
  }
+ const path=review.evidence.path;assert(realpathSync(path)===path,'Canonical private review evidence required');
+ const fd=openSync(path,constants.O_RDONLY|constants.O_NOFOLLOW);
+ try{
+  const before=fstatSync(fd);assert(before.isFile()&&before.nlink===1&&before.uid===process.getuid()&&(before.mode&0o777)===0o600&&before.size>0&&before.size<=128*1024,'Owned bounded regular0600 review evidence required');
+  const bytes=readFileSync(fd),after=fstatSync(fd);assert(bytes.length===before.size&&before.ino===after.ino&&before.dev===after.dev&&before.size===after.size&&before.mtimeMs===after.mtimeMs&&before.ctimeMs===after.ctimeMs,'Review evidence changed while reading');
+  assert(createHash('sha256').update(bytes).digest('hex')===review.evidence.sha256,'Private fixture review evidence bytes changed');
+ }finally{closeSync(fd);}
  return structuredClone(review);
 }
 export function validateLatestRepairHistory({source,rows,candidateBranch,focusedRunIds,buildRunId}){

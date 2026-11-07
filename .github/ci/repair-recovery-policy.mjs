@@ -10,6 +10,18 @@ export const REPAIR_RECOVERY_POLICY='aihr-cross-source-recovery/v3';
 const same=(a,b,message)=>assert(isDeepStrictEqual(a,b),message);
 const sha=x=>typeof x==='string'&&/^[a-f0-9]{40}$/.test(x);
 const id=x=>Number.isSafeInteger(x)&&x>0;
+export function validateFixtureReviewShape(review,{original,candidate,diffSha256,changed}){
+ const keys=(value,names)=>assert(value&&typeof value==='object'&&!Array.isArray(value)&&isDeepStrictEqual(Object.keys(value).sort(),names.slice().sort()),'Closed fixture review record required');
+ keys(review,['format','kind','original','candidate','diffSha256','reviewedBy','evidence','files','attestations']);
+ assert(sha(original)&&sha(candidate)&&original!==candidate&&/^[a-f0-9]{64}$/.test(diffSha256)&&review.format===1&&review.kind==='INDEPENDENT_FIXTURE_REVIEW'&&review.original===original&&review.candidate===candidate&&review.diffSha256===diffSha256,'Fixture review source/diff differs');
+ assert(Array.isArray(review.reviewedBy)&&review.reviewedBy.length===2&&new Set(review.reviewedBy).size===2&&review.reviewedBy.every(x=>typeof x==='string'&&x.length>=8&&x.length<=160&&!/pending|unknown|placeholder/i.test(x)),'Two identified independent fixture reviewers required');
+ keys(review.evidence,['path','sha256']);assert(typeof review.evidence.path==='string'&&review.evidence.path.startsWith('/')&&review.evidence.path.length<=2000&&/^[a-f0-9]{64}$/.test(review.evidence.sha256),'Exact private review evidence path/digest required');
+ const guarantees=['caseRegistrationsPreserved','assertionsNotWeakened','isolationAndPermissionsPreserved','noSkipsOrTimeoutRelaxation'];
+ keys(review.attestations,guarantees);assert(guarantees.every(name=>review.attestations[name]===true),'Fixture review must preserve substantive checks and authority');
+ assert(Array.isArray(changed)&&changed.length>0&&Array.isArray(review.files)&&isDeepStrictEqual(review.files.map(x=>x.path).sort(),changed.slice().sort())&&new Set(changed).size===changed.length,'Complete reviewed fixture inventory required');
+ for(const file of review.files){keys(file,['path','beforeBlob','afterBlob','reason']);assert(sha(file.beforeBlob)&&sha(file.afterBlob)&&file.beforeBlob!==file.afterBlob,'Exact distinct reviewed fixture blobs required');assert(typeof file.reason==='string'&&file.reason.trim().length>=25&&file.reason.length<=2000,'Concrete fixture correction reason required');}
+ return review;
+}
 const unitJob=u=>u.kind==='browser'?`browser (${u.engine})`:`test (${u.id})`;
 const fullJobs=['resolve','typecheck','migrations','test','controller-tests','plan','runner-diagnostics','build','browser','verify','deployment-hold'];
 const focusedJobs=['resolve','selected-tests','typecheck','linux-build','native-typecheck','native-swift-models','native-bundle'];
@@ -125,7 +137,10 @@ export function verifyRepairRecovery({sourcePlan,plan,assessment,sourceRun,repor
 export function validateRepairGrantEvidence(evidence,run){
  const c=evidence.recovery;assert(c?.kind==='AUTHENTICATED_CROSS_SOURCE_RECOVERY'&&c.recoveryPolicy===REPAIR_RECOVERY_POLICY&&c.originalConclusion==='failure'&&c.originalSha!==c.sha&&c.originalRunId!==c.runId&&evidence.fingerprint===hash(c),'Cross-source recovery certificate required');
  assert(c.pendingReview===false&&c.reviewedController===c.verificationController&&c.releaseAuthorized===false,'Pending-review diagnostic cannot authorize an installation grant');
- if(c.delta?.repairKind==='test-fixtures')assert(c.pendingFixtureReview===false&&c.delta.fixtureReview?.diffSha256===c.delta.diffSha256&&isDeepStrictEqual(evidence.fixtureReview,c.delta.fixtureReview),'Exact independent fixture review required for installation');
+ if(c.delta?.repairKind==='test-fixtures'){
+  assert(c.pendingFixtureReview===false&&isDeepStrictEqual(evidence.fixtureReview,c.delta.fixtureReview),'Exact independent fixture review required for installation');
+  validateFixtureReviewShape(c.delta.fixtureReview,{original:c.originalSha,candidate:c.sha,diffSha256:c.delta.diffSha256,changed:c.delta.changed});
+ }
  for(const key of ['sha','controller','verificationController','baseline','runId','policyVersion','suiteFiles','browserFiles','tests'])same(evidence[key],c[key],'Recovery grant identity differs: '+key);
  assert(run.id===c.runId&&run.head_sha===c.controller&&run.conclusion==='success'&&run.status==='completed'&&run.run_attempt===1&&c.verificationDiagnostic?.controller===c.verificationController&&id(c.verificationDiagnostic.runId)&&c.compilers?.length>0&&c.focusedSources?.length>0&&c.units?.some(u=>u.kind==='repaired-source'),'Missing replacement build/compiler/controller provenance');return true;
 }

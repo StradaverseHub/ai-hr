@@ -124,8 +124,8 @@ Entire profile2, format1, mixed profile/cap combinations and malformed bounds ar
 ### Cross-source recovery v3: independently reviewed test-fixture corrections
 
 The default product-repair boundary is unchanged. Explicit `repairKind:"test-fixtures"`
-additionally admits only 1–8 modified existing regular nonexecutable flat Node/DOM
-`test/*.test.ts(x)` files. Mixed product edits, new/deleted/renamed files, helpers,
+additionally admits only 1–16 modified existing regular nonexecutable flat Node/DOM
+`test/*.test.ts(x)` files. The sole helper exception is `test/helpers/approved-upgrade.ts`: only appended literal migration tuples and hashes matching the original qualified SQL/journal are permitted; all existing pins and executable/helper bytes must remain identical. Mixed product edits, new/deleted/renamed files, other helpers,
 browser tests, SQL, manifests, CI, lockfiles and permission owners refuse. This is
 separately versioned `aihr-cross-source-recovery/v3`; old certificates are not relabelled.
 
@@ -139,12 +139,12 @@ canonical build. Obtain a matching authenticated worker package separately when 
 
 Case counts alone do not authorize changed test source. Supply `fixtureReview` with
 format1 / `INDEPENDENT_FIXTURE_REVIEW`, exact original/candidate SHAs and full diff hash,
-two actual independent reviewers, original private evidence reference, each path's
+two actual independent reviewers, an owned regular0600 private evidence file and SHA256 digest, each path's
 old/new Git blobs and concrete reason. The four explicit attestations preserve case
 registration, substantive assertions, isolation/permissions and skips/timeouts. The
 adapter checks and binds this exact review into the recovery certificate; missing
 review remains visibly noninstallable. Prelaunch reauthentication recomputes it and
-rejects changed source, review or evidence. Do not invent reviewer decisions.
+rejects changed source, review or evidence bytes. Reviewer identification is a trusted operator attestation of the actual independent review, not cryptographic proof of the reviewers’ identities. Do not invent reviewer decisions.
 
 Use a separately reviewed frozen verifier, successful actual hosted controller-only
 regressions, and the existing `verify-repair`/`deploy-repair` route. This source proposal
