@@ -249,7 +249,7 @@ describe('static wiring', () => {
     expect(read('app/control-tower/agents/inventory/page.tsx')).toContain('requireAdmin');
     // Issue 17: the sidebar's AI management rows became AI Centre › Administration; the AI Centre row owns every
     // /control-tower page, Workers groups the inventory section, and Workers comes before Setup.
-    expect(read('components/sidebar.tsx')).toContain("{ href: '/assistant', labelKey: 'aiCentre', icon: Sparkles, ownedSubpaths: ['/control-tower'] }");
+    expect(read('lib/navigation/shell-inventory.ts')).toContain("{ href: '/assistant', labelKey: 'aiCentre', icon: Sparkles, ownedSubpaths: ['/control-tower'] }");
     const nav = read('lib/ai-centre/centre-nav.ts');
     // AI Centre restructure: Workers is one list, the inventory section part of it; the Inventory page forwards there.
     expect(nav).toContain("workers: [{ section: 'features', label: 'workers' }],");

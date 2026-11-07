@@ -42,7 +42,7 @@ import { describe, expect, it } from 'vitest';
 import { nodeBlock as nodeBlockOf } from './helpers/sidebar-source';
 import { navigationPlacement } from '../lib/navigation-workspaces';
 
-const SIDEBAR = fs.readFileSync(path.resolve(__dirname, '../components/sidebar.tsx'), 'utf8');
+const SIDEBAR = fs.readFileSync(path.resolve(__dirname, '../lib/navigation/shell-inventory.ts'), 'utf8');
 const PACK = fs.readFileSync(path.resolve(__dirname, '../packs/attendance/index.ts'), 'utf8');
 /** The rail's combined nav sources: hardcoded groups + the registry-mounted attendance node. */
 const SRC = SIDEBAR + PACK;

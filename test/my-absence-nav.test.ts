@@ -20,7 +20,7 @@ import { countQuoted } from './helpers/sidebar-source';
 const root = fileURLToPath(new URL('..', import.meta.url));
 const read = (rel: string) => readFileSync(root + rel, 'utf8');
 
-const sidebar = read('components/sidebar.tsx');
+const sidebar = read('lib/navigation/shell-inventory.ts');
 // Since ADR-0080 rung 6 the My Absence / leave-config rows live on the leave PACK
 // (packs/leave/index.ts, LEAVE_NAV_LINKS) and mount into components/sidebar.tsx through the pack
 // registry, so the row-location assertions read the rail's COMBINED sources. The guarantee (row

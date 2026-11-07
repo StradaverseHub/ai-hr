@@ -365,7 +365,7 @@ describe('deec1691 — the module, the placement, and the wiring', () => {
     // MODULE_OF_HREF is derived from pack descriptors for every other module; this one has no pack, so
     // its entry is a literal. Three things must agree and none of them can see the others.
     expect(MODULE_CODES_WITH_NAV as readonly string[]).toContain(SYSTEM_EXPLORER_MODULE);
-    const sidebar = readRepo('components/sidebar.tsx');
+    const sidebar = readRepo('lib/navigation/shell-inventory.ts');
     expect(sidebar).toContain(`['${HREF}', '${SYSTEM_EXPLORER_MODULE}'] as const`);
     // Exactly once, so the row cannot be duplicated into an ungated position.
     expect(sidebar.split(`href: '${HREF}'`).length - 1, 'one nav row for the explorer').toBe(1);

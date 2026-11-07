@@ -161,7 +161,7 @@ describe('r423 — the routes exist, guard themselves, and sit on the locations 
    * rather than a second row pointing at a screen the first one already opens.
    */
   it('the menu: no row for Locations (r431: a Settings card), and the Settings row owns the retired Work Locations address for highlighting', () => {
-    const sidebar = read('components/sidebar.tsx');
+    const sidebar = read('lib/navigation/shell-inventory.ts');
     const pack = read('packs/attendance/index.ts');
     // r431 (bdfe4968) — the "Locations" ROW became a card on the Attendance Settings page. The ONE row now
     // is Settings, which owns the clocking list AND the retired address; Locations itself has no row in

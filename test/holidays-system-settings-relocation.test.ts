@@ -36,7 +36,7 @@ const ROOT = path.resolve(__dirname, '..');
 const read = (rel: string) => fs.readFileSync(path.join(ROOT, rel), 'utf8');
 
 const HREF = '/admin/holidays';
-const SIDEBAR = read('components/sidebar.tsx');
+const SIDEBAR = read('lib/navigation/shell-inventory.ts');
 const PACK = read('packs/attendance/index.ts');
 
 /** Child hrefs of a module-private rail node, in declaration order. */
@@ -243,7 +243,7 @@ describe('4509d2b8 — the highlighting moved with the row', () => {
     expect(ATTENDANCE_CHILDREN.length, 'Attendance settings children').toBeGreaterThan(0);
     expect(ATTENDANCE_CHILDREN, 'Attendance settings no longer carries it').not.toContain(HREF);
     // The ranking above is a copy of an expression that lives inline in a 'use client' component. Pin it.
-    expect(SIDEBAR, 'the panel still ranks by longest path').toMatch(
+    expect(read('components/sidebar.tsx'), 'the panel still ranks by longest path').toMatch(
       /\.sort\(\(a, b\) => b\.href\.split\('\?'\)\[0\]\.length - a\.href\.split\('\?'\)\[0\]\.length\)/,
     );
   });

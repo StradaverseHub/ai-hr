@@ -408,7 +408,7 @@ describe('Personnel Management rename (4ea70bb7)', () => {
   });
 
   it('the sidebar and the security-and-permissions list follow from the one nav key', () => {
-    expect(read('components/sidebar.tsx')).toContain("labelKey: 'personnelAdmin'");
+    expect(read('lib/navigation/shell-inventory.ts')).toContain("labelKey: 'personnelAdmin'");
     expect(read('lib/permissions.ts')).toContain("labelKey: 'nav.personnelAdmin'");
   });
 

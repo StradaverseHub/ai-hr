@@ -522,7 +522,7 @@ describe('476f23ed — the settings screen', () => {
   });
 
   it('the nav row exists and is labelled in all six locales', () => {
-    const sidebar = fs.readFileSync(path.resolve(__dirname, '../components/sidebar.tsx'), 'utf8');
+    const sidebar = fs.readFileSync(path.resolve(__dirname, '../lib/navigation/shell-inventory.ts'), 'utf8');
     expect(sidebar).toContain("href: '/admin/settings/movement'");
     expect(sidebar).toContain("labelKey: 'movementSettings'");
     expect(
