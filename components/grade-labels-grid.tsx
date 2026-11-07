@@ -57,13 +57,14 @@
  * All writes go through the server actions passed in from the page; each still appends its DomainEvent.
  */
 
+import { labelCodeConflicts } from '@/lib/label-code-conflicts';
 import { refreshEditableRows } from '@/lib/refresh-editable-rows';
 import { Fragment, useEffect, useCallback, useMemo, useRef, useState, useTransition } from 'react';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 import { ArchiveRestore, ArrowDown, ArrowUp, ChevronDown, ChevronUp, Filter, Trash2, X } from 'lucide-react';
 import { messageOrToken } from '@/lib/label-error-token';
-import { pageOfIndex, paginateRows } from '@/lib/pagination';
+import { paginateRows } from '@/lib/pagination';
 import { Button, ErrorBanner, StatusBadge, inputCls, tableWrapCls, tbodyCls, thCls, theadCls } from './ui';
 import {
   ClientPager,
@@ -161,6 +162,7 @@ export function GradeLabelsGrid({ data, actions }: { data: GradeGridRecord[]; ac
   const [confirmDelete, setConfirmDelete] = useState<RowState | null>(null);
   const [pending, startTransition] = useTransition();
   const draftSeq = useRef(0);
+  const focusDraft = useRef<string | null>(null);
   // Paging rides in the address (?page=&size=), as it does on the server-paged screens — which is what
   // keeps your place across the save round trip and makes the view a shareable link.
   const pq = useClientPageQuery();
@@ -195,13 +197,9 @@ export function GradeLabelsGrid({ data, actions }: { data: GradeGridRecord[]; ac
       isNew: true,
       dirty: true,
     };
-    const next = [...rows, draft];
-    setRows(next);
-    // A draft is appended and then SORTED by rank, so on a paged list it lands on the LAST page — where
-    // the reader is not looking, which reads as "Add Row did nothing". Follow it. (An active search hides
-    // a still-empty draft, as it always has; findIndex answers -1 and pageOfIndex turns that into page
-    // one rather than a negative page.)
-    goToPage(pageOfIndex(applyView(next).findIndex((r) => r.key === draft.key), pq.size));
+    focusDraft.current = draft.key;
+    setRows([draft, ...rows]);
+    goToPage(0);
   }
   function removeDraft(key: string) {
     setRows((prev) => prev.filter((r) => r.key !== key));
@@ -285,6 +283,16 @@ export function GradeLabelsGrid({ data, actions }: { data: GradeGridRecord[]; ac
     // No client-side required-field pre-check: cleanName already throws "Grade code is required" /
     // "Grade name is required" per row, the action turns that into a row error on the offending field, and
     // one authoritative message beats a duplicated (and translatable-drift-prone) client copy.
+    const duplicates = labelCodeConflicts(rows.filter(row => !row.archived).map(row => ({
+      key: row.key, code: row.code.trim().toUpperCase().replace(/ /g, '_'),
+      scope: 'grade', changed: row.isNew || row.dirty,
+    })));
+    if (duplicates.length) {
+      const message = 'This code is already in use. Enter a different code.';
+      setRowErrors(Object.fromEntries(duplicates.map(key => [key, {field: 'code' as const, message}])));
+      setError(message);
+      return;
+    }
     const updatedKeys = new Set(updates.map((u) => u.key));
     startTransition(async () => {
       const res = await actions.save({ creates, updates });
@@ -313,7 +321,7 @@ export function GradeLabelsGrid({ data, actions }: { data: GradeGridRecord[]; ac
         setRows((prev) =>
           prev.map((r) => (!r.isNew && updatedKeys.has(r.key) && !failed.has(r.key) ? { ...r, dirty: false } : r)),
         );
-        setError(failureText(res.message));
+        setError(failureText(res.message ?? res.rowErrors[0]?.message));
       }
     });
   }
@@ -330,9 +338,10 @@ export function GradeLabelsGrid({ data, actions }: { data: GradeGridRecord[]; ac
     }
   }
 
-  /** Filter + sort, as a function rather than only a memo: addRow needs to ask where a new draft landed. */
   const applyView = useCallback((source: RowState[]) => {
+    const drafts = source.filter((r) => r.isNew);
     let v = source.filter((r) => {
+      if (r.isNew) return false;
       if (statusFilter === 'active' && r.archived) return false;
       if (statusFilter === 'archived' && !r.archived) return false;
       if (search) {
@@ -362,7 +371,7 @@ export function GradeLabelsGrid({ data, actions }: { data: GradeGridRecord[]; ac
         return sortDir === 'asc' ? av.localeCompare(bv) : bv.localeCompare(av);
       });
     }
-    return v;
+    return [...drafts, ...v];
   }, [statusFilter, search, sortField, sortDir]);
 
   const view = useMemo(() => applyView(rows), [applyView, rows]);
@@ -371,6 +380,18 @@ export function GradeLabelsGrid({ data, actions }: { data: GradeGridRecord[]; ac
   // A page that no longer exists (rows deleted off the end, or a stale bookmark) draws nothing at all —
   // land the reader on the last page that has rows instead.
   useClampPagePastEnd(pgState);
+  useEffect(() => {
+    const key = focusDraft.current;
+    if (!key) return;
+    const input = document.querySelector<HTMLInputElement>(
+      `[data-row-key="${key}"] input[data-cell^="code:"]`,
+    );
+    if (input) {
+      input.focus();
+      focusDraft.current = null;
+    }
+  }, [pageRows]);
+
 
   function toggleSort(field: SortField) {
     if (sortField === field) setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
@@ -516,7 +537,7 @@ export function GradeLabelsGrid({ data, actions }: { data: GradeGridRecord[]; ac
               const inUseNotice = !restoreOffer && !r.isNew && r.archived && r.inUse;
               return (
                 <Fragment key={r.key}>
-                <tr className={`${r.archived ? 'opacity-60' : ''} ${err ? 'bg-destructive/5' : ''}`}>
+                <tr data-row-key={r.key} className={`${r.archived ? 'opacity-60' : ''} ${err ? 'bg-destructive/5' : ''}`}>
                   <td className="px-2 py-1.5"></td>
                   <td className="px-3 py-1.5">
                     {/* 728a7db6 made grade codes editable, so unlike Profile Options the Code cell stays
@@ -527,10 +548,14 @@ export function GradeLabelsGrid({ data, actions }: { data: GradeGridRecord[]; ac
                       onChange={(e) => updateCell(r.key, 'code', e.target.value)}
                       onKeyDown={(e) => onCellKey(e, rowIdx, 'code')}
                       title={err && err.field === 'code' ? err.message : r.code}
+                      aria-invalid={err?.field === 'code' || undefined}
                       className={`${cellInput} w-full min-w-0 font-mono text-xs uppercase ${
                         err?.field === 'code' ? 'border-destructive' : ''
                       }`}
                     />
+                    {err?.field === 'code' && !restoreOffer && (
+                      <p className="mt-1 text-xs text-destructive">{err.message}</p>
+                    )}
                   </td>
                   <td className="px-3 py-1.5">
                     <input

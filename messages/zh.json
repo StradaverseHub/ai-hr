@@ -9796,6 +9796,27 @@
       "importNewOnly": "仅导入新记录"
     },
     "individualImport": {
+      "submitWorkbook": "上传工作簿",
+      "downloadWorkbook": "下载原始工作簿",
+      "progress": "进度",
+      "startedAt": "开始时间",
+      "finishedAt": "结束时间",
+      "completedWithErrors": "完成但有错误",
+      "confirmationUnavailable": "此批次已无法确认。",
+      "queueFull": "请等待当前批次完成后再上传。",
+      "fileReadError": "无法读取工作簿。请使用相应的 Excel 模板。",
+      "noValidRows": "未找到有效行。请检查行错误后重新上传。",
+      "importFailed": "批次已停止。请检查工作簿或访问权限后重试。",
+      "batchCounts": "共 {total} 行 · 已导入 {written} 行 · 失败 {failed} 行",
+      "batchState": {
+        "pending": "等待中",
+        "validating": "正在处理工作簿",
+        "ready": "待确认",
+        "confirmed": "等待导入",
+        "importing": "正在导入",
+        "completed": "已完成",
+        "failed": "失败"
+      },
       "open": "导入 Excel",
       "log": "导入日志",
       "logHint": "查看个人交易导入批次及各行的原始处理结果。",
