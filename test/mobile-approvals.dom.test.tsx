@@ -53,8 +53,8 @@ function fixture(copy: { t?: (k: string, v?: Record<string, unknown>) => string;
       <button disabled={p.disabled} role={p.accessibilityRole ?? 'button'} aria-label={p.accessibilityLabel} aria-checked={p.accessibilityState?.checked} onClick={p.onPress}>{p.children}</button>,
     TextInput: (p: { accessibilityLabel?: string; value: string; onChangeText: (v: string) => void }) => <input aria-label={p.accessibilityLabel} value={p.value} onChange={(e) => p.onChangeText(e.target.value)} />,
     RefreshControl: (p: { onRefresh: () => void }) => <button onClick={p.onRefresh}>pull</button>,
-    FlatList: (p: { refreshControl: React.ReactNode; ListHeaderComponent: React.ReactNode; ListEmptyComponent: React.ReactNode; ListFooterComponent: React.ReactNode; data: unknown[]; keyExtractor: (i: unknown) => string; renderItem: (a: { item: unknown }) => React.ReactNode }) =>
-      <div>{p.refreshControl}{p.ListHeaderComponent}{p.data.length ? p.data.map((i) => <div key={p.keyExtractor(i)}>{p.renderItem({ item: i })}</div>) : p.ListEmptyComponent}{p.ListFooterComponent}</div>,
+    FlatList: (p: { refreshControl: React.ReactNode; ListHeaderComponent: React.ReactNode; ListEmptyComponent: React.ReactNode; ListFooterComponent: React.ReactNode; onEndReached:()=>void; data: unknown[]; keyExtractor: (i: unknown) => string; renderItem: (a: { item: unknown }) => React.ReactNode }) =>
+      <div>{p.refreshControl}{p.ListHeaderComponent}{p.data.length ? p.data.map((i) => <div key={p.keyExtractor(i)}>{p.renderItem({ item: i })}</div>) : p.ListEmptyComponent}{p.ListFooterComponent}<button onClick={p.onEndReached}>scroll-end</button></div>,
   };
   const ui = {fmtMoney:(v:string)=>v,InfoNote:({short,detail}:any)=><span><span>{short}</span><span>{detail}</span></span>,HeaderBack:()=><button aria-label="back">‹</button>,ListRow:({label,value,onPress}:any)=><button aria-label={value?`${label}, ${value}`:label} onClick={onPress}>{label}{value?`: ${value}`:''}</button>,
     Button: (p: { disabled?: boolean; onPress: () => void; title: string }) => <button disabled={p.disabled} onClick={p.onPress}>{p.title}</button>,
@@ -99,6 +99,16 @@ describe('approvals list', () => {
     fireEvent.click(row);expect(f.push).toHaveBeenCalledWith({pathname:'/approvals/[kind]/[id]',params:{kind:'leave',id:ID}});
     expect(f.apiPostV2).not.toHaveBeenCalled();
   });
+  it('loads the next bounded page without losing the first page or changing task kinds',async()=>{
+    const f=fixture();
+    f.apiGetPage.mockResolvedValueOnce({items:[item()],nextCursor:'server-cursor'});
+    f.apiGetPage.mockResolvedValueOnce({items:[item({id:'cccccccc-cccc-4ccc-8ccc-cccccccccccc',kind:'profile',subject:{name:'Next task',code:null}})],nextCursor:null});
+    render(<f.ApprovalsScreen/>);
+    await screen.findByText('Aisyah');fireEvent.click(screen.getByText('scroll-end'));
+    await screen.findByText('Next task');expect(screen.getByText('Aisyah')).toBeTruthy();
+    expect(f.apiGetPage.mock.calls[1].slice(1,3)).toEqual(['server-cursor',{native:'expanded',limit:'10'}]);
+    expect(f.apiPostV2).not.toHaveBeenCalled();
+  });
   it('a native kind opens its detail; a read-only kind shows an Open on web chip that opens the company origin', async () => {
     const f = fixture();
     f.apiGetPage.mockResolvedValueOnce({ items: [
@@ -109,7 +119,7 @@ describe('approvals list', () => {
     render(<f.ApprovalsScreen />);
     await screen.findByText('task_resignation');
     expect((f.apiGetPage.mock.calls[0][0] as { path: string }).path).toBe('v2/tasks');
-    expect(f.apiGetPage.mock.calls[0][2]).toEqual({native:'expanded'});
+    expect(f.apiGetPage.mock.calls[0][2]).toEqual({native:'expanded',limit:'10'});
     expect(screen.getAllByRole('link')).toHaveLength(1);
     fireEvent.click(screen.getByRole('button', { name: 'task_leave · Aisyah' }));
     expect(f.push).toHaveBeenCalledWith({ pathname: '/approvals/[kind]/[id]', params: { kind: 'leave', id: ID } });

@@ -138,7 +138,9 @@ export function HomeApprovalQueue({ refreshToken }: { refreshToken: number }) {
 export function ApprovalsScreen({ embedded = false }: { embedded?: boolean } = {}) {
   const { palette } = useTenantDesign();
   const { signOut } = useSession();
-  const list = usePagedResource(TASKS, { native: 'expanded' }, keyOf, signOut);
+  // First paint needs only a few visible rows. Keep the server cursor so every
+  // task remains reachable without hydrating 25 details before showing anything.
+  const list = usePagedResource(TASKS, { native: 'expanded', limit: '10' }, keyOf, signOut);
   return <SafeAreaView style={{ flex: 1, backgroundColor: palette.bg }} edges={[]}>
     <Atmosphere strong />
     <PagedList list={list} keyOf={keyOf} emptyText={t('approvalsEmpty')} contentContainerStyle={{ padding: 20, gap: 8, paddingBottom: 40 }}
