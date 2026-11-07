@@ -7,7 +7,7 @@ import { adminCompanies, adminCompaniesTx, listLeaveInquiryEmployeesTx, createLe
 import {isAiPresentationPrincipalCurrentTx,isAiPrincipalCurrentTx} from './ai-principal';
 import {boundPersonnelStatementTx} from './personnel-read-bounds';
 
-const authorizedContexts = new WeakMap<object, { actor: SessionContext; session:SessionContext; claims:string; snapshot: LeaveInquiryContext }>();
+const authorizedContexts = new WeakMap<object, { actor: SessionContext; tx:Tx; session:SessionContext; claims:string; snapshot: LeaveInquiryContext }>();
 export type LeaveInquiryContext = { companies: Awaited<ReturnType<typeof adminCompanies>>; companyIds: string[]; employees: LeaveInquiryEmployee[]; selected: LeaveInquiryEmployee | undefined };
 const captureSession=(ctx:SessionContext):SessionContext=>structuredClone(ctx);
 function authorityClaims(ctx:SessionContext){
@@ -38,7 +38,7 @@ async function leaveInquiryContextTx(tx: Tx, ctx: SessionContext, selectedCompan
   const selected = query.emp ? employees.find(e => e.employmentId === query.emp) : undefined;
   if (query.emp && !selected) throw new InquiryQueryError('Employee is unavailable in the selected companies');
   const result = { companies, companyIds, employees, selected };
-  authorizedContexts.set(result, { actor,session:ctx,claims:authorityClaims(ctx),snapshot: structuredClone(result) });
+  authorizedContexts.set(result, { actor,tx,session:ctx,claims:authorityClaims(ctx),snapshot: structuredClone(result) });
   return result;
 }
 function authorizedScope(ctx: SessionContext, scope: LeaveInquiryContext, query: InquiryQuery): LeaveInquiryContext {
@@ -58,13 +58,14 @@ export async function leaveInquirySnapshotForContext<T>(ctx:SessionContext,scope
  return leaveInquirySnapshot(ctx,selection.companyIds,captured,read);
 }
 export async function leaveInquiryRecordsPage(ctx: SessionContext, scope: LeaveInquiryContext, query: InquiryQuery, window: { limit: number; offset: number } = query.pq) {
-  const session=captureSession(ctx),captured=structuredClone(query),page={...window};authorizedScope(ctx,scope,captured);
-  return withTenant(session, tx => leaveInquiryRecordsPageTx(tx,ctx,scope,captured,page),{readOnlySnapshot:true});
+  const captured=structuredClone(query),page={...window};
+  return leaveInquirySnapshotForContext(ctx,scope,captured,(tx,current)=>leaveInquiryRecordsPageTx(tx,ctx,current,captured,page));
 }
 export async function leaveInquiryRecordsPageTx(tx: Tx, ctx: SessionContext, scope: LeaveInquiryContext, query: InquiryQuery, window: { limit: number; offset: number } = query.pq) {
   query=structuredClone(query);window={...window};
   const verified=authorizedContexts.get(scope);
   scope = authorizedScope(ctx, scope, query);
+  if(verified!.tx!==tx)throw new InquiryQueryError('Forbidden');
   await assertInquiryPrincipalTx(tx,verified!.session);
   checkWindow(window);
   if (!scope.companyIds.length) return { rows: [], total: 0 };
@@ -79,14 +80,15 @@ function checkWindow(window: { limit: number; offset: number }) {
   if (!Number.isSafeInteger(window.limit) || window.limit < 1 || window.limit > 2000 || !Number.isSafeInteger(window.offset) || window.offset < 0 || !Number.isSafeInteger(window.offset + window.limit)) throw new InquiryQueryError('Invalid page');
 }
 export async function leaveInquiryBalancePairs(ctx: SessionContext, scope: LeaveInquiryContext, query: InquiryQuery, locale: string, window: { limit: number; offset: number } = query.pq) {
-  const session=captureSession(ctx),captured=structuredClone(query),page={...window};authorizedScope(ctx,scope,captured);
-  return withTenant(session, tx => leaveInquiryBalancePairsTx(tx,ctx,scope,captured,locale,page),{readOnlySnapshot:true});
+  const captured=structuredClone(query),page={...window};
+  return leaveInquirySnapshotForContext(ctx,scope,captured,(tx,current)=>leaveInquiryBalancePairsTx(tx,ctx,current,captured,locale,page));
 }
 /** Globally order lightweight pairs before slicing, retaining only the requested ordered prefix. */
 export async function leaveInquiryBalancePairsTx(tx: Tx, ctx: SessionContext, scope: LeaveInquiryContext, query: InquiryQuery, locale: string, window: { limit: number; offset: number } = query.pq) {
   query=structuredClone(query);window={...window};
   const verified=authorizedContexts.get(scope);
   scope = authorizedScope(ctx, scope, query);
+  if(verified!.tx!==tx)throw new InquiryQueryError('Forbidden');
   await assertInquiryPrincipalTx(tx,verified!.session);
   checkWindow(window);
   let compare:((a:string,b:string)=>number)|undefined;

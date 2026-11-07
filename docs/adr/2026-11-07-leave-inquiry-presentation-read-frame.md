@@ -36,8 +36,10 @@ financial effect or settlement authority. SQL budgets are bounded, never increas
 The original actor identity remains mandatory. Session, query, company selection and
 window inputs are copied before asynchronous work. The authorized population is stored
 privately and cannot be enlarged by mutating the returned context or returned rows.
-A later standalone balance page treats an old context as selection intent and freshly
-re-admits it. Both actual inquiry pages compose authorization, membership and canonical
+Every later standalone balance-pair, record-page or hydrated balance-page read treats
+an old context as selection intent and freshly re-admits it. Borrowed Tx ports require
+the original physical transaction captured with the private context; even another
+valid RR/RO snapshot cannot reuse its metadata. Both actual inquiry pages compose authorization, membership and canonical
 hydration within one snapshot. Concurrent authority, company or type edits therefore
 permit an admitted coherent snapshot or refuse the next read; they cannot splice old
 membership into newer financial facts.
@@ -73,7 +75,9 @@ independently zero protected SELECTs.
 
 `leave-inquiry-presentation-focused-tests.json` adds native population and authority
 proofs, six-locale Unicode/deep-order parity against the original localeCompare algorithm,
-coherent concurrent company/type/authority edits, canonical figures, scope/export and
+coherent concurrent company/type/authority edits, actual selected/unselected company
+transfers through standalone ports, cross-snapshot borrowed-context refusal, canonical
+figures, scope/export and
 rendered translated picker/header behavior. Existing date, hidden/archived, shared-source,
 reconciliation and entitlement tests remain required. Source wiring guards assert the
 new single frame without dropping their query/scope/selected-row guarantees.

@@ -4,7 +4,7 @@ import {eq} from 'drizzle-orm';
 import {afterAll,beforeAll,beforeEach,expect,it} from 'vitest';
 import * as database from '../db/client';
 import * as schema from '../db/schema';
-import {leaveInquiryContext,leaveInquirySnapshot,leaveInquiryBalancePairs,leaveInquiryBalancePairsTx,leaveInquiryRecordsPage} from '../core/leave-inquiry';
+import {leaveInquiryContext,leaveInquirySnapshot,leaveInquiryBalancePairs,leaveInquiryBalancePairsTx,leaveInquiryRecordsPage,leaveInquiryRecordsPageTx} from '../core/leave-inquiry';
 import {listEmployees,leaveBalanceInquiryMembershipTx} from '../core/read';
 import {inquiryBalancePage} from '../app/leave/employee-balances/inquiry-data';
 import {parseInquiryQuery,InquiryQueryError} from '../lib/leave-inquiry-query';
@@ -134,4 +134,42 @@ it('does not mutate canonical rule/ledger state or confer effect authority throu
  await leaveInquiryBalancePairs(ctx,scope,input,'en');expect(await owner.db.select().from(schema.leaveLedger)).toEqual(before);
  await expect(leaveInquirySnapshot(ctx,[b.companyId],input,tx=>tx.update(schema.company).set({legalName:'Must never persist'}).where(eq(schema.company.id,b.companyId)))).rejects.toThrow();
  expect((await owner.db.select().from(schema.company).where(eq(schema.company.id,b.companyId)))[0].legalName).toBe('Acme Sdn Bhd');
+});
+
+
+it('re-admits standalone All and selected scopes after an actual company transfer',async()=>{
+ const all=query({type:b.annualLeaveTypeId}),selected=query({type:b.annualLeaveTypeId,emp:ids[0]});
+ const scope=await leaveInquiryContext(ctx,[b.companyId],all),single=await leaveInquiryContext(ctx,[b.companyId],selected);
+ await owner.db.insert(schema.leaveRequest).values({tenantId:b.tenantId,employmentId:ids[0],leaveTypeId:b.annualLeaveTypeId,startDate:today,endDate:today,days:'1',status:'pending'});
+ expect((await leaveInquiryRecordsPage(ctx,scope,all)).total).toBe(1);
+ const [destination]=await owner.db.insert(schema.company).values({tenantId:b.tenantId,legalName:'Transferred out of the selected company'}).returning();
+ await owner.db.update(schema.employment).set({companyId:destination.id}).where(eq(schema.employment.id,ids[0]));
+ // The group-wide HR principal still has native RLS access to B, but the original
+ // inquiry selection intent is A. A fresh physical read must not reuse A metadata.
+ const after=await leaveInquiryBalancePairs(ctx,scope,all,'en',{limit:200,offset:0});
+ expect(after.total).toBe(123);expect(after.rows.every(row=>row.employee.employmentId!==ids[0]&&row.employee.companyId===b.companyId)).toBe(true);
+ expect((await leaveInquiryRecordsPage(ctx,scope,all)).total).toBe(0);
+ await expect(leaveInquiryBalancePairs(ctx,single,selected,'en')).rejects.toThrow('Employee is unavailable in the selected companies');
+ await expect(leaveInquiryRecordsPage(ctx,single,selected)).rejects.toThrow('Employee is unavailable in the selected companies');
+});
+
+it('binds borrowed contexts to their original physical transaction and denies cross-snapshot reuse',async()=>{
+ const input=query({emp:ids[0],type:b.annualLeaveTypeId}),finished=await leaveInquiryContext(ctx,[b.companyId],input);
+ await database.withTenant(ctx,async tx=>{
+  const debug=database.client.options.debug,reads:string[]=[];database.client.options.debug=(_connection:number,text:string)=>{reads.push(text);};
+  try{
+   await expect(leaveInquiryBalancePairsTx(tx,ctx,finished,input,'en')).rejects.toThrow('Forbidden');
+   await expect(leaveInquiryRecordsPageTx(tx,ctx,finished,input)).rejects.toThrow('Forbidden');
+   expect(reads.filter(text=>/\bfrom\s+"(?:employment|person|company|leave_request|leave_ledger|leave_type)"/i.test(text))).toEqual([]);
+  }finally{database.client.options.debug=debug;}
+ },{readOnlySnapshot:true});
+ await leaveInquirySnapshot(ctx,[b.companyId],input,async(original,scope)=>{
+  const before=await leaveInquiryBalancePairsTx(original,ctx,scope,input,'en');
+  await leaveInquirySnapshot(ctx,[b.companyId],input,async(other,current)=>{
+   await expect(leaveInquiryBalancePairsTx(other,ctx,scope,input,'en')).rejects.toThrow('Forbidden');
+   await expect(leaveInquiryRecordsPageTx(other,ctx,scope,input)).rejects.toThrow('Forbidden');
+   expect((await leaveInquiryBalancePairsTx(other,ctx,current,input,'en')).total).toBe(1);
+  });
+  expect(await leaveInquiryBalancePairsTx(original,ctx,scope,input,'en')).toEqual(before);
+ });
 });
