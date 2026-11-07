@@ -3,6 +3,7 @@ import { organisationFilterChoices } from '@/lib/organisation-choice-label';
 
 import { useEffect, useId, useMemo, useState, useTransition, type ReactNode } from 'react';
 import { INQUIRY_PICKER_KEYS } from '@/lib/inquiry-picker-context';
+import {employeeChoiceKey,isEmployeeChoicePage,type EmployeeChoicePage,type EmployeeChoice} from '@/lib/employee-choice';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { Card, EmployeeName, Field, inputCls } from '@/components/ui';
@@ -192,20 +193,7 @@ export function CollapsibleEmployeePanel({
  * ('active' when not terminated, else 'ended'), computed on the SERVER — deriving it in the browser gets
  * it wrong by a day for anyone whose device clock sits the other side of MYT midnight.
  */
-export type ScopeEmployee = {
-  employmentId: string;
-  name: string;
-  employeeCode: string | null;
-  company: string;
-  companyId: string;
-  department: string | null;
-  departmentCode?: string | null;
-  departmentId: string | null;
-  businessUnit: string | null;
-  businessUnitCode?: string | null;
-  businessUnitId: string | null;
-  status: 'active' | 'ended';
-};
+export type ScopeEmployee = EmployeeChoice;
 
 /**
  * 9949f91a (r369) — `preserve` as a query string, with a REPEATED param staying repeated.
@@ -252,7 +240,8 @@ const SCOPE_PANEL_CAP = 25;
  * key-by-key, so these twenty-odd labels are now checked where before each screen's copy was not.
  */
 export function EmployeeScopePanel({
-  employees,
+  employees=[],
+  remote,
   selectedId,
   basePath,
   selectParam = 'employmentId',
@@ -262,7 +251,9 @@ export function EmployeeScopePanel({
   resetToAll = false,
 }: {
   /** The already access-fenced employee set, mapped from the server's `listEmployees`. */
-  employees: ScopeEmployee[];
+  employees?: ScopeEmployee[];
+  /** Opt-in: plain server-authorized first page; later choices use the same native read port. */
+  remote?:{initial:EmployeeChoicePage};
   /** The server's RESOLVED selection — i.e. after its scope guard, not the raw query param. */
   selectedId: string | null;
   /** Route the selection navigates to, e.g. `/payroll/transactions/zakat`. */
@@ -312,6 +303,33 @@ export function EmployeeScopePanel({
   const [businessUnitId, setBusinessUnitId] = useState(() => initialPickerValue('pickerBusinessUnit'));
   const [departmentId, setDepartmentId] = useState(() => initialPickerValue('pickerDepartment'));
   const [status, setStatus] = useState(() => initialPickerValue('pickerStatus'));
+  const [offset,setOffset]=useState(0),[retry,setRetry]=useState(0);
+  const remoteFilters={query,companyId,businessUnitId,departmentId,status};
+  const remoteKey=remote?remote.initial.contextId+employeeChoiceKey(remoteFilters,offset,remote.initial.labelMode)+':'+retry:'';
+  const [remoteState,setRemoteState]=useState<{key:string;data?:EmployeeChoicePage;error?:boolean}>(()=>({
+    key:remote?remote.initial.contextId+employeeChoiceKey(remote.initial.filters,remote.initial.offset,remote.initial.labelMode)+':0':'',data:remote?.initial,
+  }));
+  const remoteLoading=Boolean(remote&&remoteState.key!==remoteKey);
+  const remoteError=Boolean(remote&&remoteState.key===remoteKey&&remoteState.error);
+  const remoteData=remote&&remoteState.key.startsWith(remote.initial.contextId)?remoteState.data??remote.initial:remote?.initial;
+  useEffect(()=>{
+    if(!remote||remoteState.key===remoteKey)return;
+    if(remoteKey===remote.initial.contextId+employeeChoiceKey(remote.initial.filters,remote.initial.offset,remote.initial.labelMode)+':0'){
+      setRemoteState({key:remoteKey,data:remote.initial});return;
+    }
+    const controller=new AbortController();let current=true;
+    const timer=setTimeout(()=>{
+      const input={query,companyId,businessUnitId,departmentId,status:status||undefined,offset,limit:remote.initial.limit,labelMode:remote.initial.labelMode,selectedId:selectedId??undefined};
+      void fetch('/api/employee-choices',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(input),cache:'no-store',credentials:'same-origin',signal:controller.signal})
+        .then(async response=>{
+          if(!response.ok)throw Error('Employee choices unavailable');
+          const data:unknown=await response.json();
+          if(!isEmployeeChoicePage(data)||employeeChoiceKey(data.filters,data.offset,data.labelMode)!==employeeChoiceKey(remoteFilters,offset,remote.initial.labelMode))throw Error('Employee choices unavailable');
+          if(current)setRemoteState({key:remoteKey,data});
+        }).catch(()=>{if(current&&!controller.signal.aborted)setRemoteState({key:remoteKey,data:remoteData,error:true});});
+    },180);
+    return()=>{current=false;clearTimeout(timer);controller.abort();};
+  },[remoteKey,remoteState.key,remote,query,companyId,businessUnitId,departmentId,status,offset,selectedId]);
   useEffect(() => {
     if (!preservePicker) return;
     const url = new URL(window.location.href);
@@ -335,10 +353,11 @@ export function EmployeeScopePanel({
   const [filtersOpen, setFiltersOpen] = useState(false);
 
   const companyOptions = useMemo(() => {
+    if(remote)return remoteData?.companyOptions??[];
     const seen = new Map<string, string>();
     for (const e of employees) seen.set(e.companyId, e.company);
     return [...seen.entries()].map(([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name));
-  }, [employees]);
+  }, [employees,remote,remoteData]);
 
   // BU / department options derive from the currently company-scoped set (no extra query).
   const inCompany = useMemo(
@@ -346,11 +365,13 @@ export function EmployeeScopePanel({
     [employees, companyId],
   );
   const businessUnitOptions = useMemo(() => {
+    if(remote)return remoteData?.businessUnitOptions??[];
     return organisationFilterChoices(inCompany.map(e=>({id:e.businessUnitId,name:e.businessUnit,code:e.businessUnitCode})));
-  }, [inCompany]);
+  }, [inCompany,remote,remoteData]);
   const departmentOptions = useMemo(() => {
+    if(remote)return remoteData?.departmentOptions??[];
     return organisationFilterChoices(inCompany.map(e=>({id:e.departmentId,name:e.department,code:e.departmentCode})));
-  }, [inCompany]);
+  }, [inCompany,remote,remoteData]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -365,8 +386,8 @@ export function EmployeeScopePanel({
     }
     return base;
   }, [employees, query, companyId, businessUnitId, departmentId, status]);
-  const results = useMemo(() => filtered.slice(0, SCOPE_PANEL_CAP), [filtered]);
-  const capped = filtered.length > SCOPE_PANEL_CAP;
+  const results = useMemo(() => remote?(remoteLoading||remoteError?[]:remoteData?.rows??[]):filtered.slice(0,SCOPE_PANEL_CAP),[remote,remoteLoading,remoteError,remoteData,filtered]);
+  const capped = !remote&&filtered.length > SCOPE_PANEL_CAP;
 
   const select = (id: string) => {
     // The screen's own filters ride along; anything it did NOT list is dropped on purpose, because a
@@ -398,6 +419,7 @@ export function EmployeeScopePanel({
     startTransition(() => router.push(qs ? `${basePath}?${qs}` : basePath));
   };
   const resetFilters = () => {
+    setOffset(0);
     setQuery('');
     setCompanyId('');
     setBusinessUnitId('');
@@ -439,7 +461,7 @@ export function EmployeeScopePanel({
           <input
             type="search"
             value={query}
-            onChange={(e) => setQuery(e.target.value)}
+            onChange={(e) => {setQuery(e.target.value);setOffset(0);}}
             placeholder={t('searchPlaceholder')}
             className={inputCls}
           />
@@ -478,7 +500,9 @@ export function EmployeeScopePanel({
             )}
           </button>
         )}
-        {results.length === 0 && (
+        {remoteLoading&&<p role="status" className="px-4 py-6 text-center text-sm text-muted-foreground">{t('loadingEmployees')}</p>}
+        {remoteError&&<div role="alert" className="px-4 py-6 text-sm text-muted-foreground">{t('loadFailed')} <button type="button" className="underline" onClick={()=>setRetry(value=>value+1)}>{t('retry')}</button></div>}
+        {!remoteLoading&&!remoteError&&results.length === 0 && (
           <p className="px-4 py-6 text-center text-sm text-muted-foreground">{t('noEmployees')}</p>
         )}
         {results.map((e) => {
@@ -489,7 +513,7 @@ export function EmployeeScopePanel({
               type="button"
               aria-current={active ? 'true' : undefined}
               onClick={() => select(e.employmentId)}
-              disabled={isPending}
+              disabled={isPending||remoteLoading}
               className={`flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm transition-colors hover:bg-muted disabled:opacity-60 ${
                 active ? 'bg-primary/10' : ''
               }`}
@@ -514,6 +538,11 @@ export function EmployeeScopePanel({
           {t('showingCapped', { cap: SCOPE_PANEL_CAP, total: filtered.length })}
         </p>
       )}
+      {remote&&!remoteLoading&&!remoteError&&remoteData&&<div className="flex items-center justify-between gap-2 text-xs text-muted-foreground" aria-label={t('heading')}>
+        <button type="button" disabled={offset===0||isPending} onClick={()=>setOffset(Math.max(0,offset-remoteData.limit))} className="rounded border border-border px-2 py-1 disabled:opacity-50">{t('previousPage')}</button>
+        <span>{t('pageRange',{from:results.length?offset+1:0,to:results.length?offset+results.length:0,total:remoteData.total})}</span>
+        <button type="button" disabled={offset+results.length>=remoteData.total||isPending} onClick={()=>setOffset(offset+remoteData.limit)} className="rounded border border-border px-2 py-1 disabled:opacity-50">{t('nextPage')}</button>
+      </div>}
 
       {/* ── 3. THE FOUR NARROWERS, folded away and closed on arrival. ── */}
       <details
@@ -541,6 +570,7 @@ export function EmployeeScopePanel({
               value={companyId}
               onChange={(e) => {
                 setCompanyId(e.target.value);
+                setOffset(0);
                 setBusinessUnitId('');
                 setDepartmentId('');
               }}
@@ -556,7 +586,7 @@ export function EmployeeScopePanel({
           </Field>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <Field label={t('filterBusinessUnit')}>
-              <select value={businessUnitId} onChange={(e) => setBusinessUnitId(e.target.value)} className={inputCls}>
+              <select value={businessUnitId} onChange={(e) => {setBusinessUnitId(e.target.value);setOffset(0);}} className={inputCls}>
                 <option value="">{t('allBusinessUnits')}</option>
                 {businessUnitOptions.map((b) => (
                   <option key={b.id} value={b.id}>
@@ -566,7 +596,7 @@ export function EmployeeScopePanel({
               </select>
             </Field>
             <Field label={t('filterDepartment')}>
-              <select value={departmentId} onChange={(e) => setDepartmentId(e.target.value)} className={inputCls}>
+              <select value={departmentId} onChange={(e) => {setDepartmentId(e.target.value);setOffset(0);}} className={inputCls}>
                 <option value="">{t('allDepartments')}</option>
                 {departmentOptions.map((d) => (
                   <option key={d.id} value={d.id}>
@@ -577,7 +607,7 @@ export function EmployeeScopePanel({
             </Field>
           </div>
           <Field label={t('filterStatus')}>
-            <select value={status} onChange={(e) => setStatus(e.target.value)} className={inputCls}>
+            <select value={status} onChange={(e) => {setStatus(e.target.value);setOffset(0);}} className={inputCls}>
               <option value="">{t('allStatuses')}</option>
               <option value="active">{t('statusActive')}</option>
               <option value="ended">{t('statusEnded')}</option>

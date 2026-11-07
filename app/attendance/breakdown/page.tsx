@@ -8,12 +8,11 @@ import {readIndividualAttendance} from '../individual/read';
 import {resolveMyAttendanceRange} from '../my-records/range';
 import { otByRate, flagOf, statusOf, type AttendanceStatus, type AttendanceFlag } from '@/core/attendance-derive';
 import { explainAttendanceDay } from '@/core/attendance-explain';
-import { listEmployees } from '@/core/read';
+import {readEmployeeChoices} from '@/core/employee-choice';
 import { Button, Card, EmployeeName, PageHeader, inputCls } from '@/components/ui';
 import {
   CollapsibleEmployeePanel,
   EmployeeScopePanel,
-  type ScopeEmployee,
 } from '@/components/collapsible-employee-panel';
 import { fmtMin, fmtDayDate, fmtDayName } from '@/components/attendance-format';
 import { Pager } from '@/components/pager';
@@ -67,7 +66,7 @@ export default async function AttendanceBreakdownPage({
   const t = await getTranslations('attendance');
   const locale = await getLocale();
   // ⚠️ scopedAdmin, NOT scopedSession, and the difference is a leak rather than a preference.
-  // `scopedSession` resolves a COMPANY scope; `listEmployees` below is tenant-scoped and filtered only by
+  // `scopedSession` resolves a COMPANY scope; the employee-choice population is tenant-scoped and filtered only by
   // those company ids, with no narrowing by role. Under scopedSession a plain employee deep-linking this
   // URL would get a picker naming every colleague in their company and could read any one of their full
   // calculation audits. The adminOnly flag on the nav row hides the link and protects nothing — which is
@@ -84,28 +83,12 @@ export default async function AttendanceBreakdownPage({
     range.refusal==='inverted'?t('myRecords.rangeInverted'):
     range.refusal==='too_long'?t('myRecords.rangeTooLong',{days:range.days,max:ATTENDANCE_RANGE_MAX_DAYS}):undefined;
 
-  const employees = await listEmployees(s, scopeIds);
-  const selectedEmp = sp.emp && employees.some((e) => e.employmentId === sp.emp) ? sp.emp : undefined;
-  const selected = employees.find((e) => e.employmentId === selectedEmp);
+  const choices=await readEmployeeChoices(s,{companyIds:scopeIds,labelMode:'names',selectedId:sp.emp});
+  const selected=choices.selected;
+  const selectedEmp=selected?.employmentId;
 
-  /**
-   * f728826a (r320) — the panel's list, from the SAME scope-fenced read the old dropdown used
-   * (`listEmployees(s, scopeIds)` above). A panel-shaped list must not become a second, wider source of
-   * employees: the id it navigates to is re-guarded below against that very list before any read uses it,
-   * so the list is never what grants access.
-   */
-  const panelEmployees: ScopeEmployee[] = employees.map((e) => ({
-    employmentId: e.employmentId,
-    name: e.name,
-    employeeCode: e.employeeCode,
-    company: e.company,
-    companyId: e.companyId,
-    department: e.department,
-    departmentId: e.departmentId,
-    businessUnit: e.businessUnit,
-    businessUnitId: e.businessUnitId,
-    status: e.terminatedOn == null ? 'active' : 'ended',
-  }));
+  // Selection is independently authorized outside the current picker page/search.
+  // The rail shares the old native population and never grants detail access.
   // Read on the SERVER so the first paint is already collapsed or open — the component's own note on why
   // this is not client state: otherwise the panel flashes open and then folds.
   const panelDefaultOpen = (await cookies()).get(PANEL_COOKIE)?.value !== '0';
@@ -191,7 +174,7 @@ export default async function AttendanceBreakdownPage({
             <p className="mt-1 text-xs text-muted-foreground">{t('panel.hint')}</p>
             <div className="mt-3">
               <EmployeeScopePanel
-                employees={panelEmployees}
+                remote={{initial:choices}}
                 selectedId={selectedEmp ?? null}
                 basePath="/attendance/breakdown"
                 selectParam="emp"
