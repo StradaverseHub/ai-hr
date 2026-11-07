@@ -7,6 +7,18 @@ import {execFileSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 import {BOUNDARY_SOURCE,sha256,planBoundary,orderedBoundaryRoots,validateDeclarationCoverage,assertDeclarationBytes,resolutionLeafTargets,assertResolutionLeafBytes,contractSource,NEGATIVE_CONTRACTS,expectContractRefusals} from './compiler-boundary-policy.mjs';
 
+/** Public native per-source emission; every implementation must emit, independently.
+ * JSON stays in its original Program but has no declaration output contract. */
+export function emitDeclarationSources(program,files,writer,record=()=>{}){
+ assert(files.length>0&&new Set(files.map(file=>file.fileName)).size===files.length,'Exact distinct declaration sources required');
+ for(const file of files){
+  assert(!file.isDeclarationFile&&/\.(?:tsx?|jsx?|[mc][tj]s)$/.test(file.fileName),'Only implementation declarations may emit');
+  const result=program.emit(file,writer);record(file,result);
+  assert.equal(result.emitSkipped,false,'Native declaration emission skipped: '+file.fileName);
+  assert.equal(result.diagnostics.length,0,'Native declaration emission diagnostics: '+file.fileName);
+ }
+}
+
 export async function boundaryWorker(mode,out,index){
  assert(process.platform==='linux'&&process.env.GITHUB_ACTIONS==='true'&&process.env.RUNNER_ENVIRONMENT==='github-hosted'
   &&process.env.CI==='true'&&process.env.GITHUB_REPOSITORY==='StradaverseHub/ai-hr','Hosted diagnostic child required');
@@ -63,6 +75,29 @@ export async function boundaryWorker(mode,out,index){
     packageId:target?.packageId??null,external:target?.isExternalLibraryImport??null});return value;
   });
   return {host,edges,packages,firstLoads};
+ }
+ function nativeEmissionControl(){
+  const directory=join(cwd,'__aihr_native_emit_control__'),entry=join(directory,'entry.ts'),json=join(directory,'data.json');
+  const virtual=new Map([[entry,'import data from "./data.json"; export const amount: number = data.amount;'],[json,'{"amount":7}']]);
+  assert([...virtual.keys()].every(path=>!existsSync(path)),'Emission control cannot replace a real source');
+  const options={target:ts.ScriptTarget.ES2017,module:ts.ModuleKind.ESNext,moduleResolution:ts.ModuleResolutionKind.Bundler,
+   resolveJsonModule:true,esModuleInterop:true,strict:true,noEmitOnError:true,noEmit:false,declaration:true,emitDeclarationOnly:true,
+   skipLibCheck:true,types:[],lib:['lib.es5.d.ts'],rootDir:directory,outDir:join(out,'native-emission-control')};
+  const host=ts.createCompilerHost(options),get=host.getSourceFile,read=host.readFile,exists=host.fileExists,dirs=host.directoryExists;
+  host.getSourceFile=(path,...args)=>virtual.has(path)?ts.createSourceFile(path,virtual.get(path),args[0]):get(path,...args);
+  host.readFile=path=>virtual.get(path)??read(path);host.fileExists=path=>virtual.has(path)||exists(path);
+  host.directoryExists=path=>path===directory||dirs(path);
+  const program=ts.createProgram({rootNames:[entry],options,host}),originalIds=program.getSourceFiles().map(file=>file.fileName);
+  assert(originalIds.includes(json),'Native resolver must retain the JSON input');
+  assert.deepEqual(ts.getPreEmitDiagnostics(program),[]);
+  const whole=[];const aggregate=program.emit(undefined,(path,text)=>whole.push({path,text}));
+  assert.equal(aggregate.emitSkipped,true,'Pinned native whole-program JSON declaration behavior changed');assert.deepEqual(aggregate.diagnostics,[]);
+  const emitted=[],source=program.getSourceFile(entry);assert(source&&!source.isDeclarationFile);
+  emitDeclarationSources(program,[source],(path,text)=>emitted.push({path,text}));
+  assert.equal(emitted.length,1);assert(emitted[0].path.endsWith('/entry.d.ts')&&emitted[0].text.includes('amount: number'));
+  assert.deepEqual(emitted,whole,'Per-implementation native declaration bytes must match the whole-program native output');
+  assert.deepEqual(program.getSourceFiles().map(file=>file.fileName),originalIds,'Native JSON membership cannot be removed to obtain emission');
+  return{nativeWholeProgramSkipped:true,wholeDiagnostics:0,perImplementationSkipped:false,exactNativeBytesMatch:true,jsonInputRetained:true,applicationOptionsChanged:false};
  }
  try{
   if(mode==='inventory'){
@@ -136,6 +171,7 @@ export async function boundaryWorker(mode,out,index){
   }
   result.resolutionOnlyLeaves=leaves.size;
   const producer=new Set(plan.producerSourceIds),sourceNegative=mode==='source-negative',isProducer=mode==='producer';
+  if(isProducer)result.nativeEmissionControl=nativeEmissionControl();
   const declarationPhase=mode==='declarations',negative=sourceNegative||mode==='declaration-negative';
   const batch=mode==='consumer'?plan.consumers[index]:undefined;if(mode==='consumer')assert(batch,'Unregistered consumer partition');
   const contractId='__aihr_boundary_contract__.ts',declarationControlId='__aihr_boundary_declaration_refusal__.d.ts';
@@ -243,15 +279,25 @@ export async function boundaryWorker(mode,out,index){
   }else if(negative)expectContractRefusals(errors,contract,contractId);else assert.equal(errors.length,0,'Native compiler diagnostics; retained in phase artifact');
   if(isProducer){
    const emitted=[];mkdirSync(join(out,'emitted'),{mode:0o700});
-   const emission=program.emit(undefined,(path,text,bom,onError,sources)=>{
+   // A whole-program declaration-only emit reports emitSkipped for JSON even
+   // with zero diagnostics. Do not waive it: require false for EACH real owned
+   // implementation, preserving JSON membership and the complete checked Program.
+   const expected=plan.producerSourceIds.filter(key=>!original.get(key).declaration);
+   const files=programFiles.filter(file=>producer.has(id(file.fileName))&&!file.isDeclarationFile);
+   assert.deepEqual(files.map(file=>id(file.fileName)).sort(),[...expected].sort(),'Every owned implementation must enter native emission');
+   result.emission={domain:'Every actual owned non-declaration implementation; original JSON Program inputs unchanged',planned:files.length,completed:0,results:[]};
+   result.emitDiagnostics=[];
+   emitDeclarationSources(program,files,(path,text,bom,onError,sources)=>{
     assert(sources?.length===1,'Declaration requires exact single-source provenance');const source=id(sources[0].fileName);
-    if(source===contractId)return; // Additional diagnostic-only positive fixture, never an original API output.
     assert(producer.has(source),'Emitter attempted foreign source');const output=relative(out,path).split(sep).join('/');
     assert(output.startsWith('emitted/')&&!output.includes('../'));assert(/\.d\.(?:ts|mts|cts)$/.test(output),'Only actual declaration outputs admitted');
     mkdirSync(dirname(path),{recursive:true,mode:0o700});const bytes=(bom?'\ufeff':'')+text;writeFileSync(path,bytes,{flag:'wx',mode:0o600});
     emitted.push({source,virtual:output.slice('emitted/'.length),output,sha256:sha256(bytes)});
+   },(file,emission)=>{
+    const diagnostics=emission.diagnostics.map(diagnostic);result.emitDiagnostics.push(...diagnostics);
+    result.emission.results.push({source:id(file.fileName),emitSkipped:emission.emitSkipped,diagnostics:diagnostics.length});
+    if(!emission.emitSkipped&&!diagnostics.length)result.emission.completed++;
    });
-   result.emitDiagnostics=emission.diagnostics.map(diagnostic);assert.equal(emission.emitSkipped,false);assert.equal(emission.diagnostics.length,0);
    // The positive-only diagnostic contract is not an original source and must not become a published API.
    validateDeclarationCoverage(plan,inventory,emitted);
    writeFileSync(join(out,'declarations-map.json'),JSON.stringify(emitted,null,2)+'\n',{flag:'wx',mode:0o600});result.declarations=emitted.length;

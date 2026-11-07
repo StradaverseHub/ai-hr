@@ -374,6 +374,7 @@ jobs:
         with:
           name: diagnostic-compiler-boundary
           path: ${{ runner.temp }}/diagnostic-compiler-boundary/
+          include-hidden-files: true
           if-no-files-found: error
           retention-days: 14
 

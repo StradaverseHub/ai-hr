@@ -5,7 +5,19 @@ import {readFileSync} from 'node:fs';
 import {BOUNDARY_SOURCE,BOUNDARY_LIMITS,admitBoundaryInputs,remainingCompilerMs,stronglyConnected,planBoundary,ambientEntries,orderedBoundaryRoots,resolutionLeafTargets,assertResolutionLeafBytes,assertDeclarationBytes,sha256,
  validateDeclarationCoverage,contractSource,NEGATIVE_CONTRACTS,expectContractRefusals} from './compiler-boundary-policy.mjs';
 import {exactCoverage,validatePhase,boundaryArguments,experiment} from './compiler-boundary.mjs';
-import {boundaryWorker} from './compiler-boundary-worker.mjs';
+import {boundaryWorker,emitDeclarationSources} from './compiler-boundary-worker.mjs';
+
+test('every distinct implementation emission retains its own native skipped/diagnostic refusal',()=>{
+ const files=[{fileName:'first.ts',isDeclarationFile:false},{fileName:'second.tsx',isDeclarationFile:false}],seen=[];
+ emitDeclarationSources({emit:file=>{seen.push(file);return{emitSkipped:false,diagnostics:[]};}},files,()=>{});
+ assert.deepEqual(seen,files);
+ for(const result of [{emitSkipped:true,diagnostics:[]},{emitSkipped:false,diagnostics:[{code:2304}]}]){
+  const attempted=[];assert.throws(()=>emitDeclarationSources({emit:file=>{attempted.push(file);return result;}},files,()=>{}));assert.deepEqual(attempted,[files[0]]);
+ }
+ for(const invalid of [[],[files[0],files[0]],[{fileName:'data.json',isDeclarationFile:false}],[{fileName:'owned.d.ts',isDeclarationFile:true}]]){
+  assert.throws(()=>emitDeclarationSources({emit:()=>{throw Error('Invalid sources must not reach native emit');}},invalid,()=>{}));
+ }
+});
 
 const selection={candidate_ref:'codex/compiler-proven-message-boundaries-20261108',expected_sha:BOUNDARY_SOURCE,
  compiler_probe:true,installer_fixture_phase:'compiler-boundary',next_build_cache_phase:'disabled',nodb_probe:false,layout_probe:false,instrument_copies:false};

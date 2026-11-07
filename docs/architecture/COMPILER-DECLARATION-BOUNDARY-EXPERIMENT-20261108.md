@@ -124,3 +124,10 @@ checks nor a new full gate are authorized here. A successful experiment would st
 require reviewed project/reference and artifact trust design, complete ordinary
 qualification, resource comparison and authenticated acceptance before adoption.
 No root exclusion, heap increase or release-proof relabeling can fill a failure.
+
+Native emission follow-up:42409150861 reached producer semantic/emission work with
+zero diagnostics but refused aggregate emitSkipped. The source-only native-emission
+recovery preserves JSON in the original checked Program and requires non-skipped
+public native emission for every original owned implementation individually, with
+exact complete declaration provenance and a real JSON/native-output control. The
+remaining phases, aggregate budget and all release distinctions remain unchanged.

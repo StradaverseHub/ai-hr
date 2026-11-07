@@ -1,7 +1,7 @@
 {
   "kind": "DEVELOPMENT_ONLY_CHECKED_DECLARATION_BOUNDARY_NOT_RELEASE",
-  "controllerBase": "88dae55cad5c4b2374a803396af1413c63004e85",
-  "controllerRef": "codex/compiler38-resolution-leaf-recovery-20261108",
+  "controllerBase": "6ca270f87d64a8cd20d56e22e783fb25ca95d313",
+  "controllerRef": "codex/compiler38-native-declaration-emission-recovery-20261108",
   "source": "38b047c9f465990e3f26295c035ab9f69b3001d7",
   "sourceRef": "codex/compiler-proven-message-boundaries-20261108",
   "workflow": "alpha-staging-diagnostics.yml",
@@ -72,17 +72,18 @@
   },
   "sourceSha256": {
     ".github/ci/diagnostics/compiler-boundary.mjs": "a22845af414e50ba6df066edb63490d824db465a55ddce2ed18816521cce95ec",
-    ".github/ci/diagnostics/compiler-boundary-worker.mjs": "0ac401868d949c7dc10012d7337497486bae012c56e498f54dd8f77d9936078f",
+    ".github/ci/diagnostics/compiler-boundary-worker.mjs": "410428b90e613d631397b6bca1235617df3096b22c539615d023ae566c77bbcd",
     ".github/ci/diagnostics/compiler-boundary-policy.mjs": "baaf81e48ccb9747398889005c798f91f922c33ac53292e72a62d249bdb4e98d",
-    ".github/ci/diagnostics/compiler-boundary.test.mjs": "1d9e73b54417a10a77e46fef50c9f97c12cd9b52a32910f5ad7f2fb2e3351ae2",
+    ".github/ci/diagnostics/compiler-boundary.test.mjs": "ba312f4ea55f20f3a54cecf5fa5ccf68f5c616e564fa41aee739e62d53f3081d",
     ".github/ci/diagnostics/compiler-attribution.mjs": "21fecd10f733fc7a610cca8cd45b5776ea06deb6851b9053ed101ad8c8507767",
     ".github/ci/diagnostics/compiler-attribution.test.mjs": "50f86f858f5052215b2902d28207c2d2e1c3ee5ce580e3034991f464046da235",
-    ".github/workflows/alpha-staging-diagnostics.yml": "0b434389f67376c1628f1f8b78657cd4c9ea7f60f1e143e243762054f9aee53e",
-    "docs/architecture/COMPILER-DECLARATION-BOUNDARY-EXPERIMENT-20261108.md": "3640deda39d542cc876928c32e9decebdbcf480c08181e3287ed309dca4b01e2",
+    ".github/workflows/alpha-staging-diagnostics.yml": "633d1284971936bb0e1bdfefb63c42f3ab6b52cabc442c73a09e18b565198155",
+    "docs/architecture/COMPILER-DECLARATION-BOUNDARY-EXPERIMENT-20261108.md": "2bd75fb2446359d77cec978061a32011847355f1b19fadc7b8f4105cae481e19",
     "docs/qualification/compiler-native-ambient-context-recovery-20261108.md": "8872cb3484429ffc4b7f25ebc3b1a86a46f1e04446dea3bdfe78424b3bb9fcfa",
-    "docs/qualification/compiler-native-resolution-leaves-recovery-20261108.md": "977298fb5ad15ee137a7a395eb4243e83ed0235aede84973a54b7e023b13ad6d"
+    "docs/qualification/compiler-native-resolution-leaves-recovery-20261108.md": "977298fb5ad15ee137a7a395eb4243e83ed0235aede84973a54b7e023b13ad6d",
+    "docs/qualification/compiler-native-declaration-emission-recovery-20261108.md": "c4a061a101477232b2cc9805734af7b760d56d469ddb2d6c46c409486e6c470f"
   },
-  "qualification": "NOT_RUN resolution-only-leaf recovery; original42407473358 remains FAIL before application semantic checking. Exact224 ambient order and real native overload controls passed at88; no compiler acceptance. Static syntax/diff/hash only. Root and independent review required before Actions.",
+  "qualification": "NOT_RUN native per-implementation emission recovery; original42409150861 remains FAIL after producer semantic/emission diagnostics were empty. Full graph/declarations/consumers and ordinary compiler acceptance remain unqualified. Source/syntax review only.",
   "retainedFailure": {
     "run": 42402718235,
     "source": "38b047c9f465990e3f26295c035ab9f69b3001d7",
@@ -151,5 +152,17 @@
     "originalDependencyTypingUnchanged": true,
     "programCoverageCountUnchanged": true,
     "exactExternalEdgeGuardRetained": true
+  },
+  "nativeEmissionRecovery": {
+    "failedRun": 42409150861,
+    "inventoryMs": 24998,
+    "producerMs": 252652,
+    "producerPeakRssKiB": 8861064,
+    "producerDiagnostics": 0,
+    "emitDiagnostics": 0,
+    "failure": "native aggregate emitSkipped=true",
+    "preserveJsonProgramInputs": true,
+    "perOwnedImplementationNativeEmitRequired": true,
+    "hiddenCompilerOutputRetained": true
   }
 }
