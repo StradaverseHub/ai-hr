@@ -5,7 +5,7 @@ const state=vi.hoisted(()=>({candidate:'a'.repeat(40),controller:'a'.repeat(40),
  run:{} as any,workflow:{} as any,jobs:[] as any[],artifact:{} as any,files:{} as Record<string,any>,plan:{} as NavigationScenarioPlan,transportFailed:false,sourceMismatch:false,calls:[] as string[]}));
 vi.mock('../scripts/performance/navigation-source',()=>({navigationCleanHead:(root:string)=>root==='/candidate'?state.candidate:state.controller,
  navigationSourceIdentity:(root:string)=>({harnessSha256:state.sourceMismatch&&root==='/candidate'?'0'.repeat(64):state.harness,scenarioSha256:state.scenario,plan:state.plan,files:[]})}));
-vi.mock('node:fs',()=>({mkdtempSync:()=>'/private/unit-navigation-evidence',writeFileSync:vi.fn(),readFileSync:(path:string)=>{
+vi.mock('node:fs',()=>({mkdtempSync:()=>'/private/unit-navigation-evidence',writeFileSync:vi.fn(),readdirSync:vi.fn(()=>[]),readFileSync:(path:string)=>{
  const key=path.split('/').pop()!;if(!(key in state.files))throw Error('Missing fixture member');return JSON.stringify(state.files[key]);}}));
 vi.mock('node:child_process',()=>({execFileSync:(command:string,args:string[])=>{
  if(command==='python3')return Buffer.from('');expect(command).toBe('gh');expect(args[0]).toBe('api');state.calls.push(args[1]);
@@ -14,6 +14,8 @@ vi.mock('node:child_process',()=>({execFileSync:(command:string,args:string[])=>
   path.includes('/jobs?')?{total_count:state.jobs.length,jobs:state.jobs}:path.includes('/artifacts?')?{total_count:1,artifacts:[state.artifact]}:null;
  if(!value)throw Error('Unexpected API endpoint');return Buffer.from(JSON.stringify(value));}}));
 vi.mock('../.github/ci/archive-downloads.mjs',()=>({downloadCiArchives:async()=>{if(state.transportFailed)throw Error('Artifact digest mismatch');return {releaseAuthorized:false};},readCiArchive:()=>Buffer.from('unit transport bytes')}));
+vi.mock('../lib/navigation/catalogue',()=>({NAVIGATION_COVERAGE_BACKLOG:[],declaredApplicationNavigationCatalogue:()=>({declarations:[],issues:[]}),resolveNavigationCatalogue:()=>({issues:[]})}));
+import {auditNavigationCoverage} from '../scripts/performance/navigation-coverage';
 import {readVerifiedNavigationDevelopmentEvidence,verifyNavigationDevelopmentRun} from '../scripts/performance/navigation-capture-verifier';
 function reset(){
  const started=new Date(Date.now()-60000).toISOString(),finished=new Date(Date.now()-30000).toISOString();
@@ -26,7 +28,7 @@ function reset(){
  state.artifact={id:999,name:'system-http-browser-development-evidence',expired:false,size_in_bytes:100,digest:'sha256:'+'d'.repeat(64),created_at:finished,updated_at:finished,
   workflow_run:{id:123,repository_id:1333414856,head_repository_id:1333414856,head_sha:state.controller,head_branch:'alpha'}};
  const baseline={schemaVersion:1,protocol:NAVIGATION_CAPTURE_VERSION,releaseAuthorized:false,fixture:'system-load-v1',engine:'chromium',candidateSha:state.candidate,controllerSha:state.controller,runId:123,runAttempt:1,harnessSha256:state.harness,scenarioSha256:state.scenario,phase:'baseline',complete:true,
-  observations:[{scenarioId:'unit.employee',destinationId:'shell.unit',role:'employee',actorIndex:4,href:'/unit',outcome:'usable',readiness:'controls',status:200,finalPath:'/unit',internalSessionObserved:true,fixtureIdentityObserved:true,elapsedMs:100,checks:[{id:'control',passed:true,observedCount:1}],failures:{busy:0,unavailable:0,alerts:0,http500:0,pageErrors:0}}]};
+  observations:[{entry:'canonical-link',scenarioId:'unit.employee',destinationId:'shell.unit',role:'employee',actorIndex:4,href:'/unit',outcome:'usable',readiness:'controls',status:200,finalPath:'/unit',internalSessionObserved:true,fixtureIdentityObserved:true,elapsedMs:100,checks:[{id:'control',passed:true,observedCount:1}],failures:{busy:0,unavailable:0,alerts:0,http500:0,pageErrors:0}}]};
  state.files={'runner.json':{kind:'ISOLATED_HTTP_BROWSER_DEVELOPMENT_ONLY',releaseEligible:false,sha:state.candidate,controller:state.controller,run:'123',exitCode:0,runtimeAcceptance:{pass:true,failures:[]}},
   'http-browser.json':{kind:'HTTP_WORKFLOW_PREFLIGHT_ONLY',suite:'workflow-preflight',releaseEligible:false,users:0,functionalErrors:[],browserErrors:[],homeCardFailures:[]},
   'navigation-browser-capture.json':{schemaVersion:1,protocol:NAVIGATION_CAPTURE_VERSION,releaseAuthorized:false,baseline}};
@@ -42,6 +44,22 @@ describe('private development evidence brand after live provenance and byte veri
   expect(Object.isFrozen(token)).toBe(true);expect(Object.isFrozen(data.captures.baseline.observations[0].checks)).toBe(true);
   expect(readVerifiedNavigationDevelopmentEvidence({...token})).toBeUndefined();expect(readVerifiedNavigationDevelopmentEvidence(JSON.parse(JSON.stringify(token)))).toBeUndefined();
   expect(state.calls.some(path=>path.includes('/actions/runs/123/jobs?'))).toBe(true);
+ });
+ it('keeps complete four-role direct route/content evidence out of native menu acceptance',async()=>{
+  const roles=['employee','manager','companyHR','groupHR']as const,indices={employee:4,manager:2,companyHR:1,groupHR:0};
+  const base=state.plan.scenarios[0],observation=state.files['navigation-browser-capture.json'].baseline.observations[0];
+  state.plan.scenarios=roles.map(role=>({...base,id:'direct.'+role,destinationId:'shell.analytics',href:'/analytics',originHref:'/analytics',role,entry:'direct-route-content' as const}));
+  const baseline=state.files['navigation-browser-capture.json'].baseline;
+  baseline.observations=state.plan.scenarios.map(s=>({...observation,entry:s.entry,scenarioId:s.id,destinationId:s.destinationId,href:s.href,finalPath:'/analytics',role:s.role,actorIndex:indices[s.role]}));
+  state.files['navigation-browser-capture.json'].loaded={...baseline,phase:'loaded',observations:baseline.observations.map((row:any)=>({...row,startedWith:{active:500,inSteadyWindow:true},usableWith:{active:500,inSteadyWindow:true}}))};
+  Object.assign(state.files['http-browser.json'],{kind:'HTTP_AND_CHROMIUM_DEVELOPMENT_ONLY',suite:'whole-system',users:500,latencyTargetMet:true,browserLoad:{errors:[]}});
+  const token=await verifyNavigationDevelopmentRun({runId:123,candidateRoot:'/candidate'});
+  const report=auditNavigationCoverage({catalogue:{issues:[],declarations:[{id:'shell.analytics',sourceOwner:'unit',sourceKey:'unit',status:'declared',selector:'unit',declaredHref:'/analytics',navigationHref:'/analytics',ownedSubpaths:[],exactHref:true,disabled:false,placement:{area:'shared'},descriptor:{}}]},
+   ledger:{schemaVersion:1,scope:'Unit module contract',reviewedAgainst:state.candidate,entries:[{id:'shell.analytics',sourceOwner:'unit',sourceKey:'unit',declaredHref:'/analytics',status:'uncovered',owner:'unit',reason:'Unit assertion only'}],backlog:[]},
+   pages:[{route:'/analytics',file:'app/analytics/page.tsx',kind:'page'}],candidateSha:state.candidate,developmentEvidence:token});
+  expect(report.structural.errors).toEqual([]);expect(report.runtimeAcceptance.verifierUnavailable).toBe(false);
+  expect(report.directModuleContent).toMatchObject({baselineObservations:4,loadedObservations:4,doesNotProveMenuInteraction:true});
+  expect(report.runtimeAcceptance.missingExecutedUsableContent).toEqual(['shell.analytics']);expect(report.runtimeAcceptance.passed).toBe(false);
  });
  it.each(['foreign repository','untrusted controller','rerun','stale run','failed producer','artifact provenance','digest failure','source harness mismatch','source capture mismatch','native runtime failure','missing capture'])(
   'refuses %s before counting any executed evidence',async failure=>{

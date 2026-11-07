@@ -1,6 +1,6 @@
 # Authenticated navigation capture for development qualification
 
-Status: source checkpoint, not executed or release qualified. Base: `a33e813e28ec7fd3f651a6bcf0bce7020eb1b41f`.
+Status: original source checkpoint, not executed or release qualified. The subsequent [coverage expansion](../qualification/navigation-coverage-expansion.md) distinguishes protocol-v2 native-menu and direct-content observations; its larger plan remains unexecuted. Base: `a33e813e28ec7fd3f651a6bcf0bce7020eb1b41f`.
 
 The existing navigation catalogue described 157 shell destinations. That universe omitted local tab rows, and committed runtime claims could not authenticate actual browser execution. A 200 response or a visible heading is insufficient to establish a usable submenu, native authorization or absence of a handled failure.
 

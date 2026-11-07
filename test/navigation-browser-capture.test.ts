@@ -9,6 +9,7 @@ vi.mock('../scripts/performance/navigation-source',()=>({
   steps:[{kind:'open-details',selector:'main details:has(input[name="unit"])'}],checks:[{id:'input',kind:'enabled',tag:'input',selector:'main input[name="unit"]'}],
  }]}}),
 }));
+vi.mock('../scripts/performance/navigation-fixture-bindings',()=>({readNavigationFixtureBindings:()=>new Map([[4,{actorName:'PERF Person 0004',actorEmployeeCode:'PERF0004',firstCompanyPersonName:'PERF Person 0000',activeHeadcount:'50',historicalPayrollMonth:'2026-07',seedToday:'2026-11-07',seedMonth:'2026-11',rosterScope:{}}]])}));
 import {createNavigationCaptureCollector} from '../scripts/performance/navigation-browser-capture';
 const actorName='PERF Person 0004',otherActorName='PERF Person 0005';
 function fictionalPage({accountName=actorName,accountCount=1,anchorCount=1,detailsCount=1}:{accountName?:string;accountCount?:number;anchorCount?:number;detailsCount?:number}={}){
