@@ -27,13 +27,24 @@ import {GET} from '../app/me/photo-proposal/[requestId]/route';
 let b:Base;
 const admin=()=>({...adminCtx(b),grants:[{role:'hr_admin',companyId:null}]});
 const old=Buffer.from([137,80,78,71,13,10,26,10,1]),next=Buffer.from([137,80,78,71,13,10,26,10,2]);
-beforeAll(migrateTestDb);
+let originalCapabilities:{id:string;supported:boolean;bindings:unknown}[]=[];
+beforeAll(async()=>{
+ await migrateTestDb();
+ // These installation-wide catalogue rows survive resetDb. Preserve the migrated bytes so this
+ // consumer fixture cannot change the native legacy Access behavior of the next file on this worker.
+ originalCapabilities=Array.from(await owner.db.execute<{id:string;supported:boolean;bindings:unknown}>(sql`select id,supported,bindings from access_capability where id in ('workforce.view','workforce.maintain','profile.review') order by id`));
+ expect(originalCapabilities).toHaveLength(3);
+});
 beforeEach(async()=>{
  await resetDb();b=await seedBase();
  await owner.db.execute(sql`update access_capability set supported=false,bindings='[]'::jsonb where id in ('workforce.view','workforce.maintain','profile.review')`);
  await owner.db.execute(sql`update access_capability set supported=true,bindings='[{"owner":"app.access_profile_review_permitted","operation":"review"}]'::jsonb where id='profile.review'`);
 });
-afterAll(closeAll);
+afterAll(async()=>{
+ try{
+  for(const capability of originalCapabilities)await owner.db.execute(sql`update access_capability set supported=${capability.supported},bindings=${JSON.stringify(capability.bindings)}::jsonb where id=${capability.id}`);
+ }finally{await closeAll();}
+});
 async function worker(name:string,role:'hr_admin'|'employee'){
  const hired=await hireEmployee(admin(),{person:{fullName:name,primaryEmail:`${randomUUID()}@example.invalid`},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:todayInKualaLumpur()});
  const userId=await createAppUser(b.tenantId,hired.personId,role);
