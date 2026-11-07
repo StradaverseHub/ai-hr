@@ -45,7 +45,7 @@ export async function verifyExactRecoveredCi({candidatePath,runId,baseline,focus
  const focused=[];
  for(const id of focusedRunIds.slice().sort((a,b)=>a-b)){
   const sub=join(dir,`focused-${id}`),prefetch=process.env.AIHR_CI_PREFETCH_DIR?join(process.env.AIHR_CI_PREFETCH_DIR,`focused-${id}`):null;
-  const f=await collectRecoveryEvidence(id,sub,{reuse,repairPackets:true,prefetchDirectory:prefetch&&existsSync(prefetch)?prefetch:undefined});
+  const f=await collectRecoveryEvidence(id,sub,{reuse,exactPackets:true,prefetchDirectory:prefetch&&existsSync(prefetch)?prefetch:undefined});
   const producer=validateFocusedMetadata({...f,expected:{runId:id,controller,workflowId:workflow.id,after:source.run.updated_at}});
   const artifact=f.artifacts[0],packet=f.parsed.get(artifact.name);
   const report=packet.get('focused.json'),resultName=report?.groups?.DB?.length>0?'db.vitest.json':'nodb.vitest.json';
