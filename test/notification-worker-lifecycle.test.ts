@@ -25,8 +25,8 @@ beforeAll(async()=>{
  expect(process.env.GITHUB_ACTIONS).toBe('true');expect(process.env.RUNNER_ENVIRONMENT).toBe('github-hosted');
  binding=notificationWorkerFixtureDatabase();url=binding.migrationUrl;
  await migrateTestDb();
- const [target]=await owner.client`select current_database() as database,inet_server_addr()::text as address`;
- expect(target).toEqual({database:binding.database,address:'127.0.0.1'});
+ const [target]=await owner.client`select current_database() as database,inet_server_addr()='127.0.0.1'::inet as loopback`;
+ expect(target).toEqual({database:binding.database,loopback:true});
  expect(await owner.client`select 1 from pg_roles where rolname=${role}`).toHaveLength(0);
  await owner.client.unsafe(`CREATE ROLE ai_hr_notification_worker LOGIN PASSWORD '${password}' NOINHERIT NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE NOREPLICATION`);created=true;
  await owner.client.begin(async tx=>{
