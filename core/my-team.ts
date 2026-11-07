@@ -11,7 +11,8 @@ import {actionableLeaveRequests,myTeamLeaveProjection,decideLeave,decideLeaveDat
 import {leaveBalances} from './read';
 import {rosterWindowView,type RosterMonthView} from './roster';
 import {isModuleEnabled} from './entitlements';
-import {resolveMyTeamScope,assertMyTeamAccess,assertMyTeamSubjectTx,MyTeamAuthorizationError} from './my-team-scope';
+import {resolveMyTeamScope,resolveMyTeamScopeTx,resolveMyTeamPrincipalTx,assertMyTeamAccess,assertMyTeamSubjectTx,MyTeamAuthorizationError} from './my-team-scope';
+import {isAiPresentationPrincipalCurrentTx} from './ai-principal';
 export type * from '../lib/my-team-types';
 export {MyTeamAuthorizationError} from './my-team-scope';
 
@@ -158,8 +159,27 @@ export async function readMyTeam(ctx:SessionContext,input:MyTeamQuery):Promise<M
      onLeave:leaveAvailable?count('onLeave'):null,halfDayLeave:leaveAvailable?count('halfDayLeave'):null,pendingApprovals:leaveAvailable?approvals.length:null}};
 }
 export async function resolveMyTeamRosterScope(ctx:SessionContext,query:MyTeamQuery):Promise<MyTeamRosterScope>{
- const snapshot=await readMyTeam(ctx,query);return {companyIds:snapshot.query.companyIds,employmentIds:snapshot.gridEmploymentIds,
+ ctx=structuredClone(ctx);query=structuredClone(query);
+ assertMyTeamAccess(ctx);
+ const normalized=normalizeQuery(query,todayInKualaLumpur()),period=periodOf(normalized);
+ // Old programmatic tile filters still need the canonical derived Today facts.
+ // Current routes retire tile during URL parsing; membership/search needs none of
+ // the roster cells, punches, leave ledgers or balances that a full team view owns.
+ if(normalized.tile&&normalized.tile!=='members'){
+  const snapshot=await readMyTeam(ctx,query);return {companyIds:snapshot.query.companyIds,employmentIds:snapshot.gridEmploymentIds,
    from:snapshot.period.gridDates[0],to:snapshot.period.gridDates.at(-1)!,canEditRoster:snapshot.scope.canEditRoster};
+ }
+ return withTenant(ctx,async tx=>{
+  const principal=await resolveMyTeamPrincipalTx(tx,ctx);
+  // The canonical team owner resolves the stored calling person, never a supplied
+  // person claim. Prove that actual identity in the same native read-only snapshot.
+  if(!await isAiPresentationPrincipalCurrentTx(tx,{...ctx,personId:principal.personId}))throw new MyTeamAuthorizationError();
+  const scope=await resolveMyTeamScopeTx(tx,ctx,query);
+  const needle=normalized.search.toLowerCase();
+  return {companyIds:scope.companies.map(row=>row.id),employmentIds:scope.employees
+   .filter(row=>!needle||`${row.name} ${row.employeeCode??''}`.toLowerCase().includes(needle)).map(row=>row.employmentId),
+   from:period.gridDates[0],to:period.gridDates.at(-1)!,canEditRoster:scope.canEditRoster};
+ },{readOnlySnapshot:true});
 }
 export function markMyTeamPunchReviewed(ctx:SessionContext,p:{attendanceId:string;fingerprint:string},query?:MyTeamQuery):Promise<MyTeamPunchReviewResult>{
  assertMyTeamAccess(ctx);if(!isModuleEnabled(ctx,'attendance'))throw new MyTeamAuthorizationError();

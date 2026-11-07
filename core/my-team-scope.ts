@@ -13,12 +13,16 @@ export function assertMyTeamAccess(ctx:SessionContext){
   if(!ctx.userId||!hasTeamAccess(ctx))throw new MyTeamAuthorizationError();
   assertModuleEnabled(ctx,'leave');
 }
-export async function resolveMyTeamScopeTx(tx:Tx,ctx:SessionContext,query:MyTeamQuery){
+/** The team identity owner uses the stored login link, never a caller's person claim. */
+export async function resolveMyTeamPrincipalTx(tx:Tx,ctx:SessionContext){
   assertMyTeamAccess(ctx);
-  const today=todayInKualaLumpur();
   const [principal]=await tx.select({personId:appUser.personId}).from(appUser)
     .where(and(eq(appUser.id,ctx.userId!),eq(appUser.tenantId,ctx.tenantId),isNull(appUser.archivedAt))).limit(1);
   if(!principal)throw new MyTeamAuthorizationError();
+  return principal;
+}
+export async function resolveMyTeamScopeTx(tx:Tx,ctx:SessionContext,query:MyTeamQuery){
+  const today=todayInKualaLumpur(),principal=await resolveMyTeamPrincipalTx(tx,ctx);
   const [capability]=await tx.execute(sql`SELECT EXISTS(SELECT 1 FROM role_assignment r WHERE r.app_user_id=app.current_user_id() AND r.tenant_id=app.current_tenant_id()
       AND r.role::text IN ('manager','hr_admin','super_admin') AND app.has_role(r.role::text)) AS allowed,
     EXISTS(SELECT 1 FROM role_assignment r WHERE r.app_user_id=app.current_user_id() AND r.tenant_id=app.current_tenant_id()
