@@ -53,6 +53,15 @@ describe('stable shell metadata uses the canonical runtime policy',()=>{
   try{expect(resolveNavigationCatalogue(facts).rows.find(entry=>entry.row===first)?.state).toBe('disabled');}
   finally{first.disabled=original;}
  });
+ it('refuses an ambiguous repeated selector instead of assigning an automatic duplicate ID',()=>{
+  const group=SIDEBAR_AUDIENCE_INVENTORY[0],first=group.items[0];
+  group.items.push(first);
+  try{
+   const result=resolveNavigationCatalogue(facts);
+   expect(result.issues.some(issue=>issue.code==='duplicate-id')).toBe(true);
+   expect(result.issues.some(issue=>issue.code==='ambiguous-runtime-binding')).toBe(true);
+  }finally{group.items.pop();}
+ });
  it('fails closed on a newly injected leaf instead of deriving a fresh identity from its URL or label',()=>{
   const group=SIDEBAR_AUDIENCE_INVENTORY[0],first=group.items[0];
   if(isCollapsible(first))throw new Error('Dashboard fixture must be a leaf');

@@ -1,5 +1,5 @@
 /** Shell declaration metadata, never permission policy. See ADR 2026-11-07-navigation-coverage. */
-import {SIDEBAR_AUDIENCE_INVENTORY, ADDITIONAL_ROWS, isCollapsible, PERFORMANCE_ADMIN_ROW, type ChildItem} from './shell-inventory';
+import {SIDEBAR_AUDIENCE_INVENTORY, ADDITIONAL_ROWS, isCollapsible, PERFORMANCE_ADMIN_ROW, ONBOARDING_NODE, type ChildItem} from './shell-inventory';
 import {resolveShellNavigation, type ShellNavigationFacts} from './shell-resolver';
 import {V9_NAVIGATION, V9_SHARED_NAVIGATION} from '../lifecycle-v9-navigation';
 import {modulePackById} from '../../packs/registry';
@@ -183,9 +183,9 @@ export function declaredNavigationCatalogue():NavigationCatalogue {
  }
  for(const row of ADDITIONAL_ROWS)append(`additional/${row.labelKey}`,row);
  // The V9 display adapter preserves the canonical descriptor's identity and route ownership.
- for(const row of V9_NAVIGATION)append(`v9/${row.labelKey}`,{...row,icon:PERFORMANCE_ADMIN_ROW.icon,exactHref:true,
+ for(const row of V9_NAVIGATION)append(`v9/${row.labelKey}`,{...row,icon:ONBOARDING_NODE.icon,exactHref:true,
   ...('ownedSubpaths' in row?{ownedSubpaths:[...row.ownedSubpaths]}:{})});
- for(const row of V9_SHARED_NAVIGATION)append(`v9Shared/${row.labelKey}`,{...row,icon:PERFORMANCE_ADMIN_ROW.icon,exactHref:true});
+ for(const row of V9_SHARED_NAVIGATION)append(`v9Shared/${row.labelKey}`,{...row,icon:ONBOARDING_NODE.icon,exactHref:true});
  for(const row of modulePackById('rewards')!.navLinks??[])append(`rewards/${row.labelKey}`,row);
  for(const key of ['id','sourceKey'] as const){const seen=new Set<string>();for(const row of declarations){
   if(seen.has(row[key]))issues.push({code:`duplicate-${key}`,detail:row[key]});seen.add(row[key]);

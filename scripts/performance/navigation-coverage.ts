@@ -2,7 +2,7 @@
 import {readFileSync,readdirSync} from 'node:fs';
 import {join,relative,resolve} from 'node:path';
 import {pathToFileURL} from 'node:url';
-import {declaredNavigationCatalogue,resolveNavigationCatalogue,NAVIGATION_COVERAGE_BACKLOG,type NavigationCatalogue,type CatalogueIssue} from '../../lib/navigation/catalogue';
+import {declaredNavigationCatalogue,resolveNavigationCatalogue,NAVIGATION_COVERAGE_BACKLOG,type NavigationCatalogue,type CatalogueIssue,type ResolvedCatalogueRow} from '../../lib/navigation/catalogue';
 
 export type RuntimeReceipt={destinationId:string;navigationHref:string;candidateSha:string;environment:string;
  runUrl:string;executedAt:string;outcome:'passed'|'failed';scenarioId:string;
@@ -46,8 +46,8 @@ function usableReceipt(receipt:RuntimeReceipt,entry:CoverageLedgerEntry,candidat
   !!content&&nonempty(content.selector)&&nonempty(content.assertion)&&content.observedNonempty===true&&/^https:\/\//.test(content.artifactUrl);
 }
 /** Structural integrity and runtime acceptance deliberately report separate outcomes. */
-export function auditNavigationCoverage({catalogue,ledger,pages,candidateSha,runtimeIssues=[]}: {
- catalogue:NavigationCatalogue;ledger:CoverageLedger;pages:readonly PageRoute[];candidateSha:string;runtimeIssues?:readonly CatalogueIssue[];
+export function auditNavigationCoverage({catalogue,ledger,pages,candidateSha,runtimeIssues=[],runtimeRows=[]}: {
+ catalogue:NavigationCatalogue;ledger:CoverageLedger;pages:readonly PageRoute[];candidateSha:string;runtimeIssues?:readonly CatalogueIssue[];runtimeRows?:readonly ResolvedCatalogueRow[];
 }){
  const errors=[...catalogue.issues,...runtimeIssues].map(issue=>`${issue.code}: ${issue.detail}`),runtimeMissing:string[]=[];
  if(ledger.schemaVersion!==1)errors.push('unsupported ledger schema');
@@ -73,7 +73,9 @@ export function auditNavigationCoverage({catalogue,ledger,pages,candidateSha,run
   if(!pages.some(page=>pageRouteMatches(page.route,row.navigationHref)))errors.push(`missing source page: ${row.id} (${row.navigationHref})`);
   if(row.status==='declared'&&!row.disabled){
    // An uncovered disposition can never count as passed, even if someone attaches a scenario or receipt.
-   if(entry?.status!=='covered'||!entry.receipts?.some(receipt=>usableReceipt(receipt,entry,candidateSha)&&receipt.navigationHref===row.navigationHref))runtimeMissing.push(row.id);
+   const resolvedClicks=runtimeRows.filter(resolved=>resolved.declaration.id===row.id&&resolved.state==='actionable').map(resolved=>resolved.navigationHref);
+   const expectedClicks=resolvedClicks.length?resolvedClicks:[row.navigationHref];
+   if(entry?.status!=='covered'||!entry.receipts?.some(receipt=>usableReceipt(receipt,entry,candidateSha)&&expectedClicks.includes(receipt.navigationHref)))runtimeMissing.push(row.id);
   }
  }
  for(const item of NAVIGATION_COVERAGE_BACKLOG){
