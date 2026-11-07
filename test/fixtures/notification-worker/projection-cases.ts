@@ -100,7 +100,7 @@ it('matches actual legacy projection on independent equivalent tenants, includin
  expect(next.receipts.find(row=>row.event==='unknown')).toMatchObject({disposition:'ignored'});
  expect(next.receipts.filter(row=>row.disposition==='processed')).toHaveLength(7);
  const [cursor]=await owner.client`select c.last_sequence=(select max(e.sequence) from public.domain_event e where e.id=any(${[...native.cases.keys()]}::uuid[])) as exact,c.assessment_last_sequence from public.notification_cursor c where c.tenant_id=${base.tenantId}::uuid`;
- expect(cursor).toEqual({exact:true,assessment_last_sequence:'0'});
+ expect(cursor).toEqual({exact:true,assessment_last_sequence:null});
  expect(await notificationWorkerProjection(service).projectBatch(run,base.tenantId,25)).toEqual({processed:0,created:0});
  // The legacy tenant was already drained through its separate canonical carrier.
  const api=notificationWorkerLifecycle(service);for(const scope of await api.scopePage(run))expect((await api.settleScope(run,scope.tenant_id,'drained')).pending).toBe('0');
@@ -182,23 +182,64 @@ it('documents bounded trusted-render authority while natively enforcing exact ev
  expect(await owner.client`select * from notification_worker_private.batch_recipient`).toHaveLength(0);
 },30000);
 
-it('retains pending late commits behind the cursor and exact overlap duplicate counts',async context=>{
- const f=await fixture(b);await historical();const first=await event(b,'leave-request.approved',f.a.employmentId);let release!:()=>void,entered!:()=>void;
- const ready=new Promise<void>(resolve=>{entered=resolve;}),done=new Promise<void>(resolve=>{release=resolve;});let late='';
- const writer=owner.client.begin(async tx=>{const [row]=await tx`insert into public.domain_event(tenant_id,aggregate_type,aggregate_id,event_type,actor_type,subject_employment_id,payload) values(${b.tenantId}::uuid,'fixture',${randomUUID()}::uuid,'toil.accrued','system',${f.a.employmentId}::uuid,'{"daysCredited":1}') returning id`;late=row.id;entered();await done;});
- const abort=()=>release();context.signal.addEventListener('abort',abort,{once:true});
- try{await Promise.race([ready,writer.then(()=>{throw Error('Writer ended before its controlled late commit');})]);context.signal.throwIfAborted();
-  const later=await event(b,'leave-request.approved',f.other.employmentId),run=await open();
-  expect(await notificationWorkerProjection(service).projectBatch(run,b.tenantId,25)).toEqual({processed:2,created:2});
-  const [cursor]=await owner.client`select last_sequence from public.notification_cursor where tenant_id=${b.tenantId}::uuid`;expect(cursor.last_sequence).toBe(String(later.sequence));
-  release();await writer;const [source]=await owner.client`select sequence from public.domain_event where id=${late}::uuid`;expect(BigInt(source.sequence)).toBeLessThan(BigInt(cursor.last_sequence));
-  expect(await notificationWorkerProjection(service).projectBatch(run,b.tenantId,25)).toEqual({processed:1,created:1});
-  expect((await owner.client`select last_sequence from public.notification_cursor where tenant_id=${b.tenantId}::uuid`)[0].last_sequence).toBe(cursor.last_sequence);
-  // Independently retain an overlap projection while restoring only its processing intent.
-  await owner.client`update public.notification_event_processing set disposition=null,processed_at=null where event_id=${first.id}::uuid and consumer='notifications'`;
-  expect(await notificationWorkerProjection(service).projectBatch(run,b.tenantId,25)).toEqual({processed:1,created:0});
-  expect(await owner.client`select id from public.notification where source_event_id=${first.id}::uuid`).toHaveLength(1);
- }finally{release();context.signal.removeEventListener('abort',abort);await writer;}
+it('recovers genuine durable pending work behind an existing cursor and exact overlap duplicate counts',async()=>{
+ const f=await fixture(b);await historical();const first=await event(b,'leave-request.approved',f.a.employmentId);
+ const older=await event(b,'toil.accrued',f.a.employmentId,{daysCredited:1}),later=await event(b,'leave-request.approved',f.other.employmentId);
+ // Native audit writes serialize on the actual tenant audit-chain lock. This is
+ // honest recovery setup, not a fabricated simultaneous canonical commit order:
+ // retain the genuine older source while the owned fixture marks its intent settled.
+ await owner.client`update public.notification_event_processing set disposition='legacy-cursor',processed_at=now() where event_id=${older.id}::uuid and consumer='notifications'`;
+ const run=await open();expect(await notificationWorkerProjection(service).projectBatch(run,b.tenantId,25)).toEqual({processed:2,created:2});
+ const [cursor]=await owner.client`select last_sequence from public.notification_cursor where tenant_id=${b.tenantId}::uuid`;expect(cursor.last_sequence).toBe(String(later.sequence));
+ expect(BigInt(older.sequence)).toBeLessThan(BigInt(cursor.last_sequence));
+ expect(await owner.client`select id from public.notification where source_event_id=${older.id}::uuid`).toHaveLength(0);
+ // Restore only this exact owned processing intent. The real committed source,
+ // native sequence and audit chain remain unchanged; no trigger/lock is disabled.
+ await owner.client`update public.notification_event_processing set disposition=null,processed_at=null where event_id=${older.id}::uuid and consumer='notifications'`;
+ expect(await notificationWorkerProjection(service).projectBatch(run,b.tenantId,25)).toEqual({processed:1,created:1});
+ expect((await owner.client`select last_sequence from public.notification_cursor where tenant_id=${b.tenantId}::uuid`)[0].last_sequence).toBe(cursor.last_sequence);
+ expect(await owner.client`select id from public.notification where source_event_id=${older.id}::uuid`).toHaveLength(1);
+ await owner.client`update public.notification_event_processing set disposition=null,processed_at=null where event_id=${first.id}::uuid and consumer='notifications'`;
+ expect(await notificationWorkerProjection(service).projectBatch(run,b.tenantId,25)).toEqual({processed:1,created:0});
+ expect(await owner.client`select id from public.notification where source_event_id=${first.id}::uuid`).toHaveLength(1);
+},30000);
+
+it.each(['tenant','consumer','other-column','backend-start','transaction','no-admission','unfinished-event','unfinished-receipt','human-gucs']as const)
+ ('refuses native cursor settlement with changed %s proof and rolls back every effect before exact recovery',async fault=>{
+ const f=await fixture(b),foreign=await seedBase();await historical();const source=await event(b,'leave-request.approved',f.a.employmentId),run=await open(),before=await sourceState();
+ // Fixed owner-installed fault runs immediately before the real canonical cursor
+ // guard. The actual LOGIN has no trigger/table/schema authority to install it.
+ const body=fault==='human-gucs'?`PERFORM set_config('app.tenant_id','${foreign.tenantId}',true),set_config('app.user_id','${foreign.adminUserId}',true),set_config('app.roles','hr_admin',true),set_config('app.grants','[{"role":"hr_admin","companyId":null}]',true),set_config('app.agent_principal_id','',true);
+   IF app.principal_snapshot_current() IS NOT TRUE OR app.is_group_admin() IS NOT TRUE THEN RAISE EXCEPTION 'Controlled human claim fixture unavailable' USING ERRCODE='55000';END IF;NEW.assessment_last_sequence:=42;`:
+  fault==='tenant'?`NEW.tenant_id:='${foreign.tenantId}'::uuid;`:
+  fault==='consumer'?"UPDATE notification_worker_private.batch SET consumer='assessment-reminders';":
+  fault==='other-column'?"NEW.assessment_last_sequence:=42;":
+  fault==='backend-start'?"UPDATE notification_worker_private.batch SET backend_started_at=backend_started_at-interval '1 second';":
+  fault==='transaction'?"UPDATE notification_worker_private.batch SET admitted_xid='1'::xid8;":
+  fault==='no-admission'?"DELETE FROM notification_worker_private.batch;":
+  fault==='unfinished-event'?"UPDATE notification_worker_private.batch_event SET disposition=NULL;":
+  "UPDATE public.notification_event_processing SET disposition=NULL,processed_at=NULL WHERE event_id='"+source.id+"'::uuid AND consumer='notifications';";
+ await owner.client.unsafe('CREATE FUNCTION public.notification_cursor_purpose_fault() RETURNS trigger LANGUAGE plpgsql AS $fault$ BEGIN '+body+' RETURN NEW;END $fault$');
+ await owner.client`create trigger aaa_notification_cursor_purpose_fault before insert or update on public.notification_cursor for each row execute function public.notification_cursor_purpose_fault()`;
+ try{
+  await refused(notificationWorkerProjection(service).projectBatch(run,b.tenantId,25),'42501');expect(await sourceState()).toEqual(before);
+  expect((await owner.client`select committed_batches,processed_events,created_notifications from notification_worker_private.run where run_id=${run}::uuid`)[0]).toEqual({committed_batches:0,processed_events:'0',created_notifications:'0'});
+  expect(await owner.client`select * from notification_worker_private.batch`).toEqual([]);
+ }finally{await owner.client`drop trigger aaa_notification_cursor_purpose_fault on public.notification_cursor`;await owner.client`drop function public.notification_cursor_purpose_fault()`;}
+ expect(await notificationWorkerProjection(service).projectBatch(run,b.tenantId,25)).toEqual({processed:1,created:1});
+ const [cursor]=await owner.client`select last_sequence,assessment_last_sequence from public.notification_cursor where tenant_id=${b.tenantId}::uuid`;
+ expect(cursor).toEqual({last_sequence:String(source.sequence),assessment_last_sequence:null});
+ const [acl]=await owner.client`select has_function_privilege('ai_hr_app','app.notification_worker_cursor_admitted(uuid,bigint,bigint,bigint,bigint,boolean)','EXECUTE') as app,
+  has_schema_privilege('ai_hr_notification_worker','app','USAGE') as worker_schema,
+  has_function_privilege('ai_hr_notification_worker','app.notification_worker_cursor_admitted(uuid,bigint,bigint,bigint,bigint,boolean)','EXECUTE') as worker`;
+ expect(acl).toEqual({app:false,worker_schema:false,worker:false});
+},30000);
+
+it.each([null,'42'])('preserves the existing unrelated assessment cursor %s under actual native global settlement',async otherCursor=>{
+ const f=await fixture(b);await historical();const source=await event(b,'leave-request.approved',f.a.employmentId);
+ await owner.client`insert into public.notification_cursor(tenant_id,last_sequence,assessment_last_sequence) values(${b.tenantId}::uuid,null,${otherCursor}::bigint)`;
+ const run=await open();expect(await notificationWorkerProjection(service).projectBatch(run,b.tenantId,25)).toEqual({processed:1,created:1});
+ expect((await owner.client`select last_sequence,assessment_last_sequence from public.notification_cursor where tenant_id=${b.tenantId}::uuid`)[0]).toEqual({last_sequence:String(source.sequence),assessment_last_sequence:otherCursor});
 },30000);
 
 it('rolls back earlier supported projections rather than consuming an unsupported assessment preparation event',async()=>{

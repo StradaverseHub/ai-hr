@@ -7,8 +7,10 @@ import {closeAll,migrateTestDb,owner} from '../../harness';
 import {notificationWorkerFixtureDatabase} from './database';
 import {assessmentReminderTaskKeys} from '../../../lib/assessment-reminder-mail';
 type RegistryContract=readonly{eventType:string;kind:string;category:string|null;recipientPort:string|null;audience:string;guard:{field:string;equals:true;not?:true}|null;implemented:boolean}[];
+type CursorGuardSnapshot={definition:string;details:unknown};
 export function notificationWorkerFixtureOwner(){
  const role='ai_hr_notification_worker',password=randomUUID(),sockets=new Set<ReturnType<typeof postgres>>(),jobs=new Set<string>();
+ let cursorGuard:CursorGuardSnapshot|undefined;
  let created=false,stageInstalled=false,binding:ReturnType<typeof notificationWorkerFixtureDatabase>|undefined,url:URL|undefined;
  const configured=()=>{if(!binding||!url||!created)throw Error('Owned native notification fixture is not initialized');return binding;};
  async function finishCase(){
@@ -18,7 +20,14 @@ export function notificationWorkerFixtureOwner(){
  }
  async function clearStage(){
   await finishCase();
-  if(stageInstalled){await owner.client`drop schema if exists notification_worker cascade`;await owner.client`drop schema if exists notification_worker_private cascade`;
+  if(stageInstalled){
+   if(cursorGuard){const original=cursorGuard;await owner.client.begin(async tx=>{
+    await tx.unsafe(original.definition);
+    await tx`drop function app.notification_worker_cursor_admitted(uuid,bigint,bigint,bigint,bigint,boolean)`;
+    const [restored]=await tx`select pg_get_functiondef(p.oid) as definition,to_jsonb(p) as details from pg_proc p where p.oid='app.guard_notification_global_cursor()'::regprocedure`;
+    expect(restored).toEqual(original);
+   });cursorGuard=undefined;}
+   await owner.client`drop schema if exists notification_worker cascade`;await owner.client`drop schema if exists notification_worker_private cascade`;
    await owner.client`delete from public.job_run where id=any(${[...jobs]}::uuid[])`;jobs.clear();stageInstalled=false;}
  }
  return {
@@ -36,7 +45,13 @@ export function notificationWorkerFixtureOwner(){
   async install(sources:readonly string[],version:1|2|3,contract?:RegistryContract){
    const target=configured();
    if(stageInstalled)throw Error('Previous native notification stage is still installed');
+   let originalCursorGuard:CursorGuardSnapshot|undefined;
    await owner.client.begin(async tx=>{
+    if(version!==1){
+     const [existing]=await tx`select to_regprocedure('app.notification_worker_cursor_admitted(uuid,bigint,bigint,bigint,bigint,boolean)') as helper`;expect(existing.helper).toBeNull();
+     const [original]=await tx`select pg_get_functiondef(p.oid) as definition,to_jsonb(p) as details from pg_proc p where p.oid='app.guard_notification_global_cursor()'::regprocedure`;
+     expect(original).toBeTruthy();originalCursorGuard={definition:original.definition,details:original.details};
+    }
     await tx`select set_config('aihr.notification_fixture.database',${target.database},true),set_config('aihr.notification_fixture.namespace',${target.namespace},true),set_config('aihr.notification_fixture.pool_id',${target.poolId},true)`;
     for(const source of sources)await tx.unsafe(source);
     if(contract){
@@ -55,7 +70,7 @@ export function notificationWorkerFixtureOwner(){
      expect(stored.map(row=>row.key)).toEqual([...assessmentReminderTaskKeys].sort());
     }
    });
-   stageInstalled=true;
+   cursorGuard=originalCursorGuard;stageInstalled=true;
    const [identity]=await owner.client`select current_user::regrole::oid as owner,(select oid from pg_roles where rolname=${role}) as login`;
    await owner.client`insert into notification_worker_private.authority(singleton,enabled,login_oid,owner_oid,api_version,max_batch_events,max_run_batches,max_run_seconds,max_tenants)
     values(true,true,${identity.login},${identity.owner},${version},25,10,300,100)`;

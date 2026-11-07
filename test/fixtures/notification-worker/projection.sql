@@ -40,6 +40,96 @@ CREATE TABLE notification_worker_private.helper_contract(
 ALTER TABLE notification_worker_private.registry_contract ENABLE ROW LEVEL SECURITY;
 ALTER TABLE notification_worker_private.helper_contract ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON notification_worker_private.registry_contract,notification_worker_private.helper_contract FROM PUBLIC,ai_hr_app;
+-- Extend only the actual cursor trigger purpose; legacy owner/human branches remain.
+DO $cursor_guard$
+DECLARE p pg_proc;
+BEGIN
+ SELECT * INTO p FROM pg_proc WHERE oid='app.guard_notification_global_cursor()'::regprocedure;
+ IF p.proowner IS DISTINCT FROM (SELECT relowner FROM pg_class WHERE oid='public.job_run'::regclass)
+ OR p.pronamespace IS DISTINCT FROM 'app'::regnamespace::oid OR p.proname<>'guard_notification_global_cursor'
+ OR p.prolang IS DISTINCT FROM (SELECT oid FROM pg_language WHERE lanname='plpgsql')
+ OR p.pronargs<>0 OR p.pronargdefaults<>0 OR p.proargdefaults IS NOT NULL OR p.proargtypes<>''::oidvector
+ OR p.proargnames IS NOT NULL OR p.proallargtypes IS NOT NULL OR p.proargmodes IS NOT NULL OR p.prosqlbody IS NOT NULL
+ OR p.prorettype IS DISTINCT FROM 'trigger'::regtype::oid OR p.proretset OR p.prokind<>'f' OR p.provariadic<>0
+ OR p.procost<>100 OR p.prorows<>0 OR p.prosupport<>0::oid OR p.prosecdef OR p.proisstrict OR p.proleakproof
+ OR p.provolatile<>'v' OR p.proparallel<>'u' OR cardinality(p.proconfig) IS DISTINCT FROM 1
+ OR regexp_replace(p.proconfig[1],'\s','','g') IS DISTINCT FROM 'search_path=pg_catalog,public,pg_temp'
+ OR (SELECT count(*) FROM aclexplode(coalesce(p.proacl,acldefault('f',p.proowner))))<>1
+ OR EXISTS(SELECT 1 FROM aclexplode(coalesce(p.proacl,acldefault('f',p.proowner))) acl
+  WHERE acl.grantor<>p.proowner OR acl.grantee<>p.proowner OR acl.privilege_type<>'EXECUTE' OR acl.is_grantable)
+ OR p.prosrc IS DISTINCT FROM $cursor_predecessor$
+DECLARE changes_global boolean;
+BEGIN
+ IF TG_OP='UPDATE' AND ROW(NEW.id,NEW.tenant_id) IS DISTINCT FROM ROW(OLD.id,OLD.tenant_id) THEN
+  RAISE EXCEPTION 'Notification cursor identity is immutable' USING ERRCODE='23514';
+ END IF;
+ IF TG_OP='INSERT' THEN changes_global:=NEW.last_sequence IS NOT NULL;
+ ELSIF TG_OP='DELETE' THEN changes_global:=OLD.last_sequence IS NOT NULL;
+ ELSE changes_global:=NEW.last_sequence IS DISTINCT FROM OLD.last_sequence;
+ END IF;
+ IF changes_global AND NOT app.notice_projection_connection_owner()
+  AND NOT (app.principal_snapshot_current() AND app.is_group_admin()) THEN
+  RAISE EXCEPTION 'Complete tenant notification projection authority is required' USING ERRCODE='42501';
+ END IF;
+ IF TG_OP='DELETE' THEN RETURN OLD; END IF;
+ RETURN NEW;
+END;
+$cursor_predecessor$
+ THEN RAISE EXCEPTION 'Reviewed native notification cursor guard required' USING ERRCODE='55000';END IF;
+END $cursor_guard$;
+CREATE FUNCTION app.notification_worker_cursor_admitted(p_tenant uuid,p_last bigint,p_assessment bigint,p_old_last bigint,p_old_assessment bigint,p_insert boolean)
+RETURNS boolean LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,pg_temp AS $body$
+DECLARE ids uuid[];b notification_worker_private.batch;n integer;highest bigint;
+BEGIN
+ -- Existing human/application callers gain no private lookup or new authority.
+ IF session_user::text<>'ai_hr_notification_worker' THEN RETURN false;END IF;
+ SELECT array_agg(batch_id) INTO ids FROM notification_worker_private.batch
+ WHERE backend_pid=pg_backend_pid() AND admitted_xid=pg_current_xact_id() AND tenant_id=p_tenant;
+ IF cardinality(ids) IS DISTINCT FROM 1 THEN RETURN false;END IF;
+ b:=notification_worker_private.admit_batch(ids[1]);
+ SELECT count(*)::integer,max(x.event_sequence) INTO n,highest FROM notification_worker_private.batch_event x WHERE x.batch_id=b.batch_id;
+ IF n=0 OR n<>b.event_count OR EXISTS(
+  SELECT 1 FROM notification_worker_private.batch_event x WHERE x.batch_id=b.batch_id AND (x.disposition IS NULL OR NOT EXISTS(
+   SELECT 1 FROM public.notification_event_processing p WHERE p.event_id=x.event_id AND p.event_sequence=x.event_sequence
+    AND p.tenant_id=b.tenant_id AND p.consumer=b.consumer AND p.disposition=x.disposition AND p.processed_at IS NOT NULL))) THEN RETURN false;END IF;
+ IF b.consumer='notifications' THEN
+  RETURN p_last IS NOT DISTINCT FROM CASE WHEN p_insert THEN highest ELSE greatest(p_old_last,highest) END
+   AND p_assessment IS NOT DISTINCT FROM CASE WHEN p_insert THEN NULL::bigint ELSE p_old_assessment END;
+ ELSIF b.consumer='assessment-reminders' THEN
+  RETURN p_assessment IS NOT DISTINCT FROM CASE WHEN p_insert THEN highest ELSE greatest(p_old_assessment,highest) END
+   AND p_last IS NOT DISTINCT FROM CASE WHEN p_insert THEN NULL::bigint ELSE p_old_last END;
+ END IF;
+ RETURN false;
+END $body$;
+REVOKE ALL ON FUNCTION app.notification_worker_cursor_admitted(uuid,bigint,bigint,bigint,bigint,boolean) FROM PUBLIC,ai_hr_app;
+CREATE OR REPLACE FUNCTION app.guard_notification_global_cursor() RETURNS trigger LANGUAGE plpgsql
+ SECURITY INVOKER SET search_path=pg_catalog,public,pg_temp AS $cursor_body$
+DECLARE changes_global boolean;
+BEGIN
+ IF TG_OP='UPDATE' AND ROW(NEW.id,NEW.tenant_id) IS DISTINCT FROM ROW(OLD.id,OLD.tenant_id) THEN
+  RAISE EXCEPTION 'Notification cursor identity is immutable' USING ERRCODE='23514';
+ END IF;
+ IF TG_OP='INSERT' THEN changes_global:=NEW.last_sequence IS NOT NULL;
+ ELSIF TG_OP='DELETE' THEN changes_global:=OLD.last_sequence IS NOT NULL;
+ ELSE changes_global:=NEW.last_sequence IS DISTINCT FROM OLD.last_sequence;
+ END IF;
+ IF session_user::text='ai_hr_notification_worker' THEN
+  -- This LOGIN can never inherit a human GUC/role-text branch. The fixed API's
+  -- definer owner alone executes the private admission predicate on the real row.
+  IF TG_OP='DELETE' THEN RAISE EXCEPTION 'Complete tenant notification projection authority is required' USING ERRCODE='42501';END IF;
+  IF app.notification_worker_cursor_admitted(NEW.tenant_id,NEW.last_sequence,NEW.assessment_last_sequence,
+   CASE WHEN TG_OP='INSERT' THEN NULL ELSE OLD.last_sequence END,CASE WHEN TG_OP='INSERT' THEN NULL ELSE OLD.assessment_last_sequence END,TG_OP='INSERT') IS NOT TRUE THEN
+   RAISE EXCEPTION 'Complete tenant notification projection authority is required' USING ERRCODE='42501';
+  END IF;
+ ELSIF changes_global AND NOT app.notice_projection_connection_owner()
+  AND NOT (app.principal_snapshot_current() AND app.is_group_admin()) THEN
+  RAISE EXCEPTION 'Complete tenant notification projection authority is required' USING ERRCODE='42501';
+ END IF;
+ IF TG_OP='DELETE' THEN RETURN OLD; END IF;
+ RETURN NEW;
+END;
+$cursor_body$;
+
 -- Freeze the existing native helper implementation used transitively by the fixed APIs.
 -- No worker may update this baseline or approve helper/source drift.
 INSERT INTO notification_worker_private.helper_contract
@@ -273,9 +363,10 @@ BEGIN
  IF completed<>n THEN RAISE EXCEPTION 'Notification processing authority changed' USING ERRCODE='55000';END IF;
  IF n>0 THEN
   INSERT INTO public.notification_cursor(tenant_id,last_sequence,assessment_last_sequence)
-  VALUES(b.tenant_id,CASE WHEN b.consumer='notifications' THEN last_sequence ELSE 0 END,CASE WHEN b.consumer='assessment-reminders' THEN last_sequence ELSE 0 END)
-  ON CONFLICT(tenant_id) DO UPDATE SET last_sequence=greatest(public.notification_cursor.last_sequence,excluded.last_sequence),
-   assessment_last_sequence=greatest(public.notification_cursor.assessment_last_sequence,excluded.assessment_last_sequence),updated_at=now();
+  VALUES(b.tenant_id,CASE WHEN b.consumer='notifications' THEN last_sequence ELSE NULL END,CASE WHEN b.consumer='assessment-reminders' THEN last_sequence ELSE NULL END)
+  ON CONFLICT(tenant_id) DO UPDATE SET
+   last_sequence=CASE WHEN b.consumer='notifications' THEN greatest(public.notification_cursor.last_sequence,excluded.last_sequence) ELSE public.notification_cursor.last_sequence END,
+   assessment_last_sequence=CASE WHEN b.consumer='assessment-reminders' THEN greatest(public.notification_cursor.assessment_last_sequence,excluded.assessment_last_sequence) ELSE public.notification_cursor.assessment_last_sequence END,updated_at=now();
  END IF;
  UPDATE notification_worker_private.run SET committed_batches=committed_batches+1,processed_events=processed_events+n,created_notifications=created_notifications+effects WHERE run_id=b.run_id AND state='running';
  IF NOT FOUND THEN RAISE EXCEPTION 'Notification run settlement changed' USING ERRCODE='55000';END IF;
