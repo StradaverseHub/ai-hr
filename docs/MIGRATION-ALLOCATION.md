@@ -1,5 +1,18 @@
 # Coordinated migration reservations
 
+## Capability statement planning — 7 November 2026 (uninstalled)
+
+`2510_capability_statement_plan_reuse`, idx1830 / when1793330002130,
+SQL SHA-256 `e5689d9c6a71e21176506a0576bd635e7c8d05c63dc76c8c492a41e2e7086f9f`.
+Fresh origin refs and2991 distinct heads covered665 migration trees,473 journals
+and341 readable worktrees. Maxima were2509 /1829 /1793330002129, including
+literal claims from one malformed foreign journal, preserved unchanged.
+The guarded replacement preserves the exact capability query and security
+attributes while reusing its statement plan. Reversible native experiment
+42341955362 retained live scope/deny/archive/group/support boundaries and
+application-role refusal to call the private helper. Recheck current claims,
+installed ledger and populated upgrade before release. Production remains held.
+
 ## Architecture correctness repairs — 7 November 2026 (uninstalled)
 
 - `2506_notification_receipt_retention`, idx 1826, when 1793330002126, SQL SHA-256 `764bd405d99e398e35f2282202f07daf9c5f732cdbd67d19b35862849bfc88cf`.

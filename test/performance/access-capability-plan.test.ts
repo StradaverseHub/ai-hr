@@ -1,6 +1,6 @@
 /** Reversible fictional-data experiment. This supplies no installation or release receipt. */
 import {randomUUID} from 'node:crypto';
-import {writeFileSync} from 'node:fs';
+import {readFileSync,writeFileSync} from 'node:fs';
 import {join} from 'node:path';
 import {eq,sql} from 'drizzle-orm';
 import {afterAll,beforeAll,expect,it} from 'vitest';
@@ -23,9 +23,15 @@ it('compares capability statement planning while keeping live native permission 
  for(const table of ['company','app_user','role_assignment','access_group','access_group_grant','access_membership'])await owner.client.unsafe('analyze '+table);
  const signature='app.access_allowed_for_tenant(uuid,uuid,text,uuid)';
  const [original]=await owner.client<{ddl:string;body:string;attributes:Record<string,unknown>}[]>`select pg_get_functiondef(oid) as ddl,prosrc as body,to_jsonb(pg_proc)-'prosrc'-'prolang' as attributes from pg_proc where oid=${signature}::regprocedure`;
- expect(original.ddl).toContain('LANGUAGE sql');
+ const canonical=readFileSync(new URL('../../db/migrations/0579_configurable_access.sql',import.meta.url),'utf8');
+ const functionStart=canonical.indexOf('CREATE FUNCTION app.access_allowed_for_tenant(');
+ const body=canonical.slice(canonical.indexOf('AS $$',functionStart)+5,canonical.indexOf('$$;',functionStart)).trim().replace(/;$/,'');
+ const plannedBody='BEGIN\n RETURN (\n '+body+'\n );\nEND;';
+ expect([body,plannedBody].map(value=>value.trim().replace(/;$/,''))).toContain(original.body.trim().replace(/;$/,''));
  const start=original.ddl.indexOf('AS $function$');expect(start).toBeGreaterThan(0);
- const candidate=original.ddl.slice(0,start).replace('LANGUAGE sql','LANGUAGE plpgsql')+'AS $function$ BEGIN RETURN ('+original.body.trim().replace(/;$/,'')+'); END; $function$;';
+ const header=original.ddl.slice(0,start).replace('LANGUAGE plpgsql','LANGUAGE sql');
+ const baseline=header+'AS $function$'+body+'$function$;';
+ const candidate=header.replace('LANGUAGE sql','LANGUAGE plpgsql')+'AS $function$'+plannedBody+'$function$;';
  const context=(user:typeof users[number]):SessionContext=>({...adminCtx(b),userId:user.id,roles:['employee'],grants:[{role:'employee',companyId:user.companyId}]});
  const read=(ctx:SessionContext,companyId:string)=>withTenant(ctx,async tx=>{
   const [row]=await tx.execute<{allowed:boolean}>(sql`select app.access_capability_allowed('workforce.view',${companyId}::uuid) as allowed`);return row.allowed;
@@ -33,7 +39,7 @@ it('compares capability statement planning while keeping live native permission 
  const phases:Record<string,unknown>={};
  try{
   for(const phase of ['baseline','plan-reuse','baseline-after']){
-   await owner.client.unsafe(phase==='plan-reuse'?candidate:original.ddl);
+   await owner.client.unsafe(phase==='plan-reuse'?candidate:baseline);
    const [attributes]=await owner.client`select to_jsonb(pg_proc)-'prosrc'-'prolang' as value from pg_proc where oid=${signature}::regprocedure`;
    expect(attributes.value).toEqual(original.attributes);
    const probes=users.filter(user=>user.index%5===0),times:number[]=[],started=performance.now();

@@ -5132,6 +5132,13 @@
       "when": 1793330002129,
       "tag": "2509_principal_statement_plan_reuse",
       "breakpoints": true
+    },
+    {
+      "idx": 1830,
+      "version": "7",
+      "when": 1793330002130,
+      "tag": "2510_capability_statement_plan_reuse",
+      "breakpoints": true
     }
   ]
 }
