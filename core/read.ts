@@ -497,34 +497,37 @@ const personnelListSource = (companyIds?:string[],asOf=todayInKualaLumpur()) => 
 const workforceListValue = <T>(key: string): SQL<T> => sql<T>`workforce_row.value ->> ${key}`;
 const workforceListDate = (key: string) => sql<string | null>`(${workforceListValue(key)})::date`;
 const workforceListUuid = (key: string) => sql<string>`(${workforceListValue(key)})::uuid`;
-function workforceListColumns(asOf=todayInKualaLumpur()): EmployeeListColumns {
+const workforceFieldAccess={value:workforceListValue,date:workforceListDate,uuid:workforceListUuid};
+const typedFieldValue=<T>(key:string):SQL<T>=>sql<T>`workforce_row.${sql.identifier(key)}`;
+const typedWorkforceFieldAccess={value:typedFieldValue,date:(key:string)=>sql<string|null>`(${typedFieldValue(key)})::date`,uuid:(key:string)=>sql<string>`(${typedFieldValue(key)})::uuid`};
+function workforceListColumns(asOf=todayInKualaLumpur(),read=workforceFieldAccess): EmployeeListColumns {
   const status: EmploymentStatusColumns = {
-    finalConfirmationDate: workforceListDate('finalConfirmationDate'), confirmationDate: workforceListDate('confirmationDate'),
-    probationEndDate: workforceListDate('probationEndDate'), provisionalEndOn: workforceListDate('provisionalEndOn'),
-    resignationDate: workforceListDate('resignationDate'), lastWorkingDate: workforceListDate('lastWorkingDate'),
-    terminatedOn: workforceListDate('terminatedOn'), blacklistedAt: workforceListDate('blacklistedAt'),
+    finalConfirmationDate: read.date('finalConfirmationDate'), confirmationDate: read.date('confirmationDate'),
+    probationEndDate: read.date('probationEndDate'), provisionalEndOn: read.date('provisionalEndOn'),
+    resignationDate: read.date('resignationDate'), lastWorkingDate: read.date('lastWorkingDate'),
+    terminatedOn: read.date('terminatedOn'), blacklistedAt: read.date('blacklistedAt'),
   };
   return {
-    companyId: workforceListUuid('companyId'), departmentId: workforceListUuid('departmentId'),
-    employmentType: workforceListValue('employmentType'), terminatedOn: workforceListDate('terminatedOn'),
-    name: workforceListValue('name'), email: workforceListValue('email'), employeeCode: workforceListValue('employeeCode'),
+    companyId: read.uuid('companyId'), departmentId: read.uuid('departmentId'),
+    employmentType: read.value('employmentType'), terminatedOn: read.date('terminatedOn'),
+    name: read.value('name'), email: read.value('email'), employeeCode: read.value('employeeCode'),
     status: employmentStatusSql(asOf, status),
   };
 }
-const workforceListWhere = (p: EmployeeListFilters, columns: EmployeeListColumns,duplicateIds:readonly string[]=[]) =>
+const workforceListWhere = (p: EmployeeListFilters, columns: EmployeeListColumns,duplicateIds:readonly string[]=[],read=workforceFieldAccess) =>
   and(p.companyIds?.length === 0 ? sql`false` : undefined, employeeListWhere(p, columns),
-   p.businessUnitIds?.length?inArray(workforceListUuid('businessUnitId'),p.businessUnitIds):undefined,
-   p.parentCompanyIds?.length?inArray(workforceListUuid('parentCompanyId'),p.parentCompanyIds):undefined,
-   p.businessGroupIds?.length?inArray(workforceListUuid('businessGroupId'),p.businessGroupIds):undefined,
-   p.jobGrades?.length?inArray(workforceListValue<string>('jobGradeCode'),p.jobGrades):undefined,
-   p.positionIds?.length?inArray(workforceListUuid('positionId'),p.positionIds):undefined,
-   p.confirmationState?eq(workforceListValue<string>('confirmationState'),p.confirmationState):undefined,
-   p.joinedFrom?gte(workforceListDate('joinDate'),p.joinedFrom):undefined,
-   p.joinedTo?lte(workforceListDate('joinDate'),p.joinedTo):undefined,
-   p.probationEndFrom?gte(workforceListDate('probationEndDate'),p.probationEndFrom):undefined,
-   p.probationEndTo?lte(workforceListDate('probationEndDate'),p.probationEndTo):undefined,
-   p.qualityFlags?.length?or(...p.qualityFlags.map(flag=>flag==='suspected_duplicate'?(duplicateIds.length?inArray(workforceListUuid('employmentId'),[...duplicateIds]):sql`false`):sql`(workforce_row.value->'quality'->>${flag})::boolean is true`)):undefined,
-   p.privateSearch?sql`app.personnel_private_search_matches(${privateSearchHash(p.privateSearch)??''},${workforceListUuid('employmentId')},${columns.companyId},${p.companyIds?sql`ARRAY[${sql.join(p.companyIds.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[]`:sql`null::uuid[]`})`:undefined);
+   p.businessUnitIds?.length?inArray(read.uuid('businessUnitId'),p.businessUnitIds):undefined,
+   p.parentCompanyIds?.length?inArray(read.uuid('parentCompanyId'),p.parentCompanyIds):undefined,
+   p.businessGroupIds?.length?inArray(read.uuid('businessGroupId'),p.businessGroupIds):undefined,
+   p.jobGrades?.length?inArray(read.value<string>('jobGradeCode'),p.jobGrades):undefined,
+   p.positionIds?.length?inArray(read.uuid('positionId'),p.positionIds):undefined,
+   p.confirmationState?eq(read.value<string>('confirmationState'),p.confirmationState):undefined,
+   p.joinedFrom?gte(read.date('joinDate'),p.joinedFrom):undefined,
+   p.joinedTo?lte(read.date('joinDate'),p.joinedTo):undefined,
+   p.probationEndFrom?gte(read.date('probationEndDate'),p.probationEndFrom):undefined,
+   p.probationEndTo?lte(read.date('probationEndDate'),p.probationEndTo):undefined,
+   p.qualityFlags?.length?or(...p.qualityFlags.map(flag=>flag==='suspected_duplicate'?(duplicateIds.length?inArray(read.uuid('employmentId'),[...duplicateIds]):sql`false`):sql`(workforce_row.value->'quality'->>${flag})::boolean is true`)):undefined,
+   p.privateSearch?sql`app.personnel_private_search_matches(${privateSearchHash(p.privateSearch)??''},${read.uuid('employmentId')},${columns.companyId},${p.companyIds?sql`ARRAY[${sql.join(p.companyIds.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[]`:sql`null::uuid[]`})`:undefined);
 
 export type PersonnelCompanyChoice = {
   id: string; name: string; parentCompanyId: string | null; parentCompany: string | null;
@@ -630,26 +633,26 @@ function personnelNarrowOverviewQuery(
         .every(([key, value]) => value === undefined || narrowPersonnelFilters.has(key) ||
           (optionalPersonnelMultiFilters.has(key) && Array.isArray(value) && value.length === 0)))) return null;
 
-  const columns = workforceListColumns(asOf);
+  const columns = workforceListColumns(asOf,typedWorkforceFieldAccess);
   const scope = sql`array[${sql.join(input.companyIds.map(id => sql`${id}::uuid`), sql`, `)}]::uuid[]`;
   const order = input.sort === 'company'
     ? sql`company_sort, name_sort, employment_id`
     : sql`name_sort, employment_id`;
-  const pageWhere = workforceListWhere(input, columns) ?? sql`true`;
-  const facetWhere = workforceListWhere(facets, columns) ?? sql`true`;
+  const pageWhere = workforceListWhere(input, columns,[],typedWorkforceFieldAccess) ?? sql`true`;
+  const facetWhere = workforceListWhere(facets, columns,[],typedWorkforceFieldAccess) ?? sql`true`;
   return sql`
     with personnel_facts as materialized (
-      select ${workforceListUuid('employmentId')} as employment_id,
-        lower(${workforceListValue('company')}) as company_sort,
+      select ${typedWorkforceFieldAccess.uuid('employmentId')} as employment_id,
+        lower(${typedWorkforceFieldAccess.value('company')}) as company_sort,
         ${input.sort === 'company' ? sql`lower(${columns.name})` : columns.name} as name_sort,
         (${pageWhere}) as page_matches, (${facetWhere}) as facet_matches,
         ${columns.status} as status,
-        ${workforceListUuid('businessUnitId')} as "businessUnitId",
-        ${workforceListValue('businessUnit')} as "businessUnit",
-        ${workforceListUuid('positionId')} as "positionId",
-        ${workforceListValue('position')} as position
-      from app.personnel_overview_narrow_rows(${asOf}::date, ${scope}) as workforce_row(value)
-      where ${workforceListWhere({ companyIds: choiceIds }, columns) ?? sql`true`}
+        ${typedWorkforceFieldAccess.uuid('businessUnitId')} as "businessUnitId",
+        ${typedWorkforceFieldAccess.value('businessUnit')} as "businessUnit",
+        ${typedWorkforceFieldAccess.uuid('positionId')} as "positionId",
+        ${typedWorkforceFieldAccess.value('position')} as position
+      from app.performance_personnel_filter_fields(${asOf}::date, ${scope}) as workforce_row
+      where ${workforceListWhere({ companyIds: choiceIds }, columns,[],typedWorkforceFieldAccess) ?? sql`true`}
     ), page as materialized (
       select employment_id, company_sort, name_sort from personnel_facts
       where page_matches order by ${order} limit ${input.limit} offset ${input.offset}
