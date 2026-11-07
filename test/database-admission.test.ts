@@ -6,6 +6,24 @@ import {currentDatabaseWorkload,withBackgroundDatabaseWork} from '../db/workload
 const gate = (overrides = {}) => createDatabaseAdmission({capacity:4,backgroundCapacity:1,maxWaiting:8,waitMs:1000,...overrides});
 afterEach(()=>vi.useRealTimers());
 describe('database work admission',()=>{
+ it('repays a long background unit with interactive connection time in a two-slot pool',async()=>{
+  let now=0,cleanup=false,backgroundEntered=false;const entered:(()=>void)[]=[];
+  const q=createDatabaseAdmission({capacity:2,backgroundCapacity:1,maxWaiting:16,waitMs:1000},()=>now);
+  const background=await q.acquire('a','background'),interactive=await q.acquire('a','interactive');
+  let nextBackground:(()=>void)|undefined;
+  const waitingBackground=q.acquire('a','background').then(release=>{backgroundEntered=true;nextBackground=release;if(cleanup)release();});
+  const pages=Array.from({length:8},()=>q.acquire('a','interactive').then(release=>{entered.push(release);if(cleanup)release();}));
+  try{
+   now=100;background();await vi.waitFor(()=>expect(entered).toHaveLength(1));
+   expect(backgroundEntered).toBe(false);expect(q.snapshot().backgroundDebtMs).toBe(200);
+   interactive();await vi.waitFor(()=>expect(entered).toHaveLength(2));
+   expect(backgroundEntered).toBe(false);expect(q.snapshot().backgroundDebtMs).toBe(200);
+   now=200;entered[0]();await vi.waitFor(()=>expect(backgroundEntered).toBe(true));
+   entered[1]();
+   expect(q.snapshot().backgroundDebtMs).toBe(0);
+  }finally{cleanup=true;background();interactive();nextBackground?.();entered.forEach(release=>release());await Promise.all([...pages,waitingBackground]);}
+  expect(q.snapshot()).toMatchObject({active:0,waiting:0});
+ });
  it('reserves pending capacity for interactive work when background producers fill their lane',async()=>{
   const q=gate({capacity:1,backgroundCapacity:1,maxWaiting:4,maxBackgroundWaiting:1});
   const holder=await q.acquire('a','interactive');

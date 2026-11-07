@@ -22,7 +22,7 @@ export function createDatabaseAdmission(options: {
   maxBackgroundWaiting?: number;
   waitMs: number;
   perTenantCapacity?: number;
-}) {
+}, now:()=>number=()=>performance.now()) {
   const {capacity, backgroundCapacity, maxWaiting, waitMs} = options;
   const maxBackgroundWaiting = options.maxBackgroundWaiting ?? maxWaiting;
   if (![capacity, backgroundCapacity, maxWaiting, waitMs].every(Number.isSafeInteger)
@@ -35,28 +35,44 @@ export function createDatabaseAdmission(options: {
   if (!Number.isSafeInteger(perTenantCapacity) || perTenantCapacity < 1 || perTenantCapacity > capacity)
     throw new Error('Invalid per-tenant admission budget.');
   let active = 0, background = 0, interactiveTurns = 0, backgroundWaiting = 0;
+  let backgroundDebtMs = 0, accountedAt=now();
   const waiting: Waiter[] = [];
   const activeByTenant = new Map<string, number>();
+  function accountOccupiedTime(){
+    const at=now(),elapsed=Math.max(0,at-accountedAt);accountedAt=at;
+    // Only contended time matters. Account both lanes together so completion
+    // order cannot lose foreground credit or accumulate credit during idle time.
+    backgroundDebtMs=waiting.some(w=>w.workload==='interactive')
+      ?Math.max(0,backgroundDebtMs+elapsed*(background*3-(active-background))):0;
+  }
   function dequeue(index: number) {
+    accountOccupiedTime();
     const [waiter] = waiting.splice(index, 1);
     if (waiter.workload === 'background') backgroundWaiting--;
     return waiter;
   }
   const eligible = (workload: DatabaseWorkload, tenant?: string) => active < capacity
     && (workload !== 'background' || background < backgroundCapacity)
+    && (workload !== 'background' || backgroundDebtMs <= 0 || !waiting.some(w=>w.workload==='interactive'))
     && (tenant === undefined || (activeByTenant.get(tenant) ?? 0) < perTenantCapacity);
   function grant(waiter: Waiter) {
     waiter.clean();
+    accountOccupiedTime();
     active++;
-    if (waiter.workload === 'background') { background++; interactiveTurns = 0; }
+    if (waiter.workload === 'background') {
+      background++; interactiveTurns = 0;
+    }
     else interactiveTurns = Math.min(3, interactiveTurns + 1);
     activeByTenant.set(waiter.tenant, (activeByTenant.get(waiter.tenant) ?? 0) + 1);
     let released = false;
     waiter.resolve(() => {
       if (released) return;
+      accountOccupiedTime();
       released = true;
       active--;
-      if (waiter.workload === 'background') background--;
+      if (waiter.workload === 'background') {
+        background--;
+      }
       const remaining = (activeByTenant.get(waiter.tenant) ?? 1) - 1;
       if (remaining) activeByTenant.set(waiter.tenant, remaining);
       else activeByTenant.delete(waiter.tenant);
@@ -64,9 +80,11 @@ export function createDatabaseAdmission(options: {
     });
   }
   function drain() {
+    accountOccupiedTime();
     while (active < capacity && waiting.length) {
       // Interactive work has preference, but a waiting background unit receives one of every
-      // four admissions when its lane has space. Within a lane, prefer the least active tenant;
+      // four admissions when its lane has space and its occupied-time share is paid.
+      // With no interactive queue background can use spare capacity. Within a lane, prefer the least active tenant;
       // equal tenants retain FIFO order. No tenant label is exported in telemetry.
       const preferred: DatabaseWorkload = interactiveTurns >= 3 ? 'background' : 'interactive';
       const lanes: DatabaseWorkload[] = [preferred, preferred === 'interactive' ? 'background' : 'interactive'];
@@ -87,6 +105,7 @@ export function createDatabaseAdmission(options: {
   }
   async function acquire(tenant: string, workload: DatabaseWorkload, signal?: AbortSignal): Promise<() => void> {
     signal?.throwIfAborted();
+    accountOccupiedTime();
     tenant = tenant.toLowerCase();
     // A full queue cannot reject a new eligible lane while all queued work is lane-blocked.
     const immediate = eligible(workload, tenant) && !waiting.some(w => eligible(w.workload, w.tenant));
@@ -118,6 +137,9 @@ export function createDatabaseAdmission(options: {
   }
   return {
     acquire,
-    snapshot: () => ({active, background, waiting: waiting.length, backgroundWaiting, capacity, backgroundCapacity, maxWaiting, maxBackgroundWaiting}),
+    snapshot: () => {
+      accountOccupiedTime();
+      return {active, background, waiting: waiting.length, backgroundWaiting, backgroundDebtMs, capacity, backgroundCapacity, maxWaiting, maxBackgroundWaiting};
+    },
   };
 }
