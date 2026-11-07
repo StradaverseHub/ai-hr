@@ -1,6 +1,8 @@
 import {randomUUID} from 'node:crypto';
 import {eq,sql} from 'drizzle-orm';
-import {JSDOM} from 'jsdom';
+import {createRequire} from 'node:module';
+// The installed test runtime has no declaration; assert only the constructor surface used here.
+const JSDOM=createRequire(import.meta.url)('jsdom').JSDOM as new(html:string)=>{window:{document:Document}};
 import {afterAll,beforeAll,beforeEach,expect,it,vi} from 'vitest';
 import {createTranslator} from 'next-intl';
 import type {SessionContext} from '../db/client';

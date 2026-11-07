@@ -1,8 +1,7 @@
 import {beforeEach,expect,it,vi} from 'vitest';
-// jsdom has no bundled declarations in the repository; type the used constructor.
-// @ts-expect-error -- @types/jsdom is not installed
-import * as jsdomModule from 'jsdom';
-const {JSDOM}=jsdomModule as unknown as {JSDOM:new(html:string)=>{window:Window&typeof globalThis}};
+import {createRequire} from 'node:module';
+// The installed test runtime has no declaration; type only its used constructor.
+const JSDOM=createRequire(import.meta.url)('jsdom').JSDOM as new(html:string)=>{window:{document:Document}};
 import {createTranslator} from 'next-intl';
 import messages from '../messages/en.json';
 const mocks=vi.hoisted(()=>({scope:vi.fn(),read:vi.fn(),selected:vi.fn(),principal:vi.fn(),theme:vi.fn()}));
