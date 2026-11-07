@@ -5,7 +5,7 @@ import {createHomeHttpReplay} from './home-http.mjs';
 import {browserFailureLocation} from './browser-failure.ts';
 import {routeLatency} from './route-latency.mjs';
 import {centreTabsFor} from '../../lib/ai-centre/centre-nav.ts';
-import {firstGroupNavigationRoutes,navigationRoutesForIteration} from './route-scheduling.mjs';
+import {createSteadyRouteScheduler,planSteadyRouteCoverage,navigationProtocol} from './route-scheduling.mjs';
 import {createNavigationCaptureCollector,writeNavigationCaptureBundle} from './navigation-browser-capture.ts';
 import {prepareMixedWorkflows} from './mixed-workflows.mjs';
 import {attendanceRejectionProbeEnabled,prepareAttendanceRejection} from './attendance-rejection-browser.mjs';
@@ -43,7 +43,7 @@ const measuredRoutePools=suite==='whole-system'?routePools:{employee:['/me','/cl
 const thinkTimeMs=Number(process.env.PERF_HTTP_THINK_MS||1000);assert([1000,5000].includes(thinkTimeMs));
 const steadyHoldMs=Number(process.env.PERF_HTTP_HOLD_MS||30000);assert([30000,300000].includes(steadyHoldMs));
 const report={suite,kind:suite==='workflow-preflight'?'HTTP_WORKFLOW_PREFLIGHT_ONLY':'HTTP_AND_CHROMIUM_DEVELOPMENT_ONLY',releaseEligible:false,users:suite==='workflow-preflight'?0:500,fixtureUsers:500,tenants:2,companies:10,startedAt:new Date().toISOString(),
- assumptions:{arrivalWindowMs:10000,thinkTimeMs,steadyHoldMs,navigation:'full-document HTTP stress, observed subject-bound Home GETs and real server actions',navigationScheduling:'disjoint role lanes; group HR prioritizes uncovered routes in cycle one and uses six read slots thereafter; other roles use three; same activity pauses',driverMaxSockets:4000,preflightHttpActorLanes:4,browserVisitReadiness:'domcontentloaded followed by unchanged heading, fixture data and complete Home card assertions',tls:'fixture-only self-signed localhost',browserContexts:6,loadedBrowserSignIns:4,preflightBrowserSignIns:4,persistenceObserverPrincipals:6,persistencePollIntervalMs:100,loginEnrollmentLoad:false,performanceFixture:'enabled dashboard; no assigned review cycle; task-gated tabs excluded'},
+ assumptions:{arrivalWindowMs:10000,thinkTimeMs,steadyHoldMs,navigation:'full-document HTTP stress, observed subject-bound Home GETs and real server actions',navigationProtocol:suite==='whole-system'?navigationProtocol:'unchanged-claims-cycle',navigationScheduling:'shared per-role pending/inflight/completed steady obligations; minimum seven, maximum twelve group-HR reads per cycle; three other reads; same complete mutations and activity pauses; higher read share lowers write iteration frequency; compare only identical frozen v2 protocols',driverMaxSockets:4000,preflightHttpActorLanes:4,browserVisitReadiness:'domcontentloaded followed by unchanged heading, fixture data and complete Home card assertions',tls:'fixture-only self-signed localhost',browserContexts:6,loadedBrowserSignIns:4,preflightBrowserSignIns:4,persistenceObserverPrincipals:6,persistencePollIntervalMs:100,loginEnrollmentLoad:false,performanceFixture:'enabled dashboard; no assigned review cycle; task-gated tabs excluded'},
  workloadManifest:{readRoutes:wholeSystemRouteCount,mutations:['Claims draft create/edit/delete','Leave request create/edit/withdraw','Personnel draft create/edit/delete','Attendance correction and authorized approval'],browserMutations:suite==='claims-heavy'?[]:['Generic Reports saved-definition create/edit/delete (group HR, baseline'+(suite==='whole-system'?' and loaded':'')+')','Service Movement Secondment (group HR, '+(suite==='whole-system'?'loaded':'preflight')+')'],preflightOnly:suite==='workflow-preflight'?['Active Personnel contact edit/restore','E-Letter draft create/edit/withdraw','Concurrent Payroll close/publish','Performance review-cycle draft creation','Rewards annual unit draft creation']:[],processing:['Payroll calculation','Payroll close/employee publication preflight','scoped Payroll CSV generation','clocking-file validation/import'],notCovered:['Navigation destinations outside the reviewed scenario plan',...(suite==='workflow-preflight'?[]:['concurrent Payroll close/publish','active Personnel contact edit/restore','E-Letter draft mutations']),'Lifecycle mutations',...(suite==='workflow-preflight'?['Performance and Rewards mutations beyond draft creation']:['Performance mutations','Rewards mutations']),'large Personnel imports',...(suite==='claims-heavy'?['report-definition CRUD']:['Employee Master and Payroll Comparison definition CRUD','500-principal Reports write mix']),'long-running document jobs','external email delivery'],productionEquivalent:false},
  coverage:[],boundaries:[],browser:[],homeCardFailures:[],browserHomeRequests:[],phases:[],functionalErrors:[],browserErrors:[],persistenceObservers:[],latencyTargetMet:false};
 const save=()=>writeFileSync(join(out,'http-browser.json'),JSON.stringify(report,null,2));
@@ -167,9 +167,7 @@ async function verifyAudit(){
  assert.equal(report.auditVerification.length,2);
 }
 const employee=fixture.users.find(u=>u.role==='employee'),hr=fixture.users.find(u=>u.role==='companyHR'),group=fixture.users.find(u=>u.role==='groupHR'),manager=fixture.users.find(u=>u.role==='manager');
-const routePool=user=>routePools[user.role];
 const roleCounts=new Map(),roleOrdinals=new Map(fixture.users.map(user=>{const ordinal=roleCounts.get(user.role)??0;roleCounts.set(user.role,ordinal+1);return [user.index,ordinal];}));
-const firstGroupRoutes=suite==='whole-system'?firstGroupNavigationRoutes(routePools,roleCounts):[];
 const pendingBrowserRequests=new WeakMap(),browserPdfRequests=new WeakMap();
 let browser,sampling,progressTimer,sqlSnapshotTimer,browserDiagnosticTimer,contextTemplates,lastPage,mixedWorkflows;
 async function prepareDatabaseLockScope(){
@@ -864,11 +862,14 @@ try{
   writeNavigationCaptureBundle(out,baselineCapture);
   report.preflightPassed=true;save();return;
  }
+ const navigationPlan=suite==='whole-system'?planSteadyRouteCoverage({pools:routePools,users:fixture.users,thinkTimeMs,steadyHoldMs}):null;
+ report.navigationCapacityPlan=navigationPlan; // Planning is not measured acceptance.
  clearInterval(sampling);
  await db`select pg_stat_statements_reset()`;
  sampleDatabaseLocks(lockScope,'loaded',1000);
  const resourceCpuBefore=resourceCpu(),appCpuBefore=appCpu(),driverCpuBefore=process.cpuUsage();
  const offset=samples.length,started=performance.now(),steadyStart=started+10000,steadyUntil=steadyStart+steadyHoldMs;
+ const navigationScheduler=navigationPlan?createSteadyRouteScheduler({pools:routePools,roleCounts,steadyStart,steadyUntil,groupReadSlots:navigationPlan.groupReadSlots}):null;
  const progress={launched:0,active:0,peakActive:0,completed:0,failed:0,iterations:0};
  let fullConcurrencyAt=null,earlyLaneExits=0;
  report.trafficSettled=false;report.functionalAccountingComplete=false;
@@ -978,14 +979,16 @@ try{
   if(progress.active===500)fullConcurrencyAt??=performance.now();
   let iteration=0;
   try{do{
-  const pool=routePool(user);
-  const ordinal=roleOrdinals.get(user.index);
-  const routes=suite!=='whole-system'?measuredRoutePools[user.role]:
-   iteration===0&&user.role==='groupHR'?firstGroupRoutes[ordinal]:
-   navigationRoutesForIteration(pool,{role:user.role,ordinal,actors:roleCounts.get(user.role),iteration});
-  for(const route of routes){const navigationStarted=performance.now();await request(user,route);
-   if(route==='/'&&['employee','manager'].includes(user.role))await homeHttp.read(user,true);
-   pageInteractions.push({role:user.role,route,startedMs:navigationStarted,durationMs:performance.now()-navigationStarted});await pause(thinkTimeMs);
+  const ordinal=roleOrdinals.get(user.index),slots=navigationScheduler?.slots(user.role,ordinal,iteration)??measuredRoutePools[user.role].length;
+  for(let slot=0;slot<slots;slot++){
+   const navigationStarted=performance.now(),lease=navigationScheduler?.reserve({role:user.role,ordinal,actors:roleCounts.get(user.role),iteration,slot,startedMs:navigationStarted});
+   const route=lease?.route??measuredRoutePools[user.role][slot];let usable=false;
+   try{
+    await request(user,route);
+    if(route==='/'&&['employee','manager'].includes(user.role))await homeHttp.read(user,true);
+    pageInteractions.push({role:user.role,route,startedMs:navigationStarted,durationMs:performance.now()-navigationStarted});usable=true;
+   }finally{if(lease)navigationScheduler.complete(lease,usable);}
+   await pause(thinkTimeMs);
   }
   if(mixedWorkflows&&await mixedWorkflows.run(user,iteration)){await pause(thinkTimeMs);iteration++;progress.iterations++;continue;}
   const description='PERF_HTTP_'+i+'_'+iteration;
@@ -1062,8 +1065,9 @@ try{
   read:summary(steady.filter(v=>v.role===role&&v.method==='GET').map(v=>v.durationMs)),
   write:summary(steady.filter(v=>v.role===role&&v.method==='POST').map(v=>v.durationMs)),
  }]))};
+ report.steady.navigationCoverage=navigationScheduler?.snapshot()??null;
  report.steady.routeLatency=routeLatency({samples:loaded,pageInteractions,routePools:measuredRoutePools,homeTemplates:suite==='whole-system'?report.homeApiTraffic.templates:[],steadyStart,steadyUntil});
- report.latencyTargetMet=progress.peakActive===500&&earlyLaneExits===0&&report.steady.routeLatency.targetMet&&Object.values(report.steady.roles).every(role=>role.navigation.samples>0&&role.navigation.p95Ms<1000&&role.read.samples>0&&role.write.samples>0&&role.read.p95Ms<1000&&role.write.p95Ms<500);
+ report.latencyTargetMet=(!navigationScheduler||report.steady.navigationCoverage.every(row=>row.pending.length===0&&row.inflight.length===0))&&progress.peakActive===500&&earlyLaneExits===0&&report.steady.routeLatency.targetMet&&Object.values(report.steady.roles).every(role=>role.navigation.samples>0&&role.navigation.p95Ms<1000&&role.read.samples>0&&role.write.samples>0&&role.read.p95Ms<1000&&role.write.p95Ms<500);
  writeFileSync(join(out,'http-samples.json'),JSON.stringify(samples));writeFileSync(join(out,'database-waits.json'),JSON.stringify(waits));
  report.concurrentHomeApiCoverage=report.homeApiTraffic.templates.flatMap(({role,requests})=>requests.map(({path})=>({role,path,requests:loaded.filter(sample=>sample.role===role&&sample.method==='GET'&&sample.route===path).length})));
  await databaseSnapshot('loaded');
