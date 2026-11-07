@@ -11,6 +11,7 @@ const measured=[
  'test/employee-choice-assignment-membership-plan.test.ts',
  'test/employee-choice-organisation-plan.test.ts',
  'test/leave-inquiry-read-cost.test.ts',
+ 'test/notification-canonical-helper-inventory.test.ts',
  'test/payroll-audit-processing-rc.test.ts',
  'test/performance/attendance-punch-index.profile.test.ts',
  'test/performance/claims-preview-index.profile.test.ts',
@@ -57,6 +58,15 @@ const componentSources=Object.freeze({
   'test/fixtures/access-editor-native-owner.ts','test/fixtures/access-editor-cleanup-lifetime.ts','test/fixtures/access-editor-catalogue-diagnostic.ts',
   'test/fixtures/access-editor-owned-work.ts','test/fixtures/access-editor-original739-journal.json',
   'test/fixtures/access-editor-locked-baseline.ts',
+ ]),
+ 'test/notification-canonical-helper-inventory.test.ts':Object.freeze([
+  'test/fixtures/notification-worker/canonical-inventory.ts',
+  'test/fixtures/notification-worker/canonical-inventory-query.ts',
+  'test/fixtures/notification-worker/canonical-inventory-evidence.ts',
+  'test/fixtures/notification-worker/database.ts','test/fixtures/notification-worker/diagnostic-ownership.ts',
+  'test/helpers/personnel-draft-discard-ci-role-fixture.ts',
+  'scripts/lib/discard-premigration.ts','scripts/migrate-with-focused-prerequisites.ts',
+  '.github/ci/run-unit.mjs','.github/ci/manifest.mjs','.github/ci/candidate-environment.mjs',
  ]),
  'test/notification-worker-native-plan-diagnostic.test.ts':Object.freeze([
   'test/harness.ts','lib/notification-worker/lifecycle.ts','lib/notification-worker/projection.ts',

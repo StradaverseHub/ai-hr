@@ -28,14 +28,14 @@ test('every registered infrastructure file remains exactly once in its native cl
  const native=Object.keys(SINGLETON_FILES),ordinary=['test/ordinary-db.test.ts','test/ordinary-nodb.test.ts'];
  const db=native.filter(f=>singletonKind(singletonDescriptor(f).profile)==='db').concat(ordinary[0]),nodb=native.filter(f=>!db.includes(f)).concat(ordinary[1]),suite=[...db,...nodb].sort();
  const units=buildUnits(suite,{db,nodb},browser),special=units.filter(u=>u.singleton);
- assert.equal(special.length,18);assert.deepEqual(units.filter(u=>u.kind!=='browser').flatMap(u=>u.files).sort(),suite);
+ assert.equal(special.length,19);assert.deepEqual(units.filter(u=>u.kind!=='browser').flatMap(u=>u.files).sort(),suite);
  assert(special.every(u=>u.files.length===1&&u.singleton.workers===1));assert.equal(requiredEvidence({suite,units}).units.length,units.length);
  for(const unit of special){const changed=structuredClone(units);changed.find(u=>u.id===unit.id).singleton.workers=2;assert.throws(()=>requiredEvidence({suite,units:changed}));}
  assert.throws(()=>buildUnits([native[0]],{db:[],nodb:[native[0]]},browser));
  assert.deepEqual(requiredHostedSingletons(suite).sort(),native.sort());
 });
 test('actual full-CI host context, complete plan and closed native prerequisites admit',()=>{
- for(const file of ['test/runtime-ready-admission-native.test.ts','test/notification-worker-lifecycle.test.ts','test/analytics-termination-lateral.test.ts','test/runtime-next-admission-native.test.ts','test/access-editor-native-owner-presentation.test.ts','test/notification-worker-native-plan-diagnostic.test.ts']){
+ for(const file of ['test/runtime-ready-admission-native.test.ts','test/notification-worker-lifecycle.test.ts','test/analytics-termination-lateral.test.ts','test/runtime-next-admission-native.test.ts','test/access-editor-native-owner-presentation.test.ts','test/notification-worker-native-plan-diagnostic.test.ts','test/notification-canonical-helper-inventory.test.ts']){
   const f=fixture(file);validateSingletonHost(f);validateSingletonBinding(f.binding,f.plan,f.unit,f.witness);
  }
 });
@@ -132,9 +132,14 @@ test('final independent build verification refuses a native unit that exercised 
  assert.throws(()=>assertNativeBuildMatches(f.plan,reports,packet,artifact,999));
 });
 
-test('Access native-owner and paired notification diagnostics retain isolated authenticated jobs and their exact owned source closure',()=>{
+test('Access native-owner, paired notification and canonical inventory diagnostics retain isolated authenticated jobs and their exact owned source closure',()=>{
  const cases=[['test/access-editor-native-owner-presentation.test.ts','controlled-database-v1',[
   'db/migrations/3211_access_editor_native_owner_presentation.sql','test/fixtures/access-editor-native-owner.ts','test/fixtures/access-editor-cleanup-lifetime.ts','test/fixtures/access-editor-catalogue-diagnostic.ts','test/fixtures/access-editor-owned-work.ts','test/fixtures/access-editor-original739-journal.json','test/fixtures/access-editor-locked-baseline.ts',
+ ]],['test/notification-canonical-helper-inventory.test.ts','controlled-database-v1',[
+  'test/fixtures/notification-worker/canonical-inventory.ts','test/fixtures/notification-worker/canonical-inventory-query.ts','test/fixtures/notification-worker/canonical-inventory-evidence.ts',
+  'test/fixtures/notification-worker/database.ts','test/fixtures/notification-worker/diagnostic-ownership.ts',
+  'test/helpers/personnel-draft-discard-ci-role-fixture.ts','scripts/lib/discard-premigration.ts','scripts/migrate-with-focused-prerequisites.ts',
+  '.github/ci/run-unit.mjs','.github/ci/manifest.mjs','.github/ci/candidate-environment.mjs',
  ]],['test/notification-worker-native-plan-diagnostic.test.ts','notification-cluster-v1',[
   'test/harness.ts','lib/notification-worker/lifecycle.ts','lib/notification-worker/projection.ts','lib/assessment-reminder-mail.ts','test/fixtures/notification-worker/owner-fixture.ts','test/fixtures/notification-worker/database.ts','test/fixtures/notification-worker/diagnostic-ownership.ts','test/fixtures/notification-worker/plan-logging.ts','test/fixtures/notification-worker/auto-explain.ts','test/fixtures/notification-worker/admission-plan-summary.ts','test/fixtures/notification-worker/lifecycle.sql','test/fixtures/notification-worker/projection.sql','test/fixtures/notification-worker/assessment.sql','test/fixtures/notification-worker/process.sql','test/fixtures/notification-worker/query-shape.sql','test/fixtures/notification-worker/exact-source.sql',
  ]]];
@@ -150,6 +155,10 @@ test('Access native-owner and paired notification diagnostics retain isolated au
   }
   assert.throws(()=>assertSingletonSelection([file,'test/ordinary.test.ts']));assert.throws(()=>assertSingletonCoverage([file],()=>"it('unadmitted',()=>{});"));
  }
+ const inventory=readFileSync(new URL('../../test/notification-canonical-helper-inventory.test.ts',import.meta.url),'utf8');
+ assert(inventory.includes('admitSingletonTest(file)'));assert(inventory.includes("assert.equal(admission.mode,'full-ci-singleton'"));
+ assert(inventory.includes("profile:z.literal('controlled-database-v1')"));assert(inventory.includes('validateFullCiRoleReceipt(prerequisite,expectedBinding'));
+ assert(inventory.includes('admission.evidenceDirectory'));assert(!inventory.includes('process.env.AIHR_FOCUSED_'));assert(!/\.(?:skipIf|runIf)\s*\(/.test(inventory));
  const diagnostic=readFileSync(new URL('../../test/notification-worker-native-plan-diagnostic.test.ts',import.meta.url),'utf8');
  assert(diagnostic.includes('admitSingletonTest(filename)'));assert(diagnostic.includes('diagnosticAdmission.evidenceDirectory'));assert(!diagnostic.includes('process.env.AIHR_FOCUSED_'));assert(!/\.(?:skipIf|runIf)\s*\(/.test(diagnostic));
  const access=readFileSync(new URL('../../test/fixtures/access-editor-native-owner.ts',import.meta.url),'utf8');assert(access.includes("readFileSync('test/fixtures/access-editor-original739-journal.json'"));assert(!access.includes("readFileSync('db/migrations/meta/_journal.json'"));
