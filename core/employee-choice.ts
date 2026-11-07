@@ -10,7 +10,7 @@ import {EMPLOYEE_CHOICE_PAGE_SIZE,EMPLOYEE_CHOICE_MAX_PAGE_SIZE,type EmployeeCho
 export class EmployeeChoiceInputError extends Error{}
 export class EmployeeChoiceAccessError extends Error{}
 const uuid=/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/;
-const nonAscii=(value:SQL)=>sql`${value} ~ '[^ -~]'`;
+const nonAscii=(value:SQL)=>sql`(${value} collate "C") ~ '[^ -~]'`;
 const from=sql`from ${employment} join ${person} on ${person.id}=${employment.personId}
  join ${company} on ${company.id}=${employment.companyId}
  left join ${assignment} on ${assignment.employmentId}=${employment.id} and ${assignment.validTo} is null and ${assignment.supersededAt} is null
