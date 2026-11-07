@@ -2,9 +2,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {BOUNDARY_SOURCE,BOUNDARY_LIMITS,admitBoundaryInputs,remainingCompilerMs,stronglyConnected,planBoundary,ambientEntries,orderedBoundaryRoots,resolutionLeafTargets,assertResolutionLeafBytes,assertDeclarationBytes,sha256,
+import {BOUNDARY_SOURCE,BOUNDARY_REF,BOUNDARY_LIMITS,admitBoundaryInputs,remainingCompilerMs,stronglyConnected,planBoundary,ambientEntries,orderedBoundaryRoots,resolutionLeafTargets,assertResolutionLeafBytes,assertDeclarationBytes,sha256,
  validateDeclarationCoverage,contractSource,NEGATIVE_CONTRACTS,expectContractRefusals} from './compiler-boundary-policy.mjs';
-import {exactCoverage,validatePhase,boundaryArguments,experiment} from './compiler-boundary.mjs';
+import {exactCoverage,validatePhase,boundaryArguments,runIndependentConsumers,blockedUnstartedPhases,experiment} from './compiler-boundary.mjs';
 import {boundaryWorker,emitDeclarationSources} from './compiler-boundary-worker.mjs';
 
 test('every distinct implementation emission retains its own native skipped/diagnostic refusal',()=>{
@@ -19,11 +19,11 @@ test('every distinct implementation emission retains its own native skipped/diag
  }
 });
 
-const selection={candidate_ref:'codex/compiler-proven-message-boundaries-20261108',expected_sha:BOUNDARY_SOURCE,
+const selection={candidate_ref:BOUNDARY_REF,expected_sha:BOUNDARY_SOURCE,
  compiler_probe:true,installer_fixture_phase:'compiler-boundary',next_build_cache_phase:'disabled',nodb_probe:false,layout_probe:false,instrument_copies:false};
 test('new closed intent admits only exact source, no concurrent probes or transported state',()=>{
  assert.doesNotThrow(()=>admitBoundaryInputs(selection));
- for(const change of [{candidate_ref:'main'},{expected_sha:'0'.repeat(40)},{compiler_probe:false},{installer_fixture_phase:'full'},
+ for(const change of [{candidate_ref:'main'},{expected_sha:'0'.repeat(40)},{candidate_ref:'codex/compiler-proven-message-boundaries-20261108',expected_sha:'38b047c9f465990e3f26295c035ab9f69b3001d7'},{compiler_probe:false},{installer_fixture_phase:'full'},
   {next_build_cache_phase:'cold'},{filesystem_activation_probe:true},{nodb_probe:true},{layout_probe:true},{instrument_copies:true},
   {managed_compiler_probe:true},{compiler_transport_probe:true},{next_build_cache_origin:'{}'},{compiler_origin_run:'123'}])
   assert.throws(()=>admitBoundaryInputs({...selection,...change}));
@@ -33,10 +33,33 @@ test('new closed intent admits only exact source, no concurrent probes or transp
 });
 test('compiler time is one aggregate720s budget, inventory retains a separate120s bound',()=>{
  assert.equal(BOUNDARY_LIMITS.heapMiB,12288);assert.equal(BOUNDARY_LIMITS.inventoryMs,120000);
+ assert.equal(BOUNDARY_LIMITS.consumerRoots,400);assert.equal(BOUNDARY_LIMITS.consumerClosure,600);
  assert.equal(remainingCompilerMs([{mode:'inventory',elapsedMs:120000}]),720000);
  assert.equal(remainingCompilerMs([{mode:'producer',elapsedMs:400000},{mode:'consumer',elapsedMs:300000}]),20000);
  assert.equal(remainingCompilerMs([{mode:'producer',elapsedMs:720001}]),0);
  assert.deepEqual(boundaryArguments('/controller/worker.mjs','/owned','consumer',3),['/controller/worker.mjs','consumer','/owned','3']);
+});
+test('independent native consumer failures settle sequentially without hiding later failures or successes',async()=>{
+ const attempted=[],blocked=[];let active=0,peak=0;
+ const outcome=await runIndependentConsumers([{id:0},{id:1},{id:2}],async(mode,index)=>{
+  assert.equal(mode,'consumer');active++;peak=Math.max(peak,active);attempted.push(index);
+  try{await Promise.resolve();if(index!==1)throw Error('Native consumer '+index+' refused');return{mode,index,complete:true};}finally{active--;}
+ },()=>70000,row=>blocked.push(row));
+ assert.deepEqual(attempted,[0,1,2]);assert.equal(peak,1);assert.deepEqual(outcome.results,[{mode:'consumer',index:1,complete:true}]);
+ assert.deepEqual(outcome.failures.map(row=>row.index),[0,2]);assert.equal(outcome.failures[0].error,'Error: Native consumer 0 refused');assert.deepEqual(blocked,[]);
+});
+test('aggregate exhaustion records every unstarted consumer as blocked and executes no substitute phase',async()=>{
+ const attempted=[],blocked=[];let remaining=1;
+ const outcome=await runIndependentConsumers([{id:0},{id:1},{id:2}],async(_mode,index)=>{attempted.push(index);remaining=0;throw Error('Actual deadline failure');},()=>remaining,row=>blocked.push(row));
+ assert.deepEqual(attempted,[0]);assert.deepEqual(outcome.results,[]);assert.equal(outcome.failures.length,1);
+ assert.deepEqual(blocked.map(row=>row.index),[1,2]);for(const row of blocked)assert.deepEqual({status:row.status,reason:row.blockedReason,code:row.code,elapsed:row.elapsedMs},{status:'blocked',reason:'aggregate-time-budget',code:null,elapsed:0});
+ await assert.rejects(runIndependentConsumers([{id:1},{id:1}],()=>{throw Error('No invalid phase may run');},()=>1,()=>{}));
+});
+test('failed prerequisites and unavailable inventory produce explicit dependent block records, never empty passes',()=>{
+ const planned=[{mode:'producer'},{mode:'declarations'},{mode:'consumer',index:0},{mode:'consumer',index:1}],prior=[{mode:'producer',status:'failed',elapsedMs:20,code:1}];
+ const blocked=blockedUnstartedPhases(planned,prior,700000);assert.deepEqual(blocked.map(row=>row.mode+(row.index===undefined?'':'-'+row.index)),['declarations','consumer-0','consumer-1']);
+ for(const row of blocked){assert.equal(row.status,'blocked');assert.equal(row.blockedReason,'failed-prerequisite');assert.equal(row.blockedBy,'producer');assert.equal(row.code,null);}
+ assert.equal(blockedUnstartedPhases(planned,[],0).length,4);assert.equal(blockedUnstartedPhases(planned,[],1)[0].blockedBy,'inventory-or-plan');
 });
 function graph(){
  return {roots:['app.ts','core.ts','global.ts','test-a.ts','test-b.ts'],buildRoots:['app.ts','core.ts','global.ts'],
@@ -50,6 +73,15 @@ test('native dependency SCCs stay whole and every original root receives exactly
  assert.deepEqual(plan.consumers[0].roots,['test-a.ts','test-b.ts']);assert.deepEqual(new Set(plan.consumers[0].sourceIds),new Set(['test-a.ts','test-b.ts']));
  input.edges.push({from:'core.ts',to:'test-a.ts'});assert.deepEqual(planBoundary(input).producerRoots,input.roots);
  for(const malformed of [{...graph(),roots:['app.ts','app.ts']},{...graph(),buildRoots:['missing.ts']},{...graph(),files:[]}])assert.throws(()=>planBoundary(malformed));
+});
+test('400-root packing preserves every ordered root and whole native SCC without changing closure refusal',()=>{
+ const base=graph(),roots=Array.from({length:901},(_,i)=>'consumer-'+String(i).padStart(4,'0')+'.ts');
+ const input={roots:[...base.roots.slice(0,3),...roots],buildRoots:base.buildRoots,files:[...base.files.slice(0,3),...roots.map(id=>({id,external:false,declaration:false,ambient:false,json:false}))],edges:base.edges.filter(edge=>!edge.from.startsWith('test-'))};
+ const plan=planBoundary(input);assert.deepEqual(plan.consumers.map(batch=>batch.roots.length),[400,400,101]);assert.deepEqual(plan.consumers.flatMap(batch=>batch.roots),roots);
+ input.edges.push({from:roots[399],to:roots[400]},{from:roots[400],to:roots[399]});const cyclic=planBoundary(input);
+ assert(cyclic.consumers.some(batch=>batch.roots.includes(roots[399])&&batch.roots.includes(roots[400])));assert.deepEqual(cyclic.consumers.flatMap(batch=>batch.roots),roots);
+ const dependencies=Array.from({length:202},(_,i)=>'dependency-'+i+'.mjs');input.files.push(...dependencies.map(id=>({id,external:false,declaration:false,ambient:false,json:false})));
+ input.edges.push(...dependencies.map(to=>({from:roots[0],to})));assert.throws(()=>planBoundary(input),/dependency closure exceeds/);
 });
 test('original configured-root order and native external SCC entry survive context composition',()=>{
  const inventory={roots:['next-env.d.ts','app.ts','test.ts','global.d.ts'],buildRoots:['next-env.d.ts','app.ts','global.d.ts'],

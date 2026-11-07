@@ -9,6 +9,29 @@ import {BOUNDARY_SOURCE,BOUNDARY_LIMITS,sha256,admitBoundaryInputs,remainingComp
 
 export function boundaryArguments(worker,out,mode,index){return [worker,mode,out,...(index===undefined?[]:[String(index)])];}
 export function validatePhase(result){assert(result.code===0&&result.signal===null&&result.stoppedBecause===null&&!result.monitorError,'Native diagnostic phase failed');}
+/** Consumers depend on checked declarations, not on one another. Native type
+ * errors must not hide later independent errors while aggregate time remains. */
+export async function runIndependentConsumers(consumers,run,remaining,recordBlocked){
+ assert(Array.isArray(consumers)&&consumers.every(batch=>Number.isSafeInteger(batch.id)&&batch.id>=0)
+  &&new Set(consumers.map(batch=>batch.id)).size===consumers.length,'Invalid independent consumer plan');
+ const results=[],failures=[],blocked=[];
+ for(const batch of consumers){
+  const budget=remaining();assert(Number.isFinite(budget)&&budget>=0,'Invalid remaining aggregate compiler budget');
+  if(budget===0){const row={mode:'consumer',index:batch.id,status:'blocked',blockedReason:'aggregate-time-budget',elapsedMs:0,budgetMs:0,
+   code:null,signal:null,stoppedBecause:'not-started',monitorError:null};blocked.push(row);recordBlocked(row);continue;}
+  try{results.push(await run('consumer',batch.id));}
+  catch(error){failures.push({mode:'consumer',index:batch.id,error:String(error)});}
+ }
+ return{results,failures,blocked};
+}
+export function blockedUnstartedPhases(planned,phases,budget){
+ assert(Number.isFinite(budget)&&budget>=0,'Invalid blocked-phase aggregate budget');
+ const key=row=>row.mode+(row.index===undefined?'':'-'+row.index),started=new Set(phases.map(key));
+ const failed=phases.find(row=>row.status==='failed');
+ return planned.filter(item=>!started.has(key(item))).map(item=>({...item,status:'blocked',
+  blockedReason:budget===0?'aggregate-time-budget':'failed-prerequisite',blockedBy:failed?key(failed):'inventory-or-plan',
+  elapsedMs:0,budgetMs:budget,code:null,signal:null,stoppedBecause:'not-started',monitorError:null}));
+}
 export function exactCoverage(inventory,plan,phases){
  assert.equal(plan.roots.length,inventory.roots.length);assert.deepEqual(plan.roots,inventory.roots);
  const expected=['producer','declarations','source-negative','declaration-negative',...plan.consumers.map(row=>'consumer-'+row.id)];
@@ -43,7 +66,7 @@ export async function experiment(){
  async function phase(mode,index){
   const budget=mode==='inventory'?BOUNDARY_LIMITS.inventoryMs:remainingCompilerMs(report.phases);assert(budget>0,'Aggregate720s compiler budget exhausted');
   const name=mode+(index===undefined?'':'-'+index),log=join(out,name+'.log'),fd=openSync(log,'wx',0o600),samples=openSync(join(out,name+'-samples.jsonl'),'wx',0o600);
-  const row={mode,index,budgetMs:budget,code:null,signal:null,stoppedBecause:null,monitorError:null,elapsedMs:0,sampledPeakRssKiB:0};report.phases.push(row);
+  const row={mode,index,status:'running',budgetMs:budget,code:null,signal:null,stoppedBecause:null,monitorError:null,elapsedMs:0,sampledPeakRssKiB:0};report.phases.push(row);
   const start=Date.now(),worker=fileURLToPath(new URL('compiler-boundary-worker.mjs',import.meta.url));
   const child=spawn('/usr/bin/prlimit',['--core=0',`--fsize=${BOUNDARY_LIMITS.fileBytes}`,'--',process.execPath,...boundaryArguments(worker,out,mode,index)],{
    cwd,env:{...process.env,NODE_OPTIONS:'--max-old-space-size=12288'},stdio:['ignore',fd,fd],detached:true});
@@ -60,23 +83,34 @@ export async function experiment(){
    }catch(error){row.monitorError=String(error);stop('monitor-failure');}
   };
   try{timer=setInterval(sample,1000);sample();const exit=await new Promise((done,reject)=>{child.once('error',reject);child.once('close',(code,signal)=>done({code,signal}));});
-   Object.assign(row,exit,{elapsedMs:Date.now()-start});assert(row.elapsedMs<=budget,'Aggregate phase time bound exceeded');validatePhase(row);
-   const filename=mode==='inventory'?'inventory-phase.json':name+'.json',path=join(out,filename);assert(existsSync(path),'Native phase report missing');
-   const value=JSON.parse(readFileSync(path,'utf8'));assert(value.complete===true&&value.releaseAuthorized===false);row.resultSha256=sha256(readFileSync(path));
+   Object.assign(row,exit,{elapsedMs:Date.now()-start});
+   const filename=mode==='inventory'?'inventory-phase.json':name+'.json',path=join(out,filename);
+   if(existsSync(path))row.resultSha256=sha256(readFileSync(path)); // Retain actual failed diagnostic bytes too.
+   assert(row.elapsedMs<=budget,'Aggregate phase time bound exceeded');validatePhase(row);assert(existsSync(path),'Native phase report missing');
+   const value=JSON.parse(readFileSync(path,'utf8'));assert(value.complete===true&&value.releaseAuthorized===false);row.status='passed';
    // Full native resolutions/diagnostics stay on disk; do not retain every consumer graph beside the next compiler.
    return {mode:value.mode,index:value.index,complete:value.complete,identity:value.identity,observedOriginalIds:value.observedOriginalIds};
-  }finally{row.elapsedMs=Date.now()-start;clearInterval(timer);clearTimeout(killer);closeSync(fd);closeSync(samples);}
+  }catch(error){row.status='failed';row.error=String(error);throw error;}
+  finally{row.elapsedMs=Date.now()-start;clearInterval(timer);clearTimeout(killer);closeSync(fd);closeSync(samples);}
  }
  try{
   await phase('inventory');const inventory=JSON.parse(readFileSync(join(out,'inventory.json'),'utf8')),plan=JSON.parse(readFileSync(join(out,'plan.json'),'utf8'));
+  report.plannedPhases=[...['producer','declarations','source-negative','declaration-negative'].map(mode=>({mode})),...plan.consumers.map(batch=>({mode:'consumer',index:batch.id}))];
   report.inventorySha256=sha256(readFileSync(join(out,'inventory.json')));report.planSha256=sha256(readFileSync(join(out,'plan.json')));
   const results=[];results.push(await phase('producer'));results.push(await phase('declarations'));
   results.push(await phase('source-negative'));results.push(await phase('declaration-negative'));
-  for(const batch of plan.consumers)results.push(await phase('consumer',batch.id));
+  const consumers=await runIndependentConsumers(plan.consumers,phase,()=>remainingCompilerMs(report.phases),row=>report.phases.push(row));
+  results.push(...consumers.results);report.consumerFailures=consumers.failures;
+  assert(consumers.failures.length===0&&consumers.blocked.length===0,'Independent compiler consumers failed or were blocked; all actual outcomes retained');
   report.coverage=exactCoverage(inventory,plan,results);assert(remainingCompilerMs(report.phases)>0,'Compiler aggregate budget exhausted');
   assert(outputBytes()<=BOUNDARY_LIMITS.totalBytes);report.complete=true;
  }catch(error){report.error=String(error);throw error;}
  finally{
+  // A failed prerequisite prevents trustworthy dependent work. Record every
+  // known planned phase that did not start instead of inventing empty passes.
+  const planned=report.plannedPhases??['producer','declarations','source-negative','declaration-negative'].map(mode=>({mode}));
+  report.phases.push(...blockedUnstartedPhases(planned,report.phases,remainingCompilerMs(report.phases)));
+  if(!report.plannedPhases)report.consumerPlanUnavailable={status:'blocked',blockedReason:'inventory-or-plan-failure',consumersKnown:false};
   report.sourceRestored=git(cwd,'rev-parse','HEAD')===BOUNDARY_SOURCE&&git(cwd,'status','--porcelain')==='';
   report.controllerRestored=git(controller,'rev-parse','HEAD')===process.env.AIHR_CI_CONTROL_HEAD&&git(controller,'status','--porcelain')==='';
   if(!report.sourceRestored||!report.controllerRestored)report.complete=false;

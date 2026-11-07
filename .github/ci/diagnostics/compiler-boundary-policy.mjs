@@ -2,14 +2,15 @@
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
 
-export const BOUNDARY_SOURCE='38b047c9f465990e3f26295c035ab9f69b3001d7';
+export const BOUNDARY_SOURCE='f2b1ae1a9af20bdb30f28ed9b537aa08994dfc10';
+export const BOUNDARY_REF='codex/compiler-rewards-fixture-principal-20261108';
 export const BOUNDARY_LIMITS=Object.freeze({heapMiB:12288,inventoryMs:120000,compilerMs:720000,
- fileBytes:512*1024**2,totalBytes:1024**3,logBytes:16*1024**2,consumerRoots:200,consumerClosure:600});
+ fileBytes:512*1024**2,totalBytes:1024**3,logBytes:16*1024**2,consumerRoots:400,consumerClosure:600});
 export const sha256=value=>createHash('sha256').update(value).digest('hex');
 export function admitBoundaryInputs(inputs){
  assert.equal(inputs.installer_fixture_phase,'compiler-boundary');assert.equal(inputs.compiler_probe,true);
  assert.equal(inputs.expected_sha,BOUNDARY_SOURCE);assert.equal(inputs.next_build_cache_phase,'disabled');
- assert.equal(inputs.candidate_ref,'codex/compiler-proven-message-boundaries-20261108');
+ assert.equal(inputs.candidate_ref,BOUNDARY_REF);
  for(const [key,value]of Object.entries(inputs))if(typeof value==='boolean'&&key!=='compiler_probe')assert.equal(value,false,key);
  for(const key of ['transport_origin_run','transport_origin_sha','transport_origin_artifact','transport_origin_digest',
   'compiler_origin_run','compiler_origin_sha','compiler_origin_artifact','compiler_origin_digest','next_build_cache_origin'])

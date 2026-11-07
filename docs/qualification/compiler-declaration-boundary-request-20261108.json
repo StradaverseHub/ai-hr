@@ -1,13 +1,13 @@
 {
   "kind": "DEVELOPMENT_ONLY_CHECKED_DECLARATION_BOUNDARY_NOT_RELEASE",
-  "controllerBase": "6ca270f87d64a8cd20d56e22e783fb25ca95d313",
-  "controllerRef": "codex/compiler38-native-declaration-emission-recovery-20261108",
-  "source": "38b047c9f465990e3f26295c035ab9f69b3001d7",
-  "sourceRef": "codex/compiler-proven-message-boundaries-20261108",
+  "controllerBase": "4e04ffc750e33d1d82b1aca9497ffa8296bd474d",
+  "controllerRef": "codex/compiler-bounded-consumer-recovery-20261108",
+  "source": "f2b1ae1a9af20bdb30f28ed9b537aa08994dfc10",
+  "sourceRef": "codex/compiler-rewards-fixture-principal-20261108",
   "workflow": "alpha-staging-diagnostics.yml",
   "inputs": {
-    "candidate_ref": "codex/compiler-proven-message-boundaries-20261108",
-    "expected_sha": "38b047c9f465990e3f26295c035ab9f69b3001d7",
+    "candidate_ref": "codex/compiler-rewards-fixture-principal-20261108",
+    "expected_sha": "f2b1ae1a9af20bdb30f28ed9b537aa08994dfc10",
     "filesystem_activation_probe": false,
     "installer_fixture_phase": "compiler-boundary",
     "plan_probe": false,
@@ -52,12 +52,13 @@
     "perPartitionCompilerBudget": false,
     "jobTimeoutMinutes": 20,
     "sequentialFreshProcesses": true,
-    "compilerStateCache": false
+    "compilerStateCache": false,
+    "consumerRoots": 400,
+    "consumerSourceClosure": 600
   },
   "coverageContract": {
     "originalOrderedRootNames": 8823,
     "originalResolvedFiles": 11268,
-    "originalInventorySha256": "64150993b2990e6b4b405a1211037cca665887fb5068f97bebfb3e1e54a5dbbd",
     "realNativeResolution": true,
     "originalAmbientOrderRequired": true,
     "nativeEmissionRequired": true,
@@ -68,22 +69,26 @@
     },
     "sourceAndDeclarationApiRefusals": 5,
     "nativeReceiverSourceAndForeignOutputRefusal": true,
-    "originalRootExclusionsAdded": false
+    "originalRootExclusionsAdded": false,
+    "historicalOriginalInventorySha256": "64150993b2990e6b4b405a1211037cca665887fb5068f97bebfb3e1e54a5dbbd",
+    "newSourceInventoryRequired": true,
+    "nativeSccMembershipAndOriginalRootOrderPreserved": true
   },
   "sourceSha256": {
-    ".github/ci/diagnostics/compiler-boundary.mjs": "a22845af414e50ba6df066edb63490d824db465a55ddce2ed18816521cce95ec",
+    ".github/ci/diagnostics/compiler-boundary.mjs": "7aaba25ca399a108e87e8164cfa2d133b72f2a7e4139a1100265aebd87e1b68f",
     ".github/ci/diagnostics/compiler-boundary-worker.mjs": "410428b90e613d631397b6bca1235617df3096b22c539615d023ae566c77bbcd",
-    ".github/ci/diagnostics/compiler-boundary-policy.mjs": "baaf81e48ccb9747398889005c798f91f922c33ac53292e72a62d249bdb4e98d",
-    ".github/ci/diagnostics/compiler-boundary.test.mjs": "ba312f4ea55f20f3a54cecf5fa5ccf68f5c616e564fa41aee739e62d53f3081d",
+    ".github/ci/diagnostics/compiler-boundary-policy.mjs": "a42c884201ba83bf33f82ed1f5628be85c0799258982e607b775815de5c11064",
+    ".github/ci/diagnostics/compiler-boundary.test.mjs": "36a99fa3af0715e5a6866fb1b6d0241c82e0ab9eaca348c09a6e1783af9790ea",
     ".github/ci/diagnostics/compiler-attribution.mjs": "21fecd10f733fc7a610cca8cd45b5776ea06deb6851b9053ed101ad8c8507767",
     ".github/ci/diagnostics/compiler-attribution.test.mjs": "50f86f858f5052215b2902d28207c2d2e1c3ee5ce580e3034991f464046da235",
-    ".github/workflows/alpha-staging-diagnostics.yml": "633d1284971936bb0e1bdfefb63c42f3ab6b52cabc442c73a09e18b565198155",
-    "docs/architecture/COMPILER-DECLARATION-BOUNDARY-EXPERIMENT-20261108.md": "2bd75fb2446359d77cec978061a32011847355f1b19fadc7b8f4105cae481e19",
+    ".github/workflows/alpha-staging-diagnostics.yml": "0c59a75fe7b943984412878225be1862744fcad91cbb9dc22098dcc345168eed",
+    "docs/architecture/COMPILER-DECLARATION-BOUNDARY-EXPERIMENT-20261108.md": "2619cc4d83e754805ff6f48c5220a03f874397ffafa90f1c5e8fe293741b09a9",
     "docs/qualification/compiler-native-ambient-context-recovery-20261108.md": "8872cb3484429ffc4b7f25ebc3b1a86a46f1e04446dea3bdfe78424b3bb9fcfa",
     "docs/qualification/compiler-native-resolution-leaves-recovery-20261108.md": "977298fb5ad15ee137a7a395eb4243e83ed0235aede84973a54b7e023b13ad6d",
-    "docs/qualification/compiler-native-declaration-emission-recovery-20261108.md": "c4a061a101477232b2cc9805734af7b760d56d469ddb2d6c46c409486e6c470f"
+    "docs/qualification/compiler-native-declaration-emission-recovery-20261108.md": "c4a061a101477232b2cc9805734af7b760d56d469ddb2d6c46c409486e6c470f",
+    "docs/qualification/compiler-bounded-consumer-recovery-20261108.md": "07ef3dff49a396df80b975f14f60f8149e440cf073010e6acda3be5ff69f05f3"
   },
-  "qualification": "NOT_RUN native per-implementation emission recovery; original42409150861 remains FAIL after producer semantic/emission diagnostics were empty. Full graph/declarations/consumers and ordinary compiler acceptance remain unqualified. Source/syntax review only.",
+  "qualification": "NOT_RUN bounded-consumer recovery; current source fixture native check pending. Exact old4e/38 partial native passes and consumer13 real errors retained; source+packing identity changed so all new native phases required; ordinary compiler remains unqualified.",
   "retainedFailure": {
     "run": 42402718235,
     "source": "38b047c9f465990e3f26295c035ab9f69b3001d7",
@@ -164,5 +169,73 @@
     "preserveJsonProgramInputs": true,
     "perOwnedImplementationNativeEmitRequired": true,
     "hiddenCompilerOutputRetained": true
+  },
+  "sourceFixtureVerification": {
+    "selector": "test/rewards-setup-presentation-snapshot.test.ts",
+    "source": "f2b1ae1a9af20bdb30f28ed9b537aa08994dfc10",
+    "nativeCases": 3,
+    "status": "PENDING_HOSTED_CHECK"
+  },
+  "boundedConsumerRecovery": {
+    "base": "4e04ffc750e33d1d82b1aca9497ffa8296bd474d",
+    "run": 42410522319,
+    "producerSemanticAnd4927NativeEmissions": "PASS_AT_OLD_SOURCE",
+    "ownedDeclarationValidation4927": "PASS_AT_OLD_SOURCE",
+    "nativeApiRefusalControls": "BOTH5PASS_AT_OLD_SOURCE",
+    "consumersPassedAtOldSource": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12
+    ],
+    "failedConsumer": 13,
+    "nativeDiagnostics": [
+      {
+        "code": 1320,
+        "file": "test/rewards-setup-presentation-snapshot.test.ts",
+        "line": 91
+      },
+      {
+        "code": 2345,
+        "file": "test/rewards-setup-presentation-snapshot.test.ts",
+        "line": 91
+      }
+    ],
+    "unrunConsumers": [
+      14,
+      15,
+      16,
+      17,
+      18,
+      19
+    ],
+    "compilerElapsedMs": 648844,
+    "remainingAggregateMs": 71156,
+    "adjacent400RootClosureCounts": [
+      466,
+      441,
+      448,
+      460,
+      475,
+      464,
+      466,
+      465,
+      456,
+      311
+    ],
+    "closureLimitRemains600": true,
+    "independentFailuresCollected": true,
+    "budgetAndDependencyBlockRecords": true,
+    "noPriorPhaseRelabel": true,
+    "analysisSha256": "1fdb1b6523a5e4c284638b407a608705a718ebaedd95576d7debbe1012be4432"
   }
 }

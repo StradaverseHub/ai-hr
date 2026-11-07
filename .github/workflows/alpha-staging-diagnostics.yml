@@ -352,7 +352,7 @@ jobs:
           retention-days: 14
 
   compiler-boundary:
-    if: ${{ inputs.installer_fixture_phase == 'compiler-boundary' && inputs.compiler_probe && inputs.expected_sha == '38b047c9f465990e3f26295c035ab9f69b3001d7' }}
+    if: ${{ inputs.installer_fixture_phase == 'compiler-boundary' && inputs.compiler_probe && inputs.expected_sha == 'f2b1ae1a9af20bdb30f28ed9b537aa08994dfc10' }}
     needs: resolve
     runs-on: ubuntu-24.04
     timeout-minutes: 20

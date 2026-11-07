@@ -1,7 +1,9 @@
 # Checked declaration boundary experiment
 
-Status: DEVELOPMENT ONLY, unrun. Exact application source38b047c9f465990e3f26295c035ab9f69b3001d7;
-controller is an isolated child of6098bb43165891ee06f21821645e89b1e0f67a19.
+Status: DEVELOPMENT ONLY. Current recovery source isf2b1ae1a9af20bdb30f28ed9b537aa08994dfc10,
+the concrete Rewards fixture-principal child of38b047c9f465990e3f26295c035ab9f69b3001d7.
+Its diagnostic controller is an isolated child of4e04ffc750e33d1d82b1aca9497ffa8296bd474d;
+current source and packing remain unrun. Original38/4e04 outcomes stay attached to that source.
 No application, ordinary compiler, production tsconfig, release verifier, compiler cache,
 staging or production source is adopted by this experiment. Production remains held.
 
@@ -38,7 +40,7 @@ ownership. Imported dependency identities remain pinned; every original resolved
 file must be observed across the complete producer/consumer union. Any back-edge pulls its whole dependency SCC into the producer.
 Every root of the original tsconfig.json independently receives exactly one primary
 producer/consumer owner. Iterative graph traversal avoids a JavaScript stack limit.
-Consumer SCCs are packed deterministically to200 primary roots; source dependency
+Consumer SCCs are packed deterministically to400 primary roots; source dependency
 closures over600 identities refuse rather than silently expand the budget. Transitively
 rechecked helpers are recorded, not subtracted from original coverage.
 
@@ -68,6 +70,25 @@ Virtual declaration paths are backed only by the exact fresh emitted files. Pnpm
 aliases retain native realpath/package identity and must resolve to original hashed
 files. No source fallback, stale declaration, unregistered source or foreign output
 can satisfy coverage. JSON remains an original immutable type-bearing leaf.
+
+The fully terminal4e04 experiment42410522319 passed all4927 producer semantic/
+native emissions,4927 owned declaration validation, both five-code API refusal
+programs and consumers0–12. Consumer13 refused the actual optional userId SQL
+parameter with TS1320/2345; later consumers did not run. The f2b source fix narrows
+that real fixture value without an application change. Actual consumer peaks were
+1356404–2030160KiB samples and17–24-second fresh processes. Adjacent
+400-root source closure unions are311–475, so the original600 closure bound stays
+unchanged. The new packing reduces repeated program startup, with the same exact
+root ownership, order, SCCs, ambient, semantics and720s aggregate/12GiB limits.
+
+Independent consumer failures now accumulate while remaining aggregate time
+permits. A failing consumer cannot make a later independent phase disappear;
+every unsuccessful native report/log and byte hash remains retained. Aggregate
+exhaustion creates explicit unstarted blocked records, with no fabricated exit0.
+Failed prerequisites legitimately block dependent phases and produce explicit
+records. Any failed/blocked phase leaves the overall experiment failed and full
+coverage unqualified. Original-source partial passes are not reused as new-source
+or ordinary release acceptance.
 
 The original skipLibCheck=true policy must not hide errors introduced by generated
 declarations. A separate program enables declaration checking and requests semantic
