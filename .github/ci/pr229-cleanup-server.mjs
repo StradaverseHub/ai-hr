@@ -5,7 +5,7 @@ import {execFileSync} from 'node:child_process';
 import {join} from 'node:path';
 import {randomBytes} from 'node:crypto';
 import {fileURLToPath,pathToFileURL} from 'node:url';
-import {selection as S,digest,canonical,runtimeBinding,validateCertificate,validateCommit} from './pr229-cleanup-policy.mjs';
+import {selection as S,digest,canonical,runtimeBinding,validateCertificate,validateCommit,parseServiceSnapshot} from './pr229-cleanup-policy.mjs';
 import {createCleanupReadonlyRuntime} from './pr229-cleanup-runtime.mjs';
 export const toolFiles=['policy','runtime','fences','server'].map(n=>'pr229-cleanup-'+n+'.mjs');
 export const toolHash=()=>digest(toolFiles.map(n=>[n,digest(readFileSync(new URL(n,import.meta.url)))]));
@@ -33,8 +33,8 @@ async function serve(mode,certPath){
  return withNormalCleanupLock(directory,{source:S.source,installId:S.installId,pid:process.pid,purpose:'explicit-existing-authority-cleanup-only'},async()=>{
   const runtime=await createCleanupReadonlyRuntime({source,selection:S,permission,readMetadata});
   const imported=await import(pathToFileURL(join(source,'scripts/improve/release.ts')).href),official={...(imported.default??{}),...imported},exclude=canonicalSourceExclusions(official.deploymentRsyncArgs(source));
-  const show=n=>execFileSync('systemctl',['show','aihr','--property='+n,'--value'],{encoding:'utf8',timeout:3000}).trim();
-  const fences=()=>captureNormalCleanupFences({source,p,activated,exclude,recordNames:[...originals,'audit/system-testing.json','audit/successful-build.json','audit/build-provenance.json','audit/bytes/build-bundle-files.json'],ports:{authority:async()=>{await permission();assert(digest(records())===digest(initial));readMetadata();},lease:async()=>lease(),leaseIdentity:async()=>({batch:S.batch,epoch:String(S.epoch)}),runtime:async()=>runtime.runtimeContract(source,p.grant),service:async()=>({pid:show('MainPID'),started:show('ExecMainStartTimestampMonotonic'),active:execFileSync('systemctl',['is-active','aihr'],{encoding:'utf8'}).trim()==='active'}),boot:async()=>digest(readFileSync('/proc/sys/kernel/random/boot_id')),environment:async()=>fingerprintStagingEnvironment(source),ledger:async()=>collectMigrationLedger(source),health:async()=>{const r=await fetch('http://127.0.0.1:3000/health',{redirect:'manual',signal:AbortSignal.timeout(3000)});await r.arrayBuffer();return r.status;}}});
+  const service=()=>parseServiceSnapshot(execFileSync('systemctl',['show','aihr','--property=MainPID,ExecMainStartTimestampMonotonic,ActiveState'],{encoding:'utf8',timeout:3000}));
+  const fences=()=>captureNormalCleanupFences({source,p,activated,exclude,recordNames:[...originals,'audit/system-testing.json','audit/successful-build.json','audit/build-provenance.json','audit/bytes/build-bundle-files.json'],ports:{authority:async()=>{await permission();assert(digest(records())===digest(initial));readMetadata();},lease:async()=>lease(),leaseIdentity:async()=>({batch:S.batch,epoch:String(S.epoch)}),runtime:async()=>runtime.runtimeContract(source,p.grant),service:async()=>service(),boot:async()=>digest(readFileSync('/proc/sys/kernel/random/boot_id')),environment:async()=>fingerprintStagingEnvironment(source),ledger:async()=>collectMigrationLedger(source),health:async()=>{const r=await fetch('http://127.0.0.1:3000/health',{redirect:'manual',signal:AbortSignal.timeout(3000)});await r.arrayBuffer();return r.status;}}});
   const before=await fences(),actual=await runtime.audit(),after=await fences();assert(digest(before)===digest(after),'Full audit drift');
   const inspection={fences:digest(after),originals:digest(initial),runtime:digest(runtimeBinding(actual))};
   if(mode==='inspect')return {kind:'PR229_CLEANUP_READ_ONLY_INSPECTION',selection:S,tool,inspection,runtime:actual,fences:after,originals:initial,verifiedAt:new Date().toISOString()};

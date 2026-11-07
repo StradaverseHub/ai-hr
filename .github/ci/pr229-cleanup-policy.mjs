@@ -21,3 +21,11 @@ export function validateCommit(v,ready,cert,tool,now=Date.now()){
  const at=Date.parse(v.checkedAt),r=Date.parse(ready.readyAt);
  assert(Number.isFinite(at)&&Number.isFinite(r)&&r>=Date.parse(cert.issuedAt)&&r<=at&&at<=now&&now-at<=60000&&now-r<=180000&&v.outputSha256===digest(''),'Fresh actual empty canonical checksum');return v;
 }
+/** One real systemd response supplies the same three service fields as separate queries. */
+export function parseServiceSnapshot(text){
+ const rows=text.trim().split('\n').map(line=>line.split('='));
+ assert(rows.every(r=>r.length===2)&&rows.length===3,'Exact service snapshot lines');
+ const p=Object.fromEntries(rows);assert(same(Object.keys(p).sort(),['ActiveState','ExecMainStartTimestampMonotonic','MainPID']),'Exact distinct service fields');
+ assert(/^[1-9][0-9]*$/.test(p.MainPID)&&/^[1-9][0-9]*$/.test(p.ExecMainStartTimestampMonotonic),'Live process and start required');
+ return {pid:p.MainPID,started:p.ExecMainStartTimestampMonotonic,active:p.ActiveState==='active'};
+}
