@@ -56,6 +56,18 @@ describe('0280 — job_run RLS', () => {
     expect(rows[0].result).toEqual({ granted: 12 });
   });
 
+  it('bounds each job independently so a busy minute worker cannot hide older daily history', async () => {
+    const ids = Array.from({length: 125}, (_, n) => '00000000-0000-4000-8000-'+n.toString(16).padStart(12,'0'));
+    await owner.db.insert(schema.jobRun).values(ids.map(id => ({id,jobKey:'notifications.project',outcome:'success',ranAt:new Date('2030-01-01T00:00:00Z')})));
+    const rows = await listRecentJobRuns(groupAdmin, 7);
+    expect(rows.filter(row => row.jobKey === 'notifications.project').map(row => row.id)).toEqual(ids.slice(-7).reverse());
+    expect(rows.filter(row => row.jobKey === 'leave.accrue')).toHaveLength(1);
+    expect(rows).toHaveLength(8);
+    expect(rows.every(row => row.ranAt instanceof Date)).toBe(true);
+    expect(await listRecentJobRuns(scopedAdmin, 7)).toEqual([]);
+    for (const invalid of [0,-1,1.5,101,NaN]) await expect(listRecentJobRuns(groupAdmin,invalid)).rejects.toThrow('Invalid job history limit');
+  });
+
   it('a company-scoped hr_admin sees zero rows', async () => {
     expect(await listRecentJobRuns(scopedAdmin)).toHaveLength(0);
   });

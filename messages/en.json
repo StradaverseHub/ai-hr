@@ -16903,12 +16903,24 @@
     "colRanAt": "Ran at",
     "colOutcome": "Outcome",
     "colError": "Error",
+    "notificationEvidenceUnverified": "Run history does not verify the installed worker release or email receipt.",
     "outcome": {
+      "running": "Started; completion not recorded",
       "success": "Success",
       "partial": "Partial",
       "failed": "Failed"
     },
     "counters": {
+      "processedEvents": "Events processed",
+      "createdNotifications": "Notifications created",
+      "committedBatches": "Batches committed",
+      "pendingEvents": "Events pending",
+      "oldestPendingSeconds": "Oldest pending age (seconds)",
+      "cappedTenants": "Companies reaching batch limit",
+      "emailAttempted": "Email attempts",
+      "emailSkipped": "Emails skipped",
+      "emailUnavailableTenants": "Companies with unavailable email",
+      "emailCappedTenants": "Companies reaching email batch limit",
       "granted": "Days granted",
       "opened": "Reviews opened",
       "reminders": "Reminders sent",
@@ -16918,6 +16930,10 @@
       "tenantsAlarming": "Companies with an alarm"
     },
     "jobs": {
+      "notifications-project": {
+        "name": "Notification processing",
+        "description": "Processes pending notification events and records committed work and backlog. Email delivery has separate outcomes."
+      },
       "leave-accrue": {
         "name": "Earned leave top-up",
         "description": "Adds the leave days employees have earned so far."

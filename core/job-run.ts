@@ -12,7 +12,8 @@
  * policy (app.is_group_admin()) is what actually scopes it — a company-scoped hr_admin gets zero rows
  * even if the page's own gate were ever removed.
  */
-import { desc, inArray } from 'drizzle-orm';
+import { and, desc, eq } from 'drizzle-orm';
+import { unionAll } from 'drizzle-orm/pg-core';
 import { createDb, withTenant, type SessionContext } from '../db/client';
 import { jobRun } from '../db/schema';
 
@@ -20,13 +21,14 @@ import { jobRun } from '../db/schema';
  *
  *  c459bff9 removed 'leave.expire-aged': the sweep, its script and the leave-type expiry columns it read
  *  are gone. Note what dropping the key does — listRecentJobRuns filters history with
- *  inArray(jobRun.jobKey, JOB_KEYS), so past runs of the deleted sweep stop appearing on the Scheduled
+ *  the active JOB_KEYS, so past runs of the deleted sweep stop appearing on the Scheduled
  *  Actions screen. The job_run ROWS are kept in the table; only the screen stops listing a job that can
  *  never run again. */
 export const JOB_KEYS = [
   'leave.accrue',
   'replacement-holidays.reconcile',
   'review.sweep',
+  'notifications.project',
   'leave.expire-carry',
   // ADR-0077 slice 10 (r113) — the usage meter. Unlike the sweeps above, a MISSED RUN IS A PERMANENT HOLE:
   // the others recompute from stored dates, this one records a fact that stops being observable.
@@ -51,10 +53,9 @@ export type JobKey = (typeof JOB_KEYS)[number];
 export type JobOutcome = 'success' | 'partial' | 'failed';
 
 /**
- * Static, code-side description of each job for the admin screen. The schedule strings describe the
- * CRONTAB installed on the host (deploy/DEPLOY.md paragraph 5b), which c459bff9 confirmed is the live
- * scheduler — the systemd units under deploy/systemd/ are an opt-in path deploy.sh never enables. The
- * strings are display-only and nothing reads them. Display NAMES and DESCRIPTIONS are NOT here — they
+ * Static legacy descriptions; these schedule strings do not prove a schedule is installed. Current
+ * scheduler state comes from runner control, and the page does not advertise these static schedules.
+ * Display NAMES and DESCRIPTIONS are NOT here — they
  * live in i18n (scheduledActions.jobs.<i18nKey>.name/.description), so they are never stored in the DB
  * and never untranslated.
  *
@@ -67,6 +68,7 @@ export const JOBS: readonly JobDescriptor[] = [
   {key:'replacement-holidays.reconcile',i18nKey:'replacement-holidays-reconcile',schedule:'Every minute — queued changes; daily reconciliation'},
   { key: 'leave.accrue', i18nKey: 'leave-accrue', schedule: 'Monthly — 1st at 02:00' },
   { key: 'review.sweep', i18nKey: 'review-sweep', schedule: 'Daily — 03:00' },
+  { key: 'notifications.project', i18nKey: 'notifications-project', schedule: 'Installed notification runner — check runner inventory' },
   { key: 'leave.expire-carry', i18nKey: 'leave-expire-carry', schedule: 'Yearly — 1 April at 03:00' },
   { key: 'usage.capture', i18nKey: 'usage-capture', schedule: 'Daily — 01:00' },
   { key: 'anomaly.sweep', i18nKey: 'anomaly-sweep', schedule: 'Daily — 02:30' },
@@ -148,6 +150,32 @@ export async function recordJobRun(db: OwnerDb, input: RecordJobRunInput): Promi
   });
 }
 
+/** A durable start is deliberately separate from legacy completion-only sweep logging. A crash leaves
+ * outcome=running and duration=NULL; neither a start nor an old success proves current worker health. */
+export type StartedJobRun = { id: string; jobKey: JobKey; startedAt: Date };
+export async function startJobRun(db: OwnerDb, jobKey: JobKey, result: Record<string, number>): Promise<StartedJobRun> {
+  const [row] = await db.insert(jobRun).values({ jobKey, outcome: 'running', result })
+    .returning({ id: jobRun.id, startedAt: jobRun.ranAt });
+  if (!row) throw new Error('Scheduled run start was not recorded.');
+  return { ...row, jobKey };
+}
+
+/** Only the matching unfinished run may become terminal. Failure to persist evidence rejects; callers
+ * using this tracked contract must exit nonzero rather than silently manufacture a healthy heartbeat. */
+export async function completeJobRun(db: OwnerDb, run: StartedJobRun, input: {
+  outcome: JobOutcome; tenantsProcessed: number; tenantsFailed: number;
+  result: Record<string, number>; error?: string | null;
+}): Promise<void> {
+  const completed = await db.update(jobRun).set({
+    outcome: input.outcome,
+    durationMs: Math.max(0, Math.round(Date.now() - run.startedAt.getTime())),
+    tenantsProcessed: input.tenantsProcessed, tenantsFailed: input.tenantsFailed,
+    result: input.result, error: input.error ?? null,
+  }).where(and(eq(jobRun.id, run.id), eq(jobRun.jobKey, run.jobKey), eq(jobRun.outcome, 'running')))
+    .returning({ id: jobRun.id });
+  if (completed.length !== 1) throw new Error('Scheduled run completion was not recorded.');
+}
+
 export type JobRunRow = {
   id: string;
   jobKey: string;
@@ -160,20 +188,14 @@ export type JobRunRow = {
   error: string | null;
 };
 
-/**
- * Recent runs for the admin screen, newest first, across every job in JOB_KEYS in one query. `perJob` caps how
- * many runs the caller intends to show per job; the LIMIT here is that cap times the number of jobs,
- * which is a safe upper bound since the caller groups and slices afterwards. Returns [] for anyone the
- * job_run_read policy does not admit — RLS, not a thrown error.
- */
+/** Bound each key through its existing (job_key, ran_at) index before combining history. A minute
+ * worker must not displace slower jobs. All branches retain the original application-role RLS. */
 export async function listRecentJobRuns(ctx: SessionContext, perJob = 10): Promise<JobRunRow[]> {
-  const rows = await withTenant(ctx, (tx) =>
-    tx
-      .select()
-      .from(jobRun)
-      .where(inArray(jobRun.jobKey, [...JOB_KEYS]))
-      .orderBy(desc(jobRun.ranAt))
-      .limit(perJob * JOB_KEYS.length),
-  );
-  return rows as JobRunRow[];
+  if (!Number.isInteger(perJob) || perJob < 1 || perJob > 100) throw new Error('Invalid job history limit.');
+  return withTenant(ctx, async tx => {
+    const history = (key: JobKey) => tx.select().from(jobRun).where(eq(jobRun.jobKey, key))
+      .orderBy(desc(jobRun.ranAt), desc(jobRun.id)).limit(perJob);
+    const bounded = unionAll(history(JOB_KEYS[0]), ...JOB_KEYS.slice(1).map(history)).as('recent_job_runs');
+    return tx.select().from(bounded).orderBy(desc(bounded.ranAt), desc(bounded.id));
+  });
 }

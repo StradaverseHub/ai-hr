@@ -16903,12 +16903,24 @@
     "colRanAt": "Thời điểm chạy",
     "colOutcome": "Kết quả",
     "colError": "Lỗi",
+    "notificationEvidenceUnverified": "Lịch sử chạy không xác minh phiên bản tiến trình đã cài đặt hoặc việc nhận email.",
     "outcome": {
+      "running": "Đã bắt đầu; chưa ghi nhận hoàn tất",
       "success": "Thành công",
       "partial": "Một phần",
       "failed": "Thất bại"
     },
     "counters": {
+      "processedEvents": "Sự kiện đã xử lý",
+      "createdNotifications": "Thông báo đã tạo",
+      "committedBatches": "Lô đã xác nhận",
+      "pendingEvents": "Sự kiện đang chờ",
+      "oldestPendingSeconds": "Thời gian chờ lâu nhất (giây)",
+      "cappedTenants": "Công ty đạt giới hạn lô",
+      "emailAttempted": "Lần thử email",
+      "emailSkipped": "Email đã bỏ qua",
+      "emailUnavailableTenants": "Công ty không có email khả dụng",
+      "emailCappedTenants": "Công ty đạt giới hạn lô email",
       "granted": "Số ngày đã cấp",
       "opened": "Đánh giá đã mở",
       "reminders": "Nhắc nhở đã gửi",
@@ -16918,6 +16930,10 @@
       "tenantsAlarming": "Công ty có cảnh báo"
     },
     "jobs": {
+      "notifications-project": {
+        "name": "Xử lý thông báo",
+        "description": "Xử lý sự kiện thông báo đang chờ và ghi nhận công việc đã xác nhận cùng tồn đọng. Kết quả gửi email được ghi riêng."
+      },
       "leave-accrue": {
         "name": "Cộng dồn phép năm",
         "description": "Cộng thêm số ngày phép nhân viên đã tích lũy đến hiện tại."
