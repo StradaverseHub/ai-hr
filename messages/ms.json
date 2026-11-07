@@ -16903,12 +16903,24 @@
     "colRanAt": "Masa larian",
     "colOutcome": "Keputusan",
     "colError": "Ralat",
+    "notificationEvidenceUnverified": "Sejarah pelaksanaan tidak mengesahkan keluaran pekerja yang dipasang atau penerimaan e-mel.",
     "outcome": {
+      "running": "Dimulakan; penyelesaian belum direkodkan",
       "success": "Berjaya",
       "partial": "Separa",
       "failed": "Gagal"
     },
     "counters": {
+      "processedEvents": "Peristiwa diproses",
+      "createdNotifications": "Pemberitahuan dicipta",
+      "committedBatches": "Kelompok disahkan",
+      "pendingEvents": "Peristiwa tertunda",
+      "oldestPendingSeconds": "Usia tertunda paling lama (saat)",
+      "cappedTenants": "Syarikat mencapai had kelompok",
+      "emailAttempted": "Cubaan e-mel",
+      "emailSkipped": "E-mel dilangkau",
+      "emailUnavailableTenants": "Syarikat dengan e-mel tidak tersedia",
+      "emailCappedTenants": "Syarikat mencapai had kelompok e-mel",
       "granted": "Hari diberikan",
       "opened": "Penilaian dibuka",
       "reminders": "Peringatan dihantar",
@@ -16918,6 +16930,10 @@
       "tenantsAlarming": "Syarikat dengan amaran"
     },
     "jobs": {
+      "notifications-project": {
+        "name": "Pemprosesan pemberitahuan",
+        "description": "Memproses peristiwa pemberitahuan tertunda dan merekod kerja yang disahkan serta tunggakan. Penghantaran e-mel mempunyai hasil berasingan."
+      },
       "leave-accrue": {
         "name": "Tambahan cuti terkumpul",
         "description": "Menambah hari cuti yang telah dikumpul pekerja setakat ini."

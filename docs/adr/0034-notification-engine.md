@@ -181,3 +181,37 @@ that owner. [PostgreSQL 16 stored-setting validation](https://github.com/postgre
 transaction-local setter, retaining only the built-in `search_path` function setting; grant no new
 parameter privilege. Verify a valid payload, rejected leases, normal return and an actual payload
 query error with the caller's scope preserved.
+
+## Scheduled projection evidence before removing page catch-up
+
+The existing minute `notification-email-sweep.ts` remains the scheduled projection owner; the nightly
+review sweep remains a backstop. Do not introduce another scheduler. The minute worker records a
+`notifications.project` start in the existing owner-written `job_run` table before work, then changes
+only that matching unfinished run to a terminal outcome. A crash or failed completion write leaves an
+unfinished record, never a successful heartbeat. Legacy completion-only sweep logging retains its
+existing behavior. Per-job bounded history preserves daily jobs when minute runs are frequent.
+
+Projection counters count only batches whose dispatcher transaction has resolved successfully. Earlier
+committed batches remain counted when a later page fails; an uncertain page is not retried in that run.
+The existing bounded drain reports its cap rather than claiming an endless stream has drained. Pending
+ledger count and oldest pending age are observations after projection, not a new cursor or processing
+owner. They retain the canonical notification and assessment-reminder consumers and real entitlement,
+tenant-standing, complete-maintenance-scope, APP-role downgrade, recipient and idempotency rules.
+A tenant missed before projection, a blocked role downgrade or an unavailable backlog observation does
+not establish complete projection. SMTP availability, attempts and skipped deliveries are separate
+counters; relay acceptance and human receipt remain separate facts governed by the delivery ledger.
+
+This source slice has **no protected accepted-artifact verifier for the notification worker**. It records
+`identityVerified: 0`; its pure scheduling prerequisite always refuses release readiness, including when
+an arbitrary caller supplies claimed source/build/accepted metadata. A completed fresh run is useful
+operational evidence, not proof that the accepted source/build is installed or that a timer exists.
+The installed schedule and allowed staleness tolerance must come from authenticated installation state,
+not the catalog's one-minute default. No new migration, scheduler or status store is required here.
+
+Before removing ordinary-page dispatch, the release owner must extend the protected artifact and
+commissioning mechanism to bind the installed worker's content hash, accepted source and web build,
+projection capability, database target and actual scheduler invocation to durable evidence. Verify the
+real protected unit/entrypoint, dedicated identity, role downgrade, no duplicate cron, scheduled native
+effect, restart persistence and received failure/recovery/missed-run alerts. Missing, mismatched, stale,
+interrupted or unverified evidence must refuse acceptance; source deployment alone commissions nothing.
+The current page catch-up remains until that prerequisite exists and is accepted on the installation.
