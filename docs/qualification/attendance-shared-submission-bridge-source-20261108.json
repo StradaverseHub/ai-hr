@@ -1,0 +1,57 @@
+{
+  "kind": "ATTENDANCE_SHARED_SUBMISSION_STAGING_BRIDGE_SOURCE_NOT_RELEASE",
+  "base": "29d9edcbc4368be871688e9fdf35347676a7841c",
+  "sourceRef": "codex/attendance-shared-submission-bridge-20261108",
+  "qualification": "NOT_RUN; root and independent review before hosted native checks",
+  "rootAllocation": {
+    "tag": "3210_attendance_shared_workflow_submission_lock",
+    "idx": 2528,
+    "when": 1793330002828,
+    "journalChangedInChild": false
+  },
+  "supersededUnappliedReservation": {
+    "tag": "2301_attendance_workflow_submission_shared_lock",
+    "originalSource": "0c7a66144f688d51fb193fe75c09d97df64f8a3c",
+    "sha256": "421384a8eff51afcf0b910b966db1e092dd67343cd4fefff40c05aad537ae4fa",
+    "immutableFileChanged": false,
+    "installationAbsenceProof": "ROOT_OWNED_REQUIRED; not conferred by source map"
+  },
+  "selectors": [
+    "test/attendance-shared-submission-bridge.test.ts"
+  ],
+  "declaredNativeCases": 16,
+  "nativeGuardFaultCases": 12,
+  "testBudgetsMs": {
+    "nativeConcurrency": 30000,
+    "nativeRefusals": 30000,
+    "restrictedOwnerParity": 90000
+  },
+  "body": {
+    "predecessorMd5": "b383b0524878d7b82c58ec374146f75a",
+    "unionMd5": "46e046f4a175a420c44748f3419094a3",
+    "exactLockCallChanges": 1
+  },
+  "preserved": [
+    "complete3101shared-companybody",
+    "3110fiveRLS-onhelpers",
+    "nativefunctionOIDownerABIACLmetadata",
+    "fourtriggerbindings",
+    "exclusiveconfigurationwriterkey",
+    "nativeRLSandcanonicalroutevalidation"
+  ],
+  "componentOwnershipParityOnly": true,
+  "full706or707InstalledChainVerified": false,
+  "populatedUpgradeVerified": false,
+  "applicationChanged": false,
+  "production": "HELD",
+  "releaseAuthorized": false,
+  "sourceSha256": {
+    "db/migrations/3210_attendance_shared_workflow_submission_lock.sql": "c4f9a67c008acf5a4c00d15db98b0bb1531a0b711d70c0d0f235bfa3fac7f4de",
+    "test/attendance-shared-submission-bridge.test.ts": "dc24ad63f982aa85ec12751d0b2aa778cc411d5b6646c5113e33f0d1e788d924",
+    "db/migrations/3101_attendance_shared_workflow.sql": "f32d12965f2788dc673f0c09e128996a653341bbcf6933e47f211da021617169",
+    "db/migrations/3110_attendance_workflow_owner_rls.sql": "39fc4b31666120cb4befe263b8b30433d6752dbaa52cda6cdbe350b3077f8f16",
+    "db/migrations/0592_attendance_workflow_v4.sql": "0df1b69443381e2561451ba290543942ea01bfbc64e6c5e1c387c824e25773ff",
+    "docs/adr/2026-11-08-attendance-shared-submission-staging-bridge.md": "6df927148ffe05a4c93a9f9ada53f1a9670ae3b662bad4885110455173c1d463",
+    "docs/qualification/attendance-staging-sql-compatibility-map-20261108.md": "0a38fd8263b41db83ab44d318d34d9393c4a837006efc8c7e8f51cbda37f3aa9"
+  }
+}

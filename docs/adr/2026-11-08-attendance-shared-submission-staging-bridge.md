@@ -1,0 +1,26 @@
+# Preserve shared-company routing and overlapping submissions
+
+Development source proposal; **NOT RUN**, uninstalled. Production remains held.
+
+The staging baseline `29d9edcbc4368be871688e9fdf35347676a7841c` includes immutable `3100`, `3101` and `3110`. Architecture `0c7a66144f688d51fb193fe75c09d97df64f8a3c` has a different unapplied suffix from common `b7c0393aa3c7606a33dd15103426e5c535324065`. Root owns evidence of installation absence, the source merge, allocation and journal reconciliation. No deployed migration or historical SQL is rewritten by this component.
+
+`3101` replaces `app.attendance_workflow_links()` with the accepted shared-company predicates and an exclusive company/application-type advisory lock. Architecture `2301` changes the older nonshared body to a shared lock and guards that older exact predecessor. Running old `2301` after the staging prefix refuses its body guard; running it before `3101` has its shared lock overwritten. The combined application's shared-lock acquisition would then upgrade during native request insertion, allowing concurrent submissions to deadlock or block.
+
+Root reserved `3210_attendance_shared_workflow_submission_lock.sql` as the successor to that **still-unapplied reservation**, at its original dependency position: idx2528, when1793330002828. Original `2301` bytes and all historical branches/evidence remain intact. The new file is not placed in this child's journal; root separately integrates the reconciled suffix. The other 35 draft SQL files require actual staging-prefix qualification; the static compatibility map is not a native compatibility or owner-portability pass.
+
+The bridge admits only the complete immutable `3101` trigger body, exact PostgreSQL ABI/attributes, native current/function/request-relation owner identity, effective ACL and four trigger bindings. It also requires the five actual shared-workflow helper bodies, owner/ABI/ACL and `3110`'s exact `row_security=on` configuration. Unknown body, owner, privilege, binding or helper metadata refuses before modification. A native function definition is obtained only after these guards. Exactly one `PERFORM pg_advisory_xact_lock(` becomes `PERFORM pg_advisory_xact_lock_shared(`. The complete resulting body and every other `pg_proc` field, including OID and raw ACL, must match the admitted predecessor.
+
+The same company/type key continues to serialize configuration writers and retirement exclusively. Shared-company applicability, subject/company correlation, immutable selected template/version, all v2/v3/v4 canonical route comparisons, active/nonretired template checks and decision identity checks remain byte-for-byte from `3101`. No permissions, route selection, payroll calculation, audit writer, public API or schema model changes.
+
+The native component selector is `test/attendance-shared-submission-bridge.test.ts`:
+
+- Exact native predecessor/post-body and full function/helper/binding catalogue comparison, with real savepoint rollback for 12 hostile predecessor/metadata/owner/ACL/binding/helper cases.
+- Actual `ai_hr_app` LOGIN/current-role identities and two overlapping canonical native request inserts retaining shared locks; a real configuration writer must visibly wait on their actual backend PIDs, then finish after release. Every started reader/writer is settled before fixture exit.
+- Native subject/company/version/resolved-route/foreign-tenant refusals and unchanged immutable shared assignments.
+- A real newly created NOSUPERUSER/NOBYPASSRLS owner, with documented inherited schema ownership and **SET FALSE** parent membership, actually owns the request relation and SECURITY DEFINER functions. The bridge executes as that current role; a distinct actual app LOGIN reads nonempty approver options and inserts the canonical native request under unchanged forced-RLS catalogues. Full function/catalogue ownership and the owned fixture role are restored and checked afterward.
+
+The owner case is **component ownership parity**. It does not replace a complete 706/707 native-owner installed chain, empty shadow migration or populated-baseline rehearsal. Other postgres-owned native APIs and their portability are separate explicit gates. No permissive policies or SUPERUSER/BYPASS attributes are introduced to obtain a positive result.
+
+If the real journal has already installed `3210`, the component fixture recognizes the exact union body and does not install it again. In this isolated staging-source child, it executes the actual guarded SQL directly as a controlled component upgrade and restores the initial body/catalogue at teardown; this is not an engine ledger receipt. Guard controls create their old-state fixtures only inside rolled-back transactions. No original successful or failed receipt is relabeled.
+
+After root and independent review, run the new native selector on standard hosted Actions. The combined source must additionally pass its original actual service-level shared-submission/configuration-writer tests, staging shared-company/partial-scope/history tests, exact ordered ledger and populated/empty prefix rehearsals. No local tests, compiler, build, application, database or native runtime were executed while preparing this source.
