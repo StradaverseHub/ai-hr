@@ -45,7 +45,7 @@ class BundleTests(unittest.TestCase):
         # Frozen historical comparison only, never an executable release owner.
         source = Path(__file__).with_name('fixtures') / 'runtime-inventory-format2' / name
         expected = {'build-bundle.py': '59ea07f197164943e2c487fa097bfb2b55a9b2622d5d29e5e6859116623a0caa',
-                    'approve_staging.py': '299fd3fa7c6c366b7b6ad5102ca75d05bd0152f026108750f87ef03e486d7cc4'}
+                    'approve_staging.py': 'fdca8d8576e1fc0f81999aeb0c31e9b9a7345e1ea2bf9ea505aa3a53e1818b9d'}
         self.assertEqual(hashlib.sha256(source.read_bytes()).hexdigest(), expected[name])
         spec = importlib.util.spec_from_file_location('legacy_inventory_' + name.replace('.', '_'), source)
         old = importlib.util.module_from_spec(spec); spec.loader.exec_module(old)

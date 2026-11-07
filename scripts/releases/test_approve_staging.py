@@ -117,7 +117,7 @@ class Tests(unittest.TestCase):
 
     def legacy_inventory(self):
         path = Path(__file__).resolve().parents[2] / '.github/ci/fixtures/runtime-inventory-format2/approve_staging.py'
-        self.assertEqual(hashlib.sha256(path.read_bytes()).hexdigest(), '299fd3fa7c6c366b7b6ad5102ca75d05bd0152f026108750f87ef03e486d7cc4')
+        self.assertEqual(hashlib.sha256(path.read_bytes()).hexdigest(), 'fdca8d8576e1fc0f81999aeb0c31e9b9a7345e1ea2bf9ea505aa3a53e1818b9d')
         spec = importlib.util.spec_from_file_location('historical_release_inventory', path)
         historical = importlib.util.module_from_spec(spec); spec.loader.exec_module(historical)
         return historical

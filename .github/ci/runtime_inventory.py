@@ -468,4 +468,3 @@ def relativize_build_aliases(source, destination, directory):
                 rewritten.append(name)
             output.addfile(item, captured.extractfile(item) if item.isfile() else None)
     return rewritten
-

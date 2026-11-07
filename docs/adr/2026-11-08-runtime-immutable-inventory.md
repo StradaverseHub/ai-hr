@@ -70,14 +70,14 @@ not an assertion that legacy archive policy proves a protected immutable runtime
 
 ## Prepared parity and failure proof
 
-Frozen pre-extraction scripts under
+Frozen pre-extraction inventory scripts under
 `.github/ci/fixtures/runtime-inventory-format2/` are comparison-only historical
-fixtures. Their complete byte hashes are pinned before import:
+fixtures. The build fixture is the exact complete predecessor. The approval fixture is its exact inventory-only source prefix, ending before staged_source; publication/CLI code is intentionally absent. The complete original approval script SHA256 is299fd3fa7c6c366b7b6ad5102ca75d05bd0152f026108750f87ef03e486d7cc4. Fixture byte hashes are pinned before import:
 
 | Script | SHA256 |
 | --- | --- |
 | build-bundle.py |59ea07f197164943e2c487fa097bfb2b55a9b2622d5d29e5e6859116623a0caa |
-| approve_staging.py |299fd3fa7c6c366b7b6ad5102ca75d05bd0152f026108750f87ef03e486d7cc4 |
+| approve_staging.py |fdca8d8576e1fc0f81999aeb0c31e9b9a7345e1ea2bf9ea505aa3a53e1818b9d |
 
 Prepared hosted tests compare old/new full scan results, package identities,
 entire format2 manifest and gzip archive bytes, and both installed verification
