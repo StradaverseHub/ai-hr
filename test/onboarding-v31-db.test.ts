@@ -221,6 +221,43 @@ describe('V3.1 onboarding database and authorization', () => {
         expect(await owner.db.select().from(schema.employeeDraft).where(eq(schema.employeeDraft.id, saved.id))).toHaveLength(0);
         expect((await owner.db.select().from(schema.lcOnboardingCaseRevision)).some(r => r.data.personnelStatus === 'Draft')).toBe(true);
     });
+    it('reads current active Personnel facts and saved Business Unit without rewriting the case snapshot', async () => {
+        const saved = await saveEmployeeDraft(admin, { data: { profile: { fullName: 'Projection Hire', employeeCode: 'ONB-PROJ-1', primaryEmail: 'projection@test.invalid' }, employment: { companyId: b.companyId, departmentId: b.deptA, positionId: b.positionId, employmentType: 'full_time', hiredOn: todayInKualaLumpur() }, payroll: { basicSalary: '5000' } }, currentStep: 5 });
+        const active = await completeEmployeeDraft(admin, saved.id), before = (await onboardingList(admin))[0]!;
+        const [unit] = await owner.db.insert(schema.businessUnit).values({tenantId:b.tenantId,companyId:b.companyId,code:'PROJECTION',name:'Fictional saved unit'}).returning();
+        await owner.db.execute(sql`update person set full_name='Current Personnel name',primary_email='current@test.invalid' where id=${active.personId}::uuid`);
+        await owner.db.execute(sql`update assignment set business_unit_id=${unit!.id}::uuid,department_id=${b.deptB}::uuid,position_id=null where employment_id=${active.employmentId}::uuid and superseded_at is null`);
+        const detail=await onboardingDetail(admin,before.case.id);
+        expect(detail.case.source).toMatchObject({fullName:'Current Personnel name',email:'current@test.invalid',businessGroup:unit!.id,department:b.deptB,title:''});
+        expect(detail.labels.businessGroup).toBe('Fictional saved unit');
+        expect(detail.revision).toBe(before.revision);
+        const [stored]=await owner.db.select().from(schema.lcOnboardingCase).where(eq(schema.lcOnboardingCase.id,before.case.id));
+        expect(stored!.data.source.fullName).toBe('Projection Hire');
+        const context=await onboardingContext(admin),config=structuredClone(context.config);
+        config.checklists[0]!.rules={businessGroup:[unit!.id],department:[b.deptB],company:[b.companyId]};
+        await onboardingSaveConfig(admin,context.revision,config);
+        const current=await onboardingDetail(admin,before.case.id);
+        const {matchChecklist}=await import('../lib/onboarding-model');
+        expect(matchChecklist(current.config,current.case).checklist?.id).toBe(config.checklists[0]!.id);
+        await owner.db.execute(sql`update assignment set business_unit_id=null where employment_id=${active.employmentId}::uuid and superseded_at is null`);
+        expect((await onboardingDetail(admin,before.case.id)).case.source.businessGroup).toBe('');
+    });
+    it('refreshes draft organisation values, masks private facts and retains cancelled snapshots', async () => {
+        const saved=await draft(),before=(await onboardingList(admin))[0]!;
+        const [unit]=await owner.db.insert(schema.businessUnit).values({tenantId:b.tenantId,companyId:b.companyId,code:'DRAFT-PROJ',name:'Draft saved unit'}).returning();
+        await owner.db.execute(sql`update department set business_unit_id=${unit!.id}::uuid where id=${b.deptA}::uuid`);
+        expect((await onboardingDetail(admin,before.case.id)).case.source.businessGroup).toBe(unit!.id);
+        const [{value}]=await withTenant(other,tx=>tx.execute<{value:unknown}>(sql`select app.onboarding_current_personnel(${before.case.id}::uuid,${todayInKualaLumpur()}::date) as value`));
+        expect(value).toBeNull();
+        const ctx=await onboardingContext(admin),cfg=structuredClone(ctx.config);cfg.access.onboarding.push(tech.userId!);await onboardingSaveConfig(admin,ctx.revision,cfg);
+        const visible=await onboardingDetail(tech,before.case.id);
+        expect(JSON.stringify(visible)).not.toContain('PRIVATE-IC');
+        expect(visible.case.source.businessGroup).toBe(unit!.id);
+        await owner.db.execute(sql`update lc_onboarding_case set data=jsonb_set(data,'{state}','"cancelled"'::jsonb) where id=${before.case.id}::uuid`);
+        await owner.db.execute(sql`update employee_draft set data=jsonb_set(data,'{profile,fullName}','"Later draft name"'::jsonb) where id=${saved.id}::uuid`);
+        await refreshOnboardingPersonnel(admin);
+        expect((await onboardingDetail(admin,before.case.id)).case.source.fullName).toBe('New Hire');
+    });
     it('links tasks when the login is created after activation without a Personnel field change', async () => {
         const context = await onboardingContext(admin), config = structuredClone(context.config);
         config.checklists[0]!.tasks.push({ id: 'acceptance', name: 'Device acknowledgement', by: 'joiner', group: '', method: 'manual', opens: 1, due: 1, gate: true });

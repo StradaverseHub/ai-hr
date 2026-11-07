@@ -13,6 +13,7 @@ import * as M from '@/lib/lifecycle-v9-model';
 import type {LifecycleV9Workspace as Workspace, LifecycleV9Command as Command} from '@/packs/lifecycle/service';
 import {OffboardingCaseForm} from './offboarding-case-form';
 import {CaseNotes} from './case-notes';
+import {PreviousCaseNotes} from '@/components/lifecycle-v9/previous-case-notes';
 import {CaseStatus} from './case-status';
 import {WorkAssignee} from './work-assignee';
 import {ChecklistPreview} from './checklist-preview';
@@ -58,8 +59,7 @@ export function OffboardingCaseView({c, config, users, actor, personnelWritableK
   {c.review&&<div className="v9-notice v9-warning" role="status"><strong>{copy('Needs HR review')}</strong><p>{c.review.detail}</p></div>}
   {error&&<p role="alert" className="v9-error">{error}</p>}
   <CaseColumns><div className="onb-main">
-   <CaseSection title={copy('Case details')}><OffboardingCaseForm key={`${c.id}:${c.revision}`} c={c} config={config} users={users} busy={busy} command={command} editing={editing} onEditingChange={setEditing}/></CaseSection>
-   <CaseSection title={copy('Notes')}>{note('case','this case')}</CaseSection>
+   <CaseSection title={copy('Case details')}><OffboardingCaseForm key={`${c.id}:${c.revision}`} c={c} config={config} users={users} busy={busy} command={command} editing={editing} onEditingChange={setEditing}/><PreviousCaseNotes notes={c.notes ?? []}/></CaseSection>
    <CaseCalculator c={c} busy={busy} command={command}/>
    <CaseSection title={copy('Offboarding checklist')}>
     <Field label={copy('Checklist choice')}><select aria-label={copy('Checklist choice')} value={c.state==='pending'?c.override:c.checklistId??''} disabled={busy||c.state!=='pending'} onChange={event=>void command({type:'override',checklist:event.target.value})}>

@@ -4915,6 +4915,13 @@
       "when": 1793330001856,
       "tag": "2406_payroll_reconciliation_generation",
       "breakpoints": true
+    },
+    {
+      "idx": 1900,
+      "version": "7",
+      "when": 1793330002200,
+      "tag": "2600_onboarding_current_personnel",
+      "breakpoints": true
     }
   ]
 }
