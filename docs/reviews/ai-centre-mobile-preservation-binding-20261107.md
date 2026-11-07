@@ -31,6 +31,10 @@ No provider serializer, prompt, outgoing field/category, destination, workload p
 
 Carry the same28 approvals forward to exact provider fingerprint30dd256580cfd85dee9087f131c7a8b917a9ca3dad283730edcb461188218ca5, with both pending contracts and every original review metadata field unchanged. This permits provider-dependent verification and staging qualification only. Production remains on hold.
 
+## Bounded verification repair
+
+The previously timed-out real-expiry test retains every original assertion and its actual2.1-second database-clock wait. It receives a per-case60-second deadline for genuine evaluation/promotion fixture setup, which measured26.1seconds in the prior passing full, exceeded30seconds in the failed full, and passed again at26.0seconds in the complete369-case cohort recheck. No global timeout, provider/native guard, expiry threshold, case name or application behavior changes. The three covered native readers remain the only provider-closure delta.
+
 ## Required verification
 
 Verify the mobile owner's final actual source/build and normal shared-lease handback. Reconstruct the immutable combined impact and complete required checks, preserving all original failures and valid evidence under their actual source identities. Recheck704 ordered baseline migration hashes, rehearse appended2700/3000, independently authenticate matching worker bytes for the final combined candidate, prepare the protected administrator handoff, and perform exact source/build/worker/runtime/706ledger and rendered function/stop/permission journeys. Prior D30 bytes and witnesses cannot be relabelled onto this combined source.
