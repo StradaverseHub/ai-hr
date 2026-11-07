@@ -29,6 +29,6 @@ while requiring identical IDs and counts. No claim of exact old Unicode comparat
 parity is made. Preserving the history contract takes precedence over introducing an
 unqualified Repeatable Read fallback solely to reproduce a browser sort.
 
-The employee rail is being moved separately to the shared bounded employee-choice port.
-Its selected employment must be validated independently from its current search page;
+The employee rail uses the shared bounded employee-choice port in both inquiry shells.
+Its selected employment is validated independently from its current search page;
 all existing filters and authorized employees must remain reachable.
