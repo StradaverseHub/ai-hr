@@ -198,10 +198,29 @@ class BundleTests(unittest.TestCase):
 
     def test_fixed_inventory_import_works_from_unrelated_cwd_and_ignores_pythonpath_shadow(self):
         shadow = self.root / 'shadow'; shadow.mkdir(); (shadow / 'runtime_inventory.py').write_text('raise RuntimeError("ambient module executed")')
-        env = {**os.environ, 'PYTHONPATH': str(shadow), 'PYTHONDONTWRITEBYTECODE': '1'}
-        code = 'import importlib.util; p=' + repr(str(path.resolve())) + '; s=importlib.util.spec_from_file_location("bundle",p); m=importlib.util.module_from_spec(s); s.loader.exec_module(m); print(sorted(m.inventory.EXTERNAL_PACKAGES))'
-        completed = subprocess.run([sys.executable, '-I', '-c', code], cwd=shadow, env=env, capture_output=True, text=True, check=True)
+        env = {k: v for k, v in os.environ.items() if k not in {'PYTHONDONTWRITEBYTECODE', 'PYTHONPYCACHEPREFIX'}}
+        env['PYTHONPATH'] = str(shadow)
+        def probe(entry, bytecode_flags):
+            code = 'import importlib.util; p=' + repr(str(entry.resolve())) + '; s=importlib.util.spec_from_file_location("bundle",p); m=importlib.util.module_from_spec(s); s.loader.exec_module(m); print(sorted(m.inventory.EXTERNAL_PACKAGES))'
+            return subprocess.run([sys.executable, '-I', *bytecode_flags, '-c', code], cwd=shadow, env=env, capture_output=True, text=True, check=True)
+        def controller_status():
+            return subprocess.check_output(['git', '-C', str(path.resolve().parent), 'status', '--porcelain', '--untracked-files=all'], env=env, text=True)
+        before = controller_status()
+        completed = probe(path, ['-B'])
         self.assertEqual(completed.stdout.strip(), "['fontkit', 'sharp']")
+        self.assertEqual(controller_status(), before, 'Isolated source import changed the exact controller status')
+        # -I ignores caller PYTHON* settings. Demonstrate the susceptibility in
+        # disposable exact-closure copies, never by dirtying the real controller.
+        for label, flags, expected_cache in [('isolated-only', [], True), ('isolated-no-bytecode', ['-B'], False)]:
+            directory = self.root / label; directory.mkdir()
+            for name, source in [('build-bundle.py', path), ('runtime_inventory.py', path.with_name('runtime_inventory.py'))]:
+                (directory / name).write_bytes(source.read_bytes())
+            result = probe(directory / 'build-bundle.py', flags)
+            self.assertEqual(result.stdout.strip(), "['fontkit', 'sharp']")
+            cache = directory / '__pycache__'
+            self.assertEqual(cache.exists(), expected_cache)
+            self.assertEqual(bool(list(cache.glob('runtime_inventory.*.pyc'))), expected_cache)
+        self.assertEqual(controller_status(), before, 'Private comparison changed the exact controller status')
 
     def packed(self):
         m=bundle.pack(self.source,self.output)
