@@ -30,6 +30,9 @@ type FunctionInfo={signature:string;definition:string;details:Record<string,unkn
 let original:FunctionInfo[],created:FunctionInfo[]=[],installed=false,expectedDatabase='',base:Base,group:SessionContext;
 let verifyNetwork=()=>{};
 const ownedCapabilities=new Set<string>();
+// Capture the actual owner once: a scoped spy must never call a later spy wrapper.
+const nativeWithTenant=database.withTenant;
+const activeBarriers=new Set<{stop:()=>void;finished:Promise<void>}>();
 const context=(b:Base):SessionContext=>({...adminCtx(b),grants:[{role:'hr_admin',companyId:null}]});
 const routes=()=>({version:1,routing:{allowedProviders:['approved-fictional'],allowFallbacks:false,sort:'price'}});
 async function definitions(){return Array.from(await owner.client<FunctionInfo[]>`select p.oid::regprocedure::text as signature,pg_get_functiondef(p.oid) as definition,to_jsonb(p) as details
@@ -87,12 +90,27 @@ async function population(){
 }
 async function heldBarrier(kind:'access'|'history',read:(pid:number)=>Promise<void>){
  let enter!:()=>void,release!:()=>void,pid=0;const ready=new Promise<void>(r=>{enter=r;}),done=new Promise<void>(r=>{release=r;});
+ const cancellation=new AbortController();let complete!:()=>void;
+ const lifecycle={stop:()=>{cancellation.abort();release();},finished:new Promise<void>(resolve=>{complete=resolve;})};activeBarriers.add(lifecycle);
  const holder=owner.client.begin(async tx=>{const [identity]=await tx`select pg_backend_pid() as pid`;pid=identity.pid;
   if(kind==='access')await tx`select pg_advisory_xact_lock(hashtextextended(${'access-configuration:'+base.tenantId},0))`;
   else await tx`select pg_advisory_xact_lock(hashtext(${'audit-chain:'+base.tenantId}))`;
   enter();await done;
  });
- try{await Promise.race([ready,holder.then(()=>{throw Error('Native holder exited early');})]);await read(pid);}finally{release();await holder;}
+ let restoreBudget:(()=>void)|undefined;
+ try{
+  await Promise.race([ready,holder.then(()=>{throw Error('Native holder exited early');})]);
+  const budget=vi.spyOn(database,'withTenant').mockImplementation(async<T>(ctx:SessionContext,body:(tx:Tx)=>Promise<T>,options?:Parameters<typeof database.withTenant>[2])=>nativeWithTenant(ctx,async tx=>{
+   // Real carrier, isolation and principal remain unchanged. Only this held-writer
+   // fixture supplies the existing native work budget before the old lock call.
+   await tx.execute(sql`set local lock_timeout='300ms'`);await tx.execute(sql`set local statement_timeout='20s'`);
+   const [limits]=await tx.execute<{lock:string;statement:string}>(sql`select current_setting('lock_timeout')as lock,current_setting('statement_timeout')as statement`);
+   expect(limits).toEqual({lock:'300ms',statement:'20s'});return body(tx);
+  },{...options,readSignal:options?.readSignal?AbortSignal.any([options.readSignal,cancellation.signal]):cancellation.signal}));
+  restoreBudget=()=>budget.mockRestore();await read(pid);
+ }finally{
+  lifecycle.stop();try{await holder;}finally{restoreBudget?.();activeBarriers.delete(lifecycle);complete();}
+ }
 }
 beforeAll(async()=>{
  expect(process.env.GITHUB_ACTIONS).toBe('true');expect(process.env.RUNNER_ENVIRONMENT).toBe('github-hosted');expect(process.env.GITHUB_REPOSITORY).toBe('StradaverseHub/ai-hr');
@@ -107,7 +125,7 @@ beforeEach(async()=>{
  vi.stubEnv('AI_CONFIG_SECRET','fictional-ai-centre-presentation-key');for(const name of ['ANTHROPIC_API_KEY','GOOGLE_API_KEY','GEMINI_API_KEY'])vi.stubEnv(name,'');vi.stubEnv('OPENAI_API_KEY','fictional-platform-key');
  const fetch=vi.spyOn(globalThis,'fetch').mockImplementation(async()=>{throw Error('No provider/network calls permitted');});verifyNetwork=()=>{try{expect(fetch).not.toHaveBeenCalled();}finally{fetch.mockRestore();}};await resetDb();base=await seedBase();group=context(base);
 });
-afterEach(()=>{try{verifyNetwork();}finally{vi.unstubAllEnvs();}});
+afterEach(async()=>{try{const outstanding=[...activeBarriers];for(const barrier of outstanding)barrier.stop();await Promise.all(outstanding.map(barrier=>barrier.finished));verifyNetwork();}finally{vi.unstubAllEnvs();}});
 afterAll(async()=>{try{if(installed)await restore();if(ownedCapabilities.size){await resetDb();await owner.client`delete from app.ai_spend_capability where digest=any(${[...ownedCapabilities]}::text[])`;}}finally{await closeAll();}});
 
 describe.sequential('AI Centre presentation native purpose prototype',()=>{
@@ -200,7 +218,7 @@ describe.sequential('AI Centre presentation native purpose prototype',()=>{
   await candidate();const foreign=await seedBase();
   for(const ctx of [{...group,tenantId:foreign.tenantId},{...group,userId:foreign.adminUserId},{...group,roles:['super_admin'],grants:[{role:'super_admin',companyId:null}]}])await refuseRead(ctx);
   await owner.db.update(schema.appUser).set({archivedAt:new Date()}).where(eq(schema.appUser.id,base.adminUserId));await refuseRead(group);await owner.db.update(schema.appUser).set({archivedAt:null}).where(eq(schema.appUser.id,base.adminUserId));
-  const [person]=await owner.db.insert(schema.person).values({tenantId:base.tenantId,fullName:'Fictional changed identity'}).returning();await owner.db.update(schema.appUser).set({personId:person.id}).where(eq(schema.appUser.id,base.adminUserId));await refuseRead(group);await owner.db.update(schema.appUser).set({personId:null}).where(eq(schema.appUser.id,base.adminUserId));
+  const [person]=await owner.db.insert(schema.person).values({tenantId:base.tenantId,fullName:'Fictional changed identity',primaryEmail:randomUUID()+'@example.invalid'}).returning();await owner.db.update(schema.appUser).set({personId:person.id}).where(eq(schema.appUser.id,base.adminUserId));await refuseRead(group);await owner.db.update(schema.appUser).set({personId:null}).where(eq(schema.appUser.id,base.adminUserId));
   await owner.db.update(schema.tenant).set({status:'suspended'}).where(eq(schema.tenant.id,base.tenantId));await refuseRead(group);await owner.db.update(schema.tenant).set({status:'active'}).where(eq(schema.tenant.id,base.tenantId));
   const removed=await owner.db.delete(schema.roleAssignment).where(eq(schema.roleAssignment.appUserId,base.adminUserId)).returning();await refuseRead(group);await owner.db.insert(schema.roleAssignment).values(removed);
   const before=await effects();expect((await aiManagementPresentationView(group)).provider).toEqual({provider:'openai',model:defaultModelFor('openai')});expect(await effects()).toEqual(before);

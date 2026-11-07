@@ -17,13 +17,14 @@
     "core/ai-provider-readiness.ts": "e4d470e994f2985b7a998477b6acd012c2456d2c5aaf21d31b22ff55f05d9943",
     "core/ai-provider-snapshot.ts": "07c4548b59d12ba1b56e3ceafd8e20f8816d94d2d16c8df105c42a12ec430c91",
     "core/ai-spend-management.ts": "d2e5a6ca0a6dd928d8560d34bdd47ef7d138f6b15734f8270184de55ed388c47",
-    "test/ai-centre-presentation-native.test.ts": "930b66bc36385c6b34926383c3c222f8e645f0a5749149bf41c0bf15a30e11c9",
+    "test/ai-centre-presentation-native.test.ts": "68bb4b1b27f0f5a65f931bc7b73cf3880b4fc88d7bf3e9431561f5f44f97c51a",
     "test/fixtures/ai-management-locked-baseline.ts": "fdd12d1bf9048ea433b45c3c6ad4abe588551340d534bae4adf36e135b786897",
     "test/prototypes/ai-centre-presentation.sql": "6129a791faa784098fac9b36de62a532b9319cfe2ba3987f98b72c7ecf75089c",
     "lib/ai/provider-data-source-manifest.ts": "3d0f270ad77ecd878766599631a57eb600e1e7804d8781a04705d82549aac994",
-    "lib/ai/module-agent-source-manifest.ts": "8153eedfb6085333fdf783831a6f4f4a1c15d2bc8ce01e7f463d88d6ed30a8e8"
+    "lib/ai/module-agent-source-manifest.ts": "8153eedfb6085333fdf783831a6f4f4a1c15d2bc8ce01e7f463d88d6ed30a8e8",
+    "test/ai-provider-readiness-disclosure-diagnostic.test.ts": "b73bab5ebdac534917ace0dc46c7cf5e55732fc971f9fee291bac1f9ed0a88ec"
   },
-  "qualification": "UNRUN: independent source/security review then standard hosted native/focused/compiler/build qualification; no application/runtime/provider/network/local verification or installation.",
+  "qualification": "UNRUN fixture-only recovery; original42403840579 remains FAIL (DB142PASS/16FAIL, pure15PASS, buildPASS). Native10PASS/3FAIL; readiness5PASS/13FAIL. Root + independent review required before hosted recovery. Positive readiness remains blocked by unchanged stale literal disclosure approvals.",
   "expectedNativePredecessorProsrcMd5": {
     "ai_provider_candidate_view_v1": "fbc841dcc882fb47fd029c0266d98a79",
     "ai_spend_status": "a823975bb8f40ba340bd0d00b40b61b1",
@@ -56,5 +57,25 @@
     "literalApprovalsModified": false,
     "newProviderEgressApproved": false,
     "applicationAndPrototypeBytesChanged": false
+  },
+  "fixtureRecovery": {
+    "base": "ea98af7e3b45f7d3f9db776b72c1ed5d2343ca73",
+    "originalRun": "42403840579",
+    "selectors": "docs/qualification/ai-presentation-native-fixture-recovery-tests.json",
+    "nativeCasesRetained": 13,
+    "newNegativeDiagnosticCases": 2,
+    "positiveReadinessFailuresRetained": 13,
+    "heldBarrierBudget": {
+      "lockTimeout": "300ms",
+      "statementTimeout": "20s",
+      "caseTimeoutUnchanged": true,
+      "realNativeCarrier": true,
+      "scopedSpyOnly": true,
+      "abortReleasesHolderAndDrains": true
+    },
+    "literalApprovalsModified": false,
+    "pendingContractsModified": false,
+    "applicationOrSqlChanged": false,
+    "transportOrReviewMocksAdded": false
   }
 }
