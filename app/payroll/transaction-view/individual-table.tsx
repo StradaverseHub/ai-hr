@@ -10,9 +10,9 @@ import type { IndividualTxnViewRow,IndividualInquirySort,IndividualInquirySortKe
 
 /**
  * Individual Transaction History grid (feedback 7b2d4228) — a client component so the columns are SORTABLE
- * (server-side GET filters remain the "searchable" half; this adds the "sortable" half the ticket asked for).
- * The rows arrive already scope-guarded + filtered from the server page; sorting is a pure client reorder of
- * that set. Adds the Created By / Created Date audit columns.
+ * Transaction View supplies a native full-set sort and a bounded page; a header click preserves its
+ * filters and asks the server for that order. Legacy callers without serverSort retain client sorting
+ * and paging. Created By / Created Date remain the same audit display columns.
  */
 
 type SortKey = IndividualInquirySortKey;
