@@ -144,7 +144,7 @@ describe('approval detail', () => {
   it('shows who and what, the team cover and the confirm hint; approve runs only after a confirmation that repeats it', async () => {
     const f = fixture();
     render(<f.ApprovalDetailScreen kind="leave" id={ID} />);
-    await screen.findByText('Aisyah · E001');
+    await screen.findByText('Aisyah');expect(screen.getByText('E001')).toBeTruthy();
     expect(f.apiGetV2.mock.calls[0][0]).toBe(`v2/tasks/leave/${ID}`);
     expect(screen.getByText('approvalLeaveSummary Annual|leaveDateSpan 2026-11-02|2026-11-04|3')).toBeTruthy();
     expect(screen.getByText('approvalTeamCoverLine Badrul|approvalTeamPendingDate 2026-11-03')).toBeTruthy();
@@ -164,7 +164,7 @@ describe('approval detail', () => {
   it('a rejection needs a reason, and the confirmation repeats it', async () => {
     const f = fixture();
     render(<f.ApprovalDetailScreen kind="leave" id={ID} />);
-    await screen.findByText('Aisyah · E001');
+    await screen.findByText('Aisyah');expect(screen.getByText('E001')).toBeTruthy();
     expect(screen.getByText('approvalReject')).toBeDisabled();
     fireEvent.change(screen.getByRole('textbox', { name: 'approvalReason' }), { target: { value: '   ' } });
     expect(screen.getByText('approvalReject')).toBeDisabled();
@@ -405,6 +405,6 @@ describe('replacement leave review',()=>{
 
 describe('approval confirmation lifecycle',()=>{
  it('does not send a retained confirmation after leaving its detail',async()=>{
-  const f=fixture();const ui=render(<f.ApprovalDetailScreen kind="leave" id={ID}/>);await screen.findByText('Aisyah · E001');fireEvent.click(screen.getByRole('button',{name:'approvalApprove'}));ui.unmount();await f.confirm();expect(f.apiPostV2).not.toHaveBeenCalled();
+  const f=fixture();const ui=render(<f.ApprovalDetailScreen kind="leave" id={ID}/>);await screen.findByText('Aisyah');expect(screen.getByText('E001')).toBeTruthy();fireEvent.click(screen.getByRole('button',{name:'approvalApprove'}));ui.unmount();await f.confirm();expect(f.apiPostV2).not.toHaveBeenCalled();
  });
 });

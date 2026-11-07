@@ -271,7 +271,8 @@ export function ApprovalDetailScreen({ kind, id }: { kind: string; id: string })
     {notice && <Text accessibilityRole="alert" style={{ color: palette.text, lineHeight: 23 }}>{notice}</Text>}
     {detail.data?.outcome === 'refused' && <Muted>{approvalRefusalText(detail.data)}</Muted>}
     {task && <>
-      <Title>{titleOf(task)}</Title>
+      <Title>{task.subject.name??'—'}</Title>
+      {task.subject.code&&<Muted>{task.subject.code}</Muted>}
       <Text style={{ color: palette.text, fontSize: 17, lineHeight: 24 }}>{taskLine(task)}</Text>
       {task.employeeReason && <Muted>{t('approvalEmployeeNote', { note: task.employeeReason })}</Muted>}
       {((task.kind === 'leave' && task.hasDocument) || (task.kind === 'attendance' && task.hasAttachment)) && <ApprovalDocument name={t('supportingDocument')} onSignInRequired={signOut} open={()=>apiDownload(v2Download(taskPath(kind,id,'document'),10*1024*1024,['application/pdf','image/jpeg','image/png']))}/>}

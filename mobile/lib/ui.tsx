@@ -4,7 +4,7 @@
  * anyone out.
  */
 import { Atmosphere, DesignText as Text, TenantBrand, useTenantDesign } from './design';
-import { useState, type ReactNode } from 'react';
+import { createContext, useContext, useState, type ReactNode } from 'react';
 import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Redirect, router } from 'expo-router';
@@ -23,6 +23,8 @@ export const colors = {
   warn: '#9A5B00',
   danger: '#B42318',
 } as const;
+
+const DetailContext = createContext(false);
 
 export function Screen({
   children,
@@ -47,7 +49,7 @@ export function Screen({
   const { status } = useSession();
   if (status !== 'signedIn') return <Redirect href="/sign-in" />;
   return (
-    <SafeAreaView style={[styles.safe, { backgroundColor: palette.bg }]} edges={[]}>
+    <DetailContext.Provider value={back}><SafeAreaView style={[styles.safe, { backgroundColor: palette.bg }]} edges={[]}>
       <Atmosphere strong={atmospheric} />
       <ScrollView
         // A tap on a button while the keyboard is up acts at once (it used to only dismiss the keyboard, and the shifted
@@ -59,13 +61,14 @@ export function Screen({
         {back ? <HeaderBack /> : null}{children}
       </ScrollView>
       {footer ? <View style={{paddingBottom:footerInset}}>{footer}</View> : null}
-    </SafeAreaView>
+    </SafeAreaView></DetailContext.Provider>
   );
 }
 
 export function Title({ children }: { children: ReactNode }) {
   const { palette, design } = useTenantDesign();
-  return <Text style={[styles.title, { color: palette.text, ...(design.schemaVersion === 2 ? { fontSize: 29 } : {fontSize:40,lineHeight:41,letterSpacing:-1.5}) }]}>{children}</Text>;
+  const detail = useContext(DetailContext);
+  return <Text style={[styles.title, { color: palette.text, ...(design.schemaVersion === 2 ? { fontSize: 29 } : {fontSize:detail?30:40,lineHeight:detail?34:41,letterSpacing:detail?-.8:-1.5}) }]}>{children}</Text>;
 }
 
 export function SectionLabel({ children }: { children: ReactNode }) {

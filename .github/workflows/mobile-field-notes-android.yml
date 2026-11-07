@@ -8,7 +8,7 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: field-notes-android-${{ github.ref }}
+  group: field-notes-android-${{ github.sha }}
   cancel-in-progress: false
 jobs:
   review:

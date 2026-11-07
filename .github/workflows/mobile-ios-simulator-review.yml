@@ -12,7 +12,7 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: mobile-ios-simulator-review-${{ github.ref }}
+  group: mobile-ios-simulator-review-${{ github.sha }}
   cancel-in-progress: false
 jobs:
   simulator:
