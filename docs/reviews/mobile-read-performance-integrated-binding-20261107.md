@@ -1,0 +1,15 @@
+# Integrated mobile performance source binding
+
+Reviewed merge: `3fc161e925d6f230d233db30ffec760222f61b5c`. Parents are the mobile performance checkpoint `700b82a82bda09e5aa1080ec4362ac4caf8ae60e` and the independently installed staging UI checkpoint `09f4fcb9482dca79177df93fea29039611c40550`. The merge preserves both histories and all existing staging UI fixes.
+
+Proposed provider transform fingerprint: `261d6298b853a76e91fbc494d64d14099cdbca115cafdd47932828daef8f463a`, 1,458 sources. This combines the mobile owner-approved `81c8f6c7a25028da15e5984fa4245da267d2e798ccdb2ae2b69748e872498095` and installed UI owner-approved `c5ddc21dc542eed30ef47964349413088bb1b2b65ab6d01483b5c21fb712e241`. Neither parent approval automatically approves the new exact combination.
+
+Since reviewed mobile source `8f979a23706120766e19e5b8ebf82d63ce6d4e55`, the only additional covered files are `messages/en.json`, `messages/ms.json`, `messages/ta.json`, `messages/th.json`, `messages/vi.json` and `messages/zh.json`. These are the already-installed UI labels, validation and empty-state guidance described in `ui-audit-source-binding-20261107.md`. The mobile changes in the shared reader closure remain precisely the three request-ID narrowing changes described in `mobile-read-performance-binding-20261107.md`. No AI provider, transport, prompt, outgoing field category, purpose, permission or evaluation/promotion authority is added.
+
+Both parents' literal approval records were compared byte-for-byte after replacing only their fingerprints: all 28 records have identical original metadata, and both pending records are identical. The merge retains the exact approved mobile digest in the literal registry, stale for the new combination and therefore fail-closed. The proposed disposition would replace only those 28 approved digest values. The two pending contracts remain blocked. The secondary module-agent manifest must be regenerated last after any literal registry change; no generator or source-scope change is proposed.
+
+Original full run `42364955955` remains FAIL at its exact source: whole compiler, migrations, controller and deployment-hold passed; manifest admission refused planning/building before any unit/browser matrix executed. The frozen provider manifest was current; the secondary generated module-agent manifest was missed. The reviewed merge repairs both generated manifests with the repository generators. The authenticated repair adapter requires an original gate-plan artifact and cannot admit this plan-less run. Complete missing plan/build/unit/browser qualification is still required on the final combination; no focused pass is release authority.
+
+No staging lease was taken over. Staging build `Q3Pmy99yco3QjWlBO5FE2` independently reported healthy and unstale at UI source `09f4fcb9482dca79177df93fea29039611c40550`; it contains no mobile performance changes. Actual queue admission, final source/build arrival and authenticated mobile timing/functional checks remain required. Production, package publication, stores and Firebase remain excluded.
+
+Owner disposition: pending for this exact combined fingerprint.
