@@ -18,11 +18,14 @@ import {homeCalendarMonth} from '@/lib/employee-home-calendar';
 import {OwnClockEmploymentUnavailableError} from '@/packs/attendance/service';
 import {OwnPayrollSubjectUnavailableError} from '@/packs/payroll/service';
 import {HomeAccessError} from '@/core/employee-home';
+import {markHomeRead} from '@/lib/home-read-timing';
 
 /** One fresh web session and independent live reads for the requested Home cards. */
 export async function GET(request:Request){
+ markHomeRead('handler');
  try{
   const session=await getSession();
+  markHomeRead('session');
   const query=new URL(request.url).searchParams;
   const employmentId=query.get('employmentId');
   const selected=query.getAll('card');
@@ -82,13 +85,16 @@ export async function GET(request:Request){
     if(request.signal.aborted){disconnect();return;}
     request.signal.addEventListener('abort',disconnect,{once:true});
     const reads=cards.map(async card=>{
+     markHomeRead('read-start',card);
      let encoded:Uint8Array;
      try{
       const value=await withDatabaseReadCancellation(signal,readers[card]);
       const frame:HomeSharingFrame={version:1,card,status:200,value};
       encoded=encoder.encode(JSON.stringify(frame)+'\n');
       if(encoded.byteLength>HOME_SHARING_MAX_FRAME_BYTES)throw new Error('Home sharing frame too large');
+      markHomeRead('read-finish',card);
      }catch(error){
+      markHomeRead('read-failure',card);
       const {status}=sharingError(error);
       const frame:HomeSharingFrame={version:1,card,status};
       encoded=encoder.encode(JSON.stringify(frame)+'\n');

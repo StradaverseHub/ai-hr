@@ -1,9 +1,11 @@
 // Preloaded only in the isolated application workers. Never records queries or identities.
 import {renameSync,writeFileSync} from 'node:fs';
 import {createHistogram,monitorEventLoopDelay,performance} from 'node:perf_hooks';
+import {observeHomeRequests} from './home-request-timing.mjs';
 
 const path=process.env.PERF_TX_TIMING_PATH;
 if(process.env.GITHUB_ACTIONS==='true'&&path){
+ const homeRequests=observeHomeRequests();
  const eventLoop=monitorEventLoopDelay({resolution:20});eventLoop.enable();
  const startDelay=createHistogram(),held=createHistogram();
  const approvalWait=createHistogram(),approvalWork=createHistogram();
@@ -108,7 +110,7 @@ if(process.env.GITHUB_ACTIONS==='true'&&path){
     attendanceExclusiveAdmissionScope:'Owned exclusive Attendance writes only. Miss counts failed tries, including both tries before blocking fallback. No identities.',
     passiveReadScope:'Logical passive read admission before fan-out. Its pending work holds no database connection. No identities.',peakPassivePending,passiveFailedBeforeRead,
     rawPoolWorkScope:'Existing raw owners admitted before opening queries. Queue wait ends at application admission; afterAdmission includes checkout, serial queries and completion. No identities.',peakRawPending,rawFailedBeforeWork,
-    peakApprovalPending,capturedAt:new Date(capturedAt).toISOString(),observedPoolSizes:[...observedPoolSizes],peakPending,peakHolding,failedBeforeCallback,windows,
+    homeRequests:homeRequests(),peakApprovalPending,capturedAt:new Date(capturedAt).toISOString(),observedPoolSizes:[...observedPoolSizes],peakPending,peakHolding,failedBeforeCallback,windows,
    }));
    renameSync(path+'.tmp',path);
   }catch{/* Evidence collection must never fail a request. */}
