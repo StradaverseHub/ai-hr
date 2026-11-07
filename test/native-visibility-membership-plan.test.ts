@@ -8,7 +8,7 @@ import {PgDialect} from 'drizzle-orm/pg-core';
 import {afterAll,beforeAll,expect,it,vi} from 'vitest';
 import * as database from '../db/client';
 import type {SessionContext,Tx} from '../db/client';
-import {company,employment,person,reportingLine,roleAssignment} from '../db/schema';
+import {assignment,company,employment,person,reportingLine,roleAssignment} from '../db/schema';
 import {assertAiPresentationPrincipalTx} from '../core/ai-principal';
 import {readEmployeeChoices} from '../core/employee-choice';
 import {adminCtx,closeAll,createAppUser,migrateTestDb,owner} from './harness';
@@ -172,6 +172,10 @@ it.skipIf(!requested)('attributes native membership plans while preserving canon
   await setMode('array_any');
   const ids=expectedFirst.slice(0,2),people=await owner.db.select({id:employment.id,personId:employment.personId}).from(employment).where(inArray(employment.id,ids));
   const personFor=(id:string)=>people.find(row=>row.id===id)!.personId;
+  // A manager with an administrative report also heads their current department
+  // under the existing visibility owner. Separate that department from the 50k
+  // retained population before testing the independently known two-person scope.
+  await owner.db.update(assignment).set({departmentId:b.deptB}).where(eq(assignment.employmentId,ids[1]));
   const employeeUser=await createAppUser(b.tenantId,personFor(ids[0]),'employee');
   const managerUser=await createAppUser(b.tenantId,personFor(ids[1]),'manager');
   await owner.db.insert(reportingLine).values({tenantId:b.tenantId,subordinateEmploymentId:ids[0],managerEmploymentId:ids[1],lineType:'administrative',validFrom:'2020-01-01'});
@@ -191,6 +195,13 @@ it.skipIf(!requested)('attributes native membership plans while preserving canon
    expect(employee.rows.map(row=>row.employmentId)).toEqual([ids[0]]);expect(employee.total).toBe(1);expect(employee.selected).toBeNull();
    const manager=await readEmployeeChoices(managerCtx,{companyIds:[],selectedId:ids[0]});
    expect(manager.rows.map(row=>row.employmentId)).toEqual(ids);expect(manager.total).toBe(2);expect(manager.selected?.employmentId).toBe(ids[0]);
+   let departmentHead:Page;
+   await owner.db.update(assignment).set({departmentId:b.deptA}).where(eq(assignment.employmentId,ids[1]));
+   try{
+    departmentHead=await readEmployeeChoices(managerCtx,{companyIds:[],selectedId:otherEmployment});
+    expect(departmentHead.total).toBe(50000);expect(departmentHead.rows.map(row=>row.employmentId)).toEqual(expectedFirst);
+    expect(departmentHead.selected).toBeNull();
+   }finally{await owner.db.update(assignment).set({departmentId:b.deptB}).where(eq(assignment.employmentId,ids[1]));}
    const foreignCompany=await readEmployeeChoices(scopedCtx,{companyIds:[otherCompany],selectedId:otherEmployment});
    expect(foreignCompany.total).toBe(0);expect(foreignCompany.rows).toEqual([]);expect(foreignCompany.selected).toBeNull();expect(foreignCompany.companyOptions).toEqual([]);
    const foreignTenant=await readEmployeeChoices({...adminCtx(foreign),grants:[{role:'hr_admin',companyId:null}]},{companyIds:[b.companyId],selectedId:ids[0]});
@@ -203,7 +214,7 @@ it.skipIf(!requested)('attributes native membership plans while preserving canon
    const restored=await readEmployeeChoices(employeeCtx,{companyIds:[],selectedId:ids[0]});
    expect(restored.rows.map(row=>row.employmentId)).toEqual([ids[0]]);expect(restored.total).toBe(1);expect(restored.selected?.employmentId).toBe(ids[0]);
    await expect(readEmployeeChoices({...ctx,personId:randomUUID()},{companyIds:[b.companyId]})).rejects.toThrow('calling authority');
-   const observed={employee:stablePage(employee),manager:stablePage(manager),foreignCompany:stablePage(foreignCompany),foreignTenant:stablePage(foreignTenant),restored:stablePage(restored)};
+   const observed={employee:stablePage(employee),manager:stablePage(manager),departmentHead:stablePage(departmentHead!),foreignCompany:stablePage(foreignCompany),foreignTenant:stablePage(foreignTenant),restored:stablePage(restored)};
    if(mode==='set_in')expect(observed).toEqual(scopeResults.array_any);scopeResults[mode]=observed;save();
   }
   await verifyScope();await setMode('set_in');await verifyScope();
