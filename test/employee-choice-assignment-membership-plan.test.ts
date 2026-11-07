@@ -6,7 +6,7 @@ import {cpus,totalmem} from 'node:os';
 import {join} from 'node:path';
 import {inArray,sql,SQL} from 'drizzle-orm';
 import {PgDialect} from 'drizzle-orm/pg-core';
-import {afterAll,beforeAll,expect,it,vi} from 'vitest';
+import {afterAll,beforeAll,expect,it,vi,type TestContext} from 'vitest';
 import * as database from '../db/client';
 import type {SessionContext,Tx} from '../db/client';
 import {assignment,businessUnit} from '../db/schema';
@@ -46,6 +46,36 @@ async function securitySnapshot(){
 type Variant='original'|'wrapped';
 const variants=['original','wrapped']as const;
 let probe:Awaited<ReturnType<typeof prepare>>|undefined;
+let preparingSingle:ReturnType<typeof database.createDb>|undefined;
+let activeWork:Promise<void>|undefined;
+let activeSignal:AbortSignal|undefined;
+let blocked:Error|undefined;
+// Vitest aborts a timed-out test without waiting for its async body. Drain that
+// body (including its policy/fixture finally) before permitting any later work.
+async function boundedCase(context:TestContext,work:()=>Promise<void>,setup=false){
+ if(blocked)throw blocked;
+ expect(activeWork).toBeUndefined();activeSignal=context.signal;
+ let closing:Promise<unknown>|undefined;
+ const abort=()=>{
+  blocked=new Error('Diagnostic case aborted; later cases may not touch this database',{cause:context.signal.reason});
+  closing=Promise.allSettled([preparingSingle?.client.end({timeout:0}),...(setup?[closeAll()]:[])]);
+ };
+ context.signal.addEventListener('abort',abort,{once:true});
+ const pending=Promise.resolve().then(work);activeWork=pending;
+ context.onTestFinished(async()=>{
+  try{await closing;await pending;}
+  finally{context.signal.removeEventListener('abort',abort);activeWork=undefined;activeSignal=undefined;}
+ });
+ try{await pending;}
+ catch(error){
+  if(setup){
+   blocked=error instanceof Error?error:new Error('Diagnostic preparation failed');
+   await Promise.allSettled([preparingSingle?.client.end({timeout:0}),closeAll()]);
+  }
+  throw error;
+ }
+}
+const assertCaseActive=()=>activeSignal?.throwIfAborted();
 async function prepare(){
  expect(process.env.RUNNER_ENVIRONMENT).toBe('github-hosted');expect(process.env.AIHR_FOCUSED_EVIDENCE_DIR).toBeTruthy();
  const poolId=process.env.VITEST_POOL_ID??process.env.VITEST_WORKER_ID;expect(poolId).toBeTruthy();expect(process.env.WORKER_DB).not.toBe('0');
@@ -79,7 +109,9 @@ async function prepare(){
   from pg_constraint where conrelid='public.assignment'::regclass and conname='assignment_no_overlap'`;
  expect(constraint).toMatchObject({contype:'x',condeferrable:false,condeferred:false,convalidated:true});report.assignmentCardinalityPrerequisite=constraint;
  const url=new URL(process.env.TEST_DATABASE_URL!);url.searchParams.set('application_name','employee_choice_assignment_comparison');
- const single=database.createDb(url.toString(),{max:1});expect(single.client.options.max).toBe(1);
+ assertCaseActive();const single=database.createDb(url.toString(),{max:1});preparingSingle=single;
+ try{
+ expect(single.client.options.max).toBe(1);
  const [session]=await single.client`select pg_backend_pid() as pid,current_setting('jit') as jit,current_setting('work_mem') as work_mem,
   current_setting('hash_mem_multiplier') as hash_mem_multiplier,current_setting('statement_timeout') as statement_timeout,current_setting('lock_timeout') as lock_timeout`;
  const {pid,...defaults}=session;expect(Number.isSafeInteger(pid)&&pid>0).toBe(true);report.sessionDefaults=defaults;
@@ -87,7 +119,7 @@ async function prepare(){
  const queries=new Map<string,NativeQuery[]>();report.identities=identities;report.statements=statements;report.plans=plans;
  let name='setup',capture=false,firstSample=false;
  const install=()=>vi.spyOn(database,'withTenant').mockImplementation(<T>(context:SessionContext,read:(tx:Tx)=>Promise<T>,options?:Parameters<typeof database.withTenant>[2])=>
-  single.withTenant(context,async tx=>{
+  {assertCaseActive();return single.withTenant(context,async tx=>{
    await tx.execute(sql`set local lock_timeout='300ms'`);await tx.execute(sql`set local statement_timeout='20s'`);
    const [identity]=await tx.execute<{role:string;pid:number;tenant:string;user:string;read_only:string;isolation:string;employment_rls:boolean;person_rls:boolean;assignment_rls:boolean;jit:string;work_mem:string;hash_mem_multiplier:string;statement_timeout:string;lock_timeout:string}>(sql`
     select current_user as role,pg_backend_pid() as pid,app.current_tenant_id() as tenant,app.current_user_id() as "user",
@@ -119,7 +151,7 @@ async function prepare(){
     };
     const value=Reflect.get(target,key,receiver);return typeof value==='function'?value.bind(target):value;
    }}));
-  },options));
+  },options);});
  const unchanged=async()=>{
   expect(await securitySnapshot()).toEqual(originals);
   const [after]=await single.client`select current_setting('jit') as jit,current_setting('work_mem') as work_mem,current_setting('hash_mem_multiplier') as hash_mem_multiplier,
@@ -138,7 +170,7 @@ async function prepare(){
   expect({...current,policies:current.policies.map(row=>row===target?{...row,qual:assignmentPolicy!.qual}:row)}).toEqual(originals);
  };
  const choose=async(variant:Variant)=>{
-  await reviewed();
+  assertCaseActive();await reviewed();
   await owner.client.begin(async tx=>{await tx`set local lock_timeout='300ms'`;await tx`set local statement_timeout='20s'`;
    await tx.unsafe('ALTER POLICY assignment_rls ON public.assignment USING ('+(variant==='original'?assignmentPolicy!.qual:candidate)+')');});
   await reviewed();const current=await securitySnapshot(),target=current.policies.find(row=>row.tablename==='assignment'&&row.policyname==='assignment_rls');
@@ -156,13 +188,24 @@ async function prepare(){
   return {evidence,cpu:Object.fromEntries(text.trim().split('\n').map(line=>{const [key,value]=line.split(/\s+/);return [key,Number(value)];})),scope:'Owned-container counters/cumulative peak; telemetry runs outside timed port calls.'};
  };
  return {fixture,representedBu,emptyBu,report,save,single,pids,install,queries,dialect,plans,unchanged,resources,choose,restore,
-  selectCase:(value:string,first:boolean)=>{name=value;firstSample=first;capture=true;report.phase=value;save();},stop:()=>{capture=false;firstSample=false;},label:(value:string)=>{name=value;}};
+  selectCase:(value:string,first:boolean)=>{assertCaseActive();name=value;firstSample=first;capture=true;report.phase=value;save();},stop:()=>{capture=false;firstSample=false;},label:(value:string)=>{name=value;}};
+ }catch(error){await single.client.end({timeout:0});throw error;}
 }
-afterAll(async()=>{try{if(probe)await probe.restore();}finally{try{if(probe)await probe.single.client.end({timeout:5});}finally{await closeAll();}}});
+afterAll(async()=>{
+ // Never race the last case's finally, even if its test timer already rejected.
+ if(activeWork)await activeWork.catch(()=>{});
+ try{if(probe)await probe.restore();}
+ finally{try{if(preparingSingle)await preparingSingle.client.end({timeout:5});}finally{await closeAll();}}
+});
+
+it.skipIf(!requested)('prepares the retained 50k fictional fixture independently of measurement',context=>boundedCase(context,async()=>{
+ const started=performance.now();probe=await prepare();
+ probe.report.preparation={complete:true,ms:performance.now()-started,caseBudgetMs:300000};probe.save();
+},true),300000);
 
 const baselinePages=new Map<string,Omit<Page,'contextId'>>();
-it.skipIf(!requested).each(variants)('measures every whole native organisation port with %s Assignment membership',async(variant)=>{
- probe??=await prepare();const p=probe,spy=p.install(),{b,ctx,expectedFirst,expectedLast,organisationTagSample}=p.fixture;
+it.skipIf(!requested).for(variants)('measures every whole native organisation port with %s Assignment membership',{timeout:300000},(variant,context)=>boundedCase(context,async()=>{
+ expect(probe).toBeTruthy();const p=probe!,spy=p.install(),{b,ctx,expectedFirst,expectedLast,organisationTagSample}=p.fixture;
  const active=organisationTagSample.filter((_,index)=>(index+1)%5!==0).slice(0,25),last=expectedLast.at(-1)!;
  const scope={companyIds:[b.companyId],selectedId:last};
  const cases:{name:string;input:Input;total:number;ids:string[];repeat:number;selected:string|null}[]=[
@@ -205,18 +248,18 @@ it.skipIf(!requested).each(variants)('measures every whole native organisation p
   }
   const completed=(p.report.performanceVariants??=[])as string[];completed.push(variant);p.save();
  }finally{p.stop();spy.mockRestore();await p.restore();}
-},300000);
+}));
 
-it.skipIf(!requested)('captures actual original/wrapped plans and remaining loops/window work without changing query shape',async()=>{
+it.skipIf(!requested).for(variants)('captures actual %s plans and remaining loops/window work without changing query shape',{timeout:300000},(variant,context)=>boundedCase(context,async()=>{
  expect(probe).toBeTruthy();const p=probe!,spy=p.install();
  try{
   expect([...p.queries.keys()]).toHaveLength(16);
   for(const [key,queries]of p.queries){
-   const variant=key.startsWith('original:')?'original':'wrapped';await p.choose(variant);p.label(key);expect(queries.length).toBeGreaterThanOrEqual(4);
+   if(!key.startsWith(variant+':'))continue;await p.choose(variant);p.label(key);expect(queries.length).toBeGreaterThanOrEqual(4);
    await database.withTenant(p.fixture.ctx,async tx=>{
     await assertAiPresentationPrincipalTx(tx,p.fixture.ctx);
     for(const entry of queries){
-     const started=performance.now(),plan=Array.from(await tx.execute(sql`explain(analyze,buffers,format json) ${entry.query}`)),wallMs=performance.now()-started;
+     assertCaseActive();const started=performance.now(),plan=Array.from(await tx.execute(sql`explain(analyze,buffers,format json) ${entry.query}`)),wallMs=performance.now()-started;
      const doc=(plan[0] as unknown as {'QUERY PLAN':PlanDocument[]})['QUERY PLAN'][0];expect(doc.Plan['Actual Rows']).toBe(entry.expectedRows);
      const assignmentNodes:unknown[]=[],windowNodes:unknown[]=[];
      const visit=(node:Record<string,unknown>)=>{
@@ -228,13 +271,14 @@ it.skipIf(!requested)('captures actual original/wrapped plans and remaining loop
     }
    },{readOnlySnapshot:true});
   }
-  p.report.actualPlansComplete=true;p.report.queryShapeUnchanged=true;p.save();
+  const completed=(p.report.planVariants??=[])as string[];completed.push(variant);
+  p.report.actualPlansComplete=variants.every(name=>completed.includes(name));p.report.queryShapeUnchanged=true;p.save();
  }finally{spy.mockRestore();await p.restore();}
-},300000);
+}));
 
 let authorityFixture:Awaited<ReturnType<typeof createAssignmentAuthorityFixture>>|undefined;
 let originalAuthority:Awaited<ReturnType<typeof assertAssignmentAuthority>>|undefined;
-it.skipIf(!requested).each(variants)('preserves all native ordinary/scoped/history/refusal controls with %s Assignment membership',async(variant)=>{
+it.skipIf(!requested).for(variants)('preserves all native ordinary/scoped/history/refusal controls with %s Assignment membership',{timeout:300000},(variant,context)=>boundedCase(context,async()=>{
  expect(probe).toBeTruthy();const p=probe!;authorityFixture??=await createAssignmentAuthorityFixture();const spy=p.install();
  try{
   await p.choose(variant);p.label(variant+':authority');const result=await assertAssignmentAuthority(authorityFixture);
@@ -242,4 +286,4 @@ it.skipIf(!requested).each(variants)('preserves all native ordinary/scoped/histo
   const results=(p.report.authority??={})as Record<string,unknown>;results[variant]=result;
   p.report.authorityComplete=variants.every(name=>Object.hasOwn(results,name));if(p.report.authorityComplete)p.report.phase='complete';p.save();
  }finally{spy.mockRestore();await p.restore();}
-},300000);
+}));

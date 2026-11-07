@@ -17,7 +17,7 @@ export async function createAssignmentAuthorityFixture(){
   const personId=randomUUID(),id=randomUUID(),assignmentId=dept?randomUUID():null;
   await owner.db.insert(person).values({id:personId,tenantId:b.tenantId,fullName:name,primaryEmail:personId+'@example.invalid'});
   await owner.db.insert(employment).values({id,tenantId:b.tenantId,personId,companyId,hiredOn:'2020-01-01'});
-  if(assignmentId)await owner.db.insert(assignment).values({id:assignmentId,tenantId:b.tenantId,employmentId:id,companyId:assignmentCompanyId,departmentId:dept,businessUnitId:dept===b.deptA?unit:null,validFrom:'2020-01-01',employmentType:'full_time'});
+  if(dept!==null&&assignmentId)await owner.db.insert(assignment).values({id:assignmentId,tenantId:b.tenantId,employmentId:id,companyId:assignmentCompanyId,departmentId:dept,businessUnitId:dept===b.deptA?unit:null,validFrom:'2020-01-01',employmentType:'full_time'});
   return {id,personId,assignmentId};
  };
  const alpha=await add('A fictional Assignment employee',b.deptA),beta=await add('B fictional Assignment manager',b.deptB),gamma=await add('C fictional Assignment peer',b.deptA);

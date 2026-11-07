@@ -52,3 +52,35 @@ also precedes the bounded page. The comparison records residual Assignment loops
 and WindowAgg rows explicitly. A later, separate set-wise narrowing/count-before-
 projection query proposal requires its own semantic and actual-plan evidence;
 it is not implemented by this experiment.
+
+
+## Retained first comparison failure and bounded recovery
+
+Frozen comparison source `597ddf70fbef133d5e912cd7d1aacb922915a0bf` ran in
+[run 42381351810](https://github.com/StradaverseHub/ai-hr/actions/runs/42381351810).
+Both selected tests and compiler finished with failure; this run is not a qualified
+comparison. Its `employee-choice-assignment-membership-plan.json` and
+`db.vitest.json` remain the original evidence. All eight original whole-port cases
+completed their independent DTO/ID/count/options assertions, and both separately
+bounded native authority variants passed (2565/5581 ms). The artifact records only
+`performanceVariants=["original"]`; no wrapped performance or actual-plan result
+was obtained.
+
+The test process started at 14:25:21 UTC. The JSON suite start was 14:25:44.143;
+first pre-port telemetry was 14:29:16.074 (about 212 seconds later), and final
+original-port telemetry was 14:30:46.577. The original case timed out after
+300012.7 ms while its async work continued; wrapped and actual-plan cases then
+failed on policy lock timeout after 667.5/304.1 ms. This is an aggregate fixture plus
+measurement lifecycle failure, not evidence that the wrapped policy is slower.
+The compiler separately reported TS2769 for a nullable department fixture argument;
+the repair explicitly narrows that argument before inserting the same existing row.
+
+Recovery gives fixture preparation, each performance variant, each plan variant,
+and each authority variant separate 300000 ms cases. No assertion or SQL/lock limit
+is removed or increased. A timed-out case terminates the owned app client, blocks
+later database cases and drains its async body/finally before further restoration;
+setup failure also closes any partially created single client and harness pools.
+The normal successful path continues to use one physical native app backend with
+unchanged policy/function/settings checks. The whole affected file and compiler
+must run again against a new frozen source identity. Query/index variants remain
+unimplemented, and no production adoption follows from this recovery.
