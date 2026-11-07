@@ -12,9 +12,12 @@ const MIGRATION = 'db/migrations/0812_ai_feature_switch_owner.sql';
 const journal: string[] = JSON.parse(read('db/migrations/meta/_journal.json')).entries.map((e: { tag: string }) => `db/migrations/${e.tag}.sql`);
 /** The live definition of a SQL function is its LAST definition in journal (apply) order. */
 const live = (marker: string) => {
-  const files = journal.filter(f => read(f).includes(marker));
+  // REVOKE/GRANT/ALTER FUNCTION statements are references, not later definitions.
+  const definitions=(source:string)=>[...source.matchAll(/CREATE(?: OR REPLACE)? FUNCTION /g)]
+    .map(match=>match.index+match[0].indexOf('FUNCTION ')).filter(at=>source.startsWith(marker,at));
+  const files = journal.filter(f => definitions(read(f)).length>0);
   expect(files.length, marker).toBeGreaterThan(0);
-  const src = read(files.at(-1)!), at = src.lastIndexOf(marker), end = src.indexOf('$$;', src.indexOf('$$', at) + 2);
+  const src = read(files.at(-1)!), at = definitions(src).at(-1)!, end = src.indexOf('$$;', src.indexOf('$$', at) + 2);
   expect(at).toBeGreaterThanOrEqual(0); expect(end).toBeGreaterThan(at);
   return { file: files.at(-1)!, body: src.slice(at, end) };
 };
