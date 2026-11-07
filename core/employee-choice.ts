@@ -14,8 +14,10 @@ const nonAscii=(value:SQL)=>sql`(${value} collate "C") ~ '[^ -~]'`;
 // RLS selectivity can underestimate 50k assignments as 10 and choose a quadratic
 // materialized population join. Retain an indexed per-employment lateral boundary;
 // OFFSET 0 prevents flattening without dropping any assignment or bypassing RLS.
-function employeeChoiceFrom(tenantId:string){return sql`from ${employment} join ${person} on ${person.id}=${employment.personId} and ${person.tenantId}=${tenantId}::uuid
- join ${company} on ${company.id}=${employment.companyId} and ${company.tenantId}=${tenantId}::uuid
+function employeeIdentityFrom(tenantId:string){return sql`from ${employment}
+ join ${person} on ${person.id}=${employment.personId} and ${person.tenantId}=${tenantId}::uuid
+ join ${company} on ${company.id}=${employment.companyId} and ${company.tenantId}=${tenantId}::uuid`;}
+function employeeChoiceFrom(tenantId:string){return sql`${employeeIdentityFrom(tenantId)}
  left join lateral (select ${assignment.id},${assignment.departmentId},${assignment.businessUnitId}
   from ${assignment} where ${assignment.employmentId}=${employment.id} and ${assignment.validTo} is null
    and ${assignment.supersededAt} is null and ${assignment.tenantId}=${tenantId}::uuid offset 0) as ${sql.identifier('assignment')} on true
@@ -56,11 +58,22 @@ export async function readEmployeeChoices(ctx:SessionContext,p:EmployeeChoiceInp
   if(!q){
    // One native population walk supplies both the exact count and bounded page.
    // An empty/out-of-range page needs a separate count; it must never imply total=0.
-   const page=await tx.execute<EmployeeChoice&{total:number}>(sql`select ${columns(labelMode==='labels')},(count(*) over())::int as total ${from}
-    where ${where} order by ${person.fullName},${employment.id},${assignment.id} limit ${limit} offset ${offset}`);
+   // The immediate native assignment_no_overlap constraint (also guarded by
+   // Personnel migrations) permits at most one unsuperseded NULL-ended assignment.
+   // Without organisation filters, authorize/count/page identities first, then
+   // project the bounded page's native assignment and label joins.
+   const organisationFilter=Boolean(filters.businessUnitId||filters.departmentId);
+   const population=organisationFilter?from:employeeIdentityFrom(ctx.tenantId);
+   const page=await tx.execute<EmployeeChoice&{total:number}>(organisationFilter?sql`select ${columns(labelMode==='labels')},(count(*) over())::int as total ${from}
+    where ${where} order by ${person.fullName},${employment.id},${assignment.id} limit ${limit} offset ${offset}`:sql`
+    with employee_choice_page as materialized(select ${employment.id},(count(*) over())::int as total ${population}
+     where ${where} order by ${person.fullName},${employment.id} limit ${limit} offset ${offset})
+    select ${columns(labelMode==='labels')},employee_choice_page.total ${from}
+     join employee_choice_page on employee_choice_page.id=${employment.id} where ${scoped}
+     order by ${person.fullName},${employment.id},${assignment.id}`);
    signal?.throwIfAborted();
    if(page.length){total=page[0].total;rows=page.map(({total:count,...row})=>row);}
-   else{const [count]=await tx.execute<{total:number}>(sql`select count(*)::int as total ${from} where ${where}`);total=count.total;signal?.throwIfAborted();}
+   else{const [count]=await tx.execute<{total:number}>(sql`select count(*)::int as total ${population} where ${where}`);total=count.total;signal?.throwIfAborted();}
   }else{
    // PostgreSQL locale lower/ILIKE is not ECMAScript lower/includes. ASCII-only rows
    // admit exact native candidates; every non-ASCII row remains a conservative candidate.
@@ -81,7 +94,7 @@ export async function readEmployeeChoices(ctx:SessionContext,p:EmployeeChoiceInp
   signal?.throwIfAborted();
   const selected=p.selectedId&&uuid.test(p.selectedId)?(await tx.execute<EmployeeChoice>(sql`${base} where ${scoped} and ${employment.id}=${p.selectedId}::uuid order by ${person.fullName},${employment.id},${assignment.id} limit 1`))[0]??null:null;
   signal?.throwIfAborted();
-  const options=await readOptions(tx,scoped,labelMode==='labels',ctx.tenantId);
+  const options=await readOptions(tx,scoped,labelMode==='labels',ctx.tenantId,signal);
   signal?.throwIfAborted();
   const inSelectedCompany=filters.companyId?options.filter(row=>row.companyId===filters.companyId):options;
   const companies=new Map(options.map(row=>[row.companyId,row.company]));
@@ -97,31 +110,31 @@ type ChoiceOptions=Pick<EmployeeChoice,'companyId'|'company'|'departmentId'|'dep
 /** Enumerate represented catalogue identities, stopping at the first native-RLS member.
  * A population DISTINCT can misestimate assignment RLS and materialize a quadratic join.
  * Independent options need no employee-by-organisation tuple cross product. */
-function readOptions(tx:Tx,scope:SQL,labels:boolean,tenantId:string){
+async function readOptions(tx:Tx,scope:SQL,labels:boolean,tenantId:string,signal?:AbortSignal){
  const members=sql`from ${employment} join ${person} on ${person.id}=${employment.personId} and ${person.tenantId}=${tenantId}::uuid
   where ${scope} and ${employment.companyId}=${company.id}`;
  const assignedMembers=sql`from ${assignment} join ${employment} on ${employment.id}=${assignment.employmentId}
   join ${person} on ${person.id}=${employment.personId} and ${person.tenantId}=${tenantId}::uuid
   where ${scope} and ${employment.companyId}=${company.id} and ${assignment.tenantId}=${tenantId}::uuid
    and ${assignment.validTo} is null and ${assignment.supersededAt} is null`;
- return tx.execute<ChoiceOptions>(sql`
- select ${company.id} as "companyId",${company.legalName} as company,
+ const companies=await tx.execute<ChoiceOptions>(sql`select ${company.id} as "companyId",${company.legalName} as company,
   null::uuid as "departmentId",null::text as "departmentCode",null::text as department,
   null::uuid as "businessUnitId",null::text as "businessUnitCode",null::text as "businessUnit"
- from ${company} where ${company.tenantId}=${tenantId}::uuid and exists(select 1 ${members})
- union all
- select ${company.id},${company.legalName},${department.id},${labels?sql`${department.name}`:sql`null::text`},
-  ${labels?sql`coalesce(nullif(trim(${department.label}),''),nullif(trim(${department.description}),''),${department.name})`:sql`${department.name}`},
-  null::uuid,null::text,null::text
+ from ${company} where ${company.tenantId}=${tenantId}::uuid and exists(select 1 ${members}) order by "companyId"`);
+ signal?.throwIfAborted();
+ const departments=await tx.execute<ChoiceOptions>(sql`select ${company.id} as "companyId",${company.legalName} as company,${department.id} as "departmentId",${labels?sql`${department.name}`:sql`null::text`} as "departmentCode",
+  ${labels?sql`coalesce(nullif(trim(${department.label}),''),nullif(trim(${department.description}),''),${department.name})`:sql`${department.name}`} as department,
+  null::uuid as "businessUnitId",null::text as "businessUnitCode",null::text as "businessUnit"
  from ${company} cross join ${department}
  where ${company.tenantId}=${tenantId}::uuid and ${department.tenantId}=${tenantId}::uuid
-  and exists(select 1 ${assignedMembers} and ${assignment.departmentId}=${department.id})
- union all
- select ${company.id},${company.legalName},null::uuid,null::text,null::text,${businessUnit.id},
-  ${labels?sql`${businessUnit.code}`:sql`null::text`},
-  ${labels?sql`coalesce(nullif(trim(${businessUnit.label}),''),nullif(trim(${businessUnit.name}),''),${businessUnit.code})`:sql`${businessUnit.name}`}
+  and exists(select 1 ${assignedMembers} and ${assignment.departmentId}=${department.id}) order by "companyId","departmentId"`);
+ signal?.throwIfAborted();
+ const units=await tx.execute<ChoiceOptions>(sql`select ${company.id} as "companyId",${company.legalName} as company,null::uuid as "departmentId",null::text as "departmentCode",null::text as department,${businessUnit.id} as "businessUnitId",
+  ${labels?sql`${businessUnit.code}`:sql`null::text`} as "businessUnitCode",
+  ${labels?sql`coalesce(nullif(trim(${businessUnit.label}),''),nullif(trim(${businessUnit.name}),''),${businessUnit.code})`:sql`${businessUnit.name}`} as "businessUnit"
  from ${company} cross join ${businessUnit}
  where ${company.tenantId}=${tenantId}::uuid and ${businessUnit.tenantId}=${tenantId}::uuid
   and exists(select 1 ${assignedMembers} and ${assignment.businessUnitId}=${businessUnit.id})
- order by "companyId","departmentId","businessUnitId"`);
+ order by "companyId","businessUnitId"`);
+ signal?.throwIfAborted();return [...companies,...departments,...units];
 }

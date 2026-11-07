@@ -8,6 +8,8 @@ import {adminCtx,closeAll,migrateTestDb,owner,resetDb,seedBase} from './harness'
 beforeAll(migrateTestDb);afterAll(closeAll);beforeEach(resetDb);
 it('retains future NULL-ended rows, closed and superseded exclusions and unassigned employments',async()=>{
  const b=await seedBase(),ctx=adminCtx(b),secondCompany=randomUUID();
+ const [constraint]=await owner.client`select contype,condeferrable,convalidated from pg_constraint where conrelid='public.assignment'::regclass and conname='assignment_no_overlap'`;
+ expect(constraint).toEqual({contype:'x',condeferrable:false,convalidated:true});
  await owner.db.insert(company).values({id:secondCompany,tenantId:b.tenantId,legalName:'Unassigned company'});
  const ids:string[]=[];
  for(const [name,companyId]of [['Alpha',b.companyId],['Beta',b.companyId],['Gamma',secondCompany]]){

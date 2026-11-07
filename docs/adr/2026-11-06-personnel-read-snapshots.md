@@ -49,7 +49,7 @@ employee-population join. Current-assignment reads retain an indexed lateral
 subquery boundary: native RLS selectivity can otherwise underestimate assignments
 and choose a quadratic materialized join. No assignment is clipped. Blank pages
 share their exact window count with the same native population walk; an empty or
-out-of-range page obtains its exact count independently. This fallback bounds resident
+out-of-range page obtains its exact count independently. The Unicode search fallback bounds resident
 employee DTOs, not total scan work; Unicode-heavy search cost must be measured.
 
 The side-effect-free, same-origin POST transport keeps new raw search text out of
