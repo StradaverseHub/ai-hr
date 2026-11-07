@@ -348,6 +348,7 @@ export function RosterGrid({
         className="overflow-x-auto rounded-lg border border-border focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
       >
         <table
+          data-roster-grid
           className="border-collapse text-sm"
           style={{ tableLayout: 'fixed', minWidth: pinned.width + dates.length * DATE_W }}
         >
@@ -407,7 +408,7 @@ export function RosterGrid({
           </thead>
           <tbody className="divide-y divide-border">
             {pageEmployees.map((e) => (
-              <tr key={e.employmentId}>
+              <tr key={e.employmentId} data-roster-employment-id={e.employmentId}>
                 {canEdit && (
                   <td className="sticky max-lg:static z-10 truncate bg-background px-2 py-1.5" style={pinned.col('check')}>
                     <input

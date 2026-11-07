@@ -172,9 +172,9 @@ export default async function AnalyticsPage({
       {/* Headline metrics */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         {tiles.map(([key, v]) => (
-          <div key={key} className="rounded-[1.25rem] border border-border bg-card p-4 shadow-[var(--shadow-card)]">
+          <div key={key} data-analytics-metric={key} className="rounded-[1.25rem] border border-border bg-card p-4 shadow-[var(--shadow-card)]">
             <div className="text-xs text-muted-foreground">{t(key)}</div>
-            <div className="mt-1 text-2xl font-semibold tabular-nums">{v}</div>
+            <div data-analytics-value className="mt-1 text-2xl font-semibold tabular-nums">{v}</div>
           </div>
         ))}
       </div>

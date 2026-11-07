@@ -29,6 +29,15 @@ it('includes the default Home in every role workload',()=>{
  for(const [role,paths] of Object.entries(routePools))expect(paths,role).toContain('/');
 });
 
+it('exercises the affected Analytics, Roster and Job Description reads for both HR scopes',()=>{
+ for(const role of ['companyHR','groupHR'] as const){
+  for(const path of ['/analytics','/roster','/admin/job-descriptions']){
+   expect(routePools[role]).toContain(path);
+   expect(additionalBrowserRoutes[role]).toContain(path);
+  }
+ }
+});
+
 it('counts each known AI view separately without retaining arbitrary query values',()=>{
  for(const path of new Set(Object.values(routePools).flat()))expect(readRouteForMeasurement(path)).toBe(path);
  expect(readRouteForMeasurement('/assistant?view=insights')).not.toBe(readRouteForMeasurement('/assistant?view=tools'));

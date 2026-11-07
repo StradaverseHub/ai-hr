@@ -381,6 +381,45 @@ try{
    // and prove the real document control exists before taking identity/readiness snapshots.
    await page.getByRole('link',{name:'Download PDF',exact:true}).waitFor({state:'visible',timeout:90000});
   }
+  if(path==='/analytics'){
+   visitStage='analytics-metrics';
+   const metrics=page.locator('main [data-analytics-metric]');
+   await page.locator('main [data-analytics-metric="activeHeadcount"] [data-analytics-value]').waitFor({state:'visible',timeout:90000});
+   assert.deepEqual(await metrics.evaluateAll(rows=>rows.map(row=>row.getAttribute('data-analytics-metric')).sort()),['activeHeadcount','newHires','terminations','turnoverRate'].sort(),'Analytics metric inventory incomplete');
+   const rewardDraft=fixture.tenants[user.tenant].rewardDraft;
+   const rewardEmployee=rewardDraft&&(user.role==='groupHR'||rewardDraft.companyId===user.companyId)?1:0;
+   const expected=fixture.users.filter(actor=>actor.tenant===user.tenant&&(user.role==='groupHR'||actor.companyId===user.companyId)).length+rewardEmployee;
+   assert.equal((await page.locator('main [data-analytics-metric="activeHeadcount"] [data-analytics-value]').innerText()).trim(),String(expected),'Analytics headcount must match the independently seeded company/tenant population');
+   await page.locator('main form[method="get"] select[name="companyId"]').waitFor({state:'visible',timeout:90000});
+   assert.equal(await page.locator('main [role="alert"], main [data-read-unavailable]').count(),0,'Analytics rendered an unavailable state');
+   (report.analyticsReadiness??=[]).push({role:user.role,phase,expectedHeadcount:expected,renderedMetrics:4});save();
+  }
+  if(path==='/roster'){
+   visitStage='roster-scoped-grid';
+   const rows=page.locator('main [data-roster-grid] tbody tr[data-roster-employment-id]:visible');
+   await rows.first().waitFor({state:'visible',timeout:90000});
+   const rendered=await rows.evaluateAll(elements=>elements.map(row=>({id:row.getAttribute('data-roster-employment-id'),text:row.textContent??''})));
+   assert(rendered.length>0&&rendered.length<=25,'default Roster must render a bounded nonempty employee page');
+   assert.equal(new Set(rendered.map(row=>row.id)).size,rendered.length,'Roster employee rows must be unique');
+   const allowed=fixture.users.filter(actor=>actor.tenant===user.tenant&&(user.role==='groupHR'||actor.companyId===user.companyId));
+   const reward=fixture.tenants[user.tenant].rewardDraft;
+   for(const row of rendered){
+    const actor=allowed.find(actor=>actor.employmentId===row.id);
+    const rewardAllowed=reward&&row.id===reward.employmentId&&(user.role==='groupHR'||reward.companyId===user.companyId);
+    assert(actor||rewardAllowed,'Roster rendered an employee outside its independently seeded company/tenant scope');
+    if(actor)assert(row.text.includes(actor.name),'Roster row omitted the expected employee name');
+   }
+   assert.equal(await page.locator('main [role="alert"], main [data-read-unavailable]').count(),0,'Roster rendered an unavailable state');
+   (report.rosterReadiness??=[]).push({role:user.role,phase,renderedEmployees:rendered.length,scopeVerified:true});save();
+  }
+  if(path==='/admin/job-descriptions'){
+   visitStage='job-description-read-controls';
+   await page.locator('main form input[name="q"]').waitFor({state:'visible',timeout:90000});
+   await page.locator('main a[href="/admin/job-descriptions/new"]').waitFor({state:'visible',timeout:90000});
+   assert(await page.locator('main table thead th:visible').count()>=7,'Job Description listing did not render its complete table');
+   assert.equal(await page.locator('main [role="alert"], main [data-read-unavailable]').count(),0,'Job Description listing rendered an unavailable state');
+   (report.jobDescriptionReadiness??=[]).push({role:user.role,phase,filterReady:true,createReady:true});save();
+  }
   if(suite==='whole-system'&&path==='/lifecycle'&&['companyHR','groupHR'].includes(user.role)){
    visitStage='lifecycle-staff-tiles';
    const open=user.role==='groupHR'?2:user.company<2?1:0,pending=user.role==='groupHR'||user.company===0?1:0;
