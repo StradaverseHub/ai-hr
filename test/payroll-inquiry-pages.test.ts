@@ -8,6 +8,7 @@ import {afterAll,beforeAll,beforeEach,expect,it,vi} from 'vitest';
 import type {SessionContext,Tx} from '../db/client';
 import * as moduleGate from '../core/module-gate';
 import {lockPayrollHistoryWriteTx} from '../core/payroll-history-lock';
+import {ModuleNotEnabledError} from '../core/entitlements';
 import * as s from '../db/schema';
 import {hireEmployee} from '../core/org';
 import {setCompensation} from '../core/comp';
@@ -18,7 +19,7 @@ import {seedPayComponentCatalog,listPayComponents,setEmploymentPayComponent} fro
 import {listFixedTransactionsAcross,listFixedTransactionsPage,listIndividualTxnsAcross,listIndividualTxnsPage} from '../core/payroll-view';
 import {parsePageQuery} from '../lib/pagination';
 import {todayInKualaLumpur} from '../lib/hr-date';
-import {adminCtx,closeAll,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
+import {adminCtx,closeAll,entitledCtx,migrateTestDb,owner,resetDb,seedBase,setModule,type Base} from './harness';
 
 let b:Base;
 beforeAll(migrateTestDb);beforeEach(async()=>{await resetDb();b=await seedBase();});afterAll(closeAll);
@@ -75,6 +76,22 @@ it('sees the committed correction after actually waiting for the native history 
   release();await writing;
   const page=await reading;expect(page.total).toBe(1);expect(page.rows.map(row=>[row.id,row.amount])).toEqual([[initial.id,'13.50']]);
  }finally{release();await writing;await reading;}
+});
+
+it('refuses invalid pages and missing Payroll entitlement instead of returning plausible empty results',async()=>{
+ const a=adminCtx(b),employee=await hire('Fictional refusal employee');
+ const batch=await createBatch(a,{companyId:b.companyId,payPeriod:'2026-05'});
+ const initial=await createIndividualTxn(a,{batchId:batch.batchId,employmentId:employee.employmentId,kind:'earning',txnDate:'2026-05-10',amount:12.25});
+ const p={companyIds:[b.companyId]},valid=parsePageQuery();
+ for(const invalid of [{...valid,limit:2001},{...valid,offset:-1}]){
+  await expect(listIndividualTxnsPage(a,p,invalid)).rejects.toThrow(RangeError);
+  await expect(listFixedTransactionsPage(a,p,invalid)).rejects.toThrow(RangeError);
+ }
+ await setModule(b.tenantId,'payroll',null);const off=await entitledCtx(b);
+ await expect(listIndividualTxnsPage(off,p,valid)).rejects.toThrow(ModuleNotEnabledError);
+ await expect(listFixedTransactionsPage(off,p,valid)).rejects.toThrow(ModuleNotEnabledError);
+ await setModule(b.tenantId,'payroll','active');const on=await entitledCtx(b);
+ expect((await listIndividualTxnsPage(on,p,valid)).rows.map(row=>row.id)).toEqual([initial.id]);
 });
 
 it('pages Fixed rows in native order with exact strings, full counts, status and company filters',async()=>{
