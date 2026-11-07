@@ -1,5 +1,5 @@
 /** Shell declaration metadata, never permission policy. See ADR 2026-11-07-navigation-coverage. */
-import {SIDEBAR_AUDIENCE_INVENTORY, ADDITIONAL_ROWS, isCollapsible, PERFORMANCE_ADMIN_ROW, ONBOARDING_NODE, type ChildItem} from './shell-inventory';
+import {SIDEBAR_AUDIENCE_INVENTORY, ADDITIONAL_ROWS, isCollapsible, PERFORMANCE_ADMIN_ROW, ONBOARDING_NODE, SCOPED_LIFECYCLE_NAVIGATION, type ChildItem} from './shell-inventory';
 import {resolveShellNavigation, type ShellNavigationFacts} from './shell-resolver';
 import {V9_NAVIGATION, V9_SHARED_NAVIGATION} from '../lifecycle-v9-navigation';
 import {modulePackById} from '../../packs/registry';
@@ -154,6 +154,18 @@ export const REVIEWED_SHELL_BINDINGS:Readonly<Record<string,Binding>> = {
   "rewards/rewardsBonusMatrices": {"id": "shell.rewardsBonusMatrices", "sourceOwner": "packs/rewards/index.ts", "sourceKey": "shell-slot:rewardsBonusMatrices", "status": "declared"},
   "rewards/rewardsPatInputs": {"id": "shell.rewardsPatInputs", "sourceOwner": "packs/rewards/index.ts", "sourceKey": "shell-slot:rewardsPatInputs", "status": "declared"},
   "rewards/rewardsAccess": {"id": "shell.rewardsAccess", "sourceOwner": "packs/rewards/index.ts", "sourceKey": "shell-slot:rewardsAccess", "status": "declared"},
+  "scoped/probation/probationTracker": {"id": "shell.probationTracker", "sourceOwner": "lib/navigation/shell-inventory.ts", "sourceKey": "shell-slot:probationTracker", "status": "declared"},
+  "scoped/contracts/contractManagement": {"id": "shell.contractManagement", "sourceOwner": "lib/navigation/shell-inventory.ts", "sourceKey": "shell-slot:contractManagement", "status": "declared"},
+  "scoped/probation/probationSettings": {"id": "shell.probationSettings", "sourceOwner": "lib/navigation/shell-inventory.ts", "sourceKey": "shell-slot:probationSettings", "status": "declared"},
+  "scoped/probation/probationForms": {"id": "shell.probationForms", "sourceOwner": "lib/navigation/shell-inventory.ts", "sourceKey": "shell-slot:probationForms", "status": "declared"},
+  "scoped/probation/probationRoutes": {"id": "shell.probationRoutes", "sourceOwner": "lib/navigation/shell-inventory.ts", "sourceKey": "shell-slot:probationRoutes", "status": "declared"},
+  "scoped/probation/probationWorkflows": {"id": "shell.probationWorkflows", "sourceOwner": "lib/navigation/shell-inventory.ts", "sourceKey": "shell-slot:probationWorkflows", "status": "declared"},
+  "scoped/probation/probationTemplates": {"id": "shell.probationTemplates", "sourceOwner": "lib/navigation/shell-inventory.ts", "sourceKey": "shell-slot:probationTemplates", "status": "declared"},
+  "scoped/probation/probationIntake": {"id": "shell.probationIntake", "sourceOwner": "lib/navigation/shell-inventory.ts", "sourceKey": "shell-slot:probationIntake", "status": "declared"},
+  "scoped/contracts/contractIntake": {"id": "shell.contractIntake", "sourceOwner": "lib/navigation/shell-inventory.ts", "sourceKey": "shell-slot:contractIntake", "status": "declared"},
+  "scoped/contracts/contractSettings": {"id": "shell.contractSettings", "sourceOwner": "lib/navigation/shell-inventory.ts", "sourceKey": "shell-slot:contractSettings", "status": "declared"},
+  "scoped/contracts/contractWorkflows": {"id": "shell.contractWorkflows", "sourceOwner": "lib/navigation/shell-inventory.ts", "sourceKey": "shell-slot:contractWorkflows", "status": "declared"},
+  "scoped/contracts/contractTemplates": {"id": "shell.contractTemplates", "sourceOwner": "lib/navigation/shell-inventory.ts", "sourceKey": "shell-slot:contractTemplates", "status": "declared"},
 };
 export type NavigationDeclaration = Binding & {
  selector:string; declaredHref:string; navigationHref:string; ownedSubpaths:readonly string[];
@@ -164,7 +176,6 @@ export type NavigationCatalogue={declarations:NavigationDeclaration[];issues:Cat
 /** Explicit backlog beyond this bounded shell universe; these are not coverage receipts. */
 export const NAVIGATION_COVERAGE_BACKLOG = [
  {id:'nested-submenus',owner:'navigation surface owners',reason:'Immediate in-page submenu/tab registries are not yet composed. Shell ownership prefixes do not prove their usable content.'},
- {id:'scoped-lifecycle-registry',owner:'shell resolver owner',reason:'Probation/contracts descriptors are private inline resolver constructions; export their canonical registry before claiming complete declarations.'},
 ] as const;
 
 export function declaredNavigationCatalogue():NavigationCatalogue {
@@ -187,6 +198,7 @@ export function declaredNavigationCatalogue():NavigationCatalogue {
   ...('ownedSubpaths' in row?{ownedSubpaths:[...row.ownedSubpaths]}:{})});
  for(const row of V9_SHARED_NAVIGATION)append(`v9Shared/${row.labelKey}`,{...row,icon:ONBOARDING_NODE.icon,exactHref:true});
  for(const row of modulePackById('rewards')!.navLinks??[])append(`rewards/${row.labelKey}`,row);
+ for(const row of SCOPED_LIFECYCLE_NAVIGATION)append(`scoped/${row.module}/${row.labelKey}`,row);
  for(const key of ['id','sourceKey'] as const){const seen=new Set<string>();for(const row of declarations){
   if(seen.has(row[key]))issues.push({code:`duplicate-${key}`,detail:row[key]});seen.add(row[key]);
  }}

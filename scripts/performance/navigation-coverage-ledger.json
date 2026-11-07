@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "scope": "Declared shell destinations only; nested page menus and the full app page universe remain incomplete.",
-  "reviewedAgainst": "8b6e8d1579ebfdb220631c03d3d31d6050a62993",
+  "reviewedAgainst": "4aeb6c2e6a74ed1ae1d7b52f4e2c1955c447e607",
   "entries": [
     {
       "id": "shell.dashboard",
@@ -1307,6 +1307,114 @@
       "status": "uncovered",
       "owner": "packs/rewards/index.ts",
       "reason": "No executed usable-content evidence for this stable shell destination is recorded in this ledger."
+    },
+    {
+      "id": "shell.probationTracker",
+      "sourceOwner": "lib/navigation/shell-inventory.ts",
+      "sourceKey": "shell-slot:probationTracker",
+      "declaredHref": "/lifecycle/probation",
+      "status": "uncovered",
+      "owner": "lib/navigation/shell-inventory.ts",
+      "reason": "No executed usable-content evidence for this stable shell destination is recorded in this ledger."
+    },
+    {
+      "id": "shell.contractManagement",
+      "sourceOwner": "lib/navigation/shell-inventory.ts",
+      "sourceKey": "shell-slot:contractManagement",
+      "declaredHref": "/lifecycle/contracts",
+      "status": "uncovered",
+      "owner": "lib/navigation/shell-inventory.ts",
+      "reason": "No executed usable-content evidence for this stable shell destination is recorded in this ledger."
+    },
+    {
+      "id": "shell.probationSettings",
+      "sourceOwner": "lib/navigation/shell-inventory.ts",
+      "sourceKey": "shell-slot:probationSettings",
+      "declaredHref": "/lifecycle/probation/settings",
+      "status": "uncovered",
+      "owner": "lib/navigation/shell-inventory.ts",
+      "reason": "No executed usable-content evidence for this stable shell destination is recorded in this ledger."
+    },
+    {
+      "id": "shell.probationForms",
+      "sourceOwner": "lib/navigation/shell-inventory.ts",
+      "sourceKey": "shell-slot:probationForms",
+      "declaredHref": "/lifecycle/probation/forms",
+      "status": "uncovered",
+      "owner": "lib/navigation/shell-inventory.ts",
+      "reason": "No executed usable-content evidence for this stable shell destination is recorded in this ledger."
+    },
+    {
+      "id": "shell.probationRoutes",
+      "sourceOwner": "lib/navigation/shell-inventory.ts",
+      "sourceKey": "shell-slot:probationRoutes",
+      "declaredHref": "/lifecycle/probation/routes",
+      "status": "uncovered",
+      "owner": "lib/navigation/shell-inventory.ts",
+      "reason": "No executed usable-content evidence for this stable shell destination is recorded in this ledger."
+    },
+    {
+      "id": "shell.probationWorkflows",
+      "sourceOwner": "lib/navigation/shell-inventory.ts",
+      "sourceKey": "shell-slot:probationWorkflows",
+      "declaredHref": "/lifecycle/probation/workflows",
+      "status": "uncovered",
+      "owner": "lib/navigation/shell-inventory.ts",
+      "reason": "No executed usable-content evidence for this stable shell destination is recorded in this ledger."
+    },
+    {
+      "id": "shell.probationTemplates",
+      "sourceOwner": "lib/navigation/shell-inventory.ts",
+      "sourceKey": "shell-slot:probationTemplates",
+      "declaredHref": "/lifecycle/probation/templates",
+      "status": "uncovered",
+      "owner": "lib/navigation/shell-inventory.ts",
+      "reason": "No executed usable-content evidence for this stable shell destination is recorded in this ledger."
+    },
+    {
+      "id": "shell.probationIntake",
+      "sourceOwner": "lib/navigation/shell-inventory.ts",
+      "sourceKey": "shell-slot:probationIntake",
+      "declaredHref": "/lifecycle/probation/intake",
+      "status": "uncovered",
+      "owner": "lib/navigation/shell-inventory.ts",
+      "reason": "No executed usable-content evidence for this stable shell destination is recorded in this ledger."
+    },
+    {
+      "id": "shell.contractIntake",
+      "sourceOwner": "lib/navigation/shell-inventory.ts",
+      "sourceKey": "shell-slot:contractIntake",
+      "declaredHref": "/lifecycle/contracts/intake",
+      "status": "uncovered",
+      "owner": "lib/navigation/shell-inventory.ts",
+      "reason": "No executed usable-content evidence for this stable shell destination is recorded in this ledger."
+    },
+    {
+      "id": "shell.contractSettings",
+      "sourceOwner": "lib/navigation/shell-inventory.ts",
+      "sourceKey": "shell-slot:contractSettings",
+      "declaredHref": "/lifecycle/contracts/settings",
+      "status": "uncovered",
+      "owner": "lib/navigation/shell-inventory.ts",
+      "reason": "No executed usable-content evidence for this stable shell destination is recorded in this ledger."
+    },
+    {
+      "id": "shell.contractWorkflows",
+      "sourceOwner": "lib/navigation/shell-inventory.ts",
+      "sourceKey": "shell-slot:contractWorkflows",
+      "declaredHref": "/lifecycle/contracts/workflows",
+      "status": "uncovered",
+      "owner": "lib/navigation/shell-inventory.ts",
+      "reason": "No executed usable-content evidence for this stable shell destination is recorded in this ledger."
+    },
+    {
+      "id": "shell.contractTemplates",
+      "sourceOwner": "lib/navigation/shell-inventory.ts",
+      "sourceKey": "shell-slot:contractTemplates",
+      "declaredHref": "/lifecycle/contracts/templates",
+      "status": "uncovered",
+      "owner": "lib/navigation/shell-inventory.ts",
+      "reason": "No executed usable-content evidence for this stable shell destination is recorded in this ledger."
     }
   ],
   "backlog": [
@@ -1314,11 +1422,6 @@
       "id": "nested-submenus",
       "owner": "navigation surface owners",
       "reason": "Immediate nested submenu registries remain uncomposed."
-    },
-    {
-      "id": "scoped-lifecycle-registry",
-      "owner": "shell resolver owner",
-      "reason": "Canonical scoped descriptor export is pending."
     }
   ]
 }

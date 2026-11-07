@@ -96,6 +96,7 @@ export function navigationCoverageMain(args=process.argv.slice(2)){
   canAdministerSecurity:true,canConfigureAccess:true,canProvisionUsers:true,canConfigurePasswordPolicy:true,
   canConfigureIdentityEmail:true,canPreviewIdentityEmail:true,canConfigureLoginPresentation:true,
   canAdministerAi:true,canConfigureAiProvider:true,canReviewProfileChanges:true,privateCaseHandler:true,
+  probationAccess:{page:true,configure:true,intake:true},contractStaffAccess:{page:true,configure:true,intake:true},
   onboardingV9Access:true,onboardingV9Navigation:{onboarding:true,offboarding:true,administration:true,records:true},
   letterDestinations:catalogue.declarations.filter(row=>row.sourceOwner==='lib/letter-navigation.ts').map(row=>row.declaredHref),
   rewardDestinations:catalogue.declarations.filter(row=>row.sourceOwner==='packs/rewards/index.ts').map(row=>row.declaredHref),

@@ -1,7 +1,7 @@
 import {describe,it,expect} from 'vitest';
 import {declaredNavigationCatalogue,resolveNavigationCatalogue} from '../lib/navigation/catalogue';
 import {resolveShellNavigation,type ShellNavigationFacts} from '../lib/navigation/shell-resolver';
-import {SIDEBAR_AUDIENCE_INVENTORY,PERFORMANCE_ADMIN_ROW,isCollapsible} from '../lib/navigation/shell-inventory';
+import {SIDEBAR_AUDIENCE_INVENTORY,PERFORMANCE_ADMIN_ROW,SCOPED_LIFECYCLE_NAVIGATION,isCollapsible} from '../lib/navigation/shell-inventory';
 
 const facts:ShellNavigationFacts={isAdmin:false};
 describe('stable shell metadata uses the canonical runtime policy',()=>{
@@ -18,10 +18,23 @@ describe('stable shell metadata uses the canonical runtime policy',()=>{
   {isAdmin:false,canConfigureAccess:true,canProvisionUsers:true},
   {isAdmin:false,onboardingV9Access:true,onboardingV9Navigation:{onboarding:true,offboarding:true,administration:true,records:true}},
   {isAdmin:false,rewardDestinations:['/rewards','/admin/rewards/access']},
+  {isAdmin:false,probationAccess:{page:true,configure:true,intake:true},contractStaffAccess:{page:true,configure:true,intake:true}},
+  {isAdmin:false,probationAccess:{page:false,configure:false,intake:true},contractStaffAccess:{page:false,configure:false,intake:true}},
  ])('binds the exact resolver result without adding a second capability policy (%j)',capabilities=>{
   const actual=resolveNavigationCatalogue(capabilities);
   expect(actual.issues).toEqual([]);
   expect(actual.rows.map(entry=>entry.row)).toEqual(resolveShellNavigation(capabilities).destinations);
+ });
+ it('composes all twelve canonical scoped descriptors by reference without duplicating their visibility policy',()=>{
+  const declared=declaredNavigationCatalogue().declarations.filter(row=>row.selector.startsWith('scoped/'));
+  expect(declared).toHaveLength(12);
+  expect(declared.map(row=>row.descriptor)).toEqual(SCOPED_LIFECYCLE_NAVIGATION);
+  expect(declared.every((row,index)=>row.descriptor===SCOPED_LIFECYCLE_NAVIGATION[index])).toBe(true);
+  expect(declared.map(row=>row.id)).toEqual([
+   'shell.probationTracker','shell.contractManagement','shell.probationSettings','shell.probationForms',
+   'shell.probationRoutes','shell.probationWorkflows','shell.probationTemplates','shell.probationIntake',
+   'shell.contractIntake','shell.contractSettings','shell.contractWorkflows','shell.contractTemplates',
+  ]);
  });
  it('retains Performance admin identity at the declared address and a substituted latest cycle',()=>{
   const base=resolveNavigationCatalogue({...facts,canAdministerOnehr:true});
