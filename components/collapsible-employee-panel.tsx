@@ -293,7 +293,11 @@ export function EmployeeScopePanel({
   const [isPending, startTransition] = useTransition();
 
   const initialPickerValue = (key: typeof INQUIRY_PICKER_KEYS[number]) => {
-    if (!preservePicker) return '';
+    if (!preservePicker) {
+      if(!remote)return '';
+      const values={pickerQ:remote.initial.filters.query,pickerCompany:remote.initial.filters.companyId,pickerBusinessUnit:remote.initial.filters.businessUnitId,pickerDepartment:remote.initial.filters.departmentId,pickerStatus:remote.initial.filters.status};
+      return values[key];
+    }
     // After collapsing/reopening, server props may predate the last client-side filter change.
     if (typeof window !== 'undefined') return new URLSearchParams(window.location.search).get(key) ?? '';
     return typeof preserve?.[key] === 'string' ? preserve[key] as string : '';
@@ -303,7 +307,7 @@ export function EmployeeScopePanel({
   const [businessUnitId, setBusinessUnitId] = useState(() => initialPickerValue('pickerBusinessUnit'));
   const [departmentId, setDepartmentId] = useState(() => initialPickerValue('pickerDepartment'));
   const [status, setStatus] = useState(() => initialPickerValue('pickerStatus'));
-  const [offset,setOffset]=useState(0),[retry,setRetry]=useState(0);
+  const [offset,setOffset]=useState(()=>remote?.initial.offset??0),[retry,setRetry]=useState(0);
   const remoteFilters={query,companyId,businessUnitId,departmentId,status};
   const remoteKey=remote?remote.initial.contextId+employeeChoiceKey(remoteFilters,offset,remote.initial.labelMode)+':'+retry:'';
   const [remoteState,setRemoteState]=useState<{key:string;data?:EmployeeChoicePage;error?:boolean}>(()=>({
@@ -324,7 +328,7 @@ export function EmployeeScopePanel({
         .then(async response=>{
           if(!response.ok)throw Error('Employee choices unavailable');
           const data:unknown=await response.json();
-          if(!isEmployeeChoicePage(data)||employeeChoiceKey(data.filters,data.offset,data.labelMode)!==employeeChoiceKey(remoteFilters,offset,remote.initial.labelMode))throw Error('Employee choices unavailable');
+          if(!isEmployeeChoicePage(data)||data.limit!==remote.initial.limit||employeeChoiceKey(data.filters,data.offset,data.labelMode)!==employeeChoiceKey(remoteFilters,offset,remote.initial.labelMode))throw Error('Employee choices unavailable');
           if(current)setRemoteState({key:remoteKey,data});
         }).catch(()=>{if(current&&!controller.signal.aborted)setRemoteState({key:remoteKey,data:remoteData,error:true});});
     },180);
