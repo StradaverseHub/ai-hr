@@ -16,10 +16,10 @@ The independent presentation response repair accepts PostgreSQL-shaped tenant UU
 
 There are 28 existing approved records and two pending records. The proposal changes only the approved records' exact source digest and the generated transform manifest. Their contract IDs, status, reviewer, original evidence and original review timestamp must remain unchanged. `structured_canonical_records_v1` and `attendance_trend_analysis_v1` remain byte-identical and blocked. This refresh authorizes no new AI data, disclosure destination, permission or autonomous employment/pay decision.
 
-The literal approval registry has not been refreshed. It remains stale and fails closed until an explicit owner disposition for this exact digest is recorded. Previous approvals are not approval of this source.
+On 7 November 2026, the repository owner explicitly answered “Approve exact performance binding refresh” to the question naming source `8f979a23706120766e19e5b8ebf82d63ce6d4e55`, digest `81c8f6c7a25028da15e5984fa4245da267d2e798ccdb2ae2b69748e872498095`, 28 approved contracts and both blocked pending contracts. The literal registry is refreshed only within that scope; original approval metadata is preserved. This disposition does not authorize production deployment.
 
 ## Verification and release boundaries
 
-The focused real mobile approval, claim, delegated-approver and design journeys, plus the in-flight isolation/retry suite, passed in run `42363911030`; its whole compiler check was still running when this packet was prepared. The legacy design contract regression passed in `42363526053`. These are development evidence, not a release gate or installed acceptance.
+The focused real mobile approval, claim, delegated-approver and design journeys, plus the in-flight isolation/retry suite, passed in run `42363911030`; its whole repository compiler check also passed. The legacy design contract regression passed in `42363526053`. These are development evidence, not a release gate or installed acceptance.
 
 Full qualification, shared staging queue admission, exact source/build arrival and authenticated native acceptance remain required. Production, package publication, app stores and Firebase are excluded.
