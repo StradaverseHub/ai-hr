@@ -5,6 +5,8 @@ import * as schema from '../db/schema';
 import {client,type SessionContext} from '../db/client';
 import {attendanceEmploymentRangePage,attendanceForEmploymentRange,attendancePunchesForRange} from '../packs/attendance/service';
 import {hireEmployee,setReportingLine} from '../core/org';
+import {createHoliday} from '../core/admin';
+import {assignDefaultShift,assignShift,createShift} from '../core/roster';
 import {parsePageQuery} from '../lib/pagination';
 import {adminCtx,closeAll,createAppUser,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
 let b:Base,ctx:SessionContext,employmentId:string,personId:string;
@@ -84,6 +86,26 @@ it('keeps day figures and punch details on one snapshot when an update commits b
  const fresh=await attendanceEmploymentRangePage(ctx,employmentId,from,to,parsePageQuery({page:'1'}));
  expect(fresh.dayPage[0].workedMinutes).toBe(600);expect(fresh.dayPage[0].checkOutAt).toBe('19:00:00');
  expect(fresh.punchesByAttendance.get(fresh.dayPage[0].attendanceId!)!.at(-1)!.punchAt).toBe('19:00:00');
+});
+
+it('preserves missing-day holiday and schedule context across the visible-page boundary',async()=>{
+ // Remove persisted rows so canonical calendar/schedule inputs must supply the display facts.
+ await owner.client`delete from attendance_punch where employment_id=${employmentId}::uuid and attendance_date>='2026-07-25'`;
+ await owner.client`delete from attendance where employment_id=${employmentId}::uuid and attendance_date>='2026-07-25'`;
+ const regular=await createShift(ctx,{name:'Fictional regular page shift',code:'PREG',startTime:'09:00',endTime:'18:00',breakMinutes:60,weeklyPattern:[1,2,3,4,5]});
+ const shorter=await createShift(ctx,{name:'Fictional roster page shift',code:'PROS',startTime:'10:00',endTime:'16:00',breakMinutes:60,weeklyPattern:[1,2,3,4,5]});
+ await assignDefaultShift(ctx,{employmentId,shiftId:regular.id});
+ await assignShift(ctx,{employmentId,shiftDate:'2026-07-28',shiftId:shorter.id});
+ await createHoliday(ctx,{country:'MY',holidayDate:'2026-07-26',name:'Fictional first date of page two holiday'});
+ const canonical=await attendanceForEmploymentRange(ctx,employmentId,from,to);
+ const first=await attendanceEmploymentRangePage(ctx,employmentId,from,to,parsePageQuery());
+ const last=await attendanceEmploymentRangePage(ctx,employmentId,from,to,parsePageQuery({page:'1'}));
+ expect(first.dayPage).toEqual(canonical.slice(0,25));expect(last.dayPage).toEqual(canonical.slice(25));
+ expect(first.dayPage.at(-1)).toMatchObject({date:'2026-07-25',attendanceId:null,context:'rest_day',scheduledMinutes:null,shiftCode:null});
+ expect(last.dayPage[0]).toMatchObject({date:'2026-07-26',attendanceId:null,context:'holiday',scheduledMinutes:null,shiftCode:null});
+ expect(last.dayPage[1]).toMatchObject({date:'2026-07-27',attendanceId:null,context:null,shiftCode:'PREG',scheduledMinutes:480,shiftStart:'09:00',shiftEnd:'18:00'});
+ expect(last.dayPage[2]).toMatchObject({date:'2026-07-28',attendanceId:null,context:null,shiftCode:'PROS',scheduledMinutes:300,shiftStart:'10:00',shiftEnd:'16:00'});
+ expect(last.total).toBe(31);expect(last.punchesByAttendance.size).toBe(0);
 });
 
 it('preserves native own and foreign visibility, rejects forged callers and keeps empty-page counts truthful',async()=>{
