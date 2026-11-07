@@ -31,15 +31,20 @@ async function verifyLayout(role:string,html:string,table=false){
    await page.setContent(`<html lang="en" data-ui-theme="atelier"><head><meta name="viewport" content="width=device-width,initial-scale=1"></head><body class="bg-background text-foreground font-sans">${table?`<main class="p-4">${html}</main>`:html}</body></html>`);
    await page.addStyleTag({content:css+(table?'\n'+readFileSync('components/leave/inquiry-table.module.css','utf8').replaceAll('.table','.'+styles.table):'')});
    await page.evaluate(()=>document.fonts.ready);
+   // The fixture adds compiled CSS after its markup. Let registered transform properties
+   // and font metrics reach a painted frame before measuring the centred portal.
+   await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
    const geometry=await page.evaluate(()=>{
     const dialog=document.querySelector<HTMLElement>('[role="dialog"]');const rect=dialog?.getBoundingClientRect();
     return {width:innerWidth,pageWidth:document.documentElement.scrollWidth,dialog:rect?{left:rect.left,right:rect.right,top:rect.top,bottom:rect.bottom}:null,buttons:Array.from(document.querySelectorAll<HTMLElement>('[role="dialog"] button')).filter(button=>button.getBoundingClientRect().width>0).map(button=>({name:button.textContent,height:button.getBoundingClientRect().height})),headings:Array.from(document.querySelectorAll('th')).map(th=>({wrap:getComputedStyle(th).whiteSpace,width:th.clientWidth,content:th.scrollWidth}))};
    });
+   await page.screenshot({path:join(out,`${role}-${device}.png`),fullPage:true});results.push({role,device,...geometry});
+   writeFileSync(join(out,`${role}.json`),JSON.stringify({kind:'real-component fixtures; not authenticated role acceptance',results},null,2));
    expect(geometry.pageWidth,`${role}/${device} root overflow`).toBeLessThanOrEqual(width+1);
    if(geometry.dialog){expect(geometry.dialog.left).toBeGreaterThanOrEqual(0);expect(geometry.dialog.right).toBeLessThanOrEqual(width+1);expect(geometry.dialog.top).toBeGreaterThanOrEqual(0);expect(geometry.dialog.bottom).toBeLessThanOrEqual(height+1);}
    if(device==='mobile')for(const button of geometry.buttons)expect(button.height,button.name??'button target').toBeGreaterThanOrEqual(43.5);
    if(table)for(const heading of geometry.headings){expect(heading.wrap).toBe('normal');expect(heading.content).toBeLessThanOrEqual(heading.width+1);}
-   await page.screenshot({path:join(out,`${role}-${device}.png`),fullPage:true});results.push({role,device,...geometry});await page.close();
+   await page.close();
   }
   writeFileSync(join(out,`${role}.json`),JSON.stringify({kind:'real-component fixtures; not authenticated role acceptance',results},null,2));
  }finally{await browser.close();}
