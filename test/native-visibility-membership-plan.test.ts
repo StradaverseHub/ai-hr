@@ -49,7 +49,10 @@ it.skipIf(!requested)('attributes native membership plans while preserving canon
  const poolId=process.env.VITEST_POOL_ID??process.env.VITEST_WORKER_ID;
  expect(poolId).toBeTruthy();expect(process.env.WORKER_DB).not.toBe('0');
  // Refuse an arbitrary database, even if this file is invoked outside the normal focused controller.
- expect(new URL(process.env.TEST_DATABASE_URL!).pathname).toBe('/'+workerDb(poolId!));
+ for(const key of ['TEST_DATABASE_URL','TEST_MIGRATION_DATABASE_URL']){
+  const target=new URL(process.env[key]!);
+  expect(target.hostname).toBe('127.0.0.1');expect(target.pathname).toBe('/'+workerDb(poolId!));
+ }
  const report:Record<string,unknown>={kind:'DISPOSABLE_NATIVE_EMPLOYMENT_MEMBERSHIP_DIAGNOSTIC',releaseEligible:false,
   employees:50000,statementTimeoutMs:20000,lockTimeoutMs:300,testBudgetMs:300000,
   host:{cpuModels:[...new Set(cpus().map(cpu=>cpu.model))],logicalCpus:cpus().length,ramBytes:totalmem()},
@@ -57,6 +60,10 @@ it.skipIf(!requested)('attributes native membership plans while preserving canon
  const save=()=>writeFileSync(join(process.env.AIHR_FOCUSED_EVIDENCE_DIR!,'native-visibility-membership-plan.json'),JSON.stringify(report,null,2));
  const fixture=await seedPersonnelNativeFixture(50000,report,phase=>{report.phase=phase;save();},save);
  const {b,ctx,foreign,foreignEmployment,expectedFirst,expectedLast}=fixture;
+ const [constraint]=await owner.client`select contype,condeferrable,condeferred,convalidated,pg_get_constraintdef(oid) as definition
+  from pg_constraint where conrelid='public.assignment'::regclass and conname='assignment_no_overlap'`;
+ expect(constraint).toMatchObject({contype:'x',condeferrable:false,condeferred:false,convalidated:true});
+ report.assignmentCardinalityPrerequisite=constraint;
  const originals=await policies(),originalFunction=await visibilityDefinition();
  const original=originals.find(row=>row.schemaname==='public'&&row.tablename==='employment'&&row.policyname==='employment_rls');
  expect(original).toBeTruthy();
