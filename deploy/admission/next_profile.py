@@ -30,6 +30,12 @@ SAFE_PATH = re.compile(r'/[A-Za-z0-9_./@-]+')
 EXTRA_PROPERTIES = ('ProtectSystem', 'PrivateMounts', 'NoNewPrivileges', 'CapabilityBoundingSet',
                     'RestrictNamespaces', 'BindPaths', 'BindReadOnlyPaths', 'ReadWritePaths',
                     'ReadOnlyPaths', 'Slice', 'CPUQuotaPerSecUSec', 'MemoryHigh', 'MemoryMax')
+APP_ENVIRONMENT = frozenset({'NODE_ENV', 'HOME', 'PATH', 'NEXT_TELEMETRY_DISABLED', 'AUTH_PROVIDER',
+    'ALLOW_DEMO_SESSION', 'DATABASE_URL', 'AUTH_PUBLIC_ORIGIN', 'AUTH_SESSION_KEY',
+    'AUTH_DEFAULT_ORGANIZATION', 'AUDIT_HASH_CHAIN_ENABLED', 'AI_CONFIG_SECRET'})
+FLEET_ENVIRONMENT = frozenset({'PORT', 'AIHR_APP_WORKERS', 'AIHR_DB_TOTAL_CONNECTIONS', 'AIHR_DB_POOL_MAX'})
+SYSTEMD_ENVIRONMENT = frozenset({'INVOCATION_ID', 'SYSTEMD_EXEC_PID', 'JOURNAL_STREAM', 'USER',
+    'LOGNAME', 'SHELL', 'LANG', 'LC_ALL', 'MEMORY_PRESSURE_WATCH', 'MEMORY_PRESSURE_WRITE'})
 
 
 def canonical(value: Any) -> bytes:
@@ -148,13 +154,20 @@ class NextRuntime:
         for key, value in self.private_environment['values'].items():
             require(isinstance(key, str) and re.fullmatch(r'[A-Z_][A-Z0-9_]{0,159}', key) is not None
                     and isinstance(value, str) and '\0' not in value and len(value.encode()) <= 65536
-                    and not forbidden_environment(key) and key not in ('PORT', 'AIHR_APP_WORKERS',
-                        'AIHR_DB_TOTAL_CONNECTIONS', 'AIHR_DB_POOL_MAX'), 'Unsafe private runtime environment field')
+                    and key in APP_ENVIRONMENT and not forbidden_environment(key),
+                    'Unsafe private runtime environment field')
         environment = self.private_environment['values']
         require(environment.get('NODE_ENV') == 'production' and environment.get('HOME') == '/var/empty/aihr'
                 and environment.get('PATH') == '/usr/bin:/bin' and environment.get('NEXT_TELEMETRY_DISABLED') == '1'
-                and environment.get('AUTH_PROVIDER') == 'internal' and environment.get('ALLOW_DEMO_SESSION') == 'false',
+                and environment.get('AUTH_PROVIDER') == 'internal' and environment.get('ALLOW_DEMO_SESSION') == 'false'
+                and environment.get('AUTH_PUBLIC_ORIGIN') == 'https://localhost:3443'
+                and re.fullmatch(r'[a-f0-9]{64}', environment.get('AUTH_SESSION_KEY', '')) is not None
+                and environment.get('AUDIT_HASH_CHAIN_ENABLED') == 'true',
                 'Managed private runtime defaults differ')
+        require('AI_CONFIG_SECRET' not in environment or re.fullmatch(r'[a-f0-9]{64}', environment['AI_CONFIG_SECRET']) is not None,
+                'Managed private encryption configuration differs')
+        require('AUTH_DEFAULT_ORGANIZATION' not in environment or re.fullmatch(r'[a-z0-9][a-z0-9-]{1,63}', environment['AUTH_DEFAULT_ORGANIZATION']) is not None,
+                'Managed private organization configuration differs')
         database = urlsplit(environment.get('DATABASE_URL', ''))
         require(database.scheme in ('postgres', 'postgresql') and database.username == 'ai_hr_app'
                 and database.hostname == '127.0.0.1' and database.port == 5433
@@ -545,7 +558,7 @@ class NextRuntime:
                     and fields.get('CapBnd', '').strip() == '0000000000000000',
                     'Actual worker privilege/namespace boundary differs')
             environ = read_proc(proc_fd, 'environ', 1024 * 1024, require)
-            self._environment(environ, port)
+            self._environment(environ, port, invocation=properties.get('InvocationID'), pid=identity['pid'], user=properties.get('User'))
             self._executable_maps(read_proc(proc_fd, 'maps', 4 * 1024 * 1024, require), spec)
             require(os.fstat(ns_fd).st_ino == namespace.st_ino
                     and os.stat('ns/mnt', dir_fd=proc_fd).st_ino == namespace.st_ino
@@ -555,7 +568,7 @@ class NextRuntime:
             return {'namespaceInode': namespace.st_ino, **mount_proof,
                     'actualKernelMountsVerified': True, 'actualEnvironmentVerified': True}
 
-    def _environment(self, raw, port):
+    def _environment(self, raw, port, *, invocation=None, pid=None, user=None):
         require = self.require
         require(raw.endswith(b'\0'), 'Actual worker environment incomplete')
         values = {}
@@ -567,6 +580,8 @@ class NextRuntime:
         except (ValueError, UnicodeError):
             require(False, 'Invalid actual worker environment')
         require(not any(forbidden_environment(key) for key in values), 'Unsafe actual worker environment override')
+        require(set(values) <= APP_ENVIRONMENT | FLEET_ENVIRONMENT | SYSTEMD_ENVIRONMENT,
+                'Unqualified actual worker environment field')
         require(all(values.get(key) == value for key, value in self.private_environment['values'].items()),
                 'Actual private runtime configuration differs')
         count = self.value['resourceEnvelope']['workers']
@@ -575,7 +590,42 @@ class NextRuntime:
                 and values.get('AIHR_DB_TOTAL_CONNECTIONS') == '16'
                 and values.get('AIHR_DB_POOL_MAX') == str(16 // count),
                 'Actual worker PORT/pool/cohort environment differs')
+        if invocation is not None:
+            require(values.get('INVOCATION_ID') == invocation, 'Actual worker invocation environment differs')
+        if pid is not None and 'SYSTEMD_EXEC_PID' in values:
+            require(values['SYSTEMD_EXEC_PID'] == str(pid), 'Actual worker executable PID environment differs')
+        if user is not None:
+            require(all(values.get(key, user) == user for key in ('USER', 'LOGNAME')),
+                    'Actual worker user environment differs')
         # No values, connection strings, cookies or hashes of credentials escape this method.
+
+    def environment_source(self, text):
+        """Closed configured fields before ExecStart, separate from /proc proof.
+
+        The owned fixture writes simple literal assignments. Complex systemd
+        syntax is deliberately unsupported; validation never executes a shell.
+        """
+        require = self.require
+        try:
+            parts = shlex.split(text, comments=False)
+        except ValueError:
+            require(False, 'Unsupported managed environment source syntax')
+        require(len(parts) <= 64, 'Managed environment source exceeds bound')
+        workers = self.value['resourceEnvelope']['workers']
+        expected = self.private_environment['values'] | {'AIHR_APP_WORKERS': str(workers),
+            'AIHR_DB_TOTAL_CONNECTIONS': '16', 'AIHR_DB_POOL_MAX': str(16 // workers)}
+        seen = set()
+        for item in parts:
+            require('=' in item, 'Unsupported managed environment source assignment')
+            key, value = item.split('=', 1)
+            require(key not in seen and (key in expected or key == 'PORT'),
+                    'Unqualified configured worker environment field')
+            seen.add(key)
+            if key == 'PORT':
+                require(value.isdigit() and str(int(value)) == value and int(value) in self.value['ports'],
+                        'Configured worker endpoint is outside the reserved pool')
+            else:
+                require(value == expected[key], 'Configured private worker environment differs')
 
     def _executable_maps(self, raw, spec):
         require = self.require
@@ -710,7 +760,7 @@ def validate_namespace(mounts, release, package_root, observed_root, sources, ob
 
 
 def forbidden_environment(key):
-    return re.fullmatch(r'(?:LD_.*|DYLD_.*|PYTHON.*|NODE_OPTIONS|NODE_PATH|BASH_ENV|ENV|NEXT_SERVER_ACTIONS_ENCRYPTION_KEY|NEXT_DEPLOYMENT_ID|__NEXT_PRIVATE_STANDALONE_CONFIG|MIGRATION_DATABASE_URL|TEST_MIGRATION_DATABASE_URL|DEV_TENANT_ID|DEV_USER_ID)', key) is not None
+    return re.fullmatch(r'(?:LD_.*|DYLD_.*|PYTHON.*|NODE_OPTIONS|NODE_PATH|BASH_ENV|ENV|NEXT_SERVER_ACTIONS_ENCRYPTION_KEY|NEXT_DEPLOYMENT_ID|__NEXT_PRIVATE_STANDALONE_CONFIG|MIGRATION_DATABASE_URL|TEST_MIGRATION_DATABASE_URL|PLATFORM_DATABASE_URL|TEST_DATABASE_URL|GH_TOKEN|GITHUB_TOKEN|DEV_TENANT_ID|DEV_USER_ID)', key) is not None
 
 
 def open_beneath(directory: int, name: str, require) -> int:

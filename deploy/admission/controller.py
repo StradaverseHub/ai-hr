@@ -374,6 +374,9 @@ class LinuxHost:
             if self.profile.next_runtime is not None:
                 require(re.search(r'(?:^|[\s\"\x27])(?:export\s+)?(?:NODE_OPTIONS|NODE_PATH|BASH_ENV|ENV|NEXT_SERVER_ACTIONS_ENCRYPTION_KEY|MIGRATION_DATABASE_URL|TEST_MIGRATION_DATABASE_URL|DEV_TENANT_ID|DEV_USER_ID)\s*=', text) is None,
                         'Managed Next environment override is not qualified')
+                # This runs at CHECKONLY and reservation, before the app starts.
+                # A later /proc refusal cannot undo credentials given to Node.
+                self.profile.next_runtime.environment_source(text)
         reject_loader(props.get('Environment', ''))
         configured = props.get('EnvironmentFiles', '')
         pattern = re.compile(r'([/A-Za-z0-9_.@-]+) \(ignore_errors=(yes|no)\)(?: |$)')

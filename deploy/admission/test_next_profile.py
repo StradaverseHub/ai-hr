@@ -90,7 +90,7 @@ class NextProfileTests(unittest.TestCase):
         self.environment = {'version': 1, 'values': {'NODE_ENV': 'production', 'HOME': '/var/empty/aihr',
             'PATH': '/usr/bin:/bin', 'NEXT_TELEMETRY_DISABLED': '1', 'AUTH_PROVIDER': 'internal',
             'ALLOW_DEMO_SESSION': 'false', 'DATABASE_URL': 'postgres://ai_hr_app@127.0.0.1:5433/ai_hr_dev',
-            'AUTH_SESSION_KEY': 'synthetic-private-value'}}
+            'AUTH_SESSION_KEY': 'a' * 64, 'AUTH_PUBLIC_ORIGIN': 'https://localhost:3443', 'AUDIT_HASH_CHAIN_ENABLED': 'true'}}
         self.envelope = {'version': 1, 'kind': 'HOSTED_NEXT_SAME_BUILD_V1', 'workers': 2,
             'suite': 'workflow-preflight', 'cpuOversubscriptionDiagnostic': False, 'slice': 'aihr-native-next.slice',
             'cgroupPath': '/aihr.slice/aihr-native.slice/aihr-native-next.slice', 'cpuQuotaPercent': 400,
@@ -304,6 +304,31 @@ class NextProfileTests(unittest.TestCase):
                 runtime._environment(encode(values | changes), 3201)
         with self.assertRaises(C.Refused):
             runtime._environment(encode(values) + b'PORT=3201\0', 3201)
+        for key in ('PLATFORM_DATABASE_URL', 'TEST_DATABASE_URL', 'GH_TOKEN', 'GITHUB_TOKEN',
+                    'ACTIONS_RUNTIME_TOKEN', 'ACTIONS_ID_TOKEN_REQUEST_TOKEN', 'ACTIONS_ID_TOKEN_REQUEST_URL',
+                    'ACTIONS_CACHE_URL', 'ACTIONS_RESULTS_URL', 'SSH_AUTH_SOCK', 'SSH_AGENT_PID',
+                    'PGPASSWORD', 'PGSERVICE', 'OWNER_DATABASE_URL', 'OTHER_DATABASE_URL',
+                    'OPENAI_API_KEY', 'WORKOS_API_KEY', 'UNREVIEWED_APPLICATION_FIELD'):
+            with self.subTest(key=key), self.assertRaises(C.Refused):
+                runtime._environment(encode(values | {key: 'must-never-reach-app'}), 3201)
+            self.environment['values'][key] = 'must-never-reach-app'
+            self.write_metadata()
+            with self.subTest(key=key), self.assertRaises(C.Refused):
+                self.runtime()
+            del self.environment['values'][key]
+            self.write_metadata()
+        runtime._environment(encode(values | {'INVOCATION_ID': '1' * 32, 'SYSTEMD_EXEC_PID': '424242',
+            'USER': 'nobody', 'LOGNAME': 'nobody'}), 3201, invocation='1' * 32, pid=424242, user='nobody')
+        for changes in ({'INVOCATION_ID': '2' * 32}, {'SYSTEMD_EXEC_PID': '424243'}, {'USER': 'root'}):
+            with self.assertRaises(C.Refused):
+                runtime._environment(encode(values | {'INVOCATION_ID': '1' * 32, 'SYSTEMD_EXEC_PID': '424242',
+                    'USER': 'nobody'} | changes), 3201, invocation='1' * 32, pid=424242, user='nobody')
+        runtime.environment_source('\n'.join(key + '=' + value for key, value in values.items()))
+        for extra in ('ACTIONS_RUNTIME_TOKEN=token', 'SSH_AUTH_SOCK=/private/agent',
+                      'PLATFORM_DATABASE_URL=owner', 'OPENAI_API_KEY=provider', 'UNKNOWN=value',
+                      'PORT=3000', 'PORT=3201 PORT=3202', 'NODE_ENV=development'):
+            with self.assertRaises(C.Refused):
+                runtime.environment_source(extra)
 
     def test_controller_version_dispatch_verifies_exact_helper_bytes_and_preserves_v1_shape(self):
         with patch.object(C, 'NEXT_MODULE_DIRECTORY', self.helper), patch.object(C, 'secure_path', self.fixture_secure):
