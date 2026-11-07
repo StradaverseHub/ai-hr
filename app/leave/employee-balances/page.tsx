@@ -17,7 +17,7 @@ import { InquiryNote } from '@/components/leave/inquiry-note';
 import styles from '@/components/leave/inquiry-table.module.css';
 import { sortInquiryEmployees } from '@/lib/leave-inquiry';
 import { parseInquiryQuery, InquiryQueryError } from '@/lib/leave-inquiry-query';
-import { leaveInquiryContext, type LeaveInquiryContext } from '@/packs/leave/service';
+import { leaveInquirySnapshot, type LeaveInquiryContext } from '@/packs/leave/service';
 // 4a1abc4a: HR's copy of the employee's own balance grid must print the figures identically to it.
 import { dayPluralCategory, formatDays } from '@/lib/day-format';
 // 31e39d74: HR's grid captions a 0.00 exactly as the employee's own grid does — one mapping, one wording.
@@ -123,9 +123,13 @@ export default async function EmployeeBalancesPage({
 
   let query: ReturnType<typeof parseInquiryQuery>;
   let inquiry: LeaveInquiryContext;
+  let result:Awaited<ReturnType<typeof inquiryBalancePage>>;
   try {
     query = parseInquiryQuery(sp, 'balances');
-    inquiry = await leaveInquiryContext(session, scopeIds, query);
+    const frame=await leaveInquirySnapshot(session,scopeIds,query,async(tx,scope)=>({
+      inquiry:scope,result:await inquiryBalancePage(session,scope,query,locale,query.pq,tx),
+    }));
+    inquiry=frame.inquiry;result=frame.result;
   } catch (error) {
     if (!(error instanceof InquiryQueryError)) throw error;
     return <Card><p role="alert" className="p-6">{tInq('invalidQuery')}</p><Link href="/leave/employee-balances" className="p-6 text-primary">{tInq('resetInquiry')}</Link></Card>;
@@ -156,8 +160,7 @@ export default async function EmployeeBalancesPage({
 
   const { asOf, q, typeIds, departmentIds, sort, dir, pq } = query;
   const today = todayInKualaLumpur();
-  const [result, leaveTypes, replacementRequest, recalcAudit] = await Promise.all([
-    inquiryBalancePage(session, inquiry, query, locale),
+  const [leaveTypes, replacementRequest, recalcAudit] = await Promise.all([
     listLeaveTypes(session, { locale }),
     selected ? replacementRequestAvailability(session, selected.employmentId, today) : Promise.resolve({ allowed: false } as const),
     selected ? listEntitlementRecalcAudit(session, selected.employmentId) : Promise.resolve([]),

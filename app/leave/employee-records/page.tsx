@@ -16,7 +16,7 @@ import { AdminCancelLeaveDialog } from '@/components/leave/admin-cancel-leave-di
 import { adminCancelLeaveAction } from '@/app/leave/actions';
 import { sortInquiryEmployees } from '@/lib/leave-inquiry';
 import { parseInquiryQuery, InquiryQueryError } from '@/lib/leave-inquiry-query';
-import { leaveInquiryContext, leaveInquiryRecordsPage, type LeaveInquiryContext } from '@/packs/leave/service';
+import { leaveInquirySnapshot, leaveInquiryRecordsPageTx, type LeaveInquiryContext } from '@/packs/leave/service';
 import { durationLabel } from '@/lib/leave-duration';
 // 4a1abc4a: this screen printed the raw day count ("3") beside Employee Balances' "3.00" — the reported
 // drift, between two tabs of the same Leave Inquiry nav. One formatter for both.
@@ -96,9 +96,13 @@ export default async function EmployeeLeaveRecordPage({
 
   let query: ReturnType<typeof parseInquiryQuery>;
   let inquiry: LeaveInquiryContext;
+  let result:Awaited<ReturnType<typeof leaveInquiryRecordsPageTx>>;
   try {
     query = parseInquiryQuery(sp, 'records');
-    inquiry = await leaveInquiryContext(session, scopeIds, query);
+    const frame=await leaveInquirySnapshot(session,scopeIds,query,async(tx,scope)=>({
+      inquiry:scope,result:await leaveInquiryRecordsPageTx(tx,session,scope,query),
+    }));
+    inquiry=frame.inquiry;result=frame.result;
   } catch (error) {
     if (!(error instanceof InquiryQueryError)) throw error;
     return <Card><p role="alert" className="p-6">{tInq('invalidQuery')}</p><Link href="/leave/employee-records" className="p-6 text-primary">{tInq('resetInquiry')}</Link></Card>;
@@ -124,10 +128,7 @@ export default async function EmployeeLeaveRecordPage({
   const panelDefaultOpen = !selected || (panelCookies.get(`${PANEL_COOKIE}-selected`)?.value === selected.employmentId && panelCookies.get(PANEL_COOKIE)?.value === '1');
 
   const { typeIds, statuses, q, from, to, sort, dir, pq, dateMode } = query;
-  const [leaveTypes, result] = await Promise.all([
-    listLeaveTypes(session, { locale }),
-    leaveInquiryRecordsPage(session, inquiry, query),
-  ]);
+  const leaveTypes=await listLeaveTypes(session,{locale});
   const { rows, total } = result;
 
   const params = () => {

@@ -1,5 +1,6 @@
 /** Hosted fictional-data baseline. No production read or calculation is changed. */
 import {createHash,randomUUID} from 'node:crypto';
+import {execFileSync} from 'node:child_process';
 import {writeFileSync} from 'node:fs';
 import {join} from 'node:path';
 import {availableParallelism,totalmem} from 'node:os';
@@ -12,7 +13,7 @@ import * as schema from '../db/schema';
 import {leaveInquiryContext,leaveInquiryBalancePairs,leaveInquiryRecordsPage,leaveInquirySnapshot} from '../core/leave-inquiry';
 import {inquiryBalancePage} from '../app/leave/employee-balances/inquiry-data';
 import {hireEmployee} from '../core/org';
-import {parseInquiryQuery} from '../lib/leave-inquiry-query';
+import {parseInquiryQuery,InquiryQueryError} from '../lib/leave-inquiry-query';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {pgSqlState} from '../lib/db-error';
 import {adminCtx,closeAll,migrateTestDb,owner,resetDb,seedBase} from './harness';
@@ -39,8 +40,8 @@ async function barrier<T>(work:Promise<T>):Promise<T>{
 }
 
 function recorder(kind:string){
- const report:Record<string,unknown>={kind,releaseEligible:false,sourceBaseline:'a33e813e28ec7fd3f651a6bcf0bce7020eb1b41f',
-  includesProductionMigration3001:false,host:{cpus:availableParallelism(),ramBytes:totalmem()},
+ const report:Record<string,unknown>={kind,releaseEligible:false,measurementStage:'presentation-candidate',comparedToBaselineSource:'d0ee92473a88435951d7928c9bb0ac7556fa3483',
+  source:execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8',timeout:5000}).trim(),host:{cpus:availableParallelism(),ramBytes:totalmem()},
   limitations:'Fictional component baseline, not production capacity. Statement observations and result-byte serialization add overhead. Estimated plans do not replay actual reads.'};
  const save=()=>writeFileSync(join(process.env.AIHR_FOCUSED_EVIDENCE_DIR!,kind+'.json'),JSON.stringify(report,null,2));
  return {report,save};
@@ -68,7 +69,8 @@ function observeTransactions(report:Record<string,unknown>,save:()=>void,phase:(
   async function observed(query:SQL,work:()=>Promise<unknown>){
    const compiled=dialect.sqlToQuery(query),entry:Statement={phase:phase(),sql:compiled.sql,parameters:compiled.params.length};
    statements.push(entry);save();
-   const planKind=compiled.sql.includes('"employment"."card_id"')?'whole-employee-dto':
+   const employeeProjection=compiled.sql.includes('"employment"."card_id"')||compiled.sql.includes('as "businessUnit"');
+   const planKind=employeeProjection?'employee-population':
     compiled.sql.includes('"person"."gender"')&&compiled.sql.includes('"employment"."org_division"')?'eligibility-profile':null;
    try{
     if(planKind&&!planned.has(planKind)){
@@ -140,8 +142,9 @@ it.skipIf(!requested)('records native snapshot usability while actual Access and
   expect((await owner.db.select().from(schema.company).where(eq(schema.company.id,b.companyId)))[0].legalName).toBe('Acme Sdn Bhd');
   phase='committed-revocation';const removed=await owner.db.delete(schema.roleAssignment).where(eq(schema.roleAssignment.appUserId,b.adminUserId)).returning();expect(removed).toHaveLength(1);
   try{
-   const after=await leaveInquiryContext(ctx,[b.companyId],parseInquiryQuery({asOf:today},'balances'));report.revokedCompanyIds=after.companyIds;
-   expect(after.companyIds).toEqual([]);expect(after.employees).toEqual([]);
+   await expect(leaveInquiryContext(ctx,[b.companyId],parseInquiryQuery({asOf:today},'balances'))).rejects.toBeInstanceOf(InquiryQueryError);
+   const protectedReads=observation.statements.filter(row=>row.phase===phase&&/\bfrom\s+"(?:employment|person|company)"/i.test(row.sql));
+   expect(protectedReads).toEqual([]);report.revocation={refused:true,protectedDataQueries:protectedReads.length};
   }finally{await owner.db.insert(schema.roleAssignment).values(removed);}
   expect(observation.identities.every(value=>(value as {readonly:string}).readonly==='on'||(value as {phase:string}).phase==='committed-revocation')).toBe(true);
   report.complete=true;save();
@@ -160,7 +163,8 @@ it.skipIf(!requested)('measures actual 5000-employee context, exact pair paging 
  const policies=Array.from(await owner.client`select schemaname,tablename,policyname,permissive,roles,cmd,qual,with_check from pg_policies where schemaname in ('public','app') order by schemaname,tablename,policyname`);
  report.policyFingerprint=createHash('sha256').update(JSON.stringify(policies)).digest('hex');
  const employmentPolicy=policies.find(row=>row.tablename==='employment'&&row.policyname==='employment_rls');
- expect(String(employmentPolicy?.qual)).toContain('id = ANY');
+ expect(String(employmentPolicy?.qual)).toMatch(/id = ANY|id IN \( SELECT unnest/);
+ report.includesProductionMigration3001=String(employmentPolicy?.qual).includes('id IN ( SELECT unnest');
  report.employmentPolicy=employmentPolicy;save();
  const observation=observeTransactions(report,save,()=>phase),timings:Record<string,number>={};report.timings=timings;
  async function measured<T>(name:string,read:()=>Promise<T>){phase=name;report.phase=name;save();const start=performance.now();try{return await read();}finally{timings[name]=performance.now()-start;save();}}
@@ -168,6 +172,7 @@ it.skipIf(!requested)('measures actual 5000-employee context, exact pair paging 
   const query=parseInquiryQuery({asOf:today},'balances');
   const scope=await measured('context-all',()=>leaveInquiryContext(ctx,[b.companyId],query));
   expect(scope.employees).toHaveLength(5000);expect(scope.employees.slice(0,25).map(row=>row.employmentId)).toEqual(expectedFirst);
+  expect(Object.keys(scope.employees[0]).sort()).toEqual(['employmentId','name','employeeCode','company','companyId','department','departmentId','businessUnit','businessUnitId','terminatedOn'].sort());
   report.contextBytes=bytes(scope);report.employeeDtoFieldCount=Object.keys(scope.employees[0]).length;
   const selectedQuery=parseInquiryQuery({emp:expectedLast.at(-1),asOf:today},'balances');
   const selected=await measured('context-single',()=>leaveInquiryContext(ctx,[b.companyId],selectedQuery));
@@ -191,7 +196,7 @@ it.skipIf(!requested)('measures actual 5000-employee context, exact pair paging 
   report.policyUnchanged=JSON.stringify(policies)===JSON.stringify(after);save();expect(report.policyUnchanged).toBe(true);
   const phases=[...new Set(observation.statements.map(row=>row.phase))];
   report.queryCountsByPhase=Object.fromEntries(phases.map(name=>[name,observation.statements.filter(row=>row.phase===name).length]));
-  report.fullEmployeeDtoReads=observation.statements.filter(row=>row.sql.includes('"employment"."card_id"')).map(row=>({phase:row.phase,rows:row.rows,ms:row.ms,resultBytes:row.resultBytes,columns:row.columns?.length}));
+  report.employeeProjectionReads=observation.statements.filter(row=>row.sql.includes('"employment"."card_id"')||row.sql.includes('as "businessUnit"')).map(row=>({phase:row.phase,rows:row.rows,ms:row.ms,resultBytes:row.resultBytes,columns:row.columns?.length}));
   report.leaveTypeReadsByPhase=Object.fromEntries(phases.map(name=>[name,observation.statements.filter(row=>row.phase===name&&/from "leave_type"(?:\s|$)/.test(row.sql)).length]));save();
  }
 },300000);

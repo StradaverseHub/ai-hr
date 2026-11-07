@@ -26,8 +26,8 @@ vi.mock('../core/read',()=>({listLeaveTypes:async()=>[]}));
 vi.mock('../core/leave',()=>({todayInKualaLumpur:()=> '2026-10-17'}));
 vi.mock('../core/ess-view',()=>({isReplacementLeaveType:()=>false}));
 vi.mock('../packs/leave/service',()=>({
-  leaveInquiryContext:async(_session:unknown,_scope:unknown,query:{emp?:string})=>({employees:people,selected:people.find(person=>person.employmentId===query.emp),companies:[{id:'company',name:'Inquiry Company'}]}),
-  leaveInquiryRecordsPage:async()=>({rows:[],total:0}),
+  leaveInquirySnapshot:async(_session:unknown,_scope:unknown,query:{emp?:string},read:(tx:unknown,scope:unknown)=>Promise<unknown>)=>read({}, {employees:people,selected:people.find(person=>person.employmentId===query.emp),companies:[{id:'company',name:'Inquiry Company'}]}),
+  leaveInquiryRecordsPageTx:async()=>({rows:[],total:0}),
   replacementRequestAvailability:async()=>({allowed:false}),
   listEntitlementRecalcAudit:historyReads,
 }));

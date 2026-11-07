@@ -1,0 +1,17 @@
+[
+  "test/leave-inquiry-presentation-native.test.ts",
+  "test/leave-inquiry-all.test.ts",
+  "test/leave-inquiry-snapshot.test.ts",
+  "test/leave-inquiry-employee-search.test.ts",
+  "test/leave-inquiry-surfaces.test.ts",
+  "test/leave-inquiry-layout.test.ts",
+  "test/leave-inquiry-scope-copy.dom.test.tsx",
+  "test/leave-inquiry-download.dom.test.tsx",
+  "test/leave-inquiry-scope-action.test.ts",
+  "test/employee-scope-panel-guard.test.ts",
+  "test/leave-balances-all-types.test.ts",
+  "test/leave-balance-as-at-date.test.ts",
+  "test/leave-balance-source-upl.test.ts",
+  "test/leave-balance-reconciliation.test.ts",
+  "test/leave-entitlement-breakdown.test.ts"
+]

@@ -298,6 +298,24 @@ const payrollProcessEmployeeFrom = sql`
   left join ${businessUnit} on ${businessUnit.id} = ${assignment.businessUnitId}
 `;
 
+/** Leave inquiry uses this exact legacy list population, including NULL-ended
+ * assignments and ended employments. Its display rows do not need personal/card,
+ * position or lifecycle-detail columns from the general employee DTO. */
+export type LeaveInquiryEmployee = Pick<Awaited<ReturnType<typeof listEmployees>>[number],
+ 'employmentId'|'name'|'employeeCode'|'company'|'companyId'|'department'|'departmentId'|
+ 'businessUnit'|'businessUnitId'|'terminatedOn'>;
+export async function listLeaveInquiryEmployeesTx(ctx:SessionContext,tx:Tx,companyIds:string[]):Promise<LeaveInquiryEmployee[]>{
+ ctx=structuredClone(ctx);companyIds=companyIds.slice();
+ await assertReadCompositionPrincipalTx(tx,ctx);
+ if(!companyIds.length)return [];
+ return tx.execute<LeaveInquiryEmployee>(sql`select ${employment.id} as "employmentId",${person.fullName} as name,
+  ${employment.employeeCode} as "employeeCode",${company.legalName} as company,${employment.companyId} as "companyId",
+  ${department.name} as department,${assignment.departmentId} as "departmentId",
+  ${businessUnit.name} as "businessUnit",${assignment.businessUnitId} as "businessUnitId",
+  ${employment.terminatedOn}::text as "terminatedOn"
+  ${payrollProcessEmployeeFrom} where ${inArray(employment.companyId,companyIds)} order by ${person.fullName}`);
+}
+
 type PayrollTransactionEmployee = Pick<Awaited<ReturnType<typeof listEmployees>>[number],
   'employmentId' | 'name' | 'employeeCode' | 'company' | 'companyId' |
   'department' | 'departmentLabel' | 'departmentCode' | 'departmentId' |
@@ -3414,8 +3432,26 @@ export function leaveBalanceInquiryMembership(ctx: SessionContext, employmentIds
 export async function leaveBalanceInquiryMembershipTx(tx: Tx, ctx: SessionContext, employmentIds: string[], asOf: string, locale: string) {
   if (employmentIds.length > 100) throw new Error('Inquiry membership chunk exceeds 100 employments');
     if (!employmentIds.length) return [];
+    return leaveBalanceInquiryMembershipRowsTx(tx,employmentIds,asOf,locale,leaveInquiryMembershipTypesTx(tx));
+}
+function leaveInquiryMembershipTypesTx(tx:Tx){
+ return tx.select({ id: leaveType.id, name: leaveType.name, code: leaveType.code, i18n: leaveType.i18n, eligibility: leaveType.eligibility, archivedAt: leaveType.archivedAt }).from(leaveType);
+}
+/** The catalogue is private to this physical transaction/read invocation. It is
+ * neither caller-provided eligibility nor a cross-request authorization cache. */
+export async function createLeaveInquiryMembershipReaderTx(ctx:SessionContext,tx:Tx,asOf:string,locale:string){
+ ctx=structuredClone(ctx);await assertReadCompositionPrincipalTx(tx,ctx);
+ const types=await leaveInquiryMembershipTypesTx(tx);
+ return (employmentIds:readonly string[])=>{
+  const ids=employmentIds.slice();
+  if(ids.length>100)throw new Error('Inquiry membership chunk exceeds 100 employments');
+  return ids.length?leaveBalanceInquiryMembershipRowsTx(tx,ids,asOf,locale,types):Promise.resolve([]);
+ };
+}
+async function leaveBalanceInquiryMembershipRowsTx(tx:Tx,employmentIds:string[],asOf:string,locale:string,
+ typeRead:ReturnType<typeof leaveInquiryMembershipTypesTx>|Awaited<ReturnType<typeof leaveInquiryMembershipTypesTx>>){
     const [types, profiles, ledger, pending] = await Promise.all([
-      tx.select({ id: leaveType.id, name: leaveType.name, code: leaveType.code, i18n: leaveType.i18n, eligibility: leaveType.eligibility, archivedAt: leaveType.archivedAt }).from(leaveType),
+      typeRead,
       tx.select({ employmentId: employment.id, gender: person.gender, marital: person.maritalStatus, hiredOn: employment.hiredOn, orgDivision: employment.orgDivision, orgBranch: employment.orgBranch, orgRegion: employment.orgRegion, orgLine: employment.orgLine, orgSection: employment.orgSection, orgTeam: employment.orgTeam, orgBase: employment.orgBase, employmentCategory: employment.employmentCategory }).from(employment).innerJoin(person, eq(person.id, employment.personId)).where(inArray(employment.id, employmentIds)),
       tx.selectDistinct({ employmentId: leaveLedger.employmentId, leaveTypeId: leaveLedger.leaveTypeId }).from(leaveLedger).where(and(inArray(leaveLedger.employmentId, employmentIds), lte(leaveLedger.effectiveOn, asOf))),
       tx.selectDistinct({ employmentId: leaveRequest.employmentId, leaveTypeId: leaveRequest.leaveTypeId }).from(leaveRequest).where(and(inArray(leaveRequest.employmentId, employmentIds), eq(leaveRequest.status, 'pending'), lte(leaveRequest.startDate, asOf))),

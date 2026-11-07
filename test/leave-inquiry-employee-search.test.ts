@@ -102,7 +102,7 @@ describe('9949f91a: both Leave Inquiry tabs pick an employee in the SHARED PANEL
        * the fallback and both export route handlers keep calling it (asserted below), because a route has no
        * screen to prompt on.
        */
-      expect(src).toContain('await leaveInquiryContext(session, scopeIds, query)');
+      expect(src).toContain('await leaveInquirySnapshot(session,scopeIds,query,async(tx,scope)');
       expect(src.includes('pickInquiryEmployee('), `${rel} must not fall back to the first employee`).toBe(false);
       // And the selection is written the same way into every outgoing link.
       expect(src).toContain("p.set('emp', selected.employmentId)");
@@ -135,11 +135,11 @@ describe('9949f91a: both Leave Inquiry tabs pick an employee in the SHARED PANEL
       expect(src).not.toMatch(/\{selected && \(\s*<div className="flex items-center gap-1 rounded-md/);
     }
     const owner = code(read('core/leave-inquiry.ts'));
-    const from = owner.indexOf('export function leaveInquirySnapshot<T>(');
-    const to = owner.indexOf('export function leaveInquiryRecordsPage(', from);
+    const from = owner.indexOf('export async function leaveInquirySnapshot<T>(');
+    const to = owner.indexOf('export async function leaveInquiryRecordsPage(', from);
     expect(from, 'shared snapshot wrapper exists').toBeGreaterThan(-1);
     expect(to, 'shared snapshot wrapper closes').toBeGreaterThan(from);
-    expect(owner.slice(from, to)).toContain('read(tx, await leaveInquiryContextTx(tx, ctx, companyIds, query))');
+    expect(owner.slice(from, to)).toContain('read(tx, await leaveInquiryContextTx(tx,session,ids,captured,ctx))');
     expect(owner.slice(from, to)).toContain('{ readOnlySnapshot: true }');
   });
 
@@ -149,7 +149,7 @@ describe('9949f91a: both Leave Inquiry tabs pick an employee in the SHARED PANEL
       // The page and panel consume the same authorized context. The context's one Tx membership read
       // is bounded by adminCompanies AND the selected-company fence, and [] never means unrestricted.
       expect(code(src)).toContain('const employees = sortInquiryEmployees(inquiry.employees, locale)');
-      expect(code(src).match(/await leaveInquiryContext\(session, scopeIds, query\)/g)).toHaveLength(1);
+      expect(code(src).match(/await leaveInquirySnapshot\(session,scopeIds,query/g)).toHaveLength(1);
       expect(code(src)).not.toMatch(/\blistEmployees(?:Tx)?\(/);
       const owner = code(read('core/leave-inquiry.ts'));
       const from = owner.indexOf('async function leaveInquiryContextTx(');
@@ -157,11 +157,11 @@ describe('9949f91a: both Leave Inquiry tabs pick an employee in the SHARED PANEL
       expect(from, 'canonical membership reader exists').toBeGreaterThan(-1);
       expect(to, 'canonical membership reader closes').toBeGreaterThan(from);
       const membership = owner.slice(from, to);
-      expect(membership).toContain("if (!isAdmin(ctx)) throw new InquiryQueryError('Forbidden')");
+      expect(membership).toContain('await assertInquiryPrincipalTx(tx,ctx)');
       expect(membership).toContain('const companies = (await adminCompaniesTx(tx)).filter(c => selectedCompanyIds.includes(c.id))');
       expect(membership).toContain('const companyIds = companies.map(c => c.id)');
-      expect(membership).toContain('const employees = companyIds.length ? await listEmployeesTx(tx, companyIds) : []');
-      expect(membership.match(/\blistEmployeesTx\(/g)).toHaveLength(1);
+      expect(membership).toContain('const employees = companyIds.length ? await listLeaveInquiryEmployeesTx(ctx,tx,companyIds) : []');
+      expect(membership.match(/\blistLeaveInquiryEmployeesTx\(/g)).toHaveLength(1);
       expect(membership).toContain('employees.find(e => e.employmentId === query.emp)');
       expect(membership).toContain("if (query.emp && !selected) throw new InquiryQueryError('Employee is unavailable in the selected companies')");
       expect(src).toContain('const panelEmployees: ScopeEmployee[] = employees.map((e) => ({');
