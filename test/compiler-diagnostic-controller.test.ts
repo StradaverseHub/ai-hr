@@ -3,6 +3,7 @@ import {execFileSync} from 'node:child_process';
 import {expect,it} from 'vitest';
 const selectors=[
  '.github/ci/diagnostics/compiler-boundary.test.mjs',
+ '.github/ci/diagnostics/compiler-consumer-trace.test.mjs',
  '.github/ci/diagnostics/compiler-attribution.test.mjs',
  '.github/ci/diagnostics/compiler-incremental.test.mjs',
 ];
@@ -18,6 +19,6 @@ it.for(selectors)('executes all native controller assertions in %s without skips
  for(const name of ['fail','cancelled','skipped','todo'])expect(count(name),name).toBe(0);
  expect(output).not.toMatch(/^Bail out!/m);
  // Keep the actual nested assertion identities and counts in hosted logs; a
- // green three-case Vitest wrapper alone is not the underlying coverage claim.
+ // green wrapper alone is not the underlying coverage claim.
  process.stdout.write(output);
 });

@@ -5,7 +5,7 @@ import {readFileSync,writeFileSync,mkdirSync,realpathSync,lstatSync,existsSync} 
 import {resolve,relative,dirname,join,sep} from 'node:path';
 import {execFileSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
-import {BOUNDARY_SOURCE,sha256,planBoundary,orderedBoundaryRoots,validateDeclarationCoverage,assertDeclarationBytes,resolutionLeafTargets,assertResolutionLeafBytes,contractSource,NEGATIVE_CONTRACTS,expectContractRefusals} from './compiler-boundary-policy.mjs';
+import {BOUNDARY_SOURCE,TRACED_CONSUMERS,sha256,planBoundary,orderedBoundaryRoots,validateDeclarationCoverage,assertDeclarationBytes,resolutionLeafTargets,assertResolutionLeafBytes,contractSource,NEGATIVE_CONTRACTS,expectContractRefusals} from './compiler-boundary-policy.mjs';
 
 /** Public native per-source emission; every implementation must emit, independently.
  * JSON stays in its original Program but has no declaration output contract. */
@@ -19,7 +19,8 @@ export function emitDeclarationSources(program,files,writer,record=()=>{}){
  }
 }
 
-export async function boundaryWorker(mode,out,index){
+export async function boundaryWorker(mode,out,index,traceConsumer=false){
+ assert.equal(typeof traceConsumer,'boolean');if(traceConsumer)assert(mode==='consumer'&&TRACED_CONSUMERS.includes(index),'Only fixed native consumers may trace');
  assert(process.platform==='linux'&&process.env.GITHUB_ACTIONS==='true'&&process.env.RUNNER_ENVIRONMENT==='github-hosted'
   &&process.env.CI==='true'&&process.env.GITHUB_REPOSITORY==='StradaverseHub/ai-hr','Hosted diagnostic child required');
  assert(['inventory','producer','declarations','consumer','source-negative','declaration-negative'].includes(mode));
@@ -30,6 +31,7 @@ export async function boundaryWorker(mode,out,index){
  assert.equal(process.versions.node,'22.23.3');
  const require=createRequire(join(cwd,'package.json')),ts=require('typescript');assert.equal(ts.version,'5.9.3');
  const apiHash=sha256(readFileSync(require.resolve('typescript')));
+ if(traceConsumer)assert.equal(apiHash,'3ae902c92cc44dace175c0e69e13a4b0899f6983c6121d76b9ab8dd5795e7675','Exact native TS5.9.3 tracing API required');
  const id=path=>{const value=relative(cwd,resolve(path)).split(sep).join('/');assert(value&&!value.startsWith('../')&&!value.startsWith('/'),'Compiler source outside exact checkout');return value;};
  const config=path=>{
   const file=ts.readConfigFile(join(cwd,path),ts.sys.readFile);assert(!file.error,'Cannot read exact compiler config');
@@ -273,7 +275,25 @@ export async function boundaryWorker(mode,out,index){
   if(declarationPhase){assert.equal(owned.length,declarations.length+1);assert(owned.every(file=>file.isDeclarationFile));
    result.declarationValidation={ownedChecked:declarations.length,diagnosticOnlyControl:declarationControlId,skipLibCheck:false,externalSemanticDiagnosticsRequested:false,
     originalDependencyPolicy:'Original skipLibCheck=true retained: only NEW owned generated declarations get additional direct semantic checks.'};}
-  const errors=check(program,owned);result.diagnostics=errors;
+  let errors;
+  if(traceConsumer){
+   assert.equal(typeof ts.startTracing,'function');assert.equal(typeof ts.performance.enable,'function');
+   const traceDirectory=join(out,'trace-consumer-'+index);assert(!existsSync(traceDirectory),'Trace directory already exists');
+   result.trace={scope:'native semantic check only; unchanged Program/diagnostic order',directory:'trace-consumer-'+index,finalized:false};
+   ts.performance.enable();ts.startTracing('project',traceDirectory,join(cwd,'tsconfig.json'));
+   const tracing=ts.tracing;assert.equal(typeof tracing?.stopTracing,'function');const checkingAt=Date.now();let checkingError;
+   try{
+    errors=check(program,owned);result.trace.semanticElapsedMs=Date.now()-checkingAt;
+    result.trace.nativeCounts={types:program.getTypeCount(),symbols:program.getSymbolCount(),instantiations:program.getInstantiationCount(),relations:program.getRelationCacheSizes()};
+    result.trace.counterScope='after native semantics, before native trace type display; cumulative per Program, not per file';
+   }catch(error){checkingError=error;throw error;}
+   finally{
+    const finalizeAt=Date.now();try{tracing.stopTracing();result.trace.finalized=true;}
+    catch(error){result.trace.finalizationError=String(error);if(!checkingError)throw error;}
+    finally{result.trace.finalizeElapsedMs=Date.now()-finalizeAt;}
+   }
+  }else errors=check(program,owned);
+  result.diagnostics=errors;
   if(declarationPhase){assert.equal(errors.length,1,'Every actual emitted declaration must be valid; one sentinel refusal is required');
    assert.deepEqual(errors.map(({code,file,line})=>({code,file,line})),[{code:2304,file:declarationControlId,line:1}]);
   }else if(negative)expectContractRefusals(errors,contract,contractId);else assert.equal(errors.length,0,'Native compiler diagnostics; retained in phase artifact');
@@ -306,5 +326,6 @@ export async function boundaryWorker(mode,out,index){
  }catch(error){result.error=String(error);if(!existsSync(resultFile))save();throw error;}
 }
 if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url)){
- boundaryWorker(process.argv[2],process.argv[3],process.argv[4]===undefined?undefined:Number(process.argv[4])).catch(error=>{console.error(error);process.exitCode=1;});
+ const trace=process.argv[5]==='--trace-consumer';assert(process.argv.length<=5||process.argv.length===6&&trace,'Unknown native compiler child intent');
+ boundaryWorker(process.argv[2],process.argv[3],process.argv[4]===undefined?undefined:Number(process.argv[4]),trace).catch(error=>{console.error(error);process.exitCode=1;});
 }

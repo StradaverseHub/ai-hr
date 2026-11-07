@@ -158,12 +158,14 @@ test('no exit, missing native report, omitted root or unobserved transitive file
 test('workflow keeps25 inputs, old attributionfull-only and every other job outside boundary intent',()=>{
  const workflow=readFileSync(new URL('../../workflows/alpha-staging-diagnostics.yml',import.meta.url),'utf8');
  const inputBlock=workflow.slice(workflow.indexOf('    inputs:\n'),workflow.indexOf('\npermissions:'));
- assert.equal([...inputBlock.matchAll(/^      ([a-z_]+):$/gm)].length,25);assert(inputBlock.includes('normal-cleanup, compiler-boundary]'));
+ assert.equal([...inputBlock.matchAll(/^      ([a-z_]+):$/gm)].length,25);assert(inputBlock.includes('normal-cleanup, compiler-boundary, compiler-consumer-trace]'));
  const jobs=[...workflow.matchAll(/^  ([a-z][a-z-]*):\n    if: (.+)$/gm)];
  assert(jobs.length>15);for(const [,name,condition]of jobs){
-  if(name==='resolve'){assert(condition.includes("inputs.installer_fixture_phase == 'compiler-boundary'"));continue;}
+  if(name==='resolve'){for(const intent of ['compiler-boundary','compiler-consumer-trace'])assert(condition.includes(`inputs.installer_fixture_phase == '${intent}'`));continue;}
   if(name==='compiler-boundary'){assert(condition.includes("inputs.installer_fixture_phase == 'compiler-boundary'"));assert(condition.includes(BOUNDARY_SOURCE));continue;}
+  if(name==='compiler-consumer-trace'){assert(condition.includes("inputs.installer_fixture_phase == 'compiler-consumer-trace'"));assert(condition.includes(BOUNDARY_SOURCE));continue;}
   assert(condition.includes("inputs.installer_fixture_phase != 'compiler-boundary'"),name);
+  assert(condition.includes("inputs.installer_fixture_phase != 'compiler-consumer-trace'"),name);
   if(name==='compiler-attribution')assert(condition.includes("inputs.installer_fixture_phase == 'full'"));
  }
  assert.match(workflow,/compiler-boundary:[\s\S]*?timeout-minutes: 20/);

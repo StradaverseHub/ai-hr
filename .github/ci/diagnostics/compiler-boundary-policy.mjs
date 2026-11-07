@@ -4,6 +4,8 @@ import {createHash} from 'node:crypto';
 
 export const BOUNDARY_SOURCE='f2b1ae1a9af20bdb30f28ed9b537aa08994dfc10';
 export const BOUNDARY_REF='codex/compiler-rewards-fixture-principal-20261108';
+export const CONSUMER_TRACE_INTENT='compiler-consumer-trace';
+export const TRACED_CONSUMERS=Object.freeze([7,8,9]);
 export const BOUNDARY_LIMITS=Object.freeze({heapMiB:12288,inventoryMs:120000,compilerMs:720000,
  fileBytes:512*1024**2,totalBytes:1024**3,logBytes:16*1024**2,consumerRoots:400,consumerClosure:600});
 export const sha256=value=>createHash('sha256').update(value).digest('hex');
@@ -15,6 +17,22 @@ export function admitBoundaryInputs(inputs){
  for(const key of ['transport_origin_run','transport_origin_sha','transport_origin_artifact','transport_origin_digest',
   'compiler_origin_run','compiler_origin_sha','compiler_origin_artifact','compiler_origin_digest','next_build_cache_origin'])
   assert(inputs[key]===undefined||inputs[key]==='',key);
+}
+export function admitConsumerTraceInputs(inputs){
+ const keys=['candidate_ref','expected_sha','filesystem_activation_probe','installer_fixture_phase','plan_probe','build_transport_probe','transport_origin_run','transport_origin_sha','transport_origin_artifact','transport_origin_digest','compiler_transport_probe','next_build_cache_phase','next_build_cache_origin','managed_compiler_probe','managed_compiler_force_invalid','compiler_compatible_probe','compiler_origin_run','compiler_origin_sha','compiler_origin_artifact','compiler_origin_digest','compiler_probe','statutory_probe','nodb_probe','instrument_copies','layout_probe'];
+ assert(inputs&&typeof inputs==='object'&&!Array.isArray(inputs)&&Object.keys(inputs).every(key=>keys.includes(key)),'Only the existing25 diagnostic inputs are accepted');
+ assert.equal(inputs.installer_fixture_phase,CONSUMER_TRACE_INTENT);
+ for(const key of ['filesystem_activation_probe','plan_probe','build_transport_probe','compiler_transport_probe','managed_compiler_probe','managed_compiler_force_invalid','compiler_compatible_probe','statutory_probe','nodb_probe','instrument_copies','layout_probe'])
+  assert(inputs[key]===undefined||inputs[key]===false,'Only false/absent alternate flags are accepted: '+key);
+ admitBoundaryInputs({...inputs,installer_fixture_phase:'compiler-boundary'});
+}
+export function boundarySchedule(plan,traceOnly=false){
+ assert.equal(typeof traceOnly,'boolean');
+ assert(Array.isArray(plan.consumers)&&plan.consumers.every((row,index)=>row.id===index),'Exact ordered native consumer plan required');
+ if(traceOnly)assert(TRACED_CONSUMERS.every(id=>plan.consumers[id]?.id===id),'All fixed diagnostic consumers must exist');
+ return [...['producer','declarations'].map(mode=>({mode})),
+  ...(!traceOnly?['source-negative','declaration-negative'].map(mode=>({mode})):[]),
+  ...plan.consumers.filter(row=>!traceOnly||TRACED_CONSUMERS.includes(row.id)).map(row=>({mode:'consumer',index:row.id}))];
 }
 export function remainingCompilerMs(phases){
  const used=phases.filter(phase=>phase.mode!=='inventory').reduce((sum,phase)=>sum+phase.elapsedMs,0);

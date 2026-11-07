@@ -5,9 +5,12 @@ import {readFileSync,writeFileSync,openSync,closeSync,mkdirSync,lstatSync,readdi
 import {join,resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {cpus,totalmem} from 'node:os';
-import {BOUNDARY_SOURCE,BOUNDARY_LIMITS,sha256,admitBoundaryInputs,remainingCompilerMs} from './compiler-boundary-policy.mjs';
+import {BOUNDARY_SOURCE,BOUNDARY_LIMITS,sha256,admitBoundaryInputs,admitConsumerTraceInputs,CONSUMER_TRACE_INTENT,TRACED_CONSUMERS,boundarySchedule,remainingCompilerMs} from './compiler-boundary-policy.mjs';
 
-export function boundaryArguments(worker,out,mode,index){return [worker,mode,out,...(index===undefined?[]:[String(index)])];}
+export function boundaryArguments(worker,out,mode,index,traceOnly=false){
+ assert.equal(typeof traceOnly,'boolean');if(traceOnly&&mode==='consumer')assert(TRACED_CONSUMERS.includes(index),'Only fixed consumers may trace');
+ return [worker,mode,out,...(index===undefined?[]:[String(index)]),...(traceOnly&&mode==='consumer'?['--trace-consumer']:[])];
+}
 export function validatePhase(result){assert(result.code===0&&result.signal===null&&result.stoppedBecause===null&&!result.monitorError,'Native diagnostic phase failed');}
 /** After checked producer/declarations, both negative controls and every
  * consumer are independent. None produces an input for another check. */
@@ -49,7 +52,8 @@ export function exactCoverage(inventory,plan,phases){
  return {orderedOriginalRoots:inventory.roots.length,originalResolvedFiles:inventory.files.length,originalResolvedObserved:observed.size,
   producerRoots:plan.producerRoots.length,consumerRoots:plan.consumers.reduce((sum,row)=>sum+row.roots.length,0),consumerPartitions:plan.consumers.length};
 }
-export async function experiment(){
+export async function experiment(traceOnly=false){
+ assert.equal(typeof traceOnly,'boolean');
  assert(process.platform==='linux'&&process.env.GITHUB_ACTIONS==='true'&&process.env.RUNNER_ENVIRONMENT==='github-hosted'
   &&process.env.CI==='true'&&process.env.GITHUB_REPOSITORY==='StradaverseHub/ai-hr','Managed diagnostic runner required');
  assert.equal(process.versions.node,'22.23.3');assert.equal(cpus().length,4);assert(totalmem()>=14*1024**3&&totalmem()<=18*1024**3);
@@ -59,10 +63,11 @@ export async function experiment(){
  assert.equal(git(controller,'rev-parse','HEAD'),process.env.AIHR_CI_CONTROL_HEAD);assert.equal(git(controller,'status','--porcelain'),'');
  const temp=realpathSync(process.env.RUNNER_TEMP),out=join(temp,'diagnostic-compiler-boundary');
  const free=()=>{const value=statfsSync(temp);return value.bavail*value.bsize;};assert(free()>=20*1024**3);mkdirSync(out,{mode:0o700});
- const report={kind:'DEVELOPMENT_COMPILER_DECLARATION_BOUNDARY_NOT_RELEASE',source:BOUNDARY_SOURCE,controller:process.env.AIHR_CI_CONTROL_HEAD,
+ const report={kind:traceOnly?'DEVELOPMENT_SELECTED_CONSUMER_TRACE_NOT_RELEASE':'DEVELOPMENT_COMPILER_DECLARATION_BOUNDARY_NOT_RELEASE',source:BOUNDARY_SOURCE,controller:process.env.AIHR_CI_CONTROL_HEAD,
   runId:process.env.GITHUB_RUN_ID,attempt:process.env.GITHUB_RUN_ATTEMPT,releaseAuthorized:false,ordinaryCompilerQualified:false,
+  ...(traceOnly?{completeSuite:false,selectedConsumers:TRACED_CONSUMERS,coverageScope:'Diagnostic only: checked fresh producer/declarations and consumers7/8/9; earlier native results retain original identities'}:{}),
   complete:false,limits:BOUNDARY_LIMITS,phases:[],host:{node:process.version,cpus:cpus().length,ramBytes:totalmem()},
-  controllerFiles:Object.fromEntries(['compiler-boundary.mjs','compiler-boundary-worker.mjs','compiler-boundary-policy.mjs'].map(name=>[name,sha256(readFileSync(new URL(name,import.meta.url)))]))};
+  controllerFiles:Object.fromEntries(['compiler-boundary.mjs','compiler-boundary-worker.mjs','compiler-boundary-policy.mjs',...(traceOnly?['compiler-consumer-trace.mjs']:[])].map(name=>[name,sha256(readFileSync(new URL(name,import.meta.url)))]))};
  const outputBytes=()=>{
   let total=0,files=0;const walk=path=>{for(const name of readdirSync(path)){const child=join(path,name),stat=lstatSync(child);assert(!stat.isSymbolicLink(),'Foreign diagnostic symlink');
    if(stat.isDirectory())walk(child);else{assert(stat.isFile());assert(stat.size<=BOUNDARY_LIMITS.fileBytes,'Diagnostic individual file bound exceeded');total+=stat.size;assert(++files<=50000);}}};walk(out);return total;
@@ -72,7 +77,7 @@ export async function experiment(){
   const name=mode+(index===undefined?'':'-'+index),log=join(out,name+'.log'),fd=openSync(log,'wx',0o600),samples=openSync(join(out,name+'-samples.jsonl'),'wx',0o600);
   const row={mode,index,status:'running',budgetMs:budget,code:null,signal:null,stoppedBecause:null,monitorError:null,elapsedMs:0,sampledPeakRssKiB:0};report.phases.push(row);
   const start=Date.now(),worker=fileURLToPath(new URL('compiler-boundary-worker.mjs',import.meta.url));
-  const child=spawn('/usr/bin/prlimit',['--core=0',`--fsize=${BOUNDARY_LIMITS.fileBytes}`,'--',process.execPath,...boundaryArguments(worker,out,mode,index)],{
+  const child=spawn('/usr/bin/prlimit',['--core=0',`--fsize=${BOUNDARY_LIMITS.fileBytes}`,'--',process.execPath,...boundaryArguments(worker,out,mode,index,traceOnly)],{
    cwd,env:{...process.env,NODE_OPTIONS:'--max-old-space-size=12288'},stdio:['ignore',fd,fd],detached:true});
   let timer,killer;
   const stop=reason=>{if(row.stoppedBecause)return;row.stoppedBecause=reason;if(child.pid)try{process.kill(-child.pid,'SIGTERM');}catch{}
@@ -99,21 +104,31 @@ export async function experiment(){
  }
  try{
   await phase('inventory');const inventory=JSON.parse(readFileSync(join(out,'inventory.json'),'utf8')),plan=JSON.parse(readFileSync(join(out,'plan.json'),'utf8'));
-  report.plannedPhases=[...['producer','declarations','source-negative','declaration-negative'].map(mode=>({mode})),...plan.consumers.map(batch=>({mode:'consumer',index:batch.id}))];
+  if(traceOnly){
+   assert.equal(sha256(readFileSync(join(out,'inventory.json'))),'803a319b3af6409a251a009fa2cf76f9fb0fa1a5f7fe758025bb4a5c9250a6a8','Original f2 native inventory changed');
+   assert.equal(sha256(readFileSync(join(out,'plan.json'))),'33143b33eec77708f21da2eaa979a5df2aea68b74589e3b1f6274c6773de032e','Original400-root native plan changed');
+  }
+  report.plannedPhases=boundarySchedule(plan,traceOnly);
+  if(traceOnly){const selected=new Set(report.plannedPhases.map(row=>row.mode+(row.index===undefined?'':'-'+row.index)));report.omittedPhases=boundarySchedule(plan).filter(row=>!selected.has(row.mode+(row.index===undefined?'':'-'+row.index))).map(row=>({...row,status:'omitted-diagnostic',notNewPass:true}));}
   report.inventorySha256=sha256(readFileSync(join(out,'inventory.json')));report.planSha256=sha256(readFileSync(join(out,'plan.json')));
   const results=[];results.push(await phase('producer'));results.push(await phase('declarations'));
-  const independent=[...['source-negative','declaration-negative'].map(mode=>({mode})),...plan.consumers.map(batch=>({mode:'consumer',index:batch.id}))];
+  const independent=report.plannedPhases.slice(2);
   report.independentSchedule=independent;
   const outcome=await runIndependentPhases(independent,phase,()=>remainingCompilerMs(report.phases),row=>report.phases.push(row));
   results.push(...outcome.results);report.independentFailures=outcome.failures;
   assert(outcome.failures.length===0&&outcome.blocked.length===0,'Independent compiler controls/consumers failed or were blocked; all actual outcomes retained');
-  report.coverage=exactCoverage(inventory,plan,results);assert(remainingCompilerMs(report.phases)>0,'Compiler aggregate budget exhausted');
+  if(traceOnly){
+   assert.deepEqual(results.map(row=>row.mode+(row.index===undefined?'':'-'+row.index)),report.plannedPhases.map(row=>row.mode+(row.index===undefined?'':'-'+row.index)));
+   assert(results.every(row=>row.complete===true&&JSON.stringify(row.identity)===JSON.stringify(inventory.identity)),'Incomplete or foreign selected phase');
+   report.coverage={completeSuite:false,allOriginalInventoryRoots:inventory.roots.length,allOriginalResolvedFiles:inventory.files.length,selectedConsumerRoots:plan.consumers.filter(row=>TRACED_CONSUMERS.includes(row.id)).reduce((n,row)=>n+row.roots.length,0)};
+  }else report.coverage=exactCoverage(inventory,plan,results);
+  assert(remainingCompilerMs(report.phases)>0,'Compiler aggregate budget exhausted');
   assert(outputBytes()<=BOUNDARY_LIMITS.totalBytes);report.complete=true;
  }catch(error){report.error=String(error);throw error;}
  finally{
   // A failed prerequisite prevents trustworthy dependent work. Record every
   // known planned phase that did not start instead of inventing empty passes.
-  const planned=report.plannedPhases??['producer','declarations','source-negative','declaration-negative'].map(mode=>({mode}));
+  const planned=report.plannedPhases??(traceOnly?[{mode:'producer'},{mode:'declarations'},...TRACED_CONSUMERS.map(index=>({mode:'consumer',index}))]:['producer','declarations','source-negative','declaration-negative'].map(mode=>({mode})));
   report.phases.push(...blockedUnstartedPhases(planned,report.phases,remainingCompilerMs(report.phases)));
   if(!report.plannedPhases)report.consumerPlanUnavailable={status:'blocked',blockedReason:'inventory-or-plan-failure',consumersKnown:false};
   report.sourceRestored=git(cwd,'rev-parse','HEAD')===BOUNDARY_SOURCE&&git(cwd,'status','--porcelain')==='';
@@ -126,6 +141,6 @@ export async function experiment(){
  return report;
 }
 if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url)){
- if(process.argv[2]==='--selection')admitBoundaryInputs(JSON.parse(process.env.AIHR_COMPILER_BOUNDARY_INPUTS));
- else{assert.equal(process.argv.length,2);experiment().then(value=>console.log(JSON.stringify(value))).catch(error=>{console.error(error);process.exitCode=1;});}
+ if(process.argv[2]==='--selection'){const inputs=JSON.parse(process.env.AIHR_COMPILER_BOUNDARY_INPUTS);(inputs.installer_fixture_phase===CONSUMER_TRACE_INTENT?admitConsumerTraceInputs:admitBoundaryInputs)(inputs);}
+ else{assert(process.argv.length===2||process.argv.length===3&&process.argv[2]==='--trace-consumers');experiment(process.argv[2]==='--trace-consumers').then(value=>console.log(JSON.stringify(value))).catch(error=>{console.error(error);process.exitCode=1;});}
 }
