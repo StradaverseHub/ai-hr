@@ -15,7 +15,7 @@ export function validateRecoveryControllerDiagnostic({run,jobs,controller,now=Da
  assert(sha(controller)&&run.repository?.id===REPOSITORY_ID&&run.repository.full_name===REPOSITORY&&run.head_repository?.id===REPOSITORY_ID&&positive(run.id),'Foreign verification-controller diagnostic');
  assert(run.workflow_id===WORKFLOW_ID&&run.path===WORKFLOW_PATH&&run.event==='workflow_dispatch'&&run.head_sha===controller&&run.status==='completed'&&run.conclusion==='success'&&run.run_attempt===1&&run.display_title?.startsWith('CI controller checks · '),'Exact successful controller-only diagnostic required');
  assert(now-Date.parse(run.created_at)<=86400000&&Date.parse(run.created_at)<=now+60000,'Stale controller diagnostic');
- const names=['resolve','typecheck','migrations','test','controller-tests','plan','runner-diagnostics','build','browser','verify','deployment-hold'];
+ const names=['resolve','typecheck','migrations','test','controller-tests','plan','runner-diagnostics','build','browser','verify','commission-summary','deployment-hold'];
  assert(jobs.length===names.length&&new Set(jobs.map(j=>j.name)).size===names.length,'Complete controller diagnostic job inventory required');
  for(const j of jobs)assert(names.includes(j.name)&&j.run_id===run.id&&j.head_sha===controller&&j.run_attempt===1&&j.status==='completed'&&j.conclusion===(['resolve','deployment-hold'].includes(j.name)?'success':'skipped'),'Diagnostic executed application checks or failed controls');
  assert(jobs.find(j=>j.name==='resolve').steps?.some(s=>s.name==='CI integrity regression checks'&&s.conclusion==='success'),'Controller integrity controls did not pass');
@@ -59,7 +59,7 @@ export function verifyFocusedRecovery({plan,assessment,run,jobs,reports,focused,
  assert(failed.size>0&&failed.size===assessment.rerun.length&&assessment.reusable.length+failed.size===plan.units.length,'Incomplete source coverage assessment');
  for(const j of jobs){
   const unit=plan.units.find(u=>jobName(u)===j.name);
-  if(j.name==='runner-diagnostics'){assert(j.conclusion==='skipped');continue;}
+  if(['runner-diagnostics','commission-summary'].includes(j.name)){assert(j.conclusion==='skipped');continue;}
   assert(required.jobs.includes(j.name),'Unknown source job');
   if(j.name==='verify'){assert(j.conclusion==='failure','Original dependent verifier must remain failed');continue;}
   if(unit&&failed.has(unit.id)){assert(unit.kind==='nodb'&&j.conclusion==='failure','v1 recovers failed no-DB test units only');continue;}

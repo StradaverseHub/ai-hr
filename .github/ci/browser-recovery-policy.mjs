@@ -46,7 +46,7 @@ export function verifyBrowserRecovery({plan,freshPlan,assessment,run,jobs,report
  same(assessment.rerun.map(x=>x.id),['browser-firefox'],'Only a failed Firefox capacity unit can be recovered');
  assert(assessment.reusable.length===plan.units.length-1&&new Set(assessment.reusable.map(x=>x.id)).size===assessment.reusable.length,'Retained coverage incomplete');
  const required=requiredEvidence(plan);
- for(const j of jobs){assert(required.jobs.includes(j.name)||(j.name==='runner-diagnostics'&&j.conclusion==='skipped'),'Unknown original job');assert(j.conclusion===(['browser (firefox)','verify'].includes(j.name)?'failure':j.name==='runner-diagnostics'?'skipped':'success'),'Failed prerequisite cannot be recovered with Firefox');}
+ for(const j of jobs){assert(required.jobs.includes(j.name)||(['runner-diagnostics','commission-summary'].includes(j.name)&&j.conclusion==='skipped'),'Unknown original job');assert(j.conclusion===(['browser (firefox)','verify'].includes(j.name)?'failure':['runner-diagnostics','commission-summary'].includes(j.name)?'skipped':'success'),'Failed prerequisite cannot be recovered with Firefox');}
  assert(reports.length===plan.units.length&&new Set(reports.map(r=>r.id)).size===reports.length,'Complete original reports required');
  const failed=reports.find(r=>r.id==='browser-firefox'),unit=plan.units.find(u=>u.id==='browser-firefox');
  assert(failed&&unit?.kind==='browser'&&unit.engine==='firefox'&&failed.schemaVersion===1&&failed.sha===plan.sha&&failed.fingerprint===plan.fingerprint&&failed.exitCode===1,'Original Firefox failure differs');

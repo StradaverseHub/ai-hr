@@ -4,23 +4,32 @@
   "policy": "aihr-staging-ci/v19",
   "releaseAuthorized": false,
   "sourceSha256": {
-    ".github/ci/browser-recovery-policy.mjs": "d68962a0dc0a034cf660b2b2b7266beba98639b6776fcb69b9a881dee9d64db0",
+    ".github/ci/browser-recovery-policy.mjs": "d022b46cda4c52e4cf263c92a51b14eb0c9b83ad69fb74998c0398a19728efc4",
+    ".github/ci/browser-recovery.test.mjs": "b093709f7bc9df58809c5d56769855c608e4e92c57d54184761bb262caca1d86",
     ".github/ci/focused-checks.mjs": "380791f61e4ba0ed59f7a03d8c50311a6e661abe9becdc1240d6b8a468e3407c",
-    ".github/ci/focused-recovery-policy.mjs": "462521233a8f31163678aacbfac935711a965b565091e707ca1254f4fa566434",
+    ".github/ci/focused-recovery-policy.mjs": "039188aed6b4ecb247dd3efa40cf7f3132cacd523c322fdc36ccd975b8b81965",
+    ".github/ci/focused-recovery.test.mjs": "bbd90b067364307b7736020c7b33802c6a0a6f9a9cbc9dd436a54504264b2da8",
     ".github/ci/manifest.mjs": "42e9d4f207ac4a896117b643ffb4ce63afeb6aa8ae01bf40086410b88d8aa42e",
     ".github/ci/plan.mjs": "bd6892247e501abce715dc8b285bd60428ec8a8b903644a856bd04738ae5e876",
     ".github/ci/policy-version.mjs": "9ed9ec3303ef235775b819ab968aa7cd3f9d9a2ff74423716f527d8388c3f7b2",
-    ".github/ci/release-policy.mjs": "22952b09a4f878f4ba165661917c293b35d7de63b714cd691a5e88a3da70da0e",
-    ".github/ci/repair-recovery-policy.mjs": "16e7f88fd7407e35341d7370ebc5f8f6d6ea0c3ef305ab2a08b587600e8b8eff",
+    ".github/ci/release-policy.mjs": "70488fca6dbbc92854f5075a87bae99d1bcdce442ad75728cf5eddbffa7d84fe",
+    ".github/ci/release-policy.test.mjs": "2cb908b84f310b344ec05e9f4d0be85f744a69bbe45c991f16171ef14b4b8d6c",
+    ".github/ci/repair-recovery-policy.mjs": "d245741ced38d24ab1422921b720db68f61aeb7fae7ace158d1de0777a9a32be",
+    ".github/ci/repair-recovery.test.mjs": "c8f0eeb7338c4e2a4c844936aae7680afc171aaf1071c029f9b8b82f049039d1",
     ".github/ci/resume-assessment.mjs": "cfd0925b969bfb46455c317508c188bd26754725013c01ba39db2b1574f623a9",
+    ".github/ci/resume-source.mjs": "3f7d4a779d605d2ce3376d0bcf6d62fbf1beb05c8a979b61cac7716471f0762f",
+    ".github/ci/resume-source.test.mjs": "41e10ce9697441864cb6ce29464fb5a6b765b4173db59b69bd35718fa87cfe7e",
     ".github/ci/run-unit.mjs": "23824b68053ffa80a8e193204324eab378fae25c7421e79f7129f3a28477eb78",
+    ".github/ci/singleton-commissioning.mjs": "876026726250488e4c3da05f7cd9c7f4c29c978f6a79861ae8cb7d23d5641eb4",
+    ".github/ci/singleton-commissioning.test.mjs": "eeda454ab4b9c6d4929ad513ff9e95377e466a844537c1c1c0d1abee69c90a76",
     ".github/ci/singleton-profiles.mjs": "5817f48546e17d7a3982a7ff27e97a7583c497f6af1f4372bd0dbc557a8a054b",
     ".github/ci/singleton-profiles.test.mjs": "2aa71b547fc2bb539c3945a8856bd6a251fa42e2aeb16406f26f9fefaa16daa7",
     ".github/ci/singleton-protocol.mjs": "c9bd0c66b5003e57f106d75ceb716ed0f635f2afdf19140b36dc6227e7ab13f3",
     ".github/ci/verify-shards.mjs": "21ec20bd938032c0373b813ce1ba6dc1b332ae37313511e7a7c1c9edfb55f4df",
-    ".github/workflows/alpha-staging.yml": "6a7ccc0bde85ee8992a28ecd9962a8c29343297868f4889797b192b28910c2ee",
-    "docs/adr/2026-11-08-authenticated-singleton-ci-profiles.md": "945d9fc74cfd3d217483a3bde91fe3d62495c695e0ba1191f06de6fd28e87ce8",
-    "docs/qualification/v19-controller-only-adoption-proposal-20261108.json": "8e910cc3bbf08c69ad7612ac1ac10f0966b269cabd2ae87062e066c39780a83f",
+    ".github/workflows/alpha-staging.yml": "67539f21251bf8e07f9a2e75af32deeb76a2bf9a9d1ed0d7e740e22b2bba5441",
+    "docs/adr/2026-11-08-authenticated-singleton-ci-profiles.md": "04343f26b77b480bae86edc9d463649ad8c94cc3597cae2102cd442aea0316ff",
+    "docs/adr/2026-11-08-singleton-native-commissioning.md": "85720fb17a76fb4460303d40ce6144e6a8855348a168d7c44aed2c1a2e262f2e",
+    "docs/qualification/v19-controller-only-adoption-proposal-20261108.json": "106097dc22d95792172d653a19645077808796d92a6f1c2d679c298e57a646e9",
     "scripts/gate-chunked.sh": "05db1c2cd7ce3e58e557f87df5f7ed429261b1b35d68d1788ce0cc38cea6ca5b",
     "scripts/gate-impact-run.ts": "e6fea5e51bde3d383f75ba1bd83c9008a243831ef5c2ec4f506b310f7d0ed715",
     "scripts/gate-singleton-scope.mjs": "2bb9ee27128c3f6c2569fb6eeb784b82dfe8fec46dc14b61c8decadd22540be7",
@@ -41,19 +50,20 @@
     "test/runtime-ready-admission-native.test.ts": "732094e29df5eb1fb0e39648f8154d841afd48a6aa22cd1b963557c572b2511b"
   },
   "controllerTests": [
-    ".github/ci/singleton-profiles.test.mjs",
-    ".github/ci/manifest.test.mjs",
+    ".github/ci/browser-recovery.test.mjs",
     ".github/ci/ci.test.mjs",
+    ".github/ci/db-scheduling.test.mjs",
     ".github/ci/focused-checks.test.mjs",
+    ".github/ci/focused-recovery.test.mjs",
+    ".github/ci/manifest.test.mjs",
+    ".github/ci/pdf-tools.test.mjs",
     ".github/ci/release-policy.test.mjs",
+    ".github/ci/repair-recovery.test.mjs",
     ".github/ci/resume-assessment.test.mjs",
     ".github/ci/resume-source.test.mjs",
-    ".github/ci/focused-recovery.test.mjs",
-    ".github/ci/repair-recovery.test.mjs",
-    ".github/ci/browser-recovery.test.mjs",
-    ".github/ci/db-scheduling.test.mjs",
-    ".github/ci/pdf-tools.test.mjs",
-    ".github/ci/runner-capacity.test.mjs"
+    ".github/ci/runner-capacity.test.mjs",
+    ".github/ci/singleton-commissioning.test.mjs",
+    ".github/ci/singleton-profiles.test.mjs"
   ],
   "nativeHostSoleSelector": "test/runtime-ready-admission-native.test.ts",
   "controlledDatabaseSoleSelectors": [
@@ -90,5 +100,22 @@
     "Normal complete compiler/build/full witness",
     "Separate CI-only trusted controller commissioning",
     "All architecture/browser/worker acceptance before staging; production held"
-  ]
+  ],
+  "parentControllerQualification": {
+    "source": "b763df20a23aa96facfaeaefe04fe93f30a40754",
+    "runId": 42397415923,
+    "scope": "controller regressions and complete plan only; not current child/native/release acceptance"
+  },
+  "developmentCommissioning": {
+    "input": "commission_singleton_units",
+    "kind": "SELECTED_PROFILE_COMMISSIONING_ONLY",
+    "maximumUnits": 16,
+    "releaseAuthorized": false,
+    "proposedFirstUnits": [
+      "nodb-f16d9d89e9ca922f",
+      "db-36df25d092b934c2"
+    ],
+    "sourcePlanRunId": 42397415923,
+    "requiresFinalReconstruction": true
+  }
 }

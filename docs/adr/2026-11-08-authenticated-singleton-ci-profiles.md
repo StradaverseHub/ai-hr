@@ -128,14 +128,16 @@ manifest bindings. The companion proposal records the exact present file closure
 Use the existing `controller_only=true, diagnostics_only=true` workflow route on
 the frozen CI-only development branch with identical candidate/controller to run
 dependency-free integrity and complete inventory reconstruction. It remains a
-diagnostic artifact with skipped release jobs. For actual full-mode/native
-commissioning, use the ordinary full workflow from that reviewed development
-controller with the exact held architecture candidate separately checked out.
-There is no selected-unit escape or forged focused mode: all planned jobs must
-finish, and original failures remain. These branch runs can measure actual
-singleton admission/provisioning and ordinary coverage but the release verifier
-still rejects their untrusted branch. If the compiler fails, that full run is
-failed; native component successes remain only their original development evidence.
+diagnostic artifact with skipped release jobs. The separately reviewed bounded
+`commission_singleton_units` route can then select 1–16 actual registered IDs from
+that complete plan. It runs the unchanged real `test` job and full native
+admission/provisioning, retains `commission-*` artifacts and a strictly checked
+selected-profile summary, and explicitly skips release-producing jobs. It never
+calls the full report verifier or emits a CI receipt. A successful commissioning
+run on any controller branch, including main/alpha, remains incomplete development
+evidence. The release API validator explicitly refuses its run title, requires
+all ordinary jobs and rejects its artifact names. No focused or GitHub context
+variables are manufactured. See [the commissioning contract](2026-11-08-singleton-native-commissioning.md).
 
 After independent review and required development qualification, root must review
 and explicitly authorize publishing only the CI-only controller to the trusted

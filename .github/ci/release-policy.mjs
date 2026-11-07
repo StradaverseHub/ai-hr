@@ -2,6 +2,7 @@
 import {createHash} from 'node:crypto';
 import {isDeepStrictEqual} from 'node:util';
 import {verifyReports} from './verify-shards.mjs';
+import {COMMISSION_TITLE} from './singleton-commissioning.mjs';
 import {CI_POLICY} from './policy-version.mjs';
 export {CI_POLICY};
 export const REPOSITORY='StradaverseHub/ai-hr';
@@ -16,6 +17,7 @@ const sha=value=>typeof value==='string'&&/^[0-9a-f]{40}$/.test(value);
 const reject=message=>{throw Error('CI release refused: '+message);};
 export const digest=bytes=>'sha256:'+createHash('sha256').update(bytes).digest('hex');
 export function validateRun(run,p){
+ if(typeof run.display_title==='string'&&run.display_title.startsWith(COMMISSION_TITLE))reject('selected singleton commissioning is incomplete development evidence');
  if(!sha(p.controller)||!sha(p.candidate)||!sha(p.baseline))reject('invalid expected identity');
  if(run.id!==p.runId||run.repository?.id!==REPOSITORY_ID||run.repository?.full_name!==REPOSITORY||run.head_repository?.id!==REPOSITORY_ID)reject('foreign run/repository');
  const allowedEvent=run.event==='workflow_dispatch'||(run.event==='push'&&run.head_branch==='alpha'&&run.head_sha===p.candidate&&p.controller===p.candidate);
@@ -32,7 +34,7 @@ export function validateJobs(jobs,expectedPlan){
  for(const job of jobs){
   if(found.has(job.name))reject('duplicated job identity');
   found.set(job.name,job);
-  if(!REQUIRED_JOBS.includes(job.name)&&!(job.name==='runner-diagnostics'&&job.status==='completed'&&job.conclusion==='skipped'))reject('unexpected job');
+  if(!REQUIRED_JOBS.includes(job.name)&&!(['runner-diagnostics','commission-summary'].includes(job.name)&&job.status==='completed'&&job.conclusion==='skipped'))reject('unexpected job');
  }
  for(const name of REQUIRED_JOBS){const j=found.get(name);if(!j||j.status!=='completed'||j.conclusion!=='success'||j.run_attempt!==1)reject('missing, skipped, failed or rerun job '+name);}
  return true;
