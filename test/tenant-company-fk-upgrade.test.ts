@@ -136,8 +136,18 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    'reward_pat_version', 'reward_plan_company', 'reward_setup_grant',
   ];
   const expansionNames = new Set(expansionRelations.map(rel => rel + '_company_tenant_fk'));
+  // The ADR-0174 follow-up (2901/2902) keys the seven company references not called company_id.
+  const followUp = [
+   ['company', 'company_parent_company_tenant_fk'], ['notice', 'notice_owner_company_tenant_fk'],
+   ['overtime_pattern', 'overtime_pattern_creation_company_tenant_fk'],
+   ['overtime_pattern_version', 'overtime_pattern_version_creation_company_tenant_fk'],
+   ['performance_kpi_library', 'performance_kpi_library_group_company_tenant_fk'],
+   ['reporting_line', 'reporting_line_scope_company_tenant_fk'], ['teras_chat', 'teras_chat_company_tenant_fk'],
+  ] as const;
+  const followUpNames = new Set<string>(followUp.map(([, conname]) => conname));
   const completeKeys = await keys();
-  expect(completeKeys.filter(row => !expansionNames.has(row.conname))).toEqual(installed);
+  expect(completeKeys.filter(row => followUpNames.has(row.conname))).toEqual(followUp.map(([rel, conname]) => ({ rel, conname, convalidated: true, action: 'a' })));
+  expect(completeKeys.filter(row => !expansionNames.has(row.conname) && !followUpNames.has(row.conname))).toEqual(installed);
   expect(completeKeys.filter(row => expansionNames.has(row.conname))).toEqual(expansionRelations.map(rel => ({
    rel, conname: rel + '_company_tenant_fk', convalidated: true, action: 'a',
   })));

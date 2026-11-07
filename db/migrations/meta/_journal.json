@@ -4929,6 +4929,27 @@
       "when": 1793330002200,
       "tag": "2600_onboarding_current_personnel",
       "breakpoints": true
+    },
+    {
+      "idx": 2200,
+      "version": "7",
+      "when": 1793330002500,
+      "tag": "2900_definer_search_path_pin",
+      "breakpoints": true
+    },
+    {
+      "idx": 2201,
+      "version": "7",
+      "when": 1793330002501,
+      "tag": "2901_company_reference_tenant_fk_not_valid",
+      "breakpoints": true
+    },
+    {
+      "idx": 2202,
+      "version": "7",
+      "when": 1793330002502,
+      "tag": "2902_company_reference_tenant_fk_validate",
+      "breakpoints": true
     }
   ]
 }

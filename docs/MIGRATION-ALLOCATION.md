@@ -5,6 +5,31 @@ journals and the actual staging watermark before journal integration or applicat
 applied SQL/hash and exact journal prefix. Reservations do not authorize deployment or skipping the
 owning release gate.
 
+## Tenant-isolation follow-up (ADR-0174) — 7 November 2026 (provisional source claim)
+
+`claude/pensive-hofstadter-d1bf14` appends three migrations to main's 704-entry journal at `2b90f2e45`, which
+ends at `2600_onboarding_current_personnel` (idx 1900 / when 1793330002200). The block was claimed in turn as
+2120–2123, 2150–2153, 2240–2242, 2400–2402 and 2500–2502. Each time later work landed on main above it, and the
+2500–2502 claim is withdrawn here.
+
+A read-only scan on 7 November 2026 of every local and remote ref (479 journal blobs) and every registered
+worktree found claims up to `2702_phase1_notification_receipts` (idx 2002 / when 1793330002302), and nothing
+above. The block therefore takes 2900–2902, with `when` = 1793330000000 + (file − 400) and idx = file − 700
+(the convention of 2600–2702). That leaves 2703–2899 free.
+
+2900's search-path sweep reads the catalog when it runs, so a function re-issued earlier in the same upgrade
+keeps its own path with pg_temp added.
+
+| Tag | idx | when | SQL SHA256 |
+| --- | ---: | ---: | --- |
+|2900_definer_search_path_pin|2200|1793330002500|545c360024e20d0276587a63f0ab8432573673095248cd75070df38b961fafa5|
+|2901_company_reference_tenant_fk_not_valid|2201|1793330002501|bd3e72eec9f148d7b2e2a469df1e9266f94fa339e3c190ba6539435170b2cf4d|
+|2902_company_reference_tenant_fk_validate|2202|1793330002502|4ff1bdaacc211086cac68caa64d05dbdb34c014e9541df38a9447d92c19f21f5|
+
+These are unapplied source only. Immediately before merge, re-check the highest file, idx and `when` on main and
+staging. At staging admission, confirm the migrator can SET ROLE to each dedicated owner, and count chats whose
+company is missing or belongs to another tenant.
+
 ## Payroll reconciliation remarks — 6 November 2026 (provisional)
 
 The feedback candidate reserves `2404_payroll_reconciliation_remark`, idx `1654`,
