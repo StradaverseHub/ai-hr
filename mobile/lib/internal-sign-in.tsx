@@ -15,14 +15,13 @@ import { Button } from './ui';
 import { useTenantDesign } from './design';
 import { SignInBackground } from './sign-in-background';
 import { Icon } from './icon';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { appLocale, t } from './i18n';
 import authCopy from './internal-auth-copy.json';
 
 export function InternalSignIn() {
   const company = useCompanyConnection(), session = useSession();
   const { palette } = useTenantDesign();
-  const insets = useSafeAreaInsets();
   const [showPassword, setShowPassword] = useState(false);
   const styles = signInStyles(palette);
   const workplaceOrganization = company?.organization ?? '';
@@ -61,9 +60,8 @@ export function InternalSignIn() {
   const state = step?.step || 'login';
   const hasRecoveryCodes = Boolean(step?.recoveryCodes?.length);
   const loginDisabled = busy || !(workplaceOrganization || organization) || !username || !password;
-  if (state === 'login') return <View style={{ flex: 1, backgroundColor: palette.bg }}><SignInBackground/>
-    <ScrollView keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag" automaticallyAdjustKeyboardInsets contentContainerStyle={[styles.entry, { paddingTop: insets.top + 16, paddingBottom: insets.bottom + 24 }]}>
-      <PublicHeader />
+  if (state === 'login') return <SafeAreaView edges={['top','bottom']} style={{ flex: 1, backgroundColor: palette.bg }}><SignInBackground/><View style={styles.publicBar}><PublicHeader/></View>
+    <ScrollView keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag" automaticallyAdjustKeyboardInsets contentContainerStyle={styles.entry}>
       <Text accessibilityRole="header" style={styles.entryTitle}>{t('fieldSignInTitle')}</Text>
       <Text style={[styles.label,{fontWeight:'700'}]}>{copy.loginTitle}</Text>
       <Pressable accessibilityRole="button" accessibilityLabel={companyCopy().change} disabled={busy} onPress={() => router.push('/company')} style={[styles.workplace,{borderTopWidth:1,borderBottomWidth:1,borderColor:palette.border}]}>
@@ -90,9 +88,9 @@ export function InternalSignIn() {
 
       </View>
     </ScrollView>
-  </View>;
-  return <View style={{ flex: 1, backgroundColor: palette.bg }}><SignInBackground /><ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={[styles.wrap, { paddingTop: insets.top + 16, paddingBottom: insets.bottom + 24 }]} keyboardDismissMode="on-drag" automaticallyAdjustKeyboardInsets>
-    <PublicHeader /><Text accessibilityRole="header" style={styles.title}>{state === 'complete' && hasRecoveryCodes ? copy.codesTitle : state === 'password' ? copy.passwordTitle : state === 'enroll' ? copy.enrollTitle : state === 'mfa' ? copy.mfaTitle : copy.loginTitle}</Text>
+  </SafeAreaView>;
+  return <SafeAreaView edges={['top','bottom']} style={{ flex: 1, backgroundColor: palette.bg }}><SignInBackground /><View style={styles.publicBar}><PublicHeader/></View><ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.wrap} keyboardDismissMode="on-drag" automaticallyAdjustKeyboardInsets>
+    <Text accessibilityRole="header" style={styles.title}>{state === 'complete' && hasRecoveryCodes ? copy.codesTitle : state === 'password' ? copy.passwordTitle : state === 'enroll' ? copy.enrollTitle : state === 'mfa' ? copy.mfaTitle : copy.loginTitle}</Text>
     {company && <Text style={styles.body}>{company.name} · {new URL(company.apiOrigin).hostname}</Text>}
     {state==='mfa'&&<Text style={styles.editorial}>{t('fieldOneMoreStep')}</Text>}
     {error && <Text accessibilityRole="alert" style={styles.error}>{errorText}</Text>}
@@ -117,10 +115,11 @@ export function InternalSignIn() {
       {step && <Button title={copy.back} kind="quiet" disabled={busy} onPress={() => { beginSignIn(); owner.current = null; setStep(null); setPassword(''); setCode(''); setError(''); }}/>}
     </View>}
     <Button title={companyCopy().change} kind="quiet" disabled={busy} onPress={() => router.push('/company')}/>
-  </ScrollView></View>;
+  </ScrollView></SafeAreaView>;
 }
 const signInStyles = (palette: { bg: string; card: string; text: string; muted: string; border: string; accent: string }) => StyleSheet.create({
-  entry: { flexGrow: 1, paddingHorizontal: 24, gap: 14, width: '100%', maxWidth: 520, alignSelf: 'center' },
+  publicBar:{paddingHorizontal:24,paddingTop:8,width:'100%',maxWidth:520,alignSelf:'center'},
+  entry: { flexGrow: 1, paddingHorizontal: 24,paddingBottom:24, gap: 14, width: '100%', maxWidth: 520, alignSelf: 'center' },
   workplace: { minHeight: 52, paddingHorizontal: 0, paddingVertical: 10, borderRadius: 0, flexDirection: 'row', gap: 6, alignItems: 'center', maxWidth: '100%' },
   workplaceText: { color: palette.text, fontSize: 13, flexShrink: 1 },
   entryTitle: { color: palette.text, fontSize: 42,lineHeight:43, fontWeight: '800', letterSpacing: -1.3 },
@@ -129,7 +128,7 @@ const signInStyles = (palette: { bg: string; card: string; text: string; muted: 
   fieldHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' },
   passInput: { minHeight: 48, fontSize: 17, color: palette.text, paddingVertical: 10, paddingHorizontal: 0 },
   recovery: { color: palette.accent, fontSize: 13, fontWeight: '500', textDecorationLine: 'underline' },
-  wrap: { flexGrow: 1, padding: 24, paddingTop: 32, paddingBottom: 40, gap: 16, width: '100%', maxWidth: 520, alignSelf: 'center' },
+  wrap: { flexGrow: 1, padding: 24, paddingTop: 0, paddingBottom: 24, gap: 16, width: '100%', maxWidth: 520, alignSelf: 'center' },
   brand: { color: palette.text, fontSize: 20, fontWeight: '700', textAlign: 'center', marginBottom: 16 }, title: { fontSize: 40,lineHeight:42, fontWeight: '800', letterSpacing: -1, color: palette.text },
   editorial:{fontFamily:'FieldEditorial',fontWeight:'normal',fontSize:27,lineHeight:30,color:palette.text,borderBottomWidth:1,borderColor:palette.border,paddingBottom:10},
   body: { color: palette.muted, fontSize: 15, lineHeight: 23 }, label: { color: palette.text, fontSize: 14, fontWeight: '500', marginTop: 4 }, fields: { gap: 12 }, input: { minHeight: 56, borderBottomWidth: 1, borderColor: palette.border, borderRadius: 0, paddingVertical: 14, paddingHorizontal: 0, color: palette.text, fontSize: 16 },

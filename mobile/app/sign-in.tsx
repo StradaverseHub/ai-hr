@@ -12,6 +12,7 @@ import { Redirect, router } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';
 import { useRef, useState } from 'react';
 import { ScrollView, StyleSheet, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { assertAuthGeneration, beginSignIn, completeSignIn, discovery, redirectUri } from '../lib/auth';
 import { companyCopy, useCompanyConnection } from '../lib/company-connection';
 import { verifyCompanyServer } from '../lib/connection-probe';
@@ -79,8 +80,7 @@ function ProviderSignIn() {
   };
 
   return (
-    <View style={{ flex: 1, backgroundColor: palette.bg }}><SignInBackground /><ScrollView contentContainerStyle={styles.wrap}>
-      <PublicHeader />
+    <SafeAreaView edges={['top','bottom']} style={{ flex: 1, backgroundColor: palette.bg }}><SignInBackground /><View style={{paddingHorizontal:24,paddingTop:8}}><PublicHeader/></View><ScrollView contentContainerStyle={styles.wrap}>
       <Text style={styles.title}>{t('signInTitle')}</Text>
       <Text style={styles.body}>{t('signInBody')}</Text>
       {company&&<><Text style={styles.body}>{company.name} · {new URL(company.apiOrigin).hostname}</Text><Button title={companyCopy().change} kind="quiet" disabled={busy} onPress={()=>router.push('/company')}/></>}
@@ -94,14 +94,14 @@ function ProviderSignIn() {
       {failed && <Text style={styles.problem}>{t('signInFailed')}</Text>}
       {connectionError&&<Text accessibilityRole="alert" style={styles.problem}>{connectionError}</Text>}
       {session.error && <Text style={styles.problem}>{t('genericError')}</Text>}
-    </ScrollView></View>
+    </ScrollView></SafeAreaView>
   );
 }
 
 const providerStyles = (palette: {bg:string;text:string;muted:string;accent:string}) => StyleSheet.create({
-  wrap: { flexGrow: 1, padding: 24, paddingTop: 56, gap: 24 },
+  wrap: { flexGrow: 1, padding: 24, paddingTop: 0, gap: 16 },
   brand: { fontSize: 15, fontWeight: '700', color: palette.accent, textAlign: 'center' },
-  title: { fontSize: 44, fontWeight: '800', letterSpacing: -1.1, color: palette.text },
+  title: { fontSize: 40,lineHeight:42, fontWeight: '800', letterSpacing: -1.1, color: palette.text },
   body: { fontSize: 16, color: palette.muted, marginBottom: 12 },
   problem: { fontSize: 14, color: palette.text },
 });
