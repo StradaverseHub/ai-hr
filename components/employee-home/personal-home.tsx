@@ -1,5 +1,5 @@
 import type {ReactNode} from 'react';
-import Link from 'next/link';
+import Link from '@/components/intent-link';
 import {notFound} from 'next/navigation';
 import {getTranslations} from 'next-intl/server';
 import type {SessionContext} from '@/db/client';
@@ -44,8 +44,8 @@ export async function EmployeePersonalHome({session,employmentId,greetingsEnable
  const surface=<EmployeeHomeSurface identity={identity} preferences={preferences} cards={cards} lead={lead} labels={{title:t('title'),employment:t('employment'),chooseEmployment:t('chooseEmployment'),chooseHelp:t('chooseHelp'),showEmployment:t('showEmployment'),noEmployment:t('noEmployment'),companyUnavailable:t('companyUnavailable'),employeeCodeUnavailable:t('employeeCodeUnavailable')}}/>;
  return <div className="mx-auto max-w-7xl space-y-5">
   <nav className="flex flex-wrap justify-end gap-4" aria-label={t('homeOptions')}>
-   {identity.role==='manager'&&<Link href={'/?'+new URLSearchParams({workspace:'team',...(selected?{employmentId:selected}:{})})} className="inline-flex min-h-11 items-center text-sm font-medium text-primary underline underline-offset-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{t('teamWorkbench')}</Link>}
-   <Link href="/me/home" className="inline-flex min-h-11 items-center text-sm font-medium text-primary underline underline-offset-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{t('preferences.title')}</Link>
+   {identity.role==='manager'&&<Link prefetchOnIntentOnly href={'/?'+new URLSearchParams({workspace:'team',...(selected?{employmentId:selected}:{})})} className="inline-flex min-h-11 items-center text-sm font-medium text-primary underline underline-offset-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{t('teamWorkbench')}</Link>}
+   <Link prefetchOnIntentOnly href="/me/home" className="inline-flex min-h-11 items-center text-sm font-medium text-primary underline underline-offset-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{t('preferences.title')}</Link>
   </nav>
   {selected?<HomeInitialSharing employmentId={selected} month={initialMonth}>{surface}</HomeInitialSharing>:surface}
  </div>;

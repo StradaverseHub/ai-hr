@@ -2,7 +2,7 @@ import {EmployeePersonalHome} from '@/components/employee-home/personal-home';
 import {HomeAccessError,readEmployeeHomeIdentity} from '@/core/employee-home';
 import {notFound} from 'next/navigation';
 import { Suspense, type ReactNode } from 'react';
-import Link from 'next/link';
+import Link from '@/components/intent-link';
 import { getLocale, getTranslations } from 'next-intl/server';
 import { scopedSession } from '@/lib/scope';
 import { isAdmin } from '@/lib/authz';
@@ -112,7 +112,7 @@ function StatCard({
   href: string;
 }) {
   return (
-    <Link href={href} className="block h-full">
+    <Link prefetchOnIntentOnly href={href} className="block h-full">
       <Card className="h-full p-5 transition-colors hover:border-foreground/20">
         <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{label}</div>
         <div className="mt-2 text-3xl font-semibold tracking-tight tabular-nums">{value}</div>
@@ -404,7 +404,7 @@ async function DashboardMore({
           <h2 className="text-sm font-semibold">{t('onboarding')}</h2>
           <p className="text-xs text-muted-foreground">{t('recentlyJoined')}</p>
         </div>
-        <Link href="/personnel" className="text-xs text-muted-foreground hover:text-foreground">
+        <Link prefetchOnIntentOnly href="/personnel" className="text-xs text-muted-foreground hover:text-foreground">
           {t('viewAll')}
         </Link>
       </div>
@@ -468,7 +468,7 @@ async function DashboardMore({
       <div className="flex items-baseline justify-between gap-2">
         <h2 className="text-sm font-semibold">{t('recentActivity')}</h2>
         {isAdmin(s) && (
-          <Link href="/admin/audit" className="text-xs text-primary hover:underline">
+          <Link prefetchOnIntentOnly href="/admin/audit" className="text-xs text-primary hover:underline">
             {t('viewAll')}
           </Link>
         )}
@@ -494,7 +494,7 @@ async function DashboardMore({
                   <div className="truncate font-medium">{humanizeEvent(a.eventType)}</div>
                   <div className="truncate text-xs text-muted-foreground">
                     {href ? (
-                      <Link href={href} className="text-primary/90 hover:underline">
+                      <Link prefetchOnIntentOnly href={href} className="text-primary/90 hover:underline">
                         {aggregateLabel(a.aggregateType)}
                       </Link>
                     ) : (
@@ -598,7 +598,7 @@ async function DashboardMore({
       ) : (
         <p className="mt-3 text-sm text-muted-foreground">
           {t('noPayrollRuns')}{' '}
-          <Link href="/payroll" className="text-primary hover:underline">
+          <Link prefetchOnIntentOnly href="/payroll" className="text-primary hover:underline">
             {t('createOne')}
           </Link>
         </p>

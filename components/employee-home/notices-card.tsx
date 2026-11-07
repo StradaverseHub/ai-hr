@@ -2,7 +2,7 @@
 
 import * as React from 'react';
 import {useHomeInitialSharing} from './sharing-cohort';
-import Link from 'next/link';
+import Link from '@/components/intent-link';
 import {useLocale,useTranslations} from 'next-intl';
 import {IndependentHomeCard,useHomeCardRefresh} from './home-card';
 import type {EmployeeHomeNotices} from '@/lib/employee-home-read-model';
@@ -48,13 +48,13 @@ export function HomeNoticesCard({employmentId,timeZone='Asia/Kuala_Lumpur'}:{emp
        {item.firstViewedAt===null&&<span className="rounded-full bg-primary/10 px-2 py-1 text-primary">{n('newBadge')}</span>}
        {item.requiresAcknowledgement&&<span>{n(item.acknowledgedAt?'acknowledgedBadge':'acknowledgementRequiredBadge')}</span>}
       </div>
-      <Link href={href} className="flex min-h-11 items-center break-words text-base font-medium underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{item.title}</Link>
+      <Link prefetchOnIntentOnly href={href} className="flex min-h-11 items-center break-words text-base font-medium underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{item.title}</Link>
       {item.summary&&<p className="truncate text-sm text-muted-foreground">{item.summary}</p>}
       <p className="text-xs leading-relaxed text-muted-foreground">{n('publishedByOn',{date:item.publishedAt?date(item.publishedAt):'—',by:item.publishedBy??n('senderUnavailable')})}</p>
       {item.requiresAcknowledgement&&(item.acknowledgedAt?<p className="text-xs text-muted-foreground">{n('acknowledgedOn',{date:stamp(item.acknowledgedAt)})}</p>:
-       <Link href={href} className="inline-flex min-h-11 max-w-full items-center rounded-md border bg-background px-4 py-2 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{t('reviewAcknowledge')}</Link>)}
+       <Link prefetchOnIntentOnly href={href} className="inline-flex min-h-11 max-w-full items-center rounded-md border bg-background px-4 py-2 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{t('reviewAcknowledge')}</Link>)}
      </li>;
     })}</ul>}
-   <Link href={'/notices?'+new URLSearchParams({employmentId})} className="inline-flex min-h-11 items-center text-sm font-medium text-primary underline underline-offset-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{t('seeAll')}</Link>
+   <Link prefetchOnIntentOnly href={'/notices?'+new URLSearchParams({employmentId})} className="inline-flex min-h-11 items-center text-sm font-medium text-primary underline underline-offset-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{t('seeAll')}</Link>
   </div>}</IndependentHomeCard>;
 }

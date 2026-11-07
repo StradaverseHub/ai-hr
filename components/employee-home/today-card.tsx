@@ -3,7 +3,7 @@
 import * as React from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
 import dynamic from 'next/dynamic';
-import Link from 'next/link';
+import Link from '@/components/intent-link';
 import {useLocale,useTranslations} from 'next-intl';
 import {Button} from '@/components/ui';
 import {IndependentHomeCard} from './home-card';
@@ -74,7 +74,7 @@ function TodayFacts({value,timeZone,onClock,actionRef}:{value:EmployeeHomeToday;
    {value.leavePresence&&clock.clockedIn&&<p className="text-xs text-muted-foreground">{t('leaveRecorded')}</p>}
    {value.leavePresence==='part_day'&&!clock.clockedIn&&<p className="text-xs text-muted-foreground">{t('partialLeave')}</p>}
    {!dayOff&&<Button ref={actionRef} type="button" className="min-h-11 w-full" onClick={()=>onClock(clock.clockedIn?'out':'in')}>{clockText(clock.clockedIn?'clockOut':'clockIn')}</Button>}
-   <div className="flex flex-wrap gap-x-4 gap-y-2 text-sm"><Link href={correction} className="inline-flex min-h-11 items-center text-primary underline underline-offset-4">{t('correction')}</Link><Link href={'/attendance/clock?'+new URLSearchParams({employmentId:value.employmentId})} className="inline-flex min-h-11 items-center text-primary underline underline-offset-4">{t('openClock')}</Link></div>
+   <div className="flex flex-wrap gap-x-4 gap-y-2 text-sm"><Link prefetchOnIntentOnly href={correction} className="inline-flex min-h-11 items-center text-primary underline underline-offset-4">{t('correction')}</Link><Link prefetchOnIntentOnly href={'/attendance/clock?'+new URLSearchParams({employmentId:value.employmentId})} className="inline-flex min-h-11 items-center text-primary underline underline-offset-4">{t('openClock')}</Link></div>
   </>:<p className="text-sm text-muted-foreground">{t('clockUnavailable')}</p>}
   {value.payrollEnabled&&<p className="border-t pt-3 text-sm leading-relaxed">{value.payday?t(value.payday.daysAway===0?'paydayToday':value.payday.daysAway===1?'paydayTomorrow':'paydayIn',{date:date(value.payday.date),days:value.payday.daysAway}):t('noPayday')}</p>}
  </div>;

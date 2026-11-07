@@ -1,7 +1,7 @@
 'use client';
 
 import * as React from 'react';
-import Link from 'next/link';
+import Link from '@/components/intent-link';
 import {useLocale,useTranslations} from 'next-intl';
 import {Button} from '@/components/ui';
 import {IndependentHomeCard,useHomeCardRefresh} from './home-card';
@@ -53,7 +53,7 @@ export function HomeTasksCard({employmentId}:{employmentId:string}){
        {item.overdue?t('overdue',{date:date(item.dueDate)}):t('due',{date:date(item.dueDate)})}
       </p>}
      </div>
-     <Link href={item.linkPath} className="inline-flex min-h-11 max-w-full items-center rounded-md border bg-background px-4 py-2 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
+     <Link prefetchOnIntentOnly href={item.linkPath} className="inline-flex min-h-11 max-w-full items-center rounded-md border bg-background px-4 py-2 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
       {t(item.kind==='noticeAcknowledgement'?'acknowledge':item.kind==='feedback'?'feedback':item.kind==='onboarding'?'open':'review')}
      </Link>
     </li>)}</ul>

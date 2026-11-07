@@ -1,4 +1,4 @@
-import Link from 'next/link';
+import Link from '@/components/intent-link';
 import {notFound} from 'next/navigation';
 import {getLocale,getTranslations} from 'next-intl/server';
 import type {SessionContext} from '@/db/client';
@@ -46,13 +46,13 @@ export async function HomeConfigurationPanel({session,selection}:{session:Sessio
     <div><dt className="font-medium">{t('effortTitle')}</dt><dd>{Object.keys(historical.configuration.effortMinutes).length?<ul>{Object.entries(historical.configuration.effortMinutes).map(([kind,minutes])=><li key={kind}>{task(kind)} · {t('minutes',{minutes:minutes!})}</li>)}</ul>:t('notConfigured')}</dd></div>
    </dl>
    {historical.configuration.templates.map(template=><details key={template.key} className="rounded-md border p-3"><summary className="flex min-h-11 cursor-pointer items-center font-medium">{names(template.key)}</summary><p className="mt-2 text-sm text-muted-foreground">{template.enabled?t('enabled'):t('off')} · {t('priority')}: {new Intl.NumberFormat(locale).format(template.priority)}</p><dl className="mt-3 space-y-3">{locales.map(language=><div key={language}><dt className="text-sm font-medium">{localeNames[language]}</dt><dd lang={language} className="mt-1 whitespace-pre-wrap break-words text-sm text-muted-foreground">{template.text[language]}</dd></div>)}</dl></details>)}
-   <Link className="inline-flex min-h-11 items-center text-sm underline" href={address()}>{t('editCurrent')}</Link>
+   <Link prefetchOnIntentOnly className="inline-flex min-h-11 items-center text-sm underline" href={address()}>{t('editCurrent')}</Link>
   </Card>}
   {history&&<Card className="space-y-4 p-5"><h3 className="font-semibold">{t('history')}</h3>{history.items.length===0?<p className="text-sm text-muted-foreground">{t('historyEmpty')}</p>:<ol className="divide-y">{history.items.map(item=><li key={item.id} className="space-y-2 py-3">
-   <div className="flex flex-wrap items-center justify-between gap-2"><Link className="inline-flex min-h-11 items-center text-sm font-medium underline" href={address({homeVersion:String(item.ordinal)})}>{t('version',{version:item.ordinal})}</Link><time className="text-xs text-muted-foreground" dateTime={item.createdAt}>{timestamp(item.createdAt)}</time></div>
+   <div className="flex flex-wrap items-center justify-between gap-2"><Link prefetchOnIntentOnly className="inline-flex min-h-11 items-center text-sm font-medium underline" href={address({homeVersion:String(item.ordinal)})}>{t('version',{version:item.ordinal})}</Link><time className="text-xs text-muted-foreground" dateTime={item.createdAt}>{timestamp(item.createdAt)}</time></div>
    <p className="break-words text-sm">{item.reason}</p><details className="text-xs text-muted-foreground"><summary className="flex min-h-11 cursor-pointer items-center">{t('auditReference')}</summary><code className="break-all">{item.createdByUserId}</code></details>
-  </li>)}</ol>}{history.nextBeforeOrdinal!==null&&<Link className="inline-flex min-h-11 items-center text-sm underline" href={address({homeBeforeOrdinal:String(history.nextBeforeOrdinal)})}>{t('older')}</Link>}</Card>}
+  </li>)}</ol>}{history.nextBeforeOrdinal!==null&&<Link prefetchOnIntentOnly className="inline-flex min-h-11 items-center text-sm underline" href={address({homeBeforeOrdinal:String(history.nextBeforeOrdinal)})}>{t('older')}</Link>}</Card>}
   <HomeUsageSummary session={session}/>
-  <p className="text-sm"><Link href="/admin/notice-board" className="inline-flex min-h-11 items-center underline">{t('manageNotices')}</Link></p>
+  <p className="text-sm"><Link prefetchOnIntentOnly href="/admin/notice-board" className="inline-flex min-h-11 items-center underline">{t('manageNotices')}</Link></p>
  </div>;
 }

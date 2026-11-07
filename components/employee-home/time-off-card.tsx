@@ -2,7 +2,7 @@
 
 import * as React from 'react';
 import {useHomeInitialSharing} from './sharing-cohort';
-import Link from 'next/link';
+import Link from '@/components/intent-link';
 import {useLocale,useTranslations} from 'next-intl';
 import {IndependentHomeCard} from './home-card';
 import type {EmployeeHomeTimeOff} from '@/lib/employee-home-read-model';
@@ -45,7 +45,7 @@ export function HomeTimeOffCard({employmentId}:{employmentId:string}){
    <p className="text-sm leading-relaxed">{value.nextApproved?t('next',{date:fmtDate(value.nextApproved.date),duration:t(value.nextApproved.duration)}):t('noNext')}</p>
    <div className="flex flex-wrap items-center justify-between gap-3">
     <p className="text-xs text-muted-foreground">{t('asOf',{date:fmtDate(value.asOf)})}</p>
-    {value.canApply&&<Link className="inline-flex min-h-11 items-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2" href={'/leave?'+new URLSearchParams({apply:'1',employmentId})}>{t('plan')}</Link>}
+    {value.canApply&&<Link prefetchOnIntentOnly className="inline-flex min-h-11 items-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2" href={'/leave?'+new URLSearchParams({apply:'1',employmentId})}>{t('plan')}</Link>}
    </div>
   </div>}</IndependentHomeCard>;
 }

@@ -1,7 +1,7 @@
 'use client';
 
 import * as React from 'react';
-import Link from 'next/link';
+import Link from '@/components/intent-link';
 import {useLocale,useTranslations} from 'next-intl';
 import {Button} from '@/components/ui';
 import {useNavIndex} from '@/components/nav-index-context';
@@ -52,7 +52,7 @@ export function HomeSummaryOverview({employmentId}:{employmentId:string}){
    result.state==='ready'?<>
     {result.value.items.length>0&&<ul className="space-y-2 text-sm leading-relaxed">{result.value.items.map(item=>{
      const href=homeSummaryHref(item.destination,employmentId);
-     return <li key={item.key} className="break-words">{href?<Link href={href} className="inline-flex min-h-11 items-center font-medium text-primary underline underline-offset-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{item.message}</Link>:item.message}</li>;
+     return <li key={item.key} className="break-words">{href?<Link prefetchOnIntentOnly href={href} className="inline-flex min-h-11 items-center font-medium text-primary underline underline-offset-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{item.message}</Link>:item.message}</li>;
     })}</ul>}
     {result.value.calm&&<p className="text-sm leading-relaxed text-muted-foreground">{result.value.calm}</p>}
     {result.value.quickActions.some(row=>visible(row.key))&&<nav aria-labelledby={quickId} className="space-y-3">
@@ -62,7 +62,7 @@ export function HomeSummaryOverview({employmentId}:{employmentId:string}){
       return <div key={row.key} className="min-w-0">{row.reason?<>
        <Button type="button" variant="outline" className="h-auto min-h-11 w-full whitespace-normal py-2" disabled aria-describedby={reasonId}>{actions(row.key)}</Button>
        <p id={reasonId} className="mt-1 text-xs leading-relaxed text-muted-foreground">{t(row.reason)}</p>
-      </>:<Link href={homeQuickActionHref(row.key,employmentId)} className="flex min-h-11 items-center justify-center rounded-md border border-border bg-background px-4 py-2 text-center text-sm font-medium hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{actions(row.key)}</Link>}</div>;
+      </>:<Link prefetchOnIntentOnly href={homeQuickActionHref(row.key,employmentId)} className="flex min-h-11 items-center justify-center rounded-md border border-border bg-background px-4 py-2 text-center text-sm font-medium hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{actions(row.key)}</Link>}</div>;
      })}</div>
     </nav>}
    </>:null}

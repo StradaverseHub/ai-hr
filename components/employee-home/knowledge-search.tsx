@@ -1,7 +1,7 @@
 'use client';
 
 import * as React from 'react';
-import Link from 'next/link';
+import Link from '@/components/intent-link';
 import {Button} from '@/components/ui';
 import type {Locale} from '@/i18n/config';
 import {deliverHomeCard} from '@/lib/employee-home-delivery';
@@ -93,10 +93,10 @@ function KnowledgeSearch({locale,labels}:{locale:Locale;labels:HomeKnowledgeSear
         <section aria-label={labels.results} className="space-y-2">
           <h3 className="text-sm font-semibold">{labels.results}</h3>
           <ul className="divide-y divide-border">{visibleNavigation.map(item=><li key={'page:'+item.href} className="pb-3">
-            <Link href={item.href} className="flex min-h-11 items-center rounded-md py-2 text-sm leading-relaxed underline underline-offset-4 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{item.label}</Link>
+            <Link prefetchOnIntentOnly href={item.href} className="flex min-h-11 items-center rounded-md py-2 text-sm leading-relaxed underline underline-offset-4 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{item.label}</Link>
             <p className="text-sm leading-relaxed text-muted-foreground">{[...new Set([item.parent,item.section].filter(value=>value&&value!==item.label))].join(' · ')||labels.pageDescriptionFallback}</p>
           </li>)}{documentItems.slice(0,HOME_SEARCH_RESULT_LIMIT-visibleNavigation.length).map(item=><li key={'document:'+item.id} className="pb-3">
-            <Link href={homeKnowledgeHref(item.id)} className="flex min-h-11 items-center rounded-md py-2 text-sm leading-relaxed underline underline-offset-4 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{item.title}</Link>
+            <Link prefetchOnIntentOnly href={homeKnowledgeHref(item.id)} className="flex min-h-11 items-center rounded-md py-2 text-sm leading-relaxed underline underline-offset-4 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{item.title}</Link>
             {item.descriptionMarkdown?<React.Suspense fallback={<p className="text-sm leading-relaxed text-muted-foreground">{labels.descriptionFallback}</p>}>
               <KnowledgeDescription markdown={item.descriptionMarkdown}/>
             </React.Suspense>:<p className="text-sm leading-relaxed text-muted-foreground">{labels.descriptionFallback}</p>}

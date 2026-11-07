@@ -2,7 +2,7 @@
 
 import * as React from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
-import Link from 'next/link';
+import Link from '@/components/intent-link';
 import {useSearchParams} from 'next/navigation';
 import {useLocale,useTranslations} from 'next-intl';
 import {Button} from '@/components/ui';
@@ -56,7 +56,7 @@ export function HomeCalendarCard({employmentId,initialMonth,full=false}:{employm
    </ul>
    {value.team.scope!=='off'&&value.team.days.some(day=>!day.available)&&<p className="text-xs leading-relaxed text-muted-foreground">{t('teamUnavailableMonth')}</p>}
    {value.payrollEnabled&&<p className="text-xs leading-relaxed text-muted-foreground">{t('paymentNote')}</p>}
-   {!full&&<Link className="inline-flex min-h-11 items-center text-sm font-medium text-primary underline underline-offset-4 focus-visible:ring-2 focus-visible:ring-ring" href={'/me/calendar?'+new URLSearchParams({employmentId,month})}>{t('full')}</Link>}
+   {!full&&<Link prefetchOnIntentOnly className="inline-flex min-h-11 items-center text-sm font-medium text-primary underline underline-offset-4 focus-visible:ring-2 focus-visible:ring-ring" href={'/me/calendar?'+new URLSearchParams({employmentId,month})}>{t('full')}</Link>}
   </div>}</IndependentHomeCard>;
 }
 
@@ -113,7 +113,7 @@ function CalendarDays({value,view}:{value:EmployeeHomeCalendar;view:View}){
          </>:null}
        </section>}
        <div className="flex flex-wrap justify-between gap-3">
-        {day.canRequestLeave&&<Link className="inline-flex min-h-11 items-center rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground focus-visible:ring-2 focus-visible:ring-ring" href={'/leave?'+new URLSearchParams({apply:'1',start:day.date,employmentId:value.employmentId})}>{t('requestLeave')}</Link>}
+        {day.canRequestLeave&&<Link prefetchOnIntentOnly className="inline-flex min-h-11 items-center rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground focus-visible:ring-2 focus-visible:ring-ring" href={'/leave?'+new URLSearchParams({apply:'1',start:day.date,employmentId:value.employmentId})}>{t('requestLeave')}</Link>}
         <Dialog.Close asChild><Button type="button" variant="outline" className="min-h-11">{t('close')}</Button></Dialog.Close>
        </div>
       </Dialog.Content>
