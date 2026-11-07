@@ -29,7 +29,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { randomUUID } from 'node:crypto';
 import type { SessionContext } from '../db/client';
-import { adminCtx, closeAll, migrateTestDb, resetDb, seedBase, type Base } from './harness';
+import { adminCtx, closeAll, createAppUser, migrateTestDb, resetDb, seedBase, type Base } from './harness';
 import { hireEmployee } from '../core/org';
 import { createShift } from '../core/roster';
 
@@ -68,7 +68,7 @@ beforeEach(async () => {
   b = await seedBase();
   admin = adminCtx(b);
   // A REAL non-admin session — same tenant, same user, a role that is not hr_admin / super_admin.
-  supervisor = { ...admin, roles: ['manager'] };
+  supervisor = { ...admin, userId: await createAppUser(b.tenantId, null, 'manager'), roles: ['manager'] };
   await hireEmployee(admin, {
     person: { fullName: 'Ahmad Zulkifli', primaryEmail: `az_${randomUUID().slice(0, 8)}@t.local` },
     companyId: b.companyId,

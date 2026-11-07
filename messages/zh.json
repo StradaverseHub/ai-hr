@@ -1,5 +1,8 @@
 {
   "roster": {
+    "pickerFailed": "无法加载员工，请重试。",
+    "pickerSelectMatching": "选择全部 {n} 名匹配员工",
+    "copyTargetsReview": "将为当前选中的 {n} 名员工复制排班。请检查日期，然后点击复制以确认。",
     "title": "排班",
     "subtitle": "编制月度排班表——选择月份，然后为团队安排班次。",
     "noCompanies": "您的范围内没有可排班的公司。",

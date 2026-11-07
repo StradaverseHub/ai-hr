@@ -1,5 +1,8 @@
 {
   "roster": {
+    "pickerFailed": "Tidak dapat memuatkan pekerja. Sila cuba lagi.",
+    "pickerSelectMatching": "Pilih semua {n} pekerja yang sepadan",
+    "copyTargetsReview": "Salinan akan menggunakan {n} pekerja yang dipilih sekarang. Semak tarikh, kemudian klik Salin untuk mengesahkan.",
     "title": "Roster",
     "subtitle": "Bina jadual syif bulanan — pilih bulan, kemudian tetapkan syif untuk pasukan anda.",
     "noCompanies": "Tiada syarikat dalam skop anda untuk diroster.",

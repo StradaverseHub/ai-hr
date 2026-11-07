@@ -2641,9 +2641,9 @@ export type UsualShiftRow = {
  * are simply absent from the result; their month reads as blank, which is the honest answer and is what
  * the Attendance Policy screen's "no usual shift" list already exists to fix.
  */
-export function usualShiftsFor(ctx: SessionContext, employmentIds: string[]): Promise<UsualShiftRow[]> {
+export function usualShiftsFor(ctx: SessionContext, employmentIds: string[], existingTx?: Tx): Promise<UsualShiftRow[]> {
   if (employmentIds.length === 0) return Promise.resolve([]);
-  return withTenant(ctx, async (tx) => {
+  const read = async (tx: Tx) => {
     const rows = await tx
       .select({
         employmentId: employment.id,
@@ -2688,7 +2688,8 @@ export function usualShiftsFor(ctx: SessionContext, employmentIds: string[]): Pr
         ...(rotations.length?{noDefault:!r.shiftId,rotations:rotations.map(({ruleId,effectiveFrom,anchorDate,unit,length,days})=>({ruleId,effectiveFrom,anchorDate,unit,length,days})),...(periods.length?{rotationPeriods:periods}:{}),
           rotationShifts:rotationLookup.shifts.filter(s=>ids.has(s.id))}:{})}];
     });
-  });
+  };
+  return existingTx ? read(existingTx) : withTenant(ctx, read);
 }
 
 /** One row of the month grid's pinned block. Every field comes from listEmployees, which already
@@ -2856,13 +2857,27 @@ export async function rosterWindowView(
       (needle === '' || e.name.toLowerCase().includes(needle) || (e.code ?? '').toLowerCase().includes(needle)),
   );
 
+  return hydrateRosterWindow(ctx, { from, to, dates, employees, allEmployees, shiftRows });
+}
+
+/** Canonical cell hydration shared by the full artifact reader and bounded presentation reader.
+ * A supplied transaction is the caller's enforced presentation snapshot. No calculation is duplicated. */
+export async function hydrateRosterWindow(
+  ctx: SessionContext,
+  { from, to, dates, employees, allEmployees, shiftRows }: {
+    from: string; to: string; dates: string[];
+    employees: RosterMonthEmployee[]; allEmployees: RosterMonthEmployee[];
+    shiftRows: Awaited<ReturnType<typeof listShiftsForTenant>>;
+  },
+  existingTx?: Tx,
+): Promise<RosterMonthView> {
   // The roster read is narrowed to the employees actually on screen. A filtered month must not drag the
   // whole company's rows across just to throw them away, and an empty result must not fall through to
   // rosterForRange's "no employmentIds ⇒ everyone" branch.
   const visible = employees.map((e) => e.employmentId);
   const [roster, usualRows] = await Promise.all([
-    visible.length > 0 ? rosterForRange(ctx, { employmentIds: visible, from, to }) : Promise.resolve([]),
-    usualShiftsFor(ctx, visible),
+    visible.length > 0 ? rosterForRange(ctx, { employmentIds: visible, from, to }, existingTx) : Promise.resolve([]),
+    usualShiftsFor(ctx, visible, existingTx),
   ]);
 
   const cells: Record<string, AssignedCell> = {};
@@ -2883,7 +2898,7 @@ export async function rosterWindowView(
   }
 
   const dayContext: RosterMonthView['dayContext'] = {};
-  if (visible.length) await withTenant(ctx, async tx => {
+  const readDayContext = async (tx: Tx) => {
     const [calendar, leave] = await Promise.all([
       holidayCalendarFactsByEmployment(tx, { employmentIds: visible, startDate: from, endDate: to }),
       approvedLeavePresenceByEmploymentTx(tx, visible, from, to),
@@ -2896,7 +2911,8 @@ export async function rosterWindowView(
       if (presence) facts.approvedLeave = presence;
       if (Object.keys(facts).length) dayContext[cellKey(id, date)] = facts;
     }
-  });
+  };
+  if (visible.length) await (existingTx ? readDayContext(existingTx) : withTenant(ctx, readDayContext));
 
   return {
     from,

@@ -1,5 +1,8 @@
 {
   "roster": {
+    "pickerFailed": "Could not load employees. Please try again.",
+    "pickerSelectMatching": "Select all {n} matching employees",
+    "copyTargetsReview": "Copy will use the {n} employees selected now. Review the dates, then click Copy to confirm.",
     "title": "Roster",
     "subtitle": "Build the monthly shift roster — pick a month, then assign shifts across your team.",
     "noCompanies": "No companies in your scope to roster.",

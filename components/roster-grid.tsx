@@ -182,6 +182,7 @@ export function RosterGrid({
   isAdmin,
   today,
   editQuery,
+  serverPaged = false,
 }: {
   dates: GridDate[];
   employees: GridEmployee[];
@@ -198,6 +199,8 @@ export function RosterGrid({
    *  and Back returns to the same narrowing. A STRING and not a href-builder: a server component may hand
    *  a client island data or a server action, never an ordinary function. */
   editQuery: string;
+  /** The server already bounded employees and cell facts; never slice this page again. */
+  serverPaged?: boolean;
 }) {
   const t = useTranslations('roster');
   const [cells, setCells] = useState<Record<string, AssignedCell>>(initial);
@@ -283,7 +286,8 @@ export function RosterGrid({
       return n;
     });
   const q = useClientPageQuery();
-  const { rows: pageEmployees, state } = paginateRows(employees, q);
+  const { rows: localEmployees, state } = paginateRows(employees, q);
+  const pageEmployees = serverPaged ? employees : localEmployees;
   // Selection covers the rows you can see, for the same reason as the feedback table: a brush applied
   // to "everyone" must mean everyone on screen, not everyone in the roster.
   const selectedOnPage = pageEmployees.filter((e) => selected.has(e.employmentId));
@@ -337,7 +341,7 @@ export function RosterGrid({
         <span className="ml-auto">{t('ghostHint')}</span>
       </div>
 
-      <ClientPager state={state} />
+      {!serverPaged && <ClientPager state={state} />}
       {/* Grid */}
       {/* On compact views the identity block can be wider than the viewport. Let every column pan there;
           retain the shared pinned geometry on desktop and expose the pan region to keyboard users. */}
@@ -543,26 +547,28 @@ function cellClass(cell: ResolvedCell, shiftColor: (id: string) => string): stri
  * again — which is exactly what made the download/upload round trip impossible in ms, zh, ta, th and vi.
  */
 export function RosterTemplateButton({
-  dates,
-  rows,
+  dates = [],
+  rows = [],
   month,
-  codes,
+  codes = [],
+  source,
   label,
   notesTitle,
   notes,
   failedLabel,
 }: {
   /** The ISO dates of the month, in order — the date half of the header. */
-  dates: string[];
-  rows: string[][];
+  dates?: string[];
+  rows?: string[][];
   month: string;
-  codes: string[];
+  codes?: string[];
+  /** Read the complete authorized template only after an explicit click. */
+  source?: string;
   label: string;
   notesTitle: string;
   notes: string[];
   failedLabel: string;
 }) {
-  const header = [...ROSTER_TEMPLATE_ID_COLUMNS, ...dates];
   const [busy, setBusy] = useState(false);
   const download = async () => {
     setBusy(true);
@@ -571,11 +577,20 @@ export function RosterTemplateButton({
         import('@/lib/spreadsheet'),
         import('@/lib/import-template-xlsx'),
       ]);
-      const bytes = await buildXlsx(header, rows, {
+      const payload = source ? await fetch(source, { cache: 'no-store' }).then(async response => {
+        if (!response.ok) throw new Error('Template unavailable');
+        const data = await response.json();
+        if (!Array.isArray(data.dates) || !data.dates.every((v: unknown) => typeof v === 'string') ||
+            !Array.isArray(data.rows) || !data.rows.every((row: unknown) => Array.isArray(row) && row.every(v => typeof v === 'string')) ||
+            !Array.isArray(data.codes) || !data.codes.every((v: unknown) => typeof v === 'string')) throw new Error('Invalid template');
+        return data as { dates: string[]; rows: string[][]; codes: string[] };
+      }) : { dates, rows, codes };
+      const header = [...ROSTER_TEMPLATE_ID_COLUMNS, ...payload.dates];
+      const bytes = await buildXlsx(header, payload.rows, {
         sheetName: 'Roster',
         textColumns: header.map((_, i) => i),
         extraSheets: [
-          { name: 'Notes', rows: buildInstructionRows(notesTitle, [...notes, codes.join(', ') || '—']) },
+          { name: 'Notes', rows: buildInstructionRows(notesTitle, [...notes, payload.codes.join(', ') || '—']) },
         ],
       });
       const url = URL.createObjectURL(

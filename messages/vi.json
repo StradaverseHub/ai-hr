@@ -1,5 +1,8 @@
 {
   "roster": {
+    "pickerFailed": "Không thể tải danh sách nhân viên. Vui lòng thử lại.",
+    "pickerSelectMatching": "Chọn tất cả {n} nhân viên phù hợp",
+    "copyTargetsReview": "Sẽ sao chép lịch cho {n} nhân viên được chọn lúc này. Kiểm tra ngày, rồi nhấn Sao chép để xác nhận.",
     "title": "Lịch ca",
     "subtitle": "Lập lịch ca theo tháng — chọn tháng rồi phân ca cho đội của bạn.",
     "noCompanies": "Không có công ty nào trong phạm vi của bạn để lập lịch.",
