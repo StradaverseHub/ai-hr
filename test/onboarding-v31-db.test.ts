@@ -234,11 +234,12 @@ describe('V3.1 onboarding database and authorization', () => {
         const [stored]=await owner.db.select().from(schema.lcOnboardingCase).where(eq(schema.lcOnboardingCase.id,before.case.id));
         expect(stored!.data.source.fullName).toBe('Projection Hire');
         const context=await onboardingContext(admin),config=structuredClone(context.config);
-        config.checklists[0]!.rules={businessGroup:[unit!.id],department:[b.deptB],company:[b.companyId]};
+        const scoped=structuredClone(config.checklists[0]!);scoped.id='current-unit-checklist';scoped.name='Current saved unit checklist';
+        scoped.rules={businessGroup:[unit!.id],department:[b.deptB],company:[b.companyId]};config.checklists.push(scoped);
         await onboardingSaveConfig(admin,context.revision,config);
         const current=await onboardingDetail(admin,before.case.id);
         const {matchChecklist}=await import('../lib/onboarding-model');
-        expect(matchChecklist(current.config,current.case).checklist?.id).toBe(config.checklists[0]!.id);
+        expect(matchChecklist(current.config,current.case).checklist?.id).toBe(scoped.id);
         await owner.db.execute(sql`update assignment set business_unit_id=null where employment_id=${active.employmentId}::uuid and superseded_at is null`);
         expect((await onboardingDetail(admin,before.case.id)).case.source.businessGroup ?? '').toBe('');
         const [destination]=await owner.db.insert(schema.company).values({tenantId:b.tenantId,legalName:'Fictional destination company'}).returning();
