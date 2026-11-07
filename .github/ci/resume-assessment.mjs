@@ -21,7 +21,7 @@ export function assessResumeCoverage({expectedPlan:plan,reports,expected}) {
   for(const unit of plan.units) {
     const report=supplied.get(unit.id);
     if(!report){rerun.push({id:unit.id,reason:'Missing completed evidence'});continue;}
-    try {const verified=verifyUnitReport(plan,report);reusable.push({id:unit.id,reportHash:hash(report),files:verified.files,tests:verified.tests});}
+    try {const verified=verifyUnitReport(plan,report,{runId:expected.runId,attempt:1});reusable.push({id:unit.id,reportHash:hash(report),files:verified.files,tests:verified.tests});}
     catch(error){rerun.push({id:unit.id,reason:String(error.message??error)});}
   }
   if(reusable.length+rerun.length!==topology.units.length)throw Error('Incomplete assessment');

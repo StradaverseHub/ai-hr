@@ -1,3 +1,4 @@
+import {admitSingletonTest} from '../helpers/ci-singleton-admission';
 /** Opt-in index experiment for the disposable hosted database. */
 import {writeFileSync} from 'node:fs';
 import {join} from 'node:path';
@@ -11,16 +12,15 @@ import {todayInKualaLumpur} from '../../lib/hr-date';
 import {adminCtx,closeAll,migrateTestDb,owner,resetDb,seedBase,type Base} from '../harness';
 
 const file='test/performance/leave-pending-index.profile.test.ts';
-const selection:unknown=JSON.parse(process.env.AIHR_FOCUSED_TESTS??'[]');
-const requested=process.env.GITHUB_ACTIONS==='true'&&Array.isArray(selection)&&selection.length===1&&selection[0]===file;
+const singletonAdmission=admitSingletonTest(file);
 const retainedPerTenant=50_000;
 const pendingPerTenant=32;
 
 beforeAll(migrateTestDb);
 afterAll(closeAll);
 
-it.skipIf(!requested)('compares a partial Leave pending header index against the native owner',async()=>{
- const evidenceDir=process.env.AIHR_FOCUSED_EVIDENCE_DIR;
+it('compares a partial Leave pending header index against the native owner',async()=>{
+ const evidenceDir=singletonAdmission.evidenceDirectory;
  if(!evidenceDir)throw Error('Focused evidence directory is required');
  const report:Record<string,unknown>={
   kind:'LEAVE_PENDING_HEADER_INDEX_AB_COMPONENT_ONLY',

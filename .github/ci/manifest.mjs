@@ -3,6 +3,7 @@ import {createHash} from 'node:crypto';
 import {balanceDatabaseFiles,DB_SCHEDULING} from './db-scheduling.mjs';
 import {PDF_TOOL_CONSUMERS} from './pdf-tool-scope.mjs';
 import {V15_POSTGRES_PROFILE} from './postgres-evidence.mjs';
+import {singletonDescriptor,singletonKind} from './singleton-protocol.mjs';
 export const CI_EXECUTION={workers:2,postgres:V15_POSTGRES_PROFILE,scheduling:DB_SCHEDULING};
 export const DB_BATCH_FILES=24;
 export const NODB_BATCH_FILES=256;
@@ -18,7 +19,8 @@ export function buildUnits(suite,groups,browserFiles){
  const browser=inventory(browserFiles,/^test\/[A-Za-z0-9_./-]+\.browser\.test\.tsx$/);
  const units=[];
  for(const kind of ['nodb','db']){
-  const files=groups[kind].slice().sort(),size=kind==='db'?DB_BATCH_FILES:NODB_BATCH_FILES;
+  const all=groups[kind].slice().sort(),special=all.filter(f=>singletonDescriptor(f)),files=all.filter(f=>!singletonDescriptor(f)),size=kind==='db'?DB_BATCH_FILES:NODB_BATCH_FILES;
+  for(const file of special){const descriptor=singletonDescriptor(file);if(singletonKind(descriptor.profile)!==kind)throw Error('Singleton capability disagrees with native DB classification');units.push({id:`${kind}-${hash({file,descriptor}).slice(0,16)}`,kind,files:[file],pdfTools:false,singleton:descriptor});}
   if(kind==='db'&&files.some(f=>PDF_TOOL_CONSUMERS.includes(f)))throw Error('Audited PDF tool consumers must retain their no-DB classification');
   const ordinary=kind==='nodb'?files.filter(f=>!PDF_TOOL_CONSUMERS.includes(f)):files,pdf=kind==='nodb'?files.filter(f=>PDF_TOOL_CONSUMERS.includes(f)):[];
   const batches=kind==='db'?balanceDatabaseFiles(files,size):Array.from({length:Math.ceil(ordinary.length/size)},(_,i)=>ordinary.slice(i*size,(i+1)*size));

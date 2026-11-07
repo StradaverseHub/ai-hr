@@ -106,3 +106,9 @@ test('failed-build diagnostic stays non-authoritative and cannot prevent retaini
  const result=assessResumeSource(f);assert.equal(result.reusable.length,5);assert(result.freshPrerequisites.includes('build'));assert.equal(result.releaseAuthorized,false);
  job.conclusion='success';assert.throws(()=>assessResumeSource(f),/failure diagnostic attached/);
 });
+
+test('Source assessment permits only the explicitly skipped commissioning job',()=>{
+ const f=fixture(),template=f.jobs[0];f.jobs.push({...template,id:9999,name:'commission-summary',conclusion:'skipped'});
+ assert.equal(assessResumeSource(f).releaseAuthorized,false);
+ f.jobs.at(-1).conclusion='success';assert.throws(()=>assessResumeSource(f),/unexpected job/);
+});

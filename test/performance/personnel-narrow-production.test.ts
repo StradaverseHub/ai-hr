@@ -1,3 +1,4 @@
+import {admitSingletonTest} from '../helpers/ci-singleton-admission';
 /** Disposable hosted qualification for the actual Personnel overview reader. */
 import {randomUUID} from 'node:crypto';
 import {readFileSync,writeFileSync} from 'node:fs';
@@ -15,15 +16,13 @@ import {adminCtx,closeAll,migrateTestDb,owner,resetDb,seedBase} from '../harness
 import {seedPersonnelCorrectionFixture,seedPersonnelNativeFixture} from './personnel-native-fixture';
 import {provePersonnelSingleAssignmentConstraint} from './personnel-dated-tags-prototype';
 
-const selected:unknown=JSON.parse(process.env.AIHR_FOCUSED_TESTS??'[]');
-const requested=process.env.GITHUB_ACTIONS==='true'&&Array.isArray(selected)&&selected.length===1&&
- selected[0]==='test/performance/personnel-narrow-production.test.ts';
+const singletonAdmission=admitSingletonTest('test/performance/personnel-narrow-production.test.ts');
 const draftSql=readFileSync(new URL('../../db/migrations/2403_personnel_bounded_overview.sql',import.meta.url),'utf8');
 const dropNarrowFunctions='drop function app.personnel_overview_narrow_rows(date,uuid[]), app.personnel_overview_page_rows(date,uuid[],uuid[])';
 beforeAll(migrateTestDb);
 afterAll(closeAll);
 
-it.skipIf(!requested)('preserves the real overview rows, facets, scope, dated assignment and unsupported filter paths',async()=>{
+it('preserves the real overview rows, facets, scope, dated assignment and unsupported filter paths',async()=>{
  await resetDb();
  const base=await seedBase();
  const foreign=await seedBase();
@@ -129,7 +128,7 @@ it.skipIf(!requested)('preserves the real overview rows, facets, scope, dated as
    `));
    expect(typed.same).toBe(true);
   }
-  writeFileSync(join(process.env.AIHR_FOCUSED_EVIDENCE_DIR!,'personnel-narrow-production-parity.json'),JSON.stringify({
+  writeFileSync(join(singletonAdmission.evidenceDirectory!,'personnel-narrow-production-parity.json'),JSON.stringify({
    kind:'PERSONNEL_NARROW_APPLICATION_PARITY_COMPONENT_ONLY',releaseEligible:false,assignmentConstraint,
    exactOverviewCases:cases.map(({name})=>name),exactFallbackCases:fallbackCases.map(({name})=>name),
    foreignScopeDenied:true,emptySubjectsDenied:true,datedCorrectionParity:true,assignmentDriftRefused:true,
@@ -139,7 +138,7 @@ it.skipIf(!requested)('preserves the real overview rows, facets, scope, dated as
  }
 },60000);
 
-it.skipIf(!requested)('times the real Personnel overview at fifty thousand employees', async () => {
+it('times the real Personnel overview at fifty thousand employees', async () => {
  const count = 50_000;
  const started = performance.now();
  const report: Record<string, unknown> = {
@@ -148,7 +147,7 @@ it.skipIf(!requested)('times the real Personnel overview at fifty thousand emplo
   targetEmployees:count,
   limitations:'Single synthetic tenant and caller. Measures the real application reader, without browser or concurrent traffic.',
  };
- const save = () => writeFileSync(join(process.env.AIHR_FOCUSED_EVIDENCE_DIR!,'personnel-typed-filter-fields-50k.json'),JSON.stringify(report,null,2));
+ const save = () => writeFileSync(join(singletonAdmission.evidenceDirectory!,'personnel-typed-filter-fields-50k.json'),JSON.stringify(report,null,2));
  const phase = (name:string) => { report.phase=name; report.elapsedMs=performance.now()-started; save(); };
  const {b,ctx,expectedFirst,expectedLast} = await seedPersonnelNativeFixture(count,report,phase,save);
  report.assignmentConstraint = await provePersonnelSingleAssignmentConstraint();

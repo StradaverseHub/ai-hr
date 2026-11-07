@@ -67,7 +67,7 @@ export function assessResumeSource({expectedPlan, expected, run, jobs, artifacts
       || job.run_id !== run.id || job.run_attempt !== 1 || job.head_sha !== expected.controller
       || job.head_branch !== run.head_branch || job.status !== 'completed' || !terminal.has(job.conclusion))
       fail('duplicate, foreign, rerun or incomplete job');
-    if (!topology.jobs.includes(job.name) && !(job.name === 'runner-diagnostics' && job.conclusion === 'skipped'))
+    if (!topology.jobs.includes(job.name) && !(['runner-diagnostics','commission-summary'].includes(job.name) && job.conclusion === 'skipped'))
       fail('unexpected job');
     if (job.conclusion !== 'skipped') {
       const start = timestamp(job.started_at), end = timestamp(job.completed_at);

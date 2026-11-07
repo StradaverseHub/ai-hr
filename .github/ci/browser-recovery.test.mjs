@@ -63,3 +63,9 @@ test('Pending source verification, mutated build and wrong reviewed operator can
  requireReviewedBrowserController({execute:false,controller});assert.throws(()=>requireReviewedBrowserController({execute:true,controller}));assert.throws(()=>requireReviewedBrowserController({execute:true,controller,reviewedController:'d'.repeat(40)}));assert.doesNotThrow(()=>requireReviewedBrowserController({execute:true,controller,reviewedController:controller}));
  f.reviewedController=controller;const c2=verifyBrowserRecovery(f),e2={...e,...c2,recovery:c2,fingerprint:hash(c2),build:{...e.build,source:'d'.repeat(40)}};assert.throws(()=>createInstallGrant({...g,evidence:e2,run,producer}));
 });
+
+test('Browser recovery permits only the explicitly skipped commissioning job',()=>{
+ const f=input();f.jobs.push({...f.jobs[0],id:9999,name:'commission-summary',conclusion:'skipped'});
+ assert.doesNotThrow(()=>verifyBrowserRecovery(f));
+ f.jobs.at(-1).conclusion='success';assert.throws(()=>verifyBrowserRecovery(f));
+});

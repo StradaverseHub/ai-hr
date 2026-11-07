@@ -8,6 +8,7 @@ import { planImpact,type ImpactPlan } from './gate-impact';
 import { sourceFiles } from './gate-impact-git';
 import { collectChanges } from './gate-tier-git';
 import { classifyTestFiles } from './gate-db-classify';
+import {singletonProfile} from '../.github/ci/singleton-protocol.mjs';
 import { saveGate,gateHistory,releaseHistory,fullRegressionDue } from './gate-learning';
 
 const sha=git(['rev-parse','HEAD']),started=Date.now(),out=process.env.GATE_OUT??'/tmp/aihr-gate-impact';mkdirSync(out,{recursive:true});
@@ -32,6 +33,7 @@ for(const reason of plan.reasons)console.log('  '+reason);
 if(args.includes('--plan-only'))process.exit(0);
 // A failed/incomplete new attempt must not leave an older same-SHA PASS usable.
 writeFileSync('.gate-receipt.json',JSON.stringify({sha,result:'FAIL',tier:'impact',reason:'Verification in progress',at:new Date().toISOString()},null,2)+'\n');
+if(plan.tier!=='full'&&plan.run.some(file=>singletonProfile(file)))throw Error('Required infrastructure singleton tests must run through the authenticated hosted full-CI plan; no local PASS receipt is available');
 function run(command:string[],name:string,extra:Partial<NodeJS.ProcessEnv>={},timeoutMs=7200000){
  const fd=openSync(join(out,name),'w');console.log('START '+name);
  try{const r=spawnSync(command[0],command.slice(1),{stdio:['ignore',fd,fd],env:{...process.env,...extra},timeout:timeoutMs});if(r.error)throw r.error;frozen();console.log('END '+name+' exit='+r.status);return r.status??1;}finally{closeSync(fd);}

@@ -11,6 +11,8 @@ import {hostHealth} from './host-health.mjs';
 import {createPlan,hash} from './plan.mjs';
 import {DB_BATCH_FILES} from './manifest.mjs';
 import {validatePdfSetupProof} from './pdf-tools.mjs';
+import {assertNoSingletonHints} from './singleton-protocol.mjs';
+import {provisionSingletonHost,writeSingletonBinding} from './singleton-profiles.mjs';
 
 // Frozen full-CI handshake v1. Diagnostic setup receipt only; never installation/release authority.
 export const FULL_CI_ROLE_HINTS=Object.freeze(['AIHR_CI_DISPOSABLE_ROLE_MODE','AIHR_CI_ROLE_UNIT','AIHR_CI_ROLE_BATCH_OFFSET','AIHR_CI_ROLE_EVIDENCE_DIR','AIHR_CI_ROLE_PLAN_FINGERPRINT']);
@@ -137,6 +139,7 @@ function actualFullCiRoleContext(plan,unit,offset,batchSize,files,dir,resetStatu
 export function main(){
 if (process.env.GITHUB_ACTIONS !== 'true' || process.env.CI !== 'true' || process.platform !== 'linux') throw Error('GitHub runners only; never the shared developer cluster');
 assertNoFullCiRoleHints(process.env);
+assertNoSingletonHints(process.env);
 const [id, destination] = process.argv.slice(2), plan = createPlan(), unit = plan.units.find(u => u.id === id);
 if (!unit || !destination) throw Error('Unknown CI unit or missing evidence directory');
 const dir = resolve(destination); mkdirSync(dir, {recursive: true});
@@ -173,9 +176,18 @@ try {
       args.push('--config', config);
     }
     args.push(...files, '--reporter=default', '--reporter=json', '--outputFile.json=' + path);
-    const env = {...process.env, VITEST_MAX_WORKERS: String(plan.execution.workers), VITEST_MAX_WORKERS_NODB: String(plan.execution.workers), AIHR_BROWSER_ENGINE: unit.engine ?? '', AIHR_TEST_DURATION_ORDER: unit.kind==='db'?'true':'false'};
+    const workers=unit.singleton?.workers??plan.execution.workers;
+    const env = {...process.env, VITEST_MAX_WORKERS: String(workers), VITEST_MAX_WORKERS_NODB: String(workers), AIHR_CI_UNIT:unit.kind==='db'?id:'', AIHR_BROWSER_ENGINE: unit.engine ?? '', AIHR_TEST_DURATION_ORDER: unit.kind==='db'?'true':'false'};
     if (unit.kind !== 'db') for (const key of ['DATABASE_URL', 'MIGRATION_DATABASE_URL', 'TEST_DATABASE_URL', 'TEST_MIGRATION_DATABASE_URL']) env[key] = closed;
+    let singleton=null;
+    if(unit.singleton){
+      if(offset!==0||files.length!==1||unit.files.length!==1)throw Error('Singleton unit was batched');
+      const prerequisites=unit.kind==='db'?{kind:'fresh-job-postgres-cluster',workers:1,database:capturePostgresEvidence(id,plan.execution.postgres)}:provisionSingletonHost(plan,unit,dir);
+      if(unit.kind==='db')validatePostgresEvidence(prerequisites.database,plan.execution);
+      singleton=writeSingletonBinding(plan,unit,dir,prerequisites);env.AIHR_CI_SINGLETON_BINDING=singleton.path;report.singleton=singleton.binding;
+    }
     const child = spawnSync('pnpm', args, {stdio: 'inherit', env});
+    if(singleton&&readFileSync(singleton.path,'utf8')!==singleton.bytes)throw Error('Singleton admission receipt changed during test');
     const exitCode = child.status ?? 1;
     const stats = unit.kind === 'db' ? spawnSync('bash', [postgres, 'stats'], {encoding:'utf8', env:{...process.env, AIHR_CI_UNIT:id}}) : null;
     const databaseEvidence=unit.kind==='db'?capturePostgresEvidence(id,plan.execution.postgres):null;
