@@ -22518,7 +22518,8 @@
     "saving": "[retired r392 — part of the Today tiles or the Needs your attention panel on My Team, removed at the reporter's request (item 33930be9). Leave is decided in Approval Items]",
     "attentionCount": "[retired r392 — part of the Today tiles or the Needs your attention panel on My Team, removed at the reporter's request (item 33930be9). Leave is decided in Approval Items]",
     "status_exempt": "ได้รับยกเว้น",
-    "exemptCode": "EX"
+    "exemptCode": "EX",
+    "balanceContext": "ยอดคงเหล่านี้เป็นยอดที่บันทึกไว้ โดยไม่แสดงการตั้งค่าสิทธิวันลา ยอดเป็นศูนย์ไม่ได้ยืนยันว่าสิทธิได้รับการตั้งค่าแล้ว โปรดติดต่อ HR หากต้องการตรวจสอบ"
   },
   "lifecycle": {
     "title": "การปฐมนิเทศและไอที",

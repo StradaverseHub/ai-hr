@@ -22518,7 +22518,8 @@
     "saving": "[retired r392 — part of the Today tiles or the Needs your attention panel on My Team, removed at the reporter's request (item 33930be9). Leave is decided in Approval Items]",
     "attentionCount": "[retired r392 — part of the Today tiles or the Needs your attention panel on My Team, removed at the reporter's request (item 33930be9). Leave is decided in Approval Items]",
     "status_exempt": "Được miễn",
-    "exemptCode": "EX"
+    "exemptCode": "EX",
+    "balanceContext": "Đây là số dư đã ghi nhận. Thiết lập quyền lợi không hiển thị ở đây; số dư bằng không không xác nhận quyền lợi đã được cấu hình. Hãy nhờ HR kiểm tra nếu cần."
   },
   "lifecycle": {
     "title": "Tiếp nhận & IT",

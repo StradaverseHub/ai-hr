@@ -61,7 +61,7 @@ describe('audit picker recovery',()=>{
 describe('leave submission retains correction context',()=>{
  it('keeps the reason and file on a server rejection, then closes on confirmed success',async()=>{
   const submit=vi.fn().mockResolvedValueOnce({error:'No entitlement is configured.'}).mockResolvedValueOnce({redirectTo:'/leave?toast=Saved'});
-  mount(<RequestLeaveDialog types={[{id:'annual',label:'Annual leave',durations:null}]} startDefault="2026-11-09" ownEmploymentId="own" submitAction={submit} summaryAction={async()=>null}/>);
+  mount(<RequestLeaveDialog types={[{id:'annual',label:'Annual leave',durations:null}]} startDefault="2026-11-09" ownEmploymentId="own" previewAction={async()=>null} submitAction={submit} summaryAction={async()=>null}/>);
   await userEvent.click(screen.getByRole('button',{name:en.leave.requestLeave}));
   const dialog=screen.getByRole('dialog');const reason=dialog.querySelector<HTMLInputElement>('input[name="reason"]')!;
   await userEvent.type(reason,'Keep this reason');

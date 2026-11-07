@@ -467,3 +467,10 @@
   }
 }
 
+
+/* The compact desktop paint above must not reduce phone/touch hit areas. */
+@media (max-width: 640px), (pointer: coarse) {
+  :root[data-ui-theme='atelier'] main :is(button, a)[class~='inline-flex']:is([class~='bg-primary'], [class~='border-input']),
+  :root[data-ui-theme='atelier'] .atelier-pager :is(a, button, select) { min-height: 2.75rem; }
+  :root[data-ui-theme='atelier'] .atelier-pager-steps > :is(a, button) { min-width: 2.75rem; }
+}

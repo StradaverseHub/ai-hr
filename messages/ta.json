@@ -22518,7 +22518,8 @@
     "saving": "[retired r392 — part of the Today tiles or the Needs your attention panel on My Team, removed at the reporter's request (item 33930be9). Leave is decided in Approval Items]",
     "attentionCount": "[retired r392 — part of the Today tiles or the Needs your attention panel on My Team, removed at the reporter's request (item 33930be9). Leave is decided in Approval Items]",
     "status_exempt": "விலக்கு",
-    "exemptCode": "EX"
+    "exemptCode": "EX",
+    "balanceContext": "இவை பதிவுசெய்யப்பட்ட இருப்புகள். விடுப்பு உரிமை அமைப்பு இங்கு காட்டப்படாது; பூஜ்ஜிய இருப்பு உரிமை அமைக்கப்பட்டதை உறுதிப்படுத்தாது. இருப்பைச் சரிபார்க்க HR-ஐ அணுகவும்."
   },
   "lifecycle": {
     "title": "ஆன்போர்டிங் & IT",

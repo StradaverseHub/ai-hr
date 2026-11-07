@@ -26,8 +26,9 @@ async function verifyLayout(role:string,html:string,table=false){
  try{
   for(const [device,width,height] of [['desktop',1440,1000],['mobile',390,844]] as const){
    const page=await browser.newPage({viewport:{width,height}});
+   await page.emulateMedia({reducedMotion:'reduce'});
    await page.route('**/*',route=>route.abort());
-   await page.setContent(`<html lang="en" data-ui-theme="atelier"><head><meta name="viewport" content="width=device-width,initial-scale=1"></head><body class="bg-background text-foreground font-sans"><main class="p-4">${html}</main></body></html>`);
+   await page.setContent(`<html lang="en" data-ui-theme="atelier"><head><meta name="viewport" content="width=device-width,initial-scale=1"></head><body class="bg-background text-foreground font-sans">${table?`<main class="p-4">${html}</main>`:html}</body></html>`);
    await page.addStyleTag({content:css+(table?'\n'+readFileSync('components/leave/inquiry-table.module.css','utf8').replaceAll('.table','.'+styles.table):'')});
    await page.evaluate(()=>document.fonts.ready);
    const geometry=await page.evaluate(()=>{
@@ -48,7 +49,7 @@ it.each(['admin','employee','manager','company-hr'] as const)('%s desktop and mo
  const snapshot=teamSnapshot(),employee=snapshot.employees[0];
  const view=render(<NextIntlClientProvider locale="en" messages={en}><main>
   {(role==='admin'||role==='company-hr')?<PersonnelOrganisationFilters companies={[{id:'allowed',name:'Fictional Company With A Long Legal Name Sdn Bhd',parentCompanyId:null,parentCompany:null,businessGroupId:null,businessGroup:null,businessUnitId:null,businessUnit:null}]} fields={[]} values={{}} labels={{filter:'Filter',apply:'Apply',clearAll:'Clear all',activeCount:'0'}} companySearchLabel="Search companies"/>:
-   role==='employee'?<RequestLeaveDialog types={[{id:'annual',code:'ANNUAL',label:'Annual leave',durations:null}]} startDefault="2026-11-09" ownEmploymentId="own" submitAction={async()=>({error:'Fixture rejection'})} summaryAction={async()=>null}/>:
+   role==='employee'?<RequestLeaveDialog types={[{id:'annual',code:'ANNUAL',label:'Annual leave',durations:null}]} startDefault="2026-11-09" ownEmploymentId="own" previewAction={async()=>null} submitAction={async()=>({error:'Fixture rejection'})} summaryAction={async()=>null}/>:
    <EmployeePanel employee={employee} selectedDate={snapshot.today} snapshot={snapshot} navigation={teamNavigation()} locale="en" t={createTranslator({locale:'en',messages:en,namespace:'myTeam'})} onClose={()=>{}}/>}
  </main></NextIntlClientProvider>);
  if(role==='admin'||role==='company-hr')fireEvent.click(screen.getByRole('button',{name:'Filter'}));

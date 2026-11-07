@@ -22518,7 +22518,8 @@
     "saving": "[retired r392 — part of the Today tiles or the Needs your attention panel on My Team, removed at the reporter's request (item 33930be9). Leave is decided in Approval Items]",
     "attentionCount": "[retired r392 — part of the Today tiles or the Needs your attention panel on My Team, removed at the reporter's request (item 33930be9). Leave is decided in Approval Items]",
     "status_exempt": "已豁免",
-    "exemptCode": "EX"
+    "exemptCode": "EX",
+    "balanceContext": "此处显示已记录的余额，不显示假期配额配置。余额为零不代表已配置配额。如需核对，请联系 HR。"
   },
   "lifecycle": {
     "title": "入职与IT",

@@ -22518,7 +22518,8 @@
     "saving": "[retired r392 — part of the Today tiles or the Needs your attention panel on My Team, removed at the reporter's request (item 33930be9). Leave is decided in Approval Items]",
     "attentionCount": "[retired r392 — part of the Today tiles or the Needs your attention panel on My Team, removed at the reporter's request (item 33930be9). Leave is decided in Approval Items]",
     "status_exempt": "Dikecualikan",
-    "exemptCode": "EX"
+    "exemptCode": "EX",
+    "balanceContext": "Ini ialah baki yang direkodkan. Persediaan kelayakan tidak dipaparkan di sini; baki sifar tidak mengesahkan bahawa kelayakan telah ditetapkan. Hubungi HR untuk menyemak baki."
   },
   "lifecycle": {
     "title": "Orientasi & IT",

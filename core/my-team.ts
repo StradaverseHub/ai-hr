@@ -80,7 +80,7 @@ export async function readMyTeam(ctx:SessionContext,input:MyTeamQuery):Promise<M
  });
  const allDates=inGrid?period.gridDates:[...period.gridDates,today];
  const employees:MyTeamEmployee[]=scope.employees.map((employee,index)=>{
-   const balances=(balanceRows[index]??[]).map(b=>({leaveTypeId:b.leaveTypeId,code:b.code,name:b.leaveType,role:b.role,entitlementStatus:b.entitlementStatus,
+   const balances=(balanceRows[index]??[]).map(b=>({leaveTypeId:b.leaveTypeId,code:b.code,name:b.leaveType,role:b.role,
      accrued:b.essView.ytdEntitled?b.accrued:null,taken:b.essView.taken?b.taken:null,
      pending:b.essView.pendingApproval?b.pending:null,available:b.essView.available?b.available:null}));
    const annualRows=balances.filter(b=>leaveTypeIs(b,'annual'));

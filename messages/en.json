@@ -22518,7 +22518,8 @@
     "saving": "[retired r392 — part of the Today tiles or the Needs your attention panel on My Team, removed at the reporter's request (item 33930be9). Leave is decided in Approval Items]",
     "attentionCount": "[retired r392 — part of the Today tiles or the Needs your attention panel on My Team, removed at the reporter's request (item 33930be9). Leave is decided in Approval Items]",
     "status_exempt": "Exempt",
-    "exemptCode": "EX"
+    "exemptCode": "EX",
+    "balanceContext": "These are recorded balances. Entitlement setup is not shown here; a zero does not confirm that entitlement is configured. Ask HR if a balance needs checking."
   },
   "lifecycle": {
     "title": "Onboarding & IT",
