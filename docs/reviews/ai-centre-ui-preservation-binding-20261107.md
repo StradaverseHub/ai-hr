@@ -2,7 +2,7 @@
 
 Date: 7 November 2026
 
-Status: exact combined binding prepared for human review; approval literals remain on the previously approved fingerprint.
+Status: repository owner approved this exact combined fingerprint on 7 November 2026; staging qualification remains pending.
 
 ## Exact source comparison
 
@@ -28,3 +28,14 @@ The three Personnel legacy failures reproduced in the exact 24-file cohort on bo
 Read-only staging state now proves UI source `09f4fcb9482dca79177df93fea29039611c40550`, matching built source and build `Q3Pmy99yco3QjWlBO5FE2`, state `ok`, and `stale_build=0`. This is arrival evidence, not human acceptance or AI Centre installation. The UI owner retains epoch 58; its acceptance and release window remain exclusive. The declared CI baseline and main/alpha must be refreshed before choosing the final release witness.
 
 Preserving this actual installed UI release changes production source and test/browser coverage, including two new DOM files. Earlier qualification cannot represent the combined inventory; the final source must satisfy the actual immutable impact plan and authenticated release policy. Existing successful evidence stays recorded on its producing source. No failed workflow is relabelled PASS. This renewal permits provider-dependent verification and staging qualification; it does not authorize production deployment, package publication, human acceptance or interruption of the UI lease.
+
+
+## Owner approval recorded
+
+After reviewing this packet at `a493e37c3455a99f9a0bac308d5fb12e64cd4c16`, the repository owner explicitly instructed:
+
+> Approve the combined fingerprint. Carry forward the same 28 approvals, keep both pending contracts and all original review metadata unchanged, and continue staging verification.
+
+Exactly 28 approved source-digest literals are carried forward to `01412858d86338a16ad2117ef882284c043144bdc0655ae1c154306684816770`. Reversing these 28 replacements reproduces the prior approval file byte-for-byte, preserving both pending records and every original reviewer, evidence and review-date field. The preceding pending descriptions record preparation before this approval. No production deployment, package publication, human acceptance or foreign lease recovery is authorized.
+
+The referenced [24-file recheck](https://github.com/StradaverseHub/ai-hr/actions/runs/42365383479) completed successfully on test-only repair `73a4ccb783eae6265da20ba43b18f386a1e9246f`: all 340 assertions pass, including the original three legacy Personnel failures. This focused evidence does not replace final combined-source qualification.
