@@ -13,6 +13,8 @@ import stat
 MAX_ENTRIES = 500000
 MAX_FILE = 256 * 1024 * 1024
 MAX_BYTES = 4 * 1024 * 1024 * 1024
+MAX_METADATA = 64 * 1024 * 1024
+DEPENDENCY_NORMALIZATION = 'ROOT_COPY_DEPENDENCIES_V1'
 
 
 class OwnedPackage:
@@ -146,6 +148,59 @@ def copy_tracked_source(source, expected_files, output, inventory, runner_uid, r
         tree.assert_unchanged()
 
 
+def dependency_entries(tree, inventory, expected_uid, require):
+    """One source-admission/normalization owner for trusted capture and copying."""
+    require(type(expected_uid) is int and expected_uid >= 0, 'Exact dependency reader principal required')
+    with tree.directory('') as directory:
+        root = os.fstat(directory)
+        require(root.st_uid in (0, expected_uid) and not stat.S_IMODE(root.st_mode) & 0o022,
+                'Unsafe installed dependency root')
+    for name, before in tree.entries(maximum=MAX_ENTRIES):
+        require(not inventory.private_path(name) and before.st_uid in (0, expected_uid),
+                'Private or foreign installed dependency')
+        if stat.S_ISLNK(before.st_mode):
+            target = tree.readlink(name)
+            tree.resolve(name, allow_absolute=False)
+            yield name, before, 'link', target
+        elif stat.S_ISDIR(before.st_mode):
+            require(not stat.S_IMODE(before.st_mode) & 0o022, 'Writable dependency directory')
+            yield name, before, 'directory', None
+        else:
+            require(stat.S_ISREG(before.st_mode) and stat.S_IMODE(before.st_mode) in (0o644, 0o755)
+                    and 0 <= before.st_size <= MAX_FILE, 'Special, writable or oversized dependency payload')
+            yield name, before, 'file', None
+
+
+def semantic_dependency_inventory(source, inventory, expected_uid, require):
+    """Bind the actual pre-candidate install to its normalized immutable copy.
+
+    Paths are ONLY descendants relative to node_modules; its root is excluded.
+    Directories normalize0755, regular modes/bytes and relative links stay exact.
+    Source UID/inode/store-hardlink metadata do not become copied byte identity.
+    No application, Git, Node, DB, subprocess or privilege operation is invoked.
+    """
+    rows, total, metadata = [], 0, 2
+    with inventory.PinnedTree(pathlib.Path(source) / 'node_modules', require) as tree:
+        for name, before, kind, target in dependency_entries(tree, inventory, expected_uid, require):
+            row = {'path': name, 'kind': kind, 'mode': 0o755 if kind == 'directory' else 0o777 if kind == 'link' else stat.S_IMODE(before.st_mode)}
+            if kind == 'link':
+                row['target'] = target
+            elif kind == 'file':
+                total += before.st_size
+                require(total <= MAX_BYTES, 'Installed dependency byte total exceeds bound')
+                with tree.open_regular(name, MAX_FILE, expected=inventory.identity(before)) as (stream, _):
+                    row.update(size=before.st_size, sha256=hashlib.file_digest(stream, 'sha256').hexdigest())
+            metadata += len(inventory.canonical(row))
+            require(metadata <= MAX_METADATA, 'Dependency inventory metadata exceeds bound')
+            rows.append(row)
+        tree.assert_unchanged()
+    require(rows, 'Nonempty installed dependency closure required')
+    raw = inventory.canonical(sorted(rows, key=lambda row: row['path']))
+    require(len(raw) <= MAX_METADATA, 'Dependency inventory metadata exceeds bound')
+    return {'normalization': DEPENDENCY_NORMALIZATION, 'sha256': hashlib.sha256(raw).hexdigest(),
+            'entries': len(rows), 'bytes': total}
+
+
 def copy_installed_dependencies(source, output, inventory, runner_uid, require):
     """Hosted-install provenance, not a claim that the build packet covers it.
 
@@ -155,20 +210,13 @@ def copy_installed_dependencies(source, output, inventory, runner_uid, require):
     """
     output.directory('node_modules')
     with inventory.PinnedTree(pathlib.Path(source) / 'node_modules', require) as tree:
-        for name, before in tree.entries(maximum=MAX_ENTRIES):
-            require(not inventory.private_path(name) and before.st_uid in (0, runner_uid),
-                    'Private or foreign installed dependency')
+        for name, before, kind, target in dependency_entries(tree, inventory, runner_uid, require):
             destination = 'node_modules/' + name
-            if stat.S_ISLNK(before.st_mode):
-                target = tree.readlink(name)
-                tree.resolve(name, allow_absolute=False)
+            if kind == 'link':
                 output.link(destination, target)
-            elif stat.S_ISDIR(before.st_mode):
-                require(not stat.S_IMODE(before.st_mode) & 0o022, 'Writable dependency directory')
+            elif kind == 'directory':
                 output.directory(destination)
             else:
-                require(stat.S_ISREG(before.st_mode) and stat.S_IMODE(before.st_mode) in (0o644, 0o755),
-                        'Special or writable dependency payload')
                 with tree.open_regular(name, MAX_FILE, expected=inventory.identity(before)) as (stream, _):
                     output.file(destination, stream, before, stat.S_IMODE(before.st_mode))
         tree.assert_unchanged()

@@ -227,6 +227,7 @@ def fixture_directories():
             and home.parent.resolve() == home.parent, 'Protected empty-home parent required')
     if not home.exists():
         home.mkdir(mode=0o755)
+        home.chmod(0o755)
         created_home = True
         owned_paths[str(home)] = (home.stat().st_dev, home.stat().st_ino)
     require(home.stat().st_uid == 0 and not home.is_symlink() and not home.stat().st_mode & 0o022
@@ -250,6 +251,20 @@ def package(plan, helper, binding):
         P.copy_installed_dependencies(plan['sourceDirectory'], output, I, plan['runnerUid'], require)
     finally:
         output.close()
+    # Independent expected facts were captured by the trusted hosted install
+    # owner BEFORE the first candidate child. Current runner bytes cannot mint
+    # their own expected hash merely by reporting the official version string.
+    installation = binding['installation']
+    require(installation['version'] == 1 and installation['kind'] == 'LOCKED_HOSTED_INSTALL_BEFORE_CANDIDATE_VERIFICATION',
+            'Pre-candidate installed closure witness required')
+    copied_dependencies = P.semantic_dependency_inventory(release, I, 0, require)
+    require(copied_dependencies == installation['dependencies'], 'Copied dependencies differ from pre-candidate hosted install')
+    for name, field in (('pnpm-lock.yaml', 'lockSha256'), ('package.json', 'packageSha256')):
+        require(hashlib.sha256((release / name).read_bytes()).hexdigest() == installation[field],
+                'Copied canonical install input differs from pre-candidate witness')
+    report['installation'] = {'preCandidateWitnessMatched': True, 'dependencies': copied_dependencies,
+        'nodeSha256': installation['node']['sha256'], 'nodeBytes': installation['node']['bytes'],
+        'lockSha256': installation['lockSha256'], 'packageSha256': installation['packageSha256']}
     # Exact original format2 receiver/wire. This executes only the protected
     # stdlib tool, never application config or Node as root.
     phase('existing-format2-exact-receiver')
@@ -258,6 +273,10 @@ def package(plan, helper, binding):
          binding['buildSourcePath']], timeout=60)
     (release / '.next').chmod(0o755)
     compiled = json.loads(pathlib.Path(binding['manifestPath']).read_bytes())
+    # The unchanged receiver honors its caller's umask. These are exact trusted
+    # format2 directories, made traversable for this public-code envelope only.
+    for name in compiled['directories']:
+        (release / '.next' / name).chmod(0o755)
     for alias in compiled['aliases']:
         file = release / '.next' / alias['path']
         name = file.name.split('-', 1)[0]
@@ -272,6 +291,7 @@ def package(plan, helper, binding):
         directory = release / target
         directory.mkdir(parents=True, mode=0o755)
         directory.chmod(0o755)
+    (release / '.next/cache').chmod(0o755)
     release.chmod(0o755)
     phase('nonroot-stock-native-dependency-probe')
     probe = json.loads(run(['/usr/sbin/runuser', '-u', 'nobody', '--', plan['nodePath'], '--max-old-space-size=256',
@@ -329,7 +349,7 @@ def package(plan, helper, binding):
         'privateEnvironmentSha256': hashlib.sha256(N.canonical({'version': 1, 'values': plan['environment']})).hexdigest()}
 
 
-def install_helpers(helper, plan):
+def install_helpers(helper, plan, binding):
     destination = pathlib.Path('/usr/local/lib/aihr-admission')
     for name in ('controller.py', 'next_profile.py', 'runtime_inventory.py', 'next_fixture_poststart.py',
                  'next_fixture_filesystem.py', 'next_dependency_probe.cjs'):
@@ -339,6 +359,8 @@ def install_helpers(helper, plan):
                 and stat.S_IMODE(info.st_mode) == 0o400, 'Expected sealed helper source')
         write(destination / name, source.read_bytes(), 0o644)
     source = pathlib.Path(plan['nodePath'])
+    installed_node = binding['installation']['node']
+    require(plan['nodePath'] == installed_node['path'], 'Node hint differs from pre-candidate executable witness')
     before = source.lstat()
     require(source.resolve() == source and stat.S_ISREG(before.st_mode) and before.st_uid in (0, plan['runnerUid'])
             and not before.st_mode & 0o022 and 0 < before.st_size <= 256 * 1024**2,
@@ -350,6 +372,8 @@ def install_helpers(helper, plan):
             raw = stream.read(256 * 1024**2 + 1)
         require(len(raw) == before.st_size and identity(os.fstat(fd)) == identity(before) == identity(source.lstat()),
                 'Hosted Node changed during copy')
+        require(len(raw) == installed_node['bytes'] and hashlib.sha256(raw).hexdigest() == installed_node['sha256'],
+                'Hosted Node bytes differ from pre-candidate executable witness')
         write(destination / 'node', raw, 0o755)
     finally:
         os.close(fd)
@@ -774,7 +798,7 @@ def main():
     succeeded = False
     try:
         fixture_directories()
-        install_helpers(helper, plan)
+        install_helpers(helper, plan, binding)
         N, release, runtime_package = package(plan, helper, binding)
         C = configure(plan, binding, N, release, runtime_package)
         browser_core(plan, binding, C)

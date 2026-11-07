@@ -59,6 +59,9 @@ it('boots two actual same-build Next workers through protected native admission 
   expect(report.browser).toMatchObject({complete:true,realPasswordTotpLogins:2,unexpectedBrowserErrors:0,nonemptyOwnPayrollView:true});
   expect(report.package).toMatchObject({source:candidate,sameCanonicalBuildPacket:true,actionKeyOverride:false});
   expect(report.package.actionManifestSha256).toMatch(/^[a-f0-9]{64}$/);
+  expect(report.installation).toMatchObject({preCandidateWitnessMatched:true,
+   dependencies:{normalization:'ROOT_COPY_DEPENDENCIES_V1'}});
+  expect(report.installation.dependencies.sha256).toMatch(/^[a-f0-9]{64}$/);
   expect(report.remaining).toContain('500-actor-steady-load');
  }finally{
   for(const[key,value]of original){if(value===undefined)delete process.env[key];else process.env[key]=value;}
