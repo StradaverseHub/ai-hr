@@ -41,7 +41,7 @@ describe('workflow company navigation and scope', () => {
   });
   it('keeps bookmarks scoped while loading all permitted choices for shared configuration',async()=>{
     show(await Page({searchParams:Promise.resolve({companyId,applicationType:'irregularity'})}));
-    expect(service.listAttendanceWorkflows).toHaveBeenCalledWith(expect.anything(),[companyId,other]);
+    expect(service.listAttendanceWorkflows).toHaveBeenCalledWith(expect.anything(),[companyId]);
     expect(service.attendanceApplicationFilterOptions).toHaveBeenCalledWith(expect.anything(),[companyId,other]);
     expect(screen.getByText('CLOCK')).toBeVisible();expect(screen.queryByText('OT')).toBeNull();
     expect(routing).toHaveBeenCalledWith({companyId,type:'irregularity',enabled:true});

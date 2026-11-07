@@ -1,3 +1,4 @@
+import {isRecordedPayrollTotal} from './payroll-reconciliation-items';
 /** Declarative report contract and exact arithmetic; never calculates an employee's pay. */
 import { EMPLOYMENT_STATUSES, type EmploymentStatus } from '../core/employment-status';
 import { PERSONNEL_EMPLOYMENT_TYPES } from './personnel-choice-vocabulary';
@@ -57,7 +58,7 @@ export function validatePayrollComparisonDefinition(value:unknown):PayrollCompar
  if(!value||typeof value!=='object'||Array.isArray(value))fail('definition');
  const v=value as Record<string,unknown>;
  exactKeys(v,['version','payItemCode','compareMode','previousPeriod','runType','minVariance','autoTag','onlyVariances','columns','roles','defaults']);
- if(v.version!==1||typeof v.payItemCode!=='string'||!/^[-A-Za-z0-9_/.]{1,64}$/.test(v.payItemCode))fail('payItem');
+ if(v.version!==1||typeof v.payItemCode!=='string'||!(/^[-A-Za-z0-9_/.]{1,64}$/.test(v.payItemCode)||isRecordedPayrollTotal(v.payItemCode)))fail('payItem');
  if(v.compareMode!=='previous'&&v.compareMode!=='specific')fail('compareMode');
  if(v.compareMode==='specific'?!isPayrollComparisonPeriod(v.previousPeriod):v.previousPeriod!==null)fail('previousPeriod');
  if(v.runType!=='regular'&&v.runType!=='all')fail('runType');
@@ -100,7 +101,7 @@ export function payrollComparisonFilters(values:Record<string,unknown>,definitio
  };
  const rawCodes=values.payItemCodes;
  const itemCodes=rawCodes==null||rawCodes===''?[]:typeof rawCodes==='string'?rawCodes.split(','):Array.isArray(rawCodes)?rawCodes:fail('payItem');
- if(itemCodes.length>100||itemCodes.some(c=>typeof c!=='string'||c!==''&&!/^[-A-Za-z0-9_/.]{1,64}$/.test(c)))fail('payItem');
+ if(itemCodes.length>100||itemCodes.some(c=>typeof c!=='string'||c!==''&&!(/^[-A-Za-z0-9_/.]{1,64}$/.test(c)||isRecordedPayrollTotal(c))))fail('payItem');
  const payItemCodes=[...new Set(itemCodes.filter(c=>c!==''))] as string[];
  const cycleIds=parseCycles(values.cycleIds),previousCycleIds=parseCycles(values.previousCycleIds);
  const businessUnitId=id(values.businessUnitId),positionId=id(values.positionId),employmentId=id(values.employmentId);

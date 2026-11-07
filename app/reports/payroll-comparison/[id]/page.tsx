@@ -1,3 +1,4 @@
+import {payrollReconciliationItemLabel} from '@/lib/payroll-reconciliation-items';
 import {Fragment} from 'react';
 import Link from 'next/link';
 import {notFound} from 'next/navigation';
@@ -16,9 +17,9 @@ import {ReconciliationPayItemFilter} from '../pay-item-filter';
 import {publicErrorMessage} from '@/lib/public-error';
 export const dynamic='force-dynamic';
 export default async function PayrollComparisonPage({params,searchParams}:{params:Promise<{id:string}>;searchParams:Promise<Record<string,string|string[]|undefined>>}){
-  const {s,scopeIds}=await scopedAdmin(),{id}=await params,sp=await searchParams,t=await getTranslations('payrollComparison');
+  const {s,scopeIds,allowedCompanyIds}=await scopedAdmin(),{id}=await params,comparisonScope=id==='reconciliation'?(allowedCompanyIds??scopeIds):scopeIds,sp=await searchParams,t=await getTranslations('payrollComparison');
   let options:Awaited<ReturnType<typeof payrollComparisonOptions>>;
-  try{options=await payrollComparisonOptions(s,scopeIds);}
+  try{options=await payrollComparisonOptions(s,comparisonScope);}
   catch(error){if(error instanceof MasterReportAccessError)notFound();throw error;}
   const builtIn = id === 'reconciliation';
   if(sp.edit==='1'){
@@ -30,7 +31,7 @@ export default async function PayrollComparisonPage({params,searchParams}:{param
   if(builtIn&&typeof sp.returnQuery==='string'&&sp.returnQuery.length<=8000){try{const parsed=payrollComparisonFilters(Object.fromEntries(new URLSearchParams(sp.returnQuery)),DEFAULT_PAYROLL_COMPARISON);const q=new URLSearchParams();for(const [key,value]of Object.entries(parsed))if(value!==null&&value!==undefined)q.set(key,key==='onlyVariances'?(value?'1':'0'):String(value));returnQuery=q.toString();}catch{}}
   const raw=Object.fromEntries(Object.entries(sp).filter(([key,value])=>key!=='error'&&key!=='edit'&&key!=='noteError'&&key!=='templateError'&&key!=='returnQuery'&&value!==undefined));
   let run:Awaited<ReturnType<typeof runPayrollComparisonReport>>;
-  try{run=await runPayrollComparisonReport(s,scopeIds,{id,filters:raw});await recordPayrollComparisonRun(s,run,builtIn?'preview':'run');}
+  try{run=await runPayrollComparisonReport(s,comparisonScope,{id,filters:raw});await recordPayrollComparisonRun(s,run,builtIn?'preview':'run');}
   catch(error){if(error instanceof MasterReportAccessError)notFound();return <div className="space-y-4"><PageHeader title={t('title')} back={{href:'/reports?cat=payroll',label:t('back')}}/><ErrorBanner message={publicErrorMessage(error)}/><Link href={'/reports/payroll-comparison/'+id}>{t('reset')}</Link></div>;}
   const [people,status]=await Promise.all([getTranslations('people.detail.employmentInfo'),getTranslations('people.employeeStatus')]);
   const {result,filters}=run,columns=payrollComparisonColumns(run.definition);
@@ -54,7 +55,7 @@ export default async function PayrollComparisonPage({params,searchParams}:{param
     <Card className="p-5"><form key={query()} className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4" method="get">
       {returnQuery&&<input type="hidden" name="returnQuery" value={returnQuery}/>}
       {builtIn&&run.definition.payItemCode===ALL_RECORDED_PAY_ITEMS&&<ReconciliationPayItemFilter items={payItems.filter(item=>item.code!==ALL_RECORDED_PAY_ITEMS)} selected={filters.payItemCodes??[]}/>}
-      <label className="text-sm font-medium">{t('company')}<select className={input} name="companyId" defaultValue={filters.companyId??''}><option value="">{t('allCompanies')}</option>{options.companies.map(company=><option key={company.id} value={company.id}>{company.name}</option>)}</select></label>
+      <label className="text-sm font-medium">{t('company')}<select className={input} name="companyId" defaultValue={filters.companyId??''}><option value="">{t(builtIn?'allPermittedCompanies':'allCompanies')}</option>{options.companies.map(company=><option key={company.id} value={company.id}>{company.name}</option>)}</select></label>
       <label className="text-sm font-medium">{t('previousPeriod')}<input className={input} type="month" name="previousPeriod" defaultValue={filters.previousPeriod??''} required/></label>
       <label className="text-sm font-medium">{t('currentPeriod')}<input className={input} type="month" name="currentPeriod" defaultValue={filters.currentPeriod??''} required/></label>
       {builtIn&&<label className="text-sm font-medium">{t('payItem')}<select className={input} name="payItemCode" defaultValue={run.definition.payItemCode}>
@@ -85,14 +86,14 @@ export default async function PayrollComparisonPage({params,searchParams}:{param
       <div className="flex items-end gap-3"><Link className="rounded-lg border border-border px-3 py-2 text-sm" href={'/reports/payroll-comparison/'+id}>{t('reset')}</Link><button className="rounded-lg bg-primary px-4 py-2 text-sm text-primary-foreground" type="submit">{t('generate')}</button></div>
     </form></Card>
     {result.summary&&<div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5"><Card className="p-4"><p className="text-xs text-muted-foreground">{t('headcount')}</p><p className="mt-2 text-2xl font-semibold tabular-nums">{result.summary.previousHeadcount} → {result.summary.currentHeadcount}</p><p className="mt-2 text-xs text-muted-foreground">{t('joinersLeavers',{joiners:result.summary.joiners,leavers:result.summary.leavers})}</p></Card>
-      {run.definition.payItemCode!==ALL_RECORDED_PAY_ITEMS&&['previous','current','variance'].map(field=><Card key={field} className="p-4"><p className="text-xs text-muted-foreground">{t(`columns.${field}`)} · {run.definition.payItemCode===ALL_RECORDED_PAY_ITEMS?t('allRecordedItems'):run.definition.payItemCode}</p>{result.summary!.totals.map(total=><p key={JSON.stringify([total.payItemCode,total.currency,total.companyId])} className="mt-2 font-semibold tabular-nums">{total.payItemCode&&<span className="block text-xs text-muted-foreground">{total.payItemCode}</span>}{total.currency??t('currencyUnknown')} {total[field as 'previous'|'current'|'variance']??t('notAvailable')}{total.companyId&&<span className="block text-xs font-normal text-muted-foreground">{options.companies.find(company=>company.id===total.companyId)?.name}</span>}{field==='variance'&&<span className="ml-2 text-xs">({total.variancePct??t('notAvailable')}{total.variancePct!==null?'%':''})</span>}</p>)}</Card>)}
+      {run.definition.payItemCode!==ALL_RECORDED_PAY_ITEMS&&['previous','current','variance'].map(field=><Card key={field} className="p-4"><p className="text-xs text-muted-foreground">{t(`columns.${field}`)} · {run.definition.payItemCode===ALL_RECORDED_PAY_ITEMS?t('allRecordedItems'):payrollReconciliationItemLabel(run.definition.payItemCode)}</p>{result.summary!.totals.map(total=><p key={JSON.stringify([total.payItemCode,total.currency,total.companyId])} className="mt-2 font-semibold tabular-nums">{total.payItemCode&&<span className="block text-xs text-muted-foreground">{payrollReconciliationItemLabel(total.payItemCode!)}</span>}{total.currency??t('currencyUnknown')} {total[field as 'previous'|'current'|'variance']??t('notAvailable')}{total.companyId&&<span className="block text-xs font-normal text-muted-foreground">{options.companies.find(company=>company.id===total.companyId)?.name}</span>}{field==='variance'&&<span className="ml-2 text-xs">({total.variancePct??t('notAvailable')}{total.variancePct!==null?'%':''})</span>}</p>)}</Card>)}
       <Card className="border-red-200 p-4"><p className="text-xs text-muted-foreground">{t('needsReview')}</p><p className="mt-2 text-2xl font-semibold text-red-700 dark:text-red-300">{result.summary.unexplained}</p></Card></div>}
     {run.definition.payItemCode===ALL_RECORDED_PAY_ITEMS&&!!result.summary?.totals.length&&<details className="rounded-lg border border-border p-4">
       <summary className="cursor-pointer text-sm font-medium">{t('allRecordedItems')}</summary>
       <div className="overflow-x-auto"><table className="mt-3 w-full text-left text-sm"><thead className="border-y border-border"><tr>
         {(['payItemCode','currency','previous','current','variance','variancePct'] as const).map(key=><th key={key} scope="col" className="p-2">{t(`columns.${key}`)}</th>)}
       </tr></thead><tbody className="divide-y divide-border">{result.summary.totals.map(total=><tr key={JSON.stringify([total.payItemCode,total.currency,total.companyId])}>
-        <th scope="row" className="p-2">{total.payItemCode}</th><td className="p-2">{total.currency??options.companies.find(company=>company.id===total.companyId)?.name??t('currencyUnknown')}</td>
+        <th scope="row" className="p-2">{payrollReconciliationItemLabel(total.payItemCode!)}</th><td className="p-2">{total.currency??options.companies.find(company=>company.id===total.companyId)?.name??t('currencyUnknown')}</td>
         {(['previous','current','variance','variancePct'] as const).map(key=><td key={key} className="p-2 tabular-nums">{total[key]??t('notAvailable')}{key==='variancePct'&&total[key]!==null?'%':''}</td>)}
       </tr>)}</tbody></table></div>
     </details>}

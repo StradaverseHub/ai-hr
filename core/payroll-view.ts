@@ -3263,7 +3263,7 @@ export async function payrollComparisonSourcesTx(tx: Tx, ctx: SessionContext, p:
     const batch = batchById.get(slip.runId)!;
     const period = payPeriodBounds(batch.period);
     if (!period) throw new Error('Saved payroll period is invalid.');
-    const recordedItems=recordedPayrollReconciliationItems(slip.statutory,{__ALLOWANCE__:slip.allowance,__OVERTIME__:slip.overtimePay,__BONUS__:slip.bonus,__OTHER_DEDUCTIONS__:slip.otherDeductions,__NETPAY__:slip.netPay,__GROSS__:slip.grossPay,__TOTAL_DEDUCTIONS__:slip.totalDeductions,__EMPLOYER_COST__:slip.employerCost});
+    const recordedItems=recordedPayrollReconciliationItems(slip.statutory,{'@total/allowance':slip.allowance,'@total/overtime':slip.overtimePay,'@total/bonus':slip.bonus,'@total/otherDeductions':slip.otherDeductions,'@total/netPay':slip.netPay,'@total/grossPay':slip.grossPay,'@total/totalDeductions':slip.totalDeductions,'@total/employerCost':slip.employerCost});
     const allItems = p.payItemCode === ALL_RECORDED_PAY_ITEMS;
     return { id: slip.id, version: slip.version, runId: slip.runId, employmentId: slip.employmentId,
       companyId: batch.companyId, currency: recordedPayrollComparisonCurrency(slip.statutory, batch.companyId),

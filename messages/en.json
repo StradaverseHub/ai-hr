@@ -31406,6 +31406,7 @@
     "contextUnavailable": "Some dated placement or grade evidence is unavailable. Current master data has not been substituted.",
     "company": "Company",
     "allCompanies": "All selected companies",
+    "allPermittedCompanies": "All authorised companies",
     "department": "Department",
     "allDepartments": "All authorised departments",
     "generate": "Generate",

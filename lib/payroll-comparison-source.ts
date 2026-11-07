@@ -35,17 +35,14 @@ export function recordedPayrollComparisonCurrency(statutory: unknown, companyId:
   return stamp?.version === 1 && stamp.payingCompanyId === companyId &&
     typeof stamp.currency === 'string' && /^[A-Z]{3}$/.test(stamp.currency) ? stamp.currency : null;
 }
-export const RECORDED_PAYROLL_TOTALS = {
- __ALLOWANCE__:'Recorded Allowance Total',__OVERTIME__:'Recorded Overtime Total',__BONUS__:'Recorded Bonus Total',__OTHER_DEDUCTIONS__:'Recorded Other Deductions',
- __NETPAY__:'Net Pay',__GROSS__:'Gross Pay',__TOTAL_DEDUCTIONS__:'Total Deductions',__EMPLOYER_COST__:'Employer Cost',
- __epfEmployee__:'EPF Employee',__epfEmployer__:'EPF Employer',__socsoEmployee__:'SOCSO Employee',__socsoEmployer__:'SOCSO Employer',
- __eisEmployee__:'EIS Employee',__eisEmployer__:'EIS Employer',__pcb__:'PCB',__cp38__:'CP38',__zakat__:'Zakat',__hrdf__:'HRDF',__lp__:'Levy',__socsoSkbbk__:'SOCSO SKBBK',
-} as const;
+export {RECORDED_PAYROLL_TOTALS} from './payroll-reconciliation-items';
+import {RECORDED_PAYROLL_TOTALS} from './payroll-reconciliation-items';
+
 /** Totals are explicit saved columns/keys, never a reconstruction from current payroll settings. */
 export function recordedPayrollReconciliationItems(statutory:unknown,totals:Record<string,string>){
  const saved=object(statutory)??{},amounts:Record<string,unknown>={...totals};
  for(const code of Object.keys(RECORDED_PAYROLL_TOTALS)){
-  const field=code.slice(2,-2);if(Object.prototype.hasOwnProperty.call(saved,field))amounts[code]=saved[field];
+  const field=code.startsWith('@statutory/')?code.slice('@statutory/'.length):null;if(field&&Object.prototype.hasOwnProperty.call(saved,field))amounts[code]=saved[field];
  }
  return {...saved,reconciliationAmounts:amounts};
 }

@@ -13,11 +13,8 @@ $$;
 REVOKE ALL ON FUNCTION app.pay_formula_saved(text) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.pay_formula_saved(text) TO ai_hr_app;
 --> statement-breakpoint
--- Compatibility for older callers; a separate successful test is no longer authority to link.
-CREATE OR REPLACE FUNCTION app.pay_formula_active(p_code text) RETURNS TABLE(id uuid,code text,revision_id uuid,ordinal integer,program jsonb,content_hash text,dependencies jsonb,test_id uuid,dependency_fingerprint text,evaluator_version text,registry_version text)
-LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,app SET row_security=off AS $$
- SELECT * FROM app.pay_formula_saved(p_code)
-$$;
+-- Preserve app.pay_formula_active as the legacy activation-history accessor for older callers.
+-- Current selection, linking and payroll all use the saved-revision owner above.
 CREATE OR REPLACE FUNCTION app.pay_formula_bind_pay_item() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,app AS $$
 DECLARE a record;
 BEGIN

@@ -300,11 +300,11 @@ it('defaults reconciliation to every employee using saved Net Pay and includes s
  const f=await fixture({typed:true,allowance:100});await closeBatch(ctx,{batchId:f.previous.batchId});await generatePayslips(ctx,{batchId:f.current.batchId});
  const snapshot=await payrollSnapshot(),current=snapshot.results.find(row=>row.batchId===f.current.batchId)!,previous=snapshot.results.find(row=>row.batchId===f.previous.batchId)!;
  const basic=await runPayrollComparisonReport(ctx,[b.companyId],{id:'reconciliation',filters:{currentPeriod,previousPeriod}});
- expect(basic.definition.payItemCode).toBe('__NETPAY__');expect(basic.filters.onlyVariances).toBe(false);
+ expect(basic.definition.payItemCode).toBe('@total/netPay');expect(basic.filters.onlyVariances).toBe(false);
  expect(basic.result.rows).toEqual([expect.objectContaining({employmentId:f.employee.employmentId,current:current.netPay,previous:previous.netPay,variance:'0.00',variancePct:'0.00'})]);
  const detailed=await runPayrollComparisonReport(ctx,[b.companyId],{id:'reconciliation',filters:{currentPeriod,previousPeriod,payItemCode:ALL_RECORDED_PAY_ITEMS}});
- expect(detailed.result.rows).toEqual(expect.arrayContaining([expect.objectContaining({payItemCode:'__NETPAY__',current:current.netPay}),expect.objectContaining({payItemCode:'__GROSS__',current:current.grossPay}),expect.objectContaining({payItemCode:'__epfEmployee__'})]));
- const filtered=await runPayrollComparisonReport(ctx,[b.companyId],{id:'reconciliation',filters:{currentPeriod,previousPeriod,payItemCode:ALL_RECORDED_PAY_ITEMS,payItemCodes:['BASIC','__NETPAY__']}});
- expect(new Set(filtered.result.rows.map(row=>row.payItemCode))).toEqual(new Set(['BASIC','__NETPAY__']));
+ expect(detailed.result.rows).toEqual(expect.arrayContaining([expect.objectContaining({payItemCode:'@total/netPay',current:current.netPay}),expect.objectContaining({payItemCode:'@total/grossPay',current:current.grossPay}),expect.objectContaining({payItemCode:'@statutory/epfEmployee'})]));
+ const filtered=await runPayrollComparisonReport(ctx,[b.companyId],{id:'reconciliation',filters:{currentPeriod,previousPeriod,payItemCode:ALL_RECORDED_PAY_ITEMS,payItemCodes:['BASIC','@total/netPay']}});
+ expect(new Set(filtered.result.rows.map(row=>row.payItemCode))).toEqual(new Set(['BASIC','@total/netPay']));
  expect(await payrollSnapshot()).toEqual(snapshot);
 });

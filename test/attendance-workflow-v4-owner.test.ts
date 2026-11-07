@@ -16,9 +16,9 @@ import {todayInKualaLumpur} from '../lib/hr-date';
 import {adminCtx,createAppUser,owner,closeAll,migrateTestDb,resetDb,seedBase,setModule,type Base} from './harness';
 let base:Base;
 beforeAll(migrateTestDb);afterAll(closeAll);beforeEach(async()=>{await resetDb();base=await seedBase();});
-async function actor(name:string,role:'employee'|'hr_admin'='employee',departmentId=base.deptB) {
+async function actor(name:string,role:'employee'|'hr_admin'='employee',departmentId=base.deptB,employeeCode?:string) {
  const email=`${randomUUID()}@example.invalid`;
- const hired=await hireEmployee(adminCtx(base),{person:{fullName:name,primaryEmail:email},companyId:base.companyId,departmentId,employmentType:'full_time',hiredOn:'2020-01-01'});
+ const hired=await hireEmployee(adminCtx(base),{person:{fullName:name,primaryEmail:email},companyId:base.companyId,departmentId,...(employeeCode?{employeeCode}:{}),employmentType:'full_time',hiredOn:'2020-01-01'});
  const userId=await createAppUser(base.tenantId,hired.personId,role);
  const ctx:SessionContext={...adminCtx(base),userId,personId:hired.personId,roles:[role],grants:[{role,companyId:base.companyId}]};return{...hired,ctx,email};
 }
@@ -296,7 +296,7 @@ it('private CC delivery derives its tenant from the validated lease even with ab
 
 describe('approved shared workflows and actor-scoped approver search',()=>{
  it('saves a shared definition with missing dynamic superiors, previews warnings and refuses an unresolved application',async()=>{
-  const root=adminCtx(base),worker=await actor('Fictional missing-superior applicant','employee',base.deptA);
+  const root=adminCtx(base),worker=await actor('Fictional missing-superior applicant','employee',base.deptA,'WARN-001');
   const [other]=await owner.db.insert(schema.company).values({tenantId:base.tenantId,legalName:'Fictional shared company'}).returning();
   const input={companyId:base.companyId,companyIds:[base.companyId,other.id],applicationType:'irregularity' as const,routingVersion:4 as const,code:'SHARED_WARNING',name:'Shared warning workflow',priority:1,active:true,criteria:{employeeIds:[worker.employmentId]},stages:[{name:'Level 1',mode:'any_one' as const,sources:[{kind:'direct_manager' as const,depth:1}],hrAlternative:false}],cc:[]};
   const saved=await saveAttendanceWorkflow(root,input);
@@ -304,7 +304,7 @@ describe('approved shared workflows and actor-scoped approver search',()=>{
   const assignments=await owner.client`select company_id from attendance_workflow_company where template_id=${saved.id} order by company_id`;
   expect(assignments.map(row=>row.company_id)).toEqual([base.companyId,other.id].sort());
   const preview=await previewAttendanceWorkflow(root,input,saved.lineageId);
-  expect(preview.rows.find(row=>row.employmentId===worker.employmentId)).toMatchObject({employeeCode:expect.anything(),levelProblem:{code:'missing_superior',levelIndex:0}});
+  expect(preview.rows.find(row=>row.employmentId===worker.employmentId)).toMatchObject({employeeCode:'WARN-001',levelProblem:{code:'missing_superior',levelIndex:0}});
   await setAttendanceWorkflowEnabled(root,base.companyId,'irregularity',true);
   const on=todayInKualaLumpur();await checkIn(root,{employmentId:worker.employmentId,date:on,time:'08:00',manual:true});await checkOut(root,{employmentId:worker.employmentId,date:on,time:'17:00',manual:true});
   await expect(requestAttendanceCorrection(worker.ctx,{employmentId:worker.employmentId,date:on,checkIn:'09:00',checkOut:'18:00',reason:'No silent approval bypass'})).rejects.toThrow();
@@ -327,4 +327,21 @@ describe('approved shared workflows and actor-scoped approver search',()=>{
   expect((await searchAttendanceApprovers(root,{companyIds:[base.companyId],query:'Fictional group reviewer',page:0})).rows[0].eligible).toBe(false);
   await expect(saveAttendanceWorkflow(root,{...input,expectedVersion:1},saved.lineageId)).rejects.toThrow();
  });
+});
+it('refuses a partial-scope edit and serializes shared automatic priorities across reversed company selections',async()=>{
+ const root=adminCtx(base),scoped=await actor('Fictional company-only HR','hr_admin');
+ await owner.db.update(schema.roleAssignment).set({companyId:base.companyId}).where(eq(schema.roleAssignment.appUserId,scoped.ctx.userId!));
+ const [other]=await owner.db.insert(schema.company).values({tenantId:base.tenantId,legalName:'Fictional second shared scope'}).returning();
+ const input={companyId:base.companyId,companyIds:[base.companyId,other.id],applicationType:'irregularity' as const,routingVersion:4 as const,code:'SHARED_LOCK',name:'Shared allocation',priority:1,active:false,criteria:{},stages:[{name:'Level 1',mode:'any_one' as const,sources:[{kind:'direct_manager' as const,depth:1}],hrAlternative:false}],cc:[]};
+ const first=await saveAttendanceWorkflow(root,input);
+ expect((await listAttendanceWorkflows(root,[base.companyId])).map(row=>row.lineageId)).toContain(first.lineageId);
+ await expect(saveAttendanceWorkflow(scoped.ctx,{...input,name:'Must not alter the other company',expectedVersion:1},first.lineageId)).rejects.toMatchObject({code:'scope'});
+ expect((await listAttendanceWorkflows(root,[base.companyId,other.id])).find(row=>row.lineageId===first.lineageId)?.name).toBe('Shared allocation');
+ expect(await listAttendanceWorkflows(scoped.ctx,[base.companyId,other.id])).toEqual([]);
+ await expect(withTenant(root,tx=>tx.execute(sql`insert into attendance_workflow_company(tenant_id,template_id,company_id) values(${base.tenantId}::uuid,${first.id}::uuid,${other.id}::uuid)`))).rejects.toThrow();
+ const created=await Promise.all([
+  saveAttendanceWorkflow(root,{...input,code:'SHARED_AUTO_A'},undefined,undefined,true),
+  saveAttendanceWorkflow(root,{...input,companyId:other.id,companyIds:[other.id,base.companyId],code:'SHARED_AUTO_B'},undefined,undefined,true),
+ ]);
+ expect(created.map(row=>row.priority).sort()).toEqual([2,3]);
 });

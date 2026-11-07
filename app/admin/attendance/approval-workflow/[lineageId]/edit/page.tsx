@@ -11,11 +11,11 @@ export default async function EditAttendanceWorkflowPage({ params }: {
         lineageId: string;
     }>;
 }) {
-    const { s, scopeIds } = await scopedAdmin(), { lineageId } = await params, t = await getTranslations('attendanceWorkflow');
+    const { s, scopeIds,allowedCompanyIds } = await scopedAdmin(), { lineageId } = await params, t = await getTranslations('attendanceWorkflow');
     if (!isWorkflowId(lineageId)) notFound();
-    const row = await getAttendanceWorkflow(s, lineageId, scopeIds);
+    const row = await getAttendanceWorkflow(s, lineageId, allowedCompanyIds??scopeIds);
     if (!row)
         notFound();
-    const options = await attendanceApplicationFilterOptions(s, scopeIds,attendanceWorkflowSelectedEmployees(row.stages));
+    const options = await attendanceApplicationFilterOptions(s, allowedCompanyIds??scopeIds,attendanceWorkflowSelectedEmployees(row.stages));
     return <div className={pageWideCls}><PageHeader title={t('editTitle', { name: row.name })} description={t('newVersionHelp')} back={{ href: `/admin/attendance/approval-workflow/${lineageId}`, label: t('back') }}/><WorkflowForm key={lineageId} context={{ companyId: row.companyId, applicationType: row.applicationType }} initial={attendanceWorkflowConfiguration(row)} lineageId={lineageId} options={options}/></div>;
 }

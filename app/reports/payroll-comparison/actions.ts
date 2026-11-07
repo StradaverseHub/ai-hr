@@ -44,13 +44,14 @@ export async function createPayrollComparisonSampleAction(){
 
 export async function savePayrollReconciliationRemarkAction(query: string, companyId: string, employmentId: string,
   currency: string | null, rowPayItem: string | null, revision: number, form: FormData) {
-  const {s,scopeIds}=await scopedAdmin();
+  const {s,scopeIds,allowedCompanyIds}=await scopedAdmin();
+  const permittedScope=allowedCompanyIds??scopeIds;
   const values=new URLSearchParams(query);
   values.delete('noteError');
   const body=form.get('remark');
   try {
     if (typeof body !== 'string') throw new Error('Invalid remark.');
-    await savePayrollReconciliationRemark(s,scopeIds,{filters:Object.fromEntries(values),companyId,employmentId,currency,rowPayItem:rowPayItem??undefined,revision,body});
+    await savePayrollReconciliationRemark(s,permittedScope,{filters:Object.fromEntries(values),companyId,employmentId,currency,rowPayItem:rowPayItem??undefined,revision,body});
   } catch (error) {
     // SQL errors can contain the confidential remark as a bound parameter.
     values.set('noteError',error instanceof PayrollReconciliationRemarkConflict?'conflict':'failed');
@@ -60,7 +61,8 @@ export async function savePayrollReconciliationRemarkAction(query: string, compa
 }
 
 export async function saveReconciliationTemplateAction(query: string, form: FormData) {
-  const {s,scopeIds}=await scopedAdmin();
+  const {s,scopeIds,allowedCompanyIds}=await scopedAdmin();
+  const permittedScope=allowedCompanyIds??scopeIds;
   const search=new URLSearchParams(query);
   let destination='/reports/payroll-comparison/reconciliation?'+search;
   try {
@@ -68,7 +70,7 @@ export async function saveReconciliationTemplateAction(query: string, form: Form
     if(typeof name!=='string'||!name.trim()||name.length>150)throw new Error('Invalid template name.');
     const {payItemCode='BASIC',returnQuery:_returnQuery,...raw}=Object.fromEntries(search);
     const filters=payrollComparisonFilters(raw,DEFAULT_PAYROLL_COMPARISON);
-    if(filters.companyId&&!scopeIds.includes(filters.companyId))throw new Error('Company unavailable.');
+    if(filters.companyId&&!permittedScope.includes(filters.companyId))throw new Error('Company unavailable.');
     const definition=validatePayrollComparisonDefinition({...DEFAULT_PAYROLL_COMPARISON,payItemCode,
       compareMode:filters.previousPeriod?'specific':'previous',previousPeriod:filters.previousPeriod,
       runType:filters.runType,minVariance:filters.minVariance,onlyVariances:filters.onlyVariances,
@@ -76,7 +78,7 @@ export async function saveReconciliationTemplateAction(query: string, form: Form
         businessUnitId:filters.businessUnitId,positionId:filters.positionId,employmentId:filters.employmentId,
         employmentType:filters.employmentType,employmentStatus:filters.employmentStatus,groupBy:filters.groupBy,payItemCodes:filters.payItemCodes,cycleIds:filters.cycleIds,previousCycleIds:filters.previousCycleIds}});
     const spec=payrollComparisonSpec(definition);
-    const saved=await saveCustomReport(s,{name:name.trim(),datasetId:spec.datasetId,spec,companyIds:scopeIds});
+    const saved=await saveCustomReport(s,{name:name.trim(),datasetId:spec.datasetId,spec,companyIds:permittedScope});
     revalidatePath('/payroll/reconciliation');
     destination='/reports/payroll-comparison/'+saved.id;
   } catch {

@@ -130,7 +130,7 @@ export async function attendanceApplicationDetail(ctx: SessionContext, companyId
     });
 }
 export function attendanceApplicationFilterOptions(ctx: SessionContext, companyIds: string[],selectedApproverIds:readonly string[]=[]) {
-    if(selectedApproverIds.length>100||selectedApproverIds.some(id=>!/^[-0-9a-f]{36}$/i.test(id)))throw new Error('Invalid selected employee identities.');
+    if(selectedApproverIds.length>100||selectedApproverIds.some(id=>!/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(id)))throw new Error('Invalid selected employee identities.');
     admin(ctx);
     return withTenant(ctx, async (tx) => {
         if (!companyIds.length)

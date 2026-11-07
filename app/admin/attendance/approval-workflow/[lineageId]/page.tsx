@@ -17,9 +17,9 @@ export default async function ViewAttendanceWorkflowPage({ params }: {
         lineageId: string;
     }>;
 }) {
-    const { s, scopeIds } = await scopedAdmin(), { lineageId } = await params, t = await getTranslations('attendanceWorkflow');
+    const { s, scopeIds,allowedCompanyIds } = await scopedAdmin(), { lineageId } = await params, t = await getTranslations('attendanceWorkflow');
     if (!isWorkflowId(lineageId)) notFound();
-    const row = await getAttendanceWorkflow(s, lineageId, scopeIds,true);
+    const row = await getAttendanceWorkflow(s, lineageId, allowedCompanyIds??scopeIds,true);
     if (!row)
         notFound();
     const options = await attendanceApplicationFilterOptions(s, row.companyIds??[row.companyId],attendanceWorkflowSelectedEmployees(row.stages)), preview = row.retiredAt?{total:0,rows:[],truncated:false}:await previewAttendanceWorkflow(s, attendanceWorkflowConfiguration(row), lineageId);

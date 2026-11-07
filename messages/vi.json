@@ -31406,6 +31406,7 @@
     "contextUnavailable": "Thiếu một số bằng chứng lịch sử về phân công hoặc ngạch. Không thay bằng dữ liệu chủ hiện tại.",
     "company": "Công ty",
     "allCompanies": "Tất cả công ty đã chọn",
+    "allPermittedCompanies": "Tất cả công ty được cấp quyền",
     "department": "Phòng ban",
     "allDepartments": "Tất cả phòng ban được phép",
     "generate": "Tạo",

@@ -31406,6 +31406,7 @@
     "contextUnavailable": "部分历史组织或职级依据不可用，未用当前主数据替代。",
     "company": "公司",
     "allCompanies": "所有已选公司",
+    "allPermittedCompanies": "所有获授权的公司",
     "department": "部门",
     "allDepartments": "所有获授权部门",
     "generate": "生成",

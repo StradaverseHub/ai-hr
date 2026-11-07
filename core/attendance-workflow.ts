@@ -146,7 +146,7 @@ async function validateActivation(tx: Tx, ctx: SessionContext, input: AnyAttenda
      if(conflict?.bad)throw new AttendanceLevelError({code:'self_approval',levelIndex:null});
     }
     for(const id of targets){
-     try{await resolveStages(tx,id,input.stages,input.routingVersion,input.routingVersion===4?input.cc:[]);}
+     try{await tx.transaction(nested=>resolveStages(nested,id,input.stages,input.routingVersion,input.routingVersion===4?input.cc:[]));}
      catch(error){
       if(error instanceof AttendanceLevelError&&error.problem.levelIndex!==null){
        const stage=input.stages[error.problem.levelIndex];
@@ -202,7 +202,7 @@ export async function saveAttendanceWorkflow(ctx: SessionContext, raw: unknown, 
         return {...row,companyIds:companies};
     });
 }
-function manageableInScope(companyIds:string[]){return sql`app.attendance_workflow_all_companies_admin(${template.id}) and app.attendance_workflow_companies(${template.id}) <@ ARRAY[${sql.join(companyIds.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[]`;}
+function manageableInScope(companyIds:string[]){return sql`app.attendance_workflow_all_companies_admin(${template.id}) and app.attendance_workflow_companies(${template.id}) && ARRAY[${sql.join(companyIds.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[]`;}
 export function listAttendanceWorkflows(ctx:SessionContext,companyIds:string[]){
  return withTenant(ctx,tx=>companyIds.length?tx.select({...templateColumns(),companyIds:assignments}).from(template).where(and(manageableInScope(companyIds),isNull(template.supersededAt))).orderBy(asc(template.applicationType),asc(template.priority),asc(template.code)):Promise.resolve([]));
 }
@@ -542,7 +542,7 @@ async function previewAttendanceWorkflowCompany(ctx: SessionContext, raw: unknow
             // Preview the actual priority winner through the same resolver used by submission.
             if (!problem)
                 try {
-                    resolvedStages = await resolveStages(tx, id, matches[0].stages, matches[0].routingVersion,matches[0].cc);
+                    resolvedStages = await tx.transaction(nested=>resolveStages(nested,id,matches[0].stages,matches[0].routingVersion,matches[0].cc));
                 }
                 catch (e) {
                     if (e instanceof AttendanceLevelError) levelProblem = e.problem;

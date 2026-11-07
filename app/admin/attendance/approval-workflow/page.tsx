@@ -9,11 +9,12 @@ import {WorkflowRetirementControls} from './retirement-controls';
 import {RoutingSwitch} from './workflow-form';
 import {workflowRoot,type WorkflowQuery} from './navigation';
 export default async function AttendanceWorkflowPage({searchParams}:{searchParams:Promise<WorkflowQuery>}){
- const {s,scopeIds}=await scopedAdmin(),t=await getTranslations('attendanceWorkflow'),query=await searchParams;
+ const {s,scopeIds,allowedCompanyIds}=await scopedAdmin(),t=await getTranslations('attendanceWorkflow'),query=await searchParams;
  const applicationType=query.applicationType??'irregularity';
  if(applicationType!=='irregularity'&&applicationType!=='self_overtime')notFound();
- if(query.companyId!==undefined&&(typeof query.companyId!=='string'||!scopeIds.includes(query.companyId)))notFound();
- const [rows,settings,options,retired]=await Promise.all([listAttendanceWorkflows(s,scopeIds),listAttendanceWorkflowSettings(s,scopeIds),attendanceApplicationFilterOptions(s,scopeIds),listRetiredAttendanceWorkflows(s,scopeIds)]);
+ if(query.companyId!==undefined&&(typeof query.companyId!=='string'||!(allowedCompanyIds??scopeIds).includes(query.companyId)))notFound();
+ const ids=typeof query.companyId==='string'?[query.companyId]:scopeIds;
+ const [rows,settings,options,retired]=await Promise.all([listAttendanceWorkflows(s,ids),listAttendanceWorkflowSettings(s,allowedCompanyIds??scopeIds),attendanceApplicationFilterOptions(s,allowedCompanyIds??scopeIds),listRetiredAttendanceWorkflows(s,ids)]);
  const names=(ids:string[])=>ids.map(id=>options.companies.find(c=>c.id===id)?.name??t('unavailable',{value:id})).join(', ');
  const workflows=rows.filter(row=>row.applicationType===applicationType&&(!query.companyId||row.companyIds.includes(String(query.companyId))));
  return <div className={pageWideCls+' space-y-5'}>

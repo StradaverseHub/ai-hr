@@ -8,7 +8,7 @@ export function validateAnyAttendanceWorkflow(raw:unknown):AnyAttendanceWorkflow
  const {companyIds,expectedVersion,...config}=raw as Record<string,unknown>;
  const parsed=config.routingVersion===4?validateAttendanceV4Workflow(config):validateLegacy(config);
  const companies=companyIds===undefined?[parsed.companyId]:companyIds;
- if(!Array.isArray(companies)||!companies.length||companies.length>100||companies.some(id=>typeof id!=='string'||!/^[-0-9a-f]{36}$/i.test(id))||new Set(companies).size!==companies.length||!companies.includes(parsed.companyId))throw new AttendanceWorkflowError('invalid','Select one or more permitted companies.');
+ if(!Array.isArray(companies)||!companies.length||companies.length>100||companies.some(id=>typeof id!=='string'||!/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(id))||new Set(companies).size!==companies.length||!companies.includes(parsed.companyId))throw new AttendanceWorkflowError('invalid','Select one or more permitted companies.');
  if(expectedVersion!==undefined&&(!Number.isInteger(expectedVersion)||Number(expectedVersion)<1))throw new AttendanceWorkflowError('stale','Reload the workflow before saving.');
  return {...parsed,companyIds:[...companies].sort(),...(expectedVersion!==undefined?{expectedVersion:expectedVersion as number}:{})};
 }

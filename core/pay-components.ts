@@ -845,8 +845,8 @@ async function preparePayComponentWriteTx(tx:Tx,ctx:SessionContext,p:PayComponen
     await lockPayComponentCatalogTx(tx,ctx);
     const candidate = ruleOf(p);const candidateValidation=validatePayRule(candidate,p.prorates);if(!candidateValidation.ok)throw new PayRuleInvalidError(candidateValidation.code);
     if(candidate?.kind==='formula_builder'&&p.code.trim().toUpperCase()==='BASIC')throw new PayRuleInvalidError('BAD_KIND');
-    // Retain a byte-identical inactive link for ordinary metadata/settings maintenance. Only a NEW
-    // or changed link must obtain today's active tested revision; the kernel still refuses inactive use.
+    // Retain a byte-identical saved link for ordinary metadata/settings maintenance. New or changed
+    // links bind the latest saved revision; payroll independently rechecks its current dependency plan.
     const [stored]=candidate?.kind==='formula_builder'?await tx.select({rule:payComponent.rule}).from(payComponent).where(and(eq(payComponent.tenantId,ctx.tenantId),eq(payComponent.code,p.code))).limit(1):[];
     const unchanged=stored?.rule?.kind==='formula_builder'&&candidate?.kind==='formula_builder'&&stored.rule.formulaId===candidate.formulaId&&JSON.stringify([...stored.rule.dependencies].sort())===JSON.stringify([...candidate.dependencies].sort());
     const rule = unchanged ? stored.rule : candidate?.kind==='formula_builder' ? await bindPayFormulaRuleTx(tx,ctx,candidate) : candidate;
