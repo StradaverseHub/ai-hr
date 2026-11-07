@@ -37,10 +37,16 @@ runs:
         version: 10.33.2
         run_install: false
     - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+      if: ${{ inputs.native_controller != 'true' }}
       with:
         node-version: ${{ inputs.node }}
         cache: pnpm
         cache-dependency-path: ${{ inputs.path }}/pnpm-lock.yaml
+    - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+      if: ${{ inputs.native_controller == 'true' }}
+      with:
+        node-version: ${{ inputs.node }}
+        package-manager-cache: false
     - name: Protect native CI owner before package invocations
       if: ${{ inputs.native_controller == 'true' }}
       shell: bash

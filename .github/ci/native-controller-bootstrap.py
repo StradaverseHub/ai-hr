@@ -306,10 +306,13 @@ def prepare():
     environment = {key: os.environ[key] for key in ENVIRONMENT if key in os.environ}
     need(os.environ.get('GITHUB_JOB') == 'native-test', 'Bootstrap is native-job only')
     run, workspace = context(environment)
-    controller, source = workspace / 'automation', workspace / 'source'
+    controller = workspace / 'automation'
     need(pathlib.Path(__file__).absolute() == controller / SCRIPT, 'Original fixed controller bootstrap required')
-    for folder, expected in ((controller, environment['AIHR_CI_CONTROL_HEAD']), (source, environment['AIHR_CI_HEAD'])):
-        need(git(folder, ['rev-parse', 'HEAD']).decode().strip() == expected and git(folder, ['status', '--porcelain']) == b'', 'Original controller/source checkout differs')
+    # FIRST cache this exact receiver, before even metadata Git can execute.
+    # Source Git filters are candidate code: source status belongs exclusively
+    # to the later protected owner with a credential-free metadata environment.
+    with directory(controller) as root:
+        receiver, _ = read(root, SCRIPT, 1024**2)
     config = git(controller, ['config', '--local', '--null', '--list']).decode().split('\0')
     for entry in filter(None, config):
         key, _, value = entry.partition('\n')
@@ -317,8 +320,8 @@ def prepare():
              'Controller configuration contains an unowned credential/command source')
         if key == 'remote.origin.url':
             need(value in ('https://github.com/StradaverseHub/ai-hr', 'https://github.com/StradaverseHub/ai-hr.git'), 'Controller remote differs')
-    with directory(controller) as root:
-        receiver, _ = read(root, SCRIPT, 1024**2)
+    need(git(controller, ['rev-parse', 'HEAD']).decode().strip() == environment['AIHR_CI_CONTROL_HEAD']
+         and git(controller, ['status', '--porcelain']) == b'', 'Original trusted controller checkout differs')
     need(receiver == git(controller, ['show', environment['AIHR_CI_CONTROL_HEAD'] + ':' + SCRIPT]), 'Bootstrap differs from committed controller')
     tracked = []
     records = git(controller, ['ls-files', '--stage', '-z']).split(b'\0')

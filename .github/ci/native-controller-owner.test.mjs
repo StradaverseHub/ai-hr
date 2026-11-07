@@ -16,6 +16,7 @@ test('owner environment retains root-sealed public context and closes loader/pro
  assert.equal(actual.PATH.split(':')[0],context.root);assert(actual.PATH.indexOf('/usr/bin')<actual.PATH.indexOf('/home/runner/'));
  assert.equal(actual.GITHUB_PATH,'/current-step/path');assert.equal(actual.GITHUB_EVENT_PATH,context.root+'/event.json');
  assert.equal(ownerEnvironment(context,inherited,'run-unit').GH_TOKEN,'explicit-owner-api-token');
+ const role=ownerEnvironment(context,inherited,'role-plan');assert(!Object.hasOwn(role,'GH_TOKEN'));assert(!Object.hasOwn(role,'DATABASE_URL'));
 });
 test('caller paths and JSON markers cannot manufacture an actual protected owner process',()=>{
  assert.throws(()=>protectedOwnerContext({GITHUB_ACTIONS:'true',GITHUB_JOB:'native-test',GITHUB_RUN_ID:'123'},'/caller/controller.mjs'));
@@ -25,10 +26,15 @@ test('native setup protects controller before any candidate install and keeps or
  assert(action.indexOf('native-controller-bootstrap.py')<action.indexOf('run: pnpm install --frozen-lockfile'));
  assert(action.indexOf('native-controller-bootstrap.py')<action.indexOf('native-controller-owner.mjs'));
  assert(action.includes('run_install: false'));assert(action.includes("inputs.native_controller != 'true'"));
+ const setups=action.split('uses: actions/setup-node@').slice(1);assert.equal(setups.length,2);
+ assert(setups[0].includes('cache: pnpm'));assert(setups[1].includes('package-manager-cache: false'));
+ const nativeSetup=setups[1].split('- name: Protect native CI owner')[0];assert(!nativeSetup.includes('cache: pnpm'));assert(!nativeSetup.includes('cache-dependency-path:'));
  for(const command of ['run: pnpm install --frozen-lockfile','run: npm ci --prefix mobile --no-audit --no-fund','run: cp .env.example .env.local'])assert(action.includes(command));
  assert(!action.includes('<<:'));
  const workflow=readFileSync(new URL('../workflows/alpha-staging.yml',import.meta.url),'utf8'),native=workflow.split('  native-test:')[1].split('  browser:')[0];
  assert(native.includes("native_controller: 'true'"));assert(native.includes('native-controller-owner.mjs" run-unit'));
  assert(!native.includes('node ../automation/'));assert(!native.includes('pnpm exec playwright'));assert(!native.includes('pdf-tools.mjs --unit'));
  for(const key of ['LD_PRELOAD','LD_LIBRARY_PATH','LD_AUDIT','NODE_OPTIONS','BASH_ENV','ENV'])assert(native.includes(key+':'));
+ const owner=readFileSync(new URL('./native-controller-owner.mjs',import.meta.url),'utf8');
+ assert(owner.includes("if(operation==='role-plan')"));assert(owner.includes('JSON.stringify({plan:createPlan(),dbBatchFiles:DB_BATCH_FILES})'));
 });

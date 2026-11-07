@@ -71,9 +71,15 @@ function capacity(context,env){
 }
 export async function ownerMain(){
  const [operation,...args]=process.argv.slice(2),context=protectedOwnerContext();
- assert(['pdf-tools','run-unit','ensure-main','capacity','plan','setup'].includes(operation));
+ assert(['pdf-tools','run-unit','ensure-main','capacity','plan','role-plan','setup'].includes(operation));
  const inherited={...process.env},env=ownerEnvironment(context,inherited,operation);
  for(const key of Object.keys(process.env))delete process.env[key];Object.assign(process.env,env);
+ if(operation==='role-plan'){
+  assert.equal(args.length,0);
+  const {createPlan}=await import(pathToFileURL(context.automation+'/.github/ci/plan.mjs').href);
+  const {DB_BATCH_FILES}=await import(pathToFileURL(context.automation+'/.github/ci/manifest.mjs').href);
+  process.stdout.write(JSON.stringify({plan:createPlan(),dbBatchFiles:DB_BATCH_FILES}));return;
+ }
  if(operation==='setup'){
   assert(args.length===1&&['true','false'].includes(args[0]));
   const child=candidateEnvironment({...env,HOME:'/home/runner'});

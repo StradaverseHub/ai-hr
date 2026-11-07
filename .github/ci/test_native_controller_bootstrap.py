@@ -23,6 +23,66 @@ def environment():
 
 
 class BootstrapControls(unittest.TestCase):
+    def test_receiver_is_cached_before_even_controller_metadata_git(self):
+        class StopBeforeExternalProgram(Exception):
+            pass
+        with tempfile.TemporaryDirectory() as folder:
+            workspace = pathlib.Path(folder).resolve()
+            controller = workspace/'automation'
+            script = controller/M.SCRIPT
+            script.parent.mkdir(parents=True)
+            original = b'# original committed stdlib receiver model\n'
+            script.write_bytes(original)
+            script.chmod(0o644)
+            cached = []
+            read = M.read
+            def observe_read(root, relative, *args):
+                result = read(root, relative, *args)
+                if relative == M.SCRIPT:
+                    cached.append(result[0])
+                return result
+            def metadata_git(*_args, **_kwargs):
+                # Model mutation at this boundary, never execute a hook/root program.
+                script.write_bytes(b'# changed by a metadata callback\n')
+                self.assertEqual(cached, [original])
+                raise StopBeforeExternalProgram()
+            with mock.patch.object(M, '__file__', str(script)), mock.patch.dict(M.os.environ, environment(), clear=True), \
+                 mock.patch.object(M, 'context', return_value=('123', workspace)), mock.patch.object(M, 'read', side_effect=observe_read), \
+                 mock.patch.object(M, 'git', side_effect=metadata_git), self.assertRaises(StopBeforeExternalProgram):
+                M.prepare()
+
+    def test_unprotected_prepare_never_observes_candidate_source_git(self):
+        class StopBeforeExternalProgram(Exception):
+            pass
+        with tempfile.TemporaryDirectory() as folder:
+            workspace = pathlib.Path(folder).resolve()
+            controller = workspace/'automation'
+            script = controller/M.SCRIPT
+            script.parent.mkdir(parents=True)
+            original = b'# bounded receiver model, never executed\n'
+            script.write_bytes(original)
+            script.chmod(0o644)
+            node = workspace/'node'
+            node.write_bytes(b'\x7fELF synthetic fixture, never executed\n')
+            node.chmod(0o755)
+            observed = []
+            def metadata_git(path, args, **_kwargs):
+                observed.append(path)
+                if args[0] == 'rev-parse':
+                    return ('b'*40+'\n').encode()
+                if args[0] == 'show':
+                    return original
+                if args[0] == 'ls-files':
+                    return ('100644 '+'c'*40+' 0\towner.mjs\0').encode()
+                return b''
+            with mock.patch.object(M, '__file__', str(script)), mock.patch.dict(M.os.environ, environment(), clear=True), \
+                 mock.patch.object(M, 'context', return_value=('123', workspace)), mock.patch.object(M, 'git', side_effect=metadata_git), \
+                 mock.patch.object(M, 'snapshot', return_value=([], 0)), mock.patch.object(M.shutil, 'which', return_value=str(node)), \
+                 mock.patch.object(M.subprocess, 'run', side_effect=StopBeforeExternalProgram), self.assertRaises(StopBeforeExternalProgram):
+                M.prepare()
+            self.assertTrue(observed)
+            self.assertEqual(set(observed), {controller})
+
     def test_scope_refuses_non_native_later_attempt_foreign_context_and_credential_fields(self):
         self.assertEqual(M.context(environment()), ('123', pathlib.Path('/home/runner/work/ai-hr/ai-hr')))
         for key, value in [('GITHUB_JOB', 'test'), ('GITHUB_RUN_ATTEMPT', '2'), ('GITHUB_REPOSITORY_ID', '2'),
