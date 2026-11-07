@@ -11,9 +11,14 @@ export class EmployeeChoiceInputError extends Error{}
 export class EmployeeChoiceAccessError extends Error{}
 const uuid=/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/;
 const nonAscii=(value:SQL)=>sql`(${value} collate "C") ~ '[^ -~]'`;
+// RLS selectivity can underestimate 50k assignments as 10 and choose a quadratic
+// materialized population join. Retain an indexed per-employment lateral boundary;
+// OFFSET 0 prevents flattening without dropping any assignment or bypassing RLS.
 function employeeChoiceFrom(tenantId:string){return sql`from ${employment} join ${person} on ${person.id}=${employment.personId} and ${person.tenantId}=${tenantId}::uuid
  join ${company} on ${company.id}=${employment.companyId} and ${company.tenantId}=${tenantId}::uuid
- left join ${assignment} on ${assignment.employmentId}=${employment.id} and ${assignment.validTo} is null and ${assignment.supersededAt} is null and ${assignment.tenantId}=${tenantId}::uuid
+ left join lateral (select ${assignment.id},${assignment.departmentId},${assignment.businessUnitId}
+  from ${assignment} where ${assignment.employmentId}=${employment.id} and ${assignment.validTo} is null
+   and ${assignment.supersededAt} is null and ${assignment.tenantId}=${tenantId}::uuid offset 0) as ${sql.identifier('assignment')} on true
  left join ${department} on ${department.id}=${assignment.departmentId} and ${department.tenantId}=${tenantId}::uuid
  left join ${businessUnit} on ${businessUnit.id}=${assignment.businessUnitId} and ${businessUnit.tenantId}=${tenantId}::uuid`;}
 const normalizeId=(value:string|undefined)=>{
@@ -49,9 +54,13 @@ export async function readEmployeeChoices(ctx:SessionContext,p:EmployeeChoiceInp
   const base=sql`select ${columns(labelMode==='labels')} ${from}`;
   let rows:EmployeeChoice[]=[],total=0;
   if(!q){
-   const [count]=await tx.execute<{total:number}>(sql`select count(*)::int as total ${from} where ${where}`);total=count.total;
+   // One native population walk supplies both the exact count and bounded page.
+   // An empty/out-of-range page needs a separate count; it must never imply total=0.
+   const page=await tx.execute<EmployeeChoice&{total:number}>(sql`select ${columns(labelMode==='labels')},(count(*) over())::int as total ${from}
+    where ${where} order by ${person.fullName},${employment.id},${assignment.id} limit ${limit} offset ${offset}`);
    signal?.throwIfAborted();
-   rows=await tx.execute<EmployeeChoice>(sql`${base} where ${where} order by ${person.fullName},${employment.id},${assignment.id} limit ${limit} offset ${offset}`);
+   if(page.length){total=page[0].total;rows=page.map(({total:count,...row})=>row);}
+   else{const [count]=await tx.execute<{total:number}>(sql`select count(*)::int as total ${from} where ${where}`);total=count.total;signal?.throwIfAborted();}
   }else{
    // PostgreSQL locale lower/ILIKE is not ECMAScript lower/includes. ASCII-only rows
    // admit exact native candidates; every non-ASCII row remains a conservative candidate.
