@@ -3,7 +3,7 @@ import {randomUUID} from 'node:crypto';
 import {sql} from 'drizzle-orm';
 import {z} from 'zod';
 import type {SessionContext,Tx} from '../../db/client';
-import {setupPersonTx,setupAuthority,setupTenant,setupLock,setupEvent} from './setup-data';
+import {setupPersonTx,setupAuthority,setupTenant,setupReadTenant,setupLock,setupEvent} from './setup-data';
 import {validateRewardLibrary,gradeCodeForLibrary,setupUuid,setupYear,setupReason,RewardSetupError,type RewardLibrary,type LibraryCandidate} from './setup-model';
 export type RewardLibraryVersion={id:string;libraryId:string;kind:'salary'|'bonus';name:string;year:number;tags:string[];groupDefault:boolean;previousLibraryId:string|null;sourcePolicyVersionId?:string|null;version:number;data:RewardLibrary;state:'draft'|'pending'|'confirmed';lockVersion:number;createdBy:string;contributors:string[];createdByPersonId?:string;contributorPersonIds?:string[];confirmedBy:string|null;confirmedAt:string|null;reason:string;locked:boolean;usedBy:{plan:string;company:string;year:number}[]};
 export async function libraryVersionTx(tx:Tx,ctx:SessionContext,id:string,requireConfirmed=false):Promise<RewardLibraryVersion>{
@@ -27,11 +27,11 @@ export function submitRewardLibrary(ctx:SessionContext,id:string,expectedLock:nu
 export function confirmRewardLibrary(ctx:SessionContext,id:string,expectedLock:number){setupUuid.parse(id);return setupTenant(ctx,async tx=>{await setupAuthority(tx,null,'manage');await setupPersonTx(tx);await setupLock(tx,ctx,'library');const v=await libraryVersionTx(tx,ctx,id);if(v.state!=='pending'||v.lockVersion!==expectedLock)throw new RewardSetupError('changed','Reopen the current pending version.');if(v.contributors.includes(ctx.userId!)||(v.contributorPersonIds??[]).includes(await setupPersonTx(tx)))throw new RewardSetupError('independent','A different Group Rewards user must confirm this version.');validateRewardLibrary(v.data);await checkGradeIds(tx,ctx,v.data);await tx.execute(sql`update reward_library_version set state='confirmed',confirmed_by=${ctx.userId}::uuid,confirmed_at=now(),lock_version=lock_version+1,updated_at=now() where id=${id}::uuid and tenant_id=${ctx.tenantId}::uuid`);await setupEvent(tx,ctx,'library.confirmed',id,{libraryId:v.libraryId,version:v.version});});}
 export function libraryCandidates(rows:readonly RewardLibraryVersion[]):LibraryCandidate[]{return rows.filter(r=>r.state==='confirmed').map(r=>({id:r.id,libraryId:r.libraryId,name:r.name,year:r.year,version:r.version,kind:r.kind,tags:r.tags,groupDefault:r.groupDefault,previousLibraryId:r.previousLibraryId,...(r.data.kind==='bonus'?{type:r.data.type}:{})}));}
 export function rewardLibraryForExport(ctx:SessionContext,id:string){return setupTenant(ctx,async tx=>{const v=await libraryVersionTx(tx,ctx,id);await setupEvent(tx,ctx,'library.exported',id,{libraryId:v.libraryId,version:v.version});return v;});}
-export function rewardLibraryGradeChoices(ctx:SessionContext){return setupTenant(ctx,async tx=>{await setupAuthority(tx,null,'library_view');const rows=await tx.execute<{id:string;code:string;name:string}>(sql`select * from app.reward_setup_grade_choices()`);return rows.map(r=>({gradeId:r.id,grade:gradeCodeForLibrary(r.code),name:r.name}));});}
+export function rewardLibraryGradeChoices(ctx:SessionContext){return setupReadTenant(ctx,async tx=>{await setupAuthority(tx,null,'library_view');const rows=await tx.execute<{id:string;code:string;name:string}>(sql`select * from app.reward_setup_grade_choices()`);return rows.map(r=>({gradeId:r.id,grade:gradeCodeForLibrary(r.code),name:r.name}));});}
 
 export function rewardLibraryHistory(ctx:SessionContext,id:string){
  setupUuid.parse(id);
- return setupTenant(ctx,async tx=>{
+ return setupReadTenant(ctx,async tx=>{
   await setupAuthority(tx,null,'library_view');
   return [...await tx.execute<{lockVersion:number;actorId:string;occurredAt:string;reason:string;beforeState:string|null;afterState:string;before:RewardLibrary|null;after:RewardLibrary}>(sql`select lock_version as "lockVersion",actor_id as "actorId",occurred_at::text as "occurredAt",reason,before_state as "beforeState",after_state as "afterState",before_values as "before",after_values as "after" from reward_library_revision_audit where version_id=${id}::uuid and tenant_id=${ctx.tenantId}::uuid order by lock_version desc`)];
  });
