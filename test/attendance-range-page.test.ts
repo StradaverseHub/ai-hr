@@ -1,11 +1,10 @@
 /** Actual Records owner: date-bounded native inputs, exact legacy figures and one MVCC snapshot. */
 import {randomUUID} from 'node:crypto';
-import {and,eq} from 'drizzle-orm';
 import {afterAll,afterEach,beforeAll,beforeEach,expect,it,vi} from 'vitest';
 import * as schema from '../db/schema';
 import {client,type SessionContext} from '../db/client';
 import {attendanceEmploymentRangePage,attendanceForEmploymentRange,attendancePunchesForRange} from '../packs/attendance/service';
-import {hireEmployee} from '../core/org';
+import {hireEmployee,setReportingLine} from '../core/org';
 import {parsePageQuery} from '../lib/pagination';
 import {adminCtx,closeAll,createAppUser,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
 let b:Base,ctx:SessionContext,employmentId:string,personId:string;
@@ -90,12 +89,25 @@ it('keeps day figures and punch details on one snapshot when an update commits b
 it('preserves native own and foreign visibility, rejects forged callers and keeps empty-page counts truthful',async()=>{
  const employee={...ctx,userId:await createAppUser(b.tenantId,personId,'employee'),personId,roles:['employee'],grants:[{role:'employee' as const,companyId:null}]};
  expect((await attendanceEmploymentRangePage(employee,employmentId,from,to,parsePageQuery())).dayPage).toHaveLength(25);
+ const manager=await hireEmployee(ctx,{person:{fullName:'Fictional paged manager',primaryEmail:'paged-manager@example.test'},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:'2020-01-01'});
+ await setReportingLine(ctx,{subordinateEmploymentId:employmentId,managerEmploymentId:manager.employmentId,lineType:'administrative',validFrom:'2020-01-01'});
+ const managerCtx={...ctx,userId:await createAppUser(b.tenantId,manager.personId,'manager'),personId:manager.personId,roles:['manager'],grants:[{role:'manager' as const,companyId:null}]};
+ const managerCanonical=await attendanceForEmploymentRange(managerCtx,employmentId,from,to);
+ expect(managerCanonical).toHaveLength(31);
+ expect((await attendanceEmploymentRangePage(managerCtx,employmentId,from,to,parsePageQuery())).dayPage).toEqual(managerCanonical.slice(0,25));
  const foreign=adminCtx(await seedBase());
  expect(await attendanceForEmploymentRange(foreign,employmentId,from,to)).toEqual([]);
  expect(await attendanceEmploymentRangePage(foreign,employmentId,from,to,parsePageQuery())).toMatchObject({dayPage:[],total:0});
  await expect(attendanceEmploymentRangePage({...ctx,personId:randomUUID()},employmentId,from,to,parsePageQuery())).rejects.toThrow('calling authority');
  const {spy,queries}=observeDayQueries();
  try{expect(await attendanceEmploymentRangePage(ctx,employmentId,from,to,parsePageQuery({page:'100'}))).toMatchObject({dayPage:[],total:31,pgState:{from:0,to:0}});expect(queries).toEqual([]);}finally{spy.mockRestore();}
+});
+
+it('keeps the inclusive400-day boundary and the shared All choice complete',async()=>{
+ const result=await attendanceEmploymentRangePage(ctx,employmentId,from,'2027-08-04',parsePageQuery({size:'all'}));
+ expect(result.total).toBe(400);expect(result.dayPage).toHaveLength(400);
+ expect(result.dayPage[0].date).toBe('2026-07-01');expect(result.dayPage.at(-1)!.date).toBe('2027-08-04');
+ expect(result.pgState).toMatchObject({total:400,from:1,to:400,size:'all',hasNext:false,truncated:false});
 });
 
 it.each([['2026-02-30',to],['2026-08-01',to],['2020-01-01',to]])('rejects an invalid or truncated range before SQL (%s)',async(start,end)=>{
