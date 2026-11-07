@@ -2874,6 +2874,8 @@
       "instructionAccepted": "Giá trị được chấp nhận: {values}",
       "bankStatutoryUploadFailed": "Không thể lưu lần nhập. Không có gì thay đổi. Hãy thử lại hoặc mở Lịch sử nhập để kiểm tra.",
       "viewImportHistoryEntry": "Xem lần nhập này trong Lịch sử nhập",
+      "validationRequestFailed": "Không thể kiểm tra dữ liệu nhập. Hãy thử lại. Nếu vẫn không thành công, hãy liên hệ quản trị viên.",
+      "commitRequestFailed": "Không thể xác nhận kết quả nhập. Hãy kiểm tra Lịch sử nhập trước khi thử lại.",
       "employeeUploadFailed": "Không thể lưu lần nhập. Không có gì thay đổi. Hãy thử lại, hoặc mở Lịch sử nhập để kiểm tra.",
       "instructionDuplicateEmail": "Email: khi tắt \"Cho phép trùng email công việc hoặc email cá nhân\" (cài đặt Nhân sự chung), email đã được nhân viên khác sử dụng sẽ bị từ chối, giống như NRIC trùng. Khi bật, dòng đó được nhập kèm cảnh báo.",
       "instructionStatutorySettings": "Ngân hàng & Luật định: mọi cài đặt trên thẻ đều có thể điền tại đây, cùng các cột với mẫu Ngân hàng & Luật định — hạng mục EPF với tỷ lệ hoặc số tiền và lý do, các công tắc chủ lao động chịu, hạng mục SOCSO và EIS, Thuộc diện SKBBK, HRDF (Có, Không hoặc Mặc định), hoàn cảnh thuế, tình trạng cư trú thuế thu nhập, OKU, chế độ và bảng giảm trừ con, và Chủ lao động chịu thuế. Các cài đặt dạng ô đánh dấu nhận Có hoặc Không. Mỗi dòng được kiểm tra bằng cùng quy tắc với màn hình nhân viên trước khi lưu; dòng có lỗi sẽ không tạo gì.",

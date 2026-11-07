@@ -85,3 +85,7 @@ it('removes old compound columns from downloads but accepts them for one warned 
   expect(parsePersonnelImportCsv('Probation Period (month)\n3',{columns,generation:2}).warnings[0]).toContain('Older header');
   expect(()=>parsePersonnelImportCsv('Probation Period (month)\n3',{columns,generation:3})).toThrow(/removed/);
 });
+
+it.each(['full_name,,email\nFictional,,fixture@example.test','full_name, ,email\nFictional,has data,fixture@example.test','full_name,email,\nFictional,fixture@example.test,'])('identifies a blank heading without silently discarding its cells: %s',csv=>{
+  expect(()=>parsePersonnelImportCsv(csv,{columns})).toThrow(/blank column heading at column [23].*remove the column if it is unused/);
+});

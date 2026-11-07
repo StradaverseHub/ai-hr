@@ -121,7 +121,8 @@ export function parsePersonnelImportCsv(text:string, options:PersonnelImportHead
   const sheet=options.sheet??'employee';
   const candidates=personnelImportHeaderCandidates(rows[0],options);
   const warnings:string[]=[];const seen=new Set<string>();
-  const headers=candidates.map(({raw,matches,current})=>{
+  const headers=candidates.map(({index,raw,matches,current})=>{
+    if(!normalized(raw))throw new PersonnelImportHeaderError(`The ${sheet} worksheet has a blank column heading at column ${index+1}. Add the matching heading from the current template, or remove the column if it is unused, then upload the file again.`);
     if(matches.length!==1)throw new PersonnelImportHeaderError(matches.length ? `Ambiguous column “${raw}”. Download the current template and use its complete heading.` : `Unrecognized or removed column “${raw}”. Download the current template; this column cannot be applied.`);
     const column=matches[0];
     if(seen.has(column))throw new PersonnelImportHeaderError(`Column “${raw}” repeats “${personnelColumnLabel(column,sheet)}”. Keep one column; old and new headings cannot appear together.`);
