@@ -5153,6 +5153,13 @@
       "when": 1793330002534,
       "tag": "2701_personnel_typed_overview_filter_fields",
       "breakpoints": true
+    },
+    {
+      "idx": 2235,
+      "version": "7",
+      "when": 1793330002535,
+      "tag": "2903_notification_receipt_cycle_authority",
+      "breakpoints": true
     }
   ]
 }

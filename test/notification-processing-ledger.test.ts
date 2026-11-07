@@ -1,7 +1,9 @@
+import * as schema from '../db/schema';
+import {DEFAULT_RATING_SCALE} from '../packs/performance/service';
 import {randomUUID} from 'node:crypto';
 import {readFileSync} from 'node:fs';
 import {afterAll,beforeAll,expect,it} from 'vitest';
-import {sql} from 'drizzle-orm';
+import {eq,sql} from 'drizzle-orm';
 import {dispatchNotifications,dispatchNotificationsFromSweep} from '../core/notifications';
 import {hireEmployee} from '../core/org';
 import {withTenant} from '../db/client';
@@ -95,4 +97,41 @@ it('upgrades a populated cursor without replaying historical events and enqueues
   expect(await tx`select event_id from notification_event_processing where event_id=${rollbackId}::uuid`).toHaveLength(0);
   throw stop;
  })).rejects.toBe(stop);
+});
+
+it('does not let company-A HR consume company-B assessment receipts through broad audit-event visibility',async()=>{
+ const {b}=await fixture();
+ const [other]=await owner.db.insert(schema.company).values({tenantId:b.tenantId,legalName:'Fictional company B'}).returning();
+ await setModule(b.tenantId,'performance','active');
+ await setModule(b.tenantId,'notifications','disabled');
+ for(const id of [b.companyId,other.id])await setModule(b.tenantId,'notifications','active',id);
+ async function actor(companyId:string){
+  const userId=await createAppUser(b.tenantId,null,'hr_admin');
+  await owner.db.update(schema.roleAssignment).set({companyId}).where(eq(schema.roleAssignment.appUserId,userId));
+  return {...adminCtx(b),userId,grants:[{role:'hr_admin',companyId}]};
+ }
+ const a=await actor(b.companyId),authorized=await actor(other.id);
+ const [cycle]=await owner.db.insert(schema.reviewCycle).values({tenantId:b.tenantId,companyId:other.id,name:'Fictional scoped reminder cycle',periodStart:'2026-01-01',periodEnd:'2026-12-31',ratingScale:DEFAULT_RATING_SCALE}).returning();
+ const [run]=await owner.db.insert(schema.assessmentReminderRun).values({tenantId:b.tenantId,cycleId:cycle.id,mode:'manual'}).returning();
+ const [recipient]=await owner.db.insert(schema.assessmentReminderRecipient).values({tenantId:b.tenantId,runId:run.id,userId:b.adminUserId,outcome:'queued'}).returning();
+ const eventId=randomUUID();
+ await owner.client`insert into domain_event(id,tenant_id,aggregate_type,aggregate_id,event_type,actor_type,payload)
+  values(${eventId}::uuid,${b.tenantId}::uuid,'assessment-reminder',${recipient.id}::uuid,'assessment.reminder-queued','system','{}'::jsonb)`;
+ await owner.db.update(schema.assessmentReminderRecipient).set({sourceEventId:eventId}).where(eq(schema.assessmentReminderRecipient.id,recipient.id));
+ await withTenant(a,async tx=>{
+  expect(await tx.execute(sql`select id from domain_event where id=${eventId}::uuid`)).toHaveLength(1);
+  expect(await tx.execute(sql`select id from performance_assessment_reminder_run where id=${run.id}::uuid`)).toHaveLength(0);
+  expect(await tx.execute(sql`select event_id from notification_event_processing where event_id=${eventId}::uuid`)).toHaveLength(0);
+  expect(await tx.execute(sql`update notification_event_processing set disposition='processed',processed_at=now() where event_id=${eventId}::uuid returning event_id`)).toHaveLength(0);
+ });
+ expect(await dispatchNotifications(a)).toEqual({processed:0,created:0});
+ expect(await owner.client`select consumer,disposition from notification_event_processing where event_id=${eventId}::uuid order by consumer`).toEqual([{consumer:'assessment-reminders',disposition:null},{consumer:'notifications',disposition:null}]);
+ await withTenant(authorized,async tx=>{
+  expect(await tx.execute(sql`select id from performance_assessment_reminder_run where id=${run.id}::uuid`)).toHaveLength(1);
+  expect(await tx.execute(sql`select event_id from notification_event_processing where event_id=${eventId}::uuid`)).toHaveLength(1);
+ });
+ // This source has no employment recipient: its authorized native outcome is no projection,
+ // but only the native cycle administrator may consume that intent.
+ expect(await dispatchNotifications(authorized)).toEqual({processed:1,created:0});
+ expect(await owner.client`select disposition from notification_event_processing where event_id=${eventId}::uuid and consumer='assessment-reminders'`).toEqual([{disposition:'processed'}]);
 });

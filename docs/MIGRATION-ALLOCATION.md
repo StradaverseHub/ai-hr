@@ -2339,3 +2339,18 @@ already verified SHA256 `87b1b0a0dd532eda1211dddcd5af2a8b14013a66615527cffa3c1be
 No applied SQL or existing main/alpha journal tuple changed. Recheck the actual installed
 ordered ledger, newest refs and competing claims before admission. This source merge is
 not a test PASS or deployment; production remains on hold.
+
+
+## Combined scoped notification receipt authority — 7 November 2026
+
+Freshly fetched all-ref/WIP scan: 3,025 heads, 675 committed migration trees, 481
+committed journals and 354 readable worktrees. Maximum prior tag2902 / idx2234 /
+when1793330002534; the unrelated malformed WIP journal remains untouched and its
+literal bounds are included. Reserve `2903_notification_receipt_cycle_authority`
+at idx2235 / when1793330002535, SHA256 `82711cacac3c69fc217fb9038ccc6a6000dc41c746e3751d8584499698471e22`.
+
+This appends the independently reviewed native event→recipient→run/cycle authority
+correction found during isolated correctness review. It changes no historical SQL
+or native notification content, action or recipient rule. Earlier receipt identity,
+retention and least-privilege grants stay intact. Recheck the installed ledger and
+all allocations at admission. No installation or production authority is claimed.
