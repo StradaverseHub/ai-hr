@@ -3,6 +3,8 @@ import {execFileSync,spawnSync} from 'node:child_process';
 import {createHash,randomUUID} from 'node:crypto';
 import {readFileSync,writeFileSync,mkdirSync,realpathSync,lstatSync} from 'node:fs';
 import {join,resolve} from 'node:path';
+import {employeeChoiceBenchmarkLifetime,employeeChoiceBenchmarkBounds} from './performance/employee-choice-benchmark-lifetime';
+import {employeeChoiceBenchmarkEvidence} from './performance/employee-choice-benchmark-evidence';
 import {cpus,totalmem} from 'node:os';
 import {inArray,sql} from 'drizzle-orm';
 import {PgDialect} from 'drizzle-orm/pg-core';
@@ -29,12 +31,14 @@ const selection:unknown=JSON.parse(process.env.AIHR_FOCUSED_TESTS??'[]');
 // This temporary focused experimental route is not a normal-CI profile witness.
 // Accepted integration must register the complete file and call admitSingletonTest.
 const requested=process.env.GITHUB_ACTIONS==='true'&&Array.isArray(selection)&&selection.length===1&&selection[0]===file;
-beforeAll(migrateTestDb);
+beforeAll(async()=>{initializeEvidence();lifetime.start();await lifetime.run('migration',migrateTestDb);});
 type Variant='current'|'native';const variants:readonly Variant[]=['current','native'];
 type Page=Awaited<ReturnType<typeof current.readEmployeeChoices>>;
 type Input=Parameters<typeof current.readEmployeeChoices>[1];
 const stable=({contextId:_contextId,...page}:Page)=>page;
-let blocked:Error|undefined,failedCase=false,signal:AbortSignal|undefined,activeWork:Promise<void>|undefined;
+let blocked:Error|undefined,failedCase=false;
+let evidenceWriter:ReturnType<typeof employeeChoiceBenchmarkEvidence>|undefined;
+let capturePlans:((phase:string)=>Promise<void>)|undefined;
 let installation:Awaited<ReturnType<typeof installEmployeeChoiceNativePrototype>>|undefined;
 let timing:Awaited<ReturnType<typeof employeeChoicePurposeSession>>|undefined,plansSession:Awaited<ReturnType<typeof employeeChoicePurposeSession>>|undefined;
 let logging:Awaited<ReturnType<typeof employeeChoicePlanLogging>>|undefined;
@@ -43,6 +47,7 @@ let completeFixtureIds:string[]=[];
 let cardinalities:Awaited<ReturnType<typeof employeeChoiceActualCardinalities>>;
 const report:Record<string,unknown>={kind:'NATIVE_EMPLOYEE_CHOICE_NEARER_PAGE_SERVER_SET_V4',releaseEligible:false,productionPolicyApproved:false,migrationAllocated:false,
  complete:false,employees:50000,variants,wholePortsPerVariant:17,caseBudgetMs:300000,statementTimeoutMs:20000,lockTimeoutMs:300,targetMs:1000,
+ fileBudget:employeeChoiceBenchmarkBounds,retainedCancelledRun:{run:42414058820,source:'3e9ebeafc0cd41326790c3435b009090db9b0dac',conclusion:'cancelled',annotation:'The job has exceeded the maximum execution time of 20m0s',executionLogsAvailable:false,artifactsAvailable:false,benchmarkOrCleanupAcceptance:false},
  control:{commit:'f1515376df082438ca025fb65d01a8a3330a8796',sourceSha256:'ce1e3559addbffa4b4e780594ebcc5fcf917ddffde79a6155cc7fbcecdbcfbd5'},
  topology:'Timing variants share one actual app backend; plan-only variants share a second actual app backend. PIDs are distinct and never relabeled.',
  registration:'TEMPORARY_SOLE_FOCUSED_DEVELOPMENT_ONLY; complete normal-CI singleton admission remains pending',
@@ -61,18 +66,29 @@ const report:Record<string,unknown>={kind:'NATIVE_EMPLOYEE_CHOICE_NEARER_PAGE_SE
  limitations:'Fixed current-root-first ordering, warm fixture/statistics and few samples are not p95/capacity or whole-browser proof. No index, RLS, grant, JIT threshold, work_mem or global setting changes. Only the fixed native function scopes jit=off.',
  host:{node:process.version,logicalCpus:cpus().length,ramBytes:totalmem(),cpuModels:[...new Set(cpus().map(cpu=>cpu.model))]}};
 const save=()=>{if(output)writeFileSync(join(output,'employee-choice-native-purpose-plan.json'),JSON.stringify(report,null,2)+'\n',{mode:0o600});};
-const active=()=>{if(blocked)throw blocked;signal?.throwIfAborted();};
-const poison=(error:Error)=>{blocked=error;};
-async function bounded(context:TestContext,work:()=>Promise<void>,setup=false){
- active();expect(activeWork).toBeUndefined();signal=context.signal;
- let stopping:Promise<unknown>|undefined;
- const abort=()=>{blocked=new Error('Native purpose case aborted; all later work refused',{cause:context.signal.reason});
-  stopping=Promise.allSettled([timing?.close(),plansSession?.close(),...(setup?[closeAll()]:[])]);};
- context.signal.addEventListener('abort',abort,{once:true});const pending=Promise.resolve().then(()=>{active();return work();});activeWork=pending;
- context.onTestFinished(async()=>{try{await stopping;await pending;}finally{context.signal.removeEventListener('abort',abort);activeWork=undefined;signal=undefined;}});
- try{await pending;}
- catch(error){failedCase=true;if(setup){blocked=error instanceof Error?error:new Error('Native purpose preparation failed');await Promise.allSettled([timing?.close(),plansSession?.close()]);}throw error;}
+const progress=(event:Record<string,unknown>):void=>{evidenceWriter?.append({...event,elapsedMs:lifetime.snapshot().elapsedMs,timingPid:timing?.defaults.pid??null,planPid:plansSession?.defaults.pid??null});};
+const lifetime=employeeChoiceBenchmarkLifetime(async()=>{
+ const outcomes=await Promise.allSettled([timing?.close(),plansSession?.close()]);
+ const failures=outcomes.filter(row=>row.status==='rejected');if(failures.length)throw new AggregateError(failures,'Owned application sessions did not close');
+},event=>{report.lifetimeEvent=event;progress(event);save();});
+const signal=lifetime.signal;
+const active=()=>{if(blocked)throw blocked;lifetime.active();signal.throwIfAborted();};
+const poison=(error:Error)=>{blocked=error;lifetime.stop('owner-uncertain');};
+function initializeEvidence(){
+ const base=resolve(process.env.AIHR_FOCUSED_EVIDENCE_DIR!);expect(realpathSync(base)).toBe(base);expect(lstatSync(base).uid).toBe(process.getuid!());
+ output=join(base,'employee-choice-native-purpose');mkdirSync(output,{mode:0o700});
+ evidenceWriter=employeeChoiceBenchmarkEvidence(output,{source:process.env.AIHR_CI_HEAD!,controller:process.env.AIHR_CI_CONTROL_HEAD!,run:process.env.GITHUB_RUN_ID!,attempt:process.env.GITHUB_RUN_ATTEMPT!});save();
 }
+async function bounded(context:TestContext,name:string,work:()=>Promise<void>,setup=false){
+ const abort=()=>{blocked=new Error('Native purpose case aborted; all later work refused',{cause:context.signal.reason});lifetime.stop('case-aborted');};
+ context.signal.addEventListener('abort',abort,{once:true});if(context.signal.aborted)abort();
+ context.onTestFinished(async()=>{
+  try{await lifetime.drain();}finally{context.signal.removeEventListener('abort',abort);if(signal.aborted)await finishOwned();}
+ });
+ try{await lifetime.run(name,work);}
+ catch(error){failedCase=true;if(setup){blocked=error instanceof Error?error:new Error('Native purpose preparation failed');lifetime.stop('setup-failed');}throw error;}
+}
+
 function evidence(){
  active();const profile=postgresProfileFromEnv(process.env);
  // The genuine temporary focused provisioner owns db-1; normal registered units
@@ -144,12 +160,18 @@ async function matrix(variant:Variant,session:Awaited<ReturnType<typeof employee
  const {b,ctx,organisationTagSample}=fixture!,read=pageReader(variant),ports=(report.ports??={})as Record<string,{samples?:number[];ms?:number}>;
  const markerCall=async(label:string,edge:'begin'|'end')=>{session.assertIdle();await session.single.db.execute(marker(label,edge));};
  const call=async<T>(name:string,sample:number,read:()=>Promise<T>):Promise<T>=>{
-  active();const label=variant+':'+name+':'+sample;
-  if(phase==='plans'){markers.push({label,begin:dialect.sqlToQuery(marker(label,'begin')).sql,end:dialect.sqlToQuery(marker(label,'end')).sql,native:variant==='native',expectedNativeCalls:variant==='native'?expectedNativeCalls(name):undefined});await markerCall(label,'begin');}
-  const value=await read();if(phase==='plans')await markerCall(label,'end');return value;
+  active();const label=variant+':'+name+':'+sample;report.phase=phase+':'+label;progress({kind:'port-started',phase,label});save();
+  try{
+   if(phase==='plans'){markers.push({label,begin:dialect.sqlToQuery(marker(label,'begin')).sql,end:dialect.sqlToQuery(marker(label,'end')).sql,native:variant==='native',expectedNativeCalls:variant==='native'?expectedNativeCalls(name):undefined});await markerCall(label,'begin');}
+   const value=await read();if(phase==='plans'){await markerCall(label,'end');if(!capturePlans)throw Error('Actual native capture owner unavailable');await capturePlans(label);}
+   progress({kind:'port-returned',phase,label,oracleAcceptance:false});save();return value;
+  }catch(error){progress({kind:'port-failed',phase,label});save();
+   if(phase==='plans')try{await capturePlans?.('partial:'+label);}catch{progress({kind:'partial-capture-incomplete',phase,label});}
+   throw error;
+  }
  };
  for(const c of cases()){
-  active();report.phase=phase+':'+variant+':'+c.name;save();
+  active();report.phase=phase+':'+variant+':'+c.name;progress({kind:'port-prerequisites',phase:report.phase});save();
   const facts=await database.withTenant(ctx,async tx=>{await assertAiPresentationPrincipalTx(tx,ctx);return employeeChoiceAuthorizedPopulationFacts(tx,ctx.tenantId,c.input.companyIds);},{readOnlySnapshot:true});
   const populations=(report.authorizedServerPopulationFacts??={})as Record<string,unknown>;populations[phase+':'+variant+':'+c.name]=facts;
   const before=phase==='timing'?resources():undefined,samples:number[]=[];
@@ -206,12 +228,11 @@ async function matrix(variant:Variant,session:Awaited<ReturnType<typeof employee
  save();
 }
 
-it.skipIf(!requested)('prepares exactly50k fictional current-root facts and a guarded unnumbered function',{timeout:300000},context=>bounded(context,async()=>{
- expect(process.env.RUNNER_ENVIRONMENT).toBe('github-hosted');const base=resolve(process.env.AIHR_FOCUSED_EVIDENCE_DIR!);expect(realpathSync(base)).toBe(base);expect(lstatSync(base).uid).toBe(process.getuid!());
- output=join(base,'employee-choice-native-purpose');mkdirSync(output,{mode:0o700});save();
- installation=await installEmployeeChoiceNativePrototype();report.function={signature:installation.installed.definition,sourceSha256:installation.sourceSha256,security:installation.security};
- fixture=await seedPersonnelNativeFixture(50000,report,phase=>{report.phase=phase;save();},save,'Fictional retained Personnel 人員 ');
- representedBu=randomUUID();emptyBu=randomUUID();await owner.db.insert(businessUnit).values([
+it.skipIf(!requested)('prepares exactly50k fictional current-root facts and a guarded unnumbered function',{timeout:300000},context=>bounded(context,'prepare',async()=>{
+ expect(process.env.RUNNER_ENVIRONMENT).toBe('github-hosted');active();
+ installation=await installEmployeeChoiceNativePrototype();active();report.function={signature:installation.installed.definition,sourceSha256:installation.sourceSha256,security:installation.security};
+ fixture=await seedPersonnelNativeFixture(50000,report,phase=>{active();report.phase=phase;progress({kind:'fixture-progress',phase});save();},save,'Fictional retained Personnel 人員 ');
+ active();representedBu=randomUUID();emptyBu=randomUUID();await owner.db.insert(businessUnit).values([
   {id:representedBu,tenantId:fixture.b.tenantId,companyId:fixture.b.companyId,code:'ORG-SUBSET',name:'Fictional organisation subset'},
   {id:emptyBu,tenantId:fixture.b.tenantId,companyId:fixture.b.companyId,code:'ORG-EMPTY',name:'Fictional unrepresented unit'}]);
  await owner.db.update(assignment).set({businessUnitId:representedBu}).where(inArray(assignment.employmentId,fixture.organisationTagSample));await owner.client`analyze assignment`;await owner.client`analyze business_unit`;
@@ -227,15 +248,15 @@ it.skipIf(!requested)('prepares exactly50k fictional current-root facts and a gu
  report.timingBackend=timing.defaults;report.preparationComplete=true;await installation.unchanged();save();
 },true));
 
-it.skipIf(!requested).for(variants)('measures all17 actual whole ports with %s implementation',{timeout:300000},(variant,context)=>bounded(context,async()=>{
+it.skipIf(!requested).for(variants)('measures all17 actual whole ports with %s implementation',{timeout:300000},(variant,context)=>bounded(context,'timing:'+variant,async()=>{
  expect(timing).toBeTruthy();const spy=timing!.install();
  await preserveDiagnosticFailure(async()=>{const stats=(report.plannerStatistics??={})as Record<string,unknown>;stats['timing:'+variant]=await employeeChoicePlannerSnapshot();
   await matrix(variant,timing!,'timing');const complete=(report.performanceVariants??=[])as string[];complete.push(variant);save();
  },async()=>{spy.mockRestore();await timing!.verify('variant-complete');await installation!.unchanged();});
 }));
 
-it.skipIf(!requested)('captures real nested native plans on a separate bound app PID with exact owned-DB config restoration',{timeout:300000},context=>bounded(context,async()=>{
- let restoreSpy=()=>{};
+it.skipIf(!requested)('captures real nested native plans on a separate bound app PID with exact owned-DB config restoration',{timeout:300000},context=>bounded(context,'plans',async()=>{
+ let restoreSpy=()=>{},verifyLatestPlans:(()=>void)|undefined;
  await preserveDiagnosticFailure(async()=>{
  logging=await employeeChoicePlanLogging(installation!.database);report.instrumentationConfig={beforeSha256:logging.beforeSha256,instrumentedSha256:logging.instrumentedSha256,settings:logging.settings};
  const identities=(report.identities??=[])as unknown[];plansSession=await employeeChoicePurposeSession('plans',active,value=>identities.push(value),poison);expect(plansSession.defaults.pid).not.toBe(timing!.defaults.pid);
@@ -249,13 +270,28 @@ it.skipIf(!requested)('captures real nested native plans on a separate bound app
  expect(configuration).toEqual({duration:'0',parameters:'0',nested:'on',analyze:'on',buffers:'on',settings:'on',format:'json',timing:'off'});
  report.planBackendSettings=configuration;report.preloadLibraryProof='Exact owner-verified database settings before new app backend plus actual same-PID nested plans; no application privilege added';save();
  const markers:PlanMarker[]=[],startedAt=new Date().toISOString(),spy=plansSession.install();restoreSpy=()=>spy.mockRestore();
-  for(const variant of variants)await matrix(variant,plansSession!,'plans',markers);
-  const container=evidence(),logs=spawnSync('docker',['logs','--since',startedAt,container.name],{encoding:'utf8',timeout:20000,maxBuffer:64*1024*1024});
+ const container=evidence(),pid=plansSession.defaults.pid,source=readFileSync('test/fixtures/employee-choice-native-purpose.sql','utf8'),body=employeeChoiceNativeBody(source);
+ const actualContainer=execFileSync('docker',['inspect','--format','{{.Id}} {{.Name}}',container.name],{encoding:'utf8',timeout:10000,maxBuffer:4096}).trim().split(' ');
+ if(actualContainer.length!==2||!/^[a-f0-9]{64}$/.test(actualContainer[0])||actualContainer[1]!=='/'+container.name)throw Error('Exact owned native log container required');
+ const containerId=actualContainer[0];let latestRaw:string|undefined;
+ capturePlans=async phase=>{
+  // One actual raw-log owner targets the immutable container ID and exact app PID.
+  // Each new full cut is independently rebound; no presumed prefix equivalence.
+  const logs=spawnSync('docker',['logs','--since',startedAt,containerId],{encoding:'utf8',timeout:20000,maxBuffer:64*1024*1024});
   if(logs.error||logs.status!==0)throw Error('Bounded actual native plan log capture failed',{cause:logs.error});
   const raw=(logs.stdout??'')+(logs.stderr??'');if(Buffer.byteLength(raw)>64*1024*1024)throw Error('Native plan log exceeds64MiB');
-  writeFileSync(join(output,'native-auto-explain.log'),raw,{flag:'wx',mode:0o600});
-  report.nativeLog={bytes:Buffer.byteLength(raw),sha256:createHash('sha256').update(raw).digest('hex'),pid:plansSession!.defaults.pid,container:container.name,startedAt};
-  const messages=employeeChoiceAutoExplainMessages(raw,plansSession!.defaults.pid),source=readFileSync('test/fixtures/employee-choice-native-purpose.sql','utf8'),body=employeeChoiceNativeBody(source);
+  if(!evidenceWriter)throw Error('Owned evidence writer unavailable');
+  const cut=evidenceWriter.capture(raw,{phase,pid,container:container.name,containerId,startedAt});latestRaw=raw;
+  report.nativeProgressCut={...cut,fullMatrixVerified:false};save();
+  const messages=employeeChoiceAutoExplainMessages(raw,pid),bound=bindEmployeeChoiceNativePlans(messages,markers,body);
+  report.verifiedProgressCut={...cut,markerPhases:bound.size,fullMatrixVerified:false};save();
+ };
+  for(const variant of variants)await matrix(variant,plansSession!,'plans',markers);
+  await capturePlans('matrix-complete');if(latestRaw===undefined)throw Error('No actual complete native raw cut');
+  verifyLatestPlans=()=>{
+  if(latestRaw===undefined)throw Error('No retained raw cut for native verification');const raw=latestRaw;
+  report.nativeLog={bytes:Buffer.byteLength(raw),sha256:createHash('sha256').update(raw).digest('hex'),pid,container:container.name,containerId,startedAt};
+  const messages=employeeChoiceAutoExplainMessages(raw,pid);
   const bound=bindEmployeeChoiceNativePlans(messages,markers,body),actual:unknown[]=[],failures:unknown[]=[];
   for(const [label,entries]of bound){
    const bodies=entries.filter(entry=>employeeChoiceSqlFingerprint(entry.query)===employeeChoiceSqlFingerprint(body));
@@ -282,19 +318,28 @@ it.skipIf(!requested)('captures real nested native plans on a separate bound app
   }
   report.markers=markers;report.actualPlans=actual;report.planVerificationFailures=failures;report.actualPlanCases=bound.size;save();
   expect(bound.size).toBe(42);expect(failures).toEqual([]);report.actualPlansComplete=true;save();
- },async()=>{restoreSpy();await plansSession?.close();await logging?.restore();if(logging)report.instrumentationRestored=true;await installation!.unchanged();save();});
+  };verifyLatestPlans();
+ },async()=>{
+  restoreSpy();const failures:unknown[]=[],previouslyComplete=report.actualPlansComplete===true;report.actualPlansComplete=false;save();
+  try{await plansSession?.close();}catch(error){failures.push(error);}
+  try{await capturePlans?.('finally:'+String(report.phase));if(previouslyComplete&&verifyLatestPlans)verifyLatestPlans();}catch(error){report.partialCaptureIncomplete=true;failures.push(error);}
+  try{if(evidenceWriter?.latest()){const retained=evidenceWriter.retainFinal();report.retainedFinalRaw=retained;report.nativeLog={...retained,source:process.env.AIHR_CI_HEAD,controller:process.env.AIHR_CI_CONTROL_HEAD,run:process.env.GITHUB_RUN_ID,attempt:process.env.GITHUB_RUN_ATTEMPT};}}catch(error){failures.push(error);}
+  capturePlans=undefined;
+  try{await logging?.restore();if(logging)report.instrumentationRestored=true;}catch(error){failures.push(error);}
+  try{await installation!.unchanged();}catch(error){failures.push(error);}
+  if(failures.length)report.actualPlansComplete=false;save();if(failures.length)throw new AggregateError(failures,'Native plan final capture or exact restoration failed');
+ });
 }));
 
 let authorityFixture:Awaited<ReturnType<typeof createAssignmentAuthorityFixture>>|undefined,expectedAuthority:Awaited<ReturnType<typeof assertAssignmentAuthority>>|undefined;
-it.skipIf(!requested).for(variants)('preserves actual current-root native authority/history with %s implementation',{timeout:300000},(variant,context)=>bounded(context,async()=>{
+it.skipIf(!requested).for(variants)('preserves actual current-root native authority/history with %s implementation',{timeout:300000},(variant,context)=>bounded(context,'authority:'+variant,async()=>{
  authorityFixture??=await createAssignmentAuthorityFixture();const spy=timing!.install(),port=vi.spyOn(current,'readEmployeeChoices').mockImplementation(pageReader(variant));
  await preserveDiagnosticFailure(async()=>{const value=await assertAssignmentAuthority(authorityFixture!);if(variant==='current')expectedAuthority=value;else expect(value).toEqual(expectedAuthority);
   const authority=(report.authority??={})as Record<string,unknown>;authority[variant]=value;report.authorityComplete=variants.every(name=>Object.hasOwn(authority,name));save();
  },async()=>{port.mockRestore();spy.mockRestore();await timing!.verify('authority-complete');await installation!.unchanged();});
 }));
 
-afterAll(async()=>{
- if(activeWork)await activeWork.catch(()=>{});
+async function cleanupOwned(){
  const failures:unknown[]=[];const finish=async(name:string,work:()=>Promise<unknown>)=>{try{await work();}catch(error){failures.push(error);const errors=(report.cleanupFailures??=[])as string[];errors.push(name);}};
  await finish('plan-client',async()=>plansSession?.close());await finish('plan-config',async()=>logging?.restore());await finish('timing-client',async()=>timing?.close());
  await finish('prototype-function',async()=>installation?.remove());await finish('pools',closeAll);
@@ -305,4 +350,11 @@ afterAll(async()=>{
  report.wholePortTargets=Object.fromEntries(variants.map(variant=>{const ports=Object.entries((report.ports??{})as Record<string,{samples?:number[];ms?:number}>).filter(([key])=>key.startsWith(variant+':'));
   return [variant,{targetMs:1000,measuredPorts:ports.length,allUnderTarget:report.complete===true?ports.length===17&&ports.every(([,port])=>port.samples?.length?port.samples.every(ms=>ms<1000):typeof port.ms==='number'&&port.ms<1000):null}];}));
  report.phase=report.complete?'complete':'incomplete';save();if(failures.length)throw new AggregateError(failures,'Owned prototype cleanup failed');
-});
+}
+async function finishOwned(){
+ try{await lifetime.finish(cleanupOwned);}finally{
+  report.lifetime=lifetime.snapshot();if(lifetime.snapshot().stopped||lifetime.snapshot().uncertain||lifetime.snapshot().elapsedMs>employeeChoiceBenchmarkBounds.totalMs)report.complete=false;
+  if(report.complete!==true){report.phase='incomplete';const targets=report.wholePortTargets as Record<string,{allUnderTarget:boolean|null}>|undefined;if(targets)for(const row of Object.values(targets))row.allUnderTarget=null;}save();
+ }
+}
+afterAll(finishOwned);

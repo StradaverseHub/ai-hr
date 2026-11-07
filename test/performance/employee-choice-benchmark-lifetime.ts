@@ -1,0 +1,51 @@
+/** Verification lifetime only. No database, application or release authority. */
+export const employeeChoiceBenchmarkBounds=Object.freeze({totalMs:900000,reserveMs:60000,workMs:840000});
+type Clock={now:()=>number;schedule:(work:()=>void,ms:number)=>()=>void};
+type RecordEvent=(event:{kind:string;phase?:string;elapsedMs:number;reason?:string})=>void;
+const systemClock:Clock={now:()=>performance.now(),schedule:(work,ms)=>{const timer=setTimeout(work,ms);return()=>clearTimeout(timer);}};
+export function employeeChoiceBenchmarkLifetime(cancel:()=>Promise<void>,record:RecordEvent,clock:Clock=systemClock){
+ const controller=new AbortController();let started:number|undefined,cancelWorkTimer:(()=>void)|undefined,cancelTotalTimer:(()=>void)|undefined;
+ let pending:Promise<void>|undefined,cancelling:Promise<void>|undefined,finishing:Promise<void>|undefined,reason:string|undefined,uncertain=false,finished=false,cancellationSettled=false,recordFailure:unknown;
+ const elapsed=()=>started===undefined?0:Math.max(0,clock.now()-started);
+ const emit=(kind:string,phase?:string)=>{try{record({kind,phase,elapsedMs:elapsed(),...(reason?{reason}:{})});}catch(error){recordFailure??=error;uncertain=true;}};
+ const stop=(why:'file-work-budget'|'case-aborted'|'setup-failed'|'owner-uncertain')=>{
+  if(reason)return;reason=why;controller.abort(Error('Employee benchmark stopped: '+why));emit('work-stopped');
+  cancelling=Promise.resolve().then(cancel).catch(error=>{uncertain=true;emit('cancellation-uncertain');throw error;}).finally(()=>{cancellationSettled=true;});
+  // Retain the rejecting promise for drain, without an unhandled rejection.
+  void cancelling.catch(()=>{});
+ };
+ const start=()=>{
+  if(started!==undefined)throw Error('Benchmark lifetime already started');started=clock.now();emit('file-started');
+  cancelWorkTimer=clock.schedule(()=>stop('file-work-budget'),employeeChoiceBenchmarkBounds.workMs);
+  cancelTotalTimer=clock.schedule(()=>{uncertain=true;emit('total-envelope-exhausted');stop('owner-uncertain');},employeeChoiceBenchmarkBounds.totalMs);
+ };
+ const active=()=>{
+  if(started===undefined)throw Error('Benchmark lifetime not started');
+  if(uncertain&&!reason)stop('owner-uncertain');
+  if(elapsed()>=employeeChoiceBenchmarkBounds.workMs)stop('file-work-budget');
+  if(reason||finished||finishing)throw Error('Benchmark work refused: '+(reason??'finishing'));
+ };
+ const run=async(phase:string,work:()=>Promise<void>)=>{
+  try{active();}catch(error){emit('phase-blocked',phase);throw error;}
+  if(pending)throw Error('Previous benchmark phase has not drained');emit('phase-started',phase);
+  const owned=Promise.resolve().then(()=>{active();return work();});pending=owned;
+  try{await owned;emit('phase-completed',phase);}catch(error){emit('phase-failed',phase);throw error;}
+  finally{if(pending===owned)pending=undefined;}
+ };
+ const drain=async()=>{
+  const owned=pending;await owned?.catch(()=>{});await cancelling;emit('owned-work-drained');
+ };
+ const finish=(cleanup:()=>Promise<void>)=>{
+  if(finishing)return finishing;
+  // Register the completion promise BEFORE invoking cleanup or awaiting work.
+  finishing=Promise.resolve().then(async()=>{
+   let failure:unknown;try{await drain();}catch(error){failure=error;}failure??=recordFailure;
+   try{await cleanup();}catch(error){uncertain=true;failure=failure===undefined?error:new AggregateError([failure,error],'Benchmark drain and cleanup both failed');}
+   finished=true;cancelWorkTimer?.();cancelTotalTimer?.();
+   if(elapsed()>employeeChoiceBenchmarkBounds.totalMs){uncertain=true;failure??=Error('Benchmark cleanup exceeded the fixed900-second envelope');}
+   emit(uncertain?'cleanup-uncertain':'file-finished');failure??=recordFailure;if(failure)throw failure;
+  });void finishing.catch(()=>{});return finishing;
+ };
+ return{start,active,run,stop,drain,finish,signal:controller.signal,
+  snapshot:()=>({started:started!==undefined,elapsedMs:elapsed(),workBudgetMs:employeeChoiceBenchmarkBounds.workMs,totalBudgetMs:employeeChoiceBenchmarkBounds.totalMs,reserveMs:employeeChoiceBenchmarkBounds.reserveMs,stopped:reason!==undefined,reason:reason??null,pending:pending!==undefined,cancellationPending:cancelling!==undefined&&!cancellationSettled,finished,uncertain})};
+}
