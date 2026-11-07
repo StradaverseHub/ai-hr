@@ -254,3 +254,22 @@ it('renders a group viewer with read-only case/checklist controls and no case-ac
  expect(screen.queryByRole('button',{name:'Cancel onboarding case'})).not.toBeInTheDocument();expect(screen.queryByRole('button',{name:'Submit case and confirm checklist'})).not.toBeInTheDocument();expect(screen.queryByRole('button',{name:'Save'})).not.toBeInTheDocument();
  expect(screen.getByRole('combobox',{name:'Checklist choice'})).toBeDisabled();expect(mocks.change).not.toHaveBeenCalled();
 });
+
+it('shows historical case notes inside details as read-only and leaves task notes editable',async()=>{
+ const {defaultV9CaseFields}=await import('../lib/lifecycle-v9-case-form');
+ const today=todayInKualaLumpur(),env={today,now:today+'T01:00:00Z',id:()=> 'history',nextNumber:()=>'',leave:{},taskLoads:{},lastTaskAssignment:{},pendingApprovals:{},lifetimeApprovals:{},users:['owner']};
+ const config=defaultConfig('owner');config.v9CaseFields=defaultV9CaseFields('onb');config.v9ChecklistRevision=1;
+ const c=blankCase('case','OB-history','draft',{fullName:'Fictional note reader',company:'company',joinDate:today},env);c.state='submitted';c.notes='Additional case details';
+ const note={id:'old-note',context:'case',by:'owner',name:'Original author',body:'Saved historical note',at:env.now,mentions:[],resolved:[],deleted:false,edited:false};
+ const detail={case:c,config,revision:1,actor:{id:'owner',name:'HR',module:true,hr:true,master:false},directory:[],labels:{},notes:[note],availability:{},today,canOpenRequisition:false};
+ const view=render(<NextIntlClientProvider locale="en" messages={messages('en')}><OnboardingCaseView detail={detail}/></NextIntlClientProvider>);
+ fireEvent.click(screen.getByText('Case details',{selector:'summary'}));
+ expect(screen.getByText('Additional case details')).toBeVisible();
+ fireEvent.click(screen.getByText(/Previous case notes/));
+ expect(screen.getByText('Saved historical note')).toBeVisible();
+ expect(screen.queryByRole('button',{name:'Edit note'})).not.toBeInTheDocument();
+ expect(screen.queryByLabelText('Reply or add note')).not.toBeInTheDocument();
+ const updated={...detail,case:{...c,source:{...c.source,fullName:'Current PM name'}}};
+ view.rerender(<NextIntlClientProvider locale="en" messages={messages('en')}><OnboardingCaseView detail={updated}/></NextIntlClientProvider>);
+ expect(screen.getByRole('heading',{name:'Current PM name'})).toBeVisible();
+});

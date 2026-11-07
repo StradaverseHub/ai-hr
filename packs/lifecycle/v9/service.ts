@@ -116,7 +116,7 @@ async function environment(tx: Tx, ctx: SessionContext, c: M.Case, config: M.Con
   values['company.address'] = signatory?.letterhead?.address ?? company[0]?.address ?? '';
   values['company.color'] = signatory?.letterhead?.color ?? '#4F46E5';
   values['employee.company']=company[0]?.name??'';values['employee.businessGroup']=personnel?.business_group??'';
-  const caseFields=resolveV9CaseFields(c.module,config.caseForms?.[c.module]),caseValues=native?nativeCaseFormValues(native.c):offCaseFormValues(c);
+  const caseFields=resolveV9CaseFields(c.module,config.caseForms?.[c.module],true),caseValues=native?nativeCaseFormValues(native.c):offCaseFormValues(c);
   const caseLabels: Record<string,string>={name:c.facts.name,company:company[0]?.name??'',group:personnel?.business_group??'',dept:personnel?.department??'',position:personnel?.position??'',supervisor:users.find(user=>user.id===c.facts.supervisorUserId)?.name??'',ta:users.find(user=>user.id===c.facts.taUserId)?.name??''};
   for(const field of caseFields) values['case.'+field.key]=field.key in caseLabels?caseLabels[field.key]:field.type==='date'?fmt(caseValues[field.key]??''):caseValues[field.key]??'';
 
@@ -451,9 +451,9 @@ export async function v9Command(ctx: SessionContext, id: string, revision: numbe
     }
     if (command.type === 'caseFormSave') {
       if (c.module !== 'off' || !['pending','submitted'].includes(c.state)) throw new M.V9Error('Reopen this case before editing its fields.');
-      const fields = resolveV9CaseFields('off',config.caseForms?.off), before = offCaseFormValues(c);
+      const fields = resolveV9CaseFields('off',config.caseForms?.off,true), before = offCaseFormValues(c);
       for (const [key,value] of Object.entries(command.values)) {
-        const field = fields.find(field=>field.key===key);
+        const field = fields.find(field=>field.key===key) ?? resolveV9CaseFields('off').find(field=>field.key===key);
         if (!field || field.source !== 'case') throw new M.V9Error('Personnel fields are locked. Edit them in Personnel Management.');
         try { validateV9CaseValue(field,value); } catch (error) { throw new M.V9Error(error instanceof Error ? error.message : 'Review the case fields.'); }
       }

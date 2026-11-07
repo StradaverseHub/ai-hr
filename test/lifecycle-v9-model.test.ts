@@ -574,3 +574,14 @@ it('holds email delivery until HR fills the missing Personnel value on the draft
   expect(c.mails[0].documentIds).toEqual([doc.id]);
   expect(() => M.fillDocumentPersonnelValues(c, doc.id, { homePhone: 'Changed' }, environment)).toThrow('unsigned draft');
 });
+
+it('keeps removed HR-only case fields excluded from email text',()=>{
+ const {c,config,environment}=fixture();
+ config.caseForms={off:[{key:'privateDetail',label:'Private detail',type:'text',show:false,removed:true,required:false,hrOnly:true,rules:{},options:[],help:''}]};
+ environment.mergeValues['case.privateDetail']='Private retained answer';
+ const definition=workflow({trigger:{event:'manual',days:0,workdays:false,repeat:false,skipIf:''},steps:[{id:'hidden-private',type:'notify',subject:'Review',body:'{case.privateDetail}',to:['peopleOps'],cc:[]}]});
+ M.runWorkflow(c,config,definition,environment,'manual');
+ expect(JSON.stringify(c.mails)).not.toContain('Private retained answer');
+ expect(c.runs[0].status).toBe('failed');
+ expect(c.runs[0].reason).toContain('Sensitive fields');
+});

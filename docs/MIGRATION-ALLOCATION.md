@@ -2267,3 +2267,75 @@ exclusion, company/org filters and read/write decision owners remain authoritati
 Installed migration, populated upgrades, native scope, browser and both500-user checks
 remain required. Recheck claims/watermark before installation. Complete BOARD roles
 remains excluded; no deployment or human provider approval is authorized.
+## Open onboarding Personnel projection — 7 November 2026 (unapplied)
+
+Branch `codex/board-approved-20261107` reserves `2600_onboarding_current_personnel`,
+idx 1900 / when 1793330002200. A read-only scan of 3010 local/remote ref heads
+(474 distinct journal blobs) found the previous highest timestamp 1793330002130
+at `2510_capability_statement_plan_reuse`. All 342 readable registered worktree
+journals were also checked; none had a higher competing claim. The original
+alpha journal prefix and SQL bytes are preserved. This is an unapplied source
+reservation: recheck freshly fetched integration journals, peer WIP and the exact
+installed ordered ledger before integration or release admission.
+
+
+## Combined correctness and performance release after PR 229 — 7 November 2026
+
+The owner recombined Phases 1 and 2; the isolated Phase 1-only staging ticket was cancelled.
+Fresh main/alpha both identify `2b90f2e45ecafd732e9e772d8edc243ee98b09bc`, whose 704-entry
+journal appends `2600_onboarding_current_personnel` at idx1900 / when1793330002200.
+The previous architecture candidate's 32 unapplied entries included timestamps below that
+watermark. Installing them after PR 229 without reallocation would silently skip them.
+
+A fresh all-ref/WIP scan found 3,023 distinct local/remote heads, 673 committed migration
+trees, 479 committed journals and 353 readable registered working trees. Maximum claims
+were tag2902 / idx2202 / timestamp1793330002502. The foreign malformed journal was preserved;
+literal bounds were included. This merge's temporary conflict journal was also reported
+and its literal bounds included before constructing the final valid journal.
+
+Keep the entire 704-entry upstream prefix and every SQL file from both histories byte-for-byte.
+Append the same 32 architecture SQL files in their existing dependency order with these
+unapplied identities, all above the new watermark and competing claims. Historical test
+reports retain their actual earlier identities; they are not relabelled after this change.
+
+| Tag | Prior idx / timestamp | Re-frozen idx / timestamp |
+| --- | --- | --- |
+| `2103_system_performance_read_guards` | 1800 / 1793330002100 | 2203 / 1793330002503 |
+| `2104_contract_navigation_role_guards` | 1801 / 1793330002101 | 2204 / 1793330002504 |
+| `2105_authorization_navigation_plans` | 1802 / 1793330002102 | 2205 / 1793330002505 |
+| `2124_ai_control_navigation_candidates` | 1803 / 1793330002103 | 2206 / 1793330002506 |
+| `2125_approval_subject_batch` | 1804 / 1793330002104 | 2207 / 1793330002507 |
+| `2129_personnel_native_paging` | 1805 / 1793330002105 | 2208 / 1793330002508 |
+| `2131_ai_read_only_metadata_locks` | 1806 / 1793330002106 | 2209 / 1793330002509 |
+| `2132_ai_metadata_claim_preview_index` | 1807 / 1793330002107 | 2210 / 1793330002510 |
+| `2133_ai_action_read_only_lock` | 1808 / 1793330002108 | 2211 / 1793330002511 |
+| `2134_claim_visibility_set_membership` | 1809 / 1793330002109 | 2212 / 1793330002512 |
+| `2135_profile_presentation_read_lock` | 1810 / 1793330002110 | 2213 / 1793330002513 |
+| `2136_grant_admin_role_precheck` | 1811 / 1793330002111 | 2214 / 1793330002514 |
+| `2137_home_peer_cohort_batch` | 1812 / 1793330002112 | 2215 / 1793330002515 |
+| `2138_ai_pause_company_discovery` | 1813 / 1793330002113 | 2216 / 1793330002516 |
+| `2139_workforce_bounded_read_plan` | 1814 / 1793330002114 | 2217 / 1793330002517 |
+| `2252_probation_navigation_capability_probe` | 1815 / 1793330002115 | 2218 / 1793330002518 |
+| `2141_approval_nonadmin_visibility_batch` | 1816 / 1793330002116 | 2219 / 1793330002519 |
+| `2212_payroll_audit_claim_lookup_indexes` | 1817 / 1793330002117 | 2220 / 1793330002520 |
+| `2301_attendance_workflow_submission_shared_lock` | 1818 / 1793330002118 | 2221 / 1793330002521 |
+| `2302_company_ancestry_early_exit` | 1819 / 1793330002119 | 2222 / 1793330002522 |
+| `2303_admin_grant_direct_scan` | 1820 / 1793330002120 | 2223 / 1793330002523 |
+| `2304_payroll_grant_direct_scan` | 1821 / 1793330002121 | 2224 / 1793330002524 |
+| `2403_personnel_bounded_overview` | 1822 / 1793330002122 | 2225 / 1793330002525 |
+| `2503_attendance_pending_visible_headers` | 1823 / 1793330002123 | 2226 / 1793330002526 |
+| `2504_notification_event_processing` | 1824 / 1793330002124 | 2227 / 1793330002527 |
+| `2505_workforce_picker_facts` | 1825 / 1793330002125 | 2228 / 1793330002528 |
+| `2506_notification_receipt_retention` | 1826 / 1793330002126 | 2229 / 1793330002529 |
+| `2507_attendance_header_column_grants` | 1827 / 1793330002127 | 2230 / 1793330002530 |
+| `2508_notification_receipt_grants` | 1828 / 1793330002128 | 2231 / 1793330002531 |
+| `2509_principal_statement_plan_reuse` | 1829 / 1793330002129 | 2232 / 1793330002532 |
+| `2510_capability_statement_plan_reuse` | 1830 / 1793330002130 | 2233 / 1793330002533 |
+| `2701_personnel_typed_overview_filter_fields` | 2001 / 1793330002301 | 2234 / 1793330002534 |
+
+The independent performance migration identity fixture is updated to these exact tuples.
+Its previous missing pin for typed Personnel filters2701 is now explicit, retaining its
+already verified SHA256 `87b1b0a0dd532eda1211dddcd5af2a8b14013a66615527cffa3c1be449d0daf8`.
+No applied SQL or existing main/alpha journal tuple changed. Recheck the actual installed
+ordered ledger, newest refs and competing claims before admission. This source merge is
+not a test PASS or deployment; production remains on hold.

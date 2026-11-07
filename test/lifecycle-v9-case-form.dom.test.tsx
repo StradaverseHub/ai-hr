@@ -13,9 +13,9 @@ import type { Case } from '../lib/lifecycle-v9-model';
 const messages=JSON.parse(readFileSync('messages/en.json','utf8'));
 beforeAll(()=>{HTMLDialogElement.prototype.showModal=function(){this.setAttribute('open','');};HTMLDialogElement.prototype.close=function(){this.removeAttribute('open');};});
 function Editor(){const [config,setConfig]=useState(v9Defaults());return <><CaseFormEditor module="onb" config={config} editable labels={{company:{'company-one':'Fictional company'}}} edit={change=>setConfig(previous=>{const next=structuredClone(previous);change(next);return next;})}/><output data-testid="definition">{JSON.stringify(config)}</output></>;}
-it('creates an ordered conditional field without allowing Personnel ownership or core visibility to change',()=>{
+it('creates an ordered conditional field while preserving Personnel ownership and allowing display visibility to change',()=>{
   render(<Editor/>);fireEvent.click(screen.getByRole('button',{name:'Edit Full name'}));let drawer=within(screen.getByRole('dialog',{name:'Edit case field'}));
-  expect(drawer.getByRole('combobox',{name:'Field type'})).toBeDisabled();expect(drawer.getByRole('checkbox',{name:'Shown on the case'})).toBeDisabled();expect(drawer.getByRole('checkbox',{name:'Required'})).toBeDisabled();
+  expect(drawer.getByRole('combobox',{name:'Field type'})).toBeDisabled();expect(drawer.getByRole('checkbox',{name:'Shown on the case'})).toBeEnabled();expect(drawer.getByRole('checkbox',{name:'Required'})).toBeDisabled();
   fireEvent.click(drawer.getByRole('button',{name:'Done'}));fireEvent.click(screen.getByRole('button',{name:'Add field'}));drawer=within(screen.getByRole('dialog',{name:'Edit case field'}));
   fireEvent.change(drawer.getByRole('textbox',{name:'Label'}),{target:{value:'Replacement detail'}});fireEvent.change(drawer.getByRole('combobox',{name:'Field type'}),{target:{value:'dropdown'}});fireEvent.change(drawer.getByRole('textbox',{name:'Options, one per line'}),{target:{value:'Yes\n'}});expect(drawer.getByRole('textbox',{name:'Options, one per line'})).toHaveValue('Yes\n');fireEvent.change(drawer.getByRole('textbox',{name:'Options, one per line'}),{target:{value:'Yes\nNo'}});fireEvent.click(drawer.getByRole('checkbox',{name:'Required'}));
   fireEvent.change(drawer.getByRole('combobox',{name:'Shown when'}),{target:{value:'hireType'}});fireEvent.change(drawer.getByRole('combobox',{name:'Is'}),{target:{value:'replacement'}});
@@ -49,7 +49,7 @@ it('distinguishes a retained case fact from Personnel truth while keeping it loc
 });
 it('updates the compact row controls through the shared definition owner',()=>{
   render(<Editor/>);
-  expect(screen.getByRole('checkbox',{name:'Show Full name'})).toBeDisabled();
+  expect(screen.getByRole('checkbox',{name:'Show Full name'})).toBeEnabled();
   fireEvent.click(screen.getByRole('checkbox',{name:'HR only Employee no.'}));
   fireEvent.click(screen.getByRole('checkbox',{name:'Required Floor / building'}));
   fireEvent.click(screen.getByRole('button',{name:'Move Floor / building up'}));
@@ -57,4 +57,33 @@ it('updates the compact row controls through the shared definition owner',()=>{
   expect(config.caseForms!.onb!.find(field=>field.key==='empNo')).toMatchObject({hrOnly:true});
   expect(config.caseForms!.onb!.find(field=>field.key==='floor')).toMatchObject({required:true});
   expect(config.caseForms!.onb!.findIndex(field=>field.key==='floor')).toBeLessThan(config.caseForms!.onb!.findIndex(field=>field.key==='email'));
+});
+
+it('confirms Personnel field removal, keeps module settings independent and restores the same field',()=>{
+  render(<Editor/>);
+  fireEvent.click(screen.getByRole('button',{name:'Edit Business Group'}));
+  let drawer=within(screen.getByRole('dialog',{name:'Edit case field'}));
+  fireEvent.click(drawer.getByRole('button',{name:'Remove field'}));
+  expect(screen.getByRole('button',{name:'Edit Business Group'})).toBeInTheDocument();
+  fireEvent.click(drawer.getByRole('button',{name:'Keep field'}));
+  fireEvent.click(drawer.getByRole('button',{name:'Remove field'}));
+  fireEvent.click(drawer.getByRole('button',{name:'Confirm removal'}));
+  expect(screen.queryByRole('button',{name:'Edit Business Group'})).not.toBeInTheDocument();
+  const config=parseV9Config(JSON.parse(screen.getByTestId('definition').textContent!));
+  expect(config.caseForms!.onb!.find(field=>field.key==='group')).toMatchObject({removed:true});
+  expect(config.caseForms?.off).toBeUndefined();
+  fireEvent.click(screen.getByText(/Restore removed fields/));
+  fireEvent.click(screen.getByRole('button',{name:'Restore Business Group'}));
+  expect(screen.getByRole('button',{name:'Edit Business Group'})).toBeVisible();
+});
+it('collects hidden mandatory offboarding inputs at submission and retains the Personnel-owned date',async()=>{
+ const c={id:'case',module:'off',revision:1,state:'pending',facts:{name:'Fictional employee',employeeNo:'EMP-FICTIONAL',lastDay:'2026-11-01',noticeDate:'',caseType:'Resignation',supervisorUserId:null,pbpUserId:null},revokeDate:'2026-11-01'} as unknown as Case;
+ const config=v9Defaults();config.caseForms={off:defaultV9CaseFields('off').map(field=>({...field,removed:['notice','revokeDate','revokeMode'].includes(field.key),show:field.key!=='lastDay'}))};
+ const command=vi.fn().mockResolvedValue({ok:true});
+ render(<NextIntlClientProvider locale="en" messages={messages}><OffboardingCaseForm c={c} config={config} users={[]} busy={false} command={command}/></NextIntlClientProvider>);
+ const submission=within(screen.getByRole('region',{name:'Submission details'}));
+ expect(submission.getByText('Notice date *')).toBeVisible();
+ expect(screen.queryByText('Last working day')).not.toBeInTheDocument();
+ fireEvent.click(screen.getByRole('button',{name:'Submit case'}));
+ expect(command).toHaveBeenCalledWith(expect.objectContaining({submit:true,values:expect.objectContaining({notice:'',revokeMode:'lastday'})}));
 });
