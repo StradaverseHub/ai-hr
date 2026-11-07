@@ -55,7 +55,9 @@ export function verifyExactRecovery({plan,assessment,run,jobs,reports,focused,cl
   if(database){
    validatePostgresEvidence(r.databaseTerminalEvidence,plan.execution);
    const e=r.databaseTerminalEvidence,original=reports.find(x=>x.id===unit.id)?.databaseTerminalEvidence;
-   assert(e.name===`aihr-ci-${f.run.id}-1-db-1`&&Date.parse(e.capturedAt)>=Date.parse(r.batches[0].startedAt)&&Date.parse(e.capturedAt)<=Date.parse(f.producer.completed_at)&&e.settings.serverVersionNum===original?.settings?.serverVersionNum,'Fresh DB ownership/capture/runtime differs');
+   const times=[r.startedAt,r.batches[0].startedAt,r.batches[0].endedAt,e.capturedAt,r.endedAt,f.producer.completed_at].map(Date.parse);
+   assert(times.every(Number.isFinite)&&times.every((t,i)=>i===0||t>=times[i-1]),'DB evidence must be captured after the entire batch and before report/job completion');
+   assert(e.name===`aihr-ci-${f.run.id}-1-db-1`&&e.settings.serverVersionNum===original?.settings?.serverVersionNum,'Fresh DB ownership/runtime differs');
   }
   same(r.batches[0].files,r.files,'Focused batch omitted files');
   assert(Date.parse(r.startedAt)>=Date.parse(f.producer.started_at)&&Date.parse(r.endedAt)<=Date.parse(f.producer.completed_at)&&Date.parse(r.endedAt)>=Date.parse(r.startedAt),'Focused execution outside producing job');
