@@ -25,9 +25,6 @@ let binding:ReturnType<typeof notificationWorkerFixtureDatabase>;
 const gateStart=fixture.indexOf('DO $gate$');
 if(gateStart<1)throw Error('Canonical notification fixture database guard is missing');
 const databaseGuard=fixture.slice(0,gateStart);
-let b:Base,foreign:Base,service:ReturnType<typeof postgres>,other:ReturnType<typeof postgres>;
-const ownedJobs=fixtureOwner.jobs;
-const connect=()=>fixtureOwner.connect();
 beforeAll(async()=>{binding=fixtureOwner.binding;await fixtureOwner.install([fixture],1);},300000);
 beforeEach(async()=>{
  await owner.client`truncate notification_worker_private.run cascade`;

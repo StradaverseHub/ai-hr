@@ -84,7 +84,7 @@ that exact harness binding and is merged normally here. Its hosted42390475450 th
 failed before role creation on PostgreSQL's127.0.0.1/32 inet text representation.
 The consolidated owner now compares native inet equality to explicit127.0.0.1::inet
 and requires true plus exact database. Root's independently reviewed a42ed60e source
-recovery is to be merged with the equivalent moved-query proof preserved. Original
+recovery is normally merged, retaining its exact native proof in the moved owner. Original
 failed runs and frozen sources remain independent; no capability case pass is claimed.
 
 Run the combined sole-file selector on standard hosted resources, then affected
