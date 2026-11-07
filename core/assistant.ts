@@ -156,6 +156,7 @@ function rowCountOf(outcome: ToolOutcome): number | null {
  * Malaysia business clock at the native question reservation, never from caller-supplied dates.
  */
 export async function askAssistant(...args:Parameters<typeof askAssistantActivity>):Promise<Awaited<ReturnType<typeof askAssistantActivity>>>{
+ args=structuredClone(args);
  return withAiCentreActivity(args[0],()=>askAssistantActivity(...args));
 }
 async function askAssistantActivity(

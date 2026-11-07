@@ -1,3 +1,4 @@
+import {withAiCentreActivity} from './ai-centre-control';
 import {ASSISTANT_PRIVATE_CONTRACT,resolvePrivateAssistantIntent,resolvePrivateAssistantProposal,capturePrivateAssistantTask,adjudicatePrivateAssistantReadPlan} from '../lib/ai/provider-assistant-policy';
 import {assistantReadableModules} from './assistant-readable-modules';
 import {ASSISTANT_CONVERSATION_LIMITS} from './assistant-clarification';
@@ -729,7 +730,11 @@ async function currentPlanPermitTx(tx:Tx,permit:ReturnType<typeof openPlanPermit
  const [clock]=await tx.execute<{valid:boolean}>(sql`select ${permit.issuedAt}::timestamptz<=clock_timestamp() and ${permit.expiresAt}::timestamptz>clock_timestamp() as valid`);if(clock?.valid!==true)return fail();
 }
 /** No question or provider text is persisted. Even request digests remain inside authenticated ciphertext. */
-export async function proposeOwnModuleReadPlan(ctx:SessionContext,input:{permit:string;question:string;locale:string;consent:{questionOnly:true;oneRequest:true;sourceDigest:string}}):Promise<{state:'chooser'}|{state:'replayed'|'completed';proposalId:string}>{
+export async function proposeOwnModuleReadPlan(...args:Parameters<typeof proposeOwnModuleReadPlanActivity>):Promise<Awaited<ReturnType<typeof proposeOwnModuleReadPlanActivity>>>{
+ args=structuredClone(args);
+ return withAiCentreActivity(args[0],()=>proposeOwnModuleReadPlanActivity(...args));
+}
+async function proposeOwnModuleReadPlanActivity(ctx:SessionContext,input:{permit:string;question:string;locale:string;consent:{questionOnly:true;oneRequest:true;sourceDigest:string}}):Promise<{state:'chooser'}|{state:'replayed'|'completed';proposalId:string}>{
  const current=capture(ctx),token=input.permit,question=input.question,locale=input.locale,consent=input.consent?{...input.consent}:null;
  if(!exact(input,['permit','question','locale','consent'])||typeof question!=='string'||!question.trim()||Buffer.byteLength(question,'utf8')>2000||!questionLocales.includes(locale as QuestionLocale)||!consent||!exact(consent,['questionOnly','oneRequest','sourceDigest'])||consent.questionOnly!==true||consent.oneRequest!==true||consent.sourceDigest!==MODULE_AGENT_SOURCE_DIGEST)return fail();
  const permit=openPlanPermit(current,token),nonce=permit.nonce,questionDigest=routingDigest([current.tenantId,current.userId,nonce,locale,question]),started=Date.now();

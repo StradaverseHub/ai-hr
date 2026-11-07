@@ -23,6 +23,7 @@ async function configTx(tx:Tx,ctx:SessionContext){try{return await assessmentAiC
 const fingerprint=(value:z.infer<typeof sourceSchema>,cfg:ResolvedAiConfig|null)=>createHash('sha256').update(JSON.stringify({v:1,value,writer:cfg?{provider:cfg.provider,model:cfg.model}:null})).digest('hex');
 /** Cache reads never call a provider; only the assigned line manager may summarize submitted self-assessments. */
 export async function getAssessmentCompetencyInsight(...args:Parameters<typeof getAssessmentCompetencyInsightActivity>):Promise<Awaited<ReturnType<typeof getAssessmentCompetencyInsightActivity>>>{
+ args=structuredClone(args);
  if(!(args[2]?.generate))return getAssessmentCompetencyInsightActivity(...args);
  return withAiCentreFunction(args[0],'read:operation_competency_insight',()=>getAssessmentCompetencyInsightActivity(...args));
 }

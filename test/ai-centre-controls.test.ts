@@ -1,3 +1,4 @@
+import {proposeOwnModuleReadPlan} from '../core/module-agent-releases';
 import {draftPayFormula} from '../core/pay-formula-ai';
 import {randomUUID} from 'node:crypto';
 import {eq,sql} from 'drizzle-orm';
@@ -47,6 +48,8 @@ describe('AI centre stop barrier',()=>{
   await setMandateStopSwitch(group,true);
   // The same table write used by the privileged delivery service has no application session to rely on.
   await expect(owner.db.update(schema.notificationDelivery).set({startedAt:new Date()}).where(eq(schema.notificationDelivery.id,delivery.id))).rejects.toBeTruthy();
+  await setMandateStopSwitch(group,false);
+  await expect(owner.db.update(schema.notificationDelivery).set({startedAt:new Date()}).where(eq(schema.notificationDelivery.id,delivery.id))).rejects.toBeTruthy();
   const [after]=await owner.db.select().from(schema.notificationDelivery).where(eq(schema.notificationDelivery.id,delivery.id));
   expect(after.startedAt).toBeNull();expect(after.status).toBe('pending');
  });
@@ -68,6 +71,10 @@ describe('AI centre stop barrier',()=>{
   })).rejects.toMatchObject({reason:'paused'});
   expect(entered).toBe(false);
   await withPerformanceTenant(performance,tx=>appendEvent(tx,{tenantId:group.tenantId,aggregateType:'fixture',aggregateId:group.tenantId,eventType:'fixture.manual-performance',actor:actorOf(group)}));
+ });
+ it('stops standalone module planning before any proposal or provider work',async()=>{
+  await setMandateStopSwitch(group,true);
+  await expect(proposeOwnModuleReadPlan(group,{permit:'not-issued',question:'fixture',locale:'en',consent:{questionOnly:true,oneRequest:true,sourceDigest:'fixture'}})).rejects.toMatchObject({reason:'paused'});
  });
  it('refuses a stale resume without overwriting a more recent stop',async()=>{
   await setMandateStopSwitch(group,true);
@@ -127,7 +134,7 @@ describe('AI centre stop barrier',()=>{
 
 describe('individual AI read controls',()=>{
  it('registers every current read and module, and fails closed for future unknown functions',async()=>{
-  const rows=await owner.db.execute<{function_key:string}>(sql`select function_key from app.ai_centre_function_kind order by function_key`);
+  const rows=await owner.db.execute<{function_key:string}>(sql`select function_key from app.ai_centre_function_kind order by function_key collate "C"`);
   expect(Array.from(rows).map(row=>row.function_key)).toEqual([...aiCentreReadKeys()].sort());
   expect(await aiCentreReadAllowed(group,'read:future_unknown_function')).toBe(false);
   await expect(withTenant(group,tx=>tx.execute(sql`select app.ai_centre_read_set('read:future_unknown_function',true)`))).rejects.toBeTruthy();

@@ -70,6 +70,7 @@ async function rewriteContextTx(tx:Tx,ctx:SessionContext,reviewId:string,target:
 
 /** Returns a suggestion only. The human keeps it in the ordinary form before its canonical writer saves. */
 export async function rewriteAssessmentField(...args:Parameters<typeof rewriteAssessmentFieldActivity>):Promise<Awaited<ReturnType<typeof rewriteAssessmentFieldActivity>>>{
+ args=structuredClone(args);
  return withAiCentreFunction(args[0],'read:operation_performance_rewrite',()=>rewriteAssessmentFieldActivity(...args));
 }
 async function rewriteAssessmentFieldActivity(ctx:SessionContext,reviewId:string,rawTarget:unknown,draft:string,instruction:string,requestId:string){

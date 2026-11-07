@@ -238,6 +238,7 @@ async function setFeedbackPlanTx(tx:Tx,ctx:SessionContext,p:{feedbackId:string;p
  * ⇒ a clear error (the cron skips, the admin button surfaces it).
  */
 export async function generateFeedbackPlan(...args:Parameters<typeof generateFeedbackPlanActivity>):Promise<Awaited<ReturnType<typeof generateFeedbackPlanActivity>>>{
+ args=structuredClone(args);
  return withAiCentreFunction(args[0],'read:operation_feedback_plan',()=>generateFeedbackPlanActivity(...args));
 }
 async function generateFeedbackPlanActivity(ctx: SessionContext, p: { feedbackId: string }): Promise<{ plan: string }> {

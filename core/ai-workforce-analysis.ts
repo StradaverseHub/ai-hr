@@ -72,6 +72,7 @@ function projection(source:WorkforceHeadcountSource){
 /** Authorized source adoption for the real report_insight feature. Source reads and every replay use
  * the actual private-analysis admission transaction. The returned text remains untrusted explanation. */
 export async function generateWorkforceAnalysis(...args:Parameters<typeof generateWorkforceAnalysisActivity>):Promise<Awaited<ReturnType<typeof generateWorkforceAnalysisActivity>>>{
+ args=structuredClone(args);
  return withAiCentreFunction(args[0],'read:operation_workforce_analysis',()=>generateWorkforceAnalysisActivity(...args));
 }
 async function generateWorkforceAnalysisActivity(supplied:SessionContext,options:WorkforceAnalysisOptions):Promise<string>{

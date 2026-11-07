@@ -576,6 +576,7 @@ async function hypothesisSourceTx(tx:Tx,supplied:SessionContext,p:{batchId:strin
 }
 
 export async function proposeHypotheses(...args:Parameters<typeof proposeHypothesesActivity>):Promise<Awaited<ReturnType<typeof proposeHypothesesActivity>>>{
+ args=structuredClone(args);
  return withAiCentreActivity(args[0],()=>proposeHypothesesActivity(...args));
 }
 async function proposeHypothesesActivity(

@@ -356,6 +356,7 @@ export async function removeAiProviderConfig(ctx: SessionContext, p: { provider:
  * reason — never raw provider text. No domain event (a read-shaped probe).
  */
 export async function testConnection(...args:Parameters<typeof testConnectionActivity>):Promise<ValidateResult>{
+ args=structuredClone(args);
  return withAiCentreFunction(args[0],'read:provider_connection_test',()=>testConnectionActivity(...args));
 }
 async function testConnectionActivity(

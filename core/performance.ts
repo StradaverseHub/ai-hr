@@ -2992,6 +2992,7 @@ async function managerReviewDraftSourceTx(tx:Tx,supplied:SessionContext,reviewId
 function managerDraftSourceDigest(value:Awaited<ReturnType<typeof managerReviewDraftSourceTx>>){const sort=(rows:readonly unknown[])=>rows.map(row=>JSON.stringify(row)).sort();return createHash('sha256').update(JSON.stringify([value.review,value.cycle,value.scale,sort(value.goals),sort(value.prior),sort(value.peers)])).digest('hex');}
 
 export async function draftManagerReview(...args:Parameters<typeof draftManagerReviewActivity>):Promise<Awaited<ReturnType<typeof draftManagerReviewActivity>>>{
+ args=structuredClone(args);
  return withAiCentreFunction(args[0],'read:operation_manager_review_draft',()=>draftManagerReviewActivity(...args));
 }
 async function draftManagerReviewActivity(

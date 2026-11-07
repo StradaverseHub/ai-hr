@@ -37,6 +37,7 @@ export async function assessmentDevelopmentContextTx(tx:Tx,ctx:SessionContext,re
 }
 const source=assessmentDevelopmentContext;
 export async function suggestAssessmentDevelopmentGoals(...args:Parameters<typeof suggestAssessmentDevelopmentGoalsActivity>):Promise<Awaited<ReturnType<typeof suggestAssessmentDevelopmentGoalsActivity>>>{
+ args=structuredClone(args);
  return withAiCentreFunction(args[0],'read:operation_development_goals',()=>suggestAssessmentDevelopmentGoalsActivity(...args));
 }
 async function suggestAssessmentDevelopmentGoalsActivity(ctx:SessionContext,reviewId:string,requestId:string){

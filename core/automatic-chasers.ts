@@ -214,6 +214,7 @@ async function runChasers(ctx: SessionContext, specialist: 'approval_chasers'|'r
 
 /** Nightly: remind current approvers of overdue claims, attendance corrections and replacement leave requests. */
 export async function runApprovalChasers(...args:Parameters<typeof runApprovalChasersActivity>):Promise<Awaited<ReturnType<typeof runApprovalChasersActivity>>>{
+ args=[structuredClone(args[0]),{...args[1]}];
  return withAiCentreActivity(args[0],()=>runApprovalChasersActivity(...args));
 }
 async function runApprovalChasersActivity(ctx: SessionContext, opts: ChaserRunOptions): Promise<ChaseRunResult> {
@@ -222,6 +223,7 @@ async function runApprovalChasersActivity(ctx: SessionContext, opts: ChaserRunOp
 
 /** Nightly: remind the manager or HR about probation, contract and internship reviews undecided after their end date. */
 export async function runReviewChasers(...args:Parameters<typeof runReviewChasersActivity>):Promise<Awaited<ReturnType<typeof runReviewChasersActivity>>>{
+ args=[structuredClone(args[0]),{...args[1]}];
  return withAiCentreActivity(args[0],()=>runReviewChasersActivity(...args));
 }
 async function runReviewChasersActivity(ctx: SessionContext, opts: ChaserRunOptions): Promise<ChaseRunResult> {

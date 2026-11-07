@@ -44,6 +44,7 @@ function capture<T>(input:T):T{
  * Native headcount has no native percentage/band, so it is deliberately not emitted as a metric.
  */
 export async function generatePrivatePayrollComparisonAnalysis(...args:Parameters<typeof generatePrivatePayrollComparisonAnalysisActivity>):Promise<Awaited<ReturnType<typeof generatePrivatePayrollComparisonAnalysisActivity>>>{
+ args=structuredClone(args);
  return withAiCentreFunction(args[0],'read:operation_payroll_comparison',()=>generatePrivatePayrollComparisonAnalysisActivity(...args));
 }
 async function generatePrivatePayrollComparisonAnalysisActivity(ctx:SessionContext,spec:CustomReportSpec,scope:readonly string[],raw:Record<string,unknown>):Promise<string>{

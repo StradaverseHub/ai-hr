@@ -10,6 +10,7 @@ import { assertPayFormulaDraftAuthorTx, validatePayFormulaDraft, payFormulaPermi
 import { adjudicatePayFormulaDraft, payFormulaSuggestionSource, PAY_FORMULA_DRAFT_CONTRACT, payFormulaDraftRequest } from '../lib/pay-formula-ai';
 
 export async function draftPayFormula(...args:Parameters<typeof draftPayFormulaActivity>):Promise<Awaited<ReturnType<typeof draftPayFormulaActivity>>>{
+ args=structuredClone(args);
  return withAiCentreFunction(args[0],'read:operation_pay_formula_draft',()=>draftPayFormulaActivity(...args));
 }
 async function draftPayFormulaActivity(ctx: SessionContext, input: unknown) {

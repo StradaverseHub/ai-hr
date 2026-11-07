@@ -33,6 +33,12 @@ describe('AI centre control status',()=>{
   expect(screen.getByText(/Unsettled provider requests: 2/)).toBeInTheDocument();
   expect(screen.queryByRole('button',{name:/Required HR validation/})).not.toBeInTheDocument();
  });
+ it('does not display a missing function registration as enabled',async()=>{
+  owners.reads.mockResolvedValue(new Map());
+  render(await AiCentreControls({session:{tenantId:'fixture'}}));
+  expect(screen.getByText(/Control status could not be confirmed/)).toBeInTheDocument();
+  expect(screen.queryByRole('button',{name:/Turn (on|off)/,hidden:true})).not.toBeInTheDocument();
+ });
  it('offers resume only after a confirmed stopped state',async()=>{
   owners.state.mockResolvedValue({stopped:true,generation:3,pending:0});
   render(await AiCentreControls({session:{tenantId:'fixture'}}));

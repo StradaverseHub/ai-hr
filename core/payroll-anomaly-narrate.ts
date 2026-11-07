@@ -138,6 +138,7 @@ async function narrationSourceTx(tx:Tx,supplied:SessionContext,verdictId:string)
 }
 
 export async function narrateVerdict(...args:Parameters<typeof narrateVerdictActivity>):Promise<Awaited<ReturnType<typeof narrateVerdictActivity>>>{
+ args=structuredClone(args);
  return withAiCentreActivity(args[0],()=>narrateVerdictActivity(...args));
 }
 async function narrateVerdictActivity(

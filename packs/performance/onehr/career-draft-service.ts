@@ -39,6 +39,7 @@ async function contextTx(tx:Tx,ctx:SessionContext,reviewId:string,requireAi=true
 
 /** One successful whole-plan request has its own five-per-Malaysia-day counter. Nothing is written to the plan. */
 export async function suggestAssessmentCareerPlan(...args:Parameters<typeof suggestAssessmentCareerPlanActivity>):Promise<Awaited<ReturnType<typeof suggestAssessmentCareerPlanActivity>>>{
+ args=structuredClone(args);
  return withAiCentreFunction(args[0],'read:operation_career_plan',()=>suggestAssessmentCareerPlanActivity(...args));
 }
 async function suggestAssessmentCareerPlanActivity(ctx:SessionContext,reviewId:string,requestId:string,authored?:{aspirationLong?:string}){

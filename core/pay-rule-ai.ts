@@ -95,6 +95,7 @@ async function assertPayRuleDraftAuthorTx(tx:Tx,ctx:SessionContext){
  * after a green "Use this"). Returns the rule + explanation for the admin to review; NEVER writes anything.
  */
 export async function draftPayRule(...args:Parameters<typeof draftPayRuleActivity>):Promise<Awaited<ReturnType<typeof draftPayRuleActivity>>>{
+ args=structuredClone(args);
  return withAiCentreFunction(args[0],'read:operation_pay_rule_draft',()=>draftPayRuleActivity(...args));
 }
 async function draftPayRuleActivity(

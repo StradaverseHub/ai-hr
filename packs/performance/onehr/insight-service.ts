@@ -22,6 +22,7 @@ const fingerprint=(source:Source,texts:Map<string,EvidenceText>,cfg:ResolvedAiCo
 async function config(ctx:SessionContext){return withPerformanceTenant(ctx,async tx=>{try{return await assessmentAiConfigTx(tx,ctx,'pm');}catch{return null;}});}
 /** GET is cache-only. Explicit generation is the sole file/provider path, including for calibrators. */
 export async function getAssessmentPerformanceInsight(...args:Parameters<typeof getAssessmentPerformanceInsightActivity>):Promise<Awaited<ReturnType<typeof getAssessmentPerformanceInsightActivity>>>{
+ args=structuredClone(args);
  if(!(args[3]?.generate))return getAssessmentPerformanceInsightActivity(...args);
  return withAiCentreFunction(args[0],'read:operation_performance_insight',()=>getAssessmentPerformanceInsightActivity(...args));
 }

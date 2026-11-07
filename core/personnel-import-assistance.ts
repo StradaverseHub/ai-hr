@@ -46,7 +46,8 @@ export async function preparePersonnelImportHeaders(supplied:SessionContext,valu
 export async function assistPersonnelImportHeaders(ctx:SessionContext,value:unknown):Promise<PersonnelImportHeaderAssistanceResult>{
  const command=PersonnelImportHeaderAssistanceCommandSchema.safeParse(value);
  if(command.success&&command.data.request.mode==='ai'){
-  try{return await withAiCentreActivity(ctx,()=>execute(ctx,value,false));}catch{return Object.freeze({kind:'unavailable',message:PERSONNEL_IMPORT_ASSISTANCE_UNAVAILABLE});}
+  const principal=structuredClone(ctx);
+  try{return await withAiCentreActivity(principal,()=>execute(principal,command.data,false));}catch{return Object.freeze({kind:'unavailable',message:PERSONNEL_IMPORT_ASSISTANCE_UNAVAILABLE});}
  }
  return execute(ctx,value,false);
 }

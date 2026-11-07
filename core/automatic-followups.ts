@@ -70,6 +70,7 @@ async function sendOne(tx:Tx,ctx:SessionContext,action:FollowupAction,item:Follo
  return 'sent' as const;
 }
 export async function runAutomaticFollowups(...args:Parameters<typeof runAutomaticFollowupsActivity>):Promise<Awaited<ReturnType<typeof runAutomaticFollowupsActivity>>>{
+ args=[structuredClone(args[0]),{...args[1]}];
  return withAiCentreActivity(args[0],()=>runAutomaticFollowupsActivity(...args));
 }
 async function runAutomaticFollowupsActivity(ctx:SessionContext,opts:ChaserRunOptions):Promise<FollowupRunResult>{

@@ -255,7 +255,7 @@ export const nativeToolProvider:ToolProvider=async(ctx,scope,actions)=>{
  const imports:ToolBinding[]=importKinds.length?[{name:PREPARE_IMPORT_TOOL,kind:'suggest',entity:'chat_import',spec:prepareImportSpec(importKinds),identifierInputs:[],
   async run(input){const result=await runPrepareImport(ctx,importKinds,input,scope);return{ok:result.ok,content:result.content,...(result.refusal?{refusal:result.refusal}:{}),...(result.proposal?{proposal:result.proposal}:{})};}}]:[];
  const bindings=[...context,...reads,...teras,...topics,...suggest,...capabilities,...imports].map(binding=>Object.freeze({...binding,
-  async run(input:Record<string,unknown>){const key=topicRead(binding.name,input.topic)?.name??binding.name;return withAiCentreFunction(ctx,'read:'+key,async()=>{
+  async run(input:Record<string,unknown>){input=structuredClone(input);const key=topicRead(binding.name,input.topic)?.name??binding.name;return withAiCentreFunction(ctx,'read:'+key,async()=>{
    const allowed=await aiCentreReadAllowed(ctx,key);
    const moduleAllowed=binding.name!=='my_module_work'||typeof input.module!=='string'||await aiCentreReadAllowed(ctx,'module:'+input.module);
    if(!allowed||!moduleAllowed)return {ok:false as const,refusal:'not_permitted',content:{ok:false,refusal:'not_permitted',message:'This AI function is switched off. Use its normal page or contact your administrator.'}};

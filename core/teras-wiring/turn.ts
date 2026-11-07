@@ -72,6 +72,8 @@ export function conversationTools(explainers:boolean):ToolProvider{
 }
 
 export async function runConversationTurn(...args:Parameters<typeof runConversationTurnActivity>):Promise<Awaited<ReturnType<typeof runConversationTurnActivity>>>{
+ // Preserve the server-issued permit identity while capturing the posted turn.
+ args=[structuredClone(args[0]),{...args[1]},structuredClone(args[2])];
  return withAiCentreActivity(args[0],()=>runConversationTurnActivity(...args));
 }
 async function runConversationTurnActivity(supplied:SessionContext,route:Readonly<{permit:HarnessPermit;attestedProvider:TerasAttestedProvider|null;explainers:boolean}>,

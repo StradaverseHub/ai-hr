@@ -341,6 +341,7 @@ async function pendingClaimAiSourceTx(tx:Tx,supplied:SessionContext,sinceValue:D
 }
 
 export async function triagePendingClaims(...args:Parameters<typeof triagePendingClaimsActivity>):Promise<Awaited<ReturnType<typeof triagePendingClaimsActivity>>>{
+ args=structuredClone(args);
  return withAiCentreActivity(args[0],()=>triagePendingClaimsActivity(...args));
 }
 async function triagePendingClaimsActivity(ctx: SessionContext): Promise<TriageRun> {

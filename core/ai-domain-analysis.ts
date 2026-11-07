@@ -100,6 +100,7 @@ async function readSource(tx:Tx,ctx:SessionContext,selected:DomainAnalysisOption
 /** Native-backed report explanation. Current snapshots never pretend to be historic trend comparisons.
  * Source selection, exact membership and conditions are fingerprinted locally at every admission replay. */
 export async function generateDomainAnalysis(...args:Parameters<typeof generateDomainAnalysisActivity>):Promise<Awaited<ReturnType<typeof generateDomainAnalysisActivity>>>{
+ args=structuredClone(args);
  return withAiCentreFunction(args[0],'read:operation_domain_analysis',()=>generateDomainAnalysisActivity(...args));
 }
 async function generateDomainAnalysisActivity(supplied:SessionContext,options:DomainAnalysisOptions):Promise<string>{

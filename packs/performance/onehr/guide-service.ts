@@ -86,6 +86,7 @@ export function privatePerformanceGuideContext(question:string,facts:Performance
 const historySchema=z.array(z.object({role:z.enum(['user','agent']),content:z.string().max(600)})).max(10);
 export type PerformanceGuideReply={text:string;facts:PerformanceGuideFact[];mode:'answer'|'search'|'declined'|'slowed';unanswered:boolean};
 export async function askPerformanceGuide(...args:Parameters<typeof askPerformanceGuideActivity>):Promise<Awaited<ReturnType<typeof askPerformanceGuideActivity>>>{
+ args=structuredClone(args);
  return withAiCentreFunction(args[0],'read:operation_performance_guide',()=>askPerformanceGuideActivity(...args));
 }
 async function askPerformanceGuideActivity(ctx:SessionContext,rawQuestion:string,rawHistory:unknown=[]):Promise<PerformanceGuideReply>{

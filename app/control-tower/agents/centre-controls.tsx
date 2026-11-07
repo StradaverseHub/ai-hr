@@ -42,7 +42,7 @@ export async function AiCentreControls({session}:{session:SessionContext}){
    <details><summary className="min-h-11 cursor-pointer py-3 text-sm font-medium">{t('allFunctions')}</summary>
     <ul className="divide-y divide-border">{functions.map(row=><li key={row.key} className="flex flex-wrap items-center justify-between gap-3 py-3">
      <span className="min-w-0 text-sm">{functionName(row)}</span>
-     {row.control==='read'?controls===null?<span role="status" className="text-sm text-muted-foreground">{t('unknown')}</span>:<form action={setAiCentreFunctionAction} className="flex items-center gap-3">
+     {row.control==='read'?controls===null||controls.get(row.key)===undefined?<span role="status" className="text-sm text-muted-foreground">{t('unknown')}</span>:<form action={setAiCentreFunctionAction} className="flex items-center gap-3">
       <span className="text-sm text-muted-foreground">{t(controls.get(row.key)===false?'off':'on')}</span>
       <input type="hidden" name="function" value={row.key}/><input type="hidden" name="enabled" value={String(controls.get(row.key)===false)}/>
       <button type="submit" className={btnGhost} aria-label={`${t(controls.get(row.key)===false?'enable':'disable')} · ${functionName(row)}`}>{t(controls.get(row.key)===false?'enable':'disable')}</button>

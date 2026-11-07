@@ -86,6 +86,7 @@ async function pausedTx(tx:Tx,tenantId:string,workerId:LoopId):Promise<Set<strin
 
 /** One run of one loop for one tenant. Never throws for a refusal; a database failure while preparing propagates. */
 export async function runLoop(...args:Parameters<typeof runLoopActivity>):Promise<Awaited<ReturnType<typeof runLoopActivity>>>{
+ args=structuredClone(args);
  return withAiCentreActivity(agentContext(args[1].tenantId,args[1].principalId,args[1].entitlements),()=>runLoopActivity(...args)).catch(error=>{if(error instanceof Error&&error.name==='AiAllowanceError')return Object.freeze({workerId:args[0],status:'not_run' as const,reasons:Object.freeze(['stopped'])});throw error;});
 }
 async function runLoopActivity(workerId:LoopId,options:LoopRunOptions):Promise<LoopRunResult>{

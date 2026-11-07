@@ -105,6 +105,7 @@ export type ReportDraftResult = { spec: CustomReportSpec; explanation: string; r
  * review; NEVER writes a report.
  */
 export async function draftReportSpec(...args:Parameters<typeof draftReportSpecActivity>):Promise<Awaited<ReturnType<typeof draftReportSpecActivity>>>{
+ args=structuredClone(args);
  return withAiCentreFunction(args[0],'read:operation_report_spec_draft',()=>draftReportSpecActivity(...args));
 }
 async function draftReportSpecActivity(

@@ -61,6 +61,7 @@ async function pausedTx(tx:Tx,tenantId:string):Promise<Set<string>>{
 }
 
 export async function runPayrollAuditLoop(...args:Parameters<typeof runPayrollAuditLoopActivity>):Promise<Awaited<ReturnType<typeof runPayrollAuditLoopActivity>>>{
+ args=structuredClone(args);
  return withAiCentreActivity(agentContext(args[0].tenantId,args[0].principalId,args[0].entitlements),()=>runPayrollAuditLoopActivity(...args)).catch(error=>{if(error instanceof Error&&error.name==='AiAllowanceError')return Object.freeze({workerId:'loop_payroll_audit',status:'not_run' as const,reasons:Object.freeze(['stopped'])});throw error;});
 }
 async function runPayrollAuditLoopActivity(options:AuditRunOptions):Promise<AuditRunResult>{

@@ -118,6 +118,7 @@ export async function runAssessmentAdminAction(ctx:SessionContext,cycleId:string
  return {text:hits.length?'Here are the matching settings, pages and downloads.':'Nothing matches those words. Try the setting or page name.',mode:'answer',cards:hits.slice(0,3)};
 }
 export async function askAssessmentAdmin(...args:Parameters<typeof askAssessmentAdminActivity>):Promise<Awaited<ReturnType<typeof askAssessmentAdminActivity>>>{
+ args=structuredClone(args);
  return withAiCentreFunction(args[0],'read:operation_performance_admin',()=>askAssessmentAdminActivity(...args));
 }
 async function askAssessmentAdminActivity(ctx:SessionContext,cycleId:string|undefined,rawQuestion:string,rawHistory:unknown=[]):Promise<PerformanceAdminReply>{

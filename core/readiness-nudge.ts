@@ -267,6 +267,7 @@ async function settleOutcomes(ctx: SessionContext, openGapKeys: Set<string>, act
  * gap fixed since the last run is credited before anything new is raised.
  */
 export async function sweepReadinessNudges(...args:Parameters<typeof sweepReadinessNudgesActivity>):Promise<Awaited<ReturnType<typeof sweepReadinessNudgesActivity>>>{
+ args=structuredClone(args);
  return withAiCentreActivity(args[0],()=>sweepReadinessNudgesActivity(...args));
 }
 async function sweepReadinessNudgesActivity(ctx: SessionContext): Promise<NudgeSweepResult> {
