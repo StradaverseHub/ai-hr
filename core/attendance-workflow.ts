@@ -247,7 +247,7 @@ export async function setAttendanceWorkflowEnabled(ctx: SessionContext, companyI
             if (!active.length)
                 throw new AttendanceWorkflowError('invalid', 'Create and activate valid templates before enabling routing.');
             for (const row of active) {
-                const input = attendanceWorkflowConfiguration({...row,companyId,active:true});
+                const input = attendanceWorkflowConfiguration({...row,companyId,companyIds:await assignedCompanies(tx,row.id),active:true});
                 await validateScope(tx, ctx, input);
                 await validateActivation(tx, ctx, input, row.lineageId);
             }

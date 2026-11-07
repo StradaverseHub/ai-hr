@@ -306,6 +306,9 @@ describe('approved shared workflows and actor-scoped approver search',()=>{
   const preview=await previewAttendanceWorkflow(root,input,saved.lineageId);
   expect(preview.rows.find(row=>row.employmentId===worker.employmentId)).toMatchObject({employeeCode:'WARN-001',levelProblem:{code:'missing_superior',levelIndex:0}});
   await setAttendanceWorkflowEnabled(root,base.companyId,'irregularity',true);
+  // Company B has no matching employees, but its shared definition legitimately names A's employee.
+  // Enabling B must validate against the complete assignment set rather than treating that ID as foreign.
+  await setAttendanceWorkflowEnabled(root,other.id,'irregularity',true);
   const on=todayInKualaLumpur();await checkIn(root,{employmentId:worker.employmentId,date:on,time:'08:00',manual:true});await checkOut(root,{employmentId:worker.employmentId,date:on,time:'17:00',manual:true});
   await expect(requestAttendanceCorrection(worker.ctx,{employmentId:worker.employmentId,date:on,checkIn:'09:00',checkOut:'18:00',reason:'No silent approval bypass'})).rejects.toThrow();
   expect(await owner.db.select().from(schema.attendanceWorkflowRequest)).toHaveLength(0);
