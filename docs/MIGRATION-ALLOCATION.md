@@ -1,5 +1,28 @@
 # Coordinated migration reservations
 
+## Access editor presentation — 8 November 2026 (uninstalled)
+
+Reserve `3103_access_editor_presentation`, idx2403 / when1793330002703.
+SQL SHA-256 `bb171333ef940c173ac9ca0a647398116dfd8ee8dd87d77c8f59e92b0281fe47`.
+Fresh main/alpha both identify109a046ef38f90514f1da458056aa09e015a47a4.
+An all-ref/tag/root-tree and captured-WIP scan covered5898 refs,3151 root trees,
+678 migration trees,484 committed journals and439 readable worktrees. All captured
+migration WIP remained stable. Previous maxima were3102 /2402 /1793330002702;
+one malformed foreign journal was preserved and its literal claims included.
+All739 predecessor entries and historical SQL bytes remain unchanged.
+
+The exact predecessor native bootstrap body/identity/ACL must match before one
+canonical eligibility predicate is factored privately. Original locking,
+initialization effects, grants, recovery invariant and audit remain. A new narrow
+native projection enforces RR/RO, current principal/login and current configure
+authority; only a legitimate uninitialized bootstrap actor receives an explicit
+status. The isolated prototype42392922965 passed43 tests, including held Access/
+History and retained command correctness. This is component evidence, not actual
+append, populated upgrade or installed-application acceptance. The guarded append,
+application adoption, complete upgrade identities and actual target ordered ledger
+still require qualification. Recheck reservations and installed watermark before
+integration/installation. Production remains on hold.
+
 ## Typed Personnel overview filters — 7 November 2026 (uninstalled)
 
 `2701_personnel_typed_overview_filter_fields`, idx2001 / when1793330002301,
