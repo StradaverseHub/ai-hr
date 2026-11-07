@@ -124,12 +124,25 @@ it('receipt failure is terminal even after an exact graph was prepared',async()=
 
 it('hybrid prerequisites require the exact reconstructed native unit rather than its job name alone',()=>{
  const f=fullFixture();f.env.GITHUB_JOB='native-test';
- expect(()=>inspectFullCiRoleAdmission(f.env,f.host)).toThrow('job matches actual reconstructed unit');
+ expect(()=>inspectFullCiRoleAdmission(f.env,f.host)).toThrow('object shape');
+ const root='/var/lib/aihr-native-controller/'+f.env.GITHUB_RUN_ID;
+ f.env.GITHUB_EVENT_PATH=root+'/event.json';
+ const runId=f.env.GITHUB_RUN_ID,workspace=f.env.GITHUB_WORKSPACE;if(typeof runId!=='string'||typeof workspace!=='string')throw Error('Concrete model context required');
+ const bootstrap={runId,candidate:f.candidate,controller:f.control,workspace,
+  automation:root+'/automation',protectedNodePath:root+'/node',eventSha256:createHash('sha256').update(JSON.stringify(f.event)).digest('hex')};
+ const host:FullCiRoleHost={...f.host,nativeBootstrap:()=>bootstrap};
+ expect(()=>inspectFullCiRoleAdmission(f.env,host)).toThrow('job matches actual reconstructed unit');
  const unit=f.observed.plan.units[0] as typeof f.observed.plan.units[number]&{singleton?:{version:number;profile:string;workers:number;isolation:string}};
  unit.files=['test/runtime-next-admission-native.test.ts'];unit.singleton={version:1,profile:'linux-next-postgres-v1',workers:1,isolation:'job-host-and-postgres-cluster'};
- expect(inspectFullCiRoleAdmission(f.env,f.host).binding.batchFiles).toEqual(['test/runtime-next-admission-native.test.ts']);
- for(const mutate of [()=>{unit.singleton!.workers=2;},()=>{unit.singleton!.version=2;},()=>{unit.singleton!.isolation='job-postgres-cluster';},()=>{unit.files=['test/ordinary.test.ts'];}]){
-  const before=structuredClone(unit);mutate();expect(()=>inspectFullCiRoleAdmission(f.env,f.host)).toThrow();Object.assign(unit,before);
+ expect(inspectFullCiRoleAdmission(f.env,host).binding.batchFiles).toEqual(['test/runtime-next-admission-native.test.ts']);
+ for(const field of ['runId','candidate','controller','workspace','automation','protectedNodePath','eventSha256']as const){
+  const before=bootstrap[field];bootstrap[field]='foreign';expect(()=>inspectFullCiRoleAdmission(f.env,host),field).toThrow();bootstrap[field]=before;
  }
- f.env.GITHUB_JOB='test';expect(()=>inspectFullCiRoleAdmission(f.env,f.host)).toThrow('job matches actual reconstructed unit');
+ const eventPath=f.env.GITHUB_EVENT_PATH;f.env.GITHUB_EVENT_PATH=f.temp+'/_github_workflow/event.json';
+ expect(()=>inspectFullCiRoleAdmission(f.env,host)).toThrow('actual event path');f.env.GITHUB_EVENT_PATH=eventPath;
+ const eventHash=bootstrap.eventSha256;bootstrap.eventSha256='e'.repeat(64);expect(()=>inspectFullCiRoleAdmission(f.env,host)).toThrow('protected native event bytes');bootstrap.eventSha256=eventHash;
+ for(const mutate of [()=>{unit.singleton!.workers=2;},()=>{unit.singleton!.version=2;},()=>{unit.singleton!.isolation='job-postgres-cluster';},()=>{unit.files=['test/ordinary.test.ts'];}]){
+  const before=structuredClone(unit);mutate();expect(()=>inspectFullCiRoleAdmission(f.env,host)).toThrow();Object.assign(unit,before);
+ }
+ f.env.GITHUB_JOB='test';expect(()=>inspectFullCiRoleAdmission(f.env,host)).toThrow('actual event path');
 });

@@ -54,7 +54,11 @@ export function singletonSources(unit){
   ...(nativeNextUnit(unit)?[...Object.values(NATIVE_HELPER_SOURCES),'.github/ci/native-next-helper-sources.mjs','.github/ci/native-next-build-packet.mjs',
    '.github/ci/native-next-installation.mjs','.github/ci/native-next-build-inputs.mjs','.github/ci/candidate-environment.mjs','.github/ci/build-artifact.mjs',
    'test/helpers/native-next-fixture.ts','scripts/performance/native-next-boot-browser.mjs',
-   'scripts/performance/fixture-workload.mjs','scripts/performance/next-source-proof.mjs']:[])].sort();
+   'scripts/performance/fixture-workload.mjs','scripts/performance/next-source-proof.mjs',
+   '.github/ci/native-controller-bootstrap.py','.github/ci/native-controller-owner.mjs','.github/ci/prepare-runner.sh',
+   '.github/ci/run-unit.mjs','.github/ci/plan.mjs','.github/ci/singleton-profiles.mjs',
+   '.github/actions/setup-alpha/action.yml','.github/workflows/alpha-staging.yml',
+   'scripts/migrate-with-focused-prerequisites.ts','scripts/lib/discard-premigration.ts','test/helpers/personnel-draft-discard-ci-role-fixture.ts']:[])].sort();
 }
 export const protocolHash=value=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const fullSha=value=>typeof value==='string'&&/^[a-f0-9]{40}$/.test(value);

@@ -6,13 +6,23 @@ import {readFileSync,writeFileSync,realpathSync} from 'node:fs';
 import {join,resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {platform} from 'node:os';
-import {hasFocusedMigrationIntent,runCandidateMigration,FULL_CI_PLAN_OBSERVER,FULL_CI_ROLE_MODE,fullCiRoleReceiptBasename} from './lib/discard-premigration';
+import {hasFocusedMigrationIntent,hasFullCiRoleIntent,runCandidateMigration,FULL_CI_PLAN_OBSERVER,FULL_CI_ROLE_MODE,fullCiRoleReceiptBasename} from './lib/discard-premigration';
 
 export async function migrateWithFocusedPrerequisites():Promise<number>{
+ // Ordinary/focused migrations never load this native controller observation.
+ const native=process.env.GITHUB_JOB==='native-test'&&hasFullCiRoleIntent(process.env)
+  ?await import('../.github/ci/native-next-installation.mjs'):null;
+ const closedEnvironment=process.env.GITHUB_JOB==='native-test'&&hasFullCiRoleIntent(process.env)
+  ?await import('../.github/ci/candidate-environment.mjs'):null;
  return runCandidateMigration({focused:hasFocusedMigrationIntent(process.env),environment:process.env,migrationTarget:process.env.MIGRATION_DATABASE_URL,testMigrationTarget:process.env.TEST_MIGRATION_DATABASE_URL,arguments:process.argv.slice(2)},{
   fullCiHost:{platform:platform(),cwd:process.cwd(),realpath:path=>realpathSync(path),read:path=>readFileSync(path,'utf8'),
-   git:(cwd,args)=>execFileSync('git',[...args],{cwd,encoding:'utf8',maxBuffer:16*1024*1024}),
-   observePlan:cwd=>JSON.parse(execFileSync(process.execPath,['--input-type=module','-e',FULL_CI_PLAN_OBSERVER],{cwd,env:process.env,encoding:'utf8',maxBuffer:16*1024*1024})),},
+   git:(cwd,args)=>execFileSync('git',['-c','safe.directory='+cwd,'-c','core.fsmonitor=false','-c','core.hooksPath=/dev/null',...args],{cwd,env:closedEnvironment?.nativePreparationEnvironment(process.env)??process.env,encoding:'utf8',maxBuffer:16*1024*1024}),
+   ...(native?{nativeBootstrap:()=>native.readProtectedBootstrap(process.env)}:{}),
+   observePlan:cwd=>{
+    if(native){const bootstrap=native.readProtectedBootstrap(process.env);return JSON.parse(execFileSync(bootstrap.protectedNodePath,
+     [join(bootstrap.automation,'.github/ci/native-controller-owner.mjs'),'role-plan'],{cwd,env:closedEnvironment!.nativePreparationEnvironment(process.env),encoding:'utf8',timeout:120000,maxBuffer:16*1024*1024}));}
+    return JSON.parse(execFileSync(process.execPath,['--input-type=module','-e',FULL_CI_PLAN_OBSERVER],{cwd,env:process.env,encoding:'utf8',maxBuffer:16*1024*1024}));
+   },},
   loadFocusedRoleOwner:()=>import('../test/helpers/personnel-draft-discard-ci-role-fixture'),
   fingerprint:path=>createHash('sha256').update(readFileSync(path)).digest('hex'),
   recordPrerequisites:(metadata,full)=>{

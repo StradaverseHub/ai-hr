@@ -12,7 +12,7 @@ import {createPlan,hash} from './plan.mjs';
 import {DB_BATCH_FILES} from './manifest.mjs';
 import {validatePdfSetupProof} from './pdf-tools.mjs';
 import {assertNoSingletonHints,nativeNextUnit,singletonControllerPath} from './singleton-protocol.mjs';
-import {readProtectedBootstrap} from './native-next-installation.mjs';
+import {readProtectedBootstrap,readProtectedNativeEvent} from './native-next-installation.mjs';
 import {actualSingletonHost,provisionSingletonHost,writeSingletonBinding} from './singleton-profiles.mjs';
 
 import {candidateEnvironment,nativePreparationEnvironment} from './candidate-environment.mjs';
@@ -136,7 +136,7 @@ function actualFullCiRoleContext(plan,unit,offset,batchSize,files,dir,resetStatu
  if(nativeNextUnit(unit)){const bootstrap=readProtectedBootstrap(env);assert.equal(bootstrap.automation,automation);assert.equal(realpathSync('/proc/self/exe'),bootstrap.protectedNodePath);}
  const git=(cwd,...args)=>execFileSync('git',['-c','safe.directory='+cwd,'-c','core.fsmonitor=false','-c','core.hooksPath=/dev/null','-C',cwd,...args],{env:nativePreparationEnvironment(process.env),encoding:'utf8'}).trim();
  const sourceHashes=Object.fromEntries(Object.entries(fullRoleSources).map(([key,file])=>{const path=join(source,file);assert.equal(path,realpathSync(path));return[key,createHash('sha256').update(ownedRegularBytes(path,262144)).digest('hex')];}));
- const event=JSON.parse(ownedRegularBytes(env.GITHUB_EVENT_PATH,1048576).toString('utf8'));
+ const event=JSON.parse((nativeNextUnit(unit)?readProtectedNativeEvent(env):ownedRegularBytes(env.GITHUB_EVENT_PATH,1048576)).toString('utf8'));
  const layout={platform:process.platform,workspace,source,automation,temp,evidence:realpathSync(dir),cwd:realpathSync(process.cwd()),controllerScript:realpathSync(fileURLToPath(import.meta.url)),sourceHead:git(source,'rev-parse','HEAD'),controllerHead:git(automation,'rev-parse','HEAD'),sourceClean:git(source,'status','--porcelain')==='',controllerClean:git(automation,'status','--porcelain')===''};
  const binding=fullCiRoleBinding({plan,unit,offset,batchSize,files,env,resetStatus,event,layout,sourceHashes});
  return {binding,sourceHashes,env:fullCiRoleMigrationEnvironment(env,binding,dir)};
@@ -155,6 +155,11 @@ const report = {healthBefore: null, schemaVersion: 1, sha: plan.sha, fingerprint
 const closed = 'postgres://nobody:nothing@127.0.0.1:1/no_database';
 let failure = false;
 try {
+  if(nativeNextUnit(unit)){
+   const bootstrap=readProtectedBootstrap();
+   execFileSync(bootstrap.protectedNodePath,[join(bootstrap.automation,'.github/ci/native-controller-owner.mjs'),'pdf-tools','--unit',id],
+    {cwd:process.cwd(),env:nativePreparationEnvironment(process.env),stdio:'inherit',timeout:180000});
+  }
   if(unit.kind!=='browser'){report.pdfToolSetup=JSON.parse(readFileSync(join(process.env.RUNNER_TEMP,'pdf-tools-setup.json'),'utf8'));validatePdfSetupProof(plan,unit,report.pdfToolSetup);}
   report.healthBefore = hostHealth();
   writeFileSync(join(dir, `health-before-${id}.json`), JSON.stringify(report.healthBefore,null,2)+'\n', {flag:'wx'});
@@ -193,6 +198,7 @@ try {
       let prerequisites;
       if(nativeNextUnit(unit)){
         actualSingletonHost(plan,unit,dir);
+        Object.assign(env,FULL_CI_ROLE_URLS);
         const host=provisionSingletonHost(plan,unit,dir),build=await provisionNativeNextBuild(plan,unit,dir,process.env,installation);
         prerequisites={kind:'fresh-job-next-systemd-nginx-postgres',workers:1,database:capturePostgresEvidence(id,plan.execution.postgres),host,build:build.prerequisite};
         env.AIHR_NATIVE_NEXT_PACKET_DIR=build.packetDirectory;env.AIHR_NATIVE_NEXT_BUILD_BINDING=build.bindingPath;

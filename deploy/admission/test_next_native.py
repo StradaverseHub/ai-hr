@@ -243,6 +243,11 @@ def package(plan, helper, binding):
     require(binding['runtime'] == N.RUNTIME and binding['releaseAuthorized'] is False,
             'Bound build runtime or nonrelease purpose differs')
     expected = S.verified_source(plan['sourceProof'], plan['candidate'], require)
+    # Native Git metadata can be influenced by a mutable checkout. Bind each
+    # sealed helper independently to the cryptographically verified source tree.
+    source_blobs = {row['path']: row['blob'] for row in expected}
+    require(all(source_blobs.get(row['sourcePath']) == row['gitBlobId'] for row in binding['helpers'].values()),
+            'Sealed helper differs from verified candidate source Merkle tree')
     release = pathlib.Path('/var/lib/aihr-admission/release')
     release.mkdir(mode=0o700)
     output = P.OwnedPackage(release, require)

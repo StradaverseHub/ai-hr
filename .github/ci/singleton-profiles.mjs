@@ -6,7 +6,7 @@ import {createHash} from 'node:crypto';
 import {join,resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {singletonSources,assertSingletonUnit,validateSingletonHost,validateSingletonBinding,nativeNextUnit,singletonControllerPath} from './singleton-protocol.mjs';
-import {readProtectedBootstrap} from './native-next-installation.mjs';
+import {readProtectedBootstrap,readProtectedNativeEvent} from './native-next-installation.mjs';
 import {nativePreparationEnvironment} from './candidate-environment.mjs';
 const git=(cwd,...args)=>execFileSync('git',['-c','safe.directory='+cwd,'-c','core.fsmonitor=false','-c','core.hooksPath=/dev/null','-C',cwd,...args],{env:nativePreparationEnvironment(process.env),encoding:'utf8'}).trim();
 export function actualSingletonHost(plan,unit,dir,env=process.env){
@@ -21,7 +21,7 @@ export function actualSingletonHost(plan,unit,dir,env=process.env){
   sourceHead:git(source,'rev-parse','HEAD'),controllerHead:git(automation,'rev-parse','HEAD'),sourceClean:git(source,'status','--porcelain')==='',controllerClean:git(automation,'status','--porcelain')===''};
  assert.equal(source,resolve(workspace,'source'));assert.equal(automation,singletonControllerPath(unit,workspace,env.GITHUB_RUN_ID));assert.equal(dir,resolve(temp,'aihr-ci'));
  const eventPath=realpathSync(env.GITHUB_EVENT_PATH);assert(lstatSync(eventPath).isFile());assert(lstatSync(eventPath).size<=1048576);
- validateSingletonHost({env,event:JSON.parse(readFileSync(eventPath,'utf8')),layout,plan,unit});return layout;
+ validateSingletonHost({env,event:JSON.parse(nativeNextUnit(unit)?readProtectedNativeEvent(env).toString('utf8'):readFileSync(eventPath,'utf8')),layout,plan,unit});return layout;
 }
 export function provisionSingletonHost(plan,unit,dir){
  actualSingletonHost(plan,unit,dir);const descriptor=assertSingletonUnit(unit);assert(['linux-systemd-nginx-v1','linux-next-postgres-v1'].includes(descriptor.profile));

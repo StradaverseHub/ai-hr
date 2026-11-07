@@ -7,6 +7,7 @@ import {createHash} from 'node:crypto';
 import {join,posix} from 'node:path';
 import {nativePreparationEnvironment} from './candidate-environment.mjs';
 const sha=bytes=>createHash('sha256').update(bytes).digest('hex');
+const BOOTSTRAP_CONTEXT=new Set(('GITHUB_ACTIONS GITHUB_JOB GITHUB_REPOSITORY GITHUB_REPOSITORY_ID GITHUB_WORKFLOW GITHUB_WORKFLOW_REF GITHUB_WORKFLOW_SHA GITHUB_RUN_ID GITHUB_RUN_ATTEMPT GITHUB_RUN_NUMBER GITHUB_SHA GITHUB_REF GITHUB_REF_NAME GITHUB_REF_TYPE GITHUB_HEAD_REF GITHUB_BASE_REF GITHUB_EVENT_NAME GITHUB_WORKSPACE GITHUB_SERVER_URL GITHUB_API_URL GITHUB_GRAPHQL_URL RUNNER_ENVIRONMENT RUNNER_OS RUNNER_ARCH RUNNER_TEMP RUNNER_TOOL_CACHE RUNNER_NAME CI AIHR_CI_HEAD AIHR_CI_CONTROL_HEAD AIHR_CI_MIGRATION_BASE AIHR_CI_PG_PROFILE AIHR_CI_PG_CONFIGURED_CAP_BYTES AIHR_CI_PG_PEAK_BUDGET_BYTES AIHR_CI_PG_JIT').split(' '));
 function stableBytes(path,maximum,uid){
  const fd=openSync(path,constants.O_RDONLY|constants.O_NOFOLLOW|constants.O_NONBLOCK);
  try{
@@ -38,21 +39,36 @@ export function readProtectedBootstrap(env=process.env){
   ancestor+='/'+part;const st=lstatSync(ancestor);assert(st.isDirectory()&&!st.isSymbolicLink()&&st.uid===0&&(st.mode&0o022)===0,'Protected bootstrap ancestor differs');
  }
  const st=lstatSync(path);assert(st.uid===0&&st.nlink===1&&(st.mode&0o777)===0o444,'Protected public bootstrap receipt differs');
- const value=JSON.parse(stableBytes(path,65536,0));
- assert.deepEqual(Object.keys(value).sort(),['automation','candidate','controller','controllerBytes','controllerEntries','controllerTreeSha256','kind','node','protectedNodePath','runId','version','workspace']);
+ const value=JSON.parse(stableBytes(path,128*1024,0));
+ assert.deepEqual(Object.keys(value).sort(),['automation','candidate','context','controller','controllerBytes','controllerEntries','controllerTreeSha256','eventSha256','kind','node','protectedNodePath','runId','runnerGid','runnerUid','toolBins','version','workspace']);
  assert.equal(value.version,1);assert.equal(value.kind,'PROTECTED_NATIVE_CONTROLLER_BEFORE_PACKAGE_INVOCATION');
  assert.equal(value.candidate,env.AIHR_CI_HEAD);assert.equal(value.controller,env.AIHR_CI_CONTROL_HEAD);assert.equal(value.runId,env.GITHUB_RUN_ID);
  assert.equal(value.workspace,realpathSync(env.GITHUB_WORKSPACE));assert.equal(value.protectedNodePath,root+'/node');
  assert.equal(value.automation,root+'/automation');
- const node=lstatSync(value.protectedNodePath);assert(node.isFile()&&!node.isSymbolicLink()&&node.uid===0&&node.nlink===1&&(node.mode&0o777)===0o755);
+ const node=lstatSync(value.protectedNodePath);assert(node.isFile()&&!node.isSymbolicLink()&&node.uid===0&&node.nlink===1&&(node.mode&0o777)===0o555);
+ assert.equal(value.runnerUid,process.getuid());assert.equal(value.runnerGid,process.getgid());
+ assert(value.context&&typeof value.context==='object'&&!Array.isArray(value.context));
+ for(const[key,text]of Object.entries(value.context))assert(BOOTSTRAP_CONTEXT.has(key)&&typeof text==='string'&&Buffer.byteLength(text)<=8192&&!text.includes('\0'));
+ for(const[key,text]of Object.entries({GITHUB_ACTIONS:'true',CI:'true',GITHUB_JOB:'native-test',GITHUB_REPOSITORY:'StradaverseHub/ai-hr',GITHUB_REPOSITORY_ID:'1333414856',RUNNER_ENVIRONMENT:'github-hosted',RUNNER_OS:'Linux',GITHUB_RUN_ATTEMPT:'1',
+  GITHUB_RUN_ID:value.runId,AIHR_CI_HEAD:value.candidate,AIHR_CI_CONTROL_HEAD:value.controller,GITHUB_SHA:value.controller,GITHUB_WORKSPACE:value.workspace,RUNNER_TEMP:'/home/runner/work/_temp'})){
+  assert.equal(value.context[key],text);assert.equal(env[key],text);
+ }
+ assert(Array.isArray(value.toolBins)&&value.toolBins.length>0&&value.toolBins.length<=2&&new Set(value.toolBins).size===value.toolBins.length);
+ for(const directory of value.toolBins)assert(typeof directory==='string'&&directory.length<=4096&&(directory.startsWith('/home/runner/')||directory.startsWith('/opt/hostedtoolcache/'))&&realpathSync(directory)===directory&&lstatSync(directory).isDirectory());
+ assert(/^[a-f0-9]{64}$/.test(value.eventSha256));
  assert(/^[a-f0-9]{64}$/.test(value.controllerTreeSha256)&&Number.isSafeInteger(value.controllerEntries)&&value.controllerEntries>0
-  &&value.controllerEntries<=500000&&Number.isSafeInteger(value.controllerBytes)&&value.controllerBytes>0&&value.controllerBytes<=2*1024**3);
+  &&value.controllerEntries<=200000&&Number.isSafeInteger(value.controllerBytes)&&value.controllerBytes>0&&value.controllerBytes<=4*1024**3);
  // Validate the shared node record with the same closed schema as the final
  // seal. Dependency values here are placeholders for schema validation only;
  // actual dependencies are captured independently after the locked install.
  installationShape({version:1,kind:'LOCKED_HOSTED_INSTALL_BEFORE_CANDIDATE_VERIFICATION',node:value.node,
   dependencies:{normalization:'ROOT_COPY_DEPENDENCIES_V1',sha256:'0'.repeat(64),entries:1,bytes:1},lockSha256:'0'.repeat(64),packageSha256:'0'.repeat(64)});
  return value;
+}
+export function readProtectedNativeEvent(env=process.env,bootstrap=readProtectedBootstrap(env)){
+ const path='/var/lib/aihr-native-controller/'+env.GITHUB_RUN_ID+'/event.json';assert.equal(env.GITHUB_EVENT_PATH,path);
+ const st=lstatSync(path);assert(st.isFile()&&!st.isSymbolicLink()&&st.uid===0&&st.nlink===1&&(st.mode&0o777)===0o444);
+ const bytes=stableBytes(path,1024**2,0);assert.equal(sha(bytes),bootstrap.eventSha256);return bytes;
 }
 // This fixed program imports no checkout/dependency module. Both stdlib helper
 // bodies are already cached and verified against source/controller Git blobs.

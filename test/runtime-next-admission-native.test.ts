@@ -7,11 +7,13 @@ import {dirname,join} from 'node:path';
 import {expect,it} from 'vitest';
 import {admitSingletonTest} from './helpers/ci-singleton-admission';
 import {collectNativeSourceProof} from '../scripts/performance/next-source-proof.mjs';
+import {readProtectedBootstrap} from '../.github/ci/native-next-installation.mjs';
 
 it('boots two actual same-build Next workers through protected native admission and real password/TOTP Home journeys',async()=>{
  const admission=admitSingletonTest('test/runtime-next-admission-native.test.ts');
  assert.equal(admission.mode,'full-ci-singleton');assert.equal(process.env.GITHUB_JOB,'native-test');
  const source=realpathSync(process.cwd()),candidate=process.env.AIHR_CI_HEAD!,controller=process.env.AIHR_CI_CONTROL_HEAD!;
+ const bootstrap=readProtectedBootstrap();assert.equal(realpathSync(process.execPath),bootstrap.protectedNodePath);
  assert(/^[a-f0-9]{40}$/.test(candidate)&&/^[a-f0-9]{40}$/.test(controller));
  assert.equal(execFileSync('/usr/bin/git',['rev-parse','HEAD'],{encoding:'utf8'}).trim(),candidate);
  const runId=process.env.GITHUB_RUN_ID!,unit=admission.databaseUnit;
@@ -35,7 +37,7 @@ it('boots two actual same-build Next workers through protected native admission 
   writeFileSync(browserInputPath,JSON.stringify({version:1,kind:'PRIVATE_NATIVE_NEXT_BOOT_BROWSER_INPUT',budgetMs:300000,
    evidenceDirectory:admission.evidenceDirectory,fixture})+'\n',{flag:'wx',mode:0o600});
   const plan={version:1,kind:'NATIVE_NEXT_TWO_WORKER_BOOT_INPUT',candidate,controller,runId,unit,sourceDirectory:source,
-   nodePath:realpathSync(process.execPath),packetDirectory,buildBindingPath,sourceProof:proof,environment,fixture,
+   nodePath:bootstrap.node.path,packetDirectory,buildBindingPath,sourceProof:proof,environment,fixture,
    browserInputPath,evidenceDirectory:admission.evidenceDirectory,runnerUid:process.getuid!(),runnerGid:process.getgid!()};
   writeFileSync(planPath,JSON.stringify(plan)+'\n',{flag:'wx',mode:0o600});
   const keys=['GITHUB_ACTIONS','RUNNER_ENVIRONMENT','GITHUB_REPOSITORY','GITHUB_JOB','GITHUB_RUN_ID','AIHR_CI_HEAD','AIHR_CI_CONTROL_HEAD','RUNNER_TEMP']as const;
