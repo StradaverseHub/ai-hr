@@ -513,3 +513,23 @@ export const ADDITIONAL_ROWS: ChildItem[] = [
     {href:'/admin/claims/reimbursements',labelKey:'reimbursementsDue',icon:Receipt,adminOnly:true},
     {href:'/reports',labelKey:'reports',icon:FileBarChart,adminOnly:true,exactHref:true},
   ];
+
+/** Shared scoped lifecycle declaration owner. Metadata names existing fact gates, never new grants. */
+export type ScopedLifecycleNavigationItem = ChildItem & {
+  module: 'probation' | 'contracts';
+  access: 'page' | 'configure' | 'configureOrIntake' | 'intake';
+};
+export const SCOPED_LIFECYCLE_NAVIGATION: readonly ScopedLifecycleNavigationItem[] = [
+  {module:'probation',access:'page',href:'/lifecycle/probation',labelKey:'probationTracker',icon:Timer,exactHref:true,ownedSubpaths:['/lifecycle/probation']},
+  {module:'contracts',access:'page',href:'/lifecycle/contracts',labelKey:'contractManagement',icon:ScrollText,exactHref:true,ownedSubpaths:['/lifecycle/contracts']},
+  {module:'probation',access:'configure',href:'/lifecycle/probation/settings',labelKey:'probationSettings',icon:Timer},
+  {module:'probation',access:'configure',href:'/lifecycle/probation/forms',labelKey:'probationForms',icon:Timer},
+  {module:'probation',access:'configure',href:'/lifecycle/probation/routes',labelKey:'probationRoutes',icon:Timer},
+  {module:'probation',access:'configure',href:'/lifecycle/probation/workflows',labelKey:'probationWorkflows',icon:Timer},
+  {module:'probation',access:'configure',href:'/lifecycle/probation/templates',labelKey:'probationTemplates',icon:Timer},
+  {module:'probation',access:'configureOrIntake',href:'/lifecycle/probation/intake',labelKey:'probationIntake',icon:Timer},
+  {module:'contracts',access:'intake',href:'/lifecycle/contracts/intake',labelKey:'contractIntake',icon:ScrollText},
+  {module:'contracts',access:'configure',href:'/lifecycle/contracts/settings',labelKey:'contractSettings',icon:ScrollText},
+  {module:'contracts',access:'configure',href:'/lifecycle/contracts/workflows',labelKey:'contractWorkflows',icon:ScrollText},
+  {module:'contracts',access:'configure',href:'/lifecycle/contracts/templates',labelKey:'contractTemplates',icon:ScrollText},
+];

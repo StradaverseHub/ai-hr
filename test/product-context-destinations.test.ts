@@ -5,6 +5,7 @@ import {describe,expect,it} from 'vitest';
 import '@/packs/register-all';
 import {listPacks,type ModulePack} from '@/packs/registry';
 import {V9_NAVIGATION} from '@/lib/lifecycle-v9-navigation';
+import {SCOPED_LIFECYCLE_NAVIGATION} from '@/lib/navigation/shell-inventory';
 import {SECURITY_PAGES} from '@/lib/security-center-navigation';
 import {DESTINATION_PURPOSE,FORWARD_STUBS,NATIVE_SCOPE_ONLY_PAGES,destinationsFor,productDestinations} from '@/lib/product-context/destinations';
 import {AI_FEATURES} from '@/lib/ai/features';
@@ -16,7 +17,7 @@ function pageRoutes(){const found:RegExp[]=[];const walk=(dir:string)=>{for(cons
  if(entry.isDirectory())walk(path);else if(entry.name==='page.tsx'){const route='/'+relative(app,dir).split('/').filter(part=>part&&!/^\(.*\)$/.test(part)).join('/');
   found.push(new RegExp('^'+route.replace(/\/$/,'').replace(/\[\[?\.\.\.[^\]]+\]?\]/g,'.+').replace(/\[[^\]]+\]/g,'[^/]+')+'/?$'));}}};walk(app);return found;}
 const pathOf=(href:string)=>href.split(/[?#]/)[0]||'/';
-const sidebarSource=readFileSync(join(process.cwd(),'lib','navigation','shell-inventory.ts'),'utf8');
+const shellInventorySource=readFileSync(join(process.cwd(),'lib','navigation','shell-inventory.ts'),'utf8');
 
 describe('product destination registry',()=>{
  const rows=productDestinations();
@@ -36,12 +37,16 @@ describe('product destination registry',()=>{
  });
  it('covers every sidebar literal row and every pack, lifecycle and security destination',()=>{
   const hrefs=new Set(rows.map(row=>row.href));
-  const literal=[...sidebarSource.matchAll(/(?:href|defaultHref): ?'([^']+)'/g)].map(match=>match[1]);
+  const literal=[...shellInventorySource.matchAll(/(?:href|defaultHref): ?'([^']+)'/g)].map(match=>match[1]);
   // Issue 17: the ten Control Tower rows left the rail (their pages are AI Centre tabs); the registry keeps them.
   expect(literal.length).toBeGreaterThanOrEqual(50);
   const packs=listPacks('module').flatMap(pack=>{const module=pack as ModulePack;return[...(module.navNodes??[]).flatMap(node=>node.children.map(child=>child.href)),...(module.navLinks??[]).map(link=>link.href)];});
   expect(packs.length).toBeGreaterThan(20);
-  const expected=[...literal,...packs,...V9_NAVIGATION.map(row=>row.href),...SECURITY_PAGES.map(row=>row.href)];
+  // Scoped rows now have a real declaration owner, rather than template literals hidden in the renderer.
+  expect(SCOPED_LIFECYCLE_NAVIGATION).toHaveLength(12);
+  expect(SCOPED_LIFECYCLE_NAVIGATION.some(row=>row.module==='probation')).toBe(true);
+  expect(SCOPED_LIFECYCLE_NAVIGATION.some(row=>row.module==='contracts')).toBe(true);
+  const expected=[...literal,...SCOPED_LIFECYCLE_NAVIGATION.map(row=>row.href),...packs,...V9_NAVIGATION.map(row=>row.href),...SECURITY_PAGES.map(row=>row.href)];
   expect([...new Set(expected)].filter(href=>!hrefs.has(href)&&!NATIVE_SCOPE_ONLY_PAGES.has(pathOf(href)))).toEqual([]);
   expect(rows.filter(row=>NATIVE_SCOPE_ONLY_PAGES.has(pathOf(row.href)))).toEqual([]);
  });

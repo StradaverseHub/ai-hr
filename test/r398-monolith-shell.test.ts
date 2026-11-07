@@ -13,6 +13,7 @@ import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
+import ts from 'typescript';
 
 const ROOT = path.resolve(__dirname, '..');
 const read = (p: string) => fs.readFileSync(path.join(ROOT, p), 'utf8');
@@ -28,9 +29,25 @@ const CSS = read('app/globals.css');
 
 /** Every literal className="…" in a source file. */
 const classNames = (src: string) => [...src.matchAll(/className="([^"]+)"/g)].map((m) => m[1]);
-/** Every single-quoted class list handed to cn() — three or more utilities, so prose and paths are skipped. */
-const cnStrings = (src: string) =>
-  [...src.matchAll(/'([a-z0-9!:[\]().%_/&>*=,-]+(?: [a-z0-9!:[\]().%_/&>*=,-]+){2,})'/g)].map((m) => m[1]);
+/** Utility lists in actual cn() arguments. Parse source so comment apostrophes cannot become classes. */
+function cnStrings(src: string): string[] {
+  const file = ts.createSourceFile('shell.tsx', src, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+  const classes: string[] = [];
+  const utilityList = /^[a-z0-9!:[\]().%_/&>*=,-]+(?: [a-z0-9!:[\]().%_/&>*=,-]+){2,}$/;
+  const collect = (node: ts.Node) => {
+    if (ts.isStringLiteral(node) && node.getText(file).startsWith("'") && utilityList.test(node.text)) classes.push(node.text);
+    ts.forEachChild(node, collect);
+  };
+  const visit = (node: ts.Node) => {
+    if (ts.isCallExpression(node) && ts.isIdentifier(node.expression) && node.expression.text === 'cn') {
+      node.arguments.forEach(collect);
+      return;
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(file);
+  return classes;
+}
 
 // The original right-aligned absolute panel clipped outside the 390px viewport. The bounded fixed
 // mobile panel and desktop absolute anchor were verified at 390px and 1280px on candidate fc3f41d7.
@@ -102,6 +119,17 @@ describe('Monolith shell wiring', () => {
     expect(SIDEBAR).toContain('const kidsId = `rail-kids-${item.labelKey}`;');
     // Monolith never collapses; Classic follows the preference, except in the D-P1-28 phone drawer (labels shown).
     expect(SIDEBAR).toContain('const collapsed = monolith ? false : collapsedPref && !(mobileNavigationOpen && !atelier);');
+  });
+});
+
+describe('Classic cn class extraction', () => {
+  it('retains conditional utilities and excludes comments and unrelated prose strings', () => {
+    const source = `
+      // Is this row's owning module on the tenant's plan?
+      const prose = 's owning module on the tenant';
+      const classes = cn('flex h-full flex-col', collapsed ? 'w-4 px-2 py-3' : 'w-8 px-3 py-4');
+    `;
+    expect(cnStrings(source)).toEqual(['flex h-full flex-col', 'w-4 px-2 py-3', 'w-8 px-3 py-4']);
   });
 });
 
