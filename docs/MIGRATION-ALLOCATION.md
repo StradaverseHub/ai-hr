@@ -1,5 +1,19 @@
 # Coordinated migration reservations
 
+## Typed Personnel overview filters — 7 November 2026 (uninstalled)
+
+`2701_personnel_typed_overview_filter_fields`, idx2001 / when1793330002301,
+SQL SHA-256 `3c4605f4a235898d4e381d7f16c2332555e07bc91ce2455bc6f701e773ece4bf`.
+A fresh full origin fetch and scan covered3005 distinct heads,669 migration trees,
+476 journals and344 readable worktrees. Competing maxima were2700 /2000 /
+1793330002300, including literal bounds from one preserved malformed foreign journal.
+The append guards the exact narrow projection body/security and immediate assignment
+exclusion, retains native scope/date owners and the full page DTO, and returns typed
+filter facts without per-row JSON construction. The isolated50k experiment42345694089
+measured603/625/783ms for initial/search/deep pages; production append and populated
+upgrade qualification remain required. Reconcile the installed ledger before staging.
+Production remains held.
+
 ## Capability statement planning — 7 November 2026 (uninstalled)
 
 `2510_capability_statement_plan_reuse`, idx1830 / when1793330002130,

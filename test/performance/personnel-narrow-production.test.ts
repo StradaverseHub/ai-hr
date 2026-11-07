@@ -54,10 +54,10 @@ it.skipIf(!requested)('preserves the real overview rows, facets, scope, dated as
   select p.proowner=(select proowner from pg_proc where oid='app.personnel_filter_rows(date,uuid[])'::regprocedure) as "canonicalOwner",
     has_function_privilege('ai_hr_app',p.oid,'EXECUTE') as "appCanExecute",
     exists(select 1 from aclexplode(p.proacl) a where a.grantee=0 and a.privilege_type='EXECUTE') as "publicCanExecute"
-  from pg_proc p where p.oid in ('app.personnel_overview_narrow_rows(date,uuid[])'::regprocedure,
+  from pg_proc p where p.oid in ('app.personnel_overview_filter_fields(date,uuid[])'::regprocedure,'app.personnel_overview_narrow_rows(date,uuid[])'::regprocedure,
     'app.personnel_overview_page_rows(date,uuid[],uuid[])'::regprocedure)
  `);
- expect(Array.from(installed)).toEqual(Array.from({length:2},()=>({canonicalOwner:true,appCanExecute:true,publicCanExecute:false})));
+ expect(Array.from(installed)).toEqual(Array.from({length:3},()=>({canonicalOwner:true,appCanExecute:true,publicCanExecute:false})));
  await owner.client.unsafe(dropNarrowFunctions);
  // Prove unsupported filters use the existing owner without either narrow function.
  for(const {input,expected} of fallbackCases){
@@ -90,10 +90,18 @@ it.skipIf(!requested)('preserves the real overview rows, facets, scope, dated as
    expect(narrow.headcount.total).toBe(2);
    expect(narrow.employees.rows.every(row=>row.departmentId===base.deptA)).toBe(true);
   }
+  const typedParity=await withTenant(ctx,tx=>tx.execute<{same:boolean}>(sql`
+   select to_jsonb(typed)=original.value as same
+   from app.personnel_overview_filter_fields(${todayInKualaLumpur()}::date,array[${base.companyId}::uuid]) typed
+   join app.personnel_overview_narrow_rows(${todayInKualaLumpur()}::date,array[${base.companyId}::uuid]) original(value)
+     on original.value->>'employmentId'=typed."employmentId"::text
+  `));
+  expect(typedParity).toHaveLength(2);expect(typedParity.every(row=>row.same)).toBe(true);
   const denied=await withTenant(ctx,tx=>tx.execute(sql`
    select value from app.personnel_overview_narrow_rows(${todayInKualaLumpur()}::date, array[${foreign.companyId}::uuid]) r(value)
   `));
   expect(denied).toHaveLength(0);
+  expect(await withTenant(ctx,tx=>tx.execute(sql`select * from app.personnel_overview_filter_fields(${todayInKualaLumpur()}::date,array[${foreign.companyId}::uuid])`))).toHaveLength(0);
   const emptySubjects=await withTenant(ctx,tx=>tx.execute(sql`
    select value from app.personnel_overview_page_rows(${todayInKualaLumpur()}::date, array[${base.companyId}::uuid], null) r(value)
   `));
@@ -112,6 +120,14 @@ it.skipIf(!requested)('preserves the real overview rows, facets, scope, dated as
       on exact.value->>'employmentId'=bounded.value->>'employmentId'
    `));
    expect(parity).toEqual({summaryCompany:companyId,detailCompany:companyId,detailsEqual:true});
+   const [typed]=await withTenant(corrected.ctx,tx=>tx.execute<{same:boolean}>(sql`
+    select to_jsonb(typed)=original.value as same
+    from app.personnel_overview_filter_fields(${day}::date,${companyIds}) typed
+    join app.personnel_overview_narrow_rows(${day}::date,${companyIds}) original(value)
+      on original.value->>'employmentId'=typed."employmentId"::text
+    where typed."employmentId"=${corrected.employmentId}::uuid
+   `));
+   expect(typed.same).toBe(true);
   }
   writeFileSync(join(process.env.AIHR_FOCUSED_EVIDENCE_DIR!,'personnel-narrow-production-parity.json'),JSON.stringify({
    kind:'PERSONNEL_NARROW_APPLICATION_PARITY_COMPONENT_ONLY',releaseEligible:false,assignmentConstraint,
@@ -127,12 +143,12 @@ it.skipIf(!requested)('times the real Personnel overview at fifty thousand emplo
  const count = 50_000;
  const started = performance.now();
  const report: Record<string, unknown> = {
-  kind:'PERSONNEL_REAL_OVERVIEW_50K_COMPONENT_ONLY',
+  kind:'PERSONNEL_TYPED_FILTER_FIELDS_50K_DIAGNOSTIC',
   releaseEligible:false,
   targetEmployees:count,
   limitations:'Single synthetic tenant and caller. Measures the real application reader, without browser or concurrent traffic.',
  };
- const save = () => writeFileSync(join(process.env.AIHR_FOCUSED_EVIDENCE_DIR!,'personnel-real-overview-50k.json'),JSON.stringify(report,null,2));
+ const save = () => writeFileSync(join(process.env.AIHR_FOCUSED_EVIDENCE_DIR!,'personnel-typed-filter-fields-50k.json'),JSON.stringify(report,null,2));
  const phase = (name:string) => { report.phase=name; report.elapsedMs=performance.now()-started; save(); };
  const {b,ctx,expectedFirst,expectedLast} = await seedPersonnelNativeFixture(count,report,phase,save);
  report.assignmentConstraint = await provePersonnelSingleAssignmentConstraint();

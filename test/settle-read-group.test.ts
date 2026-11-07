@@ -19,13 +19,14 @@ it('owns later IO phases and preserves the first observed failure until all chil
  const gate=createBackgroundReadAdmission({capacity:1,maxWaiting:2,waitMs:1000});
  const earlierIndex=deferred<void>(),laterIndex=deferred<void>(),phase=deferred<void>(),tail=deferred<void>();
  const original=new Error('first observed'),later=new Error('later observed');
- let phaseEntered=false,finished=false,nextEntered=false;
+ let registered=false,phaseEntered=false,finished=false,nextEntered=false;
  const first=gate.run('a',()=>settleReadGroup([
-  ()=>earlierIndex.promise,()=>laterIndex.promise,
+  ()=>{registered=true;return earlierIndex.promise;},()=>laterIndex.promise,
   async()=>{await phase.promise;phaseEntered=true;await tail.promise;},
  ]));
  const observed=first.then(()=>{finished=true;},error=>{finished=true;return error;});
  const next=gate.run('b',async()=>{nextEntered=true;});
+ await vi.waitFor(()=>expect(registered).toBe(true));
  laterIndex.reject(original);await Promise.resolve();earlierIndex.reject(later);
  phase.resolve();await vi.waitFor(()=>expect(phaseEntered).toBe(true));
  expect(finished).toBe(false);expect(nextEntered).toBe(false);
