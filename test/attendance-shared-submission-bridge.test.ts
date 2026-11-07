@@ -3,7 +3,7 @@ import {createHash,randomUUID} from 'node:crypto';
 import {readFileSync} from 'node:fs';
 import type postgres from 'postgres';
 import {and,eq,inArray,sql} from 'drizzle-orm';
-import {afterAll,beforeAll,beforeEach,expect,it} from 'vitest';
+import {afterAll,beforeAll,beforeEach,expect,it,onTestFinished} from 'vitest';
 import {withTenant,type SessionContext} from '../db/client';
 import * as s from '../db/schema';
 import {hireEmployee} from '../core/org';
@@ -11,6 +11,7 @@ import {checkIn,checkOut,requestAttendanceCorrection} from '../core/attendance';
 import {prepareAttendanceWorkflowSnapshotTx,saveAttendanceWorkflow,setAttendanceWorkflowEnabled} from '../core/attendance-workflow';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {adminCtx,closeAll,createAppUser,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
+import {AttendanceBridgeOwnedPhases} from './helpers/attendance-bridge-owned-phase';
 
 const source=readFileSync('db/migrations/3101_attendance_shared_workflow.sql','utf8');
 const predecessor=/CREATE OR REPLACE FUNCTION app\.attendance_workflow_links\(\) RETURNS trigger\s+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS \$\$([\s\S]*?)\$\$;/.exec(source);
@@ -24,15 +25,17 @@ const target='app.attendance_workflow_links()';
 const helperNames=['attendance_workflow_companies','attendance_workflow_applies','attendance_workflow_all_companies_admin','attendance_selected_approver_eligible','attendance_workflow_v3_approver_options'];
 type Native=Pick<typeof owner.client,'unsafe'>;
 let functionIds:number[]=[];
-const catalogue=async(connection:Native)=>{
- const [row]=await connection.unsafe<{value:unknown}[]>(`select jsonb_build_object(
+const catalogueExpression=`jsonb_build_object(
   'functions',(select jsonb_agg(to_jsonb(p) order by p.oid) from pg_proc p where p.oid=any($1::oid[])),
   'bindings',(select jsonb_agg(to_jsonb(t) order by t.oid) from pg_trigger t where t.tgfoid='app.attendance_workflow_links()'::regprocedure),
-  'request',(select jsonb_build_object('oid',c.oid,'owner',c.relowner,'acl',c.relacl,'rls',c.relrowsecurity,'force',c.relforcerowsecurity,'kind',c.relkind) from pg_class c where c.oid='public.attendance_workflow_request'::regclass)) as value`,[functionIds]);
+  'request',(select jsonb_build_object('oid',c.oid,'owner',c.relowner,'acl',c.relacl,'rls',c.relrowsecurity,'force',c.relforcerowsecurity,'kind',c.relkind) from pg_class c where c.oid='public.attendance_workflow_request'::regclass))`;
+const catalogue=async(connection:Native)=>{
+ const [row]=await connection.unsafe<{value:unknown}[]>(`select ${catalogueExpression} as value`,[functionIds]);
  return row.value;
 };
 const quote=(name:string)=>{if(!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name))throw Error('Owned SQL identity required');return '"'+name+'"';};
 const rollback=new Error('Rollback only this native bridge control');
+const ownershipPhases=new AttendanceBridgeOwnedPhases();
 async function rolledBack(work:(connection:postgres.TransactionSql)=>Promise<void>){
  await expect(owner.client.begin(async connection=>{await work(connection);throw rollback;})).rejects.toBe(rollback);
 }
@@ -48,8 +51,8 @@ beforeAll(async()=>{
  if(current.body===body){await owner.client.unsafe(bridge);componentInstalled=true;}
  else expect(current.body).toBe(expectedBody); // Actual combined migration already installed: no duplicate installer.
 });
-beforeEach(async()=>{await resetDb();b=await seedBase();});
-afterAll(async()=>{try{if(componentInstalled&&initialDefinition){await owner.client.unsafe(initialDefinition);expect(await catalogue(owner.client)).toEqual(initialCatalogue);}}finally{await closeAll();}});
+beforeEach(async()=>{await ownershipPhases.drain();await resetDb();b=await seedBase();});
+afterAll(async()=>{try{await ownershipPhases.drain();if(componentInstalled&&initialDefinition){await owner.client.unsafe(initialDefinition);expect(await catalogue(owner.client)).toEqual(initialCatalogue);}}finally{await closeAll();}});
 
 it('changes only the complete native predecessor body and preserves every native catalogue field and binding',async()=>{
  await rolledBack(async connection=>{
@@ -74,13 +77,18 @@ const mutations=[
  ['extra ACL','GRANT EXECUTE ON FUNCTION app.attendance_workflow_links() TO ai_hr_app'],
  ['unknown function owner','ALTER FUNCTION app.attendance_workflow_links() OWNER TO ai_hr_app'],
  ['disabled request trigger','ALTER TABLE public.attendance_workflow_request DISABLE TRIGGER attendance_workflow_request_links'],
+ ['narrowed UPDATE OF setting trigger',`DROP TRIGGER attendance_workflow_setting_links ON public.attendance_workflow_setting; CREATE TRIGGER attendance_workflow_setting_links BEFORE INSERT OR UPDATE OF enabled ON public.attendance_workflow_setting FOR EACH ROW EXECUTE FUNCTION app.attendance_workflow_links()`],
  ['pre-3110 helper','ALTER FUNCTION app.attendance_workflow_applies(uuid,uuid) SET row_security=off'],
  ['changed helper body',`CREATE OR REPLACE FUNCTION app.attendance_workflow_applies(wanted uuid,wanted_company uuid) RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,app SET row_security=on AS $$SELECT false$$`],
  ['missing helper','ALTER FUNCTION app.attendance_workflow_applies(uuid,uuid) RENAME TO attendance_bridge_missing_applies'],
 ]as const;
-it.for(mutations)('refuses %s before changing any native function, relation or trigger catalogue',async([,change])=>{
+it.for(mutations)('refuses %s before changing any native function, relation or trigger catalogue',async([name,change])=>{
  await rolledBack(async connection=>{
   await connection.unsafe(definition);await connection.unsafe(change);
+  if(name==='narrowed UPDATE OF setting trigger'){
+   const [binding]=await connection<{kind:number;columns:string}[]>`select tgtype::integer as kind,tgattr::text as columns from pg_trigger where tgname='attendance_workflow_setting_links' and tgrelid='public.attendance_workflow_setting'::regclass`;
+   expect(binding.kind).toBe(23);expect(binding.columns).not.toBe('');
+  }
   const before=await catalogue(connection);
   await connection.unsafe('SAVEPOINT bridge_attempt');
   let refusal:unknown;
@@ -144,57 +152,88 @@ it('retains canonical subject, shared-company assignment, version and resolved-r
  expect(await owner.client`select company_id from attendance_workflow_company where template_id=${f.template.id}::uuid order by company_id`).toEqual([b.companyId,f.other.id].sort().map(company_id=>({company_id})));
 },30000);
 
+// Each complete ownership DDL batch is one statement, so its 5s deadline
+// bounds every function change together, rather than restarting per function.
+const ownerBatch=(commands:string[],onlyIfRole?:string)=>{
+ const commandsBody=commands.map(command=>"EXECUTE '"+command.replaceAll("'","''")+"';").join('\n');
+ const body=onlyIfRole?`IF EXISTS(SELECT 1 FROM pg_catalog.pg_roles WHERE rolname='${onlyIfRole.replaceAll("'","''")}') THEN\n${commandsBody}\nEND IF;`:commandsBody;
+ if(body.includes('$bridge_ownership$'))throw Error('Owned DDL delimiter collision');
+ return 'DO $bridge_ownership$ BEGIN\n'+body+'\nEND; $bridge_ownership$;';
+};
+type OwnedStep=<T>(action:()=>PromiseLike<T>)=>Promise<T>;
+async function limits(connection:Native,step:OwnedStep=action=>action()){
+ await step(()=>connection.unsafe("SET LOCAL statement_timeout='5s'"));
+ await step(()=>connection.unsafe("SET LOCAL lock_timeout='300ms'"));
+}
+
 it('executes the exact bridge as a real restricted owner and serves a distinct app LOGIN through unchanged forced RLS',async()=>{
- const f=await fixture(),role='bridge_owner_'+randomUUID().replaceAll('-','');
- const [parent]=await owner.client<{name:string}[]>`select pg_get_userbyid(relowner) as name from pg_class where oid='public.attendance_workflow_request'::regclass`;
- const functions=await owner.client<{signature:string;owner:string;facts:Record<string,unknown>}[]>`select p.oid::regprocedure::text as signature,pg_get_userbyid(p.proowner) as owner,to_jsonb(p) as facts from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='app' and p.prosecdef and p.prokind='f' order by p.oid`;
- expect(functions.length).toBeGreaterThan(helperNames.length);
- const [forcedBefore]=await owner.client<{rows:unknown}[]>`select jsonb_agg(jsonb_build_object('oid',oid,'owner',relowner,'rls',relrowsecurity,'force',relforcerowsecurity) order by oid) as rows from pg_class where relnamespace='public'::regnamespace and relforcerowsecurity`;
- expect(forcedBefore.rows).not.toBeNull();
- const access=await owner.client<{name:string;rls:boolean;force:boolean}[]>`select relname as name,relrowsecurity as rls,relforcerowsecurity as force from pg_class where relnamespace='public'::regnamespace and relname in ('access_capability','access_configuration','access_group','access_group_grant','access_membership','access_user_override') order by relname`;
- expect(access).toEqual(['access_capability','access_configuration','access_group','access_group_grant','access_membership','access_user_override'].map(name=>({name,rls:true,force:true})));
- const [targetBefore]=await owner.client<{definition:string}[]>`select pg_get_functiondef('app.attendance_workflow_links()'::regprocedure) as definition`;
- const before=await catalogue(owner.client);let created=false;
- try{
-  await owner.client.begin(async connection=>{
-   await connection.unsafe(`CREATE ROLE ${quote(role)} NOLOGIN NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE INHERIT`);
-   await connection.unsafe(`GRANT ${quote(parent.name)} TO ${quote(role)} WITH INHERIT TRUE, SET FALSE, ADMIN FALSE`);
-   for(const fn of functions)await connection.unsafe(`ALTER FUNCTION ${fn.signature} OWNER TO ${quote(role)}`);
-   await connection.unsafe(`ALTER TABLE public.attendance_workflow_request OWNER TO ${quote(role)}`);
-   await connection.unsafe(definition);
-  });created=true;
-  await owner.client.begin(async connection=>{
-   await connection.unsafe(`SET LOCAL ROLE ${quote(role)}`);
-   const [identity]=await connection<{name:string;super:boolean;bypass:boolean;parentSet:boolean}[]>`select current_user as name,rolsuper as super,rolbypassrls as bypass,pg_has_role(current_user,${parent.name},'SET') as "parentSet" from pg_roles where rolname=current_user`;
-   expect(identity).toEqual({name:role,super:false,bypass:false,parentSet:false});
-   await connection.unsafe(bridge);
-   const [actual]=await connection<{body:string}[]>`select prosrc as body from pg_proc where oid='app.attendance_workflow_links()'::regprocedure`;
-   expect(actual.body).toBe(expectedBody);
-  });
-  await withTenant(f.root,async tx=>{
-   const [identity]=await tx.execute<{session:string;current:string;super:boolean;bypass:boolean}>(sql`select session_user as session,current_user as current,rolsuper as super,rolbypassrls as bypass from pg_roles where rolname=current_user`);
-   expect(identity).toEqual({session:'ai_hr_app',current:'ai_hr_app',super:false,bypass:false});
-   const candidates=await tx.execute<{id:string}>(sql`select id from app.attendance_workflow_v3_approver_options(ARRAY[${b.companyId}::uuid,${f.other.id}::uuid])`);
-   expect(candidates.map(row=>row.id)).toContain(f.reviewer.employmentId);
-  });
-  await withTenant(f.worker.ctx,async tx=>{
-   await tx.execute(sql`select pg_advisory_xact_lock_shared(hashtextextended(${f.key},0))`);
-   await tx.insert(s.attendanceWorkflowRequest).values(f.values(f.ids[0]));
-  });
-  const [forcedAfter]=await owner.client<{rows:unknown}[]>`select jsonb_agg(jsonb_build_object('oid',oid,'owner',relowner,'rls',relrowsecurity,'force',relforcerowsecurity) order by oid) as rows from pg_class where relnamespace='public'::regnamespace and relforcerowsecurity`;
-  expect(forcedAfter).toEqual(forcedBefore);
- }finally{
-  if(created){
+ let restore:(()=>Promise<void>)|undefined;
+ const phase=ownershipPhases.start(async step=>{
+  const f=await step(fixture),role='bridge_owner_'+randomUUID().replaceAll('-','');
+  const [parent]=await step(()=>owner.client<{name:string}[]>`select pg_get_userbyid(relowner) as name from pg_class where oid='public.attendance_workflow_request'::regclass`);
+  const functions=await step(()=>owner.client<{signature:string;owner:string;facts:Record<string,unknown>}[]>`select p.oid::regprocedure::text as signature,pg_get_userbyid(p.proowner) as owner,to_jsonb(p) as facts from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='app' and p.prosecdef and p.prokind='f' order by p.oid`);
+  expect(functions.length).toBeGreaterThan(helperNames.length);
+  const [forcedBefore]=await step(()=>owner.client<{rows:unknown}[]>`select jsonb_agg(jsonb_build_object('oid',oid,'owner',relowner,'rls',relrowsecurity,'force',relforcerowsecurity) order by oid) as rows from pg_class where relnamespace='public'::regnamespace and relforcerowsecurity`);
+  expect(forcedBefore.rows).not.toBeNull();
+  const access=await step(()=>owner.client<{name:string;rls:boolean;force:boolean}[]>`select relname as name,relrowsecurity as rls,relforcerowsecurity as force from pg_class where relnamespace='public'::regnamespace and relname in ('access_capability','access_configuration','access_group','access_group_grant','access_membership','access_user_override') order by relname`);
+  expect(access).toEqual(['access_capability','access_configuration','access_group','access_group_grant','access_membership','access_user_override'].map(name=>({name,rls:true,force:true})));
+  const [targetBefore]=await step(()=>owner.client<{definition:string}[]>`select pg_get_functiondef('app.attendance_workflow_links()'::regprocedure) as definition`);
+  const before=await step(()=>catalogue(owner.client));
+  // Install restoration before attempting COMMIT: an uncertain commit response
+  // must not leave us relying on a local `created` flag.
+  restore=async()=>{
    await owner.client.begin(async connection=>{
-    await connection.unsafe(`ALTER TABLE public.attendance_workflow_request OWNER TO ${quote(parent.name)}`);
-    for(const fn of functions)await connection.unsafe(`ALTER FUNCTION ${fn.signature} OWNER TO ${quote(fn.owner)}`);
-    await connection.unsafe(targetBefore.definition);
-    await connection.unsafe(`DROP ROLE ${quote(role)}`);
+    await limits(connection);
+    await connection.unsafe(ownerBatch([
+     `ALTER TABLE public.attendance_workflow_request OWNER TO ${quote(parent.name)}`,
+     ...functions.map(fn=>`ALTER FUNCTION ${fn.signature} OWNER TO ${quote(fn.owner)}`),
+     targetBefore.definition,`DROP ROLE ${quote(role)}`,
+    ],role));
+    // One snapshot covers every captured raw catalogue field and role absence.
+    const [restored]=await connection.unsafe<{catalogue:unknown;functions:Record<string,unknown>[];rolePresent:boolean;statementTimeout:string;lockTimeout:string}[]>(`select ${catalogueExpression} as catalogue,
+     (select jsonb_agg(to_jsonb(p) order by p.oid) from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='app' and p.prosecdef and p.prokind='f') as functions,
+     exists(select 1 from pg_roles where rolname=$2) as "rolePresent",current_setting('statement_timeout') as "statementTimeout",current_setting('lock_timeout') as "lockTimeout"`,[functionIds,role]);
+    expect(restored.catalogue).toEqual(before);
+    expect(restored.functions).toEqual(functions.map(row=>row.facts));
+    expect(restored.rolePresent).toBe(false);
+    expect(restored.statementTimeout).toBe('5s');expect(restored.lockTimeout).toBe('300ms');
    });
-   expect(await catalogue(owner.client)).toEqual(before);
-   const restored=await owner.client<{facts:Record<string,unknown>}[]>`select to_jsonb(p) as facts from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='app' and p.prosecdef and p.prokind='f' order by p.oid`;
-   expect(restored.map(row=>row.facts)).toEqual(functions.map(row=>row.facts));
-   expect(await owner.client`select rolname from pg_roles where rolname=${role}`).toEqual([]);
-  }
- }
+  };
+  await step(()=>owner.client.begin(async connection=>{
+   await limits(connection,step);
+   await step(()=>connection.unsafe(ownerBatch([
+    `CREATE ROLE ${quote(role)} NOLOGIN NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE INHERIT`,
+    `GRANT ${quote(parent.name)} TO ${quote(role)} WITH INHERIT TRUE, SET FALSE, ADMIN FALSE`,
+    ...functions.map(fn=>`ALTER FUNCTION ${fn.signature} OWNER TO ${quote(role)}`),
+    `ALTER TABLE public.attendance_workflow_request OWNER TO ${quote(role)}`,definition,
+   ])));
+  }));
+  await step(()=>owner.client.begin(async connection=>{
+   await limits(connection,step);await step(()=>connection.unsafe(`SET LOCAL ROLE ${quote(role)}`));
+   const [identity]=await step(()=>connection<{name:string;super:boolean;bypass:boolean;parentSet:boolean;statementTimeout:string;lockTimeout:string}[]>`select current_user as name,rolsuper as super,rolbypassrls as bypass,pg_has_role(current_user,${parent.name},'SET') as "parentSet",current_setting('statement_timeout') as "statementTimeout",current_setting('lock_timeout') as "lockTimeout" from pg_roles where rolname=current_user`);
+   expect(identity).toEqual({name:role,super:false,bypass:false,parentSet:false,statementTimeout:'5s',lockTimeout:'300ms'});
+   await step(()=>connection.unsafe(bridge));
+   const [actual]=await step(()=>connection<{body:string}[]>`select prosrc as body from pg_proc where oid='app.attendance_workflow_links()'::regprocedure`);
+   expect(actual.body).toBe(expectedBody);
+  }));
+  await step(()=>withTenant(f.root,async tx=>{
+   await step(()=>tx.execute(sql`SET LOCAL statement_timeout='5s'`));await step(()=>tx.execute(sql`SET LOCAL lock_timeout='300ms'`));
+   const [identity]=await step(()=>tx.execute<{session:string;current:string;super:boolean;bypass:boolean}>(sql`select session_user as session,current_user as current,rolsuper as super,rolbypassrls as bypass from pg_roles where rolname=current_user`));
+   expect(identity).toEqual({session:'ai_hr_app',current:'ai_hr_app',super:false,bypass:false});
+   const candidates=await step(()=>tx.execute<{id:string}>(sql`select id from app.attendance_workflow_v3_approver_options(ARRAY[${b.companyId}::uuid,${f.other.id}::uuid])`));
+   expect(candidates.map(row=>row.id)).toContain(f.reviewer.employmentId);
+  }));
+  await step(()=>withTenant(f.worker.ctx,async tx=>{
+   await step(()=>tx.execute(sql`SET LOCAL statement_timeout='5s'`));await step(()=>tx.execute(sql`SET LOCAL lock_timeout='300ms'`));
+   await step(()=>tx.execute(sql`select pg_advisory_xact_lock_shared(hashtextextended(${f.key},0))`));
+   await step(()=>tx.insert(s.attendanceWorkflowRequest).values(f.values(f.ids[0])));
+  }));
+  const [forcedAfter]=await step(()=>owner.client.begin(async connection=>{
+   await limits(connection,step);
+   return step(()=>connection<{rows:unknown}[]>`select jsonb_agg(jsonb_build_object('oid',oid,'owner',relowner,'rls',relrowsecurity,'force',relforcerowsecurity) order by oid) as rows from pg_class where relnamespace='public'::regnamespace and relforcerowsecurity`);
+  }));
+  expect(forcedAfter).toEqual(forcedBefore);
+ },async()=>{if(restore)await restore();});
+ onTestFinished(()=>phase.stopAndDrain());
+ await phase.result;
 },90000);

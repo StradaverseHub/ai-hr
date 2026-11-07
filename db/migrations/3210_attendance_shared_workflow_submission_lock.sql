@@ -75,6 +75,8 @@ BEGIN
    ) binding(name,relation,kind) WHERE NOT EXISTS(SELECT 1 FROM pg_catalog.pg_trigger t
     WHERE t.tgfoid=previous.oid AND t.tgname=binding.name AND t.tgrelid=binding.relation AND t.tgtype=binding.kind
      AND t.tgenabled='O' AND NOT t.tgisinternal AND NOT t.tgdeferrable AND NOT t.tginitdeferred
+     AND t.tgattr::text='' AND t.tgparentid=0 AND t.tgconstrrelid=0 AND t.tgconstrindid=0
+     AND t.tgoldtable IS NULL AND t.tgnewtable IS NULL
      AND t.tgconstraint=0 AND t.tgnargs=0 AND octet_length(t.tgargs)=0 AND t.tgqual IS NULL))
  THEN RAISE EXCEPTION 'Exact shared-company Attendance trigger bindings required' USING ERRCODE='55000'; END IF;
  -- Five actual 3101 APIs must retain the 3110 RLS-on configuration and exact
