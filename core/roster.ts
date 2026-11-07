@@ -1,3 +1,7 @@
+import {isAiPrincipalCurrentTx} from './ai-principal';
+import {filterMyTeamSearch,resolveMyTeamScopeTx} from './my-team-scope';
+import {parseMyTeamQuery} from '../lib/my-team-query';
+import {parseRosterSelection,ROSTER_SELECTION_MAX_BYTES} from '../lib/roster-selection';
 import { assertDutyRosterWriteTx } from './schedule-group-controls';
 import { rotationVersionOn, weekPatternWorkingDayCount } from './week-pattern';
 import { ShiftNotInScheduleGroupError, groupRuleIdTx, assertShiftsAllowedForEmploymentsTx } from './schedule-shift-eligibility';
@@ -45,7 +49,7 @@ import {lockAccessConfigurationTx} from './access-configuration-lock';
 import { approvedLeaveDates } from './leave';
 import {workingShiftSchedule, rotationLookupTx, assertRotationPoolWriteTx} from '../packs/attendance/service';
 import type { RotationCycle } from './week-pattern';
-import { listEmployees, listEmployeesPage, myEmployment, ownReportingManagersTx } from './read';
+import { listEmployees, listEmployeesPage, adminCompaniesTx, myEmployment, ownReportingManagersTx } from './read';
 import { isAdmin } from '../lib/authz-model';
 import {
   ROSTER_MAX_RANGE_DAYS,
@@ -2352,6 +2356,107 @@ const DAY_MS = 86_400_000;
 // character-for-character copy of lib/roster-month's exported one, and this file now imports that module
 // anyway. Two identical predicates are two things to change when the shape of a date changes.
 
+/** Expected command refusals only. SQL/driver failures retain their original classification. */
+export class RosterCommandRefusal extends Error {
+ constructor(readonly code:'range'|'template'|'selection'|'permission',message:string){super(message);this.name='RosterCommandRefusal';}
+}
+export function validateRosterGenerateRange(p:{from:string;to:string}){
+ if (!isIsoDate(p.from) || !isIsoDate(p.to)) throw new RosterCommandRefusal('range','Dates must be YYYY-MM-DD');
+ const fromMs=Date.parse(`${p.from}T00:00:00Z`),toMs=Date.parse(`${p.to}T00:00:00Z`);
+ if(toMs<fromMs)throw new RosterCommandRefusal('range','The end date must not be before the start date');
+ if(toMs-fromMs>366*DAY_MS)throw new RosterCommandRefusal('range','Generate at most one year at a time');
+ return {fromMs,toMs};
+}
+export function validateRosterCopyRange(p:{sourceFrom:string;sourceTo:string;targetFrom:string}){
+ if(!isIsoDate(p.sourceFrom)||!isIsoDate(p.sourceTo)||!isIsoDate(p.targetFrom))throw new RosterCommandRefusal('range','Dates must be YYYY-MM-DD');
+ const srcFromMs=Date.parse(`${p.sourceFrom}T00:00:00Z`),srcToMs=Date.parse(`${p.sourceTo}T00:00:00Z`);
+ if(srcToMs<srcFromMs)throw new RosterCommandRefusal('range','The source end date must not be before the source start date');
+ if(srcToMs-srcFromMs>366*DAY_MS)throw new RosterCommandRefusal('range','Copy at most one year of source roster at a time');
+ const offsetDays=Math.round((Date.parse(`${p.targetFrom}T00:00:00Z`)-srcFromMs)/DAY_MS);
+ if(offsetDays===0)throw new RosterCommandRefusal('range','The target start date must differ from the source start date');
+ return {offsetDays};
+}
+/** An exact reviewed subset is a narrowing intent, separate from the legacy department precedence. */
+export type ReviewedRosterDepartment={departmentId:string;employmentIds:string[];companyIds:string[];teamQuery?:string};
+function captureReviewedDepartment(value:ReviewedRosterDepartment):ReviewedRosterDepartment{
+ const uuid=/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/;
+ if(!value||typeof value!=='object'||Object.keys(value).some(k=>!['departmentId','employmentIds','companyIds','teamQuery'].includes(k))
+  ||typeof value.departmentId!=='string'||!uuid.test(value.departmentId)||!Array.isArray(value.companyIds)||!value.companyIds.length||value.companyIds.length>50
+  ||value.companyIds.some(id=>typeof id!=='string'||!uuid.test(id))||new Set(value.companyIds).size!==value.companyIds.length
+  ||value.teamQuery!==undefined&&(typeof value.teamQuery!=='string'||value.teamQuery.length>16384)
+  ||new TextEncoder().encode(JSON.stringify(value)).byteLength>ROSTER_SELECTION_MAX_BYTES)
+  throw new RosterCommandRefusal('selection','Invalid reviewed department scope. Prepare it again.');
+ const employmentIds=parseRosterSelection(JSON.stringify(value.employmentIds));
+ if(value.teamQuery!==undefined){
+  const raw=new URLSearchParams(value.teamQuery),keys=new Set(['view','scope','anchorDate','departmentId','employmentId','search','companyIds','layers']);
+  if([...raw.keys()].some(key=>!keys.has(key))||[...keys].some(key=>key!=='companyIds'&&raw.getAll(key).length>1))throw new RosterCommandRefusal('selection','Invalid reviewed team scope.');
+  parseMyTeamQuery(raw);
+ }
+ return {...value,employmentIds,companyIds:value.companyIds.slice()};
+}
+async function assertReviewedDepartmentTx(tx:Tx,ctx:SessionContext,p:ReviewedRosterDepartment,templateCompanyId:string|null){
+ const permittedCompanies=new Set((await adminCompaniesTx(tx)).map(row=>row.id));
+ if(p.companyIds.some(id=>!permittedCompanies.has(id)))throw new RosterCommandRefusal('permission','An employee is unavailable in your company scope.');
+ const current=new Set(await rosterDepartmentPopulationIdsTx(ctx,tx,{departmentId:p.departmentId,templateCompanyId}));
+ if(p.employmentIds.some(id=>!current.has(id)))throw new RosterCommandRefusal('selection','The department selection changed. Prepare it again.');
+ const rows=await tx.select({id:employment.id,companyId:employment.companyId}).from(employment).where(sql`${employment.id}=any(${'{'+p.employmentIds.join(',')+'}'}::uuid[])`);
+ if(rows.length!==p.employmentIds.length||rows.some(row=>!p.companyIds.includes(row.companyId)))throw new RosterCommandRefusal('permission','An employee is unavailable in your company scope.');
+ if(p.teamQuery!==undefined){
+  const query=parseMyTeamQuery(new URLSearchParams(p.teamQuery));
+  const team=await resolveMyTeamScopeTx(tx,ctx,query),ids=new Set(filterMyTeamSearch(team.employees,query.search).map(row=>row.employmentId));
+  if(!team.canEditRoster||p.employmentIds.some(id=>!ids.has(id)))throw new RosterCommandRefusal('permission','The roster selection is no longer available in the current team scope. Prepare it again.');
+ }
+}
+
+/** Exact existing department population owner, shared with explicit preparation.
+ * listEmployeesPage owns its effective-dated assignment predicate and active(NULL) status.
+ * A tenant-global template has no company filter; the transport must independently narrow its
+ * posted company/team before confirming an explicit subset. This read grants no write authority. */
+export async function rosterDepartmentPopulationIdsTx(
+  ctx: SessionContext, tx: Tx, p: { departmentId: string; templateCompanyId: string | null },
+): Promise<string[]> {
+  const page = await listEmployeesPage(ctx, { departmentId: p.departmentId,
+    companyIds: p.templateCompanyId ? [p.templateCompanyId] : undefined,
+    status: 'active', limit: 100_000, offset: 0 }, undefined, tx);
+  if (page.total !== page.rows.length) throw new LeaveDependencyUnavailable();
+  return page.rows.map(row => row.employmentId);
+}
+
+/** Canonical generation template validation, shared by preparation and the locked writer. */
+export async function rosterGenerationTemplateTx(tx:Tx,shiftId:string){
+  const tpl = await (async () => {
+    const [row] = await tx
+      .select({
+        companyId: shift.companyId,
+        weeklyPattern: shift.weeklyPattern,
+        // b8aa3466 — the four-way row, so generation and the engine split the month the same way.
+        halfPattern: shift.halfPattern,
+        offPattern: shift.offPattern,
+        ruleId: shift.ruleId,
+        archivedAt: shift.archivedAt,
+      })
+      .from(shift)
+      .where(eq(shift.id, shiftId))
+      .limit(1);
+    if (!row) return null;
+    const week = (await weekLookupTx(tx, null, [row.ruleId]))(row.ruleId, {
+      pattern: row.weeklyPattern,
+      halfPattern: row.halfPattern,
+      offPattern: row.offPattern,
+    });
+    return { ...row, ...week };
+  })();
+  if (!tpl) throw new RosterCommandRefusal('template','Shift not found (or not visible)');
+  if (tpl.archivedAt) throw new RosterCommandRefusal('template','Cannot generate a roster from an archived shift');
+  // b8aa3466 — Full ∪ Half. A shift that is all half days has a perfectly usable pattern; refusing it here
+  // would be a new false rejection introduced by the four-way row.
+  if (workingDayCount({ pattern: tpl.pattern, halfPattern: tpl.halfPattern }) === 0) {
+    throw new RosterCommandRefusal('template','This shift has no working days — put it in a Schedule Group that has a working week');
+  }
+
+ return tpl;
+}
+
 /**
  * R7 Multi-Shift Phase 2 — generate a roster window from a shift's weekly pattern. A THIN date-splitter
  * over the EXISTING bulk primitives (assignShiftBulk / setRestDayBulk, both idempotent upserts on
@@ -2373,19 +2478,18 @@ const DAY_MS = 86_400_000;
  */
 export async function generateRosterFromTemplate(
   ctx: SessionContext,
-  p: { shiftId: string; employmentIds?: string[]; departmentId?: string; from: string; to: string },
+  p: { shiftId: string; employmentIds?: string[]; departmentId?: string; reviewedDepartment?:ReviewedRosterDepartment; from: string; to: string },
 ) {
-  p={...p,employmentIds:p.employmentIds?.slice()};
+  p={...p,employmentIds:p.employmentIds?.slice(),...(p.reviewedDepartment?{reviewedDepartment:captureReviewedDepartment(p.reviewedDepartment)}:{})};
+  if(p.reviewedDepartment&&(typeof p.shiftId!=='string'||!/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/.test(p.shiftId)))throw new RosterCommandRefusal('selection','Invalid reviewed shift.');
+  if(p.reviewedDepartment&&(p.employmentIds!==undefined||p.departmentId!==undefined))throw new RosterCommandRefusal('selection','Choose one roster target intent.');
   ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
-  if (!isIsoDate(p.from) || !isIsoDate(p.to)) throw new Error('Dates must be YYYY-MM-DD');
-  const fromMs = Date.parse(`${p.from}T00:00:00Z`);
-  const toMs = Date.parse(`${p.to}T00:00:00Z`);
-  if (toMs < fromMs) throw new Error('The end date must not be before the start date');
-  if (toMs - fromMs > 366 * DAY_MS) throw new Error('Generate at most one year at a time');
+  const {fromMs,toMs}=validateRosterGenerateRange(p);
 
   return withTenant(ctx,async tx=>{
   assertRosterAdmin(ctx);
   await lockAccessConfigurationTx(tx,ctx.tenantId);
+  if(p.reviewedDepartment&&!await isAiPrincipalCurrentTx(tx,ctx))throw new RosterCommandRefusal('permission','Current calling authority could not be confirmed.');
   await lockLeaveDependencyReadConfigurationTx(tx,ctx.tenantId);
 
   // 07ebd04d — the template's week is resolved through its SCHEDULE GROUP first (migration 0483). The
@@ -2398,61 +2502,23 @@ export async function generateRosterFromTemplate(
   // The GROUP here is the SHIFT's (shift.rule_id), not any one employee's: this call generates for a whole
   // department, and the group guard (assertShiftsAllowedForEmploymentsTx) already refuses an employment
   // whose own group does not contain this shift, so on every assignment the system accepts the two agree.
-  const tpl = await (async () => {
-    const [row] = await tx
-      .select({
-        companyId: shift.companyId,
-        weeklyPattern: shift.weeklyPattern,
-        // b8aa3466 — the four-way row, so generation and the engine split the month the same way.
-        halfPattern: shift.halfPattern,
-        offPattern: shift.offPattern,
-        ruleId: shift.ruleId,
-        archivedAt: shift.archivedAt,
-      })
-      .from(shift)
-      .where(eq(shift.id, p.shiftId))
-      .limit(1);
-    if (!row) return null;
-    const week = (await weekLookupTx(tx, null, [row.ruleId]))(row.ruleId, {
-      pattern: row.weeklyPattern,
-      halfPattern: row.halfPattern,
-      offPattern: row.offPattern,
-    });
-    return { ...row, ...week };
-  })();
-  if (!tpl) throw new Error('Shift not found (or not visible)');
-  if (tpl.archivedAt) throw new Error('Cannot generate a roster from an archived shift');
-  // b8aa3466 — Full ∪ Half. A shift that is all half days has a perfectly usable pattern; refusing it here
-  // would be a new false rejection introduced by the four-way row.
-  if (workingDayCount({ pattern: tpl.pattern, halfPattern: tpl.halfPattern }) === 0) {
-    throw new Error('This shift has no working days — put it in a Schedule Group that has a working week');
-  }
+  const tpl = await rosterGenerationTemplateTx(tx,p.shiftId);
 
   let employmentIds: string[];
-  if (p.departmentId) {
-    // Department scope — the reuse path that actually exists: listEmployeesPage's current-assignment
-    // (validTo IS NULL AND supersededAt IS NULL) department filter, mapped to employmentIds.
-    const page = await listEmployeesPage(ctx, {
-      departmentId: p.departmentId,
-      // R33 f21d6eee — a tenant-global shift (company_id NULL) has no company to narrow by; the department
-      // already belongs to one company, so scope by department alone. Legacy company-stamped shifts still narrow.
-      companyIds: tpl.companyId ? [tpl.companyId] : undefined,
-      status: 'active',
-      limit: 100_000,
-      offset: 0,
-    },undefined,tx);
-    if(page.total!==page.rows.length)throw new LeaveDependencyUnavailable();
-    employmentIds = page.rows.map((r) => r.employmentId);
+  if(p.reviewedDepartment){
+    employmentIds=p.reviewedDepartment.employmentIds;
+  } else if (p.departmentId) {
+    // The existing owner supplies the effective-dated assignment and active(NULL) department population.
+    employmentIds = await rosterDepartmentPopulationIdsTx(ctx, tx, { departmentId: p.departmentId, templateCompanyId: tpl.companyId });
   } else {
     employmentIds = [...new Set(p.employmentIds ?? [])];
   }
-  if (employmentIds.length === 0) throw new Error('No employees in scope — pick employees or a department with members');
+  if (employmentIds.length === 0) throw new RosterCommandRefusal('selection','No employees in scope — pick employees or a department with members');
   await lockLeaveDependenciesTx(tx,ctx.tenantId,employmentIds);
+  if(p.reviewedDepartment)await assertReviewedDepartmentTx(tx,ctx,p.reviewedDepartment,tpl.companyId);
   if(p.departmentId){
-    const fresh=await listEmployeesPage(ctx,{departmentId:p.departmentId,
-      companyIds:tpl.companyId?[tpl.companyId]:undefined,status:'active',limit:100_000,offset:0},undefined,tx);
-    if(fresh.total!==fresh.rows.length)throw new LeaveDependencyUnavailable();
-    const nominated=[...new Set(employmentIds)].sort(),current=[...new Set(fresh.rows.map(row=>row.employmentId))].sort();
+    const fresh = await rosterDepartmentPopulationIdsTx(ctx, tx, { departmentId: p.departmentId, templateCompanyId: tpl.companyId });
+    const nominated=[...new Set(employmentIds)].sort(),current=[...new Set(fresh)].sort();
     if(nominated.length!==current.length||nominated.some((id,index)=>id!==current[index]))throw new LeaveDependencyUnavailable();
   }
 
@@ -2501,15 +2567,7 @@ export async function copyRoster(
 ): Promise<{ copied: number; sourceRows: number }> {
   p={...p,employmentIds:p.employmentIds?.slice()};
   ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
-  if (!isIsoDate(p.sourceFrom) || !isIsoDate(p.sourceTo) || !isIsoDate(p.targetFrom)) {
-    throw new Error('Dates must be YYYY-MM-DD');
-  }
-  const srcFromMs = Date.parse(`${p.sourceFrom}T00:00:00Z`);
-  const srcToMs = Date.parse(`${p.sourceTo}T00:00:00Z`);
-  if (srcToMs < srcFromMs) throw new Error('The source end date must not be before the source start date');
-  if (srcToMs - srcFromMs > 366 * DAY_MS) throw new Error('Copy at most one year of source roster at a time');
-  const offsetDays = Math.round((Date.parse(`${p.targetFrom}T00:00:00Z`) - srcFromMs) / DAY_MS);
-  if (offsetDays === 0) throw new Error('The target start date must differ from the source start date');
+  const {offsetDays}=validateRosterCopyRange(p);
 
   const empIds = [...new Set((p.employmentIds ?? []).filter(Boolean))];
   return withTenant(ctx, async (tx) => {
@@ -2641,9 +2699,9 @@ export type UsualShiftRow = {
  * are simply absent from the result; their month reads as blank, which is the honest answer and is what
  * the Attendance Policy screen's "no usual shift" list already exists to fix.
  */
-export function usualShiftsFor(ctx: SessionContext, employmentIds: string[]): Promise<UsualShiftRow[]> {
+export function usualShiftsFor(ctx: SessionContext, employmentIds: string[], existingTx?: Tx): Promise<UsualShiftRow[]> {
   if (employmentIds.length === 0) return Promise.resolve([]);
-  return withTenant(ctx, async (tx) => {
+  const read = async (tx: Tx) => {
     const rows = await tx
       .select({
         employmentId: employment.id,
@@ -2688,7 +2746,8 @@ export function usualShiftsFor(ctx: SessionContext, employmentIds: string[]): Pr
         ...(rotations.length?{noDefault:!r.shiftId,rotations:rotations.map(({ruleId,effectiveFrom,anchorDate,unit,length,days})=>({ruleId,effectiveFrom,anchorDate,unit,length,days})),...(periods.length?{rotationPeriods:periods}:{}),
           rotationShifts:rotationLookup.shifts.filter(s=>ids.has(s.id))}:{})}];
     });
-  });
+  };
+  return existingTx ? read(existingTx) : withTenant(ctx, read);
 }
 
 /** One row of the month grid's pinned block. Every field comes from listEmployees, which already
@@ -2856,14 +2915,27 @@ export async function rosterWindowView(
       (needle === '' || e.name.toLowerCase().includes(needle) || (e.code ?? '').toLowerCase().includes(needle)),
   );
 
+  return hydrateRosterWindow(ctx, { from, to, dates, employees, allEmployees, shiftRows });
+}
+
+/** Canonical cell hydration shared by the full artifact reader and bounded presentation reader.
+ * A supplied transaction is the caller's enforced presentation snapshot. No calculation is duplicated. */
+export async function hydrateRosterWindow(
+  ctx: SessionContext,
+  { from, to, dates, employees, allEmployees, shiftRows }: {
+    from: string; to: string; dates: string[];
+    employees: RosterMonthEmployee[]; allEmployees: RosterMonthEmployee[];
+    shiftRows: Awaited<ReturnType<typeof listShiftsForTenant>>;
+  },
+  existingTx?: Tx,
+): Promise<RosterMonthView> {
   // The roster read is narrowed to the employees actually on screen. A filtered month must not drag the
   // whole company's rows across just to throw them away, and an empty result must not fall through to
   // rosterForRange's "no employmentIds ⇒ everyone" branch.
   const visible = employees.map((e) => e.employmentId);
-  const [roster, usualRows] = await Promise.all([
-    visible.length > 0 ? rosterForRange(ctx, { employmentIds: visible, from, to }) : Promise.resolve([]),
-    usualShiftsFor(ctx, visible),
-  ]);
+  // A borrowed transaction must never finish while a sibling multi-query reader is still running.
+  const roster = visible.length > 0 ? await rosterForRange(ctx, { employmentIds: visible, from, to }, existingTx) : [];
+  const usualRows = await usualShiftsFor(ctx, visible, existingTx);
 
   const cells: Record<string, AssignedCell> = {};
   for (const r of roster) {
@@ -2883,11 +2955,9 @@ export async function rosterWindowView(
   }
 
   const dayContext: RosterMonthView['dayContext'] = {};
-  if (visible.length) await withTenant(ctx, async tx => {
-    const [calendar, leave] = await Promise.all([
-      holidayCalendarFactsByEmployment(tx, { employmentIds: visible, startDate: from, endDate: to }),
-      approvedLeavePresenceByEmploymentTx(tx, visible, from, to),
-    ]);
+  const readDayContext = async (tx: Tx) => {
+    const calendar = await holidayCalendarFactsByEmployment(tx, { employmentIds: visible, startDate: from, endDate: to });
+    const leave = await approvedLeavePresenceByEmploymentTx(tx, visible, from, to);
     for (const id of visible) for (const date of dates) {
       const facts: RosterMonthView['dayContext'][string] = {};
       if (calendar.holidays.get(id)?.has(date)) facts.publicHoliday = true;
@@ -2896,7 +2966,8 @@ export async function rosterWindowView(
       if (presence) facts.approvedLeave = presence;
       if (Object.keys(facts).length) dayContext[cellKey(id, date)] = facts;
     }
-  });
+  };
+  if (visible.length) await (existingTx ? readDayContext(existingTx) : withTenant(ctx, readDayContext));
 
   return {
     from,

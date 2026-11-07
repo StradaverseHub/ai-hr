@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { getLocale, getTranslations } from 'next-intl/server';
 import { scopedAdmin } from '@/lib/scope';
 import { listCompanies } from '@/core/read';
-import { rosterWindowView } from '@/core/roster';
+import { rosterWindowPage } from '@/core/roster-presentation';
 import { Card, EmployeeCode, ErrorBanner, PageHeader, SectionHeader, btnPrimary, inputCls, pageWideCls } from '@/components/ui';
 import { cellKey, resolveRosterCell, resolveRosterWindow, rosterCellLabel, rosterDateLocale, shiftCodeOf } from '@/lib/roster-month';
 import { todayInKualaLumpur } from '@/lib/hr-date';
@@ -64,6 +64,8 @@ export default async function RosterEditPage({
     error?: string;
     picked?: string | string[];
     brush?: string;
+    page?: string;
+    size?: string;
   }>;
 }) {
   const { s, scopeIds } = await scopedAdmin();
@@ -89,9 +91,11 @@ export default async function RosterEditPage({
   if (sp.bu) listQuery.set('bu', sp.bu);
   if (sp.dept) listQuery.set('dept', sp.dept);
   if (sp.q) listQuery.set('q', sp.q);
+  if (sp.page) listQuery.set('page', sp.page);
+  if (sp.size) listQuery.set('size', sp.size);
   const listHref = `/roster?${listQuery.toString()}`;
 
-  const view = await rosterWindowView(s, { companyIds, from: win.from, to: win.to, employmentIds: [employmentId] });
+  const view = await rosterWindowPage(s, { companyIds, from: win.from, to: win.to, employmentIds: [employmentId], offset:0, limit:1 });
   const employee = view.employees.find((e) => e.employmentId === employmentId) ?? null;
 
   if (!employee) {

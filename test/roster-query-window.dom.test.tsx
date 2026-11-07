@@ -9,12 +9,14 @@ vi.mock('next/link',()=>({default:({children,...props}:React.ComponentProps<'a'>
 vi.mock('../lib/scope',()=>({scopedSession:async()=>({s:{},scopeIds:['company']})}));
 vi.mock('../lib/authz',()=>({isAdmin:()=>true}));
 vi.mock('../core/read',()=>({listCompanies:async()=>[{id:'company',name:'Fictional company'}],listDepartments:async()=>[]}));
-vi.mock('../core/roster',()=>({rosterExceptionCount:async()=>0,rosterWindowView:state.window}));
+vi.mock('../core/roster',()=>({rosterExceptionCount:async()=>0}));
+vi.mock('../core/roster-presentation',()=>({rosterWindowPage:state.window}));
+vi.mock('../components/pager',()=>({Pager:()=>null}));
 vi.mock('../app/roster/my-team-scope',()=>({rosterTeamContext:async()=>null,rosterTeamWindow:vi.fn()}));
 vi.mock('../app/roster/actions',()=>({copyRosterAction:vi.fn(),generateRosterAction:vi.fn()}));
 vi.mock('../components/roster-grid',()=>({RosterGrid:()=>null,RosterTemplateButton:()=>null}));
 import Page from '../app/roster/page';
-beforeEach(()=>{state.window.mockImplementation(async(_s,p)=>({from:p.from,to:p.to,dates:[],employees:[],allEmployees:[],shifts:[],cells:{},usual:{},dayContext:{}}));});
+beforeEach(()=>{state.window.mockImplementation(async(_s,p)=>({from:p.from,to:p.to,dates:[],employees:[],total:0,businessUnitOptions:[],departmentOptions:[],shifts:[],cells:{},usual:{},dayContext:{}}));});
 async function page(query:Record<string,string>){return <NextIntlClientProvider locale="en" messages={en}>{await Page({searchParams:Promise.resolve(query)})}</NextIntlClientProvider>;}
 it.each([
  [{view:'month',month:'2026-10'},{view:'month',month:'2026-11'},'month','2026-11'],
