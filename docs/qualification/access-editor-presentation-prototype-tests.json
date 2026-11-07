@@ -1,0 +1,6 @@
+[
+  "test/access-editor-presentation-prototype.test.ts",
+  "test/access-configuration-storage.test.ts",
+  "test/access-configuration-owner.test.ts",
+  "test/access-configuration-command.test.ts"
+]
