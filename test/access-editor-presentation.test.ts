@@ -1,4 +1,4 @@
-/** Disposable native prototype; no installed route, numbered SQL or browser acceptance claim. */
+/** Native application-owner adoption; normal migrations only, no disposable SQL installation. */
 import {readFileSync} from 'node:fs';
 import {randomUUID} from 'node:crypto';
 import {afterAll,beforeAll,beforeEach,expect,it,vi} from 'vitest';
@@ -11,17 +11,18 @@ import {previewAccessConfiguration,saveAccessConfiguration} from '../core/access
 import {readAccessConfigurationEditor} from '../core/access-configuration-editor';
 import {pgSqlState} from '../lib/db-error';
 import {todayInKualaLumpur,addCalendarMonths} from '../lib/hr-date';
-import {readAccessEditorPrototype,readAccessEditorPrototypeStatus} from './prototypes/access-editor-presentation';
+import {readAccessEditorPresentationStatus} from '../core/access-editor-presentation';
+import {readAccessConfigurationEditor as readLockedAccessConfigurationEditor} from './fixtures/access-editor-locked-baseline';
 import {adminCtx,closeAll,createAppUser,migrateTestDb,owner,resetDb,seedBase} from './harness';
 import {workerDb} from './db-names';
 
-const prototypeSql=readFileSync(new URL('./prototypes/access-editor-presentation.sql',import.meta.url),'utf8');
+const reviewedPrototypeSql=readFileSync(new URL('./prototypes/access-editor-presentation.sql',import.meta.url),'utf8');
 type FunctionInfo={definition:string;details:unknown};
-let original:FunctionInfo|undefined,installed=false;
+
 async function bootstrapInfo():Promise<FunctionInfo>{
  const [row]=await owner.db.execute<FunctionInfo>(sql`select pg_get_functiondef(p.oid) as definition,
   jsonb_build_object('owner',p.proowner::regrole::text,'acl',p.proacl::text,'name',p.proname,'namespace',p.pronamespace::regnamespace::text,
-   'language',p.prolang,'argtypes',p.proargtypes::text,'argnames',p.proargnames,'allargtypes',p.proallargtypes,'argmodes',p.proargmodes,
+   'language',p.prolang,'argtypes',p.proargtypes::text,'argnames',p.proargnames,'nargs',p.pronargs,'ndefaults',p.pronargdefaults,'allargtypes',p.proallargtypes,'argmodes',p.proargmodes,
    'defaults',p.proargdefaults::text,'result',p.prorettype,'set',p.proretset,'kind',p.prokind,'variadic',p.provariadic,
    'security',p.prosecdef,'strict',p.proisstrict,'leakproof',p.proleakproof,'volatility',p.provolatile,'parallel',p.proparallel,
    'settings',p.proconfig,'cost',p.procost,'rows',p.prorows,'support',p.prosupport::text,'body',p.prosrc,'sqlbody',p.prosqlbody::text) as details
@@ -34,14 +35,9 @@ beforeAll(async()=>{
  const pool=process.env.VITEST_POOL_ID??process.env.VITEST_WORKER_ID;expect(pool).toBeTruthy();expect(process.env.WORKER_DB).not.toBe('0');
  for(const key of ['TEST_DATABASE_URL','TEST_MIGRATION_DATABASE_URL']){const url=new URL(process.env[key]!);expect(url.hostname).toBe('127.0.0.1');expect(url.pathname).toBe('/'+workerDb(pool!));}
  const [names]=await owner.client`select to_regprocedure('app._access_bootstrap_eligible(uuid,uuid)') as helper,to_regprocedure('app.access_editor_presentation_v1()') as projection`;
- expect(names).toEqual({helper:null,projection:null});
- original=await bootstrapInfo();await owner.client.begin(tx=>tx.unsafe(prototypeSql));installed=true;
+ expect(names.helper).toBe('app._access_bootstrap_eligible(uuid,uuid)');expect(names.projection).toBe('app.access_editor_presentation_v1()');
 });
-beforeEach(resetDb);
-afterAll(async()=>{
- try{if(installed&&original){await owner.client.begin(async tx=>{await tx.unsafe(original!.definition);await tx`drop function app.access_editor_presentation_v1()`;await tx`drop function app._access_bootstrap_eligible(uuid,uuid)`;});expect(await bootstrapInfo()).toEqual(original);}}
- finally{await closeAll();}
-});
+beforeEach(resetDb);afterAll(closeAll);
 const root=async()=>{const b=await seedBase();return{b,ctx:{...adminCtx(b),grants:[{role:'hr_admin',companyId:null}]}satisfies SessionContext};};
 const ownerFacts=(state:Awaited<ReturnType<typeof accessConfigurationStore.loadCurrent>>)=>({snapshot:state.snapshot,catalog:state.catalog,scopeFingerprint:state.scopeFingerprint,recoveryUserIds:[...state.recoveryUserIds].sort(),companyIds:[...state.evidence.knownCompanyIds].sort()});
 async function events(tenantId:string){return [...await owner.client`select id,event_type,payload,chain_seq,prev_hash,hash from domain_event where tenant_id=${tenantId}::uuid order by id`];}
@@ -69,19 +65,20 @@ async function uninitialized(role:'hr_admin'|'super_admin'|'employee'|'manager'=
  return{ctx,grant,c};
 }
 
-it('preserves full bootstrap identity and refuses a changed predecessor before creating any function',async()=>{
- const candidate=await bootstrapInfo();expect(candidate.definition).toContain('app._access_bootstrap_eligible(t,u)');
- const before=(original!.details as Record<string,unknown>),after=(candidate.details as Record<string,unknown>);expect({...after,body:before.body}).toEqual(before);
- try{await owner.client.unsafe(original!.definition);await owner.client`alter function app.access_install_defaults(uuid,uuid) cost 101`;await refusal(()=>owner.client.begin(tx=>tx.unsafe(prototypeSql)),'55000');}
- finally{await owner.client.unsafe(candidate.definition);}
- expect(await bootstrapInfo()).toEqual(candidate);
+it('uses the ordinary appended native bootstrap with exactly the reviewed eligibility extraction',async()=>{
+ const candidate=await bootstrapInfo(),predecessor=reviewedPrototypeSql.split('$predecessor$')[1];
+ expect(predecessor).toBeTruthy();
+ const expected=predecessor.replace(/IF NOT EXISTS\(SELECT 1 FROM public\.app_user a JOIN public\.role_assignment r ON r\.app_user_id=a\.id AND r\.tenant_id=a\.tenant_id\n  WHERE a\.id=u AND a\.tenant_id=t AND a\.archived_at IS NULL AND NOT app\.login_blocked\(a\.id\) AND app\.access_recovery_available\(a\.id\)\n   AND \(r\.role::text='super_admin' OR \(r\.role::text='hr_admin' AND r\.company_id IS NULL\)\)\) THEN/, 'IF NOT app._access_bootstrap_eligible(t,u) THEN');
+ expect(expected).not.toBe(predecessor);expect((candidate.details as Record<string,unknown>).body).toBe(expected);
+ const [nativeLanguage]=await owner.client`select oid from pg_language where lanname='plpgsql'`;
+ expect(candidate.details).toEqual({body:expected,language:nativeLanguage.oid,nargs:2,ndefaults:0,owner:'postgres',acl:'{postgres=X/postgres}',name:'access_install_defaults',namespace:'app',argtypes:'2950 2950',argnames:['t','u'],allargtypes:null,argmodes:null,defaults:null,result:16,set:false,kind:'f',variadic:0,security:true,strict:false,leakproof:false,volatility:'v',parallel:'u',settings:['search_path=pg_catalog, public, pg_temp'],cost:100,rows:0,support:'0',sqlbody:null});
 });
 it('returns exact initialized native state/metadata under held Access and History without writing or acquiring advisory locks',async context=>{
- const {b,ctx}=await root(),old=await readAccessConfigurationEditor(ctx),before=await events(b.tenantId),native=database.withTenant,spy=budgets();
+ const {b,ctx}=await root(),old=await readLockedAccessConfigurationEditor(ctx),before=await events(b.tenantId),native=database.withTenant,spy=budgets();
  try{for(const kind of ['access','history']as const)await held(b.tenantId,kind,context.signal,async pid=>{
-  expect(await readAccessEditorPrototype(ctx)).toEqual(old);
+  expect(await readAccessConfigurationEditor(ctx)).toEqual(old);
   const [proof]=await owner.client`select exists(select 1 from pg_locks where pid=${pid} and locktype='advisory' and granted) as held`;expect(proof.held).toBe(true);
-  if(kind==='access')await refusal(()=>readAccessConfigurationEditor(ctx),'55P03');
+  if(kind==='access')await refusal(()=>readLockedAccessConfigurationEditor(ctx),'55P03');
  });expect(await events(b.tenantId)).toEqual(before);}
  finally{spy.mockRestore();}
  await native(ctx,async tx=>{const rows=await tx.execute(sql`select * from app.access_editor_presentation_v1()`);expect(rows).toHaveLength(1);const [proof]=await tx.execute<{role:string;mode:string;isolation:string;advisory:boolean}>(sql`select current_user as role,current_setting('transaction_read_only') as mode,current_setting('transaction_isolation') as isolation,exists(select 1 from pg_locks where pid=pg_backend_pid() and locktype='advisory' and granted) as advisory`);expect(proof).toEqual({role:'ai_hr_app',mode:'on',isolation:'repeatable read',advisory:false});},{readOnlySnapshot:true});
@@ -96,30 +93,40 @@ it('requires actual RR/RO, prevents writes, and withholds private bootstrap/help
 });
 it.each(['hr_admin','super_admin']as const)('gives typed uninitialized only to legitimate durable %s then initializes exactly once and reads a fresh snapshot',async role=>{
  const {ctx,grant}=await uninitialized(role),before=await events(ctx.tenantId);expect(before).toEqual([]);
- expect(await readAccessEditorPrototypeStatus(ctx)).toEqual({status:'uninitialized'});expect(await events(ctx.tenantId)).toEqual(before);
- const [first,second]=await Promise.all([readAccessEditorPrototype(ctx),readAccessEditorPrototype(ctx)]);expect(first).toEqual(second);expect(first.snapshot.groups).toHaveLength(6);
+ expect(await readAccessEditorPresentationStatus(ctx)).toEqual({status:'uninitialized'});expect(await events(ctx.tenantId)).toEqual(before);
+ const [first,second]=await Promise.all([readAccessConfigurationEditor(ctx),readAccessConfigurationEditor(ctx)]);expect(first).toEqual(second);expect(first.snapshot.groups).toHaveLength(6);
  const after=await events(ctx.tenantId);expect(after).toHaveLength(1);expect(after[0].event_type).toBe('access-configuration.initialized');expect(after[0].payload).toEqual({defaultsCreated:true,legacyRolesChanged:false});
  expect(await owner.db.select().from(roleAssignment).where(eq(roleAssignment.appUserId,ctx.userId!))).toEqual([grant]);
- expect(await readAccessEditorPrototype(ctx)).toEqual(first);expect(await events(ctx.tenantId)).toEqual(after);
+ expect(await readAccessConfigurationEditor(ctx)).toEqual(first);expect(await events(ctx.tenantId)).toEqual(after);
 },30000);
 it('refuses non-bootstrap and future-undurable actors without creating defaults or returning metadata',async()=>{
  for(const [role,scoped,ending]of [['employee',false,false],['manager',false,false],['hr_admin',true,false],['hr_admin',false,true]]as const){
-  const {ctx}=await uninitialized(role,scoped,ending);await expect(readAccessEditorPrototypeStatus(ctx)).rejects.toMatchObject({code:'ceiling'});await expect(readAccessEditorPrototype(ctx)).rejects.toMatchObject({code:'ceiling'});
+  const {ctx}=await uninitialized(role,scoped,ending);await expect(readAccessEditorPresentationStatus(ctx)).rejects.toMatchObject({code:'ceiling'});await expect(readAccessConfigurationEditor(ctx)).rejects.toMatchObject({code:'ceiling'});
   expect(await owner.db.select().from(accessConfiguration).where(eq(accessConfiguration.tenantId,ctx.tenantId))).toEqual([]);expect(await events(ctx.tenantId)).toEqual([]);
  }
 });
+it('freshly refuses a bootstrap actor revoked between the explicit status and existing initialization command',async()=>{
+ const {ctx}=await uninitialized(),native=database.withTenant;let presentationReads=0;
+ const spy=vi.spyOn(database,'withTenant').mockImplementation(async<T>(supplied:SessionContext,read:(tx:Tx)=>Promise<T>,options?:Parameters<typeof database.withTenant>[2])=>{
+  const result=await native(supplied,read,options);
+  if(options?.readOnlySnapshot&&++presentationReads===1)await owner.db.delete(roleAssignment).where(eq(roleAssignment.appUserId,ctx.userId!));
+  return result;
+ });
+ try{await expect(readAccessConfigurationEditor(ctx)).rejects.toMatchObject({code:'ceiling'});}finally{spy.mockRestore();}
+ expect(presentationReads).toBe(1);expect(await owner.db.select().from(accessConfiguration).where(eq(accessConfiguration.tenantId,ctx.tenantId))).toEqual([]);expect(await events(ctx.tenantId)).toEqual([]);
+});
 it('uses actual configure capability instead of an HR-role shortcut and freshly refuses retained revoked/archived/foreign contexts',async()=>{
  const {b,ctx}=await root(),userId=await createAppUser(b.tenantId,null,'employee'),employee:SessionContext={...ctx,userId,personId:null,roles:['employee'],grants:[{role:'employee',companyId:null}]};
- await expect(readAccessEditorPrototype(employee)).rejects.toMatchObject({code:'ceiling'});
+ await expect(readAccessConfigurationEditor(employee)).rejects.toMatchObject({code:'ceiling'});
  const apply=async(effect:'allow'|'deny')=>{const current=await database.withTenant(ctx,tx=>accessConfigurationStore.loadCurrent(tx,ctx)),edit={expectedRevision:current.snapshot.revision,command:{kind:'setOverride' as const,userId,capabilityId:'access.configure',companyId:null,effect}};const preview=await previewAccessConfiguration(ctx,edit,accessConfigurationStore);await saveAccessConfiguration(ctx,{...edit,previewFingerprint:preview.fingerprint},accessConfigurationStore);};
- await apply('allow');expect(await readAccessEditorPrototype(employee)).toEqual(await readAccessConfigurationEditor(employee));
- await owner.db.update(appUser).set({archivedAt:new Date()}).where(eq(appUser.id,userId));await expect(readAccessEditorPrototype(employee)).rejects.toMatchObject({code:'ceiling'});
- await owner.db.update(appUser).set({archivedAt:null}).where(eq(appUser.id,userId));expect(await readAccessEditorPrototype(employee)).toEqual(await readAccessConfigurationEditor(employee));
- const grants=await owner.db.delete(roleAssignment).where(eq(roleAssignment.appUserId,userId)).returning();expect(grants).toHaveLength(1);await expect(readAccessEditorPrototype(employee)).rejects.toMatchObject({code:'ceiling'});
- await owner.db.insert(roleAssignment).values(grants);expect(await readAccessEditorPrototype(employee)).toEqual(await readAccessConfigurationEditor(employee));
- await apply('deny');await expect(readAccessEditorPrototype(employee)).rejects.toMatchObject({code:'ceiling'});
- const scoped=await uninitialized('hr_admin',true);await expect(readAccessEditorPrototype({...scoped.ctx,roles:['hr_admin'],grants:[{role:'hr_admin',companyId:null}]})).rejects.toMatchObject({code:'ceiling'});
- await expect(readAccessEditorPrototype({...ctx,tenantId:scoped.ctx.tenantId})).rejects.toMatchObject({code:'ceiling'});
+ await apply('allow');expect(await readAccessConfigurationEditor(employee)).toEqual(await readLockedAccessConfigurationEditor(employee));
+ await owner.db.update(appUser).set({archivedAt:new Date()}).where(eq(appUser.id,userId));await expect(readAccessConfigurationEditor(employee)).rejects.toMatchObject({code:'ceiling'});
+ await owner.db.update(appUser).set({archivedAt:null}).where(eq(appUser.id,userId));expect(await readAccessConfigurationEditor(employee)).toEqual(await readLockedAccessConfigurationEditor(employee));
+ const grants=await owner.db.delete(roleAssignment).where(eq(roleAssignment.appUserId,userId)).returning();expect(grants).toHaveLength(1);await expect(readAccessConfigurationEditor(employee)).rejects.toMatchObject({code:'ceiling'});
+ await owner.db.insert(roleAssignment).values(grants);expect(await readAccessConfigurationEditor(employee)).toEqual(await readLockedAccessConfigurationEditor(employee));
+ await apply('deny');await expect(readAccessConfigurationEditor(employee)).rejects.toMatchObject({code:'ceiling'});
+ const scoped=await uninitialized('hr_admin',true);await expect(readAccessConfigurationEditor({...scoped.ctx,roles:['hr_admin'],grants:[{role:'hr_admin',companyId:null}]})).rejects.toMatchObject({code:'ceiling'});
+ await expect(readAccessConfigurationEditor({...ctx,tenantId:scoped.ctx.tenantId})).rejects.toMatchObject({code:'ceiling'});
  expect(await events(scoped.ctx.tenantId)).toEqual([]);
 },30000);
 
@@ -127,10 +134,10 @@ it('does not reinterpret a native storage failure as uninitialized or enter boot
  const {b,ctx}=await root(),before=await events(b.tenantId),[originalMetadata]=await owner.client<{definition:string}[]>`select pg_get_functiondef('app.access_configuration_editor_metadata()'::regprocedure) as definition`,spy=budgets();
  try{
   await owner.client.unsafe("CREATE OR REPLACE FUNCTION app.access_configuration_editor_metadata() RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$ BEGIN RAISE EXCEPTION 'Fictional metadata storage failure' USING ERRCODE='55000';END $$");
-  await held(b.tenantId,'access',context.signal,async()=>{await refusal(()=>readAccessEditorPrototype(ctx),'55000');});
+  await held(b.tenantId,'access',context.signal,async()=>{await refusal(()=>readAccessConfigurationEditor(ctx),'55000');});
   expect(await events(b.tenantId)).toEqual(before);
  }finally{try{await owner.client.unsafe(originalMetadata.definition);}finally{spy.mockRestore();}}
- expect(await readAccessEditorPrototype(ctx)).toEqual(await readAccessConfigurationEditor(ctx));
+ expect(await readAccessConfigurationEditor(ctx)).toEqual(await readLockedAccessConfigurationEditor(ctx));
 },30000);
 
 it('preserves current command CAS, native last-administrator and audit-failure rollback under the factored bootstrap owner',async()=>{
