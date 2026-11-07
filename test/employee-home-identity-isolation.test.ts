@@ -1,5 +1,8 @@
 import {beforeEach,describe,expect,it,vi} from 'vitest';
-const state=vi.hoisted(()=>({subjects:vi.fn(),lines:vi.fn(),photo:vi.fn(),selected:vi.fn(),tenant:vi.fn(),proof:vi.fn(),names:vi.fn()}));
+import type {SQL} from 'drizzle-orm';
+import {PgDialect} from 'drizzle-orm/pg-core';
+const state=vi.hoisted(()=>({subjects:vi.fn(),lines:vi.fn(),photo:vi.fn(),selected:vi.fn(),tenant:vi.fn(),proof:vi.fn(),names:vi.fn(),
+  snapshotSafe:true,principalCurrent:true,dashboardRole:'employee' as string|null,probes:[] as string[]}));
 vi.mock('../db/client',()=>({withTenant:state.tenant}));
 vi.mock('../core/read',()=>({myOwnEmploymentSubjectsTx:state.subjects,isCurrentOwnHomeEmploymentTx:state.selected,reportingLinesFor:state.lines}));
 vi.mock('../core/person-photo',()=>({hasPersonPhotoTx:state.photo,hasPersonPhotoSnapshotTx:state.photo}));
@@ -9,7 +12,23 @@ const ctx={tenantId:'fictional-tenant',userId:'fictional-login',personId:'fictio
 beforeEach(()=>{
   vi.resetAllMocks();state.subjects.mockResolvedValue([{employmentId:'own',employeeCode:'0007',company:'Fictional company',companyProof:{companyId:'company'}}]);
   state.lines.mockResolvedValue({reports:[]});state.photo.mockResolvedValue(false);state.selected.mockResolvedValue(false);
-  state.proof.mockResolvedValue([{safe:true,ok:true,allowed:true,role:'employee'}]);
+  state.snapshotSafe=true;state.principalCurrent=true;state.dashboardRole='employee';state.probes=[];
+  state.proof.mockImplementation(async(statement:SQL)=>{
+    const query=new PgDialect().sqlToQuery(statement).sql;
+    if(query.includes('app.own_home_dashboard_role(')){
+      state.probes.push('selected-company-role');return [{role:state.dashboardRole}];
+    }
+    if(query.includes(' as safe')){
+      state.probes.push('snapshot-mode');return [{safe:state.snapshotSafe}];
+    }
+    if(query.includes(' AS ok')){
+      state.probes.push('own-principal');return [{ok:state.principalCurrent}];
+    }
+    if(query.includes(' as allowed')){
+      state.probes.push('presentation-principal');return [{allowed:state.principalCurrent&&state.snapshotSafe}];
+    }
+    throw Error('Unexpected Home identity proof query');
+  });
   state.names.mockReturnValue({from:()=>({where:()=>({limit:async()=>[{preferredName:'Fictional recorded name'}]})})});
   const tx={execute:state.proof,select:state.names};
   state.tenant.mockImplementation(async(_ctx:unknown,read:(transaction:typeof tx)=>unknown)=>read(tx));
@@ -19,7 +38,8 @@ describe('Home identity versus greeting presentation failure',()=>{
     state.photo.mockRejectedValueOnce(new Error('Fictional private photo failure'));
     const identity=await readEmployeeHomeIdentity(ctx);
     expect(identity).toMatchObject({role:'employee',employmentState:'selected',selectedEmploymentId:'own'});
-    expect(state.photo).not.toHaveBeenCalled();expect(state.names).not.toHaveBeenCalled();expect(state.proof).toHaveBeenCalledTimes(4);
+    expect(state.photo).not.toHaveBeenCalled();expect(state.names).not.toHaveBeenCalled();
+    expect(state.probes).toEqual(['snapshot-mode','own-principal','selected-company-role']);
     expect(state.tenant).toHaveBeenCalledTimes(1);
     expect(state.subjects).toHaveBeenCalledWith(expect.objectContaining({execute:state.proof}),ctx);
     expect(identity).not.toHaveProperty('name');expect(identity).not.toHaveProperty('photoHref');
@@ -33,15 +53,21 @@ describe('Home identity versus greeting presentation failure',()=>{
     expect(state.selected).toHaveBeenCalledWith(expect.anything(),ctx,'not-own');expect(state.subjects).not.toHaveBeenCalled();
   });
   it('does not load subject or greeting data when the canonical principal proof refuses',async()=>{
-    state.proof.mockResolvedValueOnce([{safe:true}]).mockResolvedValueOnce([]).mockResolvedValueOnce([{ok:false}]);
+    state.principalCurrent=false;
     await expect(readEmployeeHomeIdentity(ctx)).rejects.toMatchObject({code:'employmentUnavailable'});
-    expect(state.proof).toHaveBeenCalledTimes(3);
+    expect(state.probes).toEqual(['snapshot-mode','own-principal']);
     expect(state.subjects).not.toHaveBeenCalled();expect(state.names).not.toHaveBeenCalled();expect(state.photo).not.toHaveBeenCalled();
   });
   it('refuses a stale principal at selected-company role resolution instead of accepting its claimed role',async()=>{
-    state.proof.mockResolvedValueOnce([{safe:true}]).mockResolvedValueOnce([]).mockResolvedValueOnce([{ok:true}]).mockResolvedValueOnce([{role:null}]);
+    state.dashboardRole=null;
     await expect(readEmployeeHomeIdentity(ctx)).rejects.toMatchObject({code:'employmentUnavailable'});
-    expect(state.proof).toHaveBeenCalledTimes(4);expect(state.subjects).toHaveBeenCalledTimes(1);
+    expect(state.probes).toEqual(['snapshot-mode','own-principal','selected-company-role']);expect(state.subjects).toHaveBeenCalledTimes(1);
     expect(state.photo).not.toHaveBeenCalled();expect(state.names).not.toHaveBeenCalled();
+  });
+  it('refuses a carrier without the enforced snapshot before resolving its principal or subjects',async()=>{
+    state.snapshotSafe=false;
+    await expect(readEmployeeHomeIdentity(ctx)).rejects.toMatchObject({code:'employmentUnavailable'});
+    expect(state.probes).toEqual(['snapshot-mode']);
+    expect(state.subjects).not.toHaveBeenCalled();expect(state.photo).not.toHaveBeenCalled();expect(state.names).not.toHaveBeenCalled();
   });
 });
