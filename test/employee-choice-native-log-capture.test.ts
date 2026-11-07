@@ -55,17 +55,17 @@ it('refuses foreign bindings, invalidUTF8, rawaggregate excess and failed public
  expect(()=>employeeChoiceNativeLogParts(directory(),{...binding,containerId:'caller-name'})).toThrow('binding');
  expect(()=>[...employeeChoiceNativeLogRecords([{bytes:Buffer.from([0xff])}])]).toThrow();
  const path=directory(),store=employeeChoiceNativeLogParts(path,binding);store.append('stdout',Buffer.from('first\n'));store.checkpoint('first');const before=readFileSync(join(path,'native-log-index.json'));
- writeFileSync(join(path,'native-log-index-2.pending'),'foreign',{mode:0o600});store.append('stdout',Buffer.from('second\n'));expect(()=>store.checkpoint('second')).toThrow();expect(readFileSync(join(path,'native-log-index.json'))).toEqual(before);
+ writeFileSync(join(path,'native-log-index-2.pending'),'foreign',{mode:0o600});store.append('stdout',Buffer.from('second\n'));expect(()=>store.checkpoint('second')).toThrow();expect(readFileSync(join(path,'native-log-index.json'))).toEqual(before);expect(()=>store.verifyIndex()).toThrow('unpublished');expect(()=>[...store.read('stdout')]).toThrow('unpublished');
  const bounded=employeeChoiceNativeLogParts(directory(),binding),chunk=Buffer.alloc(8*1024*1024,0);for(let i=0;i<16;i++)bounded.append('stdout',chunk);expect(()=>bounded.append('stdout',Buffer.from('overflow'))).toThrow('aggregate');
 });
 
-function modelDocker(path:string,stdout:string,stderr=''){
+function modelDocker(path:string,stdout:string,stderr='',closeExit:number|null=0){
  const executable=join(path,'docker'),counter=join(path,'created');
  const source='#!'+process.execPath+'\n'+
   'const fs=require("node:fs");fs.appendFileSync('+JSON.stringify(counter)+',"1");'+
   'if(process.argv.slice(2).join(" ")!=='+JSON.stringify('logs --follow --since '+binding.startedAt+' '+binding.containerId)+')process.exit(4);'+
   'process.stdout.write('+JSON.stringify(stdout)+');process.stderr.write('+JSON.stringify(stderr)+');'+
-  'const interval=setInterval(()=>{},1000);process.on("SIGTERM",()=>{clearInterval(interval);process.stdout.write("",()=>process.exit(0));});\n';
+  'const interval=setInterval(()=>{},1000);'+(closeExit===null?'':'process.on("SIGTERM",()=>{clearInterval(interval);process.stdout.write("",()=>process.exit('+closeExit+'));});')+'\n';
  writeFileSync(executable,source,{mode:0o700});vi.stubEnv('PATH',path);return counter;
 }
 it('owns one actual model child through begin/end checkpoints, cancellation and settled stream close',{timeout:10000},async()=>{
@@ -113,4 +113,20 @@ it('refuses reversed complete raw phase blocks while accepting their exact decla
  const ordered=[{bytes:Buffer.from(block(marker)+block(second))}],reversed=[{bytes:Buffer.from(block(second)+block(marker))}];
  expect([...employeeChoiceNativePlanPhases(ordered,77,[marker,second],'SELECT forbidden')].map(phase=>phase.label)).toEqual([marker.label,second.label]);
  expect(()=>[...employeeChoiceNativePlanPhases(reversed,77,[marker,second],'SELECT forbidden')]).toThrow('canonical marker order');
+});
+
+it('refuses a real final-marker/exit7 close race instead of blessing requestedClose',{timeout:10000},async()=>{
+ const path=directory();modelDocker(path,message(marker.begin)+message('work')+message(marker.end),'',7);
+ const poison=vi.fn(),collector=employeeChoiceNativeLogCollector(directory(),binding,new AbortController().signal,poison);
+ try{await collector.wait(marker.begin);await collector.wait(marker.end);collector.checkpoint('complete-final-marker');
+  await expect(collector.close()).rejects.toThrow('unexpected exit during owned close: 7/null');expect(poison).toHaveBeenCalledTimes(1);
+  expect(collector.store.verifyIndex().transportClosed).toBe(true); // retained bytes still carry semanticQualification:false
+ }finally{await expect(collector.close()).rejects.toThrow('unexpected exit during owned close: 7/null');}
+});
+
+it('accepts a real owned SIGTERM outcome after the complete final marker and settled pipes',{timeout:10000},async()=>{
+ const path=directory();modelDocker(path,message(marker.begin)+message('work')+message(marker.end),'',null);
+ const poison=vi.fn(),collector=employeeChoiceNativeLogCollector(directory(),binding,new AbortController().signal,poison);
+ try{await collector.wait(marker.begin);await collector.wait(marker.end);collector.checkpoint('complete-final-marker');await collector.close();expect(collector.store.verifyIndex().transportClosed).toBe(true);expect(poison).not.toHaveBeenCalled();}
+ finally{await collector.close();}
 });

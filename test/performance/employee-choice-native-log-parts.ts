@@ -30,7 +30,7 @@ export function employeeChoiceNativeLogParts(directory:string,binding:NativeLogB
  if(!/^[a-f0-9]{40}$/.test(binding.source)||!/^[a-f0-9]{40}$/.test(binding.controller)||!/^\d{1,16}$/.test(binding.run)||binding.attempt!=='1'
   ||!Number.isSafeInteger(binding.pid)||binding.pid<1||!/^aihr-ci-[A-Za-z0-9-]+$/.test(binding.container)||!/^[a-f0-9]{64}$/.test(binding.containerId)||!Number.isFinite(Date.parse(binding.startedAt)))throw Error('Exact native log source and observed process binding required');
  const bound={...binding},parts:NativeLogPart[]=[],state={stdout:{chunks:[]as Buffer[],pending:0,bytes:0,stored:0,hash:createHash('sha256')},stderr:{chunks:[]as Buffer[],pending:0,bytes:0,stored:0,hash:createHash('sha256')}};
- let rawBytes=0,gzipBytes=0,generation=0,closed=false,indexBytes:Buffer|undefined,indexSha256:string|undefined;
+ let rawBytes=0,gzipBytes=0,generation=0,closed=false,indexBytes:Buffer|undefined,indexSha256:string|undefined,published:NativeLogIndex|undefined;
  const pointer=join(directory,'native-log-index.json');
  const owner=()=>{const now=lstatSync(directory);if(!now.isDirectory()||now.isSymbolicLink()||now.uid!==original.uid||now.dev!==original.dev||now.ino!==original.ino||(now.mode&0o777)!==0o700||realpathSync(directory)!==directory)throw Error('Native log directory identity changed');};
  const sameFile=(a:ReturnType<typeof fstatSync>,b:ReturnType<typeof fstatSync>)=>a.dev===b.dev&&a.ino===b.ino&&a.size===b.size&&a.mode===b.mode&&a.uid===b.uid&&a.gid===b.gid&&a.mtimeMs===b.mtimeMs&&a.ctimeMs===b.ctimeMs;
@@ -70,22 +70,28 @@ export function employeeChoiceNativeLogParts(directory:string,binding:NativeLogB
   const raw=Buffer.from(JSON.stringify(index,null,2)+'\n');if(raw.length>employeeChoiceNativeLogBounds.indexBytes)throw Error('Native log index byte bound exceeded');
   const temporary='native-log-index-'+(++generation)+'.pending';writeOwned(temporary,raw);renameSync(join(directory,temporary),pointer);
   const descriptor=openSync(directory,constants.O_RDONLY|constants.O_DIRECTORY|constants.O_NOFOLLOW);try{fsyncSync(descriptor);}finally{closeSync(descriptor);}
-  indexBytes=raw;indexSha256=sha(raw);closed=transportClosed;return{file:'native-log-index.json',sha256:indexSha256,rawBytes,gzipBytes,parts:parts.length,transportClosed};
+  indexBytes=raw;indexSha256=sha(raw);published=index;closed=transportClosed;return{file:'native-log-index.json',sha256:indexSha256,rawBytes,gzipBytes,parts:parts.length,transportClosed};
  }
  function verifyIndex(){
-  if(!indexBytes||!indexSha256)throw Error('No actual native log index retained');
+  if(!indexBytes||!indexSha256||!published)throw Error('No actual native log index retained');
+  // A durable pointer describes ONLY its published snapshot. Newly buffered or
+  // written parts cannot inherit an earlier checkpoint hash after publication
+  // failure, even when every new byte is owned by this same collector.
+  if(rawBytes!==published.rawBytes||gzipBytes!==published.gzipBytes||closed!==published.transportClosed||JSON.stringify(parts)!==JSON.stringify(published.parts)
+   ||channels.some(channel=>state[channel].pending!==0||state[channel].stored!==published!.channels[channel].bytes||state[channel].bytes!==published!.channels[channel].bytes
+    ||state[channel].hash.copy().digest('hex')!==published!.channels[channel].sha256))throw Error('Native log has unpublished bytes or parts');
   const actual=readOwned('native-log-index.json',employeeChoiceNativeLogBounds.indexBytes);if(!actual.equals(indexBytes)||sha(actual)!==indexSha256)throw Error('Native log index differs from its source owner');
-  const expected=new Set(parts.map(part=>part.file));for(const name of readdirSync(directory))if(name.startsWith('native-log-part-')&&!expected.has(name))throw Error('Unindexed native log part present');
-  return{file:'native-log-index.json',sha256:indexSha256,rawBytes,gzipBytes,parts:parts.length,transportClosed:closed};
+  const expected=new Set(published.parts.map(part=>part.file));for(const name of readdirSync(directory))if(name.startsWith('native-log-part-')&&!expected.has(name))throw Error('Unindexed native log part present');
+  return{file:'native-log-index.json',sha256:indexSha256,rawBytes:published.rawBytes,gzipBytes:published.gzipBytes,parts:published.parts.length,transportClosed:published.transportClosed};
  }
  function* read(channel:NativeLogChannel){
   verifyIndex();if(!channels.includes(channel))throw Error('Native log channel refused');let offset=0;const hash=createHash('sha256');
-  for(const part of parts.filter(part=>part.channel===channel)){
+  for(const part of published!.parts.filter(part=>part.channel===channel)){
    if(part.start!==offset||part.sequence<1||part.rawBytes<1||part.rawBytes>employeeChoiceNativeLogBounds.partRawBytes)throw Error('Native part sequence/range differs');
    const gzip=readOwned(part.file,employeeChoiceNativeLogBounds.memberBytes);
    const raw=employeeChoiceNativeLogPartBytes(gzip,part);offset+=raw.length;hash.update(raw);yield{start:part.start,bytes:raw};
   }
   if(offset!==state[channel].stored||offset!==state[channel].bytes||hash.digest('hex')!==state[channel].hash.copy().digest('hex'))throw Error('Complete native channel coverage differs');verifyIndex();
  }
- return{append,checkpoint,verifyIndex,read,snapshot:()=>({rawBytes,gzipBytes,parts:parts.length,transportClosed:closed,pendingBytes:state.stdout.pending+state.stderr.pending,indexSha256:indexSha256??null})};
+ return{append,checkpoint,verifyIndex,read,snapshot:()=>({current:{rawBytes,gzipBytes,parts:parts.length,transportClosed:closed,pendingBytes:state.stdout.pending+state.stderr.pending},published:published&&indexSha256?{sha256:indexSha256,rawBytes:published.rawBytes,gzipBytes:published.gzipBytes,parts:published.parts.length,transportClosed:published.transportClosed}:null})};
 }

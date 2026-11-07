@@ -5,7 +5,7 @@ import {employeeChoiceNativeMarkerObserver} from './employee-choice-native-log-s
 import {employeeChoiceSqlFingerprint} from './employee-choice-auto-explain-parser';
 export function employeeChoiceNativeLogCollector(directory:string,binding:NativeLogBinding,signal:AbortSignal,poison:(error:Error)=>void){
  signal.throwIfAborted();const store=employeeChoiceNativeLogParts(directory,binding),seen=new Map<string,NativeLogChannel>(),waiters=new Map<string,{resolve:()=>void;reject:(error:unknown)=>void}>();
- let failure:Error|undefined,closing:Promise<void>|undefined,requestedClose=false,exited=false,channel:NativeLogChannel|undefined,poisoned=false;
+ let failure:Error|undefined,closing:Promise<void>|undefined,requestedClose=false,exited=false,sentTerm=false,sentKill=false,channel:NativeLogChannel|undefined,poisoned=false;
  const refuse=(error:unknown)=>{failure??=error instanceof Error?error:new Error('Native follower refused',{cause:error});for(const waiter of waiters.values())waiter.reject(failure);waiters.clear();if(!poisoned){poisoned=true;try{poison(failure);}catch(error){failure=new AggregateError([failure,error],'Native follower failure and owner poison both refused',{cause:failure});}}};
  const marker=(from:NativeLogChannel,query:string)=>{
   if(channel&&channel!==from)throw Error('Native marker PID appeared on both raw channels');channel=from;
@@ -17,13 +17,14 @@ export function employeeChoiceNativeLogCollector(directory:string,binding:Native
  for(const name of ['stdout','stderr']as const){child[name].on('error',refuse);child[name].on('data',(value:Buffer)=>{try{store.append(name,value);observers[name].append(value);}catch(error){refuse(error);child.kill('SIGTERM');}});}
  const settled=new Promise<void>(resolve=>{
   child.once('error',error=>{refuse(error);});
-  child.once('close',(code,termination)=>{exited=true;try{for(const observer of Object.values(observers))observer.finish();if(!requestedClose)throw Error('Native follower exited before owned close: '+String(code)+'/'+String(termination));}catch(error){refuse(error);}resolve();});
+  child.once('close',(code,termination)=>{exited=true;try{for(const observer of Object.values(observers))observer.finish();if(!requestedClose)throw Error('Native follower exited before owned close: '+String(code)+'/'+String(termination));
+    if(!(code===0&&termination===null||code===null&&termination==='SIGTERM'&&sentTerm||code===null&&termination==='SIGKILL'&&sentKill))throw Error('Native follower unexpected exit during owned close: '+String(code)+'/'+String(termination));}catch(error){refuse(error);}resolve();});
  });
  const close=()=>{
   if(closing)return closing;requestedClose=true;for(const waiter of [...waiters.values()])waiter.reject(signal.aborted?signal.reason??Error('Native capture aborted'):Error('Native follower closed before marker'));waiters.clear();
   closing=Promise.resolve().then(async()=>{
-   signal.removeEventListener('abort',abort);const timer=setTimeout(()=>{if(!exited)child.kill('SIGKILL');},5000);
-   let retentionFailure:unknown;try{if(!exited)child.kill('SIGTERM');await settled;try{store.checkpoint('transport-closed',true);}catch(error){retentionFailure=error;}}finally{clearTimeout(timer);}
+   signal.removeEventListener('abort',abort);const timer=setTimeout(()=>{if(!exited)sentKill=child.kill('SIGKILL');},5000);
+   let retentionFailure:unknown;try{if(!exited)sentTerm=child.kill('SIGTERM');await settled;try{store.checkpoint('transport-closed',true);}catch(error){retentionFailure=error;}}finally{clearTimeout(timer);}
    if(failure&&retentionFailure!==undefined)throw new AggregateError([failure,retentionFailure],'Native follower and final retention both refused',{cause:failure});if(failure)throw failure;if(retentionFailure!==undefined)throw retentionFailure;
   });void closing.catch(()=>{});return closing;
  };

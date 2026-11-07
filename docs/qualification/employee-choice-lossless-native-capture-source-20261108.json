@@ -1,7 +1,7 @@
 {
   "kind": "DEVELOPMENT_LOSSLESS_NATIVE_CAPTURE_NOT_RELEASE",
-  "base": "e3bf848de06b9fb4f7ffd6f8a3b7cc6283868622",
-  "sourceRef": "codex/employee-native-capture-order-abort-20261108",
+  "base": "dd230147b2e6559963acf290c12259619656f1a1",
+  "sourceRef": "codex/employee-native-capture-publication-exit-20261108",
   "qualification": "NOT_RUN; frozen source needs root and independent review before hosted checks",
   "releaseAuthorized": false,
   "production": "HELD",
@@ -14,7 +14,7 @@
       "test/employee-choice-native-purpose-plan.test.ts"
     ]
   },
-  "declaredCaptureModels": 24,
+  "declaredCaptureModels": 26,
   "retainedOwnershipModels": 13,
   "nativeExecutions": 6,
   "requiredPlanPhases": 42,
@@ -74,14 +74,14 @@
   },
   "sourceSha256": {
     "test/employee-choice-native-purpose-plan.test.ts": "d63dab0b1b1d27004ba34e3ea1ec38955810dd1d9a2b6130919a88a9d6f56e34",
-    "test/employee-choice-native-log-capture.test.ts": "a8f998533d16a0fd5048ef768838a079a553ec4be8103040ebc26b42a7738565",
-    "test/performance/employee-choice-native-log-parts.ts": "62eb9d7441253ea1ffef22bb2ce840099c0a19ab3e5c37a2da729395e165a88d",
+    "test/employee-choice-native-log-capture.test.ts": "294aa36100f8509f2ab126ad3d89d2915ade43646b85ef2831efa22251268cc6",
+    "test/performance/employee-choice-native-log-parts.ts": "9e4f031ce19b8f851d5b284f1709dbdb8e351a325e2c04173fd89e352a84e1a9",
     "test/performance/employee-choice-native-log-stream.ts": "5c5a215f509cd33e0aa4410eca27c626c96ffadeaa8fe79e297b101e1a8c53db",
-    "test/performance/employee-choice-native-log-collector.ts": "c5b08f1744ac21ccc3d15a42e573c220ed36ec3fef9ce4c52a32cdc579190b13",
+    "test/performance/employee-choice-native-log-collector.ts": "879cdb867e58398102c9b8c041dca57a6edd4f27321280af5a6bc04e188930d2",
     "test/performance/employee-choice-benchmark-lifetime.ts": "ff248b59e427d03bd1ae8e9eed555f16198e3b211271515a9ec36811824e0a39",
     "test/employee-choice-benchmark-ownership.test.ts": "1d43122e5dd17ca4661b29ac6ba29ea679d2ac1da248991448f68286922cd1e7",
     "test/performance/employee-choice-benchmark-evidence.ts": "53f5a71f0324d8b5c5ffac70aa1638b2bfc04197e5dba6cd5bd4ba62d8bb904d",
-    "docs/qualification/employee-choice-lossless-native-capture-20261108.md": "d9ef504d7a49726187e208112473630ae66f5478ab0be6e936d69debcdf135b2"
+    "docs/qualification/employee-choice-lossless-native-capture-20261108.md": "2a3578d672cecfae1f72ac702d7e5243a0bcca8c973cae254f764e64eb96cabe"
   },
   "unchangedSourceSha256": {
     "core/employee-choice.ts": "ce1e3559addbffa4b4e780594ebcc5fcf917ddffde79a6155cc7fbcecdbcfbd5",
@@ -105,6 +105,15 @@
     "exactGlobalPhaseOrder": true,
     "actualReversedPhaseRefusal": true,
     "abortWaiterReasonIdentity": true,
-    "existing23CaptureModelsRetained": true
-  }
+    "existing23CaptureModelsRetained": true,
+    "publishedSnapshotSeparated": true,
+    "unpublishedMetadataAndReaderRefusal": true,
+    "actualUnexpectedExit7Refusal": true,
+    "actualOwnedSigtermPositive": true,
+    "existing24CaptureModelsRetained": true
+  },
+  "retainedUnexecutedSources": [
+    "e3bf848de06b9fb4f7ffd6f8a3b7cc6283868622",
+    "dd230147b2e6559963acf290c12259619656f1a1"
+  ]
 }
