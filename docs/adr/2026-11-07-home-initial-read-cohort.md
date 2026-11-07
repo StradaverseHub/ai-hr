@@ -33,3 +33,25 @@ strict browser preflight before capacity testing. The load driver must replay th
 actually observed combined request and apply full Today/Calendar validators to
 its frames, including independent foreign-subject denial. Fewer requests alone
 do not establish correct facts, acceptable latency or staging readiness.
+
+## Summary and Time Off snapshot compositions
+
+The native exclusive Access-writer probe found that Summary's profile quick-action
+metadata and Time Off's current figures still waited behind that writer. Their
+standalone presentation roots now own enforced REPEATABLE READ / READ ONLY
+transactions, following the admission semantics of the Personnel snapshot ADR.
+Committed revocations deny the next snapshot; an already admitted read may finish.
+No permission or data result is shared across requests.
+
+Time Off calls the same balance, eligibility, entitlement and pending-reservation
+owners in one carrier. Only their pure composition seams admit the new snapshot
+proof. The legacy current-card Read Committed entry point keeps its contract;
+borrowed mutable command carriers still require current authority and the Access
+barrier. Summary's new profile-policy snapshot is display metadata for a quick
+action. Profile submission, approval and photo readers keep their existing policy
+contracts. No provider egress, admission, settlement or write uses this read proof.
+
+Qualification must preserve exact canonical figures and history availability,
+refuse forged identities and mutable snapshot carriers, and complete both views
+while an exclusive Access writer is held. The original failed writer probe and
+browser traces remain evidence; source changes alone do not close qualification.

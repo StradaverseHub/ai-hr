@@ -2,7 +2,7 @@
 import {and,eq,sql} from 'drizzle-orm';
 import {settleReadGroup} from '../lib/settle-read-group';
 import {withTenant,type SessionContext,type Tx} from '../db/client';
-import {isAiPrincipalCurrentTx} from './ai-principal';
+import {isAiPrincipalCurrentTx,isAiPresentationPrincipalCurrentTx} from './ai-principal';
 import {person} from '../db/schema';
 import {isCurrentOwnHomeEmploymentTx,isOwnProfileEditEmploymentTx,myOwnEmploymentSubjectsTx,type OwnEmploymentSubject} from './read';
 import {hasPersonPhotoTx} from './person-photo';
@@ -78,6 +78,15 @@ export async function requireOwnHomeSubjectTx(tx:Tx,ctx:SessionContext,employmen
 /** Use the exact active-employment predicate for a selected card that only needs its subject ID. */
 export async function requireActiveOwnHomeEmploymentIdTx(tx:Tx,ctx:SessionContext,employmentId?:string):Promise<string>{
  await assertReadOnlyHomePrincipalTx(tx,ctx);
+ return activeOwnHomeEmploymentIdTx(tx,ctx,employmentId);
+}
+/** The same active-subject predicate, admitted through an enforced presentation snapshot. */
+export async function requireActiveOwnHomeSnapshotEmploymentIdTx(tx:Tx,ctx:SessionContext,employmentId?:string):Promise<string>{
+ if(!ctx.userId)throw new HomeAccessError('authentication');
+ if(!await isAiPresentationPrincipalCurrentTx(tx,ctx))throw new HomeAccessError('employmentUnavailable');
+ return activeOwnHomeEmploymentIdTx(tx,ctx,employmentId);
+}
+async function activeOwnHomeEmploymentIdTx(tx:Tx,ctx:SessionContext,employmentId?:string):Promise<string>{
  const id=employmentId===undefined
   ? selectedHomeSubject(await ownHomeSubjectSelectionTx(tx,ctx)).employmentId
   : employmentId;

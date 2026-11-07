@@ -6,7 +6,7 @@ import { eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, expect, it, vi } from 'vitest';
 import { saveEmployeeDraft } from '../core/employee-draft';
 import { client, type SessionContext } from '../db/client';
-import { employeeDraft, lcOnboardingCase, lcOnboardingSeen } from '../db/schema';
+import { lcOnboardingCase, lcOnboardingSeen } from '../db/schema';
 import { todayInKualaLumpur } from '../lib/hr-date';
 import { dayDate, visibleRecentJoiner, type Case, type Task } from '../lib/onboarding-model';
 import { onboardingList, onboardingMarkSeen, onboardingRegisterContext, onboardingRegisterRows, onboardingSaveConfig, onboardingSetup } from '../packs/lifecycle/service';
@@ -76,7 +76,9 @@ it('serializes the same visible projected joiners without retired cases or unnee
         if(typeof query[0]==='string'&&query[0].includes('from "lc_onboarding_case"')&&!query[0].includes('max(')){
           return new Proxy(pending,{get(result,key){
             if(key==='values')return async(...valuesArgs:unknown[])=>{
-              const values=await Reflect.apply(result.values,result,valuesArgs);caseRowsRead.push(values.length);return values;
+              const values=await Reflect.apply(result.values,result,valuesArgs);
+              if(!Array.isArray(values))throw Error('Expected native query values');
+              caseRowsRead.push(values.length);return values;
             };
             const value=Reflect.get(result,key,result);return typeof value==='function'?value.bind(result):value;
           }});
@@ -134,8 +136,7 @@ it('refreshes a linked open case before deciding recent visibility from its curr
   employment:{companyId:b.companyId,departmentId:b.deptA,positionId:b.positionId,hiredOn:dayDate(today,-60)}}});
  const [row]=await owner.db.select().from(lcOnboardingCase).where(eq(lcOnboardingCase.sourceDraftId,draft.id));
  await owner.db.update(lcOnboardingCase).set({data:{...row.data,personnelStatus:'Active',state:'submitted',tasks:[],requisitions:[],source:{...row.data.source,joinDate:dayDate(today,-60)}}}).where(eq(lcOnboardingCase.id,row.id));
- const [source]=await owner.db.select().from(employeeDraft).where(eq(employeeDraft.id,draft.id));
- await owner.db.update(employeeDraft).set({data:{...source.data,employment:{...source.data.employment,hiredOn:today}}}).where(eq(employeeDraft.id,draft.id));
+ await owner.client`update employee_draft set data=jsonb_set(data,'{employment,hiredOn}',to_jsonb(${today}::text),false) where id=${draft.id}::uuid`;
  const full=await onboardingList(admin),compact=await onboardingRegisterRows(admin,{today,recentActiveDays:14});
  expect(compact.rows.map(value=>value.case.id)).toEqual([row.id]);
  expect(compact.rows[0].case).toEqual(full.find(value=>value.case.id===row.id)!.case);

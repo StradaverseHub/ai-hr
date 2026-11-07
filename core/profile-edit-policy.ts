@@ -1,7 +1,7 @@
 /** Same policy advisory key for every canonical settings writer and profile mutation. */
 import {profileVisibilityFingerprint} from '../lib/profile-policy-fingerprint';
 import {sql} from 'drizzle-orm';
-import {assertAiPrincipalTx} from './ai-principal';
+import {assertAiPrincipalTx,assertAiPresentationPrincipalTx} from './ai-principal';
 import {resolveEssVisibleIds} from '../lib/personnel-ess-visibility';
 import {lockProfileValueWritesTx} from './access-configuration-lock';
 import type {SessionContext,Tx} from '../db/client';
@@ -104,6 +104,15 @@ export function readProfilePresentationPolicy(ctx:SessionContext,signal?:AbortSi
  await tx.execute(sql`SET TRANSACTION READ ONLY`);
  return freshProfilePresentationPolicyTx(tx,ctx);
 },{readSignal:signal});}
+/** Displaying a quick-action choice admits one consistent policy snapshot. Submission,
+ * approval and binary photo readers retain their separate current-policy contracts. */
+export function readProfilePresentationSnapshotPolicy(ctx:SessionContext,signal?:AbortSignal){
+ ctx=capturePolicyContext(ctx);
+ return withTenant(ctx,async tx=>{
+  await assertAiPresentationPrincipalTx(tx,ctx);
+  return profilePolicyValuesTx(tx,ctx);
+ },{readOnlySnapshot:true,readSignal:signal});
+}
 export type ProfilePresentationPolicy=Awaited<ReturnType<typeof freshProfileEditPolicyTx>>;
 
 /** Disabling submission withdraws pending photos in the same locked policy transaction. */

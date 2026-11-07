@@ -9,7 +9,7 @@ import { aliasedTable, and, asc, desc, eq, gt, gte, inArray, isNull, like, lt, l
 import { randomUUID, createHash } from 'node:crypto';
 import {cancellationSplitGroupSql} from './leave-group-origin-sql';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
-import {assertAiPrincipalTx} from './ai-principal';
+import {assertReadCompositionPrincipalTx} from './read-composition-principal';
 import { lockAccessConfigurationTx } from './access-configuration-lock';
 import { lockLeaveDependenciesTx, lockLeaveDependencyReadConfigurationTx, LeaveDependencyUnavailable } from './leave-dependency-lock';
 import { appendEvent, actorOf, type Actor } from '../db/events';
@@ -1981,7 +1981,7 @@ export async function leaveTypeApplySummaries(
     return out;
   };
   if (existingTx) {
-    await assertAiPrincipalTx(existingTx, ctx);
+    await assertReadCompositionPrincipalTx(existingTx, ctx);
     return read(existingTx);
   }
   return withTenant(ctx, read);

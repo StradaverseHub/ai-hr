@@ -9,7 +9,7 @@ import * as database from '../db/client';
 import type {SessionContext,Tx} from '../db/client';
 import * as schema from '../db/schema';
 import {hireEmployee} from '../core/org';
-import {myLeaveDashboard,myCurrentLeaveCards,leaveTypeApplySummaries} from '../packs/leave/service';
+import {myLeaveDashboard,myCurrentLeaveCards,myCurrentLeaveSnapshotCards,leaveTypeApplySummaries} from '../packs/leave/service';
 import {leaveEntitlementBreakdowns} from '../core/read';
 import {requireOwnHomeSubjectTx} from '../core/employee-home';
 import {readEmployeeHomeTimeOff} from '../core/employee-home-time-off';
@@ -48,12 +48,19 @@ it('retains exact canonical current figures without loading historical ledger da
   if(process.env.AIHR_FOCUSED_EVIDENCE_DIR)writeFileSync(join(process.env.AIHR_FOCUSED_EVIDENCE_DIR,'home-time-off-projection-work.json'),JSON.stringify({kind:'ACTUAL_HOME_CURRENT_FIGURES_COMPONENT_ONLY',releaseEligible:false,dashboardHistoryReads,homeHistoryReads,homeTransactions,homeTransactionStates,fullHistoryStillAvailable:true,cardCount:home.balances.length,exactCanonicalFigures:true,elapsedMs},null,2));
   expect(homeHistoryReads,'Home must not read the past-year selector date catalogue').toBe(0);
   expect(homeTransactions,'Home Time Off must use one complete read-only transaction, without nested transactions').toBe(1);
-  expect(homeTransactionStates.every(state=>state.role==='ai_hr_app'&&state.readOnly&&state.isolation==='read committed')).toBe(true);
+  expect(homeTransactionStates.every(state=>state.role==='ai_hr_app'&&state.readOnly&&state.isolation==='repeatable read')).toBe(true);
   // Keep the canonical fresh-principal contract: refuse mutable and Repeatable Read carriers.
   for(const options of [undefined,{readOnlySnapshot:true}] as const){
    await expect(actual(ctx,tx=>requireOwnHomeSubjectTx(tx,ctx,employee.employmentId),options)).rejects.toMatchObject({code:'employmentUnavailable'});
    await expect(actual(ctx,tx=>myCurrentLeaveCards(ctx,employee.employmentId,{today,locale:'en'},tx),options)).rejects.toThrow('read-only Read Committed transaction');
   }
+  await actual(ctx,async tx=>{
+   expect(await myCurrentLeaveSnapshotCards(ctx,employee.employmentId,{today,locale:'en'},tx)).toEqual(expectedCurrent);
+   const forged={...ctx,userId:randomUUID()};
+   await expect(myCurrentLeaveSnapshotCards(forged,employee.employmentId,{today,locale:'en'},tx)).rejects.toThrow('calling authority');
+   await expect(leaveEntitlementBreakdowns(forged,employee.employmentId,[{leaveTypeId:b.annualLeaveTypeId,asOf:today}],'en',tx)).rejects.toThrow('calling authority');
+   await expect(leaveTypeApplySummaries(forged,employee.employmentId,[b.annualLeaveTypeId],tx)).rejects.toThrow('calling authority');
+  },{readOnlySnapshot:true});
   // The new batched seams must bind the supplied context to the actual carrier as well.
   const forged={...ctx,userId:randomUUID()};
   await actual(ctx,async tx=>{

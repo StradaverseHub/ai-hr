@@ -57,6 +57,7 @@
  */
 import { and, asc, eq, gt, inArray, isNotNull, lt, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
+import {assertAiPresentationPrincipalTx} from './ai-principal';
 import { company, domainEvent, employment, leaveLedger, leaveRequest, leaveRequestDate, leaveType } from '../db/schema';
 // Leave services through the pack facade (ADR-0080 D9), never the pack's implementation modules directly.
 import {
@@ -281,13 +282,25 @@ export async function myCurrentLeaveCards(
       and current_setting('transaction_read_only')='on' as safe`);
     if (snapshot?.safe !== true) throw new Error('Current leave cards require a complete read-only Read Committed transaction.');
     const dashboard = await buildMyLeaveDashboard(ctx, employmentId, { today: opts.today, locale: opts.locale }, false, tx);
-    return dashboard.cards.map(({ leaveTypeId, leaveType, annualLeave, canApplyFor, pending }) =>
-      ({ leaveTypeId, leaveType, annualLeave, canApplyFor, pending }));
+    return projectCurrentLeaveCards(dashboard);
   };
   return existingTx ? read(existingTx) : withTenant(ctx, async tx => {
     await tx.execute(sql`set transaction read only`);
     return read(tx);
   });
+}
+
+function projectCurrentLeaveCards(dashboard:MyLeaveDashboard){
+ return dashboard.cards.map(({leaveTypeId,leaveType,annualLeave,canApplyFor,pending})=>
+  ({leaveTypeId,leaveType,annualLeave,canApplyFor,pending}));
+}
+
+/** Complete presentation composition only. The legacy Read Committed entry point and all
+ * command/approval calculations keep their original authority and transaction contracts. */
+export async function myCurrentLeaveSnapshotCards(ctx:SessionContext,employmentId:string,
+ opts:{today:string;locale?:string},tx:Tx){
+ await assertAiPresentationPrincipalTx(tx,ctx);
+ return projectCurrentLeaveCards(await buildMyLeaveDashboard(ctx,employmentId,{today:opts.today,locale:opts.locale},false,tx));
 }
 
 export async function myLeaveDashboard(

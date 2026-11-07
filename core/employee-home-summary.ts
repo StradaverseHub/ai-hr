@@ -9,7 +9,7 @@ import {hasEligibleLeaveTypeForTx} from './read';
 import {nextApprovedLeavePresenceTx} from '../packs/leave/service';
 import {readOwnPayrollHomeMetadata} from '../packs/payroll/service';
 import {ownClaimFormAvailable} from '../packs/claims/service';
-import {readProfilePresentationPolicy} from './profile-edit-policy';
+import {readProfilePresentationSnapshotPolicy} from './profile-edit-policy';
 import {originalHolidayCalendarFor} from './holidays';
 import {replacementHolidayCalendarProjectionsTx} from './holiday-replacement-read';
 import {todayInKualaLumpur} from '../lib/hr-date';
@@ -37,7 +37,7 @@ export async function readEmployeeHomeSummary(ctx:SessionContext,employmentId:st
   ]),{readSignal:signal}),
   ()=>payrollOn?readOwnPayrollHomeMetadata(ctx,subjectId,signal):Promise.resolve(null),
   ()=>claimsOn&&configured.has('claim')?ownClaimFormAvailable(ctx,subjectId,signal):Promise.resolve(false),
-  ()=>configured.has('profile')?readProfilePresentationPolicy(ctx,signal):Promise.resolve(null),
+  ()=>configured.has('profile')?readProfilePresentationSnapshotPolicy(ctx,signal):Promise.resolve(null),
  ]);
  const date=(day:string)=>new Intl.DateTimeFormat(locale,{day:'numeric',month:'short',year:'numeric',timeZone:'UTC'}).format(new Date(day+'T00:00:00Z'));
  const candidates:HomeSummaryCandidate[]=[];

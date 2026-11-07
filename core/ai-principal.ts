@@ -9,6 +9,10 @@ import { lockAccessConfigurationTx,lockAccessConfigurationReadTx } from './acces
 export function isAiPrincipalCurrentTx(tx:Tx,supplied:SessionContext):Promise<boolean>{
  return readAiPrincipalTx(tx,supplied,'read committed');
 }
+/** False denies a presentation identity; storage errors still propagate as failures. */
+export function isAiPresentationPrincipalCurrentTx(tx:Tx,supplied:SessionContext):Promise<boolean>{
+ return readAiPrincipalTx(tx,supplied,'repeatable read');
+}
 async function readAiPrincipalTx(tx:Tx,supplied:SessionContext,isolation:'read committed'|'repeatable read'):Promise<boolean>{
  const ctx={...supplied,roles:supplied.roles?.slice(),grants:supplied.grants?.map(g=>({...g}))};
  if(!ctx.userId||ctx.entitlementsExempt!==undefined||ctx.statutoryOverride!==undefined)return false;

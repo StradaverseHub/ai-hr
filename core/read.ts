@@ -37,12 +37,13 @@ import { alias } from 'drizzle-orm/pg-core';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { assertModuleGate } from './module-gate';
 import { assertAiPrincipalTx } from './ai-principal';
+import {assertReadCompositionPrincipalTx} from './read-composition-principal';
 
 /** Optional caller-owned read seam. Supplied transactions must bind an actual current login;
  * this is not a bootstrap, migration or owner-pool capability. Ordinary calls are unchanged. */
-async function withReadTx<T>(ctx: SessionContext, existingTx: Tx | undefined, read: (tx: Tx) => Promise<T>): Promise<T> {
+async function withReadTx<T>(ctx: SessionContext, existingTx: Tx | undefined, read: (tx: Tx) => Promise<T>, options?:{presentationSnapshot:true}): Promise<T> {
   if (!existingTx) return withTenant(ctx, read);
-  await assertAiPrincipalTx(existingTx, ctx);
+  await (options?.presentationSnapshot?assertReadCompositionPrincipalTx:assertAiPrincipalTx)(existingTx, ctx);
   return read(existingTx);
 }
 
@@ -3533,7 +3534,7 @@ export type LeaveBalanceReadOptions = {
   asOf?: string;
 };
 export function leaveBalances(ctx: SessionContext, employmentId: string, locale?: string, opts: LeaveBalanceReadOptions = {}, existingTx?: Tx) {
-  return withReadTx(ctx, existingTx, tx => leaveBalancesTx(tx, ctx, employmentId, locale, opts));
+  return withReadTx(ctx, existingTx, tx => leaveBalancesTx(tx, ctx, employmentId, locale, opts),{presentationSnapshot:true});
 }
 /** Explicit transaction seam for snapshot report consumers; the same canonical calculation and defaults. */
 export async function leaveBalancesTx(tx: Tx, ctx: SessionContext, employmentId: string, locale?: string, opts: LeaveBalanceReadOptions = {}) {
@@ -5262,7 +5263,7 @@ export function leaveEntitlementBreakdowns(
       ),
     );
   };
-  return withReadTx(ctx, existingTx, read);
+  return withReadTx(ctx, existingTx, read,{presentationSnapshot:true});
 }
 
 // RL Control Engine (0113): the active-vs-expired replacement-leave split, sourced from the toil_accrual

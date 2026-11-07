@@ -11,7 +11,7 @@ vi.mock('../core/read',()=>({hasEligibleLeaveTypeForTx:state.types}));
 vi.mock('../packs/leave/service',()=>({nextApprovedLeavePresenceTx:state.leave}));
 vi.mock('../packs/payroll/service',()=>({readOwnPayrollHomeMetadata:state.payroll}));
 vi.mock('../packs/claims/service',()=>({ownClaimFormAvailable:state.claims}));
-vi.mock('../core/profile-edit-policy',()=>({readProfilePresentationPolicy:state.profile}));
+vi.mock('../core/profile-edit-policy',()=>({readProfilePresentationSnapshotPolicy:state.profile}));
 vi.mock('../core/holidays',()=>({originalHolidayCalendarFor:state.holidays}));
 vi.mock('../core/holiday-replacement-read',()=>({replacementHolidayCalendarProjectionsTx:state.replacement}));
 import {readEmployeeHomeSummary} from '../core/employee-home-summary';
