@@ -224,6 +224,17 @@ it('denies native source/DDL/role/helper writes under forged contexts inside and
  await expect(client`select notification_worker.open_run()`).rejects.toSatisfy((e:unknown)=>pgSqlState(e)==='42501');
  expect(await sourceFacts()).toEqual(before);await notificationWorkerLifecycle(service).failRun(run,'database-refusal');
 });
+it('refuses actual sequence grants while safely inspecting native non-sequence catalogue rows',async()=>{
+ expect((await owner.client`select exists(select 1 from pg_class where relkind='t') as present`)[0].present).toBe(true);
+ await owner.client`create sequence public.fictional_notification_worker_sequence`;
+ try{
+  await owner.client`grant usage on sequence public.fictional_notification_worker_sequence to ai_hr_notification_worker`;
+  await expect(service`select notification_worker.open_run()`).rejects.toSatisfy((error:unknown)=>pgSqlState(error)==='42501');
+  await owner.client`revoke usage on sequence public.fictional_notification_worker_sequence from ai_hr_notification_worker`;
+  const api=notificationWorkerLifecycle(service),run=await api.openRun();
+  await api.failRun(run,'fictional sequence privilege regression');
+ }finally{await owner.client`drop sequence public.fictional_notification_worker_sequence`;}
+});
 it('fails closed on new PUBLIC definer privileges and changed real login/profile/bounds',async()=>{
  const before=await sourceFacts();
  await owner.client`create function public.fictional_worker_mutator() returns void language sql security definer as 'delete from public.notification'`;
