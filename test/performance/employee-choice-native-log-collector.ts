@@ -20,7 +20,7 @@ export function employeeChoiceNativeLogCollector(directory:string,binding:Native
   child.once('close',(code,termination)=>{exited=true;try{for(const observer of Object.values(observers))observer.finish();if(!requestedClose)throw Error('Native follower exited before owned close: '+String(code)+'/'+String(termination));}catch(error){refuse(error);}resolve();});
  });
  const close=()=>{
-  if(closing)return closing;requestedClose=true;for(const waiter of [...waiters.values()])waiter.reject(Error('Native follower closed before marker'));waiters.clear();
+  if(closing)return closing;requestedClose=true;for(const waiter of [...waiters.values()])waiter.reject(signal.aborted?signal.reason??Error('Native capture aborted'):Error('Native follower closed before marker'));waiters.clear();
   closing=Promise.resolve().then(async()=>{
    signal.removeEventListener('abort',abort);const timer=setTimeout(()=>{if(!exited)child.kill('SIGKILL');},5000);
    let retentionFailure:unknown;try{if(!exited)child.kill('SIGTERM');await settled;try{store.checkpoint('transport-closed',true);}catch(error){retentionFailure=error;}}finally{clearTimeout(timer);}

@@ -80,7 +80,7 @@ it('refuses an already-aborted creation without starting any child',()=>{
 });
 it('drains actual follower after in-flight abort and refuses marker acceptance after close',{timeout:10000},async()=>{
  const path=directory();modelDocker(path,message(marker.begin));const abort=new AbortController(),collector=employeeChoiceNativeLogCollector(directory(),binding,abort.signal,vi.fn());
- try{await collector.wait(marker.begin);const pending=collector.wait(marker.end);abort.abort(Error('owned deadline'));await expect(pending).rejects.toThrow('owned deadline');await collector.close();expect(collector.store.verifyIndex().transportClosed).toBe(true);await expect(collector.wait(marker.end)).rejects.toThrow();}
+ try{await collector.wait(marker.begin);const pending=collector.wait(marker.end),reason=Error('owned deadline');abort.abort(reason);await expect(pending).rejects.toThrow('owned deadline');await expect(pending).rejects.toBe(reason);await collector.close();expect(collector.store.verifyIndex().transportClosed).toBe(true);await expect(collector.wait(marker.end)).rejects.toThrow();}
  finally{await collector.close();}
 });
 
@@ -105,4 +105,12 @@ it.each(['crc','truncated','concatenated-empty-prefix','trailing']as const)('nat
 it('enforces the reviewed32MiB compressed aggregate without raising the128MiB raw cap',()=>{
  const store=employeeChoiceNativeLogParts(directory(),binding),chunk=randomBytes(employeeChoiceNativeLogBounds.partRawBytes);
  for(let i=0;i<3;i++)store.append('stdout',chunk);expect(()=>store.append('stdout',chunk)).toThrow('compressed part bounds');
+});
+
+it('refuses reversed complete raw phase blocks while accepting their exact declared order',()=>{
+ const second:PlanMarker={label:'current:second',begin:marker.begin.replace(/d{24}/,'e'.repeat(24)),end:marker.end.replace(/d{24}/,'e'.repeat(24)),native:false};
+ const block=(phase:PlanMarker)=>message(phase.begin)+message('select actual_work')+message(phase.end);
+ const ordered=[{bytes:Buffer.from(block(marker)+block(second))}],reversed=[{bytes:Buffer.from(block(second)+block(marker))}];
+ expect([...employeeChoiceNativePlanPhases(ordered,77,[marker,second],'SELECT forbidden')].map(phase=>phase.label)).toEqual([marker.label,second.label]);
+ expect(()=>[...employeeChoiceNativePlanPhases(reversed,77,[marker,second],'SELECT forbidden')]).toThrow('canonical marker order');
 });

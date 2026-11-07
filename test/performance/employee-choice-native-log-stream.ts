@@ -34,6 +34,7 @@ export function* employeeChoiceNativePlanPhases(parts:Iterable<{bytes:Buffer}>,p
    const key=employeeChoiceSqlFingerprint(message.query),boundary=known.get(key);
    if(boundary?.edge==='begin'){
     if(active||completed.has(boundary.marker.label))throw Error('Duplicate or nested native plan phase');
+    if(markers[completed.size]!==boundary.marker)throw Error('Actual native phase order differs from canonical marker order');
     active=boundary.marker;entries=[message];bytes=record.bytes;continue;
    }
    if(key===bodyKey&&(!active||!active.native))throw Error('Native body plan outside its admitted phase');
