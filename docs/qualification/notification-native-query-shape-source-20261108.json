@@ -45,13 +45,15 @@
     "newNegativeCases": 1,
     "pairedPlanSelector": "docs/qualification/notification-native-plan-diagnostic-tests.json",
     "pairedPlanCases": 6,
-    "pureUnchangedRetainedRun": "42410834435",
     "caseBudgetMs": 30000,
     "statementTimeoutMs": 20000,
     "lockTimeoutMs": 300,
     "jit": "unchanged on",
     "workMem": "unchanged4MB",
-    "state": "UNRUN; source root+independent review before hosted"
+    "state": "UNRUN after rejection-plan identity recovery; root+independent review before hosted",
+    "pureBaselineRetainedRun": "42410834435",
+    "pureSelector": "docs/qualification/notification-native-plan-parser-tests.json",
+    "pureCases": 9
   },
   "sha256": {
     "test/fixtures/notification-worker/lifecycle.sql": "ba87f475a0962dc1652db47976a1947becffb39de9d6294608438baa7f3918f1",
@@ -63,6 +65,17 @@
     "lib/notification-worker/process.ts": "8236c48b43d6139793a9d85fbf1f35568dd3c81bd4828fa4c7778e971eebd8d3",
     "test/fixtures/notification-worker/query-shape.sql": "11808452a8c5448391b946f60c24e55d595e97fea575ba0fdecf37e55828d34b",
     "test/fixtures/notification-worker/process-cases.ts": "08bf3a42830fd6fe2f36b48e3bcc2d19132d8c9d9d65f74c51255fc3ab6a69ac",
-    "test/notification-worker-native-plan-diagnostic.test.ts": "bf0117fda702f920e8e9afd3083f87628f549dfbccb88af49f79a634418be1a8"
+    "test/notification-worker-native-plan-diagnostic.test.ts": "136ad2dfab2c5f82c86e3ae5cb827e1203dade7aac7955ed7428c1ad0ba68142",
+    "test/notification-worker-plan-parser.test.ts": "4289dff8816ca83bea2f0625b18ad3ffb034d9cb5e2a5eae623d378d1e5a0eb9",
+    "test/fixtures/notification-worker/admission-plan-summary.ts": "63e289a9684860af03d40e19234c297a7f1ea4396f3858bea79482da4b06a188"
+  },
+  "repairBase": "cedf13183d87744e11f147c43c2b3da7c9a98aa2",
+  "rejectionPlanIdentityRecovery": {
+    "zeroMatchesRefuse": true,
+    "completeReviewedExpressionRequired": true,
+    "innermostNativeFrameRequired": true,
+    "actualNativeBodyMd5Bound": true,
+    "newPureModels": 4,
+    "historicalRawArtifactComparisonOnly": "42410834063; no new execution claim"
   }
 }

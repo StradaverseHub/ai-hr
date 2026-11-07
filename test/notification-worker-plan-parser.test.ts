@@ -1,5 +1,7 @@
 import {expect,it} from 'vitest';
+import {readFileSync} from 'node:fs';
 import {notificationAutoExplainMessages} from './fixtures/notification-worker/auto-explain';
+import {reviewedAdmissionExpression,notificationAdmissionSummary} from './fixtures/notification-worker/admission-plan-summary';
 const frame=(pid:number,value:unknown)=>`2026-11-08 00:00:00 [${pid}] LOG:  duration: 12.345 ms plan:\n${JSON.stringify(value,null,2)}\nCONTEXT: PL/pgSQL function notification_worker_private.admit_login() line 4 at IF\n`;
 it('parses only the exact native PID, retaining nested context and actual execution/JIT fields',()=>{
  const value={'Query Text':"SELECT '{quoted}'",Plan:{'Node Type':'Result','Actual Rows':1,'Actual Loops':1},JIT:{Timing:{Total:11.9}}};
@@ -10,4 +12,26 @@ it('refuses truncated/missing execution plans and invalid PID identities instead
  expect(()=>notificationAutoExplainMessages(frame(12,{'Query Text':'SELECT 1',claimedExecuted:true}),12)).toThrow('Native executable');
  expect(()=>notificationAutoExplainMessages(frame(12,{'Query Text':'SELECT 1',Plan:{'Node Type':'Result'}}),12)).toThrow('Actual native execution');
  expect(()=>notificationAutoExplainMessages('',0)).toThrow('Unbounded');expect(notificationAutoExplainMessages(frame(11,{'Query Text':'SELECT 1',Plan:{}}),12)).toEqual([]);
+});
+const reviewed=()=>reviewedAdmissionExpression(readFileSync('test/fixtures/notification-worker/assessment.sql','utf8'));
+function admissionModel(query:string,context:string){return{pid:12,durationMs:25,query,context,document:{Plan:{'Node Type':'Result','Actual Rows':1,'Actual Loops':1,'Shared Hit Blocks':9,'Shared Read Blocks':2}}};}
+it('models nonempty exact reviewed native expressions under the innermost admission frame for both frozen bodies',()=>{
+ for(const name of ['assessment','query-shape']){
+  const expected=reviewedAdmissionExpression(readFileSync('test/fixtures/notification-worker/'+name+'.sql','utf8'));
+  const entry=admissionModel(expected.expression,'CONTEXT: SQL expression\n\t'+expected.frame+'\n\tPL/pgSQL function notification_worker.open_run() line 4 at assignment');
+  expect(notificationAdmissionSummary([entry,{...entry,query:'\n'+entry.query+'\n'}],expected)).toMatchObject({calls:2,inclusiveMs:50,rootSharedBlocks:22,firstDurationMs:25,lastDurationMs:25,bodyMd5:expected.bodyMd5});
+ }
+ expect(()=>reviewedAdmissionExpression(readFileSync('test/fixtures/notification-worker/assessment.sql','utf8').replace('RETURN login;','RETURN NULL;'))).toThrow('Unreviewed');
+});
+it('refuses omitted admission-expression plans even when other nested admission context exists',()=>{
+ const expected=reviewed();expect(()=>notificationAdmissionSummary([],expected)).toThrow('Nonempty');
+ expect(()=>notificationAdmissionSummary([admissionModel('SELECT * FROM notification_worker_private.authority','CONTEXT: SQL statement\nPL/pgSQL function notification_worker_private.admit_login() line 4 at SQL statement')],expected)).toThrow('Nonempty');
+});
+it('refuses an altered or merely prefixed rejection expression under the correct native frame',()=>{
+ const expected=reviewed();for(const query of ['NOT FOUND OR a.enabled',expected.expression+' OR false',expected.expression.replace("search_path=pg_catalog, pg_temp","search_path=pg_catalog,  pg_temp"),expected.expression.replace("a.api_version IS DISTINCT FROM 3","a.api_version IS DISTINCT FROM 2")])
+  expect(()=>notificationAdmissionSummary([admissionModel(query,'\n'+expected.frame)],expected)).toThrow('Exact reviewed');
+});
+it('refuses exact query bytes with missing, wrong or only ancestral admission context',()=>{
+ const expected=reviewed();for(const context of ['',expected.frame.replace('line 6','line 4'),'PL/pgSQL function foreign_owner() line 6 at IF\n'+expected.frame])
+  expect(()=>notificationAdmissionSummary([admissionModel(expected.expression,context)],expected)).toThrow('Exact reviewed');
 });
