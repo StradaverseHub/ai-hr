@@ -32,8 +32,9 @@ function inventory(path:string,key:'jobs'|'artifacts'){
  const rows:any[]=[];let expected:number|undefined;
  for(let page=1;page<=10;page++){
   const response=api(`${path}${path.includes('?')?'&':'?'}per_page=100&page=${page}`);
-  assert(Number.isSafeInteger(response.total_count)&&response.total_count>=0&&response.total_count<=1000&&Array.isArray(response[key]),'Unbounded GitHub navigation inventory');
-  expected??=response.total_count;assert(response.total_count===expected,'GitHub navigation inventory changed');
+  const count:unknown=response.total_count;
+  assert(typeof count==='number'&&Number.isSafeInteger(count)&&count>=0&&count<=1000&&Array.isArray(response[key]),'Unbounded GitHub navigation inventory');
+  expected??=count;assert(count===expected,'GitHub navigation inventory changed');
   rows.push(...response[key]);assert(rows.length<=expected,'Duplicate or inconsistent GitHub navigation inventory');
   if(response[key].length<100||rows.length===expected){assert(rows.length===expected,'Incomplete GitHub navigation inventory');return rows;}
  }

@@ -49,6 +49,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { leavePack } from '../packs/leave';
+import { LEAVE_INQUIRY_SUBMENU } from '../lib/navigation/module-submenus';
 import { CARD_META } from '../lib/dashboard-cards';
 import { buildCalendarFocusHref } from '../lib/calendar-focus';
 import { isNavRowActive } from '../components/nav-flyout';
@@ -141,8 +142,10 @@ describe('388e53c2 · every inbound pointer at /leave/tracker still resolves', (
 describe('r378 · inquiry has exactly two destinations under Leave Config', () => {
   it('balances remains first, records second, with exact selected employee and picker context', () => {
     expect(nav).not.toContain("key: 'details'");
-    expect(nav).toContain("{ key: 'balances', href: hrefFor('/leave/employee-balances', 'balances'), label: t('employeeBalances') }");
-    expect(nav).toContain("{ key: 'records', href: hrefFor('/leave/employee-records', 'records'), label: t('employeeLeaveRecord') }");
+    expect(LEAVE_INQUIRY_SUBMENU.map(({key,href,labelKey})=>({key,href,labelKey}))).toEqual([
+      {key:'balances',href:'/leave/employee-balances',labelKey:'employeeBalances'},
+      {key:'records',href:'/leave/employee-records',labelKey:'employeeLeaveRecord'},
+    ]);
     expect(nav).toContain("p.set('emp', employmentId)");
     for(const key of ['pickerQ','pickerCompany','pickerDepartment','pickerStatus'])expect(nav).toContain(key);
     for(const rel of ['employee-balances','employee-records'])expect(read(`app/leave/${rel}/page.tsx`)).toContain('<LeaveInquiryNav');
