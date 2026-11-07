@@ -234,6 +234,31 @@ describe('the probe — against a real postgres client, not a mock', () => {
 });
 
 describe('the route — 503 on a broken dependency, and a closed disclosure set', () => {
+  it('keeps one underlying probe across repeated timeout/cache windows during slow initialization', async () => {
+    vi.useFakeTimers();
+    let release!: () => void;
+    stub.initialize.mockImplementationOnce(() => new Promise<void>(resolve => { release = resolve; }));
+    try {
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const response = GET();
+        await vi.advanceTimersByTimeAsync(HEALTH_PROBE_TIMEOUT_MS + 10);
+        expect((await response).status).toBe(503);
+        expect(stub.calls).toBe(0);
+        if (attempt < 2) await vi.advanceTimersByTimeAsync(HEALTH_CACHE_MS + 10);
+      }
+      expect(stub.initialize).toHaveBeenCalledTimes(1);
+      release();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(stub.calls, 'expired health polls must not release multiple select 1 queries').toBe(1);
+      await vi.advanceTimersByTimeAsync(HEALTH_CACHE_MS + 10);
+      expect((await GET()).status).toBe(200);
+      expect(stub.calls).toBe(2);
+    } finally {
+      release?.();
+      await vi.advanceTimersByTimeAsync(0);
+      vi.useRealTimers();
+    }
+  });
   it('reports an initialization failure through the same closed 503 without a database query', async () => {
     stub.initialize.mockRejectedValue(new Error('PRIVATE_MODULE_FAILURE'));
     const res = await GET();

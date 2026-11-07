@@ -56,9 +56,20 @@ function respond(healthy: boolean, withBody: boolean): Response {
 
 /** Code readiness and the same real pool probe. Initialization does not invoke a Home handler.
  * Both stay inside the bounded, single-flight health probe so failures retain its closed 503. */
-const probe = async () => {
-  await initializeHomeReadModule();
-  await client`select 1`;
+let underlyingProbe: Promise<void> | undefined;
+const probe = () => {
+  // checkHealth may time out while an import/socket still runs. Keep the underlying
+  // work single-flight until it actually settles; expired polls must not each queue
+  // a database continuation behind the same slow module initialization.
+  if (underlyingProbe) return underlyingProbe;
+  const pending = (async () => {
+    await initializeHomeReadModule();
+    await client`select 1`;
+  })();
+  underlyingProbe = pending;
+  const release = () => { if (underlyingProbe === pending) underlyingProbe = undefined; };
+  void pending.then(release, release);
+  return pending;
 };
 
 export async function GET(): Promise<Response> {
