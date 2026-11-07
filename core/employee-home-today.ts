@@ -1,4 +1,5 @@
 import {withTenant,type SessionContext} from '../db/client';
+import {settleReadGroup} from '../lib/settle-read-group';
 import {HomeAccessError,requireSelectedOwnHomeEmploymentIdTx} from './employee-home';
 import {isModuleEnabled} from './entitlements';
 import {ownClockTodaySummaryTx,employeeClockingLocationLabelsTx} from '../packs/attendance/service';
@@ -19,9 +20,9 @@ export async function readEmployeeHomeToday(ctx:SessionContext,employmentId:stri
   const clock=await ownClockTodaySummaryTx(tx,ctx,subjectId);
   signal?.throwIfAborted();
   const {businessDate,dayKind}=clock;
-  const [presence,workLocations]=await Promise.all([
-   approvedLeavePresenceByEmploymentTx(tx,[subjectId],businessDate,businessDate),
-   employeeClockingLocationLabelsTx(tx,subjectId),
+  const [presence,workLocations]=await settleReadGroup([
+   ()=>approvedLeavePresenceByEmploymentTx(tx,[subjectId],businessDate,businessDate),
+   ()=>employeeClockingLocationLabelsTx(tx,subjectId),
   ]);
   return {subjectId,attendanceEnabled,payrollEnabled,
    attendance:{clock,businessDate,dayKind,leavePresence:presence.get(subjectId)?.get(businessDate)??null,workLocations}};

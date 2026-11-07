@@ -1,6 +1,7 @@
 /** Own calendar metadata plus the separate, purpose-bound shared-team projection. No attendance
  * pricing, private leave reasons or payroll amounts are fetched. Every fact retains its owner. */
 import {withTenant,type SessionContext} from '../db/client';
+import {settleReadGroup} from '../lib/settle-read-group';
 import {HomeAccessError} from './employee-home';
 import {isCurrentOwnHomeEmploymentTx,isOwnProfileEditEmploymentTx,hasEligibleLeaveTypeForTx} from './read';
 import {getEmployeeHomeDisplayPreferences} from './dashboard-prefs';
@@ -24,15 +25,15 @@ export async function readEmployeeHomeCalendar(ctx:SessionContext,employmentId:s
   const month=requestedMonth??display.date.slice(0,7),dates=homeCalendarGrid(month,preferences.weekStartsOn);
   const from=dates[0],to=dates[dates.length-1];
   signal?.throwIfAborted();
-  const [leave,holidays,replacements,coverage,eligible,active,team]=await Promise.all([
-   leaveCalendarPresenceByEmploymentTx(tx,[subjectId],from,to),
-   originalHolidayCalendarFor(tx,{employmentId:subjectId,startDate:from,endDate:to}),
-   replacementHolidayCalendarProjectionsTx(tx,{employmentIds:[subjectId],startDate:from,endDate:to}),
-   provenCompanyDatesTx(tx,dates.map(date=>({employmentId:subjectId,date}))),
-   hasEligibleLeaveTypeForTx(tx,subjectId),
-   isOwnProfileEditEmploymentTx(tx,ctx,subjectId),
+  const [leave,holidays,replacements,coverage,eligible,active,team]=await settleReadGroup([
+   ()=>leaveCalendarPresenceByEmploymentTx(tx,[subjectId],from,to),
+   ()=>originalHolidayCalendarFor(tx,{employmentId:subjectId,startDate:from,endDate:to}),
+   ()=>replacementHolidayCalendarProjectionsTx(tx,{employmentIds:[subjectId],startDate:from,endDate:to}),
+   ()=>provenCompanyDatesTx(tx,dates.map(date=>({employmentId:subjectId,date}))),
+   ()=>hasEligibleLeaveTypeForTx(tx,subjectId),
+   ()=>isOwnProfileEditEmploymentTx(tx,ctx,subjectId),
    // The native team projection keeps its own authority check on the same snapshot.
-   readHomeTeamCalendar(ctx,subjectId,from,to,signal,tx),
+   ()=>readHomeTeamCalendar(ctx,subjectId,from,to,signal,tx),
   ]);
   return {preferences,display,month,dates,from,to,facts:{leave,holidays,replacements,coverage,eligible,active},team};
  },{readOnlySnapshot:true,readSignal:signal});

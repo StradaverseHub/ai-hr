@@ -1,6 +1,7 @@
 /** A minimal own Time Off projection over the existing leave dashboard and approved-date owners.
  * Available is already net of pending reservations; Home must never subtract Pending again. */
 import {sql} from 'drizzle-orm';
+import {settleReadGroup} from '../lib/settle-read-group';
 import type {SessionContext} from '../db/client';
 import {withTenant} from '../db/client';
 import {hasEligibleLeaveTypeForTx} from './read';
@@ -15,10 +16,10 @@ export async function readEmployeeHomeTimeOff(ctx:SessionContext,employmentId?:s
   const subjectId=await requireActiveOwnHomeEmploymentIdTx(tx,ctx,employmentId);
   signal?.throwIfAborted();
   const today=todayInKualaLumpur();
-  const [cards,nextApproved,eligible]=await Promise.all([
-   myCurrentLeaveCards(ctx,subjectId,{today,locale},tx),
-   nextApprovedLeavePresenceTx(tx,subjectId,today),
-   hasEligibleLeaveTypeForTx(tx,subjectId),
+  const [cards,nextApproved,eligible]=await settleReadGroup([
+   ()=>myCurrentLeaveCards(ctx,subjectId,{today,locale},tx),
+   ()=>nextApprovedLeavePresenceTx(tx,subjectId,today),
+   ()=>hasEligibleLeaveTypeForTx(tx,subjectId),
   ]);
   if(cards.length>100)throw Error('Own leave catalogue exceeds its supported Home limit.');
   return {version:1,employmentId:subjectId,asOf:today,canApply:eligible,

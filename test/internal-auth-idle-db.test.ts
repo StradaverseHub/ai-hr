@@ -52,14 +52,21 @@ const idleEvents = () => owner.db.select().from(schema.domainEvent)
 describe('ADR-0171 idle sign-out in the embedded sign-in service', () => {
   it('opens a current credential and family in one query, then still refuses revoked or changed credentials', async () => {
     const token = await signIn();
-    const unsafe = client.unsafe;
+    const reserve = client.reserve;
     const statements: string[] = [];
-    const spy = vi.spyOn(client, 'unsafe').mockImplementation(((query: string, ...args: unknown[]) => {
-      statements.push(query);
-      return Reflect.apply(unsafe, client, [query, ...args]);
-    }) as typeof client.unsafe);
-    const admitted = await readSession(token);
-    spy.mockRestore();
+    // Session proofs now share one admitted reserved connection. Observe the
+    // actual SQL leaf on that connection rather than the unused pool facade.
+    const restorers:(()=>void)[]=[];
+    const spy=vi.spyOn(client,'reserve').mockImplementation(async()=>{
+      const connection=await Reflect.apply(reserve,client,[]),unsafe=connection.unsafe;
+      const leaf=vi.spyOn(connection,'unsafe').mockImplementation(((query:string,...args:unknown[])=>{
+        statements.push(query);return Reflect.apply(unsafe,connection,[query,...args]);
+      }) as typeof connection.unsafe);
+      restorers.push(()=>leaf.mockRestore());return connection;
+    });
+    let admitted:Awaited<ReturnType<typeof readSession>>;
+    try{admitted=await readSession(token);expect(spy).toHaveBeenCalledTimes(1);}
+    finally{restorers.forEach(restore=>restore());spy.mockRestore();}
     expect(admitted).not.toBeNull();
     const lookups = statements.filter(query => query.includes('first_record') || query.includes('second_record'));
     expect(lookups).toHaveLength(1);

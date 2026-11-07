@@ -1,4 +1,5 @@
 import {rewardArchitectureForSourceTx} from './architecture-source';
+import {settleReadGroup} from '../../lib/settle-read-group';
 import {advisorNeedsOverrideReason} from './advisor-model';
 import {calculateUploadedRewards} from './uploaded-awards-model';
 import {assertRewardCapabilityTx,assertRewardWritableTx} from './access-policy';
@@ -1477,9 +1478,9 @@ export async function pendingRewardTasks(ctx: SessionContext, scopeIds: string[]
   const atApproval = readable.filter((u) => u.status !== 'draft');
   const createdAt = new Map(atApproval.map((u) => [u.id, u.createdAt]));
   const companyIds = scopeIds ?? [...new Set(atApproval.map((u) => u.companyId))];
-  const [queue, returned] = await Promise.all([
-    atApproval.length ? pendingRewardReviews(ctx, companyIds) : Promise.resolve([]),
-    atApproval.length < readable.length ? returnedRewardUnits(ctx, scopeIds) : Promise.resolve([]),
+  const [queue, returned] = await settleReadGroup([
+    ()=>atApproval.length ? pendingRewardReviews(ctx, companyIds) : Promise.resolve([]),
+    ()=>atApproval.length < readable.length ? returnedRewardUnits(ctx, scopeIds) : Promise.resolve([]),
   ]);
   // A unit that entered the queue between the two reads has no owner time here; it is left to the next
   // read rather than given a guessed age (lib/assigned-work.ts: never a guessed task age).

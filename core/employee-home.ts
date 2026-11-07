@@ -1,5 +1,6 @@
 /** Salary-free self identity for employee Home. This is a read projection, not another personnel owner. */
 import {and,eq,sql} from 'drizzle-orm';
+import {settleReadGroup} from '../lib/settle-read-group';
 import {withTenant,type SessionContext,type Tx} from '../db/client';
 import {isAiPrincipalCurrentTx} from './ai-principal';
 import {person} from '../db/schema';
@@ -141,10 +142,10 @@ export async function readEmployeeHomeGreetingIdentityTx(tx:Tx,ctx:SessionContex
   : await requireSelectedOwnHomeEmploymentIdTx(tx,ctx,requestedEmploymentId);
  const personId=ctx.personId;
  if(!personId)return {version:1,employmentId,name:null,photoHref:null};
- const [rows,photo]=await Promise.all([
-  tx.select({preferredName:person.preferredName,firstName:person.firstName,fullName:person.fullName})
+ const [rows,photo]=await settleReadGroup([
+  ()=>tx.select({preferredName:person.preferredName,firstName:person.firstName,fullName:person.fullName})
    .from(person).where(and(eq(person.tenantId,ctx.tenantId),eq(person.id,personId))).limit(1),
-  hasPersonPhotoTx(tx,ctx,personId),
+  ()=>hasPersonPhotoTx(tx,ctx,personId),
  ]);
  return {version:1,employmentId,name:rows[0]?employeeHomeGreetingName(rows[0]):null,
   photoHref:photo?`/personnel/photo/${encodeURIComponent(personId)}`:null};

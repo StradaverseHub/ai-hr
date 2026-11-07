@@ -21,6 +21,7 @@
  * which counts only /approvals links, is unchanged by them.
  */
 import {assignedApprovalHref,type AssignedApprovalKind} from '../lib/assigned-approval-focus';
+import {settleReadGroup} from '../lib/settle-read-group';
 import {sql} from 'drizzle-orm';
 import {withTenant,type SessionContext} from '../db/client';
 import {assertAssignedWorkPrincipalTx} from './approvals';
@@ -137,11 +138,11 @@ async function loadDecisionHeaders(ctx:SessionContext,scopeIds:string[]|undefine
     // match still goes through each owner's fresh authorization.
     if(candidates===false)return [[],[],[],[]] as const;
   }
-  return Promise.all([
-    pendingLeaveCancellationTaskMetadata(ctx,scopeIds),
-    pendingResignationTaskMetadata(ctx,scopeIds),
-    pendingReviewTaskMetadata(ctx,'manager',scopeIds),
-    pendingReviewTaskMetadata(ctx,'hr',scopeIds),
+  return settleReadGroup([
+    ()=>pendingLeaveCancellationTaskMetadata(ctx,scopeIds),
+    ()=>pendingResignationTaskMetadata(ctx,scopeIds),
+    ()=>pendingReviewTaskMetadata(ctx,'manager',scopeIds),
+    ()=>pendingReviewTaskMetadata(ctx,'hr',scopeIds),
   ]);
 }
 
@@ -150,13 +151,13 @@ async function loadCommonTaskSources(ctx:SessionContext,scopeIds:string[]|undefi
   options:TaskSourceOptions){
   // Each owner proves actual current assignment without selecting its private decision workspace.
   // A platform role or broad read permission alone is not an actionable task assignment.
-  return Promise.all([
-    pendingLeaveTaskMetadata(ctx,scopeIds),loadDecisionHeaders(ctx,scopeIds,options.preview),
-    listPendingReplacementLeaveTasks(ctx,{companyIds:scopeIds}),
-    modules.attendance?pendingAttendanceTaskMetadata(ctx,scopeIds):Promise.resolve([]),
-    pendingProfileTaskMetadata(ctx,scopeIds),
-    options.noticeAcknowledgements===false?Promise.resolve([]):pendingNoticeAcknowledgementTasks(ctx),
-    Promise.all(PACK_TASK_SOURCES.map(source=>modules[source.module]?source.load(ctx,scopeIds):Promise.resolve([]))),
+  return settleReadGroup([
+    ()=>pendingLeaveTaskMetadata(ctx,scopeIds),()=>loadDecisionHeaders(ctx,scopeIds,options.preview),
+    ()=>listPendingReplacementLeaveTasks(ctx,{companyIds:scopeIds}),
+    ()=>modules.attendance?pendingAttendanceTaskMetadata(ctx,scopeIds):Promise.resolve([]),
+    ()=>pendingProfileTaskMetadata(ctx,scopeIds),
+    ()=>options.noticeAcknowledgements===false?Promise.resolve([]):pendingNoticeAcknowledgementTasks(ctx),
+    ()=>settleReadGroup(PACK_TASK_SOURCES.map(source=>()=>modules[source.module]?source.load(ctx,scopeIds):Promise.resolve([]))),
   ]);
 }
 
@@ -175,9 +176,9 @@ export function countPendingTasks(ctx:SessionContext,scopeIds:string[]|undefined
 
 async function countTaskSources(ctx:SessionContext,scopeIds:string[]|undefined,modules:InboxModules,common?:CommonTaskSources){
   const options={preview:true,countOnly:true} as const;
-  const [[leave,decisionHeaders,replacement,attendance,profile,notices,packTasks],claims]=await Promise.all([
-    common??loadCommonTaskSources(ctx,scopeIds,modules,options),
-    loadClaimTaskSource(ctx,scopeIds,modules,options),
+  const [[leave,decisionHeaders,replacement,attendance,profile,notices,packTasks],claims]=await settleReadGroup([
+    ()=>common??loadCommonTaskSources(ctx,scopeIds,modules,options),
+    ()=>loadClaimTaskSource(ctx,scopeIds,modules,options),
   ]);
   return claims.total+leave.length+replacement.length+attendance.length+profile.length+notices.length+
     decisionHeaders.reduce((total,rows)=>total+rows.length,0)+packTasks.reduce((total,rows)=>total+rows.length,0);
@@ -206,9 +207,9 @@ export async function pendingBellClaimPreview(ctx:SessionContext,scopeIds:string
 async function loadPendingTasks(ctx:SessionContext,scopeIds:string[]|undefined,modules:InboxModules,
   options:TaskSourceOptions,common?:CommonTaskSources){
   const [[leave,[cancellations,resignations,managerReviews,hrReviews],replacement,attendance,profile,noticeAcknowledgements,packTaskLists],claimResult]=
-    await Promise.all([
-      common??loadCommonTaskSources(ctx,scopeIds,modules,options),
-      loadClaimTaskSource(ctx,scopeIds,modules,options),
+    await settleReadGroup([
+      ()=>common??loadCommonTaskSources(ctx,scopeIds,modules,options),
+      ()=>loadClaimTaskSource(ctx,scopeIds,modules,options),
     ]);
   const packTasks:PackTaskItem[]=packTaskLists.flat();
   const iso=(value:Date|string)=>value instanceof Date?value.toISOString():new Date(value).toISOString();

@@ -1,5 +1,6 @@
 /** Home projects the existing workflow owners. It never creates tasks, decisions or capabilities. */
 import type {SessionContext} from '../db/client';
+import {settleReadGroup} from '../lib/settle-read-group';
 import {HomeAccessError} from './employee-home';
 import {readOwnEmployeeHomeConfiguration,type OwnHomeConfigurationRead} from './employee-home-configuration';
 import {countPendingTasks,createAccountTaskPreviewRead,listPendingTasks,pendingTaskSummary} from './approvals-inbox';
@@ -15,18 +16,18 @@ const taskModules=(ctx:SessionContext)=>({attendance:isModuleEnabled(ctx,'attend
 
 async function loadAdditionalTasks(ctx:SessionContext,performance:boolean){
  const lifecycle=isModuleEnabled(ctx,'lifecycle');
- return Promise.all([
-  performance?pendingStandardFeedbackTaskMetadata(ctx):Promise.resolve([]),
-  performance?pendingOnehrFeedbackTaskMetadata(ctx):Promise.resolve([]),
-  lifecycle?onboardingAssignedTaskMetadata(ctx):Promise.resolve([]),
+ return settleReadGroup([
+  ()=>performance?pendingStandardFeedbackTaskMetadata(ctx):Promise.resolve([]),
+  ()=>performance?pendingOnehrFeedbackTaskMetadata(ctx):Promise.resolve([]),
+  ()=>lifecycle?onboardingAssignedTaskMetadata(ctx):Promise.resolve([]),
  ]);
 }
 
 /** Summary needs the exact account total, without materializing the full Claims queue. */
 export async function countEmployeeHomeTasks(ctx:SessionContext):Promise<number>{
  const modules=taskModules(ctx);
- const [inboxCount,[standardFeedback,onehrFeedback,onboarding]]=await Promise.all([
-  countPendingTasks(ctx,undefined,modules),loadAdditionalTasks(ctx,modules.performance),
+ const [inboxCount,[standardFeedback,onehrFeedback,onboarding]]=await settleReadGroup([
+  ()=>countPendingTasks(ctx,undefined,modules),()=>loadAdditionalTasks(ctx,modules.performance),
  ]);
  return inboxCount+standardFeedback.length+onehrFeedback.length+onboarding.length;
 }
@@ -50,22 +51,22 @@ export class OwnHomeTaskSourceRead {
 
  async count(session:SessionContext,employmentId:string){
   const {inbox,additional}=this.read(session,employmentId);
-  const [inboxCount,[standardFeedback,onehrFeedback,onboarding]]=await Promise.all([inbox.count(),additional]);
+  const [inboxCount,[standardFeedback,onehrFeedback,onboarding]]=await settleReadGroup([()=>inbox.count(),()=>additional]);
   return inboxCount+standardFeedback.length+onehrFeedback.length+onboarding.length;
  }
 
  summary(session:SessionContext,employmentId:string){
   const {inbox,additional}=this.read(session,employmentId);
-  return Promise.all([inbox.summary(),additional]);
+  return settleReadGroup([()=>inbox.summary(),()=>additional]);
  }
 }
 
 function readTaskPage(ctx:SessionContext,page:number|undefined){
  const modules=taskModules(ctx);
- return Promise.all([
-  (page??1)<=1?pendingTaskSummary(ctx,undefined,modules)
+ return settleReadGroup([
+  ()=>(page??1)<=1?pendingTaskSummary(ctx,undefined,modules)
    :listPendingTasks(ctx,undefined,modules).then(items=>({items,total:items.length})),
-  loadAdditionalTasks(ctx,modules.performance),
+  ()=>loadAdditionalTasks(ctx,modules.performance),
  ]);
 }
 

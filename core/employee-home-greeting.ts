@@ -1,5 +1,6 @@
 /** Deterministic self greeting. Event evidence is reduced here; no DOB or leave record enters transport. */
 import {and,eq,sql} from 'drizzle-orm';
+import {settleReadGroup} from '../lib/settle-read-group';
 import {withTenant,type SessionContext} from '../db/client';
 import {person} from '../db/schema';
 import {readEmployeeHomeGreetingIdentityTx} from './employee-home';
@@ -42,9 +43,9 @@ async function returnFromLeave(ctx:SessionContext,employmentId:string,today:stri
 export async function readEmployeeHomeGreeting(ctx:SessionContext,employmentId:string,locale:Locale,now=new Date(),configurationRead?:OwnHomeConfigurationRead):Promise<EmployeeHomeGreeting>{
  // Configuration already binds the exact own employment and reads its hire date.
  const today=todayInKualaLumpur(now);
- const [view,{identity,display,birthday}]=await Promise.all([
-  configurationRead?.read(ctx,employmentId)??readOwnEmployeeHomeConfiguration(ctx,employmentId),
-  withTenant(ctx,async tx=>{
+ const [view,{identity,display,birthday}]=await settleReadGroup([
+  ()=>configurationRead?.read(ctx,employmentId)??readOwnEmployeeHomeConfiguration(ctx,employmentId),
+  ()=>withTenant(ctx,async tx=>{
    const identity=await readEmployeeHomeGreetingIdentityTx(tx,ctx,employmentId);
    const preferences=await getEmployeeHomeDisplayPreferences(ctx,tx);
    const display=homeDisplayClock(now,preferences.timeZone??'Asia/Kuala_Lumpur');

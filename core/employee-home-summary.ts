@@ -1,6 +1,7 @@
 /** Rendered, deterministic sentences over canonical owners. No salary, reason, peer record or model
  * context is transported. A failed owner fails this section; it never supplies a false calm state. */
 import {withTenant,type SessionContext} from '../db/client';
+import {settleReadGroup} from '../lib/settle-read-group';
 import {readOwnEmployeeHomeConfiguration,type OwnHomeConfigurationRead} from './employee-home-configuration';
 import {countEmployeeHomeTasks,type OwnHomeTaskSourceRead} from './employee-home-tasks';
 import {isModuleEnabled} from './entitlements';
@@ -26,17 +27,17 @@ export async function readEmployeeHomeSummary(ctx:SessionContext,employmentId:st
  const now=new Date(),today=todayInKualaLumpur(now),through=new Date(Date.parse(today+'T00:00:00Z')+HOME_SUMMARY_LOOKAHEAD_DAYS*86400000).toISOString().slice(0,10);
  const leaveOn=isModuleEnabled(ctx,'leave'),payrollOn=isModuleEnabled(ctx,'payroll'),claimsOn=isModuleEnabled(ctx,'claims');
  const configured=new Set(configuration.quickActions);
- const [taskCount,[leave,holidays,replacements,leaveAvailable],payroll,claimAvailable,profile]=await Promise.all([
-  taskSourceRead?.count(ctx,subjectId)??countEmployeeHomeTasks(ctx),
-  withTenant(ctx,tx=>Promise.all([
-   leaveOn?nextApprovedLeavePresenceTx(tx,subjectId,today):null,
-   originalHolidayCalendarFor(tx,{employmentId:subjectId,startDate:today,endDate:through}),
-   replacementHolidayCalendarProjectionsTx(tx,{employmentIds:[subjectId],startDate:today,endDate:through}),
-   leaveOn&&configured.has('leave')?hasEligibleLeaveTypeForTx(tx,subjectId):false,
+ const [taskCount,[leave,holidays,replacements,leaveAvailable],payroll,claimAvailable,profile]=await settleReadGroup([
+  ()=>taskSourceRead?.count(ctx,subjectId)??countEmployeeHomeTasks(ctx),
+  ()=>withTenant(ctx,tx=>settleReadGroup([
+   ()=>leaveOn?nextApprovedLeavePresenceTx(tx,subjectId,today):null,
+   ()=>originalHolidayCalendarFor(tx,{employmentId:subjectId,startDate:today,endDate:through}),
+   ()=>replacementHolidayCalendarProjectionsTx(tx,{employmentIds:[subjectId],startDate:today,endDate:through}),
+   ()=>leaveOn&&configured.has('leave')?hasEligibleLeaveTypeForTx(tx,subjectId):false,
   ]),{readSignal:signal}),
-  payrollOn?readOwnPayrollHomeMetadata(ctx,subjectId,signal):Promise.resolve(null),
-  claimsOn&&configured.has('claim')?ownClaimFormAvailable(ctx,subjectId,signal):Promise.resolve(false),
-  configured.has('profile')?readProfilePresentationPolicy(ctx,signal):Promise.resolve(null),
+  ()=>payrollOn?readOwnPayrollHomeMetadata(ctx,subjectId,signal):Promise.resolve(null),
+  ()=>claimsOn&&configured.has('claim')?ownClaimFormAvailable(ctx,subjectId,signal):Promise.resolve(false),
+  ()=>configured.has('profile')?readProfilePresentationPolicy(ctx,signal):Promise.resolve(null),
  ]);
  const date=(day:string)=>new Intl.DateTimeFormat(locale,{day:'numeric',month:'short',year:'numeric',timeZone:'UTC'}).format(new Date(day+'T00:00:00Z'));
  const candidates:HomeSummaryCandidate[]=[];
