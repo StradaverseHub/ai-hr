@@ -36,7 +36,7 @@ async function setup(armed=true){
  const hired=await hireEmployee(ctx,{person:{fullName:'Fictional audited-read employee',primaryEmail:randomUUID()+'@example.invalid'},companyId:b.companyId,departmentId:b.deptA,businessUnitId:unit.id,gradeId:grade.id,employmentType:'full_time',hiredOn:'2020-01-01'});
  await owner.db.update(employment).set({confirmationDate:'2020-04-01'}).where(eq(employment.id,hired.employmentId));
  await setCompensation(ctx,{employmentId:hired.employmentId,basicSalary:5000,effectiveFrom:'2020-01-01'});
- const review=await createApprovedRewardUnit(ctx,{name:'Fictional audited-read annual review',year,companyId:b.companyId,businessUnitId:unit.id,snapshotDate:year+'-01-01'},{...defaultPolicy(year),patTarget:123450000,patActual:129000000});
+ const review=await createApprovedRewardUnit(ctx,{name:'Fictional audited-read annual review',year,companyId:b.companyId,businessUnitId:unit.id,snapshotDate:year+'-01-01'},{...defaultPolicy(year),ranges:{'12':[300000,500000,700000]},patTarget:123450000,patActual:129000000});
  await owner.client`update public.reward_unit set status='bg'where id=${review}::uuid`;
  const [ids]=await owner.client`select salary_version_id,bonus_version_id,pat_version_id from public.reward_unit_setup where unit_id=${review}::uuid`;
  const [chain]=await owner.client`select count(*)::int as n from public.domain_event where tenant_id=${b.tenantId}::uuid and chain_seq is not null`;
