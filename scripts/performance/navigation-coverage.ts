@@ -4,11 +4,12 @@ import {join,relative,resolve} from 'node:path';
 import {pathToFileURL} from 'node:url';
 import {declaredNavigationCatalogue,resolveNavigationCatalogue,NAVIGATION_COVERAGE_BACKLOG,type NavigationCatalogue,type CatalogueIssue,type ResolvedCatalogueRow} from '../../lib/navigation/catalogue';
 
-export type RuntimeReceipt={destinationId:string;navigationHref:string;candidateSha:string;environment:string;
+/** Untrusted recorded metadata. This type is never an authenticated execution receipt. */
+export type RecordedRuntimeClaim={destinationId:string;navigationHref:string;candidateSha:string;environment:string;
  runUrl:string;executedAt:string;outcome:'passed'|'failed';scenarioId:string;
  usableContent:{selector:string;assertion:string;observedNonempty:boolean;artifactUrl:string}};
 export type CoverageLedgerEntry={id:string;sourceOwner:string;sourceKey:string;declaredHref:string;
- status:'uncovered'|'covered';owner:string;reason:string;receipts?:RuntimeReceipt[]};
+ status:'uncovered'|'claimed';owner:string;reason:string;claims?:RecordedRuntimeClaim[]};
 export type CoverageLedger={schemaVersion:number;scope:string;reviewedAgainst:string;entries:CoverageLedgerEntry[];
  backlog:{id:string;owner:string;reason:string}[]};
 export type PageRoute={route:string;file:string;kind:'page'|'redirect'|'dynamic-route-factory'};
@@ -38,18 +39,12 @@ export function pageRouteMatches(route:string,href:string):boolean{
  return new RegExp('^'+(parts||'/')+'/?$').test(path);
 }
 const nonempty=(value:unknown)=>typeof value==='string'&&value.trim().length>0;
-function usableReceipt(receipt:RuntimeReceipt,entry:CoverageLedgerEntry,candidateSha:string):boolean{
- const content=receipt.usableContent;
- return receipt.outcome==='passed'&&receipt.destinationId===entry.id&&receipt.candidateSha===candidateSha&&
-  /^[0-9a-f]{40}$/.test(candidateSha)&&nonempty(receipt.navigationHref)&&nonempty(receipt.environment)&&
-  /^https:\/\//.test(receipt.runUrl)&&nonempty(receipt.scenarioId)&&Number.isFinite(Date.parse(receipt.executedAt))&&
-  !!content&&nonempty(content.selector)&&nonempty(content.assertion)&&content.observedNonempty===true&&/^https:\/\//.test(content.artifactUrl);
-}
 /** Structural integrity and runtime acceptance deliberately report separate outcomes. */
 export function auditNavigationCoverage({catalogue,ledger,pages,candidateSha,runtimeIssues=[],runtimeRows=[]}: {
  catalogue:NavigationCatalogue;ledger:CoverageLedger;pages:readonly PageRoute[];candidateSha:string;runtimeIssues?:readonly CatalogueIssue[];runtimeRows?:readonly ResolvedCatalogueRow[];
 }){
  const errors=[...catalogue.issues,...runtimeIssues].map(issue=>`${issue.code}: ${issue.detail}`),runtimeMissing:string[]=[];
+ const runtimeExpectations:{destinationId:string;navigationHrefs:string[]}[]=[];
  if(ledger.schemaVersion!==1)errors.push('unsupported ledger schema');
  if(!nonempty(ledger.scope)||!nonempty(ledger.reviewedAgainst))errors.push('missing ledger provenance');
  const declarations=new Map(catalogue.declarations.map(row=>[row.id,row]));
@@ -63,7 +58,7 @@ export function auditNavigationCoverage({catalogue,ledger,pages,candidateSha,run
   if(!declaration)errors.push(`stale ledger entry: ${entry.id}`);
   else if(entry.sourceOwner!==declaration.sourceOwner||entry.sourceKey!==declaration.sourceKey||entry.declaredHref!==declaration.declaredHref)
    errors.push(`stale ledger provenance/address: ${entry.id}`);
-  if(!nonempty(entry.owner)||!nonempty(entry.reason)||!['covered','uncovered'].includes(entry.status))errors.push(`missing review disposition: ${entry.id}`);
+  if(!nonempty(entry.owner)||!nonempty(entry.reason)||!['claimed','uncovered'].includes(entry.status))errors.push(`missing review disposition: ${entry.id}`);
  }
  for(const row of catalogue.declarations){
   const entry=entries.get(row.id);
@@ -72,19 +67,25 @@ export function auditNavigationCoverage({catalogue,ledger,pages,candidateSha,run
   if(!row.placement)errors.push(`missing placement: ${row.id}`);
   if(!pages.some(page=>pageRouteMatches(page.route,row.navigationHref)))errors.push(`missing source page: ${row.id} (${row.navigationHref})`);
   if(row.status==='declared'&&!row.disabled){
-   // An uncovered disposition can never count as passed, even if someone attaches a scenario or receipt.
+   // Neither a review disposition nor any committed claim authenticates executed usable content.
    const resolvedClicks=runtimeRows.filter(resolved=>resolved.declaration.id===row.id&&resolved.state==='actionable').map(resolved=>resolved.navigationHref);
-   const expectedClicks=resolvedClicks.length?resolvedClicks:[row.navigationHref];
-   if(entry?.status!=='covered'||!entry.receipts?.some(receipt=>usableReceipt(receipt,entry,candidateSha)&&expectedClicks.includes(receipt.navigationHref)))runtimeMissing.push(row.id);
+   runtimeExpectations.push({destinationId:row.id,navigationHrefs:resolvedClicks.length?resolvedClicks:[row.navigationHref]});
+   runtimeMissing.push(row.id);
   }
  }
  for(const item of NAVIGATION_COVERAGE_BACKLOG){
   if(!ledger.backlog.some(entry=>entry.id===item.id&&nonempty(entry.owner)&&nonempty(entry.reason)))errors.push(`missing backlog review: ${item.id}`);
  }
  for(const item of ledger.backlog)if(!NAVIGATION_COVERAGE_BACKLOG.some(known=>known.id===item.id))errors.push(`stale backlog entry: ${item.id}`);
+ // There is no authenticated CI execution/capture adapter in this bounded slice. Do not replace
+ // this prerequisite with a caller-controlled flag or promote claims through metadata-shape checks.
+ const recordedClaims=ledger.entries.filter(entry=>entry.claims?.length).map(entry=>({destinationId:entry.id,count:entry.claims!.length}));
  return {scope:ledger.scope,structural:{passed:errors.length===0,errors},runtimeAcceptance:{
-  passed:errors.length===0&&runtimeMissing.length===0&&ledger.backlog.length===0,
-  missingExecutedUsableContent:runtimeMissing,incompleteRegistries:ledger.backlog},
+  passed:false,verifierUnavailable:true,
+  prerequisite:'An authenticated CI execution/capture verifier must prove candidate, scenario, role and usable-content outcome before any receipt can count as executed.',
+  verifiedReceiptCount:0,missingExecutedUsableContent:runtimeMissing,incompleteRegistries:ledger.backlog},
+  recordedClaims:{total:recordedClaims.reduce((sum,entry)=>sum+entry.count,0),destinations:recordedClaims},
+  runtimeExpectations:{candidateSha,destinations:runtimeExpectations},
   counts:{declared:catalogue.declarations.length,sourcePages:pages.length},pages};
 }
 export function navigationCoverageMain(args=process.argv.slice(2)){

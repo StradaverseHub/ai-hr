@@ -3,7 +3,7 @@ import {readFileSync,mkdtempSync,mkdirSync,writeFileSync,rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {declaredNavigationCatalogue,resolveNavigationCatalogue,type NavigationCatalogue} from '../lib/navigation/catalogue';
-import {auditNavigationCoverage,discoverPageRoutes,pageRouteMatches,type CoverageLedger,type RuntimeReceipt} from '../scripts/performance/navigation-coverage';
+import {auditNavigationCoverage,discoverPageRoutes,pageRouteMatches,type CoverageLedger,type RecordedRuntimeClaim} from '../scripts/performance/navigation-coverage';
 
 const candidateSha='1234567890abcdef1234567890abcdef12345678';
 const ledger=()=>JSON.parse(readFileSync(new URL('../scripts/performance/navigation-coverage-ledger.json',import.meta.url),'utf8')) as CoverageLedger;
@@ -12,8 +12,18 @@ describe('navigation coverage separates source integrity from runtime acceptance
  it('allows an honestly reviewed structural backlog while refusing required runtime coverage',()=>{
   const report=audit();expect(report.structural.errors).toEqual([]);
   expect(report.structural.passed).toBe(true);expect(report.runtimeAcceptance.passed).toBe(false);
+  expect(report.runtimeAcceptance.verifierUnavailable).toBe(true);expect(report.runtimeAcceptance.verifiedReceiptCount).toBe(0);
   expect(report.runtimeAcceptance.missingExecutedUsableContent.length).toBeGreaterThan(100);
   expect(report.runtimeAcceptance.incompleteRegistries.some(item=>item.id==='nested-submenus')).toBe(true);
+ });
+ it('requires an authenticated verifier independently of whether any destination is missing evidence',()=>{
+  const review=ledger();review.entries=[];
+  const report=audit(review,{declarations:[],issues:[]});
+  expect(report.structural.passed).toBe(true);
+  expect(report.runtimeAcceptance.missingExecutedUsableContent).toEqual([]);
+  expect(report.runtimeAcceptance.verifierUnavailable).toBe(true);
+  expect(report.runtimeAcceptance.verifiedReceiptCount).toBe(0);
+  expect(report.runtimeAcceptance.passed).toBe(false);
  });
  it('fails missing/stale ledger entries and duplicate identity or provenance',()=>{
   const missing=ledger();missing.entries.shift();expect(audit(missing).structural.passed).toBe(false);
@@ -35,30 +45,60 @@ describe('navigation coverage separates source integrity from runtime acceptance
   const injected:NavigationCatalogue={issues:[],declarations:[...catalogue.declarations,{...first,id:'shell.reviewRequired',sourceKey:'review-required',declaredHref:'/unreviewed',navigationHref:'/unreviewed'}]};
   expect(audit(ledger(),injected).structural.errors).toContain('missing ledger entry: shell.reviewRequired');
  });
- it('does not count uncovered, declared scenarios, source files or failed/wrong-candidate receipts as passed',()=>{
-  const review=ledger(),entry=review.entries[0];
-  const receipt:RuntimeReceipt={destinationId:entry.id,navigationHref:entry.declaredHref,candidateSha,environment:'fictional-test-installation',
-   runUrl:'https://example.invalid/runs/1',executedAt:'2026-11-07T00:00:00Z',outcome:'passed',scenarioId:'dashboard-usable-content',
-   usableContent:{selector:'main h1',assertion:'Independent expected title and nonempty content',observedNonempty:true,artifactUrl:'https://example.invalid/artifact/1'}};
-  entry.receipts=[receipt];
-  expect(audit(review).runtimeAcceptance.missingExecutedUsableContent).toContain(entry.id);
-  entry.status='covered';entry.receipts=[{...receipt,outcome:'failed'}];expect(audit(review).runtimeAcceptance.missingExecutedUsableContent).toContain(entry.id);
-  entry.receipts=[{...receipt,candidateSha:'0'.repeat(40)}];expect(audit(review).runtimeAcceptance.missingExecutedUsableContent).toContain(entry.id);
-  entry.receipts=[{...receipt,usableContent:{...receipt.usableContent,observedNonempty:false}}];expect(audit(review).runtimeAcceptance.missingExecutedUsableContent).toContain(entry.id);
-  entry.receipts=[receipt];expect(audit(review).runtimeAcceptance.missingExecutedUsableContent).not.toContain(entry.id);
-  expect(audit(review).runtimeAcceptance.passed).toBe(false);
+ it('cannot promote plausible, fabricated or mere-heading claims into executed coverage',()=>{
+  const review=ledger(),entry=review.entries[0],baseline=audit(review);
+  const plausible:RecordedRuntimeClaim={destinationId:entry.id,navigationHref:entry.declaredHref,candidateSha,environment:'fictional-test-installation',
+   runUrl:'https://github.com/StradaverseHub/ai-hr/actions/runs/123456789',executedAt:'2026-11-07T00:00:00Z',outcome:'passed',scenarioId:'dashboard-usable-content',
+   usableContent:{selector:'main [data-ready]',assertion:'Expected independent data and a usable action',observedNonempty:true,artifactUrl:'https://github.com/StradaverseHub/ai-hr/actions/runs/123456789/artifacts/123'}};
+  const fabricated={...plausible,runUrl:'https://example.invalid/runs/1',usableContent:{selector:'main h1',assertion:'A heading exists',observedNonempty:true,artifactUrl:'https://example.invalid/artifact/1'}};
+  for(const claim of [plausible,fabricated,{...fabricated,outcome:'failed' as const},{...plausible,candidateSha:'0'.repeat(40)}]){
+   entry.status='claimed';entry.claims=[claim];
+   const report=audit(review);
+   expect(report.structural.passed).toBe(true);
+   expect(report.recordedClaims.total).toBe(1);
+   expect(report.runtimeAcceptance.missingExecutedUsableContent).toEqual(baseline.runtimeAcceptance.missingExecutedUsableContent);
+   expect(report.runtimeAcceptance.verifierUnavailable).toBe(true);
+   expect(report.runtimeAcceptance.verifiedReceiptCount).toBe(0);
+   expect(report.runtimeAcceptance.passed).toBe(false);
+  }
  });
- it('binds executed cycle-admin clicks to the stable declared destination instead of accepting the default address',()=>{
+ it('ignores legacy receipt-shaped payloads and caller-provided verification flags',()=>{
+  const review=ledger(),entry=review.entries[0],baseline=audit(review);
+  Object.assign(entry,{status:'covered',verified:true,receipts:[{destinationId:entry.id,candidateSha,
+   navigationHref:entry.declaredHref,outcome:'passed',verified:true,
+   runUrl:'https://example.invalid/runs/legacy',usableContent:{selector:'main h1',observedNonempty:true}}]});
+  const report=audit(review);
+  expect(report.runtimeAcceptance.missingExecutedUsableContent).toEqual(baseline.runtimeAcceptance.missingExecutedUsableContent);
+  expect(report.runtimeAcceptance.verifiedReceiptCount).toBe(0);
+  expect(report.runtimeAcceptance.verifierUnavailable).toBe(true);
+  expect(report.runtimeAcceptance.passed).toBe(false);
+ });
+ it('treats every recorded claim as unverified even when every active destination claims a successful run',()=>{
+  const review=ledger(),catalogue=declaredNavigationCatalogue();
+  for(const entry of review.entries){entry.status='claimed';entry.claims=[{
+   destinationId:entry.id,navigationHref:entry.declaredHref,candidateSha,environment:'fictional-test-installation',
+   runUrl:'https://example.invalid/runs/2',executedAt:'2026-11-07T00:00:00Z',outcome:'passed',scenarioId:'declared-scenario',
+   usableContent:{selector:'main h1',assertion:'A heading exists',observedNonempty:true,artifactUrl:'https://example.invalid/artifact/2'},
+  }];}
+  const report=audit(review,catalogue);
+  expect(report.structural.passed).toBe(true);
+  expect(report.runtimeAcceptance.missingExecutedUsableContent).toEqual(catalogue.declarations.filter(row=>row.status==='declared'&&!row.disabled).map(row=>row.id));
+  expect(report.recordedClaims.total).toBe(review.entries.length);
+  expect(report.runtimeAcceptance.verifiedReceiptCount).toBe(0);
+  expect(report.runtimeAcceptance.verifierUnavailable).toBe(true);
+  expect(report.runtimeAcceptance.passed).toBe(false);
+ });
+ it('reports substituted cycle-admin click expectations as metadata while its claim remains unverified',()=>{
   const review=ledger(),catalogue=declaredNavigationCatalogue();
   const latest='/performance/11111111-2222-4333-8444-555555555555/cycle/calendar';
   const resolved=resolveNavigationCatalogue({isAdmin:false,canAdministerOnehr:true,performanceAdminHref:latest});
   const admin=resolved.rows.find(row=>row.navigationHref===latest)!;
-  const entry=review.entries.find(row=>row.id===admin.declaration.id)!;entry.status='covered';
-  const receipt:RuntimeReceipt={destinationId:entry.id,navigationHref:latest,candidateSha,environment:'fictional-test-installation',runUrl:'https://example.invalid/runs/2',executedAt:'2026-11-07T00:00:00Z',outcome:'passed',scenarioId:'cycle-calendar',usableContent:{selector:'main h1',assertion:'Expected cycle calendar and usable content',observedNonempty:true,artifactUrl:'https://example.invalid/artifact/2'}};
-  entry.receipts=[{...receipt,navigationHref:'/performance'}];
-  const options={catalogue,ledger:review,pages:discoverPageRoutes(process.cwd()),candidateSha,runtimeRows:resolved.rows};
-  expect(auditNavigationCoverage(options).runtimeAcceptance.missingExecutedUsableContent).toContain(entry.id);
-  entry.receipts=[receipt];expect(auditNavigationCoverage(options).runtimeAcceptance.missingExecutedUsableContent).not.toContain(entry.id);
+  const entry=review.entries.find(row=>row.id===admin.declaration.id)!;entry.status='claimed';
+  entry.claims=[{destinationId:entry.id,navigationHref:latest,candidateSha,environment:'fictional-test-installation',runUrl:'https://example.invalid/runs/3',executedAt:'2026-11-07T00:00:00Z',outcome:'passed',scenarioId:'cycle-calendar',usableContent:{selector:'main h1',assertion:'Expected cycle calendar heading',observedNonempty:true,artifactUrl:'https://example.invalid/artifact/3'}}];
+  const report=auditNavigationCoverage({catalogue,ledger:review,pages:discoverPageRoutes(process.cwd()),candidateSha,runtimeRows:resolved.rows});
+  expect(report.runtimeExpectations.destinations.find(row=>row.destinationId===entry.id)?.navigationHrefs).toEqual([latest]);
+  expect(report.runtimeAcceptance.missingExecutedUsableContent).toContain(entry.id);
+  expect(report.runtimeAcceptance.verifiedReceiptCount).toBe(0);
  });
  it('classifies actual filesystem redirect/factory source separately and matches dynamic route shapes',()=>{
   const root=mkdtempSync(join(tmpdir(),'navigation-page-source-'));
