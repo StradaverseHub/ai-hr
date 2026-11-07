@@ -360,6 +360,40 @@ def qualify_interrupted_lifecycle(profile):
     until(lambda: ready_worker(unit), 'restored native worker')
 
 
+def reclamation_diagnostic(profile, generation):
+    """Fixed reasons only, from the unchanged native death proof; never weaken it."""
+    fixed = {'Original worker control group is unknown', 'Worker process containment is not qualified',
+             'Managed path is missing', 'Managed paths must not be symlinks',
+             'Managed path has an unexpected owner', 'Managed path is writable by another principal',
+             'Unexpected managed path type', 'Unbounded or invalid worker control group',
+             'Worker unit process inventory is unknown', 'Worker generation is not natively quiescent',
+             'Original worker invocation may still be live', 'Worker cgroup changed during inspection',
+             'Current worker process family is incomplete', 'An unrelated worker process remains',
+             'Worker unit changed during inspection', 'Generation endpoint is still bound'}
+    reasons = []
+    original = C.require
+    def observed(condition, message):
+        if not condition:
+            reasons.append(message if message in fixed else 'Unclassified native proof refusal')
+        original(condition, message)
+    host = C.LinuxHost(profile)
+    try:
+        C.require = observed
+        dead = host.generation_dead(generation)
+    finally:
+        C.require = original
+    port = generation['port']
+    states = set()
+    for line in pathlib.Path('/proc/net/tcp').read_text().splitlines()[1:]:
+        fields = line.split()
+        if int(fields[1].split(':')[1], 16) == port:
+            states.add(fields[3])
+    return {'nativeDead': dead, 'fixedRefusalReasons': reasons,
+            'savedProcessAlive': generation['process'] is not None and C.alive(generation['process']),
+            'oldProxyReadersAlive': sum(C.alive(reader) for reader in generation['readers']),
+            'endpointBindable': host.port_free(port), 'endpointTcpStates': sorted(states)}
+
+
 def create_fixture():
     global profile_value
     assert os.geteuid() == 0 and sys.platform == 'linux'
@@ -644,7 +678,11 @@ assert cache.read_text()=='fictional writable application cache'
     assert receipt['safeToStop'] and C.alive(old_process)
     systemctl('stop', UNITS[0])
     controller('reconcile')
-    assert inventory()['generations'][first['generation']]['phase'] == 'RELEASED'
+    reclamation = inventory()['generations'][first['generation']]
+    if reclamation['phase'] != 'RELEASED':
+        report['generationReclamationFailure'] = reclamation_diagnostic(profile, reclamation)
+        save()
+    assert reclamation['phase'] == 'RELEASED'
     report['drainRetainedProcessOnExpiry'] = True
     save()
 

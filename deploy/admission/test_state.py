@@ -221,6 +221,33 @@ class StateTests(unittest.TestCase):
                 host.busctl(['call', 'untrusted-private-command'])
             run.assert_not_called()
 
+    def test_native_reclamation_observer_redacts_unknown_reasons_and_restores_enforcement(self):
+        specification = importlib.util.spec_from_file_location('admission_reclamation_fixture', pathlib.Path(__file__).with_name('test_native.py'))
+        native = importlib.util.module_from_spec(specification)
+        specification.loader.exec_module(native)
+        original = native.C.require
+        generation = {'port': 50000, 'process': None, 'readers': []}
+        for reason, expected in [('Generation endpoint is still bound', 'Generation endpoint is still bound'),
+                                 ('never-export-secret', 'Unclassified native proof refusal')]:
+            class Host:
+                def __init__(self, _profile):
+                    pass
+                def generation_dead(self, _generation):
+                    try:
+                        native.C.require(False, reason)
+                    except native.C.Refused:
+                        return False
+                    raise AssertionError('Native enforcement was bypassed')
+                def port_free(self, _port):
+                    return False
+            with patch.object(native.C, 'LinuxHost', Host), patch.object(pathlib.Path, 'read_text', return_value='sl local remote state\n0: 0100007F:C350 00000000:0000 06\n'):
+                observed = native.reclamation_diagnostic(None, generation)
+            self.assertIs(native.C.require, original)
+            self.assertEqual(observed, {'nativeDead': False, 'fixedRefusalReasons': [expected],
+                                       'savedProcessAlive': False, 'oldProxyReadersAlive': 0,
+                                       'endpointBindable': False, 'endpointTcpStates': ['06']})
+            self.assertNotIn('never-export-secret', json.dumps(observed))
+
     def test_native_diagnostics_only_publish_catalogued_fixed_reasons(self):
         specification = importlib.util.spec_from_file_location('admission_native_fixture', pathlib.Path(__file__).with_name('test_native.py'))
         native = importlib.util.module_from_spec(specification)
