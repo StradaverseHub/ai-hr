@@ -99,6 +99,13 @@ class BundleTests(unittest.TestCase):
         self.assertEqual(bundle.package_identity(self.source, 'sharp')[0], expected)
         self.assertEqual(old.package_identity(self.target, 'sharp', str(self.source))[0], expected)
         self.assertEqual(bundle.package_identity(self.target, 'sharp', str(self.source))[0], expected)
+        repeated = self.source / 'node_modules/.store/sharp/node_modules/.bin/semver'
+        repeated.write_text(repeated.read_text().replace('../../../semver/bin/semver.js',
+                            '../../../semver-link/../semver-link/bin/semver.js'))
+        # This is an actual package wrapper, not merely a resolver unit example:
+        # both traversals reach the same regular target, without a link cycle.
+        self.assertEqual(old.package_identity(self.source, 'sharp')[0], expected)
+        self.assertEqual(bundle.package_identity(self.source, 'sharp')[0], expected)
         manifest, archive, manifest_path = self.packed()
         bundle.unpack(archive, manifest_path, self.destination, self.target, str(self.source))
         self.assertEqual(bundle.verify_directory(self.destination, manifest_path, self.target, str(self.source)), manifest)

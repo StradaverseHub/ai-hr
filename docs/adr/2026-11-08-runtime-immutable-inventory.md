@@ -22,6 +22,15 @@ The two cache controller implementation inventories bind the new file as well as
 the original bundle owner. Missing/changed implementation blobs refuse old state;
 no historical cache witness receives a waiver or new acceptance label.
 
+Independent review of frozenad1fad3c identified a valid repeated-link traversal
+that its global visited-path set misclassified as cyclic. The resolver now bounds
+total expansions at100: real cycles still refuse, while a path such as
+`semver-link/../semver-link/bin/semver.js` can revisit an unchanged link and reach
+the same in-root file. The actual Sharp wrapper parity case compares that spelling
+with the exact predecessor package hash, then exercises pack/receiver verification.
+Existing real cycle, escape and excessive-depth negatives remain. No qualification
+has run on either source.
+
 Build-bundle retains format2 shape, capacity profile4, USTAR payload selection,
 canonical JSON, gzip level9/header, content/mode deduplication, manifest hashes and
 receiver reconstruction. Approval retains its existing acceptance, source/service

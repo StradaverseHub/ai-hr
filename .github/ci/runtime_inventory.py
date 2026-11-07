@@ -144,7 +144,7 @@ class PinnedTree:
         """
         self.check(isinstance(relative, str) and relative and not relative.startswith('/') and len(relative.encode()) <= 4096
                    and '\\' not in relative, 'invalid dependency link target')
-        pending, resolved, visited = relative.split('/'), [], set()
+        pending, resolved, hops = relative.split('/'), [], 0
         while pending:
             name, *pending = pending
             if name in {'', '.'}:
@@ -155,8 +155,11 @@ class PinnedTree:
             key = '/'.join(resolved + [name])
             found = self.metadata(key)
             if stat.S_ISLNK(found.st_mode):
-                self.check(key not in visited and len(visited) < MAX_LINK_HOPS, 'cyclic or excessive dependency link chain')
-                visited.add(key); target = self.readlink(key)
+                # A symlink may legitimately be revisited after `..` changes
+                # the remaining path. Bound total expansion work instead of
+                # treating a repeated pathname as proof of a cycle.
+                self.check(hops < MAX_LINK_HOPS, 'cyclic or excessive dependency link chain')
+                hops += 1; target = self.readlink(key)
                 if target.startswith('/'):
                     prefix = str(self.path) + '/'
                     self.check(allow_absolute and target.startswith(prefix), 'dependency link escapes runtime dependencies')
