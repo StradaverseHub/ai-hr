@@ -1,11 +1,11 @@
 /** Lossless representation/binding models, not a native inventory or activation. */
 import {afterEach,expect,it} from 'vitest';
 import {createHash} from 'node:crypto';
-import {mkdtempSync,readFileSync,rmSync,symlinkSync,writeFileSync} from 'node:fs';
+import {mkdtempSync,readFileSync,rmSync,symlinkSync,writeFileSync,openSync,closeSync,fstatSync,appendFileSync,truncateSync,readSync} from 'node:fs';
 import {join} from 'node:path';
 import {tmpdir} from 'node:os';
 import {normalizeNotificationCanonicalInventory,nativeInventoryCanonical,nativeInventoryLimits} from './fixtures/notification-worker/canonical-inventory';
-import {assertInventoryLedger,inventoryRegularBytes,writeInventoryEvidence} from './fixtures/notification-worker/canonical-inventory-evidence';
+import {assertInventoryLedger,inventoryDescriptorBytes,inventoryRegularBytes,writeInventoryEvidence} from './fixtures/notification-worker/canonical-inventory-evidence';
 const hash=(value:string)=>createHash('sha256').update(value).digest('hex');
 function sample(offset=0){
  const type={oid:16+offset,schema:'pg_catalog',namespaceOid:11+offset,name:'bool',identity:'pg_catalog.bool',formatted:'boolean',raw:{oid:String(16+offset),typnamespace:String(11+offset),typname:'bool'}};
@@ -55,4 +55,22 @@ it('owns complete private evidence bytes and refuses symlinks, duplicate publica
  expect(()=>writeInventoryEvidence(dir,'notification-canonical-source.json',{full:'x'.repeat(nativeInventoryLimits.fileBytes)})).toThrow(/16MiB/);
  const incomplete={complete:false,expectedProfileAuthorized:false,reason:'full byte bound refused'};writeInventoryEvidence(dir,'notification-canonical-incomplete.json',incomplete);expect(JSON.parse(readFileSync(join(dir,'notification-canonical-incomplete.json'),'utf8'))).toEqual(incomplete);
  writeFileSync(join(dir,'foreign.json'),'{}',{mode:0o644});expect(()=>inventoryRegularBytes(join(dir,'foreign.json'),1024,true)).toThrow();
+});
+
+it('bounds actual descriptor growth, detects short reads and EOF, and refuses invalid bounds before reading',()=>{
+ const dir=directory(),path=join(dir,'actual-descriptor.json');
+ writeFileSync(path,'abc');let fd=openSync(path,'r');
+ try{
+  const original=fstatSync(fd).size;appendFileSync(path,'x'.repeat(65536));
+  expect(()=>inventoryDescriptorBytes(fd,original,8)).toThrow(/changed size/);
+  const next=Buffer.alloc(1);expect(readSync(fd,next,0,1,null)).toBe(1);expect(next.toString()).toBe('x'); // Whole appended file was NOT consumed.
+ }finally{closeSync(fd);}
+ writeFileSync(path,'abcdef');fd=openSync(path,'r');
+ try{const original=fstatSync(fd).size;truncateSync(path,3);expect(()=>inventoryDescriptorBytes(fd,original,8)).toThrow(/changed size/);expect(readSync(fd,Buffer.alloc(1),0,1,null)).toBe(0);}finally{closeSync(fd);}
+ writeFileSync(path,'abcdef');fd=openSync(path,'r');
+ try{expect(inventoryDescriptorBytes(fd,6,8).equals(Buffer.from('abcdef'))).toBe(true);expect(readSync(fd,Buffer.alloc(1),0,1,null)).toBe(0);}finally{closeSync(fd);}
+ writeFileSync(path,'');fd=openSync(path,'r');try{expect(inventoryDescriptorBytes(fd,0,8).length).toBe(0);}finally{closeSync(fd);}
+ expect(()=>inventoryRegularBytes(path,8)).toThrow();
+ writeFileSync(path,'abc');fd=openSync(path,'r');
+ try{for(const [size,bound]of [[9,8],[3,0],[3,nativeInventoryLimits.fileBytes+1]])expect(()=>inventoryDescriptorBytes(fd,size,bound)).toThrow(/refused/);const next=Buffer.alloc(1);expect(readSync(fd,next,0,1,null)).toBe(1);expect(next.toString()).toBe('a');}finally{closeSync(fd);}
 });
