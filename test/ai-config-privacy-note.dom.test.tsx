@@ -21,7 +21,7 @@ vi.mock('next-intl/server', () => ({
   getLocale: async () => state.locale,
 }));
 vi.mock('../lib/authz', () => ({ requireAdmin: async () => ({ tenantId: 'fixture-tenant', userId: 'fixture-user', personId: null, roles: ['hr_admin'], grants: [] }) }));
-vi.mock('../core/ai-config', () => ({ getAiConfigView: async () => ({ storable: true, envFallback: null, usingEnvFallback: false, providers: [] }) }));
+vi.mock('../core/ai-config', () => ({ getAiConfigPresentationView: async () => ({ storable: true, envFallback: null, usingEnvFallback: false, providers: [] }) }));
 vi.mock('../core/entitlements', () => ({ isModuleEnabledOrFalse: () => false }));
 vi.mock('../components/ai-config-form', () => ({ AiConfigForm: () => null }));
 import { AiProviderScreen as AiConfigPage } from '../app/admin/ai/provider-screen';

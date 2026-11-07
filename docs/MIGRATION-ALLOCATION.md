@@ -2419,3 +2419,28 @@ a separate query/index correction; these are component measurements only.
 The real append requires independent review, native populated replay, drift
 refusal and integration qualification. It is not installed and grants no staging
 or production authority. Production remains on hold.
+
+## AI Centre display snapshots — 8 November 2026 (uninstalled candidate)
+
+Root coordinator reserves `3111_ai_centre_presentation_reads`, idx2411 /
+when1793330002711, SQL SHA-256
+`ec9f23c979dfbaf21cb5c8cb09f52662f7f4eafa41fb857837b54ec7dbda5768`.
+The fresh all-ref/root-tree and captured-WIP audit covered6002 refs,3202 root
+trees,680 migration trees,486 committed journals and492 readable worktrees.
+Previous maxima were3110 /2410 /1793330002710. Captured WIP was stable; the
+known malformed foreign journal remains untouched and its literal bounds were
+included. Main and alpha freshly identifyb7c0393aa3c7606a33dd15103426e5c535324065.
+The owned child preserves its complete740-entry prefix through3103, including
+every SQL byte. Indices are strictly ascending stable identities, not array
+positions: the reserved2411 is appended without consuming competing2404–2410.
+
+This source factors only the qualified pure native candidate/spend projections
+and admits two explicit RR/RO display purposes. Every existing RC wrapper keeps
+its identity, ACL, actor guard and statement visibility. No tables, grants to HR
+data, money arithmetic, provider issuance or disclosure approvals change. The
+disposable prototype fence is removed from the real append; complete predecessor
+and new-name guards remain. Actual populated and empty-shadow ordinary-migrator
+rehearsals, authority/parity tests and rendered page checks are required before
+adoption. Reconcile the then-current source reservations and actual installation
+ledger before release admission. No installation, staging acceptance or production
+authority is granted; production remains held.

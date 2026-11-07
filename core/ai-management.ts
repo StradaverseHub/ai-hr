@@ -95,7 +95,7 @@ const strictest = (rows:readonly PolicyLimits[]):PolicyLimits => {
 export function aiManagementView(ctx: SessionContext, search = '', runFilter: AiRunFilter = {}) {
   return readAiManagementView(ctx,search,runFilter,false);
 }
-/** Explicit read-only prototype API; no existing page/default reader is redirected here. */
+/** Explicit presentation API for AI Centre GETs; commands and the legacy default reader retain RC authority. */
 export function aiManagementPresentationView(ctx: SessionContext, search = '', runFilter: AiRunFilter = {}) {
   return readAiManagementView(ctx,search,runFilter,true);
 }

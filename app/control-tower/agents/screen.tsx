@@ -4,7 +4,7 @@ import { redirect } from 'next/navigation';
 import {nanosToUsd} from '@/lib/ai/spend-allocation';
 import { getFormatter, getTranslations } from 'next-intl/server';
 import { type requireAdmin, isAdmin, isGroupAdmin } from '@/lib/authz';
-import { AI_RUN_STATE_FILTERS, aiManagementView, bulkAssistantDepartments, previewBulkAssistantAccess, type BulkAssistantPreview, type AiAllowanceUse, type AiRunFilter, type AiUsageSummary } from '@/core/ai-management';
+import { AI_RUN_STATE_FILTERS, aiManagementPresentationView, bulkAssistantDepartments, previewBulkAssistantAccess, type BulkAssistantPreview, type AiAllowanceUse, type AiRunFilter, type AiUsageSummary } from '@/core/ai-management';
 import { AI_FEATURES, isAiFeature } from '@/lib/ai/features';
 import type { AgentFeature } from '@/core/agent-principal';
 import { orchestrationQueue } from '@/core/hr-orchestrator';
@@ -38,7 +38,7 @@ export async function AiManagementScreen({session:s,section,searchParams,childre
   const t = await getTranslations('aiManagement');
   const f = await getFormatter();
   const runFilter:AiRunFilter = {state:AI_RUN_STATE_FILTERS.find(v=>v===sp.runs),feature:isAiFeature(sp.feature)?sp.feature:undefined};
-  const view = await aiManagementView(s, sp.q, runFilter);
+  const view = await aiManagementPresentationView(s, sp.q, runFilter);
   // One section per page, chosen in the sidebar's AI management menu. A section this session cannot use
   // goes to the Overview.
   // Only the orchestrator page reads the work queue.

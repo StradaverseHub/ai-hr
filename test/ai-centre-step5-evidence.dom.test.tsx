@@ -41,7 +41,7 @@ vi.mock('../core/digest/daily-digest', () => ({
 vi.mock('../app/assistant/centre/recommendation', () => ({ readLeaveRecommendation: async () => state.recommendation }));
 vi.mock('../core/ai-management', () => ({
   AI_RUN_STATE_FILTERS: ['blocked', 'failed'],
-  aiManagementView: async () => ({ provider: { provider: 'fictional', model: 'fictional/model' }, mayWriteUsers: true,
+  aiManagementPresentationView: async () => ({ provider: { provider: 'fictional', model: 'fictional/model' }, mayWriteUsers: true,
     features: AI_FEATURES.map(feature => ({ ...feature, enabled: feature.setting === null, state: feature.setting === null ? 'ready' : 'paused', mayWrite: feature.kind !== 'platform' })),
     agentSwitches: {}, usage: [], policies: [], userDefault: null, companies: [], companyUsage: [], users: [], moreUsers: false, groups: [],
     attention: { companies: [], users: [], blocked: [] }, runs: [], runFilter: {}, legacyBudget: null, spend: null }),

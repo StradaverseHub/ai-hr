@@ -25,7 +25,7 @@ vi.mock('../core/ai-inventory',()=>({aiInventoryView:async()=>({scope:'registry'
 vi.mock('../core/ai-management',async()=>{
  const {AI_FEATURES}=await import('../lib/ai/features');const assistant=AI_FEATURES.find(feature=>feature.id==='hr_assistant');if(!assistant)throw Error('Missing actual Assistant feature definition');
  // Match the native status owner: enabled module/switch, but no configured provider means provider-required.
- return {AI_RUN_STATE_FILTERS:['blocked','failed'],aiManagementView:async()=>({provider:null,mayWriteUsers:true,features:[{...assistant,enabled:true,state:'provider',mayWrite:true}],usage:[],policies:[],userDefault:null,companies:[],companyUsage:[],users:[],moreUsers:false,groups:[],attention:{companies:[],users:[],blocked:[]},runs:[],runFilter:{},legacyBudget:null,spend:null}),bulkAssistantDepartments:async()=>[],previewBulkAssistantAccess:async()=>({matched:0,changing:0})};
+ return {AI_RUN_STATE_FILTERS:['blocked','failed'],aiManagementPresentationView:async()=>({provider:null,mayWriteUsers:true,features:[{...assistant,enabled:true,state:'provider',mayWrite:true}],usage:[],policies:[],userDefault:null,companies:[],companyUsage:[],users:[],moreUsers:false,groups:[],attention:{companies:[],users:[],blocked:[]},runs:[],runFilter:{},legacyBudget:null,spend:null}),bulkAssistantDepartments:async()=>[],previewBulkAssistantAccess:async()=>({matched:0,changing:0})};
 });
 vi.mock('../core/hr-orchestrator',()=>({orchestrationQueue:async()=>({})}));
 vi.mock('../app/control-tower/work-queue',()=>({OrchestrationWorkQueue:()=>null}));

@@ -1,0 +1,116 @@
+{
+  "kind": "AI_CENTRE_PRESENTATION_GUARDED_APPEND_AND_GET_ADOPTION",
+  "releaseAuthorized": false,
+  "productionAuthorized": false,
+  "qualification": "NOT_RUN; static source/hash only; root and independent review required before hosted qualification",
+  "prototypeBase": "93d8d556669c150bc7eaa92c8d3cd7d0ab4286ac",
+  "mergedRoot": "b7fcfc5ca82b83964b75d5e1fb0c4e88aa25e778",
+  "mergeCommit": "5c6e8c9314bc827fcf7975ff7a031794e015d574",
+  "remoteMain": "b7c0393aa3c7606a33dd15103426e5c535324065",
+  "remoteAlpha": "b7c0393aa3c7606a33dd15103426e5c535324065",
+  "migration": {
+    "tag": "3111_ai_centre_presentation_reads",
+    "idx": 2411,
+    "when": 1793330002711,
+    "sqlSha256": "ec9f23c979dfbaf21cb5c8cb09f52662f7f4eafa41fb857837b54ec7dbda5768",
+    "prefixEntries": 740,
+    "prefixTuplesSha256": "e15c1c8a2af32e937556ade9dce8333d7748749c5f54de7848fbd2c27c71ffb5",
+    "prefixSqlSha256": "7d90b516af17c2b9979cae1973d9c77d74ba576f716c5681de2a950cebcf8848",
+    "claimAudit": {
+      "refs": 6002,
+      "rootTrees": 3202,
+      "migrationTrees": 680,
+      "committedJournals": 486,
+      "capturedWorktrees": 492,
+      "wipStable": true,
+      "maxima": {
+        "tag": 3110,
+        "idx": 2410,
+        "when": 1793330002710
+      },
+      "invalidJournals": [
+        "/Users/zenlam/Projects/ai-hr/.claude/guarded-worktrees/feedback-menu-operator-toggle-616263/db/migrations/meta/_journal.json"
+      ]
+    }
+  },
+  "getAdoption": [
+    "app/control-tower/agents/screen.tsx",
+    "app/admin/ai/provider-screen.tsx"
+  ],
+  "existingCommandsAndIssuersUnchanged": true,
+  "literalApprovalsModified": false,
+  "pendingContractsModified": false,
+  "positiveReadinessFailuresRetained": 13,
+  "temporaryDiagnosticRemoved": {
+    "file": "test/ai-provider-readiness-disclosure-diagnostic.test.ts",
+    "originalSource": "93d8d556669c150bc7eaa92c8d3cd7d0ab4286ac",
+    "originalCases": 2,
+    "reason": "Exact-source diagnostic explicitly retired before adoption; no positive readiness pass substituted"
+  },
+  "frozenPriorEvidence": {
+    "nativeIncludingDiagnostic": 15,
+    "otherAffectedDb": 142,
+    "pure": 15,
+    "linuxBuild": "PASS_AT_ORIGINAL_SOURCE_ONLY"
+  },
+  "focusedSelectors": "docs/qualification/ai-centre-presentation-adoption-tests.json",
+  "positiveReadinessBindingPending": true,
+  "generatedSourceBinding": {
+    "providerFirst": {
+      "files": 1483,
+      "digest": "33f685b3d3b9d3e79b5672ef69023fd8d4123e356b5eeddce7fc81d8488e5920"
+    },
+    "agentLast": {
+      "files": 473,
+      "digest": "416c5c5cb678d898f35a93ef649983cc034c4f69d6746cdb19520a0f9585a1d8"
+    }
+  },
+  "sourceSha256": {
+    "app/admin/ai/provider-screen.tsx": "38035fa5662f94cfb86e0074200044f02cdb5fe25917356bd380dff861116bd4",
+    "app/control-tower/agents/screen.tsx": "64b104ef9738da09ff94c4227530125cf12ba0c43a6e5cba0885c8da060235b7",
+    "core/ai-config.ts": "cb251b6c1838dcb6db0f5ab1ad5b672283bb7c2f6134c97e7441e70ceaca5413",
+    "core/ai-management.ts": "b56fad29decccb040ced1386be51ae0bfd0d0e2a7ef3f6db30efc7689bcd6847",
+    "core/ai-provider-readiness.ts": "e4d470e994f2985b7a998477b6acd012c2456d2c5aaf21d31b22ff55f05d9943",
+    "core/ai-provider-snapshot.ts": "07c4548b59d12ba1b56e3ceafd8e20f8816d94d2d16c8df105c42a12ec430c91",
+    "core/ai-spend-management.ts": "d2e5a6ca0a6dd928d8560d34bdd47ef7d138f6b15734f8270184de55ed388c47",
+    "db/migrations/3111_ai_centre_presentation_reads.sql": "ec9f23c979dfbaf21cb5c8cb09f52662f7f4eafa41fb857837b54ec7dbda5768",
+    "db/migrations/meta/_journal.json": "feafc3c8a984b2bd4e7d65a25c2924f01f2dc91bba2a20aee20de8c50e48a65c",
+    "docs/MIGRATION-ALLOCATION.md": "4afb3c3d2f6f24a668d57f636141cfec7d813eed9a82bf62e98eec7f7cf9f2d2",
+    "docs/adr/2026-11-08-ai-centre-presentation-adoption.md": "092efcc0888f072242f532114381e226798c9de85cd50edbd431cad79755e531",
+    "docs/qualification/ai-centre-presentation-adoption-tests.json": "920c179e6c46045ed602e9bbd252bd4e143fc1e52368dd8c686a77f37c05c0f7",
+    "lib/ai/module-agent-source-manifest.ts": "2712cc0ec5c3df65f14dc85021a931f7881d61b1f05aae138a3928e45aabad9f",
+    "lib/ai/provider-data-source-manifest.ts": "83e3e6f4068bc6b77d07900d2214410a005c37089153a65e7c0393b6630dbba6",
+    "test/ai-centre-evidence.dom.test.tsx": "0fb0a2a0946ad6e3a15be79222efa3f4874e166b23c7e9ba318f6b3027cba58f",
+    "test/ai-centre-page-timing.test.ts": "9b5b7198269466990e30c3adf41129ad5732caf06f31dda1900bac3fa9b57a9a",
+    "test/ai-centre-presentation-native.test.ts": "f828f164e8ec64d367de174b4313c5b986681bb42e5a98a486e7de4dbfd08725",
+    "test/ai-centre-presentation-populated-upgrade.test.ts": "0ab77406d5b014adb60c97b2c2dc65177d6f46d9f132058becbb36473e68063c",
+    "test/ai-centre-step5-evidence.dom.test.tsx": "e4e31092140886a27f8e6cb9b9c3ef757072dff33d1c6a514423ccb17f4aafd3",
+    "test/ai-config-page-lifetime.dom.test.tsx": "dd2385c427127cb421ea79b2ee5692743f76e2d35151dfe82662b920cb81bf64",
+    "test/ai-config-privacy-note.dom.test.tsx": "40236d73297e9f3caf28f6ac50c3056d4934e5af8b3fc87e46fed225e5a7ab53",
+    "test/ai-inventory-screen.dom.test.tsx": "245b3bbd53388076081acdb1806d1821c816e677dc1a802b36890e74944f7e83",
+    "test/ai-management-naming.dom.test.tsx": "b427c15c81f22aeff1c694b1ca31c760c7234d4bd1d99edd567ee382311a213f",
+    "test/ai-management-page.dom.test.tsx": "e3edeb903be7525f3aa487c47a775907f13e66ccff0bcfe700be9d6af8df7d00",
+    "test/ai-probe-history-page.dom.test.tsx": "ff0be154d4fe40ba1ea0662d9801922d646b3d207c89ed7259785a64cad5fc45",
+    "test/automatic-followup-features.dom.test.tsx": "d6dbd6e10a34b099ec2ccdfcd2c121e5746de56c8fc5d931351dd4b27654c515",
+    "test/fixtures/ai-management-locked-baseline.ts": "fdd12d1bf9048ea433b45c3c6ad4abe588551340d534bae4adf36e135b786897",
+    "test/performance-migration-identities.ts": "2ecd065383cf83ebb3fed333d722aae895a0f482b164ac2e4a796973d47beee3",
+    "test/prototypes/ai-centre-presentation.sql": "6129a791faa784098fac9b36de62a532b9319cfe2ba3987f98b72c7ecf75089c"
+  },
+  "reservationRecheck": {
+    "refs": 6003,
+    "rootTrees": 3204,
+    "migrationTrees": 680,
+    "committedJournals": 486,
+    "capturedWorktrees": 493,
+    "wipStable": true,
+    "maxima": {
+      "tag": 3111,
+      "idx": 2411,
+      "when": 1793330002711
+    },
+    "invalidJournals": [
+      "/Users/zenlam/Projects/ai-hr/.claude/guarded-worktrees/feedback-menu-operator-toggle-616263/db/migrations/meta/_journal.json"
+    ]
+  },
+  "staticPrototypeBodyEquivalence": "Exact bytes after removal only of fixture install fence, heading and statement breakpoints"
+}

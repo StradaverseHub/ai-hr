@@ -1,7 +1,7 @@
 import {createHash} from 'node:crypto';
 import {getLocale, getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
-import { getAiConfigView } from '@/core/ai-config';
+import { getAiConfigPresentationView } from '@/core/ai-config';
 import { Card, ErrorBanner } from '@/components/ui';
 import { AiConfigForm } from '@/components/ai-config-form';
 
@@ -17,7 +17,7 @@ export async function AiProviderScreen({
   const locale=await getLocale();
   const t = await getTranslations('admin.ai');
   const query=await searchParams,error=Object.prototype.hasOwnProperty.call(query,'error')?t('commandFailed'):undefined;
-  const config = await getAiConfigView(s);
+  const config = await getAiConfigPresentationView(s);
   const formKey=createHash('sha256').update(JSON.stringify([principal,locale,config])).digest('hex');
   const envLabel = config.envFallback
     ? config.providers.find((p) => p.provider === config.envFallback!.provider)?.label ?? config.envFallback.provider

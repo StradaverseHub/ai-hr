@@ -105,7 +105,7 @@ export function getAiConfigView(ctx: SessionContext): Promise<AiConfigView> {
     return configViewTx(tx, ctx, false);
   });
 }
-/** New purpose is opt-in only; existing commands/default readers keep their RC authority. */
+/** Explicit display purpose; existing commands/default readers keep their RC authority. */
 export async function getAiConfigPresentationTx(tx: Tx, supplied: SessionContext): Promise<AiConfigView> {
   const ctx={...supplied,roles:supplied.roles?.slice(),grants:supplied.grants?.map(grant=>({...grant}))};
   assertAdmin(ctx);await assertAiPresentationPrincipalTx(tx,ctx);

@@ -51,7 +51,7 @@ import {workerRunGate} from '../core/agent-registry/controls';
 import {RECOMMENDER_WORKER} from '../core/recommenders/leave-decision';
 import {orchestrationQueue} from '../core/hr-orchestrator';
 import {agreementView,controlTowerView} from '../core/control-tower';
-import {aiManagementView} from '../core/ai-management';
+import {aiManagementPresentationView} from '../core/ai-management';
 import {aiInventoryView,aiManagementAlerts} from '../core/ai-inventory';
 import {agentStatuses} from '../core/control-domains';
 import {listWorkers} from '../core/agent-registry/views';
@@ -130,15 +130,15 @@ const controlTower:readonly Page[]=[
   {label:'agentStatuses',stage:0,run:ctx=>agentStatuses(ctx).catch(()=>null)},
   {label:'listWorkers',stage:1,run:ctx=>listWorkers(ctx)},
   {label:'outcomeSummary',stage:1,run:ctx=>outcomeSummary(ctx).catch(()=>null)},
-  {label:'aiManagementView',stage:2,run:ctx=>aiManagementView(ctx,'',{})},
-  {label:'aiManagementAlerts',stage:3,deps:['aiManagementView'],run:(ctx,got)=>aiManagementAlerts(ctx,got.get('aiManagementView') as Awaited<ReturnType<typeof aiManagementView>>)}]},
+  {label:'aiManagementPresentationView',stage:2,run:ctx=>aiManagementPresentationView(ctx,'',{})},
+  {label:'aiManagementAlerts',stage:3,deps:['aiManagementPresentationView'],run:(ctx,got)=>aiManagementAlerts(ctx,got.get('aiManagementPresentationView') as Awaited<ReturnType<typeof aiManagementPresentationView>>)}]},
  {id:'control-tower.agents.overview',persona:'admin',firstPaint:true,reads:[
-  {label:'aiManagementView',stage:0,run:ctx=>aiManagementView(ctx,'',{})},
-  {label:'aiManagementAlerts',stage:1,deps:['aiManagementView'],run:(ctx,got)=>aiManagementAlerts(ctx,got.get('aiManagementView') as Awaited<ReturnType<typeof aiManagementView>>)}]},
+  {label:'aiManagementPresentationView',stage:0,run:ctx=>aiManagementPresentationView(ctx,'',{})},
+  {label:'aiManagementAlerts',stage:1,deps:['aiManagementPresentationView'],run:(ctx,got)=>aiManagementAlerts(ctx,got.get('aiManagementPresentationView') as Awaited<ReturnType<typeof aiManagementPresentationView>>)}]},
  {id:'control-tower.agents.inventory',persona:'admin',firstPaint:true,reads:[
-  {label:'aiManagementView',stage:0,run:ctx=>aiManagementView(ctx,'',{})},
-  {label:'aiInventoryView',stage:1,deps:['aiManagementView'],run:(ctx,got)=>aiInventoryView(ctx,got.get('aiManagementView') as Awaited<ReturnType<typeof aiManagementView>>)},
-  {label:'aiManagementAlerts',stage:2,deps:['aiManagementView'],run:(ctx,got)=>aiManagementAlerts(ctx,got.get('aiManagementView') as Awaited<ReturnType<typeof aiManagementView>>)}]},
+  {label:'aiManagementPresentationView',stage:0,run:ctx=>aiManagementPresentationView(ctx,'',{})},
+  {label:'aiInventoryView',stage:1,deps:['aiManagementPresentationView'],run:(ctx,got)=>aiInventoryView(ctx,got.get('aiManagementPresentationView') as Awaited<ReturnType<typeof aiManagementPresentationView>>)},
+  {label:'aiManagementAlerts',stage:2,deps:['aiManagementPresentationView'],run:(ctx,got)=>aiManagementAlerts(ctx,got.get('aiManagementPresentationView') as Awaited<ReturnType<typeof aiManagementPresentationView>>)}]},
  {id:'control-tower.readiness',persona:'admin',firstPaint:true,reads:[{label:'recordReadiness',stage:0,run:ctx=>recordReadiness(ctx)}]},
  {id:'control-tower.actions',persona:'admin',firstPaint:true,reads:[{label:'proposeActions',stage:0,run:ctx=>proposeActions(ctx)}]},
  {id:'control-tower.exceptions',persona:'admin',firstPaint:true,reads:[{label:'openExceptionsAcrossRuns',stage:0,run:ctx=>openExceptionsAcrossRuns(ctx)}]},

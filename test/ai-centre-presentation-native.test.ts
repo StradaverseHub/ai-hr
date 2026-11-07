@@ -1,4 +1,4 @@
-/** Disposable native projection proof only. Fictional data; no provider/admission/network execution. */
+/** Actual journalled presentation projections. Fictional data; no provider/admission/network execution. */
 import {readFileSync} from 'node:fs';
 import {randomUUID,createHash} from 'node:crypto';
 import {afterAll,afterEach,beforeAll,beforeEach,describe,expect,it,vi} from 'vitest';
@@ -22,12 +22,12 @@ import {pgSqlState} from '../lib/db-error';
 import {defaultModelFor} from '../lib/ai/registry';
 import {aiManagementView as readLockedManagement} from './fixtures/ai-management-locked-baseline';
 
-const prototype=readFileSync('test/prototypes/ai-centre-presentation.sql','utf8');
+const append=readFileSync('db/migrations/3111_ai_centre_presentation_reads.sql','utf8');
 const oldNames=['ai_provider_candidate_view_v1','ai_spend_status','ai_optional_spend_status','_ai_provider_evaluation_actor_valid'];
 const added=['ai_provider_candidate_presentation_v1()','ai_optional_spend_presentation_status_v1()',
  '_ai_presentation_optional_spend_value(jsonb)','_ai_presentation_spend_value()','_ai_presentation_candidate_rows()','_ai_presentation_actor_valid()'];
 type FunctionInfo={signature:string;definition:string;details:Record<string,unknown>};
-let original:FunctionInfo[],created:FunctionInfo[]=[],installed=false,expectedDatabase='',base:Base,group:SessionContext;
+let original:FunctionInfo[],created:FunctionInfo[]=[],expectedDatabase='',base:Base,group:SessionContext;
 let verifyNetwork=()=>{};
 const ownedCapabilities=new Set<string>();
 // Capture the actual owner once: a scoped spy must never call a later spy wrapper.
@@ -40,13 +40,6 @@ async function definitions(){return Array.from(await owner.client<FunctionInfo[]
 async function addedDefinitions(reader:Pick<typeof owner.client,'unsafe'>){
  const signatures=added.map(signature=>"'app."+signature+"'").join(',');
  return Array.from(await reader.unsafe<FunctionInfo[]>(`select p.oid::regprocedure::text as signature,pg_get_functiondef(p.oid)as definition,to_jsonb(p)as details from pg_proc p where p.oid=any(array[${signatures}]::regprocedure[]) order by p.proname`));
-}
-async function install(){created=await owner.client.begin(async tx=>{await tx`select set_config('aihr.ai_presentation_fixture.database',${expectedDatabase},true)`;await tx.unsafe(prototype);const rows=await addedDefinitions(tx);expect(rows).toHaveLength(6);return rows;});installed=true;}
-async function restore(){
- if(!installed)return;
- expect(await addedDefinitions(owner.client)).toEqual(created); // Never drop a foreign/drifted definition.
- await owner.client.begin(async tx=>{for(const row of original)await tx.unsafe(row.definition);for(const signature of added)await tx.unsafe('drop function app.'+signature);});installed=false;
- expect(await definitions()).toEqual(original);
 }
 async function refuseRead(ctx:SessionContext){const before=await effects();await expect(aiManagementPresentationView(ctx)).rejects.toThrow();expect(await effects()).toEqual(before);}
 async function effects(){
@@ -119,20 +112,20 @@ beforeAll(async()=>{
   const url=new URL(process.env[key]!);expect({host:url.hostname,port:url.port,database:url.pathname,user:url.username,search:url.search,hash:url.hash}).toEqual({host:'127.0.0.1',port:'5433',database:'/'+expectedDatabase,user,search:'',hash:''});
  }
  await migrateTestDb();const [actual]=await owner.client`select current_database()as database,session_user,current_user`;expect(actual).toEqual({database:expectedDatabase,session_user:'postgres',current_user:'postgres'});
- original=await definitions();expect(original).toHaveLength(4);await install();
+ original=await definitions();expect(original).toHaveLength(4);created=await addedDefinitions(owner.client);expect(created).toHaveLength(6);
 },300000);
 beforeEach(async()=>{
  vi.stubEnv('AI_CONFIG_SECRET','fictional-ai-centre-presentation-key');for(const name of ['ANTHROPIC_API_KEY','GOOGLE_API_KEY','GEMINI_API_KEY'])vi.stubEnv(name,'');vi.stubEnv('OPENAI_API_KEY','fictional-platform-key');
  const fetch=vi.spyOn(globalThis,'fetch').mockImplementation(async()=>{throw Error('No provider/network calls permitted');});verifyNetwork=()=>{try{expect(fetch).not.toHaveBeenCalled();}finally{fetch.mockRestore();}};await resetDb();base=await seedBase();group=context(base);
 });
 afterEach(async()=>{try{const outstanding=[...activeBarriers];for(const barrier of outstanding)barrier.stop();await Promise.all(outstanding.map(barrier=>barrier.finished));verifyNetwork();}finally{vi.unstubAllEnvs();}});
-afterAll(async()=>{try{if(installed)await restore();if(ownedCapabilities.size){await resetDb();await owner.client`delete from app.ai_spend_capability where digest=any(${[...ownedCapabilities]}::text[])`;}}finally{await closeAll();}});
+afterAll(async()=>{try{expect(await definitions()).toEqual(original);expect(await addedDefinitions(owner.client)).toEqual(created);if(ownedCapabilities.size){await resetDb();await owner.client`delete from app.ai_spend_capability where digest=any(${[...ownedCapabilities]}::text[])`;}}finally{await closeAll();}});
 
-describe.sequential('AI Centre presentation native purpose prototype',()=>{
- it('keeps all old native wrapper metadata/ACL/owner and denies every private helper to the app role',async()=>{
+describe.sequential('AI Centre journalled presentation native purpose',()=>{
+ it('has the reviewed native wrapper identities and denies every private helper to the app role',async()=>{
   expect(createHash('sha256').update(readFileSync('test/fixtures/ai-management-locked-baseline.ts')).digest('hex')).toBe('fdd12d1bf9048ea433b45c3c6ad4abe588551340d534bae4adf36e135b786897');
   const current=await definitions();expect(current).toHaveLength(4);
-  for(const before of original){const after=current.find(r=>r.signature===before.signature)!;const{prosrc:oldBody,...oldMetadata}=before.details,{prosrc:newBody,...newMetadata}=after.details;expect(newMetadata).toEqual(oldMetadata);if(before.signature.includes('_ai_provider_evaluation_actor_valid'))expect(newBody).toEqual(oldBody);}
+  for(const row of current)expect(row.details).toMatchObject({prosecdef:true,proisstrict:false,proleakproof:false,proparallel:'u',procost:100,proconfig:['search_path=public, pg_temp']});
   const rows=await owner.client`select p.proname,r.rolname as owner,p.prosecdef,has_function_privilege('ai_hr_app',p.oid,'EXECUTE') as app_exec,
    exists(select 1 from aclexplode(coalesce(p.proacl,acldefault('f',p.proowner)))a where a.grantee=0) as public_exec
    from pg_proc p join pg_roles r on r.oid=p.proowner where p.pronamespace='app'::regnamespace and p.proname like '_ai_presentation_%' order by p.proname`;
@@ -229,12 +222,9 @@ describe.sequential('AI Centre presentation native purpose prototype',()=>{
   await owner.db.update(schema.employment).set({terminatedOn:'2020-01-02'}).where(eq(schema.employment.id,hired.employmentId));expect((await owner.client`select app.login_blocked(${base.adminUserId}::uuid)as blocked`)[0].blocked).toBe(true);await expect(aiManagementPresentationView(linked)).rejects.toThrow();
   await owner.db.update(schema.employment).set({terminatedOn:null}).where(eq(schema.employment.id,hired.employmentId));const supplied={...linked,roles:linked.roles?.slice(),grants:linked.grants?.map(g=>({...g}))},pending=aiManagementPresentationView(supplied);supplied.tenantId=randomUUID();supplied.roles=['employee'];supplied.grants=[{role:'employee',companyId:null}];expect((await pending).provider).toBeTruthy();
  });
- it('refuses predecessor metadata drift atomically and restores the exact original native functions',async()=>{
-  await restore();try{
-   await expect(owner.client.begin(tx=>tx.unsafe(prototype))).rejects.toSatisfy((e:unknown)=>pgSqlState(e)==='55000');
-   await owner.client`alter function app.ai_spend_status() cost 101`;await expect(install()).rejects.toSatisfy((e:unknown)=>pgSqlState(e)==='55000');
-   expect((await owner.client`select count(*)::int as n from pg_proc where pronamespace='app'::regnamespace and (proname like '_ai_presentation_%' or proname like '%presentation_status_v1' or proname='ai_provider_candidate_presentation_v1')`)[0].n).toBe(0);
-   expect((await owner.client`select procost from pg_proc where oid='app.ai_spend_status()'::regprocedure`)[0].procost).toBe(101);
-  }finally{for(const row of original)await owner.client.unsafe(row.definition);expect(await definitions()).toEqual(original);await install();}
+ it('refuses replay of the actual guarded append without changing installed functions or facts',async()=>{
+  const before=await effects();
+  await expect(owner.client.begin(tx=>tx.unsafe(append))).rejects.toSatisfy((e:unknown)=>pgSqlState(e)==='55000');
+  expect(await definitions()).toEqual(original);expect(await addedDefinitions(owner.client)).toEqual(created);expect(await effects()).toEqual(before);
  });
 });
