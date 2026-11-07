@@ -1,7 +1,7 @@
 import {describe,it,expect} from 'vitest';
 import {selection,digest,validateCertificate,validateCommit} from '../.github/ci/ui-audit-arrival-recovery-policy.mjs';
 const now=1900000000000,tool='a'.repeat(64);
-const certificate=()=>({kind:'UI_AUDIT_REAUTHENTICATED_ARRIVAL_CLEANUP_ONLY_V1',selection:structuredClone(selection),tool,ownerEvidence:'b'.repeat(64),reauthenticatedAt:new Date(now-1000).toISOString(),ciIdentity:{run:42360223365,source:selection.source,controller:'2b90f2e45ecafd732e9e772d8edc243ee98b09bc',artifact:13569776347,metadata:'c'.repeat(64)},inspection:{fences:'d'.repeat(64),originals:'e'.repeat(64),runtime:'f'.repeat(64)},issuedAt:new Date(now).toISOString(),expiresAt:new Date(now+900000).toISOString()});
+const certificate=()=>({kind:'UI_AUDIT_REAUTHENTICATED_ARRIVAL_CLEANUP_ONLY_V1',selection:structuredClone(selection),tool,ownerEvidence:'b'.repeat(64),reauthenticatedAt:new Date(now-1000).toISOString(),ciIdentity:{run:42367684288,source:selection.source,controller:'2b90f2e45ecafd732e9e772d8edc243ee98b09bc',artifact:13572741570,metadata:'c'.repeat(64)},inspection:{fences:'d'.repeat(64),originals:'e'.repeat(64),runtime:'f'.repeat(64)},issuedAt:new Date(now).toISOString(),expiresAt:new Date(now+900000).toISOString()});
 describe('UI audit cleanup permission limits',()=>{
  it('admits only the exact original installation with independent finite permission',()=>expect(validateCertificate(certificate(),tool,now)).toEqual(certificate()));
  for(const key of ['source','installId','buildRecordId','nextBuildId','authorizationSha256','batch','epoch'])it('refuses changed selection '+key,()=>{const c=certificate();(c.selection as any)[key]='wrong';expect(()=>validateCertificate(c,tool,now)).toThrow();});

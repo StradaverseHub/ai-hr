@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
 import {isDeepStrictEqual as same} from 'node:util';
-export const selection=Object.freeze({source:'09f4fcb9482dca79177df93fea29039611c40550',installId:'db6f9642-b3be-4d03-bb9f-84da6a4f3d6d',buildRecordId:'928f6b3f-e167-4d39-adcd-cfd67dee6f0e',nextBuildId:'Q3Pmy99yco3QjWlBO5FE2',authorizationSha256:'7a0d720925a49ae2b8a17894a4127ecc594e36fdec25230494a725faaaa4d3d4',batch:'2de10646-5ea9-4e6e-a9fa-525c89a7650f',epoch:58});
+export const selection=Object.freeze({source:'4a5a9de8c7c4c7a92dcce5d55a14b736336a87e7',installId:'6b18d867-94db-42e9-895c-3808a043d184',buildRecordId:'8b8ace1b-bc98-4fdc-b0b1-741d9f9f064b',nextBuildId:'T1zBIDei7Grrkj7LmjnrV',authorizationSha256:'1c7e24cd58c4a972cf8ca3b27d2ade363820157df09fcc376806934d588d10a4',batch:'5e71c78d-6c55-4800-8ab9-2958c101fe41',epoch:59});
 export const canonical=v=>Array.isArray(v)?'['+v.map(canonical).join(',')+']':v&&typeof v==='object'?'{'+Object.keys(v).sort().map(k=>JSON.stringify(k)+':'+canonical(v[k])).join(',')+'}':JSON.stringify(v);
 export const digest=v=>createHash('sha256').update(typeof v==='string'||Buffer.isBuffer(v)?v:canonical(v)).digest('hex');
 const hex=v=>typeof v==='string'&&/^[a-f0-9]{64}$/.test(v);
@@ -11,7 +11,7 @@ export function validateCertificate(c,tool,now=Date.now()){
  assert(c&&same(Object.keys(c).sort(),'kind selection tool ownerEvidence reauthenticatedAt ciIdentity inspection issuedAt expiresAt'.split(' ').sort()),'Exact certificate fields');
  assert(c.kind==='UI_AUDIT_REAUTHENTICATED_ARRIVAL_CLEANUP_ONLY_V1'&&same(c.selection,selection)&&c.tool===tool&&hex(tool)&&hex(c.ownerEvidence),'Exact reviewed purpose/source/tool/owner');
  assert(same(Object.keys(c.inspection).sort(),['fences','originals','runtime'])&&Object.values(c.inspection).every(hex),'Full inspection bindings');
- assert(c.ciIdentity.run===42360223365&&c.ciIdentity.source===selection.source&&c.ciIdentity.controller==='2b90f2e45ecafd732e9e772d8edc243ee98b09bc'&&c.ciIdentity.artifact===13569776347&&hex(c.ciIdentity.metadata),'Authenticated original CI identity');
+ assert(c.ciIdentity.run===42367684288&&c.ciIdentity.source===selection.source&&c.ciIdentity.controller==='2b90f2e45ecafd732e9e772d8edc243ee98b09bc'&&c.ciIdentity.artifact===13572741570&&hex(c.ciIdentity.metadata),'Authenticated original CI identity');
  const start=Date.parse(c.issuedAt),end=Date.parse(c.expiresAt),auth=Date.parse(c.reauthenticatedAt);
  assert([start,end,auth,now].every(Number.isFinite)&&start<=now&&end>now&&end-start===900000&&auth<=start&&start-auth<=120000,'Fresh independent fifteen-minute cleanup permission');return c;
 }
