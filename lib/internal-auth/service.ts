@@ -8,7 +8,7 @@ import { generateSecret, verify } from 'otplib';
 import { client,withPoolWork } from '../../db/client';
 import { internalConfig, internalIssuer } from './config';
 import { digest, opaque, validOpaque, passwordMatches, DUMMY_PASSWORD_HASH } from './crypto';
-import { authTransaction, readRecord, readAuthRecord, readAuthRecordPair, writeRecord, deleteRecord, revokeCredentialsSessions, type AuthSql } from './store';
+import { authTransaction, readRecord, readRecordPair, readAuthRecord, withAuthReadConnection, writeRecord, deleteRecord, revokeCredentialsSessions, type AuthSql } from './store';
 import { InternalAuthError } from './errors';
 import { assertActiveCredential, type Credential } from './credential';
 import { idleTimeoutMinutesFor } from '../session-policy-server';
@@ -219,13 +219,23 @@ async function loadSession(token: string | undefined, native: boolean) {
   if (native && !token?.startsWith('aihr_')) return null;
   const raw = native ? token!.slice(5) : token;
   if (!validOpaque(raw)) return null;
-  const key = `session:${digest(raw)}`, session = await readAuthRecord<Session>(key);
-  if (!session || session.native !== native || session.absoluteExpiry <= Date.now()) return null;
-  const c = await readAuthRecordPair<Credential>(credentialKey(session.subject), `family:${session.family}`,
-    credential => credential.version === session.version);
-  if (!c) return null;
-  if(c.accountActiveUntil&&!accountAvailable(c)){await authTransaction(c.subject,tx=>observeStoredAccountExpiry(tx,c.subject));return null;}
-  try { await withPoolWork('authentication',()=>assertActiveCredential(client, c)); } catch (e) { if (e instanceof InternalAuthError) return null; throw e; }
+  const key = `session:${digest(raw)}`;
+  const facts=await withAuthReadConnection(async connection=>{
+    const session=await readRecord<Session>(connection,key);
+    if (!session || session.native !== native || session.absoluteExpiry <= Date.now()) return null;
+    const c=await readRecordPair<Credential>(connection,credentialKey(session.subject),`family:${session.family}`,
+      credential=>credential.version===session.version);
+    if(!c)return null;
+    const expiredAccount=Boolean(c.accountActiveUntil&&!accountAvailable(c));
+    if(!expiredAccount){
+      try{await assertActiveCredential(connection,c);}catch(error){if(error instanceof InternalAuthError)return null;throw error;}
+    }
+    return {session,c,expiredAccount};
+  });
+  if(!facts)return null;
+  const {session,c,expiredAccount}=facts;
+  // Account/idle writes keep their original independent transactions after the read lease ends.
+  if(expiredAccount){await authTransaction(c.subject,tx=>observeStoredAccountExpiry(tx,c.subject));return null;}
   if (native) return { key, session, c, idleMs: null };
   const idleMs = await idleTimeoutMinutesFor(c.tenantId) * 60_000;
   if (session.lastActivity === undefined) {

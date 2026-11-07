@@ -83,6 +83,7 @@ const globalForPg = globalThis as unknown as {
   __aihrDbAdmission?: WeakMap<ReturnType<typeof postgres>, ReturnType<typeof createDatabaseAdmission>>;
   __aihrBackgroundReadAdmission?: WeakMap<ReturnType<typeof postgres>, ReturnType<typeof createBackgroundReadAdmission>>;
   __aihrPerfBeginTransaction?: (poolMax: number) => { acquired: () => void; finished: () => void };
+  __aihrPerfBeginPoolWork?: (poolMax: number) => { acquired: () => void; finished: () => void };
 };
 const pgPools = (globalForPg.__aihrPgPools ??= new Map<string, ReturnType<typeof postgres>>());
 const admissionByPool = (globalForPg.__aihrDbAdmission ??= new WeakMap());
@@ -210,9 +211,11 @@ export function createDb(connectionString: string, options?: { max?: number }) {
    */
   async function withPoolWork<T>(tenant: string, work: () => PromiseLike<T>, signal?: AbortSignal): Promise<T> {
     signal = databaseReadSignal(signal);
-    const release = await poolAdmission.acquire(tenant, currentDatabaseWorkload(), signal);
-    try { signal?.throwIfAborted(); return await work(); }
-    finally { release(); }
+    const timing=globalForPg.__aihrPerfBeginPoolWork?.(configuredPoolMax);let release:(()=>void)|undefined;
+    try {
+      release=await poolAdmission.acquire(tenant,currentDatabaseWorkload(),signal);timing?.acquired();
+      signal?.throwIfAborted();return await work();
+    }finally{release?.();timing?.finished();}
   }
 
 

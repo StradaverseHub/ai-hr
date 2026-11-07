@@ -3,7 +3,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import { generate } from 'otplib';
 import { client,withPoolWork } from '../db/client';
 import {withDatabaseReadCancellation} from '../db/workload';
-import {readAuthRecord,readAuthRecordPair} from '../lib/internal-auth/store';
+import {readAuthRecord,readAuthRecordPair,withAuthReadConnection} from '../lib/internal-auth/store';
 import { readRecord, writeRecord, deleteRecord, type AuthSql } from '../lib/internal-auth/record-store';
 import { assertActiveCredential } from '../lib/internal-auth/credential';
 import { bootstrapInternalOwner } from '../lib/internal-auth/bootstrap';
@@ -25,11 +25,16 @@ describe('explicit transaction reads through real canonical private SQL',()=>{
     const controller=new AbortController(),reason=new Error('fixture read abandoned');
     const record=withDatabaseReadCancellation(controller.signal,()=>readAuthRecord('fixture:admitted-read'));
     const pair=withDatabaseReadCancellation(controller.signal,()=>readAuthRecordPair<{version:string}>('fixture:admitted-read','fixture:admitted-family',first=>first.version==='original'));
-    const refusals=Promise.all([expect(record).rejects.toBe(reason),expect(pair).rejects.toBe(reason)]);
+    let connectionEntered=false;
+    const serial=withDatabaseReadCancellation(controller.signal,()=>withAuthReadConnection(async connection=>{connectionEntered=true;return readRecord(connection,'fixture:admitted-read');}));
+    const refusals=Promise.all([expect(record).rejects.toBe(reason),expect(pair).rejects.toBe(reason),expect(serial).rejects.toBe(reason)]);
     controller.abort(reason);
-    try{await refusals;}finally{release();await Promise.all(holders);}
+    try{await refusals;expect(connectionEntered).toBe(false);}finally{release();await Promise.all(holders);}
     expect(await readAuthRecord('fixture:admitted-read')).toEqual({version:'original'});
     expect(await readAuthRecordPair<{version:string}>('fixture:admitted-read','fixture:admitted-family',first=>first.version==='original')).toEqual({version:'original'});
+    expect(await withAuthReadConnection(connection=>readRecord(connection,'fixture:admitted-read'))).toEqual({version:'original'});
+    await expect(withAuthReadConnection(async connection=>{await connection.unsafe('select 1/0');})).rejects.toMatchObject({code:'22012'});
+    expect(await readAuthRecord('fixture:admitted-read')).toEqual({version:'original'});
   });
   it('uses the restricted app role without exposing the private table and retains transaction rollback',async()=>{
     const [role]=await client`select current_user as name,rolsuper,rolbypassrls from pg_roles where rolname=current_user`;
