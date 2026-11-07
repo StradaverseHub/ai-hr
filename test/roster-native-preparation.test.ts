@@ -147,7 +147,7 @@ it.each(['transfer','new-arrival'] as const)('rechecks reviewed department targe
   await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${'access-configuration:'+b.tenantId},0))`);entered();await unblock;
   if(change==='transfer')await tx.update(schema.assignment).set({departmentId:b.deptB}).where(eq(schema.assignment.employmentId,ids[0]));
   else{
-   await tx.insert(schema.person).values({id:newPerson,tenantId:b.tenantId,fullName:'Unreviewed queued arrival'});
+   await tx.insert(schema.person).values({id:newPerson,tenantId:b.tenantId,fullName:'Unreviewed queued arrival',primaryEmail:newPerson+'@example.invalid'});
    await tx.insert(schema.employment).values({id:newcomer,tenantId:b.tenantId,personId:newPerson,companyId:b.companyId,hiredOn:'2020-01-01'});
    await tx.insert(schema.assignment).values({tenantId:b.tenantId,employmentId:newcomer,departmentId:b.deptA,employmentType:'full_time',validFrom:'2020-01-01'});
   }
