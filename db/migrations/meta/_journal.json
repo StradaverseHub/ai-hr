@@ -4924,6 +4924,13 @@
       "breakpoints": true
     },
     {
+      "idx": 1900,
+      "version": "7",
+      "when": 1793330002200,
+      "tag": "2600_onboarding_current_personnel",
+      "breakpoints": true
+    },
+    {
       "idx": 2000,
       "version": "7",
       "when": 1793330002300,

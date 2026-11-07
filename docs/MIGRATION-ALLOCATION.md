@@ -1753,3 +1753,14 @@ The release gate found additional company retention references from the approved
 Append `2211_company_retention_approved_expansion` at idx 1422 / timestamp 1793330001622.
 SHA256 `5e336a948b9490d9355eba65d6f341618334a031c7bdc66562ed9139b7c5f0c4`. The migration adds scoped retention checks and validated tenant keys for the new owners.
 It preserves earlier SQL and the original staging ledger.
+
+## Open onboarding Personnel projection — 7 November 2026 (unapplied)
+
+Branch `codex/board-approved-20261107` reserves `2600_onboarding_current_personnel`,
+idx 1900 / when 1793330002200. A read-only scan of 3010 local/remote ref heads
+(474 distinct journal blobs) found the previous highest timestamp 1793330002130
+at `2510_capability_statement_plan_reuse`. All 342 readable registered worktree
+journals were also checked; none had a higher competing claim. The original
+alpha journal prefix and SQL bytes are preserved. This is an unapplied source
+reservation: recheck freshly fetched integration journals, peer WIP and the exact
+installed ordered ledger before integration or release admission.
