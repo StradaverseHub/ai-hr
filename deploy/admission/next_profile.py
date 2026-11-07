@@ -27,7 +27,7 @@ MAX_FILE = 256 * 1024 * 1024
 MAX_TOTAL = 4 * 1024 * 1024 * 1024
 SHA = re.compile(r'[a-f0-9]{64}')
 SAFE_PATH = re.compile(r'/[A-Za-z0-9_./@-]+')
-EXTRA_PROPERTIES = ('ProtectSystem', 'PrivateMounts', 'NoNewPrivileges', 'CapabilityBoundingSet',
+EXTRA_PROPERTIES = ('ProtectSystem', 'ProtectHome', 'PrivateMounts', 'NoNewPrivileges', 'CapabilityBoundingSet',
                     'RestrictNamespaces', 'BindPaths', 'BindReadOnlyPaths', 'ReadWritePaths',
                     'ReadOnlyPaths', 'Slice', 'CPUQuotaPerSecUSec', 'MemoryHigh', 'MemoryMax')
 APP_ENVIRONMENT = frozenset({'NODE_ENV', 'HOME', 'PATH', 'NEXT_TELEMETRY_DISABLED', 'AUTH_PROVIDER',
@@ -471,7 +471,8 @@ class NextRuntime:
         require, spec = self.require, self.value['units'][unit]
         envelope = self.value['resourceEnvelope']
         require(all(key in properties for key in EXTRA_PROPERTIES), 'Managed unit properties incomplete')
-        require(properties['ProtectSystem'] == 'strict' and properties['PrivateMounts'] == 'yes'
+        require(properties['ProtectSystem'] == 'strict' and properties['ProtectHome'] == 'yes'
+                and properties['PrivateMounts'] == 'yes'
                 and properties.get('DynamicUser') == 'no'
                 and properties['NoNewPrivileges'] == 'yes' and properties['Slice'] == envelope['slice']
                 and properties['CPUQuotaPerSecUSec'] == 'infinity'
@@ -536,6 +537,19 @@ class NextRuntime:
             release_observed = {'device': release_info.st_dev, 'inode': release_info.st_ino,
                                 'readOnly': bool(os.fstatvfs(release_fd).f_flag & os.ST_RDONLY)}
             mounts = parse_mountinfo(read_proc(proc_fd, 'mountinfo', 4 * 1024 * 1024, require), require)
+            inaccessible = pathlib.Path('/run/systemd/inaccessible/dir')
+            self.secure_path(inaccessible, 0, directory=True)
+            inaccessible_before = inaccessible.stat()
+            require(stat.S_IMODE(inaccessible_before.st_mode) == 0, 'Native inaccessible directory differs')
+            home_observed = {}
+            for target in ('/home', '/root', '/run/user'):
+                home_fd = open_beneath(root_fd, target, require)
+                stack.callback(os.close, home_fd)
+                info = os.fstat(home_fd)
+                home_observed[target] = {'device': info.st_dev, 'inode': info.st_ino, 'uid': info.st_uid,
+                    'mode': stat.S_IMODE(info.st_mode), 'readOnly': bool(os.fstatvfs(home_fd).f_flag & os.ST_RDONLY)}
+            home_proof = validate_home_isolation(mounts,
+                (inaccessible_before.st_dev, inaccessible_before.st_ino), home_observed, require)
             cache_sources = self.cache_sources(unit)
             cache_observed = {}
             for target, (source, before) in cache_sources.items():
@@ -565,7 +579,8 @@ class NextRuntime:
                     and alive(identity), 'Managed Next worker namespace/process changed')
             self.package_trees[spec['releaseDirectory']].assert_unchanged()
             self.metadata_current()
-            return {'namespaceInode': namespace.st_ino, **mount_proof,
+            require(file_identity(inaccessible.stat()) == file_identity(inaccessible_before), 'Native inaccessible directory changed')
+            return {'namespaceInode': namespace.st_ino, **mount_proof, **home_proof,
                     'actualKernelMountsVerified': True, 'actualEnvironmentVerified': True}
 
     def _environment(self, raw, port, *, invocation=None, pid=None, user=None):
@@ -736,6 +751,19 @@ class NextRuntime:
                 'cpuStat': key_values(kernel_text(directory / 'cpu.stat', self.secure_path, require), require),
                 'cpuOversubscriptionDiagnostic': envelope['cpuOversubscriptionDiagnostic'],
                 'productionEquivalent': False}
+
+
+def validate_home_isolation(mounts, inaccessible, observed, require):
+    """Kernel model oracle; only worker() can turn actual observations into proof."""
+    targets = {'/home', '/root', '/run/user'}
+    require(set(observed) == targets, 'Native protected home observations incomplete')
+    for target in targets:
+        rows = [row for row in mounts if row['target'] == target]
+        require(len(rows) == 1 and 'ro' in rows[0]['options'] and not any(
+            row['target'].startswith(target + '/') for row in mounts), 'Native home isolation mount differs')
+        require(observed[target] == {'device': inaccessible[0], 'inode': inaccessible[1], 'uid': 0,
+            'mode': 0, 'readOnly': True}, 'Worker home is not the identical inaccessible native inode')
+    return {'protectedHomePaths': sorted(targets)}
 
 
 def validate_namespace(mounts, release, package_root, observed_root, sources, observed_caches, worker_uid, require):

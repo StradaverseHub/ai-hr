@@ -289,7 +289,7 @@ class LinuxHost:
                 'SetCredential', 'SetCredentialEncrypted', 'ImportCredential']
         if self.profile.next_runtime is not None and unit in self.profile.value['units']:
             keys.extend([
-                'ProtectSystem', 'PrivateMounts', 'NoNewPrivileges', 'CapabilityBoundingSet', 'RestrictNamespaces',
+                'ProtectSystem', 'ProtectHome', 'PrivateMounts', 'NoNewPrivileges', 'CapabilityBoundingSet', 'RestrictNamespaces',
                 'BindPaths', 'BindReadOnlyPaths', 'ReadWritePaths', 'ReadOnlyPaths', 'Slice',
                 'CPUQuotaPerSecUSec', 'MemoryHigh', 'MemoryMax'])
         try:

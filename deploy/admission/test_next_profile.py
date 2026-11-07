@@ -384,7 +384,7 @@ class NextProfileTests(unittest.TestCase):
         runtime, unit = self.runtime(), 'aihr-web@1.service'
         root = str(self.release)
         props = {key: '' for key in N.EXTRA_PROPERTIES}
-        props.update({'ProtectSystem': 'strict', 'PrivateMounts': 'yes', 'NoNewPrivileges': 'yes', 'DynamicUser': 'no',
+        props.update({'ProtectSystem': 'strict', 'ProtectHome': 'yes', 'PrivateMounts': 'yes', 'NoNewPrivileges': 'yes', 'DynamicUser': 'no',
             'Slice': self.envelope['slice'], 'CPUQuotaPerSecUSec': 'infinity',
             'MemoryHigh': 'infinity', 'MemoryMax': 'infinity',
             'ExecStart': '{ path=' + str(self.node) + ' ; argv[]=' + str(self.node)
@@ -402,7 +402,7 @@ class NextProfileTests(unittest.TestCase):
                                ('BindReadOnlyPaths', {'type': 'a(ssbt)', 'data': [[root, root, False, 4096]]})]:
                 with self.assertRaises(C.Refused):
                     runtime.unit_configuration(unit, props, typed | {key: value})
-            for changes in ({'ProtectSystem': 'no'}, {'ReadWritePaths': root}, {'DynamicUser': 'yes'},
+            for changes in ({'ProtectSystem': 'no'}, {'ProtectHome': 'read-only'}, {'ReadWritePaths': root}, {'DynamicUser': 'yes'},
                             {'ExecStart': props['ExecStart'].replace('--hostname 127.0.0.1', '-p 3000')},
                             {'NoNewPrivileges': 'no'}):
                 with self.assertRaises(C.Refused):
@@ -468,6 +468,20 @@ class NextProfileTests(unittest.TestCase):
                     b'10 1 0:2 / /bad\\000target rw - ext4 /dev/model rw\n'):
             with self.assertRaises(C.Refused):
                 N.parse_mountinfo(raw, C.require)
+
+    def test_home_model_requires_actual_inaccessible_inode_not_only_a_protecthome_string(self):
+        targets = ('/home', '/root', '/run/user')
+        mounts = [{'target': target, 'options': {'ro'}} for target in targets]
+        observed = {target: {'device': 1, 'inode': 77, 'uid': 0, 'mode': 0, 'readOnly': True} for target in targets}
+        self.assertEqual(N.validate_home_isolation(mounts, (1, 77), observed, C.require), {'protectedHomePaths': sorted(targets)})
+        for changes in ({'inode': 78}, {'mode': 0o755}, {'uid': 1001}, {'readOnly': False}):
+            bad = copy.deepcopy(observed)
+            bad['/home'].update(changes)
+            with self.subTest(changes=changes), self.assertRaises(C.Refused):
+                N.validate_home_isolation(mounts, (1, 77), bad, C.require)
+        for bad in (mounts[:-1], mounts + [{'target': '/home/runner/work', 'options': {'ro'}}]):
+            with self.assertRaises(C.Refused):
+                N.validate_home_isolation(bad, (1, 77), observed, C.require)
 
 if __name__ == '__main__':
     unittest.main()
