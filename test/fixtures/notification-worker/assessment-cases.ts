@@ -70,6 +70,13 @@ describe.sequential('native assessment reminder preparation (stage3)',()=>{
   const [clock]=await tx`select notification_worker.facts(${batch}::uuid,${event}::uuid,'assessment-reminder-current') as value`;
   return{facts,proposal:{kind:'prepare',...assessmentReminderPreparationValue({actor,name:'Fictional reminder subject',cycleName:'Fictional native reminder cycle',cycleId:facts.cycleId,tenantScope:'00000000-0000-0000-0000-000000000000',epochs:facts.epochs,expiresAt:assessmentReminderProjectionExpiry(new Date(facts.startedAt),facts.graph,facts.moduleExpiry?new Date(facts.moduleExpiry):null),now:new Date(clock.value.checkedAt),words:null})}};
  }
+ async function assertGlobalCursor(tenantId:string,sourceEvent?:string){
+  const [expected]=sourceEvent?await owner.client`select sequence from public.domain_event where id=${sourceEvent}::uuid and tenant_id=${tenantId}::uuid`:
+   await owner.client`select max(sequence) as sequence from public.domain_event where tenant_id=${tenantId}::uuid`;
+  if(!expected?.sequence)throw Error('Actual committed source sequence required');
+  const [cursor]=await owner.client`select last_sequence,assessment_last_sequence from public.notification_cursor where tenant_id=${tenantId}::uuid`;
+  expect(cursor).toEqual({last_sequence:String(expected.sequence),assessment_last_sequence:null});
+ }
  async function preparationEffects(row:Awaited<ReturnType<typeof queued>>,run:string){
   const tenant=row.tenantId,event=row.sourceEventId!;
   return{
@@ -91,6 +98,7 @@ describe.sequential('native assessment reminder preparation (stage3)',()=>{
   for(const item of [a,b]){expect(new Date(item.preparedAt!).getTime()).toBeGreaterThanOrEqual(before.getTime());expect(new Date(item.preparedUntil!).getTime()).toBeGreaterThan(new Date(item.preparedAt!).getTime());expect(new Date(item.preparedUntil!).getTime()-new Date(item.preparedAt!).getTime()).toBeLessThanOrEqual(60000);expect(item.outcome).toBe('queued');}
   const normalize=async(f:Fixture,event:string)=>{const [notice]=await owner.db.select().from(s.notification).where(eq(s.notification.sourceEventId,event));expect(notice.recipientEmploymentId).toBe(f.subject.employmentId);const [outbox]=await owner.db.select().from(s.notificationDelivery).where(eq(s.notificationDelivery.notificationId,notice.id));expect(outbox.recipientUserId).toBe(f.self.userId);return{kind:notice.kind,title:notice.title,body:notice.body,link:notice.linkPath,severity:notice.severity,delivery:{kind:outbox.kind,category:outbox.category,status:outbox.status,attempts:outbox.attempts}};};
   expect(await normalize(native,next.sourceEventId!)).toEqual(await normalize(legacy,old.sourceEventId!));
+  await assertGlobalCursor(native.b.tenantId);await assertGlobalCursor(legacy.b.tenantId);
   expect((await owner.client`select count(*)::integer as n from pg_stat_activity where usename='ai_hr_notification_worker'`)[0].n).toBe(1);
   for(const table of ['assessment_admission','assessment_projection'])expect(await owner.client.unsafe(`select * from notification_worker_private.${table}`)).toHaveLength(0);
  },30000);
@@ -182,6 +190,7 @@ describe.sequential('native assessment reminder preparation (stage3)',()=>{
   const persisted=await prepared(row.id);expect({tasks:persisted.tasks,words:persisted.mailWords}).toEqual(expected);
   expect(assessmentReminderMailSchema.parse({tasks:persisted.tasks,words:persisted.mailWords})).toEqual(expected);
   expect(persisted.outcome).toBe('queued');expect(persisted.tasks[4].people).toEqual(['Fictional 😀','😀'.repeat(100)]);
+  await assertGlobalCursor(base.tenantId,row.sourceEventId!);
   const effects=await preparationEffects(row,run);expect(effects.notices).toHaveLength(1);expect(effects.outbox).toHaveLength(1);expect(effects.batches).toEqual([]);expect(effects.admissions).toEqual([]);
  },30000);
 });
