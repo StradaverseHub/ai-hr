@@ -2,7 +2,8 @@
 import {readFileSync,readdirSync} from 'node:fs';
 import {join,relative,resolve} from 'node:path';
 import {pathToFileURL} from 'node:url';
-import {declaredNavigationCatalogue,resolveNavigationCatalogue,NAVIGATION_COVERAGE_BACKLOG,type NavigationCatalogue,type CatalogueIssue,type ResolvedCatalogueRow} from '../../lib/navigation/catalogue';
+import {readVerifiedNavigationDevelopmentEvidence,verifyNavigationDevelopmentRun} from './navigation-capture-verifier';
+import {declaredApplicationNavigationCatalogue,resolveNavigationCatalogue,NAVIGATION_COVERAGE_BACKLOG,type ApplicationNavigationCatalogue,type NavigationCatalogue,type CatalogueIssue,type ResolvedCatalogueRow} from '../../lib/navigation/catalogue';
 
 /** Untrusted recorded metadata. This type is never an authenticated execution receipt. */
 export type RecordedRuntimeClaim={destinationId:string;navigationHref:string;candidateSha:string;environment:string;
@@ -40,9 +41,11 @@ export function pageRouteMatches(route:string,href:string):boolean{
 }
 const nonempty=(value:unknown)=>typeof value==='string'&&value.trim().length>0;
 /** Structural integrity and runtime acceptance deliberately report separate outcomes. */
-export function auditNavigationCoverage({catalogue,ledger,pages,candidateSha,runtimeIssues=[],runtimeRows=[]}: {
- catalogue:NavigationCatalogue;ledger:CoverageLedger;pages:readonly PageRoute[];candidateSha:string;runtimeIssues?:readonly CatalogueIssue[];runtimeRows?:readonly ResolvedCatalogueRow[];
+export function auditNavigationCoverage({catalogue,ledger,pages,candidateSha,runtimeIssues=[],runtimeRows=[],developmentEvidence}: {
+ catalogue:NavigationCatalogue|ApplicationNavigationCatalogue;ledger:CoverageLedger;pages:readonly PageRoute[];candidateSha:string;runtimeIssues?:readonly CatalogueIssue[];runtimeRows?:readonly ResolvedCatalogueRow[];developmentEvidence?:unknown;
 }){
+ const authenticated=readVerifiedNavigationDevelopmentEvidence(developmentEvidence);
+ const evidence=authenticated?.candidateSha===candidateSha?authenticated:undefined;
  const errors=[...catalogue.issues,...runtimeIssues].map(issue=>`${issue.code}: ${issue.detail}`),runtimeMissing:string[]=[];
  const runtimeExpectations:{destinationId:string;navigationHrefs:string[]}[]=[];
  if(ledger.schemaVersion!==1)errors.push('unsupported ledger schema');
@@ -70,28 +73,40 @@ export function auditNavigationCoverage({catalogue,ledger,pages,candidateSha,run
    // Neither a review disposition nor any committed claim authenticates executed usable content.
    const resolvedClicks=runtimeRows.filter(resolved=>resolved.declaration.id===row.id&&resolved.state==='actionable').map(resolved=>resolved.navigationHref);
    runtimeExpectations.push({destinationId:row.id,navigationHrefs:resolvedClicks.length?resolvedClicks:[row.navigationHref]});
-   runtimeMissing.push(row.id);
+   const cases=evidence?.plan.scenarios.filter(scenario=>scenario.destinationId===row.id)??[];
+   const expectedHrefs=runtimeExpectations[runtimeExpectations.length-1].navigationHrefs;
+   const addressed=cases.every(scenario=>expectedHrefs.includes(scenario.href));
+   const roles=['employee','manager','companyHR','groupHR'];
+   const allRoles=roles.every(role=>cases.some(scenario=>scenario.role===role));
+   const usable=cases.some(scenario=>scenario.outcome==='usable');
+   // The private capability already reconciled every exact scenario with actual native
+   // observations in both phases; static claims and HTTP/heading checks cannot enter here.
+   if(!evidence?.captures.loaded||!addressed||!allRoles||!usable)runtimeMissing.push(row.id);
   }
  }
  for(const item of NAVIGATION_COVERAGE_BACKLOG){
   if(!ledger.backlog.some(entry=>entry.id===item.id&&nonempty(entry.owner)&&nonempty(entry.reason)))errors.push(`missing backlog review: ${item.id}`);
  }
  for(const item of ledger.backlog)if(!NAVIGATION_COVERAGE_BACKLOG.some(known=>known.id===item.id))errors.push(`stale backlog entry: ${item.id}`);
- // There is no authenticated CI execution/capture adapter in this bounded slice. Do not replace
- // this prerequisite with a caller-controlled flag or promote claims through metadata-shape checks.
+ // Development qualification is intentionally separate from the release verifier.
  const recordedClaims=ledger.entries.filter(entry=>entry.claims?.length).map(entry=>({destinationId:entry.id,count:entry.claims!.length}));
+ const baselineUsable=evidence?.captures.baseline.observations.filter(row=>row.outcome==='usable')??[];
  return {scope:ledger.scope,structural:{passed:errors.length===0,errors},runtimeAcceptance:{
-  passed:false,verifierUnavailable:true,
-  prerequisite:'An authenticated CI execution/capture verifier must prove candidate, scenario, role and usable-content outcome before any receipt can count as executed.',
-  verifiedReceiptCount:0,missingExecutedUsableContent:runtimeMissing,incompleteRegistries:ledger.backlog},
+  scope:'authenticated-development-runtime',releaseAuthorized:false,
+  passed:errors.length===0&&!!evidence?.captures.loaded&&runtimeMissing.length===0&&ledger.backlog.length===0,
+  verifierUnavailable:!evidence,
+  prerequisite:'Only a live-GitHub-authenticated, source-bound development capture with native role and usable-content assertions counts. Full coverage requires baseline and steady 500-user observations for every applicable declared destination and completed registry composition. This cannot authorize a release.',
+  verifiedReceiptCount:evidence?1:0,baselineUsableObservations:baselineUsable.length,
+  loadedUsableObservations:evidence?.captures.loaded?.observations.filter(row=>row.outcome==='usable').length??0,
+  missingExecutedUsableContent:runtimeMissing,incompleteRegistries:ledger.backlog},
   recordedClaims:{total:recordedClaims.reduce((sum,entry)=>sum+entry.count,0),destinations:recordedClaims},
   runtimeExpectations:{candidateSha,destinations:runtimeExpectations},
   counts:{declared:catalogue.declarations.length,sourcePages:pages.length},pages};
 }
-export function navigationCoverageMain(args=process.argv.slice(2)){
+export async function navigationCoverageMain(args=process.argv.slice(2)){
  const repositoryRoot=resolve(process.cwd());
  const ledger=JSON.parse(readFileSync(join(repositoryRoot,'scripts/performance/navigation-coverage-ledger.json'),'utf8')) as CoverageLedger;
- const catalogue=declaredNavigationCatalogue();
+ const catalogue=declaredApplicationNavigationCatalogue();
  // Synthetic facts exercise binding structure only; these are never runtime content receipts.
  const runtimeChecks=[{isAdmin:false},{isAdmin:true,canApprove:true,canAdministerOnehr:true,canAccessTeam:true,
   canAdministerSecurity:true,canConfigureAccess:true,canProvisionUsers:true,canConfigurePasswordPolicy:true,
@@ -102,8 +117,11 @@ export function navigationCoverageMain(args=process.argv.slice(2)){
   letterDestinations:catalogue.declarations.filter(row=>row.sourceOwner==='lib/letter-navigation.ts').map(row=>row.declaredHref),
   rewardDestinations:catalogue.declarations.filter(row=>row.sourceOwner==='packs/rewards/index.ts').map(row=>row.declaredHref),
  }].flatMap(facts=>resolveNavigationCatalogue(facts).issues);
- const report=auditNavigationCoverage({catalogue,ledger,pages:discoverPageRoutes(repositoryRoot),candidateSha:process.env.AIHR_CANDIDATE_SHA??'',runtimeIssues:runtimeChecks});
+ const verifyIndex=args.indexOf('--verify-development-run');
+ const developmentEvidence=verifyIndex===-1?undefined:await verifyNavigationDevelopmentRun({runId:Number(args[verifyIndex+1]),candidateRoot:repositoryRoot});
+ const verified=readVerifiedNavigationDevelopmentEvidence(developmentEvidence);
+ const report=auditNavigationCoverage({catalogue,ledger,pages:discoverPageRoutes(repositoryRoot),candidateSha:verified?.candidateSha??process.env.AIHR_CANDIDATE_SHA??'',runtimeIssues:runtimeChecks,developmentEvidence});
  process.stdout.write(JSON.stringify(report,null,2)+'\n');
  return (args.includes('--require-runtime')?report.runtimeAcceptance.passed:report.structural.passed)?0:1;
 }
-if(process.argv[1]&&import.meta.url===pathToFileURL(resolve(process.argv[1])).href)process.exitCode=navigationCoverageMain();
+if(process.argv[1]&&import.meta.url===pathToFileURL(resolve(process.argv[1])).href)navigationCoverageMain().then(code=>{process.exitCode=code;}).catch(error=>{process.stderr.write(String(error)+'\n');process.exitCode=1;});

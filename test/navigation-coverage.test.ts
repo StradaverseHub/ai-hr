@@ -2,12 +2,12 @@ import {describe,it,expect} from 'vitest';
 import {readFileSync,mkdtempSync,mkdirSync,writeFileSync,rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
-import {declaredNavigationCatalogue,resolveNavigationCatalogue,type NavigationCatalogue} from '../lib/navigation/catalogue';
+import {declaredApplicationNavigationCatalogue,resolveNavigationCatalogue,type ApplicationNavigationCatalogue} from '../lib/navigation/catalogue';
 import {auditNavigationCoverage,discoverPageRoutes,pageRouteMatches,type CoverageLedger,type RecordedRuntimeClaim} from '../scripts/performance/navigation-coverage';
 
 const candidateSha='1234567890abcdef1234567890abcdef12345678';
 const ledger=()=>JSON.parse(readFileSync(new URL('../scripts/performance/navigation-coverage-ledger.json',import.meta.url),'utf8')) as CoverageLedger;
-const audit=(review=ledger(),catalogue=declaredNavigationCatalogue())=>auditNavigationCoverage({catalogue,ledger:review,pages:discoverPageRoutes(process.cwd()),candidateSha});
+const audit=(review=ledger(),catalogue=declaredApplicationNavigationCatalogue())=>auditNavigationCoverage({catalogue,ledger:review,pages:discoverPageRoutes(process.cwd()),candidateSha});
 describe('navigation coverage separates source integrity from runtime acceptance',()=>{
  it('allows an honestly reviewed structural backlog while refusing required runtime coverage',()=>{
   const report=audit();expect(report.structural.errors).toEqual([]);
@@ -15,6 +15,14 @@ describe('navigation coverage separates source integrity from runtime acceptance
   expect(report.runtimeAcceptance.verifierUnavailable).toBe(true);expect(report.runtimeAcceptance.verifiedReceiptCount).toBe(0);
   expect(report.runtimeAcceptance.missingExecutedUsableContent.length).toBeGreaterThan(100);
   expect(report.runtimeAcceptance.incompleteRegistries.some(item=>item.id==='nested-submenus')).toBe(true);
+ });
+ it('rejects unbranded development capabilities and labels the result as development only',()=>{
+  const catalogue=declaredApplicationNavigationCatalogue();
+  const report=auditNavigationCoverage({catalogue,ledger:ledger(),pages:discoverPageRoutes(process.cwd()),candidateSha,
+   developmentEvidence:{scope:'authenticated-development-runtime',verified:true,releaseAuthorized:false,candidateSha,captures:{loaded:{complete:true}}}});
+  expect(report.runtimeAcceptance.scope).toBe('authenticated-development-runtime');expect(report.runtimeAcceptance.releaseAuthorized).toBe(false);
+  expect(report.runtimeAcceptance.verifierUnavailable).toBe(true);expect(report.runtimeAcceptance.verifiedReceiptCount).toBe(0);
+  expect(report.runtimeAcceptance.passed).toBe(false);
  });
  it('requires an authenticated verifier independently of whether any destination is missing evidence',()=>{
   const review=ledger();review.entries=[];
@@ -31,7 +39,7 @@ describe('navigation coverage separates source integrity from runtime acceptance
   const duplicate=ledger();duplicate.entries.push(duplicate.entries[0]);expect(audit(duplicate).structural.errors.some(error=>error.startsWith('duplicate ledger ID'))).toBe(true);
  });
  it('fails structural integrity for runtime binding failures and missing placement/provenance',()=>{
-  const catalogue=declaredNavigationCatalogue(),review=ledger();
+  const catalogue=declaredApplicationNavigationCatalogue(),review=ledger();
   const report=auditNavigationCoverage({catalogue,ledger:review,pages:discoverPageRoutes(process.cwd()),candidateSha,
    runtimeIssues:[{code:'unmapped-runtime-row',detail:'new runtime-only descriptor'}]});
   expect(report.structural.passed).toBe(false);
@@ -41,8 +49,8 @@ describe('navigation coverage separates source integrity from runtime acceptance
   expect(audit(review,catalogue).structural.errors).toContain(`missing placement: ${first.id}`);
  });
  it('a new leaf without a reviewed stable identity and ledger entry fails the gate',()=>{
-  const catalogue=declaredNavigationCatalogue(),first=catalogue.declarations[0];
-  const injected:NavigationCatalogue={issues:[],declarations:[...catalogue.declarations,{...first,id:'shell.reviewRequired',sourceKey:'review-required',declaredHref:'/unreviewed',navigationHref:'/unreviewed'}]};
+  const catalogue=declaredApplicationNavigationCatalogue(),first=catalogue.declarations[0];
+  const injected:ApplicationNavigationCatalogue={issues:[],declarations:[...catalogue.declarations,{...first,id:'shell.reviewRequired',sourceKey:'review-required',declaredHref:'/unreviewed',navigationHref:'/unreviewed'}]};
   expect(audit(ledger(),injected).structural.errors).toContain('missing ledger entry: shell.reviewRequired');
  });
  it('cannot promote plausible, fabricated or mere-heading claims into executed coverage',()=>{
@@ -74,7 +82,7 @@ describe('navigation coverage separates source integrity from runtime acceptance
   expect(report.runtimeAcceptance.passed).toBe(false);
  });
  it('treats every recorded claim as unverified even when every active destination claims a successful run',()=>{
-  const review=ledger(),catalogue=declaredNavigationCatalogue();
+  const review=ledger(),catalogue=declaredApplicationNavigationCatalogue();
   for(const entry of review.entries){entry.status='claimed';entry.claims=[{
    destinationId:entry.id,navigationHref:entry.declaredHref,candidateSha,environment:'fictional-test-installation',
    runUrl:'https://example.invalid/runs/2',executedAt:'2026-11-07T00:00:00Z',outcome:'passed',scenarioId:'declared-scenario',
@@ -89,7 +97,7 @@ describe('navigation coverage separates source integrity from runtime acceptance
   expect(report.runtimeAcceptance.passed).toBe(false);
  });
  it('reports substituted cycle-admin click expectations as metadata while its claim remains unverified',()=>{
-  const review=ledger(),catalogue=declaredNavigationCatalogue();
+  const review=ledger(),catalogue=declaredApplicationNavigationCatalogue();
   const latest='/performance/11111111-2222-4333-8444-555555555555/cycle/calendar';
   const resolved=resolveNavigationCatalogue({isAdmin:false,canAdministerOnehr:true,performanceAdminHref:latest});
   const admin=resolved.rows.find(row=>row.navigationHref===latest)!;

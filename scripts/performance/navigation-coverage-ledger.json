@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "scope": "Declared shell destinations only; nested page menus and the full app page universe remain incomplete.",
-  "reviewedAgainst": "4aeb6c2e6a74ed1ae1d7b52f4e2c1955c447e607",
+  "scope": "Declared shell destinations and composed static module submenus; parameterized record/form-local menus remain explicitly incomplete.",
+  "reviewedAgainst": "a33e813e28ec7fd3f651a6bcf0bce7020eb1b41f",
   "entries": [
     {
       "id": "shell.dashboard",
@@ -1415,13 +1415,598 @@
       "status": "uncovered",
       "owner": "lib/navigation/shell-inventory.ts",
       "reason": "No executed usable-content evidence for this stable shell destination is recorded in this ledger."
+    },
+    {
+      "id": "submenu.systemLabels.organisation",
+      "sourceOwner": "lib/navigation/module-submenus.ts",
+      "sourceKey": "submenu.systemLabels.organisation",
+      "declaredHref": "/admin/settings/system-labels",
+      "status": "uncovered",
+      "owner": "lib/navigation/module-submenus.ts",
+      "reason": "No authenticated executed usable-content evidence is recorded for this composed submenu destination."
+    },
+    {
+      "id": "submenu.systemLabels.profileOptions",
+      "sourceOwner": "lib/navigation/module-submenus.ts",
+      "sourceKey": "submenu.systemLabels.profileOptions",
+      "declaredHref": "/admin/settings/system-labels/profile-options",
+      "status": "uncovered",
+      "owner": "lib/navigation/module-submenus.ts",
+      "reason": "No authenticated executed usable-content evidence is recorded for this composed submenu destination."
+    },
+    {
+      "id": "submenu.claims.types",
+      "sourceOwner": "lib/navigation/module-submenus.ts",
+      "sourceKey": "submenu.claims.types",
+      "declaredHref": "/admin/claims",
+      "status": "uncovered",
+      "owner": "lib/navigation/module-submenus.ts",
+      "reason": "No authenticated executed usable-content evidence is recorded for this composed submenu destination."
+    },
+    {
+      "id": "submenu.claims.limits",
+      "sourceOwner": "lib/navigation/module-submenus.ts",
+      "sourceKey": "submenu.claims.limits",
+      "declaredHref": "/admin/claims/limits",
+      "status": "uncovered",
+      "owner": "lib/navigation/module-submenus.ts",
+      "reason": "No authenticated executed usable-content evidence is recorded for this composed submenu destination."
+    },
+    {
+      "id": "submenu.claims.mileage",
+      "sourceOwner": "lib/navigation/module-submenus.ts",
+      "sourceKey": "submenu.claims.mileage",
+      "declaredHref": "/admin/claims/mileage",
+      "status": "uncovered",
+      "owner": "lib/navigation/module-submenus.ts",
+      "reason": "No authenticated executed usable-content evidence is recorded for this composed submenu destination."
+    },
+    {
+      "id": "submenu.claims.reimbursements",
+      "sourceOwner": "lib/navigation/module-submenus.ts",
+      "sourceKey": "submenu.claims.reimbursements",
+      "declaredHref": "/admin/claims/reimbursements",
+      "status": "uncovered",
+      "owner": "lib/navigation/module-submenus.ts",
+      "reason": "No authenticated executed usable-content evidence is recorded for this composed submenu destination."
+    },
+    {
+      "id": "submenu.attendance.overview",
+      "sourceOwner": "lib/navigation/module-submenus.ts",
+      "sourceKey": "submenu.attendance.overview",
+      "declaredHref": "/attendance",
+      "status": "uncovered",
+      "owner": "lib/navigation/module-submenus.ts",
+      "reason": "No authenticated executed usable-content evidence is recorded for this composed submenu destination."
+    },
+    {
+      "id": "submenu.attendance.daily",
+      "sourceOwner": "lib/navigation/module-submenus.ts",
+      "sourceKey": "submenu.attendance.daily",
+      "declaredHref": "/attendance/daily",
+      "status": "uncovered",
+      "owner": "lib/navigation/module-submenus.ts",
+      "reason": "No authenticated executed usable-content evidence is recorded for this composed submenu destination."
+    },
+    {
+      "id": "submenu.attendance.individual",
+      "sourceOwner": "lib/navigation/module-submenus.ts",
+      "sourceKey": "submenu.attendance.individual",
+      "declaredHref": "/attendance/individual",
+      "status": "uncovered",
+      "owner": "lib/navigation/module-submenus.ts",
+      "reason": "No authenticated executed usable-content evidence is recorded for this composed submenu destination."
+    },
+    {
+      "id": "submenu.holidays.holidays",
+      "sourceOwner": "lib/navigation/module-submenus.ts",
+      "sourceKey": "submenu.holidays.holidays",
+      "declaredHref": "/admin/holidays",
+      "status": "uncovered",
+      "owner": "lib/navigation/module-submenus.ts",
+      "reason": "No authenticated executed usable-content evidence is recorded for this composed submenu destination."
+    },
+    {
+      "id": "submenu.holidays.groups",
+      "sourceOwner": "lib/navigation/module-submenus.ts",
+      "sourceKey": "submenu.holidays.groups",
+      "declaredHref": "/admin/holidays/groups",
+      "status": "uncovered",
+      "owner": "lib/navigation/module-submenus.ts",
+      "reason": "No authenticated executed usable-content evidence is recorded for this composed submenu destination."
+    },
+    {
+      "id": "submenu.statutory.overview",
+      "sourceOwner": "lib/navigation/module-submenus.ts",
+      "sourceKey": "submenu.statutory.overview",
+      "declaredHref": "/payroll/configuration",
+      "status": "uncovered",
+      "owner": "lib/navigation/module-submenus.ts",
+      "reason": "No authenticated executed usable-content evidence is recorded for this composed submenu destination."
+    },
+    {
+      "id": "submenu.statutory.epf",
+      "sourceOwner": "lib/navigation/module-submenus.ts",
+      "sourceKey": "submenu.statutory.epf",
+      "declaredHref": "/payroll/configuration/epf",
+      "status": "uncovered",
+      "owner": "lib/navigation/module-submenus.ts",
+      "reason": "No authenticated executed usable-content evidence is recorded for this composed submenu destination."
+    },
+    {
+      "id": "submenu.statutory.socso",
+      "sourceOwner": "lib/navigation/module-submenus.ts",
+      "sourceKey": "submenu.statutory.socso",
+      "declaredHref": "/payroll/configuration/socso",
+      "status": "uncovered",
+      "owner": "lib/navigation/module-submenus.ts",
+      "reason": "No authenticated executed usable-content evidence is recorded for this composed submenu destination."
+    },
+    {
+      "id": "submenu.statutory.skbbk",
+      "sourceOwner": "lib/navigation/module-submenus.ts",
+      "sourceKey": "submenu.statutory.skbbk",
+      "declaredHref": "/payroll/configuration/skbbk",
+      "status": "uncovered",
+      "owner": "lib/navigation/module-submenus.ts",
+      "reason": "No authenticated executed usable-content evidence is recorded for this composed submenu destination."
+    },
+    {
+      "id": "submenu.statutory.eis",
+      "sourceOwner": "lib/navigation/module-submenus.ts",
+      "sourceKey": "submenu.statutory.eis",
+      "declaredHref": "/payroll/configuration/eis",
+      "status": "uncovered",
+      "owner": "lib/navigation/module-submenus.ts",
+      "reason": "No authenticated executed usable-content evidence is recorded for this composed submenu destination."
+    },
+    {
+      "id": "submenu.statutory.pcb",
+      "sourceOwner": "lib/navigation/module-submenus.ts",
+      "sourceKey": "submenu.statutory.pcb",
+      "declaredHref": "/payroll/configuration/pcb",
+      "status": "uncovered",
+      "owner": "lib/navigation/module-submenus.ts",
+      "reason": "No authenticated executed usable-content evidence is recorded for this composed submenu destination."
+    },
+    {
+      "id": "submenu.statutory.hrdf",
+      "sourceOwner": "lib/navigation/module-submenus.ts",
+      "sourceKey": "submenu.statutory.hrdf",
+      "declaredHref": "/payroll/configuration/hrdf",
+      "status": "uncovered",
+      "owner": "lib/navigation/module-submenus.ts",
+      "reason": "No authenticated executed usable-content evidence is recorded for this composed submenu destination."
+    },
+    {
+      "id": "submenu.rewards.configuration",
+      "sourceOwner": "lib/navigation/module-submenus.ts",
+      "sourceKey": "submenu.rewards.configuration",
+      "declaredHref": "/admin/rewards",
+      "status": "uncovered",
+      "owner": "lib/navigation/module-submenus.ts",
+      "reason": "No authenticated executed usable-content evidence is recorded for this composed submenu destination."
+    },
+    {
+      "id": "submenu.rewards.plans",
+      "sourceOwner": "lib/navigation/module-submenus.ts",
+      "sourceKey": "submenu.rewards.plans",
+      "declaredHref": "/admin/rewards/plans",
+      "status": "uncovered",
+      "owner": "lib/navigation/module-submenus.ts",
+      "reason": "No authenticated executed usable-content evidence is recorded for this composed submenu destination."
+    },
+    {
+      "id": "submenu.rewards.salary",
+      "sourceOwner": "lib/navigation/module-submenus.ts",
+      "sourceKey": "submenu.rewards.salary",
+      "declaredHref": "/admin/rewards/salary-structures",
+      "status": "uncovered",
+      "owner": "lib/navigation/module-submenus.ts",
+      "reason": "No authenticated executed usable-content evidence is recorded for this composed submenu destination."
+    },
+    {
+      "id": "submenu.rewards.bonus",
+      "sourceOwner": "lib/navigation/module-submenus.ts",
+      "sourceKey": "submenu.rewards.bonus",
+      "declaredHref": "/admin/rewards/bonus-matrices",
+      "status": "uncovered",
+      "owner": "lib/navigation/module-submenus.ts",
+      "reason": "No authenticated executed usable-content evidence is recorded for this composed submenu destination."
+    },
+    {
+      "id": "submenu.rewards.pat",
+      "sourceOwner": "lib/navigation/module-submenus.ts",
+      "sourceKey": "submenu.rewards.pat",
+      "declaredHref": "/admin/rewards/pat-inputs",
+      "status": "uncovered",
+      "owner": "lib/navigation/module-submenus.ts",
+      "reason": "No authenticated executed usable-content evidence is recorded for this composed submenu destination."
+    },
+    {
+      "id": "submenu.rewards.access",
+      "sourceOwner": "lib/navigation/module-submenus.ts",
+      "sourceKey": "submenu.rewards.access",
+      "declaredHref": "/admin/rewards/access",
+      "status": "uncovered",
+      "owner": "lib/navigation/module-submenus.ts",
+      "reason": "No authenticated executed usable-content evidence is recorded for this composed submenu destination."
+    },
+    {
+      "id": "submenu.leaveInquiry.balances",
+      "sourceOwner": "lib/navigation/module-submenus.ts",
+      "sourceKey": "submenu.leaveInquiry.balances",
+      "declaredHref": "/leave/employee-balances",
+      "status": "uncovered",
+      "owner": "lib/navigation/module-submenus.ts",
+      "reason": "No authenticated executed usable-content evidence is recorded for this composed submenu destination."
+    },
+    {
+      "id": "submenu.leaveInquiry.records",
+      "sourceOwner": "lib/navigation/module-submenus.ts",
+      "sourceKey": "submenu.leaveInquiry.records",
+      "declaredHref": "/leave/employee-records",
+      "status": "uncovered",
+      "owner": "lib/navigation/module-submenus.ts",
+      "reason": "No authenticated executed usable-content evidence is recorded for this composed submenu destination."
+    },
+    {
+      "id": "submenu.aiCentre.ask",
+      "sourceOwner": "lib/ai-centre/centre-nav.ts",
+      "sourceKey": "ai/tab/ask",
+      "declaredHref": "/assistant",
+      "status": "uncovered",
+      "owner": "lib/ai-centre/centre-nav.ts",
+      "reason": "No authenticated executed usable-content evidence is recorded for this composed submenu destination."
+    },
+    {
+      "id": "submenu.aiCentre.operations",
+      "sourceOwner": "lib/ai-centre/centre-nav.ts",
+      "sourceKey": "ai/tab/operations",
+      "declaredHref": "/control-tower/loops",
+      "status": "uncovered",
+      "owner": "lib/ai-centre/centre-nav.ts",
+      "reason": "No authenticated executed usable-content evidence is recorded for this composed submenu destination."
+    },
+    {
+      "id": "submenu.aiCentre.insights",
+      "sourceOwner": "lib/ai-centre/centre-nav.ts",
+      "sourceKey": "ai/tab/insights",
+      "declaredHref": "/assistant?view=insights",
+      "status": "uncovered",
+      "owner": "lib/ai-centre/centre-nav.ts",
+      "reason": "No authenticated executed usable-content evidence is recorded for this composed submenu destination."
+    },
+    {
+      "id": "submenu.aiCentre.policies",
+      "sourceOwner": "lib/ai-centre/centre-nav.ts",
+      "sourceKey": "ai/tab/policies",
+      "declaredHref": "/policies",
+      "status": "uncovered",
+      "owner": "lib/ai-centre/centre-nav.ts",
+      "reason": "No authenticated executed usable-content evidence is recorded for this composed submenu destination."
+    },
+    {
+      "id": "submenu.aiCentre.administration",
+      "sourceOwner": "lib/ai-centre/centre-nav.ts",
+      "sourceKey": "ai/tab/administration",
+      "declaredHref": "/control-tower/agents/features",
+      "status": "uncovered",
+      "owner": "lib/ai-centre/centre-nav.ts",
+      "reason": "No authenticated executed usable-content evidence is recorded for this composed submenu destination."
+    },
+    {
+      "id": "submenu.aiCentre.how",
+      "sourceOwner": "lib/ai-centre/centre-nav.ts",
+      "sourceKey": "ai/tab/how",
+      "declaredHref": "/assistant?view=how",
+      "status": "uncovered",
+      "owner": "lib/ai-centre/centre-nav.ts",
+      "reason": "No authenticated executed usable-content evidence is recorded for this composed submenu destination."
+    },
+    {
+      "id": "submenu.aiCentre.loops",
+      "sourceOwner": "lib/ai-centre/centre-nav.ts",
+      "sourceKey": "ai/operations/loops",
+      "declaredHref": "/control-tower/loops",
+      "status": "uncovered",
+      "owner": "lib/ai-centre/centre-nav.ts",
+      "reason": "No authenticated executed usable-content evidence is recorded for this composed submenu destination."
+    },
+    {
+      "id": "submenu.aiCentre.payrollCycle",
+      "sourceOwner": "lib/ai-centre/centre-nav.ts",
+      "sourceKey": "ai/operations/payrollCycle",
+      "declaredHref": "/control-tower/loops/payroll-cycle",
+      "status": "uncovered",
+      "owner": "lib/ai-centre/centre-nav.ts",
+      "reason": "No authenticated executed usable-content evidence is recorded for this composed submenu destination."
+    },
+    {
+      "id": "submenu.aiCentre.exceptions",
+      "sourceOwner": "lib/ai-centre/centre-nav.ts",
+      "sourceKey": "ai/operations/exceptions",
+      "declaredHref": "/control-tower/exceptions",
+      "status": "uncovered",
+      "owner": "lib/ai-centre/centre-nav.ts",
+      "reason": "No authenticated executed usable-content evidence is recorded for this composed submenu destination."
+    },
+    {
+      "id": "submenu.aiCentre.readiness",
+      "sourceOwner": "lib/ai-centre/centre-nav.ts",
+      "sourceKey": "ai/operations/readiness",
+      "declaredHref": "/control-tower/readiness",
+      "status": "uncovered",
+      "owner": "lib/ai-centre/centre-nav.ts",
+      "reason": "No authenticated executed usable-content evidence is recorded for this composed submenu destination."
+    },
+    {
+      "id": "submenu.aiCentre.workers",
+      "sourceOwner": "lib/ai-centre/centre-nav.ts",
+      "sourceKey": "ai/administration/workers",
+      "declaredHref": "/control-tower/agents/features",
+      "status": "uncovered",
+      "owner": "lib/ai-centre/centre-nav.ts",
+      "reason": "No authenticated executed usable-content evidence is recorded for this composed submenu destination."
+    },
+    {
+      "id": "submenu.aiCentre.setup",
+      "sourceOwner": "lib/ai-centre/centre-nav.ts",
+      "sourceKey": "ai/administration/setup",
+      "declaredHref": "/control-tower/agents",
+      "status": "uncovered",
+      "owner": "lib/ai-centre/centre-nav.ts",
+      "reason": "No authenticated executed usable-content evidence is recorded for this composed submenu destination."
+    },
+    {
+      "id": "submenu.aiCentre.spend",
+      "sourceOwner": "lib/ai-centre/centre-nav.ts",
+      "sourceKey": "ai/administration/spend",
+      "declaredHref": "/control-tower/agents/allowances",
+      "status": "uncovered",
+      "owner": "lib/ai-centre/centre-nav.ts",
+      "reason": "No authenticated executed usable-content evidence is recorded for this composed submenu destination."
+    },
+    {
+      "id": "submenu.aiCentre.buildList",
+      "sourceOwner": "lib/ai-centre/centre-nav.ts",
+      "sourceKey": "ai/administration/buildList",
+      "declaredHref": "/control-tower/agents/build-list",
+      "status": "uncovered",
+      "owner": "lib/ai-centre/centre-nav.ts",
+      "reason": "No authenticated executed usable-content evidence is recorded for this composed submenu destination."
+    },
+    {
+      "id": "submenu.aiCentre.payroll.pre",
+      "sourceOwner": "lib/ai-centre/centre-nav.ts",
+      "sourceKey": "ai/payroll/pre",
+      "declaredHref": "/control-tower/loops/payroll-cycle",
+      "status": "uncovered",
+      "owner": "lib/ai-centre/centre-nav.ts",
+      "reason": "No authenticated executed usable-content evidence is recorded for this composed submenu destination."
+    },
+    {
+      "id": "submenu.aiCentre.payroll.salary",
+      "sourceOwner": "lib/ai-centre/centre-nav.ts",
+      "sourceKey": "ai/payroll/salary",
+      "declaredHref": "/control-tower/loops/payroll-cycle/salary",
+      "status": "uncovered",
+      "owner": "lib/ai-centre/centre-nav.ts",
+      "reason": "No authenticated executed usable-content evidence is recorded for this composed submenu destination."
+    },
+    {
+      "id": "submenu.aiCentre.payroll.settings",
+      "sourceOwner": "lib/ai-centre/centre-nav.ts",
+      "sourceKey": "ai/payroll/settings",
+      "declaredHref": "/control-tower/loops/payroll-cycle/settings",
+      "status": "uncovered",
+      "owner": "lib/ai-centre/centre-nav.ts",
+      "reason": "No authenticated executed usable-content evidence is recorded for this composed submenu destination."
+    },
+    {
+      "id": "submenu.aiCentre.payroll.audit",
+      "sourceOwner": "lib/ai-centre/centre-nav.ts",
+      "sourceKey": "ai/payroll/audit",
+      "declaredHref": "/control-tower/loops/loop_payroll_audit",
+      "status": "uncovered",
+      "owner": "lib/ai-centre/centre-nav.ts",
+      "reason": "No authenticated executed usable-content evidence is recorded for this composed submenu destination."
+    },
+    {
+      "id": "submenu.security.permissions",
+      "sourceOwner": "lib/security-center-navigation.ts",
+      "sourceKey": "security/permissions",
+      "declaredHref": "/admin/users/access",
+      "status": "uncovered",
+      "owner": "lib/security-center-navigation.ts",
+      "reason": "No authenticated executed usable-content evidence is recorded for this composed submenu destination."
+    },
+    {
+      "id": "submenu.security.functions",
+      "sourceOwner": "lib/security-center-navigation.ts",
+      "sourceKey": "security/functions",
+      "declaredHref": "/admin/users/function-access",
+      "status": "uncovered",
+      "owner": "lib/security-center-navigation.ts",
+      "reason": "No authenticated executed usable-content evidence is recorded for this composed submenu destination."
+    },
+    {
+      "id": "submenu.security.create",
+      "sourceOwner": "lib/security-center-navigation.ts",
+      "sourceKey": "security/create",
+      "declaredHref": "/admin/users/create",
+      "status": "uncovered",
+      "owner": "lib/security-center-navigation.ts",
+      "reason": "No authenticated executed usable-content evidence is recorded for this composed submenu destination."
+    },
+    {
+      "id": "submenu.security.invite",
+      "sourceOwner": "lib/security-center-navigation.ts",
+      "sourceKey": "security/invite",
+      "declaredHref": "/admin/users/invite",
+      "status": "uncovered",
+      "owner": "lib/security-center-navigation.ts",
+      "reason": "No authenticated executed usable-content evidence is recorded for this composed submenu destination."
+    },
+    {
+      "id": "submenu.security.users",
+      "sourceOwner": "lib/security-center-navigation.ts",
+      "sourceKey": "security/users",
+      "declaredHref": "/admin/users",
+      "status": "uncovered",
+      "owner": "lib/security-center-navigation.ts",
+      "reason": "No authenticated executed usable-content evidence is recorded for this composed submenu destination."
+    },
+    {
+      "id": "submenu.security.passwordPolicy",
+      "sourceOwner": "lib/security-center-navigation.ts",
+      "sourceKey": "security/passwordPolicy",
+      "declaredHref": "/admin/security-center/password-policy",
+      "status": "uncovered",
+      "owner": "lib/security-center-navigation.ts",
+      "reason": "No authenticated executed usable-content evidence is recorded for this composed submenu destination."
+    },
+    {
+      "id": "submenu.performance.home",
+      "sourceOwner": "packs/performance/onehr/tab-model.ts",
+      "sourceKey": "performance/home",
+      "declaredHref": "/performance/home",
+      "status": "uncovered",
+      "owner": "packs/performance/onehr/tab-model.ts",
+      "reason": "No authenticated executed usable-content evidence is recorded for this composed submenu destination."
+    },
+    {
+      "id": "submenu.performance.pm.setting",
+      "sourceOwner": "packs/performance/onehr/tab-model.ts",
+      "sourceKey": "performance/pm.setting",
+      "declaredHref": "/performance/my/kpis",
+      "status": "uncovered",
+      "owner": "packs/performance/onehr/tab-model.ts",
+      "reason": "No authenticated executed usable-content evidence is recorded for this composed submenu destination."
+    },
+    {
+      "id": "submenu.performance.pm.my",
+      "sourceOwner": "packs/performance/onehr/tab-model.ts",
+      "sourceKey": "performance/pm.my",
+      "declaredHref": "/performance/my",
+      "status": "uncovered",
+      "owner": "packs/performance/onehr/tab-model.ts",
+      "reason": "No authenticated executed usable-content evidence is recorded for this composed submenu destination."
+    },
+    {
+      "id": "submenu.performance.pm.approve",
+      "sourceOwner": "packs/performance/onehr/tab-model.ts",
+      "sourceKey": "performance/pm.approve",
+      "declaredHref": "/performance/team/kpis",
+      "status": "uncovered",
+      "owner": "packs/performance/onehr/tab-model.ts",
+      "reason": "No authenticated executed usable-content evidence is recorded for this composed submenu destination."
+    },
+    {
+      "id": "submenu.performance.pm.team",
+      "sourceOwner": "packs/performance/onehr/tab-model.ts",
+      "sourceKey": "performance/pm.team",
+      "declaredHref": "/performance/team",
+      "status": "uncovered",
+      "owner": "packs/performance/onehr/tab-model.ts",
+      "reason": "No authenticated executed usable-content evidence is recorded for this composed submenu destination."
+    },
+    {
+      "id": "submenu.performance.feedback.assessments",
+      "sourceOwner": "packs/performance/onehr/tab-model.ts",
+      "sourceKey": "performance/feedback.assessments",
+      "declaredHref": "/performance/assessments",
+      "status": "uncovered",
+      "owner": "packs/performance/onehr/tab-model.ts",
+      "reason": "No authenticated executed usable-content evidence is recorded for this composed submenu destination."
+    },
+    {
+      "id": "submenu.performance.feedback.feedback",
+      "sourceOwner": "packs/performance/onehr/tab-model.ts",
+      "sourceKey": "performance/feedback.feedback",
+      "declaredHref": "/performance/feedback",
+      "status": "uncovered",
+      "owner": "packs/performance/onehr/tab-model.ts",
+      "reason": "No authenticated executed usable-content evidence is recorded for this composed submenu destination."
+    },
+    {
+      "id": "submenu.performance.competency.my",
+      "sourceOwner": "packs/performance/onehr/tab-model.ts",
+      "sourceKey": "performance/competency.my",
+      "declaredHref": "/performance/competency",
+      "status": "uncovered",
+      "owner": "packs/performance/onehr/tab-model.ts",
+      "reason": "No authenticated executed usable-content evidence is recorded for this composed submenu destination."
+    },
+    {
+      "id": "submenu.performance.competency.team",
+      "sourceOwner": "packs/performance/onehr/tab-model.ts",
+      "sourceKey": "performance/competency.team",
+      "declaredHref": "/performance/competency/team",
+      "status": "uncovered",
+      "owner": "packs/performance/onehr/tab-model.ts",
+      "reason": "No authenticated executed usable-content evidence is recorded for this composed submenu destination."
+    },
+    {
+      "id": "submenu.performance.plan.my",
+      "sourceOwner": "packs/performance/onehr/tab-model.ts",
+      "sourceKey": "performance/plan.my",
+      "declaredHref": "/performance/plan",
+      "status": "uncovered",
+      "owner": "packs/performance/onehr/tab-model.ts",
+      "reason": "No authenticated executed usable-content evidence is recorded for this composed submenu destination."
+    },
+    {
+      "id": "submenu.performance.plan.profile",
+      "sourceOwner": "packs/performance/onehr/tab-model.ts",
+      "sourceKey": "performance/plan.profile",
+      "declaredHref": "/performance/plan/profile",
+      "status": "uncovered",
+      "owner": "packs/performance/onehr/tab-model.ts",
+      "reason": "No authenticated executed usable-content evidence is recorded for this composed submenu destination."
+    },
+    {
+      "id": "submenu.performance.plan.team",
+      "sourceOwner": "packs/performance/onehr/tab-model.ts",
+      "sourceKey": "performance/plan.team",
+      "declaredHref": "/performance/plan/team",
+      "status": "uncovered",
+      "owner": "packs/performance/onehr/tab-model.ts",
+      "reason": "No authenticated executed usable-content evidence is recorded for this composed submenu destination."
+    },
+    {
+      "id": "submenu.performance.calibration.performance",
+      "sourceOwner": "packs/performance/onehr/tab-model.ts",
+      "sourceKey": "performance/calibration.performance",
+      "declaredHref": "/performance/calibration?axis=performance",
+      "status": "uncovered",
+      "owner": "packs/performance/onehr/tab-model.ts",
+      "reason": "No authenticated executed usable-content evidence is recorded for this composed submenu destination."
+    },
+    {
+      "id": "submenu.performance.calibration.potential",
+      "sourceOwner": "packs/performance/onehr/tab-model.ts",
+      "sourceKey": "performance/calibration.potential",
+      "declaredHref": "/performance/calibration?axis=potential",
+      "status": "uncovered",
+      "owner": "packs/performance/onehr/tab-model.ts",
+      "reason": "No authenticated executed usable-content evidence is recorded for this composed submenu destination."
+    },
+    {
+      "id": "submenu.performance.calibration.talentBox",
+      "sourceOwner": "packs/performance/onehr/tab-model.ts",
+      "sourceKey": "performance/calibration.talentBox",
+      "declaredHref": "/performance/calibration/talent-box",
+      "status": "uncovered",
+      "owner": "packs/performance/onehr/tab-model.ts",
+      "reason": "No authenticated executed usable-content evidence is recorded for this composed submenu destination."
     }
   ],
   "backlog": [
     {
       "id": "nested-submenus",
       "owner": "navigation surface owners",
-      "reason": "Immediate nested submenu registries remain uncomposed."
+      "reason": "Parameterized Personnel/Company/Schedule Group tabs, lifecycle preparation, leave-type configuration, AI management in-section hrefOf navigation and record-specific navigation are not yet composed. Published static submenu composition does not establish the full application universe."
     }
   ]
 }

@@ -1,0 +1,41 @@
+# Authenticated navigation capture for development qualification
+
+Status: source checkpoint, not executed or release qualified. Base: `a33e813e28ec7fd3f651a6bcf0bce7020eb1b41f`.
+
+The existing navigation catalogue described 157 shell destinations. That universe omitted local tab rows, and committed runtime claims could not authenticate actual browser execution. A 200 response or a visible heading is insufficient to establish a usable submenu, native authorization or absence of a handled failure.
+
+The application declaration catalogue now composes 222 explicit identities: the original 157 and 65 published static submenu references. Seven local tab rows use one canonical literal registry and carry invisible `data-navigation-destination` IDs. Labels, render order, active styles, filters, access checks, carried Leave context and business behavior remain with their existing owners. Selected AI Centre, Security and Performance static registries are consumed by reference. Inventorying does not execute/copy their visibility policy. New keys without explicit identity fail structural review; no URL-derived ID silently becomes coverage.
+
+This still is **not the complete application universe**. Parameterized Personnel, Company and Schedule Group tabs, lifecycle preparation, leave-type configuration, the AI management in-section hrefOf row (app/control-tower/agents/sections.ts plus ADMIN_GROUPS), record-specific navigation, task/cycle gates and their native fixtures remain an explicit backlog. A declared tab can be hidden, disabled or denied for a real role. Declaration metadata grants no permission and cannot substitute for native execution.
+
+## Development proof and trust boundary
+
+`navigation-browser-capture.ts` provides an integration surface for the existing system-load runner's real Playwright pages. The runner retains ownership of fictional fixture creation, native sessions and concurrent traffic. A collector executes all source-reviewed cases once per native role in baseline and loaded phases. It clicks the actual enabled canonical destination anchor, checks its exact href, observes the signed-in fixture/session, follows the actual route, opens only native read disclosures and checks reviewed usable controls or independently expected fictional content. Explicit non-admin cases must redirect to signed-in Home. It records no cookies, emails, document content, screenshots or names.
+
+The browser watches DOM failure markers from document initialization, including transient Busy/unavailable/alert states, plus page/console errors and same-origin HTTP 500 responses. Each scenario has a single 90-second total budget; loaded observations must begin and become usable while all 500 traffic users remain in their steady window. Failure throws; an incomplete capture never qualifies. Empty configuration catalogs can prove their specific setup controls, but do not claim populated-record coverage.
+
+The initial reviewed plan has **24 cases covering six destinations**, each with company-HR/group-HR usable and employee/manager denied cases: Claims Types, Holiday Groups, the two System Labels tabs, and the two Leave Inquiry tabs. The fictional fixture has no Holiday Group/Profile Options catalog rows: Holiday checks the actual new-group link; Profile Options checks the actual empty-catalog description and enabled default-setup button without pressing it. Only Leave balances currently asserts expected populated employee content. Other menu destinations remain uncovered. The protocol currently rejects query-context cases: observing only a final pathname must not pretend to prove carried parameters. Extending it requires explicit observed-query and fixture-context contracts.
+
+`verifyNavigationDevelopmentRun` is the only mint for an opaque, privately WeakMap-branded, recursively frozen capability. It authenticates live GitHub API metadata for repository ID 1333414856, focused workflow ID 395862645/path `.github/workflows/alpha-focused-checks.yml`, exact successful first-attempt main/alpha controller, successful resolve/system-load producer jobs and a fresh unique artifact. The existing bounded archive byte transport verifies the API-authenticated SHA-256 digest and length. A separate bounded extractor inventories all ZIP members safely and extracts only fixed capture/runner/HTTP JSON, never executable contents.
+
+The verifier independently hashes immutable actual Git bytes for the reviewed harness, canonical navigation sources, seven marker renderers and scenario plan in both the clean candidate and clean executing controller. Their harness identities must match. Run, attempt, candidate, controller, scenario, role, fixture allocation and each actual content check reconcile with those independently read contracts. Neither self-declared hashes, JSON receipts, verification flags nor a caller-provided verifier factory can mint authority. Native runtime acceptance must also pass with no recorded worker/PG failures. Tokens expire at the run's 24-hour freshness limit.
+
+Existing diagnostic codex-controller artifacts, missing capture files and source-only plans cannot qualify. This is deliberately closed until the exact reviewed helper/scenario/harness is installed in a trusted main/alpha controller and an actual fresh run succeeds.
+
+## Integration and release limits
+
+Root owns integration into `system-load.mjs` and the HTTP manifest. This checkpoint does not modify them or any workflow/guarded approval policy. The intended runner integration is:
+
+1. Create a baseline collector with `createNavigationCaptureCollector({phase:'baseline'})` inside the existing fictional runner realm.
+2. With already authenticated native pages, call `captureActor(page, actor.index)` once for one employee, manager, company HR and group HR. `finish()` refuses a missing role/case.
+3. For whole-system load, repeat with a loaded collector and the actual `loadState` callback exposing `active` and `inSteadyWindow`; keep the steady window open until all reviewed cases finish.
+4. After existing final runtime checks, call `writeNavigationCaptureBundle(outputDirectory, baseline, loaded)` exactly once. A preflight-only artifact has baseline alone. Include the fixed `navigation-browser-capture.json` in the existing development evidence artifact.
+5. From a clean trusted controller with the identical reviewed harness, run the coverage script with `--verify-development-run RUN_ID --require-runtime` against the exact clean candidate. Never pass a standalone JSON object as evidence.
+
+The audit reports `scope: authenticated-development-runtime` and `releaseAuthorized: false`. A baseline-only capability can expose verified preflight counts but cannot pass final runtime acceptance. Every declared applicable destination needs source-address-matching scenarios covering all four native fixture roles (usable or explicitly denied), complete baseline and loaded observations, structural integrity and an empty unresolved-registry backlog. Committed ledger claims remain unverified metadata. At this checkpoint all 222 ledger entries remain uncovered; no browser run has executed this new plan.
+
+**Neither a future development runtime PASS nor `--require-runtime` is a release witness.** The existing full release `verifyCi`, source approval bindings and installation grants remain unchanged. Production is held. Staging still requires the user's six-phase qualification and the existing full release/deployment policy.
+
+## Verification owed
+
+No local application tests, compiler, browser or build checks were run. Required hosted focused checks include the new catalogue/protocol/verifier unit contracts, existing navigation integrity/module-boundary/import-capability tests, Rewards/System Labels/Leave navigation DOM regressions, compiler and unchanged broader gates. Actual baseline browser capture and admitted worker/load qualification remain pending; mocked verifier tests are protocol tests, never runtime receipts. The root must review selector/fixture assumptions, integrate and run the actual helper before recording any executed coverage.
