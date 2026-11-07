@@ -1757,7 +1757,7 @@ untouched; its literal allocation bounds were included in the scan.
 
 | Tag | idx | when | SQL SHA256 |
 | --- | ---: | ---: | --- |
-| `2702_phase1_notification_receipts` | 2002 | 1793330002302 | `65fc5542fe398d1e10c5fc76a09aec6999c50c52d76f964d69c48cf3ee6c3c26` |
+| `2702_phase1_notification_receipts` | 2002 | 1793330002302 | `7f9759fb2c32eec74aa640bf91780f68d2ccf386ce39b314fa8700b2941d4f83` |
 
 This new, unapplied migration consolidates only the reviewed notification receipt
 intent, retention cascade and least-privilege grants from the architecture branch.

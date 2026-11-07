@@ -50,3 +50,10 @@ not a claim that the owner inspected this new subset digest. All 28 pre-existing
 approvals retain their original human metadata; both pending contracts stay pending.
 No real HR-data provider call, evaluation, promotion or production action is approved
 by this reassessment. Generate the agent manifest last; hosted checks remain required.
+
+Independent spec review found that source-event visibility alone was insufficient
+for company-scoped assessment receipt authority. The unapplied migration now checks
+the native recipient/run linkage and `app.onehr_cycle_admin` before receipt reads,
+completion or overlap-projection probes. A two-company PostgreSQL regression must
+prove a foreign-company administrator cannot read, acknowledge or drain the receipt.
+This SQL/test repair changes no provider-covered file or approved provider digest.

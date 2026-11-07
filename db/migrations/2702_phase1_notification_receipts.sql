@@ -26,15 +26,27 @@ ALTER TABLE public.notification_event_processing ENABLE ROW LEVEL SECURITY;
 CREATE POLICY notification_event_processing_read ON public.notification_event_processing FOR SELECT
  USING (tenant_id=app.current_tenant_id() AND app.principal_snapshot_current() AND
    (app.is_group_admin() OR consumer='assessment-reminders' AND app.is_admin() AND
-    EXISTS (SELECT 1 FROM public.domain_event e WHERE e.id=event_id AND e.tenant_id=notification_event_processing.tenant_id)));
+    EXISTS (SELECT 1 FROM public.domain_event e
+     JOIN public.performance_assessment_reminder_recipient r ON r.id=e.aggregate_id AND r.tenant_id=e.tenant_id AND r.source_event_id=e.id
+     JOIN public.performance_assessment_reminder_run run ON run.id=r.run_id AND run.tenant_id=r.tenant_id
+     WHERE e.id=event_id AND e.tenant_id=notification_event_processing.tenant_id
+      AND e.event_type='assessment.reminder-queued' AND app.onehr_cycle_admin(run.cycle_id))));
 --> statement-breakpoint
 CREATE POLICY notification_event_processing_complete ON public.notification_event_processing FOR UPDATE
  USING (tenant_id=app.current_tenant_id() AND app.principal_snapshot_current() AND
    (app.is_group_admin() OR consumer='assessment-reminders' AND app.is_admin() AND
-    EXISTS (SELECT 1 FROM public.domain_event e WHERE e.id=event_id AND e.tenant_id=notification_event_processing.tenant_id)))
+    EXISTS (SELECT 1 FROM public.domain_event e
+     JOIN public.performance_assessment_reminder_recipient r ON r.id=e.aggregate_id AND r.tenant_id=e.tenant_id AND r.source_event_id=e.id
+     JOIN public.performance_assessment_reminder_run run ON run.id=r.run_id AND run.tenant_id=r.tenant_id
+     WHERE e.id=event_id AND e.tenant_id=notification_event_processing.tenant_id
+      AND e.event_type='assessment.reminder-queued' AND app.onehr_cycle_admin(run.cycle_id))))
  WITH CHECK (tenant_id=app.current_tenant_id() AND disposition IN ('processed','ignored') AND processed_at IS NOT NULL AND
    app.principal_snapshot_current() AND (app.is_group_admin() OR consumer='assessment-reminders' AND app.is_admin() AND
-    EXISTS (SELECT 1 FROM public.domain_event e WHERE e.id=event_id AND e.tenant_id=notification_event_processing.tenant_id)));
+    EXISTS (SELECT 1 FROM public.domain_event e
+     JOIN public.performance_assessment_reminder_recipient r ON r.id=e.aggregate_id AND r.tenant_id=e.tenant_id AND r.source_event_id=e.id
+     JOIN public.performance_assessment_reminder_run run ON run.id=r.run_id AND run.tenant_id=r.tenant_id
+     WHERE e.id=event_id AND e.tenant_id=notification_event_processing.tenant_id
+      AND e.event_type='assessment.reminder-queued' AND app.onehr_cycle_admin(run.cycle_id))));
 --> statement-breakpoint
 -- Default application CRUD grants must not let recipients create, retarget or delete receipts.
 REVOKE ALL PRIVILEGES ON TABLE public.notification_event_processing FROM PUBLIC, ai_hr_app;
@@ -80,8 +92,11 @@ CREATE FUNCTION app.notification_projection_exists(p_event uuid,p_recipient uuid
  LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$
  SELECT app.principal_snapshot_current() AND
  (app.is_group_admin() OR app.is_admin() AND EXISTS(
-   SELECT 1 FROM public.domain_event e WHERE e.id=p_event AND e.tenant_id=app.current_tenant_id()
-   AND e.event_type='assessment.reminder-queued')) AND EXISTS(
+   SELECT 1 FROM public.domain_event e
+   JOIN public.performance_assessment_reminder_recipient r ON r.id=e.aggregate_id AND r.tenant_id=e.tenant_id AND r.source_event_id=e.id
+   JOIN public.performance_assessment_reminder_run run ON run.id=r.run_id AND run.tenant_id=r.tenant_id
+   WHERE e.id=p_event AND e.tenant_id=app.current_tenant_id()
+    AND e.event_type='assessment.reminder-queued' AND app.onehr_cycle_admin(run.cycle_id))) AND EXISTS(
   SELECT 1 FROM public.notification n WHERE n.tenant_id=app.current_tenant_id()
    AND n.source_event_id=p_event AND n.recipient_employment_id=p_recipient AND n.kind=p_kind)
 $$;

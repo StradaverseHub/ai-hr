@@ -16,7 +16,7 @@ it('preserves the installed ledger and historical delivery while creating least-
  expect(sha(JSON.stringify(prefix))).toBe('c740a5f20ce331e9e50f9b73fdf71d04678e205b0590fd257b39c2b8554be499');
  expect(sha(JSON.stringify(prefix.map((e:{tag:string})=>[e.tag,sha(readFileSync('db/migrations/'+e.tag+'.sql'))])))).toBe('094d9a054e3da4a143930524b67c59a9b32eb0e6a30d758d7a2184bfac0a2959');
  expect(journal.entries[boundary]).toEqual({idx:2002,version:'7',when:1793330002302,tag:TAG,breakpoints:true});
- expect(sha(readFileSync('db/migrations/'+TAG+'.sql'))).toBe('65fc5542fe398d1e10c5fc76a09aec6999c50c52d76f964d69c48cf3ee6c3c26');
+ expect(sha(readFileSync('db/migrations/'+TAG+'.sql'))).toBe('7f9759fb2c32eec74aa640bf91780f68d2ccf386ce39b314fa8700b2941d4f83');
  const name='ai_hr_phase1_upgrade_'+randomUUID().replaceAll('-',''),directory=mkdtempSync(join(tmpdir(),'phase1-upgrade-'));
  const url=new URL(process.env.TEST_MIGRATION_DATABASE_URL!);expect(['localhost','127.0.0.1']).toContain(url.hostname);
  url.pathname='/postgres';const admin=postgres(url.toString(),{max:1,onnotice:()=>{}});
