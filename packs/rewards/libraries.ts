@@ -6,6 +6,16 @@ import type {SessionContext,Tx} from '../../db/client';
 import {setupPersonTx,setupAuthority,setupTenant,setupReadTenant,setupLock,setupEvent} from './setup-data';
 import {validateRewardLibrary,gradeCodeForLibrary,setupUuid,setupYear,setupReason,RewardSetupError,type RewardLibrary,type LibraryCandidate} from './setup-model';
 export type RewardLibraryVersion={id:string;libraryId:string;kind:'salary'|'bonus';name:string;year:number;tags:string[];groupDefault:boolean;previousLibraryId:string|null;sourcePolicyVersionId?:string|null;version:number;data:RewardLibrary;state:'draft'|'pending'|'confirmed';lockVersion:number;createdBy:string;contributors:string[];createdByPersonId?:string;contributorPersonIds?:string[];confirmedBy:string|null;confirmedAt:string|null;reason:string;locked:boolean;usedBy:{plan:string;company:string;year:number}[]};
+/** Descriptive page access only: protected reads and every command re-admit authority.
+ * The native manage predicate returns false for denial; database failures propagate
+ * instead of continuing an aborted snapshot or masquerading as a permission answer. */
+export function rewardLibraryPageAccess(ctx:SessionContext){
+ return setupReadTenant(ctx,async tx=>{
+  await setupAuthority(tx,null,'library_view');
+  const [row]=await tx.execute<{allowed:boolean}>(sql`select app.reward_setup_allowed(null::uuid,'manage') as allowed`);
+  return {canManage:row?.allowed===true};
+ });
+}
 export async function libraryVersionTx(tx:Tx,ctx:SessionContext,id:string,requireConfirmed=false):Promise<RewardLibraryVersion>{
  setupUuid.parse(id);await setupAuthority(tx,null,'library_view');
  const [r]=await tx.execute<Omit<RewardLibraryVersion,'usedBy'|'locked'>>(sql`select v.id,l.id as "libraryId",l.kind,l.name,l.year,l.tags,l.group_default as "groupDefault",l.previous_library_id as "previousLibraryId",l.source_policy_version_id as "sourcePolicyVersionId",v.revision as version,v.data,v.state,v.lock_version as "lockVersion",v.created_by as "createdBy",v.contributor_ids as contributors,v.created_by_person_id as "createdByPersonId",v.contributor_person_ids as "contributorPersonIds",v.confirmed_by as "confirmedBy",v.confirmed_at::text as "confirmedAt",v.reason from reward_library_version v join reward_library l on l.id=v.library_id and l.tenant_id=v.tenant_id where v.id=${id}::uuid and v.tenant_id=${ctx.tenantId}::uuid`);

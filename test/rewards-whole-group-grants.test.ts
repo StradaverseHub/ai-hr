@@ -8,6 +8,7 @@ import { todayInKualaLumpur } from '../lib/hr-date';
 import { createApprovedRewardUnit } from './rewards-setup-fixture';
 import { pgSqlState } from '../lib/db-error';
 import { listRewardUnits } from '../packs/rewards/service';
+import { rewardLibraryPageAccess } from '../packs/rewards/libraries';
 import { closeAll, createAppUser, entitledCtx, migrateTestDb, owner, resetDb, seedBase, setModule, type Base } from './harness';
 
 let base: Base;
@@ -117,4 +118,16 @@ it('resolves grants on future draft reviews without assigning a review seat', as
   await save(admin, reviewer.userId!, false, 1);
   expect(await access()).toEqual({review:false,edit:false,coverage:[]});
   expect(await listRewardUnits(reviewer, [target.companyId])).toEqual([]);
+});
+
+it('describes current whole-group CTRO and GR page access without turning it into a command grant', async () => {
+  await withTenant(admin, tx => tx.execute(sql`select app.reward_save_group_role(${reviewer.userId}::uuid, 'ctro', true, 0, 'Fictional independently admitted CTRO page view')`));
+  expect(await rewardLibraryPageAccess(reviewer)).toEqual({canManage: false});
+  expect(await save(admin, reviewer.userId!, true, 0)).toBe(1);
+  expect(await rewardLibraryPageAccess(reviewer)).toEqual({canManage: true});
+  expect(await save(admin, reviewer.userId!, false, 1)).toBe(2);
+  expect(await rewardLibraryPageAccess(reviewer)).toEqual({canManage: false});
+  await owner.withTenant(admin, tx => tx.update(employment)
+    .set({tenderResignationDate: todayInKualaLumpur()}).where(eq(employment.id, employmentId)));
+  await expect(rewardLibraryPageAccess(reviewer)).rejects.toThrow(/not available/);
 });

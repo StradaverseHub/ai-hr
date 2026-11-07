@@ -3,8 +3,7 @@ import {getLocale,getTranslations} from 'next-intl/server';
 import {getSession} from '@/lib/session';
 import {rewardSetupPlanChoices} from '@/packs/rewards/plan-configuration';
 import {legacyLibraryDraft} from '@/packs/rewards/setup-model';
-import {rewardLibraries,rewardLibraryGradeChoices,rewardLibraryHistory} from '@/packs/rewards/libraries';
-import {setupTenant,setupAuthority} from '@/packs/rewards/setup-data';
+import {rewardLibraries,rewardLibraryGradeChoices,rewardLibraryHistory,rewardLibraryPageAccess} from '@/packs/rewards/libraries';
 import {Card,Button,Field,PageHeader,inputCls,tableWrapCls,theadCls,thCls,tbodyCls,ErrorBanner} from '@/components/ui';
 import {todayInKualaLumpur} from '@/lib/hr-date';
 import {LibraryEditor} from './editor';
@@ -12,7 +11,7 @@ import {decideLibraryAction} from './actions';
 import {RewardsAdminTabs} from '../admin-tabs';
 export async function RewardLibraryPage({kind,params}:{kind:'salary'|'bonus';params:{year?:string;version?:string;copy?:string;compare?:string;error?:string;next?:string;legacy?:string}}){
  const s=await getSession(),t=await getTranslations('rewardSetup'),nav=await getTranslations('nav'),year=Number(params.year)||Number(todayInKualaLumpur().slice(0,4));let canManage=false;
- try{await setupTenant(s,tx=>setupAuthority(tx,null,'library_view'));try{await setupTenant(s,tx=>setupAuthority(tx,null,'manage'));canManage=true;}catch{}}catch{return <div className="space-y-3"><PageHeader title={nav(kind==='salary'?'rewardsSalaryStructures':'rewardsBonusMatrices')}/><p>{t('noAccess')}</p></div>;}
+ try{({canManage}=await rewardLibraryPageAccess(s));}catch{return <div className="space-y-3"><PageHeader title={nav(kind==='salary'?'rewardsSalaryStructures':'rewardsBonusMatrices')}/><p>{t('noAccess')}</p></div>;}
  const versions=await rewardLibraries(s,kind),selected=params.version?versions.find(v=>v.id===params.version)??null:null,copy=params.copy==='1',grades=await rewardLibraryGradeChoices(s),compare=versions.find(v=>v.id===params.compare);
  const legacyPlans=canManage?(await rewardSetupPlanChoices(s)).filter(p=>!p.setup&&p.source.policy.year<=year):[],legacy=legacyPlans.find(p=>p.source.versionId===params.legacy)?.source;
  const history=selected&&!copy?await rewardLibraryHistory(s,selected.id):[],locale=await getLocale(),formatTime=new Intl.DateTimeFormat(locale,{dateStyle:'medium',timeStyle:'short',timeZone:'Asia/Kuala_Lumpur'});
