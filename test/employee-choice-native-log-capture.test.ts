@@ -22,7 +22,9 @@ it('round-trips every byte on both channels with real8MiB boundaries and partial
  store.append('stderr',noise);store.append('stdout',raw.subarray(0,123));const first=store.checkpoint('first');expect(first.transportClosed).toBe(false);
  store.append('stdout',raw.subarray(123));const final=store.checkpoint('final',true);
  expect(final.rawBytes).toBe(raw.length+noise.length);expect(final.parts).toBe(4);expect(final.gzipBytes).toBeLessThan(final.rawBytes);
- expect(Buffer.concat([...store.read('stdout')].map(part=>part.bytes))).toEqual(raw);expect(Buffer.concat([...store.read('stderr')].map(part=>part.bytes))).toEqual(noise);
+ const actual=Buffer.concat([...store.read('stdout')].map(part=>part.bytes)),actualNoise=Buffer.concat([...store.read('stderr')].map(part=>part.bytes));
+ expect(actual.length).toBe(raw.length);expect(actual.equals(raw)).toBe(true);expect(actualNoise.equals(noise)).toBe(true);
+ const changed=Buffer.from(actual);changed[changed.length-1]^=1;expect(changed.equals(raw)).toBe(false);
  expect(JSON.parse(readFileSync(join(path,'native-log-index.json'),'utf8'))).toMatchObject({binding,semanticQualification:false,releaseAuthorized:false,transportClosed:true});
  expect(()=>store.append('stdout',Buffer.from('late'))).toThrow('admission');
 });
@@ -59,12 +61,13 @@ it('refuses foreign bindings, invalidUTF8, rawaggregate excess and failed public
  const bounded=employeeChoiceNativeLogParts(directory(),binding),chunk=Buffer.alloc(8*1024*1024,0);for(let i=0;i<16;i++)bounded.append('stdout',chunk);expect(()=>bounded.append('stdout',Buffer.from('overflow'))).toThrow('aggregate');
 });
 
-function modelDocker(path:string,stdout:string,stderr='',closeExit:number|null=0){
+function modelDocker(path:string,stdout:string,stderr='',closeExit:number|null=0,unownedExit?:number){
  const executable=join(path,'docker'),counter=join(path,'created');
  const source='#!'+process.execPath+'\n'+
   'const fs=require("node:fs");fs.appendFileSync('+JSON.stringify(counter)+',"1");'+
   'if(process.argv.slice(2).join(" ")!=='+JSON.stringify('logs --follow --since '+binding.startedAt+' '+binding.containerId)+')process.exit(4);'+
   'process.stdout.write('+JSON.stringify(stdout)+');process.stderr.write('+JSON.stringify(stderr)+');'+
+  (unownedExit===undefined?'':'process.stdout.write("",()=>process.exit('+unownedExit+'));')+
   'const interval=setInterval(()=>{},1000);'+(closeExit===null?'':'process.on("SIGTERM",()=>{clearInterval(interval);process.stdout.write("",()=>process.exit('+closeExit+'));});')+'\n';
  writeFileSync(executable,source,{mode:0o700});vi.stubEnv('PATH',path);return counter;
 }
@@ -129,4 +132,20 @@ it('accepts a real owned SIGTERM outcome after the complete final marker and set
  const poison=vi.fn(),collector=employeeChoiceNativeLogCollector(directory(),binding,new AbortController().signal,poison);
  try{await collector.wait(marker.begin);await collector.wait(marker.end);collector.checkpoint('complete-final-marker');await collector.close();expect(collector.store.verifyIndex().transportClosed).toBe(true);expect(poison).not.toHaveBeenCalled();}
  finally{await collector.close();}
+});
+
+it('accepts the actual docker conventional143 status only after its owned SIGTERM and settled streams',{timeout:10000},async context=>{
+ const path=directory();modelDocker(path,message(marker.begin)+message('work')+message(marker.end),'',143);
+ const poison=vi.fn(),collector=employeeChoiceNativeLogCollector(directory(),binding,new AbortController().signal,poison);
+ context.onTestFinished(()=>collector.close());
+ try{await collector.wait(marker.begin);await collector.wait(marker.end);collector.checkpoint('complete-final-marker');await collector.close();expect(collector.store.verifyIndex().transportClosed).toBe(true);expect(poison).not.toHaveBeenCalled();}
+ finally{await collector.close();}
+});
+it('refuses actual exit143 without an owned close rather than treating a conventional status as authority',{timeout:10000},async context=>{
+ const path=directory();modelDocker(path,message(marker.begin)+message('work')+message(marker.end),'',0,143);
+ let failed!:()=>void;const observed=new Promise<void>(resolve=>{failed=resolve;}),poison=vi.fn(()=>failed());
+ const collector=employeeChoiceNativeLogCollector(directory(),binding,new AbortController().signal,poison);
+ context.onTestFinished(async()=>{await collector.close().catch(()=>{});}); // Expected negative close still owns child/pipe drain.
+ await observed;await expect(collector.close()).rejects.toThrow('before owned close: 143/null');expect(poison).toHaveBeenCalledTimes(1);
+ expect(collector.store.verifyIndex().transportClosed).toBe(true);
 });

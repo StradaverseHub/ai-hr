@@ -18,7 +18,9 @@ export function employeeChoiceNativeLogCollector(directory:string,binding:Native
  const settled=new Promise<void>(resolve=>{
   child.once('error',error=>{refuse(error);});
   child.once('close',(code,termination)=>{exited=true;try{for(const observer of Object.values(observers))observer.finish();if(!requestedClose)throw Error('Native follower exited before owned close: '+String(code)+'/'+String(termination));
-    if(!(code===0&&termination===null||code===null&&termination==='SIGTERM'&&sentTerm||code===null&&termination==='SIGKILL'&&sentKill))throw Error('Native follower unexpected exit during owned close: '+String(code)+'/'+String(termination));}catch(error){refuse(error);}resolve();});
+    // The observed docker CLI converts our SIGTERM into conventional exit143.
+    // No other nonzero status, nor an unsolicited143, becomes a clean close.
+    if(!(code===0&&termination===null||code===143&&termination===null&&sentTerm||code===null&&termination==='SIGTERM'&&sentTerm||code===null&&termination==='SIGKILL'&&sentKill))throw Error('Native follower unexpected exit during owned close: '+String(code)+'/'+String(termination));}catch(error){refuse(error);}resolve();});
  });
  const close=()=>{
   if(closing)return closing;requestedClose=true;for(const waiter of [...waiters.values()])waiter.reject(signal.aborted?signal.reason??Error('Native capture aborted'):Error('Native follower closed before marker'));waiters.clear();

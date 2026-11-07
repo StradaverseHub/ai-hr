@@ -1,8 +1,8 @@
 {
   "kind": "DEVELOPMENT_LOSSLESS_NATIVE_CAPTURE_NOT_RELEASE",
   "base": "dd230147b2e6559963acf290c12259619656f1a1",
-  "sourceRef": "codex/employee-native-capture-publication-exit-20261108",
-  "qualification": "NOT_RUN; frozen source needs root and independent review before hosted checks",
+  "sourceRef": "codex/employee-native-capture-signal-status-20261108",
+  "qualification": "NOT_RUN prospective signal-status recovery; original failures retained",
   "releaseAuthorized": false,
   "production": "HELD",
   "selectors": {
@@ -14,7 +14,7 @@
       "test/employee-choice-native-purpose-plan.test.ts"
     ]
   },
-  "declaredCaptureModels": 26,
+  "declaredCaptureModels": 28,
   "retainedOwnershipModels": 13,
   "nativeExecutions": 6,
   "requiredPlanPhases": 42,
@@ -74,14 +74,15 @@
   },
   "sourceSha256": {
     "test/employee-choice-native-purpose-plan.test.ts": "d63dab0b1b1d27004ba34e3ea1ec38955810dd1d9a2b6130919a88a9d6f56e34",
-    "test/employee-choice-native-log-capture.test.ts": "294aa36100f8509f2ab126ad3d89d2915ade43646b85ef2831efa22251268cc6",
+    "test/employee-choice-native-log-capture.test.ts": "96c77eca156f580ffbd7113f8a706b7a7fddc9963843887aced807e3febdb65c",
     "test/performance/employee-choice-native-log-parts.ts": "9e4f031ce19b8f851d5b284f1709dbdb8e351a325e2c04173fd89e352a84e1a9",
     "test/performance/employee-choice-native-log-stream.ts": "5c5a215f509cd33e0aa4410eca27c626c96ffadeaa8fe79e297b101e1a8c53db",
-    "test/performance/employee-choice-native-log-collector.ts": "879cdb867e58398102c9b8c041dca57a6edd4f27321280af5a6bc04e188930d2",
+    "test/performance/employee-choice-native-log-collector.ts": "765f4504a122b5b4a3c6d98609450eb7c7cc7cb0a039acbf7e3d83d134a8e639",
     "test/performance/employee-choice-benchmark-lifetime.ts": "ff248b59e427d03bd1ae8e9eed555f16198e3b211271515a9ec36811824e0a39",
     "test/employee-choice-benchmark-ownership.test.ts": "1d43122e5dd17ca4661b29ac6ba29ea679d2ac1da248991448f68286922cd1e7",
     "test/performance/employee-choice-benchmark-evidence.ts": "53f5a71f0324d8b5c5ffac70aa1638b2bfc04197e5dba6cd5bd4ba62d8bb904d",
-    "docs/qualification/employee-choice-lossless-native-capture-20261108.md": "2a3578d672cecfae1f72ac702d7e5243a0bcca8c973cae254f764e64eb96cabe"
+    "docs/qualification/employee-choice-lossless-native-capture-20261108.md": "2a3578d672cecfae1f72ac702d7e5243a0bcca8c973cae254f764e64eb96cabe",
+    "docs/qualification/employee-choice-capture-signal-status-20261108.md": "70d9ccf87b6e868d411d96e88100634187e245ed3133d7b23b45608d25522e2e"
   },
   "unchangedSourceSha256": {
     "core/employee-choice.ts": "ce1e3559addbffa4b4e780594ebcc5fcf917ddffde79a6155cc7fbcecdbcfbd5",
@@ -115,5 +116,26 @@
   "retainedUnexecutedSources": [
     "e3bf848de06b9fb4f7ffd6f8a3b7cc6283868622",
     "dd230147b2e6559963acf290c12259619656f1a1"
-  ]
+  ],
+  "repairParent": "baddf1db3b7d50f80805100861639fe774d8d3dc",
+  "affectedHostedPureSelectors": [
+    "test/employee-choice-native-log-capture.test.ts"
+  ],
+  "retainedBadd": {
+    "pureRun": 42423386639,
+    "passed": 38,
+    "failed": 1,
+    "pending": 0,
+    "artifactId": 13595110077,
+    "zipSha256": "ea974b7794d5fd64402c6a80b40ecd5a026dbcc3279b1129cb4d47d1812ade96",
+    "nativeRun": 42423389275,
+    "nativePassed": 3,
+    "nativeFailed": 3,
+    "nativePending": 0,
+    "nativeArtifactId": 13595180908,
+    "nativeZipSha256": "9012e2b2fa27e46a618c92e018bb8f7dbce8b6fa019ddd9c7a6f7e95f718724a",
+    "originatingNativeFailure": "owned Docker SIGTERM exits143/null",
+    "followingAuthorityRefusals": 2,
+    "semanticPlanAcceptance": false
+  }
 }
