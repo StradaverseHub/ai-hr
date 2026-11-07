@@ -76,6 +76,9 @@ export function notificationWorkerFixtureOwner(){
     values(true,true,${identity.login},${identity.owner},${version},25,10,300,100)`;
   },
   connect(){configured();const connection=postgres(url!.toString(),{max:1,connection:{statement_timeout:20000,lock_timeout:300}});sockets.add(connection);return connection;},
+  /** Private IPC launch material contains ONLY the dedicated worker LOGIN.
+   * Never expose app/owner credentials to the uninstalled process fixture. */
+  processBinding(){const target=configured();return{workerUrl:url!.toString(),database:target.database};},
   finishCase,clearStage,
   async close(){try{await clearStage();if(created){await owner.client`drop owned by ai_hr_notification_worker`;await owner.client`drop role ai_hr_notification_worker`;created=false;}}
    finally{await closeAll();}},
