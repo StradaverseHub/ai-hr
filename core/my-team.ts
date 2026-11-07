@@ -11,7 +11,7 @@ import {actionableLeaveRequests,myTeamLeaveProjection,decideLeave,decideLeaveDat
 import {leaveBalances} from './read';
 import {rosterWindowView,type RosterMonthView} from './roster';
 import {isModuleEnabled} from './entitlements';
-import {resolveMyTeamScope,resolveMyTeamScopeTx,resolveMyTeamPrincipalTx,assertMyTeamAccess,assertMyTeamSubjectTx,MyTeamAuthorizationError} from './my-team-scope';
+import {filterMyTeamSearch,resolveMyTeamScope,resolveMyTeamScopeTx,resolveMyTeamPrincipalTx,assertMyTeamAccess,assertMyTeamSubjectTx,MyTeamAuthorizationError} from './my-team-scope';
 import {isAiPresentationPrincipalCurrentTx} from './ai-principal';
 export type * from '../lib/my-team-types';
 export {MyTeamAuthorizationError} from './my-team-scope';
@@ -141,8 +141,7 @@ export async function readMyTeam(ctx:SessionContext,input:MyTeamQuery):Promise<M
    }
  }
  const tile=input.tile??'members',flag={checked_in:'checkedIn',late:'late',absent:'absent',on_leave:'onLeave',pending_approvals:'pendingApprovals'} as const;
- const gridEmploymentIds=employees.filter(e=>(!query.search||`${e.name} ${e.employeeCode??''}`.toLowerCase().includes(query.search.toLowerCase()))
-   &&(tile==='members'||e.today[flag[tile]])).map(e=>e.employmentId);
+ const gridEmploymentIds=filterMyTeamSearch(employees,query.search).filter(e=>tile==='members'||e.today[flag[tile]]).map(e=>e.employmentId);
  // Source owners retain their normal transactions; refuse a membership change rather than return old IDs.
  const finalScope=await resolveMyTeamScope(ctx,input);
  const scopeSignature=(value:typeof scope)=>JSON.stringify({
@@ -175,9 +174,7 @@ export async function resolveMyTeamRosterScope(ctx:SessionContext,query:MyTeamQu
   // person claim. Prove that actual identity in the same native read-only snapshot.
   if(!await isAiPresentationPrincipalCurrentTx(tx,{...ctx,personId:principal.personId}))throw new MyTeamAuthorizationError();
   const scope=await resolveMyTeamScopeTx(tx,ctx,query);
-  const needle=normalized.search.toLowerCase();
-  return {companyIds:scope.companies.map(row=>row.id),employmentIds:scope.employees
-   .filter(row=>!needle||`${row.name} ${row.employeeCode??''}`.toLowerCase().includes(needle)).map(row=>row.employmentId),
+  return {companyIds:scope.companies.map(row=>row.id),employmentIds:filterMyTeamSearch(scope.employees,normalized.search).map(row=>row.employmentId),
    from:period.gridDates[0],to:period.gridDates.at(-1)!,canEditRoster:scope.canEditRoster};
  },{readOnlySnapshot:true});
 }

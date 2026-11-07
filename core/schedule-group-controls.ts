@@ -76,31 +76,32 @@ export function saveScheduleGroupControl(ctx:SessionContext,p:{ruleId:string;kin
  });
 }
 /** No caller-supplied purpose can bypass this guard. Automatic rotations are derived, not manual rows. */
+export class DutyRosterWriteRefusal extends Error {constructor(readonly category:'permission'|'validation',message:string){super(message);this.name='DutyRosterWriteRefusal';}}
 export async function assertDutyRosterWriteTx(tx:Tx,ctx:SessionContext,changes:readonly {employmentId:string;shiftDate:string;shiftId?:string|null;isRestDay?:boolean;note?:string|null;clear?:boolean}[]) {
  ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
- if(!isAdmin(ctx))throw new Error('Only an HR administrator can change the roster.');
+ if(!isAdmin(ctx))throw new DutyRosterWriteRefusal('permission','Only an HR administrator can change the roster.');
  changes=changes.map(change=>({...change}));
  const ids=[...new Set(changes.map(c=>c.employmentId))];if(!ids.length)return;
  await lockAccessConfigurationTx(tx,ctx.tenantId);
  await lockLeaveDependenciesTx(tx,ctx.tenantId,ids);
  const employees=await tx.select({id:employment.id,groupId:employment.attendanceRuleId,defaultShiftId:employment.defaultShiftId}).from(employment).where(inArray(employment.id,ids)).orderBy(asc(employment.id)).for('update');
- if(employees.length!==ids.length)throw new Error('An employee is unavailable in your company scope.');
+ if(employees.length!==ids.length)throw new DutyRosterWriteRefusal('permission','An employee is unavailable in your company scope.');
  const rules=await tx.select().from(attendanceRule).orderBy(asc(attendanceRule.id)).for('update');
  const targetIds=[...new Set(changes.flatMap(c=>c.shiftId?[c.shiftId]:[]))];
  const targetShifts=targetIds.length?await tx.select({id:shift.id,ruleId:shift.ruleId}).from(shift).where(inArray(shift.id,targetIds)):[];
  const allDates=changes.map(c=>c.shiftDate).sort();const groupOn=await scheduleGroupLookupTx(tx,ids,allDates[0],allDates.reduce((a,b)=>a>b?a:b));
  for(const emp of employees){
   const [permission]=await tx.execute(sql`select app.can_admin_employment(${emp.id}::uuid) as allowed`) as unknown as {allowed:boolean}[];
-  if(!permission?.allowed)throw new Error('You cannot administer this employee.');
+  if(!permission?.allowed)throw new DutyRosterWriteRefusal('permission','You cannot administer this employee.');
   const ownGroups=[...new Set(changes.filter(c=>c.employmentId===emp.id).flatMap(c=>[groupOn(emp.id,c.shiftDate),...(!emp.groupId&&c.shiftId?[targetShifts.find(sh=>sh.id===c.shiftId)?.ruleId??null]:[])]))];
   const group=rules.find(r=>r.id===ownGroups[0]);
-  for(const id of ownGroups){const applicable=rules.find(r=>r.id===id);if(applicable&&!applicable.dutyRosterControl)throw new Error(`Duty Roster Control is Off for “${scheduleGroupDisplayName(applicable)}”. Enable it before changing an individual roster.`);}
+  for(const id of ownGroups){const applicable=rules.find(r=>r.id===id);if(applicable&&!applicable.dutyRosterControl)throw new DutyRosterWriteRefusal('validation',`Duty Roster Control is Off for “${scheduleGroupDisplayName(applicable)}”. Enable it before changing an individual roster.`);}
   const own=changes.filter(c=>c.employmentId===emp.id);
   const dates=[...new Set(own.map(c=>c.shiftDate))].sort();
   const byBatch=new Map<string,Awaited<ReturnType<typeof lockPayrollForAttendanceChange>>[number]>();
-  for(const date of dates){if(!/^\d{4}-\d{2}-\d{2}$/.test(date)||Number.isNaN(Date.parse(date+'T00:00:00Z')))throw new Error('Choose a valid roster date.');for(const batch of await lockPayrollForAttendanceChange(tx,emp.id,date))byBatch.set(batch.batchId,batch);}
+  for(const date of dates){if(!/^\d{4}-\d{2}-\d{2}$/.test(date)||Number.isNaN(Date.parse(date+'T00:00:00Z')))throw new DutyRosterWriteRefusal('validation','Choose a valid roster date.');for(const batch of await lockPayrollForAttendanceChange(tx,emp.id,date))byBatch.set(batch.batchId,batch);}
   const batches=[...byBatch.values()];
-  if(batches.some(b=>b.status==='closed'))throw new Error('The roster change touches a closed payroll attendance period.');
+  if(batches.some(b=>b.status==='closed'))throw new DutyRosterWriteRefusal('validation','The roster change touches a closed payroll attendance period.');
   await markPayrollForAttendanceChange(tx,ctx,batches,emp.id);
   const before=await tx.select().from(rosterAssignment).where(and(eq(rosterAssignment.employmentId,emp.id),inArray(rosterAssignment.shiftDate,dates))).orderBy(asc(rosterAssignment.shiftDate));
   await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'employment',aggregateId:emp.id,eventType:'roster.manual-changes',subjectEmploymentId:emp.id,actor:actorOf(ctx),payload:{groupId:group?.id??null,changes:own.map(c=>({date:c.shiftDate,before:before.find(r=>r.shiftDate===c.shiftDate)??null,after:c.clear?null:{shiftId:c.shiftId??null,isRestDay:c.isRestDay??false,note:c.note??null}}))}});

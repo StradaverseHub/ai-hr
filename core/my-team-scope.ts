@@ -8,6 +8,11 @@ import {todayInKualaLumpur} from '../lib/hr-date';
 import type {MyTeamQuery} from '../lib/my-team-types';
 import {assertModuleEnabled} from './entitlements';
 
+/** Canonical grid search; preserves source order and the joined name/code semantics. */
+export function filterMyTeamSearch<T extends {name:string;employeeCode:string|null}>(rows:readonly T[],search?:string):T[]{
+ const needle=search?.trim().toLowerCase()??'';
+ return rows.filter(row=>!needle||`${row.name} ${row.employeeCode??''}`.toLowerCase().includes(needle));
+}
 export class MyTeamAuthorizationError extends Error {constructor(){super('MY_TEAM_NOT_AUTHORIZED');this.name='MyTeamAuthorizationError';}}
 export function assertMyTeamAccess(ctx:SessionContext){
   if(!ctx.userId||!hasTeamAccess(ctx))throw new MyTeamAuthorizationError();

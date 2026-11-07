@@ -7,18 +7,23 @@ import {escapeFormHtml as esc,hiddenFormField as hidden,NativeFormError,readNati
 import {parseRosterDraftSelection,parseRosterSelection,RosterSelectionError} from '@/lib/roster-selection';
 import {isCalendarDate} from '@/lib/calendar-date';
 import {currentUiTheme} from '@/lib/ui-theme-server';
-import {copyRoster,generateRosterFromTemplate,listShiftsForTenant,RosterAdminRequiredError} from '@/core/roster';
+import {copyRoster,generateRosterFromTemplate,listShiftsForTenant,RosterAdminRequiredError,RosterCommandRefusal,validateRosterGenerateRange,validateRosterCopyRange} from '@/core/roster';
 import {rosterEmployeePage,rosterPopulationReview} from '@/core/roster-presentation';
 import {listDepartments} from '@/core/read';
 import {organisationChoiceLabel} from '@/lib/organisation-choice-label';
 import {AiGatewayError} from '@/lib/ai/types';
 import {rosterPopulationScope} from '../population-scope';
-import {rosterCommandScope,rosterCommandTargets,RosterCommandTargetError} from '../command-targets';
+import {DutyRosterWriteRefusal} from '@/core/schedule-group-controls';
+import {ShiftNotInScheduleGroupError,ShiftSelectionUnavailableError} from '@/core/schedule-shift-eligibility';
+import {MyTeamAuthorizationError} from '@/core/my-team-scope';
+import {MyTeamQueryError} from '@/lib/my-team-query';
+import {LeaveDependencyUnavailable} from '@/packs/leave/service';
+import {rosterCommandScope,rosterCommandTargets,rosterGenerationTargets,RosterCommandTargetError} from '../command-targets';
 
 export const runtime='nodejs';
 const headers={'Cache-Control':'private, no-store','Content-Type':'text/html; charset=utf-8','X-Content-Type-Options':'nosniff'};
 const allowed=new Set(['command','stage','review','companyId','populationQuery','selectionIds','employmentIds','currentPageIds','offset','pickerQuery','selectionMode','shiftId','departmentId','from','to','sourceFrom','sourceTo','targetFrom']);
-const commandKeys=['command','companyId','populationQuery','shiftId','departmentId','from','to','sourceFrom','sourceTo','targetFrom'] as const;
+const commandKeys=['command','companyId','populationQuery','selectionMode','shiftId','departmentId','from','to','sourceFrom','sourceTo','targetFrom'] as const;
 const uuid=/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/;
 type T=Awaited<ReturnType<typeof getTranslations<'roster'>>>;
 function text(data:FormData,key:string,maximum=16384){const value=data.get(key);if(value===null)return '';if(typeof value!=='string'||value.length>maximum)throw new NativeFormError('Invalid field');return value;}
@@ -45,6 +50,13 @@ function controlSummary(data:FormData,t:T,labels:{shiftId:string;departmentId:st
  return `<dl>${keys.filter(key=>text(data,key)).map(key=>`<dt>${esc(t(key==='shiftId'?'shifts':key==='departmentId'?'filterDepartment':key==='sourceFrom'||key==='sourceTo'?'copySource':key==='targetFrom'?'copyTargetStart':key==='from'?'filterFrom':'filterTo'))}</dt><dd>${esc(key==='shiftId'?labels.shiftId:key==='departmentId'?labels.departmentId:text(data,key))}</dd>`).join('')}</dl>`;
 }
 
+function retryControls(data:FormData,t:T){
+ let ids:string[];try{ids=selectedDraft(data);}catch{return '';}
+ const dateKeys=text(data,'command')==='generate'?['from','to']:['sourceFrom','sourceTo','targetFrom'];
+ const kept=commandKeys.filter(key=>!dateKeys.includes(key));
+ return `<form method="post" action="/roster/prepare">${kept.map(key=>hidden(key,text(data,key))).join('')}${hidden('selectionIds',JSON.stringify(ids))}${dateKeys.map(key=>`<label>${esc(t(key==='sourceFrom'||key==='sourceTo'?'copySource':key==='targetFrom'?'copyTargetStart':key==='from'?'filterFrom':'filterTo'))}<input type="date" name="${key}" value="${esc(text(data,key))}" required></label>`).join('')}${hidden('stage','prepare')}<button>${esc(t('reviewTargets'))}</button></form>`;
+}
+
 /** Native preparation/browsing is a read. Only the separate explicit Confirm POST writes. */
 export async function POST(request:Request){
  const site=request.headers.get('sec-fetch-site');
@@ -64,13 +76,16 @@ export async function POST(request:Request){
  }catch{return new Response(esc(t('prepareFailed')),{status:400,headers});}
  const render=(body:string,status=200)=>new Response(documentHtml(locale,theme,t('prepareTitle'),back,t('exceptionsBack'),body),{status,headers});
  try{
+  if(command==='generate')validateRosterGenerateRange({from:text(data,'from'),to:text(data,'to')});
+  else validateRosterCopyRange({sourceFrom:text(data,'sourceFrom'),sourceTo:text(data,'sourceTo'),targetFrom:text(data,'targetFrom')});
   if(stage==='confirm'){
-   const ids=await rosterCommandTargets(s,data,command==='generate');
    const q=new URLSearchParams({companyId:text(data,'companyId')});
    if(command==='generate'){
-    const result=await generateRosterFromTemplate(s,{shiftId:text(data,'shiftId'),employmentIds:ids,from:text(data,'from'),to:text(data,'to')});
+    const targets=await rosterGenerationTargets(s,data);
+    const result=await generateRosterFromTemplate(s,{shiftId:text(data,'shiftId'),...targets,from:text(data,'from'),to:text(data,'to')});
     q.set('month',text(data,'from').slice(0,7));q.set('generated',`${result.employments}.${result.workingRows}.${result.restRows}`);
    }else{
+    const ids=await rosterCommandTargets(s,data);
     const result=await copyRoster(s,{employmentIds:ids,sourceFrom:text(data,'sourceFrom'),sourceTo:text(data,'sourceTo'),targetFrom:text(data,'targetFrom')});
     q.set('month',text(data,'targetFrom').slice(0,7));q.set('copied',String(result.copied));
    }
@@ -93,13 +108,17 @@ export async function POST(request:Request){
   }
   const department=command==='generate'&&text(data,'departmentId')?{departmentId:text(data,'departmentId'),shiftId:text(data,'shiftId')}:undefined;
   const matching=text(data,'selectionMode')==='matching';
-  const {ids,page}=await rosterPopulationReview(s,department?{...scope,department}:matching?population:{...scope,selectedIds:parseRosterSelection(JSON.stringify(draft))},request.signal);
+  const {ids,page}=await rosterPopulationReview(s,{...(department?{...scope,department}:matching?population:{...scope,selectedIds:parseRosterSelection(JSON.stringify(draft))}),...(command==='generate'?{generationShiftId:text(data,'shiftId')}:{})},request.signal);
 
   return render(`<p>${esc(t('selectedCount',{n:ids.length}))}</p><p>${esc(t('prepareHint'))}</p>${controlSummary(data,t,labels)}<table><thead><tr><th>${esc(t('employee'))}</th><th>${esc(t('colEmployeeNo'))}</th></tr></thead><tbody>${page.rows.map(row=>`<tr><td>${esc(row.name)}</td><td>${esc(row.code??'')}</td></tr>`).join('')}</tbody></table><p>${esc(pt('range',{from:1,to:page.rows.length,total:ids.length}))}</p><form method="post" action="/roster/prepare">${fields(data)}${hidden('selectionIds',JSON.stringify(ids))}${hidden('stage','confirm')}<button type="submit">${esc(t('confirmRoster'))}</button></form>`);
  }catch(error){
   if(request.signal.aborted)throw error;
-  if(error instanceof RosterAdminRequiredError||error instanceof AiGatewayError||error instanceof Error&&error.message==='Forbidden')return render(`<p role="alert">${esc(t('prepareFailed'))}</p>`,403);
-  if(error instanceof NativeFormError||error instanceof RosterSelectionError||error instanceof RosterCommandTargetError)return render(`<p role="alert">${esc(t('prepareFailed'))}</p>`,400);
+  if(error instanceof RosterCommandRefusal||error instanceof DutyRosterWriteRefusal||error instanceof ShiftSelectionUnavailableError||error instanceof ShiftNotInScheduleGroupError||error instanceof LeaveDependencyUnavailable){
+   const status=error instanceof RosterCommandRefusal&&error.code==='permission'||error instanceof DutyRosterWriteRefusal&&error.category==='permission'?403:error instanceof LeaveDependencyUnavailable?409:422;
+   return render(`<p role="alert">${esc(error.message)}</p>${retryControls(data,t)}`,status);
+  }
+  if(error instanceof RosterAdminRequiredError||error instanceof MyTeamAuthorizationError||error instanceof AiGatewayError||error instanceof Error&&error.message==='Forbidden')return render(`<p role="alert">${esc(t('prepareFailed'))}</p>`,403);
+  if(error instanceof NativeFormError||error instanceof RosterSelectionError||error instanceof RosterCommandTargetError||error instanceof MyTeamQueryError)return render(`<p role="alert">${esc(t('prepareFailed'))}</p>`,400);
   throw error;
  }
 }

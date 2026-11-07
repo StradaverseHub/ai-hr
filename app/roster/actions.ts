@@ -4,7 +4,7 @@ import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { getSession } from '@/lib/session';
 import { isAdmin } from '@/lib/authz';
-import { rosterCommandTargets } from './command-targets';
+import { rosterCommandTargets, rosterGenerationTargets } from './command-targets';
 import {
   assertRosterAdmin,
   assertRosterDatesWritable,
@@ -214,10 +214,10 @@ export async function generateRosterAction(formData: FormData) {
   if (!isAdmin(s)) redirect(`/roster?companyId=${companyId}&error=${encodeURIComponent(new RosterAdminRequiredError().message)}`);
   let summary: { employments: number; workingRows: number; restRows: number };
   try {
-    const employmentIds = await rosterCommandTargets(s, formData, true);
+    const targets = await rosterGenerationTargets(s, formData);
     summary = await generateRosterFromTemplate(s, {
       shiftId: String(formData.get('shiftId') ?? ''),
-      employmentIds,
+      ...targets,
       from,
       to: String(formData.get('to') ?? ''),
     });

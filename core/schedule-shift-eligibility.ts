@@ -35,6 +35,7 @@ import { attendanceRule,attendanceRuleShift,attendanceRotation,employment,shift 
  * Employments with NO group (all of them at release: the column ships NULL with no backfill) are not
  * constrained at all, so this function is a no-op on release day and every existing caller is unchanged.
  */
+export class ShiftSelectionUnavailableError extends Error {constructor(readonly code:'missing'|'archived',message:string){super(message);this.name='ShiftSelectionUnavailableError';}}
 export class ShiftNotInScheduleGroupError extends Error {
   constructor(p: { groupName: string; shiftName: string | null; allowed: readonly string[] }) {
     const subject = p.shiftName ? `“${p.shiftName}”` : 'That shift';
@@ -91,8 +92,8 @@ export async function assertShiftsAllowedForEmploymentsTx(
   // Match pool writers' lock order: group first, selected templates second.
   const attemptedIds=[...new Set(real.map(p=>p.shiftId))];
   const available=await tx.select({id:shift.id,archivedAt:shift.archivedAt}).from(shift).where(inArray(shift.id,attemptedIds)).orderBy(asc(shift.id)).for('update');
-  if(attemptedIds.some(id=>!available.some(sh=>sh.id===id)))throw new Error('A selected shift is unavailable in this tenant.');
-  if(!options?.existingReferences&&available.some(sh=>sh.archivedAt))throw new Error('An archived shift cannot be selected for a new assignment. Select an active shift.');
+  if(attemptedIds.some(id=>!available.some(sh=>sh.id===id)))throw new ShiftSelectionUnavailableError('missing','A selected shift is unavailable in this tenant.');
+  if(!options?.existingReferences&&available.some(sh=>sh.archivedAt))throw new ShiftSelectionUnavailableError('archived','An archived shift cannot be selected for a new assignment. Select an active shift.');
 
 
   if(groupOf.size===0)return;

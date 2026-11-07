@@ -6,7 +6,7 @@ vi.mock('next/cache',()=>({revalidatePath:vi.fn()}));
 vi.mock('next/navigation',()=>({redirect:(href:string)=>{throw new Error('REDIRECT '+href);}}));
 vi.mock('../core/roster',()=>({copyRoster:state.copy,generateRosterFromTemplate:state.generate,assertRosterAdmin:vi.fn(),assertRosterDatesWritable:vi.fn(),assignRosterRow:vi.fn(),assignShift:vi.fn(),assignShiftBulk:vi.fn(),clearRoster:vi.fn(),setRestDay:vi.fn(),RosterAdminRequiredError:Error}));
 vi.mock('../core/toil',()=>({accrueToil:vi.fn(),ToilFirstScheduleConsentRequiredError:Error}));
-vi.mock('../core/roster-presentation',()=>({rosterPopulationIds:state.targets,rosterDepartmentIds:state.department}));
+vi.mock('../core/roster-presentation',()=>({rosterPopulationIds:state.targets,rosterPopulationReview:state.department}));
 vi.mock('../app/roster/population-scope',()=>({rosterPopulationScope:state.scope}));
 import {copyRosterAction,generateRosterAction} from '../app/roster/actions';
 const id=(n:number)=>'00000000-0000-4000-8000-'+String(n).padStart(12,'0');
@@ -28,8 +28,8 @@ it('generates only the complete explicit reviewed set',async()=>{
 it('keeps department intent as an exact authorized subset of the canonical department population',async()=>{
  const data=form([id(1),id(2)]);data.set('departmentId',id(700));
  await expect(generateRosterAction(data)).rejects.toThrow('generated=');
- expect(state.department).toHaveBeenCalledWith(expect.anything(),{departmentId:id(700),shiftId:id(800)});
- expect(state.generate.mock.calls[0][1].employmentIds).toEqual([id(1),id(2)]);expect(state.generate.mock.calls[0][1]).not.toHaveProperty('departmentId');
+ expect(state.department).toHaveBeenCalledWith(expect.anything(),expect.objectContaining({selectedIds:[id(1),id(2)],department:{departmentId:id(700),shiftId:id(800)}}));
+ expect(state.generate.mock.calls[0][1].reviewedDepartment).toEqual({departmentId:id(700),employmentIds:[id(1),id(2)],companyIds:[id(900)]});expect(state.generate.mock.calls[0][1]).not.toHaveProperty('departmentId');
 });
 it('intersects posted IDs with freshly resolved team membership instead of replacing that scope',async()=>{
  state.scope.mockResolvedValue({companyIds:[id(900)],employmentIds:[id(1)]});

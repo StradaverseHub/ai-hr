@@ -104,10 +104,10 @@ afterAll(async () => {
 beforeEach(async () => {
   await resetDb();
   b = await seedBase();
-  admin = adminCtx(b);
+  admin = {...adminCtx(b),grants:[{role:'hr_admin',companyId:null}]};
   // A REAL non-admin session: the same tenant and the same logged-in user, holding a role that is not
   // hr_admin / super_admin. This is exactly what a supervisor's session context looks like.
-  supervisor = { ...admin, roles: ['manager'] };
+  supervisor = { ...adminCtx(b), roles: ['manager'] };
   // The DEFAULT session for this file is the supervisor — the caller the blocker is about. The last
   // describe overrides it with the administrator in its own beforeEach, which runs after this one.
   SESSION = supervisor;

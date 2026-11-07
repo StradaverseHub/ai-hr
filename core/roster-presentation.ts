@@ -2,11 +2,11 @@
  * Whole exports, templates and domain commands continue through their existing owners. */
 import {and,eq,inArray,isNull,sql} from 'drizzle-orm';
 import {withTenant,type SessionContext,type Tx} from '../db/client';
-import {assignment,department,businessUnit,position,shift} from '../db/schema';
+import {assignment,department,businessUnit,position,shift,employment,person} from '../db/schema';
 import {readEmployeeChoicesTx,readEmployeeChoiceIdsTx} from './employee-choice';
 import {assertAiPresentationPrincipalTx} from './ai-principal';
 import {boundPersonnelStatementTx} from './personnel-read-bounds';
-import {assertRosterWindow,hydrateRosterWindow,listShiftsForTenant,rosterDepartmentPopulationIdsTx,type RosterMonthEmployee} from './roster';
+import {assertRosterWindow,hydrateRosterWindow,listShiftsForTenant,rosterDepartmentPopulationIdsTx,rosterGenerationTemplateTx,type RosterMonthEmployee} from './roster';
 import {datesBetween} from '../lib/roster-month';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {organisationFilterChoices} from '../lib/organisation-choice-label';
@@ -91,15 +91,27 @@ export function rosterDepartmentIds(ctx:SessionContext,p:{departmentId:string;sh
 
 /** One admission snapshot owns complete review IDs and bounded display names. The complete cursor
  * has no page/facet recalls; only its first 25 identities receive display projection. */
-export function rosterPopulationReview(ctx:SessionContext,p:RosterPopulation&{selectedIds?:string[];department?:{departmentId:string;shiftId:string}},signal?:AbortSignal){
- ctx=captureSession(ctx);p={...capturePopulation(p),selectedIds:p.selectedIds?.slice(),department:p.department?{...p.department}:undefined};
+export function rosterPopulationReview(ctx:SessionContext,p:RosterPopulation&{selectedIds?:string[];generationShiftId?:string;department?:{departmentId:string;shiftId:string}},signal?:AbortSignal){
+ ctx=captureSession(ctx);p={...capturePopulation(p),selectedIds:p.selectedIds?.slice(),generationShiftId:p.generationShiftId,department:p.department?{...p.department}:undefined};
  return withTenant(ctx,async tx=>{
   await assertAiPresentationPrincipalTx(tx,ctx);await boundPersonnelStatementTx(tx);
+  const generationTemplate=p.generationShiftId?await rosterGenerationTemplateTx(tx,p.generationShiftId):null;
   let requested=p.selectedIds;
   if(p.department){
-   const [template]=await tx.select({companyId:shift.companyId}).from(shift).where(eq(shift.id,p.department.shiftId)).limit(1);
+   const template=generationTemplate??await rosterGenerationTemplateTx(tx,p.department.shiftId);
    if(!template)throw new RosterSelectionError('Shift not found (or not visible)');
    requested=await rosterDepartmentPopulationIdsTx(ctx,tx,{departmentId:p.department.departmentId,templateCompanyId:template.companyId});
+   const departmentIds=new Set(requested),teamIds=p.employmentIds?new Set(p.employmentIds):null;
+   const candidates=p.selectedIds??requested;
+   const ids=candidates.length?await tx.select({id:employment.id}).from(employment)
+    .where(and(sql`${employment.id}=any(${'{'+candidates.filter(id=>departmentIds.has(id)&&(!teamIds||teamIds.has(id))).join(',')+'}'}::uuid[])`,inArray(employment.companyId,p.companyIds))) : [];
+   const actual=new Set(ids.map(row=>row.id));
+   if(p.selectedIds&&(actual.size!==p.selectedIds.length||p.selectedIds.some(id=>!actual.has(id))))throw new RosterSelectionError('The department selection changed. Prepare it again.');
+   const selected=parseRosterSelection(JSON.stringify(candidates.filter(id=>actual.has(id))));
+   const rows=await tx.select({employmentId:employment.id,name:person.fullName,code:employment.employeeCode}).from(employment)
+    .innerJoin(person,eq(person.id,employment.personId)).where(inArray(employment.id,selected.slice(0,25))).orderBy(person.fullName,employment.id);
+   return {ids:selected,page:{rows,total:selected.length}};
+
   }
   const baseIds=p.employmentIds?new Set(p.employmentIds):null;
   const candidates=requested?(baseIds?requested.filter(id=>baseIds.has(id)):requested):p.employmentIds;

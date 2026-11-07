@@ -196,7 +196,7 @@ describe('a57f0584 · the write affordances still take one company', () => {
    * writable view holds exactly the rows it held before this change.
    */
   it('generate, copy and upload appear only once a company is chosen', () => {
-    expect(PAGE.match(/\{admin && companyId && \(/g) ?? [], 'generate and copy').toHaveLength(2);
+    expect(PAGE.match(/\{canEdit && companyId && \(/g) ?? [], 'generate and copy').toHaveLength(2);
     expect(PAGE, 'and the upload link with them').toContain('{companyId && (');
     expect(PAGE, 'with a reason, not silence').toContain("t('pickCompanyToEdit')");
   });

@@ -8,6 +8,7 @@ import {hireEmployee,setReportingLine} from '../core/org';
 import {resolveMyTeamRosterScope,readMyTeam} from '../core/my-team';
 import * as readOwner from '../core/read';
 import * as rosterOwner from '../core/roster';
+import {filterMyTeamSearch} from '../core/my-team-scope';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {weekRangeOf} from '../lib/roster-month';
 import type {MyTeamQuery} from '../lib/my-team-types';
@@ -90,4 +91,10 @@ it('captures nested request inputs and keeps invalid/foreign/department authorit
  const transactions=vi.spyOn(database,'withTenant');
  await expect(resolveMyTeamRosterScope(ctx,{...query,anchorDate:'2026-02-30'})).rejects.toThrow('MY_TEAM_QUERY_INVALID');
  expect(transactions).not.toHaveBeenCalled();
+});
+
+it('shares the exact joined name/code substring search while preserving input order',()=>{
+ const rows=[{name:'Alpha',employeeCode:'BETA'},{name:'Älice',employeeCode:null},{name:'alpha beta',employeeCode:'C'}];
+ expect(filterMyTeamSearch(rows,'  HA be  ')).toEqual([rows[0],rows[2]]);
+ expect(filterMyTeamSearch(rows,'äL')).toEqual([rows[1]]);expect(filterMyTeamSearch(rows,' ')).toEqual(rows);
 });
