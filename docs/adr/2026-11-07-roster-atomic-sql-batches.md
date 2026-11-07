@@ -42,9 +42,12 @@ large-command capacity evidence. No local application checks run.
 
 ## Remaining command admission work
 
-SQL batching does not reduce advisory-lock ownership. The canonical guards retain
-configuration, employment, payroll and overtime-day locks. A large target/date product
-can exhaust PostgreSQL's shared lock table or the transaction's time/memory envelope.
+SQL batching does not reduce advisory-lock ownership. Participating configuration and
+employment guards acquire advisory locks; Payroll protection also locks relevant batch
+rows. The canonical overtime-day helper takes existing Attendance then OT-source row
+locks, not one advisory lock per day. The target/date product still increases existing
+row locking, queries and transaction time/memory; distinct subject/configuration advisory
+keys need their own measured shared-lock envelope.
 Neither a 100,000-ID transport ceiling nor this source change establishes that such a
 command is supportable. No database limits, timeouts or target sets were enlarged,
 truncated or hidden. Very large command admission remains unqualified.
@@ -54,7 +57,7 @@ worker count or a guessed employee cap:
 
 1. Capture the exact reviewed IDs, dates, command intent and relevant source versions.
    Ask the existing dependency owners for the complete unique lock/resource plan,
-   including overtime-day and payroll keys. Never replace the target set with a newer
+   distinguishing subject/configuration advisory keys from existing Attendance/OT and Payroll row locks. Never replace the target set with a newer
    population during admission or execution.
 2. Bind an installation resource profile to measured command envelopes and the actual
    service/database limits. Include the shared lock pool and a reserve for other writers,
