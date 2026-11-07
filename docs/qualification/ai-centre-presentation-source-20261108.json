@@ -19,7 +19,9 @@
     "core/ai-spend-management.ts": "d2e5a6ca0a6dd928d8560d34bdd47ef7d138f6b15734f8270184de55ed388c47",
     "test/ai-centre-presentation-native.test.ts": "930b66bc36385c6b34926383c3c222f8e645f0a5749149bf41c0bf15a30e11c9",
     "test/fixtures/ai-management-locked-baseline.ts": "fdd12d1bf9048ea433b45c3c6ad4abe588551340d534bae4adf36e135b786897",
-    "test/prototypes/ai-centre-presentation.sql": "6129a791faa784098fac9b36de62a532b9319cfe2ba3987f98b72c7ecf75089c"
+    "test/prototypes/ai-centre-presentation.sql": "6129a791faa784098fac9b36de62a532b9319cfe2ba3987f98b72c7ecf75089c",
+    "lib/ai/provider-data-source-manifest.ts": "3d0f270ad77ecd878766599631a57eb600e1e7804d8781a04705d82549aac994",
+    "lib/ai/module-agent-source-manifest.ts": "8153eedfb6085333fdf783831a6f4f4a1c15d2bc8ce01e7f463d88d6ed30a8e8"
   },
   "qualification": "UNRUN: independent source/security review then standard hosted native/focused/compiler/build qualification; no application/runtime/provider/network/local verification or installation.",
   "expectedNativePredecessorProsrcMd5": {
@@ -40,5 +42,19 @@
   "pureProjectionExtractionExactStaticCheck": true,
   "focusedSelectorCount": 15,
   "ownedHostedWorkerInstallFence": true,
-  "newProjectionValueHelpers": "VOLATILE for original RC statement freshness; SELECT/RETURN only, no locks/admission/writes"
+  "newProjectionValueHelpers": "VOLATILE for original RC statement freshness; SELECT/RETURN only, no locks/admission/writes",
+  "generatedSourceBinding": {
+    "reviewedImplementation": "81d61f489dbd8d7a7f0f886aa2651460c46433e2",
+    "providerFirst": {
+      "files": 1480,
+      "digest": "e9e422d54fd2762d18b5289b8824a740410c44c8271627a7d28c7cf24c87cfd5"
+    },
+    "agentLast": {
+      "files": 472,
+      "digest": "f52df6b40e230c0f1468141758c2b20cfc0716ff5fbcf2718dfb0ad91c083027"
+    },
+    "literalApprovalsModified": false,
+    "newProviderEgressApproved": false,
+    "applicationAndPrototypeBytesChanged": false
+  }
 }
