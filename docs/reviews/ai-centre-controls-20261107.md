@@ -2,7 +2,7 @@
 
 Date: 7 November 2026
 
-Status: implementation candidate; exact provider-source approval pending. This record is not an approval or a release receipt.
+Status: exact provider-source renewal approved by the repository owner on 7 November 2026. Staging qualification and acceptance remain separate; this is not a release receipt.
 
 ## What is implemented
 
@@ -44,6 +44,16 @@ Integration base: alpha `eb9411f24f74dc3ce02d1e3fa6a834c7e0ac2d6c`. Candidate im
 An independent import-closure walk over immutable baseline Git blobs reproduced the previous 1,456-file fingerprint. The candidate generator and independent hash agree. Two provider-closure files are added (`core/ai-centre-control.ts` and `lib/ai/centre-activity.ts`), 43 covered files change and none are removed. Changes add narrowing control checks, carry generation/function context, protect late effects and preserve accounting. Request data and session scope are copied before asynchronous control reads; server-issued permits keep their identity. Standalone module planning keeps the original stop generation through its proposal transaction. Module children are enforced at their canonical read owner, including governed plans outside chat. Both grouped topic tools and individual topics have controls. Each payroll cut-off reminder batch keeps the original generation and its SQL-generated event receives immutable generation metadata. Contract declarations, outgoing serializers, prompt shapes and literal provider approval records are unchanged. No new outgoing data field, provider purpose or contract is authorised by this candidate.
 
 `lib/ai/provider-data-reviews.ts` requires actual human approval and immutable evidence before the literal records change. The existing 28 approved records still reference the previous fingerprint; the two pending contracts (`structured_canonical_records_v1`, `attendance_trend_analysis_v1`) remain pending. Consequently source-bound AI workloads remain unavailable on this candidate until the owner approves the exact new binding. Approval requested is renewal of the existing approved purposes for this exact provider fingerprint, preserving their scope and both pending contracts. It does not authorise production deployment. Updating literal records after approval also changes the generated module-agent fingerprint and requires regeneration and verification.
+
+## Owner-approved renewal
+
+On 7 November 2026, the repository owner explicitly approved this exact packet and instructed:
+
+> Approved. Renew the existing provider-data approvals for the exact fingerprint in the review packet, keep the two pending contracts unchanged, and proceed with the required staging verification.
+
+This approval binds provider fingerprint `ba8f8b5e200eba8fdfd61e189a7ccd0cf1c074fad2373bd794a8d050246d6dea`. Exactly the 28 previously approved records receive that source digest. Their original reviewer, evidence, reviewedAt and purpose provenance are preserved. The two pending records remain byte-for-byte unchanged. No new outgoing field, provider purpose, contract, employment authority or automation ceiling is approved. The preceding request section records the historical pending state; it is superseded by this explicit renewal only for the stated fingerprint. Production deployment is not authorised.
+
+The provider manifest is rechecked after renewal. The generated module-agent surface must be regenerated because it includes the literal approval records; its renewed digest is `58edc18c8a00fbbe953f54e1a5c00e3d52c9ac59c4f6fb4f95f61f176f4d0910` (472 files). Staging verification evidence is recorded separately below.
 
 ## Verification evidence
 
