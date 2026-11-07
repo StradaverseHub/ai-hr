@@ -15,11 +15,12 @@ import {DerivedOrganisationFields,useDerivedOrganisation} from '@/components/der
 //
 // Every option list is pre-loaded and pre-translated by the server page; this island owns only the form
 // state. The tab shell injects the hidden `tab` field on submit, so the save lands back on the Movement tab.
-import { useRef, useState, useActionState } from 'react';
+import { startTransition, useRef, useState, useActionState } from 'react';
 import { useTranslations } from 'next-intl';
 import { ProfileOptionSelect } from '@/components/profile-option-select';
 import { personnelWorkflowControl, personnelWorkflowInput, personnelFormLabel, personnelFormCatalog, personnelFormChoices } from '@/lib/personnel-form-contract';
 import { ConfirmSubmit } from '@/components/ui/confirm-submit';
+import { DatabaseErrorText } from '@/components/database-error-text';
 import { DateField } from '@/components/ui/date-field';
 import { CurrencySelect } from '@/components/currency-select';
 import { PAY_MODE_OPTIONS, PAYMENT_TERM_OPTIONS } from '@/components/pay-structure-fields';
@@ -552,12 +553,22 @@ export function MovementNewEvent({
   </div>;
 
   return (
-    <form aria-busy={pagePending} action={pageContext ? pageAction : saved ? submitPendingCorrection : edit ? editMovementEventAction : createMovementEventAction}
+    // 03877e — the page form is NOT given `action`: React resets a form after every `action` submission,
+    // so a refused save used to come back with the date and every other entry wiped (production: HR saw
+    // today's date beside an error about the 2024 date they had typed). onSubmit below hands the data to
+    // pageAction itself, which keeps what the user entered on screen next to the explanation.
+    <form aria-busy={pagePending} action={pageContext ? undefined : saved ? submitPendingCorrection : edit ? editMovementEventAction : createMovementEventAction}
       ref={form=>{if(saved&&form&&!initialFields.current)initialFields.current=new Map(Array.from(new FormData(form).entries()).filter((entry):entry is [string,string]=>typeof entry[1]==='string'));}}
       onSubmit={event=>{
         if(pagePending){event.preventDefault();return;}
+        const submitPage=()=>{
+          if(!pageContext)return;
+          event.preventDefault();
+          const pageData=new FormData(event.currentTarget,(event.nativeEvent as SubmitEvent).submitter);
+          startTransition(()=>pageAction(pageData));
+        };
         // 1d58019a Step 2 — Required to Change, checked before the round trip (the server checks it too).
-        if (!typeRules) return;
+        if (!typeRules) {submitPage();return;}
         const data = new FormData(event.currentTarget);
         const unchanged = typeRules.find((r) => {
           if (!r.mustChange||(r.field==='businessUnitId'&&(derivedOrganisation.data?.managed||derivedOrganisation.data?.status!=='legacy'))) return false;
@@ -571,7 +582,10 @@ export function MovementNewEvent({
         if (unchanged) {
           event.preventDefault();
           setRuleError(t('form.mustChangeRefused', { field: label(movementField(unchanged.field)) }));
-        } else setRuleError(null);
+        } else {
+          setRuleError(null);
+          submitPage();
+        }
       }}
       onChangeCapture={event=>{
         if (!saved) return;
@@ -581,7 +595,7 @@ export function MovementNewEvent({
         }
       }}>
       {pageContext&&<><input type="hidden" name="movementPage" value={edit?'edit':'new'}/><input type="hidden" name="showCorrected" value={pageContext.showCorrected??''}/><input type="hidden" name="from" value={pageContext.from??''}/></>}
-      {pageError&&<p role="alert" className="border-b border-border bg-destructive/10 px-4 py-3 text-sm text-destructive">{pageError}</p>}
+      {pageError&&<p role="alert" className="border-b border-border bg-destructive/10 px-4 py-3 text-sm text-destructive"><DatabaseErrorText message={pageError}/></p>}
       <input type="hidden" name="employmentId" value={employmentId} />
       <DerivedOrganisationFields state={derivedOrganisation}/>
       {edit && <input type="hidden" name="movementId" value={edit.movementId} />}
