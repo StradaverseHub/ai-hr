@@ -32,7 +32,7 @@ it('renders None and its exact retained head without eagerly reading the workfor
 });
 it('browses25pluspin, searches by POST, retains the controlled selection and sends None as null',async()=>{
  const fetch=vi.fn(async(_url:unknown,init:RequestInit)=>{const p=JSON.parse(String(init.body));return {ok:true,json:async()=>page(p.query,p.offset,p.selectedId??null,p.companyId)};});vi.stubGlobal('fetch',fetch);
- const change=vi.fn(),{container}=mount(change),user=userEvent.setup();await user.click(screen.getByText('Search employee'));
+ const change=vi.fn(),{container}=mount(change),user=userEvent.setup();await user.click(screen.getByText('Search employee',{selector:'summary'}));
  await screen.findByRole('option',{name:'Fictional head 1 (HEAD00001)'});expect(screen.getAllByRole('option')).toHaveLength(27);
  expect(fetch.mock.calls[0][0]).toBe('/admin/settings/system-labels/head-choices');expect(fetch.mock.calls[0][1]).toMatchObject({method:'POST',cache:'no-store',credentials:'same-origin'});
  await user.click(screen.getByRole('button',{name:'Next'}));await screen.findByRole('option',{name:'Fictional head 26 (HEAD00026)'});expect(screen.getAllByRole('option')).toHaveLength(27);
@@ -46,14 +46,14 @@ it('browses25pluspin, searches by POST, retains the controlled selection and sen
 });
 it('rejects wrong-scope data, preserves the retained ID as unavailable and recovers on explicit retry',async()=>{
  const fetch=vi.fn().mockResolvedValueOnce({ok:true,json:async()=>({...page(),companyId:otherCompany})}).mockResolvedValueOnce({ok:true,json:async()=>({...page(),selected:null})});vi.stubGlobal('fetch',fetch);
- const change=vi.fn();mount(change);await userEvent.setup().click(screen.getByText('Search employee'));
+ const change=vi.fn();mount(change);await userEvent.setup().click(screen.getByText('Search employee',{selector:'summary'}));
  await screen.findByRole('alert');expect(screen.getByRole('combobox',{name:'Head'})).toHaveValue(selected.employmentId);expect(change).not.toHaveBeenCalled();
  await userEvent.setup().click(screen.getByRole('button',{name:'Retry'}));await screen.findByRole('option',{name:'Head unavailable'});expect(screen.queryByRole('alert')).toBeNull();expect(screen.getByRole('combobox',{name:'Head'})).toHaveValue(selected.employmentId);
 });
 it('aborts stale searches and does not replace current results when their old response arrives later',async()=>{
  let resolveOld!:(value:unknown)=>void;const old=new Promise<unknown>(r=>{resolveOld=r;});
  const fetch=vi.fn(async(_url:unknown,init:RequestInit)=>{const p=JSON.parse(String(init.body));return {ok:true,json:async()=>p.query==='old'?old:{...page(p.query,p.offset,p.selectedId),rows:[row(p.query==='new'?81:1)]}};});vi.stubGlobal('fetch',fetch);
- mount();await userEvent.setup().click(screen.getByText('Search employee'));await screen.findByRole('option',{name:'Fictional head 1 (HEAD00001)'});
+ mount();await userEvent.setup().click(screen.getByText('Search employee',{selector:'summary'}));await screen.findByRole('option',{name:'Fictional head 1 (HEAD00001)'});
  fireEvent.change(screen.getByRole('searchbox'),{target:{value:'old'}});await waitFor(()=>expect(fetch.mock.calls.some(([,init])=>JSON.parse(String(init.body)).query==='old')).toBe(true));
  const oldCall=fetch.mock.calls.find(([,init])=>JSON.parse(String(init.body)).query==='old')!;
  fireEvent.change(screen.getByRole('searchbox'),{target:{value:'new'}});await screen.findByRole('option',{name:'Fictional head 81 (HEAD00081)'});expect(oldCall[1].signal?.aborted).toBe(true);

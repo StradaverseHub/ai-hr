@@ -83,14 +83,14 @@ describe('System Labels draft focus after real query-state navigation', () => {
   it('retains a new selected head label in its Grid row and duplicate through page and category remounts, without adding display metadata to Save',async()=>{
     const fetch=vi.fn(async(_url:unknown,init:RequestInit)=>{const p=JSON.parse(String(init.body));return {ok:true,json:async()=>({companyId,query:p.query.trim(),offset:p.offset,limit:25,total:1,rows:[head],selected:p.selectedId===headId?head:null})};});vi.stubGlobal('fetch',fetch);
     const user=userEvent.setup(),{container,save}=mount(30);
-    const first=rows(container)[0];await user.click(within(first).getByText(messages.employeePanel.searchLabel));
+    const first=rows(container)[0];await user.click(within(first).getByText(messages.employeePanel.searchLabel,{selector:'summary'}));
     await within(first).findByRole('option',{name:headLabel});await user.selectOptions(within(first).getByRole('combobox',{name:messages.admin.organization.fieldHead}),headId);
     await user.click(within(first).getByRole('button',{name:messages.admin.systemLabels.duplicateRow}));await settleNavigation();
     const assertHead=(key:string)=>{const row=container.querySelector<HTMLElement>('[data-row-key="'+key+'"]')!;const select=within(row).getByRole('combobox',{name:messages.admin.organization.fieldHead});expect(select).toHaveValue(headId);expect(within(select).getByRole('option',{name:headLabel})).toBeInTheDocument();expect(within(select).queryByRole('option',{name:messages.admin.systemLabels.headUnavailable})).toBeNull();};
     assertHead('draft-1');assertHead('saved-1');
-    await user.click(within(container.querySelector('[data-ui-pager]')! as HTMLElement).getByRole('button',{name:messages.pagination.next,exact:true}));await settleNavigation();
+    await user.click(within(container.querySelector('[data-ui-pager]')! as HTMLElement).getByRole('button',{name:messages.pagination.next}));await settleNavigation();
     expect(container.querySelector('[data-row-key="saved-1"]')).toBeNull();expect(container.querySelector('[data-row-key="draft-1"]')).toBeNull();
-    await user.click(within(container.querySelector('[data-ui-pager]')! as HTMLElement).getByRole('button',{name:messages.pagination.previous,exact:true}));await settleNavigation();assertHead('draft-1');assertHead('saved-1');
+    await user.click(within(container.querySelector('[data-ui-pager]')! as HTMLElement).getByRole('button',{name:messages.pagination.previous}));await settleNavigation();assertHead('draft-1');assertHead('saved-1');
     await user.click(screen.getByRole('button',{name:new RegExp('^'+messages.admin.systemLabels.category.business_unit)}));await settleNavigation();
     expect(container.querySelector('[data-row-key="saved-1"]')).toBeNull();
     await user.click(screen.getByRole('button',{name:new RegExp('^'+messages.admin.systemLabels.category.department)}));await settleNavigation();assertHead('draft-1');assertHead('saved-1');
@@ -102,10 +102,10 @@ describe('System Labels draft focus after real query-state navigation', () => {
   it.each(['missing','forbidden'] as const)('remembers a fresh %s selected-head refusal across Grid remounts without dirtying the label or clearing its ID',async refusal=>{
     let denied=false;vi.stubGlobal('fetch',vi.fn(async(_url:unknown,init:RequestInit)=>{const p=JSON.parse(String(init.body));return denied&&refusal==='forbidden'?{ok:false,status:403}:{ok:true,json:async()=>({companyId,query:p.query.trim(),offset:p.offset,limit:25,total:denied?0:1,rows:denied?[]:[head],selected:denied?null:head})};}));
     const user=userEvent.setup(),{container,save}=mount(2,true);
-    const first=rows(container)[0];await user.click(within(first).getByText(messages.employeePanel.searchLabel));await within(first).findByRole('option',{name:headLabel});
+    const first=rows(container)[0];await user.click(within(first).getByText(messages.employeePanel.searchLabel,{selector:'summary'}));await within(first).findByRole('option',{name:headLabel});
     expect(screen.getByRole('button',{name:messages.admin.systemLabels.saveAll})).toBeDisabled();
-    await user.click(within(first).getByText(messages.employeePanel.searchLabel));await waitFor(()=>expect(first.querySelector('details')).not.toHaveAttribute('open'));
-    denied=true;await user.click(within(first).getByText(messages.employeePanel.searchLabel));
+    await user.click(within(first).getByText(messages.employeePanel.searchLabel,{selector:'summary'}));await waitFor(()=>expect(first.querySelector('details')).not.toHaveAttribute('open'));
+    denied=true;await user.click(within(first).getByText(messages.employeePanel.searchLabel,{selector:'summary'}));
     await within(first).findByRole('option',{name:messages.admin.systemLabels.headUnavailable});
     await user.click(screen.getByRole('button',{name:new RegExp('^'+messages.admin.systemLabels.category.business_unit)}));await settleNavigation();
     await user.click(screen.getByRole('button',{name:new RegExp('^'+messages.admin.systemLabels.category.department)}));await settleNavigation();

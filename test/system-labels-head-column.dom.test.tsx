@@ -210,7 +210,7 @@ describe('r285 — the Head (leave approver) column is back on System Labels', (
       return {ok:true,json:async()=>({companyId:CO,query:input.query.trim(),offset:input.offset,limit:25,total:2,rows,selected:rows.find(row=>row.employmentId===input.selectedId)??null})};
     }));
     const cell=heads(container)[0].parentElement!;
-    await user.click(within(cell).getByText(en.employeePanel.searchLabel));
+    await user.click(within(cell).getByText(en.employeePanel.searchLabel,{selector:'summary'}));
     await within(cell).findByRole('option',{name:'Lina Tan (E001)'});
     await user.selectOptions(heads(container)[0], EMP_LINA);
     expect(saveBtn()).toBeEnabled();
