@@ -64,3 +64,34 @@ The legacy borrowed greeting identity transaction remains Read Committed; the
 standalone and initial greeting presentation roots use the snapshot entry point.
 The writer probe now includes Greeting, Today and Notices as well as the original
 seven readers, so its coverage includes every initial Home card.
+
+## Code readiness before worker traffic
+
+The isolated trace found a cold request entering its Home handler after 2,484 ms,
+before authentication or card queries could complete. Importing through Next's
+instrumentation layer did not remove the app-route initialization delay. That
+failed experiment remains separate from this candidate.
+
+The real `/health` probe now initializes the Home route's definitions in the
+app-route runtime, then performs its existing database round trip. It invokes no
+Home handler, session, tenant read or provider. The response vocabulary, two-second
+probe deadline and cache remain unchanged. One underlying initialization/database
+operation remains shared until actual settlement, including after health polls
+time out; a slow import cannot release several delayed database probes at once.
+Readiness-only code remains outside the governed AI behavior source inventories.
+
+Four-worker experiment 42364894981 completed its browser preflight with no Home
+card, page Busy, browser or recorded PostgreSQL lock failures. Healthy nine-card
+streams completed in approximately 164–1,122 ms. Module initialization took
+527–989 ms before traffic; the first worker's complete readiness wait was about
+9.45 seconds. This startup cost is recorded separately, not removed from the
+evidence. Independent review repairs passed affected checks and the whole compiler
+in 42367077846. Neither result establishes sustained 500-user capacity.
+
+Traffic admission must consume readiness for every worker before sending it a
+user request. A deployment health check alone, with a direct tunnel already
+forwarding to a listening Next process, does not provide that guarantee. Actual
+routing admission remains an integration and installation prerequisite. The
+isolated runner withholds driver traffic until each worker passes health and
+login checks; installation acceptance must prove the corresponding real boundary.
+Staging release qualification and production deployment remain held.

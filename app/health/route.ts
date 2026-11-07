@@ -28,6 +28,7 @@
  */
 import { client } from '@/db/client';
 import { HEALTH_BODY_OK, HEALTH_BODY_UNHEALTHY, checkHealth } from '@/lib/health';
+import { initializeHomeReadModule } from '@/lib/worker-readiness';
 
 /**
  * Route Handlers are not cached by default in Next 16 (node_modules/next/dist/docs/01-app/
@@ -53,8 +54,23 @@ function respond(healthy: boolean, withBody: boolean): Response {
   });
 }
 
-/** The same `select 1`, on the same pool every page uses — see lib/health.ts on why it is passed in. */
-const probe = () => client`select 1`;
+/** Code readiness and the same real pool probe. Initialization does not invoke a Home handler.
+ * Both stay inside the bounded, single-flight health probe so failures retain its closed 503. */
+let underlyingProbe: Promise<void> | undefined;
+const probe = () => {
+  // checkHealth may time out while an import/socket still runs. Keep the underlying
+  // work single-flight until it actually settles; expired polls must not each queue
+  // a database continuation behind the same slow module initialization.
+  if (underlyingProbe) return underlyingProbe;
+  const pending = (async () => {
+    await initializeHomeReadModule();
+    await client`select 1`;
+  })();
+  underlyingProbe = pending;
+  const release = () => { if (underlyingProbe === pending) underlyingProbe = undefined; };
+  void pending.then(release, release);
+  return pending;
+};
 
 export async function GET(): Promise<Response> {
   return respond(await checkHealth(probe), true);

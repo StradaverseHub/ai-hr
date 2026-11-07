@@ -110,6 +110,7 @@ if(process.env.GITHUB_ACTIONS==='true'&&path){
     attendanceExclusiveAdmissionScope:'Owned exclusive Attendance writes only. Miss counts failed tries, including both tries before blocking fallback. No identities.',
     passiveReadScope:'Logical passive read admission before fan-out. Its pending work holds no database connection. No identities.',peakPassivePending,passiveFailedBeforeRead,
     rawPoolWorkScope:'Existing raw owners admitted before opening queries. Queue wait ends at application admission; afterAdmission includes checkout, serial queries and completion. No identities.',peakRawPending,rawFailedBeforeWork,
+    homeStartupReadiness:globalThis.__aihrHomeStartupReadiness??null,
     homeRequests:homeRequests(),peakApprovalPending,capturedAt:new Date(capturedAt).toISOString(),observedPoolSizes:[...observedPoolSizes],peakPending,peakHolding,failedBeforeCallback,windows,
    }));
    renameSync(path+'.tmp',path);
