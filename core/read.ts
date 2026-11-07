@@ -2065,7 +2065,7 @@ export function listLeaveRequests(
   ctx: SessionContext,
   companyIds?: string[],
   limit = 200,
-  opts?: { status?: 'pending' | 'approved' | 'rejected' | 'cancelled'; requestId?:string },
+  opts?: { status?: 'pending' | 'approved' | 'rejected' | 'cancelled'; requestId?:string; requestIds?:readonly string[] },
 ) {
   return withTenant(ctx, async (tx) => {
     const rows = await tx
@@ -2078,6 +2078,7 @@ export function listLeaveRequests(
           companyIds && companyIds.length ? sql`approval_subject.company_id = ANY(ARRAY[${sql.join(companyIds.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[])` : undefined,
           opts?.status ? eq(leaveRequest.status, opts.status) : undefined,
           opts?.requestId ? eq(leaveRequest.id,opts.requestId) : undefined,
+          opts?.requestIds === undefined ? undefined : inArray(leaveRequest.id,[...opts.requestIds]),
         ),
       )
       .orderBy(desc(leaveRequest.createdAt))
@@ -2376,7 +2377,7 @@ export function leaveRequestDateBreakdown(ctx: SessionContext, leaveRequestId: s
  *  already scopes visibility (subject + manager + admin via can_see_employment); we additionally narrow to
  *  the company scope the inbox is viewing. The decide authorization (manager/admin, no self-approval) lives
  *  in decideLeaveCancellation. */
-export function listPendingLeaveCancellations(ctx: SessionContext, companyIds?: string[], locale?: string,requestId?:string) {
+export function listPendingLeaveCancellations(ctx: SessionContext, companyIds?: string[], locale?: string,requestId?:string,requestIds?:readonly string[]) {
   return withTenant(ctx, async (tx) => {
     const rows = await tx
       .select({
@@ -2410,6 +2411,7 @@ export function listPendingLeaveCancellations(ctx: SessionContext, companyIds?: 
         and(
           eq(leaveCancellationRequest.status, 'pending'),
           requestId?eq(leaveCancellationRequest.id,requestId):undefined,
+          requestIds === undefined ? undefined : inArray(leaveCancellationRequest.id,[...requestIds]),
           companyIds && companyIds.length ? sql`approval_subject.company_id = ANY(ARRAY[${sql.join(companyIds.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[])` : undefined,
         ),
       )
