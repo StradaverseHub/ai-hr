@@ -48,6 +48,7 @@ describe('approved feedback rendered journeys',()=>{
   const view=show(await ComparisonPage({params:Promise.resolve({id:'reconciliation'}),searchParams:Promise.resolve({returnQuery,employmentId:employee,payItemCode:ALL_RECORDED_PAY_ITEMS})}));
   const back=new URL(screen.getByRole('link',{name:/Back to Payroll Reconciliation/}).getAttribute('href')!,'https://fixture.invalid');
   expect(back.pathname).toBe('/payroll/reconciliation');expect(back.searchParams.get('companyId')).toBe(company);expect(back.searchParams.get('page')).toBe('2');
+  expect(screen.queryByRole('combobox',{name:en.payrollComparison.payItem})).toBeNull();
   const picker=screen.getByRole('button',{name:en.payrollComparison.payItem});
   fireEvent.click(picker);fireEvent.click(screen.getByRole('checkbox',{name:'BASIC · Basic Salary'}));fireEvent.click(screen.getByRole('checkbox',{name:'Net Pay'}));
   expect([...view.container.querySelectorAll<HTMLInputElement>('input[name="payItemCodes"]')].map(input=>input.value)).toEqual(['','BASIC','@total/netPay']);
