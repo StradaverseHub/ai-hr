@@ -22,6 +22,12 @@ it('renders native pages and navigates with the existing selection/filter contra
  const destination=new URL(push.mock.calls[0][0],'https://fixture.invalid');expect(destination.searchParams.get('emp')).toBe('e26');expect(destination.searchParams.get('from')).toBe('2026-07-01');
  expect(destination.searchParams.has('query')).toBe(false);expect(destination.searchParams.has('pickerQ')).toBe(false);
 });
+it('retains an explicitly supplied initial page and private search without a duplicate request',()=>{
+ const fetcher=vi.fn();vi.stubGlobal('fetch',fetcher);mount(page(25,'needle'));
+ expect((screen.getByRole('searchbox') as HTMLInputElement).value).toBe('needle');
+ expect(screen.getByText('Employee 26')).toBeTruthy();expect(fetcher).not.toHaveBeenCalled();
+ expect(window.location.search).toBe('');
+});
 it('debounces search in a POST body, aborts superseded work and ignores late results',async()=>{
  const reads:{resolve:(value:unknown)=>void;signal:AbortSignal;body:string}[]=[];
  vi.stubGlobal('fetch',vi.fn((_url:string,request:RequestInit)=>new Promise(resolve=>reads.push({resolve,signal:request.signal!,body:String(request.body)}))));
