@@ -1,4 +1,4 @@
-/** Hosted frozen c2/unified-boundary comparison after real3001+3102. */
+/** Hosted frozen c2/unified-boundary controlled JIT policies after real3001+3102. */
 import {execFileSync} from 'node:child_process';
 import {createHash,randomUUID} from 'node:crypto';
 import {readFileSync,writeFileSync} from 'node:fs';
@@ -18,6 +18,7 @@ import {closeAll,migrateTestDb,owner} from './harness';
 import {workerDb} from './db-names';
 import {employeeChoicePlannerSnapshot} from './performance/employee-choice-planner-snapshot';
 import {employeeChoicePlanQuery} from './performance/employee-choice-plan-capture';
+import {employeeChoiceJitPolicy,employeeChoiceJitVariants,settleOwnedJitTransaction,type EmployeeChoiceJitVariant} from './performance/employee-choice-jit-policy';
 import {employeeChoiceActualCardinalities,employeeChoiceAuthorizedPopulationFacts,employeeChoicePlanWork} from './performance/employee-choice-plan-work';
 import {seedPersonnelNativeFixture} from './performance/personnel-native-fixture';
 import {capturePostgresEvidence,postgresProfileFromEnv,validatePostgresEvidence} from '../.github/ci/postgres-evidence.mjs';
@@ -30,7 +31,7 @@ beforeAll(migrateTestDb);
 type Page=Awaited<ReturnType<typeof readEmployeeChoices>>;
 type Input=Parameters<typeof readEmployeeChoices>[1];
 type NativeQuery={query:SQL;statement:number;cursorBody:boolean;expectedRows:number};
-type PlanDocument={Plan:Record<string,unknown>;'Planning Time':number;'Execution Time':number;JIT?:unknown};
+type PlanDocument={Plan:Record<string,unknown>;'Planning Time':number;'Execution Time':number;JIT?:{Options?:{Inlining?:boolean;Optimization?:boolean};Timing?:unknown}};
 const stable=({contextId:_contextId,...page}:Page)=>page;
 async function securitySnapshot(){
  const policies=Array.from(await owner.client`select schemaname,tablename,policyname,permissive,roles,cmd,qual,with_check
@@ -48,8 +49,8 @@ async function securitySnapshot(){
   where t.oid='public.assignment'::regclass order by c.relname`);
  return {policies,functions,grants,indexes};
 }
-type Variant='original'|'unified';
-const variants=['original','unified']as const;
+type Variant=EmployeeChoiceJitVariant;
+const variants=employeeChoiceJitVariants;
 let probe:Awaited<ReturnType<typeof prepare>>|undefined;
 let preparingSingle:ReturnType<typeof database.createDb>|undefined;
 let activeWork:Promise<void>|undefined;
@@ -83,17 +84,19 @@ async function boundedCase(context:TestContext,work:()=>Promise<void>,setup=fals
 const assertCaseActive=()=>activeSignal?.throwIfAborted();
 async function prepare(){
  expect(process.env.RUNNER_ENVIRONMENT).toBe('github-hosted');expect(process.env.AIHR_FOCUSED_EVIDENCE_DIR).toBeTruthy();
+ expect(createHash('sha256').update(readFileSync('core/employee-choice.ts')).digest('hex')).toBe('f2f2bf608e078262905353d9ac9ab3f70242e8656086fd160ab1b69072239517');
  expect(createHash('sha256').update(readFileSync('test/performance/employee-choice-unified-baseline.ts')).digest('hex')).toBe('9e830d169630dca113b96e34f9c05ebd3da13ef3ed2d391c91304e4397e4bffd');
  const poolId=process.env.VITEST_POOL_ID??process.env.VITEST_WORKER_ID;expect(poolId).toBeTruthy();expect(process.env.WORKER_DB).not.toBe('0');
  for(const key of ['TEST_DATABASE_URL','TEST_MIGRATION_DATABASE_URL']){
   const target=new URL(process.env[key]!);expect(target.hostname).toBe('127.0.0.1');expect(target.pathname).toBe('/'+workerDb(poolId!));
  }
- const report:Record<string,unknown>={kind:'CONTROLLED_EMPLOYEE_CHOICE_UNIFIED_NATIVE_BOUNDARY',releaseEligible:false,employees:50000,
-  variants:[...variants],nativeMigrations:'real3001+3102 unchanged',caseBudgetMs:300000,statementTimeoutMs:20000,lockTimeoutMs:300,targetMs:1000,
+ const report:Record<string,unknown>={kind:'CONTROLLED_EMPLOYEE_CHOICE_UNIFIED_JIT_POLICIES',releaseEligible:false,employees:50000,
+  variants:[...variants],planFamilies:48,wholePortsPerVariant:14,querySource:'Frozen551 query bytes unchanged; only diagnostic-owned transaction JIT settings differ',nativeMigrations:'real3001+3102 unchanged',caseBudgetMs:300000,statementTimeoutMs:20000,lockTimeoutMs:300,targetMs:1000,
   host:{cpuModels:[...new Set(cpus().map(cpu=>cpu.model))],logicalCpus:cpus().length,ramBytes:totalmem()},
-  instrumentation:'Native identity/budget checks run in the wrapper; file writes and container telemetry stay outside timed port calls.',
-  limitations:'Same native3001+3102 authority and single application backend. Compare exact frozen c2f5c019 facet reader to a single authorized native identity/Assignment boundary. No index DDL. Read-only planner statistics are captured outside timed calls. No policy/function/grant/JIT/work_mem changes; no production index or latency/capacity acceptance claim.'};
- const save=()=>writeFileSync(join(process.env.AIHR_FOCUSED_EVIDENCE_DIR!,'employee-choice-unified-plan.json'),JSON.stringify(report,null,2));
+  instrumentation:'Pre-measurement commit/rollback/concurrent-checkout controls use simple statements and can warm native admission functions. Native identity/budget and same-backend post-COMMIT/ROLLBACK restoration checks are included in whole-port timing. File writes, DISCARD PLANS and container telemetry stay outside timed port calls.',
+  preparedPlanBoundary:'DISCARD PLANS on the exclusively owned same app backend before each variant/plan-phase selection, equally for all policies. No DEALLOCATE, plan_cache_mode change or production pooling change; actual EXPLAIN JIT options must match policy.',
+  limitations:'Same native3001+3102 authority and single application backend. Compare exact frozen c2f5c019 facet reader to a single authorized native identity/Assignment boundary. No index DDL. Read-only planner statistics are captured outside timed calls. No policy/function/grant/work_mem/index changes. Four named variants explicitly compare default JIT, JIT without inlining/optimization, and JIT off only inside fresh diagnostic-owned RRRO transactions. No production adoption or latency/capacity acceptance claim.'};
+ const save=()=>writeFileSync(join(process.env.AIHR_FOCUSED_EVIDENCE_DIR!,'employee-choice-jit-policy-plan.json'),JSON.stringify(report,null,2));
  const fixture=await seedPersonnelNativeFixture(50000,report,phase=>{report.phase=phase;save();},save);
  const representedBu=randomUUID(),emptyBu=randomUUID();
  await owner.db.insert(businessUnit).values([
@@ -116,28 +119,52 @@ async function prepare(){
  const [constraint]=await owner.client`select contype,condeferrable,condeferred,convalidated,pg_get_constraintdef(oid) as definition
   from pg_constraint where conrelid='public.assignment'::regclass and conname='assignment_no_overlap'`;
  expect(constraint).toMatchObject({contype:'x',condeferrable:false,condeferred:false,convalidated:true});report.assignmentCardinalityPrerequisite=constraint;
- const url=new URL(process.env.TEST_DATABASE_URL!);url.searchParams.set('application_name','employee_choice_assignment_comparison');
+ const url=new URL(process.env.TEST_DATABASE_URL!);url.searchParams.set('application_name','employee_choice_jit_policy_comparison');
  assertCaseActive();const single=database.createDb(url.toString(),{max:1});preparingSingle=single;
  try{
  expect(single.client.options.max).toBe(1);
- const [session]=await single.client`select pg_backend_pid() as pid,current_setting('jit') as jit,current_setting('work_mem') as work_mem,
+ const [session]=await single.client`select pg_backend_pid() as pid,current_setting('jit') as jit,current_setting('jit_above_cost') as jit_above_cost,
+  current_setting('jit_inline_above_cost') as jit_inline_above_cost,current_setting('jit_optimize_above_cost') as jit_optimize_above_cost,current_setting('work_mem') as work_mem,
   current_setting('hash_mem_multiplier') as hash_mem_multiplier,current_setting('statement_timeout') as statement_timeout,current_setting('lock_timeout') as lock_timeout`;
  const {pid,...defaults}=session;expect(Number.isSafeInteger(pid)&&pid>0).toBe(true);report.sessionDefaults=defaults;
+ expect(defaults).toMatchObject({jit:'on',jit_above_cost:'100000',jit_inline_above_cost:'500000',jit_optimize_above_cost:'500000'});
+ report.policySettings=Object.fromEntries(variants.map(variant=>[variant,employeeChoiceJitPolicy(variant,defaults)]));
+ const [jitAvailable]=await single.client`select pg_jit_available() as available`;expect(jitAvailable.available).toBe(true);report.nativeJitAvailable=jitAvailable.available;
  const pids=new Set<number>([pid]),dialect=new PgDialect(),identities:unknown[]=[],statements:Record<string,unknown>[]=[],plans:Record<string,unknown>[]=[];
  const queries=new Map<string,NativeQuery[]>();report.identities=identities;report.statements=statements;report.plans=plans;
+ let ownedTransactionActive=false;
  let name='setup',capture=false,firstSample=false,activeCursor:NativeQuery|undefined;
- const install=()=>vi.spyOn(database,'withTenant').mockImplementation(<T>(context:SessionContext,read:(tx:Tx)=>Promise<T>,options?:Parameters<typeof database.withTenant>[2])=>
-  {assertCaseActive();return single.withTenant(context,async tx=>{
+ const restoredSessions:unknown[]=[];report.restoredSessions=restoredSessions;
+ const verifyRestored=async(variant:Variant)=>{
+  try{
+   const [restored]=await single.client`select pg_backend_pid() as pid,current_setting('jit') as jit,current_setting('jit_above_cost') as jit_above_cost,
+    current_setting('jit_inline_above_cost') as jit_inline_above_cost,current_setting('jit_optimize_above_cost') as jit_optimize_above_cost,
+    current_setting('work_mem') as work_mem,current_setting('hash_mem_multiplier') as hash_mem_multiplier,
+    current_setting('statement_timeout') as statement_timeout,current_setting('lock_timeout') as lock_timeout`;
+   expect(restored).toEqual({pid,...defaults});restoredSessions.push({case:name,variant,...restored});
+  }catch(error){blocked=new Error('Owned diagnostic session restoration failed; no later case may use it',{cause:error});throw error;}
+ };
+ const install=(variant:Variant)=>{
+  const policy=employeeChoiceJitPolicy(variant,defaults);
+  return vi.spyOn(database,'withTenant').mockImplementation(<T>(context:SessionContext,read:(tx:Tx)=>Promise<T>,options?:Parameters<typeof database.withTenant>[2])=>{
+   assertCaseActive();expect(options?.readOnlySnapshot).toBe(true);
+   if(ownedTransactionActive)return Promise.reject(new Error('Diagnostic transaction already owns the application backend'));
+   ownedTransactionActive=true;
+   return settleOwnedJitTransaction(()=>single.withTenant(context,async tx=>{
    await tx.execute(sql`set local lock_timeout='300ms'`);await tx.execute(sql`set local statement_timeout='20s'`);
-   const [identity]=await tx.execute<{role:string;pid:number;tenant:string;user:string;read_only:string;isolation:string;employment_rls:boolean;person_rls:boolean;assignment_rls:boolean;jit:string;work_mem:string;hash_mem_multiplier:string;statement_timeout:string;lock_timeout:string}>(sql`
+   if(variant==='unified-base-jit'||variant==='unified-no-jit')await tx.execute(sql`select set_config('jit',${policy.jit},true),
+    set_config('jit_above_cost',${policy.jit_above_cost},true),set_config('jit_inline_above_cost',${policy.jit_inline_above_cost},true),
+    set_config('jit_optimize_above_cost',${policy.jit_optimize_above_cost},true)`);
+   const [identity]=await tx.execute<{role:string;pid:number;tenant:string;user:string;read_only:string;isolation:string;employment_rls:boolean;person_rls:boolean;assignment_rls:boolean;jit:string;jit_above_cost:string;jit_inline_above_cost:string;jit_optimize_above_cost:string;work_mem:string;hash_mem_multiplier:string;statement_timeout:string;lock_timeout:string}>(sql`
     select current_user as role,pg_backend_pid() as pid,app.current_tenant_id() as tenant,app.current_user_id() as "user",
      current_setting('transaction_read_only') as read_only,current_setting('transaction_isolation') as isolation,
      row_security_active('public.employment'::regclass) as employment_rls,row_security_active('public.person'::regclass) as person_rls,row_security_active('public.assignment'::regclass) as assignment_rls,
-     current_setting('jit') as jit,current_setting('work_mem') as work_mem,current_setting('hash_mem_multiplier') as hash_mem_multiplier,
+     current_setting('jit') as jit,current_setting('jit_above_cost') as jit_above_cost,
+     current_setting('jit_inline_above_cost') as jit_inline_above_cost,current_setting('jit_optimize_above_cost') as jit_optimize_above_cost,current_setting('work_mem') as work_mem,current_setting('hash_mem_multiplier') as hash_mem_multiplier,
      current_setting('statement_timeout') as statement_timeout,current_setting('lock_timeout') as lock_timeout`);
    expect(identity).toMatchObject({role:'ai_hr_app',tenant:context.tenantId,user:context.userId,read_only:'on',isolation:'repeatable read',employment_rls:true,person_rls:true,assignment_rls:true,
-    jit:defaults.jit,work_mem:defaults.work_mem,hash_mem_multiplier:defaults.hash_mem_multiplier,statement_timeout:'20s',lock_timeout:'300ms'});
-   pids.add(identity.pid);identities.push({case:name,...identity});
+    ...policy,work_mem:defaults.work_mem,hash_mem_multiplier:defaults.hash_mem_multiplier,statement_timeout:'20s',lock_timeout:'300ms'});
+   pids.add(identity.pid);identities.push({case:name,variant,...identity});
    return read(new Proxy(tx,{get(target,key,receiver){
     if(key==='execute'&&capture)return async(query:SQL)=>{
      const text=dialect.sqlToQuery(query).sql,statement=statements.length,entry:Record<string,unknown>={case:name,statement,sql:text},started=performance.now();statements.push(entry);
@@ -161,19 +188,24 @@ async function prepare(){
     };
     const value=Reflect.get(target,key,receiver);return typeof value==='function'?value.bind(target):value;
    }}));
-  },options);});
+  },options),()=>verifyRestored(variant)).finally(()=>{ownedTransactionActive=false;});
+  });
+ };
  const unchanged=async()=>{
   expect(await securitySnapshot()).toEqual(originals);
-  const [after]=await single.client`select current_setting('jit') as jit,current_setting('work_mem') as work_mem,current_setting('hash_mem_multiplier') as hash_mem_multiplier,
+  const [after]=await single.client`select current_setting('jit') as jit,current_setting('jit_above_cost') as jit_above_cost,
+  current_setting('jit_inline_above_cost') as jit_inline_above_cost,current_setting('jit_optimize_above_cost') as jit_optimize_above_cost,current_setting('work_mem') as work_mem,current_setting('hash_mem_multiplier') as hash_mem_multiplier,
    current_setting('statement_timeout') as statement_timeout,current_setting('lock_timeout') as lock_timeout`;
-  expect(after).toEqual(defaults);expect(pids.size).toBe(1);report.originalSecurityAndSettingsUnchanged=true;report.samePhysicalAppBackend=true;save();
+  expect(after).toEqual(defaults);expect(pids.size).toBe(1);report.originalSecurityUnchanged=true;report.originalSessionSettingsRestored=true;report.samePhysicalAppBackend=true;save();
  };
  // No index experiment or schema change: compare only the native read boundary.
  const capturedStatistics=new Set<Variant>();
- const choose=async(variant:Variant)=>{assertCaseActive();await unchanged();if(!capturedStatistics.has(variant)){
+ const choose=async(variant:Variant)=>{assertCaseActive();await unchanged();await single.client`discard plans`;
+  const boundaries=(report.preparedPlanBoundaries??=[])as unknown[];boundaries.push({variant,pid,command:'DISCARD PLANS',outsideTimedPort:true});
+  if(!capturedStatistics.has(variant)){
   const snapshots=(report.plannerStatistics??={})as Record<string,unknown>;snapshots[variant]=await employeeChoicePlannerSnapshot();capturedStatistics.add(variant);
  }report.phase=variant;save();};
- const restore=async()=>{await unchanged();report.originalIndexesRestored=true;save();};
+ const restore=async()=>{await unchanged();report.originalIndexesUnchanged=true;save();};
  const resources=()=>{
   const profile=postgresProfileFromEnv(process.env),evidence=capturePostgresEvidence('db-1',profile);validatePostgresEvidence(evidence,{postgres:profile});
   const text=execFileSync('docker',['exec',evidence.name,'cat','/sys/fs/cgroup/cpu.stat'],{encoding:'utf8',timeout:10000,maxBuffer:65536});
@@ -185,7 +217,7 @@ async function prepare(){
    return employeeChoiceAuthorizedPopulationFacts(tx,fixture.ctx.tenantId,companyIds);},{readOnlySnapshot:true});
   const factsByCase=(report.authorizedServerPopulationFacts??={})as Record<string,unknown>;factsByCase[key]=facts;save();return facts;
  };
- return {fixture,representedBu,emptyBu,wholeFixture,populationFacts,report,save,single,pids,install,queries,dialect,plans,unchanged,resources,choose,restore,
+ return {defaults,verifyRestored,fixture,representedBu,emptyBu,wholeFixture,populationFacts,report,save,single,pids,install,queries,dialect,plans,unchanged,resources,choose,restore,
   selectCase:(value:string,first:boolean)=>{assertCaseActive();name=value;firstSample=first;capture=true;report.phase=value;save();},stop:()=>{capture=false;firstSample=false;},label:(value:string)=>{name=value;}};
  }catch(error){await single.client.end({timeout:0});throw error;}
 }
@@ -195,10 +227,13 @@ afterAll(async()=>{
  try{if(probe){
   await probe.restore();
   const report=probe.report;
-  report.complete=variants.every(variant=>['performanceVariants','planVariants'].every(field=>(report[field]as string[]|undefined)?.includes(variant)))&&report.authorityComplete===true;
-  const measured=Object.entries((report.ports??{})as Record<string,{samples?:number[];ms?:number}>).filter(([key])=>key.startsWith('unified:'));
-  report.candidateWholePortTarget={targetMs:1000,measuredPorts:measured.length,allUnderTarget:report.complete===true
-   ?measured.length===14&&measured.every(([,port])=>port.samples?.length?port.samples.every(ms=>ms<1000):typeof port.ms==='number'&&port.ms<1000):null};
+  report.complete=variants.every(variant=>['performanceVariants','planVariants'].every(field=>(report[field]as string[]|undefined)?.includes(variant)))&&report.authorityComplete===true&&report.nativeRestorationControlsComplete===true;
+  report.wholePortTargets=Object.fromEntries(variants.map(variant=>{
+   const measured=Object.entries((report.ports??{})as Record<string,{samples?:number[];ms?:number}>).filter(([key])=>key.startsWith(variant+':'));
+   return [variant,{targetMs:1000,measuredPorts:measured.length,allUnderTarget:report.complete===true
+    ?measured.length===14&&measured.every(([,port])=>port.samples?.length?port.samples.every(ms=>ms<1000):typeof port.ms==='number'&&port.ms<1000):null}];
+  }));
+  report.releaseEligible=false;report.productionPolicyApproved=false;
   report.phase=report.complete?'complete':'incomplete';probe.save();
  }}
  finally{try{if(preparingSingle)await preparingSingle.client.end({timeout:5});}finally{await closeAll();}}
@@ -209,9 +244,41 @@ it.skipIf(!requested)('prepares the retained 50k fictional fixture independently
  probe.report.preparation={complete:true,ms:performance.now()-started,caseBudgetMs:300000};probe.save();
 },true),300000);
 
+it.skipIf(!requested)('restores every JIT setting on the same native backend after COMMIT and SQL-error ROLLBACK before the next default checkout',{timeout:300000},context=>boundedCase(context,async()=>{
+ expect(probe).toBeTruthy();const p=probe!,proof:unknown[]=[];
+ for(const variant of variants){
+  await p.choose(variant);p.label(variant+':restore-controls');const spy=p.install(variant);
+  try{
+   const rows=await database.withTenant(p.fixture.ctx,tx=>tx.execute<{value:number}>(sql`select 42::integer as value`),{readOnlySnapshot:true});
+   expect(rows[0].value).toBe(42);
+   let failed=false;
+   try{await database.withTenant(p.fixture.ctx,tx=>tx.execute(sql`select 1/0`),{readOnlySnapshot:true});}
+   catch(error){let native:unknown=error;for(let depth=0;depth<5&&native instanceof Error;depth++){
+     if('code'in native){expect(native.code).toBe('22012');failed=true;break;}native=native.cause;
+    }if(!failed)throw error;
+   }
+   expect(failed).toBe(true);
+   let release!:()=>void,entered!:()=>void,otherEntered=false;
+   const ready=new Promise<void>(resolve=>{entered=resolve;}),done=new Promise<void>(resolve=>{release=resolve;});
+   const abort=()=>release();context.signal.addEventListener('abort',abort,{once:true});
+   const held=database.withTenant(p.fixture.ctx,async tx=>{entered();await done;return tx.execute<{value:number}>(sql`select 42::integer as value`);},{readOnlySnapshot:true});
+   try{
+    await Promise.race([ready,held.then(()=>{throw new Error('Owned diagnostic transaction did not remain held');})]);
+    await expect(database.withTenant(p.fixture.ctx,async()=>{otherEntered=true;},{readOnlySnapshot:true})).rejects.toThrow('Diagnostic transaction already owns');
+    expect(otherEntered).toBe(false);
+   }finally{release();try{expect((await held)[0].value).toBe(42);}finally{context.signal.removeEventListener('abort',abort);}}
+   proof.push({variant,committed:true,nativeDivisionByZeroRolledBack:true,concurrentCheckoutRefusedBeforeCallback:true,sameBackendDefaultsRestored:true});
+  }finally{spy.mockRestore();}
+  await p.choose('unified');p.label(variant+':next-default-checkout');const defaults=p.install('unified');
+  try{const rows=await database.withTenant(p.fixture.ctx,tx=>tx.execute<{value:number}>(sql`select 7::integer as value`),{readOnlySnapshot:true});expect(rows[0].value).toBe(7);}
+  finally{defaults.mockRestore();}
+ }
+ p.report.nativeRestorationControls=proof;p.report.nativeRestorationControlsComplete=proof.length===variants.length;p.save();await p.restore();
+}));
+
 const baselinePages=new Map<string,Omit<Page,'contextId'>>();
 it.skipIf(!requested).for(variants)('measures every whole native organisation port with %s query shape',{timeout:300000},(variant,context)=>boundedCase(context,async()=>{
- expect(probe).toBeTruthy();const p=probe!,spy=p.install(),{b,ctx,expectedFirst,expectedLast,organisationTagSample}=p.fixture;
+ expect(probe).toBeTruthy();const p=probe!,spy=p.install(variant),{b,ctx,expectedFirst,expectedLast,organisationTagSample}=p.fixture;
  const active=organisationTagSample.filter((_,index)=>(index+1)%5!==0).slice(0,25),last=expectedLast.at(-1)!;
  const scope={companyIds:[b.companyId],selectedId:last};
  const cases:{name:string;input:Input;total:number;ids:string[];repeat:number;selected:string|null}[]=[
@@ -228,7 +295,7 @@ it.skipIf(!requested).for(variants)('measures every whole native organisation po
   {name:'foreign-company',input:{companyIds:[p.fixture.foreign.companyId],selectedId:last},total:0,ids:[],repeat:1,selected:null},
  ];
  const results=(p.report.ports??={})as Record<string,unknown>,resourcePhases=(p.report.resourcePhases??=[])as unknown[];
- try{
+ await settleOwnedJitTransaction(async()=>{
   await p.choose(variant);
   for(const c of cases){
    const key=variant+':'+c.name;await p.populationFacts(key,c.input.companyIds);
@@ -274,20 +341,27 @@ it.skipIf(!requested).for(variants)('measures every whole native organisation po
    }finally{release();await writer;}
   }
   const completed=(p.report.performanceVariants??=[])as string[];completed.push(variant);p.save();
- }finally{p.stop();spy.mockRestore();await p.restore();}
+ },async()=>{p.stop();spy.mockRestore();await p.restore();});
 }));
 
 it.skipIf(!requested).for(variants)('captures actual %s identity/page plans without changing native authority or SQL budgets',{timeout:300000},(variant,context)=>boundedCase(context,async()=>{
- expect(probe).toBeTruthy();const p=probe!,spy=p.install();
- const planFailures:{case:string;statement:number;kind:'work'|'rows';details:unknown}[]=[];
- try{
+ expect(probe).toBeTruthy();const p=probe!,spy=p.install(variant);
+ const planFailures:{case:string;statement:number;kind:'work'|'rows'|'jit-policy';details:unknown}[]=[];
+ await settleOwnedJitTransaction(async()=>{
+  if(variant==='unified-base-jit'||variant==='unified-no-jit'){
+   for(const [key,queries]of p.queries){if(!key.startsWith(variant+':'))continue;
+    const shape=(entries:NativeQuery[])=>entries.map(entry=>({...p.dialect.sqlToQuery(entry.query),expectedRows:entry.expectedRows,cursorBody:entry.cursorBody}));
+    const control=p.queries.get('unified:'+key.slice(variant.length+1));expect(control).toBeTruthy();expect(shape(queries)).toEqual(shape(control!));
+   }
+   const equal=(p.report.frozenUnifiedQueryParity??=[])as string[];equal.push(variant);p.save();
+  }
   const captured=[...p.queries].map(([key,queries])=>({key,statements:queries.map(query=>query.statement)}));
   p.report.capturedPlanCases=captured;p.save();
   const expected=['initial','deep','search','department-active','department-and-unit','unit-active','organisation-deep','organisation-search','empty-unit','missing-search','foreign-company','complete-ids'];
   expect(captured.map(row=>row.key).sort()).toEqual(variants.flatMap(name=>expected.map(key=>name+':'+key)).sort());
   expect([...p.queries.keys()]).toHaveLength(variants.length*12);
   for(const [key,queries]of p.queries){
-   if(!key.startsWith(variant+':'))continue;await p.choose(variant);p.label(key);expect(queries.length).toBeGreaterThanOrEqual(variant==='unified'||key.endsWith(':complete-ids')?1:4);
+   if(!key.startsWith(variant+':'))continue;await p.choose(variant);p.label(key);expect(queries.length).toBeGreaterThanOrEqual(variant!=='original'||key.endsWith(':complete-ids')?1:4);
    await database.withTenant(p.fixture.ctx,async tx=>{
     await assertAiPresentationPrincipalTx(tx,p.fixture.ctx);
     for(const entry of queries){
@@ -303,7 +377,12 @@ it.skipIf(!requested).for(variants)('captures actual %s identity/page plans with
       for(const child of (node.Plans??[])as Record<string,unknown>[])visit(child);
      };visit(doc.Plan);
      Object.assign(evidence,{planningMs:doc['Planning Time'],executionMs:doc['Execution Time'],jit:doc.JIT??null,assignmentNodes,windowNodes});p.save();
-     if(variant==='unified'&&p.dialect.sqlToQuery(entry.query).sql.includes('employee_choice_employments as materialized')){
+     if(variant==='unified-no-jit'&&doc.JIT!==undefined)planFailures.push({case:key,statement:entry.statement,kind:'jit-policy',details:{expected:'No JIT',actual:doc.JIT}});
+     if(variant==='unified-base-jit'){
+      const cost=doc.Plan['Total Cost'],required=typeof cost==='number'&&cost>Number(employeeChoiceJitPolicy(variant,p.defaults).jit_above_cost);
+      if((required&&!doc.JIT)||(doc.JIT&&(doc.JIT.Options?.Inlining!==false||doc.JIT.Options?.Optimization!==false)))planFailures.push({case:key,statement:entry.statement,kind:'jit-policy',details:{expected:'Base JIT only above original threshold; no inlining or optimization',cost,actual:doc.JIT??null}});
+     }
+     if(variant!=='original'&&p.dialect.sqlToQuery(entry.query).sql.includes('employee_choice_employments as materialized')){
       const work=employeeChoicePlanWork(doc.Plan,p.wholeFixture);evidence.work=work;p.save();
       if(work.rejectionReasons.length)planFailures.push({case:key,statement:entry.statement,kind:'work',details:work.rejectionReasons});
      }
@@ -317,14 +396,14 @@ it.skipIf(!requested).for(variants)('captures actual %s identity/page plans with
   expect(planFailures).toEqual([]);
   const completed=(p.report.planVariants??=[])as string[];completed.push(variant);
   p.report.actualPlansComplete=variants.every(name=>completed.includes(name));p.report.queryShapeUnchanged=false;p.report.nativeAuthorityUnchanged=true;p.save();
- }finally{spy.mockRestore();await p.restore();}
+ },async()=>{spy.mockRestore();await p.restore();});
 }));
 
 let authorityFixture:Awaited<ReturnType<typeof createAssignmentAuthorityFixture>>|undefined;
 let originalAuthority:Awaited<ReturnType<typeof assertAssignmentAuthority>>|undefined;
 it.skipIf(!requested).for(variants)('preserves all native ordinary/scoped/history/refusal controls with %s query shape',{timeout:300000},(variant,context)=>boundedCase(context,async()=>{
- expect(probe).toBeTruthy();const p=probe!;authorityFixture??=await createAssignmentAuthorityFixture();const spy=p.install();
- try{
+ expect(probe).toBeTruthy();const p=probe!;authorityFixture??=await createAssignmentAuthorityFixture();const spy=p.install(variant);
+ await settleOwnedJitTransaction(async()=>{
   await p.choose(variant);p.label(variant+':authority');
   const port=vi.spyOn(current,'readEmployeeChoices').mockImplementation(variant==='original'?baseline.readEmployeeChoices:readEmployeeChoices);
   let result:Awaited<ReturnType<typeof assertAssignmentAuthority>>;
@@ -332,5 +411,5 @@ it.skipIf(!requested).for(variants)('preserves all native ordinary/scoped/histor
   if(variant==='original')originalAuthority=result;else expect(result).toEqual(originalAuthority);
   const results=(p.report.authority??={})as Record<string,unknown>;results[variant]=result;
   p.report.authorityComplete=variants.every(name=>Object.hasOwn(results,name));p.save();
- }finally{spy.mockRestore();await p.restore();}
+ },async()=>{spy.mockRestore();await p.restore();});
 }));

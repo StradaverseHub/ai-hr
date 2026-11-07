@@ -14,5 +14,6 @@
   "test/r395-visibility-equivalence.test.ts",
   "test/employee-choice-field.dom.test.tsx",
   "test/employee-choice-plan-work.test.ts",
-  "test/employee-choice-plan-capture.test.ts"
+  "test/employee-choice-plan-capture.test.ts",
+  "test/employee-choice-jit-policy.test.ts"
 ]
