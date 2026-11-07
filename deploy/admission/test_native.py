@@ -39,6 +39,7 @@ created_paths = {}
 created_units = {}
 evidence = None
 profile_value = None
+reclamations = {}
 
 
 def safe_controller_failure(stderr):
@@ -138,6 +139,119 @@ def inventory():
     return json.loads((pathlib.Path(profile_value['stateDirectory']) / 'state.json').read_text())
 
 
+def endpoint_capacity():
+    state = inventory()
+    reserved = [row['port'] for row in state['generations'].values() if row['phase'] != 'RELEASED']
+    assert len(state['generations']) <= 8 and len(reserved) == len(set(reserved))
+    assert len(profile_value['ports']) == 12
+    previous = report.get('endpointCapacity', {}).get('peakReservedObserved', 0)
+    report['endpointCapacity'] = {'profilePorts': 12, 'scriptedMaximumGenerations': 8,
+                                  'peakReservedObserved': max(previous, len(reserved))}
+    return state
+
+
+def observe_reclamations():
+    if not reclamations:
+        return
+    state, profile = endpoint_capacity(), C.Profile(C.PROFILE)
+    for item, observation in reclamations.items():
+        generation = state['generations'][item]
+        assert item not in state['published']['ready']
+        if observation.get('released') or generation['phase'] != 'RELEASED':
+            continue
+        # Observe the positive native/raw-bind proof immediately after release,
+        # before a later explicit start may legitimately reuse this endpoint.
+        proof = reclamation_diagnostic(profile, generation)
+        assert proof['nativeDead'] and proof['endpointBindable']
+        assert not proof['savedProcessAlive'] and proof['oldProxyReadersAlive'] == 0
+        observation.update({'released': True, 'releaseProof': proof,
+                            'releaseObservedAt': time.monotonic()})
+        report[observation['proofKey']] = True
+        save()
+
+
+def reconcile_observed():
+    controller('reconcile')
+    observe_reclamations()
+
+
+def defer_reclamation(item, proof_key):
+    assert item not in reclamations
+    state = endpoint_capacity()
+    generation = state['generations'][item]
+    assert item not in state['published']['ready']
+    observation = {'generation': item, 'port': generation['port'], 'proofKey': proof_key,
+                   'initialPhase': generation['phase'], 'registeredAt': time.monotonic(), 'released': False}
+    reclamations[item] = observation
+    report['generationReclamations'] = list(reclamations.values())
+    def quiescent_except_cooling():
+        proof = reclamation_diagnostic(C.Profile(C.PROFILE), inventory()['generations'][item])
+        observation['initialProof'] = proof
+        # Preserve the original15s process/cgroup/unit/proxy-reader requirement.
+        # Only the final unchanged raw-bind predicate may wait for cooling.
+        return not proof['savedProcessAlive'] and proof['oldProxyReadersAlive'] == 0 and (
+            proof['nativeDead'] or proof['fixedRefusalReasons'] == ['Generation endpoint is still bound'])
+    until(quiescent_except_cooling, 'native process/readers quiescent before endpoint cooling')
+    observe_reclamations()
+    save()
+
+
+def reserve_is_distinct(generation):
+    state = endpoint_capacity()
+    assert all(row['id'] == generation['generation'] or row['phase'] == 'RELEASED' or row['port'] != generation['port']
+               for row in state['generations'].values())
+
+
+def create_native_cooling(port):
+    # Consume EOF before closing the client: the actual fictional HTTP server
+    # sends FIN first, establishing its endpoint's native TIME_WAIT state.
+    with socket.create_connection(('127.0.0.1', port), timeout=3) as connection:
+        connection.sendall(b'GET /health HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n')
+        response = b''
+        while True:
+            part = connection.recv(4096)
+            if not part:
+                break
+            response += part
+            assert len(response) <= 8192
+    assert response.startswith(b'HTTP/1.1 200 ') and response.split(b'\r\n\r\n', 1)[1] == b'{"status":"ok"}\n'
+
+
+def refuse_unknown_bound_endpoint(generation):
+    profile = C.Profile(C.PROFILE)
+    reserved = {row['port'] for row in inventory()['generations'].values() if row['phase'] != 'RELEASED'}
+    port = next(value for value in profile_value['ports'] if value not in reserved and C.LinuxHost(profile).port_free(value))
+    with socket.socket() as blocker:
+        blocker.bind(('127.0.0.1', port))
+        blocker.listen(1)
+        # A deliberately unrelated listener must fail the same native proof.
+        # This negative input never enters controller state or reserves a port.
+        proof = reclamation_diagnostic(profile, {**generation, 'port': port})
+        assert not proof['nativeDead'] and not proof['endpointBindable']
+        assert proof['fixedRefusalReasons'] == ['Generation endpoint is still bound']
+    report['nativeUnknownBoundEndpointRefused'] = True
+
+
+def finish_reclamations():
+    phase('shared-native-cooling-reclamation-barrier')
+    assert len(reclamations) == 6 and len(endpoint_capacity()['generations']) == 8
+    expected = {properties(unit)['InvocationID'] for unit in UNITS}
+    deadline, requests = time.monotonic() + 75, 0
+    while True:
+        assert time.monotonic() < deadline, 'Native cooling deadline: retain unreclaimed endpoints'
+        reconcile_observed()
+        assert all(row['admitted'] for row in status()['workers'])
+        assert request()['invocation'] in expected
+        requests += 1
+        assert time.monotonic() < deadline, 'Native cooling deadline: retain unreclaimed endpoints'
+        if all(row['released'] for row in reclamations.values()):
+            break
+        time.sleep(0.2)
+    report.update({'allStoppedGenerationsReclaimed': True, 'coolingPeerRequests': requests,
+                   'coolingBarrierSeconds': 75})
+    save()
+
+
 def until(predicate, description, seconds=15):
     deadline = time.monotonic() + seconds
     while time.monotonic() < deadline:
@@ -214,9 +328,11 @@ def qualify_interrupted_lifecycle(profile):
         'ExecStopPost=+/usr/bin/python3 -I /usr/local/lib/aihr-admission/controller.py cleanup ' + unit + '\n', '')
     post_gate = pathlib.Path('/run/aihr-admission/ports/post-2')
     stopped_proxy = None
+    initial_generation = inventory()['current'][unit]
     controller('drain', unit)
     systemctl('stop', unit)
-    controller('reconcile')
+    reconcile_observed()
+    defer_reclamation(initial_generation, 'initialPeerGenerationReclaimed')
     try:
         phase('native-start-timeout-during-successful-health')
         write(unit_path, delayed.replace('TimeoutStartSec=30', 'TimeoutStartSec=1'), 0o644)
@@ -227,6 +343,7 @@ def qualify_interrupted_lifecycle(profile):
         systemctl('daemon-reload')
         systemctl('start', '--no-block', unit)
         warming = until(lambda: next((row for row in status()['workers'] if row['unit'] == unit and row['phase'] == 'WARMING'), None), 'timeout worker reservation')
+        reserve_is_distinct(warming)
         invocation = properties(unit)['InvocationID']
         until(lambda: C.LinuxHost(profile).worker(unit, invocation, warming['port']), 'native start-post listener before timeout')
         proof = {'healthyBeforeTimeout': False}
@@ -250,17 +367,14 @@ def qualify_interrupted_lifecycle(profile):
         assert not next(row for row in status()['workers'] if row['unit'] == unit)['admitted']
         timed_out = inventory()['current'][unit]
         assert inventory()['generations'][timed_out]['process'] is None
-        controller('reconcile')
+        reconcile_observed()
         assert inventory()['generations'][timed_out]['phase'] != 'RELEASED'
         gate(slot, 'release-stop')
         until(lambda: properties(unit)['MainPID'] == '0' and properties(unit)['ActiveState'] in ('failed', 'inactive'), 'native failed startup shutdown')
-        def released(item):
-            controller('reconcile')
-            return inventory()['generations'][item]['phase'] == 'RELEASED'
-        until(lambda: released(timed_out), 'native dead unrecorded WARMING endpoint release')
+        reconcile_observed()
+        defer_reclamation(timed_out, 'nativeDeadWarmingCleanupRecovered')
         report.update({'nativeStartTimeoutRejectedAfterHealthyProbe': True,
-                       'nativeUnrecordedLiveProcessRetained': True,
-                       'nativeDeadWarmingCleanupRecovered': True})
+                       'nativeUnrecordedLiveProcessRetained': True})
         save()
 
         phase('interrupted-add-late-old-config-child-and-restart')
@@ -271,6 +385,7 @@ def qualify_interrupted_lifecycle(profile):
         systemctl('reset-failed', unit, check=False)
         systemctl('start', '--no-block', unit)
         candidate = until(lambda: next((row for row in status()['workers'] if row['unit'] == unit and row['phase'] == 'WARMING'), None), 'interrupted ADD reservation')
+        reserve_is_distinct(candidate)
         invocation = properties(unit)['InvocationID']
         until(lambda: C.LinuxHost(profile).worker(unit, invocation, candidate['port']), 'native interrupted ADD listener')
 
@@ -316,6 +431,7 @@ def qualify_interrupted_lifecycle(profile):
         recovering = LateOldConfigChild(profile)
         try:
             C.Controller(profile, recovering).reconcile()
+            observe_reclamations()
         finally:
             stopped_proxy = recovering.late
         assert stopped_proxy is not None and C.alive(stopped_proxy)
@@ -326,19 +442,20 @@ def qualify_interrupted_lifecycle(profile):
         gate(slot, 'ready', False)
         systemctl('start', '--no-block', unit)
         replacement = until(lambda: next((row for row in status()['workers'] if row['unit'] == unit and row['phase'] == 'WARMING' and row['generation'] != candidate['generation']), None), 'cold replacement after interrupted ADD')
+        reserve_is_distinct(replacement)
         assert replacement['port'] != candidate['port'] and not replacement['admitted']
-        controller('reconcile')
+        reconcile_observed()
         assert inventory()['generations'][candidate['generation']]['phase'] != 'RELEASED'
         os.kill(stopped_proxy['pid'], signal.SIGCONT)
         until(lambda: not C.alive(stopped_proxy), 'retained old-config proxy child quiescence')
         stopped_proxy = None
-        until(lambda: released(candidate['generation']), 'endpoint release after newer native family and all old readers quiesce')
+        reconcile_observed()
+        defer_reclamation(candidate['generation'], 'nativeNewInvocationDeadGenerationReaped')
         gate(slot, 'ready')
         write(post_gate, 'release owned fixture poststart\n', 0o644)
         until(lambda: ready_worker(unit), 'replacement admission through real installed poststart')
         report.update({'nativeInterruptedAddLateChildRetained': True,
-                       'nativeInterruptedAddColdPortNotReused': True,
-                       'nativeNewInvocationDeadGenerationReaped': True})
+                       'nativeInterruptedAddColdPortNotReused': True})
         save()
 
         phase('native-dead-draining-with-interrupted-cleanup')
@@ -346,9 +463,8 @@ def qualify_interrupted_lifecycle(profile):
         C.Controller(profile, C.LinuxHost(profile)).withdraw(unit, properties(unit)['InvocationID'])
         assert inventory()['generations'][generation]['phase'] == 'DRAINING'
         systemctl('stop', unit)
-        until(lambda: released(generation), 'native dead DRAINING endpoint release without cleanup')
-        report['nativeDeadDrainingCleanupRecovered'] = True
-        save()
+        reconcile_observed()
+        defer_reclamation(generation, 'nativeDeadDrainingCleanupRecovered')
     finally:
         if stopped_proxy is not None and C.alive(stopped_proxy):
             os.kill(stopped_proxy['pid'], signal.SIGCONT)
@@ -357,7 +473,7 @@ def qualify_interrupted_lifecycle(profile):
         systemctl('daemon-reload')
         systemctl('reset-failed', unit, check=False)
     systemctl('start', unit)
-    until(lambda: ready_worker(unit), 'restored native worker')
+    reserve_is_distinct(until(lambda: ready_worker(unit), 'restored native worker'))
 
 
 def reclamation_diagnostic(profile, generation):
@@ -676,14 +792,19 @@ assert cache.read_text()=='fictional writable application cache'
     stream_connection.close()
     receipt = json.loads(controller('drain', UNITS[0]).stdout)
     assert receipt['safeToStop'] and C.alive(old_process)
+    create_native_cooling(first['port'])
     systemctl('stop', UNITS[0])
-    controller('reconcile')
+    reconcile_observed()
     reclamation = inventory()['generations'][first['generation']]
-    if reclamation['phase'] != 'RELEASED':
-        report['generationReclamationFailure'] = reclamation_diagnostic(C.Profile(C.PROFILE), reclamation)
-        save()
-    assert reclamation['phase'] == 'RELEASED'
-    report['drainRetainedProcessOnExpiry'] = True
+    proof = reclamation_diagnostic(C.Profile(C.PROFILE), reclamation)
+    assert reclamation['phase'] != 'RELEASED' and not proof['nativeDead'] and not proof['endpointBindable']
+    assert not proof['savedProcessAlive'] and proof['oldProxyReadersAlive'] == 0
+    assert proof['endpointTcpStates'] == ['06'] and proof['fixedRefusalReasons'] == ['Generation endpoint is still bound']
+    report['nativeTimeWaitReservation'] = proof
+    defer_reclamation(first['generation'], 'drainRetainedProcessOnExpiry')
+    refuse_unknown_bound_endpoint(reclamation)
+    assert request()['invocation'] == invocation2
+    report['readyPeerServedDuringCooling'] = True
     save()
 
     phase('replacement-cold-start-and-stale-callback')
@@ -691,7 +812,10 @@ assert cache.read_text()=='fictional writable application cache'
     systemctl('start', '--no-block', UNITS[0])
     replacement = until(lambda: next((row for row in status()['workers'] if row['unit'] == UNITS[0] and row['phase'] == 'WARMING'), None), 'replacement reservation')
     assert replacement['generation'] != first['generation']
-    # Reuse is permitted only after all old readers and process exited above.
+    assert replacement['port'] != first['port']
+    reserve_is_distinct(replacement)
+    report['coolingReplacementUsedDifferentPort'] = True
+    # A dead process does not make its still-cooling endpoint reusable.
     for _ in range(20):
         assert request()['invocation'] == invocation2
     before = status()
@@ -753,7 +877,7 @@ assert cache.read_text()=='fictional writable application cache'
         pass
     assert status()['publicationPending']
     interrupted_revision = inventory()['pending']['revision']
-    controller('reconcile')
+    reconcile_observed()
     assert not status()['publicationPending'] and status()['publishedRevision'] != interrupted_revision
     assert request()['invocation'] in {properties(unit)['InvocationID'] for unit in UNITS}
     report['interruptedPublicationReconciled'] = True
@@ -762,9 +886,11 @@ assert cache.read_text()=='fictional writable application cache'
     qualify_interrupted_lifecycle(profile)
 
     phase('endpoint-exhaustion-is-an-explicit-startup-failure')
+    exhausted_predecessor = inventory()['current'][UNITS[1]]
     controller('drain', UNITS[1])
     systemctl('stop', UNITS[1])
-    controller('reconcile')
+    reconcile_observed()
+    defer_reclamation(exhausted_predecessor, 'exhaustionPredecessorReclaimed')
     blockers = []
     try:
         for port in profile_value['ports']:
@@ -774,7 +900,7 @@ assert cache.read_text()=='fictional writable application cache'
                 blocker.listen(1)
                 blockers.append(blocker)
             except OSError:
-                blocker.close()  # A live generation is already retaining it.
+                blocker.close()  # A live, cooling or otherwise bound endpoint remains unavailable.
         failed = systemctl('start', UNITS[1], check=False)
         assert failed.returncode != 0, 'An exhausted endpoint pool was reported as successful startup'
         assert not ready_worker(UNITS[1])
@@ -784,16 +910,16 @@ assert cache.read_text()=='fictional writable application cache'
         for blocker in blockers:
             blocker.close()
     systemctl('reset-failed', UNITS[1], check=False)
-    controller('reconcile')
+    reconcile_observed()
     systemctl('start', UNITS[1])
-    until(lambda: ready_worker(UNITS[1]), 'admission after explicit exhaustion recovery')
+    reserve_is_distinct(until(lambda: ready_worker(UNITS[1]), 'admission after explicit exhaustion recovery'))
     report['endpointExhaustionRefusedStartup'] = True
     save()
 
     phase('proxy-restart-never-replays-persisted-up')
     systemctl('restart', PROXY)
     assert all(not row['admitted'] for row in status()['workers'])
-    controller('reconcile')
+    reconcile_observed()
     assert all(row['admitted'] for row in status()['workers'])
     assert request()['invocation'] in {properties(unit)['InvocationID'] for unit in UNITS}
     connection = http.client.HTTPConnection('127.0.0.1', report['unrelatedPort'], timeout=3)
@@ -801,6 +927,7 @@ assert cache.read_text()=='fictional writable application cache'
     response = connection.getresponse()
     assert response.status == 200 and response.read() == b'unrelated'
     connection.close()
+    finish_reclamations()
     report.update({'restartBeginsDown': True, 'unrelatedVhostPreserved': True,
                    'rootOwnedControllerAndProfile': True, 'complete': True, 'currentPhase': 'complete'})
     save()

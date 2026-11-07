@@ -434,6 +434,32 @@ class StateTests(unittest.TestCase):
         self.controller.reconcile()
         self.assertEqual(self.controller.store.read()['generations'][generation['id']]['phase'], 'RELEASED')
 
+    def test_dead_unbindable_endpoint_stays_reserved_while_peer_and_replacement_serve(self):
+        generation, peer = self.admit(), self.admit('aihr-web@2.service')
+        unit = generation['unit']
+        self.controller.withdraw(unit, generation['invocation'])
+        self.host.phases[unit] = ('inactive', 'dead')
+        identity = self.host.identities[unit]
+        self.host.live.remove((identity['pid'], identity['startTicks']))
+        self.host.bound.add(generation['port'])
+        # Complete every reader's quiescence; only native bind uncertainty remains.
+        for reader in self.controller.store.read()['generations'][generation['id']]['readers']:
+            self.host.live.discard((reader['pid'], reader['startTicks']))
+        self.controller.reconcile()
+        self.assertNotEqual(self.controller.store.read()['generations'][generation['id']]['phase'], 'RELEASED')
+        self.assertIn(peer['id'], self.controller.store.read()['published']['ready'])
+        self.host.invocations[unit] = '9' * 32
+        self.host.identities[unit] = {'pid': 999, 'startTicks': 20}
+        self.host.live.add((999, 20))
+        replacement = self.admit(unit)
+        self.assertNotEqual(replacement['port'], generation['port'])
+        self.assertEqual(set(self.controller.store.read()['published']['ready']), {peer['id'], replacement['id']})
+        self.controller.reconcile()
+        self.assertNotEqual(self.controller.store.read()['generations'][generation['id']]['phase'], 'RELEASED')
+        self.host.bound.remove(generation['port'])
+        self.controller.reconcile()
+        self.assertEqual(self.controller.store.read()['generations'][generation['id']]['phase'], 'RELEASED')
+
     def test_drain_timeout_retains_live_process_and_port_until_every_reader_exits(self):
         generation = self.admit()
         with self.assertRaises(C.Refused):

@@ -44,7 +44,9 @@ validated target facts, not an application request or a caller-supplied URL.
    publications. An interrupted reload retains all possibly exposed endpoints
    and all observed Nginx cgroup worker identities, then requires a fresh proved
    revision. Port reuse requires both the old application process and every
-   referring proxy process identity to be gone. Pool exhaustion refuses startup.
+   referring proxy process identity to be gone and a fresh ordinary bind to
+   succeed. A stopped generation can remain reserved while its TCP endpoint
+   cools; process death alone does not make that endpoint reusable. Pool exhaustion refuses startup.
    Recovery carries the union of acknowledged and possibly exposed pending
    endpoints through publication and its removal barrier, including interrupted
    ADD candidates absent from the acknowledged list. It never discards pending
@@ -159,6 +161,15 @@ an actual old-config Nginx respawn after the recovery snapshot: the owned fixtur
 worker is held stopped until no-premature-reuse checks pass, then resumed to
 quiesce. These faults target disposable owned fixture processes only, with no
 installed controller test mode and no larger timeout budgets.
+The native fixture also establishes an actual server-first-close TIME_WAIT,
+requires its stopped endpoint to remain reserved while a ready peer serves and
+a replacement takes a different port, and refuses a real unrelated bound listener.
+All six stopped generations retain their original15second process/reader proof;
+only bind cooling is collected at one shared75second final barrier inside the
+unchanged240second native process envelope. Every release is independently
+observed with positive native death and ordinary bind before later reuse.
+The scripted eight generations fit the unchanged12endpoint fixture pool; this
+is not an installation capacity or production recovery-time claim.
 The restart test is not a physical host reboot test. Keep original failed and
 successful run/artifact identities; repair only failed or invalidated coverage.
 

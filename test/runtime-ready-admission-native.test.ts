@@ -36,6 +36,16 @@ it('qualifies the root generation controller with real Linux systemd and Nginx',
  expect(report.nativeInterruptedAddColdPortNotReused).toBe(true);
  expect(report.nativeNewInvocationDeadGenerationReaped).toBe(true);
  expect(report.nativeDeadDrainingCleanupRecovered).toBe(true);
+ expect(report.nativeTimeWaitReservation).toMatchObject({nativeDead:false,endpointBindable:false,savedProcessAlive:false,oldProxyReadersAlive:0,endpointTcpStates:['06']});
+ expect(report.nativeUnknownBoundEndpointRefused).toBe(true);
+ expect(report.readyPeerServedDuringCooling).toBe(true);
+ expect(report.coolingReplacementUsedDifferentPort).toBe(true);
+ expect(report.allStoppedGenerationsReclaimed).toBe(true);
+ expect(report.generationReclamations).toHaveLength(6);
+ for(const row of report.generationReclamations)expect(row).toMatchObject({released:true,releaseProof:{nativeDead:true,endpointBindable:true,savedProcessAlive:false,oldProxyReadersAlive:0}});
+ expect(report.coolingPeerRequests).toBeGreaterThan(0);
+ expect(report.endpointCapacity).toMatchObject({profilePorts:12,scriptedMaximumGenerations:8});
+ expect(report.endpointCapacity.peakReservedObserved).toBeLessThanOrEqual(8);
  expect(report.restartBeginsDown).toBe(true);
  expect(report.unrelatedVhostPreserved).toBe(true);
 },260000);
