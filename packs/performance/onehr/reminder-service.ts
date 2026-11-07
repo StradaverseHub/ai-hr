@@ -1,3 +1,4 @@
+import {assessmentReminderPreparationStart,assessmentReminderPreparationRoute,assessmentReminderPreparationCurrent,assessmentReminderPreparationSkip,assessmentReminderPreparationValue,type ReminderPreparationRefusal} from './reminder-preparation';
 import {listEmailDesigns,saveEmailDesign} from '../../../core/email-design/service';
 import {defaultEmailDocument,emailDesignEnvelope,emailLocale} from '../../../lib/email-design/model';
 import {assessmentReminderWordsSchema,fillAssessmentReminderWords} from '../../../lib/assessment-reminder-mail';
@@ -186,18 +187,21 @@ export async function assessmentReminderRecipientsTx(tx:Tx,recipientId:string){
  z.uuid().parse(recipientId);
  const [recipient]=await tx.select({recipient:assessmentReminderRecipient,run:assessmentReminderRun}).from(assessmentReminderRecipient).innerJoin(assessmentReminderRun,eq(assessmentReminderRun.id,assessmentReminderRecipient.runId)).where(eq(assessmentReminderRecipient.id,recipientId));
  if(!recipient||recipient.recipient.outcome!=='queued'||!recipient.recipient.employmentId)return [];
- const skip=async(outcome:'changed'|'noPendingWork'|'noConsent'|'cooldown')=>{await tx.update(assessmentReminderRecipient).set({outcome,tasks:[],mailWords:null,preparedAt:null,preparedUntil:null}).where(eq(assessmentReminderRecipient.id,recipientId));return [];};
+ const skip=async(outcome:ReminderPreparationRefusal)=>{await tx.update(assessmentReminderRecipient).set(assessmentReminderPreparationSkip(outcome)).where(eq(assessmentReminderRecipient.id,recipientId));return [];};
  const epochs=await tx.select().from(assessmentReminderEpoch).where(and(eq(assessmentReminderEpoch.tenantId,recipient.run.tenantId),sql`${assessmentReminderEpoch.scopeId} in (${tenantScope}::uuid,${recipient.run.cycleId}::uuid)`));
  const prepared=await projection(tx,recipient.run.tenantId,recipient.run.cycleId,epochs),{state,mailRoutes}=prepared;
- if(recipient.run.mode==='automatic'&&!rules(state).enabled)return skip('changed');
  const actor=prepared.actors.get(recipient.recipient.userId);
- if(!actor||!actor.employmentIds.includes(recipient.recipient.employmentId))return skip('noPendingWork');
- if(await cooling(tx,recipient.run.cycleId,actor.userId,recipientId))return skip('cooldown');
- if(mailRoutes.get(actor.userId)!==recipient.recipient.employmentId)return skip('noConsent');
+ const initial=assessmentReminderPreparationStart(recipient.run.mode,recipient.run.mode==='automatic'?rules(state).enabled:true,recipient.recipient.employmentId,actor);
+ if(initial)return skip(initial);
+ // Initial eligibility proves this exact actor; no new fact read precedes it.
+ if(!actor)throw Error('Assessment preparation actor is unavailable');
+ const route=assessmentReminderPreparationRoute(await cooling(tx,recipient.run.cycleId,actor.userId,recipientId),mailRoutes.get(actor.userId),recipient.recipient.employmentId);
+ if(route)return skip(route);
  const checked=await tx.select().from(assessmentReminderEpoch).where(and(eq(assessmentReminderEpoch.tenantId,recipient.run.tenantId),sql`${assessmentReminderEpoch.scopeId} in (${tenantScope}::uuid,${recipient.run.cycleId}::uuid)`));
- if(checked.length!==epochs.length||checked.some(row=>epochs.find(e=>e.scopeId===row.scopeId)?.revision!==row.revision)||prepared.expiresAt<=Date.now())return skip('changed');
- const now=new Date(),until=new Date(Math.min(now.getTime()+60_000,prepared.expiresAt));
- await tx.update(assessmentReminderRecipient).set({tasks:actor.tasks,mailWords:fillAssessmentReminderWords(await words(tx),prepared.current!.graph.actors.find(person=>person.userId===actor.userId)!.name,prepared.current!.graph.cycle.name,actor.tasks.length),preparedAt:now,preparedUntil:until,tenantEpoch:epochs.find(e=>e.scopeId===tenantScope)?.revision??0,cycleEpoch:epochs.find(e=>e.scopeId===recipient.run.cycleId)?.revision??0}).where(eq(assessmentReminderRecipient.id,recipientId));
+ if(!assessmentReminderPreparationCurrent(epochs,checked,prepared.expiresAt,Date.now()))return skip('changed');
+ const now=new Date();
+ const value=assessmentReminderPreparationValue({actor,name:prepared.current!.graph.actors.find(person=>person.userId===actor.userId)!.name,cycleName:prepared.current!.graph.cycle.name,cycleId:recipient.run.cycleId,tenantScope,epochs,expiresAt:prepared.expiresAt,now,words:await words(tx)});
+ await tx.update(assessmentReminderRecipient).set(value).where(eq(assessmentReminderRecipient.id,recipientId));
  return [recipient.recipient.employmentId];
 }
 
