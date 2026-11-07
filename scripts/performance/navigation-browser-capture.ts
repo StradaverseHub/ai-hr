@@ -83,6 +83,7 @@ async function captureScenario(page:Page,actorIndex:number,scenario:NavigationSc
   const originFailures=await capturedFailures(page);for(const key of ['busy','unavailable','alerts']as const)failures[key]+=originFailures[key];
   if(scenario.outcome==='usable'){
    const anchor=page.locator('a[data-navigation-destination="'+scenario.destinationId+'"]');
+   await anchor.first().waitFor({state:'visible',timeout:remaining()});
    assert(await anchor.count()===1,'Canonical native destination link missing or ambiguous');
    assert(await anchor.getAttribute('href')===scenario.href,'Native destination address differs from reviewed scenario');
    assert(await anchor.isVisible()&&await anchor.isEnabled(),'Native destination is not actionable');
@@ -91,12 +92,26 @@ async function captureScenario(page:Page,actorIndex:number,scenario:NavigationSc
   const target=new URL(scenario.outcome==='denied'?'/':scenario.href,BASE);
   await page.waitForURL(url=>url.origin===BASE&&url.pathname===target.pathname&&url.search===target.search,{timeout:remaining()});
   await page.locator('main').waitFor({state:'visible',timeout:remaining()});
-  assert((await page.locator('body').innerText({timeout:remaining()})).includes(actor.name),'Native signed-in fixture identity missing');
+  // Workforce content can contain many actors' names. Only the unique native
+  // signed-in account trigger can bind the session to this exact fixture actor.
+  const account=page.locator('button[data-tour="account"]');
+  await account.first().waitFor({state:'visible',timeout:remaining()});
+  assert(await account.count()===1&&await account.isEnabled({timeout:remaining()}),'Native signed-in account control missing or ambiguous');
+  const signedInName=account.getByText(actor.name,{exact:true});
+  await signedInName.first().waitFor({state:'visible',timeout:remaining()});
+  assert(await signedInName.count()===1&&await signedInName.innerText({timeout:remaining()})===actor.name,'Native signed-in fixture identity differs');
   if(scenario.outcome==='denied')assert(await page.locator('main [data-navigation-destination="'+scenario.destinationId+'"]').count()===0,'Denied private destination remained rendered');
   for(const step of scenario.steps){
-   const details=page.locator(step.selector);assert(await details.count()===1,'Native disclosure missing or ambiguous');
+   const details=page.locator(step.selector);
+   await details.first().waitFor({state:'visible',timeout:remaining()});
+   assert(await details.count()===1,'Native disclosure missing or ambiguous');
    assert(await details.evaluate(element=>element.tagName==='DETAILS'),'Only native read disclosure steps are permitted');
-   if(await details.getAttribute('open')===null)await details.locator(':scope > summary').click({timeout:remaining()});
+   if(await details.getAttribute('open',{timeout:remaining()})===null){
+    const summary=details.locator(':scope > summary');
+    await summary.first().waitFor({state:'visible',timeout:remaining()});
+    assert(await summary.count()===1&&await summary.isEnabled({timeout:remaining()}),'Native disclosure trigger missing, ambiguous or unavailable');
+    await summary.click({timeout:remaining()});
+   }
   }
   const checks:NavigationObservation['checks']=[];
   for(const check of scenario.checks){
