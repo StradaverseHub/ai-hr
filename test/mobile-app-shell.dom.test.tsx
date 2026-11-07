@@ -17,7 +17,7 @@ function fixture() {
   const ports: Record<string, unknown> = {
     react: React, 'react/jsx-runtime': jsx,
     'react-native': { View, Pressable }, 'react-native-safe-area-context': { SafeAreaView: View },
-    'expo-router': { useRouter: () => ({ navigate }), usePathname: () => path },
+    'expo-router': { router: { navigate }, useRouter: () => ({ navigate }), usePathname: () => path },
     'expo-symbols': { SymbolView: () => null }, './icon': { Icon: () => null },
     './design': { TenantBrand: () => <span>OneHR+</span>, DesignText: View, useTenantDesign: () => ({ appearance: 'dark', palette: {}, design }) },
     './api': {useApi:()=>({data:{person:{name:'Synthetic Tester'},employments:[{employmentId:'one',company:'Synthetic workplace'}]}})},
