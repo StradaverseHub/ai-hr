@@ -65,7 +65,7 @@ describe('2449fbb7 · MultiSelectPopover form contract', () => {
   });
 
   it('keeps caller-authored empty messages and a translated default', () => {
-    expect(popover).toContain("common('noSearchResults')");
-    expect(popover).toContain('emptyLabelFor(search.trim())');
+    expect(popover).toContain('<NoSearchResults message={emptyLabelFor?.(search.trim())}/>');
+    expect(popover).not.toMatch(/useTranslations|next-intl/);
   });
 });

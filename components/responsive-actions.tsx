@@ -19,6 +19,8 @@ export function ResponsiveActions({children}: {children: ReactNode}) {
   }, [open]);
   return <div ref={root} className="relative min-w-0" onKeyDownCapture={event => {
     if (open && event.key === 'Escape') {
+      // A nested column picker owns the first Escape; its document handler closes it.
+      if (Array.from(root.current?.querySelectorAll('[aria-expanded="true"]')??[]).some(element=>element!==trigger.current)) return;
       event.preventDefault();
       event.stopPropagation();
       setOpen(false);

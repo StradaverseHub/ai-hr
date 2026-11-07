@@ -9,6 +9,8 @@ import {MultiSelectPopover} from '../components/ui/multi-select-popover';
 import {RequestLeaveDialog} from '../components/leave/request-leave-dialog';
 import {PersonnelOrganisationFilters} from '../app/admin/personnel/organisation-filters';
 import {PermissionMatrix} from '../app/admin/settings/profile-requests/permission-matrix';
+import {ResponsiveActions} from '../components/responsive-actions';
+import {ColumnPicker} from '../app/admin/personnel/column-picker';
 import {CompanySwitcher} from '../components/company-switcher';
 const navigation=vi.hoisted(()=>({push:vi.fn(),replace:vi.fn(),refresh:vi.fn()}));
 vi.mock('next/navigation',()=>({useRouter:()=>navigation,useSearchParams:()=>new URLSearchParams(),usePathname:()=>'/'}));
@@ -37,6 +39,13 @@ describe('audit picker recovery',()=>{
   const dialog=screen.getByRole('dialog',{name:'Filter'});
   expect(new FormData(dialog.querySelector('form')!).getAll('quality')).toEqual(['suspected_duplicate']);
   await userEvent.keyboard('{Escape}');expect(screen.queryByRole('dialog')).toBeNull();expect(trigger).toHaveFocus();
+ });
+ it('keeps the secondary actions menu open when Escape closes its column picker',async()=>{
+  mount(<ResponsiveActions><ColumnPicker columns={[{key:'name',label:'Name',mandatory:true}]} selected={['name']} labels={{title:'Customize columns',hint:'Choose columns',apply:'Apply',reset:'Reset',moveUp:'Move up',moveDown:'Move down',unavailableNote:''}} saveAction={async()=>{}} resetAction={async()=>{}}/></ResponsiveActions>);
+  const more=screen.getByRole('button',{name:en.common.moreActions});await userEvent.click(more);
+  const columns=screen.getByRole('button',{name:'Customize columns'});await userEvent.click(columns);
+  await userEvent.keyboard('{Escape}');expect(columns).toHaveAttribute('aria-expanded','false');expect(more).toHaveAttribute('aria-expanded','true');
+  columns.focus();await userEvent.keyboard('{Escape}');expect(more).toHaveAttribute('aria-expanded','false');expect(more).toHaveFocus();
  });
  it('explains a cleared company draft without submitting an empty scope',async()=>{
   const submit=vi.spyOn(HTMLFormElement.prototype,'requestSubmit').mockImplementation(()=>{});

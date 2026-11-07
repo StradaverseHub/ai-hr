@@ -67,7 +67,7 @@
  * component behaves EXACTLY as it did for every other call site; the accrual card is still the only caller.
  */
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
-import { useTranslations } from 'next-intl';
+import { NoSearchResults } from './no-search-results';
 import { ChevronDown } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { inputCls } from '@/components/ui';
@@ -141,7 +141,7 @@ export function MultiSelectPopover({
 }) {
   const captionId = useId();
   const summaryId = useId();
-  const common = useTranslations('common');
+  const panelId = useId();
   const triggerRef = useRef<HTMLButtonElement>(null);
   const rootRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
@@ -180,6 +180,21 @@ export function MultiSelectPopover({
     return () => document.removeEventListener('mousedown', onDoc);
   }, [open]);
 
+  // Radix dialogs listen in document capture. Handle the active picker in window capture
+  // first, so Escape cannot dismiss the containing form and discard its draft.
+  useEffect(() => {
+    if (!open) return;
+    const escape = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      event.preventDefault();
+      event.stopPropagation();
+      setOpen(false);
+      triggerRef.current?.focus();
+    };
+    window.addEventListener('keydown', escape, true);
+    return () => window.removeEventListener('keydown', escape, true);
+  }, [open]);
+
   // Disabling the control (festive: group-wide ticked while the panel is open) must also close it —
   // a plain `disabled` on the trigger alone would leave a stale open panel over a dead button.
   useEffect(() => {
@@ -199,14 +214,7 @@ export function MultiSelectPopover({
   const triggerLabel = selected.size === 0 ? allLabel : selectedCount(selected.size);
 
   return (
-    <div ref={rootRef} className="flex flex-col gap-1.5" onKeyDownCapture={event => {
-      if (open && event.key === 'Escape') {
-        event.preventDefault();
-        event.stopPropagation();
-        setOpen(false);
-        triggerRef.current?.focus();
-      }
-    }}>
+    <div ref={rootRef} className="flex flex-col gap-1.5">
       <span id={captionId} className="text-xs font-medium text-muted-foreground">
         {label}
       </span>
@@ -220,6 +228,7 @@ export function MultiSelectPopover({
           type="button"
           onClick={() => setOpen((o) => !o)}
           aria-expanded={open}
+          aria-controls={open ? panelId : undefined}
           aria-labelledby={`${captionId} ${summaryId}`}
           disabled={disabled}
           className={cn(
@@ -233,12 +242,13 @@ export function MultiSelectPopover({
           />
         </button>
         {open && (
-          <div ref={panelRef} className="absolute left-0 z-50 mt-1 flex w-72 flex-col rounded-lg border border-border bg-popover p-2 text-popover-foreground shadow-lg">
+          <div id={panelId} ref={panelRef} className="absolute left-0 z-50 mt-1 flex w-72 max-w-[calc(100vw-2rem)] flex-col rounded-lg border border-border bg-popover p-2 text-popover-foreground shadow-lg">
             <input
               type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder={searchPlaceholder}
+              aria-label={searchPlaceholder}
               className={`${inputCls} mb-2`}
             />
             <div className="mb-2 flex items-center gap-3 px-1 text-xs">
@@ -253,7 +263,7 @@ export function MultiSelectPopover({
             {/* r287 — said out loud, naming what was typed. An empty box asserts nothing (CLAUDE.md §8);
                 this is the difference between "no such employee" and "the screen is still thinking". */}
             {noMatches && (
-              <p role="status" className="px-2 py-3 text-center text-xs text-muted-foreground">{emptyLabelFor ? emptyLabelFor(search.trim()) : common('noSearchResults')}</p>
+              <NoSearchResults message={emptyLabelFor?.(search.trim())}/>
             )}
             <div className="max-h-56 min-h-0 overflow-y-auto">
               {options.map((o) => {
