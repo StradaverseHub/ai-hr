@@ -555,10 +555,19 @@ export type TerminationRow = {
  *  This matters because a terminated employee's open assignment is CLOSED (validTo set), so a current
  *  assignment join would yield a null department and silently drop every leaver from a dept filter. */
 function terminationsRowsTx(tx:Tx,scopeIds:string[]|undefined,p:PeriodReportInput) {
+  const datedAssignment=aliasedTable(assignment,'termination_assignment');
+  // Native RLS can estimate this population as a handful of rows and then
+  // materialize every assignment for every leaver (50k × 10k in the measured
+  // plan). Keep the indexed employment/date correlation inside a real OFFSET 0
+  // boundary. Drizzle's .offset(0) omits SQL, so use its public SQL join API.
+  // No LIMIT: inclusive validTo can legitimately match both adjacent versions.
+  const temporalAssignments=sql`(select ${assignment.id},${assignment.departmentId}
+    from ${assignment} where ${assignmentEffectiveAt(employment.terminatedOn,true)} offset 0)
+    as ${sql.identifier('termination_assignment')}`;
   return tx
       .select({
         employmentId: sql<string>`${employment.id}`.as('employment_id'),
-        assignmentId: sql<string|null>`${assignment.id}`.as('assignment_id'),
+        assignmentId: sql<string|null>`${datedAssignment.id}`.as('assignment_id'),
         name: sql<string>`${person.fullName}`.as('name'),
         company: sql<string>`${company.legalName}`.as('company'),
         department: sql<string|null>`${department.name}`.as('department'),
@@ -569,13 +578,13 @@ function terminationsRowsTx(tx:Tx,scopeIds:string[]|undefined,p:PeriodReportInpu
       .from(employment)
       .innerJoin(person, eq(person.id, employment.personId))
       .innerJoin(company, eq(company.id, employment.companyId))
-      .leftJoin(assignment, assignmentEffectiveAt(employment.terminatedOn, true))
-      .leftJoin(department, eq(department.id, assignment.departmentId))
+      .leftJoinLateral(temporalAssignments,sql`true`)
+      .leftJoin(department, eq(department.id, datedAssignment.departmentId))
       .where(
         and(
           gte(employment.terminatedOn, p.from),
           lte(employment.terminatedOn, p.to),
-          p.filter?.departmentId ? eq(assignment.departmentId, p.filter.departmentId) : undefined,
+          p.filter?.departmentId ? eq(datedAssignment.departmentId, p.filter.departmentId) : undefined,
           qWhere(p.filter),
           scopeWhere(scopeIds),
         ),
