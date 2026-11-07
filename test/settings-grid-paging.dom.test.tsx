@@ -225,15 +225,19 @@ describe('9da61c86 — editing on page 3 keeps your place', () => {
     expect(replace.mock.calls[0][0]).toContain('page=13');
   });
 
-  // A draft is appended to the end and then sorted, so on a paged list it lands on a page the reader is not
-  // looking at — Add Row would appear to have done nothing at all.
-  it('Add Row follows the new draft to the page it landed on', async () => {
+  it('returns to page one with the newest Profile Options draft first', async () => {
     search = 'page=2';
+    const later = renderProfileGrid();
+    await userEvent.click(screen.getByRole('button', { name: 'Add row' }));
+    expect(replace).toHaveBeenCalledTimes(1);
+    expect(replace.mock.calls[0][0]).not.toMatch(/page=\d/);
+    later.unmount();
+    search = '';
     renderProfileGrid();
     await userEvent.click(screen.getByRole('button', { name: 'Add row' }));
-    // 329 rows in sort order put the draft last: index 328 ⇒ page 13.
-    expect(replace).toHaveBeenCalledTimes(1);
-    expect(replace.mock.calls[0][0]).toContain('page=13');
+    const draft = screen.getByPlaceholderText(en.admin.profileOptions.valuePlaceholder);
+    expect(draft.closest('tbody')?.firstElementChild).toBe(draft.closest('tr'));
+    expect(draft).toHaveFocus();
   });
 });
 

@@ -21,6 +21,7 @@
  * committed on Apply for saved rows; text edits and complete new-row criteria batch into Save.
  */
 
+import { labelCodeConflicts } from '@/lib/label-code-conflicts';
 import { refreshEditableRows } from '@/lib/refresh-editable-rows';
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition, type ReactNode } from 'react';
 import { useFitToView } from '@/components/ui/fit-to-view';
@@ -445,6 +446,19 @@ export function SystemLabelsGrid({
       headEmploymentId: r.headEmploymentId,
       description: r.description,
     }));
+    const creationCompanies = new Map(creates.map(row => [row.key, row.companyId]));
+    const duplicates = (k === 'cost_center' || k === 'business_unit')
+      ? labelCodeConflicts(rows.filter(row => !row.archived).map(row => ({
+          key: row.key, code: row.code.trim().toLowerCase(),
+          scope: creationCompanies.get(row.key) ?? row.companyId, changed: row.isNew || row.dirty,
+        })))
+      : [];
+    if (duplicates.length) {
+      const message = 'This code is already in use. Enter a different code.';
+      setRowErrors(Object.fromEntries(duplicates.map(key => [key, {field: 'code' as const, message}])));
+      setError(message);
+      return;
+    }
     const updatedKeys = new Set(updates.map((u) => u.key));
     startTransition(async () => {
       const res = await actions.save(k, { creates, updates });
@@ -474,7 +488,7 @@ export function SystemLabelsGrid({
         // admin staring at a row with nothing wrong in it; its token is promoted to the banner. A
         // field-level refusal keeps the existing banner and speaks through the highlighted cell.
         const rowToken = res.rowErrors.find((e) => e.code)?.code;
-        setError(failureText(rowToken ?? res.message));
+        setError(failureText(rowToken ?? res.message ?? res.rowErrors[0]?.message));
       }
     });
   }
@@ -953,6 +967,7 @@ export function SystemLabelsGrid({
                           // path (typing, paste into the cell) is closed.
                           readOnly={readOnly}
                           aria-readonly={readOnly || undefined}
+                          aria-invalid={err?.field === c.field || undefined}
                           // 797e3523: full value on hover so long text is readable without a wider column.
                           // On a read-only row the tooltip says WHY instead, which is the more useful of
                           // the two when the cell will not take an edit.
@@ -961,6 +976,9 @@ export function SystemLabelsGrid({
                             readOnly ? 'cursor-default bg-card text-muted-foreground' : ''
                           }`}
                         />
+                        {err?.field === c.field && (
+                          <p className="mt-1 text-xs text-destructive">{failureText(err.message)}</p>
+                        )}
                       </td>
                     ))}
                     {/* 71bacb95: Business Unit select removed — see the header note. r.businessUnitId is still

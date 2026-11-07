@@ -77,3 +77,13 @@ reservation. Before any web rollback, prevent new Bank submissions and account f
 retain its matching worker release, source, private configuration and database backup. There is no
 automatic schema rollback. A worker-only restart uses the same durable checkpoints and may safely
 resume after an interrupted row transaction rolls back.
+
+## Payroll Individual Transaction queue
+
+The same protected worker also handles Individual Transaction workbooks after migration
+2460. It validates the original workbook independently of the browser and waits for the
+uploader to confirm the stored preview. The original file stays in the tenant database
+under the same company scope as the batch. Payroll writes and the immutable import
+results commit together. A restart replays the interrupted phase, and an attempt whose
+writes already committed supplies its recorded outcomes without repeating them.
+Include both import paths in staging worker acceptance.

@@ -9803,6 +9803,27 @@
       "importNewOnly": "Import new records only"
     },
     "individualImport": {
+      "submitWorkbook": "Upload workbook",
+      "downloadWorkbook": "Download original workbook",
+      "progress": "Progress",
+      "startedAt": "Started at",
+      "finishedAt": "Finished at",
+      "completedWithErrors": "Completed with Errors",
+      "confirmationUnavailable": "This batch is no longer available for confirmation.",
+      "queueFull": "Wait for one of your current batches to finish before uploading another.",
+      "fileReadError": "The workbook could not be read. Use the matching Excel template.",
+      "noValidRows": "No valid rows were found. Review the row errors before uploading again.",
+      "importFailed": "The batch stopped. Check the workbook or your access before trying again.",
+      "batchCounts": "{total} rows · {written} imported · {failed} failed",
+      "batchState": {
+        "pending": "Pending",
+        "validating": "Processing workbook",
+        "ready": "Ready to confirm",
+        "confirmed": "Pending import",
+        "importing": "Importing",
+        "completed": "Completed",
+        "failed": "Failed"
+      },
       "open": "Import Excel",
       "log": "Import log",
       "logHint": "Review individual transaction imports and their original row results.",

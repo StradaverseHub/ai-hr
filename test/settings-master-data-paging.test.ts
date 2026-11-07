@@ -91,6 +91,11 @@ describe('the master-data grids page in the browser', () => {
       expect(src.slice(start, end)).toContain('goToPage(0)');
       expect(src).toContain('const next = [draft, ...rows]');
       expect(src).toContain('return [...drafts, ...v]');
+    } else if (['components/profile-options-grid.tsx', 'components/grade-labels-grid.tsx'].includes(file)) {
+      const start = src.indexOf('function addRow('), end = src.indexOf('function removeDraft(', start);
+      expect(src.slice(start, end)).toContain('[draft, ...rows]');
+      expect(src.slice(start, end)).toContain('goToPage(0)');
+      expect(src).toContain('return [...drafts, ...v]');
     } else expect(src).toContain('pageOfIndex(');
   });
 });
