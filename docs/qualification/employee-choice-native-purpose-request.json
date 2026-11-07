@@ -1,0 +1,61 @@
+{
+  "kind": "DEVELOPMENT_UNNUMBERED_NATIVE_EMPLOYEE_CHOICE_PURPOSE_PROTOTYPE",
+  "base": "f1515376df082438ca025fb65d01a8a3330a8796",
+  "productionReader": "core/employee-choice.ts",
+  "productionReaderSha256": "ce1e3559addbffa4b4e780594ebcc5fcf917ddffde79a6155cc7fbcecdbcfbd5",
+  "frozenCurrentReaderCopySha256": "fc1a1603aa7a032a0450dfca98eddd6068de5a1913478d25e5e7e90eea8e3816",
+  "prototypeSqlSha256": "f5beb1748ff7bddbc3791ec58a76ea2bd04d466c9fc92eac682a9f71db6ab5ab",
+  "preservedJitExperimentRun": "42397540021",
+  "preservedEarlierDefaultRun": "42395640747",
+  "ordinaryNativeAndPureSelectors": [
+    "test/employee-choice-native-purpose.test.ts",
+    "test/employee-choice-native-purpose-transport.test.ts",
+    "test/employee-choice-auto-explain-parser.test.ts"
+  ],
+  "soleControlledNativeSelector": [
+    "test/employee-choice-native-purpose-plan.test.ts"
+  ],
+  "artifact": "employee-choice-native-purpose/employee-choice-native-purpose-plan.json",
+  "actualNativeLog": "employee-choice-native-purpose/native-auto-explain.log",
+  "timingVariants": [
+    "current",
+    "native"
+  ],
+  "wholePortsPerVariant": 14,
+  "wholeTimingSamplesPerVariant": 16,
+  "supplementarySparseServerPlanPortsPerVariant": 1,
+  "actualPlanPhases": 34,
+  "nativeBodyPlanPhases": 17,
+  "caseBudgetMs": 300000,
+  "statementTimeoutMs": 20000,
+  "lockTimeoutMs": 300,
+  "targetMs": 1000,
+  "host": "Standard public GitHub-hosted runner only; actual Node/CPU/RAM/owned PostgreSQL container/cgroup profile recorded by real job",
+  "topology": "Timing variants share one exclusive actual application backend. Instrumented variants share a second actual backend. Separate PIDs explicitly recorded; no same-PID cross-phase claim.",
+  "planProvenance": "Owned-DB startup auto_explain nested/analyze/buffers/settings only; actual PID/container/unique markers/body fingerprint/PLpgSQL context/outer Function Scan/independent stream counts; exact DB configuration restoration.",
+  "functionAuthority": "Fixed typed SECURITY INVOKER STABLE SET jit=off; actual app LOGIN/RRRO/current human principal and native RLS; no app privileged logging toggle.",
+  "planningPolicy": "No DISCARD, plan_cache_mode, threshold or global JIT changes. Same ordered calls/repeats per phase exercise natural cached function custom/generic planning.",
+  "normalAdmission": "PENDING: register the exact complete plan selector as controlled-database-v1 singleton and qualify through actual alpha-staging test job. Temporary genuine sole focused route is development evidence only.",
+  "sourceSha256": {
+    "test/employee-choice-native-purpose.test.ts": "261ad823c620e2f2d04509ea0bfc991d5034c7e2d94b9312aab4f83d8e20423a",
+    "test/employee-choice-native-purpose-transport.test.ts": "177100b4549c64ee4ee9c007a4f46a904e203d48a0ad2c2b93499569610cda69",
+    "test/employee-choice-auto-explain-parser.test.ts": "b09927ff7280b0da0c2e87791ada00e550fe651686ed784f4485dab882d3a383",
+    "test/employee-choice-native-purpose-plan.test.ts": "5c5cc5073d70fe4b3f2f296b4f8b2e365a751118a01d93b86f1d43c5f3ee61c7",
+    "test/fixtures/employee-choice-native-purpose.sql": "f5beb1748ff7bddbc3791ec58a76ea2bd04d466c9fc92eac682a9f71db6ab5ab",
+    "test/performance/employee-choice-native-current-baseline.ts": "fc1a1603aa7a032a0450dfca98eddd6068de5a1913478d25e5e7e90eea8e3816",
+    "test/performance/employee-choice-native-purpose-reader.ts": "9e9bd4289a6f350b466ffcf56618eb71c362077277e978da11892dc2fc7a2a9c",
+    "test/performance/employee-choice-native-purpose-owner.ts": "36364fc880154a10c2a60f71f3810b9d3dd306d3069531e82873b36f13bc6bcd",
+    "test/performance/employee-choice-native-purpose-session.ts": "a372db1140e4b87837416dd612dc03d548fc78ce222b28892554e5529d5fefaf",
+    "test/performance/employee-choice-auto-explain.ts": "45b86494f1765b8e3b355edceaa3780b8c6ede9532dfa9dbd74529d679c4ced4",
+    "test/performance/employee-choice-auto-explain-parser.ts": "45354ad6bb18bcfe940abcd374ca46049408a3da35d14061cc3bff05fb11a487",
+    "test/performance/employee-choice-plan-work.ts": "cc3e8ea81af0c6542988a7bccc10ae16e6dd7c9f716ab7a65a55e8a594b38d71",
+    "test/performance/employee-choice-planner-snapshot.ts": "332bc47f1cba431834f9d8c5248030dc920d76222bce0363fcf7483fa97c0b5e"
+  },
+  "qualification": "NOT_RUN",
+  "actualSpeed": "UNMEASURED",
+  "applicationSourceChanged": false,
+  "numberedMigrationAllocated": false,
+  "productionPolicyApproved": false,
+  "releaseEligible": false,
+  "production": "HELD"
+}
