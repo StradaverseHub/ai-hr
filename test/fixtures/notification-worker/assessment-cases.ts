@@ -1,7 +1,8 @@
-import {rejectedAssessmentTaskChanges} from './assessment-task-shape-cases';
+import {rejectedAssessmentTaskChanges,rejectedAssessmentWords} from './assessment-task-shape-cases';
+import {assertAssessmentParserContract} from './assessment-parser-contract';
 /** Actual native preparation source and isolated equivalent legacy fixtures; no delivery/provider. */
 import {readFileSync} from 'node:fs';
-import {randomUUID,createHash} from 'node:crypto';
+import {randomUUID} from 'node:crypto';
 import {afterAll,afterEach,beforeAll,beforeEach,describe,expect,it} from 'vitest';
 import {eq} from 'drizzle-orm';
 import type {TransactionSql} from 'postgres';
@@ -17,7 +18,7 @@ import {assessmentReminderProjectionWork,assessmentReminderProjectionExpiry} fro
 import {assessmentReminderPreparationValue} from '../../../packs/performance/onehr/reminder-preparation';
 import {todayInKualaLumpur} from '../../../lib/hr-date';
 import {pgSqlState} from '../../../lib/db-error';
-import {assessmentReminderTaskSchema,assessmentReminderMailSchema} from '../../../lib/assessment-reminder-mail';
+import {assessmentReminderTaskKeys,assessmentReminderTaskSchema,assessmentPreparedWordsSchema,assessmentReminderMailSchema} from '../../../lib/assessment-reminder-mail';
 import {notificationWorkerLifecycle} from '../../../lib/notification-worker/lifecycle';
 import {notificationWorkerProjection,notificationWorkerAssessmentContract} from '../../../lib/notification-worker/projection';
 import {nativeAssessmentReminderFacts,prepareNativeAssessmentReminder} from '../../../lib/notification-worker/reminder';
@@ -30,8 +31,7 @@ describe.sequential('native assessment reminder preparation (stage3)',()=>{
  beforeAll(async()=>{
   // Native grammar is intentionally pinned to the actual locked canonical parser.
   // A parser upgrade requires a reviewed shape/positive/negative parity refresh.
-  expect(JSON.parse(readFileSync('node_modules/zod/package.json','utf8')).version).toBe('4.6.7');
-  expect(createHash('sha256').update(readFileSync('node_modules/zod/src/v4/core/regexes.ts')).digest('hex')).toBe('fd08a3d605812f51ac57e5c5b327682f99aaf741cff30a9363cb4f6afc60cdc9');
+  assertAssessmentParserContract();
   await fixtureOwner.install(sources,3,notificationWorkerAssessmentContract);
  },300000);
  beforeEach(async()=>{await owner.client`truncate notification_worker_private.run cascade`;await owner.client`update notification_worker_private.authority set active_run=null,enabled=true`;await resetDb();base=await seedBase();service=fixtureOwner.connect();});
@@ -141,7 +141,7 @@ describe.sequential('native assessment reminder preparation (stage3)',()=>{
   const accessible=await owner.client`select p.oid::regprocedure::text as signature from pg_proc p join pg_namespace n on n.oid=p.pronamespace where p.prosecdef and n.nspname !~ '^pg_' and has_schema_privilege('ai_hr_notification_worker',n.oid,'USAGE') and has_function_privilege('ai_hr_notification_worker',p.oid,'EXECUTE')`;
   expect(accessible).toHaveLength(13);expect(accessible.every(row=>row.signature.startsWith('notification_worker.'))).toBe(true);
  },30000);
- it('refuses noncanonical JSON tasks, dates, epochs and skip shapes without any committed preparation or projection effect',async()=>{
+ it('refuses noncanonical JSON tasks, dates, epochs, skip shapes and oversized task wire without any committed preparation or projection effect',async()=>{
   const f=await fixture(base);await historical();const row=await queued(f);await targetOnly(row.sourceEventId!);const run=await notificationWorkerLifecycle(service).openRun(),before=await preparationEffects(row,run);
   type Proposal=Awaited<ReturnType<typeof validProposal>>['proposal'];
 
@@ -150,7 +150,10 @@ describe.sequential('native assessment reminder preparation (stage3)',()=>{
   });
   for(const key of ['preparedAt','preparedUntil'])for(const value of ['infinity','tomorrow','now','2026-02-29T12:00:00Z','2026-01-01T12:00:00+24:00','0000-02-29T12:00:00Z','2026-01-01T12:00:00+23:59',null])changes.push(p=>({...p,[key]:value}));
   for(const key of ['tenantEpoch','cycleEpoch'])for(const value of ['1','NaN',null,true,-1,1.5,9007199254740992])changes.push(p=>({...p,[key]:value}));
-  changes.push(p=>({...p,mailWords:{subject:'😀'.repeat(10001),opening:'valid'}}),p=>({...p,mailWords:{subject:'valid',opening:'😀'.repeat(15001)}}));
+  for(const mailWords of rejectedAssessmentWords){expect(assessmentPreparedWordsSchema.safeParse(mailWords).success).toBe(false);changes.push(p=>({...p,mailWords}));}
+  // Canonical ISO syntax permits arbitrarily many fractional digits. The native
+  // wire ceiling is a separate operational bound, not a canonical-shape claim.
+  changes.push(p=>{const task={...p.tasks[0],closesAt:'2026-01-01T00:00:00.'+'0'.repeat(66000)+'Z'};expect(assessmentReminderTaskSchema.safeParse(task).success).toBe(true);return{...p,tasks:[task]};});
   changes.push(()=>({kind:'skip',other:'changed'}),()=>({kind:'skip',outcome:null}),()=>({kind:'skip',outcome:'changed',extra:true}));
   for(const change of changes){
    await expect(begin(run,base.tenantId,async(tx,batch)=>{const {proposal}=await validProposal(tx,batch,row.sourceEventId!);
@@ -159,18 +162,27 @@ describe.sequential('native assessment reminder preparation (stage3)',()=>{
    expect(await preparationEffects(row,run)).toEqual(before);
   }
  },30000);
- it('persists canonical typed task edges and exact JS-trimmed UTF16 names through a real LOGIN then parses the canonical mail consumer',async()=>{
-  const f=await fixture(base);await historical();const row=await queued(f);await targetOnly(row.sourceEventId!);const run=await notificationWorkerLifecycle(service).openRun();
-  const tasks=[
+ const wireEdges=[{label:'Unicode code-point boundaries and JS trim',tasks:[
    {key:'own_competency',count:1,closesAt:null},
    {key:'own_competency',count:1000000,closesAt:'2096-02-29T12:34:56Z'},
    {key:'own_competency',count:2,closesAt:'2000-02-29T00:00:00.123456789+23:59'},
    {key:'own_competency',count:3,closesAt:'0000-02-29T00:00:00-23:59'},
-   {key:'own_competency',count:4,closesAt:'9999-12-31T23:59:59.9+00:00',people:[' \u00a0\ufeffFictional 😀\u202f\n','😀'.repeat(100)]},
-  ];
+   {key:'own_competency',count:4,closesAt:'9999-12-31T23:59:59.9+00:00',people:[' \u00a0\ufeffFictional 😀\u202f\n','😀'.repeat(200),'e\u0301'.repeat(100)]},
+  ],words:{subject:'😀'.repeat(20000),opening:'😀'.repeat(30000)}},
+  {label:'all sixteen task groups with maximum JSON escaping',tasks:assessmentReminderTaskKeys.map((key,index)=>({key,count:index+1,closesAt:null,people:['\u0001'.repeat(200),'\u0002'.repeat(200),'\u0003'.repeat(200)]})),
+   words:{subject:'\u0001'.repeat(20000),opening:'\u0002'.repeat(30000)}}];
+ for(const {label,tasks,words} of wireEdges)it('persists '+label+' through a real LOGIN then parses the canonical mail consumer',async()=>{
+  const f=await fixture(base);await historical();const row=await queued(f);await targetOnly(row.sourceEventId!);const run=await notificationWorkerLifecycle(service).openRun();
   // This is typed-wire qualification, not native proof of caller-proposed task truth.
-  const words={subject:'😀'.repeat(10000),opening:'😀'.repeat(15000)},expected=assessmentReminderMailSchema.parse({tasks,words});
+  const expected=assessmentReminderMailSchema.parse({tasks,words});
   await begin(run,base.tenantId,async(tx,batch)=>{const {proposal}=await validProposal(tx,batch,row.sourceEventId!);
+   const [wire]=await tx`select octet_length((${tx.json(tasks)}::jsonb)::text) as task_bytes,
+    octet_length((${tx.json(words)}::jsonb)::text) as word_bytes,
+    octet_length((${tx.json({...proposal,tasks,mailWords:words})}::jsonb)::text) as decision_bytes`;
+   expect(wire.task_bytes).toBeLessThanOrEqual(65536);expect(wire.word_bytes).toBeLessThanOrEqual(327680);expect(wire.decision_bytes).toBeLessThanOrEqual(409600);
+   if(label==='all sixteen task groups with maximum JSON escaping'){
+    expect(wire.task_bytes).toBeGreaterThan(20000);expect(wire.word_bytes).toBeGreaterThan(220000);expect(wire.decision_bytes).toBeGreaterThan(260000);
+   }
    // Preserve raw JSON numeric decimal forms; canonical numbers do not require an
    // integer-only lexical spelling. Both epochs still equal native captured facts.
    const tenantNumber=String(proposal.tenantEpoch)+'.0',cycleNumber=String(proposal.cycleEpoch)+'.0';
@@ -189,7 +201,9 @@ describe.sequential('native assessment reminder preparation (stage3)',()=>{
   });
   const persisted=await prepared(row.id);expect({tasks:persisted.tasks,words:persisted.mailWords}).toEqual(expected);
   expect(assessmentReminderMailSchema.parse({tasks:persisted.tasks,words:persisted.mailWords})).toEqual(expected);
-  expect(persisted.outcome).toBe('queued');expect(persisted.tasks[4].people).toEqual(['Fictional 😀','😀'.repeat(100)]);
+  expect(persisted.outcome).toBe('queued');
+  if(label==='Unicode code-point boundaries and JS trim')expect(persisted.tasks[4].people).toEqual(['Fictional 😀','😀'.repeat(200),'e\u0301'.repeat(100)]);
+  else{expect(persisted.tasks).toHaveLength(16);expect(persisted.tasks[15].people).toEqual(['\u0001'.repeat(200),'\u0002'.repeat(200),'\u0003'.repeat(200)]);}
   await assertGlobalCursor(base.tenantId,row.sourceEventId!);
   const effects=await preparationEffects(row,run);expect(effects.notices).toHaveLength(1);expect(effects.outbox).toHaveLength(1);expect(effects.batches).toEqual([]);expect(effects.admissions).toEqual([]);
  },30000);
