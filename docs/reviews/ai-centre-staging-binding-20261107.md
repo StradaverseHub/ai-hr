@@ -2,7 +2,7 @@
 
 Date: 7 November 2026
 
-Status: prepared integration; combined provider-source approval pending. This is not staging acceptance or a release receipt.
+Status: combined provider-source renewal approved by the repository owner on 7 November 2026. Staging qualification and acceptance remain pending; this is not a release receipt.
 
 ## Why a second binding is needed
 
@@ -31,9 +31,19 @@ These are the already installed import queue/capability/permission and System La
 
 The 28 literal approval records deliberately retain the already approved AI Centre fingerprint. Both pending contracts (`structured_canonical_records_v1`, `attendance_trend_analysis_v1`) remain byte-for-byte unchanged. The combined candidate therefore refuses source-bound model calls until the owner approves this exact combined fingerprint. The earlier exact approval has not been expanded automatically to this integration.
 
+## Combined binding approved
+
+After reviewing the exact combined fingerprint and comparison linked in this chat, the repository owner selected:
+
+> Approve combined fingerprint; continue staging verification
+
+This approval binds `7220621d4734a0252f6dbc10e9bd917e2145e1db7d86c5621cdb5f9821e0efc3`. Exactly the same 28 approved records receive this digest. Both pending records remain byte-for-byte unchanged, and all other original review metadata is preserved. The preceding pending-state paragraphs describe the prepared merge before this approval; they are superseded only for this exact provider fingerprint. No new outgoing field, purpose, contract or automation ceiling is authorised. Production deployment is not authorised.
+
+The provider manifest is checked unchanged; the renewed module-agent fingerprint is recorded with the final qualification candidate below.
+
 ## Remaining staging prerequisites
 
-1. Approve carrying the same 28 existing purposes forward to combined provider fingerprint `7220621d4734a0252f6dbc10e9bd917e2145e1db7d86c5621cdb5f9821e0efc3`, preserving both pending records and all original review provenance.
+1. Completed: owner approved carrying the same 28 existing purposes forward to combined provider fingerprint `7220621d4734a0252f6dbc10e9bd917e2145e1db7d86c5621cdb5f9821e0efc3`, preserving both pending records and all original review provenance.
 2. Regenerate the module-agent identity and qualify the final exact candidate using the authenticated full staging workflow. Previous focused development passes retain their original candidate identities and cannot supply a release witness.
 3. Obtain an available staging window through the shared queue after the current lease owner hands back. Recheck installed source/build, journal watermark, applied hashes, alpha history and migration allocation before preparing this isolated migration-bearing release.
 4. After qualified installation, verify exact arrival/build, migrations, service/health and rendered group-administrator and denied-role journeys: stop-all, no stale resume, individual off/on, unrelated functions preserved, late work/reminder suppression, and ordinary manual HR/audit availability. Human staging acceptance remains separate. Production deployment is not authorised.
