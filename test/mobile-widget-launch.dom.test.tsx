@@ -1,12 +1,12 @@
 import {readFileSync} from 'node:fs';
 import {runInNewContext} from 'node:vm';
-import {transpileModule,ModuleKind,JsxEmit} from 'typescript';
+import {transpileModule,ModuleKind,JsxEmit,ScriptTarget} from 'typescript';
 import * as React from 'react';import * as jsx from 'react/jsx-runtime';
 import {act,cleanup,render,waitFor} from '@testing-library/react';
 import {afterEach,describe,expect,it,vi} from 'vitest';
 function load(path:string,ports:Record<string,unknown>){
  const module={exports:{} as Record<string,any>};
- runInNewContext(transpileModule(readFileSync(path,'utf8'),{compilerOptions:{module:ModuleKind.CommonJS,jsx:JsxEmit.ReactJSX}}).outputText,
+ runInNewContext(transpileModule(readFileSync(path,'utf8'),{compilerOptions:{module:ModuleKind.CommonJS,jsx:JsxEmit.ReactJSX,target:ScriptTarget.ES2022}}).outputText,
  {module,exports:module.exports,Date,AbortController,setTimeout,clearTimeout,setInterval,clearInterval,require:(id:string)=>{if(id in ports)return ports[id];throw Error('Missing port '+id);}});
  return module.exports;
 }
