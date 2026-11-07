@@ -1,0 +1,60 @@
+name: mobile-field-notes-android
+run-name: Field Notes Android review · ${{ github.sha }}
+on:
+  push:
+    branches: [codex/mobile-field-notes-20261107]
+    paths: [.github/workflows/mobile-field-notes-android.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: field-notes-android-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  review:
+    if: github.repository == 'StradaverseHub/ai-hr'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      CI: '1'
+      EXPO_NO_TELEMETRY: '1'
+      EXPO_PUBLIC_RUNTIME_CONNECTIONS: '1'
+      EXPO_PUBLIC_AUTH_PROVIDER: internal
+      NODE_OPTIONS: --max-old-space-size=4096
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with:
+          node-version: '22.23.3'
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+      - name: Compile review APK without distribution credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          export JAVA_HOME="$JAVA_HOME_17_X64"
+          export PATH="$JAVA_HOME/bin:$PATH"
+          npm ci --prefix mobile --no-audit --no-fund
+          npm --prefix mobile run eas-build-post-install
+          (
+            cd mobile
+            npm exec --offline -- expo prebuild --platform android --no-install
+            cd android
+            ./gradlew :app:assembleRelease --no-daemon --max-workers=2 -PreactNativeArchitectures=arm64-v8a '-Dorg.gradle.jvmargs=-Xmx4096m -XX:MaxMetaspaceSize=1024m' -x lint -x test > "$RUNNER_TEMP/onehr-android-build.log" 2>&1 || {
+              tail -140 "$RUNNER_TEMP/onehr-android-build.log"
+              exit 1
+            }
+          )
+          mkdir -p "$RUNNER_TEMP/onehr-field-notes-android"
+          cp mobile/android/app/build/outputs/apk/release/app-release.apk "$RUNNER_TEMP/onehr-field-notes-android/OneHR-Field-Notes-review.apk"
+          git rev-parse HEAD > "$RUNNER_TEMP/onehr-field-notes-android/source.txt"
+          sha256sum "$RUNNER_TEMP/onehr-field-notes-android/OneHR-Field-Notes-review.apk" > "$RUNNER_TEMP/onehr-field-notes-android/SHA256SUMS.txt"
+      - name: Retain review APK briefly
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: onehr-field-notes-android-${{ github.sha }}
+          path: ${{ runner.temp }}/onehr-field-notes-android/
+          retention-days: 1
+          if-no-files-found: error
