@@ -14,7 +14,7 @@ const git=(cwd,...args)=>execFileSync('git',args,{cwd,encoding:'utf8',timeout:30
 const freeBytes=path=>{const s=statfsSync(path);return s.bavail*s.bsize;};
 
 export function validateAttributionSelection(inputs){
- assert.equal(inputs.compiler_probe,true);assert.equal(inputs.expected_sha,ATTRIBUTION_SOURCE);
+ assert.equal(inputs.installer_fixture_phase,'full');assert.equal(inputs.compiler_probe,true);assert.equal(inputs.expected_sha,ATTRIBUTION_SOURCE);
  for(const [key,value] of Object.entries(inputs))if(typeof value==='boolean'&&key!=='compiler_probe')assert.equal(value,false,'Attribution must run without other diagnostic jobs');
  assert.equal(inputs.next_build_cache_phase,'disabled');
  // GitHub omits unspecified empty string inputs from toJSON(inputs). Missing

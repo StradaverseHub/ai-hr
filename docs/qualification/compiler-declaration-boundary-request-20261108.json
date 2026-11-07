@@ -1,0 +1,99 @@
+{
+  "kind": "DEVELOPMENT_ONLY_CHECKED_DECLARATION_BOUNDARY_NOT_RELEASE",
+  "controllerBase": "6098bb43165891ee06f21821645e89b1e0f67a19",
+  "controllerRef": "codex/compiler38-declaration-boundary-20261108",
+  "source": "38b047c9f465990e3f26295c035ab9f69b3001d7",
+  "sourceRef": "codex/compiler-proven-message-boundaries-20261108",
+  "workflow": "alpha-staging-diagnostics.yml",
+  "inputs": {
+    "candidate_ref": "codex/compiler-proven-message-boundaries-20261108",
+    "expected_sha": "38b047c9f465990e3f26295c035ab9f69b3001d7",
+    "filesystem_activation_probe": false,
+    "installer_fixture_phase": "compiler-boundary",
+    "plan_probe": false,
+    "build_transport_probe": false,
+    "transport_origin_run": "",
+    "transport_origin_sha": "",
+    "transport_origin_artifact": "",
+    "transport_origin_digest": "",
+    "compiler_transport_probe": false,
+    "next_build_cache_phase": "disabled",
+    "next_build_cache_origin": "",
+    "managed_compiler_probe": false,
+    "managed_compiler_force_invalid": false,
+    "compiler_compatible_probe": false,
+    "compiler_origin_run": "",
+    "compiler_origin_sha": "",
+    "compiler_origin_artifact": "",
+    "compiler_origin_digest": "",
+    "compiler_probe": true,
+    "statutory_probe": false,
+    "nodb_probe": false,
+    "instrument_copies": false,
+    "layout_probe": false
+  },
+  "expectedJobs": [
+    "resolve",
+    "compiler-boundary"
+  ],
+  "artifact": "diagnostic-compiler-boundary",
+  "controllerSelectors": [
+    ".github/ci/diagnostics/compiler-boundary.test.mjs",
+    ".github/ci/diagnostics/compiler-attribution.test.mjs",
+    ".github/ci/diagnostics/compiler-incremental.test.mjs"
+  ],
+  "resourceContract": {
+    "runner": "ubuntu-24.04 standard4CPU/~16GiB",
+    "node": "22.23.3",
+    "typescript": "5.9.3",
+    "heapMiBPerChild": 12288,
+    "inventoryBudgetMs": 120000,
+    "aggregateCompilerBudgetMs": 720000,
+    "perPartitionCompilerBudget": false,
+    "jobTimeoutMinutes": 20,
+    "sequentialFreshProcesses": true,
+    "compilerStateCache": false
+  },
+  "coverageContract": {
+    "originalOrderedRootNames": 8823,
+    "originalResolvedFiles": 11268,
+    "originalInventorySha256": "64150993b2990e6b4b405a1211037cca665887fb5068f97bebfb3e1e54a5dbbd",
+    "realNativeResolution": true,
+    "originalAmbientOrderRequired": true,
+    "nativeEmissionRequired": true,
+    "ownedGeneratedDeclarationSemanticsChecked": true,
+    "ownedDeclarationNegativeControl": {
+      "code": 2304,
+      "file": "__aihr_boundary_declaration_refusal__.d.ts"
+    },
+    "sourceAndDeclarationApiRefusals": 5,
+    "nativeReceiverSourceAndForeignOutputRefusal": true,
+    "originalRootExclusionsAdded": false
+  },
+  "sourceSha256": {
+    ".github/ci/diagnostics/compiler-boundary.mjs": "a22845af414e50ba6df066edb63490d824db465a55ddce2ed18816521cce95ec",
+    ".github/ci/diagnostics/compiler-boundary-worker.mjs": "2fb1efe6af058daaa85ebdca1b622bd4c37b3b78397ee6804a3ca3164b9d76db",
+    ".github/ci/diagnostics/compiler-boundary-policy.mjs": "4f16ff6febea3cc5b23ed2edaa2f167272caf58957ed125953429b9b2eb2a77e",
+    ".github/ci/diagnostics/compiler-boundary.test.mjs": "17622349ae31bff58c6de9c5dc3ece390e937fbf6f84d138653a45e0da5c403a",
+    ".github/ci/diagnostics/compiler-attribution.mjs": "21fecd10f733fc7a610cca8cd45b5776ea06deb6851b9053ed101ad8c8507767",
+    ".github/ci/diagnostics/compiler-attribution.test.mjs": "50f86f858f5052215b2902d28207c2d2e1c3ee5ce580e3034991f464046da235",
+    ".github/workflows/alpha-staging-diagnostics.yml": "0b434389f67376c1628f1f8b78657cd4c9ea7f60f1e143e243762054f9aee53e",
+    "docs/architecture/COMPILER-DECLARATION-BOUNDARY-EXPERIMENT-20261108.md": "6f42f43cb21219b5f27d36f6a6b492284ef1256e96ed57c1b51918bc4fbcfcb6"
+  },
+  "qualification": "NOT_RUN; static syntax and diff checks only; root and independent reviews required before upload or hosted dispatch.",
+  "retainedFailure": {
+    "run": 42402718235,
+    "source": "38b047c9f465990e3f26295c035ab9f69b3001d7",
+    "result": "V8_OOM_SIGABRT",
+    "elapsedMs": 548358,
+    "sampledPeakRssKiB": 12806716,
+    "compilerQualified": false
+  },
+  "freshMain": "b7c0393aa3c7606a33dd15103426e5c535324065",
+  "freshAlpha": "b7c0393aa3c7606a33dd15103426e5c535324065",
+  "applicationSourceChanged": false,
+  "ordinaryCompilerChanged": false,
+  "releaseAuthorized": false,
+  "stagingDeployed": false,
+  "production": "HELD"
+}

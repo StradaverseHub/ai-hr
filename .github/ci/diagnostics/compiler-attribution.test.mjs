@@ -5,10 +5,10 @@ import {readFileSync} from 'node:fs';
 import {compilerArguments,lastCheckedSource,actualCompilerResult,attributeCompiler,ATTRIBUTION_SOURCE,validateAttributionSelection} from './compiler-attribution.mjs';
 
 test('selection admits only the exact source and no other diagnostics or transport',()=>{
- const inputs={expected_sha:ATTRIBUTION_SOURCE,compiler_probe:true,nodb_probe:false,layout_probe:false,next_build_cache_phase:'disabled',
+ const inputs={installer_fixture_phase:'full',expected_sha:ATTRIBUTION_SOURCE,compiler_probe:true,nodb_probe:false,layout_probe:false,next_build_cache_phase:'disabled',
   ...Object.fromEntries(['transport_origin_run','transport_origin_sha','transport_origin_artifact','transport_origin_digest','compiler_origin_run','compiler_origin_sha','compiler_origin_artifact','compiler_origin_digest'].map(key=>[key,'']))};
  assert.doesNotThrow(()=>validateAttributionSelection(inputs));
- for(const changed of [{expected_sha:'0'.repeat(40)},{compiler_probe:false},{nodb_probe:true},{layout_probe:true},{run_build:true},{next_build_cache_phase:'cold'},{compiler_origin_run:'123'},{transport_origin_run:'123'}])assert.throws(()=>validateAttributionSelection({...inputs,...changed}));
+ for(const changed of [{expected_sha:'0'.repeat(40)},{installer_fixture_phase:'compiler-boundary'},{compiler_probe:false},{nodb_probe:true},{layout_probe:true},{run_build:true},{next_build_cache_phase:'cold'},{compiler_origin_run:'123'},{transport_origin_run:'123'}])assert.throws(()=>validateAttributionSelection({...inputs,...changed}));
 });
 
 test('actual GitHub input shape may omit only empty known transport origins',()=>{
@@ -48,8 +48,8 @@ test('existing selector stays within25 inputs and reserves only the pinned sourc
  assert.match(workflow,/compiler_probe:[\s\S]*?default: false/);
  const attribution=workflow.slice(workflow.indexOf('\n  compiler-attribution:'),workflow.indexOf('\n  compiler-incremental:'));
  const incremental=workflow.slice(workflow.indexOf('\n  compiler-incremental:'),workflow.indexOf('\n  build-transport-producer:'));
- assert(attribution.includes("if: ${{ inputs.compiler_probe && inputs.expected_sha == '"+ATTRIBUTION_SOURCE+"' }}"));
- assert(incremental.includes("if: ${{ inputs.compiler_probe && inputs.expected_sha != '"+ATTRIBUTION_SOURCE+"' }}"));
+ assert(attribution.includes("inputs.compiler_probe && inputs.installer_fixture_phase == 'full' && inputs.expected_sha == '"+ATTRIBUTION_SOURCE+"'"));
+ assert(incremental.includes("inputs.installer_fixture_phase != 'compiler-boundary' && (inputs.compiler_probe && inputs.expected_sha != '"+ATTRIBUTION_SOURCE+"'"));
  assert.match(workflow,/compiler-attribution:[\s\S]*?runs-on: ubuntu-24.04[\s\S]*?timeout-minutes: 20/);
  assert.match(workflow,/name: diagnostic-compiler-attribution\n\s+path: \$\{\{ runner.temp \}\}\/diagnostic-compiler-attribution\//);
 });
