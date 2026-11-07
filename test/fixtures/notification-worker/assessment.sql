@@ -204,7 +204,7 @@ BEGIN
   SELECT * INTO p FROM notification_worker_private.assessment_projection WHERE id=a.projection_id;
   expected_tenant_epoch:=coalesce((SELECT (x->>'revision')::bigint FROM jsonb_array_elements(a.epochs) x WHERE x->>'scopeId'='00000000-0000-0000-0000-000000000000'),0);
   expected_cycle_epoch:=coalesce((SELECT (x->>'revision')::bigint FROM jsonb_array_elements(a.epochs) x WHERE x->>'scopeId'=a.cycle_id::text),0);
-  IF (p_decision->>'tenantEpoch')::bigint<>expected_tenant_epoch OR (p_decision->>'cycleEpoch')::bigint<>expected_cycle_epoch THEN RAISE EXCEPTION 'Assessment epoch proposal changed' USING ERRCODE='42501';END IF;
+  IF (p_decision->>'tenantEpoch')::numeric<>expected_tenant_epoch OR (p_decision->>'cycleEpoch')::numeric<>expected_cycle_epoch THEN RAISE EXCEPTION 'Assessment epoch proposal changed' USING ERRCODE='42501';END IF;
   BEGIN
    at_time:=(p_decision->>'preparedAt')::timestamptz;until_time:=(p_decision->>'preparedUntil')::timestamptz;
   EXCEPTION WHEN SQLSTATE '22007' OR SQLSTATE '22008' OR SQLSTATE '22009' THEN RAISE EXCEPTION 'Invalid native preparation instant' USING ERRCODE='22023';END;

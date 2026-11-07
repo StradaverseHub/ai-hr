@@ -133,3 +133,15 @@ canonical helper, retaining the captured midnight/window boundary.
 No local app/DB/runtime/compiler/build checks or source upload ran. Hosted29-case
 native qualification, canonical regressions and compiler/build remain pending;
 production remains held.
+
+
+Independent review of069ffdd91 caught an additional numeric-wire defect before
+qualification: validated integral numeric epochs such as1.0 were then extracted as
+text and cast directly to bigint, which rejects that spelling. Epoch equality now
+compares the already type/range/integrality-validated numeric value with the native
+expected bigint. Stored epochs still come exclusively from native captured facts.
+The same real-LOGIN positive case now submits raw decimal-form current tenant and
+cycle epochs, alongside count1.0, then retains its actual commit/canonical-consumer
+proof. Fractional, string, unsafe and changed-epoch refusals remain. No semantic
+permission, task truth or deadline rule changed; this review repair is unexecuted
+until the frozen source passes independent review and hosted checks.

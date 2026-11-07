@@ -168,7 +168,11 @@ describe.sequential('native assessment reminder preparation (stage3)',()=>{
   // This is typed-wire qualification, not native proof of caller-proposed task truth.
   const words={subject:'😀'.repeat(10000),opening:'😀'.repeat(15000)},expected=assessmentReminderMailSchema.parse({tasks,words});
   await begin(run,base.tenantId,async(tx,batch)=>{const {proposal}=await validProposal(tx,batch,row.sourceEventId!);
-   const [result]=await tx`select notification_worker.prepare_assessment(${batch}::uuid,${row.sourceEventId}::uuid,jsonb_set(${tx.json({...proposal,tasks,mailWords:words})}::jsonb,'{tasks,0,count}','1.0'::jsonb)) as recipients`;
+   // Preserve raw JSON numeric decimal forms; canonical numbers do not require an
+   // integer-only lexical spelling. Both epochs still equal native captured facts.
+   const [result]=await tx`select notification_worker.prepare_assessment(${batch}::uuid,${row.sourceEventId}::uuid,
+    jsonb_set(jsonb_set(jsonb_set(${tx.json({...proposal,tasks,mailWords:words})}::jsonb,'{tasks,0,count}','1.0'::jsonb),
+     '{tenantEpoch}',${String(proposal.tenantEpoch)+'.0'}::jsonb),'{cycleEpoch}',${String(proposal.cycleEpoch)+'.0'}::jsonb)) as recipients`;
    expect(result.recipients).toEqual([f.subject.employmentId]);
    const rendered={severity:'action',title:'Assessment work waiting on you',body:'Open your performance workspace to complete your pending review tasks.',linkPath:'/me/performance'};
    await tx`select * from notification_worker.project(${batch}::uuid,${row.sourceEventId}::uuid,'performance.reminder',${f.subject.employmentId}::uuid,${tx.json(rendered)}::jsonb,'performance')`;
