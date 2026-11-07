@@ -1,0 +1,38 @@
+{
+  "kind": "NOTIFICATION_NATIVE_PLAN_DIAGNOSTIC_SOURCE_ONLY",
+  "releaseAuthorized": false,
+  "base": "5869b4e6168263404ed054da0433fa2e94a36e94",
+  "originalRun": "42407886480",
+  "originalOutcome": {
+    "collected": 51,
+    "passed": 50,
+    "failed": 1,
+    "skipped": 0
+  },
+  "nativeSelector": "docs/qualification/notification-native-plan-diagnostic-tests.json",
+  "pureSelector": "docs/qualification/notification-native-plan-parser-tests.json",
+  "newNativeCases": 3,
+  "newPureAssertions": 2,
+  "caseBudgetMs": 30000,
+  "statementBudgetMs": 20000,
+  "lockBudgetMs": 300,
+  "jitPolicy": "unchanged on",
+  "state": "UNRUN root+independent review required",
+  "sha256": {
+    "test/fixtures/notification-worker/auto-explain.ts": "dec68fe9737894c0c63b8ff9788cb1130704f64f03aab6b7752e5283cac79466",
+    "test/fixtures/notification-worker/plan-logging.ts": "07763433141a6c33e752194669b9772788c8fe5ca91ce6b116da069c053e74e3",
+    "test/notification-worker-native-plan-diagnostic.test.ts": "46a269d22709d2466518503e2ead91ec21cb07c2cc5239425549375e9831a2c2",
+    "test/notification-worker-plan-parser.test.ts": "59499c5c7be4cdf3d995701e820bd558e82fcd69808ccafc4eab2fc0c90a2a1e",
+    "lib/notification-worker/lifecycle.ts": "b895d5ca866f42321e6c57860eb8696b931da7e025a8e785ad9690df08c91910",
+    "lib/notification-worker/process.ts": "8236c48b43d6139793a9d85fbf1f35568dd3c81bd4828fa4c7778e971eebd8d3",
+    "lib/notification-worker/projection.ts": "0582afddaefffe9df154ef40bc98efad50ba17bd5c48d0f4a8517a61609fb5a0",
+    "test/fixtures/notification-worker/owner-fixture.ts": "afafe2f15959258118d15dc5635c1d587ed0c96ec47b013609f0eaa0f8e78282",
+    "test/fixtures/notification-worker/process-cases.ts": "7038e12c9e3b308093470423dc448d6286e281d420296a7cccf3ea431b9d82e6",
+    "test/fixtures/notification-worker/process-child.ts": "33d463840abcc45a6f48473dcde2d77f8892501a5f40caa0f9d674b1df18c43a",
+    "test/notification-worker-lifecycle.test.ts": "9f2c9dc50bdf76ee53895aa4c1c813d5a8726682a9d517a555fe643e67578dbd",
+    "test/fixtures/notification-worker/lifecycle.sql": "ba87f475a0962dc1652db47976a1947becffb39de9d6294608438baa7f3918f1",
+    "test/fixtures/notification-worker/projection.sql": "6973be154cec863908cc6439cf4edbe9de8b571a1ee1484d25f25fe1ed3ca9f9",
+    "test/fixtures/notification-worker/assessment.sql": "cf029fdae7af2eeeae723a200d21943f3cbc8a4c873ad03d3f9a3f63f14e43ff",
+    "test/fixtures/notification-worker/process.sql": "6d112effc849efc8395505ba28c5b52a30aee62bd32372d8389b6829a4cb0442"
+  }
+}
