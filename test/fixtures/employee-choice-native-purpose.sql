@@ -20,7 +20,7 @@ CREATE FUNCTION app.employee_choice_native_prototype(
 RETURNS TABLE(phase integer,kind text,"employmentId" uuid,name text,"employeeCode" text,"companyId" uuid,
  "departmentId" uuid,"businessUnitId" uuid,status text,label text,code text,total integer)
 LANGUAGE plpgsql STABLE SECURITY INVOKER SET search_path=pg_catalog,pg_temp SET jit=off AS $employee_choice$
-DECLARE observed_grants text;
+DECLARE observed_grants text; identity_project boolean;
 BEGIN
  IF p_company_scope IS NULL OR (cardinality(p_company_scope)>0 AND array_ndims(p_company_scope) IS DISTINCT FROM 1)
  OR (p_employee_scope IS NOT NULL AND cardinality(p_employee_scope)>0 AND array_ndims(p_employee_scope) IS DISTINCT FROM 1)
@@ -73,6 +73,10 @@ BEGIN
  OR (p_label_mode='labels' AND app.is_admin() IS NOT TRUE)
  THEN RAISE EXCEPTION 'Current native employee-choice presentation authority required' USING ERRCODE='42501';END IF;
 
+ -- Search matches already obey all identity/status/company predicates. With no
+ -- organization filter, defer Assignment hydration until native page selection.
+ identity_project:=p_port='project' AND p_department IS NULL AND p_unit IS NULL;
+
  RETURN QUERY WITH
  employee_choice_project_ids AS MATERIALIZED(
   SELECT matched.id FROM unnest(p_matched_ids) AS matched(id) WHERE p_port='project'
@@ -96,6 +100,7 @@ BEGIN
  employee_choice_assignments AS MATERIALIZED(
   SELECT a.employment_id AS "employmentId",a.department_id AS "departmentId",a.business_unit_id AS "businessUnitId"
   FROM public.assignment a WHERE a.tenant_id=p_tenant AND a.valid_to IS NULL AND a.superseded_at IS NULL
+   AND NOT identity_project
    AND (a.employment_id IN(SELECT e."employmentId" FROM employee_choice_employments e)) IS TRUE
  ),
  employee_choice_companies AS MATERIALIZED(
@@ -107,6 +112,12 @@ BEGIN
   FROM employee_choice_employments e JOIN employee_choice_people p ON p."personId"=e."personId"
    JOIN employee_choice_companies c ON c."companyId"=e."companyId"
    LEFT JOIN employee_choice_assignments a ON a."employmentId"=e."employmentId"
+  WHERE NOT identity_project
+  UNION ALL
+  SELECT e."employmentId",p.name,e."employeeCode",e."companyId",NULL::uuid,NULL::uuid,e.status
+  FROM employee_choice_employments e JOIN employee_choice_people p ON p."personId"=e."personId"
+   JOIN employee_choice_companies c ON c."companyId"=e."companyId"
+  WHERE identity_project
  ),
  employee_choice_organisation AS MATERIALIZED(
   SELECT DISTINCT p."companyId",p."departmentId",p."businessUnitId" FROM employee_choice_population p
@@ -140,8 +151,19 @@ BEGIN
   SELECT a."employmentId",a.name FROM employee_choice_page_ascending a
   UNION ALL
   SELECT d."employmentId",d.name FROM employee_choice_page_descending d
+ ),employee_choice_page_assignments AS MATERIALIZED(
+  SELECT k."employmentId",a."departmentId",a."businessUnitId" FROM employee_choice_page_keys k
+  JOIN LATERAL(
+   SELECT current_assignment.department_id AS "departmentId",current_assignment.business_unit_id AS "businessUnitId"
+   FROM public.assignment current_assignment WHERE identity_project AND current_assignment.tenant_id=p_tenant
+    AND current_assignment.employment_id=k."employmentId" AND current_assignment.valid_to IS NULL AND current_assignment.superseded_at IS NULL
+   OFFSET 0
+  ) a ON true
  ),employee_choice_result AS (
-  SELECT m.* FROM employee_choice_matching m
+  SELECT m."employmentId",m.name,m."employeeCode",m."companyId",
+   CASE WHEN identity_project THEN a."departmentId" ELSE m."departmentId" END AS "departmentId",
+   CASE WHEN identity_project THEN a."businessUnitId" ELSE m."businessUnitId" END AS "businessUnitId",m.status
+  FROM employee_choice_matching m LEFT JOIN employee_choice_page_assignments a ON a."employmentId"=m."employmentId"
    WHERE p_port IN('page','project') AND p_search_mode='none'
     AND (m."employmentId" IN(SELECT k."employmentId" FROM employee_choice_page_keys k)) IS TRUE
   UNION ALL

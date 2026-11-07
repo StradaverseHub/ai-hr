@@ -48,13 +48,15 @@ let logging:Awaited<ReturnType<typeof employeeChoicePlanLogging>>|undefined;
 let fixture:Awaited<ReturnType<typeof seedPersonnelNativeFixture>>|undefined,representedBu='',emptyBu='',output='';
 let completeFixtureIds:string[]=[];
 let cardinalities:Awaited<ReturnType<typeof employeeChoiceActualCardinalities>>;
-const report:Record<string,unknown>={kind:'NATIVE_EMPLOYEE_CHOICE_NEARER_PAGE_SERVER_SET_V4',releaseEligible:false,productionPolicyApproved:false,migrationAllocated:false,
- complete:false,employees:50000,variants,wholePortsPerVariant:17,caseBudgetMs:300000,statementTimeoutMs:20000,lockTimeoutMs:300,targetMs:1000,
+const report:Record<string,unknown>={kind:'NATIVE_EMPLOYEE_CHOICE_PAGE_ASSIGNMENT_HYDRATION_V5',releaseEligible:false,productionPolicyApproved:false,migrationAllocated:false,
+ complete:false,employees:50000,variants,wholePortsPerVariant:18,caseBudgetMs:300000,statementTimeoutMs:20000,lockTimeoutMs:300,targetMs:1000,
  fileBudget:employeeChoiceBenchmarkBounds,retainedCancelledRun:{run:42414058820,source:'3e9ebeafc0cd41326790c3435b009090db9b0dac',conclusion:'cancelled',annotation:'The job has exceeded the maximum execution time of 20m0s',executionLogsAvailable:false,artifactsAvailable:false,benchmarkOrCleanupAcceptance:false},
  control:{commit:'f1515376df082438ca025fb65d01a8a3330a8796',sourceSha256:'ce1e3559addbffa4b4e780594ebcc5fcf917ddffde79a6155cc7fbcecdbcfbd5'},
  topology:'Timing variants share one actual app backend; plan-only variants share a second actual app backend. PIDs are distinct and never relabeled.',
  registration:'TEMPORARY_SOLE_FOCUSED_DEVELOPMENT_ONLY; complete normal-CI singleton admission remains pending',
- supplementalPlanPortsPerVariant:2,expectedActualPlanPhases:42,
+ supplementalPlanPortsPerVariant:2,expectedActualPlanPhases:44,expectedActualNativeCallPairs:27,
+ retainedSignalStatusProof:{source:'4c7a5fef03e185b1d0024e0dc994272c0c12bf88',run:42424586841,actualPlanPhases:42,actualNativeCallPairs:25,correctnessAndCleanupPassed:true,allUnderTarget:false,broadSearchMs:1001.312,deepBroadSearchMs:1077.001},
+ assignmentProjectionProof:'No organization filter: preserve identity matching/count/order, then hydrate Assignment only for independently selected native page keys; actual1/25/2000 current Assignment probes and zero full-source work required.',
  retainedOriginalProof:{source:'9f51857dbc439f21a9ed6f4a0fc4b6aec4c5500c',run:42405537839,actualPlanPhases:34,allUnderTarget:false},
  retainedMinimalSearchProof:{source:'124274a3fa96769d7b593a26be160a9fcc8aafed',run:42409116168,actualPlanPhases:38,actualNativeCallPairs:23,allUnderTarget:false,
   broadSearchMs:7543.329861999955,deepBroadSearchMs:7972.917247000034,deepMs:1126.5117709999904,
@@ -132,6 +134,7 @@ const expectedNativeRows=(name:string)=>{
  if(name==='foreign-company')return 1; // Count only; no authorized population/selection/catalogue.
  if(name==='complete-ids')return 400;
  if(name==='full-server-population')return 2005;
+ if(name==='full-server-search-population')return 50005;
  if(name==='full-server-ids')return 50000;
  if(name==='sparse-server-population')return 7; // Three identities + count/company/department/unit; no selected row.
  if(name==='held-access'||name==='held-history')return 30;
@@ -142,9 +145,11 @@ const expectedNativeCalls=(name:string):NativeCallExpectation[]=>{
  const first:NativeCallExpectation={port:name==='complete-ids'||name==='full-server-ids'?'ids':'page',rows:expectedNativeRows(name)};
  if(name==='initial'||name==='deep')first.pagination={total:50000,offset:name==='deep'?49975:0,limit:25};
  if(name==='full-server-population')return[{...first,serverScopeIds:50000,pagination:{total:50000,offset:48000,limit:2000}}];
+ if(name==='full-server-search-population')return[{...first,serverScopeIds:50000},{port:'project',rows:2001,matchedIds:50000,serverScopeIds:50000,assignmentPageRows:2000,pagination:{total:50000,offset:48000,limit:2000}}];
  if(name==='full-server-ids')return[{...first,serverScopeIds:50000}];
- if(name==='search'||name==='organisation-search')return[first,{port:'project',rows:2,matchedIds:1}];
- if(name==='broad-search'||name==='deep-broad-search')return[first,{port:'project',rows:26,matchedIds:50000,pagination:{total:50000,offset:name==='deep-broad-search'?49975:0,limit:25}}];
+ if(name==='search')return[first,{port:'project',rows:2,matchedIds:1,assignmentPageRows:1}];
+ if(name==='organisation-search')return[first,{port:'project',rows:2,matchedIds:1}];
+ if(name==='broad-search'||name==='deep-broad-search')return[first,{port:'project',rows:26,matchedIds:50000,assignmentPageRows:25,pagination:{total:50000,offset:name==='deep-broad-search'?49975:0,limit:25}}];
  return[first];
 };
 
@@ -219,6 +224,19 @@ async function matrix(variant:Variant,session:Awaited<ReturnType<typeof employee
   const ids=await call('full-server-ids',0,()=>database.withTenant(ctx,tx=>idsReader(variant)(tx,ctx,{companyIds:[b.companyId],employmentIds:fullInput.employmentIds},signal),{readOnlySnapshot:true}));
   expect(ids).toEqual(completeFixtureIds);expect(new Set(ids).size).toBe(50000);
  }
+ // Cover the new projection path at the actual All2000 limit as well as25.
+ // Both implementations receive the same complete authorized server population;
+ // seed IDs, count, metadata and stable output are independently checked.
+ const fullSearchInput={...fullInput,query:'fictional retained'};
+ const fullSearchBefore=phase==='timing'?resources():undefined;
+ const fullSearch=await call('full-server-search-population',0,async()=>{const start=performance.now(),page=await database.withTenant(ctx,tx=>variant==='current'
+  ?baseline.readEmployeeChoicesTx(tx,ctx,fullSearchInput,signal):prototype.readEmployeeChoicesTx(tx,ctx,fullSearchInput,signal),{readOnlySnapshot:true});elapsed=performance.now()-start;return page;});
+ expect(fullSearch.total).toBe(50000);expect(fullSearch.rows.map(row=>row.employmentId)).toEqual(completeFixtureIds.slice(48000));
+ expect(fullSearch.selected?.employmentId).toBe(completeFixtureIds.at(-1));expect(stable(fullSearch)).toEqual(stable(full));
+ if(phase==='timing'){
+  ports[variant+':full-server-search-population']={ms:elapsed};const telemetry=(report.resourcePhases??=[])as unknown[];telemetry.push({variant,case:'full-server-search-population',before:fullSearchBefore,after:resources()});
+  if(variant==='current')pages.set('full-server-search-population',stable(fullSearch));else expect(stable(fullSearch)).toEqual(pages.get('full-server-search-population'));
+ }else expect(stable(fullSearch)).toEqual(pages.get('full-server-search-population'));
  if(phase==='plans'){
   const employmentIds=organisationTagSample.slice(0,3),input={companyIds:[b.companyId],employmentIds,selectedId:fixture!.expectedLast.at(-1)};
   const sparse=await call('sparse-server-population',0,()=>database.withTenant(ctx,tx=>variant==='current'
@@ -251,7 +269,7 @@ it.skipIf(!requested)('prepares exactly50k fictional current-root facts and a gu
  report.timingBackend=timing.defaults;report.preparationComplete=true;await installation.unchanged();save();
 },true));
 
-it.skipIf(!requested).for(variants)('measures all17 actual whole ports with %s implementation',{timeout:300000},(variant,context)=>bounded(context,'timing:'+variant,async()=>{
+it.skipIf(!requested).for(variants)('measures all18 actual whole ports with %s implementation',{timeout:300000},(variant,context)=>bounded(context,'timing:'+variant,async()=>{
  expect(timing).toBeTruthy();const spy=timing!.install();
  await preserveDiagnosticFailure(async()=>{const stats=(report.plannerStatistics??={})as Record<string,unknown>;stats['timing:'+variant]=await employeeChoicePlannerSnapshot();
   await matrix(variant,timing!,'timing');const complete=(report.performanceVariants??=[])as string[];complete.push(variant);save();
@@ -318,7 +336,7 @@ it.skipIf(!requested)('captures real nested native plans on a separate bound app
    actual.push({label,statements:entries.map(entry=>({querySha256:createHash('sha256').update(entry.query).digest('hex'),durationMs:entry.durationMs})),rawDocuments:'Every original statement and context retained losslessly in nativeLog indexed parts'});
   }
   report.markers=markers;report.actualPlans=actual;report.planVerificationFailures=failures;report.actualPlanCases=phases;report.actualNativeCallPairs=callPairs;save();
-  expect(phases).toBe(42);expect(callPairs).toBe(25);expect(failures).toEqual([]);report.actualPlansComplete=true;save();
+  expect(phases).toBe(44);expect(callPairs).toBe(27);expect(failures).toEqual([]);report.actualPlansComplete=true;save();
   };verifyLatestPlans();
  },async()=>{
   restoreSpy();const failures:unknown[]=[],previouslyComplete=report.actualPlansComplete===true;report.actualPlansComplete=false;save();
@@ -348,7 +366,7 @@ async function cleanupOwned(){
  report.complete=!failedCase&&!blocked&&report.preparationComplete===true&&report.actualPlansComplete===true&&report.instrumentationRestored===true&&report.authorityComplete===true&&report.cleanupComplete===true
   &&variants.every(variant=>(report.performanceVariants as string[]|undefined)?.includes(variant));
  report.wholePortTargets=Object.fromEntries(variants.map(variant=>{const ports=Object.entries((report.ports??{})as Record<string,{samples?:number[];ms?:number}>).filter(([key])=>key.startsWith(variant+':'));
-  return [variant,{targetMs:1000,measuredPorts:ports.length,allUnderTarget:report.complete===true?ports.length===17&&ports.every(([,port])=>port.samples?.length?port.samples.every(ms=>ms<1000):typeof port.ms==='number'&&port.ms<1000):null}];}));
+  return [variant,{targetMs:1000,measuredPorts:ports.length,allUnderTarget:report.complete===true?ports.length===18&&ports.every(([,port])=>port.samples?.length?port.samples.every(ms=>ms<1000):typeof port.ms==='number'&&port.ms<1000):null}];}));
  report.phase=report.complete?'complete':'incomplete';save();if(failures.length)throw new AggregateError(failures,'Owned prototype cleanup failed');
 }
 async function finishOwned(){

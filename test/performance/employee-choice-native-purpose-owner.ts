@@ -6,7 +6,7 @@ import {owner} from '../harness';
 import {workerDb} from '../db-names';
 export const employeeChoicePrototypeSignature='app.employee_choice_native_prototype(uuid,uuid,uuid,text[],jsonb,uuid[],date,uuid[],uuid,uuid,uuid,text,text,text,uuid,bigint,integer,text,text,uuid[])';
 const sha=(file:string)=>createHash('sha256').update(readFileSync(file)).digest('hex');
-export const employeeChoicePrototypeSqlSha256='0ea638f797f57c22e6631d83f6d5d7bc63d752a5c6818d26ed34fd4441122d04';
+export const employeeChoicePrototypeSqlSha256='707dc24a30cef93b58503ba95e5f3b04b7e57d398fb973ac3e1853d406e10dd0';
 export async function employeeChoiceNativeSecurity(){
  return {functions:Array.from(await owner.client`select p.oid::regprocedure::text as signature,md5(to_jsonb(p)::text) as identity
    from pg_proc p where p.pronamespace='app'::regnamespace and p.proname<>'employee_choice_native_prototype' order by p.oid::regprocedure::text`),

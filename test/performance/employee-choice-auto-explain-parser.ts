@@ -35,7 +35,7 @@ export function employeeChoiceNativeBody(source:string){
  return source.slice(begin+' RETURN QUERY '.length,end).trim();
 }
 export type NativePageExpectation={total:number;offset:number;limit:number};
-export type NativeCallExpectation={port:'page'|'ids'|'project';rows:number;matchedIds?:number;serverScopeIds?:number;pagination?:NativePageExpectation};
+export type NativeCallExpectation={port:'page'|'ids'|'project';rows:number;matchedIds?:number;serverScopeIds?:number;pagination?:NativePageExpectation;assignmentPageRows?:number};
 export type PlanMarker={label:string;begin:string;end:string;native:boolean;expectedNativeRows?:number;expectedNativeCalls?:readonly NativeCallExpectation[]};
 /** Require both the real nested statement and its actual function invocation.
  * An outer Function Scan alone cannot establish the work performed inside it. */
@@ -79,7 +79,8 @@ export function employeeChoiceNativeInvocations(entries:readonly AutoExplainMess
   const membership=call.port==='project'?employeeChoiceNativeProjectMembership(entries[inner].document.Plan,call.matchedIds):undefined;
   const serverScope=call.serverScopeIds===undefined?undefined:employeeChoiceNativeServerMembership(entries[inner].document.Plan,call.serverScopeIds);
   const pagination=call.pagination===undefined?undefined:employeeChoiceNativePagination(entries[inner].document.Plan,call.pagination);
-  result.push({port:call.port,...invocation,...(membership?{membership}:{}),...(serverScope?{serverScope}:{}),...(pagination?{pagination}:{})});previous=outer;
+  const assignmentHydration=call.assignmentPageRows===undefined?undefined:employeeChoiceNativeProjectionAssignments(entries[inner].document.Plan,call.assignmentPageRows);
+  result.push({port:call.port,...invocation,...(membership?{membership}:{}),...(serverScope?{serverScope}:{}),...(pagination?{pagination}:{}),...(assignmentHydration?{assignmentHydration}:{})});previous=outer;
  }
  return result;
 }
@@ -188,4 +189,27 @@ export function bindEmployeeChoiceNativePlans(messages:readonly AutoExplainMessa
   }else if(bodies.length)throw Error('Current-root control unexpectedly used the prototype');
  }
  return results;
+}
+
+/** Actual source-work proof for identity-only projection. The fixture independently
+ * supplies its page size; no current plan cardinality chooses this work budget. */
+export function employeeChoiceNativeProjectionAssignments(plan:unknown,pageRows:number){
+ if(!Number.isSafeInteger(pageRows)||pageRows<1||pageRows>2000)throw Error('Independent bounded native page required');
+ let nodes=0,boundedRoots=0,boundedSources=0,probes=0,tupleWork=0;
+ const counter=(node:Record<string,unknown>,key:string,optional=false)=>{const value=node[key]??(optional?0:NaN);if(typeof value!=='number'||!Number.isFinite(value)||value<0)throw Error('Invalid native assignment counter');return value;};
+ const visit=(value:unknown,within=false)=>{
+  if(!value||typeof value!=='object'||Array.isArray(value)||++nodes>100000)throw Error('Bounded actual native assignment plan required');
+  const node=value as Record<string,unknown>,root=node['Subplan Name']==='CTE employee_choice_page_assignments',inside=within||root;
+  if(root)boundedRoots++;
+  if(node['Relation Name']==='assignment'){
+   const loops=counter(node,'Actual Loops'),rows=counter(node,'Actual Rows'),removed=['Rows Removed by Filter','Rows Removed by Join Filter','Rows Removed by Index Recheck','Rows Removed by Conflict Filter'].reduce((sum,key)=>sum+counter(node,key,true),0);
+   if(!inside&&(loops!==0||rows!==0||removed!==0))throw Error('Full Assignment source executed during bounded projection');
+   if(inside){boundedSources++;probes+=loops;tupleWork+=loops*(rows+removed);}
+  }
+  if(node.Plans!==undefined&&!Array.isArray(node.Plans))throw Error('Native assignment children required');
+  for(const child of node.Plans??[])visit(child,inside);
+ };
+ visit(plan);
+ if(boundedRoots!==1||boundedSources<1||probes!==pageRows||tupleWork!==pageRows)throw Error('Native Assignment hydration exceeded independent page bound');
+ return{kind:'ACTUAL_PAGE_ONLY_ASSIGNMENT_HYDRATION',pageRows,boundedSources,probes,tupleWork,fullAssignmentSourceWork:0};
 }

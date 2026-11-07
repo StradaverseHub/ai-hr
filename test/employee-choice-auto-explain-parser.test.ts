@@ -1,6 +1,6 @@
 /** Synthetic parser/refusal coverage only. No native plan or timing claim. */
 import {expect,it} from 'vitest';
-import {employeeChoiceAutoExplainMessages,employeeChoiceSqlFingerprint,bindEmployeeChoiceNativePlans,employeeChoiceNativeInvocation,employeeChoiceNativeInvocations,employeeChoiceNativeProjectMembership,employeeChoiceNativeServerMembership,employeeChoiceNativePagination,type AutoExplainMessage,type PlanMarker} from './performance/employee-choice-auto-explain-parser';
+import {employeeChoiceAutoExplainMessages,employeeChoiceSqlFingerprint,bindEmployeeChoiceNativePlans,employeeChoiceNativeInvocation,employeeChoiceNativeInvocations,employeeChoiceNativeProjectMembership,employeeChoiceNativeServerMembership,employeeChoiceNativePagination,employeeChoiceNativeProjectionAssignments,type AutoExplainMessage,type PlanMarker} from './performance/employee-choice-auto-explain-parser';
 const pid=123,body='WITH employee_choice_employments AS MATERIALIZED(select 1) select * from employee_choice_employments';
 const marker:PlanMarker={label:'native:initial',begin:'select 1 as "aihr_emp_marker_native_initial_begin"',end:'select 1 as "aihr_emp_marker_native_initial_end"',native:true};
 function message(query:string,backend=pid,context=''){
@@ -126,4 +126,44 @@ it('requires the entire50000-ID server population set and rejects its separate l
   const model=scope();model.Plans[1].Filter=expression;expect(()=>employeeChoiceNativeServerMembership(model,50000)).toThrow('ScalarArray');
  }
  const clipped=scope();clipped.Plans[0]['Actual Rows']=49999;expect(()=>employeeChoiceNativeServerMembership(clipped,50000)).toThrow();
+});
+
+// Synthetic controls only; actual source/backend-bound plans must establish this
+// shape independently. The retained fixture has one current Assignment per ID.
+function assignmentHydrationPlan(pageRows:number){
+ const source:Record<string,unknown>={'Node Type':'Index Scan','Relation Name':'assignment','Actual Loops':pageRows,'Actual Rows':1,'Rows Removed by Filter':0};
+ const full:Record<string,unknown>={'Node Type':'Seq Scan','Relation Name':'assignment','Actual Loops':0,'Actual Rows':0};
+ const root:Record<string,unknown>={'Node Type':'Nested Loop','Subplan Name':'CTE employee_choice_page_assignments','Actual Loops':1,'Actual Rows':pageRows,Plans:[source]};
+ const plan:Record<string,unknown>={'Node Type':'Append',Plans:[full,root]};return{plan,source,full,root};
+}
+it('requires actual page-only Assignment source work for independent1,25 and All2000 fixtures',()=>{
+ for(const size of [1,25,2000])expect(employeeChoiceNativeProjectionAssignments(assignmentHydrationPlan(size).plan,size)).toMatchObject({pageRows:size,probes:size,tupleWork:size,fullAssignmentSourceWork:0});
+});
+it('refuses active full Assignment sources even alongside a correctly bounded page CTE',()=>{
+ for(const field of ['Actual Loops','Actual Rows','Rows Removed by Filter','Rows Removed by Index Recheck']){
+  const model=assignmentHydrationPlan(25);model.full[field]=1;expect(()=>employeeChoiceNativeProjectionAssignments(model.plan,25)).toThrow('Full Assignment source');
+ }
+});
+it('counts source tuples removed inside a purported page CTE and rejects broad hidden scans',()=>{
+ for(const field of ['Rows Removed by Filter','Rows Removed by Join Filter','Rows Removed by Index Recheck','Rows Removed by Conflict Filter']){
+  const model=assignmentHydrationPlan(25);model.source[field]=50000;expect(()=>employeeChoiceNativeProjectionAssignments(model.plan,25)).toThrow('independent page bound');
+ }
+});
+it('refuses unexecuted, repeated and incomplete hydration instead of accepting only a claimed upper bound',()=>{
+ for(const [loops,rows]of [[0,0],[26,1],[24,1],[25,0],[25,2]]){
+  const model=assignmentHydrationPlan(25);model.source['Actual Loops']=loops;model.source['Actual Rows']=rows;
+  expect(()=>employeeChoiceNativeProjectionAssignments(model.plan,25)).toThrow('independent page bound');
+ }
+});
+it('requires one real bounded CTE and valid complete Assignment counters',()=>{
+ for(const alter of [(m:ReturnType<typeof assignmentHydrationPlan>)=>{delete m.root['Subplan Name'];},
+  (m:ReturnType<typeof assignmentHydrationPlan>)=>{m.plan.Plans=[m.root,m.root];},
+  (m:ReturnType<typeof assignmentHydrationPlan>)=>{m.root.Plans=[];},
+  (m:ReturnType<typeof assignmentHydrationPlan>)=>{m.source['Actual Loops']=NaN;},
+  (m:ReturnType<typeof assignmentHydrationPlan>)=>{delete m.source['Actual Rows'];},
+  (m:ReturnType<typeof assignmentHydrationPlan>)=>{m.source['Rows Removed by Filter']=-1;},
+  (m:ReturnType<typeof assignmentHydrationPlan>)=>{m.root.Plans={};}]){
+  const model=assignmentHydrationPlan(25);alter(model);expect(()=>employeeChoiceNativeProjectionAssignments(model.plan,25)).toThrow();
+ }
+ for(const limit of [0,-1,2001,1.5,NaN])expect(()=>employeeChoiceNativeProjectionAssignments(assignmentHydrationPlan(25).plan,limit)).toThrow('Independent bounded native page');
 });
