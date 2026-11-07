@@ -39,7 +39,7 @@ function fixture() {
   'react-native-safe-area-context':{SafeAreaView:Container},'expo-file-system':{File,Directory,Paths:{document:'doc',cache:'cache'}},'expo-document-picker':{getDocumentAsync:picker},'expo-router':{router:{replace:vi.fn(),back:vi.fn()},SplashScreen:{hideAsync:vi.fn(async()=>{})}},
   './auth':{signOut:clear},'./config':{runtimeConnections:true,applyCompanyConnection:(p:unknown)=>{applied=p;}},'./company-profile':companyProfile,'./connection-state':{createConnectionState},'./i18n':{appLocale:()=> 'en',intlLocale:()=> 'en-MY'},'./locales/zh':{company:{}},'./locales/ta':{company:{}},'./locales/th':{company:{}},'./locales/vi':{company:{}},
   '../../lib/mobile-workplace-setup':workplaceSetup,
-  './design':{Atmosphere:()=>null,useTenantDesign:()=>({palette:{}})},
+  './design':{DesignText:Container,Atmosphere:()=>null,useTenantDesign:()=>({palette:{}})},
   './ui':{colors:{},Button:({title,onPress,disabled}:any)=><button onClick={onPress} disabled={disabled}>{title}</button>},'../connections/trust.json':trust,'../connections/profiles.json':[setup('Test cloud','https://cloud.example.test')]};
  const output={exports:{} as any};
  runInNewContext(transpileModule(readFileSync('mobile/lib/company-connection.tsx','utf8'),{compilerOptions:{module:ModuleKind.CommonJS,jsx:JsxEmit.ReactJSX,esModuleInterop:true}}).outputText,{exports:output.exports,module:output,URL,JSON,console,require:(id:string)=>{if(id in ports)return ports[id];throw new Error('Unexpected company setup dependency '+id);}});

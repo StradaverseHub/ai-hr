@@ -22,7 +22,7 @@ export function Material({ children, style, blur = false }: { children?: ReactNo
   }, [blur]);
   if (design.schemaVersion === 1) return <View style={[style, { borderRadius: 0, borderWidth: 0, borderTopWidth: StyleSheet.hairlineWidth, borderColor: palette.border, backgroundColor: 'transparent', boxShadow: 'none', experimental_backgroundImage: undefined }]}>{children}</View>;
 
-  return <View style={[{ overflow: 'hidden', borderRadius: 24, borderCurve: 'continuous', borderWidth: StyleSheet.hairlineWidth, borderColor: alpha(palette.text, dark ? .14 : .13), backgroundColor: design.schemaVersion === 1 ? palette.card : alpha(palette.card, reduced ? 1 : blur ? .66 : .82) }, style]}>
+  return <View style={[{ overflow: 'hidden', borderRadius: 24, borderCurve: 'continuous', borderWidth: StyleSheet.hairlineWidth, borderColor: alpha(palette.text, dark ? .14 : .13), backgroundColor: alpha(palette.card, reduced ? 1 : blur ? .66 : .82) }, style]}>
     {blur && !reduced && Platform.OS === 'ios' && <BlurView pointerEvents="none" tint={dark ? 'dark' : 'light'} intensity={42} style={StyleSheet.absoluteFill} />}
     {design.schemaVersion === 2 && <View pointerEvents="none" style={[StyleSheet.absoluteFill, { experimental_backgroundImage: `linear-gradient(155deg, ${alpha(palette.text, dark ? .07 : .03)} 0%, transparent 46%, ${alpha(palette.accent, .07)} 100%)` }]} />}
     {children}

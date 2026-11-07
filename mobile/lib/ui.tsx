@@ -70,7 +70,7 @@ export function Title({ children }: { children: ReactNode }) {
 
 export function SectionLabel({ children }: { children: ReactNode }) {
   const { palette, design } = useTenantDesign();
-  return <Text style={[styles.section, { color: palette.text, fontFamily: design.schemaVersion === 1 ? 'FieldEditorial' : undefined }]}>{children}</Text>;
+  return <Text style={[styles.section, { color: palette.text, fontFamily: design.schemaVersion === 1 ? 'FieldEditorial' : undefined, ...(design.schemaVersion === 1 ? {fontWeight: 'normal' as const} : {}) }]}>{children}</Text>;
 }
 
 export function Card({ children }: { children: ReactNode }) {

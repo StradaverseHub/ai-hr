@@ -99,7 +99,7 @@ function ClockHeroView({ view }: { view: HomeClockView }) {
   return <View style={{gap:14,borderTopWidth:1,borderBottomWidth:1,borderColor:palette.border,paddingVertical:20}}>
     {!today&&<LoadState loading={view.loading} hasData={false} error={view.error} onRetry={view.reload}/>}
     {today&&<>
-      <Text style={{color:palette.text,fontSize:15}}>{fmtCalendarDate(today.date,false)}</Text>
+      <View style={{alignSelf:'flex-start',paddingHorizontal:10,paddingVertical:8,backgroundColor:palette.button}}><Text style={{color:palette.onButton,fontSize:14,fontWeight:'700'}}>{fmtCalendarDate(today.date,false)}</Text></View>
       <View style={{flexDirection:'row',gap:10,alignItems:'center'}}>
         <View style={{width:10,height:10,borderRadius:5,backgroundColor:uncertain?'#e7a335':today.clockedIn?palette.text:palette.muted}}/>
         <Text accessibilityLiveRegion="polite" style={{color:palette.text,fontSize:17,fontWeight:'600',flex:1}}>{status}</Text>
@@ -230,7 +230,7 @@ export function PayslipCard({ refreshToken }: { refreshToken: number }) {
 export function SectionHeader({ title, action, onAction }: { title: string; action?: string; onAction?: () => void }) {
   const { palette, design } = useTenantDesign();
   return <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', minHeight: 32 }}>
-    <Text accessibilityRole="header" style={{ color: palette.text, fontSize: 28, fontWeight: '700', fontFamily: design.schemaVersion === 1 ? 'FieldEditorial' : undefined }}>{title}</Text>
+    <Text accessibilityRole="header" style={{ color: palette.text, fontSize: 28, fontWeight: '700', fontFamily: design.schemaVersion === 1 ? 'FieldEditorial' : undefined, ...(design.schemaVersion === 1 ? {fontWeight: 'normal' as const} : {}) }}>{title}</Text>
     {action && onAction ? <Pressable accessibilityRole="button" accessibilityLabel={action} hitSlop={10} onPress={onAction} style={{ minHeight: 44, justifyContent: 'center' }}>
       <Text style={{ color: palette.accent, fontSize: 15, fontWeight: '600' }}>{action}</Text>
     </Pressable> : null}

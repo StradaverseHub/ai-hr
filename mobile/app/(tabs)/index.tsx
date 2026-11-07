@@ -1,3 +1,4 @@
+import { router } from 'expo-router';
 import { HomeApprovalQueue } from '../../lib/approval-decision';
 import { useState } from 'react';
 import { RefreshControl, ScrollView, View } from 'react-native';
@@ -39,7 +40,7 @@ function BrandedHome() {
       {me.error && <LoadState loading={false} hasData={me.data != null} error={me.error} onRetry={me.reload} />}
       <QuickActions actions={actions} />
       <View style={{ gap: 8, paddingTop: 8 }}>
-        <SectionHeader title={t('approvalsTitle')} />
+        <SectionHeader title={t('fieldReviewTitle').replace('\n', ' ')} action={typeof needs.tasks === 'number' ? t('homeTasksCount', {n: needs.tasks}) : undefined} onAction={() => router.navigate('/approvals')} />
         <HomeApprovalQueue refreshToken={refreshToken} />
       </View>
 
