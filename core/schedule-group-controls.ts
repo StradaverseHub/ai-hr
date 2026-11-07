@@ -99,9 +99,11 @@ export async function assertDutyRosterWriteTx(tx:Tx,ctx:SessionContext,changes:r
   for(const id of ownGroups){const applicable=rules.find(r=>r.id===id);if(applicable&&!applicable.dutyRosterControl)throw new DutyRosterWriteRefusal('validation',`Duty Roster Control is Off for “${scheduleGroupDisplayName(applicable)}”. Enable it before changing an individual roster.`);}
   const own=changes.filter(c=>c.employmentId===emp.id);
   const dates=[...new Set(own.map(c=>c.shiftDate))].sort();
-  const byBatch=new Map<string,Awaited<ReturnType<typeof lockPayrollForAttendanceChange>>[number]>();
-  for(const date of dates){if(!/^\d{4}-\d{2}-\d{2}$/.test(date)||Number.isNaN(Date.parse(date+'T00:00:00Z')))throw new DutyRosterWriteRefusal('validation','Choose a valid roster date.');for(const batch of await lockPayrollForAttendanceChange(tx,emp.id,date))byBatch.set(batch.batchId,batch);}
-  const batches=[...byBatch.values()];
+  for(const date of dates)if(!/^\d{4}-\d{2}-\d{2}$/.test(date)||Number.isNaN(Date.parse(date+'T00:00:00Z')))throw new DutyRosterWriteRefusal('validation','Choose a valid roster date.');
+  // The canonical owner already accepts the complete date set: it locks every
+  // existing Attendance/OT day in order, then reads/locks Payroll once for this
+  // employment. Repeating that same native Payroll query per date is unnecessary.
+  const batches=await lockPayrollForAttendanceChange(tx,emp.id,dates);
   if(batches.some(b=>b.status==='closed'))throw new DutyRosterWriteRefusal('validation','The roster change touches a closed payroll attendance period.');
   await markPayrollForAttendanceChange(tx,ctx,batches,emp.id);
   const before=await tx.select().from(rosterAssignment).where(and(eq(rosterAssignment.employmentId,emp.id),inArray(rosterAssignment.shiftDate,dates))).orderBy(asc(rosterAssignment.shiftDate));
