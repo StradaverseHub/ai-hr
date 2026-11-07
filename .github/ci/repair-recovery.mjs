@@ -13,6 +13,7 @@ import {BUILD_ARTIFACT} from './build-artifact.mjs';
 import {NEXT_APPLICATION_STATE,NEXT_APPLICATION_FAILURE,NEXT_APPLICATION_MEMBERS,inspectNextStatePacket} from './next-application-cache-protocol.mjs';
 import {COMPILER_STATE_ARTIFACT} from './compiler-cache-protocol.mjs';
 import {assessResumeSource} from './resume-source.mjs';
+import {validateDeadlineRepairBytes,validateDeadlineFocusedTerminal,deadlineRecoveryCertificate,DEADLINE_PATH} from './deadline-recovery-policy.mjs';
 import {reconstructRepairImpact} from './repair-impact.mjs';
 import {collectRecoveryEvidence} from './focused-recovery.mjs';
 import {validateRecoveryControllerDiagnostic} from './focused-recovery-policy.mjs';
@@ -45,6 +46,15 @@ export function validateRepairDelta({cwd,original,candidate}){
  // Explicitly bind all unchanged non-product inputs, including tests, SQL, workflows and package locks.
  return {changed,baseTree:git(cwd,'rev-parse',original+'^{tree}'),headTree:git(cwd,'rev-parse',candidate+'^{tree}'),diffSha256:hash(git(cwd,'diff','--binary','--no-ext-diff',original,candidate))};
 }
+export function validateDeadlineRepairDelta({cwd,original,candidate}){
+ execFileSync('git',['merge-base','--is-ancestor',original,candidate],{cwd,stdio:'ignore'});
+ const records=git(cwd,'diff','--name-status','--no-renames',original,candidate).split('\n').filter(Boolean);
+ assert(isDeepStrictEqual(records,['M\t'+DEADLINE_PATH]),'One existing test deadline repair required');
+ const before=execFileSync('git',['show',original+':'+DEADLINE_PATH],{cwd,maxBuffer:1024**2});
+ const after=execFileSync('git',['show',candidate+':'+DEADLINE_PATH],{cwd,maxBuffer:1024**2});
+ const deadline=validateDeadlineRepairBytes({changed:[DEADLINE_PATH],before,after});
+ return {changed:[DEADLINE_PATH],baseTree:git(cwd,'rev-parse',original+'^{tree}'),headTree:git(cwd,'rev-parse',candidate+'^{tree}'),diffSha256:hash(git(cwd,'diff','--binary','--no-ext-diff',original,candidate)),deadline};
+}
 export function validateLatestRepairHistory({source,rows,candidateBranch,focusedRunIds,buildRunId}){
  const after=source.run.updated_at,known=new Set([...focusedRunIds,buildRunId]);
  assert(Number.isFinite(Date.parse(after))&&Array.isArray(rows)&&rows.length<=8000,'Invalid or unbounded repair history');
@@ -69,7 +79,7 @@ function latestHistory({source,focusedWorkflowId,candidateBranch,focusedRunIds,b
  for(const status of ['queued','in_progress','waiting','requested','pending'])rows.push(...pages(`actions/runs?status=${status}`,'workflow_runs').filter(r=>[WORKFLOW_ID,focusedWorkflowId].includes(r.workflow_id)));
  return validateLatestRepairHistory({source,rows,candidateBranch,focusedRunIds,buildRunId});
 }
-export async function verifyRepairedCi({candidatePath,originalPath,runId,baseline,focusedRunIds,buildRunId,candidateBranch,evidenceDirectory,reuse=false}){
+export async function verifyRepairedCi({candidatePath,originalPath,runId,baseline,focusedRunIds,buildRunId,candidateBranch,evidenceDirectory,reuse=false,deadlineOnly=false}){
  candidatePath=resolve(candidatePath);originalPath=resolve(originalPath);runId=Number(runId);buildRunId=Number(buildRunId);
  assert(/^[a-f0-9]{40}$/.test(baseline??'')&&Number.isSafeInteger(runId)&&runId>0&&Number.isSafeInteger(buildRunId)&&buildRunId>0&&buildRunId!==runId,'Exact original/build/baseline identities required');
  assert(Array.isArray(focusedRunIds)&&focusedRunIds.length>0&&focusedRunIds.length<=64&&focusedRunIds.every(n=>Number.isSafeInteger(n)&&n>0&&! [runId,buildRunId].includes(n))&&new Set(focusedRunIds).size===focusedRunIds.length,'Distinct bounded replacement executions required');
@@ -79,9 +89,10 @@ export async function verifyRepairedCi({candidatePath,originalPath,runId,baselin
  for(const path of [candidatePath,originalPath])assert(git(path,'remote','get-url','origin').toLowerCase()==='https://github.com/stradaversehub/ai-hr.git','Unexpected source repository');
  assert(api('git/ref/heads/'+candidateBranch.split('/').map(encodeURIComponent).join('/')).object?.sha===candidate,'Repaired candidate branch moved');
  execFileSync('git',['merge-base','--is-ancestor',baseline,original],{cwd:candidatePath,stdio:'ignore'});
- const delta=validateRepairDelta({cwd:candidatePath,original,candidate});
+ assert(typeof deadlineOnly==='boolean','Explicit deadline recovery selector required');
+ const delta=(deadlineOnly?validateDeadlineRepairDelta:validateRepairDelta)({cwd:candidatePath,original,candidate});
  const diagnosticId=Number(process.env.AIHR_RECOVERY_CONTROLLER_RUN_ID);assert(Number.isSafeInteger(diagnosticId)&&diagnosticId>0,'Reviewed verifier controller diagnostic required');
- assert(readFileSync(join(controllerRoot,'.github/workflows/alpha-staging.yml'),'utf8').includes(' .github/ci/repair-recovery.test.mjs'),'Hosted integrity suite must execute v2 refusal controls');
+ assert(readFileSync(join(controllerRoot,'.github/workflows/alpha-staging.yml'),'utf8').includes(deadlineOnly?' .github/ci/deadline-recovery.test.mjs':' .github/ci/repair-recovery.test.mjs'),'Hosted integrity suite must execute selected recovery refusal controls');
  const dm=metadata(diagnosticId),verificationDiagnostic=validateRecoveryControllerDiagnostic({...dm,controller:verificationController});
  const originalMetadata=metadata(runId),controller=originalMetadata.run.head_sha;
  assert(originalMetadata.run.status==='completed'&&originalMetadata.run.conclusion==='failure'&&originalMetadata.run.run_attempt===1,'Wait for all planned original jobs to finish');
@@ -106,7 +117,7 @@ export async function verifyRepairedCi({candidatePath,originalPath,runId,baselin
  const focused=[];
  for(const id of focusedRunIds.slice().sort((a,b)=>a-b)){
   const m=metadata(id),authenticated=validateRepairFocusedMetadata({...m,expected:{runId:id,controller,workflowId:workflow.id,after:source.run.updated_at}});
-  const f=await collectRecoveryEvidence(id,join(dir,'focused-'+id),{reuse,repairPackets:true}),artifact=f.artifacts[0],packet=f.parsed.get(artifact.name);
+  const f=await collectRecoveryEvidence(id,join(dir,'focused-'+id),{reuse,repairPackets:!deadlineOnly,exactPackets:deadlineOnly}),artifact=f.artifacts[0],packet=f.parsed.get(artifact.name);
   assert(isDeepStrictEqual(m,facts(f)),'Focused metadata changed during download');
   const report=packet.get('focused.json'),database=report?.groups?.DB?.length>0,resultName=database?'db.vitest.json':'nodb.vitest.json';
   assert(isDeepStrictEqual([...packet.keys()].sort(),[resultName,'focused.json'].sort()),'Exact homogeneous focused packet required');
@@ -122,11 +133,13 @@ export async function verifyRepairedCi({candidatePath,originalPath,runId,baselin
  const p={candidate,controller,baseline,runId:buildRunId,controllerBranch:built.run.head_branch},build=await sourceBoundBuild({candidatePath,dir,p,jobs:built.jobs});
  const history=latestHistory({source,focusedWorkflowId:workflow.id,candidateBranch,focusedRunIds,buildRunId});
  const reports=sourcePlan.units.map(u=>source.parsed.get('unit-'+u.id)?.get(`unit-${u.id}.json`));
- const recovery=verifyRepairRecovery({sourcePlan,plan,assessment,sourceRun:source.run,reports,focused,impactContext,classifierHash:hash(readFileSync(join(candidatePath,'scripts/gate-db-classify.ts'),'utf8')),verificationController,verificationDiagnostic,reviewedController,buildRun:built.run,build,history});
+ if(deadlineOnly)validateDeadlineFocusedTerminal(focused);
+ let recovery=verifyRepairRecovery({sourcePlan,plan,assessment,sourceRun:source.run,reports,focused,impactContext,classifierHash:hash(readFileSync(join(candidatePath,'scripts/gate-db-classify.ts'),'utf8')),verificationController,verificationDiagnostic,reviewedController,buildRun:built.run,build,history});
+ if(deadlineOnly)recovery=deadlineRecoveryCertificate(recovery,delta.deadline);
  recovery.delta=delta;recovery.originalArtifacts=source.artifacts.map(a=>({id:a.id,name:a.name,digest:a.digest}));recovery.originalJobConclusions=source.jobs.map(j=>({id:j.id,name:j.name,conclusion:j.conclusion}));
  assert(cleanHead(candidatePath)===candidate&&cleanHead(originalPath)===original&&cleanHead(controllerRoot)===verificationController,'Source/controller changed while verifying');
  assert([baseline,candidate].includes(api('git/ref/heads/alpha').object?.sha),'Alpha moved away from exact staging baseline/candidate');
- const result={...recovery,recovery,result:recovery.pendingReview?'DIAGNOSTIC_NONINSTALLABLE':'PASS',tier:recovery.pendingReview?'diagnostic':'ci',installationEligible:!recovery.pendingReview,fingerprint:hash(recovery),build,candidatePath,originalPath,originalRunId:runId,candidateBranch,focusedRunIds:focusedRunIds.slice().sort((a,b)=>a-b),buildRunId,controllerBranch:built.run.head_branch,evidenceDirectory:dir,verifiedAt:new Date().toISOString(),url:built.run.html_url,artifacts:built.artifacts.map(a=>({id:a.id,name:a.name,digest:a.digest}))};
+ const result={...recovery,recovery,result:recovery.pendingReview?'DIAGNOSTIC_NONINSTALLABLE':'PASS',tier:recovery.pendingReview?'diagnostic':'ci',installationEligible:!recovery.pendingReview,fingerprint:hash(recovery),build,candidatePath,originalPath,originalRunId:runId,candidateBranch,deadlineOnly,focusedRunIds:focusedRunIds.slice().sort((a,b)=>a-b),buildRunId,controllerBranch:built.run.head_branch,evidenceDirectory:dir,verifiedAt:new Date().toISOString(),url:built.run.html_url,artifacts:built.artifacts.map(a=>({id:a.id,name:a.name,digest:a.digest}))};
  save(dir,reuse?`revalidation-${randomUUID()}.json`:'verification.json',result);return result;
 }
 function facts(f){return {run:f.run,jobs:f.jobs,artifacts:f.artifacts};}

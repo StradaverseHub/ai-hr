@@ -44,6 +44,14 @@ node --import tsx .github/ci/operator-release.mjs verify-exact-recovery \
 
 Use `deploy-exact-recovery` only with the same independently revalidated evidence, actual matching staging lease and existing deployment authority. Controller validation alone supplies no application gate or deployment permission.
 
+### Exact planner fixture deadline repair v4
+
+`aihr-test-deadline-recovery/v4` uses the reviewed cross-source transport and coverage accounting with a separate exact test-only delta admission. It permits only insertion of `{timeout:60_000}` on the named human-planner fixture suite in `test/human-module-planner.test.ts`. Immutable Git bytes must otherwise match exactly; assertion, test name, fixture logic, application, dependency, SQL, workflow and global-timeout edits refuse. v2 product-delta admission remains unchanged.
+
+The original failed complete run remains failed. Retain its unaffected authenticated units, compiler/build records and browser/migration/controller outcomes on their original identities. Replace the entire original failed DB process with unchanged cases on a fresh owned PG16 instance, matching resource/JIT/patch evidence and capture after batch completion; require a fresh whole compiler, a fresh canonical source-bound build, complete latest history and exact independently reviewed verifier/controller-only validation. The distinct v4 certificate binds both sources, original failures and before/after fixture hashes. Existing private grant, target/profile, source arrival, lease, migration, protected worker and human acceptance safeguards remain mandatory.
+
+Use existing `verify-repair`/`deploy-repair` with `deadlineOnly:true` in the explicit repair options, exact `originalPath`, `focusedRunIds`, `buildRunId` and `candidateBranch`. A pending-review diagnostic never grants installation. This narrow deadline repair requires no new whole gate or provider approval when the covered application/source-binding files remain unchanged.
+
 ## Evidence authority
 
 The operator must use a clean, reviewed controller at the exact commit that ran the witness, and an unchanged clean candidate. The authenticated GitHub API must identify repository `StradaverseHub/ai-hr` (ID 1333414856), workflow `alpha-staging-ci` (ID 395777276), the exact controller commit and a first-attempt completed successful run less than 24 hours old. Manual dispatch from main or alpha is accepted; a push witness must be on alpha with candidate and controller equal. PR, fork, rerun, incomplete and diagnostic-only results cannot authorize release.
