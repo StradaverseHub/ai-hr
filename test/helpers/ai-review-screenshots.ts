@@ -6,7 +6,7 @@ import {brotliDecompressSync} from 'node:zlib';
 import {chromium} from 'playwright';
 import {orgChartConnectorPath,type OrgChartEdge} from '../../lib/org-chart-model';
 let css:Promise<string>|undefined;
-async function applicationCss(){
+export async function applicationCss(){
  css??=(async()=>{
   const load=createRequire(join(process.cwd(),'package.json'));
   const plugin=load('@tailwindcss/postcss');

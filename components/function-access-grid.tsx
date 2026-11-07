@@ -1,4 +1,5 @@
 import { Check, Minus, CircleHelp } from 'lucide-react';
+import {FunctionAccessSearch} from './function-access-search';
 import { cn } from '@/lib/utils';
 import { MATRIX_ROLES, SCREENS, canReach, type Role, type ScreenEntry } from '@/lib/permissions';
 
@@ -24,12 +25,13 @@ export function FunctionAccessGrid({
   /** screen -> translated scope note (or null when none authored) */
   scopeNote: (screen: ScreenEntry) => string | null;
   /** static UI strings resolved by the caller */
-  labels: { accessible: string; notAccessible: string; screenColumn: string };
+  labels: { accessible: string; notAccessible: string; screenColumn: string; search?:string; noResults?:string };
 }) {
   return (
-    <div data-function-access-scroll className="relative min-w-0 max-w-full overflow-x-auto" tabIndex={0} role="region" aria-label={labels.screenColumn}>
+    <FunctionAccessSearch label={labels.search??labels.screenColumn} noResults={labels.noResults??labels.notAccessible}>
+    <div data-function-access-scroll className="relative max-h-[70dvh] min-w-0 max-w-full overflow-auto" tabIndex={0} role="region" aria-label={labels.screenColumn}>
       <table className="w-full min-w-[720px] border-separate border-spacing-0 text-sm">
-        <thead>
+        <thead className="sticky top-0 z-20 bg-card">
           <tr>
             <th className="sticky left-0 z-10 bg-card px-4 py-2.5 text-left text-xs font-medium text-muted-foreground">
               {labels.screenColumn}
@@ -49,7 +51,7 @@ export function FunctionAccessGrid({
           {SCREENS.map((screen) => {
             const note = scopeNote(screen);
             return (
-              <tr key={screen.screenKey} className="border-t border-border">
+              <tr key={screen.screenKey} data-access-row data-search-text={`${screenLabel(screen)} ${note??''}`} className="border-t border-border">
                 <th
                   scope="row"
                   className="sticky left-0 z-10 border-t border-border bg-card px-4 py-2.5 text-left align-top font-normal"
@@ -84,5 +86,6 @@ export function FunctionAccessGrid({
         </tbody>
       </table>
     </div>
+    </FunctionAccessSearch>
   );
 }

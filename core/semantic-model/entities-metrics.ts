@@ -67,7 +67,7 @@ export const METRIC_ENTITIES:readonly SemanticEntity[]=freeze([
  {id:'pay_aggregate',label:'Pay averages',
   meaning:'Headcount, average and median basic pay from each company\'s latest closed regular payroll run, for the companies whose payroll the caller administers, by company and optionally by department. Groups only, never a person; small groups are withheld.',
   module:'payroll',sensitivity:'pay',audience:'admin',rls:'administered_scope',owners:['packs/payroll/pay-averages.ts#payAverages'],
-  ruleVersion:null,relations:[],page:'/payroll/reports',
+  ruleVersion:null,relations:[],page:'/payroll/reconciliation',
   fields:[f('measure','enum','full','Which measure the figures are of.',{values:PAY_AGGREGATE_MEASURES}),
    f('measureLabel','label','full','Exactly what the measure counts and leaves out.'),
    f('breakdown','enum','full','By company, or by company and department.',{values:PAY_AGGREGATE_BREAKDOWNS}),

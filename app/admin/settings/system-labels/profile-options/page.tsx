@@ -28,7 +28,7 @@ export default async function ProfileOptionsPage({ searchParams }: { searchParam
   const totalCount = PERSON_PROFILE_CATEGORIES.reduce((n, c) => n + (all[c] ?? []).length, 0);
 
   return (
-    <div className="mx-auto max-w-6xl space-y-6">
+    <div className="w-full min-w-0 space-y-6">
       <PageHeader title={t('title')} description={t('subtitle')} />
       <SystemLabelsTabs active="profile-options" />
       <SystemLabelImportTools />

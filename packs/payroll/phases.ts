@@ -105,6 +105,7 @@ export const PAYROLL_NAV_PHASE: Readonly<Record<string, number>> = {
   // result, and this is where you correct a figure on it before the month is closed and filed.
   '/payroll/statutory-adjustment': 5,
   '/payroll/reports': 7,
+  '/payroll/reconciliation': 7,
   // 956cec85 — filing comes AFTER the figures are reported: the last thing you do with a month.
   '/payroll/statutory-forms': 8,
   // 20f6c6a8 — Payment Submission: the machine-readable FILES you hand the agencies and the bank, once

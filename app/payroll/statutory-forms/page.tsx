@@ -464,6 +464,8 @@ export default async function StatutoryFormsPage({
     };
   });
 
+  const reports = await getTranslations('payroll.reports');
+
   return (
     // c002b3c3 — the reporter's "the page layout does not fully utilize the available screen width",
     // answered. 152fea7f then moved the whole Payroll module off the old centred `max-w-[100rem]` cap
@@ -471,6 +473,14 @@ export default async function StatutoryFormsPage({
     <div className={pageWideCls}>
       <PageHeader back={await payrollProcessBack(sp.from)} title={t('pageTitle')} description={t('pageDescription')} />
       <ErrorBanner message={sp.error} />
+      <div className="flex flex-wrap gap-x-4 gap-y-2 text-sm">
+        <Link href="/payroll/statutory-forms/filing-history" className="text-primary hover:underline">
+          {reports('recentTitle')}
+        </Link>
+        <Link href="/payroll/multi-cycle-worksheet" className="text-primary hover:underline">
+          {reports('worksheetLink')}
+        </Link>
+      </div>
 
       {/* r256 — THE ONE SENTENCE THAT EXPLAINS THE NEW ORDER, where the filter bar used to be. An operator
           who used this screen last month arrives expecting to choose a period first; saying plainly that

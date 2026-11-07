@@ -2,7 +2,7 @@
 import * as XLSX from 'xlsx';
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from 'pdf-lib';
 import { bestFaceFor, embedPayslipFaces, payslipFaceScripts } from './payslip-pdf-fonts';
-import { payrollAmountMinor } from './payroll-period-comparison';
+import { ALL_RECORDED_PAY_ITEMS, payrollAmountMinor } from './payroll-period-comparison';
 import { payrollComparisonColumns, payrollComparisonCell, PAYROLL_REASON_LABELS, PAYROLL_COMPARISON_BASIS, type PayrollComparisonTranslate } from './payroll-comparison-presentation';
 import type { runPayrollComparisonReport } from '../core/custom-reports';
 type Run=Awaited<ReturnType<typeof runPayrollComparisonReport>>;
@@ -28,7 +28,7 @@ function metadata(run:Run,t?:PayrollComparisonTranslate):(string|number|null)[][
   const label=(key:string,fallback:string)=>t?t(key):fallback;
   const runType=(value:string)=>label('runTypes.'+value,value),runState=(value:string)=>label('runStates.'+value,value);
   return [
-    [c('report'),run.name],[c('payItem'),run.definition.payItemCode],[c('generatedBy'),run.generatedBy],[c('generatedAt'),run.generatedAt],
+    [c('report'),run.name],[c('payItem'),run.definition.payItemCode===ALL_RECORDED_PAY_ITEMS?label('allRecordedItems','All recorded pay items'):run.definition.payItemCode],[c('generatedBy'),run.generatedBy],[c('generatedAt'),run.generatedAt],
     [label('previousPeriod','Previous period'),run.filters.previousPeriod],[label('currentPeriod','Current period'),run.filters.currentPeriod],[c('runSelection'),run.filters.runType==='all'?label('allRuns','All runs'):runType(run.filters.runType)],
     [c('companyIds'),run.companyIds.join(', ')],[label('department','Department'),run.filters.departmentId??label('allDepartments','All authorised departments')],
     [label('minimum','Minimum absolute variance'),run.filters.minVariance],[label('onlyVariances','Only variances'),run.filters.onlyVariances?label('yes','Yes'):label('no','No')],[c('reasonFilter'),run.filters.reason?label(run.filters.reason==='incrementPromotion'?'incrementPromotion':run.filters.reason==='prorated'?'prorated':'reasons.'+run.filters.reason,run.filters.reason):label('allReasons','All')],
@@ -36,6 +36,7 @@ function metadata(run:Run,t?:PayrollComparisonTranslate):(string|number|null)[][
     [c('previousHeadcount'),summary?.previousHeadcount??null],[c('currentHeadcount'),summary?.currentHeadcount??null],
     [c('joiners'),summary?.joiners??null],[c('leavers'),summary?.leavers??null],[label('needsReview','Needs review'),summary?.unexplained??null],
     [c('availability'),run.result.available?c('available'):label('unavailable','Unavailable')+': '+run.result.issues.map(issue=>label('issues.'+issue.code,issue.code)+' / '+issue.period+' / '+issue.companyId).join('; ')],
+    ...(run.result.unavailablePayItems?.length ? [[c('payItem'), t ? t('itemsUnavailable',{codes:run.result.unavailablePayItems.join(', ')}) : 'Unavailable: '+run.result.unavailablePayItems.join(', ')]] : []),
     [c('provisional'),run.result.provisional?label('provisional','Current payroll is processed, not closed. Figures may change.'):label('no','No')],
     [c('historicalCurrency'),run.result.summary?.totals.some(total=>!total.currency)?c('unknownCurrencies'):c('recordedCurrencies')],
     [c('datedContext'),run.contextUnavailable?label('contextUnavailable','Some historical placement or grade evidence is unavailable.'):c('datedEvidence')],
@@ -60,13 +61,15 @@ async function excel(run:Run,t?:PayrollComparisonTranslate):Promise<Uint8Array>{
   const columns=payrollComparisonColumns(run.definition,t),book=XLSX.utils.book_new();
   const rows=metadata(run,t).map(row=>row.map(value=>typeof value==='string'?excelText(value):value)),summary=XLSX.utils.aoa_to_sheet(rows);
   let at=rows.length+2;
+  const allItems=run.definition.payItemCode===ALL_RECORDED_PAY_ITEMS;
   const headers=[t?t('columns.currency'):'Currency',exportText(t,'unknownEmployer'),...(['previous','current','variance','variancePct'] as const).map(id=>t?t('columns.'+id):({previous:'Previous amount',current:'Current amount',variance:'Variance',variancePct:'Variance %'}[id]))];
+  if(allItems)headers.push(t?t('columns.payItemCode'):'Pay item code');
   XLSX.utils.sheet_add_aoa(summary,[headers],{origin:at++});
   for(const total of run.result.summary?.totals??[]){
-    const values=[total.currency??(t?t('currencyUnknown'):'Not recorded'),total.companyId??'',total.previous,total.current,total.variance,total.variancePct];
-    values.forEach((value,index)=>summary[XLSX.utils.encode_cell({r:at,c:index})]=index>=2&&value!==null?{t:'n',v:excelNumber(value),z:index===5?'0.00"%"':total.currency?`"${total.currency==='MYR'?'RM':total.currency}" #,##0.00`:'0.00'}:{t:'s',v:excelText(value??(t?t('notAvailable'):'N/A'))});at++;
+    const values=[total.currency??(t?t('currencyUnknown'):'Not recorded'),total.companyId??'',total.previous,total.current,total.variance,total.variancePct,...(allItems?[total.payItemCode??'']:[])];
+    values.forEach((value,index)=>summary[XLSX.utils.encode_cell({r:at,c:index})]=index>=2&&index<=5&&value!==null?{t:'n',v:excelNumber(value),z:index===5?'0.00"%"':total.currency?`"${total.currency==='MYR'?'RM':total.currency}" #,##0.00`:'0.00'}:{t:'s',v:excelText(value??(t?t('notAvailable'):'N/A'))});at++;
   }
-  summary['!ref']=XLSX.utils.encode_range({s:{r:0,c:0},e:{r:Math.max(at-1,rows.length-1),c:5}});
+  summary['!ref']=XLSX.utils.encode_range({s:{r:0,c:0},e:{r:Math.max(at-1,rows.length-1),c:headers.length-1}});
   summary['!cols']=[{wch:28},{wch:75},...Array.from({length:4},()=>({wch:22}))];
   const details=XLSX.utils.aoa_to_sheet([columns.map(column=>column.label)]);
   for(const [index,row] of run.result.rows.entries())for(const [columnIndex,column] of columns.entries()){
@@ -113,9 +116,9 @@ async function pdf(run:Run,t?:PayrollComparisonTranslate):Promise<Uint8Array>{
   for(const line of meta)for(const text of wrap(line,width)){if(y<margin+45)start(exportText(t,'summaryContinued'));draw(text,margin,y);y-=11;}
   for(const total of run.result.summary?.totals??[]){
     const caption=exportText(t,'totalCaption',{currency:total.currency??(t?t('currencyUnknown'):'Currency not recorded')+' / '+total.companyId,previous:total.previous,current:total.current,variance:total.variance??(t?t('notAvailable'):'unavailable'),percentage:total.variancePct??(t?t('notAvailable'):'N/A')});
-    for(const text of wrap(caption,width,true)){if(y<margin+45)start(exportText(t,'summaryContinued'));draw(text,margin,y,true);y-=11;}
+    for(const text of wrap(total.payItemCode?total.payItemCode+' · '+caption:caption,width,true)){if(y<margin+45)start(exportText(t,'summaryContinued'));draw(text,margin,y,true);y-=11;}
   }
-  const fixed=['currency','previous','current','variance','reason'],rest=columns.filter(column=>!fixed.includes(column.id));
+  const fixed=[...(run.definition.payItemCode===ALL_RECORDED_PAY_ITEMS?['payItemCode']:[]),'currency','previous','current','variance','reason'],rest=columns.filter(column=>!fixed.includes(column.id));
   const bands=Array.from({length:Math.max(1,Math.ceil(rest.length/3))},(_,index)=>[...rest.slice(index*3,index*3+3),...fixed.map(id=>columns.find(column=>column.id===id)!)]);
   for(const [bandIndex,band]of bands.entries()){
     const cellWidth=(width-28)/band.length;

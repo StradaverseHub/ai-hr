@@ -64,7 +64,8 @@ describe('2449fbb7 · MultiSelectPopover form contract', () => {
     expect(earned).not.toMatch(/\bname=/);
   });
 
-  it('stays presentation-only: all copy arrives translated via props (i18n static-key contract)', () => {
+  it('keeps caller-authored empty messages and a translated default', () => {
+    expect(popover).toContain('<NoSearchResults message={emptyLabelFor?.(search.trim())}/>');
     expect(popover).not.toMatch(/useTranslations|next-intl/);
   });
 });

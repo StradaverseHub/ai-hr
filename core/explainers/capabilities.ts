@@ -56,7 +56,7 @@ async function payAggregates(ctx:SessionContext,input:Record<string,unknown>):Pr
  if(!result.ok)return refuse(result.refusal,result.message);
  const companies=result.companies.map(({companyId:_companyId,...row}:PayAverageCompany)=>row);
  return{ok:true,measure:result.measure,measureLabel:result.measureLabel,breakdown:result.breakdown,overall:result.overall,companies,
-  provenance:provenance('packs/payroll/pay-averages.ts#payAverages','Not applicable: averages of closed payslip figures, not a versioned rule.','/payroll/reports',
+  provenance:provenance('packs/payroll/pay-averages.ts#payAverages','Not applicable: averages of closed payslip figures, not a versioned rule.','/payroll/reconciliation',
    `Group figures only, computed by the payroll service; never one person's pay. Groups under ${PAY_AVERAGE_MINIMUM_GROUP} people, groups whose complement in their company is under ${PAY_AVERAGE_MINIMUM_GROUP}, and groups withheld to protect them are not shown.`)};
 }
 /** AI v2 W7: workforce metrics as the model may read them: the owner's result without company ids or the threshold.

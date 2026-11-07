@@ -99,7 +99,7 @@ const STANDARDISED = [
   'app/payroll/[batchId]/remove/page.tsx',
   'app/payroll/individual-payslip/page.tsx',
   'app/payroll/process/page.tsx',
-  'app/payroll/reports/page.tsx',
+  'app/payroll/statutory-forms/filing-history/page.tsx',
   'app/payroll/setup/page.tsx',
   'app/payroll/statutory-forms/page.tsx',
   'app/payroll/transactions/page.tsx',

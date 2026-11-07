@@ -430,10 +430,17 @@ export function PayRuleEditor({
           </select>
         </Field>
 
-        {kind==='formula_builder'&&<>
-          <Field label={t('builderFormula')}><select value={formulaId} onChange={e=>setFormulaId(e.target.value)} className={inputCls} required><option value="">{t('builderNoFormula')}</option>{initialRule?.kind==='formula_builder'&&!activeFormulas.some(f=>f.formulaId===initialRule.formulaId)&&<option value={initialRule.formulaId}>{initialRule.formulaId}</option>}{activeFormulas.map(f=><option key={f.formulaId} value={f.formulaId}>{f.formulaId} — {f.description}</option>)}</select></Field>
-
-        </>}
+        {kind === 'formula_builder' && <div className="space-y-2">
+          <Field label={t('builderFormula')}>
+            <select value={formulaId} onChange={event => setFormulaId(event.target.value)} className={inputCls} required>
+              <option value="">{t('builderNoFormula')}</option>
+              {initialRule?.kind === 'formula_builder' && !activeFormulas.some(formula => formula.formulaId === initialRule.formulaId) &&
+                <option value={initialRule.formulaId} disabled>{t('builderSavedUnavailable', { formulaId: initialRule.formulaId })}</option>}
+              {activeFormulas.map(formula => <option key={formula.formulaId} value={formula.formulaId}>{formula.formulaId} — {formula.description}</option>)}
+            </select>
+          </Field>
+          {activeFormulas.length === 0 && <p className="text-xs text-muted-foreground">{t('builderNoneEligible')}</p>}
+        </div>}
         {(builderEnabled||initialRule?.kind==='formula_builder')&&<details className="rounded-lg border border-border p-3 sm:col-span-3" open={kind==='formula_builder'||undefined}><summary className="cursor-pointer text-sm font-medium">{t('builderBindings')}</summary><div className="mt-3 grid gap-3 sm:grid-cols-3">
           {(['ordinaryRate','hoursPerDay','rate'] as const).map(key=><Field key={key} label={t(key==='ordinaryRate'?'builderOrdinaryRate':key==='hoursPerDay'?'builderHoursPerDay':'builderRate')}><input name={key==='ordinaryRate'?'formulaOrdinaryRate':key==='hoursPerDay'?'formulaHoursPerDay':'formulaRate'} type="text" inputMode="decimal" value={builderContext[key]??''} onChange={e=>setBuilderContext(v=>({...v,[key]:e.target.value}))} className={inputCls}/></Field>)}
           <p className="text-xs text-muted-foreground sm:col-span-3">{t('builderContextHint')} <Link href="/payroll/formula-builder" className="underline">{t('builderManage')}</Link></p>

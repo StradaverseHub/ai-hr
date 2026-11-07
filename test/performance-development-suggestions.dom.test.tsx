@@ -20,7 +20,11 @@ it('previews suggestions without writing and carries unsaved form words when the
 it('keeps proposals on an apply error, can discard without a write and explains the empty source',async()=>{
  ports.suggest.mockResolvedValueOnce({goals:[goal('Planning')],pool:[{id:'tc:0',label:'Planning',note:'next level',kind:'technical'}],sourceDigest:'digest',remaining:4,limit:5,empty:false,stretchOnly:true}).mockResolvedValueOnce({goals:[],pool:[],sourceDigest:'empty',remaining:4,limit:5,empty:true,stretchOnly:false});ports.apply.mockResolvedValue({error:'The plan changed.'});show();
  fireEvent.click(screen.getByRole('button',{name:en.onehr.developmentSuggestions.generate}));await screen.findByRole('checkbox',{name:'Planning'});await waitFor(()=>expect(screen.getByRole('button',{name:'Add selected to draft (1)'})).not.toBeDisabled());fireEvent.click(screen.getByRole('button',{name:'Add selected to draft (1)'}));expect(await screen.findByRole('alert')).toHaveProperty('textContent','The plan changed.');expect(screen.getByRole('checkbox',{name:'Planning'})).toBeTruthy();
- fireEvent.click(screen.getByRole('button',{name:en.onehr.developmentSuggestions.discard}));expect(screen.queryByRole('checkbox')).toBeNull();expect(ports.refresh).not.toHaveBeenCalled();
+ const discard = screen.getByRole('button', {name: en.onehr.developmentSuggestions.discard});
+ await waitFor(() => expect(discard).not.toBeDisabled());
+ fireEvent.click(discard);
+ expect(screen.queryByRole('checkbox')).toBeNull();
+ expect(ports.refresh).not.toHaveBeenCalled();
  fireEvent.click(screen.getByRole('button',{name:en.onehr.developmentSuggestions.generate}));expect(await screen.findByText(en.onehr.developmentSuggestions.empty)).toBeTruthy();expect(screen.queryByRole('button',{name:/Add selected/})).toBeNull();expect(ports.apply).toHaveBeenCalledOnce();
 });
 

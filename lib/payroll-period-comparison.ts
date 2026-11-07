@@ -1,14 +1,19 @@
 /** Declarative report contract and exact arithmetic; never calculates an employee's pay. */
+import { EMPLOYMENT_STATUSES, type EmploymentStatus } from '../core/employment-status';
+import { PERSONNEL_EMPLOYMENT_TYPES } from './personnel-choice-vocabulary';
+
+export const ALL_RECORDED_PAY_ITEMS='__ALL_RECORDED__';
 export const PAYROLL_COMPARISON_DATASET='payroll_period_comparison';
 export const PAYROLL_COMPARISON_COLUMNS=['employeeCode','employeeName','department','grade','company','costCentre','variancePct','effectiveDate','remarks'] as const;
 export type PayrollComparisonColumn=typeof PAYROLL_COMPARISON_COLUMNS[number];
-export const PAYROLL_COMPARISON_REASONS=['unexplained','increment','promotion','demotion','newHire','resigned','proratedLeaving','transfer','unclassified'] as const;
+export const PAYROLL_COMPARISON_REASONS=['unexplained','increment','promotion','demotion','newHire','resigned','proratedLeaving','transfer','noChange','payItemChanged','unclassified'] as const;
 export type PayrollComparisonReason=typeof PAYROLL_COMPARISON_REASONS[number];
 export const PAYROLL_COMPARISON_REASON_FILTERS=[...PAYROLL_COMPARISON_REASONS,'incrementPromotion','prorated'] as const;
 export type PayrollComparisonReasonFilter=typeof PAYROLL_COMPARISON_REASON_FILTERS[number];
 export type PayrollComparisonDefinition={
  version:1;payItemCode:string;compareMode:'previous'|'specific';previousPeriod:string|null;
  runType:'regular'|'all';minVariance:string;autoTag:boolean;onlyVariances:boolean;
+ defaults?: PayrollComparisonTemplateDefaults;
  columns:PayrollComparisonColumn[];roles:('hr_admin'|'super_admin')[];
 };
 export const DEFAULT_PAYROLL_COMPARISON:PayrollComparisonDefinition={version:1,payItemCode:'BASIC',compareMode:'previous',previousPeriod:null,
@@ -38,7 +43,10 @@ const roundedRatio=(numerator:bigint,denominator:bigint)=>{
 };
 export function payrollVariance(previous:bigint,current:bigint){
  const difference=current-previous;
- return {difference:payrollMinorDecimal(difference),percentage:previous===BigInt('0')?null:payrollMinorDecimal(roundedRatio(difference*BigInt('10000'),previous))};
+ const denominator = previous < 0 ? -previous : previous;
+ const percentage = denominator ? payrollMinorDecimal(roundedRatio(difference * BigInt('10000'), denominator))
+   : current ? null : '0.00';
+ return {difference:payrollMinorDecimal(difference),percentage};
 }
 function exactKeys(value:Record<string,unknown>,allowed:readonly string[]){if(Object.keys(value).some(key=>!allowed.includes(key)))fail('unknownField');}
 function selected<T extends string>(value:unknown,allowed:readonly T[],code:string):T[]{
@@ -48,7 +56,7 @@ function selected<T extends string>(value:unknown,allowed:readonly T[],code:stri
 export function validatePayrollComparisonDefinition(value:unknown):PayrollComparisonDefinition{
  if(!value||typeof value!=='object'||Array.isArray(value))fail('definition');
  const v=value as Record<string,unknown>;
- exactKeys(v,['version','payItemCode','compareMode','previousPeriod','runType','minVariance','autoTag','onlyVariances','columns','roles']);
+ exactKeys(v,['version','payItemCode','compareMode','previousPeriod','runType','minVariance','autoTag','onlyVariances','columns','roles','defaults']);
  if(v.version!==1||typeof v.payItemCode!=='string'||!/^[-A-Za-z0-9_/.]{1,64}$/.test(v.payItemCode))fail('payItem');
  if(v.compareMode!=='previous'&&v.compareMode!=='specific')fail('compareMode');
  if(v.compareMode==='specific'?!isPayrollComparisonPeriod(v.previousPeriod):v.previousPeriod!==null)fail('previousPeriod');
@@ -56,24 +64,53 @@ export function validatePayrollComparisonDefinition(value:unknown):PayrollCompar
  const minimum=payrollAmountMinor(v.minVariance);if(minimum<BigInt('0')||minimum>BigInt('99999999999999'))fail('minVariance');
  if(typeof v.autoTag!=='boolean'||typeof v.onlyVariances!=='boolean')fail('boolean');
  const columns=selected(v.columns,PAYROLL_COMPARISON_COLUMNS,'columns'),roles=selected(v.roles,['hr_admin','super_admin'] as const,'roles');if(!roles.length)fail('roles');
- return {version:1,payItemCode:v.payItemCode,compareMode:v.compareMode,previousPeriod:v.previousPeriod as string|null,runType:v.runType,
+ const definition:PayrollComparisonDefinition={version:1,payItemCode:v.payItemCode,compareMode:v.compareMode,previousPeriod:v.previousPeriod as string|null,runType:v.runType,
   minVariance:payrollMinorDecimal(minimum),autoTag:v.autoTag,onlyVariances:v.onlyVariances,columns,roles};
+ if(v.defaults!==undefined)definition.defaults=payrollComparisonTemplateDefaults(v.defaults,definition);
+ return definition;
 }
+export const PAYROLL_COMPARISON_GROUPS=['company','businessUnit','department','costCentre','grade'] as const;
+export const PAYROLL_COMPARISON_EMPLOYMENT_TYPES=PERSONNEL_EMPLOYMENT_TYPES;
+export type PayrollComparisonGroup=typeof PAYROLL_COMPARISON_GROUPS[number];
 export type PayrollComparisonFilters={currentPeriod:string|null;previousPeriod:string|null;companyId:string|null;departmentId:string|null;
- runType:'regular'|'all';minVariance:string;onlyVariances:boolean;reason:PayrollComparisonReasonFilter|null;page:number;pageSize:number};
+ businessUnitId?:string;positionId?:string;employmentId?:string;employeeSearch?:string;employmentType?:typeof PAYROLL_COMPARISON_EMPLOYMENT_TYPES[number];employmentStatus?:EmploymentStatus;groupBy?:PayrollComparisonGroup;
+ runType:'regular'|'all';cycleIds?:string[];previousCycleIds?:string[];minVariance:string;onlyVariances:boolean;reason:PayrollComparisonReasonFilter|null;page:number;pageSize:number};
+const templateKeys=['currentPeriod','companyId','departmentId','businessUnitId','positionId','employmentId','employmentType','employmentStatus','groupBy','cycleIds','previousCycleIds'] as const;
+type PayrollComparisonTemplateDefaults=Partial<Pick<PayrollComparisonFilters,typeof templateKeys[number]>>;
+export function payrollComparisonTemplateDefaults(values:unknown,definition:PayrollComparisonDefinition):PayrollComparisonTemplateDefaults {
+ if(!values||typeof values!=='object'||Array.isArray(values))fail('defaults');
+ exactKeys(values as Record<string,unknown>,templateKeys);
+ const normalized=payrollComparisonFilters(values as Record<string,unknown>,{...definition,defaults:undefined});
+ return Object.fromEntries(templateKeys.flatMap(key=>normalized[key]==null?[]:[[key,normalized[key]]]));
+}
 const id=(value:unknown)=>value==null||value===''?null:typeof value==='string'&&/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value)?value:fail('identity');
 export function payrollComparisonFilters(values:Record<string,unknown>,definition:PayrollComparisonDefinition):PayrollComparisonFilters{
- exactKeys(values,['currentPeriod','previousPeriod','companyId','departmentId','runType','minVariance','onlyVariances','reason','page','pageSize']);
+ values={...definition.defaults,...values};
+ exactKeys(values,['currentPeriod','previousPeriod','companyId','departmentId','businessUnitId','positionId','employmentId','employeeSearch','employmentType','employmentStatus','groupBy','runType','cycleIds','previousCycleIds','minVariance','onlyVariances','reason','page','pageSize']);
  const month=(value:unknown)=>value==null||value===''?null:isPayrollComparisonPeriod(value)?value:fail('period');
  const currentPeriod=month(values.currentPeriod),previousPeriod=month(values.previousPeriod)??(definition.compareMode==='specific'?definition.previousPeriod:currentPeriod?previousPayrollComparisonPeriod(currentPeriod):null);
  if(currentPeriod&&previousPeriod&&previousPeriod>=currentPeriod)fail('periodOrder');
  const runType=values.runType??definition.runType;if(runType!=='all'&&runType!=='regular')fail('runType');
+ const parseCycles=(rawCycles:unknown)=>{
+  const cycleValues = rawCycles == null || rawCycles === '' ? []
+    : typeof rawCycles === 'string' ? rawCycles.split(',') : Array.isArray(rawCycles) ? rawCycles : fail('identity');
+  const selected=cycleValues.filter(value=>value!=='');
+  if (selected.length > 20) fail('identity');
+  return [...new Set(selected.map(value => id(value) ?? fail('identity')))];
+ };
+ const cycleIds=parseCycles(values.cycleIds),previousCycleIds=parseCycles(values.previousCycleIds);
+ const businessUnitId=id(values.businessUnitId),positionId=id(values.positionId),employmentId=id(values.employmentId);
+ const employeeSearch=values.employeeSearch==null?'':typeof values.employeeSearch==='string'&&values.employeeSearch.length<=100?values.employeeSearch.trim():fail('employeeSearch');
+ const choice=<T extends string>(value:unknown,choices:readonly T[])=>value==null||value===''?undefined:choices.includes(value as T)?value as T:fail('filter');
+ const employmentType=choice(values.employmentType,PAYROLL_COMPARISON_EMPLOYMENT_TYPES),groupBy=choice(values.groupBy,PAYROLL_COMPARISON_GROUPS),
+   employmentStatus=choice(values.employmentStatus,EMPLOYMENT_STATUSES);
  const minimum=payrollAmountMinor(values.minVariance??definition.minVariance);if(minimum<BigInt('0')||minimum>BigInt('99999999999999'))fail('minVariance');
  const only=values.onlyVariances??definition.onlyVariances;
  if(![true,false,'1','0'].includes(only as never))fail('boolean');
  const reason=values.reason==null||values.reason===''?null:PAYROLL_COMPARISON_REASON_FILTERS.includes(values.reason as PayrollComparisonReasonFilter)?values.reason as PayrollComparisonReasonFilter:fail('reason');
  const integer=(value:unknown,fallback:number,max:number)=>{if(value==null||value==='')return fallback;if(typeof value!=='number'&&(typeof value!=='string'||!/^\d+$/.test(value)))fail('pagination');const n=Number(value);if(!Number.isSafeInteger(n)||n<1||n>max)fail('pagination');return n;};
- return {currentPeriod,previousPeriod,companyId:id(values.companyId),departmentId:id(values.departmentId),runType,minVariance:payrollMinorDecimal(minimum),onlyVariances:only===true||only==='1',reason,page:integer(values.page,1,1000000),pageSize:integer(values.pageSize,50,200)};
+ return {currentPeriod,previousPeriod,companyId:id(values.companyId),departmentId:id(values.departmentId),...(businessUnitId?{businessUnitId}:{}),...(positionId?{positionId}:{}),...(employmentId?{employmentId}:{}),
+  ...(employeeSearch?{employeeSearch}:{}),...(employmentType?{employmentType}:{}),...(groupBy?{groupBy}:{}),...(employmentStatus?{employmentStatus}:{}),runType,...(cycleIds.length ? {cycleIds} : {}),...(previousCycleIds.length?{previousCycleIds}:{}),minVariance:payrollMinorDecimal(minimum),onlyVariances:only===true||only==='1',reason,page:integer(values.page,1,1000000),pageSize:integer(values.pageSize,50,200)};
 }
 /** These are already projected, applied facts from Movement, never raw event-name guesses. */
 export type PayrollComparisonMovement={id:string;sequence:number;effectiveDate:string;kind:'increment'|'promotion'|'demotion'|'transfer'|'exit';salaryChanged:boolean;status:'applied'|'pending'|'superseded'|'reversed'};

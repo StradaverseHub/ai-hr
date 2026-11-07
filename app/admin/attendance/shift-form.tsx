@@ -119,6 +119,7 @@ export async function ShiftForm({
       ? editing.breakPeriods.map((bp) => ({
           start: bp.start.slice(0, 5),
           end: bp.end.slice(0, 5),
+          breakType: bp.breakType,
           paid: bp.paid === true,
           flexible: bp.flexible === true,
           flexibleMinutes: bp.flexibleMinutes != null ? String(bp.flexibleMinutes) : '',
@@ -215,7 +216,6 @@ export async function ShiftForm({
           lockedBreakPeriodsJson={JSON.stringify(editing?.breakPeriods ?? [])}
         />
 
-        <p className="text-sm text-muted-foreground"><Link className="text-primary hover:underline" href="/admin/attendance/settings/work-schedule-overtime#shift-pay">{t('shiftOvertimePayLegend')}</Link></p>
 
         <div className="flex items-center gap-3">
           <button className={btnPrimary}>{editing ? t('saveShift') : t('addShift')}</button>

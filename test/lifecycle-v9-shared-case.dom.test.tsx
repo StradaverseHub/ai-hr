@@ -13,7 +13,7 @@ import {v9Defaults} from '../lib/lifecycle-v9-defaults';
 import {OffboardingCaseView,caseTasksByDue} from '../app/lifecycle/v9/offboarding-case-view';
 vi.mock('../app/lifecycle/onboarding/v31-actions',()=>({changeOnboarding:vi.fn(),writeOnboardingNote:vi.fn(),markOnboardingSeen:vi.fn().mockResolvedValue(undefined)}));
 vi.mock('next/navigation',()=>({useRouter:()=>({refresh:vi.fn()})}));
-vi.mock('../app/lifecycle/v9/actions',()=>({commandV9:vi.fn(),readV9Case:vi.fn().mockResolvedValue({ok:false,error:'Salary source unavailable'}),readV9Email:vi.fn(),readV9UpdatedEmail:vi.fn(),readV9Workflow:vi.fn()}));
+vi.mock('../app/lifecycle/v9/actions',()=>({readV9PersonnelPreview:vi.fn().mockResolvedValue({ok:true,values:{}}),commandV9:vi.fn(),readV9Case:vi.fn().mockResolvedValue({ok:false,error:'Salary source unavailable'}),readV9Email:vi.fn(),readV9UpdatedEmail:vi.fn(),readV9Workflow:vi.fn()}));
 beforeAll(()=>{HTMLDialogElement.prototype.showModal=function(){this.setAttribute('open','');};});
 function fixture(state:'submitted'|'cleared'|'cancelled'|'pending'='submitted',locale='en'){
  const c=fictionalV9Case({state,tasks:[{...fictionalV9Task('Later task'),assignee:'recorded-owner',dueOn:'2026-12-02'},{...fictionalV9Task('Document task'),documentTemplate:'document',dueOn:'2026-11-28'},fictionalV9Task('Earlier task')],items:[{id:'item',name:'Fictional laptop',kind:'device',sourceId:null,group:null,assignee:null,dueOn:'2026-11-30',status:'todo',reason:'',returnReported:{at:'2026-11-01T00:00:00Z',by:'employee',note:'Reception receipt'},nativeSource:{caseId:'native-case',requestId:'request',itemId:'native-item',requestNumber:'IT-FICTIONAL'}}]});
@@ -35,7 +35,9 @@ it('sorts only the visible tasks and preserves document completion, return prove
  expect(table.getByRole('link',{name:/IT-FICTIONAL/})).toHaveAttribute('href','/lifecycle/requisitions/onboarding/native-case');
  expect(table.getByText(/Reception receipt/)).toHaveTextContent('Waiting for the providing team to confirm.');
  expect(screen.getByRole('heading',{name:'Sent emails'}).closest('section')).toHaveClass('lifecycle-case-section');
- expect(screen.getByRole('heading',{name:'Notes'}).compareDocumentPosition(screen.getByRole('heading',{name:'Leaver calculator'}))&Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+ expect(screen.queryByRole('heading',{name:'Notes'})).not.toBeInTheDocument();
+ const details=screen.getByRole('heading',{name:'Case details'}).closest('section')!;
+ expect(within(details.nextElementSibling as HTMLElement).getByRole('heading',{name:'Offboarding checklist'})).toBeVisible();
  expect(JSON.stringify(c)).toBe(source);
 });
 it.each(['cleared','cancelled'] as const)('keeps %s work read-only and only exposes the existing reopen action for clearance',state=>{
@@ -71,4 +73,14 @@ it('ends shared detail editing when the mounted case becomes closed',()=>{
  fireEvent.click(screen.getByRole('button',{name:'Edit details'}));expect(screen.getByRole('combobox',{name:'Case type *'})).toBeEnabled();
  view.rerender(<NextIntlClientProvider locale="en" messages={messages}><OffboardingCaseView c={{...c,state:'cancelled',revision:2}} {...props}/></NextIntlClientProvider>);
  expect(screen.getByRole('combobox',{name:'Case type *'})).toBeDisabled();expect(screen.queryByRole('textbox',{name:'Reason for changing case details'})).not.toBeInTheDocument();
+});
+
+it('keeps old offboarding case notes inside details without a case-level editor',()=>{
+ const c=fictionalV9Case({notes:[{id:'old-case-note',context:'case',body:'Historical case note',by:'hr',name:'Original HR author',at:'2026-11-01T00:00:00Z',edited:false,deleted:false,mentions:[],resolved:[]}]});
+ render(<NextIntlClientProvider locale="en" messages={messages}><OffboardingCaseView c={c} config={v9Defaults()} users={[]} actor={{id:'hr',name:'HR'}} personnelWritableKeys={[]} busy={false} command={vi.fn()} onDocument={vi.fn()} onReason={vi.fn()} onOpenWorkflow={vi.fn()} onBack={vi.fn()}/></NextIntlClientProvider>);
+ const details=within(screen.getByRole('heading',{name:'Case details'}).closest('section')!);
+ fireEvent.click(details.getByText(/Previous case notes/));
+ expect(details.getByText('Historical case note')).toBeVisible();
+ expect(details.queryByRole('button',{name:'Edit note'})).not.toBeInTheDocument();
+ expect(screen.queryByRole('heading',{name:'Notes'})).not.toBeInTheDocument();
 });

@@ -57,6 +57,18 @@ const correction = async (id: string) => (await owner.db.select().from(schema.at
 const decisions = async () => owner.db.select().from(schema.attendanceWorkflowDecision).orderBy(asc(schema.attendanceWorkflowDecision.stageIndex));
 const events = async (id: string, type: string) => owner.db.select().from(schema.domainEvent).where(and(eq(schema.domainEvent.aggregateId, id), eq(schema.domainEvent.eventType, type))).orderBy(asc(schema.domainEvent.sequence));
 describe('Attendance approval routing and exactly-once effects', () => {
+    it('reserves distinct automatic priorities when two draft saves run concurrently', async () => {
+        const { a } = await fixture();
+        const [first, second] = await Promise.all([
+            saveAttendanceWorkflow(a, input(['hr_admin'], { code: 'AUTO_A', active: false }), undefined, undefined, true),
+            saveAttendanceWorkflow(a, input(['hr_admin'], { code: 'AUTO_B', active: false }), undefined, undefined, true),
+        ]);
+        expect([first.priority, second.priority].sort((a, b) => a - b)).toEqual([1, 2]);
+        const edited = await saveAttendanceWorkflow(a, input(['hr_admin'], {
+            code: first.code, priority: first.priority, name: 'Edited draft', active: false,
+        }), first.lineageId);
+        expect(edited.priority).toBe(first.priority);
+    });
     it('previews ordered resolved names using the same route frozen on submission', async () => {
         const { a, worker, manager } = await fixture();
         const value = input(), saved = await enable(a, value);

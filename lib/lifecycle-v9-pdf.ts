@@ -10,7 +10,7 @@ const shown = (field: Field, document: Document) => !field.when || document.valu
 /** Render only the saved instance. No current Personnel read, remote assets or template regeneration. */
 export function v9PdfDocument(document: Document, requireComplete = false): LetterPdfInput['document'] {
   const blocks: ResolvedLetterBlock[] = [], values = { ...document.mergeValues, ...document.values };
-  function resolved(value: string) { const result = merge(value, values); if (requireComplete && result.missing.length) throw new V9Error('Complete missing document fields before exporting an attachment.'); return result.text; }
+  function resolved(value: string) { const result = merge(value, values, undefined, true); if (requireComplete && result.missing.length) throw new V9Error('Complete missing document fields before exporting an attachment.'); return result.text; }
   function field(field: Field) {
     if (!shown(field, document)) return;
     const value = document.values[field.id] ?? '';

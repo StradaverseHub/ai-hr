@@ -9,7 +9,7 @@ export function DocumentBody({ document, values = document.values, editableBy, d
   change?: (id: string, value: string) => void;
 }) {
   return <article className="v9-document v9-document-grid">{document.blocks.map(block => {
-    const text = merge(document.edits[block.id] ?? block.text, { ...document.mergeValues, ...values }).text;
+    const text = merge(document.edits[block.id] ?? block.text, { ...document.mergeValues, ...values }, undefined, true).text;
     let content: ReactNode;
     if (block.type === 'letterhead') { const letterhead = v9Letterhead(document); content = <header className="v9-letterhead" style={{ borderTopColor: letterhead.color }}><div className="v9-letterhead-name"><span aria-hidden className="v9-letterhead-mark" style={{ background: letterhead.color }}/><strong>{letterhead.name}</strong></div><p>{letterhead.registration}</p><p className="v9-prewrap">{letterhead.address}</p></header>; }
     else if (block.type === 'heading') content = <h2>{text}</h2>;

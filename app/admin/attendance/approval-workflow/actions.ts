@@ -8,12 +8,12 @@ import { scopedAdmin } from '@/lib/scope';
 import { saveAttendanceWorkflow, retireAttendanceWorkflow, restoreAttendanceWorkflow, getAttendanceWorkflow, setAttendanceWorkflowEnabled, previewAttendanceWorkflow, AttendanceWorkflowError, type AttendanceWorkflowInput, type AttendanceApplicationType } from '@/packs/attendance/service';
 const LIST = '/admin/attendance/approval-workflow';
 async function publicError(e: unknown) { if(e instanceof AttendanceCcError)return(await getTranslations('attendanceWorkflow.v4'))(e.code);if(e instanceof AttendanceWorkflowError&&e.code==='inUse')return(await getTranslations('attendanceWorkflow.v4'))('deletePending');if(e instanceof AttendanceWorkflowError&&e.code==='stale')return(await getTranslations('attendanceWorkflow.v4'))('deleteChanged'); if (e instanceof AttendanceLevelError) return (await getTranslations('attendanceWorkflow.v3'))(attendanceLevelProblemMessageKey(e.problem)); return e instanceof AttendanceWorkflowError ? e.message : 'The workflow could not be saved. Check the configuration and try again.'; }
-export async function saveAttendanceWorkflowAction(lineageId: string | null, input: AnyAttendanceWorkflowInput) {
+export async function saveAttendanceWorkflowAction(lineageId: string | null, input: AnyAttendanceWorkflowInput, autoPriority = false) {
     const { s, scopeIds } = await scopedAdmin();
     if (!scopeIds.includes(input.companyId))
         return { ok: false as const, error: 'Select a company in your active access scope.' };
     try {
-        const row = await saveAttendanceWorkflow(s, input, lineageId ?? undefined);
+        const row = await saveAttendanceWorkflow(s, input, lineageId ?? undefined, undefined, autoPriority === true);
         revalidatePath(LIST);
         revalidatePath(`${LIST}/${row.lineageId}`);
         revalidatePath(`${LIST}/${row.lineageId}/edit`);

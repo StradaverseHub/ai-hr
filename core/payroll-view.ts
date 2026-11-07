@@ -1,3 +1,4 @@
+import { ALL_RECORDED_PAY_ITEMS } from '../lib/payroll-period-comparison';
 import {frozenPayslipInformation,informationPayslipDocument,informationPayslipDocuments,informationDocumentRow,overlayInformationDocument} from './information-correction-history';
 import {payrollComparisonAvailability} from '../lib/payroll-comparison-result';
 import {recordedPayrollComparisonAmount, recordedPayrollComparisonCurrency, recordedPayrollProrationCoverage} from '../lib/payroll-comparison-source';
@@ -3228,17 +3229,20 @@ export function listFilableRunsForPeriod(
 /** Recorded comparison inputs for a caller-held, freshly authorized report snapshot. The service owns
  * permissions and audit; this owner owns saved payroll semantics. No live company-currency fallback. */
 export async function payrollComparisonSourcesTx(tx: Tx, ctx: SessionContext, p: {
-  companyIds: readonly string[]; previousPeriod: string; currentPeriod: string; runType: 'regular' | 'all'; payItemCode: string;
+  companyIds: readonly string[]; previousPeriod: string; currentPeriod: string; runType: 'regular' | 'all'; cycleIds?: string[]; previousCycleIds?: string[]; payItemCode: string;
 }) {
   if (!p.companyIds.length) return { runs: [], sources: [] };
   if (p.companyIds.length > 1000) throw new Error('Payroll comparison exceeds 1000 companies. Narrow the scope.');
+  const priorCycles = p.previousCycleIds?.length ? p.previousCycleIds : p.cycleIds;
+  const cyclesFor=(period:string,ids?:string[])=>and(eq(payrollBatch.payPeriod,period),ids?.length?inArray(payrollBatch.payrollCycleId,ids):undefined);
   const batches = await tx.select({ id: payrollBatch.id, companyId: payrollBatch.companyId,
     period: payrollBatch.payPeriod, runType: payrollBatch.runType, status: payrollBatch.status,
     needsRecalcAt: payrollBatch.needsRecalcAt, expectedResults:payrollBatch.employeeCount }).from(payrollHistoryEffectiveBatch)
     .where(and(eq(payrollBatch.tenantId, ctx.tenantId), inArray(payrollBatch.companyId, [...p.companyIds]),
       or(isNull(payrollBatch.historyImportAttemptId),sql`${payrollBatch.employeeCount}>0`),
       inArray(payrollBatch.payPeriod, [p.previousPeriod, p.currentPeriod]),
-      p.runType === 'regular' ? eq(payrollBatch.runType, 'regular') : undefined))
+      p.runType === 'regular' ? eq(payrollBatch.runType, 'regular') : undefined,
+      (priorCycles?.length||p.cycleIds?.length)?or(cyclesFor(p.previousPeriod,priorCycles),cyclesFor(p.currentPeriod,p.cycleIds)):undefined))
     .orderBy(asc(payrollBatch.companyId), asc(payrollBatch.payPeriod), asc(payrollBatch.runSeq)).limit(10001);
   if (batches.length > 10000) throw new Error('Payroll comparison exceeds 10000 runs. Narrow the scope.');
   const runs = batches.map(({needsRecalcAt, ...run}) => ({...run, stale: needsRecalcAt !== null}));
@@ -3258,12 +3262,14 @@ export async function payrollComparisonSourcesTx(tx: Tx, ctx: SessionContext, p:
     const batch = batchById.get(slip.runId)!;
     const period = payPeriodBounds(batch.period);
     if (!period) throw new Error('Saved payroll period is invalid.');
+    const allItems = p.payItemCode === ALL_RECORDED_PAY_ITEMS;
     return { id: slip.id, version: slip.version, runId: slip.runId, employmentId: slip.employmentId,
       companyId: batch.companyId, currency: recordedPayrollComparisonCurrency(slip.statutory, batch.companyId),
-      amount: recordedPayrollComparisonAmount(slip.basicSalary, slip.statutory, p.payItemCode,batch.companyId),
+      amount: recordedPayrollComparisonAmount(slip.basicSalary, slip.statutory, allItems?'BASIC':p.payItemCode,batch.companyId),
+      recordedItems: allItems ? slip.statutory : undefined,
       coverage: payslipCoverage(slip, period),
       // The recorded factor describes Basic. It cannot prove a different item's proration.
-      proratedCoverage: recordedPayrollProrationCoverage(slip.statutory,batch.companyId,period,p.payItemCode) };
+      proratedCoverage: recordedPayrollProrationCoverage(slip.statutory,batch.companyId,period,allItems?'BASIC':p.payItemCode) };
   });
   return { runs, sources };
 }

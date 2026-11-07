@@ -83,7 +83,7 @@ const EXPECTED_SET = [
   // same REVIEW phase as the payslip screen it sits beside. Every original entry above and below is
   // character for character what it was, so the guard's promise is untouched.
   { href: '/payroll/statutory-adjustment', labelKey: 'payrollStatutoryAdjustment' },
-  { href: '/payroll/reports', labelKey: 'payrollReports' },
+  { href: '/payroll/reconciliation', labelKey: 'payrollReconciliation' },
   { href: '/payroll/statutory-forms', labelKey: 'payrollStatutoryForms' },
   // 20f6c6a8 — an ADDITION, like statutory-forms / individual-payslip / back-pay / statutory-adjustment.
   // Payment Submission is a NEW screen (the shelf of machine-readable files a month is filed with),

@@ -62,7 +62,7 @@ describe('three-step new-code import wizard',()=>{
   const user=userEvent.setup();mount();await upload(user,'preserved.xlsx');
   mocks.fetch.mockResolvedValueOnce(response({ok:true,preview:{token:'t',valid:true,rows}}));await user.click(screen.getByRole('button',{name:en.labelsImportWizard.check}));await screen.findByText(en.labelsImportWizard.existing,{},{timeout:5000});
   mocks.fetch.mockResolvedValueOnce(response({ok:false,message:'Fixture writer failure; no additions saved.'}));await clickReady(user,'Import 1 new codes');
-  expect(await screen.findByText('Fixture writer failure; no additions saved.',{},{timeout:5000})).toBeVisible();expect(screen.getByRole('button',{name:en.labelsImportWizard.checkAgain})).toBeEnabled();expect(screen.queryByText('1 new codes created · 1 rows skipped')).not.toBeInTheDocument();
+  expect(await screen.findByText('Fixture writer failure; no additions saved.',{},{timeout:5000})).toBeVisible();expect(await screen.findByRole('button',{name:en.labelsImportWizard.checkAgain},{timeout:5000})).toBeEnabled();expect(screen.queryByText('1 new codes created · 1 rows skipped')).not.toBeInTheDocument();
   await user.click(screen.getByRole('button',{name:en.labelsImportWizard.back}));expect(screen.getByText(/preserved.xlsx/)).toBeVisible();
  });
  it('refuses unsupported and oversized files immediately without contacting the server',async()=>{

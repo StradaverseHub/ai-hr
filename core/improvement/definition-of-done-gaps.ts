@@ -12,8 +12,8 @@ export const DEFINITION_OF_DONE_GAPS:Readonly<Record<string,readonly string[]>>=
  'action:approvals.leave.decide',
  // AI v2 W2 (slice 2) declared the own Leave Credit request; its corpus turn is still to be written.
  'action:toil.replacement.request',
- // AI Centre issue 13b gave /payroll/reports its semantic entry (pay_aggregate); its corpus turn is still to be written.
- 'page:/payroll/reports',
+ // AI Centre issue 13b gave /payroll/reconciliation its semantic entry (pay_aggregate); its corpus turn is still to be written.
+ 'page:/payroll/reconciliation',
  // AI v2 W7 gave /analytics its semantic entry (workforce_metric); its corpus turn is still to be written.
  'page:/analytics',
  ],

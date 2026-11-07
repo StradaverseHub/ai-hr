@@ -17,7 +17,7 @@ vi.mock('../lib/scope',()=>({scopedAdmin:async()=>({s:{tenantId:'fictional'},sco
 vi.mock('../core/employee-master-access',()=>({MasterReportAccessError:class extends Error{}}));
 vi.mock('../core/report-payroll-comparison',()=>({payrollComparisonOptions:async()=>{
  if(state.denied)throw new MasterReportAccessError();
- return {companies:[],departments:[],periods:[],payItems:[]};
+ return {companies:[],departments:[],businessUnits:[],positions:[],cycles:[],periods:[],payItems:[]};
 }}));
 vi.mock('../core/custom-reports',()=>({runPayrollComparisonReport:vi.fn(),recordPayrollComparisonRun:vi.fn(),getCustomReport:vi.fn()}));
 // The editor is not part of this read/denial journey; its submit/retry tests cover that action boundary.

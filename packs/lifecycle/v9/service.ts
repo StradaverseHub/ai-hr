@@ -1,3 +1,4 @@
+import { personnelMergeLabels } from '@/lib/lifecycle-v9-personnel-merge-fields';
 import {joinerPageSections} from '../../../lib/onboarding-page-access';
 import type {Config as NativeConfig} from '../../../lib/onboarding-model';
 import { v9CompanySigners, v9SignatoryTitle } from '../../../lib/lifecycle-v9-signatories';
@@ -115,7 +116,7 @@ async function environment(tx: Tx, ctx: SessionContext, c: M.Case, config: M.Con
   values['company.address'] = signatory?.letterhead?.address ?? company[0]?.address ?? '';
   values['company.color'] = signatory?.letterhead?.color ?? '#4F46E5';
   values['employee.company']=company[0]?.name??'';values['employee.businessGroup']=personnel?.business_group??'';
-  const caseFields=resolveV9CaseFields(c.module,config.caseForms?.[c.module]),caseValues=native?nativeCaseFormValues(native.c):offCaseFormValues(c);
+  const caseFields=resolveV9CaseFields(c.module,config.caseForms?.[c.module],true),caseValues=native?nativeCaseFormValues(native.c):offCaseFormValues(c);
   const caseLabels: Record<string,string>={name:c.facts.name,company:company[0]?.name??'',group:personnel?.business_group??'',dept:personnel?.department??'',position:personnel?.position??'',supervisor:users.find(user=>user.id===c.facts.supervisorUserId)?.name??'',ta:users.find(user=>user.id===c.facts.taUserId)?.name??''};
   for(const field of caseFields) values['case.'+field.key]=field.key in caseLabels?caseLabels[field.key]:field.type==='date'?fmt(caseValues[field.key]??''):caseValues[field.key]??'';
 
@@ -136,6 +137,19 @@ export async function v9CaseDetail(ctx: SessionContext, id: string): Promise<Cas
     const row = await load(tx, ctx, id), config = await configTx(tx, ctx);
     if (!config) throw new M.V9Error('V9 configuration is not available.');
     return { ...(row.data.module==='off'&&row.data.state==='pending'?{returns:await pendingReturnsTx(tx,ctx,row.data)}:{}), case: row.data, calculation: await readSettlementTx(tx, ctx, row.data, config), personnelWritableKeys: v9PersonnelWritableKeys, ...(row.native ? { native: { config, actor: await actor(tx, ctx) } } : {}) };
+  });
+}
+
+export async function v9PreviewPersonnelValues(ctx: SessionContext, caseId: string, module: M.Module) {
+  const selectedModule = z.enum(['onb', 'off']).parse(module);
+  return withLifecycleTenant(ctx, async tx => {
+    await admin(tx);
+    const row = await load(tx, ctx, caseId);
+    if (row.data.module !== selectedModule) throw new M.V9Error('Choose a case from this module.', 'not_found');
+    const config = await configTx(tx, ctx);
+    if (!config) throw new M.V9Error('V9 configuration is not available.');
+    const { mergeValues } = await environment(tx, ctx, row.data, config);
+    return Object.fromEntries([...personnelMergeLabels.keys()].map(key => [key, mergeValues[key] ?? '']));
   });
 }
 
@@ -370,6 +384,7 @@ export type Command = CaseNoteCommand
   | { type: 'emailSend' | 'emailTest'; emailId: string }
   | { type: 'emailEdit'; emailId: string; subject: string; body: string }
   | { type: 'documentTextEdit'; id: string; edits: Record<string, string> }
+  | { type: 'documentFillPersonnel'; id: string; values: Record<string, string> }
   | { type: 'documentSave'; id: string; values: Record<string, string> }
   | { type: 'documentSignatory'; id:string; userId:string }
   | { type: 'documentSign'; id: string; signature: Pick<M.Signature, 'method' | 'value' | 'consent'> }
@@ -404,6 +419,7 @@ const commandSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('emailRetry'), id: commandId, reason: reasonText }).strict(),
   z.object({ type: z.literal('emailEdit'), emailId: commandId, subject: z.string().min(1).max(1000), body: z.string().max(20000) }).strict(),
   z.object({ type: z.literal('documentTextEdit'), id: commandId, edits: z.record(commandId, z.string().max(20000)).refine(value => Object.keys(value).length <= 500) }).strict(),
+  z.object({ type: z.literal('documentFillPersonnel'), id: commandId, values: z.record(z.string().max(80), z.string().max(20000)) }).strict(),
   z.object({ type: z.literal('documentSave'), id: commandId, values: z.record(commandId, z.string().max(20000)) }).strict(),
   z.object({type:z.literal('documentSignatory'),id:commandId,userId:z.string().uuid()}).strict(),
   z.object({ type: z.literal('documentSign'), id: commandId, signature: z.object({ method: z.enum(['typed', 'drawn']), value: z.string().min(1).max(500000), consent: z.literal(true) }).strict() }).strict(),
@@ -424,7 +440,7 @@ export async function v9Command(ctx: SessionContext, id: string, revision: numbe
     const row = await load(tx, ctx, id); if (row.revision !== revision) throw new M.V9Error('This case changed. Refresh before trying again.', 'conflict');
     const config = await configTx(tx, ctx); if (!config) throw new M.V9Error('V9 configuration is unavailable.');
     const c = structuredClone(row.data); let env = await environment(tx, ctx, c, config);
-    if (row.native && !['generate', 'emailSend', 'emailTest', 'emailEdit', 'emailRetry', 'emailReplace', 'documentTextEdit', 'documentSave', 'documentSignatory', 'documentSign', 'documentRefresh', 'documentRegenerate', 'runWorkflows', 'retryWorkflow', 'startWorkflow', 'testWorkflow', 'pmKeep', 'pmPush', 'pmPushSelected'].includes(command.type)) throw new M.V9Error('Use the onboarding case controls for this change.');
+    if (row.native && !['generate', 'emailSend', 'emailTest', 'emailEdit', 'emailRetry', 'emailReplace', 'documentTextEdit', 'documentFillPersonnel', 'documentSave', 'documentSignatory', 'documentSign', 'documentRefresh', 'documentRegenerate', 'runWorkflows', 'retryWorkflow', 'startWorkflow', 'testWorkflow', 'pmKeep', 'pmPush', 'pmPushSelected'].includes(command.type)) throw new M.V9Error('Use the onboarding case controls for this change.');
     if (row.native && ['pmPush', 'pmPushSelected'].includes(command.type) && !c.facts.employmentId) throw new M.V9Error('Activate this Personnel draft before applying its proposed changes.');
     if(command.type==='note')changeV9Note(c,env,command);
     if(command.type==='returnSelections'){
@@ -435,9 +451,9 @@ export async function v9Command(ctx: SessionContext, id: string, revision: numbe
     }
     if (command.type === 'caseFormSave') {
       if (c.module !== 'off' || !['pending','submitted'].includes(c.state)) throw new M.V9Error('Reopen this case before editing its fields.');
-      const fields = resolveV9CaseFields('off',config.caseForms?.off), before = offCaseFormValues(c);
+      const fields = resolveV9CaseFields('off',config.caseForms?.off,true), before = offCaseFormValues(c);
       for (const [key,value] of Object.entries(command.values)) {
-        const field = fields.find(field=>field.key===key);
+        const field = fields.find(field=>field.key===key) ?? resolveV9CaseFields('off').find(field=>field.key===key);
         if (!field || field.source !== 'case') throw new M.V9Error('Personnel fields are locked. Edit them in Personnel Management.');
         try { validateV9CaseValue(field,value); } catch (error) { throw new M.V9Error(error instanceof Error ? error.message : 'Review the case fields.'); }
       }
@@ -521,6 +537,7 @@ export async function v9Command(ctx: SessionContext, id: string, revision: numbe
     }
     else if (command.type === 'emailEdit') { if (!['pending','submitted'].includes(c.state)) throw new M.V9Error('Reopen this case before editing its email.'); if (!config.emails.some(e => e.id === command.emailId && e.module === c.module) || command.body.length > 20000 || command.subject.length > 1000) throw new M.V9Error('Choose an available email and keep its content within the allowed length.'); c.emailEdits = { ...c.emailEdits, [command.emailId]: { subject: command.subject, body: command.body } }; M.appendLog(c, env, 'email.edited', 'Email text changed for this person only.'); }
     else if (command.type === 'documentTextEdit') M.editDocumentText(c, config, command.id, command.edits, env);
+    else if (command.type === 'documentFillPersonnel') M.fillDocumentPersonnelValues(c, command.id, command.values, env);
     else if (command.type === 'documentSave') M.saveDocument(c, command.id, command.values, 'hr', env);
     else if(command.type==='documentSignatory') {
       const document=c.documents.find(document=>document.id===command.id),template=config.templates.find(template=>template.id===document?.templateId);
@@ -537,7 +554,7 @@ export async function v9Command(ctx: SessionContext, id: string, revision: numbe
       M.signDocument(c, config, command.id, 'hr', { ...command.signature, by: env.actor, at: env.now }, env);
       if(c.documents.find(document=>document.id===command.id)?.status==='hrsigned')for(const workflow of config.workflows)M.runWorkflow(c,config,workflow,env,'hrSigned');
     }
-    else if (command.type === 'documentRefresh') { const document = c.documents.find(d => d.id === command.id); if (!document || document.status !== 'draft' || M.documentDeliveryReserved(c, command.id)) throw new M.V9Error('Only an unsigned draft not reserved for email delivery can refresh its source values.'); document.signatoryUserId ??= env.signatoryUserId ?? null; document.mergeValues = M.documentMergeValues(document,{...env.mergeValues,'signatory.name':document.signatoryUserId?env.userName(document.signatoryUserId):'','signatory.title':v9SignatoryTitle(config,document.signatoryUserId,c.facts.company)}); for (const field of document.fields) if (field.owner === 'pmLocked' && field.pmKey) document.values[field.id] = document.mergeValues[field.pmKey] ?? ''; M.appendLog(c, env, 'document.refreshed', document.name); }
+    else if (command.type === 'documentRefresh') { const document = c.documents.find(d => d.id === command.id); if (!document || document.status !== 'draft' || M.documentDeliveryReserved(c, command.id)) throw new M.V9Error('Only an unsigned draft not reserved for email delivery can refresh its source values.'); document.signatoryUserId ??= env.signatoryUserId ?? null; document.mergeValues = M.documentMergeValues(document,{...env.mergeValues,'signatory.name':document.signatoryUserId?env.userName(document.signatoryUserId):'','signatory.title':v9SignatoryTitle(config,document.signatoryUserId,c.facts.company)}); for (const field of document.fields) if (field.owner === 'pmLocked' && field.pmKey) document.values[field.id] = M.personnelFieldSourceValue(field, document.mergeValues); M.appendLog(c, env, 'document.refreshed', document.name); }
     else if (command.type === 'settlementOptions') { if (!['pending', 'submitted'].includes(c.state)) throw new M.V9Error('Reopen this case before changing its figures.'); c.settlementOptions = command.options; M.appendLog(c, env, 'settlement.adjusted', command.reason); }
     else if (command.type === 'clear') {
       const calculation = await readSettlementTx(tx, ctx, c, config);

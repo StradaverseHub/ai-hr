@@ -150,10 +150,12 @@ const AREA_MODULE:Readonly<Record<string,string>>={'/attendance':'attendance','/
 const under=(route:string,area:string)=>route===area||route.startsWith(area+'/');
 /** AI Centre restructure (owner decisions 26–29, 4 Nov 2026): the guarded forward stubs of removed pages. Each only runs
  * its guard and forwards to the page that owns the fact now, so it is not a link target; a reply links the owner. */
-export const FORWARD_STUBS:ReadonlySet<string>=new Set(['/control-tower','/control-tower/actions','/control-tower/opportunities',
+export const FORWARD_STUBS:ReadonlySet<string>=new Set(['/control-tower','/control-tower/actions','/control-tower/opportunities','/payroll/reports',
  '/control-tower/agents/inventory','/control-tower/agents/orchestrator']);
 /** Native workflow grants and an active View As session cannot be inferred from a coarse role or module. */
 export const NATIVE_SCOPE_ONLY_PAGES:ReadonlySet<string>=new Set([
+ '/admin/attendance/settings/offline-clocking',
+ '/payroll/statutory-forms/filing-history',
  '/admin/rewards/access/view-as',
  '/admin/rewards/bonus-matrices',
  '/admin/rewards/pat-inputs',
@@ -162,6 +164,7 @@ export const NATIVE_SCOPE_ONLY_PAGES:ReadonlySet<string>=new Set([
  '/admin/rewards/setup-access',
  '/admin/rewards/uploaded',
  '/rewards/analytics',
+ '/rewards/promotions',
  '/rewards/rules',
 ]);
 export function classifyPage(route:string,source:string):Readonly<{audience:DestinationAudience;module:string|null}>|null{
@@ -262,7 +265,7 @@ export const LINKABLE_PAGES:readonly PageRow[]=Object.freeze(([
  ['/payroll/income-tax-recalculation','admin','payroll'],['/payroll/individual-payslip','admin','payroll'],
  ['/payroll/multi-cycle-worksheet','admin','payroll'],['/payroll/payment-submission','admin','payroll'],
  ['/payroll/payslip-information','admin','payroll'],['/payroll/pcb-detail','admin','payroll'],['/payroll/process','admin','payroll'],
- ['/payroll/process/result','admin','payroll'],['/payroll/reports','admin','payroll'],['/payroll/setup','admin','payroll'],['/payroll/setup/correction-controls','admin','payroll'],
+ ['/payroll/process/result','admin','payroll'],['/payroll/reconciliation','admin','payroll'],['/payroll/setup','admin','payroll'],['/payroll/setup/correction-controls','admin','payroll'],
  ['/payroll/sip-contribution/preview','admin','payroll'],['/payroll/statutory-adjustment','admin','payroll'],
  ['/payroll/statutory-detail','admin','payroll'],['/payroll/statutory-forms','admin','payroll'],['/payroll/statutory-forms/ea','admin','payroll'],
  ['/payroll/statutory-forms/ea/view','admin','payroll'],['/payroll/statutory-forms/event','admin','payroll'],

@@ -9,7 +9,7 @@ export async function POST(request: Request) {
  } catch (error) {
   if (!(error instanceof PersonnelReadBusyError)) throw error;
   return new Response('Search is temporarily busy. Try again.', {
-   status: 503, headers: { 'Retry-After': '5', 'Cache-Control': 'private, no-store' },
+   status: 503, headers: { 'Retry-After': '5', 'X-Personnel-Busy-Reason': error.reason, 'Cache-Control': 'private, no-store' },
   });
  }
 }

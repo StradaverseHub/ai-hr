@@ -5,6 +5,24 @@ journals and the actual staging watermark before journal integration or applicat
 applied SQL/hash and exact journal prefix. Reservations do not authorize deployment or skipping the
 owning release gate.
 
+## Payroll reconciliation remarks — 6 November 2026 (provisional)
+
+The feedback candidate reserves `2404_payroll_reconciliation_remark`, idx `1654`,
+when `1793330001854`, SQL SHA-256
+`a0b5e3df73af733fd19ec72c1333cbdf21e9a932123be476ea86b4bfafda3974`, and
+`2405_rewards_review_activity`, idx `1655`, when `1793330001855`, SHA-256
+`fb8f6d1be9e24589969329324174f74a2c3516dedf041ae8dad37f60d19afc20`, and
+`2406_payroll_reconciliation_generation`, idx `1656`, when `1793330001856`, SHA-256
+`38979689c8df2b486fdd1c104de7dd94e872ba8e0838e1d51cc8be119fa99113`.
+The prior staging ledger matched all 697 entries through `1793330001700`.
+The new installed source `dc36b7f0278001e1f57754f66ea5ce4ca24971ea` appends
+`2450_personnel_search_projection` at idx 1550 / timestamp `1793330001850`.
+The next installed source `b29d13e4c5a36062158db5cf2582bbc15eea1e49` appends
+`2451_personnel_company_filter_choices` at idx 1551 / timestamp `1793330001851`.
+The read-only staging ledger matches all 699 entries. The feedback candidate
+preserves both Personnel migrations and keeps its three unapplied files above
+the installed watermark. Recheck the installed ledger at release admission.
+
 ## Rewards whole-group grant foundation — 5 November 2026 (unapplied)
 
 Branch codex/movement-organization-feedback-20261105 provisionally reserves
@@ -1726,3 +1744,14 @@ The release gate found additional company retention references from the approved
 Append `2211_company_retention_approved_expansion` at idx 1422 / timestamp 1793330001622.
 SHA256 `5e336a948b9490d9355eba65d6f341618334a031c7bdc66562ed9139b7c5f0c4`. The migration adds scoped retention checks and validated tenant keys for the new owners.
 It preserves earlier SQL and the original staging ledger.
+
+## Open onboarding Personnel projection — 7 November 2026 (unapplied)
+
+Branch `codex/board-approved-20261107` reserves `2600_onboarding_current_personnel`,
+idx 1900 / when 1793330002200. A read-only scan of 3010 local/remote ref heads
+(474 distinct journal blobs) found the previous highest timestamp 1793330002130
+at `2510_capability_statement_plan_reuse`. All 342 readable registered worktree
+journals were also checked; none had a higher competing claim. The original
+alpha journal prefix and SQL bytes are preserved. This is an unapplied source
+reservation: recheck freshly fetched integration journals, peer WIP and the exact
+installed ordered ledger before integration or release admission.

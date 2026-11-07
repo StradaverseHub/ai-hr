@@ -53,6 +53,8 @@ const support=(why:string):Surface=>({support:why});
 const servedBy=(value:Surface):readonly string[]=>typeof value==='string'?[value]:'support' in value?[]:value;
 const PERSONNEL_PAGE=['employee_records','employee_profile','employee_movement','bank_statutory','employee_family','employee_qualifications','employee_emergency_contacts','cost_allocation','information_correction'];
 const SURFACES:Readonly<Record<string,Surface>>={
+ 'app/admin/attendance/shift-import/route.ts':'shift_definitions',
+ 'app/admin/attendance/shift-import/template/route.ts':'shift_definitions',
  'app/admin/card-assignment/import/route.ts':'clocking_cards',
  'app/admin/leave-config/bf-import/actions.ts':'leave_brought_forward',
  'app/admin/leave-config/bf-import/page.tsx':'leave_brought_forward',
@@ -108,6 +110,10 @@ const SURFACES:Readonly<Record<string,Surface>>={
  'app/payroll/transactions/import-excel/actions.ts':'fixed_transactions',
  'app/payroll/transactions/import-excel/individual-actions.ts':'individual_transactions',
  'app/payroll/transactions/individual/imports/[attemptId]/page.tsx':'individual_transactions',
+ 'app/payroll/transactions/individual/imports/[attemptId]/errors/route.ts':'individual_transactions',
+ 'app/payroll/transactions/individual/imports/[attemptId]/result-rows.tsx':support('Shared payroll preview and result table.'),
+ 'app/payroll/transactions/individual/imports/batches/[jobId]/page.tsx':'individual_transactions',
+ 'app/payroll/transactions/individual/imports/batches/[jobId]/workbook/route.ts':'individual_transactions',
  'app/payroll/transactions/individual/imports/page.tsx':'individual_transactions',
  'app/performance/onehr-actions.ts':support('Record-scoped KPI and panel imports inside one OneHR cycle, admitted per cycle; not listed.'),
  'app/rewards/actions.ts':support('Record-scoped facts import inside one rewards unit, admitted per unit; not listed.'),
