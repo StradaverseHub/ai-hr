@@ -129,7 +129,7 @@ describe('ADR-0080 rung 4: nav parity with the pre-retrofit sidebar', () => {
   });
 
   it('sidebar.tsx mounts the registry rows without duplicating their destination declarations', () => {
-    const sidebar = fs.readFileSync(path.resolve(__dirname, '../components/sidebar.tsx'), 'utf8');
+    const sidebar = fs.readFileSync(path.resolve(__dirname, '../lib/navigation/shell-inventory.ts'), 'utf8');
     // The registration moved out of the sidebar into packs/register-all.ts (ADR-0077 slice 1) so that
     // SERVER code can enumerate module packs too — a client-component side effect left listPacks()
     // empty on the server. The property under test is unchanged and still end-to-end: the pack is
@@ -142,7 +142,7 @@ describe('ADR-0080 rung 4: nav parity with the pre-retrofit sidebar', () => {
     expect(sidebar.split('\n').some(line=>line.trim()==='PERFORMANCE_TALENT_ROW,')).toBe(true);
     expect(sidebar.split('\n').some(line=>line.trim()==='PERFORMANCE_ADMIN_ROW,')).toBe(true);
     // Performance admin carries no role flag, so its ONE gate is this predicate in canSeeChild.
-    expect(sidebar).toContain('c.href === PERFORMANCE_ADMIN_ROW.href ? canAdministerOnehr :');
+    expect(fs.readFileSync(path.resolve(__dirname, '../lib/navigation/shell-resolver.ts'), 'utf8')).toContain('c.href === PERFORMANCE_ADMIN_ROW.href ? canAdministerOnehr :');
     // The retired rows are gone, not hidden: no Calibration, Talent or Development descriptor or gate remains.
     for (const retired of ['CALIBRATION_ROW', 'TALENT_HREF', 'DEVELOPMENT_HREF', 'PERSONAL_PERFORMANCE_ROW', 'canEnterCalibration', 'performanceNavigation']) expect(sidebar, retired).not.toContain(retired);
     for (const { href } of EXPECTED) {

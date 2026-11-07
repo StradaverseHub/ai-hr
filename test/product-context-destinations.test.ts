@@ -16,7 +16,7 @@ function pageRoutes(){const found:RegExp[]=[];const walk=(dir:string)=>{for(cons
  if(entry.isDirectory())walk(path);else if(entry.name==='page.tsx'){const route='/'+relative(app,dir).split('/').filter(part=>part&&!/^\(.*\)$/.test(part)).join('/');
   found.push(new RegExp('^'+route.replace(/\/$/,'').replace(/\[\[?\.\.\.[^\]]+\]?\]/g,'.+').replace(/\[[^\]]+\]/g,'[^/]+')+'/?$'));}}};walk(app);return found;}
 const pathOf=(href:string)=>href.split(/[?#]/)[0]||'/';
-const sidebarSource=readFileSync(join(process.cwd(),'components','sidebar.tsx'),'utf8');
+const sidebarSource=readFileSync(join(process.cwd(),'lib','navigation','shell-inventory.ts'),'utf8');
 
 describe('product destination registry',()=>{
  const rows=productDestinations();

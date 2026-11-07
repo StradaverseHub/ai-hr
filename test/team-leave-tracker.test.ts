@@ -55,7 +55,7 @@ const LOCALES = ['en', 'ms', 'ta', 'th', 'vi', 'zh'] as const;
 
 const trackerPage = read('app/leave/tracker/page.tsx');
 const dashboard = read('app/page.tsx');
-const sidebar = read('components/sidebar.tsx');
+const sidebar = read('lib/navigation/shell-inventory.ts');
 
 describe('the Leave Team row stays ungated — the access the move must not remove', () => {
   it('the pack retains the ungated tracker beside the separately supervisor-gated My Team row', () => {

@@ -25,14 +25,14 @@ describe('ADR-0082 slice 4 — the screen exists and is wired', () => {
   it('the route, its action, and the nav row all exist', () => {
     expect(fs.existsSync(path.join(ROOT, 'app/assistant/page.tsx'))).toBe(true);
     expect(fs.existsSync(path.join(ROOT, 'app/assistant/actions.ts'))).toBe(true);
-    expect(read('components/sidebar.tsx')).toContain("href: '/assistant'");
+    expect(read('lib/navigation/shell-inventory.ts')).toContain("href: '/assistant'");
   });
 
   it('the nav row is gated by the billable module', () => {
     // Without the MODULE_OF_HREF entry the rail would advertise a module the tenant has not bought.
     // `assistant` is packBacked: false, so — like system_explorer — there is no descriptor to derive it
     // from and the entry has to be written by hand, which is exactly why it needs a guard.
-    expect(read('components/sidebar.tsx')).toContain("['/assistant', 'assistant'] as const");
+    expect(read('lib/navigation/shell-inventory.ts')).toContain("['/assistant', 'assistant'] as const");
   });
 
   it('is in the function-access matrix only as the conditional, layout-authenticated Assistant column', () => {

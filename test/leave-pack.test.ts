@@ -176,6 +176,7 @@ describe('ADR-0080 rung 6: nav parity with the pre-retrofit sidebar', () => {
   });
 
   it('sidebar.tsx mounts pack navigation via the registry without duplicating destinations', () => {
+    const inventory = fs.readFileSync(path.resolve(__dirname, '../lib/navigation/shell-inventory.ts'), 'utf8');
     const sidebar = fs.readFileSync(path.resolve(__dirname, '../components/sidebar.tsx'), 'utf8');
     // The registration moved out of the sidebar into packs/register-all.ts (ADR-0077 slice 1) so that
     // SERVER code can enumerate module packs too — a client-component side effect left listPacks()
@@ -185,7 +186,7 @@ describe('ADR-0080 rung 6: nav parity with the pre-retrofit sidebar', () => {
     const registerAll = fs.readFileSync(path.resolve(__dirname, '../packs/register-all.ts'), 'utf8');
     expect(registerAll, 'registers the pack (static side-effect import)').toContain(`import '@/packs/leave'`);
     expect(sidebar, 'sidebar pulls in the shared pack wiring').toContain(`import '@/packs/register-all'`);
-    expect(sidebar, 'resolves the rows through the registry').toContain(`modulePackById('leave')`);
+    expect(inventory, 'resolves the rows through the registry').toContain(`modulePackById('leave')`);
     // Only the exact responsive route condition is allowed to name My Team here. Remove that
     // known expression, then every pack destination remains forbidden in the navigation source.
     const responsiveRail = "pathname === '/manage/my-team' ? 'min-[900px]:block' : 'sm:block'";
@@ -194,6 +195,7 @@ describe('ADR-0080 rung 6: nav parity with the pre-retrofit sidebar', () => {
     // Node children count too: a hardcoded child href would bypass the pack just as a hardcoded row did.
     for (const href of ALL_HREFS) {
       expect(navigationSource.includes(`'${href}'`), `${href} no longer hardcoded in sidebar.tsx`).toBe(false);
+      expect(inventory.includes(`'${href}'`), `${href} remains pack-owned`).toBe(false);
     }
   });
 });

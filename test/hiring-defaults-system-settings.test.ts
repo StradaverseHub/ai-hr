@@ -66,7 +66,7 @@ describe('7b5f18c3 · Hiring Defaults lives in System Settings', () => {
     }
 
     // …and the navigation half. Without it the screen is registered but unreachable.
-    const sidebar = read('components/sidebar.tsx');
+    const sidebar = read('lib/navigation/shell-inventory.ts');
     const node = sidebar.slice(sidebar.indexOf('const SYSTEM_SETTINGS_NODE'));
     const end = node.indexOf('\n};');
     expect(end, 'SYSTEM_SETTINGS_NODE is terminated').toBeGreaterThan(-1);

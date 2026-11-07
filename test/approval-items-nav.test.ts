@@ -28,6 +28,7 @@ const root = fileURLToPath(new URL('..', import.meta.url));
 const read = (rel: string) => readFileSync(root + rel, 'utf8');
 
 const sidebar = read('components/sidebar.tsx');
+const inventory = read('lib/navigation/shell-inventory.ts');
 const flyout = read('components/nav-flyout.tsx');
 const layout = read('app/layout.tsx');
 const actions = read('app/approvals/actions.ts');
@@ -119,7 +120,7 @@ describe('nav rename: "Approvals" → "Approval Items" in every locale', () => {
   it('one rail row serves both Manager and HR Admin, so one label covers both', () => {
     // managerUp:true + the isAdmin||canApprove filter in canSeeChild — a single row, not one per role.
     expect(
-      sidebar.includes(
+      inventory.includes(
         "{ href: '/approvals', labelKey: 'approvals', icon: ListChecks, tour: 'nav-approvals', managerUp: true }",
       ),
     ).toBe(true);

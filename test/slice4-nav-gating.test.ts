@@ -102,7 +102,7 @@ describe('slice 4 — which modules the rail may advertise', () => {
     expect(off, 'fixture resolves a real snapshot').not.toBeNull();
     expect(off).not.toContain('assistant');
     // The sidebar row is owned by this code; without the mapping no entitlement could reach it.
-    const sidebar = fs.readFileSync(path.resolve(__dirname, '../components/sidebar.tsx'), 'utf8');
+    const sidebar = fs.readFileSync(path.resolve(__dirname, '../lib/navigation/shell-inventory.ts'), 'utf8');
     expect(sidebar).toContain("['/assistant', 'assistant']");
   });
 

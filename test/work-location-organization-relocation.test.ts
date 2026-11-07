@@ -123,7 +123,7 @@ const catalog = (loc: string) =>
 
 const HREF = '/admin/work-locations';
 const OLD_HREF = '/admin/locations';
-const SIDEBAR = read('components/sidebar.tsx');
+const SIDEBAR = read('lib/navigation/shell-inventory.ts');
 const PACK = read('packs/attendance/index.ts');
 const LIST_SRC = read('app/admin/work-locations/page.tsx');
 /** r428 — the company's "Work locations" section now lives on the clocking list's CompanyView half. */
