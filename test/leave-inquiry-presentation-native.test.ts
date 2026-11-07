@@ -170,7 +170,7 @@ it('reads only the chosen inquiry identity and keeps a records All frame free of
 
 it('keeps mixed HR/employee company grants distinct and denies stale picker authority before protected queries',async()=>{
  const [otherCompany]=await owner.db.insert(schema.company).values({tenantId:b.tenantId,legalName:'Employee-only company'}).returning();
- const [person]=await owner.db.insert(schema.person).values({tenantId:b.tenantId,fullName:'Own employee in a non-HR company'}).returning();
+ const [person]=await owner.db.insert(schema.person).values({tenantId:b.tenantId,fullName:'Own employee in a non-HR company',primaryEmail:randomUUID()+'@example.invalid'}).returning();
  const [employment]=await owner.db.insert(schema.employment).values({tenantId:b.tenantId,personId:person.id,companyId:otherCompany.id,hiredOn:'2020-01-01'}).returning();
  const [user]=await owner.db.insert(schema.appUser).values({tenantId:b.tenantId,personId:person.id,workosUserId:'leave-picker-'+randomUUID()}).returning();
  const grants=[{role:'hr_admin' as const,companyId:b.companyId},{role:'employee' as const,companyId:otherCompany.id}];
