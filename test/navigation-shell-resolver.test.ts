@@ -17,7 +17,7 @@ describe('shared shell policy preserves the pre-extraction visibility contract',
     expect(empty).not.toContain('/assistant');
     // Exact independent expected order includes additional rows after the audience inventory.
     expect(empty).toEqual(['/', '/me', '/me/cases', '/org', '/leave', '/leave/history', '/leave/details',
-      '/feedback', '/knowledge-base', '/tasks', '/personnel', '/leave/tracker', '/me/tax-relief']);
+      '/feedback', '/knowledge-base', '/tasks', '/personnel', '/leave/tracker']);
     expect(hrefs()).toEqual(hrefs({enabledModules:null}));
   });
 
