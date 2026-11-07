@@ -2,7 +2,7 @@
 
 Date: 7 November 2026
 
-Status: exact source comparison prepared; approval renewal for this repaired fingerprint is pending. This is not a release receipt.
+Status: repository owner approved renewal for the exact repaired fingerprint on 7 November 2026. This is not a release receipt.
 
 ## Exact binding
 
@@ -34,3 +34,11 @@ Repair verification must use failed/affected coverage and the existing impact cl
 ## Staging boundary
 
 The separate PR229 release owner is preparing its authorized staging test window. Preserve the actual `a4bd903840cdae2a94e67d5f57e3b54c9e2a86ac` baseline and epoch-56 arrival lease while that work finishes. No lease recovery, installation, shared-branch advancement, package publication, human acceptance or production deployment is authorized by this binding request. Before AI Centre installation, preserve any newly installed PR229 source and migrations, recheck the exact source binding and use the shared queue.
+
+## Owner approval recorded
+
+After reviewing the linked six-file comparison and exact repaired fingerprint, the repository owner selected:
+
+> Approve repaired fingerprint; continue verification
+
+This renews exactly the same 28 approved source digests to `d4a22c5196d4a7a2dd752d5a76f5d7cffb31894d0efb50623aa0a6c97eec269f`. A reversal comparison proves these literal digest replacements are the only changes to the approval file, and both pending records remain byte-for-byte unchanged. All original reviewer, evidence and review-date fields remain unchanged. Earlier pending-state prose records the pre-approval preparation and is superseded only for this exact binding. This does not authorize production deployment.
