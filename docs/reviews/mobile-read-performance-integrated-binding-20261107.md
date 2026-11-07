@@ -12,4 +12,4 @@ Original full run `42364955955` remains FAIL at its exact source: whole compiler
 
 No staging lease was taken over. Staging build `Q3Pmy99yco3QjWlBO5FE2` independently reported healthy and unstale at UI source `09f4fcb9482dca79177df93fea29039611c40550`; it contains no mobile performance changes. Actual queue admission, final source/build arrival and authenticated mobile timing/functional checks remain required. Production, package publication, stores and Firebase remain excluded.
 
-Owner disposition: pending for this exact combined fingerprint.
+Owner disposition, 7 November 2026: “Approve exact integrated binding refresh”, explicitly naming reviewed merge `3fc161e925d6f230d233db30ffec760222f61b5c` and fingerprint `261d6298b853a76e91fbc494d64d14099cdbca115cafdd47932828daef8f463a`. Applied only to the same 28 approved digest values, preserving every other literal approval byte and both blocked pending records. Production remains excluded.
