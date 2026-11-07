@@ -11,6 +11,8 @@ import {EmployeePanel} from '../components/my-team/employee-panel';
 import {teamSnapshot,teamNavigation} from './fixtures/my-team-ui';
 import {applicationCss} from './helpers/ai-review-screenshots';
 import styles from '../components/leave/inquiry-table.module.css';
+import {CreateEmployeeDialog} from '../app/admin/personnel/create-employee-dialog';
+vi.mock('../app/admin/personnel/new/actions',()=>({createDraftAction:vi.fn(),checkEmployeeCodeAction:vi.fn()}));
 vi.mock('next/navigation',()=>({useRouter:()=>({push:vi.fn(),replace:vi.fn(),refresh:vi.fn()}),useSearchParams:()=>new URLSearchParams()}));
 afterEach(cleanup);
 
@@ -36,7 +38,7 @@ async function verifyLayout(role:string,html:string,table=false){
    await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
    const geometry=await page.evaluate(()=>{
     const dialog=document.querySelector<HTMLElement>('[role="dialog"]');const rect=dialog?.getBoundingClientRect();
-    return {width:innerWidth,pageWidth:document.documentElement.scrollWidth,dialog:rect?{left:rect.left,right:rect.right,top:rect.top,bottom:rect.bottom}:null,buttons:Array.from(document.querySelectorAll<HTMLElement>('[role="dialog"] button')).filter(button=>button.getBoundingClientRect().width>0).map(button=>({name:button.textContent,height:button.getBoundingClientRect().height})),headings:Array.from(document.querySelectorAll('th')).map(th=>({wrap:getComputedStyle(th).whiteSpace,width:th.clientWidth,content:th.scrollWidth}))};
+    return {width:innerWidth,pageWidth:document.documentElement.scrollWidth,dialog:rect?{left:rect.left,right:rect.right,top:rect.top,bottom:rect.bottom}:null,buttons:Array.from(document.querySelectorAll<HTMLElement>('[role="dialog"] button, [data-tour="people-hire"]')).filter(button=>button.getBoundingClientRect().width>0).map(button=>({name:button.textContent,height:button.getBoundingClientRect().height})),headings:Array.from(document.querySelectorAll('th')).map(th=>({wrap:getComputedStyle(th).whiteSpace,width:th.clientWidth,content:th.scrollWidth}))};
    });
    await page.screenshot({path:join(out,`${role}-${device}.png`),fullPage:true});results.push({role,device,...geometry});
    writeFileSync(join(out,`${role}.json`),JSON.stringify({kind:'real-component fixtures; not authenticated role acceptance',results},null,2));
@@ -67,4 +69,11 @@ it('leave inquiry headings wrap within their columns in the actual theme and mod
  const headings=['Employee ID','Employee Name','Company','Department','Leave type','Entitlement Year','Eligible','Earned to Date','Brought Forward','Adjustment','System','Forfeited','Taken','Pending Approval','Available Balance','Explanation'];
  const view=render(<div className="max-w-full overflow-x-auto"><table className={styles.table} data-wrap-headings><thead><tr>{headings.map(heading=><th key={heading}>{heading}</th>)}</tr></thead><tbody><tr>{headings.map((heading,i)=><td key={heading}>{i<5?'Fictional example':'0.00'}</td>)}</tr></tbody></table></div>);
  await verifyLayout('leave-headings',view.container.innerHTML,true);
+},120000);
+
+// The live audit caught a button-styled link missed by button-only geometry checks.
+it('the actual Create new employee link has the shared phone target while preserving its route',async()=>{
+ const view=render(<NextIntlClientProvider locale="en" messages={en}><main><CreateEmployeeDialog triggerLabel="Create new employee" companies={[]} employeeIdRules={{}}/></main></NextIntlClientProvider>);
+ expect(screen.getByRole('link',{name:'Create new employee'})).toHaveAttribute('href','/admin/personnel/new');
+ await verifyLayout('create-employee-target',view.container.innerHTML);
 },120000);
