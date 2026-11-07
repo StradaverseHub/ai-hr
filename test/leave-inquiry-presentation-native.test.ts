@@ -4,7 +4,7 @@ import {eq} from 'drizzle-orm';
 import {afterAll,beforeAll,beforeEach,expect,it} from 'vitest';
 import * as database from '../db/client';
 import * as schema from '../db/schema';
-import {leaveInquiryContext,leaveInquirySnapshot,leaveInquiryBalancePairs,leaveInquiryBalancePairsTx,leaveInquiryRecordsPage} from '../core/leave-inquiry';
+import {leaveInquiryContext,leaveInquirySnapshot,leaveInquiryBalancePairs,leaveInquiryBalancePairsTx,leaveInquiryRecordsPage,readLeaveInquiryPicker,readLeaveInquiryPickerTx} from '../core/leave-inquiry';
 import {listEmployees,leaveBalanceInquiryMembershipTx} from '../core/read';
 import {inquiryBalancePage} from '../app/leave/employee-balances/inquiry-data';
 import {parseInquiryQuery,InquiryQueryError} from '../lib/leave-inquiry-query';
@@ -134,4 +134,55 @@ it('does not mutate canonical rule/ledger state or confer effect authority throu
  await leaveInquiryBalancePairs(ctx,scope,input,'en');expect(await owner.db.select().from(schema.leaveLedger)).toEqual(before);
  await expect(leaveInquirySnapshot(ctx,[b.companyId],input,tx=>tx.update(schema.company).set({legalName:'Must never persist'}).where(eq(schema.company.id,b.companyId)))).rejects.toThrow();
  expect((await owner.db.select().from(schema.company).where(eq(schema.company.id,b.companyId)))[0].legalName).toBe('Acme Sdn Bhd');
+});
+
+
+it('returns bounded exact old picker pages, count, selected and Unicode matching in all six locales',async()=>{
+ const input=query(),scope=await leaveInquiryContext(ctx,[b.companyId],input);
+ const old=scope.employees.map(({terminatedOn,...facts})=>({...facts,status:terminatedOn==null?'active' as const:'ended' as const}));
+ for(const locale of locales){
+  const expected=[...old].sort((a,b)=>a.company.localeCompare(b.company,locale,{sensitivity:'base'})||a.name.localeCompare(b.name,locale,{sensitivity:'base'})||a.employmentId.localeCompare(b.employmentId));
+  const deep=await readLeaveInquiryPicker(ctx,[b.companyId],{offset:100,limit:25,selectedId:ids[0]},locale);
+  expect(deep.total).toBe(124);expect(deep.populationTotal).toBe(124);expect(deep.rows).toEqual(expected.slice(100,125));
+  expect(deep.selected).toEqual(old.find(row=>row.employmentId===ids[0]));expect(JSON.stringify(deep)).not.toContain('primaryEmail');
+  for(const text of ['i','İ','σ','STRASSE','K','人','😀','%','_','\\','NO MATCH']){
+   const needle=text.trim().toLowerCase(),matches=expected.filter(row=>row.name.toLowerCase().includes(needle)||(row.employeeCode??'').toLowerCase().includes(needle));
+   const found=await readLeaveInquiryPicker(ctx,[b.companyId],{query:text,limit:25},locale);
+   expect(found.total).toBe(matches.length);expect(found.rows).toEqual(matches.slice(0,25));
+  }
+ }
+ const none=await readLeaveInquiryPicker(ctx,[],{selectedId:ids[0]},'en');expect(none.total).toBe(0);expect(none.selected).toBeNull();expect(none.rows).toEqual([]);
+ const outside=await readLeaveInquiryPicker(ctx,[b.companyId],{companyId:foreignCompany,selectedId:foreignId},'en');expect(outside.total).toBe(0);expect(outside.selected).toBeNull();
+ for(const filters of [{status:'ended' as const},{departmentId:b.deptB},{status:'active' as const,departmentId:b.deptA}]){
+  const expected=old.filter(row=>(!filters.status||row.status===filters.status)&&(!filters.departmentId||row.departmentId===filters.departmentId));
+  const actual=await readLeaveInquiryPicker(ctx,[b.companyId],filters,'en');expect(actual.total).toBe(expected.length);
+ }
+},120000);
+
+it('reads only the chosen inquiry identity and keeps a records All frame free of workforce DTOs',async()=>{
+ const single=await leaveInquiryContext(ctx,[b.companyId],query({emp:ids[0]}));expect(single.employees).toHaveLength(1);expect(single.selected?.employmentId).toBe(ids[0]);
+ await leaveInquirySnapshot(ctx,[b.companyId],query(),async(tx,scope)=>{
+  expect(scope.employees).toEqual([]);expect(scope.selected).toBeUndefined();
+  const picker=await readLeaveInquiryPickerTx(tx,ctx,scope.companyIds,{offset:100},'en');expect(picker.total).toBe(124);expect(picker.rows).toHaveLength(24);
+ },{selectionOnly:true});
+});
+
+
+it('keeps mixed HR/employee company grants distinct and denies stale picker authority before protected queries',async()=>{
+ const [otherCompany]=await owner.db.insert(schema.company).values({tenantId:b.tenantId,legalName:'Employee-only company'}).returning();
+ const [person]=await owner.db.insert(schema.person).values({tenantId:b.tenantId,fullName:'Own employee in a non-HR company'}).returning();
+ const [employment]=await owner.db.insert(schema.employment).values({tenantId:b.tenantId,personId:person.id,companyId:otherCompany.id,hiredOn:'2020-01-01'}).returning();
+ const [user]=await owner.db.insert(schema.appUser).values({tenantId:b.tenantId,personId:person.id,workosUserId:'leave-picker-'+randomUUID()}).returning();
+ const grants=[{role:'hr_admin' as const,companyId:b.companyId},{role:'employee' as const,companyId:otherCompany.id}];
+ await owner.db.insert(schema.roleAssignment).values(grants.map(grant=>({tenantId:b.tenantId,appUserId:user.id,...grant})));
+ const mixed={...ctx,userId:user.id,personId:person.id,roles:['hr_admin','employee'],grants};
+ const result=await readLeaveInquiryPicker(mixed,[b.companyId,otherCompany.id],{selectedId:employment.id},'en');
+ expect(result.total).toBe(124);expect(result.populationTotal).toBe(124);expect(result.selected).toBeNull();expect(result.companyOptions.map(row=>row.id)).toEqual([b.companyId]);
+ await owner.db.delete(schema.roleAssignment).where(eq(schema.roleAssignment.appUserId,user.id));
+ const debug=database.client.options.debug,reads:string[]=[];database.client.options.debug=(_connection:number,text:string)=>{reads.push(text);};
+ try{
+  await expect(readLeaveInquiryPicker(mixed,[b.companyId,otherCompany.id],{},'en')).rejects.toThrow('Forbidden');
+  expect(reads.filter(text=>/\bfrom\s+"(?:employment|person|company)"/i.test(text))).toEqual([]);
+ }finally{database.client.options.debug=debug;}
+ await expect(database.withTenant(ctx,tx=>readLeaveInquiryPickerTx(tx,ctx,[b.companyId],{},'en'))).rejects.toThrow('Forbidden');
 });

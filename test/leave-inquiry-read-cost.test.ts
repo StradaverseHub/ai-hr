@@ -10,7 +10,7 @@ import {afterAll,beforeAll,expect,it,vi} from 'vitest';
 import * as database from '../db/client';
 import type {SessionContext,Tx} from '../db/client';
 import * as schema from '../db/schema';
-import {leaveInquiryContext,leaveInquiryBalancePairs,leaveInquiryRecordsPage,leaveInquirySnapshot} from '../core/leave-inquiry';
+import {leaveInquiryContext,leaveInquiryBalancePairs,leaveInquiryRecordsPage,leaveInquirySnapshot,readLeaveInquiryPicker,readLeaveInquiryPickerTx,leaveInquiryRecordsPageTx} from '../core/leave-inquiry';
 import {inquiryBalancePage} from '../app/leave/employee-balances/inquiry-data';
 import {hireEmployee} from '../core/org';
 import {parseInquiryQuery,InquiryQueryError} from '../lib/leave-inquiry-query';
@@ -131,7 +131,10 @@ it.skipIf(!requested)('records native snapshot usability while actual Access and
    const writer=owner.client.begin(async tx=>{await tx`select pg_advisory_xact_lock(hashtextextended(${lock+b.tenantId},0))`;entered();await unblock;});
    try{
     await barrier(Promise.race([held,writer.then(()=>{throw Error('Controlled writer ended before the read');})]));phase=lock;const start=performance.now(),query=parseInquiryQuery({emp:hired.employmentId,type:b.annualLeaveTypeId,asOf:today},'balances');
-    const page=await leaveInquirySnapshot(ctx,[b.companyId],query,(tx,scope)=>inquiryBalancePage(ctx,scope,query,'en',query.pq,tx));
+    const page=await leaveInquirySnapshot(ctx,[b.companyId],query,async(tx,scope)=>{
+     const choices=await readLeaveInquiryPickerTx(tx,ctx,scope.companyIds,{selectedId:hired.employmentId},'en');expect(choices.selected?.employmentId).toBe(hired.employmentId);
+     return inquiryBalancePage(ctx,scope,query,'en',query.pq,tx);
+    });
     expect(page.total).toBe(1);expect(page.rows).toHaveLength(1);expect(page.rows[0].employee.employmentId).toBe(hired.employmentId);
     expect(page.rows[0].balance).toBe(10);expect(page.rows[0].available).toBe(9);
     outcomes.push({lock,readFinishedBeforeWriterReleased:true,ms:performance.now()-start});save();
@@ -176,7 +179,13 @@ it.skipIf(!requested)('measures actual 5000-employee context, exact pair paging 
   report.contextBytes=bytes(scope);report.employeeDtoFieldCount=Object.keys(scope.employees[0]).length;
   const selectedQuery=parseInquiryQuery({emp:expectedLast.at(-1),asOf:today},'balances');
   const selected=await measured('context-single',()=>leaveInquiryContext(ctx,[b.companyId],selectedQuery));
-  expect(selected.selected?.employmentId).toBe(expectedLast.at(-1));expect(selected.employees).toHaveLength(5000);report.selectedContextBytes=bytes(selected);save();
+  expect(selected.selected?.employmentId).toBe(expectedLast.at(-1));expect(selected.employees).toHaveLength(1);report.selectedContextBytes=bytes(selected);save();
+  const pickerFirst=await measured('picker-first',()=>readLeaveInquiryPicker(ctx,[b.companyId],{},'en'));
+  expect(pickerFirst.total).toBe(5000);expect(pickerFirst.populationTotal).toBe(5000);expect(pickerFirst.rows.map(row=>row.employmentId)).toEqual(expectedFirst);report.pickerFirstBytes=bytes(pickerFirst);expect(bytes(pickerFirst)).toBeLessThan(50000);
+  const pickerDeep=await measured('picker-deep',()=>readLeaveInquiryPicker(ctx,[b.companyId],{offset:4975,limit:25},'en'));
+  expect(pickerDeep.total).toBe(5000);expect(pickerDeep.rows.map(row=>row.employmentId)).toEqual(expectedLast);
+  const pickerSearch=await measured('picker-search',()=>readLeaveInquiryPicker(ctx,[b.companyId],{query:'PERF000005000',selectedId:expectedLast.at(-1)},'en'));
+  expect(pickerSearch.total).toBe(1);expect(pickerSearch.rows[0]?.employmentId).toBe(expectedLast.at(-1));expect(pickerSearch.selected?.employmentId).toBe(expectedLast.at(-1));report.pickerSearchBytes=bytes(pickerSearch);
   const first=await measured('balance-pairs-first',()=>leaveInquiryBalancePairs(ctx,scope,query,'en'));
   expect(first.total).toBe(40000);expect(first.rows).toHaveLength(50);
   const expected=expectedFirst.slice(0,7).flatMap(employmentId=>types.map(type=>({employmentId,leaveTypeId:type.id,code:type.code})));
@@ -186,6 +195,12 @@ it.skipIf(!requested)('measures actual 5000-employee context, exact pair paging 
   expect(deep.total).toBe(40000);expect(deep.rows).toHaveLength(50);expect(deep.rows.at(-1)?.employee.employmentId).toBe(expectedLast.at(-1));
   const recordQuery=parseInquiryQuery({asOf:today},'records'),recordsScope=await measured('records-context',()=>leaveInquiryContext(ctx,[b.companyId],recordQuery));
   const records=await measured('records-page',()=>leaveInquiryRecordsPage(ctx,recordsScope,recordQuery));expect(records).toEqual({rows:[],total:0});
+  const recordsFrame=await measured('records-presentation-frame',()=>leaveInquirySnapshot(ctx,[b.companyId],recordQuery,async(tx,owned)=>{
+   expect(owned.employees).toEqual([]);
+   const picker=await readLeaveInquiryPickerTx(tx,ctx,owned.companyIds,{},'en'),page=await leaveInquiryRecordsPageTx(tx,ctx,owned,recordQuery);
+   return {picker,page};
+  },{selectionOnly:true}));
+  expect(recordsFrame.picker.total).toBe(5000);expect(recordsFrame.page).toEqual({rows:[],total:0});report.recordsFrameBytes=bytes(recordsFrame);
   const hydrated=await measured('snapshot-selected-hydration',()=>leaveInquirySnapshot(ctx,[b.companyId],selectedQuery,(tx,owned)=>inquiryBalancePage(ctx,owned,selectedQuery,'en',selectedQuery.pq,tx)));
   expect(hydrated.total).toBe(8);expect(hydrated.rows).toHaveLength(8);expect(hydrated.rows.every(row=>row.employee.employmentId===expectedLast.at(-1))).toBe(true);
   report.hydratedSelectedBytes=bytes(hydrated);report.complete=true;report.phase='complete';save();

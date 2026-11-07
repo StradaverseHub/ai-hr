@@ -27,6 +27,7 @@ vi.mock('../core/leave',()=>({todayInKualaLumpur:()=> '2026-10-17'}));
 vi.mock('../core/ess-view',()=>({isReplacementLeaveType:()=>false}));
 vi.mock('../packs/leave/service',()=>({
   leaveInquirySnapshot:async(_session:unknown,_scope:unknown,query:{emp?:string},read:(tx:unknown,scope:unknown)=>Promise<unknown>)=>read({}, {employees:people,selected:people.find(person=>person.employmentId===query.emp),companies:[{id:'company',name:'Inquiry Company'}]}),
+  readLeaveInquiryPickerTx:async(_tx:unknown,_session:unknown,_scope:unknown,input:{selectedId?:string})=>({contextId:'fixture',rows:people.map(({terminatedOn,...row})=>({...row,status:'active'})),selected:people.find(row=>row.employmentId===input.selectedId)??null,total:people.length,populationTotal:people.length,offset:0,limit:25,filters:{query:'',companyId:'',businessUnitId:'',departmentId:'',status:''},labelMode:'names',companyOptions:[{id:'company',name:'Inquiry Company'}],businessUnitOptions:[],departmentOptions:[{id:'department',name:'People'}],allDepartmentOptions:[{id:'department',name:'People'}]}),
   leaveInquiryRecordsPageTx:async()=>({rows:[],total:0}),
   replacementRequestAvailability:async()=>({allowed:false}),
   listEntitlementRecalcAudit:historyReads,

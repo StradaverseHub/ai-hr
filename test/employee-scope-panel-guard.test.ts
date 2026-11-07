@@ -735,10 +735,12 @@ describe('r168a — an out-of-scope ?employmentId= selects NOTHING on every scre
       expect(findByType(none, EmployeeScopePanel)[0].props.allowAll).toBe(true);
       expect(findByType(none, EmployeeScopePanel)[0].props.resetToAll).toBe(true);
       // …and the screen really does hold somebody it COULD have fallen back to, so the case is not vacuous.
-      const offered: string[] = findByType(none, EmployeeScopePanel)[0].props.employees.map(
+      const offered: string[] = findByType(none, EmployeeScopePanel)[0].props.remote.initial.rows.map(
         (e: { employmentId: string }) => e.employmentId,
       );
-      expect(offered.length, 'the panel is offering employees, so a fallback was available').toBeGreaterThan(0);
+      expect(findByType(none, EmployeeScopePanel)[0].props.remote.endpoint).toBe('/api/leave/inquiry/employees');
+      expect(findByType(none, EmployeeScopePanel)[0].props.remote.initial.total).toBeGreaterThan(0);
+      expect(offered.length, 'the bounded first page offers employees, so a fallback was available').toBeGreaterThan(0);
       expect(offered).toContain(mine.employmentId);
       expect(offered, 'a cross-company employee must not be offered').not.toContain(foreign.employmentId);
       // Every row offered must survive the page's own guard — proved by feeding each back in.

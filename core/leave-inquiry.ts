@@ -1,9 +1,14 @@
 /** Authorized inquiry selection/count/page contract. Leave calculations remain in the Leave owner. */
 import {sql} from 'drizzle-orm';
+import {randomUUID} from 'node:crypto';
+import {sortInquiryEmployees} from '../lib/leave-inquiry';
+import {matchesLeaveInquiryPicker,normalizeLeaveInquiryPicker} from '../lib/leave-inquiry-picker';
+import {organisationFilterChoices} from '../lib/organisation-choice-label';
+import type {EmployeeChoice,EmployeeChoiceInput,EmployeeChoicePage} from '../lib/employee-choice';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { isAdmin } from '../lib/authz-model';
 import { InquiryQueryError, type InquiryQuery } from '../lib/leave-inquiry-query';
-import { adminCompanies, adminCompaniesTx, listLeaveInquiryEmployeesTx, createLeaveInquiryMembershipReaderTx, listLeaveRequestsPageTx, type LeaveInquiryEmployee } from './read';
+import { adminCompanies, adminCompaniesTx, listLeaveInquiryEmployeesTx, createLeaveInquiryMembershipReaderTx, listLeaveRequestsPageTx, type LeaveInquiryEmployee, listLeaveInquiryPickerIdentitiesTx,leaveInquiryPickerFacetsTx,leaveInquiryPickerDisplayRowsTx } from './read';
 import {isAiPresentationPrincipalCurrentTx,isAiPrincipalCurrentTx} from './ai-principal';
 import {boundPersonnelStatementTx} from './personnel-read-bounds';
 
@@ -29,12 +34,12 @@ export async function leaveInquiryContext(ctx: SessionContext, selectedCompanyId
   const session=captureSession(ctx),companyIds=selectedCompanyIds.slice(),captured=structuredClone(query);
   return withTenant(session, tx => leaveInquiryContextTx(tx,session,companyIds,captured,ctx),{readOnlySnapshot:true});
 }
-async function leaveInquiryContextTx(tx: Tx, ctx: SessionContext, selectedCompanyIds: string[], query: InquiryQuery,actor:SessionContext): Promise<LeaveInquiryContext> {
+async function leaveInquiryContextTx(tx: Tx, ctx: SessionContext, selectedCompanyIds: string[], query: InquiryQuery,actor:SessionContext,selectionOnly=false): Promise<LeaveInquiryContext> {
   await assertInquiryPrincipalTx(tx,ctx);
   const companies = (await adminCompaniesTx(tx)).filter(c => selectedCompanyIds.includes(c.id));
   const companyIds = companies.map(c => c.id);
   // Empty company fences must never reach legacy optional-scope reads, where [] means no restriction.
-  const employees = companyIds.length ? await listLeaveInquiryEmployeesTx(ctx,tx,companyIds) : [];
+  const employees = companyIds.length ? await listLeaveInquiryEmployeesTx(ctx,tx,companyIds,query.emp?[query.emp]:selectionOnly?[]:undefined) : [];
   const selected = query.emp ? employees.find(e => e.employmentId === query.emp) : undefined;
   if (query.emp && !selected) throw new InquiryQueryError('Employee is unavailable in the selected companies');
   const result = { companies, companyIds, employees, selected };
@@ -47,9 +52,9 @@ function authorizedScope(ctx: SessionContext, scope: LeaveInquiryContext, query:
   return verified.snapshot;
 }
 /** One explicit snapshot owns authorization, membership and every canonical hydration read in a file. */
-export async function leaveInquirySnapshot<T>(ctx: SessionContext, companyIds: string[], query: InquiryQuery, read: (tx: Tx, scope: LeaveInquiryContext) => Promise<T>): Promise<T> {
-  const session=captureSession(ctx),ids=companyIds.slice(),captured=structuredClone(query);
-  return withTenant(session, async tx => read(tx, await leaveInquiryContextTx(tx,session,ids,captured,ctx)), { readOnlySnapshot: true });
+export async function leaveInquirySnapshot<T>(ctx: SessionContext, companyIds: string[], query: InquiryQuery, read: (tx: Tx, scope: LeaveInquiryContext) => Promise<T>,options:{selectionOnly?:boolean}={}): Promise<T> {
+  const session=captureSession(ctx),ids=companyIds.slice(),captured=structuredClone(query),selectionOnly=options.selectionOnly===true;
+  return withTenant(session, async tx => read(tx, await leaveInquiryContextTx(tx,session,ids,captured,ctx,selectionOnly)), { readOnlySnapshot: true });
 }
 /** A previously displayed context carries selection intent, not authority for a
  * later read. Re-admit its original company selection in the new owned snapshot. */
@@ -137,4 +142,46 @@ export async function collectInquiryExport<T>(read: (window: { limit: number; of
   }
   if (rows.length !== first.total) throw new InquiryQueryError('Results changed during export. Try again.');
   return rows;
+}
+
+
+export type LeaveInquiryPickerPage=EmployeeChoicePage&{populationTotal:number};
+const pickerChoice=(row:LeaveInquiryEmployee):EmployeeChoice=>{
+ const {terminatedOn,...facts}=row;return {...facts,status:terminatedOn==null?'active':'ended'};
+};
+/** Read-only navigation facts; the inquiry/command owner still admits every destination. */
+export async function readLeaveInquiryPicker(ctx:SessionContext,companyIds:readonly string[],input:EmployeeChoiceInput,locale:string,signal?:AbortSignal):Promise<LeaveInquiryPickerPage>{
+ const session=captureSession(ctx),ids=companyIds.slice(),captured=structuredClone(input);
+ return withTenant(session,tx=>readLeaveInquiryPickerTx(tx,session,ids,captured,locale,signal),{readOnlySnapshot:true,readSignal:signal});
+}
+export async function readLeaveInquiryPickerTx(tx:Tx,ctx:SessionContext,companyIds:readonly string[],input:EmployeeChoiceInput,locale:string,signal?:AbortSignal):Promise<LeaveInquiryPickerPage>{
+ ctx=captureSession(ctx);companyIds=companyIds.slice();input=structuredClone(input);
+ const {filters,offset,limit,selectedId}=normalizeLeaveInquiryPicker(input);
+ signal?.throwIfAborted();
+ const [carrier]=await tx.execute<{snapshot:boolean}>(sql`select current_setting('transaction_isolation')='repeatable read' and current_setting('transaction_read_only')='on' as snapshot`);
+ if(carrier?.snapshot!==true)throw new InquiryQueryError('Forbidden');
+ await assertInquiryPrincipalTx(tx,ctx);signal?.throwIfAborted();
+ const admitted=(await adminCompaniesTx(tx)).filter(company=>companyIds.includes(company.id)).map(company=>company.id);
+ const candidates=await listLeaveInquiryPickerIdentitiesTx(ctx,tx,admitted,filters);signal?.throwIfAborted();
+ const matches=sortInquiryEmployees(candidates.filter(row=>matchesLeaveInquiryPicker(row,filters.query)),locale);
+ const identities=matches.slice(offset,offset+limit);
+ const display=await leaveInquiryPickerDisplayRowsTx(ctx,tx,admitted,identities);signal?.throwIfAborted();
+ const byIdentity=new Map(display.map(row=>[row.employmentId+'|'+(row.assignmentId??''),row]));
+ const rows=identities.map(identity=>{
+  const row=byIdentity.get(identity.employmentId+'|'+(identity.assignmentId??''));
+  if(!row)throw new Error('Leave picker identity changed inside its read-only snapshot');
+  const {assignmentId,...facts}=row;return pickerChoice(facts);
+ });
+ const selected=selectedId?(await listLeaveInquiryEmployeesTx(ctx,tx,admitted,[selectedId]))[0]:undefined;
+ signal?.throwIfAborted();const facets=await leaveInquiryPickerFacetsTx(ctx,tx,admitted);signal?.throwIfAborted();
+ const inCompany=filters.companyId?facets.rows.filter(row=>row.companyId===filters.companyId):facets.rows;
+ const companies=new Map(facets.rows.map(row=>[row.companyId,row.company]));
+ return {contextId:randomUUID(),rows,selected:selected?pickerChoice(selected):null,total:matches.length,populationTotal:facets.populationTotal,offset,limit,filters,labelMode:'names',
+  companyOptions:[...companies].map(([id,name])=>({id,name})).sort((a,b)=>a.name.localeCompare(b.name)),
+  businessUnitOptions:organisationFilterChoices(inCompany.map(row=>({id:row.businessUnitId,name:row.businessUnit}))),
+  departmentOptions:organisationFilterChoices(inCompany.map(row=>({id:row.departmentId,name:row.department}))),
+  // The financial filter has always retained represented IDs with an unavailable
+  // name as an em dash. Picker dropdowns separately keep their shared display labels.
+  allDepartmentOptions:[...new Map(facets.rows.filter(row=>row.departmentId).map(row=>[row.departmentId!,{id:row.departmentId!,name:row.department??'—'}])).values()].sort((a,b)=>a.name.localeCompare(b.name)),
+ };
 }
