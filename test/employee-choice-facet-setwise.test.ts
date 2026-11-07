@@ -44,6 +44,10 @@ it('preserves complete unfiltered native facets, NULLs, historical pairs, labels
  }
  const all=await readEmployeeChoices(f.ctx,{companyIds:[],labelMode:'labels'});
  expect(all.total).toBe(6);expect(all.rows.map(r=>r.employmentId)).not.toContain(f.hiddenEmployment);
+ expect(all.rows.find(r=>r.employmentId===f.nullEmployment)).toMatchObject({departmentId:null,businessUnitId:null});
+ const [native]=await owner.client`select (select attnotnull from pg_attribute where attrelid='public.assignment'::regclass and attname='department_id') as required,
+  (select count(*)::int from public.assignment where employment_id=${f.nullEmployment}::uuid and valid_to is null and superseded_at is null) as current`;
+ expect(native).toEqual({required:true,current:0});
  expect(all.allDepartmentOptions.map(r=>r.name)).toEqual(['Shared department (D-A)','Shared department (D-B)','Shared department (D-END)']);
  expect(all.businessUnitOptions.map(r=>r.name)).toEqual(['Shared unit (U-A)','Shared unit (U-END)']);
  const transferred=await readEmployeeChoices(f.ctx,{companyIds:[],companyId:f.otherCompany,labelMode:'labels',selectedId:f.transferred.id});
