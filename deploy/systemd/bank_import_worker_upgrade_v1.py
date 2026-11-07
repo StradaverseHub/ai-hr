@@ -5,6 +5,7 @@ Drain before web installation; activate only after exact web source/build arriva
 import argparse
 import fcntl
 import hashlib
+from http.client import HTTPConnection
 import json
 import os
 from pathlib import Path
@@ -18,6 +19,23 @@ import time
 
 def digest(raw):
     return hashlib.sha256(raw).hexdigest()
+
+
+def healthy_web_state(base, source, build):
+    """Current service and bounded native DB health, bracketed by exact deployment identity."""
+    state = base.deployment_state(source, build)
+    base.command(['/usr/bin/systemctl', 'is-active', '--quiet', 'aihr'])
+    connection = HTTPConnection('127.0.0.1', 3000, timeout=8)
+    try:
+        connection.request('GET', '/health', headers={'Connection': 'close'})
+        response = connection.getresponse()
+        raw = response.read(4097)
+        base.check(response.status == 200 and len(raw) <= 4096 and json.loads(raw) == {'status': 'ok'}, 'current web health is not confirmed')
+    finally:
+        connection.close()
+    base.check(base.deployment_state(source, build) == state, 'web identity changed during health verification')
+    base.command(['/usr/bin/systemctl', 'is-active', '--quiet', 'aihr'])
+    return state
 
 
 def properties(base):
@@ -192,7 +210,7 @@ def upgrade(argv, fmt, base):
         identity = {name: getattr(args, name) for name in ('previous_web_source', 'previous_web_build', 'previous_worker_source', 'source', 'build_id',
                     'archive_sha256', 'lock_sha256', 'package_sha256', 'unit_sha256', 'worker_env_sha256')}
         if args.phase == 'drain':
-            state = base.deployment_state(args.previous_web_source, args.previous_web_build)
+            state = healthy_web_state(base, args.previous_web_source, args.previous_web_build)
             report = validate_existing(base, args.previous_worker_source, args.unit_sha256, args.worker_env_sha256)
             base.check(not operation.exists() and not operation.is_symlink(), 'existing update attempt needs separate recovery review')
             operation.mkdir(mode=0o700)
@@ -201,7 +219,7 @@ def upgrade(argv, fmt, base):
             staged = operation / 'release'
             staged.mkdir(mode=0o700)
             manifest = fmt.extract_archive(archive, staged, args.source, args.lock_sha256, args.package_sha256)
-            base.check(base.deployment_state(args.previous_web_source, args.previous_web_build) == state, 'web baseline changed before drain')
+            base.check(healthy_web_state(base, args.previous_web_source, args.previous_web_build) == state, 'web baseline changed before drain')
             base.check(validate_existing(base, args.previous_worker_source, args.unit_sha256, args.worker_env_sha256) == report, 'worker changed during preparation')
             result = drain(base, report, args.previous_worker_source)
             base.write_new(operation / 'drained.json', fmt.canonical({'identity': identity, 'manifestSha256': fmt.digest(fmt.canonical(manifest)), 'drain': result}), 0o400)
@@ -211,8 +229,7 @@ def upgrade(argv, fmt, base):
         base.root_protected(operation / 'drained.json', regular=True)
         record = json.loads(base.read_bounded(operation / 'drained.json', 65536))
         base.check(record.get('identity') == identity and record.get('drain', {}).get('state') == 'drained', 'exact drain record required')
-        state = base.deployment_state(args.source, args.build_id)
-        base.command(['/usr/bin/systemctl', 'is-active', '--quiet', 'aihr'])
+        state = healthy_web_state(base, args.source, args.build_id)
         report = validate_existing(base, args.previous_worker_source, args.unit_sha256, args.worker_env_sha256)
         base.check(report.get('MainPID') == '0' and report.get('ActiveState') == 'inactive', 'prior worker is not drained')
         archive = operation / 'authenticated-worker.zip'
@@ -233,7 +250,7 @@ def upgrade(argv, fmt, base):
         base.root_protected(release.parent)
         base.check(not release.exists() and not release.is_symlink(), 'immutable destination already exists')
         os.rename(staged, release)
-        base.check(base.deployment_state(args.source, args.build_id) == state, 'web changed before activation')
+        base.check(healthy_web_state(base, args.source, args.build_id) == state, 'web changed before activation')
         try:
             atomic_unit(base, base.service_unit(args.source).encode(), args.unit_sha256)
             base.command(['/usr/bin/systemctl', 'daemon-reload'])
@@ -248,7 +265,7 @@ def upgrade(argv, fmt, base):
                 pid = validate_process(base, report, args.source)
                 base.check(stable_pid in (None, pid), 'updated worker PID changed')
                 stable_pid = pid
-            base.check(base.deployment_state(args.source, args.build_id) == state, 'web changed before worker acceptance')
+            base.check(healthy_web_state(base, args.source, args.build_id) == state, 'web changed before worker acceptance')
             base.check(digest(base.read_bounded(base.ENV, 1024**2)) == args.worker_env_sha256, 'worker environment changed during activation')
             accepted = {'source': args.source, 'webBuildId': args.build_id, 'archiveSha256': args.archive_sha256,
                         'manifestSha256': record['manifestSha256'], 'selectedEnvironmentSha256': args.worker_env_sha256,

@@ -118,6 +118,7 @@ class UpgradeFlowFixture:
     """Real temporary files; deterministic systemd/proc/privilege adapters only."""
     def __init__(self,root,previous_web=None):
         self.root=root;self.events=[];self.fault=None;self.used_fault=False
+        self.web_active=True;self.health_status=200;self.health_body=b'{"status":"ok"}\n'
         self.previous_worker='1'*40;self.previous_web=previous_web or self.previous_worker
         self.source='2'*40;self.old_build='old-build';self.new_build='new-build';self.web=self.previous_web
         self.app=root/'app';self.app.mkdir();(self.app/'releases').mkdir()
@@ -153,10 +154,19 @@ class UpgradeFlowFixture:
     def snapshot(self,source,target,expected,limit):
         raw=Path(source).read_bytes();check(update.digest(raw)==expected,'archive digest differs');self.events.append('authenticate-archive');Path(target).write_bytes(raw)
     def extract(self,archive,destination,*_):
-        self.events.append('extract');(Path(destination)/'package.json').write_text('fictional package');return self.manifest
+        self.events.append('extract');(Path(destination)/'package.json').write_text('fictional package')
+        if self.fault=='prepare-web-stopped':self.web_active=False
+        return self.manifest
+    def health_connection(self,host,port,timeout):
+        check((host,port,timeout)==('127.0.0.1',3000,8),'unexpected health target')
+        def request(method,path,headers):
+            check((method,path,headers)==('GET','/health',{'Connection':'close'}),'unexpected health request')
+            self.events.append('web-health')
+        return SimpleNamespace(request=request,getresponse=lambda:SimpleNamespace(status=self.health_status,read=lambda limit:self.health_body[:limit]),close=lambda:None)
     def command(self,argv):
         self.events.append(list(argv))
         if argv==[str(self.node),'--version']:return SimpleNamespace(stdout='v22.23.3\n')
+        if argv==['/usr/bin/systemctl','is-active','--quiet','aihr']:check(self.web_active,'web service inactive')
         if 'daemon-reload' in argv:
             if self.fault=='reload' and not self.used_fault:self.used_fault=True;raise OSError('fictional reload failure')
             quarantine='SendSIGKILL=no' in self.unit.read_text()
@@ -185,6 +195,7 @@ class UpgradeFlowFixture:
             stack.enter_context(patch.object(update.os,'geteuid',return_value=0))
             stack.enter_context(patch.object(update.os,'fstat',side_effect=root_lock))
             stack.enter_context(patch.object(update,'properties',side_effect=lambda _:dict(self.report)))
+            stack.enter_context(patch.object(update,'HTTPConnection',side_effect=self.health_connection))
             stack.enter_context(patch.object(update,'validate_process',side_effect=lambda _,report,source:int(report['MainPID'])))
             stack.enter_context(patch.object(update.time,'sleep'))
             update.upgrade(self.args(phase,overrides),self.fmt,self.base)
@@ -224,6 +235,18 @@ class WorkerUpgradeFlowTests(unittest.TestCase):
                 self.assertFalse(f.operation.exists())
                 self.assertFalse(any(isinstance(event,list) and 'kill' in event for event in f.events))
                 self.assertEqual(f.unit.read_text(),f.service_unit(f.previous_worker))
+    def test_matching_deployment_records_do_not_allow_drain_with_unhealthy_web(self):
+        for defect in ['stopped','unhealthy','wrong-body','oversize','changes-after-extract']:
+            with self.subTest(defect=defect),tempfile.TemporaryDirectory() as tmp:
+                f=UpgradeFlowFixture(Path(tmp),previous_web='3'*40)
+                if defect=='stopped':f.web_active=False
+                if defect=='unhealthy':f.health_status=503
+                if defect=='wrong-body':f.health_body=b'{"status":"unhealthy"}'
+                if defect=='oversize':f.health_body=b' '*4097
+                if defect=='changes-after-extract':f.fault='prepare-web-stopped'
+                with self.assertRaises(ValueError):f.invoke('drain')
+                self.assertFalse(any(isinstance(event,list) and 'kill' in event for event in f.events))
+                self.assertEqual(f.unit.read_text(),f.service_unit(f.previous_worker));self.assertEqual(f.report['ActiveState'],'active')
     def test_bad_archive_refuses_before_signalling_or_unit_mutation(self):
         with tempfile.TemporaryDirectory() as tmp:
             f=UpgradeFlowFixture(Path(tmp));f.base.snapshot_archive=lambda *_:check(False,'archive digest differs')
@@ -238,10 +261,11 @@ class WorkerUpgradeFlowTests(unittest.TestCase):
                 with self.assertRaises(ValueError):f.invoke('drain')
                 self.assertFalse(f.operation.exists());self.assertFalse(any(isinstance(event,list) and 'kill' in event for event in f.events))
     def test_activate_refuses_wrong_web_or_drain_record_before_unit_change(self):
-        for defect in ['web','build','drain-web','drain-worker']:
+        for defect in ['web','web-health','build','drain-web','drain-worker']:
             with self.subTest(defect=defect),tempfile.TemporaryDirectory() as tmp:
                 f=UpgradeFlowFixture(Path(tmp));f.invoke('drain')
-                if defect!='web':
+                if defect=='web-health':f.web=f.source;f.health_status=503
+                elif defect!='web':
                     key={'build':'build_id','drain-web':'previous_web_source','drain-worker':'previous_worker_source'}[defect]
                     record=json.loads((f.operation/'drained.json').read_text());record['identity'][key]='foreign';(f.operation/'drained.json').chmod(0o600);(f.operation/'drained.json').write_text(json.dumps(record));(f.operation/'drained.json').chmod(0o400);f.web=f.source
                 with self.assertRaises(ValueError):f.invoke('activate')

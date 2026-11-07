@@ -106,7 +106,10 @@ authority. Production is not supported or authorized by this helper.
    Review and hash-pin those bytes independently, copy to a new root-protected path,
    verify that hash there, and invoke with `python3 -I -B`. Never import root-executed
    code from the web-writable checkout or use the first-install helper for updates.
-3. `drain` requires the exact healthy previous web source/build. It snapshots and
+3. `drain` requires the exact healthy previous web source/build. It verifies the
+   live `aihr` service and bounded loopback `/health` database probe, bracketed by
+   unchanged deployment records, both before preparation and immediately before
+   signalling. It snapshots and
    authenticates the new package before signalling the managed worker's main process
    with SIGTERM. The existing runner finishes its current Bank and Individual import
    tick and exits normally. A 330-second observation deadline **never escalates to
