@@ -1,7 +1,22 @@
 -- UNNUMBERED ISOLATED-CI PROTOTYPE ONLY. No worker projection or installer.
 -- Execute atomically as the existing public relation owner in a disposable worker DB.
+-- Independent exact harness binding, deliberately before owner/schema checks.
+-- The sole source is test/db-names.ts: optional normalized namespace precedes poolId.
+DO $database$
+DECLARE namespace text:=current_setting('aihr.notification_fixture.namespace',true);
+ pool_id text:=current_setting('aihr.notification_fixture.pool_id',true);
+ expected text;normalised text;
+BEGIN
+ IF namespace IS NULL OR pool_id IS NULL OR pool_id !~ '^[1-9][0-9]*$'
+ OR length(namespace)>20 OR (namespace<>'' AND namespace !~ '^_?[a-z0-9][a-z0-9_]*$') THEN
+  RAISE EXCEPTION 'Canonical isolated notification worker binding required' USING ERRCODE='55000';END IF;
+ normalised:=CASE WHEN namespace='' THEN '' WHEN left(namespace,1)='_' THEN namespace ELSE '_'||namespace END;
+ expected:='ai_hr_test_w'||normalised||pool_id;
+ IF current_database() IS DISTINCT FROM expected OR expected IS DISTINCT FROM current_setting('aihr.notification_fixture.database',true) THEN
+  RAISE EXCEPTION 'Exact canonical notification worker database required' USING ERRCODE='55000';END IF;
+END $database$;
 DO $gate$ BEGIN
- IF current_database() !~ '^ai_hr_test_w[0-9]+(_[a-z0-9_]+)?$'
+ IF current_database() IS DISTINCT FROM current_setting('aihr.notification_fixture.database',true)
  OR current_user::regrole::oid IS DISTINCT FROM (SELECT relowner FROM pg_class WHERE oid='public.job_run'::regclass)
  OR current_user::regrole::oid IS DISTINCT FROM (SELECT relowner FROM pg_class WHERE oid='public.domain_event'::regclass)
  OR EXISTS(SELECT 1 FROM pg_class WHERE oid IN('public.tenant'::regclass,'public.tenant_module'::regclass,'public.company'::regclass,'public.notification_event_processing'::regclass)
