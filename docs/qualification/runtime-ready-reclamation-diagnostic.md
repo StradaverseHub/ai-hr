@@ -14,3 +14,10 @@ process commands or source contents. The temporary observer always calls the
 original require function and restores it; no production process or controller
 source changes. Keep the original immediate assertion and all budgets until the
 cause is established. No native PASS, port-release relaxation or deployment claim.
+
+The first diagnostic run42388128385 did not reach that observer: its call referenced
+a local profile assigned only in a later fixture phase. The paired protocol run
+42388134954 passed. Resolve the same protected profile explicitly at the diagnostic
+call site; no controller, enforcement, assertion or deadline changes. Retain this
+wiring failure and rerun only the native fixture. The underlying reclamation cause
+remains unproven until that observer actually executes.

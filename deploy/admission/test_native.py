@@ -680,7 +680,7 @@ assert cache.read_text()=='fictional writable application cache'
     controller('reconcile')
     reclamation = inventory()['generations'][first['generation']]
     if reclamation['phase'] != 'RELEASED':
-        report['generationReclamationFailure'] = reclamation_diagnostic(profile, reclamation)
+        report['generationReclamationFailure'] = reclamation_diagnostic(C.Profile(C.PROFILE), reclamation)
         save()
     assert reclamation['phase'] == 'RELEASED'
     report['drainRetainedProcessOnExpiry'] = True
