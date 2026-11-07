@@ -11,6 +11,7 @@ from pathlib import Path
 import pwd
 import re
 import stat
+import sys
 import tempfile
 import time
 
@@ -20,7 +21,7 @@ def digest(raw):
 
 
 def properties(base):
-    fields = ['Restart', 'NeedDaemonReload', 'ExecStart', 'Result', 'ExecMainCode', 'ExecMainStatus']
+    fields = ['Restart', 'NeedDaemonReload', 'ExecStart', 'Result', 'ExecMainCode', 'ExecMainStatus', 'SendSIGKILL', 'UnitFileState']
     extra = base.command(['/usr/bin/systemctl', 'show', 'aihr-bank-import.service', '--no-pager',
                           *['--property=' + field for field in fields]]).stdout
     return {**base.service_properties(), **dict(line.split('=', 1) for line in extra.splitlines() if '=' in line)}
@@ -105,6 +106,46 @@ def atomic_unit(base, raw, expected_prior):
             os.unlink(name)
 
 
+def quiesce_failed_activation(base, operation, source):
+    """Quarantine only this updater's exact candidate unit; never restore an old worker.
+    Persist failure evidence, prevent automatic starts, and drain without forced termination.
+    If any protection cannot be established, report uncertainty and require administrator recovery.
+    """
+    result = {'source': source, 'accepted': False, 'stopped': False, 'disabled': False, 'forcedKill': False}
+    candidate = base.service_unit(source).encode()
+    try:
+        base.write_new(operation / 'activation-failed.json', json.dumps(result, sort_keys=True).encode(), 0o400)
+    except Exception:
+        result['failureRecordUnavailable'] = True
+    try:
+        quarantine = base.service_unit(source).replace('Restart=on-failure\n', 'Restart=no\nSendSIGKILL=no\n').encode()
+        atomic_unit(base, quarantine, digest(candidate))
+        base.command(['/usr/bin/systemctl', 'daemon-reload'])
+        report = properties(base)
+        base.validate_service(report, base.ROOT / 'releases' / source)
+        base.check(report.get('Restart') == 'no' and report.get('SendSIGKILL') == 'no' and
+                   report.get('NeedDaemonReload') == 'no', 'failure quarantine is not loaded; do not arm a timed stop')
+        base.command(['/usr/bin/systemctl', 'disable', 'aihr-bank-import.service'])
+        base.command(['/usr/bin/systemctl', 'stop', '--no-block', 'aihr-bank-import.service'])
+        deadline = time.monotonic() + 330
+        while time.monotonic() < deadline:
+            report = properties(base)
+            base.validate_service(report, base.ROOT / 'releases' / source)
+            base.check(report.get('Restart') == 'no' and report.get('SendSIGKILL') == 'no', 'failure quarantine changed')
+            result['disabled'] = report.get('UnitFileState') == 'disabled'
+            if report.get('MainPID') == '0' and report.get('ActiveState') in ('inactive', 'failed') and result['disabled']:
+                result['stopped'] = True
+                break
+            time.sleep(2)
+    except Exception:
+        result['quiescenceUnconfirmed'] = True
+    try:
+        base.write_new(operation / 'activation-failure-observation.json', json.dumps(result, sort_keys=True).encode(), 0o400)
+    except Exception:
+        result['observationUnavailable'] = True
+    return result
+
+
 def upgrade(argv, fmt, base):
     parser = argparse.ArgumentParser()
     parser.add_argument('phase', choices=['drain', 'activate'])
@@ -179,27 +220,34 @@ def upgrade(argv, fmt, base):
         base.check(not release.exists() and not release.is_symlink(), 'immutable destination already exists')
         os.rename(staged, release)
         base.check(base.deployment_state(args.source, args.build_id) == state, 'web changed before activation')
-        atomic_unit(base, base.service_unit(args.source).encode(), args.unit_sha256)
-        base.command(['/usr/bin/systemctl', 'daemon-reload'])
-        base.validate_service(properties(base), release)
-        base.command(['/usr/bin/systemctl', 'start', 'aihr-bank-import.service'])
-        stable_pid = None
-        for _ in range(3):
-            time.sleep(4)
-            report = properties(base)
-            base.validate_service(report, release)
-            base.check(report.get('NRestarts') == '0' and report.get('NeedDaemonReload') == 'no', 'updated service is not stable')
-            pid = validate_process(base, report, args.source)
-            base.check(stable_pid in (None, pid), 'updated worker PID changed')
-            stable_pid = pid
-        base.check(base.deployment_state(args.source, args.build_id) == state, 'web changed before worker acceptance')
-        base.check(digest(base.read_bounded(base.ENV, 1024**2)) == args.worker_env_sha256, 'worker environment changed during activation')
-        accepted = {'source': args.source, 'webBuildId': args.build_id, 'archiveSha256': args.archive_sha256,
-                    'manifestSha256': record['manifestSha256'], 'selectedEnvironmentSha256': args.worker_env_sha256,
-                    'unitSha256': digest(base.service_unit(args.source).encode()), 'workerPid': stable_pid,
-                    'serviceStable': True, 'journeyVerified': False, 'previousSource': args.previous_source}
-        base.write_new(release / 'worker-install-v2.json', fmt.canonical(accepted), 0o444)
-        base.write_new(operation / 'activated.json', fmt.canonical(accepted), 0o400)
-        print(json.dumps(accepted))
+        try:
+            atomic_unit(base, base.service_unit(args.source).encode(), args.unit_sha256)
+            base.command(['/usr/bin/systemctl', 'daemon-reload'])
+            base.validate_service(properties(base), release)
+            base.command(['/usr/bin/systemctl', 'start', 'aihr-bank-import.service'])
+            stable_pid = None
+            for _ in range(3):
+                time.sleep(4)
+                report = properties(base)
+                base.validate_service(report, release)
+                base.check(report.get('NRestarts') == '0' and report.get('NeedDaemonReload') == 'no', 'updated service is not stable')
+                pid = validate_process(base, report, args.source)
+                base.check(stable_pid in (None, pid), 'updated worker PID changed')
+                stable_pid = pid
+            base.check(base.deployment_state(args.source, args.build_id) == state, 'web changed before worker acceptance')
+            base.check(digest(base.read_bounded(base.ENV, 1024**2)) == args.worker_env_sha256, 'worker environment changed during activation')
+            accepted = {'source': args.source, 'webBuildId': args.build_id, 'archiveSha256': args.archive_sha256,
+                        'manifestSha256': record['manifestSha256'], 'selectedEnvironmentSha256': args.worker_env_sha256,
+                        'unitSha256': digest(base.service_unit(args.source).encode()), 'workerPid': stable_pid,
+                        'serviceStable': True, 'journeyVerified': False, 'previousSource': args.previous_source}
+            base.write_new(release / 'worker-install-v2.json', fmt.canonical(accepted), 0o444)
+            base.write_new(operation / 'activated.json', fmt.canonical(accepted), 0o400)
+            print(json.dumps(accepted))
+        except Exception:
+            # Includes replacement/fsync, reload/start, process proof and receipt persistence failures.
+            # Quarantine refuses any foreign/unchanged unit rather than touching another release.
+            observed = quiesce_failed_activation(base, operation, args.source)
+            print(json.dumps({'workerActivationFailed': True, **observed}), file=sys.stderr)
+            raise RuntimeError('Worker activation failed; retained packages and protected failure observations require explicit administrator recovery') from None
     finally:
         os.close(fd)

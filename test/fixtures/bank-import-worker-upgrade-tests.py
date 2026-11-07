@@ -2,6 +2,9 @@
 import sys
 sys.dont_write_bytecode=True
 import hashlib
+import json
+import os
+from contextlib import ExitStack
 import importlib.util
 from pathlib import Path
 import subprocess
@@ -80,5 +83,132 @@ class WorkerUpgradeTests(unittest.TestCase):
             self.assertEqual(result.returncode,0,result.stderr);self.assertIn('previous-source',result.stdout)
             duplicate=subprocess.run([sys.executable,'-I','-B',str(ROOT/'scripts/bank-import-worker-upgrade-bundle.py'),str(output)],capture_output=True,text=True)
             self.assertNotEqual(duplicate.returncode,0)
+
+class UpgradeFlowFixture:
+    """Real temporary files; deterministic systemd/proc/privilege adapters only."""
+    def __init__(self,root):
+        self.root=root;self.events=[];self.fault=None;self.used_fault=False
+        self.previous='1'*40;self.source='2'*40;self.old_build='old-build';self.new_build='new-build';self.web=self.previous
+        self.app=root/'app';self.app.mkdir();(self.app/'releases').mkdir()
+        self.unit=root/'worker.service';self.env=root/'worker.env';self.env.write_bytes(b'DATABASE_URL="fictional"\n')
+        self.archive=root/'package.zip';self.archive.write_bytes(b'authenticated fictional archive')
+        self.node=root/'node';self.node.write_text('fictional')
+        self.old_release=self.app/'releases'/self.previous;self.old_release.mkdir()
+        self.report={'MainPID':'123','ActiveState':'active','SubState':'running','NRestarts':'0','Result':'success','ExecMainStatus':'0','Restart':'on-failure','SendSIGKILL':'yes','NeedDaemonReload':'no','UnitFileState':'enabled'}
+        self.base=SimpleNamespace(ROOT=self.app,NODE=self.node,UNIT=self.unit,ENV=self.env,USER='fictional',check=check,command=self.command,
+            root_protected=self.protected,read_bounded=lambda p,limit:p.read_bytes(),service_unit=self.service_unit,
+            deployment_state=self.deployment,validate_service=lambda *_:None,write_new=self.write_new,
+            install_lock_directory=lambda:root,snapshot_archive=self.snapshot)
+        self.unit.write_text(self.service_unit(self.previous))
+        self.unit_hash=update.digest(self.unit.read_bytes());self.env_hash=update.digest(self.env.read_bytes())
+        self.old_receipt={'source':self.previous,'unitSha256':self.unit_hash,'selectedEnvironmentSha256':self.env_hash,'serviceStable':True}
+        (self.old_release/'worker-install-v2.json').write_text(json.dumps(self.old_receipt))
+        self.manifest={'entries':[{'path':'package.json','type':'file','mode':0o644}]}
+        canonical=lambda value:json.dumps(value,sort_keys=True,separators=(',',':')).encode()
+        self.fmt=SimpleNamespace(MAX_ARCHIVE=1024,canonical=canonical,digest=update.digest,extract_archive=self.extract,inspect_archive=lambda *_:self.manifest)
+    def service_unit(self,source):return 'WorkingDirectory='+str(self.app/'releases'/source)+'\nRestart=on-failure\n'
+    def protected(self,path,regular=False):
+        check(Path(path).is_relative_to(self.root) and Path(path).exists() and not Path(path).is_symlink(),'unsafe fixture path')
+        if regular:check(Path(path).is_file(),'fixture regular file required')
+    def deployment(self,source,build):
+        check(source==self.web and build==(self.old_build if source==self.previous else self.new_build),'web identity differs')
+        if source==self.source and self.fault=='final-web' and self.report['MainPID']=='456':raise ValueError('web changed after start')
+        return [source,build]
+    def write_new(self,path,raw,mode):
+        if self.fault in ('install-receipt','activation-receipt') and Path(path).name==('worker-install-v2.json' if self.fault=='install-receipt' else 'activated.json'):
+            raise OSError('fictional receipt persistence failure')
+        fd=os.open(path,os.O_CREAT|os.O_EXCL|os.O_WRONLY,mode)
+        with os.fdopen(fd,'wb') as stream:stream.write(raw)
+    def snapshot(self,source,target,expected,limit):
+        raw=Path(source).read_bytes();check(update.digest(raw)==expected,'archive digest differs');self.events.append('authenticate-archive');Path(target).write_bytes(raw)
+    def extract(self,archive,destination,*_):
+        self.events.append('extract');(Path(destination)/'package.json').write_text('fictional package');return self.manifest
+    def command(self,argv):
+        self.events.append(list(argv))
+        if argv==[str(self.node),'--version']:return SimpleNamespace(stdout='v22.23.3\n')
+        if 'daemon-reload' in argv:
+            if self.fault=='reload' and not self.used_fault:self.used_fault=True;raise OSError('fictional reload failure')
+            quarantine='SendSIGKILL=no' in self.unit.read_text()
+            self.report.update(Restart='no' if quarantine else 'on-failure',SendSIGKILL='no' if quarantine else 'yes',NeedDaemonReload='no')
+        elif 'kill' in argv:self.report.update(MainPID='0',ActiveState='inactive',SubState='dead')
+        elif 'start' in argv:
+            self.report.update(MainPID='456',ActiveState='active',SubState='running')
+            if self.fault=='start':raise OSError('fictional start command failure after launch')
+            if self.fault=='restart':self.report['NRestarts']='1'
+        elif 'disable' in argv:self.report['UnitFileState']='disabled'
+        elif 'stop' in argv:
+            check(self.report['SendSIGKILL']=='no' and self.report['Restart']=='no','timed stop lacks protection')
+            self.report.update(MainPID='0',ActiveState='inactive',SubState='dead')
+        return SimpleNamespace(stdout='',returncode=0)
+    def args(self,phase):
+        values={'previous-source':self.previous,'previous-build':self.old_build,'source':self.source,'build-id':self.new_build,'archive':str(self.archive),'archive-sha256':update.digest(self.archive.read_bytes()),'lock-sha256':'a'*64,'package-sha256':'b'*64,'unit-sha256':self.unit_hash,'worker-env-sha256':self.env_hash}
+        return [phase,*[part for key,value in values.items() for part in ('--'+key,value)]]
+    def invoke(self,phase):
+        original_fstat=os.fstat
+        def root_lock(fd):
+            info=original_fstat(fd);return SimpleNamespace(st_mode=info.st_mode,st_uid=0,st_nlink=info.st_nlink)
+        with ExitStack() as stack:
+            stack.enter_context(patch.object(update.os,'geteuid',return_value=0))
+            stack.enter_context(patch.object(update.os,'fstat',side_effect=root_lock))
+            stack.enter_context(patch.object(update,'properties',side_effect=lambda _:dict(self.report)))
+            stack.enter_context(patch.object(update,'validate_process',side_effect=lambda _,report,source:int(report['MainPID'])))
+            stack.enter_context(patch.object(update.time,'sleep'))
+            update.upgrade(self.args(phase),self.fmt,self.base)
+    @property
+    def operation(self):return self.app/'upgrades'/self.source
+
+class WorkerUpgradeFlowTests(unittest.TestCase):
+    def test_complete_drain_and_activation_preserves_old_release_and_private_environment(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            f=UpgradeFlowFixture(Path(tmp));before=f.env.read_bytes();f.invoke('drain')
+            term=next(i for i,event in enumerate(f.events) if isinstance(event,list) and 'kill' in event)
+            self.assertLess(f.events.index('authenticate-archive'),term);self.assertLess(f.events.index('extract'),term)
+            self.assertEqual(f.unit.read_text(),f.service_unit(f.previous));f.web=f.source;f.invoke('activate')
+            self.assertTrue(f.old_release.is_dir());self.assertEqual(f.env.read_bytes(),before)
+            record=json.loads((f.operation/'activated.json').read_text());self.assertEqual(record['workerPid'],456);self.assertFalse(record['journeyVerified'])
+            self.assertEqual(f.unit.read_text(),f.service_unit(f.source));self.assertEqual(f.report['ActiveState'],'active')
+    def test_bad_archive_refuses_before_signalling_or_unit_mutation(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            f=UpgradeFlowFixture(Path(tmp));f.base.snapshot_archive=lambda *_:check(False,'archive digest differs')
+            with self.assertRaisesRegex(ValueError,'archive digest'):f.invoke('drain')
+            self.assertFalse(any(isinstance(event,list) and 'kill' in event for event in f.events));self.assertEqual(f.unit.read_text(),f.service_unit(f.previous))
+    def test_previous_receipt_and_environment_mismatch_refuse_before_drain(self):
+        for defect in ['receipt','environment']:
+            with self.subTest(defect=defect),tempfile.TemporaryDirectory() as tmp:
+                f=UpgradeFlowFixture(Path(tmp))
+                if defect=='receipt':(f.old_release/'worker-install-v2.json').write_text('{}')
+                else:f.env.write_text('changed')
+                with self.assertRaises(ValueError):f.invoke('drain')
+                self.assertFalse(f.operation.exists());self.assertFalse(any(isinstance(event,list) and 'kill' in event for event in f.events))
+    def test_activate_refuses_wrong_web_or_drain_record_before_unit_change(self):
+        for defect in ['web','drain']:
+            with self.subTest(defect=defect),tempfile.TemporaryDirectory() as tmp:
+                f=UpgradeFlowFixture(Path(tmp));f.invoke('drain')
+                if defect=='drain':
+                    record=json.loads((f.operation/'drained.json').read_text());record['identity']['build_id']='foreign';(f.operation/'drained.json').write_text(json.dumps(record));f.web=f.source
+                with self.assertRaises(ValueError):f.invoke('activate')
+                self.assertEqual(f.unit.read_text(),f.service_unit(f.previous));self.assertFalse((f.operation/'activated.json').exists())
+    def test_failures_after_replacement_quarantine_without_rollback_or_acceptance(self):
+        for fault in ['reload','start','restart','final-web','install-receipt','activation-receipt']:
+            with self.subTest(fault=fault),tempfile.TemporaryDirectory() as tmp:
+                f=UpgradeFlowFixture(Path(tmp));f.invoke('drain');f.web=f.source;f.fault=fault
+                with self.assertRaisesRegex(RuntimeError,'activation failed'):f.invoke('activate')
+                self.assertTrue(f.old_release.is_dir());self.assertTrue((f.app/'releases'/f.source).is_dir())
+                self.assertTrue((f.operation/'activation-failed.json').exists());self.assertFalse((f.operation/'activated.json').exists())
+                observed=json.loads((f.operation/'activation-failure-observation.json').read_text());self.assertTrue(observed['stopped']);self.assertTrue(observed['disabled']);self.assertFalse(observed['accepted'])
+                self.assertIn('Restart=no',f.unit.read_text());self.assertIn('SendSIGKILL=no',f.unit.read_text())
+                with self.assertRaises(ValueError):f.invoke('activate')
+    def test_quarantine_refuses_foreign_unit_without_signalling_it(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            f=UpgradeFlowFixture(Path(tmp));f.operation.mkdir(parents=True);f.unit.write_text('foreign unit')
+            observed=update.quiesce_failed_activation(f.base,f.operation,f.source)
+            self.assertFalse(observed['stopped']);self.assertTrue(observed['quiescenceUnconfirmed']);self.assertEqual(f.events,[])
+            self.assertEqual(f.unit.read_text(),'foreign unit')
+    def test_failed_quarantine_reload_never_arms_an_unprotected_stop(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            f=UpgradeFlowFixture(Path(tmp));f.operation.mkdir(parents=True);f.unit.write_text(f.service_unit(f.source));f.fault='reload'
+            observed=update.quiesce_failed_activation(f.base,f.operation,f.source)
+            self.assertFalse(observed['stopped']);self.assertTrue(observed['quiescenceUnconfirmed'])
+            self.assertFalse(any(isinstance(event,list) and 'stop' in event for event in f.events))
 
 unittest.main()

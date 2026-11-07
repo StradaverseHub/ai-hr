@@ -134,3 +134,13 @@ operation records; it does no automatic schema or worker rollback. Existing atte
 partial activation or failed web installation require explicit diagnosis/recovery.
 Do not remove an attempt to bypass a refusal. An absent/unhealthy matching worker
 continues to block release even if web health passes.
+
+A failure after unit replacement enters a protected recovery state. The helper
+quarantines only its exact candidate unit with `Restart=no` and `SendSIGKILL=no`,
+reloads and verifies those protections, disables automatic boot activation, then
+requests a bounded graceful stop. It retains source packages, data and credentials;
+it does not restore the old worker. Failure records and observations remain under
+`/opt/aihr-import/upgrades/<source>/`. If the unit changed, reload/protection fails,
+or process exit is unconfirmed, it reports uncertainty and requires administrator
+recovery; it never claims a completed stop or accepted release. An incomplete
+activation cannot be retried by deleting records or overwriting an immutable path.
