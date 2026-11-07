@@ -1,5 +1,6 @@
-import {existsSync} from 'node:fs';
+import {existsSync,readFileSync} from 'node:fs';
 import {expect,it} from 'vitest';
+import {validateNavigationScenarioPlan,type NavigationFixtureRole,type NavigationScenario} from '../scripts/performance/navigation-protocol';
 import {CENTRE_TABS,CENTRE_SECTIONS} from '../lib/ai-centre/centre-nav';
 import {readRouteForMeasurement,routePools,wholeSystemRouteCount,additionalBrowserRoutes} from '../scripts/performance/system-route-manifest.mjs';
 it('counts the actual distinct route pools and binds every concrete path to an existing page',()=>{
@@ -51,4 +52,33 @@ it('counts each known AI view separately without retaining arbitrary query value
  expect(readRouteForMeasurement('/assistant?view=jobs')).toBe('/assistant');
  expect(readRouteForMeasurement('/assistant?question=PRIVATE_SENTINEL')).toBe('/assistant');
  expect(readRouteForMeasurement('/api/home/tasks?employmentId=PRIVATE_SENTINEL')).toBe('/api/home/tasks');
+});
+
+// Compare actual reviewed usable scenarios to each role's HTTP pool. A route in a
+// different role's pool cannot mask missing load on the actor that used the screen.
+const reviewedPlan=()=>validateNavigationScenarioPlan(JSON.parse(readFileSync(new URL('../scripts/performance/navigation-scenarios.json',import.meta.url),'utf8')));
+function missingUsablePressure(scenarios:readonly NavigationScenario[],pools:Readonly<Record<NavigationFixtureRole,readonly string[]>>){
+ return scenarios.filter(scenario=>scenario.outcome==='usable'&&!pools[scenario.role].includes(scenario.href)).map(({id,role,href})=>({id,role,href}));
+}
+it('pressures every reviewed usable native or direct-content scenario in its actual fixture role',()=>{
+ const plan=reviewedPlan();
+ expect(plan.scenarios.filter(scenario=>scenario.outcome==='usable').length).toBeGreaterThan(0);
+ expect(missingUsablePressure(plan.scenarios,routePools)).toEqual([]);
+ for(const role of ['employee','manager','companyHR','groupHR']as const)for(const href of ['/attendance','/attendance/daily']){
+  expect(plan.scenarios.filter(scenario=>scenario.role===role&&scenario.href===href&&scenario.outcome==='usable')).toHaveLength(1);
+  expect(routePools[role]).toContain(href);
+ }
+});
+it.each(['employee','manager','companyHR','groupHR']as const)('detects a missing Attendance Daily pressure route for %s even when other roles retain it',role=>{
+ const plan=reviewedPlan(),expected=plan.scenarios.find(scenario=>scenario.role===role&&scenario.href==='/attendance/daily'&&scenario.outcome==='usable');expect(expected).toBeDefined();
+ const pools={...routePools,[role]:routePools[role].filter(path=>path!=='/attendance/daily')};
+ expect(Object.entries(pools).filter(([key])=>key!==role).every(([,paths])=>paths.includes('/attendance/daily'))).toBe(true);
+ expect(missingUsablePressure(plan.scenarios,pools)).toEqual([{id:expected!.id,role,href:'/attendance/daily'}]);
+});
+it('excludes intentionally denied administrator destinations from usable-route pressure obligations',()=>{
+ const denied=reviewedPlan().scenarios.filter(scenario=>scenario.outcome==='denied');
+ expect(denied.some(scenario=>scenario.role==='employee'&&scenario.href==='/admin/claims')).toBe(true);
+ expect(denied.some(scenario=>scenario.role==='manager'&&scenario.href==='/admin/claims')).toBe(true);
+ for(const scenario of denied)expect(routePools[scenario.role]).not.toContain(scenario.href);
+ expect(missingUsablePressure(denied,routePools)).toEqual([]);
 });
