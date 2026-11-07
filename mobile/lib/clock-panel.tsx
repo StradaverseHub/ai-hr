@@ -4,6 +4,7 @@ import { AppState, Image, Platform, Pressable, View, Linking } from 'react-nativ
 import { InAppAlert as Alert } from './in-app-alert';
 import { DesignText as Text } from './design';
 import { randomUUID } from 'expo-crypto';
+import {identityNamespace} from './config';
 import { apiGet,apiPost,useApi,type ClockResponse } from './api';
 import { requestShiftReminderRefresh } from './shift-reminder-signal';
 import { assertAuthGeneration,authGeneration } from './auth';
@@ -46,7 +47,11 @@ export function ClockPanel({refreshToken=0,variant='full',renderHome,afterContro
   useFocusEffect(useCallback(()=>{if(visited.current){clock.reload();attempts.reload();}visited.current=true;},[clock.reload,attempts.reload]));
   useEffect(()=>{if(refreshToken){clock.reload();attempts.reload();}},[refreshToken,clock.reload,attempts.reload]);
   // D8: every fresh clock answer (after a punch, a refresh or a return) re-plans the shift reminders.
-  useEffect(()=>{if(clock.data)requestShiftReminderRefresh();},[clock.data]);
+  const clockOwner=authGeneration(),clockNamespace=identityNamespace();
+  useEffect(()=>{
+    if(clock.data&&!clock.loading&&sessionStatus==='signedIn'&&AppState.currentState==='active'&&authGeneration()===clockOwner&&identityNamespace()===clockNamespace)
+      requestShiftReminderRefresh({clock:{value:clock.data,namespace:clockNamespace,generation:clockOwner,employmentId}});
+  },[clock.data,clock.loading,clockOwner,clockNamespace,employmentId,sessionStatus]);
   const {clock:retainedDraft,putClock}=useJourneyDrafts();
   const {palette,design}=useTenantDesign();
   const flight=useRef(false),offlineRoute=useRef<string|null>(null);

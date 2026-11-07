@@ -6,7 +6,7 @@ import {useSession} from './session';
 import {identityNamespace} from './config';
 import {widgetIntents} from './widget-intent';
 import {initializeAttendanceWidgets,updateAttendanceWidgets} from './attendance-widgets';
-import {apiGet} from './api';
+import {apiGet,type ClockResponse} from './api';
 import {authGeneration} from './auth';
 import {projectAttendanceWidget} from './widget-snapshot';
 import {onShiftReminderRefresh} from './shift-reminder-signal';
@@ -31,21 +31,34 @@ export function WidgetLaunchObserver(){
  useEffect(()=>{if(status==='signedOut'||status==='loading')initializeAttendanceWidgets();},[status]);
  useEffect(()=>{
   if(status!=='signedIn'||!visible)return;
-  let live=true,busy=false;const controller=new AbortController(),owner=generation,scope=namespace,selected=employmentId,revision=epoch.current.value;
+  let live=true,busy=false,lastServerTime=-Infinity;const controller=new AbortController(),owner=generation,scope=namespace,selected=employmentId,revision=epoch.current.value;
+  const accept=(reply:ClockResponse)=>{
+   const s=current.current;
+   if(!live||authGeneration()!==owner||s.namespace!==scope||s.selectedEmploymentId!==selected||s.epoch!==revision||s.status!=='signedIn'||!s.visible||AppState.currentState!=='active')return;
+   if(selected&&reply.employmentId&&reply.employmentId!==selected)return;
+   const serverTime=reply.state?Date.parse(reply.state.serverNow):NaN;
+   if(Number.isFinite(serverTime)&&serverTime<lastServerTime)return;
+   const subject=selected??reply.employmentId;
+   if(!subject){updateAttendanceWidgets(null);return;}
+   if(!selected&&reply.employmentId)setResolved({key:scopeKey,epoch:revision,employmentId:reply.employmentId});
+   const snapshot=projectAttendanceWidget(reply,subject,Date.now());
+   if(snapshot&&Number.isFinite(serverTime))lastServerTime=serverTime;
+   updateAttendanceWidgets(snapshot);
+  };
   const refresh=async()=>{
    if(busy||!live||AppState.currentState!=='active')return;busy=true;
-   try{
-    const reply=await apiGet('clock',{employmentId:selected??undefined},controller.signal),s=current.current;
-    if(live&&authGeneration()===owner&&s.namespace===scope&&s.selectedEmploymentId===selected&&s.epoch===revision&&s.status==='signedIn'&&s.visible&&AppState.currentState==='active'){
-     const subject=selected??reply.employmentId;
-     if(!subject){updateAttendanceWidgets(null);return;}
-     if(!selected&&reply.employmentId)setResolved({key:scopeKey,epoch:revision,employmentId:reply.employmentId});
-     updateAttendanceWidgets(projectAttendanceWidget(reply,subject,Date.now()));
-    }
-   }catch{/* The last confirmed snapshot is dated and expires; an outage never invents a punch. */}
+   try{accept(await apiGet('clock',{employmentId:selected??undefined},controller.signal));}
+   catch{/* The last confirmed snapshot is dated and expires; an outage never invents a punch. */}
    finally{busy=false;}
   };
-  void refresh();const stop=onShiftReminderRefresh(()=>{void refresh();}),poll=setInterval(()=>{void refresh();},60_000);
+  void refresh();const stop=onShiftReminderRefresh(event=>{
+   if(event?.clock){
+    const value=event.clock;
+    if(value.generation===owner&&value.namespace===scope&&value.employmentId===selected)accept(value.value);
+    return;
+   }
+   void refresh();
+  }),poll=setInterval(()=>{void refresh();},60_000);
   return()=>{live=false;controller.abort();stop();clearInterval(poll);};
  },[status,visible,employmentId,namespace,language,generation,scopeKey]);
  useEffect(()=>{
