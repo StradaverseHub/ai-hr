@@ -21,7 +21,7 @@ export function aiCentreReadKeys():readonly string[]{
   ...MODULE_JOBS.map(([module])=>'module:'+module),
   ...Object.keys(CONTEXT_TOOL_SPECS).map(name=>'read:'+name),
   ...CHAT_IMPORT_KINDS.map(kind=>'read:import_'+kind),
-  'read:orchestrator_observe',
+  'read:orchestrator_observe','read:provider_connection_test',
   'read:suggest_action','read:prepare_import','read:product_guidance','read:product_capabilities',
  ])].sort());
 }

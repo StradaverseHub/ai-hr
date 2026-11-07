@@ -81,3 +81,20 @@ describe('connection probe ledger (R9)',()=>{
   });
  });
 });
+
+
+describe('connection probes honour AI centre controls',()=>{
+ it('cannot call a provider while stopped or while the individual probe function is off',async()=>{
+  const {setMandateStopSwitch}=await import('../core/mandates/mandates');
+  const {setAiCentreReadControl}=await import('../core/ai-centre-inventory');
+  const validate=vi.spyOn(openaiAdapter,'validate');
+  try{
+   await setMandateStopSwitch(adminCtx(base),true);
+   await expect(testConnection(adminCtx(base),{provider:'openai',model:'fictional-model',apiKey:'fictional-key'})).rejects.toMatchObject({reason:'paused'});
+   await setMandateStopSwitch(adminCtx(base),false);
+   await setAiCentreReadControl(adminCtx(base),'read:provider_connection_test',false);
+   await expect(testConnection(adminCtx(base),{provider:'openai',model:'fictional-model',apiKey:'fictional-key'})).rejects.toMatchObject({reason:'paused'});
+   expect(validate).not.toHaveBeenCalled();expect(await rows()).toHaveLength(0);
+  }finally{validate.mockRestore();}
+ });
+});

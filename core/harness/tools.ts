@@ -288,7 +288,6 @@ export function topicBindings(ctx:SessionContext,permitted:readonly TerasCapabil
     const own:Record<string,unknown>=Object.fromEntries(read.input.filter(row=>input[row.name]!==undefined).map(row=>[row.name,input[row.name]]));
     const problem=invalidInput(readInputSchema(read) as unknown as Record<string,unknown>,own);
     if(problem)return{ok:false,refusal:'invalid_input',content:{ok:false,refusal:'invalid_input',message:'Invalid arguments for '+String(input.topic)+': '+problem+'.'}};
-    if(!await aiCentreReadAllowed(ctx,capability.name))return{ok:false,refusal:'not_permitted',content:{ok:false,refusal:'not_permitted',message:TOPIC_NOT_PERMITTED}};
     const outcome=await capability.run(ctx,own,scope);
     return outcome.ok?{ok:true,content:outcome}:{ok:false,content:outcome,refusal:outcome.refusal};}}];
  });

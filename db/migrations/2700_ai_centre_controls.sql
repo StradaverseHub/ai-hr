@@ -67,6 +67,7 @@ INSERT INTO app.ai_centre_function_kind(function_key,default_enabled) VALUES
  ('read:product_capabilities',true),
  ('read:product_destinations',true),
  ('read:product_guidance',true),
+ ('read:provider_connection_test',true),
  ('read:salary_payroll_checks',true),
  ('read:setup_copilot',true),
  ('read:setup_readiness',true),
@@ -129,7 +130,7 @@ CREATE FUNCTION app.ai_centre_control_state() RETURNS TABLE(stopped boolean,gene
 BEGIN
  IF app.current_user_id() IS NULL OR app.principal_snapshot_current() IS NOT TRUE OR app.is_group_admin() IS NOT TRUE OR app.login_blocked(app.current_user_id()) OR NOT EXISTS(SELECT 1 FROM public.app_user u WHERE u.id=app.current_user_id() AND u.tenant_id=app.current_tenant_id() AND u.archived_at IS NULL) THEN RAISE EXCEPTION 'AI controls unavailable' USING ERRCODE='42501'; END IF;
  RETURN QUERY SELECT coalesce(c.stopped,false),coalesce(c.version,0),
- (SELECT count(*)::integer FROM public.ai_model_run r WHERE r.tenant_id=app.current_tenant_id() AND r.state='pending' AND r.operation<>'probe')
+ (SELECT count(*)::integer FROM public.ai_model_run r WHERE r.tenant_id=app.current_tenant_id() AND r.state='pending')
  FROM (SELECT 1) one LEFT JOIN public.teras_mandate_control c ON c.tenant_id=app.current_tenant_id();
 END $$;
 --> statement-breakpoint
@@ -139,7 +140,7 @@ GRANT EXECUTE ON FUNCTION app.ai_centre_control_state() TO ai_hr_app;
 --> statement-breakpoint
 CREATE FUNCTION app.ai_centre_read_controls() RETURNS TABLE(function_key text,enabled boolean)
  LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
- SELECT c.function_key,c.enabled FROM app.ai_centre_read_control c WHERE c.tenant_id=app.current_tenant_id()
+ SELECT k.function_key,coalesce(c.enabled,k.default_enabled) FROM app.ai_centre_function_kind k LEFT JOIN app.ai_centre_read_control c ON c.function_key=k.function_key AND c.tenant_id=app.current_tenant_id() WHERE app.current_tenant_id() IS NOT NULL ORDER BY k.function_key
 $$;
 --> statement-breakpoint
 REVOKE ALL ON FUNCTION app.ai_centre_read_controls() FROM PUBLIC;
@@ -245,3 +246,19 @@ REVOKE ALL ON FUNCTION app.ai_centre_delivery_guard() FROM PUBLIC;
 --> statement-breakpoint
 CREATE TRIGGER aaa_ai_centre_delivery_guard BEFORE UPDATE ON public.notification_delivery
  FOR EACH ROW EXECUTE FUNCTION app.ai_centre_delivery_guard();
+
+--> statement-breakpoint
+ALTER FUNCTION app.ai_probe_start(text,text) RENAME TO ai_probe_start_before_centre;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.ai_probe_start_before_centre(text,text) FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+CREATE FUNCTION app.ai_probe_start(wanted_provider text,wanted_model text) RETURNS uuid
+ LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ IF app.ai_centre_read_allowed('read:provider_connection_test') IS NOT TRUE THEN RAISE EXCEPTION 'AI connection check stopped' USING ERRCODE='55000'; END IF;
+ RETURN app.ai_probe_start_before_centre(wanted_provider,wanted_model);
+END $$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.ai_probe_start(text,text) FROM PUBLIC;
+--> statement-breakpoint
+GRANT EXECUTE ON FUNCTION app.ai_probe_start(text,text) TO ai_hr_app;

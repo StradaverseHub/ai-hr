@@ -1,3 +1,4 @@
+import {withAiCentreFunction,assertAiCentreRunningTx} from './ai-centre-control';
 import {createUngovernedProbe} from '../lib/ai/governance';
 /**
  * AI provider configuration service (ADR-0023). Per-tenant BYOK: an admin configures a provider with
@@ -354,7 +355,10 @@ export async function removeAiProviderConfig(ctx: SessionContext, p: { provider:
  * Metadata does not establish generation, tool behaviour or account privacy. Returns a GENERIC
  * reason — never raw provider text. No domain event (a read-shaped probe).
  */
-export async function testConnection(
+export async function testConnection(...args:Parameters<typeof testConnectionActivity>):Promise<ValidateResult>{
+ return withAiCentreFunction(args[0],'read:provider_connection_test',()=>testConnectionActivity(...args));
+}
+async function testConnectionActivity(
   ctx: SessionContext,
   p: { provider: string; model: string; apiKey?: string; providerOptions?: unknown },
 ): Promise<ValidateResult> {
@@ -400,11 +404,12 @@ export async function testConnection(
     if(request.operation!=='probe')throw new AiConfigError('Connection check unavailable.');
     const id=await withTenant(ctx,async tx=>{
       await assertConfigurationAdminTx(tx,ctx);
+      await assertAiCentreRunningTx(tx,ctx);
       const [row]=await tx.execute<{id:string}>(sql`select app.ai_probe_start(${cfg.provider},${cfg.model}) as id`);
       if(!row?.id)throw new AiConfigError('Connection check could not be recorded.');return row.id;
     });
     let succeeded=false;
-    try{const result=await call(()=>{},()=>{});succeeded=!!result&&typeof result==='object'&&'ok' in result&&result.ok===true;return result;}
+    try{const result=await call(()=>{},()=>{});await withTenant(ctx,tx=>assertAiCentreRunningTx(tx,ctx));succeeded=!!result&&typeof result==='object'&&'ok' in result&&result.ok===true;return result;}
     finally{await withTenant(ctx,tx=>tx.execute(sql`select app.ai_settle(${id}::uuid,${succeeded},null::bigint)`));}
   }));
 }
