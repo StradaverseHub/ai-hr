@@ -43,7 +43,7 @@ import {hireEmployee,setEmploymentInfo} from './workforce-commands';
  */
 import { and, desc, eq, inArray, isNull, or, sql } from 'drizzle-orm';
 import { onboardingSyncDraftTx,onboardingDraftActivationContextTx } from '../packs/lifecycle/service';
-import { withTenant, type SessionContext, type Tx } from '../db/client';
+import { withTenant, withTenantWriteWork, type SessionContext, type Tx } from '../db/client';
 import {
   company, employeeDraft, employeeIdConfig, person, tenantCounter, department, position,
   costCenter, jobGrade, employment, employmentTypeEnum,
@@ -435,21 +435,9 @@ async function draftCreationDefaultsTx(tx:Tx,ctx:SessionContext,input:EmployeeDr
  return next;
 }
 
-// The database already serializes these draft writes by tenant. Queue standalone
-// edits and discards before borrowing a connection.
-const pendingDraftWrites = new Map<string, Promise<unknown>>();
-
-async function queueDraftWrite<T>(tenantId: string, write: () => Promise<T>): Promise<T> {
-  const key = tenantId.toLowerCase();
-  const preceding = pendingDraftWrites.get(key);
-  const pending = preceding ? preceding.catch(() => undefined).then(write) : write();
-  pendingDraftWrites.set(key, pending);
-  try {
-    return await pending;
-  } finally {
-    if (pendingDraftWrites.get(key) === pending) pendingDraftWrites.delete(key);
-  }
-}
+// Keep the native tenant ordering, with bounded admission before borrowing any
+// connection. The command itself retains its fresh authority and transaction.
+function queueDraftWrite<T>(tenantId:string,write:()=>Promise<T>){return withTenantWriteWork(tenantId,write);}
 
 export async function saveEmployeeDraft(
   ctx: SessionContext,

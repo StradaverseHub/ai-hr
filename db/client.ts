@@ -11,6 +11,7 @@ import { sql } from 'drizzle-orm';
 import postgres from 'postgres';
 import {createDatabaseAdmission} from './admission';
 import {createBackgroundReadAdmission} from './background-read-admission';
+import {createTenantWriteAdmission} from './tenant-write-admission';
 import {currentDatabaseWorkload,databaseReadSignal} from './workload';
 import {applicationDatabaseBudget} from './capacity';
 const applicationBudget = applicationDatabaseBudget(process.env);
@@ -82,12 +83,14 @@ const globalForPg = globalThis as unknown as {
   __aihrPgPools?: Map<string, ReturnType<typeof postgres>>;
   __aihrDbAdmission?: WeakMap<ReturnType<typeof postgres>, ReturnType<typeof createDatabaseAdmission>>;
   __aihrBackgroundReadAdmission?: WeakMap<ReturnType<typeof postgres>, ReturnType<typeof createBackgroundReadAdmission>>;
+  __aihrTenantWriteAdmission?: WeakMap<ReturnType<typeof postgres>, ReturnType<typeof createTenantWriteAdmission>>;
   __aihrPerfBeginTransaction?: (poolMax: number) => { acquired: () => void; finished: () => void };
   __aihrPerfBeginPoolWork?: (poolMax: number) => { acquired: () => void; finished: () => void };
 };
 const pgPools = (globalForPg.__aihrPgPools ??= new Map<string, ReturnType<typeof postgres>>());
 const admissionByPool = (globalForPg.__aihrDbAdmission ??= new WeakMap());
 const backgroundReadsByPool = (globalForPg.__aihrBackgroundReadAdmission ??= new WeakMap());
+const tenantWritesByPool = (globalForPg.__aihrTenantWriteAdmission ??= new WeakMap());
 
 /**
  * Is the ADR-0030 hash chain armed for this process?
@@ -204,6 +207,13 @@ export function createDb(connectionString: string, options?: { max?: number }) {
     backgroundReadsByPool.set(client,backgroundReads);
   }
   const withBackgroundReadWork=backgroundReads.run;
+  let tenantWrites=tenantWritesByPool.get(client);
+  if(!tenantWrites){
+    tenantWrites=createTenantWriteAdmission({capacity:Math.max(1,Math.floor(configuredPoolMax/2)),
+      maxWaiting:applicationBudget.maxWaiting,waitMs:applicationBudget.waitMs});
+    tenantWritesByPool.set(client,tenantWrites);
+  }
+  const withTenantWriteWork=tenantWrites.run;
   type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
   /** For existing raw SQL owners only. This adds no transaction, GUC, retry or authority.
@@ -330,7 +340,7 @@ export function createDb(connectionString: string, options?: { max?: number }) {
     }
   }
 
-  return { db, client, withTenant, withPoolWork, withBackgroundReadWork };
+  return { db, client, withTenant, withPoolWork, withBackgroundReadWork, withTenantWriteWork };
 }
 
 export type Db = ReturnType<typeof createDb>['db'];
@@ -341,4 +351,4 @@ if (!url) throw new Error('DATABASE_URL is not set');
 
 // App singleton (non-privileged role). Keep the default for deployments that do
 // not explicitly divide a connection budget among application workers.
-export const { db, client, withTenant, withPoolWork, withBackgroundReadWork } = createDb(url, {max: applicationBudget.poolMax});
+export const { db, client, withTenant, withPoolWork, withBackgroundReadWork, withTenantWriteWork } = createDb(url, {max: applicationBudget.poolMax});

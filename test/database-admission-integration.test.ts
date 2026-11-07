@@ -11,6 +11,19 @@ const database=createDb(url.toString(),{max:4});
 beforeAll(async()=>{await migrateTestDb();await resetDb();base=await seedBase();});
 afterAll(async()=>{await database.client.end();await closeAll();});
 describe('physical pool admission with real tenant transactions',()=>{
+ it('shares bounded tenant write ordering across handles without holding a connection while waiting',async()=>{
+  const alias=createDb(url.toString(),{max:4}),ctx=adminCtx(base),entered=deferred(),finish=deferred();
+  const held=database.withTenantWriteWork(ctx.tenantId,async()=>{entered.resolve();await finish.promise;});
+  await entered.promise;let queuedEntered=false;
+  const next=alias.withTenantWriteWork(ctx.tenantId,()=>{queuedEntered=true;return alias.withTenant(ctx,async tx=>(await tx.execute(sql`select app.current_tenant_id() as tenant`))[0]);});
+  try{
+   // Another logical tenant uses the idle lane. Its callback performs a real
+   // authorized read, proving the first logical holder borrowed no connection.
+   const row=await alias.withTenantWriteWork(randomUUID(),()=>alias.withTenant(ctx,async tx=>(await tx.execute(sql`select app.current_tenant_id() as tenant`))[0]));
+   expect(row.tenant).toBe(ctx.tenantId);expect(queuedEntered).toBe(false);
+  }finally{finish.resolve();await held;}
+  expect((await next).tenant).toBe(ctx.tenantId);expect(queuedEntered).toBe(true);
+ });
  it('keeps 500 passive fan-outs outside the physical queue while interactive pages finish',async()=>{
   const ctx=adminCtx(base),held=deferred(),finish=deferred(),started=deferred();let operations=0;
   const holder=withBackgroundDatabaseWork(()=>database.withTenant(ctx,async tx=>{await tx.execute(sql`select 1`);held.resolve();await finish.promise;}));
