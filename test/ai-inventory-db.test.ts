@@ -41,6 +41,39 @@ const runs = (tenantId: string, rows: { minutesAgo: number; state?: string; user
 const pauseCheck = (ctx: SessionContext) => withTenant(ctx, tx => assertAiActionUnpausedTx(tx, ctx, 'hr_assistant'));
 
 describe('AI inventory access (ADR-0151 §4.7)', () => {
+  it('loads populated presentation snapshots behind an access writer while the pause command still waits', async () => {
+    await runs(base.tenantId,[{minutesAgo:1}]);
+    const view=await aiManagementView(group);
+    let locked!:()=>void,release!:()=>void,timer:ReturnType<typeof setTimeout>|undefined;
+    const ready=new Promise<void>(done=>{locked=done;}),held=new Promise<void>(done=>{release=done;});
+    const barrier=owner.client.begin(async tx=>{
+      await tx`select pg_advisory_xact_lock(hashtextextended(${'access-configuration:'+base.tenantId},0))`;
+      locked();await held;
+    });
+    void barrier.catch(()=>{});
+    let command:Promise<void>|undefined,reads:Promise<unknown>|undefined,commandSettled=false;
+    try{
+      await Promise.race([ready,barrier.then(()=>{throw Error('Access barrier ended before its ready signal');})]);
+      command=setAgentActionPause(group,'leave.edit',true);
+      void command.then(()=>{commandSettled=true;},()=>{commandSettled=true;});
+      const projected=Promise.all([aiInventoryView(group,view),aiManagementAlerts(group,view),aiRunHistory(group,{})]);
+      reads=projected;void projected.catch(()=>{});
+      const [inventory,alerts,history]=await Promise.race([projected,new Promise<never>((_,reject)=>{
+        timer=setTimeout(()=>reject(Error('AI presentation waited behind the access writer')),5000);
+      })]);
+      expect(inventory.scope).toBe('full');
+      if(inventory.scope!=='full')throw Error('Expected native group inventory');
+      expect(inventory.rows.find(row=>row.key==='chat:hr_assistant')!.runtime.use30!.runs).toBe(1);
+      expect(alerts.status).toBe('ok');
+      expect(history.rows).toHaveLength(1);expect(history.rows[0]).toMatchObject({feature:'hr_assistant',provider:'fixture',state:'completed',actual:7});
+      expect(commandSettled).toBe(false);
+    }finally{
+      clearTimeout(timer);release();await Promise.allSettled([barrier,...(command?[command]:[]),...(reads?[reads]:[])]);
+    }
+    await command;
+    expect(await eventTypesFor(base.tenantId,base.tenantId)).toContain('ai-control.action-pause-changed');
+  },20000);
+
   it('gives the group administrator the full inventory, company HR the read-only registry, and refuses others', async () => {
     const full = await aiInventoryView(group, await aiManagementView(group));
     expect(full.scope).toBe('full');

@@ -8,9 +8,9 @@
  *     whether it is paused) — no runs, cost, people, provider or audit facts;
  *   - anyone else: refused.
  * "Group administrator" means all three, checked in the reading transaction: the session claims a group-wide grant
- * (isGroupAdmin); assertAiPrincipalTx proves that claim is CURRENT (the login is active and the claimed grants match
+ * (isGroupAdmin); the matching native principal proof confirms that claim is current (the login is active and the claimed grants match
  * the principal's stored grants, app.principal_snapshot_current) — that is where freshness comes from; and
- * app.is_group_admin() agrees for this transaction's claim. A stale claim fails assertAiPrincipalTx and is refused.
+ * app.is_group_admin() agrees for this transaction's claim. A stale claim fails the native proof and is refused.
  * The 30-day figures use the run history's Kuala Lumpur calendar window (the last 30 KL days, today inclusive).
  * Tenant isolation is the database's: every read runs in withTenant under RLS (ai_model_run, domain_event and job_run
  * read policies are group-administrator-only; app.ai_agent_action_pause rows are group-administrator-only and other
@@ -26,12 +26,12 @@ import {AI_FEATURES,isAiFeature,type AiFeatureId} from '../lib/ai/features';
 import {agentActionById,agentActionPauseKey} from '../lib/ai/agent-action-registry';
 import {AI_DATA_REGISTER,AI_RUN_PAGE_SIZE,aiInventoryComponents,aiRunPageOffset,aiRunRangeBounds,evaluateAiAlerts,parseAiRunRange,
  registryRow,switchDrift,type AiAlert,type AiInventoryComponent,type AiRegistryRow,type AiRunRange} from '../lib/ai/ai-inventory';
-import {assertAiPrincipalTx} from './ai-principal';
+import {assertAiPrincipalTx,assertAiPresentationPrincipalTx} from './ai-principal';
 import {AiControlError,type aiManagementView,type AiRunFilter} from './ai-management';
 
 type ManagementView=Awaited<ReturnType<typeof aiManagementView>>;
 const capture=(ctx:SessionContext):SessionContext=>({...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(g=>({...g}))});
-/** Call only AFTER assertAiPrincipalTx in the same transaction (which is what makes the claim current). */
+/** Call only AFTER the matching native AI principal proof in the same transaction (which is what makes the claim current). */
 async function groupAdminClaimTx(tx:Tx,ctx:SessionContext){
  if(!isGroupAdmin(ctx))return false;
  const [row]=await tx.execute<{allowed:boolean}>(sql`select app.is_group_admin() as allowed`);
@@ -92,7 +92,7 @@ export async function aiInventoryView(supplied:SessionContext,view:ManagementVie
  if(!isAdmin(ctx))throw new AiControlError('Only HR administrators may view the AI inventory.');
  const components=aiInventoryComponents();
  return withTenant(ctx,async tx=>{
-  await assertAiPrincipalTx(tx,ctx);
+  await assertAiPresentationPrincipalTx(tx,ctx);
   const group=await groupAdminClaimTx(tx,ctx),pauses=await pausesTx(tx,group),from=window30();
   const paused=(c:AiInventoryComponent)=>c.kind==='action'?pauses.get(c.id)?.paused===true:null;
   if(!group)return {scope:'registry',rows:components.map(c=>({...registryRow(c),actionPaused:paused(c)}))};
@@ -137,7 +137,7 @@ export async function aiInventoryView(supplied:SessionContext,view:ManagementVie
   });
   return {scope:'full',rows,alerts:aiAlertsFromView(view,metrics),
    register:AI_FEATURES.map(f=>({featureId:f.id,entry:AI_DATA_REGISTER[f.id]})),provider:view.provider};
- });
+ },{readOnlySnapshot:true});
 }
 
 export type AiAlertBanner=Readonly<{status:'not_shown'}|{status:'ok';alerts:readonly AiAlert[]}|{status:'unavailable'}>;
@@ -148,10 +148,10 @@ export async function aiManagementAlerts(supplied:SessionContext,view:Management
  if(!isGroupAdmin(ctx))return {status:'not_shown'};
  try{
   return await withTenant(ctx,async tx=>{
-   await assertAiPrincipalTx(tx,ctx);
+   await assertAiPresentationPrincipalTx(tx,ctx);
    if(!await groupAdminClaimTx(tx,ctx))return {status:'not_shown'} as const;
    return {status:'ok',alerts:aiAlertsFromView(view,await runAlertMetricsTx(tx))} as const;
-  });
+  },{readOnlySnapshot:true});
  }catch(error){
   console.error(`ai-alerts: banner check unavailable (${error instanceof Error?error.name:'unknown'})`);
   return {status:'unavailable'};
@@ -185,7 +185,7 @@ export async function aiRunHistory(supplied:SessionContext,input:{from?:unknown;
  const state=filter.state==='blocked'||filter.state==='failed'?filter.state:null,feature=filter.feature&&isAiFeature(filter.feature)?filter.feature:null;
  const {fromTs,toTs}=aiRunRangeBounds(range);
  return withTenant(ctx,async tx=>{
-  await assertAiPrincipalTx(tx,ctx);
+  await assertAiPresentationPrincipalTx(tx,ctx);
   if(!await groupAdminClaimTx(tx,ctx))throw new AiControlError('Current AI administration access could not be confirmed.');
   const rows=Array.from(await tx.execute<{id:string;actor:string|null;feature:string;operation:string;provider:string;model:string;state:string;reason:string|null;
    actual:string|null;reserved:string;started_at:string|Date;credits:string|null;round_trip:number|null;observation:string|null}>(sql`
@@ -198,5 +198,5 @@ export async function aiRunHistory(supplied:SessionContext,input:{from?:unknown;
    order by r.started_at desc,r.id desc limit ${AI_RUN_PAGE_SIZE+1} offset ${aiRunPageOffset(range)}`));
   return {range,hasMore:rows.length>AI_RUN_PAGE_SIZE,rows:rows.slice(0,AI_RUN_PAGE_SIZE).map(r=>({id:r.id,actor:r.actor,feature:r.feature,operation:r.operation,provider:r.provider,model:r.model,
    state:r.state,reason:r.reason,actual:r.actual==null?null:Number(r.actual),reserved:Number(r.reserved),startedAt:new Date(r.started_at),reportedCredits:r.credits,roundTripMs:r.round_trip==null?null:Number(r.round_trip),observationStatus:r.observation}))};
- });
+ },{readOnlySnapshot:true});
 }
