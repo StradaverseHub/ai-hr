@@ -5,6 +5,7 @@ import {join} from 'node:path';
 import {and,eq,sql} from 'drizzle-orm';
 import {beforeAll,beforeEach,afterAll,afterEach,it,expect,vi} from 'vitest';
 import {withTenant,type SessionContext,type Tx} from '../db/client';
+import * as dbClient from '../db/client';
 import {pgSqlState,pgErrorChain} from '../lib/db-error';
 import * as schema from '../db/schema';
 import * as vault from '../lib/pii/vault';
@@ -44,7 +45,7 @@ beforeAll(async()=>{
  await migrateTestDb();const evidence=process.env.AIHR_FOCUSED_EVIDENCE_DIR;
  if(evidence){const constraints=Array.from(await owner.db.execute<{name:string;expressionBytes:number}>(sql`select conname as name,octet_length(pg_get_expr(conbin,conrelid)) as "expressionBytes" from pg_constraint where conrelid='app.assistant_own_leave_review'::regclass and contype='c' order by conname`));
   writeFileSync(join(evidence,'personnel-review-constraint-bytes.json'),JSON.stringify({kind:'PERSONNEL_CUSTODY_CHECK_BYTES',candidate:process.env.AIHR_CI_HEAD,runId:process.env.GITHUB_RUN_ID,constraints,totalExpressionBytes:constraints.reduce((sum,row)=>sum+row.expressionBytes,0)},null,2)+'\n');}
-});afterAll(closeAll);afterEach(()=>vi.unstubAllEnvs());
+});afterAll(closeAll);afterEach(()=>{vi.restoreAllMocks();vi.unstubAllEnvs();});
 beforeEach(async()=>{vi.stubEnv('AI_CONFIG_SECRET','fictional-profile-rejection-custody-key');await resetDb();b=await seedBase();await setModule(b.tenantId,'assistant','active');subject=await hire('Fictional requested employee');hr=await login();});
 it.each(['legacy','v2'] as const)('reviews and rejects one %s scalar request without copying or applying proposal values',async kind=>{
  const proposed=kind==='legacy'?{preferredName:'Private requested name'}:{v:2,fields:[{fieldId:'profile.personal_details.preferredname',before:null,value:'Private requested name'}],registers:[]},id=await request(proposed),before=await master(),original=await row(id),priorEvents=await events(id);
@@ -151,6 +152,11 @@ async function legacyUninitializedFixture(){
  expect(await owner.db.select().from(schema.roleAssignment).where(eq(schema.roleAssignment.tenantId,b.tenantId)).orderBy(schema.roleAssignment.id)).toEqual(roles);expect(await owner.db.select().from(schema.domainEvent).where(eq(schema.domainEvent.tenantId,b.tenantId)).orderBy(schema.domainEvent.id)).toEqual(audit);
  const [authority]=await withTenant(hr,tx=>tx.execute<{principal:boolean;admin:boolean;subject:boolean}>(sql`select app.principal_snapshot_current() as principal,app.is_admin() as admin,app.can_admin_employment(${subject.employmentId}::uuid) as subject`));expect(authority).toEqual({principal:true,admin:true,subject:true});
  const [state]=await owner.db.execute<{configurations:number;groups:number;anchor:boolean}>(sql`select (select count(*)::int from access_configuration where tenant_id=${b.tenantId}::uuid) as configurations,(select count(*)::int from access_group where tenant_id=${b.tenantId}::uuid) as groups,exists(select 1 from app.access_profile_write_generation where tenant_id=${b.tenantId}::uuid) as anchor`);expect(state).toEqual({configurations:0,groups:0,anchor:true});
+ // Diagnostic only: preserve the real native transaction, actor, RLS, locks and thrown failure.
+ const actual=dbClient.withTenant;
+ vi.spyOn(dbClient,'withTenant').mockImplementation(async<T>(ctx:SessionContext,work:(tx:Tx)=>Promise<T>):Promise<T>=>actual(ctx,async tx=>{
+  try{return await work(tx);}catch(error){console.info('LEGACY_NATIVE_FAILURE='+JSON.stringify({chain:pgErrorChain(error).map(link=>({...link,message:link.name==='DrizzleQueryError'?'query suppressed':link.message?.slice(0,1000)})),stack:error instanceof Error&&error.name!=='DrizzleQueryError'?error.stack?.split('\n').slice(0,9):undefined}));throw error;}
+ }));
 }
 it('supports native legacy HR rejection without initializing Access as a review side effect',async()=>{
  await legacyUninitializedFixture();
