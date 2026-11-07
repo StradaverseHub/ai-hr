@@ -73,7 +73,7 @@ END $gate$$ddl$,${receipt}::text,${identity.pid}::integer,${identity.started}::t
   let entered=false;
   for(let attempt=0;attempt<300;attempt++){
    signal.throwIfAborted();
-   const [actual]=await owner.client`select exists(select 1 from pg_locks l join pg_stat_activity s on s.pid=l.pid where l.pid=${identity.pid}and s.backend_start=${identity.started}::text::timestamptz and s.usename='ai_hr_reward_audit_projector'and l.locktype='advisory'and l.granted and l.objsubid=1 and l.classid=((${markerKey}::bigint>>32)&4294967295)::oid and l.objid=(${markerKey}::bigint&4294967295)::oid)as entered`;
+   const [actual]=await owner.client`select exists(select 1 from pg_locks l join pg_stat_activity s on s.pid=l.pid where l.pid=${identity.pid} and s.backend_start=${identity.started}::text::timestamptz and s.usename='ai_hr_reward_audit_projector'and l.locktype='advisory'and l.granted and l.objsubid=1 and l.classid=((${markerKey}::bigint>>32)&4294967295)::oid and l.objid=(${markerKey}::bigint&4294967295)::oid)as entered`;
    if(actual.entered){entered=true;break;}await new Promise(resolve=>setTimeout(resolve,5));
   }
   expect(entered,'actual A entered the cursor snapshot before its receipt tuple lock').toBe(true);
@@ -93,7 +93,7 @@ END $gate$$ddl$,${receipt}::text,${identity.pid}::integer,${identity.started}::t
    const drained=await Promise.allSettled([pending,held,stopping]);await Promise.all([a.end({timeout:0}),b.end({timeout:0})]);
    let absent=false;
    for(let attempt=0;attempt<200;attempt++){
-    const [active]=await owner.client`select count(*)::int as n from pg_stat_activity where(pid=${identity.pid}and backend_start=${identity.started}::text::timestamptz)or(pid=${other.pid}and backend_start=${other.started}::text::timestamptz)`;
+    const [active]=await owner.client`select count(*)::int as n from pg_stat_activity where(pid=${identity.pid} and backend_start=${identity.started}::text::timestamptz)or(pid=${other.pid} and backend_start=${other.started}::text::timestamptz)`;
     if(active.n===0){absent=true;break;}await new Promise(resolve=>setTimeout(resolve,10));
    }
    expect(absent,'both exact native backends settled before any profile restoration').toBe(true);

@@ -66,7 +66,7 @@ async function held(signal:AbortSignal,kind:'access'|'history',work:(pid:number)
 }
 async function gone(pid:number,started:string){
  for(let i=0;i<200;i++){
-  const [actual]=await owner.client`select exists(select 1 from pg_stat_activity where pid=${pid})as pid_present,exists(select 1 from pg_stat_activity where pid=${pid}and backend_start=${started}::text::timestamptz)as exact_present`;
+  const [actual]=await owner.client`select exists(select 1 from pg_stat_activity where pid=${pid})as pid_present,exists(select 1 from pg_stat_activity where pid=${pid} and backend_start=${started}::text::timestamptz)as exact_present`;
   if(!actual.pid_present){expect(actual.exact_present).toBe(false);return;}await new Promise(resolve=>setTimeout(resolve,10));
  }throw Error('Owned projector backend still present');
 }
@@ -106,7 +106,7 @@ describe('durable-before-return read and canonical projection',()=>{
   const spy=vi.spyOn(database,'withTenant').mockImplementation(<T>(ctx:SessionContext,read:(tx:database.Tx)=>Promise<T>,options?:Parameters<typeof database.withTenant>[2])=>realWithTenant(ctx,async tx=>{await tx.execute(sql`set local lock_timeout='300ms'`);await tx.execute(sql`set local statement_timeout='20s'`);return read(tx);},options));
   try{for(const kind of ['access','history']as const)await held(context.signal,kind,async pid=>{
    expect((await api.libraries(f.ctx,'salary',f.year,context.signal)).data.map(row=>row.id)).toEqual([f.ids.salary_version_id]);expect((await api.pat(f.ctx,f.year,context.signal)).data[0].current?.inputs.actualCents).toBe(129000000);
-   expect((await owner.client`select exists(select 1 from pg_locks where pid=${pid}and locktype='advisory'and granted)as held`)[0].held).toBe(true);
+   expect((await owner.client`select exists(select 1 from pg_locks where pid=${pid} and locktype='advisory'and granted)as held`)[0].held).toBe(true);
    await refusal(kind==='access'?rewardLibraries(f.ctx,'salary',f.year):rewardPatInputs(f.ctx,f.year),'55P03');
   });}finally{spy.mockRestore();}
   expect(await receipts()).toHaveLength(4);expect(await auditEvents()).toEqual(before);expect(await money()).toEqual(financial);
@@ -212,7 +212,7 @@ describe('durable-before-return read and canonical projection',()=>{
   const api=owned().family,result=await api.libraries(f.ctx,'salary',f.year),financial=await money(),process=await rewardAuditProjectorProcess(owned().fixture,context.signal);let pid=0,start='';
   try{
    if(phase==='before')await held(context.signal,'history',async writer=>{
-    const [lock]=await owner.client`select database,classid,objid,objsubid from pg_locks where pid=${writer}and locktype='advisory'and granted`;expect(lock).toBeTruthy();process.start(false);
+    const [lock]=await owner.client`select database,classid,objid,objsubid from pg_locks where pid=${writer} and locktype='advisory'and granted`;expect(lock).toBeTruthy();process.start(false);
     for(let attempt=0;attempt<1000;attempt++){
      context.signal.throwIfAborted();
      const rows=await owner.client`select a.pid,a.backend_start::text as started from pg_stat_activity a join pg_locks l on l.pid=a.pid where a.usename='ai_hr_reward_audit_projector'and a.query like '%reward_audit_projection.materialize%'and l.locktype='advisory'and not l.granted and l.database=${lock.database}::oid and l.classid=${lock.classid}::oid and l.objid=${lock.objid}::oid and l.objsubid=${lock.objsubid}::smallint`;
