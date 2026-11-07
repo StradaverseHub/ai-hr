@@ -52,6 +52,9 @@ it('boots two actual same-build Next workers through protected native admission 
    checkOnlyDidNotStartWorkers:true,coldBusinessRequests:0,allStoppedGenerationsReclaimed:true,
    rawBindAndProcessFamilyBarriersPreserved:true,ownedRuntimeCleaned:true});
   expect(report.nativeIngress).toMatchObject({tls:true,nodeProxyUsed:false,webWorkers:2,steadyLoadCapacityClaim:false,proxyNextUpstream:'off'});
+  expect(report.slicePreflight).toMatchObject({fixedImplicitSliceAbsenceVerified:true,existingKernelCgroup:false});
+  expect(report.slicePreflight.lookupDirectories).toBeGreaterThan(0);expect(report.slicePreflight.lookupDirectories).toBeLessThanOrEqual(64);
+  expect(report.slicePreflight.associatedUnitsInspected).toBeGreaterThan(0);expect(report.slicePreflight.associatedUnitsInspected).toBeLessThanOrEqual(2048);
   expect(report.workers).toHaveLength(3);expect(new Set(report.workers.map((row:{port:number})=>row.port)).size).toBe(2);
   for(const row of report.workers){
    expect(row.kernel.namespace).toMatchObject({actualKernelMountsVerified:true,actualEnvironmentVerified:true});

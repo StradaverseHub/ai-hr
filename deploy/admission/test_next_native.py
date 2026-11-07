@@ -28,6 +28,7 @@ SAFE_ENV = {'PATH': '/usr/sbin:/usr/bin:/sbin:/bin', 'LANG': 'C', 'LC_ALL': 'C'}
 UNITS = ['aihr-web@1.service', 'aihr-web@2.service']
 PROXY = 'aihr-admission-nginx.service'
 SLICE = 'aihr-native-next.slice'
+FIXTURE_CGROUP = '/aihr.slice/aihr-native.slice/aihr-native-next.slice'
 BROWSER = 'aihr-native-next-browser.service'
 ROOTS = ['/etc/aihr-admission', '/usr/local/lib/aihr-admission', '/etc/nginx/aihr-admission',
          '/run/aihr-admission', '/var/lib/aihr-admission', '/var/cache/aihr']
@@ -44,12 +45,14 @@ evidence = None
 evidence_fd = None
 PREPACKAGE_GUARDS = {
     **{'fixture-root-' + str(index): 'directory-absence' for index in range(6)},
-    **{'fixture-unit-' + str(index): 'unit-absence' for index in range(5)},
+    **{'fixture-unit-' + str(index): 'unit-absence' for index in (0, 1, 2, 4)},
     'empty-home-parent': 'empty-home', 'empty-home': 'empty-home',
     **{'sealed-helper-' + str(index): 'sealed-helpers' for index in range(6)},
     'node-hint': 'node-hint', 'node-stat': 'node-stat',
     'node-before-read': 'node-read', 'node-after-read': 'node-read',
     'node-installed-bytes': 'node-read',
+    **{code: 'slice-absence' for code in ('slice-metadata', 'slice-paths', 'slice-file-absent',
+        'slice-member-units', 'slice-cgroup-absent')},
 }
 PREPACKAGE_STAGES = frozenset(PREPACKAGE_GUARDS.values()) | {'owned-directories', 'node-install'}
 
@@ -237,7 +240,10 @@ def fixture_directories():
         prepackage_guard(not os.path.lexists(name), 'fixture-root-' + str(index))
     prepackage_phase('unit-absence')
     for index, unit in enumerate([*UNITS, PROXY, SLICE, BROWSER]):
+        if unit == SLICE:
+            continue  # A fragmentless slice is synthesized loaded by systemd.
         prepackage_guard(props(unit).get('LoadState') == 'not-found', 'fixture-unit-' + str(index))
+    slice_absence()
     prepackage_phase('owned-directories')
     for name in ROOTS:
         os.mkdir(name, 0o755)
@@ -263,6 +269,131 @@ def fixture_directories():
         owned_paths[str(home)] = (home.stat().st_dev, home.stat().st_ino)
     prepackage_guard(home.stat().st_uid == 0 and not home.is_symlink() and not home.stat().st_mode & 0o022
             and not any(home.iterdir()), 'empty-home')
+
+
+def fixed_properties(raw, wanted):
+    prepackage_guard(isinstance(raw, bytes) and len(raw) <= 1024**2, 'slice-metadata')
+    rows = {}
+    for line in raw.decode('utf8').strip().splitlines():
+        key, separator, value = line.partition('=')
+        prepackage_guard(separator == '=' and key in wanted and key not in rows
+                         and len(value) <= 4096 and '\0' not in value, 'slice-metadata')
+        rows[key] = value
+    prepackage_guard(set(rows) == set(wanted), 'slice-metadata')
+    return rows
+
+
+def directory_identity(info):
+    # System directories have unrelated live entries. Pin directory identity,
+    # type and authority; unit-leaf absence is checked separately without links.
+    return info.st_dev, info.st_ino, info.st_mode, info.st_uid, info.st_gid
+
+
+@contextlib.contextmanager
+def manager_directory(supplied):
+    """Read only a real manager lookup directory through root-owned pinned parents.
+
+    Ubuntu's root-owned /lib -> usr/lib directory alias is admitted locally;
+    unit-file links themselves are never followed. No global secure_path change.
+    """
+    source = pathlib.Path(supplied)
+    prepackage_guard(source.is_absolute() and len(supplied) <= 4096 and '..' not in source.parts
+                     and str(source) == supplied and len(source.parts) <= 16
+                     and supplied.startswith(('/etc/systemd/', '/run/systemd/', '/usr/lib/systemd/',
+                                              '/usr/local/lib/systemd/', '/lib/systemd/')), 'slice-paths')
+    aliases = []
+    for index in range(1, len(source.parts)):
+        ancestor = pathlib.Path(*source.parts[:index + 1])
+        try:
+            info = ancestor.lstat()
+        except FileNotFoundError:
+            break
+        prepackage_guard(info.st_uid == 0 and (stat.S_ISDIR(info.st_mode) or stat.S_ISLNK(info.st_mode))
+                         and (stat.S_ISLNK(info.st_mode) or not info.st_mode & 0o022), 'slice-paths')
+        aliases.append((ancestor, stat.S_ISLNK(info.st_mode), identity(info) if stat.S_ISLNK(info.st_mode) else directory_identity(info)))
+    resolved = source.resolve()
+    prepackage_guard(str(resolved).startswith(('/etc/systemd/', '/run/systemd/', '/usr/lib/systemd/',
+                                              '/usr/local/lib/systemd/')) and len(resolved.parts) <= 16, 'slice-paths')
+    descriptors, pins, missing = [], [], None
+    try:
+        current = os.open('/', os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+        descriptors.append(current)
+        root_info = os.fstat(current)
+        prepackage_guard(root_info.st_uid == 0 and not root_info.st_mode & 0o022, 'slice-paths')
+        for part in resolved.parts[1:]:
+            try:
+                before = os.stat(part, dir_fd=current, follow_symlinks=False)
+            except FileNotFoundError:
+                missing = (current, part)
+                break
+            prepackage_guard(stat.S_ISDIR(before.st_mode) and before.st_uid == 0
+                             and not before.st_mode & 0o022, 'slice-paths')
+            child = os.open(part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=current)
+            descriptors.append(child)
+            prepackage_guard(directory_identity(os.fstat(child)) == directory_identity(before), 'slice-paths')
+            pins.append((current, part, child, directory_identity(before)))
+            current = child
+        yield None if missing else current
+        for parent, name, child, before in pins:
+            prepackage_guard(directory_identity(os.fstat(child)) == before
+                             and directory_identity(os.stat(name, dir_fd=parent, follow_symlinks=False)) == before, 'slice-paths')
+        if missing:
+            parent, name = missing
+            try:
+                os.stat(name, dir_fd=parent, follow_symlinks=False)
+            except FileNotFoundError:
+                pass
+            else:
+                prepackage_guard(False, 'slice-paths')
+        for ancestor, link, before in aliases:
+            after = ancestor.lstat()
+            prepackage_guard((identity(after) if link else directory_identity(after)) == before, 'slice-paths')
+    finally:
+        for descriptor in reversed(descriptors):
+            os.close(descriptor)
+
+
+def slice_leaf_absence(directory):
+    for name in (SLICE, SLICE + '.d'):
+        try:
+            os.stat(name, dir_fd=directory, follow_symlinks=False)
+        except FileNotFoundError:
+            continue
+        prepackage_guard(False, 'slice-file-absent')  # Includes dangling links.
+
+
+def slice_absence():
+    prepackage_phase('slice-absence')
+    keys = ('Id', 'LoadState', 'ActiveState', 'SubState', 'FragmentPath', 'SourcePath',
+            'DropInPaths', 'Transient', 'ControlGroup', 'Following')
+    row = fixed_properties(systemctl('show', SLICE, '--all', '--property=' + ','.join(keys)).stdout, keys)
+    expected = {'Id': SLICE, 'ActiveState': 'inactive', 'SubState': 'dead', 'FragmentPath': '',
+                'SourcePath': '', 'DropInPaths': '', 'Transient': 'no', 'ControlGroup': '', 'Following': ''}
+    prepackage_guard(row['LoadState'] in ('loaded', 'not-found')
+                     and all(row[key] == value for key, value in expected.items()), 'slice-metadata')
+    raw = systemctl('show', '--property=UnitPath', '--value').stdout
+    prepackage_guard(len(raw) <= 65536, 'slice-paths')
+    paths = raw.decode('utf8').strip().split()
+    prepackage_guard(0 < len(paths) <= 64 and len(set(paths)) == len(paths)
+                     and '/etc/systemd/system' in paths, 'slice-paths')
+    for path in paths:
+        with manager_directory(path) as directory:
+            if directory is not None:
+                slice_leaf_absence(directory)
+    raw = systemctl('show', '--all', '--no-pager', '--property=Id,Slice', '*.service', '*.scope').stdout
+    prepackage_guard(0 < len(raw) <= 1024**2, 'slice-member-units')
+    blocks = raw.decode('utf8').strip().split('\n\n')
+    prepackage_guard(0 < len(blocks) <= 2048, 'slice-member-units')
+    seen = set()
+    for block in blocks:
+        member = fixed_properties(block.encode(), ('Id', 'Slice'))
+        prepackage_guard(member['Id'].endswith(('.service', '.scope')) and member['Id'] not in seen
+                         and member['Slice'] != SLICE, 'slice-member-units')
+        seen.add(member['Id'])
+    prepackage_guard(not os.path.lexists('/sys/fs/cgroup' + FIXTURE_CGROUP), 'slice-cgroup-absent')
+    report['slicePreflight'] = {'fixedImplicitSliceAbsenceVerified': True, 'lookupDirectories': len(paths),
+                              'associatedUnitsInspected': len(seen), 'existingKernelCgroup': False}
+    save()
 
 
 def package(plan, helper, binding):
@@ -430,7 +561,7 @@ def configure(plan, binding, N, release, runtime_package):
     pool, control_port = [port(used) for _ in range(32)], port(used)
     envelope = {'version': 1, 'kind': 'HOSTED_NEXT_SAME_BUILD_V1', 'workers': 2,
         'suite': 'workflow-preflight', 'cpuOversubscriptionDiagnostic': False, 'slice': SLICE,
-        'cgroupPath': '/aihr.slice/aihr-native.slice/aihr-native-next.slice', 'cpuQuotaPercent': 400,
+        'cgroupPath': FIXTURE_CGROUP, 'cpuQuotaPercent': 400,
         'memoryHighBytes': 7168 * 1024**2, 'memoryMaxBytes': 8192 * 1024**2, 'memorySwapMaxBytes': 0,
         'totalHeapMiB': 4096, 'totalWebConnections': 16, 'totalWaitingBudget': 2048, 'tasksMax': 1024}
     mounts = {}
