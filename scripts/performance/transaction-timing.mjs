@@ -1,9 +1,10 @@
 // Preloaded only in the isolated application workers. Never records queries or identities.
 import {renameSync,writeFileSync} from 'node:fs';
-import {createHistogram,performance} from 'node:perf_hooks';
+import {createHistogram,monitorEventLoopDelay,performance} from 'node:perf_hooks';
 
 const path=process.env.PERF_TX_TIMING_PATH;
 if(process.env.GITHUB_ACTIONS==='true'&&path){
+ const eventLoop=monitorEventLoopDelay({resolution:20});eventLoop.enable();
  const startDelay=createHistogram(),held=createHistogram();
  const approvalWait=createHistogram(),approvalWork=createHistogram();
  const passiveWait=createHistogram(),passiveWork=createHistogram();
@@ -81,13 +82,14 @@ if(process.env.GITHUB_ACTIONS==='true'&&path){
   try{
    const capturedAt=Date.now();
    windows.push({from:windowStart,to:capturedAt,pending,holding,startDelay:describe(startDelay),held:describe(held),
+    eventLoopDelay:{samples:eventLoop.count,p95Ms:eventLoop.count?eventLoop.percentile(95)/1e6:null,maxMs:eventLoop.count?eventLoop.max/1e6:null},
     passiveRead:{pending:passivePending,running:passiveRunning,queueWait:describe(passiveWait),afterAdmission:describe(passiveWork)},
     attendanceApproval:{pending:approvalPending,running:approvalRunning,queueWait:describe(approvalWait),afterAdmission:describe(approvalWork)},
     attendanceExclusiveAdmission});
    if(windows.length>180)windows.shift();
    windowStart=capturedAt;
    attendanceExclusiveAdmission=admissionWindow();
-   startDelay.reset();held.reset();approvalWait.reset();approvalWork.reset();passiveWait.reset();passiveWork.reset();
+   startDelay.reset();held.reset();approvalWait.reset();approvalWork.reset();passiveWait.reset();passiveWork.reset();eventLoop.reset();
    writeFileSync(path+'.tmp',JSON.stringify({
     scope:'Application withTenant transactions in bounded five-second windows. Start delay includes pool wait, database BEGIN and callback scheduling. Held includes callback and transaction completion.',
     attendanceApprovalScope:'Process-local native approvals only. Queue wait ends before requesting a connection. After admission includes pool, locks, transaction and any fallback. No identities.',
