@@ -42,7 +42,8 @@ export function ClockPanel({refreshToken=0,variant='full',renderHome,afterContro
   const {employmentId,status:sessionStatus,signOut}=useSession();
   const clock=useApi('clock',{employmentId:employmentId??undefined},signOut);
   const attempts=useApi('clock-attempts',{employmentId:employmentId??undefined},signOut);
-  useFocusEffect(useCallback(()=>{clock.reload();attempts.reload();},[clock.reload,attempts.reload]));
+  const visited=useRef(false);
+  useFocusEffect(useCallback(()=>{if(visited.current){clock.reload();attempts.reload();}visited.current=true;},[clock.reload,attempts.reload]));
   useEffect(()=>{if(refreshToken){clock.reload();attempts.reload();}},[refreshToken,clock.reload,attempts.reload]);
   // D8: every fresh clock answer (after a punch, a refresh or a return) re-plans the shift reminders.
   useEffect(()=>{if(clock.data)requestShiftReminderRefresh();},[clock.data]);
@@ -333,6 +334,7 @@ export function ClockPanel({refreshToken=0,variant='full',renderHome,afterContro
     else putClock(null);
   }
   const home=variant==='home';
+  const compactAttempt=home&&draft?.phase==='idle'&&!!draft.attemptStartedAt&&!registrationNeeded&&!recovery.error&&offline.mode!=='offline'&&signedStatus?.status!=='other_pending'&&signedStatus?.status!=='offline_pending';
   const homeDisabled=!(current||coldStart)||pending||!recovery.ready||clock.loading||
     !!draft&&['review','uncertain','submitting','preparing'].includes(draft.phase)||
     signedStatus?.status==='other_pending'||signedStatus?.status==='offline_pending';
@@ -341,11 +343,15 @@ export function ClockPanel({refreshToken=0,variant='full',renderHome,afterContro
     message:draft?.message??null,finishOnClockTab:false,clock:()=>void prepare(),phase:draft?.phase??null}):null;
   // The same review, evidence, registration and receipt controls remain on Home.
   // A primary Home tap prepares only; submission still requires explicit human confirmation.
-  const showHomeJourney=!!draft&&(draft.phase!=='done'&&(draft.phase!=='idle'||!!draft.message))||registrationNeeded||!!recovery.error||offline.mode==='offline'||signedStatus?.status==='other_pending'||signedStatus?.status==='offline_pending';
+  const showHomeJourney=!compactAttempt&&(!!draft&&(draft.phase!=='done'&&(draft.phase!=='idle'||!!draft.message))||registrationNeeded||!!recovery.error||offline.mode==='offline'||signedStatus?.status==='other_pending'||signedStatus?.status==='offline_pending');
   if(home&&clock.data&&!clock.data.enabled)return null;
   if(clock.data&&!clock.data.enabled)return <Muted>{t('attendanceOff')}</Muted>;
   return <View style={{gap:16}}>
     {homeContent}
+    {compactAttempt&&<View style={{gap:4,borderBottomWidth:1,borderColor:palette.border,paddingBottom:8}}>
+      <Text style={{color:palette.text,fontSize:14}}>{t('attemptNotRecorded')}</Text>
+      <Pressable accessibilityRole="link" onPress={()=>router.navigate('/clock')} style={{minHeight:44,justifyContent:'center'}}><Text style={{color:palette.accent,fontSize:14,fontWeight:'600'}}>{t('reviewSavedAttempts')} →</Text></Pressable>
+    </View>}
     {(!home||showHomeJourney)&&<>
     <OfflineClockBanner offline={offline} server={offline.mode==='offline'&&current?{clockedIn:current.clockedIn,openSince:current.openSince,lastOutAt:[...current.captures].reverse().find(c=>c.direction==='out')?.recordedAt??null}:null}/>
     {!coldStart&&<LoadState loading={clock.loading} hasData={current!=null} error={clock.error} onRetry={clock.reload}/>}

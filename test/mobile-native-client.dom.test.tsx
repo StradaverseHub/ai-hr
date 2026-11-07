@@ -8,6 +8,7 @@ import {readBoundedBody} from '../lib/bounded-body';
 import {createReadCoordinator,retryAfterSeconds} from '../mobile/lib/read-coordinator';
 import {createAuthState} from '../mobile/lib/auth-state';
 import {createSessionState} from '../mobile/lib/session-state';
+import {createReadSnapshots} from '../mobile/lib/read-snapshot';
 import * as jsx from 'react/jsx-runtime';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -31,7 +32,7 @@ function clientFixture(credentialState?: ReturnType<typeof createAuthState>) {
     assertAuthGeneration(owner: number) { if (credentialState) credentialState.assertCurrent(owner); else if (owner !== generation) throw new SessionChangedError(); },
     getAccessToken: vi.fn(async () => credentialState ? credentialState.getAccessToken() : 'access-token'),
     refresh: vi.fn(async () => credentialState ? credentialState.refresh() : 'rotated-token') };
-  const output = { exports: {} as { apiGet: (path: string, params?: Record<string, string>,signal?:AbortSignal) => Promise<unknown>; apiPost: (path:string,body:unknown,params?:Record<string,string>,operation?:{assertCurrent():void})=>Promise<unknown>;
+  const output = { exports: {} as { ReadSnapshotBoundary: React.ComponentType<React.PropsWithChildren>; apiGet: (path: string, params?: Record<string, string>,signal?:AbortSignal) => Promise<unknown>; apiPost: (path:string,body:unknown,params?:Record<string,string>,operation?:{assertCurrent():void})=>Promise<unknown>;
     useApi: (path: string, params: Record<string, string>, onSignInRequired: () => void) => { data: { person: {name:string} } | null; loading: boolean };
     useApiV2: (path: string, schema: z.ZodType, params: Record<string, string>, onSignInRequired: () => void) => { data: unknown; loading: boolean };
     apiGetV2:(path:string,schema:z.ZodType,params?:Record<string,string>)=>Promise<unknown>;
@@ -43,6 +44,7 @@ function clientFixture(credentialState?: ReturnType<typeof createAuthState>) {
   runInNewContext(code, { exports: output.exports, module: output, fetch: response, AbortController, FormData, TextDecoder, setTimeout, clearTimeout,
     require: (id: string) => {
       if (id === 'react') return React;
+      if (id === './read-snapshot') return {createReadSnapshots};
       if (id === 'react-native') return {AppState:appState};
       if (id === 'expo/fetch') return {fetch:response};
       if (id === '../../lib/bounded-body') return {readBoundedBody};
@@ -483,4 +485,19 @@ describe('profile loading after current credential revocation', () => {
     expect(screen.queryByText('Profile loading')).toBeNull();
     expect(f.response).not.toHaveBeenCalled();
   });
+});
+
+it('reuses profile display data only inside the same unlocked tree and bypasses it on explicit refresh',async()=>{
+  const f=clientFixture();
+  function Profile(){const r=f.api.useApi('me',{},onAuth) as any;return <><span>{r.data?.person.name??'Loading identity'}</span><button onClick={r.reload}>Refresh identity</button></>;}
+  const onAuth=vi.fn();
+  function App(){const [page,setPage]=React.useState(true);return <><button onClick={()=>setPage(v=>!v)}>Navigate</button>{page?<Profile/>:<span>Other page</span>}</>;}
+  const view=render(<f.api.ReadSnapshotBoundary><App/></f.api.ReadSnapshotBoundary>);
+  await screen.findByText('Employment one');expect(f.response).toHaveBeenCalledOnce();
+  fireEvent.click(screen.getByText('Navigate'));fireEvent.click(screen.getByText('Navigate'));
+  expect(screen.getByText('Employment one')).toBeTruthy();expect(f.response).toHaveBeenCalledOnce();
+  fireEvent.click(screen.getByText('Refresh identity'));await waitFor(()=>expect(f.response).toHaveBeenCalledTimes(2));
+  view.unmount();
+  render(<f.api.ReadSnapshotBoundary><App/></f.api.ReadSnapshotBoundary>);
+  await screen.findByText('Employment one');expect(f.response).toHaveBeenCalledTimes(3);
 });

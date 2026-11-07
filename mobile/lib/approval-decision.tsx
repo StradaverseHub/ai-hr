@@ -100,12 +100,13 @@ export function TaskRow({ item }: { item: TaskItemV2 }) {
   const { palette } = useTenantDesign();
   const summary = taskSummaryLine(item);
   const label = [t(KIND_LABEL[item.kind]), item.subject.name, summary].filter(Boolean).join(' · ');
-  const body = <View style={{ paddingVertical: 20, gap: 7, borderBottomWidth: 1, borderColor: palette.border }}>
+  const body = <View style={{ paddingVertical: 14, gap: 5, borderBottomWidth: 1, borderColor: palette.border }}>
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-      <View style={{ flex: 1, gap: 7 }}>
-        <Text style={{ color: palette.text, fontSize: 18, fontWeight: '700' }}>{item.subject.name ?? t(KIND_LABEL[item.kind])}</Text>
+      <View accessible={false} style={{width:40,height:40,borderRadius:20,borderWidth:1,borderColor:palette.border,alignItems:'center',justifyContent:'center'}}><Text style={{color:palette.text,fontSize:13,fontWeight:'700'}}>{(item.subject.name??'').trim().split(/\s+/).map(part=>part[0]).slice(0,2).join('')||'·'}</Text></View>
+      <View style={{ flex: 1, gap: 3 }}>
+        <Text style={{ color: palette.text, fontSize: 16, fontWeight: '700' }}>{item.subject.name ?? t(KIND_LABEL[item.kind])}</Text>
         <Text style={{ color: palette.text, fontSize: 14 }}>{t(KIND_LABEL[item.kind])}</Text>
-        {summary && <Text style={{ color: palette.muted, fontSize: 14, lineHeight: 21 }}>{summary}</Text>}
+        {summary && <Text style={{ color: palette.muted, fontSize: 13, lineHeight: 18 }}>{summary}</Text>}
       </View>
       <Icon name="chevron" color={palette.text} size={16} />
     </View>
@@ -126,7 +127,7 @@ export function HomeApprovalQueue({ refreshToken }: { refreshToken: number }) {
     <LoadState loading={list.loading} hasData={list.items.length > 0} error={list.error} onRetry={list.retry} />
     {list.items.slice(0, 3).map(item => <TaskRow key={keyOf(item)} item={item} />)}
     {list.empty && <Muted>{t('approvalsEmpty')}</Muted>}
-    <Button title={t('approvalsTitle')} kind="quiet" onPress={() => router.navigate('/approvals')} />
+    <Pressable accessibilityRole="link" accessibilityLabel={t('openApprovals')} onPress={()=>router.navigate('/approvals')} style={{minHeight:44,justifyContent:'center'}}><Text style={{color:palette.accent,fontSize:14,fontWeight:'600'}}>{t('openApprovals')} →</Text></Pressable>
   </View>;
 }
 
@@ -140,6 +141,7 @@ export function ApprovalsScreen({ embedded = false }: { embedded?: boolean } = {
     <PagedList list={list} keyOf={keyOf} emptyText={t('approvalsEmpty')} contentContainerStyle={{ padding: 20, gap: 8, paddingBottom: 40 }}
       header={<View style={{ gap: 12 }}>
         {!embedded && <HeaderBack />}
+        <Muted>{t('approvalsTitle')}</Muted>
         <Title>{t('fieldReviewTitle')}</Title>
         <View style={{flexDirection:'row',gap:8,paddingBottom:12}}><StatusPill label={t('pending')}/></View>
       </View>}

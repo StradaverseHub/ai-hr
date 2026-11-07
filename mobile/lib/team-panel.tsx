@@ -1,4 +1,4 @@
-import { useCallback,useEffect,useState } from 'react';
+import { useRef, useCallback,useEffect,useState } from 'react';
 import { useFocusEffect } from 'expo-router';
 import { Pressable,View } from 'react-native';
 import { DesignText as Text } from './design';
@@ -19,7 +19,8 @@ export function TeamPanel({refreshToken=0,compact=false,hideTitle=false}:{refres
   const [from,setFrom]=useState<string|undefined>(undefined);
   const team=useApiV2('v2/team/availability',TeamAvailabilityV2,{from,to:from?addCalendarDays(from,TEAM_WINDOW_DEFAULT_DAYS-1):undefined},signOut);
   const [expanded,setExpanded]=useState(false);
-  useFocusEffect(useCallback(()=>{team.reload();},[team.reload]));
+  const visited=useRef(false);
+  useFocusEffect(useCallback(()=>{if(visited.current)team.reload();visited.current=true;},[team.reload]));
   useEffect(()=>{if(refreshToken)team.reload();},[refreshToken,team.reload]);
   const sessions:Record<string,string>={full_day:t('fullDay'),AM:t('halfAM'),PM:t('halfPM'),hourly:t('hourly')};
   const data=team.data;

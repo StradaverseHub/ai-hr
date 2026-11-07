@@ -29,7 +29,7 @@ function fixture(platform:'ios'|'android'='ios'){
   const androidOpen=vi.fn();
   const picker={default:(p:any)=><input aria-label={p.testID} data-presentation={p.presentation} value={p.mode==='date'?`${p.value.getFullYear()}-${String(p.value.getMonth()+1).padStart(2,'0')}-${String(p.value.getDate()).padStart(2,'0')}`:`${String(p.value.getHours()).padStart(2,'0')}:${String(p.value.getMinutes()).padStart(2,'0')}`} onChange={e=>{const v=e.target.value;const d=p.mode==='date'?new Date(Number(v.slice(0,4)),Number(v.slice(5,7))-1,Number(v.slice(8,10))):new Date(2000,0,1,Number(v.slice(0,2)),Number(v.slice(3,5)));p.onChange({type:'set'},d);}}/>,DateTimePickerAndroid:{open:androidOpen}};
   const native={Alert:{alert},View,Text,Pressable,useWindowDimensions:()=>({width:320,height:568,scale:2.75,fontScale:1.3}),TextInput:(p:any)=><input aria-label={p.accessibilityLabel} disabled={!p.editable} value={p.value} onChange={e=>p.onChangeText(e.target.value)}/>,Image:()=>null,AppState:{currentState:'active'},Platform:{OS:platform}};
-  const base={'react-native':native,'./session':{useSession:()=>session},'./auth':{authGeneration:()=>1,assertAuthGeneration:()=>{}},'./motion': mobileMotionPorts, '../../lib/motion': mobileMotionPorts, './visual': mobileVisualPorts, './design':{DesignText:Text,useTenantDesign:()=>({design:DEFAULT_MOBILE_DESIGN,palette:mobilePalette(DEFAULT_MOBILE_DESIGN,'dark')})},'./errors':errors,'./i18n':{appLocale:()=>'en',t:(s:string,v?:any)=>s==='awayToday'?`${s} ${v.n}/${v.total}`:s},'expo-crypto':{randomUUID:()=>`${String(++sequence).padStart(8,'0')}-aaaa-4aaa-8aaa-aaaaaaaaaaaa`},'expo-router':{useFocusEffect:()=>{},router:{push:vi.fn()}}};
+  const base={'react-native':native,'./session':{useSession:()=>session},'./auth':{authGeneration:()=>1,assertAuthGeneration:()=>{}},'./motion': mobileMotionPorts, '../../lib/motion': mobileMotionPorts, './visual': mobileVisualPorts, './design':{DesignText:Text,useTenantDesign:()=>({design:DEFAULT_MOBILE_DESIGN,palette:mobilePalette(DEFAULT_MOBILE_DESIGN,'dark')})},'./errors':errors,'./i18n':{appLocale:()=>'en',t:(s:string,v?:any)=>s==='awayToday'?`${s} ${v.n}/${v.total}`:s},'expo-crypto':{randomUUID:()=>`${String(++sequence).padStart(8,'0')}-aaaa-4aaa-8aaa-aaaaaaaaaaaa`},'expo-router':{useFocusEffect:()=>{},router:{push:vi.fn(),navigate:vi.fn()}}};
   const provider=load('mobile/lib/journey-drafts.tsx',{...base,'expo-file-system':{File:class{exists=false},Directory:class{exists=false},Paths:{cache:'cache'}}});
   const ui={Chip:(p:any)=><button disabled={p.disabled} aria-pressed={!!p.selected} onClick={p.onPress}>{p.title}</button>,NoteLine:({text}:any)=><span>{text}</span>,InfoNote:({short,detail}:any)=><span><span>{short}</span><span>{detail}</span></span>,HeaderBack:({onPress}:any)=><button aria-label="back" onClick={onPress}>‹</button>,ListRow:({label,value,onPress}:any)=><button aria-label={value?`${label}, ${value}`:label} onClick={onPress}>{label}{value?`: ${value}`:''}</button>,Screen:({children,footer}:any)=><div>{children}{footer}</div>,Title:({children}:any)=><h1>{children}</h1>,Button:(p:any)=><button disabled={p.disabled} onClick={p.onPress}>{p.title}</button>,Card:View,Muted:Text,Row:({label,value}:any)=><p>{label}: {value}</p>,LoadState:()=>null,fmtDays:(n:unknown)=>n==null?'—':String(n)};
   const clockState={enabled:true,employmentId:'own',state:{date:'2026-01-01',clockedIn:false,geofencingRequired:false,workedSeconds:0,shift:{code:null,start:null,end:null},attendancePhotoSetting:'not_required',deviceRequired:false,captures:[],legacy:[]}};
@@ -571,4 +571,15 @@ describe('offline clocking switch off (the default)',()=>{
   expect(f.anchorRead).not.toHaveBeenCalled();
   for(const spy of Object.values(f.engine))expect(spy).not.toHaveBeenCalled();
  });
+});
+
+it('keeps an unsent clock attempt compact on Home without discarding its recovery identity',async()=>{
+  const f=fixture();render(<f.App kind="homeClock"/>);
+  await act(async()=>{f.drafts().putClock({employmentId:'own',action:'in',phase:'idle',requestId:'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',attemptStartedAt:Date.now(),message:'Interrupted'});});
+  expect(screen.getByText('attemptNotRecorded')).toBeTruthy();
+  expect(screen.getByRole('link')).toBeTruthy();
+  expect(screen.queryByText('attemptTimeClaim')).toBeNull();
+  expect(screen.queryByText('sendAttemptRecord')).toBeNull();
+  expect(f.drafts().clock.requestId).toBe('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa');
+  expect(f.post).not.toHaveBeenCalled();expect(f.reportAttempt).not.toHaveBeenCalled();
 });

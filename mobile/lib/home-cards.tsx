@@ -4,7 +4,7 @@
  * worked time and its one button opens the Clock tab, where the whole clock journey (location, review, receipts,
  * attempt reports and their assurances) lives.
  */
-import { useCallback, useEffect } from 'react';
+import { useRef, useCallback, useEffect } from 'react';
 import { View } from 'react-native';
 import { router, useFocusEffect, type Href } from 'expo-router';
 import { DesignText as Text, useTenantDesign } from './design';
@@ -34,7 +34,8 @@ export function ClockSummary({ refreshToken = 0 }: { refreshToken?: number }) {
   const { employmentId, signOut } = useSession();
   const { palette } = useTenantDesign();
   const clock = useApi('clock', { employmentId: employmentId ?? undefined }, signOut);
-  useFocusEffect(useCallback(() => { clock.reload(); }, [clock.reload]));
+  const visited=useRef(false);
+  useFocusEffect(useCallback(() => { if(visited.current)clock.reload();visited.current=true; }, [clock.reload]));
   useEffect(() => { if (refreshToken) clock.reload(); }, [refreshToken, clock.reload]);
   if (clock.data && !clock.data.enabled) return null;
   const today = clock.data?.state;

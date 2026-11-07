@@ -36,11 +36,11 @@ function BrandedHome() {
   return <ScrollView style={{ flex: 1, backgroundColor: palette.bg }} contentContainerStyle={{ paddingBottom: 32 }}
     refreshControl={<RefreshControl refreshing={me.loading && me.data != null} onRefresh={reloadAll} />}>
     <HomeHero name={me.data?.person.name ?? null} unread={unread} refreshToken={refreshToken} companyName={me.data?.employments.find(item => item.employmentId === employmentId)?.company ?? me.data?.employments[0]?.company} />
-    <View style={{ paddingHorizontal: 20, paddingTop: 12, gap: 24 }}>
+    <View style={{ paddingHorizontal: 20, paddingTop: 0, gap: 16 }}>
       {me.error && <LoadState loading={false} hasData={me.data != null} error={me.error} onRetry={me.reload} />}
       <QuickActions actions={actions} />
       <View style={{ gap: 8, paddingTop: 8 }}>
-        <SectionHeader title={t('fieldReviewTitle').replace('\n', ' ')} action={typeof needs.tasks === 'number' ? t('homeTasksCount', {n: needs.tasks}) : undefined} onAction={() => router.navigate('/approvals')} />
+        <SectionHeader title={t('fieldReviewTitle')} count={typeof needs.tasks === 'number'?needs.tasks:undefined} action={typeof needs.tasks === 'number' ? t('homeTasksCount', {n: needs.tasks}) : undefined} onAction={() => router.navigate('/approvals')} />
         <HomeApprovalQueue refreshToken={refreshToken} />
       </View>
 

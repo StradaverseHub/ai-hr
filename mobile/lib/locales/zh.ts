@@ -3,6 +3,7 @@ import type { MessageKey } from '../i18n';
 import type { CompanyCopy } from '../company-connection';
 
 const messages: Record<MessageKey, string> = {
+  attemptNotRecorded: "打卡尝试已保存，尚未记录考勤。",
   fieldLeaveTitle: "休假\n时光。",
   fieldMeTitle: "你的\n工作空间。",
   fieldReviewTitle: "待你\n审核。",

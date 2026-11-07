@@ -3,7 +3,7 @@ import { runInNewContext } from 'node:vm';
 import { JsxEmit, ModuleKind, transpileModule } from 'typescript';
 import * as React from 'react';
 import * as jsx from 'react/jsx-runtime';
-import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createSessionState } from '../mobile/lib/session-state';
 
@@ -14,7 +14,7 @@ function deviceFixture(level: number) {
   const capture = { preventScreenCaptureAsync: vi.fn(async () => undefined), enableAppSwitcherProtectionAsync: vi.fn(async () => undefined) };
   const clearTokens = vi.fn(async () => undefined);
   const output = { exports: {} as { SessionProvider: React.ComponentType<React.PropsWithChildren>;
-    useSession: () => { status: string; visible: boolean } } };
+    useSession: () => { status: string; visible: boolean; signOut:()=>Promise<void>; setEmploymentId:(id:string)=>void } } };
   const code = transpileModule(readFileSync('mobile/lib/session.tsx', 'utf8'), {
     compilerOptions: { module: ModuleKind.CommonJS, jsx: JsxEmit.ReactJSX },
   }).outputText;
@@ -33,11 +33,13 @@ function deviceFixture(level: number) {
     if (id === './auth') return { subscribeAuthRevocation: () => () => {}, hasStoredSession: async () => true, signOut: clearTokens, assertAuthGeneration() {}, workosLogoutUrl: () => null, redirectUri: () => 'aihr://auth/callback' };
     throw new Error(`Unexpected device gate dependency: ${id}`);
   } });
+  const reads=vi.fn();
   function Probe() {
     const session = output.exports.useSession();
-    return <div>{session.status === 'signedIn' && session.visible ? 'Private screen' : session.status}</div>;
+    React.useEffect(()=>{reads();},[session.signOut]);
+    return <div><button onClick={()=>session.setEmploymentId('other-employment')}>Switch employment</button>{session.status === 'signedIn' && session.visible ? 'Private screen' : session.status}</div>;
   }
-  return { local, capture, clearTokens, View: () => <output.exports.SessionProvider><Probe /></output.exports.SessionProvider> };
+  return { local, capture, clearTokens, reads, View: () => <output.exports.SessionProvider><Probe /></output.exports.SessionProvider> };
 }
 afterEach(cleanup);
 
@@ -66,4 +68,12 @@ describe('native provider wiring — passcode and privacy', () => {
     expect(f.local.authenticateAsync).not.toHaveBeenCalled();
     expect(screen.queryByText('Private screen')).not.toBeInTheDocument();
   });
+});
+
+it('keeps data subscriptions stable when the active employment changes',async()=>{
+  const f=deviceFixture(1);render(<f.View/>);await screen.findByText('Private screen');
+  const before=f.reads.mock.calls.length;
+  fireEvent.click(screen.getByText('Switch employment'));
+  expect(f.reads).toHaveBeenCalledTimes(before);
+  expect(f.clearTokens).not.toHaveBeenCalled();
 });

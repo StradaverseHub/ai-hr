@@ -4,7 +4,7 @@
  * (one read, at most TEAM_WINDOW_MAX_DAYS days). No leave type or reason is ever received. The grid starts weeks on
  * Monday for layout only; it makes no claim about the company's working week.
  */
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useRef, useCallback, useEffect, useMemo, useState } from 'react';
 import { Pressable, View } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import { DesignText as Text, useTenantDesign } from '../lib/design';
@@ -37,7 +37,8 @@ export default function TeamCalendar() {
   const [month, setMonth] = useState<string | null>(null);
   const grid = month ? monthGrid(month) : null;
   const team = useApiV2('v2/team/availability', TeamAvailabilityV2, grid ? { from: grid.dates[0], to: grid.dates[grid.dates.length - 1] } : {}, signOut);
-  useFocusEffect(useCallback(() => { team.reload(); }, [team.reload]));
+  const visited=useRef(false);
+  useFocusEffect(useCallback(() => { if(visited.current)team.reload();visited.current=true; }, [team.reload]));
   const data = team.data;
   // The first read (no window) is the server's default; its `today` anchors the month the app then asks for.
   const shown = month ?? data?.today.slice(0, 7) ?? null;

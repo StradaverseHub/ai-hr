@@ -12,7 +12,8 @@ import {IntegrityEnrollmentIntent,IntegrityEnrollmentProof,IntegrityEnrollmentPr
 import {IntegrityClockCapabilities,IntegrityClockPrepared,IntegrityAndroidClockPrepared,IntegrityClockResult} from '../../lib/mobile-integrity-contract';
 import {IntegrityEnrollmentCapabilitiesV2} from '../../lib/mobile-integrity-contract';
 import {OfflineCapabilitiesResult,OfflineContextResult,OfflineCloseResult,OfflineClaimResult,type OfflineContextIssueRequest,type OfflineContextCloseRequest} from '../../lib/mobile-offline-contract';
-import { useCallback, useEffect, useState } from 'react';
+import { createContext, createElement, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
+import { createReadSnapshots } from './read-snapshot';
 import { AppState } from 'react-native';
 import { fetch as nativeFetch } from 'expo/fetch';
 import { readBoundedBody } from '../../lib/bounded-body';
@@ -296,19 +297,35 @@ export type Loadable<T> = {
   reload: () => void;
 };
 
+const SnapshotContext = createContext<ReturnType<typeof createReadSnapshots> | null>(null);
+/** Unmounts on lock, invisibility or sign-out. Only identity/design display reads are reused. */
+export function ReadSnapshotBoundary({ children }: { children: ReactNode }) {
+  const [store] = useState(() => createReadSnapshots());
+  useEffect(() => {store.activate();return () => store.dispose();}, [store]);
+  return createElement(SnapshotContext.Provider, { value: store }, children);
+}
+
 /** Load one endpoint; `onSignInRequired` lets the session provider sign the user out on a 401 that survived a refresh. */
 export function useApi<P extends keyof Endpoints>(
   path: P,
   params: Record<string, string | undefined>,
   onSignInRequired: () => void,
 ): Loadable<Endpoints[P]> {
-  const [result, setResult] = useState<{ key: string; data: Endpoints[P] | null; error: Error | null; loading: boolean } | null>(null);
-  const [tick, setTick] = useState(0);
   const paramsKey = JSON.stringify(canonicalParams(params));
   const namespace=identityNamespace(),origin=config.apiUrl,locale=appLocale(),owner=authGeneration();
   const key = JSON.stringify([namespace,origin, path, paramsKey, locale, owner]);
+  const snapshots = useContext(SnapshotContext);
+  const reusable = path === 'me' || path === 'design';
+  const cached = reusable ? snapshots?.get<Endpoints[P]>(key) : undefined;
+  const [result, setResult] = useState<{ key: string; data: Endpoints[P] | null; error: Error | null; loading: boolean } | null>(() => cached === undefined ? null : {key,data:cached,error:null,loading:false});
+  const [tick, setTick] = useState(0);
 
   useEffect(() => {
+    const available = tick === 0 && reusable ? snapshots?.get<Endpoints[P]>(key) : undefined;
+    if (available !== undefined) {
+      setResult({key,data:available,error:null,loading:false});
+      return;
+    }
     let live = true;
     const belongs=()=>live&&authGeneration()===owner&&identityNamespace()===namespace&&config.apiUrl===origin&&appLocale()===locale;
     const controller = new AbortController();
@@ -316,10 +333,12 @@ export function useApi<P extends keyof Endpoints>(
     apiGet(path, JSON.parse(paramsKey) as Record<string, string | undefined>, controller.signal)
       .then((d) => {
         if (!belongs()) return;
+        if (reusable) snapshots?.put(key,d);
         setResult({ key, data: d, error: null, loading: false });
       })
       .catch((e: Error) => {
         if (!belongs()) return;
+        if (reusable) snapshots?.remove(key);
         if (e instanceof SignInRequiredError) onSignInRequired();
         setResult(prior => ({ key, data: e instanceof RequestRejectedError || e instanceof SignInRequiredError ? null : prior?.key === key ? prior.data : null, error: e, loading: false }));
       })
@@ -327,7 +346,7 @@ export function useApi<P extends keyof Endpoints>(
       live = false;
       controller.abort();
     };
-  }, [path, key, paramsKey, tick, onSignInRequired]);
+  }, [path, key, paramsKey, tick, onSignInRequired, snapshots, reusable]);
 
   const reload = useCallback(() => setTick((n) => n + 1), []);
   // Hide the previous employment's result in the render that changes context, before effects run.

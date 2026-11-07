@@ -12,10 +12,10 @@ import { fmtCalendarDate } from './attendance-format';
 import { cardFigure, homeBalances } from './home-cards';
 import { Icon, type IconName } from './icon';
 import { homeNeedsView, useHomeSummary } from './inbox';
-import { t, type MessageKey } from './i18n';
+import { appLocale, intlLocale, t, type MessageKey } from './i18n';
 import { Material, TimeDisplay, alpha } from './visual';
 import { useSession } from './session';
-import { LoadState, Muted, fmtDays, fmtMoney } from './ui';
+import { Button, LoadState, Muted, fmtDays, fmtMoney } from './ui';
 
 /** `#RRGGBB` plus an alpha byte; anything else (a named or rgba colour) falls back to `fallback`. */
 export function tint(color: string, alpha: number, fallback: string): string {
@@ -60,54 +60,40 @@ export function HomeHero({ name, unread, refreshToken, companyName }: { name: st
   const { palette } = useTenantDesign();
   const greeting = {morning:'greetMorning',afternoon:'greetAfternoon',evening:'greetEvening'}[partOfDay(Date.now())] as MessageKey;
   const first = name?.trim().split(/\s+/)[0] ?? null;
-  return <View style={{ backgroundColor: palette.bg, paddingTop: 20, paddingHorizontal: 20, gap: 24 }}>
-    <View style={{gap:8}}>{companyName&&<Text style={{color:palette.text,fontSize:13,fontWeight:'600'}}>{companyName}</Text>}<View style={{flexDirection:'row',alignItems:'center',justifyContent:'space-between',gap:12}}>
-      <Text style={{color:palette.text,fontSize:42,fontWeight:'800',letterSpacing:-1.1,flex:1}}>{first ? `${t(greeting).replace(/[,，]$/, '')}, ${first}` : t('helloNoName')}</Text>
-      <Tactile label={t('tabInbox')} onPress={() => router.navigate('/inbox' as Href)} style={{minWidth:48,minHeight:48,alignItems:'center',justifyContent:'center'}}>
-        <Icon name="bell" color={palette.text} size={24}/>
-        {unread>0&&<View style={{position:'absolute',right:6,top:6,width:8,height:8,borderRadius:4,backgroundColor:palette.accent}}/>}
-      </Tactile>
+  const salutation = appLocale()==='en' ? t(greeting).replace(/^Good /,'').replace(/[,，]$/,'') : t(greeting).replace(/[,，]$/,'');
+  return <View style={{paddingHorizontal:20,paddingTop:12}}><ClockPanel variant="home" refreshToken={refreshToken} renderHome={(view)=><>
+    <View style={{flexDirection:'row',alignItems:'flex-start',gap:16,paddingBottom:16}}>
+      <Text style={{color:palette.text,fontSize:40,lineHeight:41,fontWeight:'800',letterSpacing:-1.5,flex:1}}>{first?`${salutation},\n${first}.`:t('helloNoName')}</Text>
+      {view.current&&<CalendarMark date={view.current.date}/>}
     </View>
-    </View><ClockHeroCard refreshToken={refreshToken} />
+    <ClockHeroView view={view}/>
+  </>}/></View>;
+}
+function CalendarMark({date}:{date:string}){
+  const {palette}=useTenantDesign();
+  const instant=new Date(`${date}T12:00:00+08:00`),options={timeZone:'Asia/Kuala_Lumpur'};
+  return <View accessible accessibilityLabel={fmtCalendarDate(date,false)} style={{backgroundColor:palette.button,paddingHorizontal:10,paddingVertical:8,minWidth:52,alignItems:'center',gap:1}}>
+    <Text style={{color:palette.onButton,fontSize:11,fontWeight:'700'}}>{instant.toLocaleDateString(intlLocale(),{...options,weekday:'short'}).toUpperCase()}</Text>
+    <Text style={{color:palette.onButton,fontSize:26,lineHeight:29,fontWeight:'800'}}>{instant.toLocaleDateString(intlLocale(),{...options,day:'numeric'})}</Text>
+    <Text style={{color:palette.onButton,fontSize:11,fontWeight:'700'}}>{instant.toLocaleDateString(intlLocale(),{...options,month:'short'}).toUpperCase()}</Text>
   </View>;
 }
-
-/**
- * Today's status and live worked time inside the hero, and ONE tap to clock in or out (owner request, Mobile WOW round).
- * The tap runs the Clock tab's own journey (ClockPanel, variant 'home'): the same saved attempt, signed-clock checks,
- * location assessment, required photo, receipts and recovery. Home shows its progress and its answer; anything that needs
- * a decision remains in the shared controls directly on Home. The live figure is the server's `workedSeconds` plus the time since that answer, for
- * display only.
- */
-function ClockHeroCard({ refreshToken }: { refreshToken: number }) {
-  return <ClockPanel variant="home" refreshToken={refreshToken} renderHome={(view) => <ClockHeroView view={view} />} />;
-}
-function ClockHeroView({ view }: { view: HomeClockView }) {
-  const { palette } = useTenantDesign();
-  const today = view.current;
-  const receivedAt = useMemo(() => Date.now(), [today]);
-  const [now, setNow] = useState(Date.now());
-  useEffect(() => {
-    if (!today?.clockedIn) return;
-    const id = setInterval(() => setNow(Date.now()), 15_000);
-    return () => clearInterval(id);
-  }, [today?.clockedIn]);
-  const worked = today ? today.workedSeconds + (today.clockedIn ? Math.max(0, (now - receivedAt) / 1000) : 0) : 0;
-  const uncertain=view.phase==='uncertain';
-  const reviewing=view.phase==='review';
-  const status=uncertain?t('clockUncertain'):view.busy?t('preparingClock'):today?.clockedIn?t('onTheClock'):t('offTheClock');
-  return <View style={{gap:14,borderTopWidth:1,borderBottomWidth:1,borderColor:palette.border,paddingVertical:20}}>
-    {!today&&<LoadState loading={view.loading} hasData={false} error={view.error} onRetry={view.reload}/>}
-    {today&&<>
-      <View style={{alignSelf:'flex-start',paddingHorizontal:10,paddingVertical:8,backgroundColor:palette.button}}><Text style={{color:palette.onButton,fontSize:14,fontWeight:'700'}}>{fmtCalendarDate(today.date,false)}</Text></View>
-      <View style={{flexDirection:'row',gap:10,alignItems:'center'}}>
-        <View style={{width:10,height:10,borderRadius:5,backgroundColor:uncertain?'#e7a335':today.clockedIn?palette.text:palette.muted}}/>
-        <Text accessibilityLiveRegion="polite" style={{color:palette.text,fontSize:17,fontWeight:'600',flex:1}}>{status}</Text>
-      </View>
-      <DailySwitch working={today.clockedIn} seconds={worked} busy={view.busy} disabled={view.disabled||uncertain||reviewing} onPress={view.clock}/>
-      {view.doneAt&&<Text accessibilityRole="alert" style={{color:palette.text,fontSize:15,textAlign:'center'}}>{t('clockRecorded')} · {clockTime(view.doneAt)}</Text>}
-      {!view.doneAt&&!view.busy&&!reviewing&&!uncertain&&<Text style={{color:palette.muted,fontSize:14,textAlign:'center'}}>{today.clockedIn&&today.openSince?t('onClockSince',{time:clockTime(today.openSince)??''}):today.captures.length===0?t('noClockHistory'):t('offTheClock')}</Text>}
-    </>}
+/** A compact workday strip; ClockPanel still owns preparation, confirmation and recovery. */
+function ClockHeroView({view}:{view:HomeClockView}){
+  const {palette}=useTenantDesign(),today=view.current;
+  if(!today)return <LoadState loading={view.loading} hasData={false} error={view.error} onRetry={view.reload}/>;
+  const status=view.phase==='uncertain'?t('clockUncertain'):view.busy?t('preparingClock'):today.clockedIn?t('onTheClock'):t('offTheClock');
+  return <View style={{flexDirection:'row',flexWrap:'wrap',alignItems:'center',gap:12,borderTopWidth:1,borderBottomWidth:1,borderColor:palette.border,paddingVertical:14}}>
+    <View style={{flexGrow:1,flexBasis:140,gap:4}}>
+      <Text style={{color:palette.text,fontSize:14,fontWeight:'600'}}>{today.shift.code||t('workday')}</Text>
+      <Text style={{color:palette.text,fontSize:14,fontWeight:'600'}}>{today.shift.start&&today.shift.end?`${today.shift.start.slice(0,5)} – ${today.shift.end.slice(0,5)}`:t('noShift')}</Text>
+      {today.clockedIn&&<Text style={{color:palette.muted,fontSize:12}}>{fmtDuration(today.workedSeconds)}</Text>}
+    </View>
+    <View style={{borderLeftWidth:1,borderColor:palette.border,paddingLeft:12,gap:4,flexGrow:1,flexBasis:120}}>
+      <Text accessibilityLiveRegion="polite" style={{color:palette.text,fontSize:12}}>{status}</Text>
+      <Button title={view.action==='in'?t('clockIn'):t('clockOut')} disabled={view.disabled||view.busy||view.phase==='uncertain'||view.phase==='review'} onPress={view.clock}/>
+    </View>
+    {view.doneAt&&<Text accessibilityRole="alert" style={{color:palette.text,fontSize:14}}>{t('clockRecorded')} · {clockTime(view.doneAt)}</Text>}
   </View>;
 }
 
@@ -150,9 +136,9 @@ export type QuickAction = { key: string; icon: IconName; label: MessageKey; href
 
 export function QuickActions({ actions }: { actions: readonly QuickAction[] }) {
   const { palette } = useTenantDesign();
-  return <View>{actions.map(a=><Tactile key={a.key} label={t(a.label)} onPress={()=>router.push(a.href)} style={{minHeight:58,flexDirection:'row',alignItems:'center',gap:14,borderBottomWidth:1,borderColor:palette.border,paddingVertical:14}}>
-    <Icon name={a.icon} color={palette.text} size={22}/><Text style={{flex:1,color:palette.text,fontSize:16}}>{t(a.label)}</Text>
-    {a.badge? <Text style={{color:palette.muted,fontSize:14}}>{a.badge}</Text>:null}<Icon name="chevron" color={palette.muted} size={14}/>
+  return <View style={{flexDirection:'row',flexWrap:'wrap',borderBottomWidth:1,borderColor:palette.border}}>{actions.map((a,index)=><Tactile key={a.key} label={t(a.label)} onPress={()=>router.push(a.href)} style={{flexGrow:1,flexBasis:140,minHeight:52,flexDirection:'row',alignItems:'center',gap:8,paddingVertical:10,paddingHorizontal:index?12:0}}>
+    <Icon name={a.icon} color={palette.text} size={21}/><Text style={{flexShrink:1,color:palette.text,fontSize:14,fontWeight:'600'}}>{t(a.label)}</Text>
+    {a.badge?<Text style={{color:palette.muted,fontSize:12}}>{a.badge}</Text>:null}
   </Tactile>)}</View>;
 }
 
@@ -227,12 +213,12 @@ export function PayslipCard({ refreshToken }: { refreshToken: number }) {
   </View>;
 }
 
-export function SectionHeader({ title, action, onAction }: { title: string; action?: string; onAction?: () => void }) {
+export function SectionHeader({ title, action, count, onAction }: { title: string; action?: string; count?: number; onAction?: () => void }) {
   const { palette, design } = useTenantDesign();
   return <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', minHeight: 32 }}>
-    <Text accessibilityRole="header" style={{ color: palette.text, fontSize: 28, fontWeight: '700', fontFamily: design.schemaVersion === 1 ? 'FieldEditorial' : undefined, ...(design.schemaVersion === 1 ? {fontWeight: 'normal' as const} : {}) }}>{title}</Text>
+    <Text accessibilityRole="header" style={{ color: palette.text, fontSize: 28,lineHeight:29,flexShrink:1, fontWeight: '700', fontFamily: design.schemaVersion === 1 ? 'FieldEditorial' : undefined, ...(design.schemaVersion === 1 ? {fontWeight: 'normal' as const} : {}) }}>{title}</Text>
     {action && onAction ? <Pressable accessibilityRole="button" accessibilityLabel={action} hitSlop={10} onPress={onAction} style={{ minHeight: 44, justifyContent: 'center' }}>
-      <Text style={{ color: palette.accent, fontSize: 15, fontWeight: '600' }}>{action}</Text>
+      <Text style={{ color: palette.accent, fontSize: count===undefined?15:24, fontWeight: '700',...(count===undefined?{}:{borderWidth:2,borderColor:palette.accent,minWidth:36,textAlign:'center',paddingHorizontal:5}) }}>{count??action}</Text>
     </Pressable> : null}
   </View>;
 }

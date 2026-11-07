@@ -97,9 +97,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     if (employmentId !== state.getSnapshot().employmentId) { initializeAttendanceWidgets(); sweepProtectedDocuments(); }
     state.setEmploymentId(employmentId);
   }, [state]);
-  const value = useMemo(() => ({
-    ...snapshot, setEmploymentId, unlock: state.unlock,
-    async signOut() {
+  const signOut = useCallback(async () => {
       const logoutUrl = workosLogoutUrl();
       // M10/D8: revoke this phone's push binding and drop its shift reminders while the tokens still exist (bounded).
       await releasePushOnExit('logout', state.getSnapshot().employmentId);
@@ -108,9 +106,15 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         try { await WebBrowser.openAuthSessionAsync(logoutUrl, redirectUri()); }
         catch { /* Local logout succeeded; provider revocation must be verified on staging. */ }
       }
-    },
-    async markSignedIn(owner: number) { await protectScreen(); assertAuthGeneration(owner); state.markSignedIn(); },
-  }), [snapshot, state, setEmploymentId]);
+  }, [state]);
+  const markSignedIn = useCallback(async (owner: number) => {
+    await protectScreen(); assertAuthGeneration(owner); state.markSignedIn();
+  }, [state]);
+  // Data hooks depend on these commands. Visibility/employment updates must not
+  // replace signOut and restart every in-flight read in the private tree.
+  const value = useMemo(() => ({
+    ...snapshot, setEmploymentId, unlock: state.unlock, signOut, markSignedIn,
+  }), [snapshot, state, setEmploymentId, signOut, markSignedIn]);
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }
 export function useSession(): Session {

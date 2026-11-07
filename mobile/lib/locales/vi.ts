@@ -3,6 +3,7 @@ import type { MessageKey } from '../i18n';
 import type { CompanyCopy } from '../company-connection';
 
 const messages: Record<MessageKey, string> = {
+  attemptNotRecorded: "Đã lưu lần thử — chưa ghi nhận chấm công.",
   fieldLeaveTitle: "Thời gian\nnghỉ phép.",
   fieldMeTitle: "Không gian\nlàm việc.",
   fieldReviewTitle: "Chờ bạn\nxem xét.",

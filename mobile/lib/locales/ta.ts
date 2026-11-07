@@ -3,6 +3,7 @@ import type { MessageKey } from '../i18n';
 import type { CompanyCopy } from '../company-connection';
 
 const messages: Record<MessageKey, string> = {
+  attemptNotRecorded: "முயற்சி சேமிக்கப்பட்டது — வருகை பதிவு செய்யப்படவில்லை.",
   fieldLeaveTitle: "விடுப்பு\nநேரம்.",
   fieldMeTitle: "உங்கள்\nபணியிடம்.",
   fieldReviewTitle: "உங்கள்\nபரிசீலனைக்கு.",

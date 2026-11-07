@@ -20,6 +20,8 @@ function fixture() {
     'expo-router': { router: { navigate }, usePathname: () => path },
     'expo-symbols': { SymbolView: () => null }, './icon': { Icon: () => null },
     './design': { TenantBrand: () => <span>OneHR+</span>, DesignText: View, useTenantDesign: () => ({ appearance: 'dark', palette: {}, design }) },
+    './api': {useApi:()=>({data:{person:{name:'Synthetic Tester'},employments:[{employmentId:'one',company:'Synthetic workplace'}]}})},
+    './session': {useSession:()=>({signOut:()=>{},employmentId:'one'})},
     './i18n': { t: (key: string) => key }, './navigation-routes': { dailyDestinationForPath },
     './tenant-navigation': { TenantNavigation: () => <div>Published destinations</div> },
   };
@@ -39,7 +41,7 @@ it('keeps a single header and five destinations around a pushed approval form, a
   expect(screen.getByText('OneHR+')).toBeTruthy(); expect(screen.getAllByRole('tab')).toHaveLength(5);
   expect(screen.getByRole('tab', { name: 'approvalsTitle' }).getAttribute('aria-selected')).toBe('true');
   fireEvent.click(screen.getByRole('tab', { name: 'tabClock' })); expect(f.navigate).toHaveBeenCalledWith('/clock'); expect(approve).not.toHaveBeenCalled();
-  fireEvent.click(screen.getByRole('button', { name: 'qaSettings' })); expect(f.navigate).toHaveBeenCalledWith('/settings'); expect(approve).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button', { name: 'tabInbox' })); expect(f.navigate).toHaveBeenCalledWith('/inbox'); expect(approve).not.toHaveBeenCalled();
 });
 it('keeps the frame while page content changes between loading, an error and a detail', () => {
   const f = fixture(), ui = render(<f.SignedInShell><p>Loading profile</p></f.SignedInShell>);

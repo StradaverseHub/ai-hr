@@ -20,6 +20,7 @@ import th from './locales/th';
 import vi from './locales/vi';
 
 const en = {
+  attemptNotRecorded: "Clock attempt saved — attendance not recorded.",
   fieldLeaveTitle: "Time\naway.",
   fieldMeTitle: "Your\nworkspace.",
   fieldReviewTitle: "For your\nreview.",
@@ -892,6 +893,7 @@ const en = {
 export type MessageKey = keyof typeof en;
 
 const ms: Record<MessageKey, string> = {
+  attemptNotRecorded: "Cubaan disimpan — kehadiran belum direkodkan.",
   fieldLeaveTitle: "Masa\nbercuti.",
   fieldMeTitle: "Ruang kerja\nanda.",
   fieldReviewTitle: "Untuk\nsemakan anda.",

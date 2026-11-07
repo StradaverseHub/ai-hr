@@ -2,8 +2,9 @@ name: mobile-ios-simulator-review
 run-name: Field Notes iOS simulator build · ${{ github.sha }}
 on:
   push:
-    branches: [codex/mobile-store-readiness-20261101]
+    branches: [codex/mobile-field-notes-20261107]
     paths:
+      - mobile/**
       - .github/workflows/mobile-ios-simulator-review.yml
       - .github/ci/native-ios-simulator-review.sh
       - .github/ci/package-ios-simulator-review.py

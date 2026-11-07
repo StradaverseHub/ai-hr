@@ -4,7 +4,7 @@
  * (mobile/lib/leave-request-form.tsx), its review bar pinned above the tab bar. The route id stays `leave` and the
  * published navigation id stays `requests`, so stored tenant designs keep working; only the label reads "Leave".
  */
-import { useCallback } from 'react';
+import { useCallback, useRef } from 'react';
 import { router,useFocusEffect } from 'expo-router';
 import { Pressable,View } from 'react-native';
 import { DesignText as Text } from '../../lib/design';
@@ -25,16 +25,18 @@ export default function Leave(){
   const requests=useApi('leave-requests',{employmentId:employmentId??undefined},signOut);
   const {leave:draft}=useJourneyDrafts();
   const reload=useCallback(()=>{leave.reload();options.reload();requests.reload();},[leave.reload,options.reload,requests.reload]);
-  useFocusEffect(reload);
+  const visited=useRef(false);
+  useFocusEffect(useCallback(()=>{if(visited.current)reload();visited.current=true;},[reload]));
   const notices=Object.fromEntries((leave.data?.cards??[]).flatMap(c=>c.entitlementNoticeText?[[c.leaveTypeId,c.entitlementNoticeText]]:[]));
   if(draft&&options.data&&leave.data)return <LeaveRequestForm options={options.data} cards={leave.data.cards} today={leave.data.today} onSubmitted={reload} notices={notices}/>;
   return <Screen atmospheric onRefresh={reload}>
+    <Muted>{t('tabLeave')}</Muted>
     <Title>{t('fieldLeaveTitle')}</Title>
     <LoadState loading={leave.loading} hasData={leave.data!=null} error={leave.error} onRetry={leave.reload}/>
     <SectionLabel>{t('homeYourLeave')}</SectionLabel>
     <View>{leave.data?.cards.map(c => <View key={c.leaveTypeId}
       accessible accessibilityLabel={`${c.leaveType}. ${fmtDays(cardFigure(c))}. ${c.takenOnly ? t('taken') : c.isCurrentCycle ? t('canApplyFor') : t('balance')}`}
-      style={{ minHeight: 60, paddingVertical: 16, borderBottomWidth: 1, borderColor: palette.border, gap: 6 }}>
+      style={{ minHeight: 48, paddingVertical: 10, borderBottomWidth: 1, borderColor: palette.border, gap: 3 }}>
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'baseline', gap: 12 }}>
         <Text style={{ color: palette.text, fontSize: 16, fontWeight: '600', flexGrow: 1, flexShrink: 1 }}>{c.leaveType}</Text>
         <Text style={{ color: palette.text, fontSize: 16, fontWeight: '700', fontVariant: ['tabular-nums'] }}>{fmtDays(cardFigure(c))}</Text>

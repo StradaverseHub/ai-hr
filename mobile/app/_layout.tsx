@@ -1,4 +1,5 @@
 import { PublicHeader } from '../lib/public-header';
+import { ReadSnapshotBoundary } from '../lib/api';
 import { DesignText as Text } from '../lib/design';
 import { SignedInShell } from '../lib/app-shell';
 import {WidgetLaunchObserver} from '../lib/widget-launch';
@@ -61,7 +62,7 @@ function Gate() {
   if (status === 'locked') {
     return <LockScreen error={error} unlocking={unlocking} unlock={unlock} signOut={signOut} />;
   }
-  return status === 'signedIn' ? <TenantDesignProvider><ThemedStack /></TenantDesignProvider> : <Stack screenOptions={{ headerShown: false }} />;
+  return status === 'signedIn' ? <ReadSnapshotBoundary><TenantDesignProvider><ThemedStack /></TenantDesignProvider></ReadSnapshotBoundary> : <Stack screenOptions={{ headerShown: false }} />;
 }
 
 /** The app lock: the phone's own biometric named and pictured, one unlock button, and sign out as the way past it. */

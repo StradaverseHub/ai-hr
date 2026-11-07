@@ -65,12 +65,12 @@ export function Screen({
 
 export function Title({ children }: { children: ReactNode }) {
   const { palette, design } = useTenantDesign();
-  return <Text style={[styles.title, { color: palette.text, ...(design.schemaVersion === 2 ? { fontSize: 29 } : {}) }]}>{children}</Text>;
+  return <Text style={[styles.title, { color: palette.text, ...(design.schemaVersion === 2 ? { fontSize: 29 } : {fontSize:40,lineHeight:41,letterSpacing:-1.5}) }]}>{children}</Text>;
 }
 
 export function SectionLabel({ children }: { children: ReactNode }) {
   const { palette, design } = useTenantDesign();
-  return <Text style={[styles.section, { color: palette.text, fontFamily: design.schemaVersion === 1 ? 'FieldEditorial' : undefined, ...(design.schemaVersion === 1 ? {fontWeight: 'normal' as const} : {}) }]}>{children}</Text>;
+  return <Text style={[styles.section, { color: palette.text, fontFamily: design.schemaVersion === 1 ? 'FieldEditorial' : undefined, ...(design.schemaVersion === 1 ? {fontWeight: 'normal' as const,fontSize:27,lineHeight:30,marginTop:4} : {}) }]}>{children}</Text>;
 }
 
 export function Card({ children }: { children: ReactNode }) {
@@ -234,7 +234,7 @@ export function fmtMoney(v: string): string {
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
-  scroll: { padding: 20, paddingBottom: 32, gap: 18 },
+  scroll: { padding: 20, paddingTop:12, paddingBottom: 32, gap: 12 },
   title: { fontSize: 42, fontWeight: '800', letterSpacing: -1.1, color: colors.text, marginBottom: 4 },
   section: { fontSize: 27, fontWeight: '700', color: colors.text, marginTop: 20 },
   card: { borderRadius: 0, paddingVertical: 18, paddingHorizontal: 0, gap: 12 },

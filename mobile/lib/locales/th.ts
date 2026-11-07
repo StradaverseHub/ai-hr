@@ -3,6 +3,7 @@ import type { MessageKey } from '../i18n';
 import type { CompanyCopy } from '../company-connection';
 
 const messages: Record<MessageKey, string> = {
+  attemptNotRecorded: "บันทึกความพยายามแล้ว แต่ยังไม่ได้บันทึกเวลาเข้างาน",
   fieldLeaveTitle: "เวลา\nพักผ่อน",
   fieldMeTitle: "พื้นที่ทำงาน\nของคุณ",
   fieldReviewTitle: "รอคุณ\nตรวจสอบ",
