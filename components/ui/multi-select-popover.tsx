@@ -67,6 +67,7 @@
  * component behaves EXACTLY as it did for every other call site; the accrual card is still the only caller.
  */
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
+import { useTranslations } from 'next-intl';
 import { ChevronDown } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { inputCls } from '@/components/ui';
@@ -139,6 +140,9 @@ export function MultiSelectPopover({
   optionDisabled?: (option: MultiSelectPopoverOption) => boolean;
 }) {
   const captionId = useId();
+  const summaryId = useId();
+  const common = useTranslations('common');
+  const triggerRef = useRef<HTMLButtonElement>(null);
   const rootRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
@@ -195,7 +199,14 @@ export function MultiSelectPopover({
   const triggerLabel = selected.size === 0 ? allLabel : selectedCount(selected.size);
 
   return (
-    <div ref={rootRef} className="flex flex-col gap-1.5">
+    <div ref={rootRef} className="flex flex-col gap-1.5" onKeyDownCapture={event => {
+      if (open && event.key === 'Escape') {
+        event.preventDefault();
+        event.stopPropagation();
+        setOpen(false);
+        triggerRef.current?.focus();
+      }
+    }}>
       <span id={captionId} className="text-xs font-medium text-muted-foreground">
         {label}
       </span>
@@ -205,17 +216,18 @@ export function MultiSelectPopover({
         [...selected].map((id) => <input key={id} type="hidden" name={name} value={id} />)}
       <div className="relative">
         <button
+          ref={triggerRef}
           type="button"
           onClick={() => setOpen((o) => !o)}
           aria-expanded={open}
-          aria-labelledby={captionId}
+          aria-labelledby={`${captionId} ${summaryId}`}
           disabled={disabled}
           className={cn(
             inputCls,
             'flex w-56 items-center justify-between gap-2 text-left disabled:cursor-not-allowed disabled:opacity-50',
           )}
         >
-          <span className="truncate">{triggerLabel}</span>
+          <span id={summaryId} className="truncate">{triggerLabel}</span>
           <ChevronDown
             className={cn('size-4 shrink-0 text-muted-foreground transition-transform', open && 'rotate-180')}
           />
@@ -240,8 +252,8 @@ export function MultiSelectPopover({
             </div>
             {/* r287 — said out loud, naming what was typed. An empty box asserts nothing (CLAUDE.md §8);
                 this is the difference between "no such employee" and "the screen is still thinking". */}
-            {noMatches && emptyLabelFor != null && (
-              <p className="px-2 py-3 text-center text-xs text-muted-foreground">{emptyLabelFor(search.trim())}</p>
+            {noMatches && (
+              <p role="status" className="px-2 py-3 text-center text-xs text-muted-foreground">{emptyLabelFor ? emptyLabelFor(search.trim()) : common('noSearchResults')}</p>
             )}
             <div className="max-h-56 min-h-0 overflow-y-auto">
               {options.map((o) => {

@@ -30,6 +30,7 @@ export type MyTeamLeaveDay = {
 };
 export type MyTeamDay = { date: string; roster: MyTeamRosterDay | null; attendance: MyTeamAttendanceDay | null; leave: MyTeamLeaveDay[] };
 export type MyTeamBalance = {
+  entitlementStatus?: import('@/lib/entitlement-status').EntitlementStatus;
   leaveTypeId: string; code: string | null; name: string; role: string | null;
   accrued: number | null; taken: number | null; pending: number | null; available: number | null;
 };

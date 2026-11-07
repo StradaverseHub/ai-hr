@@ -148,8 +148,9 @@
   :root[data-ui-theme='atelier'] main table thead { background: var(--background); color: var(--atelier-ink-3); }
   :root[data-ui-theme='atelier'] main table thead th {
     font-size: .78125rem; font-weight: 500; letter-spacing: 0; text-transform: none;
-    border-bottom: 1px solid var(--border); white-space: nowrap;
+    border-bottom: 1px solid var(--border);
   }
+  :root[data-ui-theme='atelier'] main table:not([data-wrap-headings]) thead th { white-space: nowrap; }
   :root[data-ui-theme='atelier'] main table tbody tr { border-color: var(--border); }
   :root[data-ui-theme='atelier'] main table tbody td { border-color: var(--border); height: 2.75rem; }
   :root[data-ui-theme='atelier'] main table tbody tr:hover,
