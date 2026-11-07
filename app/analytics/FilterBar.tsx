@@ -15,6 +15,7 @@ import { useTranslations } from 'next-intl';
 // 9cbf5e0d — the Employee Status filter offers the five DERIVED buckets, labelled from the ONE shared
 // vocabulary (people.employeeStatus), so the dashboard can never name a status differently from Personnel.
 import { EMPLOYMENT_STATUSES } from '@/core/employment-status';
+import { EmployeeChoiceField } from '@/components/employee-choice-field';
 
 type Opt = { value: string; label: string };
 
@@ -36,16 +37,16 @@ export type FilterBarProps = {
     companies: Opt[];
     departments: Opt[];
     costCentres: Opt[];
-    managers: Opt[];
     locations: Opt[];
   };
+  managerSelection: {employmentId:string;name:string}|null;
 };
 
 const GENDERS = ['male', 'female', 'undisclosed'];
 const NATIONALITIES = ['citizen', 'pr', 'non_citizen'];
 const LIFECYCLE = ['active', 'terminated'];
 
-export function FilterBar({ from, to, values, options }: FilterBarProps) {
+export function FilterBar({ from, to, values, options, managerSelection }: FilterBarProps) {
   const t = useTranslations('analytics');
   const tStatus = useTranslations('people.employeeStatus');
   const inputCls =
@@ -87,10 +88,8 @@ export function FilterBar({ from, to, values, options }: FilterBarProps) {
         <span className="text-xs font-medium text-muted-foreground">{t('filterCostCentre')}</span>
         <Select name="costCenterId" value={values.costCenterId} allLabel={t('allCostCentres')} opts={options.costCentres} />
       </label>
-      <label className="space-y-1">
-        <span className="text-xs font-medium text-muted-foreground">{t('filterManager')}</span>
-        <Select name="managerEmploymentId" value={values.managerEmploymentId} allLabel={t('allManagers')} opts={options.managers} />
-      </label>
+      <EmployeeChoiceField key={values.managerEmploymentId??''} name="managerEmploymentId" label={t('filterManager')}
+        allLabel={t('allManagers')} selectedId={values.managerEmploymentId} selected={managerSelection} />
       <label className="space-y-1">
         <span className="text-xs font-medium text-muted-foreground">{t('filterLifecycleStatus')}</span>
         <Select

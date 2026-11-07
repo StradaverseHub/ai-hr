@@ -75,10 +75,11 @@ describe('RequestLeaveDialog: client modal hosting the unchanged apply form', ()
     expect(src.startsWith("'use client'")).toBe(true);
   });
 
-  it('uses a Radix Dialog with useState open + closes onSubmit', () => {
+  it('uses a Radix Dialog and waits for the server outcome before closing', () => {
     expect(src.includes('Dialog.Root')).toBe(true);
     expect(src.includes('useState')).toBe(true);
-    expect(src.includes('onSubmit={() => setOpen(false)}')).toBe(true);
+    expect(src.includes('onSubmit={() => setOpen(false)}')).toBe(false);
+    expect(src.includes('await submitAction(data,true)')).toBe(true);
   });
 
   it('primary "+" trigger uses btnPrimary + lucide Plus + the requestLeave label', () => {
@@ -89,7 +90,7 @@ describe('RequestLeaveDialog: client modal hosting the unchanged apply form', ()
 
   it('hosts the existing apply form: LeaveDurationFields + Reason + submit → submitAction (multipart)', () => {
     expect(src.includes('<LeaveDurationFields')).toBe(true);
-    expect(src.includes('action={submitAction}')).toBe(true);
+    expect(src.includes('new FormData(event.currentTarget)')).toBe(true);
     // React supplies multipart encoding for function actions and warns if encType is set explicitly.
     expect(src).not.toMatch(/\bencType=/);
     expect(src.includes('name="reason"')).toBe(true);

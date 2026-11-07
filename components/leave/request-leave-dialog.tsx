@@ -1,6 +1,6 @@
 'use client';
 
-import { type ComponentProps, useEffect, useRef, useState } from 'react';
+import { type ComponentProps, useEffect, useRef, useState, useTransition } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
@@ -8,21 +8,14 @@ import { Plus } from 'lucide-react';
 import { Button, Field, btnPrimary, inputCls } from '../ui';
 import { LeaveDurationFields, type LeaveTypeOption } from '../leave-duration-fields';
 
-type Action = (fd: FormData) => void | Promise<void>;
+type Action = (fd: FormData, inlineErrors?: boolean) => void | Promise<void | {error?:string;redirectTo?:string}>;
 
 /** Preview server-action shape — reuse exactly what LeaveDurationFields expects for its `action` prop. */
 type PreviewAction = NonNullable<ComponentProps<typeof LeaveDurationFields>['action']>;
 /** Apply-summary server-action shape — same reuse, for the Pending/Taken/Balance block. */
 type SummaryAction = ComponentProps<typeof LeaveDurationFields>['summaryAction'];
 
-/**
- * Request Leave, relocated (feedback 48e69709) — the apply form used to sit at the very bottom of /leave as an
- * inline <details> Card, forcing employees to scroll past balances + history to apply. It now lives behind a
- * primary "+" button in the PageHeader actions slot, opening this modal over the current page. The form itself
- * (LeaveDurationFields + Reason + submit → requestLeaveAction) is UNCHANGED — same fields, validations, and the
- * server action still does revalidatePath('/leave') + redirect on success. onSubmit closes the dialog so the
- * refreshed page shows the new request. Modeled on edit-leave-dialog.tsx.
- */
+/** Keep the mounted form and attachments on validation failure; close only after confirmed success. */
 export function RequestLeaveDialog({
   types,
   startDefault,
@@ -60,6 +53,10 @@ export function RequestLeaveDialog({
 }) {
   const t = useTranslations('leave');
   const [open, setOpen] = useState(false);
+  const [error,setError]=useState('');
+  const [zeroDays,setZeroDays]=useState(false);
+  const [pending,startSubmit]=useTransition();
+  const errorRef=useRef<HTMLParagraphElement>(null);
   const router = useRouter();
   const params = useSearchParams();
   const openedFromUrl = useRef(false);
@@ -89,7 +86,7 @@ export function RequestLeaveDialog({
   }, [params, router]);
 
   return (
-    <Dialog.Root open={open} onOpenChange={setOpen}>
+    <Dialog.Root open={open} onOpenChange={next=>{if(!pending){setOpen(next);if(!next)setError('');}}}>
       <Dialog.Trigger asChild>
         <button type="button" className={btnPrimary} data-tour="leave-request">
           <Plus className="size-4" />
@@ -104,10 +101,27 @@ export function RequestLeaveDialog({
         >
           <Dialog.Title className="text-base font-semibold">{t('requestLeave')}</Dialog.Title>
           <form
-            action={submitAction}
-            onSubmit={() => setOpen(false)}
+            onSubmit={event => {
+              event.preventDefault();
+              if(pending||zeroDays)return;
+              const data=new FormData(event.currentTarget);
+              setError('');
+              startSubmit(async()=>{
+                try {
+                  const result=await submitAction(data,true);
+                  if(result?.error){setError(result.error);requestAnimationFrame(()=>errorRef.current?.focus());return;}
+                  setOpen(false);
+                  if(result?.redirectTo)router.push(result.redirectTo);
+                  else router.refresh();
+                } catch {
+                  setError(t('submitUnconfirmed'));
+                  requestAnimationFrame(()=>errorRef.current?.focus());
+                }
+              });
+            }}
             className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2"
           >
+            <fieldset disabled={pending} className="contents">
             <LeaveDurationFields
               types={types}
               startDefault={startDefault}
@@ -120,18 +134,22 @@ export function RequestLeaveDialog({
               eligibleTypeIdsByEmployment={eligibleTypeIdsByEmployment}
               action={previewAction}
               summaryAction={summaryAction}
+              onZeroDaysChange={setZeroDays}
             />
             <Field label={t('fieldReason')}>
               <input name="reason" className={inputCls} placeholder={t('reasonPlaceholder')} />
             </Field>
-            <div className="flex items-end justify-end gap-2 sm:col-span-2">
+            {error&&<p ref={errorRef} role="alert" tabIndex={-1} className="rounded-md border border-destructive p-3 text-sm text-destructive sm:col-span-2">{error}</p>}
+            {zeroDays&&<p role="status" className="text-sm text-muted-foreground sm:col-span-2">{t('zeroDaysHint')}</p>}
+            <div className="flex items-end justify-end gap-3 sm:col-span-2">
               <Dialog.Close asChild>
                 <Button type="button" size="sm" variant="outline">
                   {t('cancelDialogDismiss')}
                 </Button>
               </Dialog.Close>
-              <Button type="submit">{t('submitRequest')}</Button>
+              <Button type="submit" disabled={pending||zeroDays}>{pending?t('submittingRequest'):t('submitRequest')}</Button>
             </div>
+            </fieldset>
           </form>
         </Dialog.Content>
       </Dialog.Portal>

@@ -1,15 +1,18 @@
 'use client';
 import {useState} from 'react';
+import * as Dialog from '@radix-ui/react-dialog';
+import {useTranslations} from 'next-intl';
 import type {FilterField,FilterPanelLabels} from '@/components/filter-panel';
 import type {PersonnelCompanyChoice} from '@/core/read';
 type Values=Record<string,string|string[]|undefined>;
 const array=(value:Values[string])=>value===undefined?[]:Array.isArray(value)?value:value.split(',');
 export function PersonnelOrganisationFilters({fields,values,companies,labels,companySearchLabel,dataTour,canInspectDuplicates=true,duplicateHint}:{fields:FilterField[];values:Values;companies:PersonnelCompanyChoice[];labels:FilterPanelLabels;companySearchLabel:string;dataTour?:string;canInspectDuplicates?:boolean;duplicateHint?:string}){
+ const common=useTranslations('common');
  const [open,setOpen]=useState(false),[search,setSearch]=useState(''),[selected,setSelected]=useState(new Set([...array(values.companies),...array(values.company)]));
  const groups=new Map<string,{name:string;companies:PersonnelCompanyChoice[]}>();
  for(const company of companies){const name=company.businessGroup??company.parentCompany??company.name,key=company.businessGroupId??company.parentCompanyId??company.id;const group=groups.get(key)??{name,companies:[]};group.companies.push(company);groups.set(key,group);}
  const toggle=(ids:string[],checked:boolean)=>setSelected(previous=>{const next=new Set(previous);for(const id of ids)checked?next.add(id):next.delete(id);return next;});
- return <details className="relative" data-tour={dataTour} open={open} onToggle={event=>setOpen(event.currentTarget.open)}><summary className="cursor-pointer rounded-lg border border-border px-3 py-2 text-sm font-medium">{labels.filter}</summary>{open&&<form action="/admin/personnel" className="absolute right-0 z-30 mt-2 max-h-[80dvh] w-[min(42rem,calc(100vw-2rem))] space-y-4 overflow-y-auto rounded-xl border border-border bg-card p-4 shadow-lg">
+ return <Dialog.Root open={open} onOpenChange={setOpen}><Dialog.Trigger asChild><button type="button" data-tour={dataTour} className="min-h-11 rounded-lg border border-border px-3 py-2 text-sm font-medium">{labels.filter}</button></Dialog.Trigger><Dialog.Portal><Dialog.Overlay className="fixed inset-0 z-50 bg-black/50"/><Dialog.Content aria-describedby={undefined} className="fixed left-1/2 top-1/2 z-50 max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] max-w-2xl -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-xl border border-border bg-card p-4 shadow-lg"><div className="mb-4 flex items-center justify-between gap-3"><Dialog.Title className="text-base font-semibold">{labels.filter}</Dialog.Title><Dialog.Close className="min-h-11 rounded-md border border-border px-3 text-sm">{common('close')}</Dialog.Close></div><form action="/admin/personnel" className="space-y-4">
   {values.search&&<input type="hidden" name="search" value={String(values.search)}/>}
   {!canInspectDuplicates&&array(values.quality).includes('suspected_duplicate')&&<input type="hidden" name="quality" value="suspected_duplicate"/>}
   {values.status&&<input type="hidden" name="status" value={String(values.status)}/>}
@@ -25,7 +28,7 @@ export function PersonnelOrganisationFilters({fields,values,companies,labels,com
   </fieldset>
   <div className="grid gap-4 sm:grid-cols-2">{fields.filter(field=>!['companies','company','search','q','status'].includes(field.name)).map(field=><fieldset key={field.name} className="min-w-0 space-y-1"><legend className="text-xs font-medium">{field.label}</legend>{field.kind==='multi'?<details className="rounded-md border border-border p-2"><summary className="cursor-pointer text-sm">{field.label}{array(values[field.name]).length?' ('+array(values[field.name]).length+')':''}</summary><div className="max-h-40 overflow-y-auto">{field.options.filter(option=>field.name!=='quality'||option.value!=='suspected_duplicate'||canInspectDuplicates).map(option=><label key={option.value} className="flex min-h-9 items-start gap-2 py-1 text-sm"><input type="checkbox" name={field.name} value={option.value} defaultChecked={array(values[field.name]).includes(option.value)}/><span className="min-w-0 break-words">{option.label}</span></label>)}</div></details>:field.kind==='select'?<select name={field.name} aria-label={field.ariaLabel} defaultValue={String(values[field.name]??'')} className="min-h-10 w-full rounded-md border border-border bg-background px-2"><option value="">{field.allLabel}</option>{field.options.map(option=><option value={option.value} key={option.value}>{option.label}</option>)}</select>:<input type={field.kind==='date'?'date':'text'} name={field.name} aria-label={field.ariaLabel} defaultValue={String(values[field.name]??'')} className="min-h-10 w-full rounded-md border border-border bg-background px-2"/>}{field.name==='quality'&&duplicateHint&&<p className="text-xs text-muted-foreground">{duplicateHint}</p>}</fieldset>)}</div>
   <div className="flex flex-wrap items-center gap-3"><button className="rounded-md bg-primary px-4 py-2 text-primary-foreground">{labels.apply}</button><a href="/admin/personnel" className="text-sm underline">{labels.clearAll}</a></div>
- </form>}</details>;
+ </form></Dialog.Content></Dialog.Portal></Dialog.Root>;
 }
 export function PersonnelPrivateSearch({parameters,labels,active}:{parameters:readonly (readonly [string,string])[];labels:{label:string;placeholder:string;submit:string;privateHint:string;active:string;clear:string;share:string};active:boolean}){
  const share=new URLSearchParams(parameters.filter(([key])=>!['q','search','page'].includes(key)).map(([key,value]):[string,string]=>[key,value])).toString();

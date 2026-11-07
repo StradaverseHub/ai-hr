@@ -305,7 +305,11 @@
       "rule": "การเปลี่ยนแปลงนี้ถูกปฏิเสธโดยกลไกป้องกันที่คุ้มครองระเบียนที่มีอยู่ เช่น งวดเงินเดือนที่ปิดแล้ว หมายเลขอ้างอิง {ref}",
       "busy": "ระบบไม่ว่างและการเปลี่ยนแปลงยังไม่เสร็จสมบูรณ์ โปรดลองอีกครั้ง หมายเลขอ้างอิง {ref}",
       "nricDuplicate": "NRIC นี้มีอยู่ในระเบียนพนักงานอื่นแล้ว การตั้งค่าทั่วไปของบุคลากรปัจจุบันไม่อนุญาต NRIC ซ้ำ รหัสอ้างอิง {ref}."
-    }
+    },
+    "moreActions": "การดำเนินการอื่น",
+    "noSearchResults": "ไม่พบผลลัพธ์ที่ตรงกับการค้นหา",
+    "sectionFilter": "ส่วน",
+    "allSections": "ทุกส่วน"
   },
   "nav": {
     "roster": "ตารางเวร",
@@ -3904,7 +3908,7 @@
       "panelLaterOther": "เฉพาะปีการลานี้ ยอดคงเหลือที่ใช้ได้บนการ์ดนับรวมรายการที่ลงวันที่หลังปีการลานี้",
       "sharedFromPool": "วันลาเหล่านี้หักจากยอดคงเหลือของ {pool}",
       "sharedPoolHolder": "วันลาเหล่านี้ใช้ร่วมกับ {types}",
-      "takenOnlyCaption": "ใช้ไปแล้ว — ไม่มีสิทธิ์",
+      "takenOnlyCaption": "ยังไม่มีสิทธิวันลา — แสดงจำนวนที่ใช้แล้ว",
       "cycleDates": "ปีการลา {from} – {to}",
       "details": "รายละเอียด",
       "detailsFor": "รายละเอียดของ {type}",
@@ -3957,7 +3961,10 @@
     "replacementRequest": {
       "viewMyRequests": "[retired r389 — the 'View my leave credit requests' link beside the Leave Credit request button on My Leave. Item ba039150 removed it: the list it opened is now the Leave Credit History page, reached from the My Leave menu]"
     },
-    "historyHeading": "สถานะคำขอลา"
+    "historyHeading": "สถานะคำขอลา",
+    "submittingRequest": "กำลังส่ง…",
+    "submitUnconfirmed": "ไม่สามารถยืนยันผลได้ โปรดตรวจสอบสถานะคำขอก่อนลองอีกครั้ง",
+    "zeroDaysHint": "รายการที่เลือกนี้ไม่หักวันลา โปรดเลือกวันทำงานก่อนส่ง"
   },
   "leaveTracker": {
     "title": "ตัวติดตามการลาของทีม",
@@ -4816,7 +4823,7 @@
   },
   "me": {
     "title": "โปรไฟล์ของฉัน",
-    "notLinked": "บัญชีนี้ยังไม่ได้เชื่อมโยงกับโปรไฟล์พนักงาน ใช้ตัวสลับตัวตนในแถบด้านบนเพื่อทำงานในฐานะพนักงาน (เช่น Aisyah หรือ Daniel)",
+    "notLinked": "บัญชีนี้ยังไม่เชื่อมกับประวัติพนักงาน โปรดให้ HR เชื่อมบัญชีเข้าสู่ระบบกับประวัติพนักงานที่ถูกต้อง",
     "todayHeading": "วันนี้",
     "checkIn": "เช็คอิน",
     "checkedInAt": "เช็คอินเมื่อ <time></time>",
@@ -5787,7 +5794,7 @@
       "colEmployees": "พนักงาน",
       "colNetPay": "รายได้สุทธิ",
       "colStatus": "สถานะ",
-      "empty": "ยังไม่มีกระบวนการจ่ายเงินเดือน — สร้างใหม่ด้านล่าง",
+      "empty": "ยังไม่มีรายการประมวลผลเงินเดือน เลือกสร้างรอบประมวลผลเงินเดือนเพื่อเริ่มต้น",
       "runType": {
         "regular": "ปกติ",
         "off_cycle": "นอกรอบ",
@@ -11556,7 +11563,7 @@
       "title": "ตั้งค่าการเบิก",
       "subtitle": "กำหนดประเภทการเบิกค่าใช้จ่าย/สวัสดิการที่พนักงานสามารถส่งได้ การจัดการภาษีเริ่มต้น และงบประมาณ (ไม่บังคับ)",
       "typesTitle": "ประเภทการเบิก",
-      "empty": "ยังไม่มีประเภทการเบิก เพิ่มด้านล่าง",
+      "empty": "ยังไม่มีประเภทการเบิก เลือกเพิ่มใหม่เพื่อสร้าง",
       "newTitle": "ประเภทการเบิกใหม่",
       "codeLabel": "รหัส",
       "nameLabel": "ชื่อ",
@@ -13736,7 +13743,9 @@
     "scope": "ขอบเขต",
     "breadcrumb": "เส้นทางนำทาง",
     "details": "รายละเอียด",
-    "homePreferences": "การตั้งค่าหน้าแรก"
+    "homePreferences": "การตั้งค่าหน้าแรก",
+    "chooseCompanies": "เลือกใหม่",
+    "pendingCompanySelection": "เลือกบริษัทเพื่ออัปเดตมุมมอง ขอบเขตบริษัทปัจจุบันยังไม่เปลี่ยนแปลง"
   },
   "components": {
     "plannedAbsences": {
@@ -14331,7 +14340,7 @@
   "payComponents": {
     "title": "รายการเงินเดือน",
     "description": "กำหนดรายการเงินเดือนที่กำหนดค่าได้และการปฏิบัติตามกฎหมาย (EPF / SOCSO / PCB / HRDF)",
-    "previewNotice": "ตัวอย่าง แค็ตตาล็อกพร้อมใช้งาน เงินเดือนจะเปลี่ยนไปใช้องค์ประกอบแบบมีชนิดเมื่อเปิดใช้งานเท่านั้น (TYPED_PAY_COMPONENTS_ENABLED) จนกว่าจะถึงตอนนั้น เงินเดือนจะคำนวณจากฐาน + เบี้ยเลี้ยง + ล่วงเวลา + โบนัสเหมือนปัจจุบัน",
+    "previewNotice": "ตัวอย่าง แค็ตตาล็อกพร้อมใช้งาน เงินเดือนยังคงใช้เงินเดือนพื้นฐาน เบี้ยเลี้ยง ค่าล่วงเวลา และโบนัส จนกว่าจะเปิดใช้การตั้งค่าองค์ประกอบค่าจ้างใหม่",
     "catalogTitle": "แค็ตตาล็อก",
     "seedDefaults": "โหลดค่าเริ่มต้นมาเลเซีย",
     "colCode": "รหัสเงินเดือน",
@@ -16912,12 +16921,24 @@
     "colRanAt": "เวลาที่ทำงาน",
     "colOutcome": "ผลลัพธ์",
     "colError": "ข้อผิดพลาด",
+    "notificationEvidenceUnverified": "ประวัติการทำงานไม่ยืนยันรุ่นของโปรแกรมงานที่ติดตั้งหรือการได้รับอีเมล",
     "outcome": {
+      "running": "เริ่มแล้ว; ยังไม่มีบันทึกการเสร็จสิ้น",
       "success": "สำเร็จ",
       "partial": "บางส่วน",
       "failed": "ล้มเหลว"
     },
     "counters": {
+      "processedEvents": "เหตุการณ์ที่ประมวลผล",
+      "createdNotifications": "การแจ้งเตือนที่สร้าง",
+      "committedBatches": "ชุดงานที่ยืนยันแล้ว",
+      "pendingEvents": "เหตุการณ์ที่รอ",
+      "oldestPendingSeconds": "อายุงานค้างที่เก่าที่สุด (วินาที)",
+      "cappedTenants": "บริษัทที่ถึงขีดจำกัดชุดงาน",
+      "emailAttempted": "ครั้งที่พยายามส่งอีเมล",
+      "emailSkipped": "อีเมลที่ข้าม",
+      "emailUnavailableTenants": "บริษัทที่อีเมลไม่พร้อมใช้",
+      "emailCappedTenants": "บริษัทที่ถึงขีดจำกัดชุดอีเมล",
       "granted": "จำนวนวันที่ให้",
       "opened": "การประเมินที่เปิด",
       "reminders": "การแจ้งเตือนที่ส่ง",
@@ -16927,6 +16948,10 @@
       "tenantsAlarming": "บริษัทที่มีการแจ้งเตือน"
     },
     "jobs": {
+      "notifications-project": {
+        "name": "การประมวลผลการแจ้งเตือน",
+        "description": "ประมวลผลเหตุการณ์แจ้งเตือนที่รออยู่และบันทึกงานที่ยืนยันแล้วกับงานค้าง ผลการส่งอีเมลบันทึกแยกต่างหาก"
+      },
       "leave-accrue": {
         "name": "การสะสมวันลา",
         "description": "เพิ่มวันลาที่พนักงานสะสมได้จนถึงปัจจุบัน"
@@ -22575,7 +22600,8 @@
     "saving": "[retired r392 — part of the Today tiles or the Needs your attention panel on My Team, removed at the reporter's request (item 33930be9). Leave is decided in Approval Items]",
     "attentionCount": "[retired r392 — part of the Today tiles or the Needs your attention panel on My Team, removed at the reporter's request (item 33930be9). Leave is decided in Approval Items]",
     "status_exempt": "ได้รับยกเว้น",
-    "exemptCode": "EX"
+    "exemptCode": "EX",
+    "balanceContext": "ยอดคงเหล่านี้เป็นยอดที่บันทึกไว้ โดยไม่แสดงการตั้งค่าสิทธิวันลา ยอดเป็นศูนย์ไม่ได้ยืนยันว่าสิทธิได้รับการตั้งค่าแล้ว โปรดติดต่อ HR หากต้องการตรวจสอบ"
   },
   "lifecycle": {
     "title": "การปฐมนิเทศและไอที",
