@@ -20,8 +20,80 @@ const registry=createNotificationRegistry(readers),recipes=Object.entries(regist
 const eligible=(spec:NotificationSpec<Probe>):NotificationPayload=>spec.recipientGuard?{[spec.recipientGuard.field]:spec.recipientGuard.not?false:true}:{};
 const unsupported=new Set(['probation','leaveSubmitted','leaveCancellationSubmitted','overtimeSubmitted','readinessNudge','peerFeedback','assessmentReviewTask','assessmentKpiApproval','legacyReviewStarted','legacyReviewEvaluated','legacyReviewDecidedLetter','legacyReviewReminder','leaveEscalation','automaticReviewChase','missingClockFollowup','passportFollowup','lifecycleFollowup','approvalChase']);
 
+// Reviewed domain identities, independent of the registry's runtime count/factory expansion.
+const expectedRecipeKeys=[
+ 'assessment.reminder-queued|performance.reminder',
+ 'attendance-correction.approved|attendance.ot-approved',
+ 'attendance-correction.rejected|attendance.ot-rejected',
+ 'attendance-correction.requested|attendance.ot-requested',
+ 'automatic-chase.approval-raised|attendance.approval-overdue',
+ 'automatic-chase.approval-raised|claim.approval-overdue',
+ 'automatic-chase.approval-raised|toil.approval-overdue',
+ 'automatic-chase.followup-raised|attendance.missing-clock',
+ 'automatic-chase.followup-raised|lifecycle.step-waiting',
+ 'automatic-chase.followup-raised|profile.passport-expiry',
+ 'automatic-chase.review-raised|review.overdue',
+ 'claim-request.approved|claim.approved',
+ 'claim-request.rejected|claim.rejected',
+ 'claim-request.triage-queried|claim.triageQueried',
+ 'contract.notification-due|contract.notification-due',
+ 'delegation.ended|delegation.ended',
+ 'delegation.started|delegation.started',
+ 'employee-home.greeting.sent|employee-home.greeting',
+ 'employment-review.decided|review.decided',
+ 'employment-review.decided|review.issue-letter',
+ 'employment-review.manager-evaluated|review.manager-evaluated',
+ 'employment-review.reminder-due|review.reminder',
+ 'employment-review.started|review.started',
+ 'leave-cancellation.approved|leave.cancellation-approved',
+ 'leave-cancellation.rejected|leave.cancellation-rejected',
+ 'leave-cancellation.requested|leave.cancellation-requested',
+ 'leave-request.admin-cancelled|leave.admin-cancelled',
+ 'leave-request.approved|leave.approved',
+ 'leave-request.escalation-due|leave.escalation',
+ 'leave-request.rejected|leave.rejected',
+ 'leave-request.self-cancelled|leave.self-cancelled',
+ 'letter-request.declined|letter-request.declined',
+ 'notice.published|notice.published',
+ 'onboarding.digest|onboarding.digest',
+ 'onehr.competencies-submitted|performance.review-task',
+ 'onehr.kpi-approval-needed|performance.review-task',
+ 'onehr.plan-closed|performance.update',
+ 'onehr.plan-reviewed|performance.update',
+ 'onehr.plan-shared|performance.review-task',
+ 'onehr.results-submitted|performance.review-task',
+ 'onehr.results-to-leader|performance.update',
+ 'onehr.results-to-person|performance.update',
+ 'onehr.scorecard-approved|performance.update',
+ 'onehr.scorecard-returned|performance.update',
+ 'payroll-batch.closed|payslip.ready',
+ 'peer-feedback-request.created|performance.feedback-request',
+ 'performance-review.closed|performance.closed',
+ 'probation.notification-due|probation.notification',
+ 'profile-change.approved|profile.approved',
+ 'profile-change.rejected|profile.rejected',
+ 'readiness.nudge-raised|readiness.nudge',
+ 'resignation.accepted|resignation.accepted',
+ 'resignation.rejected|resignation.rejected',
+ 'reward-access.suspended|rewards.access-suspended',
+ 'reward-unit.approved|rewards.approved',
+ 'reward-unit.final-pool-changed|rewards.final-pool-changed',
+ 'reward-unit.routed|rewards.review',
+ 'reward-unit.upload-confirmed|rewards.upload-ready',
+ 'reward-unit.upload-replaced|rewards.upload-check',
+ 'teras-loop.action.applied|teras-loop.clock-out-set',
+ 'teras-loop.cut-off-reminder|teras-loop.cut-off-reminder',
+ 'teras-loop.request.sent|teras-loop.details-requested',
+ 'teras-loop.request.withdrawn|teras-loop.details-request-withdrawn',
+ 'toil.accrued|toil.accrued',
+ 'toil.converted|toil.converted',
+ 'toil.lapsed|toil.lapsed',
+];
+
 it('executes every actual canonical recipe and independently observes its declared audience/reader binding',async()=>{
- expect(recipes).toHaveLength(63);const observed=new Set<string>();
+ const actualKeys=recipes.map(({eventType,spec})=>eventType+'|'+spec.kind);
+ expect(actualKeys.slice().sort()).toEqual(expectedRecipeKeys.slice().sort());expect(new Set(actualKeys).size).toBe(expectedRecipeKeys.length);
+ const observed=new Set<string>();
  for(const {eventType,spec}of recipes){
   const state:Probe={calls:[]},value=spec.recipients?await spec.recipients(state,event,eligible(spec)):[subject];
   if(spec.recipientAudience==='reader'){
