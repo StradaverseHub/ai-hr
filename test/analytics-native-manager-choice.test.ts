@@ -49,7 +49,7 @@ it('retains valid uppercase bookmarked UUIDs through browse, pinning and Apply',
 });
 it('browses, searches and applies through only native POST controls, retaining every submitted report field and no new raw search in URLs',async()=>{
  const first=await doc(await POST(request()));let body=formPacket(first);body.set('offset','49975');
- const deep=await doc(await POST(request(body)));expect(deep.body.textContent).toContain('49,976–50,000 of 50,000');expect(deep.querySelectorAll('option')).toHaveLength(26);
+ const deep=await doc(await POST(request(body)));expect(deep.body.textContent).toContain('49976–50000 of 50,000');expect(deep.querySelectorAll('option')).toHaveLength(26);
  expect(deep.querySelector<HTMLButtonElement>('button[name="offset"][value="50000"]')!.disabled).toBe(true);
  body=formPacket(deep);body.set('managerQuery','PRIVATE_<script>alert(1)</script>');body.set('offset','0');
  const search=await doc(await POST(request(body)));expect(search.querySelector('script')).toBeNull();expect(search.querySelector<HTMLInputElement>('[name="managerQuery"]')!.value).toContain('PRIVATE_');
@@ -74,7 +74,8 @@ it('closes input fields, nested context, duplicates, malformed controls and over
  expect(mocks.read).not.toHaveBeenCalled();
 });
 it('refuses cross-origin/bearer/query transports before scope and safely reports read failures while preserving framework redirects',async()=>{
- for(const extra of [{origin:'https://foreign.example'},{origin:''},{'sec-fetch-site':'cross-site'},{authorization:'Bearer x'}])expect((await POST(request(packet(),extra))).status).toBe(403);
+ const refusedHeaders:Record<string,string>[]=[{origin:'https://foreign.example'},{origin:''},{'sec-fetch-site':'cross-site'},{authorization:'Bearer x'}];
+ for(const extra of refusedHeaders)expect((await POST(request(packet(),extra))).status).toBe(403);
  expect(mocks.scope).not.toHaveBeenCalled();expect((await POST(new Request('https://hr.example/analytics/manager-choices?managerQuery=PRIVATE',{method:'POST',headers:{origin:'https://hr.example','content-type':'application/x-www-form-urlencoded'},body:packet()}))).status).toBe(400);
  mocks.read.mockRejectedValue(Error('PRIVATE_SQL'));let response=await POST(request());expect(response.status).toBe(503);expect(await response.text()).not.toContain('PRIVATE_SQL');
  mocks.scope.mockRejectedValue(Error('PRIVATE_SCOPE'));response=await POST(request());expect(response.status).toBe(503);expect(await response.text()).not.toContain('PRIVATE_SCOPE');
