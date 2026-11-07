@@ -157,11 +157,10 @@ BEGIN
  e:=notification_worker_private.event(p_batch,p_event);a:=notification_worker_private.capture_assessment(p_batch,e);
  IF a.prepared OR p_decision IS NULL OR jsonb_typeof(p_decision)<>'object' OR jsonb_typeof(p_decision->'kind') IS DISTINCT FROM 'string' THEN RAISE EXCEPTION 'Assessment preparation proposal unavailable' USING ERRCODE='42501';END IF;
  kind:=p_decision->>'kind';
- -- These are wire byte ceilings in addition to the unchanged canonical shape.
- -- 16*3*200 code points at worst six JSON-escaped bytes fit 64KiB tasks;
- -- 20k+30k code points fit 320KiB words; 400KiB also includes the envelope.
- -- Unbounded date fractions or pre-trim padding remain explicitly bounded.
- IF kind NOT IN('noop','skip','prepare') OR octet_length(p_decision::text)>409600 THEN RAISE EXCEPTION 'Closed bounded preparation decision required' USING ERRCODE='22023';END IF;
+ -- Logical parser limits and the canonical recipient table's storage limits
+ -- both bind. Refuse oversized proposals before a table CHECK failure; never
+ -- loosen the existing 20k task / 220k word storage contract for wire parity.
+ IF kind NOT IN('noop','skip','prepare') OR octet_length(p_decision::text)>260000 THEN RAISE EXCEPTION 'Closed bounded preparation decision required' USING ERRCODE='22023';END IF;
  IF kind='noop' THEN
   IF a.available OR (SELECT count(*) FROM jsonb_object_keys(p_decision))<>1 THEN RAISE EXCEPTION 'Assessment no-op is not current' USING ERRCODE='42501';END IF;
   UPDATE notification_worker_private.assessment_admission SET prepared=true WHERE batch_id=p_batch AND event_id=e.id;RETURN ARRAY[]::uuid[];
@@ -179,7 +178,7 @@ BEGIN
   next_outcome:=p_decision->>'outcome';
  ELSIF kind='prepare' THEN
   IF (SELECT count(*) FROM jsonb_object_keys(p_decision))<>7 OR NOT(p_decision?&ARRAY['kind','tasks','mailWords','preparedAt','preparedUntil','tenantEpoch','cycleEpoch'])
-   OR jsonb_typeof(p_decision->'tasks')<>'array' OR jsonb_array_length(p_decision->'tasks') NOT BETWEEN 1 AND 16 OR octet_length((p_decision->'tasks')::text)>65536
+   OR jsonb_typeof(p_decision->'tasks')<>'array' OR jsonb_array_length(p_decision->'tasks') NOT BETWEEN 1 AND 16 OR octet_length((p_decision->'tasks')::text)>20000
    OR jsonb_typeof(p_decision->'preparedAt') IS DISTINCT FROM 'string' OR jsonb_typeof(p_decision->'preparedUntil') IS DISTINCT FROM 'string'
    OR notification_worker_private.assessment_iso_datetime(p_decision->>'preparedAt') IS NOT TRUE
    OR notification_worker_private.assessment_iso_datetime(p_decision->>'preparedUntil') IS NOT TRUE
@@ -206,7 +205,7 @@ BEGIN
    canonical_tasks:=canonical_tasks||jsonb_build_array(item);
   END LOOP;
   words:=p_decision->'mailWords';
-  IF words<>'null'::jsonb AND (jsonb_typeof(words)<>'object' OR (SELECT count(*) FROM jsonb_object_keys(words))<>2 OR NOT(words?&ARRAY['subject','opening']) OR jsonb_typeof(words->'subject') IS DISTINCT FROM 'string' OR jsonb_typeof(words->'opening') IS DISTINCT FROM 'string' OR notification_worker_private.assessment_codepoint_length(words->>'subject') NOT BETWEEN 1 AND 20000 OR (position(chr(13) in (words->>'subject'))>0 OR position(chr(10) in (words->>'subject'))>0) OR notification_worker_private.assessment_codepoint_length(words->>'opening') NOT BETWEEN 1 AND 30000 OR octet_length(words::text)>327680) THEN RAISE EXCEPTION 'Invalid prepared reminder words' USING ERRCODE='22023';END IF;
+  IF words<>'null'::jsonb AND (jsonb_typeof(words)<>'object' OR (SELECT count(*) FROM jsonb_object_keys(words))<>2 OR NOT(words?&ARRAY['subject','opening']) OR jsonb_typeof(words->'subject') IS DISTINCT FROM 'string' OR jsonb_typeof(words->'opening') IS DISTINCT FROM 'string' OR notification_worker_private.assessment_codepoint_length(words->>'subject') NOT BETWEEN 1 AND 20000 OR (position(chr(13) in (words->>'subject'))>0 OR position(chr(10) in (words->>'subject'))>0) OR notification_worker_private.assessment_codepoint_length(words->>'opening') NOT BETWEEN 1 AND 30000 OR octet_length(words::text)>220000) THEN RAISE EXCEPTION 'Invalid prepared reminder words' USING ERRCODE='22023';END IF;
   SELECT * INTO p FROM notification_worker_private.assessment_projection WHERE id=a.projection_id;
   expected_tenant_epoch:=coalesce((SELECT (x->>'revision')::bigint FROM jsonb_array_elements(a.epochs) x WHERE x->>'scopeId'='00000000-0000-0000-0000-000000000000'),0);
   expected_cycle_epoch:=coalesce((SELECT (x->>'revision')::bigint FROM jsonb_array_elements(a.epochs) x WHERE x->>'scopeId'=a.cycle_id::text),0);

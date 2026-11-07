@@ -161,6 +161,24 @@ describe.sequential('native assessment reminder preparation (stage3)',()=>{
    })).rejects.toSatisfy((error:unknown)=>pgSqlState(error)==='22023');
    expect(await preparationEffects(row,run)).toEqual(before);
   }
+  // Parser validity alone does not override the canonical table's byte limits.
+  // Isolate each overflow below the aggregate envelope and require deliberate
+  // API refusal (22023), not a later storage constraint exception (23514).
+  for(const target of ['tasks','words'] as const){
+   await expect(begin(run,base.tenantId,async(tx,batch)=>{const {proposal}=await validProposal(tx,batch,row.sourceEventId!);
+    const tasks=target==='tasks'?assessmentReminderTaskKeys.map((key,index)=>({key,count:index+1,closesAt:null,people:['\u0001'.repeat(200),'\u0002'.repeat(200),'\u0003'.repeat(200)]})):proposal.tasks;
+    const words=target==='words'?{subject:'\u0001'.repeat(20000),opening:'😀'.repeat(30000)}:null;
+    expect(assessmentReminderMailSchema.safeParse({tasks,words}).success).toBe(true);
+    const decision={...proposal,tasks,mailWords:words};
+    const [wire]=await tx`select octet_length((${tx.json(tasks)}::jsonb)::text) as task_bytes,
+     octet_length((${tx.json(words)}::jsonb)::text) as word_bytes,octet_length((${tx.json(decision)}::jsonb)::text) as decision_bytes`;
+    expect(wire.decision_bytes).toBeLessThan(260000);
+    if(target==='tasks'){expect(wire.task_bytes).toBeGreaterThan(20000);expect(wire.word_bytes).toBeLessThanOrEqual(220000);}
+    else{expect(wire.word_bytes).toBeGreaterThan(220000);expect(wire.task_bytes).toBeLessThanOrEqual(20000);}
+    await tx`select notification_worker.prepare_assessment(${batch}::uuid,${row.sourceEventId}::uuid,${tx.json(decision)}::jsonb)`;
+   })).rejects.toSatisfy((error:unknown)=>pgSqlState(error)==='22023');
+   expect(await preparationEffects(row,run)).toEqual(before);
+  }
  },30000);
  const wireEdges=[{label:'Unicode code-point boundaries and JS trim',tasks:[
    {key:'own_competency',count:1,closesAt:null},
@@ -169,8 +187,8 @@ describe.sequential('native assessment reminder preparation (stage3)',()=>{
    {key:'own_competency',count:3,closesAt:'0000-02-29T00:00:00-23:59'},
    {key:'own_competency',count:4,closesAt:'9999-12-31T23:59:59.9+00:00',people:[' \u00a0\ufeffFictional 😀\u202f\n','😀'.repeat(200),'e\u0301'.repeat(100)]},
   ],words:{subject:'😀'.repeat(20000),opening:'😀'.repeat(30000)}},
-  {label:'all sixteen task groups with maximum JSON escaping',tasks:assessmentReminderTaskKeys.map((key,index)=>({key,count:index+1,closesAt:null,people:['\u0001'.repeat(200),'\u0002'.repeat(200),'\u0003'.repeat(200)]})),
-   words:{subject:'\u0001'.repeat(20000),opening:'\u0002'.repeat(30000)}}];
+  {label:'all sixteen task groups at maximum logical cardinalities within storage bounds',tasks:assessmentReminderTaskKeys.map((key,index)=>({key,count:index+1,closesAt:null,people:['a'.repeat(200),'b'.repeat(200),'c'.repeat(200)]})),
+   words:{subject:'s'.repeat(20000),opening:'o'.repeat(30000)}}];
  for(const {label,tasks,words} of wireEdges)it('persists '+label+' through a real LOGIN then parses the canonical mail consumer',async()=>{
   const f=await fixture(base);await historical();const row=await queued(f);await targetOnly(row.sourceEventId!);const run=await notificationWorkerLifecycle(service).openRun();
   // This is typed-wire qualification, not native proof of caller-proposed task truth.
@@ -179,10 +197,7 @@ describe.sequential('native assessment reminder preparation (stage3)',()=>{
    const [wire]=await tx`select octet_length((${tx.json(tasks)}::jsonb)::text) as task_bytes,
     octet_length((${tx.json(words)}::jsonb)::text) as word_bytes,
     octet_length((${tx.json({...proposal,tasks,mailWords:words})}::jsonb)::text) as decision_bytes`;
-   expect(wire.task_bytes).toBeLessThanOrEqual(65536);expect(wire.word_bytes).toBeLessThanOrEqual(327680);expect(wire.decision_bytes).toBeLessThanOrEqual(409600);
-   if(label==='all sixteen task groups with maximum JSON escaping'){
-    expect(wire.task_bytes).toBeGreaterThan(20000);expect(wire.word_bytes).toBeGreaterThan(220000);expect(wire.decision_bytes).toBeGreaterThan(260000);
-   }
+   expect(wire.task_bytes).toBeLessThanOrEqual(20000);expect(wire.word_bytes).toBeLessThanOrEqual(220000);expect(wire.decision_bytes).toBeLessThanOrEqual(260000);
    // Preserve raw JSON numeric decimal forms; canonical numbers do not require an
    // integer-only lexical spelling. Both epochs still equal native captured facts.
    const tenantNumber=String(proposal.tenantEpoch)+'.0',cycleNumber=String(proposal.cycleEpoch)+'.0';
@@ -203,7 +218,7 @@ describe.sequential('native assessment reminder preparation (stage3)',()=>{
   expect(assessmentReminderMailSchema.parse({tasks:persisted.tasks,words:persisted.mailWords})).toEqual(expected);
   expect(persisted.outcome).toBe('queued');
   if(label==='Unicode code-point boundaries and JS trim')expect(persisted.tasks[4].people).toEqual(['Fictional 😀','😀'.repeat(200),'e\u0301'.repeat(100)]);
-  else{expect(persisted.tasks).toHaveLength(16);expect(persisted.tasks[15].people).toEqual(['\u0001'.repeat(200),'\u0002'.repeat(200),'\u0003'.repeat(200)]);}
+  else{expect(persisted.tasks).toHaveLength(16);expect(persisted.tasks[15].people).toEqual(['a'.repeat(200),'b'.repeat(200),'c'.repeat(200)]);}
   await assertGlobalCursor(base.tenantId,row.sourceEventId!);
   const effects=await preparationEffects(row,run);expect(effects.notices).toHaveLength(1);expect(effects.outbox).toHaveLength(1);expect(effects.batches).toEqual([]);expect(effects.admissions).toEqual([]);
  },30000);
