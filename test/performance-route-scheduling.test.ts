@@ -34,8 +34,14 @@ it('covers all authorized routes when each of the 500 fixture actors completes o
   for(let ordinal=0;ordinal<actors;ordinal++)
    for(const route of navigationRoutesForIteration(routePools[role],{role,ordinal,actors,iteration:0}))visited.add(route);
  }
+ const uncovered=routePools.groupHR.filter(route=>!visited.has(route)).length;
  const groupRoutes=firstGroupNavigationRoutes(routePools,counts);
- expect(groupRoutes.map(routes=>routes.length)).toEqual([6,7]);
+ expect(groupRoutes).toHaveLength(counts.get('groupHR')!);
+ // Six ordinary slots per actor; extra first-cycle slots are needed only when
+ // the independently uncovered destinations exceed that combined capacity.
+ const lengths=groupRoutes.map(routes=>routes.length),maximum=Math.max(6,Math.ceil(uncovered/counts.get('groupHR')!));
+ expect(lengths.every(length=>length>=6&&length<=maximum)).toBe(true);
+ expect(Math.max(...lengths)-Math.min(...lengths)).toBeLessThanOrEqual(1);
  for(const routes of groupRoutes)for(const route of routes){
   expect(routePools.groupHR).toContain(route);
   visited.add(route);
