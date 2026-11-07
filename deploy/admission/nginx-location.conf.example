@@ -1,0 +1,10 @@
+# Reviewed location changes, not a universal replacement for an existing vhost.
+# Retain the installation's existing Host/forwarding/cookie/body/time-out policy.
+# Preserve Host including its port ($http_host). At a trusted outer-proxy hop,
+# preserve the authenticated forwarded TLS scheme; $scheme here may be HTTP.
+# The trust boundary/map must be reviewed against the actual ingress chain.
+# The managed ready.conf is included ONCE in http context, not in this location.
+proxy_pass http://aihr_ready_workers;
+proxy_next_upstream off;
+proxy_buffering off;
+# Existing WebSocket upgrade headers and proxy_http_version must remain present.
