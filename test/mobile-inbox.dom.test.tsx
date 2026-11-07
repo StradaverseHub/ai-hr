@@ -86,8 +86,10 @@ describe('inbox list', () => {
   it('marks unread rows, offers Open only for a known destination, and shows the unread count with Mark all read', async () => {
     const f = fixture();
     f.pages.push(pageOf([note(), note({ id: ID2, title: 'Claim approved', readAt: '2026-10-27T02:00:00.000Z', destination: null }), note({ id: ID3, title: 'Odd', destination: { screen: 'admin' } })]));
-    render(<f.InboxScreen />);
+    render(<f.InboxScreen back />);
+    expect(screen.getByRole('button', {name:'back'})).toBeTruthy();
     await screen.findByText('Leave approved');
+    expect(screen.getByRole('button', {name:'back'})).toBeTruthy();
     expect(f.apiGetV2.mock.calls[0][0]).toBe('v2/notifications');
     expect(f.apiGetV2.mock.calls[0][2]).toEqual({});
     expect(screen.getByRole('button', { name: 'inboxUnreadLabel. Leave approved. inboxOpenLeaveHistory' })).toBeTruthy();

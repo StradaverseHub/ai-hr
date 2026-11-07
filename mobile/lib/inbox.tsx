@@ -28,7 +28,7 @@ import { appLocale, t, type MessageKey } from './i18n';
 import { fmtInstant } from './attendance-format';
 import { PagedList, usePagedList, type PageLoader, type PagedListState } from './paged-list';
 import { useSession } from './session';
-import { Button, Card, ListRow, LoadState, Muted, Title } from './ui';
+import { Button, Card, HeaderBack, ListRow, LoadState, Muted, Title } from './ui';
 import {
   HomeSummaryV2, NotificationReadResult, NotificationsPageV2,
   type NotificationDestination, type NotificationItemV2, type NotificationScreen,
@@ -88,7 +88,7 @@ export function NotificationRow({ item, read, busy, onPress }: { item: Notificat
 }
 
 /** `prompt`: the route's push control (mobile/lib/push.tsx PushPrompt), shown under the counts; the list never needs it. */
-export function InboxScreen({ prompt }: { prompt?: ReactNode } = {}) {
+export function InboxScreen({ prompt, back = false }: { prompt?: ReactNode; back?: boolean } = {}) {
   const { palette } = useTenantDesign();
   const { signOut } = useSession();
   const { list, scope, enabled, unreadCount, setUnreadCount } = useNotificationIndex(signOut);
@@ -136,6 +136,7 @@ export function InboxScreen({ prompt }: { prompt?: ReactNode } = {}) {
   return <SafeAreaView style={{ flex: 1, backgroundColor: palette.bg }} edges={[]}>
     <PagedList list={list} keyOf={itemKey} emptyText={enabled === false ? t('notificationsOff') : t('inboxEmpty')} contentContainerStyle={{ padding: 20, gap: 8 }}
       header={<View style={{ gap: 12 }}>
+        {back && <HeaderBack />}
         <Title>{t('tabInbox')}</Title>
         {enabled !== false && unreadCount != null ? <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 8 }}>
           <Muted>{`${t('unreadCount', { n: unreadCount })} ·`}</Muted>

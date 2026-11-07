@@ -8,7 +8,7 @@ export default function TabsLayout() {
   const { status } = useSession();
   const { design, reduceMotion } = useTenantDesign();
   if (status !== 'signedIn') return <Redirect href="/sign-in" />;
-  if (design.schemaVersion === 2) return <Tabs tabBar={() => null} screenOptions={{ headerShown: false, animation: reduceMotion ? 'none' : 'fade' }}>{['index', 'clock', 'leave', 'inbox', 'me', 'custom', 'team', 'work'].map(name => <Tabs.Screen key={name} name={name} />)}</Tabs>;
+  if (design.schemaVersion === 2) return <Tabs tabBar={() => null} screenOptions={{ headerShown: false, animation: reduceMotion ? 'none' : 'fade' }}>{['index', 'clock', 'leave', 'me', 'custom', 'team', 'work'].map(name => <Tabs.Screen key={name} name={name} />)}</Tabs>;
   return (
     <Tabs tabBar={() => null} screenOptions={{headerShown:false,animation:'none'}}>
       <Tabs.Screen name="index" options={{title:t('tabHome')}}/>
@@ -16,7 +16,6 @@ export default function TabsLayout() {
       <Tabs.Screen name="leave" options={{title:t('tabLeave')}}/>
       <Tabs.Screen name="work" options={{title:t('approvalsTitle')}}/>
       <Tabs.Screen name="me" options={{title:t('tabMe')}}/>
-      <Tabs.Screen name="inbox" options={{href:null}}/>
       <Tabs.Screen name="custom" options={{href:null}}/>
       <Tabs.Screen name="team" options={{href:null}}/>
     </Tabs>

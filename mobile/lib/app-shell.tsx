@@ -24,7 +24,7 @@ export function SignedInShell({ children }: { children: ReactNode }) {
       <View style={{ minHeight: 56, paddingHorizontal: 20, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
         <View style={{ flex: 1, paddingVertical: 10 }}><TenantBrand /></View>
         {design.schemaVersion===1?<View style={{flexDirection:'row',alignItems:'center',gap:4}}>
-          <Pressable accessibilityRole="button" accessibilityLabel={t('tabInbox')} onPress={()=>router.navigate('/(tabs)/inbox')} style={{minWidth:44,minHeight:44,alignItems:'center',justifyContent:'center'}}><Icon name="bell" size={21} color={palette.text}/></Pressable>
+          <Pressable accessibilityRole="button" accessibilityLabel={t('tabInbox')} onPress={()=>router.navigate('/inbox')} style={{minWidth:44,minHeight:44,alignItems:'center',justifyContent:'center'}}><Icon name="bell" size={21} color={palette.text}/></Pressable>
           <Pressable accessibilityRole="button" accessibilityLabel={t('tabMe')} onPress={()=>router.navigate('/me')} style={{minWidth:44,minHeight:44,alignItems:'center',justifyContent:'center'}}><View style={{width:30,height:30,borderRadius:15,backgroundColor:palette.text,alignItems:'center',justifyContent:'center'}}><Text style={{color:palette.bg,fontSize:12,fontWeight:'700'}}>{monogram}</Text></View></Pressable>
         </View>:<Pressable accessibilityRole="button" accessibilityLabel={t('qaSettings')} onPress={() => router.navigate('/settings')}
           style={({ pressed }) => ({ minHeight: 48, minWidth: 48, alignItems: 'center', justifyContent: 'center', opacity: pressed ? .65 : 1 })}>
