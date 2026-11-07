@@ -2,7 +2,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {BOUNDARY_SOURCE,BOUNDARY_LIMITS,admitBoundaryInputs,remainingCompilerMs,stronglyConnected,planBoundary,assertDeclarationBytes,sha256,
+import {BOUNDARY_SOURCE,BOUNDARY_LIMITS,admitBoundaryInputs,remainingCompilerMs,stronglyConnected,planBoundary,ambientEntries,orderedBoundaryRoots,assertDeclarationBytes,sha256,
  validateDeclarationCoverage,contractSource,NEGATIVE_CONTRACTS,expectContractRefusals} from './compiler-boundary-policy.mjs';
 import {exactCoverage,validatePhase,boundaryArguments,experiment} from './compiler-boundary.mjs';
 import {boundaryWorker} from './compiler-boundary-worker.mjs';
@@ -38,6 +38,20 @@ test('native dependency SCCs stay whole and every original root receives exactly
  assert.deepEqual(plan.consumers[0].roots,['test-a.ts','test-b.ts']);assert.deepEqual(new Set(plan.consumers[0].sourceIds),new Set(['test-a.ts','test-b.ts']));
  input.edges.push({from:'core.ts',to:'test-a.ts'});assert.deepEqual(planBoundary(input).producerRoots,input.roots);
  for(const malformed of [{...graph(),roots:['app.ts','app.ts']},{...graph(),buildRoots:['missing.ts']},{...graph(),files:[]}])assert.throws(()=>planBoundary(malformed));
+});
+test('original configured-root order and native external SCC entry survive context composition',()=>{
+ const inventory={roots:['next-env.d.ts','app.ts','test.ts','global.d.ts'],buildRoots:['next-env.d.ts','app.ts','global.d.ts'],
+  files:[{id:'lib.d.ts',external:true,declaration:true,ambient:true,defaultLibrary:true},
+   {id:'external-leaf.d.ts',external:true,declaration:true,ambient:true},{id:'external-entry.d.ts',external:true,declaration:true,ambient:true},
+   ...['next-env.d.ts','app.ts','test.ts','global.d.ts'].map(id=>({id,external:false,declaration:id.endsWith('.d.ts'),ambient:id.endsWith('.d.ts')}))],
+  firstLoads:['next-env.d.ts','app.ts','test.ts','external-entry.d.ts','external-leaf.d.ts','global.d.ts','lib.d.ts'],
+  edges:[{from:'test.ts',to:'external-entry.d.ts'},{from:'test.ts',to:'external-leaf.d.ts'},{from:'external-entry.d.ts',to:'external-leaf.d.ts'},{from:'external-leaf.d.ts',to:'external-entry.d.ts'}]};
+ const entries=ambientEntries(inventory);assert.deepEqual(entries,[{root:'test.ts',targets:['external-entry.d.ts'],ambient:['external-leaf.d.ts','external-entry.d.ts']}]);
+ const plan=planBoundary(inventory),sidecar=entry=>'context:'+entry.root;
+ assert.deepEqual(orderedBoundaryRoots(inventory,plan,plan.producerRoots,plan.producerRoots,sidecar,id=>id),['next-env.d.ts','app.ts','context:test.ts','global.d.ts']);
+ assert.deepEqual(orderedBoundaryRoots(inventory,plan,['test.ts'],[],sidecar,id=>id),['next-env.d.ts','context:test.ts','test.ts','global.d.ts']);
+ assert(!entries.some(entry=>entry.targets.includes('lib.d.ts')));
+ assert.throws(()=>ambientEntries({...inventory,edges:[...inventory.edges,{from:'external-entry.d.ts',to:'app.ts'}]}));
 });
 test('declaration provenance refuses missing, duplicate and foreign outputs',()=>{
  const inventory=graph(),plan=planBoundary(inventory),good=plan.producerSourceIds.map(source=>({source,virtual:source.replace(/\.ts$/,'.d.ts'),output:'emitted/'+source.replace(/\.ts$/,'.d.ts'),sha256:'a'.repeat(64)}));
@@ -81,6 +95,8 @@ test('workflow keeps25 inputs, old attributionfull-only and every other job outs
  const worker=readFileSync(new URL('compiler-boundary-worker.mjs',import.meta.url),'utf8');
  assert(worker.includes('program.getSemanticDiagnostics(file)'));assert(worker.includes('options.skipLibCheck=false'));
  assert(worker.includes('Consumer fell back to runtime implementation source'));
+ assert(worker.includes('Native reversed merge/overload ordering must actually refuse'));
+ assert(worker.includes('Original external module/package/resolution mode changed'));
 });
 test('both executable paths refuse outside hosted route before loading TypeScript or candidate sources',async()=>{
  const previous=process.env.GITHUB_ACTIONS;try{process.env.GITHUB_ACTIONS='false';await assert.rejects(experiment(),/Managed diagnostic/);

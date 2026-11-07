@@ -1,7 +1,7 @@
 {
   "kind": "DEVELOPMENT_ONLY_CHECKED_DECLARATION_BOUNDARY_NOT_RELEASE",
-  "controllerBase": "6098bb43165891ee06f21821645e89b1e0f67a19",
-  "controllerRef": "codex/compiler38-declaration-boundary-20261108",
+  "controllerBase": "1a52835352bdd30becc3fc1b7c67515906baae08",
+  "controllerRef": "codex/compiler38-ambient-context-recovery-20261108",
   "source": "38b047c9f465990e3f26295c035ab9f69b3001d7",
   "sourceRef": "codex/compiler-proven-message-boundaries-20261108",
   "workflow": "alpha-staging-diagnostics.yml",
@@ -72,15 +72,16 @@
   },
   "sourceSha256": {
     ".github/ci/diagnostics/compiler-boundary.mjs": "a22845af414e50ba6df066edb63490d824db465a55ddce2ed18816521cce95ec",
-    ".github/ci/diagnostics/compiler-boundary-worker.mjs": "2fb1efe6af058daaa85ebdca1b622bd4c37b3b78397ee6804a3ca3164b9d76db",
-    ".github/ci/diagnostics/compiler-boundary-policy.mjs": "4f16ff6febea3cc5b23ed2edaa2f167272caf58957ed125953429b9b2eb2a77e",
-    ".github/ci/diagnostics/compiler-boundary.test.mjs": "17622349ae31bff58c6de9c5dc3ece390e937fbf6f84d138653a45e0da5c403a",
+    ".github/ci/diagnostics/compiler-boundary-worker.mjs": "3f22d6228cfa85cd6da6325b5a382507f02d8a156a4f987fe41c270681f5776c",
+    ".github/ci/diagnostics/compiler-boundary-policy.mjs": "150a5d8d825017143363cce964939806916d9856c15ec866be0ec1e3ef4e1a49",
+    ".github/ci/diagnostics/compiler-boundary.test.mjs": "6596971dc3ce7d7352e450dabc3ac7e11f42203e9c9f86cad6fa359e09bb6041",
     ".github/ci/diagnostics/compiler-attribution.mjs": "21fecd10f733fc7a610cca8cd45b5776ea06deb6851b9053ed101ad8c8507767",
     ".github/ci/diagnostics/compiler-attribution.test.mjs": "50f86f858f5052215b2902d28207c2d2e1c3ee5ce580e3034991f464046da235",
     ".github/workflows/alpha-staging-diagnostics.yml": "0b434389f67376c1628f1f8b78657cd4c9ea7f60f1e143e243762054f9aee53e",
-    "docs/architecture/COMPILER-DECLARATION-BOUNDARY-EXPERIMENT-20261108.md": "6f42f43cb21219b5f27d36f6a6b492284ef1256e96ed57c1b51918bc4fbcfcb6"
+    "docs/architecture/COMPILER-DECLARATION-BOUNDARY-EXPERIMENT-20261108.md": "2c3e8e3babb286b15c94a33e8b0f8642ad3d213399f92098bdd27d32b446ba5b",
+    "docs/qualification/compiler-native-ambient-context-recovery-20261108.md": "8872cb3484429ffc4b7f25ebc3b1a86a46f1e04446dea3bdfe78424b3bb9fcfa"
   },
-  "qualification": "NOT_RUN; static syntax and diff checks only; root and independent reviews required before upload or hosted dispatch.",
+  "qualification": "NOT_RUN ambient-order recovery; original42405727772 remains FAIL before semantic checking. Static syntax/diff/hash analysis only. Root and independent reviews required before hosted Actions.",
   "retainedFailure": {
     "run": 42402718235,
     "source": "38b047c9f465990e3f26295c035ab9f69b3001d7",
@@ -95,5 +96,35 @@
   "ordinaryCompilerChanged": false,
   "releaseAuthorized": false,
   "stagingDeployed": false,
-  "production": "HELD"
+  "production": "HELD",
+  "ambientRecovery": {
+    "originalRun": 42405727772,
+    "originalController": "1a52835352bdd30becc3fc1b7c67515906baae08",
+    "inventoryPass": {
+      "elapsedMs": 25724,
+      "sampledPeakRssKiB": 3373504,
+      "roots": 8823,
+      "files": 11268,
+      "ambient": 224,
+      "consumers": 20
+    },
+    "producerRefusal": {
+      "elapsedMs": 15337,
+      "sampledPeakRssKiB": 1924608,
+      "beforeSemanticChecking": true,
+      "nativeAmbientMembership": 224,
+      "reason": "ambient order changed; never compiler PASS"
+    },
+    "exactMembershipAndOrderGuardRetained": true,
+    "nativeDefaultLibrariesExplicitlyRooted": false,
+    "nativeExternalEntrySidecars": true,
+    "realNativeGlobalAndModuleOverloadControls": {
+      "reversedCodes": [
+        2322,
+        2322
+      ],
+      "isolatedFromApplicationProgram": true
+    },
+    "allOriginalBodiesStillRequirePrimaryOwner": true
+  }
 }

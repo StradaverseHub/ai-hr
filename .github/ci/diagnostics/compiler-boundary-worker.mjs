@@ -5,7 +5,7 @@ import {readFileSync,writeFileSync,mkdirSync,realpathSync,lstatSync,existsSync} 
 import {resolve,relative,dirname,join,sep} from 'node:path';
 import {execFileSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
-import {BOUNDARY_SOURCE,sha256,planBoundary,validateDeclarationCoverage,assertDeclarationBytes,contractSource,NEGATIVE_CONTRACTS,expectContractRefusals} from './compiler-boundary-policy.mjs';
+import {BOUNDARY_SOURCE,sha256,planBoundary,orderedBoundaryRoots,validateDeclarationCoverage,assertDeclarationBytes,contractSource,NEGATIVE_CONTRACTS,expectContractRefusals} from './compiler-boundary-policy.mjs';
 
 export async function boundaryWorker(mode,out,index){
  assert(process.platform==='linux'&&process.env.GITHUB_ACTIONS==='true'&&process.env.RUNNER_ENVIRONMENT==='github-hosted'
@@ -39,11 +39,14 @@ export async function boundaryWorker(mode,out,index){
   return errors.map(diagnostic);
  };
  function compilerHost(options,access){
-  const host=ts.createCompilerHost(options,true),edges=[],packages=new Map(),cache=ts.createModuleResolutionCache(cwd,path=>path,options);
+  const host=ts.createCompilerHost(options,true),edges=[],packages=new Map(),firstLoads=[],loaded=new Set(),cache=ts.createModuleResolutionCache(cwd,path=>path,options);
   host.getModuleResolutionCache=()=>cache;
   if(access){host.fileExists=access.fileExists;host.readFile=access.readFile;host.realpath=access.realpath;}
   const read=host.readFile;host.readFile=path=>{
    const text=read(path);if(text!==undefined&&path.endsWith('/package.json'))packages.set(id(path),{id:id(path),real:id(realpathSync(path)),sha256:sha256(text)});return text;
+  };
+  const nativeSourceFile=host.getSourceFile;host.getSourceFile=(...args)=>{
+   const file=nativeSourceFile(...args);if(file&&!loaded.has(file.fileName)){loaded.add(file.fileName);firstLoads.push(id(file.fileName));}return file;
   };
   host.resolveModuleNameLiterals=(literals,from,redirected,options,sourceFile)=>literals.map(literal=>{
    const resolutionMode=ts.getModeForUsageLocation(sourceFile,literal,options);
@@ -58,15 +61,16 @@ export async function boundaryWorker(mode,out,index){
    edges.push({kind:'typeDirective',from:id(from),specifier:name,mode:resolutionMode??null,to:target?id(target.resolvedFileName):null,
     packageId:target?.packageId??null,external:target?.isExternalLibraryImport??null});return value;
   });
-  return {host,edges,packages};
+  return {host,edges,packages,firstLoads};
  }
  try{
   if(mode==='inventory'){
-   const {host,edges,packages}=compilerHost(parsed.options),program=ts.createProgram({rootNames:parsed.fileNames,options:parsed.options,host});
+   const {host,edges,packages,firstLoads}=compilerHost(parsed.options),program=ts.createProgram({rootNames:parsed.fileNames,options:parsed.options,host});
    const files=program.getSourceFiles().map(file=>{
     let augmentation=false;const visit=node=>{if(ts.isModuleDeclaration(node)&&(ts.isStringLiteral(node.name)||(node.flags&ts.NodeFlags.GlobalAugmentation)!==0))augmentation=true;ts.forEachChild(node,visit);};visit(file);
     const json=file.scriptKind===ts.ScriptKind.JSON;
     return{id:id(file.fileName),real:id(realpathSync(file.fileName)),sha256:sha256(readFileSync(file.fileName)),declaration:file.isDeclarationFile,json,
+     defaultLibrary:program.isSourceFileDefaultLibrary(file),impliedNodeFormat:file.impliedNodeFormat??null,
      external:program.isSourceFileFromExternalLibrary(file)||program.isSourceFileDefaultLibrary(file),
      ambient:!json&&(!ts.isExternalModule(file)||augmentation||file.isDeclarationFile&&!program.isSourceFileFromExternalLibrary(file)),augmentation};
    });
@@ -82,7 +86,7 @@ export async function boundaryWorker(mode,out,index){
    assert.equal(sha256(inventoryText),'64150993b2990e6b4b405a1211037cca665887fb5068f97bebfb3e1e54a5dbbd','Exact original ordered program inventory changed');
    assert.equal(identity.configHash,'0ee72fb11a698bad9b18c39223569adf5758727272b35bfa99ec7bfa57c3530a');
    assert.equal(identity.lockHash,'0413a070eca23d390fabdcd78cb63b2dcf4b0b69fe90408c7b57a4f672d21dbd');
-   const inventory={kind:'EXACT_TS593_SOURCE_GRAPH',identity,roots:parsed.fileNames.map(id),files,edges,packages:[...packages.values()],
+   const inventory={kind:'EXACT_TS593_SOURCE_GRAPH',identity,roots:parsed.fileNames.map(id),files,edges,firstLoads,packages:[...packages.values()],
     options:parsed.options,buildRoots:config('tsconfig.build.json').fileNames.map(id)};
    const plan=planBoundary(inventory);
    writeFileSync(join(out,'inventory.json'),JSON.stringify(inventory,null,2)+'\n',{flag:'wx',mode:0o600});
@@ -93,6 +97,27 @@ export async function boundaryWorker(mode,out,index){
   }
   const inventory=JSON.parse(readFileSync(join(out,'inventory.json'),'utf8')),plan=JSON.parse(readFileSync(join(out,'plan.json'),'utf8'));
   assert.deepEqual(identity,inventory.identity);assert.deepEqual(plan,planBoundary(inventory),'Graph plan differs from exact original inventory');
+  if(mode==='producer'){
+   // Real isolated compiler programs, never globals added to the application program.
+   const names=['__aihr_order_first__.d.ts','__aihr_order_second__.d.ts','__aihr_order_use__.ts'];
+   for(const name of names)assert(!inventory.files.some(file=>file.id===name)&&!existsSync(join(cwd,name)));
+   const first='interface __AihrOrderedGlobal { choose(value:number):"first"; }\ndeclare module "__aihr_ordered_module__" { export interface Ordered { choose(value:number):"first"; } }\n';
+   const second=first.replaceAll('"first"','"second"');
+   const use='declare const __aihrGlobal: __AihrOrderedGlobal;\nconst __aihrGlobalExpected:"second"=__aihrGlobal.choose(1);\ndeclare const __aihrModule: import("__aihr_ordered_module__").Ordered;\nconst __aihrModuleExpected:"second"=__aihrModule.choose(1);\n';
+   const texts=new Map([[names[0],first],[names[1],second],[names[2],use]]);
+   const run=reverse=>{
+    const options={...parsed.options,incremental:false},host=ts.createCompilerHost(options,true),read=host.readFile,exists=host.fileExists;
+    const controlText=path=>{try{return texts.get(id(path));}catch{return undefined;}},nativeRealpath=host.realpath;
+    host.readFile=path=>controlText(path)??read(path);host.fileExists=path=>controlText(path)!==undefined||exists(path);
+    if(nativeRealpath)host.realpath=path=>controlText(path)!==undefined?resolve(path):nativeRealpath(path);
+    const order=reverse?[names[1],names[0],names[2]]:names;
+    const program=ts.createProgram({rootNames:order.map(name=>join(cwd,name)),options,host});return ts.getPreEmitDiagnostics(program).map(diagnostic);
+   };
+   const positive=run(false),reversed=run(true);assert.deepEqual(positive,[],'Native merge/overload positive control failed');
+   assert.deepEqual(reversed.map(({code,file,line})=>({code,file,line})),[
+    {code:2322,file:names[2],line:2},{code:2322,file:names[2],line:4}],'Native reversed merge/overload ordering must actually refuse');
+   result.mergeOrderControls={positive,reversed,applicationGlobalsModified:false};
+  }
   const original=new Map(inventory.files.map(file=>[file.id,file])),metadata=new Map(inventory.packages.map(file=>[file.id,file]));
   const originalReal=new Map(inventory.files.map(file=>[file.real,file])),metadataReal=new Map(inventory.packages.map(file=>[file.real,file]));
   const producer=new Set(plan.producerSourceIds),sourceNegative=mode==='source-negative',isProducer=mode==='producer';
@@ -113,10 +138,17 @@ export async function boundaryWorker(mode,out,index){
   const virtuals=new Map(declarations.map(row=>[row.virtual,row])),byDeclarationSource=new Map(declarations.map(row=>[row.source,row]));assert.equal(virtuals.size,declarations.length);
   const allowedSources=new Set(isProducer?[...plan.producerSourceIds]:sourceNegative?inventory.files.map(file=>file.id):batch?.sourceIds??[]);
   const shared=new Set([...plan.ambient,...plan.external]);
+  const sidecars=new Map();
+  for(const entry of plan.contextEntries){
+   const key='__aihr_context_'+sha256(entry.root).slice(0,24)+'.d.ts';assert(!original.has(key)&&!existsSync(join(cwd,key)));
+   const text=entry.targets.map(target=>'/// <reference path='+JSON.stringify('./'+target)+' />').join('\n')+'\nexport {};\n';
+   sidecars.set(key,{entry,text});
+  }
   const mapped=id=>virtuals.get(id);
   const locate=path=>{
    let key;try{key=id(path);}catch{return undefined;}
-   if(key===contractId)return {contract:true};if(declarationPhase&&key===declarationControlId)return {declarationControl:true};if(mapped(key))return {output:mapped(key)};
+   if(key===contractId)return {contract:true};if(sidecars.has(key))return {sidecar:sidecars.get(key)};
+   if(declarationPhase&&key===declarationControlId)return {declarationControl:true};if(mapped(key))return {output:mapped(key)};
    // Native pnpm resolution first probes symlink aliases, then canonicalizes them.
    // Admit an alias only through the exact original real-file identity and bytes.
    let real;try{real=id(realpathSync(path));}catch{return undefined;}
@@ -127,7 +159,7 @@ export async function boundaryWorker(mode,out,index){
   };
   const allowed=path=>locate(path)!==undefined;
   const readFile=path=>{
-   const location=locate(path);if(!location)return undefined;if(location.contract)return contract;if(location.declarationControl)return declarationControl;
+   const location=locate(path);if(!location)return undefined;if(location.contract)return contract;if(location.declarationControl)return declarationControl;if(location.sidecar)return location.sidecar.text;
    if(location.output)return declarationBytes(location.output).toString('utf8');
    const bytes=readFileSync(path);assert.equal(sha256(bytes),location.file.sha256,'Original source changed during diagnostic');return bytes.toString('utf8');
   };
@@ -135,7 +167,7 @@ export async function boundaryWorker(mode,out,index){
   if(isProducer)Object.assign(options,{noEmit:false,declaration:true,emitDeclarationOnly:true,noEmitOnError:true,sourceMap:false,declarationMap:false,rootDir:cwd,outDir:join(out,'emitted')});
   if(declarationPhase)options.skipLibCheck=false; // Below checks only owned emitted declarations, not skipped third-party declarations.
   const {host,edges}=compilerHost(options,{readFile,fileExists:allowed,
-   realpath:path=>[contractId,declarationControlId].includes(id(path))||mapped(id(path))?resolve(path):realpathSync(path)});
+   realpath:path=>[contractId,declarationControlId].includes(id(path))||sidecars.has(id(path))||mapped(id(path))?resolve(path):realpathSync(path)});
   if(!isProducer&&!sourceNegative){
    const row=declarations.find(row=>row.source==='core/employee-choice.ts');assert(row,'Real public API declaration required');
    assert.equal(host.fileExists(join(cwd,row.source)),false);assert.equal(host.readFile(join(cwd,row.source)),undefined);
@@ -145,26 +177,35 @@ export async function boundaryWorker(mode,out,index){
    const foreign=join(cwd,'__aihr_unregistered_source__.ts');assert(!existsSync(foreign));assert.equal(host.fileExists(foreign),false);assert.equal(host.readFile(foreign),undefined);
    result.receiverControls={nativeDeclarationResolved:row.virtual,runtimeSourceDenied:true,foreignSourceDenied:true,mutatedBytesRefused:true};
   }
-  const contextIds=[...plan.ambient,...plan.external];
   const redirected=key=>{
    if(isProducer||sourceNegative)return key;
    const row=byDeclarationSource.get(key);return row?.virtual??key;
   };
   let primary=isProducer?plan.producerRoots:batch?.roots??[];
-  if(declarationPhase)primary=declarations.map(row=>row.virtual);
-  const rootNames=[...new Set([...contextIds.map(redirected),...primary.map(redirected),...(!declarationPhase?[contractId]:[declarationControlId])])].map(key=>join(cwd,key));
+  if(declarationPhase)primary=declarations.map(row=>row.source);
+  const sidecarFor=entry=>'__aihr_context_'+sha256(entry.root).slice(0,24)+'.d.ts';
+  const naturalRoots=isProducer?plan.producerRoots:[];
+  const ordered=orderedBoundaryRoots(inventory,plan,primary,naturalRoots,sidecarFor,redirected);
+  const rootNames=[...ordered,...(!declarationPhase?[contractId]:[declarationControlId])].map(key=>join(cwd,key));
+  assert(rootNames.every(path=>!original.get(id(path))?.defaultLibrary),'Default libraries must remain native implicit loads');
   const program=ts.createProgram({rootNames,options,host});
   const programFiles=program.getSourceFiles(),back=new Map(declarations.map(row=>[row.virtual,row.source]));
   const observed=programFiles.map(file=>back.get(id(file.fileName))??id(file.fileName));
   result.observedOriginalIds=observed.filter(key=>original.has(key));
   result.actualRootNames=rootNames.map(id);result.resolutions=edges;
+  result.contextSidecars=[...sidecars].filter(([key])=>ordered.includes(key)).map(([key,value])=>({id:key,root:value.entry.root,targets:value.entry.targets,sha256:sha256(value.text)}));
   const actualAmbient=observed.filter(key=>plan.ambient.includes(key));
   assert.deepEqual(actualAmbient,plan.ambient,'Original ordered ambient/global/module-augmentation context changed');
   for(const file of programFiles){
    const key=id(file.fileName);assert(allowed(file.fileName),'Unadmitted source or foreign declaration');
    if(!isProducer&&!sourceNegative&&producer.has(key)&&!original.get(key)?.declaration)assert.fail('Consumer fell back to runtime implementation source');
-   if(![contractId,declarationControlId].includes(key)&&!back.has(key))assert(original.has(key),'Compiler loaded a file outside original resolved graph');
+   if(![contractId,declarationControlId].includes(key)&&!sidecars.has(key)&&!back.has(key))assert(original.has(key),'Compiler loaded a file outside original resolved graph');
+   if(original.has(key))assert.equal(file.impliedNodeFormat??null,original.get(key).impliedNodeFormat,'Original module format changed');
   }
+  const edgeIdentity=edge=>JSON.stringify({kind:edge.kind,from:edge.from,specifier:edge.specifier,mode:edge.mode,to:edge.to,packageId:edge.packageId});
+  const originalEdges=new Set(inventory.edges.map(edgeIdentity));let checkedExternalEdges=0;
+  for(const edge of edges)if(original.get(edge.from)?.external){assert(originalEdges.has(edgeIdentity(edge)),'Original external module/package/resolution mode changed');checkedExternalEdges++;}
+  result.originalExternalResolutionsChecked=checkedExternalEdges;
   if(batch)for(const root of batch.roots)assert(observed.includes(root),'Consumer original root was not checked');
   const owned=declarationPhase?programFiles.filter(file=>virtuals.has(id(file.fileName))||id(file.fileName)===declarationControlId):undefined;
   if(declarationPhase){assert.equal(owned.length,declarations.length+1);assert(owned.every(file=>file.isDeclarationFile));

@@ -33,8 +33,9 @@ regex import graph. Original program count and ordered inventory hash must match
 
 Actual parsed tsconfig.build.json roots supply the existing application runtime
 **seed**, never a reduced verification scope. Its native dependency closure is
-closed over SCCs. All original global/ambient sources and original dependency
-context are included. Any back-edge pulls its whole dependency SCC into the producer.
+closed over SCCs. All original global/ambient context is established through native root/entry
+ownership. Imported dependency identities remain pinned; every original resolved
+file must be observed across the complete producer/consumer union. Any back-edge pulls its whole dependency SCC into the producer.
 Every root of the original tsconfig.json independently receives exactly one primary
 producer/consumer owner. Iterative graph traversal avoids a JavaScript stack limit.
 Consumer SCCs are packed deterministically to200 primary roots; source dependency
@@ -43,7 +44,7 @@ rechecked helpers are recorded, not subtracted from original coverage.
 
 Original JavaScript/MJS, JSON, imported mobile sources, multiple package identities,
 fontkit declaration, jest-dom/Vitest augmentations and generated Next route types
-remain part of the actual graph. Source, dependency and ambient declaration order
+remain part of the actual graph. Native ambient declaration order and dependency package/module identities
 are checked rather than inferred from directory names. The original ambient-file
 sequence must match in every checked program; a different merge order refuses.
 

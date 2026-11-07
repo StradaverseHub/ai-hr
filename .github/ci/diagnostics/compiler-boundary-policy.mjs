@@ -41,13 +41,59 @@ export function transitiveClosure(seeds,edges){
  const adj=new Map();for(const {from,to}of edges){if(!to)continue;const list=adj.get(from)??[];list.push(to);adj.set(from,list);}
  const seen=new Set(),stack=[...seeds];while(stack.length){const id=stack.pop();if(seen.has(id))continue;seen.add(id);for(const next of adj.get(id)??[])stack.push(next);}return seen;
 }
+/** Native first-entry modules preserve dependency-cycle traversal; ambient leaves
+ * cannot safely be rooted individually. Default libraries remain compiler-owned. */
+export function ambientEntries(inventory){
+ const files=new Map(inventory.files.map(file=>[file.id,file])),adj=new Map();
+ for(const {from,to}of inventory.edges)if(to&&files.has(to)){const next=adj.get(from)??[];next.push(to);adj.set(from,next);}
+ const firstRoot=new Map();for(const root of inventory.roots){const pending=[root];while(pending.length){const key=pending.pop();if(firstRoot.has(key))continue;
+  firstRoot.set(key,root);for(const next of adj.get(key)??[])pending.push(next);}}
+ const firstLoad=new Map((inventory.firstLoads??inventory.files.map(file=>file.id)).map((key,index)=>[key,index]));
+ const candidates=new Map();
+ for(const edge of inventory.edges){const from=files.get(edge.from),to=files.get(edge.to),root=firstRoot.get(edge.from);
+  if(!root||!from||from.external||!to?.external||to.defaultLibrary)continue;
+  const targets=candidates.get(root)??new Set();targets.add(to.id);candidates.set(root,targets);}
+ const closures=new Map();const closure=key=>{
+  if(closures.has(key))return closures.get(key);const seen=new Set(),pending=[key];while(pending.length){const id=pending.pop();if(seen.has(id))continue;seen.add(id);for(const next of adj.get(id)??[])pending.push(next);}
+  // A dependency-context sidecar must never import an application implementation.
+  assert([...seen].every(id=>files.get(id)?.external||files.get(id)?.declaration||files.get(id)?.json),'External context crosses an implementation boundary');
+  closures.set(key,seen);return seen;
+ };
+ const entries=[];
+ for(const root of inventory.roots){
+  const required=inventory.files.filter(file=>file.ambient&&file.external&&!file.defaultLibrary&&firstRoot.get(file.id)===root).map(file=>file.id);
+  if(!required.length)continue;const missing=new Set(required),targets=[];
+  for(const target of [...(candidates.get(root)??[])].sort((a,b)=>(firstLoad.get(a)??Infinity)-(firstLoad.get(b)??Infinity))){
+   const reachable=closure(target);if(![...missing].some(id=>reachable.has(id)))continue;
+   targets.push(target);for(const id of reachable)missing.delete(id);
+  }
+  assert.equal(missing.size,0,'No native entry anchor for original ambient context at '+root);
+  entries.push({root,targets,ambient:required});
+ }
+ return entries;
+}
+/** Keep original configured-root order. Sidecars only import context; omitted
+ * implementation roots remain owned and checked by their original partition. */
+export function orderedBoundaryRoots(inventory,plan,primary,naturalRoots,sidecarFor,redirect){
+ const requested=new Set(primary),natural=new Set(naturalRoots),files=new Map(inventory.files.map(file=>[file.id,file]));
+ const contextOwn=new Set(plan.ambient.filter(id=>!files.get(id).external)),entries=new Map(plan.contextEntries.map(entry=>[entry.root,entry]));
+ const result=[];for(const root of inventory.roots){
+  const entry=entries.get(root);
+  if(entry&&!natural.has(root)&&!files.get(root).declaration)result.push(sidecarFor(entry));
+  if(requested.has(root)||contextOwn.has(root))result.push(redirect(root));
+ }
+ // Unrooted declarations still get checked, after their original context is established.
+ for(const file of inventory.files)if((requested.has(file.id)||contextOwn.has(file.id))&&!inventory.roots.includes(file.id))result.push(redirect(file.id));
+ assert([...requested].every(id=>inventory.files.some(file=>file.id===id)),'Unknown primary source');
+ return [...new Set(result)];
+}
 export function planBoundary(inventory){
  const {roots,files,edges,buildRoots}=inventory,byId=new Map(files.map(file=>[file.id,file])),all=new Set(roots);
  assert.equal(all.size,roots.length,'Duplicate original roots');assert(roots.every(id=>byId.has(id)),'Missing root identity');
  assert(buildRoots.length>0&&buildRoots.every(id=>all.has(id)),'Runtime seed must be actual baseline build-root subset');
  const ambient=files.filter(file=>file.ambient).map(file=>file.id);
  const external=files.filter(file=>file.external).map(file=>file.id);
- const producerSet=transitiveClosure([...buildRoots,...ambient,...external],edges);
+ const producerSet=transitiveClosure([...buildRoots,...ambient.filter(id=>!byId.get(id).external)],edges);
  const owned=files.filter(file=>!file.external&&!file.json).map(file=>file.id),sccs=stronglyConnected(owned,edges);
  for(const group of sccs)if(group.some(id=>producerSet.has(id)))assert(group.every(id=>producerSet.has(id)),'Producer splits an actual SCC');
  const producerRoots=roots.filter(id=>producerSet.has(id)),left=roots.filter(id=>!producerSet.has(id));
@@ -64,7 +110,7 @@ export function planBoundary(inventory){
   assert(sourceIds.length<=BOUNDARY_LIMITS.consumerClosure,'Consumer source dependency closure exceeds bound');
   return {id:index,roots:rootIds.sort((a,b)=>rank.get(a)-rank.get(b)),sourceIds};
  });
- return {kind:'DIAGNOSTIC_BOUNDARY_PLAN_NOT_RELEASE',releaseAuthorized:false,roots,producerRoots,
+ return {kind:'DIAGNOSTIC_BOUNDARY_PLAN_NOT_RELEASE',releaseAuthorized:false,roots,producerRoots,contextEntries:ambientEntries(inventory),
   producerSourceIds:owned.filter(id=>producerSet.has(id)),ambient,external,consumers:consumerPlans,sccs,
   seedPolicy:'Actual parsed tsconfig.build.json roots seed dependency closure only. All root tsconfig.json exclusions remain independently covered.'};
 }
