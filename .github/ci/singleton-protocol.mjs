@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
 import {validatePostgresEvidence} from './postgres-evidence.mjs';
 import {CI_POLICY} from './policy-version.mjs';
+import {NATIVE_HELPER_SOURCES} from './native-next-helper-sources.mjs';
 export const SINGLETON_VERSION=1;
 const measured=[
  'test/analytics-termination-lateral.test.ts',
@@ -49,7 +50,7 @@ export function singletonSources(unit){
  assertSingletonUnit(unit);
  return [unit.files[0],'test/helpers/ci-singleton-admission.ts','.github/ci/singleton-protocol.mjs','.github/ci/policy-version.mjs',
   'vitest.config.ts','vitest.nodb.config.ts',...(unit.kind==='db'?['test/db-names.ts','test/global-setup.ts','test/env.ts']:['deploy/admission/test_native.py']),
-  ...(nativeNextUnit(unit)?['deploy/admission/test_next_native.py','deploy/admission/next_profile.py','deploy/admission/controller.py','.github/ci/runtime_inventory.py','.github/ci/native-next-build-packet.mjs','.github/ci/native-next-build-inputs.mjs','.github/ci/candidate-environment.mjs','.github/ci/build-artifact.mjs']:[])].sort();
+  ...(nativeNextUnit(unit)?[...Object.values(NATIVE_HELPER_SOURCES),'.github/ci/native-next-helper-sources.mjs','.github/ci/native-next-build-packet.mjs','.github/ci/native-next-build-inputs.mjs','.github/ci/candidate-environment.mjs','.github/ci/build-artifact.mjs']:[])].sort();
 }
 export const protocolHash=value=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const fullSha=value=>typeof value==='string'&&/^[a-f0-9]{40}$/.test(value);
