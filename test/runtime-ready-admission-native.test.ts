@@ -31,6 +31,7 @@ it('qualifies the root generation controller with real Linux systemd and Nginx',
  expect(report.lostPostResponseNotReplayed).toBe(true);
  expect(report.nativeStartTimeoutRejectedAfterHealthyProbe).toBe(true);
  expect(report.nativeUnrecordedLiveProcessRetained).toBe(true);
+ expect(report.nativeColdReservationGenerationChanged).toBe(true);
  expect(report.nativeDeadWarmingCleanupRecovered).toBe(true);
  expect(report.nativeInterruptedAddLateChildRetained).toBe(true);
  expect(report.nativeInterruptedAddColdPortNotReused).toBe(true);

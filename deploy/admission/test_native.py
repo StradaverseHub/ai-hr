@@ -384,10 +384,12 @@ def qualify_interrupted_lifecycle(profile):
         systemctl('daemon-reload')
         systemctl('reset-failed', unit, check=False)
         systemctl('start', '--no-block', unit)
-        candidate = until(lambda: next((row for row in status()['workers'] if row['unit'] == unit and row['phase'] == 'WARMING'), None), 'interrupted ADD reservation')
+        candidate = until(lambda: next((row for row in status()['workers'] if row['unit'] == unit and row['phase'] == 'WARMING' and row['generation'] != timed_out), None), 'new interrupted ADD reservation')
+        assert candidate['generation'] != timed_out
         reserve_is_distinct(candidate)
         invocation = properties(unit)['InvocationID']
         until(lambda: C.LinuxHost(profile).worker(unit, invocation, candidate['port']), 'native interrupted ADD listener')
+        report['nativeColdReservationGenerationChanged'] = True
 
         class InterruptedAdd(C.LinuxHost):
             def reload_proxy(self, master):
