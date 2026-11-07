@@ -11,7 +11,7 @@ import {publicErrorMessage} from './public-error';
 export function parseEmployeeImportText(text:string,options:PersonnelImportHeaderOptions){
   try{return parsePersonnelImportCsv(text,options);}
   catch(error){
-    if(error instanceof PersonnelImportHeaderError && error.message.startsWith('Unrecognized or removed column “”.')){
+    if(error instanceof PersonnelImportHeaderError && /^Unrecognized or removed column “[\s\uFEFF]*”\./.test(error.message)){
       const sheet=options.sheet??'employee';
       const index=parsePersonnelCsv(text,sheet,options.rowLimit)[0]?.findIndex(raw=>!raw.replace(/^\uFEFF/,'').trim())??-1;
       if(index>=0)throw new PersonnelImportHeaderError(`The ${sheet} worksheet has a blank column heading at column ${index+1}. Add the matching heading from the current template, or remove the column if it is unused, then upload the file again.`);
@@ -30,7 +30,7 @@ const expectedMessages=new Set([
 ]);
 export function employeeImportFailure(error:unknown,operation:'validate'|'commit'):EmployeeImportFailure {
   if(isDatabaseError(error))return {error:publicErrorMessage(error)};
-  if(error instanceof PersonnelImportHeaderError && error.message.startsWith('Unrecognized or removed column “”.')){
+  if(error instanceof PersonnelImportHeaderError && /^Unrecognized or removed column “[\s\uFEFF]*”\./.test(error.message)){
     return {error:'The file has a blank column heading. Add the matching heading from the current template, or remove the column if it is unused, then check the file again.'};
   }
   if(error instanceof PersonnelImportHeaderError || error instanceof PersonnelCsvError ||
