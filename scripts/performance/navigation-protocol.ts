@@ -4,7 +4,7 @@ export const NAVIGATION_CAPTURE_VERSION='aihr-navigation-development/v2' as cons
 export const NAVIGATION_CAPTURE_ARTIFACT='system-http-browser-development-evidence';
 export const NAVIGATION_CAPTURE_MEMBER='navigation-browser-capture.json';
 export const NAVIGATION_SCENARIO_FILE='scripts/performance/navigation-scenarios.json';
-export const NAVIGATION_HARNESS_ROOTS=['scripts/performance','lib/navigation','lib/navigation-workspaces.ts','lib/ai-centre/centre-nav.ts','lib/security-center-navigation.ts','packs/performance/onehr/tab-model.ts','deploy/admission','.github/workflows/alpha-focused-checks.yml','components/system-labels-tabs.tsx','components/claims-tabs.tsx','components/attendance-tabs.tsx','components/holiday-tabs.tsx','components/statutory-tabs.tsx','app/admin/rewards/admin-tabs.tsx','components/leave/leave-inquiry-nav.tsx'] as const;
+export const NAVIGATION_HARNESS_ROOTS=['scripts/performance','lib/navigation','lib/navigation-workspaces.ts','lib/ai-centre/centre-nav.ts','lib/security-center-navigation.ts','packs/performance/onehr/tab-model.ts','deploy/admission','.github/workflows/alpha-focused-checks.yml','components/sidebar.tsx','components/nav-flyout.tsx','components/navigation-submenus.tsx','components/system-labels-tabs.tsx','components/claims-tabs.tsx','components/attendance-tabs.tsx','components/holiday-tabs.tsx','components/statutory-tabs.tsx','app/admin/rewards/admin-tabs.tsx','components/leave/leave-inquiry-nav.tsx'] as const;
 export type NavigationFixtureRole='employee'|'manager'|'companyHR'|'groupHR';
 export type NavigationCheck={id:string;selector:string}&(
  {kind:'enabled';tag:'a'|'button'|'input'|'select'|'textarea'}|
@@ -12,7 +12,7 @@ export type NavigationCheck={id:string;selector:string}&(
  {kind:'text'|'text-exact';expected:string}|{kind:'value';expected:string}|
  {kind:'attribute';name:'href'|'aria-current'|'data-testid';expected:string}
 );
-export type NavigationEntry='canonical-link'|'ai-centre-tab'|'direct-route-content';
+export type NavigationEntry='canonical-link'|'ai-centre-tab'|'shell-menu'|'direct-route-content';
 export type NavigationFixtureTextBindings={actorName:string;actorEmployeeCode:string;firstCompanyPersonName:string;activeHeadcount:string;historicalPayrollMonth:string;seedToday:string;seedMonth:string;firstSavedHistoryTitle?:string;rosterScope:Readonly<Record<string,string|null>>};
 export type NavigationScenario={entry?:NavigationEntry;id:string;destinationId:string;role:NavigationFixtureRole;href:string;originHref:string;
  outcome:'usable'|'denied';readiness:'controls'|'populated';steps:{kind:'open-details';selector:string}[];checks:NavigationCheck[]};
@@ -53,7 +53,7 @@ export function validateNavigationScenarioPlan(value:unknown):NavigationScenario
  const seen=new Set<string>();
  for(const row of plan.scenarios){
   if(!row||typeof row!=='object'||!closed(row,['entry','id','destinationId','role','href','originHref','outcome','readiness','steps','checks'])||!id(row.id)||seen.has(row.id)||!id(row.destinationId)||!roles.includes(row.role)
-   ||row.entry!==undefined&&!['canonical-link','ai-centre-tab','direct-route-content'].includes(row.entry)||!localNavigationHref(row.href)||!localNavigationHref(row.originHref)||row.href.includes('?')||row.originHref.includes('?')||!['usable','denied'].includes(row.outcome)||!['controls','populated'].includes(row.readiness)
+   ||row.entry!==undefined&&!['canonical-link','ai-centre-tab','shell-menu','direct-route-content'].includes(row.entry)||!localNavigationHref(row.href)||!localNavigationHref(row.originHref)||row.href.includes('?')||row.originHref.includes('?')||!['usable','denied'].includes(row.outcome)||!['controls','populated'].includes(row.readiness)
    ||!Array.isArray(row.steps)||row.steps.length>8||!Array.isArray(row.checks)||row.checks.length>16||row.outcome==='usable'&&!row.checks.length)throw Error('Invalid navigation scenario');
   seen.add(row.id);navigationScenarioEntry(row);
   for(const step of row.steps)if(!step||!closed(step,['kind','selector'])||step.kind!=='open-details'||typeof step.selector!=='string'||step.selector.length>512||!step.selector.trim())throw Error('Invalid navigation disclosure step');

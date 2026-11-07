@@ -25,7 +25,7 @@ describe('closed source-reviewed navigation development protocol (not authentica
  it('keeps source scenarios explicitly partial and includes positive and denied native roles',()=>{
   const plan=validateNavigationScenarioPlan(readPlan());expect(plan.scenarios).toHaveLength(48);
   expect(new Set(plan.scenarios.map(s=>s.destinationId)).size).toBe(14);
-  for(const id of new Set(plan.scenarios.map(s=>s.destinationId))){const cases=plan.scenarios.filter(s=>s.destinationId===id);expect(new Set(cases.map(s=>s.role)).size).toBe(cases[0].entry==='direct-route-content'?2:4);}
+  for(const id of new Set(plan.scenarios.map(s=>s.destinationId))){const cases=plan.scenarios.filter(s=>s.destinationId===id);expect(new Set(cases.map(s=>s.role)).size).toBe(cases[0].entry==='direct-route-content'||cases[0].entry==='shell-menu'?2:4);}
   expect(validateNavigationCapture(capture(plan),plan,expected).observations).toHaveLength(48);
   expect(validateNavigationCapture(capture(plan,'loaded'),plan,{...expected,phase:'loaded'}).phase).toBe('loaded');
  });
