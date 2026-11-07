@@ -2372,3 +2372,27 @@ tenant/void/bank/partner authority or database setting changes. Actual appended-
 authority, populated replay and representative performance qualification remain required;
 the diagnostic alone is not deployment authority. Reconcile current reservations and the
 actual ordered installed ledger/watermark before staging. Production remains on hold.
+
+
+## Statement-local Assignment membership — 7 November 2026 (uninstalled candidate)
+
+Reserve `3102_assignment_membership_initplan`, idx2402 / when1793330002702,
+SQL SHA-256 `5cb2e363d5fb27d7de67c8317d1d0c59a5545d86dc835e0d4d1c4cfaa126c2d6`.
+Fresh main/alpha identify109a046ef38f90514f1da458056aa09e015a47a4. The all-ref
+and captured-WIP scan covered5826 refs,3112 distinct root trees,677 migration
+trees,483 committed journals and406 readable worktrees. Previous maxima were
+3101 /2401 /1793330002701. One malformed foreign journal remains untouched;
+its literal claims are included. All738 predecessor tuples and SQL bytes remain
+unchanged. Recheck current claims and the actual ordered installation ledger
+before release admission.
+
+The controlled50k experiment42383332942 compared both native authorities,
+all eight full ports and actual plans on the same application backend. It changed
+only this positive membership representation and restored exact original security
+and settings. Initial warm reads measured6915ms to1270ms, department+unit13383ms
+to3489ms, empty-unit24878ms to8898ms. All result/count/selection/facet and
+authority checks passed. Residual40000/50000 lateral probes remain and require
+a separate query/index correction; these are component measurements only.
+The real append requires independent review, native populated replay, drift
+refusal and integration qualification. It is not installed and grants no staging
+or production authority. Production remains on hold.
