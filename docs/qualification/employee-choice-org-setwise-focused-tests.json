@@ -1,0 +1,11 @@
+[
+ "test/employee-choice-org-setwise.test.ts",
+ "test/assignment-membership-initplan.test.ts",
+ "test/employee-choice-db.test.ts",
+ "test/employee-choice-join-contract.test.ts",
+ "test/employee-choice-route.test.ts",
+ "test/employee-choice-panel.dom.test.tsx",
+ "test/employee-choice-unicode-scale.test.ts",
+ "test/hierarchy-visibility.test.ts",
+ "test/r395-visibility-equivalence.test.ts"
+]

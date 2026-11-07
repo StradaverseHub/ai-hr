@@ -1,0 +1,14 @@
+{
+ "kind":"EMPLOYEE_CHOICE_ORGANISATION_SETWISE_COMPARISON_REQUEST",
+ "releaseEligible":false,
+ "base":"0cf295932429b3ac50b347b819eeed14f22437e3",
+ "historicalComponentRun":"42383332942",
+ "status":"Source prepared; no candidate timings or hosted pass yet",
+ "runTypecheck":true,
+ "runBuild":true,
+ "focusedSelector":"docs/qualification/employee-choice-org-setwise-focused-tests.json",
+ "soleFile50kSelector":"docs/qualification/employee-choice-org-setwise-plan-tests.json",
+ "variants":["original","setwise","setwise-indexed"],
+ "indexScope":"Disposable CI database only; root owns real schema allocation after evidence",
+ "requiredBeforeAdoption":["Independent source/spec review","All planned hosted cases terminal","Exact native results and security/settings/index restoration","Actual identity/count plans eliminate per-identity Assignment probing","Review measured gains and index use without treating test completion as latency acceptance","Compiler/build and actual integrated browser/worker qualification"]
+}

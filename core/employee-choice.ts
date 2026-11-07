@@ -25,6 +25,21 @@ function employeeChoiceFrom(tenantId:string){return sql`${employeeIdentityFrom(t
    and ${assignment.supersededAt} is null and ${assignment.tenantId}=${tenantId}::uuid offset 0) as ${sql.identifier('assignment')} on true
  left join ${department} on ${department.id}=${assignment.departmentId} and ${department.tenantId}=${tenantId}::uuid
  left join ${businessUnit} on ${businessUnit.id}=${assignment.businessUnitId} and ${businessUnit.tenantId}=${tenantId}::uuid`;}
+/** Positive native Assignment membership is computed independently of each
+ * Employment identity. IS TRUE keeps this as a membership subplan rather than
+ * flattening an RLS-underestimated relation into a quadratic population join.
+ * Only the bounded display projection retains the per-employment lateral join.
+ * The immediate assignment_no_overlap constraint permits at most one matching
+ * unsuperseded NULL-ended assignment, so identity membership preserves counts.
+ * Current Employment company remains the scope owner; historical Assignment
+ * company and valid_from must not narrow this existing navigation relation. */
+function organisationMembership(tenantId:string,filters:{departmentId:string;businessUnitId:string}){
+ if(!filters.departmentId&&!filters.businessUnitId)return sql`true`;
+ return sql`(${employment.id} in(select ${assignment.employmentId} from ${assignment}
+  where ${assignment.tenantId}=${tenantId}::uuid and ${assignment.validTo} is null and ${assignment.supersededAt} is null
+   and ${filters.departmentId?sql`${assignment.departmentId}=${filters.departmentId}::uuid`:sql`true`}
+   and ${filters.businessUnitId?sql`${assignment.businessUnitId}=${filters.businessUnitId}::uuid`:sql`true`})) is true`;
+}
 const normalizeId=(value:string|undefined)=>{
  if(value&&!uuid.test(value))throw new EmployeeChoiceInputError('Invalid employee filter');return value??'';
 };
@@ -53,7 +68,7 @@ function prepareChoices(ctx:SessionContext,p:EmployeeChoiceServerInput,maximumPa
  if(typeof filters.query!=='string'||!['','active','ended'].includes(filters.status)||p.labelMode!==undefined&&!['names','labels'].includes(p.labelMode))throw new EmployeeChoiceInputError('Invalid employee filter');
  const offset=p.offset??0,limit=p.limit??EMPLOYEE_CHOICE_PAGE_SIZE,labelMode=p.labelMode??'names',q=filters.query.trim().toLowerCase();
  if(!Number.isSafeInteger(offset)||offset<0||!Number.isInteger(limit)||limit<1||limit>maximumPageSize)throw new EmployeeChoiceInputError('Invalid employee page');
- const from=employeeChoiceFrom(ctx.tenantId),organisationFilter=Boolean(filters.businessUnitId||filters.departmentId);
+ const from=employeeChoiceFrom(ctx.tenantId);
  const scoped=sql`${employment.tenantId}=${ctx.tenantId}::uuid and ${p.companyIds.length?sql`${employment.companyId}=any(${'{'+p.companyIds.join(',')+'}'}::uuid[])`:sql`true`}`;
  if(p.terminatedAfter!==undefined&&!isCalendarDate(p.terminatedAfter))throw new EmployeeChoiceInputError('Invalid population date');
  if(p.employmentIds!==undefined&&(!Array.isArray(p.employmentIds)||p.employmentIds.some(id=>!uuid.test(id))))throw new EmployeeChoiceInputError('Invalid server employee population');
@@ -62,10 +77,9 @@ function prepareChoices(ctx:SessionContext,p:EmployeeChoiceServerInput,maximumPa
  if(p.employmentIds!==undefined)populationScope=sql`${populationScope} and ${p.employmentIds.length?sql`${employment.id}=any(${'{'+p.employmentIds.join(',')+'}'}::uuid[])`:sql`false`}`;
  const inCompany=filters.companyId?sql`${employment.companyId}=${filters.companyId}::uuid`:sql`true`;
  const where=sql`${populationScope} and ${inCompany}
-  and ${filters.businessUnitId?sql`${assignment.businessUnitId}=${filters.businessUnitId}::uuid`:sql`true`}
-  and ${filters.departmentId?sql`${assignment.departmentId}=${filters.departmentId}::uuid`:sql`true`}
+  and ${organisationMembership(ctx.tenantId,filters)}
   and ${filters.status?filters.status==='active'?sql`${employment.terminatedOn} is null`:sql`${employment.terminatedOn} is not null`:sql`true`}`;
- return {filters,offset,limit,labelMode,q,from,organisationFilter,scoped:populationScope,where};
+ return {filters,offset,limit,labelMode,q,from,scoped:populationScope,where};
 }
 /** General navigation owns its snapshot and keeps the public transport's 200-row cap. */
 export async function readEmployeeChoices(ctx:SessionContext,p:EmployeeChoiceInput&{companyIds:string[]},signal?:AbortSignal):Promise<EmployeeChoicePage>{
@@ -81,7 +95,7 @@ export async function readEmployeeChoicesTx(tx:Tx,ctx:SessionContext,p:EmployeeC
  return readChoicePageTx(tx,captureContext(ctx),captureInput(p),ALL_ROW_CEILING,signal);
 }
 async function readChoicePageTx(tx:Tx,ctx:SessionContext,p:EmployeeChoiceServerInput,maximumPageSize:number,signal?:AbortSignal):Promise<EmployeeChoicePage>{
- const {filters,offset,limit,labelMode,q,from,organisationFilter,scoped,where}=prepareChoices(ctx,p,maximumPageSize);
+ const {filters,offset,limit,labelMode,q,from,scoped,where}=prepareChoices(ctx,p,maximumPageSize);
  signal?.throwIfAborted();
   await assertAiPresentationPrincipalTx(tx,ctx);signal?.throwIfAborted();
   if(labelMode==='labels'&&!isAdmin(ctx))throw new EmployeeChoiceAccessError('Employee catalogue labels require current administration access');
@@ -92,11 +106,10 @@ async function readChoicePageTx(tx:Tx,ctx:SessionContext,p:EmployeeChoiceServerI
    // An empty/out-of-range page needs a separate count; it must never imply total=0.
    // The immediate native assignment_no_overlap constraint (also guarded by
    // Personnel migrations) permits at most one unsuperseded NULL-ended assignment.
-   // Without organisation filters, authorize/count/page identities first, then
+   // Authorize/filter/count/page identities first, then
    // project the bounded page's native assignment and label joins.
-   const population=organisationFilter?from:employeeIdentityFrom(ctx.tenantId);
-   const page=await tx.execute<EmployeeChoice&{total:number}>(organisationFilter?sql`select ${columns(labelMode==='labels')},(count(*) over())::int as total ${from}
-    where ${where} order by ${person.fullName},${employment.id},${assignment.id} limit ${limit} offset ${offset}`:sql`
+   const population=employeeIdentityFrom(ctx.tenantId);
+   const page=await tx.execute<EmployeeChoice&{total:number}>(sql`
     with employee_choice_page as materialized(select ${employment.id},(count(*) over())::int as total ${population}
      where ${where} order by ${person.fullName},${employment.id} limit ${limit} offset ${offset})
     select ${columns(labelMode==='labels')},employee_choice_page.total ${from}
@@ -109,12 +122,12 @@ async function readChoicePageTx(tx:Tx,ctx:SessionContext,p:EmployeeChoiceServerI
    // PostgreSQL locale lower/ILIKE is not ECMAScript lower/includes. ASCII-only rows
    // admit exact native candidates; every non-ASCII row remains a conservative candidate.
    const candidate=choiceCandidate(q);
-   // The cursor owns minimal identity facts for both paths. Organisation filters
-   // retain native joined membership; only matching page identities get full
+   // The cursor owns minimal identity facts. Organisation filters retain native
+   // set membership; only matching page identities get full
    // assignment/label projection afterwards in the same read-only snapshot.
    const matches=await exactEmployeeChoiceMatches(tx,sql`select ${employment.id} as "employmentId",${person.fullName} as name,${employment.employeeCode} as "employeeCode"
-    ${organisationFilter?from:employeeIdentityFrom(ctx.tenantId)} where ${where} and ${candidate}
-    order by ${person.fullName},${employment.id}${organisationFilter?sql`,${assignment.id}`:sql``}`,q,offset,limit,signal);
+    ${employeeIdentityFrom(ctx.tenantId)} where ${where} and ${candidate}
+    order by ${person.fullName},${employment.id}`,q,offset,limit,signal);
    total=matches.total;
    if(matches.rows.length)rows=await tx.execute<EmployeeChoice>(sql`${base} where ${scoped} and ${employment.id}=any(${'{'+matches.rows.map(row=>row.employmentId).join(',')+'}'}::uuid[])
     order by ${person.fullName},${employment.id},${assignment.id}`);
@@ -138,12 +151,12 @@ async function readChoicePageTx(tx:Tx,ctx:SessionContext,p:EmployeeChoiceServerI
  * This read-only helper never clips to a page and retains only IDs, not whole DTOs. */
 export async function readEmployeeChoiceIdsTx(tx:Tx,ctx:SessionContext,p:EmployeeChoicePopulationFilters,signal?:AbortSignal):Promise<string[]>{
  ctx=captureContext(ctx);const input=captureInput(p);
- const {q,from,organisationFilter,where}=prepareChoices(ctx,{...input,offset:0,limit:1,labelMode:'names'},EMPLOYEE_CHOICE_MAX_PAGE_SIZE);
+ const {q,where}=prepareChoices(ctx,{...input,offset:0,limit:1,labelMode:'names'},EMPLOYEE_CHOICE_MAX_PAGE_SIZE);
  signal?.throwIfAborted();await assertAiPresentationPrincipalTx(tx,ctx);signal?.throwIfAborted();
  const ids:string[]=[];
  await visitEmployeeChoiceMatches(tx,sql`select ${employment.id} as "employmentId",${person.fullName} as name,${employment.employeeCode} as "employeeCode"
-  ${organisationFilter?from:employeeIdentityFrom(ctx.tenantId)} where ${where} and ${q?choiceCandidate(q):sql`true`}
-  order by ${person.fullName},${employment.id}${organisationFilter?sql`,${assignment.id}`:sql``}`,q,row=>{ids.push(row.employmentId);},signal);
+  ${employeeIdentityFrom(ctx.tenantId)} where ${where} and ${q?choiceCandidate(q):sql`true`}
+  order by ${person.fullName},${employment.id}`,q,row=>{ids.push(row.employmentId);},signal);
  return ids;
 }
 
