@@ -1,0 +1,17 @@
+{
+  "kind": "PROTECTED_NATIVE_CONTROLLER_BOOTSTRAP_SOURCE_NOT_QUALIFIED",
+  "base": "dd813f9e7037e974dfdf7c5aed7cd3fc35f31807",
+  "qualification": "NOT_RUN",
+  "production": "HELD",
+  "releaseEligible": false,
+  "policyVersionAllocated": false,
+  "ordinarySetupChanged": false,
+  "rootGitOrNodeExecution": false,
+  "protectedRoot": "/var/lib/aihr-native-controller/<run>",
+  "receiptMode": "0444 root-owned public metadata",
+  "sourceOnlySelectors": ["test/runtime-native-controller-bootstrap.test.ts"],
+  "controllerSelectors": [".github/ci/native-controller-owner.test.mjs"],
+  "newDirectNativeSources": [".github/ci/native-controller-bootstrap.py", ".github/ci/native-controller-owner.mjs", ".github/actions/setup-alpha/action.yml", ".github/ci/prepare-runner.sh", ".github/workflows/alpha-staging.yml"],
+  "rootOwnedIntegrationRequired": ["protected native-only run-unit/singleton/TS admission layout", "pre-verification installation capture before createPlan", "native PDF invocation after capture/plan before proof read", "credential-free Git metadata subprocesses", "actual fixture protected process/original Node hint", "source Merkle blobs versus every sealed helper blob"],
+  "pending": ["root and independent source review", "hosted source controls", "actual root bootstrap commissioning positive/negative", "actual Next BOOT_ONLY commissioning", "full application and worker-load/staging acceptance"]
+}
