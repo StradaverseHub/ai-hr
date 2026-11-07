@@ -6,5 +6,6 @@ export function admissionFailureMarkers(log) {
     admissionError: [...log.matchAll(/DatabaseAdmissionError/g)].length,
     statementTimeout: [...log.matchAll(/canceling statement due to statement timeout/g)].length,
     lockTimeout: [...log.matchAll(/canceling statement due to lock timeout/g)].length,
+    passiveReadUnavailable: [...log.matchAll(/Shared shell approval facts unavailable/g)].length,
   };
 }

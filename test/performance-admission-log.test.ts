@@ -7,8 +7,9 @@ it('publishes only closed counters from private server logs',()=>{
   code: "queue-timeout"
   query: 'select private_column from private_table'
   canceling statement due to lock timeout
-  canceling statement due to statement timeout`);
- expect(value).toEqual({queueFull:1,queueTimeout:1,admissionError:1,statementTimeout:1,lockTimeout:1});
+  canceling statement due to statement timeout
+  Shared shell approval facts unavailable`);
+ expect(value).toEqual({queueFull:1,queueTimeout:1,admissionError:1,statementTimeout:1,lockTimeout:1,passiveReadUnavailable:1});
  expect(JSON.stringify(value)).not.toMatch(/private|select/);
- expect(admissionFailureMarkers('')).toEqual({queueFull:0,queueTimeout:0,admissionError:0,statementTimeout:0,lockTimeout:0});
+ expect(admissionFailureMarkers('')).toEqual({queueFull:0,queueTimeout:0,admissionError:0,statementTimeout:0,lockTimeout:0,passiveReadUnavailable:0});
 });

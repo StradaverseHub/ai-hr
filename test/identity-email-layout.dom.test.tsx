@@ -112,7 +112,7 @@ describe('root layout assigned Attendance inbox navigation',()=>{
   m.operator.mockResolvedValue(false);
   m.tasks.mockResolvedValue([{id:'fictional-task',kind,subjectName:'Fictional colleague',createdAt:new Date().toISOString(),linkPath:'/approvals'}]);
   const tree=await Layout({children:null}),props=sidebarProps(tree);
-  expect(m.tasks).toHaveBeenCalledTimes(1);
+  await vi.waitFor(()=>expect(m.tasks).toHaveBeenCalledTimes(1));
   await expect(approvalSource(tree)).resolves.toMatchObject({state:'ready',approvalCount:1,
    hasAssignedAttendanceApproval:kind==='attendance',hasAssignedApproval:true});
   expect(props!.canApprove).toBe(false);
@@ -128,7 +128,7 @@ describe('root layout assigned Attendance inbox navigation',()=>{
    {id:'fictional-profile',kind:'profile',subjectName:'Fictional colleague',createdAt,linkPath:'/admin/personnel/profile-changes#request-fictional-profile'},
   ]);
   const tree=await Layout({children:null}),props=sidebarProps(tree);
-  expect(m.tasks).toHaveBeenCalledTimes(1);
+  await vi.waitFor(()=>expect(m.tasks).toHaveBeenCalledTimes(1));
   await expect(approvalSource(tree)).resolves.toMatchObject({state:'ready',total:2,approvalCount:1,
    hasAssignedAttendanceApproval:false,hasAssignedApproval:false});
   expect(props!.canApprove).toBe(false);
@@ -143,7 +143,7 @@ it('keeps exact Claims totals and accepted Lifecycle inbox counts together in th
  const items=[{id:'leave-preview',kind:'leave',subjectName:'Fictional colleague',createdAt:new Date().toISOString(),linkPath:'/approvals'}];
  m.tasks.mockResolvedValue(items);m.summaryOverride={items,total:10002,approvalCount:10001,claimTotal:10000};m.lifecycleCount=7;
  const tree=await Layout({children:null});
- expect(m.tasks).toHaveBeenCalledTimes(1);
+ await vi.waitFor(()=>expect(m.tasks).toHaveBeenCalledTimes(1));
  await expect(approvalSource(tree)).resolves.toMatchObject({state:'ready',items,total:10002,approvalCount:10001,claimTotal:10000});
  expect(sidebarProps(tree)?.taskCount).toBe(7);
  expect(m.tasks.mock.calls[0]?.[3]).toEqual({deferClaimPreview:true});
@@ -165,7 +165,7 @@ it('returns the authenticated shell while the approval owner is still pending',a
  expect(currentDatabaseWorkload()).toBe('interactive');
  expect(sidebarProps(tree)).toBeDefined();
  expect(propsOf(tree,ShellNotificationCenter)).toBeDefined();
- expect(m.tasks).toHaveBeenCalledTimes(1);
+ await vi.waitFor(()=>expect(m.tasks).toHaveBeenCalledTimes(1));
  finish([]);
  await expect(approvalSource(tree)).resolves.toMatchObject({state:'ready',total:0});
 });

@@ -53,7 +53,7 @@ import { demoSwitcherEnabled, isDemoDeployment } from '@/lib/demo-mode';
 import {readShellNavigationAccess} from '@/core/shell-navigation-access';
 import { companyContextForPage } from '@/lib/scope';
 import {pendingTaskSummary} from '@/core/approvals-inbox';
-import {withBackgroundDatabaseWork} from '@/db/workload';
+import {withBackgroundReadWork} from '@/db/client';
 import {lifecycleModuleInbox} from './lifecycle/module-inbox';
 import {lifecycleModuleNavigation} from './lifecycle/workflow-availability';
 import { onboardingTasks, onboardingNavigation } from '@/packs/lifecycle/service';
@@ -240,7 +240,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   const [identityEmailAvailable,performanceAdminPath]=await Promise.all([canConfigureIdentityEmail(session),performanceAdminHref]);
   // The passive badge and task preview stream separately from navigation. Reserve
   // interactive database capacity for the active page and the user's explicit actions.
-  const approvalFacts:Promise<ShellApprovalResult> = withBackgroundDatabaseWork(() => pendingTaskSummary(session, scopeIds, {
+  const approvalFacts:Promise<ShellApprovalResult> = withBackgroundReadWork(session.tenantId,() => pendingTaskSummary(session, scopeIds, {
     attendance: isModuleEnabledOrFalse(session, 'attendance'),
     claims: claimsEnabled,
     performance: isModuleEnabledOrFalse(session, 'performance'),

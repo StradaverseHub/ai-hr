@@ -14,6 +14,8 @@ A query declares allowed fields, scope, ordering, bounded rows, exact-count sema
 
 Work enters the common pool admission owner before checkout. Classify heavy units explicitly; keep aggregate web/worker/maintenance demand within the database budget. Cancellation removes abandoned queued reads. Durable imports retain checkpoints on capacity deferral. A new queue must name its active, pending, attempt and time bounds, fairness, cancellation, failure and recovery behavior. A page-level Busy fallback is not an accepted capacity control.
 
+Passive read operations that fan out use `withBackgroundReadWork` before opening any transaction. This bounds whole logical reads without holding a connection while they wait. Their children still use the physical pool gate, whose background pending allowance preserves room for interactive work. Await all children before returning. Same-tenant nested composition shares the logical admission, and each child retains its native authorization and transaction. An owned Home response carries its cancellation through nested readers. Cancellation prevents later checkouts and does not revoke an executing transaction or replay an uncertain command.
+
 ## Reference workflow proofs
 
 Attendance approval uses the Attendance service from the Approvals adapter. The workflow owner still enforces current stage/participant, delegated authority, rejection reasons, no self-approval and final-effect uniqueness. Corrected punches and deferred overtime preserve their original semantics. `attendance-workflow-v4-owner`, `attendance-workflow`, `attendance-pack` and the actual browser correction/approval/punch witness test these distinct claims.

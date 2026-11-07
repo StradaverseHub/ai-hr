@@ -6,10 +6,12 @@ const path=process.env.PERF_TX_TIMING_PATH;
 if(process.env.GITHUB_ACTIONS==='true'&&path){
  const startDelay=createHistogram(),held=createHistogram();
  const approvalWait=createHistogram(),approvalWork=createHistogram();
+ const passiveWait=createHistogram(),passiveWork=createHistogram();
  const windows=[],observedPoolSizes=new Set();
  let windowStart=Date.now();
  let pending=0,holding=0,peakPending=0,peakHolding=0,failedBeforeCallback=0;
  let approvalPending=0,approvalRunning=0,peakApprovalPending=0;
+ let passivePending=0,passiveRunning=0,peakPassivePending=0,passiveFailedBeforeRead=0;
  const admissionCounts=()=>({immediate:0,miss:0,recovered:0,blockingFallback:0});
  const admissionWindow=()=>({submission:admissionCounts(),approval:admissionCounts(),clockingImport:admissionCounts()});
  let attendanceExclusiveAdmission=admissionWindow();
@@ -64,6 +66,14 @@ if(process.env.GITHUB_ACTIONS==='true'&&path){
    },
   };
  };
+ globalThis.__aihrPerfBeginBackgroundRead=()=>{
+  const requested=performance.now();let entered;
+  peakPassivePending=Math.max(peakPassivePending,++passivePending);
+  return {
+   acquired(){entered=performance.now();passivePending--;passiveRunning++;record(passiveWait,entered-requested);},
+   finished(){if(entered===undefined){passivePending--;passiveFailedBeforeRead++;}else{passiveRunning--;record(passiveWork,performance.now()-entered);}},
+  };
+ };
  globalThis.__aihrPerfAttendanceExclusiveAdmission=(operation,outcome)=>{
   attendanceExclusiveAdmission[operation][outcome]++;
  };
@@ -71,16 +81,18 @@ if(process.env.GITHUB_ACTIONS==='true'&&path){
   try{
    const capturedAt=Date.now();
    windows.push({from:windowStart,to:capturedAt,pending,holding,startDelay:describe(startDelay),held:describe(held),
+    passiveRead:{pending:passivePending,running:passiveRunning,queueWait:describe(passiveWait),afterAdmission:describe(passiveWork)},
     attendanceApproval:{pending:approvalPending,running:approvalRunning,queueWait:describe(approvalWait),afterAdmission:describe(approvalWork)},
     attendanceExclusiveAdmission});
    if(windows.length>180)windows.shift();
    windowStart=capturedAt;
    attendanceExclusiveAdmission=admissionWindow();
-   startDelay.reset();held.reset();approvalWait.reset();approvalWork.reset();
+   startDelay.reset();held.reset();approvalWait.reset();approvalWork.reset();passiveWait.reset();passiveWork.reset();
    writeFileSync(path+'.tmp',JSON.stringify({
     scope:'Application withTenant transactions in bounded five-second windows. Start delay includes pool wait, database BEGIN and callback scheduling. Held includes callback and transaction completion.',
     attendanceApprovalScope:'Process-local native approvals only. Queue wait ends before requesting a connection. After admission includes pool, locks, transaction and any fallback. No identities.',
     attendanceExclusiveAdmissionScope:'Owned exclusive Attendance writes only. Miss counts failed tries, including both tries before blocking fallback. No identities.',
+    passiveReadScope:'Logical passive read admission before fan-out. Its pending work holds no database connection. No identities.',peakPassivePending,passiveFailedBeforeRead,
     peakApprovalPending,capturedAt:new Date(capturedAt).toISOString(),observedPoolSizes:[...observedPoolSizes],peakPending,peakHolding,failedBeforeCallback,windows,
    }));
    renameSync(path+'.tmp',path);

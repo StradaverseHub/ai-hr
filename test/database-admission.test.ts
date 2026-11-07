@@ -1,10 +1,21 @@
 import {afterEach,describe,expect,it,vi} from 'vitest';
 import {createDatabaseAdmission,DatabaseAdmissionError} from '../db/admission';
 import {applicationDatabaseBudget} from '../db/capacity';
+import {createBackgroundReadAdmission} from '../db/background-read-admission';
 import {currentDatabaseWorkload,withBackgroundDatabaseWork} from '../db/workload';
 const gate = (overrides = {}) => createDatabaseAdmission({capacity:4,backgroundCapacity:1,maxWaiting:8,waitMs:1000,...overrides});
 afterEach(()=>vi.useRealTimers());
 describe('database work admission',()=>{
+ it('reserves pending capacity for interactive work when background producers fill their lane',async()=>{
+  const q=gate({capacity:1,backgroundCapacity:1,maxWaiting:4,maxBackgroundWaiting:1});
+  const holder=await q.acquire('a','interactive');
+  const background=q.acquire('a','background');
+  await expect(q.acquire('b','background')).rejects.toMatchObject({code:'queue-full'});
+  const foreground=q.acquire('b','interactive');
+  expect(q.snapshot()).toMatchObject({waiting:2,backgroundWaiting:1});
+  holder();(await foreground)();(await background)();
+  expect(q.snapshot()).toMatchObject({waiting:0,backgroundWaiting:0,active:0});
+ });
  it('reserves capacity for pages while heavy work waits without connections',async()=>{
   const q=gate(),first=await q.acquire('a','background');
   let secondEntered=false;
@@ -73,7 +84,27 @@ describe('database work admission',()=>{
  });
  it('rejects invalid budgets before accepting work',()=>{
   expect(()=>gate({capacity:0})).toThrow();expect(()=>gate({backgroundCapacity:5})).toThrow();
+  expect(()=>gate({maxBackgroundWaiting:9})).toThrow();expect(()=>gate({maxBackgroundWaiting:-1})).toThrow();
   expect(new DatabaseAdmissionError('queue-full').message).not.toContain('tenant');
+ });
+});
+
+describe('logical passive read admission',()=>{
+ it('admits before fan-out, composes one tenant, and releases cancellation without borrowing a connection',async()=>{
+  const gate=createBackgroundReadAdmission({capacity:1,maxWaiting:2,waitMs:1000});
+  let finish!:()=>void,entered!:()=>void;
+  const started=new Promise<void>(resolve=>{entered=resolve;}),held=new Promise<void>(resolve=>{finish=resolve;});
+  const first=gate.run('A',async()=>{entered();await held;return gate.run('a',async()=>currentDatabaseWorkload());});
+  await started;
+  const controller=new AbortController(),reason=new Error('passive read abandoned');let ran=false;
+  const cancelled=gate.run('b',async()=>{ran=true;},controller.signal),refusal=expect(cancelled).rejects.toBe(reason);
+  const second=gate.run('b',async()=>currentDatabaseWorkload());
+  await expect(gate.run('c',async()=>null)).rejects.toMatchObject({code:'queue-full'});
+  controller.abort(reason);await refusal;expect(ran).toBe(false);expect(gate.snapshot().waiting).toBe(1);
+  finish();expect(await first).toBe('background');expect(await second).toBe('background');
+  expect(currentDatabaseWorkload()).toBe('interactive');expect(gate.snapshot()).toMatchObject({waiting:0,active:0});
+  await expect(gate.run('a',()=>gate.run('b',async()=>null))).rejects.toThrow(/different tenant/);
+  expect(gate.snapshot().active).toBe(0);
  });
 });
 

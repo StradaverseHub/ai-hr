@@ -11,6 +11,28 @@ const database=createDb(url.toString(),{max:4});
 beforeAll(async()=>{await migrateTestDb();await resetDb();base=await seedBase();});
 afterAll(async()=>{await database.client.end();await closeAll();});
 describe('physical pool admission with real tenant transactions',()=>{
+ it('keeps 500 passive fan-outs outside the physical queue while interactive pages finish',async()=>{
+  const ctx=adminCtx(base),held=deferred(),finish=deferred(),started=deferred();let operations=0;
+  const holder=withBackgroundDatabaseWork(()=>database.withTenant(ctx,async tx=>{await tx.execute(sql`select 1`);held.resolve();await finish.promise;}));
+  await held.promise;
+  const first=database.withBackgroundReadWork(ctx.tenantId,async()=>{
+   operations++;started.resolve();
+   return database.withBackgroundReadWork(ctx.tenantId,()=>Promise.all(Array.from({length:8},()=>database.withTenant(ctx,async tx=>(await tx.execute(sql`select app.current_tenant_id() as tenant`))[0]))));
+  });
+  await started.promise;
+  const controllers=Array.from({length:499},()=>new AbortController()),reason=new Error('passive response left');
+  const pending=controllers.map(controller=>database.withBackgroundReadWork(ctx.tenantId,async()=>{operations++;return database.withTenant(ctx,tx=>tx.execute(sql`select 1`));},controller.signal));
+  const settled=Promise.allSettled(pending);
+  try{
+   const pages=await Promise.all(Array.from({length:3},()=>database.withTenant(ctx,async tx=>(await tx.execute(sql`select app.current_tenant_id() as tenant`))[0])));
+   expect(pages.every(row=>row.tenant===base.tenantId)).toBe(true);expect(operations).toBe(1);
+   controllers.forEach(controller=>controller.abort(reason));
+   const outcomes=await settled;expect(outcomes).toHaveLength(499);
+   expect(outcomes.every(outcome=>outcome.status==='rejected'&&outcome.reason===reason)).toBe(true);
+  }finally{controllers.forEach(controller=>controller.abort(reason));finish.resolve();await holder;}
+  const rows=await first;expect(rows).toHaveLength(8);expect(rows.every(row=>row.tenant===base.tenantId)).toBe(true);
+  expect(operations).toBe(1);
+ });
  it('removes abandoned nested Home reads without cancelling another response or an executing transaction',async()=>{
   const ctx=adminCtx(base),entered=deferred(),finish=deferred();
   const holder=withBackgroundDatabaseWork(()=>database.withTenant(ctx,async()=>{entered.resolve();await finish.promise;}));

@@ -19,20 +19,29 @@ export function createDatabaseAdmission(options: {
   capacity: number;
   backgroundCapacity: number;
   maxWaiting: number;
+  maxBackgroundWaiting?: number;
   waitMs: number;
   perTenantCapacity?: number;
 }) {
   const {capacity, backgroundCapacity, maxWaiting, waitMs} = options;
+  const maxBackgroundWaiting = options.maxBackgroundWaiting ?? maxWaiting;
   if (![capacity, backgroundCapacity, maxWaiting, waitMs].every(Number.isSafeInteger)
     || capacity < 1 || backgroundCapacity < 1 || backgroundCapacity > capacity || maxWaiting < 0 || waitMs < 1) {
     throw new Error('Invalid database admission budget.');
   }
   const perTenantCapacity = options.perTenantCapacity ?? capacity;
+  if (!Number.isSafeInteger(maxBackgroundWaiting) || maxBackgroundWaiting < 0 || maxBackgroundWaiting > maxWaiting)
+    throw new Error('Invalid background waiting budget.');
   if (!Number.isSafeInteger(perTenantCapacity) || perTenantCapacity < 1 || perTenantCapacity > capacity)
     throw new Error('Invalid per-tenant admission budget.');
-  let active = 0, background = 0, interactiveTurns = 0;
+  let active = 0, background = 0, interactiveTurns = 0, backgroundWaiting = 0;
   const waiting: Waiter[] = [];
   const activeByTenant = new Map<string, number>();
+  function dequeue(index: number) {
+    const [waiter] = waiting.splice(index, 1);
+    if (waiter.workload === 'background') backgroundWaiting--;
+    return waiter;
+  }
   const eligible = (workload: DatabaseWorkload, tenant?: string) => active < capacity
     && (workload !== 'background' || background < backgroundCapacity)
     && (tenant === undefined || (activeByTenant.get(tenant) ?? 0) < perTenantCapacity);
@@ -73,7 +82,7 @@ export function createDatabaseAdmission(options: {
         if (index !== -1) break;
       }
       if (index === -1) break;
-      grant(waiting.splice(index, 1)[0]);
+      grant(dequeue(index));
     }
   }
   async function acquire(tenant: string, workload: DatabaseWorkload, signal?: AbortSignal): Promise<() => void> {
@@ -81,7 +90,8 @@ export function createDatabaseAdmission(options: {
     tenant = tenant.toLowerCase();
     // A full queue cannot reject a new eligible lane while all queued work is lane-blocked.
     const immediate = eligible(workload, tenant) && !waiting.some(w => eligible(w.workload, w.tenant));
-    if (!immediate && waiting.length >= maxWaiting) throw new DatabaseAdmissionError('queue-full');
+    if (!immediate && (waiting.length >= maxWaiting || (workload === 'background' && backgroundWaiting >= maxBackgroundWaiting)))
+      throw new DatabaseAdmissionError('queue-full');
     return new Promise((resolve, reject) => {
       let timer: ReturnType<typeof setTimeout> | undefined;
       const waiter: Waiter = {tenant: tenant.toLowerCase(), workload, resolve, reject, clean: () => {
@@ -91,7 +101,7 @@ export function createDatabaseAdmission(options: {
       function remove(error: unknown) {
         const index = waiting.indexOf(waiter);
         if (index === -1) return;
-        waiting.splice(index, 1);
+        dequeue(index);
         waiter.clean();
         reject(error);
         drain();
@@ -99,6 +109,7 @@ export function createDatabaseAdmission(options: {
       function abort() { remove(signal!.reason); }
       if (immediate) { grant(waiter); return; }
       waiting.push(waiter);
+      if (workload === 'background') backgroundWaiting++;
       timer = setTimeout(() => remove(new DatabaseAdmissionError('queue-timeout')), waitMs);
       signal?.addEventListener('abort', abort, {once: true});
       if (signal?.aborted) abort();
@@ -107,6 +118,6 @@ export function createDatabaseAdmission(options: {
   }
   return {
     acquire,
-    snapshot: () => ({active, background, waiting: waiting.length, capacity, backgroundCapacity, maxWaiting}),
+    snapshot: () => ({active, background, waiting: waiting.length, backgroundWaiting, capacity, backgroundCapacity, maxWaiting, maxBackgroundWaiting}),
   };
 }
