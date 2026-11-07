@@ -25,7 +25,7 @@ export function PayrollCorrectionsForm({ enabled, canEdit, labels }: {
         // Dispatch explicitly so React does not reset the switch after an action returns an error.
         startTransition(() => action(data));
       }}>
-        <h2 className="text-base font-semibold">{labels.title}</h2>
+        <h2 className="sr-only">{labels.title}</h2>
         <p id="payroll-corrections-description" className="mt-1 max-w-prose text-sm text-muted-foreground">
           {labels.description}
         </p>

@@ -133,6 +133,7 @@ export function LeaveDurationFields({
   eligibleTypeIdsByEmployment,
   action: previewAction,
   summaryAction,
+  onZeroDaysChange,
 }: {
   types: LeaveTypeOption[];
   /** 76dbcaa1 — the leave type to open on, when the employee arrived from a named Apply action. */
@@ -185,6 +186,7 @@ export function LeaveDurationFields({
    *  the only consumer, so there is no "future caller" to keep optional. Best-effort: a null result renders
    *  nothing and never blocks the form. */
   summaryAction: (p: { employmentId: string; leaveTypeId: string }) => Promise<LeaveApplySummary | null>;
+  onZeroDaysChange?: (zero:boolean) => void;
 }) {
   const t = useTranslations('leave');
   // Cross-namespace reuse (already the convention on this page — app/leave/page.tsx holds two translators):
@@ -215,6 +217,9 @@ export function LeaveDurationFields({
   const [preview, setPreview] = useState<LeavePreview | null>(null);
   const [isPreviewing, startPreviewTransition] = useTransition();
   const [summary, setSummary] = useState<LeaveApplySummary | null>(null);
+  useEffect(()=>{
+    onZeroDaysChange?.(preview?.days===0);
+  },[preview,onZeroDaysChange]);
   const [isSummarizing, startSummaryTransition] = useTransition();
   // Stale-response guards: switching type A → B → A must not let a slower earlier response overwrite the
   // newer one. Each effect stamps a monotonically increasing id and drops any reply that isn't the latest.
@@ -279,6 +284,8 @@ export function LeaveDurationFields({
     // employmentId is required only when the caller renders the employee select here (/leave, on-behalf-of);
     // /me has no employeeOptions and resolves the caller's own employment server-side (see
     // app/me/actions.ts myPreviewLeaveDeduction), so an empty employmentId is fine there.
+    ++previewReq.current;
+    setPreview(null);
     const employmentReady = !employeeOptions || !!employmentId;
     if (!previewAction || effectiveDuration === 'hourly' || !employmentReady || !typeId || !start) {
       setPreview(null);
