@@ -7,6 +7,7 @@ import {company,appUser,roleEnum,letterCapabilityGrant,letterAutomationRuleVersi
 import {assertModuleGate} from './module-gate';
 import {lockAccessConfigurationReadTx,lockAccessConfigurationTx} from './access-configuration-lock';
 import {lockPayrollHistoryReadTx} from './payroll-history-lock';
+import {isAiPresentationPrincipalCurrentTx} from './ai-principal';
 import {isModuleEnabled} from './entitlements';
 import {validateLetterFields,validateLetterDocument,usedLetterFields,renderLetterDocument,parseLetterValue,LetterModelError,type LetterField,type LetterValue,type LetterDocument} from '../lib/letter-model';
 import {letterDocumentFromEditor} from '../lib/letter-editor';
@@ -23,8 +24,8 @@ import {letterVerificationUrl,letterVerificationWords} from '../lib/letter-verif
 import {isCalendarDate} from '../lib/calendar-date';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {compensationEffectiveOn} from './comp';
-import {assertWorkforceCompanyTx,assertWorkforceEmploymentTx} from './workforce-access';
-import {listReadOnlyWorkforcePickPageTx,readWorkforcePickRowsTx} from './read';
+import {assertWorkforceCompanyTx,assertWorkforceEmploymentTx,assertWorkforcePresentationEmploymentTx} from './workforce-access';
+import {listPresentationWorkforcePickPageTx,readPresentationWorkforcePickRowsTx} from './read';
 import {linkLetterRequestDraftTx,LetterRequestError} from './letter-requests';
 const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 function uuid(value:string){if(!UUID.test(value))throw new LetterWorkflowError('invalid','identity');return value;}
@@ -41,6 +42,16 @@ async function contextTx(ctx:SessionContext,tx:Tx,mode:boolean|'shared-access-re
 function letters<T>(ctx:SessionContext,mode:boolean|'shared-access-read',work:(tx:Tx)=>Promise<T>):Promise<T>{
  assertModuleGate(ctx,'employees');return withTenant(ctx,async tx=>{await contextTx(ctx,tx,mode);return work(tx);});
 }
+/** Display reads linearize in one database-enforced snapshot. Sensitive command, audit,
+ * access-token and artifact operations keep contextTx's current authority/history barriers. */
+async function letterPresentation<I,T>(supplied:SessionContext,suppliedInput:I,work:(tx:Tx,ctx:SessionContext,input:I)=>Promise<T>):Promise<T>{
+ const ctx=structuredClone(supplied),input=structuredClone(suppliedInput);
+ assertModuleGate(ctx,'employees');
+ return withTenant(ctx,async tx=>{
+  if(!await isAiPresentationPrincipalCurrentTx(tx,ctx))throw new LetterWorkflowError('permission');
+  return work(tx,ctx,input);
+ },{readOnlySnapshot:true});
+}
 async function permission(tx:Tx,co:string,cap:LetterCapability){
  uuid(co);const [row]=await tx.execute<{allowed:boolean}>(sql`select app.letter_permission(${co}::uuid,${cap}) as allowed`);if(!row?.allowed)throw new LetterWorkflowError('permission');
 }
@@ -53,22 +64,21 @@ async function event(tx:Tx,ctx:SessionContext,id:string,type:string,payload:Reco
 }
 async function lockCompany(tx:Tx,co:string){const [row]=await tx.select({id:company.id}).from(company).where(and(eq(company.id,uuid(co)),isNull(company.archivedAt))).for('share');if(!row)throw new LetterWorkflowError('permission');}
 // This standalone projection only reads company metadata and current permission bits.
-export function letterCompanyAccess(ctx:SessionContext){return letters(ctx,'shared-access-read',async tx=>{
+export function letterCompanyAccess(ctx:SessionContext){return letterPresentation(ctx,undefined,async (tx,ctx)=>{
  const rows=await tx.select({id:company.id,name:company.legalName,code:company.companyLabel,currency:company.currency,read:sql<boolean>`app.letter_permission(${company.id},'read')`,template:sql<boolean>`app.letter_permission(${company.id},'template')`,generate:sql<boolean>`app.letter_permission(${company.id},'generate')`,approve:sql<boolean>`app.letter_permission(${company.id},'approve')`,issue:sql<boolean>`app.letter_permission(${company.id},'issue')`,report:sql<boolean>`app.letter_permission(${company.id},'report')`,settings:sql<boolean>`app.letter_permission(${company.id},'settings')`}).from(company).where(isNull(company.archivedAt)).orderBy(asc(company.legalName),asc(company.id));
  return rows.filter(row=>LETTER_CAPABILITIES.some(cap=>row[cap]));
 });}
 /** Pickers expose safe metadata and an explicit cursor; signature bytes never enter template forms. */
-export function listLetterTemplateHeads(ctx:SessionContext,input:{companyId:string;search?:string;cursor?:string;limit?:number}){return letters(ctx,false,async tx=>{
+export function listLetterTemplateHeads(ctx:SessionContext,input:{companyId:string;search?:string;cursor?:string;limit?:number}){return letterPresentation(ctx,input,async (tx,ctx,input)=>{
  await anyPermission(tx,input.companyId,['read','template','settings']);const limit=letterListLimit(input.limit);if(input.cursor)uuid(input.cursor);const search=input.search?.trim();if(search&&search.length>200)throw new LetterWorkflowError('invalid','search');const needle=search?'%'+search.replace(/[\\%_]/g,'\\$&')+'%':undefined;
  const rows=await tx.select({id:letterAsset.id,name:letterAsset.name}).from(letterAsset).where(and(eq(letterAsset.companyId,input.companyId),eq(letterAsset.kind,'letterhead'),input.cursor?gt(letterAsset.id,input.cursor):undefined,needle?ilike(letterAsset.name,needle):undefined)).orderBy(asc(letterAsset.id)).limit(limit+1);return {rows:rows.slice(0,limit),nextCursor:rows.length>limit?rows[limit-1].id:null};
 });}
-export function listLetterEmployeeChoices(ctx:SessionContext,input:{companyId:string;search?:string;cursor?:string;limit?:number;departmentId?:string;departmentSearch?:string;branch?:string;hiredFrom?:string;hiredTo?:string}){return letters(ctx,'shared-access-read',async tx=>{
- await tx.execute(sql`set transaction read only`);
+export function listLetterEmployeeChoices(ctx:SessionContext,input:{companyId:string;search?:string;cursor?:string;limit?:number;departmentId?:string;departmentSearch?:string;branch?:string;hiredFrom?:string;hiredTo?:string}){return letterPresentation(ctx,input,async (tx,ctx,input)=>{
  await anyPermission(tx,input.companyId,['template','generate']);if(input.cursor)uuid(input.cursor);const limit=letterListLimit(input.limit);if((input.search?.length??0)>200)throw new LetterWorkflowError('invalid','search');
  if(input.departmentId)uuid(input.departmentId);if((input.departmentSearch?.length??0)>200||(input.branch?.length??0)>200||input.hiredFrom&&!isCalendarDate(input.hiredFrom)||input.hiredTo&&!isCalendarDate(input.hiredTo)||input.hiredFrom&&input.hiredTo&&input.hiredFrom>input.hiredTo)throw new LetterWorkflowError('invalid','filters');
- return listReadOnlyWorkforcePickPageTx(ctx,tx,{companyIds:[input.companyId],q:input.search,after:input.cursor,limit,departmentId:input.departmentId,departmentSearch:input.departmentSearch,branch:input.branch,hiredFrom:input.hiredFrom,hiredTo:input.hiredTo});
+ return listPresentationWorkforcePickPageTx(ctx,tx,{companyIds:[input.companyId],q:input.search,after:input.cursor,limit,departmentId:input.departmentId,departmentSearch:input.departmentSearch,branch:input.branch,hiredFrom:input.hiredFrom,hiredTo:input.hiredTo});
 });}
-export function listLetterSignatories(ctx:SessionContext,input:{companyId:string;search?:string;cursor?:string;limit?:number}){return letters(ctx,false,async tx=>{
+export function listLetterSignatories(ctx:SessionContext,input:{companyId:string;search?:string;cursor?:string;limit?:number}){return letterPresentation(ctx,input,async (tx,ctx,input)=>{
  await anyPermission(tx,input.companyId,['read','template','settings']);const limit=letterListLimit(input.limit);if(input.cursor)uuid(input.cursor);const search=input.search?.trim();if(search&&search.length>200)throw new LetterWorkflowError('invalid','search');const needle=search?'%'+search.replace(/[\\%_]/g,'\\$&')+'%':null;
  const rows=await tx.execute<{id:string;name:string}>(sql`select * from app.letter_signatory_choices(${input.companyId}::uuid,${input.cursor??null}::uuid,${needle},${limit+1})`);return {rows:rows.slice(0,limit),nextCursor:rows.length>limit?rows[limit-1].id:null};
 });}
@@ -88,9 +98,9 @@ export function addLetterAsset(ctx:SessionContext,input:{companyId:string;kind:'
  const [saved]=await tx.insert(letterAsset).values({tenantId:ctx.tenantId,companyId:input.companyId,ownerUserId:ctx.userId!,kind:input.kind,name:text(input.name,200),mimeType:'image/png',content:input.content,contentHash:hash(input.content)}).returning({id:letterAsset.id});
  await event(tx,ctx,saved.id,'asset.created',{companyId:input.companyId,kind:input.kind,contentHash:hash(input.content)});return saved;
 });}
-export function letterAssetChoices(ctx:SessionContext,co:string){return letters(ctx,false,async tx=>{await permission(tx,co,'settings');return tx.execute<{id:string;name:string;owner_user_id:string;kind:string}>(sql`select * from app.letter_asset_choices(${co}::uuid)`);});}
+export function letterAssetChoices(ctx:SessionContext,co:string){return letterPresentation(ctx,co,async (tx,ctx,co)=>{await permission(tx,co,'settings');return tx.execute<{id:string;name:string;owner_user_id:string;kind:string}>(sql`select * from app.letter_asset_choices(${co}::uuid)`);});}
 /** Asset pickers expose names and ownership only. Signature pixels remain an owner-only reader. */
-export function listLetterSettingAssets(ctx:SessionContext,input:{companyId:string;kind:'letterhead'|'signature';ownerUserId?:string;cursor?:string;search?:string;limit?:number}){return letters(ctx,false,async tx=>{
+export function listLetterSettingAssets(ctx:SessionContext,input:{companyId:string;kind:'letterhead'|'signature';ownerUserId?:string;cursor?:string;search?:string;limit?:number}){return letterPresentation(ctx,input,async (tx,ctx,input)=>{
  if(!['letterhead','signature'].includes(input.kind))throw new LetterWorkflowError('invalid','asset');uuid(input.companyId);if(input.ownerUserId)uuid(input.ownerUserId);if(input.cursor)uuid(input.cursor);const limit=letterListLimit(input.limit),search=input.search?.trim();if(search&&search.length>200)throw new LetterWorkflowError('invalid','search');
  if(input.kind==='signature'&&input.ownerUserId===ctx.userId)await anyPermission(tx,input.companyId,['settings','approve']);else await permission(tx,input.companyId,'settings');
  const needle=search?'%'+search.replace(/[\\%_]/g,'\\$&')+'%':null;
@@ -118,20 +128,20 @@ export function saveLetterPolicy(ctx:SessionContext,input:{companyId:string;cate
  await event(tx,ctx,saved.id,'policy.versioned',{companyId:input.companyId,category,ordinal:saved.ordinal,enabled:input.enabled});return saved;
 });}
 /** Settings read the latest immutable policy for each category; issued workflows keep their own version. */
-export function listLetterPolicies(ctx:SessionContext,input:{companyId:string;cursor?:string;limit?:number}){return letters(ctx,false,async tx=>{
+export function listLetterPolicies(ctx:SessionContext,input:{companyId:string;cursor?:string;limit?:number}){return letterPresentation(ctx,input,async (tx,ctx,input)=>{
  await permission(tx,input.companyId,'settings');const limit=letterListLimit(input.limit);if(input.cursor)text(input.cursor,100);
  const rows=await tx.select().from(letterPolicyVersion).where(and(eq(letterPolicyVersion.companyId,input.companyId),input.cursor?gt(letterPolicyVersion.category,input.cursor):undefined,sql`${letterPolicyVersion.id}=(select v.id from letter_policy_version v where v.company_id=${input.companyId}::uuid and v.tenant_id=app.current_tenant_id() and v.category=${letterPolicyVersion.category} order by v.ordinal desc limit 1)`)).orderBy(asc(letterPolicyVersion.category)).limit(limit+1);
  return {rows:rows.slice(0,limit),nextCursor:rows.length>limit?rows[limit-1].category:null};
 });}
-export function getLetterPolicy(ctx:SessionContext,input:{companyId:string;category:string}){return letters(ctx,false,async tx=>{
+export function getLetterPolicy(ctx:SessionContext,input:{companyId:string;category:string}){return letterPresentation(ctx,input,async (tx,ctx,input)=>{
  await permission(tx,input.companyId,'settings');const [row]=await tx.select().from(letterPolicyVersion).where(and(eq(letterPolicyVersion.companyId,input.companyId),eq(letterPolicyVersion.category,text(input.category,100)))).orderBy(desc(letterPolicyVersion.ordinal)).limit(1);if(!row)return null;const policy=validateLetterPolicy(row.policy),people=await tx.execute<{id:string;name:string}>(sql`select * from app.letter_policy_people(${row.id}::uuid)`),[appearance]=await tx.execute<{letterhead_name:string|null;signature_name:string|null}>(sql`select * from app.letter_policy_appearance(${row.id}::uuid)`);return {...row,policy,people:Array.from(people,row=>({id:row.id,name:row.name})),appearance:appearance??{letterhead_name:null,signature_name:null}};
 });}
-export function readLetterSettingsReadiness(ctx:SessionContext,companyId:string,options:{transport?:NotificationEmailTransport}={}){return letters(ctx,false,async tx=>{
+export function readLetterSettingsReadiness(ctx:SessionContext,companyId:string,options:{transport?:NotificationEmailTransport}={}){return letterPresentation(ctx,companyId,async (tx,ctx,companyId)=>{
  await permission(tx,companyId,'settings');let publicOrigin=true;try{letterVerificationUrl('A'.repeat(43),'en');}catch{publicOrigin=false;}
  const notifications=isModuleEnabled(ctx,'notifications',companyId),status=notifications?await readNotificationEmailTransport(options.transport):null;
  return {publicOrigin,notifications,email:notifications&&status?.ready===true&&status.letters===true};
 });}
-export function readLetterPermissions(ctx:SessionContext,companyId:string){return letters(ctx,false,async tx=>{
+export function readLetterPermissions(ctx:SessionContext,companyId:string){return letterPresentation(ctx,companyId,async (tx,ctx,companyId)=>{
  await permission(tx,companyId,'settings');return tx.select({role:letterCapabilityGrant.role,capability:letterCapabilityGrant.capability,allowed:letterCapabilityGrant.allowed}).from(letterCapabilityGrant).where(eq(letterCapabilityGrant.companyId,companyId)).orderBy(asc(letterCapabilityGrant.role),asc(letterCapabilityGrant.capability));
 });}
 export function saveLetterField(ctx:SessionContext,input:{companyId:string;definition:unknown;active:boolean;expectedOrdinal?:number}){return letters(ctx,true,async tx=>{
@@ -143,7 +153,7 @@ export function saveLetterField(ctx:SessionContext,input:{companyId:string;defin
  const [saved]=await tx.insert(letterMergeFieldVersion).values({tenantId:ctx.tenantId,companyId:input.companyId,key:definition.key,ordinal:(versions[0]?.ordinal??0)+1,active:input.active,definition,createdBy:ctx.userId!}).returning({id:letterMergeFieldVersion.id,ordinal:letterMergeFieldVersion.ordinal});
  await event(tx,ctx,saved.id,'field.versioned',{companyId:input.companyId,key:definition.key,ordinal:saved.ordinal,active:input.active});return saved;
 });}
-export function listLetterFields(ctx:SessionContext,input:{companyId:string;after?:string;limit?:number;search?:string;group?:string}){return letters(ctx,false,async tx=>{
+export function listLetterFields(ctx:SessionContext,input:{companyId:string;after?:string;limit?:number;search?:string;group?:string}){return letterPresentation(ctx,input,async (tx,ctx,input)=>{
  await anyPermission(tx,input.companyId,['read','template']);const limit=letterListLimit(input.limit??50);
  if(input.group&&!['employee','employment','company','compensation','custom'].includes(input.group))throw new LetterWorkflowError('invalid','group');const search=input.search?.trim();if(search&&search.length>200)throw new LetterWorkflowError('invalid','search');const needle=search?'%'+search.replace(/[\\%_]/g,'\\$&')+'%':undefined;
  const rows=await tx.select().from(letterMergeFieldVersion).where(and(eq(letterMergeFieldVersion.companyId,input.companyId),sql`${letterMergeFieldVersion.id}=app.letter_field_latest_version(${input.companyId}::uuid,${letterMergeFieldVersion.key})`,input.after?gt(letterMergeFieldVersion.key,input.after.slice(0,80)):undefined,needle?or(ilike(letterMergeFieldVersion.key,needle),sql`${letterMergeFieldVersion.definition}->>'label' ilike ${needle}`):undefined,input.group?sql`${letterMergeFieldVersion.definition}->>'source' like ${input.group+'.%'}`:undefined)).orderBy(asc(letterMergeFieldVersion.key)).limit(limit+1);
@@ -234,23 +244,23 @@ export function saveLetterAutomationRule(ctx:SessionContext,input:{companyId:str
  const [saved]=await tx.insert(letterAutomationRuleVersion).values({tenantId:ctx.tenantId,companyId:input.companyId,templateId:input.templateId,trigger:input.trigger,ordinal:input.expectedOrdinal+1,enabled:input.enabled,startOn,customValues,confidential,createdBy:ctx.userId!}).returning();
  await event(tx,ctx,saved.id,'automation.versioned',{companyId:input.companyId,templateId:input.templateId,trigger:input.trigger,ordinal:saved.ordinal,enabled:input.enabled,startOn,afterSequence:saved.afterSequence});return saved;
 });}
-export function listLetterAutomationRules(ctx:SessionContext,input:{companyId:string;cursor?:string;limit?:number;history?:boolean}){return letters(ctx,false,async tx=>{
+export function listLetterAutomationRules(ctx:SessionContext,input:{companyId:string;cursor?:string;limit?:number;history?:boolean}){return letterPresentation(ctx,input,async (tx,ctx,input)=>{
  await permission(tx,input.companyId,'read');await permission(tx,input.companyId,'settings');const limit=letterListLimit(input.limit);if(input.cursor)uuid(input.cursor);if(input.history!==undefined&&typeof input.history!=='boolean')throw new LetterWorkflowError('invalid','history');
  const rows=await tx.select().from(letterAutomationRuleVersion).where(and(eq(letterAutomationRuleVersion.companyId,input.companyId),input.cursor?gt(letterAutomationRuleVersion.id,input.cursor):undefined,input.history?undefined:sql`${letterAutomationRuleVersion.id}=app.letter_automation_latest_version(${input.companyId}::uuid,${letterAutomationRuleVersion.templateId},${letterAutomationRuleVersion.trigger})`)).orderBy(asc(letterAutomationRuleVersion.id)).limit(limit+1);
  return {rows:rows.slice(0,limit),nextCursor:rows.length>limit?rows[limit-1].id:null};
 });}
-export function getLetterAutomationRule(ctx:SessionContext,input:{companyId:string;templateId:string;trigger:LetterAutomationTrigger}){return letters(ctx,false,async tx=>{
+export function getLetterAutomationRule(ctx:SessionContext,input:{companyId:string;templateId:string;trigger:LetterAutomationTrigger}){return letterPresentation(ctx,input,async (tx,ctx,input)=>{
  await permission(tx,input.companyId,'read');await permission(tx,input.companyId,'settings');uuid(input.templateId);if(!LETTER_AUTOMATION_TRIGGERS.includes(input.trigger))throw new LetterWorkflowError('invalid','automation');
  const [identity]=await tx.execute<{id:string|null}>(sql`select app.letter_automation_latest_version(${input.companyId}::uuid,${input.templateId}::uuid,${input.trigger}) as id`);if(!identity?.id)return null;
  const [row]=await tx.select().from(letterAutomationRuleVersion).where(eq(letterAutomationRuleVersion.id,identity.id));if(!row)throw new LetterWorkflowError('permission');return row;
 });}
-export function letterAutomationRuleInfo(ctx:SessionContext,input:{companyId:string;ruleIds:string[]}){return letters(ctx,false,async tx=>{
+export function letterAutomationRuleInfo(ctx:SessionContext,input:{companyId:string;ruleIds:string[]}){return letterPresentation(ctx,input,async (tx,ctx,input)=>{
  await permission(tx,input.companyId,'read');await permission(tx,input.companyId,'settings');if(input.ruleIds.length>100)throw new LetterWorkflowError('invalid','limit');const ids=[...new Set(input.ruleIds.map(uuid))];
  const [readiness]=await tx.execute<{canEnable:boolean}>(sql`select app.access_workforce_company(${input.companyId}::uuid,'workforce.view') and app.letter_permission(${input.companyId}::uuid,'generate') as "canEnable"`);
  const rows=ids.length?await tx.execute<{id:string;ownerName:string|null;eligible:boolean;templateCode:string}>(sql`select r.id,metadata.owner_name as "ownerName",metadata.eligible,metadata.template_code as "templateCode" from letter_automation_rule_version r cross join lateral app.letter_automation_rule_metadata(r.id) metadata where r.company_id=${input.companyId}::uuid and r.tenant_id=app.current_tenant_id() and r.id in (${sql.join(ids.map(id=>sql`${id}::uuid`),sql`,`)})`):[];
  return {canEnable:readiness?.canEnable===true,rows:Array.from(rows)};
 });}
-export function listLetterAutomationJobs(ctx:SessionContext,input:{companyId:string;cursor?:string;limit?:number}){return letters(ctx,false,async tx=>{
+export function listLetterAutomationJobs(ctx:SessionContext,input:{companyId:string;cursor?:string;limit?:number}){return letterPresentation(ctx,input,async (tx,ctx,input)=>{
  await permission(tx,input.companyId,'read');await permission(tx,input.companyId,'settings');const limit=letterListLimit(input.limit);if(input.cursor)uuid(input.cursor);
  const visible=and(eq(letterJob.companyId,input.companyId),eq(letterJob.kind,'eventDraft'));
  const source=()=>tx.select({id:letterJob.id,status:letterJob.status,lastError:letterJob.lastError,attempts:letterJob.attempts,dueAt:letterJob.dueAt,createdAt:letterJob.createdAt,ruleId:letterAutomationRuleVersion.id,ordinal:letterAutomationRuleVersion.ordinal,trigger:letterAutomationRuleVersion.trigger,templateCode:letterTemplate.code,sourceDate:sql<string>`${letterJob.payload}->>'sourceAsOfDate'`,batchId:sql<string|null>`(select b.id from letter_generation_batch b where b.tenant_id=${letterJob.tenantId} and b.operation_key=${letterJob.id})`}).from(letterJob).innerJoin(letterAutomationRuleVersion,and(eq(letterAutomationRuleVersion.tenantId,letterJob.tenantId),sql`${letterAutomationRuleVersion.id}::text=${letterJob.payload}->>'ruleVersionId'`)).innerJoin(letterTemplate,and(eq(letterTemplate.id,letterAutomationRuleVersion.templateId),eq(letterTemplate.tenantId,letterJob.tenantId)));
@@ -259,20 +269,29 @@ export function listLetterAutomationJobs(ctx:SessionContext,input:{companyId:str
  return {rows:rows.slice(0,limit),counts:counts??{queued:0,failed:0,completed:0,cancelled:0,sourceChanged:0},nextCursor:rows.length>limit?rows[limit-1].id:null};
 });}
 /** Source dates and compensation selection use the canonical owners. No reader fabricates missing data. */
-async function letterSources(tx:Tx,ctx:SessionContext,co:string,employmentId:string,fields:LetterField[],custom:Record<string,LetterValue|null>,referenceDate:string){
- await assertWorkforceEmploymentTx(tx,ctx,uuid(employmentId),'view');
- const [employee]=await tx.select().from(employment).where(and(eq(employment.id,employmentId),eq(employment.companyId,co))).for('share');if(!employee)throw new LetterWorkflowError('permission');
- const [employeePerson]=await tx.select().from(person).where(eq(person.id,employee.personId)).for('share');
- const [entity]=await tx.select().from(company).where(eq(company.id,co)).for('share');if(!employeePerson||!entity)throw new LetterWorkflowError('permission');
+async function letterSources(tx:Tx,ctx:SessionContext,co:string,employmentId:string,fields:LetterField[],custom:Record<string,LetterValue|null>,referenceDate:string,mode:'command'|'presentation'='command'){
+ const presentation=mode==='presentation';
+ if(presentation)await assertWorkforcePresentationEmploymentTx(tx,ctx,uuid(employmentId));
+ else await assertWorkforceEmploymentTx(tx,ctx,uuid(employmentId),'view');
+ const employeeQuery=tx.select().from(employment).where(and(eq(employment.id,employmentId),eq(employment.companyId,co)));
+ const [employee]=await (presentation?employeeQuery:employeeQuery.for('share'));if(!employee)throw new LetterWorkflowError('permission');
+ const personQuery=tx.select().from(person).where(eq(person.id,employee.personId));
+ const [employeePerson]=await (presentation?personQuery:personQuery.for('share'));
+ const companyQuery=tx.select().from(company).where(eq(company.id,co));
+ const [entity]=await (presentation?companyQuery:companyQuery.for('share'));if(!employeePerson||!entity)throw new LetterWorkflowError('permission');
  // Published organisation changes retain the superseded interval as audit history.
- const records=await tx.select().from(assignment).where(and(eq(assignment.employmentId,employmentId),isNull(assignment.supersededAt),lte(assignment.validFrom,referenceDate),or(isNull(assignment.validTo),gt(assignment.validTo,referenceDate)))).limit(2).for('share');
+ const assignmentQuery=tx.select().from(assignment).where(and(eq(assignment.employmentId,employmentId),isNull(assignment.supersededAt),lte(assignment.validFrom,referenceDate),or(isNull(assignment.validTo),gt(assignment.validTo,referenceDate)))).limit(2);
+ const records=await (presentation?assignmentQuery:assignmentQuery.for('share'));
  if(records.length>1)throw new LetterWorkflowError('configuration','ambiguousAssignment');const current=records[0];
- const [job]=current?.positionId?await tx.select().from(position).where(eq(position.id,current.positionId)).for('share'):[];
- const [team]=current?.departmentId?await tx.select().from(department).where(eq(department.id,current.departmentId)).for('share'):[];
+ const positionQuery=current?.positionId?tx.select().from(position).where(eq(position.id,current.positionId)):null;
+ const [job]=positionQuery?await (presentation?positionQuery:positionQuery.for('share')):[];
+ const departmentQuery=current?.departmentId?tx.select().from(department).where(eq(department.id,current.departmentId)):null;
+ const [team]=departmentQuery?await (presentation?departmentQuery:departmentQuery.for('share')):[];
  let salary:typeof compensation.$inferSelect|undefined;
  if(fields.some(field=>field.sensitive)){const [allowed]=await tx.execute<{ok:boolean}>(sql`select app.can_admin_payroll_for(${co}::uuid) as ok`);if(!allowed?.ok)throw new LetterWorkflowError('permission');}
  if(fields.some(field=>field.source==='compensation.basicSalary')){
-  const rows=await tx.select().from(compensation).where(and(eq(compensation.employmentId,employmentId),compensationEffectiveOn(referenceDate))).orderBy(desc(compensation.validFrom),asc(compensation.id)).limit(2).for('share');if(rows.length>1)throw new LetterWorkflowError('configuration','ambiguousSalary');salary=rows[0];
+  const salaryQuery=tx.select().from(compensation).where(and(eq(compensation.employmentId,employmentId),compensationEffectiveOn(referenceDate))).orderBy(desc(compensation.validFrom),asc(compensation.id)).limit(2);
+  const rows=await (presentation?salaryQuery:salaryQuery.for('share'));if(rows.length>1)throw new LetterWorkflowError('configuration','ambiguousSalary');salary=rows[0];
  }
  const facts:Record<string,LetterValue|null>={};
  const string=(value:string|null|undefined):LetterValue|null=>value?.trim()?{kind:'text',value}:null;
@@ -287,8 +306,8 @@ async function letterSources(tx:Tx,ctx:SessionContext,co:string,employmentId:str
  for(const field of fields)facts[field.key]=field.source.startsWith('custom.')?custom[field.key]??null:source[field.source]??null;
  return {values:facts,employeeName:employeePerson.fullName,employeeCode:employee.employeeCode,referenceDate};
 }
-async function snapshotLetter(tx:Tx,ctx:SessionContext,co:string,employmentId:string,template:Awaited<ReturnType<typeof generationTemplate>>,policyVersionId:string,custom:Record<string,LetterValue|null>,referenceDate:string){
- const sources=await letterSources(tx,ctx,co,employmentId,template.fields.map(row=>row.definition),custom,referenceDate);
+async function snapshotLetter(tx:Tx,ctx:SessionContext,co:string,employmentId:string,template:Awaited<ReturnType<typeof generationTemplate>>,policyVersionId:string,custom:Record<string,LetterValue|null>,referenceDate:string,mode:'command'|'presentation'='command'){
+ const sources=await letterSources(tx,ctx,co,employmentId,template.fields.map(row=>row.definition),custom,referenceDate,mode);
  const rendered=renderLetterDocument(template.version.document,template.fields.map(row=>row.definition),sources.values,{allowSensitive:true});
  const sourceHash=hash(canonical({employmentId,companyId:co,templateVersionId:template.version.id,policyVersionId,referenceDate,values:sources.values,fields:template.fields}));
  return {...sources,document:rendered.document,sourceHash,contentHash:hash(canonical({document:rendered.document,sourceHash}))};
@@ -386,23 +405,23 @@ function assertLetterBatchCohort(batch:typeof letterGenerationBatch.$inferSelect
  if(!ids.length||expected.size!==ids.length||actual.size!==records.length||records.length!==ids.length||records.some(row=>!expected.has(row.employmentId)))throw new LetterWorkflowError('permission');
 }
 /** A displayed page never narrows the cohort checked for readiness or submission. */
-export function getLetterGenerationBatch(ctx:SessionContext,id:string,input:{cursor?:string;limit?:number}={}){return letters(ctx,false,async tx=>{
+export function getLetterGenerationBatch(ctx:SessionContext,id:string,input:{cursor?:string;limit?:number}={}){return letterPresentation(ctx,{id,input},async (tx,ctx,{id,input})=>{
  const [batch]=await tx.select().from(letterGenerationBatch).where(eq(letterGenerationBatch.id,uuid(id)));if(!batch){const [participant]=await tx.select({id:letterRecord.id}).from(letterRecord).where(eq(letterRecord.batchId,id)).limit(1);if(participant)throw new LetterWorkflowError('permission');return null;}await permission(tx,batch.companyId,'read');const limit=letterListLimit(input.limit);if(input.cursor)uuid(input.cursor);
  const template=await generationTemplate(tx,batch.companyId,batch.templateVersionId,false),records=await tx.select().from(letterRecord).where(eq(letterRecord.batchId,id)).orderBy(asc(letterRecord.reference),asc(letterRecord.id));assertLetterBatchCohort(batch,records);
  const cursor=input.cursor?records.findIndex(row=>row.id===input.cursor):-1;if(input.cursor&&cursor<0)throw new LetterWorkflowError('invalid','cursor');const start=cursor+1,end=start+limit;
  const rows=[];let ready=0,needsCorrection=0;const states:Record<string,number>={};
  for(const [index,record]of records.entries()){
   const [revision]=record.currentRevisionId?await tx.select().from(letterRevision).where(eq(letterRevision.id,record.currentRevisionId)):[];let issue:{code:string;field?:string}|null=null,sourceChanged=false;
-  if(['draft','returned','rejected'].includes(record.state))try{const fresh=await snapshotLetter(tx,ctx,batch.companyId,record.employmentId,template,batch.policyVersionId,revision?.editableValues??batch.selection.customValues[record.employmentId]??{},batch.selection.sourceAsOfDate);sourceChanged=revision?.sourceHash!==fresh.sourceHash;}catch(error){if(!(error instanceof LetterModelError)&&!(error instanceof LetterWorkflowError))throw error;issue={code:error.code,...(error instanceof LetterModelError?{field:error.path}:{})};}
+  if(['draft','returned','rejected'].includes(record.state))try{const fresh=await snapshotLetter(tx,ctx,batch.companyId,record.employmentId,template,batch.policyVersionId,revision?.editableValues??batch.selection.customValues[record.employmentId]??{},batch.selection.sourceAsOfDate,'presentation');sourceChanged=revision?.sourceHash!==fresh.sourceHash;}catch(error){if(!(error instanceof LetterModelError)&&!(error instanceof LetterWorkflowError))throw error;issue={code:error.code,...(error instanceof LetterModelError?{field:error.path}:{})};}
   const [automation]=await tx.execute<{ok:boolean}>(sql`select app.letter_automation_source_current(${record.id}::uuid) as ok`),automationSourceChanged=automation?.ok!==true;
   const eligible=record.state==='draft'&&Boolean(revision)&&!issue&&!sourceChanged&&!automationSourceChanged&&template.active;states[record.state]=(states[record.state]??0)+1;if(eligible)ready++;if(['draft','returned','rejected'].includes(record.state)&&!eligible)needsCorrection++;
   if(index>=start&&index<end)rows.push({record,revision:revision??null,issue,sourceChanged,automationSourceChanged,ready:eligible});
  }
- const identities=await readWorkforcePickRowsTx(ctx,tx,rows.map(row=>row.record.employmentId)),people=new Map(identities.map(row=>[row.employmentId,{name:row.name,code:row.employeeCode}]));
+ const identities=await readPresentationWorkforcePickRowsTx(ctx,tx,rows.map(row=>row.record.employmentId)),people=new Map(identities.map(row=>[row.employmentId,{name:row.name,code:row.employeeCode}]));
  const correctionIds=rows.filter(row=>row.record.state==='returned'||row.record.state==='rejected').map(row=>row.record.id),decisions=correctionIds.length?await tx.selectDistinctOn([letterApprovalDecision.letterId],{letterId:letterApprovalDecision.letterId,reason:letterApprovalDecision.comment}).from(letterApprovalDecision).innerJoin(letterRecord,and(eq(letterRecord.id,letterApprovalDecision.letterId),eq(letterRecord.currentRevisionId,letterApprovalDecision.revisionId))).where(and(eq(letterRecord.batchId,batch.id),inArray(letterApprovalDecision.letterId,correctionIds),inArray(letterApprovalDecision.action,['return','reject']))).orderBy(asc(letterApprovalDecision.letterId),desc(letterApprovalDecision.createdAt),desc(letterApprovalDecision.id)):[],reasons=new Map(decisions.map(decision=>[decision.letterId,decision.reason]));
  return {batch,rows:rows.map(row=>({...row,employee:people.get(row.record.employmentId)??null,correctionReason:reasons.get(row.record.id)??null})),templateActive:template.active,ready,needsCorrection,total:records.length,selected:records.length-(states.withdrawn??0),states,nextCursor:end<records.length?records[end-1].id:null};
 });}
-export function listLetterGenerationBatches(ctx:SessionContext,input:{companyId:string;cursor?:string;limit?:number}){return letters(ctx,false,async tx=>{
+export function listLetterGenerationBatches(ctx:SessionContext,input:{companyId:string;cursor?:string;limit?:number}){return letterPresentation(ctx,input,async (tx,ctx,input)=>{
  await permission(tx,input.companyId,'read');await permission(tx,input.companyId,'generate');const limit=letterListLimit(input.limit);if(input.cursor)uuid(input.cursor);
  const visible=and(eq(letterGenerationBatch.companyId,input.companyId),eq(letterGenerationBatch.createdBy,ctx.userId!),sql`(select count(*) from letter_record r where r.batch_id=${letterGenerationBatch.id})=case when jsonb_typeof(${letterGenerationBatch.selection}->'employmentIds')='array' then jsonb_array_length(${letterGenerationBatch.selection}->'employmentIds') else -1 end`);
  const [cursor]=input.cursor?await tx.select({id:letterGenerationBatch.id}).from(letterGenerationBatch).where(and(visible,eq(letterGenerationBatch.id,input.cursor))).limit(1):[];if(input.cursor&&!cursor)throw new LetterWorkflowError('invalid','cursor');
@@ -543,7 +562,7 @@ async function ownLetterTx(tx:Tx,id:string){
 async function currentLetterArtifact(tx:Tx,record:typeof letterRecord.$inferSelect){
  if(!record.currentRevisionId)throw new LetterWorkflowError('state');const [artifact]=await tx.select().from(letterArtifact).where(and(eq(letterArtifact.letterId,record.id),eq(letterArtifact.revisionId,record.currentRevisionId)));if(!artifact)throw new LetterWorkflowError('state');return artifact;
 }
-export function listMyLetters(ctx:SessionContext,input:{cursor?:string;limit?:number}={}){return letters(ctx,false,async tx=>{
+export function listMyLetters(ctx:SessionContext,input:{cursor?:string;limit?:number}={}){return letterPresentation(ctx,input,async (tx,ctx,input)=>{
  const limit=input.limit??25;if(!Number.isInteger(limit)||limit<1||limit>100)throw new LetterWorkflowError('invalid','limit');if(input.cursor)await ownLetterTx(tx,input.cursor);
  const rows=await tx.select({id:letterRecord.id,reference:letterRecord.reference,state:letterRecord.state,issuedAt:letterRecord.issuedAt,voidedAt:letterRecord.voidedAt,employmentId:letterRecord.employmentId,companyId:letterRecord.companyId,
  acknowledgement:sql<'none'|'acknowledge'|'signature'>`app.letter_recipient_mode(${letterRecord.id})`,
@@ -552,7 +571,7 @@ export function listMyLetters(ctx:SessionContext,input:{cursor?:string;limit?:nu
  }).from(letterRecord).innerJoin(employment,and(eq(employment.id,letterRecord.employmentId),eq(employment.tenantId,letterRecord.tenantId))).where(and(inArray(letterRecord.state,['issued','void']),sql`app.is_self_person(${employment.personId})`,input.cursor?sql`(${letterRecord.issuedAt},${letterRecord.id})<(select c.issued_at,c.id from letter_record c where c.id=${input.cursor}::uuid)`:undefined)).orderBy(desc(letterRecord.issuedAt),desc(letterRecord.id)).limit(limit+1);
  return {rows:rows.slice(0,limit),nextCursor:rows.length>limit?rows[limit-1].id:null};
 });}
-export function getMyLetter(ctx:SessionContext,id:string){return letters(ctx,false,async tx=>{
+export function getMyLetter(ctx:SessionContext,id:string){return letterPresentation(ctx,id,async (tx,ctx,id)=>{
  const record=await ownLetterTx(tx,id),artifact=await currentLetterArtifact(tx,record);
  // Policy rows are staff configuration. Expose only the bound recipient mode through a narrow SQL helper.
  const [recipient]=await tx.execute<{mode:'none'|'acknowledge'|'signature'}>(sql`select app.letter_recipient_mode(${record.id}::uuid) as mode`);
@@ -582,7 +601,7 @@ export function acknowledgeMyLetter(ctx:SessionContext,input:{letterId:string;ex
 
 export type LetterRegisterFilter={companyId?:string;employmentId?:string;category?:string;search?:string;issuedFrom?:string;issuedTo?:string;state?:'approved'|'issued'|'void';cursor?:string;limit?:number};
 function letterListLimit(limit=25){if(!Number.isInteger(limit)||limit<1||limit>100)throw new LetterWorkflowError('invalid','limit');return limit;}
-export function listLetterRegister(ctx:SessionContext,input:LetterRegisterFilter={}){return letters(ctx,false,async tx=>{
+export function listLetterRegister(ctx:SessionContext,input:LetterRegisterFilter={}){return letterPresentation(ctx,input,async (tx,ctx,input)=>{
  const limit=letterListLimit(input.limit);for(const id of [input.companyId,input.employmentId,input.cursor])if(id)uuid(id);
  if(input.state&&!['approved','issued','void'].includes(input.state))throw new LetterWorkflowError('invalid','state');for(const day of [input.issuedFrom,input.issuedTo])if(day&&!isCalendarDate(day))throw new LetterWorkflowError('invalid','period');if(input.issuedFrom&&input.issuedTo&&input.issuedFrom>input.issuedTo)throw new LetterWorkflowError('invalid','period');
  const needle=input.search?.trim();if(needle&&needle.length>200)throw new LetterWorkflowError('invalid','search');const search=needle?'%'+needle.replace(/[\\%_]/g,'\\$&')+'%':undefined;
@@ -591,7 +610,7 @@ export function listLetterRegister(ctx:SessionContext,input:LetterRegisterFilter
   .where(and(inArray(letterRecord.state,input.state?[input.state]:['issued','void']),sql`app.letter_permission(${letterRecord.companyId},'read')`,input.state==='approved'?sql`app.letter_permission(${letterRecord.companyId},'issue')`:undefined,input.companyId?eq(letterRecord.companyId,input.companyId):undefined,input.employmentId?eq(letterRecord.employmentId,input.employmentId):undefined,input.category?eq(letterTemplateVersion.category,text(input.category,100)):undefined,search?or(ilike(person.fullName,search),ilike(employment.employeeCode,search),ilike(letterRecord.reference,search)):undefined,input.issuedFrom?sql`(${letterRecord.issuedAt} at time zone 'Asia/Kuala_Lumpur')::date>=${input.issuedFrom}::date`:undefined,input.issuedTo?sql`(${letterRecord.issuedAt} at time zone 'Asia/Kuala_Lumpur')::date<=${input.issuedTo}::date`:undefined,input.cursor?sql`(coalesce(${letterRecord.issuedAt},${letterRecord.approvedAt}),${letterRecord.id})<(select coalesce(c.issued_at,c.approved_at),c.id from letter_record c where c.id=${input.cursor}::uuid)`:undefined)).orderBy(sql`coalesce(${letterRecord.issuedAt},${letterRecord.approvedAt}) desc`,desc(letterRecord.id)).limit(limit+1);
  return {rows:rows.slice(0,limit),nextCursor:rows.length>limit?rows[limit-1].id:null};
 });}
-export function listLetterApprovalQueue(ctx:SessionContext,input:{companyId?:string;limit?:number;cursor?:string}={}){return letters(ctx,false,async tx=>{
+export function listLetterApprovalQueue(ctx:SessionContext,input:{companyId?:string;limit?:number;cursor?:string}={}){return letterPresentation(ctx,input,async (tx,ctx,input)=>{
  const limit=letterListLimit(input.limit);if(input.companyId)uuid(input.companyId);if(input.cursor)uuid(input.cursor);
  const rows=await tx.select({record:letterRecord,title:letterTemplateVersion.name,category:letterTemplateVersion.category,employeeName:sql<string>`staff.employee_name`,employeeCode:sql<string|null>`staff.employee_code`,final:sql<boolean>`${letterRecord.stageIndex}=jsonb_array_length(${letterPolicyVersion.policy}->'stages')-1`,stageLabel:sql<string>`${letterPolicyVersion.policy}->'stages'->${letterRecord.stageIndex}->>'label'`,dueAt:sql<Date>`${letterStageEnteredAt(sql`${letterRecord.stageIndex}`,sql`${letterRecord.submittedAt}`,sql`${letterRecord.currentRevisionId}`)}+(${letterPolicyVersion.policy}->>'approvalDueHours')::integer*interval '1 hour'`}).from(letterRecord).innerJoin(sql`lateral app.letter_staff_identity(${letterRecord.id}) staff`,sql`true`).innerJoin(sql`lateral app.letter_staff_batch_metadata(${letterRecord.id}) batch_metadata`,sql`true`).innerJoin(letterTemplateVersion,sql`${letterTemplateVersion.id}=batch_metadata.template_version_id`).innerJoin(letterPolicyVersion,sql`${letterPolicyVersion.id}=batch_metadata.policy_version_id`)
  .where(and(eq(letterRecord.state,'submitted'),sql`${letterRecord.createdBy}<>${ctx.userId}::uuid`,sql`app.letter_permission(${letterRecord.companyId},'read') AND app.letter_permission(${letterRecord.companyId},'approve')`,input.companyId?eq(letterRecord.companyId,input.companyId):undefined,input.cursor?gt(letterRecord.id,input.cursor):undefined,
@@ -601,7 +620,7 @@ export function listLetterApprovalQueue(ctx:SessionContext,input:{companyId?:str
 async function staffBatchTx(tx:Tx,letterId:string){
  const [batch]=await tx.execute<{id:string;companyId:string;templateVersionId:string;policyVersionId:string;sourceAsOfDate:string}>(sql`select id,company_id as "companyId",template_version_id as "templateVersionId",policy_version_id as "policyVersionId",source_as_of_date as "sourceAsOfDate" from app.letter_staff_batch_metadata(${letterId}::uuid)`);if(!batch)throw new LetterWorkflowError('permission');return batch;
 }
-export function getStaffLetter(ctx:SessionContext,id:string,options:{decisionCursor?:string}={}){return letters(ctx,false,tx=>staffLetterTx(ctx,tx,id,options));}
+export function getStaffLetter(ctx:SessionContext,id:string,options:{decisionCursor?:string}={}){return letterPresentation(ctx,{id,options},(tx,ctx,{id,options})=>staffLetterTx(ctx,tx,id,options));}
 async function staffLetterTx(ctx:SessionContext,tx:Tx,id:string,options:{decisionCursor?:string}={}){
  const [record]=await tx.select().from(letterRecord).where(eq(letterRecord.id,uuid(id)));if(!record)return null;await permission(tx,record.companyId,'read');
  const [revision]=record.currentRevisionId?await tx.select().from(letterRevision).where(eq(letterRevision.id,record.currentRevisionId)):[],batch=await staffBatchTx(tx,record.id),[policy]=await tx.select().from(letterPolicyVersion).where(eq(letterPolicyVersion.id,batch.policyVersionId));
@@ -615,13 +634,13 @@ async function staffLetterTx(ctx:SessionContext,tx:Tx,id:string,options:{decisio
  const final=record.stageIndex===configuration.stages.length-1,[employee]=await tx.execute<{employee_name:string;employee_code:string|null;company_name:string;title:string;category:string}>(sql`select * from app.letter_staff_identity(${record.id}::uuid)`);
  return {record,revision:revision??null,batch,policy:configuration,metadata:employee?{title:employee.title,category:employee.category,companyName:employee.company_name}:null,employee:employee?{name:employee.employee_name,code:employee.employee_code}:null,automationSourceChanged:automation?.ok!==true,canAct,canDelegate:canAct&&!final&&configuration.stages[record.stageIndex].allowDelegation,final,decisions:decisions.slice(0,100),moreDecisions:decisions.length>100,nextDecisionCursor:decisions.length>100?decisions[99].id:null};
 }
-export function listLetterDelegates(ctx:SessionContext,input:{letterId:string;search?:string;cursor?:string;limit?:number}){return letters(ctx,false,async tx=>{
+export function listLetterDelegates(ctx:SessionContext,input:{letterId:string;search?:string;cursor?:string;limit?:number}){return letterPresentation(ctx,input,async (tx,ctx,input)=>{
  const data=await staffLetterTx(ctx,tx,input.letterId);if(!data?.canDelegate)throw new LetterWorkflowError('permission');
  const limit=letterListLimit(input.limit);if(input.cursor)uuid(input.cursor);const search=input.search?.trim();if(search&&search.length>200)throw new LetterWorkflowError('invalid','search');const needle=search?'%'+search.replace(/[\\%_]/g,'\\$&')+'%':null;
  const rows=await tx.execute<{id:string;name:string}>(sql`select * from app.letter_delegate_choices(${input.letterId}::uuid,${input.cursor??null}::uuid,${needle},${limit+1})`);
  return {rows:rows.slice(0,limit),nextCursor:rows.length>limit?rows[limit-1].id:null};
 });}
-export function letterAudit(ctx:SessionContext,input:{letterId:string;cursor?:string;limit?:number}){return letters(ctx,false,async tx=>{
+export function letterAudit(ctx:SessionContext,input:{letterId:string;cursor?:string;limit?:number}){return letterPresentation(ctx,input,async (tx,ctx,input)=>{
  const [record]=await tx.select().from(letterRecord).where(eq(letterRecord.id,uuid(input.letterId)));if(!record)throw new LetterWorkflowError('permission');await permission(tx,record.companyId,'read');const limit=letterListLimit(input.limit);if(input.cursor)uuid(input.cursor);
  const rows=await tx.execute<{id:string;type:string;actorType:string;actorId:string|null;actorName:string|null;payload:Record<string,unknown>|null;at:Date}>(sql`select id,event_type as type,actor_type as "actorType",actor_id as "actorId",app.letter_audit_actor_label(${record.id}::uuid,actor_id) as "actorName",payload,occurred_at as at from app.letter_audit(${record.id}::uuid,${input.cursor??null}::uuid,${limit+1})`);
  return {rows:rows.slice(0,limit),nextCursor:rows.length>limit?rows[limit-1].id:null};
@@ -640,14 +659,14 @@ export function setLetterRetention(ctx:SessionContext,input:{letterId:string;exp
  await tx.update(letterRecord).set({legalHold:input.legalHold,retainUntil:input.retainUntil,lockVersion:record.lockVersion+1}).where(eq(letterRecord.id,record.id));await event(tx,ctx,record.id,'retention.changed',{before:{legalHold:record.legalHold,retainUntil:record.retainUntil},after:{legalHold:input.legalHold,retainUntil:input.retainUntil},reason});return {letterId:record.id,lockVersion:record.lockVersion+1};
 });}
 
-export function listLetterTemplates(ctx:SessionContext,input:{companyId:string;mode?:'latest'|'active';search?:string;cursor?:string;limit?:number}){return letters(ctx,false,async tx=>{
+export function listLetterTemplates(ctx:SessionContext,input:{companyId:string;mode?:'latest'|'active';search?:string;cursor?:string;limit?:number}){return letterPresentation(ctx,input,async (tx,ctx,input)=>{
  await anyPermission(tx,input.companyId,['read','template']);const limit=letterListLimit(input.limit);if(input.cursor)uuid(input.cursor);if(input.mode&&!['latest','active'].includes(input.mode))throw new LetterWorkflowError('invalid','mode');
  const active=input.mode==='active',search=input.search?.trim();if(search&&search.length>200)throw new LetterWorkflowError('invalid','search');const needle=search?'%'+search.replace(/[\\%_]/g,'\\$&')+'%':undefined;
  const rows=await tx.select({root:letterTemplate,version:{id:letterTemplateVersion.id,ordinal:letterTemplateVersion.ordinal,name:letterTemplateVersion.name,category:letterTemplateVersion.category,effectiveFrom:letterTemplateVersion.effectiveFrom,status:letterTemplateVersion.status,approvedAt:letterTemplateVersion.approvedAt}}).from(letterTemplate).innerJoin(letterTemplateVersion,eq(letterTemplateVersion.templateId,letterTemplate.id)).where(and(eq(letterTemplate.companyId,input.companyId),active?eq(letterTemplate.deactivated,false):undefined,input.cursor?gt(letterTemplate.id,input.cursor):undefined,needle?or(ilike(letterTemplate.code,needle),ilike(letterTemplateVersion.name,needle)):undefined,
  sql`${letterTemplateVersion.id}=(select v.id from letter_template_version v where v.template_id=${letterTemplate.id} ${active?sql`and v.status='approved' and v.effective_from<=${todayInKualaLumpur()}::date`:sql``} order by v.ordinal desc limit 1)`)).orderBy(asc(letterTemplate.id)).limit(limit+1);
  return {rows:rows.slice(0,limit),nextCursor:rows.length>limit?rows[limit-1].root.id:null};
 });}
-export function getLetterTemplate(ctx:SessionContext,id:string,options:{forGeneration?:boolean}={}){return letters(ctx,false,async tx=>{
+export function getLetterTemplate(ctx:SessionContext,id:string,options:{forGeneration?:boolean}={}){return letterPresentation(ctx,{id,options},async (tx,ctx,{id,options})=>{
  const [row]=await tx.select({root:letterTemplate,version:letterTemplateVersion}).from(letterTemplateVersion).innerJoin(letterTemplate,eq(letterTemplate.id,letterTemplateVersion.templateId)).where(eq(letterTemplateVersion.id,uuid(id)));if(!row)return null;await anyPermission(tx,row.root.companyId,['read','template']);
  if(options.forGeneration){await permission(tx,row.root.companyId,'generate');await generationTemplate(tx,row.root.companyId,id,true,true);}
  const fields=await tx.select({id:letterMergeFieldVersion.id,definition:letterMergeFieldVersion.definition,active:letterMergeFieldVersion.active,ordinal:letterMergeFieldVersion.ordinal}).from(letterTemplateField).innerJoin(letterMergeFieldVersion,eq(letterMergeFieldVersion.id,letterTemplateField.fieldVersionId)).where(eq(letterTemplateField.templateVersionId,id)).orderBy(asc(letterMergeFieldVersion.key));
@@ -655,39 +674,39 @@ export function getLetterTemplate(ctx:SessionContext,id:string,options:{forGener
  const [appearance]=await tx.execute<{letterhead_name:string|null;signatory_name:string|null}>(sql`select * from app.letter_template_appearance(${row.version.id}::uuid)`);
  return {...row,fields,appearance:appearance??{letterhead_name:null,signatory_name:null}};
 });}
-export function listLetterTemplateVersions(ctx:SessionContext,input:{templateId:string;cursor?:number;limit?:number}){return letters(ctx,false,async tx=>{
+export function listLetterTemplateVersions(ctx:SessionContext,input:{templateId:string;cursor?:number;limit?:number}){return letterPresentation(ctx,input,async (tx,ctx,input)=>{
  const [root]=await tx.select().from(letterTemplate).where(eq(letterTemplate.id,uuid(input.templateId)));if(!root)throw new LetterWorkflowError('permission');await anyPermission(tx,root.companyId,['read','template']);const limit=letterListLimit(input.limit);if(input.cursor!==undefined&&(!Number.isInteger(input.cursor)||input.cursor<1))throw new LetterWorkflowError('invalid','cursor');
  const rows=await tx.select({id:letterTemplateVersion.id,ordinal:letterTemplateVersion.ordinal,name:letterTemplateVersion.name,category:letterTemplateVersion.category,status:letterTemplateVersion.status,effectiveFrom:letterTemplateVersion.effectiveFrom,createdBy:letterTemplateVersion.createdBy,approvedBy:letterTemplateVersion.approvedBy,approvedAt:letterTemplateVersion.approvedAt,createdAt:letterTemplateVersion.createdAt}).from(letterTemplateVersion).where(and(eq(letterTemplateVersion.templateId,root.id),input.cursor?sql`${letterTemplateVersion.ordinal}<${input.cursor}`:undefined)).orderBy(desc(letterTemplateVersion.ordinal)).limit(limit+1);
  return {rows:rows.slice(0,limit),nextCursor:rows.length>limit?rows[limit-1].ordinal:null};
 });}
-export function previewLetterTemplate(ctx:SessionContext,input:{templateVersionId:string;employmentId:string;customValues?:Record<string,LetterValue|null>}){return letters(ctx,false,async tx=>{
+export function previewLetterTemplate(ctx:SessionContext,input:{templateVersionId:string;employmentId:string;customValues?:Record<string,LetterValue|null>}){return letterPresentation(ctx,input,async (tx,ctx,input)=>{
  const [version]=await tx.select().from(letterTemplateVersion).where(eq(letterTemplateVersion.id,uuid(input.templateVersionId)));if(!version)throw new LetterWorkflowError('permission');await anyPermission(tx,version.companyId,['template','generate']);
  const fields=await tx.select({definition:letterMergeFieldVersion.definition}).from(letterTemplateField).innerJoin(letterMergeFieldVersion,eq(letterMergeFieldVersion.id,letterTemplateField.fieldVersionId)).where(eq(letterTemplateField.templateVersionId,version.id));
  const definitions=fields.map(field=>field.definition);if(usedLetterFields(version.document).some(key=>!definitions.some(field=>field.key===key)))throw new LetterWorkflowError('permission');
- const source=await letterSources(tx,ctx,version.companyId,input.employmentId,definitions,input.customValues??{},todayInKualaLumpur());return renderLetterDocument(version.document,definitions,source.values,{allowSensitive:true});
+ const source=await letterSources(tx,ctx,version.companyId,input.employmentId,definitions,input.customValues??{},todayInKualaLumpur(),'presentation');return renderLetterDocument(version.document,definitions,source.values,{allowSensitive:true});
 });}
-export function letterFieldDependencies(ctx:SessionContext,input:{fieldVersionId:string;cursor?:string;limit?:number}){return letters(ctx,false,async tx=>{
+export function letterFieldDependencies(ctx:SessionContext,input:{fieldVersionId:string;cursor?:string;limit?:number}){return letterPresentation(ctx,input,async (tx,ctx,input)=>{
  const [field]=await tx.select().from(letterMergeFieldVersion).where(eq(letterMergeFieldVersion.id,uuid(input.fieldVersionId)));if(!field)throw new LetterWorkflowError('permission');await anyPermission(tx,field.companyId,['read','template']);if(input.cursor)uuid(input.cursor);const limit=letterListLimit(input.limit);
  const rows=await tx.select({versionId:letterTemplateVersion.id,templateId:letterTemplate.id,code:letterTemplate.code,name:letterTemplateVersion.name,ordinal:letterTemplateVersion.ordinal,fieldOrdinal:letterMergeFieldVersion.ordinal,status:letterTemplateVersion.status,deactivated:letterTemplate.deactivated}).from(letterTemplateField).innerJoin(letterMergeFieldVersion,eq(letterMergeFieldVersion.id,letterTemplateField.fieldVersionId)).innerJoin(letterTemplateVersion,eq(letterTemplateVersion.id,letterTemplateField.templateVersionId)).innerJoin(letterTemplate,eq(letterTemplate.id,letterTemplateVersion.templateId)).where(and(eq(letterMergeFieldVersion.companyId,field.companyId),eq(letterMergeFieldVersion.key,field.key),input.cursor?gt(letterTemplateVersion.id,input.cursor):undefined)).orderBy(asc(letterTemplateVersion.id)).limit(limit+1);
  return {rows:rows.slice(0,limit),nextCursor:rows.length>limit?rows[limit-1].versionId:null};
 });}
 async function fieldAccessTx(tx:Tx,co:string){await anyPermission(tx,co,['read','template']);const [access]=await tx.execute<{canEdit:boolean;canUseSensitive:boolean}>(sql`select app.letter_permission(${co}::uuid,'template') as "canEdit",app.can_admin_payroll_for(${co}::uuid) as "canUseSensitive"`);return access;}
-export function letterFieldAccess(ctx:SessionContext,co:string){return letters(ctx,false,tx=>fieldAccessTx(tx,co));}
-export function getLetterField(ctx:SessionContext,id:string){return letters(ctx,false,async tx=>{
+export function letterFieldAccess(ctx:SessionContext,co:string){return letterPresentation(ctx,co,(tx,ctx,co)=>fieldAccessTx(tx,co));}
+export function getLetterField(ctx:SessionContext,id:string){return letterPresentation(ctx,id,async (tx,ctx,id)=>{
  const [field]=await tx.select().from(letterMergeFieldVersion).where(eq(letterMergeFieldVersion.id,uuid(id)));if(!field)return null;const access=await fieldAccessTx(tx,field.companyId);
  const [status]=await tx.execute<{isLatest:boolean;inUse:boolean}>(sql`select coalesce(${field.id}::uuid=app.letter_field_latest_version(${field.companyId}::uuid,${field.key}),false) as "isLatest",app.letter_field_in_use(${field.companyId}::uuid,${field.key}) as "inUse"`);return {field,access,...status};
 });}
-export function letterFieldHistory(ctx:SessionContext,input:{companyId:string;key:string;cursor?:number;limit?:number}){return letters(ctx,false,async tx=>{
+export function letterFieldHistory(ctx:SessionContext,input:{companyId:string;key:string;cursor?:number;limit?:number}){return letterPresentation(ctx,input,async (tx,ctx,input)=>{
  await anyPermission(tx,input.companyId,['read','template']);const limit=letterListLimit(input.limit);if(input.cursor!==undefined&&(!Number.isInteger(input.cursor)||input.cursor<1))throw new LetterWorkflowError('invalid','cursor');
  const rows=await tx.select().from(letterMergeFieldVersion).where(and(eq(letterMergeFieldVersion.companyId,input.companyId),eq(letterMergeFieldVersion.key,text(input.key,80)),input.cursor?sql`${letterMergeFieldVersion.ordinal}<${input.cursor}`:undefined)).orderBy(desc(letterMergeFieldVersion.ordinal)).limit(limit+1);return {rows:rows.slice(0,limit),nextCursor:rows.length>limit?rows[limit-1].ordinal:null};
 });}
-export function letterPolicyHistory(ctx:SessionContext,input:{companyId:string;category:string;cursor?:number;limit?:number}){return letters(ctx,false,async tx=>{
+export function letterPolicyHistory(ctx:SessionContext,input:{companyId:string;category:string;cursor?:number;limit?:number}){return letterPresentation(ctx,input,async (tx,ctx,input)=>{
  await permission(tx,input.companyId,'settings');const limit=letterListLimit(input.limit);if(input.cursor!==undefined&&(!Number.isInteger(input.cursor)||input.cursor<1))throw new LetterWorkflowError('invalid','cursor');
  const rows=await tx.select().from(letterPolicyVersion).where(and(eq(letterPolicyVersion.companyId,input.companyId),eq(letterPolicyVersion.category,text(input.category,100)),input.cursor?sql`${letterPolicyVersion.ordinal}<${input.cursor}`:undefined)).orderBy(desc(letterPolicyVersion.ordinal)).limit(limit+1);return {rows:rows.slice(0,limit),nextCursor:rows.length>limit?rows[limit-1].ordinal:null};
 });}
 
 export type LetterReportFilter={companyIds?:string[];companyId?:string;departmentId?:string;from:string;to:string;cursor?:string;limit?:number;exportAll?:boolean;expectedDataHash?:string};
-export function letterReportDepartments(ctx:SessionContext,companyId?:string,companyIds?:string[]){return letters(ctx,false,async tx=>{
+export function letterReportDepartments(ctx:SessionContext,companyId?:string,companyIds?:string[]){return letterPresentation(ctx,{companyId,companyIds},async (tx,ctx,{companyId,companyIds})=>{
  if(companyIds!==undefined){if(!Array.isArray(companyIds))throw new LetterWorkflowError('invalid','scope');companyIds.forEach(uuid);if(companyId&&!companyIds.includes(companyId))throw new LetterWorkflowError('permission');}
  if(companyId){await permission(tx,companyId,'read');await permission(tx,companyId,'report');}
  return tx.select({id:department.id,companyId:department.companyId,name:sql<string>`coalesce(nullif(trim(${department.label}),''),nullif(trim(${department.description}),''),${department.name})`}).from(department).where(and(companyIds!==undefined?inArray(department.companyId,companyIds):undefined,companyId?eq(department.companyId,companyId):undefined,sql`app.letter_permission(${department.companyId},'read') and app.letter_permission(${department.companyId},'report')`)).orderBy(asc(department.name),asc(department.id));
@@ -696,7 +715,7 @@ export type LetterReportRow={id:string;reference:string;state:string;company_id:
 export type LetterReportSummary={total:number;issued:number;void:number;historicalIssued:number;pendingApproval:number;pendingAcknowledgement:number;approvalOverdue:number;acknowledgementOverdue:number;meanApprovalHours:number|null;meanIssueHours:number|null;meanAcknowledgementHours:number|null};
 export type LetterReport={rows:LetterReportRow[];summary:LetterReportSummary;dataHash:string;generatedAt:string;generatedBy:string;timezone:'Asia/Kuala_Lumpur';period:{from:string;to:string};nextCursor:string|null};
 /** One SQL statement owns the complete scoped cohort, aggregates, page and fingerprint. Reads emit nothing. */
-export function readLetterReport(ctx:SessionContext,input:LetterReportFilter):Promise<LetterReport>{return letters(ctx,false,async tx=>{
+export function readLetterReport(ctx:SessionContext,input:LetterReportFilter):Promise<LetterReport>{return letterPresentation(ctx,input,async (tx,ctx,input)=>{
  if(input.companyIds!==undefined){if(!Array.isArray(input.companyIds))throw new LetterWorkflowError('invalid','scope');input.companyIds.forEach(uuid);if(input.companyId&&!input.companyIds.includes(input.companyId))throw new LetterWorkflowError('permission');}
  if(!isCalendarDate(input.from)||!isCalendarDate(input.to)||input.from>input.to||(Date.parse(input.to)-Date.parse(input.from))/86400000>365)throw new LetterWorkflowError('invalid','period');
  for(const id of [input.companyId,input.departmentId,input.cursor])if(id)uuid(id);if(input.expectedDataHash&&!/^[0-9a-f]{64}$/.test(input.expectedDataHash))throw new LetterWorkflowError('invalid','reportHash');
