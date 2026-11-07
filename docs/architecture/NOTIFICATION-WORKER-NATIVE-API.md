@@ -7,6 +7,11 @@ The [unnumbered SQL](NOTIFICATION-WORKER-NATIVE-PROPOSAL.sql) is a non-installab
 protected state and API signatures. Function bodies, canonical adapter extraction and tests remain
 implementation work; this document does not claim those gaps are already closed.
 
+Root subsequently authorized an isolated source/CI prototype under these namespace names.
+The [stage1 lifecycle implementation](NOTIFICATION-WORKER-LIFECYCLE-PROTOTYPE.md) now supplies
+real native admission/run/batch functions and hostile-role tests. It does not implement
+canonical projection/preparation, allocate a migration or commission the full contract below.
+
 ## Exact role and grants contract
 
 Proposed names are review vocabulary, not allocated installation roles:

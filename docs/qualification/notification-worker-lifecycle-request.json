@@ -1,0 +1,15 @@
+{
+ "kind":"NOTIFICATION_WORKER_NATIVE_LIFECYCLE_PROTOTYPE_REQUEST",
+ "releaseEligible":false,
+ "base":"12b544c6475f52d3e465f75678cc03249fbe1751",
+ "status":"Source implementation only; native hosted qualification and compiler pending",
+ "selector":"docs/qualification/notification-worker-lifecycle-focused-tests.json",
+ "execution":"Sole-file standard hosted Actions, job-owned disposable PostgreSQL16 worker database",
+ "runTypecheck":true,
+ "runBuild":false,
+ "buildScope":"No production entrypoint, existing dispatcher, scheduler or fallback changed; no production build claim",
+ "implementedCapabilities":["open_run","scope_page","open_batch","events","finish_batch(empty only)","settle_scope","finish_run","fail_run"],
+ "mutations":["Private native capability state","Fixed-key job_run native accounting only"],
+ "absentCapabilities":["Event fact families","Canonical recipient/render adapter extraction","Reminder preparation","Employment/account notification projection","Outbox/receipt/cursor settlement","Nonzero projection counters","Abandoned-run recovery/retention","Installer and protected invocation/scheduler acceptance"],
+ "production":"Held; no numbered migration, journal, live role/schema, source table grants, app/owner SET edge, SMTP/provider or deployment operation"
+}
