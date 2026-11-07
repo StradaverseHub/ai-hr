@@ -37,7 +37,7 @@ describe('historical income tax basis review and confirmation',()=>{
   it.each(Object.keys(catalogs) as (keyof typeof catalogs)[])('requires consent and names the exact eligible subset in %s',async locale=>{
     const user=userEvent.setup();mocks.preview.mockResolvedValue({ok:true,preview:preview()});mocks.confirm.mockResolvedValue({ok:true,result:{id:batchId}});
     const t=show(locale);await user.click(screen.getByRole('button',{name:t.previewAction}));
-    await user.click(await screen.findByRole('button',{name:createTranslator({locale,messages:catalogs[locale],namespace:'payrollTaxBasis'})('recalculateAction',{count:1})}));
+    await user.click(await screen.findByRole('button',{name:createTranslator({locale,messages:{payrollTaxBasis:catalogs[locale].payrollTaxBasis},namespace:'payrollTaxBasis'})('recalculateAction',{count:1})}));
     const dialog=screen.getByRole('alertdialog');
     expect(within(dialog).getByText('E001 · Aina')).toBeVisible();
     expect(within(dialog).queryByText('E002 · Daniel')).toBeNull();

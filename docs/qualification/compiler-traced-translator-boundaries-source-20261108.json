@@ -1,0 +1,36 @@
+{
+  "kind": "NATIVE_TRACED_TRANSLATOR_FIXTURE_SOURCE_NOT_RELEASE",
+  "base": "f2b1ae1a9af20bdb30f28ed9b537aa08994dfc10",
+  "sourceRef": "codex/compiler-traced-translator-boundaries-20261108",
+  "selectors": [
+    "test/939ffafb-import-code-download.dom.test.tsx",
+    "test/attendance-resolved-route-preview.dom.test.tsx",
+    "test/payroll-tax-basis-screen.dom.test.tsx"
+  ],
+  "runWholeTypecheck": true,
+  "qualification": "NOT_RUN",
+  "retainedTrace": {
+    "run": 42418174429,
+    "artifact": 13592128429,
+    "zipSha256": "e708931609ef2582a6a6d8d8b3f25bce7cafce8687d66b02793d00e3907a7197",
+    "completeSuite": false
+  },
+  "sourceSha256": {
+    "test/939ffafb-import-code-download.dom.test.tsx": "cc1c42eedc7692a2d8158ed73c5ae50a5f58fd4712873cfa466ac0535639100b",
+    "test/attendance-resolved-route-preview.dom.test.tsx": "b1509fe41a580e5cdf596b329dd5df10a2b9e74aa7d41ff2b7eeb0de11832b8b",
+    "test/payroll-tax-basis-screen.dom.test.tsx": "2224b2bfc0f45a76cbb87c991a29a90ceb0d18f2f38282389c16efecbbbc8627",
+    "docs/qualification/compiler-traced-translator-boundaries-20261108.md": "d5dec7a6c74f5f94e12f1883b92f5408566f3e438ae9aa97e921a4fea7d265c4"
+  },
+  "localesUnchanged": {
+    "en": "78010dab9cfc30e4dec19e81b6dc3e891245971c946db0c6058640ced454fe4d",
+    "ms": "6df68a97fca4f6145761730b3e631da333fa836aa0992504b016502529813f5a",
+    "zh": "26fcd540f5f7b319d09e69b8b53602838363833216863f46d549710e6ede2fa5",
+    "ta": "35ea6fcae98f23c88955212af1ebbe20bcb44961019cdd857d6fc6ea13728ce0",
+    "th": "f8225a429c5248494124e8e62ab901df81bcc80da8f568f51b7702f1ee5aab5b",
+    "vi": "4205dc3f15b28e90e2faa46a8672ac8c6360b463f5eefc7b3b8bf892391da92d"
+  },
+  "applicationChanged": false,
+  "ordinaryCompilerChanged": false,
+  "releaseAuthorized": false,
+  "production": "HELD"
+}

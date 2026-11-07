@@ -12,7 +12,7 @@ import { createTranslator } from 'next-intl';
 afterEach(cleanup);
 describe('resolved Attendance route presentation', () => {
     it.each([['en', en], ['ms', ms], ['zh', zh], ['ta', ta], ['th', th], ['vi', vi]] as const)('renders resolved people and explicit HR alternatives in %s', (locale, messages) => {
-        const t = createTranslator({ locale, messages, namespace: 'attendanceWorkflow' });
+        const t = createTranslator({ locale, messages: { attendanceWorkflow: messages.attendanceWorkflow }, namespace: 'attendanceWorkflow' });
         render(<AttendanceResolvedRoutePreview stages={[
             { name: 'Level 1', approvers: [{ kind: 'direct_manager', employmentId: 'frozen-manager', name: 'Fictional supervisor' }, { kind: 'hr_admin', employmentId: null, name: 'HR administrators' }] },
             { name: 'Level 2', approvers: [{ kind: 'direct_manager', employmentId: 'frozen-superior', name: 'Fictional superior' }] },
