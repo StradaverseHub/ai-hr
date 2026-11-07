@@ -65,7 +65,7 @@ it('boots two actual same-build Next workers through protected native admission 
   expect(report.package).toMatchObject({source:candidate,sameCanonicalBuildPacket:true,actionKeyOverride:false});
   expect(report.package.actionManifestSha256).toMatch(/^[a-f0-9]{64}$/);
   expect(report.installation).toMatchObject({preCandidateWitnessMatched:true,
-   dependencies:{normalization:'ROOT_COPY_DEPENDENCIES_V1'}});
+   dependencies:{normalization:'ROOT_COPY_DEPENDENCIES_V2'}});
   expect(report.installation.dependencies.sha256).toMatch(/^[a-f0-9]{64}$/);
   expect(report.remaining).toContain('500-actor-steady-load');
  }finally{

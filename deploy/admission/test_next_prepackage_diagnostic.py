@@ -6,6 +6,7 @@ import json
 import os
 import pathlib
 import tempfile
+import subprocess
 import types
 import unittest
 from unittest.mock import patch
@@ -153,6 +154,36 @@ class PrepackageDiagnosticModels(unittest.TestCase):
                 if descriptor is not None: self.assertEqual(os.fstat(descriptor).st_uid, 0)
         for path in ('/tmp/fictional', '/etc/systemd/../private', '/home/runner/system'):
             with self.assertRaises(AssertionError), F.manager_directory(path): pass
+
+    def test_compiled_receiver_refusals_publish_only_exact_allowlisted_codes_never_child_output(self):
+        binding = {'archivePath': '/private/archive', 'manifestPath': '/private/manifest', 'buildSourcePath': '/private/source'}
+        for raw, code in [*F.FORMAT2_REFUSALS.items(), (b'private TOKEN=fictional\n', 'format2-receiver-refused'),
+                          (next(iter(F.FORMAT2_REFUSALS)) + b'private TOKEN=fictional', 'format2-receiver-refused')]:
+            F.report = {'phases': [], 'currentPhase': 'existing-format2-exact-receiver'}
+            with patch.object(F, 'run', return_value=types.SimpleNamespace(returncode=1, stderr=raw)) as run:
+                with self.assertRaisesRegex(AssertionError, '^Bounded compiled package receiver refused$'):
+                    F.receive_compiled_package(pathlib.Path('/sealed'), binding, pathlib.Path('/release'))
+                self.assertEqual(run.call_args.kwargs, {'timeout': 60, 'check': False})
+            self.assertEqual(F.report['format2ReceiverFailure'], {'code': code})
+            self.assertNotIn('TOKEN=', json.dumps(F.report))
+        before = copy.deepcopy(F.report)
+        F.report['currentPhase'] = 'foreign-phase'
+        with patch.object(F, 'run') as run, self.assertRaises(AssertionError):
+            F.receive_compiled_package(pathlib.Path('/sealed'), binding, pathlib.Path('/release'))
+        run.assert_not_called()
+        self.assertEqual(F.report['format2ReceiverFailure'], before['format2ReceiverFailure'])
+
+    def test_compiled_receiver_success_and_timeout_keep_real_outcomes_and_private_redaction(self):
+        binding = {'archivePath': '/private/archive', 'manifestPath': '/private/manifest', 'buildSourcePath': '/private/source'}
+        F.report = {'phases': [], 'currentPhase': 'existing-format2-exact-receiver'}
+        with patch.object(F, 'run', return_value=types.SimpleNamespace(returncode=0, stderr=b'private')):
+            F.receive_compiled_package(pathlib.Path('/sealed'), binding, pathlib.Path('/release'))
+        self.assertNotIn('format2ReceiverFailure', F.report)
+        error = subprocess.TimeoutExpired('private TOKEN=fictional', 60, stderr=b'private TOKEN=fictional')
+        with patch.object(F, 'run', side_effect=error), self.assertRaises(AssertionError) as refusal:
+            F.receive_compiled_package(pathlib.Path('/sealed'), binding, pathlib.Path('/release'))
+        self.assertEqual(F.report['format2ReceiverFailure'], {'code': 'format2-receiver-timeout'})
+        self.assertNotIn('TOKEN=', str(refusal.exception) + json.dumps(F.report))
 
 
 if __name__ == '__main__':

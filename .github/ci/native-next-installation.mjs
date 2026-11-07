@@ -28,7 +28,7 @@ export function installationShape(value){
   &&posix.normalize(value.node.path)===value.node.path&&!value.node.path.split('/').some(part=>part==='.'||part==='..')&&!/[\x00-\x1f\x7f]/.test(value.node.path));
  assert(/^[a-f0-9]{64}$/.test(value.node.sha256)&&Number.isSafeInteger(value.node.bytes)&&value.node.bytes>0&&value.node.bytes<=256*1024**2);
  assert.deepEqual(Object.keys(value.dependencies).sort(),['bytes','entries','normalization','sha256']);
- const d=value.dependencies;assert.equal(d.normalization,'ROOT_COPY_DEPENDENCIES_V1');assert(/^[a-f0-9]{64}$/.test(d.sha256));
+ const d=value.dependencies;assert.equal(d.normalization,'ROOT_COPY_DEPENDENCIES_V2');assert(/^[a-f0-9]{64}$/.test(d.sha256));
  assert(Number.isSafeInteger(d.entries)&&d.entries>0&&d.entries<=500000&&Number.isSafeInteger(d.bytes)&&d.bytes>0&&d.bytes<=4*1024**3);
  return value;
 }
@@ -62,7 +62,7 @@ export function readProtectedBootstrap(env=process.env){
  // seal. Dependency values here are placeholders for schema validation only;
  // actual dependencies are captured independently after the locked install.
  installationShape({version:1,kind:'LOCKED_HOSTED_INSTALL_BEFORE_CANDIDATE_VERIFICATION',node:value.node,
-  dependencies:{normalization:'ROOT_COPY_DEPENDENCIES_V1',sha256:'0'.repeat(64),entries:1,bytes:1},lockSha256:'0'.repeat(64),packageSha256:'0'.repeat(64)});
+  dependencies:{normalization:'ROOT_COPY_DEPENDENCIES_V2',sha256:'0'.repeat(64),entries:1,bytes:1},lockSha256:'0'.repeat(64),packageSha256:'0'.repeat(64)});
  return value;
 }
 export function readProtectedNativeEvent(env=process.env,bootstrap=readProtectedBootstrap(env)){

@@ -186,7 +186,7 @@ def installation_fields(value):
          and positive(node['bytes']) and node['bytes'] <= 256*1024**2, 'Native executable witness differs')
     closed(value['dependencies'], {'normalization', 'sha256', 'entries', 'bytes'})
     deps = value['dependencies']
-    need(deps['normalization'] == 'ROOT_COPY_DEPENDENCIES_V1'
+    need(deps['normalization'] == 'ROOT_COPY_DEPENDENCIES_V2'
          and isinstance(deps['sha256'], str) and SHA.fullmatch(deps['sha256'])
          and positive(deps['entries']) and deps['entries'] <= 500000
          and positive(deps['bytes']) and deps['bytes'] <= 4*1024**3, 'Native dependency witness differs')

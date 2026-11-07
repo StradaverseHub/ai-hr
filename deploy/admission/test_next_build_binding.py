@@ -42,7 +42,7 @@ def fixture():
     binding = {'schemaVersion': 1, 'kind': M.PLAIN_KIND, 'releaseAuthorized': False, 'expected': expected,
                'installation': {'version': 1, 'kind': 'LOCKED_HOSTED_INSTALL_BEFORE_CANDIDATE_VERIFICATION',
                    'node': {'path': '/opt/hostedtoolcache/node/22.23.3/x64/bin/node', 'sha256': '3'*64, 'bytes': 100},
-                   'dependencies': {'normalization': 'ROOT_COPY_DEPENDENCIES_V1', 'sha256': '4'*64, 'entries': 10, 'bytes': 200},
+                   'dependencies': {'normalization': 'ROOT_COPY_DEPENDENCIES_V2', 'sha256': '4'*64, 'entries': 10, 'bytes': 200},
                    'lockSha256': '1'*64, 'packageSha256': '2'*64},
                'artifact': {'id': 456, 'digest': 'sha256:'+'c'*64, 'runId': 123}, 'producerJob': {'id': 789, 'name': 'build'},
                'packet': {'archiveSha256': provenance['archiveSha256'], 'manifestSha256': provenance['manifestSha256'],
@@ -57,7 +57,8 @@ class BindingModels(unittest.TestCase):
         for key, field, value in [('node', 'path', '/a/../node'), ('node', 'bytes', True),
                                   ('node', 'sha256', 'claimed'), ('dependencies', 'entries', 0),
                                   ('dependencies', 'entries', 500001), ('dependencies', 'bytes', 4*1024**3+1),
-                                  ('dependencies', 'normalization', 'caller-normalization')]:
+                                  ('dependencies', 'normalization', 'caller-normalization'),
+                                  ('dependencies', 'normalization', 'ROOT_COPY_DEPENDENCIES_V1')]:
             changed = copy.deepcopy(binding['installation'])
             changed[key][field] = value
             with self.subTest(key=key, field=field, value=value), self.assertRaises(ValueError):

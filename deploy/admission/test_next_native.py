@@ -396,6 +396,30 @@ def slice_absence():
     save()
 
 
+FORMAT2_REFUSALS = {
+    b'Build bundle refused: generated semver wrapper does not belong to this runtime source\n': 'format2-installer-runtime-prefix',
+    b'Build bundle refused: canonical distinct producer source required for installer comparison\n': 'format2-installer-origin',
+    b'Build bundle refused: runtime prefix outside generated NODE_PATH\n': 'format2-installer-prefix-site',
+    b'Build bundle refused: unsupported generated semver wrapper\n': 'format2-installer-shape',
+}
+
+
+def receive_compiled_package(helper, binding, release):
+    require(report.get('currentPhase') == 'existing-format2-exact-receiver', 'Compiled receiver phase differs')
+    try:
+        result = run(['/usr/bin/python3', '-I', '-B', str(helper / 'build-bundle.py'), 'unpack-with-origin',
+            binding['archivePath'], binding['manifestPath'], str(release / '.next'), str(release),
+            binding['buildSourcePath']], timeout=60, check=False)
+    except subprocess.TimeoutExpired:
+        report['format2ReceiverFailure'] = {'code': 'format2-receiver-timeout'}
+        save()
+        raise AssertionError('Bounded compiled package receiver refused') from None
+    if result.returncode != 0:
+        report['format2ReceiverFailure'] = {'code': FORMAT2_REFUSALS.get(result.stderr, 'format2-receiver-refused')}
+        save()
+        raise AssertionError('Bounded compiled package receiver refused')
+
+
 def package(plan, helper, binding):
     phase('authenticated-package-preparation')
     I = load('native_shared_inventory', helper / 'runtime_inventory.py')
@@ -435,9 +459,7 @@ def package(plan, helper, binding):
     # Exact original format2 receiver/wire. This executes only the protected
     # stdlib tool, never application config or Node as root.
     phase('existing-format2-exact-receiver')
-    run(['/usr/bin/python3', '-I', '-B', str(helper / 'build-bundle.py'), 'unpack-with-origin',
-         binding['archivePath'], binding['manifestPath'], str(release / '.next'), str(release),
-         binding['buildSourcePath']], timeout=60)
+    receive_compiled_package(helper, binding, release)
     (release / '.next').chmod(0o755)
     compiled = json.loads(pathlib.Path(binding['manifestPath']).read_bytes())
     # The unchanged receiver honors its caller's umask. These are exact trusted
