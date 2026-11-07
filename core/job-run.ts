@@ -195,7 +195,7 @@ export async function listRecentJobRuns(ctx: SessionContext, perJob = 10): Promi
   return withTenant(ctx, async tx => {
     const history = (key: JobKey) => tx.select().from(jobRun).where(eq(jobRun.jobKey, key))
       .orderBy(desc(jobRun.ranAt), desc(jobRun.id)).limit(perJob);
-    const bounded = unionAll(history(JOB_KEYS[0]), ...JOB_KEYS.slice(1).map(history)).as('recent_job_runs');
+    const bounded = unionAll(history(JOB_KEYS[0]), history(JOB_KEYS[1]), ...JOB_KEYS.slice(2).map(history)).as('recent_job_runs');
     return tx.select().from(bounded).orderBy(desc(bounded.ranAt), desc(bounded.id));
   });
 }

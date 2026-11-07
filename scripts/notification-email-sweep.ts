@@ -5,22 +5,18 @@ import { spawn } from 'node:child_process';
 import type { SessionContext } from '../db/client';
 import type { StartedJobRun } from '../core/job-run';
 async function main(){
- const [{createDb},{loadSweepScope,describeSkips},{resolveEntitlementsTx,isModuleEnabled},{sweepOnboarding,refreshOnboardingPersonnel,v9Sweep,v9DeliverEmails},{sweepProbation},{sweepContractManagement},{sweepAssessmentReminders},{dispatchNotificationsFromSweep},{deliverNotificationEmails,deliverAttendanceCcEmails},{deliverLetterEmailsFromSweep},{sweepLetterAutomationFromSweep},{projectLetterNotificationsFromSweep},{createNoticeSweepAccess},{NOTIFICATION_ROLE_MISSING,notificationDowngradeReady},{startJobRun,completeJobRun,jobOutcome},{notificationProjectionCounters,recordCommittedProjectionBatch,NOTIFICATION_PROJECTION_JOB_KEY},{drainNotificationProjection},{notificationEventProcessing,domainEvent},{and,eq,isNull,sql}]=await Promise.all([
+ const [{createDb},{loadSweepScope,describeSkips},{resolveEntitlementsTx,isModuleEnabled},{sweepOnboarding,refreshOnboardingPersonnel,v9Sweep,v9DeliverEmails},{sweepProbation},{sweepContractManagement},{sweepAssessmentReminders},{dispatchNotificationsFromSweep},{deliverNotificationEmails,deliverAttendanceCcEmails},{deliverLetterEmailsFromSweep},{sweepLetterAutomationFromSweep},{projectLetterNotificationsFromSweep},{createNoticeSweepAccess},{NOTIFICATION_ROLE_MISSING,notificationDowngradeReady},{startJobRun,completeJobRun,jobOutcome},{notificationProjectionCounters,recordCommittedProjectionBatch,NOTIFICATION_PROJECTION_JOB_KEY},{drainNotificationProjection},{readNotificationProjectionBacklog}]=await Promise.all([
   import('../db/client'),import('../core/sweep-scope'),import('../core/entitlements'),import('../packs/lifecycle/service'),import('../packs/probation/service'),
   import('../packs/contracts/service'),import('../packs/performance/service'),import('../core/notifications'),import('../core/notification-email-delivery'),
   import('../core/letter-email-delivery'),import('../core/letter-automation'),import('../core/letter-notifications'),import('../core/notice-projection'),import('./lib/notification-sweep-role'),
-  import('../core/job-run'),import('../lib/notification-scheduling-evidence'),import('../core/orchestrator-harness'),import('../db/schema'),import('drizzle-orm')]);
+  import('../core/job-run'),import('../lib/notification-scheduling-evidence'),import('../core/orchestrator-harness'),import('./lib/notification-projection-backlog')]);
  const url=process.env.MIGRATION_DATABASE_URL;if(!url)throw new Error('Migration database required');
  const owner=createDb(url);let failed=0,tenantsProcessed=0,tenantsFailed=0,tenantsSkipped=0,fatal=false;
  const counters=notificationProjectionCounters();let run:StartedJobRun|undefined;
  // The old accepted-artifact interface does not cover this worker. Do not infer identity from cwd,
  // environment SHA strings, a configured timer, or a successful process exit.
  async function observeBacklog(ctx:SessionContext){
-  const consumer=isModuleEnabled(ctx,'notifications')?'notifications':'assessment-reminders';
-  const [backlog]=await owner.db.select({pending:sql<number>`count(*)::double precision`,oldest:sql<number>`coalesce(greatest(0,extract(epoch from (now()-min(${domainEvent.createdAt}))))::double precision,0)`})
-   .from(notificationEventProcessing).innerJoin(domainEvent,and(eq(domainEvent.id,notificationEventProcessing.eventId),eq(domainEvent.tenantId,notificationEventProcessing.tenantId)))
-   .where(and(eq(notificationEventProcessing.tenantId,ctx.tenantId),eq(notificationEventProcessing.consumer,consumer),isNull(notificationEventProcessing.disposition)));
-  if(!backlog||!Number.isSafeInteger(backlog.pending)||backlog.pending<0||!Number.isFinite(backlog.oldest)||backlog.oldest<0)throw new Error('Projection backlog unavailable.');
+  const backlog=await readNotificationProjectionBacklog(ctx,owner);
   counters.backlogObservedTenants++;counters.pendingEvents+=backlog.pending;counters.oldestPendingSeconds=Math.max(counters.oldestPendingSeconds,backlog.oldest);
  }
  try{
