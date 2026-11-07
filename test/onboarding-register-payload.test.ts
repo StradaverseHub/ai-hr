@@ -6,7 +6,7 @@ import { eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, expect, it, vi } from 'vitest';
 import { saveEmployeeDraft } from '../core/employee-draft';
 import { client, type SessionContext } from '../db/client';
-import { lcOnboardingCase, lcOnboardingSeen } from '../db/schema';
+import { employeeDraft, lcOnboardingCase, lcOnboardingSeen } from '../db/schema';
 import { todayInKualaLumpur } from '../lib/hr-date';
 import { dayDate, visibleRecentJoiner, type Case, type Task } from '../lib/onboarding-model';
 import { onboardingList, onboardingMarkSeen, onboardingRegisterContext, onboardingRegisterRows, onboardingSaveConfig, onboardingSetup } from '../packs/lifecycle/service';
@@ -66,13 +66,22 @@ it('serializes the same visible projected joiners without retired cases or unnee
   expect(full).toHaveLength(1205);
   const exactProjection = (rows: typeof full) => rows.filter(row => visibleRecentJoiner(config, row.case, today))
     .map(row => ({ case: row.case, isNew: row.isNew }));
-  const nativeBegin = client.begin.bind(client), seenStatements: string[] = [];
+  const nativeBegin = client.begin.bind(client), seenStatements: string[] = [],caseRowsRead:number[]=[];
   const spy = vi.spyOn(client, 'begin').mockImplementation(((...args: unknown[]) => {
     const index = args.findIndex(arg => typeof arg === 'function'), callback = args[index] as (native: typeof client) => unknown;
     args[index] = (native: typeof client) => callback(new Proxy(native, { get(target, key, receiver) {
       if (key === 'unsafe') return (...query: unknown[]) => {
         if (typeof query[0] === 'string' && query[0].toLowerCase().includes('from "lc_onboarding_seen"')) seenStatements.push(query[0].toLowerCase());
-        return Reflect.apply(target.unsafe, target, query);
+        const pending=Reflect.apply(target.unsafe,target,query);
+        if(typeof query[0]==='string'&&query[0].includes('from "lc_onboarding_case"')&&!query[0].includes('max(')){
+          return new Proxy(pending,{get(result,key){
+            if(key==='values')return async(...valuesArgs:unknown[])=>{
+              const values=await Reflect.apply(result.values,result,valuesArgs);caseRowsRead.push(values.length);return values;
+            };
+            const value=Reflect.get(result,key,result);return typeof value==='function'?value.bind(result):value;
+          }});
+        }
+        return pending;
       };
       return Reflect.get(target, key, receiver);
     } }));
@@ -86,12 +95,18 @@ it('serializes the same visible projected joiners without retired cases or unnee
   expect(JSON.stringify(compact)).not.toContain('RETIRED-LATEST-SYNC');
   expect(seenStatements).toHaveLength(1);
   expect(seenStatements[0]).toContain('= any(');
+  expect(caseRowsRead).toEqual([4]);
 
   const restrictedFull = await onboardingList(member), restricted = await onboardingRegisterRows(member, display);
   expect(restricted).toEqual({ rows: exactProjection(restrictedFull), today, latestSync: newestSync });
   expect(restrictedFull.find(row => row.case.id === oldTask.id)?.case.tasks).toEqual([]);
   expect(new Set(restricted.rows.map(row => row.case.id))).toEqual(new Set([source.id, boundary.id, draftOld.id]));
   expect(restricted.rows.every(row => row.isNew)).toBe(true);
+  const legacy=make('RETIRED-NONASCII-SYNC',{state:'cancelled',syncedAt:'😀'});
+  await owner.db.insert(lcOnboardingCase).values(legacy);
+  const legacyFull=await onboardingList(admin),legacyCompact=await onboardingRegisterRows(admin,display);
+  expect(legacyCompact.rows).toEqual(exactProjection(legacyFull));
+  expect(legacyCompact.latestSync).toBe('😀');
   const foreign = await seedBase();
   await setModule(foreign.tenantId, 'lifecycle', 'active');
   const foreignAdmin = await entitledCtx(foreign);
@@ -107,6 +122,22 @@ it('serializes the same visible projected joiners without retired cases or unnee
     authorizedRows: full.length, adminRows: compact.rows.length, restrictedRows: restricted.rows.length,
     baselineClientPropBytes: Buffer.byteLength(JSON.stringify(full)), compactClientPropBytes: Buffer.byteLength(JSON.stringify(compact)),
     fullMs, compactMs, exactOrderPrivacyLatestSyncAndSeen: true, providerCalls: 0,
-    limitations: 'Authorized case JSON still read in PostgreSQL; exact projected client data only. No browser or 500-user claim.',
+    caseBodiesTransported:caseRowsRead[0],
+    limitations: 'PostgreSQL still evaluates authorized history; only conservative candidates cross into application DTOs. No browser or 500-user claim.',
   }, null, 2));
 }, 300000);
+
+it('refreshes a linked open case before deciding recent visibility from its current Personnel date',async()=>{
+ await resetDb();const b=await seedBase();await setModule(b.tenantId,'lifecycle','active');
+ const admin=await entitledCtx(b),today=todayInKualaLumpur();await onboardingSetup(admin);
+ const draft=await saveEmployeeDraft(admin,{currentStep:1,data:{profile:{fullName:'Fictional changed joiner',primaryEmail:'changed-joiner@example.test'},
+  employment:{companyId:b.companyId,departmentId:b.deptA,positionId:b.positionId,hiredOn:dayDate(today,-60)}}});
+ const [row]=await owner.db.select().from(lcOnboardingCase).where(eq(lcOnboardingCase.sourceDraftId,draft.id));
+ await owner.db.update(lcOnboardingCase).set({data:{...row.data,personnelStatus:'Active',state:'submitted',tasks:[],requisitions:[],source:{...row.data.source,joinDate:dayDate(today,-60)}}}).where(eq(lcOnboardingCase.id,row.id));
+ const [source]=await owner.db.select().from(employeeDraft).where(eq(employeeDraft.id,draft.id));
+ await owner.db.update(employeeDraft).set({data:{...source.data,employment:{...source.data.employment,hiredOn:today}}}).where(eq(employeeDraft.id,draft.id));
+ const full=await onboardingList(admin),compact=await onboardingRegisterRows(admin,{today,recentActiveDays:14});
+ expect(compact.rows.map(value=>value.case.id)).toEqual([row.id]);
+ expect(compact.rows[0].case).toEqual(full.find(value=>value.case.id===row.id)!.case);
+ expect(compact.rows[0].case.source.joinDate).toBe(today);
+});

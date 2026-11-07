@@ -2,6 +2,7 @@ import { asc, sql, type SQL } from 'drizzle-orm';
 import type { Tx } from '../../../db/client';
 import { lcOnboardingCase as cases } from '../../../db/schema';
 import { dayDate, visibleRecentJoiner, type Case, type Config } from '../../../lib/onboarding-model';
+import {isCalendarDate} from '../../../lib/calendar-date';
 
 const jsonFalsy = (value: SQL) => sql`
   coalesce(${value}, 'null'::jsonb) in ('null'::jsonb, 'false'::jsonb, '0'::jsonb, '""'::jsonb)
@@ -33,6 +34,13 @@ function recentJoinerExpression(cutoff: string) {
       from jsonb_array_elements(${requisitions}) with ordinality req(value, ordinal)
       where ${jsonFalsy(sql`req.value->'cancelledAt'`)} order by req.ordinal limit 1) then true
     else ${recentDate} end`;
+}
+
+/** Conservative source filter only. NULL shapes retain canonical JavaScript evaluation. */
+export function recentOnboardingJoinerCandidates(config:Pick<Config,'recentActiveDays'>,today:string):SQL|undefined{
+ const relative=-config.recentActiveDays;
+ if(!Number.isInteger(relative)||relative < -365||relative > -1||!isCalendarDate(today))return undefined;
+ return sql`(${recentJoinerExpression(dayDate(today,relative))}) is not false`;
 }
 
 /** The caller has already checked live module membership; this query uses the ordinary case RLS. */

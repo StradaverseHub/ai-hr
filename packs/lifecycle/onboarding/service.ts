@@ -8,7 +8,7 @@ import { organisationChoiceLabels } from '../../../lib/organisation-choice-label
 import { onboardingConfigSchema, onboardingTaskSchema, onboardingCommandSchema, onboardingNoteSchema } from '../../../lib/onboarding-validation';
 import { randomUUID } from 'node:crypto';
 import { isDeepStrictEqual } from 'node:util';
-import { and, asc, eq, inArray, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNotNull, or, sql } from 'drizzle-orm';
 import { withLifecycleTenant as withTenant } from '../../../core/module-gate';
 import { type SessionContext, type Tx } from '../../../db/client';
 import { appendEvent, actorOf } from '../../../db/events';
@@ -20,7 +20,7 @@ import type {AssignedPersonalTaskMetadata} from '../../../lib/assigned-work';
 import { visibleLabelIdsCondition } from '../../../core/system-labels';
 import type { EmployeeDraftData } from '../../../lib/employee-draft-schema';
 import * as M from '../../../lib/onboarding-model';
-import { recentOnboardingJoinerCountTx } from './navigation-count';
+import { recentOnboardingJoinerCountTx,recentOnboardingJoinerCandidates } from './navigation-count';
 import { readOnboardingTaskQueueInputsTx } from './task-queue-read';
 export type { Config as OnboardingConfig, Case as OnboardingCase, Note as OnboardingNote, Facts as OnboardingFacts, Actor as OnboardingActor } from '../../../lib/onboarding-model';
 export { effectiveFacts as onboardingFacts, matchChecklist as onboardingChecklist, matches as onboardingMatches, progress as onboardingProgress, currentReq as onboardingRequisition, requisitionStatus as onboardingRequisitionStatus, stepOpen as onboardingStepOpen, activeItem as onboardingActiveItem, inGroup as onboardingGroupMember } from '../../../lib/onboarding-model';
@@ -280,14 +280,27 @@ export function onboardingRegisterRows(ctx: SessionContext, display: Pick<M.Conf
     return withTenant(ctx, async tx => {
         const { config, actor } = await onboardingContextTx(tx, ctx);
         requireOnboardingListActor(actor);
-        const rows = await tx.select({ id: cases.id, data: cases.data }).from(cases).orderBy(asc(cases.createdAt), asc(cases.id));
+        // Preserve all-history sync metadata without transporting retired case bodies. Unknown
+        // historical sync shapes retain the canonical full reader and JavaScript comparison.
+        const [metadata]=await tx.select({
+            latestSync:sql<string|null>`max((${cases.data}->>'syncedAt') collate "C")`,
+            safe:sql<boolean>`coalesce(bool_and(coalesce(jsonb_typeof(${cases.data}->'syncedAt') in ('string','null')
+                and coalesce((${cases.data}->>'syncedAt') !~ '[^ -~]',true),true)),true)`,
+        }).from(cases);
+        const candidates=metadata.safe?recentOnboardingJoinerCandidates(display,display.today):undefined;
+        const rows = await tx.select({ id: cases.id, data: cases.data }).from(cases).where(candidates?or(
+            candidates,
+            // Current Personnel may change any open linked case's join date. Always refresh
+            // those cases before the canonical privacy and visibility decision.
+            and(sql`${cases.data}->>'state' in ('pending','submitted')`,or(isNotNull(cases.employmentId),isNotNull(cases.sourceDraftId))),
+        ):undefined).orderBy(asc(cases.createdAt), asc(cases.id));
         const open = rows.filter(row => ['pending','submitted'].includes(row.data.state));
         if (open.length) {
             const projections = await tx.execute<{id:string;value:CurrentPersonnel|null}>(sql`select id,app.onboarding_current_personnel(id,${todayInKualaLumpur()}::date) as value from lc_onboarding_case where id in (${sql.join(open.map(row => sql`${row.id}::uuid`),sql`,`)})`);
             const byId = new Map(projections.map(row => [row.id,row.value]));
             for (const row of open) applyCurrentPersonnel(row.data,byId.get(row.id) ?? null);
         }
-        let latestSync = '';
+        let latestSync = metadata.safe ? metadata.latestSync ?? '' : '';
         const recent: { id: string; case: M.Case }[] = [];
         for (const row of rows) {
             const projected = projectOnboardingListCase(row.data, config, actor);
@@ -300,7 +313,7 @@ export function onboardingRegisterRows(ctx: SessionContext, display: Pick<M.Conf
         )) : [];
         const opened = new Set(reads.map(row => row.caseId));
         return { today: display.today, latestSync, rows: recent.map(row => ({ case: row.case, isNew: !opened.has(row.id) })) };
-    });
+    },{readOnlySnapshot:true});
 }
 
 async function loadTx(tx: Tx, ctx: SessionContext, id: string, lock = false) {
