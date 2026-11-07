@@ -1,3 +1,4 @@
+import {TOPIC_TOOLS} from '../core/semantic-model/topic-tools';
 import {readFileSync} from 'node:fs';
 import {AI_CENTRE_OPERATIONS} from '../lib/ai/centre-operations';
 import {describe,expect,it} from 'vitest';
@@ -16,6 +17,7 @@ describe('complete AI centre function inventory',()=>{
   for(const feature of AI_FEATURES)expect(keys.has('feature:'+feature.id),feature.id).toBe(true);
   for(const worker of registeredWorkers())expect(keys.has('worker:'+worker.id),worker.id).toBe(true);
   for(const action of AGENT_ACTIONS)expect(keys.has('action:'+action.id),action.id).toBe(true);
+  for(const tool of TOPIC_TOOLS)expect(keys.has('read:'+tool.name),tool.name).toBe(true);
   for(const read of [...SEMANTIC_READS,...TERAS_READS,...ASSISTANT_TOOL_CATALOGUE])expect(keys.has('read:'+read.name),read.name).toBe(true);
   for(const row of rows)expect(row.href).toBeTruthy();
  });

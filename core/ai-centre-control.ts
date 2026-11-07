@@ -46,7 +46,8 @@ export async function aiCentreReadAllowed(ctx:SessionContext,name:string):Promis
 }
 
 /** A child control narrows the parent activity; native effects inherit it through async context. */
-export async function withAiCentreFunction<T>(ctx:SessionContext,key:string,work:()=>Promise<T>):Promise<T>{
+export async function withAiCentreFunction<T>(ctx:SessionContext,key:string|readonly string[],work:()=>Promise<T>):Promise<T>{
+ const keys=typeof key==='string'?[key]:[...key];
  return withAiCentreActivity(ctx,async()=>{
   const current=aiCentreActivity(ctx.tenantId)!;
   return runAiCentreActivity(ctx.tenantId,current.generation,async()=>{
@@ -54,6 +55,6 @@ export async function withAiCentreFunction<T>(ctx:SessionContext,key:string,work
    const result=await work();
    await withTenant(ctx,tx=>assertAiCentreRunningTx(tx,ctx));
    return result;
-  },[...new Set([...current.functions,key])]);
+  },[...new Set([...current.functions,...keys])]);
  });
 }

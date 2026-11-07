@@ -1,3 +1,4 @@
+import {assertAiCentreRunningTx} from '../ai-centre-control';
 /** AI v2 Phase 2 hardening (4 November 2026) — the Pre-salary loop's automatic cut-off reminders (owner ruling 18: the
  * Pre-salary loop sends cut-off reminders automatically).
  *
@@ -138,9 +139,11 @@ export type ReminderRunSummary=Readonly<{sent:number;companies:number}>;
 /** The Pre-salary loop's reminder step, after its Prepare step. Never throws: a failure leaves the cases as prepared and
  * is retried on the next run (the ledger keeps a reminder from going out twice). */
 export async function sendCutOffReminders(p:ReminderRunInput):Promise<ReminderRunSummary>{
+ p=structuredClone(p);
  if(!noticeAllowed('loop_payroll_inputs')||!p.companies.length)return Object.freeze({sent:0,companies:0});
  let sent=0,touched=0;
  try{
+  const generation=await withTenant(p.agent,tx=>assertAiCentreRunningTx(tx,p.agent));
   const settings=await withTenant(p.agent,tx=>payrollLoopSettingsTx(tx,p.tenantId,p.companies));
   const on=p.companies.filter(companyId=>settings.get(companyId)?.remindersEnabled!==false);
   if(!on.length)return Object.freeze({sent:0,companies:0});
@@ -159,8 +162,10 @@ export async function sendCutOffReminders(p:ReminderRunInput):Promise<ReminderRu
       audience:(c.own&&c.approvals?'both':c.own?'employee':'approver') as 'employee'|'approver'|'both',ownItems:Math.min(c.own,10_000),
       approvals:Math.min(c.approvals,10_000),runId:p.runId,agentPrincipalId:p.principalId}));
     for(let offset=0;offset<rows.length;offset+=BATCH){
-     const inserted=await withTenant(p.agent,(tx:Tx)=>tx.insert(terasCutOffReminder).values(rows.slice(offset,offset+BATCH)).onConflictDoNothing()
-      .returning({id:terasCutOffReminder.id}));
+     const inserted=await withTenant(p.agent,async(tx:Tx)=>{
+      await assertAiCentreRunningTx(tx,p.agent,generation);
+      return tx.insert(terasCutOffReminder).values(rows.slice(offset,offset+BATCH)).onConflictDoNothing().returning({id:terasCutOffReminder.id});
+     });
      sent+=inserted.length;budget-=inserted.length;
     }
    }

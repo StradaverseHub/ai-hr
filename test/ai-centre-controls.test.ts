@@ -1,3 +1,5 @@
+import {withAssistantRead} from '../core/assistant-read-session';
+import {grantAssistant} from '../core/assistant-grant';
 import {proposeOwnModuleReadPlan} from '../core/module-agent-releases';
 import {draftPayFormula} from '../core/pay-formula-ai';
 import {randomUUID} from 'node:crypto';
@@ -147,6 +149,16 @@ describe('individual AI read controls',()=>{
   expect(await aiCentreReadAllowed(group,'explain_pay_difference')).toBe(true);
   await setMandateStopSwitch(group,true);
   expect(await aiCentreReadAllowed(group,'explain_pay_difference')).toBe(false);
+ });
+ it('enforces module controls at the canonical source used by governed plans as well as chat tools',async()=>{
+  await grantAssistant(group,{appUserId:group.userId!});
+  const read=()=>withAssistantRead(group,null,session=>session.moduleWork('employees'));
+  expect((await read()).module).toBe('employees');
+  await setAiCentreReadControl(group,'module:employees',false);
+  await expect(read()).rejects.toMatchObject({reason:'paused'});
+  await setAiCentreReadControl(group,'module:employees',true);
+  await setAiCentreReadControl(group,'read:my_module_work',false);
+  await expect(read()).rejects.toMatchObject({reason:'paused'});
  });
  it('independently stops a standalone draft operation before its source or provider can run',async()=>{
   await setAiCentreReadControl(group,'read:operation_pay_formula_draft',false);

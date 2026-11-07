@@ -1,3 +1,4 @@
+import {TOPIC_TOOLS} from './semantic-model/topic-tools';
 import {AI_CENTRE_OPERATIONS} from '../lib/ai/centre-operations';
 import {CONTEXT_TOOL_SPECS} from './product-context/tools';
 import {CHAT_IMPORT_KINDS} from '../lib/chat-import';
@@ -19,6 +20,7 @@ export function aiCentreReadKeys():readonly string[]{
  return Object.freeze([...new Set([
   ...[...SEMANTIC_READS,...TERAS_READS].map(row=>'read:'+row.name),
   ...ASSISTANT_TOOL_CATALOGUE.map(row=>'read:'+row.name),
+  ...TOPIC_TOOLS.map(row=>'read:'+row.name),
   ...MODULE_JOBS.map(([module])=>'module:'+module),
   ...AI_CENTRE_OPERATIONS.map(operation=>'read:operation_'+operation.id),
   ...Object.keys(CONTEXT_TOOL_SPECS).map(name=>'read:'+name),

@@ -35,6 +35,7 @@ INSERT INTO app.ai_centre_function_kind(function_key,default_enabled) VALUES
  ('read:company_setup',true),
  ('read:correction_controls_guidance',true),
  ('read:employee_profile',true),
+ ('read:explain_why',true),
  ('read:explain_attendance_day',true),
  ('read:explain_claim_limit',true),
  ('read:explain_leave_entitlement',true),
@@ -70,6 +71,7 @@ INSERT INTO app.ai_centre_function_kind(function_key,default_enabled) VALUES
  ('read:operation_performance_admin',true),
  ('read:operation_competency_insight',true),
  ('read:operation_performance_insight',true),
+ ('read:operations_status',true),
  ('read:orchestrator_observe',true),
  ('read:organisation_tagging_guidance',true),
  ('read:password_policy_guidance',true),
@@ -257,6 +259,22 @@ END $$;
 REVOKE ALL ON FUNCTION app.ai_centre_stamp_event(uuid,integer) FROM PUBLIC;
 --> statement-breakpoint
 GRANT EXECUTE ON FUNCTION app.ai_centre_stamp_event(uuid,integer) TO ai_hr_app;
+--> statement-breakpoint
+-- The payroll cut-off ledger emits its event through an existing SQL trigger, rather than appendEvent.
+-- Stamp only a tenant-bound application transaction; owner maintenance/legacy fixtures have no session tenant.
+CREATE FUNCTION app.ai_centre_cut_off_generation_tg() RETURNS trigger
+ LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ IF NEW.tenant_id=app.current_tenant_id() THEN
+  PERFORM app.ai_centre_stamp_event(NEW.id,app.ai_centre_assert_running());
+ END IF;
+ RETURN NULL;
+END $$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.ai_centre_cut_off_generation_tg() FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+CREATE TRIGGER ai_centre_cut_off_generation AFTER INSERT ON public.domain_event
+ FOR EACH ROW WHEN (NEW.event_type='teras-loop.cut-off-reminder') EXECUTE FUNCTION app.ai_centre_cut_off_generation_tg();
 --> statement-breakpoint
 -- Narrow helper for unsent AI notifications. No text/recipient/source data is exposed to callers.
 CREATE FUNCTION app.ai_centre_event_allowed(wanted_event uuid) RETURNS boolean
