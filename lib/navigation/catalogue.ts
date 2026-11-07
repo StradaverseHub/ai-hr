@@ -195,7 +195,7 @@ export function declaredNavigationCatalogue():NavigationCatalogue {
  for(const row of ADDITIONAL_ROWS)append(`additional/${row.labelKey}`,row);
  // The V9 display adapter preserves the canonical descriptor's identity and route ownership.
  for(const row of V9_NAVIGATION)append(`v9/${row.labelKey}`,{...row,icon:ONBOARDING_NODE.icon,exactHref:true,
-  ...('ownedSubpaths' in row?{ownedSubpaths:[...row.ownedSubpaths]}:{})});
+  ownedSubpaths:'ownedSubpaths' in row?[...row.ownedSubpaths]:undefined});
  for(const row of V9_SHARED_NAVIGATION)append(`v9Shared/${row.labelKey}`,{...row,icon:ONBOARDING_NODE.icon,exactHref:true});
  for(const row of modulePackById('rewards')!.navLinks??[])append(`rewards/${row.labelKey}`,row);
  for(const row of SCOPED_LIFECYCLE_NAVIGATION)append(`scoped/${row.module}/${row.labelKey}`,row);
