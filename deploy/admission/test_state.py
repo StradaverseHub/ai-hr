@@ -6,6 +6,7 @@ import json
 import os
 import pathlib
 import re
+import subprocess
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -179,13 +180,59 @@ class StateTests(unittest.TestCase):
                     host.assert_empty_credentials('aihr-web@1.service')
                 self.assertNotIn('never-export-secret', str(error.exception))
 
+    def test_typed_credential_transport_retains_fixed_stage_and_failure_without_private_contents(self):
+        host = C.LinuxHost(self.profile)
+        unit = 'aihr-web@1.service'
+        path = '/org/freedesktop/systemd1/unit/aihr_2dweb_401_2eservice'
+        get_unit = ['call', 'org.freedesktop.systemd1', '/org/freedesktop/systemd1',
+                    'org.freedesktop.systemd1.Manager', 'GetUnit', 's', unit]
+        operations = [('GetUnit', get_unit), *[(field, ['get-property', 'org.freedesktop.systemd1', path,
+                    'org.freedesktop.systemd1.Service', field]) for field in C.CREDENTIAL_PROPERTIES]]
+        for stage, arguments in operations:
+            for failure, error in [
+                    ('EXECUTION', FileNotFoundError('never-export-secret')),
+                    ('TIMEOUT', subprocess.TimeoutExpired(['private-command'], 3, output='never-export-secret', stderr='never-export-secret')),
+                    ('COMMAND', subprocess.CalledProcessError(1, ['private-command'], output='never-export-secret', stderr='never-export-secret'))]:
+                with patch.object(C.subprocess, 'run', side_effect=error):
+                    with self.assertRaises(C.Refused) as refused:
+                        host.busctl(arguments)
+                self.assertEqual(str(refused.exception), 'Typed credential inspection failed: ' + stage + '/' + failure)
+                self.assertNotIn('never-export-secret', str(refused.exception))
+                self.assertNotIn('private-command', str(refused.exception))
+            with patch.object(C.subprocess, 'run', return_value=subprocess.CompletedProcess([], 0, 'never-export-secret', '')):
+                with self.assertRaises(C.Refused) as refused:
+                    host.busctl(arguments)
+            self.assertEqual(str(refused.exception), 'Typed credential inspection failed: ' + stage + '/INVALID_JSON')
+        for raw, failure in [('Call failed: Unit ' + unit + ' not loaded.\n', 'UNIT_NOT_LOADED'),
+                             ('Failed to connect to bus: No such file or directory\n', 'BUS_UNAVAILABLE'),
+                             ('Call failed: Unit ' + unit + ' not loaded. never-export-secret', 'COMMAND')]:
+            with patch.object(C.subprocess, 'run', side_effect=subprocess.CalledProcessError(1, [], stderr=raw)):
+                with self.assertRaises(C.Refused) as refused:
+                    host.busctl(get_unit)
+            self.assertEqual(str(refused.exception), 'Typed credential inspection failed: GetUnit/' + failure)
+        with patch.object(C.subprocess, 'run', return_value=subprocess.CompletedProcess([], 0, json.dumps({'type': 'o', 'data': [path]}), '')) as run:
+            self.assertEqual(host.busctl(get_unit), {'type': 'o', 'data': [path]})
+            run.assert_called_once_with(['/usr/bin/busctl', '--system', '--json=short', *get_unit], env=C.SAFE_ENV,
+                                        capture_output=True, text=True, timeout=3, check=True)
+        with patch.object(C.subprocess, 'run') as run:
+            with self.assertRaises(C.Refused):
+                host.busctl(['call', 'untrusted-private-command'])
+            run.assert_not_called()
+
     def test_native_diagnostics_only_publish_catalogued_fixed_reasons(self):
         specification = importlib.util.spec_from_file_location('admission_native_fixture', pathlib.Path(__file__).with_name('test_native.py'))
         native = importlib.util.module_from_spec(specification)
         specification.loader.exec_module(native)
         self.assertEqual(native.safe_controller_failure('Admission refused: Privileged-hook credential source is not qualified\n'),
                          {'code': 'CREDENTIAL_SOURCE', 'reason': 'Privileged-hook credential source is not qualified'})
-        for value in ['private never-export-secret', 'Admission refused: never-export-secret\n', 'x' * 513, None]:
+        for stage in C.CREDENTIAL_INSPECTION_STAGES:
+            for failure in C.CREDENTIAL_INSPECTION_FAILURES:
+                safe = native.safe_controller_failure('Admission refused: Typed credential inspection failed: ' + stage + '/' + failure + '\n')
+                self.assertEqual(safe, {'code': 'CREDENTIAL_' + stage.upper() + '_' + failure,
+                                       'reason': 'Typed credential inspection failed: ' + stage + '/' + failure})
+        for value in ['private never-export-secret', 'Admission refused: never-export-secret\n',
+                      'Admission refused: Typed credential inspection failed: GetUnit/never-export-secret',
+                      'Admission refused: Typed credential inspection failed: never-export-secret/COMMAND', 'x' * 513, None]:
             safe = native.safe_controller_failure(value)
             self.assertEqual(safe['code'], 'CONTROLLER_ERROR_UNCLASSIFIED')
             self.assertNotIn('never-export-secret', json.dumps(safe))

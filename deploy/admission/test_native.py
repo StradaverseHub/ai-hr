@@ -74,6 +74,9 @@ def safe_controller_failure(stderr):
         'Proxy activation is unverified; reconciliation required': 'PROXY_ACTIVATION',
         'Some workers remain unadmitted after reconciliation': 'RECOVERY_INCOMPLETE',
     }
+    for stage in C.CREDENTIAL_INSPECTION_STAGES:
+        for failure in C.CREDENTIAL_INSPECTION_FAILURES:
+            catalog['Typed credential inspection failed: ' + stage + '/' + failure] = 'CREDENTIAL_' + stage.upper() + '_' + failure
     if isinstance(stderr, str) and len(stderr) <= 512:
         for reason, code in catalog.items():
             if stderr.strip() == 'Admission refused: ' + reason:

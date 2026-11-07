@@ -35,6 +35,10 @@ DIGEST = re.compile(r'^[0-9a-f]{64}$')
 UNIT = re.compile(r'^aihr(?:-web@[1-8])?\.service$')
 PATH = re.compile(r'^/[A-Za-z0-9_./@-]+$')
 SAFE_ENV = {'PATH': '/usr/sbin:/usr/bin:/sbin:/bin', 'LANG': 'C', 'LC_ALL': 'C'}
+CREDENTIAL_PROPERTIES = {'LoadCredential': 'a(ss)', 'LoadCredentialEncrypted': 'a(ss)',
+                         'SetCredential': 'a(say)', 'SetCredentialEncrypted': 'a(say)'}
+CREDENTIAL_INSPECTION_STAGES = ('GetUnit', *CREDENTIAL_PROPERTIES)
+CREDENTIAL_INSPECTION_FAILURES = ('EXECUTION', 'TIMEOUT', 'COMMAND', 'UNIT_NOT_LOADED', 'BUS_UNAVAILABLE', 'INVALID_JSON')
 
 
 class Refused(RuntimeError):
@@ -252,13 +256,41 @@ class LinuxHost:
         return dict(line.split('=', 1) for line in result.stdout.splitlines() if '=' in line)
 
     def busctl(self, arguments: list[str]) -> dict[str, Any]:
+        # A fixed operation stage and failure class diagnose a refused read without
+        # exposing command arguments, credential values, stdout or raw stderr.
+        if len(arguments) == 7 and arguments[:6] == ['call', 'org.freedesktop.systemd1',
+                '/org/freedesktop/systemd1', 'org.freedesktop.systemd1.Manager', 'GetUnit', 's'] \
+                and arguments[6] in self.profile.value['units']:
+            stage = 'GetUnit'
+        elif len(arguments) == 5 and arguments[:2] == ['get-property', 'org.freedesktop.systemd1'] \
+                and re.fullmatch(r'/org/freedesktop/systemd1/unit/[A-Za-z0-9_]+', arguments[2]) is not None \
+                and arguments[3] == 'org.freedesktop.systemd1.Service' and arguments[4] in CREDENTIAL_PROPERTIES:
+            stage = arguments[4]
+        else:
+            raise Refused('Unsupported typed credential inspection operation')
+        failure = 'COMMAND'
         try:
             result = subprocess.run(['/usr/bin/busctl', '--system', '--json=short', *arguments], env=SAFE_ENV,
                                     capture_output=True, text=True, timeout=3, check=True)
             require(len(result.stdout) <= 32768, 'Typed credential metadata exceeds its bound')
             return json.loads(result.stdout)
-        except (OSError, subprocess.SubprocessError, ValueError):
-            raise Refused('Cannot inspect typed privileged-hook credentials') from None
+        except subprocess.TimeoutExpired:
+            failure = 'TIMEOUT'
+        except subprocess.CalledProcessError as error:
+            # Recognize only complete fixed messages for an allowlisted operation.
+            # Unknown or appended private contents remain the generic COMMAND class.
+            if isinstance(error.stderr, str) and len(error.stderr) <= 512:
+                if stage == 'GetUnit' and error.stderr.strip() == 'Call failed: Unit ' + arguments[6] + ' not loaded.':
+                    failure = 'UNIT_NOT_LOADED'
+                elif error.stderr.strip() == 'Failed to connect to bus: No such file or directory':
+                    failure = 'BUS_UNAVAILABLE'
+        except OSError:
+            failure = 'EXECUTION'
+        except ValueError:
+            failure = 'INVALID_JSON'
+        except subprocess.SubprocessError:
+            pass
+        raise Refused('Typed credential inspection failed: ' + stage + '/' + failure) from None
 
     def assert_empty_credentials(self, unit: str) -> None:
         require(unit in self.profile.value['units'], 'Unknown worker service')
@@ -270,8 +302,7 @@ class LinuxHost:
                 and re.fullmatch(r'/org/freedesktop/systemd1/unit/[A-Za-z0-9_]+', value['data'][0]) is not None,
                 'Typed worker unit object is not qualified')
         object_path = value['data'][0]
-        for key, signature in {'LoadCredential': 'a(ss)', 'LoadCredentialEncrypted': 'a(ss)',
-                               'SetCredential': 'a(say)', 'SetCredentialEncrypted': 'a(say)'}.items():
+        for key, signature in CREDENTIAL_PROPERTIES.items():
             typed = self.busctl(['get-property', 'org.freedesktop.systemd1', object_path,
                                 'org.freedesktop.systemd1.Service', key])
             require(isinstance(typed, dict) and typed.get('type') == signature
