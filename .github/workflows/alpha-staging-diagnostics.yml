@@ -104,12 +104,7 @@ on:
         default: ""
         type: string
       compiler_probe:
-        description: Whole-project cold/warm incremental compiler and actual error-refusal controls; diagnostic only
-        required: false
-        default: false
-        type: boolean
-      compiler_attribution_probe:
-        description: Exact ed188 whole-project compiler trace at unchanged12GiB; retains OOM and grants no release authority
+        description: Whole compiler diagnostic; exact ed188 source selects bounded attribution, other sources retain cold/warm error-refusal controls
         required: false
         default: false
         type: boolean
@@ -160,10 +155,10 @@ jobs:
         if: ${{ inputs.compiler_probe }}
         run: node --test .github/ci/diagnostics/compiler-incremental.test.mjs
       - name: Whole compiler attribution controller checks
-        if: ${{ inputs.compiler_attribution_probe }}
+        if: ${{ inputs.compiler_probe && inputs.expected_sha == 'ed188690f8258093391e1f6bc2c92b5bf5744816' }}
         run: node --test .github/ci/diagnostics/compiler-attribution.test.mjs
       - name: Admit compiler-only attribution scope
-        if: ${{ inputs.compiler_attribution_probe }}
+        if: ${{ inputs.compiler_probe && inputs.expected_sha == 'ed188690f8258093391e1f6bc2c92b5bf5744816' }}
         run: node .github/ci/diagnostics/compiler-attribution.mjs --selection
         env:
           AIHR_COMPILER_ATTRIBUTION_INPUTS: ${{ toJSON(inputs) }}
@@ -350,7 +345,7 @@ jobs:
           retention-days: 14
 
   compiler-attribution:
-    if: ${{ inputs.compiler_attribution_probe }}
+    if: ${{ inputs.compiler_probe && inputs.expected_sha == 'ed188690f8258093391e1f6bc2c92b5bf5744816' }}
     needs: resolve
     runs-on: ubuntu-24.04
     timeout-minutes: 20
@@ -376,7 +371,7 @@ jobs:
           retention-days: 14
 
   compiler-incremental:
-    if: ${{ inputs.compiler_probe }}
+    if: ${{ inputs.compiler_probe && inputs.expected_sha != 'ed188690f8258093391e1f6bc2c92b5bf5744816' }}
     needs: resolve
     runs-on: ubuntu-24.04
     timeout-minutes: 20

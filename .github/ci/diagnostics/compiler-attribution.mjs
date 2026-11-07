@@ -14,8 +14,8 @@ const git=(cwd,...args)=>execFileSync('git',args,{cwd,encoding:'utf8',timeout:30
 const freeBytes=path=>{const s=statfsSync(path);return s.bavail*s.bsize;};
 
 export function validateAttributionSelection(inputs){
- assert.equal(inputs.compiler_attribution_probe,true);assert.equal(inputs.expected_sha,ATTRIBUTION_SOURCE);
- for(const [key,value] of Object.entries(inputs))if(typeof value==='boolean'&&key!=='compiler_attribution_probe')assert.equal(value,false,'Attribution must run without other diagnostic jobs');
+ assert.equal(inputs.compiler_probe,true);assert.equal(inputs.expected_sha,ATTRIBUTION_SOURCE);
+ for(const [key,value] of Object.entries(inputs))if(typeof value==='boolean'&&key!=='compiler_probe')assert.equal(value,false,'Attribution must run without other diagnostic jobs');
  assert.equal(inputs.next_build_cache_phase,'disabled');
  for(const key of ['transport_origin_run','transport_origin_sha','transport_origin_artifact','transport_origin_digest','compiler_origin_run','compiler_origin_sha','compiler_origin_artifact','compiler_origin_digest'])assert.equal(inputs[key],'','No compiler/build transport is part of attribution');
 }

@@ -5,10 +5,10 @@ import {readFileSync} from 'node:fs';
 import {compilerArguments,lastCheckedSource,actualCompilerResult,attributeCompiler,ATTRIBUTION_SOURCE,validateAttributionSelection} from './compiler-attribution.mjs';
 
 test('selection admits only the exact source and no other diagnostics or transport',()=>{
- const inputs={expected_sha:ATTRIBUTION_SOURCE,compiler_attribution_probe:true,nodb_probe:false,layout_probe:false,next_build_cache_phase:'disabled',
+ const inputs={expected_sha:ATTRIBUTION_SOURCE,compiler_probe:true,nodb_probe:false,layout_probe:false,next_build_cache_phase:'disabled',
   ...Object.fromEntries(['transport_origin_run','transport_origin_sha','transport_origin_artifact','transport_origin_digest','compiler_origin_run','compiler_origin_sha','compiler_origin_artifact','compiler_origin_digest'].map(key=>[key,'']))};
  assert.doesNotThrow(()=>validateAttributionSelection(inputs));
- for(const changed of [{expected_sha:'0'.repeat(40)},{compiler_attribution_probe:false},{nodb_probe:true},{layout_probe:true},{run_build:true},{next_build_cache_phase:'cold'},{compiler_origin_run:'123'},{transport_origin_run:'123'}])assert.throws(()=>validateAttributionSelection({...inputs,...changed}));
+ for(const changed of [{expected_sha:'0'.repeat(40)},{compiler_probe:false},{nodb_probe:true},{layout_probe:true},{run_build:true},{next_build_cache_phase:'cold'},{compiler_origin_run:'123'},{transport_origin_run:'123'}])assert.throws(()=>validateAttributionSelection({...inputs,...changed}));
 });
 
 test('attribution retains whole-project config and a fresh owned graph without weakening coverage',()=>{
@@ -30,9 +30,16 @@ test('zero exit, complete file inventory and no diagnostic/limit are all require
  const oom=actualCompilerResult({code:null,signal:'SIGABRT',stoppedBecause:null},'FATAL ERROR: Ineffective mark-compacts near heap limit Allocation failed - JavaScript heap out of memory\n');
  assert.equal(oom.v8HeapFailure,true);assert.equal(oom.compilerCompleted,false);assert.equal(oom.signal,'SIGABRT');
 });
-test('no development compiler trace can become a release witness or change the normal helper',()=>{
+test('existing selector stays within25 inputs and reserves only the pinned source for attribution',()=>{
  const workflow=readFileSync(new URL('../../workflows/alpha-staging-diagnostics.yml',import.meta.url),'utf8');
- assert.match(workflow,/compiler_attribution_probe:[\s\S]*?default: false/);
+ const inputBlock=workflow.slice(workflow.indexOf('    inputs:\n'),workflow.indexOf('\npermissions:'));
+ const inputs=[...inputBlock.matchAll(/^      ([a-z_]+):$/gm)].map(row=>row[1]);
+ assert.equal(inputs.length,25);assert.equal(new Set(inputs).size,25);assert(!inputs.includes('compiler_attribution_probe'));
+ assert.match(workflow,/compiler_probe:[\s\S]*?default: false/);
+ const attribution=workflow.slice(workflow.indexOf('\n  compiler-attribution:'),workflow.indexOf('\n  compiler-incremental:'));
+ const incremental=workflow.slice(workflow.indexOf('\n  compiler-incremental:'),workflow.indexOf('\n  build-transport-producer:'));
+ assert(attribution.includes("if: ${{ inputs.compiler_probe && inputs.expected_sha == '"+ATTRIBUTION_SOURCE+"' }}"));
+ assert(incremental.includes("if: ${{ inputs.compiler_probe && inputs.expected_sha != '"+ATTRIBUTION_SOURCE+"' }}"));
  assert.match(workflow,/compiler-attribution:[\s\S]*?runs-on: ubuntu-24.04[\s\S]*?timeout-minutes: 20/);
  assert.match(workflow,/name: diagnostic-compiler-attribution\n\s+path: \$\{\{ runner.temp \}\}\/diagnostic-compiler-attribution\//);
 });

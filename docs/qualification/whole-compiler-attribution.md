@@ -16,9 +16,12 @@ instantiations is a hypothesis; a specific offending file or inference has not
 been established. A locally large type relationship and aggregate retained
 checker state must be distinguished using actual hosted observations.
 
-The isolated controller's `alpha-staging-diagnostics.yml` opt-in
-`compiler_attribution_probe=true` resolves the existing frozen source branch
-and exact expected SHA. Set `nodb_probe=false`, `layout_probe=false` and
+The isolated controller reuses `alpha-staging-diagnostics.yml`'s existing
+`compiler_probe=true` selector: only the exact ed188 expected SHA chooses this
+attribution path. Every other source retains the existing cold/warm incremental
+diagnostic and error-refusal controls. No input is added to the existing25-input
+workflow. The resolver still requires the existing frozen source branch and
+exact expected SHA. Set `nodb_probe=false`, `layout_probe=false` and
 `instrument_copies=false`; leave
 every other probe false, every transport origin empty and build-cache phase
 disabled. Resolution refuses other enabled probes before any dependent job.
