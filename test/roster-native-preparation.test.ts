@@ -9,7 +9,7 @@ import type {SessionContext} from '../db/client';
 import * as database from '../db/client';
 import * as accessOwner from '../core/access-configuration-lock';
 import * as schema from '../db/schema';
-import {adminCtx,closeAll,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
+import {adminCtx,closeAll,createAppUser,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
 import {ensureStandardRule} from '../core/attendance-rule';
 import {hireEmployee} from '../core/org';
 import {assignShift,createShift,generateRosterFromTemplate,rosterForRange,type ReviewedRosterDepartment} from '../core/roster';
@@ -215,3 +215,32 @@ it.each(['duty-off','shift-not-allowed'] as const)('renders canonical %s changes
  expect(formPacket(page).get('selectionIds')).toBe(confirmation.get('selectionIds'));expect(await events()).toBe(before);
  expect(await rosterForRange(session,{from:'2027-01-11',to:'2027-01-12'})).toEqual([]);
 });
+
+
+it.each(['hr_admin','super_admin'] as const)('keeps actual %s native team company, department and selected-person narrowing through review and confirmation',async role=>{
+ const userId=await createAppUser(b.tenantId,null,role);session={...session,userId,roles:[role],grants:[{role,companyId:null}]};
+ const inOtherDepartment=await hire('Native excluded department',b.companyId,b.deptB);
+ const otherCompany=(await owner.db.insert(schema.company).values({tenantId:b.tenantId,legalName:'Native excluded same-tenant company'}).returning())[0];
+ const otherDepartment=(await owner.db.insert(schema.department).values({tenantId:b.tenantId,companyId:otherCompany.id,name:'Native excluded company department'}).returning())[0];
+ const inOtherCompany=await hire('Native excluded company',otherCompany.id,otherDepartment.id);scopeIds.push(otherCompany.id);
+ for(const employmentId of [inOtherDepartment,inOtherCompany])await assignShift(session,{employmentId,shiftDate:'2027-01-04',shiftId});
+ const team=(extra:Partial<Parameters<typeof serializeMyTeamQuery>[0]>={})=>{
+  const data=packet();data.set('populationQuery',new URLSearchParams({companyId:b.companyId,myTeam:serializeMyTeamQuery({view:'week',scope:'department',anchorDate:todayInKualaLumpur(),companyIds:[b.companyId],...extra}).toString()}).toString());return data;
+ };
+ const selectedResponse=await post(team({departmentId:b.deptA,employmentId:ids[0]}));expect(selectedResponse.status).toBe(200);
+ const selected=formPacket(await document(selectedResponse));expect(JSON.parse(selected.get('selectionIds')!)).toEqual([ids[0]]);
+ const widened=new URLSearchParams(selected);widened.set('selectionIds',JSON.stringify([ids[0],ids[1]]));expect((await post(widened)).status).toBe(400);
+ const companyResponse=await post(team());expect(companyResponse.status).toBe(200);
+ expect(JSON.parse(formPacket(await document(companyResponse)).get('selectionIds')!).sort()).toEqual([...ids,inOtherDepartment].sort());
+ const departmentResponse=await post(team({departmentId:b.deptA}));expect(departmentResponse.status).toBe(200);
+ expect(JSON.parse(formPacket(await document(departmentResponse)).get('selectionIds')!).sort()).toEqual(ids.slice().sort());
+ const mismatch=await post(team({departmentId:b.deptA,employmentId:inOtherDepartment}));expect(mismatch.status).toBe(400);
+ expect((await post(team({employmentId:inOtherCompany}))).status).toBe(400);
+ const foreign=await seedBase(),foreignSubject=await hireEmployee(adminCtx(foreign),{person:{fullName:'Native foreign tenant subject',primaryEmail:randomUUID()+'@native-scope.invalid'},companyId:foreign.companyId,departmentId:foreign.deptA,employmentType:'full_time',hiredOn:'2020-01-01'});
+ const before=await events();expect((await post(team({employmentId:foreignSubject.employmentId}))).status).toBe(400);expect(await events()).toBe(before);
+ const forged=new URLSearchParams(selected);forged.set('selectionIds',JSON.stringify([foreignSubject.employmentId]));expect((await post(forged)).status).toBe(400);
+ expect((await post(selected)).status).toBe(303);expect((await rosterForRange(session,{from:'2027-01-11',to:'2027-01-11'})).map(row=>row.employmentId)).toEqual([ids[0]]);
+ const saved=session,employeeUser=await createAppUser(b.tenantId,null,'employee');
+ session={...session,userId:employeeUser,roles:['employee'],grants:[{role:'employee',companyId:null}]};
+ try{expect((await post(team({employmentId:ids[0]}))).status).toBe(403);}finally{session=saved;}
+},60000);

@@ -50,7 +50,7 @@ export async function resolveMyTeamScopeTx(tx:Tx,ctx:SessionContext,query:MyTeam
     AND r.valid_from<=${today}::date AND (r.valid_to IS NULL OR r.valid_to>${today}::date)
     AND m.hired_on<=${today}::date AND (m.terminated_on IS NULL OR m.terminated_on>${today}::date)
     AND m.person_id<>${employment.personId})`;
-  const mode=query.scope==='department' ? sql`app.my_team_has_role_for('hr_admin',${employment.companyId}) OR app.my_team_has_role_for('super_admin',${employment.companyId})` :
+  const mode=query.scope==='department' ? or(sql`app.my_team_has_role_for('hr_admin',${employment.companyId})`,sql`app.my_team_has_role_for('super_admin',${employment.companyId})`) :
     query.scope==='direct' ? direct : sql`${employment.id} IN (SELECT app.my_team_report_ids())`;
   const employees=await tx.select({employmentId:employment.id,personId:employment.personId,employeeCode:employment.employeeCode,
     name:person.fullName,companyId:employment.companyId,departmentId:assignment.departmentId,occupation:position.title,
