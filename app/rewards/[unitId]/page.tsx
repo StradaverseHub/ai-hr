@@ -1,5 +1,6 @@
 import { BonusBudgetCards } from './bonus-budget';
 import { RewardSubmit } from '../submit-button';
+import { ScopedCommandIndex } from '@/components/scoped-command-index';
 import Link from 'next/link';
 import { getLocale, getTranslations } from 'next-intl/server';
 import { scopedSession } from '@/lib/scope';
@@ -27,11 +28,13 @@ import {FlagsPanel} from './desk/flags-panel';
 import {BonusPoolWorking} from './desk/bonus-pool-working';
 import {changedRewardMatrixCells} from './desk/reference-matrix';
 import {DecisionPanel} from './desk/decision-panel';
+import { InlineRewardIncrease } from './desk/inline-increase';
+import { payWindowReasons, ratio } from '@/packs/rewards/engine';
 import {PersonDrawer} from './desk/person-drawer';
 import {transition} from '@/packs/rewards/model';
 
 const rm = (cents: number) => new Intl.NumberFormat('en-MY', { style: 'currency', currency: 'MYR' }).format(cents / 100);
-export default async function RewardUnitPage({ params, searchParams }: { params: Promise<{ unitId: string }>; searchParams: Promise<{ view?: string; q?: string; error?: string; check?: string; person?: string }> }) {
+export default async function RewardUnitPage({ params, searchParams }: { params: Promise<{ unitId: string }>; searchParams: Promise<{ view?: string; q?: string; error?: string; check?: string; flag?: string; person?: string }> }) {
   await requireModule('rewards'); const { s, scopeIds } = await scopedSession();
   const { unitId } = await params; const sp = await searchParams; const t = await getTranslations('rewards');
   if (sp.view === 'configuration') redirect(`/admin/rewards/${encodeURIComponent(unitId)}`);
@@ -53,19 +56,35 @@ export default async function RewardUnitPage({ params, searchParams }: { params:
   const locale=await getLocale();
   const canSubmit = unit.status==='draft' &&v.capabilities?.reviewDecide!==false&& v.roles.includes(v.route[0]);
   // c28db2f0: the lump-sum card links here with check=BUD-05 to list only the individual lump-sum amendments.
-  const checks = sp.check ? v.flags.filter(f => f.code === sp.check && f.severity === 'exception') : v.flags;
+  const checks = sp.check ? v.flags.filter(f => f.code === sp.check && f.severity === 'exception') : sp.flag ? v.flags.filter(f=>f.code===sp.flag) : v.flags;
   const scope = t('unitBonus.appliesOnlyTo', { company: v.companyName, unit: v.name });
   const canApprove = v.capabilities?.reviewDecide!==false&&['bg', 'gr', 'ctro', 'ec'].some(role => role === unit.status && v.roles.includes(role as 'bg' | 'gr' | 'ctro' | 'ec'));
   // 5d34d00d Step 2: per-person flags, the open person (side panel) and the stage each decision moves to.
   const rowFlags = (id: string) => v.flags.filter(f => f.entryId === id);
   const hidden = (r: typeof v.rows[number]) => isSeniorPlanMember(unit.policy, r.facts, r.source.grade) && !v.seniorAmountsVisible;
+  // The reference compares both figures with the approved midpoint for the proposed grade (or the current grade).
+  const payPosition = (row: typeof v.rows[number], cents: number) => {
+    const midpoint = unit.policy.ranges?.[row.recommendation.promotionGrade ?? row.source.grade]?.[1];
+    return hidden(row) || !midpoint ? null : ratio(cents, 10000, midpoint, 'nearest');
+  };
   const pct = (bp: number) => `${(bp / 100).toFixed(1)}%`;
-  const personHref = (id: string) => { const q = new URLSearchParams({ ...(sp.q ? { q: sp.q } : {}), ...(sp.check ? { check: sp.check } : {}), person: id }); return `/rewards/${encodeURIComponent(unitId)}?${q}`; };
+  const personHref = (id: string) => { const q = new URLSearchParams({ ...(sp.q ? { q: sp.q } : {}), ...(sp.check ? { check: sp.check } : {}), ...(sp.flag ? {flag:sp.flag} : {}), person: id }); return `/rewards/${encodeURIComponent(unitId)}?${q}`; };
+  const visibleRowIds = new Set(rows.map(row => row.id));
+  const flaggedRowIds = new Set(checks.map(flag => flag.entryId));
+  const flagPersonLinks = Object.fromEntries(v.rows.filter(row => flaggedRowIds.has(row.id)).map(row => [
+    row.id,
+    visibleRowIds.has(row.id) ? personHref(row.id) :
+      `/rewards/${encodeURIComponent(unitId)}?${new URLSearchParams({ ...(sp.check ? { check: sp.check } : {}), ...(sp.flag ? {flag:sp.flag} : {}), person: row.id })}`,
+  ]));
   const openIndex = sp.person ? rows.findIndex(r => r.id === sp.person) : -1; const open = openIndex >= 0 ? rows[openIndex] : null;
+  const nominations = annual ? rows.filter(row => row.recommendation.promotionGrade && !hidden(row)) : [];
   const decisionTargets = annual ? (['submit', 'approve', 'return'] as const).filter(a => a === 'submit' ? canSubmit : a === 'approve' ? canApprove : canApprove || (unit.status === 'approved' && v.roles.some(r => ['gr', 'ctro', 'ec'].includes(r)))).flatMap(a => { try { return [{ action: a, to: t(`stages.${transition(unit.status, v.roles, a)}`) }]; } catch { return []; } }) : [];
   return <div className="w-full space-y-5">
+    <ScopedCommandIndex entries={v.rows.map(row=>({href:`/rewards/${unitId}?person=${row.id}`,label:row.source.name,context:row.source.employeeCode??''}))}/>
+
     <Link href="/rewards" className="text-sm text-primary hover:underline">← {nav('rewardsReviewing')}</Link>
     <PageHeader title={rewardReviewTitle(v.cycle?.name ?? t('title'), v.companyName, v.name)} description={`${t(`kinds.${unit.kind}`)} · ${v.returned ? t(`returnedTo.${v.returned.toSeat}`) : t(`stages.${unit.status}`)}${v.due ? ` · ${t('dueOn', { date: v.due })}` : ''} · ${t('snapshotDate')}: ${unit.snapshotDate}`} />
+    {((v.roles.includes('gr') && v.capabilities?.dataCheck!==false) || v.roles.includes('pbp')) && <Link href={`/rewards/${unitId}/data-check`} className="text-sm font-medium text-primary hover:underline">{t('prelaunchDataCheck')}</Link>}
     <ErrorBanner message={sp.error} /><Link href={`/rewards/rules?unit=${unitId}`} className="inline-block text-sm text-primary underline underline-offset-2">{t('rules')}</Link>
     <div className="flex flex-wrap gap-4 text-sm">{v.uploaded?<Link href={`/rewards/${unitId}/uploaded`} className="text-primary underline">{u('open')}</Link>:annual&&v.libraryBound&&<Link href={`/rewards/${unitId}/advisor`} className="text-primary underline">{a('title')}</Link>}</div>
     {v.uploadedSummary&&<Card className="p-5"><h2 className="font-semibold">{u('summary',{people:v.uploadedSummary.people,increment:(v.uploadedSummary.incrementCents/100).toFixed(2),bonus:(v.uploadedSummary.bonusCents/100).toFixed(2)})}</h2><p className="mt-1 text-sm tabular-nums">{u('lump')}: {(v.uploadedSummary.lumpCents/100).toFixed(2)}</p></Card>}
@@ -102,8 +121,21 @@ export default async function RewardUnitPage({ params, searchParams }: { params:
     </>}
     {(annual||tab === 'review') && <>
       <section id="people" className="scroll-mt-6 space-y-3"><h2 className="text-base font-semibold">{t('people')}</h2><form className="flex max-w-lg gap-2"><input name="q" defaultValue={sp.q} aria-label={t('search')} placeholder={t('search')} className={inputCls} /><RewardSubmit type="submit" variant="secondary">{t('search')}</RewardSubmit></form>
-        <div className={tableWrapCls}><table className="w-full whitespace-nowrap text-sm"><thead className={theadCls}><tr>{['employee', 'grade', 'talent', 'performance', 'currentPay', ...(annual ? ['desk.increase'] : []), 'newPay', 'bonus', 'lumpSum', ...(annual ? ['desk.flags'] : []), 'action'].map(k => <th key={k} className={thCls}>{t(k)}</th>)}</tr></thead><tbody className={tbodyCls}>{rows.map(r => <tr key={r.id}><td className="px-3 py-3"><span className="mr-2 font-mono text-xs text-muted-foreground">{r.source.employeeCode}</span>{annual ? <Link scroll={false} href={personHref(r.id)} aria-current={open?.id === r.id ? 'true' : undefined} className="font-medium text-primary hover:underline">{r.source.name}</Link> : r.source.name}{!r.facts.reviewed && <span className="ml-2 text-xs text-destructive">{t('unverified')}</span>}{r.source.leftOn && <span className="ml-2 text-xs text-muted-foreground">{t('sourceRefresh.leftMarker', { date: r.source.leftOn })}</span>}{isSeniorPlanMember(unit.policy,r.facts,r.source.grade)&&<span className="ml-2 text-xs font-medium">{t('governance.seniorTag')}</span>}<PayWindowTag row={r} window={{ from: unit.policy.blockedFrom, to: unit.policy.blockedTo }} /></td><td className="px-3 py-3">{r.source.grade}{r.recommendation.promotionGrade && ` → ${r.recommendation.promotionGrade}`}</td><td className="px-3 py-3">{r.facts.talent ?? '—'}</td><td className="px-3 py-3">{r.facts.performance ?? '—'}</td><td className="px-3 py-3 text-right tabular-nums">{rm(r.source.basicCents)}</td>{annual && <td className="px-3 py-3 text-right tabular-nums">{hidden(r) ? '—' : pct(r.meritBp + r.promotionBp + r.specialBp)}</td>}<td className="px-3 py-3 text-right tabular-nums">{isSeniorPlanMember(unit.policy,r.facts,r.source.grade)&&!v.seniorAmountsVisible?t('governance.handledSeparately'):rm(r.newBasicCents)}</td><td className="px-3 py-3 text-right tabular-nums">{isSeniorPlanMember(unit.policy,r.facts,r.source.grade)&&!v.seniorAmountsVisible?t('governance.handledSeparately'):rm(r.bonusCents)}</td><td className="px-3 py-3 text-right tabular-nums">{rm(r.lumpCents)}</td>{annual && <td className="px-3 py-3"><FlagChips flags={rowFlags(r.id)} label={s => t(`severity.${s}`)} /></td>}<td className="px-3 py-3"><Link className="text-primary hover:underline" href={`/rewards/${unitId}/people/${r.id}`}>{t('reviewPerson')}</Link>{annual&&!v.uploaded&&<Link className="mt-1 block text-xs text-primary underline" href={`/rewards/${unitId}/advisor#entry-${r.id}`}>{a('title')}</Link>}</td></tr>)}</tbody></table>{!rows.length && <p className="p-6 text-sm text-muted-foreground">{t('noPeople')}</p>}</div>
+        <div className={tableWrapCls}><table className="w-full whitespace-nowrap text-sm"><thead className={theadCls}><tr>{['employee', 'grade', 'talent', 'performance', 'currentPay', ...(annual ? ['compaRatio','merit','promotion','special','desk.increase'] : []), 'newPay', 'bonus', 'lumpSum', ...(annual ? ['desk.flags'] : []), 'action'].map(k => <th key={k} className={thCls}>{t(k)}</th>)}</tr></thead><tbody className={tbodyCls}>{rows.map(r => <tr key={r.id}><td className="px-3 py-3"><span className="mr-2 font-mono text-xs text-muted-foreground">{r.source.employeeCode}</span>{annual ? <Link scroll={false} href={personHref(r.id)} aria-current={open?.id === r.id ? 'true' : undefined} className="font-medium text-primary hover:underline">{r.source.name}</Link> : r.source.name}{!r.facts.reviewed && <span className="ml-2 text-xs text-destructive">{t('unverified')}</span>}{r.source.leftOn && <span className="ml-2 text-xs text-muted-foreground">{t('sourceRefresh.leftMarker', { date: r.source.leftOn })}</span>}{isSeniorPlanMember(unit.policy,r.facts,r.source.grade)&&<span className="ml-2 text-xs font-medium">{t('governance.seniorTag')}</span>}<PayWindowTag row={r} window={{ from: unit.policy.blockedFrom, to: unit.policy.blockedTo }} /></td><td className="px-3 py-3">{r.source.grade}{r.recommendation.promotionGrade && ` → ${r.recommendation.promotionGrade}`}</td><td className="px-3 py-3">{r.facts.talent ?? '—'}</td><td className="px-3 py-3">{r.facts.performance ?? '—'}</td><td className="px-3 py-3 text-right tabular-nums">{rm(r.source.basicCents)}</td>{annual && <>
+          <td className="px-3 py-3 text-right tabular-nums">{payPosition(r,r.source.basicCents)===null?'—':pct(payPosition(r,r.source.basicCents)!)}</td>
+          {[r.meritBp,r.promotionBp,r.specialBp].map((bp,index)=><td key={index} className="px-3 py-3 text-right tabular-nums">{hidden(r)?'—':pct(bp)}</td>)}
+        </>}{annual && <td className="px-3 py-3 text-right tabular-nums">{hidden(r) ? '—' : pct(r.meritBp + r.promotionBp + r.specialBp)}{editable && !v.uploaded && !isSeniorPlanMember(unit.policy,r.facts,r.source.grade) && !(r.payChange && payWindowReasons.includes(r.incrementReason)) && <InlineRewardIncrease unitId={unitId} entryId={r.id} revision={unit.revision} values={{meritBp:r.recommendation.meritBp,promotionBp:r.recommendation.promotionBp,specialBp:r.recommendation.specialBp}}/>}</td>}<td className="px-3 py-3 text-right tabular-nums">{isSeniorPlanMember(unit.policy,r.facts,r.source.grade)&&!v.seniorAmountsVisible?t('governance.handledSeparately'):rm(r.newBasicCents)}</td><td className="px-3 py-3 text-right tabular-nums">{isSeniorPlanMember(unit.policy,r.facts,r.source.grade)&&!v.seniorAmountsVisible?t('governance.handledSeparately'):rm(r.bonusCents)}</td><td className="px-3 py-3 text-right tabular-nums">{rm(r.lumpCents)}</td>{annual && <td className="px-3 py-3"><FlagChips flags={rowFlags(r.id)} label={s => t(`severity.${s}`)} /></td>}<td className="px-3 py-3"><Link className="text-primary hover:underline" href={`/rewards/${unitId}/people/${r.id}`}>{t('reviewPerson')}</Link>{annual&&!v.uploaded&&<Link className="mt-1 block text-xs text-primary underline" href={`/rewards/${unitId}/advisor#entry-${r.id}`}>{a('title')}</Link>}</td></tr>)}</tbody></table>{!rows.length && <p className="p-6 text-sm text-muted-foreground">{t('noPeople')}</p>}</div>
       </section>
+      {annual && nominations.length > 0 && <section id="promotions" className="scroll-mt-6 space-y-3">
+        <h2 className="text-base font-semibold">{t('promotion')}</h2>
+        <Card className="divide-y divide-border">
+          {nominations.map(row => <article className="space-y-1 p-4 text-sm" key={row.id}>
+            <Link scroll={false} href={personHref(row.id)} className="font-medium text-primary hover:underline">{row.source.name}</Link>
+            <p className="text-muted-foreground">{t('grade')}: {row.source.grade} → {row.recommendation.promotionGrade}</p>
+            {row.recommendation.reason && <p className="whitespace-pre-wrap">{row.recommendation.reason}</p>}
+          </article>)}
+        </Card>
+      </section>}
       {!annual&&<section id="checks" className="space-y-3"><h2 className="font-semibold">{t('checks')} ({checks.length}){sp.check && <Link className="ml-3 text-sm font-normal text-primary hover:underline" href={`/rewards/${unitId}?view=review#checks`}>{t('showAllChecks')}</Link>}</h2>{!checks.length && <p className="text-sm text-muted-foreground">{t('noChecks')}</p>}<ul className="divide-y divide-border rounded-md border border-border">{checks.map((f, i) => <li key={i} className="flex flex-wrap items-start gap-3 px-4 py-3 text-sm"><span className={`min-w-20 font-semibold ${f.severity === 'block' ? 'text-destructive' : 'text-muted-foreground'}`}>{t(`severity.${f.severity}`)}</span><span className="min-w-0 flex-1">{f.code==='ARCH-01'?t('architectureMismatch'):f.message}{f.entryId && <Link className="ml-2 text-primary hover:underline" href={`/rewards/${unitId}/people/${f.entryId}`}>{t('reviewPerson')}</Link>}</span><span className="font-mono text-xs text-muted-foreground">{f.code}</span></li>)}</ul></section>}
     </>}
     {(annual||tab === 'approvals') && <div id="approvals" className="scroll-mt-6 space-y-6"><h2 className="text-lg font-semibold">{t('approvals')}</h2>
@@ -120,9 +152,9 @@ export default async function RewardUnitPage({ params, searchParams }: { params:
     {(annual||tab === 'data') && v.roles.includes('gr') && <section id="data" className="max-w-3xl space-y-5"><h2 className="font-semibold">{t('data')}</h2><p className="text-sm text-muted-foreground">{t('dataHelp')}</p><Link href={`/rewards/${unitId}/export?template=1`} className="inline-block text-sm font-medium text-primary hover:underline">{t('downloadTemplate')}</Link>{unit.status === 'draft' && annual && <><form action={importOnehrAction} className="space-y-3">{fields}<p className="text-sm text-muted-foreground">{onehrText('rewardImportHelp')}</p><RewardSubmit type="submit" variant="secondary">{onehrText('rewardImport')}</RewardSubmit></form><form action={importFactsAction} className="space-y-3">{fields}<Field label={t('completedTemplate')}><input type="file" name="file" accept=".csv" required className="text-sm" /></Field><RewardSubmit type="submit">{t('import')}</RewardSubmit></form><SourceRefresh unitId={unitId} revision={unit.revision} snapshotDate={unit.snapshotDate} today={todayInKualaLumpur()} /></>}<Link className="inline-block text-sm text-primary hover:underline" href={`/rewards/${unitId}/export`}>{t('export')}</Link></section>}
     {annual && v.roles.includes('gr') && <section id="excluded" className="scroll-mt-6"><PayWindowExcluded unitId={unitId} revision={unit.revision} canEdit={v.canConfigure} window={{ from: unit.policy.blockedFrom, to: unit.policy.blockedTo }} rows={v.rows} kept={unit.policy.payWindowKeep ?? {}} /></section>}
     {(annual||tab === 'rules') && <section id="rules" className="max-w-3xl space-y-4"><h2 className="font-semibold">{t('rules')}</h2>{['rulePools', 'ruleBonus', 'ruleEC', 'ruleExemption', 'ruleLump', 'rulePrivacy', 'ruleApproval', 'rulePosting'].map(k => <p key={k} className="text-sm leading-6">{t(k)}</p>)}</section>}
-    </div>{annual&&<FlagsPanel promotionEntryIds={v.rows.filter(r=>r.recommendation.promotionGrade).map(r=>r.id)} unitId={unitId} flags={checks} filtered={!!sp.check}/>}</div>
+    </div>{annual&&<FlagsPanel personLinks={flagPersonLinks} promotionEntryIds={v.rows.filter(r=>r.recommendation.promotionGrade).map(r=>r.id)} unitId={unitId} flags={checks} filtered={!!(sp.check||sp.flag)}/>}</div>
     {open && <PersonDrawer title={open.source.name} description={`${open.source.employeeCode} · ${t('grade')} ${open.source.grade} · ${t(open.plan === 'ec' ? 'ecPlan' : open.plan)}`} prevId={rows[openIndex - 1]?.id ?? null} nextId={rows[openIndex + 1]?.id ?? null} position={{ index: openIndex + 1, total: rows.length }} editHref={`/rewards/${unitId}/people/${open.id}`}>
-      <PersonCalculation row={open} hidden={hidden(open)} flags={rowFlags(open.id)} t={t} rm={rm} pct={pct} />
+      <PersonCalculation row={open} hidden={hidden(open)} flags={rowFlags(open.id)} t={t} rm={rm} pct={pct} payPosition={[payPosition(open,open.source.basicCents),payPosition(open,open.newBasicCents)]} />
     </PersonDrawer>}
   </div>;
 }
@@ -137,17 +169,19 @@ function FlagChips({ flags, label }: { flags: Flag[]; label: (s: Flag['severity'
 }
 /** 5d34d00d Step 2 — the full calculation for one person, read only. Every figure comes from the server's
  *  calculated row (getRewardUnit); nothing is worked out here. Editing stays on the person record. */
-function PersonCalculation({ row: r, hidden, flags, t, rm, pct }: { row: Row; hidden: boolean; flags: Flag[]; t: (key: string) => string; rm: (cents: number) => string; pct: (bp: number) => string }) {
+function PersonCalculation({ row: r, hidden, flags, t, rm, pct, payPosition }: { row: Row; hidden: boolean; flags: Flag[]; t: (key: string) => string; rm: (cents: number) => string; pct: (bp: number) => string; payPosition: [number|null,number|null] }) {
   const money = (cents: number) => hidden ? t('governance.handledSeparately') : rm(cents);
   const line = (label: string, value: string, strong = false) => <div key={label} className="flex items-baseline justify-between gap-4 py-1.5"><dt className="text-muted-foreground">{label}</dt><dd className={`text-right tabular-nums ${strong ? 'font-semibold' : 'font-medium'}`}>{value}</dd></div>;
   return <div className="space-y-5 text-sm">
     <dl className="divide-y divide-border">{line(t('talent'), r.facts.talent ?? '—')}{line(t('performance'), r.facts.performance ?? '—')}</dl>
     <section><h3 className="mb-1 font-semibold">{t('desk.salary')}</h3><dl className="divide-y divide-border">
       {line(t('currentPay'), rm(r.source.basicCents))}
+      {payPosition[0]!==null&&line(t('compaRatioBefore'),pct(payPosition[0]))}
       {line(`${t('merit')} ${hidden ? '' : pct(r.meritBp)}`, money(r.meritCents))}
       {line(`${t('promotion')} ${hidden ? '' : pct(r.promotionBp)}${r.recommendation.promotionGrade ? ` → ${r.recommendation.promotionGrade}` : ''}`, money(r.promotionCents))}
       {line(`${t('special')} ${hidden ? '' : pct(r.specialBp)}`, money(r.specialCents))}
       {line(t('newPay'), money(r.newBasicCents), true)}
+      {payPosition[1]!==null&&line(t('compaRatioAfter'),pct(payPosition[1]))}
       {line(t('incrementEligibility'), r.incrementReason || t('eligible'))}
     </dl></section>
     <section><h3 className="mb-1 font-semibold">{t('desk.bonus')}</h3><dl className="divide-y divide-border">
@@ -157,6 +191,14 @@ function PersonCalculation({ row: r, hidden, flags, t, rm, pct }: { row: Row; hi
       {line(t('lumpSum'), rm(r.lumpCents))}
       {line(t('bonusEligibility'), r.bonusReason || t('eligible'))}
     </dl></section>
+    {!hidden&&(r.recommendation.reason||r.facts.erCase||r.facts.pipCase)&&<section><h3 className="mb-1 font-semibold">{t('recommendation')}</h3>
+      {r.recommendation.reason&&<p className="mb-2 whitespace-pre-wrap">{r.recommendation.reason}</p>}
+      <dl className="divide-y divide-border">
+        {r.facts.erCase&&line(t('erDecision'),t(`case.${r.facts.erDecision}`))}
+        {r.facts.pipCase&&line(t('pipDecision'),t(`case.${r.facts.pipDecision}`))}
+        {r.facts.caseReason&&line(t('caseReason'),r.facts.caseReason)}
+      </dl>
+    </section>}
     <section><h3 className="mb-1 font-semibold">{t('desk.flags')}</h3>{flags.length ? <ul className="space-y-2">{flags.map((f, i) => <li key={i} className="flex gap-2"><span className={`h-fit shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${chipCls[f.severity]}`}>{t(`severity.${f.severity}`)}</span><span>{f.code==='ARCH-01'?t('architectureMismatch'):f.message}</span></li>)}</ul> : <p className="text-muted-foreground">{t('desk.person.noFlags')}</p>}</section>
   </div>;
 }

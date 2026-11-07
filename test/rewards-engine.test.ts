@@ -13,6 +13,25 @@ describe('Reward Desk deterministic calculation and confidentiality', () => {
     expect(r.rows[0].bonusCents).toBe(997500);
     expect(r.flags.filter(f => f.severity === 'block')).toEqual([]);
   });
+  it('matches the attached Reward Desk v3.3 reference on a shared, fictional standard-plan calculation', () => {
+    const star = entry('star'); star.source.basicCents = 400000; star.facts.talent = 'STAR';
+    const nominee = entry('nominee'); nominee.recommendation.promotionGrade = '13';
+    nominee.recommendation.reason = 'Fictional business case for a sustained increase in role scope.';
+    const outside = entry('outside'); outside.source.notice = true;
+    const baseline = policy();
+    const ranges = { ...baseline.ranges, '13': [300000, 600000, 900000] as [number, number, number] };
+    // Reference inputs: RM 9,000 eligible payroll, PAT 100%, two months, and 1.5 matrix months.
+    // The offline reference rounds cohort catch-up down to 0.5 percentage points and the lump to RM 50.
+    const calculated = calculateRewards([star, nominee, outside], { ...baseline, ranges, multiplierBp: 10000 });
+    expect(calculated.budgets.standard).toMatchObject({ payrollCents: 900000, pools: [45000, 9000, 9000],
+      used: [46500, 50000, 8000], bonusPoolCents: 1800000, bonusUsedCents: 1800000 });
+    expect(calculated.suggestedMultiplierBp).toBe(13300);
+    expect(calculated.suggestedLumpCents).toBe(450000);
+    expect(calculated.rows[0]).toMatchObject({ meritCents: 24000, specialCents: 8000, newBasicCents: 432000, bonusCents: 600000 });
+    expect(calculated.rows[1]).toMatchObject({ meritCents: 22500, promotionCents: 50000, newBasicCents: 572500, bonusCents: 750000 });
+    expect(calculated.rows[2]).toMatchObject({ bonusCents: 0, lumpCents: 450000 });
+    expect(calculated.flags.filter(flag => flag.code === 'POOL-03' && flag.severity === 'block')).toHaveLength(2);
+  });
   it('positive bonus on a zero budget blocks instead of dividing to zero', () => {
     const p = { ...policy(), patActual: 0, multiplierBp: 10000 };
     const r = calculateRewards([entry()], p);

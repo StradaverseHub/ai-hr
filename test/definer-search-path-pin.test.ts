@@ -1,11 +1,11 @@
 /**
  * ADR-0174 follow-up — every SECURITY DEFINER function names pg_temp LAST in its search_path, and the
- * visibility walks answer only inside the session tenant (migration 2500; app.is_company_descendant since 2126).
+ * visibility walks answer only inside the session tenant (migration 2900; app.is_company_descendant since 2126).
  *
  * A path that does not name pg_temp still searches the session's temporary schema FIRST for relation and
  * type names, so an ai_hr_app session could put a TEMP `employment` in front of public.employment, or a
  * TEMP table named `jsonb` in front of the jsonb type, inside a definer body. Each shadow test first runs
- * the installed body under its pre-2500 path as a control, proving the shadow is live, before asserting
+ * the installed body under its pre-2900 path as a control, proving the shadow is live, before asserting
  * that the installed function ignores it. The catalog guard keeps future definers pinned.
  */
 import { randomUUID } from 'node:crypto';
@@ -37,14 +37,14 @@ const employeeCtx = async (b: Base, personId: string): Promise<SessionContext> =
   personId,
 });
 
-/** The body `fn` had before 2500, taken from the latest migration that defined it. */
+/** The body `fn` had before 2900, taken from the latest migration that defined it. */
 const migrationBody = (migration: string, fn: string) => {
   const text = readFileSync(`db/migrations/${migration}.sql`, 'utf8');
   const start = text.lastIndexOf(`CREATE OR REPLACE FUNCTION app.${fn}(`);
   const open = text.indexOf('AS $$', start) + 'AS $$'.length;
   const body = text.slice(open, text.indexOf('$$;', open));
   expect(start, fn).toBeGreaterThanOrEqual(0);
-  expect(body, `${fn} must be the unqualified pre-2500 body`).toMatch(/FROM employment e/);
+  expect(body, `${fn} must be the unqualified pre-2900 body`).toMatch(/FROM employment e/);
   return body;
 };
 
@@ -54,7 +54,7 @@ const installedBody = async (fn: string) => {
   return row.body;
 };
 
-/** `body` as an invoker pg_temp function under the pre-2500 path `public`. A pg_temp function outlives a
+/** `body` as an invoker pg_temp function under the pre-2900 path `public`. A pg_temp function outlives a
  *  committed transaction on a pooled connection, so callers drop it before committing (a rollback removes it). */
 const controlOf = (tx: Tx, name: string, args: string, returns: string, body: string) =>
   tx.execute(sql.raw(`CREATE FUNCTION pg_temp.${name}(${args}) RETURNS ${returns} LANGUAGE sql STABLE SET search_path = public AS $control$${body}$control$`));
@@ -127,7 +127,7 @@ describe('ADR-0174 follow-up — pinned definer search paths', () => {
 
   it('a TEMP table cannot shadow a relation or a type name inside app.principal', async () => {
     const ctx = adminCtx(a);
-    // 2500 changed only this function's path, so the installed body is also the pre-2500 body.
+    // 2900 changed only this function's path, so the installed body is also the pre-2900 body.
     const body = await installedBody('app.principal(uuid)');
     const control = (tx: Tx) => controlOf(tx, 'old_principal', 'p_user_id uuid', 'TABLE (tenant_id uuid, person_id uuid, grants jsonb)', body);
     const shadowRelation = await withTenant(ctx, async (tx) => {

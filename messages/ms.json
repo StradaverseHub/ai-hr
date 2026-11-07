@@ -73,6 +73,10 @@
     "copyHint": "Menyalin setiap syif dan hari rehat daripada tarikh sumber ke sasaran, mengekalkan kedudukan setiap hari. Menjalankan semula menulis ganti tarikh sasaran yang sama.",
     "copiedDone": "Menyalin {rows} entri roster ke tarikh sasaran.",
     "copiedEmpty": "Tiada entri roster ditemui dalam tarikh sumber untuk disalin.",
+    "breakType": "Jenis rehat",
+    "breakTypeInShift": "Dalam syif",
+    "breakTypeBeforeShift": "Sebelum syif",
+    "breakTypeAfterShift": "Selepas syif",
     "breakPaid": "Berbayar",
     "monthlyRoster": "Jadual bulanan",
     "legend": "Petunjuk",
@@ -336,6 +340,7 @@
     "payrollTransactions": "Kemasukan Transaksi",
     "payrollTransactionView": "Paparan Transaksi",
     "payrollReports": "Laporan",
+    "payrollReconciliation": "Rekonsiliasi Gaji",
     "payrollStatutoryForms": "Borang Berkanun",
     "payrollPaymentSubmission": "Penghantaran Pembayaran",
     "payrollSettings": "Tetapan",
@@ -9791,6 +9796,27 @@
       "importNewOnly": "Import rekod baharu sahaja"
     },
     "individualImport": {
+      "submitWorkbook": "Muat naik buku kerja",
+      "downloadWorkbook": "Muat turun buku kerja asal",
+      "progress": "Kemajuan",
+      "startedAt": "Masa mula",
+      "finishedAt": "Masa selesai",
+      "completedWithErrors": "Selesai dengan ralat",
+      "confirmationUnavailable": "Kelompok ini tidak lagi boleh disahkan.",
+      "queueFull": "Tunggu sehingga salah satu kelompok semasa selesai sebelum memuat naik lagi.",
+      "fileReadError": "Buku kerja tidak dapat dibaca. Gunakan templat Excel yang sepadan.",
+      "noValidRows": "Tiada baris yang sah. Semak ralat baris sebelum memuat naik semula.",
+      "importFailed": "Kelompok dihentikan. Semak buku kerja atau akses anda sebelum mencuba lagi.",
+      "batchCounts": "{total} baris · {written} diimport · {failed} gagal",
+      "batchState": {
+        "pending": "Menunggu",
+        "validating": "Memproses buku kerja",
+        "ready": "Sedia untuk disahkan",
+        "confirmed": "Menunggu import",
+        "importing": "Mengimport",
+        "completed": "Selesai",
+        "failed": "Gagal"
+      },
       "open": "Import Excel",
       "log": "Log import",
       "logHint": "Semak import transaksi individu dan hasil asal setiap baris.",
@@ -15677,6 +15703,8 @@
     "builderOrdinaryRate": "Pembahagi kadar biasa",
     "builderContextHint": "Tetapkan hanya ikatan yang digunakan oleh formula ini. Uji formula tersimpan dalam pembina formula dengan pekerja, tempoh dan kitarannya.",
     "builderNoFormula": "Pilih formula aktif yang diuji",
+    "builderNoneEligible": "Tiada formula sedia digunakan. Uji dan aktifkan formula dalam Pembina Formula Gaji.",
+    "builderSavedUnavailable": "{formulaId} (pilihan disimpan, tidak tersedia buat masa ini)",
     "builderFormula": "ID formula",
     "kind_formula_builder": "Pembina Formula Gaji"
   },
@@ -23366,6 +23394,11 @@
       "desc": "Kadar kerja lebih masa dan liputan syif sandaran.",
       "cta": "Buka"
     },
+    "offlineClocking": {
+      "title": "Rekod kehadiran luar talian",
+      "desc": "Membolehkan pekerja merekod kehadiran dalam aplikasi mudah alih tanpa sambungan. Rekod dimuat naik kemudian dan disemak sebelum dikira.",
+      "cta": "Buka"
+    },
     "registeredDevices": {
       "title": "Peranti Kehadiran Berdaftar",
       "desc": "Lihat peranti berdaftar dan batalkan pendaftaran.",
@@ -23414,6 +23447,18 @@
     }
   },
   "rewards": {
+    "compaRatio": "Nisbah kompa",
+    "compaRatioBefore": "Gaji berbanding titik tengah sebelum",
+    "compaRatioAfter": "Gaji berbanding titik tengah selepas",
+    "promotionNominations": "Pencalonan kenaikan pangkat",
+    "noPromotionNominations": "Tiada pencalonan yang boleh dilihat untuk semakan ini.",
+    "promotionPrevious": "Semakan sebelumnya",
+    "promotionNext": "Semakan seterusnya",
+    "prelaunchDataCheck": "Semakan kesediaan data",
+    "dataCheckReady": "Sedia",
+    "recommendationSaved": "Cadangan disimpan.",
+    "recommendationSaveFailed": "Cadangan tidak dapat disimpan.",
+    "resetRecommendation": "Tetapkan semula",
     "unitBonus": {
       "noReduction": "Pengurangan gaji tidak dibenarkan dalam semakan gaji.",
       "appliesOnlyTo": "Hanya terpakai untuk semakan ini: {company} / {unit}",
@@ -30606,6 +30651,30 @@
     "acknowledgementDate": "Tarikh"
   },
   "rewardsAccess": {
+    "reviewActivity": {
+      "subject": "Individu terlibat",
+      "clearSubject": "Kosongkan penapis individu",
+      "title": "Aktiviti semakan",
+      "review": "Semakan",
+      "actor": "Diubah oleh",
+      "time": "Masa",
+      "event": "Perubahan",
+      "reason": "Sebab",
+      "empty": "Tiada aktiviti sepadan.",
+      "events": {
+        "access-changed": "Akses diubah",
+        "cancelled": "Semakan dibatalkan",
+        "facts-imported": "Fakta diimport",
+        "final-pool-changed": "Kumpulan akhir diubah",
+        "lump-updated": "Bayaran sekali gus dikemas kini",
+        "onehr-results-imported": "Keputusan OneHR diimport",
+        "posted": "Ganjaran disiarkan",
+        "recommendation-updated": "Cadangan dikemas kini",
+        "routed": "Semakan dipindahkan",
+        "senior-membership-updated": "Keahlian kanan dikemas kini",
+        "upload-source-refreshed": "Sumber muat naik dikemas kini"
+      }
+    },
     "wholeGroup": {
       "title": "Peranan seluruh kumpulan",
       "description": "Berikan akses seluruh kumpulan kepada pemegang peranan penyeliaan yang layak.",
@@ -31247,6 +31316,30 @@
     }
   },
   "payrollComparison": {
+    "employmentStatus": "Status pekerjaan pada akhir tempoh",
+    "previousPayCycles": "Kitaran gaji dalam tempoh perbandingan",
+    "previousPayCyclesHelp": "Biarkan kosong untuk menggunakan kitaran yang sama.",
+    "sourceVersionHistory": "Versi sumber terdahulu",
+    "newComparison": "Perbandingan baharu",
+    "allRecordedItems": "Semua item gaji yang direkodkan",
+    "itemsUnavailable": "Sesetengah item gaji tidak dapat dibandingkan daripada rekod gaji: {codes}",
+    "saveTemplate": "Simpan sebagai templat rekonsiliasi",
+    "businessUnit": "Unit perniagaan",
+    "position": "Jawatan",
+    "employmentType": "Jenis pekerjaan",
+    "employeeSearch": "Cari pekerja mengikut nama atau kod",
+    "groupBy": "Kumpulkan mengikut",
+    "noGrouping": "Semua / tiada pengumpulan",
+    "reconciliationCaptured": "Versi sumber direkodkan",
+    "reconciliationStatus": "Status perbandingan",
+    "reconciliationReady": "Sedia disemak",
+    "hrRemark": "Catatan HR",
+    "hrRemarkEdit": "Edit catatan HR",
+    "hrRemarkSave": "Simpan catatan",
+    "hrRemarkConflict": "Catatan ini telah berubah. Semak versi terkini dan cuba lagi.",
+    "hrRemarkFailed": "Catatan tidak dapat disimpan. Semak perbandingan dan cuba lagi.",
+    "payCycles": "Kitaran gaji",
+    "sourceUpdated": "Gaji terakhir diproses",
     "comparisonTable": "Keputusan perbandingan",
     "saveFailed": "Laporan tidak dapat disimpan. Draf anda dikekalkan. Cuba lagi.",
     "rolesRequired": "Pilih sekurang-kurangnya satu peranan yang dibenarkan menjalankan laporan ini.",
@@ -31323,6 +31416,7 @@
       "super_admin": "Pentadbir Super"
     },
     "columns": {
+      "payItemCode": "Kod item gaji",
       "employeeCode": "No. pekerja",
       "employeeName": "Pekerja",
       "department": "Jabatan",
@@ -31339,6 +31433,8 @@
       "remarks": "Catatan"
     },
     "reasons": {
+      "noChange": "Tiada perubahan",
+      "payItemChanged": "Item gaji yang direkodkan berubah",
       "unexplained": "Belum dijelaskan",
       "increment": "Kenaikan gaji",
       "promotion": "Kenaikan pangkat",

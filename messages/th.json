@@ -73,6 +73,10 @@
     "copyHint": "คัดลอกทุกกะและวันหยุดจากวันที่ต้นทางไปยังเป้าหมาย โดยคงตำแหน่งของแต่ละวันไว้ การรันอีกครั้งจะเขียนทับวันที่เป้าหมายเดิม",
     "copiedDone": "คัดลอก {rows} รายการตารางเวรไปยังวันที่เป้าหมายแล้ว",
     "copiedEmpty": "ไม่พบรายการตารางเวรในวันที่ต้นทางเพื่อคัดลอก",
+    "breakType": "ประเภทการพัก",
+    "breakTypeInShift": "ระหว่างกะ",
+    "breakTypeBeforeShift": "ก่อนกะ",
+    "breakTypeAfterShift": "หลังกะ",
     "breakPaid": "ได้รับค่าจ้าง",
     "monthlyRoster": "ตารางกะรายเดือน",
     "legend": "คำอธิบายสัญลักษณ์",
@@ -336,6 +340,7 @@
     "payrollTransactions": "บันทึกธุรกรรม",
     "payrollTransactionView": "มุมมองธุรกรรม",
     "payrollReports": "รายงาน",
+    "payrollReconciliation": "การกระทบยอดเงินเดือน",
     "payrollStatutoryForms": "แบบฟอร์มตามกฎหมาย",
     "payrollPaymentSubmission": "การส่งการชำระเงิน",
     "payrollSettings": "การตั้งค่า",
@@ -9791,6 +9796,27 @@
       "importNewOnly": "นำเข้าเฉพาะรายการใหม่"
     },
     "individualImport": {
+      "submitWorkbook": "อัปโหลดสมุดงาน",
+      "downloadWorkbook": "ดาวน์โหลดสมุดงานต้นฉบับ",
+      "progress": "ความคืบหน้า",
+      "startedAt": "เริ่มเมื่อ",
+      "finishedAt": "เสร็จเมื่อ",
+      "completedWithErrors": "เสร็จสิ้นโดยมีข้อผิดพลาด",
+      "confirmationUnavailable": "ไม่สามารถยืนยันชุดนี้ได้อีก",
+      "queueFull": "รอให้ชุดปัจจุบันชุดหนึ่งเสร็จก่อนอัปโหลดอีกครั้ง",
+      "fileReadError": "อ่านสมุดงานไม่ได้ โปรดใช้เทมเพลต Excel ที่ตรงกัน",
+      "noValidRows": "ไม่พบแถวที่ถูกต้อง ตรวจสอบข้อผิดพลาดก่อนอัปโหลดอีกครั้ง",
+      "importFailed": "ชุดงานหยุดแล้ว ตรวจสอบสมุดงานหรือสิทธิ์ก่อนลองอีกครั้ง",
+      "batchCounts": "{total} แถว · นำเข้า {written} · ล้มเหลว {failed}",
+      "batchState": {
+        "pending": "รอดำเนินการ",
+        "validating": "กำลังประมวลผลสมุดงาน",
+        "ready": "พร้อมยืนยัน",
+        "confirmed": "รอนำเข้า",
+        "importing": "กำลังนำเข้า",
+        "completed": "เสร็จสิ้น",
+        "failed": "ล้มเหลว"
+      },
       "open": "นำเข้า Excel",
       "log": "บันทึกการนำเข้า",
       "logHint": "ตรวจสอบชุดนำเข้ารายการส่วนบุคคลและผลลัพธ์เดิมของแต่ละแถว",
@@ -15677,6 +15703,8 @@
     "builderOrdinaryRate": "ตัวหารอัตราปกติ",
     "builderContextHint": "ตั้งค่าเฉพาะการผูกค่าที่สูตรใช้ ทดสอบสูตรที่บันทึกในเครื่องมือสร้างสูตรพร้อมพนักงาน ช่วงเวลา และรอบ",
     "builderNoFormula": "เลือกสูตรที่ทดสอบและเปิดใช้แล้ว",
+    "builderNoneEligible": "ไม่มีสูตรที่พร้อมใช้งาน โปรดทดสอบและเปิดใช้งานสูตรในตัวสร้างสูตรค่าจ้าง",
+    "builderSavedUnavailable": "{formulaId} (รายการที่บันทึกไว้ ยังใช้ไม่ได้)",
     "builderFormula": "รหัสสูตร",
     "kind_formula_builder": "เครื่องมือสร้างสูตรเงินเดือน"
   },
@@ -23366,6 +23394,11 @@
       "desc": "อัตราล่วงเวลาและความครอบคลุมของกะสำรอง",
       "cta": "เปิด"
     },
+    "offlineClocking": {
+      "title": "การลงเวลาแบบออฟไลน์",
+      "desc": "ให้พนักงานลงเวลาในแอปมือถือได้โดยไม่ต้องเชื่อมต่ออินเทอร์เน็ต การลงเวลาจะอัปโหลดภายหลังและได้รับการตรวจสอบก่อนนับเป็นเวลาทำงาน",
+      "cta": "เปิด"
+    },
     "registeredDevices": {
       "title": "อุปกรณ์ลงเวลาที่ลงทะเบียน",
       "desc": "ดูอุปกรณ์และเพิกถอนการลงทะเบียน",
@@ -23414,6 +23447,18 @@
     }
   },
   "rewards": {
+    "compaRatio": "อัตราส่วนเงินเดือน",
+    "compaRatioBefore": "เงินเดือนเทียบจุดกึ่งกลางก่อนปรับ",
+    "compaRatioAfter": "เงินเดือนเทียบจุดกึ่งกลางหลังปรับ",
+    "promotionNominations": "การเสนอชื่อเพื่อเลื่อนตำแหน่ง",
+    "noPromotionNominations": "ไม่มีการเสนอชื่อที่ดูได้สำหรับรอบประเมินเหล่านี้",
+    "promotionPrevious": "รอบประเมินก่อนหน้า",
+    "promotionNext": "รอบประเมินถัดไป",
+    "prelaunchDataCheck": "ตรวจสอบความพร้อมของข้อมูล",
+    "dataCheckReady": "พร้อม",
+    "recommendationSaved": "บันทึกข้อเสนอแนะแล้ว",
+    "recommendationSaveFailed": "ไม่สามารถบันทึกข้อเสนอแนะได้",
+    "resetRecommendation": "รีเซ็ต",
     "unitBonus": {
       "noReduction": "ไม่อนุญาตให้ลดเงินเดือนในการทบทวนเงินเดือน",
       "appliesOnlyTo": "ใช้กับการทบทวนนี้เท่านั้น: {company} / {unit}",
@@ -30606,6 +30651,30 @@
     "acknowledgementDate": "วันที่"
   },
   "rewardsAccess": {
+    "reviewActivity": {
+      "subject": "ผู้ได้รับผลกระทบ",
+      "clearSubject": "ล้างตัวกรองบุคคล",
+      "title": "กิจกรรมการตรวจสอบ",
+      "review": "การตรวจสอบ",
+      "actor": "ผู้เปลี่ยนแปลง",
+      "time": "เวลา",
+      "event": "การเปลี่ยนแปลง",
+      "reason": "เหตุผล",
+      "empty": "ไม่พบกิจกรรมที่ตรงกัน",
+      "events": {
+        "access-changed": "เปลี่ยนสิทธิ์เข้าถึง",
+        "cancelled": "ยกเลิกการตรวจสอบ",
+        "facts-imported": "นำเข้าข้อมูล",
+        "final-pool-changed": "เปลี่ยนวงเงินสุดท้าย",
+        "lump-updated": "อัปเดตเงินก้อน",
+        "onehr-results-imported": "นำเข้าผล OneHR",
+        "posted": "บันทึกรางวัล",
+        "recommendation-updated": "อัปเดตข้อเสนอแนะ",
+        "routed": "ย้ายการตรวจสอบ",
+        "senior-membership-updated": "อัปเดตสมาชิกระดับอาวุโส",
+        "upload-source-refreshed": "รีเฟรชแหล่งข้อมูลอัปโหลด"
+      }
+    },
     "wholeGroup": {
       "title": "บทบาททั้งกลุ่ม",
       "description": "ให้สิทธิ์ทั่วทั้งกลุ่มแก่ผู้ถือบทบาทกำกับดูแลที่มีคุณสมบัติ",
@@ -31247,6 +31316,30 @@
     }
   },
   "payrollComparison": {
+    "employmentStatus": "สถานะการจ้างเมื่อสิ้นงวด",
+    "previousPayCycles": "รอบจ่ายในงวดเปรียบเทียบ",
+    "previousPayCyclesHelp": "เว้นว่างเพื่อใช้รอบจ่ายเดียวกับงวดปัจจุบัน",
+    "sourceVersionHistory": "เวอร์ชันต้นทางก่อนหน้า",
+    "newComparison": "การเปรียบเทียบใหม่",
+    "allRecordedItems": "รายการจ่ายที่บันทึกไว้ทั้งหมด",
+    "itemsUnavailable": "ไม่สามารถเปรียบเทียบรายการจ่ายบางรายการจากข้อมูลที่บันทึกไว้: {codes}",
+    "saveTemplate": "บันทึกเป็นเทมเพลตการกระทบยอด",
+    "businessUnit": "หน่วยธุรกิจ",
+    "position": "ตำแหน่ง",
+    "employmentType": "ประเภทการจ้าง",
+    "employeeSearch": "ค้นหาพนักงานด้วยชื่อหรือรหัส",
+    "groupBy": "จัดกลุ่มตาม",
+    "noGrouping": "ทั้งหมด / ไม่จัดกลุ่ม",
+    "reconciliationCaptured": "เวลาบันทึกเวอร์ชันต้นทาง",
+    "reconciliationStatus": "สถานะการเปรียบเทียบ",
+    "reconciliationReady": "พร้อมตรวจสอบ",
+    "hrRemark": "หมายเหตุฝ่ายบุคคล",
+    "hrRemarkEdit": "แก้ไขหมายเหตุฝ่ายบุคคล",
+    "hrRemarkSave": "บันทึกหมายเหตุ",
+    "hrRemarkConflict": "หมายเหตุนี้มีการเปลี่ยนแปลง ตรวจสอบฉบับล่าสุดแล้วลองอีกครั้ง",
+    "hrRemarkFailed": "บันทึกหมายเหตุไม่ได้ ตรวจสอบการเปรียบเทียบแล้วลองอีกครั้ง",
+    "payCycles": "รอบการจ่ายเงินเดือน",
+    "sourceUpdated": "ประมวลผลเงินเดือนล่าสุด",
     "comparisonTable": "ผลการเปรียบเทียบ",
     "saveFailed": "บันทึกรายงานไม่ได้ ร่างของคุณยังคงอยู่ โปรดลองอีกครั้ง",
     "rolesRequired": "เลือกอย่างน้อยหนึ่งบทบาทที่อนุญาตให้เรียกใช้รายงานนี้",
@@ -31323,6 +31416,7 @@
       "super_admin": "ผู้ดูแลสูงสุด"
     },
     "columns": {
+      "payItemCode": "รหัสรายการจ่าย",
       "employeeCode": "รหัสพนักงาน",
       "employeeName": "พนักงาน",
       "department": "แผนก",
@@ -31339,6 +31433,8 @@
       "remarks": "หมายเหตุ"
     },
     "reasons": {
+      "noChange": "ไม่มีการเปลี่ยนแปลง",
+      "payItemChanged": "รายการจ่ายที่บันทึกไว้เปลี่ยนแปลง",
       "unexplained": "ยังไม่มีคำอธิบาย",
       "increment": "ปรับเงินเดือนขึ้น",
       "promotion": "เลื่อนตำแหน่ง",

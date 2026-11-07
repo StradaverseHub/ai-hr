@@ -10,7 +10,7 @@ import {serializePayrollComparison} from '@/lib/payroll-comparison-export';
 export async function GET(request:Request){
   const s=await getSession();if(!isAdmin(s))return new Response('Forbidden',{status:403});
   const url=new URL(request.url),id=url.searchParams.get('id'),format=url.searchParams.get('format');
-  if(!id||!['pdf','xlsx'].includes(format??''))return new Response('Choose a saved report and PDF or Excel.',{status:400});
+  if(!id||!['pdf','xlsx'].includes(format??''))return new Response('Choose a payroll comparison and PDF or Excel.',{status:400});
   const allowed=await allowedCompanies(s),scope=await getScopeIds(allowed.map(company=>company.id));
   const filters=Object.fromEntries([...url.searchParams].filter(([key])=>key!=='id'&&key!=='format'));
   try{

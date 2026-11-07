@@ -203,14 +203,38 @@ export async function onboardingList(ctx: SessionContext, companyIds?: string[])
             M.fail('Onboarding access is required.', 'forbidden');
         const list = await tx.select().from(cases).where(companyIds ? inArray(cases.companyId, companyIds) : undefined).orderBy(asc(cases.createdAt), asc(cases.id));
         const reads = await tx.select({ caseId: seen.caseId }).from(seen).where(eq(seen.userId, uid(ctx))), opened = new Set(reads.map(x => x.caseId));
+        const open = list.filter(row => ['pending','submitted'].includes(row.data.state));
+        if (open.length) {
+            const projections = await tx.execute<{id:string;value:CurrentPersonnel | null}>(sql`select id,app.onboarding_current_personnel(id,${todayInKualaLumpur()}::date) as value from lc_onboarding_case where id in (${sql.join(open.map(row => sql`${row.id}::uuid`),sql`,`)})`);
+            const byId = new Map(projections.map(row => [row.id,row.value]));
+            for (const row of open) applyCurrentPersonnel(row.data, byId.get(row.id) ?? null);
+        }
         return list.map(r => ({ case: projectJoinerPage(r.data,config,actor.page?actor:{...actor,sections:{...JOINER_SECTION_PRESETS.approver,history:'equip'},hr:false}), revision: r.revision, isNew: !opened.has(r.id), progress: M.progress(config, r.data) }));
     });
+}
+type CurrentPersonnel = {source: Partial<M.Facts>; labels: Partial<Record<keyof M.Facts,string>>};
+/** Read-only current facts; normal row/private revision history remains a snapshot. */
+function applyCurrentPersonnel(c: M.Case, projection: CurrentPersonnel | null) {
+    if (!projection) return {} as Partial<Record<keyof M.Facts,string>>;
+    const source = { ...projection.source };
+    // Do not turn a never-supplied field into a source lock. Previously supplied fields
+    // retain an explicit empty value when Personnel clears them.
+    for (const key of Object.keys(source) as (keyof M.Facts)[]) if (source[key] === '' && c.source[key] === undefined) delete source[key];
+    if (Object.entries(source).some(([key,value]) => c.source[key as keyof M.Facts] !== value) && c.state === 'submitted') c.reconcileNeeded = true;
+    c.source = { ...c.source, ...source };
+    return Object.fromEntries(Object.keys(source).map(key => [key, projection.labels[key as keyof M.Facts] ?? ''])) as Partial<Record<keyof M.Facts,string>>;
+}
+async function currentPersonnelTx(tx: Tx, c: M.Case) {
+    if (!['pending','submitted'].includes(c.state)) return {} as Partial<Record<keyof M.Facts,string>>;
+    const [projection] = await tx.execute<{value:CurrentPersonnel|null}>(sql`select app.onboarding_current_personnel(${c.id}::uuid,${todayInKualaLumpur()}::date) as value`);
+    return applyCurrentPersonnel(c,projection?.value ?? null);
 }
 async function loadTx(tx: Tx, ctx: SessionContext, id: string, lock = false) {
     const q = tx.select().from(cases).where(eq(cases.id, id)).limit(1), [row] = lock ? await q.for('update') : await q;
     if (!row)
         M.fail('Onboarding case not found.', 'not_found');
-    const { config } = await configTx(tx, ctx), actor = await actorTx(tx, ctx, config, row.companyId), c = structuredClone(row.data);
+    const { config } = await configTx(tx, ctx), c = structuredClone(row.data);
+    let actor = await actorTx(tx, ctx, config, row.companyId);
     if (actor.hr) {
         const [s] = await tx.select().from(secrets).where(eq(secrets.caseId, id));
         if (s) {
@@ -223,7 +247,20 @@ async function loadTx(tx: Tx, ctx: SessionContext, id: string, lock = false) {
         const [form] = await tx.execute<{ values: {caseValues?:Record<string,string>;caseContactEmail?:string} | null }>(sql`select app.onboarding_v9_case_values(${id}::uuid) as values`);
         c.caseValues = form?.values?.caseValues; c.caseContactEmail = form?.values?.caseContactEmail;
     }
-    return { row, config, actor, c };
+    const personnelLabels = await currentPersonnelTx(tx, c);
+    // A Personnel company correction changes the case's access boundary. The SQL projection
+    // requires HR authority in both companies; preserve the old revision and audit the rebind.
+    if (c.source.company && c.source.company !== row.companyId) {
+        if (!actor.hr || !(actor.module || actor.caseActions)) M.fail('Company HR case access is required to refresh this company change.', 'forbidden');
+        const nextCompany = c.source.company;
+        const nextActor = await actorTx(tx, ctx, config, nextCompany);
+        if (!nextActor.hr) M.fail('Company HR access is required for the updated Personnel company.', 'forbidden');
+        M.log(c, actor, { ...clock(), id:randomUUID, nextNumber:()=>'', leave:{},taskLoads:{},lastTaskAssignment:{},pendingApprovals:{},lifetimeApprovals:{},users:[] }, 'personnel.companyUpdated');
+        await storeTx(tx,ctx,{...row,companyId:nextCompany},c,true);
+        await auditTx(tx,ctx,c,'personnel_company_updated');
+        row.companyId=nextCompany;row.revision+=1;row.data=stripPrivate(c).value;actor=nextActor;
+    }
+    return { row, config, actor, c, personnelLabels };
 }
 function requisitionGroupAccess(config: M.Config, user: string): boolean {
     const groups = [config.techGroup, ...config.exceptions.groups, ...config.catalogue.map(i => i.team), ...config.workflows.flatMap(w => w.steps.filter(s => s.type === 'group').map(s => s.target)), ...config.routings.flatMap(r => r.rows.map(row => row.group))];
@@ -234,7 +271,7 @@ function canReadRequisition(config: M.Config, r: M.Requisition | null, actor: M.
 }
 export async function onboardingDetail(ctx: SessionContext, id: string, mode: 'case' | 'requisition' | 'task' = 'case', generation?: string) {
     return withTenant(ctx, async (tx) => {
-        const { row, config, actor, c } = await loadTx(tx, ctx, id);
+        const { row, config, actor, c, personnelLabels } = await loadTx(tx, ctx, id);
         if (mode === 'case' && !actor.page)
             M.fail('Onboarding access is required.', 'forbidden');
         if (mode !== 'case' && !actor.module && !(mode==='requisition'&&actor.records) && !await participantTx(tx, id))
@@ -272,7 +309,7 @@ export async function onboardingDetail(ctx: SessionContext, id: string, mode: 'c
         const [caseLabels] = rows<{
             labels: Partial<Record<keyof M.Facts, string>>;
         }>(await tx.execute(sql `select app.onboarding_case_labels(${id}::uuid) as labels`));
-        const labels = caseLabels?.labels ?? {};
+        const labels = { ...caseLabels?.labels, ...personnelLabels };
         const effective = M.effectiveFacts(c);
         if (actor.hr && /^[0-9a-f-]{36}$/i.test(effective.costCentre)) {
             const [cost] = await tx.select({ name: costCenter.name }).from(costCenter).where(eq(costCenter.id, effective.costCentre));
@@ -593,7 +630,7 @@ export async function onboardingSyncDraftTx(ctx: SessionContext, tx: Tx, draftId
         }
         return;
     }
-    if (!draft?.companyId)
+    if (!draft?.companyId || row?.data.state === 'cancelled' && !active)
         return;
     if (mode === 'save' && row?.data.sourceVersion === draft.updatedAt.toISOString())
         return;
@@ -611,13 +648,19 @@ export async function onboardingSyncDraftTx(ctx: SessionContext, tx: Tx, draftId
     const c = row?.data ?? M.blankCase(randomUUID(), number, draftId, source, env);
     if (row) {
         const [privateRow] = await tx.select().from(secrets).where(eq(secrets.caseId, row.id));
-        if (privateRow)
+        if (privateRow) {
             Object.assign(c.local, privateRow.data.local);
+            if (c.state === 'cancelled') Object.assign(c.source, privateRow.data.source);
+        }
     }
     const old = JSON.stringify(Object.entries(c.source).sort());
-    c.source = source;
-    c.syncedAt = now;
-    c.sourceVersion = draft.updatedAt.toISOString();
+    // Activation must retain the canonical identity link even for a cancelled case.
+    // Its displayed facts, private snapshot and work remain historical.
+    if (c.state !== 'cancelled') {
+        c.source = source;
+        c.syncedAt = now;
+        c.sourceVersion = draft.updatedAt.toISOString();
+    }
     if (row && old !== JSON.stringify(Object.entries(stripPrivate(c).value.source).sort()) && c.state === 'submitted')
         c.reconcileNeeded = true;
     if (active) {
@@ -627,10 +670,10 @@ export async function onboardingSyncDraftTx(ctx: SessionContext, tx: Tx, draftId
     }
     const a: M.Actor = ctx.userId ? await actorTx(tx, ctx, config, draft.companyId) : { id: 'system', name: 'Personnel Management', module: true, hr: true, master: true };
     M.log(c, a, env, active ? 'personnel.activated' : row ? 'personnel.updated' : 'personnel.synced');
-    if (active)
+    if (active && c.state !== 'cancelled')
         await assignRoleTasksTx(tx, c);
     if (row)
-        await storeTx(tx, ctx, { ...row, companyId: draft.companyId }, c, a.hr);
+        await storeTx(tx, ctx, { ...row, companyId: c.state === 'cancelled' ? row.companyId : draft.companyId }, c, a.hr);
     else {
         const { value, data: secretData } = stripPrivate(c);
         await tx.insert(cases).values({ id: c.id, tenantId: ctx.tenantId, companyId: draft.companyId, sourceDraftId: draftId, data: value, employmentId: c.employmentId });
@@ -1131,6 +1174,7 @@ export async function refreshOnboardingPersonnel(ctx: SessionContext, runTenant:
         const list = await tx.select().from(cases).orderBy(asc(cases.id)).for('update');
         for (const row of list) {
             const c = structuredClone(row.data);
+            if (!['pending','submitted'].includes(c.state)) continue;
             if (!c.employmentId) {
                 await refreshRoleLinksTx(tx, ctx, row, c);
                 continue;
@@ -1163,6 +1207,7 @@ export async function refreshOnboardingPersonnel(ctx: SessionContext, runTenant:
                 continue;
             }
             c.source = snapshot.source;
+            if (ctx.userId) await currentPersonnelTx(tx, c);
             c.local = { ...c.local, ...privateData.local };
             c.personId = snapshot.person_id;
             c.personnelStatus = 'Active';
@@ -1173,8 +1218,8 @@ export async function refreshOnboardingPersonnel(ctx: SessionContext, runTenant:
             const a: M.Actor = { id: ctx.userId ?? 'system', name: 'Personnel Management', module: true, hr: true, master: true };
             M.log(c, a, { ...clock(), id: randomUUID, nextNumber: () => '', leave: {}, taskLoads: {}, lastTaskAssignment: {}, pendingApprovals: {}, lifetimeApprovals: {}, users: [] }, 'personnel.updated');
             await assignRoleTasksTx(tx, c);
-            await storeTx(tx, ctx, { ...row, companyId: snapshot.company_id }, c, true);
-            await tx.update(cases).set({ companyId: snapshot.company_id }).where(eq(cases.id, c.id));
+            await storeTx(tx, ctx, { ...row, companyId: c.source.company || snapshot.company_id }, c, true);
+            await tx.update(cases).set({ companyId: c.source.company || snapshot.company_id }).where(eq(cases.id, c.id));
             await auditTx(tx, ctx, c, 'personnel_updated');
         }
     });
@@ -1310,7 +1355,7 @@ export async function onboardingV9ReadTx(ctx: SessionContext, tx: Tx, id: string
         const { config } = await configTx(tx, ctx), c = structuredClone(row.data);
         const [privateRow] = await tx.select().from(secrets).where(eq(secrets.caseId, id));
         if (privateRow) { Object.assign(c.source, privateRow.data.source); Object.assign(c.local, privateRow.data.local); c.caseValues = privateRow.data.caseValues; c.caseContactEmail = privateRow.data.caseContactEmail; }
-        result = { row, config, c, actor: { id: 'system', name: 'System', module: true, hr: true, master: true } };
+        result = { row, config, c, actor: { id: 'system', name: 'System', module: true, hr: true, master: true }, personnelLabels: {} };
     }
     if (!(result.actor.module||result.actor.caseActions) || !result.actor.hr) M.fail('Onboarding and company HR access are required.', 'forbidden');
     const [privateRow] = await tx.execute<{ state: NativeDocumentState | null; subject: { employmentId: string | null; personId: string | null } | null }>(sql`select data->'lifecycleV9' as state,data->'lifecycleV9Subject' as subject from lc_onboarding_private where case_id=${id}::uuid and tenant_id=${ctx.tenantId}::uuid`);

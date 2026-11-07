@@ -51,22 +51,22 @@ that row. The error names each table and its first offending key, and the journa
 `test/tenant-company-fk-upgrade.test.ts` rehearses both outcomes on a populated database at the 668-entry
 boundary.
 
-## Follow-up: 2500–2502 (4–6 November 2026)
+## Follow-up: 2900–2902 (4–7 November 2026)
 
 Proposed on branch `claude/pensive-hofstadter-d1bf14`; no deployment authorized. First numbered 2120–2123, then
-2150–2153, then 2240–2242, then 2400–2402. Each time the combined release on main and staging rose above the
-block. It now sits above main's 2450 and every claim through 2451 (6 November 2026, `docs/MIGRATION-ALLOCATION.md`).
+2150–2153, then 2240–2242, 2400–2402 and 2500–2502. Each time later work on main rose above the block. It now
+sits above main's 2600 and every claim through 2702 (7 November 2026, `docs/MIGRATION-ALLOCATION.md`).
 The gaps this ADR left open are closed as follows. None was a known exploitable path.
 
-1. **Every definer names pg_temp last (2500).** A path that does not name pg_temp searches the session's
+1. **Every definer names pg_temp last (2900).** A path that does not name pg_temp searches the session's
    temporary schema first for relation *and type* names. Schema-qualifying relations is therefore not enough:
    a TEMP table named `uuid` or `jsonb` replaces that type inside a body whose path is `pg_catalog` alone.
    - `app.can_see_employment`, `app.can_see_person`, `app.is_admin_report_of` and `app.heads_department_of` are
      re-issued with `pg_catalog, public, pg_temp` and qualified relations. The two walks also pin every row they
      read to the session tenant, because `ai_hr_app` can call them with arbitrary ids.
    - Every other unpinned function keeps its path with pg_temp appended; nothing else about it changes. The set
-     is read from the catalog when 2500 runs, so a function another migration re-issued earlier in the same
-     upgrade keeps that migration's path, with pg_temp added. On main's 698-entry catalog that is 259 functions:
+     is read from the catalog when 2900 runs, so a function another migration re-issued earlier in the same
+     upgrade keeps that migration's path, with pg_temp added. On main's 704-entry catalog that is 259 functions:
      138 definers and 61 invokers owned by the migrator, and 60 owned by dedicated NOLOGIN roles. The dedicated
      roles are the Rewards posting, setup, upload and view readers, the job profile reader and the architecture
      grade guard, and their functions are altered as those roles. Anything the sweep cannot pin stops the
@@ -77,16 +77,16 @@ The gaps this ADR left open are closed as follows. None was a known exploitable 
    tenant, so this follow-up leaves it alone. As a consequence the company cycle trigger, which calls it, sees a
    cycle only inside a session tenant; an owner write with no tenant set is not checked. That is 2126's design,
    noted for its owner rather than changed here.
-3. **The six remaining company references carry the composite key (2501 NOT VALID, 2502 validate).**
+3. **The six remaining company references carry the composite key (2901 NOT VALID, 2902 validate).**
    - `company.parent_company_id`, `reporting_line.scope_company_id`, `notice.owner_company_id`,
      `overtime_pattern(.version).creation_company_id` and `performance_kpi_library.group_company_id` reference
      `company(id, tenant_id)` as `<table>_<column minus _id>_tenant_fk`, ON DELETE NO ACTION like their plain keys.
    - `teras_chat.company_id` (2000), which had no company key, gets `teras_chat_company_tenant_fk`.
    - `setCompanyParent` and the delegation scope picker pass a submitted company id straight through, and a chat
      takes its company from the browser's conversation scope, so the key is what refuses another tenant's.
-   - 2502 reports every offending table and stops the upgrade, as 2102 does.
+   - 2902 reports every offending table and stops the upgrade, as 2102 does.
    - `test/tenant-company-fk.test.ts` now requires a twin for every single-column company key on a tenant table,
-     and `test/company-reference-tenant-fk-upgrade.test.ts` rehearses both outcomes at the 698-entry boundary.
+     and `test/company-reference-tenant-fk-upgrade.test.ts` rehearses both outcomes at the 704-entry boundary.
 
 The owner chose ON DELETE NO ACTION for `teras_chat` (4 November 2026) over CASCADE. A company with chats or chat
 tombstones refuses deletion as `other` (declared in `core/company-refs.ts`) until retention removes them, at most

@@ -54,7 +54,6 @@ const PAYROLL = path.join(ROOT, 'app', 'payroll');
  */
 const NO_BACK_ALLOWLIST = new Set([
   'app/payroll/page.tsx',
-  'app/payroll/reports/page.tsx',
   'app/payroll/setup/page.tsx',
   'app/payroll/transactions/page.tsx',
   // 20f6c6a8 (r336) — Payment Submission is the fifth, and it is allowlisted for the same reason as

@@ -1,11 +1,12 @@
 /** Execution adapter under the existing saved-report owner. It consumes Payroll, Movement and dated
  * Organisation reads; there is no second pay calculator or saved-definition store. */
-import { and, asc, desc, eq, inArray, isNull } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import type { SessionContext, Tx } from '../db/client';
-import { company, department, employment, jobGrade, person, costCenter, payrollBatch, type CustomReportSpec } from '../db/schema';
+import { businessUnit, position, company, department, employment, jobGrade, person, costCenter, payrollBatch, payrollHistoryEffectiveBatch, domainEvent, payrollCycle, type CustomReportSpec } from '../db/schema';
 import { payrollComparisonSourcesTx, listPayComponents } from '../packs/payroll/service';
 import { assignmentVersionsForReportTx } from './org';
 import { provenCompanyDatesTx, dayBefore } from './employment-company';
+import { employmentStatusSql } from './employment-status-sql';
 import { movementReportFactsTx } from './movement';
 import { payrollComparisonAccessTx } from './report-payroll-access';
 import { visibleLabelIdsCondition } from './system-labels';
@@ -14,15 +15,15 @@ import { payPeriodBounds } from './payslip-segment';
 import { todayInKualaLumpur } from '../lib/hr-date';
 import { isCalendarDate } from '../lib/calendar-date';
 import {
-  DEFAULT_PAYROLL_COMPARISON, PAYROLL_COMPARISON_DATASET, payrollComparisonFilters,
+  ALL_RECORDED_PAY_ITEMS, DEFAULT_PAYROLL_COMPARISON, PAYROLL_COMPARISON_DATASET, payrollComparisonFilters,
   validatePayrollComparisonDefinition, type PayrollComparisonMovement,
 } from '../lib/payroll-period-comparison';
-import {payrollComparisonDatedSubjects} from '../lib/payroll-comparison-source';
+import {payrollComparisonDatedSubjects,recordedPayrollComparisonAmount,recordedPayrollComparisonCodes} from '../lib/payroll-comparison-source';
 import { comparePayrollResults, type ComparisonIdentity, type ComparisonResult } from '../lib/payroll-comparison-result';
 import { MasterReportAccessError } from './employee-master-access';
 const object=(value:unknown):Record<string,unknown>=>value&&typeof value==='object'&&!Array.isArray(value)?value as Record<string,unknown>:{};
 export const payrollComparisonSpec=(definition=DEFAULT_PAYROLL_COMPARISON):CustomReportSpec=>({
-  datasetId:PAYROLL_COMPARISON_DATASET,payrollComparison:definition,
+  datasetId:PAYROLL_COMPARISON_DATASET,payrollComparison:structuredClone(definition),
   columns:[...definition.columns,'previous','current','variance','reason','currency'],
 });
 export async function payrollComparisonOptions(ctx:SessionContext,scope:readonly string[]){
@@ -32,12 +33,18 @@ export async function payrollComparisonOptions(ctx:SessionContext,scope:readonly
     const companies=await tx.select({id:company.id,name:company.legalName}).from(company).where(inArray(company.id,ids)).orderBy(asc(company.legalName),asc(company.id));
     const departments=await tx.select({id:department.id,name:department.name}).from(department)
       .where(visibleLabelIdsCondition(department,'department',ids)).orderBy(asc(department.name),asc(department.id));
+    const businessUnits=await tx.select({id:businessUnit.id,name:businessUnit.name}).from(businessUnit)
+      .where(visibleLabelIdsCondition(businessUnit,'business_unit',ids)).orderBy(asc(businessUnit.name),asc(businessUnit.id));
+    const positions=await tx.select({id:position.id,name:position.title}).from(position)
+      .where(visibleLabelIdsCondition(position,'position',ids)).orderBy(asc(position.title),asc(position.id));
     const periods=await tx.selectDistinct({period:payrollBatch.payPeriod}).from(payrollBatch)
       .where(inArray(payrollBatch.companyId,ids)).orderBy(desc(payrollBatch.payPeriod)).limit(1200);
-    return {companies,departments,periods:periods.map(row=>row.period)};
+    const cycles = await tx.select({ id: payrollCycle.id, name: payrollCycle.name, companyId: payrollCycle.companyId })
+      .from(payrollCycle).where(inArray(payrollCycle.companyId, ids)).orderBy(asc(payrollCycle.name), asc(payrollCycle.id));
+    return {companies,departments,businessUnits,positions,cycles,periods:periods.map(row=>row.period)};
   },{readOnlySnapshot:true});
   const items=await listPayComponents(ctx,{readyOnly:true});
-  return {...choices,payItems:[{code:'BASIC',name:'Basic Salary actually paid'},...items.filter(item=>item.code!=='BASIC').map(item=>({code:item.code,name:item.name}))]};
+  return {...choices,payItems:[{code:ALL_RECORDED_PAY_ITEMS,name:'All recorded pay items'},{code:'BASIC',name:'Basic Salary actually paid'},...items.filter(item=>item.code!=='BASIC').map(item=>({code:item.code,name:item.name}))]};
 }
 export type PayrollComparisonExecution={filters:ReturnType<typeof payrollComparisonFilters>;definition:ReturnType<typeof validatePayrollComparisonDefinition>;
   result:ComparisonResult;companyIds:string[];sourceRevisions:{id:string;version:number;runId:string}[];contextUnavailable:boolean};
@@ -48,22 +55,29 @@ export async function executePayrollComparisonTx(tx:Tx,ctx:SessionContext,spec:C
   const scopeIds=filters.companyId?[filters.companyId]:[...scope];
   if(scopeIds.some(id=>!scope.includes(id)))throw new MasterReportAccessError();
   const ids=await payrollComparisonAccessTx(tx,ctx,spec,verb,scopeIds);
+  const requestedCycles=[...new Set([...(filters.cycleIds??[]),...(filters.previousCycleIds??[])])];
+  if (requestedCycles.length) {
+    const cycles = await tx.select({ id: payrollCycle.id }).from(payrollCycle)
+      .where(and(inArray(payrollCycle.companyId, ids), inArray(payrollCycle.id, requestedCycles)));
+    if (cycles.length !== requestedCycles.length) throw new MasterReportAccessError();
+  }
   if(!filters.currentPeriod){
     const [latest]=await tx.select({period:payrollBatch.payPeriod}).from(payrollBatch)
       .where(and(inArray(payrollBatch.companyId,ids),inArray(payrollBatch.status,['processed','closed']),isNull(payrollBatch.needsRecalcAt),
-        filters.runType==='regular'?eq(payrollBatch.runType,'regular'):undefined))
+        filters.runType==='regular'?eq(payrollBatch.runType,'regular'):undefined,
+        filters.cycleIds?.length ? inArray(payrollBatch.payrollCycleId, filters.cycleIds) : undefined))
       .orderBy(desc(payrollBatch.payPeriod),desc(payrollBatch.runSeq),asc(payrollBatch.id)).limit(1);
     filters=payrollComparisonFilters({...raw,currentPeriod:latest?.period??todayInKualaLumpur().slice(0,7)},definition);
   }
   const previous=payPeriodBounds(filters.previousPeriod!),current=payPeriodBounds(filters.currentPeriod!);
   if(!previous||!current)throw new Error('Choose valid payroll periods.');
-  const {runs,sources}=await payrollComparisonSourcesTx(tx,ctx,{companyIds:ids,previousPeriod:filters.previousPeriod!,currentPeriod:filters.currentPeriod!,runType:filters.runType,payItemCode:definition.payItemCode});
+  const {runs,sources}=await payrollComparisonSourcesTx(tx,ctx,{companyIds:ids,previousPeriod:filters.previousPeriod!,currentPeriod:filters.currentPeriod!,runType:filters.runType,cycleIds:filters.cycleIds,previousCycleIds:filters.previousCycleIds,payItemCode:definition.payItemCode});
   const employmentIds=[...new Set(sources.map(source=>source.employmentId))];
   if(employmentIds.length>10000)throw new Error('This comparison exceeds 10000 employments. Narrow the company scope.');
   const identities:ComparisonIdentity[]=[];
   let contextUnavailable=false;
   if(employmentIds.length){
-    const employees=await tx.select({id:employment.id,employeeCode:employment.employeeCode,employeeName:person.fullName,hiredOn:employment.hiredOn})
+    const employees=await tx.select({id:employment.id,employeeCode:employment.employeeCode,employeeName:person.fullName,hiredOn:employment.hiredOn,employmentStatus:employmentStatusSql(current.to)})
       .from(employment).innerJoin(person,eq(person.id,employment.personId)).where(inArray(employment.id,employmentIds)).orderBy(asc(employment.id));
     const people=new Map(employees.map(row=>[row.id,row]));
     const pairs=payrollComparisonDatedSubjects(sources,runs,filters.previousPeriod!,filters.currentPeriod!);
@@ -72,6 +86,8 @@ export async function executePayrollComparisonTx(tx:Tx,ctx:SessionContext,spec:C
     const factsByEmployment=new Map(movementFacts.map(fact=>[fact.employmentId,fact]));
     const companyNames=new Map((await tx.select({id:company.id,name:company.legalName}).from(company).where(inArray(company.id,ids))).map(row=>[row.id,row.name]));
     const departmentNames=new Map((await tx.select({id:department.id,name:department.name}).from(department).where(visibleLabelIdsCondition(department,'department',ids))).map(row=>[row.id,row.name]));
+    const unitNames=new Map((await tx.select({id:businessUnit.id,name:businessUnit.name}).from(businessUnit)
+      .where(visibleLabelIdsCondition(businessUnit,'business_unit',ids))).map(row=>[row.id,row.name]));
     const centreNames=new Map((await tx.select({id:costCenter.id,name:costCenter.name}).from(costCenter).where(visibleLabelIdsCondition(costCenter,'cost_center',ids))).map(row=>[row.id,row.name]));
     const gradeIds=[...new Set(movementFacts.flatMap(fact=>fact.placements.flatMap(placement=>placement.gradeId?[placement.gradeId]:[])))];
     const gradeNames=new Map((gradeIds.length?await tx.select({id:jobGrade.id,name:jobGrade.name}).from(jobGrade).where(inArray(jobGrade.id,gradeIds)):[]).map(row=>[row.id,row.name]));
@@ -115,12 +131,108 @@ export async function executePayrollComparisonTx(tx:Tx,ctx:SessionContext,spec:C
       }
       identities.push({employmentId:pair.employmentId,companyId:pair.companyId,employeeCode:employee.employeeCode,
         employeeName:employee.employeeName,company:companyNames.get(pair.companyId)??'',hireDate:employee.hiredOn,exitDate,
+        businessUnitId:placement?.businessUnitId??null,
+        businessUnit:placement?.businessUnitId?unitNames.get(placement.businessUnitId)??null:null,
+        positionId:placement?.positionId??null,employmentType:placement?.employmentType??null,employmentStatus:employee.employmentStatus,
         departmentId:placement?.departmentId??null,department:placement?departmentNames.get(placement.departmentId)??null:null,
         costCentre:placement?.costCenterId?centreNames.get(placement.costCenterId)??null:null,
         grade:placement&&grade?.gradeId?gradeNames.get(grade.gradeId)??null:null,movements,verifiedTransferIds});
     }
   }
-  const result=comparePayrollResults({definition,filters,companyIds:ids,runs,sources,identities,
-    previousFrom:previous.from,currentFrom:current.from,currentTo:current.to,paginate:verb!=='export'});
+  const input={definition,filters,companyIds:ids,runs,sources,identities,
+    previousFrom:previous.from,currentFrom:current.from,currentTo:current.to,paginate:verb!=='export'};
+  const result=definition.payItemCode===ALL_RECORDED_PAY_ITEMS
+    ? compareRecordedPayItems(input, sources) : comparePayrollResults(input);
   return {definition,filters,result,companyIds:ids,sourceRevisions:sources.map(({id,version,runId})=>({id,version,runId})),contextUnavailable};
+}
+
+function compareRecordedPayItems(input:Parameters<typeof comparePayrollResults>[0], sources: Awaited<ReturnType<typeof payrollComparisonSourcesTx>>['sources']):ComparisonResult {
+  const found=new Set<string>();
+  for(const source of sources)for(const code of recordedPayrollComparisonCodes(source.recordedItems)){
+    if(code==='BASIC'||code===ALL_RECORDED_PAY_ITEMS)continue;
+    found.add(code);
+    if ((found.size+1)*sources.length>100000) throw new Error('This comparison has too many employee and pay item combinations. Choose one company, pay cycle or pay item.');
+  }
+  const codes=[...found].sort();
+  const compare = (code:string) => comparePayrollResults({...input,definition:{...input.definition,payItemCode:code},paginate:false,
+    sources:code==='BASIC'?sources:sources.map(source=>({...source,proratedCoverage:undefined,
+      amount:recordedPayrollComparisonAmount('0',source.recordedItems,code,source.companyId)}))});
+  const basic=compare('BASIC');
+  if(!basic.available)return basic;
+  const rows=basic.rows.map(row=>({...row,payItemCode:'BASIC'}));
+  const unavailablePayItems:string[]=[];
+  if(basic.summary)basic.summary.totals=basic.summary.totals.map(total=>({...total,payItemCode:'BASIC'}));
+  for(const code of codes){
+    const item=compare(code);
+    if(!item.available){unavailablePayItems.push(code);continue;}
+    rows.push(...item.rows.map(row=>({...row,payItemCode:code})));
+    basic.comparisonRows+=item.comparisonRows;
+    basic.displayedRows+=item.displayedRows;
+    for(const reason of Object.keys(item.reasonCounts) as (keyof typeof item.reasonCounts)[])basic.reasonCounts[reason]+=item.reasonCounts[reason];
+    for(const filter of Object.keys(item.reasonFilterCounts) as (keyof typeof item.reasonFilterCounts)[])basic.reasonFilterCounts[filter]+=item.reasonFilterCounts[filter];
+    if(basic.summary&&item.summary){
+      basic.summary.unexplained+=item.summary.unexplained;
+      basic.summary.totals.push(...item.summary.totals.map(total=>({...total,payItemCode:code})));
+    }
+  }
+  const group=input.filters.groupBy;
+  rows.sort((a,b)=>(group?(a[group]??'').localeCompare(b[group]??''):0)||
+    (a.employeeCode??a.employeeName).localeCompare(b.employeeCode??b.employeeName)||a.payItemCode.localeCompare(b.payItemCode));
+  basic.rows=input.paginate===false?rows:rows.slice((input.filters.page-1)*input.filters.pageSize,input.filters.page*input.filters.pageSize);
+  return {...basic,unavailablePayItems};
+}
+
+/** Processed periods visible to a caller with current financial report authority. */
+export async function payrollReconciliationPeriods(ctx: SessionContext, scope: readonly string[]) {
+  return withTenant(ctx, async tx => {
+    const ids = await payrollComparisonAccessTx(tx, ctx, payrollComparisonSpec(), 'view', scope);
+    const groups = tx.$with('reconciliation_periods').as(tx.select({
+      companyId: payrollBatch.companyId,
+      companyName: company.legalName,
+      period: payrollBatch.payPeriod,
+      runCount: sql<number>`count(*) filter (where ${payrollBatch.status} in ('processed', 'closed'))::int`.as('run_count'),
+      requiresReprocessing: sql<boolean>`bool_or(${payrollBatch.needsRecalcAt} is not null or ${payrollBatch.status} = 'draft')`.as('requires_reprocessing'),
+    }).from(payrollHistoryEffectiveBatch)
+      .innerJoin(company, eq(company.id, payrollBatch.companyId))
+      .where(and(inArray(payrollBatch.companyId, ids),
+        sql`(${payrollBatch.historyImportAttemptId} is null or ${payrollBatch.employeeCount} > 0)`))
+      .having(sql`bool_or(${payrollBatch.status} in ('processed', 'closed'))`)
+      .groupBy(payrollBatch.companyId, company.legalName, payrollBatch.payPeriod)
+      .orderBy(desc(payrollBatch.payPeriod), asc(company.legalName), asc(payrollBatch.companyId))
+      .limit(120));
+    return tx.with(groups).select({
+      companyId: groups.companyId,
+      companyName: groups.companyName,
+      period: groups.period,
+      runCount: groups.runCount,
+      requiresReprocessing: groups.requiresReprocessing,
+      previousReady: sql<boolean>`coalesce((
+        select bool_and(prior.status = 'closed' and prior.needs_recalc_at is null)
+        from payroll_history_effective_batch prior
+        where prior.tenant_id = ${ctx.tenantId}::uuid and prior.company_id = ${groups.companyId}
+          and (prior.history_import_attempt_id is null or prior.employee_count > 0)
+          and prior.pay_period = to_char(to_date(${groups.period}, 'YYYY-MM') - interval '1 month', 'YYYY-MM')
+      ), false)`,
+      generatedAt: sql<string | null>`(
+        select max(g.generated_at)::text from payroll_reconciliation_generation g
+        where g.tenant_id = ${ctx.tenantId}::uuid and g.company_id = ${groups.companyId} and g.current_period = ${groups.period}
+      )`,
+      captures: sql<string[]>`array(
+        select g.generated_at::text from payroll_reconciliation_generation g
+        where g.tenant_id = ${ctx.tenantId}::uuid and g.company_id = ${groups.companyId} and g.current_period = ${groups.period}
+        order by g.generated_at desc,g.id limit 8
+      )`,
+      lastProcessed: sql<string | null>`max(${domainEvent.occurredAt})::text`,
+      cycles: sql<string[]>`coalesce(array_agg(distinct ${payrollCycle.name} order by ${payrollCycle.name}) filter (where ${payrollCycle.name} is not null), '{}'::text[])`,
+    }).from(groups).innerJoin(payrollHistoryEffectiveBatch, and(
+      eq(payrollBatch.companyId, groups.companyId), eq(payrollBatch.payPeriod, groups.period),
+      inArray(payrollBatch.status, ['processed', 'closed']),
+      sql`(${payrollBatch.historyImportAttemptId} is null or ${payrollBatch.employeeCount} > 0)`,
+    )).leftJoin(domainEvent, and(
+      eq(domainEvent.tenantId, ctx.tenantId), eq(domainEvent.aggregateType, 'payroll-batch'),
+      eq(domainEvent.aggregateId, payrollBatch.id), inArray(domainEvent.eventType, ['payroll-batch.processed', 'payroll-batch.selective-reprocessed']),
+    )).leftJoin(payrollCycle, eq(payrollCycle.id, payrollBatch.payrollCycleId))
+      .groupBy(groups.companyId, groups.companyName, groups.period, groups.runCount, groups.requiresReprocessing)
+      .orderBy(desc(groups.period), asc(groups.companyName), asc(groups.companyId));
+  }, { readOnlySnapshot: true });
 }

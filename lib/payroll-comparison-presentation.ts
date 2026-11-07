@@ -1,11 +1,12 @@
 /** Shared labels, columns and notes keep screen and downloaded sign-off outputs consistent. */
 import type { ComparisonRow } from './payroll-comparison-result';
-import type { PayrollComparisonDefinition, PayrollComparisonReason } from './payroll-period-comparison';
+import { ALL_RECORDED_PAY_ITEMS, type PayrollComparisonDefinition, type PayrollComparisonReason } from './payroll-period-comparison';
 export type PayrollComparisonTranslate=(key:string,values?:Record<string,string|number>)=>string;
-export const PAYROLL_REASON_LABELS:Record<PayrollComparisonReason,string>={unexplained:'Unexplained',increment:'Increment',promotion:'Promotion',demotion:'Demotion',newHire:'New hire',resigned:'Resigned / ended employment',proratedLeaving:'Prorated leaving',transfer:'Company transfer',unclassified:'Not classified'};
-const LABELS:Record<string,string>={employeeCode:'Emp no.',employeeName:'Employee',department:'Department',grade:'Job grade',company:'Paying company',costCentre:'Cost centre',currency:'Currency',previous:'Previous amount',current:'Current amount',variance:'Variance',variancePct:'Variance %',reason:'Reason',effectiveDate:'Effective date',remarks:'Remarks'};
+export const PAYROLL_REASON_LABELS:Record<PayrollComparisonReason,string>={unexplained:'Unexplained',increment:'Increment',promotion:'Promotion',demotion:'Demotion',newHire:'New hire',resigned:'Resigned / ended employment',proratedLeaving:'Prorated leaving',transfer:'Company transfer',noChange:'No change',payItemChanged:'Recorded pay item changed',unclassified:'Not classified'};
+const LABELS:Record<string,string>={payItemCode:'Pay item code',employeeCode:'Emp no.',employeeName:'Employee',department:'Department',grade:'Job grade',company:'Paying company',costCentre:'Cost centre',currency:'Currency',previous:'Previous amount',current:'Current amount',variance:'Variance',variancePct:'Variance %',reason:'Reason',effectiveDate:'Effective date',remarks:'Remarks'};
 export function payrollComparisonColumns(definition:PayrollComparisonDefinition,t?:PayrollComparisonTranslate){
   const ids=['employeeCode','employeeName','department','grade','company','costCentre'].filter(id=>definition.columns.includes(id as never));
+  if(definition.payItemCode===ALL_RECORDED_PAY_ITEMS)ids.push('payItemCode');
   ids.push('currency','previous','current','variance');
   if(definition.columns.includes('variancePct'))ids.push('variancePct');
   ids.push('reason');for(const id of ['effectiveDate','remarks'])if(definition.columns.includes(id as never))ids.push(id);
@@ -25,7 +26,7 @@ export function payrollComparisonRemarks(row:ComparisonRow,t?:PayrollComparisonT
 export function payrollComparisonCell(row:ComparisonRow,id:string,t?:PayrollComparisonTranslate):string|null{
   if(id==='reason')return t?t('reasons.'+row.reason.reason):PAYROLL_REASON_LABELS[row.reason.reason];
   if(id==='effectiveDate')return row.reason.effectiveDate;
-  if(id==='remarks')return payrollComparisonRemarks(row,t);
+  if(id==='remarks')return [payrollComparisonRemarks(row,t),row.hrRemark?.body].filter(Boolean).join(' ');
   if(id==='currency')return row.currency??(t?t('currencyUnknown'):'Not recorded');
   const value=row[id as keyof ComparisonRow];return typeof value==='string'?value:null;
 }

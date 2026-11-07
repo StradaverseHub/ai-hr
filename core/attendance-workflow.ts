@@ -1,3 +1,4 @@
+import { nextAttendanceWorkflowPriority } from '@/lib/attendance-workflow';
 import { randomUUID } from 'node:crypto';
 import { and, asc, desc, eq, inArray, isNull, isNotNull, sql } from 'drizzle-orm';
 import { type SessionContext, type Tx } from '../db/client';
@@ -137,7 +138,7 @@ async function validateActivation(tx: Tx, ctx: SessionContext, input: AnyAttenda
         await resolveStages(tx, id, input.stages, input.routingVersion, input.routingVersion===4?input.cc:[]);
     // Zero targets is allowed as a future population. Submission re-resolves and refuses missing approvers.
 }
-export async function saveAttendanceWorkflow(ctx: SessionContext, raw: unknown, lineageId?: string, restoreVersion?:number) {
+export async function saveAttendanceWorkflow(ctx: SessionContext, raw: unknown, lineageId?: string, restoreVersion?:number, autoPriority = false) {
     const input = validateAnyAttendanceWorkflow(raw);
     return withTenant(ctx, async (tx) => {
         await adminFor(tx, input.companyId);
@@ -150,6 +151,15 @@ export async function saveAttendanceWorkflow(ctx: SessionContext, raw: unknown, 
         }
         if (lineageId && (!old || old.companyId !== input.companyId || old.applicationType !== input.applicationType))
             throw new AttendanceWorkflowError('scope', 'The workflow was changed or is outside this company.');
+        if (!lineageId && autoPriority) {
+            const current = await tx.select({ priority: template.priority }).from(template).where(and(
+                eq(template.companyId, input.companyId), eq(template.applicationType, input.applicationType),
+                isNull(template.supersededAt),
+            ));
+            const priority = nextAttendanceWorkflowPriority(current.map(row => row.priority));
+            if (priority > 9999) throw new AttendanceWorkflowError('overlap', 'All automatic workflow priorities are in use.');
+            input.priority = priority;
+        }
         await validateScope(tx, ctx, input);
         if (input.active)
             await validateActivation(tx, ctx, input, lineageId);

@@ -5,30 +5,48 @@ journals and the actual staging watermark before journal integration or applicat
 applied SQL/hash and exact journal prefix. Reservations do not authorize deployment or skipping the
 owning release gate.
 
-## Tenant-isolation follow-up (ADR-0174) — 6 November 2026 (provisional source claim)
+## Tenant-isolation follow-up (ADR-0174) — 7 November 2026 (provisional source claim)
 
-`claude/pensive-hofstadter-d1bf14` appends three migrations to main's 698-entry journal at `dc36b7f02`, which
-ends at `2450_personnel_search_projection` (idx 1550 / when 1793330001850). The block was claimed in turn as
-2120–2123, 2150–2153, 2240–2242 and 2400–2402. Each time later work landed above it, and the 2400–2402 claim
-is withdrawn here.
+`claude/pensive-hofstadter-d1bf14` appends three migrations to main's 704-entry journal at `2b90f2e45`, which
+ends at `2600_onboarding_current_personnel` (idx 1900 / when 1793330002200). The block was claimed in turn as
+2120–2123, 2150–2153, 2240–2242, 2400–2402 and 2500–2502. Each time later work landed on main above it, and the
+2500–2502 claim is withdrawn here.
 
-A read-only scan on 6 November 2026 of every local and remote ref (463 journal blobs) and every registered
-worktree found claims up to `2451_personnel_company_filter_choices` (when 1793330001851) and idx 1606 (2406), and
-nothing above. The block therefore takes 2500–2502, with `when` = 1793330000000 + (file − 600) and idx =
-file − 800, which leaves 2452–2499 free.
+A read-only scan on 7 November 2026 of every local and remote ref (479 journal blobs) and every registered
+worktree found claims up to `2702_phase1_notification_receipts` (idx 2002 / when 1793330002302), and nothing
+above. The block therefore takes 2900–2902, with `when` = 1793330000000 + (file − 400) and idx = file − 700
+(the convention of 2600–2702). That leaves 2703–2899 free.
 
-2500's search-path sweep reads the catalog when it runs, so a function re-issued earlier in the same upgrade
-keeps its own path with pg_temp added. 2450's re-issued `app.personnel_search_rows` is an example.
+2900's search-path sweep reads the catalog when it runs, so a function re-issued earlier in the same upgrade
+keeps its own path with pg_temp added.
 
 | Tag | idx | when | SQL SHA256 |
 | --- | ---: | ---: | --- |
-|2500_definer_search_path_pin|1700|1793330001900|1c66bfa73251bdb7af51ecf4dbd2ac217046811571177d798618a3e3fefed97c|
-|2501_company_reference_tenant_fk_not_valid|1701|1793330001901|6db68a8003089b9ef47142ac4d3fc5cdb00c494976ce76ee3d5180c40d650f94|
-|2502_company_reference_tenant_fk_validate|1702|1793330001902|4817ea72e069690e370d36ff9e483916888ed282ff344267c9d678a856eb8546|
+|2900_definer_search_path_pin|2200|1793330002500|545c360024e20d0276587a63f0ab8432573673095248cd75070df38b961fafa5|
+|2901_company_reference_tenant_fk_not_valid|2201|1793330002501|bd3e72eec9f148d7b2e2a469df1e9266f94fa339e3c190ba6539435170b2cf4d|
+|2902_company_reference_tenant_fk_validate|2202|1793330002502|4ff1bdaacc211086cac68caa64d05dbdb34c014e9541df38a9447d92c19f21f5|
 
 These are unapplied source only. Immediately before merge, re-check the highest file, idx and `when` on main and
 staging. At staging admission, confirm the migrator can SET ROLE to each dedicated owner, and count chats whose
 company is missing or belongs to another tenant.
+
+## Payroll reconciliation remarks — 6 November 2026 (provisional)
+
+The feedback candidate reserves `2404_payroll_reconciliation_remark`, idx `1654`,
+when `1793330001854`, SQL SHA-256
+`a0b5e3df73af733fd19ec72c1333cbdf21e9a932123be476ea86b4bfafda3974`, and
+`2405_rewards_review_activity`, idx `1655`, when `1793330001855`, SHA-256
+`fb8f6d1be9e24589969329324174f74a2c3516dedf041ae8dad37f60d19afc20`, and
+`2406_payroll_reconciliation_generation`, idx `1656`, when `1793330001856`, SHA-256
+`38979689c8df2b486fdd1c104de7dd94e872ba8e0838e1d51cc8be119fa99113`.
+The prior staging ledger matched all 697 entries through `1793330001700`.
+The new installed source `dc36b7f0278001e1f57754f66ea5ce4ca24971ea` appends
+`2450_personnel_search_projection` at idx 1550 / timestamp `1793330001850`.
+The next installed source `b29d13e4c5a36062158db5cf2582bbc15eea1e49` appends
+`2451_personnel_company_filter_choices` at idx 1551 / timestamp `1793330001851`.
+The read-only staging ledger matches all 699 entries. The feedback candidate
+preserves both Personnel migrations and keeps its three unapplied files above
+the installed watermark. Recheck the installed ledger at release admission.
 
 ## Rewards whole-group grant foundation — 5 November 2026 (unapplied)
 
@@ -1751,3 +1769,14 @@ The release gate found additional company retention references from the approved
 Append `2211_company_retention_approved_expansion` at idx 1422 / timestamp 1793330001622.
 SHA256 `5e336a948b9490d9355eba65d6f341618334a031c7bdc66562ed9139b7c5f0c4`. The migration adds scoped retention checks and validated tenant keys for the new owners.
 It preserves earlier SQL and the original staging ledger.
+
+## Open onboarding Personnel projection — 7 November 2026 (unapplied)
+
+Branch `codex/board-approved-20261107` reserves `2600_onboarding_current_personnel`,
+idx 1900 / when 1793330002200. A read-only scan of 3010 local/remote ref heads
+(474 distinct journal blobs) found the previous highest timestamp 1793330002130
+at `2510_capability_statement_plan_reuse`. All 342 readable registered worktree
+journals were also checked; none had a higher competing claim. The original
+alpha journal prefix and SQL bytes are preserved. This is an unapplied source
+reservation: recheck freshly fetched integration journals, peer WIP and the exact
+installed ordered ledger before integration or release admission.

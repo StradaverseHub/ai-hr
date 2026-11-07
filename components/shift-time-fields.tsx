@@ -9,7 +9,7 @@ import { StatusWord } from '@/components/ui/status-word';
 // r429 (f6819e19) — THE ONE PLACE A BREAK ROW IS CHECKED, shared with core/roster.ts (the leaf module has
 // no imports, which is what makes it importable from this client island at all — the same reason
 // core/week-pattern.ts could be before it).
-import { breakRowIssues, breakRowMinutes, type BreakRowIssue } from '@/core/shift-break-rules';
+import { breakRowIssues, breakRowMinutes, type BreakRowIssue, type ShiftBreakType } from '@/core/shift-break-rules';
 
 // cf21e554 stage 1 — `paid` is the reference Break tab's "Paid?" tick. Optional, and ABSENT MEANS UNPAID,
 // so a shift saved before this release round-trips byte-identically (see BreakPeriod in db/schema.ts).
@@ -17,7 +17,7 @@ import { breakRowIssues, breakRowMinutes, type BreakRowIssue } from '@/core/shif
 // r429 (f6819e19) · D4 — `flexible` is now the ONE way to make a break flexible (the whole-shift switch and
 // the inverted "Fixed" tick are both gone from this screen). Ticking it opens `flexibleMinutes`, prefilled
 // with the row's own length; blank keeps meaning "deducted exactly as today" (BreakPeriod in db/schema.ts).
-type BreakRow = { start: string; end: string; paid?: boolean; flexible?: boolean; flexibleMinutes?: string };
+type BreakRow = { breakType?: ShiftBreakType; start: string; end: string; paid?: boolean; flexible?: boolean; flexibleMinutes?: string };
 
 const toMin = (t: string): number => {
   const [h, m] = t.split(':').map(Number);
@@ -145,6 +145,7 @@ export function ShiftTimeFields({
     breaks.map((bp) => ({
       start: bp.start,
       end: bp.end,
+      breakType: bp.breakType,
       paid: bp.paid,
       flexible: bp.flexible,
       flexibleMinutes: bp.flexibleMinutes != null && bp.flexibleMinutes.trim() !== '' ? Number(bp.flexibleMinutes) : null,
@@ -175,7 +176,7 @@ export function ShiftTimeFields({
   /** Only rows with NO issue, and whose own window is known, contribute a real duration to the preview. */
   const rowDuration = (bp: BreakRow): number | null => {
     if (!bp.start || !bp.end) return null;
-    const check = breakRowIssues([{ start: bp.start, end: bp.end }], shiftShape);
+    const check = breakRowIssues([{ start: bp.start, end: bp.end, breakType: bp.breakType }], shiftShape);
     if (check.size > 0) return null;
     return breakRowMinutes(bp.start, bp.end);
   };
@@ -190,7 +191,7 @@ export function ShiftTimeFields({
   const windowBreakSum = showScalarBox
     ? Number(breakMinutesScalar) || 0
     : breaks
-        .filter((bp) => !bp.paid)
+        .filter((bp) => !bp.paid && (!bp.breakType || bp.breakType === 'in_shift'))
         .reduce((acc, bp) => acc + (rowAllowance(bp) ?? rowDuration(bp) ?? 0), 0);
   const breakSum = showLockedPanel ? lockedAllowanceMinutes : windowBreakSum;
   const roundTo = Number(defaultRounding) || 0;
@@ -447,6 +448,7 @@ export function ShiftTimeFields({
             <StackedTable label={t('breaksLabel')}>
               <StackedHead>
                 <StackedTh>{t('breakSeqLabel')}</StackedTh>
+                <StackedTh>{t('breakType')}</StackedTh>
                 <StackedTh>{t('breakStart')}</StackedTh>
                 <StackedTh>{t('breakEnd')}</StackedTh>
                 <StackedTh>{t('breakDurationLabel')}</StackedTh>
@@ -464,6 +466,15 @@ export function ShiftTimeFields({
                     <StackedRow>
                       <StackedTd label={t('breakSeqLabel')} role="title">
                         {t('breakSeqValue', { n: i + 1 })}
+                      </StackedTd>
+                      <StackedTd label={t('breakType')}>
+                        <select className={inputCls} value={bp.breakType ?? 'in_shift'}
+                          aria-label={`${t('breakType')} ${i + 1}`}
+                          onChange={event => setBreak(i, { breakType: event.target.value as ShiftBreakType })}>
+                          <option value="in_shift">{t('breakTypeInShift')}</option>
+                          <option value="before_shift" disabled={fullFlexi}>{t('breakTypeBeforeShift')}</option>
+                          <option value="after_shift" disabled={fullFlexi}>{t('breakTypeAfterShift')}</option>
+                        </select>
                       </StackedTd>
                       <StackedTd label={t('breakStart')}>
                         <input
@@ -534,7 +545,7 @@ export function ShiftTimeFields({
                     </StackedRow>
                     {issue && (
                       <StackedRow className="@max-3xl:pt-0">
-                        <StackedTd label="" role="full" hideLabel colSpan={7} className="pt-0 @max-3xl:pt-0">
+                        <StackedTd label="" role="full" hideLabel colSpan={8} className="pt-0 @max-3xl:pt-0">
                           <StatusWord tone="signal" className="text-xs text-destructive">
                             {issueText(i, issue)}
                           </StatusWord>
@@ -583,6 +594,7 @@ export function ShiftTimeFields({
                   breaks.map((bp) => ({
                     start: bp.start,
                     end: bp.end,
+                    ...(bp.breakType && bp.breakType !== 'in_shift' ? { breakType: bp.breakType } : {}),
                     ...(bp.paid ? { paid: true } : {}),
                     ...(bp.flexible || semiFlexi ? { flexible: true } : {}),
                     ...(rowAllowance(bp) != null && !bp.paid ? { flexibleMinutes: rowAllowance(bp) } : {}),

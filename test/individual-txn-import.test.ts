@@ -13,6 +13,9 @@ import {upsertPayrollCycle} from '../packs/payroll/service';
 import {validateIndividualImport,confirmIndividualImport,revertIndividualImport,readIndividualImport,listIndividualImports} from '../core/individual-txn-import';
 import {INDIVIDUAL_IMPORT_HEADERS,type IndividualImportMethod} from '../lib/payroll-txn-import-schema';
 import {toCsv} from '../lib/csv';
+import {buildXlsx} from '../lib/spreadsheet';
+import {submitIndividualImportJob, readIndividualImportJob, readIndividualImportWorkbook, queueIndividualImportConfirmation} from '../core/individual-import-job';
+import {runIndividualImportTick} from '../core/individual-import-worker';
 
 describe('durable Individual Transaction import',()=>{
  let base:Base,employeeId:string,employeeCode:string,componentId:string,cycleId:string;
@@ -38,6 +41,32 @@ describe('durable Individual Transaction import',()=>{
   const [row]=await owner.db.select().from(schema.payrollIndividualTxn).where(eq(schema.payrollIndividualTxn.id,saved.outcomes[0].transactionId!));expect(row).toMatchObject({companyId:base.companyId,payPeriod:'2026-08',txnDate:'2026-07-31',amount:'250.00',intendedCycleId:cycleId});
   expect((await confirm(input.id)).written).toBe(1);expect(await owner.db.select().from(schema.payrollIndividualTxn)).toHaveLength(1);
   expect((await listIndividualImports(adminCtx(base),[base.companyId])).map(r=>r.id)).toContain(input.id);
+ });
+ it('retains the workbook, waits for confirmation and recovers an already committed batch without writing twice',async()=>{
+  const ctx=adminCtx(base), scopeIds=[base.companyId], id=randomUUID();
+  const unknown=['UNKNOWN','','2026-08','IMP','BONUS','2026-08-03','amount','','20','bad'];
+  const content=Buffer.from(await buildXlsx([...INDIVIDUAL_IMPORT_HEADERS.monthly],[monthly(),unknown]));
+  const submission={id,name:'monthly.xlsx',content,method:'monthly' as const,scopeIds};
+  const tick=()=>runIndividualImportTick(owner.client,async session=>({...session,entitlements:ctx.entitlements}));
+  expect(await submitIndividualImportJob(ctx,submission)).toBe(id);
+  expect(await submitIndividualImportJob(ctx,submission)).toBe(id);
+  expect((await readIndividualImportJob(ctx,id,scopeIds))?.state).toBe('pending');
+  expect((await readIndividualImportWorkbook(ctx,id,scopeIds))?.source).toEqual(content);
+  expect(await readIndividualImportWorkbook(ctx,id,[])).toBeUndefined();
+  expect(await queueIndividualImportConfirmation(ctx,id,scopeIds)).toBe(false);
+  expect(await tick()).toBe(true);
+  const ready=await readIndividualImportJob(ctx,id,scopeIds);
+  expect(ready).toMatchObject({state:'ready',total:2,written:0,failed_rows:1});
+  expect(await owner.db.select().from(schema.payrollIndividualTxn)).toHaveLength(0);
+  expect(await queueIndividualImportConfirmation(ctx,id,scopeIds)).toBe(true);
+  expect(await queueIndividualImportConfirmation(ctx,id,scopeIds)).toBe(false);
+  await tick();
+  expect(await readIndividualImportJob(ctx,id,scopeIds)).toMatchObject({state:'completed',processed:2,written:1,failed_rows:1});
+  // Simulate a worker dying after payroll committed but before the queue recorded completion.
+  await owner.client`update payroll_individual_import_job set state='importing', finished_at=null where id=${id}`;
+  await tick();
+  expect(await readIndividualImportJob(ctx,id,scopeIds)).toMatchObject({state:'completed',processed:2,written:1});
+  expect(await owner.db.select().from(schema.payrollIndividualTxn)).toHaveLength(1);
  });
  it('retains equal-amount daily entries on distinct dates and refuses true duplicates and amount-only items',async()=>{
   await owner.db.update(schema.payComponent).set({rule:{kind:'per_hour',rate:10}}).where(eq(schema.payComponent.id,componentId));

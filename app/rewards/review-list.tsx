@@ -4,17 +4,22 @@ import type {RewardReviewListRow} from '@/packs/rewards/service';
 import {rewardDueWording} from '@/packs/rewards/calendar';
 import {rewardStages} from '@/packs/rewards/model';
 import {filterRewardReviews,rewardReviewHref,rewardReviewUpcoming,type RewardReviewFilters} from '@/packs/rewards/review-list-model';
-import {Button,inputCls,tableWrapCls,theadCls,thCls,tbodyCls} from '@/components/ui';
+import {Button,Card,inputCls,tableWrapCls,theadCls,thCls,tbodyCls} from '@/components/ui';
+import { deskMoney } from './[unitId]/desk/salary-increase-table';
 import {RewardStageLabel} from './returned-status';
 
-type Props={rows:RewardReviewListRow[];filters:RewardReviewFilters;emptyReason:'noScope'|'noCycle'|'noRole'|'otherScope'|null;year:number;canConfigure:boolean;companyGroups?:Readonly<Record<string,{groupId:string;groupName:string}>>};
-export function RewardReviewList({rows:all,filters,emptyReason,year,canConfigure,companyGroups={}}:Props){
- const t=useTranslations('rewards'),u=useTranslations('rewardUploaded'),locale=useLocale(),rows=filterRewardReviews(all,filters,companyGroups),waiting=all.filter(row=>row.waiting).length;
+type Props={rows:RewardReviewListRow[];filters:RewardReviewFilters;emptyReason:'noScope'|'noCycle'|'noRole'|'otherScope'|null;year:number;canConfigure:boolean;overview?:boolean;canOpenApprovals?:boolean;companyGroups?:Readonly<Record<string,{groupId:string;groupName:string}>>};
+export function RewardReviewList({rows:all,filters,emptyReason,year,canConfigure,overview=false,canOpenApprovals=false,companyGroups={}}:Props){
+ const t=useTranslations('rewards'),u=useTranslations('rewardUploaded'),nav=useTranslations('nav'),locale=useLocale(),rows=filterRewardReviews(all,filters,companyGroups),waiting=all.filter(row=>row.waiting).length;
  const choices=(key:'cycleId'|'companyId'|'businessUnitId',label:'cycle'|'company'|'unit')=>[...new Map(all.map(row=>[row[key],row[label]])).entries()].sort((a,b)=>a[1].localeCompare(b[1]));
  const groupOptions=[...new Map(Object.values(companyGroups).map(group=>[group.groupId,group.groupName])).entries()];
  const percent=(bp:number|null|undefined)=>bp==null?'—':new Intl.NumberFormat(locale,{style:'percent',minimumFractionDigits:1,maximumFractionDigits:1}).format(bp/10000);
  const date=(iso:string)=>new Intl.DateTimeFormat(locale,{dateStyle:'medium',timeZone:'UTC'}).format(new Date(`${iso}T00:00:00Z`));
  const relative=(days:number)=>{const phrase=rewardDueWording(days);return t(`board.${phrase.key}`,{days:phrase.days});};
+ const budgetRows = overview ? rows.filter(row => row.kind === 'annual' &&
+   row.roles.some(role => role === 'gr' || role === 'ctro' || role === 'ec') && (row.salary || row.bonus)) : [];
+ const flaggedReviews = overview ? rows.flatMap(row =>
+   'flagSummary' in row && row.flagSummary?.length ? [{row, flags: row.flagSummary}] : []) : [];
  return <>
   <Link href={rewardReviewHref({...filters,waiting:filters.waiting==='1'?undefined:'1'})} aria-current={filters.waiting==='1'?'page':undefined} className="inline-flex rounded-md border px-4 py-3 font-medium text-primary hover:bg-accent">{t('reviewList.waiting',{count:waiting})}</Link>
   {rewardReviewUpcoming(all).map(({seat,count})=><p key={seat} className="text-sm text-muted-foreground">{t('reviewList.upcoming',{count,stage:t(`board.seat.${seat}`)})}</p>)}
@@ -30,6 +35,62 @@ export function RewardReviewList({rows:all,filters,emptyReason,year,canConfigure
    <label className="flex min-h-10 items-center gap-2 text-sm"><input type="checkbox" name="waiting" value="1" defaultChecked={filters.waiting==='1'}/>{t('reviewList.waitingOnly')}</label>
    <Button type="submit">{t('reviewList.apply')}</Button><Link href="/rewards" className="py-2 text-sm text-primary hover:underline">{t('reviewList.clear')}</Link>
   </form>}
+  {budgetRows.length > 0 && <details className="rounded-lg border border-border p-4">
+    <summary className="cursor-pointer font-semibold">{t('budget')} · {t('reviewList.all')}</summary>
+    <div className="mt-3 overflow-x-auto"><table className="w-full text-sm">
+      <thead className={theadCls}><tr>
+        <th scope="col" className={thCls}>{t('unit')}</th>
+        <th scope="col" className={thCls}>{t('reviewList.salary')}</th>
+        <th scope="col" className={thCls}>{t('reviewList.bonus')}</th>
+      </tr></thead>
+      <tbody className={tbodyCls}>{budgetRows.map(row => <tr key={row.id}>
+        <td className="p-3"><Link className="font-medium text-primary hover:underline" href={`/rewards/${row.id}#salary-increase`}>{row.unit}</Link>
+          <div className="text-muted-foreground">{row.company} · {row.cycle}</div></td>
+        <td className="p-3 text-right tabular-nums">
+          {row.salary ? <>{deskMoney(row.salary.increaseCents, locale)} / {deskMoney(row.salary.poolCents, locale)}
+            <div className={row.salary.overLimit ? 'text-destructive' : 'text-muted-foreground'}>{percent(row.salary.poolShareBp)}</div></> : t('reviewList.unavailable')}
+        </td>
+        <td className="p-3 text-right tabular-nums">
+          {row.bonus ? <>{deskMoney(row.bonus.totalCents, locale)} / {deskMoney(row.bonus.budgetCents, locale)}
+            <div className={row.bonus.overLimit ? 'text-destructive' : 'text-muted-foreground'}>{percent(row.bonus.budgetShareBp)}</div></> : t('reviewList.unavailable')}
+        </td>
+      </tr>)}</tbody>
+    </table></div>
+  </details>}
+  {overview && rows.length > 0 && <ul className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+    {rows.map(row => {
+      const approvalQuery = new URLSearchParams({ group: row.companyId, ...(row.cycleId ? { cycle: row.cycleId } : {}), ...(row.businessUnitId ? { unit: row.businessUnitId } : {}) });
+      return <li key={row.id}><Card className="flex h-full flex-col gap-3 p-4">
+        <div>
+          <h2 className="font-semibold">{row.unit}</h2>
+          <p className="text-sm text-muted-foreground">{row.company} · {row.cycle}</p>
+        </div>
+        <RewardStageLabel status={row.status} returnedTo={row.returnedTo} />
+        {row.roles.length > 0 && <dl className="grid grid-cols-2 gap-2 text-sm tabular-nums">
+          <div><dt className="text-muted-foreground">{t('reviewList.salary')}</dt><dd>{percent(row.salary?.poolShareBp)}</dd></div>
+          <div><dt className="text-muted-foreground">{t('reviewList.bonus')}</dt><dd>{percent(row.bonus?.budgetShareBp)}</dd></div>
+        </dl>}
+        {row.blocking !== null && <p className={'text-sm ' + (row.blocking ? 'font-medium text-destructive' : 'text-muted-foreground')}>
+          <Link className="hover:underline" href={`/rewards/${row.id}#checks`}>{t('reviewList.blocking', { count: row.blocking })} · {t('reviewList.exceptions', { count: row.exceptions ?? 0 })}</Link>
+        </p>}
+        <div className="mt-auto flex flex-wrap gap-3 text-sm font-medium text-primary">
+          <Link className="hover:underline" href={`/rewards/${row.id}`}>{t('openReview')}</Link>
+          {canOpenApprovals && row.roles.length > 0 && <Link className="hover:underline" href={`/rewards/approvals?${approvalQuery}`}>{nav('rewardsApprovalsBoard')}</Link>}
+        </div>
+      </Card></li>;
+    })}
+  </ul>}
+  {flaggedReviews.length>0&&<details className="rounded-lg border border-border p-4">
+    <summary className="cursor-pointer font-semibold">{t('desk.flags')}</summary>
+    <ul className="mt-3 divide-y divide-border">{flaggedReviews.map(({row,flags})=><li key={row.id} className="space-y-2 py-3 text-sm">
+      <p className="font-medium">{row.unit} · {row.company} · {row.cycle}</p>
+      <div className="flex flex-wrap gap-2">{flags.map(flag=><Link key={flag.severity+flag.code}
+        href={`/rewards/${row.id}?${new URLSearchParams({flag:flag.code})}#checks`}
+        className={`rounded-full border border-border px-2 py-1 hover:underline ${flag.severity==='block'?'font-semibold text-destructive':''}`}>
+        {t(`severity.${flag.severity}`)} · {flag.code} · {flag.count}
+      </Link>)}</div>
+    </li>)}</ul>
+  </details>}
   <div data-tour="rewards-review-units" className={tableWrapCls}>{rows.length>0?<table className="w-full text-sm"><thead className={theadCls}><tr>{['cycle','company','unit','myRole','with','due','salary','bonus','blocks','action'].map(key=><th scope="col" key={key} className={thCls}>{['cycle','company','unit','action'].includes(key)?t(key):t(`reviewList.${key}`)}</th>)}</tr></thead>
    <tbody className={tbodyCls}>{rows.map(row=><tr key={row.id} className="align-top"><td className="px-3 py-3 font-medium">{row.cycle} · {row.uploaded?u('label'):t(`kinds.${row.kind}`)}<span className="ml-2 text-muted-foreground">{row.year}</span></td><td className="px-3 py-3">{row.company}</td><td className="px-3 py-3">{row.unit}</td><td className="px-3 py-3">{row.roles.length?row.roles.map(role=>t(`board.seat.${role}`)).join(', '):t('reviewList.unavailable')}</td>
     <td className="px-3 py-3"><RewardStageLabel status={row.status} returnedTo={row.returnedTo}/>{row.seat&&<p className="mt-1 text-muted-foreground">{t(`board.seat.${row.seat}`)}</p>}{row.holders.length>0&&<p className="mt-1 text-muted-foreground">{row.holders.map(name=>name??t('reviewList.restrictedName')).join(', ')}</p>}</td>

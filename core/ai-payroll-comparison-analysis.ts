@@ -45,6 +45,11 @@ function capture<T>(input:T):T{
 export async function generatePrivatePayrollComparisonAnalysis(ctx:SessionContext,spec:CustomReportSpec,scope:readonly string[],raw:Record<string,unknown>):Promise<string>{
  const capturedSpec=capture(spec),capturedScope=capture(scope),requested=capture(raw);
  if(capturedSpec.datasetId!==PAYROLL_COMPARISON_DATASET||!Array.isArray(capturedScope)||!capturedScope.length||capturedScope.length>100||capturedScope.some(id=>typeof id!=='string'))return unavailable();
+ // New native report selectors and templates are for HR review. Keep the provider-facing
+ // cohort interface on the original, reviewed dimensions; a person search must stay local.
+ const allowed=new Set(['currentPeriod','previousPeriod','companyId','departmentId','runType','minVariance','onlyVariances','reason','page','pageSize']);
+ if(capturedSpec.payrollComparison?.payItemCode!=='BASIC'||capturedSpec.payrollComparison.defaults!==undefined||
+   !requested||typeof requested!=='object'||Array.isArray(requested)||Object.keys(requested).some(key=>!allowed.has(key)))return unavailable();
  const full=Object.freeze({...requested,onlyVariances:false,minVariance:'0',reason:'',page:1,pageSize:200});
  const configuration=await withTenant(ctx,tx=>resolveActiveAiConfig(tx,ctx,'payroll_explanation'));
  if(!configuration)return unavailable();

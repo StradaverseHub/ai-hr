@@ -96,11 +96,13 @@ describe('actual independent prompt-to-plan evaluation custody',()=>{
   expect(row).toEqual({reason:'quality_regression',used:1,completed:expectedModelRuns(),receipts:2});
   await expect(runPromptPlannedSyntheticJob(a.author,{fixtureId:'own-leave',consent:consent(1)})).rejects.toThrow();
   expect(sent).toHaveBeenCalledTimes(expectedModelRuns());
- });
+ // Two complete paired evaluations perform hundreds of real database writes.
+ },60_000);
  it('refuses equal perfect baseline/candidate plans after two authentic independent paired evaluations, regardless of zero reported tokens',async()=>{
   const a=await candidate();await transport(a.author);for(const ctx of [a.reviewer,a.second]){const report=await completeEvaluation(ctx,{candidateId:a.candidateId,consent:consent()});expect(report.comparison).toMatchObject({qualityImproved:false,baseline:{correct:144,tokens:0,costCredits:null},candidate:{correct:144,tokens:0,costCredits:null}});}
   await expect(promotePromptAgentCandidate(a.promoter,{candidateId:a.candidateId,maxJobs:1,hours:1})).rejects.toThrow();const[rows]=await owner.db.execute<{n:number}>(sql`select count(*)::int as n from public.ai_agent_promotion`);expect(rows.n).toBe(0);
- });
+  // Two paired evaluations perform the same bounded database work as the neighboring promotion case.
+ },60_000);
 
  it('reaches the actual unmocked missing-capability guard and sends no request or token/spend reservation',async()=>{
   const a=await candidate(),selected=vi.spyOn(spend,'certifiedAiSpendEnvelope'),sent=vi.spyOn(openaiAdapter,'generate').mockResolvedValue('MUST_NOT_SEND');

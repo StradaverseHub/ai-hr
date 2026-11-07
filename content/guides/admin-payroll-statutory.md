@@ -36,6 +36,16 @@ In Transaction View's **Transaction Detail**, **Total Overtime** appears in **Su
 
 Personnel Management's **Bank & Statutory → EPF Contribution** preserves the percentage shown after save and reopen, including decimal rates such as 14.5. The selected EPF category continues to determine which fields are editable and which validation and contribution rules apply.
 
+## Reconcile payroll periods
+
+Open [Payroll Reconciliation](/payroll/reconciliation) to review a processed month against the preceding month. Check the comparison status and source version before using the figures. Reprocessing records a new source version when the required payroll results are ready.
+
+Select **New comparison** for different periods or pay cycles. Filter by the employee or employment details and choose how to group the rows. Pay items are compared from recorded payroll figures; any item the records cannot substantiate is listed separately. Add an HR remark where a difference needs a follow-up, or save the selected settings as a template for reuse.
+
+## Review statutory filing history
+
+Open [Filing History](/payroll/statutory-forms/filing-history) under Statutory Forms to review filed reports and filing reversals. Check the company, period and filing record before recording or reversing a filing. Use the current statutory screen to generate or download a form.
+
 ## Review payroll correction controls
 
 From [Payroll setup](/payroll/setup), open [Correction controls](/payroll/setup/correction-controls). The separate page contains the existing correction control; it does not introduce a new payroll calculation or grant additional access.

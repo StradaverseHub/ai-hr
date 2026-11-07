@@ -1,4 +1,5 @@
 import {createHash} from 'node:crypto';
+import { attachPayrollReconciliationRemarks, builtInPayrollReconciliationSpec } from './report-payroll-reconciliation-remarks';
 import {executePayrollComparisonTx,payrollComparisonSpec} from './report-payroll-comparison';
 import {payrollComparisonAccessTx} from './report-payroll-access';
 import {MasterReportAccessError} from './employee-master-access';
@@ -404,19 +405,22 @@ export async function runPayrollComparisonReport(ctx:SessionContext,scopeIds:rea
   id?:string;spec?:CustomReportSpec;filters?:Record<string,unknown>;verb?:'view'|'export';
 }){
   if(!!p.id===!!p.spec)throw new Error('Choose a saved report or one unsaved definition.');
+  const builtIn=p.id==='reconciliation';
+  const {payItemCode,...builtInFilters}=p.filters??{};
   return withTenant(ctx,async tx=>{
-    const [saved]=p.id?await tx.select().from(customReport).where(eq(customReport.id,p.id)).limit(1):[];
-    if(p.id&&!saved)throw new MasterReportAccessError();
-    const spec=saved?.spec??p.spec!;
+    const [saved]=p.id&&!builtIn?await tx.select().from(customReport).where(eq(customReport.id,p.id)).limit(1):[];
+    if(p.id&&!builtIn&&!saved)throw new MasterReportAccessError();
+    const spec=builtIn?builtInPayrollReconciliationSpec(payItemCode):saved?.spec??p.spec!;
     assertValid(spec);
     if(spec.datasetId!==PAYROLL_COMPARISON_DATASET)throw new MasterReportAccessError();
-    if(!saved)await comparisonAccess(tx,ctx,spec,'create',scopeIds);
-    const execution=await executePayrollComparisonTx(tx,ctx,spec,scopeIds,p.filters??{},p.verb??'view');
+    if(!saved&&!builtIn)await comparisonAccess(tx,ctx,spec,'create',scopeIds);
+    const execution=await executePayrollComparisonTx(tx,ctx,spec,scopeIds,builtIn?builtInFilters:p.filters??{},p.verb??'view');
+    if(builtIn)await attachPayrollReconciliationRemarks(tx,ctx,execution);
     let canEdit=true;try{await comparisonAccess(tx,ctx,spec,'edit',execution.companyIds);}catch(error){if(error instanceof MasterReportAccessError)canEdit=false;else throw error;}
     let canExport=true;try{await comparisonAccess(tx,ctx,spec,'export',execution.companyIds);}catch(error){if(error instanceof MasterReportAccessError)canExport=false;else throw error;}
     const [preparer]=ctx.personId?await tx.select({name:person.fullName}).from(person).where(eq(person.id,ctx.personId)).limit(1):[];
     return {...execution,canEdit,canExport,reportId:saved?.id??null,version:saved?.version??null,spec,
-      name:saved?.name??'Payroll Basic Variance',description:saved?.description||spec.layout?.description||'',
+      name:saved?.name??(builtIn?'Payroll Reconciliation':'Payroll Basic Variance'),description:saved?.description||spec.layout?.description||'',
       generatedAt:new Date().toISOString(),generatedBy:preparer?.name??ctx.userId!};
   },{readOnlySnapshot:true});
 }
@@ -430,14 +434,16 @@ export async function recordPayrollComparisonRun(ctx:SessionContext,run:Awaited<
     if(run.reportId&&(!saved||saved.version!==run.version))throw new MasterReportAccessError();
     const spec=saved?.spec??run.spec;
     await comparisonAccess(tx,ctx,spec,kind==='export'?'export':'view',run.companyIds);
-    const snapshot={filters:run.filters,runs:run.result.runs,sourceRevisions:run.sourceRevisions,generatedAt:run.generatedAt};
+    const {employeeSearch,employmentId,...filters}=run.filters;
+    const auditFilters={...filters,employeeFilterApplied:!!(employeeSearch||employmentId)};
+    const snapshot={payItemCode:run.definition.payItemCode,filters:auditFilters,runs:run.result.runs,sourceRevisions:run.sourceRevisions,generatedAt:run.generatedAt};
     const digest=createHash('sha256').update(JSON.stringify(snapshot)).digest('hex');
     const scopes=sql`ARRAY[${sql.join(run.companyIds.map(id=>sql`${id}::uuid`),sql`, `)}]`;
     const [audit]=await tx.execute(sql`select app.record_custom_report_run(${run.reportId}::uuid,${run.version}::integer,
       ${kind},${format},${scopes},${run.result.displayedRows},${run.result.available?'success':'skipped'},${'comparison:'+digest}) as id`) as unknown as {id:string}[];
     await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'custom-report',aggregateId:run.reportId??audit.id,
       eventType:'custom-report.comparison-recorded',actor:actorOf(ctx),payload:{auditId:audit.id,reportVersion:run.version,kind,format,
-        filters:run.filters,sourceRuns:run.result.runs,sourceRevisions:run.sourceRevisions,generatedAt:run.generatedAt,digest}});
+        payItemCode:run.definition.payItemCode,filters:auditFilters,sourceRuns:run.result.runs,sourceRevisions:run.sourceRevisions,generatedAt:run.generatedAt,digest}});
     return audit.id;
   });
 }
