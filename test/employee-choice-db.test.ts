@@ -2,12 +2,13 @@ import {randomUUID} from 'node:crypto';
 import {writeFileSync} from 'node:fs';
 import {join} from 'node:path';
 import {eq} from 'drizzle-orm';
-import {afterAll,beforeAll,beforeEach,expect,it} from 'vitest';
+import {afterAll,beforeAll,beforeEach,expect,it,vi} from 'vitest';
 import {readEmployeeChoices} from '../core/employee-choice';
 import {listEmployees} from '../core/read';
 import {hireEmployee} from '../core/org';
 import {assignment,employment,person,reportingLine,roleAssignment} from '../db/schema';
-import type {SessionContext} from '../db/client';
+import * as database from '../db/client';
+import type {SessionContext,Tx} from '../db/client';
 import {adminCtx,closeAll,createAppUser,migrateTestDb,owner,resetDb,seedBase} from './harness';
 import {seedPersonnelNativeFixture} from './performance/personnel-native-fixture';
 beforeAll(migrateTestDb);afterAll(closeAll);beforeEach(resetDb);
@@ -83,3 +84,23 @@ it('pages the real 50k population without retaining whole employee DTOs or losin
  expect(found.total).toBe(1);expect(found.rows.map(row=>row.employmentId)).toEqual(expectedLast.slice(-1));
  report.timings=timings;report.maxPageRows=Math.max(first.rows.length,deep.rows.length,found.rows.length);report.exactNativeIdsAndCounts=true;save();
 },300000);
+
+it('stops further SQL after a disconnected count and releases the native transaction',async()=>{
+ const b=await seedBase(),ctx=adminCtx(b),controller=new AbortController(),stop=Error('Controlled choice disconnect');
+ const actual=database.withTenant;let afterAbort=0,sawCount=false;
+ const spy=vi.spyOn(database,'withTenant').mockImplementation(<T>(context:SessionContext,read:(tx:Tx)=>Promise<T>,options?:Parameters<typeof database.withTenant>[2])=>actual(context,tx=>read(new Proxy(tx,{
+  get(target,key,receiver){
+   if(key==='execute')return async(...args:unknown[])=>{
+    if(controller.signal.aborted)afterAbort++;
+    const result=await Reflect.apply(target.execute,target,args);
+    if(Array.isArray(result)&&result[0]&&typeof result[0].total==='number'){sawCount=true;controller.abort(stop);}
+    return result;
+   };
+   const value=Reflect.get(target,key,receiver);return typeof value==='function'?value.bind(target):value;
+  },
+ })),options));
+ try{await expect(readEmployeeChoices(ctx,{companyIds:[b.companyId]},controller.signal)).rejects.toBe(stop);}
+ finally{spy.mockRestore();}
+ expect(sawCount).toBe(true);expect(afterAbort).toBe(0);
+ expect((await readEmployeeChoices(ctx,{companyIds:[b.companyId]})).total).toBe(0);
+});

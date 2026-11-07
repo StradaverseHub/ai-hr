@@ -49,6 +49,7 @@ export async function readEmployeeChoices(ctx:SessionContext,p:EmployeeChoiceInp
   let rows:EmployeeChoice[]=[],total=0;
   if(!q){
    const [count]=await tx.execute<{total:number}>(sql`select count(*)::int as total ${from} where ${where}`);total=count.total;
+   signal?.throwIfAborted();
    rows=await tx.execute<EmployeeChoice>(sql`${base} where ${where} order by ${person.fullName},${employment.id},${assignment.id} limit ${limit} offset ${offset}`);
   }else{
    // PostgreSQL locale lower/ILIKE is not ECMAScript lower/includes. ASCII-only rows
@@ -69,7 +70,9 @@ export async function readEmployeeChoices(ctx:SessionContext,p:EmployeeChoiceInp
   }
   signal?.throwIfAborted();
   const selected=p.selectedId&&uuid.test(p.selectedId)?(await tx.execute<EmployeeChoice>(sql`${base} where ${scoped} and ${employment.id}=${p.selectedId}::uuid order by ${person.fullName},${employment.id},${assignment.id} limit 1`))[0]??null:null;
+  signal?.throwIfAborted();
   const options=await readOptions(tx,scoped,labelMode==='labels');
+  signal?.throwIfAborted();
   const inSelectedCompany=filters.companyId?options.filter(row=>row.companyId===filters.companyId):options;
   const companies=new Map(options.map(row=>[row.companyId,row.company]));
   return {contextId:randomUUID(),rows,selected,total,offset,limit,filters,labelMode,
