@@ -18,7 +18,7 @@ type Message={kind:string;run?:string;processed?:number;created?:number;reason?:
 type Witness={child:ChildProcess;messages:Message[];closed:Promise<{code:number|null;signal:NodeJS.Signals|null}>;wait:(kind:string)=>Promise<Message>;output:()=>string;finishEvidence:()=>Promise<void>};
 export function registerNotificationProcessCases(fixtureOwner:NotificationWorkerFixtureOwner){
  describe.sequential('UNINSTALLED native notification process protocol',()=>{
-  const sources=['lifecycle','projection','assessment','process'].map(name=>readFileSync('test/fixtures/notification-worker/'+name+'.sql','utf8'));
+  const sources=['lifecycle','projection','assessment','process','query-shape'].map(name=>readFileSync('test/fixtures/notification-worker/'+name+'.sql','utf8'));
   const children=new Set<Witness>();let b:Base,employment:string,recipientUser:string,processOrdinal=0;
   beforeAll(async()=>{await fixtureOwner.install(sources,3,notificationWorkerAssessmentContract);await captureTriggerCatalogue();},300000);
   beforeEach(async()=>{
@@ -202,6 +202,43 @@ export function registerNotificationProcessCases(fixtureOwner:NotificationWorker
   it.each(['unsupported','module-kill']as const)('keeps %s work pending without a success or fallback',async kind=>{
    await event(kind==='unsupported'?'leave-request.self-cancelled':undefined);const before=await state(),w=await launch({moduleKill:kind==='module-kill'?'notifications':''}),run=await proofRun(w);expect(await w.closed).toEqual({code:2,signal:null});expect(await state()).toEqual(before);
    expect(await native(run)).toMatchObject({state:'failed',outcome:'failed',error:kind==='unsupported'?'projection-unimplemented':'scope-changed',processed_events:'0',created_notifications:'0'});
+  });
+  it('keeps fresh native catalogue/column/sequence/definer/API guards and rejects additive reapplication atomically',async()=>{
+   const connection=fixtureOwner.connect(),api=notificationWorkerLifecycle(connection);
+   const refused=async()=>{await expect(api.openRun()).rejects.toSatisfy((error:unknown)=>pgSqlState(error)==='42501');};
+   const facts=await state(),before=await owner.client`select object_oid,details from notification_worker_private.process_contract where kind='function'order by object_oid`;
+   await owner.client.begin(async tx=>{
+    await tx`select set_config('aihr.notification_fixture.database',${fixtureOwner.binding.database},true),set_config('aihr.notification_fixture.namespace',${fixtureOwner.binding.namespace},true),set_config('aihr.notification_fixture.pool_id',${fixtureOwner.binding.poolId},true)`;
+    await expect(tx.unsafe(readFileSync('test/fixtures/notification-worker/query-shape.sql','utf8'))).rejects.toSatisfy((error:unknown)=>pgSqlState(error)==='55000');
+    // PostgreSQL marks the transaction aborted after the genuine native refusal.
+    // Explicit rollback; no subsequent statement is allowed to mask that refusal.
+    throw Error('Controlled additive reapplication rollback');
+   }).catch((error:unknown)=>{if(!(error instanceof Error)||error.message!=='Controlled additive reapplication rollback')throw error;});
+   expect(await owner.client`select object_oid,details from notification_worker_private.process_contract where kind='function'order by object_oid`).toEqual(before);
+   expect((await owner.client`select to_regclass('public.notification_query_shape_canary')as table,to_regclass('public.notification_query_shape_sequence')as sequence,to_regprocedure('public.notification_query_shape_definer()')as function`)[0]).toEqual({table:null,sequence:null,function:null});
+   await owner.client`create table public.notification_query_shape_canary(secret text)`;
+   const [canary]=await owner.client`select c.oid,to_jsonb(c)-'relacl'as relation,(select jsonb_agg(to_jsonb(a)-'attacl'order by a.attnum)from pg_attribute a where a.attrelid=c.oid and a.attnum>0)as columns from pg_class c where c.oid='public.notification_query_shape_canary'::regclass`;
+   try{
+    await owner.client`grant select(secret)on public.notification_query_shape_canary to ai_hr_notification_worker`;await refused();
+    await owner.client`revoke select(secret)on public.notification_query_shape_canary from ai_hr_notification_worker`;
+    await owner.client`grant update(secret)on public.notification_query_shape_canary to ai_hr_notification_worker`;await refused();
+    await owner.client`revoke update(secret)on public.notification_query_shape_canary from ai_hr_notification_worker`;
+    await owner.client`grant select on public.notification_query_shape_canary to ai_hr_notification_worker`;await refused();
+    await owner.client`revoke select on public.notification_query_shape_canary from ai_hr_notification_worker`;
+   }finally{expect((await owner.client`select c.oid,to_jsonb(c)-'relacl'as relation,(select jsonb_agg(to_jsonb(a)-'attacl'order by a.attnum)from pg_attribute a where a.attrelid=c.oid and a.attnum>0)as columns from pg_class c where c.oid='public.notification_query_shape_canary'::regclass`)[0]).toEqual(canary);await owner.client`drop table public.notification_query_shape_canary`;}
+   await owner.client`create sequence public.notification_query_shape_sequence`;
+   const [sequence]=await owner.client`select to_jsonb(c)-'relacl'as details from pg_class c where c.oid='public.notification_query_shape_sequence'::regclass`;
+   try{await owner.client`grant usage on sequence public.notification_query_shape_sequence to ai_hr_notification_worker`;await refused();}
+   finally{expect((await owner.client`select to_jsonb(c)-'relacl'as details from pg_class c where c.oid='public.notification_query_shape_sequence'::regclass`)[0]).toEqual(sequence);await owner.client`drop sequence public.notification_query_shape_sequence`;}
+   await owner.client.unsafe("create function public.notification_query_shape_definer()returns integer language sql security definer set search_path=pg_catalog,pg_temp as 'select 1'");
+   const [definer]=await owner.client`select to_jsonb(p)as details from pg_proc p where p.oid='public.notification_query_shape_definer()'::regprocedure`;
+   try{await refused();}finally{expect((await owner.client`select to_jsonb(p)as details from pg_proc p where p.oid='public.notification_query_shape_definer()'::regprocedure`)[0]).toEqual(definer);await owner.client`drop function public.notification_query_shape_definer()`;}
+   await owner.client`alter function notification_worker.scope_page(uuid,uuid,integer)set search_path=pg_catalog,public,pg_temp`;
+   try{await refused();}finally{await owner.client`alter function notification_worker.scope_page(uuid,uuid,integer)set search_path=pg_catalog,pg_temp`;}
+   expect(await owner.client`select object_oid,details from notification_worker_private.process_contract where kind='function'order by object_oid`).toEqual(before);
+   await owner.client`select notification_worker_private.assert_process_profile()`;
+   expect(await state()).toEqual(facts);
+   const run=await api.openRun();expect(run).toMatch(/^[0-9a-f-]{36}$/);await api.failRun(run,'interrupted');
   });
   it('enforces the fixed eight-batch process budget with actual committed receipts and remaining pending work',async()=>{
    const count=notificationProcessBounds.events*notificationProcessBounds.batches+1,events=await event(undefined,count),w=await launch(),run=await proofRun(w);expect(await w.closed).toEqual({code:2,signal:null});
