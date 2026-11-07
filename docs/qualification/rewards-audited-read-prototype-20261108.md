@@ -2,7 +2,7 @@
 
 Exact parent: `06be9fc60097edb870f2c7d9f4d30887ba6fd6d9`. Candidate SHA is the commit containing this request; bind hosted source/controller/run/attempt and artifacts independently. Status: UNRUN/source only. Architecture contract: [durable-before-return prototype](../architecture/REWARDS-AUDITED-READ-PROTOTYPE-20261108.md).
 
-Planned chunks are separate: native sole-file 14 cases; ownership pure three cases; affected legacy union. Preserve original failures and every planned chunk to terminal before repair. Never combine the sole native selector with other files or spoof ordinary-CI admission. Root must review actual controller/profile compatibility before dispatch; no installation grant is implied.
+Planned chunks are separate: native sole-file16 cases (original14 retained plus two correctness cases); ownership pure three cases; affected legacy union. Preserve original failures and every planned chunk to terminal before repair. Never combine the sole native selector with other files or spoof ordinary-CI admission. Root must review actual controller/profile compatibility before dispatch; no installation grant is implied.
 
 Source-only checks: seven frozen original read-body/type pins, two original source-file hashes, reconstructed baseline hash and new relative imports verified; `git diff --check`; provider-first/agent-last generated source manifests refreshed without changing literal AI approvals or pending contracts. These are not application verification.
 

@@ -169,7 +169,7 @@ BEGIN
   OR EXISTS(SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname NOT IN('pg_catalog','information_schema') AND n.nspname NOT LIKE 'pg_toast%' AND c.relkind IN('r','p','v','m','f') AND
    (c.relowner=login.oid OR has_table_privilege(login.oid,c.oid,'INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER')OR has_any_column_privilege(login.oid,c.oid,'INSERT,UPDATE,REFERENCES')
     OR(has_table_privilege(login.oid,c.oid,'SELECT')OR has_any_column_privilege(login.oid,c.oid,'SELECT'))AND NOT(login.oid=a.reader_oid AND c.oid IN('public.reward_library'::regclass,'public.reward_library_version'::regclass))))
-  OR EXISTS(SELECT 1 FROM pg_class c WHERE c.relkind='S' AND(has_sequence_privilege(login.oid,c.oid,'USAGE,SELECT,UPDATE') OR c.relowner=login.oid))
+  OR EXISTS(SELECT 1 FROM pg_class c WHERE CASE WHEN c.relkind='S' THEN has_sequence_privilege(login.oid,c.oid,'USAGE,SELECT,UPDATE') OR c.relowner=login.oid ELSE false END)
   OR EXISTS(SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE p.prosecdef
    AND has_schema_privilege(login.oid,n.oid,'USAGE') AND has_function_privilege(login.oid,p.oid,'EXECUTE')
    AND (n.nspname<>CASE WHEN login.oid=a.reader_oid THEN 'reward_audit_read' ELSE 'reward_audit_projection' END
@@ -297,6 +297,10 @@ BEGIN
  -- No high-water cursor: a receipt committed later stays discoverable, regardless
  -- of observation/order IDs. Row locks serialize claims, links/events commit together.
  FOR r IN SELECT x.* FROM reward_audit_private.receipt x WHERE NOT EXISTS(SELECT 1 FROM reward_audit_private.projection p WHERE p.receipt_id=x.id)ORDER BY x.observed_at,x.id FOR UPDATE OF x SKIP LOCKED LIMIT p_limit LOOP
+  -- The cursor snapshot can predate another projector's COMMIT while receipt
+  -- tuples stay immutable. Once this row is locked, a NEW RC statement must
+  -- recheck the committed link before appending its unique event.
+  IF EXISTS(SELECT 1 FROM reward_audit_private.projection p WHERE p.receipt_id=r.id)THEN CONTINUE;END IF;
   IF r.version<>1 OR NOT EXISTS(SELECT 1 FROM public.domain_event WHERE tenant_id=r.tenant_id AND chain_seq IS NOT NULL)THEN RAISE EXCEPTION 'Supported armed-chain audit receipt required' USING ERRCODE='55000';END IF;
   appended:=clock_timestamp();
   INSERT INTO public.domain_event(id,tenant_id,aggregate_type,aggregate_id,event_type,actor_type,actor_id,subject_employment_id,payload,occurred_at)

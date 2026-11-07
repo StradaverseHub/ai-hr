@@ -20,6 +20,7 @@ import {createUninstalledRewardsAuditFamily} from './prototypes/rewards-audited-
 import {rewardsAuditFixtureOwner,type RewardsAuditFixtureOwner} from './prototypes/rewards-audited-read-owner';
 import {rewardAuditPrototypeOwnership} from './prototypes/rewards-audited-read-ownership';
 import {rewardAuditProjectorProcess} from './prototypes/rewards-audit-projector-process';
+import {rewardAuditProjectionRace} from './prototypes/rewards-audit-projection-race';
 import * as baseline from './prototypes/rewards-audited-read-baseline';
 const selected:unknown=JSON.parse(process.env.AIHR_FOCUSED_TESTS??'[]');
 if(process.env.GITHUB_ACTIONS!=='true'||process.env.RUNNER_ENVIRONMENT!=='github-hosted'||process.env.GITHUB_REPOSITORY!=='StradaverseHub/ai-hr'||process.env.GITHUB_RUN_ATTEMPT!=='1'||!Array.isArray(selected)||selected.length!==1||selected[0]!=='test/rewards-audited-read-prototype.test.ts')throw Error('Exact sole hosted Rewards prototype required; normal-CI registration remains pending');
@@ -169,6 +170,43 @@ describe('durable-before-return read and canonical projection',()=>{
   const api=owned().family,before=await money();for(let i=0;i<4;i++)await api.libraries(f.ctx,'salary',f.year);
   expect(await Promise.all([api.materialize(2),api.materialize(2)])).toEqual([2,2]);expect(await api.materialize()).toBe(0);
   expect((await owner.client`select count(*)::int as n,count(distinct p.event_id)::int as events from reward_audit_private.projection p join reward_audit_private.receipt r on r.id=p.receipt_id join public.domain_event e on e.id=p.event_id and e.id=r.event_id`)[0]).toEqual({n:4,events:4});expect(await money()).toEqual(before);expect(await verifyTenantChain(f.ctx)).toMatchObject({valid:true,unchainedInsideChain:0});
+ });
+ caseIt('rechecks a committed link after an old cursor snapshot acquires the unchanged receipt tuple',async context=>{
+  const api=owned().family,financial=await money();
+  try{
+   for(const variant of ['frozen9e','fixed']as const){
+    const result=await api.libraries(f.ctx,'salary',f.year);
+    await rewardAuditProjectionRace(owned().fixture,result.receipt.id,variant,context.signal);
+    expect(await api.materialize()).toBe(0);expect(await money()).toEqual(financial);
+    expect(await verifyTenantChain(f.ctx)).toMatchObject({valid:true,unchainedInsideChain:0});
+   }
+  }catch(error){ownership.poison(Error('Native projection race proof/restoration refused',{cause:error}));throw error;}
+ });
+ caseIt('checks only real sequence OIDs while retaining nonsequence and TOAST rejection and fresh USAGE refusal',async()=>{
+  const api=owned().family,reader=owned().fixture.connect('reader'),financial=await money();
+  expect((await owner.client`select to_regclass('public.reward_audit_sequence_relation')as relation,to_regclass('public.reward_audit_sequence_canary')as sequence`)[0]).toEqual({relation:null,sequence:null});
+  await owner.client`create table public.reward_audit_sequence_relation(content text)`;
+  await owner.client`insert into public.reward_audit_sequence_relation select string_agg(md5(n::text),'')from generate_series(1,4096)n`;
+  const [relation]=await owner.client`select to_jsonb(c)as details,c.oid,c.relkind,c.reltoastrelid as toast_oid,t.relkind as toast_kind from pg_class c join pg_class t on t.oid=c.reltoastrelid where c.oid='public.reward_audit_sequence_relation'::regclass`;
+  expect(relation).toMatchObject({relkind:'r',toast_kind:'t'});expect(relation.toast_oid).toBeTruthy();
+  try{
+   await refusal(reader`select has_sequence_privilege(current_user,${relation.oid}::oid,'USAGE')`,'42809');
+   await refusal(reader`select has_sequence_privilege(current_user,${relation.toast_oid}::oid,'USAGE')`,'42809');
+   await owner.client`select reward_audit_private.assert_profile()`;
+  }finally{expect((await owner.client`select to_jsonb(c)as details from pg_class c where c.oid='public.reward_audit_sequence_relation'::regclass`)[0].details).toEqual(relation.details);await owner.client`drop table public.reward_audit_sequence_relation`;}
+  await owner.client`create sequence public.reward_audit_sequence_canary`;
+  const [sequence]=await owner.client`select to_jsonb(c)-'relacl'as details from pg_class c where c.oid='public.reward_audit_sequence_canary'::regclass`;
+  try{
+   await owner.client`select reward_audit_private.assert_profile()`;
+   await owner.client`grant usage on sequence public.reward_audit_sequence_canary to ai_hr_reward_audit_read`;await refusal(api.libraries(f.ctx),'55000');
+   await owner.client`revoke usage on sequence public.reward_audit_sequence_canary from ai_hr_reward_audit_read`;await owner.client`select reward_audit_private.assert_profile()`;
+   await owner.client`grant usage on sequence public.reward_audit_sequence_canary to ai_hr_reward_audit_projector`;await refusal(api.materialize(),'55000');
+   await owner.client`revoke usage on sequence public.reward_audit_sequence_canary from ai_hr_reward_audit_projector`;await owner.client`select reward_audit_private.assert_profile()`;
+  }finally{
+   await owner.client`revoke all on sequence public.reward_audit_sequence_canary from ai_hr_reward_audit_read,ai_hr_reward_audit_projector`;
+   expect((await owner.client`select to_jsonb(c)-'relacl'as details from pg_class c where c.oid='public.reward_audit_sequence_canary'::regclass`)[0]).toEqual(sequence);await owner.client`drop sequence public.reward_audit_sequence_canary`;
+  }
+  expect(await receipts()).toEqual([]);expect(await money()).toEqual(financial);expect((await api.libraries(f.ctx,'salary',f.year)).data.map(row=>row.id)).toEqual([f.ids.salary_version_id]);
  });
  for(const phase of ['before','after']as const)caseIt(`SIGKILL ${phase} native projection COMMIT preserves durable pending intent and exact-once canonical audit`,async context=>{
   const api=owned().family,result=await api.libraries(f.ctx,'salary',f.year),financial=await money(),process=await rewardAuditProjectorProcess(owned().fixture,context.signal);let pid=0,start='';
