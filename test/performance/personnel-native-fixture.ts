@@ -10,7 +10,11 @@ import {adminCtx,owner,resetDb,seedBase} from '../harness';
 
 export async function seedPersonnelNativeFixture(
  count:number,report:Record<string,unknown>,phase:(name:string)=>void,save:()=>void,
+ namePrefix?:'Fictional retained Personnel 人員 ',
 ){
+  // A closed fictional-only extension; default generated person-name bytes stay unchanged.
+  if(namePrefix!==undefined&&namePrefix!=='Fictional retained Personnel 人員 ')throw new TypeError('Unsupported fictional fixture name prefix');
+  const fixtureNamePrefix=namePrefix??'Fictional retained Personnel ';
   await resetDb();const b=await seedBase(),foreign=await seedBase();
   const ctx:SessionContext={...adminCtx(b),grants:[{role:'hr_admin',companyId:null}]};
   const expectedFirst:string[]=[],expectedLast:string[]=[],organisationTagSample:string[]=[];
@@ -20,7 +24,7 @@ export async function seedPersonnelNativeFixture(
    await owner.client.begin(async tx=>{
     await tx`insert into person(id,tenant_id,full_name,primary_email)
      select (${personPrefix}||lpad(n::text,12,'0'))::uuid,${b.tenantId}::uuid,
-      'Fictional retained Personnel '||lpad(n::text,9,'0'),(${personPrefix}||lpad(n::text,12,'0'))||'@example.invalid'
+      ${fixtureNamePrefix}||lpad(n::text,9,'0'),(${personPrefix}||lpad(n::text,12,'0'))||'@example.invalid'
      from generate_series(${offset+1}::integer,${end}::integer)n`;
     await tx`insert into employment(id,tenant_id,person_id,company_id,employee_code,hired_on,terminated_on)
      select (${employmentPrefix}||lpad(n::text,12,'0'))::uuid,${b.tenantId}::uuid,(${personPrefix}||lpad(n::text,12,'0'))::uuid,
