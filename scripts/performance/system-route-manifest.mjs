@@ -14,7 +14,7 @@ export const hrRoutes=Object.freeze([
  '/personnel','/tasks','/org','/delegations','/roster/import','/roster/exceptions',
  '/letters/approval','/letters/templates','/letters/templates/new','/letters/fields','/letters/reports','/letters/settings',
  '/admin/claims','/admin/claims/forms','/admin/claims/limits','/admin/claims/mileage','/admin/claims/reimbursements',
- '/admin/notice-board','/admin/holidays','/admin/locations','/admin/attendance/file-mappings','/admin/attendance/schedule',
+ '/admin/notice-board','/admin/holidays','/admin/holidays/groups','/admin/settings/system-labels','/admin/settings/system-labels/profile-options','/leave/employee-balances','/leave/employee-records','/admin/locations','/admin/attendance/file-mappings','/admin/attendance/schedule',
  '/admin/rewards','/admin/rewards/shared','/rewards/approvals',
 ]);
 export const managerRoutes=Object.freeze([

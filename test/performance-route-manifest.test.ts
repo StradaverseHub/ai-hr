@@ -38,6 +38,13 @@ it('exercises the affected Analytics, Roster and Job Description reads for both 
  }
 });
 
+it('includes the reviewed configuration and Leave inquiry destinations in both HR load pools',()=>{
+ for(const path of ['/admin/claims','/admin/holidays/groups','/admin/settings/system-labels','/admin/settings/system-labels/profile-options','/leave/employee-balances','/leave/employee-records']){
+  for(const role of ['companyHR','groupHR'] as const)expect(routePools[role]).toContain(path);
+  for(const role of ['employee','manager'] as const)expect(routePools[role]).not.toContain(path);
+ }
+});
+
 it('counts each known AI view separately without retaining arbitrary query values',()=>{
  for(const path of new Set(Object.values(routePools).flat()))expect(readRouteForMeasurement(path)).toBe(path);
  expect(readRouteForMeasurement('/assistant?view=insights')).not.toBe(readRouteForMeasurement('/assistant?view=tools'));
