@@ -32,8 +32,8 @@ export async function idleTimeoutMinutesFor(tenantId: string): Promise<number> {
 async function readIdleTimeout(tenantId: string): Promise<number> {
   let minutes = DEFAULT_IDLE_TIMEOUT_MINUTES;
   try {
-    const { client } = await import('../db/client');
-    const rows = await client.unsafe('select app.session_idle_timeout_minutes($1::uuid) as minutes', [tenantId]);
+    const { client,withPoolWork } = await import('../db/client');
+    const rows = await withPoolWork(tenantId,()=>client.unsafe('select app.session_idle_timeout_minutes($1::uuid) as minutes', [tenantId]));
     minutes = validateIdleTimeoutMinutes(rows[0]?.minutes);
   } catch {
     console.error('Idle sign-out policy unreadable; enforcing the default limit.');

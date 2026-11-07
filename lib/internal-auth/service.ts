@@ -5,10 +5,10 @@ import { passwordChangeRequired, replacePassword, effectivePasswordPolicy } from
 import {admitPasswordAttempt} from './login-lockout';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { generateSecret, verify } from 'otplib';
-import { client } from '../../db/client';
+import { client,withPoolWork } from '../../db/client';
 import { internalConfig, internalIssuer } from './config';
 import { digest, opaque, validOpaque, passwordMatches, DUMMY_PASSWORD_HASH } from './crypto';
-import { authTransaction, readRecord, readRecordPair, writeRecord, deleteRecord, revokeCredentialsSessions, type AuthSql } from './store';
+import { authTransaction, readRecord, readAuthRecord, readAuthRecordPair, writeRecord, deleteRecord, revokeCredentialsSessions, type AuthSql } from './store';
 import { InternalAuthError } from './errors';
 import { assertActiveCredential, type Credential } from './credential';
 import { idleTimeoutMinutesFor } from '../session-policy-server';
@@ -31,8 +31,8 @@ export const loginKey = (organization: string, username: string) => `login:${dig
 export const canonicalOrg = (value: string) => (value || internalConfig().organization).trim().toLowerCase();
 const canonicalUsername = (value: string) => value.trim().toLowerCase();
 export async function credentialByLogin(organization: string, username: string) {
-  const index = await readRecord<{ subject: string }>(client, loginKey(canonicalOrg(organization), canonicalUsername(username)));
-  return index ? readRecord<Credential>(client, credentialKey(index.subject)) : null;
+  const index = await readAuthRecord<{ subject: string }>(loginKey(canonicalOrg(organization), canonicalUsername(username)));
+  return index ? readAuthRecord<Credential>(credentialKey(index.subject)) : null;
 }
 export async function takeRate(scope: string, limit: number, window = 15 * 60_000) {
   const now = Date.now(), start = Math.floor(now / window) * window;
@@ -82,8 +82,8 @@ export async function startLogin(input: { organization: string; username: string
     if(current?.enabled&&current.password===c.password)await admitPasswordAttempt(tx,current,false);
   });
   if (!c || !accountAvailable(c) || !temporaryPasswordAvailable(c) || c.temporaryPasswordUsed || !matched) {
-    await client.unsafe("select app.append_auth_event(NULL,'internal-login',$1::uuid,'app-user.login-refused','external',NULL,$2::jsonb)",
-      [randomUUID(), JSON.stringify({ loginHash: digest(`${org}\0${username}`), reason: 'invalidCredentials' })]);
+    await withPoolWork('authentication',()=>client.unsafe("select app.append_auth_event(NULL,'internal-login',$1::uuid,'app-user.login-refused','external',NULL,$2::jsonb)",
+      [randomUUID(), JSON.stringify({ loginHash: digest(`${org}\0${username}`), reason: 'invalidCredentials' })]));
     throw new InternalAuthError('invalidLogin');
   }
   const outcome = await authTransaction(c.subject, async tx => {
@@ -118,7 +118,7 @@ async function withChallenge(
   beforeLock?: (subject: string) => Promise<void>,
 ) {
   if (!validOpaque(raw)) throw new InternalAuthError('invalidChallenge');
-  const key = `challenge:${digest(raw)}`, initial = await readRecord<Challenge>(client, key);
+  const key = `challenge:${digest(raw)}`, initial = await readAuthRecord<Challenge>(key);
   if (!initial) throw new InternalAuthError('invalidChallenge');
   // MFA admission commits independently of the challenge outcome.
   if (beforeLock) await beforeLock(initial.subject);
@@ -219,13 +219,13 @@ async function loadSession(token: string | undefined, native: boolean) {
   if (native && !token?.startsWith('aihr_')) return null;
   const raw = native ? token!.slice(5) : token;
   if (!validOpaque(raw)) return null;
-  const key = `session:${digest(raw)}`, session = await readRecord<Session>(client, key);
+  const key = `session:${digest(raw)}`, session = await readAuthRecord<Session>(key);
   if (!session || session.native !== native || session.absoluteExpiry <= Date.now()) return null;
-  const c = await readRecordPair<Credential>(client, credentialKey(session.subject), `family:${session.family}`,
+  const c = await readAuthRecordPair<Credential>(credentialKey(session.subject), `family:${session.family}`,
     credential => credential.version === session.version);
   if (!c) return null;
   if(c.accountActiveUntil&&!accountAvailable(c)){await authTransaction(c.subject,tx=>observeStoredAccountExpiry(tx,c.subject));return null;}
-  try { await assertActiveCredential(client, c); } catch (e) { if (e instanceof InternalAuthError) return null; throw e; }
+  try { await withPoolWork('authentication',()=>assertActiveCredential(client, c)); } catch (e) { if (e instanceof InternalAuthError) return null; throw e; }
   if (native) return { key, session, c, idleMs: null };
   const idleMs = await idleTimeoutMinutesFor(c.tenantId) * 60_000;
   if (session.lastActivity === undefined) {
@@ -267,7 +267,7 @@ export async function touchSession(token: string | undefined): Promise<{ idleTim
 export async function rotateRefresh(token: string): Promise<AuthReply> {
   const raw = token.startsWith('aihr_refresh_') ? token.slice(13) : '';
   if (!validOpaque(raw)) throw new InternalAuthError('invalidLogin');
-  const key = `refresh:${digest(raw)}`, initial = await readRecord<Refresh>(client, key);
+  const key = `refresh:${digest(raw)}`, initial = await readAuthRecord<Refresh>(key);
   if (!initial) throw new InternalAuthError('invalidLogin');
   const result = await authTransaction(initial.subject, async tx => {
     const value = await readRecord<Refresh>(tx, key, true);
@@ -289,7 +289,7 @@ export async function rotateRefresh(token: string): Promise<AuthReply> {
 export async function revokeSession(token: string | undefined, native = false, refresh?: string) {
   const session = await readSession(token, native);
   let family = session?.family;
-  if (!family && refresh?.startsWith('aihr_refresh_') && validOpaque(refresh.slice(13))) family = (await readRecord<Refresh>(client, `refresh:${digest(refresh.slice(13))}`))?.family;
+  if (!family && refresh?.startsWith('aihr_refresh_') && validOpaque(refresh.slice(13))) family = (await readAuthRecord<Refresh>(`refresh:${digest(refresh.slice(13))}`))?.family;
   if (family) await authTransaction(`family:${family}`, async tx => {
     await deleteRecord(tx, `family:${family}`);
     if (session) { await deleteRecord(tx, session.sessionKey); await audit(tx, session.credential, 'app-user.logged-out'); }
@@ -297,7 +297,7 @@ export async function revokeSession(token: string | undefined, native = false, r
 }
 /** Called only after an operator or the audited manual-enrollment flow chooses a tenant/person. */
 export async function createDisabledCredential(input: { tenantId: string; username: string; email: string; enrollmentId?: string }) {
-  const organization = await readRecord<Organization>(client, `tenant:${input.tenantId}`);
+  const organization = await readAuthRecord<Organization>(`tenant:${input.tenantId}`);
   if (!organization) throw new InternalAuthError('unavailable');
   const username = canonicalUsername(input.username), email = input.email.trim().toLowerCase();
   if (!/^[a-z0-9][a-z0-9._@+-]{2,63}$/.test(username) || !/^\S+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 255) throw new InternalAuthError('conflict');

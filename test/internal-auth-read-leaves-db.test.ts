@@ -1,7 +1,9 @@
 /** Programmatic fixture evidence only; no human enrollment or SMTP acceptance claim. */
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { generate } from 'otplib';
-import { client } from '../db/client';
+import { client,withPoolWork } from '../db/client';
+import {withDatabaseReadCancellation} from '../db/workload';
+import {readAuthRecord,readAuthRecordPair} from '../lib/internal-auth/store';
 import { readRecord, writeRecord, deleteRecord, type AuthSql } from '../lib/internal-auth/record-store';
 import { assertActiveCredential } from '../lib/internal-auth/credential';
 import { bootstrapInternalOwner } from '../lib/internal-auth/bootstrap';
@@ -12,6 +14,23 @@ beforeAll(migrateTestDb);
 beforeEach(async()=>{await resetDb();base=await seedBase();vi.stubEnv('AUTH_PUBLIC_ORIGIN','https://hr.test');vi.stubEnv('AUTH_SESSION_KEY','7'.repeat(64));});
 afterEach(()=>vi.unstubAllEnvs());afterAll(closeAll);
 describe('explicit transaction reads through real canonical private SQL',()=>{
+  it('admits pool-owned record reads before checkout while explicit transaction leaves remain unchanged',async()=>{
+    await writeRecord(client,'fixture:admitted-read',{version:'original'},null);
+    await writeRecord(client,'fixture:admitted-family',{active:true},null);
+    let release!:()=>void;
+    const finish=new Promise<void>(resolve=>{release=resolve;});
+    const started=Array.from({length:client.options.max},()=>{let resolve!:()=>void;const promise=new Promise<void>(r=>{resolve=r;});return{promise,resolve};});
+    const holders=started.map(entry=>withPoolWork('fixture-admission',async()=>{entry.resolve();await finish;}));
+    await Promise.all(started.map(entry=>entry.promise));
+    const controller=new AbortController(),reason=new Error('fixture read abandoned');
+    const record=withDatabaseReadCancellation(controller.signal,()=>readAuthRecord('fixture:admitted-read'));
+    const pair=withDatabaseReadCancellation(controller.signal,()=>readAuthRecordPair<{version:string}>('fixture:admitted-read','fixture:admitted-family',first=>first.version==='original'));
+    const refusals=Promise.all([expect(record).rejects.toBe(reason),expect(pair).rejects.toBe(reason)]);
+    controller.abort(reason);
+    try{await refusals;}finally{release();await Promise.all(holders);}
+    expect(await readAuthRecord('fixture:admitted-read')).toEqual({version:'original'});
+    expect(await readAuthRecordPair<{version:string}>('fixture:admitted-read','fixture:admitted-family',first=>first.version==='original')).toEqual({version:'original'});
+  });
   it('uses the restricted app role without exposing the private table and retains transaction rollback',async()=>{
     const [role]=await client`select current_user as name,rolsuper,rolbypassrls from pg_roles where rolname=current_user`;
     expect(role).toMatchObject({name:'ai_hr_app',rolsuper:false,rolbypassrls:false});

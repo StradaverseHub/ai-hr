@@ -2,7 +2,7 @@ import {expect,it,vi} from 'vitest';
 import {forgetIdleTimeout,idleTimeoutMinutesFor} from '../lib/session-policy-server';
 
 const {unsafe}=vi.hoisted(()=>({unsafe:vi.fn()}));
-vi.mock('../db/client',()=>({client:{unsafe}}));
+vi.mock('../db/client',()=>({client:{unsafe},withPoolWork:async<T>(_tenant:string,read:()=>PromiseLike<T>)=>await read()}));
 
 it('shares a cold policy read and keeps an invalidated read out of the cache',async()=>{
  const tenant='fictional-policy-tenant';
