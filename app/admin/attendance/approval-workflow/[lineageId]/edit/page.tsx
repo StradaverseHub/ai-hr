@@ -1,4 +1,4 @@
-import {attendanceWorkflowConfiguration} from '@/lib/attendance-workflow-config';
+import {attendanceWorkflowSelectedEmployees,attendanceWorkflowConfiguration} from '@/lib/attendance-workflow-config';
 import { notFound } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { scopedAdmin } from '@/lib/scope';
@@ -16,6 +16,6 @@ export default async function EditAttendanceWorkflowPage({ params }: {
     const row = await getAttendanceWorkflow(s, lineageId, scopeIds);
     if (!row)
         notFound();
-    const options = await attendanceApplicationFilterOptions(s, scopeIds);
+    const options = await attendanceApplicationFilterOptions(s, scopeIds,attendanceWorkflowSelectedEmployees(row.stages));
     return <div className={pageWideCls}><PageHeader title={t('editTitle', { name: row.name })} description={t('newVersionHelp')} back={{ href: `/admin/attendance/approval-workflow/${lineageId}`, label: t('back') }}/><WorkflowForm key={lineageId} context={{ companyId: row.companyId, applicationType: row.applicationType }} initial={attendanceWorkflowConfiguration(row)} lineageId={lineageId} options={options}/></div>;
 }

@@ -406,7 +406,7 @@ export async function runPayrollComparisonReport(ctx:SessionContext,scopeIds:rea
 }){
   if(!!p.id===!!p.spec)throw new Error('Choose a saved report or one unsaved definition.');
   const builtIn=p.id==='reconciliation';
-  const {payItemCode,...builtInFilters}=p.filters??{};
+  const {payItemCode,returnQuery:_returnQuery,...builtInFilters}=p.filters??{};
   return withTenant(ctx,async tx=>{
     const [saved]=p.id&&!builtIn?await tx.select().from(customReport).where(eq(customReport.id,p.id)).limit(1):[];
     if(p.id&&!builtIn&&!saved)throw new MasterReportAccessError();

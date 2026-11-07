@@ -36,6 +36,7 @@ export function recordedPayrollComparisonCurrency(statutory: unknown, companyId:
     typeof stamp.currency === 'string' && /^[A-Z]{3}$/.test(stamp.currency) ? stamp.currency : null;
 }
 export const RECORDED_PAYROLL_TOTALS = {
+ __ALLOWANCE__:'Recorded Allowance Total',__OVERTIME__:'Recorded Overtime Total',__BONUS__:'Recorded Bonus Total',__OTHER_DEDUCTIONS__:'Recorded Other Deductions',
  __NETPAY__:'Net Pay',__GROSS__:'Gross Pay',__TOTAL_DEDUCTIONS__:'Total Deductions',__EMPLOYER_COST__:'Employer Cost',
  __epfEmployee__:'EPF Employee',__epfEmployer__:'EPF Employer',__socsoEmployee__:'SOCSO Employee',__socsoEmployer__:'SOCSO Employer',
  __eisEmployee__:'EIS Employee',__eisEmployer__:'EIS Employer',__pcb__:'PCB',__cp38__:'CP38',__zakat__:'Zakat',__hrdf__:'HRDF',__lp__:'Levy',__socsoSkbbk__:'SOCSO SKBBK',

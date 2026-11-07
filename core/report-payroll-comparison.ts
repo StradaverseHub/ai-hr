@@ -54,7 +54,7 @@ export async function executePayrollComparisonTx(tx:Tx,ctx:SessionContext,spec:C
   let filters=payrollComparisonFilters(raw,definition);
   const scopeIds=filters.companyId?[filters.companyId]:[...scope];
   if(scopeIds.some(id=>!scope.includes(id)))throw new MasterReportAccessError();
-  const ids=await payrollComparisonAccessTx(tx,ctx,spec,verb,scopeIds);
+  let ids=await payrollComparisonAccessTx(tx,ctx,spec,verb,scopeIds);
   const requestedCycles=[...new Set([...(filters.cycleIds??[]),...(filters.previousCycleIds??[])])];
   if (requestedCycles.length) {
     const cycles = await tx.select({ id: payrollCycle.id }).from(payrollCycle)
@@ -71,6 +71,15 @@ export async function executePayrollComparisonTx(tx:Tx,ctx:SessionContext,spec:C
   }
   const previous=payPeriodBounds(filters.previousPeriod!),current=payPeriodBounds(filters.currentPeriod!);
   if(!previous||!current)throw new Error('Choose valid payroll periods.');
+  // All Company means payroll companies in the comparison, not every dormant company in the group.
+  // A company with payroll on only one side remains selected and still reports missing evidence.
+  if(!filters.companyId){
+    const represented=await tx.selectDistinct({companyId:payrollBatch.companyId}).from(payrollHistoryEffectiveBatch).where(and(
+      inArray(payrollBatch.companyId,ids),inArray(payrollBatch.payPeriod,[filters.previousPeriod!,filters.currentPeriod!]),
+      requestedCycles.length?inArray(payrollBatch.payrollCycleId,requestedCycles):undefined,
+      sql`(${payrollBatch.historyImportAttemptId} is null or ${payrollBatch.employeeCount}>0)`));
+    if(represented.length)ids=represented.map(row=>row.companyId);
+  }
   const {runs,sources}=await payrollComparisonSourcesTx(tx,ctx,{companyIds:ids,previousPeriod:filters.previousPeriod!,currentPeriod:filters.currentPeriod!,runType:filters.runType,cycleIds:filters.cycleIds,previousCycleIds:filters.previousCycleIds,payItemCode:definition.payItemCode});
   const employmentIds=[...new Set(sources.map(source=>source.employmentId))];
   if(employmentIds.length>10000)throw new Error('This comparison exceeds 10000 employments. Narrow the company scope.');
@@ -181,7 +190,7 @@ function compareRecordedPayItems(input:Parameters<typeof comparePayrollResults>[
   rows.sort((a,b)=>(group?(a[group]??'').localeCompare(b[group]??''):0)||
     (a.employeeCode??a.employeeName).localeCompare(b.employeeCode??b.employeeName)||a.payItemCode.localeCompare(b.payItemCode));
   basic.rows=input.paginate===false?rows:rows.slice((input.filters.page-1)*input.filters.pageSize,input.filters.page*input.filters.pageSize);
-  return {...basic,unavailablePayItems};
+  return {...basic,unavailablePayItems,availablePayItems:['BASIC',...[...found].sort()]};
 }
 
 /** Processed periods visible to a caller with current financial report authority. */

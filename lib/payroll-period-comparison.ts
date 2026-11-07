@@ -75,7 +75,7 @@ export type PayrollComparisonGroup=typeof PAYROLL_COMPARISON_GROUPS[number];
 export type PayrollComparisonFilters={currentPeriod:string|null;previousPeriod:string|null;companyId:string|null;departmentId:string|null;
  businessUnitId?:string;positionId?:string;employmentId?:string;employeeSearch?:string;employmentType?:typeof PAYROLL_COMPARISON_EMPLOYMENT_TYPES[number];employmentStatus?:EmploymentStatus;groupBy?:PayrollComparisonGroup;
  runType:'regular'|'all';payItemCodes?:string[];cycleIds?:string[];previousCycleIds?:string[];minVariance:string;onlyVariances:boolean;reason:PayrollComparisonReasonFilter|null;page:number;pageSize:number};
-const templateKeys=['currentPeriod','companyId','departmentId','businessUnitId','positionId','employmentId','employmentType','employmentStatus','groupBy','cycleIds','previousCycleIds'] as const;
+const templateKeys=['currentPeriod','companyId','departmentId','businessUnitId','positionId','employmentId','employmentType','employmentStatus','groupBy','payItemCodes','cycleIds','previousCycleIds'] as const;
 type PayrollComparisonTemplateDefaults=Partial<Pick<PayrollComparisonFilters,typeof templateKeys[number]>>;
 export function payrollComparisonTemplateDefaults(values:unknown,definition:PayrollComparisonDefinition):PayrollComparisonTemplateDefaults {
  if(!values||typeof values!=='object'||Array.isArray(values))fail('defaults');

@@ -38,6 +38,7 @@ export default async function PayrollComparisonPage({params,searchParams}:{param
     const values={...filters,...(builtIn?{payItemCode:run.definition.payItemCode}:{}),onlyVariances:filters.onlyVariances?'1':'0',...changes},search=new URLSearchParams();
     for(const [key,value]of Object.entries(values))if(value!==null)search.set(key,String(value));if(returnQuery)search.set('returnQuery',returnQuery);return search.toString();
   };
+  const payItems=[...options.payItems,...(result.availablePayItems??[]).filter(code=>!options.payItems.some(item=>item.code===code)).map(code=>({code,name:code}))];
   const input='mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm';
   return <div className="space-y-5">
     <nav aria-label={t('breadcrumb')} className="text-sm text-muted-foreground"><Link href="/reports">{t('reports')}</Link> › <Link href="/reports?cat=payroll">{t('payroll')}</Link> › {t('customReports')}</nav>
@@ -52,12 +53,12 @@ export default async function PayrollComparisonPage({params,searchParams}:{param
     {builtIn&&run.canEdit&&<details className="rounded-lg border border-border p-4"><summary className="cursor-pointer text-sm font-medium">{t('saveTemplate')}</summary><form action={saveReconciliationTemplateAction.bind(null,query({employeeSearch:null,page:1}))} className="mt-3 flex flex-wrap items-end gap-2"><label className="text-sm">{t('reportName')}<input className={input} name="name" required maxLength={150}/></label><button className="rounded-md border border-border px-3 py-2 text-sm">{t('saveTemplate')}</button></form></details>}
     <Card className="p-5"><form key={query()} className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4" method="get">
       {returnQuery&&<input type="hidden" name="returnQuery" value={returnQuery}/>}
-      {builtIn&&run.definition.payItemCode===ALL_RECORDED_PAY_ITEMS&&<ReconciliationPayItemFilter items={options.payItems.filter(item=>item.code!==ALL_RECORDED_PAY_ITEMS)} selected={filters.payItemCodes??[]}/>}
+      {builtIn&&run.definition.payItemCode===ALL_RECORDED_PAY_ITEMS&&<ReconciliationPayItemFilter items={payItems.filter(item=>item.code!==ALL_RECORDED_PAY_ITEMS)} selected={filters.payItemCodes??[]}/>}
       <label className="text-sm font-medium">{t('company')}<select className={input} name="companyId" defaultValue={filters.companyId??''}><option value="">{t('allCompanies')}</option>{options.companies.map(company=><option key={company.id} value={company.id}>{company.name}</option>)}</select></label>
       <label className="text-sm font-medium">{t('previousPeriod')}<input className={input} type="month" name="previousPeriod" defaultValue={filters.previousPeriod??''} required/></label>
       <label className="text-sm font-medium">{t('currentPeriod')}<input className={input} type="month" name="currentPeriod" defaultValue={filters.currentPeriod??''} required/></label>
       {builtIn&&<label className="text-sm font-medium">{t('payItem')}<select className={input} name="payItemCode" defaultValue={run.definition.payItemCode}>
-        {options.payItems.map(item=><option key={item.code} value={item.code}>{item.code===ALL_RECORDED_PAY_ITEMS?t('allRecordedItems'):item.name}</option>)}
+        {payItems.map(item=><option key={item.code} value={item.code}>{item.code===ALL_RECORDED_PAY_ITEMS?t('allRecordedItems'):item.name}</option>)}
       </select></label>}
       <label className="text-sm font-medium">{t('runs')}<select className={input} name="runType" defaultValue={filters.runType}><option value="regular">{t('regular')}</option><option value="all">{t('allRuns')}</option></select></label>
       <label className="text-sm font-medium">{t('payCycles')}
@@ -106,7 +107,7 @@ export default async function PayrollComparisonPage({params,searchParams}:{param
             <button className="justify-self-start rounded-md border border-border px-2 py-1 text-xs">{t('hrRemarkSave')}</button>
           </form>
         </details>
-      </div>:column.id==='payItemCode'&&value?<span>{value}{options.payItems.find(item=>item.code===value)?.name&&<span className="block text-xs text-muted-foreground">{options.payItems.find(item=>item.code===value)?.name}</span>}</span>:column.id==='employeeName'&&!filters.employmentId?<Link className="text-primary underline" href={'?'+query({employmentId:row.employmentId,employeeSearch:null,page:1})}>{value??t('notAvailable')}</Link>:value??t('notAvailable')}</td>;
+      </div>:column.id==='payItemCode'&&value?<span>{value}{payItems.find(item=>item.code===value)?.name&&<span className="block text-xs text-muted-foreground">{payItems.find(item=>item.code===value)?.name}</span>}</span>:column.id==='employeeName'&&!filters.employmentId?<Link className="text-primary underline" href={'?'+query({employmentId:row.employmentId,employeeSearch:null,page:1})}>{value??t('notAvailable')}</Link>:value??t('notAvailable')}</td>;
     })}</tr></Fragment>)}{!result.rows.length&&<tr><td className="p-8 text-center text-muted-foreground" colSpan={columns.length}>{result.available?t('noRows'):t('unavailable')}</td></tr>}</tbody></table></div>
       <div className="flex justify-between gap-4 p-4 text-sm"><span>{t('page',{page:filters.page})}</span><div className="flex gap-4">{filters.page>1&&<Link href={'?'+query({page:filters.page-1})}>{t('previous')}</Link>}{filters.page*filters.pageSize<result.displayedRows&&<Link href={'?'+query({page:filters.page+1})}>{t('next')}</Link>}</div></div></Card>
     <details className="rounded-xl border border-border p-4 text-sm"><summary className="cursor-pointer font-medium">{t('sourceRuns')}</summary><ul className="mt-3 space-y-1 text-xs text-muted-foreground">{result.runs.map(batch=><li key={batch.id}>{options.companies.find(company=>company.id===batch.companyId)?.name} · {batch.period} · {t(`runTypes.${batch.runType}`)} · {t(`runStates.${batch.status}`)} · {batch.id}</li>)}</ul></details>

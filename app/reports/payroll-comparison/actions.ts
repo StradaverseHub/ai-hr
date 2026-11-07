@@ -66,7 +66,7 @@ export async function saveReconciliationTemplateAction(query: string, form: Form
   try {
     const name=form.get('name');
     if(typeof name!=='string'||!name.trim()||name.length>150)throw new Error('Invalid template name.');
-    const {payItemCode='BASIC',...raw}=Object.fromEntries(search);
+    const {payItemCode='BASIC',returnQuery:_returnQuery,...raw}=Object.fromEntries(search);
     const filters=payrollComparisonFilters(raw,DEFAULT_PAYROLL_COMPARISON);
     if(filters.companyId&&!scopeIds.includes(filters.companyId))throw new Error('Company unavailable.');
     const definition=validatePayrollComparisonDefinition({...DEFAULT_PAYROLL_COMPARISON,payItemCode,
@@ -74,7 +74,7 @@ export async function saveReconciliationTemplateAction(query: string, form: Form
       runType:filters.runType,minVariance:filters.minVariance,onlyVariances:filters.onlyVariances,
       defaults:{currentPeriod:filters.currentPeriod,companyId:filters.companyId,departmentId:filters.departmentId,
         businessUnitId:filters.businessUnitId,positionId:filters.positionId,employmentId:filters.employmentId,
-        employmentType:filters.employmentType,employmentStatus:filters.employmentStatus,groupBy:filters.groupBy,cycleIds:filters.cycleIds,previousCycleIds:filters.previousCycleIds}});
+        employmentType:filters.employmentType,employmentStatus:filters.employmentStatus,groupBy:filters.groupBy,payItemCodes:filters.payItemCodes,cycleIds:filters.cycleIds,previousCycleIds:filters.previousCycleIds}});
     const spec=payrollComparisonSpec(definition);
     const saved=await saveCustomReport(s,{name:name.trim(),datasetId:spec.datasetId,spec,companyIds:scopeIds});
     revalidatePath('/payroll/reconciliation');

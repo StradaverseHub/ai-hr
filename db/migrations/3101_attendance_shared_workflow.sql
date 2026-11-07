@@ -56,7 +56,7 @@ BEGIN
  RETURN NEW;
 END $$;
 CREATE TRIGGER attendance_workflow_default_company AFTER INSERT ON public.attendance_workflow_template FOR EACH ROW EXECUTE FUNCTION app.attendance_workflow_default_company();
-CREATE POLICY attendance_workflow_shared_read ON public.attendance_workflow_template FOR SELECT USING(tenant_id=app.current_tenant_id() AND EXISTS(SELECT 1 FROM public.employment e WHERE app.attendance_workflow_applies(attendance_workflow_template.id,e.company_id) AND e.id=ANY((SELECT app.visible_employment_ids())::uuid[])));
+CREATE POLICY attendance_workflow_shared_read ON public.attendance_workflow_template FOR SELECT USING(tenant_id=app.current_tenant_id() AND (EXISTS(SELECT 1 FROM public.attendance_workflow_company assignment WHERE assignment.template_id=attendance_workflow_template.id AND assignment.tenant_id=attendance_workflow_template.tenant_id AND app.is_admin_for(assignment.company_id)) OR EXISTS(SELECT 1 FROM public.employment e WHERE app.attendance_workflow_applies(attendance_workflow_template.id,e.company_id) AND e.id=ANY((SELECT app.visible_employment_ids())::uuid[]))));
 CREATE POLICY attendance_workflow_shared_update ON public.attendance_workflow_template AS RESTRICTIVE FOR UPDATE USING(app.attendance_workflow_all_companies_admin(id)) WITH CHECK(app.attendance_workflow_all_companies_admin(id));
 --> statement-breakpoint
 -- Actor visibility and candidate approval eligibility are distinct. Neither grants the other's rights.
@@ -164,12 +164,12 @@ BEGIN
     employee_id:=(selected->>j)::uuid;
     SELECT e.* INTO employee FROM public.employment e WHERE e.id=employee_id AND e.tenant_id=subject.tenant_id;
     IF NOT FOUND OR employee.blacklisted_at IS NOT NULL OR employee.hired_on>(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date
-     OR (employee.terminated_on IS NOT NULL AND employee.terminated_on<=(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date)
-     OR NOT app.attendance_selected_approver_eligible(subject.company_id,employee.id) THEN RETURN app.attendance_workflow_v3_problem('employee_unavailable',i,j); END IF;
+     OR (employee.terminated_on IS NOT NULL AND employee.terminated_on<=(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date) THEN RETURN app.attendance_workflow_v3_problem('employee_unavailable',i,j); END IF;
     SELECT count(*)::integer,min(u.id::text)::uuid INTO login_count,login_id FROM public.app_user u WHERE u.person_id=employee.person_id AND u.tenant_id=subject.tenant_id AND u.archived_at IS NULL AND NOT app.login_blocked(u.id)
      AND EXISTS(SELECT 1 FROM public.role_assignment r WHERE r.app_user_id=u.id AND r.tenant_id=subject.tenant_id AND r.role::text IN ('employee','manager','hr_admin','super_admin')
       AND (r.company_id IS NULL OR r.company_id=subject.company_id OR app.is_company_descendant(subject.company_id,r.company_id)));
     IF login_count<>1 THEN RETURN app.attendance_workflow_v3_problem('missing_or_ambiguous_login',i,j); END IF;
+    IF NOT app.attendance_selected_approver_eligible(subject.company_id,employee.id) THEN RETURN app.attendance_workflow_v3_problem('employee_unavailable',i,j); END IF;
     SELECT p.full_name INTO actor_name FROM public.person p WHERE p.id=employee.person_id AND p.tenant_id=subject.tenant_id;
     IF NOT FOUND THEN RETURN app.attendance_workflow_v3_problem('missing_person',i,j); END IF;
     actors:=actors||jsonb_build_array(jsonb_build_object('kind','specific_employee','slot',i::text||':'||j::text,'employmentId',employee.id,'personId',employee.person_id,'userId',login_id,'name',actor_name));

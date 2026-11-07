@@ -51,7 +51,7 @@ describe('Attendance v3 participant owner and exact request capability', () => {
         expect(empty.companies).toEqual([]);
         const single = await attendanceApplicationFilterOptions(adminCtx(b), [b.companyId]);
         expect(single.approverEmployees?.map(row => row.id)).toContain(first.employmentId);
-        expect(single.approverEmployees?.map(row => row.id)).not.toContain(second.employmentId);
+        expect(single.approverEmployees?.map(row => row.id)).toContain(second.employmentId); // The candidate has an actual tenant-wide employee grant.
         const both = await attendanceApplicationFilterOptions(adminCtx(b), [b.companyId, company.id]);
         expect(both.companies.map(row => row.id).sort()).toEqual([b.companyId, company.id].sort());
         expect(both.approverEmployees?.map(row => row.id)).toEqual(expect.arrayContaining([first.employmentId, second.employmentId]));
@@ -278,7 +278,7 @@ describe('v3 exact tenant/company, live identity and immutable history boundary'
             expect(await withTenant(outsider.ctx, tx => tx.select().from(schema.attendanceWorkflowRequest).where(eq(schema.attendanceWorkflowRequest.id, original.workflow!.id)))).toEqual([]);
             await expect(decideAttendanceCorrection(outsider.ctx, { correctionId: f.id, decision: 'approved', expectedStageIndex: 0, expectedParticipantSlot: '0:0' })).rejects.toThrow();
             const stages: AttendanceV3WorkflowInput['stages'] = [{ name: 'Level 1', mode: 'sequential', source: { kind: 'specific_employee', employmentIds: [outsider.employmentId] }, hrAlternative: false }];
-            expect(await resolve(f.root, f.worker.employmentId, stages)).toMatchObject({ ok: false, problem: { code: 'employee_unavailable', levelIndex: 0 } });
+            expect(await resolve(f.root, f.worker.employmentId, stages)).toMatchObject({ ok: false, problem: { code: outsider===sibling?'missing_or_ambiguous_login':'employee_unavailable', levelIndex: 0 } });
         }
         expect((await state(f)).workflow?.participantDecisions).toHaveLength(0);
         await decideAttendanceCorrection(f.first.ctx, { correctionId: f.id, decision: 'approved', expectedStageIndex: 0, expectedParticipantSlot: '0:0' });

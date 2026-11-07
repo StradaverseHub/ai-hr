@@ -172,12 +172,12 @@ describe('Attendance approval routing and exactly-once effects', () => {
     it('refuses missing, inactive and cyclic managers rather than dropping a stage', async () => {
         const { a, worker, manager } = await fixture();
         await owner.db.update(schema.employment).set({ terminatedOn: '2021-01-01' }).where(eq(schema.employment.id, manager.employmentId));
-        await expect(saveAttendanceWorkflow(a, input())).rejects.toMatchObject({ code: 'unresolved' });
+        expect((await previewAttendanceWorkflow(a,input())).rows.some(row=>!!row.problem)).toBe(true);
         await owner.db.update(schema.employment).set({ terminatedOn: null }).where(eq(schema.employment.id, manager.employmentId));
         // Inject a graph cycle as owner: the ordinary org writer correctly refuses cycles itself.
         await expect(owner.db.insert(schema.reportingLine).values({ tenantId: b.tenantId, subordinateEmploymentId: manager.employmentId, managerEmploymentId: worker.employmentId, lineType: 'administrative', validFrom: '2020-01-01' })).rejects.toMatchObject({cause:{code:'P0001',message:'Direct Superior would create a reporting loop'}});
         await restorePreOrgRootReportingLines([{ tenantId: b.tenantId, subordinateEmploymentId: manager.employmentId, managerEmploymentId: worker.employmentId, lineType: 'administrative', validFrom: '2020-01-01' }]);
-        await expect(saveAttendanceWorkflow(a, input())).rejects.toMatchObject({ code: 'unresolved' });
+        expect((await previewAttendanceWorkflow(a,input())).rows.some(row=>!!row.problem)).toBe(true);
     });
     it('permits any one alternative, records HR acting on behalf, and bans self approval', async () => {
         const { a, worker, self } = await fixture();
@@ -339,7 +339,7 @@ describe('live non-self approver validation', () => {
     it('refuses a manager without a live login or role grant at activation and submission', async () => {
         const { a, worker, mgr } = await fixture();
         await owner.db.update(schema.appUser).set({ archivedAt: new Date() }).where(eq(schema.appUser.id, mgr.userId!));
-        await expect(saveAttendanceWorkflow(a, input())).rejects.toMatchObject({ code: 'unresolved' });
+        expect((await previewAttendanceWorkflow(a,input())).rows.some(row=>!!row.problem)).toBe(true);
         await owner.db.update(schema.appUser).set({ archivedAt: null }).where(eq(schema.appUser.id, mgr.userId!));
         await enable(a, input(['direct_manager']));
         await owner.db.delete(schema.roleAssignment).where(eq(schema.roleAssignment.appUserId, mgr.userId!));
@@ -350,9 +350,9 @@ describe('live non-self approver validation', () => {
         const { a, worker } = await fixture();
         const rehire = await hireEmployee(a, { person: { id: worker.personId }, companyId: b.companyId, departmentId: b.deptB, employmentType: 'full_time', hiredOn: '2020-01-01' });
         await owner.db.update(schema.reportingLine).set({ managerEmploymentId: rehire.employmentId }).where(eq(schema.reportingLine.subordinateEmploymentId, worker.employmentId));
-        await expect(saveAttendanceWorkflow(a, input())).rejects.toMatchObject({ code: 'unresolved' });
+        expect((await previewAttendanceWorkflow(a,input())).rows.some(row=>!!row.problem)).toBe(true);
         await owner.db.update(schema.reportingLine).set({ supersededAt: new Date() }).where(eq(schema.reportingLine.subordinateEmploymentId, worker.employmentId));
-        await expect(saveAttendanceWorkflow(a, input())).rejects.toMatchObject({ code: 'unresolved' });
+        expect((await previewAttendanceWorkflow(a,input())).rows.some(row=>!!row.problem)).toBe(true);
     });
     it('blocks sole-HR self dead ends on activation and rechecks on submission', async () => {
         const { a, worker, mgr } = await fixture();

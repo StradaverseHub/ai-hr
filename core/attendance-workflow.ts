@@ -555,7 +555,7 @@ async function previewAttendanceWorkflowCompany(ctx: SessionContext, raw: unknow
 }
 export async function previewAttendanceWorkflow(ctx:SessionContext,raw:unknown,lineageId?:string){
  const input=validateAnyAttendanceWorkflow(raw),results=[];
- for(const companyId of input.companyIds??[input.companyId])results.push(await previewAttendanceWorkflowCompany(ctx,{...input,companyId,companyIds:[companyId]},lineageId));
+ for(const companyId of input.companyIds??[input.companyId])results.push(await previewAttendanceWorkflowCompany(ctx,{...input,companyId},lineageId));
  return {total:results.reduce((n,r)=>n+r.total,0),rows:results.flatMap(r=>r.rows),truncated:results.some(r=>r.truncated)};
 }
 export async function attendanceWorkflowsForTx(tx: Tx, ids: string[]) {
