@@ -2874,8 +2874,6 @@
       "instructionAccepted": "Accepted values: {values}",
       "bankStatutoryUploadFailed": "The import could not be saved. Nothing was changed. Try again, or open Import History to check.",
       "viewImportHistoryEntry": "View this import in Import History",
-      "validationRequestFailed": "The import could not be checked. Try again. If it keeps failing, contact your administrator.",
-      "commitRequestFailed": "The import result could not be confirmed. Check Import History before trying again.",
       "employeeUploadFailed": "The import could not be saved. Nothing was changed. Try again, or open Import History to check.",
       "instructionDuplicateEmail": "Email: with \"Allow Duplicated Work Email or Personal Email\" switched off (People General settings), an email already used by another employee is refused, the same as a duplicate NRIC. With it switched on, the row is imported with a warning.",
       "instructionStatutorySettings": "Bank & Statutory: every setting on the tab can be filled in here, the same columns as the Bank & Statutory template — EPF category with rates or amounts and the reason, employer-bears switches, SOCSO and EIS categories, Subject to SKBBK, HRDF (Yes, No or Default), tax circumstance, the income tax residency, OKU, child relief mode and table, and Employer bears tax. Tick-box settings take Yes or No. Each row is checked with the same rules as the employee screens before anything is saved; a row with any error creates nothing.",

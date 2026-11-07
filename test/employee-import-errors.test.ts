@@ -5,6 +5,7 @@ vi.mock('next/cache',()=>({revalidatePath:h.revalidate}));
 vi.mock('../core/import',()=>({validateEmployeeImport:h.validate,commitEmployeeImport:h.commit}));
 vi.mock('../lib/personnel-import-labels.server',()=>({personnelImportLabelResolvers:[]}));
 import {validateImportAction,commitImportAction} from '../app/admin/personnel/import/actions';
+import {parseEmployeeImportText} from '../lib/employee-import-error.server';
 import {WorkforceAccessError} from '../core/workforce-access';
 const csv='full_name,email\nFictional Person,fictional@example.test';
 beforeEach(()=>{vi.resetAllMocks();h.admin.mockResolvedValue({tenantId:'fixture',userId:'fixture'});});
@@ -54,4 +55,8 @@ describe('employee import production error boundary',()=>{
     const preview={rows:[],validCount:0};h.validate.mockResolvedValue(preview);
     expect(await validateImportAction(csv,'company')).toBe(preview);expect(h.commit).not.toHaveBeenCalled();
   });
+});
+
+it.each(['full_name,,email\nFictional,,fixture@example.test','full_name, ,email\nFictional,has data,fixture@example.test','full_name,email,\nFictional,fixture@example.test,'])('identifies a blank heading without silently discarding its cells: %s',csv=>{
+  expect(()=>parseEmployeeImportText(csv,{columns:['full_name','email']})).toThrow(/blank column heading at column [23].*remove the column if it is unused/);
 });

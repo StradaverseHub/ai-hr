@@ -2874,8 +2874,6 @@
       "instructionAccepted": "Nilai yang diterima: {values}",
       "bankStatutoryUploadFailed": "Import tidak dapat disimpan. Tiada apa-apa yang diubah. Cuba lagi, atau buka Sejarah Import untuk menyemak.",
       "viewImportHistoryEntry": "Lihat import ini dalam Sejarah Import",
-      "validationRequestFailed": "Import tidak dapat disemak. Cuba lagi. Jika masih gagal, hubungi pentadbir anda.",
-      "commitRequestFailed": "Keputusan import tidak dapat disahkan. Semak Sejarah Import sebelum mencuba lagi.",
       "employeeUploadFailed": "Import tidak dapat disimpan. Tiada apa-apa yang diubah. Cuba lagi, atau buka Sejarah Import untuk menyemak.",
       "instructionDuplicateEmail": "E-mel: apabila \"Benarkan E-mel Kerja atau E-mel Peribadi Berulang\" dimatikan (tetapan Am Kakitangan), e-mel yang sudah digunakan oleh pekerja lain ditolak, sama seperti NRIC berulang. Apabila dihidupkan, baris diimport dengan amaran.",
       "instructionStatutorySettings": "Bank & Berkanun: setiap tetapan pada tab boleh diisi di sini, lajur yang sama seperti templat Bank & Berkanun — kategori KWSP dengan kadar atau amaun dan sebab, suis majikan menanggung, kategori PERKESO dan SIP, Tertakluk kepada SKBBK, HRDF (Ya, Tidak atau Lalai), keadaan cukai, status pemastautin cukai pendapatan, OKU, mod dan jadual pelepasan anak, dan Majikan menanggung cukai. Tetapan kotak tanda menerima Ya atau Tidak. Setiap baris disemak dengan peraturan yang sama seperti skrin pekerja sebelum apa-apa disimpan; baris yang mempunyai ralat tidak mencipta apa-apa.",

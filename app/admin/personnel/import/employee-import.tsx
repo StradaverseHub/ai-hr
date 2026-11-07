@@ -199,7 +199,7 @@ unknownSheet:t('headerAssistance.unknownSheet'),aiTitle:t('headerAssistance.aiTi
         await evaluation.current?.record({kind:'preview',validRows:p.validCount,rejectedRows:p.total-p.validCount,fileErrors:p.fileErrors.length});
       } catch {
         if (revision !== inputRevision.current) return;
-        setError(t('validationRequestFailed'));
+        setError('The import could not be checked. Try again. If it keeps failing, contact your administrator.');
       }
     });
   };
@@ -462,7 +462,7 @@ unknownSheet:t('headerAssistance.unknownSheet'),aiTitle:t('headerAssistance.aiTi
         setPhase('done');
         router.refresh();
       } catch {
-        setError(evaluationStatus.tracked?t('measurement.commitUncertain'):t('commitRequestFailed'));
+        setError(evaluationStatus.tracked?t('measurement.commitUncertain'):'The import result could not be confirmed. Check Import History before trying again.');
       } finally {
         commitPending.current = false;
         setCommitting(false);

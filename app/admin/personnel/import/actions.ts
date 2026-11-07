@@ -1,5 +1,5 @@
 'use server';
-import {employeeImportFailure,type EmployeeImportFailure} from '@/lib/employee-import-error.server';
+import {employeeImportFailure,parseEmployeeImportText as parsePersonnelImportCsv,type EmployeeImportFailure} from '@/lib/employee-import-error.server';
 import {parseCostAllocationCsv} from '@/lib/cost-allocation-import';
 
 import {PERSONNEL_REGISTER_KINDS,personnelRegisterColumns,type PersonnelRegisterTexts,type PersonnelRegisterRecords} from '@/lib/personnel-register-import';
@@ -8,7 +8,6 @@ import { requireAdmin } from '@/lib/authz';
 import {getBrowserCommandSession} from '@/lib/session';
 import {beginEmployeeImportEvaluation,prepareEmployeeImportEvaluationCommit,reopenEmployeeImportEvaluation,recordEmployeeImportEvaluationTelemetry,associateReusedEmployeeImportHeader,eraseOwnImportEvaluationMetadata,EMPLOYEE_IMPORT_EVALUATION_UNAVAILABLE} from '@/core/personnel-import-evaluation';
 import {EmployeeImportEvaluationBindingSchema,type EmployeeImportEvaluationBinding,type EmployeeImportEvaluationReceipt,type EmployeeImportEvaluationPublicResult} from '@/lib/personnel-import-evaluation';
-import { parsePersonnelImportCsv } from '@/lib/personnel-import-contract';
 import { personnelImportLabelResolvers } from '@/lib/personnel-import-labels.server';
 import { IMPORT_COLUMNS, DEPENDENT_IMPORT_COLUMNS } from '@/lib/import-schema';
 const parseEmployee=(text:string)=>parsePersonnelImportCsv(text,{columns:[...IMPORT_COLUMNS.required,...IMPORT_COLUMNS.optional],resolvers:personnelImportLabelResolvers});
