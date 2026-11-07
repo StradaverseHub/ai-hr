@@ -1,5 +1,6 @@
 /** Concrete read routes only; dynamic record/workflow routes retain their seeded owner journeys. */
 export const aiCentreRoutes=Object.freeze(['/assistant','/policies','/assistant?view=how','/assistant?view=privacy','/assistant?view=tools']);
+export const architectureHrReadRoutes=Object.freeze(['/analytics','/roster','/admin/job-descriptions']);
 const aiAdminRoutes=['/assistant?view=insights','/control-tower/loops','/control-tower/loops/payroll-cycle','/control-tower/exceptions','/control-tower/readiness','/control-tower/agents','/control-tower/agents/features','/control-tower/agents/assistant','/control-tower/agents/allowances','/control-tower/agents/runs'];
 export const employeeRoutes=Object.freeze([
  ...aiCentreRoutes,
@@ -9,7 +10,7 @@ export const employeeRoutes=Object.freeze([
 ]);
 export const hrRoutes=Object.freeze([
  ...aiCentreRoutes,...aiAdminRoutes,'/',
- '/admin/personnel','/attendance','/payroll','/analytics','/admin/job-descriptions','/reports','/reports/employee-master','/lifecycle','/lifecycle/onboarding','/lifecycle/offboarding','/roster','/letters/register','/performance','/rewards','/system-testing','/feedback','/knowledge-base','/admin/settings/movement','/admin/security-center','/payroll/formula-builder','/payroll/formula-builder/new','/claims',
+ '/admin/personnel','/attendance','/payroll',...architectureHrReadRoutes,'/reports','/reports/employee-master','/lifecycle','/lifecycle/onboarding','/lifecycle/offboarding','/letters/register','/performance','/rewards','/system-testing','/feedback','/knowledge-base','/admin/settings/movement','/admin/security-center','/payroll/formula-builder','/payroll/formula-builder/new','/claims',
  '/personnel','/tasks','/org','/delegations','/roster/import','/roster/exceptions',
  '/letters/approval','/letters/templates','/letters/templates/new','/letters/fields','/letters/reports','/letters/settings',
  '/admin/claims','/admin/claims/forms','/admin/claims/limits','/admin/claims/mileage','/admin/claims/reimbursements',
@@ -28,6 +29,6 @@ export function readRouteForMeasurement(path){return concreteReadRoutes.has(path
 export const additionalBrowserRoutes=Object.freeze({
  employee:[...aiCentreRoutes,'/tasks','/org','/me/calendar','/me/letters','/me/notifications','/leave/history'],
  manager:['/tasks','/delegations','/leave/tracker'],
- companyHR:['/lifecycle',...aiAdminRoutes,'/analytics','/admin/job-descriptions','/roster','/admin/claims','/admin/attendance/schedule','/roster/import'],
- groupHR:['/lifecycle','/analytics','/admin/job-descriptions','/roster','/control-tower/agents/spending','/control-tower/agents/provider','/control-tower/agents/build-list','/letters/templates','/letters/settings','/admin/rewards','/admin/notice-board'],
+ companyHR:['/lifecycle',...aiAdminRoutes,...architectureHrReadRoutes,'/admin/claims','/admin/attendance/schedule','/roster/import'],
+ groupHR:['/lifecycle',...architectureHrReadRoutes,'/control-tower/agents/spending','/control-tower/agents/provider','/control-tower/agents/build-list','/letters/templates','/letters/settings','/admin/rewards','/admin/notice-board'],
 });

@@ -28,7 +28,7 @@ import {chromium} from 'playwright';
 import postgres from 'postgres';
 import {generate} from 'otplib';
 import {closePerformanceDbPools,performanceNativeDbClient} from './driver-shutdown.mjs';
-import {readRouteForMeasurement,routePools,wholeSystemRouteCount,additionalBrowserRoutes} from './system-route-manifest.mjs';
+import {readRouteForMeasurement,routePools,wholeSystemRouteCount,additionalBrowserRoutes,architectureHrReadRoutes} from './system-route-manifest.mjs';
 const base='https://localhost:3443',out=process.env.PERF_EVIDENCE_DIR;
 assert.equal(process.env.GITHUB_ACTIONS,'true');assert.equal(new URL(process.env.DATABASE_URL).pathname,'/ai_hr_dev');
 const fixture=JSON.parse(readFileSync(join(process.env.PERF_PRIVATE_DIR,'fixture.json'),'utf8'));
@@ -384,15 +384,21 @@ try{
   if(path==='/analytics'){
    visitStage='analytics-metrics';
    const metrics=page.locator('main [data-analytics-metric]');
-   await page.locator('main [data-analytics-metric="activeHeadcount"] [data-analytics-value]').waitFor({state:'visible',timeout:90000});
-   assert.deepEqual(await metrics.evaluateAll(rows=>rows.map(row=>row.getAttribute('data-analytics-metric')).sort()),['activeHeadcount','newHires','terminations','turnoverRate'].sort(),'Analytics metric inventory incomplete');
+   const metricKeys=['activeHeadcount','newHires','terminations','turnoverRate'],observed={};
+   for(const key of metricKeys){
+    const value=page.locator('main [data-analytics-metric="'+key+'"] [data-analytics-value]');
+    await value.waitFor({state:'visible',timeout:90000});
+    observed[key]=(await value.innerText()).trim();
+    assert((key==='turnoverRate'?/^-?\d+(?:\.\d+)?%$/:/^\d+$/).test(observed[key]),'Analytics '+key+' must display a usable value');
+   }
+   assert.deepEqual(await metrics.evaluateAll(rows=>rows.map(row=>row.getAttribute('data-analytics-metric')).sort()),[...metricKeys].sort(),'Analytics metric inventory incomplete');
    const rewardDraft=fixture.tenants[user.tenant].rewardDraft;
    const rewardEmployee=rewardDraft&&(user.role==='groupHR'||rewardDraft.companyId===user.companyId)?1:0;
    const expected=fixture.users.filter(actor=>actor.tenant===user.tenant&&(user.role==='groupHR'||actor.companyId===user.companyId)).length+rewardEmployee;
-   assert.equal((await page.locator('main [data-analytics-metric="activeHeadcount"] [data-analytics-value]').innerText()).trim(),String(expected),'Analytics headcount must match the independently seeded company/tenant population');
+   assert.equal(observed.activeHeadcount,String(expected),'Analytics headcount must match the independently seeded company/tenant population');
    await page.locator('main form[method="get"] select[name="companyId"]').waitFor({state:'visible',timeout:90000});
    assert.equal(await page.locator('main [role="alert"], main [data-read-unavailable]').count(),0,'Analytics rendered an unavailable state');
-   (report.analyticsReadiness??=[]).push({role:user.role,phase,expectedHeadcount:expected,renderedMetrics:4});save();
+   (report.analyticsReadiness??=[]).push({role:user.role,phase,expectedHeadcount:expected,renderedMetrics:Object.keys(observed).length,startedWith,usableWith:loadState?.()});save();
   }
   if(path==='/roster'){
    visitStage='roster-scoped-grid';
@@ -410,7 +416,7 @@ try{
     if(actor)assert(row.text.includes(actor.name),'Roster row omitted the expected employee name');
    }
    assert.equal(await page.locator('main [role="alert"], main [data-read-unavailable]').count(),0,'Roster rendered an unavailable state');
-   (report.rosterReadiness??=[]).push({role:user.role,phase,renderedEmployees:rendered.length,scopeVerified:true});save();
+   (report.rosterReadiness??=[]).push({role:user.role,phase,renderedEmployees:rendered.length,scopeVerified:true,startedWith,usableWith:loadState?.()});save();
   }
   if(path==='/admin/job-descriptions'){
    visitStage='job-description-read-controls';
@@ -418,7 +424,7 @@ try{
    await page.locator('main a[href="/admin/job-descriptions/new"]').waitFor({state:'visible',timeout:90000});
    assert(await page.locator('main table thead th:visible').count()>=7,'Job Description listing did not render its complete table');
    assert.equal(await page.locator('main [role="alert"], main [data-read-unavailable]').count(),0,'Job Description listing rendered an unavailable state');
-   (report.jobDescriptionReadiness??=[]).push({role:user.role,phase,filterReady:true,createReady:true});save();
+   (report.jobDescriptionReadiness??=[]).push({role:user.role,phase,filterReady:true,createReady:true,startedWith,usableWith:loadState?.()});save();
   }
   if(suite==='whole-system'&&path==='/lifecycle'&&['companyHR','groupHR'].includes(user.role)){
    visitStage='lifecycle-staff-tiles';
@@ -897,7 +903,7 @@ try{
   const signIn=[employee,manager,hr,group].some(actor=>actor.index===user.index);
   const ctx=await context(user,'en',signIn),page=await ctx.newPage();
   const routes=user.role==='employee'?['/','/claims','/leave','/attendance/individual']
-   :user.role==='manager'?['/','/approvals','/claims','/performance/home']:['/','/admin/personnel','/payroll','/claims'];
+   :user.role==='manager'?['/','/approvals','/claims','/performance/home']:['/',...(suite==='whole-system'?architectureHrReadRoutes:[]),'/admin/personnel','/payroll','/claims'];
   // The two existing-session actors start on the target pages so the language proof
   // is not queued behind the sign-in and Home sequence of the four real-login actors.
   if(suite==='whole-system'&&!signIn)routes.unshift(...routes.splice(1,1));
@@ -1087,6 +1093,10 @@ try{
  )),'all four role dashboards must finish loading after real sign-in during steady 500-user load');
  if(suite==='whole-system'){
   const duringSteady500=row=>row.startedWith?.active===500&&row.startedWith.inSteadyWindow;
+  for(const [name,observations] of [['Analytics',report.analyticsReadiness],['Roster',report.rosterReadiness],['Job Descriptions',report.jobDescriptionReadiness]]){
+   assert(['companyHR','groupHR'].every(role=>observations?.some(row=>row.role===role&&row.phase==='loaded'&&duringSteady500(row)
+    &&row.usableWith?.active===500&&row.usableWith.inSteadyWindow)),name+' must render usable content for both HR scopes during steady 500-user load');
+  }
   assert(report.browser.some(row=>row.phase==='loaded'&&row.path==='/admin/personnel'&&duringSteady500(row)),
    'Personnel browser navigation did not start during steady 500-user load');
   assert(['/claims','/admin/personnel'].every(path=>['zh','en'].every(locale=>
