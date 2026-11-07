@@ -1,12 +1,11 @@
 /** Pure presentation policy over server-resolved capabilities; never grants page/service access. */
-import { ScrollText, Timer } from 'lucide-react';
 import { modulePackById } from '@/packs/registry';
 import { navigationPlacement } from '@/lib/navigation-workspaces';
 import { isSecurityDestination, securityDestinationAllowed } from '@/lib/security-center-navigation';
 import { V9_NAVIGATION, V9_SHARED_NAVIGATION, type V9NavigationPermissions } from '@/lib/lifecycle-v9-navigation';
 import {
   ADDITIONAL_ROWS, AI_PROVIDER_HREF, GROUPS, MODULE_OF_HREF, MY_TEAM_ROW, ONBOARDING_NODE,
-  PERFORMANCE_ADMIN_ROW, isAiAdministrationHref, isCollapsible, type ChildItem,
+  PERFORMANCE_ADMIN_ROW, SCOPED_LIFECYCLE_NAVIGATION, isAiAdministrationHref, isCollapsible, type ChildItem,
 } from './shell-inventory';
 
 /** Existing shell facts, already resolved by their server capability owners. */
@@ -162,14 +161,15 @@ export function resolveShellNavigation({
     (item.view === 'tasks' || !!onboardingV9Navigation?.records)).map(item => ({href:item.href,labelKey:item.labelKey,icon:ONBOARDING_NODE.icon,exactHref:true})).filter(canSeeChild);
   // New module owners resolve both the actual purchased company and business-role visibility.
   // These additive People destinations do not inherit the legacy global-only Lifecycle nav gate.
-  const scopedLifecycleRows:ChildItem[]=[
-    ...(probationAccess.page?[{href:'/lifecycle/probation',labelKey:'probationTracker',icon:Timer,exactHref:true,ownedSubpaths:['/lifecycle/probation'] }]:[]),
-    ...(contractStaffAccess.page?[{href:'/lifecycle/contracts',labelKey:'contractManagement',icon:ScrollText,exactHref:true,ownedSubpaths:['/lifecycle/contracts'] }]:[]),
-    ...(probationAccess.configure?[['settings','probationSettings'],['forms','probationForms'],['routes','probationRoutes'],['workflows','probationWorkflows'],['templates','probationTemplates']].map(([path,labelKey])=>({href:`/lifecycle/probation/${path}`,labelKey,icon:Timer})):[]),
-    ...(probationAccess.configure||probationAccess.intake===true?[{href:'/lifecycle/probation/intake',labelKey:'probationIntake',icon:Timer}]:[]),
-    ...(contractStaffAccess.intake===true?[{href:'/lifecycle/contracts/intake',labelKey:'contractIntake',icon:ScrollText}]:[]),
-    ...(contractStaffAccess.configure?[['settings','contractSettings'],['workflows','contractWorkflows'],['templates','contractTemplates']].map(([path,labelKey])=>({href:`/lifecycle/contracts/${path}`,labelKey,icon:ScrollText})):[]),
-  ];
+  const scopedLifecycleRows = SCOPED_LIFECYCLE_NAVIGATION.filter(item => {
+    const access = item.module === 'probation' ? probationAccess : contractStaffAccess;
+    switch (item.access) {
+      case 'page': return access.page;
+      case 'configure': return access.configure;
+      case 'configureOrIntake': return access.configure || access.intake === true;
+      case 'intake': return access.intake === true;
+    }
+  });
   const rewardRows = modulePackById('rewards')!.navLinks!
     .filter(row => rewardDestinations.includes(row.href) && moduleAllows(row.href));
   const destinations: ChildItem[] = [...authorizedRows.filter(row => {

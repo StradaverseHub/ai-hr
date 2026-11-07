@@ -1,7 +1,7 @@
 import {describe, expect, it} from 'vitest';
 import {readFileSync} from 'node:fs';
 import {resolveShellNavigation, type ShellNavigationFacts} from '../lib/navigation/shell-resolver';
-import {SIDEBAR_AUDIENCE_INVENTORY, isCollapsible, type ChildItem} from '../lib/navigation/shell-inventory';
+import {SIDEBAR_AUDIENCE_INVENTORY, SCOPED_LIFECYCLE_NAVIGATION, isCollapsible, type ChildItem} from '../lib/navigation/shell-inventory';
 import {placeNavigation} from '../lib/navigation-workspaces';
 
 const resolve = (facts: Partial<ShellNavigationFacts> = {}) => resolveShellNavigation({isAdmin:false, ...facts});
@@ -97,6 +97,23 @@ describe('shared shell policy preserves the pre-extraction visibility contract',
     expect(inFamily({contractStaffAccess:{page:false,configure:true}},'/lifecycle/contracts')).toEqual([
       '/lifecycle/contracts/settings','/lifecycle/contracts/workflows','/lifecycle/contracts/templates',
     ]);
+  });
+
+  it('resolves the canonical twelve scoped descriptors in their original interleaved order', () => {
+    const rows = resolve({enabledModules:[],probationAccess:{page:true,configure:true,intake:true},
+      contractStaffAccess:{page:true,configure:true,intake:true}}).destinations.filter(row=>
+        row.href.startsWith('/lifecycle/probation') || row.href.startsWith('/lifecycle/contracts'));
+    expect(rows.map(row=>row.href)).toEqual([
+      '/lifecycle/probation','/lifecycle/contracts','/lifecycle/probation/settings','/lifecycle/probation/forms',
+      '/lifecycle/probation/routes','/lifecycle/probation/workflows','/lifecycle/probation/templates',
+      '/lifecycle/probation/intake','/lifecycle/contracts/intake','/lifecycle/contracts/settings',
+      '/lifecycle/contracts/workflows','/lifecycle/contracts/templates',
+    ]);
+    expect(SCOPED_LIFECYCLE_NAVIGATION).toHaveLength(12);
+    rows.forEach((row,index)=>expect(row).toBe(SCOPED_LIFECYCLE_NAVIGATION[index]));
+    expect(SCOPED_LIFECYCLE_NAVIGATION.filter(row=>row.access==='configureOrIntake').map(row=>row.href)).toEqual(['/lifecycle/probation/intake']);
+    expect(inFamily({probationAccess:{page:false,configure:false,intake:true}},'/lifecycle/probation')).toEqual(['/lifecycle/probation/intake']);
+    expect(inFamily({contractStaffAccess:{page:false,configure:false,intake:true}},'/lifecycle/contracts')).toEqual(['/lifecycle/contracts/intake']);
   });
 
   it('checks Performance entitlement at the declared address before substituting the cycle destination', () => {
