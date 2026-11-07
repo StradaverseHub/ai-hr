@@ -1,5 +1,8 @@
 import {beforeEach,expect,it,vi} from 'vitest';
-import {JSDOM} from 'jsdom';
+// jsdom has no bundled declarations in the repository; type the used constructor.
+// @ts-expect-error -- @types/jsdom is not installed
+import * as jsdomModule from 'jsdom';
+const {JSDOM}=jsdomModule as unknown as {JSDOM:new(html:string)=>{window:Window&typeof globalThis}};
 import {createTranslator} from 'next-intl';
 import messages from '../messages/en.json';
 const mocks=vi.hoisted(()=>({scope:vi.fn(),read:vi.fn(),selected:vi.fn(),principal:vi.fn(),theme:vi.fn()}));
@@ -32,6 +35,18 @@ it('renders a native 25-choice page plus independently authorized deep selection
  expect(page.body.textContent).toContain('Pinned <img src=x onerror=alert(1)>');expect(mocks.selected).toHaveBeenCalledWith(session,['fresh-scope'],selectedId);
  expect(mocks.read).toHaveBeenCalledWith(session,{query:'',offset:0,limit:25,labelMode:'names',selectedId,companyIds:['fresh-scope']},expect.any(AbortSignal));
  expect(mocks.principal).toHaveBeenCalledOnce();expect(page.querySelector('form')!.getAttribute('action')).toBe('/analytics/manager-choices');
+});
+it('retains valid uppercase bookmarked UUIDs through browse, pinning and Apply',async()=>{
+ const canonical='abcdef01-2345-6789-abcd-ef0123456789',body=packet();
+ body.set('managerEmploymentId',canonical.toUpperCase());
+ mocks.selected.mockResolvedValue({employmentId:canonical,name:'Bookmarked manager'});
+ const page=await doc(await POST(request(body)));
+ expect(page.querySelector<HTMLSelectElement>('select')!.value).toBe(canonical);
+ expect(mocks.selected).toHaveBeenCalledWith(session,['fresh-scope'],canonical);
+ expect(mocks.read).toHaveBeenCalledWith(session,expect.objectContaining({selectedId:canonical}),expect.any(AbortSignal));
+ body.set('stage','apply');const applied=await POST(request(body));
+ expect(applied.status).toBe(303);
+ expect(new URL(applied.headers.get('location')!,'https://hr.example').searchParams.get('managerEmploymentId')).toBe(canonical);
 });
 it('browses, searches and applies through only native POST controls, retaining every submitted report field and no new raw search in URLs',async()=>{
  const first=await doc(await POST(request()));let body=formPacket(first);body.set('offset','49975');

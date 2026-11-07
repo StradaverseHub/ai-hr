@@ -8,8 +8,8 @@ import messages from '../messages/en.json';
 
 it('ships a visible native POST submitter before hydration without changing normal GET fields or loading the workforce',async()=>{
  const fetch=vi.spyOn(globalThis,'fetch');
- const selected={employmentId:'00000000-0000-0000-0000-000000050000',name:'Deep selected manager'};
- const html=renderToStaticMarkup(<NextIntlClientProvider locale="en" messages={messages}><FilterBar from="2026-01-01" to="2026-11-07" values={{managerEmploymentId:selected.employmentId}} managerSelection={selected} options={{companies:[],departments:[],costCentres:[],locations:[]}} preservedParams={{q:'legacy query',year:'2025',hirePage:'1999',carrySize:'all',unrecognized:'omit'}} /></NextIntlClientProvider>);
+ const selected={employmentId:'abcdef01-2345-6789-abcd-ef0123456789',name:'Deep selected manager'};
+ const html=renderToStaticMarkup(<NextIntlClientProvider locale="en" messages={messages}><FilterBar from="2026-01-01" to="2026-11-07" values={{managerEmploymentId:selected.employmentId.toUpperCase()}} managerSelection={selected} options={{companies:[],departments:[],costCentres:[],locations:[]}} preservedParams={{q:'legacy query',year:'2025',hirePage:'1999',carrySize:'all',unrecognized:'omit'}} /></NextIntlClientProvider>);
  const {container:root}=render(<div dangerouslySetInnerHTML={{__html:html}} />);
  const form=root.querySelector('form')!,browse=root.querySelector<HTMLButtonElement>('button[name="choiceContext"]')!;
  expect(form.method).toBe('get');expect(browse.hidden).toBe(false);expect(browse.closest('details')).toBeNull();expect(browse.type).toBe('submit');expect(browse.getAttribute('formaction')).toBe('/analytics/manager-choices');expect(browse.getAttribute('formmethod')).toBe('post');

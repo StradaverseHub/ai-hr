@@ -22,7 +22,7 @@ const headers={
 // Report fields are opaque navigation state, never employee-choice population authority.
 const reportKeys=['companyId','departmentId','costCenterId','lifecycleStatus','assignmentStatus','gender','nationality','workState','from','to','q','year','hirePage','hireSize','termPage','termSize','changePage','changeSize','carryPage','carrySize'] as const;
 const allowed=new Set<string>([...reportKeys,'managerEmploymentId','managerQuery','offset','stage','choiceContext']);
-const uuid=/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/;
+const uuid=/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i;
 function text(data:FormData,key:string,maximum=1024){
  const value=data.get(key);if(value===null)return '';
  if(typeof value!=='string'||value.length>maximum||value.includes('\0'))throw new NativeFormError('Invalid field');
@@ -66,8 +66,11 @@ export async function POST(request:Request){
    }
   }
   for(const key of reportKeys)text(data,key);
-  const selectedId=text(data,'managerEmploymentId',36),query=text(data,'managerQuery',1000);
-  if(selectedId&&!uuid.test(selectedId))throw new NativeFormError('Invalid selection');
+  const rawSelectedId=text(data,'managerEmploymentId',36),query=text(data,'managerQuery',1000);
+  if(rawSelectedId&&!uuid.test(rawSelectedId))throw new NativeFormError('Invalid selection');
+  // Analytics bookmarks already accept UUID hex in either case. PostgreSQL
+  // returns canonical lower-case IDs; use that representation throughout.
+  const selectedId=rawSelectedId.toLowerCase();
   const stage=text(data,'stage',10)||'browse';
   const raw=text(data,'offset',16)||'0',offset=Number(raw);
   if(!['browse','apply'].includes(stage)||!/^\d+$/.test(raw)||!Number.isSafeInteger(offset)||offset<0||offset>Number.MAX_SAFE_INTEGER-25)throw new NativeFormError('Invalid controls');

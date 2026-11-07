@@ -1,5 +1,8 @@
 import {afterAll,beforeAll,expect,it,vi} from 'vitest';
-import {JSDOM} from 'jsdom';
+// jsdom has no bundled declarations in the repository; type the used constructor.
+// @ts-expect-error -- @types/jsdom is not installed
+import * as jsdomModule from 'jsdom';
+const {JSDOM}=jsdomModule as unknown as {JSDOM:new(html:string)=>{window:Window&typeof globalThis}};
 import {createTranslator} from 'next-intl';
 import {eq,sql} from 'drizzle-orm';
 import type {SessionContext} from '../db/client';
@@ -19,7 +22,7 @@ function formPacket(document:Document){const form=document.querySelector('form')
 it('uses actual native-RLS 50k choices for no-JS first/deep/search/apply and refuses foreign, narrowed and revoked access without effects',async()=>{
  const fixture=await seedPersonnelNativeFixture(50000,{},()=>{},()=>{});session=fixture.ctx;scopeIds=[fixture.b.companyId];
  const selectedId=fixture.expectedLast.at(-1)!;
- const initial=new URLSearchParams({managerEmploymentId:selectedId,from:'2020-01-01',to:'2026-11-07',departmentId:fixture.b.deptA,choiceContext:JSON.stringify({year:'2025',hirePage:'1999',hireSize:'25',carryPage:'10',carrySize:'50',q:'existing-report-term'})});
+ const initial=new URLSearchParams({managerEmploymentId:selectedId.toUpperCase(),from:'2020-01-01',to:'2026-11-07',departmentId:fixture.b.deptA,choiceContext:JSON.stringify({year:'2025',hirePage:'1999',hireSize:'25',carryPage:'10',carrySize:'50',q:'existing-report-term'})});
  const [before]=await owner.db.select({n:sql<number>`count(*)::int`}).from(domainEvent);
  const first=await doc(await post(initial));expect(first.querySelector('script')).toBeNull();expect(first.querySelectorAll('option')).toHaveLength(27);expect(first.body.textContent).toContain('1–25 of 50,000');expect(first.querySelector<HTMLSelectElement>('select')!.value).toBe(selectedId);
  expect([...first.querySelectorAll('option')].slice(2).map(row=>row.value)).toEqual(fixture.expectedFirst);
