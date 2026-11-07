@@ -1,8 +1,10 @@
+import {rosterUuidSet} from './roster-write-batches';
 /**
  * 18504ca6 — WHICH SHIFT WAS IN FORCE ON THAT DATE.
  *
- * This module is a deliberate LEAF: its only value import is db/schema (the `Tx` import is type-only and so
- * erased at runtime). core/attendance.ts depends on it, and core/roster.ts depends on core/attendance.ts —
+ * This module is a deliberate LEAF: its application imports are db/schema and the pure UUID SQL
+ * predicate (neither imports a domain owner); the `Tx` import is type-only and so
+ * erased at runtime. core/attendance.ts depends on it, and core/roster.ts depends on core/attendance.ts —
  * the writer and the card's history read live next door in core/shift-arrangement.ts, which DOES import from
  * core/roster.ts. Keeping the two apart is what stops that import from closing an attendance ↔ roster cycle.
  *
@@ -22,7 +24,7 @@
  * valid_from when a change is saved; resolving off valid_from alone means a stale or missing valid_to can
  * never open a gap that silently drops an employee onto the flat company policy.
  */
-import { and, asc, eq, inArray, isNull } from 'drizzle-orm';
+import { and, asc, eq, isNull } from 'drizzle-orm';
 import type { Tx } from '../db/client';
 import { employmentShiftArrangement } from '../db/schema';
 
@@ -56,7 +58,7 @@ export async function liveArrangementsTx(
     .from(employmentShiftArrangement)
     .where(
       and(
-        inArray(employmentShiftArrangement.employmentId, employmentIds),
+        rosterUuidSet(employmentShiftArrangement.employmentId,employmentIds),
         isNull(employmentShiftArrangement.supersededAt),
       ),
     )
