@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {BOUNDARY_SOURCE,BOUNDARY_REF,BOUNDARY_LIMITS,admitBoundaryInputs,remainingCompilerMs,stronglyConnected,planBoundary,ambientEntries,orderedBoundaryRoots,resolutionLeafTargets,assertResolutionLeafBytes,assertDeclarationBytes,sha256,
  validateDeclarationCoverage,contractSource,NEGATIVE_CONTRACTS,expectContractRefusals} from './compiler-boundary-policy.mjs';
-import {exactCoverage,validatePhase,boundaryArguments,runIndependentConsumers,blockedUnstartedPhases,experiment} from './compiler-boundary.mjs';
+import {exactCoverage,validatePhase,boundaryArguments,runIndependentPhases,blockedUnstartedPhases,experiment} from './compiler-boundary.mjs';
 import {boundaryWorker,emitDeclarationSources} from './compiler-boundary-worker.mjs';
 
 test('every distinct implementation emission retains its own native skipped/diagnostic refusal',()=>{
@@ -41,19 +41,40 @@ test('compiler time is one aggregate720s budget, inventory retains a separate120
 });
 test('independent native consumer failures settle sequentially without hiding later failures or successes',async()=>{
  const attempted=[],blocked=[];let active=0,peak=0;
- const outcome=await runIndependentConsumers([{id:0},{id:1},{id:2}],async(mode,index)=>{
+ const outcome=await runIndependentPhases([{mode:'consumer',index:0},{mode:'consumer',index:1},{mode:'consumer',index:2}],async(mode,index)=>{
   assert.equal(mode,'consumer');active++;peak=Math.max(peak,active);attempted.push(index);
   try{await Promise.resolve();if(index!==1)throw Error('Native consumer '+index+' refused');return{mode,index,complete:true};}finally{active--;}
  },()=>70000,row=>blocked.push(row));
  assert.deepEqual(attempted,[0,1,2]);assert.equal(peak,1);assert.deepEqual(outcome.results,[{mode:'consumer',index:1,complete:true}]);
  assert.deepEqual(outcome.failures.map(row=>row.index),[0,2]);assert.equal(outcome.failures[0].error,'Error: Native consumer 0 refused');assert.deepEqual(blocked,[]);
 });
+test('a failed source negative control cannot block declaration negative or later native consumers',async()=>{
+ const attempted=[],blocked=[];let active=0,peak=0;
+ const planned=[{mode:'source-negative'},{mode:'declaration-negative'},{mode:'consumer',index:0},{mode:'consumer',index:1}];
+ const outcome=await runIndependentPhases(planned,async(mode,index)=>{
+  active++;peak=Math.max(peak,active);attempted.push({mode,...(index===undefined?{}:{index})});
+  try{await Promise.resolve();if(mode==='source-negative'||index===0)throw Error('Actual independent '+mode+' refusal');return{mode,index,complete:true};}finally{active--;}
+ },()=>70000,row=>blocked.push(row));
+ assert.deepEqual(attempted,planned);assert.equal(peak,1);assert.deepEqual(outcome.failures.map(({mode,index})=>({mode,...(index===undefined?{}:{index})})),[planned[0],planned[2]]);
+ assert.deepEqual(outcome.results,[{mode:'declaration-negative',index:undefined,complete:true},{mode:'consumer',index:1,complete:true}]);assert.deepEqual(blocked,[]);
+ // No checked declaration input was produced by either failed independent check.
+ assert.deepEqual(blockedUnstartedPhases(planned,[{mode:'source-negative',status:'failed'}],70000).map(row=>row.blockedReason),['orchestration-failure','orchestration-failure','orchestration-failure']);
+});
+test('negative-control budget exhaustion blocks each remaining control/consumer without substituting a pass',async()=>{
+ const planned=[{mode:'source-negative'},{mode:'declaration-negative'},{mode:'consumer',index:0}],attempted=[],blocked=[];let remaining=1;
+ const outcome=await runIndependentPhases(planned,async(mode)=>{attempted.push(mode);remaining=0;throw Error('Actual negative-control deadline');},()=>remaining,row=>blocked.push(row));
+ assert.deepEqual(attempted,['source-negative']);assert.deepEqual(outcome.failures.map(row=>row.mode),['source-negative']);assert.deepEqual(outcome.results,[]);
+ assert.deepEqual(blocked.map(({mode,index})=>({mode,...(index===undefined?{}:{index})})),planned.slice(1));
+ assert(blocked.every(row=>row.status==='blocked'&&row.code===null&&row.elapsedMs===0&&row.blockedReason==='aggregate-time-budget'));
+ for(const invalid of [[{mode:'producer'}],[{mode:'source-negative',index:0}],[{mode:'consumer'}],[{mode:'consumer',index:-1}],[{mode:'declaration-negative',extra:true}]])
+  await assert.rejects(runIndependentPhases(invalid,()=>{throw Error('Invalid plan must not execute');},()=>1,()=>{}));
+});
 test('aggregate exhaustion records every unstarted consumer as blocked and executes no substitute phase',async()=>{
  const attempted=[],blocked=[];let remaining=1;
- const outcome=await runIndependentConsumers([{id:0},{id:1},{id:2}],async(_mode,index)=>{attempted.push(index);remaining=0;throw Error('Actual deadline failure');},()=>remaining,row=>blocked.push(row));
+ const outcome=await runIndependentPhases([{mode:'consumer',index:0},{mode:'consumer',index:1},{mode:'consumer',index:2}],async(_mode,index)=>{attempted.push(index);remaining=0;throw Error('Actual deadline failure');},()=>remaining,row=>blocked.push(row));
  assert.deepEqual(attempted,[0]);assert.deepEqual(outcome.results,[]);assert.equal(outcome.failures.length,1);
  assert.deepEqual(blocked.map(row=>row.index),[1,2]);for(const row of blocked)assert.deepEqual({status:row.status,reason:row.blockedReason,code:row.code,elapsed:row.elapsedMs},{status:'blocked',reason:'aggregate-time-budget',code:null,elapsed:0});
- await assert.rejects(runIndependentConsumers([{id:1},{id:1}],()=>{throw Error('No invalid phase may run');},()=>1,()=>{}));
+ await assert.rejects(runIndependentPhases([{mode:'consumer',index:1},{mode:'consumer',index:1}],()=>{throw Error('No invalid phase may run');},()=>1,()=>{}));
 });
 test('failed prerequisites and unavailable inventory produce explicit dependent block records, never empty passes',()=>{
  const planned=[{mode:'producer'},{mode:'declarations'},{mode:'consumer',index:0},{mode:'consumer',index:1}],prior=[{mode:'producer',status:'failed',elapsedMs:20,code:1}];

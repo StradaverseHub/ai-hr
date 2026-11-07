@@ -9,27 +9,31 @@ import {BOUNDARY_SOURCE,BOUNDARY_LIMITS,sha256,admitBoundaryInputs,remainingComp
 
 export function boundaryArguments(worker,out,mode,index){return [worker,mode,out,...(index===undefined?[]:[String(index)])];}
 export function validatePhase(result){assert(result.code===0&&result.signal===null&&result.stoppedBecause===null&&!result.monitorError,'Native diagnostic phase failed');}
-/** Consumers depend on checked declarations, not on one another. Native type
- * errors must not hide later independent errors while aggregate time remains. */
-export async function runIndependentConsumers(consumers,run,remaining,recordBlocked){
- assert(Array.isArray(consumers)&&consumers.every(batch=>Number.isSafeInteger(batch.id)&&batch.id>=0)
-  &&new Set(consumers.map(batch=>batch.id)).size===consumers.length,'Invalid independent consumer plan');
+/** After checked producer/declarations, both negative controls and every
+ * consumer are independent. None produces an input for another check. */
+export async function runIndependentPhases(planned,run,remaining,recordBlocked){
+ const key=row=>row.mode+(row.index===undefined?'':'-'+row.index);
+ assert(Array.isArray(planned)&&planned.every(row=>row&&typeof row==='object'&&!Array.isArray(row)
+  &&(row.mode==='consumer'?Object.keys(row).sort().join('|')==='index|mode'&&Number.isSafeInteger(row.index)&&row.index>=0
+   :['source-negative','declaration-negative'].includes(row.mode)&&Object.keys(row).join('|')==='mode'))
+  &&new Set(planned.map(key)).size===planned.length,'Invalid independent compiler phase plan');
  const results=[],failures=[],blocked=[];
- for(const batch of consumers){
+ for(const item of planned){
   const budget=remaining();assert(Number.isFinite(budget)&&budget>=0,'Invalid remaining aggregate compiler budget');
-  if(budget===0){const row={mode:'consumer',index:batch.id,status:'blocked',blockedReason:'aggregate-time-budget',elapsedMs:0,budgetMs:0,
+  if(budget===0){const row={...item,status:'blocked',blockedReason:'aggregate-time-budget',elapsedMs:0,budgetMs:0,
    code:null,signal:null,stoppedBecause:'not-started',monitorError:null};blocked.push(row);recordBlocked(row);continue;}
-  try{results.push(await run('consumer',batch.id));}
-  catch(error){failures.push({mode:'consumer',index:batch.id,error:String(error)});}
+  try{results.push(await run(item.mode,item.index));}
+  catch(error){failures.push({...item,error:String(error)});}
  }
  return{results,failures,blocked};
 }
 export function blockedUnstartedPhases(planned,phases,budget){
  assert(Number.isFinite(budget)&&budget>=0,'Invalid blocked-phase aggregate budget');
  const key=row=>row.mode+(row.index===undefined?'':'-'+row.index),started=new Set(phases.map(key));
- const failed=phases.find(row=>row.status==='failed');
+ const failed=phases.find(row=>row.status==='failed'&&['inventory','producer','declarations'].includes(row.mode));
+ const reason=budget===0?'aggregate-time-budget':failed?'failed-prerequisite':phases.length?'orchestration-failure':'inventory-or-plan-failure';
  return planned.filter(item=>!started.has(key(item))).map(item=>({...item,status:'blocked',
-  blockedReason:budget===0?'aggregate-time-budget':'failed-prerequisite',blockedBy:failed?key(failed):'inventory-or-plan',
+  blockedReason:reason,blockedBy:failed?key(failed):phases.length?'independent-phase-executor':'inventory-or-plan',
   elapsedMs:0,budgetMs:budget,code:null,signal:null,stoppedBecause:'not-started',monitorError:null}));
 }
 export function exactCoverage(inventory,plan,phases){
@@ -98,10 +102,11 @@ export async function experiment(){
   report.plannedPhases=[...['producer','declarations','source-negative','declaration-negative'].map(mode=>({mode})),...plan.consumers.map(batch=>({mode:'consumer',index:batch.id}))];
   report.inventorySha256=sha256(readFileSync(join(out,'inventory.json')));report.planSha256=sha256(readFileSync(join(out,'plan.json')));
   const results=[];results.push(await phase('producer'));results.push(await phase('declarations'));
-  results.push(await phase('source-negative'));results.push(await phase('declaration-negative'));
-  const consumers=await runIndependentConsumers(plan.consumers,phase,()=>remainingCompilerMs(report.phases),row=>report.phases.push(row));
-  results.push(...consumers.results);report.consumerFailures=consumers.failures;
-  assert(consumers.failures.length===0&&consumers.blocked.length===0,'Independent compiler consumers failed or were blocked; all actual outcomes retained');
+  const independent=[...['source-negative','declaration-negative'].map(mode=>({mode})),...plan.consumers.map(batch=>({mode:'consumer',index:batch.id}))];
+  report.independentSchedule=independent;
+  const outcome=await runIndependentPhases(independent,phase,()=>remainingCompilerMs(report.phases),row=>report.phases.push(row));
+  results.push(...outcome.results);report.independentFailures=outcome.failures;
+  assert(outcome.failures.length===0&&outcome.blocked.length===0,'Independent compiler controls/consumers failed or were blocked; all actual outcomes retained');
   report.coverage=exactCoverage(inventory,plan,results);assert(remainingCompilerMs(report.phases)>0,'Compiler aggregate budget exhausted');
   assert(outputBytes()<=BOUNDARY_LIMITS.totalBytes);report.complete=true;
  }catch(error){report.error=String(error);throw error;}

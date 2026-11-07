@@ -3,7 +3,8 @@
 Unrun development-only controller child of4e04ffc750e33d1d82b1aca9497ffa8296bd474d.
 Source is explicitly repinned tof2b1ae1a9af20bdb30f28ed9b537aa08994dfc10, the
 exact38 child fixing the proven optional fixture-user parameter. The real native
-Rewards fixture selector must pass before this controller's hosted experiment.
+Rewards fixture selector passed all3cases in42412478693 at exact f2b source before
+this controller's hosted experiment; retained focused context remains nonrelease.
 It remains a compiler diagnostic, not ordinary compiler or release acceptance.
 
 ## Retained fully terminal measurement
@@ -46,11 +47,17 @@ file/log/free-space/termination bounds. No per-partition720s allowance is create
 
 ## Honest continuation and dependency records
 
-Once the producer, owned declarations and API prerequisites pass, each consumer
-is independent. Its failure is retained and later consumers continue sequentially
-while aggregate time remains. Both native failed/successful JSON byte hashes,
+Once the checked producer and positive owned-declaration validation pass, the
+source-negative control, declaration-negative control and every consumer are
+independent: none produces inputs for another. Every such failure is retained and
+all remaining independent checks continue sequentially while aggregate time remains.
+The two negative controls are required final assertions, not prerequisites for
+other independent checks. Both native failed/successful JSON byte hashes,
 exit codes, signals, monitor stops and elapsed/peak samples remain recorded.
-Any failed consumer makes the final diagnostic fail after collecting the others.
+Any failed control or consumer makes the final diagnostic fail after collecting
+the others. Only inventory, producer or positive declaration failures are dependency
+failures; unexpected unstarted work after an independent failure is explicitly
+labelled orchestration-failure rather than a nonexistent dependency.
 Exhausted budget produces explicit unstarted blocked rows (code null, zero work),
 not successful empty phases. A prerequisite failure explicitly blocks every known
 dependent phase; an unavailable inventory records that consumer planning was
@@ -70,3 +77,16 @@ packing and source identity invalidate old consumer partitions, so no prior phas
 is relabelled onto the new plan. Ordinary compiler/release/protected-ref behavior
 is untouched. No local compiler, application, runtime or test check is run.
 Production remains held.
+
+## Independent-control recovery
+
+The frozen1e9 source review found the two negative controls were still awaited
+unconditionally before the consumer loop. A failing source-negative or declaration-
+negative check would incorrectly hide all later independent work, despite valid
+checked declaration inputs. Its new child uses one closed independent phase plan
+covering both controls and all consumer batches, and records failures by exact
+mode/index. Tests model source-negative failure followed by declaration-negative
+PASS, consumer failure followed by later consumer PASS, sequential settlement,
+negative-control deadline followed by explicit budget blocks, and rejection of
+unknown/malformed phase intents. These are controller models, not new native PASS.
+Source/packing/resources/720s aggregate and all guards remain unchanged.

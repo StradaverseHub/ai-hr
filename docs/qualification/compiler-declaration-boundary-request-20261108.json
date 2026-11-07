@@ -1,7 +1,7 @@
 {
   "kind": "DEVELOPMENT_ONLY_CHECKED_DECLARATION_BOUNDARY_NOT_RELEASE",
-  "controllerBase": "4e04ffc750e33d1d82b1aca9497ffa8296bd474d",
-  "controllerRef": "codex/compiler-bounded-consumer-recovery-20261108",
+  "controllerBase": "1e9fa841c81ff92d5252335918d718b488a9d51e",
+  "controllerRef": "codex/compiler-independent-controls-20261108",
   "source": "f2b1ae1a9af20bdb30f28ed9b537aa08994dfc10",
   "sourceRef": "codex/compiler-rewards-fixture-principal-20261108",
   "workflow": "alpha-staging-diagnostics.yml",
@@ -75,20 +75,20 @@
     "nativeSccMembershipAndOriginalRootOrderPreserved": true
   },
   "sourceSha256": {
-    ".github/ci/diagnostics/compiler-boundary.mjs": "7aaba25ca399a108e87e8164cfa2d133b72f2a7e4139a1100265aebd87e1b68f",
+    ".github/ci/diagnostics/compiler-boundary.mjs": "82aa97055842cfa89c6f540040e92f81dca9de72c7b1169a0c8136c239849b51",
     ".github/ci/diagnostics/compiler-boundary-worker.mjs": "410428b90e613d631397b6bca1235617df3096b22c539615d023ae566c77bbcd",
     ".github/ci/diagnostics/compiler-boundary-policy.mjs": "a42c884201ba83bf33f82ed1f5628be85c0799258982e607b775815de5c11064",
-    ".github/ci/diagnostics/compiler-boundary.test.mjs": "36a99fa3af0715e5a6866fb1b6d0241c82e0ab9eaca348c09a6e1783af9790ea",
+    ".github/ci/diagnostics/compiler-boundary.test.mjs": "294772128b541fb349112a904dd484a6c1600c2dc03a96c9095215a17710895d",
     ".github/ci/diagnostics/compiler-attribution.mjs": "21fecd10f733fc7a610cca8cd45b5776ea06deb6851b9053ed101ad8c8507767",
     ".github/ci/diagnostics/compiler-attribution.test.mjs": "50f86f858f5052215b2902d28207c2d2e1c3ee5ce580e3034991f464046da235",
     ".github/workflows/alpha-staging-diagnostics.yml": "0c59a75fe7b943984412878225be1862744fcad91cbb9dc22098dcc345168eed",
-    "docs/architecture/COMPILER-DECLARATION-BOUNDARY-EXPERIMENT-20261108.md": "2619cc4d83e754805ff6f48c5220a03f874397ffafa90f1c5e8fe293741b09a9",
+    "docs/architecture/COMPILER-DECLARATION-BOUNDARY-EXPERIMENT-20261108.md": "7b56aa25b50812f248a2f048875b0aa40afe0142b8af1b6b52c10a6bd7a194ff",
     "docs/qualification/compiler-native-ambient-context-recovery-20261108.md": "8872cb3484429ffc4b7f25ebc3b1a86a46f1e04446dea3bdfe78424b3bb9fcfa",
     "docs/qualification/compiler-native-resolution-leaves-recovery-20261108.md": "977298fb5ad15ee137a7a395eb4243e83ed0235aede84973a54b7e023b13ad6d",
     "docs/qualification/compiler-native-declaration-emission-recovery-20261108.md": "c4a061a101477232b2cc9805734af7b760d56d469ddb2d6c46c409486e6c470f",
-    "docs/qualification/compiler-bounded-consumer-recovery-20261108.md": "07ef3dff49a396df80b975f14f60f8149e440cf073010e6acda3be5ff69f05f3"
+    "docs/qualification/compiler-bounded-consumer-recovery-20261108.md": "4ac5fe084af640a5daa2c44fdc0c633200d9279ad00c388c7aefc755d63e5158"
   },
-  "qualification": "NOT_RUN bounded-consumer recovery; current source fixture native check pending. Exact old4e/38 partial native passes and consumer13 real errors retained; source+packing identity changed so all new native phases required; ordinary compiler remains unqualified.",
+  "qualification": "NOT_RUN independent-control recovery; exactf2b native3/3 passed42412478693. Old4e/38 partial native phases and original diagnostics retained; all new source/packing phases still required; ordinary compiler remains unqualified.",
   "retainedFailure": {
     "run": 42402718235,
     "source": "38b047c9f465990e3f26295c035ab9f69b3001d7",
@@ -174,7 +174,10 @@
     "selector": "test/rewards-setup-presentation-snapshot.test.ts",
     "source": "f2b1ae1a9af20bdb30f28ed9b537aa08994dfc10",
     "nativeCases": 3,
-    "status": "PENDING_HOSTED_CHECK"
+    "status": "PASS_3_OF_3_AT_EXACT_F2B_FOCUSED_ONLY",
+    "run": 42412478693,
+    "controller": "b7c0393aa3c7606a33dd15103426e5c535324065",
+    "releaseEligible": false
   },
   "boundedConsumerRecovery": {
     "base": "4e04ffc750e33d1d82b1aca9497ffa8296bd474d",
@@ -237,5 +240,23 @@
     "budgetAndDependencyBlockRecords": true,
     "noPriorPhaseRelabel": true,
     "analysisSha256": "1fdb1b6523a5e4c284638b407a608705a718ebaedd95576d7debbe1012be4432"
+  },
+  "independentPhaseRecovery": {
+    "parent": "1e9fa841c81ff92d5252335918d718b488a9d51e",
+    "requiredPrerequisites": [
+      "inventory",
+      "producer",
+      "declarations"
+    ],
+    "independentChecks": [
+      "source-negative",
+      "declaration-negative",
+      "every planned consumer"
+    ],
+    "negativeControlFailureStopsConsumers": false,
+    "allFailuresCollectedByModeAndIndex": true,
+    "remainingAggregateBudgetOnly": true,
+    "unstartedIndependentWorkCannotCiteNegativeControlAsPrerequisite": true,
+    "nativeResults": "NOT_RUN"
   }
 }

@@ -81,12 +81,15 @@ that real fixture value without an application change. Actual consumer peaks wer
 unchanged. The new packing reduces repeated program startup, with the same exact
 root ownership, order, SCCs, ambient, semantics and720s aggregate/12GiB limits.
 
-Independent consumer failures now accumulate while remaining aggregate time
-permits. A failing consumer cannot make a later independent phase disappear;
+After checked producer and positive owned-declaration validation, both negative
+controls and every consumer are independent. Their failures accumulate while
+remaining aggregate time permits. A failed source-negative, declaration-negative
+or consumer check cannot make a later independent phase disappear;
 every unsuccessful native report/log and byte hash remains retained. Aggregate
 exhaustion creates explicit unstarted blocked records, with no fabricated exit0.
-Failed prerequisites legitimately block dependent phases and produce explicit
-records. Any failed/blocked phase leaves the overall experiment failed and full
+Failed inventory, producer or positive declaration prerequisites legitimately
+block dependent phases and produce explicit records. Negative controls do not
+produce consumer inputs; unstarted work cannot cite one as a failed prerequisite. Any failed/blocked phase leaves the overall experiment failed and full
 coverage unqualified. Original-source partial passes are not reused as new-source
 or ordinary release acceptance.
 
