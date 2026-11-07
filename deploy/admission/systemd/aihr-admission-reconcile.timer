@@ -1,0 +1,11 @@
+[Unit]
+Description=Recheck AI HR generation retirement and crash state
+
+[Timer]
+OnBootSec=2s
+OnUnitInactiveSec=2s
+AccuracySec=250ms
+Unit=aihr-admission-reconcile.service
+
+[Install]
+WantedBy=timers.target

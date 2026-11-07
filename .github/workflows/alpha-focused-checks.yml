@@ -151,6 +151,13 @@ jobs:
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends fonts-noto-core fonts-noto-cjk
+      - name: Provision native readiness witness prerequisite
+        # Fixed official distro package; no arbitrary package/URL input.
+        if: ${{ contains(fromJSON(needs.resolve.outputs.tests), 'test/runtime-ready-admission-native.test.ts') }}
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends nginx
+          dpkg-query -W -f='${Package} ${Version}\n' nginx
       - name: Classify and execute only selected files
         run: node ../automation/.github/ci/focused-checks.mjs run "$RUNNER_TEMP/aihr-focused"
         env:
