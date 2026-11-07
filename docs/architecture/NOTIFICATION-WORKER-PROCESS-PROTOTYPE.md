@@ -59,7 +59,8 @@ The new private committed ledger is written in the **same settlement transaction
 rollback removes it with every effect. No caller supplies counts to this ledger.
 
 Four owner-only functions seal the resulting 33 full function metadata records,
-three protected triggers (including the existing deferred settlement constraint),
+the complete private/owned-FK trigger inventory, including three independently
+required custom triggers and the existing deferred settlement constraint,
 new relation columns/constraints/ACLs and owned class inventory. Profile drift or
 unexpected added objects refuses both process admission and recovery. Helpers and
 ledger tables grant no PUBLIC/app/worker authority. Test-owned pause/refusal
@@ -122,3 +123,6 @@ accepted package/runtime/profile, startup/admission/secret closure, safe invocat
 installation/scheduler/failure evidence and complete supported-family coverage.
 This functional prototype cannot remove page catch-up, pass scheduling acceptance,
 authorize a staging deployment or release the production hold.
+
+The original a5 process run failed before admission:41 old cases passed and10
+process cases failed. See [complete trigger-inventory recovery](../qualification/notification-process-trigger-inventory-recovery-20261108.md). Actual trigger counts are unmeasured here; no original failure becomes a pass.

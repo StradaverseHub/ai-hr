@@ -4,7 +4,7 @@
   "base": "c861ac060b942280e3200e8c39f6964a05c3e7b9",
   "freshMain": "b7c0393aa3c7606a33dd15103426e5c535324065",
   "freshAlpha": "b7c0393aa3c7606a33dd15103426e5c535324065",
-  "qualification": "UNRUN: root + independent source review required before standard hosted native and compiler qualification",
+  "qualification": "UNRUN source recovery from a5. Original42405285922 remains FAIL:41PASS/10FAIL native; planned pure42405291849 SUCCESS. Full trigger counts unobserved until hosted catalogue capture. Root+independent review required.",
   "baselineNativeCasesReportedByRoot": 41,
   "newDeclaredCases": 10,
   "expectedNativeSoleFileCases": 51,
@@ -26,16 +26,15 @@
   },
   "nativePredecessorFullSourceGuards": 29,
   "sealedProcessFunctions": 33,
-  "sealedPrivateTriggers": 3,
   "failureReasonChange": "interrupted only; old full native body otherwise exact",
   "uninstalledEntrypoint": "test/fixtures/notification-worker/process-child.ts",
   "sourceSha256": {
     "lib/notification-worker/lifecycle.ts": "b895d5ca866f42321e6c57860eb8696b931da7e025a8e785ad9690df08c91910",
     "lib/notification-worker/process.ts": "8236c48b43d6139793a9d85fbf1f35568dd3c81bd4828fa4c7778e971eebd8d3",
     "test/fixtures/notification-worker/owner-fixture.ts": "afafe2f15959258118d15dc5635c1d587ed0c96ec47b013609f0eaa0f8e78282",
-    "test/fixtures/notification-worker/process-cases.ts": "54741b6398611e6b231047933a0d47a429c24db4d261a4174f24d8a58d912d41",
+    "test/fixtures/notification-worker/process-cases.ts": "2183b97eac747d2955ffe2d0663cb8c70e5a748f0dcc153bc4385025130359f1",
     "test/fixtures/notification-worker/process-child.ts": "33d463840abcc45a6f48473dcde2d77f8892501a5f40caa0f9d674b1df18c43a",
-    "test/fixtures/notification-worker/process.sql": "5d030e0225078fdd31237d872e8f6d08c719413ef8b3623aa09adb5f1fc3fa4f",
+    "test/fixtures/notification-worker/process.sql": "6d112effc849efc8395505ba28c5b52a30aee62bd32372d8389b6829a4cb0442",
     "test/notification-worker-lifecycle.test.ts": "9f2c9dc50bdf76ee53895aa4c1c813d5a8726682a9d517a555fe643e67578dbd"
   },
   "runtimeRelativeImportClosure": {
@@ -87,5 +86,25 @@
     "page catch-up removal",
     "staging release",
     "production deployment"
-  ]
+  ],
+  "sealedCustomTriggers": 3,
+  "sealedOwnedTriggerInventory": "Full exact metadata/membership: private relation triggers plus both sides of FK constraints owned by private source relations; count UNMEASURED",
+  "triggerInventoryRecovery": {
+    "base": "a5b2d0454fe7185084b553c1eb9c351143293177",
+    "retainedNativeRun": "42405285922",
+    "retainedNativeCases": 51,
+    "retainedPass": 41,
+    "retainedFail": 10,
+    "retainedPureRun": "42405291849",
+    "retainedPureStatus": "SUCCESS",
+    "actualTriggerCountsObserved": false,
+    "catalogueArtifact": "notification-process-trigger-catalogue.json",
+    "catalogueRowLimit": 512,
+    "newDeclaredCases": 0,
+    "nativeCasesPreserved": 51,
+    "nativeFkEnforcementRetained": true,
+    "unrelatedPublicTriggersOwned": false,
+    "noWorkWhileHostileTriggerDisabled": true,
+    "catalogueByteLimit": 2097152
+  }
 }

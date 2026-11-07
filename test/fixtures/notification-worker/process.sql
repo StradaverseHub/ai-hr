@@ -951,8 +951,22 @@ BEGIN
  OR a.owner_oid IS DISTINCT FROM(SELECT relowner FROM pg_class WHERE oid='public.job_run'::regclass)
  OR (SELECT count(*) FROM notification_worker_private.process_contract WHERE kind='function')<>33
  OR (SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname IN('notification_worker','notification_worker_private'))<>33
- OR (SELECT count(*) FROM pg_trigger t JOIN pg_class r ON r.oid=t.tgrelid WHERE r.relnamespace='notification_worker_private'::regnamespace)<>3
- OR (SELECT count(*) FROM notification_worker_private.process_contract WHERE kind='trigger')<>3
+ -- Seal the complete owned inventory, including PostgreSQL RI/FK triggers.
+ OR (SELECT count(*) FROM pg_trigger t JOIN pg_class r ON r.oid=t.tgrelid WHERE (r.relnamespace='notification_worker_private'::regnamespace OR t.tgconstraint IN(SELECT c.oid FROM pg_constraint c JOIN pg_class source ON source.oid=c.conrelid WHERE c.contype='f' AND source.relnamespace='notification_worker_private'::regnamespace)))
+  IS DISTINCT FROM (SELECT count(*) FROM notification_worker_private.process_contract WHERE kind='trigger')
+ OR (SELECT count(*) FROM pg_trigger t JOIN pg_class r ON r.oid=t.tgrelid WHERE r.relnamespace='notification_worker_private'::regnamespace AND NOT t.tgisinternal)<>3
+ OR NOT EXISTS(SELECT 1 FROM pg_trigger t JOIN pg_constraint c ON c.oid=t.tgconstraint WHERE t.tgisinternal AND c.contype='f' AND t.tgrelid IN(SELECT oid FROM pg_class WHERE relnamespace='notification_worker_private'::regnamespace))
+ OR EXISTS(SELECT 1 FROM pg_trigger t JOIN pg_constraint c ON c.oid=t.tgconstraint JOIN pg_class source ON source.oid=c.conrelid WHERE source.relnamespace='notification_worker_private'::regnamespace AND c.contype='f' AND (NOT t.tgisinternal OR t.tgenabled<>'O'))
+ OR EXISTS(SELECT 1 FROM pg_trigger t JOIN pg_class r ON r.oid=t.tgrelid WHERE (r.relnamespace='notification_worker_private'::regnamespace OR t.tgconstraint IN(SELECT c.oid FROM pg_constraint c JOIN pg_class source ON source.oid=c.conrelid WHERE c.contype='f' AND source.relnamespace='notification_worker_private'::regnamespace))
+  AND NOT EXISTS(SELECT 1 FROM notification_worker_private.process_contract c WHERE c.kind='trigger' AND c.object_oid=t.oid))
+ OR EXISTS(SELECT 1 FROM (VALUES
+  ('notification_batch_must_settle','notification_worker_private.batch'::regclass,'notification_worker_private.require_batch_settlement()'::regprocedure,21,true,true),
+  ('notification_process_start_guard','notification_worker_private.run'::regclass,'notification_worker_private.process_start_guard()'::regprocedure,7,false,false),
+  ('notification_process_commit_guard','notification_worker_private.batch'::regclass,'notification_worker_private.capture_committed_batch()'::regprocedure,11,false,false)
+ ) expected(trigger_name,relation_oid,fn_oid,trigger_type,is_deferrable,initially_deferred) WHERE NOT EXISTS(SELECT 1 FROM pg_trigger t
+  WHERE t.tgname=expected.trigger_name AND t.tgrelid=expected.relation_oid AND t.tgfoid=expected.fn_oid
+   AND t.tgtype=expected.trigger_type AND t.tgdeferrable=expected.is_deferrable AND t.tginitdeferred=expected.initially_deferred
+   AND NOT t.tgisinternal AND t.tgenabled='O' AND t.tgnargs=0 AND octet_length(t.tgargs)=0 AND t.tgqual IS NULL))
  OR (SELECT count(*) FROM notification_worker_private.process_contract WHERE kind='relation')<>3
  OR EXISTS(SELECT 1 FROM notification_worker_private.process_contract c LEFT JOIN pg_proc p ON p.oid=c.object_oid
   WHERE c.kind='function' AND (p.oid IS NULL OR to_jsonb(p) IS DISTINCT FROM c.details))
@@ -1047,8 +1061,7 @@ INSERT INTO notification_worker_private.process_contract
  SELECT 'function',p.oid,to_jsonb(p) FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
  WHERE n.nspname IN('notification_worker','notification_worker_private');
 INSERT INTO notification_worker_private.process_contract
- SELECT 'trigger',t.oid,to_jsonb(t) FROM pg_trigger t WHERE t.tgname IN('notification_process_start_guard','notification_process_commit_guard','notification_batch_must_settle')
- AND t.tgrelid IN('notification_worker_private.run'::regclass,'notification_worker_private.batch'::regclass);
+ SELECT 'trigger',t.oid,to_jsonb(t) FROM pg_trigger t JOIN pg_class r ON r.oid=t.tgrelid WHERE (r.relnamespace='notification_worker_private'::regnamespace OR t.tgconstraint IN(SELECT c.oid FROM pg_constraint c JOIN pg_class source ON source.oid=c.conrelid WHERE c.contype='f' AND source.relnamespace='notification_worker_private'::regnamespace));
 INSERT INTO notification_worker_private.process_contract
  SELECT 'relation',r.oid,jsonb_build_object('owner',r.relowner,'namespace',r.relnamespace,'kind',r.relkind,'rls',r.relrowsecurity,'force',r.relforcerowsecurity,'acl',r.relacl,'columns',(SELECT jsonb_agg(to_jsonb(att) ORDER BY att.attnum) FROM pg_attribute att WHERE att.attrelid=r.oid AND att.attnum>0),'constraints',(SELECT jsonb_agg(to_jsonb(con) ORDER BY con.oid) FROM pg_constraint con WHERE con.conrelid=r.oid))
  FROM pg_class r WHERE r.oid IN('notification_worker_private.committed_batch'::regclass,'notification_worker_private.committed_event'::regclass,'notification_worker_private.process_contract'::regclass);

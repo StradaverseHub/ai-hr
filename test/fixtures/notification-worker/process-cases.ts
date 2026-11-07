@@ -1,5 +1,6 @@
 /** Real child processes and native commits. No installed/package witness or transport. */
-import {readFileSync} from 'node:fs';
+import {readFileSync,writeFileSync,realpathSync} from 'node:fs';
+import {join} from 'node:path';
 import {randomUUID} from 'node:crypto';
 import {spawn,type ChildProcess} from 'node:child_process';
 import {afterAll,afterEach,beforeAll,beforeEach,describe,expect,it} from 'vitest';
@@ -19,7 +20,7 @@ export function registerNotificationProcessCases(fixtureOwner:NotificationWorker
  describe.sequential('UNINSTALLED native notification process protocol',()=>{
   const sources=['lifecycle','projection','assessment','process'].map(name=>readFileSync('test/fixtures/notification-worker/'+name+'.sql','utf8'));
   const children=new Set<Witness>();let b:Base,employment:string,recipientUser:string;
-  beforeAll(()=>fixtureOwner.install(sources,3,notificationWorkerAssessmentContract),300000);
+  beforeAll(async()=>{await fixtureOwner.install(sources,3,notificationWorkerAssessmentContract);await captureTriggerCatalogue();},300000);
   beforeEach(async()=>{
    await owner.client`truncate notification_worker_private.run cascade`;
    await owner.client`update notification_worker_private.authority set active_run=null,enabled=true,max_run_batches=10`;
@@ -35,6 +36,30 @@ export function registerNotificationProcessCases(fixtureOwner:NotificationWorker
    children.clear();await fixtureOwner.finishCase();
   });
   afterAll(async()=>{await owner.client`select notification_worker_private.assert_process_profile()`;await fixtureOwner.clearStage();});
+  async function captureTriggerCatalogue(){
+   // Bounded owner catalogue evidence only, captured BEFORE profile assertions.
+   // No worker credential, source payload, HR row or caller-supplied PASS flag.
+   const rows=await owner.client`select t.oid,r.relnamespace::regnamespace::text as relation_schema,r.relname,t.tgname,t.tgisinternal,t.tgconstraint,c.contype,
+    t.tgfoid::regprocedure::text as function_signature,t.tgtype,t.tgdeferrable,t.tginitdeferred,t.tgenabled,
+    pg_get_triggerdef(t.oid,true)as definition,to_jsonb(t)as details
+    from pg_trigger t join pg_class r on r.oid=t.tgrelid left join pg_constraint c on c.oid=t.tgconstraint
+    where (r.relnamespace='notification_worker_private'::regnamespace or t.tgconstraint in(select c.oid from pg_constraint c join pg_class source ON source.oid=c.conrelid where c.contype='f' and source.relnamespace='notification_worker_private'::regnamespace)) order by r.relname,t.tgname limit 513`;
+   const [counts]=await owner.client`select
+    (select count(*)::int from notification_worker_private.process_contract where kind='trigger')as sealed,
+    (select count(*)::int from pg_trigger t join pg_class r on r.oid=t.tgrelid where (r.relnamespace='notification_worker_private'::regnamespace or t.tgconstraint in(select c.oid from pg_constraint c join pg_class source ON source.oid=c.conrelid where c.contype='f' and source.relnamespace='notification_worker_private'::regnamespace)))as actual,
+    (select count(*)::int from pg_trigger t join pg_class r on r.oid=t.tgrelid where r.relnamespace='notification_worker_private'::regnamespace and not t.tgisinternal)as custom,
+    (select count(*)::int from notification_worker_private.process_contract c left join pg_trigger t on t.oid=c.object_oid where c.kind='trigger'and(t.oid is null or to_jsonb(t)is distinct from c.details))as changed_or_missing,
+    (select count(*)::int from pg_trigger t join pg_class r on r.oid=t.tgrelid where (r.relnamespace='notification_worker_private'::regnamespace or t.tgconstraint in(select c.oid from pg_constraint c join pg_class source ON source.oid=c.conrelid where c.contype='f' and source.relnamespace='notification_worker_private'::regnamespace)) and not exists(select 1 from notification_worker_private.process_contract c where c.kind='trigger'and c.object_oid=t.oid))as unexpected`;
+   const temp=realpathSync(process.env.RUNNER_TEMP!),directory=process.env.AIHR_FOCUSED_EVIDENCE_DIR??join(temp,'aihr-ci');
+   expect([join(temp,'aihr-focused'),join(temp,'aihr-ci')]).toContain(directory);expect(realpathSync(directory)).toBe(directory);
+   const report={kind:'OWNED_NATIVE_PROCESS_TRIGGER_CATALOGUE_NOT_RELEASE',source:process.env.AIHR_CI_HEAD,run:process.env.GITHUB_RUN_ID,attempt:process.env.GITHUB_RUN_ATTEMPT,database:fixtureOwner.binding.database,counts,truncated:rows.length>512,triggers:Array.from(rows.slice(0,512))};
+   const bytes=JSON.stringify(report,null,2)+'\n',bounded=Buffer.byteLength(bytes)<=2*1024*1024;
+   writeFileSync(join(directory,'notification-process-trigger-catalogue.json'),bounded?bytes:JSON.stringify({...report,truncated:true,triggers:[],reason:'catalogue-byte-bound'})+'\n',{flag:'wx',mode:0o600});
+   expect(bounded).toBe(true);
+   expect(rows.length).toBeLessThanOrEqual(512);expect(counts.actual).toBe(counts.sealed);expect(counts.custom).toBe(3);expect(counts.changed_or_missing).toBe(0);expect(counts.unexpected).toBe(0);
+   expect(rows.some(row=>row.tgisinternal&&row.contype==='f')).toBe(true);
+   expect(rows.find(row=>row.tgname==='notification_batch_must_settle')).toMatchObject({tgisinternal:false,tgdeferrable:true,tginitdeferred:true,tgenabled:'O',tgtype:21});
+  }
   async function launch(options:{pauseAfterCommit?:boolean;moduleKill?:string}={}){
    const child=spawn(process.execPath,['--import','tsx','test/fixtures/notification-worker/process-child.ts'],{cwd:process.cwd(),env:{PATH:process.env.PATH,TZ:'UTC',LANG:'en_US.UTF-8',GITHUB_ACTIONS:'true',RUNNER_ENVIRONMENT:'github-hosted',GITHUB_REPOSITORY:'StradaverseHub/ai-hr',MODULE_KILL:options.moduleKill??'',SETTING_KILL:''},stdio:['ignore','pipe','pipe','ipc']});
    const messages:Message[]=[],waiters=new Set<()=>void>();let output='';
@@ -146,6 +171,29 @@ export function registerNotificationProcessCases(fixtureOwner:NotificationWorker
    const worker=fixtureOwner.connect(),api=notificationWorkerLifecycle(worker),run=await api.openRun();
    await expect(worker`select notification_worker.fail_run(${run}::uuid,'invented-success')`).rejects.toSatisfy((e:unknown)=>pgSqlState(e)==='22023');await api.failRun(run,'interrupted');expect(await native(run)).toMatchObject({state:'failed',outcome:'failed',error:'interrupted'});
    await owner.client`alter function notification_worker_private.consumer(uuid)cost 101`;try{const w=await launch();expect(await w.closed).toEqual({code:1,signal:null});expect(w.messages.some(m=>m.kind==='opened')).toBe(false);}finally{await owner.client`alter function notification_worker_private.consumer(uuid)cost 100`;}
+   const quote=(name:string)=>'"'+name.replaceAll('"','""')+'"';
+   const [internal]=await owner.client`select t.oid,r.relnamespace::regnamespace::text as schema,r.relname,t.tgname,to_jsonb(t)as details from pg_trigger t join pg_class r on r.oid=t.tgrelid join pg_constraint c on c.oid=t.tgconstraint where r.relnamespace='notification_worker_private'::regnamespace and t.tgisinternal and c.contype='f' and t.tgenabled='O' order by t.oid limit 1`;
+   expect(internal).toBeTruthy();
+   const [referenced]=await owner.client`select t.oid,r.relnamespace::regnamespace::text as schema,r.relname,t.tgname,to_jsonb(t)as details from pg_trigger t join pg_class r on r.oid=t.tgrelid join pg_constraint c on c.oid=t.tgconstraint join pg_class source on source.oid=c.conrelid where r.relnamespace<>'notification_worker_private'::regnamespace and source.relnamespace='notification_worker_private'::regnamespace and t.tgisinternal and c.contype='f' and t.tgenabled='O' order by t.oid limit 1`;
+   expect(referenced).toBeTruthy();
+   const [custom]=await owner.client`select t.oid,r.relnamespace::regnamespace::text as schema,r.relname,t.tgname,to_jsonb(t)as details from pg_trigger t join pg_class r on r.oid=t.tgrelid where t.tgrelid='notification_worker_private.batch'::regclass and t.tgname='notification_batch_must_settle'`;
+   expect(custom).toBeTruthy();
+   for(const trigger of [internal,referenced,custom]){
+    // Hostile owner-only catalogue mutation. No data operation/admission is
+    // attempted while a guard is disabled; exact metadata is restored in finally.
+    const table=quote(trigger.schema)+'.'+quote(trigger.relname),name=quote(trigger.tgname);
+    await owner.client.unsafe('alter table '+table+' disable trigger '+name);
+    try{await expect(owner.client`select notification_worker_private.assert_process_profile()`).rejects.toSatisfy((e:unknown)=>pgSqlState(e)==='55000');}
+    finally{await owner.client.unsafe('alter table '+table+' enable trigger '+name);expect((await owner.client`select to_jsonb(t)as details from pg_trigger t where oid=${trigger.oid}::oid`)[0].details).toEqual(trigger.details);}
+    await owner.client`select notification_worker_private.assert_process_profile()`;
+   }
+   await owner.client`create trigger notification_process_unexpected before insert on notification_worker_private.run for each row execute function notification_worker_private.process_start_guard()`;
+   const [added]=await owner.client`select to_jsonb(t)as details from pg_trigger t where tgrelid='notification_worker_private.run'::regclass and tgname='notification_process_unexpected'`;
+   try{await expect(owner.client`select notification_worker_private.assert_process_profile()`).rejects.toSatisfy((e:unknown)=>pgSqlState(e)==='55000');}
+   finally{expect((await owner.client`select to_jsonb(t)as details from pg_trigger t where tgrelid='notification_worker_private.run'::regclass and tgname='notification_process_unexpected'`)[0]).toEqual(added);await owner.client`drop trigger notification_process_unexpected on notification_worker_private.run`;}
+   await owner.client`select notification_worker_private.assert_process_profile()`;
+   // Preserve actual native FK enforcement, not just an enabled catalogue flag.
+   await expect(owner.client`insert into notification_worker_private.committed_event(batch_id,event_id,event_sequence,disposition,created)values(${randomUUID()}::uuid,${randomUUID()}::uuid,1,'ignored',0)`).rejects.toSatisfy((e:unknown)=>pgSqlState(e)==='23503');
    expect((await owner.client`select count(*)::int as n from notification_worker_private.run`)[0].n).toBe(1);
   });
  });
