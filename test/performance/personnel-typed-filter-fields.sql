@@ -4,7 +4,7 @@ CREATE FUNCTION app.performance_personnel_filter_fields(p_as_of date,p_scope uui
  "finalConfirmationDate" date,"confirmationDate" date,"probationEndDate" date,"provisionalEndOn" date,
  "resignationDate" date,"lastWorkingDate" date,"terminatedOn" date,"blacklistedAt" timestamptz,
  "companyId" uuid,company text,"departmentId" uuid,"employmentType" text,
- "businessUnitId" uuid,"businessUnit" text,"positionId" uuid,position text
+ "businessUnitId" uuid,"businessUnit" text,"positionId" uuid,"position" text
 )
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,app AS $$
  WITH permitted_companies AS MATERIALIZED (
