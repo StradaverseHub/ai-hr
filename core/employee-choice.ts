@@ -72,7 +72,7 @@ export async function readEmployeeChoices(ctx:SessionContext,p:EmployeeChoiceInp
   signal?.throwIfAborted();
   const selected=p.selectedId&&uuid.test(p.selectedId)?(await tx.execute<EmployeeChoice>(sql`${base} where ${scoped} and ${employment.id}=${p.selectedId}::uuid order by ${person.fullName},${employment.id},${assignment.id} limit 1`))[0]??null:null;
   signal?.throwIfAborted();
-  const options=await readOptions(tx,scoped,labelMode==='labels',from);
+  const options=await readOptions(tx,scoped,labelMode==='labels',ctx.tenantId);
   signal?.throwIfAborted();
   const inSelectedCompany=filters.companyId?options.filter(row=>row.companyId===filters.companyId):options;
   const companies=new Map(options.map(row=>[row.companyId,row.company]));
@@ -85,9 +85,34 @@ export async function readEmployeeChoices(ctx:SessionContext,p:EmployeeChoiceInp
  },{readOnlySnapshot:true,readSignal:signal});
 }
 type ChoiceOptions=Pick<EmployeeChoice,'companyId'|'company'|'departmentId'|'department'|'departmentCode'|'businessUnitId'|'businessUnit'|'businessUnitCode'>;
-function readOptions(tx:Tx,scope:SQL,labels:boolean,from:SQL){return tx.execute<ChoiceOptions>(sql`select distinct ${employment.companyId} as "companyId",${company.legalName} as company,
- ${assignment.departmentId} as "departmentId",${labels?sql`${department.name}`:sql`null::text`} as "departmentCode",
- ${labels?sql`coalesce(nullif(trim(${department.label}),''),nullif(trim(${department.description}),''),${department.name})`:sql`${department.name}`} as department,
- ${assignment.businessUnitId} as "businessUnitId",${labels?sql`${businessUnit.code}`:sql`null::text`} as "businessUnitCode",
- ${labels?sql`coalesce(nullif(trim(${businessUnit.label}),''),nullif(trim(${businessUnit.name}),''),${businessUnit.code})`:sql`${businessUnit.name}`} as "businessUnit"
- ${from} where ${scope} order by "companyId","departmentId","businessUnitId"`);}
+/** Enumerate represented catalogue identities, stopping at the first native-RLS member.
+ * A population DISTINCT can misestimate assignment RLS and materialize a quadratic join.
+ * Independent options need no employee-by-organisation tuple cross product. */
+function readOptions(tx:Tx,scope:SQL,labels:boolean,tenantId:string){
+ const members=sql`from ${employment} join ${person} on ${person.id}=${employment.personId} and ${person.tenantId}=${tenantId}::uuid
+  where ${scope} and ${employment.companyId}=${company.id}`;
+ const assignedMembers=sql`from ${assignment} join ${employment} on ${employment.id}=${assignment.employmentId}
+  join ${person} on ${person.id}=${employment.personId} and ${person.tenantId}=${tenantId}::uuid
+  where ${scope} and ${employment.companyId}=${company.id} and ${assignment.tenantId}=${tenantId}::uuid
+   and ${assignment.validTo} is null and ${assignment.supersededAt} is null`;
+ return tx.execute<ChoiceOptions>(sql`
+ select ${company.id} as "companyId",${company.legalName} as company,
+  null::uuid as "departmentId",null::text as "departmentCode",null::text as department,
+  null::uuid as "businessUnitId",null::text as "businessUnitCode",null::text as "businessUnit"
+ from ${company} where ${company.tenantId}=${tenantId}::uuid and exists(select 1 ${members})
+ union all
+ select ${company.id},${company.legalName},${department.id},${labels?sql`${department.name}`:sql`null::text`},
+  ${labels?sql`coalesce(nullif(trim(${department.label}),''),nullif(trim(${department.description}),''),${department.name})`:sql`${department.name}`},
+  null::uuid,null::text,null::text
+ from ${company} cross join ${department}
+ where ${company.tenantId}=${tenantId}::uuid and ${department.tenantId}=${tenantId}::uuid
+  and exists(select 1 ${assignedMembers} and ${assignment.departmentId}=${department.id})
+ union all
+ select ${company.id},${company.legalName},null::uuid,null::text,null::text,${businessUnit.id},
+  ${labels?sql`${businessUnit.code}`:sql`null::text`},
+  ${labels?sql`coalesce(nullif(trim(${businessUnit.label}),''),nullif(trim(${businessUnit.name}),''),${businessUnit.code})`:sql`${businessUnit.name}`}
+ from ${company} cross join ${businessUnit}
+ where ${company.tenantId}=${tenantId}::uuid and ${businessUnit.tenantId}=${tenantId}::uuid
+  and exists(select 1 ${assignedMembers} and ${assignment.businessUnitId}=${businessUnit.id})
+ order by "companyId","departmentId","businessUnitId"`);
+}

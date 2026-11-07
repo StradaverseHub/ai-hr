@@ -75,6 +75,7 @@ it('finishes behind an Access writer with exact native data and performs no audi
 it('pages the real 50k population without retaining whole employee DTOs or losing deep selection',async()=>{
  const report:Record<string,unknown>={kind:'NATIVE_EMPLOYEE_CHOICE_COMPONENT_ONLY',releaseEligible:false,employees:50000};
  const save=()=>{if(process.env.AIHR_FOCUSED_EVIDENCE_DIR)writeFileSync(join(process.env.AIHR_FOCUSED_EVIDENCE_DIR,'employee-choice-50k.json'),JSON.stringify(report,null,2));};
+ report.policies=await owner.client`select schemaname,tablename,policyname,roles,cmd,qual,with_check from pg_policies where schemaname='public' and tablename in ('employment','person','assignment','company','department','business_unit') order by tablename,policyname`;save();
  const {b,ctx,expectedFirst,expectedLast}=await seedPersonnelNativeFixture(50000,report,name=>{report.phase=name;save();},save);
  report.fixtureReady=true;save();
  const timings:Record<string,number>={},statements:Record<string,unknown>[]=[];report.statements=statements;report.timings=timings;
