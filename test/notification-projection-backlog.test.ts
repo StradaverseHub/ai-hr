@@ -18,10 +18,10 @@ describe('native notification processing backlog observations',()=>{
   const other=await seedBase();await event(other.tenantId,1000);
   const oldest=await event(b.tenantId,10),newer=await event(b.tenantId,2),processed=await event(b.tenantId,100);
   await owner.db.update(s.notificationEventProcessing).set({disposition:'processed',processedAt:sql`now()`}).where(eq(s.notificationEventProcessing.eventId,processed));
-  const before=await owner.db.select().from(s.notificationEventProcessing).where(eq(s.notificationEventProcessing.tenantId,b.tenantId));
+  const before=await owner.db.select().from(s.notificationEventProcessing).where(eq(s.notificationEventProcessing.tenantId,b.tenantId)).orderBy(s.notificationEventProcessing.eventSequence);
   const backlog=await readNotificationProjectionBacklog(maintenance(),owner);
   expect(backlog.pending).toBe(2);expect(backlog.oldest).toBeGreaterThanOrEqual(600);expect(backlog.oldest).toBeLessThan(660);
-  expect(await owner.db.select().from(s.notificationEventProcessing).where(eq(s.notificationEventProcessing.tenantId,b.tenantId))).toEqual(before);
+  expect(await owner.db.select().from(s.notificationEventProcessing).where(eq(s.notificationEventProcessing.tenantId,b.tenantId)).orderBy(s.notificationEventProcessing.eventSequence)).toEqual(before);
   await owner.db.update(s.notificationEventProcessing).set({disposition:'ignored',processedAt:sql`now()`}).where(and(eq(s.notificationEventProcessing.tenantId,b.tenantId),eq(s.notificationEventProcessing.eventId,oldest)));
   expect((await readNotificationProjectionBacklog(maintenance(),owner)).pending).toBe(1);
   await owner.db.update(s.notificationEventProcessing).set({disposition:'ignored',processedAt:sql`now()`}).where(eq(s.notificationEventProcessing.eventId,newer));
