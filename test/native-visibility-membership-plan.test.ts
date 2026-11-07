@@ -179,7 +179,7 @@ it.skipIf(!requested)('attributes native membership plans while preserving canon
   const managerCtx:SessionContext={tenantId:b.tenantId,userId:managerUser,personId:personFor(ids[1]),roles:['manager']};
   const otherCompany=randomUUID(),otherPerson=randomUUID(),otherEmployment=randomUUID();
   await owner.db.insert(company).values({id:otherCompany,tenantId:b.tenantId,legalName:'Fictional excluded company'});
-  await owner.db.insert(person).values({id:otherPerson,tenantId:b.tenantId,fullName:'Fictional excluded employee'});
+  await owner.db.insert(person).values({id:otherPerson,tenantId:b.tenantId,fullName:'Fictional excluded employee',primaryEmail:otherPerson+'@example.invalid'});
   await owner.db.insert(employment).values({id:otherEmployment,personId:otherPerson,tenantId:b.tenantId,companyId:otherCompany,hiredOn:'2020-01-01'});
   const scopedUser=await createAppUser(b.tenantId,null,'hr_admin');
   await owner.db.update(roleAssignment).set({companyId:b.companyId}).where(eq(roleAssignment.appUserId,scopedUser));
