@@ -1,5 +1,5 @@
 /** Real child processes and native commits. No installed/package witness or transport. */
-import {readFileSync,writeFileSync,realpathSync} from 'node:fs';
+import {readFileSync,writeFileSync,realpathSync,openSync,closeSync} from 'node:fs';
 import {join} from 'node:path';
 import {randomUUID} from 'node:crypto';
 import {spawn,type ChildProcess} from 'node:child_process';
@@ -15,11 +15,11 @@ import {pgSqlState} from '../../../lib/db-error';
 import {adminCtx,createAppUser,owner,resetDb,seedBase,setModule,type Base} from '../../harness';
 import type {NotificationWorkerFixtureOwner} from './owner-fixture';
 type Message={kind:string;run?:string;processed?:number;created?:number;reason?:string};
-type Witness={child:ChildProcess;messages:Message[];closed:Promise<{code:number|null;signal:NodeJS.Signals|null}>;wait:(kind:string)=>Promise<Message>;output:()=>string};
+type Witness={child:ChildProcess;messages:Message[];closed:Promise<{code:number|null;signal:NodeJS.Signals|null}>;wait:(kind:string)=>Promise<Message>;output:()=>string;finishEvidence:()=>Promise<void>};
 export function registerNotificationProcessCases(fixtureOwner:NotificationWorkerFixtureOwner){
  describe.sequential('UNINSTALLED native notification process protocol',()=>{
   const sources=['lifecycle','projection','assessment','process'].map(name=>readFileSync('test/fixtures/notification-worker/'+name+'.sql','utf8'));
-  const children=new Set<Witness>();let b:Base,employment:string,recipientUser:string;
+  const children=new Set<Witness>();let b:Base,employment:string,recipientUser:string,processOrdinal=0;
   beforeAll(async()=>{await fixtureOwner.install(sources,3,notificationWorkerAssessmentContract);await captureTriggerCatalogue();},300000);
   beforeEach(async()=>{
    await owner.client`truncate notification_worker_private.run cascade`;
@@ -32,8 +32,8 @@ export function registerNotificationProcessCases(fixtureOwner:NotificationWorker
    await owner.client`update public.notification_event_processing set disposition='legacy-cursor',processed_at=now()`;
   });
   afterEach(async()=>{
-   for(const witness of children){if(witness.child.exitCode===null&&witness.child.signalCode===null)witness.child.kill('SIGKILL');await witness.closed;expect(witness.output()).not.toMatch(/postgres(?:ql)?:\/\/|fictional.*key|password=/i);}
-   children.clear();await fixtureOwner.finishCase();
+   const settled=await Promise.allSettled(Array.from(children,async witness=>{if(witness.child.exitCode===null&&witness.child.signalCode===null)witness.child.kill('SIGKILL');await witness.closed;await witness.finishEvidence();expect(witness.output()).not.toMatch(/postgres(?:ql)?:\/\/|fictional.*key|password=/i);}));
+   children.clear();await fixtureOwner.finishCase();for(const result of settled)if(result.status==='rejected')throw result.reason;
   });
   afterAll(async()=>{await owner.client`select notification_worker_private.assert_process_profile()`;await fixtureOwner.clearStage();});
   async function captureTriggerCatalogue(){
@@ -60,13 +60,58 @@ export function registerNotificationProcessCases(fixtureOwner:NotificationWorker
    expect(rows.some(row=>row.tgisinternal&&row.contype==='f')).toBe(true);
    expect(rows.find(row=>row.tgname==='notification_batch_must_settle')).toMatchObject({tgisinternal:false,tgdeferrable:true,tginitdeferred:true,tgenabled:'O',tgtype:21});
   }
+  function evidenceDirectory(){
+   const temp=realpathSync(process.env.RUNNER_TEMP!),directory=process.env.AIHR_FOCUSED_EVIDENCE_DIR??join(temp,'aihr-ci');
+   expect([join(temp,'aihr-focused'),join(temp,'aihr-ci')]).toContain(directory);expect(realpathSync(directory)).toBe(directory);return directory;
+  }
+  /** Owner-side diagnostics, never worker authority or a PASS receipt. IPC times
+   * are observed acknowledgements; ledger timestamps were recorded INSIDE the
+   * settlement transaction, not exact commit times. Snapshots may lag transitions. */
+  function processEvidence(){
+   const ordinal=++processOrdinal;expect(ordinal).toBeLessThanOrEqual(64);
+   const descriptor=openSync(join(evidenceDirectory(),'notification-process-progress-'+ordinal+'.jsonl'),'wx',0o600),started=performance.now();
+   let lines=0,bytes=0,run:string|undefined,queue=Promise.resolve(),failure:unknown,finished=false;
+   const elapsed=()=>Math.round((performance.now()-started)*1000)/1000;
+   function append(record:object){
+    try{
+     const line=JSON.stringify(record)+'\n';lines++;bytes+=Buffer.byteLength(line);
+     if(lines>128||bytes>256*1024)throw Error('Bounded process diagnostic exceeded');writeFileSync(descriptor,line);
+    }catch(error){failure??=error;}
+   }
+   append({kind:'UNINSTALLED_PROCESS_COST_DIAGNOSTIC_NOT_RELEASE',source:process.env.AIHR_CI_HEAD,run:process.env.GITHUB_RUN_ID,attempt:process.env.GITHUB_RUN_ATTEMPT,database:fixtureOwner.binding.database,scenario:expect.getState().currentTestName,ordinal,bounds:notificationProcessBounds});
+   function snapshot(reason:string){
+    const capturedRun=run,requestedElapsedMs=elapsed();if(!capturedRun)return;
+    queue=queue.then(async()=>{
+     const rows=await owner.client`select r.state,r.committed_batches,r.processed_events,r.created_notifications,j.outcome,
+      r.backend_started_at::text as recorded_start,clock_timestamp()::text as observed_at,
+      exists(select 1 from pg_stat_activity a where a.pid=r.backend_pid)as pid_present,
+      exists(select 1 from pg_stat_activity a where a.pid=r.backend_pid and a.backend_start=r.backend_started_at and a.usename='ai_hr_notification_worker')as exact_backend_present,
+      (select jsonb_build_object('state',a.state,'waitType',a.wait_event_type,'waitEvent',a.wait_event,
+       'phase',case when position('notification_worker.finish_batch' in a.query)>0 then 'finish_batch' when position('notification_worker.' in a.query)>0 then 'native_api' else 'other' end)
+       from pg_stat_activity a where a.pid=r.backend_pid and a.backend_start=r.backend_started_at)as activity,
+      (select count(*)::int from public.notification_event_processing p join notification_worker_private.run_scope scope on scope.run_id=r.run_id and scope.tenant_id=p.tenant_id and scope.consumer=p.consumer where p.disposition is null)as pending,
+      (select coalesce(jsonb_agg(jsonb_build_object('processed',c.processed,'created',c.created,'recordedAt',c.committed_at::text)order by c.committed_at,c.batch_id),'[]'::jsonb)from notification_worker_private.committed_batch c where c.run_id=r.run_id)as settled_batches,
+      (select count(*)::int from notification_worker_private.committed_event e join notification_worker_private.committed_batch c on c.batch_id=e.batch_id where c.run_id=r.run_id)as committed_receipts
+      from notification_worker_private.run r join public.job_run j on j.id=r.run_id where r.run_id=${capturedRun}::uuid`;
+     append({kind:'native_snapshot',reason,requestedElapsedMs,observedElapsedMs:elapsed(),rows:Array.from(rows)});
+    }).catch(error=>{failure??=error;append({kind:'native_snapshot_refused',reason,elapsedMs:elapsed()});});
+   }
+   return{
+    transition(message:Message){
+     if(message.run&&/^[0-9a-f-]{36}$/.test(message.run))run=message.run;
+     append({kind:'transition_observed',elapsedMs:elapsed(),transition:message.kind,processed:message.processed,created:message.created});snapshot(message.kind);
+    },
+    async finish(){if(finished)return;finished=true;snapshot('after_child_closed_before_cleanup');try{await queue;if(failure)throw failure;}finally{closeSync(descriptor);}},
+   };
+  }
   async function launch(options:{pauseAfterCommit?:boolean;moduleKill?:string}={}){
+   const evidence=processEvidence();
    const child=spawn(process.execPath,['--import','tsx','test/fixtures/notification-worker/process-child.ts'],{cwd:process.cwd(),env:{PATH:process.env.PATH,TZ:'UTC',LANG:'en_US.UTF-8',GITHUB_ACTIONS:'true',RUNNER_ENVIRONMENT:'github-hosted',GITHUB_REPOSITORY:'StradaverseHub/ai-hr',MODULE_KILL:options.moduleKill??'',SETTING_KILL:''},stdio:['ignore','pipe','pipe','ipc']});
    const messages:Message[]=[],waiters=new Set<()=>void>();let output='';
    child.stdout?.on('data',value=>{output+=String(value);if(output.length>16384)child.kill('SIGKILL');});child.stderr?.on('data',value=>{output+=String(value);if(output.length>16384)child.kill('SIGKILL');});
-   child.on('message',raw=>{if(raw&&typeof raw==='object'&&'kind'in raw&&typeof raw.kind==='string'){messages.push(raw as Message);for(const wake of waiters)wake();}});
+   child.on('message',raw=>{if(raw&&typeof raw==='object'&&'kind'in raw&&typeof raw.kind==='string'){const message=raw as Message;messages.push(message);evidence.transition(message);for(const wake of waiters)wake();}});
    const closed=new Promise<{code:number|null;signal:NodeJS.Signals|null}>((resolve,reject)=>{child.once('error',reject);child.once('close',(code,signal)=>{resolve({code,signal});for(const wake of waiters)wake();});});
-   const witness:Witness={child,messages,closed,output:()=>output,wait:kind=>new Promise((resolve,reject)=>{
+   const witness:Witness={child,messages,closed,output:()=>output,finishEvidence:()=>evidence.finish(),wait:kind=>new Promise((resolve,reject)=>{
     const timer=setTimeout(()=>{waiters.delete(check);reject(Error('Fixed process transition missing: '+kind));},5000);
     function check(){const message=messages.find(value=>value.kind===kind);if(message){clearTimeout(timer);waiters.delete(check);resolve(message);}else if(child.exitCode!==null||child.signalCode!==null){clearTimeout(timer);waiters.delete(check);reject(Error('Child exited before '+kind));}}
     waiters.add(check);check();
@@ -78,7 +123,9 @@ export function registerNotificationProcessCases(fixtureOwner:NotificationWorker
     child.on('message',check);closed.then(()=>finish(null),reject);check();
    });
    if(opened){
-    const record=await native(opened.run!);expect((await owner.client`select pid,backend_start,usename from pg_stat_activity where pid=${record.backend_pid}`)[0]).toEqual({pid:record.backend_pid,backend_start:record.backend_started_at,usename:'ai_hr_notification_worker'});
+    // The raw driver returns timestamptz text. Compare native values before any
+    // JavaScript serialization so backend-start microseconds remain authoritative.
+    expect((await owner.client`select a.pid=r.backend_pid as pid_matches,a.backend_start=r.backend_started_at as start_matches,a.usename from notification_worker_private.run r join pg_stat_activity a on a.pid=r.backend_pid where r.run_id=${opened.run!}::uuid`)[0]).toEqual({pid_matches:true,start_matches:true,usename:'ai_hr_notification_worker'});
     expect((await owner.client`select count(*)::integer as n from pg_stat_activity where usename='ai_hr_notification_worker'`)[0].n).toBe(1);
     child.send({kind:'continue'});
    }
@@ -91,10 +138,15 @@ export function registerNotificationProcessCases(fixtureOwner:NotificationWorker
    receipts:await owner.client`select event_id,event_sequence,consumer,disposition,processed_at from public.notification_event_processing where tenant_id=${b.tenantId}::uuid order by event_sequence,consumer`,
    cursor:await owner.client`select * from public.notification_cursor where tenant_id=${b.tenantId}::uuid`,
   };}
-  async function native(run:string){return(await owner.client`select r.run_id,r.backend_pid,r.backend_started_at,r.state,r.committed_batches,r.processed_events,r.created_notifications,j.job_key,j.outcome,j.result,j.error from notification_worker_private.run r join public.job_run j on j.id=r.run_id where r.run_id=${run}::uuid`)[0];}
+  async function native(run:string){return(await owner.client`select r.run_id,r.backend_pid,r.backend_started_at::text as backend_started_at,r.state,r.committed_batches,r.processed_events,r.created_notifications,j.job_key,j.outcome,j.result,j.error from notification_worker_private.run r join public.job_run j on j.id=r.run_id where r.run_id=${run}::uuid`)[0];}
   async function backendGone(run:string){
-   const record=await native(run);expect(record.backend_started_at).toBeInstanceOf(Date);
-   for(let tries=0;tries<200;tries++){if(!(await owner.client`select 1 from pg_stat_activity where pid=${record.backend_pid}` ).length)return;await new Promise(resolve=>setTimeout(resolve,10));}
+   for(let tries=0;tries<200;tries++){
+    const [identity]=await owner.client`select r.backend_pid>0 and r.backend_started_at is not null as recorded,
+     exists(select 1 from pg_stat_activity a where a.pid=r.backend_pid)as pid_present,
+     exists(select 1 from pg_stat_activity a where a.pid=r.backend_pid and a.backend_start=r.backend_started_at)as exact_present
+     from notification_worker_private.run r where r.run_id=${run}::uuid`;
+    if(!identity)throw Error('Owned native process identity missing');expect(identity.recorded).toBe(true);if(!identity.pid_present){expect(identity.exact_present).toBe(false);return;}await new Promise(resolve=>setTimeout(resolve,10));
+   }
    throw Error('Owned exact process backend remains present');
   }
   async function businessFacts(){
@@ -162,8 +214,15 @@ export function registerNotificationProcessCases(fixtureOwner:NotificationWorker
    expect(acl).toEqual({app:false,worker:false,public_exec:false});const worker=fixtureOwner.connect();for(const db of [worker,client])await expect(db`select notification_worker_private.recover_abandoned_run(${run}::uuid)`).rejects.toSatisfy((e:unknown)=>pgSqlState(e)==='42501');
    w.child.kill('SIGKILL');await w.closed;await backendGone(run);await expect(recover(randomUUID())).rejects.toSatisfy((e:unknown)=>pgSqlState(e)==='42501');
    await owner.client`update notification_worker_private.run set processed_events=processed_events+1 where run_id=${run}::uuid`;await expect(recover(run)).rejects.toSatisfy((e:unknown)=>pgSqlState(e)==='55000');await owner.client`update notification_worker_private.run set processed_events=processed_events-1 where run_id=${run}::uuid`;
-   const record=await native(run),[identity]=await owner.client`select pg_backend_pid()as pid,backend_start from pg_stat_activity where pid=pg_backend_pid()`;
-   await owner.client`update notification_worker_private.run set backend_pid=${identity.pid},backend_started_at=${new Date(identity.backend_start.getTime()-1000)} where run_id=${run}::uuid`;await expect(recover(run)).rejects.toSatisfy((e:unknown)=>pgSqlState(e)==='55000');await owner.client`update notification_worker_private.run set backend_pid=${record.backend_pid},backend_started_at=${record.backend_started_at} where run_id=${run}::uuid`;
+   const record=await native(run);
+   await owner.client`update notification_worker_private.run set backend_pid=pg_backend_pid(),backend_started_at=(select backend_start from pg_stat_activity where pid=pg_backend_pid())-interval '1 microsecond' where run_id=${run}::uuid`;
+   try{
+    expect((await owner.client`select a.pid=r.backend_pid as pid_matches,a.backend_start=r.backend_started_at as start_matches,a.backend_start-r.backend_started_at=interval '1 microsecond'as exact_delta from notification_worker_private.run r join pg_stat_activity a on a.pid=r.backend_pid where r.run_id=${run}::uuid`)[0]).toEqual({pid_matches:true,start_matches:false,exact_delta:true});
+    await expect(recover(run)).rejects.toSatisfy((e:unknown)=>pgSqlState(e)==='55000');
+   }finally{
+    await owner.client`update notification_worker_private.run set backend_pid=${record.backend_pid},backend_started_at=${record.backend_started_at}::text::timestamptz where run_id=${run}::uuid`;
+    expect((await native(run)).backend_started_at).toBe(record.backend_started_at);expect((await native(run)).backend_pid).toBe(record.backend_pid);
+   }
    await owner.client`alter function notification_worker_private.consumer(uuid)cost 101`;try{await expect(recover(run)).rejects.toSatisfy((e:unknown)=>pgSqlState(e)==='55000');}finally{await owner.client`alter function notification_worker_private.consumer(uuid)cost 100`;}
    expect(await state()).toEqual(before);await recover(run);expect(await state()).toEqual(before);
   });
