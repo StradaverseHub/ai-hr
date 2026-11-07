@@ -79,7 +79,7 @@ test('full-CI import is inert in ordinary local/noDB context without loading can
  const result=spawnSync(process.execPath,['--input-type=module','-e',`await import(${JSON.stringify(new URL('./run-unit.mjs',import.meta.url).href)}); console.log('inert controller import');`],{encoding:'utf8',env:{...process.env,CI:'false',GITHUB_ACTIONS:'false',DATABASE_URL:'postgres://nobody:nothing@127.0.0.1:1/no_database',TEST_DATABASE_URL:'postgres://nobody:nothing@127.0.0.1:1/no_database'}});
  assert.equal(result.status,0,result.stderr);assert.equal(result.stdout.trim(),'inert controller import');
  const source=readFileSync(script,'utf8');assert.doesNotMatch(source,/import\s+(?:[^;]+from\s+)?['"](?:postgres|pg|.*personnel-draft-discard-ci-role-fixture)['"]/);
- assert.match(source,/if\(process\.argv\[1\].*\)main\(\);/);
+ assert.match(source,/if\(process\.argv\[1\]&&resolve\(process\.argv\[1\]\)===fileURLToPath\(import\.meta\.url\)\)main\(\)\.catch\(/);
 });
 test('full-CI accepts actual first/final DB batches and emits only migration-child canonical hints',()=>{
  const c=roleContext(),binding=fullCiRoleBinding(c),env=fullCiRoleMigrationEnvironment(c.env,binding,c.layout.evidence);

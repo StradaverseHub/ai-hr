@@ -63,7 +63,7 @@ test('commissioning keeps the real test job/prerequisites and skips every releas
  const section=name=>source.split('  '+name+':\n')[1]?.split(/\n  [a-z][a-z-]*:\n/)[0];
  for(const name of ['typecheck','migrations','controller-tests','build','browser','verify'])assert.match(section(name),/if:.*!inputs\.commission_singleton_units/);
  assert.match(section('test'),/fail-fast: false/);assert.match(section('test'),/timeout-minutes: 120/);assert.match(section('test'),/run-unit\.mjs/);assert.match(section('test'),/commission-unit/);assert(!section('test').includes('AIHR_FOCUSED'));
- const summary=section('commission-summary');assert.match(summary,/always\(\)/);assert.match(summary,/needs: \[resolve, plan, test\]/);assert.match(summary,/commission-plan/);assert.match(summary,/commission-unit-\*/);assert(!/verify-shards|ci-receipt|gate-evidence/.test(summary));
+ const summary=section('commission-summary');assert.match(summary,/always\(\)/);assert.match(summary,/needs: \[resolve, plan, test, native-test\]/);assert.match(summary,/commission-plan/);assert.match(summary,/commission-unit-\*/);assert(!/verify-shards|ci-receipt|gate-evidence/.test(summary));
  assert.match(section('deployment-hold'),/test "\$PRODUCTION_ENABLED" = false/);
 });
 
@@ -76,10 +76,35 @@ test('the real matrix command retains the full input plan and writes a separate 
   const result=spawnSync(process.execPath,[fileURLToPath(new URL('./singleton-commissioning.mjs',import.meta.url)),'matrix',plan,selection],{encoding:'utf8',timeout:5000,env:{...process.env,GITHUB_EVENT_PATH:event,GITHUB_EVENT_NAME:'workflow_dispatch',GITHUB_RUN_ATTEMPT:'1',GITHUB_OUTPUT:output}});
   assert.equal(result.status,0,result.stderr);assert.equal(readFileSync(plan,'utf8'),bytes);
   assert.deepEqual(JSON.parse(readFileSync(selection,'utf8')),selectCommissioning(f.plan,[f.unit.id]));
-  assert.equal(readFileSync(output,'utf8'),'test_matrix='+JSON.stringify({unit:[f.unit.id]})+'\n');
+  assert.equal(readFileSync(output,'utf8'),'test_matrix='+JSON.stringify({unit:[f.unit.id]})+'\n'+'native_matrix={"unit":[]}\n'+'has_tests=true\n'+'has_native=false\n');
   writeFileSync(event,JSON.stringify({inputs:{commission_singleton_units:'[]'}}));
   const bad=spawnSync(process.execPath,[fileURLToPath(new URL('./singleton-commissioning.mjs',import.meta.url)),'matrix',plan,selection],{encoding:'utf8',timeout:5000,env:{...process.env,GITHUB_EVENT_PATH:event,GITHUB_EVENT_NAME:'workflow_dispatch',GITHUB_RUN_ATTEMPT:'1',GITHUB_OUTPUT:output}});
   assert.notEqual(bad.status,0);assert.equal(readFileSync(plan,'utf8'),bytes);
+ }finally{rmSync(dir,{recursive:true,force:true});}
+});
+
+test('actual matrix subprocess keeps hybrid, ordinary and mixed selections separate without dropping the frozen plan',()=>{
+ const ordinary=fixture(),native=fixture('test/runtime-next-admission-native.test.ts');
+ const units=[ordinary.unit,native.unit],body={...ordinary.plan,suite:units.flatMap(u=>u.files),units,
+  singletonSources:{...ordinary.plan.singletonSources,...native.plan.singletonSources}};
+ delete body.fingerprint;const full={...body,fingerprint:protocolHash(body)};
+ const dir=mkdtempSync(join(tmpdir(),'aihr-hybrid-matrix-'));
+ try{
+  const event=join(dir,'event.json'),plan=join(dir,'ci-plan.json'),bytes=JSON.stringify(full);writeFileSync(plan,bytes);
+  for(const [label,ids,ordinaryIds,nativeIds]of [
+   ['ordinary',[ordinary.unit.id],[ordinary.unit.id],[]],
+   ['native',[native.unit.id],[],[native.unit.id]],
+   ['mixed',units.map(u=>u.id),[ordinary.unit.id],[native.unit.id]],
+   ['complete',null,[ordinary.unit.id],[native.unit.id]],
+  ]){
+   const selection=join(dir,label+'-selection.json'),output=join(dir,label+'-output');writeFileSync(output,'');
+   writeFileSync(event,JSON.stringify({inputs:{commission_singleton_units:ids?JSON.stringify(ids):''}}));
+   const child=spawnSync(process.execPath,[fileURLToPath(new URL('./singleton-commissioning.mjs',import.meta.url)),'matrix',plan,selection],
+    {encoding:'utf8',timeout:5000,env:{...process.env,GITHUB_EVENT_PATH:event,GITHUB_EVENT_NAME:'workflow_dispatch',GITHUB_RUN_ATTEMPT:'1',GITHUB_OUTPUT:output}});
+   assert.equal(child.status,0,child.stderr);assert.equal(readFileSync(plan,'utf8'),bytes);
+   assert.equal(readFileSync(output,'utf8'),'test_matrix='+JSON.stringify({unit:ordinaryIds})+'\n'+'native_matrix='+JSON.stringify({unit:nativeIds})+'\n'+'has_tests='+String(ordinaryIds.length>0)+'\n'+'has_native='+String(nativeIds.length>0)+'\n');
+   if(ids)assert.deepEqual(JSON.parse(readFileSync(selection,'utf8')),selectCommissioning(full,ids));
+  }
  }finally{rmSync(dir,{recursive:true,force:true});}
 });
 
