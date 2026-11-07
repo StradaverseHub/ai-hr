@@ -2,6 +2,7 @@ import React from 'react';
 import {afterEach,beforeEach,expect,it,vi} from 'vitest';
 import {fireEvent,render,screen,waitFor} from '@testing-library/react';
 import {NextIntlClientProvider} from 'next-intl';
+import {renderToStaticMarkup} from 'react-dom/server';
 import en from '../messages/en.json';
 import {RosterEmployeePicker} from '../components/roster-employee-picker';
 import {RosterCopyTargets} from '../components/roster-copy-targets';
@@ -25,7 +26,7 @@ it('keeps individual selections across native pages and submits all 50k on deman
  const selection=()=>JSON.parse((view.container.querySelector('input[name="selectionIds"]') as HTMLInputElement).value);
  expect(selection()).toEqual([id(0),id(25)]);expect(screen.getAllByRole('checkbox')).toHaveLength(25);
  fireEvent.click(screen.getByRole('button',{name:'Select all 50000 matching employees'}));await waitFor(()=>expect(selection()).toHaveLength(50000));
- expect(screen.getByText('50000 selected')).toBeVisible();expect(screen.getAllByRole('checkbox')).toHaveLength(25);expect(view.container.querySelectorAll('input[type="hidden"]')).toHaveLength(1);
+ expect(screen.getByText('50000 selected')).toBeVisible();expect(screen.getAllByRole('checkbox')).toHaveLength(25);expect(view.container.querySelectorAll('input[type="hidden"]')).toHaveLength(2);
  expect(selection()).toContain(id(49999));
 });
 it('prepares the complete Copy set, shows its count, and keeps that exact set until confirmed',async()=>{
@@ -52,4 +53,12 @@ it('preserves selected IDs when the screen filters change',async()=>{
  expect(screen.queryAllByRole('checkbox')).toHaveLength(0);
  expect(JSON.parse((view.container.querySelector('input[name="selectionIds"]') as HTMLInputElement).value)).toEqual([id(0)]);
  fireEvent.click(screen.getByRole('button',{name:'Query'}));await screen.findByText('Roster employee 0 (R0)');expect(screen.getAllByRole('checkbox')[0]).toBeChecked();
+});
+
+it('includes 25 native choices and a working browse submit in the initial HTML before hydration',()=>{
+ const initial={rows:rows(0),total:50000,offset:0,limit:25,businessUnitOptions:[],departmentOptions:[]};
+ const markup=renderToStaticMarkup(wrap(<form action="/roster/prepare" method="post"><RosterEmployeePicker companyId={id(90000)} populationQuery="" initial={initial}/></form>));
+ const host=document.createElement('div');host.innerHTML=markup;
+ expect(host.querySelectorAll('input[type="checkbox"][name="employmentIds"]')).toHaveLength(25);expect(host.querySelector('button[type="submit"][name="stage"][value="browse"]')).not.toBeNull();
+ expect(host.querySelector('form')!.getAttribute('action')).toBe('/roster/prepare');expect(fetcher).not.toHaveBeenCalled();
 });

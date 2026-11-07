@@ -4,9 +4,7 @@ import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { getSession } from '@/lib/session';
 import { isAdmin } from '@/lib/authz';
-import { parseRosterSelection } from '@/lib/roster-selection';
-import { rosterPopulationIds } from '@/core/roster-presentation';
-import { rosterPopulationScope } from './population-scope';
+import { rosterCommandTargets } from './command-targets';
 import {
   assertRosterAdmin,
   assertRosterDatesWritable,
@@ -207,37 +205,19 @@ export async function saveRosterRowAction(formData: FormData) {
  *  an admin, but a form action is a POST endpoint like any other; without this line a supervisor's POST
  *  reached the generator, was refused by RLS, and the raw `Failed query: insert into "roster_assignment"
  *  … params: …` came back in `?error=` and was rendered in ErrorBanner. */
-/** Revalidate the exact reviewed identities; later arrivals can never enter this set.
- * The canonical command still owns all write authority, dependencies and schedule rules. */
-async function preparedSelection(s: Awaited<ReturnType<typeof getSession>>, formData: FormData, companyId: string) {
-  const ids = parseRosterSelection(formData.get('selectionIds'));
-  if (!companyId) throw new Error('Choose a company before preparing the roster selection.');
-  const query = new URLSearchParams(String(formData.get('populationQuery') ?? ''));
-  // Search/organisation controls are navigation filters, while individual selections persist across them.
-  query.delete('q'); query.delete('bu'); query.delete('dept');
-  const scope = await rosterPopulationScope(s, query, companyId);
-  const teamIds = scope.employmentIds ? new Set(scope.employmentIds) : null;
-  const requestedIds = teamIds ? ids.filter(id => teamIds.has(id)) : ids;
-  const permitted = await rosterPopulationIds(s, { ...scope, employmentIds: requestedIds });
-  const allowed = new Set(permitted);
-  if (allowed.size !== ids.length || ids.some(id => !allowed.has(id))) throw new Error('The roster selection is no longer available in the current scope. Prepare it again.');
-  return ids;
-}
-
 export async function generateRosterAction(formData: FormData) {
   const s = await getSession();
   const companyId = String(formData.get('companyId') ?? '');
   const from = String(formData.get('from') ?? '');
-  const departmentId = String(formData.get('departmentId') ?? '').trim();
-  let employmentIds = formData.getAll('employmentIds').map(String).filter(Boolean);
+
   // Outside the try on purpose: redirect() signals by throwing, and a catch here would swallow it.
   if (!isAdmin(s)) redirect(`/roster?companyId=${companyId}&error=${encodeURIComponent(new RosterAdminRequiredError().message)}`);
   let summary: { employments: number; workingRows: number; restRows: number };
   try {
-    if (!departmentId && formData.has('selectionIds')) employmentIds = await preparedSelection(s, formData, companyId);
+    const employmentIds = await rosterCommandTargets(s, formData, true);
     summary = await generateRosterFromTemplate(s, {
       shiftId: String(formData.get('shiftId') ?? ''),
-      ...(departmentId ? { departmentId } : { employmentIds }),
+      employmentIds,
       from,
       to: String(formData.get('to') ?? ''),
     });
@@ -260,16 +240,16 @@ export async function copyRosterAction(formData: FormData) {
   const s = await getSession();
   const companyId = String(formData.get('companyId') ?? '');
   const targetFrom = String(formData.get('targetFrom') ?? '');
-  let employmentIds = formData.getAll('employmentIds').map(String).filter(Boolean);
+
   if (!isAdmin(s)) redirect(`/roster?companyId=${companyId}&error=${encodeURIComponent(new RosterAdminRequiredError().message)}`);
   let summary: { copied: number; sourceRows: number };
   try {
-    if (formData.has('selectionIds') || formData.get('selectionRequired') === '1') employmentIds = await preparedSelection(s, formData, companyId);
+    const employmentIds = await rosterCommandTargets(s, formData);
     summary = await copyRoster(s, {
       sourceFrom: String(formData.get('sourceFrom') ?? ''),
       sourceTo: String(formData.get('sourceTo') ?? ''),
       targetFrom,
-      ...(employmentIds.length > 0 ? { employmentIds } : {}),
+      employmentIds,
     });
   } catch (e) {
     redirect(`/roster?companyId=${companyId}&error=${encodeURIComponent(readableError(e))}`);

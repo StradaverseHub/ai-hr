@@ -2352,6 +2352,20 @@ const DAY_MS = 86_400_000;
 // character-for-character copy of lib/roster-month's exported one, and this file now imports that module
 // anyway. Two identical predicates are two things to change when the shape of a date changes.
 
+/** Exact existing department population owner, shared with explicit preparation.
+ * listEmployeesPage owns its effective-dated assignment predicate and active(NULL) status.
+ * A tenant-global template has no company filter; the transport must independently narrow its
+ * posted company/team before confirming an explicit subset. This read grants no write authority. */
+export async function rosterDepartmentPopulationIdsTx(
+  ctx: SessionContext, tx: Tx, p: { departmentId: string; templateCompanyId: string | null },
+): Promise<string[]> {
+  const page = await listEmployeesPage(ctx, { departmentId: p.departmentId,
+    companyIds: p.templateCompanyId ? [p.templateCompanyId] : undefined,
+    status: 'active', limit: 100_000, offset: 0 }, undefined, tx);
+  if (page.total !== page.rows.length) throw new LeaveDependencyUnavailable();
+  return page.rows.map(row => row.employmentId);
+}
+
 /**
  * R7 Multi-Shift Phase 2 — generate a roster window from a shift's weekly pattern. A THIN date-splitter
  * over the EXISTING bulk primitives (assignShiftBulk / setRestDayBulk, both idempotent upserts on
@@ -2430,29 +2444,16 @@ export async function generateRosterFromTemplate(
 
   let employmentIds: string[];
   if (p.departmentId) {
-    // Department scope — the reuse path that actually exists: listEmployeesPage's current-assignment
-    // (validTo IS NULL AND supersededAt IS NULL) department filter, mapped to employmentIds.
-    const page = await listEmployeesPage(ctx, {
-      departmentId: p.departmentId,
-      // R33 f21d6eee — a tenant-global shift (company_id NULL) has no company to narrow by; the department
-      // already belongs to one company, so scope by department alone. Legacy company-stamped shifts still narrow.
-      companyIds: tpl.companyId ? [tpl.companyId] : undefined,
-      status: 'active',
-      limit: 100_000,
-      offset: 0,
-    },undefined,tx);
-    if(page.total!==page.rows.length)throw new LeaveDependencyUnavailable();
-    employmentIds = page.rows.map((r) => r.employmentId);
+    // The existing owner supplies the effective-dated assignment and active(NULL) department population.
+    employmentIds = await rosterDepartmentPopulationIdsTx(ctx, tx, { departmentId: p.departmentId, templateCompanyId: tpl.companyId });
   } else {
     employmentIds = [...new Set(p.employmentIds ?? [])];
   }
   if (employmentIds.length === 0) throw new Error('No employees in scope — pick employees or a department with members');
   await lockLeaveDependenciesTx(tx,ctx.tenantId,employmentIds);
   if(p.departmentId){
-    const fresh=await listEmployeesPage(ctx,{departmentId:p.departmentId,
-      companyIds:tpl.companyId?[tpl.companyId]:undefined,status:'active',limit:100_000,offset:0},undefined,tx);
-    if(fresh.total!==fresh.rows.length)throw new LeaveDependencyUnavailable();
-    const nominated=[...new Set(employmentIds)].sort(),current=[...new Set(fresh.rows.map(row=>row.employmentId))].sort();
+    const fresh = await rosterDepartmentPopulationIdsTx(ctx, tx, { departmentId: p.departmentId, templateCompanyId: tpl.companyId });
+    const nominated=[...new Set(employmentIds)].sort(),current=[...new Set(fresh)].sort();
     if(nominated.length!==current.length||nominated.some((id,index)=>id!==current[index]))throw new LeaveDependencyUnavailable();
   }
 
@@ -2875,10 +2876,9 @@ export async function hydrateRosterWindow(
   // whole company's rows across just to throw them away, and an empty result must not fall through to
   // rosterForRange's "no employmentIds ⇒ everyone" branch.
   const visible = employees.map((e) => e.employmentId);
-  const [roster, usualRows] = await Promise.all([
-    visible.length > 0 ? rosterForRange(ctx, { employmentIds: visible, from, to }, existingTx) : Promise.resolve([]),
-    usualShiftsFor(ctx, visible, existingTx),
-  ]);
+  // A borrowed transaction must never finish while a sibling multi-query reader is still running.
+  const roster = visible.length > 0 ? await rosterForRange(ctx, { employmentIds: visible, from, to }, existingTx) : [];
+  const usualRows = await usualShiftsFor(ctx, visible, existingTx);
 
   const cells: Record<string, AssignedCell> = {};
   for (const r of roster) {
@@ -2899,10 +2899,8 @@ export async function hydrateRosterWindow(
 
   const dayContext: RosterMonthView['dayContext'] = {};
   const readDayContext = async (tx: Tx) => {
-    const [calendar, leave] = await Promise.all([
-      holidayCalendarFactsByEmployment(tx, { employmentIds: visible, startDate: from, endDate: to }),
-      approvedLeavePresenceByEmploymentTx(tx, visible, from, to),
-    ]);
+    const calendar = await holidayCalendarFactsByEmployment(tx, { employmentIds: visible, startDate: from, endDate: to });
+    const leave = await approvedLeavePresenceByEmploymentTx(tx, visible, from, to);
     for (const id of visible) for (const date of dates) {
       const facts: RosterMonthView['dayContext'][string] = {};
       if (calendar.holidays.get(id)?.has(date)) facts.publicHoliday = true;

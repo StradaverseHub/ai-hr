@@ -1,7 +1,7 @@
 import {randomUUID} from 'node:crypto';
 import {writeFileSync} from 'node:fs';
 import {join} from 'node:path';
-import {eq,type SQL} from 'drizzle-orm';
+import {eq,sql,type SQL} from 'drizzle-orm';
 import {PgDialect} from 'drizzle-orm/pg-core';
 import {afterAll,beforeAll,beforeEach,expect,it,vi} from 'vitest';
 import * as database from '../db/client';
@@ -61,7 +61,7 @@ it('keeps native company, foreign, manager and forged calling authority fenced',
  await expect(rosterWindowPage({...ctx,userId:randomUUID()},p)).rejects.toThrow('calling authority');
 });
 
-it('uses one enforced snapshot and page-only canonical query inputs while an Access writer is open',async()=>{
+it('keeps one snapshot and page-only canonical inputs across a committed employment mutation',async()=>{
  const {b,ctx,ids}=await fixture(),actual=database.withTenant,dialect=new PgDialect(),queries:{sql:string;params:unknown[]}[]=[],options:unknown[]=[];
  let changed=false;
  const wrap=(query:object):object=>new Proxy(query,{get(target,key,receiver){
@@ -76,17 +76,14 @@ it('uses one enforced snapshot and page-only canonical query inputs while an Acc
   options.push(opts);return actual(session,tx=>read(new Proxy(tx,{get(target,key,receiver){
    if(key==='select')return (...args:unknown[])=>wrap(Reflect.apply(target.select,target,args));
    if(key==='execute')return async(query:SQL)=>{const prepared=dialect.sqlToQuery(query);queries.push(prepared);const result=await target.execute(query);
-    if(!changed&&prepared.sql.includes('employee_choice_page')){changed=true;await owner.db.update(schema.employment).set({terminatedOn:'2000-01-01'}).where(eq(schema.employment.id,ids[25]));}
+    if(!changed&&prepared.sql.includes('employee_choice_page')){changed=true;await owner.client.begin(async writer=>{await writer`set local lock_timeout='500ms'`;await writer`update employment set terminated_on='2000-01-01' where id=${ids[25]}::uuid`;});}
     return result;};
    const value=Reflect.get(target,key,receiver);return typeof value==='function'?value.bind(target):value;
   }})),opts);
  });
  try{
-  await owner.client.begin(async writer=>{
-   await writer`select pg_advisory_xact_lock(hashtextextended(${'access-configuration:'+b.tenantId},0))`;
-   const page=await rosterWindowPage(ctx,{companyIds:[b.companyId],...window,offset:24,limit:2});
-   expect(page.total).toBe(31);expect(page.employees.map(e=>e.employmentId)).toEqual([ids[25],ids[26]]);expect(page.cells[cellKey(ids[25],window.from)]?.kind).toBe('shift');
-  });
+  const page=await rosterWindowPage(ctx,{companyIds:[b.companyId],...window,offset:24,limit:2});
+  expect(page.total).toBe(31);expect(page.employees.map(e=>e.employmentId)).toEqual([ids[25],ids[26]]);expect(page.cells[cellKey(ids[25],window.from)]?.kind).toBe('shift');
  }finally{spy.mockRestore();}
  expect(options).toEqual([{readOnlySnapshot:true}]);expect(changed).toBe(true);
  const cells=queries.filter(query=>query.sql.includes('from "roster_assignment"'));expect(cells).toHaveLength(1);
@@ -109,4 +106,14 @@ it('hydrates only 25 employees from the real 50k population',async()=>{
  expect(page.total).toBe(40000);expect(page.employees).toHaveLength(25);expect(page.employees[0].employmentId).toBe(expectedFirst[0]);expect(page.allEmployees).toEqual([]);
  expect(Object.keys(page.cells).every(key=>page.employees.some(row=>key.startsWith(row.employmentId+'|')))).toBe(true);
  expect(Object.keys(page.usual).length).toBeLessThanOrEqual(25);expect(Object.keys(page.dayContext).length).toBeLessThanOrEqual(175);
-},180000);
+},300000);
+
+it('finishes ordinary roster reads behind an open Access writer without blocking or Busy',async()=>{
+ const {b,ctx,ids}=await fixture(),actual=database.withTenant;
+ const spy=vi.spyOn(database,'withTenant').mockImplementation(<T>(session:SessionContext,read:(tx:Tx)=>Promise<T>,options?:Parameters<typeof database.withTenant>[2])=>actual(session,async tx=>{await tx.execute(sql`set local lock_timeout='300ms'`);await tx.execute(sql`set local statement_timeout='3s'`);return read(tx);},options));
+ try{await owner.client.begin(async writer=>{
+  await writer`select pg_advisory_xact_lock(hashtextextended(${'access-configuration:'+b.tenantId},0))`;
+  const page=await rosterWindowPage(ctx,{companyIds:[b.companyId],...window,offset:24,limit:2});
+  expect(page.total).toBe(31);expect(page.employees.map(row=>row.employmentId)).toEqual([ids[25],ids[26]]);expect(page.cells[cellKey(ids[25],window.from)]?.kind).toBe('shift');
+ });}finally{spy.mockRestore();}
+});

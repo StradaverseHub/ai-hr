@@ -9,10 +9,8 @@ import { rosterWindowPage } from '@/core/roster-presentation';
 import { Pager } from '@/components/pager';
 import { parsePageQuery, pageState } from '@/lib/pagination';
 import { RosterEmployeePicker } from '@/components/roster-employee-picker';
-import { RosterCopyTargets } from '@/components/roster-copy-targets';
 import { Card, ErrorBanner, PageHeader, SectionHeader, btnPrimary, inputCls, pageWideCls } from '@/components/ui';
 import { RosterGrid, RosterTemplateButton } from '@/components/roster-grid';
-import { copyRosterAction, generateRosterAction } from './actions';
 import {
   ROSTER_MAX_RANGE_DAYS,
   addDaysIso,
@@ -100,6 +98,7 @@ export default async function RosterPage({
   const companyIds = companyId ? [companyId] : companies.map((c) => c.id);
   const todayIso = todayInKualaLumpur();
   const admin = isAdmin(s);
+  const canEdit = admin && (!teamScope || teamScope.canEditRoster);
 
   /**
    * a57f0584 rev 2 — MONTH, WEEK OR A CUSTOM RANGE, resolved to ONE pair of dates before anything reads.
@@ -505,17 +504,18 @@ export default async function RosterPage({
         *
         * The READ is unaffected: the whole workforce's month stays on screen behind this.
         */}
-      {admin && !companyId && (
+      {canEdit && !companyId && (
         <Card className="p-4 text-sm text-muted-foreground">{t('pickCompanyToEdit')}</Card>
       )}
-      {admin && companyId && (
+      {canEdit && companyId && (
         <Card>
           <SectionHeader title={t('generate')} />
           <div className="space-y-3 px-4 py-3">
             {view.shifts.length === 0 ? (
               <p className="text-sm text-muted-foreground">{t('createShiftFirst')}</p>
             ) : (
-              <form action={generateRosterAction} className="flex flex-wrap items-end gap-2">
+              <form action="/roster/prepare" method="post" encType="application/x-www-form-urlencoded" className="flex flex-wrap items-end gap-2">
+                <input type="hidden" name="command" value="generate" />
                 <input type="hidden" name="companyId" value={companyId} />
                 <input type="hidden" name="populationQuery" value={qs({page:undefined,size:undefined})} />
                 <label className="flex flex-col gap-1 text-xs text-muted-foreground">
@@ -543,7 +543,7 @@ export default async function RosterPage({
                 </label>
                 <div className="flex flex-col gap-1 text-xs text-muted-foreground">
                   <span>{t('employee')}</span>
-                  <RosterEmployeePicker key={`${companyId}:${sp.myTeam??''}`} companyId={companyId} populationQuery={qs({page:undefined,size:undefined})} />
+                  <RosterEmployeePicker key={`${companyId}:${sp.myTeam??''}`} companyId={companyId} populationQuery={qs({page:undefined,size:undefined})} initial={{rows:view.employees.slice(0,25),total:view.total,offset:pageQuery.offset,limit:25,businessUnitOptions:buOptions,departmentOptions:deptOptions}} />
                 </div>
                 <label className="flex flex-col gap-1 text-xs text-muted-foreground">
                   {t('dateRange')}
@@ -553,7 +553,7 @@ export default async function RosterPage({
                     <input type="date" name="to" required defaultValue={view.to} className={inputCls} />
                   </span>
                 </label>
-                <button className={btnPrimary}>{t('generate')}</button>
+                <button name="stage" value="prepare" className={btnPrimary}>{t('generate')}</button>
               </form>
             )}
             <p className="text-xs text-muted-foreground">{t('generateHint')}</p>
@@ -566,15 +566,16 @@ export default async function RosterPage({
           Scoped to this company's active employees (posted as hidden employmentIds). Defaults now: source =
           the PREVIOUS month, target = the month on screen. Administrators only, with Generate and for
           the same reason. */}
-      {admin && companyId && (
+      {canEdit && companyId && (
         <Card>
           <SectionHeader title={t('copyTitle')} />
           <div className="space-y-3 px-4 py-3">
             {view.total === 0 ? (
               <p className="text-sm text-muted-foreground">{t('noEmployees')}</p>
             ) : (
-              <form action={copyRosterAction} className="flex flex-wrap items-end gap-2">
-                <input type="hidden" name="selectionRequired" value="1" />
+              <form action="/roster/prepare" method="post" encType="application/x-www-form-urlencoded" className="flex flex-wrap items-end gap-2">
+                <input type="hidden" name="command" value="copy" />
+                <input type="hidden" name="selectionMode" value="matching" />
                 <input type="hidden" name="companyId" value={companyId} />
                 <input type="hidden" name="populationQuery" value={qs({page:undefined,size:undefined})} />
                 <label className="flex flex-col gap-1 text-xs text-muted-foreground">
@@ -595,7 +596,7 @@ export default async function RosterPage({
                   {t('copyTargetStart')}
                   <input type="date" name="targetFrom" required defaultValue={view.from} className={inputCls} />
                 </label>
-                <RosterCopyTargets key={qs({page:undefined,size:undefined})} populationQuery={qs({page:undefined,size:undefined})} />
+                <button name="stage" value="prepare" className={btnPrimary}>{t('copyButton')}</button>
               </form>
             )}
             <p className="text-xs text-muted-foreground">{t('copyHint')}</p>

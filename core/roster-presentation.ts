@@ -2,14 +2,15 @@
  * Whole exports, templates and domain commands continue through their existing owners. */
 import {and,eq,inArray,isNull,sql} from 'drizzle-orm';
 import {withTenant,type SessionContext,type Tx} from '../db/client';
-import {assignment,department,businessUnit,position} from '../db/schema';
+import {assignment,department,businessUnit,position,shift} from '../db/schema';
 import {readEmployeeChoicesTx,readEmployeeChoiceIdsTx} from './employee-choice';
 import {assertAiPresentationPrincipalTx} from './ai-principal';
 import {boundPersonnelStatementTx} from './personnel-read-bounds';
-import {assertRosterWindow,hydrateRosterWindow,listShiftsForTenant,type RosterMonthEmployee} from './roster';
+import {assertRosterWindow,hydrateRosterWindow,listShiftsForTenant,rosterDepartmentPopulationIdsTx,type RosterMonthEmployee} from './roster';
 import {datesBetween} from '../lib/roster-month';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {organisationFilterChoices} from '../lib/organisation-choice-label';
+import {parseRosterSelection,RosterSelectionError} from '../lib/roster-selection';
 import {ALL_ROW_CEILING} from '../lib/pagination';
 
 export type RosterPopulation = {
@@ -73,5 +74,42 @@ export function rosterPopulationIds(ctx:SessionContext,p:RosterPopulation,signal
   await assertAiPresentationPrincipalTx(tx,ctx);await boundPersonnelStatementTx(tx);
   return readEmployeeChoiceIdsTx(tx,ctx,{companyIds:p.companyIds,query:p.q,businessUnitId:p.businessUnitId,departmentId:p.departmentId,
    terminatedAfter:todayInKualaLumpur(),...(p.employmentIds?{employmentIds:p.employmentIds.filter(id=>uuid.test(id))}:{})},signal);
+ },{readOnlySnapshot:true,readSignal:signal});
+}
+
+/** Read the exact canonical department population; no approximate roster-choice predicate. */
+export function rosterDepartmentIds(ctx:SessionContext,p:{departmentId:string;shiftId:string}){
+ ctx=captureSession(ctx);p={...p};
+ if(!uuid.test(p.departmentId)||!uuid.test(p.shiftId))throw new Error('Invalid roster department or shift');
+ return withTenant(ctx,async tx=>{
+  await assertAiPresentationPrincipalTx(tx,ctx);await boundPersonnelStatementTx(tx);
+  const [template]=await tx.select({companyId:shift.companyId}).from(shift).where(eq(shift.id,p.shiftId)).limit(1);
+  if(!template)throw new RosterSelectionError('Shift not found (or not visible)');
+  return rosterDepartmentPopulationIdsTx(ctx,tx,{departmentId:p.departmentId,templateCompanyId:template.companyId});
+ },{readOnlySnapshot:true});
+}
+
+/** One admission snapshot owns complete review IDs and bounded display names. The complete cursor
+ * has no page/facet recalls; only its first 25 identities receive display projection. */
+export function rosterPopulationReview(ctx:SessionContext,p:RosterPopulation&{selectedIds?:string[];department?:{departmentId:string;shiftId:string}},signal?:AbortSignal){
+ ctx=captureSession(ctx);p={...capturePopulation(p),selectedIds:p.selectedIds?.slice(),department:p.department?{...p.department}:undefined};
+ return withTenant(ctx,async tx=>{
+  await assertAiPresentationPrincipalTx(tx,ctx);await boundPersonnelStatementTx(tx);
+  let requested=p.selectedIds;
+  if(p.department){
+   const [template]=await tx.select({companyId:shift.companyId}).from(shift).where(eq(shift.id,p.department.shiftId)).limit(1);
+   if(!template)throw new RosterSelectionError('Shift not found (or not visible)');
+   requested=await rosterDepartmentPopulationIdsTx(ctx,tx,{departmentId:p.department.departmentId,templateCompanyId:template.companyId});
+  }
+  const baseIds=p.employmentIds?new Set(p.employmentIds):null;
+  const candidates=requested?(baseIds?requested.filter(id=>baseIds.has(id)):requested):p.employmentIds;
+  const ids=await readEmployeeChoiceIdsTx(tx,ctx,{companyIds:p.companyIds,
+   ...(!requested?{query:p.q,businessUnitId:p.businessUnitId,departmentId:p.departmentId}:{}),
+   terminatedAfter:todayInKualaLumpur(),...(candidates?{employmentIds:candidates}:{})},signal);
+  const actual=new Set(ids);
+  if(p.selectedIds&&(ids.length!==p.selectedIds.length||p.selectedIds.some(id=>!actual.has(id))))throw new RosterSelectionError('The selected employees are no longer available. Prepare the selection again.');
+  parseRosterSelection(JSON.stringify(ids));
+  const page=await rosterEmployeePageTx(tx,ctx,{companyIds:p.companyIds,employmentIds:ids.slice(0,25),offset:0,limit:25});
+  return {ids,page:{...page,total:ids.length}};
  },{readOnlySnapshot:true,readSignal:signal});
 }

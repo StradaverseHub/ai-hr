@@ -1,5 +1,11 @@
 {
   "roster": {
+    "prepareTitle": "Xem lại thay đổi lịch làm việc",
+    "prepareHint": "Kiểm tra ca, ngày và số nhân viên, sau đó xác nhận.",
+    "browseEmployees": "Duyệt tất cả nhân viên",
+    "reviewTargets": "Xem lại nhân viên đã chọn",
+    "confirmRoster": "Xác nhận thay đổi lịch",
+    "prepareFailed": "Không thể chuẩn bị thay đổi lịch. Kiểm tra lựa chọn rồi thử lại.",
     "pickerFailed": "Không thể tải danh sách nhân viên. Vui lòng thử lại.",
     "pickerSelectMatching": "Chọn tất cả {n} nhân viên phù hợp",
     "copyTargetsReview": "Sẽ sao chép lịch cho {n} nhân viên được chọn lúc này. Kiểm tra ngày, rồi nhấn Sao chép để xác nhận.",

@@ -1,5 +1,11 @@
 {
   "roster": {
+    "prepareTitle": "Review roster changes",
+    "prepareHint": "Check the shift, dates and employee count, then confirm.",
+    "browseEmployees": "Browse all employees",
+    "reviewTargets": "Review selected employees",
+    "confirmRoster": "Confirm roster changes",
+    "prepareFailed": "The roster change could not be prepared. Check the selection and try again.",
     "pickerFailed": "Could not load employees. Please try again.",
     "pickerSelectMatching": "Select all {n} matching employees",
     "copyTargetsReview": "Copy will use the {n} employees selected now. Review the dates, then click Copy to confirm.",

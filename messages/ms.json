@@ -1,5 +1,11 @@
 {
   "roster": {
+    "prepareTitle": "Semak perubahan jadual kerja",
+    "prepareHint": "Semak syif, tarikh dan bilangan pekerja, kemudian sahkan.",
+    "browseEmployees": "Lihat semua pekerja",
+    "reviewTargets": "Semak pekerja yang dipilih",
+    "confirmRoster": "Sahkan perubahan jadual kerja",
+    "prepareFailed": "Perubahan jadual kerja tidak dapat disediakan. Semak pilihan dan cuba lagi.",
     "pickerFailed": "Tidak dapat memuatkan pekerja. Sila cuba lagi.",
     "pickerSelectMatching": "Pilih semua {n} pekerja yang sepadan",
     "copyTargetsReview": "Salinan akan menggunakan {n} pekerja yang dipilih sekarang. Semak tarikh, kemudian klik Salin untuk mengesahkan.",

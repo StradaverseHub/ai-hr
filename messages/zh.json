@@ -1,5 +1,11 @@
 {
   "roster": {
+    "prepareTitle": "检查排班更改",
+    "prepareHint": "请检查班次、日期和员工人数，然后确认。",
+    "browseEmployees": "浏览所有员工",
+    "reviewTargets": "检查所选员工",
+    "confirmRoster": "确认排班更改",
+    "prepareFailed": "无法准备排班更改。请检查所选内容后重试。",
     "pickerFailed": "无法加载员工，请重试。",
     "pickerSelectMatching": "选择全部 {n} 名匹配员工",
     "copyTargetsReview": "将为当前选中的 {n} 名员工复制排班。请检查日期，然后点击复制以确认。",

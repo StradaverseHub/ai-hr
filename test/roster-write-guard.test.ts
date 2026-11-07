@@ -58,6 +58,7 @@ import {
 /** The session every action resolves. Swapped per test between an administrator and a supervisor. */
 let SESSION: SessionContext;
 vi.mock('@/lib/session', () => ({ getSession: async () => SESSION }));
+vi.mock('next/headers',()=>({cookies:async()=>({get:()=>undefined})}));
 vi.mock('next/cache', () => ({ revalidatePath: () => {}, revalidateTag: () => {} }));
 
 /** next/navigation's redirect() signals by THROWING; a stub that merely records would let the action
@@ -264,7 +265,7 @@ describe('the guard must not refuse everything — an administrator still roster
 
   it('generateRosterAction still redirects with its summary', async () => {
     await expect(
-      generateRosterAction(formOf({ companyId: b.companyId, shiftId, from: FUTURE, to: FUTURE_MONTH_END, employmentIds: [employmentId] })),
+      generateRosterAction(formOf({ companyId: b.companyId, shiftId, from: FUTURE, to: FUTURE_MONTH_END, selectionIds: JSON.stringify([employmentId]) })),
     ).rejects.toThrow('NEXT_REDIRECT');
     expect(LAST_REDIRECT).toContain('generated=');
     expect(LAST_REDIRECT).not.toContain('error=');
