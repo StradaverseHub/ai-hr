@@ -253,7 +253,7 @@ export function EmployeeScopePanel({
   /** The already access-fenced employee set, mapped from the server's `listEmployees`. */
   employees?: ScopeEmployee[];
   /** Opt-in: plain server-authorized first page; later choices use the same native read port. */
-  remote?:{initial:EmployeeChoicePage};
+  remote?:{initial:EmployeeChoicePage;endpoint?:string};
   /** The server's RESOLVED selection — i.e. after its scope guard, not the raw query param. */
   selectedId: string | null;
   /** Route the selection navigates to, e.g. `/payroll/transactions/zakat`. */
@@ -324,7 +324,7 @@ export function EmployeeScopePanel({
     const controller=new AbortController();let current=true;
     const timer=setTimeout(()=>{
       const input={query,companyId,businessUnitId,departmentId,status:status||undefined,offset,limit:remote.initial.limit,labelMode:remote.initial.labelMode,selectedId:selectedId??undefined};
-      void fetch('/api/employee-choices',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(input),cache:'no-store',credentials:'same-origin',signal:controller.signal})
+      void fetch(remote.endpoint??'/api/employee-choices',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(input),cache:'no-store',credentials:'same-origin',signal:controller.signal})
         .then(async response=>{
           if(!response.ok)throw Error('Employee choices unavailable');
           const data:unknown=await response.json();
