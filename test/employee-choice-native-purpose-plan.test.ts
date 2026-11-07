@@ -1,9 +1,11 @@
 /** Controlled development prototype. Full singleton registration/admission remains a separate gate. */
-import {execFileSync,spawnSync} from 'node:child_process';
+import {execFileSync} from 'node:child_process';
 import {createHash,randomUUID} from 'node:crypto';
 import {readFileSync,writeFileSync,mkdirSync,realpathSync,lstatSync} from 'node:fs';
 import {join,resolve} from 'node:path';
 import {employeeChoiceBenchmarkLifetime,employeeChoiceBenchmarkBounds,adoptEmployeeChoiceBenchmarkResource} from './performance/employee-choice-benchmark-lifetime';
+import {employeeChoiceNativeLogCollector} from './performance/employee-choice-native-log-collector';
+import {employeeChoiceNativePlanPhases,employeeChoiceNativeLogRecords} from './performance/employee-choice-native-log-stream';
 import {employeeChoiceBenchmarkEvidence} from './performance/employee-choice-benchmark-evidence';
 import {cpus,totalmem} from 'node:os';
 import {inArray,sql} from 'drizzle-orm';
@@ -18,7 +20,7 @@ import {assertAiPresentationPrincipalTx} from '../core/ai-principal';
 import {installEmployeeChoiceNativePrototype} from './performance/employee-choice-native-purpose-owner';
 import {employeeChoicePurposeSession,preserveDiagnosticFailure} from './performance/employee-choice-native-purpose-session';
 import {employeeChoicePlanLogging} from './performance/employee-choice-auto-explain';
-import {employeeChoiceAutoExplainMessages,employeeChoiceNativeBody,employeeChoiceSqlFingerprint,bindEmployeeChoiceNativePlans,employeeChoiceNativeInvocations,type PlanMarker,type NativeCallExpectation} from './performance/employee-choice-auto-explain-parser';
+import {employeeChoiceNativeBody,employeeChoiceSqlFingerprint,employeeChoiceNativeInvocations,type PlanMarker,type NativeCallExpectation} from './performance/employee-choice-auto-explain-parser';
 import {employeeChoiceActualCardinalities,employeeChoiceAuthorizedPopulationFacts,employeeChoicePlanWork} from './performance/employee-choice-plan-work';
 import {employeeChoicePlannerSnapshot} from './performance/employee-choice-planner-snapshot';
 import {createAssignmentAuthorityFixture,assertAssignmentAuthority} from './performance/employee-choice-assignment-authority';
@@ -39,6 +41,7 @@ const stable=({contextId:_contextId,...page}:Page)=>page;
 let blocked:Error|undefined,failedCase=false;
 let evidenceWriter:ReturnType<typeof employeeChoiceBenchmarkEvidence>|undefined;
 let capturePlans:((phase:string)=>Promise<void>)|undefined;
+let planLog:ReturnType<typeof employeeChoiceNativeLogCollector>|undefined;
 let installation:Awaited<ReturnType<typeof installEmployeeChoiceNativePrototype>>|undefined;
 let timing:Awaited<ReturnType<typeof employeeChoicePurposeSession>>|undefined,plansSession:Awaited<ReturnType<typeof employeeChoicePurposeSession>>|undefined;
 let logging:Awaited<ReturnType<typeof employeeChoicePlanLogging>>|undefined;
@@ -65,10 +68,10 @@ const report:Record<string,unknown>={kind:'NATIVE_EMPLOYEE_CHOICE_NEARER_PAGE_SE
  instrumentation:'Normal timings have no auto_explain. Plan-only auto_explain has analyze/buffers/settings/nested enabled and per-node timing/parameter values disabled. Instrumented duration is never a latency claim.',
  limitations:'Fixed current-root-first ordering, warm fixture/statistics and few samples are not p95/capacity or whole-browser proof. No index, RLS, grant, JIT threshold, work_mem or global setting changes. Only the fixed native function scopes jit=off.',
  host:{node:process.version,logicalCpus:cpus().length,ramBytes:totalmem(),cpuModels:[...new Set(cpus().map(cpu=>cpu.model))]}};
-const save=()=>{if(output)writeFileSync(join(output,'employee-choice-native-purpose-plan.json'),JSON.stringify(report,null,2)+'\n',{mode:0o600});};
+const save=()=>{if(output){const payload=JSON.stringify(report,null,2)+'\n';if(Buffer.byteLength(payload)>64*1024*1024)throw Error('Native report exceeds existing64MiB member bound');writeFileSync(join(output,'employee-choice-native-purpose-plan.json'),payload,{mode:0o600});}};
 const progress=(event:Record<string,unknown>):void=>{evidenceWriter?.append({...event,elapsedMs:lifetime.snapshot().elapsedMs,timingPid:timing?.defaults.pid??null,planPid:plansSession?.defaults.pid??null});};
 const lifetime=employeeChoiceBenchmarkLifetime(async()=>{
- const outcomes=await Promise.allSettled([timing?.close(),plansSession?.close()]);
+ const outcomes=await Promise.allSettled([timing?.close(),plansSession?.close(),planLog?.close()]);
  const failures=outcomes.filter(row=>row.status==='rejected');if(failures.length)throw new AggregateError(failures,'Owned application sessions did not close');
 },event=>{report.lifetimeEvent=event;progress(event);save();});
 const signal=lifetime.signal;
@@ -162,7 +165,7 @@ async function matrix(variant:Variant,session:Awaited<ReturnType<typeof employee
  const call=async<T>(name:string,sample:number,read:()=>Promise<T>):Promise<T>=>{
   active();const label=variant+':'+name+':'+sample;report.phase=phase+':'+label;progress({kind:'port-started',phase,label});save();
   try{
-   if(phase==='plans'){markers.push({label,begin:dialect.sqlToQuery(marker(label,'begin')).sql,end:dialect.sqlToQuery(marker(label,'end')).sql,native:variant==='native',expectedNativeCalls:variant==='native'?expectedNativeCalls(name):undefined});await markerCall(label,'begin');}
+   if(phase==='plans'){markers.push({label,begin:dialect.sqlToQuery(marker(label,'begin')).sql,end:dialect.sqlToQuery(marker(label,'end')).sql,native:variant==='native',expectedNativeCalls:variant==='native'?expectedNativeCalls(name):undefined});await markerCall(label,'begin');if(!planLog)throw Error('Native follower unavailable');await planLog.wait(dialect.sqlToQuery(marker(label,'begin')).sql);}
    const value=await read();if(phase==='plans'){await markerCall(label,'end');if(!capturePlans)throw Error('Actual native capture owner unavailable');await capturePlans(label);}
    progress({kind:'port-returned',phase,label,oracleAcceptance:false});save();return value;
   }catch(error){progress({kind:'port-failed',phase,label});save();
@@ -273,37 +276,35 @@ it.skipIf(!requested)('captures real nested native plans on a separate bound app
  const container=evidence(),pid=plansSession.defaults.pid,source=readFileSync('test/fixtures/employee-choice-native-purpose.sql','utf8'),body=employeeChoiceNativeBody(source);
  const actualContainer=execFileSync('docker',['inspect','--format','{{.Id}} {{.Name}}',container.name],{encoding:'utf8',timeout:10000,maxBuffer:4096}).trim().split(' ');
  if(actualContainer.length!==2||!/^[a-f0-9]{64}$/.test(actualContainer[0])||actualContainer[1]!=='/'+container.name)throw Error('Exact owned native log container required');
- const containerId=actualContainer[0];let latestRaw:string|undefined;
+ const containerId=actualContainer[0];
+ planLog=employeeChoiceNativeLogCollector(output,{source:process.env.AIHR_CI_HEAD!,controller:process.env.AIHR_CI_CONTROL_HEAD!,run:process.env.GITHUB_RUN_ID!,attempt:process.env.GITHUB_RUN_ATTEMPT!,pid,container:container.name,containerId,startedAt},signal,poison);
  capturePlans=async phase=>{
-  // One actual raw-log owner targets the immutable container ID and exact app PID.
-  // Each new full cut is independently rebound; no presumed prefix equivalence.
-  const logs=spawnSync('docker',['logs','--since',startedAt,containerId],{encoding:'utf8',timeout:20000,maxBuffer:64*1024*1024});
-  if(logs.error||logs.status!==0)throw Error('Bounded actual native plan log capture failed',{cause:logs.error});
-  const raw=(logs.stdout??'')+(logs.stderr??'');if(Buffer.byteLength(raw)>64*1024*1024)throw Error('Native plan log exceeds64MiB');
-  if(!evidenceWriter)throw Error('Owned evidence writer unavailable');
-  const cut=evidenceWriter.capture(raw,{phase,pid,container:container.name,containerId,startedAt});latestRaw=raw;
-  report.nativeProgressCut={...cut,fullMatrixVerified:false};save();
-  const messages=employeeChoiceAutoExplainMessages(raw,pid),bound=bindEmployeeChoiceNativePlans(messages,markers,body);
-  report.verifiedProgressCut={...cut,markerPhases:bound.size,fullMatrixVerified:false};save();
+  const boundary=markers.find(marker=>marker.label===phase);
+  if(boundary)await planLog!.wait(boundary.end);
+  const retained=planLog!.checkpoint(phase);report.nativeProgressIndex={...retained,fullMatrixVerified:false};save();
  };
   for(const variant of variants)await matrix(variant,plansSession!,'plans',markers);
-  await capturePlans('matrix-complete');if(latestRaw===undefined)throw Error('No actual complete native raw cut');
+  await capturePlans('matrix-complete');await plansSession.close();await planLog.close();
   verifyLatestPlans=()=>{
-  if(latestRaw===undefined)throw Error('No retained raw cut for native verification');const raw=latestRaw;
-  report.nativeLog={bytes:Buffer.byteLength(raw),sha256:createHash('sha256').update(raw).digest('hex'),pid,container:container.name,containerId,startedAt};
-  const messages=employeeChoiceAutoExplainMessages(raw,pid);
-  const bound=bindEmployeeChoiceNativePlans(messages,markers,body),actual:unknown[]=[],failures:unknown[]=[];
-  for(const [label,entries]of bound){
+  if(!planLog)throw Error('No retained native follower owner');
+  const retained=planLog.store.verifyIndex(),channel=planLog.nativeChannel(),other=channel==='stdout'?'stderr':'stdout';
+  // Both raw channels are retained. Native PID records split between them have
+  // no trustworthy total ordering and therefore cannot qualify.
+  for(const record of employeeChoiceNativeLogRecords(planLog.store.read(other)))if(record.pid===pid)throw Error('Native PID records appeared on both raw channels');
+  report.nativeLog={...retained,pid,container:container.name,containerId,startedAt,channel,format:'lossless-indexed-gzip-parts'};
+  const actual:unknown[]=[],failures:unknown[]=[];let phases=0,callPairs=0;
+  for(const {label,entries}of employeeChoiceNativePlanPhases(planLog.store.read(channel),pid,markers,body)){
+   phases++;
    const bodies=entries.filter(entry=>employeeChoiceSqlFingerprint(entry.query)===employeeChoiceSqlFingerprint(body));
    if(label.startsWith('native:')){
     const expected=markers.find(marker=>marker.label===label)?.expectedNativeCalls;
     if(expected===undefined)throw Error('Independent actual native stream expectation required');
-    try{actual.push({label,invocations:employeeChoiceNativeInvocations(entries,body,expected)});}
+    try{const invocations=employeeChoiceNativeInvocations(entries,body,expected);callPairs+=invocations.length;actual.push({label,invocations});}
     catch(error){failures.push({label,kind:'actual-native-invocation',details:error instanceof Error?error.message:'Unknown native invocation failure'});}
    }
    if(label.startsWith('native:'))for(const entry of entries){
     const plan=entry.document.Plan;if(!plan||typeof plan!=='object'||Array.isArray(plan))throw Error('Native body plan required');
-    const work=employeeChoicePlanWork(plan as Record<string,unknown>,cardinalities);actual.push({label,...entry,work,mainBody:bodies.includes(entry)});
+    const work=employeeChoicePlanWork(plan as Record<string,unknown>,cardinalities);actual.push({label,querySha256:createHash('sha256').update(entry.query).digest('hex'),durationMs:entry.durationMs,work,mainBody:bodies.includes(entry),rawDocument:'Exact original document retained in nativeLog indexed parts'});
     if(work.rejectionReasons.length)failures.push({label,kind:'work',details:work.rejectionReasons});
     if(bodies.includes(entry)){const settings=entry.document.Settings;if(!settings||typeof settings!=='object'||!('jit'in settings)||settings.jit!=='off'||entry.document.JIT!==undefined)failures.push({label,kind:'native-function-jit-scope'});}
    }
@@ -314,16 +315,15 @@ it.skipIf(!requested)('captures real nested native plans on a separate bound app
     if(combinedRootSharedBlocks>limits.maxRootSharedBlocks||combinedMaxNodeWork>limits.maxNodeWork)failures.push({label,kind:'combined-native-calls-work'});
     actual.push({label,combinedDistinctBodies:{calls:bodies.length,combinedRootSharedBlocks,combinedMaxNodeWork,limits},overlapPolicy:'Only distinct native main bodies combined; nested and outer copies never summed.'});
    }
-   actual.push({label,statements:entries});
+   actual.push({label,statements:entries.map(entry=>({querySha256:createHash('sha256').update(entry.query).digest('hex'),durationMs:entry.durationMs})),rawDocuments:'Every original statement and context retained losslessly in nativeLog indexed parts'});
   }
-  report.markers=markers;report.actualPlans=actual;report.planVerificationFailures=failures;report.actualPlanCases=bound.size;save();
-  expect(bound.size).toBe(42);expect(failures).toEqual([]);report.actualPlansComplete=true;save();
+  report.markers=markers;report.actualPlans=actual;report.planVerificationFailures=failures;report.actualPlanCases=phases;report.actualNativeCallPairs=callPairs;save();
+  expect(phases).toBe(42);expect(callPairs).toBe(25);expect(failures).toEqual([]);report.actualPlansComplete=true;save();
   };verifyLatestPlans();
  },async()=>{
   restoreSpy();const failures:unknown[]=[],previouslyComplete=report.actualPlansComplete===true;report.actualPlansComplete=false;save();
   try{await plansSession?.close();}catch(error){failures.push(error);}
-  try{await capturePlans?.('finally:'+String(report.phase));if(previouslyComplete&&verifyLatestPlans)verifyLatestPlans();}catch(error){report.partialCaptureIncomplete=true;failures.push(error);}
-  try{if(evidenceWriter?.latest()){const retained=evidenceWriter.retainFinal();report.retainedFinalRaw=retained;report.nativeLog={...retained,source:process.env.AIHR_CI_HEAD,controller:process.env.AIHR_CI_CONTROL_HEAD,run:process.env.GITHUB_RUN_ID,attempt:process.env.GITHUB_RUN_ATTEMPT};}}catch(error){failures.push(error);}
+  try{await planLog?.close();if(planLog)report.retainedFinalRaw=planLog.store.verifyIndex();if(previouslyComplete&&verifyLatestPlans)verifyLatestPlans();}catch(error){report.partialCaptureIncomplete=true;failures.push(error);}
   capturePlans=undefined;
   try{await logging?.restore();if(logging)report.instrumentationRestored=true;}catch(error){failures.push(error);}
   try{await installation!.unchanged();}catch(error){failures.push(error);}
@@ -341,7 +341,7 @@ it.skipIf(!requested).for(variants)('preserves actual current-root native author
 
 async function cleanupOwned(){
  const failures:unknown[]=[];const finish=async(name:string,work:()=>Promise<unknown>)=>{try{await work();}catch(error){failures.push(error);const errors=(report.cleanupFailures??=[])as string[];errors.push(name);}};
- await finish('plan-client',async()=>plansSession?.close());await finish('plan-config',async()=>logging?.restore());await finish('timing-client',async()=>timing?.close());
+ await finish('plan-client',async()=>plansSession?.close());await finish('native-follower',async()=>planLog?.close());await finish('plan-config',async()=>logging?.restore());await finish('timing-client',async()=>timing?.close());
  await finish('prototype-function',async()=>installation?.remove());await finish('pools',closeAll);
  report.cleanupComplete=failures.length===0;
  report.failedCase=failedCase;report.sessionPoisoned=blocked!==undefined;

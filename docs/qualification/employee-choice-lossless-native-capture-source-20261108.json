@@ -1,0 +1,103 @@
+{
+  "kind": "DEVELOPMENT_LOSSLESS_NATIVE_CAPTURE_NOT_RELEASE",
+  "base": "44f6f8b143b01d7aa8479283dbb81b997615cf1e",
+  "sourceRef": "codex/employee-native-segmented-capture-20261108",
+  "qualification": "NOT_RUN; frozen source needs root and independent review before hosted checks",
+  "releaseAuthorized": false,
+  "production": "HELD",
+  "selectors": {
+    "pure": [
+      "test/employee-choice-native-log-capture.test.ts",
+      "test/employee-choice-benchmark-ownership.test.ts"
+    ],
+    "native": [
+      "test/employee-choice-native-purpose-plan.test.ts"
+    ]
+  },
+  "declaredCaptureModels": 23,
+  "retainedOwnershipModels": 13,
+  "nativeExecutions": 6,
+  "requiredPlanPhases": 42,
+  "requiredNativeCallPairs": 25,
+  "wholePortsPerVariant": 17,
+  "targetMs": 1000,
+  "serverScopeIds": 50000,
+  "allLimit": 2000,
+  "bounds": {
+    "rawPartBytes": 8388608,
+    "rawAggregateBytes": 134217728,
+    "gzipAggregateBytes": 33554432,
+    "indexBytes": 2097152,
+    "parts": 128,
+    "recordPhaseMemberBytes": 67108864,
+    "focusedZipBytes": 67108864,
+    "markerWaitMs": 20000,
+    "caseMs": 300000,
+    "workMs": 840000,
+    "totalMs": 900000,
+    "cleanupReserveMs": 60000,
+    "statementMs": 20000,
+    "lockMs": 300
+  },
+  "retained3024": {
+    "pure": {
+      "run": 42419086063,
+      "passed": 11,
+      "failed": 1,
+      "pending": 0,
+      "artifactId": 13593011341,
+      "zipSha256": "bc7e21c71330d93d59830168243d70dcc9d5fa32d6b47c727a63885b2e85c7b8"
+    },
+    "native": {
+      "run": 42419083419,
+      "passed": 5,
+      "failed": 1,
+      "pending": 0,
+      "artifactId": 13592199309,
+      "zipSha256": "557209fc553b0e5c4c2300a639b98ad7710c0f487f808f03cac3690822324039",
+      "timedNativePorts": 17,
+      "observedAllSamplesBelow1000ms": true,
+      "retainedPlanPhases": 37,
+      "requiredPlanPhases": 42,
+      "requiredNativeCallPairs": 25,
+      "complete": false,
+      "captureRepairInThisChild": false
+    }
+  },
+  "retained44f": {
+    "pureRun": 42420847299,
+    "passed": 13,
+    "failed": 0,
+    "pending": 0,
+    "artifactId": 13593980619,
+    "zipSha256": "9a400d08addf22a4f811d04f68153b1ae3eb2f952255f138a13f4c244dffc1e5"
+  },
+  "sourceSha256": {
+    "test/employee-choice-native-purpose-plan.test.ts": "d63dab0b1b1d27004ba34e3ea1ec38955810dd1d9a2b6130919a88a9d6f56e34",
+    "test/employee-choice-native-log-capture.test.ts": "3e51d87626c17c91ff4873029ac38445e5ae9377cabb0c19fd365849712f0235",
+    "test/performance/employee-choice-native-log-parts.ts": "62eb9d7441253ea1ffef22bb2ce840099c0a19ab3e5c37a2da729395e165a88d",
+    "test/performance/employee-choice-native-log-stream.ts": "fd8eb9b95d7411b684e14ec705d70b4d377a6c50f3096e00031c5b80bace8c02",
+    "test/performance/employee-choice-native-log-collector.ts": "bd189a55de52489715bd3969b324550ca6f7cadccd74c9f932ebfecc6273a1a2",
+    "test/performance/employee-choice-benchmark-lifetime.ts": "ff248b59e427d03bd1ae8e9eed555f16198e3b211271515a9ec36811824e0a39",
+    "test/employee-choice-benchmark-ownership.test.ts": "1d43122e5dd17ca4661b29ac6ba29ea679d2ac1da248991448f68286922cd1e7",
+    "test/performance/employee-choice-benchmark-evidence.ts": "53f5a71f0324d8b5c5ffac70aa1638b2bfc04197e5dba6cd5bd4ba62d8bb904d",
+    "docs/qualification/employee-choice-lossless-native-capture-20261108.md": "e1c26c85e143802ec982fc086853c6982cd2268ccea20d3cb33f05ce0ec155cd"
+  },
+  "unchangedSourceSha256": {
+    "core/employee-choice.ts": "ce1e3559addbffa4b4e780594ebcc5fcf917ddffde79a6155cc7fbcecdbcfbd5",
+    "test/fixtures/employee-choice-native-purpose.sql": "0ea638f797f57c22e6631d83f6d5d7bc63d752a5c6818d26ed34fd4441122d04",
+    "test/performance/employee-choice-native-current-baseline.ts": "fc1a1603aa7a032a0450dfca98eddd6068de5a1913478d25e5e7e90eea8e3816",
+    "test/performance/employee-choice-native-purpose-reader.ts": "08e50db545dc32af18bddee7eae36a902ceacfbabc2c14a841b8a5b2b82cfd22",
+    "test/performance/employee-choice-native-purpose-owner.ts": "013376ff8f131441dc655d862acc9fc1693e5bf1064d71b7b3e6782873b59956",
+    "test/performance/employee-choice-native-purpose-session.ts": "a372db1140e4b87837416dd612dc03d548fc78ce222b28892554e5529d5fefaf",
+    "test/performance/employee-choice-auto-explain.ts": "215614296084876164a57c3097e9b724a755eb37f59d3d99187a35f17bc44331",
+    "test/performance/employee-choice-auto-explain-parser.ts": "c2542db7f843bea0943f2e71cddc612db93c817f60baa120fb915fdb17fabbc6",
+    "test/performance/personnel-native-fixture.ts": "3b72cd22e8e97c730192454bca58b87795e362654b6a26250a2fe3cf752bc4fa",
+    "test/performance/employee-choice-assignment-authority.ts": "0fbd4efb24d79dbf55660219df0aab009ea00774b4dd1588996d4de98caaeb7d",
+    "test/performance/employee-choice-plan-work.ts": "4a6eb56b6e96e5311b233ce5259f5cdc2edc149c1e5bde33d92d980662670560",
+    ".github/workflows/alpha-focused-checks.yml": "cc3c8e9bac07370bd70f1333bff6f697c2943120771cb8f8ca07caf87543e827"
+  },
+  "applicationOrNativeSqlChanged": false,
+  "sqlStatementsOrPerformanceTargetsChanged": false,
+  "localApplicationChecksExecuted": false
+}
