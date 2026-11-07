@@ -906,7 +906,10 @@ try{
    :user.role==='manager'?['/','/approvals','/claims','/performance/home']:['/',...(suite==='whole-system'?architectureHrReadRoutes:[]),'/admin/personnel','/payroll','/claims'];
   // The two existing-session actors start on the target pages so the language proof
   // is not queued behind the sign-in and Home sequence of the four real-login actors.
-  if(suite==='whole-system'&&!signIn)routes.unshift(...routes.splice(1,1));
+  if(suite==='whole-system'&&!signIn){
+   const personnel=routes.indexOf('/admin/personnel');
+   routes.unshift(...routes.splice(personnel>=0?personnel:1,1));
+  }
   try{await waitForSteadyUsers();for(const route of routes){
    await visit(page,user,route,'loaded',signIn&&route==='/',loadState);
    if((user.role==='employee'&&route==='/claims')||route==='/admin/personnel')await languageJourney(page,user,route,'loaded',loadState);
