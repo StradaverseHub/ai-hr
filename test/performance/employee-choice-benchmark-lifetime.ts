@@ -3,6 +3,13 @@ export const employeeChoiceBenchmarkBounds=Object.freeze({totalMs:900000,reserve
 type Clock={now:()=>number;schedule:(work:()=>void,ms:number)=>()=>void};
 type RecordEvent=(event:{kind:string;phase?:string;elapsedMs:number;reason?:string})=>void;
 const systemClock:Clock={now:()=>performance.now(),schedule:(work,ms)=>{const timer=setTimeout(work,ms);return()=>clearTimeout(timer);}};
+/** Record ownership before testing a signal that may have aborted during await.
+ * The creator remains responsible for closing failures before it returns. */
+export async function adoptEmployeeChoiceBenchmarkResource<T extends {close:()=>Promise<void>}>(create:()=>Promise<T>,signal:AbortSignal,record:(resource:T)=>void):Promise<T>{
+ signal.throwIfAborted();const resource=await create();
+ try{record(resource);signal.throwIfAborted();return resource;}
+ catch(error){try{await resource.close();}catch(close){throw new AggregateError([error,close],'New benchmark resource and close both refused',{cause:error});}throw error;}
+}
 export function employeeChoiceBenchmarkLifetime(cancel:()=>Promise<void>,record:RecordEvent,clock:Clock=systemClock){
  const controller=new AbortController();let started:number|undefined,cancelWorkTimer:(()=>void)|undefined,cancelTotalTimer:(()=>void)|undefined;
  let pending:Promise<void>|undefined,cancelling:Promise<void>|undefined,finishing:Promise<void>|undefined,reason:string|undefined,uncertain=false,finished=false,cancellationSettled=false,recordFailure:unknown;
@@ -29,7 +36,11 @@ export function employeeChoiceBenchmarkLifetime(cancel:()=>Promise<void>,record:
   try{active();}catch(error){emit('phase-blocked',phase);throw error;}
   if(pending)throw Error('Previous benchmark phase has not drained');emit('phase-started',phase);
   const owned=Promise.resolve().then(()=>{active();return work();});pending=owned;
-  try{await owned;emit('phase-completed',phase);}catch(error){emit('phase-failed',phase);throw error;}
+  try{await owned;
+   if(elapsed()>=employeeChoiceBenchmarkBounds.workMs&&!reason)stop('file-work-budget');
+   if(reason)throw Error('Benchmark phase completed after stop: '+reason);
+   emit('phase-completed',phase);
+  }catch(error){emit('phase-failed',phase);throw error;}
   finally{if(pending===owned)pending=undefined;}
  };
  const drain=async()=>{
@@ -40,7 +51,12 @@ export function employeeChoiceBenchmarkLifetime(cancel:()=>Promise<void>,record:
   // Register the completion promise BEFORE invoking cleanup or awaiting work.
   finishing=Promise.resolve().then(async()=>{
    let failure:unknown;try{await drain();}catch(error){failure=error;}failure??=recordFailure;
+   // New work was closed synchronously by finishing. Keep the840s cancellation
+   // active while an owned phase drains; reserve time belongs only to cleanup.
+   cancelWorkTimer?.();cancelWorkTimer=undefined;
    try{await cleanup();}catch(error){uncertain=true;failure=failure===undefined?error:new AggregateError([failure,error],'Benchmark drain and cleanup both failed');}
+   // The900s guard can start cancellation DURING cleanup. Own that settlement too.
+   try{await cancelling;}catch(error){failure=failure===undefined?error:new AggregateError([failure,error],'Benchmark cleanup and deadline cancellation both failed');}
    finished=true;cancelWorkTimer?.();cancelTotalTimer?.();
    if(elapsed()>employeeChoiceBenchmarkBounds.totalMs){uncertain=true;failure??=Error('Benchmark cleanup exceeded the fixed900-second envelope');}
    emit(uncertain?'cleanup-uncertain':'file-finished');failure??=recordFailure;if(failure)throw failure;

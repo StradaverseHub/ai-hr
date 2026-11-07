@@ -4,7 +4,7 @@ import {mkdtempSync,readFileSync,writeFileSync,existsSync,readdirSync,rmSync,sym
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {createHash} from 'node:crypto';
-import {employeeChoiceBenchmarkLifetime,employeeChoiceBenchmarkBounds} from './performance/employee-choice-benchmark-lifetime';
+import {employeeChoiceBenchmarkLifetime,employeeChoiceBenchmarkBounds,adoptEmployeeChoiceBenchmarkResource} from './performance/employee-choice-benchmark-lifetime';
 import {employeeChoiceBenchmarkEvidence} from './performance/employee-choice-benchmark-evidence';
 function clock(){let now=0;const tasks=new Set<{at:number;work:()=>void}>();return{
  now:()=>now,schedule:(work:()=>void,ms:number)=>{const row={at:now+ms,work};tasks.add(row);return()=>{tasks.delete(row);};},
@@ -30,7 +30,7 @@ it('drains the exact owned deferred phase and cancellation before cleanup or any
  const phase=life.run('plans',async()=>{entered.resolve();try{await release.promise;}finally{order.push('phase-finally');}});await entered.promise;life.stop('case-aborted');
  const finish=life.finish(async()=>{order.push('restore');});expect(life.finish(async()=>{throw Error('duplicate cleanup');})).toBe(finish);
  await Promise.resolve();expect(order).not.toContain('restore');await expect(life.run('successor',async()=>{})).rejects.toThrow('refused');
- release.resolve();await phase;expect(order).not.toContain('restore');cancelled.resolve();await finish;expect(order).toEqual(['cancel','phase-finally','restore']);
+ release.resolve();await expect(phase).rejects.toThrow('after stop');expect(order).not.toContain('restore');cancelled.resolve();await finish;expect(order).toEqual(['cancel','phase-finally','restore']);
 });
 it('retains cancellation/restoration uncertainty and rejects over-envelope cleanup rather than reporting success',async()=>{
  const time=clock(),life=employeeChoiceBenchmarkLifetime(async()=>{throw Error('socket close uncertain');},()=>{},time);life.start();life.stop('owner-uncertain');
@@ -42,6 +42,35 @@ it('still cancels and drains when progress persistence itself refuses instead of
  const life=employeeChoiceBenchmarkLifetime(async()=>{cancel=true;},()=>{throw Error('progress unavailable');},time);life.start();
  expect(()=>time.advance(840000)).not.toThrow();await expect(life.finish(async()=>{restore=true;})).rejects.toThrow('progress unavailable');
  expect(cancel).toBe(true);expect(restore).toBe(true);expect(life.snapshot()).toMatchObject({finished:true,uncertain:true});
+});
+it('uses the valid cleanup reserve after work completes at839seconds while still closing all new admission',async()=>{
+ const time=clock(),entered=deferred(),release=deferred(),life=employeeChoiceBenchmarkLifetime(async()=>{},()=>{},time);life.start();
+ await life.run('completed-work',async()=>{});time.advance(839000);
+ const finish=life.finish(async()=>{entered.resolve();await release.promise;});await entered.promise;
+ await expect(life.run('new-work-during-cleanup',async()=>{})).rejects.toThrow('refused');time.advance(11000);expect(life.signal.aborted).toBe(false);
+ release.resolve();await finish;expect(life.snapshot()).toMatchObject({elapsedMs:850000,finished:true,stopped:false,uncertain:false});
+});
+it('retains the840second cancellation frontier when finish must still drain active owned work',async()=>{
+ const time=clock(),entered=deferred(),release=deferred();let cancelled=false;
+ const life=employeeChoiceBenchmarkLifetime(async()=>{cancelled=true;release.resolve();},()=>{},time);life.start();
+ const phase=life.run('pending-work',async()=>{entered.resolve();await release.promise;});await entered.promise;time.advance(839000);
+ const finish=life.finish(async()=>{});await Promise.resolve();time.advance(1000);await expect(phase).rejects.toThrow('after stop');await finish;
+ expect(cancelled).toBe(true);expect(life.snapshot()).toMatchObject({reason:'file-work-budget',stopped:true,finished:true});
+});
+it('keeps the900second guard during reserved cleanup and drains its newly started cancellation before finishing',async()=>{
+ const time=clock(),entered=deferred(),release=deferred(),cancelled=deferred(),cancellationEntered=deferred();let cancelling=false;
+ const life=employeeChoiceBenchmarkLifetime(async()=>{cancelling=true;cancellationEntered.resolve();await cancelled.promise;},()=>{},time);life.start();time.advance(839000);
+ const finish=life.finish(async()=>{entered.resolve();await release.promise;});await entered.promise;time.advance(61001);release.resolve();await cancellationEntered.promise;
+ expect(life.signal.aborted).toBe(true);expect(cancelling).toBe(true);expect(life.snapshot().finished).toBe(false);cancelled.resolve();
+ await expect(finish).rejects.toThrow('envelope');expect(life.snapshot()).toMatchObject({finished:true,uncertain:true,cancellationPending:false});
+});
+it('adopts a session created after cancellation, then closes and drains it before any usable resource is returned',async()=>{
+ const creation=deferred(),closing=deferred(),closeEntered=deferred(),adopted=deferred(),signal=new AbortController();let owned:object|undefined,closed=false,returned=false;
+ const resource={async close(){closed=true;closeEntered.resolve();await closing.promise;}};
+ const adoption=adoptEmployeeChoiceBenchmarkResource(async()=>{await creation.promise;return resource;},signal.signal,value=>{owned=value;adopted.resolve();}).then(()=>{returned=true;});
+ signal.abort(Error('model cancellation during creation'));creation.resolve();await adopted.promise;await closeEntered.promise;
+ expect(owned).toBe(resource);expect(closed).toBe(true);expect(returned).toBe(false);closing.resolve();await expect(adoption).rejects.toThrow('model cancellation');
+ let created=false;await expect(adoptEmployeeChoiceBenchmarkResource(async()=>{created=true;return resource;},signal.signal,()=>{})).rejects.toThrow('model cancellation');expect(created).toBe(false);
 });
 const binding={source:'a'.repeat(40),controller:'b'.repeat(40),run:'42414058820',attempt:'1'};
 const identity={phase:'native:deep:0',pid:123,container:'aihr-ci-42414058820-1-db-1',containerId:'c'.repeat(64),startedAt:'2026-11-07T21:05:56Z'};

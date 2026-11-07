@@ -3,7 +3,7 @@ import {execFileSync,spawnSync} from 'node:child_process';
 import {createHash,randomUUID} from 'node:crypto';
 import {readFileSync,writeFileSync,mkdirSync,realpathSync,lstatSync} from 'node:fs';
 import {join,resolve} from 'node:path';
-import {employeeChoiceBenchmarkLifetime,employeeChoiceBenchmarkBounds} from './performance/employee-choice-benchmark-lifetime';
+import {employeeChoiceBenchmarkLifetime,employeeChoiceBenchmarkBounds,adoptEmployeeChoiceBenchmarkResource} from './performance/employee-choice-benchmark-lifetime';
 import {employeeChoiceBenchmarkEvidence} from './performance/employee-choice-benchmark-evidence';
 import {cpus,totalmem} from 'node:os';
 import {inArray,sql} from 'drizzle-orm';
@@ -242,7 +242,7 @@ it.skipIf(!requested)('prepares exactly50k fictional current-root facts and a gu
  expect(completeFixtureIds.slice(0,25)).toEqual(fixture.expectedFirst);expect(completeFixtureIds.slice(-25)).toEqual(fixture.expectedLast);
  report.completeServerScope={identities:completeFixtureIds.length,source:'Independent exact seed employee_code1..50000',inputOrder:'reverse',clipped:false};
  cardinalities=await employeeChoiceActualCardinalities(owner.db);report.exactWholeFixtureCardinalities=cardinalities;report.initialResources=resources();
- const identities=(report.identities??=[])as unknown[];timing=await employeeChoicePurposeSession('timing',active,value=>identities.push(value),poison);
+ const identities=(report.identities??=[])as unknown[];timing=await adoptEmployeeChoiceBenchmarkResource(()=>employeeChoicePurposeSession('timing',active,value=>identities.push(value),poison),signal,value=>{timing=value;});active();
  const [instrumentation]=await timing.single.client`select current_setting('auto_explain.log_min_duration',true) as duration`;
  expect(instrumentation.duration===null||instrumentation.duration===''||instrumentation.duration==='-1').toBe(true);
  report.timingBackend=timing.defaults;report.preparationComplete=true;await installation.unchanged();save();
@@ -259,7 +259,7 @@ it.skipIf(!requested)('captures real nested native plans on a separate bound app
  let restoreSpy=()=>{},verifyLatestPlans:(()=>void)|undefined;
  await preserveDiagnosticFailure(async()=>{
  logging=await employeeChoicePlanLogging(installation!.database);report.instrumentationConfig={beforeSha256:logging.beforeSha256,instrumentedSha256:logging.instrumentedSha256,settings:logging.settings};
- const identities=(report.identities??=[])as unknown[];plansSession=await employeeChoicePurposeSession('plans',active,value=>identities.push(value),poison);expect(plansSession.defaults.pid).not.toBe(timing!.defaults.pid);
+ const identities=(report.identities??=[])as unknown[];plansSession=await adoptEmployeeChoiceBenchmarkResource(()=>employeeChoicePurposeSession('plans',active,value=>identities.push(value),poison),signal,value=>{plansSession=value;});active();expect(plansSession.defaults.pid).not.toBe(timing!.defaults.pid);
  report.planBackend=plansSession.defaults;
  // session_preload_libraries is privileged inspection even for a genuine app
  // LOGIN. The owner verified its exact database setting before this NEW backend
