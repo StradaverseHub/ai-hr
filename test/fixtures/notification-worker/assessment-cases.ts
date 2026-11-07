@@ -1,3 +1,4 @@
+import {rejectedAssessmentTaskChanges} from './assessment-task-shape-cases';
 /** Actual native preparation source and isolated equivalent legacy fixtures; no delivery/provider. */
 import {readFileSync} from 'node:fs';
 import {randomUUID,createHash} from 'node:crypto';
@@ -143,15 +144,9 @@ describe.sequential('native assessment reminder preparation (stage3)',()=>{
  it('refuses noncanonical JSON tasks, dates, epochs and skip shapes without any committed preparation or projection effect',async()=>{
   const f=await fixture(base);await historical();const row=await queued(f);await targetOnly(row.sourceEventId!);const run=await notificationWorkerLifecycle(service).openRun(),before=await preparationEffects(row,run);
   type Proposal=Awaited<ReturnType<typeof validProposal>>['proposal'];
-  const taskValues:Record<string,unknown>[]=[
-   ...['1','NaN','Infinity',null,true,0,-1,1.5,1000001].map(count=>({count})),
-   ...['infinity','-infinity','tomorrow','now','NaN','2026-02-29T12:00:00Z','2100-02-29T12:00:00Z','2026-04-31T12:00:00Z',
-    '2026-13-01T12:00:00Z','2026-01-01T24:00:00Z','2026-01-01T12:60:00Z','2026-01-01T12:00:60Z','2026-01-01T12:00Z',
-    '2026-01-01 12:00:00Z','2026-01-01T12:00:00','2026-01-01T12:00:00+0800','2026-01-01T12:00:00+24:00','2026-01-01T12:00:00+08:60'].map(closesAt=>({closesAt})),
-   {people:['\u00a0\ufeff']},{people:['😀'.repeat(101)]},{people:[1]},{people:['a','b','c','d']},{extra:'not canonical'},
-  ];
-  const changes:((p:Proposal)=>Record<string,unknown>)[]=taskValues.map(change=>p=>{
-   const tasks=[{...p.tasks[0],...change}];expect(assessmentReminderTaskSchema.safeParse(tasks[0]).success).toBe(false);return{...p,tasks};
+
+  const changes:((p:Proposal)=>Record<string,unknown>)[]=rejectedAssessmentTaskChanges.map(change=>p=>{
+   const tasks=[{...p.tasks[0],...change}];expect(assessmentReminderTaskSchema.safeParse(tasks[0]).success,'Fixed malformed task '+JSON.stringify(change)).toBe(false);return{...p,tasks};
   });
   for(const key of ['preparedAt','preparedUntil'])for(const value of ['infinity','tomorrow','now','2026-02-29T12:00:00Z','2026-01-01T12:00:00+24:00','0000-02-29T12:00:00Z','2026-01-01T12:00:00+23:59',null])changes.push(p=>({...p,[key]:value}));
   for(const key of ['tenantEpoch','cycleEpoch'])for(const value of ['1','NaN',null,true,-1,1.5,9007199254740992])changes.push(p=>({...p,[key]:value}));
@@ -178,9 +173,14 @@ describe.sequential('native assessment reminder preparation (stage3)',()=>{
   await begin(run,base.tenantId,async(tx,batch)=>{const {proposal}=await validProposal(tx,batch,row.sourceEventId!);
    // Preserve raw JSON numeric decimal forms; canonical numbers do not require an
    // integer-only lexical spelling. Both epochs still equal native captured facts.
+   const tenantNumber=String(proposal.tenantEpoch)+'.0',cycleNumber=String(proposal.cycleEpoch)+'.0';
+   // Force text parameter transport before JSON parsing. A raw string inferred as
+   // jsonb is JSON-stringified by this client's normal JSON serializer.
+   const [encoding]=await tx`select jsonb_typeof((${tenantNumber}::text)::jsonb) as tenant_type,jsonb_typeof((${cycleNumber}::text)::jsonb) as cycle_type`;
+   expect(encoding).toEqual({tenant_type:'number',cycle_type:'number'});
    const [result]=await tx`select notification_worker.prepare_assessment(${batch}::uuid,${row.sourceEventId}::uuid,
     jsonb_set(jsonb_set(jsonb_set(${tx.json({...proposal,tasks,mailWords:words})}::jsonb,'{tasks,0,count}','1.0'::jsonb),
-     '{tenantEpoch}',${String(proposal.tenantEpoch)+'.0'}::jsonb),'{cycleEpoch}',${String(proposal.cycleEpoch)+'.0'}::jsonb)) as recipients`;
+     '{tenantEpoch}',(${tenantNumber}::text)::jsonb),'{cycleEpoch}',(${cycleNumber}::text)::jsonb)) as recipients`;
    expect(result.recipients).toEqual([f.subject.employmentId]);
    const rendered={severity:'action',title:'Assessment work waiting on you',body:'Open your performance workspace to complete your pending review tasks.',linkPath:'/me/performance'};
    await tx`select * from notification_worker.project(${batch}::uuid,${row.sourceEventId}::uuid,'performance.reminder',${f.subject.employmentId}::uuid,${tx.json(rendered)}::jsonb,'performance')`;
