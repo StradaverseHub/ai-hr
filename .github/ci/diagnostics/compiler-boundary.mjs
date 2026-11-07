@@ -5,7 +5,7 @@ import {readFileSync,writeFileSync,openSync,closeSync,mkdirSync,lstatSync,readdi
 import {join,resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {cpus,totalmem} from 'node:os';
-import {BOUNDARY_SOURCE,BOUNDARY_LIMITS,sha256,admitBoundaryInputs,admitConsumerTraceInputs,CONSUMER_TRACE_INTENT,TRACED_CONSUMERS,boundarySchedule,remainingCompilerMs} from './compiler-boundary-policy.mjs';
+import {boundaryExecutionSource,BOUNDARY_LIMITS,sha256,admitBoundaryInputs,admitConsumerTraceInputs,CONSUMER_TRACE_INTENT,TRACED_CONSUMERS,boundarySchedule,remainingCompilerMs} from './compiler-boundary-policy.mjs';
 
 export function boundaryArguments(worker,out,mode,index,traceOnly=false){
  assert.equal(typeof traceOnly,'boolean');if(traceOnly&&mode==='consumer')assert(TRACED_CONSUMERS.includes(index),'Only fixed consumers may trace');
@@ -54,16 +54,17 @@ export function exactCoverage(inventory,plan,phases){
 }
 export async function experiment(traceOnly=false){
  assert.equal(typeof traceOnly,'boolean');
+ const schedule=traceOnly?'selected-trace':'full',source=boundaryExecutionSource(schedule);
  assert(process.platform==='linux'&&process.env.GITHUB_ACTIONS==='true'&&process.env.RUNNER_ENVIRONMENT==='github-hosted'
   &&process.env.CI==='true'&&process.env.GITHUB_REPOSITORY==='StradaverseHub/ai-hr','Managed diagnostic runner required');
  assert.equal(process.versions.node,'22.23.3');assert.equal(cpus().length,4);assert(totalmem()>=14*1024**3&&totalmem()<=18*1024**3);
  const cwd=realpathSync(process.cwd()),controller=realpathSync(fileURLToPath(new URL('../../../',import.meta.url)));
  const git=(path,...args)=>execFileSync('git',args,{cwd:path,encoding:'utf8',timeout:30000,maxBuffer:4*1024**2}).trim();
- assert.equal(git(cwd,'rev-parse','HEAD'),BOUNDARY_SOURCE);assert.equal(process.env.AIHR_CI_HEAD,BOUNDARY_SOURCE);assert.equal(git(cwd,'status','--porcelain'),'');
+ assert.equal(git(cwd,'rev-parse','HEAD'),source);assert.equal(process.env.AIHR_CI_HEAD,source);assert.equal(git(cwd,'status','--porcelain'),'');
  assert.equal(git(controller,'rev-parse','HEAD'),process.env.AIHR_CI_CONTROL_HEAD);assert.equal(git(controller,'status','--porcelain'),'');
  const temp=realpathSync(process.env.RUNNER_TEMP),out=join(temp,'diagnostic-compiler-boundary');
  const free=()=>{const value=statfsSync(temp);return value.bavail*value.bsize;};assert(free()>=20*1024**3);mkdirSync(out,{mode:0o700});
- const report={kind:traceOnly?'DEVELOPMENT_SELECTED_CONSUMER_TRACE_NOT_RELEASE':'DEVELOPMENT_COMPILER_DECLARATION_BOUNDARY_NOT_RELEASE',source:BOUNDARY_SOURCE,controller:process.env.AIHR_CI_CONTROL_HEAD,
+ const report={kind:traceOnly?'DEVELOPMENT_SELECTED_CONSUMER_TRACE_NOT_RELEASE':'DEVELOPMENT_COMPILER_DECLARATION_BOUNDARY_NOT_RELEASE',source:source,controller:process.env.AIHR_CI_CONTROL_HEAD,
   runId:process.env.GITHUB_RUN_ID,attempt:process.env.GITHUB_RUN_ATTEMPT,releaseAuthorized:false,ordinaryCompilerQualified:false,
   ...(traceOnly?{completeSuite:false,selectedConsumers:TRACED_CONSUMERS,coverageScope:'Diagnostic only: checked fresh producer/declarations and consumers7/8/9; earlier native results retain original identities'}:{}),
   complete:false,limits:BOUNDARY_LIMITS,phases:[],host:{node:process.version,cpus:cpus().length,ramBytes:totalmem()},
@@ -78,7 +79,7 @@ export async function experiment(traceOnly=false){
   const row={mode,index,status:'running',budgetMs:budget,code:null,signal:null,stoppedBecause:null,monitorError:null,elapsedMs:0,sampledPeakRssKiB:0};report.phases.push(row);
   const start=Date.now(),worker=fileURLToPath(new URL('compiler-boundary-worker.mjs',import.meta.url));
   const child=spawn('/usr/bin/prlimit',['--core=0',`--fsize=${BOUNDARY_LIMITS.fileBytes}`,'--',process.execPath,...boundaryArguments(worker,out,mode,index,traceOnly)],{
-   cwd,env:{...process.env,NODE_OPTIONS:'--max-old-space-size=12288'},stdio:['ignore',fd,fd],detached:true});
+   cwd,env:{...process.env,AIHR_COMPILER_BOUNDARY_SCHEDULE:schedule,NODE_OPTIONS:'--max-old-space-size=12288'},stdio:['ignore',fd,fd],detached:true});
   let timer,killer;
   const stop=reason=>{if(row.stoppedBecause)return;row.stoppedBecause=reason;if(child.pid)try{process.kill(-child.pid,'SIGTERM');}catch{}
    killer=setTimeout(()=>{if(child.pid)try{process.kill(-child.pid,'SIGKILL');}catch{}},10000);};
@@ -131,7 +132,7 @@ export async function experiment(traceOnly=false){
   const planned=report.plannedPhases??(traceOnly?[{mode:'producer'},{mode:'declarations'},...TRACED_CONSUMERS.map(index=>({mode:'consumer',index}))]:['producer','declarations','source-negative','declaration-negative'].map(mode=>({mode})));
   report.phases.push(...blockedUnstartedPhases(planned,report.phases,remainingCompilerMs(report.phases)));
   if(!report.plannedPhases)report.consumerPlanUnavailable={status:'blocked',blockedReason:'inventory-or-plan-failure',consumersKnown:false};
-  report.sourceRestored=git(cwd,'rev-parse','HEAD')===BOUNDARY_SOURCE&&git(cwd,'status','--porcelain')==='';
+  report.sourceRestored=git(cwd,'rev-parse','HEAD')===source&&git(cwd,'status','--porcelain')==='';
   report.controllerRestored=git(controller,'rev-parse','HEAD')===process.env.AIHR_CI_CONTROL_HEAD&&git(controller,'status','--porcelain')==='';
   if(!report.sourceRestored||!report.controllerRestored)report.complete=false;
   report.compilerElapsedMs=report.phases.filter(row=>row.mode!=='inventory').reduce((sum,row)=>sum+row.elapsedMs,0);

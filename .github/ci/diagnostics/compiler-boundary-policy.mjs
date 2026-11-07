@@ -4,15 +4,23 @@ import {createHash} from 'node:crypto';
 
 export const BOUNDARY_SOURCE='f2b1ae1a9af20bdb30f28ed9b537aa08994dfc10';
 export const BOUNDARY_REF='codex/compiler-rewards-fixture-principal-20261108';
+export const FULL_BOUNDARY_SOURCE='13d5a5d64512d1daa026836b34cb0b043b4a24cf';
+export const FULL_BOUNDARY_REF='codex/compiler-traced-translator-boundaries-20261108';
+/** Two closed historical/new schedules; no caller-selected source or hybrid. */
+export function boundaryExecutionSource(schedule){
+ assert(schedule==='full'||schedule==='selected-trace','Exact compiler boundary schedule required');
+ return schedule==='full'?FULL_BOUNDARY_SOURCE:BOUNDARY_SOURCE;
+}
 export const CONSUMER_TRACE_INTENT='compiler-consumer-trace';
 export const TRACED_CONSUMERS=Object.freeze([7,8,9]);
 export const BOUNDARY_LIMITS=Object.freeze({heapMiB:12288,inventoryMs:120000,compilerMs:720000,
  fileBytes:512*1024**2,totalBytes:1024**3,logBytes:16*1024**2,consumerRoots:400,consumerClosure:600});
 export const sha256=value=>createHash('sha256').update(value).digest('hex');
-export function admitBoundaryInputs(inputs){
+export function admitBoundaryInputs(inputs,traceOnly=false){
+ assert.equal(typeof traceOnly,'boolean');
  assert.equal(inputs.installer_fixture_phase,'compiler-boundary');assert.equal(inputs.compiler_probe,true);
- assert.equal(inputs.expected_sha,BOUNDARY_SOURCE);assert.equal(inputs.next_build_cache_phase,'disabled');
- assert.equal(inputs.candidate_ref,BOUNDARY_REF);
+ assert.equal(inputs.expected_sha,boundaryExecutionSource(traceOnly?'selected-trace':'full'));assert.equal(inputs.next_build_cache_phase,'disabled');
+ assert.equal(inputs.candidate_ref,traceOnly?BOUNDARY_REF:FULL_BOUNDARY_REF);
  for(const [key,value]of Object.entries(inputs))if(typeof value==='boolean'&&key!=='compiler_probe')assert.equal(value,false,key);
  for(const key of ['transport_origin_run','transport_origin_sha','transport_origin_artifact','transport_origin_digest',
   'compiler_origin_run','compiler_origin_sha','compiler_origin_artifact','compiler_origin_digest','next_build_cache_origin'])
@@ -24,7 +32,7 @@ export function admitConsumerTraceInputs(inputs){
  assert.equal(inputs.installer_fixture_phase,CONSUMER_TRACE_INTENT);
  for(const key of ['filesystem_activation_probe','plan_probe','build_transport_probe','compiler_transport_probe','managed_compiler_probe','managed_compiler_force_invalid','compiler_compatible_probe','statutory_probe','nodb_probe','instrument_copies','layout_probe'])
   assert(inputs[key]===undefined||inputs[key]===false,'Only false/absent alternate flags are accepted: '+key);
- admitBoundaryInputs({...inputs,installer_fixture_phase:'compiler-boundary'});
+ admitBoundaryInputs({...inputs,installer_fixture_phase:'compiler-boundary'},true);
 }
 export function boundarySchedule(plan,traceOnly=false){
  assert.equal(typeof traceOnly,'boolean');

@@ -1,8 +1,9 @@
 /** Controller tests only. Real semantic/emit/negative contracts run in the hosted diagnostic. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {createHash} from 'node:crypto';
 import {readFileSync} from 'node:fs';
-import {BOUNDARY_SOURCE,BOUNDARY_REF,BOUNDARY_LIMITS,admitBoundaryInputs,remainingCompilerMs,stronglyConnected,planBoundary,ambientEntries,orderedBoundaryRoots,resolutionLeafTargets,assertResolutionLeafBytes,assertDeclarationBytes,sha256,
+import {BOUNDARY_SOURCE,BOUNDARY_REF,FULL_BOUNDARY_SOURCE,FULL_BOUNDARY_REF,boundaryExecutionSource,BOUNDARY_LIMITS,admitBoundaryInputs,remainingCompilerMs,stronglyConnected,planBoundary,ambientEntries,orderedBoundaryRoots,resolutionLeafTargets,assertResolutionLeafBytes,assertDeclarationBytes,sha256,
  validateDeclarationCoverage,contractSource,NEGATIVE_CONTRACTS,expectContractRefusals} from './compiler-boundary-policy.mjs';
 import {exactCoverage,validatePhase,boundaryArguments,runIndependentPhases,blockedUnstartedPhases,experiment} from './compiler-boundary.mjs';
 import {boundaryWorker,emitDeclarationSources} from './compiler-boundary-worker.mjs';
@@ -19,7 +20,7 @@ test('every distinct implementation emission retains its own native skipped/diag
  }
 });
 
-const selection={candidate_ref:BOUNDARY_REF,expected_sha:BOUNDARY_SOURCE,
+const selection={candidate_ref:FULL_BOUNDARY_REF,expected_sha:FULL_BOUNDARY_SOURCE,
  compiler_probe:true,installer_fixture_phase:'compiler-boundary',next_build_cache_phase:'disabled',nodb_probe:false,layout_probe:false,instrument_copies:false};
 test('new closed intent admits only exact source, no concurrent probes or transported state',()=>{
  assert.doesNotThrow(()=>admitBoundaryInputs(selection));
@@ -162,7 +163,7 @@ test('workflow keeps25 inputs, old attributionfull-only and every other job outs
  const jobs=[...workflow.matchAll(/^  ([a-z][a-z-]*):\n    if: (.+)$/gm)];
  assert(jobs.length>15);for(const [,name,condition]of jobs){
   if(name==='resolve'){for(const intent of ['compiler-boundary','compiler-consumer-trace'])assert(condition.includes(`inputs.installer_fixture_phase == '${intent}'`));continue;}
-  if(name==='compiler-boundary'){assert(condition.includes("inputs.installer_fixture_phase == 'compiler-boundary'"));assert(condition.includes(BOUNDARY_SOURCE));continue;}
+  if(name==='compiler-boundary'){assert(condition.includes("inputs.installer_fixture_phase == 'compiler-boundary'"));assert(condition.includes(FULL_BOUNDARY_SOURCE));continue;}
   if(name==='compiler-consumer-trace'){assert(condition.includes("inputs.installer_fixture_phase == 'compiler-consumer-trace'"));assert(condition.includes(BOUNDARY_SOURCE));continue;}
   assert(condition.includes("inputs.installer_fixture_phase != 'compiler-boundary'"),name);
   assert(condition.includes("inputs.installer_fixture_phase != 'compiler-consumer-trace'"),name);
@@ -181,4 +182,22 @@ test('both executable paths refuse outside hosted route before loading TypeScrip
  const previous=process.env.GITHUB_ACTIONS;try{process.env.GITHUB_ACTIONS='false';await assert.rejects(experiment(),/Managed diagnostic/);
   await assert.rejects(boundaryWorker('inventory','/foreign'),/Hosted diagnostic/);
  }finally{if(previous===undefined)delete process.env.GITHUB_ACTIONS;else process.env.GITHUB_ACTIONS=previous;}
+});
+
+test('complete13d and historical selected-f2 schedules cannot exchange sources or worker intent',()=>{
+ assert.equal(boundaryExecutionSource('full'),FULL_BOUNDARY_SOURCE);assert.equal(boundaryExecutionSource('selected-trace'),BOUNDARY_SOURCE);
+ for(const value of [undefined,null,false,0,'','full ','selected','caller'])assert.throws(()=>boundaryExecutionSource(value));
+ assert.throws(()=>admitBoundaryInputs({...selection,candidate_ref:BOUNDARY_REF,expected_sha:BOUNDARY_SOURCE}));
+ assert.throws(()=>admitBoundaryInputs({...selection},true));
+ const worker=readFileSync(new URL('compiler-boundary-worker.mjs',import.meta.url),'utf8'),parent=readFileSync(new URL('compiler-boundary.mjs',import.meta.url),'utf8');
+ assert(worker.includes('source=boundaryExecutionSource(schedule)'));assert(worker.includes("if(traceConsumer)assert.equal(schedule,'selected-trace'"));
+ assert(parent.includes('AIHR_COMPILER_BOUNDARY_SCHEDULE:schedule'));
+});
+
+test('new complete request pins13d and every current controller byte without adopting diagnostic success as release proof',()=>{
+ const request=JSON.parse(readFileSync(new URL('../../../docs/qualification/compiler-post-translator-complete-boundary-request-20261108.json',import.meta.url),'utf8'));
+ assert.equal(request.source,FULL_BOUNDARY_SOURCE);assert.equal(request.sourceRef,FULL_BOUNDARY_REF);assert.equal(Object.keys(request.inputs).length,25);admitBoundaryInputs(request.inputs);
+ assert.deepEqual(request.expectedJobs,['resolve','compiler-boundary']);assert.equal(request.requiredScope,'ALL_ORIGINAL_ROOTS_AND_RESOLVED_IDENTITIES');
+ assert.equal(request.ordinaryCompilerQualified,false);assert.equal(request.releaseAuthorized,false);
+ for(const [name,hash]of Object.entries(request.sourceSha256))assert.equal(createHash('sha256').update(readFileSync(new URL('../../../'+name,import.meta.url))).digest('hex'),hash,name);
 });

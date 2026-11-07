@@ -5,7 +5,7 @@ import {readFileSync,writeFileSync,mkdirSync,realpathSync,lstatSync,existsSync} 
 import {resolve,relative,dirname,join,sep} from 'node:path';
 import {execFileSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
-import {BOUNDARY_SOURCE,TRACED_CONSUMERS,sha256,planBoundary,orderedBoundaryRoots,validateDeclarationCoverage,assertDeclarationBytes,resolutionLeafTargets,assertResolutionLeafBytes,contractSource,NEGATIVE_CONTRACTS,expectContractRefusals} from './compiler-boundary-policy.mjs';
+import {boundaryExecutionSource,TRACED_CONSUMERS,sha256,planBoundary,orderedBoundaryRoots,validateDeclarationCoverage,assertDeclarationBytes,resolutionLeafTargets,assertResolutionLeafBytes,contractSource,NEGATIVE_CONTRACTS,expectContractRefusals} from './compiler-boundary-policy.mjs';
 
 /** Public native per-source emission; every implementation must emit, independently.
  * JSON stays in its original Program but has no declaration output contract. */
@@ -24,10 +24,12 @@ export async function boundaryWorker(mode,out,index,traceConsumer=false){
  assert(process.platform==='linux'&&process.env.GITHUB_ACTIONS==='true'&&process.env.RUNNER_ENVIRONMENT==='github-hosted'
   &&process.env.CI==='true'&&process.env.GITHUB_REPOSITORY==='StradaverseHub/ai-hr','Hosted diagnostic child required');
  assert(['inventory','producer','declarations','consumer','source-negative','declaration-negative'].includes(mode));
+ const schedule=process.env.AIHR_COMPILER_BOUNDARY_SCHEDULE,source=boundaryExecutionSource(schedule);
+ if(traceConsumer)assert.equal(schedule,'selected-trace','Full boundary never traces a consumer');
  const cwd=realpathSync(process.cwd()),temp=realpathSync(process.env.RUNNER_TEMP);
  assert.equal(out,join(temp,'diagnostic-compiler-boundary'));assert.equal(realpathSync(out),out);assert.equal(lstatSync(out).uid,process.getuid());
  const git=(...args)=>execFileSync('git',args,{cwd,encoding:'utf8',timeout:30000,maxBuffer:4*1024**2}).trim();
- assert.equal(git('rev-parse','HEAD'),BOUNDARY_SOURCE);assert.equal(process.env.AIHR_CI_HEAD,BOUNDARY_SOURCE);assert.equal(git('status','--porcelain'),'');
+ assert.equal(git('rev-parse','HEAD'),source);assert.equal(process.env.AIHR_CI_HEAD,source);assert.equal(git('status','--porcelain'),'');
  assert.equal(process.versions.node,'22.23.3');
  const require=createRequire(join(cwd,'package.json')),ts=require('typescript');assert.equal(ts.version,'5.9.3');
  const apiHash=sha256(readFileSync(require.resolve('typescript')));
@@ -39,7 +41,7 @@ export async function boundaryWorker(mode,out,index,traceConsumer=false){
  };
   const compilerHash=sha256(readFileSync(join(dirname(require.resolve('typescript')),'_tsc.js')));
   assert.equal(compilerHash,'e8f349eabd48486bdb2bf9dc1a00c89d58297270c54b745838879e2859194419');
-  const parsed=config('tsconfig.json'),identity={source:BOUNDARY_SOURCE,node:process.versions.node,typescript:ts.version,apiHash,compilerHash,configHash:sha256(readFileSync(join(cwd,'tsconfig.json'))),buildConfigHash:sha256(readFileSync(join(cwd,'tsconfig.build.json'))),
+  const parsed=config('tsconfig.json'),identity={source:source,node:process.versions.node,typescript:ts.version,apiHash,compilerHash,configHash:sha256(readFileSync(join(cwd,'tsconfig.json'))),buildConfigHash:sha256(readFileSync(join(cwd,'tsconfig.build.json'))),
   lockHash:sha256(readFileSync(join(cwd,'pnpm-lock.yaml')))};
  const result={kind:'DIAGNOSTIC_CHECKED_DECLARATION_PHASE_NOT_RELEASE',releaseAuthorized:false,mode,index,identity,complete:false};
  const resultFile=join(out,mode+(index===undefined?'':'-'+index)+'.json');
