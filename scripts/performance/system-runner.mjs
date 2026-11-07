@@ -11,6 +11,7 @@ import net from 'node:net';
 import {setTimeout as pause} from 'node:timers/promises';
 import {postgresLockFailures} from './lock-failure-log.mjs';
 import {admissionFailureMarkers} from './admission-failure-log.mjs';
+import {runtimeAcceptance} from './runtime-acceptance.mjs';
 import {systemBuildEnvironment} from './build-environment.mjs';
 import {isolatedWorkerBudget,isolatedWorkerCpuAdmission} from './worker-budget.mjs';
 assert.equal(process.env.GITHUB_ACTIONS,'true');assert.equal(process.env.RUNNER_ENVIRONMENT,'github-hosted');
@@ -104,9 +105,10 @@ function summarizeNativeFailures(){
   }
  }
  report.workerFatalDiagnostics=workers.sort((a,b)=>a.worker-b.worker);
+ report.nativeRuntimeFailures=failures;
  writeFileSync(join(out,'server-native-failures.json'),JSON.stringify({scope:'Exact public-error reference/SQLSTATE metadata plus bounded native Draft marker blocks; Draft block errors may overlap; raw logs and SQL excluded',failures},null,2));
 }
-const apps=[],appFds=[];let proxy,upstream,dbStarted=false;
+const apps=[],appFds=[];let proxy,upstream,dbStarted=false,postgresRuntimeFailures;
 const container=`aihr-ci-${env.GITHUB_RUN_ID}-${env.GITHUB_RUN_ATTEMPT}-db-1`;
 try{
  for(const port of ports)await assertPortFree(port);await assertPortFree(3443);
@@ -125,6 +127,7 @@ try{
 
  await run('certificate','openssl',['req','-x509','-newkey','rsa:2048','-nodes','-keyout',join(privateDir,'key.pem'),'-out',join(privateDir,'cert.pem'),'-days','1','-subj','/CN=localhost','-addext','subjectAltName=DNS:localhost']);
  mkdirSync(join(out,'cpu'),{recursive:true});
+ report.applicationRuntimeFrom=new Date().toISOString();save();
  for(const [index,port]of ports.entries()){
   const fd=openSync(join(privateDir,'server-'+index+'.log'),'w',0o600);appFds.push(fd);
   apps.push(spawn(process.execPath,['--cpu-prof','--cpu-prof-dir='+join(out,'cpu'),'--import',resolve('scripts/performance/profile-exit.mjs'),'--import',resolve('scripts/performance/transaction-timing.mjs'),'node_modules/next/dist/bin/next','start','--hostname','127.0.0.1','--port',String(port)],{env:{...env,NODE_ENV:'production',PERF_TX_TIMING_PATH:join(out,'app-transactions-'+index+'.json'),AIHR_DB_POOL_MAX:String(poolPerWorker),AIHR_APP_WORKERS:String(workers),AIHR_DB_TOTAL_CONNECTIONS:String(totalApplicationPool),NODE_OPTIONS:'--max-old-space-size='+heapPerWorker},stdio:['ignore',fd,fd]}));
@@ -185,11 +188,23 @@ finally{
   try{
    const owner=execFileSync('docker',['inspect','--format','{{index .Config.Labels "aihr-owner"}}',container],{encoding:'utf8',timeout:10000}).trim();
    assert.equal(owner,container);
-   const logs=spawnSync('docker',['logs','--tail','10000',container],{encoding:'utf8',timeout:10000,maxBuffer:8*1024*1024});
+   // Scope acceptance to actual application runtime. Setup/rehearsal diagnostics remain
+   // independent. No tail truncation: exceeding the bounded capture fails evidence closed.
+   const logs=spawnSync('docker',['logs',...(report.applicationRuntimeFrom?['--since',report.applicationRuntimeFrom]:[]),container],{encoding:'utf8',timeout:10000,maxBuffer:8*1024*1024});
    assert.equal(logs.status,0);
-   writeFileSync(join(out,'postgres-lock-failures.json'),JSON.stringify({scope:'Owned disposable database only; bounded lock topology and routine frames; SQL/values/raw logs excluded',failures:postgresLockFailures((logs.stdout??'')+'\n'+(logs.stderr??''))},null,2));
+   postgresRuntimeFailures=postgresLockFailures((logs.stdout??'')+'\n'+(logs.stderr??''));
+   writeFileSync(join(out,'postgres-lock-failures.json'),JSON.stringify({scope:'Owned disposable database during application runtime only; bounded lock topology and routine frames; SQL/values/raw logs excluded',runtimeFrom:report.applicationRuntimeFrom??null,failures:postgresRuntimeFailures},null,2));
   }catch{report.postgresLockFailureSummaryUnavailable=true;}
   await run('cleanup','bash',['.github/ci/postgres.sh','stop']).catch(()=>{report.exitCode=1;});
+ }
+ report.runtimeAcceptance=runtimeAcceptance({workers,
+  workerDiagnostics:report.nativeFailureSummaryUnavailable?undefined:report.workerFatalDiagnostics,
+  nativeFailures:report.nativeFailureSummaryUnavailable?undefined:report.nativeRuntimeFailures,postgresFailures:postgresRuntimeFailures,
+  postgresRuntimeScoped:Boolean(report.applicationRuntimeFrom)&&!report.postgresLockFailureSummaryUnavailable,
+  profileShutdown:report.profileShutdown,poolBudgetVerified:report.poolBudgetEvidence?.verified});
+ if(!report.runtimeAcceptance.pass){
+  if(report.exitCode===0)report.error='Application runtime diagnostics failed acceptance';
+  report.exitCode=1;
  }
  save();
 }
