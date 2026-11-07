@@ -5,7 +5,8 @@ import {fileURLToPath} from 'node:url';
 import {validatePostgresEvidence} from './postgres-evidence.mjs';
 import {createPlan, hash} from './plan.mjs';
 import {validatePdfSetupProof} from './pdf-tools.mjs';
-export function verifyUnitReport(plan, report) {
+import {validateSingletonBinding} from './singleton-protocol.mjs';
+export function verifyUnitReport(plan, report, witness) {
   const unit = plan.units.find(u => u.id === report?.id);
   if (!unit) throw Error('Unknown CI unit');
   let tests = 0;
@@ -13,6 +14,11 @@ export function verifyUnitReport(plan, report) {
     || JSON.stringify(report.files) !== JSON.stringify(unit.files) || report.exitCode !== 0 || !Array.isArray(report.batches)) throw Error('Stale, failed or altered CI unit');
   if(plan.pdfTooling&&unit.kind!=='browser')validatePdfSetupProof(plan,unit,report.pdfToolSetup);
   if(unit.kind==='db')validatePostgresEvidence(report.databaseTerminalEvidence,plan.execution);
+  if(unit.singleton){
+    validateSingletonBinding(report.singleton,plan,unit,witness);
+    if(unit.kind==='db')validatePostgresEvidence(report.singleton.prerequisites.database,plan.execution);
+    if(report.batches.length!==1)throw Error('Singleton must retain one complete invocation');
+  }else if(report.singleton!==undefined)throw Error('Unplanned singleton proof');
   const files = [];
   for (const batch of report.batches) {
     if(unit.kind==='db')validatePostgresEvidence(batch.databaseEvidence,plan.execution);
@@ -36,12 +42,12 @@ export function verifyUnitReport(plan, report) {
   if (JSON.stringify(files.sort()) !== JSON.stringify([...unit.files].sort())) throw Error('Unit omitted required test files');
   return {id: unit.id, tests, files: files.slice()};
 }
-export function verifyReports(plan, reports) {
+export function verifyReports(plan, reports, witness) {
   if (!Array.isArray(reports) || reports.length !== plan.units.length) throw Error('Expected exactly one report per CI unit');
   const seen = new Set(); let tests = 0;
   for (const report of reports) {
     if (seen.has(report?.id)) throw Error('Unknown or duplicated CI unit');
-    const verified = verifyUnitReport(plan, report); seen.add(verified.id); tests += verified.tests;
+    const verified = verifyUnitReport(plan, report, witness); seen.add(verified.id); tests += verified.tests;
   }
   return {schemaVersion: 1, policyVersion: plan.policyVersion, sha: plan.sha, controller: plan.controller, migrationBase: plan.migrationBase, result: 'PASS', tier: 'ci', suiteFiles: plan.suite.length,
     browserFiles: plan.units.filter(u => u.kind === 'browser').reduce((n, u) => n + u.files.length, 0),
@@ -51,7 +57,7 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
   const [dir, output] = process.argv.slice(2);
   if (!dir || !output) throw Error('Usage: verify-shards.mjs <report-directory> <receipt-output>');
   const reports = readdirSync(dir).filter(f => /^unit-.+\.json$/.test(f)).map(f => JSON.parse(readFileSync(join(dir, f), 'utf8')));
-  const receipt = verifyReports(createPlan(), reports);
+  const receipt = verifyReports(createPlan(), reports, {runId:process.env.GITHUB_RUN_ID,attempt:process.env.GITHUB_RUN_ATTEMPT});
   writeFileSync(output, JSON.stringify(receipt, null, 2) + '\n', {flag: 'wx'});
   console.log(`CI complete: ${receipt.suiteFiles} suite files, ${receipt.browserFiles} browser files, ${receipt.tests} passing assertions.`);
 }

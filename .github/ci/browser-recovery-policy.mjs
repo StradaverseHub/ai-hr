@@ -46,7 +46,7 @@ export function verifyBrowserRecovery({plan,freshPlan,assessment,run,jobs,report
  same(assessment.rerun.map(x=>x.id),['browser-firefox'],'Only a failed Firefox capacity unit can be recovered');
  assert(assessment.reusable.length===plan.units.length-1&&new Set(assessment.reusable.map(x=>x.id)).size===assessment.reusable.length,'Retained coverage incomplete');
  const required=requiredEvidence(plan);
- for(const j of jobs){assert(required.jobs.includes(j.name)||(j.name==='runner-diagnostics'&&j.conclusion==='skipped'),'Unknown original job');assert(j.conclusion===(['browser (firefox)','verify'].includes(j.name)?'failure':j.name==='runner-diagnostics'?'skipped':'success'),'Failed prerequisite cannot be recovered with Firefox');}
+ for(const j of jobs){assert(required.jobs.includes(j.name)||(['runner-diagnostics','commission-summary'].includes(j.name)&&j.conclusion==='skipped'),'Unknown original job');assert(j.conclusion===(['browser (firefox)','verify'].includes(j.name)?'failure':['runner-diagnostics','commission-summary'].includes(j.name)?'skipped':'success'),'Failed prerequisite cannot be recovered with Firefox');}
  assert(reports.length===plan.units.length&&new Set(reports.map(r=>r.id)).size===reports.length,'Complete original reports required');
  const failed=reports.find(r=>r.id==='browser-firefox'),unit=plan.units.find(u=>u.id==='browser-firefox');
  assert(failed&&unit?.kind==='browser'&&unit.engine==='firefox'&&failed.schemaVersion===1&&failed.sha===plan.sha&&failed.fingerprint===plan.fingerprint&&failed.exitCode===1,'Original Firefox failure differs');
@@ -61,7 +61,7 @@ export function verifyBrowserRecovery({plan,freshPlan,assessment,run,jobs,report
  const replacement=verifyUnitReport(freshPlan,report);
  const units=plan.units.map(u=>{
   if(u.id==='browser-firefox')return {id:u.id,kind:'browser-capacity-recovery',originalReportHash:hash(failed),reportHash:hash(report),tests:replacement.tests,files:replacement.files,source:{runId:fresh.run.id,attempt:1,controller:freshPlan.controller,jobId:fresh.producer.id,artifacts:fresh.artifacts.map(a=>({id:a.id,name:a.name,digest:a.digest})).sort((a,b)=>a.name.localeCompare(b.name))}};
-  const r=reports.find(r=>r.id===u.id),v=verifyUnitReport(plan,r),s=assessment.reusable.find(s=>s.id===u.id);assert(s?.reportHash===hash(r)&&s.source?.runId===run.id,'Retained unit provenance changed');return {id:u.id,kind:'retained',reportHash:hash(r),tests:v.tests,files:v.files,source:s.source};
+  const r=reports.find(r=>r.id===u.id),v=verifyUnitReport(plan,r,{runId:run.id,attempt:1}),s=assessment.reusable.find(s=>s.id===u.id);assert(s?.reportHash===hash(r)&&s.source?.runId===run.id,'Retained unit provenance changed');return {id:u.id,kind:'retained',reportHash:hash(r),tests:v.tests,files:v.files,source:s.source};
  });
  return {kind:'AUTHENTICATED_BROWSER_CAPACITY_RECOVERY',recoveryPolicy:BROWSER_RECOVERY_POLICY,policyVersion:plan.policyVersion,sha:plan.sha,controller:plan.controller,verificationController,verificationDiagnostic,browserProducerController:freshPlan.controller,producerDiagnostic,reviewedController,pendingReview:reviewedController!==verificationController,releaseAuthorized:false,baseline:plan.migrationBase,runId:run.id,originalConclusion:'failure',originalFailureObservations:assessment.observations,sourceFingerprint:plan.fingerprint,replacementFingerprint:freshPlan.fingerprint,browserRunId:fresh.run.id,units,suiteFiles:plan.suite.length,browserFiles:plan.units.filter(u=>u.kind==='browser').reduce((n,u)=>n+u.files.length,0),tests:units.reduce((n,u)=>n+u.tests,0)};
 }

@@ -1,3 +1,4 @@
+import {admitSingletonTest} from './helpers/ci-singleton-admission';
 /** Hosted disposable-database diagnostic. Captures actual canonical SQL objects,
  * not a separately rewritten query, and never changes policies or runtime code. */
 import {createHash} from 'node:crypto';
@@ -20,8 +21,7 @@ import {workerDb} from './db-names';
 import {seedPersonnelNativeFixture} from './performance/personnel-native-fixture';
 
 const file='test/analytics-termination-lateral.test.ts';
-const selection:unknown=JSON.parse(process.env.AIHR_FOCUSED_TESTS??'[]');
-const requested=process.env.GITHUB_ACTIONS==='true'&&Array.isArray(selection)&&selection.length===1&&selection[0]===file;
+const singletonAdmission=admitSingletonTest(file);
 beforeAll(migrateTestDb);afterAll(closeAll);
 
 type Statement={phase:string;sql:string;parameterCount:number;parameterKinds:string[];estimated?:unknown;analyzed?:unknown;
@@ -101,7 +101,7 @@ function assertTemporalFence(text:string){
  expect(lateral[1]).toContain('"assignment"."valid_to" >= "employment"."terminated_on"');
 }
 
-it.skipIf(!requested)('preserves two inclusive adjacent versions, missing/future assignments and complete exports',async()=>{
+it('preserves two inclusive adjacent versions, missing/future assignments and complete exports',async()=>{
  await resetDb();const b=await seedBase(),ctx=adminCtx(b);
  const hired=await hireEmployee(ctx,{person:{fullName:'Fictional inclusive leaver',primaryEmail:'inclusive-leaver@example.invalid'},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:'2020-01-01'});
  const successor=await transferEmployee(ctx,{employmentId:hired.employmentId,departmentId:b.deptB,effectiveDate:'2024-01-01'});
@@ -136,8 +136,8 @@ it.skipIf(!requested)('preserves two inclusive adjacent versions, missing/future
  }finally{database.client.options.debug=debug;}
 });
 
-it.skipIf(!requested)('compares frozen and repaired termination sources under one native calling-principal app backend',async()=>{
- expect(process.env.RUNNER_ENVIRONMENT).toBe('github-hosted');expect(process.env.AIHR_FOCUSED_EVIDENCE_DIR).toBeTruthy();
+it('compares frozen and repaired termination sources under one native calling-principal app backend',async()=>{
+ expect(process.env.RUNNER_ENVIRONMENT).toBe('github-hosted');expect(singletonAdmission.evidenceDirectory).toBeTruthy();
  const poolId=process.env.VITEST_POOL_ID??process.env.VITEST_WORKER_ID;
  expect(poolId).toBeTruthy();expect(process.env.WORKER_DB).not.toBe('0');
  for(const key of ['TEST_DATABASE_URL','TEST_MIGRATION_DATABASE_URL']){
@@ -148,7 +148,7 @@ it.skipIf(!requested)('compares frozen and repaired termination sources under on
   baselineSourceSha:'01d44d3f32aac2c889abfd9ba676774eabcafc80',
   limits:{maxAppConnections:1,maximumStatementTimeoutMs:20000,maximumLockTimeoutMs:300,testBudgetMs:300000},
   limitations:'Component-only fictional-data diagnostic. EXPLAIN repeats reads in the same snapshot and affects warmth; timings are not an independent production comparison.'};
- const save=()=>writeFileSync(join(process.env.AIHR_FOCUSED_EVIDENCE_DIR!,'analytics-termination-lateral.json'),JSON.stringify(report,null,2));
+ const save=()=>writeFileSync(join(singletonAdmission.evidenceDirectory!,'analytics-termination-lateral.json'),JSON.stringify(report,null,2));
  const {b,ctx,foreign}=await seedPersonnelNativeFixture(50000,report,phase=>{report.phase=phase;save();},save);
  const originalSecurity=await nativeSecurityFingerprint();report.originalSecurity=originalSecurity;
  // The fixture used the ordinary app pool once. This selected-only file owns that

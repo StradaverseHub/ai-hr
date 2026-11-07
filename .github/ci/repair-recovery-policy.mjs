@@ -11,7 +11,7 @@ const same=(a,b,message)=>assert(isDeepStrictEqual(a,b),message);
 const sha=x=>typeof x==='string'&&/^[a-f0-9]{40}$/.test(x);
 const id=x=>Number.isSafeInteger(x)&&x>0;
 const unitJob=u=>u.kind==='browser'?`browser (${u.engine})`:`test (${u.id})`;
-const fullJobs=['resolve','typecheck','migrations','test','controller-tests','plan','runner-diagnostics','build','browser','verify','deployment-hold'];
+const fullJobs=['resolve','typecheck','migrations','test','controller-tests','plan','runner-diagnostics','build','browser','verify','commission-summary','deployment-hold'];
 const focusedJobs=['resolve','selected-tests','typecheck','linux-build','native-typecheck','native-swift-models','native-bundle'];
 function runIdentity(run,{runId,controller,after,now=Date.now()}){
  assert(id(runId)&&run.id===runId&&sha(controller)&&run.head_sha===controller&&run.repository?.id===REPOSITORY_ID&&run.repository.full_name===REPOSITORY&&run.head_repository?.id===REPOSITORY_ID,'Foreign repair execution');
@@ -110,9 +110,10 @@ export function verifyRepairRecovery({sourcePlan,plan,assessment,sourceRun,repor
  const units=[];let tests=0;
  for(const u of plan.units){const report=reports.find(r=>r.id===u.id);assert(report?.sha===sourcePlan.sha&&report.fingerprint===sourcePlan.fingerprint,'Original report was relabelled');
   if(!fresh.has(u.id)){
-   const witness=assessment.reusable.find(x=>x.id===u.id),verified=verifyUnitReport(sourcePlan,report);assert(witness?.source&&witness.reportHash===hash(report),'Retained original proof changed');
+   const witness=assessment.reusable.find(x=>x.id===u.id),verified=verifyUnitReport(sourcePlan,report,{runId:sourceRun.id,attempt:1});assert(witness?.source&&witness.reportHash===hash(report),'Retained original proof changed');
    tests+=verified.tests;units.push({id:u.id,kind:'retained',originalSha:sourcePlan.sha,originalFingerprint:sourcePlan.fingerprint,reportHash:hash(report),tests:verified.tests,source:witness.source});continue;
   }
+  assert(!u.singleton,'Singleton replacement requires its authenticated full-unit profile; generic focused repair is not supported');
   same(report.files,u.files,'Original process coverage changed');const originals=new Map();
   for(const batch of report.batches??[]){const files=(batch.result?.testResults??[]).map(f=>relative(report.cwd,f.name).split('\\').join('/'));assert(files.length>0&&files.every(p=>u.files.includes(p)),'Original batch has foreign coverage');const names=caseInventory(batch.result,files,report.cwd,{passing:false});for(const [path,cases] of names){assert(!originals.has(path),'Duplicate original assertion file');originals.set(path,cases);}}
   assert(originals.size===u.files.length,'Original failed/affected process did not enumerate every file');let count=0;const files=[];
