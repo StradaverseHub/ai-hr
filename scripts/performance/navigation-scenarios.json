@@ -867,7 +867,7 @@
       "destinationId": "shell.personnelAdmin",
       "role": "companyHR",
       "href": "/admin/personnel",
-      "originHref": "/admin/personnel",
+      "originHref": "/",
       "outcome": "usable",
       "readiness": "populated",
       "steps": [],
@@ -885,14 +885,14 @@
           "tag": "input"
         }
       ],
-      "entry": "direct-route-content"
+      "entry": "shell-menu"
     },
     {
       "id": "shell.personnelAdmin.groupHR.usable",
       "destinationId": "shell.personnelAdmin",
       "role": "groupHR",
       "href": "/admin/personnel",
-      "originHref": "/admin/personnel",
+      "originHref": "/",
       "outcome": "usable",
       "readiness": "populated",
       "steps": [],
@@ -910,14 +910,14 @@
           "tag": "input"
         }
       ],
-      "entry": "direct-route-content"
+      "entry": "shell-menu"
     },
     {
       "id": "shell.payrollProcess.companyHR.usable",
       "destinationId": "shell.payrollProcess",
       "role": "companyHR",
       "href": "/payroll",
-      "originHref": "/payroll",
+      "originHref": "/",
       "outcome": "usable",
       "readiness": "populated",
       "steps": [],
@@ -935,14 +935,14 @@
           "tag": "a"
         }
       ],
-      "entry": "direct-route-content"
+      "entry": "shell-menu"
     },
     {
       "id": "shell.payrollProcess.groupHR.usable",
       "destinationId": "shell.payrollProcess",
       "role": "groupHR",
       "href": "/payroll",
-      "originHref": "/payroll",
+      "originHref": "/",
       "outcome": "usable",
       "readiness": "populated",
       "steps": [],
@@ -960,14 +960,14 @@
           "tag": "a"
         }
       ],
-      "entry": "direct-route-content"
+      "entry": "shell-menu"
     },
     {
       "id": "shell.analytics.companyHR.usable",
       "destinationId": "shell.analytics",
       "role": "companyHR",
       "href": "/analytics",
-      "originHref": "/analytics",
+      "originHref": "/",
       "outcome": "usable",
       "readiness": "populated",
       "steps": [],
@@ -992,14 +992,14 @@
           "tag": "select"
         }
       ],
-      "entry": "direct-route-content"
+      "entry": "shell-menu"
     },
     {
       "id": "shell.analytics.groupHR.usable",
       "destinationId": "shell.analytics",
       "role": "groupHR",
       "href": "/analytics",
-      "originHref": "/analytics",
+      "originHref": "/",
       "outcome": "usable",
       "readiness": "populated",
       "steps": [],
@@ -1024,14 +1024,14 @@
           "tag": "select"
         }
       ],
-      "entry": "direct-route-content"
+      "entry": "shell-menu"
     },
     {
       "id": "shell.rosterManager.companyHR.usable",
       "destinationId": "shell.rosterManager",
       "role": "companyHR",
       "href": "/roster",
-      "originHref": "/roster",
+      "originHref": "/",
       "outcome": "usable",
       "readiness": "populated",
       "steps": [],
@@ -1062,14 +1062,14 @@
           "expected": "$fixture.seedMonth"
         }
       ],
-      "entry": "direct-route-content"
+      "entry": "shell-menu"
     },
     {
       "id": "shell.rosterManager.groupHR.usable",
       "destinationId": "shell.rosterManager",
       "role": "groupHR",
       "href": "/roster",
-      "originHref": "/roster",
+      "originHref": "/",
       "outcome": "usable",
       "readiness": "populated",
       "steps": [],
@@ -1100,7 +1100,7 @@
           "expected": "$fixture.seedMonth"
         }
       ],
-      "entry": "direct-route-content"
+      "entry": "shell-menu"
     }
   ]
 }

@@ -10,6 +10,7 @@ import {fixtureNavigationActor,navigationExpectedText,NAVIGATION_CAPTURE_MEMBER,
 import {navigationCleanHead,navigationSourceIdentity} from './navigation-source';
 import {readNavigationFixtureBindings} from './navigation-fixture-bindings';
 import {navigationScenarioEntry} from './navigation-entry';
+import {clickNativeShellDestination} from './navigation-shell-browser';
 const BASE='https://localhost:3443';
 const failuresSelector={busy:'main[data-personnel-busy],main[data-page-busy],main [data-personnel-busy],main [data-page-busy]',
  unavailable:'main [data-read-unavailable],main [data-today-unavailable]',alerts:'main [role="alert"]'} as const;
@@ -84,6 +85,7 @@ async function captureScenario(page:Page,actorIndex:number,scenario:NavigationSc
   const origin=await page.goto(BASE+(scenario.outcome==='denied'?scenario.href:scenario.originHref),{waitUntil:'domcontentloaded',timeout:remaining()});
   assert(origin?.status()===200,'Navigation origin did not finish successfully');
   const originFailures=await capturedFailures(page);for(const key of ['busy','unavailable','alerts']as const)failures[key]+=originFailures[key];
+  if(scenario.outcome==='usable'&&entry.kind==='shell-menu')await clickNativeShellDestination(page,scenario.href,remaining);
   if(scenario.outcome==='usable'&&entry.selector){
    const anchor=page.locator(entry.selector);
    await anchor.first().waitFor({state:'visible',timeout:remaining()});
