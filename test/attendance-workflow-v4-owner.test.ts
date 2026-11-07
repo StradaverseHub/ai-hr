@@ -352,7 +352,7 @@ it('refuses a partial-scope edit and serializes shared automatic priorities acro
 
 it('lists approvers with forced RLS under a non-superuser schema-owner identity',async()=>{
  const eligible=await actor('Fictional real-owner approver');
- const ctx=adminCtx(base),role='pr233_owner_'+randomUUID().replaceAll('-','');
+ const ctx=adminCtx(base),roles=ctx.roles??[],role='pr233_owner_'+randomUUID().replaceAll('-','');
  const rollback=new Error('Rollback only this ownership-parity fixture');
  await expect(owner.client.begin(async connection=>{
   await connection.unsafe(`CREATE ROLE "${role}" NOLOGIN NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE INHERIT`);
@@ -368,10 +368,15 @@ it('lists approvers with forced RLS under a non-superuser schema-owner identity'
   for(const fn of functions)await connection.unsafe(`ALTER FUNCTION ${String(fn.signature)} OWNER TO "${role}"`);
   await connection.unsafe('SET LOCAL ROLE ai_hr_app');
   await connection.unsafe('SET LOCAL row_security=on');
-  const grants=ctx.grants??ctx.roles.map(value=>({role:value,companyId:null}));
-  await connection`select set_config('app.tenant_id',${ctx.tenantId},true),set_config('app.user_id',${ctx.userId??''},true),set_config('app.roles',${ctx.roles.join(',')},true),set_config('app.grants',${JSON.stringify(grants)},true),set_config('app.agent_principal_id','',true),set_config('app.payroll_tax_basis_reader','1',true)`;
+  const grants=ctx.grants??roles.map(value=>({role:value,companyId:null}));
+  await connection`select set_config('app.tenant_id',${ctx.tenantId},true),set_config('app.user_id',${ctx.userId??''},true),set_config('app.roles',${roles.join(',')},true),set_config('app.grants',${JSON.stringify(grants)},true),set_config('app.agent_principal_id','',true),set_config('app.payroll_tax_basis_reader','1',true)`;
   const rows=await connection.unsafe('select id from app.attendance_workflow_v3_approver_options($1::uuid[])',['{'+base.companyId+'}']);
   expect(rows.map(row=>row.id)).toContain(eligible.employmentId);
+  const employeeRoles=eligible.ctx.roles??[],employeeGrants=eligible.ctx.grants??employeeRoles.map(role=>({role,companyId:null}));
+  await connection`select set_config('app.user_id',${eligible.ctx.userId??''},true),set_config('app.roles',${employeeRoles.join(',')},true),set_config('app.grants',${JSON.stringify(employeeGrants)},true)`;
+  expect(await connection.unsafe('select id from app.attendance_workflow_v3_approver_options($1::uuid[])',['{'+base.companyId+'}'])).toEqual([]);
+  await connection`select set_config('app.tenant_id',${randomUUID()},true),set_config('app.user_id',${ctx.userId??''},true),set_config('app.roles',${roles.join(',')},true),set_config('app.grants',${JSON.stringify(grants)},true)`;
+  expect(await connection.unsafe('select id from app.attendance_workflow_v3_approver_options($1::uuid[])',['{'+base.companyId+'}'])).toEqual([]);
   throw rollback;
  })).rejects.toBe(rollback);
 });
