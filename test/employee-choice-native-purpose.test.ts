@@ -129,6 +129,24 @@ it('preserves server All2000, complete IDs beyond2000, empty population and inde
  const actual=await database.withTenant(ctx,tx=>prototype.readEmployeeChoicesTx(tx,ctx,input),{readOnlySnapshot:true});
  expect(stable(actual)).toEqual(stable(expected));expect(actual.rows.map(row=>row.employmentId)).toEqual(ids.slice(0,2000));expect(actual.total).toBe(count);expect(actual.selected?.employmentId).toBe(selectedId);
  const complete=await database.withTenant(ctx,tx=>prototype.readEmployeeChoiceIdsTx(tx,ctx,{companyIds:[]}),{readOnlySnapshot:true});expect(complete).toEqual(ids);
+ // Independent seed identity order checks both nearer-end directions, exact and
+ // partial last pages, the middle, All2000, overrun and MAX_SAFE offsets.
+ const ranges:readonly[number,number][]=[[0,25],[1000,25],[2000,25],[2090,25],[2104,25],[2105,25],[Number.MAX_SAFE_INTEGER,25],[105,2000],[2104,2000]];
+ for(const [offset,limit]of ranges){
+  const request={...input,offset,limit},old=await database.withTenant(ctx,tx=>current.readEmployeeChoicesTx(tx,ctx,request),{readOnlySnapshot:true}),
+   next=await database.withTenant(ctx,tx=>prototype.readEmployeeChoicesTx(tx,ctx,request),{readOnlySnapshot:true});
+  expect(stable(next)).toEqual(stable(old));expect(next.rows.map(row=>row.employmentId)).toEqual(ids.slice(offset,offset+limit));
+  expect(next.total).toBe(count);expect(next.selected?.employmentId).toBe(selectedId);expect(next.companyOptions.map(row=>row.id)).toEqual([b.companyId]);expect(next.departmentOptions.map(row=>row.id)).toEqual([b.deptA]);
+ }
+ // Reversed and duplicate server IDs remain membership, never page order or
+ // multiplicity; undefined (nativeNULL) and explicit empty keep distinct meaning.
+ for(const employmentIds of [ids.slice().reverse(),[ids[2],ids[0],ids[0]],[]]){
+  const request={...input,employmentIds},old=await database.withTenant(ctx,tx=>current.readEmployeeChoicesTx(tx,ctx,request),{readOnlySnapshot:true}),
+   next=await database.withTenant(ctx,tx=>prototype.readEmployeeChoicesTx(tx,ctx,request),{readOnlySnapshot:true});
+  expect(stable(next)).toEqual(stable(old));expect(next.total).toBe(new Set(employmentIds).size);
+  expect(await database.withTenant(ctx,tx=>prototype.readEmployeeChoiceIdsTx(tx,ctx,request),{readOnlySnapshot:true})).toEqual(ids.filter(id=>employmentIds.includes(id)));
+ }
+
  await expect(prototype.readEmployeeChoices(ctx,input)).rejects.toThrow('Invalid employee page');
  const empty=await database.withTenant(ctx,tx=>prototype.readEmployeeChoicesTx(tx,ctx,{...input,employmentIds:[]}),{readOnlySnapshot:true});
  expect(empty.total).toBe(0);expect(empty.rows).toEqual([]);expect(empty.selected).toBeNull();expect(empty.companyOptions).toEqual([]);
@@ -158,6 +176,13 @@ it('preserves server All2000, complete IDs beyond2000, empty population and inde
   const request={companyIds:[b.companyId],query,selectedId},old=await current.readEmployeeChoices(ctx,request),next=await prototype.readEmployeeChoices(ctx,request);
   expect(stable(next)).toEqual(stable(old));expect(next.rows.map(row=>row.employmentId)).toEqual(expectedIds);expect(next.total).toBe(expectedIds.length);
   expect(await database.withTenant(ctx,tx=>prototype.readEmployeeChoiceIdsTx(tx,ctx,request),{readOnlySnapshot:true})).toEqual(expectedIds);
+ }
+ for(const offset of [0,3,7,8,Number.MAX_SAFE_INTEGER]){
+  const request={companyIds:[b.companyId],employmentIds:ids.slice(2,2+names.length).reverse(),offset,limit:3,selectedId};
+  const next=await database.withTenant(ctx,tx=>prototype.readEmployeeChoicesTx(tx,ctx,request),{readOnlySnapshot:true}),
+   old=await database.withTenant(ctx,tx=>current.readEmployeeChoicesTx(tx,ctx,request),{readOnlySnapshot:true});
+  expect(stable(next)).toEqual(stable(old));expect(next.rows.map(row=>row.employmentId)).toEqual(ordered.slice(offset,offset+3).map(row=>row.id));
+  expect(next.total).toBe(names.length);expect(next.selected).toBeNull();
  }
  const tiedIds=ordered.filter(row=>row.name==='Tied 人員 Name').map(row=>row.id);expect(tiedIds).toHaveLength(2);
  const tiedRequest={companyIds:[b.companyId],query:'Tied',offset:1,limit:1,selectedId};

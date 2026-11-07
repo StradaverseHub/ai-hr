@@ -77,13 +77,16 @@ BEGIN
  employee_choice_project_ids AS MATERIALIZED(
   SELECT matched.id FROM unnest(p_matched_ids) AS matched(id) WHERE p_port='project'
  ),
+ employee_choice_scope_ids AS MATERIALIZED(
+  SELECT scoped.id FROM unnest(p_employee_scope) AS scoped(id)
+ ),
  employee_choice_employments AS MATERIALIZED(
   SELECT e.id AS "employmentId",e.person_id AS "personId",e.company_id AS "companyId",e.employee_code AS "employeeCode",
    CASE WHEN e.terminated_on IS NULL THEN 'active' ELSE 'ended' END AS status
   FROM public.employment e WHERE e.tenant_id=p_tenant
    AND (cardinality(p_company_scope)=0 OR e.company_id=ANY(p_company_scope))
    AND (p_terminated_after IS NULL OR e.terminated_on IS NULL OR e.terminated_on>p_terminated_after)
-   AND (p_employee_scope IS NULL OR e.id=ANY(p_employee_scope))
+   AND (p_employee_scope IS NULL OR (e.id IN(SELECT scoped.id FROM employee_choice_scope_ids scoped)) IS TRUE)
    AND (p_port<>'project' OR (e.id IN(SELECT matched.id FROM employee_choice_project_ids matched)) IS TRUE)
  ),
  employee_choice_people AS MATERIALIZED(
@@ -113,9 +116,30 @@ BEGIN
    AND (p_department IS NULL OR p."departmentId"=p_department) AND (p_unit IS NULL OR p."businessUnitId"=p_unit)
    AND (p_status='' OR p.status=p_status)
  ),
+ employee_choice_count AS MATERIALIZED(
+  SELECT count(*)::bigint AS n FROM employee_choice_matching
+ ),
+ employee_choice_page_window AS MATERIALIZED(
+  SELECT least(p_limit::bigint,greatest(0::bigint,c.n-p_offset)) AS k,
+   greatest(0::bigint,c.n-p_offset-least(p_limit::bigint,greatest(0::bigint,c.n-p_offset))) AS r
+  FROM employee_choice_count c WHERE p_port IN('page','project') AND p_search_mode='none'
+ ),
+ employee_choice_page_ascending AS MATERIALIZED(
+  SELECT page.* FROM employee_choice_page_window w CROSS JOIN LATERAL(
+   SELECT m."employmentId",m.name FROM employee_choice_matching m
+    ORDER BY m.name,m."employmentId" LIMIT w.k OFFSET p_offset
+  ) page WHERE w.k>0 AND p_offset<=w.r
+ ),
+ employee_choice_page_descending AS MATERIALIZED(
+  SELECT page.* FROM employee_choice_page_window w CROSS JOIN LATERAL(
+   SELECT m."employmentId",m.name FROM employee_choice_matching m
+    ORDER BY m.name DESC,m."employmentId" DESC LIMIT w.k OFFSET w.r
+  ) page WHERE w.k>0 AND p_offset>w.r
+ ),
  employee_choice_page_keys AS MATERIALIZED(
-  SELECT m."employmentId",m.name FROM employee_choice_matching m WHERE p_port IN('page','project') AND p_search_mode='none'
-   ORDER BY m.name,m."employmentId" LIMIT p_limit OFFSET p_offset
+  SELECT a."employmentId",a.name FROM employee_choice_page_ascending a
+  UNION ALL
+  SELECT d."employmentId",d.name FROM employee_choice_page_descending d
  ),employee_choice_result AS (
   SELECT m.* FROM employee_choice_matching m
    WHERE p_port IN('page','project') AND p_search_mode='none'
@@ -130,7 +154,7 @@ BEGIN
  SELECT stream.* FROM (
   SELECT 0::integer AS phase,'count'::text AS kind,NULL::uuid AS "employmentId",NULL::text AS name,NULL::text AS "employeeCode",
    NULL::uuid AS "companyId",NULL::uuid AS "departmentId",NULL::uuid AS "businessUnitId",NULL::text AS status,NULL::text AS label,NULL::text AS code,
-   CASE WHEN p_search_mode='none' THEN (SELECT count(*)::integer FROM employee_choice_matching m) ELSE NULL::integer END AS total
+   CASE WHEN p_search_mode='none' THEN (SELECT c.n::integer FROM employee_choice_count c) ELSE NULL::integer END AS total
    WHERE p_port IN('page','project')
   UNION ALL
   SELECT 1,'company',NULL::uuid,NULL::text,NULL::text,c."companyId",NULL::uuid,NULL::uuid,NULL::text,c.company,NULL::text,NULL::integer

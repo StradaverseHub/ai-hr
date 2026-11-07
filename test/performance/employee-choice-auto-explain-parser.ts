@@ -34,7 +34,8 @@ export function employeeChoiceNativeBody(source:string){
  if(begin<0||end<=begin)throw Error('Fixed native purpose body missing');
  return source.slice(begin+' RETURN QUERY '.length,end).trim();
 }
-export type NativeCallExpectation={port:'page'|'ids'|'project';rows:number;matchedIds?:number};
+export type NativePageExpectation={total:number;offset:number;limit:number};
+export type NativeCallExpectation={port:'page'|'ids'|'project';rows:number;matchedIds?:number;serverScopeIds?:number;pagination?:NativePageExpectation};
 export type PlanMarker={label:string;begin:string;end:string;native:boolean;expectedNativeRows?:number;expectedNativeCalls?:readonly NativeCallExpectation[]};
 /** Require both the real nested statement and its actual function invocation.
  * An outer Function Scan alone cannot establish the work performed inside it. */
@@ -76,7 +77,9 @@ export function employeeChoiceNativeInvocations(entries:readonly AutoExplainMess
   if(!entries[inner].context.includes('employee_choice_native_prototype(')||!/at RETURN QUERY/i.test(entries[inner].context))throw Error('Actual native call body context required');
   const invocation=employeeChoiceNativeInvocation([entries[inner],entry],body,call.rows);
   const membership=call.port==='project'?employeeChoiceNativeProjectMembership(entries[inner].document.Plan,call.matchedIds):undefined;
-  result.push({port:call.port,...invocation,...(membership?{membership}:{})});previous=outer;
+  const serverScope=call.serverScopeIds===undefined?undefined:employeeChoiceNativeServerMembership(entries[inner].document.Plan,call.serverScopeIds);
+  const pagination=call.pagination===undefined?undefined:employeeChoiceNativePagination(entries[inner].document.Plan,call.pagination);
+  result.push({port:call.port,...invocation,...(membership?{membership}:{}),...(serverScope?{serverScope}:{}),...(pagination?{pagination}:{})});previous=outer;
  }
  return result;
 }
@@ -85,6 +88,12 @@ export function employeeChoiceNativeInvocations(entries:readonly AutoExplainMess
  * materialized unnest and its one-time hashed membership subplan. This oracle
  * alone is synthetic; its caller must first bind actual PID/source/body/port. */
 export function employeeChoiceNativeProjectMembership(plan:unknown,matchedIds:unknown){
+ return completeNativeMembership(plan,matchedIds,'employee_choice_project_ids',/\bANY\s*\(\s*\(*\s*(?:\$20\b|p_matched_ids\b)/i);
+}
+export function employeeChoiceNativeServerMembership(plan:unknown,scopeIds:unknown){
+ return{...completeNativeMembership(plan,scopeIds,'employee_choice_scope_ids',/\bANY\s*\(\s*\(*\s*(?:\$8\b|p_employee_scope\b)/i),scopeIds};
+}
+function completeNativeMembership(plan:unknown,matchedIds:unknown,cte:string,linear:RegExp){
  if(typeof matchedIds!=='number'||!Number.isSafeInteger(matchedIds)||matchedIds<1)throw Error('Independent complete projection match count required');
  type Node=Record<string,unknown>;
  const nodes:Node[]=[],children=new Map<Node,Node[]>();
@@ -97,14 +106,14 @@ export function employeeChoiceNativeProjectMembership(plan:unknown,matchedIds:un
  visit(plan);
  const predicates=['Filter','Index Cond','Recheck Cond','Hash Cond','Merge Cond','Join Filter','TID Cond','One-Time Filter'];
  for(const node of nodes)for(const key of predicates){const expression=node[key];
-  if(typeof expression==='string'&&/\bANY\s*\(\s*\(*\s*(?:\$20\b|p_matched_ids\b)/i.test(expression))throw Error('Linear matched-ID ScalarArray membership refused');
+  if(typeof expression==='string'&&linear.test(expression))throw Error('Linear matched-ID ScalarArray membership refused');
  }
- const materialized=nodes.filter(node=>node['Subplan Name']==='CTE employee_choice_project_ids');
+ const materialized=nodes.filter(node=>node['Subplan Name']==='CTE '+cte);
  if(materialized.length!==1)throw Error('One actual materialized projection set required');
  const descendants=(node:Node):Node[]=>[node,...(children.get(node)??[]).flatMap(descendants)];
  const unnest=descendants(materialized[0]).filter(node=>node['Node Type']==='Function Scan'&&node['Function Name']==='unnest');
  if(unnest.length!==1||unnest[0]['Actual Loops']!==1||unnest[0]['Actual Rows']!==matchedIds)throw Error('Complete projection set must be unnested exactly once');
- const scans=nodes.filter(node=>node['Node Type']==='CTE Scan'&&node['CTE Name']==='employee_choice_project_ids');
+ const scans=nodes.filter(node=>node['Node Type']==='CTE Scan'&&node['CTE Name']===cte);
  if(scans.length!==1||scans[0]['Actual Loops']!==1||scans[0]['Actual Rows']!==matchedIds
   ||scans[0]['Parent Relationship']!=='SubPlan'||typeof scans[0]['Subplan Name']!=='string'
   ||!/^SubPlan [1-9][0-9]*$/.test(scans[0]['Subplan Name']))throw Error('Complete one-time projection membership scan required');
@@ -113,6 +122,44 @@ export function employeeChoiceNativeProjectMembership(plan:unknown,matchedIds:un
  if(employment.length!==1||employment[0]['Actual Loops']!==1)throw Error('Actual employment filter must use its complete hashed projection set');
  return{kind:'ACTUAL_COMPLETE_MATERIALIZED_HASHED_MEMBERSHIP',matchedIds,unnestRows:unnest[0]['Actual Rows'],unnestLoops:1,
   membershipRows:scans[0]['Actual Rows'],membershipLoops:1,hashedSubplan:scans[0]['Subplan Name'],linearMatchedArrayRefused:true};
+}
+/** Native branch/sort proof, bound to independently known N/O/L rather than
+ * trusting a claimed direction or output count. Both branches must exist; the
+ * unused branch's actual source/sort/limit work must remain unexecuted. */
+export function employeeChoiceNativePagination(plan:unknown,expected:NativePageExpectation){
+ const {total,offset,limit}=expected;
+ if(!Number.isSafeInteger(total)||total<1||!Number.isSafeInteger(offset)||offset<0||!Number.isSafeInteger(limit)||limit<1||limit>2000)throw Error('Independent native pagination facts required');
+ const k=Math.max(0,Math.min(limit,total-offset)),r=Math.max(0,total-offset-k),direction=offset<=r?'ascending':'descending';
+ if(k===0)throw Error('Nonempty actual pagination proof required');
+ type Node=Record<string,unknown>;const nodes:Node[]=[];
+ const visit=(value:unknown):Node=>{
+  if(!value||typeof value!=='object'||Array.isArray(value))throw Error('Actual pagination plan node required');
+  const node=value as Node;nodes.push(node);if(nodes.length>100000||node.Plans!==undefined&&!Array.isArray(node.Plans))throw Error('Bounded pagination children required');
+  for(const child of node.Plans??[])visit(child);return node;
+ };
+ visit(plan);
+ const descendants=(node:Node):Node[]=>[node,...((node.Plans??[])as Node[]).flatMap(descendants)];
+ const branches=['ascending','descending'].map(name=>{
+  const roots=nodes.filter(node=>node['Subplan Name']==='CTE employee_choice_page_'+name);
+  if(roots.length!==1)throw Error('Both actual native pagination branches required');
+  return{name,nodes:descendants(roots[0])};
+ });
+ const active=branches.find(branch=>branch.name===direction)!,inactive=branches.find(branch=>branch.name!==direction)!;
+ // The gate may run once to decide not to enter its lateral child. Every
+ // actual matching-source, Sort and Limit beneath it must have zero loops.
+ const inactiveSorts=inactive.nodes.filter(node=>node['Node Type']==='Sort'),inactiveLimits=inactive.nodes.filter(node=>node['Node Type']==='Limit'),
+  inactiveSources=inactive.nodes.filter(node=>node['CTE Name']==='employee_choice_matching');
+ const work=[...inactiveSorts,...inactiveLimits,...inactiveSources];
+ if(inactiveSorts.length!==1||inactiveLimits.length!==1||inactiveSources.length!==1||work.some(node=>node['Actual Loops']!==0||node['Actual Rows']!==0))throw Error('Unused native pagination branch executed or missing');
+ const sorts=active.nodes.filter(node=>node['Node Type']==='Sort'),scans=active.nodes.filter(node=>node['CTE Name']==='employee_choice_matching'),limits=active.nodes.filter(node=>node['Node Type']==='Limit');
+ const rowGoal=(direction==='ascending'?offset:r)+k;
+ if(sorts.length!==1||scans.length!==1||limits.length!==1||sorts[0]['Actual Loops']!==1||scans[0]['Actual Loops']!==1||scans[0]['Actual Rows']!==total
+  ||limits[0]['Actual Loops']!==1||limits[0]['Actual Rows']!==k||sorts[0]['Actual Rows']!==rowGoal||sorts[0]['Sort Method']!=='top-N heapsort'||sorts[0]['Sort Space Type']!=='Memory')throw Error('Actual bounded top-N native pagination required');
+ const keys=sorts[0]['Sort Key'];
+ if(!Array.isArray(keys)||keys.length!==2||typeof keys[0]!=='string'||typeof keys[1]!=='string'
+  ||!(direction==='ascending'?/\.name$/:/\.name DESC$/).test(keys[0])
+  ||!(direction==='ascending'?/\."employmentId"$/:/\."employmentId" DESC$/).test(keys[1]))throw Error('Native name/employment tuple direction differs');
+ return{kind:'ACTUAL_NEARER_END_NATIVE_PAGINATION',...expected,k,r,direction,rowGoal,unusedSourceSortLimitLoops:0,sortMethod:sorts[0]['Sort Method']};
 }
 export function bindEmployeeChoiceNativePlans(messages:readonly AutoExplainMessage[],markers:readonly PlanMarker[],body:string){
  const known=new Map<string,{marker:PlanMarker;edge:'begin'|'end'}>();

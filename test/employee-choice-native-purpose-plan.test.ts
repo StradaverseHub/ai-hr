@@ -39,17 +39,22 @@ let installation:Awaited<ReturnType<typeof installEmployeeChoiceNativePrototype>
 let timing:Awaited<ReturnType<typeof employeeChoicePurposeSession>>|undefined,plansSession:Awaited<ReturnType<typeof employeeChoicePurposeSession>>|undefined;
 let logging:Awaited<ReturnType<typeof employeeChoicePlanLogging>>|undefined;
 let fixture:Awaited<ReturnType<typeof seedPersonnelNativeFixture>>|undefined,representedBu='',emptyBu='',output='';
+let completeFixtureIds:string[]=[];
 let cardinalities:Awaited<ReturnType<typeof employeeChoiceActualCardinalities>>;
-const report:Record<string,unknown>={kind:'NATIVE_EMPLOYEE_CHOICE_PROJECT_SET_PROTOTYPE_V3',releaseEligible:false,productionPolicyApproved:false,migrationAllocated:false,
- complete:false,employees:50000,variants,wholePortsPerVariant:16,caseBudgetMs:300000,statementTimeoutMs:20000,lockTimeoutMs:300,targetMs:1000,
+const report:Record<string,unknown>={kind:'NATIVE_EMPLOYEE_CHOICE_NEARER_PAGE_SERVER_SET_V4',releaseEligible:false,productionPolicyApproved:false,migrationAllocated:false,
+ complete:false,employees:50000,variants,wholePortsPerVariant:17,caseBudgetMs:300000,statementTimeoutMs:20000,lockTimeoutMs:300,targetMs:1000,
  control:{commit:'f1515376df082438ca025fb65d01a8a3330a8796',sourceSha256:'ce1e3559addbffa4b4e780594ebcc5fcf917ddffde79a6155cc7fbcecdbcfbd5'},
  topology:'Timing variants share one actual app backend; plan-only variants share a second actual app backend. PIDs are distinct and never relabeled.',
  registration:'TEMPORARY_SOLE_FOCUSED_DEVELOPMENT_ONLY; complete normal-CI singleton admission remains pending',
- supplementalPlanPortsPerVariant:1,expectedActualPlanPhases:38,
+ supplementalPlanPortsPerVariant:2,expectedActualPlanPhases:42,
  retainedOriginalProof:{source:'9f51857dbc439f21a9ed6f4a0fc4b6aec4c5500c',run:42405537839,actualPlanPhases:34,allUnderTarget:false},
  retainedMinimalSearchProof:{source:'124274a3fa96769d7b593a26be160a9fcc8aafed',run:42409116168,actualPlanPhases:38,actualNativeCallPairs:23,allUnderTarget:false,
   broadSearchMs:7543.329861999955,deepBroadSearchMs:7972.917247000034,deepMs:1126.5117709999904,
   nativeLogSha256:'2dd23c7623840eb9a832368b1e29ea2f5d97e235d680e73305de6d078c16cff3'},
+ retainedProjectionSetProof:{source:'6e563cb1228b4d88769dbb06dff804d1e5910bfa',ordinaryRun:42411156822,planRun:42411157207,actualPlanPhases:38,actualNativeCallPairs:23,allUnderTarget:false,
+  broadSearchMs:995.9308960000053,deepBroadSearchMs:1214.2186469999724,deepMs:903.4817730000068,nativeLogSha256:'6dd1e6b2034fcca1a31cee9c302b4427024c1c34b3a03adbc9d909bfa056f10c'},
+ paginationProof:'Same counted authorized population; nearer-end native tuple pagination; actual unused branch source/sort/limit loops0 and active top-N memory sort required for first/deep/broad/full-server-All2000 controls.',
+ serverPopulationProof:'All50000 independently enumerated fixture IDs supplied in reverse order, unclipped, then exact All2000 last page plus complete50000 IDs; native materialized unnest/hash membership bound per call.',
  projectionExpressionCostProof:'Every actual project must materialize its complete independently expected1/50000-ID set once and use its exact hashed subplan in the employment filter; linear parameter ScalarArray membership refuses independently of row-work counts.',
  nativeCallAccounting:'Each minimal-candidate and bounded-projection body/invocation/row count is bound separately; every native statement is inspected and distinct main-body work/buffers are additionally combined per phase.',
  instrumentation:'Normal timings have no auto_explain. Plan-only auto_explain has analyze/buffers/settings/nested enabled and per-node timing/parameter values disabled. Instrumented duration is never a latency claim.',
@@ -107,15 +112,20 @@ const expectedNativeRows=(name:string)=>{
   'unit-active':25,'organisation-deep':25,'organisation-search':500,'empty-unit':0,'missing-search':50000,'broad-search':50000,'deep-broad-search':50000};
  if(name==='foreign-company')return 1; // Count only; no authorized population/selection/catalogue.
  if(name==='complete-ids')return 400;
+ if(name==='full-server-population')return 2005;
+ if(name==='full-server-ids')return 50000;
  if(name==='sparse-server-population')return 7; // Three identities + count/company/department/unit; no selected row.
  if(name==='held-access'||name==='held-history')return 30;
  if(!Object.hasOwn(candidates,name))throw Error('Missing independent native stream fixture');
  return 5+candidates[name]; // Count + company + department + unit + independently selected identity.
 };
 const expectedNativeCalls=(name:string):NativeCallExpectation[]=>{
- const first:NativeCallExpectation={port:name==='complete-ids'?'ids':'page',rows:expectedNativeRows(name)};
+ const first:NativeCallExpectation={port:name==='complete-ids'||name==='full-server-ids'?'ids':'page',rows:expectedNativeRows(name)};
+ if(name==='initial'||name==='deep')first.pagination={total:50000,offset:name==='deep'?49975:0,limit:25};
+ if(name==='full-server-population')return[{...first,serverScopeIds:50000,pagination:{total:50000,offset:48000,limit:2000}}];
+ if(name==='full-server-ids')return[{...first,serverScopeIds:50000}];
  if(name==='search'||name==='organisation-search')return[first,{port:'project',rows:2,matchedIds:1}];
- if(name==='broad-search'||name==='deep-broad-search')return[first,{port:'project',rows:26,matchedIds:50000}];
+ if(name==='broad-search'||name==='deep-broad-search')return[first,{port:'project',rows:26,matchedIds:50000,pagination:{total:50000,offset:name==='deep-broad-search'?49975:0,limit:25}}];
  return[first];
 };
 
@@ -167,6 +177,23 @@ async function matrix(variant:Variant,session:Awaited<ReturnType<typeof employee
    if(phase==='timing')ports[variant+':held-'+barrier]={ms:elapsed};
   }finally{release();signal?.removeEventListener('abort',abort);await writer;}
  }
+ // A legitimate large SERVER population is not a browser filter. Keep all IDs
+ // and deliberately scramble order; its scope gate must not become50000x50000
+ // scalar comparisons. Expected identity order comes from independent seed codes.
+ const fullInput={companyIds:[b.companyId],employmentIds:completeFixtureIds.slice().reverse(),selectedId:fixture!.expectedLast.at(-1),offset:48000,limit:2000};
+ const fullBefore=phase==='timing'?resources():undefined;
+ const full=await call('full-server-population',0,async()=>{const start=performance.now(),page=await database.withTenant(ctx,tx=>variant==='current'
+  ?baseline.readEmployeeChoicesTx(tx,ctx,fullInput,signal):prototype.readEmployeeChoicesTx(tx,ctx,fullInput,signal),{readOnlySnapshot:true});elapsed=performance.now()-start;return page;});
+ expect(full.total).toBe(50000);expect(full.rows.map(row=>row.employmentId)).toEqual(completeFixtureIds.slice(48000));expect(full.selected?.employmentId).toBe(completeFixtureIds.at(-1));
+ expect(full.companyOptions.map(row=>row.id)).toEqual([b.companyId]);expect(full.departmentOptions.map(row=>row.id)).toEqual([b.deptA]);expect(full.businessUnitOptions.map(row=>row.id)).toEqual([representedBu]);
+ if(phase==='timing'){
+  ports[variant+':full-server-population']={ms:elapsed};const telemetry=(report.resourcePhases??=[])as unknown[];telemetry.push({variant,case:'full-server-population',before:fullBefore,after:resources()});
+  if(variant==='current')pages.set('full-server-population',stable(full));else expect(stable(full)).toEqual(pages.get('full-server-population'));
+ }else{
+  expect(stable(full)).toEqual(pages.get('full-server-population'));
+  const ids=await call('full-server-ids',0,()=>database.withTenant(ctx,tx=>idsReader(variant)(tx,ctx,{companyIds:[b.companyId],employmentIds:fullInput.employmentIds},signal),{readOnlySnapshot:true}));
+  expect(ids).toEqual(completeFixtureIds);expect(new Set(ids).size).toBe(50000);
+ }
  if(phase==='plans'){
   const employmentIds=organisationTagSample.slice(0,3),input={companyIds:[b.companyId],employmentIds,selectedId:fixture!.expectedLast.at(-1)};
   const sparse=await call('sparse-server-population',0,()=>database.withTenant(ctx,tx=>variant==='current'
@@ -188,6 +215,11 @@ it.skipIf(!requested)('prepares exactly50k fictional current-root facts and a gu
   {id:representedBu,tenantId:fixture.b.tenantId,companyId:fixture.b.companyId,code:'ORG-SUBSET',name:'Fictional organisation subset'},
   {id:emptyBu,tenantId:fixture.b.tenantId,companyId:fixture.b.companyId,code:'ORG-EMPTY',name:'Fictional unrepresented unit'}]);
  await owner.db.update(assignment).set({businessUnitId:representedBu}).where(inArray(assignment.employmentId,fixture.organisationTagSample));await owner.client`analyze assignment`;await owner.client`analyze business_unit`;
+ const independent=await owner.client<{id:string;code:string}[]>`select id,employee_code as code from employment where tenant_id=${fixture.b.tenantId}::uuid order by employee_code`;
+ expect(independent).toHaveLength(50000);independent.forEach((row,index)=>expect(row.code).toBe('PERF'+String(index+1).padStart(9,'0')));
+ completeFixtureIds=independent.map(row=>row.id);expect(new Set(completeFixtureIds).size).toBe(50000);
+ expect(completeFixtureIds.slice(0,25)).toEqual(fixture.expectedFirst);expect(completeFixtureIds.slice(-25)).toEqual(fixture.expectedLast);
+ report.completeServerScope={identities:completeFixtureIds.length,source:'Independent exact seed employee_code1..50000',inputOrder:'reverse',clipped:false};
  cardinalities=await employeeChoiceActualCardinalities(owner.db);report.exactWholeFixtureCardinalities=cardinalities;report.initialResources=resources();
  const identities=(report.identities??=[])as unknown[];timing=await employeeChoicePurposeSession('timing',active,value=>identities.push(value),poison);
  const [instrumentation]=await timing.single.client`select current_setting('auto_explain.log_min_duration',true) as duration`;
@@ -195,7 +227,7 @@ it.skipIf(!requested)('prepares exactly50k fictional current-root facts and a gu
  report.timingBackend=timing.defaults;report.preparationComplete=true;await installation.unchanged();save();
 },true));
 
-it.skipIf(!requested).for(variants)('measures all16 actual whole ports with %s implementation',{timeout:300000},(variant,context)=>bounded(context,async()=>{
+it.skipIf(!requested).for(variants)('measures all17 actual whole ports with %s implementation',{timeout:300000},(variant,context)=>bounded(context,async()=>{
  expect(timing).toBeTruthy();const spy=timing!.install();
  await preserveDiagnosticFailure(async()=>{const stats=(report.plannerStatistics??={})as Record<string,unknown>;stats['timing:'+variant]=await employeeChoicePlannerSnapshot();
   await matrix(variant,timing!,'timing');const complete=(report.performanceVariants??=[])as string[];complete.push(variant);save();
@@ -249,7 +281,7 @@ it.skipIf(!requested)('captures real nested native plans on a separate bound app
    actual.push({label,statements:entries});
   }
   report.markers=markers;report.actualPlans=actual;report.planVerificationFailures=failures;report.actualPlanCases=bound.size;save();
-  expect(bound.size).toBe(38);expect(failures).toEqual([]);report.actualPlansComplete=true;save();
+  expect(bound.size).toBe(42);expect(failures).toEqual([]);report.actualPlansComplete=true;save();
  },async()=>{restoreSpy();await plansSession?.close();await logging?.restore();if(logging)report.instrumentationRestored=true;await installation!.unchanged();save();});
 }));
 
@@ -271,6 +303,6 @@ afterAll(async()=>{
  report.complete=!failedCase&&!blocked&&report.preparationComplete===true&&report.actualPlansComplete===true&&report.instrumentationRestored===true&&report.authorityComplete===true&&report.cleanupComplete===true
   &&variants.every(variant=>(report.performanceVariants as string[]|undefined)?.includes(variant));
  report.wholePortTargets=Object.fromEntries(variants.map(variant=>{const ports=Object.entries((report.ports??{})as Record<string,{samples?:number[];ms?:number}>).filter(([key])=>key.startsWith(variant+':'));
-  return [variant,{targetMs:1000,measuredPorts:ports.length,allUnderTarget:report.complete===true?ports.length===16&&ports.every(([,port])=>port.samples?.length?port.samples.every(ms=>ms<1000):typeof port.ms==='number'&&port.ms<1000):null}];}));
+  return [variant,{targetMs:1000,measuredPorts:ports.length,allUnderTarget:report.complete===true?ports.length===17&&ports.every(([,port])=>port.samples?.length?port.samples.every(ms=>ms<1000):typeof port.ms==='number'&&port.ms<1000):null}];}));
  report.phase=report.complete?'complete':'incomplete';save();if(failures.length)throw new AggregateError(failures,'Owned prototype cleanup failed');
 });

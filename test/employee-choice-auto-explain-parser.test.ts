@@ -1,6 +1,6 @@
 /** Synthetic parser/refusal coverage only. No native plan or timing claim. */
 import {expect,it} from 'vitest';
-import {employeeChoiceAutoExplainMessages,employeeChoiceSqlFingerprint,bindEmployeeChoiceNativePlans,employeeChoiceNativeInvocation,employeeChoiceNativeInvocations,employeeChoiceNativeProjectMembership,type AutoExplainMessage,type PlanMarker} from './performance/employee-choice-auto-explain-parser';
+import {employeeChoiceAutoExplainMessages,employeeChoiceSqlFingerprint,bindEmployeeChoiceNativePlans,employeeChoiceNativeInvocation,employeeChoiceNativeInvocations,employeeChoiceNativeProjectMembership,employeeChoiceNativeServerMembership,employeeChoiceNativePagination,type AutoExplainMessage,type PlanMarker} from './performance/employee-choice-auto-explain-parser';
 const pid=123,body='WITH employee_choice_employments AS MATERIALIZED(select 1) select * from employee_choice_employments';
 const marker:PlanMarker={label:'native:initial',begin:'select 1 as "aihr_emp_marker_native_initial_begin"',end:'select 1 as "aihr_emp_marker_native_initial_end"',native:true};
 function message(query:string,backend=pid,context=''){
@@ -82,4 +82,48 @@ it('refuses clipped, repeatedly evaluated, unbound or falsely claimed projection
   const plan=projectionPlan(50000);change(plan);expect(()=>employeeChoiceNativeProjectMembership(plan,50000)).toThrow();
  }
  for(const count of [undefined,0,-1,1.5])expect(()=>employeeChoiceNativeProjectMembership(projectionPlan(50000),count)).toThrow('Independent complete');
+});
+
+function paginationPlan(total=50000,offset=49975,limit=25){
+ const k=Math.max(0,Math.min(limit,total-offset)),r=Math.max(0,total-offset-k),descending=offset>r;
+ const branch=(name:'ascending'|'descending')=>{
+  const enabled=(name==='descending')===descending,loops=enabled?1:0,rows=enabled?(name==='ascending'?offset:r)+k:0;
+  const source={'Node Type':'CTE Scan','CTE Name':'employee_choice_matching','Actual Rows':enabled?total:0,'Actual Loops':loops};
+  const sort={'Node Type':'Sort','Sort Key':name==='ascending'?['m.name','m."employmentId"']:['m.name DESC','m."employmentId" DESC'],
+   'Actual Rows':rows,'Actual Loops':loops,'Sort Method':enabled?'top-N heapsort':'','Sort Space Type':enabled?'Memory':'',Plans:[source]};
+  return{root:{'Node Type':'Nested Loop','Subplan Name':'CTE employee_choice_page_'+name,'Actual Rows':enabled?k:0,'Actual Loops':1,
+   Plans:[{'Node Type':'Limit','Actual Rows':enabled?k:0,'Actual Loops':loops,Plans:[sort]}]},sort,source};
+ };
+ const ascending=branch('ascending'),descendingBranch=branch('descending');
+ return{plan:{'Node Type':'Append','Actual Rows':k,'Actual Loops':1,Plans:[ascending.root,descendingBranch.root]},
+  active:descending?descendingBranch:ascending,inactive:descending?ascending:descendingBranch};
+}
+it('requires native bounded last-page/first-page tuple sorts and zero unused-branch source work',()=>{
+ for(const offset of [0,49975,49990]){
+  const model=paginationPlan(50000,offset,25);
+  expect(employeeChoiceNativePagination(model.plan,{total:50000,offset,limit:25})).toMatchObject({direction:offset===0?'ascending':'descending',rowGoal:offset===49990?10:25,unusedSourceSortLimitLoops:0});
+ }
+});
+it('rejects full/dead-branch sorts, rewritten collation keys and claimed directions without actual top-N work',()=>{
+ for(const alter of [(m:ReturnType<typeof paginationPlan>)=>{m.inactive.source['Actual Loops']=1;},
+  (m:ReturnType<typeof paginationPlan>)=>{m.inactive.sort['Actual Loops']=1;},
+  (m:ReturnType<typeof paginationPlan>)=>{m.active.sort['Actual Rows']=50000;},
+  (m:ReturnType<typeof paginationPlan>)=>{m.active.source['Actual Rows']=49999;},
+  (m:ReturnType<typeof paginationPlan>)=>{m.inactive.root.Plans.pop();},
+  (m:ReturnType<typeof paginationPlan>)=>{m.active.sort['Sort Method']='external merge';},
+  (m:ReturnType<typeof paginationPlan>)=>{m.active.sort['Sort Space Type']='Disk';},
+  (m:ReturnType<typeof paginationPlan>)=>{m.active.sort['Sort Key']=['m.name','m."employmentId"'];},
+  (m:ReturnType<typeof paginationPlan>)=>{m.plan.Plans.pop();}]){
+  const model=paginationPlan();alter(model);expect(()=>employeeChoiceNativePagination(model.plan,{total:50000,offset:49975,limit:25})).toThrow();
+ }
+ expect(()=>employeeChoiceNativePagination(paginationPlan().plan,{total:50000,offset:Number.MAX_SAFE_INTEGER,limit:25})).toThrow('Nonempty');
+});
+it('requires the entire50000-ID server population set and rejects its separate linear array predicate',()=>{
+ const scope=()=>{const p=projectionPlan(50000);p.Plans[0]['Subplan Name']='CTE employee_choice_scope_ids';
+  p.Plans[1].Plans![0]['CTE Name']='employee_choice_scope_ids';p.Plans[1].Filter='(($8 IS NULL) OR ((hashed SubPlan 7) IS TRUE))';return p;};
+ expect(employeeChoiceNativeServerMembership(scope(),50000)).toMatchObject({scopeIds:50000,unnestRows:50000,membershipRows:50000});
+ for(const expression of ['id=ANY($8) AND (hashed SubPlan 7)','id=ANY(p_employee_scope) AND (hashed SubPlan 7)']){
+  const model=scope();model.Plans[1].Filter=expression;expect(()=>employeeChoiceNativeServerMembership(model,50000)).toThrow('ScalarArray');
+ }
+ const clipped=scope();clipped.Plans[0]['Actual Rows']=49999;expect(()=>employeeChoiceNativeServerMembership(clipped,50000)).toThrow();
 });
