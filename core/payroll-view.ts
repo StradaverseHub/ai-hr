@@ -264,12 +264,18 @@ function individualInquiryOrder(sort:IndividualInquirySort){
 
 export function listFixedTransactionsPage(ctx:SessionContext,p:FixedTransactionFilter,page:PageQuery):Promise<{rows:FixedTransactionViewRow[];total:number}>{
   if(!p.companyIds.length)return Promise.resolve({rows:[],total:0});
-  return withTenant(ctx,tx=>inquiryPage<FixedTransactionViewRow>(tx,fixedTransactionQuery(tx,p,todayIso()),sql`"employeeName","code","validFrom","id"`,page));
+  return withTenant(ctx,async tx=>{
+    await tx.execute(sql`set transaction read only`);
+    return inquiryPage<FixedTransactionViewRow>(tx,fixedTransactionQuery(tx,p,todayIso()),sql`"employeeName","code","validFrom","id"`,page);
+  });
 }
 export async function listIndividualTxnsPage(ctx:SessionContext,p:IndividualTxnFilter,page:PageQuery,sort:IndividualInquirySort=parseIndividualInquirySort()):Promise<{rows:IndividualTxnViewRow[];total:number}>{
   if(!p.companyIds.length)return {rows:[],total:0};
   sort=parseIndividualInquirySort(sort.key,sort.direction);
-  const result=await withTenant(ctx,tx=>inquiryPage<Omit<IndividualTxnViewRow,'reprocessRequired'>>(tx,individualTransactionQuery(tx,p),individualInquiryOrder(sort),page));
+  const result=await withTenant(ctx,async tx=>{
+    await tx.execute(sql`set transaction read only`);
+    return inquiryPage<Omit<IndividualTxnViewRow,'reprocessRequired'>>(tx,individualTransactionQuery(tx,p),individualInquiryOrder(sort),page);
+  });
   return {total:result.total,rows:result.rows.map(row=>({...row,reprocessRequired:individualTxnReprocessRequired(row)}))};
 }
 

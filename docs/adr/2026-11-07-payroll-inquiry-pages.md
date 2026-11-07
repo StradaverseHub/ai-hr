@@ -4,7 +4,7 @@ Status: candidate; native and rendered qualification pending. Production held.
 
 Fixed and Individual Transaction View now fetch the selected page and exact full-filter
 count in one PostgreSQL statement. Both remain Read Committed under the existing Payroll
-history shared barrier; no snapshot is pinned before waiting on that barrier. The single
+history shared barrier, then enforce READ ONLY; no snapshot is pinned before waiting on that barrier. The single
 statement prevents a count/page mismatch from a concurrent transaction commit. An empty
 or past-end page retains its true count. “All” retains the shared 2,000-row ceiling and
 visible truncation contract. Native scope, period, component, department, creator, date

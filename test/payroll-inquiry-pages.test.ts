@@ -4,7 +4,9 @@ import {writeFileSync} from 'node:fs';
 import {join} from 'node:path';
 import {performance} from 'node:perf_hooks';
 import {eq,sql} from 'drizzle-orm';
-import {afterAll,beforeAll,beforeEach,expect,it} from 'vitest';
+import {afterAll,beforeAll,beforeEach,expect,it,vi} from 'vitest';
+import type {SessionContext,Tx} from '../db/client';
+import * as moduleGate from '../core/module-gate';
 import * as s from '../db/schema';
 import {hireEmployee} from '../core/org';
 import {setCompensation} from '../core/comp';
@@ -27,6 +29,25 @@ async function secondCompany(){
  const [department]=await owner.db.insert(s.department).values({tenantId:b.tenantId,companyId:company.id,name:'Excluded department'}).returning();
  return {companyId:company.id,departmentId:department.id};
 }
+
+it('keeps both native page roots READ COMMITTED and READ ONLY after their normal Payroll gate',async()=>{
+ const a=adminCtx(b),employee=await hire('Fictional read mode employee');
+ await seedPayComponentCatalog(a);const component=(await listPayComponents(a)).find(row=>row.code==='ALLOWANCE')!;
+ const fixed=await setEmploymentPayComponent(a,{employmentId:employee.employmentId,componentId:component.id,amount:123.45,effectiveFrom:'2026-01-01'});
+ const batch=await createBatch(a,{companyId:b.companyId,payPeriod:'2026-05'});
+ const individual=await createIndividualTxn(a,{batchId:batch.batchId,employmentId:employee.employmentId,kind:'earning',txnDate:'2026-05-10',amount:12.25});
+ const actual=moduleGate.withPayrollTenant,modes:{isolation:string;readonly:string;role:string}[]=[];
+ const spy=vi.spyOn(moduleGate,'withPayrollTenant').mockImplementation(<T>(ctx:SessionContext,read:(tx:Tx)=>Promise<T>,options?:Parameters<typeof actual>[2])=>actual(ctx,async tx=>{
+  const result=await read(tx);
+  const [mode]=await tx.execute<{isolation:string;readonly:string;role:string}>(sql`select current_setting('transaction_isolation') as isolation,current_setting('transaction_read_only') as readonly,current_user as role`);
+  modes.push(mode);return result;
+ },options));
+ try{
+  expect((await listFixedTransactionsPage(a,{companyIds:[b.companyId]},parsePageQuery())).rows.map(row=>row.id)).toEqual([fixed.id]);
+  expect((await listIndividualTxnsPage(a,{companyIds:[b.companyId]},parsePageQuery())).rows.map(row=>row.id)).toEqual([individual.id]);
+  expect(modes).toEqual([{isolation:'read committed',readonly:'on',role:'ai_hr_app'},{isolation:'read committed',readonly:'on',role:'ai_hr_app'}]);
+ }finally{spy.mockRestore();}
+});
 
 it('pages Fixed rows in native order with exact strings, full counts, status and company filters',async()=>{
  const a=adminCtx(b),employee=await hire('Fictional fixed employee'),other=await secondCompany();
