@@ -5,7 +5,7 @@ Source-only and NOT RUN. No local app/compiler/DB/runtime/build checks executed.
 The freshly fetched main/alpha refs were inspected before freeze; the assigned
 component base is deliberately preserved rather than rebased onto foreign work.
 
-The isolated candidate adds3211 and a real restricted-owner component fixture;
+The isolated candidate (with its separately recorded a9 cleanup recovery) adds3211 and a real restricted-owner component fixture;
 there is no journal/allocation/application change. Original3103 SHA256 is
 `bb171333ef940c173ac9ca0a647398116dfd8ee8dd87d77c8f59e92b0281fe47`.
 The exact predecessor body remains SHA256
@@ -25,12 +25,14 @@ After root convergence, planned affected chunks are:
 
 - Sole native selector `test/access-editor-native-owner-presentation.test.ts`:
   one declared300s case, no skipped native subclaims accepted as success.20s SQL /
-  300ms locks apply to construction, native roles, APP and cleanup. Actual full739
+  300ms locks apply to construction, native roles and APP; cleanup uses2s SQL/
+  startup,300ms locks and one26s aggregate below the unchanged30s finish hook.
+  Actual full739
   replay, fixed-object transfer and raw roles/memberships must remain owned by the
   authenticated exclusive controlled DB job. Every native comparison and denial
   is inside that case and its owned finish/drain lifetime.
-- Pure selector `test/access-editor-native-owner-ownership.test.ts`: exactly three
-  deferred construction/timeout/restoration/poison models; no DB authority or
+- Pure selector `test/access-editor-native-owner-ownership.test.ts`: exactly seven
+  deferred construction/timeout/restoration/poison/deadline/identity models; no DB authority or
   native-coverage claim.
 - Root's final actual installed706/707 prefix rehearsal plus allocation/source
   consistency and applicable complete Access tail remain required. Historical

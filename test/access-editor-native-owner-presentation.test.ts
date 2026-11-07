@@ -29,7 +29,7 @@ it('preserves canonical Access behavior under a real restricted native owner and
  const abort=()=>{releaseHeld?.();};context.signal.addEventListener('abort',abort,{once:true});
  const active=()=>context.signal.throwIfAborted();
  try{
-  fixture=await accessEditorNativeOwnerFixture(context.signal);active();const f=fixture;
+  fixture=await accessEditorNativeOwnerFixture(context.signal,ownership.poison);active();const f=fixture;
   const proofs:unknown[]=[];let revokeBetween:{userId:string;grantId:string}|undefined,betweenRevocations=0;
   const spy=vi.spyOn(database,'withTenant').mockImplementation(async<T>(ctx:SessionContext,read:(tx:Tx)=>Promise<T>,options?:Parameters<typeof database.withTenant>[2])=>{const result=await f.application.withTenant(ctx,async tx=>{
    active();await tx.execute(sql`set local lock_timeout='300ms'`);await tx.execute(sql`set local statement_timeout='20s'`);
@@ -128,7 +128,7 @@ it('preserves canonical Access behavior under a real restricted native owner and
   await expect(readAccessConfigurationEditor({...root.ctx,tenantId:foreign.ctx.tenantId})).rejects.toMatchObject({code:'ceiling'});
   expect(Array.from(await money())).toEqual(financial);expect(proofs.length).toBeGreaterThan(10);
  }finally{context.signal.removeEventListener('abort',abort);releaseHeld?.();restoreSpy?.();
-  try{await fixture?.close();}catch(error){ownership.poison(error instanceof Error?error:Error('Access native owner teardown uncertain'));throw error;}
+  try{const proof=await fixture?.close();if(fixture){expect(proof).toMatchObject({complete:true,databaseAbsent:true,rolesAbsent:true,ownedBackendsAbsent:true});expect(proof?.elapsedMs).toBeLessThan(26000);}}catch(error){ownership.poison(error instanceof Error?error:Error('Access native owner teardown uncertain'));throw error;}
  }
  });
 },300000);

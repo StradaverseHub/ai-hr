@@ -34,7 +34,9 @@ Commands, preview/CAS, history, money and exported service contracts are unchang
 
 ## Native owner component proof
 
-The new test constructs the exact original739-migration component predecessor in
+The new test constructs the exact original739-migration component predecessor
+from the explicit archived `test/fixtures/access-editor-original739-journal.json`,
+independently of future edits to the current installed-lineage journal, in
 a unique disposable DB, then transfers only that DB's fixed public/app objects
 originally owned by postgres to a unique restricted LOGIN. The DB is already owned
 by that LOGIN. App schema, tables/views/sequences, enums/domains and functions are
@@ -74,12 +76,15 @@ The locked postgres3.4.9 driver
 (`mainwt/node_modules/.pnpm/postgres@3.4.9/node_modules/postgres/src/index.js`,
 `parseOptions`) forwards the validated APP URL startup options to the native
 connection. Actual settings are independently asserted on both LOGINs.
-All native, APP, constructor and cleanup connections use20s statements and300ms
-locks. The single300s native case owns construction, queries, full restoration and
+Work connections use20s statements/300ms locks and2s startup limits. Cleanup
+uses separate2s statements/300ms locks/2s connections, an18s work-admission
+deadline and26s complete observation envelope (with at most a2s interrupted
+connection/query settlement tail below the unchanged30s finish hook). The single300s native case owns construction, queries, full restoration and
 unique DB/role drop before its first microtask; timeout interrupts sockets, drains
 the owned operation through `onTestFinished`, and poisons any successor on abort or
-cleanup uncertainty. Three deferred pure models verify construction cancellation,
-restoration drain and refused successors. Pure models are not native proof.
+cleanup uncertainty. Seven deferred pure models retain construction cancellation/restoration drain
+and add multiple-phase aggregate deadlines, valid final observation reserve,
+drain after the total deadline and unknown/reused native OID refusal. Pure models are not native proof.
 
 ## Integration gates
 

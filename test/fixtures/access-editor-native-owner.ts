@@ -9,48 +9,92 @@ import {migrate} from 'drizzle-orm/postgres-js/migrator';
 import {expect} from 'vitest';
 import {createDb} from '../../db/client';
 import {workerDb} from '../db-names';
+import {accessCleanupBounds,accessCleanupLifetime,requireAccessCleanupOid} from './access-editor-cleanup-lifetime';
 const sha=(value:string|Buffer)=>createHash('sha256').update(value).digest('hex');
 const quote=(name:string)=>'"'+name.replaceAll('"','""')+'"';
-export async function accessEditorNativeOwnerFixture(signal:AbortSignal){
+export async function accessEditorNativeOwnerFixture(signal:AbortSignal,poison:(error:Error)=>void){
  expect(process.env.GITHUB_ACTIONS).toBe('true');expect(process.env.RUNNER_ENVIRONMENT).toBe('github-hosted');expect(process.env.GITHUB_REPOSITORY).toBe('StradaverseHub/ai-hr');
  const pool=process.env.VITEST_POOL_ID??process.env.VITEST_WORKER_ID;expect(pool).toMatch(/^[1-9][0-9]*$/);expect(process.env.WORKER_DB).not.toBe('0');
  const source=new URL(process.env.TEST_MIGRATION_DATABASE_URL!),app=new URL(process.env.TEST_DATABASE_URL!);
  for(const url of [source,app]){expect(url.hostname).toBe('127.0.0.1');expect(url.pathname).toBe('/'+workerDb(pool!));expect(url.search).toBe('');expect(url.hash).toBe('');}
  expect(source.username).toBe('postgres');expect(app.username).toBe('ai_hr_app');expect(source.port).toBe(app.port);
  const suffix=randomUUID().replaceAll('-',''),name='aihr_access_'+suffix,role='aihr_access_'+suffix,foreignRole='aihr_access_other_'+suffix,password=randomUUID();
- const folder=mkdtempSync(join(tmpdir(),'aihr-access-native-owner-'));source.pathname='/postgres';
- const admin=postgres(source.toString(),{max:1,onnotice:()=>{},connection:{statement_timeout:20000,lock_timeout:300}});source.pathname='/'+name;
- const construction=postgres(source.toString(),{max:1,onnotice:()=>{},connection:{statement_timeout:20000,lock_timeout:300}});
+ const folder=mkdtempSync(join(tmpdir(),'aihr-access-native-owner-')),controlName='aihr_access_control_'+suffix;source.pathname='/postgres';const cleanupUrl=source.toString();
+ const admin=postgres(source.toString(),{max:1,connect_timeout:2,onnotice:()=>{},connection:{statement_timeout:20000,lock_timeout:300,application_name:controlName}});source.pathname='/'+name;
+ const construction=postgres(source.toString(),{max:1,connect_timeout:2,onnotice:()=>{},connection:{statement_timeout:20000,lock_timeout:300}});
  const nativeUrl=new URL(source);nativeUrl.username=role;nativeUrl.password=password;app.pathname='/'+name;
  // Startup limits cover EVERY raw native and application statement, including
  // direct refusal controls; withTenant additionally repeats the same local caps.
- app.searchParams.set('options','-c statement_timeout=20000 -c lock_timeout=300');
- const native={client:postgres(nativeUrl.toString(),{max:4,onnotice:()=>{},connection:{statement_timeout:20000,lock_timeout:300}})},application=createDb(app.toString(),{max:4});let created=false,roleCreated=false,foreignCreated=false,roleOid:number|undefined,foreignRoleOid:number|undefined,closed:Promise<void>|undefined,interrupting:Promise<void>|undefined;
+ app.searchParams.set('options','-c statement_timeout=20000 -c lock_timeout=300');app.searchParams.set('connect_timeout','2');
+ const native={client:postgres(nativeUrl.toString(),{max:4,connect_timeout:2,onnotice:()=>{},connection:{statement_timeout:20000,lock_timeout:300}})},application=createDb(app.toString(),{max:4});let roleOid:number|undefined,foreignRoleOid:number|undefined,databaseOid:number|undefined,controlIdentity:{pid:number;started:string}|undefined;
+ let closed:Promise<{complete:true;databaseAbsent:true;rolesAbsent:true;ownedBackendsAbsent:true;elapsedMs:number}>|undefined,interrupting:Promise<void>|undefined,cleanupStartedAt:number|undefined;
  const active=()=>signal.throwIfAborted();
- const interrupt=()=>interrupting??=Promise.resolve().then(async()=>{
-  const settled=await Promise.allSettled([application.client.end({timeout:0}),native.client.end({timeout:0}),construction.end({timeout:0})]);
-  const failures=settled.filter(row=>row.status==='rejected');if(failures.length)throw new AggregateError(failures,'Owned Access sockets could not be interrupted');
- });
- const abort=()=>{void interrupt().catch(()=>{});};signal.addEventListener('abort',abort,{once:true});if(signal.aborted)abort();
- const close=()=>closed??=Promise.resolve().then(async()=>{
-  // Drain app/native sockets before touching the owned database. Unique role and
-  // DB names are generated here, never supplied by a caller or installation.
-  let interrupted:unknown;try{await interrupt();}catch(error){interrupted=error;}
-  try{
-   if(created){expect(Number.isSafeInteger(roleOid)).toBe(true);const [owned]=await admin`select datdba=${roleOid!}::oid as exact from pg_database where datname=${name}`;expect(owned).toEqual({exact:true});await admin.unsafe('DROP DATABASE '+quote(name)+' WITH (FORCE)');created=false;}
-   expect(await admin`select 1 from pg_auth_members where roleid in(${roleOid??0}::oid,${foreignRoleOid??0}::oid)or member in(${roleOid??0}::oid,${foreignRoleOid??0}::oid)or grantor in(${roleOid??0}::oid,${foreignRoleOid??0}::oid)`).toHaveLength(0);
-   if(foreignCreated){expect((await admin`select oid::int as oid,rolcanlogin,rolinherit,rolsuper,rolbypassrls,rolcreatedb,rolcreaterole,rolreplication from pg_roles where rolname=${foreignRole}`)[0]).toEqual({oid:foreignRoleOid,rolcanlogin:false,rolinherit:false,rolsuper:false,rolbypassrls:false,rolcreatedb:false,rolcreaterole:false,rolreplication:false});await admin.unsafe('DROP ROLE '+quote(foreignRole));foreignCreated=false;}
-   if(roleCreated){expect((await admin`select oid::int as oid,rolcanlogin,rolinherit,rolsuper,rolbypassrls,rolcreatedb,rolcreaterole,rolreplication from pg_roles where rolname=${role}`)[0]).toEqual({oid:roleOid,rolcanlogin:true,rolinherit:false,rolsuper:false,rolbypassrls:false,rolcreatedb:false,rolcreaterole:false,rolreplication:false});await admin.unsafe('DROP ROLE '+quote(role));roleCreated=false;}
-  }finally{signal.removeEventListener('abort',abort);await admin.end({timeout:5});rmSync(folder,{recursive:true,force:true});}
-  if(interrupted)throw interrupted;
- });
+ const interrupt=()=>{
+  cleanupStartedAt??=performance.now();
+  return interrupting??=Promise.resolve().then(async()=>{
+   const settled=await Promise.allSettled([application.client.end({timeout:0}),native.client.end({timeout:0}),construction.end({timeout:0}),admin.end({timeout:0})]);
+   const failures=settled.filter(row=>row.status==='rejected');if(failures.length)throw new AggregateError(failures,'Owned Access sockets could not be interrupted');
+  });
+ };
+ const abort=()=>{void interrupt().catch(poison);};signal.addEventListener('abort',abort,{once:true});if(signal.aborted)abort();
+ const close=()=>{
+  cleanupStartedAt??=performance.now();
+  return closed??=Promise.resolve().then(async()=>{
+   const options={max:1,connect_timeout:accessCleanupBounds.connectSeconds,onnotice:()=>{},connection:{statement_timeout:accessCleanupBounds.statementMs,lock_timeout:accessCleanupBounds.lockMs}};
+   const cleanup=postgres(cleanupUrl,options),observer=postgres(cleanupUrl,options);
+   let cleanupIdentity:{pid:number;started:string}|undefined,stoppingCleanup:Promise<void>|undefined,stoppingObserver:Promise<void>|undefined,absence=false;
+   const stopCleanup=()=>stoppingCleanup??=Promise.resolve().then(()=>cleanup.end({timeout:0}));
+   const stopObserver=()=>stoppingObserver??=Promise.resolve().then(()=>observer.end({timeout:0}));
+   const life=accessCleanupLifetime(cleanupStartedAt!,async()=>{await Promise.all([interrupt(),stopCleanup()]);},stopObserver,poison);
+   try{
+    await life.step(interrupt);
+    const [identity]=await life.step(()=>cleanup`select current_user as current,session_user as session,current_database()as database,current_setting('statement_timeout')as statement_budget,current_setting('lock_timeout')as lock_budget,pg_backend_pid()as pid,(select backend_start::text from pg_stat_activity where pid=pg_backend_pid())as started`);
+    expect(identity.statement_budget).toBe('2s');expect(identity.lock_budget).toBe('300ms');expect(identity.current).toBe('postgres');expect(identity.session).toBe('postgres');expect(identity.database).toBe('postgres');cleanupIdentity={pid:identity.pid,started:identity.started};
+    // The original control backend may outlive its closed socket. Never terminate
+    // a reused PID, foreign start time or an unrecorded/changed control identity.
+    if(controlIdentity){
+     const old=controlIdentity;const [stopped]=await life.step(()=>cleanup`select case when exists(select 1 from pg_stat_activity where pid=${old.pid} and backend_start=${old.started}::text::timestamptz)then case when exists(select 1 from pg_stat_activity where pid=${old.pid} and backend_start=${old.started}::text::timestamptz and usename='postgres'and datname='postgres'and application_name=${controlName})then pg_terminate_backend(${old.pid},1000)else false end else true end as stopped`);expect(stopped.stopped).toBe(true);
+    }else expect((await life.step(()=>cleanup`select count(*)::int as n from pg_stat_activity where application_name=${controlName}`))[0].n).toBe(0);
+    const [owned]=await life.step(()=>cleanup`select
+     (select oid::int from pg_database where datname=${name})as db_oid,(select datdba::int from pg_database where datname=${name})as db_owner,
+     (select datistemplate or not datallowconn from pg_database where datname=${name})as unsafe_database,
+     (select jsonb_agg(jsonb_build_object('oid',oid::int,'name',rolname,'login',rolcanlogin,'inherit',rolinherit,'super',rolsuper,'bypass',rolbypassrls,'createdb',rolcreatedb,'createrole',rolcreaterole,'replication',rolreplication,'limit',rolconnlimit,'until',rolvaliduntil,'config',rolconfig)order by oid)from pg_roles where rolname=any(${[role,foreignRole]}::text[]))as roles,
+     (select count(*)::int from pg_auth_members where roleid in(select oid from pg_roles where rolname=any(${[role,foreignRole]}::text[]))or member in(select oid from pg_roles where rolname=any(${[role,foreignRole]}::text[]))or grantor in(select oid from pg_roles where rolname=any(${[role,foreignRole]}::text[])))as memberships`);
+    const observedRoles:Array<{oid:number;name:string}>=owned.roles??[];
+    for(const observed of observedRoles){const expected=observed.name===role?roleOid:observed.name===foreignRole?foreignRoleOid:undefined;requireAccessCleanupOid(observed.oid,expected,'role');expect(observed).toEqual({oid:expected,name:observed.name,login:observed.name===role,inherit:false,super:false,bypass:false,createdb:false,createrole:false,replication:false,limit:-1,until:null,config:null});}
+    expect(owned.memberships).toBe(0);
+    if(requireAccessCleanupOid(owned.db_oid,databaseOid,'database')){expect(owned.db_owner).toBe(roleOid);expect(owned.unsafe_database).toBe(false);await life.step(()=>cleanup.unsafe('DROP DATABASE '+quote(name)+' WITH (FORCE)'));}
+    if(observedRoles.length){
+     const ids=observedRoles.map(row=>row.oid),names=observedRoles.map(row=>row.name);
+     // All operands are captured native safe integers or private generated names.
+     // Guard and DROP share one native transaction; no broad role reassignment.
+     const expected=observedRoles.map(row=>'(oid='+row.oid+' AND rolname=\''+row.name+'\' AND rolcanlogin='+String(row.name===role)+')').join(' OR ');
+     await life.step(()=>cleanup.unsafe('DO $cleanup$ BEGIN IF (SELECT count(*) FROM pg_roles WHERE '+expected+')<>'+observedRoles.length+' OR EXISTS(SELECT 1 FROM pg_roles WHERE oid IN('+ids.join(',')+')AND(rolsuper OR rolinherit OR rolbypassrls OR rolcreatedb OR rolcreaterole OR rolreplication OR rolconnlimit<>-1 OR rolvaliduntil IS NOT NULL OR rolconfig IS NOT NULL))OR EXISTS(SELECT 1 FROM pg_auth_members WHERE roleid IN('+ids.join(',')+')OR member IN('+ids.join(',')+')OR grantor IN('+ids.join(',')+'))OR EXISTS(SELECT 1 FROM pg_database WHERE datdba IN('+ids.join(',')+'))THEN RAISE EXCEPTION \'Uncertain owned Access role cleanup\' USING ERRCODE=\'55000\';END IF;DROP ROLE '+names.map(quote).join(',')+';END $cleanup$;'));
+    }
+    const [proof]=await life.step(()=>cleanup`select not exists(select 1 from pg_database where datname=${name})as database_absent,not exists(select 1 from pg_roles where rolname=any(${[role,foreignRole]}::text[]))as roles_absent,not exists(select 1 from pg_stat_activity where datname=${name} or application_name=${controlName})as backends_absent`);
+    expect(proof).toEqual({database_absent:true,roles_absent:true,backends_absent:true});absence=true;
+   }catch(error){life.refuse(error);}
+   finally{
+    try{await life.finish(async step=>{
+     await step(stopCleanup);
+     const targets=[...(controlIdentity?[{...controlIdentity,label:controlName}]:[]),...(cleanupIdentity?[{...cleanupIdentity,label:null}]:[])];
+     const [stopped]=await step(()=>observer`select current_user='postgres'and session_user='postgres'and current_database()='postgres'and current_setting('statement_timeout')='2s'and current_setting('lock_timeout')='300ms'as exact_observer,
+      coalesce((select bool_and(case when exists(select 1 from pg_stat_activity a where a.pid=t.pid and a.backend_start=t.started::timestamptz)then case when exists(select 1 from pg_stat_activity a where a.pid=t.pid and a.backend_start=t.started::timestamptz and a.usename='postgres'and a.datname='postgres'and(t.label is null or a.application_name=t.label))then pg_terminate_backend(t.pid,500)else false end else true end)from jsonb_to_recordset(${JSON.stringify(targets)}::text::jsonb)t(pid integer,started text,label text)),true)as stopped`);expect(stopped).toEqual({exact_observer:true,stopped:true});
+     const [settled]=await step(()=>observer`select not exists(select 1 from pg_stat_activity a join jsonb_to_recordset(${JSON.stringify(targets)}::text::jsonb)t(pid integer,started text,label text)on a.pid=t.pid and a.backend_start=t.started::timestamptz)and not exists(select 1 from pg_stat_activity where application_name=${controlName})as absent`);expect(settled.absent).toBe(true);
+     await step(async()=>{rmSync(folder,{recursive:true,force:true});});
+    });}finally{signal.removeEventListener('abort',abort);}
+   }
+   if(!absence){const error=Error('Owned Access cleanup has no complete native absence proof');poison(error);throw error;}
+   const proof={complete:true as const,databaseAbsent:true as const,rolesAbsent:true as const,ownedBackendsAbsent:true as const,elapsedMs:life.snapshot().elapsedMs};expect(proof.elapsedMs).toBeLessThan(accessCleanupBounds.totalMs);console.info('Actual Access native-owner cleanup',JSON.stringify(proof));return proof;
+  });
+ };
  try{
-  active();expect((await admin`select current_user as current,session_user as session`)[0]).toEqual({current:'postgres',session:'postgres'});
+  active();const [control]=await admin`select current_user as current,session_user as session,pg_backend_pid()as pid,(select backend_start::text from pg_stat_activity where pid=pg_backend_pid())as started`;expect(control.current).toBe('postgres');expect(control.session).toBe('postgres');controlIdentity={pid:control.pid,started:control.started};
   expect(await admin`select 1 from pg_roles where rolname=any(${[role,foreignRole]}::text[])`).toHaveLength(0);
-  active();await admin.unsafe('CREATE ROLE '+quote(role)+" LOGIN PASSWORD '"+password+"' NOINHERIT NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE NOREPLICATION");roleCreated=true;roleOid=Number((await admin`select oid::int as oid from pg_roles where rolname=${role}`)[0].oid);
-  active();await admin.unsafe('CREATE ROLE '+quote(foreignRole)+' NOLOGIN NOINHERIT NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE NOREPLICATION');foreignCreated=true;foreignRoleOid=Number((await admin`select oid::int as oid from pg_roles where rolname=${foreignRole}`)[0].oid);
-  active();await admin.unsafe('CREATE DATABASE '+quote(name)+' OWNER '+quote(role));created=true;
-  const journal=JSON.parse(readFileSync('db/migrations/meta/_journal.json','utf8')),prefix=journal.entries.slice(0,739);
+  active();await admin.unsafe('CREATE ROLE '+quote(role)+" LOGIN PASSWORD '"+password+"' NOINHERIT NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE NOREPLICATION");roleOid=Number((await admin`select oid::int as oid from pg_roles where rolname=${role}`)[0].oid);
+  active();await admin.unsafe('CREATE ROLE '+quote(foreignRole)+' NOLOGIN NOINHERIT NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE NOREPLICATION');foreignRoleOid=Number((await admin`select oid::int as oid from pg_roles where rolname=${foreignRole}`)[0].oid);
+  active();await admin.unsafe('CREATE DATABASE '+quote(name)+' OWNER '+quote(role));databaseOid=Number((await admin`select oid::int as oid from pg_database where datname=${name}`)[0].oid);
+  const journal=JSON.parse(readFileSync('test/fixtures/access-editor-original739-journal.json','utf8')),prefix=journal.entries;expect(prefix).toHaveLength(739);
   expect(sha(JSON.stringify(prefix))).toBe('2f2bf63ad7197b2b9042dee26f1a701539addc7f146cce14914fdc8ec1006a05');
   expect(sha(JSON.stringify(prefix.map((entry:{tag:string})=>[entry.tag,sha(readFileSync('db/migrations/'+entry.tag+'.sql'))])))).toBe('feb775454a5577ca5ec1b8e86a56bf5a57f3b27d7f7b4aa47735142e678a5d00');
   mkdirSync(join(folder,'meta'));for(const entry of prefix){active();copyFileSync('db/migrations/'+entry.tag+'.sql',join(folder,entry.tag+'.sql'));}

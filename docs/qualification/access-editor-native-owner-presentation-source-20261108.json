@@ -1,13 +1,13 @@
 {
   "kind": "UNINSTALLED_ACCESS_NATIVE_OWNER_PORTABILITY_COMPONENT",
-  "base": "0c7a66144f688d51fb193fe75c09d97df64f8a3c",
-  "sourceRef": "codex/access-editor-native-owner-presentation-20261108",
+  "base": "a9e2092e373df9161e42534eab1a7581e28b71b9",
+  "sourceRef": "codex/access-native-owner-cleanup-budget-20261108",
   "qualification": "NOT_RUN_NOT_YET_REGISTERED: root CI controlled-database-v1 convergence and independent review required before hosted invocation",
   "nativeSelector": "test/access-editor-native-owner-presentation.test.ts",
   "nativeCases": 1,
   "nativeCaseMs": 300000,
   "pureSelector": "test/access-editor-native-owner-ownership.test.ts",
-  "pureCases": 3,
+  "pureCases": 7,
   "statementMs": 20000,
   "lockMs": 300,
   "authenticatedProfileRequired": "controlled-database-v1",
@@ -25,12 +25,15 @@
   "projectionBodySha256": "a23d14e5d3983047285123f3feb59ae8bd89d9f16d412a84c62e83ba48fa34a3",
   "sourceSha256": {
     "db/migrations/3211_access_editor_native_owner_presentation.sql": "9f9691816d1ae1b9bad62675169b3b07353af50e14c3863d247ffb3fbc3a3421",
-    "test/access-editor-native-owner-presentation.test.ts": "1bd3ee99e69701e5184d7fae2db955c0fe485571e02397cee8e9abacfe2fec1b",
-    "test/access-editor-native-owner-ownership.test.ts": "266a4f2a0acc46a9b94d8f3fd4ab5166d98170201c2452f46b38cecb1f230337",
-    "test/fixtures/access-editor-native-owner.ts": "363301b57f9f37b49b7c53e745fbf1d0362d4195bf51ef066a392dfe85ab6a4d",
+    "test/access-editor-native-owner-presentation.test.ts": "00ff89c1c6e42d015c5ed3f045b52ab20b94197dce8a80424bc6ea8ce8d5f728",
+    "test/access-editor-native-owner-ownership.test.ts": "43cb70dfb2eaa1fac4ae216a3a9ff28a1413aab5c25ca6d983060ad3df6b4f42",
+    "test/fixtures/access-editor-native-owner.ts": "7abfd631d9cad4720f61aff5a7fc7162cf314ef4e07205986aa340521e60f58c",
     "test/fixtures/access-editor-owned-work.ts": "91d8b6cd9958898b93ba048d4c9927fdc1ec5f0da0b17c09a448b06f8cdee6a7",
-    "docs/architecture/ACCESS-EDITOR-NATIVE-OWNER-PRESENTATION-20261108.md": "be535e246166cb85e797ce617a023115e59fc230d09e55ac00e24a1b592c9f9f",
-    "docs/qualification/access-editor-native-owner-presentation-20261108.md": "d106bcb335eaa5c9254ba56e90e0158d350fbd3f4e42f0cbd8a74f898fe13d0b"
+    "docs/architecture/ACCESS-EDITOR-NATIVE-OWNER-PRESENTATION-20261108.md": "cfb57b0dc7d370e55b16b6e426c233290c544622b6c7d6f501816d766526d39c",
+    "docs/qualification/access-editor-native-owner-presentation-20261108.md": "6a463f3d2eda02ab27736d354e48000c86967f9551d1573530436974f450d54b",
+    "test/fixtures/access-editor-cleanup-lifetime.ts": "5cce9a3d44d784cd53007ffdcf5a782ad87d694f9c30271b2fefc6cc68b70a1c",
+    "test/fixtures/access-editor-original739-journal.json": "881d1d8debe355e83c242b1dcdbc5de2e51e303dcbffbdf14cb22e0e27067b21",
+    "docs/qualification/access-editor-native-owner-cleanup-recovery-20261108.md": "4f58dbe94f828f92692635932865e1376f90d761ba63fb3a33fea9a73307f132"
   },
   "retainedCanonicalOwnersSha256": {
     "db/migrations/3103_access_editor_presentation.sql": "bb171333ef940c173ac9ca0a647398116dfd8ee8dd87d77c8f59e92b0281fe47",
@@ -43,5 +46,16 @@
     "test/helpers/ci-singleton-admission.ts": "b988beb0e6a4b210aad37d4e3e831d5d168b4b6b40fc03a810f3a6d8e12a2054"
   },
   "releaseAuthorized": false,
-  "production": "HELD"
+  "production": "HELD",
+  "originalComponentBase": "0c7a66144f688d51fb193fe75c09d97df64f8a3c",
+  "workConnectSeconds": 2,
+  "cleanupStatementMs": 2000,
+  "cleanupLockMs": 300,
+  "cleanupConnectSeconds": 2,
+  "cleanupWorkAdmissionMs": 18000,
+  "cleanupCompleteEnvelopeMs": 26000,
+  "boundedInterruptedSettlementTailMs": 2000,
+  "unchangedFinishHookMs": 30000,
+  "componentJournal": "test/fixtures/access-editor-original739-journal.json",
+  "componentUsesCurrentJournal": false
 }
