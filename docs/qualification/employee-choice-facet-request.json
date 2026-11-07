@@ -1,0 +1,12 @@
+{
+  "sourceBase": "1de4d9047a7e8d58f79693ba614b2e5e0a586a43",
+  "controlledBefore": "test/performance/employee-choice-facet-baseline.ts",
+  "controlledBeforeSha256": "d938403de31ac827b000b83d04642afbe649aa09850d53ec17dce02bfc804a0e",
+  "focusedSelectors": "docs/qualification/employee-choice-facet-focused-tests.json",
+  "soleFileDiagnosticSelectors": "docs/qualification/employee-choice-facet-plan-tests.json",
+  "runTypecheck": true,
+  "runBuild": true,
+  "releaseEligible": false,
+  "status": "source candidate; no hosted checks executed",
+  "required": "Full-port latency, exact results/facets/selected/complete IDs, native authority and live revocation, held writer completion, actual plans, unchanged policies/functions/grants/settings/index inventory; whole-port target below 1000ms is not yet met by evidence."
+}
