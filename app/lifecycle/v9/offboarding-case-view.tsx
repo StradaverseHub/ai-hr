@@ -60,7 +60,6 @@ export function OffboardingCaseView({c, config, users, actor, personnelWritableK
   {error&&<p role="alert" className="v9-error">{error}</p>}
   <CaseColumns><div className="onb-main">
    <CaseSection title={copy('Case details')}><OffboardingCaseForm key={`${c.id}:${c.revision}`} c={c} config={config} users={users} busy={busy} command={command} editing={editing} onEditingChange={setEditing}/><PreviousCaseNotes notes={c.notes ?? []}/></CaseSection>
-   <CaseCalculator c={c} busy={busy} command={command}/>
    <CaseSection title={copy('Offboarding checklist')}>
     <Field label={copy('Checklist choice')}><select aria-label={copy('Checklist choice')} value={c.state==='pending'?c.override:c.checklistId??''} disabled={busy||c.state!=='pending'} onChange={event=>void command({type:'override',checklist:event.target.value})}>
      {c.state==='pending'?<><option value="automatic">{copy('Automatic matching')}</option><option value="none">{copy('No checklist (manual choice)')}</option>{config.checklists.filter(checklist=>checklist.module===c.module).map(checklist=><option key={checklist.id} value={checklist.id}>{checklist.name}</option>)}</>:<option value={c.checklistId??''}>{c.checklistName||'No checklist'}</option>}
@@ -74,6 +73,7 @@ export function OffboardingCaseView({c, config, users, actor, personnelWritableK
      actions={task.documentTemplate?<Button variant="outline" disabled={busy} onClick={()=>{const document=M.activeDocument(c,task.documentTemplate!);if(document)onDocument(document);else void command({type:'generate',template:task.documentTemplate!});}}>{copy('Open document')}</Button>:undefined}
     >{note(task.id,task.name)}</CaseTaskRow>)}{!tasks.length&&<p className="onb-muted">{copy('No checklist tasks.')}</p>}</div>}
    </CaseSection>
+   <CaseCalculator c={c} busy={busy} command={command}/>
   </div><CaseAside label={copy('Summary')}>
    <CaseSection title={copy('Progress by assignee')}>{[...new Set(c.tasks.map(task=>task.assignee))].map(id=>{const assigned=c.tasks.filter(task=>task.assignee===id),done=assigned.filter(task=>M.isResolved(task.status)).length;return <div key={id??'unassigned'}><div className="flex justify-between gap-3"><strong>{userName(id)}</strong><span className="onb-muted">{done} of {assigned.length} done</span></div><progress value={done} max={assigned.length||1} aria-label={userName(id)} className="h-1 w-full"/></div>;})}{!c.tasks.length&&<p className="onb-muted">{copy('Tasks start when the checklist is confirmed.')}</p>}</CaseSection>
    <CaseSection title={copy('Case history')}><ol className="lifecycle-case-history v9-list">{c.log.slice().reverse().map(log=><li key={log.id}><div>{log.detail}</div><div className="onb-muted">{log.actor.name} · {onboardingTimestamp(log.at)}</div></li>)}</ol></CaseSection>

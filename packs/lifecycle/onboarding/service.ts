@@ -217,8 +217,9 @@ type CurrentPersonnel = {source: Partial<M.Facts>; labels: Partial<Record<keyof 
 function applyCurrentPersonnel(c: M.Case, projection: CurrentPersonnel | null) {
     if (!projection) return {} as Partial<Record<keyof M.Facts,string>>;
     const source = { ...projection.source };
-    // Retain an explicitly local answer only when Personnel never supplied that field.
-    for (const key of Object.keys(source) as (keyof M.Facts)[]) if (source[key] === '' && c.source[key] === undefined && c.local[key]) delete source[key];
+    // Do not turn a never-supplied field into a source lock. Previously supplied fields
+    // retain an explicit empty value when Personnel clears them.
+    for (const key of Object.keys(source) as (keyof M.Facts)[]) if (source[key] === '' && c.source[key] === undefined) delete source[key];
     if (Object.entries(source).some(([key,value]) => c.source[key as keyof M.Facts] !== value) && c.state === 'submitted') c.reconcileNeeded = true;
     c.source = { ...c.source, ...source };
     return Object.fromEntries(Object.keys(source).map(key => [key, projection.labels[key as keyof M.Facts] ?? ''])) as Partial<Record<keyof M.Facts,string>>;

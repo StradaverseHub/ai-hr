@@ -2,7 +2,7 @@
 -- This is a projection: historical case/revision/private rows are never rewritten on read.
 CREATE FUNCTION app.onboarding_current_personnel(p_case uuid,p_day date) RETURNS jsonb
 LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
-DECLARE c public.lc_onboarding_case%ROWTYPE; source jsonb; labels jsonb; cfg jsonb; private_access boolean; d public.employee_draft%ROWTYPE;
+DECLARE c public.lc_onboarding_case%ROWTYPE; source jsonb; labels jsonb; cfg jsonb; private_access boolean; draft_day date; d public.employee_draft%ROWTYPE;
 BEGIN
  IF app.current_user_id() IS NULL OR app.login_blocked(app.current_user_id()) OR p_day IS NULL OR NOT isfinite(p_day) THEN RETURN NULL; END IF;
  SELECT * INTO c FROM public.lc_onboarding_case WHERE id=p_case AND tenant_id=app.current_tenant_id();
@@ -27,10 +27,12 @@ BEGIN
  ELSE
    SELECT * INTO d FROM public.employee_draft WHERE id=c.source_draft_id AND tenant_id=c.tenant_id AND company_id=c.company_id;
    IF NOT FOUND THEN RETURN NULL; END IF;
+   BEGIN draft_day:=coalesce(nullif(d.data->'employment'->>'hiredOn','')::date,p_day); EXCEPTION WHEN invalid_datetime_format OR datetime_field_overflow THEN draft_day:=p_day; END;
+   IF NOT isfinite(draft_day) THEN draft_day:=p_day; END IF;
    source:=jsonb_build_object('fullName',coalesce(d.data->'profile'->>'fullName',''),'employeeId',coalesce(d.reserved_employee_code,d.data->'profile'->>'employeeCode',''),
     'email',coalesce(d.data->'profile'->>'primaryEmail',''),'joinDate',coalesce(d.data->'employment'->>'hiredOn',''),'company',d.company_id::text,
     'department',coalesce(d.data->'employment'->>'departmentId',''),'title',coalesce(d.data->'employment'->>'positionId',''),
-    'businessGroup',CASE WHEN app.company_organisation_managed() THEN coalesce(app.company_org_tags_unchecked(d.company_id,CASE WHEN coalesce(d.data->'employment'->>'hiredOn','') ~ '^\d{4}-\d{2}-\d{2}$' THEN (d.data->'employment'->>'hiredOn')::date ELSE p_day END)->>'businessUnitId','') ELSE coalesce((SELECT business_unit_id::text FROM public.department WHERE tenant_id=c.tenant_id AND id::text=d.data->'employment'->>'departmentId'),'') END,
+    'businessGroup',CASE WHEN app.company_organisation_managed() THEN coalesce(app.company_org_tags_unchecked(d.company_id,draft_day)->>'businessUnitId','') ELSE coalesce((SELECT business_unit_id::text FROM public.department WHERE tenant_id=c.tenant_id AND id::text=d.data->'employment'->>'departmentId'),'') END,
     'supervisor',coalesce(d.data->'employment'->>'reportingManagerEmploymentId','')) || CASE WHEN private_access THEN jsonb_build_object(
     'costCentre',coalesce(d.data->'employment'->>'costCenterId',''),'ic',coalesce(d.data->'profile'->>'icNumber',''),'passport',coalesce(d.data->'profile'->>'passportNumber','')) ELSE '{}'::jsonb END;
  END IF;
