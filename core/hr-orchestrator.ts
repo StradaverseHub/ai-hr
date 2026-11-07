@@ -1,3 +1,4 @@
+import {withAiCentreFunction} from './ai-centre-control';
 /** ADR-0109. One coordination layer above the existing governed HR services. */
 import { and, asc, desc, eq, inArray, or, sql } from 'drizzle-orm';
 import { withTenant, type Tx, type SessionContext } from '../db/client';
@@ -134,7 +135,7 @@ export async function reconcileReadinessCases(ctx: SessionContext) {
 export async function runHrOrchestrator(ctx: SessionContext) {
   assertRunner(ctx);
   return runOrchestrationPass({
-    observe: () => reconcileReadinessCases(ctx),
+    observe: () => withAiCentreFunction(ctx,'read:orchestrator_observe',()=>reconcileReadinessCases(ctx)),
     readiness: () => sweepReadinessNudges(ctx),
     claims: () => triagePendingClaims(ctx),
     recordTrace: trace => withTenant(ctx, tx => appendEvent(tx, {

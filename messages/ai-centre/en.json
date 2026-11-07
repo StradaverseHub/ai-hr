@@ -676,7 +676,7 @@
       "switchOwner": {
         "tenant_setting": "Change on the feature switches",
         "ai_provider": "Change on the feature switches",
-        "job_type": "Not available yet: this version has no screen to switch on delegated jobs",
+        "job_type": "Manage recurring work types",
         "worker_control": "Switched here, for every company in the group"
       },
       "never": "Never",
@@ -2089,6 +2089,31 @@
         "historyRow": "Version {version}: {mode}, by {name}, {when}",
         "noHistory": "Never switched on."
       }
+    },
+    "controls": {
+      "stopTitle": "Stop all AI activity",
+      "running": "AI activity is allowed. Each function still needs its own access and settings.",
+      "stopped": "AI activity is stopped.",
+      "unknown": "Control status could not be confirmed. Refresh before making a change.",
+      "stopHelp": "Stops new AI requests, automated actions and unsent AI reminders. Normal HR work, required checks, privacy and audit services stay available.",
+      "pending": "Unsettled provider requests: {count}. Requests already sent cannot always be recalled; their results cannot authorise new actions after stopping.",
+      "stop": "Stop all AI activity",
+      "resume": "Resume eligible AI activity",
+      "resumeHelp": "Resuming keeps each function’s settings. Work from before the stop must be checked again; old reminders are not replayed.",
+      "inventoryTitle": "Complete function inventory",
+      "inventoryHelp": "{count} functions and supporting services, linked to their existing controls.",
+      "allFunctions": "View and configure functions",
+      "off": "Off",
+      "on": "Allowed by this control",
+      "enable": "Turn on",
+      "disable": "Turn off",
+      "configure": "Open settings",
+      "platform": "Managed by the platform",
+      "required": "Required service",
+      "parentHelp": "Allowing a function does not grant access. Stop-all, parent switches, company scope, permissions and limits still apply. Required services cannot be disabled here.",
+      "jobsTitle": "Recurring work types",
+      "jobsHelp": "Enables a type of recurring work. A person must still grant a valid delegation before it runs.",
+      "saveFailed": "The change could not be saved. Refresh the current settings and try again."
     }
   },
   "today": {
@@ -2945,30 +2970,5 @@
         "whyBody": "How often the checks are wrong and how long an exception waits cannot be worked out until somebody decides these. Until then Insights › AI quality shows what is missing instead of a number, on purpose."
       }
     }
-  },
-  "controls": {
-    "stopTitle": "Stop all AI activity",
-    "running": "AI activity is allowed. Each function still needs its own access and settings.",
-    "stopped": "AI activity is stopped.",
-    "unknown": "Control status could not be confirmed. Refresh before making a change.",
-    "stopHelp": "Stops new AI requests, automated actions and unsent AI reminders. Normal HR work, required checks, privacy and audit services stay available.",
-    "pending": "Unsettled provider requests: {count}. Requests already sent cannot always be recalled; their results cannot authorise new actions after stopping.",
-    "stop": "Stop all AI activity",
-    "resume": "Resume eligible AI activity",
-    "resumeHelp": "Resuming keeps each function’s settings. Work from before the stop must be checked again; old reminders are not replayed.",
-    "inventoryTitle": "Complete function inventory",
-    "inventoryHelp": "{count} functions and supporting services, linked to their existing controls.",
-    "allFunctions": "View and configure functions",
-    "off": "Off",
-    "on": "Allowed by this control",
-    "enable": "Turn on",
-    "disable": "Turn off",
-    "configure": "Open settings",
-    "platform": "Managed by the platform",
-    "required": "Required service",
-    "parentHelp": "Allowing a function does not grant access. Stop-all, parent switches, company scope, permissions and limits still apply. Required services cannot be disabled here.",
-    "jobsTitle": "Recurring work types",
-    "jobsHelp": "Enables a type of recurring work. A person must still grant a valid delegation before it runs.",
-    "saveFailed": "The change could not be saved. Refresh the current settings and try again."
   }
 }

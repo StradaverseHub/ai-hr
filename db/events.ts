@@ -65,11 +65,13 @@ export function appendEvent(tx: Tx, e: AppendEventArgs, options: { returnId: boo
 export async function appendEvent(
   tx: Tx, e: AppendEventArgs, options?: { returnId: boolean },
 ): Promise<string | void> {
-  if(aiCentreEvent(e.eventType)){
+  const activity=aiCentreActivity(e.tenantId);
+  if(aiCentreEvent(e.eventType)||activity&&!['teras-mandate.stopped','teras-mandate.resumed','ai-centre.function-changed'].includes(e.eventType)){
     await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${"access-configuration:"+e.tenantId},0))`);
     const [control]=await tx.execute<{generation:number}>(sql`select app.ai_centre_assert_running(${aiCentreActivity(e.tenantId)?.generation??null}::integer) as generation`);
-    if(!control)throw Error('AI controls unavailable');
-    e={...e,payload:{...(e.payload&&typeof e.payload==='object'?e.payload:{}),aiCentreGeneration:control.generation}};
+    if(control?.generation==null)throw Error('AI activity stopped');
+    for(const key of activity?.functions??[]){const [row]=await tx.execute<{allowed:boolean}>(sql`select app.ai_centre_read_allowed(${key}) as allowed`);if(row?.allowed!==true)throw Error('AI function stopped');}
+    if(aiCentreEvent(e.eventType))e={...e,payload:{...(e.payload&&typeof e.payload==='object'?e.payload:{}),aiCentreGeneration:control.generation}};
   }
   const insert = tx.insert(domainEvent).values({
     id: e.id,

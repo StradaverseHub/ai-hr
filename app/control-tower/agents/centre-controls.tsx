@@ -11,6 +11,8 @@ import {setAiCentreFunctionAction,setAiCentreJobAction,setAiCentreStopAction} fr
 
 export async function AiCentreControls({session}:{session:SessionContext}){
  const t=await getTranslations('aiCentre.controls');
+ const features=await getTranslations('aiManagement');
+ const workers=await getTranslations('aiCentre.registry');
  const [state,controls,jobs]=await Promise.all([
   aiCentreControlState(session).catch(()=>null),aiCentreReadControls(session).catch(()=>null),
   withTenant(session,async tx=>Promise.all(aiCentreJobTypes().map(async id=>{
@@ -20,6 +22,7 @@ export async function AiCentreControls({session}:{session:SessionContext}){
  ]);
  const functions=aiCentreFunctions();
  const label=(name:string)=>name.replaceAll('_',' ').replaceAll('.',' ');
+ const functionName=(row:(typeof functions)[number])=>row.key.startsWith('feature:')&&features.has('features.'+row.name)?features('features.'+row.name):row.key.startsWith('worker:')&&workers.has('workers.'+row.key.slice(7))?workers('workers.'+row.key.slice(7)):label(row.name);
  return <>
   <Card id="ai-centre-stop" className="scroll-mt-4 space-y-3 p-5">
    <SectionHeader title={t('stopTitle')}/>
@@ -38,11 +41,11 @@ export async function AiCentreControls({session}:{session:SessionContext}){
    <SectionHeader title={t('inventoryTitle')}/><p className="text-sm text-muted-foreground">{t('inventoryHelp',{count:functions.length})}</p>
    <details><summary className="min-h-11 cursor-pointer py-3 text-sm font-medium">{t('allFunctions')}</summary>
     <ul className="divide-y divide-border">{functions.map(row=><li key={row.key} className="flex flex-wrap items-center justify-between gap-3 py-3">
-     <span className="min-w-0 text-sm">{label(row.name)}</span>
+     <span className="min-w-0 text-sm">{functionName(row)}</span>
      {row.control==='read'?controls===null?<span role="status" className="text-sm text-muted-foreground">{t('unknown')}</span>:<form action={setAiCentreFunctionAction} className="flex items-center gap-3">
       <span className="text-sm text-muted-foreground">{t(controls.get(row.key)===false?'off':'on')}</span>
       <input type="hidden" name="function" value={row.key}/><input type="hidden" name="enabled" value={String(controls.get(row.key)===false)}/>
-      <button type="submit" className={btnGhost} aria-label={`${t(controls.get(row.key)===false?'enable':'disable')} · ${label(row.name)}`}>{t(controls.get(row.key)===false?'enable':'disable')}</button>
+      <button type="submit" className={btnGhost} aria-label={`${t(controls.get(row.key)===false?'enable':'disable')} · ${functionName(row)}`}>{t(controls.get(row.key)===false?'enable':'disable')}</button>
      </form>:row.control==='existing'?<Link href={row.href} className="inline-flex min-h-11 items-center text-sm font-medium text-primary hover:underline">{t('configure')}</Link>:<span className="text-sm text-muted-foreground">{t(row.control==='platform'?'platform':'required')}</span>}
     </li>)}</ul>
    </details>

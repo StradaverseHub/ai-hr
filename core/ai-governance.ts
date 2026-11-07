@@ -125,7 +125,7 @@ function createGovernedAiConfig(ctx:SessionContext,snapshot:AiProviderSnapshot,f
   let succeeded=false;
   try{
    await withTenant(ctx,tx=>assertAiCentreRunningTx(tx,ctx,preparedAdmission.generation));
-   const dispatch=()=>scope?scope.run(()=>call(record,accounting.observe)):call(record,accounting.observe);const result=await(spendEnvelope?withReviewedAiSpendDispatch(spendEnvelope,outgoing,capturedRequest,dispatch):dispatch());await withTenant(ctx,tx=>assertAiCentreRunningTx(tx,ctx,preparedAdmission.generation));succeeded=true;return result;}
+   const dispatch=()=>scope?scope.run(()=>call(record,accounting.observe)):call(record,accounting.observe);const result=await(spendEnvelope?withReviewedAiSpendDispatch(spendEnvelope,outgoing,capturedRequest,dispatch):dispatch());await withTenant(ctx,async tx=>{await assertAiCentreRunningTx(tx,ctx,preparedAdmission.generation);await assertAiActionUnpausedTx(tx,ctx,feature);});succeeded=true;return result;}
   finally{
    // A failed write is visible and leaves the reservation held; it must never erase unconfirmed usage.
    let breach=false;

@@ -1,13 +1,14 @@
 import {randomUUID} from 'node:crypto';
-import {sql} from 'drizzle-orm';
+import {eq,sql} from 'drizzle-orm';
+import * as schema from '../db/schema';
 import {afterAll,beforeAll,beforeEach,describe,expect,it} from 'vitest';
 import {withTenant,type SessionContext} from '../db/client';
 import {appendEvent,actorOf} from '../db/events';
 import {hireEmployee} from '../core/org';
 import {setMandateStopSwitch} from '../core/mandates/mandates';
-import {assertAiCentreRunningTx,withAiCentreActivity,aiCentreControlState,aiCentreReadAllowed} from '../core/ai-centre-control';
-import {setAiCentreReadControl} from '../core/ai-centre-inventory';
-import {adminCtx,closeAll,createAppUser,entitledCtx,migrateTestDb,resetDb,seedBase,type Base} from './harness';
+import {assertAiCentreRunningTx,withAiCentreActivity,withAiCentreFunction,aiCentreControlState,aiCentreReadAllowed} from '../core/ai-centre-control';
+import {setAiCentreReadControl,aiCentreReadKeys} from '../core/ai-centre-inventory';
+import {adminCtx,closeAll,createAppUser,entitledCtx,migrateTestDb,resetDb,seedBase,setModule,owner,type Base} from './harness';
 
 let b:Base,group:SessionContext;
 async function login(base:Base,role:'hr_admin'|'employee'='hr_admin'){
@@ -15,7 +16,7 @@ async function login(base:Base,role:'hr_admin'|'employee'='hr_admin'){
  return{...await entitledCtx(base,[role]),userId:await createAppUser(base.tenantId,hired.personId,role),personId:hired.personId,roles:[role],grants:[{role,companyId:null}]} as SessionContext;
 }
 beforeAll(migrateTestDb);afterAll(closeAll);
-beforeEach(async()=>{await resetDb();b=await seedBase();group=await login(b);});
+beforeEach(async()=>{await resetDb();b=await seedBase();await setModule(b.tenantId,'assistant','active');group=await login(b);});
 const generation=(ctx=group)=>withTenant(ctx,tx=>assertAiCentreRunningTx(tx,ctx));
 
 describe('AI centre stop barrier',()=>{
@@ -28,12 +29,31 @@ describe('AI centre stop barrier',()=>{
   await setMandateStopSwitch(group,false,{expectedGeneration:1});
   expect(await generation()).toBe(2);
  });
+ it('enforces stop at both the model admission and template-only SQL ports',async()=>{
+  await setMandateStopSwitch(group,true);
+  const [model]=await withTenant(group,tx=>tx.execute<{allowed:boolean;blocked_reason:string}>(sql`select * from app.ai_admit('hr_assistant','conversation','fixture','not-sent',1)`));
+  expect(model).toMatchObject({allowed:false,blocked_reason:'paused'});
+  const [action]=await withTenant(group,tx=>tx.execute<{allowed:boolean}>(sql`select app.ai_agent_action_unpaused('approvals.claim.chase') as allowed`));
+  expect(action.allowed).toBe(false);
+ });
+ it('blocks the private delivery start even when a delivery was leased before the stop',async()=>{
+  const eventId=randomUUID();
+  await withAiCentreActivity(group,()=>withTenant(group,tx=>appendEvent(tx,{id:eventId,tenantId:group.tenantId,aggregateType:'fixture',aggregateId:group.tenantId,eventType:'readiness.nudge-raised',actor:actorOf(group)})));
+  const [employment]=await owner.db.select({id:schema.employment.id}).from(schema.employment).where(eq(schema.employment.personId,group.personId!));
+  const [notice]=await owner.db.insert(schema.notification).values({tenantId:group.tenantId,recipientEmploymentId:employment.id,kind:'readiness.nudge',title:'Fixture reminder',body:'Fixture only',sourceEventId:eventId}).returning();
+  const [delivery]=await owner.db.insert(schema.notificationDelivery).values({tenantId:group.tenantId,notificationId:notice.id,recipientUserId:group.userId,sourceEventId:eventId,kind:'readiness.nudge',category:'readiness',channel:'email',leaseToken:randomUUID(),leaseUntil:new Date(Date.now()+60000)}).returning();
+  await setMandateStopSwitch(group,true);
+  // The same table write used by the privileged delivery service has no application session to rely on.
+  await expect(owner.db.update(schema.notificationDelivery).set({startedAt:new Date()}).where(eq(schema.notificationDelivery.id,delivery.id))).rejects.toBeTruthy();
+  const [after]=await owner.db.select().from(schema.notificationDelivery).where(eq(schema.notificationDelivery.id,delivery.id));
+  expect(after.startedAt).toBeNull();expect(after.status).toBe('pending');
+ });
  it('invalidates an in-flight activity even after stop then resume',async()=>{
-  await withAiCentreActivity(group,async()=>{
+  await expect(withAiCentreActivity(group,async()=>{
    await setMandateStopSwitch(group,true);await setMandateStopSwitch(group,false);
    await expect(generation()).rejects.toMatchObject({reason:'paused'});
    await expect(withAiCentreActivity(group,()=>generation())).rejects.toMatchObject({reason:'paused'});
-  });
+  })).rejects.toMatchObject({reason:'paused'});
   expect(await generation()).toBe(2);
  });
  it('refuses a stale resume without overwriting a more recent stop',async()=>{
@@ -81,6 +101,12 @@ describe('AI centre stop barrier',()=>{
 });
 
 describe('individual AI read controls',()=>{
+ it('registers every current read and module, and fails closed for future unknown functions',async()=>{
+  const rows=await owner.db.execute<{function_key:string}>(sql`select function_key from app.ai_centre_function_kind order by function_key`);
+  expect(Array.from(rows).map(row=>row.function_key)).toEqual([...aiCentreReadKeys()].sort());
+  expect(await aiCentreReadAllowed(group,'read:future_unknown_function')).toBe(false);
+  await expect(withTenant(group,tx=>tx.execute(sql`select app.ai_centre_read_set('read:future_unknown_function',true)`))).rejects.toBeTruthy();
+ });
  it('can disable one explanation without disabling another, and stop-all takes precedence',async()=>{
   await setAiCentreReadControl(group,'read:explain_pay_difference',false);
   expect(await aiCentreReadAllowed(group,'explain_pay_difference')).toBe(false);
@@ -89,6 +115,14 @@ describe('individual AI read controls',()=>{
   expect(await aiCentreReadAllowed(group,'explain_pay_difference')).toBe(true);
   await setMandateStopSwitch(group,true);
   expect(await aiCentreReadAllowed(group,'explain_pay_difference')).toBe(false);
+ });
+ it('rechecks a function inside the native effect transaction when it is switched off mid-operation',async()=>{
+  await expect(withAiCentreFunction(group,'read:explain_pay_difference',async()=>{
+   await setAiCentreReadControl(group,'read:explain_pay_difference',false);
+   await withTenant(group,tx=>appendEvent(tx,{tenantId:group.tenantId,aggregateType:'fixture',aggregateId:group.tenantId,eventType:'fixture.ai-effect',actor:actorOf(group)}));
+  })).rejects.toThrow('AI function stopped');
+  const [row]=await withTenant(group,tx=>tx.execute<{n:number}>(sql`select count(*)::integer as n from public.domain_event where tenant_id=app.current_tenant_id() and event_type='fixture.ai-effect'`));
+  expect(row.n).toBe(0);
  });
  it('rejects unknown controls and employee writes, including the SQL port',async()=>{
   const employee=await login(b,'employee');

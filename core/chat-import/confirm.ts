@@ -1,3 +1,4 @@
+import {withAiCentreFunction} from '../ai-centre-control';
 /** AI v2 Phase 1, slice 3 (issue 16b) — Confirm on an import prepared in chat.
  *
  * Acts only on the person's explicit Confirm (`confirm: true`), under their own login, in this order:
@@ -152,7 +153,7 @@ export async function confirmChatImport(supplied:SessionContext,input:Readonly<{
    return refused('in_progress');
   }
   let outcome:Outcome|ChatImportRefusal;
-  try{outcome=await commit(ctx,proposal,kind,file);}
+  try{outcome=await withAiCentreFunction(ctx,'read:prepare_import',()=>withAiCentreFunction(ctx,'read:import_'+kind,()=>commit(ctx,proposal,kind,file)));}
   catch(error){const message=error instanceof Error?error.message:'';outcome=/access|authori[sz]|permission/i.test(message)?'not_permitted':/changed|validate a new/i.test(message)?'changed':'unavailable';}
   // A Confirm the owner refused stays refused for this card: the person fixes the rows or attaches the file again.
   if(typeof outcome==='string'){await record(ctx,proposal,{importKind:kind,failed:outcome});return refused(outcome);}

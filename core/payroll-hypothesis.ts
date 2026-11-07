@@ -1,4 +1,4 @@
-import {withAiCentreActivity} from './ai-centre-control';
+import {withAiCentreActivity,assertAiCentreRunningTx} from './ai-centre-control';
 import {withAiAdmissionCheck} from './ai-governance';
 import {bindAiSpendTaskTx} from './ai-spend-task';
 import {draftInputDigest} from '../lib/ai/draft-input';
@@ -675,7 +675,8 @@ async function proposeHypothesesActivity(
     }
 
     if (!cfgResolved) {
-      cfg = await withTenant(ctx,async tx=>{if((await hypothesisSourceTx(tx,ctx,p)).digest!==source.digest)throw Error('Current payroll source unavailable.');const resolved=await resolveActiveAiConfig(tx,ctx,'payroll_hypotheses');return resolved?bindAiSpendTaskTx(tx,ctx,resolved,{kind:'payroll_batch',sourceId:p.batchId}):null;}).catch(()=>null);
+      cfg = await withTenant(ctx,async tx=>{await assertAiCentreRunningTx(tx,ctx);
+      if((await hypothesisSourceTx(tx,ctx,p)).digest!==source.digest)throw Error('Current payroll source unavailable.');const resolved=await resolveActiveAiConfig(tx,ctx,'payroll_hypotheses');return resolved?bindAiSpendTaskTx(tx,ctx,resolved,{kind:'payroll_batch',sourceId:p.batchId}):null;}).catch(()=>null);
       cfgResolved = true;
     }
     // NOT an error, and nothing is recorded: a tenant with no provider proposed nothing, and counting

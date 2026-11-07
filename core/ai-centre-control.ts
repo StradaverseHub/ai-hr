@@ -11,6 +11,10 @@ export async function assertAiCentreRunningTx(tx:Tx,ctx:Pick<SessionContext,'ten
   const [row]=await tx.execute<{generation:number}>(sql`select app.ai_centre_assert_running(${expected??aiCentreActivity(ctx.tenantId)?.generation??null}::integer) as generation`);
   if(row?.generation===null)throw new AiAllowanceError('paused');
   if(!Number.isSafeInteger(row?.generation)||row.generation<0)throw new AiGatewayError('AI controls could not be confirmed.');
+  for(const key of aiCentreActivity(ctx.tenantId)?.functions??[]){
+   const [functionState]=await tx.execute<{allowed:boolean}>(sql`select app.ai_centre_read_allowed(${key}) as allowed`);
+   if(functionState?.allowed!==true)throw new AiAllowanceError('paused');
+  }
   return row.generation;
  }catch(error){
   if((error as {code?:string})?.code==='55000'||(error as {cause?:{code?:string}})?.cause?.code==='55000')throw new AiAllowanceError('paused');
@@ -21,7 +25,11 @@ export async function assertAiCentreRunningTx(tx:Tx,ctx:Pick<SessionContext,'ten
 export async function withAiCentreActivity<T>(ctx:SessionContext,work:()=>Promise<T>):Promise<T>{
  const generation=await withTenant(ctx,tx=>assertAiCentreRunningTx(tx,ctx));
  if(aiCentreActivity(ctx.tenantId))return work();
- return runAiCentreActivity(ctx.tenantId,generation,work);
+ return runAiCentreActivity(ctx.tenantId,generation,async()=>{
+  const result=await work();
+  await withTenant(ctx,tx=>assertAiCentreRunningTx(tx,ctx));
+  return result;
+ });
 }
 
 export type AiCentreControlState=Readonly<{stopped:boolean;generation:number;pending:number}>;
@@ -39,5 +47,18 @@ export async function aiCentreReadAllowed(ctx:SessionContext,name:string):Promis
   const key=name.includes(':')?name:'read:'+name;
   const [row]=await tx.execute<{allowed:boolean}>(sql`select app.ai_centre_read_allowed(${key}) as allowed`);
   return row?.allowed===true;
+ });
+}
+
+/** A child control narrows the parent activity; native effects inherit it through async context. */
+export async function withAiCentreFunction<T>(ctx:SessionContext,key:string,work:()=>Promise<T>):Promise<T>{
+ return withAiCentreActivity(ctx,async()=>{
+  const current=aiCentreActivity(ctx.tenantId)!;
+  return runAiCentreActivity(ctx.tenantId,current.generation,async()=>{
+   await withTenant(ctx,tx=>assertAiCentreRunningTx(tx,ctx));
+   const result=await work();
+   await withTenant(ctx,tx=>assertAiCentreRunningTx(tx,ctx));
+   return result;
+  },[...new Set([...current.functions,key])]);
  });
 }
