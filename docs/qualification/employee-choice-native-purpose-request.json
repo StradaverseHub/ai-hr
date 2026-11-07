@@ -46,7 +46,7 @@
     "test/performance/employee-choice-native-purpose-reader.ts": "9e9bd4289a6f350b466ffcf56618eb71c362077277e978da11892dc2fc7a2a9c",
     "test/performance/employee-choice-native-purpose-owner.ts": "36364fc880154a10c2a60f71f3810b9d3dd306d3069531e82873b36f13bc6bcd",
     "test/performance/employee-choice-native-purpose-session.ts": "a372db1140e4b87837416dd612dc03d548fc78ce222b28892554e5529d5fefaf",
-    "test/performance/employee-choice-auto-explain.ts": "45b86494f1765b8e3b355edceaa3780b8c6ede9532dfa9dbd74529d679c4ced4",
+    "test/performance/employee-choice-auto-explain.ts": "215614296084876164a57c3097e9b724a755eb37f59d3d99187a35f17bc44331",
     "test/performance/employee-choice-auto-explain-parser.ts": "45354ad6bb18bcfe940abcd374ca46049408a3da35d14061cc3bff05fb11a487",
     "test/performance/employee-choice-plan-work.ts": "cc3e8ea81af0c6542988a7bccc10ae16e6dd7c9f716ab7a65a55e8a594b38d71",
     "test/performance/employee-choice-planner-snapshot.ts": "332bc47f1cba431834f9d8c5248030dc920d76222bce0363fcf7483fa97c0b5e"
