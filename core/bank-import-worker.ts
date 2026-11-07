@@ -10,7 +10,7 @@ import {PersonnelImportHeaderError} from '../lib/personnel-import-contract';
 import {PersonnelCsvError} from '../lib/personnel-csv';
 import {decodeBankImportSource} from '../lib/bank-import-source.server';
 import {BANK_IMPORT_BATCH_ROWS,BANK_IMPORT_VALIDATION_ROWS} from '../lib/bank-import-job';
-import {analyzeBankImportBatch,applyBankImportRowTx} from './import-sections';
+import {analyzeBankImportBatch,applyBankImportRowTx,BankImportRowRejectedError} from './import-sections';
 import {createImportAttemptTx,recordImportEventTx,sealImportPlan} from './import-history';
 import type {ImportPlanBase} from '../lib/import-history';
 import type {ImportRecord} from '../lib/import-schema';
@@ -90,6 +90,9 @@ export async function processBankImportJob(ctx:SessionContext,id:string):Promise
     await tx.execute(sql`update bank_import_job set processed=processed+1,saved=saved+${saved?1:0},updated_at=now() where id=${id}::uuid`);
    });
   }catch(error){
+   // Only canonical validation can reject row data. Infrastructure failures stop the job
+   // without consuming the row or changing its atomic HR/audit checkpoint.
+   if(!(error instanceof BankImportRowRejectedError))throw error;
    // Permission revocation/infrastructure faults fail the job rather than pretending every row failed.
    await withTenant(ctx,async tx=>{
     const [proof]=await tx.execute<{ok:boolean}>(sql`select app.principal_snapshot_current() as ok`);if(!proof?.ok)throw error;

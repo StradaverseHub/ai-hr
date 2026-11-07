@@ -1744,3 +1744,24 @@ The release gate found additional company retention references from the approved
 Append `2211_company_retention_approved_expansion` at idx 1422 / timestamp 1793330001622.
 SHA256 `5e336a948b9490d9355eba65d6f341618334a031c7bdc66562ed9139b7c5f0c4`. The migration adds scoped retention checks and validated tenant keys for the new owners.
 It preserves earlier SQL and the original staging ledger.
+
+
+## Isolated Phase 1 correctness staging candidate — 7 November 2026
+
+The verified staging predecessor is `a4bd903840cdae2a94e67d5f57e3b54c9e2a86ac`
+with 703 journal entries. Preserve its ordered tuples and all SQL bytes. A fresh
+fetch and scan of 3,016 local/remote heads, 672 committed migration trees, 478
+committed journals and 352 readable working trees found maximum tag 2701, idx
+2001 and timestamp 1793330002301. One unrelated malformed WIP journal was left
+untouched; its literal allocation bounds were included in the scan.
+
+| Tag | idx | when | SQL SHA256 |
+| --- | ---: | ---: | --- |
+| `2702_phase1_notification_receipts` | 2002 | 1793330002302 | `65fc5542fe398d1e10c5fc76a09aec6999c50c52d76f964d69c48cf3ee6c3c26` |
+
+This new, unapplied migration consolidates only the reviewed notification receipt
+intent, retention cascade and least-privilege grants from the architecture branch.
+It does not import its Personnel, Attendance, admission or other schema changes.
+Both legacy cursors remain for overlap; old notifications and external effects are
+not replayed from historical cursor markers. Recheck the installed ordered ledger
+and current competing allocations before installation. No production authority.

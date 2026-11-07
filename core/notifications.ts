@@ -32,6 +32,7 @@ import {
   attendanceCorrection,
   claimRequest,
   domainEvent,
+  notificationEventProcessing,
   employment,
   employmentReview,
   leaveApprovalStep,
@@ -1133,8 +1134,7 @@ function projectionLimit(value?:number){return Math.min(Math.max(value??1000,1),
 async function projectNotificationsTx(tx:Tx,ctx:SessionContext,allCategories:boolean,limit:number,priorRole?:string):Promise<DispatchResult>{
     await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`notification-cursor:${ctx.tenantId}`},0))`);
     const [cur] = await tx.select().from(notificationCursor).where(eq(notificationCursor.tenantId, ctx.tenantId)).limit(1);
-    const cursor=allCategories?cur?.lastSequence:cur?.assessmentLastSequence;
-    const after=cursor!=null?gt(domainEvent.sequence,cursor):undefined;
+    const consumer=allCategories?'notifications':'assessment-reminders';
     const rows = await tx
       .select({
         id: domainEvent.id,
@@ -1145,13 +1145,19 @@ async function projectNotificationsTx(tx:Tx,ctx:SessionContext,allCategories:boo
         sequence: domainEvent.sequence,
       })
       .from(domainEvent)
-      .where(and(eq(domainEvent.tenantId,ctx.tenantId),after,allCategories?undefined:eq(domainEvent.eventType,'assessment.reminder-queued')))
-      .orderBy(asc(domainEvent.sequence))
+      .innerJoin(notificationEventProcessing,and(eq(notificationEventProcessing.eventId,domainEvent.id),eq(notificationEventProcessing.tenantId,domainEvent.tenantId)))
+      .where(and(eq(domainEvent.tenantId,ctx.tenantId),eq(notificationEventProcessing.consumer,consumer),isNull(notificationEventProcessing.disposition)))
+      .orderBy(asc(notificationEventProcessing.eventSequence))
       .limit(limit);
     if (rows.length === 0) return { processed: 0, created: 0 };
 
     let noticeReader:NoticeRecipientReader|undefined;
+    const existingProjections=new Set<string>();
+    const projectionKey=(eventId:string,recipient:string,kind:string)=>JSON.stringify([eventId,recipient,kind]);
     if(priorRole!==undefined){
+      const existing=await tx.select({eventId:notification.sourceEventId,recipient:notification.recipientEmploymentId,kind:notification.kind})
+        .from(notification).where(and(eq(notification.tenantId,ctx.tenantId),inArray(notification.sourceEventId,rows.map(row=>row.id))));
+      for(const prior of existing)if(prior.eventId&&prior.recipient)existingProjections.add(projectionKey(prior.eventId,prior.recipient,prior.kind));
       const audiences=new Map<string,string[]>();
       for(const ev of rows){
         if(ev.eventType==='notice.published'&&(ev.payload as Record<string,unknown>|null)?.notify===true&&!audiences.has(ev.aggregateId)){
@@ -1165,10 +1171,10 @@ async function projectNotificationsTx(tx:Tx,ctx:SessionContext,allCategories:boo
     }
 
     let created = 0;
+    const ignoredIds:string[]=[];
     for (const ev of rows) {
       const entry = REGISTRY[ev.eventType];
-      if (!entry) continue;
-      if(await legacyProbationNotificationIsObsolete(tx,ev.eventType,ev.aggregateId))continue;
+      if (!entry || await legacyProbationNotificationIsObsolete(tx,ev.eventType,ev.aggregateId)){ignoredIds.push(ev.id);continue;}
       if(ev.eventType==='reward-access.suspended'){
         const [account]=await tx.execute<{created:number}>(sql`select app.reward_access_project_account_suspension(${ev.id}::uuid) as created`);
         created+=account.created;
@@ -1187,6 +1193,12 @@ async function projectNotificationsTx(tx:Tx,ctx:SessionContext,allCategories:boo
           // A company-only reminder cursor never consumes other categories. Global dispatch may later
           // encounter the same event, so retain one projection per event/kind/recipient.
           if(spec.kind==='performance.reminder'){const [prior]=await tx.execute<{present:boolean}>(sql`select app.assessment_reminder_projected(${ev.id}::uuid,${recipient}::uuid) as present`);if(prior?.present)continue;}
+          const key=projectionKey(ev.id,recipient,spec.kind);
+          if(existingProjections.has(key))continue;
+          if(priorRole===undefined){
+            const [existing]=await tx.execute<{present:boolean}>(sql`select app.notification_projection_exists(${ev.id}::uuid,${recipient}::uuid,${spec.kind}) as present`);
+            if(existing?.present)continue;
+          }
           const notificationId = randomUUID();
           await tx.insert(notification).values({
             id: notificationId,
@@ -1200,6 +1212,7 @@ async function projectNotificationsTx(tx:Tx,ctx:SessionContext,allCategories:boo
             sourceEventId: ev.id,
           });
           if(spec.category!==null)await tx.execute(sql`select app.notification_email_enqueue(${notificationId}::uuid,${spec.category},${ev.sequence}::bigint)`);
+          existingProjections.add(key);
           created += 1;
         }
       }
@@ -1208,11 +1221,21 @@ async function projectNotificationsTx(tx:Tx,ctx:SessionContext,allCategories:boo
     // On an error the transaction rolls back both writes and SET LOCAL ROLE. Do not attempt a role
     // restore inside a failed transaction and obscure the original error. Restore only on success.
     if(priorRole!==undefined)await tx.execute(sql`select set_config('role',${priorRole},true)`);
+    const ignored=new Set(ignoredIds);
+    for(const disposition of ['processed','ignored'] as const){
+      const ids=rows.filter(row=>ignored.has(row.id)===(disposition==='ignored')).map(row=>row.id);
+      if(ids.length){
+        const completed=await tx.update(notificationEventProcessing).set({disposition,processedAt:sql`now()`})
+          .where(and(eq(notificationEventProcessing.tenantId,ctx.tenantId),eq(notificationEventProcessing.consumer,consumer),inArray(notificationEventProcessing.eventId,ids)))
+          .returning({id:notificationEventProcessing.eventId});
+        if(completed.length!==ids.length)throw Error('Notification processing authority changed.');
+      }
+    }
     const last = rows[rows.length - 1];
     if (cur) {
       await tx
         .update(notificationCursor)
-        .set({...(allCategories?{lastSequence:last.sequence}:{assessmentLastSequence:last.sequence}),updatedAt:sql`now()`})
+        .set({...(allCategories?{lastSequence:sql`greatest(${notificationCursor.lastSequence},${last.sequence})`}:{assessmentLastSequence:sql`greatest(${notificationCursor.assessmentLastSequence},${last.sequence})`}),updatedAt:sql`now()`})
         .where(eq(notificationCursor.tenantId, ctx.tenantId));
     } else {
       await tx.insert(notificationCursor).values({tenantId:ctx.tenantId,...(allCategories?{lastSequence:last.sequence}:{assessmentLastSequence:last.sequence})});
