@@ -42,6 +42,16 @@ report = {'version': 1, 'kind': 'ACTUAL_NEXT_TWO_WORKER_NATIVE_BOOT_ONLY', 'comp
           '500-actor-steady-load', 'protected-installation', 'cross-build-compatibility']}
 evidence = None
 evidence_fd = None
+PREPACKAGE_GUARDS = {
+    **{'fixture-root-' + str(index): 'directory-absence' for index in range(6)},
+    **{'fixture-unit-' + str(index): 'unit-absence' for index in range(5)},
+    'empty-home-parent': 'empty-home', 'empty-home': 'empty-home',
+    **{'sealed-helper-' + str(index): 'sealed-helpers' for index in range(6)},
+    'node-hint': 'node-hint', 'node-stat': 'node-stat',
+    'node-before-read': 'node-read', 'node-after-read': 'node-read',
+    'node-installed-bytes': 'node-read',
+}
+PREPACKAGE_STAGES = frozenset(PREPACKAGE_GUARDS.values()) | {'owned-directories', 'node-install'}
 
 
 def require(condition, reason):
@@ -141,6 +151,23 @@ def phase(name):
     save()
 
 
+def prepackage_phase(stage):
+    # Closed source labels only: never reflect an exception, path, environment
+    # value or caller-selected reason into the uploaded public evidence.
+    require(isinstance(stage, str) and stage in PREPACKAGE_STAGES, 'Unknown native prepackage stage')
+    phase('prepackage-' + stage)
+
+
+def prepackage_guard(condition, code):
+    require(isinstance(code, str) and code in PREPACKAGE_GUARDS, 'Unknown native prepackage guard')
+    stage = PREPACKAGE_GUARDS[code]
+    require(report.get('currentPhase') == 'prepackage-' + stage, 'Native prepackage guard phase differs')
+    if not condition:
+        report['prepackageGuardFailure'] = {'stage': stage, 'code': code}
+        save()
+    require(condition, 'Closed native prepackage guard refused')
+
+
 def until(callback, name, seconds=60):
     deadline = time.monotonic() + left(seconds)
     while time.monotonic() < deadline:
@@ -205,10 +232,13 @@ def cold(unit):
 
 def fixture_directories():
     global created_home, created_empty_parent
-    for name in ROOTS:
-        require(not os.path.lexists(name), 'Refuse pre-existing fixture directory')
-    for unit in [*UNITS, PROXY, SLICE, BROWSER]:
-        require(props(unit).get('LoadState') == 'not-found', 'Refuse pre-existing fixture unit')
+    prepackage_phase('directory-absence')
+    for index, name in enumerate(ROOTS):
+        prepackage_guard(not os.path.lexists(name), 'fixture-root-' + str(index))
+    prepackage_phase('unit-absence')
+    for index, unit in enumerate([*UNITS, PROXY, SLICE, BROWSER]):
+        prepackage_guard(props(unit).get('LoadState') == 'not-found', 'fixture-unit-' + str(index))
+    prepackage_phase('owned-directories')
     for name in ROOTS:
         os.mkdir(name, 0o755)
         os.chmod(name, 0o755)
@@ -216,6 +246,7 @@ def fixture_directories():
         owned_paths[name] = (info.st_dev, info.st_ino)
     for name in ('/run/aihr-admission/ports', '/var/lib/aihr-admission/private'):
         os.mkdir(name, 0o700)
+    prepackage_phase('empty-home')
     home = pathlib.Path('/var/empty/aihr')
     if not os.path.lexists(home.parent):
         home.parent.mkdir(mode=0o755)
@@ -223,15 +254,15 @@ def fixture_directories():
         info = home.parent.stat()
         created_empty_parent = (info.st_dev, info.st_ino)
     parent_info = home.parent.lstat()
-    require(stat.S_ISDIR(parent_info.st_mode) and parent_info.st_uid == 0 and not parent_info.st_mode & 0o022
-            and home.parent.resolve() == home.parent, 'Protected empty-home parent required')
+    prepackage_guard(stat.S_ISDIR(parent_info.st_mode) and parent_info.st_uid == 0 and not parent_info.st_mode & 0o022
+            and home.parent.resolve() == home.parent, 'empty-home-parent')
     if not home.exists():
         home.mkdir(mode=0o755)
         home.chmod(0o755)
         created_home = True
         owned_paths[str(home)] = (home.stat().st_dev, home.stat().st_ino)
-    require(home.stat().st_uid == 0 and not home.is_symlink() and not home.stat().st_mode & 0o022
-            and not any(home.iterdir()), 'Native empty home differs')
+    prepackage_guard(home.stat().st_uid == 0 and not home.is_symlink() and not home.stat().st_mode & 0o022
+            and not any(home.iterdir()), 'empty-home')
 
 
 def package(plan, helper, binding):
@@ -355,30 +386,35 @@ def package(plan, helper, binding):
 
 
 def install_helpers(helper, plan, binding):
+    prepackage_phase('sealed-helpers')
     destination = pathlib.Path('/usr/local/lib/aihr-admission')
-    for name in ('controller.py', 'next_profile.py', 'runtime_inventory.py', 'next_fixture_poststart.py',
-                 'next_fixture_filesystem.py', 'next_dependency_probe.cjs'):
+    for index, name in enumerate(('controller.py', 'next_profile.py', 'runtime_inventory.py', 'next_fixture_poststart.py',
+                 'next_fixture_filesystem.py', 'next_dependency_probe.cjs')):
         source = helper / name
         info = source.lstat()
-        require(info.st_uid == 0 and stat.S_ISREG(info.st_mode) and info.st_nlink == 1
-                and stat.S_IMODE(info.st_mode) == 0o400, 'Expected sealed helper source')
+        prepackage_guard(info.st_uid == 0 and stat.S_ISREG(info.st_mode) and info.st_nlink == 1
+                and stat.S_IMODE(info.st_mode) == 0o400, 'sealed-helper-' + str(index))
         write(destination / name, source.read_bytes(), 0o644)
     source = pathlib.Path(plan['nodePath'])
     installed_node = binding['installation']['node']
-    require(plan['nodePath'] == installed_node['path'], 'Node hint differs from pre-candidate executable witness')
+    prepackage_phase('node-hint')
+    prepackage_guard(plan['nodePath'] == installed_node['path'], 'node-hint')
+    prepackage_phase('node-stat')
     before = source.lstat()
-    require(source.resolve() == source and stat.S_ISREG(before.st_mode) and before.st_uid in (0, plan['runnerUid'])
+    prepackage_guard(source.resolve() == source and stat.S_ISREG(before.st_mode) and before.st_uid in (0, plan['runnerUid'])
             and not before.st_mode & 0o022 and 0 < before.st_size <= 256 * 1024**2,
-            'Hosted installed Node binary differs')
+            'node-stat')
+    prepackage_phase('node-read')
     fd = os.open(source, os.O_RDONLY | os.O_NOFOLLOW)
     try:
-        require(identity(os.fstat(fd)) == identity(before), 'Hosted Node changed before copy')
+        prepackage_guard(identity(os.fstat(fd)) == identity(before), 'node-before-read')
         with os.fdopen(os.dup(fd), 'rb') as stream:
             raw = stream.read(256 * 1024**2 + 1)
-        require(len(raw) == before.st_size and identity(os.fstat(fd)) == identity(before) == identity(source.lstat()),
-                'Hosted Node changed during copy')
-        require(len(raw) == installed_node['bytes'] and hashlib.sha256(raw).hexdigest() == installed_node['sha256'],
-                'Hosted Node bytes differ from pre-candidate executable witness')
+        prepackage_guard(len(raw) == before.st_size and identity(os.fstat(fd)) == identity(before) == identity(source.lstat()),
+                'node-after-read')
+        prepackage_guard(len(raw) == installed_node['bytes'] and hashlib.sha256(raw).hexdigest() == installed_node['sha256'],
+                'node-installed-bytes')
+        prepackage_phase('node-install')
         write(destination / 'node', raw, 0o755)
     finally:
         os.close(fd)
