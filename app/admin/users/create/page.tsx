@@ -14,6 +14,6 @@ export default async function CreateLoginPage({searchParams}:{searchParams:Promi
  return <div className="mx-auto max-w-5xl space-y-6"><SecurityPageHeader title={center('create.title')}/>
   {error&&<div role="alert"><ErrorBanner message={t(`manual.errors.${error}`)}/></div>}
   {['created','cancelled'].includes(params.manualSuccess??'')&&<p role="status" className="rounded-lg border border-border p-4 text-sm">{t(`manual.success.${params.manualSuccess as 'created'|'cancelled'}`)}</p>}
-  <ManualAccountSetup available={keycloakSelected()||internalSelected()} people={peopleOptions} companies={companies} roles={ROLES.map(value=>({value,label:t(`role.${value}`)}))} pending={manualEnrollments} selectedPerson={pendingEmployees.find(p=>p.id===params.activate)}/>
+  <ManualAccountSetup hideHeading available={keycloakSelected()||internalSelected()} people={peopleOptions} companies={companies} roles={ROLES.map(value=>({value,label:t(`role.${value}`)}))} pending={manualEnrollments} selectedPerson={pendingEmployees.find(p=>p.id===params.activate)}/>
  </div>;
 }

@@ -213,13 +213,13 @@ export function DashboardFilterBar({
           several scattered months are all the same gesture. NO month ticked means the whole year — the
           screen opens showing everything rather than nothing, and the run count on each cell tells you
           where the data is before you click. */}
-      <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label={labels.months}>
+      <div className="grid grid-cols-3 items-center gap-1.5 sm:grid-cols-6 xl:grid-cols-12" role="group" aria-label={labels.months}>
         <button
           type="button"
           onClick={() => go({ ...filters, months: [] })}
           aria-pressed={filters.months.length === 0}
           className={cn(
-            'h-9 rounded-md border px-3 text-xs font-medium transition duration-150 ease-snappy active:scale-95',
+            'col-span-full h-9 justify-self-start rounded-md border px-3 text-xs font-medium transition duration-150 ease-snappy active:scale-95',
             filters.months.length === 0
               ? 'border-primary bg-primary text-primary-foreground'
               : 'border-input bg-card text-muted-foreground hover:bg-accent hover:text-foreground',
@@ -235,7 +235,7 @@ export function DashboardFilterBar({
             aria-pressed={c.selected}
             title={c.runsLabel}
             className={cn(
-              'flex h-9 min-w-[4.25rem] flex-1 items-center justify-center gap-1.5 rounded-md border px-2 text-xs font-medium transition duration-150 ease-snappy active:scale-95',
+              'flex h-9 min-w-0 items-center justify-center gap-1.5 rounded-md border px-2 text-xs font-medium transition duration-150 ease-snappy active:scale-95',
               c.selected
                 ? 'border-primary bg-primary text-primary-foreground'
                 : c.runs > 0

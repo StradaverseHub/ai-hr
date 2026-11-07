@@ -20,19 +20,19 @@ it.each(Object.keys(catalogues) as (keyof typeof catalogues)[])('%s renders one 
  expect(view.container.querySelectorAll('input[name="term"]')).toHaveLength(1);expect(view.container.querySelector('form[action="/admin/personnel/search"]')).toHaveAttribute('method','post');
  fireEvent.change(screen.getByRole('searchbox',{name:copy.search}),{target:{value:'FICTIONAL-PASSPORT-123'}});expect(screen.getByRole('link',{name:copy.shareView}).getAttribute('href')).not.toContain('PASSPORT');expect(screen.getByRole('link',{name:copy.shareView}).getAttribute('href')).not.toContain('search=');
  await captureAiReviewScreenshots(aiReviewDomHtml(view.container),locale,'personnel-organisation-results','Actual Personnel private-search and full Business Unit cell components; fictional records; no authenticated staging acceptance','atelier');
- fireEvent.click(screen.getByText(base.filter));await waitFor(()=>expect(view.container.querySelector('form[action="/admin/personnel"]')).not.toBeNull());
- const form=view.container.querySelector<HTMLFormElement>('form[action="/admin/personnel"]')!,group=form.querySelector<HTMLDetailsElement>('[data-company-group="root"]')!;group.open=true;
+ fireEvent.click(screen.getByText(base.filter));await waitFor(()=>expect(document.querySelector('form[action="/admin/personnel"]')).not.toBeNull());
+ const form=document.querySelector<HTMLFormElement>('form[action="/admin/personnel"]')!,group=form.querySelector<HTMLDetailsElement>('[data-company-group="root"]')!;group.open=true;
  fireEvent.click(within(group).getByRole('button',{name:copy.selectAll}));expect(new FormData(form).getAll('companies').sort()).toEqual([a,b]);
  fireEvent.change(screen.getByRole('searchbox',{name:copy.companySearch}),{target:{value:'Company One'}});expect(new FormData(form).getAll('companies').sort()).toEqual([a,b]);
  fireEvent.change(screen.getByRole('searchbox',{name:copy.companySearch}),{target:{value:''}});
  for(const details of form.querySelectorAll('details'))details.open=true;
  expect(screen.getByText(longUnit,{selector:'span[title]'})).toHaveAttribute('title',longUnit);
- await captureAiReviewScreenshots(aiReviewDomHtml(view.container),locale,'personnel-organisation-filters','Actual Personnel filter/search/row components; fictional scoped companies and employee; no authenticated staging acceptance','atelier');
+ await captureAiReviewScreenshots(aiReviewDomHtml(document.body),locale,'personnel-organisation-filters','Actual Personnel filter/search/row components; fictional scoped companies and employee; no authenticated staging acceptance','atelier');
 },120000);
 
 it('keeps a denied duplicate filter fail-closed while offering no unapproved evidence control',async()=>{
  const copy=en.personnelOrganisationFilters,field:FilterField={kind:'multi',name:'quality',label:copy.quality,ariaLabel:copy.quality,options:[{value:'suspected_duplicate',label:copy.suspected_duplicate}],removeAriaLabel:copy.quality};
- const view=render(<PersonnelOrganisationFilters fields={[field]} values={{quality:['suspected_duplicate']}} companies={[]} labels={{filter:'Filter',apply:'Apply',clearAll:'Clear all',activeCount:'1'}} companySearchLabel="Companies" duplicateHint={copy.duplicateUnavailable} canInspectDuplicates={false}/>);
- fireEvent.click(screen.getByText('Filter'));await waitFor(()=>expect(view.container.querySelector('form')).not.toBeNull());
- expect(view.container.querySelector('input[type="checkbox"][value="suspected_duplicate"]')).toBeNull();expect(new FormData(view.container.querySelector('form')!).getAll('quality')).toEqual(['suspected_duplicate']);expect(screen.getByText(copy.duplicateUnavailable)).toBeVisible();
+ const view=render(<NextIntlClientProvider locale="en" messages={en}><PersonnelOrganisationFilters fields={[field]} values={{quality:['suspected_duplicate']}} companies={[]} labels={{filter:'Filter',apply:'Apply',clearAll:'Clear all',activeCount:'1'}} companySearchLabel="Companies" duplicateHint={copy.duplicateUnavailable} canInspectDuplicates={false}/></NextIntlClientProvider>);
+ fireEvent.click(screen.getByText('Filter'));await waitFor(()=>expect(document.querySelector('form')).not.toBeNull());
+ expect(document.querySelector('input[type="checkbox"][value="suspected_duplicate"]')).toBeNull();expect(new FormData(document.querySelector('form')!).getAll('quality')).toEqual(['suspected_duplicate']);expect(screen.getByText(copy.duplicateUnavailable)).toBeVisible();
 });
