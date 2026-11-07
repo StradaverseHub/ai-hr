@@ -5,7 +5,7 @@ CREATE TABLE public.attendance_workflow_company (
  template_id uuid NOT NULL REFERENCES public.attendance_workflow_template(id),
  company_id uuid NOT NULL REFERENCES public.company(id),
  FOREIGN KEY(tenant_id,template_id) REFERENCES public.attendance_workflow_template(tenant_id,id),
- FOREIGN KEY(tenant_id,company_id) REFERENCES public.company(tenant_id,id),
+ FOREIGN KEY(company_id,tenant_id) REFERENCES public.company(id,tenant_id),
  PRIMARY KEY(template_id,company_id)
 );
 INSERT INTO public.attendance_workflow_company(tenant_id,template_id,company_id)
@@ -189,6 +189,8 @@ BEGIN
 END $$;
 
 --> statement-breakpoint
+-- Frozen participants keep their exact saved user/person identity. An additional login never
+-- substitutes for or revokes that identity; selection-time uniqueness applies only to new routes.
 CREATE OR REPLACE FUNCTION app.attendance_workflow_v3_assigned_allowed(wanted_request uuid,wanted_stage integer,wanted_slot text,acting text) RETURNS boolean
 LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
 DECLARE w public.attendance_workflow_request; caller public.app_user; actor jsonb; subject_person uuid;
@@ -212,7 +214,7 @@ BEGIN
    AND u.id=(actor->>'userId')::uuid AND u.archived_at IS NULL AND NOT app.login_blocked(u.id)
    AND e.person_id<>subject_person AND e.blacklisted_at IS NULL AND e.hired_on<=(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date
    AND (e.terminated_on IS NULL OR e.terminated_on>(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date)
-   AND ((actor->>'kind'='specific_employee' AND app.attendance_selected_approver_eligible(w.company_id,e.id)) OR (actor->>'kind'='direct_manager' AND app.is_company_descendant(w.company_id,e.company_id)))
+   AND ((actor->>'kind'='specific_employee') OR (actor->>'kind'='direct_manager' AND app.is_company_descendant(w.company_id,e.company_id)))
    AND EXISTS(SELECT 1 FROM public.role_assignment r WHERE r.app_user_id=u.id AND r.tenant_id=w.tenant_id
     AND r.role::text IN ('employee','manager','hr_admin','super_admin')
     AND (r.company_id IS NULL OR r.company_id=w.company_id OR app.is_company_descendant(w.company_id,r.company_id)))) THEN RETURN false; END IF;
@@ -276,7 +278,7 @@ BEGIN
      AND (w.routing_version=1 OR (e.person_id=candidate_person AND u.id=candidate_user))
      AND e.blacklisted_at IS NULL AND e.hired_on<=(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date
      AND (e.terminated_on IS NULL OR e.terminated_on>(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date)
-     AND u.archived_at IS NULL AND NOT app.login_blocked(u.id) AND ((candidate_kind='specific_employee' AND app.attendance_selected_approver_eligible(w.company_id,e.id)) OR (candidate_kind='direct_manager' AND app.is_company_descendant(w.company_id,e.company_id)))
+     AND u.archived_at IS NULL AND NOT app.login_blocked(u.id) AND ((candidate_kind='specific_employee') OR (candidate_kind='direct_manager' AND app.is_company_descendant(w.company_id,e.company_id)))
      AND EXISTS(SELECT 1 FROM public.role_assignment r WHERE r.app_user_id=u.id AND r.tenant_id=w.tenant_id AND r.role::text IN ('employee','manager','hr_admin','super_admin')
       AND (r.company_id IS NULL OR r.company_id=w.company_id OR app.is_company_descendant(w.company_id,r.company_id)))
      AND (w.routing_version=1 OR NOT EXISTS(SELECT 1 FROM public.attendance_workflow_decision d WHERE d.request_id=w.id AND d.tenant_id=w.tenant_id AND (d.actual_user_id=u.id::text OR d.actual_person_id=u.person_id)))

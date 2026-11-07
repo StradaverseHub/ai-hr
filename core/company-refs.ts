@@ -213,6 +213,7 @@ export const COMPANY_REFERRERS: readonly CompanyRef[] = [
   { table: 'lc_onboarding_private_revision', column:'company_id', disposition:'employees', note:'Sensitive onboarding history retains HR-only access.' },
   { table: 'lc_onboarding_private', column: 'company_id', disposition: 'employees', note: 'HR-only onboarding facts retain company-scoped access.' },
   { table: 'attendance_workflow_template', column: 'company_id', disposition: 'other', note: 'Immutable approval template versions are retained configuration history.' },
+  { table: 'attendance_workflow_company', column: 'company_id', disposition: 'other', note: 'Immutable shared workflow assignments are retained configuration history.' },
   { table: 'attendance_workflow_setting', column: 'company_id', disposition: 'config', note: 'Attendance workflow enablement has no meaning after its company is deleted.' },
   { table: 'attendance_workflow_request', column: 'company_id', disposition: 'employees', note: 'Submitted routing is employee decision history and must be retained.' },
   { table: 'mobile_offline_context', column: 'company_id', disposition: 'employees', note: 'Offline clocking evidence (0647): an issued context and its claims are an employee\'s attendance record. Each is bound to an employment of this company, so the employment row already refuses the delete; no visibility function is needed.' },
