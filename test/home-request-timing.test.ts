@@ -21,9 +21,9 @@ it('isolates concurrent Home timing without retaining request or response secret
    expect(span.stages.map((item:{stage:string;card?:string})=>[item.stage,item.card])).toEqual([
     ['handler',undefined],['session',undefined],['read-start',card],['read-finish',card],
    ]);
-   const times=span.stages.map((item:{afterMs:number})=>item.afterMs);
+   const times:number[]=span.stages.map((item:{afterMs:number})=>item.afterMs);
    expect(times).toEqual([...times].sort((a,b)=>a-b));
-   expect(span.elapsedMs).toBeGreaterThanOrEqual(times.at(-1));
+   expect(span.elapsedMs).toBeGreaterThanOrEqual(times.at(-1)!);
   }
  }finally{rmSync(root,{recursive:true,force:true});}
 });
