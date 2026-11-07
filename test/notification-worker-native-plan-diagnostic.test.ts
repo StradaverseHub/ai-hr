@@ -16,10 +16,11 @@ import {notificationPlanLogging} from './fixtures/notification-worker/plan-loggi
 import {notificationAutoExplainMessages} from './fixtures/notification-worker/auto-explain';
 import {reviewedAdmissionExpression,notificationAdmissionSummary,notificationHelperContractScans} from './fixtures/notification-worker/admission-plan-summary';
 import {notificationDiagnosticOwnership} from './fixtures/notification-worker/diagnostic-ownership';
+import {admitSingletonTest} from './helpers/ci-singleton-admission';
 import {capturePostgresEvidence,postgresProfileFromEnv,validatePostgresEvidence} from '../.github/ci/postgres-evidence.mjs';
 const filename='test/notification-worker-native-plan-diagnostic.test.ts';
-const selection:unknown=JSON.parse(process.env.AIHR_FOCUSED_TESTS??'[]');
-if(process.env.GITHUB_ACTIONS!=='true'||process.env.CI!=='true'||process.env.RUNNER_ENVIRONMENT!=='github-hosted'||process.env.GITHUB_REPOSITORY!=='StradaverseHub/ai-hr'||process.env.GITHUB_RUN_ATTEMPT!=='1'||!Array.isArray(selection)||selection.length!==1||selection[0]!==filename)throw Error('Exact sole hosted notification diagnostic required; no normal-CI witness');
+const diagnosticAdmission=admitSingletonTest(filename);
+if(process.env.CI!=='true')throw Error('Actual hosted CI notification diagnostic required');
 describe.sequential('paired exact-freshness native query shapes',()=>{
 const fixture=notificationWorkerFixtureOwner(),ownership=notificationDiagnosticOwnership();
 const beforeGuardCounts=new Map<string,number>();
@@ -33,9 +34,9 @@ const nativeSourceHashes=Object.fromEntries(names.map((name,index)=>[name,create
 let b:Base,employment:string,recipient:string,output='';
 beforeAll(async()=>{
  ownership.beforeCase();await fixture.install(sources,3,notificationWorkerAssessmentContract);
- const temporary=realpathSync(process.env.RUNNER_TEMP!),directory=process.env.AIHR_FOCUSED_EVIDENCE_DIR;
- expect(directory).toBe(join(temporary,'aihr-focused'));expect(realpathSync(directory!)).toBe(directory);expect(lstatSync(directory!).uid).toBe(process.getuid!());
- output=join(directory!,'notification-native-plans-'+queryShapeVariant);mkdirSync(output,{mode:0o700});
+ const temporary=realpathSync(process.env.RUNNER_TEMP!),directory=diagnosticAdmission.evidenceDirectory;
+ expect(directory).toBe(join(temporary,diagnosticAdmission.mode==='full-ci-singleton'?'aihr-ci':'aihr-focused'));expect(realpathSync(directory)).toBe(directory);expect(lstatSync(directory).uid).toBe(process.getuid!());
+ output=join(directory,'notification-native-plans-'+queryShapeVariant);mkdirSync(output,{mode:0o700});
 },300000);
 beforeEach(async()=>{
  ownership.beforeCase(); // BEFORE truncate/reset/fixture writes; aborted work cannot be overtaken.

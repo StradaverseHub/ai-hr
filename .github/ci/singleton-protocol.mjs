@@ -6,6 +6,7 @@ import {CI_POLICY} from './policy-version.mjs';
 import {NATIVE_HELPER_SOURCES} from './native-next-helper-sources.mjs';
 export const SINGLETON_VERSION=1;
 const measured=[
+ 'test/access-editor-native-owner-presentation.test.ts',
  'test/analytics-termination-lateral.test.ts',
  'test/employee-choice-assignment-membership-plan.test.ts',
  'test/employee-choice-organisation-plan.test.ts',
@@ -24,6 +25,7 @@ export const SINGLETON_FILES=Object.freeze({
  ...Object.fromEntries(measured.map(file=>[file,'controlled-database-v1'])),
  'test/runtime-ready-admission-native.test.ts':'linux-systemd-nginx-v1',
  'test/notification-worker-lifecycle.test.ts':'notification-cluster-v1',
+ 'test/notification-worker-native-plan-diagnostic.test.ts':'notification-cluster-v1',
  'test/runtime-next-admission-native.test.ts':'linux-next-postgres-v1',
 });
 export const singletonProfile=file=>Object.hasOwn(SINGLETON_FILES,file)?SINGLETON_FILES[file]:null;
@@ -47,10 +49,30 @@ export function assertSingletonUnit(unit){
  assert.deepEqual(unit.singleton,expected,'Changed singleton execution profile');assert.equal(unit.kind,singletonKind(expected.profile));
  return expected;
 }
+// Fixed reviewed component closure. These are source bindings, not privileges,
+// new profiles, skip exemptions or permission to execute an arbitrary candidate.
+const componentSources=Object.freeze({
+ 'test/access-editor-native-owner-presentation.test.ts':Object.freeze([
+  'db/migrations/3211_access_editor_native_owner_presentation.sql',
+  'test/fixtures/access-editor-native-owner.ts','test/fixtures/access-editor-cleanup-lifetime.ts',
+  'test/fixtures/access-editor-owned-work.ts','test/fixtures/access-editor-original739-journal.json',
+  'test/fixtures/access-editor-locked-baseline.ts',
+ ]),
+ 'test/notification-worker-native-plan-diagnostic.test.ts':Object.freeze([
+  'test/harness.ts','lib/notification-worker/lifecycle.ts','lib/notification-worker/projection.ts',
+  'lib/assessment-reminder-mail.ts','test/fixtures/notification-worker/owner-fixture.ts',
+  'test/fixtures/notification-worker/database.ts','test/fixtures/notification-worker/diagnostic-ownership.ts',
+  'test/fixtures/notification-worker/plan-logging.ts','test/fixtures/notification-worker/auto-explain.ts',
+  'test/fixtures/notification-worker/admission-plan-summary.ts',
+  'test/fixtures/notification-worker/lifecycle.sql','test/fixtures/notification-worker/projection.sql',
+  'test/fixtures/notification-worker/assessment.sql','test/fixtures/notification-worker/process.sql',
+  'test/fixtures/notification-worker/query-shape.sql','test/fixtures/notification-worker/exact-source.sql',
+ ]),
+});
 export function singletonSources(unit){
  assertSingletonUnit(unit);
  return [unit.files[0],'test/helpers/ci-singleton-admission.ts','.github/ci/singleton-protocol.mjs','.github/ci/policy-version.mjs',
-  'vitest.config.ts','vitest.nodb.config.ts',...(unit.kind==='db'?['test/db-names.ts','test/global-setup.ts','test/env.ts']:['deploy/admission/test_native.py']),
+  'vitest.config.ts','vitest.nodb.config.ts',...(componentSources[unit.files[0]]??[]),...(unit.kind==='db'?['test/db-names.ts','test/global-setup.ts','test/env.ts']:['deploy/admission/test_native.py']),
   ...(nativeNextUnit(unit)?[...Object.values(NATIVE_HELPER_SOURCES),'.github/ci/native-next-helper-sources.mjs','.github/ci/native-next-build-packet.mjs',
    '.github/ci/native-next-installation.mjs','.github/ci/native-next-build-inputs.mjs','.github/ci/candidate-environment.mjs','.github/ci/build-artifact.mjs',
    'test/helpers/native-next-fixture.ts','scripts/performance/native-next-boot-browser.mjs',
