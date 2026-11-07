@@ -123,7 +123,7 @@ export async function leaveApplySummaryAction(p: { employmentId: string; leaveTy
   }
 }
 
-export async function requestLeaveAction(formData: FormData) {
+export async function requestLeaveAction(formData: FormData, inlineErrors = false) {
   const session = await getSession();
   let selectedOwnReturnId:string|undefined;
   const postedEmploymentId = String(formData.get('employmentId') ?? '').trim();
@@ -260,22 +260,16 @@ export async function requestLeaveAction(formData: FormData) {
     // resort is the raw English service message — which is exactly what a permission refusal must not show.
     if (e instanceof LeaveOnBehalfNotAllowedError) {
       const tErr = await getTranslations('leave.errors');
+      if (inlineErrors) return {error:tErr('applyOnBehalfNotAllowed')};
       redirect(withLeaveEmploymentContext(`/leave?error=${encodeURIComponent(tErr('applyOnBehalfNotAllowed'))}`,selectedOwnReturnId));
     }
+    const message = await localizeLeaveError(e, selected?.name, refusedEmploymentId ? {
+      ctx: session, employmentId: refusedEmploymentId, leaveTypeId, subject: refusedOnBehalf ? 'other' : 'self',
+    } : undefined);
+    if (inlineErrors) return {error:message};
     redirect(withLeaveEmploymentContext(
       `/leave?error=${encodeURIComponent(
-        await localizeLeaveError(
-          e,
-          selected?.name,
-          refusedEmploymentId
-            ? {
-                ctx: session,
-                employmentId: refusedEmploymentId,
-                leaveTypeId,
-                subject: refusedOnBehalf ? 'other' : 'self',
-              }
-            : undefined,
-        ),
+        message,
       )}`,selectedOwnReturnId,
     ));
   }
@@ -296,6 +290,7 @@ export async function requestLeaveAction(formData: FormData) {
   // raw query string, so never pass an i18n key), leaving exactly one emitter and the right words in it.
   const tToast = await getTranslations('leave');
   const done = encodeURIComponent(tToast('submittedToast'));
+  if (inlineErrors) return {redirectTo:withLeaveEmploymentContext(`/leave${warnQuery}${warnQuery ? '&' : '?'}toast=${done}`,selectedOwnReturnId)};
   redirect(withLeaveEmploymentContext(`/leave${warnQuery}${warnQuery ? '&' : '?'}toast=${done}`,selectedOwnReturnId));
 }
 

@@ -296,7 +296,11 @@
       "rule": "此更改被保护现有记录（例如已关闭的薪资）的安全规则拒绝。参考编号 {ref}。",
       "busy": "系统繁忙，更改未完成。请重试。参考编号 {ref}。",
       "nricDuplicate": "此 NRIC 已存在于另一名员工的记录中。当前人员常规设置不允许重复 NRIC。 参考编号 {ref}."
-    }
+    },
+    "moreActions": "更多操作",
+    "noSearchResults": "没有与搜索匹配的结果。",
+    "sectionFilter": "分区",
+    "allSections": "所有分区"
   },
   "nav": {
     "roster": "排班",
@@ -3894,7 +3898,7 @@
       "panelLaterOther": "仅限本假期年度。卡片上的可用余额还计入本假期年度之后日期的记录",
       "sharedFromPool": "这些天数从 {pool} 的余额中扣除。",
       "sharedPoolHolder": "这些天数与 {types} 共用。",
-      "takenOnlyCaption": "已使用 — 无应享假期",
+      "takenOnlyCaption": "无假期配额 — 显示已用假期",
       "cycleDates": "假期年度 {from} – {to}",
       "details": "详情",
       "detailsFor": "{type}详情",
@@ -3947,7 +3951,10 @@
     "replacementRequest": {
       "viewMyRequests": "[retired r389 — the 'View my leave credit requests' link beside the Leave Credit request button on My Leave. Item ba039150 removed it: the list it opened is now the Leave Credit History page, reached from the My Leave menu]"
     },
-    "historyHeading": "休假申请状态"
+    "historyHeading": "休假申请状态",
+    "submittingRequest": "正在提交…",
+    "submitUnconfirmed": "无法确认结果。请先检查申请状态，再尝试提交。",
+    "zeroDaysHint": "此选择不会扣除假期。请先选择工作日期再提交。"
   },
   "leaveTracker": {
     "title": "团队休假追踪",
@@ -4779,7 +4786,7 @@
   },
   "me": {
     "title": "我的资料",
-    "notLinked": "此账户尚未关联员工档案。请使用顶栏的身份切换器以员工身份操作（例如 Aisyah 或 Daniel）。",
+    "notLinked": "此账号尚未关联员工档案。请联系 HR，将登录账号关联至正确的员工档案。",
     "todayHeading": "今天",
     "checkIn": "签到",
     "checkedInAt": "已于 <time></time> 签到",
@@ -5749,7 +5756,7 @@
       "colEmployees": "员工",
       "colNetPay": "实发工资",
       "colStatus": "状态",
-      "empty": "暂无薪资流程 — 在下方创建一个。",
+      "empty": "暂无薪资流程。请选择“创建薪资运行周期”开始。",
       "runType": {
         "regular": "常规",
         "off_cycle": "周期外",
@@ -11517,7 +11524,7 @@
       "title": "报销配置",
       "subtitle": "定义员工可提交的费用/福利报销类型、其默认税务处理方式，以及可选的预算。",
       "typesTitle": "报销类型",
-      "empty": "暂无报销类型。在下方添加一个。",
+      "empty": "暂无报销类型。请选择“新增”创建。",
       "newTitle": "新建报销类型",
       "codeLabel": "代码",
       "nameLabel": "名称",
@@ -13697,7 +13704,9 @@
     "scope": "范围",
     "breadcrumb": "面包屑导航",
     "details": "详情",
-    "homePreferences": "首页偏好设置"
+    "homePreferences": "首页偏好设置",
+    "chooseCompanies": "重新选择",
+    "pendingCompanySelection": "选择公司以更新视图。当前公司范围尚未改变。"
   },
   "components": {
     "plannedAbsences": {
@@ -14292,7 +14301,7 @@
   "payComponents": {
     "title": "薪资项目",
     "description": "定义可配置的薪资项目及其法定处理（EPF / SOCSO / PCB / HRDF）。",
-    "previewNotice": "预览。目录已可使用；仅在启用后（TYPED_PAY_COMPONENTS_ENABLED）薪资才切换到类型化组件。在此之前，薪资仍按基本 + 津贴 + 加班 + 奖金计算。",
+    "previewNotice": "预览。目录已可使用。启用新的薪资项目配置前，薪资仍按基本工资、津贴、加班费和奖金计算。",
     "catalogTitle": "目录",
     "seedDefaults": "载入马来西亚默认",
     "colCode": "薪资代码",
@@ -22530,7 +22539,8 @@
     "saving": "[retired r392 — part of the Today tiles or the Needs your attention panel on My Team, removed at the reporter's request (item 33930be9). Leave is decided in Approval Items]",
     "attentionCount": "[retired r392 — part of the Today tiles or the Needs your attention panel on My Team, removed at the reporter's request (item 33930be9). Leave is decided in Approval Items]",
     "status_exempt": "已豁免",
-    "exemptCode": "EX"
+    "exemptCode": "EX",
+    "balanceContext": "此处显示已记录的余额，不显示假期配额配置。余额为零不代表已配置配额。如需核对，请联系 HR。"
   },
   "lifecycle": {
     "title": "入职与IT",

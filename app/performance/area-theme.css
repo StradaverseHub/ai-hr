@@ -517,3 +517,12 @@
 
 /* ── Theme neutralisers: Monolith (app/globals.css) ──────────────────────────────────────────────── */
 :root[data-ui-theme='monolith'] [data-area-theme='performance'] :focus-visible { outline: revert-layer; outline-offset: revert-layer; }
+
+/* Phone/touch targets survive the theme neutralisers above. On a fine-pointer desktop,
+   the area's own compact density still applies. The neutralisers intentionally revert
+   unlayered shell rules, so the shared phone minimum must be restated after them. */
+@media (max-width: 640px), (pointer: coarse) {
+  :root[data-ui-theme] main [data-area-theme='performance'] :is(button, a)[class~='inline-flex']:is([class~='bg-primary'], [class~='border-input']) {
+    min-height: 2.75rem;
+  }
+}

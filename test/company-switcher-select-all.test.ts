@@ -29,12 +29,12 @@ const SWITCHER = stripComments(readFileSync(root + 'components/company-switcher.
 describe('95aafb3c · company switcher select-all toggle', () => {
   it('(a) the bulk toggle is a type="button" inside the form, labelled from the pending selection', () => {
     // The label flips live with the pending picks, so it must read off `allSelected`.
-    expect(SWITCHER).toMatch(/allSelected \? t\('deselectAll'\) : t\('selectAll'\)/);
+    expect(SWITCHER).toMatch(/allSelected \? t\('chooseCompanies'\) : t\('selectAll'\)/);
     // …and `allSelected` must be an every() over the rendered companies, not a size compare (a size
     // compare misfires if the pending set ever holds an id that is not in the listed companies).
     expect(SWITCHER).toMatch(/companies\.every\(\(c\) => sel\.has\(c\.id\)\)/);
     // The toggle button opens before the company rows and declares type="button".
-    const toggleAt = SWITCHER.indexOf("t('deselectAll')");
+    const toggleAt = SWITCHER.indexOf("t('chooseCompanies')");
     const buttonAt = SWITCHER.lastIndexOf('<button', toggleAt);
     expect(buttonAt).toBeGreaterThan(-1);
     expect(
