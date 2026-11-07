@@ -155,7 +155,10 @@ describe('r395 — per-row visibility functions are gone from every policy USING
       expect(p).toMatch(/InitPlan/);
       if(table==='employment'){
         expect(p).toMatch(/hashed SubPlan/);
-        expect(p).toMatch(/Function Call: unnest\(\$\d+\)/);
+        // Target-list unnest is a ProjectSet; Function Call is reserved for
+        // a FunctionScan in FROM. Keep the scalar InitPlan parameter visible.
+        expect(p).toMatch(/ProjectSet/);
+        expect(p).toMatch(/Output: unnest\(\$\d+\)/);
       }else expect(p).toMatch(/ANY \(\$\d+\)|= ANY \(\(InitPlan/);
       expect(p).not.toMatch(/can_see_(employment|person)/);
     }
