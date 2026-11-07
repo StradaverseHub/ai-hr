@@ -51,11 +51,14 @@ beforeEach(async()=>{
  const [review]=await owner.db.select().from(schema.performanceReview).where(and(eq(schema.performanceReview.cycleId,cycleId),eq(schema.performanceReview.employmentId,subject.employmentId)));reviewId=review.id;
  vi.stubEnv('OPENAI_API_KEY','fictional-admission-transport-never-sent');for(const key of ['ANTHROPIC_API_KEY','GOOGLE_API_KEY','GEMINI_API_KEY'])vi.stubEnv(key,'');beforeAdmission=undefined;sourceChange=undefined;afterSourceReplay=undefined;alterInput=false;
  const issued=await withTenant(a,tx=>resolveActiveAiConfig(tx,a,'performance_review'));if(!issued)throw Error('Missing actual fixture provider');spendPrice=await installSyntheticSpendCapability(a,{provider:issued.provider,model:issued.model});
- const issue=governance.withAiAdmissionCheck;vi.spyOn(governance,'withAiAdmissionCheck').mockImplementation((config,feature,check)=>issue(config,feature,async(tx,request)=>{await check(tx,request);const tail=afterSourceReplay;afterSourceReplay=undefined;if(tail)await tail();}));
+ // Competing human requests are independent requests, not descendants of the AI work whose
+ // native source custody they challenge. Bind outside the activity; keep real services/RLS/locks.
+ const independentHuman=AsyncResource.bind(async(work:()=>Promise<void>)=>work());
+ const issue=governance.withAiAdmissionCheck;vi.spyOn(governance,'withAiAdmissionCheck').mockImplementation((config,feature,check)=>issue(config,feature,async(tx,request)=>{await check(tx,request);const tail=afterSourceReplay;afterSourceReplay=undefined;if(tail)await independentHuman(tail);}));
  const original=ai.generateDraft;actualGenerateDraft=original;vi.spyOn(ai,'generateDraft').mockImplementation(async(cfg,args)=>{
   // Every concurrent call (the career plan sends two) waits for the one source change, so none reaches admission
   // first and holds source custody while the change is refused as busy.
-  if(beforeAdmission){sourceChange=beforeAdmission();beforeAdmission=undefined;}if(sourceChange)await sourceChange;return original(cfg,alterInput?{...args,prompt:args.prompt+' CHANGED'}:args);});
+  if(beforeAdmission){sourceChange=independentHuman(beforeAdmission);beforeAdmission=undefined;}if(sourceChange)await sourceChange;return original(cfg,alterInput?{...args,prompt:args.prompt+' CHANGED'}:args);});
  vi.spyOn(openaiAdapter,'generate').mockImplementation(async(_cfg,args)=>{args.onUsage?.({inputTokens:0,outputTokens:0,cachedInputTokens:0});if(args.system.includes('Performance guide'))return '{"items":[0],"unanswered":false}';if(args.system.includes('explicit user draft command'))return JSON.stringify({items:[0]});if(args.system.includes('longer-term career aspiration'))return '{"aspirationLong":"I aim to deepen my delivery practice."}';if(args.system.startsWith('Propose development goals'))return '[{"title":"Collaborative delivery","area":"Collaborative delivery","item_ids":["lp:0"],"experience":"Lead a delivery retrospective","exposure":"Seek colleague feedback","education":"Study facilitation"}]';return '{"items":[0]}';});
 });
 const runs=()=>owner.db.select().from(schema.aiModelRun).where(eq(schema.aiModelRun.tenantId,b.tenantId));
@@ -73,6 +76,7 @@ const call=(kind:Source)=>kind==='narrative'?perf.draftOnehrNarrative(self,revie
 describe('independent summary generation control and late native cache barrier',()=>{
  beforeEach(withoutUsdCap);
  const group=()=>({...a,grants:[{role:'hr_admin',companyId:null}]});
+ const selectOfferedOutline=(args:Parameters<typeof ai.generateDraft>[1])=>{const {sections}=JSON.parse(args.prompt) as {sections:{index:number}[]};expect(Array.isArray(sections)&&sections.length>0).toBe(true);return JSON.stringify({items:sections.map(section=>section.index)});};
  async function summaryFixture(){await f.complete(true,'Verified delivery outcomes.');const actor=peers[0].ctx,sid=await perf.createOnehrCalibration(a,cycleId,{name:'Controlled written summary',companyId:b.companyId,tier:'hod',reviewerUserIds:[actor.userId!],reviewIds:[reviewId],pbtAchievement:100,mode:'after'});return{actor,sid};}
  it('permits a real governed generation when on, refuses it when off, and preserves cached viewing',async()=>{
   const {actor,sid}=await summaryFixture();
@@ -80,6 +84,7 @@ describe('independent summary generation control and late native cache barrier',
   await expect(perf.getAssessmentWrittenRemarks(actor,reviewId,sid,'pm',{generate:true})).rejects.toMatchObject({reason:'paused'});
   expect(await runs()).toEqual([]);expect(openaiAdapter.generate).not.toHaveBeenCalled();
   await setAiCentreReadControl(group(),'read:operation_written_performance',true);
+  vi.mocked(openaiAdapter.generate).mockImplementationOnce(async(_cfg,args)=>{args.onUsage?.({inputTokens:0,outputTokens:0,cachedInputTokens:0});return selectOfferedOutline(args);});
   const generated=await perf.getAssessmentWrittenRemarks(actor,reviewId,sid,'pm',{generate:true});expect(generated.source).toBe('ai');expect(openaiAdapter.generate).toHaveBeenCalledOnce();
   await setAiCentreReadControl(group(),'read:operation_written_performance',false);
   expect(await perf.getAssessmentWrittenRemarks(actor,reviewId,sid,'pm')).toEqual(generated);
@@ -88,7 +93,7 @@ describe('independent summary generation control and late native cache barrier',
  it.each(['child','stop_resume'] as const)('%s after settled provider return refuses the next native cache write without forgiving usage',async kind=>{
   const {actor,sid}=await summaryFixture(),human=new AsyncResource('fixture-independent-human-control');
   let returned=false,changed=false;
-  vi.mocked(openaiAdapter.generate).mockImplementationOnce(async(_cfg,args)=>{args.onUsage?.({inputTokens:3,outputTokens:4,cachedInputTokens:0});return '{"items":[0]}';});
+  vi.mocked(openaiAdapter.generate).mockImplementationOnce(async(_cfg,args)=>{args.onUsage?.({inputTokens:3,outputTokens:4,cachedInputTokens:0});return selectOfferedOutline(args);});
   vi.mocked(ai.generateDraft).mockImplementation(async(cfg,args)=>{const result=await actualGenerateDraft(cfg,args);returned=true;return result;});
   const native=moduleGate.withPerformanceTenant;
   vi.spyOn(moduleGate,'withPerformanceTenant').mockImplementation(async<T>(current:SessionContext,work:(tx:Tx)=>Promise<T>):Promise<T>=>{
