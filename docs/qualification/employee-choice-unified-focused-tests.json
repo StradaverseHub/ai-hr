@@ -13,5 +13,6 @@
   "test/hierarchy-visibility.test.ts",
   "test/r395-visibility-equivalence.test.ts",
   "test/employee-choice-field.dom.test.tsx",
-  "test/employee-choice-plan-work.test.ts"
+  "test/employee-choice-plan-work.test.ts",
+  "test/employee-choice-plan-capture.test.ts"
 ]

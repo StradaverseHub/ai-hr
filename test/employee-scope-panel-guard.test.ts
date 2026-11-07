@@ -74,6 +74,7 @@ import { CollapsibleEmployeePanel } from '../components/collapsible-employee-pan
 // merge kept both copies. Keep a single import here.
 import TransactionViewPage from '../app/payroll/transaction-view/page';
 import { HistoryGrid } from '../app/payroll/transaction-view/history-grid';
+import {isEmployeeChoicePage,type EmployeeChoicePage} from '../lib/employee-choice';
 // 9949f91a (r369) — the two Leave Inquiry tabs join the file. Their fence is company SCOPE (`scopedAdmin` +
 // `listEmployees(s, scopeIds)`), the same as Zakat's, so the foreign id used against them is a real
 // employment in a real second company that scope excludes.
@@ -111,6 +112,16 @@ function panelSelection(tree: unknown): string | null {
   const panels = findByType(tree, EmployeeScopePanel);
   expect(panels, 'the screen must render exactly one shared employee panel').toHaveLength(1);
   return panels[0].props.selectedId as string | null;
+}
+
+/** The migrated Payroll rail receives the actual bounded native DTO, not a full
+ * employees prop. Validate it before reading offered identities or selection. */
+function boundedPanelChoices(tree:unknown):EmployeeChoicePage{
+ const panels=findByType(tree,EmployeeScopePanel);expect(panels).toHaveLength(1);
+ expect(panels[0].props.employees,'the bounded rail must not also receive a full employee list').toBeUndefined();
+ const initial:unknown=panels[0].props.remote?.initial;
+ if(!isEmployeeChoicePage(initial))throw Error('Payroll rail did not receive a valid bounded employee-choice page');
+ expect(initial.rows.length).toBeLessThanOrEqual(initial.limit);return initial;
 }
 
 /**
@@ -398,12 +409,16 @@ describe('r168a — an out-of-scope ?employmentId= selects NOTHING on every scre
     });
     expect(panelSelection(tampered), 'a company outside scope must coerce to no selection').toBeNull();
 
-    // The rail is fed the same scope-fenced read the search box was; restoring it must not have widened it.
-    // Note the key is `employmentId` on the panel, where the search field called it `value`.
-    const offered: string[] = findByType(tampered, EmployeeScopePanel)[0].props.employees.map(
-      (e: { employmentId: string }) => e.employmentId,
-    );
-    expect(offered).toContain(mine.employmentId);
+    // Payroll retains ended colleagues in its company fence. These two native
+    // fixture identities independently define the complete offered population.
+    const choices=boundedPanelChoices(tampered),offered=choices.rows.map(row=>row.employmentId);
+    expect(choices.selected).toBeNull();expect(choices.total).toBe(2);
+    expect(offered).toEqual([mine.employmentId,terminated.employmentId]);
+    expect(choices.companyOptions.map(row=>row.id)).toEqual([base.companyId]);
+    expect(choices.allDepartmentOptions.map(row=>row.id)).toEqual([base.deptA]);
+    expect(choices.rows.every(row=>row.companyId===base.companyId)).toBe(true);
+    expect(choices.rows.find(row=>row.employmentId===terminated.employmentId)?.status).toBe('ended');
+    expect(controlsNamed(tampered,'input','employmentId'),'a rejected grid selection must not be carried through Apply').toHaveLength(0);
     expect(offered, 'restoring the rail must not have widened what it can reach').not.toContain(
       foreign.employmentId,
     );
@@ -521,10 +536,13 @@ describe('r168a — an out-of-scope ?employmentId= selects NOTHING on every scre
         `${tab}: there is no surviving selection to carry`,
       ).toHaveLength(0);
 
-      const offered: string[] = findByType(tree, EmployeeScopePanel)[0].props.employees.map(
-        (e: { employmentId: string }) => e.employmentId,
-      );
-      expect(offered).toContain(mine.employmentId);
+      const choices=boundedPanelChoices(tree),offered=choices.rows.map(row=>row.employmentId);
+      expect(choices.selected,`${tab}: the bounded DTO itself must reject the foreign selected row`).toBeNull();
+      expect(choices.total).toBe(2);expect(offered).toEqual([mine.employmentId,terminated.employmentId]);
+      expect(choices.companyOptions.map(row=>row.id)).toEqual([base.companyId]);
+      expect(choices.allDepartmentOptions.map(row=>row.id)).toEqual([base.deptA]);
+      expect(choices.rows.every(row=>row.companyId===base.companyId)).toBe(true);
+      expect(choices.rows.find(row=>row.employmentId===terminated.employmentId)?.status).toBe('ended');
       expect(offered, `${tab}: the panel must not reach past the company fence`).not.toContain(
         foreign.employmentId,
       );

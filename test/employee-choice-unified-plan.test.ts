@@ -17,6 +17,7 @@ import {createAssignmentAuthorityFixture,assertAssignmentAuthority} from './perf
 import {closeAll,migrateTestDb,owner} from './harness';
 import {workerDb} from './db-names';
 import {employeeChoicePlannerSnapshot} from './performance/employee-choice-planner-snapshot';
+import {employeeChoicePlanQuery} from './performance/employee-choice-plan-capture';
 import {employeeChoiceActualCardinalities,employeeChoiceAuthorizedPopulationFacts,employeeChoicePlanWork} from './performance/employee-choice-plan-work';
 import {seedPersonnelNativeFixture} from './performance/personnel-native-fixture';
 import {capturePostgresEvidence,postgresProfileFromEnv,validatePostgresEvidence} from '../.github/ci/postgres-evidence.mjs';
@@ -149,7 +150,7 @@ async function prepare(){
      }
      try{
       const result=await target.execute(query);
-      if(firstSample&&(cursorBody||/^\s*(select |with )/i.test(text))&&!text.includes('select exists(select 1 from public.app_user u')){
+      if(firstSample&&(cursorBody||employeeChoicePlanQuery(text))&&!text.includes('select exists(select 1 from public.app_user u')){
        const captured=queries.get(name)??[],entry:NativeQuery={query:explained,statement,cursorBody,expectedRows:cursorBody?0:result.length};captured.push(entry);queries.set(name,captured);if(cursorBody)activeCursor=entry;
       }
       if(firstSample&&/^\s*fetch forward /i.test(text)&&activeCursor)activeCursor.expectedRows+=result.length;
@@ -278,7 +279,12 @@ it.skipIf(!requested).for(variants)('measures every whole native organisation po
 
 it.skipIf(!requested).for(variants)('captures actual %s identity/page plans without changing native authority or SQL budgets',{timeout:300000},(variant,context)=>boundedCase(context,async()=>{
  expect(probe).toBeTruthy();const p=probe!,spy=p.install();
+ const planFailures:{case:string;statement:number;kind:'work'|'rows';details:unknown}[]=[];
  try{
+  const captured=[...p.queries].map(([key,queries])=>({key,statements:queries.map(query=>query.statement)}));
+  p.report.capturedPlanCases=captured;p.save();
+  const expected=['initial','deep','search','department-active','department-and-unit','unit-active','organisation-deep','organisation-search','empty-unit','missing-search','foreign-company','complete-ids'];
+  expect(captured.map(row=>row.key).sort()).toEqual(variants.flatMap(name=>expected.map(key=>name+':'+key)).sort());
   expect([...p.queries.keys()]).toHaveLength(variants.length*12);
   for(const [key,queries]of p.queries){
    if(!key.startsWith(variant+':'))continue;await p.choose(variant);p.label(key);expect(queries.length).toBeGreaterThanOrEqual(variant==='unified'||key.endsWith(':complete-ids')?1:4);
@@ -299,12 +305,16 @@ it.skipIf(!requested).for(variants)('captures actual %s identity/page plans with
      Object.assign(evidence,{planningMs:doc['Planning Time'],executionMs:doc['Execution Time'],jit:doc.JIT??null,assignmentNodes,windowNodes});p.save();
      if(variant==='unified'&&p.dialect.sqlToQuery(entry.query).sql.includes('employee_choice_employments as materialized')){
       const work=employeeChoicePlanWork(doc.Plan,p.wholeFixture);evidence.work=work;p.save();
-      expect(work.rejectionReasons).toEqual([]);
+      if(work.rejectionReasons.length)planFailures.push({case:key,statement:entry.statement,kind:'work',details:work.rejectionReasons});
      }
-     expect(doc.Plan['Actual Rows']).toBe(entry.expectedRows);
+     if(doc.Plan['Actual Rows']!==entry.expectedRows)planFailures.push({case:key,statement:entry.statement,kind:'rows',details:{actual:doc.Plan['Actual Rows'],expected:entry.expectedRows}});
     }
    },{readOnlySnapshot:true});
   }
+  // Collect every executable canonical plan before rejecting its work/row oracle.
+  // SQL errors/timeouts still fail the native transaction; no gate becomes optional.
+  const verification=(p.report.planVerificationFailures??={})as Record<string,unknown>;verification[variant]=planFailures;p.save();
+  expect(planFailures).toEqual([]);
   const completed=(p.report.planVariants??=[])as string[];completed.push(variant);
   p.report.actualPlansComplete=variants.every(name=>completed.includes(name));p.report.queryShapeUnchanged=false;p.report.nativeAuthorityUnchanged=true;p.save();
  }finally{spy.mockRestore();await p.restore();}
