@@ -1,6 +1,7 @@
 import {randomUUID} from 'node:crypto';
 import {writeFileSync} from 'node:fs';
 import {join} from 'node:path';
+import {availableParallelism,cpus,totalmem} from 'node:os';
 import {eq,sql,type SQL} from 'drizzle-orm';
 import {PgDialect} from 'drizzle-orm/pg-core';
 import {afterAll,beforeAll,beforeEach,expect,it,vi} from 'vitest';
@@ -97,7 +98,7 @@ it('finishes behind an Access writer with exact native data and performs no audi
 });
 
 it('pages the real 50k population without retaining whole employee DTOs or losing deep selection',async()=>{
- const report:Record<string,unknown>={kind:'NATIVE_EMPLOYEE_CHOICE_COMPONENT_ONLY',releaseEligible:false,employees:50000};
+ const report:Record<string,unknown>={kind:'NATIVE_EMPLOYEE_CHOICE_COMPONENT_ONLY',releaseEligible:false,employees:50000,host:{node:process.version,logicalCpus:availableParallelism(),memoryBytes:totalmem(),cpuModels:[...new Set(cpus().map(cpu=>cpu.model))]}};
  const save=()=>{if(process.env.AIHR_FOCUSED_EVIDENCE_DIR)writeFileSync(join(process.env.AIHR_FOCUSED_EVIDENCE_DIR,'employee-choice-50k.json'),JSON.stringify(report,null,2));};
  report.policies=await owner.client`select schemaname,tablename,policyname,permissive,roles,cmd,qual,with_check from pg_policies where schemaname='public' and tablename in ('employment','person','assignment','company','department','business_unit') order by tablename,policyname`;save();
  const {b,ctx,expectedFirst,expectedLast}=await seedPersonnelNativeFixture(50000,report,name=>{report.phase=name;save();},save);
@@ -126,22 +127,22 @@ it('pages the real 50k population without retaining whole employee DTOs or losin
  }finally{spy.mockRestore();save();}
 },300000);
 
-it('stops further SQL after a disconnected count and releases the native transaction',async()=>{
+it.each(['count','cursor'] as const)('stops further SQL after a disconnected %s and releases the native transaction',async(mode)=>{
  const b=await seedBase(),ctx=adminCtx(b),controller=new AbortController(),stop=Error('Controlled choice disconnect');
- const actual=database.withTenant;let afterAbort=0,sawCount=false;
+ const actual=database.withTenant;let afterAbort=0,sawRead=false;
  const spy=vi.spyOn(database,'withTenant').mockImplementation(<T>(context:SessionContext,read:(tx:Tx)=>Promise<T>,options?:Parameters<typeof database.withTenant>[2])=>actual(context,tx=>read(new Proxy(tx,{
   get(target,key,receiver){
    if(key==='execute')return async(...args:unknown[])=>{
     if(controller.signal.aborted)afterAbort++;
     const result=await Reflect.apply(target.execute,target,args);
-    if(Array.isArray(result)&&result[0]&&typeof result[0].total==='number'){sawCount=true;controller.abort(stop);}
+    if(mode==='count'?Array.isArray(result)&&result[0]&&typeof result[0].total==='number':new PgDialect().sqlToQuery(args[0] as SQL).sql.startsWith('fetch forward')){sawRead=true;controller.abort(stop);}
     return result;
    };
    const value=Reflect.get(target,key,receiver);return typeof value==='function'?value.bind(target):value;
   },
  })),options));
- try{await expect(readEmployeeChoices(ctx,{companyIds:[b.companyId]},controller.signal)).rejects.toBe(stop);}
+ try{await expect(readEmployeeChoices(ctx,{companyIds:[b.companyId],query:mode==='cursor'?'cancelled search':undefined},controller.signal)).rejects.toBe(stop);}
  finally{spy.mockRestore();}
- expect(sawCount).toBe(true);expect(afterAbort).toBe(0);
+ expect(sawRead).toBe(true);expect(afterAbort).toBe(0);
  expect((await readEmployeeChoices(ctx,{companyIds:[b.companyId]})).total).toBe(0);
 });

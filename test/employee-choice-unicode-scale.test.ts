@@ -1,6 +1,7 @@
 /** Exact ECMAScript search must remain complete when every name is non-ASCII. */
 import {writeFileSync} from 'node:fs';
 import {join} from 'node:path';
+import {availableParallelism,cpus,totalmem} from 'node:os';
 import {sql,type SQL} from 'drizzle-orm';
 import {PgDialect} from 'drizzle-orm/pg-core';
 import {afterAll,beforeAll,expect,it,vi} from 'vitest';
@@ -11,7 +12,7 @@ import {closeAll,migrateTestDb} from './harness';
 import {seedPersonnelNativeFixture} from './performance/personnel-native-fixture';
 beforeAll(migrateTestDb);afterAll(closeAll);
 it('measures exact full and missing searches over the real 50k Unicode population',async()=>{
- const report:Record<string,unknown>={kind:'NATIVE_UNICODE_EMPLOYEE_CHOICE_COMPONENT_ONLY',releaseEligible:false,employees:50000,namePrefix:'Fictional retained Personnel 人員 '};
+ const report:Record<string,unknown>={kind:'NATIVE_UNICODE_EMPLOYEE_CHOICE_COMPONENT_ONLY',releaseEligible:false,employees:50000,namePrefix:'Fictional retained Personnel 人員 ',host:{node:process.version,logicalCpus:availableParallelism(),memoryBytes:totalmem(),cpuModels:[...new Set(cpus().map(cpu=>cpu.model))]}};
  const save=()=>{if(process.env.AIHR_FOCUSED_EVIDENCE_DIR)writeFileSync(join(process.env.AIHR_FOCUSED_EVIDENCE_DIR,'employee-choice-unicode-50k.json'),JSON.stringify(report,null,2));};
  const {b,ctx,expectedFirst,expectedLast}=await seedPersonnelNativeFixture(50000,report,name=>{report.phase=name;save();},save,'Fictional retained Personnel 人員 ');
  report.fixtureReady=true;save();

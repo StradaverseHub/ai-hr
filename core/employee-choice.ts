@@ -43,7 +43,7 @@ export async function readEmployeeChoices(ctx:SessionContext,p:EmployeeChoiceInp
  if(typeof filters.query!=='string'||!['','active','ended'].includes(filters.status)||p.labelMode!==undefined&&!['names','labels'].includes(p.labelMode))throw new EmployeeChoiceInputError('Invalid employee filter');
  const offset=p.offset??0,limit=p.limit??EMPLOYEE_CHOICE_PAGE_SIZE,labelMode=p.labelMode??'names',q=filters.query.trim().toLowerCase();
  if(!Number.isSafeInteger(offset)||offset<0||!Number.isInteger(limit)||limit<1||limit>EMPLOYEE_CHOICE_MAX_PAGE_SIZE)throw new EmployeeChoiceInputError('Invalid employee page');
- const from=employeeChoiceFrom(ctx.tenantId);
+ const from=employeeChoiceFrom(ctx.tenantId),organisationFilter=Boolean(filters.businessUnitId||filters.departmentId);
  const scoped=sql`${employment.tenantId}=${ctx.tenantId}::uuid and ${p.companyIds.length?sql`${employment.companyId}=any(${'{'+p.companyIds.join(',')+'}'}::uuid[])`:sql`true`}`;
  const inCompany=filters.companyId?sql`${employment.companyId}=${filters.companyId}::uuid`:sql`true`;
  const where=sql`${scoped} and ${inCompany}
@@ -62,7 +62,6 @@ export async function readEmployeeChoices(ctx:SessionContext,p:EmployeeChoiceInp
    // Personnel migrations) permits at most one unsuperseded NULL-ended assignment.
    // Without organisation filters, authorize/count/page identities first, then
    // project the bounded page's native assignment and label joins.
-   const organisationFilter=Boolean(filters.businessUnitId||filters.departmentId);
    const population=organisationFilter?from:employeeIdentityFrom(ctx.tenantId);
    const page=await tx.execute<EmployeeChoice&{total:number}>(organisationFilter?sql`select ${columns(labelMode==='labels')},(count(*) over())::int as total ${from}
     where ${where} order by ${person.fullName},${employment.id},${assignment.id} limit ${limit} offset ${offset}`:sql`
@@ -80,16 +79,20 @@ export async function readEmployeeChoices(ctx:SessionContext,p:EmployeeChoiceInp
    const unicode=sql`(${nonAscii(sql`${person.fullName}`)} or ${nonAscii(sql`coalesce(${employment.employeeCode},'')`)})`;
    const candidate=q.includes('\0')?sql`false`:/^[\x00-\x7f]*$/.test(q)?sql`(${unicode} or lower(${person.fullName} collate "C") like ${pattern(q)} escape '\\'
      or lower(coalesce(${employment.employeeCode},'') collate "C") like ${pattern(q)} escape '\\')`:unicode;
-   await tx.execute(sql`declare employee_choices no scroll cursor for ${base} where ${where} and ${candidate}
-    order by ${person.fullName},${employment.id},${assignment.id}`);
-   for(;;){
-    signal?.throwIfAborted();const batch=await tx.execute<EmployeeChoice>(sql`fetch forward 512 from employee_choices`);
-    for(const row of batch)if(row.name.toLowerCase().includes(q)||(row.employeeCode??'').toLowerCase().includes(q)){
-     if(total>=offset&&rows.length<limit)rows.push(row);total++;
-    }
-    if(batch.length<512)break;
+   if(organisationFilter){
+    const matches=await exactEmployeeChoiceMatches<EmployeeChoice>(tx,sql`${base} where ${where} and ${candidate}
+     order by ${person.fullName},${employment.id},${assignment.id}`,q,offset,limit,signal);
+    rows=matches.rows;total=matches.total;
+   }else{
+    // Exact name/code matching needs no assignment or label fields. Under the
+    // native no-overlap constraint, count every authorized identity, retain only
+    // this page's identities, then project their native assignment/label fields.
+    const matches=await exactEmployeeChoiceMatches<ChoiceIdentity>(tx,sql`select ${employment.id} as "employmentId",${person.fullName} as name,${employment.employeeCode} as "employeeCode"
+     ${employeeIdentityFrom(ctx.tenantId)} where ${where} and ${candidate} order by ${person.fullName},${employment.id}`,q,offset,limit,signal);
+    total=matches.total;
+    if(matches.rows.length)rows=await tx.execute<EmployeeChoice>(sql`${base} where ${scoped} and ${employment.id}=any(${'{'+matches.rows.map(row=>row.employmentId).join(',')+'}'}::uuid[])
+     order by ${person.fullName},${employment.id},${assignment.id}`);
    }
-   // Transaction completion closes the private cursor, including on error or disconnect.
   }
   signal?.throwIfAborted();
   const selected=p.selectedId&&uuid.test(p.selectedId)?(await tx.execute<EmployeeChoice>(sql`${base} where ${scoped} and ${employment.id}=${p.selectedId}::uuid order by ${person.fullName},${employment.id},${assignment.id} limit 1`))[0]??null:null;
@@ -105,6 +108,21 @@ export async function readEmployeeChoices(ctx:SessionContext,p:EmployeeChoiceInp
    allDepartmentOptions:organisationFilterChoices(options.map(row=>({id:row.departmentId,name:row.department,code:row.departmentCode}))),
   };
  },{readOnlySnapshot:true,readSignal:signal});
+}
+type ChoiceIdentity=Pick<EmployeeChoice,'employmentId'|'name'|'employeeCode'>;
+async function exactEmployeeChoiceMatches<T extends ChoiceIdentity&Record<string,unknown>>(tx:Tx,query:SQL,q:string,offset:number,limit:number,signal?:AbortSignal){
+ const rows:T[]=[];let total=0;
+ await tx.execute(sql`declare employee_choices no scroll cursor for ${query}`);
+ for(;;){
+  signal?.throwIfAborted();const batch=await tx.execute<T>(sql`fetch forward 512 from employee_choices`);signal?.throwIfAborted();
+  for(const row of batch)if(row.name.toLowerCase().includes(q)||(row.employeeCode??'').toLowerCase().includes(q)){
+   if(total>=offset&&rows.length<limit)rows.push(row);total++;
+  }
+  if(batch.length<512)break;
+ }
+ signal?.throwIfAborted();await tx.execute(sql`close employee_choices`);signal?.throwIfAborted();
+ // Rollback/transaction completion also closes it on failure or disconnect.
+ return {rows,total};
 }
 type ChoiceOptions=Pick<EmployeeChoice,'companyId'|'company'|'departmentId'|'department'|'departmentCode'|'businessUnitId'|'businessUnit'|'businessUnitCode'>;
 /** Enumerate represented catalogue identities, stopping at the first native-RLS member.
