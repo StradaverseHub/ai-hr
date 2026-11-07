@@ -1,6 +1,6 @@
 # Employment membership migration verification
 
-Status: qualification implementation; hosted execution pending. No installation or release acceptance is established by this document.
+Status: populated-upgrade recovery pending. No installation or release acceptance is established by this document.
 
 Migration `3001_employment_membership_initplan` changes the two positive Employment read-policy membership terms while preserving the same native visibility owner. Qualification must exercise the appended SQL itself, in addition to the separate reversible query-planning experiments.
 
@@ -17,3 +17,11 @@ The historical 0515 fixture remains unchanged. Its current-policy owner test ind
 The focused manifest also names existing hierarchy, visibility, employee-choice and Claim membership suites. The employee-choice suite contains the real 50,000-person component case; its timings are distinct from smaller authority/replay fixtures and from whole-system browser/load qualification. The root integration owner decides whether to run that expensive suite separately, retaining exact source and evidence identities.
 
 Run all application checks, compiler checks and migration rehearsals on standard hosted Actions. These tests do not prove production-equivalent capacity, zero Busy under sustained traffic, full-menu coverage or installed worker/proxy readiness. Those remain separate release prerequisites. Production stays on hold.
+
+## Populated upgrade inventory recovery
+
+The original populated-upgrade run [42376045111](https://github.com/StradaverseHub/ai-hr/actions/runs/42376045111) failed its exact added-function inventory: the combined tail installs 16 functions, while the test listed 15. The missing declaration was the already-reviewed 2701 helper `app.personnel_overview_filter_fields(date,uuid[])`. Its explicit inventory entry retains the existing native application EXECUTE permission and PUBLIC denial assertions; no function grant or migration is changed by the recovery.
+
+The same rehearsal must also account for the deliberate 3001 Employment `USING` transition. It independently parses the full predecessor and successor CASE expressions against PostgreSQL, pins exactly two wrapped positive membership terms after upgrade, and compares every remaining policy field, including roles, command, permissiveness and `WITH CHECK`, unchanged. Only those already-verified Employment and Claim `qual` values are normalized in the complete ACL/policy comparison. Employment is not excluded from that comparison, and no broad policy exception is introduced.
+
+The recovery changes only this test and its qualification note. The failed run remains failed; its recovery is a dedicated affected populated-upgrade rerun. Previously successful native, parity, compiler and 50,000-person component evidence retain their original candidate/run identities and are not relabeled or repeated merely for this test-inventory repair. Hosted recovery remains pending until the controller records its actual result.
