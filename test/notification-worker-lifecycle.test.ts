@@ -16,6 +16,7 @@ import {notificationWorkerFixtureOwner} from './fixtures/notification-worker/own
 import {registerNotificationProjectionCases} from './fixtures/notification-worker/projection-cases';
 import {registerNotificationAssessmentCases} from './fixtures/notification-worker/assessment-cases';
 import {admitSingletonTest} from './helpers/ci-singleton-admission';
+import {registerNotificationProcessCases} from './fixtures/notification-worker/process-cases';
 // A single test file and explicit sequential suites own this one cluster LOGIN.
 const fixtureOwner=notificationWorkerFixtureOwner();
 describe.sequential('native notification worker capabilities',()=>{
@@ -237,5 +238,6 @@ it('fails closed on new PUBLIC definer privileges and changed real login/profile
 });
 registerNotificationProjectionCases(fixtureOwner);
 registerNotificationAssessmentCases(fixtureOwner);
+registerNotificationProcessCases(fixtureOwner);
 
 });
