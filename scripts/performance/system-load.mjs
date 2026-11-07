@@ -779,6 +779,11 @@ try{
  await homeHttp.boundary(employee,fixture.users[5]);await homeHttp.boundary(manager,employee);
  await databaseSnapshot('pilot');
  if(report.coverage.some(v=>v.status==='failed'))throw Error('Pilot route failures must be diagnosed before a 500-user run');
+ assert(report.preflightHomeReady,'all four preflight sign-ins must load their dashboards before load');
+ assert.equal(report.homeCardFailures.length,0,'Home preflight failures must be fixed before load');
+ assert.equal(report.browserErrors.length,0,'browser preflight errors must be fixed before load');
+ assert.equal(report.pageBusyResponses.length,0,'page Busy responses must be fixed before load');
+ assert.equal(report.aiBaselineFailures.length,0,'AI Centre baseline browser journeys must pass before load');
  if(suite==='workflow-preflight'){
   assert.equal(report.aiBaselineFailures.length,0,'AI Centre baseline browser journeys failed');
   await exerciseLetterDraft({base,context,visit,fixture,db,report,save});
