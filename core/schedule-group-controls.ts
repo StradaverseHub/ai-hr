@@ -1,3 +1,4 @@
+import {rosterUuidSet} from './roster-write-batches';
 import { liveArrangementsTx, pickArrangementOn } from './shift-arrangement-resolve';
 /** Canonical group controls. Exception revisions are immutable and forward dated. */
 import { and, asc, eq, gte, lte, inArray, sql } from 'drizzle-orm';
@@ -19,11 +20,11 @@ export async function exceptionLookupTx(tx:Tx) {
 }
 /** Same calculation precedence as scheduleFor: explicit employment group, dated shift default, Standard. */
 export async function scheduleGroupLookupTx(tx:Tx,ids:readonly string[],from:string,to:string){
- const employees=ids.length?await tx.select({id:employment.id,groupId:employment.attendanceRuleId,defaultShiftId:employment.defaultShiftId}).from(employment).where(inArray(employment.id,[...ids])):[];
- const roster=ids.length?await tx.select({employmentId:rosterAssignment.employmentId,date:rosterAssignment.shiftDate,shiftId:rosterAssignment.shiftId,isRestDay:rosterAssignment.isRestDay}).from(rosterAssignment).where(and(inArray(rosterAssignment.employmentId,[...ids]),gte(rosterAssignment.shiftDate,from),lte(rosterAssignment.shiftDate,to))):[];
+ const employees=ids.length?await tx.select({id:employment.id,groupId:employment.attendanceRuleId,defaultShiftId:employment.defaultShiftId}).from(employment).where(rosterUuidSet(employment.id,ids)):[];
+ const roster=ids.length?await tx.select({employmentId:rosterAssignment.employmentId,date:rosterAssignment.shiftDate,shiftId:rosterAssignment.shiftId,isRestDay:rosterAssignment.isRestDay}).from(rosterAssignment).where(and(rosterUuidSet(rosterAssignment.employmentId,ids),gte(rosterAssignment.shiftDate,from),lte(rosterAssignment.shiftDate,to))):[];
  const arrangements=await liveArrangementsTx(tx,[...ids]);
  const shiftIds=[...new Set([...employees.flatMap(e=>e.defaultShiftId?[e.defaultShiftId]:[]),...roster.flatMap(r=>r.shiftId?[r.shiftId]:[]),...[...arrangements.values()].flatMap(rows=>rows.map(r=>r.shiftId))])];
- const shifts=shiftIds.length?await tx.select({id:shift.id,ruleId:shift.ruleId}).from(shift).where(inArray(shift.id,shiftIds)):[];
+ const shifts=shiftIds.length?await tx.select({id:shift.id,ruleId:shift.ruleId}).from(shift).where(rosterUuidSet(shift.id,shiftIds)):[];
  const [standard]=await tx.select({id:attendanceRule.id}).from(attendanceRule).where(eq(attendanceRule.isDefault,true)).limit(1);
  return (employmentId:string,date:string)=>{
   const e=employees.find(e=>e.id===employmentId);if(!e)return null;
@@ -84,11 +85,11 @@ export async function assertDutyRosterWriteTx(tx:Tx,ctx:SessionContext,changes:r
  const ids=[...new Set(changes.map(c=>c.employmentId))];if(!ids.length)return;
  await lockAccessConfigurationTx(tx,ctx.tenantId);
  await lockLeaveDependenciesTx(tx,ctx.tenantId,ids);
- const employees=await tx.select({id:employment.id,groupId:employment.attendanceRuleId,defaultShiftId:employment.defaultShiftId}).from(employment).where(inArray(employment.id,ids)).orderBy(asc(employment.id)).for('update');
+ const employees=await tx.select({id:employment.id,groupId:employment.attendanceRuleId,defaultShiftId:employment.defaultShiftId}).from(employment).where(rosterUuidSet(employment.id,ids)).orderBy(asc(employment.id)).for('update');
  if(employees.length!==ids.length)throw new DutyRosterWriteRefusal('permission','An employee is unavailable in your company scope.');
  const rules=await tx.select().from(attendanceRule).orderBy(asc(attendanceRule.id)).for('update');
  const targetIds=[...new Set(changes.flatMap(c=>c.shiftId?[c.shiftId]:[]))];
- const targetShifts=targetIds.length?await tx.select({id:shift.id,ruleId:shift.ruleId}).from(shift).where(inArray(shift.id,targetIds)):[];
+ const targetShifts=targetIds.length?await tx.select({id:shift.id,ruleId:shift.ruleId}).from(shift).where(rosterUuidSet(shift.id,targetIds)):[];
  const allDates=changes.map(c=>c.shiftDate).sort();const groupOn=await scheduleGroupLookupTx(tx,ids,allDates[0],allDates.reduce((a,b)=>a>b?a:b));
  for(const emp of employees){
   const [permission]=await tx.execute(sql`select app.can_admin_employment(${emp.id}::uuid) as allowed`) as unknown as {allowed:boolean}[];

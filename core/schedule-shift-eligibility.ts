@@ -1,7 +1,8 @@
+import {rosterUuidSet} from './roster-write-batches';
 import { rotationVersionOn } from './week-pattern';
 import { todayInKualaLumpur } from '../lib/hr-date';
 /** Shared shift eligibility; deliberately independent of roster and attendance initialization. */
-import { and,asc,eq,inArray,isNotNull,or } from 'drizzle-orm';
+import { and,asc,eq,isNotNull,or } from 'drizzle-orm';
 import type { Tx } from '../db/client';
 import { attendanceRule,attendanceRuleShift,attendanceRotation,employment,shift } from '../db/schema';
 
@@ -83,15 +84,15 @@ export async function assertShiftsAllowedForEmploymentsTx(
   const grouped = await tx
     .select({ employmentId: employment.id, ruleId: employment.attendanceRuleId })
     .from(employment)
-    .where(and(inArray(employment.id, employmentIds), isNotNull(employment.attendanceRuleId)));
+    .where(and(rosterUuidSet(employment.id,employmentIds), isNotNull(employment.attendanceRuleId)));
   const groupOf = new Map<string, string>();
   for (const row of grouped) if (row.ruleId) groupOf.set(row.employmentId, row.ruleId);
 
   const ruleIds = [...new Set(groupOf.values())];
-  if(ruleIds.length)await tx.select({id:attendanceRule.id}).from(attendanceRule).where(inArray(attendanceRule.id,ruleIds)).orderBy(asc(attendanceRule.id)).for('update');
+  if(ruleIds.length)await tx.select({id:attendanceRule.id}).from(attendanceRule).where(rosterUuidSet(attendanceRule.id,ruleIds)).orderBy(asc(attendanceRule.id)).for('update');
   // Match pool writers' lock order: group first, selected templates second.
   const attemptedIds=[...new Set(real.map(p=>p.shiftId))];
-  const available=await tx.select({id:shift.id,archivedAt:shift.archivedAt}).from(shift).where(inArray(shift.id,attemptedIds)).orderBy(asc(shift.id)).for('update');
+  const available=await tx.select({id:shift.id,archivedAt:shift.archivedAt}).from(shift).where(rosterUuidSet(shift.id,attemptedIds)).orderBy(asc(shift.id)).for('update');
   if(attemptedIds.some(id=>!available.some(sh=>sh.id===id)))throw new ShiftSelectionUnavailableError('missing','A selected shift is unavailable in this tenant.');
   if(!options?.existingReferences&&available.some(sh=>sh.archivedAt))throw new ShiftSelectionUnavailableError('archived','An archived shift cannot be selected for a new assignment. Select an active shift.');
 
@@ -99,10 +100,10 @@ export async function assertShiftsAllowedForEmploymentsTx(
   if(groupOf.size===0)return;
   const attemptedShiftIds = [...new Set(real.filter((p) => groupOf.has(p.employmentId)).map((p) => p.shiftId))];
 
-  const membership=await tx.select().from(attendanceRuleShift).where(inArray(attendanceRuleShift.ruleId,ruleIds));
-  const versions=await tx.select().from(attendanceRotation).where(inArray(attendanceRotation.ruleId,ruleIds)).orderBy(asc(attendanceRotation.effectiveFrom));
+  const membership=await tx.select().from(attendanceRuleShift).where(rosterUuidSet(attendanceRuleShift.ruleId,ruleIds));
+  const versions=await tx.select().from(attendanceRotation).where(rosterUuidSet(attendanceRotation.ruleId,ruleIds)).orderBy(asc(attendanceRotation.effectiveFrom));
   const ids=[...new Set([...attemptedShiftIds,...membership.map(r=>r.shiftId),...versions.flatMap(v=>v.allowedShiftIds)])];
-  const shifts=ids.length?await tx.select({id:shift.id,name:shift.name,archivedAt:shift.archivedAt}).from(shift).where(inArray(shift.id,ids)).orderBy(asc(shift.name),asc(shift.id)):[];
+  const shifts=ids.length?await tx.select({id:shift.id,name:shift.name,archivedAt:shift.archivedAt}).from(shift).where(rosterUuidSet(shift.id,ids)).orderBy(asc(shift.name),asc(shift.id)):[];
   const shiftName=new Map(shifts.map(r=>[r.id,r.name]));
   const allowedByRule=new Map<string,{ids:Set<string>;names:string[]}>(ruleIds.map(ruleId=>{
    const pool=new Set(membership.filter(r=>r.ruleId===ruleId).map(r=>r.shiftId));
@@ -113,7 +114,7 @@ export async function assertShiftsAllowedForEmploymentsTx(
   const ruleRows = await tx
     .select({ id: attendanceRule.id, name: attendanceRule.name })
     .from(attendanceRule)
-    .where(inArray(attendanceRule.id, ruleIds));
+    .where(rosterUuidSet(attendanceRule.id,ruleIds));
   const ruleName = new Map(ruleRows.map((r) => [r.id, r.name]));
 
   for (const pair of real) {

@@ -5,6 +5,7 @@ import {parseRosterSelection,ROSTER_SELECTION_MAX_BYTES} from '../lib/roster-sel
 import { assertDutyRosterWriteTx } from './schedule-group-controls';
 import { rotationVersionOn, weekPatternWorkingDayCount } from './week-pattern';
 import { ShiftNotInScheduleGroupError, groupRuleIdTx, assertShiftsAllowedForEmploymentsTx } from './schedule-shift-eligibility';
+import {assertUniqueRosterWriteKeys,ROSTER_WRITE_ROWS_PER_STATEMENT,rosterUuidSet} from './roster-write-batches';
 export { ShiftNotInScheduleGroupError, groupRuleIdTx, assertShiftsAllowedForEmploymentsTx } from './schedule-shift-eligibility';
 /**
  * Shift rosters (ADR-0032 Phase C, slice C1). Shift templates per company + per-employee roster
@@ -2278,13 +2279,15 @@ export async function assignShiftBulk(
       tx,
       p.employmentIds.flatMap((employmentId) => p.shiftDates.map(shiftDate=>({ employmentId, shiftId: p.shiftId, shiftDate }))),
     );
-    await tx
-      .insert(rosterAssignment)
-      .values(values)
-      .onConflictDoUpdate({
-        target: [rosterAssignment.tenantId, rosterAssignment.employmentId, rosterAssignment.shiftDate],
-        set: { shiftId: sql`excluded.shift_id`, isRestDay: false, updatedAt: new Date() },
-      });
+    assertUniqueRosterWriteKeys(values);
+    const updatedAt=new Date();
+    for(let offset=0;offset<values.length;offset+=ROSTER_WRITE_ROWS_PER_STATEMENT){
+      await tx.insert(rosterAssignment).values(values.slice(offset,offset+ROSTER_WRITE_ROWS_PER_STATEMENT))
+        .onConflictDoUpdate({
+          target:[rosterAssignment.tenantId,rosterAssignment.employmentId,rosterAssignment.shiftDate],
+          set:{shiftId:sql`excluded.shift_id`,isRestDay:false,updatedAt},
+        });
+    }
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
       aggregateType: 'roster-assignment',
@@ -2326,13 +2329,15 @@ export async function setRestDayBulk(
   );
   const write = async (tx: Tx) => {
     await assertDutyRosterWriteTx(tx,ctx,values);
-    await tx
-      .insert(rosterAssignment)
-      .values(values)
-      .onConflictDoUpdate({
-        target: [rosterAssignment.tenantId, rosterAssignment.employmentId, rosterAssignment.shiftDate],
-        set: { shiftId: null, isRestDay: true, updatedAt: new Date() },
-      });
+    assertUniqueRosterWriteKeys(values);
+    const updatedAt=new Date();
+    for(let offset=0;offset<values.length;offset+=ROSTER_WRITE_ROWS_PER_STATEMENT){
+      await tx.insert(rosterAssignment).values(values.slice(offset,offset+ROSTER_WRITE_ROWS_PER_STATEMENT))
+        .onConflictDoUpdate({
+          target:[rosterAssignment.tenantId,rosterAssignment.employmentId,rosterAssignment.shiftDate],
+          set:{shiftId:null,isRestDay:true,updatedAt},
+        });
+    }
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
       aggregateType: 'roster-assignment',
@@ -2574,7 +2579,7 @@ export async function copyRoster(
     await lockAccessConfigurationTx(tx,ctx.tenantId);
     await lockLeaveDependencyReadConfigurationTx(tx,ctx.tenantId);
     const srcConds = [gte(rosterAssignment.shiftDate, p.sourceFrom), lte(rosterAssignment.shiftDate, p.sourceTo)];
-    if (empIds.length > 0) srcConds.push(inArray(rosterAssignment.employmentId, empIds));
+    if (empIds.length > 0) srcConds.push(rosterUuidSet(rosterAssignment.employmentId,empIds));
     // Nominate source/target subjects only, then reread membership before copying source facts.
     const nominate=()=>tx.selectDistinct({employmentId:rosterAssignment.employmentId}).from(rosterAssignment)
       .where(and(...srcConds)).orderBy(rosterAssignment.employmentId);
@@ -2612,13 +2617,15 @@ export async function copyRoster(
       tx,
       values.map((v) => ({ employmentId: v.employmentId, shiftId: v.shiftId, shiftDate:v.shiftDate })),
     );
-    await tx
-      .insert(rosterAssignment)
-      .values(values)
-      .onConflictDoUpdate({
-        target: [rosterAssignment.tenantId, rosterAssignment.employmentId, rosterAssignment.shiftDate],
-        set: { shiftId: sql`excluded.shift_id`, isRestDay: sql`excluded.is_rest_day`, note: sql`excluded.note`, updatedAt: new Date() },
-      });
+    assertUniqueRosterWriteKeys(values);
+    const updatedAt=new Date();
+    for(let offset=0;offset<values.length;offset+=ROSTER_WRITE_ROWS_PER_STATEMENT){
+      await tx.insert(rosterAssignment).values(values.slice(offset,offset+ROSTER_WRITE_ROWS_PER_STATEMENT))
+        .onConflictDoUpdate({
+          target:[rosterAssignment.tenantId,rosterAssignment.employmentId,rosterAssignment.shiftDate],
+          set:{shiftId:sql`excluded.shift_id`,isRestDay:sql`excluded.is_rest_day`,note:sql`excluded.note`,updatedAt},
+        });
+    }
     // Thin summary event on a virtual aggregate (UUID-typed aggregate_id) — the copied window is described in
     // the payload; per-row events would flood the log at scale (same skip as assignShiftBulk).
     await appendEvent(tx, {
