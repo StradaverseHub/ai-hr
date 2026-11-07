@@ -35,6 +35,9 @@ class WorkerUpgradeTests(unittest.TestCase):
         result,calls=self.run_drain([self.active,self.active,self.dead,self.dead])
         self.assertEqual(result,{'pid':123,'state':'drained','forcedKill':False})
         self.assertEqual(calls,[['/usr/bin/systemctl','kill','--kill-whom=main','--signal=SIGTERM','aihr-bank-import.service']])
+    def test_accepts_normal_deactivation_without_restart_or_pid_change(self):
+        result,_=self.run_drain([self.active,{**self.active,'ActiveState':'deactivating'},self.dead,self.dead])
+        self.assertEqual(result['state'],'drained')
     def test_refuses_changed_service_before_signalling(self):
         calls=[];self.base.command=lambda argv:calls.append(argv)
         with patch.object(update,'validate_process',return_value=123),patch.object(update,'properties',return_value={**self.active,'MainPID':'456'}):
@@ -72,6 +75,32 @@ class WorkerUpgradeTests(unittest.TestCase):
             base=SimpleNamespace(UNIT=path,root_protected=refuse)
             with self.assertRaisesRegex(ValueError,'unprotected'):update.atomic_unit(base,b'new','0'*64)
             self.assertEqual(path.read_bytes(),b'prior')
+    def process_fixture(self,root):
+        proc=root/'proc';process=proc/'123';process.mkdir(parents=True)
+        releases=root/'app'/'releases';release=releases/('1'*40);release.mkdir(parents=True)
+        (process/'cwd').symlink_to(release,target_is_directory=True)
+        node=root/'node';(process/'cmdline').write_bytes(str(node).encode()+b'\0--import\0tsx\0scripts/bank-import-runner.ts\0')
+        (process/'environ').write_bytes(b'DATABASE_URL=fictional\0PATH=/usr/bin\0')
+        env=root/'worker.env';env.write_text('DATABASE_URL="fictional"\n')
+        base=SimpleNamespace(USER='fictional',ROOT=root/'app',NODE=node,ENV=env,ENV_KEYS={'DATABASE_URL'},check=check,read_bounded=lambda p,limit:p.read_bytes())
+        return proc,process,base
+    def test_live_process_validation_checks_actual_uid_source_command_and_selected_environment(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            proc,process,base=self.process_fixture(Path(tmp));uid=process.stat().st_uid
+            with patch.object(update,'Path',side_effect=lambda value:proc if value=='/proc' else Path(value)),patch.object(update.pwd,'getpwnam',return_value=SimpleNamespace(pw_uid=uid)):
+                self.assertEqual(update.validate_process(base,self.active,'1'*40),123)
+    def test_live_process_validation_refuses_uid_source_command_environment_and_loader_drift(self):
+        for defect in ['uid','source','command','environment','loader','inactive']:
+            with self.subTest(defect=defect),tempfile.TemporaryDirectory() as tmp:
+                proc,process,base=self.process_fixture(Path(tmp));uid=process.stat().st_uid;report=dict(self.active)
+                if defect=='uid':uid+=1
+                if defect=='source':(process/'cwd').unlink();(process/'cwd').symlink_to(Path(tmp),target_is_directory=True)
+                if defect=='command':(process/'cmdline').write_bytes(b'/bin/sh\0')
+                if defect=='environment':(process/'environ').write_bytes(b'DATABASE_URL=changed\0')
+                if defect=='loader':(process/'environ').write_bytes(b'DATABASE_URL=fictional\0NODE_OPTIONS=unreviewed\0')
+                if defect=='inactive':report.update(MainPID='0',ActiveState='inactive')
+                with patch.object(update,'Path',side_effect=lambda value:proc if value=='/proc' else Path(value)),patch.object(update.pwd,'getpwnam',return_value=SimpleNamespace(pw_uid=uid)):
+                    with self.assertRaises(ValueError):update.validate_process(base,report,'1'*40)
     def test_bundle_is_self_contained_and_does_not_load_mutable_web_modules(self):
         with tempfile.TemporaryDirectory() as tmp:
             output=Path(tmp)/'helper.py'
@@ -133,9 +162,11 @@ class UpgradeFlowFixture:
         elif 'kill' in argv:self.report.update(MainPID='0',ActiveState='inactive',SubState='dead')
         elif 'start' in argv:
             self.report.update(MainPID='456',ActiveState='active',SubState='running')
-            if self.fault=='start':raise OSError('fictional start command failure after launch')
+            if self.fault in ('start','start-disable'):raise OSError('fictional start command failure after launch')
             if self.fault=='restart':self.report['NRestarts']='1'
-        elif 'disable' in argv:self.report['UnitFileState']='disabled'
+        elif 'disable' in argv:
+            if self.fault=='start-disable':raise OSError('fictional disable failure')
+            self.report['UnitFileState']='disabled'
         elif 'stop' in argv:
             check(self.report['SendSIGKILL']=='no' and self.report['Restart']=='no','timed stop lacks protection')
             self.report.update(MainPID='0',ActiveState='inactive',SubState='dead')
@@ -185,7 +216,7 @@ class WorkerUpgradeFlowTests(unittest.TestCase):
             with self.subTest(defect=defect),tempfile.TemporaryDirectory() as tmp:
                 f=UpgradeFlowFixture(Path(tmp));f.invoke('drain')
                 if defect=='drain':
-                    record=json.loads((f.operation/'drained.json').read_text());record['identity']['build_id']='foreign';(f.operation/'drained.json').write_text(json.dumps(record));f.web=f.source
+                    record=json.loads((f.operation/'drained.json').read_text());record['identity']['build_id']='foreign';(f.operation/'drained.json').chmod(0o600);(f.operation/'drained.json').write_text(json.dumps(record));(f.operation/'drained.json').chmod(0o400);f.web=f.source
                 with self.assertRaises(ValueError):f.invoke('activate')
                 self.assertEqual(f.unit.read_text(),f.service_unit(f.previous));self.assertFalse((f.operation/'activated.json').exists())
     def test_failures_after_replacement_quarantine_without_rollback_or_acceptance(self):
@@ -198,6 +229,13 @@ class WorkerUpgradeFlowTests(unittest.TestCase):
                 observed=json.loads((f.operation/'activation-failure-observation.json').read_text());self.assertTrue(observed['stopped']);self.assertTrue(observed['disabled']);self.assertFalse(observed['accepted'])
                 self.assertIn('Restart=no',f.unit.read_text());self.assertIn('SendSIGKILL=no',f.unit.read_text())
                 with self.assertRaises(ValueError):f.invoke('activate')
+    def test_disable_failure_still_requests_protected_stop_and_reports_both_observations(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            f=UpgradeFlowFixture(Path(tmp));f.invoke('drain');f.web=f.source;f.fault='start-disable'
+            with self.assertRaisesRegex(RuntimeError,'activation failed'):f.invoke('activate')
+            observed=json.loads((f.operation/'activation-failure-observation.json').read_text())
+            self.assertTrue(observed['stopped']);self.assertFalse(observed['disabled']);self.assertTrue(observed['disableRequestFailed'])
+            self.assertTrue(any(isinstance(event,list) and 'stop' in event for event in f.events));self.assertEqual(f.report['SendSIGKILL'],'no')
     def test_quarantine_refuses_foreign_unit_without_signalling_it(self):
         with tempfile.TemporaryDirectory() as tmp:
             f=UpgradeFlowFixture(Path(tmp));f.operation.mkdir(parents=True);f.unit.write_text('foreign unit')

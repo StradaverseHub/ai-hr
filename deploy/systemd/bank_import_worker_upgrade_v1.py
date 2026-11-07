@@ -80,7 +80,7 @@ def drain(base, initial, previous):
             time.sleep(2)
             base.check(properties(base) == report, 'worker did not remain drained')
             return {'pid': pid, 'state': 'drained', 'forcedKill': False}
-        base.check(report.get('ActiveState') in ('active', 'activating'), 'worker drain entered an unexpected state')
+        base.check(report.get('ActiveState') in ('active', 'activating', 'deactivating'), 'worker drain entered an unexpected state')
         time.sleep(2)
     raise RuntimeError('Worker drain deadline reached; retain prior unit and packages, inspect current process before proceeding')
 
@@ -125,16 +125,30 @@ def quiesce_failed_activation(base, operation, source):
         base.validate_service(report, base.ROOT / 'releases' / source)
         base.check(report.get('Restart') == 'no' and report.get('SendSIGKILL') == 'no' and
                    report.get('NeedDaemonReload') == 'no', 'failure quarantine is not loaded; do not arm a timed stop')
-        base.command(['/usr/bin/systemctl', 'disable', 'aihr-bank-import.service'])
-        base.command(['/usr/bin/systemctl', 'stop', '--no-block', 'aihr-bank-import.service'])
+        try:
+            base.command(['/usr/bin/systemctl', 'disable', 'aihr-bank-import.service'])
+        except Exception:
+            result['disableRequestFailed'] = True
+        # A boot-enable error must not leave rejected work running. Recheck stop protection
+        # independently, then request the graceful stop even if disabling was uncertain.
+        report = properties(base)
+        base.validate_service(report, base.ROOT / 'releases' / source)
+        base.check(report.get('Restart') == 'no' and report.get('SendSIGKILL') == 'no' and
+                   report.get('NeedDaemonReload') == 'no', 'failure quarantine changed before stop')
+        try:
+            base.command(['/usr/bin/systemctl', 'stop', '--no-block', 'aihr-bank-import.service'])
+        except Exception:
+            result['stopRequestFailed'] = True
         deadline = time.monotonic() + 330
         while time.monotonic() < deadline:
             report = properties(base)
             base.validate_service(report, base.ROOT / 'releases' / source)
             base.check(report.get('Restart') == 'no' and report.get('SendSIGKILL') == 'no', 'failure quarantine changed')
             result['disabled'] = report.get('UnitFileState') == 'disabled'
-            if report.get('MainPID') == '0' and report.get('ActiveState') in ('inactive', 'failed') and result['disabled']:
+            if report.get('MainPID') == '0' and report.get('ActiveState') in ('inactive', 'failed'):
                 result['stopped'] = True
+                if not result['disabled']:
+                    result['quiescenceUnconfirmed'] = True
                 break
             time.sleep(2)
     except Exception:

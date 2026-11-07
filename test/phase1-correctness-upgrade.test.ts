@@ -30,14 +30,16 @@ it('preserves the installed ledger and historical delivery while creating least-
   const [person]=await storage.client`insert into person(tenant_id,full_name,primary_email) values(${tenant.id},'Fictional upgrade actor','phase1@example.invalid') returning id`;
   const [user]=await storage.client`insert into app_user(tenant_id,person_id,workos_user_id) values(${tenant.id},${person.id},${randomUUID()}) returning id`;
   await storage.client`insert into role_assignment(tenant_id,app_user_id,role) values(${tenant.id},${user.id},'hr_admin')`;
+  const [company]=await storage.client`insert into company(tenant_id,legal_name) values(${tenant.id},'Fictional upgrade company') returning id`;
+  const [employment]=await storage.client`insert into employment(tenant_id,person_id,company_id,hired_on) values(${tenant.id},${person.id},${company.id},'2020-01-01') returning id`;
   async function event(type='phase1.unmapped'){
    const id=randomUUID();const [row]=await storage.client`insert into domain_event(id,tenant_id,aggregate_type,aggregate_id,event_type,actor_type,payload) values(${id}::uuid,${tenant.id}::uuid,'phase1-upgrade',${id}::uuid,${type},'system','{}'::jsonb) returning id,sequence`;
    return row;
   }
   const historical=await event(),pending=await event(),assessment=await event('assessment.reminder-queued');
   await storage.client`insert into notification_cursor(tenant_id,last_sequence,assessment_last_sequence) values(${tenant.id},${historical.sequence},${historical.sequence})`;
-  await storage.client`insert into notification(tenant_id,recipient_user_id,kind,title,body,severity,source_event_id) values(${tenant.id},${user.id},'phase1.historical','Preserved title','Preserved body','info',${historical.id})`;
-  const snapshot=async()=>({events:await storage.client`select * from domain_event order by id`,notifications:await storage.client`select * from notification order by id`,users:await storage.client`select * from app_user order by id`,roles:await storage.client`select * from role_assignment order by id`,cursors:await storage.client`select * from notification_cursor order by tenant_id`});
+  await storage.client`insert into notification(tenant_id,recipient_employment_id,kind,title,body,severity,source_event_id) values(${tenant.id},${employment.id},'phase1.historical','Preserved title','Preserved body','info',${historical.id})`;
+  const snapshot=async()=>({events:await storage.client`select * from domain_event order by id`,notifications:await storage.client`select * from notification order by id`,users:await storage.client`select * from app_user order by id`,roles:await storage.client`select * from role_assignment order by id`,cursors:await storage.client`select * from notification_cursor order by tenant_id`,companies:await storage.client`select * from company order by id`,employments:await storage.client`select * from employment order by id`});
   const before=await snapshot(),ledgerBefore=await storage.client`select * from drizzle.__drizzle_migrations order by id`;
   expect(before.events).toHaveLength(3);expect(before.notifications).toHaveLength(1);expect(ledgerBefore).toHaveLength(boundary);
   // Reproduce broad production bootstrap defaults: the migration must explicitly revoke these.
