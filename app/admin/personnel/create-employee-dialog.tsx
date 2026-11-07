@@ -87,7 +87,7 @@ export function CreateEmployeeDialog({
         data-tour="people-hire"
         aria-haspopup="dialog"
         aria-expanded={open}
-        className="rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+        className="ui-control inline-flex items-center justify-center rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
         onClick={(e) => {
           // Let the browser have ⌘/ctrl/shift/alt-click and any non-primary button: those mean "open the
           // full screen", and a modal cannot honour them.

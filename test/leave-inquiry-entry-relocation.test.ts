@@ -202,7 +202,9 @@ describe('388e53c2 · My Leave means your own leave again', () => {
     // /me has shown this exact string for this exact condition since long before this item. Two wordings
     // for one condition is how a product starts contradicting itself in translation.
     const en = JSON.parse(read('messages/en.json')) as Record<string, Record<string, string>>;
-    expect(en.me.notLinked).toContain('isn’t linked to an employee profile');
+    expect(en.me.notLinked).toContain('not linked to an employee profile');
+    expect(en.me.notLinked).toContain('Ask HR');
+    expect(en.me.notLinked).not.toMatch(/identity switcher|Aisyah|Daniel/);
     for (const loc of LOCALES) {
       const m = JSON.parse(read(`messages/${loc}.json`)) as Record<string, Record<string, string>>;
       expect(m.me.notLinked, `${loc} me.notLinked`).toBeTruthy();

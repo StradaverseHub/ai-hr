@@ -296,7 +296,11 @@
       "rule": "Thay đổi này bị từ chối bởi cơ chế bảo vệ các bản ghi hiện có, chẳng hạn như kỳ lương đã đóng. Mã tham chiếu {ref}.",
       "busy": "Hệ thống đang bận và thay đổi chưa được hoàn tất. Vui lòng thử lại. Mã tham chiếu {ref}.",
       "nricDuplicate": "NRIC này đã tồn tại trong hồ sơ nhân viên khác. Cài đặt chung về nhân sự hiện tại không cho phép NRIC trùng lặp. Mã tham chiếu {ref}."
-    }
+    },
+    "moreActions": "Thao tác khác",
+    "noSearchResults": "Không có kết quả phù hợp với tìm kiếm.",
+    "sectionFilter": "Mục",
+    "allSections": "Tất cả các mục"
   },
   "nav": {
     "roster": "Lịch ca",
@@ -3895,7 +3899,7 @@
       "panelLaterOther": "Chỉ năm nghỉ phép này. Số dư khả dụng trên thẻ còn tính các mục có ngày sau năm nghỉ phép này",
       "sharedFromPool": "Những ngày này được lấy từ số dư {pool}.",
       "sharedPoolHolder": "Những ngày này được dùng chung với {types}.",
-      "takenOnlyCaption": "Đã nghỉ — không có định mức",
+      "takenOnlyCaption": "Chưa có quyền lợi nghỉ phép — hiển thị số đã dùng",
       "cycleDates": "Năm nghỉ phép {from} – {to}",
       "details": "Chi tiết",
       "detailsFor": "Chi tiết {type}",
@@ -3948,7 +3952,10 @@
     "replacementRequest": {
       "viewMyRequests": "[retired r389 — the 'View my leave credit requests' link beside the Leave Credit request button on My Leave. Item ba039150 removed it: the list it opened is now the Leave Credit History page, reached from the My Leave menu]"
     },
-    "historyHeading": "Trạng thái đơn xin nghỉ phép"
+    "historyHeading": "Trạng thái đơn xin nghỉ phép",
+    "submittingRequest": "Đang gửi…",
+    "submitUnconfirmed": "Chưa thể xác nhận kết quả. Hãy kiểm tra trạng thái yêu cầu trước khi thử lại.",
+    "zeroDaysHint": "Lựa chọn này không trừ ngày nghỉ. Hãy chọn ngày làm việc trước khi gửi."
   },
   "leaveTracker": {
     "title": "Theo dõi nghỉ phép của nhóm",
@@ -4807,7 +4814,7 @@
   },
   "me": {
     "title": "Hồ sơ của tôi",
-    "notLinked": "Tài khoản này chưa được liên kết với hồ sơ nhân viên. Dùng bộ chuyển danh tính ở thanh trên cùng để hoạt động với tư cách nhân viên (ví dụ Aisyah hoặc Daniel).",
+    "notLinked": "Tài khoản này chưa được liên kết với hồ sơ nhân viên. Hãy nhờ HR liên kết tài khoản đăng nhập với đúng hồ sơ nhân viên.",
     "todayHeading": "Hôm nay",
     "checkIn": "Vào ca",
     "checkedInAt": "Đã vào ca lúc <time></time>",
@@ -5778,7 +5785,7 @@
       "colEmployees": "Nhân viên",
       "colNetPay": "Lương thực lãnh",
       "colStatus": "Trạng thái",
-      "empty": "Chưa có quy trình tính lương nào — hãy tạo một quy trình bên dưới.",
+      "empty": "Chưa có quy trình lương. Chọn Tạo chu kỳ chạy lương để bắt đầu.",
       "runType": {
         "regular": "Thường kỳ",
         "off_cycle": "Ngoài chu kỳ",
@@ -11547,7 +11554,7 @@
       "title": "Cấu hình khoản chi",
       "subtitle": "Xác định các loại khoản chi/phúc lợi mà nhân viên có thể nộp, cách xử lý thuế mặc định và ngân sách tùy chọn của chúng.",
       "typesTitle": "Loại khoản chi",
-      "empty": "Chưa có loại khoản chi nào. Hãy thêm một loại bên dưới.",
+      "empty": "Chưa có loại yêu cầu thanh toán. Chọn Thêm mới để tạo.",
       "newTitle": "Loại khoản chi mới",
       "codeLabel": "Mã",
       "nameLabel": "Tên",
@@ -13727,7 +13734,9 @@
     "scope": "Phạm vi",
     "breadcrumb": "Đường dẫn",
     "details": "Chi tiết",
-    "homePreferences": "Tùy chọn trang chủ"
+    "homePreferences": "Tùy chọn trang chủ",
+    "chooseCompanies": "Chọn lại",
+    "pendingCompanySelection": "Chọn công ty để cập nhật chế độ xem. Phạm vi công ty hiện tại chưa thay đổi."
   },
   "components": {
     "plannedAbsences": {
@@ -14322,7 +14331,7 @@
   "payComponents": {
     "title": "Khoản mục lương",
     "description": "Xác định các khoản mục lương có thể cấu hình và cách xử lý luật định (EPF / SOCSO / PCB / HRDF).",
-    "previewNotice": "Xem trước. Danh mục đã sẵn sàng; lương chỉ chuyển sang thành phần có kiểu khi được bật (TYPED_PAY_COMPONENTS_ENABLED). Cho đến lúc đó lương vẫn tính trên cơ bản + phụ cấp + làm thêm + thưởng như hiện nay.",
+    "previewNotice": "Xem trước. Danh mục đã sẵn sàng. Lương tiếp tục sử dụng lương cơ bản, phụ cấp, làm thêm giờ và thưởng cho đến khi thiết lập thành phần lương mới được bật.",
     "catalogTitle": "Danh mục",
     "seedDefaults": "Nạp mặc định Malaysia",
     "colCode": "Mã lương",
@@ -22582,7 +22591,8 @@
     "saving": "[retired r392 — part of the Today tiles or the Needs your attention panel on My Team, removed at the reporter's request (item 33930be9). Leave is decided in Approval Items]",
     "attentionCount": "[retired r392 — part of the Today tiles or the Needs your attention panel on My Team, removed at the reporter's request (item 33930be9). Leave is decided in Approval Items]",
     "status_exempt": "Được miễn",
-    "exemptCode": "EX"
+    "exemptCode": "EX",
+    "balanceContext": "Đây là số dư đã ghi nhận. Thiết lập quyền lợi không hiển thị ở đây; số dư bằng không không xác nhận quyền lợi đã được cấu hình. Hãy nhờ HR kiểm tra nếu cần."
   },
   "lifecycle": {
     "title": "Tiếp nhận & IT",

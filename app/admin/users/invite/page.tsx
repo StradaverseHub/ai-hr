@@ -1,6 +1,6 @@
 import {getLocale,getTranslations} from 'next-intl/server';
 import {requireGroupAdministration} from '@/lib/security-center-authz';
-import {Card,ErrorBanner,SectionHeader,btnPrimary,inputCls} from '@/components/ui';
+import {Card,ErrorBanner,btnPrimary,inputCls} from '@/components/ui';
 import {inviteUserAction} from '../../actions';
 import {loadUsersData,ROLES} from '../data';
 import {AccountTargetFields} from '../account-target-fields';
@@ -11,7 +11,7 @@ export default async function InviteUserPage({searchParams}:{searchParams:Promis
  return <div className="mx-auto max-w-5xl space-y-6"><SecurityPageHeader title={center('invite.title')}/>{params.error&&<div role="alert"><ErrorBanner message={params.error}/></div>}
  {params.saved==='1'&&<p role="status" className="rounded-lg border border-border p-4 text-sm">{center('invitationSent')}</p>}
         <Card>
-          <div id="invite-user"><SectionHeader title={t('inviteTitle')} /></div>
+          <div id="invite-user"/>
           <div className="px-4 py-3">
             <p className="mb-3 text-xs text-muted-foreground">{t('inviteHint')}</p>
             <form action={inviteUserAction} className="grid gap-4 sm:grid-cols-2">

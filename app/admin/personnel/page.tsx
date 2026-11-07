@@ -1,3 +1,4 @@
+import {ResponsiveActions} from '@/components/responsive-actions';
 import {personnelPrivateSearchAvailable} from '@/core/personnel-private-search';
 import { organisationChoiceLabels } from '@/lib/organisation-choice-label';
 import {personnelMaintenanceCompanyIds} from '@/core/workforce-access';
@@ -324,33 +325,18 @@ async function renderPersonnelPage(sp: PersonnelSearchParams) {
           // `flex-wrap` (c002b3c3): this row gained a search box, and PageHeader holds its actions
           // group `shrink-0` — without wrapping, a narrow window would scroll the PAGE sideways rather
           // than stacking the controls, which is the one thing a full-width change must not introduce.
-          <div className="flex flex-wrap items-center justify-end gap-3">
-            {/* 579255c3 — the bare "40 employees" count that stood here is GONE. It said one number with
-                no context; the five cards below say all five, and the pager still prints "1–25 of 30". */}
+          <div className="flex flex-wrap items-center justify-end gap-2 sm:gap-3">
+            <PersonnelOrganisationFilters key={scopeIds.slice().sort().join(',')+'?'+personnelQueryParams(sp).toString()} fields={filterFields} values={filterValues} companies={organisationChoices.companies} labels={filterLabels} companySearchLabel={to('companySearch')} canInspectDuplicates={organisationChoices.canInspectDuplicates} duplicateHint={to('duplicateHint')} dataTour="people-search"/>
             {canCreate && (
-              <Link
-                href="/admin/personnel/import"
-                data-tour="people-import"
-                className="rounded-lg border border-border px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-accent"
-              >
-                {t('importCsv')}
-              </Link>
+              <CreateEmployeeDialog
+                triggerLabel={t('createNewEmployee')}
+                companies={companies.filter(c=>maintainIds.has(c.id)).map((c) => ({ id: c.id, label: c.name }))}
+                employeeIdRules={employeeIdRules}
+              />
             )}
-            {/* 05d2709a — the way in to "Possible duplicate employee records". A LINK from this list, not
-                a rail row: `/admin/personnel/duplicates` sits below this screen's own href, and the rail's
-                flat rows match a segment PREFIX (components/nav-flyout.tsx isHrefActive), so a row of its
-                own would light Personnel Management AND itself on the same page — the two-lit-rows defect
-                388e53c2 was raised to fix. Reached the same way /admin/personnel/import and
-                /admin/personnel/new are, which is also where somebody looking at the employee list would
-                go asking "why is this person in here twice?". */}
-            {isAdmin && (
-              <Link
-                href="/admin/personnel/duplicates"
-                className="rounded-lg border border-border px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-accent"
-              >
-                {t('duplicateRecords')}
-              </Link>
-            )}
+            <ResponsiveActions>
+{canCreate && <Link href="/admin/personnel/import" data-tour="people-import" className="min-h-11 rounded-lg border border-border px-3 py-2 text-sm font-medium hover:bg-accent">{t('importCsv')}</Link>}
+{isAdmin && <Link href="/admin/personnel/duplicates" className="min-h-11 rounded-lg border border-border px-3 py-2 text-sm font-medium hover:bg-accent">{t('duplicateRecords')}</Link>}
             {/* 04b88724 (r339) — THE "CHILD RELIEF REVIEW (PCB)" LINK WAS REMOVED FROM HERE, DELIBERATELY,
                 AND THE ROUTE WAS DELIBERATELY KEPT. Do not restore the link; do not delete the route
                 without reading this.
@@ -376,8 +362,6 @@ async function renderPersonnelPage(sp: PersonnelSearchParams) {
                 components/child-relief-review-table.tsx, their tests, the SCREENS column and the message
                 keys in all six locales — and r336's two kernel pins (core/payroll.ts and
                 core/payroll-view.ts both read child_relief_mode) would have to be rehomed first. */}
-            {/* One list search below; the filter panel holds only ordinary shareable selections. */}
-            <PersonnelOrganisationFilters key={scopeIds.slice().sort().join(',')+'?'+personnelQueryParams(sp).toString()} fields={filterFields} values={filterValues} companies={organisationChoices.companies} labels={filterLabels} companySearchLabel={to('companySearch')} canInspectDuplicates={organisationChoices.canInspectDuplicates} duplicateHint={to('duplicateHint')} dataTour="people-search"/>
             <ColumnPicker
               columns={pickerColumns}
               selected={columns}
@@ -393,8 +377,6 @@ async function renderPersonnelPage(sp: PersonnelSearchParams) {
               saveAction={saveEmployeeColumnsAction}
               resetAction={resetEmployeeColumnsAction}
             />
-            {/* Points 9 & 10 — a plain link, so the download is a GET the browser owns and the file is
-                whatever this screen is currently showing. */}
             <a
               href={exportHref}
               aria-label={t('exportAria')}
@@ -402,31 +384,16 @@ async function renderPersonnelPage(sp: PersonnelSearchParams) {
             >
               {t('exportXlsx')}
             </a>
-            {/* 6d671f44 — Create New Employee became its own step-by-step screen with Save as Draft,
-                because that reporter's requirement was literal: "The current employee list screen shall
-                not be used for data entry". The inline hire form that used to expand below this header is
-                still gone, and is not coming back.
-                034a5080 walks HALF of that back, deliberately and only for the four-question create: the
-                button now opens a PROMPT over this list. The route is untouched and still reachable — the
-                trigger is a real Link to that route whose plain left click is intercepted
-                (see the component), so ⌘-click, a JS-less browser, the tour and every draft row still get
-                the full screen. The markup, the `data-tour` anchor and the confirmation step live in
-                ./create-employee-dialog.tsx; the trigger's LABEL is resolved here so that file keeps to a
-                single message namespace. */}
-            {canCreate && (
-              <CreateEmployeeDialog
-                triggerLabel={t('createNewEmployee')}
-                companies={companies.filter(c=>maintainIds.has(c.id)).map((c) => ({ id: c.id, label: c.name }))}
-                employeeIdRules={employeeIdRules}
-              />
-            )}
+            </ResponsiveActions>
           </div>
         }
       />
 
+      <PersonnelPrivateSearch key={scopeIds.slice().sort().join(',')+'?'+personnelQueryParams(sp).toString()} parameters={[...personnelQueryParams(sp)]} active={!!query.filters.privateSearch} labels={{label:to('search'),placeholder:to('searchPlaceholder'),submit:to('searchButton'),privateHint:to('privateHint'),active:to(searchAvailable?'privateActive':'privateUnavailable'),clear:to('clearSearch'),share:to('shareView')}}/>
+
       {/* Point 5 + 6 — the headcount summary, and every card a one-click narrowing. */}
       <div
-        className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5"
+        className="flex gap-3 overflow-x-auto pb-1 sm:grid sm:grid-cols-3 lg:grid-cols-5"
         aria-label={t('headcountAria')}
         data-tour="people-headcount"
       >
@@ -438,7 +405,7 @@ async function renderPersonnelPage(sp: PersonnelSearchParams) {
               href={cardHref(c.key)}
               aria-current={on ? 'true' : undefined}
               data-headcount={c.key ?? 'total'}
-              className={`rounded-xl border px-4 py-3 transition-colors ${
+              className={`min-w-32 shrink-0 rounded-xl border px-3 py-2 sm:min-w-0 sm:px-4 sm:py-3 transition-colors ${
                 on
                   ? 'border-primary bg-accent text-accent-foreground'
                   : 'border-border bg-card hover:border-primary/40 hover:bg-muted/40'
@@ -456,7 +423,7 @@ async function renderPersonnelPage(sp: PersonnelSearchParams) {
         })}
       </div>
 
-      <PersonnelPrivateSearch key={scopeIds.slice().sort().join(',')+'?'+personnelQueryParams(sp).toString()} parameters={[...personnelQueryParams(sp)]} active={!!query.filters.privateSearch} labels={{label:to('search'),placeholder:to('searchPlaceholder'),submit:to('searchButton'),privateHint:to('privateHint'),active:to(searchAvailable?'privateActive':'privateUnavailable'),clear:to('clearSearch'),share:to('shareView')}}/>
+
       {!organisationChoices.canInspectDuplicates&&query.filters.qualityFlags?.includes('suspected_duplicate')&&<p role="status" className="text-sm text-muted-foreground">{to('duplicateUnavailable')}</p>}
       <FilterChips
         action="/admin/personnel"

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { usePathname } from 'next/navigation';
 import { useTranslations } from 'next-intl';
@@ -58,6 +58,7 @@ export function CompanySwitcher({
   const personalCredits = pathname === '/leave/credit-details';
   const inquiryReturnPath = pathname === '/leave/employee-balances' || pathname === '/leave/employee-records' ? pathname : undefined;
   const [open, setOpen] = useState(false);
+  const triggerRef = useRef<HTMLButtonElement>(null);
   const [sel, setSel] = useState<Set<string>>(() => new Set(selected));
   const t = useTranslations('topbar');
   const monolith = useIsMonolith();
@@ -87,9 +88,17 @@ export function CompanySwitcher({
     // r416 — in Monolith the top line also carries the route path, the DEV badge and the clock; with a bare
     // min-w-0 the switcher was the child crushed to 0px on a phone, so it could not be tapped. It keeps
     // room for its ▾ and a few letters; the label still truncates, the route path gives way first.
-    <div className="relative min-w-0 monolith:min-w-[5.5rem]">
+    <div className="relative min-w-0 monolith:min-w-[5.5rem]" onKeyDownCapture={event => {
+      if (open && event.key === 'Escape') {
+        event.preventDefault();
+        event.stopPropagation();
+        setOpen(false);
+        triggerRef.current?.focus();
+      }
+    }}>
       {/* Keep the open trigger clickable above its own dismiss layer. */}
       <button
+        ref={triggerRef}
         data-company-switcher
         type="button"
         onClick={() => {
@@ -149,8 +158,9 @@ export function CompanySwitcher({
               }}
               className="mb-0.5 flex w-full items-center rounded-md px-2 py-1.5 text-left text-xs font-medium text-primary transition-colors hover:bg-muted"
             >
-              {allSelected ? t('deselectAll') : t('selectAll')}
+              {allSelected ? t('chooseCompanies') : t('selectAll')}
             </button>
+            {sel.size === 0 && <p role="status" className="px-2 py-2 text-xs text-muted-foreground">{t('pendingCompanySelection')}</p>}
             <div className="-mx-1.5 min-h-0 flex-1 overflow-y-auto overscroll-contain px-1.5">
               {companies.map((c) => (
                 <label
@@ -170,7 +180,7 @@ export function CompanySwitcher({
                       if (e.currentTarget.checked) next.add(c.id);
                       else next.delete(c.id);
                       setSel(next);
-                      form?.requestSubmit();
+                      if (next.size > 0) form?.requestSubmit();
                     }}
                     className="size-4 shrink-0 accent-[var(--color-primary)]"
                   />
