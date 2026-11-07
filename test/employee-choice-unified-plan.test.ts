@@ -18,7 +18,7 @@ import {closeAll,migrateTestDb,owner} from './harness';
 import {workerDb} from './db-names';
 import {employeeChoicePlannerSnapshot} from './performance/employee-choice-planner-snapshot';
 import {employeeChoicePlanQuery} from './performance/employee-choice-plan-capture';
-import {employeeChoiceJitPolicy,employeeChoiceJitVariants,settleOwnedJitTransaction,type EmployeeChoiceJitVariant} from './performance/employee-choice-jit-policy';
+import {assertEmployeeChoiceJitAdmission,isExpectedEmployeeChoiceJitRollback,employeeChoiceJitPolicy,employeeChoiceJitVariants,settleOwnedJitTransaction,type EmployeeChoiceJitVariant} from './performance/employee-choice-jit-policy';
 import {employeeChoiceActualCardinalities,employeeChoiceAuthorizedPopulationFacts,employeeChoicePlanWork} from './performance/employee-choice-plan-work';
 import {seedPersonnelNativeFixture} from './performance/personnel-native-fixture';
 import {capturePostgresEvidence,postgresProfileFromEnv,validatePostgresEvidence} from '../.github/ci/postgres-evidence.mjs';
@@ -81,7 +81,7 @@ async function boundedCase(context:TestContext,work:()=>Promise<void>,setup=fals
   throw error;
  }
 }
-const assertCaseActive=()=>activeSignal?.throwIfAborted();
+const assertCaseActive=()=>assertEmployeeChoiceJitAdmission(blocked,activeSignal);
 async function prepare(){
  expect(process.env.RUNNER_ENVIRONMENT).toBe('github-hosted');expect(process.env.AIHR_FOCUSED_EVIDENCE_DIR).toBeTruthy();
  expect(createHash('sha256').update(readFileSync('core/employee-choice.ts')).digest('hex')).toBe('f2f2bf608e078262905353d9ac9ab3f70242e8656086fd160ab1b69072239517');
@@ -192,6 +192,7 @@ async function prepare(){
   });
  };
  const unchanged=async()=>{
+  assertCaseActive();
   expect(await securitySnapshot()).toEqual(originals);
   const [after]=await single.client`select current_setting('jit') as jit,current_setting('jit_above_cost') as jit_above_cost,
   current_setting('jit_inline_above_cost') as jit_inline_above_cost,current_setting('jit_optimize_above_cost') as jit_optimize_above_cost,current_setting('work_mem') as work_mem,current_setting('hash_mem_multiplier') as hash_mem_multiplier,
@@ -218,7 +219,7 @@ async function prepare(){
   const factsByCase=(report.authorizedServerPopulationFacts??={})as Record<string,unknown>;factsByCase[key]=facts;save();return facts;
  };
  return {defaults,verifyRestored,fixture,representedBu,emptyBu,wholeFixture,populationFacts,report,save,single,pids,install,queries,dialect,plans,unchanged,resources,choose,restore,
-  selectCase:(value:string,first:boolean)=>{assertCaseActive();name=value;firstSample=first;capture=true;report.phase=value;save();},stop:()=>{capture=false;firstSample=false;},label:(value:string)=>{name=value;}};
+  selectCase:(value:string,first:boolean)=>{assertCaseActive();name=value;firstSample=first;capture=true;report.phase=value;save();},stop:()=>{capture=false;firstSample=false;},label:(value:string)=>{assertCaseActive();name=value;}};
  }catch(error){await single.client.end({timeout:0});throw error;}
 }
 afterAll(async()=>{
@@ -253,10 +254,7 @@ it.skipIf(!requested)('restores every JIT setting on the same native backend aft
    expect(rows[0].value).toBe(42);
    let failed=false;
    try{await database.withTenant(p.fixture.ctx,tx=>tx.execute(sql`select 1/0`),{readOnlySnapshot:true});}
-   catch(error){let native:unknown=error;for(let depth=0;depth<5&&native instanceof Error;depth++){
-     if('code'in native){expect(native.code).toBe('22012');failed=true;break;}native=native.cause;
-    }if(!failed)throw error;
-   }
+   catch(error){if(!isExpectedEmployeeChoiceJitRollback(error))throw error;failed=true;}
    expect(failed).toBe(true);
    let release!:()=>void,entered!:()=>void,otherEntered=false;
    const ready=new Promise<void>(resolve=>{entered=resolve;}),done=new Promise<void>(resolve=>{release=resolve;});

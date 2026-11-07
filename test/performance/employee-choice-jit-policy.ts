@@ -10,6 +10,23 @@ export function employeeChoiceJitPolicy(variant:unknown,defaults:EmployeeChoiceJ
   default:throw new Error('Unknown diagnostic employee-choice JIT policy');
  }
 }
+/** A poisoned diagnostic session is closed to phase selection and checkout alike. */
+export function assertEmployeeChoiceJitAdmission(blocked:Error|undefined,signal?:AbortSignal){
+ if(blocked)throw blocked;
+ signal?.throwIfAborted();
+}
+/** Only the expected native failure is a successful rollback control. Never
+ * unwrap a compound restoration failure into its otherwise expected SQL cause. */
+export function isExpectedEmployeeChoiceJitRollback(error:unknown):boolean{
+ let code:unknown;
+ for(let depth=0;depth<8;depth++){
+  if(error instanceof AggregateError)return false;
+  if(!(error instanceof Error))return code==='22012';
+  if(code===undefined&&'code'in error)code=error.code;
+  error=error.cause;
+ }
+ return false;
+}
 /** Wait for COMMIT/ROLLBACK before observing the same owned physical session.
  * An aborted transaction never receives cleanup SQL. Preserve its original error
  * even if the independent post-transaction restoration proof also fails. */

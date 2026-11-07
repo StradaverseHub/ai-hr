@@ -1,5 +1,5 @@
 import {expect,it} from 'vitest';
-import {employeeChoiceJitPolicy,employeeChoiceJitVariants,settleOwnedJitTransaction} from './performance/employee-choice-jit-policy';
+import {assertEmployeeChoiceJitAdmission,isExpectedEmployeeChoiceJitRollback,employeeChoiceJitPolicy,employeeChoiceJitVariants,settleOwnedJitTransaction} from './performance/employee-choice-jit-policy';
 const defaults={jit:'on',jit_above_cost:'100000',jit_inline_above_cost:'500000',jit_optimize_above_cost:'500000'};
 it('keeps the four closed policies separate and changes only the declared JIT settings',()=>{
  expect(employeeChoiceJitVariants).toEqual(['original','unified','unified-base-jit','unified-no-jit']);
@@ -30,4 +30,23 @@ it('also proves restoration after a synchronous admission failure',async()=>{
  const primary=new Error('synchronous refusal'),order:string[]=[];
  await expect(settleOwnedJitTransaction(()=>{order.push('refused');throw primary;},async()=>{order.push('restored');})).rejects.toBe(primary);
  expect(order).toEqual(['refused','restored']);
+});
+it('rejects compound rollback/restoration failures and blocks selection and checkout before any later callback or SQL',async()=>{
+ const native=Object.assign(new Error('division by zero'),{code:'22012'}),wrapped=new Error('native query failed',{cause:native});
+ expect(isExpectedEmployeeChoiceJitRollback(native)).toBe(true);expect(isExpectedEmployeeChoiceJitRollback(wrapped)).toBe(true);
+ let blocked:Error|undefined,callbacks=0,sql=0;
+ const checkout=async()=>{
+  assertEmployeeChoiceJitAdmission(blocked);callbacks++;
+  return settleOwnedJitTransaction(async()=>{sql++;throw wrapped;},async()=>{
+   const failure=new Error('same-backend settings not restored');blocked=new Error('Diagnostic session poisoned',{cause:failure});throw failure;
+  });
+ };
+ let compound:unknown;
+ try{await checkout();throw new Error('Expected diagnostic refusal');}catch(error){compound=error;}
+ expect(compound).toBeInstanceOf(AggregateError);
+ expect(isExpectedEmployeeChoiceJitRollback(compound)).toBe(false);
+ expect(isExpectedEmployeeChoiceJitRollback(new Error('outer wrapper',{cause:compound}))).toBe(false);
+ await expect(checkout()).rejects.toBe(blocked);
+ expect(()=>assertEmployeeChoiceJitAdmission(blocked)).toThrow('Diagnostic session poisoned');
+ expect(callbacks).toBe(1);expect(sql).toBe(1);
 });

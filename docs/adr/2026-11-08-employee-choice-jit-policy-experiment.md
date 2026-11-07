@@ -100,3 +100,21 @@ API with automatic function-scoped settings and unchanged native authorization.
 That future design requires its own correctness/performance proof, guarded append
 allocation, upgrade/rollback and full-browser/load qualification. Do not ship this
 test interceptor or a `SET LOCAL` wrapper around borrowed shared transactions.
+
+## Pre-dispatch restoration refusal repair
+
+Independent review rejected frozen8a378593e before upload: its native rollback
+control could unwrap an AggregateError's22012 cause even when the independent
+restoration proof had also failed. The same test case could then enter another
+checkout before the next case's existing poison-state guard ran. No hosted result
+or release approval exists for that source.
+
+Expected rollback now accepts only the native22012 error/wrapper chain and rejects
+any compound AggregateError, including one nested under another wrapper. The
+shared admission check runs before every checkout, phase/case selection and
+outside-transaction final session proof. A poisoned state refuses before further
+SQL or callback entry. A focused regression executes the actual settlement,
+rollback-classification and admission helpers: a native22012 plus failed restore
+remains a compound failure; neither the next callback nor its SQL counter executes,
+and selection refuses the same poison error. This is source-level protocol proof,
+not a claimed native database execution. All native cases and settings gates stay.
