@@ -17596,7 +17596,13 @@
     "selectedTag": "已选择",
     "allEmployees": "全部员工",
     "allEmployeesHint": "清除选择并显示全部员工。",
-    "showingCapped": "显示 {total} 个匹配中的前 {cap} 个 — 请细化搜索。"
+    "showingCapped": "显示 {total} 个匹配中的前 {cap} 个 — 请细化搜索。",
+    "loadingEmployees": "正在加载员工…",
+    "loadFailed": "无法加载员工，请重试。",
+    "retry": "重试",
+    "previousPage": "上一页",
+    "nextPage": "下一页",
+    "pageRange": "第 {from}–{to} 条，共 {total, number} 条"
   },
   "appliedInPayroll": {
     "searchPlaceholder": "搜索月份、员工、公司或金额",

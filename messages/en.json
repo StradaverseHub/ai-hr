@@ -17596,7 +17596,13 @@
     "selectedTag": "Selected",
     "allEmployees": "All employees",
     "allEmployeesHint": "Clear the selection and show every employee.",
-    "showingCapped": "Showing first {cap} of {total} matches — refine your search."
+    "showingCapped": "Showing first {cap} of {total} matches — refine your search.",
+    "loadingEmployees": "Loading employees…",
+    "loadFailed": "Employees could not be loaded. Try again.",
+    "retry": "Retry",
+    "previousPage": "Previous",
+    "nextPage": "Next",
+    "pageRange": "{from}–{to} of {total, number}"
   },
   "appliedInPayroll": {
     "searchPlaceholder": "Search month, employee, company or amount",
