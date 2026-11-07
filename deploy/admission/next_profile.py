@@ -151,9 +151,9 @@ class NextRuntime:
         require(type(self.private_environment['version']) is int and self.private_environment['version'] == 1
                 and isinstance(self.private_environment['values'], dict) and 0 < len(self.private_environment['values']) <= 256,
                 'Closed private runtime environment required')
-        for key, value in self.private_environment['values'].items():
+        for key, env_value in self.private_environment['values'].items():
             require(isinstance(key, str) and re.fullmatch(r'[A-Z_][A-Z0-9_]{0,159}', key) is not None
-                    and isinstance(value, str) and '\0' not in value and len(value.encode()) <= 65536
+                    and isinstance(env_value, str) and '\0' not in env_value and len(env_value.encode()) <= 65536
                     and key in APP_ENVIRONMENT and not forbidden_environment(key),
                     'Unsafe private runtime environment field')
         environment = self.private_environment['values']

@@ -188,6 +188,17 @@ class NextProfileTests(unittest.TestCase):
         with self.assertRaises(C.Refused):
             self.verified(runtime)
 
+    def test_positive_constructor_keeps_profile_mapping_after_private_environment_validation(self):
+        self.environment['values'].update({'AUTH_DEFAULT_ORGANIZATION': 'native-a', 'AI_CONFIG_SECRET': 'b' * 64})
+        self.write_metadata()
+        runtime = self.runtime()
+        self.assertIs(runtime.value, self.value)
+        self.assertEqual(runtime.manifest['source'], 'a' * 40)
+        self.assertEqual(runtime.manifest['build'], 'source-model-build')
+        self.assertEqual(set(runtime.value['units']), {'aihr-web@1.service', 'aihr-web@2.service'})
+        self.assertEqual(runtime.private_environment['values']['AUTH_DEFAULT_ORGANIZATION'], 'native-a')
+        self.assertEqual(len(runtime.system_files), 1)
+
     def test_unknown_member_writable_code_and_hardlink_are_not_cache_exceptions(self):
         for kind in ('unknown', 'writable', 'hardlink', 'cache-file'):
             with self.subTest(kind=kind):
