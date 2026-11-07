@@ -14,7 +14,7 @@ Renew only the exact `sourceDigest` value of the 28 already-approved literal rec
 
 ## Approval status
 
-This file is a concrete proposal, not human approval. The literal registry remains unchanged and therefore fail-closed for the proposed source. Staging deployment authorization does not manufacture specialist certification or silently renew the exact registry binding. Any actual owner response must be retained here before the proposed registry edit.
+On 7 November 2026, the repository owner answered “Approve exact binding renewal” to the question explicitly naming PR 233, digest `060197673eb80737b70097419f9572f413e95c58450f9cd418d636b466d0bd50`, the 28 already-approved records and both blocked pending contracts. This authorizes only the exact proposed registry edit above. Original approval metadata is preserved; this owner renewal is not fabricated specialist certification. The owner separately requested review and staging deployment of these four completed items; no production deployment or package publication is authorized.
 
 ## Verification and installation
 
