@@ -11,11 +11,11 @@ export class EmployeeChoiceInputError extends Error{}
 export class EmployeeChoiceAccessError extends Error{}
 const uuid=/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/;
 const nonAscii=(value:SQL)=>sql`(${value} collate "C") ~ '[^ -~]'`;
-const from=sql`from ${employment} join ${person} on ${person.id}=${employment.personId}
- join ${company} on ${company.id}=${employment.companyId}
- left join ${assignment} on ${assignment.employmentId}=${employment.id} and ${assignment.validTo} is null and ${assignment.supersededAt} is null
- left join ${department} on ${department.id}=${assignment.departmentId}
- left join ${businessUnit} on ${businessUnit.id}=${assignment.businessUnitId}`;
+function employeeChoiceFrom(tenantId:string){return sql`from ${employment} join ${person} on ${person.id}=${employment.personId} and ${person.tenantId}=${tenantId}::uuid
+ join ${company} on ${company.id}=${employment.companyId} and ${company.tenantId}=${tenantId}::uuid
+ left join ${assignment} on ${assignment.employmentId}=${employment.id} and ${assignment.validTo} is null and ${assignment.supersededAt} is null and ${assignment.tenantId}=${tenantId}::uuid
+ left join ${department} on ${department.id}=${assignment.departmentId} and ${department.tenantId}=${tenantId}::uuid
+ left join ${businessUnit} on ${businessUnit.id}=${assignment.businessUnitId} and ${businessUnit.tenantId}=${tenantId}::uuid`;}
 const normalizeId=(value:string|undefined)=>{
  if(value&&!uuid.test(value))throw new EmployeeChoiceInputError('Invalid employee filter');return value??'';
 };
@@ -36,7 +36,8 @@ export async function readEmployeeChoices(ctx:SessionContext,p:EmployeeChoiceInp
  if(typeof filters.query!=='string'||!['','active','ended'].includes(filters.status)||p.labelMode!==undefined&&!['names','labels'].includes(p.labelMode))throw new EmployeeChoiceInputError('Invalid employee filter');
  const offset=p.offset??0,limit=p.limit??EMPLOYEE_CHOICE_PAGE_SIZE,labelMode=p.labelMode??'names',q=filters.query.trim().toLowerCase();
  if(!Number.isSafeInteger(offset)||offset<0||!Number.isInteger(limit)||limit<1||limit>EMPLOYEE_CHOICE_MAX_PAGE_SIZE)throw new EmployeeChoiceInputError('Invalid employee page');
- const scoped=p.companyIds.length?sql`${employment.companyId}=any(${'{'+p.companyIds.join(',')+'}'}::uuid[])`:sql`true`;
+ const from=employeeChoiceFrom(ctx.tenantId);
+ const scoped=sql`${employment.tenantId}=${ctx.tenantId}::uuid and ${p.companyIds.length?sql`${employment.companyId}=any(${'{'+p.companyIds.join(',')+'}'}::uuid[])`:sql`true`}`;
  const inCompany=filters.companyId?sql`${employment.companyId}=${filters.companyId}::uuid`:sql`true`;
  const where=sql`${scoped} and ${inCompany}
   and ${filters.businessUnitId?sql`${assignment.businessUnitId}=${filters.businessUnitId}::uuid`:sql`true`}
@@ -71,7 +72,7 @@ export async function readEmployeeChoices(ctx:SessionContext,p:EmployeeChoiceInp
   signal?.throwIfAborted();
   const selected=p.selectedId&&uuid.test(p.selectedId)?(await tx.execute<EmployeeChoice>(sql`${base} where ${scoped} and ${employment.id}=${p.selectedId}::uuid order by ${person.fullName},${employment.id},${assignment.id} limit 1`))[0]??null:null;
   signal?.throwIfAborted();
-  const options=await readOptions(tx,scoped,labelMode==='labels');
+  const options=await readOptions(tx,scoped,labelMode==='labels',from);
   signal?.throwIfAborted();
   const inSelectedCompany=filters.companyId?options.filter(row=>row.companyId===filters.companyId):options;
   const companies=new Map(options.map(row=>[row.companyId,row.company]));
@@ -84,7 +85,7 @@ export async function readEmployeeChoices(ctx:SessionContext,p:EmployeeChoiceInp
  },{readOnlySnapshot:true,readSignal:signal});
 }
 type ChoiceOptions=Pick<EmployeeChoice,'companyId'|'company'|'departmentId'|'department'|'departmentCode'|'businessUnitId'|'businessUnit'|'businessUnitCode'>;
-function readOptions(tx:Tx,scope:SQL,labels:boolean){return tx.execute<ChoiceOptions>(sql`select distinct ${employment.companyId} as "companyId",${company.legalName} as company,
+function readOptions(tx:Tx,scope:SQL,labels:boolean,from:SQL){return tx.execute<ChoiceOptions>(sql`select distinct ${employment.companyId} as "companyId",${company.legalName} as company,
  ${assignment.departmentId} as "departmentId",${labels?sql`${department.name}`:sql`null::text`} as "departmentCode",
  ${labels?sql`coalesce(nullif(trim(${department.label}),''),nullif(trim(${department.description}),''),${department.name})`:sql`${department.name}`} as department,
  ${assignment.businessUnitId} as "businessUnitId",${labels?sql`${businessUnit.code}`:sql`null::text`} as "businessUnitCode",
