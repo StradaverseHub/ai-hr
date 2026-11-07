@@ -1,5 +1,7 @@
 # Stable shell navigation declarations and honest coverage
 
+This records the original shell checkpoint. The composed static submenu catalogue and development capture adapter are documented in [the follow-up ADR](2026-11-07-authenticated-navigation-development-capture.md); no actual capture has yet qualified.
+
 Status: proposed source contract; hosted verification and runtime acceptance are separate evidence.
 
 The shared shell resolver owns capability-based presentation. Page and service owners still adjudicate access. The catalogue calls that resolver once and binds its output to reviewed, literal business IDs. It adds no permissions, role inference, entitlement logic, or server capability queries.

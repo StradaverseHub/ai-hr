@@ -4,6 +4,10 @@ import {resolveShellNavigation, type ShellNavigationFacts} from './shell-resolve
 import {V9_NAVIGATION, V9_SHARED_NAVIGATION} from '../lifecycle-v9-navigation';
 import {modulePackById} from '../../packs/registry';
 import {navigationPlacement, type NavigationPlacement} from '../navigation-workspaces';
+import {MODULE_SUBMENU_REGISTRIES} from './module-submenus';
+import {CENTRE_TABS,CENTRE_SECTIONS,PAYROLL_CYCLE_PAGES} from '../ai-centre/centre-nav';
+import {SECURITY_PAGES} from '../security-center-navigation';
+import {PERFORMANCE_AREA_TABS} from '../../packs/performance/onehr/tab-model';
 
 type Binding = {id:string;sourceOwner:string;sourceKey:string;status:'declared'|'replaced'|'shadowed'};
 /** Selectors locate descriptors only. IDs and source keys below are explicit, durable business identities.
@@ -173,9 +177,11 @@ export type NavigationDeclaration = Binding & {
 };
 export type CatalogueIssue={code:string;detail:string};
 export type NavigationCatalogue={declarations:NavigationDeclaration[];issues:CatalogueIssue[]};
+export type ApplicationNavigationDeclaration=Omit<NavigationDeclaration,'descriptor'>&{descriptor:object;rendererOwner?:string};
+export type ApplicationNavigationCatalogue={declarations:ApplicationNavigationDeclaration[];issues:CatalogueIssue[]};
 /** Explicit backlog beyond this bounded shell universe; these are not coverage receipts. */
 export const NAVIGATION_COVERAGE_BACKLOG = [
- {id:'nested-submenus',owner:'navigation surface owners',reason:'Immediate in-page submenu/tab registries are not yet composed. Shell ownership prefixes do not prove their usable content.'},
+ {id:'nested-submenus',owner:'navigation surface owners',reason:'Parameterized Personnel/Company/Schedule Group tabs, lifecycle preparation, leave-type configuration, AI management in-section hrefOf navigation and record-specific navigation are not yet composed. Published static submenu composition does not establish the full application universe.'},
 ] as const;
 
 export function declaredNavigationCatalogue():NavigationCatalogue {
@@ -206,6 +212,50 @@ export function declaredNavigationCatalogue():NavigationCatalogue {
   if(!row.sourceOwner||!row.sourceKey)issues.push({code:'missing-provenance',detail:row.id});
   if(!row.placement)issues.push({code:'missing-placement',detail:row.id});
  }
+ return {declarations,issues};
+}
+
+/** Explicit bindings for older published registries without durable IDs. A new
+ * registry key cannot silently acquire an identity derived from its URL. */
+const PUBLISHED_SUBMENU_IDS:Readonly<Record<string,string>>={
+ 'ai/tab/ask':'submenu.aiCentre.ask','ai/tab/operations':'submenu.aiCentre.operations',
+ 'ai/tab/insights':'submenu.aiCentre.insights','ai/tab/policies':'submenu.aiCentre.policies',
+ 'ai/tab/administration':'submenu.aiCentre.administration','ai/tab/how':'submenu.aiCentre.how',
+ 'ai/operations/loops':'submenu.aiCentre.loops','ai/operations/payrollCycle':'submenu.aiCentre.payrollCycle',
+ 'ai/operations/exceptions':'submenu.aiCentre.exceptions','ai/operations/readiness':'submenu.aiCentre.readiness',
+ 'ai/administration/workers':'submenu.aiCentre.workers','ai/administration/setup':'submenu.aiCentre.setup',
+ 'ai/administration/spend':'submenu.aiCentre.spend','ai/administration/buildList':'submenu.aiCentre.buildList',
+ 'ai/payroll/pre':'submenu.aiCentre.payroll.pre','ai/payroll/salary':'submenu.aiCentre.payroll.salary',
+ 'ai/payroll/settings':'submenu.aiCentre.payroll.settings','ai/payroll/audit':'submenu.aiCentre.payroll.audit',
+ 'security/permissions':'submenu.security.permissions','security/functions':'submenu.security.functions',
+ 'security/create':'submenu.security.create','security/invite':'submenu.security.invite',
+ 'security/users':'submenu.security.users','security/passwordPolicy':'submenu.security.passwordPolicy',
+};
+
+/** Declaration coverage only. Each owner still resolves visibility/disabled state
+ * from actual native facts; this function neither calls nor copies those policies. */
+export function declaredApplicationNavigationCatalogue():ApplicationNavigationCatalogue{
+ const shell=declaredNavigationCatalogue(),declarations:ApplicationNavigationDeclaration[]=[...shell.declarations],issues=[...shell.issues];
+ const append=(id:string|undefined,sourceOwner:string,sourceKey:string,href:string,descriptor:object,rendererOwner?:string,parentHref?:string)=>{
+  if(!id){issues.push({code:'unmapped-submenu-declaration',detail:sourceKey});return;}
+  declarations.push({id,sourceOwner,sourceKey,status:'declared',selector:sourceKey,declaredHref:href,navigationHref:href,
+   ownedSubpaths:[],exactHref:true,disabled:false,placement:navigationPlacement(href)??(parentHref?navigationPlacement(parentHref):undefined),descriptor,
+   ...(rendererOwner?{rendererOwner}:{})});
+ };
+ for(const registry of MODULE_SUBMENU_REGISTRIES)for(const item of registry.items)
+  append(item.id,'lib/navigation/module-submenus.ts',item.id,item.href,item,registry.rendererOwner,registry.items[0].href);
+ for(const item of CENTRE_TABS)append(PUBLISHED_SUBMENU_IDS['ai/tab/'+item.key],'lib/ai-centre/centre-nav.ts','ai/tab/'+item.key,item.href,item,'components/ai-centre/centre-tabs.tsx');
+ for(const [group,items]of Object.entries(CENTRE_SECTIONS))for(const item of items)
+  append(PUBLISHED_SUBMENU_IDS['ai/'+group+'/'+item.key],'lib/ai-centre/centre-nav.ts','ai/'+group+'/'+item.key,item.href,item,'components/ai-centre/centre-tabs.tsx');
+ for(const item of PAYROLL_CYCLE_PAGES)append(PUBLISHED_SUBMENU_IDS['ai/payroll/'+item.page],'lib/ai-centre/centre-nav.ts','ai/payroll/'+item.page,item.href,item,'components/ai-centre/centre-tabs.tsx');
+ for(const item of SECURITY_PAGES)append(PUBLISHED_SUBMENU_IDS['security/'+item.key],'lib/security-center-navigation.ts','security/'+item.key,item.href,item);
+ // This owner already publishes literal durable IDs; keep their namespaced IDs
+ // rather than deriving identities from translated labels or current addresses.
+ for(const item of PERFORMANCE_AREA_TABS)append('submenu.performance.'+item.id,'packs/performance/onehr/tab-model.ts','performance/'+item.id,item.href,item,'components/performance-tab-nav.tsx');
+ for(const key of ['id','sourceKey']as const){const seen=new Set<string>();for(const row of declarations){
+  if(seen.has(row[key]))issues.push({code:'duplicate-'+key,detail:row[key]});seen.add(row[key]);
+ }}
+ for(const row of declarations)if(!row.placement)issues.push({code:'missing-placement',detail:row.id});
  return {declarations,issues};
 }
 export type ResolvedCatalogueRow={declaration:NavigationDeclaration;row:ChildItem;navigationHref:string;state:'actionable'|'disabled'|'duplicate';duplicateOf?:string};

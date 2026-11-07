@@ -20,6 +20,7 @@ describe('086915a8: Rewards admin tabs', () => {
         const nav = screen.getByRole('navigation', { name: en.rewardsAdminTabs.label });
         const links = Array.from(nav.querySelectorAll('a'));
         expect(links.map(a => [a.textContent, a.getAttribute('href')])).toEqual(destinations.map(([key, url]) => [en.rewardsAdminTabs[key], url]));
+        expect(links.map(a=>a.getAttribute('data-navigation-destination'))).toEqual(['submenu.rewards.configuration','submenu.rewards.plans','submenu.rewards.salary','submenu.rewards.bonus','submenu.rewards.pat','submenu.rewards.access']);
         expect(links.filter(a => a.getAttribute('aria-current') === 'page').map(a => a.getAttribute('href'))).toEqual([href]);
     });
     it('only shows the two library destinations in the library-only navigation', () => {
