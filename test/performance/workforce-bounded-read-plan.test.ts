@@ -1,3 +1,4 @@
+import {admitSingletonTest} from '../helpers/ci-singleton-admission';
 /** Explicit hosted retained-data diagnosis only; native row triggers/constraints remain enabled. */
 import {randomUUID} from 'node:crypto';
 import {readFileSync,writeFileSync} from 'node:fs';
@@ -9,17 +10,16 @@ import {lockAccessConfigurationReadTx} from '../../core/access-configuration-loc
 import {withTenant,type SessionContext} from '../../db/client';
 import {adminCtx,closeAll,migrateTestDb,owner,resetDb,seedBase} from '../harness';
 const file='test/performance/workforce-bounded-read-plan.test.ts';
-const selected:unknown=JSON.parse(process.env.AIHR_FOCUSED_TESTS??'[]');
-const requested=process.env.GITHUB_ACTIONS==='true'&&Array.isArray(selected)&&selected.length===1&&selected[0]===file;
+const singletonAdmission=admitSingletonTest(file);
 beforeAll(migrateTestDb);afterAll(closeAll);
-it.skipIf(!requested)('compares a bounded native Workforce reader with disjoint full-list and selected-ID plans',async()=>{
+it('compares a bounded native Workforce reader with disjoint full-list and selected-ID plans',async()=>{
  const count=50_000,started=performance.now();
  const report:Record<string,unknown>={kind:'WORKFORCE_BOUNDED_READ_PLAN_COMPONENT_ONLY',releaseEligible:false,targetEmployees:count,concurrentUsers:1,queryTargetMs:1000,fixtureBatchRows:5000,nativeTriggers:'unchanged',limitations:'Retained synthetic owner fixture, not hiring/import throughput, browser timing, one-million Personnel or500-user capacity.'};
- const save=()=>writeFileSync(join(process.env.AIHR_FOCUSED_EVIDENCE_DIR!,'workforce-bounded-read-plan.json'),JSON.stringify(report,null,2));
+ const save=()=>writeFileSync(join(singletonAdmission.evidenceDirectory!,'workforce-bounded-read-plan.json'),JSON.stringify(report,null,2));
  const phase=(name:string)=>{report.phase=name;report.elapsedMs=performance.now()-started;save();};
 
  try{
-  expect(process.env.AIHR_FOCUSED_EVIDENCE_DIR).toBeTruthy();
+  expect(singletonAdmission.evidenceDirectory).toBeTruthy();
   await resetDb();const b=await seedBase(),foreign=await seedBase();
   const ctx:SessionContext={...adminCtx(b),grants:[{role:'hr_admin',companyId:null}]};
   const expectedFirst:string[]=[],expectedLast:string[]=[];

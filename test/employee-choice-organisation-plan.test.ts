@@ -1,3 +1,4 @@
+import {admitSingletonTest} from './helpers/ci-singleton-admission';
 /** Original-only hosted query attribution after real3001; no policy/settings experiment. */
 import {execFileSync} from 'node:child_process';
 import {randomUUID} from 'node:crypto';
@@ -18,8 +19,7 @@ import {seedPersonnelNativeFixture} from './performance/personnel-native-fixture
 import {capturePostgresEvidence,postgresProfileFromEnv,validatePostgresEvidence} from '../.github/ci/postgres-evidence.mjs';
 
 const file='test/employee-choice-organisation-plan.test.ts';
-const selected:unknown=JSON.parse(process.env.AIHR_FOCUSED_TESTS??'[]');
-const requested=process.env.GITHUB_ACTIONS==='true'&&Array.isArray(selected)&&selected.length===1&&selected[0]===file;
+const singletonAdmission=admitSingletonTest(file);
 beforeAll(migrateTestDb);
 type Page=Awaited<ReturnType<typeof readEmployeeChoices>>;
 type Input=Parameters<typeof readEmployeeChoices>[1];
@@ -39,7 +39,7 @@ async function securitySnapshot(){
 }
 let probe:Awaited<ReturnType<typeof prepare>>|undefined;
 async function prepare(){
- expect(process.env.RUNNER_ENVIRONMENT).toBe('github-hosted');expect(process.env.AIHR_FOCUSED_EVIDENCE_DIR).toBeTruthy();
+ expect(process.env.RUNNER_ENVIRONMENT).toBe('github-hosted');expect(singletonAdmission.evidenceDirectory).toBeTruthy();
  const poolId=process.env.VITEST_POOL_ID??process.env.VITEST_WORKER_ID;expect(poolId).toBeTruthy();expect(process.env.WORKER_DB).not.toBe('0');
  for(const key of ['TEST_DATABASE_URL','TEST_MIGRATION_DATABASE_URL']){
   const target=new URL(process.env[key]!);expect(target.hostname).toBe('127.0.0.1');expect(target.pathname).toBe('/'+workerDb(poolId!));
@@ -49,7 +49,7 @@ async function prepare(){
   host:{cpuModels:[...new Set(cpus().map(cpu=>cpu.model))],logicalCpus:cpus().length,ramBytes:totalmem()},
   instrumentation:'Native identity/budget checks run in the wrapper; file writes and container telemetry stay outside timed port calls.',
   limitations:'Fictional single-user native component diagnosis only. No policy/function/JIT/work_mem change, migration adoption or capacity claim. Assignment causality requires actual plans.'};
- const save=()=>writeFileSync(join(process.env.AIHR_FOCUSED_EVIDENCE_DIR!,'employee-choice-organisation-plan.json'),JSON.stringify(report,null,2));
+ const save=()=>writeFileSync(join(singletonAdmission.evidenceDirectory!,'employee-choice-organisation-plan.json'),JSON.stringify(report,null,2));
  const fixture=await seedPersonnelNativeFixture(50000,report,phase=>{report.phase=phase;save();},save);
  const representedBu=randomUUID(),emptyBu=randomUUID();
  await owner.db.insert(businessUnit).values([
@@ -119,7 +119,7 @@ async function prepare(){
   expect(after).toEqual(defaults);expect(pids.size).toBe(1);report.originalSecurityAndSettingsUnchanged=true;report.samePhysicalAppBackend=true;save();
  };
  const resources=()=>{
-  const profile=postgresProfileFromEnv(process.env),evidence=capturePostgresEvidence('db-1',profile);validatePostgresEvidence(evidence,{postgres:profile});
+  const profile=postgresProfileFromEnv(process.env),evidence=capturePostgresEvidence(singletonAdmission.databaseUnit,profile);validatePostgresEvidence(evidence,{postgres:profile});
   const text=execFileSync('docker',['exec',evidence.name,'cat','/sys/fs/cgroup/cpu.stat'],{encoding:'utf8',timeout:10000,maxBuffer:65536});
   return {evidence,cpu:Object.fromEntries(text.trim().split('\n').map(line=>{const [key,value]=line.split(/\s+/);return [key,Number(value)];})),scope:'Owned-container counters/cumulative peak; telemetry runs outside timed port calls.'};
  };
@@ -128,7 +128,7 @@ async function prepare(){
 }
 afterAll(async()=>{try{if(probe)await probe.unchanged();}finally{try{if(probe)await probe.single.client.end({timeout:5});}finally{await closeAll();}}});
 
-it.skipIf(!requested)('measures unchanged native initial/deep/search/organisation/empty ports over50k fictional employees',async()=>{
+it('measures unchanged native initial/deep/search/organisation/empty ports over50k fictional employees',async()=>{
  probe=await prepare();const p=probe,spy=p.install(),{b,ctx,expectedFirst,expectedLast,organisationTagSample}=p.fixture;
  const active=organisationTagSample.filter((_,index)=>(index+1)%5!==0).slice(0,25),last=expectedLast.at(-1)!;
  const scope={companyIds:[b.companyId],selectedId:last};
@@ -163,7 +163,7 @@ it.skipIf(!requested)('measures unchanged native initial/deep/search/organisatio
  }finally{p.stop();spy.mockRestore();await p.unchanged();}
 },300000);
 
-it.skipIf(!requested)('explains the exact unchanged canonical SQL objects with native principal proof and buffers',async()=>{
+it('explains the exact unchanged canonical SQL objects with native principal proof and buffers',async()=>{
  expect(probe).toBeTruthy();const p=probe!,spy=p.install();
  try{
   expect([...p.queries.keys()]).toHaveLength(8);

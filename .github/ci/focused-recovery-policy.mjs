@@ -91,9 +91,10 @@ export function verifyFocusedRecovery({plan,assessment,run,jobs,reports,focused,
  for(const unit of plan.units){
   const report=reports.find(r=>r.id===unit.id);
   if(!failed.has(unit.id)){
-   const result=verifyUnitReport(plan,report),source=assessment.reusable.find(r=>r.id===unit.id);
+   const result=verifyUnitReport(plan,report,{runId:run.id,attempt:1}),source=assessment.reusable.find(r=>r.id===unit.id);
    assert(source?.reportHash===hash(report),'Retained report changed');tests+=result.tests;units.push({id:unit.id,kind:'retained',files:result.files,tests:result.tests,reportHash:hash(report),source:source.source});continue;
   }
+  assert(!unit.singleton,'Singleton replacement requires its authenticated full-unit profile; generic focused recovery is not supported');
   assert(report.sha===plan.sha&&report.fingerprint===plan.fingerprint&&report.exitCode!==0,'Failed original unit identity differs');same(report.files,unit.files,'Original failed coverage differs');
   // Recover the complete failed process, never infer passes from a process with an unhandled error.
   const originalCases=new Map();

@@ -1,3 +1,4 @@
+import {admitSingletonTest} from './helpers/ci-singleton-admission';
 /** A concurrent real writer can disprove batching the processing audit's existing RC reads. */
 import {createHash,randomUUID} from 'node:crypto';
 import {writeFileSync} from 'node:fs';
@@ -56,7 +57,7 @@ it('observes an in-window real Claims draft commit between audit reads while nat
    expect(await barriers()).toEqual(beforeLocks);
    return {kind:'NATIVE_PROCESSING_READ_COMMITTED_CLAIM_INTERLEAVE',releaseEligible:false,mode:isolation.isolation,heldLocks:beforeLocks.map(l=>l.mode),claimBefore:oldClaim.rows,claimAfter:newClaim.rows,claimDigestChanged:true,otherDigestsUnchanged:true};
   });
-  if(process.env.AIHR_FOCUSED_EVIDENCE_DIR)writeFileSync(join(process.env.AIHR_FOCUSED_EVIDENCE_DIR,'payroll-audit-processing-rc.json'),JSON.stringify(receipt,null,2));
+  if(singletonAdmission.evidenceDirectory)writeFileSync(join(singletonAdmission.evidenceDirectory,'payroll-audit-processing-rc.json'),JSON.stringify(receipt,null,2));
  }finally{if(timer)clearTimeout(timer);await pending?.catch(()=>undefined);}
 },60000);
 
@@ -153,7 +154,7 @@ it.each([1,1001])('compares exact original/candidate/warm/restored count and Att
   await tx.execute(sql`set local timezone='UTC'`);
   const orig=await groupReads(tx,batchId,false);expect(orig.employments).toBe(count);expect(await groupReads(tx,batchId,true)).toEqual(orig);
  });
- if(process.env.AIHR_FOCUSED_EVIDENCE_DIR)writeFileSync(join(process.env.AIHR_FOCUSED_EVIDENCE_DIR,'payroll-audit-attendance-cte-'+members+'.json'),JSON.stringify({kind:'NATIVE_PROCESSING_ATTENDANCE_MEMBERSHIP_CTE',releaseEligible:false,members,phases,bodyRowsPerEmployment:4,compactDigestRowsOnly:true},null,2));
+ if(singletonAdmission.evidenceDirectory)writeFileSync(join(singletonAdmission.evidenceDirectory,'payroll-audit-attendance-cte-'+members+'.json'),JSON.stringify({kind:'NATIVE_PROCESSING_ATTENDANCE_MEMBERSHIP_CTE',releaseEligible:false,members,phases,bodyRowsPerEmployment:4,compactDigestRowsOnly:true},null,2));
 },600000);
 
 it('pins the actual clock writer until processing releases its native Access barrier',async()=>{
@@ -231,18 +232,16 @@ it('preserves the Claims audit digest when payroll membership and expense dates 
 }, 60000);
 
 const auditProfileFile = 'test/payroll-audit-processing-rc.test.ts';
-const focusedTests: unknown = JSON.parse(process.env.AIHR_FOCUSED_TESTS ?? '[]');
-const auditProfileRequested = process.env.GITHUB_ACTIONS === 'true'
- && Array.isArray(focusedTests) && focusedTests.length === 1 && focusedTests[0] === auditProfileFile;
+const singletonAdmission=admitSingletonTest(auditProfileFile);
 
-it.skipIf(!auditProfileRequested).each([
+it.each([
  {shape:'sparse', members:1, nonmembers:1000, nonmemberClaims:1000, memberClaims:0, evidence:'payroll-audit-claims-retained.json'},
  {shape:'dense', members:50, nonmembers:450, nonmemberClaims:2000, memberClaims:2000, evidence:'payroll-audit-claims-dense.json'},
 ])('profiles the $shape Claims audit hash against one million retained claims', async ({
  shape,members,nonmembers,nonmemberClaims,memberClaims,evidence,
 }) => {
  const {root, worker, batchId, b} = await loadAuditFixture(members);
- const evidenceDir = process.env.AIHR_FOCUSED_EVIDENCE_DIR;
+ const evidenceDir = singletonAdmission.evidenceDirectory;
  if (!evidenceDir) throw Error('Focused evidence directory is required');
  const [type] = await owner.db.insert(schema.claimType).values({
   tenantId: b.tenantId, code: 'AUDIT_RETAINED', name: 'Fictional retained claim',

@@ -56,7 +56,7 @@ export function validateProof({plan,reports,receipt,expectedPlan,p}){
  if(plan.runtime?.platform!=='linux'||plan.runtime?.arch!=='x64'||!/^22\./.test(plan.runtime?.node??''))reject('unexpected verification environment');
  if(!isDeepStrictEqual(plan,expectedPlan))reject('candidate classifier/manifest changed');
  requiredEvidence(expectedPlan);
- const verified=verifyReports(plan,reports);
+ const verified=verifyReports(plan,reports,{runId:p.runId,attempt:1});
  if(!isDeepStrictEqual(verified,receipt)||receipt.policyVersion!==CI_POLICY||receipt.migrationBase!==p.baseline)reject('receipt differs from complete executed evidence');
  return {policyVersion:CI_POLICY,tier:'ci',result:'PASS',sha:p.candidate,controller:p.controller,baseline:p.baseline,runId:p.runId,suiteFiles:receipt.suiteFiles,browserFiles:receipt.browserFiles,tests:receipt.tests,fingerprint:receipt.fingerprint};
 }

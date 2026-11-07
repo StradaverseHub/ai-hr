@@ -2,6 +2,9 @@
 import {execFileSync} from 'node:child_process';
 import {resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
+import {readFileSync,realpathSync,lstatSync} from 'node:fs';
+import {createHash} from 'node:crypto';
+import {singletonSources,assertSingletonCoverage} from './singleton-protocol.mjs';
 import {CI_POLICY} from './policy-version.mjs';
 import {inspectPdfToolScope} from './pdf-tool-scope.mjs';
 import {buildUnits,hash,CI_EXECUTION} from './manifest.mjs';
@@ -14,6 +17,7 @@ export function createPlan(cwd = process.cwd()) {
   const tracked = git('ls-files', 'test').split('\n');
   const suite = tracked.filter(f => /\.test\.ts$|\.dom\.test\.tsx$/.test(f)).sort();
   if (!suite.length) throw Error('Empty test inventory');
+  assertSingletonCoverage(suite,file=>readFileSync(resolve(cwd,file),'utf8'));
   const classifierRuntime=process.env.AIHR_CI_CLASSIFIER_RUNTIME??'tsx';
   if(!['tsx','native'].includes(classifierRuntime))throw Error('Unknown classifier runtime');
   const [major,minor]=process.versions.node.split('.').map(Number);
@@ -31,7 +35,11 @@ export function createPlan(cwd = process.cwd()) {
   const browsers = tracked.filter(f => f.endsWith('.browser.test.tsx')).sort();
   const pdfTooling=inspectPdfToolScope(cwd);
   const units = buildUnits(suite,groups,browsers);
-  const body = {schemaVersion: 2, policyVersion: CI_POLICY, sha, controller: process.env.AIHR_CI_CONTROL_HEAD ?? 'local', migrationBase: process.env.AIHR_CI_MIGRATION_BASE ?? null, runtime:{node:process.versions.node,platform:process.platform,arch:process.arch}, execution:CI_EXECUTION, pdfTooling, suite, units};
+  const singletonSourceHashes=Object.fromEntries(units.filter(u=>u.singleton).map(unit=>[unit.id,Object.fromEntries(singletonSources(unit).map(file=>{
+   const path=resolve(cwd,file);if(realpathSync(path)!==path||!lstatSync(path).isFile()||lstatSync(path).size>4194304)throw Error('Unsafe singleton source');
+   return [file,createHash('sha256').update(readFileSync(path)).digest('hex')];
+  }))]));
+  const body = {schemaVersion: 2, policyVersion: CI_POLICY, sha, controller: process.env.AIHR_CI_CONTROL_HEAD ?? 'local', migrationBase: process.env.AIHR_CI_MIGRATION_BASE ?? null, runtime:{node:process.versions.node,platform:process.platform,arch:process.arch}, execution:CI_EXECUTION, pdfTooling, singletonSources:singletonSourceHashes, suite, units};
   return {...body, fingerprint: hash(body)};
 }
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) console.log(JSON.stringify(createPlan(), null, 2));
