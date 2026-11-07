@@ -23,3 +23,33 @@ This change does not promise unlimited capacity, remove expensive queries, or ma
 Required evidence: real PostgreSQL reads complete while an exclusive tenant writer is held; new reads deny a committed revocation; an admitted read never mixes old permission with newly committed fields; standalone callbacks cannot write; borrowed commands retain their exclusive barrier; tenant/company/private-search isolation regressions pass. Then a production build and strict browser preflight must pass before rerunning load against the same candidate. A 200 response alone is not acceptance.
 
 Keep deployment on hold. The combined candidate also includes the separate notification processing-ledger migration; its populated upgrade, rollback and duplicate-delivery evidence is required independently. No production data or production resources are used by these hosted development checks.
+
+## Shared employee navigation choices
+
+The opt-in `readEmployeeChoices` port serves Attendance and Payroll rails without
+shipping the entire employee population to the browser. It retains the legacy
+valid-to-NULL, not-superseded assignment population and ordinary table RLS, including
+employee and manager actors. It is not the HR-only Workforce projection. Trusted
+empty company scope keeps the legacy RLS-only meaning; clients cannot post scope.
+The native principal, company narrowing, minimal rows, selected employment, total
+and organisation options share one enforced read-only snapshot. Selection is
+authorized independently of search/page filters so deep links remain reachable.
+Label descriptions require the same current administrator prerequisite as Payroll;
+Attendance retains its original name/code choice labels. Consumers still authorize
+their own module and detail/command purpose.
+
+Blank searches use native count and page limits. Nonempty searches retain exact
+ECMAScript trim/lower/includes matching: ASCII SQL candidates plus all non-ASCII
+name/code candidates are streamed in 512-row cursor batches and checked by the
+canonical JavaScript operation. The page retains only its requested rows and exact
+total; there is no population or match-ID ceiling. Distinct organisation options
+remain complete rather than silently clipped. This fallback bounds resident
+employee DTOs, not total scan work; Unicode-heavy search cost must be measured.
+
+The side-effect-free, same-origin POST transport keeps new raw search text out of
+URLs and access logs. Only the existing explicit `preservePicker` URL contract
+persists picker input. Debouncing, request abort and response identity checks avoid
+stale answers; executing database work finishes before its transaction rolls back
+or releases admission. Failures show retry, never a false empty population.
+Legacy local picker consumers and full batch/export populations stay unchanged
+until their owning pages explicitly adopt the bounded port.
