@@ -1,0 +1,13 @@
+{
+  "name": "Field Notes",
+  "scope": "mobile",
+  "mode": "operate",
+  "fonts": {"body": "Manrope", "section": "Newsreader"},
+  "themes": {
+    "light": {"background": "#ffffff", "text": "#111111", "muted": "#555555", "line": "#b8b8b8", "accent": "#c62716"},
+    "dark": {"background": "#101010", "text": "#f5f3ef", "muted": "#bcbab6", "line": "#686868", "accent": "#ff7561"}
+  },
+  "button": {"fill": "#d92d20", "text": "#ffffff", "minimumHeight": 48, "radius": 2},
+  "navigation": {"minimumHeight": 52, "activeIndicator": "underline"},
+  "layout": {"gutter": 20, "groupSeparation": 24, "surface": "open ruled groups"}
+}

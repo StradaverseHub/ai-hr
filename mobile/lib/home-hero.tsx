@@ -56,19 +56,19 @@ export function Tactile({ children, onPress, label, hint, style }: { children: R
 
 // ── Hero ──────────────────────────────────────────────────────────────────────────────────────────────────
 
-export function HomeHero({ name, unread, refreshToken }: { name: string | null; unread: number; refreshToken: number }) {
+export function HomeHero({ name, unread, refreshToken, companyName }: { name: string | null; unread: number; refreshToken: number; companyName?: string }) {
   const { palette } = useTenantDesign();
   const greeting = {morning:'greetMorning',afternoon:'greetAfternoon',evening:'greetEvening'}[partOfDay(Date.now())] as MessageKey;
   const first = name?.trim().split(/\s+/)[0] ?? null;
-  return <View style={{ backgroundColor: palette.bg, paddingTop: 12, paddingHorizontal: 20, gap: 16 }}>
-    <View style={{flexDirection:'row',alignItems:'center',justifyContent:'space-between'}}>
-      <Text style={{color:palette.muted,fontSize:16,flex:1}}>{first ? `${t(greeting).replace(/[,，]$/, '')}, ${first}` : t('helloNoName')}</Text>
+  return <View style={{ backgroundColor: palette.bg, paddingTop: 20, paddingHorizontal: 20, gap: 24 }}>
+    <View style={{gap:8}}>{companyName&&<Text style={{color:palette.text,fontSize:13,fontWeight:'600'}}>{companyName}</Text>}<View style={{flexDirection:'row',alignItems:'center',justifyContent:'space-between',gap:12}}>
+      <Text style={{color:palette.text,fontSize:42,fontWeight:'800',letterSpacing:-1.1,flex:1}}>{first ? `${t(greeting).replace(/[,，]$/, '')}, ${first}` : t('helloNoName')}</Text>
       <Tactile label={t('tabInbox')} onPress={() => router.navigate('/inbox' as Href)} style={{minWidth:48,minHeight:48,alignItems:'center',justifyContent:'center'}}>
         <Icon name="bell" color={palette.text} size={24}/>
         {unread>0&&<View style={{position:'absolute',right:6,top:6,width:8,height:8,borderRadius:4,backgroundColor:palette.accent}}/>}
       </Tactile>
     </View>
-    <ClockHeroCard refreshToken={refreshToken} />
+    </View><ClockHeroCard refreshToken={refreshToken} />
   </View>;
 }
 
@@ -96,13 +96,13 @@ function ClockHeroView({ view }: { view: HomeClockView }) {
   const uncertain=view.phase==='uncertain';
   const reviewing=view.phase==='review';
   const status=uncertain?t('clockUncertain'):view.busy?t('preparingClock'):today?.clockedIn?t('onTheClock'):t('offTheClock');
-  return <View style={{gap:16}}>
+  return <View style={{gap:14,borderTopWidth:1,borderBottomWidth:1,borderColor:palette.border,paddingVertical:20}}>
     {!today&&<LoadState loading={view.loading} hasData={false} error={view.error} onRetry={view.reload}/>}
     {today&&<>
       <Text style={{color:palette.text,fontSize:15}}>{fmtCalendarDate(today.date,false)}</Text>
       <View style={{flexDirection:'row',gap:10,alignItems:'center'}}>
-        <View style={{width:10,height:10,borderRadius:5,backgroundColor:uncertain?'#e7a335':today.clockedIn?'#65b800':palette.muted}}/>
-        <Text accessibilityLiveRegion="polite" style={{color:palette.text,fontSize:22,fontWeight:'700',flex:1}}>{status}</Text>
+        <View style={{width:10,height:10,borderRadius:5,backgroundColor:uncertain?'#e7a335':today.clockedIn?palette.text:palette.muted}}/>
+        <Text accessibilityLiveRegion="polite" style={{color:palette.text,fontSize:17,fontWeight:'600',flex:1}}>{status}</Text>
       </View>
       <DailySwitch working={today.clockedIn} seconds={worked} busy={view.busy} disabled={view.disabled||uncertain||reviewing} onPress={view.clock}/>
       {view.doneAt&&<Text accessibilityRole="alert" style={{color:palette.text,fontSize:15,textAlign:'center'}}>{t('clockRecorded')} · {clockTime(view.doneAt)}</Text>}
@@ -228,9 +228,9 @@ export function PayslipCard({ refreshToken }: { refreshToken: number }) {
 }
 
 export function SectionHeader({ title, action, onAction }: { title: string; action?: string; onAction?: () => void }) {
-  const { palette } = useTenantDesign();
+  const { palette, design } = useTenantDesign();
   return <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', minHeight: 32 }}>
-    <Text accessibilityRole="header" style={{ color: palette.text, fontSize: 19, fontWeight: '600', letterSpacing: -0.4 }}>{title}</Text>
+    <Text accessibilityRole="header" style={{ color: palette.text, fontSize: 28, fontWeight: '700', fontFamily: design.schemaVersion === 1 ? 'FieldEditorial' : undefined }}>{title}</Text>
     {action && onAction ? <Pressable accessibilityRole="button" accessibilityLabel={action} hitSlop={10} onPress={onAction} style={{ minHeight: 44, justifyContent: 'center' }}>
       <Text style={{ color: palette.accent, fontSize: 15, fontWeight: '600' }}>{action}</Text>
     </Pressable> : null}

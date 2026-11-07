@@ -12,7 +12,7 @@
  * Claims include recorded amounts, custom fields and protected receipt review.
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Linking, Pressable, TextInput, View } from 'react-native';
+import { TextInput, Linking, Pressable, View } from 'react-native';
 import { InAppAlert as Alert } from './in-app-alert';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
@@ -100,14 +100,34 @@ export function TaskRow({ item }: { item: TaskItemV2 }) {
   const { palette } = useTenantDesign();
   const summary = taskSummaryLine(item);
   const label = [t(KIND_LABEL[item.kind]), item.subject.name, summary].filter(Boolean).join(' · ');
-  const body = <Material style={{padding:16,gap:12}}>
-    <View style={{flexDirection:'row',alignItems:'center',justifyContent:'space-between',gap:12}}><StatusPill label={t(KIND_LABEL[item.kind])}/><Icon name="chevron" color={palette.muted} size={14}/></View>
-    <Text style={{color:palette.text,fontSize:19,fontWeight:'500',letterSpacing:-.3}}>{item.subject.name??t(KIND_LABEL[item.kind])}</Text>
-    {summary?<Text style={{color:palette.muted,fontSize:14,lineHeight:21}}>{summary}</Text>:null}
-    {!decidesNatively(item)&&<Text style={{color:palette.accent,fontSize:12}}>{t('openOnWeb')}</Text>}
-  </Material>;
-  return <Pressable accessibilityRole={decidesNatively(item)?'button':'link'} accessibilityLabel={decidesNatively(item)?label:`${t('openOnWeb')}: ${label}`} onPress={()=>decidesNatively(item)?router.push({pathname:'/approvals/[kind]/[id]',params:{kind:item.kind,id:item.id}}):openOnWeb(webPathOf(item))} style={({pressed})=>({marginBottom:12,opacity:pressed?0.8:1})}>{body}</Pressable>;
+  const body = <View style={{ paddingVertical: 20, gap: 7, borderBottomWidth: 1, borderColor: palette.border }}>
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+      <View style={{ flex: 1, gap: 7 }}>
+        <Text style={{ color: palette.text, fontSize: 18, fontWeight: '700' }}>{item.subject.name ?? t(KIND_LABEL[item.kind])}</Text>
+        <Text style={{ color: palette.text, fontSize: 14 }}>{t(KIND_LABEL[item.kind])}</Text>
+        {summary && <Text style={{ color: palette.muted, fontSize: 14, lineHeight: 21 }}>{summary}</Text>}
+      </View>
+      <Icon name="chevron" color={palette.text} size={16} />
+    </View>
+    {!decidesNatively(item) && <Text style={{ color: palette.accent, fontSize: 13 }}>{t('openOnWeb')}</Text>}
+  </View>;
+  return <Pressable accessibilityRole={decidesNatively(item) ? 'button' : 'link'} accessibilityLabel={decidesNatively(item) ? label : `${t('openOnWeb')}: ${label}`}
+    onPress={() => decidesNatively(item) ? router.push({ pathname: '/approvals/[kind]/[id]', params: { kind: item.kind, id: item.id } }) : openOnWeb(webPathOf(item))}
+    style={({ pressed }) => ({ minHeight: 56, opacity: pressed ? .7 : 1 })}>{body}</Pressable>;
 
+}
+
+/** A bounded preview uses the same authorized task owner as the full queue. */
+export function HomeApprovalQueue({ refreshToken }: { refreshToken: number }) {
+  const { signOut } = useSession();
+  const list = usePagedResource(TASKS, { native: 'expanded' }, keyOf, signOut);
+  useEffect(() => { if (refreshToken) list.refresh(); }, [refreshToken, list.refresh]);
+  return <View>
+    <LoadState loading={list.loading} hasData={list.items.length > 0} error={list.error} onRetry={list.retry} />
+    {list.items.slice(0, 3).map(item => <TaskRow key={keyOf(item)} item={item} />)}
+    {list.empty && <Muted>{t('approvalsEmpty')}</Muted>}
+    <Button title={t('approvalsTitle')} kind="quiet" onPress={() => router.navigate('/approvals')} />
+  </View>;
 }
 
 /** Every pending task, the web inbox's order. Offline: the rows already shown stay, labelled stale. */
@@ -120,7 +140,7 @@ export function ApprovalsScreen({ embedded = false }: { embedded?: boolean } = {
     <PagedList list={list} keyOf={keyOf} emptyText={t('approvalsEmpty')} contentContainerStyle={{ padding: 20, gap: 8, paddingBottom: 40 }}
       header={<View style={{ gap: 12 }}>
         {!embedded && <HeaderBack />}
-        <Title>{t('approvalsTitle')}</Title>
+        <Title>{t('fieldReviewTitle')}</Title>
         <View style={{flexDirection:'row',gap:8,paddingBottom:12}}><StatusPill label={t('pending')}/></View>
       </View>}
       renderItem={(item) => <TaskRow item={item} />} />
@@ -300,7 +320,7 @@ export function ApprovalDetailScreen({ kind, id }: { kind: string; id: string })
       {(needsReasonToReject || partial) && <>
         <Text style={{ color: palette.muted, fontSize: 14 }}>{t(partial ? 'approvalPartialReason' : 'approvalReason')}</Text>
         <TextInput accessibilityLabel={t(partial ? 'approvalPartialReason' : 'approvalReason')} value={reason} onChangeText={setReason} multiline maxLength={1000} editable={!sent}
-          placeholderTextColor={palette.muted} style={{ color: palette.text, minHeight: 48, borderWidth: 1, borderColor: palette.border, borderRadius: radius, padding: 12, fontSize: 16, textAlignVertical: 'top' }} />
+          placeholderTextColor={palette.muted} style={[{ fontFamily: 'FieldRegular' }, { color: palette.text, minHeight: 48, borderWidth: 1, borderColor: palette.border, borderRadius: radius, padding: 12, fontSize: 16, textAlignVertical: 'top' }]} />
       </>}
 
       {sent?.phase === 'uncertain' && <Card>

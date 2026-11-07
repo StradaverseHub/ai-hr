@@ -12,7 +12,7 @@
  * applied twice. Only CHANGED fields are sent.
  */
 import { useEffect, useRef, useState } from 'react';
-import { Pressable, TextInput, View } from 'react-native';
+import { TextInput, Pressable, View } from 'react-native';
 import { InAppAlert as Alert } from './in-app-alert';
 import DateTimePicker from '@expo/ui/community/datetime-picker';
 import { router } from 'expo-router';
@@ -68,7 +68,7 @@ function ChoiceField({ field, label, value, disabled, onChange }: { field: Profi
     <Button title={current} accessibilityLabel={`${label}: ${current}`} kind="quiet" disabled={disabled} onPress={() => setOpen(!open)} />
     {open && !disabled && <View style={{ gap: 4 }}>
       {options.length > 12 && <TextInput accessibilityLabel={t('profileSearch')} placeholder={t('profileSearch')} value={query} onChangeText={setQuery} autoCorrect={false}
-        placeholderTextColor={palette.muted} style={{ color: palette.text, minHeight: 48, borderWidth: 1, borderColor: palette.border, borderRadius: radius, padding: 12, fontSize: 16 }} />}
+        placeholderTextColor={palette.muted} style={[{ fontFamily: 'FieldRegular' }, { color: palette.text, minHeight: 48, borderWidth: 1, borderColor: palette.border, borderRadius: radius, padding: 12, fontSize: 16 }]} />}
       {shown.map((o) => <Pressable key={o.value} accessibilityRole="radio" accessibilityLabel={o.label} accessibilityState={{ checked: o.value === value }}
         onPress={() => { onChange(o.value); setOpen(false); setQuery(''); }} style={{ minHeight: 44, justifyContent: 'center' }}>
         <Text style={{ color: o.value === value ? palette.accent : palette.text, fontSize: 16 }}>{o.label}</Text>
@@ -94,7 +94,7 @@ function FieldEditor({ field, label, draft, disabled, onEdit, onUndo }: { field:
         : <TextInput accessibilityLabel={label} editable={!disabled} value={value ?? ''} maxLength={4000} autoCorrect={false}
           autoCapitalize={field.kind === 'email' ? 'none' : 'words'} keyboardType={field.kind === 'email' ? 'email-address' : field.kind === 'phone' ? 'phone-pad' : 'default'}
           onChangeText={(text) => onEdit(text === '' ? null : text)}
-          style={{ color: palette.text, minHeight: 48, borderWidth: 1, borderColor: palette.border, borderRadius: radius, padding: 12, fontSize: 16 }} />}
+          style={[{ fontFamily: 'FieldRegular' }, { color: palette.text, minHeight: 48, borderWidth: 1, borderColor: palette.border, borderRadius: radius, padding: 12, fontSize: 16 }]} />}
     <Muted>{t(field.applies === 'immediately' ? 'profileAppliesNow' : 'profileAppliesApproval')}</Muted>
     {field.pending && <Text style={{ color: palette.accent, fontSize: 14 }}>{t('profilePendingNote')}</Text>}
     <View style={{ flexDirection: 'row', gap: 8 }}>

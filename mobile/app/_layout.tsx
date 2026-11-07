@@ -1,3 +1,5 @@
+import { PublicHeader } from '../lib/public-header';
+import { DesignText as Text } from '../lib/design';
 import { SignedInShell } from '../lib/app-shell';
 import {WidgetLaunchObserver} from '../lib/widget-launch';
 import { JourneyDraftProvider, useJourneyDrafts } from '../lib/journey-drafts';
@@ -6,9 +8,11 @@ import { Atmosphere, PublicDesignProvider, TenantDesignProvider, useTenantDesign
 import { colorContrast } from '../../lib/mobile-composition';
 import { Stack, router } from 'expo-router';
 import { useEffect } from 'react';
+import { useFonts } from 'expo-font';
+import { FIELD_NOTES_FONTS } from '../lib/field-typography';
 import { StatusBar } from 'expo-status-bar';
-import { ActivityIndicator, Alert, StyleSheet, Text, View } from 'react-native';
-import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { ActivityIndicator, Alert, ScrollView, StyleSheet, View } from 'react-native';
+import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { t, type MessageKey } from '../lib/i18n';
 import { Icon } from '../lib/icon';
 import { biometricName, useLockCapability } from '../lib/app-lock';
@@ -68,7 +72,9 @@ function LockScreen({ error, unlocking, unlock, signOut }: { error: boolean; unl
   const icon = name === 'faceId' || name === 'faceUnlock' ? 'faceId' : name === 'touchId' || name === 'fingerprint' ? 'touchId' : 'lock';
   const label: MessageKey = ({ faceId: 'unlockWithFaceId', faceUnlock: 'unlockWithFace', touchId: 'unlockWithTouchId', fingerprint: 'unlockWithFingerprint', iris: 'unlockWithIris' } as Record<string, MessageKey>)[name] ?? 'unlockButton';
   return (
-      <View style={[styles.center, { backgroundColor: palette.bg }]}>
+      <SafeAreaView style={{ flex: 1, backgroundColor: palette.bg }}>
+      <ScrollView contentContainerStyle={{ flexGrow: 1, padding: 24, gap: 20 }}>
+        <PublicHeader />
         <Atmosphere strong />
         <View style={[styles.lockBadge, { backgroundColor: palette.card }]}><Icon name={icon} color={palette.accent} size={44} /></View>
         <Text style={[styles.lockTitle, { color: palette.text }]}>{t('unlockTitle')}</Text>
@@ -78,12 +84,14 @@ function LockScreen({ error, unlocking, unlock, signOut }: { error: boolean; unl
           <Button title={t(label)} disabled={unlocking} onPress={() => void unlock()} />
           <Button title={t('signOut')} onPress={() => {const owner=authGeneration();Alert.alert(t('signOut'),t('pendingLockedLogout'),[{text:t('cancel'),style:'cancel'},{text:t('signOut'),onPress:()=>{if(authGeneration()===owner)void signOut();}}]);}} kind="quiet" />
         </View>
-      </View>
+      </ScrollView></SafeAreaView>
     );
 }
 
 export default function RootLayout() {
   const { language } = useDisplayPrefs();
+  const [fontsReady, fontError] = useFonts(FIELD_NOTES_FONTS);
+  if (!fontsReady && !fontError) return <View style={{ flex: 1, backgroundColor: colors.bg, justifyContent: 'center' }}><ActivityIndicator accessibilityLabel={t('loading')} /></View>;
   return (
     <SafeAreaProvider>
       <StatusBar style="dark" />
@@ -99,9 +107,9 @@ export default function RootLayout() {
 
 const styles = StyleSheet.create({
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.bg, padding: 24 },
-  lockTitle: { fontSize: 24, fontWeight: '800', color: colors.text, marginBottom: 8, textAlign: 'center' },
-  lockBody: { fontSize: 15, color: colors.muted, marginBottom: 28, textAlign: 'center', lineHeight: 21 },
-  lockBadge: { width: 96, height: 96, borderRadius: 48, backgroundColor: '#1F5EFF1A', alignItems: 'center', justifyContent: 'center', marginBottom: 20 },
+  lockTitle: { fontSize: 44, fontWeight: '800', letterSpacing: -1.1, color: colors.text, marginBottom: 8 },
+  lockBody: { fontSize: 15, color: colors.muted, marginBottom: 20, lineHeight: 22 },
+  lockBadge: { width: 64, height: 64, borderRadius: 0, alignItems: 'center', justifyContent: 'center', marginBottom: 20 },
   actions: { alignSelf: 'stretch', gap: 8 },
   problem: { color: colors.danger, marginBottom: 12 },
 });

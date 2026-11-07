@@ -1,6 +1,7 @@
 /** Shared store app, tenant-owned presentation. Nothing is persisted across accounts or locks. */
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { AccessibilityInfo, AppState, Image, Text as NativeText, StyleSheet, Platform, type TextProps, useColorScheme, View } from 'react-native';
+import { fieldTypography } from './field-typography';
 import { DEFAULT_MOBILE_DESIGN, mobileSurfaceIsDark, mobilePalette, parseMobileDesign, type MobileDesign, type MobileBackgrounds } from '../../lib/mobile-design';
 import { useApi } from './api';
 import { nativeMobilePalette } from './daily-switch-theme';
@@ -42,8 +43,9 @@ export function DesignText({ style, ...props }: TextProps) {
   const size = typeof base.fontSize === 'number' ? base.fontSize : 14;
   const fontSize = c ? size >= 24 ? size * c.typography.headingSize / 29 : size * c.typography.bodySize / 14 : size;
   const family = !c || c.typography.family === 'sans' ? undefined : c.typography.family === 'serif' ? Platform.OS === 'ios' ? 'Georgia' : 'serif' : Platform.OS === 'ios' ? 'Menlo' : 'monospace';
-  return <NativeText {...props} style={[style, { fontSize, ...(family ? { fontFamily: family } : {}), ...(align === 'center' ? { textAlign: 'center' } : {}) }]} />;
+  return <NativeText {...props} style={[style, fieldTypography(base), { fontSize, ...(family ? { fontFamily: family } : {}), ...(align === 'center' ? { textAlign: 'center' } : {}) }]} />;
 }
+
 export function TenantSurface({ band, align, children }: { band: boolean; align: 'start' | 'center'; children: ReactNode }) {
   const parent = useTenantDesign(), p = parent.palette;
   return <Ctx.Provider value={band ? { ...parent, palette: { ...p, bg: p.button, card: p.button, text: p.onButton, muted: p.onButton, accent: p.onButton, border: p.onButton } } : parent}><Align.Provider value={align}>{children}</Align.Provider></Ctx.Provider>;
@@ -52,9 +54,9 @@ export function TenantBrand() {
   const { design, palette } = useTenantDesign();
   // Older servers can still publish the former default product name. Company branding stays intact.
   const brandName = design.brandName === 'AIHR' || design.brandName === 'AI HR' ? 'OneHR+' : design.brandName;
-  return <View style={{ flexDirection: 'row', alignItems: 'center', gap: 9, marginBottom: 12 }}>
-    <Image accessible={false} source={design.logo ? { uri: design.logo } : require('../assets/onehr-icon.png')} style={{ width: design.logo ? 28 : 44, height: design.logo ? 28 : 44, borderRadius: design.logo ? 0 : 12 }} resizeMode="contain" />
-    <DesignText style={{ color: palette.text, fontSize: design.schemaVersion === 1 ? 28 : 14, fontWeight: '700', flexShrink: 1 }}>{brandName}{brandName === 'OneHR+' ? null : <DesignText style={{ color: palette.accent }}>.</DesignText>}</DesignText>
+  return <View style={{ flexDirection: 'row', alignItems: 'center', gap: 9 }}>
+    {design.logo && <Image accessible={false} source={{ uri: design.logo }} style={{ width: 28, height: 28 }} resizeMode="contain" />}
+    <DesignText style={{ color: palette.text, fontSize: 24, fontWeight: '800', letterSpacing: -.7, flexShrink: 1 }}>{brandName}</DesignText>
   </View>;
 }
 

@@ -3,6 +3,10 @@ import type { MessageKey } from '../i18n';
 import type { CompanyCopy } from '../company-connection';
 
 const messages: Record<MessageKey, string> = {
+  fieldLeaveTitle: "விடுப்பு\nநேரம்.",
+  fieldMeTitle: "உங்கள்\nபணியிடம்.",
+  fieldReviewTitle: "உங்கள்\nபரிசீலனைக்கு.",
+  fieldSignInTitle: "மீண்டும்\nவரவேற்கிறோம்.",
   widgetClockedIn: "வருகை பதிவு செய்யப்பட்டது",
   widgetClockedOut: "வெளியேற்றம் பதிவு செய்யப்பட்டது",
   widgetRefresh: "புதுப்பிக்க செயலியைத் திறக்கவும்",

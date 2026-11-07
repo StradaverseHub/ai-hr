@@ -12,7 +12,7 @@
  * reference. The draft is held in memory only (D10) and is gone when the screen closes.
  */
 import { useRef, useState } from 'react';
-import { Pressable, TextInput, View } from 'react-native';
+import { TextInput, Pressable, View } from 'react-native';
 import { InAppAlert as Alert } from './in-app-alert';
 import { router } from 'expo-router';
 import { randomUUID } from 'expo-crypto';
@@ -40,7 +40,7 @@ function useInput() {
   return (label: string, value: string, change: (v: string) => void, disabled: boolean, maxLength: number) => <View style={{ gap: 6 }}>
     <Text style={{ color: palette.muted, fontSize: 14 }}>{label}</Text>
     <TextInput accessibilityLabel={label} editable={!disabled} value={value} onChangeText={change} multiline maxLength={maxLength} placeholderTextColor={palette.muted}
-      style={{ color: palette.text, minHeight: 48, borderWidth: 1, borderColor: palette.border, borderRadius: radius, padding: 12, fontSize: 16, textAlignVertical: 'top' }} />
+      style={[{ fontFamily: 'FieldRegular' }, { color: palette.text, minHeight: 48, borderWidth: 1, borderColor: palette.border, borderRadius: radius, padding: 12, fontSize: 16, textAlignVertical: 'top' }]} />
   </View>;
 }
 

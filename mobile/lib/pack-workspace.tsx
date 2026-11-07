@@ -1,5 +1,5 @@
 import {useCallback,useEffect,useRef,useState} from 'react';
-import { FlatList, View, TextInput } from 'react-native';
+import { TextInput, FlatList, View } from 'react-native';
 import { InAppAlert as Alert } from './in-app-alert';
 import {SafeAreaView} from 'react-native-safe-area-context';
 import {router,Redirect,useFocusEffect} from 'expo-router';
@@ -44,7 +44,7 @@ export function PackWorkspaceScreen({kind,id}:{kind:PackWorkspaceKind;id:string}
    if(f.kind==='boolean')return <Chip key={f.key} title={`${v===true?'✓ ':''}${f.label}`} selected={v===true} disabled={disabled} onPress={()=>change(f.key,v!==true)}/>;
    if(f.kind==='date')return <PickerField key={f.key} label={f.label} mode="date" value={typeof v==='string'?v:undefined} today={w?.today??'2000-01-01'} disabled={disabled} onChange={next=>change(f.key,next)}/>;
    if(f.kind==='choice')return <Card key={f.key}><Muted>{f.label}</Muted>{f.options?.map(o=><Chip key={o.value} title={o.label} selected={String(v)===o.value} disabled={disabled} onPress={()=>change(f.key,o.value)}/>)}</Card>;
-   return <View key={f.key} style={{gap:8}}><Muted>{f.label}</Muted><TextInput accessibilityLabel={f.label} value={v==null?'':String(v)} onChangeText={next=>change(f.key,next)} editable={!disabled} keyboardType={f.kind==='number'?'decimal-pad':'default'} multiline={f.kind==='text'} maxLength={4000} style={{color:palette.text,borderWidth:1,borderColor:palette.border,borderRadius:12,padding:12,minHeight:48,fontSize:16}}/></View>;
+   return <View key={f.key} style={{gap:8}}><Muted>{f.label}</Muted><TextInput accessibilityLabel={f.label} value={v==null?'':String(v)} onChangeText={next=>change(f.key,next)} editable={!disabled} keyboardType={f.kind==='number'?'decimal-pad':'default'} multiline={f.kind==='text'} maxLength={4000} style={[{ fontFamily: 'FieldRegular' }, {color:palette.text,borderWidth:1,borderColor:palette.border,borderRadius:12,padding:12,minHeight:48,fontSize:16}]}/></View>;
   })}{!pending&&<Button title={t('confirmAction')} disabled={!w||read.loading||!!read.error||!valuesOf(action)} onPress={confirm}/>}</>}
   {pending?.uncertain&&<Card><Muted>{t('approvalUncertain')}</Muted><Button title={t('approvalRetry')} onPress={()=>void send(pending.body)}/></Card>}{pending&&!pending.uncertain&&<Muted>{t('approvalSending')}</Muted>}
  </View>;

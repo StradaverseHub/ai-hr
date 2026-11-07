@@ -9,7 +9,7 @@
  * returns its first answer instead of applying it twice. Nothing is queued or persisted (D10: in memory only).
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Pressable, TextInput, View } from 'react-native';
+import { TextInput, Pressable, View } from 'react-native';
 import { InAppAlert as Alert } from './in-app-alert';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
@@ -250,7 +250,7 @@ export function LeaveDetailScreen({ id }: { id: string }) {
         })}
         <Text style={{ color: palette.muted, fontSize: 14 }}>{t('cancelReasonOptional')}</Text>
         <TextInput accessibilityLabel={t('cancelReasonOptional')} value={picking.reason} onChangeText={(reason) => setPicking((p) => p && { ...p, reason })} multiline maxLength={2000}
-          placeholderTextColor={palette.muted} style={{ color: palette.text, minHeight: 48, borderWidth: 1, borderColor: palette.border, borderRadius: radius, padding: 12, fontSize: 16, textAlignVertical: 'top' }} />
+          placeholderTextColor={palette.muted} style={[{ fontFamily: 'FieldRegular' }, { color: palette.text, minHeight: 48, borderWidth: 1, borderColor: palette.border, borderRadius: radius, padding: 12, fontSize: 16, textAlignVertical: 'top' }]} />
         <Button title={t('cancelDatesReview')} disabled={!online || busy || picking.dates.length === 0} onPress={confirmCancel} />
         <Button title={t('cancel')} kind="quiet" onPress={() => setPicking(null)} />
       </Card>}

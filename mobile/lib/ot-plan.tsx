@@ -82,7 +82,7 @@ export function OvertimePlanScreen() {
   const field = (label: string, value: string, change: (v: string) => void, max: number) => <View style={{ gap: 6 }}>
     <Text style={{ color: palette.muted, fontSize: 14 }}>{label}</Text>
     <TextInput accessibilityLabel={label} editable={!locked} value={value} onChangeText={change} multiline maxLength={max} placeholderTextColor={palette.muted}
-      style={{ color: palette.text, minHeight: 48, borderWidth: 1, borderColor: palette.border, borderRadius: radius, padding: 12, fontSize: 16, textAlignVertical: 'top' }} />
+      style={[{ fontFamily: 'FieldRegular' }, { color: palette.text, minHeight: 48, borderWidth: 1, borderColor: palette.border, borderRadius: radius, padding: 12, fontSize: 16, textAlignVertical: 'top' }]} />
   </View>;
 
   if (sent) return <Screen back>

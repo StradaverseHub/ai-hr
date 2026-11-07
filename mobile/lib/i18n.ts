@@ -20,6 +20,10 @@ import th from './locales/th';
 import vi from './locales/vi';
 
 const en = {
+  fieldLeaveTitle: "Time\naway.",
+  fieldMeTitle: "Your\nworkspace.",
+  fieldReviewTitle: "For your\nreview.",
+  fieldSignInTitle: "Good to\nsee you.",
   widgetClockedIn: "Clocked in",
   widgetClockedOut: "Clocked out",
   widgetRefresh: "Open app to refresh",
@@ -888,6 +892,10 @@ const en = {
 export type MessageKey = keyof typeof en;
 
 const ms: Record<MessageKey, string> = {
+  fieldLeaveTitle: "Masa\nbercuti.",
+  fieldMeTitle: "Ruang kerja\nanda.",
+  fieldReviewTitle: "Untuk\nsemakan anda.",
+  fieldSignInTitle: "Selamat\nkembali.",
   widgetClockedIn: "Telah masuk",
   widgetClockedOut: "Telah keluar",
   widgetRefresh: "Buka aplikasi untuk muat semula",

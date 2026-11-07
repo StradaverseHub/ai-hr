@@ -1,5 +1,5 @@
 name: mobile-ios-simulator-review
-run-name: iOS unsigned device build · ${{ github.sha }}
+run-name: Field Notes iOS simulator build · ${{ github.sha }}
 on:
   push:
     branches: [codex/mobile-store-readiness-20261101]
@@ -36,14 +36,14 @@ jobs:
           node-version: '22.23.3'
           cache: npm
           cache-dependency-path: mobile/package-lock.json
-      - name: Compile SDK 58 device app and widget without signing credentials
+      - name: Compile Field Notes simulator app and widget
         run: bash .github/ci/native-ios-simulator-review.sh
       - name: Retain review artifact and source manifest briefly
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: onehr-ios-device-unsigned-${{ github.sha }}
+          name: onehr-ios-field-notes-${{ github.sha }}
           path: |
-            ${{ runner.temp }}/onehr-ios-review/OneHR-device-unsigned.zip
+            ${{ runner.temp }}/onehr-ios-review/OneHR-simulator.zip
             ${{ runner.temp }}/onehr-ios-review/SHA256SUMS.txt
             ${{ runner.temp }}/onehr-ios-review/source.txt
           if-no-files-found: error

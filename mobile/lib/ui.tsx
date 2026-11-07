@@ -15,12 +15,12 @@ import { Material, alpha } from './visual';
 import { PressSurface } from './motion';
 
 export const colors = {
-  bg: '#f3f7f4',
+  bg: '#ffffff',
   card: '#FFFFFF',
-  text: '#14251b',
-  muted: '#52665a',
-  border: '#ccd8d0',
-  accent: '#176747',
+  text: '#111111',
+  muted: '#555555',
+  border: '#b8b8b8',
+  accent: '#c62716',
   warn: '#9A5B00',
   danger: '#B42318',
 } as const;
@@ -70,13 +70,13 @@ export function Title({ children }: { children: ReactNode }) {
 }
 
 export function SectionLabel({ children }: { children: ReactNode }) {
-  const { palette } = useTenantDesign();
-  return <Text style={[styles.section, { color: palette.muted }]}>{children}</Text>;
+  const { palette, design } = useTenantDesign();
+  return <Text style={[styles.section, { color: palette.text, fontFamily: design.schemaVersion === 1 ? 'FieldEditorial' : undefined }]}>{children}</Text>;
 }
 
 export function Card({ children }: { children: ReactNode }) {
   const { palette, design } = useTenantDesign();
-  return <Material style={[styles.card, { borderRadius: design.schemaVersion === 2 ? design.composition.layout.radius : design.corners === 'soft' ? 24 : 3 }]}>{children}</Material>;
+  return <Material style={[styles.card, { borderRadius: design.schemaVersion === 2 ? design.composition.layout.radius : 0 }]}>{children}</Material>;
 }
 
 export function Row({ label, value, strong = false }: { label: string; value: string; strong?: boolean }) {
@@ -99,22 +99,22 @@ export function Muted({ children }: { children: ReactNode }) {
  * disabled fade turned the tenant colour into a different tint; pass `selected` for assistive technology instead.
  * Every button is at least 44×44 pt with side padding, so a one-glyph "‹" is a touch target, not a sliver.
  */
-export function Button({ title, onPress, kind = 'primary', disabled = false,accessibilityLabel,selected }: { title: string; onPress: () => void; kind?: 'primary' | 'quiet'; disabled?: boolean;accessibilityLabel?:string;selected?:boolean }) {
+export function Button({ title, onPress, kind = 'primary', disabled = false, accessibilityLabel, selected }: { title: string; onPress: () => void; kind?: 'primary' | 'quiet'; disabled?: boolean; accessibilityLabel?: string; selected?: boolean }) {
   const { palette, design } = useTenantDesign();
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={accessibilityLabel}
-      accessibilityState={selected === undefined ? { disabled } : { disabled, selected }}
-      disabled={disabled}
-      onPress={onPress}
-      style={{ minHeight: 52, minWidth: 48, marginTop: 4 }}
-    >
-      {({ pressed }) => <PressSurface pressed={pressed} disabled={disabled} style={[styles.button, { backgroundColor: design.schemaVersion === 2 && design.composition.layout.button !== 'solid' ? design.composition.layout.button === 'soft' ? palette.card : 'transparent' : palette.button, experimental_backgroundImage: kind === 'primary' && design.schemaVersion !== 2 ? `linear-gradient(155deg, ${palette.button} 0%, ${palette.button} 100%)` : undefined, borderColor: palette.text, borderWidth: design.schemaVersion === 2 && design.composition.layout.button === 'outline' ? 1 : 0, borderRadius: design.schemaVersion === 2 ? design.composition.layout.radius : design.corners === 'soft' ? 14 : 6, ...(kind === 'primary' && design.schemaVersion === 1 ? {boxShadow:'inset 0px 1px 1px rgba(255,255,255,0.55), 0px 4px 0px #30362a',borderWidth:1,borderColor:'#657a0b'} : {}) }, kind === 'quiet' && styles.buttonQuiet, kind === 'quiet' && { borderColor: palette.border }, (pressed || disabled) && { opacity: 0.7 }]} >
-      <Text style={[styles.buttonText, { color: design.schemaVersion !== 2 || design.composition.layout.button === 'solid' ? palette.onButton : palette.text }, kind === 'quiet' && [styles.buttonTextQuiet, { color: palette.accent }]]}>{title}</Text>
-      </PressSurface>}
-    </Pressable>
-  );
+  const outlined = kind === 'quiet' || (design.schemaVersion === 2 && design.composition.layout.button !== 'solid');
+  return <Pressable accessibilityRole="button" accessibilityLabel={accessibilityLabel}
+    accessibilityState={selected === undefined ? { disabled } : { disabled, selected }}
+    disabled={disabled} onPress={onPress}
+    style={({ pressed }) => ({
+      minHeight: 48, minWidth: 48, paddingVertical: 13, paddingHorizontal: 16,
+      marginTop: 4, alignItems: 'center', justifyContent: 'center',
+      borderRadius: design.schemaVersion === 2 ? design.composition.layout.radius : 2,
+      borderWidth: outlined ? 1 : 0, borderColor: palette.border,
+      backgroundColor: outlined ? 'transparent' : palette.button,
+      opacity: disabled ? .55 : pressed ? .75 : 1,
+    })}>
+    <Text style={{ color: outlined ? palette.text : palette.onButton, fontSize: 16, fontWeight: '700', textAlign: 'center' }}>{title}</Text>
+  </Pressable>;
 }
 
 /**
@@ -236,9 +236,9 @@ export function fmtMoney(v: string): string {
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
   scroll: { padding: 20, paddingBottom: 32, gap: 18 },
-  title: { fontSize: 28, fontWeight: '600', color: colors.text, marginBottom: 4 },
-  section: { fontSize: 17, fontWeight: '600', color: colors.muted, marginTop: 14 },
-  card: { borderRadius: 14, padding: 20, gap: 12 },
+  title: { fontSize: 42, fontWeight: '800', letterSpacing: -1.1, color: colors.text, marginBottom: 4 },
+  section: { fontSize: 27, fontWeight: '700', color: colors.text, marginTop: 20 },
+  card: { borderRadius: 0, paddingVertical: 18, paddingHorizontal: 0, gap: 12 },
   row: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', gap: 12 },
   rowLabel: { fontSize: 15, color: colors.muted, flexShrink: 1 },
   rowValue: { fontSize: 15, flexShrink: 1, textAlign: 'right', color: colors.text, fontVariant: ['tabular-nums'] },
@@ -249,7 +249,7 @@ const styles = StyleSheet.create({
   buttonQuiet: { backgroundColor: 'transparent', borderWidth: 1, borderColor: colors.border },
   buttonText: { color: '#FFFFFF', fontSize: 16, fontWeight: '600' },
   buttonTextQuiet: { color: colors.accent },
-  chip: { minHeight: 44, minWidth: 44, paddingHorizontal: 12, borderWidth: 1, borderRadius: 999, alignItems: 'center', justifyContent: 'center' },
+  chip: { minHeight: 44, minWidth: 44, paddingHorizontal: 12, borderWidth: 1, borderRadius: 2, alignItems: 'center', justifyContent: 'center' },
   back: { alignSelf: 'flex-start', width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center' },
-  listRow: { flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 52, paddingVertical: 12, borderBottomWidth: 1 },
+  listRow: { flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 56, paddingVertical: 16, borderBottomWidth: 1 },
 });

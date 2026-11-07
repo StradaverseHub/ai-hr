@@ -45,14 +45,14 @@ export function InAppAlertBoundary({ children }: { children: ReactNode }) {
   return <View style={{ flex: 1 }}>
     <View style={{ flex: 1 }} pointerEvents={dialog ? 'none' : 'auto'} importantForAccessibility={dialog ? 'no-hide-descendants' : 'auto'}>{children}</View>
     {dialog && <View accessibilityViewIsModal importantForAccessibility="yes" style={{ position: 'absolute', top: 0, bottom: 0, left: 0, right: 0, zIndex: 1000, padding: 20, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.60)' }}>
-      <View style={{ width: '100%', maxWidth: 560, maxHeight: '85%', padding: 20, gap: 16, borderRadius: 20, borderWidth: 1, borderColor: palette.border, backgroundColor: palette.card }}>
+      <View style={{ width: '100%', maxWidth: 560, maxHeight: '85%', padding: 20, gap: 16, borderRadius: 2, borderWidth: 1, borderColor: palette.border, backgroundColor: palette.card }}>
         <Text accessibilityRole="header" style={{ color: palette.text, fontSize: 22, fontWeight: '600' }}>{dialog.title}</Text>
         {!!dialog.message && <ScrollView style={{ flexShrink: 1 }} contentContainerStyle={{ paddingBottom: 4 }}><Text style={{ color: palette.text, fontSize: 16, lineHeight: 24 }}>{dialog.message}</Text></ScrollView>}
         <View style={{ gap: 8 }}>{dialog.buttons.map((button, index) => {
           const primary = button.style !== 'cancel' && button.style !== 'destructive';
           const text = button.text ?? t('pickerDone');
           return <Pressable key={`${dialog.id}:${index}`} accessibilityRole="button" accessibilityLabel={text} onPress={() => dialogs.press(dialog.id, index)}
-            style={({ pressed }) => ({ minHeight: 52, padding: 12, justifyContent: 'center', alignItems: 'center', borderRadius: 12, borderWidth: 1, borderColor: palette.border, opacity: pressed ? .7 : 1, backgroundColor: primary ? palette.button : palette.card })}>
+            style={({ pressed }) => ({ minHeight: 52, padding: 12, justifyContent: 'center', alignItems: 'center', borderRadius: 2, borderWidth: 1, borderColor: palette.border, opacity: pressed ? .7 : 1, backgroundColor: primary ? palette.button : palette.card })}>
             <Text style={{ fontSize: 16, fontWeight: '600', textAlign: 'center', color: button.style === 'destructive' ? appearance === 'dark' ? '#ffb4ab' : '#b42318' : primary ? palette.onButton : palette.text }}>{text}</Text>
           </Pressable>;
         })}</View>

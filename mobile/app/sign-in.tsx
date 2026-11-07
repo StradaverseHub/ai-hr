@@ -1,3 +1,5 @@
+import { PublicHeader } from '../lib/public-header';
+import { DesignText as Text } from '../lib/design';
 import { InternalSignIn } from '../lib/internal-sign-in';
 import { fetch as nativeFetch } from 'expo/fetch';
 /**
@@ -9,7 +11,7 @@ import * as Crypto from 'expo-crypto';
 import { Redirect, router } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';
 import { useRef, useState } from 'react';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ScrollView, StyleSheet, View } from 'react-native';
 import { assertAuthGeneration, beginSignIn, completeSignIn, discovery, redirectUri } from '../lib/auth';
 import { companyCopy, useCompanyConnection } from '../lib/company-connection';
 import { verifyCompanyServer } from '../lib/connection-probe';
@@ -78,7 +80,7 @@ function ProviderSignIn() {
 
   return (
     <View style={{ flex: 1, backgroundColor: palette.bg }}><SignInBackground /><ScrollView contentContainerStyle={styles.wrap}>
-      <Text style={styles.brand}>{t('appName')}</Text>
+      <PublicHeader />
       <Text style={styles.title}>{t('signInTitle')}</Text>
       <Text style={styles.body}>{t('signInBody')}</Text>
       {company&&<><Text style={styles.body}>{company.name} · {new URL(company.apiOrigin).hostname}</Text><Button title={companyCopy().change} kind="quiet" disabled={busy} onPress={()=>router.push('/company')}/></>}
@@ -97,9 +99,9 @@ function ProviderSignIn() {
 }
 
 const providerStyles = (palette: {bg:string;text:string;muted:string;accent:string}) => StyleSheet.create({
-  wrap: { flexGrow: 1, justifyContent: 'center', padding: 24, gap: 24 },
+  wrap: { flexGrow: 1, padding: 24, paddingTop: 56, gap: 24 },
   brand: { fontSize: 15, fontWeight: '700', color: palette.accent, textAlign: 'center' },
-  title: { fontSize: 34, fontWeight: '700', color: palette.text },
+  title: { fontSize: 44, fontWeight: '800', letterSpacing: -1.1, color: palette.text },
   body: { fontSize: 16, color: palette.muted, marginBottom: 12 },
   problem: { fontSize: 14, color: palette.text },
 });

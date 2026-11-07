@@ -42,15 +42,15 @@ export default function Me() {
 
   return (
     <Screen atmospheric refreshing={me.loading && me.data != null} onRefresh={me.reload}>
-      <View style={{flexDirection:'row',alignItems:'center',justifyContent:'space-between'}}><Title>{t('tabMe')}</Title><Pressable accessibilityRole="button" accessibilityLabel={t('qaSettings')} onPress={()=>router.push('/settings')} style={{width:44,height:44,alignItems:'center',justifyContent:'center',borderRadius:22,backgroundColor:alpha(palette.text,.08)}}><Icon name="settings" color={palette.text} size={21}/></Pressable></View>
+      <View style={{flexDirection:'row',alignItems:'center',justifyContent:'space-between'}}><Title>{t('fieldMeTitle')}</Title><Pressable accessibilityRole="button" accessibilityLabel={t('qaSettings')} onPress={()=>router.push('/settings')} style={{width:44,height:44,alignItems:'center',justifyContent:'center',borderRadius:0}}><Icon name="settings" color={palette.text} size={21}/></Pressable></View>
       {design.schemaVersion === 2 ? <View style={{ alignItems: 'center', gap: 12, paddingTop: 12, paddingBottom: 20 }}>
         <Material style={{width:94,height:94,borderRadius:34,alignItems:'center',justifyContent:'center',experimental_backgroundImage:`linear-gradient(145deg, ${alpha(palette.accent,.25)} 0%, transparent 75%)`}}><Text style={{color:palette.text,fontSize:34,fontWeight:'500'}}>{initials(me.data?.person.name)}</Text></Material>
         <Text accessibilityRole="header" style={{color:palette.text,fontSize:28,fontWeight:'600',letterSpacing:-.6,textAlign:'center'}}>{me.data?.person.name??t('tabMe')}</Text>
         {current&&<Text style={{color:palette.muted,fontSize:14,lineHeight:21,textAlign:'center'}}>{[current.position,current.company].filter(Boolean).join(' · ')}</Text>}
         {me.data?.person.email&&<Text style={{color:palette.muted,fontSize:13,textAlign:'center'}}>{me.data.person.email}</Text>}
-      </View> : <Material style={{ padding: 20, gap: 16 }}>
+      </View> : <Material style={{ paddingVertical: 20, gap: 16 }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16 }}>
-          <View style={{ width: 64, minHeight: 64, padding: 8, borderRadius: 18, backgroundColor: palette.button, alignItems: 'center', justifyContent: 'center' }}><Text style={{ color: palette.onButton, fontSize: 24, fontWeight: '700' }}>{initials(me.data?.person.name)}</Text></View>
+          <View style={{ width: 64, minHeight: 64, padding: 8, borderRadius: 0, backgroundColor: palette.text, alignItems: 'center', justifyContent: 'center' }}><Text style={{ color: palette.bg, fontSize: 24, fontWeight: '700' }}>{initials(me.data?.person.name)}</Text></View>
           <View style={{ flex: 1, gap: 5 }}><Text accessibilityRole="header" style={{ color: palette.text, fontSize: 24, fontWeight: '700' }}>{me.data?.person.name ?? t('tabMe')}</Text>
           {current && <Text style={{ color: palette.muted, fontSize: 14, lineHeight: 21 }}>{[current.position, current.company].filter(Boolean).join(' · ')}</Text>}</View>
         </View>
@@ -82,11 +82,11 @@ export default function Me() {
 
 function Group({ items }: { items: readonly Item[] }) {
   const { palette, design } = useTenantDesign();
-  const radius = design.schemaVersion === 2 ? design.composition.layout.radius : design.corners === 'soft' ? 18 : 4;
+  const radius = design.schemaVersion === 2 ? design.composition.layout.radius : 0;
   return <Material style={{ borderRadius: radius, overflow: 'hidden' }}>
     {items.map((it, i) => <Pressable key={it.label} accessibilityRole="button" accessibilityLabel={t(it.label)} onPress={() => router.push(it.href)}
-      style={({ pressed }) => [{ flexDirection: 'row', alignItems: 'center', gap: 14, minHeight: 60, paddingHorizontal: 16, borderTopWidth: i ? 1 : 0, borderColor: palette.border }, pressed && { backgroundColor: tint(palette.accent, 0.06, palette.bg) }]}>
-      <View style={{ width: 32, height: 32, borderRadius: 9, backgroundColor: 'transparent', alignItems: 'center', justifyContent: 'center' }}><Icon name={it.icon} color={palette.accent} size={17} /></View>
+      style={({ pressed }) => [{ flexDirection: 'row', alignItems: 'center', gap: 14, minHeight: 60, paddingHorizontal: 0, borderBottomWidth: 1, borderColor: palette.border }, pressed && { backgroundColor: tint(palette.accent, 0.06, palette.bg) }]}>
+      <View style={{ width: 32, height: 32, borderRadius: 9, backgroundColor: 'transparent', alignItems: 'center', justifyContent: 'center' }}><Icon name={it.icon} color={palette.text} size={20} /></View>
       <Text style={{ color: palette.text, fontSize: 16, flex: 1 }}>{t(it.label)}</Text>
       <Icon name="chevron" color={palette.muted} size={13} />
     </Pressable>)}

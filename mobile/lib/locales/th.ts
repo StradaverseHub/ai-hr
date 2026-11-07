@@ -3,6 +3,10 @@ import type { MessageKey } from '../i18n';
 import type { CompanyCopy } from '../company-connection';
 
 const messages: Record<MessageKey, string> = {
+  fieldLeaveTitle: "เวลา\nพักผ่อน",
+  fieldMeTitle: "พื้นที่ทำงาน\nของคุณ",
+  fieldReviewTitle: "รอคุณ\nตรวจสอบ",
+  fieldSignInTitle: "ยินดี\nต้อนรับกลับ",
   widgetClockedIn: "ลงเวลาเข้างานแล้ว",
   widgetClockedOut: "ลงเวลาออกงานแล้ว",
   widgetRefresh: "เปิดแอปเพื่อรีเฟรช",

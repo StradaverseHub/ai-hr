@@ -5,7 +5,7 @@
  * and paging are the only choices the app makes; nothing is cached beyond the screen.
  */
 import { useEffect, useState } from 'react';
-import { Linking, Pressable, TextInput, View } from 'react-native';
+import { TextInput, Linking, Pressable, View } from 'react-native';
 import { DesignText as Text, useTenantDesign } from '../lib/design';
 import { useApiV2 } from '../lib/api';
 import { Icon } from '../lib/icon';
@@ -38,7 +38,7 @@ export default function Directory() {
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 14, minHeight: 48, borderRadius: radius, borderWidth: 1, borderColor: palette.border, backgroundColor: palette.card }}>
       <Icon name="search" color={palette.muted} size={18} />
       <TextInput accessibilityLabel={t('directorySearch')} placeholder={t('directorySearch')} placeholderTextColor={palette.muted} value={text} onChangeText={setText}
-        autoCorrect={false} autoCapitalize="none" returnKeyType="search" maxLength={100} style={{ flex: 1, color: palette.text, fontSize: 16, minHeight: 46 }} />
+        autoCorrect={false} autoCapitalize="none" returnKeyType="search" maxLength={100} style={[{ fontFamily: 'FieldRegular' }, { flex: 1, color: palette.text, fontSize: 16, minHeight: 46 }]} />
     </View>
     <LoadState loading={first.loading} hasData={data != null} error={first.error} onRetry={first.reload} />
     {data && <Muted>{t('directoryCount', { n: data.total })}</Muted>}

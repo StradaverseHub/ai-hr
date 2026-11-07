@@ -54,7 +54,7 @@ export function ReviewWorkspaceScreen({kind,id}:{kind:ReviewWorkspaceKind;id:str
    <View style={{gap:10}}>{actions.map(value=><Chip key={value} title={copy[value]} selected={action===value} disabled={!!pending} onPress={()=>{setAction(value);setDate('');setComments('');setTerminationReason(undefined);}}/>)}</View>
    {action==='extend'&&<PickerField label={copy.extension} mode="date" value={date||undefined} today={workspace.endDate} disabled={!!pending} onChange={setDate}/>}
    {action==='terminate'&&<View style={{gap:8}}>{REVIEW_TERMINATION_REASONS.map(reason=><Chip key={reason} title={copy[reason]} selected={terminationReason===reason} disabled={!!pending} onPress={()=>setTerminationReason(reason)}/>)}</View>}
-   {(kind==='managerReview'||action==='extend')&&<><Muted>{copy.comments}</Muted><TextInput accessibilityLabel={copy.comments} value={comments} onChangeText={setComments} editable={!pending} multiline maxLength={4000} style={[input,{minHeight:96,textAlignVertical:'top'}]}/></>}
+   {(kind==='managerReview'||action==='extend')&&<><Muted>{copy.comments}</Muted><TextInput accessibilityLabel={copy.comments} value={comments} onChangeText={setComments} editable={!pending} multiline maxLength={4000} style={[{ fontFamily: 'FieldRegular' }, [input,{minHeight:96,textAlignVertical:'top'}]]}/></>}
    {!pending&&<Button title={copy.submit} disabled={!online||!action||(action==='terminate'&&!terminationReason)||(action==='extend'&&!/^\d{4}-\d{2}-\d{2}$/.test(date))} onPress={confirm}/>}
    {pending?.uncertain&&<Card><Muted>{t('approvalUncertain')}</Muted><Button title={t('approvalRetry')} onPress={()=>void send(pending.body)}/></Card>}
    {pending&&!pending.uncertain&&<Muted>{t('approvalSending')}</Muted>}

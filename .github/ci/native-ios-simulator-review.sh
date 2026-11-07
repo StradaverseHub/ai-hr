@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Unsigned physical-device compilation on a standard hosted runner. Signing stays local.
+# SDK 58 simulator compilation on a standard hosted runner; no distribution credentials.
 set -euo pipefail
 [[ "${GITHUB_ACTIONS:-}" == true && "${RUNNER_OS:-}" == macOS && "${RUNNER_ARCH:-}" == ARM64 ]]
 [[ "${GITHUB_REPOSITORY:-}" == StradaverseHub/ai-hr ]]
@@ -20,17 +20,17 @@ review_dir="$RUNNER_TEMP/onehr-ios-review"
 derived_dir="$RUNNER_TEMP/onehr-ios-derived"
 mkdir -p "$review_dir"
 xcodebuild -workspace mobile/ios/OneHR.xcworkspace -scheme OneHR \
-  -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' \
+  -configuration Release -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' \
   -derivedDataPath "$derived_dir" -jobs 2 \
-  CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
-  DEVELOPMENT_TEAM=ZVZQ463ZLX ARCHS=arm64 ONLY_ACTIVE_ARCH=YES \
+  CODE_SIGNING_ALLOWED=YES CODE_SIGNING_REQUIRED=YES CODE_SIGN_IDENTITY=- \
+  DEVELOPMENT_TEAM=FAKETEAMID ARCHS=arm64 ONLY_ACTIVE_ARCH=YES \
   build > "$RUNNER_TEMP/onehr-ios-build.log" 2>&1 || {
     tail -160 "$RUNNER_TEMP/onehr-ios-build.log"
     exit 1
   }
-app="$derived_dir/Build/Products/Release-iphoneos/OneHR.app"
+app="$derived_dir/Build/Products/Release-iphonesimulator/OneHR.app"
 [[ -d "$app/PlugIns/ExpoWidgetsTarget.appex" ]]
-/usr/libexec/PlistBuddy -c 'Print CFBundleSupportedPlatforms:0' "$app/Info.plist" | grep -qx iPhoneOS
-/usr/bin/ditto -c -k --sequesterRsrc --keepParent "$app" "$review_dir/OneHR-device-unsigned.zip"
-shasum -a 256 "$review_dir/OneHR-device-unsigned.zip" > "$review_dir/SHA256SUMS.txt"
+/usr/libexec/PlistBuddy -c 'Print CFBundleSupportedPlatforms:0' "$app/Info.plist" | grep -qx iPhoneSimulator
+/usr/bin/ditto -c -k --sequesterRsrc --keepParent "$app" "$review_dir/OneHR-simulator.zip"
+shasum -a 256 "$review_dir/OneHR-simulator.zip" > "$review_dir/SHA256SUMS.txt"
 git rev-parse HEAD > "$review_dir/source.txt"

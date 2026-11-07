@@ -15,7 +15,7 @@ export function SignedInShell({ children }: { children: ReactNode }) {
   return <InAppAlertBoundary><View style={{ flex: 1, backgroundColor: palette.bg }}>
     <SafeAreaView edges={['top']} style={{ backgroundColor: palette.bg }}>
       <View style={{ minHeight: 56, paddingHorizontal: 20, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-        <View style={{ flex: 1, paddingTop: 12 }}><TenantBrand /></View>
+        <View style={{ flex: 1, paddingVertical: 10 }}><TenantBrand /></View>
         <Pressable accessibilityRole="button" accessibilityLabel={t('qaSettings')} onPress={() => router.navigate('/settings')}
           style={({ pressed }) => ({ minHeight: 48, minWidth: 48, alignItems: 'center', justifyContent: 'center', opacity: pressed ? .65 : 1 })}>
           <Icon name="settings" size={23} color={palette.text} />

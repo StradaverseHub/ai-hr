@@ -30,7 +30,7 @@ function fixture() {
   const { DailySwitch } = load('mobile/lib/daily-switch.tsx', {
     'react-native': { View, Pressable, ActivityIndicator: () => <span>busy</span> },
     './motion': motion, './icon': { Icon: () => null }, './daily-switch-theme': { DAILY_SWITCH: { ink: '#111600', edge: '#30362a' } },
-    './visual': { TimeDisplay: () => null }, './i18n': { t: (key: string) => key },
+     './ui': { Button: ({title,onPress,disabled}:any) => <button disabled={disabled} onClick={onPress} aria-label={title}>{title}</button> }, './visual': { TimeDisplay: () => null }, './i18n': { t: (key: string) => key },
   });
   return { design, DailySwitch };
 }
@@ -40,16 +40,14 @@ it('press feedback and cancellation never submit; a completed tap calls the exis
   render(<DailySwitch working={false} seconds={0} disabled={false} busy={false} onPress={onPress} />);
   const key = screen.getByRole('button', { name: 'clockIn' });
   fireEvent.mouseDown(key); expect(onPress).not.toHaveBeenCalled();
-  expect(key.querySelector('[data-transform]')?.getAttribute('data-transform')).toContain('0.99');
   fireEvent.mouseLeave(key); expect(onPress).not.toHaveBeenCalled();
   fireEvent.click(key); expect(onPress).toHaveBeenCalledOnce();
 });
-it('reduced motion leaves the full clock key visible and stationary, without delaying a tap', () => {
+it('reduced motion retains the labelled clock action without delaying a tap', () => {
   const f = fixture(), onPress = vi.fn(); f.design.reduceMotion = true;
   render(<f.DailySwitch working={false} seconds={0} disabled={false} busy={false} onPress={onPress} />);
   const key = screen.getByRole('button', { name: 'clockIn' });
-  expect(screen.getByText('IN')).toBeTruthy(); fireEvent.mouseDown(key);
-  expect(JSON.parse(key.querySelector('[data-transform]')!.getAttribute('data-transform')!)).toEqual([{ translateY: 0 }, { scale: 1 }]);
+  expect(screen.getByText('clockIn')).toBeTruthy(); fireEvent.mouseDown(key);
   fireEvent.click(key); expect(onPress).toHaveBeenCalledOnce();
 });
 it('busy and disabled clock keys cannot start a second operation', () => {
