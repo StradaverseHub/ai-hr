@@ -1,4 +1,5 @@
 import { getTranslations } from 'next-intl/server';
+import { CLAIMS_SUBMENU } from '@/lib/navigation/module-submenus';
 import Link from '@/components/intent-link';
 
 /**
@@ -23,17 +24,13 @@ export async function ClaimsTabs({ active }: { active: 'types' | 'limits' | 'mil
   // still a route (a permanent redirect to /admin/claims) so old bookmarks land somewhere, but it must not
   // be reachable as a tab: a second way to EDIT the same rows is exactly the duplication this contests.
   // admin.claimsTabs.forms is left in the catalogues, unused, so restoring the tab is a one-line revert.
-  const tabs = [
-    { key: 'types', href: '/admin/claims', label: t('types') },
-    { key: 'limits', href: '/admin/claims/limits', label: t('limits') },
-    { key: 'mileage', href: '/admin/claims/mileage', label: t('mileage') },
-    { key: 'reimbursements', href: '/admin/claims/reimbursements', label: t('reimbursements') },
-  ] as const;
+  const tabs = CLAIMS_SUBMENU.map(tab=>({...tab,label:t(tab.labelKey)}));
   return (
     <div className="flex gap-1 overflow-x-auto border-b border-border">
       {tabs.map((tab) => (
         <Link
           key={tab.key}
+          data-navigation-destination={tab.id}
           href={tab.href}
           className={`-mb-px whitespace-nowrap border-b-2 px-3 py-2 text-sm transition-colors ${
             active === tab.key

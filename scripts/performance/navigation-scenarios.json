@@ -1,0 +1,428 @@
+{
+  "schemaVersion": 1,
+  "fixture": "system-load-v1",
+  "engine": "chromium",
+  "scope": "Six composed static submenu destinations, English fictional fixture: native configuration controls (including empty catalog setup), populated Leave balances and explicit non-admin refusals. No populated Holiday/Profile Options record claim and no full-application coverage.",
+  "scenarios": [
+    {
+      "id": "submenu.claims.types.companyHR.usable",
+      "destinationId": "submenu.claims.types",
+      "role": "companyHR",
+      "href": "/admin/claims",
+      "originHref": "/admin/claims",
+      "outcome": "usable",
+      "readiness": "controls",
+      "steps": [
+        {
+          "kind": "open-details",
+          "selector": "main details:has(input[name=\"code\"])"
+        }
+      ],
+      "checks": [
+        {
+          "id": "code-editor",
+          "kind": "enabled",
+          "selector": "main input[name=\"code\"]",
+          "tag": "input"
+        },
+        {
+          "id": "name-editor",
+          "kind": "enabled",
+          "selector": "main input[name=\"name\"]",
+          "tag": "input"
+        }
+      ]
+    },
+    {
+      "id": "submenu.claims.types.groupHR.usable",
+      "destinationId": "submenu.claims.types",
+      "role": "groupHR",
+      "href": "/admin/claims",
+      "originHref": "/admin/claims",
+      "outcome": "usable",
+      "readiness": "controls",
+      "steps": [
+        {
+          "kind": "open-details",
+          "selector": "main details:has(input[name=\"code\"])"
+        }
+      ],
+      "checks": [
+        {
+          "id": "code-editor",
+          "kind": "enabled",
+          "selector": "main input[name=\"code\"]",
+          "tag": "input"
+        },
+        {
+          "id": "name-editor",
+          "kind": "enabled",
+          "selector": "main input[name=\"name\"]",
+          "tag": "input"
+        }
+      ]
+    },
+    {
+      "id": "submenu.claims.types.employee.denied",
+      "destinationId": "submenu.claims.types",
+      "role": "employee",
+      "href": "/admin/claims",
+      "originHref": "/admin/claims",
+      "outcome": "denied",
+      "readiness": "controls",
+      "steps": [],
+      "checks": []
+    },
+    {
+      "id": "submenu.claims.types.manager.denied",
+      "destinationId": "submenu.claims.types",
+      "role": "manager",
+      "href": "/admin/claims",
+      "originHref": "/admin/claims",
+      "outcome": "denied",
+      "readiness": "controls",
+      "steps": [],
+      "checks": []
+    },
+    {
+      "id": "submenu.holidays.groups.companyHR.usable",
+      "destinationId": "submenu.holidays.groups",
+      "role": "companyHR",
+      "href": "/admin/holidays/groups",
+      "originHref": "/admin/holidays",
+      "outcome": "usable",
+      "readiness": "controls",
+      "steps": [],
+      "checks": [
+        {
+          "id": "add-group",
+          "kind": "enabled",
+          "selector": "main a[href=\"/admin/holidays/groups/new\"]",
+          "tag": "a"
+        },
+        {
+          "id": "new-group-destination",
+          "kind": "attribute",
+          "selector": "main a[href=\"/admin/holidays/groups/new\"]",
+          "name": "href",
+          "expected": "/admin/holidays/groups/new"
+        }
+      ]
+    },
+    {
+      "id": "submenu.holidays.groups.groupHR.usable",
+      "destinationId": "submenu.holidays.groups",
+      "role": "groupHR",
+      "href": "/admin/holidays/groups",
+      "originHref": "/admin/holidays",
+      "outcome": "usable",
+      "readiness": "controls",
+      "steps": [],
+      "checks": [
+        {
+          "id": "add-group",
+          "kind": "enabled",
+          "selector": "main a[href=\"/admin/holidays/groups/new\"]",
+          "tag": "a"
+        },
+        {
+          "id": "new-group-destination",
+          "kind": "attribute",
+          "selector": "main a[href=\"/admin/holidays/groups/new\"]",
+          "name": "href",
+          "expected": "/admin/holidays/groups/new"
+        }
+      ]
+    },
+    {
+      "id": "submenu.holidays.groups.employee.denied",
+      "destinationId": "submenu.holidays.groups",
+      "role": "employee",
+      "href": "/admin/holidays/groups",
+      "originHref": "/admin/holidays/groups",
+      "outcome": "denied",
+      "readiness": "controls",
+      "steps": [],
+      "checks": []
+    },
+    {
+      "id": "submenu.holidays.groups.manager.denied",
+      "destinationId": "submenu.holidays.groups",
+      "role": "manager",
+      "href": "/admin/holidays/groups",
+      "originHref": "/admin/holidays/groups",
+      "outcome": "denied",
+      "readiness": "controls",
+      "steps": [],
+      "checks": []
+    },
+    {
+      "id": "submenu.systemLabels.organisation.companyHR.usable",
+      "destinationId": "submenu.systemLabels.organisation",
+      "role": "companyHR",
+      "href": "/admin/settings/system-labels",
+      "originHref": "/admin/settings/system-labels",
+      "outcome": "usable",
+      "readiness": "controls",
+      "steps": [],
+      "checks": [
+        {
+          "id": "grid-columns",
+          "kind": "count",
+          "selector": "main table:visible thead th",
+          "minimum": 4
+        },
+        {
+          "id": "grid-control",
+          "kind": "enabled",
+          "selector": "main button[type=\"button\"]:enabled",
+          "tag": "button"
+        }
+      ]
+    },
+    {
+      "id": "submenu.systemLabels.organisation.groupHR.usable",
+      "destinationId": "submenu.systemLabels.organisation",
+      "role": "groupHR",
+      "href": "/admin/settings/system-labels",
+      "originHref": "/admin/settings/system-labels",
+      "outcome": "usable",
+      "readiness": "controls",
+      "steps": [],
+      "checks": [
+        {
+          "id": "grid-columns",
+          "kind": "count",
+          "selector": "main table:visible thead th",
+          "minimum": 4
+        },
+        {
+          "id": "grid-control",
+          "kind": "enabled",
+          "selector": "main button[type=\"button\"]:enabled",
+          "tag": "button"
+        }
+      ]
+    },
+    {
+      "id": "submenu.systemLabels.organisation.employee.denied",
+      "destinationId": "submenu.systemLabels.organisation",
+      "role": "employee",
+      "href": "/admin/settings/system-labels",
+      "originHref": "/admin/settings/system-labels",
+      "outcome": "denied",
+      "readiness": "controls",
+      "steps": [],
+      "checks": []
+    },
+    {
+      "id": "submenu.systemLabels.organisation.manager.denied",
+      "destinationId": "submenu.systemLabels.organisation",
+      "role": "manager",
+      "href": "/admin/settings/system-labels",
+      "originHref": "/admin/settings/system-labels",
+      "outcome": "denied",
+      "readiness": "controls",
+      "steps": [],
+      "checks": []
+    },
+    {
+      "id": "submenu.systemLabels.profileOptions.companyHR.usable",
+      "destinationId": "submenu.systemLabels.profileOptions",
+      "role": "companyHR",
+      "href": "/admin/settings/system-labels/profile-options",
+      "originHref": "/admin/settings/system-labels",
+      "outcome": "usable",
+      "readiness": "controls",
+      "steps": [],
+      "checks": [
+        {
+          "id": "empty-catalog-setup",
+          "kind": "enabled",
+          "selector": "main button[type=\"submit\"]:text-is(\"Add default options\")",
+          "tag": "button"
+        },
+        {
+          "id": "empty-catalog-description",
+          "kind": "text",
+          "selector": "main p:text-is(\"No profile options yet. Add the default set to get started.\")",
+          "expected": "No profile options yet. Add the default set to get started."
+        }
+      ]
+    },
+    {
+      "id": "submenu.systemLabels.profileOptions.groupHR.usable",
+      "destinationId": "submenu.systemLabels.profileOptions",
+      "role": "groupHR",
+      "href": "/admin/settings/system-labels/profile-options",
+      "originHref": "/admin/settings/system-labels",
+      "outcome": "usable",
+      "readiness": "controls",
+      "steps": [],
+      "checks": [
+        {
+          "id": "empty-catalog-setup",
+          "kind": "enabled",
+          "selector": "main button[type=\"submit\"]:text-is(\"Add default options\")",
+          "tag": "button"
+        },
+        {
+          "id": "empty-catalog-description",
+          "kind": "text",
+          "selector": "main p:text-is(\"No profile options yet. Add the default set to get started.\")",
+          "expected": "No profile options yet. Add the default set to get started."
+        }
+      ]
+    },
+    {
+      "id": "submenu.systemLabels.profileOptions.employee.denied",
+      "destinationId": "submenu.systemLabels.profileOptions",
+      "role": "employee",
+      "href": "/admin/settings/system-labels/profile-options",
+      "originHref": "/admin/settings/system-labels/profile-options",
+      "outcome": "denied",
+      "readiness": "controls",
+      "steps": [],
+      "checks": []
+    },
+    {
+      "id": "submenu.systemLabels.profileOptions.manager.denied",
+      "destinationId": "submenu.systemLabels.profileOptions",
+      "role": "manager",
+      "href": "/admin/settings/system-labels/profile-options",
+      "originHref": "/admin/settings/system-labels/profile-options",
+      "outcome": "denied",
+      "readiness": "controls",
+      "steps": [],
+      "checks": []
+    },
+    {
+      "id": "submenu.leaveInquiry.balances.companyHR.usable",
+      "destinationId": "submenu.leaveInquiry.balances",
+      "role": "companyHR",
+      "href": "/leave/employee-balances",
+      "originHref": "/leave/employee-balances",
+      "outcome": "usable",
+      "readiness": "populated",
+      "steps": [],
+      "checks": [
+        {
+          "id": "as-of-filter",
+          "kind": "enabled",
+          "selector": "main input[name=\"asOf\"]",
+          "tag": "input"
+        },
+        {
+          "id": "source-person",
+          "kind": "text",
+          "selector": "main [data-testid=\"employee-balances-table\"] tbody",
+          "expected": "$fixture.firstCompanyPersonName"
+        }
+      ]
+    },
+    {
+      "id": "submenu.leaveInquiry.balances.groupHR.usable",
+      "destinationId": "submenu.leaveInquiry.balances",
+      "role": "groupHR",
+      "href": "/leave/employee-balances",
+      "originHref": "/leave/employee-balances",
+      "outcome": "usable",
+      "readiness": "populated",
+      "steps": [],
+      "checks": [
+        {
+          "id": "as-of-filter",
+          "kind": "enabled",
+          "selector": "main input[name=\"asOf\"]",
+          "tag": "input"
+        },
+        {
+          "id": "source-person",
+          "kind": "text",
+          "selector": "main [data-testid=\"employee-balances-table\"] tbody",
+          "expected": "$fixture.firstCompanyPersonName"
+        }
+      ]
+    },
+    {
+      "id": "submenu.leaveInquiry.balances.employee.denied",
+      "destinationId": "submenu.leaveInquiry.balances",
+      "role": "employee",
+      "href": "/leave/employee-balances",
+      "originHref": "/leave/employee-balances",
+      "outcome": "denied",
+      "readiness": "controls",
+      "steps": [],
+      "checks": []
+    },
+    {
+      "id": "submenu.leaveInquiry.balances.manager.denied",
+      "destinationId": "submenu.leaveInquiry.balances",
+      "role": "manager",
+      "href": "/leave/employee-balances",
+      "originHref": "/leave/employee-balances",
+      "outcome": "denied",
+      "readiness": "controls",
+      "steps": [],
+      "checks": []
+    },
+    {
+      "id": "submenu.leaveInquiry.records.companyHR.usable",
+      "destinationId": "submenu.leaveInquiry.records",
+      "role": "companyHR",
+      "href": "/leave/employee-records",
+      "originHref": "/leave/employee-balances",
+      "outcome": "usable",
+      "readiness": "controls",
+      "steps": [],
+      "checks": [
+        {
+          "id": "records-search",
+          "kind": "enabled",
+          "selector": "main input[name=\"q\"]",
+          "tag": "input"
+        }
+      ]
+    },
+    {
+      "id": "submenu.leaveInquiry.records.groupHR.usable",
+      "destinationId": "submenu.leaveInquiry.records",
+      "role": "groupHR",
+      "href": "/leave/employee-records",
+      "originHref": "/leave/employee-balances",
+      "outcome": "usable",
+      "readiness": "controls",
+      "steps": [],
+      "checks": [
+        {
+          "id": "records-search",
+          "kind": "enabled",
+          "selector": "main input[name=\"q\"]",
+          "tag": "input"
+        }
+      ]
+    },
+    {
+      "id": "submenu.leaveInquiry.records.employee.denied",
+      "destinationId": "submenu.leaveInquiry.records",
+      "role": "employee",
+      "href": "/leave/employee-records",
+      "originHref": "/leave/employee-records",
+      "outcome": "denied",
+      "readiness": "controls",
+      "steps": [],
+      "checks": []
+    },
+    {
+      "id": "submenu.leaveInquiry.records.manager.denied",
+      "destinationId": "submenu.leaveInquiry.records",
+      "role": "manager",
+      "href": "/leave/employee-records",
+      "originHref": "/leave/employee-records",
+      "outcome": "denied",
+      "readiness": "controls",
+      "steps": [],
+      "checks": []
+    }
+  ]
+}

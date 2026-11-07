@@ -31,6 +31,7 @@ import { isHrefActive, isParentActive } from '../components/nav-flyout';
 import { attendancePack } from '../packs/attendance';
 import { MODULE_CATALOG } from '../packs/catalog';
 import { SCREENS } from '../lib/permissions';
+import { HOLIDAY_SUBMENU } from '../lib/navigation/module-submenus';
 
 const ROOT = path.resolve(__dirname, '..');
 const read = (rel: string) => fs.readFileSync(path.join(ROOT, rel), 'utf8');
@@ -165,7 +166,7 @@ describe('4509d2b8 — access is UNCHANGED: administrators only, same guard, sam
       expect(fs.existsSync(file), `${route} has a page at app${route}/page.tsx`).toBe(true);
     }
     // …and the screen's own tab bar still points at the same two addresses.
-    expect(read('components/holiday-tabs.tsx')).toContain(`href: '${HREF}'`);
+    expect(HOLIDAY_SUBMENU.map(tab=>tab.href)).toEqual([HREF,'/admin/holidays/groups']);
   });
 });
 
