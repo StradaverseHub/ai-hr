@@ -1,7 +1,7 @@
 -- UNNUMBERED ISOLATED-CI CHILD of lifecycle.sql. Not an installation/migration.
 -- Apply atomically only after the exact stage1 fixture; never edit numbered SQL.
 DO $guard$ BEGIN
- IF current_database() !~ '^ai_hr_test_w[0-9]+(_[a-z0-9_]+)?$'
+ IF current_database() IS DISTINCT FROM current_setting('aihr.notification_fixture.database',true)
  OR current_user::regrole::oid IS DISTINCT FROM (SELECT relowner FROM pg_class WHERE oid='public.notification'::regclass)
  OR EXISTS(SELECT 1 FROM notification_worker_private.run) THEN
  RAISE EXCEPTION 'Empty isolated native lifecycle fixture required' USING ERRCODE='55000';END IF;

@@ -78,24 +78,21 @@ family, kind, category, recipient, rendered shape and direct source writes under
 forged GUCs; deny helper drift and inspect actual twelve-API/zero-table exposure.
 These tests have not run, and broader helper-family parity remains required.
 
-Stage 1 run42389556301 failed before cases because its guessed numeric worker-DB
-regex rejected canonical /ai_hr_test_w_aifocus1. Original source and failed evidence
-are preserved. Root assigned a separate child of6094 for an exact test/db-names.ts
-namespace-binding repair; this checkpoint intentionally does not mix that recovery.
-The inherited fixture namespace blocker must be merged before either stage can be
-qualified. No passing claim is inferred from authored tests.
+Original stage 1 run42389556301 failed before cases because its guessed numeric
+worker-DB regex rejected canonical /ai_hr_test_w_aifocus1. Source632902895 repaired
+that exact harness binding and is merged normally here. Its hosted42390475450 then
+failed before role creation on PostgreSQL's127.0.0.1/32 inet text representation.
+The consolidated owner now compares native inet equality to explicit127.0.0.1::inet
+and requires true plus exact database. Root's independently reviewed a42ed60e source
+recovery is to be merged with the equivalent moved-query proof preserved. Original
+failed runs and frozen sources remain independent; no capability case pass is claimed.
 
-Native lifecycle and projection files must run in separate sole-file hosted jobs
-with separate physical PostgreSQL clusters: the approved fixed LOGIN name is
-cluster-wide, not isolated by per-worker database names. Before an ordinary broad
-all-test run, consolidate fixture ownership or add a reviewed shared fixture lease;
-parallel role creation is not qualified. Keep all compiler inputs included.
-
-Run the projection sole-file selector on standard hosted resources, then affected
+Run the combined sole-file selector on standard hosted resources, then affected
 legacy readers/registry tests and the unchanged complete compiler. Keep original
-failures and identities. The general regression selector intentionally excludes
-both native fixed-role files; run those separately, never silently omit them from
-release coverage.
+failures and identities. The general regression selector contains the ordinary
+reader tests; the combined real LOGIN suite is a separate substantive required
+selector, not an omission from release coverage. Ordinary all-test discovery now
+registers the fixed-role fixture only once, as detailed below.
 
 Remaining work: canonical pure recipient/fact evaluators for unsupported families;
 actual reminder preparation API with both epoch checks and same-Tx hidden writes;
@@ -105,3 +102,30 @@ safe owner recovery/retention and bounded resource measurements; final guarded
 migration/owner/ACL installer; protected invocation/package/scheduler acceptance.
 Existing fallback and all combined maintenance duties remain active and unchanged.
 This checkpoint cannot authorize releasing a narrow worker or removing page catch-up.
+
+## Serialized fixture ownership checkpoint
+
+The stage 1 namespace recovery632902895 is merged normally into this source branch;
+its frozen source and isolated hosted run remain independent. The projection fixture
+now follows the exact canonical marker binding already proved by lifecycle.sql in
+the same owner installation transaction.
+
+Only test/notification-worker-lifecycle.test.ts registers native worker tests. Its
+explicit sequential outer suite creates the one fixed LOGIN once, runs all ten
+original lifecycle/namespace cases under the unchanged stage 1 capability profile,
+cleans that owned stage, then registers every nonempty projection case from
+fixtures/notification-worker/projection-cases.ts under stage 2. The latter is a
+helper, not a second auto-discovered test file. The old projection filename is
+removed; selectors now point to the substantive combined suite. No empty/no-tests
+artifact or test-discovery/configuration/compiler exclusion is introduced.
+
+One helper owns only the role it created, tracked physical connections, its installed
+native schemas and collected test-owned job IDs. Failed installation does not confer
+ownership of pre-existing schemas; only a successfully committed fixture stage may
+be dropped. The actual owner pools close once after both stages, while case-owned
+worker sessions and stage-owned schemas close between stages. This removes the
+intra-run cluster-global role race without pretending advisory locks in different
+worker databases serialize cluster roles. Two independent complete Vitest invocations
+still require separate job-owned clusters, as the repository's global DB fixture
+policy already requires. Consolidation does not qualify projection or fill missing
+recipient/preparation families.

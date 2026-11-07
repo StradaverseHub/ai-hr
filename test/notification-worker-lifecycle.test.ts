@@ -1,8 +1,8 @@
-/** Real LOGIN capability prototype, isolated hosted database only; no SMTP or projection. */
+/** Serialized real LOGIN lifecycle and nonempty projection prototypes; no transport or deployment. */
 import {readFileSync} from 'node:fs';
 import {randomUUID} from 'node:crypto';
 import postgres from 'postgres';
-import {afterAll,afterEach,beforeAll,beforeEach,expect,it} from 'vitest';
+import {afterAll,afterEach,beforeAll,beforeEach,describe,expect,it} from 'vitest';
 import {eq} from 'drizzle-orm';
 import {client} from '../db/client';
 import {domainEvent,jobRun,tenantModule} from '../db/schema';
@@ -11,33 +11,24 @@ import {notificationWorkerLifecycle,NotificationProjectionUnavailable} from '../
 import {pgSqlState} from '../lib/db-error';
 import {notificationWorkerFixtureDatabase} from './fixtures/notification-worker/database';
 import {workerDb} from './db-names';
-import {closeAll,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
-const role='ai_hr_notification_worker',password=randomUUID(),fixture=readFileSync('test/fixtures/notification-worker/lifecycle.sql','utf8');
+import {owner,resetDb,seedBase,type Base} from './harness';
+import {notificationWorkerFixtureOwner} from './fixtures/notification-worker/owner-fixture';
+import {registerNotificationProjectionCases} from './fixtures/notification-worker/projection-cases';
+// A single test file and explicit sequential suites own this one cluster LOGIN.
+const fixtureOwner=notificationWorkerFixtureOwner();
+describe.sequential('native notification worker capabilities',()=>{
+beforeAll(()=>fixtureOwner.setup(),300000);
+afterAll(()=>fixtureOwner.close());
+describe.sequential('native notification lifecycle authority (stage1)',()=>{
+const role='ai_hr_notification_worker',fixture=readFileSync('test/fixtures/notification-worker/lifecycle.sql','utf8');
 let binding:ReturnType<typeof notificationWorkerFixtureDatabase>;
 const gateStart=fixture.indexOf('DO $gate$');
 if(gateStart<1)throw Error('Canonical notification fixture database guard is missing');
 const databaseGuard=fixture.slice(0,gateStart);
-let created=false,b:Base,foreign:Base,service:ReturnType<typeof postgres>,other:ReturnType<typeof postgres>,url:URL;
-const sockets:ReturnType<typeof postgres>[]=[];
-const ownedJobs=new Set<string>();
-function connect(){const sql=postgres(url.toString(),{max:1,connection:{statement_timeout:20000,lock_timeout:300}});sockets.push(sql);return sql;}
-beforeAll(async()=>{
- expect(process.env.GITHUB_ACTIONS).toBe('true');expect(process.env.RUNNER_ENVIRONMENT).toBe('github-hosted');
- binding=notificationWorkerFixtureDatabase();url=binding.migrationUrl;
- await migrateTestDb();
- const [target]=await owner.client`select current_database() as database,inet_server_addr()::text as address`;
- expect(target).toEqual({database:binding.database,address:'127.0.0.1'});
- expect(await owner.client`select 1 from pg_roles where rolname=${role}`).toHaveLength(0);
- await owner.client.unsafe(`CREATE ROLE ai_hr_notification_worker LOGIN PASSWORD '${password}' NOINHERIT NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE NOREPLICATION`);created=true;
- await owner.client.begin(async tx=>{
-  await tx`select set_config('aihr.notification_fixture.database',${binding.database},true),set_config('aihr.notification_fixture.namespace',${binding.namespace},true),set_config('aihr.notification_fixture.pool_id',${binding.poolId},true)`;
-  await tx.unsafe(fixture);
- });
- const [identity]=await owner.client`select current_user::regrole::oid as owner,(select oid from pg_roles where rolname=${role}) as login`;
- await owner.client`insert into notification_worker_private.authority(singleton,enabled,login_oid,owner_oid,api_version,max_batch_events,max_run_batches,max_run_seconds,max_tenants)
-  values(true,true,${identity.login},${identity.owner},1,25,10,300,100)`;
- url.username=role;url.password=password;
-},300000);
+let b:Base,foreign:Base,service:ReturnType<typeof postgres>,other:ReturnType<typeof postgres>;
+const ownedJobs=fixtureOwner.jobs;
+const connect=()=>fixtureOwner.connect();
+beforeAll(async()=>{binding=fixtureOwner.binding;await fixtureOwner.install([fixture],1);},300000);
 beforeEach(async()=>{
  await owner.client`truncate notification_worker_private.run cascade`;
  await owner.client`update notification_worker_private.authority set active_run=null,enabled=true,max_run_batches=10`;
@@ -50,17 +41,8 @@ beforeEach(async()=>{
  const [actual]=await service`select session_user,current_user,pg_backend_pid() as pid`;
  expect(actual.session_user).toBe(role);expect(actual.current_user).toBe(role);
 });
-afterEach(async()=>{
- try{if(created&&(await owner.client`select to_regclass('notification_worker_private.run') is not null as ready`)[0].ready)
-  for(const row of await owner.client`select run_id from notification_worker_private.run`)ownedJobs.add(row.run_id);
- }finally{await Promise.all(sockets.splice(0).map(sql=>sql.end({timeout:0})));}
-});
-afterAll(async()=>{
- try{if(created){await owner.client`drop schema if exists notification_worker cascade`;await owner.client`drop schema if exists notification_worker_private cascade`;await owner.client`drop owned by ai_hr_notification_worker`;await owner.client`drop role ai_hr_notification_worker`;
-  await owner.client`delete from public.job_run where id=any(${[...ownedJobs]}::uuid[])`;
- }}
- finally{await closeAll();}
-});
+afterEach(()=>fixtureOwner.finishCase());
+afterAll(()=>fixtureOwner.clearStage());
 async function sourceFacts(){
  const counts=await owner.client`select (select count(*) from public.notification) as notifications,(select count(*) from public.notification_delivery) as deliveries,
  (select count(*) from public.domain_event) as events,(select count(*) from public.employment) as employees,(select count(*) from public.person) as people,
@@ -237,4 +219,9 @@ it('fails closed on new PUBLIC definer privileges and changed real login/profile
  const emptyBefore=await sourceFacts();await api.finishEmptyBatch(run,b.tenantId,25);
  await expect(api.finishEmptyBatch(run,b.tenantId,25)).rejects.toSatisfy((e:unknown)=>pgSqlState(e)==='54000');
  await api.failRun(run,'budget-exhausted');expect(await sourceFacts()).toEqual(emptyBefore);expect(before[0].people).toBe(emptyBefore[0].people);
+});
+
+});
+registerNotificationProjectionCases(fixtureOwner);
+
 });

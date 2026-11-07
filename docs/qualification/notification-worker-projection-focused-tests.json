@@ -1,3 +1,3 @@
 [
- "test/notification-worker-projection.test.ts"
+ "test/notification-worker-lifecycle.test.ts"
 ]

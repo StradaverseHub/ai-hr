@@ -2,54 +2,34 @@
 import {readFileSync} from 'node:fs';
 import {randomUUID} from 'node:crypto';
 import postgres from 'postgres';
-import {afterAll,afterEach,beforeAll,beforeEach,expect,it} from 'vitest';
+import {afterAll,afterEach,beforeAll,beforeEach,describe,expect,it} from 'vitest';
 import {eq} from 'drizzle-orm';
-import * as s from '../db/schema';
-import {hireEmployee,setReportingLine} from '../core/org';
-import {createNotice,publishNotice} from '../core/notice';
-import {dispatchNotifications} from '../core/notifications';
-import {saveNotificationEmailPolicy,saveNotificationEmailPreferences} from '../core/notification-email';
-import {todayInKualaLumpur} from '../lib/hr-date';
-import {pgSqlState} from '../lib/db-error';
-import {notificationWorkerLifecycle} from '../lib/notification-worker/lifecycle';
-import {notificationWorkerProjection,notificationWorkerProjectionContract,UnsupportedNotificationFacts} from '../lib/notification-worker/projection';
-import {adminCtx,closeAll,createAppUser,entitledCtx,migrateTestDb,owner,resetDb,seedBase,setModule,type Base} from './harness';
-const role='ai_hr_notification_worker',password=randomUUID();
+import * as s from '../../../db/schema';
+import {hireEmployee,setReportingLine} from '../../../core/org';
+import {createNotice,publishNotice} from '../../../core/notice';
+import {dispatchNotifications} from '../../../core/notifications';
+import {saveNotificationEmailPolicy,saveNotificationEmailPreferences} from '../../../core/notification-email';
+import {todayInKualaLumpur} from '../../../lib/hr-date';
+import {pgSqlState} from '../../../lib/db-error';
+import {notificationWorkerLifecycle} from '../../../lib/notification-worker/lifecycle';
+import {notificationWorkerProjection,notificationWorkerProjectionContract,UnsupportedNotificationFacts} from '../../../lib/notification-worker/projection';
+import {adminCtx,createAppUser,entitledCtx,owner,resetDb,seedBase,setModule,type Base} from '../../harness';
+import type {NotificationWorkerFixtureOwner} from './owner-fixture';
+export function registerNotificationProjectionCases(fixtureOwner:NotificationWorkerFixtureOwner){
+describe.sequential('native nonempty notification projection (stage2)',()=>{
+const role='ai_hr_notification_worker';
 const fixtures=['lifecycle','projection'].map(name=>readFileSync('test/fixtures/notification-worker/'+name+'.sql','utf8'));
-let created=false,url:URL,service:ReturnType<typeof postgres>,b:Base;
-const sockets:ReturnType<typeof postgres>[]=[],jobs=new Set<string>();
-function connect(){const connection=postgres(url.toString(),{max:1,connection:{statement_timeout:20000,lock_timeout:300}});sockets.push(connection);return connection;}
-beforeAll(async()=>{
- expect(process.env.GITHUB_ACTIONS).toBe('true');expect(process.env.RUNNER_ENVIRONMENT).toBe('github-hosted');
- await migrateTestDb();url=new URL(process.env.TEST_MIGRATION_DATABASE_URL!);
- expect(url.hostname).toBe('127.0.0.1');expect(url.pathname).toMatch(/^\/ai_hr_test_w\d+(?:_[a-z0-9_]+)?$/);
- expect(await owner.client`select 1 from pg_roles where rolname=${role}`).toHaveLength(0);
- await owner.client.unsafe(`CREATE ROLE ai_hr_notification_worker LOGIN PASSWORD '${password}' NOINHERIT NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE NOREPLICATION`);created=true;
- await owner.client.begin(async tx=>{for(const source of fixtures)await tx.unsafe(source);
-  await tx`insert into notification_worker_private.registry_contract(event_type,kind,category,recipient_port,implemented)
-   select x."eventType",x.kind,x.category,x."recipientPort",x.implemented from jsonb_to_recordset(${tx.json(notificationWorkerProjectionContract)}::jsonb) as x("eventType" text,kind text,category text,"recipientPort" text,implemented boolean)`;
- });
- const [identity]=await owner.client`select current_user::regrole::oid as owner,(select oid from pg_roles where rolname=${role}) as login`;
- await owner.client`insert into notification_worker_private.authority(singleton,enabled,login_oid,owner_oid,api_version,max_batch_events,max_run_batches,max_run_seconds,max_tenants)
-  values(true,true,${identity.login},${identity.owner},2,25,10,300,100)`;
- url.username=role;url.password=password;
-},300000);
+let service:ReturnType<typeof postgres>,b:Base;
+const connect=()=>fixtureOwner.connect();
+beforeAll(()=>fixtureOwner.install(fixtures,2,notificationWorkerProjectionContract),300000);
 beforeEach(async()=>{
  await owner.client`truncate notification_worker_private.run cascade`;
  await owner.client`update notification_worker_private.authority set active_run=null,enabled=true,max_run_batches=10,max_batch_projections=50000`;
  await resetDb();b=await seedBase();await setModule(b.tenantId,'notifications','active');service=connect();
  const [actual]=await service`select session_user,current_user`;expect(actual).toEqual({session_user:role,current_user:role});
 },30000);
-afterEach(async()=>{
- try{if(created)for(const row of await owner.client`select run_id from notification_worker_private.run`)jobs.add(row.run_id);}
- finally{await Promise.all(sockets.splice(0).map(sql=>sql.end({timeout:0})));}
-});
-afterAll(async()=>{
- try{if(created){await owner.client`drop schema if exists notification_worker cascade`;await owner.client`drop schema if exists notification_worker_private cascade`;
-  await owner.client`drop owned by ai_hr_notification_worker`;await owner.client`drop role ai_hr_notification_worker`;
-  await owner.client`delete from public.job_run where id=any(${[...jobs]}::uuid[])`;
- }}finally{await closeAll();}
-});
+afterEach(()=>fixtureOwner.finishCase());
+afterAll(()=>fixtureOwner.clearStage());
 async function historical(){await owner.client`update public.notification_event_processing set disposition='legacy-cursor',processed_at=now()`;}
 async function employee(base:Base,label:string){
  const email=randomUUID()+'@example.invalid';
@@ -200,3 +180,6 @@ it('denies drifted native helper code and gives the real worker exactly twelve f
  }finally{await owner.client.unsafe(original.definition);}
  expect((await notificationWorkerLifecycle(service).scopePage(run)).some(row=>row.tenant_id===b.tenantId)).toBe(true);
 },30000);
+
+});
+}
