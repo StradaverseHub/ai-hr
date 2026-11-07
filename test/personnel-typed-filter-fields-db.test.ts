@@ -42,6 +42,10 @@ it('retains exact full DTOs, independently expected pages/facets and native date
  expect(parity).toHaveLength(2);expect(parity.every(row=>row.same)).toBe(true);
  const [blacklisted]=await withTenant(ctx,tx=>tx.execute<{value:string}>(sql`select "blacklistedAt"::text as value from app.personnel_overview_filter_fields(${day}::date,${scope}) where "employmentId"=${first.employmentId}::uuid`));
  expect(blacklisted.value).toBe(day);
+ const statusInput={companyIds:[base.companyId],limit:25,offset:0,employmentStatuses:['blacklisted' as const]};
+ const status=await readPersonnelOverview(ctx,statusInput,{});
+ expect(status.employees.rows.map(row=>row.employmentId)).toEqual([first.employmentId]);
+ expect(normalize(status)).toEqual(normalize(await readPersonnelOverview(ctx,statusInput,{},{compareExact:true})));
  expect(await withTenant(ctx,tx=>tx.execute(sql`select * from app.personnel_overview_filter_fields(${day}::date,array[${foreign.companyId}::uuid])`))).toHaveLength(0);
  const corrected=await seedPersonnelCorrectionFixture();
  for(const at of [corrected.hiredOn,day]){
@@ -56,7 +60,7 @@ it('retains exact full DTOs, independently expected pages/facets and native date
 
 it('installs on a populated predecessor without changing source facts, full DTOs or privileges',async()=>{
  const base=await seedBase(),ctx=adminCtx(base);
- await hireEmployee(ctx,{person:{fullName:'Fictional retained upgrade employee'},companyId:base.companyId,departmentId:base.deptA,employmentType:'full_time',hiredOn:'2020-01-01'});
+ await hireEmployee(ctx,{person:{fullName:'Fictional retained upgrade employee',primaryEmail:randomUUID()+'@example.test'},companyId:base.companyId,departmentId:base.deptA,employmentType:'full_time',hiredOn:'2020-01-01'});
  const scope=sql`array[${base.companyId}::uuid]`,day=todayInKualaLumpur();
  const before=await withTenant(ctx,tx=>tx.execute(sql`select value from app.personnel_filter_rows(${day}::date,${scope}) r(value) order by value->>'employmentId'`));
  await owner.client.begin(async tx=>{await tx.unsafe('drop function '+typed);await tx.unsafe(migration);});
