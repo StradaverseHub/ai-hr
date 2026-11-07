@@ -450,12 +450,13 @@ class LinuxHost:
                 'Worker has no native control group')
         return props
 
-    def generation_dead(self, generation: dict[str, Any]) -> bool:
-        """Positive native proof only. False includes all uncertainty.
+    def generation_quiescent(self, generation: dict[str, Any]) -> bool:
+        """Positive old process-family proof, independent of endpoint cooling.
 
         A missing saved PID is not proof: a worker may have bound its socket
         before a readiness callback recorded MainPID. Inspect the original
-        native cgroup, unit state, current process family and endpoint instead.
+        native cgroup, unit state and current process family instead. This does
+        not authorize endpoint reuse; generation_dead also proves raw bind.
         """
         try:
             if generation.get('process') is not None and alive(generation['process']):
@@ -516,6 +517,14 @@ class LinuxHost:
             after = self.properties(generation['unit'])
             keys = ('InvocationID', 'MainPID', 'ControlPID', 'ActiveState', 'SubState', 'ControlGroup', 'KillMode', 'Delegate')
             require(all(after.get(key) == props.get(key) for key in keys), 'Worker unit changed during inspection')
+            return generation.get('process') is None or not alive(generation['process'])
+        except (Refused, OSError, ValueError, IndexError):
+            return False
+
+    def generation_dead(self, generation: dict[str, Any]) -> bool:
+        try:
+            if not self.generation_quiescent(generation):
+                return False
             require(self.port_free(generation['port']), 'Generation endpoint is still bound')
             return generation.get('process') is None or not alive(generation['process'])
         except (Refused, OSError, ValueError, IndexError):
@@ -938,15 +947,16 @@ class Controller:
             # fresh revision after uncertainty; equality is not activation proof.
             self.publish(state, ready, force=publication_uncertain, recover_pending=state['pending'] is not None)
             for generation in state['generations'].values():
-                native_dead = generation['id'] not in state['published']['ready'] and generation['phase'] != 'RELEASED' \
-                    and self.host.generation_dead(generation)
-                if native_dead:
+                native_quiescent = generation['id'] not in state['published']['ready'] and generation['phase'] != 'RELEASED' \
+                    and self.host.generation_quiescent(generation)
+                if native_quiescent:
                     generation['phase'] = 'RETIRED'
                 if generation['phase'] == 'WARMING' and generation['process'] is not None \
+                        and state['current'].get(generation['unit']) == generation['id'] \
                         and generation['epoch'] == state['epoch'] and generation['profile'] == self.profile.sha:
                     recover.append((generation['unit'], generation['invocation']))
                 if generation['phase'] in ('RETIRED', 'DRAINED') and not any(alive(reader) for reader in generation['readers']) \
-                        and native_dead:
+                        and native_quiescent and self.host.generation_dead(generation):
                     generation['phase'] = 'RELEASED'
             # Keep a bounded recent history. No live, uncertain, or currently
             # referenced generation is removed; sequence numbers never reset.

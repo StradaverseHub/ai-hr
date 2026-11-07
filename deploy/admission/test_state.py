@@ -47,15 +47,18 @@ class Host:
         C.require((self.identities[unit]['pid'], self.identities[unit]['startTicks']) in self.live, 'Worker exited')
         return self.identities[unit].copy()
 
-    def generation_dead(self, generation):
+    def generation_quiescent(self, generation):
         unit = generation['unit']
         identity = self.identities[unit]
         quiescent = self.phases[unit][0] in ('inactive', 'failed') and not C.alive(identity)
         # This pure host models exactly one native process family per unit.
         newer_family = self.invocations[unit] != generation['invocation'] \
             and C.admitting_phase(self.invocation(unit, self.invocations[unit])) and C.alive(identity)
-        return unit not in self.uncertain and (quiescent or newer_family) and self.port_free(generation['port']) \
+        return unit not in self.uncertain and (quiescent or newer_family) \
             and (generation.get('process') is None or not C.alive(generation['process']))
+
+    def generation_dead(self, generation):
+        return self.generation_quiescent(generation) and self.port_free(generation['port'])
 
     def health(self, port):
         return port in self.ready
@@ -397,6 +400,56 @@ class StateTests(unittest.TestCase):
             self.host.live.discard((reader['pid'], reader['startTicks']))
         self.controller.reconcile()
         self.assertEqual(self.controller.store.read()['generations'][second['id']]['phase'], 'RELEASED')
+
+    def test_reconcile_retires_dead_saved_warming_process_but_retains_cooling_and_readers(self):
+        peer = self.admit()
+        unit = 'aihr-web@2.service'
+        generation = self.reserve(unit)
+        self.host.ready.add(generation['port'])
+        self.host.fail_after_reload = True
+        with self.assertRaises(OSError):
+            self.controller.admit(unit, generation['invocation'])
+        self.assertIsNotNone(self.controller.store.read()['generations'][generation['id']]['process'])
+        self.host.phases[unit] = ('inactive', 'dead')
+        process = self.host.identities[unit]
+        self.host.live.remove((process['pid'], process['startTicks']))
+        self.host.bound.add(generation['port'])
+        with patch.object(self.controller, 'admit', wraps=self.controller.admit) as admission:
+            self.controller.reconcile()
+            admission.assert_not_called()
+        state = self.controller.store.read()
+        self.assertEqual(state['generations'][generation['id']]['phase'], 'RETIRED')
+        self.assertEqual(state['published']['ready'], [peer['id']])
+        self.host.invocations[unit] = '9' * 32
+        self.host.identities[unit] = {'pid': 999, 'startTicks': 20}
+        self.host.live.add((999, 20))
+        replacement = self.reserve(unit)
+        self.assertNotEqual(replacement['port'], generation['port'])
+        with patch.object(self.controller, 'admit', wraps=self.controller.admit) as admission:
+            self.controller.reconcile()
+            admission.assert_not_called()
+        self.host.bound.remove(generation['port'])
+        self.controller.reconcile()
+        self.assertNotEqual(self.controller.store.read()['generations'][generation['id']]['phase'], 'RELEASED')
+        for reader in self.controller.store.read()['generations'][generation['id']]['readers']:
+            self.host.live.discard((reader['pid'], reader['startTicks']))
+        self.controller.reconcile()
+        self.assertEqual(self.controller.store.read()['generations'][generation['id']]['phase'], 'RELEASED')
+
+    def test_reconcile_still_fully_admits_current_live_saved_warming_process(self):
+        self.admit()
+        unit = 'aihr-web@2.service'
+        generation = self.reserve(unit)
+        self.host.ready.add(generation['port'])
+        self.host.fail_after_reload = True
+        with self.assertRaises(OSError):
+            self.controller.admit(unit, generation['invocation'])
+        with patch.object(self.controller, 'admit', wraps=self.controller.admit) as admission:
+            self.controller.reconcile()
+            admission.assert_called_once_with(unit, generation['invocation'])
+        state = self.controller.store.read()
+        self.assertEqual(state['generations'][generation['id']]['phase'], 'READY')
+        self.assertIn(generation['id'], state['published']['ready'])
 
     def test_interrupted_cleanup_reaps_only_natively_dead_nonpublished_generations(self):
         generation = self.reserve()
