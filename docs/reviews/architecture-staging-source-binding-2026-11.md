@@ -1,6 +1,6 @@
 # Architecture staging source reassessment
 
-## Technical scope; owner binding pending
+## Technical scope and owner binding
 
 Runtime source `6f7309724cd6980e2560cc83a264ecabf39a31e0`, followed only by
 documentation clarification `8cc1251afc3e5424f83a5a0e6082ce0f7710631d`, computes
@@ -45,3 +45,19 @@ the covered source invalidates this proposed binding and requires reassessment.
 Browser preflight, the equal-budget worker matrix, authenticated complete release
 evidence, migration/worker compatibility and the shared staging lease remain
 independent requirements. Production testing and deployment remain held.
+
+## Owner decision
+
+On 7 November 2026, before 07:05:53 UTC, the repository owner answered
+“Approve fictional staging binding” to the exact digest above in this architecture
+chat. The question specified fictional-data staging verification only, preserved
+original approval provenance and pending contracts, and excluded production and
+real HR-data provider calls. This is the actual finite source-binding decision;
+it is not a new specialist certification or a release witness.
+
+Only the 28 previously approved sourceDigest values are renewed. Their original
+human metadata and both pending records are byte-preserved. Provider settings,
+stored evaluations and promotions are unchanged. No provider call was performed
+while recording this decision. Home transport changes after the runtime review
+are outside the provider closure; static regeneration still reproduces the exact
+approved 75acbc digest over 1,472 files.
