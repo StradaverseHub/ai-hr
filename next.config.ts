@@ -29,7 +29,10 @@ const nextConfig: NextConfig = {
    * Next 16.3 also traces external dynamic imports. The one-line fontkit export-map patch selects its
    * same verified CJS build for imports, making tracing independent of the private helper hoist.
    */
-  serverExternalPackages: ['fontkit'],
+  // Reversible cold-start experiment: keep one native Node module identity for
+  // the ORM instead of instantiating its server bundle on each cold route.
+  // Adoption requires actual production HTTP/browser and mutation qualification.
+  serverExternalPackages: ['fontkit','drizzle-orm'],
 
   /**
    * r394 — how long a FULLY prefetched route (components/intent-link.tsx: the sidebar prefetches the whole
