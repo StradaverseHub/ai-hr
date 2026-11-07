@@ -1,3 +1,4 @@
+import {withAiCentreFunction} from '../../../core/ai-centre-control';
 import {generatePerformanceNativeOutline} from './provider-source-draft';
 import {nativeParagraphOutline} from '../../../lib/ai/native-insight-outline';
 import {createHash} from 'node:crypto';
@@ -19,7 +20,13 @@ async function sourceTx(tx:Tx,ctx:SessionContext,reviewId:string,kind:RecordInsi
 async function configTx(tx:Tx,ctx:SessionContext){try{return await assessmentAiConfigTx(tx,ctx,'review');}catch{return null;}}
 const fingerprint=(source:unknown,cfg:ResolvedAiConfig|null)=>createHash('sha256').update(JSON.stringify({v:2,operation:'native_outline_selection',source,writer:cfg?{provider:cfg.provider,model:cfg.model}:null})).digest('hex');
 /** The same personal-record projection owns both the screen and all model context; no reviewer cache is read. */
-export async function getAssessmentRecordInsight(ctx:SessionContext,reviewId:string,rawKind:RecordInsightKind,{generate=false}:{generate?:boolean}={}){
+export async function getAssessmentRecordInsight(...args:Parameters<typeof getAssessmentRecordInsightActivity>):Promise<Awaited<ReturnType<typeof getAssessmentRecordInsightActivity>>>{
+ args=structuredClone(args);
+ if(!args[3]?.generate)return getAssessmentRecordInsightActivity(...args);
+ const kind=recordInsightKindSchema.parse(args[2]),controls={present:'read:operation_record_present',cycle:'read:operation_record_cycle',trend:'read:operation_record_trend'} as const;
+ return withAiCentreFunction(args[0],controls[kind],()=>getAssessmentRecordInsightActivity(...args));
+}
+async function getAssessmentRecordInsightActivity(ctx:SessionContext,reviewId:string,rawKind:RecordInsightKind,{generate=false}:{generate?:boolean}={}){
  ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(g=>({...g}))};
  z.uuid().parse(reviewId);const kind=recordInsightKindSchema.parse(rawKind),cacheKind=`record_${kind}`;
  const {source,cfg,cached}=await withPerformanceTenant(ctx,async tx=>{

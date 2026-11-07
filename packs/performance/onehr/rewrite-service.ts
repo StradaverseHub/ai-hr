@@ -1,3 +1,4 @@
+import {withAiCentreFunction} from '../../../core/ai-centre-control';
 import { createHash } from 'node:crypto';
 import { and,eq } from 'drizzle-orm';
 import { z } from 'zod';
@@ -68,7 +69,11 @@ async function rewriteContextTx(tx:Tx,ctx:SessionContext,reviewId:string,target:
 }
 
 /** Returns a suggestion only. The human keeps it in the ordinary form before its canonical writer saves. */
-export async function rewriteAssessmentField(ctx:SessionContext,reviewId:string,rawTarget:unknown,draft:string,instruction:string,requestId:string){
+export async function rewriteAssessmentField(...args:Parameters<typeof rewriteAssessmentFieldActivity>):Promise<Awaited<ReturnType<typeof rewriteAssessmentFieldActivity>>>{
+ args=structuredClone(args);
+ return withAiCentreFunction(args[0],'read:operation_performance_rewrite',()=>rewriteAssessmentFieldActivity(...args));
+}
+async function rewriteAssessmentFieldActivity(ctx:SessionContext,reviewId:string,rawTarget:unknown,draft:string,instruction:string,requestId:string){
  ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(g=>({...g}))};
  z.uuid().parse(reviewId);z.uuid().parse(requestId);const target=assessmentRewriteTarget.parse(rawTarget);
  if(draft.length>2100)throw Error('Your draft is too long to rewrite. Keep it within 2,000 characters.');

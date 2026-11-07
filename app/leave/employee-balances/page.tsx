@@ -573,7 +573,7 @@ export default async function EmployeeBalancesPage({
           <Card>
             <Pager hrefFor={pagerHref} state={pageState(pq, total, rows.length)} exportHref={exportHref('csv')} />
             <div className="overflow-x-auto" data-testid="employee-balances-scroll" role="region" aria-label={tInq('balancesTitle')} tabIndex={0}>
-              <table className={styles.table} data-testid="employee-balances-table">
+              <table className={styles.table} data-wrap-headings data-testid="employee-balances-table">
                 {/* 026e16b9: no `tracking-wide` on these inquiry tables. Measured live, the extra letter-spacing
                       cost this header row 23px across eleven columns — the last of the horizontal overflow.
                       Uppercase small-caps headings read fine without it. */}

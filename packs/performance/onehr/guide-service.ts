@@ -1,3 +1,4 @@
+import {withAiCentreFunction} from '../../../core/ai-centre-control';
 import en from '../../../messages/en.json';import ms from '../../../messages/ms.json';import zh from '../../../messages/zh.json';import vi from '../../../messages/vi.json';import ta from '../../../messages/ta.json';import th from '../../../messages/th.json';
 import {withAiAdmissionCheck,preparePrivateAiTask} from '../../../core/ai-governance';
 import type {GenerateArgs} from '../../../lib/ai/types';
@@ -84,7 +85,11 @@ export function privatePerformanceGuideContext(question:string,facts:Performance
 }
 const historySchema=z.array(z.object({role:z.enum(['user','agent']),content:z.string().max(600)})).max(10);
 export type PerformanceGuideReply={text:string;facts:PerformanceGuideFact[];mode:'answer'|'search'|'declined'|'slowed';unanswered:boolean};
-export async function askPerformanceGuide(ctx:SessionContext,rawQuestion:string,rawHistory:unknown=[]):Promise<PerformanceGuideReply>{
+export async function askPerformanceGuide(...args:Parameters<typeof askPerformanceGuideActivity>):Promise<Awaited<ReturnType<typeof askPerformanceGuideActivity>>>{
+ args=structuredClone(args);
+ return withAiCentreFunction(args[0],'read:operation_performance_guide',()=>askPerformanceGuideActivity(...args));
+}
+async function askPerformanceGuideActivity(ctx:SessionContext,rawQuestion:string,rawHistory:unknown=[]):Promise<PerformanceGuideReply>{
  ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(g=>({...g}))};
  const question=z.string().trim().min(1).max(600).parse(rawQuestion),history=historySchema.parse(rawHistory);
  if(!ctx.userId)throw Error('Sign in to ask about your Performance record.');

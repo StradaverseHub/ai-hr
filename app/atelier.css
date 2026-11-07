@@ -148,8 +148,9 @@
   :root[data-ui-theme='atelier'] main table thead { background: var(--background); color: var(--atelier-ink-3); }
   :root[data-ui-theme='atelier'] main table thead th {
     font-size: .78125rem; font-weight: 500; letter-spacing: 0; text-transform: none;
-    border-bottom: 1px solid var(--border); white-space: nowrap;
+    border-bottom: 1px solid var(--border);
   }
+  :root[data-ui-theme='atelier'] main table:not([data-wrap-headings]) thead th { white-space: nowrap; }
   :root[data-ui-theme='atelier'] main table tbody tr { border-color: var(--border); }
   :root[data-ui-theme='atelier'] main table tbody td { border-color: var(--border); height: 2.75rem; }
   :root[data-ui-theme='atelier'] main table tbody tr:hover,
@@ -466,3 +467,10 @@
   }
 }
 
+
+/* The compact desktop paint above must not reduce phone/touch hit areas. */
+@media (max-width: 640px), (pointer: coarse) {
+  :root[data-ui-theme='atelier'] main :is(button, a)[class~='inline-flex']:is([class~='bg-primary'], [class~='border-input']),
+  :root[data-ui-theme='atelier'] .atelier-pager :is(a, button, select) { min-height: 2.75rem; }
+  :root[data-ui-theme='atelier'] .atelier-pager-steps > :is(a, button) { min-width: 2.75rem; }
+}

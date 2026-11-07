@@ -676,7 +676,7 @@
       "switchOwner": {
         "tenant_setting": "Thay đổi ở công tắc tính năng",
         "ai_provider": "Thay đổi ở công tắc tính năng",
-        "job_type": "Chưa khả dụng: phiên bản này chưa có màn hình để bật công việc ủy quyền",
+        "job_type": "Quản lý loại công việc định kỳ",
         "worker_control": "Chuyển tại đây, cho mọi công ty trong tập đoàn"
       },
       "never": "Chưa bao giờ",
@@ -2089,6 +2089,31 @@
         "historyRow": "Phiên bản {version}: {mode}, bởi {name}, {when}",
         "noHistory": "Chưa từng bật."
       }
+    },
+    "controls": {
+      "stopTitle": "Dừng mọi hoạt động AI",
+      "running": "Hoạt động AI được cho phép. Mỗi chức năng vẫn cần quyền truy cập và cài đặt riêng.",
+      "stopped": "Hoạt động AI đã dừng.",
+      "unknown": "Không thể xác nhận trạng thái kiểm soát. Hãy tải lại trước khi thay đổi.",
+      "stopHelp": "Dừng yêu cầu AI mới, hành động tự động và lời nhắc AI chưa gửi. Công việc nhân sự thông thường, kiểm tra bắt buộc, quyền riêng tư và kiểm toán vẫn khả dụng.",
+      "pending": "Yêu cầu nhà cung cấp chưa quyết toán: {count}. Không phải yêu cầu đã gửi nào cũng thu hồi được; kết quả không thể cho phép hành động mới sau khi dừng.",
+      "stop": "Dừng mọi hoạt động AI",
+      "resume": "Tiếp tục hoạt động AI đủ điều kiện",
+      "resumeHelp": "Tiếp tục giữ nguyên cài đặt từng chức năng. Công việc trước khi dừng phải được kiểm tra lại; lời nhắc cũ không được gửi lại.",
+      "inventoryTitle": "Danh mục chức năng đầy đủ",
+      "inventoryHelp": "{count} chức năng và dịch vụ hỗ trợ, liên kết với các kiểm soát hiện có.",
+      "allFunctions": "Xem và cấu hình chức năng",
+      "off": "Tắt",
+      "on": "Được kiểm soát này cho phép",
+      "enable": "Bật",
+      "disable": "Tắt",
+      "configure": "Mở cài đặt",
+      "platform": "Do nền tảng quản lý",
+      "required": "Dịch vụ bắt buộc",
+      "parentHelp": "Cho phép một chức năng không cấp quyền truy cập. Dừng tất cả, công tắc cấp trên, phạm vi công ty, quyền và giới hạn vẫn áp dụng. Không thể tắt dịch vụ bắt buộc tại đây.",
+      "jobsTitle": "Loại công việc định kỳ",
+      "jobsHelp": "Bật một loại công việc định kỳ. Người dùng vẫn phải cấp ủy quyền hợp lệ trước khi chạy.",
+      "saveFailed": "Không thể lưu thay đổi. Hãy tải lại cài đặt hiện tại và thử lại."
     }
   },
   "today": {

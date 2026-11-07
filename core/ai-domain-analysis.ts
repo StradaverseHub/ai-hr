@@ -1,3 +1,4 @@
+import {withAiCentreFunction} from './ai-centre-control';
 import {createHash} from 'node:crypto';
 import {types as nodeTypes} from 'node:util';
 import {sql} from 'drizzle-orm';
@@ -100,6 +101,9 @@ async function readSource(tx:Tx,ctx:SessionContext,selected:DomainAnalysisOption
  * Source selection, exact membership and conditions are fingerprinted locally at every admission replay. */
 export async function generateDomainAnalysis(supplied:SessionContext,options:DomainAnalysisOptions):Promise<string>{
  const ctx={...supplied,roles:supplied.roles?.slice(),grants:supplied.grants?.map(grant=>({...grant}))},selected=selection(options);
+ return withAiCentreFunction(ctx,'read:operation_domain_analysis',()=>generateDomainAnalysisActivity(ctx,selected));
+}
+async function generateDomainAnalysisActivity(ctx:SessionContext,selected:DomainAnalysisOptions):Promise<string>{
  const configuration=await withTenant(ctx,async tx=>resolveActiveAiConfig(tx,await authorizeSourceTx(tx,ctx,selected),'report_insight'));
  if(!configuration)return unavailable();let originalFingerprint:string|undefined;
  return generatePrivateAiTaskAnalysis(configuration,'aggregate_snapshot_analysis_v1',async(tx,current)=>{

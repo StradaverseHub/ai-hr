@@ -4929,6 +4929,20 @@
       "when": 1793330002200,
       "tag": "2600_onboarding_current_personnel",
       "breakpoints": true
+    },
+    {
+      "idx": 2000,
+      "version": "7",
+      "when": 1793330002300,
+      "tag": "2700_ai_centre_controls",
+      "breakpoints": true
+    },
+    {
+      "idx": 2300,
+      "version": "7",
+      "when": 1793330002600,
+      "tag": "3000_ai_centre_function_coverage",
+      "breakpoints": true
     }
   ]
 }

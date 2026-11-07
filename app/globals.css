@@ -536,3 +536,15 @@ label[data-edited-field='true'] > span:first-child::after {
 /* AI centre How it works (components/ai-centre/how-it-works.tsx): a check arriving in the step's list.
    Applied through motion-safe only, so reduced motion shows the list at once. */
 @keyframes ai-centre-tick { from { opacity: 0; transform: translateY(4px); } }
+
+/* A compact pointer scale remains available on desktop; narrow and touch screens get
+   comfortable targets. min-size wins over each theme's compact height without changing its paint. */
+@media (max-width: 640px), (pointer: coarse) {
+  :where(main, [role='dialog'], header) :where(button, [role='button'], .ui-control, select, input:not([type='checkbox']):not([type='radio']):not([type='hidden'])) {
+    min-height: 2.75rem;
+  }
+  :where(main, [role='dialog'], header) :where(button, [role='button']) { min-width: 2.75rem; }
+  :where(main, [role='dialog']) :where(input:not([type='checkbox']):not([type='radio']):not([type='hidden']), select, textarea) { font-size: 1rem; }
+  :where([data-ui-pager]) :where(a, button, select) { min-width: 2.75rem; min-height: 2.75rem; }
+  :where(main, [role='dialog']) :where(label:has(> input[type='checkbox'])) { min-height: 2.75rem; }
+}

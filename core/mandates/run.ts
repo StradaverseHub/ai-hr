@@ -1,3 +1,4 @@
+import {assertAiCentreRunningTx} from '../ai-centre-control';
 /** ADR-0170 §3.10 and §3.13, step 5a — one run of a work-job mandate, under the tenant's agent principal.
  *
  * The run is the agent acting FOR the grantor, never AS them:
@@ -73,7 +74,7 @@ async function stateTx(tx:Tx,tenantId:string,mandateId:string,now:Date){
   check('mandate_in_force',`teras_mandate:${mandate.id}@v${mandate.version}`,mandateState(mandate,now)==='active'),
   check('run_limit',keys.enablement?`teras_mandate_job_type:${mandate.jobType}@v${keys.enablement.version}`:null,(runs?.n??0)<runLimit),
  ];
- return{mandate,jobType,checks};
+ return{mandate,jobType,checks,generation:keys.control?.version??0};
 }
 
 export async function runMandate<S=TeamAbsenceSummary>(options:MandateRunOptions):Promise<MandateRunResult<S>>{
@@ -106,6 +107,7 @@ export async function runMandate<S=TeamAbsenceSummary>(options:MandateRunOptions
   const lateLimit=again.checks.find(item=>item.check==='run_limit')!;
   const overLimit=!!result&&!failed.length&&lateLimit.result!=='pass';
   if(overLimit)failed.push('run_limit');
+  if(!failed.length&&result){try{await assertAiCentreRunningTx(tx,agent,first.generation);}catch(error){if(error instanceof Error&&error.name==='AiAllowanceError')failed.push('stop_switch');else throw error;}}
   const stopped=failed.length>0||!result;
   const job=first.jobType?WORK_JOB_TYPES[first.jobType]:null;
   const record=await writeOutcomeRecordTx(tx,agent,{

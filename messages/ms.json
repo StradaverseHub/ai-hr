@@ -296,7 +296,11 @@
       "rule": "Perubahan ini ditolak oleh perlindungan yang melindungi rekod sedia ada, seperti gaji yang telah ditutup. Rujukan {ref}.",
       "busy": "Sistem sedang sibuk dan perubahan tidak diselesaikan. Sila cuba lagi. Rujukan {ref}.",
       "nricDuplicate": "NRIC ini sudah wujud dalam rekod pekerja lain. NRIC pendua tidak dibenarkan di bawah Tetapan Umum Orang semasa. Rujukan {ref}."
-    }
+    },
+    "moreActions": "Tindakan lain",
+    "noSearchResults": "Tiada hasil sepadan dengan carian anda.",
+    "sectionFilter": "Bahagian",
+    "allSections": "Semua bahagian"
   },
   "nav": {
     "roster": "Roster",
@@ -3894,7 +3898,7 @@
       "panelLaterOther": "Tahun cuti ini sahaja. Baki tersedia pada kad turut mengira entri bertarikh selepas tahun cuti ini",
       "sharedFromPool": "Hari-hari ini diambil daripada baki {pool}.",
       "sharedPoolHolder": "Hari-hari ini dikongsi dengan {types}.",
-      "takenOnlyCaption": "Diambil — tiada kelayakan",
+      "takenOnlyCaption": "Tiada kelayakan — penggunaan dipaparkan",
       "cycleDates": "Tahun cuti {from} – {to}",
       "details": "Butiran",
       "detailsFor": "Butiran {type}",
@@ -3947,7 +3951,10 @@
     "replacementRequest": {
       "viewMyRequests": "[retired r389 — the 'View my leave credit requests' link beside the Leave Credit request button on My Leave. Item ba039150 removed it: the list it opened is now the Leave Credit History page, reached from the My Leave menu]"
     },
-    "historyHeading": "Status Permohonan Cuti"
+    "historyHeading": "Status Permohonan Cuti",
+    "submittingRequest": "Sedang menghantar…",
+    "submitUnconfirmed": "Keputusan tidak dapat disahkan. Semak status permohonan sebelum mencuba lagi.",
+    "zeroDaysHint": "Pilihan ini tidak menolak cuti. Pilih tarikh bekerja sebelum menghantar."
   },
   "leaveTracker": {
     "title": "Penjejak Cuti Pasukan",
@@ -4779,7 +4786,7 @@
   },
   "me": {
     "title": "Profil Saya",
-    "notLinked": "Akaun ini tidak dipautkan kepada profil pekerja. Gunakan penukar identiti di bar atas untuk bertindak sebagai pekerja (cth. Aisyah atau Daniel).",
+    "notLinked": "Akaun ini belum dipautkan kepada profil pekerja. Minta HR memautkan log masuk anda kepada profil pekerja yang betul.",
     "todayHeading": "Hari ini",
     "checkIn": "Daftar masuk",
     "checkedInAt": "Daftar masuk pada <time></time>",
@@ -5749,7 +5756,7 @@
       "colEmployees": "Pekerja",
       "colNetPay": "Gaji bersih",
       "colStatus": "Status",
-      "empty": "Belum ada proses gaji — cipta satu di bawah.",
+      "empty": "Belum ada proses gaji. Pilih Cipta Kitaran Gaji untuk bermula.",
       "runType": {
         "regular": "Biasa",
         "off_cycle": "Luar kitaran",
@@ -11517,7 +11524,7 @@
       "title": "Konfigurasi tuntutan",
       "subtitle": "Tentukan jenis tuntutan perbelanjaan/manfaat yang boleh dihantar pekerja, layanan cukai lalainya, dan bajet pilihan.",
       "typesTitle": "Jenis tuntutan",
-      "empty": "Belum ada jenis tuntutan. Tambah satu di bawah.",
+      "empty": "Belum ada jenis tuntutan. Pilih Tambah baharu untuk menciptanya.",
       "newTitle": "Jenis tuntutan baharu",
       "codeLabel": "Kod",
       "nameLabel": "Nama",
@@ -13697,7 +13704,9 @@
     "scope": "Skop",
     "breadcrumb": "Laluan navigasi",
     "details": "Butiran",
-    "homePreferences": "Keutamaan Home"
+    "homePreferences": "Keutamaan Home",
+    "chooseCompanies": "Pilih semula",
+    "pendingCompanySelection": "Pilih syarikat untuk mengemas kini paparan. Skop syarikat semasa belum berubah."
   },
   "components": {
     "plannedAbsences": {
@@ -14292,7 +14301,7 @@
   "payComponents": {
     "title": "Item Gaji",
     "description": "Tentukan item gaji yang boleh dikonfigurasi dan layanan berkanunnya (KWSP / PERKESO / PCB / HRDF).",
-    "previewNotice": "Pratonton. Katalog sedia digunakan; gaji bertukar kepada komponen bertaip hanya apabila diaktifkan (TYPED_PAY_COMPONENTS_ENABLED). Sehingga itu, gaji berjalan atas asas + elaun + kerja lebih masa + bonus seperti sekarang.",
+    "previewNotice": "Pratonton. Katalog tersedia. Gaji terus menggunakan gaji asas, elaun, kerja lebih masa dan bonus sehingga persediaan komponen gaji baharu diaktifkan.",
     "catalogTitle": "Katalog",
     "seedDefaults": "Muatkan lalai Malaysia",
     "colCode": "Kod Gaji",
@@ -22530,7 +22539,8 @@
     "saving": "[retired r392 — part of the Today tiles or the Needs your attention panel on My Team, removed at the reporter's request (item 33930be9). Leave is decided in Approval Items]",
     "attentionCount": "[retired r392 — part of the Today tiles or the Needs your attention panel on My Team, removed at the reporter's request (item 33930be9). Leave is decided in Approval Items]",
     "status_exempt": "Dikecualikan",
-    "exemptCode": "EX"
+    "exemptCode": "EX",
+    "balanceContext": "Ini ialah baki yang direkodkan. Persediaan kelayakan tidak dipaparkan di sini; baki sifar tidak mengesahkan bahawa kelayakan telah ditetapkan. Hubungi HR untuk menyemak baki."
   },
   "lifecycle": {
     "title": "Orientasi & IT",

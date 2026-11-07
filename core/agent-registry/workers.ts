@@ -14,9 +14,8 @@
  * A declaration missing any of these, or inconsistent with its family, is refused here; the registry does not
  * load with it, and workerRunGate (./controls.ts) refuses any worker id not in the loaded registry.
  *
- * The existing chasers, nudges, triage and the narrator live in the approved provider closure, so their run
- * paths cannot consult the stop switch in this step without a fresh approval of that closure. They are
- * declared with `stop.honoured:false` and the reason, and the registry view says so; nothing pretends they stop.
+ * All worker effects now join the AI centre stop barrier; provider-source digests must be reviewed
+ * separately before egress under the changed closure is enabled.
  * No React, no route: read services are in ./views.ts. Not imported by the production Assistant. */
 import type {AgentFeature} from '../agent-principal';
 import type {ProposalTypeId} from '../agent-proposal';
@@ -92,7 +91,7 @@ export function workerDeclarationProblems(value:unknown):readonly string[]{
  // A decider completes only under a mandate; a mandate worker is switched by its job type and recorded per run.
  if(d.effect==='complete_under_mandate'&&d.authority.kind!=='mandate')problems.push('authority');
  if(d.authority.kind==='mandate'&&(d.switch.kind!=='job_type'||d.switch.jobType!==d.authority.jobType||d.record.kind!=='mandate_runs'))problems.push('switch');
- if(d.stop.honoured===false&&!nonEmpty(d.stop.pending))problems.push('stop');
+ if(d.stop.honoured!==true)problems.push('stop');
  if(d.metrics.kind==='not_measurable'&&!nonEmpty(d.metrics.reason))problems.push('metrics');
  // AI v2 W8: a loop prepares only, as the agent principal behind its own registry switch, honours the stop switch,
  // names its sponsor and is measured from its cases. A sponsor is declared only by a loop.
@@ -113,7 +112,6 @@ export function assertWorkerDeclaration(value:unknown):asserts value is WorkerDe
  if(problems.length)throw new WorkerNotRegistrable(typeof (value as {id?:unknown})?.id==='string'?(value as {id:string}).id:'unknown',problems);
 }
 
-const CLOSURE_PENDING='Its run path is in the approved provider closure; it consults the stop switch once that closure is next approved. Until then use its own switch.';
 const NIGHTLY:WorkerTrigger={kind:'schedule',detail:'Nightly sweep'};
 const LOOP_NIGHTLY:WorkerTrigger={kind:'schedule',detail:'Nightly sweep, for each company in scope'};
 /** AI v2 P2-2a: the Pre-salary loop checks each company at its own interval (hourly, twice daily or daily). */
@@ -122,35 +120,35 @@ const LOOP_PAYROLL_INTERVAL:WorkerTrigger={kind:'schedule',detail:'Each company 
 const DECLARATIONS:readonly WorkerDeclaration[]=[
  {id:'payroll_anomaly_narrator',label:'Payroll anomaly narrator',family:'explainer',owners:['core/payroll-anomaly-narrate.ts#narrateVerdict'],
   trigger:{kind:'request',detail:'An operator opens a payroll anomaly'},readScope:['payroll_anomaly'],effect:'none',
-  authority:{kind:'tenant_switch',actsAs:'requester'},switch:{kind:'ai_provider',feature:'payroll_explanation'},stop:{honoured:false,pending:CLOSURE_PENDING},
+  authority:{kind:'tenant_switch',actsAs:'requester'},switch:{kind:'ai_provider',feature:'payroll_explanation'},stop:{honoured:true},
   record:{kind:'agent_proposal',proposalTypes:['anomaly_narration']},metrics:{kind:'agreement_view',proposalTypes:['anomaly_narration']}},
  {id:'claims_triage',label:'Claims input triage',family:'watcher',owners:['core/input-triage.ts#triagePendingClaims'],
   trigger:NIGHTLY,readScope:['claim_status'],effect:'notify',
-  authority:{kind:'tenant_switch',actsAs:'agent_principal'},switch:{kind:'tenant_setting',feature:'claims_triage'},stop:{honoured:false,pending:CLOSURE_PENDING},
+  authority:{kind:'tenant_switch',actsAs:'agent_principal'},switch:{kind:'tenant_setting',feature:'claims_triage'},stop:{honoured:true},
   record:{kind:'agent_proposal',proposalTypes:['input_triage']},metrics:{kind:'agreement_view',proposalTypes:['input_triage']}},
  {id:'readiness_nudges',label:'Readiness nudges',family:'chaser',owners:['core/readiness-nudge.ts#sweepReadinessNudges'],
   trigger:NIGHTLY,readScope:['readiness_gap'],effect:'notify',
-  authority:{kind:'tenant_switch',actsAs:'agent_principal'},switch:{kind:'tenant_setting',feature:'readiness_reminders'},stop:{honoured:false,pending:CLOSURE_PENDING},
+  authority:{kind:'tenant_switch',actsAs:'agent_principal'},switch:{kind:'tenant_setting',feature:'readiness_reminders'},stop:{honoured:true},
   record:{kind:'agent_proposal',proposalTypes:['readiness_nudge','readiness_fix']},metrics:{kind:'agreement_view',proposalTypes:['readiness_fix']}},
  {id:'approval_chasers',label:'Approval chasers',family:'chaser',owners:['core/automatic-chasers.ts#runApprovalChasers'],
   trigger:NIGHTLY,readScope:['pending_approval'],effect:'notify',
-  authority:{kind:'tenant_switch',actsAs:'agent_principal'},switch:{kind:'tenant_setting',feature:'approval_chasers'},stop:{honoured:false,pending:CLOSURE_PENDING},
+  authority:{kind:'tenant_switch',actsAs:'agent_principal'},switch:{kind:'tenant_setting',feature:'approval_chasers'},stop:{honoured:true},
   record:{kind:'domain_event',eventType:'automatic-chase.approval-raised'},metrics:{kind:'not_measurable',reason:'A reminder has no accept or decline; the item being decided later is not attributable to it.'}},
  {id:'review_chasers',label:'Employment review chasers',family:'chaser',owners:['core/automatic-chasers.ts#runReviewChasers'],
   trigger:NIGHTLY,readScope:['pending_approval'],effect:'notify',
-  authority:{kind:'tenant_switch',actsAs:'agent_principal'},switch:{kind:'tenant_setting',feature:'review_chasers'},stop:{honoured:false,pending:CLOSURE_PENDING},
+  authority:{kind:'tenant_switch',actsAs:'agent_principal'},switch:{kind:'tenant_setting',feature:'review_chasers'},stop:{honoured:true},
   record:{kind:'domain_event',eventType:'automatic-chase.review-raised'},metrics:{kind:'not_measurable',reason:'A reminder has no accept or decline; the item being decided later is not attributable to it.'}},
  {id:'clock_reminders',label:'Missing clock-in reminders',family:'chaser',owners:['core/automatic-followups.ts#runAutomaticFollowups'],
   trigger:NIGHTLY,readScope:['followup_item'],effect:'notify',
-  authority:{kind:'tenant_switch',actsAs:'agent_principal'},switch:{kind:'tenant_setting',feature:'clock_reminders'},stop:{honoured:false,pending:CLOSURE_PENDING},
+  authority:{kind:'tenant_switch',actsAs:'agent_principal'},switch:{kind:'tenant_setting',feature:'clock_reminders'},stop:{honoured:true},
   record:{kind:'domain_event',eventType:'automatic-chase.followup-raised',source:'missing_clock'},metrics:{kind:'not_measurable',reason:'A reminder has no accept or decline.'}},
  {id:'document_reminders',label:'Passport expiry reminders',family:'chaser',owners:['core/automatic-followups.ts#runAutomaticFollowups'],
   trigger:NIGHTLY,readScope:['followup_item'],effect:'notify',
-  authority:{kind:'tenant_switch',actsAs:'agent_principal'},switch:{kind:'tenant_setting',feature:'document_reminders'},stop:{honoured:false,pending:CLOSURE_PENDING},
+  authority:{kind:'tenant_switch',actsAs:'agent_principal'},switch:{kind:'tenant_setting',feature:'document_reminders'},stop:{honoured:true},
   record:{kind:'domain_event',eventType:'automatic-chase.followup-raised',source:'passport_expiry'},metrics:{kind:'not_measurable',reason:'A reminder has no accept or decline.'}},
  {id:'lifecycle_chasers',label:'Lifecycle step chasers',family:'chaser',owners:['core/automatic-followups.ts#runAutomaticFollowups'],
   trigger:NIGHTLY,readScope:['followup_item'],effect:'notify',
-  authority:{kind:'tenant_switch',actsAs:'agent_principal'},switch:{kind:'tenant_setting',feature:'lifecycle_chasers'},stop:{honoured:false,pending:CLOSURE_PENDING},
+  authority:{kind:'tenant_switch',actsAs:'agent_principal'},switch:{kind:'tenant_setting',feature:'lifecycle_chasers'},stop:{honoured:true},
   record:{kind:'domain_event',eventType:'automatic-chase.followup-raised',source:'lifecycle_step'},metrics:{kind:'not_measurable',reason:'A reminder has no accept or decline.'}},
  {id:'approver_recommendation',label:'Approver recommendations',family:'explainer',
   owners:['core/recommenders/leave-decision.ts#recommendLeaveDecision'],trigger:{kind:'request',detail:'An approver opens a leave request assigned to them'},

@@ -35,6 +35,6 @@ describe('r416 · the Monolith header menus are painted above the page', () => {
 
   it('the company switcher keeps a minimum width in Monolith, so a phone can still tap it', () => {
     const src = read('components/company-switcher.tsx');
-    expect(src).toContain('<div className="relative min-w-0 monolith:min-w-[5.5rem]">');
+    expect(src).toContain('<div className="relative min-w-0 monolith:min-w-[5.5rem]"');
   });
 });

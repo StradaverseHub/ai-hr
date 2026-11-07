@@ -676,7 +676,7 @@
       "switchOwner": {
         "tenant_setting": "Tukar pada suis ciri",
         "ai_provider": "Tukar pada suis ciri",
-        "job_type": "Belum tersedia: versi ini tiada skrin untuk menghidupkan tugas diwakilkan",
+        "job_type": "Urus jenis kerja berulang",
         "worker_control": "Ditukar di sini, untuk setiap syarikat dalam kumpulan"
       },
       "never": "Tidak pernah",
@@ -2089,6 +2089,31 @@
         "historyRow": "Versi {version}: {mode}, oleh {name}, {when}",
         "noHistory": "Tidak pernah dihidupkan."
       }
+    },
+    "controls": {
+      "stopTitle": "Hentikan semua aktiviti AI",
+      "running": "Aktiviti AI dibenarkan. Setiap fungsi masih tertakluk pada akses dan tetapannya.",
+      "stopped": "Aktiviti AI dihentikan.",
+      "unknown": "Status kawalan tidak dapat disahkan. Muat semula sebelum membuat perubahan.",
+      "stopHelp": "Menghentikan permintaan AI baharu, tindakan automatik dan peringatan AI yang belum dihantar. Kerja HR biasa, semakan wajib, privasi dan audit kekal tersedia.",
+      "pending": "Permintaan penyedia belum selesai: {count}. Permintaan yang telah dihantar mungkin tidak dapat ditarik balik; hasilnya tidak boleh membenarkan tindakan baharu selepas dihentikan.",
+      "stop": "Hentikan semua aktiviti AI",
+      "resume": "Sambung aktiviti AI yang layak",
+      "resumeHelp": "Menyambung mengekalkan tetapan setiap fungsi. Kerja sebelum penghentian mesti disemak semula; peringatan lama tidak dihantar semula.",
+      "inventoryTitle": "Inventori fungsi lengkap",
+      "inventoryHelp": "{count} fungsi dan perkhidmatan sokongan, dipautkan kepada kawalan sedia ada.",
+      "allFunctions": "Lihat dan konfigurasi fungsi",
+      "off": "Dimatikan",
+      "on": "Dibenarkan oleh kawalan ini",
+      "enable": "Hidupkan",
+      "disable": "Matikan",
+      "configure": "Buka tetapan",
+      "platform": "Diurus oleh platform",
+      "required": "Perkhidmatan wajib",
+      "parentHelp": "Membenarkan fungsi tidak memberikan akses. Henti semua, suis induk, skop syarikat, kebenaran dan had masih terpakai. Perkhidmatan wajib tidak boleh dimatikan di sini.",
+      "jobsTitle": "Jenis kerja berulang",
+      "jobsHelp": "Membolehkan jenis kerja berulang. Seseorang masih perlu memberikan delegasi yang sah sebelum ia berjalan.",
+      "saveFailed": "Perubahan tidak dapat disimpan. Muat semula tetapan semasa dan cuba lagi."
     }
   },
   "today": {

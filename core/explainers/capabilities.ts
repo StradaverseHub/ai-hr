@@ -1,3 +1,4 @@
+import {withAiCentreFunction} from '../ai-centre-control';
 /** ADR-0170 step 4 — the explainers and the setup co-pilot as harness capabilities; AI Centre issue 13b adds the
  * governed pay averages, offered only to callers with payroll access.
  *
@@ -149,5 +150,11 @@ export async function terasCapabilitiesFor(ctx:SessionContext):Promise<readonly 
  const workers=[...new Set(candidates.flatMap(row=>row.worker?[row.worker]:[]))];
  const open=new Set<string>();
  for(const worker of workers)if((await workerRunGate(ctx,worker)).run)open.add(worker);
- return Object.freeze(candidates.filter(row=>row.worker===null||open.has(row.worker)));
+ return Object.freeze(candidates.filter(row=>row.worker===null||open.has(row.worker)).map(row=>Object.freeze({...row,
+  async run(caller:SessionContext,input:Record<string,unknown>,scope:TerasCapabilityScope){
+   [caller,input,scope]=structuredClone([caller,input,scope] as const);
+   try{return await withAiCentreFunction(caller,'read:'+row.name,()=>row.run(caller,input,scope));}
+   catch(error){if(error instanceof Error&&error.name==='AiAllowanceError')return refuse('not_permitted','This AI function is switched off.');throw error;}
+  }
+ })));
 }

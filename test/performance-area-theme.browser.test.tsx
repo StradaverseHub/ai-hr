@@ -90,6 +90,9 @@ describe.each([false, true])('dark=%s', (dark) => {
       // Theme-independent geometry: whatever the pointer media resolves to here, all three agree.
       expect(r.primaryHeight, r.theme).toBeGreaterThan(0);
       expect(r.primaryHeight, r.theme).toBe(seen[0].primaryHeight);
+      if (matchMedia('(max-width: 640px), (pointer: coarse)').matches) {
+        expect(r.primaryHeight, `${r.theme}: phone/touch target`).toBeGreaterThanOrEqual(44);
+      }
     }
     // Outside the wrapper each theme still paints its own primary, none of them the area's.
     const outside = seen.map((r) => r.outsidePrimaryBg);

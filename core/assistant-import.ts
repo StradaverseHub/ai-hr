@@ -1,3 +1,4 @@
+import {withAiCentreFunction} from './ai-centre-control';
 import {withTenant,type SessionContext,type Tx} from '../db/client';
 import {assertAiPrincipalTx} from './ai-principal';
 import {assertMayUseAssistant} from './assistant-grant';
@@ -19,6 +20,11 @@ async function guard(tx:Tx,ctx:SessionContext,target:AssistantImportTarget){
 }
 /** One explicit, metered, consented call. No HR writer or import commit is reachable here. */
 export async function prepareAssistantImport(supplied:SessionContext,input:unknown){
+ const ctx={...supplied,roles:supplied.roles?.slice(),grants:supplied.grants?.map(grant=>({...grant}))};
+ const request=AssistantImportRequest.parse(input);
+ return withAiCentreFunction(ctx,['read:operation_assistant_import','read:operation_assistant_import_'+request.target],()=>prepareAssistantImportActivity(ctx,request));
+}
+async function prepareAssistantImportActivity(supplied:SessionContext,input:unknown){
  const ctx={...supplied,roles:supplied.roles?.slice(),grants:supplied.grants?.map(grant=>({...grant}))};
  const request=AssistantImportRequest.parse(input);
  const cfg=await withTenant(ctx,async tx=>{await guard(tx,ctx,request.target);return resolveActiveAiConfig(tx,ctx,FEATURE);});

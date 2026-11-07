@@ -1,3 +1,4 @@
+import {withAiCentreFunction} from './ai-centre-control';
 import { sql } from 'drizzle-orm';
 import { assertAiPrincipalTx } from './ai-principal';
 import { resolveEntitlementsTx, isModuleEnabled } from './entitlements';
@@ -103,7 +104,11 @@ export type ReportDraftResult = { spec: CustomReportSpec; explanation: string; r
  * (the builder passes the currently-selected dataset). Returns the spec + explanation for the admin to
  * review; NEVER writes a report.
  */
-export async function draftReportSpec(
+export async function draftReportSpec(...args:Parameters<typeof draftReportSpecActivity>):Promise<Awaited<ReturnType<typeof draftReportSpecActivity>>>{
+ args=structuredClone(args);
+ return withAiCentreFunction(args[0],'read:operation_report_spec_draft',()=>draftReportSpecActivity(...args));
+}
+async function draftReportSpecActivity(
   ctx: SessionContext,
   p: { datasetId: string; description: string },
 ): Promise<ReportDraftResult> {

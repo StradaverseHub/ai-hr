@@ -676,7 +676,7 @@
       "switchOwner": {
         "tenant_setting": "在功能开关中更改",
         "ai_provider": "在功能开关中更改",
-        "job_type": "暂不可用：此版本没有开启委托任务的界面",
+        "job_type": "管理定期工作类型",
         "worker_control": "在此切换，适用于集团内所有公司"
       },
       "never": "从未",
@@ -2089,6 +2089,31 @@
         "historyRow": "版本 {version}：{mode}，由 {name}，{when}",
         "noHistory": "从未开启。"
       }
+    },
+    "controls": {
+      "stopTitle": "停止所有 AI 活动",
+      "running": "允许 AI 活动。每项功能仍须满足自身的权限和设置。",
+      "stopped": "AI 活动已停止。",
+      "unknown": "无法确认控制状态。请刷新后再更改。",
+      "stopHelp": "停止新的 AI 请求、自动操作及尚未发送的 AI 提醒。常规人事工作、必要检查、隐私和审计服务继续可用。",
+      "pending": "尚未结算的供应商请求：{count}。已发送的请求不一定能够撤回；停止后，其结果不能授权新的操作。",
+      "stop": "停止所有 AI 活动",
+      "resume": "恢复符合条件的 AI 活动",
+      "resumeHelp": "恢复时保留各功能设置。停止前的工作必须重新检查；旧提醒不会重新发送。",
+      "inventoryTitle": "完整功能清单",
+      "inventoryHelp": "共 {count} 项功能和支持服务，链接至其现有控制。",
+      "allFunctions": "查看和配置功能",
+      "off": "已关闭",
+      "on": "此控制允许",
+      "enable": "开启",
+      "disable": "关闭",
+      "configure": "打开设置",
+      "platform": "由平台管理",
+      "required": "必要服务",
+      "parentHelp": "允许功能并不授予访问权限。全部停止、上级开关、公司范围、权限和限额仍然适用。此处不能关闭必要服务。",
+      "jobsTitle": "定期工作类型",
+      "jobsHelp": "启用一种定期工作。运行前仍须由用户授予有效的委托。",
+      "saveFailed": "无法保存更改。请刷新当前设置后重试。"
     }
   },
   "today": {

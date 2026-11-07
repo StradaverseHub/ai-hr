@@ -5,6 +5,28 @@ journals and the actual staging watermark before journal integration or applicat
 applied SQL/hash and exact journal prefix. Reservations do not authorize deployment or skipping the
 owning release gate.
 
+## AI centre function coverage — 7 November 2026 (unapplied source reservation)
+
+Branch `codex/ai-centre-staging-integration-20261107` reserves
+`3000_ai_centre_function_coverage`, idx 2300, when 1793330002600.
+A fresh read-only scan of 3023 distinct ref heads, 480 distinct committed
+journals and 355 readable worktree journals found maximum tag 2902,
+idx 2234 and timestamp 1793330002534. One conflicted foreign worktree
+journal was scanned conservatively for both sides' reservations and preserved.
+The earlier proposed 2701 allocation is already used elsewhere and is not used here.
+Preserve the exact approved PR229 prefix through 2600, then the existing
+unapplied 2700 reservation. No installed SQL bytes are changed. Recheck the
+actual installed watermark and peer claims at admission; this is source allocation only.
+
+## AI centre controls — 7 November 2026 (unapplied source reservation)
+
+Branch `codex/ai-centre-controls-stop-all-20261107` reserves
+`2700_ai_centre_controls`, idx 2000, when 1793330002300. A read-only scan
+of 5520 refs, 474 distinct journals and registered worktree journals found
+maximum tag 2600, idx 1900 and when 1793330002200. Preserve the current
+alpha journal prefix through 2406. Recheck peer claims and the actual installed
+watermark before integration or application. This is source allocation only.
+
 ## Payroll reconciliation remarks — 6 November 2026 (provisional)
 
 The feedback candidate reserves `2404_payroll_reconciliation_remark`, idx `1654`,

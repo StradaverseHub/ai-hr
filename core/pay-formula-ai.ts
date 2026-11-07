@@ -1,3 +1,4 @@
+import {withAiCentreFunction} from './ai-centre-control';
 import type { SessionContext, Tx } from '../db/client';
 import { withTenant } from '../db/client';
 import { assertAiPrincipalTx } from './ai-principal';
@@ -8,7 +9,11 @@ import { draftInputDigest } from '../lib/ai/draft-input';
 import { assertPayFormulaDraftAuthorTx, validatePayFormulaDraft, payFormulaPermittedDraftFieldsTx } from '../packs/payroll/service';
 import { adjudicatePayFormulaDraft, payFormulaSuggestionSource, PAY_FORMULA_DRAFT_CONTRACT, payFormulaDraftRequest } from '../lib/pay-formula-ai';
 
-export async function draftPayFormula(ctx: SessionContext, input: unknown) {
+export async function draftPayFormula(...args:Parameters<typeof draftPayFormulaActivity>):Promise<Awaited<ReturnType<typeof draftPayFormulaActivity>>>{
+ args=structuredClone(args);
+ return withAiCentreFunction(args[0],'read:operation_pay_formula_draft',()=>draftPayFormulaActivity(...args));
+}
+async function draftPayFormulaActivity(ctx: SessionContext, input: unknown) {
   const request = Object.freeze(payFormulaDraftRequest.parse(input));
   ctx = {...ctx, roles: ctx.roles?.slice(), grants: ctx.grants?.map(grant => ({...grant}))};
   const author = async (tx: Tx, current = ctx) => {

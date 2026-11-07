@@ -1168,6 +1168,7 @@ async function projectNotificationsTx(tx:Tx,ctx:SessionContext,allCategories:boo
     for (const ev of rows) {
       const entry = REGISTRY[ev.eventType];
       if (!entry) continue;
+      if(!(await tx.execute<{allowed:boolean}>(sql`select app.ai_centre_event_allowed(${ev.id}::uuid) as allowed`))[0]?.allowed)continue;
       if(await legacyProbationNotificationIsObsolete(tx,ev.eventType,ev.aggregateId))continue;
       if(ev.eventType==='reward-access.suspended'){
         const [account]=await tx.execute<{created:number}>(sql`select app.reward_access_project_account_suspension(${ev.id}::uuid) as created`);
@@ -1237,6 +1238,7 @@ export async function notificationStillTargets(tx: Tx, eventId: string, kind: st
     if(!ev)throw Error('Notice source event is unavailable; retain the queued delivery for investigation.');
   }
   if (!ev) return false;
+  if(!(await tx.execute<{allowed:boolean}>(sql`select app.ai_centre_event_allowed(${eventId}::uuid) as allowed`))[0]?.allowed)return false;
   if(await legacyProbationNotificationIsObsolete(tx,ev.eventType,ev.aggregateId))return false;
   const entry = REGISTRY[ev.eventType];
   if (!entry) return false;

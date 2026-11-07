@@ -11,11 +11,11 @@ vi.mock('../lib/ai/provider-privacy-request', async importActual => {
 
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { eq, sql } from 'drizzle-orm';
-import * as tenantDb from '../db/client';
 import { withTenant, type SessionContext } from '../db/client';
 import * as schema from '../db/schema';
 import { resolveActiveAiConfig } from '../core/ai-config';
 import { bindAiSpendTaskTx } from '../core/ai-spend-task';
+import { withAiAdmissionLifecycle } from '../core/ai-governance';
 import type { AiFeatureId } from '../lib/ai/features';
 import { aiManagementView, allowanceLevel, applyBulkAssistantAccess, clearGroupAllowance, setGroupAllowance, clearUserAllowance, parseAiAllowance, previewBulkAssistantAccess, setAiAllowance, setAiFeature, setAssistantPermission } from '../core/ai-management';
 import { generateDraft, converse, readImage } from '../lib/ai';
@@ -93,10 +93,9 @@ describe('central AI allowance admission and durable accounting',()=>{
  });
  it('distinguishes reported zero tokens from absent usage and preserves an unsettled reservation',async()=>{
   await call(group,0);expect((await runs())[0].actualTokens).toBe(0);
-  const prepared=await cfg();
-  const original=tenantDb.withTenant;
-  const write=vi.spyOn(tenantDb,'withTenant').mockImplementationOnce(original).mockRejectedValueOnce(new Error('private database failure'));
-  try{await expect(prepared.governance!.run({operation:'draft',reservedTokens:100},async record=>{record({inputTokens:25,outputTokens:0,cachedInputTokens:0});return 'draft';})).rejects.toThrow('reservation remains held');}finally{write.mockRestore();}
+  // Fail at the actual settlement boundary, independent of added pre-dispatch control transactions.
+  const prepared=withAiAdmissionLifecycle(await cfg(),'pay_rule_draft',{settled:async()=>{throw new Error('private database failure');}});
+  await expect(prepared.governance!.run({operation:'draft',reservedTokens:100},async record=>{record({inputTokens:25,outputTokens:0,cachedInputTokens:0});return 'draft';})).rejects.toThrow('reservation remains held');
   const pending=(await runs()).find(r=>r.state==='pending');expect(pending).toBeDefined();expect(pending?.actualTokens).toBeNull();expect(pending?.reservedTokens).toBe(100);
  });
  it('honors configured defaults, null fallbacks and platform restrictions in both status and admission',async()=>{
