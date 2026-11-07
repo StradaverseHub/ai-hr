@@ -37,10 +37,10 @@ BEGIN
   OR p.prolang IS DISTINCT FROM(SELECT oid FROM pg_language WHERE lanname=expected.language)
   OR p.proargnames IS DISTINCT FROM expected.names OR p.pronargs<>expected.input_count OR p.pronargdefaults<>expected.default_count
   OR p.prorettype IS NULL OR pg_get_function_result(p.oid)IS DISTINCT FROM expected.result OR p.proretset IS DISTINCT FROM expected.returns_set
-  OR pg_get_expr(p.proargdefaults,0)IS DISTINCT FROM CASE WHEN expected.default_count=1 THEN 'false'ELSE NULL END
+  OR pg_get_expr(p.proargdefaults,0)IS DISTINCT FROM (CASE WHEN expected.default_count=1 THEN 'false'ELSE NULL END)
   OR p.prokind<>'f'OR p.provariadic<>0 OR p.prosqlbody IS NOT NULL OR p.probin IS NOT NULL OR p.protrftypes IS NOT NULL
   OR NOT p.prosecdef OR p.proisstrict OR p.proleakproof OR p.provolatile<>expected.volatility OR p.proparallel<>'u'
-  OR p.procost<>100 OR p.prorows<>CASE WHEN expected.returns_set THEN 1000 ELSE 0 END OR p.prosupport<>0::oid
+  OR p.procost<>100 OR p.prorows<>(CASE WHEN expected.returns_set THEN 1000 ELSE 0 END) OR p.prosupport<>0::oid
   OR p.proconfig IS DISTINCT FROM ARRAY[expected.configuration]
   THEN RAISE EXCEPTION 'Exact canonical Rewards audit predecessor required: %',expected.signature USING ERRCODE='55000';END IF;
   IF expected.owner_name<>'native'AND((SELECT count(*)FROM aclexplode(coalesce(p.proacl,acldefault('f',p.proowner))))<>2
