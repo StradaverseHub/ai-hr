@@ -3501,7 +3501,7 @@ export async function ownClaimStatuses(ctx: SessionContext, limit: number, exist
 }
 
 /** Pending claims the caller may decide (RLS scopes: manager → reports, admin → all) — the approvals inbox. */
-export async function listPendingClaims(ctx: SessionContext,opts:{requestId?:string}={}): Promise<ClaimRow[]> {
+export async function listPendingClaims(ctx: SessionContext,opts:{requestId?:string;requestIds?:readonly string[]}={}): Promise<ClaimRow[]> {
   return withTenant(ctx, async (tx) => {
     const rows = await tx
       .select(rowSelect(true))
@@ -3510,7 +3510,7 @@ export async function listPendingClaims(ctx: SessionContext,opts:{requestId?:str
       // LEFT join: zero-item / legacy claims must still appear in the approvals inbox.
       .leftJoin(claimItem, eq(claimItem.id, claimRequest.claimItemId))
       .innerJoin(sql`LATERAL app.delegated_approval_subject(${claimRequest.employmentId},'claims','claims.claim') AS approval_subject`,sql`true`)
-      .where(and(eq(claimRequest.status, 'pending'),opts.requestId?eq(claimRequest.id,opts.requestId):undefined))
+      .where(and(eq(claimRequest.status, 'pending'),opts.requestId?eq(claimRequest.id,opts.requestId):undefined,opts.requestIds===undefined?undefined:inArray(claimRequest.id,[...opts.requestIds])))
       .orderBy(desc(claimRequest.createdAt));
     // R51 (baf56348): trim delegation-routed rows whose subject is outside the delegation's org coverage.
     const scoped = await filterDelegationOrgScopeTx(tx, ctx, rows, (r) => r.employmentId);

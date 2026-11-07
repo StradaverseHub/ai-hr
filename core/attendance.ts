@@ -4592,7 +4592,7 @@ export async function decideAttendanceCorrection(
  *  their reports, employee their own). Recent first. */
 export function listAttendanceCorrections(
   ctx: SessionContext,
-  opts: { companyIds?: string[]; status?: 'pending' | 'approved' | 'rejected';requestId?:string } = {},
+  opts: { companyIds?: string[]; status?: 'pending' | 'approved' | 'rejected';requestId?:string;requestIds?:readonly string[] } = {},
 ) {
   return withTenant(ctx, async (tx) => {
     const rows = await tx
@@ -4645,6 +4645,7 @@ export function listAttendanceCorrections(
         and(
           opts.status ? eq(attendanceCorrection.status, opts.status) : undefined,
           opts.requestId?eq(attendanceCorrection.id,opts.requestId):undefined,
+          opts.requestIds === undefined ? undefined : inArray(attendanceCorrection.id,[...opts.requestIds]),
           opts.companyIds && opts.companyIds.length
             ? sql`(subject.company_id IN (${sql.join(opts.companyIds.map(id=>sql`${id}::uuid`),sql`,`)}) OR app.attendance_workflow_v3_decision_slot(${attendanceCorrection.id}) IS NOT NULL)`
             : undefined,

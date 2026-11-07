@@ -38,6 +38,7 @@ import { and, eq } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { attendanceCorrection, claimRequest, employment, leaveCancellationRequest, leaveRequest, leaveRequestDate, replacementLeaveRequest } from '../db/schema';
 import { listPendingTasks } from './approvals-inbox';
+import { createMobileTaskReadFlights } from './mobile-task-read-flight';
 import { isCurrentAssignedApproval } from './assigned-approval-focus';
 import { isApprovalDecisionRefusal } from './approvals';
 import { isModuleEnabled } from './entitlements';
@@ -83,6 +84,14 @@ const num = (v: unknown): number => Number(v ?? 0);
 // ── List ───────────────────────────────────────────────────────────────────────────────────────────────────
 
 type Pending = Awaited<ReturnType<typeof listPendingTasks>>[number];
+const taskReadFlights = createMobileTaskReadFlights<Pending[]>();
+/** Display-only metadata: count and page may share work only while both are reading.
+ * Every new completed read and every decision continues through its canonical owner.
+ */
+function pendingMobileTaskMetadata(ctx: SessionContext): Promise<Pending[]> {
+  const modules = modulesOf(ctx);
+  return taskReadFlights.read(ctx, modules, () => listPendingTasks(ctx, undefined, modules));
+}
 /** The inbox's own order (core/approvals-inbox.ts): createdAt desc, then kind, then id. */
 const order = (a: { createdAt: string; kind: string; id: string }, b: { createdAt: string; kind: string; id: string }) =>
   a.createdAt < b.createdAt ? 1 : a.createdAt > b.createdAt ? -1 : a.kind.localeCompare(b.kind) || a.id.localeCompare(b.id);
@@ -92,7 +101,8 @@ const label = (v: string | null | undefined) => (v ? v.slice(0, 300) : null);
 
 /**
  * Each native row's summary, from the readers app/approvals/page.tsx lists those rows with (same session, same RLS,
- * same pending filter), and only the columns that page prints. One read per kind present on the page; a row the
+ * same pending filter), and only the columns that page prints. One read per kind present on the page, narrowed to that page's identifiers before
+ * workflow hydration or attachment reads; a row the
  * reader does not return for this caller gets no summary, so the list never says more than the web page would.
  */
 async function summariesFor(ctx: SessionContext, rows: readonly Pending[], locale: string): Promise<Map<string, TaskSummaryV2>> {
@@ -103,10 +113,10 @@ async function summariesFor(ctx: SessionContext, rows: readonly Pending[], local
   // (the row and its detail still open), it never turns the whole list into an error or an empty "nothing needs you".
   const orNone = <T,>(read: () => Promise<T[]>): Promise<T[]> => read().catch(() => []);
   const [leaves, cancels, corrections, pendingClaims] = await Promise.all([
-    leaveIds.size ? orNone(() => listLeaveRequests(ctx, undefined, 200, { status: 'pending' })) : Promise.resolve([]),
-    cancelIds.size ? orNone(() => listPendingLeaveCancellations(ctx, undefined, locale)) : Promise.resolve([]),
-    attendanceIds.size && modules.attendance ? orNone(() => listAttendanceCorrections(ctx, { status: 'pending' })) : Promise.resolve([]),
-    claimIds.size && modules.claims ? orNone(() => claims.listPendingClaims(ctx)) : Promise.resolve([]),
+    leaveIds.size ? orNone(() => listLeaveRequests(ctx, undefined, leaveIds.size, { status: 'pending', requestIds:[...leaveIds] })) : Promise.resolve([]),
+    cancelIds.size ? orNone(() => listPendingLeaveCancellations(ctx, undefined, locale, undefined, [...cancelIds])) : Promise.resolve([]),
+    attendanceIds.size && modules.attendance ? orNone(() => listAttendanceCorrections(ctx, { status: 'pending', requestIds:[...attendanceIds] })) : Promise.resolve([]),
+    claimIds.size && modules.claims ? orNone(() => claims.listPendingClaims(ctx,{requestIds:[...claimIds]})) : Promise.resolve([]),
   ]);
   const shownClaims = pendingClaims.filter((c) => claimIds.has(c.id));
   const currencies = await currenciesOfClaims(ctx, shownClaims.map((c) => c.id)).catch(() => new Map<string, string | null>());
@@ -123,7 +133,7 @@ async function summariesFor(ctx: SessionContext, rows: readonly Pending[], local
 
 /** Every pending task for the caller (replacement leave and notice acknowledgements included), one page. */
 export async function tasksPageV2(ctx: SessionContext, q: { limit: number; cursor: readonly [string, TaskKind, string] | null; expandedNative?: boolean }, locale = 'en'): Promise<TasksPageV2> {
-  const all = await listPendingTasks(ctx, undefined, modulesOf(ctx));
+  const all = await pendingMobileTaskMetadata(ctx);
   const at = q.cursor ? { createdAt: q.cursor[0], kind: q.cursor[1], id: q.cursor[2] } : null;
   const after = (at ? all.filter((t) => order(t, at) > 0) : all).slice(0, q.limit + 1);
   const rows = after.slice(0, q.limit), last = rows[rows.length - 1];
@@ -140,7 +150,7 @@ export async function tasksPageV2(ctx: SessionContext, q: { limit: number; curso
 
 /** M14 — Home's task count: exactly the v2 list's population (the same owner, modules and kinds), not a second rule. */
 export async function pendingTaskCountV2(ctx: SessionContext): Promise<number> {
-  return (await listPendingTasks(ctx, undefined, modulesOf(ctx))).length;
+  return (await pendingMobileTaskMetadata(ctx)).length;
 }
 
 // ── Admission ──────────────────────────────────────────────────────────────────────────────────────────────
