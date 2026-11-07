@@ -60,14 +60,15 @@ it('captures actual native sparse multi-company facet plans without repeated Ass
  const f=await createFacetRepresentationFixture(),native=database.withTenant,queries:SQL[]=[],dialect=new PgDialect();
  const spy=vi.spyOn(database,'withTenant').mockImplementation(<T>(ctx:database.SessionContext,read:(tx:database.Tx)=>Promise<T>,options?:Parameters<typeof database.withTenant>[2])=>native(ctx,async tx=>{
   await tx.execute(sql`set local lock_timeout='300ms'`);await tx.execute(sql`set local statement_timeout='20s'`);
-  return read(new Proxy(tx,{get(target,key,receiver){if(key==='execute')return async(query:SQL)=>{const text=dialect.sqlToQuery(query).sql;if(text.includes('cross join "department"')||text.includes('cross join "business_unit"'))queries.push(query);return target.execute(query);};const value=Reflect.get(target,key,receiver);return typeof value==='function'?value.bind(target):value;}}));
+  return read(new Proxy(tx,{get(target,key,receiver){if(key==='execute')return async(query:SQL)=>{const text=dialect.sqlToQuery(query).sql;if(text.includes('employee_choice_employments as materialized'))queries.push(query);return target.execute(query);};const value=Reflect.get(target,key,receiver);return typeof value==='function'?value.bind(target):value;}}));
  },options));
  try{expect((await readEmployeeChoices(f.ctx,{companyIds:[]})).total).toBe(6);}finally{spy.mockRestore();}
  expect(queries).toHaveLength(1);
  await native(f.ctx,async tx=>{await tx.execute(sql`set local lock_timeout='300ms'`);await tx.execute(sql`set local statement_timeout='20s'`);
   for(const query of queries){const [row]=await tx.execute(sql`explain(analyze,buffers,format json) ${query}`);const doc=(row as unknown as {'QUERY PLAN':{Plan:Record<string,unknown>}[]})['QUERY PLAN'][0];const assignments:Record<string,unknown>[]=[];
    const visit=(node:Record<string,unknown>)=>{if(node['Relation Name']==='assignment')assignments.push(node);for(const child of (node.Plans??[])as Record<string,unknown>[])visit(child);};visit(doc.Plan);
-   expect(assignments.length).toBeGreaterThan(0);for(const node of assignments)expect(Number(node['Actual Loops'])).toBeLessThanOrEqual(1);expect(Number(doc.Plan['Actual Rows'])).toBe(7);
+   expect(assignments.length).toBeGreaterThan(0);for(const node of assignments)expect(Number(node['Actual Loops'])).toBeLessThanOrEqual(1);expect(Number(doc.Plan['Actual Rows'])).toBe(17);
+   const bounded=(node:Record<string,unknown>)=>{if(['employment','person','assignment'].includes(String(node['Relation Name'])))expect(Number(node['Actual Loops'])).toBeLessThanOrEqual(1);if(node['Node Type']==='CTE Scan')expect(Number(node['Actual Loops'])).toBeLessThanOrEqual(8);for(const child of (node.Plans??[])as Record<string,unknown>[])bounded(child);};bounded(doc.Plan);
   }
  },{readOnlySnapshot:true});
 },30000);

@@ -1,0 +1,9 @@
+[
+ "test/employee-choice-unified-boundary.test.ts",
+ "test/employee-choice-join-contract.test.ts",
+ "test/employee-choice-org-setwise.test.ts",
+ "test/employee-choice-facet-setwise.test.ts",
+ "test/employee-choice-roster-population.test.ts",
+ "test/employee-choice-route.test.ts",
+ "test/employee-scope-panel-guard.test.ts"
+]
