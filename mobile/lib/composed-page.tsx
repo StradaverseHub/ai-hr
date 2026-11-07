@@ -10,7 +10,7 @@
  */
 import { useState } from 'react';
 import { View } from 'react-native';
-import { router, type Href } from 'expo-router';
+import { type Href, useRouter } from 'expo-router';
 import type { MobileBlock, MobileDesignV2 } from '../../lib/mobile-design';
 import { MOBILE_DESTINATIONS } from '../../lib/mobile-composition';
 import { useApi, useApiV2 } from './api';
@@ -38,6 +38,7 @@ function Welcome({ block }: { block: MobileBlock }) {
   return <><Title>{block.title || (me.data?.person.name ? t('hello', { name: me.data.person.name }) : t('helloNoName'))}</Title>{block.body ? <Text style={{ color: palette.muted }}>{block.body}</Text> : null}<LoadState loading={me.loading} hasData={me.data!=null} error={me.error} onRetry={me.reload} /></>;
 }
 function Balances({ block }: { block: MobileBlock }) {
+  const router = useRouter();
   const { signOut, employmentId } = useSession(), { design } = useTenantDesign();
   const leave = useApi('leave', { employmentId: employmentId ?? undefined }, signOut);
   return <><LoadState loading={leave.loading} hasData={leave.data!=null} error={leave.error} onRetry={leave.reload} />{leave.data?.cards.map(c => <View key={c.leaveTypeId} style={{ gap: 6, marginBottom: 10 }}><Row label={c.leaveType} value={fmtDays(c.takenOnly ? c.taken : c.isCurrentCycle ? c.canApplyFor : c.balance)} strong />{block.detail === 'expanded' && <Muted>{c.takenOnly ? t('taken') : c.isCurrentCycle ? t('canApplyFor') : t('balance')}</Muted>}{c.sharedPool && <Muted>{t('sharedPool')}</Muted>}</View>)}{leave.data?.cards.length === 0 && <Muted>{t('noLeaveTypes')}</Muted>}<Button title={t('allBalances')} kind="quiet" onPress={() => router.push(mobileDestination('requests'))} /></>;
@@ -50,11 +51,13 @@ function Messages({ block }: { block: MobileBlock }) {
 /** M14 — the canonical v2 task list (every kind the approvals screen lists; v1 `tasks` stays for installed clients).
  *  "Nothing needs you" only for a settled, successful, empty first page: never while loading, failed or stale. */
 function Tasks({ block }: { block: MobileBlock }) {
+  const router = useRouter();
   const { signOut } = useSession(), tasks = useApiV2('v2/tasks', TasksPageV2, { limit: block.detail === 'compact' ? '4' : '20' }, signOut);
   const items = tasks.data?.items ?? [], settled = tasks.data != null && !tasks.loading && !tasks.error;
   return <><LoadState loading={tasks.loading} hasData={tasks.data!=null} error={tasks.error} onRetry={tasks.reload} />{items.map(item => <View key={`${item.kind}:${item.id}`} style={{ marginBottom: 12 }}><Row label={t(`task_${item.kind}`)} value={item.subject.name || '—'} /></View>)}{settled && items.length === 0 && <Muted>{t('nothingNeedsYou')}</Muted>}{items.length > 0 && <Button title={t('openApprovals')} kind="quiet" onPress={() => router.push('/approvals')} />}</>;
 }
 function Requests({ block }: { block: MobileBlock }) {
+  const router = useRouter();
   const { signOut, employmentId } = useSession(), requests = useApi('leave-requests', { employmentId: employmentId ?? undefined }, signOut);
   return <><LoadState loading={requests.loading} hasData={requests.data!=null} error={requests.error} onRetry={requests.reload} />{requests.data?.items.slice(0, block.detail === 'compact' ? 3 : 20).map(r => <View key={r.id} style={{ gap: 6, marginBottom: 12 }}><Row label={r.type} value={r.status} /><Muted>{r.from} → {r.to}</Muted></View>)}{requests.data?.items.length === 0 && <Muted>{t('noRequests')}</Muted>}<Button title={t('tabLeave')} kind="quiet" onPress={() => router.push('/leave')} /></>;
 }
@@ -64,10 +67,12 @@ function Pay({ block }: { block: MobileBlock }) {
   return <><LoadState loading={pay.loading} hasData={pay.data!=null} error={pay.error} onRetry={pay.reload} />{pay.data?.items.slice(0, block.detail === 'compact' ? 1 : 20).map(p => <View key={p.id} style={{ marginBottom: 12 }}><Row label={p.payPeriod} value={fmtMoney(p.net)} strong /><Muted>{t('netPay')}</Muted></View>)}{pay.data?.items.length === 0 && <Muted>{t('noPayslips')}</Muted>}</>;
 }
 function Profile() {
+  const router = useRouter();
   const { signOut } = useSession(), me = useApi('me', {}, signOut);
   return <><LoadState loading={me.loading} hasData={me.data!=null} error={me.error} onRetry={me.reload} />{me.data && <><Title>{me.data.person.name}</Title><Muted>{me.data.person.email}</Muted></>}<Button title={t('tabMe')} kind="quiet" onPress={() => router.push('/me')} /></>;
 }
 function Widget({ block, refreshToken, design, home }: { block: MobileBlock; refreshToken: number; design: MobileDesignV2; home: boolean }) {
+  const router = useRouter();
   const { palette } = useTenantDesign();
   const summary: MobileBlock = home ? { ...block, detail: 'compact' } : block;
   switch (block.kind) {
@@ -87,6 +92,7 @@ function Widget({ block, refreshToken, design, home }: { block: MobileBlock; ref
   }
 }
 export function ComposedPage({ design, id = 'home' }: { design: MobileDesignV2; id?: string }) {
+  const router = useRouter();
   const { palette } = useTenantDesign(), [tick, setTick] = useState(0);
   const c = design.composition, page = c.pages.find(p => p.id === id), gap = c.layout.gap;
   return <Screen onRefresh={() => setTick(n => n + 1)}>{page ? <>{page.title ? <Title>{page.title}</Title> : null}<View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -gap / 2 }}>{page.blocks.map(block => {

@@ -3,7 +3,7 @@ import { DesignText as Text } from './design';
 import { useRef, useState } from 'react';
 import { fetch as nativeFetch } from 'expo/fetch';
 import { TextInput, ActivityIndicator, Image, Pressable, ScrollView, StyleSheet, View } from 'react-native';
-import { Redirect, router } from 'expo-router';
+import { Redirect, useRouter } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';
 import { beginSignIn, assertAuthGeneration, completeInternalSignIn } from './auth';
 import { useCompanyConnection, companyCopy } from './company-connection';
@@ -20,6 +20,7 @@ import { appLocale, t } from './i18n';
 import authCopy from './internal-auth-copy.json';
 
 export function InternalSignIn() {
+  const router = useRouter();
   const company = useCompanyConnection(), session = useSession();
   const { palette } = useTenantDesign();
   const [showPassword, setShowPassword] = useState(false);

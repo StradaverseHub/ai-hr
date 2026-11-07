@@ -1,7 +1,7 @@
 import {useEffect,useRef,useState} from 'react';
 import {AppState} from 'react-native';
 import * as Linking from 'expo-linking';
-import {router} from 'expo-router';
+import { useRouter } from 'expo-router';
 import {useSession} from './session';
 import {identityNamespace} from './config';
 import {widgetIntents} from './widget-intent';
@@ -14,6 +14,7 @@ import {useDisplayPrefs} from './preferences';
 let serial=0;
 /** Keeps only a short-lived, non-sensitive direction through sign-in/unlock. Never submits attendance. */
 export function WidgetLaunchObserver(){
+  const router = useRouter();
  const {status,visible,employmentId}=useSession(),namespace=identityNamespace(),{language}=useDisplayPrefs();
  const generation=authGeneration(),scopeKey=JSON.stringify([namespace,generation,employmentId]);
  const epoch=useRef({key:scopeKey,value:0});if(epoch.current.key!==scopeKey)epoch.current={key:scopeKey,value:epoch.current.value+1};

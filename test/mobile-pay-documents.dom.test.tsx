@@ -117,7 +117,7 @@ function fixture() {
   const paged = load('mobile/lib/paged-list.tsx', { ...base, './api': api });
   const screens = load('mobile/lib/pay-documents.tsx', {
     ...base, './api': api, './paged-list': paged, './protected-document': fs.documents, '../../lib/mobile-api/v2/pay': v2pay,
-    'react-native-safe-area-context': { SafeAreaView: View }, 'expo-router': { router: { push, back } },
+    'react-native-safe-area-context': { SafeAreaView: View }, 'expo-router': {useRouter: () => ({ push, back }),  router: { push, back } },
     'expo-crypto': { randomUUID: () => `${String(++seq).padStart(8, '0')}-bbbb-4bbb-8bbb-bbbbbbbbbbbb` },
     'expo-sharing': { shareAsync, isAvailableAsync },
     './design': { DesignText: Text, TenantBrand: () => <span>tenant-brand</span>, useTenantDesign: () => ({ design: DEFAULT_MOBILE_DESIGN, palette: mobilePalette(DEFAULT_MOBILE_DESIGN, 'dark') }) },

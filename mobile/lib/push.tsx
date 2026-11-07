@@ -15,7 +15,7 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { AppState, Pressable, Switch, View } from 'react-native';
 import * as Notifications from 'expo-notifications';
-import { router, type Href } from 'expo-router';
+import { useRouter, type Href } from 'expo-router';
 import { apiPostV2 } from './api';
 import { DesignText as Text, useTenantDesign } from './design';
 import { SessionChangedError, SignInRequiredError } from './errors';
@@ -61,7 +61,7 @@ export function pushNotificationId(response: Notifications.NotificationResponse 
   return typeof value === 'string' && UUID.test(value) ? value.toLowerCase() : null;
 }
 /** Resolve the id through the server's read command and allowlist; open that fixed screen, or the Inbox. */
-export async function openPushedNotification(notificationId: string | null, visible: () => boolean = () => true): Promise<void> {
+export async function openPushedNotification(notificationId: string | null, router: Pick<ReturnType<typeof useRouter>, 'push'>, visible: () => boolean = () => true): Promise<void> {
   const owner = identityKey();
   const current = () => visible() && AppState.currentState === 'active' && identityKey() === owner;
   if (!current()) return;
@@ -75,7 +75,7 @@ export async function openPushedNotification(notificationId: string | null, visi
   } catch { if (current()) router.push('/inbox' as Href); }
 }
 /** One tap, handled once. Navigation waits a tick: a cold-start tap is read while the root Stack is still mounting. */
-export function respondToNotification(response: Notifications.NotificationResponse, visible: () => boolean = () => true) {
+export function respondToNotification(response: Notifications.NotificationResponse, router: Pick<ReturnType<typeof useRouter>, 'push'>, visible: () => boolean = () => true) {
   const owner = identityKey();
   const current = () => visible() && AppState.currentState === 'active' && identityKey() === owner;
   if (!current()) return;
@@ -84,13 +84,14 @@ export function respondToNotification(response: Notifications.NotificationRespon
   handled.add(once);
   try { Notifications.clearLastNotificationResponse(); } catch { /* older native module */ }
   const reminder = isShiftReminder(request.identifier), id = pushNotificationId(response);
-  setTimeout(() => { if (!current()) return; if (reminder) router.push('/clock' as Href); else void openPushedNotification(id, current); }, 0);
+  setTimeout(() => { if (!current()) return; if (reminder) router.push('/clock' as Href); else void openPushedNotification(id, router, current); }, 0);
 }
 
 // ── Mounted pieces ───────────────────────────────────────────────────────────────────────────────────────────────
 
 /** Mounted once inside the signed-in, visible tree (mobile/app/_layout.tsx ThemedStack). Renders nothing. */
 export function PushLifecycle() {
+  const router = useRouter();
   const { employmentId, signOut } = useSession();
   const employment = useRef(employmentId), exit = useRef(signOut);
   employment.current = employmentId;
@@ -104,7 +105,7 @@ export function PushLifecycle() {
   useEffect(() => {
     let visible = true;
     const current = () => visible;
-    const tappedResponse = (response: Notifications.NotificationResponse) => respondToNotification(response, current);
+    const tappedResponse = (response: Notifications.NotificationResponse) => respondToNotification(response, router, current);
     const blur = AppState.addEventListener('blur', () => { visible = false; });
     const appState = AppState.addEventListener('change', (state) => {
       if (state !== 'active') { visible = false; return; }
@@ -155,6 +156,7 @@ export function PushPrompt({ compact = false }: { compact?: boolean } = {}) {
 const PUSH_STATE: Partial<Record<PushView, MessageKey>> = { on: 'pushStateOn', off: 'pushStateOff', denied: 'pushStateDenied', server_off: 'pushStateServerOff', unavailable: 'pushStateUnavailable' };
 /** Me → This phone: one "Notifications" row with its state; the full control (and its explanation) is one tap away. */
 export function NotificationsRow() {
+  const router = useRouter();
   const view = usePushView();
   const state = PUSH_STATE[view];
   if (!state) return null;

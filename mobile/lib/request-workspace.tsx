@@ -1,7 +1,7 @@
 import {useEffect,useRef,useState} from 'react';
 import { TextInput, View } from 'react-native';
 import { InAppAlert as Alert } from './in-app-alert';
-import {router} from 'expo-router';
+import { useRouter } from 'expo-router';
 import {randomUUID} from 'expo-crypto';
 import {RequestWorkspaceResult,RequestWorkspaceDecisionResult,type RequestWorkspaceKind,type RequestWorkspaceCommand} from '../../lib/mobile-api/v2/request-workspaces';
 import {apiPostV2,useApiV2,apiDownload,v2Download} from './api';
@@ -14,6 +14,7 @@ import {ApprovalDocument} from './approval-document';
 import {t} from './i18n';
 import {requestCopy} from './request-workspace-copy';
 export function RequestWorkspaceScreen({kind,id}:{kind:RequestWorkspaceKind;id:string}){
+  const router = useRouter();
  const {signOut}=useSession(),{palette}=useTenantDesign(),copy=requestCopy(),path=`v2/request-workspaces/${kind}/${id}` as const;
  const detail=useApiV2(path,RequestWorkspaceResult,{},signOut),w=detail.data?.outcome==='found'?detail.data.workspace:null;
  const [reason,setReason]=useState(''),[pending,setPending]=useState<{body:RequestWorkspaceCommand;uncertain:boolean}|null>(null),[done,setDone]=useState(false),[notice,setNotice]=useState<string|null>(null);

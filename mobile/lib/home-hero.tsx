@@ -5,7 +5,7 @@ import { DailySwitch } from './daily-switch';
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { ActivityIndicator, Animated, Image, Pressable, ScrollView, View, useWindowDimensions, type ColorValue } from 'react-native';
 import { ClockPanel, type HomeClockView } from './clock-panel';
-import { router, useFocusEffect, type Href } from 'expo-router';
+import { useFocusEffect, type Href, useRouter } from 'expo-router';
 import { Atmosphere, DesignText as Text, TenantSurface, useTenantDesign } from './design';
 import { useApi } from './api';
 import { fmtCalendarDate } from './attendance-format';
@@ -109,6 +109,7 @@ function clockTime(iso: string): string | null {
 
 /** A bold banner only when something waits for the caller; a quiet line when nothing does; a retry when unknown. */
 export function NeedsYouBanner({ summary }: { summary: ReturnType<typeof useHomeSummary> }) {
+  const router = useRouter();
   const { palette } = useTenantDesign();
   const v = homeNeedsView(summary);
   if (typeof v.tasks === 'number' && v.tasks > 0) {
@@ -135,6 +136,7 @@ export function NeedsYouBanner({ summary }: { summary: ReturnType<typeof useHome
 export type QuickAction = { key: string; icon: IconName; label: MessageKey; href: Href; badge?: number };
 
 export function QuickActions({ actions }: { actions: readonly QuickAction[] }) {
+  const router = useRouter();
   const { palette } = useTenantDesign();
   return <View style={{flexDirection:'row',flexWrap:'wrap',borderBottomWidth:1,borderColor:palette.border}}>{actions.map((a,index)=><Tactile key={a.key} label={t(a.label)} onPress={()=>router.push(a.href)} style={{flexGrow:1,flexBasis:140,minHeight:52,flexDirection:'row',alignItems:'center',gap:8,paddingVertical:10,paddingHorizontal:index?12:0}}>
     <Icon name={a.icon} color={palette.text} size={21}/><Text style={{flexShrink:1,color:palette.text,fontSize:14,fontWeight:'600'}}>{t(a.label)}</Text>
@@ -146,6 +148,7 @@ export function QuickActions({ actions }: { actions: readonly QuickAction[] }) {
 
 /** Up to four balance cards in a horizontal strip (the server's order, entitled types first), then "All balances". */
 export function BalanceStrip({ refreshToken }: { refreshToken: number }) {
+  const router = useRouter();
   const { employmentId, signOut } = useSession();
   const { palette, design } = useTenantDesign();
   const leave = useApi('leave', { employmentId: employmentId ?? undefined }, signOut);
@@ -176,6 +179,7 @@ export function BalanceStrip({ refreshToken }: { refreshToken: number }) {
 
 /** The latest released payslip: period and net pay, the amount hidden until the eye is tapped. Absent when payroll is off. */
 export function PayslipCard({ refreshToken }: { refreshToken: number }) {
+  const router = useRouter();
   const { signOut } = useSession();
   const { palette, design } = useTenantDesign();
   const pay = useApi('payslips', {}, signOut);

@@ -6,7 +6,7 @@
  */
 import { useRef, useCallback, useEffect } from 'react';
 import { View } from 'react-native';
-import { router, useFocusEffect, type Href } from 'expo-router';
+import { useFocusEffect, type Href, useRouter } from 'expo-router';
 import { DesignText as Text, useTenantDesign } from './design';
 import { useApi } from './api';
 import type { LeaveResponse } from './api';
@@ -31,6 +31,7 @@ export const fmtWorked = (seconds: number) =>
 
 /** Today's status, worked time and a "Clock in"/"Clock out" button that OPENS the Clock tab. Nothing is recorded here. */
 export function ClockSummary({ refreshToken = 0 }: { refreshToken?: number }) {
+  const router = useRouter();
   const { employmentId, signOut } = useSession();
   const { palette } = useTenantDesign();
   const clock = useApi('clock', { employmentId: employmentId ?? undefined }, signOut);
@@ -54,6 +55,7 @@ export function ClockSummary({ refreshToken = 0 }: { refreshToken?: number }) {
 
 /** At most three balances and "All balances" (the Leave tab). */
 export function LeaveSummary({ refreshToken = 0 }: { refreshToken?: number }) {
+  const router = useRouter();
   const { employmentId, signOut } = useSession();
   const leave = useApi('leave', { employmentId: employmentId ?? undefined }, signOut);
   useEffect(() => { if (refreshToken) leave.reload(); }, [refreshToken, leave.reload]);
@@ -71,6 +73,7 @@ export function LeaveSummary({ refreshToken = 0 }: { refreshToken?: number }) {
 
 /** The latest payslip as one row (period and net pay), opening Payslips. Absent when payroll is off. */
 export function PayslipRow({ refreshToken = 0 }: { refreshToken?: number }) {
+  const router = useRouter();
   const { signOut } = useSession();
   const pay = useApi('payslips', {}, signOut);
   useEffect(() => { if (refreshToken) pay.reload(); }, [refreshToken, pay.reload]);

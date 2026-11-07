@@ -11,7 +11,7 @@ function fixture(){
   const Container=({children}:React.PropsWithChildren)=><div>{children}</div>;
   const output={exports:{} as {LoadState:React.ComponentType<{loading:boolean;hasData?:boolean;error:Error|null;onRetry:()=>void}>}};
   const ports:Record<string,unknown>={
-    'react':React,'react/jsx-runtime':jsx,'expo-router':{router:{back:vi.fn()}},'react-native-safe-area-context':{SafeAreaView:Container},
+    'react':React,'react/jsx-runtime':jsx,'expo-router':{useRouter: () => ({back:vi.fn()}), router:{back:vi.fn()}},'react-native-safe-area-context':{SafeAreaView:Container},
     'react-native':{View:Container,ScrollView:Container,RefreshControl:()=>null,StyleSheet:{create:(v:unknown)=>v},
       ActivityIndicator:()=> <span role="progressbar"/>,Pressable:({children,onPress,disabled}:any)=><button onClick={onPress} disabled={disabled}>{typeof children === 'function' ? children({pressed:false}) : children}</button>},
     './motion': mobileMotionPorts, '../../lib/motion': mobileMotionPorts, './visual': mobileVisualPorts, './design':{DesignText:({children}:React.PropsWithChildren)=><span>{children}</span>,TenantBrand:()=>null,

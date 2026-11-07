@@ -1,7 +1,6 @@
 import {useEffect,useRef,useState} from 'react';
 import {  } from 'react-native';
 import { InAppAlert as Alert } from './in-app-alert';
-import {router} from 'expo-router';
 import {DesignText as Text,useTenantDesign} from './design';
 import {useApi} from './api';
 import {revokeIntegrityKey,type IntegrityKey} from './integrity-key-recovery';

@@ -6,7 +6,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { File, Directory, Paths } from 'expo-file-system';
 import * as DocumentPicker from 'expo-document-picker';
 import * as Linking from 'expo-linking';
-import { router, SplashScreen } from 'expo-router';
+import { SplashScreen, useRouter } from 'expo-router';
 import { signOut } from './auth';
 import { applyCompanyConnection, runtimeConnections } from './config';
 import { CompanySetupError, verifyCompanyProfile } from './company-profile';
@@ -124,6 +124,7 @@ export function WorkplaceReviewBoundary({children}:{children:ReactNode}) {
   return intent?.incoming?<CompanySetup key={intent.incoming.id} incoming={intent.incoming} failed={!intent.incoming.raw}/>:children;
 }
 export function CompanySetup({failed=false,incoming=null}:{failed?:boolean;incoming?:IncomingSetup|null}) {
+  const router = useRouter();
   const { palette } = useTenantDesign();
   const styles = companyStyles(palette);
   const controller=useContext(Context),c=companyCopy();

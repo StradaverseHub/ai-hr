@@ -12,7 +12,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { TextInput, Pressable, View } from 'react-native';
 import { InAppAlert as Alert } from './in-app-alert';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { router } from 'expo-router';
+import { useRouter } from 'expo-router';
 import { randomUUID } from 'expo-crypto';
 import { DesignText as Text, useTenantDesign } from './design';
 import { apiGetV2, apiPostV2, v2Page } from './api';
@@ -84,6 +84,7 @@ const keyOf = (item: LeaveRequestSummaryV2) => item.id;
 
 /** Every request on the selected employment, newest first. Offline: the rows already shown stay, labelled stale. */
 export function LeaveHistoryScreen() {
+  const router = useRouter();
   const { palette } = useTenantDesign();
   const { signOut, employmentId } = useSession();
   const [status, setStatus] = useState<(typeof FILTERS)[number]>(undefined);

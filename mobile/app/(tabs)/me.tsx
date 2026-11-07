@@ -7,7 +7,7 @@
  * M09 — payslips open on their own screen (app/pay, v2), every employment, natively.
  */
 import { Pressable, View } from 'react-native';
-import { router, type Href } from 'expo-router';
+import { type Href, useRouter } from 'expo-router';
 import { DesignText as Text, useTenantDesign } from '../../lib/design';
 import { useApi } from '../../lib/api';
 import { Icon, type IconName } from '../../lib/icon';
@@ -81,6 +81,7 @@ export default function Me() {
 }
 
 function Group({ items }: { items: readonly Item[] }) {
+  const router = useRouter();
   const { palette, design } = useTenantDesign();
   const radius = design.schemaVersion === 2 ? design.composition.layout.radius : 0;
   return <Material style={{ borderRadius: radius, overflow: 'hidden' }}>

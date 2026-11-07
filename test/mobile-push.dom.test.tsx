@@ -115,7 +115,7 @@ function fixture(o: { permission?: 'granted' | 'denied' | 'undetermined'; grant?
     <input type="checkbox" role="switch" aria-label={p.accessibilityLabel} checked={p.value} disabled={p.disabled} onChange={(e) => p.onValueChange(e.target.checked)} />;
   const screens = load('mobile/lib/push.tsx', {
     react: React, 'react/jsx-runtime': jsx, 'react-native': { AppState, Switch, View, Pressable: (p: { accessibilityLabel?: string; disabled?: boolean; onPress?: () => void; children?: React.ReactNode }) => <button aria-label={p.accessibilityLabel} disabled={p.disabled} onClick={p.onPress}>{p.children}</button> },
-    'expo-notifications': Notifications, 'expo-router': { router: { push } }, './api': { apiPostV2 },
+    'expo-notifications': Notifications, 'expo-router': {useRouter: () => ({ push }),  router: { push } }, './api': { apiPostV2 },
     './design': { DesignText: Text, useTenantDesign: () => ({ palette: { text: 'black' } }) }, './errors': errors, './i18n': { t },
     './inbox': { notificationHref: (d: { screen?: string } | null | undefined) => (d?.screen === 'leaveHistory' ? '/leave/history' : null) },
     './push-core': core, './session': { useSession: () => session }, './shift-reminder-signal': load('mobile/lib/shift-reminder-signal.ts', {}),
@@ -124,7 +124,10 @@ function fixture(o: { permission?: 'granted' | 'denied' | 'undetermined'; grant?
   const posted = (path: string) => apiPostV2.mock.calls.filter((c) => c[0] === path) as unknown as [string, unknown, Record<string, any>, Record<string, string>][];
   const ours = () => [...Notifications.scheduled.keys()].filter((k) => k.startsWith('aihr-shift:')).sort();
   // Object.assign keeps the loaded module's index signature (an object spread drops it).
-  return Object.assign({} as Loaded, screens, { core, Notifications, SecureStore, stored, apiGetV2, apiPostV2, posted, push, openSettings, signOut, installation, ours, day, changeAccount, background, blur });
+  return Object.assign({} as Loaded, screens, { core, Notifications, SecureStore, stored, apiGetV2, apiPostV2, posted, push, openSettings, signOut, installation, ours, day, changeAccount, background, blur,
+    respondToNotification: (response: unknown, visible?: () => boolean) => screens.respondToNotification(response, { push }, visible),
+    openPushedNotification: (id: string | null, visible?: () => boolean) => screens.openPushedNotification(id, { push }, visible),
+  });
 }
 afterEach(() => { cleanup(); vi.useRealTimers(); });
 

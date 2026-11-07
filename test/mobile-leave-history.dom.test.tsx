@@ -65,7 +65,7 @@ function fixture() {
   const paged = load('mobile/lib/paged-list.tsx', { ...base, './api': api });
   const screens = load('mobile/lib/leave-history.tsx', {
     ...base, './api': api, './paged-list': paged, '../../lib/mobile-api/v2/leave': v2leave,
-    'react-native-safe-area-context': { SafeAreaView: View }, 'expo-router': { router: { push, back } },
+    'react-native-safe-area-context': { SafeAreaView: View }, 'expo-router': {useRouter: () => ({ push, back }),  router: { push, back } },
     'expo-crypto': { randomUUID: () => `${String(++seq).padStart(8, '0')}-bbbb-4bbb-8bbb-bbbbbbbbbbbb` },
     './design': { DesignText: Text, useTenantDesign: () => ({ design: DEFAULT_MOBILE_DESIGN, palette: mobilePalette(DEFAULT_MOBILE_DESIGN, 'dark') }) },
     './session': { useSession: () => ({ employmentId: 'own', signOut }) },

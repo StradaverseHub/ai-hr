@@ -22,7 +22,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, View } from 'react-native';
 import { InAppAlert as Alert } from './in-app-alert';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { router } from 'expo-router';
+import { useRouter } from 'expo-router';
 import { randomUUID } from 'expo-crypto';
 import * as Sharing from 'expo-sharing';
 import type { z } from 'zod';
@@ -229,6 +229,7 @@ export function usePayslipIndex(onSignInRequired: () => void): { list: PagedList
 }
 
 export function PayslipsScreen() {
+  const router = useRouter();
   const { palette } = useTenantDesign();
   const { signOut } = useSession();
   const { list, enabled } = usePayslipIndex(signOut);

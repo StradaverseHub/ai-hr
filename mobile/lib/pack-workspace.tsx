@@ -2,7 +2,7 @@ import {useCallback,useEffect,useRef,useState} from 'react';
 import { TextInput, FlatList, View } from 'react-native';
 import { InAppAlert as Alert } from './in-app-alert';
 import {SafeAreaView} from 'react-native-safe-area-context';
-import {router,Redirect,useFocusEffect} from 'expo-router';
+import { Redirect, useFocusEffect, useRouter } from 'expo-router';
 import {randomUUID} from 'expo-crypto';
 import {PackWorkspaceResult,PackWorkspaceDecisionResult,type PackWorkspaceKind,type PackWorkspaceCommand,type PackAction,type PackValue} from '../../lib/mobile-api/v2/pack-workspaces';
 import {useApiV2,apiPostV2,apiDownload,v2Download} from './api';
@@ -17,6 +17,7 @@ import {t} from './i18n';
 import {requestCopy} from './request-workspace-copy';
 /** Dynamic fields describe presentation only. The server reloads the owner workspace before every write. */
 export function PackWorkspaceScreen({kind,id}:{kind:PackWorkspaceKind;id:string}){
+  const router = useRouter();
  const {signOut,status}=useSession(),{palette}=useTenantDesign(),path=`v2/pack-workspaces/${kind}/${id}` as const;
  const [focus,setFocus]=useState<string|undefined>(),[offset,setOffset]=useState(0);
  const read=useApiV2(path,PackWorkspaceResult,{focus,offset:String(offset)},signOut),w=read.data?.outcome==='found'?read.data.workspace:null;

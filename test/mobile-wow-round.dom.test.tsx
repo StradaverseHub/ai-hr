@@ -111,7 +111,7 @@ function otFixture(post: (body: any) => Promise<any>) {
     react: React, 'react/jsx-runtime': jsx,
     'react-native': { View, TextInput: (p: any) => <input aria-label={p.accessibilityLabel} value={p.value} onChange={(e) => p.onChangeText(e.target.value)} />,
       Alert: { alert: (_t: string, _m: string, buttons: any) => alerts.push({ buttons }) } },
-    'expo-router': { router: { replace: vi.fn() } }, 'expo-crypto': { randomUUID: () => `00000000-0000-4000-8000-00000000000${++uuid}` },
+    'expo-router': {useRouter: () => ({ replace: vi.fn() }),  router: { replace: vi.fn() } }, 'expo-crypto': { randomUUID: () => `00000000-0000-4000-8000-00000000000${++uuid}` },
     './design': { DesignText: Text, useTenantDesign: () => ({ design: DEFAULT_MOBILE_DESIGN, palette: mobilePalette(DEFAULT_MOBILE_DESIGN, 'light') }) },
     './api': { apiPostV2, useApiV2: (path: string) => ({ data: path.endsWith('/offer') ? offer : day, error: null, loading: false, reload: vi.fn() }) },
     './auth': { assertAuthGeneration() {}, authGeneration: () => 1 },

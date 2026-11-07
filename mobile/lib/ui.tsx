@@ -7,7 +7,7 @@ import { Atmosphere, DesignText as Text, TenantBrand, useTenantDesign } from './
 import { createContext, useContext, useState, type ReactNode } from 'react';
 import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Redirect, router } from 'expo-router';
+import { Redirect, useRouter } from 'expo-router';
 import { useSession } from './session';
 import { UnavailableError } from './errors';
 import { t } from './i18n';
@@ -125,6 +125,7 @@ export function Button({ title, onPress, kind = 'primary', disabled = false, acc
  */
 /** `onPress` overrides the stack's back for an in-screen panel (e.g. a list that replaced the form). */
 export function HeaderBack({ onPress }: { onPress?: () => void } = {}) {
+  const router = useRouter();
   const { palette } = useTenantDesign();
   return (
     <Pressable accessibilityRole="button" accessibilityLabel={t('back')} hitSlop={8} onPress={onPress ?? (() => {

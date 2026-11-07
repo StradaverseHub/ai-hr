@@ -16,7 +16,7 @@ function fixture(initial: string) {
     react: React, 'react/jsx-runtime': jsx,
     'react-native': { View: Container, ScrollView: Container, Pressable: Container, ActivityIndicator: Container, RefreshControl: () => null, StyleSheet: { create: (value: unknown) => value } },
     'react-native-safe-area-context': { SafeAreaView: Container },
-    'expo-router': { Redirect: ({ href }: { href: string }) => <p>Sign in required: {href}</p>, router: { canGoBack: vi.fn(), back: vi.fn(), replace: vi.fn() } },
+    'expo-router': {useRouter: () => ({ canGoBack: vi.fn(), back: vi.fn(), replace: vi.fn() }),  Redirect: ({ href }: { href: string }) => <p>Sign in required: {href}</p>, router: { canGoBack: vi.fn(), back: vi.fn(), replace: vi.fn() } },
     './motion': mobileMotionPorts, '../../lib/motion': mobileMotionPorts, './visual': mobileVisualPorts, './design': { Atmosphere: () => null, DesignText: Text, TenantBrand: () => <span>OneHR+</span>, useTenantDesign: () => ({ design: DEFAULT_MOBILE_DESIGN, palette: mobilePalette(DEFAULT_MOBILE_DESIGN, 'light'), reload: vi.fn() }) },
     './session': { useSession: () => ({ status }) }, './i18n': { t: (key: string) => key }, './errors': { UnavailableError: class extends Error {} },
   };

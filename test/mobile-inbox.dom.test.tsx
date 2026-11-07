@@ -72,7 +72,7 @@ function fixture() {
   const paged = load('mobile/lib/paged-list.tsx', { ...base, './api': api });
   const screens = load('mobile/lib/inbox.tsx', {
     ...base, './api': api, './paged-list': paged, '../../lib/mobile-api/v2/notifications': v2notifications, './attendance-format': load('mobile/lib/attendance-format.ts', base),
-    'react-native-safe-area-context': { SafeAreaView: View }, 'expo-router': { router: { push, navigate } },
+    'react-native-safe-area-context': { SafeAreaView: View }, 'expo-router': {useRouter: () => ({ push, navigate }),  router: { push, navigate } },
     './design': { DesignText: Text, useTenantDesign: () => ({ design: DEFAULT_MOBILE_DESIGN, palette: mobilePalette(DEFAULT_MOBILE_DESIGN, 'dark') }) },
     './session': { useSession: () => ({ employmentId: 'own', signOut }) },
   });

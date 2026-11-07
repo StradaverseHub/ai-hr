@@ -1,4 +1,4 @@
-import { useFocusEffect,router } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback,useEffect,useRef,useState,type ReactNode } from 'react';
 import { AppState, Image, Platform, Pressable, View, Linking } from 'react-native';
 import { InAppAlert as Alert } from './in-app-alert';
@@ -40,6 +40,7 @@ export type HomeClockView={
  * explicit review and receipt recovery controls on Home. No Home tap automatically submits a punch.
  */
 export function ClockPanel({refreshToken=0,variant='full',renderHome,afterControls,initialAction,widgetIntent,widgetEmployment}:{initialAction?:'in'|'out';widgetIntent?:string;widgetEmployment?:string;refreshToken?:number;variant?:'full'|'home';renderHome?:(view:HomeClockView)=>ReactNode;afterControls?:ReactNode}={}){
+  const router = useRouter();
   const {employmentId,status:sessionStatus,signOut}=useSession();
   const clock=useApi('clock',{employmentId:employmentId??undefined},signOut);
   const attempts=useApi('clock-attempts',{employmentId:employmentId??undefined},signOut,{enabled:variant!=='home'});

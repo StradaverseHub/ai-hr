@@ -1,4 +1,4 @@
-import { router, usePathname, type Href } from 'expo-router';
+import { usePathname, type Href, useRouter } from 'expo-router';
 import { Pressable, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { SymbolView } from 'expo-symbols';
@@ -16,6 +16,7 @@ const destinations = [
 
 /** Full labels take their intrinsic width; very large text wraps whole tabs instead of splitting words. */
 export function DailyNavigation({ inline = false }: { inline?: boolean } = {}) {
+  const router = useRouter();
   const { palette } = useTenantDesign();
   const path = dailyDestinationForPath(usePathname());
   return <SafeAreaView edges={['bottom']} style={inline ? { backgroundColor: palette.bg } : { position: 'absolute', bottom: 0, left: 0, right: 0, backgroundColor: 'transparent' }}>

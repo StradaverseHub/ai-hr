@@ -12,7 +12,7 @@ import { useRef, useState } from 'react';
 import { View } from 'react-native';
 import { InAppAlert as Alert } from './in-app-alert';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { router } from 'expo-router';
+import { useRouter } from 'expo-router';
 import { randomUUID } from 'expo-crypto';
 import { DesignText as Text, useTenantDesign } from './design';
 import { apiPostV2, useApiV2, v2Page } from './api';
@@ -47,6 +47,7 @@ const keyOf = (item: AttendanceApplicationSummaryV2) => item.id;
 
 /** Every application on the selected employment, in the kernel's order. Offline: the rows already shown stay, labelled stale. */
 export function AttendanceApplicationsScreen() {
+  const router = useRouter();
   const { palette } = useTenantDesign();
   const { signOut, employmentId } = useSession();
   const [status, setStatus] = useState<(typeof FILTERS)[number]>(undefined);

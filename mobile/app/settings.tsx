@@ -5,7 +5,7 @@
  */
 import { useEffect, useRef } from 'react';
 import { Linking, Pressable, View } from 'react-native';
-import { router } from 'expo-router';
+import { useRouter } from 'expo-router';
 import { companyCopy, useCompanyConnection } from '../lib/company-connection';
 import { DesignText as Text, useTenantDesign } from '../lib/design';
 import { biometricName, useLockCapability } from '../lib/app-lock';
@@ -23,6 +23,7 @@ const METHOD_LABEL: Record<string, MessageKey> = {
 };
 
 export default function Settings() {
+  const router = useRouter();
   const company = useCompanyConnection();
   const { status } = useSession();
   const cap = useLockCapability();

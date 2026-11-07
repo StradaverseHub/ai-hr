@@ -1,7 +1,7 @@
 import {useEffect,useRef,useState} from 'react';
 import {  } from 'react-native';
 import { InAppAlert as Alert } from './in-app-alert';
-import {router} from 'expo-router';
+import { useRouter } from 'expo-router';
 import {DesignText as Text,useTenantDesign} from './design';
 import {listOwnedPendingSubmissions,reconcileOwnedPendingSubmission,type PendingSubmissionSummary} from './submission-recovery';
 import {SignInRequiredError} from './errors';
@@ -16,6 +16,7 @@ import {releasePushOnExit} from './push-core';
 
 /** Read/reconcile pending intents before a voluntary exit. Forced logout never enters this screen. */
 export function PendingSubmissions({intent='review'}:{intent?:'review'|'logout'|'company'}){
+  const router = useRouter();
   const {signOut,setEmploymentId,employmentId}=useSession(),{palette}=useTenantDesign();
   const drafts=useJourneyDrafts();
   const owner=authGeneration(),namespace=identityNamespace(),key=JSON.stringify([owner,namespace]);

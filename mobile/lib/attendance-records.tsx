@@ -10,7 +10,7 @@
  */
 import { useEffect, useState } from 'react';
 import { Pressable, View } from 'react-native';
-import { router } from 'expo-router';
+import { useRouter } from 'expo-router';
 import { DesignText as Text, useTenantDesign } from './design';
 import { useApiV2 } from './api';
 import { t } from './i18n';
@@ -74,6 +74,7 @@ function rosterText(d: AttendanceRosterDayV2): string {
 }
 
 function RecordsTab({ month, onMonth }: { month: string | null; onMonth: (m: string | null) => void }) {
+  const router = useRouter();
   const { signOut, employmentId } = useSession();
   const records = useApiV2('v2/attendance/records', AttendanceRecordsV2, { employmentId: employmentId ?? undefined, ...(month ? monthWindow(month) : {}) }, signOut);
   const data = records.data;
@@ -120,6 +121,7 @@ function RosterTab({ month, onMonth }: { month: string | null; onMonth: (m: stri
 
 /** My attendance: this month's records or roster, a month at a time, and the ways into applications and requests. */
 export function AttendanceHomeScreen() {
+  const router = useRouter();
   const [tab, setTab] = useState<'records' | 'roster'>('records');
   const [month, setMonth] = useState<string | null>(null);
   return <Screen back>
@@ -148,6 +150,7 @@ export function ApplicationRow({ item, onPress }: { item: AttendanceApplicationS
 
 /** One of the caller's own days, in full: schedule, clockings on record, result, exception, applications, correction. */
 export function AttendanceDayScreen({ date }: { date: string }) {
+  const router = useRouter();
   const { palette } = useTenantDesign();
   const { signOut, employmentId } = useSession();
   const valid = /^\d{4}-\d{2}-\d{2}$/.test(date);

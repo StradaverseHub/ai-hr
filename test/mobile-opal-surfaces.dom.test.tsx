@@ -22,7 +22,7 @@ it.each(['dark', 'light'] as const)('keeps the complete action carousel reachabl
   const ports = {
     react: React, 'react/jsx-runtime': jsx,
     'react-native': { View, Text, Image: () => null, ScrollView: View, useWindowDimensions: () => ({ width: 320 }), Pressable: ({ children, accessibilityLabel, onPress }: any) => <button aria-label={accessibilityLabel} onClick={onPress}>{children}</button> },
-    'expo-router': { router: { push } }, './visual': { alpha: (color: string) => color }, './icon': { Icon: () => null },
+    'expo-router': {useRouter: () => ({ push }),  router: { push } }, './visual': { alpha: (color: string) => color }, './icon': { Icon: () => null },
     './design': { DesignText: Text, useTenantDesign: () => ({ design: DEFAULT_MOBILE_DESIGN, palette: mobilePalette(DEFAULT_MOBILE_DESIGN, appearance), appearance, reduceMotion: true }) },
     './i18n': { t: (key: string) => key },
   };

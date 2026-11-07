@@ -1,7 +1,7 @@
 import {useEffect,useRef,useState} from 'react';
 import { TextInput, View } from 'react-native';
 import { InAppAlert as Alert } from './in-app-alert';
-import {router} from 'expo-router';
+import { useRouter } from 'expo-router';
 import {randomUUID} from 'expo-crypto';
 import {ReviewWorkspaceResult,ReviewWorkspaceDecisionResult,REVIEW_TERMINATION_REASONS,ReviewWorkspaceCommand,type ReviewWorkspaceKind} from '../../lib/mobile-api/v2/review-workspaces';
 import {apiPostV2,useApiV2} from './api';
@@ -17,6 +17,7 @@ import {reviewCopy} from './review-workspace-copy';
 type Pending={body:ReviewWorkspaceCommand;uncertain:boolean};
 /** The recommendation and advisory HR decision are distinct from an approve/reject request. */
 export function ReviewWorkspaceScreen({kind,id}:{kind:ReviewWorkspaceKind;id:string}){
+  const router = useRouter();
  const {signOut}=useSession(),{palette}=useTenantDesign(),copy=reviewCopy();
  const path=`v2/review-workspaces/${kind}/${id}` as const;
  const detail=useApiV2(path,ReviewWorkspaceResult,{},signOut);

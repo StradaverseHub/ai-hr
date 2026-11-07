@@ -15,7 +15,6 @@ import { useEffect, useRef, useState } from 'react';
 import { TextInput, Pressable, View } from 'react-native';
 import { InAppAlert as Alert } from './in-app-alert';
 import DateTimePicker from '@expo/ui/community/datetime-picker';
-import { router } from 'expo-router';
 import { randomUUID } from 'expo-crypto';
 import { DesignText as Text, useTenantDesign } from './design';
 import { apiPostV2 } from './api';

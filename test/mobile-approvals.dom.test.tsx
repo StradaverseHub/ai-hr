@@ -78,7 +78,7 @@ function fixture(copy: { t?: (k: string, v?: Record<string, unknown>) => string;
     './approval-document':{ApprovalDocument:({name}:any)=><span>{name}</span>},
     ...base, './api': api, './paged-list': paged, '../../lib/mobile-api/v2/tasks': v2tasks,
     './claim-parts': claimParts, '../../lib/mobile-api/v2/claims': v2claims,
-    'react-native-safe-area-context': { SafeAreaView: View }, 'expo-router': { router: { push, back } },
+    'react-native-safe-area-context': { SafeAreaView: View }, 'expo-router': { useRouter: () => ({ push, back }), router: { push: () => { throw new Error('The imperative router is unavailable before the first render has finished.'); } } },
     'expo-crypto': { randomUUID: () => `${String(++seq).padStart(8, '0')}-bbbb-4bbb-8bbb-bbbbbbbbbbbb` },
     './icon': { Icon: () => null }, './visual': mobileVisualPorts, './design': { Atmosphere: () => null, DesignText: Text, useTenantDesign: () => ({ design: DEFAULT_MOBILE_DESIGN, palette: mobilePalette(DEFAULT_MOBILE_DESIGN, 'dark') }) },
     './session': { useSession: () => ({ employmentId: 'own', signOut }) },

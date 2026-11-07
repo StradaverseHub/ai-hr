@@ -10,7 +10,7 @@
  */
 import type { ReactNode } from 'react';
 import { Linking, Pressable, View } from 'react-native';
-import { router } from 'expo-router';
+import { useRouter } from 'expo-router';
 import { DesignText as Text, useTenantDesign } from './design';
 import { useApi, useApiV2 } from './api';
 import { config } from './config';
@@ -133,6 +133,7 @@ const initialsOf = (name: string | null | undefined) => (name ?? '').trim().spli
  * still entirely the server's.
  */
 export function ProfileScreen() {
+  const router = useRouter();
   const { palette, design } = useTenantDesign();
   const { signOut, employmentId } = useSession();
   const profile = useProfileWorkspace();

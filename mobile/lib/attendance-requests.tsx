@@ -14,7 +14,7 @@
 import { useRef, useState } from 'react';
 import { TextInput, Pressable, View } from 'react-native';
 import { InAppAlert as Alert } from './in-app-alert';
-import { router } from 'expo-router';
+import { useRouter } from 'expo-router';
 import { randomUUID } from 'expo-crypto';
 import { DesignText as Text, useTenantDesign } from './design';
 import { apiPostV2, useApiV2 } from './api';
@@ -50,6 +50,7 @@ type CorrectionBody = { requestId: string; date: string; checkIn?: string; check
 
 /** A correction request for one own day: the clockings on record shown read only, proposed times, a reason. */
 export function AttendanceCorrectionScreen({ date }: { date: string }) {
+  const router = useRouter();
   const { palette } = useTenantDesign();
   const { signOut, employmentId } = useSession();
   const field = useInput();
@@ -249,6 +250,7 @@ function ReplacementClaim({ offer, date, onSent }: { offer: ReplacementLeaveOffe
 
 /** May I ask (the kernel's answer, with its reason when not), and the request for one worked date when I may. */
 export function ReplacementLeaveScreen() {
+  const router = useRouter();
   const { palette } = useTenantDesign();
   const { signOut, employmentId } = useSession();
   const offer = useApiV2('v2/attendance/replacement-leave', ReplacementLeaveOfferV2, { employmentId: employmentId ?? undefined }, signOut);

@@ -15,7 +15,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { TextInput, Linking, Pressable, View } from 'react-native';
 import { InAppAlert as Alert } from './in-app-alert';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { router } from 'expo-router';
+import { useRouter } from 'expo-router';
 import { randomUUID } from 'expo-crypto';
 import { DesignText as Text, useTenantDesign } from './design';
 import { ApprovalDocument } from './approval-document';
@@ -97,6 +97,7 @@ export function taskSummaryLine(item: TaskItemV2): string | null {
 }
 
 export function TaskRow({ item }: { item: TaskItemV2 }) {
+  const router = useRouter();
   const { palette } = useTenantDesign();
   const summary = taskSummaryLine(item);
   const label = [t(KIND_LABEL[item.kind]), item.subject.name, summary].filter(Boolean).join(' · ');
@@ -120,6 +121,7 @@ export function TaskRow({ item }: { item: TaskItemV2 }) {
 
 /** A bounded preview uses the same authorized task owner as the full queue. */
 export function HomeApprovalQueue({ refreshToken }: { refreshToken: number }) {
+  const router = useRouter();
   const { palette } = useTenantDesign();
   const { signOut } = useSession();
   const list = usePagedResource(TASKS, { native: 'expanded', limit:'3' }, keyOf, signOut);
@@ -197,6 +199,7 @@ const titleOf = (task: TaskDetailV2) => [task.subject.name ?? '—', task.subjec
 
 /** One task: who and what, team cover when present, per-date choice for leave, the reason, then Reject / Approve. */
 export function ApprovalDetailScreen({ kind, id }: { kind: string; id: string }) {
+  const router = useRouter();
   const { palette, design } = useTenantDesign();
   const { signOut } = useSession();
   const detail = useTaskDetail(kind, id, signOut);

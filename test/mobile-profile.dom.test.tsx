@@ -78,7 +78,7 @@ function fixture() {
     './api': { useApiV2, apiPostV2, useApi: () => ({ data: null, error: null, loading: false, reload: () => {} }) },
     './session': { useSession: () => ({ employmentId: 'own-emp', signOut }) },
     './design': { DesignText: Text, useTenantDesign: () => ({ design: DEFAULT_MOBILE_DESIGN, palette: mobilePalette(DEFAULT_MOBILE_DESIGN, 'dark') }) },
-    'expo-router': { router: { push, back } },
+    'expo-router': {useRouter: () => ({ push, back }),  router: { push, back } },
     '../../lib/mobile-api/v2/profile': v2profile,
   };
   const profile = load('mobile/lib/profile.tsx', base);

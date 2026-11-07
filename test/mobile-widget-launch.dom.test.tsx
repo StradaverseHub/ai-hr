@@ -20,7 +20,7 @@ function fixture(){
  const module=load('mobile/lib/widget-launch.tsx',{
  react:React,'react/jsx-runtime':jsx,'react-native':{AppState:native},
  'expo-linking':{getInitialURL:async()=>null,addEventListener:()=>({remove:vi.fn()})},
- 'expo-router':{router:{replace:vi.fn()}},'./session':{useSession:()=>session},
+ 'expo-router':{useRouter: () => ({replace:vi.fn()}), router:{replace:vi.fn()}},'./session':{useSession:()=>session},
  './config':{identityNamespace:()=>namespace},'./auth':{authGeneration:()=>generation},
  './widget-intent':{widgetIntents:{take:()=>null,capture:()=>false}},
  './attendance-widgets':{initializeAttendanceWidgets:initialize,updateAttendanceWidgets:update},

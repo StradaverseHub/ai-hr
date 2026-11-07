@@ -5,7 +5,7 @@
  * published navigation id stays `requests`, so stored tenant designs keep working; only the label reads "Leave".
  */
 import { useCallback, useRef, useState } from 'react';
-import { router,useFocusEffect } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { Pressable,View } from 'react-native';
 import { DesignText as Text } from '../../lib/design';
 import { useTenantDesign } from '../../lib/design';
@@ -19,6 +19,7 @@ import { useSession } from '../../lib/session';
 import { ListRow,LoadState,Muted,Row,Screen,SectionLabel,Title,fmtDays } from '../../lib/ui';
 const STATUS:Record<string,Parameters<typeof t>[0]>={approved:'approved',pending:'pending',rejected:'rejected',cancelled:'cancelled'};
 export default function Leave(){
+  const router = useRouter();
   const {palette}=useTenantDesign();const {signOut,employmentId}=useSession();
   const leave=useApi('leave',{employmentId:employmentId??undefined},signOut);
   const options=useApi('leave-options',{employmentId:employmentId??undefined},signOut);

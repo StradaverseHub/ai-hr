@@ -12,7 +12,7 @@
 import { useRef, useState } from 'react';
 import { TextInput, View } from 'react-native';
 import { InAppAlert as Alert } from './in-app-alert';
-import { router } from 'expo-router';
+import { useRouter } from 'expo-router';
 import { randomUUID } from 'expo-crypto';
 import { DesignText as Text, useTenantDesign } from './design';
 import { apiPostV2, useApiV2 } from './api';
@@ -33,6 +33,7 @@ type PlanBody = { requestId: string; date: string; plannedStart: string; planned
 type Phase = { value: PlanBody; phase: 'sending' | 'uncertain' } | null;
 
 export function OvertimePlanScreen() {
+  const router = useRouter();
   const { palette, design } = useTenantDesign();
   const { signOut, employmentId } = useSession();
   const radius = design.schemaVersion === 2 ? design.composition.layout.radius : 0;

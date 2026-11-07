@@ -28,7 +28,7 @@ function fixture(){
   const Text=({children,accessibilityRole}:React.PropsWithChildren<{accessibilityRole?:string}>)=><span role={accessibilityRole==='alert'?'alert':undefined}>{children}</span>;
   const useApi=vi.fn((path:string)=>path==='me'?me:state);
   const ports={react:React,'react/jsx-runtime':jsx,'react-native':{Alert:{alert:(_a:string,_b:string,buttons:typeof dialog)=>{dialog=buttons;}}},
-    'expo-router':{router:{back}},'./design':{DesignText:Text,useTenantDesign:()=>({palette:{text:'black'}})},
+    'expo-router':{useRouter: () => ({back}), router:{back}},'./design':{DesignText:Text,useTenantDesign:()=>({palette:{text:'black'}})},
     './api':{useApi},'./integrity-key-recovery':{revokeIntegrityKey:revoke},'./session':{useSession:()=>({employmentId,signOut})},
     './device-enrollment-screen':{DeviceEnrollment:({employmentId}: {employmentId:string})=><div data-testid="device-enrollment" data-employment={employmentId}/>},
     './auth':{authGeneration:()=>owner},'./config':{identityNamespace:()=>namespace},'./errors':{SignInRequiredError,RequestRejectedError},

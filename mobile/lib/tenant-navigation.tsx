@@ -1,4 +1,4 @@
-import { router, useGlobalSearchParams, usePathname } from 'expo-router';
+import { useGlobalSearchParams, usePathname, useRouter } from 'expo-router';
 import { Pressable, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { SymbolView, type SymbolViewProps } from 'expo-symbols';
@@ -13,6 +13,7 @@ const icons: Record<string, SymbolViewProps['name']> = {
   users: { ios: 'person.2', android: 'group' }, arrow: { ios: 'arrow.up.right', android: 'arrow_outward' },
 };
 export function TenantNavigation({ design, inline = false }: { design: MobileDesignV2; inline?: boolean }) {
+  const router = useRouter();
   const { palette } = useTenantDesign(), path = usePathname(), { id } = useGlobalSearchParams<{ id: string }>();
   const c = design.composition, dock = c.navigation.style === 'dock';
   const current = path === '/' ? 'home' : path === '/leave' ? 'requests' : path === '/custom' ? id : path.slice(1);

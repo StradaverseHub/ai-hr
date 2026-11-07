@@ -56,7 +56,7 @@ export function nativeApiJourney(options: {
   const ports: Record<string, unknown> = {
     react: React, 'react/jsx-runtime': jsx, 'react-native': native,
     'react-native-safe-area-context': { SafeAreaView: View },
-    'expo-router': { router: { replace: vi.fn(), push: vi.fn() }, Redirect: () => null, useFocusEffect: (fn: () => (() => void)) => React.useEffect(fn, [fn]) },
+    'expo-router': {useRouter: () => ({ replace: vi.fn(), push: vi.fn() }),  router: { replace: vi.fn(), push: vi.fn() }, Redirect: () => null, useFocusEffect: (fn: () => (() => void)) => React.useEffect(fn, [fn]) },
     'expo-crypto': { randomUUID }, './api': api, './auth': { authGeneration: () => 1, assertAuthGeneration: () => {} },
     './session': { useSession: () => ({ status: 'signedIn', employmentId: null, signOut }) },
     './errors': errors, './config': { config: { apiUrl: 'https://hr.test' }, identityNamespace: () => 'isolated-fixture' },

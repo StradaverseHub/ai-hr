@@ -102,7 +102,7 @@ function fixture() {
     './i18n': i18n,
     './design': { DesignText: Text, useTenantDesign: () => ({ design: DEFAULT_MOBILE_DESIGN, palette: mobilePalette(DEFAULT_MOBILE_DESIGN, 'dark') }) },
     './session': { useSession: () => ({ employmentId: 'own', signOut }) },
-    'expo-router': { router: { push, back, replace } },
+    'expo-router': {useRouter: () => ({ push, back, replace }),  router: { push, back, replace } },
     'expo-crypto': { randomUUID: () => `${String(++seq).padStart(8, '0')}-bbbb-4bbb-8bbb-bbbbbbbbbbbb` },
     'react-native-safe-area-context': { SafeAreaView: View },
     '../../lib/mobile-api/v2/attendance': contract,

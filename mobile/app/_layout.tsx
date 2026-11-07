@@ -7,7 +7,7 @@ import { JourneyDraftProvider, useJourneyDrafts } from '../lib/journey-drafts';
 import { CompanyConnectionProvider, WorkplaceReviewBoundary, useCompanyConnection } from '../lib/company-connection';
 import { Atmosphere, PublicDesignProvider, TenantDesignProvider, useTenantDesign } from '../lib/design';
 import { colorContrast } from '../../lib/mobile-composition';
-import { Stack, router } from 'expo-router';
+import { Stack, useRouter } from 'expo-router';
 import { useEffect } from 'react';
 import { useFonts } from 'expo-font';
 import { FIELD_NOTES_FONTS } from '../lib/field-typography';
@@ -29,6 +29,7 @@ function ThemedStatusBar() {
 }
 
 function ThemedStack() {
+  const router = useRouter();
   const { palette, reduceMotion } = useTenantDesign();
   const { leave, putLeave } = useJourneyDrafts();
   useEffect(() => {
@@ -41,17 +42,18 @@ function ThemedStack() {
       }
     }, 0);
     return () => clearTimeout(timer);
-  }, [leave, putLeave]);
-  useEffect(() => { const path = takeReopenAfterLanguage(); if (path) setTimeout(() => router.push(path), 0); }, []);
+  }, [leave, putLeave, router]);
+  useEffect(() => { const path = takeReopenAfterLanguage(); if (path) setTimeout(() => router.push(path), 0); }, [router]);
   return <><StatusBar style={colorContrast(palette.bg, '#000000') > colorContrast(palette.bg, '#ffffff') ? 'dark' : 'light'} /><PushLifecycle /><SignedInShell><Stack screenOptions={{ headerShown: false, animation: reduceMotion ? 'fade' : 'default' }} /></SignedInShell></>;
 }
 
 function Gate() {
+  const router = useRouter();
   const { status, visible, error, unlocking, unlock, signOut } = useSession();
   const company=useCompanyConnection();
   const { palette } = useTenantDesign();
   // Navigate only AFTER the signed-out Stack commits, including the first connection setup.
-  useEffect(()=>{if(company&&status==='signedOut'&&visible)router.replace('/sign-in');},[company,status,visible]);
+  useEffect(()=>{if(company&&status==='signedOut'&&visible)router.replace('/sign-in');},[company,status,visible,router]);
   if (status === 'loading' || !visible) {
     return (
       <View style={[styles.center, { backgroundColor: palette.bg }]}>

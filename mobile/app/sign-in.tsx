@@ -8,7 +8,7 @@ import { fetch as nativeFetch } from 'expo/fetch';
  */
 import * as AuthSession from 'expo-auth-session';
 import * as Crypto from 'expo-crypto';
-import { Redirect, router } from 'expo-router';
+import { Redirect, useRouter } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';
 import { useRef, useState } from 'react';
 import { ScrollView, StyleSheet, View } from 'react-native';
@@ -27,6 +27,7 @@ WebBrowser.maybeCompleteAuthSession();
 
 export default function SignIn() { return config.authProvider === 'internal' ? <InternalSignIn/> : <ProviderSignIn/>; }
 function ProviderSignIn() {
+  const router = useRouter();
   const session = useSession();
   const { palette } = useTenantDesign();
   const styles = providerStyles(palette);

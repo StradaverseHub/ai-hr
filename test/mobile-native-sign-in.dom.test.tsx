@@ -61,7 +61,7 @@ function fixture() {
   const view = load('mobile/app/sign-in.tsx', {
     'expo/fetch':{fetch:vi.fn()},
     'expo-auth-session': { ...types, ...requests, ...hooks }, 'expo-crypto': crypto, 'expo-web-browser': browser,
-    'expo-router': { router, Redirect: () => null }, react: React, 'react/jsx-runtime': jsx,
+    'expo-router': { useRouter: () => router, router, Redirect: () => null }, react: React, 'react/jsx-runtime': jsx,
     'react-native-safe-area-context':{SafeAreaView:Container},
     'react-native': { ScrollView: Container, View: Container, Text: Container, StyleSheet: { create: (value: unknown) => value } },
     '../lib/public-header': {PublicHeader:()=>null},

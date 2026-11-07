@@ -1,4 +1,4 @@
-import { router } from 'expo-router';
+import { useRouter } from 'expo-router';
 import { HomeApprovalQueue } from '../../lib/approval-decision';
 import { useState } from 'react';
 import { RefreshControl, ScrollView, View } from 'react-native';
@@ -20,6 +20,7 @@ export default function Home() {
 }
 
 function BrandedHome() {
+  const router = useRouter();
   const { palette, reload: reloadDesign } = useTenantDesign();
   const { signOut, employmentId } = useSession();
   const me = useApi('me', {}, signOut);

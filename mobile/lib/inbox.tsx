@@ -18,7 +18,7 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { Pressable, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { router } from 'expo-router';
+import { useRouter } from 'expo-router';
 import { DesignText as Text, useTenantDesign } from './design';
 import { apiGetV2, apiPostV2 } from './api';
 import { authGeneration } from './auth';
@@ -89,6 +89,7 @@ export function NotificationRow({ item, read, busy, onPress }: { item: Notificat
 
 /** `prompt`: the route's push control (mobile/lib/push.tsx PushPrompt), shown under the counts; the list never needs it. */
 export function InboxScreen({ prompt, back = false }: { prompt?: ReactNode; back?: boolean } = {}) {
+  const router = useRouter();
   const { palette } = useTenantDesign();
   const { signOut } = useSession();
   const { list, scope, enabled, unreadCount, setUnreadCount } = useNotificationIndex(signOut);
@@ -189,6 +190,7 @@ export function homeNeedsView(read: Pick<Read<HomeSummaryV2>, 'data' | 'error' |
  * Inbox) — or an honest state. A row shows only for a count that was read and is above zero.
  */
 export function HomeNeeds({ refreshToken = 0 }: { refreshToken?: number }) {
+  const router = useRouter();
   const { signOut } = useSession();
   const summary = useHomeSummary(signOut, refreshToken);
   const v = homeNeedsView(summary);

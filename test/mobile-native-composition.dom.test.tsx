@@ -19,7 +19,7 @@ function fixture() {
   design.composition.pages[0].blocks[0].body = 'A place for our people.';
   const View = ({ children }: React.PropsWithChildren) => <div>{children}</div>, Text = ({ children }: React.PropsWithChildren) => <span>{children}</span>;
   const ports: Record<string, unknown> = {
-    'react': React, 'react/jsx-runtime': jsx, 'react-native': { View }, 'expo-router': { router: { push, replace: push } },
+    'react': React, 'react/jsx-runtime': jsx, 'react-native': { View }, 'expo-router': {useRouter: () => ({ push, replace: push }),  router: { push, replace: push } },
     '../../lib/mobile-composition': { MOBILE_DESTINATIONS },
     '../../lib/mobile-api/v2/tasks': v2tasks,
     './api': { useApiV2: (path: string, schema: unknown, params: unknown) => { calls.push(path); v2params.push(params); v2schemas.push(schema); return { ...tasks, reload() {} }; }, useApi: (path: string) => { calls.push(path); return { loading: false, error: null, reload() {}, data: path === 'tasks' ? { total: 1, items: [{ id: 'one', kind: 'leave', subject: 'Scoped colleague' }] } : { cards: Array.from({ length: 6 }, (_, i) => ({ leaveTypeId: i, leaveType: `Leave ${i}`, isCurrentCycle: true, canApplyFor: i })) } }; } },

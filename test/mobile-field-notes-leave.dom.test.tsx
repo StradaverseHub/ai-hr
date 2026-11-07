@@ -12,7 +12,7 @@ function fixture(loading=false){
  const View=({children}:any)=><div>{children}</div>;
  const Text=({children}:any)=><span>{children}</span>;
  const ports:any={react:React,'react/jsx-runtime':jsx,'react-native':{View,Pressable:({children,onPress}:any)=><button onClick={onPress}>{children}</button>},
-  'expo-router':{router:{push:vi.fn()},useFocusEffect:(fn:()=>void)=>{React.useEffect(()=>{focus.current=fn;fn();},[fn]);}},
+  'expo-router':{useRouter: () => ({push:vi.fn()}), router:{push:vi.fn()},useFocusEffect:(fn:()=>void)=>{React.useEffect(()=>{focus.current=fn;fn();},[fn]);}},
   '../../lib/design':{DesignText:Text,useTenantDesign:()=>({palette:{}})},'../../lib/api':{useApi:(path:string)=>states[path]},
   '../../lib/session':{useSession:()=>({signOut:()=>{},employmentId:'synthetic'})},'../../lib/journey-drafts':{useJourneyDrafts:()=>({leave:null})},
   '../../lib/leave-request-form':{LeaveRequestForm:({cards:all}:any)=><button data-card-count={all.length}>Request leave</button>},
