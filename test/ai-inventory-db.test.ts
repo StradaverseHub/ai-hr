@@ -51,13 +51,14 @@ describe('AI inventory access (ADR-0151 §4.7)', () => {
       locked();await held;
     });
     void barrier.catch(()=>{});
-    let command:Promise<void>|undefined,reads:Promise<unknown>|undefined,commandSettled=false;
+    let command:Promise<void>|undefined,reads:Promise<unknown>[]=[],commandSettled=false;
     try{
       await Promise.race([ready,barrier.then(()=>{throw Error('Access barrier ended before its ready signal');})]);
       command=setAgentActionPause(group,'leave.edit',true);
       void command.then(()=>{commandSettled=true;},()=>{commandSettled=true;});
-      const projected=Promise.all([aiInventoryView(group,view),aiManagementAlerts(group,view),aiRunHistory(group,{})]);
-      reads=projected;void projected.catch(()=>{});
+      const pendingReads=[aiInventoryView(group,view),aiManagementAlerts(group,view),aiRunHistory(group,{})] as const;
+      reads=[...pendingReads];
+      const projected=Promise.all(pendingReads);void projected.catch(()=>{});
       const [inventory,alerts,history]=await Promise.race([projected,new Promise<never>((_,reject)=>{
         timer=setTimeout(()=>reject(Error('AI presentation waited behind the access writer')),5000);
       })]);
@@ -68,7 +69,7 @@ describe('AI inventory access (ADR-0151 §4.7)', () => {
       expect(history.rows).toHaveLength(1);expect(history.rows[0]).toMatchObject({feature:'hr_assistant',provider:'fixture',state:'completed',actual:7});
       expect(commandSettled).toBe(false);
     }finally{
-      clearTimeout(timer);release();await Promise.allSettled([barrier,...(command?[command]:[]),...(reads?[reads]:[])]);
+      clearTimeout(timer);release();await Promise.allSettled([barrier,...(command?[command]:[]),...reads]);
     }
     await command;
     expect(await eventTypesFor(base.tenantId,base.tenantId)).toContain('ai-control.action-pause-changed');
