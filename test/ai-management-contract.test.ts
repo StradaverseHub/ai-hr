@@ -136,14 +136,26 @@ const performanceOwners:Record<string,Record<string,string>>={
 };
 // The public owner narrows execution through its explicit child switch before its private
 // implementation reaches the provider. Keep both the public entry and concrete dispatch checked.
-const controlledPerformanceOwners:Record<string,{implementation:string;key:string}>={
- askAssessmentAdmin:{implementation:'askAssessmentAdminActivity',key:'read:operation_performance_admin'},
- suggestAssessmentCareerPlan:{implementation:'suggestAssessmentCareerPlanActivity',key:'read:operation_career_plan'},
- getAssessmentCompetencyInsight:{implementation:'getAssessmentCompetencyInsightActivity',key:'read:operation_competency_insight'},
- suggestAssessmentDevelopmentGoals:{implementation:'suggestAssessmentDevelopmentGoalsActivity',key:'read:operation_development_goals'},
- askPerformanceGuide:{implementation:'askPerformanceGuideActivity',key:'read:operation_performance_guide'},
- getAssessmentPerformanceInsight:{implementation:'getAssessmentPerformanceInsightActivity',key:'read:operation_performance_insight'},
- rewriteAssessmentField:{implementation:'rewriteAssessmentFieldActivity',key:'read:operation_performance_rewrite'},
+const controlledPerformanceOwners:Record<string,{implementation:string;keys:readonly string[]}>= {
+ askAssessmentAdmin:{implementation:'askAssessmentAdminActivity',keys:['read:operation_performance_admin']},
+ suggestAssessmentCareerPlan:{implementation:'suggestAssessmentCareerPlanActivity',keys:['read:operation_career_plan']},
+ getAssessmentCompetencyInsight:{implementation:'getAssessmentCompetencyInsightActivity',keys:['read:operation_competency_insight']},
+ suggestAssessmentDevelopmentGoals:{implementation:'suggestAssessmentDevelopmentGoalsActivity',keys:['read:operation_development_goals']},
+ askPerformanceGuide:{implementation:'askPerformanceGuideActivity',keys:['read:operation_performance_guide']},
+ getAssessmentPerformanceInsight:{implementation:'getAssessmentPerformanceInsightActivity',keys:['read:operation_performance_insight']},
+ rewriteAssessmentField:{implementation:'rewriteAssessmentFieldActivity',keys:['read:operation_performance_rewrite']},
+ draftOnehrNarrative:{implementation:'draftOnehrNarrativeActivity',keys:['read:operation_performance_narrative']},
+ sendCalibrationMessage:{implementation:'sendCalibrationMessageActivity',keys:['read:operation_performance_calibration']},
+ sendFeedbackMessage:{implementation:'sendFeedbackMessageActivity',keys:['read:operation_performance_feedback']},
+ readAssessmentFileTexts:{implementation:'readAssessmentFileTextsActivity',keys:['read:operation_performance_evidence_vision']},
+ getAssessmentIdpFit:{implementation:'getAssessmentIdpFitActivity',keys:['read:operation_idp_fit']},
+ getAssessmentPotentialInsight:{implementation:'getAssessmentPotentialInsightActivity',keys:['read:operation_potential_insight']},
+ getAssessmentTalentInsight:{implementation:'getAssessmentTalentInsightActivity',keys:['read:operation_talent_insight']},
+ proposeSettingSuggestion:{implementation:'proposeSettingSuggestionActivity',keys:['read:operation_performance_setting_suggestion']},
+ generateRewardAdvisor:{implementation:'generateRewardAdvisorActivity',keys:['read:operation_rewards_advice']},
+ getAssessmentRecordInsight:{implementation:'getAssessmentRecordInsightActivity',keys:['read:operation_record_present','read:operation_record_cycle','read:operation_record_trend']},
+ getAssessmentWrittenRemarks:{implementation:'getAssessmentWrittenRemarksActivity',keys:['read:operation_written_performance','read:operation_written_potential']},
+ generateArchitectureAdvice:{implementation:'generateArchitectureAdviceActivity',keys:['read:operation_architecture_advice','read:operation_architecture_position','read:operation_architecture_description','read:operation_architecture_outlier']},
 };
 const protectedOwners:Record<string,Record<string,string>>={
  'packs/job-architecture/owner.ts':{generateArchitectureAdvice:'generateDraft'},
@@ -256,7 +268,10 @@ describe('complete AI management inventory and boundary',()=>{
     const controlled=controlledPerformanceOwners[owner];
     if(controlled){
      expect(declaration?.modifiers?.some(modifier=>modifier.kind===ts.SyntaxKind.ExportKeyword),owner+' stays public').toBe(true);
-     expect(declaration?.body?.getText(tree)).toContain(`withAiCentreFunction(args[0],'${controlled.key}',()=>${controlled.implementation}(...args))`);
+     const body=declaration!.body!,callbacks:ts.CallExpression[]=[];
+     const findBoundary=(node:ts.Node)=>{if(ts.isCallExpression(node)&&ts.isIdentifier(node.expression)&&node.expression.text==='withAiCentreFunction')callbacks.push(node);ts.forEachChild(node,findBoundary);};findBoundary(body);
+     expect(callbacks.some(call=>{const callback=call.arguments[2];return callback&&ts.isArrowFunction(callback)&&ts.isCallExpression(callback.body)&&ts.isIdentifier(callback.body.expression)&&callback.body.expression.text===controlled.implementation;}),owner+' delegates through its actual control callback').toBe(true);
+     for(const key of controlled.keys)expect(body.getText(tree),owner+' names its registered child').toContain("'"+key+"'");
      const implementation=declarations.get(controlled.implementation);
      expect(implementation,owner+' retains its private implementation').toBeDefined();
      expect(implementation?.modifiers?.some(modifier=>modifier.kind===ts.SyntaxKind.ExportKeyword)??false).toBe(false);

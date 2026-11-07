@@ -1,3 +1,4 @@
+import {trackAiCentreFunctions} from '../lib/ai/centre-activity';
 import {sql} from 'drizzle-orm';
 /** Closed canonical module projections. Receives the Assistant owner's actual transaction/lifetime.
  * No provider, posted employee/company selector, generic query, cache or effect entry point exists.
@@ -41,6 +42,7 @@ export function createModuleAgentReaders(ctx: SessionContext, tx: Tx, active: ()
     await assertAiActionUnpausedTx(tx, fresh, 'hr_assistant');
     const [control]=await tx.execute<{allowed:boolean}>(sql`select app.ai_centre_read_allowed('read:my_module_work') and app.ai_centre_read_allowed(${'module:'+module}) as allowed`);
     if(control?.allowed!==true)throw new AiAllowanceError('paused');
+    trackAiCentreFunctions(ctx.tenantId,['read:my_module_work','module:'+module]);
     assertModuleEnabled(fresh, module);
     const capability = MODULE_AGENT_CAPABILITIES.find(entry => entry[0] === module)![1];
     // All Assistant/orchestrator paths share this closed module boundary. A declaration is not

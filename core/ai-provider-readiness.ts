@@ -1,3 +1,5 @@
+import {withAiCentreFunction,assertAiCentreRunningTx} from './ai-centre-control';
+import {aiCentreActivity} from '../lib/ai/centre-activity';
 /** Explicit admin-controlled candidate evaluation. No HR fields, arbitrary prompts, endpoints or tools. */
 import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
@@ -20,7 +22,10 @@ export class AiProviderReadinessError extends Error {
 }
 const unavailable = (): never => { throw new AiProviderReadinessError('unavailable'); };
 const captured = (ctx: SessionContext) => ({ ...ctx, roles: ctx.roles?.slice(), grants: ctx.grants?.map(grant => ({ ...grant })) });
-async function authority(tx: Tx, ctx: SessionContext) { if (!(await currentAiProviderAdminTx(tx, ctx))) return unavailable(); }
+async function authority(tx: Tx, ctx: SessionContext) {
+ if (!(await currentAiProviderAdminTx(tx, ctx))) return unavailable();
+ if(aiCentreActivity(ctx.tenantId))await assertAiCentreRunningTx(tx,ctx);
+}
 export type AiProviderCandidateView = Readonly<{ id: string; version: string; provider: 'openrouter'; model: string; keyLast4: string; providerOptions: OpenRouterOptions; updatedAt: string }>;
 export async function providerCandidatesTx(tx: Tx, ctx: SessionContext): Promise<AiProviderCandidateView[]> {
   await authority(tx, ctx);
@@ -61,7 +66,11 @@ export type ProviderEvaluationResult = Readonly<{ receipt: string; expiresAt: st
  * bytes and uses a candidate-purpose snapshot through canonical admission/allowance/settlement.
  * Account settings are human-attested; these probes do not prove provider privacy or all task quality.
  */
-export async function evaluateProviderCandidate(ctx: SessionContext, input: ProviderEvaluationConsent): Promise<ProviderEvaluationResult> {
+export async function evaluateProviderCandidate(...args:Parameters<typeof evaluateProviderCandidateActivity>):Promise<Awaited<ReturnType<typeof evaluateProviderCandidateActivity>>>{
+ args=structuredClone(args);
+ return withAiCentreFunction(args[0],'read:operation_provider_readiness',()=>evaluateProviderCandidateActivity(...args));
+}
+async function evaluateProviderCandidateActivity(ctx: SessionContext, input: ProviderEvaluationConsent): Promise<ProviderEvaluationResult> {
   ctx = captured(ctx);
   const consent = Consent.safeParse(input);
   if (!consent.success) throw new AiProviderReadinessError('consent_required');

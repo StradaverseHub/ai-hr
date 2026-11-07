@@ -2,15 +2,15 @@ import {lockAccessConfigurationTx} from './access-configuration-lock';
 import {sql} from 'drizzle-orm';
 import {withTenant,type SessionContext,type Tx} from '../db/client';
 import {AiAllowanceError,AiGatewayError} from '../lib/ai/types';
-import {aiCentreActivity,runAiCentreActivity} from '../lib/ai/centre-activity';
+import {aiCentreActivity,runAiCentreActivity,trackAiCentreFunctions} from '../lib/ai/centre-activity';
 
 /** The SQL owner serialises this check with stop writes; hold tx through a native effect. */
-export async function assertAiCentreRunningTx(tx:Tx,ctx:Pick<SessionContext,'tenantId'>,expected?:number):Promise<number>{
+export async function assertAiCentreRunningTx(tx:Tx,ctx:Pick<SessionContext,'tenantId'>,expected?:number,additionalFunctions:readonly string[]=[]):Promise<number>{
   await lockAccessConfigurationTx(tx,ctx.tenantId);
   const [row]=await tx.execute<{generation:number}>(sql`select app.ai_centre_assert_running(${expected??aiCentreActivity(ctx.tenantId)?.generation??null}::integer) as generation`);
   if(row?.generation===null)throw new AiAllowanceError('paused');
   if(!Number.isSafeInteger(row?.generation)||row.generation<0)throw new AiGatewayError('AI controls could not be confirmed.');
-  for(const key of aiCentreActivity(ctx.tenantId)?.functions??[]){
+  for(const key of new Set([...(aiCentreActivity(ctx.tenantId)?.functions??[]),...additionalFunctions])){
    const [functionState]=await tx.execute<{allowed:boolean}>(sql`select app.ai_centre_read_allowed(${key}) as allowed`);
    if(functionState?.allowed!==true)throw new AiAllowanceError('paused');
   }
@@ -45,16 +45,15 @@ export async function aiCentreReadAllowed(ctx:SessionContext,name:string):Promis
  });
 }
 
-/** A child control narrows the parent activity; native effects inherit it through async context. */
+/** Successful child checks remain prerequisites for the complete root intent, including after
+ * a nested helper returns. An unused refused child does not poison an enabled sibling. */
 export async function withAiCentreFunction<T>(ctx:SessionContext,key:string|readonly string[],work:()=>Promise<T>):Promise<T>{
  const keys=typeof key==='string'?[key]:[...key];
  return withAiCentreActivity(ctx,async()=>{
-  const current=aiCentreActivity(ctx.tenantId)!;
-  return runAiCentreActivity(ctx.tenantId,current.generation,async()=>{
-   await withTenant(ctx,tx=>assertAiCentreRunningTx(tx,ctx));
-   const result=await work();
-   await withTenant(ctx,tx=>assertAiCentreRunningTx(tx,ctx));
-   return result;
-  },[...new Set([...current.functions,...keys])]);
+  await withTenant(ctx,tx=>assertAiCentreRunningTx(tx,ctx,undefined,keys));
+  trackAiCentreFunctions(ctx.tenantId,keys);
+  const result=await work();
+  await withTenant(ctx,tx=>assertAiCentreRunningTx(tx,ctx));
+  return result;
  });
 }

@@ -2,6 +2,7 @@
 import { sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { AiAllowanceError, AiGatewayError } from '../lib/ai/types';
+import { trackAiCentreFunctions } from '../lib/ai/centre-activity';
 import { assertAiPrincipalTx } from './ai-principal';
 import { assertMayUseAssistant } from './assistant-grant';
 import { assertModuleEnabled, resolveEntitlementsTx } from './entitlements';
@@ -65,7 +66,9 @@ export async function assistantFunctionAllowed(ctx: SessionContext, session: Ass
   try {
     const [row] = await owner.tx.execute<{ allowed: boolean }>(sql`select app.ai_centre_read_allowed(${key}) as allowed`);
     if (!owner.active || owner.principal !== principal) return unavailable();
-    return row?.allowed === true;
+    if(row?.allowed!==true)return false;
+    trackAiCentreFunctions(ctx.tenantId,[key]);
+    return true;
   } catch { return unavailable(); }
 }
 

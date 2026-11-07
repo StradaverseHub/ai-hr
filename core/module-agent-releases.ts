@@ -1,4 +1,4 @@
-import {withAiCentreActivity} from './ai-centre-control';
+import {withAiCentreFunction} from './ai-centre-control';
 import {ASSISTANT_PRIVATE_CONTRACT,resolvePrivateAssistantIntent,resolvePrivateAssistantProposal,capturePrivateAssistantTask,adjudicatePrivateAssistantReadPlan} from '../lib/ai/provider-assistant-policy';
 import {assistantReadableModules} from './assistant-readable-modules';
 import {ASSISTANT_CONVERSATION_LIMITS} from './assistant-clarification';
@@ -290,10 +290,17 @@ export async function readGovernedSpecialistToolResultTx(tx:Tx,ctx:SessionContex
 /** Explicit metadata-writing job owner, not a read tool or provider admission. Whole job rolls back on failure.
  * Every command caller supplies a retained nonce; no read or retry path invents a new command identity.
  */
-export async function runGovernedModuleReadPlan(ctx:SessionContext,proposed:unknown,command:{nonce:string;proposalId?:string}) {return runGovernedReadJob(ctx,proposed,command,'module_plan');}
-async function runGovernedReadJob(ctx:SessionContext,proposed:unknown,command:{nonce:string;proposalId?:string},kind:'module_plan'|'specialist') {
-  const current=capture(ctx),plan=captureTypedModulePlan(proposed),nonce=command?.nonce,proposalId=command?.proposalId,started=Date.now();
-  if(!command||typeof nonce!=='string'||!uuid(nonce)||!exact(command,proposalId===undefined?['nonce']:['nonce','proposalId'])||(proposalId!==undefined&&!uuid(proposalId)))return fail();
+export async function runGovernedModuleReadPlan(ctx:SessionContext,proposed:unknown,command:{nonce:string;proposalId?:string}) {
+ const request=captureGovernedReadJob(ctx,proposed,command);
+ return withAiCentreFunction(request.current,'read:operation_module_read_plan',()=>runGovernedReadJob(request,'module_plan'));
+}
+function captureGovernedReadJob(ctx:SessionContext,proposed:unknown,command:{nonce:string;proposalId?:string}){
+ const current=capture(ctx),plan=captureTypedModulePlan(proposed),nonce=command?.nonce,proposalId=command?.proposalId,started=Date.now();
+ if(!command||typeof nonce!=='string'||!uuid(nonce)||!exact(command,proposalId===undefined?['nonce']:['nonce','proposalId'])||(proposalId!==undefined&&!uuid(proposalId)))return fail();
+ return {current,plan,nonce,proposalId,started};
+}
+async function runGovernedReadJob(request:ReturnType<typeof captureGovernedReadJob>,kind:'module_plan'|'specialist') {
+  const {current,plan,nonce,proposalId,started}=request;
   try{return await withTenant(current,async tx=>{
     await boundNativeOutcomeTransactionTx(tx);const fresh=await guard(tx,current,false);await agentReleaseIntervalTx(tx,current,current.userId!,false);await signalIntervalTx(tx,current,current.userId!);
     const [owned]=await tx.execute<{owned:boolean}>(sql`select pg_try_advisory_xact_lock(hashtextextended(${'agent-job:'+current.tenantId+':'+current.userId+':'+nonce},0)) as owned`);if(owned?.owned!==true)return fail();
@@ -451,7 +458,11 @@ function authenticatedPromptReport(row:{id:string;evaluator_user_id:string;suite
  return report;
 }
 const issuedPrompt=new WeakMap<object,{candidate:CandidateRow;evaluatorId:string;providerFingerprint:string;report:PromptHoldoutReport;id:string}>();
-export async function evaluatePromptAgentCandidate(ctx:SessionContext,input:{candidateId:string;consent:AgentSyntheticConsent}){
+export async function evaluatePromptAgentCandidate(...args:Parameters<typeof evaluatePromptAgentCandidateActivity>):Promise<Awaited<ReturnType<typeof evaluatePromptAgentCandidateActivity>>>{
+ args=structuredClone(args);
+ return withAiCentreFunction(args[0],'read:operation_prompt_evaluation',()=>evaluatePromptAgentCandidateActivity(...args));
+}
+async function evaluatePromptAgentCandidateActivity(ctx:SessionContext,input:{candidateId:string;consent:AgentSyntheticConsent}){
  const current=capture(ctx),candidateId=input.candidateId;captureSyntheticConsent(input.consent);
  if(!exact(input,['candidateId','consent']))return fail();
  try{
@@ -521,7 +532,11 @@ export async function promotePromptAgentCandidate(ctx:SessionContext,input:{cand
 /** Consented synthetic try-out is the first bounded consumer of promoted prompt behavior.
  * This does not enable free-form production HR transfer. Human input chooses only a fixed fixture.
  */
-export async function runPromptPlannedSyntheticJob(ctx:SessionContext,input:{fixtureId:string;consent:AgentSyntheticConsent}){
+export async function runPromptPlannedSyntheticJob(...args:Parameters<typeof runPromptPlannedSyntheticJobActivity>):Promise<Awaited<ReturnType<typeof runPromptPlannedSyntheticJobActivity>>>{
+ args=structuredClone(args);
+ return withAiCentreFunction(args[0],'read:operation_prompt_synthetic_job',()=>runPromptPlannedSyntheticJobActivity(...args));
+}
+async function runPromptPlannedSyntheticJobActivity(ctx:SessionContext,input:{fixtureId:string;consent:AgentSyntheticConsent}){
  const current=capture(ctx),fixtureId=input.fixtureId;captureSyntheticConsent(input.consent,1);
  if(!exact(input,['fixtureId','consent']))return fail();const fixture=PROMPT_HOLDOUTS.find(row=>row.id===fixtureId);if(!fixture)return fail();
  try{
@@ -732,7 +747,7 @@ async function currentPlanPermitTx(tx:Tx,permit:ReturnType<typeof openPlanPermit
 /** No question or provider text is persisted. Even request digests remain inside authenticated ciphertext. */
 export async function proposeOwnModuleReadPlan(...args:Parameters<typeof proposeOwnModuleReadPlanActivity>):Promise<Awaited<ReturnType<typeof proposeOwnModuleReadPlanActivity>>>{
  args=structuredClone(args);
- return withAiCentreActivity(args[0],()=>proposeOwnModuleReadPlanActivity(...args));
+ return withAiCentreFunction(args[0],'read:operation_human_question_plan',()=>proposeOwnModuleReadPlanActivity(...args));
 }
 async function proposeOwnModuleReadPlanActivity(ctx:SessionContext,input:{permit:string;question:string;locale:string;consent:{questionOnly:true;oneRequest:true;sourceDigest:string}}):Promise<{state:'chooser'}|{state:'replayed'|'completed';proposalId:string}>{
  const current=capture(ctx),token=input.permit,question=input.question,locale=input.locale,consent=input.consent?{...input.consent}:null;
@@ -816,7 +831,11 @@ async function assertHumanPlanEvaluationsTx(tx:Tx,ctx:SessionContext,candidate:C
  if(rows.length<2||rows.length>8)return fail();for(const row of rows){if(row.evaluator_user_id===candidate.author_user_id)return fail();const proof=checkedHumanEvaluation(row,candidate,ctx,fingerprint);if(proof.state!=='complete'||proof.cases.length!==HUMAN_PLAN_HOLDOUTS.length||proof.cases.some((item:{state:string})=>item.state!=='passed'))return fail();}
 }
 /** Additional synthetic-only consent, independent from permission to send a human question. */
-export async function evaluateHumanQuestionPlannerCandidate(ctx:SessionContext,input:{candidateId:string;consent:AgentSyntheticConsent}){
+export async function evaluateHumanQuestionPlannerCandidate(...args:Parameters<typeof evaluateHumanQuestionPlannerCandidateActivity>):Promise<Awaited<ReturnType<typeof evaluateHumanQuestionPlannerCandidateActivity>>>{
+ args=structuredClone(args);
+ return withAiCentreFunction(args[0],'read:operation_human_planner_evaluation',()=>evaluateHumanQuestionPlannerCandidateActivity(...args));
+}
+async function evaluateHumanQuestionPlannerCandidateActivity(ctx:SessionContext,input:{candidateId:string;consent:AgentSyntheticConsent}){
  const current=capture(ctx),candidateId=input.candidateId;captureSyntheticConsent(input.consent,HUMAN_PLAN_HOLDOUTS.length);if(!exact(input,['candidateId','consent']))return fail();
  try{const prepared=await withTenant(current,async tx=>{
   await tx.execute(sql`SET TRANSACTION READ ONLY`);const fresh=await guard(tx,current,true);await assertAiActionUnpausedTx(tx,fresh,'module_agent_evaluation');const candidate=await candidateTx(tx,current,candidateId);if(candidate.kind!=='read_plan_prompt_v1'||candidate.author_user_id===current.userId)return fail();
@@ -918,7 +937,11 @@ export async function createCanonicalSpecialistCandidate(ctx:SessionContext,inpu
  await tx.execute(sql`insert into public.ai_agent_candidate(id,tenant_id,owner_user_id,author_user_id,module_code,version,kind,configuration,candidate_digest,baseline_digest,source_digest,engine_digest,policy_digest,input_digest) values(${id}::uuid,${current.tenantId}::uuid,${current.userId}::uuid,${current.userId}::uuid,${module},${version},'canonical_specialist_v1',${JSON.stringify(configuration)}::jsonb,${row.candidate_digest},${row.baseline_digest},${row.source_digest},${row.engine_digest},${row.policy_digest},${row.input_digest})`);await persistCandidateSignalsTx(tx,current,row);return{candidateId:id,candidateDigest:row.candidate_digest,state:'unevaluated' as const};});}catch{return fail();}
 }
 const specialistIssued=new WeakMap<object,{candidate:CandidateRow;evaluatorId:string;id:string;report:SpecialistEvaluationReport}>();
-export async function evaluateCanonicalSpecialistCandidate(ctx:SessionContext,candidateId:string){
+export async function evaluateCanonicalSpecialistCandidate(...args:Parameters<typeof evaluateCanonicalSpecialistCandidateActivity>):Promise<Awaited<ReturnType<typeof evaluateCanonicalSpecialistCandidateActivity>>>{
+ args=structuredClone(args);
+ return withAiCentreFunction(args[0],'read:operation_specialist_evaluation',()=>evaluateCanonicalSpecialistCandidateActivity(...args));
+}
+async function evaluateCanonicalSpecialistCandidateActivity(ctx:SessionContext,candidateId:string){
  const current=capture(ctx),id=candidateId;if(typeof id!=='string'||!uuid(id))return fail();try{const evidence=await withTenant(current,async tx=>{await tx.execute(sql`SET TRANSACTION READ ONLY`);const fresh=await guard(tx,current,true),candidate=await candidateTx(tx,current,id);if(candidate.kind!=='canonical_specialist_v1'||candidate.author_user_id===current.userId)return fail();const configuration=SpecialistCandidate.parse(candidate.configuration);assertModuleEnabled(fresh,configuration.module);const report=await withAssistantReadTx(fresh,tx,read=>executeSpecialistHoldout(configuration,read)),proof=Object.freeze({});specialistIssued.set(proof,{candidate,evaluatorId:current.userId!,id:randomUUID(),report});return proof;});
  return await withTenant(current,async tx=>{const fresh=await guard(tx,current,true);const issued=specialistIssued.get(evidence);if(!issued)return fail();specialistIssued.delete(evidence);const candidate=await candidateTx(tx,current,id);if(candidate.kind!=='canonical_specialist_v1'||candidate.candidate_digest!==issued.candidate.candidate_digest||issued.evaluatorId!==current.userId)return fail();assertModuleEnabled(fresh,SpecialistCandidate.parse(candidate.configuration).module);const receipt=seal('specialist-evaluation',current.tenantId,issued.id,{version:1,candidateDigest:candidate.candidate_digest,binding:binding(candidate),evaluatorId:issued.evaluatorId,report:issued.report});await tx.execute(sql`insert into public.ai_agent_evaluation(id,tenant_id,candidate_id,evaluator_user_id,suite_digest,receipt) values(${issued.id}::uuid,${current.tenantId}::uuid,${id}::uuid,${current.userId}::uuid,${issued.report.suiteDigest},${receipt})`);return{evaluationId:issued.id,module:issued.report.module,coverage:issued.report.coverage,state:issued.report.state,securityFailures:issued.report.securityFailures,qualityFailures:issued.report.qualityFailures,nativeEvidence:issued.report.nativeEvidence};});}catch{return fail();}
 }
@@ -965,7 +988,8 @@ async function currentSpecialistAssessmentsTx(tx:Tx,ctx:SessionContext,completed
 /** Same source-owned selection and canonical interpreter as shared plans and chatbot tool batches. */
 export async function runGovernedSpecialistJob(ctx:SessionContext,input:{module:AgentModuleCode},command:{nonce:string}){
  const current=capture(ctx),module=input.module,nonce=command?.nonce;if(!exact(input,['module'])||!isAgentModuleCode(module)||!command||!exact(command,['nonce'])||typeof nonce!=='string'||!uuid(nonce))return fail();
- return runGovernedReadJob(current,{version:1,modules:[module]},{nonce},'specialist');
+ const request=captureGovernedReadJob(current,{version:1,modules:[module]},{nonce});
+ return withAiCentreFunction(current,'read:operation_specialist_job',()=>runGovernedReadJob(request,'specialist'));
 }
 export async function specialistReviewWorkspaceTx(tx:Tx,ctx:SessionContext){const current=capture(ctx);await assertAiPrincipalTx(tx,current);if(!isGroupAdmin(current))return null;const [admin]=await tx.execute<{allowed:boolean}>(sql`select app.is_group_admin() as allowed`);if(admin?.allowed!==true)return null;const fresh={...current,entitlements:await resolveEntitlementsTx(tx,current.tenantId)};
  const versions=await tx.execute<{module:string;version:number}>(sql`select module_code as module,max(version)::int as version from public.ai_agent_candidate where tenant_id=${current.tenantId}::uuid and owner_user_id=${current.userId}::uuid group by module_code`),modules=AGENT_MODULE_CODES.filter(module=>{try{assertModuleEnabled(fresh,module);return true;}catch{return false;}}).map(module=>({module,nextVersion:(versions.find(row=>row.module===module)?.version??0)+1}));
@@ -1052,7 +1076,11 @@ async function spendConversationCallTx(tx:Tx,ctx:SessionContext,candidateId:stri
   if(!row||!Number.isSafeInteger(row.admitted)||row.admitted<1||row.admitted>limit)return fail();
  }
 }
-export async function evaluateConversationAgentCandidate(ctx:SessionContext,input:{candidateId:string;consent:AgentSyntheticConsent}){
+export async function evaluateConversationAgentCandidate(...args:Parameters<typeof evaluateConversationAgentCandidateActivity>):Promise<Awaited<ReturnType<typeof evaluateConversationAgentCandidateActivity>>>{
+ args=structuredClone(args);
+ return withAiCentreFunction(args[0],'read:operation_conversation_evaluation',()=>evaluateConversationAgentCandidateActivity(...args));
+}
+async function evaluateConversationAgentCandidateActivity(ctx:SessionContext,input:{candidateId:string;consent:AgentSyntheticConsent}){
  const current=capture(ctx),id=input.candidateId;captureSyntheticConsent(input.consent,12);if(!exact(input,['candidateId','consent']))return fail();
  const prepared=await withTenant(current,async tx=>{await boundNativeOutcomeTransactionTx(tx);const fresh=await guard(tx,current,true);await assertAiActionUnpausedTx(tx,fresh,'module_agent_evaluation');const candidate=await candidateTx(tx,current,id);if(candidate.kind!=='assistant_answer_prompt_v1'||candidate.author_user_id===current.userId)return fail();
   const snapshot=await resolveAiProviderSnapshotTx(tx,fresh);if(!snapshot)return fail();

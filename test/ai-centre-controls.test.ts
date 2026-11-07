@@ -1,4 +1,5 @@
-import {withAssistantRead} from '../core/assistant-read-session';
+import {assistantFunctionAllowed,withAssistantRead} from '../core/assistant-read-session';
+import {aiCentreActivity,runAiCentreActivity} from '../lib/ai/centre-activity';
 import {grantAssistant} from '../core/assistant-grant';
 import {proposeOwnModuleReadPlan} from '../core/module-agent-releases';
 import {draftPayFormula} from '../core/pay-formula-ai';
@@ -135,6 +136,51 @@ describe('AI centre stop barrier',()=>{
 });
 
 describe('individual AI read controls',()=>{
+ it('retains a used child after its helper returns and refuses a later real native effect',async()=>{
+  await expect(withAiCentreActivity(group,async()=>{
+   expect(await withAiCentreFunction(group,'read:explain_pay_difference',async()=>'checked source')).toBe('checked source');
+   const snapshot=aiCentreActivity(group.tenantId)!;
+   expect(snapshot.functions).toContain('read:explain_pay_difference');
+   expect(Object.isFrozen(snapshot)).toBe(true);expect(Object.isFrozen(snapshot.functions)).toBe(true);
+   expect(()=>{(snapshot.functions as unknown as string[]).push('read:forged');}).toThrow();
+   await setAiCentreReadControl(group,'read:explain_pay_difference',false);
+   await withTenant(group,tx=>appendEvent(tx,{tenantId:group.tenantId,aggregateType:'fixture',aggregateId:group.tenantId,eventType:'fixture.after-nested-ai',actor:actorOf(group)}));
+  })).rejects.toThrow('AI function stopped');
+  const rows=await owner.db.select().from(schema.domainEvent).where(eq(schema.domainEvent.eventType,'fixture.after-nested-ai'));
+  expect(rows).toEqual([]);expect(aiCentreActivity(group.tenantId)).toBeUndefined();
+  expect(await withAiCentreFunction(group,'read:explain_leave_entitlement',async()=>'separate request')).toBe('separate request');
+ });
+ it('does not retain an unused refused child or prevent an enabled sibling from completing',async()=>{
+  await setAiCentreReadControl(group,'read:explain_pay_difference',false);let entered=false;
+  expect(await withAiCentreActivity(group,async()=>{
+   await expect(withAiCentreFunction(group,'read:explain_pay_difference',async()=>{entered=true;})).rejects.toMatchObject({reason:'paused'});
+   expect(aiCentreActivity(group.tenantId)!.functions).not.toContain('read:explain_pay_difference');
+   return withAiCentreFunction(group,'read:explain_leave_entitlement',async()=>{
+    await withTenant(group,tx=>appendEvent(tx,{tenantId:group.tenantId,aggregateType:'fixture',aggregateId:group.tenantId,eventType:'fixture.enabled-sibling',actor:actorOf(group)}));
+    return 'completed';
+   });
+  })).toBe('completed');expect(entered).toBe(false);
+  expect(await owner.db.select().from(schema.domainEvent).where(eq(schema.domainEvent.eventType,'fixture.enabled-sibling'))).toHaveLength(1);
+ });
+ it('retains the actual closed-read check through later result/admission work without another read transaction',async()=>{
+  await grantAssistant(group,{appUserId:group.userId!});
+  await expect(withAiCentreActivity(group,async()=>{
+   expect(await withAssistantRead(group,null,read=>assistantFunctionAllowed(group,read,'read:my_leave_balances'))).toBe(true);
+   expect(aiCentreActivity(group.tenantId)!.functions).toContain('read:my_leave_balances');
+   await setAiCentreReadControl(group,'read:my_leave_balances',false);
+   await generation();
+  })).rejects.toMatchObject({reason:'paused'});
+  // The child switch has not become a tenant-wide stop.
+  expect(await generation()).toBe(0);
+ });
+ it('never replaces an existing tenant generation through a nested activity',async()=>{
+  let entered=false;
+  await withAiCentreActivity(group,async()=>{
+   const current=aiCentreActivity(group.tenantId)!;
+   await expect(runAiCentreActivity(group.tenantId,current.generation+1,async()=>{entered=true;})).rejects.toThrow('generation changed');
+   expect(aiCentreActivity(group.tenantId)!.generation).toBe(current.generation);
+  });expect(entered).toBe(false);
+ });
  it('registers every current read and module, and fails closed for future unknown functions',async()=>{
   const rows=await owner.db.execute<{function_key:string}>(sql`select function_key from app.ai_centre_function_kind order by function_key collate "C"`);
   expect(Array.from(rows).map(row=>row.function_key)).toEqual([...aiCentreReadKeys()].sort());

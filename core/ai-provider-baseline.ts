@@ -1,3 +1,5 @@
+import {withAiCentreFunction,assertAiCentreRunningTx} from './ai-centre-control';
+import {aiCentreActivity} from '../lib/ai/centre-activity';
 /** WP14 / R19 — a provider or model change is a release.
  *
  * A direct-provider change is stored PENDING (app.ai_provider_pending_config, 0694); the OpenRouter candidate is
@@ -41,7 +43,10 @@ export const isDirectProvider = (value: unknown): value is DirectProvider => typ
 export function environmentModelFingerprint(provider: string, model: string): string {
   return createHash('sha256').update(JSON.stringify(['environment-model-v1', provider, model])).digest('hex');
 }
-async function adminTx(tx: Tx, ctx: SessionContext) { if (!(await currentAiProviderAdminTx(tx, ctx))) throw new AiProviderBaselineError('not_admin'); }
+async function adminTx(tx: Tx, ctx: SessionContext) {
+ if (!(await currentAiProviderAdminTx(tx, ctx))) throw new AiProviderBaselineError('not_admin');
+ if(aiCentreActivity(ctx.tenantId))await assertAiCentreRunningTx(tx,ctx);
+}
 
 export type BaselineStatus = 'pending' | 'evaluating' | 'passed' | 'failed' | 'accepted';
 export type BaselineSuiteView = Readonly<{ id: ProviderBaselineSuiteId; total: number; passed: number; failed: number; next: number; state: 'evaluating' | 'passed' | 'failed' }>;
@@ -135,7 +140,11 @@ export type BaselineRunResult = Readonly<{ runId: string; state: 'evaluating' | 
 /** Runs (or continues) the baseline suites against one pending target, up to PROVIDER_BASELINE_REQUEST_LIMIT
  * provider requests. Stops at the first failed case: one failure already fails the run, and later cases would only
  * add spend. A provider or allowance refusal stops the batch and leaves the run evaluating, to be continued. */
-export async function runProviderBaseline(ctx: SessionContext, input: BaselineRunInput): Promise<BaselineRunResult> {
+export async function runProviderBaseline(...args:Parameters<typeof runProviderBaselineActivity>):Promise<Awaited<ReturnType<typeof runProviderBaselineActivity>>>{
+ args=structuredClone(args);
+ return withAiCentreFunction(args[0],'read:operation_provider_baseline',()=>runProviderBaselineActivity(...args));
+}
+async function runProviderBaselineActivity(ctx: SessionContext, input: BaselineRunInput): Promise<BaselineRunResult> {
   ctx = captured(ctx);
   if (input?.consent !== true) throw new AiProviderBaselineError('consent_required');
   const target = captureTarget(input);
