@@ -68,9 +68,9 @@ def left(maximum=30):
     return min(maximum, value)
 
 
-def run(arguments, *, check=True, timeout=30, env=None, input=None):
+def run(arguments, *, check=True, timeout=30, env=None, input=None, cwd=None):
     result = subprocess.run(arguments, env=SAFE_ENV if env is None else env, input=input,
-                            capture_output=True, timeout=left(timeout))
+                            capture_output=True, timeout=left(timeout), cwd=cwd)
     if check:
         require(result.returncode == 0, 'Bounded native subprocess refused')
     return result
@@ -420,6 +420,48 @@ def receive_compiled_package(helper, binding, release):
         raise AssertionError('Bounded compiled package receiver refused')
 
 
+PROBE_STAGES = ('admission', 'next-version', 'sharp-image', 'font-layout', 'next-config', 'executable-maps')
+PROBE_REFUSALS = {(json.dumps({'version': 1, 'kind': 'NATIVE_DEPENDENCY_PROBE_REFUSAL', 'stage': stage},
+                           separators=(',', ':')) + '\n').encode(): 'probe-' + stage for stage in PROBE_STAGES}
+PROBE_PROGRESS = tuple((json.dumps({'version': 1, 'kind': 'NATIVE_DEPENDENCY_PROBE_STAGE_ENTERED', 'stage': stage},
+                                 separators=(',', ':')) + '\n').encode() for stage in PROBE_STAGES)
+FIXED_RUNTIME = pathlib.Path('/var/lib/aihr-admission/release')
+
+
+def probe_diagnostic(raw):
+    # Only an exact ordered prefix can supply a last-entered source stage.
+    # Raw child output, including a fatal VM traceback, never enters evidence.
+    bounded = isinstance(raw, bytes) and len(raw) <= 65536
+    remaining, entered = raw[:4096] if isinstance(raw, bytes) and not bounded else raw if isinstance(raw, bytes) else b'', None
+    for stage, line in zip(PROBE_STAGES, PROBE_PROGRESS):
+        if not remaining.startswith(line):
+            break
+        entered, remaining = stage, remaining[len(line):]
+    code = PROBE_REFUSALS.get(remaining, 'probe-refused') if bounded else 'probe-refused'
+    if code != 'probe-' + str(entered):
+        code = 'probe-refused'
+    return {'code': code, **({'lastEnteredStage': entered} if entered else {})}
+
+
+def native_dependency_probe(node, release):
+    require(report.get('currentPhase') == 'nonroot-stock-native-dependency-probe', 'Native dependency probe phase differs')
+    require(release == FIXED_RUNTIME and release.resolve() == release, 'Exact copied runtime working directory required')
+    try:
+        result = run(['/usr/sbin/runuser', '-u', 'nobody', '--preserve-environment', '--', node, '--max-old-space-size=256',
+            '/usr/local/lib/aihr-admission/next_dependency_probe.cjs', str(release)], timeout=30, check=False, cwd=str(release),
+            env={'NODE_ENV': 'production', 'NEXT_TELEMETRY_DISABLED': '1', 'HOME': '/var/empty/aihr', 'PATH': '/usr/bin:/bin'})
+    except subprocess.TimeoutExpired as error:
+        diagnostic = probe_diagnostic(error.stderr)
+        report['dependencyProbeFailure'] = {**diagnostic, 'code': 'probe-timeout'}
+        save()
+        raise AssertionError('Bounded native dependency probe refused') from None
+    if result.returncode != 0:
+        report['dependencyProbeFailure'] = probe_diagnostic(result.stderr)
+        save()
+        raise AssertionError('Bounded native dependency probe refused')
+    return json.loads(result.stdout)
+
+
 def package(plan, helper, binding):
     phase('authenticated-package-preparation')
     I = load('native_shared_inventory', helper / 'runtime_inventory.py')
@@ -483,12 +525,19 @@ def package(plan, helper, binding):
     (release / '.next/cache').chmod(0o755)
     release.chmod(0o755)
     phase('nonroot-stock-native-dependency-probe')
-    probe = json.loads(run(['/usr/sbin/runuser', '-u', 'nobody', '--', plan['nodePath'], '--max-old-space-size=256',
-        '/usr/local/lib/aihr-admission/next_dependency_probe.cjs', str(release)], timeout=30,
-        env={'NODE_ENV': 'production', 'NEXT_TELEMETRY_DISABLED': '1', 'HOME': '/var/empty/aihr', 'PATH': '/usr/bin:/bin'}).stdout)
+    probe = native_dependency_probe(plan['nodePath'], release)
     require(probe['kind'] == 'NONROOT_NATIVE_DEPENDENCY_PROBE_NOT_APPLICATION_ACCEPTANCE'
-            and probe['runtime'] == N.RUNTIME and probe['imageBytes'] > 20 and probe['cjkGlyphs'] == 2,
+            and probe['runtime'] == N.RUNTIME and probe['imageBytes'] > 20 and probe['cjkGlyphs'] == 2
+            and type(probe['uid']) is int and probe['uid'] == pwd.getpwnam('nobody').pw_uid
+            and probe['copiedRuntimeCwdVerified'] is True and probe['privateHomeVerified'] is True,
             'Actual installed dependency/runtime probe differs')
+    require(isinstance(probe['executableFiles'], list) and 0 < len(probe['executableFiles']) <= 512
+            and all(isinstance(name, str) and name.startswith('/') and len(name) <= 4096 for name in probe['executableFiles']),
+            'Bounded actual executable mapping proof required')
+    report['dependencyProbe'] = {'kind': probe['kind'], 'uid': probe['uid'], 'copiedRuntimeCwdVerified': True,
+        'privateHomeVerified': True, 'imageBytes': probe['imageBytes'], 'cjkGlyphs': 2,
+        'mappedExecutableFiles': len(probe['executableFiles']), 'actualNextBootVerified': False}
+    save()
     phase('complete-root-immutable-package-inventory')
     rows = []
     with I.PinnedTree(release, require) as tree:

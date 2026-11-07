@@ -185,6 +185,55 @@ class PrepackageDiagnosticModels(unittest.TestCase):
         self.assertEqual(F.report['format2ReceiverFailure'], {'code': 'format2-receiver-timeout'})
         self.assertNotIn('TOKEN=', str(refusal.exception) + json.dumps(F.report))
 
+    def test_native_probe_launch_uses_only_fixed_copied_cwd_nonroot_and_closed_private_environment(self):
+        F.report = {'phases': [], 'currentPhase': 'nonroot-stock-native-dependency-probe'}
+        with patch.object(F, 'run', return_value=types.SimpleNamespace(returncode=0, stderr=b'', stdout=b'{"modelOnly":true}')) as run:
+            self.assertEqual(F.native_dependency_probe('/owned/node', F.FIXED_RUNTIME), {'modelOnly': True})
+            self.assertEqual(run.call_args.args[0], ['/usr/sbin/runuser', '-u', 'nobody', '--preserve-environment', '--',
+                             '/owned/node', '--max-old-space-size=256', '/usr/local/lib/aihr-admission/next_dependency_probe.cjs',
+                             '/var/lib/aihr-admission/release'])
+            self.assertEqual(run.call_args.kwargs, {'timeout': 30, 'check': False, 'cwd': '/var/lib/aihr-admission/release',
+                             'env': {'NODE_ENV': 'production', 'NEXT_TELEMETRY_DISABLED': '1', 'HOME': '/var/empty/aihr', 'PATH': '/usr/bin:/bin'}})
+        for directory in ('/home/runner/work/ai-hr/ai-hr/source', '/foreign/runtime', '.'):
+            with patch.object(F, 'run') as run, self.assertRaises(AssertionError):
+                F.native_dependency_probe('/owned/node', pathlib.Path(directory))
+            run.assert_not_called()
+        F.report['currentPhase'] = 'foreign-phase'
+        with patch.object(F, 'run') as run, self.assertRaises(AssertionError):
+            F.native_dependency_probe('/owned/node', F.FIXED_RUNTIME)
+        run.assert_not_called()
+
+    def test_native_probe_diagnostics_require_exact_order_and_never_reflect_unknown_or_private_output(self):
+        expected = ('admission', 'next-version', 'sharp-image', 'font-layout', 'next-config', 'executable-maps')
+        self.assertEqual(F.PROBE_STAGES, expected)
+        for index, stage in enumerate(expected):
+            prefix = b''.join(F.PROBE_PROGRESS[:index + 1])
+            failure = ('{"version":1,"kind":"NATIVE_DEPENDENCY_PROBE_REFUSAL","stage":"' + stage + '"}\n').encode()
+            self.assertEqual(F.probe_diagnostic(prefix + failure), {'code': 'probe-' + stage, 'lastEnteredStage': stage})
+            for raw in (b'private TOKEN=fictional', prefix + b'private /original/checkout TOKEN=fictional',
+                        prefix + b'{"stage":"/private/TOKEN=fictional"}\n', prefix + b'private' * 20000):
+                diagnostic = F.probe_diagnostic(raw)
+                self.assertEqual(diagnostic['code'], 'probe-refused')
+                self.assertNotIn('private', json.dumps(diagnostic))
+                self.assertNotIn('TOKEN=', json.dumps(diagnostic))
+            self.assertEqual(F.probe_diagnostic(failure), {'code': 'probe-refused'})
+        self.assertEqual(F.probe_diagnostic(F.PROBE_PROGRESS[2]), {'code': 'probe-refused'})
+        self.assertEqual(F.probe_diagnostic(None), {'code': 'probe-refused'})
+
+    def test_native_probe_actual_refusal_and_timeout_stay_failures_with_only_owned_entered_stage(self):
+        F.report = {'phases': [], 'currentPhase': 'nonroot-stock-native-dependency-probe'}
+        prefix = b''.join(F.PROBE_PROGRESS[:3])
+        failure = b'{"version":1,"kind":"NATIVE_DEPENDENCY_PROBE_REFUSAL","stage":"sharp-image"}\n'
+        with patch.object(F, 'run', return_value=types.SimpleNamespace(returncode=1, stderr=prefix + failure)):
+            with self.assertRaisesRegex(AssertionError, '^Bounded native dependency probe refused$'):
+                F.native_dependency_probe('/owned/node', F.FIXED_RUNTIME)
+        self.assertEqual(F.report['dependencyProbeFailure'], {'code': 'probe-sharp-image', 'lastEnteredStage': 'sharp-image'})
+        error = subprocess.TimeoutExpired('private TOKEN=fictional', 30, stderr=prefix + b'private TOKEN=fictional')
+        with patch.object(F, 'run', side_effect=error), self.assertRaises(AssertionError) as refusal:
+            F.native_dependency_probe('/owned/node', F.FIXED_RUNTIME)
+        self.assertEqual(F.report['dependencyProbeFailure'], {'code': 'probe-timeout', 'lastEnteredStage': 'sharp-image'})
+        self.assertNotIn('TOKEN=', str(refusal.exception) + json.dumps(F.report))
+
 
 if __name__ == '__main__':
     unittest.main()
