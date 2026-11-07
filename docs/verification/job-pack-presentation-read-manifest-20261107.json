@@ -1,0 +1,31 @@
+{
+  "kind": "JOB_PACK_PRESENTATION_SOURCE_QUALIFICATION_REQUEST",
+  "releaseEligible": false,
+  "baseCommit": "d8192a8429ff472869716f3d1d7021c725bb9b71",
+  "sourceBranch": "codex/job-pack-presentation-reads-20261107",
+  "execution": "standard GitHub-hosted alpha-focused-checks.yml; integration owner dispatches frozen candidate",
+  "runTypecheck": true,
+  "runBuild": false,
+  "selectedTests": [
+    "test/job-pack-presentation-reads.test.ts",
+    "test/job-descriptions-owner.test.ts",
+    "test/job-descriptions-model.test.ts",
+    "test/job-descriptions-editor.dom.test.tsx",
+    "test/job-architecture-owner.test.ts",
+    "test/job-architecture-model.test.ts",
+    "test/job-architecture-imports.test.ts",
+    "test/job-architecture-ai.test.ts"
+  ],
+  "scope": {
+    "liveSource": "Job Descriptions display owners",
+    "retainedSourceOnly": "Job Architecture display contracts; workflows remain retired by migration 2300",
+    "preservedCommandSources": ["approvedPositionArchitecture", "architectureAdviceForDraft"],
+    "excludedRetiredPublication": "ownArchitectureJob"
+  },
+  "limitations": [
+    "No local application tests, compiler or build executed",
+    "No hosted results claimed in this source manifest",
+    "No measured latency claim; Architecture workspace remains unbounded",
+    "No migration, SQL, RLS, provider, staging or production changes"
+  ]
+}
