@@ -232,7 +232,7 @@ it('refuses actual sequence grants while safely inspecting native non-sequence c
   await expect(service`select notification_worker.open_run()`).rejects.toSatisfy((error:unknown)=>pgSqlState(error)==='42501');
   await owner.client`revoke usage on sequence public.fictional_notification_worker_sequence from ai_hr_notification_worker`;
   const api=notificationWorkerLifecycle(service),run=await api.openRun();
-  await api.failRun(run,'fictional sequence privilege regression');
+  await api.failRun(run,'database-refusal');
  }finally{await owner.client`drop sequence public.fictional_notification_worker_sequence`;}
 });
 it('fails closed on new PUBLIC definer privileges and changed real login/profile/bounds',async()=>{
