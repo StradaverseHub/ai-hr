@@ -1,0 +1,35 @@
+# Rewards durable-before-return read prototype
+
+Status: **source only, uninstalled, unexecuted**. Exact parent `06be9fc60097edb870f2c7d9f4d30887ba6fd6d9`. No page adoption, numbered migration, installation, release witness or production performance claim.
+
+## Executable contract
+
+The current Libraries/PAT facade retains its original validation → canonical `setupTenant` barrier → ordered query → canonical `setupEvent` → return sequence. Commands and exports retain their owners. `setup-query-owner.ts` extracts only the existing validation/data/order logic behind a required closed native helper port; legacy helpers still call the same native functions. `setup-legacy-query-port.ts` is the only legacy adapter. No generic SQL broker, alternate finance calculation or permission policy is introduced.
+
+The separate test-only family captures a human context, applies the canonical Rewards module gate, then uses a dedicated real nonowner LOGIN and real postgres/Drizzle transaction. Native admission requires RR/RW, the actual current native principal, actual active/trial tenant/module and canonical NULL-company operation authority. Its purpose is bound to native backend PID, full backend-start timestamp, transaction ID, tenant, actor and exact operation/filter. The canonical query runs in that snapshot, finalizes an immutable receipt, and the trusted service awaits actual COMMIT before returning any data. No Access or History advisory barrier occurs in this reader. Receipts have no content/actor/tenant foreign keys and hold no financial digest or business payload.
+
+A deferred native constraint rejects a COMMIT with an unfinished admission. This proves committed transaction completeness, **not delivery against an untrusted SQL credential holder**: an authorized direct client can SELECT and roll back, or finalize without reading. Query-before-finalize and COMMIT-before-return are trusted service responsibilities. Receipt commit does not establish browser delivery.
+
+## Actor and capability owners
+
+`ai_hr_reward_audit_read` has only the fixed read API, two canonical library SELECT surfaces with restrictive purpose RLS, and the minimal existing RLS predicate EXECUTE capabilities. It has no app-schema USAGE, application/owner credential, role membership, business writes or arbitrary query API. The wrappers reuse the real canonical native helper owners/permissions. `ai_hr_reward_audit_projector` has only bounded fixed projection; historical read intent cannot authorize a new read.
+
+The guarded disposable owner install requires exact prior canonical bodies, owners, signatures, language, configuration and metadata before creating objects. The fixture first exercises a hostile predecessor against the ACTUAL installer transaction and proves rollback. All prototype function/relation/policy/trigger membership and metadata, including internal triggers, are sealed, together with twelve explicit canonical function dependencies. Nested canonical principal/RLS/helper owners remain part of the trusted migrated installation: this prototype does not claim recursively source-pinned metadata for every transitive native function. A complete installed transitive capability/profile review remains an adoption gate. Effective role/schema/table/column/sequence/definer privilege closure is rechecked, not merely explicit grants. Hostile cases restore exact metadata; cleanup refuses drift and restores original native ACLs. Private credentials cross only a sanitized private test child IPC channel. The testtsx child is uninstalled and nonpackaged; it is not a production worker/profile/startup proof.
+
+## Durability and canonical audit
+
+First scope is **already genuinely armed-chain tenants**. Native admission checks existing chained native history. Unarmed tenants refuse; their legacy audited readers remain unchanged. No caller arming flag is supported. The materializer scans committed pending receipts without a high-water cursor, locks bounded rows with SKIP LOCKED and atomically appends the native canonical event plus an immutable receipt link. Both the exact native chain trigger and hash are guarded and the persisted event/header/hash are verified before linking. A later receipt commit remains discoverable. Concurrent projectors and real SIGKILL before/after actual COMMIT must preserve exact-once canonical projection.
+
+The original actor and observation timestamp survive later actor revocation/archive. `occurred_at` is observation time; chain sequence is append order. Versioned `auditReceipt` metadata explicitly records both observation and append timestamps. This adds an explicit audit contract version rather than silently claiming immediate canonical-chain visibility. Coverage reports committed/projected/pending decimal-string counts, oldest pending time and caught-up state; processor is `uninstalled` and failures is `null` (unknown). Chain validity does not establish complete projection coverage.
+
+## Budget boundary
+
+The prototype family has physical maxima reader1 + projector2 and one shared admission owner capacity3/background2, bounded queues16/4 and 30-second waits. A controlled abortable reader lane precedes its one physical checkout. Every native connection retains 20-second statement and 300ms lock budgets. This is a finite **uninstalled prototype** allocation. It is not joined to the real application family and establishes no aggregate production resource, fairness, latency or load claim.
+
+## Proofs and adoption gates
+
+The native sole-file plan has 14 declared cases: 12 direct declarations plus two fixed before/after-COMMIT kill cases. It compares complete nonempty DTOs against the frozen exact06be independent reader and independent IDs/money/history values; checks current authority/revocation/company/tenant/archival, RR/RW/write restrictions, durable empty reads, both held writers, pending/late commits, historical actor, concurrent projection, actual process/backend disappearance and profile/ACL/trigger drift. The ownership-only selector has three independent drain/poison controls. Existing legacy affected tests remain required. The frozen baseline records exact original source and seven body/type hashes; only imports relocate.
+
+No application, compiler, browser, DB or runtime check has run locally or against this candidate. Static source inspection verified baseline byte pins, relative imports and whitespace only. Hosted native/pure/legacy chunks, whole compiler/build and independent review are still pending. The sole native prototype refuses ordinary/full CI until a reviewed singleton-profile registration exists; it is not a release witness.
+
+Before page adoption: prove unarmed-policy compatibility; qualify installed native capability/profile/startup/secret/processor closure; reserve the real aggregate application family; establish durable backlog/failure operational visibility and convergence/retention; execute populated upgrade/restore and actual browser/performance coverage. Root owns any numbered migration and guarded adoption. Legacy readers and exports remain the default until all required proof is accepted. Production remains on hold.
