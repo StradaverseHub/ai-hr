@@ -5,7 +5,7 @@ import postgres from 'postgres';
 import {expect} from 'vitest';
 import {closeAll,migrateTestDb,owner} from '../../harness';
 import {notificationWorkerFixtureDatabase} from './database';
-type RegistryContract=readonly{eventType:string;kind:string;category:string|null;recipientPort:string|null;implemented:boolean}[];
+type RegistryContract=readonly{eventType:string;kind:string;category:string|null;recipientPort:string|null;audience:string;guard:{field:string;equals:true;not?:true}|null;implemented:boolean}[];
 export function notificationWorkerFixtureOwner(){
  const role='ai_hr_notification_worker',password=randomUUID(),sockets=new Set<ReturnType<typeof postgres>>(),jobs=new Set<string>();
  let created=false,stageInstalled=false,binding:ReturnType<typeof notificationWorkerFixtureDatabase>|undefined,url:URL|undefined;
@@ -38,8 +38,8 @@ export function notificationWorkerFixtureOwner(){
    await owner.client.begin(async tx=>{
     await tx`select set_config('aihr.notification_fixture.database',${target.database},true),set_config('aihr.notification_fixture.namespace',${target.namespace},true),set_config('aihr.notification_fixture.pool_id',${target.poolId},true)`;
     for(const source of sources)await tx.unsafe(source);
-    if(contract)await tx`insert into notification_worker_private.registry_contract(event_type,kind,category,recipient_port,implemented)
-     select x."eventType",x.kind,x.category,x."recipientPort",x.implemented from jsonb_to_recordset(${tx.json(contract)}::jsonb) as x("eventType" text,kind text,category text,"recipientPort" text,implemented boolean)`;
+    if(contract)await tx`insert into notification_worker_private.registry_contract(event_type,kind,category,recipient_port,audience,guard,implemented)
+     select x."eventType",x.kind,x.category,x."recipientPort",x.audience,x.guard,x.implemented from jsonb_to_recordset(${tx.json(contract)}::jsonb) as x("eventType" text,kind text,category text,"recipientPort" text,audience text,guard jsonb,implemented boolean)`;
    });
    stageInstalled=true;
    const [identity]=await owner.client`select current_user::regrole::oid as owner,(select oid from pg_roles where rolname=${role}) as login`;

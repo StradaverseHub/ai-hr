@@ -48,7 +48,7 @@ are frozen into a private fixture contract, and later drift refuses admission.
 The fixture's public owner is postgres in hosted CI; final installer/native owner
 proof remains an independent unfinished gate.
 
-project validates canonical kind/category, same-tenant Employment, exact bounded
+project validates canonical kind/category, exact protected event audience, and bounded
 render object, local link and severity. Duplicate event/kind/recipient projection
 returns the existing ID and contributes zero created count. Actual notification
 insertion invokes the existing consent/category/external-identity enqueue owner in
@@ -129,3 +129,7 @@ worker databases serialize cluster roles. Two independent complete Vitest invoca
 still require separate job-owned clusters, as the repository's global DB fixture
 policy already requires. Consolidation does not qualify projection or fill missing
 recipient/preparation families.
+
+Exact audience admission, complete known-event settlement and the explicitly trusted
+rendered-text boundary are defined in [audience boundary](NOTIFICATION-WORKER-AUDIENCE-BOUNDARY.md).
+This strengthens source admission without claiming native content attestation.

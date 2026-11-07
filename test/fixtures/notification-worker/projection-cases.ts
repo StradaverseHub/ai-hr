@@ -129,8 +129,9 @@ it('refuses unfinished/foreign/wrong-family/wrong-kind/wrong-category/malformed 
  await attempt((tx,batch)=>tx`select notification_worker.facts(${batch}::uuid,${alien.id}::uuid,'meta')`);
  await attempt((tx,batch)=>tx`select notification_worker.facts(${batch}::uuid,${local.id}::uuid,'payroll-audience')`);
  await attempt((tx,batch)=>tx`select * from notification_worker.project(${batch}::uuid,${local.id}::uuid,'leave.approved',${foreign.a.employmentId}::uuid,${tx.json(rendered)},'leave')`);
+ await attempt((tx,batch)=>tx`select * from notification_worker.project(${batch}::uuid,${local.id}::uuid,'leave.approved',${f.other.employmentId}::uuid,${tx.json(rendered)},'leave')`);
  for(const [kind,category] of [['forged','leave'],['leave.approved','payroll']])await attempt((tx,batch)=>tx`select * from notification_worker.project(${batch}::uuid,${local.id}::uuid,${kind},${f.a.employmentId}::uuid,${tx.json(rendered)},${category})`);
- for(const invalid of [{...rendered,linkPath:'//example.invalid'},{...rendered,extra:'not closed'},{...rendered,body:'x'.repeat(4001)},{...rendered,severity:'fatal'}])await attempt((tx,batch)=>tx`select * from notification_worker.project(${batch}::uuid,${local.id}::uuid,'leave.approved',${f.a.employmentId}::uuid,${tx.json(invalid)},'leave')`,'22023');
+ for(const invalid of [{...rendered,linkPath:'//example.invalid'},{...rendered,extra:'not closed'},{...rendered,body:'x'.repeat(4001)},{...rendered,severity:'fatal'},{...rendered,title:'x'.repeat(513)},{...rendered,linkPath:'javascript:alert(1)'},{...rendered,linkPath:'/me\nnot-local'},{...rendered,linkPath:'/\\example.invalid'}])await attempt((tx,batch)=>tx`select * from notification_worker.project(${batch}::uuid,${local.id}::uuid,'leave.approved',${f.a.employmentId}::uuid,${tx.json(invalid)},'leave')`,'22023');
  await attempt((tx,batch)=>tx`select notification_worker.project_reward_account(${batch}::uuid,${local.id}::uuid)`);
  await attempt((tx,batch)=>tx`select notification_worker.finish_event(${batch}::uuid,${local.id}::uuid,'ignored')`);
  await attempt((tx,batch)=>tx`select * from notification_worker.finish_batch(${batch}::uuid)`,'55000');
@@ -138,8 +139,47 @@ it('refuses unfinished/foreign/wrong-family/wrong-kind/wrong-category/malformed 
   await tx`select set_config('app.tenant_id',${foreign.base.tenantId},true),set_config('app.roles','super_admin',true),set_config('app.grants','[{"role":"super_admin","companyId":null}]',true)`;await tx.unsafe(command);
  });
  expect(await sourceState()).toEqual(before);
- await attempt(async(tx,batch)=>{await tx`select notification_worker.finish_event(${batch}::uuid,${local.id}::uuid,'processed')`;await tx`select notification_worker.finish_event(${batch}::uuid,${local.id}::uuid,'processed')`;});
+ await attempt(async(tx,batch)=>{await tx`select * from notification_worker.project(${batch}::uuid,${local.id}::uuid,'leave.approved',${f.a.employmentId}::uuid,${tx.json(rendered)},'leave')`;await tx`select notification_worker.finish_event(${batch}::uuid,${local.id}::uuid,'processed')`;await tx`select notification_worker.finish_event(${batch}::uuid,${local.id}::uuid,'processed')`;});
  expect(await sourceState()).toEqual(before);
+},30000);
+
+it('denies a same-tenant non-payslip recipient, canonical payload exclusions and premature known-event completion',async()=>{
+ const f=await fixture(b),outside=await employee(b,'outside payroll audience');await publishNotice(adminCtx(b),f.notice.id);await historical();
+ const payroll=await event(b,'payroll-batch.closed',null,{},f.batch.id,'payroll-batch');
+ const overtime=await event(b,'attendance-correction.approved',f.a.employmentId,{overtime:false});
+ const cancellation=await event(b,'leave-cancellation.rejected',f.a.employmentId,{supersededByAdminCancellation:true});
+ const notice=await event(b,'notice.published',null,{notify:false},f.notice.id,'notice');
+ const run=await open(),before=await sourceState(),rendered={title:'Fictional proposal',body:'Fictional proposal',linkPath:'/me',severity:'info'};
+ await refused(admitted(run,b.tenantId,async(tx,batch)=>{
+  const [facts]=await tx`select notification_worker.facts(${batch}::uuid,${payroll.id}::uuid,'payroll-audience') as value`;
+  expect(facts.value.employmentIds.sort()).toEqual([f.a.employmentId,f.other.employmentId].sort());
+  await tx`select * from notification_worker.project(${batch}::uuid,${payroll.id}::uuid,'payslip.ready',${outside.employmentId}::uuid,${tx.json(rendered)},'payroll')`;
+ }));
+ for(const [source,kind,category] of [[overtime,'attendance.ot-approved','attendance'],[cancellation,'leave.cancellation-rejected','leave'],[notice,'notice.published','notice']] as const)
+  await refused(admitted(run,b.tenantId,(tx,batch)=>tx`select * from notification_worker.project(${batch}::uuid,${source.id}::uuid,${kind},${f.a.employmentId}::uuid,${tx.json(rendered)},${category})`));
+ await refused(admitted(run,b.tenantId,(tx,batch)=>tx`select notification_worker.finish_event(${batch}::uuid,${payroll.id}::uuid,'ignored')`));
+ await refused(admitted(run,b.tenantId,(tx,batch)=>tx`select notification_worker.finish_event(${batch}::uuid,${payroll.id}::uuid,'processed')`),'55000');
+ expect(await sourceState()).toEqual(before);expect(await owner.client`select * from notification_worker_private.batch_recipe`).toHaveLength(0);
+ expect(await notificationWorkerProjection(service).projectBatch(run,b.tenantId,25)).toEqual({processed:4,created:2});
+},30000);
+
+it('documents bounded trusted-render authority while natively enforcing exact event audience and complete disposition',async()=>{
+ const f=await fixture(b);await historical();const source=await event(b,'leave-request.approved',f.a.employmentId),run=await open();
+ // Text is intentionally a trusted-render proposal, NOT independently attested by
+ // native SQL. This positive control prevents an unsupported content-proof claim.
+ const proposal={title:'Fictional trusted renderer proposal',body:'The native API bounds shape and audience; accepted package proof is separate.',linkPath:'/me',severity:'info'};
+ const result=await admitted(run,b.tenantId,async(tx,batch)=>{
+  const [first]=await tx`select * from notification_worker.project(${batch}::uuid,${source.id}::uuid,'leave.approved',${f.a.employmentId}::uuid,${tx.json(proposal)},'leave')`;
+  expect(first.created).toBe(true);
+  const [duplicate]=await tx`select * from notification_worker.project(${batch}::uuid,${source.id}::uuid,'leave.approved',${f.a.employmentId}::uuid,${tx.json(proposal)},'leave')`;
+  expect(duplicate).toEqual({notification_id:first.notification_id,created:false});
+  await tx`select notification_worker.finish_event(${batch}::uuid,${source.id}::uuid,'processed')`;
+  return (await tx`select * from notification_worker.finish_batch(${batch}::uuid)`)[0];
+ });
+ expect(result).toEqual({processed:1,created:1});
+ expect((await owner.db.select().from(s.notification).where(eq(s.notification.sourceEventId,source.id)))[0]).toMatchObject({recipientEmploymentId:f.a.employmentId,title:proposal.title,body:proposal.body});
+ expect(await owner.client`select * from notification_worker_private.batch_recipe`).toHaveLength(0);
+ expect(await owner.client`select * from notification_worker_private.batch_recipient`).toHaveLength(0);
 },30000);
 
 it('retains pending late commits behind the cursor and exact overlap duplicate counts',async context=>{

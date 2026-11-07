@@ -464,7 +464,6 @@ const webNotificationRecipients:NotificationRecipientReaders<Tx>={
       // an unconditional email switch. Category permission and recipient consent still apply. Read from the PAYLOAD
       // rather than re-queried: switching the flag off after publication must not retroactively un-notify,
       // and re-reading the row would make it look as though it had.
-      if (payload?.notify !== true) return [];
       return noticeReader?noticeReader(ev.aggregateId):noticeNotificationRecipientsTx(tx,ev.aggregateId);
     },
   payrollClosed:async (tx, ev) => {

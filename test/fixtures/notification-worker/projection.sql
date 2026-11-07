@@ -5,7 +5,7 @@ DO $guard$ BEGIN
  OR current_user::regrole::oid IS DISTINCT FROM (SELECT relowner FROM pg_class WHERE oid='public.notification'::regclass)
  OR EXISTS(SELECT 1 FROM notification_worker_private.run) THEN
  RAISE EXCEPTION 'Empty isolated native lifecycle fixture required' USING ERRCODE='55000';END IF;
- IF (SELECT md5(prosrc) FROM pg_proc WHERE oid='notification_worker_private.admit_login()'::regprocedure) IS DISTINCT FROM '5a17c36ec64bc8fc1e574b81015b9518' THEN RAISE EXCEPTION 'Unexpected stage1 notification_worker_private.admit_login' USING ERRCODE='55000';END IF;
+ IF (SELECT md5(prosrc) FROM pg_proc WHERE oid='notification_worker_private.admit_login()'::regprocedure) IS DISTINCT FROM 'f57228a1011e1157fb8ed42a8292e93a' THEN RAISE EXCEPTION 'Unexpected stage1 notification_worker_private.admit_login' USING ERRCODE='55000';END IF;
  IF (SELECT md5(prosrc) FROM pg_proc WHERE oid='notification_worker.finish_batch(uuid)'::regprocedure) IS DISTINCT FROM 'dd04fada32d838d09a54c6b2b4739c7f' THEN RAISE EXCEPTION 'Unexpected stage1 notification_worker.finish_batch' USING ERRCODE='55000';END IF;
  IF (SELECT md5(prosrc) FROM pg_proc WHERE oid='notification_worker.finish_run(uuid)'::regprocedure) IS DISTINCT FROM '789c63b2371795feb3c59dd104914e3e' THEN RAISE EXCEPTION 'Unexpected stage1 notification_worker.finish_run' USING ERRCODE='55000';END IF;
  IF (SELECT md5(prosrc) FROM pg_proc WHERE oid='notification_worker.fail_run(uuid,text)'::regprocedure) IS DISTINCT FROM 'fdc6c2d66e8d8296ce807b1503603422' THEN RAISE EXCEPTION 'Unexpected stage1 notification_worker.fail_run' USING ERRCODE='55000';END IF;
@@ -20,7 +20,21 @@ ALTER TABLE notification_worker_private.batch_event ADD COLUMN created_count int
 ALTER TABLE notification_worker_private.batch_event ADD COLUMN account_projected boolean NOT NULL DEFAULT false;
 CREATE TABLE notification_worker_private.registry_contract(
  event_type text NOT NULL,kind text NOT NULL,category text,recipient_port text,implemented boolean NOT NULL,
+ audience text NOT NULL CHECK(audience IN('subject','reader','none')),guard jsonb,
+ CHECK(guard IS NULL OR jsonb_typeof(guard)='object' AND guard->>'field' IN('overtime','supersededByAdminCancellation','notify')
+  AND guard->'equals'='true'::jsonb AND (NOT guard?'not' OR guard->'not'='true'::jsonb)),
  PRIMARY KEY(event_type,kind));
+-- Captured only by fixed native readers, bound to this actual batch/xid.
+-- Indexed membership avoids repeating a whole Notice/payroll audience for each recipient.
+CREATE TABLE notification_worker_private.batch_recipe(
+ batch_id uuid NOT NULL,event_id uuid NOT NULL,kind text NOT NULL,
+ PRIMARY KEY(batch_id,event_id,kind),FOREIGN KEY(batch_id,event_id) REFERENCES notification_worker_private.batch_event(batch_id,event_id) ON DELETE CASCADE);
+CREATE TABLE notification_worker_private.batch_recipient(
+ batch_id uuid NOT NULL,event_id uuid NOT NULL,kind text NOT NULL,employment_id uuid NOT NULL,ordinal bigint NOT NULL,
+ PRIMARY KEY(batch_id,event_id,kind,employment_id),FOREIGN KEY(batch_id,event_id,kind) REFERENCES notification_worker_private.batch_recipe(batch_id,event_id,kind) ON DELETE CASCADE);
+ALTER TABLE notification_worker_private.batch_recipe ENABLE ROW LEVEL SECURITY;
+ALTER TABLE notification_worker_private.batch_recipient ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON notification_worker_private.batch_recipe,notification_worker_private.batch_recipient FROM PUBLIC,ai_hr_app;
 CREATE TABLE notification_worker_private.helper_contract(
  signature regprocedure PRIMARY KEY,owner_oid oid NOT NULL,body_md5 text NOT NULL,configuration text[],security_definer boolean NOT NULL,volatility char NOT NULL,language_oid oid NOT NULL);
 ALTER TABLE notification_worker_private.registry_contract ENABLE ROW LEVEL SECURITY;
@@ -57,7 +71,8 @@ BEGIN
   AND (has_table_privilege(login,c.oid,'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER')
    OR has_any_column_privilege(login,c.oid,'SELECT,INSERT,UPDATE,REFERENCES')))
  OR EXISTS(SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
-  WHERE c.relkind='S' AND n.nspname !~ '^pg_' AND has_sequence_privilege(login,c.oid,'USAGE,SELECT,UPDATE'))
+  WHERE CASE WHEN c.relkind='S' AND n.nspname !~ '^pg_'
+   THEN has_sequence_privilege(login,c.oid,'USAGE,SELECT,UPDATE') ELSE false END)
  OR EXISTS(SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
   WHERE p.prosecdef AND n.nspname !~ '^pg_' AND has_schema_privilege(login,n.oid,'USAGE') AND has_function_privilege(login,p.oid,'EXECUTE')
    AND NOT EXISTS(SELECT 1 FROM notification_worker_private.allowed_api x WHERE x.signature=p.oid))
@@ -89,39 +104,43 @@ BEGIN
 END $body$;
 CREATE FUNCTION notification_worker_private.obsolete(e public.domain_event) RETURNS boolean
  LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,pg_temp AS $body$
- SELECT CASE WHEN e.event_type LIKE 'employment-review.%' THEN app.probation_legacy_review_owned(e.aggregate_id) ELSE false END
+ SELECT CASE WHEN e.event_type LIKE 'employment-review.%' THEN coalesce(app.probation_legacy_review_owned(e.aggregate_id),false) ELSE false END
 $body$;
-CREATE FUNCTION notification_worker.facts(p_batch uuid,p_event uuid,p_family text) RETURNS jsonb
- LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,pg_temp AS $body$
-DECLARE e public.domain_event;result jsonb;stage text;known boolean;implemented boolean;
+CREATE FUNCTION notification_worker_private.audience(e public.domain_event,p_kind text) RETURNS uuid[]
+ LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,pg_temp AS $body$
+DECLARE c notification_worker_private.registry_contract;result jsonb;stage text;matches boolean;
 BEGIN
- e:=notification_worker_private.event(p_batch,p_event);
- IF p_family='meta' THEN
-  SELECT count(*)>0,coalesce(bool_and(c.implemented),false) INTO known,implemented FROM notification_worker_private.registry_contract c WHERE c.event_type=e.event_type;
-  RETURN jsonb_build_object('known',known,'implemented',implemented,'obsolete',notification_worker_private.obsolete(e));
+ SELECT * INTO c FROM notification_worker_private.registry_contract WHERE event_type=e.event_type AND kind=p_kind AND implemented;
+ IF NOT FOUND THEN RAISE EXCEPTION 'Canonical notification audience unavailable' USING ERRCODE='42501';END IF;
+ IF c.guard IS NOT NULL THEN
+  matches:=coalesce(e.payload->(c.guard->>'field')=c.guard->'equals',false);
+  IF c.guard->'not'='true'::jsonb THEN matches:=NOT matches;END IF;
+  IF NOT matches THEN RETURN ARRAY[]::uuid[];END IF;
  END IF;
- IF notification_worker_private.obsolete(e) THEN RAISE EXCEPTION 'Obsolete notification event' USING ERRCODE='42501';END IF;
- IF p_family='payroll-audience' AND e.event_type='payroll-batch.closed' THEN
+ IF c.audience='none' THEN RETURN ARRAY[]::uuid[];
+ ELSIF c.audience='subject' THEN RETURN CASE WHEN e.subject_employment_id IS NULL THEN ARRAY[]::uuid[] ELSE ARRAY[e.subject_employment_id] END;
+ END IF;
+ IF c.recipient_port='payrollClosed' AND e.event_type='payroll-batch.closed' THEN
   SELECT coalesce(jsonb_agg(DISTINCT s.employment_id),'[]'::jsonb) INTO result
   FROM public.payslip s JOIN public.employment work ON work.id=s.employment_id AND work.tenant_id=s.tenant_id
   WHERE s.batch_id=e.aggregate_id AND s.tenant_id=e.tenant_id;
- ELSIF p_family='notice-audience' AND e.event_type='notice.published' THEN
+ ELSIF c.recipient_port='noticePublished' AND e.event_type='notice.published' THEN
   SELECT coalesce(jsonb_agg(n.employment_id ORDER BY n.employment_id,n.id),'[]'::jsonb) INTO result
   FROM public.notice_recipient n JOIN public.notice notice ON notice.id=n.notice_id AND notice.tenant_id=n.tenant_id
   JOIN public.employment work ON work.id=n.employment_id AND work.tenant_id=n.tenant_id
   WHERE n.notice_id=e.aggregate_id AND n.tenant_id=e.tenant_id AND notice.published_at IS NOT NULL;
- ELSIF p_family='org-approvers' AND e.event_type IN('delegation.started','delegation.ended') THEN
+ ELSIF c.recipient_port IN('delegationStarted','delegationEnded') AND e.event_type IN('delegation.started','delegation.ended') THEN
   SELECT coalesce(jsonb_agg(r.manager_employment_id),'[]'::jsonb) INTO result FROM public.reporting_line r
   JOIN public.employment work ON work.id=r.manager_employment_id AND work.tenant_id=r.tenant_id
   WHERE r.id=e.aggregate_id AND r.tenant_id=e.tenant_id;
- ELSIF p_family='contract-audience' AND e.event_type='contract.notification-due' THEN
+ ELSIF c.recipient_port='contract' AND e.event_type='contract.notification-due' THEN
   SELECT coalesce(jsonb_agg(r.employment_id),'[]'::jsonb) INTO result FROM app.contract_notification_recipients(e.aggregate_id) r;
- ELSIF p_family='onboarding-audience' AND e.event_type='onboarding.digest' THEN
+ ELSIF c.recipient_port='onboardingDigest' AND e.event_type='onboarding.digest' THEN
   result:='[]'::jsonb;
   IF jsonb_typeof(e.payload->'caseId')='string' AND jsonb_typeof(e.payload->'recipientUserId')='string' THEN
    SELECT coalesce(jsonb_agg(r.id),'[]'::jsonb) INTO result FROM app.onboarding_mail_recipient((e.payload->>'caseId')::uuid,(e.payload->>'recipientUserId')::uuid) r(id);
   END IF;
- ELSIF p_family='rewards-audience' AND e.event_type IN('reward-access.suspended','reward-unit.upload-replaced','reward-unit.upload-confirmed','reward-unit.routed','reward-unit.final-pool-changed','reward-unit.approved') THEN
+ ELSIF c.recipient_port IN('rewardSuspension','rewardUploadChecker','rewardUploadReady','rewardRouted','rewardPoolChanged','rewardApproved') AND e.event_type IN('reward-access.suspended','reward-unit.upload-replaced','reward-unit.upload-confirmed','reward-unit.routed','reward-unit.final-pool-changed','reward-unit.approved') THEN
   IF e.event_type='reward-access.suspended' THEN SELECT coalesce(jsonb_agg(r.id),'[]'::jsonb) INTO result FROM app.reward_access_suspension_event_recipients(e.id) r(id);
   ELSIF e.event_type='reward-unit.upload-replaced' THEN SELECT coalesce(jsonb_agg(r.id),'[]'::jsonb) INTO result FROM app.reward_upload_checker_recipients(e.aggregate_id) r(id);
   ELSIF e.event_type='reward-unit.final-pool-changed' THEN SELECT coalesce(jsonb_agg(r.id),'[]'::jsonb) INTO result FROM app.reward_pool_notification_recipients(e.aggregate_id) r(id);
@@ -129,7 +148,43 @@ BEGIN
    stage:=CASE e.event_type WHEN 'reward-unit.upload-confirmed' THEN 'draft' WHEN 'reward-unit.approved' THEN 'approved' ELSE e.payload->>'to' END;
    SELECT coalesce(jsonb_agg(r.id),'[]'::jsonb) INTO result FROM app.reward_notification_recipients(e.aggregate_id,stage) r(id);
   END IF;
- ELSE RAISE EXCEPTION 'Notification fact family unavailable for event' USING ERRCODE='42501';END IF;
+ ELSE RAISE EXCEPTION 'Canonical notification reader unavailable' USING ERRCODE='42501';END IF;
+ RETURN ARRAY(SELECT value::uuid FROM jsonb_array_elements_text(result));
+END $body$;
+CREATE FUNCTION notification_worker_private.capture_recipe(p_batch uuid,e public.domain_event,p_kind text) RETURNS void
+ LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,pg_temp AS $body$
+DECLARE ids uuid[];
+BEGIN
+ IF EXISTS(SELECT 1 FROM notification_worker_private.batch_recipe WHERE batch_id=p_batch AND event_id=e.id AND kind=p_kind) THEN RETURN;END IF;
+ ids:=notification_worker_private.audience(e,p_kind);
+ IF EXISTS(SELECT 1 FROM unnest(ids) wanted(id) WHERE NOT EXISTS(SELECT 1 FROM public.employment work WHERE work.id=wanted.id AND work.tenant_id=e.tenant_id)) THEN
+  RAISE EXCEPTION 'Native notification audience escaped its event tenant' USING ERRCODE='42501';END IF;
+ INSERT INTO notification_worker_private.batch_recipe(batch_id,event_id,kind) VALUES(p_batch,e.id,p_kind);
+ INSERT INTO notification_worker_private.batch_recipient(batch_id,event_id,kind,employment_id,ordinal)
+ SELECT p_batch,e.id,p_kind,r.id,min(r.ordinal) FROM unnest(ids) WITH ORDINALITY r(id,ordinal) GROUP BY r.id;
+END $body$;
+CREATE FUNCTION notification_worker.facts(p_batch uuid,p_event uuid,p_family text) RETURNS jsonb
+ LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,pg_temp AS $body$
+DECLARE e public.domain_event;c notification_worker_private.registry_contract;result jsonb;known boolean;implemented boolean;
+BEGIN
+ e:=notification_worker_private.event(p_batch,p_event);
+ IF p_family='meta' THEN
+  SELECT count(*)>0,coalesce(bool_and(r.implemented),false) INTO known,implemented FROM notification_worker_private.registry_contract r WHERE r.event_type=e.event_type;
+  RETURN jsonb_build_object('known',known,'implemented',implemented,'obsolete',notification_worker_private.obsolete(e));
+ END IF;
+ IF notification_worker_private.obsolete(e) THEN RAISE EXCEPTION 'Obsolete notification event' USING ERRCODE='42501';END IF;
+ SELECT * INTO c FROM notification_worker_private.registry_contract r WHERE r.event_type=e.event_type AND r.implemented AND CASE p_family
+  WHEN 'subject-audience' THEN r.audience='subject'
+  WHEN 'payroll-audience' THEN r.recipient_port='payrollClosed'
+  WHEN 'notice-audience' THEN r.recipient_port='noticePublished'
+  WHEN 'org-approvers' THEN r.recipient_port IN('delegationStarted','delegationEnded')
+  WHEN 'contract-audience' THEN r.recipient_port='contract'
+  WHEN 'onboarding-audience' THEN r.recipient_port='onboardingDigest'
+  WHEN 'rewards-audience' THEN r.recipient_port IN('rewardSuspension','rewardUploadChecker','rewardUploadReady','rewardRouted','rewardPoolChanged','rewardApproved')
+  ELSE false END;
+ IF NOT FOUND THEN RAISE EXCEPTION 'Notification fact family unavailable for event' USING ERRCODE='42501';END IF;
+ PERFORM notification_worker_private.capture_recipe(p_batch,e,c.kind);
+ SELECT coalesce(jsonb_agg(r.employment_id ORDER BY r.ordinal),'[]'::jsonb) INTO result FROM notification_worker_private.batch_recipient r WHERE r.batch_id=p_batch AND r.event_id=e.id AND r.kind=c.kind;
  RETURN jsonb_build_object('employmentIds',result);
 END $body$;
 
@@ -151,6 +206,9 @@ BEGIN
  OR p_rendered->>'linkPath' !~ '^/[^/\\[:cntrl:]]*' OR p_rendered->>'linkPath' ~ '^//' OR p_rendered->>'linkPath' ~ '[\\[:cntrl:]]'
  OR jsonb_typeof(p_rendered->'severity')<>'string' OR p_rendered->>'severity' NOT IN('info','action','warning')
  THEN RAISE EXCEPTION 'Invalid rendered notification' USING ERRCODE='22023';END IF;
+ PERFORM notification_worker_private.capture_recipe(p_batch,e,p_kind);
+ IF NOT EXISTS(SELECT 1 FROM notification_worker_private.batch_recipient r WHERE r.batch_id=p_batch AND r.event_id=e.id AND r.kind=p_kind AND r.employment_id=p_recipient) THEN
+  RAISE EXCEPTION 'Recipient is outside the exact admitted event audience' USING ERRCODE='42501';END IF;
  SELECT n.id INTO generated_id FROM public.notification n WHERE n.tenant_id=e.tenant_id AND n.source_event_id=e.id AND n.recipient_employment_id=p_recipient AND n.kind=p_kind;
  IF generated_id IS NOT NULL THEN RETURN QUERY SELECT generated_id,false;RETURN;END IF;
  SELECT max_batch_projections INTO cap FROM notification_worker_private.authority WHERE singleton;
@@ -179,7 +237,7 @@ BEGIN
 END $body$;
 CREATE FUNCTION notification_worker.finish_event(p_batch uuid,p_event uuid,p_disposition text) RETURNS void
  LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,pg_temp AS $body$
-DECLARE e public.domain_event;known boolean;implemented boolean;obsolete boolean;
+DECLARE e public.domain_event;known boolean;implemented boolean;obsolete boolean;c notification_worker_private.registry_contract;
 BEGIN
  e:=notification_worker_private.event(p_batch,p_event);obsolete:=notification_worker_private.obsolete(e);
  SELECT count(*)>0,coalesce(bool_and(c.implemented),false) INTO known,implemented FROM notification_worker_private.registry_contract c WHERE c.event_type=e.event_type;
@@ -188,6 +246,14 @@ BEGIN
  OR e.event_type='assessment.reminder-queued' AND NOT obsolete
  OR p_disposition='processed' AND e.event_type='reward-access.suspended' AND NOT EXISTS(SELECT 1 FROM notification_worker_private.batch_event WHERE batch_id=p_batch AND event_id=e.id AND account_projected)
  THEN RAISE EXCEPTION 'Notification event settlement unavailable' USING ERRCODE='42501';END IF;
+ IF p_disposition='processed' THEN
+  FOR c IN SELECT * FROM notification_worker_private.registry_contract WHERE event_type=e.event_type LOOP
+   PERFORM notification_worker_private.capture_recipe(p_batch,e,c.kind);
+   IF EXISTS(SELECT 1 FROM notification_worker_private.batch_recipient r WHERE r.batch_id=p_batch AND r.event_id=e.id AND r.kind=c.kind
+    AND NOT EXISTS(SELECT 1 FROM public.notification n WHERE n.tenant_id=e.tenant_id AND n.source_event_id=e.id AND n.kind=c.kind AND n.recipient_employment_id=r.employment_id)) THEN
+    RAISE EXCEPTION 'Canonical event audience is not fully projected' USING ERRCODE='55000';END IF;
+  END LOOP;
+ END IF;
  UPDATE notification_worker_private.batch_event SET disposition=p_disposition WHERE batch_id=p_batch AND event_id=e.id AND disposition IS NULL;
  IF NOT FOUND THEN RAISE EXCEPTION 'Notification event already finished' USING ERRCODE='42501';END IF;
 END $body$;

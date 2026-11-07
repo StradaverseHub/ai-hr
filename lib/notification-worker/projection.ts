@@ -47,7 +47,7 @@ const nativeReaders:NotificationRecipientReaders<Reader>={
  missingClockFollowup:unsupported,
  passportFollowup:unsupported,
  lifecycleFollowup:unsupported,
- noticePublished:(r,e,p)=>p?.notify===true?ids(r,e,'notice-audience'):Promise.resolve([]),
+ noticePublished:(r,e)=>ids(r,e,'notice-audience'),
  payrollClosed:(r,e)=>ids(r,e,'payroll-audience'),
  approvalChase:()=>unsupported,
 };
@@ -56,6 +56,7 @@ const registry=createNotificationRegistry(nativeReaders);
  * The service has no installation API or authority to alter this contract. */
 export const notificationWorkerProjectionContract=Object.entries(registry).flatMap(([eventType,entry])=>(Array.isArray(entry)?entry:[entry]).map(spec=>({
  eventType,kind:spec.kind,category:spec.category,recipientPort:spec.recipientPort??null,
+ audience:spec.recipientPort?'reader':spec.recipientAudience??'subject',guard:spec.recipientGuard??null,
  implemented:!spec.recipientPort||nativeReaders[spec.recipientPort]!==unsupported&&spec.recipientPort!=='approvalChase',
 })));
 

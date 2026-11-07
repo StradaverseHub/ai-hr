@@ -9,7 +9,8 @@ export type EventRef={id?:string;aggregateId:string;subjectEmploymentId:string|n
 export type NotificationPayload=Record<string,unknown>|null;
 export type NoticeAudienceReader=(noticeId:string)=>Promise<string[]>;
 export type NotificationRecipientReader<Reader>=(reader:Reader,event:EventRef,payload:NotificationPayload,noticeReader?:NoticeAudienceReader)=>Promise<string[]>;
-export type NotificationSpec<Reader>={kind:string;category:NotificationEmailCategory|null;render:(payload:NotificationPayload,event:EventRef)=>Rendered;recipientPort?:keyof NotificationRecipientReaders<Reader>;recipients?:NotificationRecipientReader<Reader>};
+export type NotificationPayloadGuard={field:'overtime'|'supersededByAdminCancellation'|'notify';equals:true;not?:true};
+export type NotificationSpec<Reader>={recipientAudience?:'none';recipientGuard?:NotificationPayloadGuard;kind:string;category:NotificationEmailCategory|null;render:(payload:NotificationPayload,event:EventRef)=>Rendered;recipientPort?:keyof NotificationRecipientReaders<Reader>;recipients?:NotificationRecipientReader<Reader>};
 export type ApprovalChaseSource='claim'|'attendance_correction'|'replacement_leave';
 export type NotificationRecipientReaders<Reader>={
  probation:NotificationRecipientReader<Reader>;
@@ -57,6 +58,13 @@ export function renderRewardRouted(p: Record<string, unknown> | null, ev: EventR
   return { severity: 'action', title: 'Rewards review needs attention', body: 'Open Reward Desk to review the assigned request.', linkPath };
 }
 
+const overtimeOnly:NotificationPayloadGuard={field:'overtime',equals:true};
+const cancellationNotSuperseded:NotificationPayloadGuard={field:'supersededByAdminCancellation',equals:true,not:true};
+const noticeNotify:NotificationPayloadGuard={field:'notify',equals:true};
+function payloadGuardMatches(payload:NotificationPayload,guard:NotificationPayloadGuard){
+ const matches=payload?.[guard.field]===guard.equals;return guard.not?!matches:matches;
+}
+const subjectRecipient=async<Reader>(_reader:Reader,event:EventRef)=>event.subjectEmploymentId?[event.subjectEmploymentId]:[];
 export function createNotificationRegistry<Reader>(readers:NotificationRecipientReaders<Reader>):Record<string,NotificationSpec<Reader>|NotificationSpec<Reader>[]> {
 function approvalChaseSpec(source: ApprovalChaseSource, kind: string, category: NotificationEmailCategory, title: string, what: string): NotificationSpec<Reader> {
   return {
@@ -75,12 +83,12 @@ function approvalChaseSpec(source: ApprovalChaseSource, kind: string, category: 
   };
 }
 
-return {
+const registry:Record<string,NotificationSpec<Reader>|NotificationSpec<Reader>[]>= {
   'probation.notification-due':{kind:'probation.notification',category:'review',recipientPort:'probation',recipients:readers.probation,render:(payload)=>({severity:'action',title:'probation.notification.title',body:'probation.notification.body',linkPath:typeof payload?.caseId==='string'?(payload.documentKind==='letter'&&typeof payload.partId==='string'?`/lifecycle/probation/${payload.caseId}/letters/${payload.partId}`:`/lifecycle/probation/${payload.caseId}`):'/lifecycle/probation'})},
   // This explicit command atomically point-projects its in-app notification. SQL refuses a forged
   // event or a commit without that exact projection; the global cursor must not project it twice.
   'employee-home.greeting.sent': {
-    kind:'employee-home.greeting',category:null,recipients:async()=>[],
+    kind:'employee-home.greeting',category:null,recipientAudience:'none',recipients:async()=>[],
     render:(_payload,ev)=>({severity:'info',title:'employeeHome.greetingNotification.title',
       body:'employeeHome.greetingNotification.body',linkPath:`/me/greetings/${ev.aggregateId}`}),
   },
@@ -249,8 +257,7 @@ return {
     // The subject — EXCEPT when HR cancelled the whole leave on the employee's behalf and the pending
     // give-back was closed as superseded (adminCancelLeave): the employee is already told "Leave cancelled
     // by HR", and "your cancellation was not approved… the leave stays approved" would be untrue.
-    recipients: async (_tx, ev, payload) =>
-      payload?.supersededByAdminCancellation === true || !ev.subjectEmploymentId ? [] : [ev.subjectEmploymentId],
+    recipientGuard:cancellationNotSuperseded,recipients:subjectRecipient,
   },
   'toil.accrued': {
     kind: 'toil.accrued',
@@ -371,8 +378,7 @@ return {
           : 'Your overtime request was approved.',
       linkPath: '/attendance/plan-ot',
     }),
-    recipients: async (_tx, ev, payload) =>
-      payload?.overtime === true && ev.subjectEmploymentId ? [ev.subjectEmploymentId] : [],
+    recipientGuard:overtimeOnly,recipients:subjectRecipient,
   },
   'attendance-correction.rejected': {
     kind: 'attendance.ot-rejected',
@@ -383,8 +389,7 @@ return {
       body: 'Your overtime request was not approved.',
       linkPath: '/attendance/plan-ot',
     }),
-    recipients: async (_tx, ev, payload) =>
-      payload?.overtime === true && ev.subjectEmploymentId ? [ev.subjectEmploymentId] : [],
+    recipientGuard:overtimeOnly,recipients:subjectRecipient,
   },
   // ADR-0084 §2.5 — the nudge agent. `body` is rendered by the SWEEP, not here, because it may be a
   // model draft that passed `nudgeIsFaithful` — and if it did not, the sweep already substituted the
@@ -617,7 +622,7 @@ return {
       body: String(p?.title ?? 'A new notice has been published.'),
       linkPath: `/notices/${ev.aggregateId}`,
     }),
-    recipientPort:'noticePublished',recipients:readers.noticePublished,
+    recipientPort:'noticePublished',recipientGuard:noticeNotify,recipients:readers.noticePublished,
   },
   // The batch event has no single subject — fan out to every employee with a payslip in the closed batch.
   'payroll-batch.closed': {
@@ -685,5 +690,12 @@ return {
     },
   },
 };
-
+ // One installed guard description powers both the pure caller and native
+ // audience admission; native code interprets this closed boolean predicate.
+ for(const entry of Object.values(registry))for(const spec of Array.isArray(entry)?entry:[entry])if(spec.recipientGuard){
+  const guard=spec.recipientGuard,read=spec.recipients??subjectRecipient;
+  spec.recipients=(reader,event,payload,noticeReader)=>payloadGuardMatches(payload,guard)?read(reader,event,payload,noticeReader):Promise.resolve([]);
+ }
+ return registry;
 }
+
