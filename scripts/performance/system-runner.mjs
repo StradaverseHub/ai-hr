@@ -10,6 +10,7 @@ import os from 'node:os';
 import net from 'node:net';
 import {setTimeout as pause} from 'node:timers/promises';
 import {postgresLockFailures} from './lock-failure-log.mjs';
+import {admissionFailureMarkers} from './admission-failure-log.mjs';
 import {systemBuildEnvironment} from './build-environment.mjs';
 import {isolatedWorkerBudget} from './worker-budget.mjs';
 assert.equal(process.env.GITHUB_ACTIONS,'true');assert.equal(process.env.RUNNER_ENVIRONMENT,'github-hosted');
@@ -82,7 +83,8 @@ function summarizeNativeFailures(){
  for(const name of readdirSync(privateDir).filter(name=>/^server-[0-9]+\.log$/.test(name))){
   const text=readFileSync(join(privateDir,name),'utf8');
   const worker=Number(name.match(/[0-9]+/)[0]);
-  workers.push({worker,v8HeapOutOfMemory:/FATAL ERROR:[^\n]*JavaScript heap out of memory/.test(text)});
+  workers.push({worker,v8HeapOutOfMemory:/FATAL ERROR:[^\n]*JavaScript heap out of memory/.test(text),
+   logMarkers:admissionFailureMarkers(text)});
   // The public-error owner logs one explicit SQLSTATE beside each generated reference.
   // Publish that closed metadata only; never the surrounding SQL, values or stack.
   for(const match of text.matchAll(/\[database error (DB-[A-Z]-[A-F0-9]{6})\] sqlstate=([0-9A-Z]{5}|none)/g)){
