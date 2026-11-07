@@ -17,7 +17,7 @@ import {accessEditorOwnedWork} from './fixtures/access-editor-owned-work';
 import {admitSingletonTest} from './helpers/ci-singleton-admission';
 // Registry/controller convergence is REQUIRED before this new selector may run.
 // An unregistered or unauthenticated invocation refuses before creating any DB.
-admitSingletonTest('test/access-editor-native-owner-presentation.test.ts');
+const nativeAdmission=admitSingletonTest('test/access-editor-native-owner-presentation.test.ts');
 const path='db/migrations/3211_access_editor_native_owner_presentation.sql',source=readFileSync(path,'utf8');
 const quote=(name:string)=>'"'+name.replaceAll('"','""')+'"';
 type Info={definition:string;body:string;details:Record<string,unknown>};
@@ -29,7 +29,7 @@ it('preserves canonical Access behavior under a real restricted native owner and
  const abort=()=>{releaseHeld?.();};context.signal.addEventListener('abort',abort,{once:true});
  const active=()=>context.signal.throwIfAborted();
  try{
-  fixture=await accessEditorNativeOwnerFixture(context.signal,ownership.poison);active();const f=fixture;
+  fixture=await accessEditorNativeOwnerFixture(context.signal,ownership.poison,nativeAdmission.evidenceDirectory);active();const f=fixture;
   const proofs:unknown[]=[];let revokeBetween:{userId:string;grantId:string}|undefined,betweenRevocations=0;
   const spy=vi.spyOn(database,'withTenant').mockImplementation(async<T>(ctx:SessionContext,read:(tx:Tx)=>Promise<T>,options?:Parameters<typeof database.withTenant>[2])=>{const result=await f.application.withTenant(ctx,async tx=>{
    active();await tx.execute(sql`set local lock_timeout='300ms'`);await tx.execute(sql`set local statement_timeout='20s'`);

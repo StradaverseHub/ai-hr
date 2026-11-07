@@ -10,9 +10,10 @@ import {expect} from 'vitest';
 import {createDb} from '../../db/client';
 import {workerDb} from '../db-names';
 import {accessCleanupBounds,accessCleanupLifetime,requireAccessCleanupOid} from './access-editor-cleanup-lifetime';
+import {accessEditorCatalogueDiagnostic,writeAccessEditorCatalogueDiagnostic} from './access-editor-catalogue-diagnostic';
 const sha=(value:string|Buffer)=>createHash('sha256').update(value).digest('hex');
 const quote=(name:string)=>'"'+name.replaceAll('"','""')+'"';
-export async function accessEditorNativeOwnerFixture(signal:AbortSignal,poison:(error:Error)=>void){
+export async function accessEditorNativeOwnerFixture(signal:AbortSignal,poison:(error:Error)=>void,evidenceDirectory:string){
  expect(process.env.GITHUB_ACTIONS).toBe('true');expect(process.env.RUNNER_ENVIRONMENT).toBe('github-hosted');expect(process.env.GITHUB_REPOSITORY).toBe('StradaverseHub/ai-hr');
  const pool=process.env.VITEST_POOL_ID??process.env.VITEST_WORKER_ID;expect(pool).toMatch(/^[1-9][0-9]*$/);expect(process.env.WORKER_DB).not.toBe('0');
  const source=new URL(process.env.TEST_MIGRATION_DATABASE_URL!),app=new URL(process.env.TEST_DATABASE_URL!);
@@ -160,7 +161,13 @@ export async function accessEditorNativeOwnerFixture(signal:AbortSignal,poison:(
    for(const p of functions){active();await tx.unsafe('ALTER '+(p.prokind==='p'?'PROCEDURE':'FUNCTION')+' '+p.signature+' OWNER TO '+quote(role));}
    return{relations:Array.from(relations),types:Array.from(types),functions:Array.from(functions)};
   });
-  expect(await catalog(true)).toEqual(before);expect(await dataFacts()).toEqual(beforeData);
+  const afterNormalized=await catalog(true);
+  const comparison=accessEditorCatalogueDiagnostic(before,afterNormalized);
+  const dependencyFacts=Array.from(await construction`select d.dbid,d.classid::regclass::text as class,d.classid,d.objid,d.objsubid,d.refclassid::regclass::text as reference_class,d.refclassid,d.refobjid,d.deptype,pg_describe_object(d.classid,d.objid,d.objsubid)as object_description from pg_shdepend d where d.dbid=(select oid from pg_database where datname=current_database())order by d.classid,d.objid,d.objsubid,d.refclassid,d.refobjid,d.deptype`);
+  const [nativeFacts]=await construction`select current_user as current,session_user as session,current_database()as database,pg_backend_pid()as pid,current_setting('server_version_num')as server_version,(select jsonb_agg(jsonb_build_object('oid',r.oid::int,'name',r.rolname,'super',r.rolsuper,'bypass',r.rolbypassrls,'inherit',r.rolinherit,'login',r.rolcanlogin)order by r.oid)from pg_roles r where r.oid in(${oldOwner}::oid,${newOwner}::oid))as roles`;
+  const retained=writeAccessEditorCatalogueDiagnostic(evidenceDirectory,{nativeFacts,kind:'ACTUAL_ACCESS_NATIVE_OWNER_CATALOGUE_DIAGNOSTIC_NOT_ACCEPTANCE',source:process.env.AIHR_CI_HEAD,controller:process.env.AIHR_CI_CONTROL_HEAD,run:process.env.GITHUB_RUN_ID,attempt:process.env.GITHUB_RUN_ATTEMPT,complete:true,releaseAuthorized:false,point:'after-owned-transfer-before-3211',oldOwner,newOwner,transfer,rawNativeSharedDependencies:dependencyFacts,...comparison});console.info('Retained Access native catalogue diagnostic',JSON.stringify(retained));
+  // This original oracle remains unchanged: diagnostics cannot waive a mismatch.
+  expect(afterNormalized).toEqual(before);expect(await dataFacts()).toEqual(beforeData);
   const [identity]=await native.client`select current_user as current,session_user as session,current_database()as database,r.rolsuper,r.rolinherit,r.rolbypassrls,r.rolcreatedb,r.rolcreaterole,r.rolreplication,
    app.acting_as_owner()as native_owner,row_security_active('public.access_configuration'::regclass)as forced_rls,current_setting('statement_timeout')as statement_budget,current_setting('lock_timeout')as lock_budget from pg_roles r where r.rolname=current_user`;
   expect(identity).toEqual({current:role,session:role,database:name,rolsuper:false,rolinherit:false,rolbypassrls:false,rolcreatedb:false,rolcreaterole:false,rolreplication:false,native_owner:true,forced_rls:true,statement_budget:'20s',lock_budget:'300ms'});
