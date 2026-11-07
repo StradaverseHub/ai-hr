@@ -38,8 +38,16 @@ export function notificationWorkerFixtureOwner(){
    await owner.client.begin(async tx=>{
     await tx`select set_config('aihr.notification_fixture.database',${target.database},true),set_config('aihr.notification_fixture.namespace',${target.namespace},true),set_config('aihr.notification_fixture.pool_id',${target.poolId},true)`;
     for(const source of sources)await tx.unsafe(source);
-    if(contract)await tx`insert into notification_worker_private.registry_contract(event_type,kind,category,recipient_port,audience,guard,implemented)
-     select x."eventType",x.kind,x.category,x."recipientPort",x.audience,x.guard,x.implemented from jsonb_to_recordset(${tx.json(contract)}::jsonb) as x("eventType" text,kind text,category text,"recipientPort" text,audience text,guard jsonb,implemented boolean)`;
+    if(contract){
+     // owner.client is shared with Drizzle, which installs identity JSON
+     // serializers. Bind serialized text; direct worker connections keep theirs.
+     await tx`insert into notification_worker_private.registry_contract(event_type,kind,category,recipient_port,audience,guard,implemented)
+      select x."eventType",x.kind,x.category,x."recipientPort",x.audience,x.guard,x.implemented from jsonb_to_recordset(${JSON.stringify(contract)}::jsonb) as x("eventType" text,kind text,category text,"recipientPort" text,audience text,guard jsonb,implemented boolean)`;
+     const stored=await tx`select event_type as "eventType",kind,category,recipient_port as "recipientPort",audience,guard,implemented
+      from notification_worker_private.registry_contract order by event_type collate "C",kind collate "C"`;
+     const compare=(a:string,b:string)=>a<b?-1:a>b?1:0;
+     expect(Array.from(stored)).toEqual([...contract].sort((a,b)=>compare(a.eventType,b.eventType)||compare(a.kind,b.kind)));
+    }
    });
    stageInstalled=true;
    const [identity]=await owner.client`select current_user::regrole::oid as owner,(select oid from pg_roles where rolname=${role}) as login`;
