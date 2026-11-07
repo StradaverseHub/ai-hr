@@ -22,7 +22,7 @@ function fixture(loading=false){
    ListRow:({label,onPress}:any)=><button onClick={onPress}>{label}</button>}};
  const output={exports:{} as {default:React.ComponentType}};
  runInNewContext(transpileModule(readFileSync('mobile/app/(tabs)/leave.tsx','utf8'),{compilerOptions:{module:ModuleKind.CommonJS,jsx:JsxEmit.ReactJSX}}).outputText,{module:output,exports:output.exports,require:(id:string)=>{if(id in ports)return ports[id];throw new Error(id);}});
- return {View:output.exports.default,reload,focus,cards};
+ return {View:output.exports.default,reload,focus,cards,states};
 }
 afterEach(cleanup);
 it('shows one initial loading indicator without pretending the history is empty',()=>{
@@ -37,4 +37,16 @@ it('keeps every balance and request type accessible, and refreshes on return rat
  expect(screen.getByText('Request leave').getAttribute('data-card-count')).toBe('5');
  fireEvent.click(screen.getByText('allBalances'));expect(screen.getByText('Type 4')).toBeTruthy();expect(screen.getByText('Hidden')).toBeTruthy();
  expect(f.reload).not.toHaveBeenCalled();act(()=>f.focus.current());expect(f.reload).toHaveBeenCalledTimes(3);
+});
+
+it('keeps loaded balances and the request action available while history is slow',()=>{
+ const f=fixture();f.states['leave-requests']={data:null,loading:true,error:null,reload:vi.fn()};
+ render(<f.View/>);
+ expect(screen.getByText('Type 0')).toBeTruthy();expect(screen.getByText('Request leave')).toBeTruthy();
+ expect(screen.getAllByRole('progressbar')).toHaveLength(1);expect(screen.queryByText('noRequests')).toBeNull();
+});
+it('does not hide loaded history behind a failed balance read',()=>{
+ const f=fixture();f.states.leave={data:null,loading:false,error:new Error('offline'),reload:vi.fn()};
+ render(<f.View/>);expect(screen.getByText('requestHistory')).toBeTruthy();expect(screen.getByText('noRequests')).toBeTruthy();
+ expect(screen.queryByText('Request leave')).toBeNull();
 });

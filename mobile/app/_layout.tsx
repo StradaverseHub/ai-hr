@@ -94,7 +94,6 @@ function LockScreen({ error, unlocking, unlock, signOut }: { error: boolean; unl
 export default function RootLayout() {
   const { language } = useDisplayPrefs();
   const [fontsReady, fontError] = useFonts(FIELD_NOTES_FONTS);
-  if (!fontsReady && !fontError) return <View style={{ flex: 1, backgroundColor: colors.bg, justifyContent: 'center' }}><ActivityIndicator accessibilityLabel={t('loading')} /></View>;
   return (
     <SafeAreaProvider>
       <StatusBar style="dark" />
@@ -102,7 +101,9 @@ export default function RootLayout() {
         <PushSessionWatcher /><WidgetLaunchObserver />
         {/* A language change re-renders every screen in the new language: the screens below the session remount (the
             session, its lock and any draft above them are kept), and Settings reopens itself. */}
-        <JourneyDraftProvider><WorkplaceReviewBoundary><Gate key={language} /></WorkplaceReviewBoundary></JourneyDraftProvider>
+        <JourneyDraftProvider><WorkplaceReviewBoundary>{fontsReady || fontError ? <Gate key={language} /> :
+          <View style={{ flex: 1, backgroundColor: colors.bg, justifyContent: 'center' }}><ActivityIndicator accessibilityLabel={t('loading')} /></View>
+        }</WorkplaceReviewBoundary></JourneyDraftProvider>
       </SessionProvider></CompanyConnectionProvider></PublicDesignProvider>
     </SafeAreaProvider>
   );

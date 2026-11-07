@@ -30,12 +30,11 @@ export default function Leave(){
   const visited=useRef(false);
   useFocusEffect(useCallback(()=>{if(visited.current)reload();visited.current=true;},[reload]));
   const notices=Object.fromEntries((leave.data?.cards??[]).flatMap(c=>c.entitlementNoticeText?[[c.leaveTypeId,c.entitlementNoticeText]]:[]));
-  const initialLoading=leave.loading&&!leave.data||options.loading&&!options.data||requests.loading&&!requests.data;
   if(draft&&options.data&&leave.data)return <LeaveRequestForm options={options.data} cards={leave.data.cards} today={leave.data.today} onSubmitted={reload} notices={notices}/>;
   return <Screen atmospheric onRefresh={reload}>
     <Muted>{t('tabLeave')}</Muted>
     <Title>{t('fieldLeaveTitle')}</Title>
-    <LoadState loading={initialLoading} hasData={leave.data!=null} error={leave.error??options.error??requests.error} onRetry={reload}/>
+    <LoadState loading={leave.loading} hasData={leave.data!=null} error={leave.error} onRetry={leave.reload}/>
     {leave.data&&<>
     <SectionLabel>{t('homeYourLeave')}</SectionLabel>
     <View>{(allBalances?leave.data.cards:leave.data.cards.slice(0,3)).map(c => <View key={c.leaveTypeId}
@@ -50,8 +49,11 @@ export default function Leave(){
     {!allBalances&&leave.data.cards.length>3&&<ListRow label={t('allBalances')} value={String(leave.data.cards.length)} onPress={()=>setAllBalances(true)}/>}
     {leave.data?.cards.length===0&&<Muted>{t('noLeaveTypes')}</Muted>}
     </>}
+    {leave.data&&<LoadState loading={options.loading} hasData={options.data!=null} error={options.error} onRetry={options.reload}/>}
     {options.data&&leave.data&&<LeaveRequestForm options={options.data} cards={leave.data.cards} today={leave.data.today} onSubmitted={reload} notices={notices}/>}
-    {requests.data&&<><SectionLabel>{t('requestHistory')}</SectionLabel>
+    {(leave.data||requests.data)&&<SectionLabel>{t('requestHistory')}</SectionLabel>}
+    {leave.data&&<LoadState loading={requests.loading} hasData={requests.data!=null} error={requests.error} onRetry={requests.reload}/>}
+    {requests.data&&<>
     {/* M07: each row opens its detail (mobile/app/leave/[id].tsx); the full paged list is one tap away. */}
     <View>{requests.data?.items.map(r=><Pressable key={r.id} accessibilityRole="button" accessibilityLabel={`${r.type}. ${r.from} → ${r.to}`} onPress={()=>router.push({pathname:'/leave/[id]',params:{id:r.id}})} style={{minHeight:56}}><Material style={{paddingVertical:16,gap:8}}>
       <View style={{flexDirection:'row',justifyContent:'space-between',gap:12}}><Text style={{color:palette.text,fontSize:16,fontWeight:'600',flexShrink:1}}>{r.type}</Text><StatusPill label={STATUS[r.status]?t(STATUS[r.status]):r.status}/></View>
