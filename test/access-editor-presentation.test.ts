@@ -22,10 +22,10 @@ type FunctionInfo={definition:string;details:unknown};
 async function bootstrapInfo():Promise<FunctionInfo>{
  const [row]=await owner.db.execute<FunctionInfo>(sql`select pg_get_functiondef(p.oid) as definition,
   jsonb_build_object('owner',p.proowner::regrole::text,'acl',p.proacl::text,'name',p.proname,'namespace',p.pronamespace::regnamespace::text,
-   'language',p.prolang,'argtypes',p.proargtypes::text,'argnames',p.proargnames,'nargs',p.pronargs,'ndefaults',p.pronargdefaults,'allargtypes',p.proallargtypes,'argmodes',p.proargmodes,
-   'defaults',p.proargdefaults::text,'result',p.prorettype,'set',p.proretset,'kind',p.prokind,'variadic',p.provariadic,
+   'language',p.prolang::int,'argtypes',p.proargtypes::text,'argnames',p.proargnames,'nargs',p.pronargs,'ndefaults',p.pronargdefaults,'allargtypes',p.proallargtypes,'argmodes',p.proargmodes,
+   'defaults',p.proargdefaults::text,'result',p.prorettype::int,'set',p.proretset,'kind',p.prokind,'variadic',p.provariadic::int,
    'security',p.prosecdef,'strict',p.proisstrict,'leakproof',p.proleakproof,'volatility',p.provolatile,'parallel',p.proparallel,
-   'settings',p.proconfig,'cost',p.procost,'rows',p.prorows,'support',p.prosupport::text,'body',p.prosrc,'sqlbody',p.prosqlbody::text) as details
+   'settings',p.proconfig,'cost',p.procost,'rows',p.prorows,'support',p.prosupport::oid::text,'body',p.prosrc,'sqlbody',p.prosqlbody::text) as details
   from pg_proc p where p.oid='app.access_install_defaults(uuid,uuid)'::regprocedure`);
  if(!row)throw Error('Native bootstrap owner missing');return row;
 }

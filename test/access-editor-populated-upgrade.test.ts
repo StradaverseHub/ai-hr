@@ -61,7 +61,7 @@ it('preserves populated permissions/history and atomically refuses a drifted pre
   await storage.client.begin(async tx=>{
    await tx`insert into tenant(id,workos_org_id,name) values(${tenantId}::uuid,${'org_access_upgrade_'+tenantId},'Fictional retained Access tenant') on conflict(id) do nothing`;
    await tx`insert into company(id,tenant_id,legal_name) values(${companyId}::uuid,${tenantId}::uuid,'Fictional retained Access company')`;
-   await tx`insert into app_user(id,tenant_id,workos_user_id,archived_at) values(${userId}::uuid,${tenantId}::uuid,${'fictional_access_upgrade_'+userId},${uninitialized?new Date():null})`;
+   await tx`insert into app_user(id,tenant_id,workos_user_id,archived_at) values(${userId}::uuid,${tenantId}::uuid,${'fictional_access_upgrade_'+userId},case when ${uninitialized} then clock_timestamp() else null end)`;
    await tx`insert into role_assignment(id,tenant_id,app_user_id,role,company_id) values(${grantId}::uuid,${tenantId}::uuid,${userId}::uuid,${role},null)`;
   });
   if(uninitialized)await storage.client`update app_user set archived_at=null where id=${userId}::uuid`;
