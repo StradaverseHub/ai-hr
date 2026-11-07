@@ -53,7 +53,7 @@ async function auditEvents(){return Array.from(await owner.client`select id,even
 async function money(){return{
  libraries:Array.from(await owner.client`select v.id,v.state,v.data,v.lock_version from public.reward_library_version v where v.tenant_id=${f.b.tenantId}::uuid order by v.id`),
  pat:Array.from(await owner.client`select id,state,inputs,revision from public.reward_pat_version where tenant_id=${f.b.tenantId}::uuid order by id`),
- units:Array.from(await owner.client`select id,status,state from public.reward_unit where tenant_id=${f.b.tenantId}::uuid order by id`),
+ units:Array.from(await owner.client`select to_jsonb(u)as unit from public.reward_unit u where u.tenant_id=${f.b.tenantId}::uuid order by u.id`),
 };}
 async function receipts(){return Array.from(await owner.client`select * from reward_audit_private.receipt order by observed_at,id`);}
 async function refusal(promise:PromiseLike<unknown>,code='42501'){const error=await Promise.resolve(promise).then(()=>null,(error:unknown)=>error);expect(error).not.toBeNull();expect(pgSqlState(error)).toBe(code);}
