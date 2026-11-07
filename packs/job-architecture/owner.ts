@@ -4,7 +4,8 @@ import {sql} from 'drizzle-orm';
 import {z} from 'zod';
 import {withTenant,type SessionContext,type Tx} from '../../db/client';
 import {appendEvent,actorOf} from '../../db/events';
-import {lockAccessConfigurationReadTx,lockAccessConfigurationTx} from '../../core/access-configuration-lock';
+import {lockAccessConfigurationTx} from '../../core/access-configuration-lock';
+import {isAiPresentationPrincipalCurrentTx} from '../../core/ai-principal';
 import {labelUsableByCompany,lockLabelCriteriaTx} from '../../core/system-labels';
 import {todayInKualaLumpur} from '../../lib/hr-date';
 import {cataloguePath,architectureGrade,assertLadderContinuity,ArchitectureError,assertIndependentChecker,validateArchitectureCatalogue,validatePositionMappings,scanArchitectureOutliers,type ArchitectureCatalogue,type ArchitecturePosition,type ArchitectureEmployee,type PositionMapping,outlierTypes} from './model';
@@ -13,6 +14,16 @@ const digest=(value:unknown)=>createHash('sha256').update(JSON.stringify(value))
 export type Proposal={id:string;company_id:string|null;kind:'catalogue'|'positions'|'outlier_resolution';base_revision:number;payload:Record<string,unknown>;reason:string;created_by:string;created_person_id:string|null;created_at:string;status:'pending'|'approved'|'rejected';checked_by:string|null};
 export type ArchitectureOutlierRow={id:string;fingerprint:string;company_ids:string[];detail:ReturnType<typeof scanArchitectureOutliers>[number];state:'new'|'open'|'partial'|'resolved';owner_id:string|null;due_on:string|null;resolution:string|null;revision:number;description:string;proposed_fix:string;manual:boolean;business_unit_id?:string|null;source_id:string|null;resolved_by:string|null;checked_by:string|null};
 async function tenant<T>(ctx:SessionContext,fn:(tx:Tx)=>Promise<T>){if(!ctx.userId)throw new ArchitectureError('forbidden','Sign in to continue.');return withTenant(ctx,async tx=>{await lockAccessConfigurationTx(tx,ctx.tenantId);return fn(tx);});}
+/** Ordinary display reads own an enforced snapshot; the borrowed workspaceTx query also
+ * serves command/source contracts, whose tenant() owner must retain its Access barrier. */
+async function presentation<T>(supplied:SessionContext,fn:(tx:Tx,ctx:SessionContext)=>Promise<T>){
+ const ctx=structuredClone(supplied);
+ if(!ctx.userId)throw new ArchitectureError('forbidden','Sign in to continue.');
+ return withTenant(ctx,async tx=>{
+  if(!await isAiPresentationPrincipalCurrentTx(tx,ctx))throw new ArchitectureError('forbidden','Sign in to continue.');
+  return fn(tx,ctx);
+ },{readOnlySnapshot:true});
+}
 async function authority(tx:Tx,companyId:string|null,operation:'view'|'propose'|'check'){
  const [r]=await tx.execute<{ok:boolean}>(sql`select app.job_architecture_can(${companyId}::uuid,${operation}) as ok`);if(!r?.ok)throw new ArchitectureError('forbidden','You do not have access to this architecture action.');
 }
@@ -55,7 +66,7 @@ async function workspaceTx(tx:Tx,ctx:SessionContext,companyFilter?:string){
  const [employeeCoverage]=await tx.execute<{yes:boolean}>(sql`select not exists(select 1 from company c where c.tenant_id=${ctx.tenantId}::uuid and c.id in (${idList}) and not app.access_workforce_company(c.id,'workforce.view')) as yes`);
  return {employeeGradeCoverage:!!employeeCoverage?.yes,catalogue,companies:[...companies],positions:[...positions],businessUnits:[...businessUnits],publications:[...publications],suggestions:[...suggestions],suggestionMetrics:[...suggestionMetrics],employees:checkedEmployees,proposals:[...proposals],outliers:[...outliers],grades:grades.filter(g=>architectureGrade(g.code)),global,sourceDigest:digest({catalogue,positions:positions.map(p=>[p.companyId,p.id,p.revision])})};
 }
-export function architectureWorkspace(ctx:SessionContext,companyId?:string){return tenant(ctx,tx=>workspaceTx(tx,ctx,companyId));}
+export function architectureWorkspace(ctx:SessionContext,companyId?:string){return presentation(ctx,(tx,ctx)=>workspaceTx(tx,ctx,companyId));}
 export async function proposeArchitectureCatalogue(ctx:SessionContext,input:{catalogue:unknown;baseRevision:number;reason:string}){
  const catalogue=validateArchitectureCatalogue(input.catalogue),why=reason.parse(input.reason),base=z.number().int().nonnegative().parse(input.baseRevision);
  return tenant(ctx,async tx=>{await authority(tx,null,'propose');await catalogueMaker(tx);await writeLock(tx,ctx);const current=await catalogueTx(tx,ctx);if(current.revision!==base)throw new ArchitectureError('changed','The catalogue changed. Reopen the latest version.');
@@ -98,8 +109,8 @@ export type OwnArchitectureJob={jobId:string;revisionId:string;title:string;vers
 export function ownArchitectureJob(ctx:SessionContext,employmentId:string){uuid.parse(employmentId);return tenant(ctx,async tx=>{const [r]=await tx.execute<{value:OwnArchitectureJob|null}>(sql`select app.own_job_architecture_description(${employmentId}::uuid) as value`);return r?.value??null;});}
 export type ArchitectureWorkspace=Awaited<ReturnType<typeof architectureWorkspace>>;
 export function updateArchitectureOutlier(ctx:SessionContext,raw:unknown){const p=z.object({id:uuid,revision:z.number().int().positive(),ownerId:uuid.nullable(),dueOn:z.iso.date().nullable(),state:z.enum(['new','open','partial']),businessUnitId:uuid.nullable().default(null),description:z.string().trim().max(4000),proposedFix:z.string().trim().max(4000)}).strict().parse(raw);return tenant(ctx,async tx=>{await writeLock(tx,ctx);const [o]=await tx.execute<ArchitectureOutlierRow>(sql`select * from job_architecture_outlier where id=${p.id}::uuid and tenant_id=${ctx.tenantId}::uuid for update`);if(!o||o.revision!==p.revision||o.state==='resolved')throw new ArchitectureError('changed','Reopen the current outlier.');await authority(tx,null,'propose');for(const c of o.company_ids)await authority(tx,c,'propose');if(p.businessUnitId&&(o.company_ids.length!==1||!await labelUsableByCompany(tx,ctx.tenantId,'business_unit',p.businessUnitId,o.company_ids[0])))throw new ArchitectureError('invalid','Choose a business unit available to this company.');if(p.ownerId){const [u]=await tx.execute<{id:string}>(sql`select id from app_user where id=${p.ownerId}::uuid and tenant_id=${ctx.tenantId}::uuid and archived_at is null and not app.login_blocked(id)`);if(!u)throw new ArchitectureError('invalid','Choose an active owner in this organization.');}await tx.execute(sql`update job_architecture_outlier set business_unit_id=${p.businessUnitId}::uuid,owner_id=${p.ownerId}::uuid,due_on=${p.dueOn}::date,state=${p.state},description=${p.description},proposed_fix=${p.proposedFix},revision=revision+1 where id=${p.id}::uuid and tenant_id=${ctx.tenantId}::uuid`);await event(tx,ctx,p.id,'outlier.updated',{previousRevision:p.revision,state:p.state});});}
-export function architecturePeople(ctx:SessionContext){return tenant(ctx,async tx=>{await authority(tx,null,'view');return tx.execute<{id:string;name:string}>(sql`select u.id,coalesce(p.full_name,u.id::text) as name from app_user u left join person p on p.id=u.person_id and p.tenant_id=u.tenant_id where u.tenant_id=${ctx.tenantId}::uuid and u.archived_at is null and not app.login_blocked(u.id) and (app.is_group_admin() or exists(select 1 from company c where c.tenant_id=u.tenant_id and app.job_architecture_can(c.id,'view') and app.job_document_reviewer_eligible(c.id,u.id))) order by name,u.id`);});}
-export function architectureSeatList(ctx:SessionContext){return tenant(ctx,async tx=>{const [r]=await tx.execute<{ok:boolean}>(sql`select app.is_group_admin() as ok`);if(!r?.ok)throw new ArchitectureError('forbidden','Only a group administrator can manage architecture seats.');return tx.execute<{id:string;user_id:string;company_id:string|null;role:string;valid_from:string;valid_to:string|null}>(sql`select id,user_id,company_id,role,valid_from::text,valid_to::text from job_architecture_seat where tenant_id=${ctx.tenantId}::uuid order by valid_from,id`);});}
+export function architecturePeople(ctx:SessionContext){return presentation(ctx,async (tx,ctx)=>{await authority(tx,null,'view');return tx.execute<{id:string;name:string}>(sql`select u.id,coalesce(p.full_name,u.id::text) as name from app_user u left join person p on p.id=u.person_id and p.tenant_id=u.tenant_id where u.tenant_id=${ctx.tenantId}::uuid and u.archived_at is null and not app.login_blocked(u.id) and (app.is_group_admin() or exists(select 1 from company c where c.tenant_id=u.tenant_id and app.job_architecture_can(c.id,'view') and app.job_document_reviewer_eligible(c.id,u.id))) order by name,u.id`);});}
+export function architectureSeatList(ctx:SessionContext){return presentation(ctx,async (tx,ctx)=>{const [r]=await tx.execute<{ok:boolean}>(sql`select app.is_group_admin() as ok`);if(!r?.ok)throw new ArchitectureError('forbidden','Only a group administrator can manage architecture seats.');return tx.execute<{id:string;user_id:string;company_id:string|null;role:string;valid_from:string;valid_to:string|null}>(sql`select id,user_id,company_id,role,valid_from::text,valid_to::text from job_architecture_seat where tenant_id=${ctx.tenantId}::uuid order by valid_from,id`);});}
 export async function previewArchitectureFile(ctx:SessionContext,kind:'catalogue'|'positions'|'outliers',bytes:Uint8Array,companyId:string|null){
  const {previewArchitectureImport}=await import('./imports');return tenant(ctx,async tx=>{await authority(tx,companyId,'propose');if(kind==='catalogue')await catalogueMaker(tx);const w=await workspaceTx(tx,ctx,companyId??undefined),preview=previewArchitectureImport(kind,bytes,w,companyId);let id:string|null=null;
  if(!preview.errors.length&&preview.accepted){id=randomUUID();await tx.execute(sql`insert into job_architecture_import_preview(id,tenant_id,created_by,kind,company_id,source_digest,file_digest,preview) values(${id}::uuid,${ctx.tenantId}::uuid,${ctx.userId}::uuid,${kind},${companyId}::uuid,${w.sourceDigest},${preview.fileDigest},${JSON.stringify(preview)}::jsonb)`);await event(tx,ctx,id,'import.previewed',{kind,fileDigest:preview.fileDigest,rows:preview.accepted});}
@@ -133,8 +144,7 @@ export const jobArchitectureNavigationAllowedSql=sql`app.job_architecture_can(nu
 /** Navigation courtesy only; every operation rechecks its own authority. */
 export async function canViewJobArchitecture(ctx: SessionContext) {
  if (!ctx.userId) throw new ArchitectureError('forbidden', 'Sign in to continue.');
- return withTenant(ctx, async tx => {
-  await lockAccessConfigurationReadTx(tx, ctx.tenantId);
+ return presentation(ctx, async tx => {
   const [row] = await tx.execute<{ok: boolean}>(sql`select ${jobArchitectureNavigationAllowedSql} as ok`);
   return !!row?.ok;
  });
