@@ -5,6 +5,7 @@ import * as schema from '../db/schema';
 import { withTenant, type SessionContext } from '../db/client';
 import { hireEmployee, setReportingLine } from '../core/org';
 import { assignDefaultShift, assignShift, createShift, rosterWindowView } from '../core/roster';
+import {rosterWindowPage} from '../core/roster-presentation';
 import { setAttendancePolicy } from '../packs/attendance/service';
 import { approvedLeaveDates, approvedLeavePresenceByEmploymentTx } from '../packs/leave/service';
 import { holidayCalendarFactsByEmployment, holidayDatesByEmployment } from '../core/holidays';
@@ -75,4 +76,16 @@ describe('roster day context uses canonical facts without changing assignments o
     expect(result.employees.some(row => row.employmentId === unrelated.employmentId)).toBe(false);
     expect(Object.keys(result.dayContext).some(key => key.startsWith(unrelated.employmentId))).toBe(false);
   });
+});
+
+it('bounded employee pages retain canonical holiday/replacement/partial leave facts for real HR and manager principals',async()=>{
+ for(const ctx of [hr,manager]){
+  const p={companyIds:[b.companyId],employmentIds:[employee.employmentId],from:first,to:dates[3]};
+  const complete=await rosterWindowView(ctx,p),page=await rosterWindowPage(ctx,{...p,offset:0,limit:1});
+  expect(page.employees.map(row=>row.employmentId)).toEqual([employee.employmentId]);expect(page.cells).toEqual(complete.cells);expect(page.usual).toEqual(complete.usual);expect(page.dayContext).toEqual(complete.dayContext);
+  expect(page.dayContext[`${employee.employmentId}|${first}`]).toEqual({publicHoliday:true,approvedLeave:'full_day'});
+  expect(page.dayContext[`${employee.employmentId}|${dates[1]}`]).toEqual({replacementHoliday:true,approvedLeave:'full_day'});
+  expect(page.dayContext[`${employee.employmentId}|${dates[3]}`]).toEqual({approvedLeave:'part_day'});
+  expect(Object.keys(page.dayContext).some(key=>key.startsWith(unrelated.employmentId))).toBe(false);expect(JSON.stringify(page)).not.toContain('PRIVATE');
+ }
 });
