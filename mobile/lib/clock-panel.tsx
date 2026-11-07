@@ -41,7 +41,7 @@ export type HomeClockView={
 export function ClockPanel({refreshToken=0,variant='full',renderHome,afterControls,initialAction,widgetIntent,widgetEmployment}:{initialAction?:'in'|'out';widgetIntent?:string;widgetEmployment?:string;refreshToken?:number;variant?:'full'|'home';renderHome?:(view:HomeClockView)=>ReactNode;afterControls?:ReactNode}={}){
   const {employmentId,status:sessionStatus,signOut}=useSession();
   const clock=useApi('clock',{employmentId:employmentId??undefined},signOut);
-  const attempts=useApi('clock-attempts',{employmentId:employmentId??undefined},signOut);
+  const attempts=useApi('clock-attempts',{employmentId:employmentId??undefined},signOut,{enabled:variant!=='home'});
   const visited=useRef(false);
   useFocusEffect(useCallback(()=>{if(visited.current){clock.reload();attempts.reload();}visited.current=true;},[clock.reload,attempts.reload]));
   useEffect(()=>{if(refreshToken){clock.reload();attempts.reload();}},[refreshToken,clock.reload,attempts.reload]);
@@ -122,6 +122,7 @@ export function ClockPanel({refreshToken=0,variant='full',renderHome,afterContro
   const label=action==='in'?t('clockIn'):t('clockOut');
   function needsRegistration(e:unknown){return e instanceof EnrollmentConflict||e instanceof SignedClockUnavailable&&e.reason==='registration_required';}
   function errorMessage(e:unknown){
+    if(e instanceof SessionChangedError)return t('attemptNotRecorded');
     if(e instanceof EnrollmentConflict)return t('signedClockRegistrationRequired');
     if(e instanceof UnavailableError)return t('signedClockUnavailable');
     if(e instanceof SignedClockUnavailable)return t(e.reason==='unsupported'?'signedClockUnsupported':e.reason==='saved_command'?'signedClockSavedUnavailable':e.reason==='registration_required'?'signedClockRegistrationRequired':'signedClockUnavailable');
@@ -349,7 +350,7 @@ export function ClockPanel({refreshToken=0,variant='full',renderHome,afterContro
   return <View style={{gap:16}}>
     {homeContent}
     {compactAttempt&&<View style={{gap:4,borderBottomWidth:1,borderColor:palette.border,paddingBottom:8}}>
-      <Text style={{color:palette.text,fontSize:14}}>{t('attemptNotRecorded')}</Text>
+      <Text accessibilityRole="alert" style={{color:palette.text,fontSize:14}}>{draft?.message&&draft.message!==t('attemptSavedNotSent')?draft.message:t('attemptNotRecorded')}</Text>
       <Pressable accessibilityRole="link" onPress={()=>router.navigate('/clock')} style={{minHeight:44,justifyContent:'center'}}><Text style={{color:palette.accent,fontSize:14,fontWeight:'600'}}>{t('reviewSavedAttempts')} →</Text></Pressable>
     </View>}
     {(!home||showHomeJourney)&&<>

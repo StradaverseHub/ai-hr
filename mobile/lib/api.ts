@@ -310,17 +310,20 @@ export function useApi<P extends keyof Endpoints>(
   path: P,
   params: Record<string, string | undefined>,
   onSignInRequired: () => void,
+  options: { enabled?: boolean } = {},
 ): Loadable<Endpoints[P]> {
+  const enabled = options.enabled !== false;
   const paramsKey = JSON.stringify(canonicalParams(params));
   const namespace=identityNamespace(),origin=config.apiUrl,locale=appLocale(),owner=authGeneration();
-  const key = JSON.stringify([namespace,origin, path, paramsKey, locale, owner]);
+  const key = JSON.stringify([namespace,origin, path, paramsKey, locale, owner, enabled]);
   const snapshots = useContext(SnapshotContext);
   const reusable = path === 'me' || path === 'design';
-  const cached = reusable ? snapshots?.get<Endpoints[P]>(key) : undefined;
+  const cached = enabled && reusable ? snapshots?.get<Endpoints[P]>(key) : undefined;
   const [result, setResult] = useState<{ key: string; data: Endpoints[P] | null; error: Error | null; loading: boolean } | null>(() => cached === undefined ? null : {key,data:cached,error:null,loading:false});
   const [tick, setTick] = useState(0);
 
   useEffect(() => {
+    if (!enabled) return;
     const available = tick === 0 && reusable ? snapshots?.get<Endpoints[P]>(key) : undefined;
     if (available !== undefined) {
       setResult({key,data:available,error:null,loading:false});
@@ -346,10 +349,11 @@ export function useApi<P extends keyof Endpoints>(
       live = false;
       controller.abort();
     };
-  }, [path, key, paramsKey, tick, onSignInRequired, snapshots, reusable]);
+  }, [path, key, paramsKey, tick, onSignInRequired, snapshots, reusable, enabled]);
 
   const reload = useCallback(() => setTick((n) => n + 1), []);
   // Hide the previous employment's result in the render that changes context, before effects run.
+  if (!enabled) return {data:null,error:null,loading:false,reload};
   return result?.key === key ? { data: result.data, error: result.error, loading: result.loading, reload } :
     { data: null, error: null, loading: true, reload };
 }

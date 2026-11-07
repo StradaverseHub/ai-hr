@@ -63,7 +63,7 @@ function ChoiceField({ field, label, value, disabled, onChange }: { field: Profi
   const current = profileValueText(field, value);
   const q = query.trim().toLowerCase();
   const shown = (q ? options.filter((o) => o.label.toLowerCase().includes(q)) : options).slice(0, 100);
-  const radius = design.schemaVersion === 2 ? design.composition.layout.radius : design.corners === 'soft' ? 12 : 4;
+  const radius = design.schemaVersion === 2 ? design.composition.layout.radius : 0;
   return <View style={{ gap: 6 }}>
     <Button title={current} accessibilityLabel={`${label}: ${current}`} kind="quiet" disabled={disabled} onPress={() => setOpen(!open)} />
     {open && !disabled && <View style={{ gap: 4 }}>
@@ -82,7 +82,7 @@ function ChoiceField({ field, label, value, disabled, onChange }: { field: Profi
 function FieldEditor({ field, label, draft, disabled, onEdit, onUndo }: { field: ProfileFieldV2; label: string; draft: Draft[string] | undefined; disabled: boolean; onEdit: (value: string | null) => void; onUndo: () => void }) {
   const { palette, design } = useTenantDesign();
   const value = draft ? draft.value : field.value;
-  const radius = design.schemaVersion === 2 ? design.composition.layout.radius : design.corners === 'soft' ? 12 : 4;
+  const radius = design.schemaVersion === 2 ? design.composition.layout.radius : 0;
   if (!field.editable) return <View style={{ gap: 2 }}>
     <Row label={field.label} value={profileValueText(field, field.value)} />
     <Muted>{t(field.readOnlyReason === 'employment_closed' ? 'profileReadOnlyEmployment' : 'profileReadOnlyField')}</Muted>

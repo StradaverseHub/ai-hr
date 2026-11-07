@@ -17,7 +17,7 @@ export function SignedInShell({ children }: { children: ReactNode }) {
   const { signOut, employmentId } = useSession();
   const account = useApi('me', {}, signOut);
   const employment = account.data?.employments.find(item=>item.employmentId===employmentId) ?? account.data?.employments[0];
-  const monogram = account.data?.person.name.trim().split(/\s+/).map(part=>part[0]).slice(0,2).join('') || '·';
+  const monogram = (account.data?.person.name??'').trim().split(/\s+/).map(part=>part[0]).slice(0,2).join('') || '·';
   return <InAppAlertBoundary><View style={{ flex: 1, backgroundColor: palette.bg }}>
     <SafeAreaView edges={['top']} style={{ backgroundColor: palette.bg }}>
       <View style={{ minHeight: 56, paddingHorizontal: 20, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>

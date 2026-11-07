@@ -33,7 +33,7 @@ function clientFixture(credentialState?: ReturnType<typeof createAuthState>) {
     getAccessToken: vi.fn(async () => credentialState ? credentialState.getAccessToken() : 'access-token'),
     refresh: vi.fn(async () => credentialState ? credentialState.refresh() : 'rotated-token') };
   const output = { exports: {} as { ReadSnapshotBoundary: React.ComponentType<React.PropsWithChildren>; apiGet: (path: string, params?: Record<string, string>,signal?:AbortSignal) => Promise<unknown>; apiPost: (path:string,body:unknown,params?:Record<string,string>,operation?:{assertCurrent():void})=>Promise<unknown>;
-    useApi: (path: string, params: Record<string, string>, onSignInRequired: () => void) => { data: { person: {name:string} } | null; loading: boolean };
+    useApi: (path: string, params: Record<string, string>, onSignInRequired: () => void, options?:{enabled?:boolean}) => { data: { person: {name:string} } | null; loading: boolean };
     useApiV2: (path: string, schema: z.ZodType, params: Record<string, string>, onSignInRequired: () => void) => { data: unknown; loading: boolean };
     apiGetV2:(path:string,schema:z.ZodType,params?:Record<string,string>)=>Promise<unknown>;
     v2Page: (path:string,item:z.ZodType)=>unknown; v2Download: (path:string,maxBytes?:number)=>unknown;
@@ -500,4 +500,12 @@ it('reuses profile display data only inside the same unlocked tree and bypasses 
   view.unmount();
   render(<f.api.ReadSnapshotBoundary><App/></f.api.ReadSnapshotBoundary>);
   await screen.findByText('Employment one');expect(f.response).toHaveBeenCalledTimes(3);
+});
+
+it('does not fetch an invisible optional panel and hides its prior data when disabled',async()=>{
+ const f=clientFixture(),onAuth=vi.fn();
+ function View({enabled}:{enabled:boolean}){const r=f.api.useApi('me',{},onAuth,{enabled});return <span>{r.data?.person.name??(r.loading?'Loading':'Hidden')}</span>;}
+ const ui=render(<View enabled={false}/>);expect(screen.getByText('Hidden')).toBeTruthy();expect(f.response).not.toHaveBeenCalled();
+ ui.rerender(<View enabled/>);await screen.findByText('Employment one');expect(f.response).toHaveBeenCalledOnce();
+ ui.rerender(<View enabled={false}/>);expect(screen.getByText('Hidden')).toBeTruthy();expect(screen.queryByText('Employment one')).toBeNull();
 });

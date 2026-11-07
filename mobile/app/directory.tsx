@@ -30,7 +30,7 @@ export default function Directory() {
   const first = useApiV2('v2/directory', DirectoryPageV2, { q: q || undefined, offset: '0', limit: String(limit) }, signOut);
   const data = first.data;
   const items: Person[] = data?.items ?? [];
-  const radius = design.schemaVersion === 2 ? design.composition.layout.radius : design.corners === 'soft' ? 14 : 4;
+  const radius = design.schemaVersion === 2 ? design.composition.layout.radius : 0;
 
   if (data && !data.enabled) return <Screen back><Title>{t('qaDirectory')}</Title><Muted>{t('directoryOff')}</Muted></Screen>;
   return <Screen back onRefresh={first.reload}>

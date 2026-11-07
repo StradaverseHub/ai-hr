@@ -150,7 +150,7 @@ export function BalanceStrip({ refreshToken }: { refreshToken: number }) {
   const { palette, design } = useTenantDesign();
   const leave = useApi('leave', { employmentId: employmentId ?? undefined }, signOut);
   useEffect(() => { if (refreshToken) leave.reload(); }, [refreshToken, leave.reload]);
-  const radius = design.schemaVersion === 2 ? design.composition.layout.radius : design.corners === 'soft' ? 24 : 6;
+  const radius = design.schemaVersion === 2 ? design.composition.layout.radius : 0;
   const cards = homeBalances(leave.data?.cards ?? [], 4);
   return <View style={{ gap: 10 }}>
     <SectionHeader title={t('homeYourLeave')} action={leave.data ? t('allBalances') : undefined} onAction={() => router.navigate('/leave' as Href)} />
@@ -184,7 +184,7 @@ export function PayslipCard({ refreshToken }: { refreshToken: number }) {
   useFocusEffect(useCallback(() => () => setShown(false), []));
   if (pay.data && !pay.data.enabled) return null;
   const latest = pay.data?.items[0];
-  const radius = design.schemaVersion === 2 ? design.composition.layout.radius : design.corners === 'soft' ? 24 : 6;
+  const radius = design.schemaVersion === 2 ? design.composition.layout.radius : 0;
   return <View style={{ gap: 10 }}>
     <SectionHeader title={t('payslips')} action={latest ? t('seeAll') : undefined} onAction={() => router.push('/pay')} />
     <LoadState loading={pay.loading} hasData={pay.data != null} error={pay.error} onRetry={pay.reload} />

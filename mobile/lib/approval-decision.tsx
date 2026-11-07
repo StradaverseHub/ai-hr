@@ -120,6 +120,7 @@ export function TaskRow({ item }: { item: TaskItemV2 }) {
 
 /** A bounded preview uses the same authorized task owner as the full queue. */
 export function HomeApprovalQueue({ refreshToken }: { refreshToken: number }) {
+  const { palette } = useTenantDesign();
   const { signOut } = useSession();
   const list = usePagedResource(TASKS, { native: 'expanded' }, keyOf, signOut);
   useEffect(() => { if (refreshToken) list.refresh(); }, [refreshToken, list.refresh]);
@@ -254,7 +255,7 @@ export function ApprovalDetailScreen({ kind, id }: { kind: string; id: string })
     ]);
   }
   const toggle = (date: string) => setChecked((prior) => { const now = prior ?? pendingDates; return now.includes(date) ? now.filter((d) => d !== date) : [...now, date]; });
-  const radius = design.schemaVersion === 2 ? design.composition.layout.radius : design.corners === 'soft' ? 12 : 4;
+  const radius = design.schemaVersion === 2 ? design.composition.layout.radius : 0;
   const heading = (text: string) => <Text style={{ color: palette.text, fontSize: 16, fontWeight: '600' }}>{text}</Text>;
 
   if (done) return <Screen>

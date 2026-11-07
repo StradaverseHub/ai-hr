@@ -35,7 +35,7 @@ type Phase = { value: PlanBody; phase: 'sending' | 'uncertain' } | null;
 export function OvertimePlanScreen() {
   const { palette, design } = useTenantDesign();
   const { signOut, employmentId } = useSession();
-  const radius = design.schemaVersion === 2 ? design.composition.layout.radius : design.corners === 'soft' ? 12 : 4;
+  const radius = design.schemaVersion === 2 ? design.composition.layout.radius : 0;
   const offer = useApiV2('v2/attendance/overtime-plans/offer', OvertimePlanOfferV2, { employmentId: employmentId ?? undefined }, signOut);
   const [date, setDate] = useState<string | undefined>(undefined);
   // Until a date is chosen the roster read is today's (never an empty date); its card shows only for a chosen date.

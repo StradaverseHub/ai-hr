@@ -7,10 +7,10 @@ import { t } from './i18n';
 import { dailyDestinationForPath } from './navigation-routes';
 
 const destinations = [
-  { path: '/', label: 'tabHome', icon: { ios: 'house.fill', android: 'home' } },
+  { path: '/', label: 'tabHome', icon: { ios: 'house', android: 'home' } },
   { path: '/clock', label: 'tabClock', icon: { ios: 'clock', android: 'schedule' } },
   { path: '/leave', label: 'tabLeave', icon: { ios: 'calendar', android: 'calendar_month' } },
-  { path: '/work', label: 'approvalsTitle', icon: { ios: 'checkmark.seal', android: 'approval' } },
+  { path: '/work', label: 'approvalsTitle', icon: { ios: 'checkmark.square', android: 'fact_check' } },
   { path: '/me', label: 'tabMe', icon: { ios: 'person.crop.circle', android: 'person' } },
 ] as const;
 

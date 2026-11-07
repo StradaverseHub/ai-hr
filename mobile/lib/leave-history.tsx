@@ -192,7 +192,7 @@ export function LeaveDetailScreen({ id }: { id: string }) {
     ]);
   }
   const toggle = (date: string) => setPicking((p) => p && ({ ...p, dates: p.dates.includes(date) ? p.dates.filter((d) => d !== date) : [...p.dates, date] }));
-  const radius = design.schemaVersion === 2 ? design.composition.layout.radius : design.corners === 'soft' ? 12 : 4;
+  const radius = design.schemaVersion === 2 ? design.composition.layout.radius : 0;
 
   return <Screen back onRefresh={detail.reload}>
     <LoadState loading={detail.loading} hasData={detail.data != null} error={detail.error} onRetry={detail.reload} />

@@ -13,7 +13,7 @@ The baseline uses 20–24 point insets, 44–48 point minimum actions, 42–46 p
 ## Screen vocabulary
 
 - Home combines the existing clock journey in a compact workday strip with a bounded preview from the authorized approval queue. A red calendar marker sits beside the greeting. Unsent clock preparations use one compact review notice; uncertain submissions retain their receipt/retry controls.
-- Leave shows every server-provided balance in an open list, including masked figures, taken-only types and shared-pool labels. Request drafting, attachments and history retain their existing owners.
+- Leave previews three server-provided balances in an open list with an All balances expansion, including masked figures, taken-only types and shared-pool labels. Requesting leave always receives the complete set of eligible types. Request drafting, attachments and history retain their existing owners.
 - Approvals uses ruled request rows and opens the original full decision journey, including reason requirements, confirmation, stale-step handling and retry identity.
 - Me groups existing employee and team destinations and preserves employment switching and payroll visibility.
 - Detail screens, settings and forms use the shared typography, ruled surfaces and rectangular controls. The authenticated header and navigation remain in the shared shell.

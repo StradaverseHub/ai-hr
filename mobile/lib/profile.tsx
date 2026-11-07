@@ -96,11 +96,11 @@ function WebLinks({ web }: { web: { addresses: string | null; family: string | n
   </View>;
 }
 
-/** A rounded group of rows, the iOS Settings pattern the Me tab uses. */
+/** Open ruled groups in Field Notes; published company geometry remains explicit. */
 function Group({ children }: { children: ReactNode }) {
   const { palette, design } = useTenantDesign();
-  const radius = design.schemaVersion === 2 ? design.composition.layout.radius : design.corners === 'soft' ? 18 : 4;
-  return <View style={{ borderRadius: radius, backgroundColor: palette.card, borderWidth: 1, borderColor: palette.border, overflow: 'hidden' }}>{children}</View>;
+  const radius = design.schemaVersion === 2 ? design.composition.layout.radius : 0;
+  return <View style={{ borderRadius: radius, backgroundColor: palette.card, borderTopWidth:1,borderBottomWidth:1,borderLeftWidth:design.schemaVersion===2?1:0,borderRightWidth:design.schemaVersion===2?1:0, borderColor: palette.border, overflow: 'hidden' }}>{children}</View>;
 }
 function NavRow({ label, onPress, icon, first, accessibilityLabel }: { label: string; onPress: () => void; icon: 'arrow' | 'chevron'; first: boolean; accessibilityLabel?: string }) {
   const { palette } = useTenantDesign();
@@ -133,7 +133,7 @@ const initialsOf = (name: string | null | undefined) => (name ?? '').trim().spli
  * still entirely the server's.
  */
 export function ProfileScreen() {
-  const { palette } = useTenantDesign();
+  const { palette, design } = useTenantDesign();
   const { signOut, employmentId } = useSession();
   const profile = useProfileWorkspace();
   const me = useApi('me', {}, signOut);
@@ -143,12 +143,13 @@ export function ProfileScreen() {
   const pendingCount = workspace?.fields.filter((f) => f.pending).length ?? 0;
   const editable = !!workspace?.fields.some((f) => f.editable);
   return <Screen back refreshing={profile.loading && profile.data != null} onRefresh={() => { profile.reload(); me.reload(); }}>
-    <View style={{ alignItems: 'center', gap: 6, paddingTop: 4, paddingBottom: 8 }}>
-      <View style={{ width: 88, height: 88, borderRadius: 44, backgroundColor: palette.button, alignItems: 'center', justifyContent: 'center', marginBottom: 6 }}>
-        <Text style={{ color: palette.onButton, fontSize: 32, fontWeight: '800' }}>{initialsOf(person?.name)}</Text>
+    <Title>{t('profileTitle')}</Title>
+    <View style={{ alignItems: design.schemaVersion===1?'flex-start':'center', gap: 5, paddingTop: 4, paddingBottom: 12,borderBottomWidth:1,borderColor:palette.border }}>
+      <View style={{ width: design.schemaVersion===1?48:88, height: design.schemaVersion===1?48:88, borderRadius: design.schemaVersion===1?4:44, backgroundColor: palette.text, alignItems: 'center', justifyContent: 'center', marginBottom: 4 }}>
+        <Text style={{ color: palette.bg, fontSize: design.schemaVersion===1?20:32, fontWeight: '800' }}>{initialsOf(person?.name)}</Text>
       </View>
       <Text accessibilityRole="header" style={{ color: palette.text, fontSize: 24, fontWeight: '800', textAlign: 'center' }}>{person?.name ?? t('profileTitle')}</Text>
-      {employment && <Text style={{ color: palette.muted, fontSize: 15, textAlign: 'center' }}>{[employment.position, employment.company].filter(Boolean).join(' · ')}</Text>}
+      {employment && <Text style={{ color: palette.muted, fontSize: 14 }}>{[employment.position, employment.company].filter(Boolean).join(' · ')}</Text>}
       {person?.email && <Text selectable style={{ color: palette.muted, fontSize: 14, textAlign: 'center' }}>{person.email}</Text>}
       {pendingCount > 0 && <View style={{ marginTop: 6, paddingHorizontal: 12, paddingVertical: 5, borderRadius: 999, backgroundColor: tintOf(palette.accent, 0.14, palette.card) }}>
         <Text style={{ color: palette.accent, fontSize: 13, fontWeight: '700' }}>{t('profilePendingNote')}</Text>

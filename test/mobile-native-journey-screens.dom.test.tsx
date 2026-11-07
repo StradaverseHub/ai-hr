@@ -575,7 +575,7 @@ describe('offline clocking switch off (the default)',()=>{
 
 it('keeps an unsent clock attempt compact on Home without discarding its recovery identity',async()=>{
   const f=fixture();render(<f.App kind="homeClock"/>);
-  await act(async()=>{f.drafts().putClock({employmentId:'own',action:'in',phase:'idle',requestId:'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',attemptStartedAt:Date.now(),message:'Interrupted'});});
+  await act(async()=>{f.drafts().putClock({employmentId:'own',action:'in',phase:'idle',requestId:'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',attemptStartedAt:Date.now(),message:'attemptSavedNotSent'});});
   expect(screen.getByText('attemptNotRecorded')).toBeTruthy();
   expect(screen.getByRole('link')).toBeTruthy();
   expect(screen.queryByText('attemptTimeClaim')).toBeNull();

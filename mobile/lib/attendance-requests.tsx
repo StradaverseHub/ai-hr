@@ -36,7 +36,7 @@ type Phase<C> = { value: C; phase: 'sending' | 'uncertain' } | null;
 
 function useInput() {
   const { palette, design } = useTenantDesign();
-  const radius = design.schemaVersion === 2 ? design.composition.layout.radius : design.corners === 'soft' ? 12 : 4;
+  const radius = design.schemaVersion === 2 ? design.composition.layout.radius : 0;
   return (label: string, value: string, change: (v: string) => void, disabled: boolean, maxLength: number) => <View style={{ gap: 6 }}>
     <Text style={{ color: palette.muted, fontSize: 14 }}>{label}</Text>
     <TextInput accessibilityLabel={label} editable={!disabled} value={value} onChangeText={change} multiline maxLength={maxLength} placeholderTextColor={palette.muted}
