@@ -4922,6 +4922,13 @@
       "when": 1793330001860,
       "tag": "2460_payroll_individual_import_queue",
       "breakpoints": true
+    },
+    {
+      "idx": 1900,
+      "version": "7",
+      "when": 1793330002200,
+      "tag": "2600_onboarding_current_personnel",
+      "breakpoints": true
     }
   ]
 }
