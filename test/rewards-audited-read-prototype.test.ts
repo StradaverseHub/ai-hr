@@ -242,7 +242,7 @@ describe('durable-before-return read and canonical projection',()=>{
   finally{
    await owner.client`revoke select(secret)on public.reward_audit_privilege_canary from ai_hr_reward_audit_read`;
    expect((await owner.client`select c.oid,to_jsonb(c)as relation,(select jsonb_agg(to_jsonb(a)-'attacl'order by attnum)from pg_attribute a where a.attrelid=c.oid and a.attnum>0)as columns from pg_class c where c.oid='public.reward_audit_privilege_canary'::regclass`)[0]).toEqual(canary);
-   expect((await owner.client`select count(*)::int as n from pg_attribute a,aclexplode(coalesce(a.attacl,'{}'::aclitem[]))g where a.attrelid='public.reward_audit_privilege_canary'::regclass`)[0].n).toBe(0);await owner.client`drop table public.reward_audit_privilege_canary`;
+   expect((await owner.client`select count(*)::int as n from pg_attribute a cross join lateral unnest(a.attacl)g where a.attrelid='public.reward_audit_privilege_canary'::regclass`)[0].n).toBe(0);await owner.client`drop table public.reward_audit_privilege_canary`;
   }
   await owner.client`alter table public.domain_event disable trigger domain_event_chain_tg`;try{await refusal(api.materialize(),'55000');}finally{await owner.client`alter table public.domain_event enable trigger domain_event_chain_tg`;}
   expect((await receipts()).map(row=>row.id)).toEqual([result.receipt.id]);expect(await api.materialize()).toBe(1);expect(await money()).toEqual(before);
