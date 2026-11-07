@@ -18,7 +18,7 @@ function mount(){
   return render(<NextIntlClientProvider locale="en" messages={messages}><form>
     <input name="departmentId" defaultValue="reviewed-department" />
     <input name="from" defaultValue="2026-01-01" />
-    <EmployeeChoiceField name="managerEmploymentId" label="Manager" allLabel="All managers" selectedId={selected.employmentId} selected={selected} />
+    <EmployeeChoiceField name="managerEmploymentId" label="Manager" allLabel="All managers" selectedId={selected.employmentId} selected={selected} fallbackAction="/analytics/manager-choices" fallbackContext='{"year":"2026","carryPage":"4"}' />
   </form></NextIntlClientProvider>);
 }
 afterEach(()=>{vi.restoreAllMocks();vi.unstubAllGlobals();});
@@ -32,6 +32,13 @@ describe('demand-loaded employee form field',()=>{
     expect(data.get('departmentId')).toBe('reviewed-department');
     expect(data.get('from')).toBe('2026-01-01');
     expect(screen.getByText('Manager: '+selected.name)).toBeInTheDocument();
+    const native=screen.getByRole('button',{name:'Search employee'});
+    expect(native).toHaveAttribute('formaction','/analytics/manager-choices');
+    expect(native).toHaveAttribute('formmethod','post');
+    expect(native).toHaveAttribute('name','choiceContext');
+    expect(JSON.parse(native.getAttribute('value')!)).toEqual({year:'2026',carryPage:'4'});
+    expect(data.has('choiceContext')).toBe(false);
+    expect(container.querySelector('input[type="search"]')).not.toHaveAttribute('name');
     expect(fetch).not.toHaveBeenCalled();
   });
   it('loads only when opened, keeps 25 results plus the deep selection, and submits only when the choice changes',async()=>{
