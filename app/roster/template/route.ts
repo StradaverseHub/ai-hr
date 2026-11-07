@@ -13,9 +13,9 @@ export async function GET(req: Request) {
   let team:Awaited<ReturnType<typeof rosterTeamContext>>;try{team=await rosterTeamContext(s,scopeIds,Object.fromEntries(url.searchParams));}catch(error){return myTeamErrorResponse(error);}
   const companies=(await allowedCompanies(s)).filter(c=>(!scopeIds.length||scopeIds.includes(c.id))&&(!team||team.scope.companyIds.includes(c.id)));
   const asked=url.searchParams.get('companyId');
-  if(!companies.length||asked&&!companies.some(c=>c.id===asked))return new Response('Forbidden',{status:403});
+  if(!companies.length||asked&&!companies.some(c=>c.id===asked))return new Response('Forbidden',{status:403,headers:{'Cache-Control':'private, no-store'}});
   const resolved=resolveRosterWindow({view:url.searchParams.get('view'),month:url.searchParams.get('month'),from:url.searchParams.get('from'),to:url.searchParams.get('to'),today:todayInKualaLumpur()});
-  if(!resolved.ok)return new Response('Invalid roster date range',{status:400});
+  if(!resolved.ok)return new Response('Invalid roster date range',{status:400,headers:{'Cache-Control':'private, no-store'}});
   const win=team?rosterTeamWindow(team,todayInKualaLumpur()):resolved.window;
   const view=await rosterWindowView(s,{
     companyIds:asked?[asked]:companies.map(c=>c.id),from:win.from,to:win.to,

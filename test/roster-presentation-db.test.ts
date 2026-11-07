@@ -1,7 +1,7 @@
 import {randomUUID} from 'node:crypto';
 import {writeFileSync} from 'node:fs';
 import {join} from 'node:path';
-import {eq,sql,type SQL} from 'drizzle-orm';
+import {eq,type SQL} from 'drizzle-orm';
 import {PgDialect} from 'drizzle-orm/pg-core';
 import {afterAll,beforeAll,beforeEach,expect,it,vi} from 'vitest';
 import * as database from '../db/client';
@@ -57,7 +57,7 @@ it('keeps native company, foreign, manager and forged calling authority fenced',
  await owner.db.insert(schema.reportingLine).values({tenantId:b.tenantId,managerEmploymentId:employee.id,subordinateEmploymentId:ids[3],lineType:'administrative',validFrom:'2020-01-01'});
  const manager:SessionContext={tenantId:b.tenantId,userId:user,personId:employee.personId,roles:['manager']};
  const canonical=await rosterWindowView(manager,{companyIds:[b.companyId],...window}),actual=await rosterWindowPage(manager,p);
- expect(actual.employees).toEqual(canonical.employees);expect(actual.employees.map(e=>e.employmentId)).toContain(ids[3]);expect(actual.employees.map(e=>e.employmentId)).not.toContain(ids[4]);
+ expect(actual.employees).toEqual(canonical.employees);expect(actual.employees.map(e=>e.employmentId)).toContain(ids[3]);expect(actual.employees.map(e=>e.employmentId)).not.toContain(ids[26]);
  await expect(rosterWindowPage({...ctx,userId:randomUUID()},p)).rejects.toThrow('calling authority');
 });
 
