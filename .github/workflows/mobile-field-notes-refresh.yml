@@ -32,6 +32,7 @@ jobs:
       EXPO_NO_TELEMETRY: '1'
       EXPO_PUBLIC_RUNTIME_CONNECTIONS: '1'
       EXPO_PUBLIC_AUTH_PROVIDER: internal
+      EXPO_PUBLIC_LOCAL_READ_DIAGNOSTICS: '1'
       NODE_OPTIONS: --max-old-space-size=4096
       GH_TOKEN: ${{ github.token }}
     steps:

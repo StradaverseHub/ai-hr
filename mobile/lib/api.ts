@@ -123,6 +123,15 @@ async function apiRequest<T>(path:string,params:Record<string,string|undefined>,
   let resource=path;
   const send = async (token: string) => {
     let responded=false;
+    const reviewStarted=Date.now();
+    let reviewPhase='fetch',reviewStatus=0;
+    const review=(outcome:'headers'|'pass'|'fail')=>{
+      // Only the temporary simulator workflow enables this. No payload, URL, query,
+      // account, token, exception text or server message enters the local log.
+      if(typeof process==='undefined'||process.env.EXPO_PUBLIC_LOCAL_READ_DIAGNOSTICS!=='1'||request||
+        !['me','design','clock','leave','leave-options','leave-requests','v2/tasks','v2/home/summary'].includes(path))return;
+      try{console.warn('ONEHR_READ_DIAGNOSTIC '+JSON.stringify({endpoint:path,phase:reviewPhase,status:reviewStatus,elapsedMs:Math.max(0,Date.now()-reviewStarted),outcome}));}catch{/* Diagnostics never change the request outcome. */}
+    };
     assertCurrent();
     if(request&&AppState.currentState!=='active')throw new UnavailableError('Unlock the app to continue.');
     if(configProblem())throw new UnavailableError('The approved company connection is no longer valid.');
@@ -137,7 +146,7 @@ async function apiRequest<T>(path:string,params:Record<string,string|undefined>,
         ...(request ? {method:'POST',body:request.body} : {}),
         redirect: 'error', credentials: 'omit', signal: controller.signal,
       });
-      responded=true;
+      responded=true;reviewStatus=response.status;review('headers');
       assertCurrent();
       if (!response.ok) {
         void response.body?.cancel().catch(()=>{});
@@ -163,14 +172,19 @@ async function apiRequest<T>(path:string,params:Record<string,string|undefined>,
       }
       // Full competency evidence can exceed the ordinary 1 MiB JSON limit; cohort people are paged.
       const jsonLimit=/^v2\/pack-workspaces\/(performanceReview|assessmentWork|careerPlan|calibration|rewardReview)\/[0-9a-f-]{36}$/i.test(path)?16*1024*1024:1024*1024;
+      reviewPhase='body';
       const bytes = await readBoundedBody(response, jsonLimit, 15_000, controller.signal);
       assertCurrent();
+      reviewPhase='decode';
       const text = new TextDecoder('utf-8', {fatal:true}).decode(bytes);
       const responseSchema=path==='v2/integrity/keys'&&resource==='integrity/keys'?IntegrityKeysResult:schema;
+      reviewPhase='validate';
       const parsed = responseSchema.safeParse(JSON.parse(text));
       if (!parsed.success) throw new UnavailableError('Invalid server response.');
+      review('pass');
       return {status:response.status, data:parsed.data};
     } catch (error) {
+      review('fail');
       controller.abort();
       assertCurrent();
       if (error instanceof UnavailableError) throw error;
