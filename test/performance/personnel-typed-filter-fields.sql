@@ -61,7 +61,9 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,app AS $$
           CASE
             WHEN t.tags->>'companyId' IS DISTINCT FROM d.dated_company::text OR t.tags IS NULL
               THEN app.employment_organisation_tags(d.id,p_as_of)
-            WHEN t.tags->>'status'='legacy' THEN t.tags||jsonb_build_object('businessUnitId',d.legacy_business_unit_id)
+            -- The legacy BU is selected from legacy_business_unit_id below.
+            -- No output uses a legacy tags.businessUnitId, so retain the shared tags object.
+            WHEN t.tags->>'status'='legacy' THEN t.tags
             ELSE coalesce(recorded.tags,t.tags)
           END AS tags
    FROM dated d
