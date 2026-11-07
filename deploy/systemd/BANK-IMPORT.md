@@ -87,3 +87,50 @@ under the same company scope as the batch. Payroll writes and the immutable impo
 results commit together. A restart replays the interrupted phase, and an attempt whose
 writes already committed supplies its recorded outcomes without repeating them.
 Include both import paths in staging worker acceptance.
+
+## Protected staging update after first installation
+
+`bank_import_worker_upgrade_v1.py` is a staging-only two-step update, separate from
+first-install v2. It reuses the reviewed closed worker format and fixed service
+configuration. The exact source's successful application witness and authenticated
+`worker-package-v1` artifact are prerequisites; worker bytes alone grant no release
+authority. Production is not supported or authorized by this helper.
+
+1. Retain the shared staging lease across worker drain, web installation, activation,
+   health and rendered acceptance. Independently pin the installed worker source,
+   its first-install receipt, unit hash and selected environment hash. Pin the new
+   archive SHA256 and package/lock hashes from authenticated GitHub artifact metadata
+   and provenance, plus old/new web sources and build IDs.
+2. Assemble a self-contained helper with
+   `python3 scripts/bank-import-worker-upgrade-bundle.py /PRIVATE/NEW-helper.py`.
+   Review and hash-pin those bytes independently, copy to a new root-protected path,
+   verify that hash there, and invoke with `python3 -I -B`. Never import root-executed
+   code from the web-writable checkout or use the first-install helper for updates.
+3. `drain` requires the exact healthy previous web source/build. It snapshots and
+   authenticates the new package before signalling the managed worker's main process
+   with SIGTERM. The existing runner finishes its current Bank and Individual import
+   tick and exits normally. A 330-second observation deadline **never escalates to
+   SIGKILL**, invokes systemd's timed stop, disables the unit, kills a DB session or
+   replays a job. A crash/restart/PID change refuses the update. Queued uploads and
+   saved row/audit checkpoints remain durable. If drain is uncertain, diagnose the
+   retained process/unit before any source installation; do not assume it stopped.
+4. Install the exact verified web source/build through the normal guarded operator
+   route. `activate` requires that exact successful arrival, the matching protected
+   drain record and unchanged old unit/environment. It re-extracts authenticated
+   bytes into a new immutable release, replaces only the fixed unit atomically,
+   reloads systemd and starts the new worker. Three stable live PID/source/command/
+   identity/environment observations are required before its installation receipt.
+5. Verify both actual import journeys and permissions, exact worker/web identity,
+   durable progress/history and restart behavior before declaring Phase 1 arrived.
+   The receipt intentionally keeps `journeyVerified:false`: it is process evidence,
+   not human staging acceptance or rendered journey proof.
+
+The helper takes `drain|activate` plus `--previous-source`, `--previous-build`,
+`--source`, `--build-id`, `--archive`, `--archive-sha256`, `--lock-sha256`,
+`--package-sha256`, `--unit-sha256` and `--worker-env-sha256`. All values must come
+from independently verified release evidence, never a web request. It preserves
+prior code, unit identity evidence, packages, private configuration, DB contents and
+operation records; it does no automatic schema or worker rollback. Existing attempts,
+partial activation or failed web installation require explicit diagnosis/recovery.
+Do not remove an attempt to bypass a refusal. An absent/unhealthy matching worker
+continues to block release even if web health passes.
