@@ -15,7 +15,7 @@ export function actualSingletonHost(plan,unit,dir,env=process.env){
  validateSingletonHost({env,event:JSON.parse(readFileSync(eventPath,'utf8')),layout,plan,unit});return layout;
 }
 export function provisionSingletonHost(plan,unit,dir){
- actualSingletonHost(plan,unit,dir);const descriptor=assertSingletonUnit(unit);assert.equal(descriptor.profile,'linux-systemd-nginx-v1');
+ actualSingletonHost(plan,unit,dir);const descriptor=assertSingletonUnit(unit);assert(['linux-systemd-nginx-v1','linux-next-postgres-v1'].includes(descriptor.profile));
  const run=(command,args)=>execFileSync(command,args,{encoding:'utf8',timeout:120000,maxBuffer:1048576});
  run('sudo',['-n','apt-get','update','-qq']);run('sudo',['-n','apt-get','install','-y','--no-install-recommends','nginx']);
  // nginx -v prints to stderr; capture it without shell interpolation.

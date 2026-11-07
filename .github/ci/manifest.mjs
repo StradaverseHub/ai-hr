@@ -3,7 +3,7 @@ import {createHash} from 'node:crypto';
 import {balanceDatabaseFiles,DB_SCHEDULING} from './db-scheduling.mjs';
 import {PDF_TOOL_CONSUMERS} from './pdf-tool-scope.mjs';
 import {V15_POSTGRES_PROFILE} from './postgres-evidence.mjs';
-import {singletonDescriptor,singletonKind} from './singleton-protocol.mjs';
+import {singletonDescriptor,singletonKind,nativeNextUnit,singletonJobName} from './singleton-protocol.mjs';
 export const CI_EXECUTION={workers:2,postgres:V15_POSTGRES_PROFILE,scheduling:DB_SCHEDULING};
 export const DB_BATCH_FILES=24;
 export const NODB_BATCH_FILES=256;
@@ -39,5 +39,16 @@ export function requiredEvidence(expectedPlan){
  const browser=expectedPlan.units.find(u=>u.kind==='browser')?.files;
  if(JSON.stringify(buildUnits(expectedPlan.suite,groups,browser))!==JSON.stringify(expectedPlan.units))throw Error('Incomplete or altered manifest topology');
  const units=expectedPlan.units.map(u=>u.id);
- return {units,jobs:['resolve','plan','controller-tests','migrations','typecheck','build',...expectedPlan.units.map(u=>u.kind==='browser'?`browser (${u.engine})`:`test (${u.id})`),'verify','deployment-hold'],artifacts:['gate-plan','gate-evidence','production-build-v1',...units.map(id=>`unit-${id}`)]};
+ return {units,jobs:['resolve','plan','controller-tests','migrations','typecheck','build',...expectedPlan.units.map(singletonJobName),'verify','deployment-hold'],artifacts:['gate-plan','gate-evidence','production-build-v1',...units.map(id=>`unit-${id}`)]};
+}
+
+/** A skipped empty matrix is optional only when its capability has no units. */
+export const optionalSkippedCiJob=(name,plan)=>['runner-diagnostics','commission-summary'].includes(name)||name==='native-test'&&!plan.units.some(nativeNextUnit);
+
+/** A local plan has no controller authority. Bind only independently authenticated
+ * witness identity, retaining the source-derived complete inventory. */
+export function bindPlanWitnessIdentity(local,{controller,baseline},runtime=local.runtime){
+ if(!/^[a-f0-9]{40}$/.test(controller??'')||!/^[a-f0-9]{40}$/.test(baseline??''))throw Error('Authenticated plan witness identity required');
+ const {fingerprint:unused,...body}={...local,controller,migrationBase:baseline,runtime};
+ return {...body,fingerprint:hash(body)};
 }

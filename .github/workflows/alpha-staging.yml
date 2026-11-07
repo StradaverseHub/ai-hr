@@ -92,7 +92,7 @@ jobs:
           CONTROLLER_ONLY: ${{ inputs.controller_only }}
         run: test "$EVENT" = workflow_dispatch && test "$DIAGNOSTICS_ONLY" = false && test "$CONTROLLER_ONLY" = false
       - name: CI integrity regression checks
-        run: node --experimental-strip-types --test .github/ci/build-source-binding.test.mjs .github/ci/ai-manifest-admission.test.mjs .github/ci/rsync-packet-capability.test.mjs .github/ci/pdf-tool-scope.test.mjs .github/ci/pdf-tools.test.mjs .github/ci/compiler-cache.test.mjs .github/ci/cache-artifact-discovery.test.mjs .github/ci/compiler-wrapper.test.mjs .github/ci/diagnostics/compiler-compatible.test.mjs .github/ci/diagnostics/compiler-state.test.mjs .github/ci/runner-capacity.test.mjs .github/ci/diagnostics/compiler-cleanup.test.mjs .github/ci/ci.test.mjs .github/ci/release-policy.test.mjs .github/ci/archive-downloads.test.mjs .github/ci/prefetch-ci.test.mjs .github/ci/migration-history.test.mjs .github/ci/manifest.test.mjs .github/ci/singleton-profiles.test.mjs .github/ci/singleton-commissioning.test.mjs .github/ci/db-scheduling.test.mjs .github/ci/duration-order.test.mjs .github/ci/r395-write-split.test.mjs .github/ci/attendance-unclocked-split.test.mjs .github/ci/postgres-evidence.test.mjs .github/ci/report-run-cost.test.mjs .github/ci/resume-assessment.test.mjs .github/ci/resume-source.test.mjs .github/ci/resume-repair.test.mjs .github/ci/repair-impact.test.mjs .github/ci/build-production.test.mjs .github/ci/build-artifact.test.mjs .github/ci/build-transport.test.mjs .github/ci/ci-build-transport-policy.test.mjs .github/ci/next-application-cache.test.mjs .github/ci/next-build-cache-policy.test.mjs .github/ci/next-application-restore.test.mjs .github/ci/staging-transport.test.mjs .github/ci/staging-build-install.test.mjs .github/ci/staging-ci-promotion.test.mjs .github/ci/staging-migration-ledger.test.mjs .github/ci/staging-environment.test.mjs .github/ci/staging-preflight.test.mjs .github/ci/customer-runtime-transition.test.mjs .github/ci/customer-runtime-snapshot.test.mjs .github/ci/staging-cleanup-protocol.test.mjs .github/ci/normal-cleanup-session.test.mjs .github/ci/normal-cleanup-io.test.mjs .github/ci/focused-recovery.test.mjs .github/ci/repair-recovery.test.mjs .github/ci/repair-recovery-adapter.test.mjs .github/ci/browser-recovery.test.mjs .github/ci/build-heap.test.mjs .github/ci/orchestrator-browser.test.mjs
+        run: node --experimental-strip-types --test .github/ci/build-source-binding.test.mjs .github/ci/ai-manifest-admission.test.mjs .github/ci/rsync-packet-capability.test.mjs .github/ci/pdf-tool-scope.test.mjs .github/ci/pdf-tools.test.mjs .github/ci/compiler-cache.test.mjs .github/ci/cache-artifact-discovery.test.mjs .github/ci/compiler-wrapper.test.mjs .github/ci/diagnostics/compiler-compatible.test.mjs .github/ci/diagnostics/compiler-state.test.mjs .github/ci/runner-capacity.test.mjs .github/ci/diagnostics/compiler-cleanup.test.mjs .github/ci/ci.test.mjs .github/ci/release-policy.test.mjs .github/ci/archive-downloads.test.mjs .github/ci/prefetch-ci.test.mjs .github/ci/migration-history.test.mjs .github/ci/manifest.test.mjs .github/ci/singleton-profiles.test.mjs .github/ci/singleton-commissioning.test.mjs .github/ci/native-next-build-packet.test.mjs .github/ci/candidate-environment.test.mjs .github/ci/native-next-build-inputs.test.mjs .github/ci/db-scheduling.test.mjs .github/ci/duration-order.test.mjs .github/ci/r395-write-split.test.mjs .github/ci/attendance-unclocked-split.test.mjs .github/ci/postgres-evidence.test.mjs .github/ci/report-run-cost.test.mjs .github/ci/resume-assessment.test.mjs .github/ci/resume-source.test.mjs .github/ci/resume-repair.test.mjs .github/ci/repair-impact.test.mjs .github/ci/build-production.test.mjs .github/ci/build-artifact.test.mjs .github/ci/build-transport.test.mjs .github/ci/ci-build-transport-policy.test.mjs .github/ci/next-application-cache.test.mjs .github/ci/next-build-cache-policy.test.mjs .github/ci/next-application-restore.test.mjs .github/ci/staging-transport.test.mjs .github/ci/staging-build-install.test.mjs .github/ci/staging-ci-promotion.test.mjs .github/ci/staging-migration-ledger.test.mjs .github/ci/staging-environment.test.mjs .github/ci/staging-preflight.test.mjs .github/ci/customer-runtime-transition.test.mjs .github/ci/customer-runtime-snapshot.test.mjs .github/ci/staging-cleanup-protocol.test.mjs .github/ci/normal-cleanup-session.test.mjs .github/ci/normal-cleanup-io.test.mjs .github/ci/focused-recovery.test.mjs .github/ci/repair-recovery.test.mjs .github/ci/repair-recovery-adapter.test.mjs .github/ci/browser-recovery.test.mjs .github/ci/build-heap.test.mjs .github/ci/orchestrator-browser.test.mjs
       - name: Build byte transport regression checks
         run: |
           PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s scripts/staging -p "test_*.py"
@@ -298,6 +298,9 @@ jobs:
   plan:
     outputs:
       test_matrix: ${{ steps.matrix.outputs.test_matrix }}
+      native_matrix: ${{ steps.matrix.outputs.native_matrix }}
+      has_tests: ${{ steps.matrix.outputs.has_tests }}
+      has_native: ${{ steps.matrix.outputs.has_native }}
     if: ${{ !inputs.diagnostics_only && !inputs.build_only }}
     needs: resolve
     runs-on: ubuntu-24.04
@@ -346,8 +349,8 @@ jobs:
           if-no-files-found: error
           retention-days: 30
   build:
-    if: ${{ !inputs.diagnostics_only && !inputs.commission_singleton_units }}
-    needs: resolve
+    if: ${{ always() && !inputs.diagnostics_only && needs.resolve.result == 'success' && (!inputs.commission_singleton_units || needs.plan.outputs.has_native == 'true') && (inputs.build_only || needs.plan.result == 'success') }}
+    needs: [resolve, plan]
     runs-on: ubuntu-24.04
     defaults:
       run:
@@ -474,7 +477,7 @@ jobs:
           key: ${{ steps.next-cache-context.outputs.prefix }}-${{ needs.resolve.outputs.sha }}
           enableCrossOsArchive: false
   test:
-    if: ${{ !inputs.diagnostics_only && !inputs.build_only }}
+    if: ${{ !inputs.diagnostics_only && !inputs.build_only && needs.plan.outputs.has_tests == 'true' }}
     needs: [resolve, plan]
     runs-on: ubuntu-24.04
     defaults:
@@ -512,6 +515,61 @@ jobs:
       - run: git rev-parse --verify -q refs/heads/main >/dev/null || git branch main origin/main
       - run: node ../automation/.github/ci/run-unit.mjs "$UNIT" "$RUNNER_TEMP/aihr-ci"
         env: {UNIT: '${{ matrix.unit }}'}
+      - name: Retain actual PDF setup diagnostics with the unit evidence
+        if: always()
+        run: |
+          if [ -f "$RUNNER_TEMP/pdf-tools-setup.json" ]; then
+            mkdir -p "$RUNNER_TEMP/aihr-ci"
+            cp "$RUNNER_TEMP/pdf-tools-setup.json" "$RUNNER_TEMP/aihr-ci/pdf-tools-setup.json"
+          fi
+      - if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: ${{ inputs.commission_singleton_units && 'commission-unit' || 'unit' }}-${{ matrix.unit }}
+          path: ${{ runner.temp }}/aihr-ci/
+          if-no-files-found: error
+          retention-days: 14
+  native-test:
+    if: ${{ !inputs.diagnostics_only && !inputs.build_only && needs.plan.outputs.has_native == 'true' && needs.build.result == 'success' }}
+    needs: [resolve, plan, build]
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: source
+    env:
+      AIHR_CI_HEAD: ${{ needs.resolve.outputs.sha }}
+      AIHR_CI_MIGRATION_BASE: ${{ needs.resolve.outputs.base }}
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      max-parallel: ${{ fromJSON(inputs.test_parallelism || '48') }}
+      matrix: ${{ fromJSON(needs.plan.outputs.native_matrix) }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: ${{ github.workflow_sha }}
+          path: automation
+          persist-credentials: false
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: ${{ needs.resolve.outputs.sha }}
+          path: source
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: ./automation/.github/actions/setup-alpha
+        with: {capacity_profile: "${{ github.run_attempt == 1 && 'bounded-suite-setup' || 'legacy' }}"}
+      - name: Source-bound PDF dependencies for this complete unit
+        env: {UNIT: '${{ matrix.unit }}'}
+        run: node ../automation/.github/ci/pdf-tools.mjs --unit "$UNIT"
+      - name: Provision actual nonroot Chromium driver
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Preserve suite headroom after native tooling
+        if: ${{ github.run_attempt == 1 }}
+        run: bash ../automation/.github/ci/prepare-runner.sh
+        env: {AIHR_CI_CAPACITY_PROFILE: bounded-suite-ready}
+      - run: git rev-parse --verify -q refs/heads/main >/dev/null || git branch main origin/main
+      - run: node ../automation/.github/ci/run-unit.mjs "$UNIT" "$RUNNER_TEMP/aihr-ci"
+        env: {UNIT: '${{ matrix.unit }}', GH_TOKEN: '${{ github.token }}'}
       - name: Retain actual PDF setup diagnostics with the unit evidence
         if: always()
         run: |
@@ -567,7 +625,7 @@ jobs:
           if-no-files-found: error
           retention-days: 14
   verify:
-    needs: [resolve, plan, controller-tests, typecheck, migrations, build, test, browser]
+    needs: [resolve, plan, controller-tests, typecheck, migrations, build, test, native-test, browser]
     if: ${{ always() && !inputs.diagnostics_only && !inputs.build_only && !inputs.commission_singleton_units && needs.resolve.result == 'success' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 10
@@ -582,7 +640,7 @@ jobs:
       - name: Every prerequisite succeeded
         working-directory: ${{ github.workspace }}
         env: {RESULTS: '${{ toJSON(needs) }}'}
-        run: node -e 'for(const j of Object.values(JSON.parse(process.env.RESULTS)))if(j.result!=="success")process.exit(1)'
+        run: node -e 'const n=JSON.parse(process.env.RESULTS);for(const [name,j] of Object.entries(n))if(j.result!=="success"&&!(name==="native-test"&&n.plan.outputs.has_native==="false"&&j.result==="skipped"))process.exit(1)'
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
           ref: ${{ github.workflow_sha }}
@@ -609,7 +667,7 @@ jobs:
           if-no-files-found: error
           retention-days: 30
   commission-summary:
-    needs: [resolve, plan, test]
+    needs: [resolve, plan, test, native-test]
     if: ${{ always() && inputs.commission_singleton_units && needs.resolve.result == 'success' && needs.plan.result == 'success' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 10

@@ -7,6 +7,7 @@ import {randomUUID} from 'node:crypto';
 import {isDeepStrictEqual} from 'node:util';
 import {createPlan,hash} from './plan.mjs';
 import {requiredEvidence} from './manifest.mjs';
+import {singletonJobName} from './singleton-protocol.mjs';
 import {cleanHead,controllerRoot,sourceBoundBuild} from './release-ci.mjs';
 import {REPOSITORY,REPOSITORY_ID,WORKFLOW_ID,WORKFLOW_PATH} from './release-policy.mjs';
 import {BUILD_ARTIFACT} from './build-artifact.mjs';
@@ -87,7 +88,7 @@ export async function verifyRepairedCi({candidatePath,originalPath,runId,baselin
  assert(originalMetadata.run.status==='completed'&&originalMetadata.run.conclusion==='failure'&&originalMetadata.run.run_attempt===1,'Wait for all planned original jobs to finish');
  const preliminary=planAt(originalPath,{controller,baseline,runtime:{node:'22.23.3',platform:'linux',arch:'x64'}}),topology=requiredEvidence(preliminary);
  const allowed=new Set([...topology.artifacts,COMPILER_STATE_ARTIFACT,NEXT_APPLICATION_STATE,NEXT_APPLICATION_FAILURE]);
- const producerFor=name=>name==='gate-plan'?'plan':name==='gate-evidence'?'verify':name===COMPILER_STATE_ARTIFACT?'typecheck':name.startsWith('unit-')?((u)=>u.kind==='browser'?`browser (${u.engine})`:`test (${u.id})`)(preliminary.units.find(u=>'unit-'+u.id===name)):'build';
+ const producerFor=name=>name==='gate-plan'?'plan':name==='gate-evidence'?'verify':name===COMPILER_STATE_ARTIFACT?'typecheck':name.startsWith('unit-')?singletonJobName(preliminary.units.find(u=>'unit-'+u.id===name)):'build';
  validateRepairArchiveInventory(originalMetadata,allowed,producerFor);
  const dir=evidenceDirectory??join(controllerRoot,'scratchpad',`validated-repair-${runId}-${randomUUID()}`),sourceDir=join(dir,'original');
  const source=await collectRecoveryEvidence(runId,sourceDir,{reuse,prefetchDirectory:process.env.AIHR_REPAIR_ORIGINAL_PREFETCH_DIR||undefined});

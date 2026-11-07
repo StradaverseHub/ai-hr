@@ -8,6 +8,7 @@ import {singletonSources,assertSingletonCoverage} from './singleton-protocol.mjs
 import {CI_POLICY} from './policy-version.mjs';
 import {inspectPdfToolScope} from './pdf-tool-scope.mjs';
 import {buildUnits,hash,CI_EXECUTION} from './manifest.mjs';
+import {candidateEnvironment} from './candidate-environment.mjs';
 export {hash};
 export function createPlan(cwd = process.cwd()) {
   const git = (...args) => execFileSync('git', args, {cwd, encoding: 'utf8'}).trim();
@@ -24,7 +25,7 @@ export function createPlan(cwd = process.cwd()) {
   if(classifierRuntime==='native'&&(major!==22||minor<18))throw Error('Native classifier requires Node 22.18+');
   const loader=classifierRuntime==='native'?['--experimental-strip-types']:['--import','tsx'];
   const classified = execFileSync(process.execPath, [...loader, 'scripts/gate-db-classify.ts', 'explain'], {
-    cwd, input: suite.join('\n') + '\n', encoding: 'utf8', maxBuffer: 16 * 1024 * 1024,
+    cwd, env:candidateEnvironment(process.env), input: suite.join('\n') + '\n', encoding: 'utf8', maxBuffer: 16 * 1024 * 1024,
   }).trim().split('\n').map(line => line.split('\t'));
   const groups = {nodb: [], db: []};
   for (const [kind, file] of classified) {
