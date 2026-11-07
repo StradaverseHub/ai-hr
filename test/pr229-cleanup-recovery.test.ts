@@ -10,3 +10,13 @@ describe('PR229 cleanup permission limits',()=>{
  it('refuses other tool bytes or extended lifetime',()=>{expect(()=>validateCertificate(certificate(),'0'.repeat(64),now)).toThrow();const c=certificate();c.expiresAt=new Date(now+900001).toISOString();expect(()=>validateCertificate(c,tool,now)).toThrow();});
  it('requires fresh empty checksum, exact certificate and one-use challenge',()=>{const c=certificate(),ready={nonce:'1'.repeat(64),readyAt:new Date(now).toISOString()},commit={kind:'PR229_CLEANUP_COMMIT',certificate:digest(c),nonce:ready.nonce,outputSha256:digest(''),checkedAt:new Date(now).toISOString()};expect(validateCommit(commit,ready,c,tool,now)).toEqual(commit);for(const field of ['nonce','certificate','outputSha256','kind'])expect(()=>validateCommit({...commit,[field]:'wrong'},ready,c,tool,now)).toThrow();expect(()=>validateCommit(commit,ready,c,tool,now+60001)).toThrow();expect(()=>validateCommit({...commit,checkedAt:new Date(now+1).toISOString()},ready,c,tool,now)).toThrow();});
 });
+
+import {mkdtempSync,mkdirSync,writeFileSync,symlinkSync,rmSync} from 'node:fs';
+import {tmpdir} from 'node:os';
+import {join} from 'node:path';
+import {cleanupTreeFence as frozenFence} from '../.github/ci/normal-cleanup-fences.mjs';
+import {cleanupTreeFence as oneStatFence} from '../.github/ci/pr229-cleanup-fences.mjs';
+describe('complete metadata identity with one stat per entry',()=>{
+ it('matches the frozen full metadata oracle including links, directories, and empty files',()=>{const r=mkdtempSync(join(tmpdir(),'cleanup-fence-'));try{mkdirSync(join(r,'nested'));writeFileSync(join(r,'nested','file'),'original');writeFileSync(join(r,'empty'),'');symlinkSync('nested/file',join(r,'link'));expect(oneStatFence(r,()=>false)).toBe(frozenFence(r,()=>false));}finally{rmSync(r,{recursive:true});}});
+ it('retains exact exclusions and detects an included byte or mode/size metadata change',()=>{const r=mkdtempSync(join(tmpdir(),'cleanup-fence-'));try{mkdirSync(join(r,'cache'));writeFileSync(join(r,'cache','runtime'),'a');writeFileSync(join(r,'compiled'),'original');const exclude=(p:string)=>p==='cache';const before=oneStatFence(r,exclude);writeFileSync(join(r,'cache','runtime'),'different');expect(oneStatFence(r,exclude)).toBe(before);expect(oneStatFence(r,exclude)).toBe(frozenFence(r,exclude));writeFileSync(join(r,'compiled'),'changed bytes');expect(oneStatFence(r,exclude)).not.toBe(before);expect(oneStatFence(r,exclude)).toBe(frozenFence(r,exclude));}finally{rmSync(r,{recursive:true});}});
+});

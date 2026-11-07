@@ -7,7 +7,7 @@ import {randomBytes} from 'node:crypto';
 import {fileURLToPath,pathToFileURL} from 'node:url';
 import {selection as S,digest,canonical,runtimeBinding,validateCertificate,validateCommit} from './pr229-cleanup-policy.mjs';
 import {createCleanupReadonlyRuntime} from './pr229-cleanup-runtime.mjs';
-export const toolFiles=['policy','runtime','server'].map(n=>'pr229-cleanup-'+n+'.mjs');
+export const toolFiles=['policy','runtime','fences','server'].map(n=>'pr229-cleanup-'+n+'.mjs');
 export const toolHash=()=>digest(toolFiles.map(n=>[n,digest(readFileSync(new URL(n,import.meta.url)))]));
 const originals=['activate-intent.json','activate-result.json','activated.json','authorization.json','cleanup-authorized.json','normal-cleanup-commit.json','normal-cleanup-consumed.json','normal-cleanup-ready.json','runtime.json','store.json','verified.json'].sort();
 async function serve(mode,certPath){
@@ -18,7 +18,7 @@ async function serve(mode,certPath){
  const lease=()=>{guardServerCli(S.source);assert(process.env.AIHR_STAGING_BATCH===S.batch&&process.env.AIHR_STAGING_EPOCH===String(S.epoch));};lease();
  const {readPrivateInstall,withNormalCleanupLock}=await load('staging-build-install.mjs');
  const {durableCleanupRecord,readSingleCleanupCommit}=await load('normal-cleanup-io.mjs');
- const {captureNormalCleanupFences,canonicalSourceExclusions}=await load('normal-cleanup-fences.mjs');
+ const {captureNormalCleanupFences,canonicalSourceExclusions}=await import('./pr229-cleanup-fences.mjs');
  const {fingerprintStagingEnvironment}=await load('staging-environment.mjs');
  const {collectMigrationLedger}=await load('staging-migration-ledger.mjs');
  const cert=mode==='cleanup'?JSON.parse(readFileSync(certPath)):null,tool=toolHash();
