@@ -1,0 +1,43 @@
+/** Pure controller boundaries only; the real compiler runs solely in the opt-in hosted job. */
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
+import {compilerArguments,lastCheckedSource,actualCompilerResult,attributeCompiler,ATTRIBUTION_SOURCE,validateAttributionSelection} from './compiler-attribution.mjs';
+
+test('selection admits only the exact source and no other diagnostics or transport',()=>{
+ const inputs={expected_sha:ATTRIBUTION_SOURCE,compiler_attribution_probe:true,nodb_probe:false,layout_probe:false,next_build_cache_phase:'disabled',
+  ...Object.fromEntries(['transport_origin_run','transport_origin_sha','transport_origin_artifact','transport_origin_digest','compiler_origin_run','compiler_origin_sha','compiler_origin_artifact','compiler_origin_digest'].map(key=>[key,'']))};
+ assert.doesNotThrow(()=>validateAttributionSelection(inputs));
+ for(const changed of [{expected_sha:'0'.repeat(40)},{compiler_attribution_probe:false},{nodb_probe:true},{layout_probe:true},{run_build:true},{next_build_cache_phase:'cold'},{compiler_origin_run:'123'},{transport_origin_run:'123'}])assert.throws(()=>validateAttributionSelection({...inputs,...changed}));
+});
+
+test('attribution retains whole-project config and a fresh owned graph without weakening coverage',()=>{
+ const args=compilerArguments('/source','/owned');
+ assert.deepEqual(args,['/source/node_modules/typescript/lib/tsc.js','--noEmit','--pretty','false','--tsBuildInfoFile','/owned/whole-project.tsbuildinfo','--extendedDiagnostics','--generateTrace','/owned/trace']);
+ assert.deepEqual(compilerArguments('/source','/owned',true),['/source/node_modules/typescript/lib/tsc.js','--noEmit','--pretty','false','--tsBuildInfoFile','/owned/inventory.tsbuildinfo','--listFilesOnly']);
+ assert.equal(ATTRIBUTION_SOURCE,'ed188690f8258093391e1f6bc2c92b5bf5744816');
+});
+test('the final complete begin event survives incomplete or truncated trace tails',()=>{
+ const begin=path=>JSON.stringify({name:'checkSourceFile',ph:'B',args:{path}});
+ assert.equal(lastCheckedSource('truncated\n,'+begin('first.ts')+'\n,{"name":"checkSourceFile","ph":"E"}\n,'+begin('second.ts')+'\n,{"name":'), 'second.ts');
+ assert.equal(lastCheckedSource('[]\n{"name":"other","ph":"B","args":{"path":"ignored"}}'),null);
+});
+test('zero exit, complete file inventory and no diagnostic/limit are all required',()=>{
+ const ok={code:0,signal:null,stoppedBecause:null},log='Files: 12345\n';
+ assert.equal(actualCompilerResult(ok,log).compilerCompleted,true);
+ for(const result of [{...ok,code:2},{...ok,code:null,signal:'SIGABRT'},{...ok,stoppedBecause:'diagnostic-timeout'}])assert.equal(actualCompilerResult(result,log).compilerCompleted,false);
+ for(const text of ['', 'Files: 0\n',log+'file.ts(1,1): error TS2322: bad\n'])assert.equal(actualCompilerResult(ok,text).compilerCompleted,false);
+ const oom=actualCompilerResult({code:null,signal:'SIGABRT',stoppedBecause:null},'FATAL ERROR: Ineffective mark-compacts near heap limit Allocation failed - JavaScript heap out of memory\n');
+ assert.equal(oom.v8HeapFailure,true);assert.equal(oom.compilerCompleted,false);assert.equal(oom.signal,'SIGABRT');
+});
+test('no development compiler trace can become a release witness or change the normal helper',()=>{
+ const workflow=readFileSync(new URL('../../workflows/alpha-staging-diagnostics.yml',import.meta.url),'utf8');
+ assert.match(workflow,/compiler_attribution_probe:[\s\S]*?default: false/);
+ assert.match(workflow,/compiler-attribution:[\s\S]*?runs-on: ubuntu-24.04[\s\S]*?timeout-minutes: 20/);
+ assert.match(workflow,/name: diagnostic-compiler-attribution\n\s+path: \$\{\{ runner.temp \}\}\/diagnostic-compiler-attribution\//);
+});
+test('non-hosted invocation refuses before reading candidate files',async()=>{
+ const previous=process.env.GITHUB_ACTIONS;
+ try{process.env.GITHUB_ACTIONS='false';await assert.rejects(attributeCompiler(),/Managed company runner/);}
+ finally{if(previous===undefined)delete process.env.GITHUB_ACTIONS;else process.env.GITHUB_ACTIONS=previous;}
+});

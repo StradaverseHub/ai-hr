@@ -108,6 +108,11 @@ on:
         required: false
         default: false
         type: boolean
+      compiler_attribution_probe:
+        description: Exact ed188 whole-project compiler trace at unchanged12GiB; retains OOM and grants no release authority
+        required: false
+        default: false
+        type: boolean
       statutory_probe:
         description: Original statutory DOM file and labelled 5000ms stage/style measurement copy
         required: false
@@ -154,6 +159,14 @@ jobs:
       - name: Compiler diagnostic controller checks
         if: ${{ inputs.compiler_probe }}
         run: node --test .github/ci/diagnostics/compiler-incremental.test.mjs
+      - name: Whole compiler attribution controller checks
+        if: ${{ inputs.compiler_attribution_probe }}
+        run: node --test .github/ci/diagnostics/compiler-attribution.test.mjs
+      - name: Admit compiler-only attribution scope
+        if: ${{ inputs.compiler_attribution_probe }}
+        run: node .github/ci/diagnostics/compiler-attribution.mjs --selection
+        env:
+          AIHR_COMPILER_ATTRIBUTION_INPUTS: ${{ toJSON(inputs) }}
       - name: Build transport controller checks
         if: ${{ inputs.build_transport_probe || inputs.transport_origin_run != '' }}
         run: |
@@ -333,6 +346,32 @@ jobs:
         with:
           name: diagnostic-fast-plan
           path: ${{ runner.temp }}/diagnostic-fast-plan/
+          if-no-files-found: error
+          retention-days: 14
+
+  compiler-attribution:
+    if: ${{ inputs.compiler_attribution_probe }}
+    needs: resolve
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    defaults: {run: {working-directory: source}}
+    env:
+      AIHR_CI_HEAD: ${{ needs.resolve.outputs.sha }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with: {ref: '${{ github.workflow_sha }}', path: automation, persist-credentials: false}
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with: {ref: '${{ needs.resolve.outputs.sha }}', path: source, persist-credentials: false}
+      - uses: ./automation/.github/actions/setup-alpha
+      - name: Generate real Next route types
+        run: pnpm exec next typegen
+      - name: Attribute the complete cold compiler with unchanged heap and roots
+        run: node ../automation/.github/ci/diagnostics/compiler-attribution.mjs
+      - if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: diagnostic-compiler-attribution
+          path: ${{ runner.temp }}/diagnostic-compiler-attribution/
           if-no-files-found: error
           retention-days: 14
 
