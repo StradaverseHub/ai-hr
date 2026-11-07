@@ -142,9 +142,24 @@ try{
   req.on('aborted',()=>request.destroy());
   res.on('close',()=>{if(!res.writableFinished)request.destroy();});req.pipe(request);
  });await new Promise((resolve,reject)=>{proxy.once('error',reject);proxy.listen(3443,'127.0.0.1',resolve);});
- for(const port of ports){
-  let ready=false;for(let i=0;i<120;i++){try{const response=await fetch('http://127.0.0.1:'+port+'/login');if(response.status===200){ready=true;break;}}catch{}await pause(500);}
-  assert(ready,'production worker did not become ready');
+ report.workerReadiness=[];
+ for(const [worker,port]of ports.entries()){
+  const started=Date.now();let health=false,login=false,attempts=0;
+  while(Date.now()-started<60000){
+   attempts++;
+   try{
+    const response=await fetch('http://127.0.0.1:'+port+'/health',{signal:AbortSignal.timeout(5000)});
+    health=response.status===200&&(await response.text())==='{"status":"ok"}\n';
+    if(health){
+     const response=await fetch('http://127.0.0.1:'+port+'/login',{signal:AbortSignal.timeout(5000)});
+     login=response.status===200;await response.body?.cancel();
+     if(login)break;
+    }
+   }catch{}
+   await pause(500);
+  }
+  report.workerReadiness.push({worker,elapsedMs:Date.now()-started,attempts,health,login,homeHandlerRequests:0});save();
+  assert(health&&login,'production worker did not become ready');
  }
  // The driver covers setup journeys and verification as well as the steady traffic interval.
  // Keep the post-warmup allowance constant when the measured interval is longer.
