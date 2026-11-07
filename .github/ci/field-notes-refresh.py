@@ -73,13 +73,22 @@ def main():
    tools=sorted((sdk/'build-tools').iterdir(),key=lambda p:tuple(int(x) if x.isdigit() else 0 for x in p.name.split('.')))[-1]
    aligned=root/'aligned.apk';artifact=package/'OneHR-Field-Notes-review.apk'
    run(str(tools/'zipalign'),'-p','-f','4',str(unsigned),str(aligned))
-   # This is Expo's public template review key, never a distribution credential.
-   key='mobile/android/app/debug.keystore'
+   # Only the original public debug signer may update the installed review app.
+   expected='fac61745dc0903786fb9ede62a962b399f7348f0bb6f899b8332667591033b9c'
+   key=None
+   observed=[]
+   for candidate in [Path('mobile/android/app/debug.keystore'),Path.home()/'.android/debug.keystore']:
+    if not candidate.is_file():continue
+    certificate=subprocess.run(['keytool','-exportcert','-keystore',str(candidate),'-alias','androiddebugkey','-storepass','android'],capture_output=True)
+    if certificate.returncode:continue
+    digest=hashlib.sha256(certificate.stdout).hexdigest();observed.append(digest)
+    if digest==expected:key=str(candidate);break
+   if not key:raise RuntimeError('No matching standard review key; public certificate digests: '+','.join(observed))
    run(str(tools/'apksigner'),'sign','--ks',key,'--ks-key-alias','androiddebugkey','--ks-pass','pass:android','--key-pass','pass:android','--out',str(artifact),str(aligned))
-   def certificate(p):
+   def certificates(p):
     value=output(str(tools/'apksigner'),'verify','--print-certs',str(p))
-    return re.findall(r'Signer #\d+ certificate SHA-256 digest: (\w+)',value)
-   if not certificate(artifact) or certificate(artifact)!=certificate(original/base['file']):raise RuntimeError('Review update signer mismatch')
+    return {digest.lower() for digest in re.findall(r'certificate SHA-256 digest:\s*([0-9a-fA-F]{64})',value)}
+   if certificates(artifact)!={expected} or certificates(original/base['file'])!={expected}:raise RuntimeError('Review update signer mismatch')
   (package/'source.txt').write_text(head+'\n')
   (package/'native-base.txt').write_text(base['sha']+'\n')
   (package/'review-manifest.json').write_text(json.dumps({'purpose':'local simulator review only','javascriptSource':head,'nativeSource':base['sha'],'nativeArtifactSha256':base['digest'],'bundleSha256':sha(bundle),'packageSha256':sha(artifact),'platform':platform},indent=2)+'\n')

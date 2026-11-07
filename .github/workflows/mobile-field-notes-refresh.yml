@@ -6,9 +6,13 @@ on:
     paths:
       - mobile/app/**
       - mobile/lib/**
-      - .github/ci/field-notes-refresh.py
-      - .github/workflows/mobile-field-notes-refresh.yml
   workflow_dispatch:
+    inputs:
+      platform:
+        description: Review platform to rebuild
+        type: choice
+        options: [both, ios, android]
+        default: both
 permissions:
   contents: read
   actions: read
@@ -20,11 +24,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - platform: ios
-            os: macos-26
-          - platform: android
-            os: ubuntu-24.04
+        include: ${{ fromJSON(inputs.platform == 'android' && '[{"platform":"android","os":"ubuntu-24.04"}]' || inputs.platform == 'ios' && '[{"platform":"ios","os":"macos-26"}]' || '[{"platform":"ios","os":"macos-26"},{"platform":"android","os":"ubuntu-24.04"}]') }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 20
     env:
