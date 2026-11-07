@@ -1,6 +1,6 @@
 /** Actual native preparation source and isolated equivalent legacy fixtures; no delivery/provider. */
 import {readFileSync} from 'node:fs';
-import {randomUUID} from 'node:crypto';
+import {randomUUID,createHash} from 'node:crypto';
 import {afterAll,afterEach,beforeAll,beforeEach,describe,expect,it} from 'vitest';
 import {eq} from 'drizzle-orm';
 import type {TransactionSql} from 'postgres';
@@ -12,10 +12,11 @@ import {toSnapshot} from '../../../core/entitlements';
 import * as performance from '../../../packs/performance/service';
 import {defaultPolicy} from '../../../packs/performance/onehr/model';
 import framework from '../../../packs/performance/onehr/framework.json';
-import {assessmentReminderProjectionWork} from '../../../packs/performance/onehr/reminder-projection';
+import {assessmentReminderProjectionWork,assessmentReminderProjectionExpiry} from '../../../packs/performance/onehr/reminder-projection';
 import {assessmentReminderPreparationValue} from '../../../packs/performance/onehr/reminder-preparation';
 import {todayInKualaLumpur} from '../../../lib/hr-date';
 import {pgSqlState} from '../../../lib/db-error';
+import {assessmentReminderTaskSchema,assessmentReminderMailSchema} from '../../../lib/assessment-reminder-mail';
 import {notificationWorkerLifecycle} from '../../../lib/notification-worker/lifecycle';
 import {notificationWorkerProjection,notificationWorkerAssessmentContract} from '../../../lib/notification-worker/projection';
 import {nativeAssessmentReminderFacts,prepareNativeAssessmentReminder} from '../../../lib/notification-worker/reminder';
@@ -25,7 +26,13 @@ export function registerNotificationAssessmentCases(fixtureOwner:NotificationWor
 describe.sequential('native assessment reminder preparation (stage3)',()=>{
  const sources=['lifecycle','projection','assessment'].map(name=>readFileSync('test/fixtures/notification-worker/'+name+'.sql','utf8'));
  let service:ReturnType<NotificationWorkerFixtureOwner['connect']>,base:Base;
- beforeAll(()=>fixtureOwner.install(sources,3,notificationWorkerAssessmentContract),300000);
+ beforeAll(async()=>{
+  // Native grammar is intentionally pinned to the actual locked canonical parser.
+  // A parser upgrade requires a reviewed shape/positive/negative parity refresh.
+  expect(JSON.parse(readFileSync('node_modules/zod/package.json','utf8')).version).toBe('4.6.7');
+  expect(createHash('sha256').update(readFileSync('node_modules/zod/src/v4/core/regexes.ts')).digest('hex')).toBe('fd08a3d605812f51ac57e5c5b327682f99aaf741cff30a9363cb4f6afc60cdc9');
+  await fixtureOwner.install(sources,3,notificationWorkerAssessmentContract);
+ },300000);
  beforeEach(async()=>{await owner.client`truncate notification_worker_private.run cascade`;await owner.client`update notification_worker_private.authority set active_run=null,enabled=true`;await resetDb();base=await seedBase();service=fixtureOwner.connect();});
  afterEach(()=>fixtureOwner.finishCase());afterAll(()=>fixtureOwner.clearStage());
  async function fixture(b:Base){
@@ -61,7 +68,20 @@ describe.sequential('native assessment reminder preparation (stage3)',()=>{
   const current=assessmentReminderProjectionWork(facts.graph,{tenantId:facts.tenantId,entitlements:toSnapshot(facts.tenantId,facts.snapshot)},new Date(facts.startedAt)),actor=current?.recipients.find(r=>r.userId===facts.userId);
   expect(actor?.tasks).toEqual([{key:'own_competency',count:1,closesAt:null}]);if(!actor||!current)throw Error('Actual pending-work fixture required');
   const [clock]=await tx`select notification_worker.facts(${batch}::uuid,${event}::uuid,'assessment-reminder-current') as value`;
-  return{facts,proposal:{kind:'prepare',...assessmentReminderPreparationValue({actor,name:'Fictional reminder subject',cycleName:'Fictional native reminder cycle',cycleId:facts.cycleId,tenantScope:'00000000-0000-0000-0000-000000000000',epochs:facts.epochs,expiresAt:Date.parse(facts.startedAt)+60000,now:new Date(clock.value.checkedAt),words:null})}};
+  return{facts,proposal:{kind:'prepare',...assessmentReminderPreparationValue({actor,name:'Fictional reminder subject',cycleName:'Fictional native reminder cycle',cycleId:facts.cycleId,tenantScope:'00000000-0000-0000-0000-000000000000',epochs:facts.epochs,expiresAt:assessmentReminderProjectionExpiry(new Date(facts.startedAt),facts.graph,facts.moduleExpiry?new Date(facts.moduleExpiry):null),now:new Date(clock.value.checkedAt),words:null})}};
+ }
+ async function preparationEffects(row:Awaited<ReturnType<typeof queued>>,run:string){
+  const tenant=row.tenantId,event=row.sourceEventId!;
+  return{
+   preparation:await prepared(row.id),
+   notices:await owner.db.select().from(s.notification).where(eq(s.notification.sourceEventId,event)),
+   outbox:await owner.db.select().from(s.notificationDelivery).where(eq(s.notificationDelivery.sourceEventId,event)),
+   receipts:await owner.client`select * from public.notification_event_processing where event_id=${event}::uuid order by consumer`,
+   cursor:await owner.client`select * from public.notification_cursor where tenant_id=${tenant}::uuid`,
+   counters:await owner.client`select committed_batches,processed_events,created_notifications from notification_worker_private.run where run_id=${run}::uuid`,
+   batches:await owner.client`select batch_id from notification_worker_private.batch where run_id=${run}::uuid`,
+   admissions:await owner.client`select a.* from notification_worker_private.assessment_admission a join notification_worker_private.batch b on b.batch_id=a.batch_id where b.run_id=${run}::uuid`,
+  };
  }
  it('matches actual legacy preparation, notifications and consent outbox across independent equivalent tenants',async()=>{
   const legacy=await fixture(base),native=await fixture(await seedBase());await historical();const old=await queued(legacy),next=await queued(native);
@@ -111,6 +131,54 @@ describe.sequential('native assessment reminder preparation (stage3)',()=>{
   expect(await prepared(row.id)).toEqual(before);
   const accessible=await owner.client`select p.oid::regprocedure::text as signature from pg_proc p join pg_namespace n on n.oid=p.pronamespace where p.prosecdef and n.nspname !~ '^pg_' and has_schema_privilege('ai_hr_notification_worker',n.oid,'USAGE') and has_function_privilege('ai_hr_notification_worker',p.oid,'EXECUTE')`;
   expect(accessible).toHaveLength(13);expect(accessible.every(row=>row.signature.startsWith('notification_worker.'))).toBe(true);
+ },30000);
+ it('refuses noncanonical JSON tasks, dates, epochs and skip shapes without any committed preparation or projection effect',async()=>{
+  const f=await fixture(base);await historical();const row=await queued(f);await targetOnly(row.sourceEventId!);const run=await notificationWorkerLifecycle(service).openRun(),before=await preparationEffects(row,run);
+  type Proposal=Awaited<ReturnType<typeof validProposal>>['proposal'];
+  const taskValues:Record<string,unknown>[]=[
+   ...['1','NaN','Infinity',null,true,0,-1,1.5,1000001].map(count=>({count})),
+   ...['infinity','-infinity','tomorrow','now','NaN','2026-02-29T12:00:00Z','2100-02-29T12:00:00Z','2026-04-31T12:00:00Z',
+    '2026-13-01T12:00:00Z','2026-01-01T24:00:00Z','2026-01-01T12:60:00Z','2026-01-01T12:00:60Z','2026-01-01T12:00Z',
+    '2026-01-01 12:00:00Z','2026-01-01T12:00:00','2026-01-01T12:00:00+0800','2026-01-01T12:00:00+24:00','2026-01-01T12:00:00+08:60'].map(closesAt=>({closesAt})),
+   {people:['\u00a0\ufeff']},{people:['😀'.repeat(101)]},{people:[1]},{people:['a','b','c','d']},{extra:'not canonical'},
+  ];
+  const changes:((p:Proposal)=>Record<string,unknown>)[]=taskValues.map(change=>p=>{
+   const tasks=[{...p.tasks[0],...change}];expect(assessmentReminderTaskSchema.safeParse(tasks[0]).success).toBe(false);return{...p,tasks};
+  });
+  for(const key of ['preparedAt','preparedUntil'])for(const value of ['infinity','tomorrow','now','2026-02-29T12:00:00Z','2026-01-01T12:00:00+24:00','0000-02-29T12:00:00Z','2026-01-01T12:00:00+23:59',null])changes.push(p=>({...p,[key]:value}));
+  for(const key of ['tenantEpoch','cycleEpoch'])for(const value of ['1','NaN',null,true,-1,1.5,9007199254740992])changes.push(p=>({...p,[key]:value}));
+  changes.push(p=>({...p,mailWords:{subject:'😀'.repeat(10001),opening:'valid'}}),p=>({...p,mailWords:{subject:'valid',opening:'😀'.repeat(15001)}}));
+  changes.push(()=>({kind:'skip',other:'changed'}),()=>({kind:'skip',outcome:null}),()=>({kind:'skip',outcome:'changed',extra:true}));
+  for(const change of changes){
+   await expect(begin(run,base.tenantId,async(tx,batch)=>{const {proposal}=await validProposal(tx,batch,row.sourceEventId!);
+    await tx`select notification_worker.prepare_assessment(${batch}::uuid,${row.sourceEventId}::uuid,${tx.json(change(proposal))}::jsonb)`;
+   })).rejects.toSatisfy((error:unknown)=>pgSqlState(error)==='22023');
+   expect(await preparationEffects(row,run)).toEqual(before);
+  }
+ },30000);
+ it('persists canonical typed task edges and exact JS-trimmed UTF16 names through a real LOGIN then parses the canonical mail consumer',async()=>{
+  const f=await fixture(base);await historical();const row=await queued(f);await targetOnly(row.sourceEventId!);const run=await notificationWorkerLifecycle(service).openRun();
+  const tasks=[
+   {key:'own_competency',count:1,closesAt:null},
+   {key:'own_competency',count:1000000,closesAt:'2096-02-29T12:34:56Z'},
+   {key:'own_competency',count:2,closesAt:'2000-02-29T00:00:00.123456789+23:59'},
+   {key:'own_competency',count:3,closesAt:'0000-02-29T00:00:00-23:59'},
+   {key:'own_competency',count:4,closesAt:'9999-12-31T23:59:59.9+00:00',people:[' \u00a0\ufeffFictional 😀\u202f\n','😀'.repeat(100)]},
+  ];
+  // This is typed-wire qualification, not native proof of caller-proposed task truth.
+  const words={subject:'😀'.repeat(10000),opening:'😀'.repeat(15000)},expected=assessmentReminderMailSchema.parse({tasks,words});
+  await begin(run,base.tenantId,async(tx,batch)=>{const {proposal}=await validProposal(tx,batch,row.sourceEventId!);
+   const [result]=await tx`select notification_worker.prepare_assessment(${batch}::uuid,${row.sourceEventId}::uuid,jsonb_set(${tx.json({...proposal,tasks,mailWords:words})}::jsonb,'{tasks,0,count}','1.0'::jsonb)) as recipients`;
+   expect(result.recipients).toEqual([f.subject.employmentId]);
+   const rendered={severity:'action',title:'Assessment work waiting on you',body:'Open your performance workspace to complete your pending review tasks.',linkPath:'/me/performance'};
+   await tx`select * from notification_worker.project(${batch}::uuid,${row.sourceEventId}::uuid,'performance.reminder',${f.subject.employmentId}::uuid,${tx.json(rendered)}::jsonb,'performance')`;
+   await tx`select notification_worker.finish_event(${batch}::uuid,${row.sourceEventId}::uuid,'processed')`;
+   expect((await tx`select * from notification_worker.finish_batch(${batch}::uuid)`)[0]).toEqual({processed:1,created:1});
+  });
+  const persisted=await prepared(row.id);expect({tasks:persisted.tasks,words:persisted.mailWords}).toEqual(expected);
+  expect(assessmentReminderMailSchema.parse({tasks:persisted.tasks,words:persisted.mailWords})).toEqual(expected);
+  expect(persisted.outcome).toBe('queued');expect(persisted.tasks[4].people).toEqual(['Fictional 😀','😀'.repeat(100)]);
+  const effects=await preparationEffects(row,run);expect(effects.notices).toHaveLength(1);expect(effects.outbox).toHaveLength(1);expect(effects.batches).toEqual([]);expect(effects.admissions).toEqual([]);
  },30000);
 });
 }
