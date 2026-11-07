@@ -70,6 +70,7 @@ async function main(){
    }catch{if(!projectionSettled)counters.projectionFailedTenants++;failed++;console.error('Workflow email sweep failed for tenant '+tenant.id+' after '+(Date.now()-startedAt)+'ms');}
    finally{if(failed>failuresBefore)tenantsFailed++;}
   }
+  counters.scopeCompleted=1;
  }catch{fatal=true;failed++;console.error('Workflow sweep could not complete its scheduled run.');}
  finally{
   if(run){try{await completeJobRun(owner.db,run,{

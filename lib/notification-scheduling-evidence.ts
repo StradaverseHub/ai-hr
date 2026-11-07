@@ -5,14 +5,14 @@ export const NOTIFICATION_PROJECTION_JOB_KEY = 'notifications.project' as const;
 export const NOTIFICATION_PROJECTION_CAPABILITY_VERSION = 1;
 
 export type NotificationProjectionCounters = Record<string, number> & {
-  capabilityVersion: number; identityVerified: 0; scopeLoaded: number;
+  capabilityVersion: number; identityVerified: 0; scopeLoaded: number; scopeCompleted: number;
   projectionTenants: number; projectionCompletedTenants: number; projectionFailedTenants: number;
   projectionBlockedTenants: number; committedBatches: number; processedEvents: number; createdNotifications: number;
   cappedTenants: number; backlogObservedTenants: number; pendingEvents: number; oldestPendingSeconds: number;
   emailAttempted: number; emailSkipped: number; emailUnavailableTenants: number; emailCappedTenants: number;
 };
 export function notificationProjectionCounters(): NotificationProjectionCounters {
-  return {capabilityVersion:NOTIFICATION_PROJECTION_CAPABILITY_VERSION,identityVerified:0,scopeLoaded:0,
+  return {capabilityVersion:NOTIFICATION_PROJECTION_CAPABILITY_VERSION,identityVerified:0,scopeLoaded:0,scopeCompleted:0,
     projectionTenants:0,projectionCompletedTenants:0,projectionFailedTenants:0,projectionBlockedTenants:0,
     committedBatches:0,processedEvents:0,createdNotifications:0,cappedTenants:0,backlogObservedTenants:0,
     pendingEvents:0,oldestPendingSeconds:0,emailAttempted:0,emailSkipped:0,emailUnavailableTenants:0,emailCappedTenants:0};
@@ -42,12 +42,13 @@ export function notificationProjectionHealth(run: NotificationProjectionObservat
   if (run.outcome==='running') return run.durationMs===null?(now-started>maxAgeMs?'interrupted':'running'):'invalid';
   if (run.durationMs===null||!Number.isFinite(run.durationMs)||run.durationMs<0||started+run.durationMs>now) return 'invalid';
   // The combined worker may be partial because of a separate mail/lifecycle failure. Projection
-  // health depends on its own complete counters; a fatal worker failure remains unavailable.
-  if (run.outcome!=='success'&&run.outcome!=='partial') return 'failed';
+  // health depends on its own complete counters and a fully traversed scope. A fatal worker
+  // failure leaves scopeCompleted=0 and remains unavailable.
+  if (!['success','partial','failed'].includes(run.outcome)) return 'failed';
   const r=run.result;
-  const required=['scopeLoaded','projectionTenants','projectionCompletedTenants','projectionFailedTenants','projectionBlockedTenants','cappedTenants','backlogObservedTenants','pendingEvents','oldestPendingSeconds'];
+  const required=['scopeLoaded','scopeCompleted','projectionTenants','projectionCompletedTenants','projectionFailedTenants','projectionBlockedTenants','cappedTenants','backlogObservedTenants','pendingEvents','oldestPendingSeconds'];
   if (!r||r.capabilityVersion!==NOTIFICATION_PROJECTION_CAPABILITY_VERSION||required.some(key=>!Number.isFinite(r[key])||r[key]<0)
-      ||r.scopeLoaded!==1||r.projectionCompletedTenants!==r.projectionTenants||r.backlogObservedTenants!==r.projectionTenants
+      ||r.scopeLoaded!==1||r.scopeCompleted!==1||r.projectionCompletedTenants!==r.projectionTenants||r.backlogObservedTenants!==r.projectionTenants
       ||r.projectionFailedTenants!==0||r.projectionBlockedTenants!==0) return 'failed';
   if (now-(started+run.durationMs)>maxAgeMs) return 'stale';
   if (r.cappedTenants>0||r.pendingEvents>0) return 'backlogged';

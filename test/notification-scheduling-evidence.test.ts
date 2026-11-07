@@ -5,7 +5,7 @@ import {notificationProjectionCounters,recordCommittedProjectionBatch,notificati
 
 const now=1_000_000,maxAge=180_000;
 function completed():NotificationProjectionObservation {
- const counters=notificationProjectionCounters();counters.scopeLoaded=1;
+ const counters=notificationProjectionCounters();counters.scopeLoaded=1;counters.scopeCompleted=1;
  return {jobKey:NOTIFICATION_PROJECTION_JOB_KEY,ranAt:new Date(now-1000),durationMs:500,outcome:'success',result:counters};
 }
 
@@ -33,8 +33,8 @@ describe('notification projection evidence without a commissioned identity',()=>
   expect(notificationProjectionHealth(run,now,maxAge)).toBe('backlogged');
  });
  it('keeps SMTP availability separate from complete in-app projection',()=>{
-  const run=completed();run.outcome='partial';run.result!.emailUnavailableTenants=2;
-  expect(notificationProjectionHealth(run,now,maxAge)).toBe('completed');
+  const run=completed();run.result!.emailUnavailableTenants=2;
+  for(const outcome of ['success','partial','failed']){run.outcome=outcome;expect(notificationProjectionHealth(run,now,maxAge)).toBe('completed');}
   run.result!.projectionFailedTenants=1;
   expect(notificationProjectionHealth(run,now,maxAge)).toBe('failed');
  });
@@ -47,7 +47,7 @@ describe('notification projection evidence without a commissioned identity',()=>
  it('requires complete scope, complete backlog observation, supported capability and a fresh terminal run',()=>{
   expect(notificationProjectionHealth(null,now,maxAge)).toBe('missing');
   expect(notificationProjectionHealth(completed(),now+maxAge,maxAge)).toBe('stale');
-  for(const change of [{scopeLoaded:0},{capabilityVersion:99},{projectionTenants:1},{projectionBlockedTenants:1},{pendingEvents:NaN}]){
+  for(const change of [{scopeLoaded:0},{scopeCompleted:0},{capabilityVersion:99},{projectionTenants:1},{projectionBlockedTenants:1},{pendingEvents:NaN}]){
    const run=completed();Object.assign(run.result!,change);expect(notificationProjectionHealth(run,now,maxAge)).toBe('failed');
   }
   const backlog=completed();backlog.result!.pendingEvents=1;expect(notificationProjectionHealth(backlog,now,maxAge)).toBe('backlogged');
