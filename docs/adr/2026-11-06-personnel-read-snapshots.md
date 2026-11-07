@@ -62,3 +62,17 @@ stale answers; executing database work finishes before its transaction rolls bac
 or releases admission. Failures show retry, never a false empty population.
 Legacy local picker consumers and full batch/export populations stay unchanged
 until their owning pages explicitly adopt the bounded port.
+
+The server-only transaction seam allows a module to compose choices and its own
+facts in one enforced read-only snapshot. Trusted termination cutoff and explicit
+employment IDs narrow rows, count, complete facets and independent selection
+consistently; an explicit empty employment-ID set means no population. The public
+POST accepts neither field and retains its 200-row maximum. The server Tx seam
+supports the shared stated 2000-row All ceiling in one count/facet/page operation.
+A separate complete-ID reader streams minimal authorized identities and retains
+only matching IDs, with no display ceiling or repeated count/facet calls. Those
+IDs identify intent; canonical command owners must still authorize current write
+admission. Input and calling authority are captured before asynchronous work,
+private cursor names are unique within a borrowed transaction, and owners await
+all started readers before ending that transaction. No carrier or permission
+result is retained across requests.

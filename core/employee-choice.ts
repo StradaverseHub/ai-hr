@@ -5,6 +5,8 @@ import {employment,person,company,assignment,department,businessUnit} from '../d
 import {assertAiPresentationPrincipalTx} from './ai-principal';
 import {organisationFilterChoices} from '../lib/organisation-choice-label';
 import {isAdmin} from '../lib/authz-model';
+import {isCalendarDate} from '../lib/calendar-date';
+import {ALL_ROW_CEILING} from '../lib/pagination';
 import {EMPLOYEE_CHOICE_PAGE_SIZE,EMPLOYEE_CHOICE_MAX_PAGE_SIZE,type EmployeeChoice,type EmployeeChoiceInput,type EmployeeChoicePage} from '../lib/employee-choice';
 
 export class EmployeeChoiceInputError extends Error{}
@@ -34,23 +36,53 @@ function columns(labels:boolean){return sql`${employment.id} as "employmentId",$
  ${labels?sql`coalesce(nullif(trim(${businessUnit.label}),''),nullif(trim(${businessUnit.name}),''),${businessUnit.code})`:sql`${businessUnit.name}`} as "businessUnit",
  case when ${employment.terminatedOn} is null then 'active' else 'ended' end as status`;}
 
-/** Same legacy validTo-NULL population and ordinary table RLS, not the HR-only Workforce picker.
- * companyIds is trusted server scope; an empty list deliberately retains the legacy RLS-only behavior.
- * All SQL, authority, selected lookup and counts share one enforced read-only snapshot. */
-export async function readEmployeeChoices(ctx:SessionContext,p:EmployeeChoiceInput&{companyIds:string[]},signal?:AbortSignal):Promise<EmployeeChoicePage>{
+/** Server-owned narrowing, never a client grant. Empty company scope retains legacy
+ * RLS-only semantics; an explicit empty employmentIds population means no employees. */
+export type EmployeeChoicePopulation={companyIds:readonly string[];terminatedAfter?:string;employmentIds?:readonly string[]};
+export type EmployeeChoiceServerInput=EmployeeChoiceInput&EmployeeChoicePopulation;
+export type EmployeeChoicePopulationFilters=Omit<EmployeeChoiceServerInput,'offset'|'limit'|'selectedId'|'labelMode'>;
+const captureContext=(ctx:SessionContext):SessionContext=>({...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))});
+function captureInput(p:EmployeeChoiceServerInput):EmployeeChoiceServerInput{
+ if(!Array.isArray(p.companyIds)||p.companyIds.some(id=>!uuid.test(id)))throw new EmployeeChoiceInputError('Invalid server company scope');
+ if(p.employmentIds!==undefined&&(!Array.isArray(p.employmentIds)||p.employmentIds.some(id=>!uuid.test(id))))throw new EmployeeChoiceInputError('Invalid server employee population');
+ return {...p,companyIds:p.companyIds.slice(),employmentIds:p.employmentIds?.slice()};
+}
+function prepareChoices(ctx:SessionContext,p:EmployeeChoiceServerInput,maximumPageSize:number){
  if(!Array.isArray(p.companyIds)||p.companyIds.some(id=>!uuid.test(id)))throw new EmployeeChoiceInputError('Invalid server company scope');
  const filters={query:p.query??'',companyId:normalizeId(p.companyId),businessUnitId:normalizeId(p.businessUnitId),departmentId:normalizeId(p.departmentId),status:p.status??''};
  if(typeof filters.query!=='string'||!['','active','ended'].includes(filters.status)||p.labelMode!==undefined&&!['names','labels'].includes(p.labelMode))throw new EmployeeChoiceInputError('Invalid employee filter');
  const offset=p.offset??0,limit=p.limit??EMPLOYEE_CHOICE_PAGE_SIZE,labelMode=p.labelMode??'names',q=filters.query.trim().toLowerCase();
- if(!Number.isSafeInteger(offset)||offset<0||!Number.isInteger(limit)||limit<1||limit>EMPLOYEE_CHOICE_MAX_PAGE_SIZE)throw new EmployeeChoiceInputError('Invalid employee page');
+ if(!Number.isSafeInteger(offset)||offset<0||!Number.isInteger(limit)||limit<1||limit>maximumPageSize)throw new EmployeeChoiceInputError('Invalid employee page');
  const from=employeeChoiceFrom(ctx.tenantId),organisationFilter=Boolean(filters.businessUnitId||filters.departmentId);
  const scoped=sql`${employment.tenantId}=${ctx.tenantId}::uuid and ${p.companyIds.length?sql`${employment.companyId}=any(${'{'+p.companyIds.join(',')+'}'}::uuid[])`:sql`true`}`;
+ if(p.terminatedAfter!==undefined&&!isCalendarDate(p.terminatedAfter))throw new EmployeeChoiceInputError('Invalid population date');
+ if(p.employmentIds!==undefined&&(!Array.isArray(p.employmentIds)||p.employmentIds.some(id=>!uuid.test(id))))throw new EmployeeChoiceInputError('Invalid server employee population');
+ let populationScope=scoped;
+ if(p.terminatedAfter!==undefined)populationScope=sql`${populationScope} and (${employment.terminatedOn} is null or ${employment.terminatedOn}>${p.terminatedAfter}::date)`;
+ if(p.employmentIds!==undefined)populationScope=sql`${populationScope} and ${p.employmentIds.length?sql`${employment.id}=any(${'{'+p.employmentIds.join(',')+'}'}::uuid[])`:sql`false`}`;
  const inCompany=filters.companyId?sql`${employment.companyId}=${filters.companyId}::uuid`:sql`true`;
- const where=sql`${scoped} and ${inCompany}
+ const where=sql`${populationScope} and ${inCompany}
   and ${filters.businessUnitId?sql`${assignment.businessUnitId}=${filters.businessUnitId}::uuid`:sql`true`}
   and ${filters.departmentId?sql`${assignment.departmentId}=${filters.departmentId}::uuid`:sql`true`}
   and ${filters.status?filters.status==='active'?sql`${employment.terminatedOn} is null`:sql`${employment.terminatedOn} is not null`:sql`true`}`;
- return withTenant(ctx,async tx=>{
+ return {filters,offset,limit,labelMode,q,from,organisationFilter,scoped:populationScope,where};
+}
+/** General navigation owns its snapshot and keeps the public transport's 200-row cap. */
+export async function readEmployeeChoices(ctx:SessionContext,p:EmployeeChoiceInput&{companyIds:string[]},signal?:AbortSignal):Promise<EmployeeChoicePage>{
+ if('terminatedAfter' in p||'employmentIds' in p)throw new EmployeeChoiceInputError('Server population requires an explicit presentation transaction');
+ const captured=captureContext(ctx),input=captureInput(p);
+ return withTenant(captured,tx=>readChoicePageTx(tx,captured,input,EMPLOYEE_CHOICE_MAX_PAGE_SIZE,signal),{readOnlySnapshot:true,readSignal:signal});
+}
+/** Borrow only an actual enforced RR/READ ONLY human presentation transaction.
+ * The module still admits its own purpose. Its transport must derive population afresh.
+ * One complete count/facet read and one bounded page support the shared All ceiling.
+ * Await every started reader before the borrowing owner ends its transaction. */
+export async function readEmployeeChoicesTx(tx:Tx,ctx:SessionContext,p:EmployeeChoiceServerInput,signal?:AbortSignal):Promise<EmployeeChoicePage>{
+ return readChoicePageTx(tx,captureContext(ctx),captureInput(p),ALL_ROW_CEILING,signal);
+}
+async function readChoicePageTx(tx:Tx,ctx:SessionContext,p:EmployeeChoiceServerInput,maximumPageSize:number,signal?:AbortSignal):Promise<EmployeeChoicePage>{
+ const {filters,offset,limit,labelMode,q,from,organisationFilter,scoped,where}=prepareChoices(ctx,p,maximumPageSize);
+ signal?.throwIfAborted();
   await assertAiPresentationPrincipalTx(tx,ctx);signal?.throwIfAborted();
   if(labelMode==='labels'&&!isAdmin(ctx))throw new EmployeeChoiceAccessError('Employee catalogue labels require current administration access');
   const base=sql`select ${columns(labelMode==='labels')} ${from}`;
@@ -76,9 +108,7 @@ export async function readEmployeeChoices(ctx:SessionContext,p:EmployeeChoiceInp
   }else{
    // PostgreSQL locale lower/ILIKE is not ECMAScript lower/includes. ASCII-only rows
    // admit exact native candidates; every non-ASCII row remains a conservative candidate.
-   const unicode=sql`(${nonAscii(sql`${person.fullName}`)} or ${nonAscii(sql`coalesce(${employment.employeeCode},'')`)})`;
-   const candidate=q.includes('\0')?sql`false`:/^[\x00-\x7f]*$/.test(q)?sql`(${unicode} or lower(${person.fullName} collate "C") like ${pattern(q)} escape '\\'
-     or lower(coalesce(${employment.employeeCode},'') collate "C") like ${pattern(q)} escape '\\')`:unicode;
+   const candidate=choiceCandidate(q);
    // The cursor owns minimal identity facts for both paths. Organisation filters
    // retain native joined membership; only matching page identities get full
    // assignment/label projection afterwards in the same read-only snapshot.
@@ -102,22 +132,45 @@ export async function readEmployeeChoices(ctx:SessionContext,p:EmployeeChoiceInp
    departmentOptions:organisationFilterChoices(inSelectedCompany.map(row=>({id:row.departmentId,name:row.department,code:row.departmentCode}))),
    allDepartmentOptions:organisationFilterChoices(options.map(row=>({id:row.departmentId,name:row.department,code:row.departmentCode}))),
   };
- },{readOnlySnapshot:true,readSignal:signal});
+}
+/** Complete identification facts, not command authority. The command owner must
+ * independently reauthorize submitted subjects at its current write admission.
+ * This read-only helper never clips to a page and retains only IDs, not whole DTOs. */
+export async function readEmployeeChoiceIdsTx(tx:Tx,ctx:SessionContext,p:EmployeeChoicePopulationFilters,signal?:AbortSignal):Promise<string[]>{
+ ctx=captureContext(ctx);const input=captureInput(p);
+ const {q,from,organisationFilter,where}=prepareChoices(ctx,{...input,offset:0,limit:1,labelMode:'names'},EMPLOYEE_CHOICE_MAX_PAGE_SIZE);
+ signal?.throwIfAborted();await assertAiPresentationPrincipalTx(tx,ctx);signal?.throwIfAborted();
+ const ids:string[]=[];
+ await visitEmployeeChoiceMatches(tx,sql`select ${employment.id} as "employmentId",${person.fullName} as name,${employment.employeeCode} as "employeeCode"
+  ${organisationFilter?from:employeeIdentityFrom(ctx.tenantId)} where ${where} and ${q?choiceCandidate(q):sql`true`}
+  order by ${person.fullName},${employment.id}${organisationFilter?sql`,${assignment.id}`:sql``}`,q,row=>{ids.push(row.employmentId);},signal);
+ return ids;
+}
+
+function choiceCandidate(q:string){
+ const unicode=sql`(${nonAscii(sql`${person.fullName}`)} or ${nonAscii(sql`coalesce(${employment.employeeCode},'')`)})`;
+ return q.includes('\0')?sql`false`:/^[\x00-\x7f]*$/.test(q)?sql`(${unicode} or lower(${person.fullName} collate "C") like ${pattern(q)} escape '\\'
+     or lower(coalesce(${employment.employeeCode},'') collate "C") like ${pattern(q)} escape '\\')`:unicode;
 }
 type ChoiceIdentity=Pick<EmployeeChoice,'employmentId'|'name'|'employeeCode'>;
 async function exactEmployeeChoiceMatches(tx:Tx,query:SQL,q:string,offset:number,limit:number,signal?:AbortSignal){
- const rows:ChoiceIdentity[]=[];let total=0;
- await tx.execute(sql`declare employee_choices no scroll cursor for ${query}`);
+ const rows:ChoiceIdentity[]=[];
+ const total=await visitEmployeeChoiceMatches(tx,query,q,(row,index)=>{if(index>=offset&&rows.length<limit)rows.push(row);},signal);
+ return {rows,total};
+}
+async function visitEmployeeChoiceMatches(tx:Tx,query:SQL,q:string,receive:(row:ChoiceIdentity,index:number)=>void,signal?:AbortSignal){
+ let total=0;const cursor=sql.identifier('employee_choices_'+randomUUID().replace(/-/g,''));
+ await tx.execute(sql`declare ${cursor} no scroll cursor for ${query}`);
  for(;;){
-  signal?.throwIfAborted();const batch=await tx.execute<ChoiceIdentity>(sql`fetch forward 512 from employee_choices`);signal?.throwIfAborted();
+  signal?.throwIfAborted();const batch=await tx.execute<ChoiceIdentity>(sql`fetch forward 512 from ${cursor}`);signal?.throwIfAborted();
   for(const row of batch)if(row.name.toLowerCase().includes(q)||(row.employeeCode??'').toLowerCase().includes(q)){
-   if(total>=offset&&rows.length<limit)rows.push(row);total++;
+   receive(row,total);total++;
   }
   if(batch.length<512)break;
  }
- signal?.throwIfAborted();await tx.execute(sql`close employee_choices`);signal?.throwIfAborted();
+ signal?.throwIfAborted();await tx.execute(sql`close ${cursor}`);signal?.throwIfAborted();
  // Rollback/transaction completion also closes it on failure or disconnect.
- return {rows,total};
+ return total;
 }
 type ChoiceOptions=Pick<EmployeeChoice,'companyId'|'company'|'departmentId'|'department'|'departmentCode'|'businessUnitId'|'businessUnit'|'businessUnitCode'>;
 /** Enumerate represented catalogue identities, stopping at the first native-RLS member.
