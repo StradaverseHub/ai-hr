@@ -11,6 +11,16 @@ test('selection admits only the exact source and no other diagnostics or transpo
  for(const changed of [{expected_sha:'0'.repeat(40)},{compiler_probe:false},{nodb_probe:true},{layout_probe:true},{run_build:true},{next_build_cache_phase:'cold'},{compiler_origin_run:'123'},{transport_origin_run:'123'}])assert.throws(()=>validateAttributionSelection({...inputs,...changed}));
 });
 
+test('actual GitHub input shape may omit only empty known transport origins',()=>{
+ const inputs=JSON.parse('{"candidate_ref":"codex/navigation-system-runner-ci-20261107","expected_sha":"ed188690f8258093391e1f6bc2c92b5bf5744816","filesystem_activation_probe":false,"installer_fixture_phase":"full","plan_probe":false,"build_transport_probe":false,"compiler_transport_probe":false,"next_build_cache_phase":"disabled","managed_compiler_probe":false,"managed_compiler_force_invalid":false,"compiler_compatible_probe":false,"compiler_probe":true,"statutory_probe":false,"nodb_probe":false,"instrument_copies":false,"layout_probe":false}');
+ assert.doesNotThrow(()=>validateAttributionSelection(inputs));
+ for(const key of ['transport_origin_run','transport_origin_sha','transport_origin_artifact','transport_origin_digest','compiler_origin_run','compiler_origin_sha','compiler_origin_artifact','compiler_origin_digest']){
+  for(const absent of [undefined,''])assert.doesNotThrow(()=>validateAttributionSelection({...inputs,[key]:absent}));
+  for(const malformed of [null,false,true,0,[],{},' ','123'])assert.throws(()=>validateAttributionSelection({...inputs,[key]:malformed}));
+ }
+ for(const changed of [{expected_sha:'0'.repeat(40)},{compiler_probe:false},{nodb_probe:true},{layout_probe:true},{instrument_copies:true},{build_transport_probe:true},{compiler_transport_probe:true},{next_build_cache_phase:'cold'}])assert.throws(()=>validateAttributionSelection({...inputs,...changed}));
+});
+
 test('attribution retains whole-project config and a fresh owned graph without weakening coverage',()=>{
  const args=compilerArguments('/source','/owned');
  assert.deepEqual(args,['/source/node_modules/typescript/lib/tsc.js','--noEmit','--pretty','false','--tsBuildInfoFile','/owned/whole-project.tsbuildinfo','--extendedDiagnostics','--generateTrace','/owned/trace']);

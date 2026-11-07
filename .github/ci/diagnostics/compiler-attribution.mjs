@@ -17,7 +17,9 @@ export function validateAttributionSelection(inputs){
  assert.equal(inputs.compiler_probe,true);assert.equal(inputs.expected_sha,ATTRIBUTION_SOURCE);
  for(const [key,value] of Object.entries(inputs))if(typeof value==='boolean'&&key!=='compiler_probe')assert.equal(value,false,'Attribution must run without other diagnostic jobs');
  assert.equal(inputs.next_build_cache_phase,'disabled');
- for(const key of ['transport_origin_run','transport_origin_sha','transport_origin_artifact','transport_origin_digest','compiler_origin_run','compiler_origin_sha','compiler_origin_artifact','compiler_origin_digest'])assert.equal(inputs[key],'','No compiler/build transport is part of attribution');
+ // GitHub omits unspecified empty string inputs from toJSON(inputs). Missing
+ // and literal empty are the only non-transport states; null is not absence.
+ for(const key of ['transport_origin_run','transport_origin_sha','transport_origin_artifact','transport_origin_digest','compiler_origin_run','compiler_origin_sha','compiler_origin_artifact','compiler_origin_digest'])assert(inputs[key]===undefined||inputs[key]==='','No compiler/build transport is part of attribution');
 }
 export function compilerArguments(cwd,out,inventory=false){
  const args=[join(cwd,'node_modules/typescript/lib/tsc.js'),'--noEmit','--pretty','false','--tsBuildInfoFile',join(out,inventory?'inventory.tsbuildinfo':'whole-project.tsbuildinfo')];
