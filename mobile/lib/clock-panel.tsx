@@ -376,8 +376,8 @@ export function ClockPanel({refreshToken=0,variant='full',renderHome,afterContro
       </View>}
       {draft?.phase==='done'?<Card><Text accessibilityRole="header" style={{color:palette.text,fontSize:22,fontWeight:'700'}}>{t('clockRecorded')}</Text><Muted>{draft.receiptTime?new Date(draft.receiptTime).toLocaleString(appLocale(),{dateStyle:'medium',timeStyle:'short',timeZone:'Asia/Kuala_Lumpur'}):''}</Muted><Button title={t('backToClock')} onPress={cancel}/></Card>:<>
         {!home&&(!draft||draft.phase==='idle')&&<View style={{flexDirection:'row',gap:12}}>{(['in','out'] as const).map(a=><Pressable key={a} accessibilityRole="button" accessibilityState={{selected:a===action}} onPress={()=>putClock({action:a,phase:'idle'})} style={{flex:1,minHeight:44,justifyContent:'center',borderRadius:2,backgroundColor:a===action?palette.card:'transparent',borderWidth:1,borderColor:a===action?palette.accent:palette.border}}><Text style={{color:a===action?palette.text:palette.muted,textAlign:'center',fontWeight:'600'}}>{a==='in'?t('clockIn'):t('clockOut')}</Text></Pressable>)}</View>}
-        {draft?.message&&<Text accessibilityRole="alert" style={{color:palette.text,lineHeight:22}}>{restoredAttempt?t('attemptNotRecorded'):draft.message}</Text>}
-        {restoredAttempt&&<Pressable accessibilityRole="button" accessibilityLabel={t('pendingAttempt')} accessibilityState={{expanded:attemptExpanded}} onPress={()=>setExpandedAttempt(attemptExpanded?null:draft.requestId??null)} style={{minHeight:44,justifyContent:'center'}}><Text style={{color:palette.accent,fontSize:14,fontWeight:'600'}}>{t('pendingAttempt')} {attemptExpanded?'−':'+'}</Text></Pressable>}
+        {draft?.message&&!restoredAttempt&&<Text accessibilityRole="alert" style={{color:palette.text,lineHeight:22}}>{draft.message}</Text>}
+        {restoredAttempt&&<Pressable accessibilityRole="button" accessibilityLabel={t('pendingAttempt')} accessibilityState={{expanded:attemptExpanded}} onPress={()=>setExpandedAttempt(attemptExpanded?null:draft.requestId??null)} style={{minHeight:44,flexDirection:'row',alignItems:'center',gap:12}}><Text style={{flex:1,color:palette.muted,fontSize:13,lineHeight:18}}>{t('attemptNotRecorded')}</Text><Text style={{color:palette.accent,fontSize:20}}>{attemptExpanded?'−':'+'}</Text></Pressable>}
         {!!draft?.attemptStartedAt&&attemptExpanded&&!['done','uncertain','submitting'].includes(draft.phase)&&<Card>
           <Text accessibilityRole="header" style={{color:palette.text,fontSize:19,fontWeight:'600'}}>{t('pendingAttempt')}</Text>
           <Muted>{t('attemptTimeClaim')}</Muted>
@@ -385,7 +385,7 @@ export function ClockPanel({refreshToken=0,variant='full',renderHome,afterContro
           <Text selectable style={{color:palette.text}}>{draft.requestId}</Text>
           {draft.attemptReceiptTime?<><Muted>{t('attemptReported')}</Muted><Row label={t('attemptReceivedAt')} value={new Date(draft.attemptReceiptTime).toLocaleString(appLocale(),{dateStyle:'medium',timeStyle:'short',timeZone:'Asia/Kuala_Lumpur'})}/></>:<Button title={t('sendAttemptRecord')} disabled={pending} kind="quiet" onPress={()=>void reportAttempt()}/>}
         </Card>}
-        {draft?.phase==='idle'&&<Button title={t('reviewSavedAttempts')} kind="quiet" onPress={()=>router.push('/pending-submissions')}/>}
+        {draft?.phase==='idle'&&(!restoredAttempt||attemptExpanded)&&<Button title={t('reviewSavedAttempts')} kind="quiet" onPress={()=>router.push('/pending-submissions')}/>}
         {draft?.locationIssue&&['permission_blocked','approximate_permission','services_disabled'].includes(draft.locationIssue)&&<Button title={t('openLocationSettings')} kind="quiet" onPress={()=>{void Linking.openSettings().catch(()=>{});}}/>}
         {draft?.locationAssessment&&<Card>
           {draft.locationAssessment.siteName&&<Row label={t('assignedLocation')} value={draft.locationAssessment.siteName}/>}

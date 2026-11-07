@@ -593,10 +593,16 @@ it('collapses restored unsent clock metadata while retaining report and preparat
   expect(screen.getByText('attemptNotRecorded')).toBeTruthy();
   expect(screen.getByText('slidePrepare')).toBeTruthy();
   expect(screen.queryByText('sendAttemptRecord')).toBeNull();
+  expect(screen.queryByText('reviewSavedAttempts')).toBeNull();
   const disclosure=screen.getByRole('button',{name:'pendingAttempt'});
   fireEvent.click(disclosure);
   expect(screen.getByText('attemptTimeClaim')).toBeTruthy();
   expect(screen.getByText('sendAttemptRecord')).toBeTruthy();
+  expect(screen.getByText('reviewSavedAttempts')).toBeTruthy();
+  fireEvent.click(disclosure);
+  expect(screen.queryByText('reviewSavedAttempts')).toBeNull();
+  expect(screen.getByText('attemptNotRecorded')).toBeTruthy();
+  expect(screen.getByText('slidePrepare')).toBeTruthy();
   expect(f.drafts().clock.requestId).toBe(requestId);
   expect(f.post).not.toHaveBeenCalled();expect(f.reportAttempt).not.toHaveBeenCalled();
 });

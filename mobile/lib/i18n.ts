@@ -835,7 +835,7 @@ const en = {
   calNobodyAway: "Nobody in your team is away on this day.",
   teamCalendarOff: "The team calendar is not available for your account.",
   directorySearch: "Search by name",
-  directoryCount: "{n} people",
+  directoryCount: "People: {n}",
   directoryEmpty: "No one is listed in your directory.",
   directoryNoMatch: "No one matches your search.",
   directoryNoContact: "No contact details are shared for this person.",
