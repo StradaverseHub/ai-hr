@@ -1,5 +1,7 @@
 /** Navigation-only head identities. Canonical label writers independently validate every saved head. */
 export type LabelHeadChoice={employmentId:string;companyId:string;employeeCode:string|null;name:string};
+/** Display only, bounded to a row's current selection; null label means a fresh lookup denied it. */
+export type LabelHeadSelectionDisplay={employmentId:string;companyId:string;label:string|null};
 export type LabelHeadChoiceInput={companyId:string;query?:string;offset?:number;selectedId?:string};
 export type LabelHeadChoicePage={companyId:string;query:string;offset:number;limit:25;total:number;rows:LabelHeadChoice[];selected:LabelHeadChoice|null};
 export const LABEL_HEAD_CHOICE_PAGE_SIZE=25;

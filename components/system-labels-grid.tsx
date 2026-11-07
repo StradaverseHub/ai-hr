@@ -51,6 +51,7 @@ import {
 
 import { ORGANISATION_LABEL_KINDS, ORGANISATION_LABEL_COLUMNS, type OrganisationLabelKind } from '@/lib/system-label-definition';
 import {SystemLabelHeadChoice} from './system-label-head-choice';
+import type {LabelHeadSelectionDisplay} from '@/lib/system-label-head-choice';
 export type GridKind = OrganisationLabelKind;
 
 export type GridCompany = { id: string; name: string; archived?:boolean };
@@ -83,6 +84,8 @@ type RowState = GridRecord & {
   key: string; // stable client key (id for existing, draft-N for new)
   isNew: boolean;
   dirty: boolean;
+  // One display record for this row's CURRENT selection, never a browsed-choice cache or Save field.
+  headDisplay?: LabelHeadSelectionDisplay;
 };
 
 export type GridActions = {
@@ -349,6 +352,19 @@ export function SystemLabelsGrid({
     if (!target || !canWrite(target)) return;
     patchRows(rows.map((r) => (r.key === key ? { ...r, [field]: value, dirty: true } : r)));
   }
+  function updateHeadSelection(key:string,value:string|null,display?:LabelHeadSelectionDisplay|null){
+    const target=rows.find(row=>row.key===key);if(!target||!canWrite(target))return;
+    patchRows(rows.map(row=>row.key!==key?row:{...row,headEmploymentId:value,dirty:true,
+      headDisplay:display?.companyId===row.companyId&&display.employmentId===value?display:undefined}));
+  }
+  function resolveHeadDisplay(k:GridKind,key:string,display:LabelHeadSelectionDisplay){
+    setRowsByKind(previous=>{
+      const target=previous[k].find(row=>row.key===key);
+      if(!target||target.companyId!==display.companyId||target.headEmploymentId!==display.employmentId
+        ||(target.headDisplay?.companyId===display.companyId&&target.headDisplay.employmentId===display.employmentId&&target.headDisplay.label===display.label))return previous;
+      return {...previous,[k]:previous[k].map(row=>row.key===key?{...row,headDisplay:display}:row)};
+    });
+  }
   /**
    * Put a new draft in front of the reader (9da61c86).
    *
@@ -385,7 +401,7 @@ export function SystemLabelsGrid({
   function duplicateRow(src: RowState) {
     if (!canWrite(src)) return;
     draftSeq.current += 1;
-    const copy = { ...emptyDraft(`draft-${draftSeq.current}`, src.companyId, src.isGlobal && isGroupAdmin), code: src.code, name: src.name, title: src.title, jobFamily: src.jobFamily, label: src.label, businessUnitId: src.businessUnitId, headEmploymentId: src.headEmploymentId, description: src.description };
+    const copy = { ...emptyDraft(`draft-${draftSeq.current}`, src.companyId, src.isGlobal && isGroupAdmin), code: src.code, name: src.name, title: src.title, jobFamily: src.jobFamily, label: src.label, businessUnitId: src.businessUnitId, headEmploymentId: src.headEmploymentId, headDisplay:src.headDisplay?.companyId===src.companyId&&src.headDisplay.employmentId===src.headEmploymentId?src.headDisplay:undefined, description: src.description };
     const next = [copy, ...rows];
     patchRows(next);
     followDraft(next, copy.key);
@@ -473,7 +489,8 @@ export function SystemLabelsGrid({
           [k]: prev[k].map((r) => {
             if (r.isNew) {
               const newId = idByKey.get(r.key);
-              return newId ? { ...r, companyId:creates.find(create=>create.key===r.key)?.companyId??r.companyId, id: newId, key: newId, isNew: false, dirty: false } : r;
+              const savedCompany=creates.find(create=>create.key===r.key)?.companyId??r.companyId;
+              return newId ? { ...r, companyId:savedCompany,headDisplay:r.headDisplay?.companyId===savedCompany?r.headDisplay:undefined, id: newId, key: newId, isNew: false, dirty: false } : r;
             }
             return updatedKeys.has(r.key) ? { ...r, dirty: false } : r;
           }),
@@ -511,7 +528,7 @@ export function SystemLabelsGrid({
     const k = kind;
     if (r.isNew) {
       const owner=criteria.isGlobal?newRowCompany:criteria.companyIds.find(id=>writableIds.has(id)&&companies.some(company=>company.id===id&&!company.archived))??r.companyId;
-      setRowsByKind(previous=>({...previous,[k]:previous[k].map(row=>row.key===r.key?{...row,companyId:owner,headEmploymentId:owner===row.companyId?row.headEmploymentId:null,isGlobal:criteria.isGlobal,assignedCompanyIds:criteria.companyIds,dirty:true}:row)}));
+      setRowsByKind(previous=>({...previous,[k]:previous[k].map(row=>row.key===r.key?{...row,companyId:owner,headEmploymentId:owner===row.companyId?row.headEmploymentId:null,headDisplay:owner===row.companyId?row.headDisplay:undefined,isGlobal:criteria.isGlobal,assignedCompanyIds:criteria.companyIds,dirty:true}:row)}));
       setScopePopover(null);
       return;
     }
@@ -623,6 +640,7 @@ export function SystemLabelsGrid({
    * or presenting an internal identifier as a person's name. No wider employee read is needed. */
   function headLabel(r: RowState): string {
     if (!r.headEmploymentId) return to('headNone');
+    if(r.headDisplay?.companyId===r.companyId&&r.headDisplay.employmentId===r.headEmploymentId)return r.headDisplay.label??t('headUnavailable');
     return (headByCompany[r.companyId] ?? []).find((o) => o.id === r.headEmploymentId)?.label ?? t('headUnavailable');
   }
   const kindHasHead = kind === 'department' || kind === 'business_unit';
@@ -990,7 +1008,8 @@ export function SystemLabelsGrid({
                         ) : (
                           <SystemLabelHeadChoice companyId={r.companyId} value={r.headEmploymentId} label={to('fieldHead')}
                             noneLabel={to('headNone')} unavailableLabel={t('headUnavailable')} selectedLabel={headLabel(r)}
-                            onChange={(value) => updateCell(r.key, 'headEmploymentId', value)}
+                            onChange={(value,display) => updateHeadSelection(r.key,value,display)}
+                            onResolvedSelection={(display)=>resolveHeadDisplay(kind,r.key,display)}
                             className={`${cellInput} w-full min-w-0 ${err?.field === 'headEmploymentId' ? 'border-destructive' : ''}`}
                           />
                         )}

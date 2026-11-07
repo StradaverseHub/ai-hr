@@ -74,6 +74,20 @@ without discarding the draft. Existing six-locale employee-panel strings are reu
 The spreadsheet already uses a JavaScript-owned atomic Save handler; this repair
 does not claim a new native no-JavaScript save flow.
 
+The initial source review of `dca4f8eb62b6c1f0a61701336e9870fb56bf0eef`
+identified a display-lifecycle defect: a newly chosen head label existed only inside
+the chooser, while Grid rows retained only its ID. Duplicating the row or leaving
+its page/category could therefore falsely display that selected head as unavailable.
+The corrected Grid stores one display record with each row's current selection,
+matched by exact head ID and row company. Duplicate copies only that current record;
+company changes drop it. A fresh missing selection or native authentication/scope
+refusal records unavailable, preventing a later remount from reviving stale display
+text. Temporary storage/network failures preserve the draft and offer retry. No
+browsed-history cache is introduced. Display-only refreshes never dirty a row and
+the explicit canonical Save projection excludes all display metadata. Native lookup
+and canonical Save remain the authority. Actual Grid tests exercise new selection,
+duplicate, real query-state page changes, category remounts and fresh refusal.
+
 ## Qualification boundaries
 
 The requested hosted checks cover actual native 5001-employee first/deep/ended and

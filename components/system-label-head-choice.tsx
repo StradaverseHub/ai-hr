@@ -2,16 +2,16 @@
 
 import {useEffect,useId,useState} from 'react';
 import {useTranslations} from 'next-intl';
-import {isLabelHeadChoicePage,labelHeadChoiceLabel,labelHeadChoiceRequestKey,type LabelHeadChoicePage} from '@/lib/system-label-head-choice';
+import {isLabelHeadChoicePage,labelHeadChoiceLabel,labelHeadChoiceRequestKey,type LabelHeadChoicePage,type LabelHeadSelectionDisplay} from '@/lib/system-label-head-choice';
 
 /** A bounded navigation control inside the existing JS-owned atomic Grid draft. */
-export function SystemLabelHeadChoice({companyId,value,label,noneLabel,unavailableLabel,selectedLabel,className,onChange}:{
- companyId:string;value:string|null;label:string;noneLabel:string;unavailableLabel:string;selectedLabel:string;className?:string;onChange:(value:string|null)=>void;
+export function SystemLabelHeadChoice({companyId,value,label,noneLabel,unavailableLabel,selectedLabel,className,onChange,onResolvedSelection}:{
+ companyId:string;value:string|null;label:string;noneLabel:string;unavailableLabel:string;selectedLabel:string;className?:string;
+ onChange:(value:string|null,display?:LabelHeadSelectionDisplay|null)=>void;onResolvedSelection?:(display:LabelHeadSelectionDisplay)=>void;
 }){
  const t=useTranslations('employeePanel'),id=useId(),selectedId=value?.toLowerCase()??'';
  const [open,setOpen]=useState(false),[query,setQuery]=useState(''),[offset,setOffset]=useState(0),[retry,setRetry]=useState(0);
- const [result,setResult]=useState<{key:string;data?:LabelHeadChoicePage;failed?:true}|null>(null);
- const [picked,setPicked]=useState<{companyId:string;id:string;label:string}|null>(null);
+ const [result,setResult]=useState<{key:string;data?:LabelHeadChoicePage;failed?:true;denied?:true}|null>(null);
  const requestKey=labelHeadChoiceRequestKey(companyId,query,offset,selectedId),key=requestKey+':'+retry;
  const current=result?.key===key?result:null,rows=current?.data?.rows??[];
  useEffect(()=>{
@@ -22,7 +22,7 @@ export function SystemLabelHeadChoice({companyId,value,label,noneLabel,unavailab
     method:'POST',headers:{'Content-Type':'application/json'},cache:'no-store',credentials:'same-origin',signal:controller.signal,
     body:JSON.stringify({companyId,query,offset,...(selectedId?{selectedId}:{})}),
    }).then(async response=>{
-    if(!response.ok)throw Error('Head choices unavailable');
+    if(!response.ok){if(active)setResult({key,failed:true,...(response.status===401||response.status===403?{denied:true as const}:{})});return;}
     const page:unknown=await response.json();
     if(!isLabelHeadChoicePage(page)||labelHeadChoiceRequestKey(page.companyId,page.query,page.offset,selectedId)!==requestKey
       ||page.selected!==null&&page.selected.employmentId!==selectedId)throw Error('Head choices unavailable');
@@ -31,13 +31,15 @@ export function SystemLabelHeadChoice({companyId,value,label,noneLabel,unavailab
   },query?180:0);
   return()=>{active=false;clearTimeout(timer);controller.abort();};
  },[open,companyId,query,offset,selectedId,requestKey,key]);
- const local=picked?.companyId===companyId&&picked.id===selectedId?picked.label:selectedLabel;
- const pinnedLabel=current?.data?(current.data.selected?labelHeadChoiceLabel(current.data.selected):unavailableLabel):local;
+ useEffect(()=>{
+  if((current?.data||current?.denied)&&selectedId)onResolvedSelection?.({companyId,employmentId:selectedId,label:current.data?.selected?labelHeadChoiceLabel(current.data.selected):null});
+ },[current?.data,current?.denied,companyId,selectedId,onResolvedSelection]);
+ const pinnedLabel=current?.denied?unavailableLabel:current?.data?(current.data.selected?labelHeadChoiceLabel(current.data.selected):unavailableLabel):selectedLabel;
  return <div className="min-w-0 space-y-1">
   <select name="headEmploymentId" aria-label={label} value={selectedId} className={className}
    onChange={event=>{
     const next=event.target.value,option=rows.find(row=>row.employmentId===next);
-    setPicked(option?{companyId,id:next,label:labelHeadChoiceLabel(option)}:null);onChange(next||null);
+    onChange(next||null,next?(option?{companyId,employmentId:next,label:labelHeadChoiceLabel(option)}:undefined):null);
    }}>
    <option value="">{noneLabel}</option>
    {selectedId&&!rows.some(row=>row.employmentId===selectedId)&&<option value={selectedId}>{pinnedLabel}</option>}
