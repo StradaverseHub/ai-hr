@@ -1,23 +1,25 @@
 # Attribute the complete compiler without increasing resources
 
 This default-off development diagnostic targets only source
-`ed188690f8258093391e1f6bc2c92b5bf5744816`. Its original focused run42384517459
-retains six passing selected files and a failing whole compiler: V8 exhausted
-its12GiB heap, with no TypeScript source diagnostic. The earlier dd41 source
-passed run42382096109/job128431754142 in551.79s at12,892,452KiB maximum RSS;
-the failed combined source reached12,863,440KiB RSS. High RSS alone does not
-mean OOM: older8520 completed with an actual TS18048 error at similar RSS.
+`fe26d003b9750478e4d434cc9dd22b59092ae830`. Its focused run42390723421
+retains35 passing selected tests and one real route-scheduling failure. Its full
+compiler failed with an actual V8 heap exhaustion at the unchanged12GiB ceiling,
+591.14s elapsed and12,873,312KiB maximum RSS. No TypeScript diagnostic was emitted.
+Preserve both original failures and the successful tests; this diagnostic neither
+repairs nor reruns application tests.
 
-Unchanged package/lock/config/compiler-helper inputs rule out a deliberately
-larger heap, changed compiler version or omitted roots as explanations. The
-combined source adds64 changed TypeScript files,2489 added/277 removed lines
-against dd41. Existing graph pressure plus additional generic query/test
-instantiations is a hypothesis; a specific offending file or inference has not
-been established. A locally large type relationship and aggregate retained
-checker state must be distinguished using actual hosted observations.
+The previous exact-source attribution42387121951 againsted188 remains historical
+failure evidence. It identified costly whole-catalogue translation inference;
+repairac53 narrowed the two measured test boundaries without changing locale
+coverage, compiler roots or resources. Run42388908785 then passed the ordinary
+compiler at12,841,532KiB RSS. The larger combined source still exhausts the heap,
+so that isolated pass does not establish robust combined compiler qualification.
+Measure remaining file durations and retained graph growth before changing more
+type boundaries. No exclusions, casts to erase checking, heap increase or cached
+PASS are proposed here.
 
 The isolated controller reuses `alpha-staging-diagnostics.yml`'s existing
-`compiler_probe=true` selector: only the exact ed188 expected SHA chooses this
+`compiler_probe=true` selector: only the exact fe26 expected SHA chooses this
 attribution path. Every other source retains the existing cold/warm incremental
 diagnostic and error-refusal controls. No input is added to the existing25-input
 workflow. The resolver still requires the existing frozen source branch and
