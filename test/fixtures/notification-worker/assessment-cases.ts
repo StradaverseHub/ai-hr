@@ -170,8 +170,11 @@ describe.sequential('native assessment reminder preparation (stage3)',()=>{
     const words=target==='words'?{subject:'\u0001'.repeat(20000),opening:'😀'.repeat(30000)}:null;
     expect(assessmentReminderMailSchema.safeParse({tasks,words}).success).toBe(true);
     const decision={...proposal,tasks,mailWords:words};
-    const [wire]=await tx`select octet_length((${tx.json(tasks)}::jsonb)::text) as task_bytes,
-     octet_length((${tx.json(words)}::jsonb)::text) as word_bytes,octet_length((${tx.json(decision)}::jsonb)::text) as decision_bytes`;
+    // Measure the actual complete wire document, including its JSON null. Passing
+    // null as a separate SQL parameter instead yields SQL NULL, not JSON null.
+    const [wire]=await tx`select octet_length((payload->'tasks')::text) as task_bytes,
+     octet_length((payload->'mailWords')::text) as word_bytes,octet_length(payload::text) as decision_bytes
+     from (select ${tx.json(decision)}::jsonb as payload) encoded`;
     expect(wire.decision_bytes).toBeLessThan(260000);
     if(target==='tasks'){expect(wire.task_bytes).toBeGreaterThan(20000);expect(wire.word_bytes).toBeLessThanOrEqual(220000);}
     else{expect(wire.word_bytes).toBeGreaterThan(220000);expect(wire.task_bytes).toBeLessThanOrEqual(20000);}
