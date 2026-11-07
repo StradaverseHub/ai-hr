@@ -8,11 +8,11 @@ White and near-black reading surfaces, open ruled groups and rectangular control
 
 The default light palette uses white, ink #111111, secondary text #555555 and rules #8a8a8a. The default dark palette uses #101010, ivory #f5f3ef, secondary text #bcbab6 and rules #686868. Primary buttons use #d92d20 with white labels. Links and selection use #c62716 in light and #ff7561 in dark. Status always includes text. Errors include an announced explanation and a recovery action.
 
-The baseline uses 20–24 point insets, 44–48 point minimum actions, 42–46 point display titles, 27–28 point section titles and 14–18 point reading text. Text scales with system accessibility settings. Titles and forms scroll with content, and authentication forms adjust to the keyboard.
+The baseline uses 20–24 point insets, 44–48 point minimum actions, 40 point main titles with 41 point leading, 30 point detail titles with 34 point leading, 27 point section titles and 14–18 point reading text. Text scales with system accessibility settings. Titles and forms scroll with content. Public headers stay outside the scrolling form, clear of the status bar and keyboard; the forms adjust to the keyboard.
 
 ## Screen vocabulary
 
-- Home combines the existing clock journey in a compact workday strip with a bounded preview from the authorized approval queue. A red calendar marker sits beside the greeting. Unsent clock preparations use one compact review notice; uncertain submissions retain their receipt/retry controls.
+- Home combines the existing clock journey in a compact workday strip with a bounded preview from the authorized approval queue. A red calendar marker sits beside the greeting. Unsent clock preparations use one compact review notice; uncertain submissions retain their receipt/retry controls. The Clock screen collapses restored, unsent preparation metadata behind an expandable Saved clock attempt control; actual refusal messages and active submission recovery remain visible.
 - Leave previews three server-provided balances in an open list with an All balances expansion, including masked figures, taken-only types and shared-pool labels. Requesting leave always receives the complete set of eligible types. Request drafting, attachments and history retain their existing owners.
 - Approvals uses ruled request rows and opens the original full decision journey, including reason requirements, confirmation, stale-step handling and retry identity.
 - Me groups existing employee and team destinations and preserves employment switching and payroll visibility.

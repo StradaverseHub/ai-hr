@@ -74,6 +74,7 @@ export function ClockPanel({refreshToken=0,variant='full',renderHome,afterContro
   useEffect(()=>{mounted.current=true;return()=>{mounted.current=false;};},[]);
   const [signedStatus,setSignedStatus]=useState<SignedClockStatus|null>(null);
   const [registrationNeeded,setRegistrationNeeded]=useState(false);
+  const [expandedAttempt,setExpandedAttempt]=useState<string|null>(null);
   const latestDraft=useRef(draft);latestDraft.current=draft;
   async function signedClock(){
     if(!identity)throw new Error(t('signedClockUnavailable'));
@@ -335,6 +336,8 @@ export function ClockPanel({refreshToken=0,variant='full',renderHome,afterContro
     else putClock(null);
   }
   const home=variant==='home';
+  const restoredAttempt=draft?.phase==='idle'&&!!draft.attemptStartedAt&&draft.message===t('attemptSavedNotSent');
+  const attemptExpanded=!restoredAttempt||expandedAttempt===draft?.requestId;
   const compactAttempt=home&&draft?.phase==='idle'&&!!draft.attemptStartedAt&&!registrationNeeded&&!recovery.error&&offline.mode!=='offline'&&signedStatus?.status!=='other_pending'&&signedStatus?.status!=='offline_pending';
   const homeDisabled=!(current||coldStart)||pending||!recovery.ready||clock.loading||
     !!draft&&['review','uncertain','submitting','preparing'].includes(draft.phase)||
@@ -368,8 +371,9 @@ export function ClockPanel({refreshToken=0,variant='full',renderHome,afterContro
       </View>}
       {draft?.phase==='done'?<Card><Text accessibilityRole="header" style={{color:palette.text,fontSize:22,fontWeight:'700'}}>{t('clockRecorded')}</Text><Muted>{draft.receiptTime?new Date(draft.receiptTime).toLocaleString(appLocale(),{dateStyle:'medium',timeStyle:'short',timeZone:'Asia/Kuala_Lumpur'}):''}</Muted><Button title={t('backToClock')} onPress={cancel}/></Card>:<>
         {!home&&(!draft||draft.phase==='idle')&&<View style={{flexDirection:'row',gap:12}}>{(['in','out'] as const).map(a=><Pressable key={a} accessibilityRole="button" accessibilityState={{selected:a===action}} onPress={()=>putClock({action:a,phase:'idle'})} style={{flex:1,minHeight:44,justifyContent:'center',borderRadius:2,backgroundColor:a===action?palette.card:'transparent',borderWidth:1,borderColor:a===action?palette.accent:palette.border}}><Text style={{color:a===action?palette.text:palette.muted,textAlign:'center',fontWeight:'600'}}>{a==='in'?t('clockIn'):t('clockOut')}</Text></Pressable>)}</View>}
-        {draft?.message&&<Text accessibilityRole="alert" style={{color:palette.text,lineHeight:22}}>{draft.message}</Text>}
-        {!!draft?.attemptStartedAt&&!['done','uncertain','submitting'].includes(draft.phase)&&<Card>
+        {draft?.message&&<Text accessibilityRole="alert" style={{color:palette.text,lineHeight:22}}>{restoredAttempt?t('attemptNotRecorded'):draft.message}</Text>}
+        {restoredAttempt&&<Pressable accessibilityRole="button" accessibilityLabel={t('pendingAttempt')} accessibilityState={{expanded:attemptExpanded}} onPress={()=>setExpandedAttempt(attemptExpanded?null:draft.requestId)} style={{minHeight:44,justifyContent:'center'}}><Text style={{color:palette.accent,fontSize:14,fontWeight:'600'}}>{t('pendingAttempt')} {attemptExpanded?'−':'+'}</Text></Pressable>}
+        {!!draft?.attemptStartedAt&&attemptExpanded&&!['done','uncertain','submitting'].includes(draft.phase)&&<Card>
           <Text accessibilityRole="header" style={{color:palette.text,fontSize:19,fontWeight:'600'}}>{t('pendingAttempt')}</Text>
           <Muted>{t('attemptTimeClaim')}</Muted>
           <Row label={t('attemptClaimedAt')} value={new Date(draft.attemptStartedAt).toLocaleString(appLocale(),{dateStyle:'medium',timeStyle:'short',timeZone:'Asia/Kuala_Lumpur'})}/>

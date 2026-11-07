@@ -583,3 +583,19 @@ it('keeps an unsent clock attempt compact on Home without discarding its recover
   expect(f.drafts().clock.requestId).toBe('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa');
   expect(f.post).not.toHaveBeenCalled();expect(f.reportAttempt).not.toHaveBeenCalled();
 });
+
+
+it('collapses restored unsent clock metadata while retaining report and preparation controls',async()=>{
+  const f=fixture();render(<f.App kind="clock"/>);
+  const requestId='aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+  await act(async()=>{f.drafts().putClock({employmentId:'own',action:'in',phase:'idle',requestId,attemptStartedAt:Date.now(),message:'attemptSavedNotSent'});});
+  expect(screen.getByText('attemptNotRecorded')).toBeTruthy();
+  expect(screen.getByText('slidePrepare')).toBeTruthy();
+  expect(screen.queryByText('sendAttemptRecord')).toBeNull();
+  const disclosure=screen.getByRole('button',{name:'pendingAttempt'});
+  fireEvent.click(disclosure);
+  expect(screen.getByText('attemptTimeClaim')).toBeTruthy();
+  expect(screen.getByText('sendAttemptRecord')).toBeTruthy();
+  expect(f.drafts().clock.requestId).toBe(requestId);
+  expect(f.post).not.toHaveBeenCalled();expect(f.reportAttempt).not.toHaveBeenCalled();
+});
