@@ -102,7 +102,7 @@ function fullHints(env:FocusedIntentEnvironment){
 export function inspectFullCiRoleAdmission(env:FocusedIntentEnvironment,host:FullCiRoleHost,readonlyRehearsal=false):FullCiRoleAdmission{
  const hints=readonlyRehearsal?(fullNeed(!hasFullCiRoleIntent(env)&&!hasFocusedMigrationIntent(env)&&!Object.keys(env).some(key=>key.startsWith('AIHR_FOCUSED_')&&env[key]!==undefined),'readonly hints'),null):fullHints(env);
  fullNeed(env.GITHUB_ACTIONS==='true'&&env.CI==='true'&&env.RUNNER_ENVIRONMENT==='github-hosted'&&env.RUNNER_OS==='Linux'&&host.platform==='linux','hosted Linux');
- fullNeed(env.GITHUB_REPOSITORY==='StradaverseHub/ai-hr'&&env.GITHUB_REPOSITORY_ID==='1333414856'&&env.GITHUB_WORKFLOW==='alpha-staging-ci'&&env.GITHUB_JOB==='test','workflow identity');
+ fullNeed(env.GITHUB_REPOSITORY==='StradaverseHub/ai-hr'&&env.GITHUB_REPOSITORY_ID==='1333414856'&&env.GITHUB_WORKFLOW==='alpha-staging-ci'&&['test','native-test'].includes(env.GITHUB_JOB??''),'workflow identity');
  fullNeed(/^[1-9][0-9]*$/.test(env.GITHUB_RUN_ID??'')&&/^[1-9][0-9]*$/.test(env.GITHUB_RUN_ATTEMPT??''),'run identity');
  fullNeed(fullSha(env.AIHR_CI_HEAD)&&fullSha(env.AIHR_CI_CONTROL_HEAD)&&fullSha(env.AIHR_CI_MIGRATION_BASE),'source identity');
  fullNeed(env.GITHUB_SHA===env.AIHR_CI_CONTROL_HEAD,'controller is workflow SHA, not candidate');
@@ -158,6 +158,10 @@ export function inspectFullCiRoleAdmission(env:FocusedIntentEnvironment,host:Ful
  fullNeed(Array.isArray(plan.units),'actual plan units');const units=(plan.units as unknown[]).map(fullRecord),matching=units.filter(unit=>unit.id===unitId);
  fullNeed(matching.length===1&&matching[0].kind==='db'&&Array.isArray(matching[0].files),'actual plan DB membership');
  const files=(matching[0].files as unknown[]).map(fullText);fullNeed(files.length>0&&new Set(files).size===files.length,'unit files');
+ const singleton=matching[0].singleton===undefined?null:fullRecord(matching[0].singleton),native=singleton?.profile==='linux-next-postgres-v1';
+ if(native)fullNeed(singleton?.version===1&&singleton.workers===1&&singleton.isolation==='job-host-and-postgres-cluster'
+  &&files.length===1&&files[0]==='test/runtime-next-admission-native.test.ts','exact hybrid prerequisite profile');
+ fullNeed(env.GITHUB_JOB===(native?'native-test':'test'),'job matches actual reconstructed unit capability');
  const rehearsalFile='test/personnel-draft-discard-role-transfer.test.ts',fileIndex=files.indexOf(rehearsalFile);
  if(readonlyRehearsal)fullNeed(fileIndex>=0,'actual rehearsal file membership');
  const offset=hints?.offset??Math.floor(fileIndex/Number(batchSize))*Number(batchSize);

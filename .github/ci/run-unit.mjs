@@ -11,8 +11,10 @@ import {hostHealth} from './host-health.mjs';
 import {createPlan,hash} from './plan.mjs';
 import {DB_BATCH_FILES} from './manifest.mjs';
 import {validatePdfSetupProof} from './pdf-tools.mjs';
-import {assertNoSingletonHints} from './singleton-protocol.mjs';
-import {provisionSingletonHost,writeSingletonBinding} from './singleton-profiles.mjs';
+import {assertNoSingletonHints,nativeNextUnit} from './singleton-protocol.mjs';
+import {actualSingletonHost,provisionSingletonHost,writeSingletonBinding} from './singleton-profiles.mjs';
+
+import {provisionNativeNextBuild} from './native-next-build-packet.mjs';
 
 // Frozen full-CI handshake v1. Diagnostic setup receipt only; never installation/release authority.
 export const FULL_CI_ROLE_HINTS=Object.freeze(['AIHR_CI_DISPOSABLE_ROLE_MODE','AIHR_CI_ROLE_UNIT','AIHR_CI_ROLE_BATCH_OFFSET','AIHR_CI_ROLE_EVIDENCE_DIR','AIHR_CI_ROLE_PLAN_FINGERPRINT']);
@@ -37,7 +39,7 @@ export function fullCiRoleBinding({plan,unit,offset,batchSize,files,env,resetSta
  const {fingerprint,...body}=plan;assert.equal(hash(body),fingerprint,'Reconstructed actual plan fingerprint differs');
  assert(fullSha(plan.sha)&&fullSha(plan.controller));
  assert.equal(env.GITHUB_ACTIONS,'true');assert.equal(env.CI,'true');assert.equal(env.RUNNER_ENVIRONMENT,'github-hosted');assert.equal(env.RUNNER_OS,'Linux');
- assert.equal(env.GITHUB_REPOSITORY,'StradaverseHub/ai-hr');assert.equal(env.GITHUB_REPOSITORY_ID,'1333414856');assert.equal(env.GITHUB_WORKFLOW,'alpha-staging-ci');assert.equal(env.GITHUB_JOB,'test');
+ assert.equal(env.GITHUB_REPOSITORY,'StradaverseHub/ai-hr');assert.equal(env.GITHUB_REPOSITORY_ID,'1333414856');assert.equal(env.GITHUB_WORKFLOW,'alpha-staging-ci');assert.equal(env.GITHUB_JOB,nativeNextUnit(unit)?'native-test':'test');
  assert(positiveId(env.GITHUB_RUN_ID)&&positiveId(env.GITHUB_RUN_ATTEMPT));assert.equal(env.AIHR_CI_HEAD,plan.sha);assert.equal(env.AIHR_CI_CONTROL_HEAD,plan.controller);assert.equal(env.GITHUB_SHA,plan.controller);
  assert.equal(layout.platform,'linux');assert.equal(layout.sourceHead,plan.sha);assert.equal(layout.controllerHead,plan.controller);assert.equal(layout.sourceClean,true);assert.equal(layout.controllerClean,true);
  assert.equal(layout.source,join(layout.workspace,'source'));assert.equal(layout.automation,join(layout.workspace,'automation'));assert.equal(layout.cwd,layout.source);
@@ -136,10 +138,11 @@ function actualFullCiRoleContext(plan,unit,offset,batchSize,files,dir,resetStatu
  return {binding,sourceHashes,env:fullCiRoleMigrationEnvironment(env,binding,dir)};
 }
 
-export function main(){
+export async function main(){
 if (process.env.GITHUB_ACTIONS !== 'true' || process.env.CI !== 'true' || process.platform !== 'linux') throw Error('GitHub runners only; never the shared developer cluster');
 assertNoFullCiRoleHints(process.env);
 assertNoSingletonHints(process.env);
+assert(!Object.keys(process.env).some(key=>key.startsWith('AIHR_NATIVE_NEXT_')),'Inherited native build packet hints are forbidden');
 const [id, destination] = process.argv.slice(2), plan = createPlan(), unit = plan.units.find(u => u.id === id);
 if (!unit || !destination) throw Error('Unknown CI unit or missing evidence directory');
 const dir = resolve(destination); mkdirSync(dir, {recursive: true});
@@ -182,7 +185,15 @@ try {
     let singleton=null;
     if(unit.singleton){
       if(offset!==0||files.length!==1||unit.files.length!==1)throw Error('Singleton unit was batched');
-      const prerequisites=unit.kind==='db'?{kind:'fresh-job-postgres-cluster',workers:1,database:capturePostgresEvidence(id,plan.execution.postgres)}:provisionSingletonHost(plan,unit,dir);
+      let prerequisites;
+      if(nativeNextUnit(unit)){
+        actualSingletonHost(plan,unit,dir);
+        const host=provisionSingletonHost(plan,unit,dir),build=await provisionNativeNextBuild(plan,unit,dir);
+        prerequisites={kind:'fresh-job-next-systemd-nginx-postgres',workers:1,database:capturePostgresEvidence(id,plan.execution.postgres),host,build:build.prerequisite};
+        env.AIHR_NATIVE_NEXT_PACKET_DIR=build.packetDirectory;env.AIHR_NATIVE_NEXT_BUILD_BINDING=build.bindingPath;
+        // GitHub credentials belong to the provisioning owner, never the app/test child.
+        delete env.GH_TOKEN;delete env.GITHUB_TOKEN;
+      }else prerequisites=unit.kind==='db'?{kind:'fresh-job-postgres-cluster',workers:1,database:capturePostgresEvidence(id,plan.execution.postgres)}:provisionSingletonHost(plan,unit,dir);
       if(unit.kind==='db')validatePostgresEvidence(prerequisites.database,plan.execution);
       singleton=writeSingletonBinding(plan,unit,dir,prerequisites);env.AIHR_CI_SINGLETON_BINDING=singleton.path;report.singleton=singleton.binding;
     }
@@ -212,4 +223,4 @@ try {
 process.exitCode = report.exitCode;
 
 }
-if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url))main();
+if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url))main().catch(error=>{console.error(error);process.exitCode=1;});

@@ -121,3 +121,15 @@ it('full context does not let direct URL arguments diverge from the controller-b
 it.each(['candidate input','event repo','build only','malformed event'])('refuses dispatch %s before helper import',async mutation=>{const f=fullFixture();if(mutation==='candidate input')f.event.inputs={expected_sha:'e'.repeat(40)};if(mutation==='event repo')f.event.repository={id:1,full_name:'foreign/repo'};if(mutation==='build only')f.event.inputs={expected_sha:f.candidate,build_only:true};if(mutation==='malformed event'){const real=vi.mocked(f.host.read).getMockImplementation()!;vi.mocked(f.host.read).mockImplementation(path=>path===f.env.GITHUB_EVENT_PATH?'NOT-JSON-FICTIONAL-SECRET':real(path));}let failure:unknown;try{await f.run();}catch(error){failure=error;}expect(failure).toBeInstanceOf(Error);expect(String(failure)).not.toContain('FICTIONAL-SECRET');expect(f.order).toEqual([]);});
 it('full readonly rehearsal rejects a remote credential without including it in a refusal',()=>{const f=fullFixture();for(const key of Object.values(FULL_CI_ROLE_ENV))delete f.env[key];f.env.TEST_MIGRATION_DATABASE_URL='invalid-FICTIONAL-SECRET';let failure:unknown;try{inspectFullCiRoleAdmission(f.env,f.host,true);}catch(error){failure=error;}expect(failure).toBeInstanceOf(Error);expect(String(failure)).not.toContain('FICTIONAL-SECRET');expect(f.order).toEqual([]);});
 it('receipt failure is terminal even after an exact graph was prepared',async()=>{const f=fullFixture();f.owners.recordPrerequisites.mockImplementationOnce(()=>{throw Error('existing receipt refused');});await expect(f.run()).rejects.toThrow('existing receipt');expect(f.prepare).toHaveBeenCalledTimes(1);expect(f.owners.migrate).not.toHaveBeenCalled();});
+
+it('hybrid prerequisites require the exact reconstructed native unit rather than its job name alone',()=>{
+ const f=fullFixture();f.env.GITHUB_JOB='native-test';
+ expect(()=>inspectFullCiRoleAdmission(f.env,f.host)).toThrow('job matches actual reconstructed unit');
+ const unit=f.observed.plan.units[0] as typeof f.observed.plan.units[number]&{singleton?:{version:number;profile:string;workers:number;isolation:string}};
+ unit.files=['test/runtime-next-admission-native.test.ts'];unit.singleton={version:1,profile:'linux-next-postgres-v1',workers:1,isolation:'job-host-and-postgres-cluster'};
+ expect(inspectFullCiRoleAdmission(f.env,f.host).binding.batchFiles).toEqual(['test/runtime-next-admission-native.test.ts']);
+ for(const mutate of [()=>{unit.singleton!.workers=2;},()=>{unit.singleton!.version=2;},()=>{unit.singleton!.isolation='job-postgres-cluster';},()=>{unit.files=['test/ordinary.test.ts'];}]){
+  const before=structuredClone(unit);mutate();expect(()=>inspectFullCiRoleAdmission(f.env,f.host)).toThrow();Object.assign(unit,before);
+ }
+ f.env.GITHUB_JOB='test';expect(()=>inspectFullCiRoleAdmission(f.env,f.host)).toThrow('job matches actual reconstructed unit');
+});

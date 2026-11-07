@@ -11,7 +11,7 @@ import {COMMISSION_TITLE,commissioningIntent,selectCommissioning,summarizeCommis
 const browser=['test/fictional.browser.test.tsx'];
 function fixture(file='test/runtime-ready-admission-native.test.ts'){
  const kind=singletonKind(singletonDescriptor(file).profile),units=buildUnits([file],{db:kind==='db'?[file]:[],nodb:kind==='nodb'?[file]:[]},browser),unit=units[0];
- const body={schemaVersion:2,policyVersion:'aihr-staging-ci/v19',sha:'a'.repeat(40),controller:'b'.repeat(40),migrationBase:'d'.repeat(40),runtime:{node:'22.23.3',platform:'linux',arch:'x64'},execution:CI_EXECUTION,suite:[file],units,
+ const body={schemaVersion:2,policyVersion:'aihr-staging-ci/v20',sha:'a'.repeat(40),controller:'b'.repeat(40),migrationBase:'d'.repeat(40),runtime:{node:'22.23.3',platform:'linux',arch:'x64'},execution:CI_EXECUTION,suite:[file],units,
   singletonSources:{[unit.id]:Object.fromEntries(singletonSources(unit).map(path=>[path,'c'.repeat(64)]))}};
  const plan={...body,fingerprint:protocolHash(body)},witness={runId:123,attempt:1};
  const prerequisites=kind==='db'?{kind:'fresh-job-postgres-cluster',workers:1,database:{schemaVersion:2,profileVersion:2,configuredCapBytes:2113929216,peakBudgetBytes:2147483648,errors:{},memoryLimit:2113929216,memorySwap:2113929216,memoryMax:2113929216,memorySwapMax:0,memoryPeak:1500000000,memoryEvents:{max:0,oom:0,oom_kill:0},state:{Running:true,OOMKilled:false,Dead:false},settings:{jit:'on',jitAvailable:true,serverVersionNum:'160015'},name:`aihr-ci-123-1-${unit.id}`}}:
@@ -81,4 +81,19 @@ test('the real matrix command retains the full input plan and writes a separate 
   const bad=spawnSync(process.execPath,[fileURLToPath(new URL('./singleton-commissioning.mjs',import.meta.url)),'matrix',plan,selection],{encoding:'utf8',timeout:5000,env:{...process.env,GITHUB_EVENT_PATH:event,GITHUB_EVENT_NAME:'workflow_dispatch',GITHUB_RUN_ATTEMPT:'1',GITHUB_OUTPUT:output}});
   assert.notEqual(bad.status,0);assert.equal(readFileSync(plan,'utf8'),bytes);
  }finally{rmSync(dir,{recursive:true,force:true});}
+});
+
+test('native hybrid commissioning consumes one canonical build while ordinary units remain independent',()=>{
+ const w=readFileSync(new URL('../workflows/alpha-staging.yml',import.meta.url),'utf8');
+ const section=name=>w.slice(w.indexOf('  '+name+':\n'),w.indexOf('\n  ',w.indexOf('  '+name+':\n')+3));
+ const native=w.slice(w.indexOf('  native-test:\n'),w.indexOf('  browser:\n'));
+ const ordinary=w.slice(w.indexOf('  test:\n'),w.indexOf('  native-test:\n'));
+ assert(native.includes('needs: [resolve, plan, build]'));assert(native.includes('needs.plan.outputs.native_matrix'));
+ assert(native.includes("GH_TOKEN: '${{ github.token }}'"));assert(native.includes('playwright install --with-deps chromium'));
+ assert(native.includes('fail-fast: false'));assert(native.includes('timeout-minutes: 120'));assert(!native.includes('AIHR_FOCUSED'));
+ assert(ordinary.includes('needs: [resolve, plan]'));assert(!ordinary.includes('needs: [resolve, plan, build]'));
+ assert(w.includes("needs.plan.outputs.has_native == 'true'"));assert(w.includes('test, native-test, browser]'));
+ const owner=readFileSync(new URL('./run-unit.mjs',import.meta.url),'utf8');
+ assert(owner.includes('await provisionNativeNextBuild(plan,unit,dir)'));assert(owner.includes('delete env.GH_TOKEN;delete env.GITHUB_TOKEN'));
+ assert(owner.includes("nativeNextUnit(unit)?'native-test':'test'"));
 });

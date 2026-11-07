@@ -9,7 +9,7 @@ export const REPOSITORY='StradaverseHub/ai-hr';
 export const REPOSITORY_ID=1333414856;
 export const WORKFLOW_ID=395777276;
 export const WORKFLOW_PATH='.github/workflows/alpha-staging.yml';
-import {requiredEvidence} from './manifest.mjs';
+import {requiredEvidence,optionalSkippedCiJob} from './manifest.mjs';
 import {COMPILER_STATE_ARTIFACT} from './compiler-cache-protocol.mjs';
 import {BUILD_ARTIFACT,BUILD_ZIP_MAX} from './build-artifact.mjs';
 import {NEXT_APPLICATION_STATE} from './next-application-cache-protocol.mjs';
@@ -34,7 +34,7 @@ export function validateJobs(jobs,expectedPlan){
  for(const job of jobs){
   if(found.has(job.name))reject('duplicated job identity');
   found.set(job.name,job);
-  if(!REQUIRED_JOBS.includes(job.name)&&!(['runner-diagnostics','commission-summary'].includes(job.name)&&job.status==='completed'&&job.conclusion==='skipped'))reject('unexpected job');
+  if(!REQUIRED_JOBS.includes(job.name)&&!(optionalSkippedCiJob(job.name,expectedPlan)&&job.status==='completed'&&job.conclusion==='skipped'))reject('unexpected job');
  }
  for(const name of REQUIRED_JOBS){const j=found.get(name);if(!j||j.status!=='completed'||j.conclusion!=='success'||j.run_attempt!==1)reject('missing, skipped, failed or rerun job '+name);}
  return true;

@@ -10,7 +10,7 @@ export const REPAIR_RECOVERY_POLICY='aihr-cross-source-recovery/v2';
 const same=(a,b,message)=>assert(isDeepStrictEqual(a,b),message);
 const sha=x=>typeof x==='string'&&/^[a-f0-9]{40}$/.test(x);
 const id=x=>Number.isSafeInteger(x)&&x>0;
-const unitJob=u=>u.kind==='browser'?`browser (${u.engine})`:`test (${u.id})`;
+import {singletonJobName as unitJob,nativeNextUnit} from './singleton-protocol.mjs';
 const fullJobs=['resolve','typecheck','migrations','test','controller-tests','plan','runner-diagnostics','build','browser','verify','commission-summary','deployment-hold'];
 const focusedJobs=['resolve','selected-tests','typecheck','linux-build','native-typecheck','native-swift-models','native-bundle'];
 function runIdentity(run,{runId,controller,after,now=Date.now()}){
@@ -38,11 +38,12 @@ export function validateRepairFocusedMetadata({run,jobs,artifacts,expected,now=D
 }
 export function validateRepairBuildMetadata({run,jobs,expected}){
  runIdentity(run,expected);assert(run.workflow_id===WORKFLOW_ID&&run.path===WORKFLOW_PATH&&run.display_title===`Canonical build only · ${expected.candidateBranch}`,'Exact canonical build-only route required');
- jobsIdentity(run,jobs,fullJobs,['resolve','build','deployment-hold']);return jobs.find(j=>j.name==='build');
+ jobsIdentity(run,jobs,jobs.some(j=>j.name==='native-test')?[...fullJobs,'native-test']:fullJobs,['resolve','build','deployment-hold']);return jobs.find(j=>j.name==='build');
 }
 /** No caller-selected invalidation list is authoritative. Input comes from immutable Git impact. */
 export function repairDisposition({sourcePlan,plan,assessment,impactContext,verificationController}){
  requiredEvidence(sourcePlan);requiredEvidence(plan);
+ assert(!sourcePlan.units.some(nativeNextUnit)&&!plan.units.some(nativeNextUnit),'Cross-source native runtime proof needs an authenticated fresh native unit and matching compiled packet; this recovery route cannot retain it');
  for(const p of [sourcePlan,plan]){const {fingerprint,...body}=p;assert(fingerprint===hash(body),'Altered independently reconstructed full plan');}
  assert(sourcePlan.sha!==plan.sha&&sha(verificationController)&&impactContext.base===sourcePlan.sha&&impactContext.head===plan.sha&&impactContext.controller===verificationController,'Repair delta/controller differs');
  same(plan.runtime,sourcePlan.runtime,'Runtime changed');same(plan.execution,sourcePlan.execution,'Execution policy changed');same(plan.units,sourcePlan.units,'Unit inventory changed');same(plan.suite,sourcePlan.suite,'Test inventory changed');

@@ -6,6 +6,7 @@ import {pathToFileURL,fileURLToPath} from 'node:url';
 import {isDeepStrictEqual} from 'node:util';
 import {BUILD_ARTIFACT,inspectCiBuildPacket,bindCiBuildSource} from './build-artifact.mjs';
 import {NEXT_APPLICATION_STATE,NEXT_APPLICATION_MEMBERS,inspectNextStatePacket} from './next-application-cache-protocol.mjs';
+import {assertNativeBuildMatches} from './singleton-protocol.mjs';
 import {randomUUID} from 'node:crypto';
 import {createPlan,hash} from './plan.mjs';
 import {admitAiManifests} from './ai-manifest-admission.mjs';
@@ -64,6 +65,7 @@ export async function verifyCi({candidatePath,runId,baseline}){
  const expectedPlan={...body,fingerprint:hash(body)};
  const verified=validateProof({plan,reports,receipt,expectedPlan,p});
  const build=await sourceBoundBuild({candidatePath,dir,p,jobs});
+ assertNativeBuildMatches(local,reports,build,artifacts.find(a=>a.name===BUILD_ARTIFACT),jobs.find(j=>j.name==='build').id);
  if(cleanHead(controllerRoot)!==controller||cleanHead(candidatePath)!==candidate)throw Error('Source changed during CI verification');
  const alpha=api('git/ref/heads/alpha');if(![baseline,candidate].includes(alpha.object?.sha))throw Error('Alpha no longer matches the deployed staging baseline');
  const result={...verified,build,candidatePath,controllerBranch:run.head_branch,verifiedAt:new Date().toISOString(),url:run.html_url,evidenceDirectory:dir,artifacts:artifacts.map(a=>({id:a.id,name:a.name,digest:a.digest}))};
@@ -85,6 +87,8 @@ export async function revalidateCi(evidence){
  const identity=a=>JSON.stringify(a.map(x=>({id:x.id,name:x.name,digest:x.digest})).sort((a,b)=>a.name.localeCompare(b.name)));
  if(identity(artifacts)!==identity(evidence.artifacts)||![p.baseline,p.candidate].includes(api('git/ref/heads/alpha').object?.sha))throw Error('CI evidence or alpha moved after verification');
  const build=await sourceBoundBuild({candidatePath:evidence.candidatePath,dir:evidence.evidenceDirectory,p,jobs});
+ const reports=local.units.map(u=>JSON.parse(readFileSync(join(evidence.evidenceDirectory,'unit-'+u.id,'unit-'+u.id+'.json'),'utf8')));
+ assertNativeBuildMatches(local,reports,build,artifacts.find(a=>a.name===BUILD_ARTIFACT),jobs.find(j=>j.name==='build').id);
  if(!isDeepStrictEqual(build,evidence.build)||cleanHead(controllerRoot)!==p.controller||cleanHead(evidence.candidatePath)!==p.candidate)throw Error('Validated build bytes or canonical source changed');
  return true;
 }

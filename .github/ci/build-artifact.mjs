@@ -32,7 +32,12 @@ function file(path,bound,content=true){
 /** Expected identity comes from independently authenticated run/job metadata.
  * Full archive member/package/compiled-value checks remain mandatory at installation.
  */
-export function inspectCiBuildPacket(directory,expected){
+export function inspectCiBuildPacket(directory,expected){return inspectBuildPacket(directory,expected,'release');}
+/** Same-byte development consumer. Its result is explicitly not a release packet;
+ * the original main/alpha release entrypoint and all its callers stay strict.
+ * Expected fields still come only from authenticated same-run build/job metadata. */
+export function inspectCiNativeBuildPacket(directory,expected){return inspectBuildPacket(directory,expected,'native-verification');}
+function inspectBuildPacket(directory,expected,purpose){
  directory=resolve(directory);
  requireValue(realpathSync(directory)===directory&&!lstatSync(directory).isSymbolicLink(),'packet path differs');
  requireValue(isDeepStrictEqual(readdirSync(directory).sort(),['build-provenance.json','bytes','successful-build.json','system-testing.json']),'packet inventory differs');
@@ -45,7 +50,8 @@ export function inspectCiBuildPacket(directory,expected){
  const p=JSON.parse(evidence['build-provenance.json'].data),preparedBytes=evidence['system-testing.json'].data;
  const prepared=JSON.parse(preparedBytes),observation=JSON.parse(evidence['successful-build.json'].data),manifest=JSON.parse(evidence['bytes/build-bundle-files.json'].data);
  requireValue(/^[a-f0-9]{40}$/.test(expected.candidate??'')&&/^[a-f0-9]{40}$/.test(expected.controller??'')
-  &&Number.isSafeInteger(expected.runId)&&expected.runId>0&&['main','alpha'].includes(expected.controllerBranch),'independent expected identity');
+  &&Number.isSafeInteger(expected.runId)&&expected.runId>0
+  &&(['main','alpha'].includes(expected.controllerBranch)||purpose==='native-verification'&&/^codex\/[A-Za-z0-9_-]+(?:\/[A-Za-z0-9_-]+)*$/.test(expected.controllerBranch??'')),'independent expected identity');
  assertBuildCapacityProfile(p?.capacityProfile);assertBuildCapacityProfile(manifest?.capacityProfile);
  requireValue(p?.format===2&&p.kind==='ci-system-testing-build-candidate'&&p.releaseAuthorized===false
   &&p.source===expected.candidate&&p.controller===expected.controller&&p.runId===expected.runId&&p.runAttempt===1
@@ -68,7 +74,7 @@ export function inspectCiBuildPacket(directory,expected){
  const archive=file(join(directory,'bytes/build-bundle.tar.gz'),BUILD_ARCHIVE_MAX,false);
  assertBuildPacketAggregate([...Object.values(evidence).map(member=>member.bytes),archive.bytes]);
  requireValue(archive.bytes===p.archiveBytes&&archive.sha256===p.archiveSha256,'bundle archive bytes differ');
- return {format:2,capacityProfile:BUILD_CAPACITY_PROFILE,kind:'AUTHENTICATED_CI_BUILD_PACKET_NOT_DEPLOYMENT',source:p.source,controller:p.controller,runId:p.runId,
+ return {format:2,capacityProfile:BUILD_CAPACITY_PROFILE,kind:purpose==='release'?'AUTHENTICATED_CI_BUILD_PACKET_NOT_DEPLOYMENT':'VERIFIED_NATIVE_NEXT_PACKET_NOT_RELEASE',source:p.source,controller:p.controller,runId:p.runId,
   nextBuildId:p.nextBuildId,buildRecordId:p.buildRecordId,buildSourcePath:p.buildSourcePath,runtime:p.runtime,
   provenanceSha256:evidence['build-provenance.json'].sha256,archiveSha256:p.archiveSha256,archiveBytes:p.archiveBytes,
   manifestSha256:p.manifestSha256,preparedSha256:p.preparedSha256,successfulObservationSha256:p.successfulObservationSha256,

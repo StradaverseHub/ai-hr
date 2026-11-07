@@ -5,18 +5,21 @@ import {spawnSync,execFileSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 import {buildUnits,requiredEvidence,CI_EXECUTION} from './manifest.mjs';
 import {verifyUnitReport} from './verify-shards.mjs';
-import {SINGLETON_FILES,singletonDescriptor,singletonKind,singletonSources,protocolHash,validateSingletonBinding,validateSingletonHost,validateSingletonDatabaseUrls,assertNoSingletonHints,assertSingletonCoverage,assertSingletonSelection} from './singleton-protocol.mjs';
+import {SINGLETON_FILES,assertNativeBuildMatches,nativeNextUnit,singletonJobName,singletonDescriptor,singletonKind,singletonSources,protocolHash,validateSingletonBinding,validateSingletonHost,validateSingletonDatabaseUrls,assertNoSingletonHints,assertSingletonCoverage,assertSingletonSelection} from './singleton-protocol.mjs';
 import {requiredHostedSingletons} from '../../scripts/gate-singleton-scope.mjs';
 const browser=['test/fictional.browser.test.tsx'];
 function fixture(file='test/runtime-ready-admission-native.test.ts'){
  const kind=singletonKind(singletonDescriptor(file).profile),units=buildUnits([file],{db:kind==='db'?[file]:[],nodb:kind==='nodb'?[file]:[]},browser),unit=units[0];
- const body={schemaVersion:2,policyVersion:'aihr-staging-ci/v19',sha:'a'.repeat(40),controller:'b'.repeat(40),migrationBase:'d'.repeat(40),runtime:{node:'22.23.3',platform:'linux',arch:'x64'},execution:CI_EXECUTION,suite:[file],units,
+ const body={schemaVersion:2,policyVersion:'aihr-staging-ci/v20',sha:'a'.repeat(40),controller:'b'.repeat(40),migrationBase:'d'.repeat(40),runtime:{node:'22.23.3',platform:'linux',arch:'x64'},execution:CI_EXECUTION,suite:[file],units,
   singletonSources:{[unit.id]:Object.fromEntries(singletonSources(unit).map(path=>[path,'c'.repeat(64)]))}};
  const plan={...body,fingerprint:protocolHash(body)},witness={runId:123,attempt:1};
  const prerequisites=kind==='db'?{kind:'fresh-job-postgres-cluster',workers:1,database:{schemaVersion:2,profileVersion:2,configuredCapBytes:2113929216,peakBudgetBytes:2147483648,errors:{},memoryLimit:2113929216,memorySwap:2113929216,memoryMax:2113929216,memorySwapMax:0,memoryPeak:1500000000,memoryEvents:{max:0,oom:0,oom_kill:0},state:{Running:true,OOMKilled:false,Dead:false},settings:{jit:'on',jitAvailable:true,serverVersionNum:'160015'},name:`aihr-ci-123-1-${unit.id}`}}:
   {kind:'actual-job-systemd-nginx',platform:'linux',pid1:'systemd',sudoUid:'0',nginxPath:'/usr/sbin/nginx',nginxSha256:'e'.repeat(64),nginxVersion:'nginx version: nginx/1.24.0',systemdVersion:'systemd 255'};
  const binding={schemaVersion:1,mode:'full-ci-singleton',candidate:plan.sha,controller:plan.controller,runId:'123',attempt:'1',unit:unit.id,fingerprint:plan.fingerprint,file,profile:unit.singleton.profile,sourceHashes:plan.singletonSources[unit.id],evidenceDirectory:'/tmp/fixture/aihr-ci',prerequisites};
- const env={GITHUB_ACTIONS:'true',CI:'true',RUNNER_ENVIRONMENT:'github-hosted',RUNNER_OS:'Linux',GITHUB_REPOSITORY:'StradaverseHub/ai-hr',GITHUB_REPOSITORY_ID:'1333414856',GITHUB_WORKFLOW:'alpha-staging-ci',GITHUB_JOB:'test',GITHUB_RUN_ATTEMPT:'1',GITHUB_RUN_ID:'123',AIHR_CI_HEAD:plan.sha,AIHR_CI_CONTROL_HEAD:plan.controller,GITHUB_SHA:plan.controller,GITHUB_EVENT_NAME:'workflow_dispatch',GITHUB_WORKFLOW_REF:'StradaverseHub/ai-hr/.github/workflows/alpha-staging.yml@refs/heads/main'};
+ if(nativeNextUnit(unit))binding.prerequisites={kind:'fresh-job-next-systemd-nginx-postgres',workers:1,database:prerequisites.database,
+  host:{kind:'actual-job-systemd-nginx',platform:'linux',pid1:'systemd',sudoUid:'0',nginxPath:'/usr/sbin/nginx',nginxSha256:'e'.repeat(64),nginxVersion:'nginx version: nginx/1.24.0',systemdVersion:'systemd 255'},
+  build:{kind:'same-run-canonical-next-build',source:plan.sha,controller:plan.controller,runId:'123',attempt:'1',artifactId:'456',producerJobId:'789',artifactDigest:'sha256:'+'a'.repeat(64),archiveSha256:'b'.repeat(64),manifestSha256:'c'.repeat(64),provenanceSha256:'d'.repeat(64),nextBuildId:'same-build'}};
+ const env={GITHUB_ACTIONS:'true',CI:'true',RUNNER_ENVIRONMENT:'github-hosted',RUNNER_OS:'Linux',GITHUB_REPOSITORY:'StradaverseHub/ai-hr',GITHUB_REPOSITORY_ID:'1333414856',GITHUB_WORKFLOW:'alpha-staging-ci',GITHUB_JOB:nativeNextUnit(unit)?'native-test':'test',GITHUB_RUN_ATTEMPT:'1',GITHUB_RUN_ID:'123',AIHR_CI_HEAD:plan.sha,AIHR_CI_CONTROL_HEAD:plan.controller,GITHUB_SHA:plan.controller,GITHUB_EVENT_NAME:'workflow_dispatch',GITHUB_WORKFLOW_REF:'StradaverseHub/ai-hr/.github/workflows/alpha-staging.yml@refs/heads/main'};
  const event={repository:{full_name:'StradaverseHub/ai-hr',id:1333414856},inputs:{expected_sha:plan.sha}};
  const layout={platform:'linux',workspace:'/fixture',temp:'/tmp/fixture',source:'/fixture/source',automation:'/fixture/automation',cwd:'/fixture/source',evidence:'/tmp/fixture/aihr-ci',sourceHead:plan.sha,controllerHead:plan.controller,sourceClean:true,controllerClean:true};
  return {plan,unit,witness,binding,env,event,layout};
@@ -25,14 +28,14 @@ test('every registered infrastructure file remains exactly once in its native cl
  const native=Object.keys(SINGLETON_FILES),ordinary=['test/ordinary-db.test.ts','test/ordinary-nodb.test.ts'];
  const db=native.filter(f=>singletonKind(singletonDescriptor(f).profile)==='db').concat(ordinary[0]),nodb=native.filter(f=>!db.includes(f)).concat(ordinary[1]),suite=[...db,...nodb].sort();
  const units=buildUnits(suite,{db,nodb},browser),special=units.filter(u=>u.singleton);
- assert.equal(special.length,15);assert.deepEqual(units.filter(u=>u.kind!=='browser').flatMap(u=>u.files).sort(),suite);
+ assert.equal(special.length,16);assert.deepEqual(units.filter(u=>u.kind!=='browser').flatMap(u=>u.files).sort(),suite);
  assert(special.every(u=>u.files.length===1&&u.singleton.workers===1));assert.equal(requiredEvidence({suite,units}).units.length,units.length);
  for(const unit of special){const changed=structuredClone(units);changed.find(u=>u.id===unit.id).singleton.workers=2;assert.throws(()=>requiredEvidence({suite,units:changed}));}
  assert.throws(()=>buildUnits([native[0]],{db:[],nodb:[native[0]]},browser));
  assert.deepEqual(requiredHostedSingletons(suite).sort(),native.sort());
 });
 test('actual full-CI host context, complete plan and closed native prerequisites admit',()=>{
- for(const file of ['test/runtime-ready-admission-native.test.ts','test/notification-worker-lifecycle.test.ts','test/analytics-termination-lateral.test.ts']){
+ for(const file of ['test/runtime-ready-admission-native.test.ts','test/notification-worker-lifecycle.test.ts','test/analytics-termination-lateral.test.ts','test/runtime-next-admission-native.test.ts']){
   const f=fixture(file);validateSingletonHost(f);validateSingletonBinding(f.binding,f.plan,f.unit,f.witness);
  }
 });
@@ -96,4 +99,35 @@ test('the real local scope guard refuses a complete native inventory rather than
  const ordinary=spawnSync(process.execPath,[script],{encoding:'utf8',input:'test/ordinary.test.ts\n'});assert.equal(ordinary.status,0);
  const native=spawnSync(process.execPath,[script],{encoding:'utf8',input:'test/ordinary.test.ts\ntest/runtime-ready-admission-native.test.ts\n'});assert.equal(native.status,2);assert(native.stderr.includes('authenticated hosted singleton units'));assert(native.stderr.includes('test/runtime-ready-admission-native.test.ts'));
  const scriptSource=readFileSync(new URL('../../scripts/gate-chunked.sh',import.meta.url),'utf8');assert(scriptSource.indexOf('node scripts/gate-singleton-scope.mjs')<scriptSource.indexOf('node --import tsx scripts/gate-db-classify.ts'));
+});
+
+test('hybrid capability binds the conjunction of actual host, owned database and identical same-run build',()=>{
+ const f=fixture('test/runtime-next-admission-native.test.ts');
+ assert.equal(f.unit.kind,'db');assert.equal(f.unit.singleton.isolation,'job-host-and-postgres-cluster');
+ assert.equal(singletonJobName(f.unit),`native-test (${f.unit.id})`);
+ assert(singletonSources(f.unit).includes('deploy/admission/next_profile.py'));
+ assert(singletonSources(f.unit).includes('.github/ci/native-next-build-packet.mjs'));
+ validateSingletonHost(f);validateSingletonBinding(f.binding,f.plan,f.unit,f.witness);
+ for(const mutate of [p=>delete p.host,p=>delete p.database,p=>delete p.build,p=>p.build.source='f'.repeat(40),
+  p=>p.build.controller='f'.repeat(40),p=>p.build.runId='456',p=>p.build.attempt='2',p=>p.build.artifactDigest='claimed',
+  p=>p.build.producerJobId='0',p=>p.build.nextBuildId='',p=>p.build.extra=true,p=>p.host.pid1='init',
+  p=>p.kind='fresh-job-postgres-cluster']){
+  const changed=structuredClone(f.binding);mutate(changed.prerequisites);assert.throws(()=>validateSingletonBinding(changed,f.plan,f.unit,f.witness));
+ }
+ const wrong=structuredClone(f);wrong.env.GITHUB_JOB='test';assert.throws(()=>validateSingletonHost(wrong));
+ const ordinary=fixture();ordinary.env.GITHUB_JOB='native-test';assert.throws(()=>validateSingletonHost(ordinary));
+});
+
+test('final independent build verification refuses a native unit that exercised different compiled bytes',()=>{
+ const f=fixture('test/runtime-next-admission-native.test.ts'),p=f.binding.prerequisites.build;
+ const packet={kind:'AUTHENTICATED_CI_BUILD_PACKET_NOT_DEPLOYMENT',canonicalCandidateInputsVerified:true,source:f.plan.sha,controller:f.plan.controller,runId:123,
+  ...Object.fromEntries(['nextBuildId','archiveSha256','manifestSha256','provenanceSha256'].map(k=>[k,p[k]]))};
+ const artifact={name:'production-build-v1',id:Number(p.artifactId),digest:p.artifactDigest},reports=[{id:f.unit.id,singleton:f.binding}];
+ assertNativeBuildMatches(f.plan,reports,packet,artifact,Number(p.producerJobId));
+ for(const mutate of [q=>q.nextBuildId='other',q=>q.archiveSha256='f'.repeat(64),q=>q.manifestSha256='f'.repeat(64),q=>q.provenanceSha256='f'.repeat(64),q=>q.runId=124,q=>q.kind='VERIFIED_NATIVE_NEXT_PACKET_NOT_RELEASE',q=>q.canonicalCandidateInputsVerified=false]){
+  const changed=structuredClone(packet);mutate(changed);assert.throws(()=>assertNativeBuildMatches(f.plan,reports,changed,artifact,Number(p.producerJobId)));
+ }
+ assert.throws(()=>assertNativeBuildMatches(f.plan,[],packet,artifact,Number(p.producerJobId)));
+ assert.throws(()=>assertNativeBuildMatches(f.plan,reports,packet,{...artifact,id:999},Number(p.producerJobId)));
+ assert.throws(()=>assertNativeBuildMatches(f.plan,reports,packet,artifact,999));
 });
