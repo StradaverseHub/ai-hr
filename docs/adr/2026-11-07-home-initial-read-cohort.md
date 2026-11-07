@@ -48,10 +48,19 @@ owners in one carrier. Only their pure composition seams admit the new snapshot
 proof. The legacy current-card Read Committed entry point keeps its contract;
 borrowed mutable command carriers still require current authority and the Access
 barrier. Summary's new profile-policy snapshot is display metadata for a quick
-action. Profile submission, approval and photo readers keep their existing policy
+action. Profile submission, approval and binary photo readers keep their existing policy
 contracts. No provider egress, admission, settlement or write uses this read proof.
 
 Qualification must preserve exact canonical figures and history availability,
 refuse forged identities and mutable snapshot carriers, and complete both views
 while an exclusive Access writer is held. The original failed writer probe and
 browser traces remain evidence; source changes alone do not close qualification.
+
+Greeting metadata also uses an enforced own-subject snapshot. Photo existence is
+queried through the same native RLS and profile visibility rule in that carrier,
+selecting only the photo ID. No image bytes enter Home. The existing binary photo
+read and every photo/profile write retain their separate current-policy contract.
+The legacy borrowed greeting identity transaction remains Read Committed; the
+standalone and initial greeting presentation roots use the snapshot entry point.
+The writer probe now includes Greeting, Today and Notices as well as the original
+seven readers, so its coverage includes every initial Home card.

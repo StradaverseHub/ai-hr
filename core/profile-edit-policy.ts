@@ -108,10 +108,12 @@ export function readProfilePresentationPolicy(ctx:SessionContext,signal?:AbortSi
  * approval and binary photo readers retain their separate current-policy contracts. */
 export function readProfilePresentationSnapshotPolicy(ctx:SessionContext,signal?:AbortSignal){
  ctx=capturePolicyContext(ctx);
- return withTenant(ctx,async tx=>{
-  await assertAiPresentationPrincipalTx(tx,ctx);
-  return profilePolicyValuesTx(tx,ctx);
- },{readOnlySnapshot:true,readSignal:signal});
+ return withTenant(ctx,tx=>readProfilePresentationSnapshotPolicyTx(tx,ctx),{readOnlySnapshot:true,readSignal:signal});
+}
+/** Pure policy metadata on the caller's enforced snapshot; never a write capability. */
+export async function readProfilePresentationSnapshotPolicyTx(tx:Tx,ctx:SessionContext){
+ await assertAiPresentationPrincipalTx(tx,ctx);
+ return profilePolicyValuesTx(tx,ctx);
 }
 export type ProfilePresentationPolicy=Awaited<ReturnType<typeof freshProfileEditPolicyTx>>;
 

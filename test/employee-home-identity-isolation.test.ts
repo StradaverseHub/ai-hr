@@ -2,14 +2,14 @@ import {beforeEach,describe,expect,it,vi} from 'vitest';
 const state=vi.hoisted(()=>({subjects:vi.fn(),lines:vi.fn(),photo:vi.fn(),selected:vi.fn(),tenant:vi.fn(),proof:vi.fn(),names:vi.fn()}));
 vi.mock('../db/client',()=>({withTenant:state.tenant}));
 vi.mock('../core/read',()=>({myOwnEmploymentSubjectsTx:state.subjects,isCurrentOwnHomeEmploymentTx:state.selected,reportingLinesFor:state.lines}));
-vi.mock('../core/person-photo',()=>({hasPersonPhotoTx:state.photo}));
+vi.mock('../core/person-photo',()=>({hasPersonPhotoTx:state.photo,hasPersonPhotoSnapshotTx:state.photo}));
 import {readEmployeeHomeIdentity,readEmployeeHomeGreetingIdentity} from '../core/employee-home';
 
 const ctx={tenantId:'fictional-tenant',userId:'fictional-login',personId:'fictional-person',roles:['employee']};
 beforeEach(()=>{
   vi.resetAllMocks();state.subjects.mockResolvedValue([{employmentId:'own',employeeCode:'0007',company:'Fictional company',companyProof:{companyId:'company'}}]);
   state.lines.mockResolvedValue({reports:[]});state.photo.mockResolvedValue(false);state.selected.mockResolvedValue(false);
-  state.proof.mockResolvedValue([{safe:true,ok:true,role:'employee'}]);
+  state.proof.mockResolvedValue([{safe:true,ok:true,allowed:true,role:'employee'}]);
   state.names.mockReturnValue({from:()=>({where:()=>({limit:async()=>[{preferredName:'Fictional recorded name'}]})})});
   const tx={execute:state.proof,select:state.names};
   state.tenant.mockImplementation(async(_ctx:unknown,read:(transaction:typeof tx)=>unknown)=>read(tx));

@@ -12,6 +12,9 @@ import {readEmployeeHomeSummary} from '../core/employee-home-summary';
 import {readEmployeeHomeTimeOff} from '../core/employee-home-time-off';
 import {readEmployeeHomeCalendar} from '../core/employee-home-calendar';
 import {readEmployeeHomeTasks} from '../core/employee-home-tasks';
+import {readEmployeeHomeGreeting} from '../core/employee-home-greeting';
+import {readEmployeeHomeToday} from '../core/employee-home-today';
+import {readEmployeeHomeNotices} from '../core/employee-home-notices';
 import {saveEmployeeHomeConfiguration} from '../core/employee-home-configuration';
 import {defaultEmployeeHomeConfiguration} from '../lib/employee-home-defaults';
 import {todayInKualaLumpur} from '../lib/hr-date';
@@ -29,7 +32,10 @@ it.each(['reader','writer'] as const)('lets actual Home card aggregations coexis
   summary:async()=>{const {serverNow,...value}=await readEmployeeHomeSummary(ctx,own.employmentId,'en','Replacement holiday');return value;},
   timeOff:()=>readEmployeeHomeTimeOff(ctx,own.employmentId,'en'),
   ownCalendar:()=>readEmployeeHomeCalendar(ctx,own.employmentId,on.slice(0,7)),
-  tasks:()=>readEmployeeHomeTasks(ctx,own.employmentId)};
+  tasks:()=>readEmployeeHomeTasks(ctx,own.employmentId),
+  greeting:async()=>{const {serverNow,...value}=await readEmployeeHomeGreeting(ctx,own.employmentId,'en');return value;},
+  today:async()=>{const {serverNow,...value}=await readEmployeeHomeToday(ctx,own.employmentId);return value;},
+  notices:()=>readEmployeeHomeNotices(ctx,own.employmentId)};
  const names=Object.keys(readers) as (keyof typeof readers)[];
  const baseline=await Promise.all(names.map(name=>readers[name]()));expect(baseline[0]).toMatchObject({totalPeople:1});
  await owner.client.begin(async holder=>{

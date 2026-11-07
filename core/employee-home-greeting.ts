@@ -3,7 +3,7 @@ import {and,eq,sql} from 'drizzle-orm';
 import {settleReadGroup} from '../lib/settle-read-group';
 import {withTenant,type SessionContext} from '../db/client';
 import {person} from '../db/schema';
-import {readEmployeeHomeGreetingIdentityTx} from './employee-home';
+import {readEmployeeHomeGreetingSnapshotIdentityTx} from './employee-home';
 import {readOwnEmployeeHomeConfiguration,type OwnHomeConfigurationRead} from './employee-home-configuration';
 import {getEmployeeHomeDisplayPreferences} from './dashboard-prefs';
 import {approvedLeavePresenceByEmploymentTx} from '../packs/leave/service';
@@ -46,14 +46,14 @@ export async function readEmployeeHomeGreeting(ctx:SessionContext,employmentId:s
  const [view,{identity,display,birthday}]=await settleReadGroup([
   ()=>configurationRead?.read(ctx,employmentId)??readOwnEmployeeHomeConfiguration(ctx,employmentId),
   ()=>withTenant(ctx,async tx=>{
-   const identity=await readEmployeeHomeGreetingIdentityTx(tx,ctx,employmentId);
+   const identity=await readEmployeeHomeGreetingSnapshotIdentityTx(tx,ctx,employmentId);
    const preferences=await getEmployeeHomeDisplayPreferences(ctx,tx);
    const display=homeDisplayClock(now,preferences.timeZone??'Asia/Kuala_Lumpur');
    const [row]=await tx.select({birthday:sql<boolean>`coalesce(to_char(${person.dateOfBirth},'MM-DD')=${display.date.slice(5)},false)`})
     .from(person).where(and(eq(person.id,ctx.personId!),eq(person.tenantId,ctx.tenantId),sql`app.principal_snapshot_current() AND app.is_self_person(${person.id})`)).limit(1);
    if(!row)throw Error('Own greeting identity unavailable');
    return {identity,display,birthday:row.birthday};
-  },{readSignal:configurationRead?.signal}),
+  },{readOnlySnapshot:true,readSignal:configurationRead?.signal}),
  ]);
  configurationRead?.signal?.throwIfAborted();
  const returnedFromLeave=await returnFromLeave(ctx,view.employmentId,today,configurationRead?.signal);

@@ -1,7 +1,8 @@
 import {assertWorkforcePersonTx} from './workforce-access';
 import {createHash} from 'node:crypto';
 import {isAdmin} from '../lib/authz-model';
-import {freshProfileEditPolicyTx,freshProfilePresentationPolicyTx,lockProfileEditPolicyTx} from './profile-edit-policy';
+import {freshProfileEditPolicyTx,freshProfilePresentationPolicyTx,readProfilePresentationSnapshotPolicyTx,lockProfileEditPolicyTx} from './profile-edit-policy';
+import {assertAiPresentationPrincipalTx} from './ai-principal';
 import {getSetting} from './entitlements';
 import {EssProfileError} from '../lib/personnel-ess-model';
 import type {Tx} from '../db/client';
@@ -17,7 +18,7 @@ import type {Tx} from '../db/client';
  * Substrate: every write appends a DomainEvent (aggregateType 'person') with ONLY derived, non-PII payload
  * fields — never the bytes and never the raw user-supplied fileName (PDPA / ADR-0030 posture).
  */
-import { and, eq, inArray } from 'drizzle-orm';
+import { and, eq, inArray, type SQL } from 'drizzle-orm';
 import { sql } from 'drizzle-orm';
 import { withTenant, type SessionContext } from '../db/client';
 import { actorOf, appendEvent, subjectEmploymentForPerson } from '../db/events';
@@ -176,11 +177,11 @@ export async function removePersonPhoto(ctx: SessionContext, p: { personId: stri
 
 /** Shared avatars retain their independent directory/self visibility. The actual login proves
  * ownership; a caller-supplied Person or old role claim cannot choose a different read course. */
-async function photoReadPredicateTx(tx:Tx,ctx:SessionContext){
+async function photoReadPredicateTx(tx:Tx,ctx:SessionContext,options?:{presentationSnapshot:true}){
   const [principal]=await tx.execute<{current:boolean}>(sql`select app.principal_snapshot_current() as current`);
   if(principal?.current!==true)return sql`false`;
   if(!isAdmin(ctx)){
-    const policy=await freshProfilePresentationPolicyTx(tx,ctx);
+    const policy=await (options?.presentationSnapshot?readProfilePresentationSnapshotPolicyTx:freshProfilePresentationPolicyTx)(tx,ctx);
     if(!policy.visible.has('profile.personal_details.photo'))return sql`NOT app.is_self_person(${personPhoto.personId})`;
   }
   return sql`true`;
@@ -215,6 +216,14 @@ export async function hasPersonPhoto(ctx: SessionContext, personId: string): Pro
 /** Existence-only read for an existing read-only composition. */
 export async function hasPersonPhotoTx(tx: Tx, ctx: SessionContext, personId: string): Promise<boolean> {
   const visible = await photoReadPredicateTx(tx, ctx);
+  return photoExistsTx(tx,personId,visible);
+}
+/** Existence only, never photo bytes, with the same visibility policy at snapshot admission. */
+export async function hasPersonPhotoSnapshotTx(tx:Tx,ctx:SessionContext,personId:string):Promise<boolean>{
+  await assertAiPresentationPrincipalTx(tx,ctx);
+  return photoExistsTx(tx,personId,await photoReadPredicateTx(tx,ctx,{presentationSnapshot:true}));
+}
+async function photoExistsTx(tx:Tx,personId:string,visible:SQL){
   const [row] = await tx
     .select({ id: personPhoto.id })
     .from(personPhoto)

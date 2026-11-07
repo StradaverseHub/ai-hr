@@ -5,7 +5,7 @@ import {withTenant,type SessionContext,type Tx} from '../db/client';
 import {isAiPrincipalCurrentTx,isAiPresentationPrincipalCurrentTx} from './ai-principal';
 import {person} from '../db/schema';
 import {isCurrentOwnHomeEmploymentTx,isOwnProfileEditEmploymentTx,myOwnEmploymentSubjectsTx,type OwnEmploymentSubject} from './read';
-import {hasPersonPhotoTx} from './person-photo';
+import {hasPersonPhotoTx,hasPersonPhotoSnapshotTx} from './person-photo';
 import {isAdmin} from '../lib/authz-model';
 import {resolveDashboardRole} from '../lib/dashboard-cards';
 import {employeeHomeGreetingName} from '../lib/employee-home';
@@ -140,12 +140,20 @@ export async function readEmployeeHomeIdentityContextTx(tx:Tx,ctx:SessionContext
  * Null means no recorded name/photo, never a swallowed read failure or a guessed fallback value.
  */
 export function readEmployeeHomeGreetingIdentity(ctx:SessionContext,requestedEmploymentId?:string):Promise<EmployeeHomeGreetingIdentity>{
- return withTenant(ctx,tx=>readEmployeeHomeGreetingIdentityTx(tx,ctx,requestedEmploymentId));
+ return withTenant(ctx,tx=>readEmployeeHomeGreetingSnapshotIdentityTx(tx,ctx,requestedEmploymentId),{readOnlySnapshot:true});
 }
 
 /** Call before presentation queries so the photo policy retains its read-committed read-only transaction. */
 export async function readEmployeeHomeGreetingIdentityTx(tx:Tx,ctx:SessionContext,requestedEmploymentId?:string):Promise<EmployeeHomeGreetingIdentity>{
  await tx.execute(sql`SET TRANSACTION READ ONLY`);
+ return greetingIdentityInputsTx(tx,ctx,requestedEmploymentId);
+}
+export async function readEmployeeHomeGreetingSnapshotIdentityTx(tx:Tx,ctx:SessionContext,requestedEmploymentId?:string):Promise<EmployeeHomeGreetingIdentity>{
+ if(!ctx.userId)throw new HomeAccessError('authentication');
+ if(!await isAiPresentationPrincipalCurrentTx(tx,ctx))throw new HomeAccessError('employmentUnavailable');
+ return greetingIdentityInputsTx(tx,ctx,requestedEmploymentId,{presentationSnapshot:true});
+}
+async function greetingIdentityInputsTx(tx:Tx,ctx:SessionContext,requestedEmploymentId?:string,options?:{presentationSnapshot:true}):Promise<EmployeeHomeGreetingIdentity>{
  const employmentId=requestedEmploymentId===undefined
   ? selectedHomeSubject(await ownHomeSubjectSelectionTx(tx,ctx)).employmentId
   : await requireSelectedOwnHomeEmploymentIdTx(tx,ctx,requestedEmploymentId);
@@ -154,7 +162,7 @@ export async function readEmployeeHomeGreetingIdentityTx(tx:Tx,ctx:SessionContex
  const [rows,photo]=await settleReadGroup([
   ()=>tx.select({preferredName:person.preferredName,firstName:person.firstName,fullName:person.fullName})
    .from(person).where(and(eq(person.tenantId,ctx.tenantId),eq(person.id,personId))).limit(1),
-  ()=>hasPersonPhotoTx(tx,ctx,personId),
+  ()=>(options?.presentationSnapshot?hasPersonPhotoSnapshotTx:hasPersonPhotoTx)(tx,ctx,personId),
  ]);
  return {version:1,employmentId,name:rows[0]?employeeHomeGreetingName(rows[0]):null,
   photoHref:photo?`/personnel/photo/${encodeURIComponent(personId)}`:null};
