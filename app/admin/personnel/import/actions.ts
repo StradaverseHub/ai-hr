@@ -1,4 +1,5 @@
 'use server';
+import {employeeImportFailure,parseEmployeeImportText as parsePersonnelImportCsv,type EmployeeImportFailure} from '@/lib/employee-import-error.server';
 import {parseCostAllocationCsv} from '@/lib/cost-allocation-import';
 
 import {PERSONNEL_REGISTER_KINDS,personnelRegisterColumns,type PersonnelRegisterTexts,type PersonnelRegisterRecords} from '@/lib/personnel-register-import';
@@ -7,7 +8,6 @@ import { requireAdmin } from '@/lib/authz';
 import {getBrowserCommandSession} from '@/lib/session';
 import {beginEmployeeImportEvaluation,prepareEmployeeImportEvaluationCommit,reopenEmployeeImportEvaluation,recordEmployeeImportEvaluationTelemetry,associateReusedEmployeeImportHeader,eraseOwnImportEvaluationMetadata,EMPLOYEE_IMPORT_EVALUATION_UNAVAILABLE} from '@/core/personnel-import-evaluation';
 import {EmployeeImportEvaluationBindingSchema,type EmployeeImportEvaluationBinding,type EmployeeImportEvaluationReceipt,type EmployeeImportEvaluationPublicResult} from '@/lib/personnel-import-evaluation';
-import { parsePersonnelImportCsv } from '@/lib/personnel-import-contract';
 import { personnelImportLabelResolvers } from '@/lib/personnel-import-labels.server';
 import { IMPORT_COLUMNS, DEPENDENT_IMPORT_COLUMNS } from '@/lib/import-schema';
 const parseEmployee=(text:string)=>parsePersonnelImportCsv(text,{columns:[...IMPORT_COLUMNS.required,...IMPORT_COLUMNS.optional],resolvers:personnelImportLabelResolvers});
@@ -48,15 +48,17 @@ export async function validateImportAction(
   dependentsCsv?: string,
   registers?:PersonnelRegisterTexts,
   allocationsCsv?:string,
-): Promise<ImportPreview> {
+): Promise<ImportPreview | EmployeeImportFailure> {
   const s = await requireAdmin();
-  if(Buffer.byteLength([csv,dependentsCsv??'',allocationsCsv??'',...Object.values(registers??{})].join(''),'utf8')>900000)throw new Error('The import is too large. Split the workbook and check each part.');
-  const { records, warnings } = parseEmployee(csv);
-  const preview=await validateEmployeeImport(s, { companyId, records, dependentRecords: familyRecords(dependentsCsv),registerRecords:registerRecords(registers),allocationRecords:parseCostAllocationCsv(allocationsCsv??'') });
-  for(const row of preview.rows) row.warnings.push(...warnings);
-  const familyWarnings=(dependentsCsv??'').trim()?parseFamily(dependentsCsv!).warnings:[];
-  for(const row of preview.rows) row.warnings.push(...familyWarnings.map(warning=>`Family: ${warning}`));
-  return preview;
+  try {
+    if(Buffer.byteLength([csv,dependentsCsv??'',allocationsCsv??'',...Object.values(registers??{})].join(''),'utf8')>900000)throw new Error('The import is too large. Split the workbook and check each part.');
+    const { records, warnings } = parseEmployee(csv);
+    const preview=await validateEmployeeImport(s, { companyId, records, dependentRecords: familyRecords(dependentsCsv),registerRecords:registerRecords(registers),allocationRecords:parseCostAllocationCsv(allocationsCsv??'') });
+    for(const row of preview.rows) row.warnings.push(...warnings);
+    const familyWarnings=(dependentsCsv??'').trim()?parseFamily(dependentsCsv!).warnings:[];
+    for(const row of preview.rows) row.warnings.push(...familyWarnings.map(warning=>`Family: ${warning}`));
+    return preview;
+  } catch(error) { return employeeImportFailure(error,'validate'); }
 }
 
 /** Commit the valid rows. Re-validates server-side, so a tampered client preview can't widen
@@ -70,23 +72,28 @@ export async function commitImportAction(
   dependentsCsv?: string,
   registers?:PersonnelRegisterTexts,
   allocationsCsv?:string,allocationToken?:string,evaluationBinding?:EmployeeImportEvaluationBinding,
-): Promise<ImportResult & {evaluationReceipt?:EmployeeImportEvaluationReceipt}> {
-  if(evaluationBinding!==undefined)return commitMeasuredEmployeeImport(csv,companyId,evaluationBinding,dependentsCsv,registers,allocationsCsv,allocationToken,fileName);
+): Promise<(ImportResult & {evaluationReceipt?:EmployeeImportEvaluationReceipt}) | EmployeeImportFailure> {
+  if(evaluationBinding!==undefined){
+    try{return await commitMeasuredEmployeeImport(csv,companyId,evaluationBinding,dependentsCsv,registers,allocationsCsv,allocationToken,fileName);}
+    catch{return {error:EMPLOYEE_IMPORT_EVALUATION_UNAVAILABLE};}
+  }
   const s = await requireAdmin();
-  if(Buffer.byteLength([csv,dependentsCsv??'',allocationsCsv??'',...Object.values(registers??{})].join(''),'utf8')>900000)throw new Error('The import is too large. Split the workbook and check each part.');
-  const { records } = parseEmployee(csv);
-  const result = await commitEmployeeImport(s, {
-    companyId,
-    records,
-    dependentRecords: familyRecords(dependentsCsv),
-    registerRecords:registerRecords(registers),
-    allocationRecords:parseCostAllocationCsv(allocationsCsv??''),allocationToken,
-    fileName: fileName ?? '',
-    source:pastedSource(csv,fileName),
-  });
-  revalidatePath('/admin/personnel');
-  revalidatePath('/admin/personnel/import');
-  return result;
+  try {
+    if(Buffer.byteLength([csv,dependentsCsv??'',allocationsCsv??'',...Object.values(registers??{})].join(''),'utf8')>900000)throw new Error('The import is too large. Split the workbook and check each part.');
+    const { records } = parseEmployee(csv);
+    const result = await commitEmployeeImport(s, {
+      companyId,
+      records,
+      dependentRecords: familyRecords(dependentsCsv),
+      registerRecords:registerRecords(registers),
+      allocationRecords:parseCostAllocationCsv(allocationsCsv??''),allocationToken,
+      fileName: fileName ?? '',
+      source:pastedSource(csv,fileName),
+    });
+    revalidatePath('/admin/personnel');
+    revalidatePath('/admin/personnel/import');
+    return result;
+  } catch(error) { return employeeImportFailure(error,'commit'); }
 }
 
 /** Snapshot raw effect inputs before authentication awaits. They never enter evaluation metadata/provider. */

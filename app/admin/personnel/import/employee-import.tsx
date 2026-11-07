@@ -192,13 +192,14 @@ unknownSheet:t('headerAssistance.unknownSheet'),aiTitle:t('headerAssistance.aiTi
       try {
         const p = await validateImportAction(text, companyId, family,registers,allocations);
         if (revision !== inputRevision.current) return;
+        if ('error' in p) { setError(p.error); return; }
         setPreview(p);
         setResult(null);
         setPhase('previewed');
         await evaluation.current?.record({kind:'preview',validRows:p.validCount,rejectedRows:p.total-p.validCount,fileErrors:p.fileErrors.length});
-      } catch (e) {
+      } catch {
         if (revision !== inputRevision.current) return;
-        setError((e as Error).message);
+        setError('The import could not be checked. Try again. If it keeps failing, contact your administrator.');
       }
     });
   };
@@ -436,28 +437,32 @@ unknownSheet:t('headerAssistance.unknownSheet'),aiTitle:t('headerAssistance.aiTi
         const revision=inputRevision.current;
         const binding=await evaluation.current?.prepareCommit({csv,companyId,family:dependentsCsv,registers:registerTexts,allocations:allocationsCsv,revision});
         if(binding===null||revision!==inputRevision.current)return;
-        let r:Awaited<ReturnType<typeof commitImportAction>>;
+        let r:Exclude<Awaited<ReturnType<typeof commitImportAction>>, {error:string}>;
         try{
           // 524303d9 — an uploaded file whose text is still exactly what is being imported goes to Import History
           // as the original bytes; a paste, an edited or a prepared text is recorded by the action as its CSV text.
           const original=!binding&&sourceFile.current&&sourceFile.current.text===csv?sourceFile.current.file:null;
-          if(!original)r=await commitImportAction(csv, companyId, fileName ?? '', dependentsCsv, registerTexts, allocationsCsv, preview.allocations?.token, binding);
+          if(!original){
+            const outcome=await commitImportAction(csv, companyId, fileName ?? '', dependentsCsv, registerTexts, allocationsCsv, preview.allocations?.token, binding);
+            if('error' in outcome){if(binding)evaluation.current?.commitUncertain();setError(outcome.error);return;}
+            r=outcome;
+          }
           else{
             const body=new FormData();
             body.append('file',original,original.name);
             body.append('payload',JSON.stringify({companyId,csv,fileName:fileName??'',dependentsCsv,registers:registerTexts,allocationsCsv,allocationToken:preview.allocations?.token}));
             const response=await fetch('/admin/personnel/import/employee/upload',{method:'POST',body,headers:{'x-upload-operation':crypto.randomUUID()}});
             const payload=await response.json().catch(()=>({error:null}));
-            if(!response.ok)throw new Error(response.status===413?t('fileTooLarge'):payload.error??t('employeeUploadFailed'));
-            r=payload as Awaited<ReturnType<typeof commitImportAction>>;
+            if(!response.ok){setError(response.status===413?t('fileTooLarge'):payload.error??t('employeeUploadFailed'));return;}
+            r=payload as typeof r;
           }
         }catch(cause){if(binding)evaluation.current?.commitUncertain();throw cause;}
         if(binding)evaluation.current?.acceptCommit(r.evaluationReceipt);
         setResult(r);
         setPhase('done');
         router.refresh();
-      } catch (e) {
-        setError(evaluationStatus.tracked?t('measurement.commitUncertain'):(e as Error).message);
+      } catch {
+        setError(evaluationStatus.tracked?t('measurement.commitUncertain'):'The import result could not be confirmed. Check Import History before trying again.');
       } finally {
         commitPending.current = false;
         setCommitting(false);

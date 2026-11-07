@@ -1,9 +1,9 @@
 import {revalidatePath} from 'next/cache';
 import {requireAdmin} from '@/lib/authz';
 import {commitEmployeeImportUpload,employeeImportUploadInput,EMPLOYEE_IMPORT_TEXT_MAX_BYTES} from '@/core/employee-import-upload';
-import {ImportHistoryError,IMPORT_SOURCE_MAX_BYTES} from '@/core/import-history';
+import {IMPORT_SOURCE_MAX_BYTES} from '@/core/import-history';
 import {importSourceName} from '@/core/import-history';
-import {publicErrorMessage} from '@/lib/public-error';
+import {employeeImportFailure} from '@/lib/employee-import-error.server';
 export const runtime='nodejs';
 const LIMIT=IMPORT_SOURCE_MAX_BYTES+EMPLOYEE_IMPORT_TEXT_MAX_BYTES*2+65536;
 /**
@@ -32,8 +32,6 @@ export async function POST(request:Request){
   revalidatePath('/admin/personnel','layout');revalidatePath('/admin/personnel/import');revalidatePath('/admin/personnel/import/history');
   return Response.json(result,{headers:{'Cache-Control':'private, no-store'}});
  }catch(error){
-  const known=error instanceof ImportHistoryError;
-  if(!known)console.error('[employee import upload]',error);
-  return Response.json({error:publicErrorMessage(error)},{status:400,headers:{'Cache-Control':'private, no-store'}});
+  return Response.json(employeeImportFailure(error,'commit'),{status:400,headers:{'Cache-Control':'private, no-store'}});
  }finally{reader.releaseLock();}
 }
