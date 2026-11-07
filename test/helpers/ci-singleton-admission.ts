@@ -7,7 +7,8 @@ import {join,resolve} from 'node:path';
 import {createHash} from 'node:crypto';
 import {singletonProfile,singletonKind,singletonSources,validateSingletonBinding,validateSingletonHost,validateSingletonDatabaseUrls} from '../../.github/ci/singleton-protocol.mjs';
 import {workerDb} from '../db-names';
-const git=(cwd:string,...args:string[])=>execFileSync('git',['-C',cwd,...args],{encoding:'utf8'}).trim();
+import {readProtectedBootstrap} from '../../.github/ci/native-next-installation.mjs';
+const git=(cwd:string,...args:string[])=>execFileSync('git',['-c','safe.directory='+cwd,'-c','core.fsmonitor=false','-c','core.hooksPath=/dev/null','-C',cwd,...args],{encoding:'utf8'}).trim();
 function regular(path:string,maximum:number,privateFile=false){
  assert.equal(realpathSync(path),resolve(path));const before=lstatSync(path);assert(before.isFile()&&!before.isSymbolicLink()&&before.size<=maximum&&before.nlink===1);
  if(privateFile){assert.equal(before.uid,process.getuid!());assert.equal(before.mode&0o077,0);}
@@ -26,15 +27,19 @@ export function admitSingletonTest(file:string){
  if(hints.length){
   assert.deepEqual(hints,['AIHR_CI_SINGLETON_BINDING']);assert(!Object.keys(env).some(key=>key.startsWith('AIHR_FOCUSED_')),'Mixed singleton/focused intent');
   assert.equal(env.VITEST_MAX_WORKERS,'1');assert.equal(env.VITEST_MAX_WORKERS_NODB,'1');
-  const workspace=realpathSync(env.GITHUB_WORKSPACE!),automation=realpathSync(join(workspace,'automation')),directory=join(temp,'aihr-ci');
-  assert.equal(source,join(workspace,'source'));assert.equal(automation,join(workspace,'automation'));
+  const bootstrap=profile==='linux-next-postgres-v1'?readProtectedBootstrap(env):null;
+  const workspace=realpathSync(env.GITHUB_WORKSPACE!),automation=realpathSync(bootstrap?.automation??join(workspace,'automation')),directory=join(temp,'aihr-ci');
+  assert.equal(source,join(workspace,'source'));assert.equal(automation,bootstrap?.automation??join(workspace,'automation'));
   const bindingPath=env.AIHR_CI_SINGLETON_BINDING!;assert.equal(resolve(bindingPath),bindingPath);assert.equal(realpathSync(directory),directory);assert.equal(join(directory,resolve(bindingPath).split('/').at(-1)!),bindingPath);
   const binding=JSON.parse(regular(bindingPath,1048576,true).toString('utf8'));
   assert.equal(bindingPath,join(directory,`${binding.unit}-singleton.json`));assert.equal(binding.file,file);assert.equal(binding.evidenceDirectory,directory);
   // Reconstruct the actual controller-owned complete plan; a supplied JSON plan,
   // focused flag or claimed fingerprint is never the source of membership.
   const script=join(automation,'.github/ci/plan.mjs');regular(script,1048576);
-  const plan=JSON.parse(execFileSync(process.execPath,[script],{cwd:source,encoding:'utf8',timeout:120000,maxBuffer:16*1024*1024}));
+  const execution={cwd:source,encoding:'utf8' as const,timeout:120000,maxBuffer:16*1024*1024};
+  const bytes=bootstrap?execFileSync(bootstrap.protectedNodePath,[join(automation,'.github/ci/native-controller-owner.mjs'),'plan'],execution)
+   :execFileSync(process.execPath,[script],execution);
+  const plan=JSON.parse(bytes);
   const unit=plan.units.find((row:{id:string})=>row.id===binding.unit);assert(unit);assert.equal(unit.files[0],file);
   const layout={workspace,temp,source,automation,cwd:source,evidence:directory,platform:process.platform,sourceHead:candidate,controllerHead:git(automation,'rev-parse','HEAD'),sourceClean:true,controllerClean:git(automation,'status','--porcelain')===''};
   validateSingletonHost({env,event:JSON.parse(regular(env.GITHUB_EVENT_PATH!,1048576).toString('utf8')),layout,plan,unit});

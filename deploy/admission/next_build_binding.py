@@ -129,7 +129,8 @@ def member(parent, name, bound, uid, mode, destination=None):
 
 
 def binding_fields(value, candidate, controller, run_id, unit, temporary, uid, sealed):
-    closed(value, {'schemaVersion', 'kind', 'expected', 'artifact', 'producerJob', 'packet', 'releaseAuthorized'} | ({'issuer', 'helpers'} if sealed else set()))
+    closed(value, {'schemaVersion', 'kind', 'expected', 'artifact', 'producerJob', 'packet', 'installation', 'releaseAuthorized'} | ({'issuer', 'helpers'} if sealed else set()))
+    installation_fields(value['installation'])
     need(type(value['schemaVersion']) is int and value['schemaVersion'] == 1
          and value['kind'] == (SEALED_KIND if sealed else PLAIN_KIND) and value['releaseAuthorized'] is False, 'Native handoff kind differs')
     expected = value['expected']
@@ -170,6 +171,29 @@ def binding_fields(value, candidate, controller, run_id, unit, temporary, uid, s
     return reference
 
 
+def installation_fields(value):
+    """Finite expected facts from the trusted locked install, never app claims."""
+    closed(value, {'version', 'kind', 'node', 'dependencies', 'lockSha256', 'packageSha256'})
+    need(type(value['version']) is int and value['version'] == 1
+         and value['kind'] == 'LOCKED_HOSTED_INSTALL_BEFORE_CANDIDATE_VERIFICATION', 'Native installation witness kind differs')
+    closed(value['node'], {'path', 'sha256', 'bytes'})
+    node = value['node']
+    need(isinstance(node['path'], str) and node['path'].startswith('/') and len(node['path']) <= 4096
+         and str(pathlib.PurePosixPath(node['path'])) == node['path']
+         and not any(part in ('.', '..') for part in node['path'].split('/')[1:])
+         and not re.search(r'[\x00-\x1f\x7f]', node['path'])
+         and isinstance(node['sha256'], str) and SHA.fullmatch(node['sha256'])
+         and positive(node['bytes']) and node['bytes'] <= 256*1024**2, 'Native executable witness differs')
+    closed(value['dependencies'], {'normalization', 'sha256', 'entries', 'bytes'})
+    deps = value['dependencies']
+    need(deps['normalization'] == 'ROOT_COPY_DEPENDENCIES_V1'
+         and isinstance(deps['sha256'], str) and SHA.fullmatch(deps['sha256'])
+         and positive(deps['entries']) and deps['entries'] <= 500000
+         and positive(deps['bytes']) and deps['bytes'] <= 4*1024**3, 'Native dependency witness differs')
+    need(all(isinstance(value[key], str) and SHA.fullmatch(value[key]) for key in ('lockSha256', 'packageSha256')),
+         'Native install inputs differ')
+
+
 def helper_fields(values, content):
     closed(values, HELPERS)
     total = 0
@@ -207,6 +231,8 @@ def packet_fields(records, binding, reference):
     packet, expected = binding['packet'], binding['expected']
     need(records['build-provenance.json']['sha256'] == packet['provenanceSha256'], 'API-owner provenance bytes differ')
     p = json.loads(records['build-provenance.json']['bytes'])
+    need(all(p.get(key) == binding['installation'][key] for key in ('lockSha256', 'packageSha256')),
+         'Build packet and pre-candidate install inputs differ')
     need(p.get('format') == 2 and p.get('kind') == 'ci-system-testing-build-candidate' and p.get('releaseAuthorized') is False
          and p.get('source') == expected['candidate'] and p.get('controller') == expected['controller']
          and p.get('runId') == expected['runId'] and p.get('runAttempt') == 1
@@ -257,7 +283,7 @@ def read_native_build_binding(packet_dir, binding_path, candidate, controller, r
     return {'nextBuildId': p['nextBuildId'], 'buildSourcePath': p['buildSourcePath'], 'archivePath': str(root/'packet/bytes/build-bundle.tar.gz'),
             'manifestPath': str(root/'packet/bytes/build-bundle-files.json'), 'archiveSha256': p['archiveSha256'],
             'manifestSha256': p['manifestSha256'], 'provenanceSha256': binding['packet']['provenanceSha256'], 'runtime': p['runtime'],
-            'helperDirectory': str(root/'helpers'), 'helpers': binding['helpers'],
+            'helperDirectory': str(root/'helpers'), 'helpers': binding['helpers'], 'installation': binding['installation'],
             'witness': {'candidate': candidate, 'controller': controller, 'runId': run_id, 'unit': unit,
                         'artifactId': binding['artifact']['id'], 'artifactDigest': binding['artifact']['digest'],
                         'producerJobId': binding['producerJob']['id'], 'rootSealed': True}, 'releaseAuthorized': False}

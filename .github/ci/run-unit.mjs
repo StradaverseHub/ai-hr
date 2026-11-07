@@ -11,11 +11,12 @@ import {hostHealth} from './host-health.mjs';
 import {createPlan,hash} from './plan.mjs';
 import {DB_BATCH_FILES} from './manifest.mjs';
 import {validatePdfSetupProof} from './pdf-tools.mjs';
-import {assertNoSingletonHints,nativeNextUnit} from './singleton-protocol.mjs';
+import {assertNoSingletonHints,nativeNextUnit,singletonControllerPath} from './singleton-protocol.mjs';
+import {readProtectedBootstrap} from './native-next-installation.mjs';
 import {actualSingletonHost,provisionSingletonHost,writeSingletonBinding} from './singleton-profiles.mjs';
 
 import {candidateEnvironment} from './candidate-environment.mjs';
-import {provisionNativeNextBuild} from './native-next-build-packet.mjs';
+import {provisionNativeNextBuild,captureNativeNextInstallation} from './native-next-build-packet.mjs';
 
 // Frozen full-CI handshake v1. Diagnostic setup receipt only; never installation/release authority.
 export const FULL_CI_ROLE_HINTS=Object.freeze(['AIHR_CI_DISPOSABLE_ROLE_MODE','AIHR_CI_ROLE_UNIT','AIHR_CI_ROLE_BATCH_OFFSET','AIHR_CI_ROLE_EVIDENCE_DIR','AIHR_CI_ROLE_PLAN_FINGERPRINT']);
@@ -43,7 +44,7 @@ export function fullCiRoleBinding({plan,unit,offset,batchSize,files,env,resetSta
  assert.equal(env.GITHUB_REPOSITORY,'StradaverseHub/ai-hr');assert.equal(env.GITHUB_REPOSITORY_ID,'1333414856');assert.equal(env.GITHUB_WORKFLOW,'alpha-staging-ci');assert.equal(env.GITHUB_JOB,nativeNextUnit(unit)?'native-test':'test');
  assert(positiveId(env.GITHUB_RUN_ID)&&positiveId(env.GITHUB_RUN_ATTEMPT));assert.equal(env.AIHR_CI_HEAD,plan.sha);assert.equal(env.AIHR_CI_CONTROL_HEAD,plan.controller);assert.equal(env.GITHUB_SHA,plan.controller);
  assert.equal(layout.platform,'linux');assert.equal(layout.sourceHead,plan.sha);assert.equal(layout.controllerHead,plan.controller);assert.equal(layout.sourceClean,true);assert.equal(layout.controllerClean,true);
- assert.equal(layout.source,join(layout.workspace,'source'));assert.equal(layout.automation,join(layout.workspace,'automation'));assert.equal(layout.cwd,layout.source);
+ assert.equal(layout.source,join(layout.workspace,'source'));assert.equal(layout.automation,singletonControllerPath(unit,layout.workspace,env.GITHUB_RUN_ID));assert.equal(layout.cwd,layout.source);
  assert.equal(layout.evidence,join(layout.temp,'aihr-ci'));assert.equal(layout.controllerScript,join(layout.automation,'.github/ci/run-unit.mjs'));
  assert.equal(event?.repository?.full_name,'StradaverseHub/ai-hr');assert.equal(String(event.repository.id),'1333414856');
  const workflow='StradaverseHub/ai-hr/.github/workflows/alpha-staging.yml@';assert(typeof env.GITHUB_WORKFLOW_REF==='string'&&env.GITHUB_WORKFLOW_REF.startsWith(workflow));
@@ -129,9 +130,11 @@ function actualFullCiRoleApplicability(){
  return inspectFullCiRoleApplicability(file=>{const path=join(root,file);assert.equal(path,realpathSync(path));return ownedRegularBytes(path,1048576).toString('utf8');},file=>{const path=join(root,file);if(!existsSync(path))return false;assert.equal(path,realpathSync(path));assert(lstatSync(path).isFile(),'Unexpected role-profile source shape');return true;});
 }
 function actualFullCiRoleContext(plan,unit,offset,batchSize,files,dir,resetStatus){
- const env=process.env,workspace=realpathSync(env.GITHUB_WORKSPACE),source=realpathSync(join(workspace,'source')),automation=realpathSync(join(workspace,'automation')),temp=realpathSync(env.RUNNER_TEMP);
- assert.equal(resolve(join(workspace,'source')),source);assert.equal(resolve(join(workspace,'automation')),automation);assert.equal(resolve(dir),realpathSync(dir));
- const git=(cwd,...args)=>execFileSync('git',['-C',cwd,...args],{encoding:'utf8'}).trim();
+ const env=process.env,workspace=realpathSync(env.GITHUB_WORKSPACE),source=realpathSync(join(workspace,'source')),
+  automation=realpathSync(singletonControllerPath(unit,workspace,env.GITHUB_RUN_ID)),temp=realpathSync(env.RUNNER_TEMP);
+ assert.equal(resolve(join(workspace,'source')),source);assert.equal(resolve(dir),realpathSync(dir));
+ if(nativeNextUnit(unit)){const bootstrap=readProtectedBootstrap(env);assert.equal(bootstrap.automation,automation);assert.equal(realpathSync('/proc/self/exe'),bootstrap.protectedNodePath);}
+ const git=(cwd,...args)=>execFileSync('git',['-c','safe.directory='+cwd,'-c','core.fsmonitor=false','-c','core.hooksPath=/dev/null','-C',cwd,...args],{encoding:'utf8'}).trim();
  const sourceHashes=Object.fromEntries(Object.entries(fullRoleSources).map(([key,file])=>{const path=join(source,file);assert.equal(path,realpathSync(path));return[key,createHash('sha256').update(ownedRegularBytes(path,262144)).digest('hex')];}));
  const event=JSON.parse(ownedRegularBytes(env.GITHUB_EVENT_PATH,1048576).toString('utf8'));
  const layout={platform:process.platform,workspace,source,automation,temp,evidence:realpathSync(dir),cwd:realpathSync(process.cwd()),controllerScript:realpathSync(fileURLToPath(import.meta.url)),sourceHead:git(source,'rev-parse','HEAD'),controllerHead:git(automation,'rev-parse','HEAD'),sourceClean:git(source,'status','--porcelain')==='',controllerClean:git(automation,'status','--porcelain')===''};
@@ -144,6 +147,7 @@ if (process.env.GITHUB_ACTIONS !== 'true' || process.env.CI !== 'true' || proces
 assertNoFullCiRoleHints(process.env);
 assertNoSingletonHints(process.env);
 assert(!Object.keys(process.env).some(key=>key.startsWith('AIHR_NATIVE_NEXT_')),'Inherited native build packet hints are forbidden');
+const installation=captureNativeNextInstallation();
 const [id, destination] = process.argv.slice(2), plan = createPlan(), unit = plan.units.find(u => u.id === id);
 if (!unit || !destination) throw Error('Unknown CI unit or missing evidence directory');
 const dir = resolve(destination); mkdirSync(dir, {recursive: true});
@@ -189,7 +193,7 @@ try {
       let prerequisites;
       if(nativeNextUnit(unit)){
         actualSingletonHost(plan,unit,dir);
-        const host=provisionSingletonHost(plan,unit,dir),build=await provisionNativeNextBuild(plan,unit,dir);
+        const host=provisionSingletonHost(plan,unit,dir),build=await provisionNativeNextBuild(plan,unit,dir,process.env,installation);
         prerequisites={kind:'fresh-job-next-systemd-nginx-postgres',workers:1,database:capturePostgresEvidence(id,plan.execution.postgres),host,build:build.prerequisite};
         env.AIHR_NATIVE_NEXT_PACKET_DIR=build.packetDirectory;env.AIHR_NATIVE_NEXT_BUILD_BINDING=build.bindingPath;
         // GitHub credentials belong to the provisioning owner, never the app/test child.

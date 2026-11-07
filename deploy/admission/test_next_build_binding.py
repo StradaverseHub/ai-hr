@@ -35,10 +35,15 @@ def fixture():
                   'archiveBytes': manifest['archiveBytes'], 'archiveSha256': manifest['archiveSha256'],
                   'manifestSha256': digest(contents['bytes/build-bundle-files.json']),
                   'preparedSha256': digest(contents['system-testing.json']),
+                  'lockSha256': '1'*64, 'packageSha256': '2'*64,
                   'successfulObservationSha256': digest(contents['successful-build.json'])}
     contents['build-provenance.json'] = json.dumps(provenance).encode()
     records = {path: {'bytes': data if not path.endswith('.tar.gz') else b'', 'size': len(data), 'sha256': digest(data)} for path, data in contents.items()}
     binding = {'schemaVersion': 1, 'kind': M.PLAIN_KIND, 'releaseAuthorized': False, 'expected': expected,
+               'installation': {'version': 1, 'kind': 'LOCKED_HOSTED_INSTALL_BEFORE_CANDIDATE_VERIFICATION',
+                   'node': {'path': '/opt/hostedtoolcache/node/22.23.3/x64/bin/node', 'sha256': '3'*64, 'bytes': 100},
+                   'dependencies': {'normalization': 'ROOT_COPY_DEPENDENCIES_V1', 'sha256': '4'*64, 'entries': 10, 'bytes': 200},
+                   'lockSha256': '1'*64, 'packageSha256': '2'*64},
                'artifact': {'id': 456, 'digest': 'sha256:'+'c'*64, 'runId': 123}, 'producerJob': {'id': 789, 'name': 'build'},
                'packet': {'archiveSha256': provenance['archiveSha256'], 'manifestSha256': provenance['manifestSha256'],
                           'provenanceSha256': digest(contents['build-provenance.json']), 'nextBuildId': 'fixture-build'}}
@@ -46,6 +51,25 @@ def fixture():
 
 
 class BindingModels(unittest.TestCase):
+    def test_installation_is_closed_bounded_and_bound_to_build_inputs(self):
+        binding, records, _ = fixture()
+        M.installation_fields(binding['installation'])
+        for key, field, value in [('node', 'path', '/a/../node'), ('node', 'bytes', True),
+                                  ('node', 'sha256', 'claimed'), ('dependencies', 'entries', 0),
+                                  ('dependencies', 'entries', 500001), ('dependencies', 'bytes', 4*1024**3+1),
+                                  ('dependencies', 'normalization', 'caller-normalization')]:
+            changed = copy.deepcopy(binding['installation'])
+            changed[key][field] = value
+            with self.subTest(key=key, field=field, value=value), self.assertRaises(ValueError):
+                M.installation_fields(changed)
+        for key in ('lockSha256', 'packageSha256'):
+            changed = copy.deepcopy(binding)
+            changed['installation'][key] = '9'*64
+            with self.subTest(key=key), self.assertRaisesRegex(ValueError, 'install inputs differ'):
+                M.packet_fields(records, changed, 'refs/heads/codex/native-fixture')
+        with self.assertRaises(ValueError):
+            M.installation_fields(binding['installation'] | {'capturedAfterMigration': True})
+
     def test_closed_owner_metadata_and_every_member_chain_are_required(self):
         binding, records, _ = fixture()
         args = ('a'*40, 'b'*40, '123', 'db-'+'d'*16, M.RUNNER_TEMP, 1001)

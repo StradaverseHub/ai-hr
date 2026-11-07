@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {validateNativeBuildMetadata,provisionNativeNextBuild,nativeHelperClosure,NATIVE_HELPER_SOURCES} from './native-next-build-packet.mjs';
+import {validateNativeBuildMetadata,provisionNativeNextBuild,captureNativeNextInstallation,nativeHelperClosure,NATIVE_HELPER_SOURCES} from './native-next-build-packet.mjs';
 import {singletonSources,singletonDescriptor} from './singleton-protocol.mjs';
 function fixture(){
  const expected={source:'a'.repeat(40),controller:'b'.repeat(40),runId:123,controllerBranch:'codex/native-next-ci'};
@@ -37,6 +37,13 @@ for(const [name,mutate]of [
 test('provisioning refuses an ordinary DB singleton before any API or filesystem operation',async()=>{
  await assert.rejects(provisionNativeNextBuild({}, {singleton:{profile:'notification-cluster-v1'}},'/foreign',{}),/registered hybrid/);
 });
+test('native provisioning rejects fabricated late installation facts before API or packet operations',async()=>{
+ const unit={singleton:{profile:'linux-next-postgres-v1'}},plan={sha:'a'.repeat(40),controller:'b'.repeat(40)};
+ for(const snapshot of [undefined,{}, {sha:plan.sha,controller:plan.controller,source:process.cwd(),installation:{captured:true}}])
+  await assert.rejects(provisionNativeNextBuild(plan,unit,'/foreign',{},snapshot),/Original pre-classifier installation capture required/);
+ assert.equal(captureNativeNextInstallation({GITHUB_JOB:'test'}),null);
+ assert.equal(captureNativeNextInstallation({GITHUB_JOB:'selected-tests'}),null);
+});
 test('private archives, packet and binding stay outside uploaded evidence, and original release inspector stays strict',()=>{
  const source=readFileSync(new URL('./native-next-build-packet.mjs',import.meta.url),'utf8');
  assert(source.includes("const root=join(temporary,unit.id+'-native-build-private')"));
@@ -52,7 +59,7 @@ test('privileged helper closure is finite, committed on both sides and sealed be
  assert.throws(()=>nativeHelperClosure({sha:'HEAD',controller:'HEAD'},'/caller'),/Exact native helper/);
  const source=readFileSync(new URL('./native-next-build-packet.mjs',import.meta.url),'utf8');
  assert(source.indexOf('const NATIVE_HELPER_BYTES=')<source.indexOf('export async function provisionNativeNextBuild'));
- assert(source.indexOf('const helpers=nativeHelperClosure(')<source.indexOf("execFileSync('pnpm'"));
+ assert(source.indexOf('helpers=nativeHelperClosure(')<source.indexOf("execFileSync('pnpm'"));
  assert(source.includes('bytes.equals(from(automation,plan.controller))&&bytes.equals(from(source,plan.sha))'));
  assert(source.includes("execFileSync('sudo',['-n','/usr/bin/python3','-I','-B','-c',NATIVE_BUILD_SEALER,'--seal']"));
  assert(source.includes('JSON.stringify({binding,unit:unit.id,runnerTemp:temporary,runnerUid:process.getuid(),helpers})'));
