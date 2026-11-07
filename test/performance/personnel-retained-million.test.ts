@@ -1,3 +1,4 @@
+import {admitSingletonTest} from '../helpers/ci-singleton-admission';
 import {randomUUID} from 'node:crypto';
 /** Explicit focused benchmark only. Synthetic retained rows do not measure hiring/import throughput. */
 import {readFileSync,writeFileSync} from 'node:fs';
@@ -10,14 +11,13 @@ import {deriveEmploymentStatus} from '../../core/employment-status';
 import {todayInKualaLumpur} from '../../lib/hr-date';
 import {adminCtx,closeAll,migrateTestDb,owner,resetDb,seedBase,type Base} from '../harness';
 const file='test/performance/personnel-retained-million.test.ts';
-const selected:unknown=JSON.parse(process.env.AIHR_FOCUSED_TESTS??'[]');
-const requested=process.env.GITHUB_ACTIONS==='true'&&process.env.AIHR_RETAINED_PERSONNEL_MILLION==='true'&&Array.isArray(selected)&&selected.length===1&&selected.includes(file);
+const singletonAdmission=admitSingletonTest(file);
 beforeAll(migrateTestDb);afterAll(closeAll);
-it.skipIf(!requested)('measures a native Personnel page with one million retained employees and exact scope/count/order',async()=>{
+it('measures a native Personnel page with one million retained employees and exact scope/count/order',async()=>{
  const count=1_000_000,started=performance.now();
  const report:Record<string,unknown>={kind:'RETAINED_PERSONNEL_QUERY_ONLY',releaseEligible:false,targetEmployees:count,concurrentUsers:1,pageRows:25,fixtureBatchRows:5_000,fixturePreparationBudgetMs:2_700_000,queryTargetMs:1000,fixtureUuidLocality:'random v4 namespace per batch with ordered suffix; domains use distinct namespaces',limitations:'Synthetic retained owner fixture, not canonical hiring/import throughput, HTTP/browser timing or 500-user capacity.'};
- expect(process.env.AIHR_FOCUSED_EVIDENCE_DIR).toBeTruthy();
- const save=()=>writeFileSync(join(process.env.AIHR_FOCUSED_EVIDENCE_DIR!,'personnel-retained-million.json'),JSON.stringify(report,null,2));
+ expect(singletonAdmission.evidenceDirectory).toBeTruthy();
+ const save=()=>writeFileSync(join(singletonAdmission.evidenceDirectory!,'personnel-retained-million.json'),JSON.stringify(report,null,2));
  const phase=(name:string)=>{report.phase=name;report.elapsedMs=performance.now()-started;save();};
  const triggers:{name:string;ddl:string}[]=[];
  try{

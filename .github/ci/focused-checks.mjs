@@ -7,6 +7,7 @@ import {isAbsolute, join, relative, resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {hostHealth} from './host-health.mjs';
 import {CI_POLICY} from './policy-version.mjs';
+import {assertSingletonSelection} from './singleton-protocol.mjs';
 import {restrictedPortRequest,executeDatabaseSetup,runRestrictedPortQualification,SOURCE_PINS} from './restricted-port-qualification.mjs';
 import {capturePostgresEvidence, validatePostgresEvidence, postgresProfileFromEnv, V15_POSTGRES_PROFILE} from './postgres-evidence.mjs';
 
@@ -25,7 +26,7 @@ export function parseSelection(value) {
     if (typeof file !== 'string' || !/^test\/[A-Za-z0-9_./-]+(?:\.test\.ts|\.dom\.test\.tsx)$/.test(file)
       || file.split('/').some(part => !part || part === '.' || part === '..')) throw Error('Invalid selected test path');
   }
-  return files.slice().sort();
+  assertSingletonSelection(files);return files.slice().sort();
 }
 
 /** No classifier omissions, duplicates, foreign files or invented categories can bypass DB setup. */

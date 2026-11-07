@@ -1,3 +1,4 @@
+import {admitSingletonTest} from './helpers/ci-singleton-admission';
 /** Hosted Assignment-only representation experiment after real3001; disposable DB only. */
 import {execFileSync} from 'node:child_process';
 import {randomUUID} from 'node:crypto';
@@ -19,8 +20,7 @@ import {seedPersonnelNativeFixture} from './performance/personnel-native-fixture
 import {capturePostgresEvidence,postgresProfileFromEnv,validatePostgresEvidence} from '../.github/ci/postgres-evidence.mjs';
 
 const file='test/employee-choice-assignment-membership-plan.test.ts';
-const selected:unknown=JSON.parse(process.env.AIHR_FOCUSED_TESTS??'[]');
-const requested=process.env.GITHUB_ACTIONS==='true'&&Array.isArray(selected)&&selected.length===1&&selected[0]===file;
+const singletonAdmission=admitSingletonTest(file);
 beforeAll(migrateTestDb);
 type Page=Awaited<ReturnType<typeof readEmployeeChoices>>;
 type Input=Parameters<typeof readEmployeeChoices>[1];
@@ -77,7 +77,7 @@ async function boundedCase(context:TestContext,work:()=>Promise<void>,setup=fals
 }
 const assertCaseActive=()=>activeSignal?.throwIfAborted();
 async function prepare(){
- expect(process.env.RUNNER_ENVIRONMENT).toBe('github-hosted');expect(process.env.AIHR_FOCUSED_EVIDENCE_DIR).toBeTruthy();
+ expect(process.env.RUNNER_ENVIRONMENT).toBe('github-hosted');expect(singletonAdmission.evidenceDirectory).toBeTruthy();
  const poolId=process.env.VITEST_POOL_ID??process.env.VITEST_WORKER_ID;expect(poolId).toBeTruthy();expect(process.env.WORKER_DB).not.toBe('0');
  for(const key of ['TEST_DATABASE_URL','TEST_MIGRATION_DATABASE_URL']){
   const target=new URL(process.env[key]!);expect(target.hostname).toBe('127.0.0.1');expect(target.pathname).toBe('/'+workerDb(poolId!));
@@ -87,7 +87,7 @@ async function prepare(){
   host:{cpuModels:[...new Set(cpus().map(cpu=>cpu.model))],logicalCpus:cpus().length,ramBytes:totalmem()},
   instrumentation:'Native identity/budget checks run in the wrapper; file writes and container telemetry stay outside timed port calls.',
   limitations:'Only the reviewed positive Assignment membership representation changes in this disposable DB. No function/index/JIT/work_mem change, migration adoption or capacity claim. Query shape is unchanged; broad per-employment/window work is reported separately from membership gains.'};
- const save=()=>writeFileSync(join(process.env.AIHR_FOCUSED_EVIDENCE_DIR!,'employee-choice-assignment-membership-plan.json'),JSON.stringify(report,null,2));
+ const save=()=>writeFileSync(join(singletonAdmission.evidenceDirectory!,'employee-choice-assignment-membership-plan.json'),JSON.stringify(report,null,2));
  const fixture=await seedPersonnelNativeFixture(50000,report,phase=>{report.phase=phase;save();},save);
  const representedBu=randomUUID(),emptyBu=randomUUID();
  await owner.db.insert(businessUnit).values([
@@ -183,7 +183,7 @@ async function prepare(){
   await unchanged();report.originalAssignmentPolicyRestored=true;save();
  };
  const resources=()=>{
-  const profile=postgresProfileFromEnv(process.env),evidence=capturePostgresEvidence('db-1',profile);validatePostgresEvidence(evidence,{postgres:profile});
+  const profile=postgresProfileFromEnv(process.env),evidence=capturePostgresEvidence(singletonAdmission.databaseUnit,profile);validatePostgresEvidence(evidence,{postgres:profile});
   const text=execFileSync('docker',['exec',evidence.name,'cat','/sys/fs/cgroup/cpu.stat'],{encoding:'utf8',timeout:10000,maxBuffer:65536});
   return {evidence,cpu:Object.fromEntries(text.trim().split('\n').map(line=>{const [key,value]=line.split(/\s+/);return [key,Number(value)];})),scope:'Owned-container counters/cumulative peak; telemetry runs outside timed port calls.'};
  };
@@ -198,13 +198,13 @@ afterAll(async()=>{
  finally{try{if(preparingSingle)await preparingSingle.client.end({timeout:5});}finally{await closeAll();}}
 });
 
-it.skipIf(!requested)('prepares the retained 50k fictional fixture independently of measurement',context=>boundedCase(context,async()=>{
+it('prepares the retained 50k fictional fixture independently of measurement',context=>boundedCase(context,async()=>{
  const started=performance.now();probe=await prepare();
  probe.report.preparation={complete:true,ms:performance.now()-started,caseBudgetMs:300000};probe.save();
 },true),300000);
 
 const baselinePages=new Map<string,Omit<Page,'contextId'>>();
-it.skipIf(!requested).for(variants)('measures every whole native organisation port with %s Assignment membership',{timeout:300000},(variant,context)=>boundedCase(context,async()=>{
+it.for(variants)('measures every whole native organisation port with %s Assignment membership',{timeout:300000},(variant,context)=>boundedCase(context,async()=>{
  expect(probe).toBeTruthy();const p=probe!,spy=p.install(),{b,ctx,expectedFirst,expectedLast,organisationTagSample}=p.fixture;
  const active=organisationTagSample.filter((_,index)=>(index+1)%5!==0).slice(0,25),last=expectedLast.at(-1)!;
  const scope={companyIds:[b.companyId],selectedId:last};
@@ -250,7 +250,7 @@ it.skipIf(!requested).for(variants)('measures every whole native organisation po
  }finally{p.stop();spy.mockRestore();await p.restore();}
 }));
 
-it.skipIf(!requested).for(variants)('captures actual %s plans and remaining loops/window work without changing query shape',{timeout:300000},(variant,context)=>boundedCase(context,async()=>{
+it.for(variants)('captures actual %s plans and remaining loops/window work without changing query shape',{timeout:300000},(variant,context)=>boundedCase(context,async()=>{
  expect(probe).toBeTruthy();const p=probe!,spy=p.install();
  try{
   expect([...p.queries.keys()]).toHaveLength(16);
@@ -278,7 +278,7 @@ it.skipIf(!requested).for(variants)('captures actual %s plans and remaining loop
 
 let authorityFixture:Awaited<ReturnType<typeof createAssignmentAuthorityFixture>>|undefined;
 let originalAuthority:Awaited<ReturnType<typeof assertAssignmentAuthority>>|undefined;
-it.skipIf(!requested).for(variants)('preserves all native ordinary/scoped/history/refusal controls with %s Assignment membership',{timeout:300000},(variant,context)=>boundedCase(context,async()=>{
+it.for(variants)('preserves all native ordinary/scoped/history/refusal controls with %s Assignment membership',{timeout:300000},(variant,context)=>boundedCase(context,async()=>{
  expect(probe).toBeTruthy();const p=probe!;authorityFixture??=await createAssignmentAuthorityFixture();const spy=p.install();
  try{
   await p.choose(variant);p.label(variant+':authority');const result=await assertAssignmentAuthority(authorityFixture);

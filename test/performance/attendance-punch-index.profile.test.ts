@@ -1,3 +1,4 @@
+import {admitSingletonTest} from '../helpers/ci-singleton-admission';
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterAll, beforeAll, it, expect } from 'vitest';
@@ -9,13 +10,12 @@ import { punchesForCorrectionTx, clockFingerprint } from '../../core/attendance-
 import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase } from '../harness';
 
 const file='test/performance/attendance-punch-index.profile.test.ts';
-const selection:unknown=JSON.parse(process.env.AIHR_FOCUSED_TESTS??'[]');
-const requested=process.env.GITHUB_ACTIONS==='true'&&Array.isArray(selection)&&selection.length===1&&selection[0]===file;
+const singletonAdmission=admitSingletonTest(file);
 beforeAll(migrateTestDb);
 afterAll(closeAll);
 
-it.skipIf(!requested)('benchmarks the canonical correction snapshot on a million-row retained punch table', async () => {
-  const evidenceDir=process.env.AIHR_FOCUSED_EVIDENCE_DIR;
+it('benchmarks the canonical correction snapshot on a million-row retained punch table', async () => {
+  const evidenceDir=singletonAdmission.evidenceDirectory;
   if(!evidenceDir)throw Error('Focused evidence directory is required');
   await resetDb();
   const base = await seedBase();

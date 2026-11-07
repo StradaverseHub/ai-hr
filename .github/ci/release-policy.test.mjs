@@ -76,3 +76,17 @@ test('v3 authenticates one supplemental compiler graph artifact without replacin
  assert.throws(()=>validateArtifacts([...a,aux,{...aux,id:9998}],expected,p));
  assert.throws(()=>validateArtifacts([...a,{...aux,workflow_run:{...aux.workflow_run,head_sha:'d'.repeat(40)}}],expected,p));
 });
+
+for(const branch of ['main','alpha'])test('Successful '+branch+' commissioning API run cannot authorize release',()=>{
+ const r={...run(),head_branch:branch,display_title:'Singleton commissioning only · frozen-source'};
+ assert.throws(()=>validateRun(r,expected),/commissioning is incomplete/);
+ const incomplete=jobs().map(j=>['typecheck','migrations','controller-tests','build','verify'].includes(j.name)?{...j,conclusion:'skipped'}:j);
+ assert.throws(()=>validateJobs(incomplete,proof().expectedPlan));
+ const selected=artifacts().map(a=>({...a,name:a.name.startsWith('unit-')?'commission-'+a.name:a.name==='gate-plan'?'commission-plan':a.name}));
+ assert.throws(()=>validateArtifacts(selected,expected,proof().expectedPlan));
+});
+test('Only a skipped commissioning summary is compatible with a complete ordinary release witness',()=>{
+ const plan=proof().expectedPlan,skipped={name:'commission-summary',status:'completed',conclusion:'skipped',run_attempt:1};
+ assert.equal(validateJobs([...jobs(),skipped],plan),true);
+ assert.throws(()=>validateJobs([...jobs(),{...skipped,conclusion:'success'}],plan));
+});

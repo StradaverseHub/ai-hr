@@ -1,3 +1,4 @@
+import {admitSingletonTest} from '../helpers/ci-singleton-admission';
 /** Explicit hosted retained-data diagnosis only; native row triggers/constraints remain enabled. */
 import {randomUUID} from 'node:crypto';
 import {writeFileSync} from 'node:fs';
@@ -16,17 +17,16 @@ import {personnelNativeAggregatePrototype} from './personnel-native-aggregate-pr
 import {personnelDatedTagsPrototype} from './personnel-dated-tags-prototype';
 import {seedPersonnelCorrectionFixture,seedPersonnelNativeFixture} from './personnel-native-fixture';
 const file='test/performance/personnel-native-list-plan.test.ts';
-const selected:unknown=JSON.parse(process.env.AIHR_FOCUSED_TESTS??'[]');
-const requested=process.env.GITHUB_ACTIONS==='true'&&Array.isArray(selected)&&selected.length===1&&selected[0]===file;
+const singletonAdmission=admitSingletonTest(file);
 beforeAll(migrateTestDb);afterAll(closeAll);
-it.skipIf(!requested)('profiles initial/search/deep Personnel pages with fifty thousand native retained employees',async()=>{
+it('profiles initial/search/deep Personnel pages with fifty thousand native retained employees',async()=>{
  const count=50_000,started=performance.now();
  const report:Record<string,unknown>={kind:'PERSONNEL_RETAINED_50K_QUERY_COMPONENT_ONLY',releaseEligible:false,targetEmployees:count,concurrentUsers:1,queryTargetMs:1000,fixtureBatchRows:5000,nativeTriggers:'unchanged',limitations:'Retained synthetic owner fixture, not hiring/import throughput, browser timing, one-million Personnel or500-user capacity.'};
- const save=()=>writeFileSync(join(process.env.AIHR_FOCUSED_EVIDENCE_DIR!,'personnel-native-list-plan.json'),JSON.stringify(report,null,2));
+ const save=()=>writeFileSync(join(singletonAdmission.evidenceDirectory!,'personnel-native-list-plan.json'),JSON.stringify(report,null,2));
  const phase=(name:string)=>{report.phase=name;report.elapsedMs=performance.now()-started;save();};
  const measurements:{mode:string;elapsedMs:number;total:number;pageRows:number;targetMet:boolean}[]=[];
  try{
-  expect(process.env.AIHR_FOCUSED_EVIDENCE_DIR).toBeTruthy();
+  expect(singletonAdmission.evidenceDirectory).toBeTruthy();
   const {b,foreign,ctx,foreignEmployment,expectedFirst,expectedLast,organisationTagSample}=
    await seedPersonnelNativeFixture(count,report,phase,save);
   report.fixturePreparationMs=performance.now()-started;
@@ -298,7 +298,7 @@ it.skipIf(!requested)('profiles initial/search/deep Personnel pages with fifty t
  finally{report.queries=measurements;save();}
 },600000);
 
-it.skipIf(!requested)('preserves the first future information correction for a dated Personnel read',async()=>{
+it('preserves the first future information correction for a dated Personnel read',async()=>{
  const {ctx,companies,employmentId,hiredOn,beforeCompanyId,afterCompanyId}=await seedPersonnelCorrectionFixture();
  const prototype=await personnelDatedTagsPrototype();
  try{

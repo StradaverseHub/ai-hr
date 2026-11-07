@@ -1,3 +1,4 @@
+import {admitSingletonTest} from './helpers/ci-singleton-admission';
 /** Hosted fictional-data baseline. No production read or calculation is changed. */
 import {createHash,randomUUID} from 'node:crypto';
 import {execFileSync} from 'node:child_process';
@@ -21,13 +22,12 @@ import {seedPersonnelNativeFixture} from './performance/personnel-native-fixture
 import {workerDb} from './db-names';
 
 const file='test/leave-inquiry-read-cost.test.ts';
-const selection:unknown=JSON.parse(process.env.AIHR_FOCUSED_TESTS??'[]');
-const requested=process.env.GITHUB_ACTIONS==='true'&&Array.isArray(selection)&&selection.length===1&&selection[0]===file;
+const singletonAdmission=admitSingletonTest(file);
 beforeAll(migrateTestDb);afterAll(closeAll);
 const bytes=(value:unknown)=>Buffer.byteLength(JSON.stringify(value));
 const errorDetails=(error:unknown)=>({name:error instanceof Error?error.name:'unknown',message:error instanceof Error?error.message:'unknown',sqlState:pgSqlState(error)??null});
 function assertHostedFixture(){
- expect(process.env.RUNNER_ENVIRONMENT).toBe('github-hosted');expect(process.env.AIHR_FOCUSED_EVIDENCE_DIR).toBeTruthy();
+ expect(process.env.RUNNER_ENVIRONMENT).toBe('github-hosted');expect(singletonAdmission.evidenceDirectory).toBeTruthy();
  const poolId=process.env.VITEST_POOL_ID??process.env.VITEST_WORKER_ID;expect(poolId).toBeTruthy();expect(process.env.WORKER_DB).not.toBe('0');
  for(const key of ['TEST_DATABASE_URL','TEST_MIGRATION_DATABASE_URL']){
   const target=new URL(process.env[key]!);expect(target.hostname).toBe('127.0.0.1');expect(target.pathname).toBe('/'+workerDb(poolId!));
@@ -43,7 +43,7 @@ function recorder(kind:string){
  const report:Record<string,unknown>={kind,releaseEligible:false,measurementStage:'presentation-candidate',comparedToBaselineSource:'d0ee92473a88435951d7928c9bb0ac7556fa3483',
   source:execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8',timeout:5000}).trim(),host:{cpus:availableParallelism(),ramBytes:totalmem()},
   limitations:'Fictional component baseline, not production capacity. Statement observations and result-byte serialization add overhead. Estimated plans do not replay actual reads.'};
- const save=()=>writeFileSync(join(process.env.AIHR_FOCUSED_EVIDENCE_DIR!,kind+'.json'),JSON.stringify(report,null,2));
+ const save=()=>writeFileSync(join(singletonAdmission.evidenceDirectory!,kind+'.json'),JSON.stringify(report,null,2));
  return {report,save};
 }
 
@@ -114,7 +114,7 @@ function observeTransactions(report:Record<string,unknown>,save:()=>void,phase:(
  return {statements,identities,restore:()=>spy.mockRestore()};
 }
 
-it.skipIf(!requested)('records native snapshot usability while actual Access and History writers remain held',async()=>{
+it('records native snapshot usability while actual Access and History writers remain held',async()=>{
  assertHostedFixture();
  await resetDb();const b=await seedBase(),ctx={...adminCtx(b),grants:[{role:'hr_admin' as const,companyId:null}]},today=todayInKualaLumpur();
  const hired=await hireEmployee(ctx,{person:{fullName:'Fictional Leave snapshot subject',primaryEmail:randomUUID()+'@example.invalid'},companyId:b.companyId,departmentId:b.deptA,employeeCode:'LEAVE-A',employmentType:'full_time',hiredOn:'2020-01-01'});
@@ -155,7 +155,7 @@ it.skipIf(!requested)('records native snapshot usability while actual Access and
  finally{observation.restore();save();}
 },300000);
 
-it.skipIf(!requested)('measures actual 5000-employee context, exact pair paging and canonical page hydration without changing policy',async()=>{
+it('measures actual 5000-employee context, exact pair paging and canonical page hydration without changing policy',async()=>{
  assertHostedFixture();
  const {report,save}=recorder('leave-inquiry-read-cost-baseline');report.employees=5000;
  report.appPoolMaximum=database.client.options.max;

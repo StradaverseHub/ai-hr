@@ -1,3 +1,4 @@
+import {admitSingletonTest} from '../helpers/ci-singleton-admission';
 /** Disposable hosted diagnostic for the native Claims preview and an alternate SQL shape. */
 import {randomUUID} from 'node:crypto';
 import {writeFileSync} from 'node:fs';
@@ -12,8 +13,7 @@ import {createClaimType,pendingClaimTaskMetadata,pendingClaimTaskSummary} from '
 import {adminCtx,closeAll,migrateTestDb,owner,resetDb,seedBase} from '../harness';
 
 const file='test/performance/claims-preview-index.profile.test.ts';
-const selection:unknown=JSON.parse(process.env.AIHR_FOCUSED_TESTS??'[]');
-const requested=process.env.GITHUB_ACTIONS==='true'&&Array.isArray(selection)&&selection.length===1&&selection[0]===file;
+const singletonAdmission=admitSingletonTest(file);
 const denseSubjects=128;
 const pendingPerSubject=32;
 const retainedPerSubject=768;
@@ -22,8 +22,8 @@ const limit=25;
 beforeAll(migrateTestDb);
 afterAll(closeAll);
 
-it.skipIf(!requested)('compares native lateral and tenant-first Claims previews under application RLS',async()=>{
- const evidenceDir=process.env.AIHR_FOCUSED_EVIDENCE_DIR;
+it('compares native lateral and tenant-first Claims previews under application RLS',async()=>{
+ const evidenceDir=singletonAdmission.evidenceDirectory;
  if(!evidenceDir)throw Error('Focused evidence directory is required');
  const samples:unknown[]=[],writes:unknown[]=[];
  const report:Record<string,unknown>={
