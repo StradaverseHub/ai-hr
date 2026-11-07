@@ -132,7 +132,7 @@ it.each(['access-configuration:','payroll-history:'])('completes all 35 populate
 });
 
 it('requires genuine RR/RO carriers for every borrowed presentation seam and PostgreSQL rejects an actual write',async()=>{
- const actions=[(tx:Tx)=>listPresentationWorkforcePickPageTx(ctx,tx,{companyIds:[b.companyId],limit:25}),(tx:Tx)=>readPresentationWorkforcePickRowsTx(ctx,tx,[employees[0].employmentId]),(tx:Tx)=>assertWorkforcePresentationEmploymentTx(tx,ctx,employees[0].employmentId)];
+ const actions:((tx:Tx)=>Promise<unknown>)[]=[(tx:Tx)=>listPresentationWorkforcePickPageTx(ctx,tx,{companyIds:[b.companyId],limit:25}),(tx:Tx)=>readPresentationWorkforcePickRowsTx(ctx,tx,[employees[0].employmentId]),(tx:Tx)=>assertWorkforcePresentationEmploymentTx(tx,ctx,employees[0].employmentId)];
  for(const read of actions){
   await expect(database.withTenant(ctx,read)).rejects.toThrow();
   await expect(database.withTenant(ctx,async tx=>{await tx.execute(sql`set transaction read only`);return read(tx);})).rejects.toThrow();
@@ -164,7 +164,7 @@ it('rejects every display root after actual login archival, then rejects fresh f
   {...ctx,statutoryOverride:'Fictional forbidden display override'},
  ] as SessionContext[]){await expect(letters.letterCompanyAccess(actor)).rejects.toMatchObject({code:'permission'});await expect(letters.getLetterGenerationBatch(actor,draftId)).rejects.toMatchObject({code:'permission'});}
  await expect(letters.getMyLetter({...self,personId:employees[1].personId},issuedId)).rejects.toMatchObject({code:'permission'});
- const [otherPerson]=await owner.db.insert(s.person).values({tenantId:b.tenantId,fullName:'Fictional relink target'}).returning();
+ const [otherPerson]=await owner.db.insert(s.person).values({tenantId:b.tenantId,fullName:'Fictional relink target',primaryEmail:'fictional-relink-target@example.invalid'}).returning();
  await owner.db.update(s.appUser).set({personId:otherPerson.id}).where(eq(s.appUser.id,self.userId!));
  await expect(letters.listMyLetters(self)).rejects.toMatchObject({code:'permission'});
  await owner.db.update(s.roleAssignment).set({role:'employee'}).where(eq(s.roleAssignment.appUserId,ctx.userId!));
