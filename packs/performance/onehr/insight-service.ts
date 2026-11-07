@@ -1,3 +1,4 @@
+import {withAiCentreFunction} from '../../../core/ai-centre-control';
 import { createHash } from 'node:crypto';
 import { and,asc,eq,inArray } from 'drizzle-orm';
 import type { SessionContext,Tx } from '../../../db/client';
@@ -20,7 +21,11 @@ type Source=Awaited<ReturnType<typeof getAssessmentInsightSource>>;
 const fingerprint=(source:Source,texts:Map<string,EvidenceText>,cfg:ResolvedAiConfig|null)=>createHash('sha256').update(JSON.stringify({version:2,name:source.name,facts:source.facts,files:source.attachments.map(f=>({id:f.id,name:f.fileName,size:f.sizeBytes})),texts:[...texts].filter(([,text])=>text.status!=='unread').map(([id,text])=>({id,status:text.status,method:text.method,text:text.text})),writer:cfg?{provider:cfg.provider,model:cfg.model}:null})).digest('hex');
 async function config(ctx:SessionContext){return withPerformanceTenant(ctx,async tx=>{try{return await assessmentAiConfigTx(tx,ctx,'pm');}catch{return null;}});}
 /** GET is cache-only. Explicit generation is the sole file/provider path, including for calibrators. */
-export async function getAssessmentPerformanceInsight(ctx:SessionContext,reviewId:string,contextId=reviewId,{generate=false}:{generate?:boolean}={}){
+export async function getAssessmentPerformanceInsight(...args:Parameters<typeof getAssessmentPerformanceInsightActivity>):Promise<Awaited<ReturnType<typeof getAssessmentPerformanceInsightActivity>>>{
+ if(!(args[3]?.generate))return getAssessmentPerformanceInsightActivity(...args);
+ return withAiCentreFunction(args[0],'read:operation_performance_insight',()=>getAssessmentPerformanceInsightActivity(...args));
+}
+async function getAssessmentPerformanceInsightActivity(ctx:SessionContext,reviewId:string,contextId=reviewId,{generate=false}:{generate?:boolean}={}){
  ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(g=>({...g}))};
  const source=await withPerformanceTenant(ctx,async tx=>{await assertPerformanceProviderSourceTx(tx,ctx);return getAssessmentInsightSourceTx(tx,ctx,reviewId,contextId);});if(!source.facts.rows.length)return {status:'none' as const,pending:false,source:null,data:null};
  const cfg=await config(ctx),texts=await getAssessmentFileTexts(ctx,reviewId,contextId),fp=fingerprint(source,texts,cfg);

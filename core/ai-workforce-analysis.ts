@@ -1,3 +1,4 @@
+import {withAiCentreFunction} from './ai-centre-control';
 import {createHash} from 'node:crypto';
 import {types as nodeTypes} from 'node:util';
 /** Native workforce analysis source. This is an explanation of the existing employment-headcount
@@ -70,7 +71,10 @@ function projection(source:WorkforceHeadcountSource){
 }
 /** Authorized source adoption for the real report_insight feature. Source reads and every replay use
  * the actual private-analysis admission transaction. The returned text remains untrusted explanation. */
-export async function generateWorkforceAnalysis(supplied:SessionContext,options:WorkforceAnalysisOptions):Promise<string>{
+export async function generateWorkforceAnalysis(...args:Parameters<typeof generateWorkforceAnalysisActivity>):Promise<Awaited<ReturnType<typeof generateWorkforceAnalysisActivity>>>{
+ return withAiCentreFunction(args[0],'read:operation_workforce_analysis',()=>generateWorkforceAnalysisActivity(...args));
+}
+async function generateWorkforceAnalysisActivity(supplied:SessionContext,options:WorkforceAnalysisOptions):Promise<string>{
  const ctx={...supplied,roles:supplied.roles?.slice(),grants:supplied.grants?.map(grant=>({...grant}))},selected=selection(options);
  const configuration=await withTenant(ctx,async tx=>{const fresh=await authorizeSourceTx(tx,ctx,selected);return resolveActiveAiConfig(tx,fresh,'report_insight');});
  if(!configuration)return unavailable();

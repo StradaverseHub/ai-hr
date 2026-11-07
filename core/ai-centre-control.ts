@@ -6,7 +6,6 @@ import {aiCentreActivity,runAiCentreActivity} from '../lib/ai/centre-activity';
 
 /** The SQL owner serialises this check with stop writes; hold tx through a native effect. */
 export async function assertAiCentreRunningTx(tx:Tx,ctx:Pick<SessionContext,'tenantId'>,expected?:number):Promise<number>{
- try{
   await lockAccessConfigurationTx(tx,ctx.tenantId);
   const [row]=await tx.execute<{generation:number}>(sql`select app.ai_centre_assert_running(${expected??aiCentreActivity(ctx.tenantId)?.generation??null}::integer) as generation`);
   if(row?.generation===null)throw new AiAllowanceError('paused');
@@ -16,10 +15,6 @@ export async function assertAiCentreRunningTx(tx:Tx,ctx:Pick<SessionContext,'ten
    if(functionState?.allowed!==true)throw new AiAllowanceError('paused');
   }
   return row.generation;
- }catch(error){
-  if((error as {code?:string})?.code==='55000'||(error as {cause?:{code?:string}})?.cause?.code==='55000')throw new AiAllowanceError('paused');
-  throw error;
- }
 }
 
 export async function withAiCentreActivity<T>(ctx:SessionContext,work:()=>Promise<T>):Promise<T>{

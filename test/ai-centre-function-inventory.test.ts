@@ -1,3 +1,5 @@
+import {readFileSync} from 'node:fs';
+import {AI_CENTRE_OPERATIONS} from '../lib/ai/centre-operations';
 import {describe,expect,it} from 'vitest';
 import {aiCentreFunctions,aiCentreReadKeys} from '../core/ai-centre-inventory';
 import {AI_FEATURES} from '../lib/ai/features';
@@ -16,6 +18,12 @@ describe('complete AI centre function inventory',()=>{
   for(const action of AGENT_ACTIONS)expect(keys.has('action:'+action.id),action.id).toBe(true);
   for(const read of [...SEMANTIC_READS,...TERAS_READS,...ASSISTANT_TOOL_CATALOGUE])expect(keys.has('read:'+read.name),read.name).toBe(true);
   for(const row of rows)expect(row.href).toBeTruthy();
+ });
+ it('binds every standalone draft or analysis operation to its declared child control',()=>{
+  for(const operation of AI_CENTRE_OPERATIONS){
+   expect(aiCentreReadKeys()).toContain('read:operation_'+operation.id);
+   expect(readFileSync(operation.owner.split('#')[0],'utf8')).toContain("'read:operation_"+operation.id+"'");
+  }
  });
  it('provides separate controls for all five explanation topics and preserves required services',()=>{
   const keys=aiCentreReadKeys();

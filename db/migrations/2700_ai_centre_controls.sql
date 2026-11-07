@@ -55,6 +55,21 @@ INSERT INTO app.ai_centre_function_kind(function_key,default_enabled) VALUES
  ('read:my_payslip_summary',true),
  ('read:my_policy_handbook',true),
  ('read:my_reporting_line',true),
+ ('read:operation_pay_formula_draft',true),
+ ('read:operation_pay_rule_draft',true),
+ ('read:operation_report_spec_draft',true),
+ ('read:operation_domain_analysis',true),
+ ('read:operation_workforce_analysis',true),
+ ('read:operation_payroll_comparison',true),
+ ('read:operation_feedback_plan',true),
+ ('read:operation_manager_review_draft',true),
+ ('read:operation_development_goals',true),
+ ('read:operation_career_plan',true),
+ ('read:operation_performance_rewrite',true),
+ ('read:operation_performance_guide',true),
+ ('read:operation_performance_admin',true),
+ ('read:operation_competency_insight',true),
+ ('read:operation_performance_insight',true),
  ('read:orchestrator_observe',true),
  ('read:organisation_tagging_guidance',true),
  ('read:password_policy_guidance',true),
@@ -128,7 +143,7 @@ CREATE TRIGGER aaa_ai_centre_control_lock BEFORE INSERT OR UPDATE ON public.tera
 CREATE FUNCTION app.ai_centre_control_state() RETURNS TABLE(stopped boolean,generation integer,pending integer)
  LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
 BEGIN
- IF app.current_user_id() IS NULL OR app.principal_snapshot_current() IS NOT TRUE OR app.is_group_admin() IS NOT TRUE OR app.login_blocked(app.current_user_id()) OR NOT EXISTS(SELECT 1 FROM public.app_user u WHERE u.id=app.current_user_id() AND u.tenant_id=app.current_tenant_id() AND u.archived_at IS NULL) THEN RAISE EXCEPTION 'AI controls unavailable' USING ERRCODE='42501'; END IF;
+ IF app.current_user_id() IS NULL OR app.principal_snapshot_current() IS NOT TRUE OR app.is_group_admin() IS NOT TRUE OR app.login_blocked(app.current_user_id()) IS NOT FALSE OR NOT EXISTS(SELECT 1 FROM public.app_user u WHERE u.id=app.current_user_id() AND u.tenant_id=app.current_tenant_id() AND u.archived_at IS NULL) THEN RAISE EXCEPTION 'AI controls unavailable' USING ERRCODE='42501'; END IF;
  RETURN QUERY SELECT coalesce(c.stopped,false),coalesce(c.version,0),
  (SELECT count(*)::integer FROM public.ai_model_run r WHERE r.tenant_id=app.current_tenant_id() AND r.state='pending')
  FROM (SELECT 1) one LEFT JOIN public.teras_mandate_control c ON c.tenant_id=app.current_tenant_id();
@@ -164,7 +179,7 @@ CREATE FUNCTION app.ai_centre_read_set(wanted_key text,wanted_enabled boolean) R
 DECLARE prior boolean;
 BEGIN
  PERFORM pg_advisory_xact_lock(hashtextextended('access-configuration:'||app.current_tenant_id()::text,0));
- IF app.current_user_id() IS NULL OR app.principal_snapshot_current() IS NOT TRUE OR app.is_group_admin() IS NOT TRUE OR app.login_blocked(app.current_user_id()) OR NOT EXISTS(SELECT 1 FROM public.app_user u WHERE u.id=app.current_user_id() AND u.tenant_id=app.current_tenant_id() AND u.archived_at IS NULL) THEN RAISE EXCEPTION 'AI controls unavailable' USING ERRCODE='42501'; END IF;
+ IF app.current_user_id() IS NULL OR app.principal_snapshot_current() IS NOT TRUE OR app.is_group_admin() IS NOT TRUE OR app.login_blocked(app.current_user_id()) IS NOT FALSE OR NOT EXISTS(SELECT 1 FROM public.app_user u WHERE u.id=app.current_user_id() AND u.tenant_id=app.current_tenant_id() AND u.archived_at IS NULL) THEN RAISE EXCEPTION 'AI controls unavailable' USING ERRCODE='42501'; END IF;
  IF wanted_key IS NULL OR NOT EXISTS(SELECT 1 FROM app.ai_centre_function_kind k WHERE k.function_key=wanted_key) OR wanted_enabled IS NULL THEN RAISE EXCEPTION 'Unknown AI function'; END IF;
  PERFORM pg_advisory_xact_lock(hashtext('ai-control'),hashtext(app.current_tenant_id()::text));
  SELECT coalesce(c.enabled,k.default_enabled) INTO prior FROM app.ai_centre_function_kind k LEFT JOIN app.ai_centre_read_control c ON c.tenant_id=app.current_tenant_id() AND c.function_key=k.function_key WHERE k.function_key=wanted_key;
@@ -172,7 +187,7 @@ BEGIN
  VALUES(app.current_tenant_id(),wanted_key,wanted_enabled,app.current_user_id())
  ON CONFLICT(tenant_id,function_key) DO UPDATE SET enabled=excluded.enabled,changed_by_user_id=excluded.changed_by_user_id,changed_at=clock_timestamp();
  INSERT INTO public.domain_event(tenant_id,aggregate_type,aggregate_id,event_type,actor_type,actor_id,payload)
- VALUES(app.current_tenant_id(),'ai-centre-function',app.current_tenant_id(),'ai-centre.function-changed','user',app.current_user_id()::text,
+ VALUES(app.current_tenant_id(),'ai-centre-function',app.current_tenant_id(),'ai-centre.function-changed','user',app.current_user_id(),
  jsonb_build_object('key',wanted_key,'from',prior,'to',wanted_enabled));
 END $$;
 --> statement-breakpoint
@@ -207,10 +222,46 @@ REVOKE ALL ON FUNCTION app.ai_agent_action_unpaused(text) FROM PUBLIC;
 --> statement-breakpoint
 GRANT EXECUTE ON FUNCTION app.ai_agent_action_unpaused(text) TO ai_hr_app;
 --> statement-breakpoint
+-- Immutable companion metadata preserves the exact audited event payload and its RLS contract.
+CREATE TABLE app.ai_centre_event_generation (
+ event_id uuid PRIMARY KEY REFERENCES public.domain_event(id) ON DELETE CASCADE,
+ tenant_id uuid NOT NULL REFERENCES public.tenant(id),
+ generation integer NOT NULL CHECK(generation>=0)
+);
+--> statement-breakpoint
+ALTER TABLE app.ai_centre_event_generation ENABLE ROW LEVEL SECURITY;
+--> statement-breakpoint
+ALTER TABLE app.ai_centre_event_generation FORCE ROW LEVEL SECURITY;
+--> statement-breakpoint
+REVOKE ALL ON app.ai_centre_event_generation FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+-- No direct grants: definer readers enforce tenant scope; the private delivery trigger has no session tenant.
+CREATE POLICY ai_centre_event_generation_read ON app.ai_centre_event_generation FOR SELECT TO PUBLIC USING(true);
+--> statement-breakpoint
+CREATE POLICY ai_centre_event_generation_insert ON app.ai_centre_event_generation FOR INSERT TO PUBLIC WITH CHECK(tenant_id=app.current_tenant_id());
+--> statement-breakpoint
+CREATE FUNCTION app.ai_centre_stamp_event(wanted_event uuid,expected_generation integer) RETURNS void
+ LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE e public.domain_event;g integer;
+BEGIN
+ g:=app.ai_centre_assert_running(expected_generation);
+ IF g IS NULL OR expected_generation IS NULL THEN RAISE EXCEPTION 'AI activity stopped' USING ERRCODE='55000'; END IF;
+ -- The caller can only stamp an AI event it inserted in this transaction. Old events cannot be revived.
+ SELECT * INTO e FROM public.domain_event WHERE id=wanted_event AND tenant_id=app.current_tenant_id() AND xmin=pg_current_xact_id()::xid;
+ IF NOT FOUND OR (e.event_type NOT LIKE 'automatic-chase.%' AND e.event_type NOT IN ('readiness.nudge-raised','claim-request.triage-queried','teras-loop.action.applied','teras-loop.request.sent','teras-loop.cut-off-reminder')) THEN
+  RAISE EXCEPTION 'AI event stamp unavailable' USING ERRCODE='42501';
+ END IF;
+ INSERT INTO app.ai_centre_event_generation(event_id,tenant_id,generation) VALUES(e.id,e.tenant_id,g) ON CONFLICT(event_id) DO NOTHING;
+END $$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.ai_centre_stamp_event(uuid,integer) FROM PUBLIC;
+--> statement-breakpoint
+GRANT EXECUTE ON FUNCTION app.ai_centre_stamp_event(uuid,integer) TO ai_hr_app;
+--> statement-breakpoint
 -- Narrow helper for unsent AI notifications. No text/recipient/source data is exposed to callers.
 CREATE FUNCTION app.ai_centre_event_allowed(wanted_event uuid) RETURNS boolean
  LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
-DECLARE e public.domain_event;c public.teras_mandate_control;
+DECLARE e public.domain_event;c public.teras_mandate_control;g integer;
 BEGIN
  SELECT * INTO e FROM public.domain_event WHERE id=wanted_event AND tenant_id=app.current_tenant_id();
  IF NOT FOUND THEN RETURN false; END IF;
@@ -218,7 +269,8 @@ BEGIN
  PERFORM pg_advisory_xact_lock(hashtext('ai-control'),hashtext(e.tenant_id::text));
  SELECT * INTO c FROM public.teras_mandate_control WHERE tenant_id=e.tenant_id;
  IF coalesce(c.stopped,false) THEN RETURN false; END IF;
- IF e.payload ? 'aiCentreGeneration' THEN RETURN (e.payload->>'aiCentreGeneration')::integer=coalesce(c.version,0); END IF;
+ SELECT generation INTO g FROM app.ai_centre_event_generation WHERE event_id=e.id AND tenant_id=e.tenant_id;
+ IF g IS NOT NULL THEN RETURN g=coalesce(c.version,0); END IF;
  RETURN c.tenant_id IS NULL OR e.occurred_at>=c.changed_at;
 END $$;
 --> statement-breakpoint
@@ -228,14 +280,15 @@ GRANT EXECUTE ON FUNCTION app.ai_centre_event_allowed(uuid) TO ai_hr_app;
 --> statement-breakpoint
 -- Last private SMTP boundary: no new AI delivery start may cross a committed stop.
 CREATE FUNCTION app.ai_centre_delivery_guard() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
-DECLARE e public.domain_event;c public.teras_mandate_control;
+DECLARE e public.domain_event;c public.teras_mandate_control;g integer;
 BEGIN
  IF NEW.started_at IS NULL OR OLD.started_at IS NOT NULL THEN RETURN NEW; END IF;
  SELECT * INTO e FROM public.domain_event WHERE id=NEW.source_event_id AND tenant_id=NEW.tenant_id;
  IF e.event_type LIKE 'automatic-chase.%' OR e.event_type IN ('readiness.nudge-raised','claim-request.triage-queried','teras-loop.action.applied','teras-loop.request.sent','teras-loop.cut-off-reminder') THEN
   PERFORM pg_advisory_xact_lock(hashtext('ai-control'),hashtext(NEW.tenant_id::text));
   SELECT * INTO c FROM public.teras_mandate_control WHERE tenant_id=NEW.tenant_id;
-  IF coalesce(c.stopped,false) OR (e.payload ? 'aiCentreGeneration' AND (e.payload->>'aiCentreGeneration')::integer<>coalesce(c.version,0)) OR (NOT (e.payload ? 'aiCentreGeneration') AND c.tenant_id IS NOT NULL AND e.occurred_at<c.changed_at) THEN
+  SELECT generation INTO g FROM app.ai_centre_event_generation WHERE event_id=e.id AND tenant_id=e.tenant_id;
+  IF coalesce(c.stopped,false) OR (g IS NOT NULL AND g<>coalesce(c.version,0)) OR (g IS NULL AND c.tenant_id IS NOT NULL AND e.occurred_at<c.changed_at) THEN
    RAISE EXCEPTION 'AI delivery stopped' USING ERRCODE='55000';
   END IF;
  END IF;

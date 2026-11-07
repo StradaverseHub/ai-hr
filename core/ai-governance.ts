@@ -47,13 +47,14 @@ async function forcedPauseTx(tx:Tx,ctx:SessionContext,feature:AiFeatureId):Promi
  */
 export async function assertAiActionUnpausedTx(tx:Tx,ctx:SessionContext,feature:AiFeatureId):Promise<void>{
  if(!isAiFeature(feature))throw new AiGatewayError('Unknown AI feature.');
- await assertAiCentreRunningTx(tx,ctx);
+ await lockAccessConfigurationTx(tx,ctx.tenantId);
  // WP13: template-only scheduled agents have no model admission at all.
  if(isTemplateOnlyAiFeature(feature))throw new AiGatewayError('This feature makes no model call.');
  const forcedPause=await forcedPauseTx(tx,ctx,feature);
  const [control]=await tx.execute<{unpaused:boolean}>(sql`select app.ai_action_unpaused(${feature},${forcedPause}) as unpaused`);
  if(control?.unpaused===false)throw new AiAllowanceError('paused');
  if(control?.unpaused!==true)throw new AiGatewayError('AI action controls could not be confirmed.');
+ await assertAiCentreRunningTx(tx,ctx);
  // WP12 (R8): inside an Assistant review-route command, that action's own pause key under hr_assistant (0696).
  // A review-route command whose action could not be named fails closed.
  const route=currentAgentActionScope();
@@ -140,6 +141,7 @@ function createGovernedAiConfig(ctx:SessionContext,snapshot:AiProviderSnapshot,f
     if(lifecycle?.settled)await lifecycle.settled(tx,Object.freeze({runId:admission.run_id,succeeded,actualTokens:actual,accounting:observed}));}); }
    catch { throw new AiGatewayError('AI usage could not be confirmed. Its reservation remains held.'); }
    if(breach)throw new AiGatewayError('The AI inference charge exceeded its verified allocation ceiling. Further strict admissions are paused.');
+   if(succeeded)await withTenant(ctx,tx=>assertAiCentreRunningTx(tx,ctx,preparedAdmission.generation));
   }
  }})});
  if(observer)resolved=Object.freeze({...resolved,governance:Object.freeze({run:observeAiRun(resolved.governance!.run,observer)})});

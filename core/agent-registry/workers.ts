@@ -91,7 +91,7 @@ export function workerDeclarationProblems(value:unknown):readonly string[]{
  // A decider completes only under a mandate; a mandate worker is switched by its job type and recorded per run.
  if(d.effect==='complete_under_mandate'&&d.authority.kind!=='mandate')problems.push('authority');
  if(d.authority.kind==='mandate'&&(d.switch.kind!=='job_type'||d.switch.jobType!==d.authority.jobType||d.record.kind!=='mandate_runs'))problems.push('switch');
- if(d.stop.honoured===false&&!nonEmpty(d.stop.pending))problems.push('stop');
+ if(d.stop.honoured!==true)problems.push('stop');
  if(d.metrics.kind==='not_measurable'&&!nonEmpty(d.metrics.reason))problems.push('metrics');
  // AI v2 W8: a loop prepares only, as the agent principal behind its own registry switch, honours the stop switch,
  // names its sponsor and is measured from its cases. A sponsor is declared only by a loop.

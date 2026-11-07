@@ -1,3 +1,4 @@
+import {withAiCentreFunction} from './ai-centre-control';
 import {createHash} from 'node:crypto';
 import {types as nodeTypes} from 'node:util';
 import {sql} from 'drizzle-orm';
@@ -98,7 +99,10 @@ async function readSource(tx:Tx,ctx:SessionContext,selected:DomainAnalysisOption
 }
 /** Native-backed report explanation. Current snapshots never pretend to be historic trend comparisons.
  * Source selection, exact membership and conditions are fingerprinted locally at every admission replay. */
-export async function generateDomainAnalysis(supplied:SessionContext,options:DomainAnalysisOptions):Promise<string>{
+export async function generateDomainAnalysis(...args:Parameters<typeof generateDomainAnalysisActivity>):Promise<Awaited<ReturnType<typeof generateDomainAnalysisActivity>>>{
+ return withAiCentreFunction(args[0],'read:operation_domain_analysis',()=>generateDomainAnalysisActivity(...args));
+}
+async function generateDomainAnalysisActivity(supplied:SessionContext,options:DomainAnalysisOptions):Promise<string>{
  const ctx={...supplied,roles:supplied.roles?.slice(),grants:supplied.grants?.map(grant=>({...grant}))},selected=selection(options);
  const configuration=await withTenant(ctx,async tx=>resolveActiveAiConfig(tx,await authorizeSourceTx(tx,ctx,selected),'report_insight'));
  if(!configuration)return unavailable();let originalFingerprint:string|undefined;

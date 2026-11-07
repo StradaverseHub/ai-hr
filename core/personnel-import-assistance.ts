@@ -1,3 +1,4 @@
+import {withAiCentreActivity,assertAiCentreRunningTx} from './ai-centre-control';
 /** Optional Employee Master IMPORT HEADER proposals only. Never imports or inspects employee rows. */
 import {z} from 'zod';
 import {withTenant,type SessionContext,type Tx} from '../db/client';
@@ -42,7 +43,13 @@ export async function preparePersonnelImportHeaders(supplied:SessionContext,valu
  }catch{return Object.freeze({kind:'unavailable',message:PERSONNEL_IMPORT_ASSISTANCE_UNAVAILABLE});}
 }
 /** Server-session-only execute. An EXISTING issued identity is mandatory; never inserts or retries. */
-export function assistPersonnelImportHeaders(ctx:SessionContext,value:unknown):Promise<PersonnelImportHeaderAssistanceResult>{return execute(ctx,value,false);}
+export async function assistPersonnelImportHeaders(ctx:SessionContext,value:unknown):Promise<PersonnelImportHeaderAssistanceResult>{
+ const command=PersonnelImportHeaderAssistanceCommandSchema.safeParse(value);
+ if(command.success&&command.data.request.mode==='ai'){
+  try{return await withAiCentreActivity(ctx,()=>execute(ctx,value,false));}catch{return Object.freeze({kind:'unavailable',message:PERSONNEL_IMPORT_ASSISTANCE_UNAVAILABLE});}
+ }
+ return execute(ctx,value,false);
+}
 /** Recovery only. No provider resolution, admission, dispatch, failure mutation or row creation. */
 export function reopenPersonnelImportHeaders(ctx:SessionContext,value:unknown):Promise<PersonnelImportHeaderAssistanceResult>{return execute(ctx,value,true);}
 async function execute(supplied:SessionContext,value:unknown,reopen:boolean):Promise<PersonnelImportHeaderAssistanceResult>{
@@ -80,7 +87,7 @@ async function execute(supplied:SessionContext,value:unknown,reopen:boolean):Pro
    }
    proposal=capturePersonnelImportHeaderProposal({version:1,sourceRevision:p.sourceRevision,registryDigest:p.registryDigest,mappings:raw.mappings},headers);
   }
-  await withTenant(ctx,async tx=>{await guard(tx,ctx,p.companyId);await completePersonnelImportAssistanceTx(tx,ctx,exact,proposal);});
+  await withTenant(ctx,async tx=>{await guard(tx,ctx,p.companyId);if(p.mode==='ai')await assertAiCentreRunningTx(tx,ctx);await completePersonnelImportAssistanceTx(tx,ctx,exact,proposal);});
   return Object.freeze({kind:'proposal',attemptId:exact.attemptId,attemptVersion:exact.attemptVersion,...(p.evaluationBinding?{evaluationBinding:p.evaluationBinding}:{}),proposal});
  }catch{
   // A competing recovery/execute must never mark another invocation's live dispatch failed.

@@ -1,10 +1,12 @@
+import {draftPayFormula} from '../core/pay-formula-ai';
 import {randomUUID} from 'node:crypto';
 import {eq,sql} from 'drizzle-orm';
 import * as schema from '../db/schema';
 import {afterAll,beforeAll,beforeEach,describe,expect,it} from 'vitest';
 import {withTenant,type SessionContext} from '../db/client';
-import {appendEvent,actorOf} from '../db/events';
+import {appendEvent,appendEvents,actorOf} from '../db/events';
 import {hireEmployee} from '../core/org';
+import {withPerformanceTenant} from '../core/module-gate';
 import {setMandateStopSwitch} from '../core/mandates/mandates';
 import {assertAiCentreRunningTx,withAiCentreActivity,withAiCentreFunction,aiCentreControlState,aiCentreReadAllowed} from '../core/ai-centre-control';
 import {setAiCentreReadControl,aiCentreReadKeys} from '../core/ai-centre-inventory';
@@ -56,6 +58,17 @@ describe('AI centre stop barrier',()=>{
   })).rejects.toMatchObject({reason:'paused'});
   expect(await generation()).toBe(2);
  });
+ it('blocks native Performance draft transactions after stopping while preserving manual work',async()=>{
+  await setModule(b.tenantId,'performance','active');
+  const performance={...group,entitlements:(await entitledCtx(b,['hr_admin'])).entitlements};
+  let entered=false;
+  await expect(withAiCentreActivity(performance,async()=>{
+   await setMandateStopSwitch(group,true);
+   await withPerformanceTenant(performance,async tx=>{entered=true;await tx.execute(sql`select 1`);});
+  })).rejects.toMatchObject({reason:'paused'});
+  expect(entered).toBe(false);
+  await withPerformanceTenant(performance,tx=>appendEvent(tx,{tenantId:group.tenantId,aggregateType:'fixture',aggregateId:group.tenantId,eventType:'fixture.manual-performance',actor:actorOf(group)}));
+ });
  it('refuses a stale resume without overwriting a more recent stop',async()=>{
   await setMandateStopSwitch(group,true);
   await expect(setMandateStopSwitch(group,false,{expectedGeneration:0})).rejects.toMatchObject({reason:'invalid'});
@@ -84,6 +97,18 @@ describe('AI centre stop barrier',()=>{
    expect(blocked).toBe(false);expect(stopFinished).toBe(false);
   }finally{release();await effect;await stop;}
   await expect(generation()).rejects.toMatchObject({reason:'paused'});
+ });
+ it('applies the same stop boundary to bulk AI events',async()=>{
+  await setMandateStopSwitch(group,true);
+  await expect(withTenant(group,tx=>appendEvents(tx,[{tenantId:group.tenantId,aggregateType:'fixture',aggregateId:group.tenantId,eventType:'readiness.nudge-raised',actor:actorOf(group)}]))).rejects.toThrow('AI activity stopped');
+ });
+ it('does not allow a prior event to be restamped after resume',async()=>{
+  const id=randomUUID();
+  await withTenant(group,tx=>appendEvent(tx,{id,tenantId:group.tenantId,aggregateType:'fixture',aggregateId:group.tenantId,eventType:'readiness.nudge-raised',actor:actorOf(group),payload:{fixture:true}}));
+  await setMandateStopSwitch(group,true);await setMandateStopSwitch(group,false);
+  await expect(withTenant(group,tx=>tx.execute(sql`select app.ai_centre_stamp_event(${id}::uuid,2)`))).rejects.toBeTruthy();
+  const [event]=await owner.db.select({payload:schema.domainEvent.payload}).from(schema.domainEvent).where(eq(schema.domainEvent.id,id));
+  expect(event.payload).toEqual({fixture:true});
  });
  it('invalidates unsent AI notifications after stopping, while manual notifications remain eligible',async()=>{
   const ai=randomUUID(),manual=randomUUID();
@@ -115,6 +140,11 @@ describe('individual AI read controls',()=>{
   expect(await aiCentreReadAllowed(group,'explain_pay_difference')).toBe(true);
   await setMandateStopSwitch(group,true);
   expect(await aiCentreReadAllowed(group,'explain_pay_difference')).toBe(false);
+ });
+ it('independently stops a standalone draft operation before its source or provider can run',async()=>{
+  await setAiCentreReadControl(group,'read:operation_pay_formula_draft',false);
+  await expect(draftPayFormula(group,{})).rejects.toMatchObject({reason:'paused'});
+  expect(await aiCentreReadAllowed(group,'read:operation_pay_rule_draft')).toBe(true);
  });
  it('rechecks a function inside the native effect transaction when it is switched off mid-operation',async()=>{
   await expect(withAiCentreFunction(group,'read:explain_pay_difference',async()=>{

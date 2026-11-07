@@ -1,3 +1,4 @@
+import {withAiCentreFunction} from '../../../core/ai-centre-control';
 import {preparePrivateAiTask,withAiAdmissionCheck} from '../../../core/ai-governance';
 import {draftInputDigest} from '../../../lib/ai/draft-input';
 import {assertPerformanceProviderSourceTx} from './provider-source-authority';
@@ -21,7 +22,11 @@ async function sourceTx(tx:Tx,reviewId:string){
 async function configTx(tx:Tx,ctx:SessionContext){try{return await assessmentAiConfigTx(tx,ctx,'tc');}catch{return null;}}
 const fingerprint=(value:z.infer<typeof sourceSchema>,cfg:ResolvedAiConfig|null)=>createHash('sha256').update(JSON.stringify({v:1,value,writer:cfg?{provider:cfg.provider,model:cfg.model}:null})).digest('hex');
 /** Cache reads never call a provider; only the assigned line manager may summarize submitted self-assessments. */
-export async function getAssessmentCompetencyInsight(ctx:SessionContext,reviewId:string,{generate=false}:{generate?:boolean}={}){
+export async function getAssessmentCompetencyInsight(...args:Parameters<typeof getAssessmentCompetencyInsightActivity>):Promise<Awaited<ReturnType<typeof getAssessmentCompetencyInsightActivity>>>{
+ if(!(args[2]?.generate))return getAssessmentCompetencyInsightActivity(...args);
+ return withAiCentreFunction(args[0],'read:operation_competency_insight',()=>getAssessmentCompetencyInsightActivity(...args));
+}
+async function getAssessmentCompetencyInsightActivity(ctx:SessionContext,reviewId:string,{generate=false}:{generate?:boolean}={}){
  ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(g=>({...g}))};
  z.uuid().parse(reviewId);
  const initial=await withPerformanceTenant(ctx,async tx=>{

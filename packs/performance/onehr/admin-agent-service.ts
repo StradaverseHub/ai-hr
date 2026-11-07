@@ -1,3 +1,4 @@
+import {withAiCentreFunction} from '../../../core/ai-centre-control';
 import {assertPerformanceProviderSourceTx} from './provider-source-authority';
 import {createHash} from 'node:crypto';
 import {assertAiPrincipalTx} from '../../../core/ai-principal';
@@ -116,7 +117,10 @@ export async function runAssessmentAdminAction(ctx:SessionContext,cycleId:string
  const kind=action.tool==='find_setting'?'setting':action.tool==='find_download'?'report':'page';let hits=findPerformanceAdminItems(index.items,action.args.query,[kind]);if(!hits.length&&kind==='setting')hits=findPerformanceAdminItems(index.items,action.args.query,['page'],3);
  return {text:hits.length?'Here are the matching settings, pages and downloads.':'Nothing matches those words. Try the setting or page name.',mode:'answer',cards:hits.slice(0,3)};
 }
-export async function askAssessmentAdmin(ctx:SessionContext,cycleId:string|undefined,rawQuestion:string,rawHistory:unknown=[]):Promise<PerformanceAdminReply>{
+export async function askAssessmentAdmin(...args:Parameters<typeof askAssessmentAdminActivity>):Promise<Awaited<ReturnType<typeof askAssessmentAdminActivity>>>{
+ return withAiCentreFunction(args[0],'read:operation_performance_admin',()=>askAssessmentAdminActivity(...args));
+}
+async function askAssessmentAdminActivity(ctx:SessionContext,cycleId:string|undefined,rawQuestion:string,rawHistory:unknown=[]):Promise<PerformanceAdminReply>{
  ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(g=>({...g}))};
  const selectedCycleId=cycleId;
  const question=z.string().trim().min(1).max(1000).parse(rawQuestion),history=z.array(z.object({role:z.enum(['user','agent']),content:z.string().max(1000)}).strict()).max(12).parse(rawHistory);

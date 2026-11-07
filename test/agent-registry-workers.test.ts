@@ -67,6 +67,7 @@ describe('one contract for every worker',()=>{
   expect(workerDeclarationProblems({...copy(),effect:'notify'})).toContain('effect');
   expect(workerDeclarationProblems({...copy(),family:'decider',effect:'complete_under_mandate'})).toContain('authority');
   expect(workerDeclarationProblems({...copy(),stop:{honoured:false,pending:''}})).toContain('stop');
+  expect(workerDeclarationProblems({...copy(),stop:{honoured:false,pending:'Waiting for a future stop implementation'}})).toContain('stop');
   expect(workerDeclarationProblems({...copy(),metrics:{kind:'not_measurable',reason:' '}})).toContain('metrics');
   expect(workerDeclarationProblems({...copy(),trigger:{kind:'whenever',detail:'x'}})).toContain('trigger');
   expect(()=>buildRegistry([good,good])).toThrow(WorkerNotRegistrable);

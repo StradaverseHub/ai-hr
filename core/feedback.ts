@@ -1,3 +1,4 @@
+import {withAiCentreFunction} from './ai-centre-control';
 /**
  * In-product feedback → AI-plan → review → build loop (ADR-0043). A user logs feedback; an AI planning
  * agent writes a `plan` (FB-3, via lib/ai); the REPORTER reviews it — approve, or contest (push back) so
@@ -236,7 +237,10 @@ async function setFeedbackPlanTx(tx:Tx,ctx:SessionContext,p:{feedbackId:string;p
  * setFeedbackPlan (agent actor). The provider call happens OUTSIDE any DB transaction. Gated: no AI config
  * ⇒ a clear error (the cron skips, the admin button surfaces it).
  */
-export async function generateFeedbackPlan(ctx: SessionContext, p: { feedbackId: string }): Promise<{ plan: string }> {
+export async function generateFeedbackPlan(...args:Parameters<typeof generateFeedbackPlanActivity>):Promise<Awaited<ReturnType<typeof generateFeedbackPlanActivity>>>{
+ return withAiCentreFunction(args[0],'read:operation_feedback_plan',()=>generateFeedbackPlanActivity(...args));
+}
+async function generateFeedbackPlanActivity(ctx: SessionContext, p: { feedbackId: string }): Promise<{ plan: string }> {
   p={feedbackId:p.feedbackId};
   ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(g=>({...g}))};
   // Disabled by default — planning now runs in the operator-side improvement loop (ADR-0044), which

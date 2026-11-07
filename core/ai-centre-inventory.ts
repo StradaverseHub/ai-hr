@@ -1,3 +1,4 @@
+import {AI_CENTRE_OPERATIONS} from '../lib/ai/centre-operations';
 import {CONTEXT_TOOL_SPECS} from './product-context/tools';
 import {CHAT_IMPORT_KINDS} from '../lib/chat-import';
 import {sql} from 'drizzle-orm';
@@ -19,6 +20,7 @@ export function aiCentreReadKeys():readonly string[]{
   ...[...SEMANTIC_READS,...TERAS_READS].map(row=>'read:'+row.name),
   ...ASSISTANT_TOOL_CATALOGUE.map(row=>'read:'+row.name),
   ...MODULE_JOBS.map(([module])=>'module:'+module),
+  ...AI_CENTRE_OPERATIONS.map(operation=>'read:operation_'+operation.id),
   ...Object.keys(CONTEXT_TOOL_SPECS).map(name=>'read:'+name),
   ...CHAT_IMPORT_KINDS.map(kind=>'read:import_'+kind),
   'read:orchestrator_observe','read:provider_connection_test',
@@ -31,7 +33,7 @@ export function aiCentreFunctions():readonly AiCentreFunction[]{
   ...AI_FEATURES.map(f=>({key:'feature:'+f.id,name:f.id,kind:'feature',control:f.kind==='platform'?'platform' as const:'existing' as const,href:'/control-tower/agents/features#ai-feature-'+f.id})),
   ...workers.map(w=>({key:'worker:'+w.id,name:w.label,kind:w.family,control:'existing' as const,href:w.switch.kind==='job_type'?'/control-tower/agents/features#ai-centre-jobs':w.switch.kind==='tenant_setting'?'/control-tower/agents/features#ai-feature-'+w.switch.feature:w.switch.kind==='ai_provider'?'/control-tower/agents/features#ai-feature-payroll_explanation':'/control-tower/agents/features#worker-'+w.id})),
   ...components.filter(row=>row.kind==='action').map(row=>({key:row.key,name:row.id,kind:row.kind,control:'existing' as const,href:'/control-tower/agents/features#ai-component-action-'+row.id.replace(/[^a-z0-9_-]/gi,'-')})),
-  ...aiCentreReadKeys().map(key=>({key,name:key==='read:orchestrator_observe'?'Record readiness monitoring':key.slice(key.indexOf(':')+1),kind:key.startsWith('module:')?'module reads':'AI read or preparation',control:'read' as const,href:'#ai-centre-functions'})),
+  ...aiCentreReadKeys().map(key=>({key,name:AI_CENTRE_OPERATIONS.find(operation=>key==='read:operation_'+operation.id)?.label??(key==='read:orchestrator_observe'?'Record readiness monitoring':key.slice(key.indexOf(':')+1)),kind:key.startsWith('module:')?'module reads':'AI read or preparation',control:'read' as const,href:'#ai-centre-functions'})),
   {key:'learning:payroll',name:'Payroll history learning',kind:'learning',control:'existing',href:'/control-tower/loops/payroll-cycle/settings'},
   ...components.filter(row=>row.kind==='scheduled_job').map(row=>({key:row.key,name:row.id,kind:'scheduler',control:'required' as const,href:'/admin/scheduled-actions'})),
   ...['policies','capacity','quality','privacy','audit','validation'].map(id=>({key:'system:'+id,name:id,kind:'required service',control:'required' as const,href:id==='policies'?'/policies':id==='privacy'?'/assistant?view=privacy':'/assistant?view=insights'})),

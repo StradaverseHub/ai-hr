@@ -1,3 +1,4 @@
+import {withAiCentreFunction} from '../../../core/ai-centre-control';
 import {withAiAdmissionCheck,preparePrivateAiTask} from '../../../core/ai-governance';
 import {AiPrivacyGateError} from '../../../lib/ai/provider-privacy-error';
 import {ProviderWorkloadUnavailableError} from '../../../lib/ai/provider-workload-policy';
@@ -37,7 +38,10 @@ async function contextTx(tx:Tx,ctx:SessionContext,reviewId:string,requireAi=true
 }
 
 /** One successful whole-plan request has its own five-per-Malaysia-day counter. Nothing is written to the plan. */
-export async function suggestAssessmentCareerPlan(ctx:SessionContext,reviewId:string,requestId:string,authored?:{aspirationLong?:string}){
+export async function suggestAssessmentCareerPlan(...args:Parameters<typeof suggestAssessmentCareerPlanActivity>):Promise<Awaited<ReturnType<typeof suggestAssessmentCareerPlanActivity>>>{
+ return withAiCentreFunction(args[0],'read:operation_career_plan',()=>suggestAssessmentCareerPlanActivity(...args));
+}
+async function suggestAssessmentCareerPlanActivity(ctx:SessionContext,reviewId:string,requestId:string,authored?:{aspirationLong?:string}){
  ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(g=>({...g}))};
  const human=Object.freeze(z.object({aspirationLong:z.string().trim().max(4000).optional()}).strict().parse(authored??{}));
  z.uuid().parse(requestId);const before=await context(ctx,reviewId),fieldKey=`career_draft:${before.view.cycle.id}`;
