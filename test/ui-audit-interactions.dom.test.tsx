@@ -22,7 +22,8 @@ function mount(children:ReactNode){return render(<NextIntlClientProvider locale=
 describe('audit picker recovery',()=>{
  it('announces an empty search and gives Escape to the picker before its dialog',async()=>{
   mount(<Dialog.Root defaultOpen><Dialog.Portal><Dialog.Content aria-describedby={undefined}><Dialog.Title>Parent dialog</Dialog.Title><MultiSelectPopover label="Company" allLabel="All companies" options={[{id:'a',name:'Allowed company'}]} selected={new Set(['a'])} name="company" onChange={()=>{}} searchPlaceholder="Search company" selectedCount={n=>`${n} selected`} selectAllLabel="Select all" clearAllLabel="Clear"/></Dialog.Content></Dialog.Portal></Dialog.Root>);
-  const trigger=screen.getByRole('button',{name:'Company 1 selected'});
+  const trigger=screen.getByRole('button',{name:'Company'});
+  expect(trigger).toHaveAccessibleDescription('1 selected');
   await userEvent.click(trigger);
   const search=screen.getByPlaceholderText('Search company');
   await userEvent.type(search,'missing company');

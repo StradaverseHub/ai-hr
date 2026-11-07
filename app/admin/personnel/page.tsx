@@ -384,6 +384,31 @@ async function renderPersonnelPage(sp: PersonnelSearchParams) {
             <ResponsiveActions>
 {canCreate && <Link href="/admin/personnel/import" data-tour="people-import" className="min-h-11 rounded-lg border border-border px-3 py-2 text-sm font-medium hover:bg-accent">{t('importCsv')}</Link>}
 {isAdmin && <Link href="/admin/personnel/duplicates" className="min-h-11 rounded-lg border border-border px-3 py-2 text-sm font-medium hover:bg-accent">{t('duplicateRecords')}</Link>}
+            {/* 04b88724 (r339) — THE "CHILD RELIEF REVIEW (PCB)" LINK WAS REMOVED FROM HERE, DELIBERATELY,
+                AND THE ROUTE WAS DELIBERATELY KEPT. Do not restore the link; do not delete the route
+                without reading this.
+                  · r336 (99b2d6c0) added a link at this spot, for the same reason the duplicates link
+                    above is one: `/admin/personnel/child-relief` sits below this screen's own href and the
+                    rail matches a segment PREFIX, so a nav row of its own would light Personnel Management
+                    AND itself on one page (defect 388e53c2).
+                  · The reporter asked for it gone: "Remove the Child Relief Review button from the
+                    Personnel Management main page because the function is not required." Their own
+                    expected-behaviour list is about the BUTTON and adds "No replacement button is
+                    required" — it does not ask for the report to be destroyed.
+                WHY THE ROUTE STAYS. The approved plan told the reporter that moving their other 74
+                employees off flat child counting onto the category grid moves real PCB, and that we would
+                do it "as its own change, with the list in front of you first". THIS SCREEN IS THAT LIST —
+                deleting it in the same round would destroy the instrument we just promised to use. It is
+                `requireAdmin()`-gated on the page and again inside core/child-relief-review.ts, it keeps
+                its `SCREENS` column in lib/permissions.ts (so it stays a grantable function and
+                test/function-access.test.ts stays satisfied), and it changes nothing when opened — there
+                is no bulk action on it. An unlinked, permission-gated, read-only report is not an
+                exposure; it is a report nobody is pushed towards.
+                Removing the link is also the reversible half. If the reporter later says the route must go
+                too, that is a deletion of app/admin/personnel/child-relief/, core/child-relief-review.ts,
+                components/child-relief-review-table.tsx, their tests, the SCREENS column and the message
+                keys in all six locales — and r336's two kernel pins (core/payroll.ts and
+                core/payroll-view.ts both read child_relief_mode) would have to be rehomed first. */}
             <ColumnPicker
               columns={pickerColumns}
               selected={columns}

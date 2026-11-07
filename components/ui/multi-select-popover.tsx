@@ -229,7 +229,8 @@ export function MultiSelectPopover({
           onClick={() => setOpen((o) => !o)}
           aria-expanded={open}
           aria-controls={open ? panelId : undefined}
-          aria-labelledby={`${captionId} ${summaryId}`}
+          aria-labelledby={captionId}
+          aria-describedby={summaryId}
           disabled={disabled}
           className={cn(
             inputCls,

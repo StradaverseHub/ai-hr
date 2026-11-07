@@ -264,7 +264,7 @@ export async function requestLeaveAction(formData: FormData, inlineErrors = fals
       redirect(withLeaveEmploymentContext(`/leave?error=${encodeURIComponent(tErr('applyOnBehalfNotAllowed'))}`,selectedOwnReturnId));
     }
     const message = await localizeLeaveError(e, selected?.name, refusedEmploymentId ? {
-      ctx:session, employmentId:refusedEmploymentId, leaveTypeId, subject:refusedOnBehalf?'other':'self',
+      ctx: session, employmentId: refusedEmploymentId, leaveTypeId, subject: refusedOnBehalf ? 'other' : 'self',
     } : undefined);
     if (inlineErrors) return {error:message};
     redirect(withLeaveEmploymentContext(
