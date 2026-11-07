@@ -23,7 +23,8 @@ export async function createFacetRepresentationFixture(){
  await owner.db.insert(person).values([{id:nullPerson,tenantId:f.b.tenantId,fullName:'E fictional NULL-ended empty organisation',primaryEmail:nullPerson+'@example.invalid'},{id:hiddenPerson,tenantId:f.b.tenantId,fullName:'PRIVATE fictional voided Person',primaryEmail:hiddenPerson+'@example.invalid'}]);
  await owner.db.insert(employment).values([{id:nullEmployment,tenantId:f.b.tenantId,personId:nullPerson,companyId:emptyCompany,hiredOn:'2020-01-01'},{id:hiddenEmployment,tenantId:f.b.tenantId,personId:hiddenPerson,companyId:emptyCompany,hiredOn:'2020-01-01'}]);
  await owner.db.insert(assignment).values([
-  {tenantId:f.b.tenantId,employmentId:nullEmployment,companyId:emptyCompany,validFrom:'2020-01-01',employmentType:'full_time'},
+  // NULL organisation is a read projection of no current Assignment. Native
+  // Assignment.department_id is required; retain its real closed history below.
   {tenantId:f.b.tenantId,employmentId:nullEmployment,companyId:emptyCompany,departmentId:emptyDepartments[2].id,businessUnitId:emptyUnits[2].id,validFrom:'2010-01-01',validTo:'2011-01-01',employmentType:'full_time'},
   {tenantId:f.b.tenantId,employmentId:nullEmployment,companyId:emptyCompany,departmentId:emptyDepartments[1].id,businessUnitId:emptyUnits[1].id,validFrom:'2020-01-01',supersededAt:new Date('2021-01-01T00:00:00Z'),employmentType:'full_time'},
   {tenantId:f.b.tenantId,employmentId:hiddenEmployment,companyId:emptyCompany,departmentId:emptyDepartments[2].id,businessUnitId:emptyUnits[2].id,validFrom:'2020-01-01',employmentType:'full_time'},
