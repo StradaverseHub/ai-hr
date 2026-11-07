@@ -240,7 +240,7 @@ CREATE FUNCTION notification_worker.finish_event(p_batch uuid,p_event uuid,p_dis
 DECLARE e public.domain_event;known boolean;implemented boolean;obsolete boolean;c notification_worker_private.registry_contract;
 BEGIN
  e:=notification_worker_private.event(p_batch,p_event);obsolete:=notification_worker_private.obsolete(e);
- SELECT count(*)>0,coalesce(bool_and(c.implemented),false) INTO known,implemented FROM notification_worker_private.registry_contract c WHERE c.event_type=e.event_type;
+ SELECT count(*)>0,coalesce(bool_and(registry.implemented),false) INTO known,implemented FROM notification_worker_private.registry_contract registry WHERE registry.event_type=e.event_type;
  IF p_disposition IS NULL OR p_disposition NOT IN('processed','ignored')
  OR p_disposition='ignored' AND known AND NOT obsolete OR p_disposition='processed' AND (NOT known OR obsolete OR NOT implemented)
  OR e.event_type='assessment.reminder-queued' AND NOT obsolete
