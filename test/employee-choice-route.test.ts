@@ -10,7 +10,7 @@ it('uses a same-origin read body and trusted server scope, never posted grants o
  const response=await POST(request({query:'PRIVATE_SEARCH',offset:25,limit:25,labelMode:'names'}));
  expect(response.status).toBe(200);expect(response.headers.get('cache-control')).toBe('private, no-store');
  expect(mocks.read).toHaveBeenCalledWith({tenantId:'trusted'},{query:'PRIVATE_SEARCH',offset:25,limit:25,labelMode:'names',companyIds:['trusted-company']},expect.any(AbortSignal));
- for(const value of [{companyIds:[]},{grants:[]},{offset:'25'},{selectedId:42}]){
+ for(const value of [{companyIds:[]},{grants:[]},{offset:'25'},{selectedId:42},{terminatedAfter:'2026-11-07'},{employmentIds:[]}]){
   mocks.read.mockClear();expect((await POST(request(value))).status).toBe(400);expect(mocks.read).not.toHaveBeenCalled();
  }
  expect((await POST(new Request('https://hr.example/api/employee-choices?q=PRIVATE_SEARCH',{method:'POST',headers:{Origin:'https://hr.example','Content-Type':'application/json'},body:'{}'}))).status).toBe(400);
