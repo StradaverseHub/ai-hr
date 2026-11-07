@@ -3,7 +3,7 @@ import {randomUUID} from 'node:crypto';
 import {sql,type SQL} from 'drizzle-orm';
 import {withTenant,type SessionContext,type Tx} from '../../db/client';
 import {employment,person,company,assignment,department,businessUnit} from '../../db/schema';
-import {assertAiPresentationPrincipalTx} from './ai-principal';
+import {assertAiPresentationPrincipalTx} from '../../core/ai-principal';
 import {organisationFilterChoices} from '../../lib/organisation-choice-label';
 import {isAdmin} from '../../lib/authz-model';
 import {isCalendarDate} from '../../lib/calendar-date';

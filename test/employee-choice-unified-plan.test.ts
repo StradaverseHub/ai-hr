@@ -17,6 +17,7 @@ import {createAssignmentAuthorityFixture,assertAssignmentAuthority} from './perf
 import {closeAll,migrateTestDb,owner} from './harness';
 import {workerDb} from './db-names';
 import {employeeChoicePlannerSnapshot} from './performance/employee-choice-planner-snapshot';
+import {employeeChoiceActualCardinalities,employeeChoiceAuthorizedPopulationFacts,employeeChoicePlanWork} from './performance/employee-choice-plan-work';
 import {seedPersonnelNativeFixture} from './performance/personnel-native-fixture';
 import {capturePostgresEvidence,postgresProfileFromEnv,validatePostgresEvidence} from '../.github/ci/postgres-evidence.mjs';
 
@@ -81,7 +82,7 @@ async function boundedCase(context:TestContext,work:()=>Promise<void>,setup=fals
 const assertCaseActive=()=>activeSignal?.throwIfAborted();
 async function prepare(){
  expect(process.env.RUNNER_ENVIRONMENT).toBe('github-hosted');expect(process.env.AIHR_FOCUSED_EVIDENCE_DIR).toBeTruthy();
- expect(createHash('sha256').update(readFileSync('test/performance/employee-choice-unified-baseline.ts')).digest('hex')).toBe('7e570d816d3ac9533de176ae85b26ed96948994ecff92554f946404cc1ec0879');
+ expect(createHash('sha256').update(readFileSync('test/performance/employee-choice-unified-baseline.ts')).digest('hex')).toBe('9e830d169630dca113b96e34f9c05ebd3da13ef3ed2d391c91304e4397e4bffd');
  const poolId=process.env.VITEST_POOL_ID??process.env.VITEST_WORKER_ID;expect(poolId).toBeTruthy();expect(process.env.WORKER_DB).not.toBe('0');
  for(const key of ['TEST_DATABASE_URL','TEST_MIGRATION_DATABASE_URL']){
   const target=new URL(process.env[key]!);expect(target.hostname).toBe('127.0.0.1');expect(target.pathname).toBe('/'+workerDb(poolId!));
@@ -100,6 +101,7 @@ async function prepare(){
  ]);
  await owner.db.update(assignment).set({businessUnitId:representedBu}).where(inArray(assignment.employmentId,fixture.organisationTagSample));
  await owner.client`analyze assignment`;await owner.client`analyze business_unit`;
+ const wholeFixture=await employeeChoiceActualCardinalities(owner.db);report.exactWholeFixtureCardinalities=wholeFixture;save();
  const originals=await securitySnapshot(),compact=(text:string)=>text.replace(/\s+/g,'');
  const employmentPolicy=originals.policies.find(row=>row.tablename==='employment'&&row.policyname==='employment_rls');
  expect(compact(employmentPolicy!.qual).split('(idIN(SELECTunnest((SELECTapp.visible_employment_ids()ASvisible_employment_ids))ASunnest))')).toHaveLength(3);
@@ -176,7 +178,13 @@ async function prepare(){
   const text=execFileSync('docker',['exec',evidence.name,'cat','/sys/fs/cgroup/cpu.stat'],{encoding:'utf8',timeout:10000,maxBuffer:65536});
   return {evidence,cpu:Object.fromEntries(text.trim().split('\n').map(line=>{const [key,value]=line.split(/\s+/);return [key,Number(value)];})),scope:'Owned-container counters/cumulative peak; telemetry runs outside timed port calls.'};
  };
- return {fixture,representedBu,emptyBu,report,save,single,pids,install,queries,dialect,plans,unchanged,resources,choose,restore,
+ const populationFacts=async(key:string,companyIds:readonly string[])=>{
+  assertCaseActive();capture=false;firstSample=false;name=key+':population-facts';
+  const facts=await database.withTenant(fixture.ctx,async tx=>{await assertAiPresentationPrincipalTx(tx,fixture.ctx);
+   return employeeChoiceAuthorizedPopulationFacts(tx,fixture.ctx.tenantId,companyIds);},{readOnlySnapshot:true});
+  const factsByCase=(report.authorizedServerPopulationFacts??={})as Record<string,unknown>;factsByCase[key]=facts;save();return facts;
+ };
+ return {fixture,representedBu,emptyBu,wholeFixture,populationFacts,report,save,single,pids,install,queries,dialect,plans,unchanged,resources,choose,restore,
   selectCase:(value:string,first:boolean)=>{assertCaseActive();name=value;firstSample=first;capture=true;report.phase=value;save();},stop:()=>{capture=false;firstSample=false;},label:(value:string)=>{name=value;}};
  }catch(error){await single.client.end({timeout:0});throw error;}
 }
@@ -222,7 +230,8 @@ it.skipIf(!requested).for(variants)('measures every whole native organisation po
  try{
   await p.choose(variant);
   for(const c of cases){
-   const key=variant+':'+c.name,before=p.resources(),samples:number[]=[];let first:Omit<Page,'contextId'>|undefined;
+   const key=variant+':'+c.name;await p.populationFacts(key,c.input.companyIds);
+   const before=p.resources(),samples:number[]=[];let first:Omit<Page,'contextId'>|undefined;
    for(let repeat=0;repeat<c.repeat;repeat++){
     p.selectCase(key,repeat===0);const started=performance.now();let page:Page;
     try{page=await (variant==='original'?baseline.readEmployeeChoices:readEmployeeChoices)(ctx,c.input);}finally{p.stop();}
@@ -236,7 +245,7 @@ it.skipIf(!requested).for(variants)('measures every whole native organisation po
    }
    const after=p.resources();resourcePhases.push({variant,case:c.name,before,after,cpuUsageUsec:after.cpu.usage_usec-before.cpu.usage_usec});
   }
-  const idsKey=variant+':complete-ids';p.selectCase(idsKey,true);
+  const idsKey=variant+':complete-ids';await p.populationFacts(idsKey,[b.companyId]);p.selectCase(idsKey,true);
   try{
    const started=performance.now(),reader=variant==='original'?baseline.readEmployeeChoiceIdsTx:current.readEmployeeChoiceIdsTx;
    const ids=await database.withTenant(ctx,tx=>reader(tx,ctx,{companyIds:[b.companyId],departmentId:b.deptA,businessUnitId:p.representedBu,status:'active'}),{readOnlySnapshot:true});
@@ -245,6 +254,7 @@ it.skipIf(!requested).for(variants)('measures every whole native organisation po
    results[idsKey]={ms:performance.now()-started,total:ids.length,completeIds:true};p.save();
   }finally{p.stop();}
   for(const barrier of ['access','history']as const){
+   await p.populationFacts(variant+':held-'+barrier,[b.companyId]);
    let release!:()=>void,entered!:()=>void,writerPid=0;
    const ready=new Promise<void>(resolve=>{entered=resolve;}),done=new Promise<void>(resolve=>{release=resolve;});
    const writer=owner.client.begin(async tx=>{
@@ -276,28 +286,22 @@ it.skipIf(!requested).for(variants)('captures actual %s identity/page plans with
     await assertAiPresentationPrincipalTx(tx,p.fixture.ctx);
     for(const entry of queries){
      assertCaseActive();const started=performance.now(),plan=Array.from(await tx.execute(sql`explain(analyze,buffers,format json) ${entry.query}`)),wallMs=performance.now()-started;
-     const doc=(plan[0] as unknown as {'QUERY PLAN':PlanDocument[]})['QUERY PLAN'][0];expect(doc.Plan['Actual Rows']).toBe(entry.expectedRows);
+     const evidence:Record<string,unknown>={variant,case:key,statement:entry.statement,cursorBody:entry.cursorBody,
+      sql:p.dialect.sqlToQuery(entry.query).sql,wallMs,expectedRows:entry.expectedRows,plan};p.plans.push(evidence);p.save();
+     // Persist the full native EXPLAIN before parsing or enforcing any actual counter.
+     const doc=(plan[0] as unknown as {'QUERY PLAN':PlanDocument[]})['QUERY PLAN'][0];
      const assignmentNodes:unknown[]=[],windowNodes:unknown[]=[];
      const visit=(node:Record<string,unknown>)=>{
       const facts=Object.fromEntries(['Node Type','Relation Name','Index Name','Actual Rows','Actual Loops','Actual Total Time','Shared Hit Blocks','Shared Read Blocks','Temp Read Blocks','Temp Written Blocks'].filter(field=>field in node).map(field=>[field,node[field]]));
       if(node['Relation Name']==='assignment')assignmentNodes.push(facts);if(node['Node Type']==='WindowAgg')windowNodes.push(facts);
       for(const child of (node.Plans??[])as Record<string,unknown>[])visit(child);
      };visit(doc.Plan);
-     const baseRelationNodes:Record<string,unknown>[]=[],cteNodes:Record<string,unknown>[]=[];
+     Object.assign(evidence,{planningMs:doc['Planning Time'],executionMs:doc['Execution Time'],jit:doc.JIT??null,assignmentNodes,windowNodes});p.save();
      if(variant==='unified'&&p.dialect.sqlToQuery(entry.query).sql.includes('employee_choice_employments as materialized')){
-      const inspect=(node:Record<string,unknown>)=>{
-       const loops=Number(node['Actual Loops']??0),rows=Number(node['Actual Rows']??0),removed=Number(node['Rows Removed by Filter']??0)+Number(node['Rows Removed by Join Filter']??0);
-       // The relation is read once, not fifty thousand indexed probes. Bounds on
-       // CTE rescans/intermediate work also reject a quadratic materialized join.
-       if(['employment','person','assignment'].includes(String(node['Relation Name']))){baseRelationNodes.push(node);expect(loops).toBeLessThanOrEqual(1);}
-       if(node['Node Type']==='CTE Scan'){cteNodes.push(node);expect(loops).toBeLessThanOrEqual(8);}
-       expect(loops*(rows+removed)).toBeLessThanOrEqual(1_600_000);
-       for(const child of (node.Plans??[])as Record<string,unknown>[])inspect(child);
-      };inspect(doc.Plan);
-      for(const relation of ['employment','person','assignment'])expect(baseRelationNodes.some(node=>node['Relation Name']===relation)).toBe(true);
-      expect(Number(doc.Plan['Shared Hit Blocks'])).toBeLessThanOrEqual(150_000);
+      const work=employeeChoicePlanWork(doc.Plan,p.wholeFixture);evidence.work=work;p.save();
+      expect(work.rejectionReasons).toEqual([]);
      }
-     p.plans.push({variant,case:key,statement:entry.statement,cursorBody:entry.cursorBody,sql:p.dialect.sqlToQuery(entry.query).sql,wallMs,planningMs:doc['Planning Time'],executionMs:doc['Execution Time'],jit:doc.JIT??null,assignmentNodes,windowNodes,baseRelationNodes,cteNodes,plan});p.save();
+     expect(doc.Plan['Actual Rows']).toBe(entry.expectedRows);
     }
    },{readOnlySnapshot:true});
   }

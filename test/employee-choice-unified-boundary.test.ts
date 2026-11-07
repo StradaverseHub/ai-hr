@@ -12,7 +12,12 @@ import {closeAll,migrateTestDb,owner,resetDb} from './harness';
 beforeAll(migrateTestDb);beforeEach(resetDb);afterAll(closeAll);
 const stable=({contextId:_contextId,...page}:Awaited<ReturnType<typeof readEmployeeChoices>>)=>page;
 it('pins the exact c2 facet reader independently of the unified candidate',()=>{
- expect(createHash('sha256').update(readFileSync('test/performance/employee-choice-unified-baseline.ts')).digest('hex')).toBe('7e570d816d3ac9533de176ae85b26ed96948994ecff92554f946404cc1ec0879');
+ const frozen=readFileSync('test/performance/employee-choice-unified-baseline.ts','utf8');
+ expect(createHash('sha256').update(frozen).digest('hex')).toBe('9e830d169630dca113b96e34f9c05ebd3da13ef3ed2d391c91304e4397e4bffd');
+ // Reverse only the provenance line and exact relative import relocation. This
+ // independent c2 source digest prevents a baseline logic change passing a new byte pin.
+ const restored=frozen.slice(frozen.indexOf('\n')+1).replace("from '../../core/ai-principal'","from './ai-principal'").replaceAll("from '../../","from '../");
+ expect(createHash('sha256').update(restored).digest('hex')).toBe('c524f7e7d30ed742e81870da3b6e439faab32061363b3750893a5b5c2076ccbd');
 });
 it('streams exact Unicode matches across batches, keeps deep/independent selection and projects only retained identities',async()=>{
  const f=await createFacetRepresentationFixture(),personPrefix=randomUUID().slice(0,24),employmentPrefix=randomUUID().slice(0,24);
