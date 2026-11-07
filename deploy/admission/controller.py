@@ -25,10 +25,14 @@ import stat
 import subprocess
 import sys
 import time
+import types
 from typing import Any
 
 PROFILE = pathlib.Path('/etc/aihr-admission/profile.json')
 INSTALLED = pathlib.Path('/usr/local/lib/aihr-admission/controller.py')
+NEXT_MODULE_DIRECTORY = INSTALLED.parent
+NEXT_TYPED_PROPERTIES = {'BindPaths': 'a(ssbt)', 'BindReadOnlyPaths': 'a(ssbt)',
+                         'RestrictNamespaces': 't', 'CapabilityBoundingSet': 't'}
 HEX32 = re.compile(r'^[0-9a-f]{32}$')
 SHA = re.compile(r'^[0-9a-f]{40}$')
 DIGEST = re.compile(r'^[0-9a-f]{64}$')
@@ -140,11 +144,14 @@ class Profile:
             value = json.loads(raw)
         except (ValueError, UnicodeError):
             raise Refused('Invalid admission profile') from None
+        require(isinstance(value, dict) and type(value.get('version')) is int
+                and value['version'] in (1, 2), 'Unsupported admission profile')
+        next_keys = {'runtimePackage', 'trustedModules', 'resourceEnvelope', 'unitCacheMounts'} if value['version'] == 2 else set()
         exact_keys(value, {'version', 'epoch', 'source', 'build', 'resourceEnvelopeDigest', 'stateDirectory',
                            'nginxBinary', 'nginxConfig', 'nginxPrefix', 'nginxPid', 'nginxUnit',
                            'managedInclude', 'controlPort', 'ports', 'units', 'healthSeconds',
-                           'activationSeconds', 'drainSeconds', 'reloadGuardDigest', 'controllerDigest'})
-        require(type(value['version']) is int and value['version'] == 1 and matches(HEX32, value['epoch']),
+                           'activationSeconds', 'drainSeconds', 'reloadGuardDigest', 'controllerDigest'} | next_keys)
+        require(type(value['version']) is int and value['version'] in (1, 2) and matches(HEX32, value['epoch']),
                 'Unsupported admission profile')
         require(matches(SHA, value['source']) and matches(DIGEST, value['resourceEnvelopeDigest']),
                 'Missing accepted source or resource envelope')
@@ -178,7 +185,39 @@ class Profile:
         secure_path(pathlib.Path(value['managedInclude']).parent, uid, directory=True)
         for spec in value['units'].values():
             secure_path(pathlib.Path(spec['environmentFile']).parent, uid, directory=True)
+        self.next_runtime = None
         self.assert_current()
+        if value['version'] == 2:
+            exact_keys(value['trustedModules'], {'next_profile.py', 'runtime_inventory.py'})
+            helper = NEXT_MODULE_DIRECTORY / 'next_profile.py'
+            secure_path(helper, uid)
+            require(helper.stat().st_size <= 1024 * 1024, 'Managed Next helper exceeds bound')
+            before = helper.lstat()
+            fd = os.open(helper, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+            with os.fdopen(fd, 'rb') as source:
+                opened = os.fstat(source.fileno())
+                raw = source.read(1024 * 1024 + 1)
+                after, named = os.fstat(source.fileno()), helper.lstat()
+                fields = lambda info: (info.st_dev, info.st_ino, info.st_mode, info.st_uid,
+                                       info.st_gid, info.st_size, info.st_mtime_ns, info.st_ctime_ns, info.st_nlink)
+                require(stat.S_ISREG(opened.st_mode) and opened.st_nlink == 1
+                        and len(raw) == before.st_size and len(raw) <= 1024 * 1024
+                        and fields(before) == fields(opened) == fields(after) == fields(named),
+                        'Managed Next helper changed while reading')
+            require(matches(DIGEST, value['trustedModules']['next_profile.py'])
+                    and hashlib.sha256(raw).hexdigest() == value['trustedModules']['next_profile.py'],
+                    'Managed Next helper digest differs')
+            module = types.ModuleType('aihr_verified_next_profile')
+            module.__file__ = str(helper)
+            exec(compile(raw, str(helper), 'exec'), module.__dict__)
+            try:
+                self.next_runtime = module.NextRuntime(value, NEXT_MODULE_DIRECTORY, secure_path, require, uid)
+            except (OSError, ValueError, TypeError, KeyError, UnicodeError):
+                raise Refused('Managed Next profile could not be verified') from None
+
+    def close(self) -> None:
+        if self.next_runtime is not None:
+            self.next_runtime.close()
 
     def assert_current(self) -> None:
         secure_path(self.path, self.uid)
@@ -236,6 +275,8 @@ def command_identity(raw: str) -> str:
 class LinuxHost:
     def __init__(self, profile: Profile):
         self.profile = profile
+        self.next_worker_evidence = {}
+        self.next_configuration_evidence = {}
 
     def boot(self) -> str:
         return pathlib.Path('/proc/sys/kernel/random/boot_id').read_text().strip()
@@ -246,6 +287,11 @@ class LinuxHost:
                 'Environment', 'EnvironmentFiles', 'PassEnvironment', 'PAMName', 'RootDirectory', 'RootImage',
                 'DynamicUser', 'FragmentPath', 'DropInPaths', 'LoadCredential', 'LoadCredentialEncrypted',
                 'SetCredential', 'SetCredentialEncrypted', 'ImportCredential']
+        if self.profile.next_runtime is not None and unit in self.profile.value['units']:
+            keys.extend([
+                'ProtectSystem', 'PrivateMounts', 'NoNewPrivileges', 'CapabilityBoundingSet', 'RestrictNamespaces',
+                'BindPaths', 'BindReadOnlyPaths', 'ReadWritePaths', 'ReadOnlyPaths', 'Slice',
+                'CPUQuotaPerSecUSec', 'MemoryHigh', 'MemoryMax'])
         try:
             result = subprocess.run(['/usr/bin/systemctl', '--system', 'show', unit,
                                      '--property=' + ','.join(keys)], env=SAFE_ENV,
@@ -264,7 +310,9 @@ class LinuxHost:
             stage = 'LoadUnit'
         elif len(arguments) == 5 and arguments[:2] == ['get-property', 'org.freedesktop.systemd1'] \
                 and re.fullmatch(r'/org/freedesktop/systemd1/unit/[A-Za-z0-9_]+', arguments[2]) is not None \
-                and arguments[3] == 'org.freedesktop.systemd1.Service' and arguments[4] in CREDENTIAL_PROPERTIES:
+                and arguments[3] == 'org.freedesktop.systemd1.Service' \
+                and (arguments[4] in CREDENTIAL_PROPERTIES or self.profile.next_runtime is not None
+                     and arguments[4] in NEXT_TYPED_PROPERTIES):
             stage = arguments[4]
         else:
             raise Refused('Unsupported typed credential inspection operation')
@@ -312,6 +360,64 @@ class LinuxHost:
                     and isinstance(typed.get('data'), list) and typed['data'] == [],
                     'Privileged-hook credential source is not qualified')
 
+    def unit_root_boundary(self, unit: str, props: dict[str, str]) -> None:
+        for key in ('PassEnvironment', 'PAMName', 'RootDirectory', 'RootImage', 'ImportCredential'):
+            require(props.get(key) == '', 'Privileged-hook environment source is not qualified')
+        # systemctl's binary-array display can be [unprintable] even when
+        # empty. Never interpret the display as absence; independently
+        # require all four typed D-Bus arrays to be empty, as the existing
+        # authenticated staging environment verifier already does.
+        self.assert_empty_credentials(unit)
+        def reject_loader(text: str) -> None:
+            require(re.search(r'(?:^|[\s\"\x27])(?:export\s+)?(?:LD_[A-Za-z0-9_]*|DYLD_[A-Za-z0-9_]*|PYTHON[A-Za-z0-9_]*)\s*=', text) is None,
+                    'Privileged-hook loader environment is not qualified')
+            if self.profile.next_runtime is not None:
+                require(re.search(r'(?:^|[\s\"\x27])(?:export\s+)?(?:NODE_OPTIONS|NODE_PATH|BASH_ENV|ENV|NEXT_SERVER_ACTIONS_ENCRYPTION_KEY|MIGRATION_DATABASE_URL|TEST_MIGRATION_DATABASE_URL|DEV_TENANT_ID|DEV_USER_ID)\s*=', text) is None,
+                        'Managed Next environment override is not qualified')
+        reject_loader(props.get('Environment', ''))
+        configured = props.get('EnvironmentFiles', '')
+        pattern = re.compile(r'([/A-Za-z0-9_.@-]+) \(ignore_errors=(yes|no)\)(?: |$)')
+        offset, count = 0, 0
+        while offset < len(configured):
+            match = pattern.match(configured, offset)
+            require(match is not None and count < 32, 'Unsupported privileged-hook environment file syntax')
+            name = pathlib.Path(match[1])
+            require(managed_path(str(name)), 'Unsafe privileged-hook environment path')
+            secure_path(name.parent, 0, directory=True)
+            try:
+                name.lstat()
+            except FileNotFoundError:
+                require(match[2] == 'yes', 'Required privileged-hook environment file is missing')
+            else:
+                secure_path(name, 0)
+                require(name.stat().st_size <= 1_048_576, 'Privileged-hook environment file exceeds its bound')
+                reject_loader(name.read_text())
+            offset, count = match.end(), count + 1
+        for name in [props.get('FragmentPath', ''), *props.get('DropInPaths', '').split()]:
+            require(managed_path(name), 'Unsupported worker unit configuration path')
+            secure_path(pathlib.Path(name), 0)
+
+    def next_bindings(self, unit: str) -> dict[str, Any]:
+        require(self.profile.next_runtime is not None and unit in self.profile.value['units'], 'Unknown managed Next worker')
+        value = self.busctl(['call', 'org.freedesktop.systemd1', '/org/freedesktop/systemd1',
+                             'org.freedesktop.systemd1.Manager', 'LoadUnit', 's', unit])
+        require(isinstance(value, dict) and value.get('type') == 'o' and isinstance(value.get('data'), list)
+                and len(value['data']) == 1 and isinstance(value['data'][0], str)
+                and re.fullmatch(r'/org/freedesktop/systemd1/unit/[A-Za-z0-9_]+', value['data'][0]) is not None,
+                'Typed managed worker unit object is not qualified')
+        return {key: self.busctl(['get-property', 'org.freedesktop.systemd1', value['data'][0],
+                                 'org.freedesktop.systemd1.Service', key]) for key in NEXT_TYPED_PROPERTIES}
+
+    def next_configuration(self, unit: str, props: dict[str, str]) -> dict[str, Any]:
+        require(self.profile.next_runtime is not None, 'Managed Next profile required')
+        try:
+            self.unit_root_boundary(unit, props)
+            typed = self.next_bindings(unit)
+            self.profile.next_runtime.unit_configuration(unit, props, typed)
+            return typed
+        except (OSError, ValueError, KeyError, TypeError, UnicodeError):
+            raise Refused('Managed Next native configuration is unverified') from None
+
     def check_only(self) -> dict[str, Any]:
         """Non-starting boundary inspection, never an installation/grant receipt.
 
@@ -334,50 +440,25 @@ class LinuxHost:
             require(props.get('WorkingDirectory') == spec['releaseDirectory']
                     and command_identity(props.get('ExecStart', '')) == spec['commandDigest'],
                     'Worker service identity differs from its profile')
-            for key in ('PassEnvironment', 'PAMName', 'RootDirectory', 'RootImage', 'ImportCredential'):
-                require(props.get(key) == '', 'Privileged-hook environment source is not qualified')
-            # systemctl's binary-array display can be [unprintable] even when
-            # empty. Never interpret the display as absence; independently
-            # require all four typed D-Bus arrays to be empty, as the existing
-            # authenticated staging environment verifier already does.
-            self.assert_empty_credentials(unit)
-            def reject_loader(text: str) -> None:
-                require(re.search(r'(?:^|[\s\"\x27])(?:export\s+)?(?:LD_[A-Za-z0-9_]*|DYLD_[A-Za-z0-9_]*|PYTHON[A-Za-z0-9_]*)\s*=', text) is None,
-                        'Privileged-hook loader environment is not qualified')
-            reject_loader(props.get('Environment', ''))
-            configured = props.get('EnvironmentFiles', '')
-            pattern = re.compile(r'([/A-Za-z0-9_.@-]+) \(ignore_errors=(yes|no)\)(?: |$)')
-            offset, count = 0, 0
-            while offset < len(configured):
-                match = pattern.match(configured, offset)
-                require(match is not None and count < 32, 'Unsupported privileged-hook environment file syntax')
-                name = pathlib.Path(match[1])
-                require(managed_path(str(name)), 'Unsafe privileged-hook environment path')
-                secure_path(name.parent, 0, directory=True)
-                try:
-                    name.lstat()
-                except FileNotFoundError:
-                    require(match[2] == 'yes', 'Required privileged-hook environment file is missing')
-                else:
-                    secure_path(name, 0)
-                    require(name.stat().st_size <= 1_048_576, 'Privileged-hook environment file exceeds its bound')
-                    reject_loader(name.read_text())
-                offset, count = match.end(), count + 1
-            for name in [props.get('FragmentPath', ''), *props.get('DropInPaths', '').split()]:
-                require(managed_path(name), 'Unsupported worker unit configuration path')
-                secure_path(pathlib.Path(name), 0)
+            self.unit_root_boundary(unit, props)
             secure_path(pathlib.Path(spec['executable']), 0)
-            # Strict initial profile: immutable runtime/code bytes cannot hide
-            # an application-writable child or link. A future installer may
-            # adopt reviewed internal links only through its bound inventory.
-            def walk_error(_error: OSError) -> None:
-                raise Refused('Cannot inspect the complete immutable release inventory')
-            for parent, directories, files in os.walk(spec['releaseDirectory'], followlinks=False, onerror=walk_error):
-                for name in [*directories, *files]:
-                    inspected += 1
-                    require(inspected <= 500_000, 'Immutable release inventory exceeds its supported bound')
-                    child = pathlib.Path(parent, name)
-                    secure_path(child, 0, directory=child.is_dir())
+            if self.profile.next_runtime is not None:
+                # CHECKONLY must not start an inactive unit just to create its
+                # cgroup. Admission separately requires actual live resources.
+                self.next_configuration(unit, props)
+                inspected += self.profile.next_runtime.verify_release(spec)['entries']
+            else:
+                # Strict initial profile: immutable runtime/code bytes cannot hide
+                # an application-writable child or link. A future installer may
+                # adopt reviewed internal links only through its bound inventory.
+                def walk_error(_error: OSError) -> None:
+                    raise Refused('Cannot inspect the complete immutable release inventory')
+                for parent, directories, files in os.walk(spec['releaseDirectory'], followlinks=False, onerror=walk_error):
+                    for name in [*directories, *files]:
+                        inspected += 1
+                        require(inspected <= 500_000, 'Immutable release inventory exceeds its supported bound')
+                        child = pathlib.Path(parent, name)
+                        secure_path(child, 0, directory=child.is_dir())
         secure_path(pathlib.Path(self.profile.value['nginxConfig']), 0)
         secure_path(pathlib.Path(self.profile.value['nginxBinary']), 0)
         return {'kind': 'ADMISSION_CHECKONLY', 'installationAvailable': False, 'releaseEligible': False,
@@ -387,6 +468,11 @@ class LinuxHost:
                     'old-new-build-and-server-action-compatibility', 'real-next-transport-and-worker-qualification']}
 
     def release(self, spec: dict[str, Any]) -> None:
+        if self.profile.next_runtime is not None:
+            try:
+                self.profile.next_runtime.verify_release(spec)
+            except (OSError, ValueError, KeyError, TypeError, UnicodeError):
+                raise Refused('Managed Next release inventory is unverified') from None
         root = pathlib.Path(spec['releaseDirectory'])
         secure_path(root, self.profile.uid, directory=True)
         identity = root / '.aihr-admission-release.json'
@@ -415,6 +501,8 @@ class LinuxHost:
         require(props.get('KillMode') == 'control-group' and props.get('Delegate') == 'no',
                 'Worker process containment is not qualified')
         self.release(spec)
+        if self.profile.next_runtime is not None:
+            self.next_configuration(unit, props)
         return props
 
     def worker(self, unit: str, invocation: str, port: int) -> dict[str, int]:
@@ -431,6 +519,17 @@ class LinuxHost:
                     and os.path.realpath('/proc/' + str(pid) + '/cwd') == spec['releaseDirectory'], 'Worker executable or release changed')
         except OSError:
             raise Refused('Cannot inspect the worker process') from None
+        if self.profile.next_runtime is not None:
+            try:
+                # Reservation/stop/CHECKONLY may have no live process or cgroup.
+                # Only readiness can issue actual resource/namespace evidence.
+                self.next_configuration_evidence[unit] = self.profile.next_runtime.resource_state(unit, props)
+                proof = self.profile.next_runtime.worker(unit, props, self.next_bindings(unit), identity, port, alive)
+                self.next_worker_evidence[unit] = {'invocation': invocation, 'process': identity.copy(),
+                    'packageDigest': self.profile.value['runtimePackage']['manifestSha256'],
+                    'namespace': proof, 'resources': self.next_configuration_evidence[unit]}
+            except (OSError, ValueError, KeyError, TypeError, UnicodeError):
+                raise Refused('Managed Next worker namespace/runtime is unverified') from None
         if not self.owns_listener(identity, port):
             if self.port_free(port):
                 raise EndpointNotReady('Worker has not opened its generation endpoint')
@@ -999,6 +1098,7 @@ def main() -> int:
     parser.add_argument('operation', choices=['check-only', 'initialize', 'prepare-proxy', 'confirm-proxy', 'begin', 'reserve', 'admit', 'cleanup', 'drain', 'reconcile', 'reload', 'status'])
     parser.add_argument('unit', nargs='?')
     args = parser.parse_args()
+    profile = None
     try:
         require(sys.platform == 'linux' and os.geteuid() == 0, 'The installed admission controller requires Linux root')
         require(pathlib.Path(__file__).absolute() == INSTALLED, 'Use the root-owned installed admission controller')
@@ -1039,6 +1139,9 @@ def main() -> int:
         # Do not expose profile/command/HTTP contents through systemd's journal.
         print('Admission failed: ' + type(error).__name__ + '; reconcile before retry', file=sys.stderr)
         return 1
+    finally:
+        if profile is not None:
+            profile.close()
 
 
 if __name__ == '__main__':

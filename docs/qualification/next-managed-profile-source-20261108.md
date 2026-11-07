@@ -1,0 +1,34 @@
+# Managed Next profile: first source slice
+
+This is a source/model candidate on the approved `43047d318883f179bc1468278570405d3de0e46d` design, itself based on root `948d99624972af736fc4d23f25b4b494737c7736`. It has not executed an actual Next service, privileged operation, test, compiler or build locally. Production remains held. It provides no installation, staging release, cross-build compatibility or load-test acceptance.
+
+## Implemented boundary
+
+`deploy/admission/next_profile.py` owns the new closed profile version2 package, three cache mounts and hosted resource envelope. It loads exact protected shared `runtime_inventory.py` bytes from the fixed installed helper directory; the already-qualified descriptor/link resolver remains unchanged. `controller.py` selects this branch only for version2. Version1 retains its exact top-level shape and strict legacy release walk. No existing format2 producer, receiver, archive, manifest or legacy installer changes.
+
+The package manifest binds source/build/runtime, complete source and dependency file/link identities, Node and system runtime files, and the exact original format2 compiled inventory/archive hashes. Files are read through pinned descriptors; special files, external hardlinks, unknown members, writable code and escaping/cyclic links refuse. Only the canonical pnpm namespace and two authenticated sharp/fontkit alias purposes are supported. The package has cold empty root-owned cache mountpoints; live cache content is excluded from immutable authority. Repeated checks within one controller operation recheck pinned inode/metadata identities; no persistent PASS or application authorization cache is introduced.
+
+A separate canonical protected 0600 environment file binds the cohort's actual private configuration without putting credentials in the public package manifest. All workers must use those exact values, app-only owned loopback database credentials, production/internal authentication, reserved PORT and correctly divided web pool. Runtime action-key, development identity, owner-database and loader overrides refuse. The effective built action manifest remains immutable; no action key is reported.
+
+The exact typed systemd bind properties, empty capability set, prohibited namespace creation, fixed user and stock Next argv are checked. Ready workers must additionally pass actual PID-fenced kernel namespace observations: distinct namespace, release root device/inode and readonly filesystem flags, exactly three known writable cache device/inode/owner/mode observations, no additional package submount, actual process cgroup/environment and executable mapping identities. A matching string or synthetic namespace model cannot issue `actualKernelMountsVerified`.
+
+CHECKONLY, prestart reservation and stop/recovery declaration checks do not require starting an inactive unit to create its cgroup. Actual resources and namespace observations are mandatory in the ready worker path before listener acceptance. Existing final PID/invocation/listener checks, generation publication, guarded reload, reader barriers, quiescence, raw-bind cooling, capacity refusal and no-POST-replay rules remain controller-owned and unchanged.
+
+The fixed standard-hosted profile requires actual four-CPU affinity, standard memory, aggregate 400% CPU / 7GiB high / 8GiB maximum / zero swap / 1024 tasks and sufficient ancestor limits, plus current/peak/events observations. Two and four workers divide one 4GiB V8 old-space and sixteen-connection web budget; application capacity code derives the 2048 total waiting budget from the worker count. Eight workers are explicitly restricted to workflow-preflight oversubscription diagnostics. These declarations and observations do not prove a safe production capacity or a completed sustained comparison.
+
+Installed Next16.4.1 source was checked for the exact images, fetch-cache and route-cache paths. `generateEncryptionKeyBase64` callers are build/dev paths; stock production uses the immutable action manifest. Neither `.next/cache` wholesale nor server/app, server/pages, config or dependency directories become writable.
+
+## Verification and remaining ownership
+
+`test/runtime-next-profile.test.ts` invokes source-only Python controls in `deploy/admission/test_next_profile.py`. They use synthetic bytes and an explicit namespace model, never Node, SQL, mounts, systemd or sudo. Cases cover complete inventory/link identity, code/hash/metadata changes, hardlinks, cache exceptions, secret and pool overrides, v1/v2 dispatch, exact typed sandbox declarations, false inode/readonly/cache proofs, and malformed mount records. A controller-seam regression proves nonstarting declarations issue no resource evidence and failed ready-worker resource observation cannot proceed to namespace/listener acceptance. These are prepared cases, not executed PASS claims.
+
+Hosted affected selectors after independent review:
+
+- `test/runtime-next-profile.test.ts` — new source/model controls.
+- `test/runtime-ready-admission.test.ts` — unchanged generation/process/reload/rollback model controls against the modified controller.
+- `test/runtime-ready-admission-contract.test.ts` — original source/protocol contract.
+- `test/runtime-ready-admission-native.test.ts` — original fictional native transport, with its exact existing bound and truthful `nextApplicationVerified:false`.
+
+The actual application fixture `test_next_native.py`, genuine hybrid singleton selector and native performance backend are subsequent work. Root owns authenticated same-run canonical build provisioning, CI policy, admission, source inventories, protected install/grant/lease and migration allocation. The future wrapper must consume the final independently reviewed provisioning binding schema, authenticate the copied immutable source/dependency closure against the exact candidate and format2 packet, and build all cohorts from that single artifact. The current source owner does not authenticate a GitHub artifact by itself.
+
+Required native proof still includes actual stock Next start, kernel mount/cgroup positives and negatives, arbitrary code/cache write attempts, real internal auth/session/MFA, across-worker permission/data freshness, closure-bearing Server Actions, images/Sharp, fonts/PDF, streaming, upload/download, RSC/locales, ingress headers and ambiguous POST no-replay. Whole compiler/build, browser preflight, complete module coverage and load/lock/error gates remain open. Cross-build rollout remains refused; no generic deployment or installer activation is supplied by this slice.
