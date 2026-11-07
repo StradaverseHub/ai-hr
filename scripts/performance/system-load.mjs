@@ -6,6 +6,7 @@ import {browserFailureLocation} from './browser-failure.ts';
 import {routeLatency} from './route-latency.mjs';
 import {centreTabsFor} from '../../lib/ai-centre/centre-nav.ts';
 import {firstGroupNavigationRoutes,navigationRoutesForIteration} from './route-scheduling.mjs';
+import {createNavigationCaptureCollector,writeNavigationCaptureBundle} from './navigation-browser-capture.ts';
 import {prepareMixedWorkflows} from './mixed-workflows.mjs';
 import {attendanceRejectionProbeEnabled,prepareAttendanceRejection} from './attendance-rejection-browser.mjs';
 import {exerciseMovement} from './movement-browser.mjs';
@@ -36,12 +37,14 @@ const db=postgres(process.env.MIGRATION_DATABASE_URL,{max:2});
 const agent=new https.Agent({keepAlive:true,maxSockets:4000,rejectUnauthorized:false,
  lookup:(_host,options,callback)=>options.all?callback(null,[{address:'127.0.0.1',family:4}]):callback(null,'127.0.0.1',4)});
 const suite=process.env.PERF_HTTP_SUITE||'claims-heavy';assert(['claims-heavy','whole-system','workflow-preflight'].includes(suite));
+const baselineNavigation=suite==='claims-heavy'?undefined:createNavigationCaptureCollector({phase:'baseline'});
+const loadedNavigation=suite==='whole-system'?createNavigationCaptureCollector({phase:'loaded'}):undefined;
 const measuredRoutePools=suite==='whole-system'?routePools:{employee:['/me','/claims','/leave'],manager:['/approvals','/claims','/performance/home'],companyHR:['/admin/personnel','/payroll','/claims'],groupHR:['/admin/personnel','/payroll','/claims']};
 const thinkTimeMs=Number(process.env.PERF_HTTP_THINK_MS||1000);assert([1000,5000].includes(thinkTimeMs));
 const steadyHoldMs=Number(process.env.PERF_HTTP_HOLD_MS||30000);assert([30000,300000].includes(steadyHoldMs));
 const report={suite,kind:suite==='workflow-preflight'?'HTTP_WORKFLOW_PREFLIGHT_ONLY':'HTTP_AND_CHROMIUM_DEVELOPMENT_ONLY',releaseEligible:false,users:suite==='workflow-preflight'?0:500,fixtureUsers:500,tenants:2,companies:10,startedAt:new Date().toISOString(),
  assumptions:{arrivalWindowMs:10000,thinkTimeMs,steadyHoldMs,navigation:'full-document HTTP stress, observed subject-bound Home GETs and real server actions',navigationScheduling:'disjoint role lanes; group HR prioritizes uncovered routes in cycle one and uses six read slots thereafter; other roles use three; same activity pauses',driverMaxSockets:4000,preflightHttpActorLanes:4,browserVisitReadiness:'domcontentloaded followed by unchanged heading, fixture data and complete Home card assertions',tls:'fixture-only self-signed localhost',browserContexts:6,loadedBrowserSignIns:4,preflightBrowserSignIns:4,persistenceObserverPrincipals:6,persistencePollIntervalMs:100,loginEnrollmentLoad:false,performanceFixture:'enabled dashboard; no assigned review cycle; task-gated tabs excluded'},
- workloadManifest:{readRoutes:wholeSystemRouteCount,mutations:['Claims draft create/edit/delete','Leave request create/edit/withdraw','Personnel draft create/edit/delete','Attendance correction and authorized approval'],browserMutations:suite==='claims-heavy'?[]:['Generic Reports saved-definition create/edit/delete (group HR, baseline'+(suite==='whole-system'?' and loaded':'')+')','Service Movement Secondment (group HR, '+(suite==='whole-system'?'loaded':'preflight')+')'],preflightOnly:suite==='workflow-preflight'?['Active Personnel contact edit/restore','E-Letter draft create/edit/withdraw','Concurrent Payroll close/publish','Performance review-cycle draft creation','Rewards annual unit draft creation']:[],processing:['Payroll calculation','Payroll close/employee publication preflight','scoped Payroll CSV generation','clocking-file validation/import'],notCovered:[...(suite==='workflow-preflight'?[]:['concurrent Payroll close/publish','active Personnel contact edit/restore','E-Letter draft mutations']),'Lifecycle mutations',...(suite==='workflow-preflight'?['Performance and Rewards mutations beyond draft creation']:['Performance mutations','Rewards mutations']),'large Personnel imports',...(suite==='claims-heavy'?['report-definition CRUD']:['Employee Master and Payroll Comparison definition CRUD','500-principal Reports write mix']),'long-running document jobs','external email delivery'],productionEquivalent:false},
+ workloadManifest:{readRoutes:wholeSystemRouteCount,mutations:['Claims draft create/edit/delete','Leave request create/edit/withdraw','Personnel draft create/edit/delete','Attendance correction and authorized approval'],browserMutations:suite==='claims-heavy'?[]:['Generic Reports saved-definition create/edit/delete (group HR, baseline'+(suite==='whole-system'?' and loaded':'')+')','Service Movement Secondment (group HR, '+(suite==='whole-system'?'loaded':'preflight')+')'],preflightOnly:suite==='workflow-preflight'?['Active Personnel contact edit/restore','E-Letter draft create/edit/withdraw','Concurrent Payroll close/publish','Performance review-cycle draft creation','Rewards annual unit draft creation']:[],processing:['Payroll calculation','Payroll close/employee publication preflight','scoped Payroll CSV generation','clocking-file validation/import'],notCovered:['Navigation destinations outside the reviewed scenario plan',...(suite==='workflow-preflight'?[]:['concurrent Payroll close/publish','active Personnel contact edit/restore','E-Letter draft mutations']),'Lifecycle mutations',...(suite==='workflow-preflight'?['Performance and Rewards mutations beyond draft creation']:['Performance mutations','Rewards mutations']),'large Personnel imports',...(suite==='claims-heavy'?['report-definition CRUD']:['Employee Master and Payroll Comparison definition CRUD','500-principal Reports write mix']),'long-running document jobs','external email delivery'],productionEquivalent:false},
  coverage:[],boundaries:[],browser:[],homeCardFailures:[],browserHomeRequests:[],phases:[],functionalErrors:[],browserErrors:[],persistenceObservers:[],latencyTargetMet:false};
 const save=()=>writeFileSync(join(out,'http-browser.json'),JSON.stringify(report,null,2));
 function processCpu(ids){
@@ -628,10 +631,18 @@ try{
   }
  }
  // Exercise real password/MFA before any capacity test; these results are never loaded proof.
- await Promise.all([employee,manager,hr,group].map(async user=>{
+ const signInPreflight=await Promise.allSettled([employee,manager,hr,group].map(async user=>{
   const ctx=await context(user,'en',true),page=await ctx.newPage();
-  try{await visit(page,user,'/','sign-in-preflight',true);}finally{await ctx.close();}
+  try{
+   await visit(page,user,'/','sign-in-preflight',true);
+   if(baselineNavigation)await baselineNavigation.captureActor(page,user.index);
+  }finally{await ctx.close();}
  }));
+ // Settle every owned context before reporting failure; a failed actor must not
+ // leave a still-running browser producer behind the failed preflight.
+ for(const result of signInPreflight)if(result.status==='rejected')throw result.reason;
+ const baselineCapture=baselineNavigation?.finish();
+ report.navigationCapture={scope:'DEVELOPMENT_ONLY',releaseEligible:false,baselineScenarios:baselineCapture?.observations.length??0,loadedScenarios:0};save();
  // Handled card failures remain a failed acceptance gate. Keep collecting the
  // isolated workload evidence after every role completed a real sign-in.
  report.preflightHomeReady=['employee','manager','companyHR','groupHR'].every(role=>
@@ -849,6 +860,8 @@ try{
   assert.equal(report.homeCardFailures.length,0,'Home rendered a handled card/summary failure');
   assert.equal(report.browserErrors.length,0,'all preflight journeys must finish without browser runtime errors');
   assert.equal(report.pageBusyResponses.length,0,'preflight page Busy responses');
+  assert(baselineCapture,'Reviewed navigation baseline capture is missing');
+  writeNavigationCaptureBundle(out,baselineCapture);
   report.preflightPassed=true;save();return;
  }
  clearInterval(sampling);
@@ -923,6 +936,7 @@ try{
    const loadState=()=>({active:progress.active,launched:progress.launched});
    await exercisePersonnelSwitcher({page,user,fixture,report,save,phase:'loaded',loadState});
   }
+  if(signIn&&loadedNavigation)await loadedNavigation.captureActor(page,user.index,loadState);
   }catch(error){
    (report.browserJourneyFailures??=[]).push({role:user.role,user:user.index,phase:'loaded',errorType:error.name,...browserFailureLocation(error),timeout:error.name==='TimeoutError'});save();throw error;
   }finally{await ctx.close();}
@@ -1107,6 +1121,12 @@ try{
   )),'Claims and Personnel language switches must start during steady 500-user load');
  }
  assert.equal(report.browserErrors.length,0,'browser runtime errors');assert.equal(report.browserLoad.errors.length,0,'loaded browser journeys');if(suite==='whole-system')assert(['baseline','loaded'].every(phase=>report.orgExplorerJourneys?.some(row=>row.phase===phase&&row.status==='passed')),'Org browser scope and language journeys did not finish');if(fixture.assistantHistory)assert(aiBrowserActors.every(user=>['saved-history-list','saved-history-open','saved-history-return'].every(step=>report.browserAssistantHistory?.some(row=>row.phase==='loaded'&&row.userIndex===user.index&&row.step===step&&row.targetMet))),'populated saved-history browser navigation incomplete or above1s target');assert(report.latencyTargetMet,'500-user HTTP p95 latency target was not met');
+ if(suite==='whole-system'){
+  assert(baselineCapture&&loadedNavigation,'Reviewed navigation producer is missing');
+  const loadedCapture=loadedNavigation.finish();
+  writeNavigationCaptureBundle(out,baselineCapture,loadedCapture);
+  report.navigationCapture.loadedScenarios=loadedCapture.observations.length;save();
+ }
 }catch(error){report.browserPendingRequests??=[...(pendingBrowserRequests.get(lastPage)?.values()??[])].map(row=>({...row,elapsedMs:performance.now()-row.startedMs}));if(lastPage&&!lastPage.isClosed())await lastPage.screenshot({path:join(out,'browser-failure.png'),fullPage:false}).catch(()=>{});report.error=String(error.message).slice(0,350);writeFileSync(join(out,'http-samples.json'),JSON.stringify(samples));writeFileSync(join(out,'database-waits.json'),JSON.stringify(waits));await databaseSnapshot('failure').catch(()=>{});save();throw error;}
 finally{
  if(sqlSnapshotTimer)clearInterval(sqlSnapshotTimer);if(browserDiagnosticTimer)clearInterval(browserDiagnosticTimer);if(progressTimer)clearInterval(progressTimer);if(sampling)clearInterval(sampling);
