@@ -9,19 +9,30 @@ import {domainEvent,jobRun,tenantModule} from '../db/schema';
 import {MODULE_CATALOG} from '../packs/catalog';
 import {notificationWorkerLifecycle,NotificationProjectionUnavailable} from '../lib/notification-worker/lifecycle';
 import {pgSqlState} from '../lib/db-error';
+import {notificationWorkerFixtureDatabase} from './fixtures/notification-worker/database';
+import {workerDb} from './db-names';
 import {closeAll,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
 const role='ai_hr_notification_worker',password=randomUUID(),fixture=readFileSync('test/fixtures/notification-worker/lifecycle.sql','utf8');
+let binding:ReturnType<typeof notificationWorkerFixtureDatabase>;
+const gateStart=fixture.indexOf('DO $gate$');
+if(gateStart<1)throw Error('Canonical notification fixture database guard is missing');
+const databaseGuard=fixture.slice(0,gateStart);
 let created=false,b:Base,foreign:Base,service:ReturnType<typeof postgres>,other:ReturnType<typeof postgres>,url:URL;
 const sockets:ReturnType<typeof postgres>[]=[];
 const ownedJobs=new Set<string>();
 function connect(){const sql=postgres(url.toString(),{max:1,connection:{statement_timeout:20000,lock_timeout:300}});sockets.push(sql);return sql;}
 beforeAll(async()=>{
  expect(process.env.GITHUB_ACTIONS).toBe('true');expect(process.env.RUNNER_ENVIRONMENT).toBe('github-hosted');
- await migrateTestDb();url=new URL(process.env.TEST_MIGRATION_DATABASE_URL!);
- expect(url.hostname).toBe('127.0.0.1');expect(url.pathname).toMatch(/^\/ai_hr_test_w\d+(?:_[a-z0-9_]+)?$/);
+ binding=notificationWorkerFixtureDatabase();url=binding.migrationUrl;
+ await migrateTestDb();
+ const [target]=await owner.client`select current_database() as database,inet_server_addr()::text as address`;
+ expect(target).toEqual({database:binding.database,address:'127.0.0.1'});
  expect(await owner.client`select 1 from pg_roles where rolname=${role}`).toHaveLength(0);
  await owner.client.unsafe(`CREATE ROLE ai_hr_notification_worker LOGIN PASSWORD '${password}' NOINHERIT NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE NOREPLICATION`);created=true;
- await owner.client.begin(tx=>tx.unsafe(fixture));
+ await owner.client.begin(async tx=>{
+  await tx`select set_config('aihr.notification_fixture.database',${binding.database},true),set_config('aihr.notification_fixture.namespace',${binding.namespace},true),set_config('aihr.notification_fixture.pool_id',${binding.poolId},true)`;
+  await tx.unsafe(fixture);
+ });
  const [identity]=await owner.client`select current_user::regrole::oid as owner,(select oid from pg_roles where rolname=${role}) as login`;
  await owner.client`insert into notification_worker_private.authority(singleton,enabled,login_oid,owner_oid,api_version,max_batch_events,max_run_batches,max_run_seconds,max_tenants)
   values(true,true,${identity.login},${identity.owner},1,25,10,300,100)`;
@@ -65,6 +76,35 @@ async function sourceFacts(){
 async function event(base=b){
  const [e]=await owner.db.insert(domainEvent).values({tenantId:base.tenantId,aggregateType:'fixture',aggregateId:randomUUID(),eventType:'fixture.worker-read',actorType:'system',payload:{fictional:true}}).returning();return e;
 }
+it('binds both URLs to the actual canonical hosted worker, rejecting production/shared/sibling targets',()=>{
+ expect(binding.database).toBe(workerDb(binding.poolId));
+ expect(binding.database).toBe('ai_hr_test_w'+(binding.namespace?(binding.namespace.startsWith('_')?binding.namespace:'_'+binding.namespace):'')+binding.poolId);
+ for(const path of ['/ai_hr','/ai_hr_staging','/ai_hr_test_tpl','/'+workerDb(Number(binding.poolId)+1),'/ai_hr_test_w1_wrong']){
+  const target=new URL(binding.migrationUrl);target.pathname=path;
+  expect(()=>notificationWorkerFixtureDatabase(target.toString())).toThrow('exact loopback canonical worker database');
+  expect(()=>notificationWorkerFixtureDatabase(undefined,target.toString())).toThrow('exact loopback canonical worker database');
+ }
+ for(const host of ['localhost','production.example.invalid','[::1]']){const target=new URL(binding.migrationUrl);target.hostname=host;expect(()=>notificationWorkerFixtureDatabase(target.toString())).toThrow();}
+ for(const query of ['?host=production.example.invalid','?database=ai_hr','?options=-crole=ai_hr_app']){const target=new URL(binding.migrationUrl);target.search=query;expect(()=>notificationWorkerFixtureDatabase(target.toString())).toThrow();}
+});
+it('executes the exact SQL database guard positively and refuses altered/missing canonical bindings independently of existing schemas',async()=>{
+ await owner.client.begin(async tx=>{
+  await tx`select set_config('aihr.notification_fixture.database',${binding.database},true),set_config('aihr.notification_fixture.namespace',${binding.namespace},true),set_config('aihr.notification_fixture.pool_id',${binding.poolId},true)`;
+  await tx.unsafe(databaseGuard);
+ });
+ for(const wrong of [
+  {database:'ai_hr',namespace:binding.namespace,poolId:binding.poolId},
+  {database:binding.database,namespace:binding.namespace==='wrong_namespace'?'other_namespace':'wrong_namespace',poolId:binding.poolId},
+  {database:binding.database,namespace:'_',poolId:binding.poolId},
+  {database:binding.database,namespace:'x'.repeat(21),poolId:binding.poolId},
+  {database:binding.database,namespace:binding.namespace,poolId:'0'},
+  {database:binding.database,namespace:binding.namespace,poolId:''},
+  {database:'',namespace:binding.namespace,poolId:binding.poolId},
+ ])await expect(owner.client.begin(async tx=>{
+  await tx`select set_config('aihr.notification_fixture.database',${wrong.database},true),set_config('aihr.notification_fixture.namespace',${wrong.namespace},true),set_config('aihr.notification_fixture.pool_id',${wrong.poolId},true)`;
+  await tx.unsafe(databaseGuard);
+ })).rejects.toSatisfy((error:unknown)=>pgSqlState(error)==='55000');
+});
 it('pins the unchanged native module upper bound to the canonical catalog',()=>{
  const item=MODULE_CATALOG.find(row=>row.code==='notifications');expect(item).toMatchObject({dependsOn:[],isCore:false,parentModule:null});
 });
