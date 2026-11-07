@@ -48,7 +48,7 @@ beforeEach(async()=>{
  await owner.client`update public.notification_event_processing set disposition='legacy-cursor',processed_at=now()`;
 });
 afterEach(async()=>{await ownership.drain();try{await fixture.finishCase();}catch(error){ownership.poison(error instanceof Error?error:Error('Native fixture teardown refused'));throw error;}});
-afterAll(async()=>{await ownership.drain();try{await owner.client`select notification_worker_private.assert_process_profile()`;await fixture.clearStage();}catch(error){ownership.poison(error instanceof Error?error:Error('Native variant restoration refused'));throw error;}});
+afterAll(async()=>{await ownership.drain();try{await fixture.assertProcessProfileIfInstalled();await fixture.clearStage();}catch(error){ownership.poison(error instanceof Error?error:Error('Native variant restoration refused'));throw error;}});
 const fingerprint=(text:string)=>createHash('sha256').update(text.trim().replace(/;$/,'').replace(/\s+/g,' ')).digest('hex');
 function statementSummary(entries:ReturnType<typeof notificationAutoExplainMessages>){
  const groups=new Map<string,{fingerprint:string;context:string[];calls:number;inclusiveTotalMs:number;maximumMs:number;jitDocuments:number;maximumJit:unknown}>();

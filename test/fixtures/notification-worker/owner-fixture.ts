@@ -79,6 +79,15 @@ export function notificationWorkerFixtureOwner(){
   /** Private IPC launch material contains ONLY the dedicated worker LOGIN.
    * Never expose app/owner credentials to the uninstalled process fixture. */
   processBinding(){const target=configured();return{workerUrl:url!.toString(),database:target.database};},
+  async assertProcessProfileIfInstalled(){
+   if(stageInstalled){await owner.client`select notification_worker_private.assert_process_profile()`;return;}
+   // Installation commits atomically before stageInstalled is set. A refused
+   // append must leave neither owned namespace nor its public cursor helper.
+   const [state]=await owner.client`select to_regnamespace('notification_worker') is null as api_absent,
+    to_regnamespace('notification_worker_private') is null as private_absent,
+    to_regprocedure('app.notification_worker_cursor_admitted(uuid,bigint,bigint,bigint,bigint,boolean)') is null as cursor_helper_absent`;
+   expect(state).toEqual({api_absent:true,private_absent:true,cursor_helper_absent:true});
+  },
   finishCase,clearStage,
   async close(){try{await clearStage();if(created){await owner.client`drop owned by ai_hr_notification_worker`;await owner.client`drop role ai_hr_notification_worker`;created=false;}}
    finally{await closeAll();}},

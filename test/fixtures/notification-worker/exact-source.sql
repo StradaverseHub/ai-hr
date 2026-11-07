@@ -15,7 +15,7 @@ BEGIN
   RAISE EXCEPTION 'Exact canonical notification worker database required' USING ERRCODE='55000';END IF;
 END $database$;
 DO $before$
-DECLARE native_owner oid:=(SELECT relowner FROM pg_class WHERE oid='public.job_run'::regclass);p pg_proc;h pg_class;
+DECLARE native_owner oid:=(SELECT relowner FROM pg_class WHERE oid='public.job_run'::regclass);sealed_function pg_proc;contract_relation pg_class;
 BEGIN
  IF current_user::regrole::oid IS DISTINCT FROM native_owner
  OR native_owner IS DISTINCT FROM(SELECT relowner FROM pg_class WHERE oid='public.domain_event'::regclass)
@@ -26,8 +26,8 @@ BEGIN
   WHERE c.kind='function'AND(actual.oid IS NULL OR to_jsonb(actual)IS DISTINCT FROM c.details))
  OR(SELECT count(*)FROM notification_worker_private.process_contract WHERE kind='relation')<>3
  THEN RAISE EXCEPTION 'Exact inactive source-contract predecessor required' USING ERRCODE='55000';END IF;
- SELECT * INTO p FROM pg_proc WHERE oid='notification_worker_private.admit_login()'::regprocedure;
- IF p.proowner IS DISTINCT FROM native_owner OR p.prosrc IS DISTINCT FROM $prior_login$
+ SELECT * INTO sealed_function FROM pg_proc WHERE oid='notification_worker_private.admit_login()'::regprocedure;
+ IF sealed_function.proowner IS DISTINCT FROM native_owner OR sealed_function.prosrc IS DISTINCT FROM $prior_login$
 DECLARE a notification_worker_private.authority; r pg_roles; login oid;
 BEGIN
  SELECT * INTO a FROM notification_worker_private.authority WHERE singleton;
@@ -70,11 +70,11 @@ BEGIN
  THEN RAISE EXCEPTION 'Notification worker authority unavailable' USING ERRCODE='42501';END IF;
  RETURN login;
 END $prior_login$
- OR md5(p.prosrc)IS DISTINCT FROM '49533d66467b0468d6cb4c1fb0697fe5'
- OR NOT EXISTS(SELECT 1 FROM notification_worker_private.process_contract c WHERE c.kind='function'AND c.object_oid=p.oid AND c.details=to_jsonb(p))
+ OR md5(sealed_function.prosrc)IS DISTINCT FROM '49533d66467b0468d6cb4c1fb0697fe5'
+ OR NOT EXISTS(SELECT 1 FROM notification_worker_private.process_contract c WHERE c.kind='function'AND c.object_oid=sealed_function.oid AND c.details=to_jsonb(sealed_function))
  THEN RAISE EXCEPTION 'Exact reviewed login predecessor required' USING ERRCODE='55000';END IF;
- SELECT * INTO p FROM pg_proc WHERE oid='notification_worker_private.assert_process_profile()'::regprocedure;
- IF p.proowner IS DISTINCT FROM native_owner OR p.prosrc IS DISTINCT FROM $prior_profile$
+ SELECT * INTO sealed_function FROM pg_proc WHERE oid='notification_worker_private.assert_process_profile()'::regprocedure;
+ IF sealed_function.proowner IS DISTINCT FROM native_owner OR sealed_function.prosrc IS DISTINCT FROM $prior_profile$
 DECLARE a notification_worker_private.authority;
 BEGIN
  SELECT * INTO a FROM notification_worker_private.authority WHERE singleton;
@@ -112,27 +112,27 @@ BEGIN
    OR p.proconfig IS DISTINCT FROM c.configuration OR p.prosecdef<>c.security_definer OR p.provolatile<>c.volatility OR p.prolang<>c.language_oid)
  THEN RAISE EXCEPTION 'Exact native process profile unavailable' USING ERRCODE='55000';END IF;
 END $prior_profile$
- OR md5(p.prosrc)IS DISTINCT FROM '52f4cceff05b3a26e36f1334241d63d9'
- OR NOT EXISTS(SELECT 1 FROM notification_worker_private.process_contract c WHERE c.kind='function'AND c.object_oid=p.oid AND c.details=to_jsonb(p))
+ OR md5(sealed_function.prosrc)IS DISTINCT FROM '52f4cceff05b3a26e36f1334241d63d9'
+ OR NOT EXISTS(SELECT 1 FROM notification_worker_private.process_contract c WHERE c.kind='function'AND c.object_oid=sealed_function.oid AND c.details=to_jsonb(sealed_function))
  THEN RAISE EXCEPTION 'Exact reviewed profile predecessor required' USING ERRCODE='55000';END IF;
- SELECT * INTO h FROM pg_class WHERE oid='notification_worker_private.helper_contract'::regclass;
- IF h.relowner<>native_owner OR h.relkind<>'r'OR NOT h.relrowsecurity OR h.relforcerowsecurity
- OR EXISTS(SELECT 1 FROM pg_policy WHERE polrelid=h.oid)OR EXISTS(SELECT 1 FROM pg_trigger WHERE tgrelid=h.oid)
- OR EXISTS(SELECT 1 FROM pg_rewrite WHERE ev_class=h.oid)OR EXISTS(SELECT 1 FROM pg_attrdef WHERE adrelid=h.oid)
- OR EXISTS(SELECT 1 FROM aclexplode(coalesce(h.relacl,acldefault('r',h.relowner)))g WHERE g.grantee<>native_owner OR g.grantor<>native_owner OR g.is_grantable)
- OR(SELECT count(*)FROM pg_attribute WHERE attrelid=h.oid AND attnum>0)<>7
+ SELECT * INTO contract_relation FROM pg_class WHERE oid='notification_worker_private.helper_contract'::regclass;
+ IF contract_relation.relowner<>native_owner OR contract_relation.relkind<>'r'OR NOT contract_relation.relrowsecurity OR contract_relation.relforcerowsecurity
+ OR EXISTS(SELECT 1 FROM pg_policy WHERE polrelid=contract_relation.oid)OR EXISTS(SELECT 1 FROM pg_trigger WHERE tgrelid=contract_relation.oid)
+ OR EXISTS(SELECT 1 FROM pg_rewrite WHERE ev_class=contract_relation.oid)OR EXISTS(SELECT 1 FROM pg_attrdef WHERE adrelid=contract_relation.oid)
+ OR EXISTS(SELECT 1 FROM aclexplode(coalesce(contract_relation.relacl,acldefault('r',contract_relation.relowner)))g WHERE g.grantee<>native_owner OR g.grantor<>native_owner OR g.is_grantable)
+ OR(SELECT count(*)FROM pg_attribute WHERE attrelid=contract_relation.oid AND attnum>0)<>7
  OR EXISTS(SELECT 1 FROM(VALUES
   (1,'signature','regprocedure'::regtype,-1,true),(2,'owner_oid','oid'::regtype,-1,true),
   (3,'body_md5','text'::regtype,-1,true),(4,'configuration','text[]'::regtype,-1,false),
   (5,'security_definer','boolean'::regtype,-1,true),(6,'volatility','bpchar'::regtype,5,true),(7,'language_oid','oid'::regtype,-1,true)
- )e(n,name,type_oid,modifier,required)LEFT JOIN pg_attribute a ON a.attrelid=h.oid AND a.attnum=e.n
+ )e(n,name,type_oid,modifier,required)LEFT JOIN pg_attribute a ON a.attrelid=contract_relation.oid AND a.attnum=e.n
  WHERE a.attnum IS NULL OR a.attname<>e.name OR a.atttypid<>e.type_oid OR a.atttypmod<>e.modifier OR a.attnotnull<>e.required
   OR a.attisdropped OR a.attidentity<>''OR a.attgenerated<>'')
- OR(SELECT count(*)FROM pg_constraint WHERE conrelid=h.oid)<>1
- OR NOT EXISTS(SELECT 1 FROM pg_constraint WHERE conrelid=h.oid AND conname='helper_contract_pkey'AND contype='p'
+ OR(SELECT count(*)FROM pg_constraint WHERE conrelid=contract_relation.oid)<>1
+ OR NOT EXISTS(SELECT 1 FROM pg_constraint WHERE conrelid=contract_relation.oid AND conname='helper_contract_pkey'AND contype='p'
   AND conkey=ARRAY[1]::smallint[]AND convalidated AND NOT condeferrable AND NOT condeferred)
- OR(SELECT count(*)FROM pg_index WHERE indrelid=h.oid)<>1
- OR NOT EXISTS(SELECT 1 FROM pg_index WHERE indrelid=h.oid AND indisprimary AND indisunique AND indisvalid AND indisready AND indislive AND indnkeyatts=1)
+ OR(SELECT count(*)FROM pg_index WHERE indrelid=contract_relation.oid)<>1
+ OR NOT EXISTS(SELECT 1 FROM pg_index WHERE indrelid=contract_relation.oid AND indisprimary AND indisunique AND indisvalid AND indisready AND indislive AND indnkeyatts=1)
  OR(SELECT count(*)FROM notification_worker_private.helper_contract)<>2300
  OR(SELECT count(*)FROM pg_proc WHERE pronamespace='app'::regnamespace)<>2300
  OR EXISTS(SELECT 1 FROM pg_proc p WHERE p.pronamespace='app'::regnamespace AND NOT EXISTS(SELECT 1 FROM notification_worker_private.helper_contract c WHERE c.signature=p.oid))
@@ -244,17 +244,17 @@ BEGIN
  THEN RAISE EXCEPTION 'Exact native process profile unavailable' USING ERRCODE='55000';END IF;
 END $body$;
 DO $after$
-DECLARE p pg_proc;n integer;
+DECLARE sealed_function pg_proc;n integer;
 BEGIN
- SELECT * INTO p FROM pg_proc WHERE oid='notification_worker_private.admit_login()'::regprocedure;
- IF md5(p.prosrc)IS DISTINCT FROM 'c3a8691c5ff07123a8f63f009d8567ad'OR NOT EXISTS(SELECT 1 FROM notification_worker_private.process_contract c WHERE c.kind='function'AND c.object_oid=p.oid AND(c.details-'prosrc')=(to_jsonb(p)-'prosrc'))
+ SELECT * INTO sealed_function FROM pg_proc WHERE oid='notification_worker_private.admit_login()'::regprocedure;
+ IF md5(sealed_function.prosrc)IS DISTINCT FROM 'c3a8691c5ff07123a8f63f009d8567ad'OR NOT EXISTS(SELECT 1 FROM notification_worker_private.process_contract c WHERE c.kind='function'AND c.object_oid=sealed_function.oid AND(c.details-'prosrc')=(to_jsonb(sealed_function)-'prosrc'))
  THEN RAISE EXCEPTION 'Exact metadata-preserving source guard replacement required' USING ERRCODE='55000';END IF;
- UPDATE notification_worker_private.process_contract SET details=to_jsonb(p)WHERE kind='function'AND object_oid=p.oid;
+ UPDATE notification_worker_private.process_contract SET details=to_jsonb(sealed_function)WHERE kind='function'AND object_oid=sealed_function.oid;
  GET DIAGNOSTICS n=ROW_COUNT;IF n<>1 THEN RAISE EXCEPTION 'Exact source guard binding required' USING ERRCODE='55000';END IF;
- SELECT * INTO p FROM pg_proc WHERE oid='notification_worker_private.assert_process_profile()'::regprocedure;
- IF md5(p.prosrc)IS DISTINCT FROM 'f77a9b37429e8e2d7d4f350ef91487e5'OR NOT EXISTS(SELECT 1 FROM notification_worker_private.process_contract c WHERE c.kind='function'AND c.object_oid=p.oid AND(c.details-'prosrc')=(to_jsonb(p)-'prosrc'))
+ SELECT * INTO sealed_function FROM pg_proc WHERE oid='notification_worker_private.assert_process_profile()'::regprocedure;
+ IF md5(sealed_function.prosrc)IS DISTINCT FROM 'f77a9b37429e8e2d7d4f350ef91487e5'OR NOT EXISTS(SELECT 1 FROM notification_worker_private.process_contract c WHERE c.kind='function'AND c.object_oid=sealed_function.oid AND(c.details-'prosrc')=(to_jsonb(sealed_function)-'prosrc'))
  THEN RAISE EXCEPTION 'Exact metadata-preserving source guard replacement required' USING ERRCODE='55000';END IF;
- UPDATE notification_worker_private.process_contract SET details=to_jsonb(p)WHERE kind='function'AND object_oid=p.oid;
+ UPDATE notification_worker_private.process_contract SET details=to_jsonb(sealed_function)WHERE kind='function'AND object_oid=sealed_function.oid;
  GET DIAGNOSTICS n=ROW_COUNT;IF n<>1 THEN RAISE EXCEPTION 'Exact source guard binding required' USING ERRCODE='55000';END IF;
  -- Fourth structural relation: seal source-column/NOTNULL/CHECK/index/ACL facts.
  INSERT INTO notification_worker_private.process_contract(kind,object_oid,details)

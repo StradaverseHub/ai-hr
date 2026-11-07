@@ -22,7 +22,7 @@ export function registerNotificationProcessCases(fixtureOwner:NotificationWorker
   const predecessors=['lifecycle','projection','assessment','process','query-shape'].map(name=>readFileSync('test/fixtures/notification-worker/'+name+'.sql','utf8'));
   const sources=[...predecessors,readFileSync('test/fixtures/notification-worker/exact-source.sql','utf8')];
   const children=new Set<Witness>();let b:Base,employment:string,recipientUser:string,processOrdinal=0;
-  beforeAll(async()=>{await proveExactSourceCapture(fixtureOwner,predecessors);await fixtureOwner.install(sources,3,notificationWorkerAssessmentContract);await captureTriggerCatalogue();},300000);
+  beforeAll(async()=>{await proveExactSourceCapture(fixtureOwner,predecessors);await fixtureOwner.assertProcessProfileIfInstalled();await fixtureOwner.install(sources,3,notificationWorkerAssessmentContract);await captureTriggerCatalogue();},300000);
   beforeEach(async()=>{
    await owner.client`truncate notification_worker_private.run cascade`;
    await owner.client`update notification_worker_private.authority set active_run=null,enabled=true,max_run_batches=10`;
@@ -37,7 +37,7 @@ export function registerNotificationProcessCases(fixtureOwner:NotificationWorker
    const settled=await Promise.allSettled(Array.from(children,async witness=>{if(witness.child.exitCode===null&&witness.child.signalCode===null)witness.child.kill('SIGKILL');await witness.closed;await witness.finishEvidence();expect(witness.output()).not.toMatch(/postgres(?:ql)?:\/\/|fictional.*key|password=/i);}));
    children.clear();await fixtureOwner.finishCase();for(const result of settled)if(result.status==='rejected')throw result.reason;
   });
-  afterAll(async()=>{await owner.client`select notification_worker_private.assert_process_profile()`;await fixtureOwner.clearStage();});
+  afterAll(async()=>{await fixtureOwner.assertProcessProfileIfInstalled();await fixtureOwner.clearStage();});
   async function captureTriggerCatalogue(){
    // Bounded owner catalogue evidence only, captured BEFORE profile assertions.
    // No worker credential, source payload, HR row or caller-supplied PASS flag.
