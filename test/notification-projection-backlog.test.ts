@@ -4,10 +4,17 @@ import {and,eq,sql} from 'drizzle-orm';
 import {createDb} from '../db/client';
 import * as s from '../db/schema';
 import {readNotificationProjectionBacklog} from '../scripts/lib/notification-projection-backlog';
+import {dispatchNotificationsFromSweep} from '../core/notifications';
 import {adminCtx,closeAll,migrateTestDb,owner,resetDb,seedBase,setModule,type Base} from './harness';
 
 let b:Base;
-beforeAll(migrateTestDb);afterAll(closeAll);beforeEach(async()=>{await resetDb();b=await seedBase();await setModule(b.tenantId,'notifications','active');});
+beforeAll(migrateTestDb);afterAll(closeAll);beforeEach(async()=>{
+ await resetDb();b=await seedBase();await setModule(b.tenantId,'notifications','active');
+ // Activation can enqueue legitimate processing intent. Drain setup through the
+ // canonical owner before seeding independently counted backlog events.
+ await dispatchNotificationsFromSweep(maintenance(),owner);
+ expect(await readNotificationProjectionBacklog(maintenance(),owner)).toEqual({pending:0,oldest:0});
+});
 const maintenance=()=>({...adminCtx(b),userId:undefined,personId:undefined});
 async function event(tenantId:string,minutes:number,eventType='fixture.pending-notification'){
  const id=randomUUID();await owner.db.insert(s.domainEvent).values({id,tenantId,aggregateType:'fixture',aggregateId:id,eventType,actorType:'system',occurredAt:sql`now()-make_interval(mins=>${minutes})`});return id;
