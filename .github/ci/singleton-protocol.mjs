@@ -49,7 +49,7 @@ export function singletonSources(unit){
  assertSingletonUnit(unit);
  return [unit.files[0],'test/helpers/ci-singleton-admission.ts','.github/ci/singleton-protocol.mjs','.github/ci/policy-version.mjs',
   'vitest.config.ts','vitest.nodb.config.ts',...(unit.kind==='db'?['test/db-names.ts','test/global-setup.ts','test/env.ts']:['deploy/admission/test_native.py']),
-  ...(nativeNextUnit(unit)?['deploy/admission/test_next_native.py','deploy/admission/next_profile.py','deploy/admission/controller.py','.github/ci/runtime_inventory.py','.github/ci/native-next-build-packet.mjs','.github/ci/build-artifact.mjs']:[])].sort();
+  ...(nativeNextUnit(unit)?['deploy/admission/test_next_native.py','deploy/admission/next_profile.py','deploy/admission/controller.py','.github/ci/runtime_inventory.py','.github/ci/native-next-build-packet.mjs','.github/ci/native-next-build-inputs.mjs','.github/ci/candidate-environment.mjs','.github/ci/build-artifact.mjs']:[])].sort();
 }
 export const protocolHash=value=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const fullSha=value=>typeof value==='string'&&/^[a-f0-9]{40}$/.test(value);

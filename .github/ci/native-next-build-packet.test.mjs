@@ -43,3 +43,27 @@ test('private archives, packet and binding stay outside uploaded evidence, and o
  assert(source.includes('downloadCiArchives([metadata.artifact]'));assert(source.includes('inspectCiNativeBuildPacket(packetDirectory,metadata.expected)'));
  assert(source.includes("'-I','-B'"));
 });
+
+function prFixture(){
+ const f=fixture(),repo={id:1333414856,full_name:'StradaverseHub/ai-hr'};
+ f.expected.controllerRef='refs/pull/230/merge';f.expected.controllerBranch='feature/native-runtime';
+ Object.assign(f.metadata.run,{event:'pull_request',head_sha:f.expected.source,head_branch:f.expected.controllerBranch,pull_requests:[{number:230,head:{sha:f.expected.source,repo}}]});
+ Object.assign(f.metadata.jobs[0],{head_sha:f.expected.source,head_branch:f.expected.controllerBranch});
+ Object.assign(f.metadata.artifacts[0].workflow_run,{head_sha:f.expected.source,head_branch:f.expected.controllerBranch});
+ f.metadata.pullRequest={number:230,merge_commit_sha:f.expected.controller,head:{sha:f.expected.source,ref:f.expected.controllerBranch,repo},base:{ref:'alpha',repo}};
+ return f;
+}
+test('same-repository PR distinguishes actual API head source from merge workflow controller',()=>{
+ const f=prFixture(),checked=validateNativeBuildMetadata(f.metadata,f.expected,f.now);
+ assert.equal(checked.expected.candidate,f.expected.source);assert.equal(checked.expected.controller,f.expected.controller);
+ assert.equal(checked.expected.controllerRef,'refs/pull/230/merge');assert.notEqual(f.metadata.run.head_sha,f.expected.controller);
+});
+for(const [name,mutate]of [
+ ['foreign head repo',f=>f.metadata.pullRequest.head.repo={id:1,full_name:'other/repo'}],
+ ['foreign base repo',f=>f.metadata.pullRequest.base.repo={id:1,full_name:'other/repo'}],
+ ['changed head',f=>f.metadata.pullRequest.head.sha='f'.repeat(40)],['changed merge',f=>f.metadata.pullRequest.merge_commit_sha='f'.repeat(40)],
+ ['wrong base',f=>f.metadata.pullRequest.base.ref='main'],['wrong PR',f=>f.metadata.pullRequest.number=231],
+ ['wrong head ref',f=>f.metadata.pullRequest.head.ref='other'],['missing run association',f=>f.metadata.run.pull_requests=[]],
+ ['foreign job head',f=>f.metadata.jobs[0].head_sha=f.expected.controller],['foreign artifact head',f=>f.metadata.artifacts[0].workflow_run.head_sha=f.expected.controller],
+ ['missing merge ref',f=>delete f.expected.controllerRef],['wrong merge ref',f=>f.expected.controllerRef='refs/pull/231/merge'],
+])test('PR native verification refuses '+name,()=>{const f=prFixture();mutate(f);assert.throws(()=>validateNativeBuildMetadata(f.metadata,f.expected,f.now));});

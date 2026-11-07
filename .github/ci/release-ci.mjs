@@ -6,6 +6,7 @@ import {pathToFileURL,fileURLToPath} from 'node:url';
 import {isDeepStrictEqual} from 'node:util';
 import {BUILD_ARTIFACT,inspectCiBuildPacket,bindCiBuildSource} from './build-artifact.mjs';
 import {NEXT_APPLICATION_STATE,NEXT_APPLICATION_MEMBERS,inspectNextStatePacket} from './next-application-cache-protocol.mjs';
+import {bindPlanWitnessIdentity} from './manifest.mjs';
 import {assertNativeBuildMatches} from './singleton-protocol.mjs';
 import {randomUUID} from 'node:crypto';
 import {createPlan,hash} from './plan.mjs';
@@ -61,11 +62,10 @@ export async function verifyCi({candidatePath,runId,baseline}){
  const json=(name,file)=>JSON.parse(readFileSync(join(dir,name,file),'utf8'));
  const plan=json('gate-plan','ci-plan.json'),receipt=json('gate-evidence','ci-receipt.json');
  const reports=local.units.map(({id})=>json(`unit-${id}`,`unit-${id}.json`));
- const {fingerprint:unused,...body}={...local,controller,migrationBase:baseline,runtime:plan.runtime};
- const expectedPlan={...body,fingerprint:hash(body)};
+ const expectedPlan=bindPlanWitnessIdentity(local,{controller,baseline},plan.runtime);
  const verified=validateProof({plan,reports,receipt,expectedPlan,p});
  const build=await sourceBoundBuild({candidatePath,dir,p,jobs});
- assertNativeBuildMatches(local,reports,build,artifacts.find(a=>a.name===BUILD_ARTIFACT),jobs.find(j=>j.name==='build').id);
+ assertNativeBuildMatches(expectedPlan,reports,build,artifacts.find(a=>a.name===BUILD_ARTIFACT),jobs.find(j=>j.name==='build').id);
  if(cleanHead(controllerRoot)!==controller||cleanHead(candidatePath)!==candidate)throw Error('Source changed during CI verification');
  const alpha=api('git/ref/heads/alpha');if(![baseline,candidate].includes(alpha.object?.sha))throw Error('Alpha no longer matches the deployed staging baseline');
  const result={...verified,build,candidatePath,controllerBranch:run.head_branch,verifiedAt:new Date().toISOString(),url:run.html_url,evidenceDirectory:dir,artifacts:artifacts.map(a=>({id:a.id,name:a.name,digest:a.digest}))};
@@ -81,6 +81,7 @@ export async function revalidateCi(evidence){
  const local=createPlan(evidence.candidatePath);
  if(cleanHead(controllerRoot)!==evidence.controller||cleanHead(evidence.candidatePath)!==evidence.sha)throw Error('Source changed after CI verification');
  const p={controller:evidence.controller,candidate:evidence.sha,runId:evidence.runId,baseline:evidence.baseline,controllerBranch:evidence.controllerBranch};
+ const expectedPlan=bindPlanWitnessIdentity(local,p);
  validateRun(api(`actions/runs/${p.runId}`),p);
  const jobs=pages(`actions/runs/${p.runId}/jobs?filter=all`,'jobs');validateJobs(jobs,local);
  const artifacts=pages(`actions/runs/${p.runId}/artifacts`,'artifacts');validateArtifacts(artifacts,p,local);
@@ -88,7 +89,7 @@ export async function revalidateCi(evidence){
  if(identity(artifacts)!==identity(evidence.artifacts)||![p.baseline,p.candidate].includes(api('git/ref/heads/alpha').object?.sha))throw Error('CI evidence or alpha moved after verification');
  const build=await sourceBoundBuild({candidatePath:evidence.candidatePath,dir:evidence.evidenceDirectory,p,jobs});
  const reports=local.units.map(u=>JSON.parse(readFileSync(join(evidence.evidenceDirectory,'unit-'+u.id,'unit-'+u.id+'.json'),'utf8')));
- assertNativeBuildMatches(local,reports,build,artifacts.find(a=>a.name===BUILD_ARTIFACT),jobs.find(j=>j.name==='build').id);
+ assertNativeBuildMatches(expectedPlan,reports,build,artifacts.find(a=>a.name===BUILD_ARTIFACT),jobs.find(j=>j.name==='build').id);
  if(!isDeepStrictEqual(build,evidence.build)||cleanHead(controllerRoot)!==p.controller||cleanHead(evidence.candidatePath)!==p.candidate)throw Error('Validated build bytes or canonical source changed');
  return true;
 }

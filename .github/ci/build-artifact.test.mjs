@@ -101,3 +101,15 @@ test('native development packet consumer never widens release branch admission',
    assert.throws(()=>inspectCiNativeBuildPacket(f.directory,{...expected,controllerBranch:branch}));
  }finally{f.close();}
 });
+
+test('PR packets have a distinct native-only merge-ref scope; release packets remain main/alpha only',()=>{
+ const f=fixture();try{
+  const ref='refs/pull/230/merge',expected={...f.expected,controllerBranch:'feature/native-runtime',controllerRef:ref};
+  const p={...f.provenance,workflowRef:'StradaverseHub/ai-hr/.github/workflows/alpha-staging.yml@'+ref,producerEvent:'pull_request',producerRef:ref};
+  writeFileSync(join(f.directory,'build-provenance.json'),JSON.stringify(p));
+  assert.throws(()=>inspectCiBuildPacket(f.directory,expected));
+  assert.equal(inspectCiNativeBuildPacket(f.directory,expected).kind,'VERIFIED_NATIVE_NEXT_PACKET_NOT_RELEASE');
+  for(const change of [{controllerRef:'refs/pull/231/merge'},{controllerRef:'refs/heads/main'},{controller: 'f'.repeat(40)},{candidate:'f'.repeat(40)}])
+   assert.throws(()=>inspectCiNativeBuildPacket(f.directory,{...expected,...change}));
+ }finally{f.close();}
+});

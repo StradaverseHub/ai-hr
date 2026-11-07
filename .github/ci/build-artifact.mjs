@@ -38,6 +38,8 @@ export function inspectCiBuildPacket(directory,expected){return inspectBuildPack
  * Expected fields still come only from authenticated same-run build/job metadata. */
 export function inspectCiNativeBuildPacket(directory,expected){return inspectBuildPacket(directory,expected,'native-verification');}
 function inspectBuildPacket(directory,expected,purpose){
+ const nativePr=purpose==='native-verification'&&/^refs\/pull\/[1-9][0-9]*\/merge$/.test(expected.controllerRef??'');
+ const producerRef=nativePr?expected.controllerRef:'refs/heads/'+expected.controllerBranch;
  directory=resolve(directory);
  requireValue(realpathSync(directory)===directory&&!lstatSync(directory).isSymbolicLink(),'packet path differs');
  requireValue(isDeepStrictEqual(readdirSync(directory).sort(),['build-provenance.json','bytes','successful-build.json','system-testing.json']),'packet inventory differs');
@@ -51,12 +53,13 @@ function inspectBuildPacket(directory,expected,purpose){
  const prepared=JSON.parse(preparedBytes),observation=JSON.parse(evidence['successful-build.json'].data),manifest=JSON.parse(evidence['bytes/build-bundle-files.json'].data);
  requireValue(/^[a-f0-9]{40}$/.test(expected.candidate??'')&&/^[a-f0-9]{40}$/.test(expected.controller??'')
   &&Number.isSafeInteger(expected.runId)&&expected.runId>0
-  &&(['main','alpha'].includes(expected.controllerBranch)||purpose==='native-verification'&&/^codex\/[A-Za-z0-9_-]+(?:\/[A-Za-z0-9_-]+)*$/.test(expected.controllerBranch??'')),'independent expected identity');
+  &&(['main','alpha'].includes(expected.controllerBranch)||purpose==='native-verification'&&(/^codex\/[A-Za-z0-9_-]+(?:\/[A-Za-z0-9_-]+)*$/.test(expected.controllerBranch??'')||nativePr&&typeof expected.controllerBranch==='string'&&/^[A-Za-z0-9][A-Za-z0-9._/-]{0,180}$/.test(expected.controllerBranch)&&!expected.controllerBranch.includes('..')&&!expected.controllerBranch.includes('//'))),'independent expected identity');
  assertBuildCapacityProfile(p?.capacityProfile);assertBuildCapacityProfile(manifest?.capacityProfile);
  requireValue(p?.format===2&&p.kind==='ci-system-testing-build-candidate'&&p.releaseAuthorized===false
   &&p.source===expected.candidate&&p.controller===expected.controller&&p.runId===expected.runId&&p.runAttempt===1
   &&p.repository==='StradaverseHub/ai-hr'&&p.repositoryId===1333414856
-  &&p.workflowRef==='StradaverseHub/ai-hr/.github/workflows/alpha-staging.yml@refs/heads/'+expected.controllerBranch
+  &&p.workflowRef==='StradaverseHub/ai-hr/.github/workflows/alpha-staging.yml@'+producerRef
+  &&(!nativePr||p.producerEvent==='pull_request'&&p.producerRef===producerRef)
   &&isDeepStrictEqual(p.runtime,STAGING_BUILD_RUNTIME)&&UUID.test(p.buildRecordId??'')
   &&typeof p.nextBuildId==='string'&&/^[A-Za-z0-9_-]{1,512}$/.test(p.nextBuildId)
   &&typeof p.buildSourcePath==='string'&&p.buildSourcePath.startsWith('/')&&p.buildSourcePath.length<=4096

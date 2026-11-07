@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import {mkdtempSync,realpathSync,mkdirSync,writeFileSync,rmSync} from 'node:fs';
 import {join,dirname} from 'node:path';
 import {tmpdir} from 'node:os';
+import {bindPlanWitnessIdentity} from './manifest.mjs';
 import {sourceBoundBuild} from './release-ci.mjs';
 import {buildPacketFixture,fixtureHash} from './build-artifact-test-fixture.mjs';
 import {BUILD_ARTIFACT} from './build-artifact.mjs';
@@ -43,4 +44,12 @@ test('independent source binding refuses stale approval-order input before readi
   const candidate=commitAiManifestFixture(source);
   await assert.rejects(sourceBoundBuild({candidatePath:source,dir:'/nonexistent-synthetic-evidence',p:{candidate},jobs:[]}),/AI manifest --check refused: scripts\/ai-agent-source-manifest.mjs/);
  }finally{rmSync(source,{recursive:true,force:true});}
+});
+
+test('operator plan identity binds authenticated controller even without hosted controller environment',()=>{
+ const local={sha:'a'.repeat(40),controller:'local',migrationBase:null,runtime:{node:'22.23.3',platform:'linux',arch:'x64'},suite:['test/example.test.ts'],units:[],fingerprint:'old'};
+ const expected=bindPlanWitnessIdentity(local,{controller:'b'.repeat(40),baseline:'c'.repeat(40)});
+ assert.equal(local.controller,'local');assert.equal(expected.controller,'b'.repeat(40));assert.equal(expected.migrationBase,'c'.repeat(40));
+ assert.deepEqual(expected.suite,local.suite);assert.deepEqual(expected.units,local.units);assert.notEqual(expected.fingerprint,local.fingerprint);
+ assert.throws(()=>bindPlanWitnessIdentity(local,{controller:'local',baseline:'c'.repeat(40)}));
 });

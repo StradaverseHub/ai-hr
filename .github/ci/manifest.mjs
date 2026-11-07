@@ -44,3 +44,11 @@ export function requiredEvidence(expectedPlan){
 
 /** A skipped empty matrix is optional only when its capability has no units. */
 export const optionalSkippedCiJob=(name,plan)=>['runner-diagnostics','commission-summary'].includes(name)||name==='native-test'&&!plan.units.some(nativeNextUnit);
+
+/** A local plan has no controller authority. Bind only independently authenticated
+ * witness identity, retaining the source-derived complete inventory. */
+export function bindPlanWitnessIdentity(local,{controller,baseline},runtime=local.runtime){
+ if(!/^[a-f0-9]{40}$/.test(controller??'')||!/^[a-f0-9]{40}$/.test(baseline??''))throw Error('Authenticated plan witness identity required');
+ const {fingerprint:unused,...body}={...local,controller,migrationBase:baseline,runtime};
+ return {...body,fingerprint:hash(body)};
+}

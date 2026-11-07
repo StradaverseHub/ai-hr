@@ -14,6 +14,7 @@ import {validatePdfSetupProof} from './pdf-tools.mjs';
 import {assertNoSingletonHints,nativeNextUnit} from './singleton-protocol.mjs';
 import {actualSingletonHost,provisionSingletonHost,writeSingletonBinding} from './singleton-profiles.mjs';
 
+import {candidateEnvironment} from './candidate-environment.mjs';
 import {provisionNativeNextBuild} from './native-next-build-packet.mjs';
 
 // Frozen full-CI handshake v1. Diagnostic setup receipt only; never installation/release authority.
@@ -61,7 +62,7 @@ export function fullCiRoleBinding({plan,unit,offset,batchSize,files,env,resetSta
 }
 export function fullCiRoleMigrationEnvironment(env,binding,evidence){
  assertNoFullCiRoleHints(env);assert.equal(binding.mode,fullRoleMode);
- return {...env,...FULL_CI_ROLE_URLS,AIHR_CI_DISPOSABLE_ROLE_MODE:fullRoleMode,AIHR_CI_ROLE_UNIT:binding.unit,AIHR_CI_ROLE_BATCH_OFFSET:String(binding.offset),AIHR_CI_ROLE_EVIDENCE_DIR:evidence,AIHR_CI_ROLE_PLAN_FINGERPRINT:binding.planFingerprint};
+ return {...candidateEnvironment(env),...FULL_CI_ROLE_URLS,AIHR_CI_DISPOSABLE_ROLE_MODE:fullRoleMode,AIHR_CI_ROLE_UNIT:binding.unit,AIHR_CI_ROLE_BATCH_OFFSET:String(binding.offset),AIHR_CI_ROLE_EVIDENCE_DIR:evidence,AIHR_CI_ROLE_PLAN_FINGERPRINT:binding.planFingerprint};
 }
 export function validateFullCiRoleReceipt(receipt,binding,sourceHashes){
  exactKeys(receipt,[...Object.keys(binding),'schemaVersion','kind','phase','scope',...Object.keys(fullRoleSources),'fixture']);
@@ -165,7 +166,7 @@ try {
       const reset = spawnSync('bash', [postgres, 'reset'], {stdio: 'inherit', env: {...process.env, AIHR_CI_UNIT: id}});
       if (reset.status !== 0) throw Error('Owned CI PostgreSQL reset failed');
       const roleContext=roleProfile===fullRoleMode?actualFullCiRoleContext(plan,unit,offset,batchSize,files,dir,reset.status):null;
-      const migrate = roleContext?spawnSync('pnpm', ['db:migrate'], {stdio: 'inherit',env:roleContext.env}):spawnSync('pnpm', ['db:migrate'], {stdio: 'inherit'});
+      const migrate = roleContext?spawnSync('pnpm', ['db:migrate'], {stdio: 'inherit',env:roleContext.env}):spawnSync('pnpm', ['db:migrate'], {stdio: 'inherit',env:candidateEnvironment(process.env)});
       if(migrate.status !== 0)throw Error('CI migration failed');
       if(roleContext)rolePrerequisites=readFullCiRoleReceipt(dir,roleContext.binding,roleContext.sourceHashes,process.env.RUNNER_TEMP);
     }
@@ -180,7 +181,7 @@ try {
     }
     args.push(...files, '--reporter=default', '--reporter=json', '--outputFile.json=' + path);
     const workers=unit.singleton?.workers??plan.execution.workers;
-    const env = {...process.env, VITEST_MAX_WORKERS: String(workers), VITEST_MAX_WORKERS_NODB: String(workers), AIHR_CI_UNIT:unit.kind==='db'?id:'', AIHR_BROWSER_ENGINE: unit.engine ?? '', AIHR_TEST_DURATION_ORDER: unit.kind==='db'?'true':'false'};
+    const env = {...candidateEnvironment(process.env), VITEST_MAX_WORKERS: String(workers), VITEST_MAX_WORKERS_NODB: String(workers), AIHR_CI_UNIT:unit.kind==='db'?id:'', AIHR_BROWSER_ENGINE: unit.engine ?? '', AIHR_TEST_DURATION_ORDER: unit.kind==='db'?'true':'false'};
     if (unit.kind !== 'db') for (const key of ['DATABASE_URL', 'MIGRATION_DATABASE_URL', 'TEST_DATABASE_URL', 'TEST_MIGRATION_DATABASE_URL']) env[key] = closed;
     let singleton=null;
     if(unit.singleton){
