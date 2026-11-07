@@ -104,7 +104,7 @@ on:
         default: ""
         type: string
       compiler_probe:
-        description: Whole compiler diagnostic; exact 05bde1 source selects bounded attribution, other sources retain cold/warm error-refusal controls
+        description: Whole compiler diagnostic; exact 38b047 source selects bounded attribution, other sources retain cold/warm error-refusal controls
         required: false
         default: false
         type: boolean
@@ -155,10 +155,10 @@ jobs:
         if: ${{ inputs.compiler_probe }}
         run: node --test .github/ci/diagnostics/compiler-incremental.test.mjs
       - name: Whole compiler attribution controller checks
-        if: ${{ inputs.compiler_probe && inputs.expected_sha == '05bde1cbb023f8d523a18774e92efe9fc2e295bc' }}
+        if: ${{ inputs.compiler_probe && inputs.expected_sha == '38b047c9f465990e3f26295c035ab9f69b3001d7' }}
         run: node --test .github/ci/diagnostics/compiler-attribution.test.mjs
       - name: Admit compiler-only attribution scope
-        if: ${{ inputs.compiler_probe && inputs.expected_sha == '05bde1cbb023f8d523a18774e92efe9fc2e295bc' }}
+        if: ${{ inputs.compiler_probe && inputs.expected_sha == '38b047c9f465990e3f26295c035ab9f69b3001d7' }}
         run: node .github/ci/diagnostics/compiler-attribution.mjs --selection
         env:
           AIHR_COMPILER_ATTRIBUTION_INPUTS: ${{ toJSON(inputs) }}
@@ -345,7 +345,7 @@ jobs:
           retention-days: 14
 
   compiler-attribution:
-    if: ${{ inputs.compiler_probe && inputs.expected_sha == '05bde1cbb023f8d523a18774e92efe9fc2e295bc' }}
+    if: ${{ inputs.compiler_probe && inputs.expected_sha == '38b047c9f465990e3f26295c035ab9f69b3001d7' }}
     needs: resolve
     runs-on: ubuntu-24.04
     timeout-minutes: 20
@@ -371,7 +371,7 @@ jobs:
           retention-days: 14
 
   compiler-incremental:
-    if: ${{ inputs.compiler_probe && inputs.expected_sha != '05bde1cbb023f8d523a18774e92efe9fc2e295bc' }}
+    if: ${{ inputs.compiler_probe && inputs.expected_sha != '38b047c9f465990e3f26295c035ab9f69b3001d7' }}
     needs: resolve
     runs-on: ubuntu-24.04
     timeout-minutes: 20

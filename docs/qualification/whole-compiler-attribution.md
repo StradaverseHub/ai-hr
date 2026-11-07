@@ -1,129 +1,86 @@
-# Attribute the complete compiler without increasing resources
+# Attribute the exact remaining complete compiler without increasing resources
 
-This default-off development diagnostic targets only source
-`05bde1cbb023f8d523a18774e92efe9fc2e295bc` on the frozen existing branch
-`codex/compiler-scoped-profile-agent-ci-20261108`. Its ordinary focused run42394530825
-passed all four selected translator/i18n checks; the complete compiler failed with
-actual V8 heap exhaustion at the unchanged12GiB ceiling,13:22.67 elapsed and
-12,875,036KiB maximum RSS. No TypeScript diagnostic was emitted. All planned chunks
-are terminal. Preserve the four passes and exact original failure; this diagnostic
-neither repairs source nor reruns application tests.
+Source-only controller child of preserved
+`af584365c54165b1bddd88316d766a9d5f55bd67`. This default-off development diagnostic
+now targets only source38b047c9f465990e3f26295c035ab9f69b3001d7 on existing branch
+`codex/compiler-proven-message-boundaries-20261108`. Fresh main/alpha refs both
+remainb7c0393aa3c7606a33dd15103426e5c535324065. This controller base is deliberately
+the reviewed earlier attribution protocol, not an application integration branch.
+Neither source38 nor previous controllers/evidence is edited or rebased.
 
-The earlier combined fe26 source `fe26d003b9750478e4d434cc9dd22b59092ae830`
-retains run42390723421:35 selected passes, one real scheduling failure and complete
-compiler OOM at591.14s/12,873,312KiB. Its subsequent actual inventory contained11268
-files. That is historical fe26 evidence, not an assumed inventory or result for05.
-The new hosted run must produce05's actual inventory and fresh trace before any
-remaining type boundary is changed.
+Normal hosted run42399953418 is terminal: all three affected Rewards/i18n selectors
+passed; the complete strict12GiB compiler still failed with real V8 heap exhaustion,
+SIGABRT,13:08.11 elapsed and12,880,016KiB maximum RSS. Preserve that actual failure
+and those successes. Source38's measured87-path Rewards board projection does not
+establish that this boundary caused the remaining aggregate OOM. No application
+repair or successful whole compiler is claimed by this controller request.
 
-The previous exact-source attribution42387121951 againsted188 remains historical
-failure evidence. It identified costly whole-catalogue translation inference;
-repairac53 narrowed the two measured test boundaries without changing locale
-coverage, compiler roots or resources. Run42388908785 then passed the ordinary
-compiler at12,841,532KiB RSS. The larger combined source still exhausts the heap,
-so that isolated pass does not establish robust combined compiler qualification.
-Measure remaining file durations and retained graph growth before changing more
-type boundaries. No exclusions, casts to erase checking, heap increase or cached
-PASS are proposed here.
+## Same protocol, exact source pin
 
-The isolated controller reuses `alpha-staging-diagnostics.yml`'s existing
-`compiler_probe=true` selector: only the exact 05 expected SHA chooses this
-attribution path. Every other source retains the existing cold/warm incremental
-diagnostic and error-refusal controls. No input is added to the existing25-input
-workflow. The resolver still requires the existing frozen source branch and
-exact expected SHA. Set `nodb_probe=false`, `layout_probe=false` and
-`instrument_copies=false`; leave
-every other probe false, every transport origin empty and build-cache phase
-disabled. Resolution refuses other enabled probes before any dependent job.
-No database, application suite, build, paid runner or installation runs.
+Only source pins, the existing boundary-test source-ref fixture, workflow description
+and request documentation/manifest change. The compiler arguments, runner/resources,
+full source/config/lock inventory, monitoring and failure admission remain unchanged.
+`compiler_probe=true` selects attribution only for this exact38 expected SHA. All
+other sources retain the existing incremental cold/warm diagnostic/error-refusal
+path. Existing25 workflow inputs are unchanged; no extra selector or bypass.
 
-The job installs all existing web/tooling/mobile dependencies, generates real
-Next route types, then checks the complete original project at Node22.23.3,
-TypeScript5.9.3 and12GiB heap on the standard4CPU/~16GiB runner. A separate
-full input inventory precedes `tsc --noEmit --pretty false --extendedDiagnostics
---generateTrace`; both use fresh owned graph paths, without altered config,
-excluded files, cached PASS or source changes. The inventory count must match
-any successfully completed semantic check.
+Use the adjacent compiler38-attribution-request-20261108.json inputs exactly:
+only compiler_probe true, every other boolean false, next_build_cache_phase disabled,
+installer_fixture_phase full, all nine transport/compiler/cache origin strings empty.
+Only resolve and compiler-attribution may execute. Resolve first runs the existing
+controller guards; source branch resolution must match the frozen38 SHA. Root
+must bind/review the final immutable controller SHA/ref before any upload/dispatch.
+A caller-supplied or stale controller label is not proof of which code executes.
 
-Only the fixed owned `diagnostic-compiler-attribution/` directory is uploaded.
-It contains input inventory, actual compiler log, trace, one-second process RSS
-and current source observations, and a source/controller/hash-bound report.
-No environment or credentials are serialized; core dumps are disabled. Source
-paths and public TypeScript type displays may appear in the compiler trace.
-Preflight requires20GiB free; regular files have512MiB hard limits, combined
-observed output1GiB/log16MiB and remaining free space2GiB limits stop the owned
-process. Inventory/semantic budgets are120/720seconds plus10seconds termination
-grace inside the20minute job. Sampling can overshoot observed byte limits;
-per-file limits remain enforced by Linux. Owned compiler state is removed.
+The existing hosted job installs normal web/tooling/mobile dependencies and generates
+real Next route types. It runs original TypeScript5.9.3/Node22.23.3 with12GiB heap
+on the standard4CPU/~16GiB ubuntu-24.04 runner. A complete --listFilesOnly inventory
+precedes the fresh --noEmit --pretty false --extendedDiagnostics --generateTrace
+invocation, using owned graph paths and no cached PASS. The final semantic file
+count must match the actual inventory if the compiler completes successfully.
+No tsconfig, compiler/root exclusion, cast/type erasure, lockfile, dependency,
+application, database, build or installation change is part of this request.
 
-TypeScript writes trace events synchronously. A crash can leave an incomplete
-JSON array, which remains raw failure evidence; the helper also retains bounded
-tail observations. Attribute completed file durations, the final unmatched
-checkSourceFile begin and memory growth before choosing a repair. Trace
-instrumentation itself adds overhead, so it does not establish original-run
-timing or peak usage. RSS samples are not an exact final process peak.
+Preflight remains20GiB free, per-file hard cap512MiB, observed combined output1GiB,
+log16MiB, remaining-free floor2GiB. Inventory/trace budgets remain120/720seconds
+plus10seconds termination grace inside the20minute job. Sampling remains1second;
+core dumps remain disabled. The ordinary38 run exceeded720seconds: a trace timeout
+is therefore a possible honest bounded diagnostic failure, never a reason to raise
+its budget or call the complete compiler passed. Any signal, V8 OOM, diagnostic,
+monitor/output/resource cutoff remains a failed run. Source/controller cleanliness
+and state cleanup stay mandatory. Only the owned diagnostic-compiler-attribution
+artifact is uploaded, with actual report/log/inventory/trace/RSS samples and
+releaseAuthorized:false, never a gate receipt. Paths/type displays may appear;
+no environment/credentials are intentionally serialized.
 
-A V8 crash, signal, output limit, timeout or source diagnostic remains failure.
-The report always sets `releaseAuthorized:false`; it supplies no gate receipt.
-After an identified repair, rerun the ordinary complete compiler at unchanged
-coverage/resources. Browser/load and staging qualification remain independent;
-production remains held.
+## Retained attribution and next diagnosis
 
+Actual fe26 run42392198414 and05 run42396515501 both enumerated11268 files with
+inventory SHA25664150993b2990e6b4b405a1211037cca665887fb5068f97bebfb3e1e54a5dbbd,
+matching compiler/config/lock/runtime/budgets. Their original trace/report/sample
+hashes are recorded in source38's compiler-proven-message-boundary evidence. Both
+are real OOM failures, not successful compilation or assumed38 inventory.
+Earlier ordinary05 OOM42394530825 and all selected test successes remain separate.
 
-## Frozen dispatch selection
+Offline inspection of05's actual incomplete trace confirms its34.3035s Rewards
+createTranslator constructor and2143 recursive structural depth events. Source38
+addresses that measured constructor only. Large completed UI-hook/expression
+intervals are not independent proof of full-catalogue inference; the installed
+use-intl hooks have no repository AppConfig.Messages augmentation. No unproven
+UI hook, broad dynamic key, Drizzle relation or money/permission owner is changed
+on that assumption. Type IDs cannot be reconstructed from an aborted missing
+complete types.json. Nested trace timings overlap and include GC; sampled RSS is
+not exact retained-per-type heap attribution or ordinary-run timing.
 
-Controller child: `codex/compiler-scoped-attribution-ci-20261108`, based on reviewed
-`ea3aad7e84d27868b400cd7c5ef02a5259b5ad34` (which includes2b9). Only source pins,
-their boundary-test fixture and this request change. The controller SHA must be
-frozen/reviewed separately and used as the exact workflow ref before upload/dispatch.
-The application source remains05 exactly; no application/config/lock/compiler edits.
-Source tsconfig SHA256 `0ee72fb11a698bad9b18c39223569adf5758727272b35bfa99ec7bfa57c3530a`;
-lock SHA256 `0413a070eca23d390fabdcd78cb63b2dcf4b0b69fe90408c7b57a4f672d21dbd`.
-Live refs checked before preparation: main/alpha both
-`b7c0393aa3c7606a33dd15103426e5c535324065`; the remote source branch points to05
-and the previous attribution controller branch still points toea3. Neither is
-silently rebased to new main/alpha.
+The new hosted trace must establish38's actual full inventory and compare completed
+source/expression/structural work and graph/RSS growth against these preserved
+baselines. An unmatched final checkSourceFile begin is an observation, not proof
+of causality. Only after actual measurement should a separate owned source child
+repair a proven inference/graph boundary with strict types, behavior/locale tests,
+unchanged roots/resources and the ordinary complete compiler rerun.
 
-Use `alpha-staging-diagnostics.yml` with these25 exact inputs (the only true probe
-is compiler_probe; normal-cleanup is not selected and all transport/cache origins
-are empty). Only resolve and compiler-attribution may execute:
-
-```json
-{
-  "candidate_ref": "codex/compiler-scoped-profile-agent-ci-20261108",
-  "expected_sha": "05bde1cbb023f8d523a18774e92efe9fc2e295bc",
-  "filesystem_activation_probe": false,
-  "installer_fixture_phase": "full",
-  "plan_probe": false,
-  "build_transport_probe": false,
-  "transport_origin_run": "",
-  "transport_origin_sha": "",
-  "transport_origin_artifact": "",
-  "transport_origin_digest": "",
-  "compiler_transport_probe": false,
-  "next_build_cache_phase": "disabled",
-  "next_build_cache_origin": "",
-  "managed_compiler_probe": false,
-  "managed_compiler_force_invalid": false,
-  "compiler_compatible_probe": false,
-  "compiler_origin_run": "",
-  "compiler_origin_sha": "",
-  "compiler_origin_artifact": "",
-  "compiler_origin_digest": "",
-  "compiler_probe": true,
-  "statutory_probe": false,
-  "nodb_probe": false,
-  "instrument_copies": false,
-  "layout_probe": false
-}
-```
-
-The ordinary05 failure took13:22.67, longer than the retained720s trace budget.
-A trace cutoff therefore remains an honest bounded diagnostic failure; its budget
-is not increased to force completion. Compare completed check/instantiation events,
-aggregate type graph and RSS growth against fe26's raw evidence before proposing a
-repair. A final unmatched file begin is an observation, not independent causality.
-Nothing in this controller-only checkpoint claims remaining hotspots are known or
-that compilation/loading has improved. No local compiler/app/runtime check,
-upload or dispatch is part of preparing this frozen request. Root review/dispatch
-and later ordinary complete compiler qualification remain required.
+No local app/test/compiler/build/runtime execution, source upload or hosted dispatch
+ran while preparing this controller. Static JS syntax and exact source-diff/hash
+inspection only. Root and independent review precede hosted attribution; all
+planned chunks must finish before any failure repair. This diagnostic does not
+accept architecture/browser/worker/load/staging release; production stays held.
