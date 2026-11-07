@@ -50,13 +50,19 @@ export function employeeChoiceBenchmarkLifetime(cancel:()=>Promise<void>,record:
   if(finishing)return finishing;
   // Register the completion promise BEFORE invoking cleanup or awaiting work.
   finishing=Promise.resolve().then(async()=>{
-   let failure:unknown;try{await drain();}catch(error){failure=error;}failure??=recordFailure;
+   let failure:unknown;const observedFailures=new Set<unknown>();
+   const remember=(error:unknown,message:string)=>{
+    if(observedFailures.has(error))return;observedFailures.add(error);
+    failure=failure===undefined?error:new AggregateError([failure,error],message);
+   };
+   try{await drain();}catch(error){remember(error,'Benchmark drain failed');}failure??=recordFailure;
+   if(failure!==undefined)observedFailures.add(failure);
    // New work was closed synchronously by finishing. Keep the840s cancellation
    // active while an owned phase drains; reserve time belongs only to cleanup.
    cancelWorkTimer?.();cancelWorkTimer=undefined;
-   try{await cleanup();}catch(error){uncertain=true;failure=failure===undefined?error:new AggregateError([failure,error],'Benchmark drain and cleanup both failed');}
+   try{await cleanup();}catch(error){uncertain=true;remember(error,'Benchmark drain and cleanup both failed');}
    // The900s guard can start cancellation DURING cleanup. Own that settlement too.
-   try{await cancelling;}catch(error){failure=failure===undefined?error:new AggregateError([failure,error],'Benchmark cleanup and deadline cancellation both failed');}
+   try{await cancelling;}catch(error){remember(error,'Benchmark cleanup and deadline cancellation both failed');}
    finished=true;cancelWorkTimer?.();cancelTotalTimer?.();
    if(elapsed()>employeeChoiceBenchmarkBounds.totalMs){uncertain=true;failure??=Error('Benchmark cleanup exceeded the fixed900-second envelope');}
    emit(uncertain?'cleanup-uncertain':'file-finished');failure??=recordFailure;if(failure)throw failure;

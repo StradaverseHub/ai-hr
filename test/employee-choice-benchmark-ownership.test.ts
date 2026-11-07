@@ -43,6 +43,15 @@ it('still cancels and drains when progress persistence itself refuses instead of
  expect(()=>time.advance(840000)).not.toThrow();await expect(life.finish(async()=>{restore=true;})).rejects.toThrow('progress unavailable');
  expect(cancel).toBe(true);expect(restore).toBe(true);expect(life.snapshot()).toMatchObject({finished:true,uncertain:true});
 });
+it('preserves distinct cancellation and restoration failures without counting the same rejected cancellation twice',async()=>{
+ const time=clock(),socket=Error('owned socket close uncertain'),restore=Error('owned restoration refused');
+ const life=employeeChoiceBenchmarkLifetime(async()=>{throw socket;},()=>{},time);life.start();life.stop('owner-uncertain');
+ const failure=await life.finish(async()=>{throw restore;}).then(()=>null,(error:unknown)=>error);
+ if(!(failure instanceof AggregateError))throw Error('Distinct cancellation and restoration failures required',{cause:failure});
+ expect(failure.message).toBe('Benchmark drain and cleanup both failed');
+ expect(failure.errors).toEqual([socket,restore]);expect(life.snapshot()).toMatchObject({finished:true,uncertain:true,cancellationPending:false});
+ await expect(life.run('blocked-after-uncertain-cleanup',async()=>{})).rejects.toThrow('refused');
+});
 it('uses the valid cleanup reserve after work completes at839seconds while still closing all new admission',async()=>{
  const time=clock(),entered=deferred(),release=deferred(),life=employeeChoiceBenchmarkLifetime(async()=>{},()=>{},time);life.start();
  await life.run('completed-work',async()=>{});time.advance(839000);
