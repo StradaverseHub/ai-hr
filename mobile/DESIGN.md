@@ -6,7 +6,7 @@ Approved direction, 7 November 2026. Employee work and manager approvals have eq
 
 White and near-black reading surfaces, open ruled groups and rectangular controls establish the hierarchy. Manrope provides body, controls and bold display headings. Newsreader provides the editorial section voice. Both fonts are bundled with their SIL Open Font Licenses.
 
-The default light palette uses white, ink #111111, secondary text #555555 and rules #b8b8b8. The default dark palette uses #101010, ivory #f5f3ef, secondary text #bcbab6 and rules #686868. Primary buttons use #d92d20 with white labels. Links and selection use #c62716 in light and #ff7561 in dark. Status always includes text. Errors include an announced explanation and a recovery action.
+The default light palette uses white, ink #111111, secondary text #555555 and rules #8a8a8a. The default dark palette uses #101010, ivory #f5f3ef, secondary text #bcbab6 and rules #686868. Primary buttons use #d92d20 with white labels. Links and selection use #c62716 in light and #ff7561 in dark. Status always includes text. Errors include an announced explanation and a recovery action.
 
 The baseline uses 20–24 point insets, 44–48 point minimum actions, 42–46 point display titles, 27–28 point section titles and 14–18 point reading text. Text scales with system accessibility settings. Titles and forms scroll with content, and authentication forms adjust to the keyboard.
 

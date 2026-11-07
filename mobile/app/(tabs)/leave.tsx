@@ -7,20 +7,19 @@
 import { useCallback } from 'react';
 import { router,useFocusEffect } from 'expo-router';
 import { Pressable,View } from 'react-native';
-import { MotionCarousel } from '../../lib/motion';
 import { DesignText as Text } from '../../lib/design';
 import { useTenantDesign } from '../../lib/design';
 import { useApi } from '../../lib/api';
 import { useJourneyDrafts } from '../../lib/journey-drafts';
 import { LeaveRequestForm } from '../../lib/leave-request-form';
-import { Material,StatusPill,alpha } from '../../lib/visual';
+import { Material,StatusPill } from '../../lib/visual';
 import { cardFigure } from '../../lib/home-cards';
 import { t } from '../../lib/i18n';
 import { useSession } from '../../lib/session';
 import { ListRow,LoadState,Muted,Row,Screen,SectionLabel,Title,fmtDays } from '../../lib/ui';
 const STATUS:Record<string,Parameters<typeof t>[0]>={approved:'approved',pending:'pending',rejected:'rejected',cancelled:'cancelled'};
 export default function Leave(){
-  const {palette,design}=useTenantDesign();const {signOut,employmentId}=useSession();
+  const {palette}=useTenantDesign();const {signOut,employmentId}=useSession();
   const leave=useApi('leave',{employmentId:employmentId??undefined},signOut);
   const options=useApi('leave-options',{employmentId:employmentId??undefined},signOut);
   const requests=useApi('leave-requests',{employmentId:employmentId??undefined},signOut);

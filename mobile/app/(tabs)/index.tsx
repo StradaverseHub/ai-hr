@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { RefreshControl, ScrollView, View } from 'react-native';
 import { ComposedPage } from '../../lib/composed-page';
 import { useTenantDesign } from '../../lib/design';
-import { HomeHero, NeedsYouBanner, QuickActions, Reveal, SectionHeader, useHomeSummary, type QuickAction } from '../../lib/home-hero';
+import { HomeHero, QuickActions, SectionHeader, useHomeSummary, type QuickAction } from '../../lib/home-hero';
 import { homeNeedsView } from '../../lib/inbox';
 /** Default Daily Switch Home; published schema-2 tenant compositions retain their renderer.
  * The shared clock journey prepares and reviews on Home. Counts remain server-authorized.

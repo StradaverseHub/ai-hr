@@ -120,8 +120,6 @@ export function InternalSignIn() {
 }
 const signInStyles = (palette: { bg: string; card: string; text: string; muted: string; border: string; accent: string }) => StyleSheet.create({
   entry: { flexGrow: 1, paddingHorizontal: 24, gap: 20, width: '100%', maxWidth: 520, alignSelf: 'center' },
-  entryHeader: { flexDirection: 'row', alignItems: 'center', gap: 12, justifyContent: 'space-between', flexWrap: 'wrap' },
-  wordmark: { color: palette.text, fontSize: 28, fontWeight: '700', letterSpacing: -.7 },
   workplace: { minHeight: 44, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 16, flexDirection: 'row', gap: 6, alignItems: 'center', maxWidth: '100%' },
   workplaceText: { color: palette.text, fontSize: 13, flexShrink: 1 },
   entryTitle: { color: palette.text, fontSize: 46, fontWeight: '800', letterSpacing: -1.3 },
@@ -130,9 +128,6 @@ const signInStyles = (palette: { bg: string; card: string; text: string; muted: 
   fieldHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' },
   passInput: { minHeight: 48, fontSize: 19, color: palette.text, paddingVertical: 10, paddingHorizontal: 0 },
   recovery: { color: palette.accent, fontSize: 13, fontWeight: '500', textDecorationLine: 'underline' },
-  submitLabel: { flex: 1, color: palette.text, fontSize: 16, fontWeight: '500' },
-  passFooter: { flexDirection: 'row', alignItems: 'center', gap: 16, paddingTop: 4 },
-  enter: { minWidth: 60, minHeight: 60, borderRadius: 30, alignItems: 'center', justifyContent: 'center', boxShadow: 'inset 0px 1px 2px rgba(255,255,255,0.45), 0px 3px 5px rgba(0,0,0,0.18)' },
   wrap: { flexGrow: 1, padding: 24, paddingTop: 32, paddingBottom: 40, gap: 24, width: '100%', maxWidth: 520, alignSelf: 'center' },
   brand: { color: palette.text, fontSize: 20, fontWeight: '700', textAlign: 'center', marginBottom: 16 }, title: { fontSize: 42, fontWeight: '800', letterSpacing: -1, color: palette.text },
   body: { color: palette.muted, fontSize: 15, lineHeight: 23 }, label: { color: palette.text, fontSize: 14, fontWeight: '500', marginTop: 4 }, fields: { gap: 12 }, input: { minHeight: 56, borderBottomWidth: 1, borderColor: palette.border, borderRadius: 0, paddingVertical: 14, paddingHorizontal: 0, color: palette.text, fontSize: 16 },

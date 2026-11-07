@@ -12,7 +12,6 @@ import { useSession } from './session';
 import { UnavailableError } from './errors';
 import { t } from './i18n';
 import { Material, alpha } from './visual';
-import { PressSurface } from './motion';
 
 export const colors = {
   bg: '#ffffff',
