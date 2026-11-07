@@ -15,7 +15,7 @@ import {assertNoSingletonHints,nativeNextUnit,singletonControllerPath} from './s
 import {readProtectedBootstrap} from './native-next-installation.mjs';
 import {actualSingletonHost,provisionSingletonHost,writeSingletonBinding} from './singleton-profiles.mjs';
 
-import {candidateEnvironment} from './candidate-environment.mjs';
+import {candidateEnvironment,nativePreparationEnvironment} from './candidate-environment.mjs';
 import {provisionNativeNextBuild,captureNativeNextInstallation} from './native-next-build-packet.mjs';
 
 // Frozen full-CI handshake v1. Diagnostic setup receipt only; never installation/release authority.
@@ -134,7 +134,7 @@ function actualFullCiRoleContext(plan,unit,offset,batchSize,files,dir,resetStatu
   automation=realpathSync(singletonControllerPath(unit,workspace,env.GITHUB_RUN_ID)),temp=realpathSync(env.RUNNER_TEMP);
  assert.equal(resolve(join(workspace,'source')),source);assert.equal(resolve(dir),realpathSync(dir));
  if(nativeNextUnit(unit)){const bootstrap=readProtectedBootstrap(env);assert.equal(bootstrap.automation,automation);assert.equal(realpathSync('/proc/self/exe'),bootstrap.protectedNodePath);}
- const git=(cwd,...args)=>execFileSync('git',['-c','safe.directory='+cwd,'-c','core.fsmonitor=false','-c','core.hooksPath=/dev/null','-C',cwd,...args],{encoding:'utf8'}).trim();
+ const git=(cwd,...args)=>execFileSync('git',['-c','safe.directory='+cwd,'-c','core.fsmonitor=false','-c','core.hooksPath=/dev/null','-C',cwd,...args],{env:nativePreparationEnvironment(process.env),encoding:'utf8'}).trim();
  const sourceHashes=Object.fromEntries(Object.entries(fullRoleSources).map(([key,file])=>{const path=join(source,file);assert.equal(path,realpathSync(path));return[key,createHash('sha256').update(ownedRegularBytes(path,262144)).digest('hex')];}));
  const event=JSON.parse(ownedRegularBytes(env.GITHUB_EVENT_PATH,1048576).toString('utf8'));
  const layout={platform:process.platform,workspace,source,automation,temp,evidence:realpathSync(dir),cwd:realpathSync(process.cwd()),controllerScript:realpathSync(fileURLToPath(import.meta.url)),sourceHead:git(source,'rev-parse','HEAD'),controllerHead:git(automation,'rev-parse','HEAD'),sourceClean:git(source,'status','--porcelain')==='',controllerClean:git(automation,'status','--porcelain')===''};

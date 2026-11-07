@@ -8,7 +8,8 @@ import {createHash} from 'node:crypto';
 import {singletonProfile,singletonKind,singletonSources,validateSingletonBinding,validateSingletonHost,validateSingletonDatabaseUrls} from '../../.github/ci/singleton-protocol.mjs';
 import {workerDb} from '../db-names';
 import {readProtectedBootstrap} from '../../.github/ci/native-next-installation.mjs';
-const git=(cwd:string,...args:string[])=>execFileSync('git',['-c','safe.directory='+cwd,'-c','core.fsmonitor=false','-c','core.hooksPath=/dev/null','-C',cwd,...args],{encoding:'utf8'}).trim();
+import {nativePreparationEnvironment} from '../../.github/ci/candidate-environment.mjs';
+const git=(cwd:string,...args:string[])=>execFileSync('git',['-c','safe.directory='+cwd,'-c','core.fsmonitor=false','-c','core.hooksPath=/dev/null','-C',cwd,...args],{env:nativePreparationEnvironment(process.env),encoding:'utf8'}).trim();
 function regular(path:string,maximum:number,privateFile=false){
  assert.equal(realpathSync(path),resolve(path));const before=lstatSync(path);assert(before.isFile()&&!before.isSymbolicLink()&&before.size<=maximum&&before.nlink===1);
  if(privateFile){assert.equal(before.uid,process.getuid!());assert.equal(before.mode&0o077,0);}

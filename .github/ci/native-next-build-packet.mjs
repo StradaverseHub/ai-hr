@@ -35,7 +35,7 @@ export function nativeHelperClosure(plan,source){
  const automation=realpathSync(fileURLToPath(new URL('../../',import.meta.url))),helpers={};let total=0;
  for(const [name,path]of Object.entries(NATIVE_HELPER_SOURCES)){
   const bytes=NATIVE_HELPER_BYTES.get(name);assert(Buffer.isBuffer(bytes),'Native helper closure is incomplete');total+=bytes.length;assert(total<=2*1024**2);
-  const from=(directory,sha)=>execFileSync('git',['-c','safe.directory='+directory,'-c','core.fsmonitor=false','-c','core.hooksPath=/dev/null','-C',directory,'show','--end-of-options',sha+':'+path],{timeout:30000,maxBuffer:1024**2});
+  const from=(directory,sha)=>execFileSync('git',['-c','safe.directory='+directory,'-c','core.fsmonitor=false','-c','core.hooksPath=/dev/null','-C',directory,'show','--end-of-options',sha+':'+path],{env:nativePreparationEnvironment(process.env),timeout:30000,maxBuffer:1024**2});
   assert(bytes.equals(from(automation,plan.controller))&&bytes.equals(from(source,plan.sha)),'Native candidate/controller helper bytes differ from their committed identities');
   helpers[name]={sourcePath:path,sha256:createHash('sha256').update(bytes).digest('hex'),
    gitBlobId:createHash('sha1').update(Buffer.from('blob '+bytes.length+'\0')).update(bytes).digest('hex'),base64:bytes.toString('base64')};
@@ -52,7 +52,7 @@ export function captureNativeNextInstallation(env=process.env){
  const workspace=realpathSync(env.GITHUB_WORKSPACE),source=realpathSync(process.cwd());assert.equal(source,join(workspace,'source'));
  const bootstrap=readProtectedBootstrap(env),helpers=nativeHelperClosure(plan,source);
  assert.equal(realpathSync(fileURLToPath(new URL('../../',import.meta.url))),bootstrap.automation);
- const git=(directory,...args)=>execFileSync('git',['-c','safe.directory='+directory,'-c','core.fsmonitor=false','-c','core.hooksPath=/dev/null','-C',directory,...args],{encoding:'utf8',timeout:30000,maxBuffer:1048576}).trim();
+ const git=(directory,...args)=>execFileSync('git',['-c','safe.directory='+directory,'-c','core.fsmonitor=false','-c','core.hooksPath=/dev/null','-C',directory,...args],{env:nativePreparationEnvironment(env),encoding:'utf8',timeout:30000,maxBuffer:1048576}).trim();
  assert.equal(git(source,'rev-parse','HEAD'),plan.sha);assert.equal(git(source,'status','--porcelain'),'');
  const snapshot={source,sha:plan.sha,controller:plan.controller,helpers,...captureInstallation({source,helpers,bootstrap},env)};
  INSTALLATIONS.add(snapshot);return snapshot;
