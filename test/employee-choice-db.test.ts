@@ -6,6 +6,7 @@ import {eq,sql,type SQL} from 'drizzle-orm';
 import {PgDialect} from 'drizzle-orm/pg-core';
 import {afterAll,beforeAll,beforeEach,expect,it,vi} from 'vitest';
 import {readEmployeeChoices} from '../core/employee-choice';
+import {isEmployeeChoicePage} from '../lib/employee-choice';
 import {listEmployees} from '../core/read';
 import {hireEmployee} from '../core/org';
 import {assignment,businessUnit,company,department,employment,person,reportingLine,roleAssignment} from '../db/schema';
@@ -27,7 +28,7 @@ it('preserves native scope, exact JavaScript Unicode search, facets and independ
  }
  const legacy=await listEmployees(ctx,[b.companyId]);expect(legacy).toHaveLength(names.length);
  const first=await readEmployeeChoices(ctx,{companyIds:[b.companyId],limit:25,selectedId:ids.at(-1)});
- expect(first.total).toBe(names.length);expect(first.rows.map(row=>row.employmentId)).toEqual(legacy.slice(0,25).map(row=>row.employmentId));
+ expect(isEmployeeChoicePage(JSON.parse(JSON.stringify(first)))).toBe(true);expect(first.total).toBe(names.length);expect(first.rows.map(row=>row.employmentId)).toEqual(legacy.slice(0,25).map(row=>row.employmentId));
  expect(first.selected?.employmentId).toBe(ids.at(-1));expect(first.rows).toHaveLength(25);
  expect(first.allDepartmentOptions.map(row=>row.id).sort()).toEqual([b.deptA,b.deptB].sort());
  const page=await readEmployeeChoices(ctx,{companyIds:[b.companyId],limit:25,offset:25});
@@ -124,7 +125,7 @@ it('pages the real 50k population without retaining whole employee DTOs or losin
  start=performance.now();const found=await readEmployeeChoices(ctx,{companyIds:[b.companyId],query:'PERF000050000'});timings.searchMs=performance.now()-start;
  expect(found.total).toBe(1);expect(found.rows.map(row=>row.employmentId)).toEqual(expectedLast.slice(-1));
  start=performance.now();const filtered=await readEmployeeChoices(ctx,{companyIds:[b.companyId],departmentId:b.deptA,status:'active',selectedId:expectedLast.at(-1)});timings.organisationFilteredMs=performance.now()-start;
- expect(filtered.total).toBe(40000);expect(filtered.rows.map(row=>row.employmentId)).toEqual(organisationTagSample.filter((_,index)=>(index+1)%5!==0).slice(0,25));expect(filtered.selected?.employmentId).toBe(expectedLast.at(-1));
+ expect(isEmployeeChoicePage(JSON.parse(JSON.stringify(filtered)))).toBe(true);expect(filtered.total).toBe(40000);expect(filtered.rows.map(row=>row.employmentId)).toEqual(organisationTagSample.filter((_,index)=>(index+1)%5!==0).slice(0,25));expect(filtered.selected?.employmentId).toBe(expectedLast.at(-1));
  report.timings=timings;report.maxPageRows=Math.max(first.rows.length,deep.rows.length,found.rows.length,filtered.rows.length);report.exactNativeIdsAndCounts=true;save();
  }finally{spy.mockRestore();save();}
 },300000);

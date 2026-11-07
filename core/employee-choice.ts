@@ -79,20 +79,15 @@ export async function readEmployeeChoices(ctx:SessionContext,p:EmployeeChoiceInp
    const unicode=sql`(${nonAscii(sql`${person.fullName}`)} or ${nonAscii(sql`coalesce(${employment.employeeCode},'')`)})`;
    const candidate=q.includes('\0')?sql`false`:/^[\x00-\x7f]*$/.test(q)?sql`(${unicode} or lower(${person.fullName} collate "C") like ${pattern(q)} escape '\\'
      or lower(coalesce(${employment.employeeCode},'') collate "C") like ${pattern(q)} escape '\\')`:unicode;
-   if(organisationFilter){
-    const matches=await exactEmployeeChoiceMatches<EmployeeChoice>(tx,sql`${base} where ${where} and ${candidate}
-     order by ${person.fullName},${employment.id},${assignment.id}`,q,offset,limit,signal);
-    rows=matches.rows;total=matches.total;
-   }else{
-    // Exact name/code matching needs no assignment or label fields. Under the
-    // native no-overlap constraint, count every authorized identity, retain only
-    // this page's identities, then project their native assignment/label fields.
-    const matches=await exactEmployeeChoiceMatches<ChoiceIdentity>(tx,sql`select ${employment.id} as "employmentId",${person.fullName} as name,${employment.employeeCode} as "employeeCode"
-     ${employeeIdentityFrom(ctx.tenantId)} where ${where} and ${candidate} order by ${person.fullName},${employment.id}`,q,offset,limit,signal);
-    total=matches.total;
-    if(matches.rows.length)rows=await tx.execute<EmployeeChoice>(sql`${base} where ${scoped} and ${employment.id}=any(${'{'+matches.rows.map(row=>row.employmentId).join(',')+'}'}::uuid[])
-     order by ${person.fullName},${employment.id},${assignment.id}`);
-   }
+   // The cursor owns minimal identity facts for both paths. Organisation filters
+   // retain native joined membership; only matching page identities get full
+   // assignment/label projection afterwards in the same read-only snapshot.
+   const matches=await exactEmployeeChoiceMatches(tx,sql`select ${employment.id} as "employmentId",${person.fullName} as name,${employment.employeeCode} as "employeeCode"
+    ${organisationFilter?from:employeeIdentityFrom(ctx.tenantId)} where ${where} and ${candidate}
+    order by ${person.fullName},${employment.id}${organisationFilter?sql`,${assignment.id}`:sql``}`,q,offset,limit,signal);
+   total=matches.total;
+   if(matches.rows.length)rows=await tx.execute<EmployeeChoice>(sql`${base} where ${scoped} and ${employment.id}=any(${'{'+matches.rows.map(row=>row.employmentId).join(',')+'}'}::uuid[])
+    order by ${person.fullName},${employment.id},${assignment.id}`);
   }
   signal?.throwIfAborted();
   const selected=p.selectedId&&uuid.test(p.selectedId)?(await tx.execute<EmployeeChoice>(sql`${base} where ${scoped} and ${employment.id}=${p.selectedId}::uuid order by ${person.fullName},${employment.id},${assignment.id} limit 1`))[0]??null:null;
@@ -110,11 +105,11 @@ export async function readEmployeeChoices(ctx:SessionContext,p:EmployeeChoiceInp
  },{readOnlySnapshot:true,readSignal:signal});
 }
 type ChoiceIdentity=Pick<EmployeeChoice,'employmentId'|'name'|'employeeCode'>;
-async function exactEmployeeChoiceMatches<T extends ChoiceIdentity&Record<string,unknown>>(tx:Tx,query:SQL,q:string,offset:number,limit:number,signal?:AbortSignal){
- const rows:T[]=[];let total=0;
+async function exactEmployeeChoiceMatches(tx:Tx,query:SQL,q:string,offset:number,limit:number,signal?:AbortSignal){
+ const rows:ChoiceIdentity[]=[];let total=0;
  await tx.execute(sql`declare employee_choices no scroll cursor for ${query}`);
  for(;;){
-  signal?.throwIfAborted();const batch=await tx.execute<T>(sql`fetch forward 512 from employee_choices`);signal?.throwIfAborted();
+  signal?.throwIfAborted();const batch=await tx.execute<ChoiceIdentity>(sql`fetch forward 512 from employee_choices`);signal?.throwIfAborted();
   for(const row of batch)if(row.name.toLowerCase().includes(q)||(row.employeeCode??'').toLowerCase().includes(q)){
    if(total>=offset&&rows.length<limit)rows.push(row);total++;
   }

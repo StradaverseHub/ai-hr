@@ -42,9 +42,9 @@ Blank searches use native count and page limits. Nonempty searches retain exact
 ECMAScript trim/lower/includes matching: ASCII SQL candidates plus all non-ASCII
 name/code candidates are streamed in 512-row cursor batches and checked by the
 canonical JavaScript operation. The page retains only its requested rows and exact
-total; there is no population or match-ID ceiling. With no organisation filter,
-search streams only authorized name/code identities and projects assignment labels
-for the retained page in the same snapshot. The immediate native no-overlap
+total; there is no population or match-ID ceiling. Search streams only authorized name/code identities and projects assignment labels
+for the retained page in the same snapshot. Organisation-filtered searches retain
+native joined membership while unfiltered searches defer assignment reads. The immediate native no-overlap
 constraint preserves the legacy joined-row cardinality. Distinct organisation options
 remain complete rather than silently clipped. Represented company, department and
 business-unit options use native catalogue existence reads, rather than a DISTINCT
