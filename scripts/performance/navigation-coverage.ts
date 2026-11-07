@@ -73,7 +73,8 @@ export function auditNavigationCoverage({catalogue,ledger,pages,candidateSha,run
    // Neither a review disposition nor any committed claim authenticates executed usable content.
    const resolvedClicks=runtimeRows.filter(resolved=>resolved.declaration.id===row.id&&resolved.state==='actionable').map(resolved=>resolved.navigationHref);
    runtimeExpectations.push({destinationId:row.id,navigationHrefs:resolvedClicks.length?resolvedClicks:[row.navigationHref]});
-   const cases=evidence?.plan.scenarios.filter(scenario=>scenario.destinationId===row.id)??[];
+   // Direct authenticated route content is useful module proof, but cannot prove a native menu click.
+   const cases=evidence?.plan.scenarios.filter(scenario=>scenario.destinationId===row.id&&scenario.entry!=='direct-route-content')??[];
    const expectedHrefs=runtimeExpectations[runtimeExpectations.length-1].navigationHrefs;
    const addressed=cases.every(scenario=>expectedHrefs.includes(scenario.href));
    const roles=['employee','manager','companyHR','groupHR'];
@@ -90,15 +91,18 @@ export function auditNavigationCoverage({catalogue,ledger,pages,candidateSha,run
  for(const item of ledger.backlog)if(!NAVIGATION_COVERAGE_BACKLOG.some(known=>known.id===item.id))errors.push(`stale backlog entry: ${item.id}`);
  // Development qualification is intentionally separate from the release verifier.
  const recordedClaims=ledger.entries.filter(entry=>entry.claims?.length).map(entry=>({destinationId:entry.id,count:entry.claims!.length}));
- const baselineUsable=evidence?.captures.baseline.observations.filter(row=>row.outcome==='usable')??[];
+ const baselineUsable=evidence?.captures.baseline.observations.filter(row=>row.outcome==='usable'&&row.entry!=='direct-route-content')??[];
  return {scope:ledger.scope,structural:{passed:errors.length===0,errors},runtimeAcceptance:{
   scope:'authenticated-development-runtime',releaseAuthorized:false,
   passed:errors.length===0&&!!evidence?.captures.loaded&&runtimeMissing.length===0&&ledger.backlog.length===0,
   verifierUnavailable:!evidence,
   prerequisite:'Only a live-GitHub-authenticated, source-bound development capture with native role and usable-content assertions counts. Full coverage requires baseline and steady 500-user observations for every applicable declared destination and completed registry composition. This cannot authorize a release.',
   verifiedReceiptCount:evidence?1:0,baselineUsableObservations:baselineUsable.length,
-  loadedUsableObservations:evidence?.captures.loaded?.observations.filter(row=>row.outcome==='usable').length??0,
+  loadedUsableObservations:evidence?.captures.loaded?.observations.filter(row=>row.outcome==='usable'&&row.entry!=='direct-route-content').length??0,
   missingExecutedUsableContent:runtimeMissing,incompleteRegistries:ledger.backlog},
+  directModuleContent:{scope:'authenticated-native-route-content-only',releaseAuthorized:false,doesNotProveMenuInteraction:true,
+   baselineObservations:evidence?.captures.baseline.observations.filter(row=>row.entry==='direct-route-content'&&row.outcome==='usable').length??0,
+   loadedObservations:evidence?.captures.loaded?.observations.filter(row=>row.entry==='direct-route-content'&&row.outcome==='usable').length??0},
   recordedClaims:{total:recordedClaims.reduce((sum,entry)=>sum+entry.count,0),destinations:recordedClaims},
   runtimeExpectations:{candidateSha,destinations:runtimeExpectations},
   counts:{declared:catalogue.declarations.length,sourcePages:pages.length},pages};

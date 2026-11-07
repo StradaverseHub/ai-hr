@@ -1,5 +1,6 @@
 /** Closed development capture protocol. Validation alone never authenticates it. */
-export const NAVIGATION_CAPTURE_VERSION='aihr-navigation-development/v1' as const;
+import {navigationScenarioEntry} from './navigation-entry';
+export const NAVIGATION_CAPTURE_VERSION='aihr-navigation-development/v2' as const;
 export const NAVIGATION_CAPTURE_ARTIFACT='system-http-browser-development-evidence';
 export const NAVIGATION_CAPTURE_MEMBER='navigation-browser-capture.json';
 export const NAVIGATION_SCENARIO_FILE='scripts/performance/navigation-scenarios.json';
@@ -7,14 +8,16 @@ export const NAVIGATION_HARNESS_ROOTS=['scripts/performance','lib/navigation','l
 export type NavigationFixtureRole='employee'|'manager'|'companyHR'|'groupHR';
 export type NavigationCheck={id:string;selector:string}&(
  {kind:'enabled';tag:'a'|'button'|'input'|'select'|'textarea'}|
- {kind:'count';minimum:number;maximum?:number}|
- {kind:'text';expected:string}|{kind:'value';expected:string}|
+ {kind:'count'|'fixture-roster-rows';minimum:number;maximum?:number}|
+ {kind:'text'|'text-exact';expected:string}|{kind:'value';expected:string}|
  {kind:'attribute';name:'href'|'aria-current'|'data-testid';expected:string}
 );
-export type NavigationScenario={id:string;destinationId:string;role:NavigationFixtureRole;href:string;originHref:string;
+export type NavigationEntry='canonical-link'|'ai-centre-tab'|'direct-route-content';
+export type NavigationFixtureTextBindings={actorName:string;actorEmployeeCode:string;firstCompanyPersonName:string;activeHeadcount:string;historicalPayrollMonth:string;seedToday:string;seedMonth:string;firstSavedHistoryTitle?:string;rosterScope:Readonly<Record<string,string|null>>};
+export type NavigationScenario={entry?:NavigationEntry;id:string;destinationId:string;role:NavigationFixtureRole;href:string;originHref:string;
  outcome:'usable'|'denied';readiness:'controls'|'populated';steps:{kind:'open-details';selector:string}[];checks:NavigationCheck[]};
 export type NavigationScenarioPlan={schemaVersion:1;fixture:'system-load-v1';engine:'chromium';scope:string;scenarios:NavigationScenario[]};
-export type NavigationObservation={scenarioId:string;destinationId:string;role:NavigationFixtureRole;actorIndex:number;href:string;
+export type NavigationObservation={entry:NavigationEntry;scenarioId:string;destinationId:string;role:NavigationFixtureRole;actorIndex:number;href:string;
  outcome:'usable'|'denied';readiness:'controls'|'populated';status:number;finalPath:string;internalSessionObserved:true;fixtureIdentityObserved:true;
  elapsedMs:number;checks:{id:string;passed:true;observedCount:number}[];failures:{busy:number;unavailable:number;alerts:number;http500:number;pageErrors:number};
  startedWith?:{active:number;inSteadyWindow:boolean};usableWith?:{active:number;inSteadyWindow:boolean}};
@@ -35,7 +38,9 @@ export function fixtureNavigationActor(index:number):{role:NavigationFixtureRole
  const local=index%250,company=Math.floor(local/50),position=local%50;
  return {role:position===0&&company===0?'groupHR':position<2?'companyHR':position<4?'manager':'employee',name:'PERF Person '+String(index).padStart(4,'0')};
 }
-export function navigationExpectedText(expected:string,actorIndex:number):string{
+export function navigationExpectedText(expected:string,actorIndex:number,bindings?:Readonly<NavigationFixtureTextBindings>):string{
+ const nativeKeys=['actorName','actorEmployeeCode','activeHeadcount','historicalPayrollMonth','seedToday','seedMonth','firstSavedHistoryTitle']as const;
+ for(const key of nativeKeys)if(expected==='$fixture.'+key){const value=bindings?.[key];if(typeof value!=='string'||!value)throw Error('Required native fictional fixture content is unseeded');return value;}
  if(expected==='$fixture.firstCompanyPersonName')return 'PERF Person '+String(Math.floor(actorIndex/50)*50).padStart(4,'0');
  if(expected.startsWith('$fixture.'))throw Error('Unknown navigation fixture binding');
  return expected;
@@ -47,10 +52,10 @@ export function validateNavigationScenarioPlan(value:unknown):NavigationScenario
   ||typeof plan.scope!=='string'||!plan.scope.trim()||!Array.isArray(plan.scenarios)||!plan.scenarios.length||plan.scenarios.length>1024)throw Error('Invalid navigation scenario plan');
  const seen=new Set<string>();
  for(const row of plan.scenarios){
-  if(!row||typeof row!=='object'||!closed(row,['id','destinationId','role','href','originHref','outcome','readiness','steps','checks'])||!id(row.id)||seen.has(row.id)||!id(row.destinationId)||!roles.includes(row.role)
-   ||!localNavigationHref(row.href)||!localNavigationHref(row.originHref)||row.href.includes('?')||row.originHref.includes('?')||!['usable','denied'].includes(row.outcome)||!['controls','populated'].includes(row.readiness)
+  if(!row||typeof row!=='object'||!closed(row,['entry','id','destinationId','role','href','originHref','outcome','readiness','steps','checks'])||!id(row.id)||seen.has(row.id)||!id(row.destinationId)||!roles.includes(row.role)
+   ||row.entry!==undefined&&!['canonical-link','ai-centre-tab','direct-route-content'].includes(row.entry)||!localNavigationHref(row.href)||!localNavigationHref(row.originHref)||row.href.includes('?')||row.originHref.includes('?')||!['usable','denied'].includes(row.outcome)||!['controls','populated'].includes(row.readiness)
    ||!Array.isArray(row.steps)||row.steps.length>8||!Array.isArray(row.checks)||row.checks.length>16||row.outcome==='usable'&&!row.checks.length)throw Error('Invalid navigation scenario');
-  seen.add(row.id);
+  seen.add(row.id);navigationScenarioEntry(row);
   for(const step of row.steps)if(!step||!closed(step,['kind','selector'])||step.kind!=='open-details'||typeof step.selector!=='string'||step.selector.length>512||!step.selector.trim())throw Error('Invalid navigation disclosure step');
   const checks=new Set<string>();
   for(const check of row.checks){
@@ -59,15 +64,15 @@ export function validateNavigationScenarioPlan(value:unknown):NavigationScenario
    checks.add(check.id);
    if(check.kind==='enabled'){
     if(!closed(check,['id','selector','kind','tag'])||!['a','button','input','select','textarea'].includes(check.tag))throw Error('Invalid navigation control check');
-   }else if(check.kind==='count'){
+   }else if(check.kind==='count'||check.kind==='fixture-roster-rows'){
     if(!closed(check,['id','selector','kind','minimum','maximum'])||!Number.isSafeInteger(check.minimum)||check.minimum<1||check.maximum!==undefined&&(!Number.isSafeInteger(check.maximum)||check.maximum<check.minimum))throw Error('Invalid navigation count check');
-   }else if(check.kind==='text'||check.kind==='value'){
-    if(!closed(check,['id','selector','kind','expected'])||typeof check.expected!=='string'||check.expected.length>1024||check.kind==='text'&&!check.expected.trim())throw Error('Invalid navigation value check');
+   }else if(check.kind==='text'||check.kind==='text-exact'||check.kind==='value'){
+    if(!closed(check,['id','selector','kind','expected'])||typeof check.expected!=='string'||check.expected.length>1024||check.kind!=='value'&&!check.expected.trim())throw Error('Invalid navigation value check');
    }else if(check.kind==='attribute'){
     if(!closed(check,['id','selector','kind','name','expected'])||!['href','aria-current','data-testid'].includes(check.name)||typeof check.expected!=='string'||!check.expected||check.expected.length>1024)throw Error('Invalid navigation attribute check');
    }else throw Error('Unknown navigation check');
   }
-  if(row.readiness==='populated'&&!row.checks.some(check=>check.kind==='text'))throw Error('Populated navigation proof needs independent expected content');
+  if(row.readiness==='populated'&&!row.checks.some(check=>check.kind==='text'||check.kind==='text-exact'))throw Error('Populated navigation proof needs independent expected content');
  }
  return plan;
 }
@@ -81,14 +86,14 @@ export function validateNavigationCapture(value:unknown,plan:NavigationScenarioP
  const seen=new Set<string>();
  for(const row of capture.observations){
   const scenario=plan.scenarios.find(item=>item.id===row?.scenarioId);
-  if(!scenario||seen.has(row.scenarioId)||!closed(row,['scenarioId','destinationId','role','actorIndex','href','outcome','readiness','status','finalPath','internalSessionObserved','fixtureIdentityObserved','elapsedMs','checks','failures','startedWith','usableWith'])
-   ||row.destinationId!==scenario.destinationId||row.role!==scenario.role||fixtureNavigationActor(row.actorIndex).role!==scenario.role||row.href!==scenario.href||row.outcome!==scenario.outcome||row.readiness!==scenario.readiness
+  if(!scenario||seen.has(row.scenarioId)||!closed(row,['entry','scenarioId','destinationId','role','actorIndex','href','outcome','readiness','status','finalPath','internalSessionObserved','fixtureIdentityObserved','elapsedMs','checks','failures','startedWith','usableWith'])
+   ||row.entry!==(scenario.entry??'canonical-link')||row.destinationId!==scenario.destinationId||row.role!==scenario.role||fixtureNavigationActor(row.actorIndex).role!==scenario.role||row.href!==scenario.href||row.outcome!==scenario.outcome||row.readiness!==scenario.readiness
    ||row.status!==200||row.finalPath!==(scenario.outcome==='denied'?'/':new URL(scenario.href,'https://localhost:3443').pathname)||row.internalSessionObserved!==true||row.fixtureIdentityObserved!==true
    ||!Number.isFinite(row.elapsedMs)||row.elapsedMs<0||row.elapsedMs>90000||!Array.isArray(row.checks)||row.checks.length!==scenario.checks.length
    ||!row.failures||!closed(row.failures,['busy','unavailable','alerts','http500','pageErrors'])||(['busy','unavailable','alerts','http500','pageErrors']as const).some(key=>row.failures[key]!==0))throw Error('Navigation scenario did not prove usable native content');
   seen.add(row.scenarioId);
   if(new Set(row.checks.map(check=>check.id)).size!==row.checks.length||scenario.checks.some(check=>!row.checks.some(result=>closed(result,['id','passed','observedCount'])&&result.id===check.id&&result.passed===true&&Number.isSafeInteger(result.observedCount)&&result.observedCount>=1
-   &&(check.kind!=='count'||result.observedCount>=check.minimum&&(check.maximum===undefined||result.observedCount<=check.maximum)))))throw Error('Navigation check coverage differs');
+   &&(check.kind!=='count'&&check.kind!=='fixture-roster-rows'||result.observedCount>=check.minimum&&(check.maximum===undefined||result.observedCount<=check.maximum)))))throw Error('Navigation check coverage differs');
   if([row.startedWith,row.usableWith].some(state=>state!==undefined&&(!state||!closed(state,['active','inSteadyWindow'])||!Number.isSafeInteger(state.active)||state.active<0||typeof state.inSteadyWindow!=='boolean')))throw Error('Invalid navigation traffic state');
   if(capture.phase==='loaded'&&![row.startedWith,row.usableWith].every(state=>state?.active===500&&state.inSteadyWindow===true))throw Error('Navigation content was not usable during steady 500-user traffic');
  }
