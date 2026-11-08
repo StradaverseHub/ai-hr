@@ -123,3 +123,5 @@ export {assertAttendanceFormulaAuthorTx,saveAttendanceFormula,testAttendanceForm
 export {draftAttendanceFormula} from '../../core/attendance-formula-ai';
 
 export {calculateAttendanceFormulaResult,reviewAttendanceFormulaResult,listAttendanceFormulaResults,replayAttendanceFormulaResultTx} from '../../core/attendance-formulas';
+
+export {readAttendanceFormulaResultTx,attendanceFormulaResultStateTx,appendAttendanceFormulaResultEventTx} from '../../core/attendance-formulas';

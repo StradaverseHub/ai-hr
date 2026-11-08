@@ -3,7 +3,8 @@
 ## Attendance Formula calculation evidence — 8 November 2026 (unapplied)
 
 The board coordinator reserves3600_attendance_formula_results at idx2900 /
-when1793330003200. Fresh main/alpha82859db9a preserve the709-row installed prefix.
+when1793330003200, plus3601_attendance_formula_payroll_source at idx2901 /
+when1793330003201. Both extend the existing Attendance/Payroll owners. Fresh main/alpha82859db9a preserve the709-row installed prefix.
 A read-only survey found1054 distinct journals,805 readable worktrees and
 maxima3501 / idx2801 / when1793330003101. An independent live comparison
 matched all709 ordered hashes through1793330002801. This is a reservation

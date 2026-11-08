@@ -36,3 +36,15 @@ it('refuses inactive and not-yet-effective processing, and a real other tenant c
  await expect(reviewAttendanceFormulaResult(foreign,{resultId:result.id,command:'review',reason:'Foreign review'})).rejects.toThrow();
  const future=await saveAttendanceFormula(f.ctx,{configuration:{...f.configuration,code:'FUTURE_RULE',effectiveFrom:'2099-01-01',library:{conditions:[],formulas:[{code:'FUTURE_RULE',source:'Return 1'}]}}});const validation=await testAttendanceFormula(f.ctx,{...f,...future});await activateAttendanceFormula(f.ctx,{...future,testId:validation.id});await expect(calculateAttendanceFormulaResult(f.ctx,{...f,id:future.id})).rejects.toThrow(/effective/);
 });
+it('posts an approved earning through the native source projector once and refuses stale Payroll replay',async()=>{
+ const f=await active(),result=await calculateAttendanceFormulaResult(f.ctx,f);
+ await reviewAttendanceFormulaResult(f.ctx,{resultId:result.id,command:'review',reason:'Checked actual source'});await reviewAttendanceFormulaResult(f.ctx,{resultId:result.id,command:'approve',reason:'Approved earning'});
+ const {createBatch,transferAttendanceFormulaResults,verifyAttendanceFormulaPayrollSourcesTx}=await import('../packs/payroll/service');
+ const {batchId}=await createBatch(f.ctx,{companyId:base.companyId,payPeriod:f.date.slice(0,7),scope:{employmentIds:[f.employmentId]}});
+ const request={batchId,resultIds:[result.id],reason:'Transfer checked fixture earning'};expect((await transferAttendanceFormulaResults(f.ctx,request)).idempotent).toBe(false);expect((await transferAttendanceFormulaResults(f.ctx,request)).idempotent).toBe(true);
+ const s=await import('../db/schema');const sources=await owner.db.select().from(s.payrollAttendanceAllowanceSource).where(eq(s.payrollAttendanceAllowanceSource.batchId,batchId));expect(sources).toHaveLength(1);expect(sources[0]).toMatchObject({policyId:null,resultId:null,formulaResultId:result.id,formulaId:f.id,amount:'100.00'});
+ const inputs=await owner.db.select().from(s.payrollBatchComponent).where(eq(s.payrollBatchComponent.batchId,batchId));expect(inputs).toHaveLength(1);expect(inputs[0].amount).toBe('100.00');
+ expect(await withTenant(f.ctx,tx=>verifyAttendanceFormulaPayrollSourcesTx(tx,f.ctx,batchId))).toEqual({verified:1});await expect(calculateAttendanceFormulaResult(f.ctx,f)).rejects.toThrow(/posted/);
+ await checkIn(f.ctx,{employmentId:f.employmentId,date:f.date,time:'20:00'});await checkOut(f.ctx,{employmentId:f.employmentId,date:f.date,time:'21:00'});
+ await expect(withTenant(f.ctx,tx=>verifyAttendanceFormulaPayrollSourcesTx(tx,f.ctx,batchId))).rejects.toThrow(/changed/);
+});

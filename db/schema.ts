@@ -7469,8 +7469,9 @@ export const attendanceAllowanceResultRevision = pgTable('attendance_allowance_r
 export const payrollAttendanceAllowanceSource = pgTable('payroll_attendance_allowance_source', {
   id:id(),tenantId:tenantId(),companyId:uuid('company_id').notNull().references(()=>company.id),
   batchId:uuid('batch_id').notNull().references(()=>payrollBatch.id,{onDelete:'cascade'}),
-  policyId:uuid('policy_id').notNull().references(()=>attendanceAllowancePolicy.id),
-  resultId:uuid('result_id').notNull().references(()=>attendanceAllowanceResult.id),
+  policyId:uuid('policy_id').references(()=>attendanceAllowancePolicy.id),
+  resultId:uuid('result_id').references(()=>attendanceAllowanceResult.id),
+  formulaId:uuid('formula_id').references(()=>attendanceFormula.id),formulaResultId:uuid('formula_result_id').references(()=>attendanceFormulaResult.id),
   employmentId:uuid('employment_id').notNull().references(()=>employment.id),
   componentId:uuid('component_id').notNull().references(()=>payComponent.id),
   payMonth:text('pay_month').notNull(),periodKey:text('period_key').notNull(),
