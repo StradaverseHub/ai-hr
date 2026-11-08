@@ -32,6 +32,7 @@ it('upgrades the exact seven migrations under restricted ownership and removes e
   for(const e of journal.entries.slice(0,710))copyFileSync('db/migrations/'+e.tag+'.sql',join(dir,e.tag+'.sql'));
   writeFileSync(join(dir,'meta/_journal.json'),JSON.stringify({...journal,entries:journal.entries.slice(0,710)}));
   await migrate(drizzle(db),{migrationsFolder:dir});
+  await admin.unsafe(`ALTER DATABASE ${quote(name)} OWNER TO ai_hr_owner`);
   // Project only this disposable database's ordinary administrator-owned objects to the real restricted owner.
   // Never REASSIGN OWNED: that can transfer shared databases and objects outside this fixture.
   await db.unsafe(`DO $project$ DECLARE r record; me oid:=(SELECT oid FROM pg_roles WHERE rolname=current_user); BEGIN
@@ -62,7 +63,7 @@ it('upgrades the exact seven migrations under restricted ownership and removes e
   const ledger=()=>db`select id::text,hash,created_at::text from drizzle.__drizzle_migrations order by id`;
   const prefix=await ledger();expect(prefix).toHaveLength(710);
   // Missing owner-transfer privileges reproduce the restricted installation failure and roll back fully.
-  await expect(migrate(drizzle(restricted),{migrationsFolder:'db/migrations'})).rejects.toMatchObject({cause:expect.objectContaining({code:'42501'})});
+  await expect(migrate(drizzle(restricted),{migrationsFolder:'db/migrations'})).rejects.toMatchObject({cause:expect.objectContaining({code:'42501',message:expect.stringMatching(/must be able to SET ROLE|must be member of role/)})});
   expect(await ledger()).toEqual(prefix);expect(await snapshot()).toEqual(before);
   const prepare=readFileSync('deploy/runner-control/board-six-role-prerequisite.sql','utf8');
   await db.begin(async tx=>{await tx.unsafe(prepare);});prepared=true;
@@ -71,6 +72,12 @@ it('upgrades the exact seven migrations under restricted ownership and removes e
   try{await expect(migrate(drizzle(restricted),{migrationsFolder:'db/migrations'})).rejects.toMatchObject({cause:expect.objectContaining({code:'23514'})});}
   finally{await db.unsafe('DROP EVENT TRIGGER six_fixture_migration_refusal; DROP FUNCTION public.six_fixture_migration_refusal();');}
   expect(await ledger()).toEqual(prefix);expect(await snapshot()).toEqual(before);
+  await db.begin(async tx=>{await tx.unsafe(readFileSync('deploy/runner-control/board-six-role-failure-cleanup.sql','utf8'));});prepared=false;
+  expect(await roleSnapshot()).toEqual(originalEdges);
+  expect(await db`select has_schema_privilege(oid,'app','CREATE') as can_create from pg_roles where rolname=any(${roleNames}::text[])`).toEqual(roleNames.map(()=>({can_create:false})));
+  // Cleanup also covers a partial cleanup: memberships removed while schema CREATE remains.
+  await db.begin(async tx=>{await tx.unsafe(prepare);});prepared=true;
+  await admin.unsafe('REVOKE ai_hr_reward_preparation_reader,ai_hr_reward_preparation_invalidator,ai_hr_company_org_source_reader FROM ai_hr_owner');
   await db.begin(async tx=>{await tx.unsafe(readFileSync('deploy/runner-control/board-six-role-failure-cleanup.sql','utf8'));});prepared=false;
   expect(await roleSnapshot()).toEqual(originalEdges);
   expect(await db`select has_schema_privilege(oid,'app','CREATE') as can_create from pg_roles where rolname=any(${roleNames}::text[])`).toEqual(roleNames.map(()=>({can_create:false})));
