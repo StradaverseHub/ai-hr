@@ -120,3 +120,14 @@ runtime source closure and any required registration under its own lease.
 Hosted native parity, complete observed census, target plans/timings and cleanup
 are required before judging improvement. No source-only, focused, staging or
 production acceptance is inferred from this ADR.
+
+## Receipt normalization and settlement
+
+Repeated native statements compare numeric count vectors and sorted monthly
+facts. Raw GROUP BY row order is not a contract, so reordering alone cannot
+refuse a semantically identical replay. Independent known-value assertions,
+actual statement objects and every original timing remain unchanged.
+`callbackComplete` records the finished in-transaction experiment;
+`transactionSettled` and `complete` become true only after the outer timed
+dashboard await returns through COMMIT. A callback/commit failure retains its
+partial receipt, and the test observer is always restored in `finally`.

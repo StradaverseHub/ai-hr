@@ -199,7 +199,7 @@ it('measures actual native 50k Analytics reads and complete-export baselines on 
  // real product callback completes before its same admitted RR/RO Tx executes
  // the frozen source, balanced native replays and seven plans. This extended
  // callback is not a whole-dashboard speed measurement or a cold course.
- const aggregateExperiment:Record<string,unknown>={kind:'TARGET_NATIVE_STATEMENTS_ONLY',complete:false,
+ const aggregateExperiment:Record<string,unknown>={kind:'TARGET_NATIVE_STATEMENTS_ONLY',complete:false,callbackComplete:false,transactionSettled:false,
   includesSqlParametersResultsOrErrors:false,newPools:0,warmth:'Fixture and all prior report courses warm buffers; ordinary plan reuse, no cold claim',
   limits:{capturedSelects:128,arms:4,plans:7,planNodesEach:256,unchangedCaseMs:300000},arms:[],plans:[]};
  report.employmentAggregateExperiment=aggregateExperiment;save();
@@ -215,7 +215,7 @@ it('measures actual native 50k Analytics reads and complete-export baselines on 
   expect(old.slice(0,3).every(query=>classifyAnalyticsStatement(query.text)==='turnover-count')).toBe(true);
   expect(old.slice(3).map(query=>classifyAnalyticsStatement(query.text))).toEqual(['movement-hires','movement-leavers']);
   aggregateExperiment.sourceStatements={original:5,candidate:2,originalDigests:old.map(q=>q.digest),candidateDigests:candidate.map(q=>q.digest)};save();
-  const sets={old,new:candidate};let originalRows:unknown[][]|undefined,candidateRows:unknown[][]|undefined;
+  const sets={old,new:candidate};let originalFacts:unknown,candidateFacts:unknown;
   for(const [ordinal,label]of (['old','new','new','old']as const).entries()){
    const receipt:Record<string,unknown>={ordinal:ordinal+1,source:label,started:true,complete:false,statements:[],samePid:false};
    (aggregateExperiment.arms as unknown[]).push(receipt);save();const started=performance.now(),results:unknown[][]=[];
@@ -227,12 +227,14 @@ it('measures actual native 50k Analytics reads and complete-export baselines on 
     if(label==='old'){
      const counts=results.slice(0,3)as Record<string,unknown>[][];expect(counts.map(rows=>Number(rows[0].count))).toEqual([10000,50000,40000]);
      const months=results.slice(3)as Record<string,unknown>[][];expect(months.map(rows=>rows.map(row=>({month:row.to_char,count:Number(row.count)})))).toEqual([[{month:'2020-01',count:50000}],[{month:'2024-01',count:10000}]]);
-     if(originalRows)expect(results).toEqual(originalRows);else originalRows=results;
+     const facts={counts:counts.map(rows=>Number(rows[0].count)),months:months.map(rows=>rows.map(row=>({month:String(row.to_char),count:Number(row.count)})).sort((a,b)=>a.month.localeCompare(b.month)))};
+     if(originalFacts)expect(facts).toEqual(originalFacts);else originalFacts=facts;
     }else{
      const counts=(results[0]as Record<string,unknown>[])[0];expect([Number(counts.analytics_turnover_leavers),Number(counts.analytics_turnover_start),Number(counts.analytics_turnover_end)]).toEqual([10000,50000,40000]);
      const months=(results[1]as Record<string,unknown>[]).map(row=>({month:String(row.to_char),hires:Number(row.analytics_movement_hires),leavers:Number(row.analytics_movement_leavers)})).sort((a,b)=>a.month.localeCompare(b.month));
      expect(months).toEqual([{month:'2020-01',hires:50000,leavers:0},{month:'2024-01',hires:0,leavers:10000}]);
-     if(candidateRows)expect(results).toEqual(candidateRows);else candidateRows=results;
+     const facts={counts:[Number(counts.analytics_turnover_leavers),Number(counts.analytics_turnover_start),Number(counts.analytics_turnover_end)],months};
+     if(candidateFacts)expect(facts).toEqual(candidateFacts);else candidateFacts=facts;
     }
     const [after]=await tx.execute<{pid:number;jit:string}>(sql`select pg_backend_pid()as pid,current_setting('jit')as jit`);expect(after).toEqual({pid:identity.pid,jit:'off'});
     receipt.samePid=true;receipt.independentNativeFacts=true;receipt.complete=true;
@@ -245,9 +247,12 @@ it('measures actual native 50k Analytics reads and complete-export baselines on 
    Object.assign(receipt,aggregateNativePlan(rows[0]?.['QUERY PLAN']),{complete:true});save();
   }
   const [settled]=await tx.execute<{pid:number;role:string;login:string;isolation:string;readOnly:boolean;jit:string;rls:string}>(sql`select pg_backend_pid()as pid,current_user as role,session_user as login,current_setting('transaction_isolation')as isolation,current_setting('transaction_read_only')='on'as "readOnly",current_setting('jit')as jit,current_setting('row_security')as rls`);
-  expect(settled).toEqual(identity);aggregateExperiment.sameNativeIdentityAtCompletion=true;aggregateExperiment.complete=true;save();return value;
+  expect(settled).toEqual(identity);aggregateExperiment.sameNativeIdentityAtCompletion=true;aggregateExperiment.callbackComplete=true;save();return value;
  },options));
- try{await timed('employmentAggregateNativeExperimentMs',()=>analyticsDashboard(ctx,[b.companyId],{from:'2020-01-01',to:'2026-01-01',year:2020,filters:{},pages:{hires:page,terms:page,changeJobs:page,carryForward:page}}));}
+ try{
+  await timed('employmentAggregateNativeExperimentMs',()=>analyticsDashboard(ctx,[b.companyId],{from:'2020-01-01',to:'2026-01-01',year:2020,filters:{},pages:{hires:page,terms:page,changeJobs:page,carryForward:page}}));
+  expect(aggregateExperiment.callbackComplete).toBe(true);aggregateExperiment.transactionSettled=true;aggregateExperiment.complete=true;
+ }
  finally{experimentSpy.mockRestore();aggregateExperiment.transactions=experimentTransactions;save();}
  expect(aggregateExperiment.complete).toBe(true);expect(aggregateExperiment.arms).toHaveLength(4);expect(aggregateExperiment.plans).toHaveLength(7);
  report.exactNativePopulationAndResults=true;report.complete=true;save();
