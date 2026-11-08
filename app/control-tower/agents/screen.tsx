@@ -5,7 +5,7 @@ import { redirect } from 'next/navigation';
 import {nanosToUsd} from '@/lib/ai/spend-allocation';
 import { getFormatter, getTranslations } from 'next-intl/server';
 import { type requireAdmin, isAdmin, isGroupAdmin } from '@/lib/authz';
-import { AI_RUN_STATE_FILTERS, aiManagementView, bulkAssistantDepartments, previewBulkAssistantAccess, type BulkAssistantPreview, type AiAllowanceUse, type AiRunFilter, type AiUsageSummary } from '@/core/ai-management';
+import { AI_RUN_STATE_FILTERS, aiManagementPageView, bulkAssistantDepartments, previewBulkAssistantAccess, type BulkAssistantPreview, type AiAllowanceUse, type AiRunFilter, type AiUsageSummary, type AiManagementAllowanceUser } from '@/core/ai-management';
 import { AI_FEATURES, isAiFeature } from '@/lib/ai/features';
 import type { AgentFeature } from '@/core/agent-principal';
 import { orchestrationQueue } from '@/core/hr-orchestrator';
@@ -39,7 +39,7 @@ export async function AiManagementScreen({session:s,section,searchParams,childre
   const t = await getTranslations('aiManagement');
   const f = await getFormatter();
   const runFilter:AiRunFilter = {state:AI_RUN_STATE_FILTERS.find(v=>v===sp.runs),feature:isAiFeature(sp.feature)?sp.feature:undefined};
-  const view = await aiManagementView(s, sp.q, runFilter);
+  const view = await aiManagementPageView(s, section, sp.q, runFilter);
   // One section per page, chosen in the sidebar's AI management menu. A section this session cannot use
   // goes to the Overview.
   // Only the orchestrator page reads the work queue.
@@ -121,7 +121,7 @@ export async function AiManagementScreen({session:s,section,searchParams,childre
       {limitFields(c.label,c)}
     </form>
   </li>;
-  const userRow = (u:typeof view.users[number]) => <li key={u.id} id={`ai-user-${u.id}`} className="scroll-mt-4 py-4">
+  const userRow = (u:AiManagementAllowanceUser) => <li key={u.id} id={`ai-user-${u.id}`} className="scroll-mt-4 py-4">
     <label className="mb-2 flex min-h-11 w-fit items-center gap-2 text-xs"><input type="checkbox" form="ai-bulk-selected" name="bulkUser" value={u.id} className="size-4"/>{t('bulkSelect',{name:u.label})}</label>
     {/* A login following the default is prefilled with the default's values: saving it creates an individual copy, never an accidental "no cap". */}
     <form action={setAiAllowanceAction} className={formGrid}>
@@ -250,7 +250,7 @@ export async function AiManagementScreen({session:s,section,searchParams,childre
     </Card>}
     {/* The inventory and audit columns, on the same page: the one list of every AI piece (owner decision 29). */}
     {section==='features'&&(inventorySection ?? <p role="status" data-inventory-unavailable className="rounded-xl border border-border p-4 text-sm text-muted-foreground">{t('inv.alerts.unavailable')}</p>)}
-    {section==='allowances'&&<>
+    {view.section==='allowances'&&<>
     <Card id="company-limits" className="scroll-mt-4 p-5">
       <SectionHeader title={t('companyLimits')}/><p className="mt-1 max-w-4xl text-sm text-muted-foreground">{t('limitHelp')}</p><p className="mt-1 max-w-4xl text-xs text-muted-foreground">{t('concurrentHelp')}</p><p className="mt-2 max-w-4xl text-xs text-muted-foreground">{t('attribution')}</p>
       <ul className="mt-2 divide-y divide-border">{view.companies.map(companyRow)}</ul>{view.companies.length===0&&<p className="py-4 text-sm text-muted-foreground">{t('noCompanies')}</p>}
@@ -322,10 +322,10 @@ export async function AiManagementScreen({session:s,section,searchParams,childre
         <ActionButton type="submit" className={btnGhost}>{t('bulkSelectedButton')}</ActionButton>
         {query&&<ActionButton type="submit" name="bulkWho" value="search" className={btnGhost}>{t('bulkAllMatching',{q:query})}</ActionButton>}
       </form>
-      <ul className="mt-2 divide-y divide-border">{view.users.map(userRow)}</ul>
-      {view.users.length===0&&<p className="py-4 text-sm text-muted-foreground">{t('noUsers')}</p>}{view.moreUsers&&<p className="text-xs text-muted-foreground">{t('moreUsers')}</p>}
+      <ul className="mt-2 divide-y divide-border">{view.allowances.users.map(userRow)}</ul>
+      {view.allowances.users.length===0&&<p className="py-4 text-sm text-muted-foreground">{t('noUsers')}</p>}{view.allowances.moreUsers&&<p className="text-xs text-muted-foreground">{t('moreUsers')}</p>}
     </Card>}
-    <Card className="p-5"><SectionHeader title={t('inherited')}/><p className="mt-1 text-sm text-muted-foreground">{t('businessLimits')}</p>{view.legacyBudget&&<p className="mt-2 text-sm">{t('legacyAssistant',{daily:numbers(view.legacyBudget.daily),tokens:numbers(view.legacyBudget.monthly)})}</p>}<p className="mt-2 text-xs text-muted-foreground">{t('humanDecisions')}</p></Card>
+    <Card className="p-5"><SectionHeader title={t('inherited')}/><p className="mt-1 text-sm text-muted-foreground">{t('businessLimits')}</p>{view.allowances.legacyBudget&&<p className="mt-2 text-sm">{t('legacyAssistant',{daily:numbers(view.allowances.legacyBudget.daily),tokens:numbers(view.allowances.legacyBudget.monthly)})}</p>}<p className="mt-2 text-xs text-muted-foreground">{t('humanDecisions')}</p></Card>
     </>}
     {section==='spending'&&view.spend&&<Card id="ai-spend" className="scroll-mt-4 p-5"><SectionHeader title={t('spendTitle')}/>
       <p className="mt-2 text-sm">{t('spendOptionalPolicy')}</p><p className="mt-2 text-sm">{view.spend.reviewedCarrierRecords===null?t('spendRecordsUnknown'):t('spendRecords',{count:view.spend.reviewedCarrierRecords})}</p><p className="mt-2 text-xs text-muted-foreground">{t('spendLiveUnverified')}</p><p className="mt-2 text-xs text-muted-foreground">{t('spendSemantics')}</p>
