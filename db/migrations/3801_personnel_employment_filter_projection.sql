@@ -1,3 +1,7 @@
+-- Criteria share the existing actor-bound five-minute token, with no direct app read grant.
+ALTER TABLE public.personnel_private_search ADD COLUMN criteria jsonb;
+REVOKE SELECT(criteria) ON public.personnel_private_search FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
 -- Approved ed921f69. Extend, never replace, the dated Workforce purpose owner.
 CREATE FUNCTION app.personnel_list_rows(p_as_of date,p_scope uuid[] DEFAULT NULL) RETURNS SETOF jsonb
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,app AS $$
@@ -21,6 +25,21 @@ CREATE OR REPLACE FUNCTION app.personnel_private_search_bind() RETURNS trigger L
 DECLARE v_day date := (now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date;
 BEGIN
  IF NEW.tenant_id IS DISTINCT FROM app.current_tenant_id() OR NEW.actor_id IS DISTINCT FROM app.current_user_id() OR NOT app.principal_snapshot_current() OR NOT EXISTS(SELECT 1 FROM public.app_user u WHERE u.id=NEW.actor_id AND u.tenant_id=NEW.tenant_id AND u.archived_at IS NULL AND NOT app.login_blocked(u.id)) THEN RAISE EXCEPTION 'Private search unavailable' USING ERRCODE='42501'; END IF;
+ IF NEW.criteria IS NOT NULL THEN
+  IF jsonb_typeof(NEW.criteria)<>'object' OR NEW.criteria-ARRAY['term','filters']<>'{}'::jsonb OR jsonb_typeof(NEW.criteria->'term') IS DISTINCT FROM 'string' OR length(NEW.criteria->>'term')>200 OR jsonb_typeof(NEW.criteria->'filters') IS DISTINCT FROM 'array' OR octet_length(NEW.criteria::text)>65536 THEN RAISE EXCEPTION 'Private filters unavailable' USING ERRCODE='22023'; END IF;
+  IF jsonb_array_length(NEW.criteria->'filters')>80 OR EXISTS(
+   SELECT 1 FROM jsonb_array_elements(NEW.criteria->'filters') f
+   WHERE jsonb_typeof(f)<>'object' OR f-ARRAY['field','operator','value']<>'{}'::jsonb
+    OR jsonb_typeof(f->'field') IS DISTINCT FROM 'string' OR f->>'field' NOT IN ('code','name','company','department','position','status','jobGrade','employmentType','reportingTo','businessUnit','costCenter','workLocation','groupJoinDate','joinDate','confirmationDate','email','identity','employment.directSuperiorEmployeeCode','employment.directSuperiorFullName','employment.orgDivision','employment.orgBranch','employment.orgRegion','employment.orgLine','employment.orgSection','employment.orgTeam','employment.orgBase','employment.employmentCategory','employment.hiredOn','employment.joinDate','employment.groupService','employment.companyService','employment.yearOfService','employment.probationValue','employment.probationUnit','employment.extendedProbationValue','employment.extendedProbationUnit','employment.finalConfirmationDate','employment.contractStartDate','employment.contractEndDate','employment.contractRemark','employment.noticeBeforeConfirmationValue','employment.noticeBeforeConfirmationUnit','employment.noticeAfterConfirmationValue','employment.noticeAfterConfirmationUnit','employment.tenderResignationDate','employment.resignationDate','employment.lastWorkingDate','employment.confirmationDate')
+    OR jsonb_typeof(f->'operator') IS DISTINCT FROM 'string' OR f->>'operator' NOT IN ('contains','equals','blank','notBlank','from','to')
+    OR jsonb_typeof(f->'value') IS DISTINCT FROM 'string' OR length(f->>'value')>200
+    OR (f->>'operator'='contains' AND f->>'field' IN ('employment.probationValue','employment.extendedProbationValue','employment.noticeBeforeConfirmationValue','employment.noticeAfterConfirmationValue','groupJoinDate','joinDate','confirmationDate','employment.hiredOn','employment.joinDate','employment.finalConfirmationDate','employment.contractStartDate','employment.contractEndDate','employment.tenderResignationDate','employment.resignationDate','employment.lastWorkingDate','employment.confirmationDate'))
+    OR (f->>'operator' IN ('from','to') AND f->>'field' NOT IN ('employment.probationValue','employment.extendedProbationValue','employment.noticeBeforeConfirmationValue','employment.noticeAfterConfirmationValue','groupJoinDate','joinDate','confirmationDate','employment.hiredOn','employment.joinDate','employment.finalConfirmationDate','employment.contractStartDate','employment.contractEndDate','employment.tenderResignationDate','employment.resignationDate','employment.lastWorkingDate','employment.confirmationDate'))
+    OR (f->>'operator' NOT IN ('blank','notBlank') AND f->>'field' IN ('employment.probationValue','employment.extendedProbationValue','employment.noticeBeforeConfirmationValue','employment.noticeAfterConfirmationValue') AND f->>'value' !~ '^[-+]?(?:[0-9]+[.]?[0-9]*|[.][0-9]+)$')
+    OR (f->>'operator' NOT IN ('blank','notBlank') AND f->>'field' IN ('groupJoinDate','joinDate','confirmationDate','employment.hiredOn','employment.joinDate','employment.finalConfirmationDate','employment.contractStartDate','employment.contractEndDate','employment.tenderResignationDate','employment.resignationDate','employment.lastWorkingDate','employment.confirmationDate') AND f->>'value' !~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
+  ) OR EXISTS(SELECT 1 FROM jsonb_array_elements(NEW.criteria->'filters') f GROUP BY f->>'field' HAVING count(*)>1)
+  THEN RAISE EXCEPTION 'Private filters unavailable' USING ERRCODE='22023'; END IF;
+ END IF;
  IF jsonb_typeof(NEW.matches)<>'array' OR jsonb_array_length(NEW.matches)>100000 OR EXISTS(SELECT 1 FROM jsonb_array_elements(NEW.matches)m WHERE COALESCE(m->>'employmentId','') !~ '^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$' OR m->>'kind' IS NULL OR m->>'kind' NOT IN ('public','identity') OR COALESCE(m->>'personRevision','') !~ '^[0-9]{1,12}$' OR COALESCE(m->>'employmentRevision','') !~ '^[0-9]{1,12}$' OR (m->>'identityRevision' IS NOT NULL AND m->>'identityRevision' !~ '^[0-9]{1,12}$') OR (m ? 'filterRevision' AND COALESCE(m->>'filterRevision','') !~ '^[a-f0-9]{32}$') OR jsonb_typeof(m)<>'object' OR m-ARRAY['employmentId','kind','personRevision','employmentRevision','identityRevision','filterRevision']<>'{}'::jsonb) THEN RAISE EXCEPTION 'Private search unavailable' USING ERRCODE='22023'; END IF;
  -- Bind exact row identity and revisions before the guarded resolver can run.
  -- PostgreSQL may reorder WHERE predicates, but cannot push them through these fences.
@@ -77,12 +96,15 @@ REVOKE ALL ON FUNCTION app.personnel_column_search_matches(text,uuid,uuid,uuid[]
 GRANT EXECUTE ON FUNCTION app.personnel_column_search_matches(text,uuid,uuid,uuid[],text) TO ai_hr_app;
 
 --> statement-breakpoint
--- Combining another filter must not launder identity-derived membership into public membership.
-CREATE FUNCTION app.personnel_column_search_identity(p_hash text,p_employment uuid) RETURNS boolean
+-- The sole criteria read seam repeats principal, actor, expiry and exact top-scope binding.
+CREATE FUNCTION app.personnel_column_search_criteria(p_hash text,p_scope uuid[]) RETURNS jsonb
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,app AS $$
- SELECT EXISTS(SELECT 1 FROM public.personnel_private_search s CROSS JOIN LATERAL jsonb_array_elements(s.matches) m
+ SELECT s.criteria FROM public.personnel_private_search s
  WHERE s.token_hash=p_hash AND s.tenant_id=app.current_tenant_id() AND s.actor_id=app.current_user_id()
- AND s.expires_at>now() AND app.principal_snapshot_current() AND m->>'employmentId'=p_employment::text AND m->>'kind'='identity')
+ AND s.expires_at>now() AND app.principal_snapshot_current()
+ AND EXISTS(SELECT 1 FROM public.app_user u WHERE u.id=s.actor_id AND u.tenant_id=s.tenant_id AND u.archived_at IS NULL AND NOT app.login_blocked(u.id))
+ AND s.scope_ids @> p_scope AND s.scope_ids <@ p_scope
+ AND NOT EXISTS(SELECT 1 FROM unnest(p_scope) company_id WHERE NOT app.access_workforce_projection_company(company_id))
 $$;
-REVOKE ALL ON FUNCTION app.personnel_column_search_identity(text,uuid) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION app.personnel_column_search_identity(text,uuid) TO ai_hr_app;
+REVOKE ALL ON FUNCTION app.personnel_column_search_criteria(text,uuid[]) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.personnel_column_search_criteria(text,uuid[]) TO ai_hr_app;

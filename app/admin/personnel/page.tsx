@@ -1,9 +1,10 @@
+import {PersonnelPrivateFilterChips} from './private-filter-chips';
 import {PersonnelListTable} from './list-table';
 import {PERSONNEL_EMPLOYMENT_FILTERS} from '@/lib/personnel-list-employment-fields';
 import {personnelFieldLabel} from '@/lib/personnel-field-label';
 import {PERSONNEL_FIELDS} from '@/lib/personnel-field-registry';
 import {ResponsiveActions} from '@/components/responsive-actions';
-import {personnelPrivateSearchAvailable} from '@/core/personnel-private-search';
+import {personnelPrivateSearchAvailable,readPersonnelPrivateCriteria} from '@/core/personnel-private-search';
 import { ExportDownloadLink } from '@/components/export-download-link';
 import { organisationChoiceLabels } from '@/lib/organisation-choice-label';
 import {PersonnelReadBusyError} from '@/core/personnel-read-bounds';
@@ -156,6 +157,7 @@ async function renderPersonnelPage(sp: PersonnelSearchParams) {
   const query = parsePersonnelListQuery(sp);
   const { q, company, dept, type, draftOnly, hasFilters } = query;
   const searchAvailable=query.filters.privateSearch?await personnelPrivateSearchAvailable(session,query.filters.privateSearch,scopeIds):false;
+  const privateCriteria=query.filters.privateSearch?await readPersonnelPrivateCriteria(session,query.filters.privateSearch,scopeIds):null;
 
   const overview = await readPersonnelOverview(session, {
     companyIds: scopeIds,
@@ -378,7 +380,7 @@ async function renderPersonnelPage(sp: PersonnelSearchParams) {
           // group `shrink-0` — without wrapping, a narrow window would scroll the PAGE sideways rather
           // than stacking the controls, which is the one thing a full-width change must not introduce.
           <div className="flex flex-wrap items-center justify-end gap-2 sm:gap-3">
-            <PersonnelOrganisationFilters key={scopeIds.slice().sort().join(',')+'?'+personnelQueryParams(sp).toString()} fields={filterFields} values={filterValues} employmentFields={employmentFilterFields} columnFields={(['code','name','email','reportingTo','costCenter','workLocation','jobGrade'] as const).map(key=>({key,label:t(COLUMN_LABEL_KEY[key]),type:'text'}))} companies={organisationChoices.companies} labels={filterLabels} companySearchLabel={to('companySearch')} canInspectDuplicates={organisationChoices.canInspectDuplicates} duplicateHint={to('duplicateHint')} dataTour="people-search"/>
+            <PersonnelOrganisationFilters key={scopeIds.slice().sort().join(',')+'?'+personnelQueryParams(sp).toString()} fields={filterFields} values={filterValues} privateCriteria={privateCriteria??undefined} employmentFields={employmentFilterFields} columnFields={(['code','name','email','reportingTo','costCenter','workLocation','jobGrade'] as const).map(key=>({key,label:t(COLUMN_LABEL_KEY[key]),type:'text'}))} companies={organisationChoices.companies} labels={filterLabels} companySearchLabel={to('companySearch')} canInspectDuplicates={organisationChoices.canInspectDuplicates} duplicateHint={to('duplicateHint')} dataTour="people-search"/>
             {canCreate && (
               <CreateEmployeeDialog
                 triggerLabel={t('createNewEmployee')}
@@ -485,6 +487,7 @@ async function renderPersonnelPage(sp: PersonnelSearchParams) {
       />
 
       {query.filters.privateSearch&&<p role="status" className="text-sm text-muted-foreground">{t(searchAvailable?'controls.privateActive':'controls.privateExpired')}</p>}
+      {privateCriteria&&<PersonnelPrivateFilterChips valueLabels={{company:Object.fromEntries(companies.map(c=>[c.id,c.name])),department:Object.fromEntries(departments.map(d=>[d.id,d.label||d.name])),position:Object.fromEntries(organisationChoices.rows.filter(r=>r.positionId&&r.position).map(r=>[r.positionId!,r.position!])),businessUnit:Object.fromEntries(organisationChoices.rows.filter(r=>r.businessUnitId&&r.businessUnit).map(r=>[r.businessUnitId!,r.businessUnit!])),status:Object.fromEntries(EMPLOYEE_STATUS_BUCKETS.map(value=>[value,tStatus(value)])),employmentType:Object.fromEntries(EMPLOYMENT_TYPES.map(et=>[et.value,t(et.labelKey)]))}} criteria={privateCriteria} parameters={[...personnelQueryParams(sp)]} labels={{term:t('controls.employeeDetails'),...Object.fromEntries(Object.entries(COLUMN_LABEL_KEY).map(([key,label])=>[key,t(label)])),...Object.fromEntries(employmentFilterFields.map(field=>['employment.'+field.key,field.label]))}}/>}
 
       {error && (
         <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-400">
@@ -494,7 +497,7 @@ async function renderPersonnelPage(sp: PersonnelSearchParams) {
 
       <Card className="overflow-hidden" data-tour="people-table">
         {pager}
-        <PersonnelListTable columns={columns} allOrder={savedColumns.order} columnOptions={{company:companies.map(c=>({value:c.id,label:c.name})),department:departments.map(d=>({value:d.id,label:d.label||d.name})),position:uniqueOptions(organisationChoices.rows.map(row=>({value:row.positionId,label:row.position}))),businessUnit:uniqueOptions(organisationChoices.rows.map(row=>({value:row.businessUnitId,label:row.businessUnit}))),employmentType:EMPLOYMENT_TYPES.map(et=>({value:et.value,label:t(et.labelKey)})),status:EMPLOYEE_STATUS_BUCKETS.map(value=>({value,label:tStatus(value)}))}}
+        <PersonnelListTable key={query.filters.privateSearch??'no-private-filters'} privateCriteria={privateCriteria??undefined} columns={columns} allOrder={savedColumns.order} columnOptions={{company:companies.map(c=>({value:c.id,label:c.name})),department:departments.map(d=>({value:d.id,label:d.label||d.name})),position:uniqueOptions(organisationChoices.rows.map(row=>({value:row.positionId,label:row.position}))),businessUnit:uniqueOptions(organisationChoices.rows.map(row=>({value:row.businessUnitId,label:row.businessUnit}))),employmentType:EMPLOYMENT_TYPES.map(et=>({value:et.value,label:t(et.labelKey)})),status:EMPLOYEE_STATUS_BUCKETS.map(value=>({value,label:tStatus(value)}))}}
           labels={Object.fromEntries(Object.entries(COLUMN_LABEL_KEY).map(([key,label])=>[key,t(label)])) as Record<EmployeeColumnKey,string>}
           parameters={[...personnelQueryParams(sp)]} sort={query.filters.columnSort} direction={query.filters.sortDirection}
           employees={employees.map(e=>{const st=deriveEmploymentStatus(e,today);return {employmentId:e.employmentId,name:e.name,email:e.email,employeeCode:e.employeeCode,status:st,statusLabel:tStatus(st),text:Object.fromEntries(columns.map(key=>[key,textCell(e,key)])),photoPersonId:photoIds.get(e.employmentId)??null};})}

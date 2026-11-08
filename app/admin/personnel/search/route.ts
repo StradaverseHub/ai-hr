@@ -25,6 +25,12 @@ async function searchPersonnel(request: Request) {
  try{for(;;){const chunk=await reader.read();if(chunk.done)break;bytes+=chunk.value.byteLength;if(bytes>131072){await reader.cancel();return new Response('Search unavailable.',{status:413});}parts.push(decoder.decode(chunk.value,{stream:true}));}parts.push(decoder.decode());}finally{reader.releaseLock();}
  const form=new URLSearchParams(parts.join('')),params:PersonnelSearchParams={};
  for(const key of ['companies','bu','parent','group','grade','position','quality','dept','type','bucket','status','company','confirmation','joinedFrom','joinedTo','probationFrom','probationTo','sort','direction'] as const){const values=form.getAll(key).filter((value):value is string=>typeof value==='string');if(values.length)Object.assign(params,{[key]:['companies','bu','parent','group','grade','position','quality'].includes(key)&&values.length>1?values:values[0]});}
- try{const filters=parsePersonnelColumnFilters(form);if(!String(form.get('term')??'').trim()&&!filters.length){const target=personnelQueryParams(params);if(form.get('search'))target.set('search',/^[A-Za-z0-9_-]{43}$/.test(form.get('search')!)?form.get('search')!:'invalid');return new Response(null,{status:303,headers:{Location:'/admin/personnel?'+target.toString(),'Cache-Control':'private, no-store'}});}const token=await createPersonnelPrivateSearch(s,{text:String(form.get('term')??''),companyIds:scopeIds,columnFilters:filters,previousToken:form.get('search')??undefined});const target=personnelQueryParams(params);target.set('search',token);return new Response(null,{status:303,headers:{Location:'/admin/personnel?'+target.toString(),'Cache-Control':'private, no-store','Referrer-Policy':'no-referrer'}});}
+ try{
+  const filters=parsePersonnelColumnFilters(form).filter(filter=>filter.field!==form.get('removeField'));
+  const text=form.get('removeField')==='term'?'':String(form.get('term')??'').trim();
+  const target=personnelQueryParams(params);
+  if(text||filters.length){const token=await createPersonnelPrivateSearch(s,{text,companyIds:scopeIds,columnFilters:filters,replaceCriteria:true});target.set('search',token);}
+  return new Response(null,{status:303,headers:{Location:'/admin/personnel'+(target.size?'?'+target.toString():''),'Cache-Control':'private, no-store','Referrer-Policy':'no-referrer'}});
+ }
  catch(error){if(error instanceof PersonnelReadBusyError)throw error;return new Response(error instanceof PersonnelSearchLimitError?error.message:'Search unavailable. Try again.',{status:400,headers:{'Cache-Control':'private, no-store'}});}
 }

@@ -36,3 +36,9 @@ it('keeps a denied duplicate filter fail-closed while offering no unapproved evi
  fireEvent.click(screen.getByText('Filter'));await waitFor(()=>expect(document.querySelector('form')).not.toBeNull());
  expect(document.querySelector('input[type="checkbox"][value="suspected_duplicate"]')).toBeNull();expect(new FormData(document.querySelector('form')!).getAll('quality')).toEqual(['suspected_duplicate']);expect(screen.getByText(copy.duplicateUnavailable)).toBeVisible();
 });
+it('restores private field text and operators for editing instead of stacking invisible result memberships',async()=>{
+ const view=render(<NextIntlClientProvider locale="en" messages={en}><PersonnelOrganisationFilters fields={[]} values={{}} companies={[]} labels={{filter:'Filter',apply:'Apply',clearAll:'Clear all',activeCount:'1'}} companySearchLabel="Companies" columnFields={[{key:'name',label:'Full Name',type:'text'}]} employmentFields={[{key:'probationValue',label:'Probation',type:'number'}]} privateCriteria={{term:'RETAINED-ID',filters:[{field:'name',operator:'equals',value:'Retained Employee'},{field:'employment.probationValue',operator:'from',value:'2'},{field:'company',operator:'equals',value:'fixture-company'}]}}/></NextIntlClientProvider>);
+ fireEvent.click(screen.getByRole('button',{name:'Filter'}));await waitFor(()=>expect(document.querySelector('[role="dialog"] form')).not.toBeNull());
+ expect(screen.getByLabelText('Full Name')).toHaveValue('Retained Employee');expect(screen.getByLabelText('Probation')).toHaveValue(2);expect(screen.getByLabelText('Filter operation for Probation')).toHaveValue('from');expect(document.querySelector('input[name="term"]')).toHaveValue('RETAINED-ID');
+ const form=document.querySelector<HTMLFormElement>('[role="dialog"] form')!;expect(new FormData(form).getAll('field.name')).toEqual(['Retained Employee']);expect(new FormData(form).get('field.company')).toBe('fixture-company');
+});

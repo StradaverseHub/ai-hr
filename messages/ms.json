@@ -841,12 +841,13 @@
         "blank": "Kosong / tidak ditetapkan",
         "notBlank": "Mempunyai nilai",
         "operation": "Operasi penapis untuk {name}",
-        "privateHint": "Teks kekal peribadi. Penapis peribadi tamat selepas lima minit; tambah kriteria untuk mengecilkan hasil, atau kosongkan untuk bermula semula.",
+        "privateHint": "Teks kekal peribadi. Semak, ubah atau buang setiap penapis; penapis peribadi tamat selepas lima minit.",
         "currentFieldsHint": "Medan pekerjaan semasa sahaja. Sejarah, delegasi dan rekod berulang menggunakan skrin khusus. Draf disembunyikan semasa penapis peribadi atau pekerjaan aktif.",
         "privateActive": "Penapis peribadi aktif",
         "privateExpired": "Penapis peribadi tamat atau tidak tersedia. Terapkan semula.",
         "superiorId": "Penyelia Langsung · ID Pekerja",
-        "superiorName": "Penyelia Langsung · Nama"
+        "superiorName": "Penyelia Langsung · Nama",
+        "removeCriterion": "Buang penapis {name}"
       }
     },
     "switcher": {

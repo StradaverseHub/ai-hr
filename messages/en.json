@@ -841,12 +841,13 @@
         "blank": "Blank / unassigned",
         "notBlank": "Has a value",
         "operation": "Filter operation for {name}",
-        "privateHint": "Text stays private. Active private filters expire after five minutes; add criteria to narrow them, or clear to start again.",
+        "privateHint": "Text stays private. Review, edit or remove individual filters; private filters expire after five minutes.",
         "currentFieldsHint": "Current Employment fields only. History, delegations and repeated records use their dedicated screens. Drafts are hidden while private or Employment-only filters are active.",
         "privateActive": "Private filters active",
         "privateExpired": "Private filters expired or unavailable. Apply them again.",
         "superiorId": "Direct Superior · Employee ID",
-        "superiorName": "Direct Superior · Name"
+        "superiorName": "Direct Superior · Name",
+        "removeCriterion": "Remove {name} filter"
       }
     },
     "switcher": {

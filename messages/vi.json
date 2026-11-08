@@ -841,12 +841,13 @@
         "blank": "Trống / chưa gán",
         "notBlank": "Có giá trị",
         "operation": "Phép lọc cho {name}",
-        "privateHint": "Văn bản được giữ riêng tư. Bộ lọc riêng tư hết hạn sau năm phút; thêm điều kiện để thu hẹp hoặc xóa để bắt đầu lại.",
+        "privateHint": "Văn bản được giữ riêng tư. Xem, sửa hoặc xóa từng bộ lọc; bộ lọc riêng tư hết hạn sau năm phút.",
         "currentFieldsHint": "Chỉ gồm trường việc làm hiện tại. Lịch sử, ủy quyền và bản ghi lặp lại dùng màn hình riêng. Bản nháp bị ẩn khi có bộ lọc riêng tư hoặc chỉ dành cho việc làm.",
         "privateActive": "Bộ lọc riêng tư đang hoạt động",
         "privateExpired": "Bộ lọc riêng tư hết hạn hoặc không khả dụng. Hãy áp dụng lại.",
         "superiorId": "Cấp trên trực tiếp · Mã nhân viên",
-        "superiorName": "Cấp trên trực tiếp · Tên"
+        "superiorName": "Cấp trên trực tiếp · Tên",
+        "removeCriterion": "Xóa bộ lọc {name}"
       }
     },
     "switcher": {

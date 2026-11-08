@@ -5,7 +5,7 @@ import {withTenant,type SessionContext} from '../db/client';
 import * as s from '../db/schema';
 import {hireEmployee,setEmploymentAssignment} from '../core/org';
 import {listEmployeesPage,countEmployeesByStatus,personnelFilterChoices,readPersonnelOverview} from '../core/read';
-import {createPersonnelPrivateSearch,personnelPrivateSearchAvailable,privateSearchHash} from '../core/personnel-private-search';
+import {createPersonnelPrivateSearch,readPersonnelPrivateCriteria,personnelPrivateSearchAvailable,privateSearchHash} from '../core/personnel-private-search';
 import {lockAccessConfigurationTx,tryLockAccessConfigurationReadTx} from '../core/access-configuration-lock';
 import {PersonnelReadBusyError} from '../core/personnel-read-bounds';
 import {personnelMaintenanceCompanyIds,workforceViewScope} from '../core/workforce-access';
@@ -162,4 +162,26 @@ it('retains identity permission provenance when another column filter narrows an
  expect((await list({privateSearch:narrowed})).total).toBe(1);
  await owner.db.insert(s.payrollPermissionGrant).values({tenantId:b.tenantId,companyId:b.companyId,role:'hr_admin',permissionKey:'report.read.identity',allowed:false});
  expect((await list({privateSearch:narrowed})).total).toBe(0);
+});
+
+it('replaces a Company criterion against the full authorised population and retains editable criteria',async()=>{
+ const [otherCompany]=await owner.db.insert(s.company).values({tenantId:b.tenantId,legalName:'Fictional Company B'}).returning();
+ const a=await hire('Company A person');const other=await hireEmployee(ctx,{person:{fullName:'Company B person',primaryEmail:'company-b@fixture.test'},companyId:otherCompany.id,employmentType:'full_time',hiredOn:'2024-01-01'});
+ const scope=[b.companyId,otherCompany.id];
+ const first=await createPersonnelPrivateSearch(ctx,{text:'',companyIds:scope,columnFilters:[{field:'company',operator:'equals',value:b.companyId}]});
+ const changed=await createPersonnelPrivateSearch(ctx,{text:'',companyIds:scope,previousToken:first,columnFilters:[{field:'company',operator:'equals',value:otherCompany.id}]});
+ expect((await listEmployeesPage(ctx,{companyIds:scope,privateSearch:changed,limit:100,offset:0},'workforce')).rows.map(row=>row.employmentId)).toEqual([other.employmentId]);
+ expect((await readPersonnelPrivateCriteria(ctx,changed,scope))?.filters).toEqual([{field:'company',operator:'equals',value:otherCompany.id}]);
+ const broadened=await createPersonnelPrivateSearch(ctx,{text:'person',companyIds:scope,replaceCriteria:true,columnFilters:[]});
+ expect((await listEmployeesPage(ctx,{companyIds:scope,privateSearch:broadened,limit:100,offset:0},'workforce')).rows.map(row=>row.employmentId).sort()).toEqual([a.employmentId,other.employmentId].sort());
+});
+it('private criteria are readable only by the bound actor, current exact scope and live token',async()=>{
+ await hire('Retained private text');const token=await createPersonnelPrivateSearch(ctx,{text:'Retained private text',companyIds:[b.companyId]});
+ expect(await readPersonnelPrivateCriteria(ctx,token,[b.companyId])).toEqual({term:'Retained private text',filters:[]});
+ await expect(withTenant(ctx,tx=>tx.execute(sql`select criteria from personnel_private_search`))).rejects.toThrow();
+ const other={...ctx,userId:await createAppUser(b.tenantId,null,'hr_admin')};expect(await readPersonnelPrivateCriteria(other,token,[b.companyId])).toBeNull();
+ expect(await readPersonnelPrivateCriteria(ctx,token,[])).toBeNull();
+ await owner.withTenant(ctx,tx=>tx.execute(sql`update personnel_private_search set created_at=now()-interval '10 minutes',expires_at=now()-interval '5 minutes' where token_hash=${privateSearchHash(token)}`));
+ expect(await readPersonnelPrivateCriteria(ctx,token,[b.companyId])).toBeNull();
+ await expect(createPersonnelPrivateSearch(ctx,{text:'new',companyIds:[b.companyId],previousToken:token})).rejects.toThrow(/expired/);
 });

@@ -24,3 +24,10 @@ it('separates accessible reorder handles, sorting and private column criteria wh
 it('reverts optimistic order and reports a failed preference write',async()=>{
  controls.save.mockRejectedValueOnce(new Error('fixture'));const view=make();fireEvent.keyDown(screen.getByRole('button',{name:'Move name'}),{key:'ArrowLeft'});expect(await screen.findByRole('alert')).toHaveTextContent(en.people.list.controls.saveFailed);expect([...view.container.querySelectorAll('th')].map(node=>node.getAttribute('data-column'))).toEqual(['code','name','joinDate']);
 });
+it('retains criteria in editable headers while preserving hidden fields and term only in POST bodies',()=>{
+ const criteria={term:'PRIVATE-IDENTITY',filters:[{field:'name',operator:'contains' as const,value:'Retained Name'},{field:'employment.orgDivision',operator:'equals' as const,value:'Private Division'}]};
+ const view=render(<NextIntlClientProvider locale="en" messages={en}><PersonnelListTable columns={['name']} allOrder={[...EMPLOYEE_COLUMN_KEYS]} labels={labels} employees={[]} drafts={[]} parameters={[]} privateCriteria={criteria} empty="None"/></NextIntlClientProvider>);
+ expect(screen.getByLabelText('Filter name')).toHaveValue('Retained Name');
+ const form=view.container.querySelector<HTMLFormElement>('#personnel-column-filter')!;
+ expect(form.querySelector('input[name="term"]')).toHaveValue('PRIVATE-IDENTITY');expect(form.querySelector('input[name="field.employment.orgDivision"]')).toHaveValue('Private Division');expect(form).toHaveAttribute('action','/admin/personnel/search');
+});
