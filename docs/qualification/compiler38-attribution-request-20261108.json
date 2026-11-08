@@ -1,0 +1,92 @@
+{
+  "kind": "FROZEN_SOURCE_ATTRIBUTION_DISPATCH_PROPOSAL_NOT_RUN",
+  "repository": "StradaverseHub/ai-hr",
+  "workflow": "alpha-staging-diagnostics.yml",
+  "controllerRef": "codex/compiler38-attribution-controller-20261108",
+  "sourceRef": "codex/compiler-proven-message-boundaries-20261108",
+  "sourceSha": "38b047c9f465990e3f26295c035ab9f69b3001d7",
+  "inputs": {
+    "candidate_ref": "codex/compiler-proven-message-boundaries-20261108",
+    "expected_sha": "38b047c9f465990e3f26295c035ab9f69b3001d7",
+    "filesystem_activation_probe": false,
+    "installer_fixture_phase": "full",
+    "plan_probe": false,
+    "build_transport_probe": false,
+    "transport_origin_run": "",
+    "transport_origin_sha": "",
+    "transport_origin_artifact": "",
+    "transport_origin_digest": "",
+    "compiler_transport_probe": false,
+    "next_build_cache_phase": "disabled",
+    "next_build_cache_origin": "",
+    "managed_compiler_probe": false,
+    "managed_compiler_force_invalid": false,
+    "compiler_compatible_probe": false,
+    "compiler_origin_run": "",
+    "compiler_origin_sha": "",
+    "compiler_origin_artifact": "",
+    "compiler_origin_digest": "",
+    "compiler_probe": true,
+    "statutory_probe": false,
+    "nodb_probe": false,
+    "instrument_copies": false,
+    "layout_probe": false
+  },
+  "expectedJobs": [
+    "resolve",
+    "compiler-attribution"
+  ],
+  "expectedArtifact": "diagnostic-compiler-attribution",
+  "sourceIdentity": {
+    "tsconfig.json": "0ee72fb11a698bad9b18c39223569adf5758727272b35bfa99ec7bfa57c3530a",
+    "pnpm-lock.yaml": "0413a070eca23d390fabdcd78cb63b2dcf4b0b69fe90408c7b57a4f672d21dbd"
+  },
+  "retainedFailure": {
+    "run": 42399953418,
+    "source": "38b047c9f465990e3f26295c035ab9f69b3001d7",
+    "focusedSelectorsPassed": 3,
+    "ordinaryCompiler": "V8_OOM",
+    "elapsed": "13:08.11",
+    "maxRssKiB": 12880016,
+    "signal": "SIGABRT",
+    "heapMiB": 12288
+  },
+  "releaseAuthorized": false,
+  "requiresRootReviewBeforeUploadDispatch": true,
+  "controllerBase": "af584365c54165b1bddd88316d766a9d5f55bd67",
+  "requiresFreshFrozenControllerRefResolution": true,
+  "unchangedProtocol": {
+    "node": "22.23.3",
+    "typescript": "5.9.3",
+    "heapMiB": 12288,
+    "logicalCpus": 4,
+    "runner": "ubuntu-24.04 standard hosted",
+    "inventoryBudgetMs": 120000,
+    "traceBudgetMs": 720000,
+    "jobTimeoutMinutes": 20,
+    "perFileBytes": 536870912,
+    "totalObservedBytes": 1073741824,
+    "logObservedBytes": 16777216,
+    "freeBeforeBytes": 21474836480,
+    "noCompilerRootsOrOptionsChanged": true,
+    "noCachesOrTransport": true
+  },
+  "controllerSourceSha256": {
+    ".github/ci/diagnostics/compiler-attribution.mjs": "81366509b06b7cb9e40525cae884aefaf3fa1b9c05278b392c18dcf97b04044b",
+    ".github/ci/diagnostics/compiler-attribution.test.mjs": "56c6fa6e626737a18a003b5636e8156fe922b302b4c359b1dd0aed4db756711c",
+    ".github/workflows/alpha-staging-diagnostics.yml": "f5e3833ce77bb3226f63aa52a20cbab22427d43d843552af17e7fb2cdc843f83"
+  },
+  "historicalAttribution": [
+    {
+      "run": 42392198414,
+      "source": "fe26d003b9750478e4d434cc9dd22b59092ae830",
+      "result": "V8_OOM; retained actual trace/inventory, not38 evidence"
+    },
+    {
+      "run": 42396515501,
+      "source": "05bde1cbb023f8d523a18774e92efe9fc2e295bc",
+      "controller": "af584365c54165b1bddd88316d766a9d5f55bd67",
+      "result": "V8_OOM; retained actual trace/inventory, not38 evidence"
+    }
+  ]
+}

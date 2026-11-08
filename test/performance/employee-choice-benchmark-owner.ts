@@ -5,6 +5,7 @@ import {vi} from 'vitest';
 import * as database from '../../db/client';
 import {owner} from '../harness';
 import {employeeChoiceOwnedUrl} from './employee-choice-owned-binding';
+import {employeeChoiceOwnedSettlement} from './employee-choice-owned-settlement';
 export {employeeChoiceOwnedUrl} from './employee-choice-owned-binding';
 
 type Scope='work'|'cleanup';
@@ -40,7 +41,7 @@ export function employeeChoiceBenchmarkOwner(signal:AbortSignal,record:(phase:st
    if(restoring)throw Error('Benchmark cleanup already admitted');restoring=true;
    cleanupDeadline=Math.min(deadline,Number(process.hrtime.bigint())/1e6+26000);
    cleanupTimer=setTimeout(()=>{void closeCleanup().catch(()=>{});},Math.max(0,cleanupDeadline-Number(process.hrtime.bigint())/1e6));
-   await stop();await resources.settle();await callbacks.settle();scope='cleanup';cleanupActive();mount('cleanup');
+   await employeeChoiceOwnedSettlement({stop,callbacks:()=>callbacks.settle(),resources:()=>resources.settle()});scope='cleanup';cleanupActive();mount('cleanup');
    // A rejected frontend Promise is not native backend quiescence. Observe only
    // this scope's exact registered tags; never cancel or terminate other work.
    for(;;){
@@ -50,11 +51,14 @@ export function employeeChoiceBenchmarkOwner(signal:AbortSignal,record:(phase:st
    record('owned-backends-quiescent');record('cleanup-owner-admitted');
   },
   async close(){
-   const errors:unknown[]=[];try{await resources.settle();await callbacks.settle();}catch(error){errors.push(error);}try{await closeCleanup();}catch(error){errors.push(error);}if(cleanupTimer)clearTimeout(cleanupTimer);
+   closed=true;const errors:unknown[]=[];
+   try{await employeeChoiceOwnedSettlement({stop,callbacks:()=>callbacks.settle(),resources:()=>resources.settle(),cleanup:closeCleanup});}catch(error){errors.push(error);}
+   if(cleanupTimer)clearTimeout(cleanupTimer);
    if(Number(process.hrtime.bigint())/1e6>=cleanupDeadline)errors.push(Error('Benchmark aggregate cleanup deadline exhausted'));
-   closed=true;signal.removeEventListener('abort',abort);Object.assign(owner,original);
-   vi.spyOn(database,'withTenant').mockRestore();
-   if(database.withTenant!==originalWithTenant)throw Error('Benchmark carrier restoration differs');
+   signal.removeEventListener('abort',abort);
+   try{Object.assign(owner,original);}catch(error){errors.push(error);}
+   try{vi.spyOn(database,'withTenant').mockRestore();}catch(error){errors.push(error);}
+   if(database.withTenant!==originalWithTenant)errors.push(Error('Benchmark carrier restoration differs'));
    if(errors.length)throw new AggregateError(errors,'Benchmark owned pool settlement refused');
   },
  };

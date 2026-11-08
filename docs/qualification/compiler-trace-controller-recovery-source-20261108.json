@@ -1,0 +1,20 @@
+{
+  "kind": "COMPILER_TRACE_CONTROLLER_RECOVERY_NOT_RELEASE",
+  "base": "68a648ff22cc4e9d1defcca92f6b9c27a0b3c2ab",
+  "sourceRef": "codex/compiler-trace-controller-recovery-20261108",
+  "selectors": [
+    "test/compiler-diagnostic-controller.test.ts"
+  ],
+  "qualification": "NOT_RUN",
+  "sourceSha256": {
+    ".github/ci/diagnostics/compiler-attribution.test.mjs": "d1137c86948791caa7f2c5f4275233fa7a0e0dcde11c6e8d940151bb46b2eaab",
+    "test/compiler-diagnostic-controller.test.ts": "89bae4add29cd290ffca55b0faa1d3a1af309be340257882713adefcfab56081",
+    "docs/qualification/compiler-trace-controller-recovery-20261108.md": "c11b4bc83c1ed8cd57bb1d6a7b8e10f66f0776e23d37656a0b8eb22293752c69"
+  },
+  "retainedFailedRun": 42418177031,
+  "retainedActualTrace": 42418174429,
+  "compilerChanged": false,
+  "applicationChanged": false,
+  "releaseAuthorized": false,
+  "production": "HELD"
+}
