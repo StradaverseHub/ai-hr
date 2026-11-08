@@ -58,7 +58,14 @@ it('matches the frozen full DTO and coverage, exact filters, empty and duplicate
  await saveRewardCalendar(f.ctx,f.unitId,0,{...emptyRewardCalendar(),due:{...emptyRewardCalendar().due,bu:due}});
  const expected=await oracle(f.ctx,[f.b.companyId]);expect(expected.all.map(u=>u.id)).toEqual([f.unitId]);
  expect(expected.all[0]).toMatchObject({companyId:f.b.companyId,businessUnitId:f.bu.id,people:1,verified:0,seat:'bu',holders:[],due,daysUntilDue:0});
- expect(JSON.stringify(expected.all)).not.toMatch(/9876|Fictional private salary recipient|basicCents|recommendation/);
+ const assertPrivateFactsAbsent=(value:unknown):void=>{
+  if(Array.isArray(value)){value.forEach(assertPrivateFactsAbsent);return;}
+  if(value!==null&&typeof value==='object'){
+   for(const [key,item] of Object.entries(value)){expect(['basicCents','recommendation']).not.toContain(key);assertPrivateFactsAbsent(item);}return;
+  }
+  expect([9876,987600,'9876','9876.00','987600','Fictional private salary recipient']).not.toContain(value);
+ };
+ assertPrivateFactsAbsent(expected.all);
  const observed=observeNativeRead();
  try{
   const actual=await rewardConfigurationListView(f.ctx,[f.b.companyId]);expect(actual).toEqual(expected);
@@ -193,6 +200,9 @@ it('returns at most authorized-ID upload rows with a large genuine unrelated pop
  const [company]=await owner.db.insert(s.company).values({tenantId:f.b.tenantId,legalName:'Fictional unrelated upload company'}).returning();
  const [bu]=await owner.db.insert(s.businessUnit).values({tenantId:f.b.tenantId,companyId:company.id,code:'OTHER',name:'Fictional other unit'}).returning();
  await setupCompanyStructureFixture(f.ctx,[{companyId:company.id,businessUnitId:bu.id}],today);
+ const [department]=await owner.db.insert(s.department).values({tenantId:f.b.tenantId,companyId:company.id,name:'Fictional unrelated upload department'}).returning();
+ // Native policy-pair membership requires a real current employment/assignment, beyond company tags.
+ await hireEmployee(f.ctx,{person:{fullName:'Fictional unrelated upload employee',primaryEmail:randomUUID()+'@example.invalid'},companyId:company.id,departmentId:department.id,businessUnitId:bu.id,employmentType:'full_time',hiredOn:'2020-01-01'});
  // Historical fixture rows use the actual owner, bound tenant and every existing native trigger.
  await owner.withTenant(f.ctx,async tx=>{
   await tx.execute(sql`insert into reward_uploaded_review(unit_id,tenant_id) values(${f.unitId}::uuid,${f.b.tenantId}::uuid)`);

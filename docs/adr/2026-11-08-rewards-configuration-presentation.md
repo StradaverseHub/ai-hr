@@ -91,3 +91,31 @@ which the intended focused controller does not supply. The receipt now uses the 
 ordinary test keeps running its assertions without writing this optional focused receipt.
 There is no alternate output claim or release-receipt adoption. All product, fixture, case,
 assertion, oracle and resource-budget bytes remain unchanged. Native execution is pending.
+
+## First hosted native outcome and two fixture corrections
+
+Run 42495189104 at source ff4dc941998914d6496007f7bce40b0d8d997702 and controller
+82859db9a598d5a83e6da9a60d3643b6969c04c3 completed all seven jobs: 66 of 68 cases
+passed, with two failures in the new native file. All 15 DOM and 44 inherited native
+cases passed; seven other new native cases passed at that original source identity.
+
+The first failure was the fixture privacy regexp matching the legitimate metadata value
+`deletionReason: "recommendations"`. Its replacement recursively rejects the exact private
+property keys and the known fixture recipient name/salary scalar values. It permits that
+metadata value and avoids treating substrings of opaque UUIDs as salary disclosure. The
+complete predecessor DTO oracle and all independent positive facts remain asserted.
+
+The population setup failed with actual SQLSTATE 42501, `reward policy group scope`, from
+`reward_policy_for_review` through the unchanged binding trigger. Checked company tags
+alone did not satisfy `reward_policy_pair_valid`, which requires actual current employment
+and assignment. The fixture now creates one real other-company department and calls the
+canonical `hireEmployee` owner before the unchanged 1,000-row population statement. Every
+native guard remains active; no permission, policy, role, SQL or product owner is changed.
+
+The population refused before row-count measurement, so that run has no row-census receipt
+or 1001-to-1 result. Its first failed case also ended before the facade/mode/login assertions.
+Postgres stayed within the 2 GiB budget with zero OOM/crash; worker-database teardown and
+workflow-owned container cleanup succeeded. The original failure and all passes retain
+that run/source identity. A sole nine-case-file retry is the existing focused controller's
+supported affected area; the other 59 valid passes are retained, without relabeling them.
+All nine case names, all other assertions, the oracle and resource budgets remain unchanged.
