@@ -368,9 +368,11 @@ class PhaseDiagnosticModels(unittest.TestCase):
         self.assertEqual(key_layer['base'], '4d4375a489e152772a0f225057ec41c5534b9aa9')
         capability=json.loads((ROOT/'deploy/admission/next_key_name_capability_inverse.json').read_text())
         self.assertEqual(capability['base'], '80a564ef2258613bc8b9489dcc6a3ac709442a34')
+        receipt=json.loads((ROOT/'deploy/admission/next_host_key_receipt_inverse.json').read_text())
+        self.assertEqual(receipt['base'], 'c0456f6a98e5f3feaf11ca4d759d57c8b76e25da')
         def restored4d(name):
             source=(ROOT/name).read_text()
-            for current_layer in (capability,key_layer):
+            for current_layer in (receipt,capability,key_layer):
                 if name not in current_layer['files']:
                     continue
                 row=current_layer['files'][name];self.assertEqual(hashlib.sha256(source.encode()).hexdigest(),row['currentSha256'])
@@ -379,7 +381,7 @@ class PhaseDiagnosticModels(unittest.TestCase):
                     self.assertEqual(''.join(lines[edit['start']:edit['end']]),edit['after']);lines[edit['start']:edit['end']]=edit['before'].splitlines(keepends=True)
                 source=''.join(lines);self.assertEqual(hashlib.sha256(source.encode()).hexdigest(),row['originalSha256'])
             return source
-        for name in set(capability['files']) | set(key_layer['files']):restored4d(name)
+        for name in set(receipt['files']) | set(capability['files']) | set(key_layer['files']):restored4d(name)
         originals={}
         for name,row in layer['files'].items():
             source=restored4d(name)

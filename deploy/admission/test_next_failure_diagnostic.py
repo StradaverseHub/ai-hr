@@ -331,10 +331,26 @@ class FailureDiagnosticModels(unittest.TestCase):
         self.assertNotIn('ownedRuntimeCleaned', F.report)
 
     def test_complete_original_native_authority_and_cleanup_source_bytes_are_preserved(self):
+        receipt = json.loads(pathlib.Path(__file__).with_name('next_host_key_receipt_inverse.json').read_text())
+        self.assertEqual(receipt['base'], 'c0456f6a98e5f3feaf11ca4d759d57c8b76e25da')
+        def restored_c045(name):
+            source = (pathlib.Path(__file__).resolve().parents[2] / name).read_text()
+            if name in receipt['files']:
+                row = receipt['files'][name]
+                self.assertEqual(hashlib.sha256(source.encode()).hexdigest(), row['currentSha256'])
+                lines = source.splitlines(keepends=True)
+                for edit in row['changes']:
+                    self.assertEqual(''.join(lines[edit['start']:edit['end']]), edit['after'])
+                    lines[edit['start']:edit['end']] = edit['before'].splitlines(keepends=True)
+                source = ''.join(lines)
+                self.assertEqual(hashlib.sha256(source.encode()).hexdigest(), row['originalSha256'])
+            return source
+        for name in receipt['files']:
+            restored_c045(name)
         capability = json.loads(pathlib.Path(__file__).with_name('next_key_name_capability_inverse.json').read_text())
         self.assertEqual(capability['base'], '80a564ef2258613bc8b9489dcc6a3ac709442a34')
         for name, row in capability['files'].items():
-            source = (pathlib.Path(__file__).resolve().parents[2] / name).read_text()
+            source = restored_c045(name)
             self.assertEqual(hashlib.sha256(source.encode()).hexdigest(), row['currentSha256'])
             lines = source.splitlines(keepends=True)
             for edit in row['changes']:
