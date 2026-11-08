@@ -129,7 +129,7 @@ async function readAiManagement(ctx:SessionContext,search:string,runFilter:AiRun
     let presentationProvider:Awaited<ReturnType<typeof readAiManagementPresentationTx>>=null;
     if(purpose==='full')await currentControlAdminTx(tx,ctx,false);
     else presentationProvider=await readAiManagementPresentationTx(tx,ctx);
-    const fresh = { ...ctx, entitlements: await resolveEntitlementsTx(tx, ctx.tenantId) };
+    const fresh = { ...ctx, entitlements: await resolveEntitlementsTx(tx, ctx.tenantId), ...(purpose==='full'?{}:{entitlementsError:undefined}) };
     const policies = await tx.select().from(aiControlPolicy).orderBy(asc(aiControlPolicy.scopeKey));
     const activeProvider = provider?.providers.find(p => p.isActive);
     let resolved: Pick<NonNullable<Awaited<ReturnType<typeof resolveActiveAiConfig>>>,'provider'|'model'> | null = null;

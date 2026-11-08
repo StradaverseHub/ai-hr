@@ -56,12 +56,12 @@
     "docs/qualification/ai-management-common-presentation-source-20261109.json"
   ],
   "currentSourceSha256": {
-    "core/ai-management.ts": "5ef8372aa5da630c5db634ee9c9d3e91ae5e678672e3d180f2db164674f562a4",
+    "core/ai-management.ts": "6556da7c659352b993eafe7a9b9e8157aed102bcfcef34a90a23e6cfbd6853c7",
     "core/ai-spend-management.ts": "932659860f919825d0533ecba0b1ad258e7a1f3a0abfd153bba0f7b51089e945",
     "core/ai-management-presentation.ts": "407e1d7d07fe61248b11080f2fd81c25e02d387c4ca2bc13792c470c5596454d",
     "test/ai-management-section-projection.test.ts": "55d2463ecd033a32e7dae12b436bde9fb0c883ff685d51f62c213c0af34156f2",
-    "test/ai-management-presentation.test.ts": "81121c2a83f7b7ef8968a968e2c8db484edadcad9c79a157204a6f84604033c2",
-    "docs/adr/2026-11-09-ai-management-section-projection.md": "1516c40b702bbdb73304d517435e5c8517518ba42887ec3e0c49316e23ade2c1"
+    "test/ai-management-presentation.test.ts": "28a0739993280eab71debfb57e625ee2e78c09ef947752f329c75ae9f1972706",
+    "docs/adr/2026-11-09-ai-management-section-projection.md": "7c92fd92327ac82e8509367e383f10a311c4588bbf2392a27be070a4caab3b10"
   },
   "historicalWholeProtectedSpendOwner": {
     "status": "HISTORICAL_D458_ONLY_NOT_CURRENT_WHOLE_FILE",
@@ -92,9 +92,9 @@
         },
         {
           "startLine": 128,
-          "endLine": 131,
-          "after": "    let presentationProvider:Awaited<ReturnType<typeof readAiManagementPresentationTx>>=null;\n    if(purpose==='full')await currentControlAdminTx(tx,ctx,false);\n    else presentationProvider=await readAiManagementPresentationTx(tx,ctx);\n",
-          "before": "    await currentControlAdminTx(tx,ctx,false);\n"
+          "endLine": 132,
+          "after": "    let presentationProvider:Awaited<ReturnType<typeof readAiManagementPresentationTx>>=null;\n    if(purpose==='full')await currentControlAdminTx(tx,ctx,false);\n    else presentationProvider=await readAiManagementPresentationTx(tx,ctx);\n    const fresh = { ...ctx, entitlements: await resolveEntitlementsTx(tx, ctx.tenantId), ...(purpose==='full'?{}:{entitlementsError:undefined}) };\n",
+          "before": "    await currentControlAdminTx(tx,ctx,false);\n    const fresh = { ...ctx, entitlements: await resolveEntitlementsTx(tx, ctx.tenantId) };\n"
         },
         {
           "startLine": 126,
@@ -464,8 +464,8 @@
     "sourceExpectedNotMeasured": true
   },
   "newNativeFixtureCensus": {
-    "registrations": 8,
-    "expandedCases": 9,
+    "registrations": 10,
+    "expandedCases": 11,
     "authoredNotExecuted": true,
     "cases": [
       "actual four native mode matrix",
@@ -476,7 +476,9 @@
       "snapshot scope narrowing/stale command",
       "native DML and SQL rollback",
       "held raw Stop writer before read",
-      "Stop old/new snapshot and live command refusal/resume"
+      "Stop old/new snapshot and live command refusal/resume",
+      "prior session resolution error/no-cache recovery/current module and attributed switch facts/legacy full refusal",
+      "genuine entitlement-source relation lock timeout/failed resolver SQL/settlement/recovered snapshot"
     ],
     "noExtraDriverPool": true,
     "nativeModesUseExistingAppDbBeforeBeginGucs": true,
@@ -513,5 +515,21 @@
   "runtimeQualified": false,
   "published": false,
   "releaseAuthorized": false,
-  "productionHeld": true
+  "productionHeld": true,
+  "pageErrorRecovery": {
+    "parent": "22909ad939732276682834d469fec0f92b0ed9bd",
+    "record": "docs/qualification/ai-management-common-page-error-recovery-source-20261109.json",
+    "recordSha256": "8d77ae2e2f9600185b579822ad167f90c0859e8fe685bf70a51b514607f55f08",
+    "originalParentCommonRecord": {
+      "commit": "22909ad939732276682834d469fec0f92b0ed9bd",
+      "path": "docs/qualification/ai-management-common-presentation-source-20261109.json",
+      "mode": "100644",
+      "gitBlob": "9ef7367476fc9fc62acd5b88fd86d0beea8882ef",
+      "bytes": 28433,
+      "sha256": "fbccc52a20a2972ab52be8b4a90942f6f35caa4b26eaa1bde89d645fb1690947"
+    },
+    "original9CommonCasesWhole": true,
+    "sourceOnly": true,
+    "nativeAbiStillUnallocated": true
+  }
 }

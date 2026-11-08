@@ -21,7 +21,8 @@ import {googleAdapter} from '../lib/ai/providers/google';
 import {gatewayAdapter} from '../lib/ai/providers/gateway';
 import {openrouterAdapter} from '../lib/ai/providers/openrouter';
 import {observeNativeRead} from './helpers/native-read-observer';
-import {adminCtx,closeAll,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
+import {adminCtx,closeAll,migrateTestDb,owner,resetDb,seedBase,setModule,type Base} from './harness';
+import {EntitlementsResolutionFailedError} from '../core/entitlements';
 
 let b:Base,group:SessionContext;
 const attempted=vi.fn();
@@ -192,4 +193,58 @@ it('treats Stop as snapshot metadata while the unchanged live barrier still refu
   expect((await aiManagementPageView(group,'overview')).companies.map(row=>row.id)).toContain(b.companyId);
   await expect(database.withTenant(group,tx=>assertAiCentreRunningTx(tx,group))).rejects.toMatchObject({reason:'paused'});
  }finally{await setMandateStopSwitch(group,false);}
+});
+
+
+it('recovers a prior session resolution error only for PAGE purposes using current modules and attributed switches',async()=>{
+ for(const code of ['assistant','payroll','claims'])await setModule(b.tenantId,code,'active');
+ await saveAiProviderConfig(group,{provider:'openai',model:'fictional-common-recovered-model',apiKey:'fictional-common-recovered-key',makeActive:true});
+ await setAiFeature(group,'claims_triage',true);
+ const [switchEvent]=await owner.client<{id:string}[]>`select id from public.domain_event where tenant_id=${b.tenantId}::uuid
+  and event_type='tenant-setting.changed' and payload->>'key'='claims.input_triage_enabled' order by occurred_at desc,sequence desc limit 1`;
+ expect(switchEvent?.id).toBeTruthy();
+ const recovering:SessionContext={...group,entitlements:undefined,entitlementsError:'fictional earlier session snapshot failure'};
+ const before=await events();
+ for(const section of ['features','allowances'] as const){
+  const view=await aiManagementPageView(recovering,section);
+  expect(view.provider).toEqual({provider:'openai',model:'fictional-common-recovered-model'});
+  expect(view.features.find(row=>row.id==='claims_triage')).toMatchObject({enabled:true,state:'scheduled'});
+  expect(view.features.find(row=>row.id==='payroll_explanation')).toMatchObject({enabled:true,state:'ready'});
+  expect(view.agentSwitches.find(row=>row.feature==='claims_triage')).toMatchObject({state:'attributed',userId:group.userId,eventId:switchEvent.id});
+ }
+ expect(await events()).toEqual(before);expect(recovering.entitlements).toBeUndefined();expect(recovering.entitlementsError).toBe('fictional earlier session snapshot failure');
+ // The historical full API keeps its original error-bearing-context refusal.
+ await expect(aiManagementView(recovering)).rejects.toBeInstanceOf(EntitlementsResolutionFailedError);
+ await setModule(b.tenantId,'claims','disabled');
+ const currentOff=await aiManagementPageView(recovering,'features');
+ expect(currentOff.features.find(row=>row.id==='claims_triage')).toMatchObject({enabled:true,state:'module'});
+ expect(currentOff.agentSwitches.find(row=>row.feature==='claims_triage')).toMatchObject({state:'attributed',userId:group.userId,eventId:switchEvent.id});
+ await setAiFeature(group,'claims_triage',false);
+ const switchedOff=await aiManagementPageView(recovering,'features');
+ expect(switchedOff.features.find(row=>row.id==='claims_triage')).toMatchObject({enabled:false,state:'paused'});
+ expect(switchedOff.agentSwitches.find(row=>row.feature==='claims_triage')).toEqual({feature:'claims_triage',state:'off'});
+ expect(recovering.entitlements).toBeUndefined();expect(recovering.entitlementsError).toBe('fictional earlier session snapshot failure');
+});
+
+it('propagates an actual entitlement snapshot SQL failure and settles rollback before a recovered PAGE read',async()=>{
+ const recovering:SessionContext={...group,entitlements:undefined,entitlementsError:'fictional earlier session snapshot failure'};
+ const actual=database.withTenant,observed:{role:string;isolation:string;read_only:string}[]=[];
+ // Existing owner + app connections only. The real relation lock makes the resolver fail;
+ // neither its result nor calling authority is mocked or replaced.
+ const spy=vi.spyOn(database,'withTenant').mockImplementation(<T>(ctx:SessionContext,read:(tx:Tx)=>Promise<T>,options?:Parameters<typeof database.withTenant>[2])=>actual(ctx,async tx=>{
+  await tx.execute(sql`set local lock_timeout='300ms'`);
+  const [mode]=await tx.execute<{role:string;isolation:string;read_only:string}>(sql`select current_user as role,current_setting('transaction_isolation') as isolation,current_setting('transaction_read_only') as read_only`);
+  observed.push(mode);return read(tx);
+ },options));
+ try{
+  await owner.client.begin(async holder=>{
+   await holder`lock table public.tenant_module in access exclusive mode`;
+   const failure=await aiManagementPageView(recovering,'features').then(()=>null,(error:unknown)=>error);
+   expect(pgSqlState(failure)).toBe('55P03');
+   expect((failure as {query?:unknown}|null)?.query).toEqual(expect.stringContaining('FROM tenant_module tm'));
+  });
+ }finally{spy.mockRestore();}
+ expect(observed).toEqual([{role:'ai_hr_app',isolation:'repeatable read',read_only:'on'}]);
+ const next=await aiManagementPageView(recovering,'features');expect(next.features.length).toBeGreaterThan(0);
+ expect(recovering.entitlements).toBeUndefined();expect(recovering.entitlementsError).toBe('fictional earlier session snapshot failure');
 });

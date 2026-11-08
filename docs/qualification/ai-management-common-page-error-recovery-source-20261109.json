@@ -1,0 +1,352 @@
+{
+  "kind": "AI_COMMON_PAGE_ENTITLEMENT_ERROR_RECOVERY_SOURCE_ONLY_UNQUALIFIED",
+  "parent": "22909ad939732276682834d469fec0f92b0ed9bd",
+  "sourceRef": "codex/ai-management-common-page-error-recovery-20261109",
+  "scope": [
+    "core/ai-management.ts",
+    "test/ai-management-presentation.test.ts",
+    "docs/adr/2026-11-09-ai-management-section-projection.md",
+    "docs/qualification/ai-management-section-projection-source-20261109.json",
+    "docs/qualification/ai-management-common-presentation-source-20261109.json",
+    "docs/qualification/ai-management-common-page-error-recovery-source-20261109.json"
+  ],
+  "wholeActualParentGitPreimages": [
+    {
+      "commit": "22909ad939732276682834d469fec0f92b0ed9bd",
+      "path": "core/ai-management.ts",
+      "mode": "100644",
+      "gitBlob": "449fca972a596b4e121da5cbf228148a863f0dc7",
+      "bytes": 46700,
+      "sha256": "5ef8372aa5da630c5db634ee9c9d3e91ae5e678672e3d180f2db164674f562a4"
+    },
+    {
+      "commit": "22909ad939732276682834d469fec0f92b0ed9bd",
+      "path": "test/ai-management-presentation.test.ts",
+      "mode": "100644",
+      "gitBlob": "57ea08caaaa48b6846b29cd7e527167f37f49751",
+      "bytes": 18786,
+      "sha256": "81121c2a83f7b7ef8968a968e2c8db484edadcad9c79a157204a6f84604033c2"
+    },
+    {
+      "commit": "22909ad939732276682834d469fec0f92b0ed9bd",
+      "path": "docs/adr/2026-11-09-ai-management-section-projection.md",
+      "mode": "100644",
+      "gitBlob": "180478cd808dcc90305817f74045fb112caf81eb",
+      "bytes": 17646,
+      "sha256": "1516c40b702bbdb73304d517435e5c8517518ba42887ec3e0c49316e23ade2c1"
+    },
+    {
+      "commit": "22909ad939732276682834d469fec0f92b0ed9bd",
+      "path": "docs/qualification/ai-management-section-projection-source-20261109.json",
+      "mode": "100644",
+      "gitBlob": "c8b6e0152f602cddff3e5f7b768dfc5f7a1b5288",
+      "bytes": 35591,
+      "sha256": "cff53e528c6fe2e0be73f312304df6f6f0f25167a39dd1db62d1827f5dd6aa2f"
+    },
+    {
+      "commit": "22909ad939732276682834d469fec0f92b0ed9bd",
+      "path": "docs/qualification/ai-management-common-presentation-source-20261109.json",
+      "mode": "100644",
+      "gitBlob": "9ef7367476fc9fc62acd5b88fd86d0beea8882ef",
+      "bytes": 28433,
+      "sha256": "fbccc52a20a2972ab52be8b4a90942f6f35caa4b26eaa1bde89d645fb1690947"
+    }
+  ],
+  "newRecordAbsentFromParent": true,
+  "currentSourceSha256": {
+    "core/ai-management.ts": "6556da7c659352b993eafe7a9b9e8157aed102bcfcef34a90a23e6cfbd6853c7",
+    "test/ai-management-presentation.test.ts": "28a0739993280eab71debfb57e625ee2e78c09ef947752f329c75ae9f1972706",
+    "docs/adr/2026-11-09-ai-management-section-projection.md": "7c92fd92327ac82e8509367e383f10a311c4588bbf2392a27be070a4caab3b10"
+  },
+  "wholeImmediateParentInverses": {
+    "core/ai-management.ts": {
+      "coordinates": "ZERO_BASED_HALF_OPEN_CURRENT_LINES_DESCENDING",
+      "changes": [
+        {
+          "startLine": 131,
+          "endLine": 132,
+          "after": "    const fresh = { ...ctx, entitlements: await resolveEntitlementsTx(tx, ctx.tenantId), ...(purpose==='full'?{}:{entitlementsError:undefined}) };\n",
+          "before": "    const fresh = { ...ctx, entitlements: await resolveEntitlementsTx(tx, ctx.tenantId) };\n"
+        }
+      ]
+    },
+    "test/ai-management-presentation.test.ts": {
+      "coordinates": "ZERO_BASED_HALF_OPEN_CURRENT_LINES_DESCENDING",
+      "changes": [
+        {
+          "startLine": 196,
+          "endLine": 250,
+          "after": "\n\nit('recovers a prior session resolution error only for PAGE purposes using current modules and attributed switches',async()=>{\n for(const code of ['assistant','payroll','claims'])await setModule(b.tenantId,code,'active');\n await saveAiProviderConfig(group,{provider:'openai',model:'fictional-common-recovered-model',apiKey:'fictional-common-recovered-key',makeActive:true});\n await setAiFeature(group,'claims_triage',true);\n const [switchEvent]=await owner.client<{id:string}[]>`select id from public.domain_event where tenant_id=${b.tenantId}::uuid\n  and event_type='tenant-setting.changed' and payload->>'key'='claims.input_triage_enabled' order by occurred_at desc,sequence desc limit 1`;\n expect(switchEvent?.id).toBeTruthy();\n const recovering:SessionContext={...group,entitlements:undefined,entitlementsError:'fictional earlier session snapshot failure'};\n const before=await events();\n for(const section of ['features','allowances'] as const){\n  const view=await aiManagementPageView(recovering,section);\n  expect(view.provider).toEqual({provider:'openai',model:'fictional-common-recovered-model'});\n  expect(view.features.find(row=>row.id==='claims_triage')).toMatchObject({enabled:true,state:'scheduled'});\n  expect(view.features.find(row=>row.id==='payroll_explanation')).toMatchObject({enabled:true,state:'ready'});\n  expect(view.agentSwitches.find(row=>row.feature==='claims_triage')).toMatchObject({state:'attributed',userId:group.userId,eventId:switchEvent.id});\n }\n expect(await events()).toEqual(before);expect(recovering.entitlements).toBeUndefined();expect(recovering.entitlementsError).toBe('fictional earlier session snapshot failure');\n // The historical full API keeps its original error-bearing-context refusal.\n await expect(aiManagementView(recovering)).rejects.toBeInstanceOf(EntitlementsResolutionFailedError);\n await setModule(b.tenantId,'claims','disabled');\n const currentOff=await aiManagementPageView(recovering,'features');\n expect(currentOff.features.find(row=>row.id==='claims_triage')).toMatchObject({enabled:true,state:'module'});\n expect(currentOff.agentSwitches.find(row=>row.feature==='claims_triage')).toMatchObject({state:'attributed',userId:group.userId,eventId:switchEvent.id});\n await setAiFeature(group,'claims_triage',false);\n const switchedOff=await aiManagementPageView(recovering,'features');\n expect(switchedOff.features.find(row=>row.id==='claims_triage')).toMatchObject({enabled:false,state:'paused'});\n expect(switchedOff.agentSwitches.find(row=>row.feature==='claims_triage')).toEqual({feature:'claims_triage',state:'off'});\n expect(recovering.entitlements).toBeUndefined();expect(recovering.entitlementsError).toBe('fictional earlier session snapshot failure');\n});\n\nit('propagates an actual entitlement snapshot SQL failure and settles rollback before a recovered PAGE read',async()=>{\n const recovering:SessionContext={...group,entitlements:undefined,entitlementsError:'fictional earlier session snapshot failure'};\n const actual=database.withTenant,observed:{role:string;isolation:string;read_only:string}[]=[];\n // Existing owner + app connections only. The real relation lock makes the resolver fail;\n // neither its result nor calling authority is mocked or replaced.\n const spy=vi.spyOn(database,'withTenant').mockImplementation(<T>(ctx:SessionContext,read:(tx:Tx)=>Promise<T>,options?:Parameters<typeof database.withTenant>[2])=>actual(ctx,async tx=>{\n  await tx.execute(sql`set local lock_timeout='300ms'`);\n  const [mode]=await tx.execute<{role:string;isolation:string;read_only:string}>(sql`select current_user as role,current_setting('transaction_isolation') as isolation,current_setting('transaction_read_only') as read_only`);\n  observed.push(mode);return read(tx);\n },options));\n try{\n  await owner.client.begin(async holder=>{\n   await holder`lock table public.tenant_module in access exclusive mode`;\n   const failure=await aiManagementPageView(recovering,'features').then(()=>null,(error:unknown)=>error);\n   expect(pgSqlState(failure)).toBe('55P03');\n   expect((failure as {query?:unknown}|null)?.query).toEqual(expect.stringContaining('FROM tenant_module tm'));\n  });\n }finally{spy.mockRestore();}\n expect(observed).toEqual([{role:'ai_hr_app',isolation:'repeatable read',read_only:'on'}]);\n const next=await aiManagementPageView(recovering,'features');expect(next.features.length).toBeGreaterThan(0);\n expect(recovering.entitlements).toBeUndefined();expect(recovering.entitlementsError).toBe('fictional earlier session snapshot failure');\n});\n",
+          "before": ""
+        },
+        {
+          "startLine": 23,
+          "endLine": 25,
+          "after": "import {adminCtx,closeAll,migrateTestDb,owner,resetDb,seedBase,setModule,type Base} from './harness';\nimport {EntitlementsResolutionFailedError} from '../core/entitlements';\n",
+          "before": "import {adminCtx,closeAll,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';\n"
+        }
+      ]
+    },
+    "docs/adr/2026-11-09-ai-management-section-projection.md": {
+      "coordinates": "ZERO_BASED_HALF_OPEN_CURRENT_LINES_DESCENDING",
+      "changes": [
+        {
+          "startLine": 147,
+          "endLine": 154,
+          "after": "\n\n## Common PAGE recovery after a previous entitlement query failure\n\nA source review found that the new PAGE snapshot replaced its entitlement data after a successful same-transaction resolution but retained the session's earlier `entitlementsError`. The canonical entitlement owner prioritizes that error, so scheduled feature, module and attributed-switch derivations could still fail despite current readable data. PAGE status and Allowances purposes now clear that old error only after the actual resolution succeeds. The full three-argument API retains its historical context/error behavior; the separate RC Assistant-status owner, all native admission, provider/spend owners and commands are unchanged.\n\nTwo appended fictional native controls cover a real app session carrying the previous error and no cached snapshot, independently expected current feature/switch facts, current module and canonical switch changes, the unchanged legacy FULL refusal, and a genuine resolver SQL lock-timeout followed by rollback settlement and a fresh successful PAGE read. Existing nine common native cases and seventeen projection cases retain their names, bodies, assertions and caps. These additions are authored UNRUN: the common native ABI remains private/unallocated with unresolved baseline guards, and no current source/provider/disclosure approval or eight-route/rendered qualification follows.\n",
+          "before": ""
+        }
+      ]
+    }
+  },
+  "metadataWholeParentReplay": {
+    "method": "Use immutable whole actual parent Git preimages above. For each named address restore its parent JSON value, or remove if absent in parent. Serialize indent=2 plus newline and verify exact whole parent SHA/bytes. No nested Base64 history or current-index backreference.",
+    "addresses": {
+      "docs/qualification/ai-management-common-presentation-source-20261109.json": [
+        [
+          "currentSourceSha256",
+          "core/ai-management.ts"
+        ],
+        [
+          "currentSourceSha256",
+          "test/ai-management-presentation.test.ts"
+        ],
+        [
+          "currentSourceSha256",
+          "docs/adr/2026-11-09-ai-management-section-projection.md"
+        ],
+        [
+          "wholeImmediateParentInverses",
+          "core/ai-management.ts"
+        ],
+        [
+          "newNativeFixtureCensus",
+          "registrations"
+        ],
+        [
+          "newNativeFixtureCensus",
+          "expandedCases"
+        ],
+        [
+          "newNativeFixtureCensus",
+          "cases"
+        ],
+        [
+          "pageErrorRecovery"
+        ]
+      ],
+      "docs/qualification/ai-management-section-projection-source-20261109.json": [
+        [
+          "currentSourceSha256",
+          "core/ai-management.ts"
+        ],
+        [
+          "currentSourceSha256",
+          "test/ai-management-presentation.test.ts"
+        ],
+        [
+          "currentSourceSha256",
+          "docs/adr/2026-11-09-ai-management-section-projection.md"
+        ],
+        [
+          "currentSourceSha256",
+          "docs/qualification/ai-management-common-presentation-source-20261109.json"
+        ],
+        [
+          "currentSourceSha256",
+          "docs/qualification/ai-management-common-page-error-recovery-source-20261109.json"
+        ],
+        [
+          "wholeProductParentInverses",
+          "core/ai-management.ts"
+        ],
+        [
+          "commonPresentationPreparation",
+          "recordSha256"
+        ],
+        [
+          "commonPresentationPreparation",
+          "sourceCensus",
+          "newPresentationExpanded"
+        ],
+        [
+          "commonPageErrorRecovery"
+        ]
+      ]
+    }
+  },
+  "wholeProtectedOwnerPins": [
+    {
+      "commit": "22909ad939732276682834d469fec0f92b0ed9bd",
+      "path": "core/ai-management-presentation.ts",
+      "mode": "100644",
+      "gitBlob": "a30c0d94f9c17cda949cf1f5fb0108178e39084e",
+      "bytes": 2118,
+      "sha256": "407e1d7d07fe61248b11080f2fd81c25e02d387c4ca2bc13792c470c5596454d"
+    },
+    {
+      "commit": "22909ad939732276682834d469fec0f92b0ed9bd",
+      "path": "core/ai-spend-management.ts",
+      "mode": "100644",
+      "gitBlob": "676867c709b289646b70da313a94bc3a9cafab9d",
+      "bytes": 3650,
+      "sha256": "932659860f919825d0533ecba0b1ad258e7a1f3a0abfd153bba0f7b51089e945"
+    },
+    {
+      "commit": "22909ad939732276682834d469fec0f92b0ed9bd",
+      "path": "core/ai-provider-snapshot.ts",
+      "mode": "100644",
+      "gitBlob": "21556843d8972922ec2e439bd8e2e893f0655295",
+      "bytes": 11272,
+      "sha256": "945a01c642f23e7a7603b2d917e5b2a47db6547121a41a29082b1542f6c09a4c"
+    },
+    {
+      "commit": "22909ad939732276682834d469fec0f92b0ed9bd",
+      "path": "core/ai-provider-row.ts",
+      "mode": "100644",
+      "gitBlob": "da6028cae15f546e557f1ca62b6f38c873b256db",
+      "bytes": 2122,
+      "sha256": "cfdb19a9c3c325862ccae535c8aba377e0952bec3270616996dded3774fddfe8"
+    },
+    {
+      "commit": "22909ad939732276682834d469fec0f92b0ed9bd",
+      "path": "core/ai-principal.ts",
+      "mode": "100644",
+      "gitBlob": "85630db56130b32196d12e7ffd04fbb27fb88b22",
+      "bytes": 3793,
+      "sha256": "3a77b8ed03ca1b9895310f6a7535473bbfd9a31d6c6d003612bd71e0dcbd6d21"
+    },
+    {
+      "commit": "22909ad939732276682834d469fec0f92b0ed9bd",
+      "path": "core/entitlements.ts",
+      "mode": "100644",
+      "gitBlob": "d20c047c91cfadf816781d5eac9844432cc101e5",
+      "bytes": 56779,
+      "sha256": "e1762b36f490b3aaf79afedbe5f7bc363a16e79e85b78fbefea04d68c8e05055"
+    },
+    {
+      "commit": "22909ad939732276682834d469fec0f92b0ed9bd",
+      "path": "core/module-presentation-read.ts",
+      "mode": "100644",
+      "gitBlob": "08806cc6a4435a586b379704af7230e628447a3d",
+      "bytes": 1216,
+      "sha256": "51d2ee112c95efaeaa96b25a5f677580cd6eb11ecca6cddb3fc3c6f4f0b61440"
+    },
+    {
+      "commit": "22909ad939732276682834d469fec0f92b0ed9bd",
+      "path": "core/agent-principal.ts",
+      "mode": "100644",
+      "gitBlob": "6ee2faa2f96a7414532f08904e59c53052a4fb73",
+      "bytes": 7198,
+      "sha256": "411ac66d9b6cc8cf754ef1bf2a04785f96018e466c76c4e7acd2919cd27c7dd7"
+    },
+    {
+      "commit": "22909ad939732276682834d469fec0f92b0ed9bd",
+      "path": "core/ai-config.ts",
+      "mode": "100644",
+      "gitBlob": "ef9f1a64435a1d1e0cf9c2110fc28175afc227bb",
+      "bytes": 21367,
+      "sha256": "6f6345624735f94d5c1faa9306d7a3fa913a61e0cbfb29c5e46b367aea8ea252"
+    },
+    {
+      "commit": "22909ad939732276682834d469fec0f92b0ed9bd",
+      "path": "core/ai-provider-readiness.ts",
+      "mode": "100644",
+      "gitBlob": "06a9cd274d447d1a2e1a44a4a19e885a4b538d3e",
+      "bytes": 10118,
+      "sha256": "aad2948b7727b44c4e830ff4dc496bc7825127ab2a4e6bc493e54d2f6139a2d1"
+    },
+    {
+      "commit": "22909ad939732276682834d469fec0f92b0ed9bd",
+      "path": "core/ai-provider-authority.ts",
+      "mode": "100644",
+      "gitBlob": "d74986076258249925cd0942ef883682e2f0a19a",
+      "bytes": 508,
+      "sha256": "d37a6b5aa76de0ca92a5a2d3006f0b34b7a111458d51d0e783f7e9b471b7a38d"
+    },
+    {
+      "commit": "22909ad939732276682834d469fec0f92b0ed9bd",
+      "path": "test/ai-management-section-projection.test.ts",
+      "mode": "100644",
+      "gitBlob": "5df82cc2c3bfadf52da9a2ab2347010fa559c1bc",
+      "bytes": 28902,
+      "sha256": "55d2463ecd033a32e7dae12b436bde9fb0c883ff685d51f62c213c0af34156f2"
+    },
+    {
+      "commit": "22909ad939732276682834d469fec0f92b0ed9bd",
+      "path": "test/ai-management-contract.test.ts",
+      "mode": "100644",
+      "gitBlob": "020ba50cc63d555e3e2008706bd6d2cec3ba76dd",
+      "bytes": 34538,
+      "sha256": "26311cc5725a931b951cf8825f0355c8c752eaaeb3210153f1fbc9c127a7a808"
+    },
+    {
+      "commit": "22909ad939732276682834d469fec0f92b0ed9bd",
+      "path": "db/client.ts",
+      "mode": "100644",
+      "gitBlob": "0c4f28e00393a763608b506d608a3cf7df542c57",
+      "bytes": 22595,
+      "sha256": "bdd700ea682bafbf0cad2c255b8dacb96c13d82dc7fa0ae9446d4a1da265cd3f"
+    },
+    {
+      "commit": "22909ad939732276682834d469fec0f92b0ed9bd",
+      "path": "package.json",
+      "mode": "100644",
+      "gitBlob": "12091ae79d969edc6146e2d63f40342948b1237b",
+      "bytes": 6300,
+      "sha256": "7f67e35d869a29d2cb58d65c6f63413afc63db2cc6c6cf9dacb5086bce70ec2c"
+    },
+    {
+      "commit": "22909ad939732276682834d469fec0f92b0ed9bd",
+      "path": "pnpm-lock.yaml",
+      "mode": "100644",
+      "gitBlob": "86269692f041fb333f44371d004f9a2afe999e3b",
+      "bytes": 356104,
+      "sha256": "0413a070eca23d390fabdcd78cb63b2dcf4b0b69fe90408c7b57a4f672d21dbd"
+    }
+  ],
+  "contracts": {
+    "onlyFreshConstructionRuntimeChanged": true,
+    "actualResolutionAwaitBeforePageOnlyClear": true,
+    "fullLegacyErrorContextRetained": true,
+    "oldRcAssistantStatusOwnerAtLine47Whole": true,
+    "allOtherCoreFunctionsWhole": true,
+    "allFiveProductInverseTargetsSameWholeOriginal": true,
+    "otherFourProductInverseObjectsWhole": true,
+    "commonOtherTwoInverseObjectsWhole": true,
+    "old8PresentationRegistrations9ExpandedBodiesWhole": true,
+    "old17ProjectionExpandedWhole": true,
+    "noGuardPrincipalNativeRoleRlsCommandWriterProviderPermissionChange": true,
+    "noSchemaSqlJournalAllocationChange": true,
+    "nativeSqlAbiStillPrivateUnallocatedGuardBaselineUnresolved": true
+  },
+  "authoredNotExecutedNewCensus": {
+    "registrations": 2,
+    "expanded": 2,
+    "combinedCommonRegistrations": 10,
+    "combinedCommonExpanded": 11,
+    "projectionExpandedUnchanged": 17,
+    "realAppNoCachedEntitlementAndPriorError": true,
+    "currentModuleAndCanonicalSwitchChanges": true,
+    "independentExpectedAttributionEventAndUser": true,
+    "legacyFullOriginalErrorClass": true,
+    "actualResolverSqlLockTimeout55P03NotMock": true,
+    "failedQueryMustContainActualEntitlementSnapshotSource": true,
+    "nextSnapshotAfterRollback": true
+  },
+  "resourceScope": {
+    "usesExistingFixtureDriverAndOwnerOnly": true,
+    "extraPools": 0,
+    "caseTimeoutCapsChanged": false,
+    "newSqlErrorCaseMaxConcurrentTransactions": 2,
+    "testOnlyLockTimeoutMs": 300,
+    "realRelationLock": "public.tenant_module ACCESS EXCLUSIVE; bounded isolated fictional fixture; no DDL/grants changed"
+  },
+  "allOriginalRuntimeFailuresAndPassesRetainIdentity": true,
+  "nativeAndHosted": "UNRUN",
+  "repositoryBehaviorExecutedLocally": false,
+  "runtimeQualified": false,
+  "sourceGraphApprovalRenewed": false,
+  "releaseAuthorized": false,
+  "productionHeld": true
+}
