@@ -1,9 +1,11 @@
 /** Hosted disposable owner composition only; never imported by a reader/process. */
 import {readFileSync} from 'node:fs';
-import postgres from 'postgres';
+import postgres,{type ISql,type TransactionSql} from 'postgres';
 import {createHash} from 'node:crypto';
 import {expect} from 'vitest';
 import {z} from 'zod';
+import {establishAuditCanonicalCustody} from './rewards-audit-default-custody';
+import type {AuditDefaultControl} from './rewards-audit-default-controller-process';
 import {controlledPolicyWait} from './rewards-audit-policy-controlled-wait';
 import {rewardsAuditCanonicalTruthContract,rewardsAuditPolicyReplacementBodies} from './rewards-audit-policy-contract';
 import {createRewardsAuditFixtureOwner,type RewardsAuditOwnerDependencies} from './rewards-audited-read-owner-factory';
@@ -14,60 +16,72 @@ const rowSchema=z.object({signature:z.string(),definition:z.string(),body:z.stri
 type FunctionRow=z.infer<typeof rowSchema>;
 function one(text:string,from:string,to:string){if(text.split(from).length!==2)throw Error('Exact single native replacement boundary required: '+from.slice(0,90));return text.replace(from,to);}
 async function definition(owner:RewardsAuditOwnerDependencies['owner'],signature:string):Promise<FunctionRow>{const [row]=await owner.client`select ${signature}::text as signature,pg_get_functiondef(p.oid)as definition,p.prosrc as body,to_jsonb(p)as details from pg_proc p where p.oid=${signature}::regprocedure`;return rowSchema.parse(row);}
-export async function rewardsAuditPolicyFixtureOwner(dependencies:RewardsAuditOwnerDependencies,poison:(error:Error)=>void){
+export async function rewardsAuditPolicyFixtureOwner(dependencies:RewardsAuditOwnerDependencies,poison:(error:Error)=>void,control:AuditDefaultControl&Readonly<{evidenceDirectory:string}>){
  const {owner}=dependencies;
  // The existing owner builds the exact canonical DB and proves its original
  // guards/ACL/RLS. This extension may never bypass its special-reader guard.
+ await establishAuditCanonicalCustody(dependencies,control,poison);
  const base=await createRewardsAuditFixtureOwner(dependencies),originals:FunctionRow[]=[],changed:FunctionRow[]=[];
  const sockets=new Set<ReturnType<typeof postgres>>();
  async function finishSockets(){const owned=Array.from(sockets);sockets.clear();await Promise.all(owned.map(socket=>socket.end({timeout:0})));await base.finishCase();}
- let probeIntent:{fixed:FunctionRow;body:string}|undefined;
- let installed=false,counterexampleIntent:{fixed:FunctionRow;fresh:string}|undefined;
- async function replaceNext(expected:FunctionRow,body:string){
-  const signature='app._domain_event_next(uuid,boolean)';
+ type FunctionImage={row:FunctionRow;dependencies:unknown;sharedDependencies:unknown};
+ const imageSchema=z.object({row:rowSchema,dependencies:z.array(z.record(z.string(),z.unknown())),sharedDependencies:z.array(z.record(z.string(),z.unknown()))}).strict();
+ const replacementOwners=new Set([...rewardsAuditPolicyReplacementBodies().keys(),'reward_audit_policy_private.probe_checkpoint(uuid)']);
+ async function image(tx:ISql,signature:string):Promise<FunctionImage>{
+  if(!replacementOwners.has(signature))throw Error('Unowned native postimage target refused');
+  const [raw]=await tx`select jsonb_build_object('signature',${signature}::text,'definition',pg_get_functiondef(p.oid),'body',p.prosrc,'details',to_jsonb(p))as "row",
+   coalesce((select jsonb_agg(to_jsonb(d)order by d.classid,d.objid,d.objsubid,d.refclassid,d.refobjid,d.refobjsubid,d.deptype)from pg_depend d where(d.classid='pg_proc'::regclass and d.objid=p.oid)or(d.refclassid='pg_proc'::regclass and d.refobjid=p.oid)),'[]'::jsonb)as dependencies,
+   coalesce((select jsonb_agg(to_jsonb(d)order by d.dbid,d.classid,d.objid,d.objsubid,d.refclassid,d.refobjid,d.deptype)from pg_shdepend d where d.dbid=(select oid from pg_database where datname=current_database())and d.classid='pg_proc'::regclass and d.objid=p.oid),'[]'::jsonb)as "sharedDependencies"
+   from pg_proc p where p.oid=${signature}::regprocedure`;
+  return imageSchema.parse(raw);
+ }
+ const originalImages=new Map<string,FunctionImage>();
+ async function reference(tx:TransactionSql,prior:FunctionImage,body:string){
+  const declaration=one(prior.row.definition,prior.row.body,body);await tx`savepoint owned_native_postimage`;
+  let result:FunctionImage|undefined;
+  await controlledPolicyWait(poison).run(async()=>{
+   await tx.unsafe(declaration);result=await image(tx,prior.row.signature);
+   // Canonicalized default baseline makes every complete field predictable.
+   // Keep proargdefaults, ABI, ACL, support and both dependency ledgers exact.
+   expect(result).toEqual({...prior,row:{...prior.row,definition:declaration,body,details:{...prior.row.details,prosrc:body}}});
+  },async()=>{await tx`rollback to savepoint owned_native_postimage`;await tx`release savepoint owned_native_postimage`;expect(await image(tx,prior.row.signature)).toEqual(prior);});
+  if(!result)throw Error('Rolled-back native replacement postimage absent');return result;
+ }
+ async function apply(tx:TransactionSql,prior:FunctionImage,next:FunctionImage){
+  expect(await image(tx,prior.row.signature)).toEqual(prior);await tx.unsafe(next.row.definition);expect(await image(tx,prior.row.signature)).toEqual(next);
+ }
+ let probeIntent:{fixed:FunctionImage;next?:FunctionImage}|undefined;
+ let installed=false,counterexampleIntent:{fixed:FunctionImage;next?:FunctionImage}|undefined;
+ async function replaceNext(expected:FunctionImage,body:string,intent:{next?:FunctionImage}){
+  const signature='app._domain_event_next(uuid,boolean)';expect(expected.row.signature).toBe(signature);
   return owner.client.begin(async tx=>{
    await tx`select reward_audit_policy_private.assert_profile()`;
-   expect((await tx`select to_jsonb(p)as details from pg_proc p where p.oid=${signature}::regprocedure`)[0].details).toEqual(expected.details);
-   await tx.unsafe(one(expected.definition,expected.body,body));
-   const [raw]=await tx`select ${signature}::text as signature,pg_get_functiondef(p.oid)as definition,p.prosrc as body,to_jsonb(p)as details from pg_proc p where p.oid=${signature}::regprocedure`;
-   const actual=rowSchema.parse(raw);expect(actual.body).toBe(body);
-   expect(Object.fromEntries(Object.entries(actual.details).filter(([key])=>key!=='prosrc'))).toEqual(Object.fromEntries(Object.entries(expected.details).filter(([key])=>key!=='prosrc')));
+   const next=await reference(tx,expected,body);intent.next=next; // native intent BEFORE possible COMMIT
+   await apply(tx,expected,next);
    for(const schema of ['reward_audit_private','reward_audit_policy_private']){
     const query='update '+schema+'.function_contract set details=$1::text::jsonb where signature=$2::regprocedure and details=$3::text::jsonb returning signature';
-    expect(await tx.unsafe(query,[JSON.stringify(actual.details),signature,JSON.stringify(expected.details)])).toHaveLength(1);
+    expect(await tx.unsafe(query,[JSON.stringify(next.row.details),signature,JSON.stringify(expected.row.details)])).toHaveLength(1);
    }
-   return actual;
+   await tx`select reward_audit_policy_private.assert_profile()`;return next;
   });
  }
- async function replaceProbeCheckpoint(expected:FunctionRow,body:string){
+ async function replaceProbeCheckpoint(expected:FunctionImage,body:string,intent:{next?:FunctionImage}){
   return owner.client.begin(async tx=>{
    await tx`select reward_audit_policy_private.assert_profile()`;
-   expect((await tx`select to_jsonb(p)as details from pg_proc p where p.oid=${expected.signature}::regprocedure`)[0].details).toEqual(expected.details);
-   await tx.unsafe(one(expected.definition,expected.body,body));
-   const [raw]=await tx`select ${expected.signature}::text as signature,pg_get_functiondef(p.oid)as definition,p.prosrc as body,to_jsonb(p)as details from pg_proc p where p.oid=${expected.signature}::regprocedure`;
-   const actual=rowSchema.parse(raw);expect(actual.body).toBe(body);
-   expect(Object.fromEntries(Object.entries(actual.details).filter(([key])=>key!=='prosrc'))).toEqual(Object.fromEntries(Object.entries(expected.details).filter(([key])=>key!=='prosrc')));
-   expect(await tx`update reward_audit_policy_private.function_contract set details=${JSON.stringify(actual.details)}::text::jsonb where signature=${expected.signature}::regprocedure and details=${JSON.stringify(expected.details)}::text::jsonb returning signature`).toHaveLength(1);
-   await tx`select reward_audit_policy_private.assert_profile()`;
-   return actual;
+   const next=await reference(tx,expected,body);intent.next=next;await apply(tx,expected,next);
+   expect(await tx`update reward_audit_policy_private.function_contract set details=${JSON.stringify(next.row.details)}::text::jsonb where signature=${expected.row.signature}::regprocedure and details=${JSON.stringify(expected.row.details)}::text::jsonb returning signature`).toHaveLength(1);
+   await tx`select reward_audit_policy_private.assert_profile()`;return next;
   });
  }
- async function restoreProbeCheckpoint(){
-  if(!probeIntent)return;const {fixed,body}=probeIntent,current=await definition(owner,fixed.signature);
-  if(current.body===fixed.body)expect(current).toEqual(fixed);
-  else{
-   expect(current.body).toBe(body);
-   expect(Object.fromEntries(Object.entries(current.details).filter(([key])=>key!=='prosrc'))).toEqual(Object.fromEntries(Object.entries(fixed.details).filter(([key])=>key!=='prosrc')));
-   await replaceProbeCheckpoint(current,fixed.body);expect(await definition(owner,fixed.signature)).toEqual(fixed);
-  }
-  probeIntent=undefined;
+ async function restoreIntent(intent:{fixed:FunctionImage;next?:FunctionImage},kind:'next'|'probe'){
+  const current=await image(owner.client,intent.fixed.row.signature);
+  if(current.row.body===intent.fixed.row.body){expect(current).toEqual(intent.fixed);return;}
+  if(!intent.next)throw Error('Unproven native instrumentation postimage; restoration refused');expect(current).toEqual(intent.next);
+  const restore={};if(kind==='next')await replaceNext(current,intent.fixed.row.body,restore);else await replaceProbeCheckpoint(current,intent.fixed.row.body,restore);
+  expect(await image(owner.client,intent.fixed.row.signature)).toEqual(intent.fixed);
  }
- async function restoreCounterexample(){
-  if(!counterexampleIntent)return;const {fixed,fresh}=counterexampleIntent,current=await definition(owner,fixed.signature);
-  if(current.body===fixed.body)expect(current).toEqual(fixed);
-  else{expect(current.body).toBe(fresh);expect(Object.fromEntries(Object.entries(current.details).filter(([key])=>key!=='prosrc'))).toEqual(Object.fromEntries(Object.entries(fixed.details).filter(([key])=>key!=='prosrc')));await replaceNext(current,fixed.body);expect(await definition(owner,fixed.signature)).toEqual(fixed);}
-  counterexampleIntent=undefined;
- }
+ async function restoreProbeCheckpoint(){if(!probeIntent)return;await restoreIntent(probeIntent,'probe');probeIntent=undefined;}
+ async function restoreCounterexample(){if(!counterexampleIntent)return;await restoreIntent(counterexampleIntent,'next');counterexampleIntent=undefined;}
  try{
   const bindings=rewardsAuditPolicyReplacementBodies();
   for(const expected of closure.functions){const actual=await definition(owner,expected.signature);expect(actual.body).toBe(expected.body);expect(createHash('md5').update(actual.body).digest('hex')).toBe(expected.bodyMd5);originals.push(actual);}
@@ -98,12 +112,8 @@ export async function rewardsAuditPolicyFixtureOwner(dependencies:RewardsAuditOw
    await tx`insert into reward_audit_policy_private.config values(true,current_database(),current_user::regrole::oid,1,${canonicalSource},false,${JSON.stringify(truth)}::text::jsonb,false)`;
    for(const [signature,body]of bindings){
     const old=originals.find(row=>row.signature===signature);if(!old)throw Error('Exact native replacement owner absent');
-    expect((await tx`select to_jsonb(p)as details from pg_proc p where p.oid=${signature}::regprocedure`)[0].details).toEqual(old.details);
-    await tx.unsafe(one(old.definition,old.body,body));
-    const [actual]=await tx`select ${signature}::text as signature,pg_get_functiondef(p.oid)as definition,p.prosrc as body,to_jsonb(p)as details from pg_proc p where p.oid=${signature}::regprocedure`;
-    const parsed=rowSchema.parse(actual);expect(parsed.body).toBe(body);
-    expect(Object.fromEntries(Object.entries(parsed.details).filter(([key])=>key!=='prosrc'))).toEqual(Object.fromEntries(Object.entries(old.details).filter(([key])=>key!=='prosrc')));
-    changed.push(parsed);
+    const prior=await image(tx,signature);expect(prior.row).toEqual(old);originalImages.set(signature,prior);
+    const next=await reference(tx,prior,body);await apply(tx,prior,next);changed.push(next.row);
     const sealed=await tx`update reward_audit_private.function_contract c set details=to_jsonb(p)from pg_proc p where p.oid=c.signature and p.oid=${signature}::regprocedure and c.details=${JSON.stringify(old.details)}::text::jsonb returning c.signature`;
     expect(sealed).toHaveLength(1);
    }
@@ -126,15 +136,15 @@ export async function rewardsAuditPolicyFixtureOwner(dependencies:RewardsAuditOw
    expect((await owner.client`select count(*)::int as n from pg_proc p cross join lateral aclexplode(coalesce(p.proacl,acldefault('f',p.proowner)))a where p.oid=${signature}::regprocedure and(a.grantee<>p.proowner or a.grantor<>p.proowner or a.is_grantable or a.privilege_type<>'EXECUTE')`)[0].n).toBe(0);
    const [row]=await owner.client`select hashtextextended(${'rewards-policy-probe:'+base.database+':'+tenantId},0)::text as key`;const key=z.string().regex(/^-?[0-9]{1,19}$/).parse(row.key);
    const body="\nBEGIN IF p_tenant='"+tenantId+"'::uuid THEN PERFORM pg_advisory_xact_lock('"+key+"'::bigint);END IF;END\n";
-   probeIntent={fixed,body}; // owned intent is retained BEFORE possible COMMIT
-   await controlledPolicyWait(poison).run(async()=>{await replaceProbeCheckpoint(fixed,body);await work(key);},restoreProbeCheckpoint);
+   const intent:{fixed:FunctionImage;next?:FunctionImage}={fixed:await image(owner.client,signature)};probeIntent=intent; // full native intent before COMMIT
+   await controlledPolicyWait(poison).run(async()=>{await replaceProbeCheckpoint(intent.fixed,body,intent);await work(key);},restoreProbeCheckpoint);
   },
   /** Controlled unsafe proposal counterexample, never an installed/accepted variant. */
   async withFreshFloorCounterexample(work:()=>Promise<void>){
    const signature='app._domain_event_next(uuid,boolean)',fixed=changed.find(row=>row.signature===signature);if(!fixed)throw Error('Owned fixed audit frame absent');
    const fresh=one(fixed.body,'native_floor:=reward_audit_policy_private.floor_for_xact(p_tenant);','PERFORM reward_audit_policy_private.assert_floor_profile();native_floor:=reward_audit_policy_private.durable_floor(p_tenant);');
-   counterexampleIntent={fixed,fresh}; // intent precedes the native commit boundary
-   await controlledPolicyWait(poison).run(async()=>{await replaceNext(fixed,fresh);await work();},restoreCounterexample);
+   const intent:{fixed:FunctionImage;next?:FunctionImage}={fixed:await image(owner.client,signature)};expect(intent.fixed.row).toEqual(fixed);counterexampleIntent=intent;
+   await controlledPolicyWait(poison).run(async()=>{await replaceNext(intent.fixed,fresh,intent);await work();},restoreCounterexample);
   },
   /** Private owner fixture configuration, not installed startup provenance or an API. */
   async protectedFixtureFallback(value:boolean){await owner.client`select reward_audit_policy_private.assert_profile()`;await owner.client`update reward_audit_policy_private.config set fallback_armed=${value}`;},
@@ -147,9 +157,9 @@ export async function rewardsAuditPolicyFixtureOwner(dependencies:RewardsAuditOw
      await tx`set local statement_timeout='2s'`;await tx`set local lock_timeout='300ms'`;await tx`select reward_audit_policy_private.assert_profile()`;
      for(const current of changed){
       const old=originals.find(row=>row.signature===current.signature);if(!old)throw Error('Native restore preimage absent');
-      expect((await tx`select to_jsonb(p)as details from pg_proc p where p.oid=${current.signature}::regprocedure`)[0].details).toEqual(current.details);
-      await tx.unsafe(old.definition);
-      expect((await tx`select to_jsonb(p)as details from pg_proc p where p.oid=${old.signature}::regprocedure`)[0].details).toEqual(old.details);
+      const prior=originalImages.get(current.signature);if(!prior)throw Error('Complete native restore preimage absent');
+      const actual=await image(tx,current.signature);expect(actual.row).toEqual(current);
+      const restore=await reference(tx,actual,old.body);expect(restore).toEqual(prior);await apply(tx,actual,restore);
       expect(await tx`update reward_audit_private.function_contract c set details=${JSON.stringify(old.details)}::text::jsonb where c.signature=${old.signature}::regprocedure and c.details=${JSON.stringify(current.details)}::text::jsonb returning c.signature`).toHaveLength(1);
      }
      expect(await tx`delete from reward_audit_private.function_contract where signature='reward_audit_read.reconcile_receipt(uuid)'::regprocedure returning signature`).toHaveLength(1);

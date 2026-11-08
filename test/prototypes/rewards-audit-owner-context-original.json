@@ -1,0 +1,6 @@
+{
+  "kind": "EXACT_ORIGINAL_CONTEXT_SOURCE_NOT_A_RUNTIME_WITNESS",
+  "base": "0e5b8695acb99615ee2a915f886bdd0d26a63613",
+  "originalFactorySha256": "a7788b3bfe779a5f42a4914ff7418e3ac31dfbd435bd4ce5ee53f9739b368b40",
+  "originalContext": " if(process.env.GITHUB_ACTIONS!=='true'||process.env.RUNNER_ENVIRONMENT!=='github-hosted')throw Error('Standard hosted Rewards prototype required');\n const pool=process.env.VITEST_POOL_ID??process.env.VITEST_WORKER_ID;if(!pool||!/^[1-9][0-9]*$/.test(pool)||process.env.WORKER_DB==='0')throw Error('Isolated canonical Rewards worker required');\n const database=workerDb(pool),namespace=process.env.TEST_DB_NAMESPACE??'';\n const parse=(raw:string|undefined)=>{if(!raw)throw Error('Both canonical worker URLs required');const url=new URL(raw);if(!['postgres:','postgresql:'].includes(url.protocol)||url.hostname!=='127.0.0.1'||url.pathname!=='/'+database||url.search||url.hash)throw Error('Exact loopback canonical Rewards database required');return url;};\n const migration=parse(process.env.TEST_MIGRATION_DATABASE_URL),application=parse(process.env.TEST_DATABASE_URL);if(migration.port!==application.port)throw Error('Rewards endpoint mismatch');\n"
+}

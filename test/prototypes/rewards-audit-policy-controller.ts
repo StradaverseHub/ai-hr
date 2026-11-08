@@ -3,6 +3,7 @@ import postgres from 'postgres';
 import {expect} from 'vitest';
 import {z} from 'zod';
 import {workerDb} from '../db-names';
+import {defaultControllerApplication} from './rewards-audit-default-controller-protocol';
 import {rewardsAuditPolicyLifetime} from './rewards-audit-policy-lifetime';
 const identitySchema=z.object({pid:z.number().int().positive(),started:z.string().min(20),database:z.string(),session_user:z.string(),current_user:z.string(),loopback:z.literal(true),statement:z.string(),lock:z.string(),isolation:z.string(),readonly:z.string(),native_owner:z.literal(true)}).strict();
 type Identity=z.infer<typeof identitySchema>;
@@ -14,7 +15,7 @@ export function rewardsAuditPolicyController(){
  const work=postgres(url.toString(),{max:1,connect_timeout:2,connection:{statement_timeout:20000,lock_timeout:300,application_name:'owned_rewards_policy_work'}});
  const cleanup=postgres(url.toString(),{max:1,connect_timeout:2,connection:{statement_timeout:2000,lock_timeout:300,application_name:'owned_rewards_policy_cleanup'}});
  const observer=postgres(url.toString(),{max:1,connect_timeout:2,connection:{statement_timeout:2000,lock_timeout:300,application_name:'owned_rewards_policy_observer'}});
- const identities:Identity[]=[],stops=new Set<()=>Promise<void>>();
+ const identities:Identity[]=[],stops=new Set<()=>Promise<void>>(),defaultControllers=new Set<string>();
  const lifetime=rewardsAuditPolicyLifetime({work:async()=>{await Promise.all([work.end({timeout:0}),...[...stops].map(stop=>stop())]);},cleanup:()=>cleanup.end({timeout:0})});
  const owner={get client(){return lifetime.ownerPhase()==='work'?work:cleanup;}};
  async function identity(kind:'work'|'cleanup'){
@@ -28,6 +29,7 @@ export function rewardsAuditPolicyController(){
  return{
   owner,lifetime,database,
   dependencies:{owner,migrateTestDb:async()=>{await identity('work');},closeAll:async()=>{await Promise.all([work.end({timeout:0}),cleanup.end({timeout:0})]);}},
+  registerDefaultController(nonce:string){const name=defaultControllerApplication(nonce);if(defaultControllers.has(name)||defaultControllers.size>=2)throw Error('Only two owned default-controller lifetimes allowed');defaultControllers.add(name);},
   registerStop(stop:()=>Promise<void>){let owned:Promise<void>|undefined;stops.add(()=>owned??=Promise.resolve().then(stop));},
   /** All case work is already drained before this actual bounded restoration. */
   async close(knownOwned:boolean,restore:()=>Promise<void>){
@@ -42,7 +44,8 @@ export function rewardsAuditPolicyController(){
      do{
       const [actual]=await observer`select current_database()as database,current_user,inet_server_addr()='127.0.0.1'::inet as loopback,
        not exists(select 1 from pg_stat_activity s join jsonb_to_recordset(${JSON.stringify(identities)}::text::jsonb)as owned(pid integer,started text,session_user text)
-        on s.pid=owned.pid and s.backend_start=owned.started::timestamptz and s.usename=owned.session_user where s.datname=${database})as absent`;
+        on s.pid=owned.pid and s.backend_start=owned.started::timestamptz and s.usename=owned.session_user where s.datname=${database})
+       and not exists(select 1 from pg_stat_activity s where s.datname=${database} and s.usename=${decodeURIComponent(url.username)} and s.application_name=any(${[...defaultControllers]}::text[]))as absent`;
       expect(actual).toMatchObject({database,current_user:decodeURIComponent(url.username),loopback:true});
       if(actual.absent===true){absent=true;break;}if(performance.now()>=deadline)break;await new Promise(resolve=>setTimeout(resolve,10));
      }while(performance.now()<deadline);

@@ -4,7 +4,7 @@ import {randomUUID} from 'node:crypto';
 import postgres from 'postgres';
 import {z} from 'zod';
 import {expect} from 'vitest';
-import {workerDb} from '../db-names';
+import {rewardsAuditOwnerConfiguration} from './rewards-audit-fixture-context';
 import type {Sql} from 'postgres';
 import {pgSqlState} from '../../lib/db-error';
 const predecessorSchema=z.object({kind:z.literal('UNINSTALLED_REWARDS_NATIVE_CANONICAL_PREDECESSORS'),base:z.literal('06be9fc60097edb870f2c7d9f4d30887ba6fd6d9'),functions:z.array(z.object({signature:z.string(),owner:z.enum(['native','ai_hr_reward_setup_reader']),source:z.string(),bodyMd5:z.string().regex(/^[a-f0-9]{32}$/),language:z.enum(['sql','plpgsql']),securityDefiner:z.literal(true),volatility:z.enum(['s','v']),config:z.string()}).strict()).length(9)}).strict();
@@ -23,11 +23,7 @@ const nativeResults:Readonly<Record<string,{result:string;names:string[]|null}>>
 type FunctionRecord={signature:string;details:unknown;acl:unknown};
 export type RewardsAuditOwnerDependencies={owner:{client:Sql};migrateTestDb:()=>Promise<void>;closeAll:()=>Promise<void>};
 export async function createRewardsAuditFixtureOwner({owner,migrateTestDb,closeAll}:RewardsAuditOwnerDependencies){
- if(process.env.GITHUB_ACTIONS!=='true'||process.env.RUNNER_ENVIRONMENT!=='github-hosted')throw Error('Standard hosted Rewards prototype required');
- const pool=process.env.VITEST_POOL_ID??process.env.VITEST_WORKER_ID;if(!pool||!/^[1-9][0-9]*$/.test(pool)||process.env.WORKER_DB==='0')throw Error('Isolated canonical Rewards worker required');
- const database=workerDb(pool),namespace=process.env.TEST_DB_NAMESPACE??'';
- const parse=(raw:string|undefined)=>{if(!raw)throw Error('Both canonical worker URLs required');const url=new URL(raw);if(!['postgres:','postgresql:'].includes(url.protocol)||url.hostname!=='127.0.0.1'||url.pathname!=='/'+database||url.search||url.hash)throw Error('Exact loopback canonical Rewards database required');return url;};
- const migration=parse(process.env.TEST_MIGRATION_DATABASE_URL),application=parse(process.env.TEST_DATABASE_URL);if(migration.port!==application.port)throw Error('Rewards endpoint mismatch');
+ const {database,namespace,pool,migration}=rewardsAuditOwnerConfiguration();
  await migrateTestDb();expect((await owner.client`select current_database()as database,inet_server_addr()='127.0.0.1'::inet as loopback`)[0]).toEqual({database,loopback:true});
  const roles=['ai_hr_reward_audit_read','ai_hr_reward_audit_projector']as const;
  expect(await owner.client`select 1 from pg_roles where rolname=any(${[...roles]}::text[])`).toHaveLength(0);

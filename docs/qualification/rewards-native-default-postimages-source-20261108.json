@@ -1,0 +1,78 @@
+{
+  "kind": "UNINSTALLED_REWARDS_NATIVE_DEFAULT_POSTIMAGE_REVIEW_REQUEST",
+  "base": "0e5b8695acb99615ee2a915f886bdd0d26a63613",
+  "failureSource": "bb2a568cf514c3dc280fc64a6aabfcaa96527c38",
+  "originalFailedRun": "42435887136",
+  "runtimeExecuted": false,
+  "releaseAuthorized": false,
+  "appAdoption": false,
+  "nativeSqlBytesChanged": false,
+  "staticLegacyFactoryInverseExact": true,
+  "originalFactorySha256": "a7788b3bfe779a5f42a4914ff7418e3ac31dfbd435bd4ce5ee53f9739b368b40",
+  "planned": [
+    {
+      "selector": "test/rewards-audit-policy-native.test.ts",
+      "declared": 24,
+      "case0Adds": "eight actual hostile-declaration refusals, unexpected-postimage refusal, native before/after COMMIT child controls, complete P/C evidence"
+    },
+    {
+      "selector": "test/rewards-audited-read-prototype.test.ts",
+      "declared": 16,
+      "reason": "shared pure context extraction affected original owner path"
+    },
+    {
+      "selector": "test/rewards-audit-native-postimage.test.ts",
+      "declared": 5,
+      "kind": "pure models/source only"
+    }
+  ],
+  "priorPureRetained": {
+    "test/rewards-audit-policy-contract.test.ts": 4,
+    "test/rewards-audit-policy-lifetime.test.ts": 4,
+    "test/rewards-audit-policy-controlled-wait.test.ts": 6
+  },
+  "affectedPureUnionIfRequired": 19,
+  "doNotRepeatUnaffectedLegacy": 323,
+  "registrationConvergenceRequired": true,
+  "sourceHashes": {
+    "core/audit-chain-arming.ts": "e8db2d54de0673f992af3773a7f5a3809c33f9367583b755c647b56c0f8b389d",
+    "db/migrations/0863_assistant_bank_effect_closure.sql": "8381b76568d5910b791df7a1cb73d2939467f5709a12c11f5f5ddd01d727f264",
+    "db/migrations/0864_assistant_catalogue_effect_closure.sql": "09421f02fbe27b231395acd36cd4bab6d3e9a6943705cee73741851adef9efb3",
+    "db/migrations/2204_rewards_plan_setup.sql": "311201ad2e3e745ea142e6ec8ea275887bfd02097e009f81c6a08ea7ad06e56c",
+    "db/migrations/2205_rewards_review_creation.sql": "37ffb2122b551cb7e01c5df2b4765d0ceaf1af030da2fb8c8c7a2977c3dbcd53",
+    "db/migrations/2250_rewards_whole_group_grants.sql": "dc3437a768104a0be69f38adc395d7d814efb01f0feb66d7fc1af84c971f9e27",
+    "db/migrations/2509_principal_statement_plan_reuse.sql": "09135ed32933b61236c2dee1c05e39824155cedf8089364ef970755ca198bb88",
+    "docs/qualification/rewards-native-default-postimages-implementation-20261108.md": "4f1053981ab35288916f417815ece1748b4c16c7e7475fbdb430c4a66970f2f1",
+    "lib/db-error.ts": "8a4d042732efaaca9467bd0120a1dc1099c33279ff7aec61a37ab89b46f8bbb9",
+    "test/db-names.ts": "f6052b4e43c16d364dab4401403e30354b25b02f3f2166e1f0247133f9e2d55b",
+    "test/helpers/ci-singleton-admission.ts": "e8fe3d04b3aca8c25960d0faaa6f674adb192ecdd49fde76ca5c4cc1a9dfbfb8",
+    "test/prototypes/rewards-audit-default-controller-child.ts": "6690c35ff59a654b4f309d9a7c182f0a5ac3d186fff7693a470f62e629f8c85d",
+    "test/prototypes/rewards-audit-default-controller-process.ts": "55262db63e51a91667a0a4b7444b285d79814c4b749c555d78418f661fc46faa",
+    "test/prototypes/rewards-audit-default-controller-protocol.ts": "b1cdfa04eec7ec57de105e59dd98b8252574bb1f4a152dfd05c92c8f07726a5c",
+    "test/prototypes/rewards-audit-default-custody.ts": "d186660a5141fd30ccf32fee085efef9a44c4cdf5d8acfc3d7f33ca88550e680",
+    "test/prototypes/rewards-audit-fixture-context.ts": "1973d77bb73aa0a631e011cf3d239709f63a029409800dfd2f754c782b543ed2",
+    "test/prototypes/rewards-audit-native-postimage.ts": "1f0a61f14fc0ec93d69ac881393f56385d695959e23f65d3e4b9a6b63344ba51",
+    "test/prototypes/rewards-audit-owner-context-original.json": "ff97c4383122c97ba07a4ae0cb16d226cdf5cfa7b77f105d1f10e3014b02653b",
+    "test/prototypes/rewards-audit-policy-contract.ts": "ec8cc6cf092b4c4fbb10d88dce9d87d7b0822405b52e7e2663d75b287dbb32cc",
+    "test/prototypes/rewards-audit-policy-controlled-wait.ts": "c2b95b80a52f62326de53acf4f28e303847ed4f3070ef0c759e74905f0e8d994",
+    "test/prototypes/rewards-audit-policy-controller.ts": "fb95e4d06eadbda301f78383b5b4b1f262ddd8ac9d690b6c056753e3370d7b82",
+    "test/prototypes/rewards-audit-policy-lifetime.ts": "2e876855adc6dfb92425c85570726c7ae912762acf0e6b03c0a752f8a9749207",
+    "test/prototypes/rewards-audit-policy-native-cases.ts": "a866e6ee152162d7c1f197fd73b9e25a27d4c0d9df5368f0533897635bf86403",
+    "test/prototypes/rewards-audit-policy-owner.ts": "9bce5069b036faa158ff803d2ca644ef242a539e403ace8b6097350642b9e040",
+    "test/prototypes/rewards-audit-policy-predecessors.json": "74081562bffb8e7012801fed4a60abbee5a6e0a760e9b29b70c6aa8a087a9b83",
+    "test/prototypes/rewards-audit-policy-reader-child.ts": "e1d6d59b969477cbbab0a69443ec75a167aad23ff5573637df37ed72e1eec31c",
+    "test/prototypes/rewards-audit-policy-reader-process.ts": "1d6be835b9d279adda02f59315fe296db13adf4ed314235aa6a45e57355bfdf9",
+    "test/prototypes/rewards-audit-policy.sql": "634b83c911c972011111c4f63993cc82cf465aa00dd67c4e6042d91d10c9ce2c",
+    "test/prototypes/rewards-audited-read-family.ts": "d6a65d87aaa11816b04e85110e9dc60a8e3dd6badfcf812e92db966351550312",
+    "test/prototypes/rewards-audited-read-owner-factory.ts": "2e87528840381060ad3f1924df29b4179d80cd5e9bdaf675ae12e0ddfbadb5ed",
+    "test/prototypes/rewards-audited-read-owner.ts": "a04cb932f7e393969376751eb2f70774d51c76ed96ed05af285b964ff1cde36c",
+    "test/prototypes/rewards-audited-read-predecessors.json": "a4ab075960d5f032490697b18eac82e6a519fae7224427674029109c5e308761",
+    "test/prototypes/rewards-audited-read.sql": "cad7076c1263888257084dbf5b2eef77ebb6e360dbf08ae38e2029a00a58b654",
+    "test/rewards-audit-native-postimage.test.ts": "8c696e695da91fe2c8315958fa113cf9cdc43d3bd5182d10d6ce5df35f7bd8e0",
+    "test/rewards-audit-policy-contract.test.ts": "69e99981c1a00b08452d8c9c4afb7d15a6a5d7f0e2810ca18a7677456d7c0b35",
+    "test/rewards-audit-policy-controlled-wait.test.ts": "d8f98f7e838e08163d83116f72022dab02a0b4d15c01540da71ff8f1d2b903d9",
+    "test/rewards-audit-policy-lifetime.test.ts": "a30952777cf7168b0210917581159946a94a169aee9d8fbb8e550b703690cf86",
+    "test/rewards-audit-policy-native.test.ts": "f9c92a5d5ca6aafcdc29a042fc8daf04819335c0594015c684adba8342707e81",
+    "test/rewards-audited-read-prototype.test.ts": "80a36651b76b1f91e8e69a92e0743d4d6f13e455932e25a36a98fb961f8721f2"
+  }
+}
