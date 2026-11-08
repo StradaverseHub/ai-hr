@@ -1,7 +1,7 @@
 {
   "kind": "AI_MANAGEMENT_SECTION_SOURCE_ONLY_NOT_QUALIFICATION",
   "base": "cd47c63c77d26431ee33de38b75790c62924a1ad",
-  "sourceRef": "codex/ai-management-hosted-fixture-recovery-20261109",
+  "sourceRef": "codex/ai-management-reviewed-recovery-composition-20261109",
   "currentSourceSha256": {
     "app/control-tower/agents/centre-controls.tsx": "3ce6b612fec0b328103b5221b673714e59f4548bf37be243211cfc4293d18915",
     "app/control-tower/agents/screen.tsx": "a137c62df804c0c4e6e40f11d3ecca1e295fabb3b817fb1d440225e38a172d12",
@@ -11,16 +11,19 @@
     "test/ai-centre-evidence.dom.test.tsx": "db1bd6f55113e6868576c33e8f533716203a5ab96611263098fc0edc46504a32",
     "test/ai-centre-page-timing.test.ts": "f2b9c76d2f69a8f94c20f228b6406a0926d7e31ba4749b80fbd5d18c64c3d25a",
     "test/ai-centre-step5-evidence.dom.test.tsx": "3ba0ff3f95a9021e5c0e65c84757538147f1d3a971e57a9c8e82539580693b0f",
-    "test/ai-inventory-screen.dom.test.tsx": "baa3a23c8fca70d880ba85c431d3a2107b8b36f9cf933ebe5119a6e86f0c2022",
-    "test/ai-management-naming.dom.test.tsx": "a021913c8197b4d5b0ae5bb6bc212129252fe9f024c454e9e99ca96cb712fd02",
-    "test/ai-management-page.dom.test.tsx": "99f7ff069d531178d63e5d63e9d236078b729eb0b39e6d178b70989cae22be0d",
-    "test/ai-probe-history-page.dom.test.tsx": "5a542bb1006998a816ac04326f98862b97f79a7e65fb275288e51bb26f48e778",
-    "test/automatic-followup-features.dom.test.tsx": "6073798a23f0a48fbcfb871e4c42cdd33c5e321a22104b08c5ff2f8c0da9522c",
+    "test/ai-inventory-screen.dom.test.tsx": "29aa1f69f155ccfab0ffc6faf5429b76ef4eef95845eaf15f20268ec67752a37",
+    "test/ai-management-naming.dom.test.tsx": "5bc2dd80e532fdfadc3b950cfc58cdb71343cc65c03ec4feeb2017b030b17d99",
+    "test/ai-management-page.dom.test.tsx": "d404fcd5e1628b718ce184bfea25aa23e05816ad3bf5335a230bf6b0dd1578a5",
+    "test/ai-probe-history-page.dom.test.tsx": "8499c2ae79f630e0195e15d95e24225fdc93fb747f44c0fe8f0c76131bb2eb15",
+    "test/automatic-followup-features.dom.test.tsx": "c442c9253dd293a278e7998fec67451d0732dc78a117c1752ff8ddb51467b6e2",
     "lib/ai/management-sections.ts": "d7efd0b96f9875c560c6b075c9ff1688a7bf0851684adbdab45c399f3cb5c783",
     "test/ai-management-section-projection.test.ts": "5b1d12868bed27cf5791ece99a77321d54c96aa228f1dd7963c405aba07bafd5",
-    "docs/adr/2026-11-09-ai-management-section-projection.md": "0b5d045397ed19325e1f70636c84cd4d4f3ddb44770eb313e7e66ab5015061ef",
+    "docs/adr/2026-11-09-ai-management-section-projection.md": "fa9658d5d8f9c9603317a7f01d78c4bc61dadf7e4018ba5c24ee07c73cc2065a",
     "test/ai-management-contract.test.ts": "26311cc5725a931b951cf8825f0355c8c752eaaeb3210153f1fbc9c127a7a808",
-    "docs/qualification/ai-management-hosted-fixture-recovery-source-20261109.json": "a64ae179f8a3c9379d1f014a8f5c302b9642ff9837fb053144320ae5026fff91"
+    "docs/qualification/ai-management-hosted-fixture-recovery-source-20261109.json": "a64ae179f8a3c9379d1f014a8f5c302b9642ff9837fb053144320ae5026fff91",
+    "components/ai-centre/how-it-works.tsx": "e3e4e132419a5676d3be77c82883093b81d824ed2237ad03d508b4a232084265",
+    "docs/qualification/ai-centre-mobile-fixture-recovery-source-20261109.json": "6e2f36e1a595674eb37a462554e331275b9f6a2c73318a76d342b0810c18c071",
+    "docs/qualification/ai-management-reviewed-recovery-composition-20261109.json": "26e5e66fb2a547709529089c67c90c7a1c3769afb3c8a949a7b1c2f2ce0aa5dc"
   },
   "selfExcluded": "docs/qualification/ai-management-section-projection-source-20261109.json",
   "wholeParentGitPreimages": {
@@ -403,5 +406,39 @@
     "runtimeQualified": false,
     "published": false,
     "releaseAuthorized": false
+  },
+  "mobileFixtureRecovery": {
+    "parent": "1b78bee247e47c8d9ae85209bb3b0e852aedb321",
+    "record": "docs/qualification/ai-centre-mobile-fixture-recovery-source-20261109.json",
+    "recordSha256": "6e2f36e1a595674eb37a462554e331275b9f6a2c73318a76d342b0810c18c071",
+    "sourceOnly": true,
+    "originalFailedCourseRetained": true,
+    "sixAffectedDomSelectors": [
+      "test/ai-centre-evidence.dom.test.tsx",
+      "test/ai-management-page.dom.test.tsx",
+      "test/ai-inventory-screen.dom.test.tsx",
+      "test/ai-management-naming.dom.test.tsx",
+      "test/ai-probe-history-page.dom.test.tsx",
+      "test/automatic-followup-features.dom.test.tsx"
+    ],
+    "renderedRecoveryVerified": false,
+    "sourceReviewAndHostedRecoveryPending": true
+  },
+  "reviewedRecoveryComposition": {
+    "record": "docs/qualification/ai-management-reviewed-recovery-composition-20261109.json",
+    "recordSha256": "26e5e66fb2a547709529089c67c90c7a1c3769afb3c8a949a7b1c2f2ce0aa5dc",
+    "parents": [
+      "f97dc006abc6aa91196c2d70eaa0aae0b51149b6",
+      "85de9902a6d4ac1ae103fb4df8809a265a3d74a5"
+    ],
+    "currentHashesAreActualMergedBytes": true,
+    "historicalSourceProofsAndRecoveryRecordsAreIsolatedComponentClaims": true,
+    "aggregateState": "UNQUALIFIED",
+    "currentImportGraphAndGlobalBindingQualified": false,
+    "coherentTestsExecuted": false,
+    "ninetyFreshPassingCasesClaimed": false,
+    "futureLeafIntegrationOpen": true,
+    "noCiOwnersChanged": true,
+    "releaseEligible": false
   }
 }

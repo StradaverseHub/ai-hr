@@ -73,3 +73,43 @@ The existing SQL-inventory case selected the actual final3500 wrapper but incorr
 The new KL-boundary fixture's reported-zero row used the helper's default openai provider. The actual23514 cause was ai_model_run_observation_fields:0625 permits reported accounting only for openrouter. Only that fictional zero row now overrides provider to openrouter; every zero/missing/day-boundary assertion and the native constraint remain unchanged. No provider request occurs.
 
 This recovery changes two test owners only, retaining all6 existing contract cases and16 expanded projection cases, their caps, and all other callbacks. Its parent source index is retained by exact1b78 Git commit/blob/hash/byte provenance; current hashes and the small recovery record identify the new source without duplicating historical contents. Product, SQL/journal, authority, approvals and all DOM files remain whole1b78. The corrected source is unrun pending root and independent peer review; no retry, browser or release claim follows.
+
+## Recovery of captured mobile overflow and fixture translation context
+
+The complete course on source `1b78bee247e47c8d9ae85209bb3b0e852aedb321`
+(run `42509856754`) settled with 190 of 198 cases passing. The eight failures
+remain historical failures: six How it works mobile captures and two unrelated
+DB source-fixture cases. No successful result transfers automatically to a child.
+
+All six How desktop captures fit their 1440px viewport. Their mobile captures
+report overflow at 390px and produce 454px-wide full-page PNGs. The mobile CSS
+requires 44px button targets, but the nine step targets occupy one nonwrapping
+strip. Nine targets plus the step panel padding/border and page inset account
+for the captured width. The How fixture already merges its separate AI Centre
+catalogue; its translation context is not the cause of this overflow.
+
+The step section now permits shrinking within its grid track and constrains its
+width. Its tablist wraps within the panel. All nine targets, the global touch
+minimum, keyboard and playback handlers, reduced-motion behavior, captions and
+step state remain unchanged. No overflow clipping or screenshot tolerance is
+introduced. Existing six-locale desktop/mobile captures remain the regression
+check; rendered success is pending hosted execution.
+
+Separately, five other DOM fixtures supplied merged messages to mocked server
+translations while their client providers supplied only base catalogues. Their
+client mounts now use the existing `withAiCentre` or `enWithAiCentre` helper to
+match the server. Locale matrices, data owners, assertions, captures, production
+catalogue loading, permissions and query/command behavior are unchanged.
+
+The source-failure/correction record identifies exact parent Git objects, small
+reversible source substitutions, protected owners and the original failed course.
+It is non-runtime review data, not release evidence. Source review by another
+reviewer and affected hosted recovery are required before composition/adoption.
+Browser preflight, worker/load qualification and staging remain pending;
+production remains held.
+
+## Composition of the reviewed recoveries
+
+This normal merge preserves the exact Node-fixture recovery and mobile/client-fixture recovery bytes and both parent histories. The preceding recovery sections and their qualification records retain their original source-authoring claims. Their later hosted observations remain separate: f97 run42511453856 passed22 Node cases, while85de run42512334101 passed68 DOM cases, each with controller00a27 and its own source. They are not90 fresh passing cases on this composition. The original1b78 failed course remains preserved.
+
+The aggregate source is UNQUALIFIED until its actual current import graph, source bindings and relevant controls are reviewed and exercised coherently. The shared management-sections leaf remains absent from the Employee source arrays observed in these lineages; the isolated component array has3447 members, while the separately observed root has3474. Their active restoration rows and source/count metadata need a separately leased root integration after the pending shared-prerequisite composition. No CI/source-array repair, admission, browser keyboard journey, staging or release qualification is performed here. Production remains held.

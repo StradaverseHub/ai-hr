@@ -32,7 +32,7 @@ describe('connection probe history in six rendered locales',()=>{
  it.each(Object.keys(copies) as (keyof typeof copies)[])('%s shows a recorded connection check distinctly from a model exchange',async locale=>{
   state.locale=locale;
   const page=await AiManagementScreen({session:{tenantId:'fictional',userId:'fictional',roles:['hr_admin']} as never,section:'runs',searchParams:Promise.resolve({})});
-  render(<NextIntlClientProvider locale={locale} messages={copies[locale] as any}>{page}</NextIntlClientProvider>);
+  render(<NextIntlClientProvider locale={locale} messages={withAiCentre(locale,copies[locale] as any)}>{page}</NextIntlClientProvider>);
   expect(screen.getByText(copies[locale].aiManagement.operations.probe,{exact:false})).toBeInTheDocument();
   expect(screen.getByText('Fictional reviewer')).toBeInTheDocument();
   await captureAiReviewScreenshots(document.body.innerHTML,locale,'probe');

@@ -39,7 +39,7 @@ describe('approved AI vocabulary in six rendered locales',()=>{
   state.locale=locale;document.documentElement.setAttribute('data-ui-theme','classic');
   const renderSection=async(section:'overview'|'orchestrator')=>{
    const page=await AiManagementScreen({session:{tenantId:'fictional',userId:'fictional',roles:['hr_admin']} as never,section,searchParams:Promise.resolve({})});
-   return render(<NextIntlClientProvider locale={locale} messages={copies[locale] as any}><div className="flex min-h-screen max-sm:flex-col"><div className="h-screen shrink-0 max-sm:h-auto"><Sidebar isAdmin canAdministerAi canConfigureAiProvider canApprove canAccessTeam enabledModules={null} defaultCollapsed={false}/></div><main className="min-w-0 flex-1 p-4">{page}</main></div></NextIntlClientProvider>);
+   return render(<NextIntlClientProvider locale={locale} messages={withAiCentre(locale,copies[locale] as any)}><div className="flex min-h-screen max-sm:flex-col"><div className="h-screen shrink-0 max-sm:h-auto"><Sidebar isAdmin canAdministerAi canConfigureAiProvider canApprove canAccessTeam enabledModules={null} defaultCollapsed={false}/></div><main className="min-w-0 flex-1 p-4">{page}</main></div></NextIntlClientProvider>);
   };
   await renderSection('overview');expect(screen.getByText(copies[locale].aiManagement.mapAssistant)).toBeInTheDocument();
   const t=createTranslator({locale,messages:copies[locale] as any,namespace:'aiManagement'}),count=t('mapSpecialists',{available:MODULE_JOBS.length,total:MODULE_JOBS.length});
