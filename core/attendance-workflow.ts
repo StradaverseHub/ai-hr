@@ -311,7 +311,7 @@ export async function prepareAttendanceWorkflowSnapshotTx(tx:Tx,ctx:SessionConte
     return {subject,selected,validated,stages,cc};
     } catch (error) {
       if (error instanceof AttendanceLevelError || error instanceof AttendanceWorkflowError || error instanceof AttendanceCcError)
-        throw new AttendanceWorkflowSubmissionError('unresolved');
+        throw new AttendanceWorkflowSubmissionError('unresolved', error instanceof AttendanceLevelError ? error.problem : undefined);
       throw error;
     }
 }

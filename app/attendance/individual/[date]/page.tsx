@@ -60,6 +60,7 @@ const CORRECTION_MESSAGES: readonly string[] = [
   'correctionNothingToChange',
   'correctionRejected',
   'correctionPendingAnotherApprover',
+  'myDayWorkflowUnavailable',
 ];
 
 export default async function IndividualAttendanceDayPage({
