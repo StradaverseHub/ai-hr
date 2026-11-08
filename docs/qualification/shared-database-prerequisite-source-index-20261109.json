@@ -1,16 +1,16 @@
 {
   "kind": "SHARED_DATABASE_PREREQUISITE_SOURCE_INDEX_NOT_RUNTIME_OR_RELEASE",
   "schemaVersion": 1,
-  "sourceParentCommit": "dd899f911fc90170c4af2d90a1fd42b10ce8afd1",
-  "existingReviewedSourceSetSha256": "6f93daf35de8eaba4172529d0319537cb7ec0f92b38b46f7a668add3ef21449c",
+  "sourceParentCommit": "2bc5b5981a895aab1f2f1f18c064695cc729e4a6",
+  "existingReviewedSourceSetSha256": "418635df71c591ee113761eab7694db1b390bb1c610350f560ea50b3041ec577",
   "releaseAuthorized": false,
   "checksExecuted": false,
   "sourceChecksOnly": true,
   "closure": {
     "path": "docs/qualification/shared-database-prerequisite-source-closure-20261109.json",
-    "bytes": 1111079,
-    "sha256": "a56e9e71523e0f5f925223809184103dc6b4d64a05f9003910ff66923b5dbb9a",
-    "gitBlob": "83863f17632acaf3e9940569acca4a49cee2e46b"
+    "bytes": 1112482,
+    "sha256": "321a8412824e1aded7ccdc46768106967708b73cc4858369d5c28e3ed3297e9f",
+    "gitBlob": "af898bb519973567c25611839c7cfcc72b9d65cb"
   },
   "selfHashExcluded": true,
   "productionContracts": [
@@ -774,17 +774,17 @@
     {
       "path": ".github/ci/resume-source.test.mjs",
       "beforeCount": 13,
-      "currentCount": 13,
+      "currentCount": 14,
       "changed": [],
-      "parentSha256": "a845b14ab582482488c1ce40a28d8bda9b3c9b75e73bcedb20bda796cd4415de",
+      "parentSha256": "9c7d1f108e3796cfdf1ce1c70439a6b01f0f300c309564796af2b4acffc17587",
       "current": {
         "path": ".github/ci/resume-source.test.mjs",
-        "bytes": 12866,
-        "sha256": "9c7d1f108e3796cfdf1ce1c70439a6b01f0f300c309564796af2b4acffc17587",
-        "gitBlob": "f4aca2170ba0b59994c1e69deb878b7fc8fc1a3f"
+        "bytes": 15431,
+        "sha256": "1c9b6d3476f2fe3f8a905da61a8ef99af13f418e3f6023372eac1facd5c5c523",
+        "gitBlob": "1cd97a831cd5607eed0851eec7d0d60338b7e5a9"
       },
       "editedFile": true,
-      "lineReconciliation": "Exact titles/counts compared against immediate DD899 source; historical EEF/f3a7 callback census remains in immutable DD899 index and historical fields.",
+      "lineReconciliation": "All13complete2bc callbacks whole; one actual fixture-identity/assessor regression added. Original205definitions preserved,206current; historical parent index remains immutable by Git reference.",
       "historicalOriginalAllowedCallbackLines": [
         6,
         28,
@@ -792,7 +792,13 @@
         50
       ],
       "historicalOriginalCensusSource": "eef89e53102b613bd3cb38fd25dd12fe45d7f9aa",
-      "historicalF3a7ParentSha256": "41e10ce9697441864cb6ce29464fb5a6b765b4173db59b69bd35718fa87cfe7e"
+      "historicalF3a7ParentSha256": "41e10ce9697441864cb6ce29464fb5a6b765b4173db59b69bd35718fa87cfe7e",
+      "added": [
+        {
+          "title": "'replaced database archives keep unique fresh IDs and reach the actual root and plan guards'",
+          "line": 43
+        }
+      ]
     },
     {
       "path": ".github/ci/singleton-commissioning.test.mjs",
@@ -179297,23 +179303,48 @@
     }
   ],
   "newRecords": [
-    "docs/qualification/shared-database-fixture-recovery-source-provenance-20261109.json"
+    "docs/qualification/shared-database-fixture-recovery-source-provenance-20261109.json",
+    "docs/qualification/shared-database-artifact-identity-source-provenance-20261109.json"
   ],
-  "status": "FIXTURE_RECOVERY_SOURCE_AUTHORED_UNRUN_AWAITING_FROZEN_ROOT_AND_DIFFERENT_PEER_REVIEW",
+  "status": "ARTIFACT_IDENTITY_SOURCE_AUTHORED_UNRUN_AWAITING_DUAL_FULL_REVIEW",
   "historicalArchitectureBase": "f3a7b5001329d3731de1e8db469807aceab70cec",
   "sourceSetDigestRule": "SHA256 of compact UTF-8 JSON sorted [path,current SHA256] pairs for the 31 existing architecture source/map paths; no execution or review PASS implied.",
   "fixtureRecoveryProvenance": {
-    "path": "docs/qualification/shared-database-fixture-recovery-source-provenance-20261109.json",
-    "bytes": 17979,
-    "sha256": "06791cca8ffed3d82a8a49c2885305c0aa7c2a52f84778307cc0a1adb430e137",
-    "gitBlob": "3ea6f449648b49da76b94060b094ad8ab92ee8fb"
+    "path": "docs/qualification/shared-database-artifact-identity-source-provenance-20261109.json",
+    "bytes": 7229,
+    "sha256": "3d3a0a80b8109ca2eb7efdc66cd5cae455a8e298b484d93ca15c5020826d8d43",
+    "gitBlob": "2b2c6762f88be8f41d1cccce538ec1dd19546aea"
   },
-  "reviewProvenanceStatus": "Existing six design/source review references are historical source provenance only; they do not approve this fixture-recovery child.",
+  "reviewProvenanceStatus": "CURRENT_CHILD_UNREVIEWED_UNRUN_PARENT_EVIDENCE_RETAINED",
   "runtimeEdgeCensus": {
     "runtimeEntries": 27,
     "sourceVertices": 3495,
     "runtimeToSourceEdges": 36547,
     "membershipOrderedPathsUnchangedFromImmediateParent": true,
     "meaning": "Source membership edges only; no runtime or performance result."
+  },
+  "previousFixtureRecoveryProvenance": {
+    "path": "docs/qualification/shared-database-fixture-recovery-source-provenance-20261109.json",
+    "bytes": 17979,
+    "sha256": "06791cca8ffed3d82a8a49c2885305c0aa7c2a52f84778307cc0a1adb430e137",
+    "gitBlob": "3ea6f449648b49da76b94060b094ad8ab92ee8fb"
+  },
+  "modelFixtureDependencies": [
+    {
+      "path": ".github/ci/resume-test-fixtures.mjs",
+      "bytes": 4746,
+      "sha256": "54aab0782ca896de9bbd6b937bde45a73e0ef90b7bd6ed0359c527675796fe98",
+      "gitBlob": "d680e56447add3c1004b308de8ffb1b259d3da10"
+    }
+  ],
+  "fixtureSpecificSourceSetSha256": "cadb673a8712a824f57c26b7685089df88f80c38a94db4c73f4c2735522be064",
+  "fixtureIdentityRecoveryScope": {
+    "legacyArchitectureSourceMapDigestStill31Paths": true,
+    "additionalFixtureHelperOutsideRuntimeRegistry": true,
+    "old205CallbacksWhole": true,
+    "currentDefinitions": 206,
+    "singletonGeneratedCases": 51,
+    "firstControllerTapExpected": 934,
+    "noAutomaticRetryOrNativeCommissioning": true
   }
 }

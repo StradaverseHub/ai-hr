@@ -1,0 +1,147 @@
+{
+  "kind": "SHARED_DATABASE_ARTIFACT_IDENTITY_FIXTURE_SOURCE_ONLY_UNRUN",
+  "parentCandidateCommit": "2bc5b5981a895aab1f2f1f18c064695cc729e4a6",
+  "sourceRef": "codex/shared-database-artifact-identity-recovery-20261109",
+  "currentSourceCommit": "Recorded externally after freeze; no current self hash",
+  "ownedChildPaths": [
+    ".github/ci/resume-test-fixtures.mjs",
+    ".github/ci/resume-source.test.mjs",
+    "docs/qualification/shared-database-prerequisite-source-closure-20261109.json",
+    "docs/qualification/shared-database-prerequisite-source-index-20261109.json",
+    "docs/qualification/shared-database-artifact-identity-source-provenance-20261109.json"
+  ],
+  "wholeParentGitReferences": [
+    {
+      "path": ".github/ci/resume-test-fixtures.mjs",
+      "commit": "2bc5b5981a895aab1f2f1f18c064695cc729e4a6",
+      "bytes": 4259,
+      "sha256": "4aa3876b172c6ad16dc3c4c702692a359367da161834222fda3b0d1d809d2c0c",
+      "gitBlob": "cb0f4e34dc374ef2c9548d418a33349d4f82dbb3"
+    },
+    {
+      "path": ".github/ci/resume-source.test.mjs",
+      "commit": "2bc5b5981a895aab1f2f1f18c064695cc729e4a6",
+      "bytes": 12866,
+      "sha256": "9c7d1f108e3796cfdf1ce1c70439a6b01f0f300c309564796af2b4acffc17587",
+      "gitBlob": "f4aca2170ba0b59994c1e69deb878b7fc8fc1a3f"
+    },
+    {
+      "path": "docs/qualification/shared-database-prerequisite-source-closure-20261109.json",
+      "commit": "2bc5b5981a895aab1f2f1f18c064695cc729e4a6",
+      "bytes": 1111079,
+      "sha256": "a56e9e71523e0f5f925223809184103dc6b4d64a05f9003910ff66923b5dbb9a",
+      "gitBlob": "83863f17632acaf3e9940569acca4a49cee2e46b"
+    },
+    {
+      "path": "docs/qualification/shared-database-prerequisite-source-index-20261109.json",
+      "commit": "2bc5b5981a895aab1f2f1f18c064695cc729e4a6",
+      "bytes": 8687644,
+      "sha256": "bf8a3da62f7e1bcc11629af72a691f8b549a992919c492383ed16d10c11a720f",
+      "gitBlob": "e69f53fb00f76cebf0537751290924014ccd53ea"
+    },
+    {
+      "path": "docs/qualification/shared-database-fixture-recovery-source-provenance-20261109.json",
+      "commit": "2bc5b5981a895aab1f2f1f18c064695cc729e4a6",
+      "bytes": 17979,
+      "sha256": "06791cca8ffed3d82a8a49c2885305c0aa7c2a52f84778307cc0a1adb430e137",
+      "gitBlob": "3ea6f449648b49da76b94060b094ad8ab92ee8fb"
+    }
+  ],
+  "preimageRule": "Immutable complete parent Git objects, verified by commit/path/blob/SHA256/byte length; no nested whole-history duplication. Current source inverses are validated externally by whole AST-body and exact file-delta review.",
+  "currentFixtureSourcePins": [
+    {
+      "path": ".github/ci/resume-test-fixtures.mjs",
+      "bytes": 4746,
+      "sha256": "54aab0782ca896de9bbd6b937bde45a73e0ef90b7bd6ed0359c527675796fe98",
+      "gitBlob": "d680e56447add3c1004b308de8ffb1b259d3da10"
+    },
+    {
+      "path": ".github/ci/resume-source.test.mjs",
+      "bytes": 15431,
+      "sha256": "1c9b6d3476f2fe3f8a905da61a8ef99af13f418e3f6023372eac1facd5c5c523",
+      "gitBlob": "1cd97a831cd5607eed0851eec7d0d60338b7e5a9"
+    }
+  ],
+  "fixtureSourceSetSha256": "cadb673a8712a824f57c26b7685089df88f80c38a94db4c73f4c2735522be064",
+  "sourceCause": {
+    "failedControllerRun": "42515153773",
+    "actualCases": 933,
+    "actualPass": 930,
+    "actualFail": 3,
+    "sameThreeExistingAssertionsPreserved": true,
+    "failureFrontier": "resume-source.mjs artifact identity guard; fixture newID2000+remainingLength5 reused existing WebKit2005",
+    "clock": "Explicit fixture now2026-10-25T13:00Z and expiry14:00Z preserved; Date.now default is not the cause"
+  },
+  "allocatorContract": {
+    "existingNamedArtifactId": "Preserved exactly, including malformed IDs for assessor-negative fixtures; no nullish fallback repair",
+    "newNamedArtifactId": "Validate all existing numeric IDs as unique positive safe integers; allocate greater than existing maximum with2000 initial floor; refuse unsafe exhaustion",
+    "malformedKnownIds": "Never filtered, normalized, reassigned or silently accepted for new allocation",
+    "zipCacheClockAndMetadata": "zip/fixture/remove bodies, timestamps, expiry, digest and archive metadata behavior unchanged"
+  },
+  "regression": {
+    "newSourceDefinition": {
+      "title": "'replaced database archives keep unique fresh IDs and reach the actual root and plan guards'",
+      "line": 43
+    },
+    "all13ExistingSourceCallbacksWhole": true,
+    "scope": "Actual databaseModel removes old DB archive and appends its source-renamed successor; independent unique/fresh-ID checks, retained IDs, intended missing-root and archived-plan refusals and valid-root positive; malformed/duplicate/unsafe allocation refuses and existing malformed named-ID remains invalid",
+    "original205CallbacksPreserved": true,
+    "currentSourceCallbackDefinitions": 206,
+    "singletonGeneratedCaseCountUnchanged": 51,
+    "firstFixedControllerTapExpected": 934
+  },
+  "allPutImportInventory": {
+    "path": "/private/tmp/aihr-artifact-identity-source-inventory-20261109.json",
+    "sha256": "2f482a0950705187051928c3d03b39ee5497d94f93cc3a5e3795e7928e581ec7",
+    "fixtureImporters": 7,
+    "directPutImporters": 3,
+    "onlyChangedHelperFunction": "put",
+    "otherHelperBodiesWhole": [
+      "zip",
+      "fixture",
+      "remove"
+    ]
+  },
+  "membership": {
+    "runtimeSourceRegistryVertices": 3495,
+    "runtimeMembershipAndRegistryRowsWholeParent": true,
+    "helperInRuntimeRegistry": false,
+    "sourceModelInRuntimeRegistry": false,
+    "noRuntimeEdgesInvented": true,
+    "architectureExistingSourceMapPaths": 31,
+    "architectureSourceDigest": "418635df71c591ee113761eab7694db1b390bb1c610350f560ea50b3041ec577",
+    "additionalModelFixtureDependency": {
+      "path": ".github/ci/resume-test-fixtures.mjs",
+      "bytes": 4746,
+      "sha256": "54aab0782ca896de9bbd6b937bde45a73e0ef90b7bd6ed0359c527675796fe98",
+      "gitBlob": "d680e56447add3c1004b308de8ffb1b259d3da10"
+    },
+    "fixtureSpecificSourceDigest": "cadb673a8712a824f57c26b7685089df88f80c38a94db4c73f4c2735522be064"
+  },
+  "parentHostedEvidence": {
+    "controller": {
+      "runId": "42515153773",
+      "conclusion": "FAILURE",
+      "authSha256": "00d75b50cb16e2835202abcf994c5ca0d1feddf5e1ec1988a474dcb82860c67d"
+    },
+    "focused": {
+      "runId": "42515153010",
+      "conclusion": "SUCCESS_77_INCLUDING18_WRAPPER_ATTESTED",
+      "authSha256": "a98ab119dfa38b2e52f85d8b967d964b057c67f27023104ae983a205abf9f91a"
+    },
+    "originalDdFailuresRetained": [
+      "42510939153",
+      "42510945812"
+    ],
+    "notTransferredToChild": true
+  },
+  "requiredNextCourse": "Root/different-peer FULL review first. Existing fixed controller route covers all7fixture-importing models and the new real regression; expected934first TAP cases, followed only by existing later phases if it passes. No new focused/native/whole-release course authorized by this record. Prior2bc77focused source dependencies are whole, not relabelled fresh.",
+  "assessorsRegexClockRootSqlRuntimeProfilesCapsChanged": false,
+  "localRepositoryImportsTestsCompilerAppDbNativeExecuted": false,
+  "uploaded": false,
+  "dispatched": false,
+  "runtimeQualified": false,
+  "normalNativeJit3Executed": false,
+  "releaseAuthorized": false,
+  "productionHeld": true
+}

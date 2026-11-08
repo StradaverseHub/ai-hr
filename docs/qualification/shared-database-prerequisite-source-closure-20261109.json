@@ -8,14 +8,14 @@
   "testsExecuted": false,
   "localRepositoryExecution": false,
   "identity": {
-    "parentCandidateCommit": "dd899f911fc90170c4af2d90a1fd42b10ce8afd1",
-    "currentReviewedExistingSourceSetSha256": "6f93daf35de8eaba4172529d0319537cb7ec0f92b38b46f7a668add3ef21449c",
+    "parentCandidateCommit": "2bc5b5981a895aab1f2f1f18c064695cc729e4a6",
+    "currentReviewedExistingSourceSetSha256": "418635df71c591ee113761eab7694db1b390bb1c610350f560ea50b3041ec577",
     "currentSourceCommit": "Resolved by the clean frozen commit containing this record; no self-referential commit claim.",
     "executedCandidateCommit": null,
     "executedControllerCommit": null,
     "migrationBaseline": null,
     "qualificationPlanFingerprint": null,
-    "reason": "This fixture-recovery child is source-authored and UNRUN. DD899 original authenticated courses both FAIL and remain bound to their original source/controller. Frozen root and different-peer review are pending.",
+    "reason": "This artifact-identity fixture successor is SOURCE ONLY/UNRUN; parent2bc controller930/933FAIL3 and focused77PASS stay at their own source identities. New root/different-peer FULL review and affected hosted recovery are pending.",
     "historicalArchitectureBase": "f3a7b5001329d3731de1e8db469807aceab70cec",
     "sourceSetDigestRule": "SHA256 of compact UTF-8 JSON sorted [path,current SHA256] pairs for the 31 existing architecture source/map paths; no execution or review PASS implied."
   },
@@ -43,7 +43,20 @@
       "priorArchitectureOwnedPaths": 33,
       "protectedProductionPathsUnchanged": 18
     },
-    "aggregateExistingEditedModelsFromHistoricalBase": 12
+    "aggregateExistingEditedModelsFromHistoricalBase": 12,
+    "artifactIdentityRecoveryChild": {
+      "parent": "2bc5b5981a895aab1f2f1f18c064695cc729e4a6",
+      "existingHelperOwnersEdited": 1,
+      "existingModelOwnersEdited": 1,
+      "addedLegitimateCallbackDefinitions": 1,
+      "currentCallbackDefinitionCount": 206,
+      "all205OriginalCallbacksWhole": true,
+      "singleton51Whole": true,
+      "legacyArchitectureSourceMapPathsStill31": true,
+      "additionalModelFixtureDependencies": 1,
+      "ownedChildPaths": 5,
+      "runtimeRegistryVerticesUnchanged": 3495
+    }
   },
   "commonPrerequisites": [
     ".github/ci/candidate-environment.mjs",
@@ -2073,9 +2086,9 @@
       },
       "current": {
         "path": ".github/ci/resume-source.test.mjs",
-        "bytes": 12866,
-        "sha256": "9c7d1f108e3796cfdf1ce1c70439a6b01f0f300c309564796af2b4acffc17587",
-        "gitBlob": "f4aca2170ba0b59994c1e69deb878b7fc8fc1a3f"
+        "bytes": 15431,
+        "sha256": "1c9b6d3476f2fe3f8a905da61a8ef99af13f418e3f6023372eac1facd5c5c523",
+        "gitBlob": "1cd97a831cd5607eed0851eec7d0d60338b7e5a9"
       },
       "inverse": "Historical complete f3a7 original byte sequence, never executed; current source pinned here. Exact immediate DD899 predecessor is referenced in the correction provenance."
     },
@@ -2345,6 +2358,18 @@
   "recordSelfReferenceRule": "Existing closure/index and new small provenance are outside runtime membership. All 31 existing architecture paths are current byte-pinned; immediate DD899 preimages are immutable Git refs, historical f3a7 whole preimages retained. Current commit identity supplied externally by Git; no record hash cycle.",
   "fixtureRecoveryProvenance": {
     "current": {
+      "path": "docs/qualification/shared-database-artifact-identity-source-provenance-20261109.json",
+      "bytes": 7229,
+      "sha256": "3d3a0a80b8109ca2eb7efdc66cd5cae455a8e298b484d93ca15c5020826d8d43",
+      "gitBlob": "2b2c6762f88be8f41d1cccce538ec1dd19546aea"
+    },
+    "originalCourses": "DD899 BOTH FAIL;2bc controllerFAIL3/focusedPASS77 retained at their original identities",
+    "currentChildHostedStatus": "UNRUN",
+    "currentRootAndDifferentPeerReview": "PENDING"
+  },
+  "reviewProvenanceStatus": "ARTIFACT_IDENTITY_SOURCE_ONLY_AWAITING_ROOT_AND_DIFFERENT_PEER_FULL_REVIEW",
+  "previousFixtureRecoveryProvenance": {
+    "current": {
       "path": "docs/qualification/shared-database-fixture-recovery-source-provenance-20261109.json",
       "bytes": 17979,
       "sha256": "06791cca8ffed3d82a8a49c2885305c0aa7c2a52f84778307cc0a1adb430e137",
@@ -2354,5 +2379,13 @@
     "currentChildHostedStatus": "UNRUN",
     "currentRootAndDifferentPeerReview": "PENDING"
   },
-  "reviewProvenanceStatus": "Existing six design/source review references are historical source provenance only; they do not approve this fixture-recovery child."
+  "modelFixtureDependencies": [
+    {
+      "path": ".github/ci/resume-test-fixtures.mjs",
+      "bytes": 4746,
+      "sha256": "54aab0782ca896de9bbd6b937bde45a73e0ef90b7bd6ed0359c527675796fe98",
+      "gitBlob": "d680e56447add3c1004b308de8ffb1b259d3da10"
+    }
+  ],
+  "fixtureSpecificSourceSetSha256": "cadb673a8712a824f57c26b7685089df88f80c38a94db4c73f4c2735522be064"
 }
