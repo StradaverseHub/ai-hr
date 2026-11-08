@@ -24,7 +24,7 @@ export async function compareOriginalCatalogue(){
  const temp=realpathSync(process.env.RUNNER_TEMP),privateRoot=join(temp,'original-catalogue-replay-private');assert.equal(realpathSync(privateRoot),privateRoot);
  const input=JSON.parse(bytes(join(privateRoot,'worker-input.json'),1024*1024).toString('utf8'));assert.deepEqual(Object.keys(input).sort(),['artifacts','original']);
  const original=realpathSync(input.original);assert.equal(original,process.cwd());
- const git=(...args)=>execFileSync('/usr/bin/git',['-c','safe.directory='+original,'-c','core.hooksPath=/dev/null',...args],{cwd:original,env:originalReconstructionEnvironment(process.env),encoding:'utf8',timeout:10000,maxBuffer:4*1024**2}).trim();
+ const git=(...args)=>execFileSync('/usr/bin/git',['-c','safe.directory='+original,'-c','core.fsmonitor=false','-c','core.hooksPath=/dev/null',...args],{cwd:original,env:originalReconstructionEnvironment(process.env),encoding:'utf8',timeout:10000,maxBuffer:4*1024**2}).trim();
  assert.equal(git('rev-parse','HEAD'),CONTRACT.originalCandidate);assert.equal(git('status','--porcelain'),'');
  // Scope only ORIGINAL plan reconstruction. Current workflow identity is never
  // rewritten to claim that this consumer ran the original native jobs.

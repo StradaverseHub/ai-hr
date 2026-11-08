@@ -38,6 +38,8 @@ jobs:
         run: pnpm install --frozen-lockfile --ignore-scripts
       - name: Metadata refusal controls
         run: node --test controller/.github/ci/diagnostics/catalogue-original-replay/policy.test.mjs
+      - name: Native cancellation controls without API or catalogue execution
+        run: node controller/.github/ci/diagnostics/catalogue-original-replay/adapter-controls.mjs
       - name: Authenticate and replay ORIGINAL pair only
         env:
           GH_TOKEN: ${{ github.token }}

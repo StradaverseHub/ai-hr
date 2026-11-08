@@ -2,8 +2,8 @@
  * while GH_TOKEN is present. Worker launch awaits the qualified shared kernel. */
 import assert from 'node:assert/strict';
 import {spawn,execFileSync} from 'node:child_process';
-import {readFileSync,writeFileSync,mkdirSync,realpathSync,lstatSync,readdirSync,existsSync} from 'node:fs';
-import {join,resolve,dirname} from 'node:path';
+import {readFileSync,writeFileSync,mkdirSync,realpathSync,readdirSync,existsSync,statfsSync} from 'node:fs';
+import {join,resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {downloadCiArchives,readCiArchive} from '../../archive-downloads.mjs';
 import {CONTRACT,digest,validateOriginalMetadata,validatePublicComparison,publishPublicFailure} from './policy.mjs';
@@ -31,10 +31,10 @@ async function apiMetadata(){
 async function compareWithSharedOwner({workspace,temp,privateRoot}){
  const adapter=join(root,'.github/ci/diagnostics/catalogue-original-replay/adapter.py'),kernel=join(root,'.github/ci/owned-process.py');
  assert(existsSync(adapter)&&existsSync(kernel),'Qualified shared process owner not integrated');
- // This fixed adapter will be implemented ONLY against the qualified extracted
- // shared kernel. It owns WNOWAIT/pidfd reservation and all descendant lifetime.
+ // This closed adapter uses the hosted-qualified extracted shared kernel.
+ // It owns WNOWAIT/pidfd reservation and all descendant lifetime.
  // Node never signals a numeric process group, detaches, or kills this monitor.
- const env={...safe(),GITHUB_WORKSPACE:workspace,RUNNER_TEMP:temp,GITHUB_ACTIONS:'true',RUNNER_ENVIRONMENT:'github-hosted',GITHUB_REPOSITORY:CONTRACT.repository.full_name,GITHUB_REPOSITORY_ID:String(CONTRACT.repository.id),GITHUB_RUN_ID:process.env.GITHUB_RUN_ID,GITHUB_RUN_ATTEMPT:'1',GITHUB_WORKFLOW_SHA:process.env.GITHUB_WORKFLOW_SHA,NODE_EXECUTABLE:process.execPath};
+ const env={...safe(),GITHUB_WORKSPACE:workspace,RUNNER_TEMP:temp,GITHUB_ACTIONS:'true',CI:'true',RUNNER_ENVIRONMENT:'github-hosted',GITHUB_REPOSITORY:CONTRACT.repository.full_name,GITHUB_REPOSITORY_ID:String(CONTRACT.repository.id),GITHUB_RUN_ID:process.env.GITHUB_RUN_ID,GITHUB_RUN_ATTEMPT:'1',GITHUB_WORKFLOW_SHA:process.env.GITHUB_WORKFLOW_SHA,GITHUB_WORKFLOW:'original-catalogue-replay-diagnostic',GITHUB_JOB:'replay',GITHUB_EVENT_NAME:'workflow_dispatch',NODE_EXECUTABLE:process.execPath};
  const child=children.start(()=>spawn('/usr/bin/python3',['-I','-B',adapter],{cwd:root,env,stdio:['pipe','pipe','pipe']}),owned=>owned.stdin.end());let closed=false,error,expired=false,size=0;const chunks=[];
  const done=new Promise(resolve=>{child.once('error',value=>{error=value;});child.once('close',(code,signal)=>{closed=true;resolve({code,signal});});});
  const requestStop=()=>{if(!closed)child.stdin.end();};const interrupted=()=>requestStop();process.on('SIGTERM',interrupted);process.on('SIGINT',interrupted);
@@ -52,12 +52,13 @@ export async function originalCatalogueReplay(){
   assert.equal(process.argv.length,2);assert.equal(process.platform,'linux');assert.equal(process.versions.node,'22.23.3');assert.equal(process.env.GITHUB_ACTIONS,'true');assert.equal(process.env.CI,'true');assert.equal(process.env.RUNNER_ENVIRONMENT,'github-hosted');assert.equal(process.env.GITHUB_REPOSITORY,CONTRACT.repository.full_name);assert.equal(process.env.GITHUB_REPOSITORY_ID,String(CONTRACT.repository.id));assert.equal(process.env.GITHUB_EVENT_NAME,'workflow_dispatch');assert.equal(process.env.GITHUB_RUN_ATTEMPT,'1');assert.equal(process.env.GITHUB_JOB,'replay');assert.equal(process.env.GITHUB_WORKFLOW,'original-catalogue-replay-diagnostic');
   const event=JSON.parse(readFileSync(process.env.GITHUB_EVENT_PATH,'utf8'));assert.equal(event.repository.id,CONTRACT.repository.id);assert.equal(Object.keys(event.inputs??{}).length,0);
   const workspace=realpathSync(process.env.GITHUB_WORKSPACE),temp=realpathSync(process.env.RUNNER_TEMP);assert.equal(root,join(workspace,'controller'));assert.equal(realpathSync(root),root);const original=join(workspace,'original');assert.equal(realpathSync(original),original);
-  const git=(cwd,...args)=>execFileSync('/usr/bin/git',['-c','safe.directory='+cwd,'-c','core.hooksPath=/dev/null',...args],{cwd,env:safe(),encoding:'utf8',timeout:10000,maxBuffer:4*1024**2}).trim();assert.equal(git(root,'rev-parse','HEAD'),process.env.GITHUB_WORKFLOW_SHA);assert.equal(git(root,'status','--porcelain'),'');assert.equal(git(original,'rev-parse','HEAD'),CONTRACT.originalCandidate);assert.equal(git(original,'status','--porcelain'),'');
+  const git=(cwd,...args)=>execFileSync('/usr/bin/git',['-c','safe.directory='+cwd,'-c','core.fsmonitor=false','-c','core.hooksPath=/dev/null',...args],{cwd,env:{...safe(),GIT_CONFIG_NOSYSTEM:'1',GIT_CONFIG_GLOBAL:'/dev/null',GIT_OPTIONAL_LOCKS:'0',GIT_NO_REPLACE_OBJECTS:'1'},encoding:'utf8',timeout:10000,maxBuffer:4*1024**2}).trim();assert.equal(git(root,'rev-parse','HEAD'),process.env.GITHUB_WORKFLOW_SHA);assert.equal(git(root,'status','--porcelain'),'');assert.equal(git(original,'rev-parse','HEAD'),CONTRACT.originalCandidate);assert.equal(git(original,'status','--porcelain'),'');
   const privateRoot=join(temp,'original-catalogue-replay-private');publicRoot=join(temp,'original-catalogue-replay-public');mkdirSync(privateRoot,{mode:0o700});mkdirSync(publicRoot,{mode:0o700});ghConfiguration=join(privateRoot,'gh-config');mkdirSync(ghConfiguration,{mode:0o700});
   // A missing qualified kernel/adapter is an explicit commissioning blocker.
   assert(existsSync(join(root,'.github/ci/owned-process.py'))&&existsSync(join(root,'.github/ci/diagnostics/catalogue-original-replay/adapter.py')),'Shared kernel commissioning required');
   phase='api-before';const before=await apiMetadata();phase='download';const archives=join(privateRoot,'archives');mkdirSync(archives,{mode:0o700});await downloadCiArchives(CONTRACT.artifacts,archives,{concurrency:4,timeoutMs:120000,start:artifact=>gh([`repos/${CONTRACT.repository.full_name}/actions/artifacts/${artifact.id}/zip`])});
-  phase='extract';const artifacts=[];for(const artifact of CONTRACT.artifacts){const path=join(archives,artifact.name+'.zip');readCiArchive(artifact,path);const directory=join(privateRoot,'artifact-'+artifact.id);await bounded(children.start(()=>spawn('/usr/bin/python3',['-I','-B',join(root,'.github/ci/extract-artifact.py'),path,directory],{env:safe(),stdio:['ignore','pipe','pipe']})),{maximum:65536,timeout:20000});assert.deepEqual(readdirSync(directory).sort(),artifact.members);artifacts.push({id:artifact.id,directory});}
+  phase='extract';const disk=statfsSync(privateRoot);assert(disk.bavail*disk.bsize>=CONTRACT.artifacts.length*128*1024**2+64*1024**2,'Bounded extractor disk headroom required');
+  const artifacts=[];for(const artifact of CONTRACT.artifacts){const path=join(archives,artifact.name+'.zip');readCiArchive(artifact,path);const directory=join(privateRoot,'artifact-'+artifact.id);await bounded(children.start(()=>spawn('/usr/bin/python3',['-I','-B',join(root,'.github/ci/extract-artifact.py'),path,directory],{env:safe(),stdio:['ignore','pipe','pipe']})),{maximum:65536,timeout:20000});assert.deepEqual(readdirSync(directory).sort(),artifact.members);artifacts.push({id:artifact.id,directory});}
   phase='api-after';const after=await apiMetadata();writeFileSync(join(privateRoot,'worker-input.json'),JSON.stringify({original,artifacts},null,2)+'\n',{flag:'wx',mode:0o600});
   phase='comparison';const comparison=await compareWithSharedOwner({workspace,temp,privateRoot});phase='api-final';const final=await apiMetadata();phase='publish';
   writeFileSync(join(publicRoot,'result.json'),JSON.stringify({kind:'AUTHENTICATED_ORIGINAL_CATALOGUE_REPLAY_DIAGNOSTIC',complete:true,consumerSource:process.env.GITHUB_WORKFLOW_SHA,consumerRun:process.env.GITHUB_RUN_ID,comparison,expectedProfileAuthorized:false,releaseAuthorized:false},null,2)+'\n',{flag:'wx',mode:0o600});

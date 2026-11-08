@@ -1,0 +1,92 @@
+{
+  "kind": "AUTHENTICATED_ORIGINAL_CATALOGUE_REPLAY_FIXED_ADAPTER_NOT_EXECUTED",
+  "basePreparation": "e0849662b7e0cd9d8379e4209ddfaf05b73e30f3",
+  "qualifiedKernel": "756e834dc0db88b5131547bc6d5108284201ab48",
+  "normalMerge": "df9902c897f475f635dd7d457a500e8f15a0098c",
+  "sourceRef": "codex/notification-original-replay-owned-adapter-20261108",
+  "sourceSha256": {
+    ".github/ci/diagnostics/catalogue-original-replay/adapter-controls.mjs": "c32b5fe02a5dbc61267d6ab5bc05338a9b2cb5369a0361afed542f9c9313a253",
+    ".github/ci/diagnostics/catalogue-original-replay/adapter.py": "6b4234af934b34284b34787d74690944bcf161db49dbc30d9b6292fe21e63331",
+    ".github/ci/diagnostics/catalogue-original-replay/adapter.test.py": "2ec05ce162593b188d7b1ee6e4e7f5cc025a0c4d139567f6a0b77b80d228e5da",
+    ".github/ci/diagnostics/catalogue-original-replay/contract.json": "9dbd0469d25156479da20f0bd68f7218ac3664e542c7ffbf5fb8aa86397b9f70",
+    ".github/ci/diagnostics/catalogue-original-replay/direct-children.mjs": "69d88cc9a3e4835297d34ff0f22e5dbf17b5b3e1a59af701561196fcd9612a60",
+    ".github/ci/diagnostics/catalogue-original-replay/parent.mjs": "1f25d5a7501f92f2cf72331dcb2a923e89ffe0266e93feb04900fea3b382a0ad",
+    ".github/ci/diagnostics/catalogue-original-replay/policy.mjs": "afbda133dbce90a789d906387bc19b567a2d6d513df75c141b12344548d7c04b",
+    ".github/ci/diagnostics/catalogue-original-replay/policy.test.mjs": "bed1965953a2fb47abd07c424ac1ee78c73802b137f22e61d97a0fe238c59c4e",
+    ".github/ci/diagnostics/catalogue-original-replay/worker.mjs": "5665fcdbc1455aa69551fab40ab8fac3b884a4548a2730c4917fd8dc983d90ca",
+    ".github/workflows/notification-original-catalogue-replay.yml": "fa96efbaef6138f867ba2b60d05dd84d6f2d8e13b3ff547c211b1fba3dd4f743",
+    "test/notification-original-replay-policy.test.ts": "75c8a4df6d7065b2fa02457e900c821bb83d8522d8dcf6f254391899fef2895e",
+    "docs/qualification/notification-original-replay-owned-adapter-20261108.md": "6ff7253322688bedd200a05198c09f573214b030fa14d373d03bb08f6cae03a8"
+  },
+  "unchangedSha256": {
+    ".github/ci/archive-downloads.mjs": "b575b2bd899444556ae952569dc62c07df878bc4347075e262b65c614b0abf30",
+    ".github/ci/candidate-environment.mjs": "638d7af878bb04866872464d026484895ef5c110343986965d15db95987c2ec4",
+    ".github/ci/extract-artifact.py": "f9d0817536d1a9a013b978c979ec14c71ca57c2557b64a25f7fe06f350e4f8df",
+    ".github/ci/manifest.mjs": "6fd081b890148a35014927200e1b0ae9053d565895b68b400eab08e49b858143",
+    ".github/ci/owned-process-extraction.json": "c94cc4317f67bdb0810a8baf22d747e0e8f7c681b26c90e495e59468224cd645",
+    ".github/ci/owned-process.py": "cb1a2cc2879267f8834dc11ea0e1c52f8326b0bd4e45dcd94ccf2ac43463f28c",
+    ".github/ci/plan.mjs": "9c90a5addbedfff0abf360adfe28d64bc4dfdccc6b09ddc1a90cc69c32662342",
+    ".github/ci/policy-version.mjs": "6b184db22189d6402016980e31b8a5d770e35860ea20577d3e863b65b645baf7",
+    ".github/ci/verify-shards.mjs": "21ec20bd938032c0373b813ce1ba6dc1b332ae37313511e7a7c1c9edfb55f4df",
+    "docs/qualification/notification-authenticated-original-replay-20261108.md": "f65b6da78fa22a0ea9e5c2ee5b1e31c50b7a33bd6f553cb5e6099d4d9e1aa34d",
+    "docs/qualification/notification-authenticated-original-replay-preparation-source-20261108.json": "a92b4e4506e2e02d347d793dbcad4db7201b5512b5e55d04240dbfbde003414b",
+    "package.json": "7f67e35d869a29d2cb58d65c6f63413afc63db2cc6c6cf9dacb5086bce70ec2c",
+    "pnpm-lock.yaml": "0413a070eca23d390fabdcd78cb63b2dcf4b0b69fe90408c7b57a4f672d21dbd",
+    "test/fixtures/notification-worker/final-catalogue-cases.ts": "54fd628244a83af8303b0133a91bd4cb8cb886edf36014327cf82d2a665f76fb",
+    "test/fixtures/notification-worker/final-catalogue-comparison.ts": "1b7bd29f44cf876164931a7313758fb26a1c1d8494a752ad70c876e9bdd490b7",
+    "test/fixtures/notification-worker/final-catalogue-replay-prerequisite.ts": "79226b0426ff4ccb4659ba3e83b7742b57bb020bc3f1eb76778e6ac749b87ffc",
+    "test/notification-final-catalogue-baseline.test.ts": "22a46ce817e01f84cbbcdf728b0368ead489233b5d300f57df995d5f4d55a3e8",
+    "test/notification-final-catalogue-comparison.test.ts": "a52f3bcfc710d6f10815a3ca01bb6c9458848f3407531dc7c4dec6c71d117b1e",
+    "test/notification-final-catalogue-oid-shift.test.ts": "daf53938440dfa8d7d4f27fe33abc1f412d6725f5f1ac38afbef5ae3728609d8"
+  },
+  "retainedOriginalApiSha256": {
+    "run-api.json": "e7ae3671de9ae80b8fb499f498e2da3ab40b38f2e59b1395e9c845c146d6bb21",
+    "jobs-api.json": "9de662e96b4f50fa9d97a297c9df0f9c5ebbe000df160ff63700451b991fa628",
+    "artifacts-api.json": "fc0e3cc1b35a0b5c15df277b86d2d1242efbf013c67bcd07643d3df114e1ca93"
+  },
+  "kernelQualification": {
+    "runId": "42443645097",
+    "artifactId": 13602945930,
+    "zipSha256": "c31e63c68176178f494d1df0e2ce4b863f10171e549051263da7949fbb40cd1c",
+    "vitestCases": 1,
+    "pythonControls": 15
+  },
+  "originalCapture": {
+    "source": "032b772c2387cbab348999a7b9574485050bb1b4",
+    "runId": "42440920409",
+    "attempt": 1,
+    "jobs": 14,
+    "artifacts": 4,
+    "sourceMembersPerUnit": 1738,
+    "observedFunctions": 2308,
+    "expectedProfileAuthorized": false
+  },
+  "requestedSelector": "test/notification-original-replay-policy.test.ts",
+  "plannedVitestCases": 2,
+  "plannedMetadataModels": 14,
+  "plannedNativeKernelCallbackControls": 6,
+  "retainedComparatorSelector": "test/notification-final-catalogue-comparison.test.ts",
+  "retainedComparatorCases": 6,
+  "manualWorkflow": ".github/workflows/notification-original-catalogue-replay.yml",
+  "workerEnvelopeSeconds": {
+    "activeMaximum": 173,
+    "kernelSettlementReserve": 6,
+    "fixedTerminalReserve": 1,
+    "parentTotal": 180
+  },
+  "nativeControlEnvelope": {
+    "transportSeconds": 45,
+    "vitestCaseSeconds": 60,
+    "outputBytes": 1048576
+  },
+  "sharedKernelIntegrated": true,
+  "fixedAdapterImplemented": true,
+  "independentReviewPending": true,
+  "testsExecuted": false,
+  "freshApiAuthenticated": false,
+  "originalComparatorExecuted": false,
+  "expectedProfileAuthorized": false,
+  "releaseAuthorized": false,
+  "completeSuite": false,
+  "productionHeld": true
+}
