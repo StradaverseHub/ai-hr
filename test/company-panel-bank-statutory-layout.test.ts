@@ -1065,8 +1065,11 @@ describe('Statutory tab: each body is a row (3c2f55d7 rev 2, relaid out by efe42
     // "Clear this authority" DELETES a row: bucket (b), its own form, its own control, and it MOVED with
     // the editor rather than being dropped — it is the only way to clear a body's payment setup.
     expect(CARD_SRC).toContain("t('authorityClear')");
-    const clear = CARD_SRC.slice(CARD_SRC.indexOf('action={actions.removeStatutoryAuthority}'));
-    expect(clear, 'the Clear form is a form of its own').toMatch(/<button\b/);
+    const clear = CARD_SRC.match(/<form\b[^>]*action=\{actions.removeStatutoryAuthority\}[^>]*>[\s\S]*?<\/form>/)?.[0] ?? '';
+    expect(clear, 'the Clear form is a form of its own').not.toBe('');
+    const clearButton = clear.match(/<ActionButton\b[^>]*>/)?.[0] ?? '';
+    expect(clearButton, 'Clear uses the shared pending submit control').toContain('actionKind="deleting"');
+    expect(clearButton, 'the default submit control must submit its own Clear form').not.toMatch(/type="(?:button|reset)"/);
     expect(clear, 'and it is not inside the card Save').not.toContain("t('authoritySave')");
   });
 

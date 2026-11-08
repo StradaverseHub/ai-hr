@@ -295,7 +295,7 @@ describe('Today historical attendance actions require human review',()=>{
   expect(text(fixed)).toContain('Done by AI Centre: Missed clock-outs');
   expect(text(fixed)).toContain(messagesFor('en').today.autonomy.refused.human_review_required);
   expect(text(fixed)).not.toContain('You can undo it until');
-  expect(within(fixed as HTMLElement).getByRole('link',{name:'Review correction'})).toHaveAttribute('href','/attendance/my-records/2026-11-02');
+  expect(within(fixed as HTMLElement).getByRole('link',{name:'Review correction · Clock-out set to 18:00 for Mon, Nov 2'})).toHaveAttribute('href','/attendance/my-records/2026-11-02');
   expect(within(fixed as HTMLElement).queryByRole('button',{name:/^Undo/})).toBeNull();
   expect(state.undo.posts).toEqual([]);
  });
