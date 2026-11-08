@@ -10,6 +10,7 @@ import {observeLoadedNativeInput,stableNativeInput,withinInputRoot,APPLICATION_I
 import {assertFixedInventoryConfig} from './application-protocol.mjs';
 import {REFERENCE_LIMITS} from './graph.mjs';
 import {observeNativeUsageResolution} from './application-mode.mjs';
+import {walkNativeApplicationSyntax} from './application-syntax.mjs';
 
 function observeNativeApplication(ts,source,config,check){
  assertFixedInventoryConfig(source,config);check();const dependencyRoot=join(source,'node_modules');assert.equal(realpathSync(dependencyRoot),dependencyRoot);
@@ -27,15 +28,14 @@ function observeNativeApplication(ts,source,config,check){
   if(!loadedNames.has(logicalPath))gaps.push({kind:'public-resolution-not-native-loaded-membership',logicalPath,path});
   return{logicalPath,path,extension:value.extension??null,packageId:value.packageId??null,isExternalLibraryImport:value.isExternalLibraryImport??null,resolvedUsingTsExtension:value.resolvedUsingTsExtension??null};
  };
- for(const file of loaded){check();const from=resolve(file.fileName),seen=new WeakSet();
+ for(const file of loaded){check();const from=resolve(file.fileName);
   const module=(literal,kind)=>{
    const native=observeNativeUsageResolution(ts,program,file,literal,parsed.options),result=native.resolutionAttempted?target(native.resolvedModule):null;
    add({from,kind,specifier:literal.text,position:literal.pos,end:literal.end,literalKind:literal.kind,mode:native.mode,modeObserved:native.modeObserved,resolutionAttempted:native.resolutionAttempted,nativeParentKind:native.nativeParentKind,target:result});
    if(!native.modeObserved)gaps.push({kind:'native-usage-parent-unavailable',from,referenceKind:kind,specifier:literal.text,position:literal.pos,end:literal.end,literalKind:literal.kind});
    else if(!result)gaps.push({kind:'unresolved-public-module-or-ambient-provider',from,specifier:literal.text,position:literal.pos});
   };
-  function visit(node){
-   check();if(seen.has(node))return;seen.add(node);
+  function observe(node){
    if((ts.isImportDeclaration(node)||ts.isExportDeclaration(node))&&node.moduleSpecifier){if(ts.isStringLiteralLike(node.moduleSpecifier))module(node.moduleSpecifier,ts.isImportDeclaration(node)?'import':'export');else gaps.push({kind:'nonliteral-module-specifier',from,position:node.pos});}
    else if(ts.isImportEqualsDeclaration(node)&&ts.isExternalModuleReference(node.moduleReference)&&node.moduleReference.expression){const value=node.moduleReference.expression;if(ts.isStringLiteralLike(value))module(value,'import-equals');else gaps.push({kind:'nonliteral-import-equals',from,position:node.pos});}
    else if(ts.isImportTypeNode(node)){if(ts.isLiteralTypeNode(node.argument)&&ts.isStringLiteralLike(node.argument.literal))module(node.argument.literal,'import-type');else gaps.push({kind:'nonliteral-import-type',from,position:node.pos});}
@@ -48,10 +48,9 @@ function observeNativeApplication(ts,source,config,check){
     ambient.push({from,name,position:node.pos,end:node.end,globalAugmentation:(node.flags&ts.NodeFlags.GlobalAugmentation)!==0,externalSource:ts.isExternalModule(file)});
     gaps.push({kind:'ambient-or-augmentation-native-order-controls-open',from,name,position:node.pos});
    }
-   for(const tag of ts.getJSDocTags(node))if(ts.isJSDocImportTag(tag)&&tag.moduleSpecifier&&ts.isStringLiteralLike(tag.moduleSpecifier))module(tag.moduleSpecifier,'jsdoc-import');
-   ts.forEachChild(node,visit);
+   if(ts.isJSDocImportTag(node)&&node.moduleSpecifier&&ts.isStringLiteralLike(node.moduleSpecifier))module(node.moduleSpecifier,'jsdoc-import');
   }
-  visit(file);
+  walkNativeApplicationSyntax(ts,file,observe,check);
   for(const ref of file.referencedFiles){const logicalPath=resolve(dirname(from),ref.fileName);add({from,kind:'path-reference',specifier:ref.fileName,position:ref.pos,end:ref.end,target:loadedNames.has(logicalPath)?{logicalPath,path:realpathSync(logicalPath)}:null});if(!loadedNames.has(logicalPath))gaps.push({kind:'path-reference-native-target-open',from,reference:ref});}
   for(const ref of file.typeReferenceDirectives){const mode=ref.resolutionMode??file.impliedNodeFormat,value=ts.resolveTypeReferenceDirective(ref.fileName,file.fileName,parsed.options,ts.sys,undefined,undefined,mode);const result=target(value.resolvedTypeReferenceDirective);add({from,kind:'type-reference',specifier:ref.fileName,position:ref.pos,end:ref.end,mode:mode??null,target:result});if(!result)gaps.push({kind:'unresolved-public-type-reference',from,reference:ref});}
   for(const ref of file.libReferenceDirectives)add({from,kind:'lib-reference',specifier:ref.fileName,position:ref.pos,end:ref.end,target:null});
@@ -70,7 +69,7 @@ function observeNativeApplication(ts,source,config,check){
   resolutionMethod:'Unmodified public createProgram plus independent public resolveModuleName/resolveTypeReferenceDirective(ts.sys); independent observations are not native cache provenance'};
 }
 export function nativeApplicationWorker(){
- assert.equal(process.argv.length,2);const proof=admitCompilerApplicationInventory('inventory-worker'),clock=readCompilerApplicationInventoryClock(proof),started=process.hrtime.bigint();
+ assert.equal(process.argv.length,2);const proof=admitCompilerApplicationInventory('inventory-worker');assert(proof.sourceHashes['.github/ci/diagnostics/native-reference/application-syntax.mjs'],'Complete original native syntax source owner required');const clock=readCompilerApplicationInventoryClock(proof),started=process.hrtime.bigint();
  const check=()=>{assert(process.hrtime.bigint()-BigInt(clock.startNs)<BigInt(718000000000),'Aggregate inventory frontier closed');assert(process.hrtime.bigint()-started<BigInt(APPLICATION_INPUT_LIMITS.phaseMs)*1000000n,'Native metadata phase cap');};
  const config=join(proof.source,'tsconfig.json'),owner=compilerOwner(proof.source),value=observeNativeApplication(owner.ts,proof.source,config,check);
  const output=join(proof.destination,'compiler-native-application-inventory','original-api.json');check();const raw=JSON.stringify({...value,typescript:owner.version,apiSha256:owner.apiSha256,ordinaryCompilerQualified:false,releaseAuthorized:false},null,2)+'\n';assert(Buffer.byteLength(raw)<=REFERENCE_LIMITS.fileBytes);assert.equal(compilerOwner(proof.source).apiSha256,owner.apiSha256);writeFileSync(output,raw,{flag:'wx',mode:0o600});check();
