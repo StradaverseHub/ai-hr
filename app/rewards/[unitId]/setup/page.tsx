@@ -37,7 +37,7 @@ export default async function RewardUnitSetup({params,searchParams}:{params:Prom
   <Card className="space-y-5 p-5">
    <h2 className="text-lg font-semibold">{t('checklist')}</h2>
    <p className="text-sm text-muted-foreground">{t('snapshotDate',{date:value.snapshotDate})}</p>
-   {canEdit&&!released?<form action={preparationAction} className="flex flex-wrap items-end gap-3">{fields}<input type="hidden" name="kind" value="expected"/><Field label={t('expected')}><input name="expectedRelease" type="date" required defaultValue={preparation.expectedRelease??''} className={inputCls}/></Field><RewardSubmit variant="secondary">{t('saveExpected')}</RewardSubmit></form>:<p className="text-sm">{t('expected')}: {preparation.expectedRelease??t('notSet')}</p>}
+   {access.required&&canEdit&&!released?<form action={preparationAction} className="flex flex-wrap items-end gap-3">{fields}<input type="hidden" name="kind" value="expected"/><Field label={t('expected')}><input name="expectedRelease" type="date" required defaultValue={preparation.expectedRelease??''} className={inputCls}/></Field><RewardSubmit variant="secondary">{t('saveExpected')}</RewardSubmit></form>:<p className="text-sm">{t('expected')}: {preparation.expectedRelease??t('notSet')}</p>}
    <ol className="divide-y divide-border">
     {REWARD_PREPARATION_STEPS.map((step,index)=>{
      const proof=preparation.steps[step],done=proof?.basis===basis&&(!checks||checks[step]);
@@ -45,14 +45,14 @@ export default async function RewardUnitSetup({params,searchParams}:{params:Prom
      return <li key={step} className="flex flex-wrap items-center justify-between gap-3 py-4">
       <div className="min-w-0"><h3 className="font-medium">{index+1}. {t(`steps.${step}`)}</h3><p className="mt-1 text-sm text-muted-foreground">{t(`help.${step}`)}</p><Link href={links[step]} className="mt-1 inline-block text-sm text-primary hover:underline">{t('openStep')}</Link></div>
       <div className="flex flex-wrap items-center gap-3 text-sm"><span>{!access.required?t('notRecorded'):done?t('done'):proof?t('pending'):t('notStarted')}</span>{proof&&<span className="text-muted-foreground">{t('completedBy',{name:access.actorNames[proof.actorPersonId]??t('groupRewards')})}</span>}
-       {canEdit&&!released&&!done&&<form action={preparationAction}>{fields}<input type="hidden" name="kind" value="confirm"/><input type="hidden" name="step" value={step}/><RewardSubmit variant="secondary" disabled={!complete}>{t('confirm')}</RewardSubmit></form>}
+       {access.required&&canEdit&&!released&&!done&&<form action={preparationAction}>{fields}<input type="hidden" name="kind" value="confirm"/><input type="hidden" name="step" value={step}/><RewardSubmit variant="secondary" disabled={!complete}>{t('confirm')}</RewardSubmit></form>}
       </div>
      </li>;
     })}
    </ol>
    {access.required&&!released&&<div className="flex flex-wrap items-center gap-3"><form action={preparationAction}>{fields}<input type="hidden" name="kind" value="release"/><RewardSubmit disabled={!canEdit||missing.length>0||!preparation.expectedRelease||!independent}>{t('release')}</RewardSubmit></form><p role="status" className="text-sm text-muted-foreground">{missing.length?t('missing',{step:REWARD_PREPARATION_STEPS.indexOf(missing[0])+1,name:t(`steps.${missing[0]}`)}):!preparation.expectedRelease?t('setExpected'):!independent?t('independent'):t('ready')}</p></div>}
    {released&&<p role="status" className="text-sm">{t('released',{date:preparation.releasedAt?.slice(0,10)??''})}</p>}
-   {canEdit&&released&&<form action={preparationAction} className="space-y-3">{fields}<input type="hidden" name="kind" value="reopen"/><Field label={t('changeReason')}><textarea name="reason" required minLength={10} maxLength={2000} className={inputCls}/></Field><RewardSubmit variant="secondary">{t('requestChange')}</RewardSubmit></form>}
+   {(value.canReopen&&(released||value.needsReopen))&&<form action={preparationAction} className="space-y-3">{fields}<input type="hidden" name="kind" value="reopen"/><Field label={t('changeReason')}><textarea name="reason" required minLength={10} maxLength={2000} className={inputCls}/></Field><RewardSubmit variant="secondary">{t('requestChange')}</RewardSubmit></form>}
   </Card>
   <section id="source-records" className="space-y-4 scroll-mt-6"><h2 className="text-lg font-semibold">{t('steps.snapshot')}</h2>
    {canEdit&&!released?<SourceRefresh unitId={unitId} revision={value.revision} snapshotDate={value.snapshotDate} today={todayInKualaLumpur()}/>:<p className="text-sm text-muted-foreground">{t('snapshotDate',{date:value.snapshotDate})}</p>}

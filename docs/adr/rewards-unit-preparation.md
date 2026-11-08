@@ -25,13 +25,13 @@ The live ownership check found reward_unit and reward_member owned by ai_hr_owne
 
 ## Changes after release
 
-Ordinary preparation edits are locked. A Group Rewards controlled-change command requires a reason, clears confirmations and withdraws reviewer visibility. Existing calculation and approval owners continue to govern changes and closed/posted work.
+Ordinary preparation edits are locked. A Group Rewards controlled-change command requires a reason, clears confirmations and withdraws reviewer visibility. A live review already on the approval route returns to draft under the same transaction, reason and revision update before recalculation. Inspection seats cannot advance a preparing unit. Existing calculation and approval owners continue to govern changes and closed/posted work.
 
 An independent native publisher can change source or confidentiality evidence outside a form. A bounded invalidation trigger withdraws preparation in that transaction, clears the approval digest and records one source-change event. It does not manufacture a human reason or rewrite a posted review. It leaves revision advancement with the source writer; confirmation also checks the rendered content basis to refuse an otherwise unchanged revision. The notification dispatcher uses existing scoped recipients and event deduplication.
 
 ## Compatibility
 
-Existing exposed reviews retain a legacy compatibility marker. No historical doer, checker or release event is invented. The new setup view labels their preparation history as unrecorded. New annual reviews require the checked release process. The compatibility marker is outside ordinary runtime form control. Off-cycle and posted payroll ownership remain unchanged.
+Existing exposed reviews retain a legacy compatibility marker and their existing Group Rewards setup editing. Checklist confirmations and release actions stay unavailable for those historical records. No historical doer, checker or release event is invented. The new setup view labels their preparation history as unrecorded. New annual reviews require the checked release process. The compatibility marker is outside ordinary runtime form control. Off-cycle and posted payroll ownership remain unchanged.
 
 PAT remains owned by PAT Inputs. Preparation reads its recorded binding; it neither calculates a second budget nor creates another payroll ledger. Applied library names and versions are projected only for the authorized unit, including read-only CTRO/EC inspection without granting global library editing.
 
