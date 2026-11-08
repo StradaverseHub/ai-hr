@@ -40,7 +40,7 @@ it('pays explicit final amounts once while retaining the legacy raw-input interp
  const {batchId}=await createBatch(ctx,{companyId:base.companyId,payPeriod:period,payrollCycleId:cycleId});await generatePayslips(ctx,{batchId});
  const [slip]=await owner.db.select().from(schema.payslip).where(eq(schema.payslip.batchId,batchId));
  expect(Number(slip.allowance)).toBe(200); // legacy 2×25 + final override 100 + final formula amount 50
- const evaluations=await owner.db.select().from(schema.payFormulaEvaluation).where(eq(schema.payFormulaEvaluation.batchId,batchId));expect(evaluations).toHaveLength(1);expect(evaluations[0].amount).toBe('50.00');
+ const evaluations=await owner.db.select().from(schema.payFormulaEvaluation).where(eq(schema.payFormulaEvaluation.batchId,batchId));expect(evaluations).toHaveLength(1);expect(Number(evaluations[0].amount)).toBe(50);
 });
 it('does not calculate a manual override even if its linked formula can no longer evaluate',async()=>{
  await create('amount',125,null,'amount');
@@ -54,6 +54,7 @@ it('does not calculate a manual override even if its linked formula can no longe
 it('refuses a bad quantity or contradictory manual input without writing any ledger row',async()=>{
  await expect(create('formula',999,null,'qty')).rejects.toThrow(/positive quantity/);
  await expect(create('formula',999,2,'amount')).rejects.toThrow(/positive quantity/);
+ await expect(create('formula',999,0.125,'hours')).rejects.toThrow(/two decimal places/);
  await expect(create('amount',100,2,'amount')).rejects.toThrow(/must not include/);
  expect(await owner.db.select().from(schema.payrollIndividualTxn)).toHaveLength(0);
 });

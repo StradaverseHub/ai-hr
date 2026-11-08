@@ -15621,6 +15621,7 @@
     "recordHistory": "Lịch sử hồ sơ"
   },
   "payRule": {
+    "builderUseSaved": "Hãy dùng Trình tạo công thức lương cho phép tính này, rồi chọn mã công thức đã lưu.",
     "builderDescriptionUnavailable": "Chưa có mô tả cho mã công thức này.",
     "builderDescription": "Công thức này làm gì",
     "legacyInputType": "Cách tính hiện có",

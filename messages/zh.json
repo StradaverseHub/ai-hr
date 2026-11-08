@@ -15621,6 +15621,7 @@
     "recordHistory": "记录历史"
   },
   "payRule": {
+    "builderUseSaved": "请在薪资公式生成器中配置此计算，然后选择已保存的公式 ID。",
     "builderDescriptionUnavailable": "此公式 ID 暂无说明。",
     "builderDescription": "此公式的用途",
     "legacyInputType": "现有计算方式",

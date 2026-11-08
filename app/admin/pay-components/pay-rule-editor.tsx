@@ -379,6 +379,7 @@ export function PayRuleEditor({
         return;
       }
       if (res.rule) {
+        if(!['fixed','formula','formula_builder'].includes(res.rule.kind)){toast.error(t('builderUseSaved'));return;}
         applyRule(res.rule);
         setAiDraftNeedsPreview(true);
         setLastPreviewIdentity(null);

@@ -15621,6 +15621,7 @@
     "recordHistory": "Record history"
   },
   "payRule": {
+    "builderUseSaved": "Use Pay Formula Builder for this calculation, then select its saved Formula ID.",
     "builderDescriptionUnavailable": "No description is available for this Formula ID.",
     "builderDescription": "What this formula does",
     "legacyInputType": "Existing calculation",

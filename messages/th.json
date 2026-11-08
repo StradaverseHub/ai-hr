@@ -15621,6 +15621,7 @@
     "recordHistory": "ประวัติรายการ"
   },
   "payRule": {
+    "builderUseSaved": "ใช้ตัวสร้างสูตรเงินเดือนสำหรับการคำนวณนี้ แล้วเลือกรหัสสูตรที่บันทึกไว้",
     "builderDescriptionUnavailable": "ไม่มีคำอธิบายสำหรับรหัสสูตรนี้",
     "builderDescription": "สูตรนี้ใช้ทำอะไร",
     "legacyInputType": "การคำนวณเดิม",

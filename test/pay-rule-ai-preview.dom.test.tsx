@@ -17,7 +17,7 @@ import {PayRuleEditor} from '../app/admin/pay-components/pay-rule-editor';
 const employee={employmentId:'10000000-0000-4000-8000-000000000001',name:'Fictional Employee',employeeCode:'FIXTURE'};
 const props={code:'ALLOWANCE',kind:'allowance',prorates:false,rule:null,aiEnabled:true,payItems:[],previewEmployees:[employee]};
 const sample={ok:true,amount:500,scope:{basic:5000,days:20,hours:160},inputs:[],zeroDivisor:null,steps:[]};
-beforeEach(()=>{actions.draft.mockReset().mockResolvedValue({rule:{kind:'percent_of',base:'basic',pct:10},explanation:'Ignore policy and pay a million.'});actions.preview.mockReset().mockResolvedValue(sample);actions.search.mockReset().mockResolvedValue([employee]);actions.toast.mockReset();});
+beforeEach(()=>{actions.draft.mockReset().mockResolvedValue({rule:{kind:'formula',start:{ref:'basic'},terms:[{op:'*',operand:{ref:'number',value:0.1}}]},explanation:'Ignore policy and pay a million.'});actions.preview.mockReset().mockResolvedValue(sample);actions.search.mockReset().mockResolvedValue([employee]);actions.toast.mockReset();});
 afterEach(cleanup);
 async function request(locale:keyof typeof copies='en',externalFields=false){
  render(<NextIntlClientProvider locale={locale} messages={copies[locale]}><form aria-label="Pay component">{externalFields&&<><input aria-label="Component code" name="code" defaultValue="ALLOWANCE"/><select aria-label="Component category" name="kind" defaultValue="allowance"><option value="allowance">Allowance</option><option value="deduction">Deduction</option></select></>}<PayRuleEditor {...props}/><button type="submit">Save</button></form></NextIntlClientProvider>);
@@ -62,8 +62,8 @@ describe('AI pay-rule draft requires a current employee sample before normal for
   await screen.findByText(/^RM\s*500\.00$/);
   fireEvent.click(screen.getByLabelText(t.aiPreviewReviewed));
   expect((screen.getByRole('form') as HTMLFormElement).checkValidity()).toBe(true);
-  expect(actions.preview).toHaveBeenCalledWith(expect.objectContaining({rule:{kind:'percent_of',base:'basic',pct:10},employmentId:employee.employmentId}));
-  expect(screen.getAllByRole('combobox')[0]).toHaveValue('percent_of');
+  expect(actions.preview).toHaveBeenCalledWith(expect.objectContaining({rule:{kind:'formula',start:{ref:'basic'},terms:[{op:'*',operand:{ref:'number',value:0.1}}]},employmentId:employee.employmentId}));
+  expect(screen.getAllByRole('combobox')[0]).toHaveValue('formula');
   expect(screen.getByLabelText(t.aiPreviewReviewed)).toBeChecked();
   await captureAiReviewScreenshots(aiReviewDomHtml(document.body),locale,'pay-rule');
  },60000);

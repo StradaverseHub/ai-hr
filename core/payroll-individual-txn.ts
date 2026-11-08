@@ -1,3 +1,4 @@
+import {lockPayComponentCatalogReadTx} from './pay-component-catalog-lock';
 import {priceIndividualTxnInputTx,type IndividualCalculationMethod} from './payroll-individual-calculation';
 import {payrollEmploymentPredicate,type PayrollEligibilityRun} from './payroll-employment-eligibility';
 /**
@@ -1124,6 +1125,8 @@ export function createIndividualTxnsBulk(
 export async function createIndividualTxnsBulkTx(
   tx: Tx, ctx: SessionContext, p: Parameters<typeof createIndividualTxnsBulk>[1],
 ): Promise<{ ids: string[]; widenedEmploymentIds: string[] }> {
+    // Match generation's catalogue → period order; never upgrade a lock after owning the payroll period.
+    if(p.rows.some(row=>row.calculationMethod!==undefined))await lockPayComponentCatalogReadTx(tx,ctx);
     // De-dupe the selection defensively (a repeated employee would double-post the grid) and require ≥1 payee.
     const employmentIds = [...new Set(p.employmentIds)];
     if (employmentIds.length === 0) throw new EmptyEmployeeSelectionError();
@@ -1244,7 +1247,7 @@ export async function createIndividualTxnsBulkTx(
             // c11e81aa — WHICH RUN THIS ROW IS WAITING FOR, recorded at the moment the operator chose it.
             // A reference id, so it stays inside ADR-0030 Layer 0 exactly as componentId does.
             intendedCycleId,
-            ...(priced?.calculationMethod?{calculationMethod:priced.calculationMethod}:{}),
+            ...(priced?.calculationMethod?{calculationMethod:priced.calculationMethod,...('formulaRevisionId' in priced?{formulaId:priced.formulaId,formulaRevisionId:priced.formulaRevisionId}:{})}:{}),
           },
         });
         ids.push(row.id);
@@ -1409,6 +1412,7 @@ export function updateIndividualTxn(
   },
 ): Promise<{ id: string }> {
   return withTenant(ctx, async (tx) => {
+    if(p.calculationMethod!==undefined)await lockPayComponentCatalogReadTx(tx,ctx);
     const existing=await lockIndividualTxnForWrite(tx,ctx,p.id);
     // Attached ⇒ the owning batch must still be writable — draft or processed, never closed (the batch's
     // payPeriod is authoritative). Unattached ⇒ no batch gate. Both preserve the processing month
@@ -1483,6 +1487,7 @@ export function updateIndividualTxn(
       subjectEmploymentId: existing.employmentId,
       // References only (no cleartext amount) — ADR-0030 Layer 0.
       payload: {
+        ...(priced?{calculationMethod:priced.calculationMethod,...('formulaRevisionId' in priced?{formulaId:priced.formulaId,formulaRevisionId:priced.formulaRevisionId}:{})}:{}),
         before: {
           kind: existing.kind,
           txnDate: existing.txnDate,

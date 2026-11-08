@@ -20,6 +20,6 @@ it('ignores stale status query links and renders a status-free catalogue',async(
 });
 it('does not offer activation even if a retained client fixture claims activation capabilities',()=>{
  const formula={id:'f',latest:{id:'r'},capabilities:{view:true,edit:true,test:true,activate:true,deactivate:true,delete:true}} as unknown as FormulaBuilderView;
- render(<NextIntlClientProvider locale="en" messages={en}><FormulaActions formula={formula} testId="receipt"/></NextIntlClientProvider>);
+ render(<NextIntlClientProvider locale="en" messages={en}><FormulaActions formula={formula}/></NextIntlClientProvider>);
  expect(screen.queryByRole('button',{name:en.payFormula.activate})).toBeNull();expect(screen.queryByRole('button',{name:en.payFormula.deactivate})).toBeNull();expect(screen.getByRole('button',{name:en.payFormula.delete})).toBeVisible();expect(state.change).not.toHaveBeenCalled();
 });

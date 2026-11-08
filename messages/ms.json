@@ -15621,6 +15621,7 @@
     "recordHistory": "Sejarah rekod"
   },
   "payRule": {
+    "builderUseSaved": "Gunakan Pay Formula Builder untuk pengiraan ini, kemudian pilih ID Formula yang disimpan.",
     "builderDescriptionUnavailable": "Tiada penerangan tersedia untuk ID Formula ini.",
     "builderDescription": "Apa yang formula ini lakukan",
     "legacyInputType": "Pengiraan sedia ada",

@@ -3,7 +3,7 @@ import {sql} from 'drizzle-orm';
 import {withTenant,type SessionContext,type Tx} from '../db/client';
 import {PayFormulaError} from '../lib/pay-formula-model';
 import {isTransactionEffectiveDate} from '../lib/transaction-effective-date';
-import {lockPayComponentCatalogTx} from './pay-component-catalog-lock';
+import {lockPayComponentCatalogReadTx} from './pay-component-catalog-lock';
 import type {PayRule} from './pay-rule';
 
 export type IndividualCalculationMethod='amount'|'formula';
@@ -14,7 +14,7 @@ export function individualTxnUsesLegacyFormula(method:string|null|undefined){ret
 export async function priceIndividualTxnInputTx(tx:Tx,ctx:SessionContext,p:IndividualCalculationInput){
  if(!['amount','formula'].includes(p.method))throw new PayFormulaError('Choose a supported transaction input method.');
  if(!p.componentId)throw new PayFormulaError('Choose a Pay Item with an assigned Formula ID.');
- await lockPayComponentCatalogTx(tx,ctx);
+ await lockPayComponentCatalogReadTx(tx,ctx);
  const [item]=await tx.execute<{code:string;rule:PayRule|null}>(sql`select code,rule from pay_component where id=${p.componentId}::uuid and tenant_id=${ctx.tenantId}::uuid and archived_at is null`);
  if(!item)throw new PayFormulaError('The selected Pay Item is unavailable.');
  if(item.rule?.kind!=='formula_builder')throw new PayFormulaError('The Pay Item no longer has an assigned Formula ID. Reopen the transaction.');
@@ -26,6 +26,7 @@ export async function priceIndividualTxnInputTx(tx:Tx,ctx:SessionContext,p:Indiv
   return {amount:p.amount,calculationMethod:'amount' as const};
  }
  if(!['qty','hours','days','units'].includes(p.unit??'')||!Number.isFinite(p.quantity)||!(p.quantity!>0))throw new PayFormulaError('Enter a positive quantity, hours, days or units.');
+ if(Number(p.quantity!.toFixed(2))!==p.quantity)throw new PayFormulaError('Enter a quantity with at most two decimal places.');
  if(!/^\d{4}-(0[1-9]|1[0-2])$/.test(p.payPeriod)||!isTransactionEffectiveDate(p.txnDate))throw new PayFormulaError('Choose a valid payroll month and effective date.');
  let cycleId=p.cycleId??null;
  if(p.batchId){
@@ -44,6 +45,6 @@ export async function priceIndividualTxnInputTx(tx:Tx,ctx:SessionContext,p:Indiv
  const result=await simulatePayFormulaTx(tx,ctx,formula,{companyId:p.companyId,employmentId:p.employmentId,period:p.payPeriod,asOf:p.txnDate.startsWith(p.payPeriod+'-')?p.txnDate:end,cycleId,currentCode:item.code,input:String(p.quantity),...(p.batchId?{batchId:p.batchId}:{})});
  if(!result.passed||result.amount==null)throw new PayFormulaError(result.error??'The saved formula could not calculate this transaction.');
  const amount=Number(result.amount);if(!Number.isFinite(amount)||amount<=0)throw new PayFormulaError('The formula must produce a positive transaction amount.');
- return {amount,calculationMethod:'formula' as const};
+ return {amount,calculationMethod:'formula' as const,formulaId:formula.id,formulaRevisionId:formula.revisionId};
 }
 export function previewIndividualTxnInput(ctx:SessionContext,p:IndividualCalculationInput){return withTenant(ctx,tx=>priceIndividualTxnInputTx(tx,ctx,p));}

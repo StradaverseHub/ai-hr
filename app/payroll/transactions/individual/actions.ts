@@ -10,6 +10,7 @@ import { buildTxnPanel, type TxnPanel } from './existing-context';
 import {previewIndividualTxnInput} from '@/packs/payroll/service';
 import { deriveIndividualTxnAmount, TxnEffectiveDateInvalidError, TxnQuantityRequiredError } from '@/core/pay-components';
 import { PayRuleEvalError } from '@/core/pay-rule';
+import {PayFormulaError} from '@/lib/pay-formula-model';
 import {
   createIndividualTxnsBulk,
   getIndividualTxn,
@@ -73,7 +74,7 @@ const txnErrorKey = (e: unknown): string =>
         : 'quantityRequiredDays'
       : // A corrupted stored rule resolved to a non-finite figure. Fail closed and say so — writing the
         // typed amount instead would pay a number the configured item did not produce.
-        e instanceof PayRuleEvalError
+        e instanceof PayRuleEvalError || e instanceof PayFormulaError
         ? 'derivedAmountUnavailable'
         : e instanceof AmountNotPositiveError
           ? 'amountNotPositive'
