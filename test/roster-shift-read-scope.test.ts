@@ -5,6 +5,7 @@ import {afterAll,beforeAll,beforeEach,expect,it} from 'vitest';
 import * as schema from '../db/schema';
 import {withTenant,type Tx} from '../db/client';
 import {hireEmployee} from '../core/org';
+import {createAttendanceRule} from '../core/attendance-rule';
 import {createShift,listShiftsForTenant,rosterDisplayShiftsTx,usualShiftsFor} from '../core/roster';
 import {rotationLookupTx} from '../packs/attendance/service';
 import {rosterWindowPage} from '../core/roster-presentation';
@@ -35,7 +36,14 @@ function observedTx(tx:Tx,census:Census[]):Tx {
 }
 async function fixture(){
  const b=await seedBase(),ctx=adminCtx(b),date=add(todayInKualaLumpur(),14);
- const rules=await owner.db.insert(schema.attendanceRule).values(['Group','Default','Dated','Unrelated'].map(name=>({tenantId:b.tenantId,name:'Fictional '+name,weeklyPattern:[1,2,3,4,5]}))).returning({id:schema.attendanceRule.id});
+ // The canonical writer also stamps the required legacy-overtime snapshot under
+ // this real administrator; an owner SQL insert has no calling authority for it.
+ const rules=[];
+ for(const name of ['Group','Default','Dated','Unrelated'])rules.push(await createAttendanceRule(ctx,{
+  name:'Fictional '+name,weeklyPattern:[1,2,3,4,5],lateGracePeriodMinutes:0,lateAfterMinutes:0,lateDeductMinutes:0,
+  includeGraceInLateness:false,earlyGracePeriodMinutes:0,earlyAfterMinutes:0,earlyDeductMinutes:0,
+  includeGraceInEarlyOut:false,applyToEarlyOt:false,otRows:[],
+ }));
  const shifts=[];
  for(const [i,ruleId] of [rules[0].id,rules[0].id,rules[1].id,rules[2].id,null,rules[3].id].entries())
   shifts.push((await createShift(ctx,{code:'READ'+i,name:'Fictional shift '+i,startTime:'09:00',endTime:'18:00',weeklyPattern:[1,2,3,4,5],...(ruleId?{ruleId}:{})})).id);

@@ -1,0 +1,11 @@
+# Roster native fixture uses its canonical Schedule Group writer
+
+Source-only child of frozen `5c8744b2ba3dfc03fc80f729413b2e93340c4ea8`.
+
+The original standard hosted run `42479348046` finished every planned job before this correction. Its six focused files executed 48 cases: 45 passed and the three new native scope cases failed during their first fixture insert. The deferred `app.snapshot_legacy_overtime_edit` trigger correctly refused owner SQL without a calling administrator (`42501`, “Overtime configuration is outside administrator scope”). No new rotation-scope assertion was reached. The separately planned whole typecheck failed with a V8 heap OOM; no compiler pass or TypeScript diagnostic conclusion is inferred from it.
+
+This correction changes only the fixture's four Schedule Group creations to `createAttendanceRule` under the existing real administrator session, matching the already passing Schedule Rotation fixture. It supplies the same zero/false/default working-week inputs through the canonical input model, so the required legacy-overtime snapshot uses its real authority owner. It does not disable a trigger, grant a role, forge a session, change permissions or alter the production query implementation. All three test bodies and assertions, the frozen original usual-shift oracle, six-member employee model, 104 rotation versions, archived reference and exact query census remain whole.
+
+Retain the original run/artifact as failure evidence and the five unaffected files' 45 passing cases under their exact source. The native 50,000-employment component reported 40,000 current members, 25 rows and 2718.856 ms; this is not a latency acceptance or a whole-module performance claim. Actual PostgreSQL cap was 2,113,929,216 bytes, observed peak 1,325,973,504 bytes, JIT on and zero OOM kills; the owned cleanup step succeeded. The whole compiler OOM is a separate unresolved check, with no resource-policy change here.
+
+After root and independent source review, rerun only the failed native fixture file on a standard GitHub-hosted runner. Do not relabel unaffected old evidence onto this child or silently retry the whole compiler. No local repository behavior, database, compiler, tests, generators or build is executed. Runtime, browser, load, zero-blocking, staging and production acceptance remain open.
