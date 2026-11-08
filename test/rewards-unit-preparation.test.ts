@@ -180,6 +180,36 @@ describe('native checked preparation of new annual Rewards reviews',()=>{
   await expect(getRewardPreparationStatus(reviewer,unitId)).rejects.toThrow(/access/);expect(await rewardPreparationNotices(reviewer)).toEqual([]);
  });
 
+ it.each([false,true])('preserves native owner RLS behavior with preparation released=%s',async released=>{
+  if(released){await confirmAll();await change(checker,{kind:'release'});}
+  const role='board_rewards_owner_'+randomUUID().replaceAll('-',''),rollback=new Error('Rollback this ownership parity fixture');
+  await expect(owner.client.begin(async connection=>{
+   await connection.unsafe(`CREATE ROLE "${role}" NOLOGIN NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE INHERIT`);
+   const [identity]=await connection`select pg_get_userbyid(relowner) as name from pg_class where oid='public.app_user'::regclass`;
+   const parent=String(identity.name);expect(parent).toMatch(/^[A-Za-z_][A-Za-z0-9_]*$/);
+   await connection.unsafe(`GRANT "${parent}" TO "${role}"`);
+   const [attributes]=await connection`select rolsuper,rolbypassrls from pg_roles where rolname=${role}`;
+   expect(attributes).toMatchObject({rolsuper:false,rolbypassrls:false});
+   // Preserve dedicated reader/invalidator identities and their forced-RLS policies. Only native
+   // owner functions become the non-superuser schema owner, matching the staging ownership shape.
+   const functions=await connection`select p.oid::regprocedure::text as signature from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='app' and p.prosecdef and p.prokind='f' and p.proowner=(select relowner from pg_class where oid='public.app_user'::regclass) order by p.oid`;
+   expect(functions.length).toBeGreaterThan(0);
+   await connection.unsafe(functions.map(fn=>`ALTER FUNCTION ${String(fn.signature)} OWNER TO "${role}"`).join(';'));
+   await connection.unsafe('SET LOCAL ROLE ai_hr_app');await connection.unsafe('SET LOCAL row_security=on');
+   for(const actor of [gr,reviewer]){
+    const roles=actor.roles??[],grants=actor.grants??roles.map(value=>({role:value,companyId:null}));
+    await connection`select set_config('app.tenant_id',${actor.tenantId},true),set_config('app.user_id',${actor.userId??''},true),set_config('app.roles',${roles.join(',')},true),set_config('app.grants',${JSON.stringify(grants)},true),set_config('app.agent_principal_id','',true)`;
+    const [view]=await connection`select app.reward_preparation_view(${unitId}::uuid) as value`;
+    expect(view.value).toMatchObject({required:true,released,setupVisible:actor===gr});
+    if(actor===reviewer){expect(view.value.preparation).toBeNull();expect(view.value.stateForSetup).toBeNull();}
+    else expect(view.value.actorNames).toBeDefined();
+   }
+   await connection`select set_config('app.tenant_id',${randomUUID()},true)`;
+   const [foreign]=await connection`select app.reward_preparation_view(${unitId}::uuid) as value`;expect(foreign.value).toBeNull();
+   throw rollback;
+  })).rejects.toBe(rollback);
+ });
+
  it('keeps the preparation compatibility flag out of ordinary runtime control',async()=>{
   await expect(withTenant(gr,tx=>tx.execute(sql`update reward_unit set preparation_required=false where id=${unitId}::uuid`))).rejects.toThrow();
  });

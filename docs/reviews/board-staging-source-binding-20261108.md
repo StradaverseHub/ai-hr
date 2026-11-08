@@ -36,3 +36,7 @@ The repository rule in `lib/ai/provider-data-reviews.ts` requires actual human a
 Four-item focused run42465208956 passed32 checks; run42464417997 passed the whole compiler, Linux production build and six-locale setup component checks at its recorded source. The original release run42465873315 refused its stale provider manifest during plan/build admission; application/browser matrices were not admitted. Its actual terminal results remain original failures, never relabelled to this integration. Existing9dd qualification belongs to9dd only. The combined candidate still needs its full hosted gate, populated/native-owner rehearsal, fresh live-baseline reconciliation, lease admission, exact source/build/ledger arrival, restart/health and changed authenticated journeys.
 
 Production installation and package publication are outside this request. Attendance Formula Builder and Maybank remain blocked on their board questions and are absent from this candidate.
+
+## Actual owner decision
+
+The owner answered the exact-fingerprint question in this release chat on8November2026: “Approve this exact renewal; continue staging”. Exactly28 literal source digests now renew to the fingerprint above. Reverse replacement reproduces the original registry byte-for-byte; both pending contracts and all original metadata remain untouched. This is the actual human authorization for the bounded renewal, not specialist certification, a hosted PASS or installation acceptance. The proposed-state descriptions above record the packet presented before that answer.
