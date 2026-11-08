@@ -253,7 +253,7 @@ class PinnedTree:
             self.check(stat.S_ISDIR(before.st_mode), 'symlink or non-directory inventory parent')
             if relative in directories:
                 self.check(identity(before) == directories[relative], 'inventory directory changed')
-            for name, key, kind, wanted in sorted(children.get(relative, [])):
+            for name, key, kind, wanted in children.get(relative, []):
                 found = os.stat(name, dir_fd=current, follow_symlinks=False)
                 if kind == 'directory':
                     self.check(stat.S_ISDIR(found.st_mode), 'symlink or non-directory inventory parent')

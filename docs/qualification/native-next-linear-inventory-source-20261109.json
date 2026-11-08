@@ -1,7 +1,7 @@
 {
   "kind": "LINEAR_FRESH_RUNTIME_INVENTORY_REVALIDATION_SOURCE_ONLY_NOT_NATIVE_PROOF",
-  "parent": "7fc113e3b413321ca0a8fa4ad21bd9f595d0a32d",
-  "sourceRef": "codex/linear-runtime-inventory-revalidation-20261109",
+  "parent": "7d99d52640c5efdc94a2a020fd12bbeb17f5157b",
+  "sourceRef": "codex/linear-runtime-inventory-revalidation-order-20261109",
   "leasePaths": [
     ".github/ci/runtime_inventory.py",
     ".github/ci/build-bundle.test.py",
@@ -13,9 +13,9 @@
       "path": ".github/ci/runtime_inventory.py",
       "current": {
         "path": ".github/ci/runtime_inventory.py",
-        "bytes": 29252,
-        "sha256": "8471a64c91b60564b894ae61f34c290183be010875711430de8cd4bef5c7cc99",
-        "gitBlob": "9606d19dfd46eeac2eefadaba84cc03ed030e6f8"
+        "bytes": 29244,
+        "sha256": "62e5478633349991cc21b8243d234fc85aabf900cfa57df52ff9b012be89c013",
+        "gitBlob": "3db36828a390825569f0e5c1f9b07561778a9959"
       },
       "wholeParent": {
         "path": ".github/ci/runtime_inventory.py",
@@ -27,8 +27,8 @@
       "inverseHunks": [
         {
           "currentStart": 11738,
-          "currentEnd": 15623,
-          "currentRangeSha256": "dce01895416ed281b6f364688480652a46d6d11a5dd6b9474b2b3419177210ae",
+          "currentEnd": 15615,
+          "currentRangeSha256": "99430217d19b643cd7f340de09ca6447764197fd85688bcf1476f126a5eb6aec",
           "parentStart": 11738,
           "parentEnd": 12366,
           "parentText": "    def assert_unchanged(self):\n        self._pins()\n        for relative, wanted in list(self.directories.items()):\n            with self.directory(relative, record=False) as current:\n                self.check(identity(os.fstat(current)) == wanted, 'inventory directory changed')\n        for relative, wanted in list(self.links.items()):\n            self.check((identity(self.metadata(relative)), self.readlink(relative)) == wanted, 'inventory link changed')\n        for relative, wanted in list(self.files.items()):\n            self.check(identity(self.metadata(relative)) == wanted, 'inventory file changed after reading')\n\n"
@@ -64,10 +64,10 @@
   ],
   "wholeParentIndex": {
     "path": "docs/qualification/native-next-controller-admit-timing-source-20261109.json",
-    "bytes": 34595,
-    "sha256": "41eed278ae89e9cc7e30b7aebad6270b4a4f7236e99acb19b6bd3662c9228e59",
-    "gitBlob": "10a4caafb9b4f1f69a22cb078b52ee09024d8d08",
-    "source": "7fc113e3b413321ca0a8fa4ad21bd9f595d0a32d"
+    "bytes": 35125,
+    "sha256": "297f048267caa846dd82348283cf90d432e471c93598983a9975c1ba8584ec0d",
+    "gitBlob": "856314b980b72494217512696d329bd1a009c6c8",
+    "source": "7d99d52640c5efdc94a2a020fd12bbeb17f5157b"
   },
   "acyclic": "Index binds this record hash; this record refers only to immutable parent index Git bytes, never current index bytes or its own hash.",
   "sourceContract": {
@@ -83,7 +83,8 @@
     "fds": "Traversal owns its root dup and depth-bounded childFDs; allclosefinally; original root chain/close lifecycle whole. MAX_TREE_DEPTH128 unchanged.",
     "noAuthorityCache": "No cross-walk permission/PASS cache/new issuer/ACK/WeakSet/process or transport helper.",
     "caps": "Original90start/480total/510subprocess/600Vitest plus all30s/20m/model limits unchanged. No --no-block/restart/deferredpublication/proof omission.",
-    "membership": "Current133/21HOST/41FULL source-map path sets unchanged; only actual primitive digest and sourceRef/pointer current metadata move."
+    "membership": "Current133/21HOST/41FULL source-map path sets unchanged; only actual primitive digest and sourceRef/pointer current metadata move.",
+    "siblingOrder": "Call-local recorded insertion order, no sorting. Traversal returns no ordered result; every exact node check remains required before success. Avoids O(klogk) sibling work and preserves linear nodes/edges/path-byte bound."
   },
   "controls": {
     "oldBundleMethods": 57,
@@ -237,5 +238,47 @@
     "providerApprovalRenewed": false,
     "stagingQualified": false,
     "productionHeld": true
+  },
+  "originalSourceBase": "7fc113e3b413321ca0a8fa4ad21bd9f595d0a32d",
+  "wholeOriginalBaseIndex": {
+    "path": "docs/qualification/native-next-controller-admit-timing-source-20261109.json",
+    "bytes": 34595,
+    "sha256": "41eed278ae89e9cc7e30b7aebad6270b4a4f7236e99acb19b6bd3662c9228e59",
+    "gitBlob": "10a4caafb9b4f1f69a22cb078b52ee09024d8d08",
+    "source": "7fc113e3b413321ca0a8fa4ad21bd9f595d0a32d"
+  },
+  "sourceCorrection": {
+    "parent": "7d99d52640c5efdc94a2a020fd12bbeb17f5157b",
+    "originalSourceUnrunUnpublished": true,
+    "finding": "Unnecessary sorting adds O(klogk) per wide parent despite no ordering contract.",
+    "codeChange": "Only remove sorted() around the private children list iteration; all65methods/testsourcewholeparent.",
+    "wholeImmediateParentObjects": [
+      {
+        "path": ".github/ci/runtime_inventory.py",
+        "bytes": 29252,
+        "sha256": "8471a64c91b60564b894ae61f34c290183be010875711430de8cd4bef5c7cc99",
+        "gitBlob": "9606d19dfd46eeac2eefadaba84cc03ed030e6f8",
+        "source": "7d99d52640c5efdc94a2a020fd12bbeb17f5157b"
+      },
+      {
+        "path": "docs/qualification/native-next-linear-inventory-source-20261109.json",
+        "bytes": 12192,
+        "sha256": "730d112dbc50cebfb9d82a48d8cb6f4985aca147f02320d686abb32d2dde3120",
+        "gitBlob": "1ff6c89b9e57c225a336c522a3253d96f9d1a23f",
+        "source": "7d99d52640c5efdc94a2a020fd12bbeb17f5157b"
+      },
+      {
+        "path": "docs/qualification/native-next-controller-admit-timing-source-20261109.json",
+        "bytes": 35125,
+        "sha256": "297f048267caa846dd82348283cf90d432e471c93598983a9975c1ba8584ec0d",
+        "gitBlob": "856314b980b72494217512696d329bd1a009c6c8",
+        "source": "7d99d52640c5efdc94a2a020fd12bbeb17f5157b"
+      }
+    ],
+    "runtimeOneLineInverse": {
+      "currentText": "for name, key, kind, wanted in children.get(relative, []):",
+      "parentText": "for name, key, kind, wanted in sorted(children.get(relative, [])):"
+    },
+    "noRuntimeQualificationTransferred": true
   }
 }

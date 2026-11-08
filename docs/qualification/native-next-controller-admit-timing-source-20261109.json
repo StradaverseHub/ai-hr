@@ -1,7 +1,7 @@
 {
   "kind": "CURRENT_CONTROLLER_ADMIT_TIMING_SOURCE_NOT_RUN_EVIDENCE",
   "base": "615274a2556686946610c66ccd1422506338946c",
-  "sourceRef": "codex/linear-runtime-inventory-revalidation-20261109",
+  "sourceRef": "codex/linear-runtime-inventory-revalidation-order-20261109",
   "currentCount": 133,
   "sourceSha256": {
     ".github/actions/setup-alpha/action.yml": "13bb384ff8b5cab52e9f894a109aaf46384e221ac156ffc289d752e3b334f150",
@@ -22,7 +22,7 @@
     ".github/ci/prepare-runner.sh": "b929a8a2729af63e3091e1a9f7fac7a5a2552bd0a5c88998117fba3ed79e3af5",
     ".github/ci/run-unit.mjs": "025f379e3edb2d0ac7c3c7b4ba9b55e77db31fcec2cfd5ac6825e509a543805a",
     ".github/ci/runner-capacity.mjs": "1233fef94e646fbd29d164e69df76aadc48525206239fb3ddcedcb6cce216c1c",
-    ".github/ci/runtime_inventory.py": "8471a64c91b60564b894ae61f34c290183be010875711430de8cd4bef5c7cc99",
+    ".github/ci/runtime_inventory.py": "62e5478633349991cc21b8243d234fc85aabf900cfa57df52ff9b012be89c013",
     ".github/ci/singleton-profiles.mjs": "77273888e8bfce114a5ff9235b05e7fba688e25da68dc7046e2845648f73a78c",
     ".github/ci/singleton-profiles.test.mjs": "d5c74998d10ab3782723685849cdd2ac7eba914fe10ddc3d647a3d2db6e4ad9d",
     ".github/ci/singleton-protocol.mjs": "1dfff5d0e14ccd748508f9cd1ba07541307e5f7fea944af9bdc9bb7cc7333403",
@@ -167,7 +167,7 @@
     ".github/ci/plan.mjs": "e1a1102a17a10c9e09113087e1089b58cad55a866f68522fa47502e3d0b5b241",
     ".github/ci/policy-version.mjs": "6b184db22189d6402016980e31b8a5d770e35860ea20577d3e863b65b645baf7",
     ".github/ci/run-unit.mjs": "025f379e3edb2d0ac7c3c7b4ba9b55e77db31fcec2cfd5ac6825e509a543805a",
-    ".github/ci/runtime_inventory.py": "8471a64c91b60564b894ae61f34c290183be010875711430de8cd4bef5c7cc99",
+    ".github/ci/runtime_inventory.py": "62e5478633349991cc21b8243d234fc85aabf900cfa57df52ff9b012be89c013",
     ".github/ci/singleton-profiles.mjs": "77273888e8bfce114a5ff9235b05e7fba688e25da68dc7046e2845648f73a78c",
     ".github/ci/singleton-protocol.mjs": "1dfff5d0e14ccd748508f9cd1ba07541307e5f7fea944af9bdc9bb7cc7333403",
     ".github/workflows/alpha-staging.yml": "43d409be84f24ad1c01f5112fe4bf82fe111665a17cbbcd2dc6438c43cfb68f3",
@@ -198,7 +198,7 @@
     ".github/ci/policy-version.mjs": "6b184db22189d6402016980e31b8a5d770e35860ea20577d3e863b65b645baf7",
     ".github/ci/prepare-runner.sh": "b929a8a2729af63e3091e1a9f7fac7a5a2552bd0a5c88998117fba3ed79e3af5",
     ".github/ci/run-unit.mjs": "025f379e3edb2d0ac7c3c7b4ba9b55e77db31fcec2cfd5ac6825e509a543805a",
-    ".github/ci/runtime_inventory.py": "8471a64c91b60564b894ae61f34c290183be010875711430de8cd4bef5c7cc99",
+    ".github/ci/runtime_inventory.py": "62e5478633349991cc21b8243d234fc85aabf900cfa57df52ff9b012be89c013",
     ".github/ci/singleton-profiles.mjs": "77273888e8bfce114a5ff9235b05e7fba688e25da68dc7046e2845648f73a78c",
     ".github/ci/singleton-protocol.mjs": "1dfff5d0e14ccd748508f9cd1ba07541307e5f7fea944af9bdc9bb7cc7333403",
     ".github/workflows/alpha-staging.yml": "43d409be84f24ad1c01f5112fe4bf82fe111665a17cbbcd2dc6438c43cfb68f3",
@@ -488,7 +488,7 @@
     "sourceOnly": true,
     "parent": "7fc113e3b413321ca0a8fa4ad21bd9f595d0a32d",
     "recordPath": "docs/qualification/native-next-linear-inventory-source-20261109.json",
-    "recordSha256": "730d112dbc50cebfb9d82a48d8cb6f4985aca147f02320d686abb32d2dde3120",
+    "recordSha256": "c1d7f04422abccdc8dee0d37bdf39639f60821ad3aa73daf8154c74f1e6b88fd",
     "all12FreshTreeChecksRetained": true,
     "sourceControlsAuthoredOnly": {
       "bundle": 65,
@@ -496,6 +496,8 @@
       "dependency": 9
     },
     "newSourceRuntimeQualified": false,
-    "priorPassesRetainedOnlyAt7fc": true
+    "priorPassesRetainedOnlyAt7fc": true,
+    "directParent": "7d99d52640c5efdc94a2a020fd12bbeb17f5157b",
+    "linearInsertionOrderCorrectionSourceOnly": true
   }
 }
