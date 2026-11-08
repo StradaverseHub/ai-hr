@@ -14,8 +14,9 @@ from pathlib import Path
 import sys
 import unittest
 
-spec = importlib.util.spec_from_file_location('supervisor', Path(__file__).with_name('employee-benchmark-supervisor.py'))
-module = importlib.util.module_from_spec(spec); spec.loader.exec_module(module)
+adapter_source = Path(__file__).resolve().with_name('employee-benchmark-supervisor.py')
+module = ModuleType('supervisor'); module.__file__ = str(adapter_source)
+exec(compile(adapter_source.read_bytes(), str(adapter_source), 'exec', dont_inherit=True), module.__dict__)
 
 class NativeSupervisor(unittest.TestCase):
     def run_owned(self, argv, seconds=1, **options):
