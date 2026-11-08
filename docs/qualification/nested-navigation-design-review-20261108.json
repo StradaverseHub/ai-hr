@@ -1,0 +1,36 @@
+{
+  "schema": "aihr-source-design-review/v1",
+  "sourceBase": "04c478818ac8dcadfee0c63377de844898953b22",
+  "scope": "nested-navigation-owner-composition-design-only",
+  "status": "AWAITING_ROOT_DESIGN_REVIEW",
+  "applicationChanges": false,
+  "testsExecuted": false,
+  "runtimeAcceptance": false,
+  "releaseAuthorized": false,
+  "sourceInventoryFile": "docs/qualification/nested-navigation-owner-inventory-20261108.json",
+  "sourceOwnerCount": 394,
+  "proposedFamilies": 46,
+  "rendererCandidateFiles": 258,
+  "parameterizedPageOwners": 120,
+  "files": {
+    "docs/architecture/NESTED-NAVIGATION-COMPOSITION-20261108.md": "acd363e1bd1f9a666edce2f0885a37ee280643bc6ca7a3d6c65602a20bdd1fc8",
+    "docs/qualification/nested-navigation-owner-inventory-20261108.json": "746d8bbf9130588a91801d2b54983821cdf60cc5e4e748c908cc727e5cb3b930"
+  },
+  "plannedAffectedChecks": [
+    "existing navigation catalogue/coverage/protocol/browser-capture/fixture binding checks (unchanged in this design)",
+    "new owner-descriptor rendered parity, typed native record resolver and v3 interaction controls only after design review",
+    "actual native fictional fixtures plus authenticated browser baseline/steady500 for every claimed applicable role/leaf; no source-model substitution"
+  ],
+  "unchangedConstraints": [
+    "v2 historical evidence remains v2",
+    "90s scenario deadline; existing 1024/8/16 plan limits pending resolved capacity analysis",
+    "500 load actors and workload protocol unchanged",
+    "existing navigation backlog remains unchanged",
+    "no providers/grants/business services/routes/migrations/deployment"
+  ],
+  "integrationLeaseNeeded": [
+    "root-owned system-load integration and harness closure before edits",
+    "fixture seeder extension via native domain helper ownership",
+    "separate actor-realm scope decisions, never new HR role permissions"
+  ]
+}
