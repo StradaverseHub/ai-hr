@@ -28,6 +28,7 @@ const purpose:Check=fixed('semantic','cli-b','cli-c');
 const kind:Check=fixed('DB','NODB');
 const path:Check=v=>{nonempty(v);need(!(v as string).startsWith('/') && !(v as string).split('/').some(s=>s==='.'||s==='..'||s===''));};
 const rootPath:Check=v=>{path(v);need(!/\s/.test(v as string));};
+const suiteRoot:Check=v=>{rootPath(v);need((v as string).startsWith('test/')&&/\.test\.ts$|\.dom\.test\.tsx$/.test(v as string));};
 const rows=(v:unknown,c:Check):Obj[]=>{list(c)(v);return v as Obj[];};
 const ids=(rs:Obj[],key='id'):void=>rs.forEach((r,i)=>need(r[key]===i));
 const unique=(vs:unknown[]):void=>need(new Set(vs).size===vs.length);
@@ -70,30 +71,45 @@ function stageMembers(p:Purpose):string[][] {
  return p==='semantic' ? [...pre,
   ['suite.json','stdin.txt','snapshot-index.json','calls-a.json','calls-b.json','calls-c.json','phase-collect.json'],
   ['graph.json','reasons.json','semantic-a.tsv','semantic-b.tsv','semantic-c.tsv','delta-a-b.json','delta-a-c.json','delta-b-c.json','phase-replay.json'],...post,
-  ['native-ownership.jsonl','phase-seal.json']] : [...pre,
+  ['native-ownership.jsonl']] : [...pre,
   ['semantic-parent.json','snapshot-index.json','phase-parent-auth.json'],
   ['suite.json','stdin.txt','program.ts','package-context.json','source-pre.json'],
   ['native-clock.json','stdin-stream.json','native.stdout','native.stderr','native-result.json'],['source-post.json'],...post,
-  ['native-ownership.jsonl','phase-seal.json']];
+  ['native-ownership.jsonl']];
 }
 export function memberLimit(name:string):number {
  if(name==='stdin.txt'||name.endsWith('tracked.bin'))return 8*1024*1024;
  if(name.endsWith('.ts')||name.endsWith('.tsv')||name==='snapshot-index.json'||name.startsWith('calls-')||name.startsWith('delta-')||['graph.json','reasons.json','native.stdout','native.stderr','native-ownership.jsonl'].includes(name))return 16*1024*1024;
  return 1024*1024;
 }
-const reportCheck:Check=v=>{shape(v,{version,kind:fixed('FORMAT_ONLY_NOT_ADMISSION'),purpose,complete:bool,completedStages:list(nonempty),failedStage:nullable(nonempty),failedMembers:list(nonempty)});};
-/** Exact complete set, or exact output-prefix of completed stages + failed stage prefix. */
-export function validateMemberSet(p:Purpose,names:string[],report:unknown):void {
- reportCheck(report);const r=report as Obj;need(r.purpose===p);unique(names);
- const stages=stageNames(p),done=r.completedStages as string[], failed=r.failedMembers as string[];
+const progressCheck:Check=v=>{
+ const seal:Check=x=>{const o=object(x);if(o.state==='not-reached')shape(x,{state:fixed('not-reached')});else shape(x,{state:fixed('executed'),phase:phaseCheck});};
+ shape(v,{version,kind:fixed('NATIVE_CALLBACK_PROGRESS_NOT_ADMISSION'),purpose,complete:bool,completedStages:list(nonempty),failedStage:nullable(nonempty),failedMembers:list(nonempty),seal});
+};
+function validateNativePrefix(p:Purpose,names:string[],progress:unknown):void {
+ progressCheck(progress);const r=progress as Obj;need(r.purpose===p);unique(names);
+ const stages=stageNames(p),done=r.completedStages as string[],failed=r.failedMembers as string[];
  same(done,stages.slice(0,done.length));need(done.length<=stages.length);
  const all=p==='semantic'?SEMANTIC_MEMBERS:CLI_MEMBERS;
- for(const n of names)need(all.includes(n));
- const base=['binding.json','anchor.json','prerequisites.json','report.json',...(p==='semantic'?['program-a.ts','program-b.ts','program-c.ts']:[])];
+ for(const n of names)need(n!=='report.json'&&all.includes(n));
+ const base=['binding.json','anchor.json','prerequisites.json','phase-seal.json',...(p==='semantic'?['program-a.ts','program-b.ts','program-c.ts']:[])];
  const groups=stageMembers(p),expected=[...base,...groups.slice(0,done.length).flat()];
  if(r.complete){need(done.length===stages.length&&r.failedStage===null&&failed.length===0);}
  else {need(done.length<stages.length&&r.failedStage===stages[done.length]);same(failed,groups[done.length].slice(0,failed.length));expected.push(...failed);}
+ const seal=r.seal as Obj;
+ if(done.length===stages.length||r.failedStage==='seal'){
+  need(seal.state==='executed');const phase=seal.phase as Obj;need(phase.stage==='seal'&&phase.workLimitMs===10000&&BigInt(phase.endNs as string)>=BigInt(phase.startNs as string));
+  if(r.complete)need(phase.complete===true&&phase.outcome==='complete');else need(phase.complete===false&&phase.outcome!=='complete');
+ }else need(seal.state==='not-reached');
  same([...names].sort(),expected.sort());
+}
+/** Callback NEVER creates/accepts runner report. Native completion is still pending-runner. */
+export function validateCallbackMemberSet(p:Purpose,names:string[],progress:unknown):'pending-runner'|'partial-native' {
+ validateNativePrefix(p,names,progress);return (progress as Obj).complete?'pending-runner':'partial-native';
+}
+export function validateFinalMemberSet(p:Purpose,names:string[],progress:unknown,rawReport:string,candidateRoot:string):'passed'|'failed' {
+ need(names.filter(n=>n==='report.json').length===1);validateNativePrefix(p,names.filter(n=>n!=='report.json'),progress);
+ const result=validateActualVitestReport(p,rawReport,candidateRoot);return (progress as Obj).complete&&result==='passed'?'passed':'failed';
 }
 
 export type SnapshotRow = {id:number;path:string;firstSeen:number;firstEngine:Engine;value:null|{blob:string;rawSha256:string;rawBytes:number;textSha256:string;textCodeUnits:number;mode:'100644'|'100755'}};
@@ -108,7 +124,7 @@ export function validateCalls(v:unknown,snapshot:Snapshot,expected:Engine):void 
  const rs=o.rows as Obj[];ids(rs);for(const r of rs)need((r.sourceId as number)<snapshot.rows.length);
 }
 export function validateSuite(v:unknown):string[]{
- const o=shape(v,{version,paths:list(rootPath)}),paths=o.paths as string[];need(paths.length>0);ordered(paths);return paths;
+ const o=shape(v,{version,paths:list(suiteRoot)}),paths=o.paths as string[];need(paths.length>0);ordered(paths);return paths;
 }
 export function validateVerdicts(v:unknown,roots:string[]):Verdict[]{
  const rs=rows(v,verdict);need(rs.length===roots.length);ids(rs,'rootId');return v as Verdict[];
@@ -163,7 +179,7 @@ export function validateDelta(v:unknown,from:Engine,to:Engine,before:Verdict[],a
 export function validateNativeStdout(rawBytes:Uint8Array,roots:string[],values:Verdict[],actualNormalGroups:unknown):void {
  validateSuite({version:1,paths:roots});validateVerdicts(values,roots);
  for(const v of values)need(!/[\u0000-\u001f\u007f]/.test(v.reason)&&v.reason.trim()===v.reason);
- const expected=values.map(v=>`${v.kind}\t${roots[v.rootId]}\t${v.reason}\n`).join('');const encoded=new TextEncoder().encode(expected);need(rawBytes.length===encoded.length&&rawBytes.every((v,i)=>v===encoded[i]));let raw:string;try{raw=utf8.decode(rawBytes);}catch{fail();}
+ const expected=values.map(v=>`${v.kind}\t${roots[v.rootId]}\t${v.reason}\n`).join('');const encoded=new TextEncoder().encode(expected);need(utf8.decode(encoded)===expected);need(rawBytes.length===encoded.length&&rawBytes.every((v,i)=>v===encoded[i]));let raw:string;try{raw=utf8.decode(rawBytes);}catch{fail();}
  const groups=shape(actualNormalGroups,{db:list(rootPath),nodb:list(rootPath)});
  const decoded={db:[] as string[],nodb:[] as string[]};
  // Exact normal plan.mjs trim/split/destructure course, with stricter ambiguity rejection above.
@@ -177,14 +193,13 @@ const metadata:Record<string,Check>={
  'binding.json':v=>{shape(v,{version,kind:fixed('UNAUTHENTICATED_FORMAT_ONLY'),purpose,source:git,controller:git,run:decimal,attempt:positive,job:decimal,node:fixed('22.23.3'),programs:list(x=>{shape(x,{engine,sha256:sha,gitSource:git});})});},
  'anchor.json':v=>{shape(v,{version,bootId:v=>need(typeof v==='string'&&/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.test(v)),wallMs:decimal,monotonicNs:decimal,run:decimal,attempt:positive,job:decimal,purpose});},
  'prerequisites.json':v=>{shape(v,{version,sourceClean:bool,controllerClean:bool,inventorySha256:sha,suiteSha256:sha,stdinSha256:sha});},
- 'report.json':reportCheck,
  'semantic-parent.json':v=>{shape(v,{version,source:git,controller:git,run:decimal,attempt:positive,job:decimal,artifact:decimal,archiveSha256:sha,archiveBytes:uint});},
  'package-context.json':v=>{shape(v,{version,node:fixed('22.23.3'),loader:fixed('native'),basename:fixed('gate-db-classify.ts'),packageSha256:sha,programSha256:sha,imports:list(fixed('node:fs'))});},
  'native-clock.json':v=>{shape(v,{version,startNs:decimal,endNs:decimal,workLimitMs:fixed(15000),settlementLimitMs:fixed(6000),deadlineHit:bool});},
  'stdin-stream.json':v=>{shape(v,{version,kind:fixed('NODE_STDIO_STREAM_SOCKET_NOT_FIFO'),inputSha256:sha,inputBytes:uint,writeFinished:bool,writerClosed:bool,readerClosed:bool,eofObserved:bool,transportError:bool});},
  'native-result.json':v=>{shape(v,{version,exitCode:nullable(uint),signal:nullable(fixed('SIGTERM','SIGKILL','SIGABRT','SIGSEGV','SIGINT')),deadlineHit:bool,familySettled:bool,normalPlanConformance:bool});},
  'source-pre.json':contextCheck,'source-post.json':contextCheck,
- 'phase-collect.json':phaseCheck,'phase-replay.json':phaseCheck,'phase-parent-auth.json':phaseCheck,'phase-seal.json':phaseCheck,
+ 'phase-collect.json':phaseCheck,'phase-replay.json':phaseCheck,'phase-parent-auth.json':phaseCheck,'phase-seal.json':progressCheck,
 };
 /** Closed JSON schemas for native records are proposals, NOT validation of the represented facts. */
 export function validateMetadataMember(name:string,value:unknown):void { need(Object.hasOwn(metadata,name));metadata[name](value); }
@@ -193,17 +208,20 @@ export function validateOwnershipJsonl(raw:string,p:Purpose):void {
  for(const line of lines){const o=shape(decodeCanonicalJson(line+'\n'),{version,sequence:uint,stage:nonempty,event:fixed('admitted','started','settled','refused'),pid:positive,startTicks:decimal,parentPid:positive,parentStartTicks:decimal,groupId:positive,sessionId:positive,stdinKind:fixed('socket','not-applicable'),stdinDevice:nullable(decimal),stdinInode:nullable(decimal),settled:bool});need(o.sequence===seq++&&stageNames(p).includes(o.stage as string));need(o.stdinKind==='socket'?(o.stdinDevice!==null&&o.stdinInode!==null):(o.stdinDevice===null&&o.stdinInode===null));}
 }
 
-const utf8 = new TextDecoder('utf-8',{fatal:true});
+const utf8 = new TextDecoder('utf-8',{fatal:true,ignoreBOM:true});
 export type ArchiveMember = {name:string;bytes:Uint8Array};
 /** UTF-8 framing/size/member checks only. No ZIP extraction, source fetch or native trust. */
-export function decodeMembers(p:Purpose,input:ArchiveMember[]):Map<string,string|Uint8Array> {
+function decodeRawMembers(p:Purpose,input:ArchiveMember[]):Map<string,string|Uint8Array> {
  need(input.length<=100);unique(input.map(x=>x.name));let total=0;const out=new Map<string,string|Uint8Array>();
  const allowed=p==='semantic'?SEMANTIC_MEMBERS:CLI_MEMBERS;
  for(const {name,bytes} of input){need(allowed.includes(name)&&bytes instanceof Uint8Array&&bytes.length<=memberLimit(name));total+=bytes.length;need(total<=128*1024*1024);
-  if(name.endsWith('tracked.bin')||name==='native.stdout'||name==='native.stderr')out.set(name,bytes.slice());else{let s:string;try{s=utf8.decode(bytes);}catch{fail();}out.set(name,s!);}
+  if(name.endsWith('tracked.bin')||name==='native.stdout'||name==='native.stderr'||name==='report.json')out.set(name,new Uint8Array(bytes));else{let s:string;try{s=utf8.decode(bytes);}catch{fail();}out.set(name,s!);}
  }
- const r=out.get('report.json');need(typeof r==='string');const report=decodeCanonicalJson(r as string);validateMemberSet(p,[...out.keys()],report);
  return out;
+}
+/** Decode callback output only; the runner report cannot exist inside this API. */
+export function decodeMembers(p:Purpose,input:ArchiveMember[]):Map<string,string|Uint8Array> {
+ const out=decodeRawMembers(p,input),raw=out.get('phase-seal.json');need(typeof raw==='string');validateCallbackMemberSet(p,[...out.keys()],decodeCanonicalJson(raw as string));return out;
 }
 /** Parse actual Git --stage -z output, preserving tabs/newlines in paths after FIRST tab. */
 export function parseTracked(raw:Uint8Array):{mode:string;blob:string;path:string}[]{
@@ -212,9 +230,9 @@ export function parseTracked(raw:Uint8Array):{mode:string;blob:string;path:strin
  unique(records.map(r=>r.path));const enc=new TextEncoder();const compare=(a:string,b:string)=>{const x=enc.encode(a),y=enc.encode(b);for(let i=0;i<Math.min(x.length,y.length);i++)if(x[i]!==y[i])return x[i]-y[i];return x.length-y.length;};same(records.map(r=>r.path),records.map(r=>r.path).sort(compare));return records;
 }
 /** Validate EACH present complete member; cross-member content equality is mandatory even for partial output. */
-export function validateArchiveData(p:Purpose,input:ArchiveMember[]):void {
+export function validateCallbackArchiveData(p:Purpose,input:ArchiveMember[]):void {
  const data=decodeMembers(p,input),json=(name:string):unknown=>decodeCanonicalJson(data.get(name) as string);
- const report=json('report.json') as Obj;need(report.purpose===p);
+ const report=json('phase-seal.json') as Obj;need(report.purpose===p);
  for(const [name,raw] of data){
   if(Object.hasOwn(metadata,name)){validateMetadataMember(name,json(name));continue;}
   if(name==='native-ownership.jsonl'){validateOwnershipJsonl(raw as string,p);continue;}
@@ -236,7 +254,7 @@ export function validateArchiveData(p:Purpose,input:ArchiveMember[]):void {
  if(data.has('reasons.json')){need(suite&&data.has('graph.json'));const graph=json('graph.json') as Obj;verdicts=validateReasons(json('reasons.json'),suite!,(graph.nodes as unknown[]).length);validateReasonEdges(json('reasons.json'),graph,verdicts.b,snap!,suite!);}
  for(const e of ['a','b','c'] as Engine[])if(data.has(`semantic-${e}.tsv`)){need(suite&&verdicts);same(parseSemanticTsv(data.get(`semantic-${e}.tsv`) as string,suite!),verdicts![e]);}
  for(const [a,b] of [['a','b'],['a','c'],['b','c']] as [Engine,Engine][])if(data.has(`delta-${a}-${b}.json`)){need(verdicts);validateDelta(json(`delta-${a}-${b}.json`),a,b,verdicts![a],verdicts![b]);}
- for(const name of ['phase-collect.json','phase-replay.json','phase-parent-auth.json','phase-seal.json'])if(data.has(name)){const v=json(name) as Obj;need(v.stage===name.slice(6,-5));need(v.workLimitMs===(name==='phase-parent-auth.json'?120000:name==='phase-seal.json'?10000:15000));need(BigInt(v.endNs as string)>=BigInt(v.startNs as string));if(report.complete)need(v.complete===true&&v.outcome==='complete');}
+ for(const name of ['phase-collect.json','phase-replay.json','phase-parent-auth.json'])if(data.has(name)){const v=json(name) as Obj;need(v.stage===name.slice(6,-5));need(v.workLimitMs===(name==='phase-parent-auth.json'?120000:15000));need(BigInt(v.endNs as string)>=BigInt(v.startNs as string));if(report.complete)need(v.complete===true&&v.outcome==='complete');}
  const binding=json('binding.json') as Obj;need(binding.purpose===p);const programs=binding.programs as Obj[];same(programs.map(x=>x.engine),p==='semantic'?['a','b','c']:[p==='cli-b'?'b':'c']);
  const anchor=json('anchor.json') as Obj;for(const key of ['purpose','run','attempt','job'])need(anchor[key]===binding[key]);
  if(snap)for(const name of ['source-pre.json','source-post.json'])if(data.has(name)){const v=json(name) as Obj;need(v.source===binding.source);same(v.negativeSourceIds,snap.rows.filter(r=>r.value===null).map(r=>r.id));same(v.positiveSourceIds,snap.rows.filter(r=>r.value!==null).map(r=>r.id));}
@@ -251,4 +269,49 @@ function validateReasonEdges(value:unknown,graph:Obj,vs:Verdict[],snap:Snapshot,
   for(let i=1;i<seq.length;i++)need((nodes[seq[i-1]].steps as Obj[]).some(s=>s.kind==='helper'&&s.targetId===seq[i]));
   const steps=nodes[w.directNodeId as number].steps as Obj[],index=w.directStepIndex as number;need(index<steps.length);const terminal=steps[index];need(terminal.kind==='direct'&&terminal.reason===vs[w.rootId as number].reason);
  }
+}
+
+export const NATIVE_CASE_TITLE='qualifies the complete source-bound classifier witness';
+export const PURPOSE_SELECTORS:Readonly<Record<Purpose,string>>=Object.freeze({
+ semantic:'test/gate-db-classifier-semantic-witness.test.ts',
+ 'cli-b':'test/gate-db-classifier-cli-b.test.ts','cli-c':'test/gate-db-classifier-cli-c.test.ts',
+});
+const millis:Check=v=>need(typeof v==='number'&&Number.isFinite(v)&&v>=0);
+/** Pinned Vitest4.1.8 JSON.stringify output: raw reporter bytes, NOT canonicalJson.
+ * Exact shape/one-case outcome only; actual runner/source/finish custody remains external. */
+export function validateActualVitestReport(p:Purpose,raw:string,candidateRoot:string):'passed'|'failed' {
+ need(candidateRoot.startsWith('/')&&!candidateRoot.endsWith('/')&&!candidateRoot.includes('//')&&!/[\u0000-\u001f\u007f]/.test(candidateRoot)&&!candidateRoot.split('/').some(s=>s==='.'||s==='..'));
+ let parsed:unknown;try{parsed=JSON.parse(raw);}catch{fail();}sameRaw(raw,JSON.stringify(parsed));
+ const snapshot:Check=v=>{shape(v,{added:uint,failure:bool,filesAdded:uint,filesRemoved:uint,filesRemovedList:list(str),filesUnmatched:uint,filesUpdated:uint,matched:uint,total:uint,unchecked:uint,uncheckedKeysByFile:list(x=>{shape(x,{filePath:str,keys:list(str)});}),unmatched:uint,updated:uint,didUpdate:bool});};
+ const assertion:Check=v=>{
+  const o=object(v),fields:Record<string,Check>={ancestorTitles:list(str),fullName:str,status:fixed('passed','failed','skipped','pending','todo','disabled'),title:str,failureMessages:list(str),meta:x=>{shape(x,{});},tags:list(str)};
+  if(Object.hasOwn(o,'duration'))fields.duration=nullable(millis);
+  if(Object.hasOwn(o,'location'))fields.location=nullable(x=>{shape(x,{line:positive,column:uint});});
+  shape(v,fields);
+ };
+ const file:Check=v=>{shape(v,{assertionResults:list(assertion),startTime:millis,endTime:millis,status:fixed('passed','failed'),message:str,name:str});};
+ const o=shape(parsed,{numTotalTestSuites:uint,numPassedTestSuites:uint,numFailedTestSuites:uint,numPendingTestSuites:uint,numTotalTests:uint,numPassedTests:uint,numFailedTests:uint,numPendingTests:uint,numTodoTests:uint,snapshot,startTime:millis,success:bool,testResults:list(file)});
+ // Coverage is deliberately disabled in these fixed future selectors; coverageMap is absent.
+ const files=o.testResults as Obj[];need(files.length===1);const f=files[0];need(f.name===candidateRoot+'/'+PURPOSE_SELECTORS[p]&&(f.endTime as number)>=(f.startTime as number)&&(f.startTime as number)>=(o.startTime as number));
+ const assertions=f.assertionResults as Obj[];need(assertions.length<=1&&o.numTotalTests===assertions.length);
+ need(o.numPendingTests===0&&o.numPendingTestSuites===0&&o.numTodoTests===0);
+ need((o.numPassedTests as number)+(o.numFailedTests as number)===assertions.length);
+ need((o.numPassedTestSuites as number)+(o.numFailedTestSuites as number)===o.numTotalTestSuites&&o.numTotalTestSuites===1);
+ for(const a of assertions){need(a.title===NATIVE_CASE_TITLE&&a.fullName===NATIVE_CASE_TITLE);same(a.ancestorTitles,[]);same(a.tags,[]);need(a.status==='passed'||a.status==='failed');}
+ const actualPassed=assertions.filter(a=>a.status==='passed').length,actualFailed=assertions.filter(a=>a.status==='failed').length;
+ need(o.numPassedTests===actualPassed&&o.numFailedTests===actualFailed);
+ const snap=o.snapshot as Obj;
+ for(const key of ['added','filesAdded','filesRemoved','filesUnmatched','filesUpdated','matched','total','unchecked','unmatched','updated'])need(snap[key]===0);
+ need(snap.failure===false&&snap.didUpdate===false);same(snap.filesRemovedList,[]);same(snap.uncheckedKeysByFile,[]);
+ if(o.success===true){need(assertions.length===1&&actualPassed===1&&o.numFailedTestSuites===0&&f.status==='passed'&&f.message==='');same(assertions[0].failureMessages,[]);need(Object.hasOwn(assertions[0],'duration'));millis(assertions[0].duration);return'passed';}
+ need(f.status==='failed'&&o.numFailedTestSuites===1);return'failed';
+}
+/** Called ONLY by a future post-runner collector after actual process finish/settlement.
+ * This API requires the report; no caller boolean can waive it. Result is format-only. */
+export function validateFinalArchiveData(p:Purpose,input:ArchiveMember[],candidateRoot:string):{kind:'FORMAT_ONLY_NOT_NATIVE_OR_ADMISSION';outcome:'passed'|'failed';reportBytes:Uint8Array} {
+ const data=decodeRawMembers(p,input),raw=data.get('report.json');need(raw instanceof Uint8Array);let report:string;try{report=utf8.decode(raw as Uint8Array);}catch{fail();}
+ const progressRaw=data.get('phase-seal.json');need(typeof progressRaw==='string');const progress=decodeCanonicalJson(progressRaw as string);
+ const outcome=validateFinalMemberSet(p,[...data.keys()],progress,report!,candidateRoot);
+ validateCallbackArchiveData(p,input.filter(m=>m.name!=='report.json'));
+ return{kind:'FORMAT_ONLY_NOT_NATIVE_OR_ADMISSION',outcome,reportBytes:new Uint8Array(raw as Uint8Array)};
 }
