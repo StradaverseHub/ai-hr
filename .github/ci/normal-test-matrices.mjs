@@ -7,8 +7,8 @@ const frozen=values=>Object.freeze(values.map(value=>typeof value==='object'?Obj
 export function normalTestMatrices(plan,selected){
  assert(plan&&Array.isArray(plan.units)&&plan.units.length>0&&plan.units.length<=256,'Complete bounded source plan required');
  assert(plan.units.every(unit=>unit&&typeof unit.id==='string'&&['nodb','db','browser'].includes(unit.kind))&&new Set(plan.units.map(unit=>unit.id)).size===plan.units.length,'Unique complete source units required');
+ for(const unit of plan.units)nativeNoDbProfile(unit); // Check owned intent BEFORE browser/selection filtering.
  const complete=plan.units.filter(unit=>unit.kind!=='browser'),all=complete.map(unit=>unit.id);
- for(const unit of complete)nativeNoDbProfile(unit); // A malformed unselected capability cannot hide in the complete plan.
  const ids=selected??all;assert(Array.isArray(ids)&&ids.length>0&&ids.length<=256&&new Set(ids).size===ids.length&&ids.every(id=>all.includes(id)),'Exact bounded non-browser selection required');
  const ordinary=[],native=[],semantic=[],cli=[];
  for(const id of ids){

@@ -49,4 +49,11 @@ describe('fixed normal five-selector metadata without execution or admission aut
  it('refuses a malformed owned capability even if a selection tries to hide it among omitted source units',()=>{
   const unit=clone(expectedUnits()[0]);unit.singleton.workers=2;expect(()=>normalTestMatrices({units:[ordinary,unit,browser]},[ordinary.id])).toThrow();
  });
+ it('refuses compiler and classifier reserved intent disguised as browser before an ordinary-only selection',()=>{
+  for(const original of expectedUnits()){
+   const bad={...clone(original),kind:'browser'};expect(()=>normalTestMatrices({units:[ordinary,bad,browser]},[ordinary.id])).toThrow();
+   expect(()=>normalTestMatrices({units:[ordinary,bad,browser]})).toThrow();
+  }
+  const out=normalTestMatrices({units:[ordinary,browser]},[ordinary.id]);expect(out.test_matrix.include).toEqual([{unit:ordinary.id,employeeLifecycle:false}]);
+ });
 });
