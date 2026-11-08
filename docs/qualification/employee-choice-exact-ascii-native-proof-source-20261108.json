@@ -1,7 +1,7 @@
 {
   "kind": "EXACT_ASCII_OBSERVATION_PROOF_ONLY_NOT_RELEASE",
-  "base": "2049054e88202fdcacf31c6a50ffef391634daea",
-  "sourceRef": "codex/employee-choice-exact-ascii-native-proof-20261108",
+  "base": "88c0dbad4ce79defc090458b1f8ce7e94cab75b7",
+  "sourceRef": "codex/employee-choice-ascii-proof-json-wire-recovery-20261108",
   "status": "NOT_RUN; root and independent review required before hosted checks",
   "selectors": {
     "pure": {
@@ -43,16 +43,17 @@
   },
   "sourceSha256": {
     "test/employee-choice-ascii-observation.test.ts": "4f235a0deb6c30ffac0785c23bc4e565bb61141f9e35f1dcea668072de711bcd",
-    "test/employee-choice-exact-ascii-proof.test.ts": "8e68b8257885ecf748fd542d83bad7302716d488006a0ca750f1cb980db65019",
+    "test/employee-choice-exact-ascii-proof.test.ts": "0c6f64f338a933ec7e9803d6a6da8b261a20a6472e1ac54d3c66799c88e1aa85",
     "test/fixtures/employee-choice-ascii-observation.ts": "a6b0a1cc58224abbdf29e0e0613977b4cc4f18534dbb7ee3ec65bb2d2a5fb6cd",
     "test/fixtures/employee-choice-ascii-proof-lifetime.ts": "41cb3ec2c5305942f4cc5e5f90e12544251f45f73d1949b20a2f2a5aad9e01cf",
     "test/fixtures/employee-choice-ascii-proof-native.ts": "3a7dbeba04c4dad5d79057bc36eee125b98e1f9a843533aacb76311747f5ca68",
     "test/fixtures/employee-choice-ascii-scalar-corpus.sql": "dbc6337f825d80e9a9d329499c0981049ec6d22d5dd595bfd373e976a3f96c0e",
-    "test/fixtures/employee-choice-ascii-vectors.sql": "a29302206116a6c6d5edbd8fd35edcd20da4b8a62df3152186620d3b50cd1055",
+    "test/fixtures/employee-choice-ascii-vectors.sql": "cc9d644e7ef4f29b8a8fc50ece73be6a56707cb3fc2eac000722e2e3d9f11416",
     "test/fixtures/unicode-17.0.0/UnicodeData.txt": "2e1efc1dcb59c575eedf5ccae60f95229f706ee6d031835247d843c11d96470c",
     "test/fixtures/unicode-17.0.0/SpecialCasing.txt": "efc25faf19de21b92c1194c111c932e03d2a5eaf18194e33f1156e96de4c9588",
     "test/fixtures/unicode-17.0.0/LICENSE.txt": "e7a93b009565cfce55919a381437ac4db883e9da2126fa28b91d12732bc53d96",
-    "docs/qualification/employee-choice-exact-ascii-native-proof-20261108.md": "3517b81844d2e7a390aa0e2cf30ee46cfabcb39bbb8493a998a287db1fb35610"
+    "docs/qualification/employee-choice-exact-ascii-native-proof-20261108.md": "3517b81844d2e7a390aa0e2cf30ee46cfabcb39bbb8493a998a287db1fb35610",
+    "docs/qualification/employee-choice-ascii-proof-json-wire-recovery-20261108.md": "7c6156d1abcf306fac71e1c9802557485095e84c87d12ca488d5bef5f3664b94"
   },
   "unchangedSha256": {
     "core/employee-choice.ts": "ce1e3559addbffa4b4e780594ebcc5fcf917ddffde79a6155cc7fbcecdbcfbd5",
@@ -73,5 +74,13 @@
   "nativeLookupSqlChanged": false,
   "profileActivated": false,
   "releaseAuthorized": false,
-  "productionHeld": true
+  "productionHeld": true,
+  "designBase": "2049054e88202fdcacf31c6a50ffef391634daea",
+  "preservedUnrunParent": "88c0dbad4ce79defc090458b1f8ce7e94cab75b7",
+  "preparedWireClosureCounts": [
+    85,
+    130,
+    1,
+    3
+  ]
 }

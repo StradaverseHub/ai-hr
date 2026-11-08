@@ -1,6 +1,6 @@
 -- Fixed built-in-only vector query; $1 is bounded fictional JSON data, not SQL.
 WITH items AS MATERIALIZED(
- SELECT (value->>'id')::integer AS id,value->>'text' AS original,value->>'q' AS q FROM jsonb_array_elements($1::jsonb)
+ SELECT (value->>'id')::integer AS id,value->>'text' AS original,value->>'q' AS q FROM jsonb_array_elements($1::text::jsonb)
 ),transformed AS MATERIALIZED(
  SELECT id,original,q,/* EXACT_ASCII_OBSERVATION_TRANSFORM */ AS value,
   translate(replace(original,U&'\0130','i'),'ABCDEFGHIJKLMNOPQRSTUVWXYZ'||U&'\212A','abcdefghijklmnopqrstuvwxyzk')AS without_dot,
