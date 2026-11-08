@@ -5,6 +5,7 @@ import {validatePostgresEvidence} from './postgres-evidence.mjs';
 import {CI_POLICY} from './policy-version.mjs';
 import {NATIVE_HELPER_SOURCES} from './native-next-helper-sources.mjs';
 import {REWARDS_NATIVE_SOURCES} from './rewards-native-sources.mjs';
+import {NOTIFICATION_CATALOGUE_SOURCES} from './notification-catalogue-sources.mjs';
 export const SINGLETON_VERSION=1;
 const measured=[
  'test/access-editor-native-owner-presentation.test.ts',
@@ -15,6 +16,8 @@ const measured=[
  'test/leave-inquiry-read-cost.test.ts',
  'test/payroll-audit-processing-rc.test.ts',
  'test/rewards-audit-policy-native.test.ts',
+ 'test/notification-final-catalogue-baseline.test.ts',
+ 'test/notification-final-catalogue-oid-shift.test.ts',
  'test/rewards-audited-read-prototype.test.ts',
  'test/performance/attendance-punch-index.profile.test.ts',
  'test/performance/claims-preview-index.profile.test.ts',
@@ -56,6 +59,8 @@ export function assertSingletonUnit(unit){
 // Fixed reviewed component closure. These are source bindings, not privileges,
 // new profiles, skip exemptions or permission to execute an arbitrary candidate.
 const componentSources=Object.freeze({
+ 'test/notification-final-catalogue-baseline.test.ts':Object.freeze(['.github/ci/notification-catalogue-sources.mjs',...NOTIFICATION_CATALOGUE_SOURCES]),
+ 'test/notification-final-catalogue-oid-shift.test.ts':Object.freeze(['.github/ci/notification-catalogue-sources.mjs',...NOTIFICATION_CATALOGUE_SOURCES]),
  'test/rewards-audit-policy-native.test.ts':Object.freeze(['.github/ci/rewards-native-sources.mjs',...REWARDS_NATIVE_SOURCES]),
  'test/rewards-audited-read-prototype.test.ts':Object.freeze(['.github/ci/rewards-native-sources.mjs',...REWARDS_NATIVE_SOURCES]),
  'test/attendance-shared-submission-bridge.test.ts':Object.freeze([

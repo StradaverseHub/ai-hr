@@ -29,7 +29,7 @@ test('every registered infrastructure file remains exactly once in its native cl
  const native=Object.keys(SINGLETON_FILES),ordinary=['test/ordinary-db.test.ts','test/ordinary-nodb.test.ts'];
  const db=native.filter(f=>singletonKind(singletonDescriptor(f).profile)==='db').concat(ordinary[0]),nodb=native.filter(f=>!db.includes(f)).concat(ordinary[1]),suite=[...db,...nodb].sort();
  const units=buildUnits(suite,{db,nodb},browser),special=units.filter(u=>u.singleton);
- assert.equal(special.length,21);assert.deepEqual(units.filter(u=>u.kind!=='browser').flatMap(u=>u.files).sort(),suite);
+ assert.equal(special.length,23);assert.deepEqual(units.filter(u=>u.kind!=='browser').flatMap(u=>u.files).sort(),suite);
  assert(special.every(u=>u.files.length===1&&u.singleton.workers===1));assert.equal(requiredEvidence({suite,units}).units.length,units.length);
  for(const unit of special){const changed=structuredClone(units);changed.find(u=>u.id===unit.id).singleton.workers=2;assert.throws(()=>requiredEvidence({suite,units:changed}));}
  assert.throws(()=>buildUnits([native[0]],{db:[],nodb:[native[0]]},browser));
@@ -260,4 +260,43 @@ test('Rewards native policy and original read family retain complete isolated so
  assert(wrapper.indexOf("admitSingletonTest('")<wrapper.indexOf('registerRewardsAuditPolicyNativeCases();'));
  const existing=readFileSync(new URL('../../test/rewards-audited-read-prototype.test.ts',import.meta.url),'utf8');
  assert(existing.indexOf("admitSingletonTest('")<existing.indexOf('beforeAll(async()=>'));
+});
+
+
+test('final catalogue replays require distinct complete source-bound sole native jobs before allocation or capture',()=>{
+ const files=['test/notification-final-catalogue-baseline.test.ts','test/notification-final-catalogue-oid-shift.test.ts'];
+ const critical=[
+  '.github/ci/notification-catalogue-sources.mjs','.github/ci/notification-catalogue-replay.mjs',
+  '.github/ci/run-unit.mjs','.github/ci/postgres.sh','.github/ci/plan.mjs',
+  '.github/workflows/alpha-staging.yml','.github/actions/setup-alpha/action.yml',
+  'scripts/lib/discard-premigration.ts','scripts/migrate-with-focused-prerequisites.ts',
+  'test/helpers/personnel-draft-discard-ci-role-fixture.ts','test/global-setup.ts','test/env.ts','test/db-names.ts',
+  'test/fixtures/notification-worker/final-catalogue-replay-prerequisite.ts',
+  'test/fixtures/notification-worker/replay-prefix-ownership.ts','test/fixtures/notification-worker/final-catalogue-cases.ts',
+  'test/fixtures/notification-worker/catalogue-session.ts','test/fixtures/notification-worker/final-catalogue-comparison.ts',
+  'test/fixtures/notification-worker/canonical-inventory-query.ts','test/fixtures/notification-worker/canonical-inventory.ts',
+  'test/fixtures/notification-worker/canonical-inventory-evidence.ts',
+  'test/fixtures/notification-worker/database.ts','test/fixtures/notification-worker/diagnostic-ownership.ts',
+  'scripts/seed-catalogs.ts','db/client.ts','db/schema.ts','package.json','pnpm-lock.yaml',
+ ];
+ const journal=JSON.parse(readFileSync(new URL('../../db/migrations/meta/_journal.json',import.meta.url),'utf8'));
+ const seen=[];
+ for(const file of files){
+  const f=fixture(file),sources=singletonSources(f.unit);seen.push(f.unit.id);
+  assert.equal(f.unit.kind,'db');assert.deepEqual(f.unit.files,[file]);
+  assert.deepEqual(f.unit.singleton,{version:1,profile:'controlled-database-v1',workers:1,isolation:'job-postgres-cluster'});
+  assert.equal(new Set(sources).size,sources.length);assert(sources.length>journal.entries.length);
+  for(const entry of journal.entries)assert(sources.includes('db/migrations/'+entry.tag+'.sql'));
+  for(const source of critical){
+   assert(sources.includes(source),source);assert(readFileSync(new URL('../../'+source,import.meta.url)).length>0);
+   const changed=structuredClone(f);delete changed.plan.singletonSources[changed.unit.id][source];delete changed.binding.sourceHashes[source];
+   const {fingerprint:_fingerprint,...body}=changed.plan;changed.plan.fingerprint=protocolHash(body);changed.binding.fingerprint=changed.plan.fingerprint;
+   assert.throws(()=>validateSingletonBinding(changed.binding,changed.plan,changed.unit,changed.witness),source);
+  }
+  const source=readFileSync(new URL('../../'+file,import.meta.url),'utf8');
+  const admit=source.indexOf('admitSingletonTest(file);'),capture=source.indexOf('registerNotificationFinalCatalogueCapture(file);');assert(admit>=0&&capture>admit);
+  assert(!source.includes('.skipIf(')&&!source.includes('AIHR_FOCUSED_'));
+  assert.throws(()=>assertSingletonSelection([file,'test/ordinary.test.ts']));
+ }
+ assert.equal(new Set(seen).size,2);
 });
