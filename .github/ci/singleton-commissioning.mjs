@@ -6,6 +6,7 @@ import {isDeepStrictEqual} from 'node:util';
 import {createPlan,hash} from './plan.mjs';
 import {assertSingletonUnit,nativeNextUnit} from './singleton-protocol.mjs';
 import {verifyUnitReport} from './verify-shards.mjs';
+import {employeeLifecycleMatrixRow} from './employee-lifecycle-profile.mjs';
 export const COMMISSION_TITLE='Singleton commissioning only';
 export function commissioningIntent(eventName,inputs={},attempt){
  const raw=inputs.commission_singleton_units===undefined?'':inputs.commission_singleton_units;
@@ -51,7 +52,7 @@ if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url)){
   if(!unit.length||unit.length>256||new Set(unit).size!==unit.length)throw Error('Invalid test matrix');
   if(selection)writeFileSync(args[1],JSON.stringify(selection,null,2)+'\n',{flag:'wx'});
   const ordinary=unit.filter(id=>!nativeNextUnit(plan.units.find(u=>u.id===id))),native=unit.filter(id=>nativeNextUnit(plan.units.find(u=>u.id===id)));
-  appendFileSync(process.env.GITHUB_OUTPUT,'test_matrix='+JSON.stringify({unit:ordinary})+'\n'+'native_matrix='+JSON.stringify({unit:native})+'\n'+'has_tests='+String(ordinary.length>0)+'\n'+'has_native='+String(native.length>0)+'\n');
+  appendFileSync(process.env.GITHUB_OUTPUT,'test_matrix='+JSON.stringify({include:ordinary.map(id=>employeeLifecycleMatrixRow(plan.units.find(u=>u.id===id)))})+'\n'+'native_matrix='+JSON.stringify({unit:native})+'\n'+'has_tests='+String(ordinary.length>0)+'\n'+'has_native='+String(native.length>0)+'\n');
  }else if(mode==='summary'){
   if(!ids)throw Error('Commissioning summary requires explicit intent');
   const plan=createPlan(),selection=JSON.parse(readBounded(args[0],1024*1024));

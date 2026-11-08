@@ -478,6 +478,7 @@ jobs:
           enableCrossOsArchive: false
   test:
     if: ${{ !inputs.diagnostics_only && !inputs.build_only && needs.plan.outputs.has_tests == 'true' }}
+    name: test (${{ matrix.unit }})
     needs: [resolve, plan]
     runs-on: ubuntu-24.04
     defaults:
@@ -486,12 +487,39 @@ jobs:
     env:
       AIHR_CI_HEAD: ${{ needs.resolve.outputs.sha }}
       AIHR_CI_MIGRATION_BASE: ${{ needs.resolve.outputs.base }}
-    timeout-minutes: 120
+    timeout-minutes: ${{ matrix.employeeLifecycle && 30 || 120 }}
     strategy:
       fail-fast: false
       max-parallel: ${{ fromJSON(inputs.test_parallelism || '48') }}
       matrix: ${{ fromJSON(needs.plan.outputs.test_matrix) }}
     steps:
+      - name: Anchor first executable employee lifecycle job step
+        if: ${{ matrix.employeeLifecycle }}
+        working-directory: ${{ runner.temp }}
+        env: {UNIT: '${{ matrix.unit }}'}
+        run: |
+          /usr/bin/python3 -I -B <<'PYTHON'
+          import json,os,re,time
+          from pathlib import Path
+          unit=os.environ['UNIT']
+          assert re.fullmatch(r'db-[0-9a-f]{16}',unit)
+          assert os.environ['GITHUB_JOB']=='test' and os.environ['GITHUB_RUN_ATTEMPT']=='1'
+          assert all(re.fullmatch(r'[a-f0-9]{40}',os.environ[key]) for key in ('AIHR_CI_HEAD','AIHR_CI_CONTROL_HEAD'))
+          assert re.fullmatch(r'[1-9][0-9]*',os.environ['GITHUB_RUN_ID'])
+          root=Path(os.environ['RUNNER_TEMP']).resolve();directory=root/'aihr-ci';directory.mkdir(mode=0o700)
+          anchor={'version':1,'run':os.environ['GITHUB_RUN_ID'],'attempt':'1','job':'test','unit':unit,
+                  'source':os.environ['AIHR_CI_HEAD'],'controller':os.environ['AIHR_CI_CONTROL_HEAD'],
+                  'bootId':Path('/proc/sys/kernel/random/boot_id').read_text().strip(),
+                  'startNs':str(time.monotonic_ns()),'wallTimeNs':str(time.time_ns())}
+          path=directory/(unit+'-employee-job-anchor.json')
+          fd=os.open(path,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)
+          try:
+              data=json.dumps(anchor,separators=(',',':')).encode();assert os.write(fd,data)==len(data)
+          finally:
+              os.close(fd)
+          with open(os.environ['GITHUB_ENV'],'a') as output:
+              output.write('AIHR_EMPLOYEE_JOB_ANCHOR='+str(path)+'\n')
+          PYTHON
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
           ref: ${{ github.workflow_sha }}
@@ -513,8 +541,22 @@ jobs:
         run: bash ../automation/.github/ci/prepare-runner.sh
         env: {AIHR_CI_CAPACITY_PROFILE: bounded-suite-ready}
       - run: git rev-parse --verify -q refs/heads/main >/dev/null || git branch main origin/main
-      - run: node ../automation/.github/ci/run-unit.mjs "$UNIT" "$RUNNER_TEMP/aihr-ci"
+      - name: Run ordinary complete unit
+        if: ${{ !matrix.employeeLifecycle }}
+        run: node ../automation/.github/ci/run-unit.mjs "$UNIT" "$RUNNER_TEMP/aihr-ci"
         env: {UNIT: '${{ matrix.unit }}'}
+      - name: Run closed employee complete unit through canonical Node
+        if: ${{ matrix.employeeLifecycle }}
+        env: {UNIT: '${{ matrix.unit }}', AIHR_CI_UNIT: '${{ matrix.unit }}'}
+        run: |
+          NODE="$(node -p 'require("node:fs").realpathSync(process.execPath)')"
+          exec "$NODE" "$GITHUB_WORKSPACE/automation/.github/ci/run-unit.mjs" "$UNIT" "$RUNNER_TEMP/aihr-ci"
+      - name: Always settle the exact owned employee PostgreSQL resource
+        if: ${{ always() && matrix.employeeLifecycle }}
+        env: {UNIT: '${{ matrix.unit }}', AIHR_CI_UNIT: '${{ matrix.unit }}'}
+        run: |
+          NODE="$(node -p 'require("node:fs").realpathSync(process.execPath)')"
+          exec "$NODE" "$GITHUB_WORKSPACE/automation/.github/ci/employee-lifecycle-always-stop.mjs" "$UNIT" "$RUNNER_TEMP/aihr-ci"
       - name: Retain actual PDF setup diagnostics with the unit evidence
         if: always()
         run: |

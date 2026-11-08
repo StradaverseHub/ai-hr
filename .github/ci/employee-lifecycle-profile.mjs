@@ -4,10 +4,18 @@ import {readFileSync} from 'node:fs';
 import {createHash} from 'node:crypto';
 const path=new URL('./employee-lifecycle-profile.json',import.meta.url),bytes=readFileSync(path);
 const exact=(value,keys)=>assert.deepEqual(Object.keys(value).sort(),[...keys].sort());
+const exactFiles=Object.freeze([
+ ['test/employee-choice-native-purpose-plan.test.ts','benchmark',6,960,900,'employee-choice-native-purpose',44,27],
+ ['test/employee-choice-benchmark-owner-native.test.ts','native-controls',2,180,0,null,0,0],
+ ['test/employee-choice-native-owner-factory.test.ts','native-factory',3,206,0,null,0,0],
+ ['test/employee-choice-exact-ascii-purpose.test.ts','ascii-purpose',9,960,900,'employee-choice-exact-ascii-purpose',0,0],
+ ['test/employee-choice-exact-ascii-plan.test.ts','ascii-plan',6,960,900,'employee-choice-exact-ascii',44,22],
+]);
+
 export function validateEmployeeLifecycleProfile(value){
  exact(value,['version','normalJobSeconds','focusedJobSeconds','preAnchorSeconds','artifactTailSeconds','mandatoryStopSeconds','settlementSeconds','files']);
  assert.equal(value.version,1);assert.equal(value.normalJobSeconds,1800);assert.equal(value.focusedJobSeconds,1170);assert.equal(value.preAnchorSeconds,30);assert.equal(value.artifactTailSeconds,120);assert.equal(value.mandatoryStopSeconds,15);assert.equal(value.settlementSeconds,6);
- assert(Array.isArray(value.files)&&value.files.length===5);const files=new Set(),stages=new Set();
+ assert(Array.isArray(value.files)&&value.files.length===5);assert.deepEqual(value.files.map(row=>[row.file,row.stage,row.cases,row.stageSeconds,row.fileSeconds,row.clockDirectory,row.planPhases,row.callPairs]),exactFiles,'Only the five exact reviewed lifecycle units are admitted');const files=new Set(),stages=new Set();
  for(const row of value.files){
   exact(row,['file','stage','cases','stageSeconds','fileSeconds','workSeconds','cleanupSeconds','clockDirectory','planPhases','callPairs']);
   assert(/^test\/employee-choice-[a-z-]+\.test\.ts$/.test(row.file)&&!files.has(row.file));files.add(row.file);
@@ -51,3 +59,13 @@ export function validateEmployeeLifecycleTestResult(result,file,source){
  assert.equal(result.numTotalTests,profile.cases);assert.equal(result.numPassedTests,profile.cases);assert.equal(result.testResults.length,1);
  const suite=result.testResults[0];assert([file,source+'/'+file].includes(suite.name));assert.equal(suite.status,'passed');assert.equal(suite.assertionResults.length,profile.cases);for(const row of suite.assertionResults)assert.equal(row.status,'passed');return profile.cases;
 }
+
+/** Pure classification of an already reconstructed complete unit, never authority. */
+export function employeeLifecycleUnit(unit){
+ const matched=Array.isArray(unit?.files)?unit.files.filter(file=>employeeLifecycleFile(file)):[];
+ if(!matched.length)return undefined;
+ assert.equal(matched.length,1);assert.deepEqual(unit.files,matched);assert.equal(unit.kind,'db');
+ assert.deepEqual(unit.singleton,{version:1,profile:'controlled-database-v1',workers:1,isolation:'job-postgres-cluster'});
+ return employeeLifecycleFile(matched[0]);
+}
+export function employeeLifecycleMatrixRow(unit){return Object.freeze({unit:unit.id,employeeLifecycle:employeeLifecycleUnit(unit)!==undefined});}
