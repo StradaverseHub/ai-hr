@@ -1,7 +1,7 @@
 {
   "kind": "ATTENDANCE_SHARED_SUBMISSION_STAGING_BRIDGE_SOURCE_NOT_RELEASE",
   "base": "29d9edcbc4368be871688e9fdf35347676a7841c",
-  "sourceRef": "codex/attendance-bridge-owned-process-20261108",
+  "sourceRef": "codex/attendance-bridge-fixture-frontier-recovery-20261108",
   "qualification": "NOT_RUN; no local behavior/compiler/build/DB/process checks; root and independent review required before hosted qualification",
   "rootAllocation": {
     "tag": "3210_attendance_shared_workflow_submission_lock",
@@ -55,21 +55,21 @@
     "db/migrations/3101_attendance_shared_workflow.sql": "f32d12965f2788dc673f0c09e128996a653341bbcf6933e47f211da021617169",
     "db/migrations/3110_attendance_workflow_owner_rls.sql": "39fc4b31666120cb4befe263b8b30433d6752dbaa52cda6cdbe350b3077f8f16",
     "db/migrations/0592_attendance_workflow_v4.sql": "0df1b69443381e2561451ba290543942ea01bfbc64e6c5e1c387c824e25773ff",
-    "docs/adr/2026-11-08-attendance-shared-submission-staging-bridge.md": "d367269a5fd532b13c4b1d949683cebf80089bb153d232458f69d26274203e97",
+    "docs/adr/2026-11-08-attendance-shared-submission-staging-bridge.md": "1a503dae8927af1ecda26dae17c9afa56661457b36d3be7f365ea4ec69fda66f",
     "docs/qualification/attendance-staging-sql-compatibility-map-20261108.md": "0a38fd8263b41db83ab44d318d34d9393c4a837006efc8c7e8f51cbda37f3aa9",
     "test/attendance-bridge-owned-phase.test.ts": "2d9b3ca60f9b4ad9e606cc643085da4534e6fbf7a9c472f7aedcc9d6d923b207",
     "test/helpers/attendance-bridge-owned-phase.ts": "55031f51499724c016c4925669e93999c7469068a9d0815fff97e0808f061c32",
     "test/helpers/attendance-bridge-pidfd.ts": "a874971c91ec629f4ec6d1ce466f7e561e6b4b49543d4f113e02e46f37902644",
     "test/helpers/attendance-bridge-owner-process.ts": "1b987bda3b5fe311386f7d7009c07fa4324485d93a56be1749091251041c244d",
     "test/helpers/attendance-bridge-owner-protocol.ts": "60a4d5c489fff827d51f9b2e05393b5850d2f6d4705e555aacf185baf6f169b1",
-    "test/helpers/attendance-bridge-owner-proof.ts": "c3c4fc44b438fae3495d75979723ba8995e160ff0a6c72401db64824647d95b7",
+    "test/helpers/attendance-bridge-owner-proof.ts": "31f158998118997d99fe111e32e023edee74cc094e6b10e0f1851eb98aa79fc7",
     "test/helpers/attendance-bridge-fixture.ts": "9ac27bd7382f9523bcad7f3ca29e99b8ff02da39c828b13b32ac406447310e43",
     "test/helpers/attendance-bridge-pidfd.py": "0546d50c7ba933f6876824f810945361c898a15b2704a4e7912f9c475b63e467",
     "test/helpers/attendance-bridge-owner-catalogue.ts": "b9236ae4fdcc7fa46bf74ac2f5cf946e50133a0a068ad731d31980a07e2e0462",
     "test/helpers/attendance-bridge-owner-worker.ts": "02ae637695884de903918f746c663f341d17150e2333f7809f20d1fc567fa52f",
     "test/attendance-bridge-owner-process.test.ts": "513d88f18acecdb44fb467cef293a4bb738220b38dafc5d2c3c79706ca2d4ab0"
   },
-  "repairParent": "68a0b3e06e71829549716886e1f8f3ab39542a50",
+  "repairParent": "0344d3b0b8014ab0f3582e27707934b85cbc5679",
   "pureOwnedRestorationCases": 4,
   "restrictedOwnerNativeLimits": {
     "workConnectMs": 3000,
@@ -114,5 +114,13 @@
     "stop-fixture",
     "role-collision",
     "restore-guard-drift"
-  ]
+  ],
+  "fixtureFrontierRepair": {
+    "countsOnlyCanonicalFixtureOperations": true,
+    "firstOperation": "hireEmployee",
+    "stopsBefore": "createAppUser",
+    "nativeNoNewUserAuditRetained": true,
+    "inverseProofSourceSha256": "c3c4fc44b438fae3495d75979723ba8995e160ff0a6c72401db64824647d95b7",
+    "originalUnexecuted": true
+  }
 }

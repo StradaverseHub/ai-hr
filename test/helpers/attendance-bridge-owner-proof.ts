@@ -23,8 +23,9 @@ export async function runOwnerProof(input:OwnerInput,frontier:OwnerWorkFrontier,
   complete:false,allCatalogueRestored:false,roleAbsent:false,ownedOidCaptured:false,faultObserved:false,
   nonemptyApprover:false,canonicalRequestWritten:false,unchangedForcedRls:false};
  let count=0,stoppedPerson:string|undefined;
- const step:BridgeStep=async action=>{
-  const value=await frontier.step(action);count++;
+ const step:BridgeStep=action=>frontier.step(action);
+ const fixtureStep:BridgeStep=async action=>{
+  const value=await step(action);count++;
   if(input.mode==='stop-fixture'&&count===1){
    assert(value&&typeof value==='object'&&'personId'in value&&typeof value.personId==='string');stoppedPerson=value.personId;
    await stage('fixture-frontier');
@@ -38,7 +39,7 @@ export async function runOwnerProof(input:OwnerInput,frontier:OwnerWorkFrontier,
   if(predecessor.state.role){preexistingRole=true;throw Error('Unowned native role cannot be restored or dropped');}
   const [current]=await step(()=>owner.client<{definition:string;statementTimeout:string;lockTimeout:string}[]>`select pg_get_functiondef('app.attendance_workflow_links()'::regprocedure) as definition,current_setting('statement_timeout') as "statementTimeout",current_setting('lock_timeout') as "lockTimeout"`);
   assert.equal(current.statementTimeout,'5s');assert.equal(current.lockTimeout,'300ms');targetDefinition=current.definition;
-  const f=await attendanceBridgeFixture(input.base,step);
+  const f=await attendanceBridgeFixture(input.base,fixtureStep);
   const [forcedBefore]=await step(()=>owner.client<{rows:unknown}[]>`select jsonb_agg(jsonb_build_object('oid',oid,'owner',relowner,'rls',relrowsecurity,'force',relforcerowsecurity) order by oid) as rows from pg_class where relnamespace='public'::regnamespace and relforcerowsecurity`);
   assert(forcedBefore.rows);
   const access=await step(()=>owner.client<{name:string;rls:boolean;force:boolean}[]>`select relname as name,relrowsecurity as rls,relforcerowsecurity as force from pg_class where relnamespace='public'::regnamespace and relname in ('access_capability','access_configuration','access_group','access_group_grant','access_membership','access_user_override') order by relname`);
