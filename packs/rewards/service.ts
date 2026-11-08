@@ -1995,9 +1995,14 @@ export async function rewardDashboard(ctx:SessionContext,companyIds:string[],pre
   const units=[];
   for(const row of selected){
    const v=await reviewProjectionTx(tx,ctx,row.id),board=boardRow(v,{cycle:row.cycle,company:row.company},todayInKualaLumpur());
-   // Match the mobile projection's confidentiality floor. Never expose a hidden person's amount
-   // through a unit total, plan split, balance, reference bar or a zero-valued redaction.
-   const restricted=v.hiddenCount>0||v.rows.some(entry=>isSeniorPlanMember(v.unit.policy,entry.facts,entry.source.grade)&&!v.seniorAmountsVisible);
+   // Native unit budgets deliberately include BG direct reports as aggregate-only contributions.
+   // Own-person, EC and concealed Senior records still withhold the entire dashboard budget.
+   const internal=await load(tx,row.id);
+   const restricted=internal.entries.some(entry=>{
+    const seniorHidden=isSeniorPlanMember(v.unit.policy,entry.facts,entry.source.grade)&&!v.seniorAmountsVisible;
+    const permittedBgAggregate=entry.facts.reviewed&&entry.facts.confidentiality==='bg'&&!entry.groupEcDirectReport&&entry.source.personId!==ctx.personId&&!seniorHidden;
+    return seniorHidden||!visibleEntry(entry,v.roles,ctx.personId)&&!permittedBgAggregate;
+   });
    const budgets=restricted||v.uploaded?null:Object.fromEntries((['standard','h'] as const).map(plan=>{
     const b=v.budgets[plan];return [plan,{used:b.used,pools:b.pools,bonusUsedCents:b.bonusUsedCents,lumpCents:b.lumpCents,bonusPoolCents:b.bonusPoolCents}];
    })) as Record<'standard'|'h',{used:number[];pools:number[];bonusUsedCents:number;lumpCents:number;bonusPoolCents:number}>|null;

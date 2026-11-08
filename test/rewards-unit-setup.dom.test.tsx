@@ -19,7 +19,7 @@ vi.mock('../app/rewards/governance-actions',()=>({adoptCompanyPatAction:vi.fn(),
 vi.mock('../packs/rewards/service',()=>({
  getRewardPreparationChecklist:async()=>({unitId:'unit',revision:8,snapshotDate:'2026-01-01',basis:'a'.repeat(64),canEdit:state.canEdit,branch:false,budgetInputs:null,preparation:{...emptyRewardPreparation(),expectedRelease:'2026-11-30'},checks:{snapshot:true,data:true,excluded:true,senior:true,budget:true,applied:true},access:{required:true,setupVisible:true,isGr:state.canEdit,independentChecker:false,actorNames:{},history:[],applied:{salary:{name:'Fictional salary structure',version:2,confirmed:true},bonus:{name:'Fictional bonus matrix',version:3,confirmed:true}},origin:{name:'Fictional shared configuration',revision:4}}}),
  getRewardUnitGovernance:async()=>({available:true,unitId:'unit',revision:8,isGr:state.canEdit,canEdit:state.canEdit,canAmounts:false,inputs:{forecastCents:10000000,actualCents:11000000,targetCents:10000000,multiplierBp:10000,branchRatings:{},targetMonthsBp:20000},legacyInputs:null,pools:{standard:200000,h:50000},poolStatus:'final',branches:[],history:[],selection:{confirmedBy:'fictional-checker'},exemption:null,senior:[],companyPatBound:true}),
- getRewardUnit:async()=>({unit:{policy:{blockedFrom:'2026-01-01',blockedTo:'2026-03-31',payWindowKeep:{}}},rows:[]}),
+ getRewardUnit:async()=>({companyName:'Fictional Company',name:'Fictional Unit',unit:{policy:{blockedFrom:'2026-01-01',blockedTo:'2026-03-31',payWindowKeep:{}}},rows:[]}),
 }));
 import SetupPage from '../app/rewards/[unitId]/setup/page';
 afterEach(()=>{cleanup();state.canEdit=true;});

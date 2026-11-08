@@ -114,6 +114,17 @@ describe('native checked preparation of new annual Rewards reviews',()=>{
   expect(await getRewardDashboardPreference(reviewer)).toBeNull();
  });
 
+ it('retains permitted BG aggregate contributions without returning a BG personal line',async()=>{
+  const current=await getRewardUnit(gr,unitId),entry=current.rows.find(row=>row.source.employmentId===employmentId)!;
+  await importRewardFacts(gr,unitId,current.unit.revision,[{employmentId,facts:{...entry.facts,confidentiality:'bg'}}]);
+  await refreshRewardFixtureBudget(gr,unitId);await confirmAll();await change(checker,{kind:'release'});
+  const permitted=await getRewardUnit(gr,unitId),review=await getRewardUnit(reviewer,unitId),dashboard=await rewardDashboard(reviewer,[base.companyId],{scope:unitId});
+  expect(review.rows.some(row=>row.source.employmentId===employmentId)).toBe(false);
+  expect(dashboard.units).toHaveLength(1);expect(dashboard.units[0].restricted).toBe(false);
+  expect(dashboard.units[0].budgets?.standard.used).toEqual(permitted.budgets.standard.used);
+  expect(JSON.stringify(dashboard)).not.toContain('Fictional preparation employee');
+ });
+
  it('prevents even an inspection seat from advancing preparation and restarts an already-routed review on a controlled change',async()=>{
   const initial=await getRewardUnit(gr,unitId);
   await expect(decideRewardUnit(gr,unitId,initial.unit.revision,'approve','Fictional premature approval')).rejects.toThrow(/independently checked/);

@@ -12,7 +12,8 @@ vi.mock('../core/entitlements',()=>({isModuleEnabled:vi.fn()}));
 import {Sidebar} from '../components/sidebar';
 afterEach(cleanup);
 it.each(Object.keys(copies) as (keyof typeof copies)[])('retains both action queues and localized group name in %s',async locale=>{
- const view=render(<NextIntlClientProvider locale={locale} messages={withAiCentre(locale,copies[locale])} onError={error=>{throw error;}}><Sidebar isAdmin canApprove enabledModules={null} defaultCollapsed={false} approvalCount={3} taskCount={8}/></NextIntlClientProvider>);
+ const view=render(<NextIntlClientProvider locale={locale} messages={withAiCentre(locale,copies[locale])} onError={error=>{throw error;}}><div className="flex h-[840px] items-stretch gap-4"><Sidebar isAdmin canApprove enabledModules={null} defaultCollapsed={false} approvalCount={3} taskCount={8}/><main className="min-w-0 flex-1"/></div></NextIntlClientProvider>);
+ const mobileToggle=view.container.querySelector('[data-mobile-navigation-toggle]')!;fireEvent.click(mobileToggle);
  fireEvent.click(screen.getByRole('button',{name:copies[locale].nav.inbox}));expect(screen.getByRole('navigation',{name:copies[locale].nav.inbox})).toBeTruthy();
  expect(view.container.querySelector('a[href="/approvals"]')).toBeTruthy();expect(view.container.querySelector('a[href="/tasks"]')).toBeTruthy();
  await captureAiReviewScreenshots(aiReviewDomHtml(view.container),locale,'action-centre-navigation');
