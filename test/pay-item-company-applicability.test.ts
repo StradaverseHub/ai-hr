@@ -78,8 +78,8 @@ describe('Pay Item company applicability at entry, without rewriting historical 
     const {id} = await createPayComponent(ctx,input('DATED',{appliedCompanyIds:[base.companyId]}));
     // A retained dated assignment remains the independent expected source after a later entity move.
     const existing = await owner.db.select().from(s.assignment).where(eq(s.assignment.employmentId,employmentId));
-    if (existing.length) await owner.db.update(s.assignment).set({companyId:base.companyId,validTo:'2026-07-01'}).where(eq(s.assignment.id,existing[0].id));
-    else await owner.db.insert(s.assignment).values({tenantId:base.tenantId,employmentId,companyId:base.companyId,departmentId:base.deptA,validFrom:'2026-01-01',validTo:'2026-07-01'});
+    expect(existing).toHaveLength(1);
+    await owner.db.update(s.assignment).set({companyId:base.companyId,validTo:'2026-07-01'}).where(eq(s.assignment.id,existing[0].id));
     await owner.db.update(s.employment).set({companyId:otherCompany}).where(eq(s.employment.id,employmentId));
     await withTenant(ctx,tx=>assertPayComponentCompaniesTx(tx,ctx,[{componentId:id,employmentId,effectiveDate:'2026-06-01'}]));
     await expect(withTenant(ctx,tx=>assertPayComponentCompaniesTx(tx,ctx,[{componentId:id,employmentId,effectiveDate:date}]))).rejects.toBeInstanceOf(PayComponentCompanyError);
