@@ -235,5 +235,63 @@ class PrepackageDiagnosticModels(unittest.TestCase):
         self.assertNotIn('TOKEN=', str(refusal.exception) + json.dumps(F.report))
 
 
+    def test_configuration_stages_are_closed_and_unknown_values_never_enter_evidence(self):
+        for stage in sorted(F.CONFIGURATION_STAGES):
+            F.configuration_phase(stage)
+            self.assertEqual(F.report['configuration'], {'stage': stage, 'declarationsVerified': False, 'actualNextBootVerified': False})
+        before = copy.deepcopy(F.report)
+        for stage in ('/private/TOKEN=fictional', None, {}):
+            with self.assertRaises(AssertionError) as refusal:
+                F.configuration_phase(stage)
+            self.assertNotIn('TOKEN=', str(refusal.exception))
+            self.assertEqual(F.report, before)
+
+    def test_actual_configuration_wrapper_refuses_exact_controller_errors_with_only_closed_reasons(self):
+        for message, code in F.CONFIGURATION_REASONS.items():
+            F.report = {'currentPhase': 'protected-native-configuration'}
+            F.configuration_phase('check-only')
+            with patch.object(F, 'control', return_value=types.SimpleNamespace(returncode=1, stderr=('Admission refused: ' + message + '\n').encode())) as control:
+                with self.assertRaisesRegex(AssertionError, '^Protected native configuration operation refused$'):
+                    F.configuration_control('check-only')
+                control.assert_called_once_with('check-only', check=False)
+            self.assertEqual(F.report['configuration']['reason'], code)
+            self.assertFalse(F.report['configuration']['declarationsVerified'])
+            self.assertFalse(F.report['configuration']['actualNextBootVerified'])
+
+    def test_private_unknown_suffixed_or_unbounded_configuration_errors_remain_generic_and_timeouts_remain_failures(self):
+        known = ('Admission refused: ' + next(iter(F.CONFIGURATION_REASONS)) + '\n').encode()
+        for raw in (b'/private/TOKEN=fictional', known + b'private', known.replace(b'\n', b'\r\n'), None, b'private' * 10000):
+            F.report = {'currentPhase': 'protected-native-configuration'}
+            F.configuration_phase('check-only')
+            with patch.object(F, 'control', return_value=types.SimpleNamespace(returncode=1, stderr=raw)), self.assertRaises(AssertionError) as refusal:
+                F.configuration_control('check-only')
+            self.assertEqual(F.report['configuration']['reason'], 'controller-refused')
+            self.assertNotIn('private', json.dumps(F.report) + str(refusal.exception))
+        with patch.object(F, 'control', side_effect=subprocess.TimeoutExpired('private TOKEN=fictional', 60)), self.assertRaises(AssertionError) as refusal:
+            F.configuration_control('check-only')
+        self.assertEqual(F.report['configuration']['reason'], 'controller-timeout')
+        self.assertNotIn('private', json.dumps(F.report) + str(refusal.exception))
+
+    def test_successful_configuration_control_keeps_actual_return_and_unknown_or_wrong_phase_never_executes(self):
+        result = types.SimpleNamespace(returncode=0, stdout=b'{"modelOnly":true}', stderr=b'private')
+        for operation, stage in (('check-only', 'check-only'), ('status', 'empty-publication')):
+            F.report = {'currentPhase': 'protected-native-configuration'}
+            F.configuration_phase(stage)
+            with patch.object(F, 'control', return_value=result) as control:
+                self.assertIs(F.configuration_control(operation), result)
+                control.assert_called_once_with(operation, check=False)
+            self.assertNotIn('reason', F.report['configuration'])
+        before = copy.deepcopy(F.report)
+        for operation in ('initialize', 'private TOKEN=fictional', {}, None):
+            with patch.object(F, 'control') as control, self.assertRaises(AssertionError):
+                F.configuration_control(operation)
+            control.assert_not_called()
+        F.report['currentPhase'] = 'foreign-phase'
+        with patch.object(F, 'control') as control, self.assertRaises(AssertionError):
+            F.configuration_control('status')
+        control.assert_not_called()
+        self.assertEqual(F.report['configuration'], before['configuration'])
+
+
 if __name__ == '__main__':
     unittest.main()

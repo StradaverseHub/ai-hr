@@ -55,6 +55,76 @@ PREPACKAGE_GUARDS = {
         'slice-member-units', 'slice-cgroup-absent')},
 }
 PREPACKAGE_STAGES = frozenset(PREPACKAGE_GUARDS.values()) | {'owned-directories', 'node-install'}
+CONFIGURATION_STAGES = frozenset({'principal', 'cache-sources', 'tls', 'unit-files',
+    'manager-reload', 'guarded-profile', 'check-only', 'proxy-start', 'empty-publication'})
+# Exact complete controller messages only. Never copy raw stderr, profile values,
+# native unit contents, private paths or exception text into public evidence.
+CONFIGURATION_REASONS = {
+    'Managed path is missing': 'managed-path-missing',
+    'Managed paths must not be symlinks': 'managed-path-link',
+    'Managed path has an unexpected owner': 'managed-path-owner',
+    'Managed path is writable by another principal': 'managed-path-writable',
+    'Unexpected managed path type': 'managed-path-type',
+    'Managed Next profile could not be verified': 'next-profile-verification',
+    'Managed Next release inventory is unverified': 'next-release-verification',
+    'Managed Next native configuration is unverified': 'next-native-configuration',
+    'Managed Next package identity differs': 'package-identity',
+    'Managed private runtime defaults differ': 'private-runtime-defaults',
+    'Owned hosted app-role database required': 'app-database-scope',
+    'Compiled bytes differ from exact format2 member': 'compiled-format2-member',
+    'Unknown compiled envelope member': 'compiled-envelope-member',
+    'Managed aggregate resource envelope differs': 'aggregate-envelope',
+    'Managed resource envelope digest differs': 'aggregate-digest',
+    'Managed package ownership or mode differs': 'package-owner-mode',
+    'Managed package bytes differ': 'package-bytes',
+    'Incomplete managed package inventory': 'package-inventory',
+    'Managed package contains application prerender data': 'application-prerender',
+    'Compiled dependency alias target differs': 'compiled-alias-target',
+    'Compiled external dependency identity differs': 'compiled-external-identity',
+    'Worker service identity differs from its profile': 'unit-command-identity',
+    'Privileged-hook credential source is not qualified': 'unit-credential-source',
+    'Privileged-hook environment source is not qualified': 'unit-environment-source',
+    'Unsupported privileged-hook environment file syntax': 'unit-environment-file-syntax',
+    'Managed worker sandbox/resource declarations differ': 'unit-sandbox-declarations',
+    'Typed worker privilege/namespace restriction differs': 'unit-typed-restrictions',
+    'Exact typed nonrecursive cache/release binds required': 'unit-typed-binds',
+    'Only the exact stock Next command is supported': 'stock-next-command',
+}
+
+
+def configuration_phase(stage):
+    require(isinstance(stage, str) and stage in CONFIGURATION_STAGES, 'Unknown closed configuration stage')
+    report['configuration'] = {'stage': stage, 'declarationsVerified': False,
+                               'actualNextBootVerified': False}
+    save()
+
+
+def configuration_reason(stderr):
+    if not isinstance(stderr, bytes) or len(stderr) > 1024:
+        return 'controller-refused'
+    for message, code in CONFIGURATION_REASONS.items():
+        if stderr == ('Admission refused: ' + message + '\n').encode():
+            return code
+    return 'controller-refused'
+
+
+def configuration_control(operation):
+    require(isinstance(operation, str) and operation in ('check-only', 'status'), 'Unsupported closed configuration operation')
+    expected = 'check-only' if operation == 'check-only' else 'empty-publication'
+    require(report.get('currentPhase') == 'protected-native-configuration'
+            and report.get('configuration', {}).get('stage') == expected,
+            'Closed configuration operation phase differs')
+    try:
+        result = control(operation, check=False)
+    except subprocess.TimeoutExpired:
+        report['configuration']['reason'] = 'controller-timeout'
+        save()
+        raise AssertionError('Protected native configuration operation timed out') from None
+    if result.returncode != 0:
+        report['configuration']['reason'] = configuration_reason(result.stderr)
+        save()
+        raise AssertionError('Protected native configuration operation refused')
+    return result
 
 
 def require(condition, reason):
@@ -626,6 +696,7 @@ def install_helpers(helper, plan, binding):
 
 def configure(plan, binding, N, release, runtime_package):
     phase('protected-native-configuration')
+    configuration_phase('principal')
     nobody = pwd.getpwnam('nobody')
     require(nobody.pw_uid == 65534 and nobody.pw_gid == 65534, 'Expected fixed nonroot app principal')
     used = {3443}
@@ -635,6 +706,7 @@ def configure(plan, binding, N, release, runtime_package):
         'cgroupPath': FIXTURE_CGROUP, 'cpuQuotaPercent': 400,
         'memoryHighBytes': 7168 * 1024**2, 'memoryMaxBytes': 8192 * 1024**2, 'memorySwapMaxBytes': 0,
         'totalHeapMiB': 4096, 'totalWebConnections': 16, 'totalWaitingBudget': 2048, 'tasksMax': 1024}
+    configuration_phase('cache-sources')
     mounts = {}
     for slot, unit in enumerate(UNITS, 1):
         mounts[unit] = []
@@ -648,6 +720,7 @@ def configure(plan, binding, N, release, runtime_package):
             source.chmod(0o700)
             mounts[unit].append({'source': str(source), 'target': target})
     nginx = pathlib.Path('/etc/nginx/aihr-admission/fixture.conf')
+    configuration_phase('tls')
     run(['/usr/bin/openssl', 'req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-days', '1', '-subj', '/CN=localhost',
          '-addext', 'subjectAltName=DNS:localhost', '-keyout', '/etc/nginx/aihr-admission/tls.key',
          '-out', '/etc/nginx/aihr-admission/tls.crt'], timeout=15)
@@ -739,13 +812,16 @@ BindReadOnlyPaths={release}:{release}:norbind
 Slice={SLICE}
 UMask=0077
 '''
+    configuration_phase('unit-files')
     for name, contents in files.items():
         file = pathlib.Path('/etc/systemd/system', name)
         require(not os.path.lexists(file), 'Fixture unit destination already exists')
         write(file, contents, 0o644)
         info = file.stat()
         owned_units[name] = (info.st_dev, info.st_ino)
+    configuration_phase('manager-reload')
     systemctl('daemon-reload')
+    configuration_phase('guarded-profile')
     C = load('actual_next_controller', pathlib.Path('/usr/local/lib/aihr-admission/controller.py'))
     profile = {'version': 2, 'epoch': os.urandom(16).hex(), 'source': plan['candidate'], 'build': binding['nextBuildId'],
         'resourceEnvelopeDigest': C.digest(envelope), 'resourceEnvelope': envelope,
@@ -763,14 +839,18 @@ UMask=0077
             'releaseDirectory': str(release), 'workerUid': nobody.pw_uid,
             'commandDigest': C.command_identity(props(unit)['ExecStart']), 'executable': plan['nodePath']}
     write(C.PROFILE, N.canonical(profile))
-    check = json.loads(control('check-only').stdout)
+    configuration_phase('check-only')
+    check = json.loads(configuration_control('check-only').stdout)
     require(check.get('kind') == 'ADMISSION_CHECKONLY' and check.get('rootBoundaryInspected') is True
             and check.get('installationAvailable') is False, 'Non-starting boundary inspection did not qualify')
     require(all(props(unit)['MainPID'] == '0' for unit in UNITS), 'CHECKONLY started an application worker')
     report['checkOnlyDidNotStartWorkers'] = True
     write(pathlib.Path('/run/aihr-admission/permit-' + UNITS[0]), b'owned cold gate\n')
+    configuration_phase('proxy-start')
     systemctl('start', PROXY, timeout=60)
-    require(status()['workers'] == [], 'Empty proxy unexpectedly published worker')
+    configuration_phase('empty-publication')
+    require(json.loads(configuration_control('status').stdout)['workers'] == [], 'Empty proxy unexpectedly published worker')
+    report['configuration']['declarationsVerified'] = True
     report['nativeIngress'] = {'nginx': run(['/usr/sbin/nginx', '-v'], check=False).stderr.decode().strip(),
         'tls': True, 'proxyNextUpstream': 'off', 'buffering': False, 'requestBuffering': False,
         'nodeProxyUsed': False, 'webWorkers': 2, 'steadyLoadCapacityClaim': False}
