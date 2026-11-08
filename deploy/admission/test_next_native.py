@@ -5,9 +5,11 @@ executes stdlib preparation/controllers; all Next/probe/browser JS is nonroot.
 The existing fake-backend native protocol test remains a separate 240s gate.
 """
 import contextlib
+import ast
 import hashlib
 import http.client
 import importlib.util
+import io
 import json
 import os
 import pathlib
@@ -21,6 +23,7 @@ import stat
 import subprocess
 import sys
 import time
+import types
 
 TOTAL_DEADLINE = time.monotonic() + 480
 DEADLINE = TOTAL_DEADLINE - 30  # Cleanup has reserved time inside the same envelope.
@@ -90,6 +93,291 @@ CONFIGURATION_REASONS = {
     'Exact typed nonrecursive cache/release binds required': 'unit-typed-binds',
     'Only the exact stock Next command is supported': 'stock-next-command',
 }
+OBSERVER_PATHS = {'controller': '/usr/local/lib/aihr-admission/controller.py',
+    'next-profile': '/usr/local/lib/aihr-admission/next_profile.py',
+    'inventory': '/usr/local/lib/aihr-admission/runtime_inventory.py'}
+OBSERVER_BINDING_STAGES = frozenset({'entry', 'input', 'observer-source', 'controller-source',
+    'next-profile-source', 'inventory-source', 'profile-source', 'source-binding', 'controller-main', 'source-recheck'})
+observer_binding_stage = 'entry'
+OBSERVER_EXCEPTIONS = frozenset({'AssertionError', 'AttributeError', 'EOFError', 'FileNotFoundError',
+    'ImportError', 'IndexError', 'KeyError', 'ModuleNotFoundError', 'NotADirectoryError', 'OSError',
+    'OverflowError', 'PermissionError', 'RuntimeError', 'SyntaxError', 'TimeoutError', 'TypeError',
+    'UnicodeDecodeError', 'UnicodeError', 'ValueError', 'ZeroDivisionError', 'JSONDecodeError'})
+
+
+def observer_code_identity(code):
+    """Exact semantic code fields; independent of marshal string sharing/interning."""
+    def constant(value):
+        if isinstance(value, types.CodeType):
+            return ['code', observer_code_identity(value).hex()]
+        if value is None or value is Ellipsis:
+            return ['none' if value is None else 'ellipsis']
+        if type(value) in (bool, int, str):
+            return [type(value).__name__, str(value)]
+        if isinstance(value, bytes):
+            return ['bytes', value.hex()]
+        if isinstance(value, float):
+            return ['float', value.hex()]
+        if isinstance(value, complex):
+            return ['complex', value.real.hex(), value.imag.hex()]
+        if isinstance(value, tuple):
+            return ['tuple', [constant(item) for item in value]]
+        if isinstance(value, frozenset):
+            return ['frozenset', sorted((constant(item) for item in value), key=lambda item: json.dumps(item, sort_keys=True))]
+        raise AssertionError('Unsupported observer code constant')
+    value = {name: getattr(code, name) for name in ('co_argcount', 'co_posonlyargcount', 'co_kwonlyargcount',
+        'co_nlocals', 'co_stacksize', 'co_flags', 'co_filename', 'co_name', 'co_qualname', 'co_firstlineno',
+        'co_names', 'co_varnames', 'co_freevars', 'co_cellvars')}
+    value.update({name: getattr(code, name).hex() for name in ('co_code', 'co_linetable', 'co_exceptiontable')})
+    value['co_consts'] = [constant(item) for item in code.co_consts]
+    return hashlib.sha256(json.dumps(value, sort_keys=True, separators=(',', ':'), ensure_ascii=True).encode()).digest()
+
+
+def observer_catalog(sources):
+    """Source models can exercise this pure compiler; only the root entry binds files."""
+    require(isinstance(sources, dict) and set(sources) == set(OBSERVER_PATHS), 'Closed observer sources required')
+    result = {}
+    for owner, raw in sources.items():
+        require(isinstance(raw, bytes) and 0 < len(raw) <= 1024 * 1024, 'Observer source exceeds bound')
+        filename = OBSERVER_PATHS[owner]
+        tree = ast.parse(raw, filename)
+        lines = set()
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Call) and (
+                    isinstance(node.func, ast.Name) and node.func.id in ('require', 'check')
+                    or isinstance(node.func, ast.Attribute) and node.func.attr in ('require', 'check')):
+                lines.update(range(node.lineno, node.end_lineno + 1))
+        code = compile(raw, filename, 'exec', dont_inherit=True)
+        codes = set()
+        def gather(value):
+            codes.add(observer_code_identity(value))
+            for child in value.co_consts:
+                if isinstance(child, types.CodeType):
+                    gather(child)
+        gather(code)
+        result[owner] = {'module': code, 'codes': frozenset(codes), 'lines': frozenset(lines)}
+    return result
+
+
+def observer_location(frame, catalog):
+    for owner, filename in OBSERVER_PATHS.items():
+        if frame.f_code.co_filename == filename and frame.f_globals.get('__file__') == filename:
+            trusted = catalog[owner]
+            if (frame.f_lineno in trusted['lines'] and
+                    observer_code_identity(frame.f_code) in trusted['codes']):
+                return {'classification': 'guard', 'owner': owner, 'line': frame.f_lineno}
+    return {'classification': 'foreign-guard'}
+
+
+class ObserverStream(io.TextIOBase):
+    """Never allocate an unbounded copy of private controller output."""
+    def __init__(self, maximum):
+        self.maximum, self.parts, self.length, self.overflow = maximum, [], 0, False
+
+    def write(self, text):
+        count = len(text)
+        amount = len(text.encode('utf8')) if count <= self.maximum else self.maximum + 1
+        if self.length + amount <= self.maximum and not self.overflow:
+            self.parts.append(text)
+            self.length += amount
+        else:
+            self.parts.clear()
+            self.overflow = True
+        return count
+
+    def text(self):
+        return ''.join(self.parts) if not self.overflow else ''
+
+
+def observe_controller_main(controller, catalog):
+    """Call the unmodified main and ALWAYS the original require; restore both globals."""
+    original, argv = controller.require, sys.argv
+    for function in (original, controller.main):
+        require(function.__globals__ is controller.__dict__
+                and observer_code_identity(function.__code__) in catalog['controller']['codes'],
+                'Observer controller code identity differs')
+    guard = None
+    stdout, stderr = ObserverStream(65536), ObserverStream(1024)
+    def observed(*args, **kwargs):
+        nonlocal guard
+        try:
+            return original(*args, **kwargs)
+        except controller.Refused:
+            try:
+                location = observer_location(sys._getframe(1), catalog)
+            except Exception:
+                location = {'classification': 'foreign-guard'}
+            if guard is None or location['classification'] == 'foreign-guard':
+                guard = location
+            raise
+    controller.require = observed
+    sys.argv = [OBSERVER_PATHS['controller'], 'check-only']
+    exception = None
+    try:
+        with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+            try:
+                code = controller.main()
+            except BaseException as error:
+                exception = type(error).__name__ if type(error).__name__ in OBSERVER_EXCEPTIONS else 'unknown'
+                code = error.code if isinstance(error, SystemExit) and type(error.code) is int and 0 <= error.code <= 255 else 1
+    finally:
+        controller.require = original
+        sys.argv = argv
+    require(type(code) is int and 0 <= code <= 255, 'Observer controller exit differs')
+    if code == 0:
+        value = json.loads(stdout.text()) if not stdout.overflow else None
+        require(isinstance(value, dict) and set(value) == {'kind', 'installationAvailable', 'releaseEligible',
+                'rootBoundaryInspected', 'typedEmptyCredentialsVerified', 'immutableEntriesInspected', 'remainingInstallationGates'}
+                and value['kind'] == 'ADMISSION_CHECKONLY' and value['installationAvailable'] is False
+                and value['releaseEligible'] is False and value['rootBoundaryInspected'] is True
+                and value['typedEmptyCredentialsVerified'] is True and type(value['immutableEntriesInspected']) is int
+                and 0 <= value['immutableEntriesInspected'] <= 4_000_000
+                and value['remainingInstallationGates'] == ['authenticated-format3-grant-and-shared-lease',
+                    'complete-nginx-runtime-and-include-inventory', 'resource-envelope-admission',
+                    'old-new-build-and-server-action-compatibility', 'real-next-transport-and-worker-qualification']
+                and not stderr.overflow and stderr.text() == '' and not exception
+                and (guard is None or guard['classification'] != 'foreign-guard'), 'Observer success output is unqualified')
+        return code, stdout.text(), None
+    diagnostic = guard or {'classification': 'cli-refusal'}
+    if guard is None:
+        for name in OBSERVER_EXCEPTIONS:
+            if exception == name or stderr.text() == 'Admission failed: ' + name + '; reconcile before retry\n':
+                diagnostic = {'classification': 'cli-exception', 'exception': name}
+                break
+    return code, '', diagnostic
+
+
+def observer_read(file, maximum):
+    """Fixed root paths only, pinned descriptor and complete nonwritable ancestor chain."""
+    file = pathlib.Path(file)
+    current = pathlib.Path('/')
+    for part in file.parts[1:]:
+        current /= part
+        info = current.lstat()
+        require(info.st_uid == 0 and not stat.S_ISLNK(info.st_mode) and not info.st_mode & 0o022,
+                'Observer root path is unqualified')
+    require(stat.S_ISREG(info.st_mode) and info.st_nlink == 1 and 0 < info.st_size <= maximum,
+            'Observer root file is unqualified')
+    fd = os.open(file, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    try:
+        require(identity(os.fstat(fd)) == identity(info), 'Observer root file changed')
+        with os.fdopen(os.dup(fd), 'rb') as stream:
+            raw = stream.read(maximum + 1)
+        require(len(raw) == info.st_size and identity(os.fstat(fd)) == identity(info) == identity(file.lstat()),
+                'Observer root file changed')
+        return raw
+    finally:
+        os.close(fd)
+
+
+def observer_input(raw):
+    require(isinstance(raw, bytes) and 0 < len(raw) <= 4096, 'Closed observer input exceeds bound')
+    try:
+        expected = json.loads(raw)
+    except (ValueError, UnicodeError):
+        raise AssertionError('Closed observer input differs') from None
+    require(isinstance(expected, dict) and set(expected) == {'version', 'kind', 'observerSha256', 'profileSha256', 'sourceHashes'}
+            and type(expected['version']) is int and expected['version'] == 1
+            and expected['kind'] == 'SOURCE_BOUND_INSTALLED_CHECKONLY_OBSERVER'
+            and isinstance(expected['sourceHashes'], dict) and set(expected['sourceHashes']) == set(OBSERVER_PATHS)
+            and all(isinstance(value, str) and re.fullmatch(r'[a-f0-9]{64}', value) for value in
+                [expected['observerSha256'], expected['profileSha256'], *expected['sourceHashes'].values()]),
+            'Closed observer input differs')
+    require((json.dumps(expected, sort_keys=True, separators=(',', ':'), ensure_ascii=True, allow_nan=False) + '\n').encode() == raw,
+            'Observer input must be canonical')
+    return expected
+
+
+def observer_bind(expected, own_raw, sources, profile_raw):
+    require(isinstance(own_raw, bytes) and 0 < len(own_raw) <= 1024 * 1024
+            and hashlib.sha256(own_raw).hexdigest() == expected['observerSha256'], 'Observer source identity differs')
+    require(isinstance(sources, dict) and set(sources) == set(OBSERVER_PATHS)
+            and all(isinstance(raw, bytes) and 0 < len(raw) <= 1024 * 1024 for raw in sources.values()),
+            'Closed observer sources required')
+    require(all(hashlib.sha256(raw).hexdigest() == expected['sourceHashes'][owner] for owner, raw in sources.items()),
+            'Observer installed source identity differs')
+    require(isinstance(profile_raw, bytes) and 0 < len(profile_raw) <= 32768
+            and hashlib.sha256(profile_raw).hexdigest() == expected['profileSha256'], 'Observer profile identity differs')
+    profile = json.loads(profile_raw)
+    require(isinstance(profile, dict) and type(profile.get('version')) is int and profile['version'] == 2
+            and profile.get('controllerDigest') == expected['sourceHashes']['controller']
+            and profile.get('trustedModules') == {'next_profile.py': expected['sourceHashes']['next-profile'],
+                'runtime_inventory.py': expected['sourceHashes']['inventory']}, 'Observer profile source binding differs')
+    return observer_catalog(sources)
+
+
+def observer_entry():
+    global observer_binding_stage
+    observer_binding_stage = 'entry'
+    require(sys.platform == 'linux' and os.geteuid() == 0, 'Observer requires owned Linux root')
+    own = pathlib.Path(__file__).absolute()
+    require(re.fullmatch(r'/var/lib/aihr-native-build/[1-9][0-9]{0,19}/[A-Za-z0-9_-]{1,100}/helpers/test_next_native.py', str(own)) is not None,
+            'Observer requires sealed fixture source')
+    observer_binding_stage = 'input'
+    expected = observer_input(sys.stdin.buffer.read(4097))
+    observer_binding_stage = 'observer-source'
+    require(stat.S_IMODE(own.lstat().st_mode) == 0o400, 'Observer requires sealed fixture mode')
+    own_raw = observer_read(own, 1024 * 1024)
+    sources = {}
+    for owner, filename in OBSERVER_PATHS.items():
+        observer_binding_stage = owner + '-source'
+        sources[owner] = observer_read(filename, 1024 * 1024)
+    observer_binding_stage = 'profile-source'
+    profile_raw = observer_read('/etc/aihr-admission/profile.json', 32768)
+    observer_binding_stage = 'source-binding'
+    catalog = observer_bind(expected, own_raw, sources, profile_raw)
+    controller = types.ModuleType('source_bound_actual_controller')
+    controller.__file__ = OBSERVER_PATHS['controller']
+    exec(catalog['controller']['module'], controller.__dict__)
+    observer_binding_stage = 'controller-main'
+    code, stdout, diagnostic = observe_controller_main(controller, catalog)
+    observer_binding_stage = 'source-recheck'
+    require(all(observer_read(OBSERVER_PATHS[owner], 1024 * 1024) == raw for owner, raw in sources.items())
+            and observer_read('/etc/aihr-admission/profile.json', 32768) == profile_raw,
+            'Observer installed source changed during CHECKONLY')
+    if diagnostic is not None:
+        sys.stderr.write(json.dumps({'version': 1, 'kind': 'SOURCE_BOUND_CHECKONLY_REFUSAL', **diagnostic}, sort_keys=True) + '\n')
+    else:
+        sys.stdout.write(stdout)
+    return code
+
+
+def observer_diagnostic(raw, catalog):
+    """Only closed source points/classes survive; foreign/private bytes remain generic."""
+    invalid = {'reason': 'controller-observer-refused'}
+    if not isinstance(raw, bytes) or not 0 < len(raw) <= 2048:
+        return invalid
+    try:
+        value = json.loads(raw)
+        if (not isinstance(value, dict) or value.get('version') != 1 or type(value['version']) is not int
+                or value.get('kind') != 'SOURCE_BOUND_CHECKONLY_REFUSAL'
+                or (json.dumps(value, sort_keys=True) + '\n').encode() != raw):
+            return invalid
+        classification = value.get('classification')
+        if classification == 'guard' and set(value) == {'version', 'kind', 'classification', 'owner', 'line'}:
+            owner, line = value['owner'], value['line']
+            if (isinstance(owner, str) and owner in OBSERVER_PATHS and type(line) is int
+                    and line in catalog[owner]['lines']):
+                return {'reason': 'controller-source-guard', 'sourceGuard': {'owner': owner, 'line': line}}
+        elif classification == 'cli-exception' and set(value) == {'version', 'kind', 'classification', 'exception'}:
+            if isinstance(value['exception'], str) and value['exception'] in OBSERVER_EXCEPTIONS:
+                return {'reason': 'controller-exception', 'exception': value['exception']}
+        elif classification in ('foreign-guard', 'cli-refusal', 'binding-refusal') and set(value) == {'version', 'kind', 'classification'}:
+            return {'reason': {'foreign-guard': 'controller-foreign-guard', 'cli-refusal': 'controller-direct-refusal',
+                               'binding-refusal': 'controller-observer-binding'}[classification]}
+        elif classification == 'binding-refusal' and set(value) == {'version', 'kind', 'classification', 'stage'}:
+            if isinstance(value['stage'], str) and value['stage'] in OBSERVER_BINDING_STAGES:
+                return {'reason': 'controller-observer-binding', 'bindingStage': value['stage']}
+    except (ValueError, UnicodeError, TypeError, KeyError):
+        pass
+    return invalid
+
+
+def observer_bound_catalog(expected):
+    sources = {owner: observer_read(filename, 1024 * 1024) for owner, filename in OBSERVER_PATHS.items()}
+    require(all(hashlib.sha256(raw).hexdigest() == expected['sourceHashes'][owner] for owner, raw in sources.items()),
+            'Observer installed source identity differs')
+    return observer_catalog(sources)
 
 
 def configuration_phase(stage):
@@ -108,20 +396,33 @@ def configuration_reason(stderr):
     return 'controller-refused'
 
 
-def configuration_control(operation):
+def configuration_control(operation, observer=None):
     require(isinstance(operation, str) and operation in ('check-only', 'status'), 'Unsupported closed configuration operation')
     expected = 'check-only' if operation == 'check-only' else 'empty-publication'
     require(report.get('currentPhase') == 'protected-native-configuration'
             and report.get('configuration', {}).get('stage') == expected,
             'Closed configuration operation phase differs')
     try:
-        result = control(operation, check=False)
+        result = control(operation, check=False) if observer is None else control(operation, check=False, observer=observer)
     except subprocess.TimeoutExpired:
         report['configuration']['reason'] = 'controller-timeout'
         save()
         raise AssertionError('Protected native configuration operation timed out') from None
     if result.returncode != 0:
-        report['configuration']['reason'] = configuration_reason(result.stderr)
+        if observer is None:
+            report['configuration']['reason'] = configuration_reason(result.stderr)
+        else:
+            require(type(result.returncode) is int and -128 <= result.returncode <= 255, 'Invalid observer process exit')
+            report['configuration']['exit'] = {'classification': 'signal' if result.returncode < 0 else 'nonzero', 'status': result.returncode}
+            if result.returncode < 0:
+                report['configuration']['reason'] = 'controller-signal'
+            else:
+                try:
+                    preliminary = observer_diagnostic(result.stderr, {})
+                    diagnostic = preliminary if preliminary['reason'] == 'controller-observer-binding' else observer_diagnostic(result.stderr, observer_bound_catalog(observer))
+                    report['configuration'].update(diagnostic)
+                except (OSError, ValueError, AssertionError, TypeError, KeyError):
+                    report['configuration']['reason'] = 'controller-observer-binding'
         save()
         raise AssertionError('Protected native configuration operation refused')
     return result
@@ -262,9 +563,15 @@ def port(used):
     raise AssertionError('Cannot allocate bounded distinct fixture endpoints')
 
 
-def control(operation, unit=None, check=True):
-    result = run(['/usr/bin/python3', '-I', '-B', '/usr/local/lib/aihr-admission/controller.py', operation]
-                 + ([unit] if unit else []), check=False, timeout=60)
+def control(operation, unit=None, check=True, observer=None):
+    if observer is None:
+        result = run(['/usr/bin/python3', '-I', '-B', '/usr/local/lib/aihr-admission/controller.py', operation]
+                     + ([unit] if unit else []), check=False, timeout=60)
+    else:
+        require(operation == 'check-only' and unit is None, 'Observer accepts only fixed CHECKONLY')
+        result = run(['/usr/bin/python3', '-I', '-B', str(pathlib.Path(__file__).absolute()), '--observe-check-only'],
+                     input=(json.dumps(observer, sort_keys=True, separators=(',', ':'), ensure_ascii=True, allow_nan=False) + '\n').encode(),
+                     check=False, timeout=60)
     require(not check or result.returncode == 0, 'Protected admission operation refused: ' + operation)
     return result
 
@@ -840,7 +1147,12 @@ UMask=0077
             'commandDigest': C.command_identity(props(unit)['ExecStart']), 'executable': plan['nodePath']}
     write(C.PROFILE, N.canonical(profile))
     configuration_phase('check-only')
-    check = json.loads(configuration_control('check-only').stdout)
+    observer = {'version': 1, 'kind': 'SOURCE_BOUND_INSTALLED_CHECKONLY_OBSERVER',
+        'observerSha256': binding['helpers']['test_next_native.py']['sha256'],
+        'profileSha256': hashlib.sha256(N.canonical(profile)).hexdigest(),
+        'sourceHashes': {'controller': profile['controllerDigest'], 'next-profile': profile['trustedModules']['next_profile.py'],
+                         'inventory': profile['trustedModules']['runtime_inventory.py']}}
+    check = json.loads(configuration_control('check-only', observer=observer).stdout)
     require(check.get('kind') == 'ADMISSION_CHECKONLY' and check.get('rootBoundaryInspected') is True
             and check.get('installationAvailable') is False, 'Non-starting boundary inspection did not qualify')
     require(all(props(unit)['MainPID'] == '0' for unit in UNITS), 'CHECKONLY started an application worker')
@@ -1149,6 +1461,14 @@ def main():
 
 
 if __name__ == '__main__':
+    if sys.argv[1:] == ['--observe-check-only']:
+        try:
+            observer_code = observer_entry()
+        except BaseException:
+            sys.stderr.write(json.dumps({'version': 1, 'kind': 'SOURCE_BOUND_CHECKONLY_REFUSAL',
+                'classification': 'binding-refusal', 'stage': observer_binding_stage if isinstance(observer_binding_stage, str) and observer_binding_stage in OBSERVER_BINDING_STAGES else 'entry'}, sort_keys=True) + '\n')
+            observer_code = 1
+        sys.exit(observer_code)
     def interrupted(_signum, _frame):
         raise RuntimeError('Owned native fixture interrupted')
     signal.signal(signal.SIGTERM, interrupted)

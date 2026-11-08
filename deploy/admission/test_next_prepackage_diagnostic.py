@@ -1,5 +1,6 @@
 """Stdlib source models only: never root, systemd, a Next process or a build witness."""
 import copy
+import hashlib
 import contextlib
 import importlib.util
 import json
@@ -7,6 +8,7 @@ import os
 import pathlib
 import tempfile
 import subprocess
+import sys
 import types
 import unittest
 from unittest.mock import patch
@@ -291,6 +293,218 @@ class PrepackageDiagnosticModels(unittest.TestCase):
             F.configuration_control('status')
         control.assert_not_called()
         self.assertEqual(F.report['configuration'], before['configuration'])
+
+    def observer_sources(self):
+        root = pathlib.Path(__file__).resolve().parents[2]
+        return {owner: (root / name).read_bytes() for owner, name in {
+            'controller': 'deploy/admission/controller.py', 'next-profile': 'deploy/admission/next_profile.py',
+            'inventory': '.github/ci/runtime_inventory.py'}.items()}
+
+    def observer_model(self, body):
+        # Memory-only model code: never an installed source/profile or root receipt.
+        source = ("import json,sys\nclass Refused(RuntimeError): pass\ncalls=[]\n"
+            "def require(condition,message):\n    calls.append((condition,message))\n    if not condition: raise Refused(message)\n"
+            "def main():\n" + body).encode()
+        sources = self.observer_sources()
+        sources['controller'] = source
+        catalog = F.observer_catalog(sources)
+        controller = types.ModuleType('source_observer_model')
+        controller.__file__ = F.OBSERVER_PATHS['controller']
+        controller.private = '/private/TOKEN=fictional-sensitive-value'
+        controller.proof = {'kind': 'ADMISSION_CHECKONLY', 'installationAvailable': False, 'releaseEligible': False,
+            'rootBoundaryInspected': True, 'typedEmptyCredentialsVerified': True, 'immutableEntriesInspected': 42,
+            'remainingInstallationGates': ['authenticated-format3-grant-and-shared-lease',
+                'complete-nginx-runtime-and-include-inventory', 'resource-envelope-admission',
+                'old-new-build-and-server-action-compatibility', 'real-next-transport-and-worker-qualification']}
+        exec(catalog['controller']['module'], controller.__dict__)
+        return controller, catalog
+
+    def test_source_observer_calls_actual_unmodified_controller_root_guard_without_root_or_systemd(self):
+        self.assertNotEqual(os.geteuid(), 0)
+        catalog = F.observer_catalog(self.observer_sources())
+        controller = types.ModuleType('real_unprivileged_controller_source_model')
+        controller.__file__ = F.OBSERVER_PATHS['controller']
+        exec(catalog['controller']['module'], controller.__dict__)
+        original, argv = controller.require, sys.argv
+        with patch.object(controller, 'Profile') as profile, patch.object(controller.subprocess, 'run') as run:
+            code, stdout, diagnostic = F.observe_controller_main(controller, catalog)
+            profile.assert_not_called()
+            run.assert_not_called()
+        self.assertEqual((code, stdout, diagnostic), (1, '', {'classification': 'guard', 'owner': 'controller', 'line': 1106}))
+        self.assertIs(controller.require, original)
+        self.assertIs(sys.argv, argv)
+        self.assertNotIn('The installed admission controller requires Linux root', F.CONFIGURATION_REASONS)
+
+    def test_source_observer_calls_original_for_unmapped_private_require_and_restores_before_return(self):
+        controller, catalog = self.observer_model("    try:\n        require(False,private)\n    except Refused as error:\n        print('Admission refused: '+str(error),file=sys.stderr)\n        return 1\n")
+        original, argv = controller.require, sys.argv
+        code, stdout, diagnostic = F.observe_controller_main(controller, catalog)
+        self.assertEqual(code, 1)
+        self.assertEqual(stdout, '')
+        self.assertEqual(controller.calls, [(False, controller.private)])
+        self.assertEqual(diagnostic, {'classification': 'guard', 'owner': 'controller', 'line': 9})
+        self.assertNotIn('private', json.dumps(diagnostic))
+        self.assertIs(controller.require, original)
+        self.assertIs(sys.argv, argv)
+
+    def test_source_observer_restores_on_success_direct_refusal_and_nonrequire_private_exception(self):
+        for body, expected in [
+            ("    require(True,private)\n    print(json.dumps(proof,sort_keys=True))\n    return 0\n", None),
+            ("    require(True,private)\n    raise TypeError(private)\n", {'classification': 'cli-exception', 'exception': 'TypeError'}),
+            ("    require(True,private)\n    raise Refused(private)\n", {'classification': 'cli-refusal'})]:
+            controller, catalog = self.observer_model(body)
+            original, argv = controller.require, sys.argv
+            code, stdout, diagnostic = F.observe_controller_main(controller, catalog)
+            self.assertEqual(controller.calls, [(True, controller.private)])
+            self.assertIs(controller.require, original)
+            self.assertIs(sys.argv, argv)
+            self.assertEqual(diagnostic, expected)
+            self.assertEqual(code, 0 if expected is None else 1)
+            if expected is None:
+                self.assertEqual(json.loads(stdout), controller.proof)
+            else:
+                self.assertEqual(stdout, '')
+                self.assertNotIn('private', json.dumps(diagnostic))
+
+    def test_source_observer_checks_real_next_and_inventory_guard_code_identities_with_private_inputs(self):
+        for owner in ('next-profile', 'inventory'):
+            controller, catalog = self.observer_model("    try:\n        callback()\n    except Refused as error:\n        print('Admission refused: '+str(error),file=sys.stderr)\n        return 1\n")
+            module = types.ModuleType('model_' + owner.replace('-', '_'))
+            module.__file__ = F.OBSERVER_PATHS[owner]
+            # Fresh compilation, matching the production dynamic loader rather
+            # than reusing the catalog's original code-object identities.
+            exec(compile(self.observer_sources()[owner], str(pathlib.Path(F.OBSERVER_PATHS[owner])), 'exec', dont_inherit=True), module.__dict__)
+            if owner == 'next-profile':
+                controller.callback = lambda: module.relative('/private/TOKEN=fictional', controller.require)
+            else:
+                controller.callback = lambda: module.regular_metadata(types.SimpleNamespace(st_mode=0, st_size=1),
+                    16, '/private/TOKEN=fictional', 'private', check=controller.require)
+            original = controller.require
+            code, stdout, diagnostic = F.observe_controller_main(controller, catalog)
+            self.assertEqual((code, stdout), (1, ''))
+            self.assertEqual(diagnostic['classification'], 'guard')
+            self.assertEqual(diagnostic['owner'], owner)
+            self.assertIn(diagnostic['line'], (58, 59, 60, 61) if owner == 'next-profile' else (41,))
+            self.assertIs(controller.require, original)
+            self.assertNotIn('TOKEN=', json.dumps(diagnostic))
+
+    def test_source_observer_rejects_foreign_stack_forged_filename_code_and_foreign_main_identity(self):
+        for filename in ('/private/TOKEN=fictional.py', F.OBSERVER_PATHS['controller']):
+            controller, catalog = self.observer_model("    require(True,private)\n    try:\n        foreign()\n    except Refused as error:\n        print('Admission refused: '+str(error),file=sys.stderr)\n        return 1\n")
+            # Place the forged call on the same admitted line; its code identity
+            # must still refuse even when filename/globalfile/line all match.
+            foreign = {'__file__': filename, 'controller': controller, 'private': controller.private}
+            exec(compile('\n' * 6 + 'def foreign():\n    controller.require(False,private)\n', filename, 'exec'), foreign)
+            controller.foreign = foreign['foreign']
+            code, stdout, diagnostic = F.observe_controller_main(controller, catalog)
+            self.assertEqual((code, stdout, diagnostic), (1, '', {'classification': 'foreign-guard'}))
+            self.assertEqual(controller.calls, [(True, controller.private), (False, controller.private)])
+            self.assertNotIn('TOKEN=', json.dumps(diagnostic))
+        controller, catalog = self.observer_model('    return 1\n')
+        original, argv = controller.require, sys.argv
+        exec(compile('def replacement():\n    raise RuntimeError(private)\n', F.OBSERVER_PATHS['controller'], 'exec'), controller.__dict__)
+        controller.main = controller.replacement
+        with self.assertRaisesRegex(AssertionError, '^Observer controller code identity differs$'):
+            F.observe_controller_main(controller, catalog)
+        self.assertEqual(controller.calls, [])
+        self.assertIs(controller.require, original)
+        self.assertIs(sys.argv, argv)
+
+    def observer_binding(self):
+        sources = self.observer_sources()
+        sha = lambda value: hashlib.sha256(value).hexdigest()
+        profile = {'version': 2, 'controllerDigest': sha(sources['controller']), 'trustedModules': {
+            'next_profile.py': sha(sources['next-profile']), 'runtime_inventory.py': sha(sources['inventory'])}}
+        profile_raw = (json.dumps(profile, sort_keys=True) + '\n').encode()
+        own = pathlib.Path(F.__file__).read_bytes()
+        expected = {'version': 1, 'kind': 'SOURCE_BOUND_INSTALLED_CHECKONLY_OBSERVER', 'observerSha256': sha(own),
+            'profileSha256': sha(profile_raw), 'sourceHashes': {key: sha(raw) for key, raw in sources.items()}}
+        return expected, own, sources, profile_raw
+
+    def test_source_observer_binds_all_three_sources_own_bytes_and_profile_before_any_code_can_execute(self):
+        expected, own, sources, profile = self.observer_binding()
+        canonical = (json.dumps(expected, sort_keys=True, separators=(',', ':')) + '\n').encode()
+        self.assertEqual(F.observer_input(canonical), expected)
+        self.assertEqual(set(F.observer_bind(expected, own, sources, profile)), set(F.OBSERVER_PATHS))
+        for owner in F.OBSERVER_PATHS:
+            changed = sources | {owner: sources[owner] + b'private TOKEN=fictional'}
+            with patch.object(F, 'observer_catalog') as compile_sources, self.assertRaises(AssertionError):
+                F.observer_bind(expected, own, changed, profile)
+            compile_sources.assert_not_called()
+        for own_value, profile_value in [(own + b'private', profile), (own, profile + b'private')]:
+            with patch.object(F, 'observer_catalog') as compile_sources, self.assertRaises(AssertionError):
+                F.observer_bind(expected, own_value, sources, profile_value)
+            compile_sources.assert_not_called()
+        bad = expected | {'sourceHashes': expected['sourceHashes'] | {'foreign': 'a' * 64}}
+        for raw in [(json.dumps(bad) + '\n').encode(), canonical + b'private', b'private TOKEN=fictional', b'x' * 4097]:
+            with self.assertRaises(AssertionError):
+                F.observer_input(raw)
+
+    def test_source_observer_decoder_requires_bound_callsite_and_never_reflects_unknown_private_or_extra_fields(self):
+        catalog = F.observer_catalog(self.observer_sources())
+        encode = lambda value: (json.dumps({'version': 1, 'kind': 'SOURCE_BOUND_CHECKONLY_REFUSAL', **value}, sort_keys=True) + '\n').encode()
+        self.assertEqual(F.observer_diagnostic(encode({'classification': 'guard', 'owner': 'controller', 'line': 1106}), catalog),
+            {'reason': 'controller-source-guard', 'sourceGuard': {'owner': 'controller', 'line': 1106}})
+        for value in [{'classification': 'guard', 'owner': '/private/TOKEN=fictional', 'line': 1106},
+                      {'classification': 'guard', 'owner': 'controller', 'line': True},
+                      {'classification': 'guard', 'owner': 'controller', 'line': 1},
+                      {'classification': 'guard', 'owner': 'controller', 'line': 1106, 'private': 'TOKEN=fictional'},
+                      {'classification': 'cli-exception', 'exception': 'private TOKEN=fictional'}]:
+            self.assertEqual(F.observer_diagnostic(encode(value), catalog), {'reason': 'controller-observer-refused'})
+        for raw in (b'private TOKEN=fictional', b'private' * 10000, None):
+            self.assertEqual(F.observer_diagnostic(raw, catalog), {'reason': 'controller-observer-refused'})
+        self.assertEqual(F.observer_diagnostic(encode({'classification': 'foreign-guard'}), catalog), {'reason': 'controller-foreign-guard'})
+        for stage in F.OBSERVER_BINDING_STAGES:
+            self.assertEqual(F.observer_diagnostic(encode({'classification': 'binding-refusal', 'stage': stage}), {}),
+                {'reason': 'controller-observer-binding', 'bindingStage': stage})
+        self.assertEqual(F.observer_diagnostic(encode({'classification': 'binding-refusal', 'stage': '/private/TOKEN=fictional'}), {}),
+            {'reason': 'controller-observer-refused'})
+        self.assertEqual(F.observer_diagnostic(encode({'classification': 'cli-exception', 'exception': 'TypeError'}), catalog),
+            {'reason': 'controller-exception', 'exception': 'TypeError'})
+
+    def test_source_observer_launch_uses_only_fixed_checkonly_closed_stdin_and_original_timeout(self):
+        expected, _own, _sources, _profile = self.observer_binding()
+        result = types.SimpleNamespace(returncode=1, stdout=b'', stderr=b'private TOKEN=fictional')
+        with patch.object(F, 'run', return_value=result) as run:
+            self.assertIs(F.control('check-only', check=False, observer=expected), result)
+            self.assertEqual(run.call_args.args[0], ['/usr/bin/python3', '-I', '-B', str(pathlib.Path(F.__file__).absolute()), '--observe-check-only'])
+            self.assertEqual(run.call_args.kwargs, {'input': (json.dumps(expected, sort_keys=True, separators=(',', ':')) + '\n').encode(), 'check': False, 'timeout': 60})
+        for operation, unit in [('initialize', None), ('status', None), ('check-only', F.UNITS[0])]:
+            with patch.object(F, 'run') as run, self.assertRaises(AssertionError):
+                F.control(operation, unit=unit, check=False, observer=expected)
+            run.assert_not_called()
+
+    def test_source_observer_keeps_abnormal_numeric_exit_closed_and_actual_root_entry_refuses_nonroot(self):
+        expected, _own, _sources, _profile = self.observer_binding()
+        F.report = {'currentPhase': 'protected-native-configuration'}
+        F.configuration_phase('check-only')
+        with patch.object(F, 'control', return_value=types.SimpleNamespace(returncode=-9, stderr=b'private TOKEN=fictional')) as control, \
+             patch.object(F, 'observer_bound_catalog') as catalog, self.assertRaises(AssertionError):
+            F.configuration_control('check-only', observer=expected)
+        control.assert_called_once_with('check-only', check=False, observer=expected)
+        catalog.assert_not_called()
+        self.assertEqual(F.report['configuration']['exit'], {'classification': 'signal', 'status': -9})
+        self.assertEqual(F.report['configuration']['reason'], 'controller-signal')
+        self.assertNotIn('private', json.dumps(F.report))
+        self.assertNotEqual(os.geteuid(), 0)
+        with patch.object(F, 'observer_read') as read, self.assertRaisesRegex(AssertionError, '^Observer requires owned Linux root$'):
+            F.observer_entry()
+        read.assert_not_called()
+
+    def test_source_observer_output_buffer_is_bounded_in_bytes_and_private_success_is_never_forwarded(self):
+        stream = F.ObserverStream(8)
+        self.assertEqual(stream.write('漢字'), 2)
+        self.assertEqual(stream.length, 6)
+        stream.write('漢')
+        self.assertTrue(stream.overflow)
+        self.assertEqual(stream.parts, [])
+        self.assertEqual(stream.text(), '')
+        controller, catalog = self.observer_model("    print(private)\n    return 0\n")
+        original, argv = controller.require, sys.argv
+        with self.assertRaises((ValueError, AssertionError)):
+            F.observe_controller_main(controller, catalog)
+        self.assertIs(controller.require, original)
+        self.assertIs(sys.argv, argv)
 
 
 if __name__ == '__main__':
