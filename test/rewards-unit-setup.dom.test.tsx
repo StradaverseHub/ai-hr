@@ -10,7 +10,7 @@ const copies={en,ms,zh,ta,th,vi:viCopy};
 const state=vi.hoisted(()=>({locale:'en' as keyof typeof copies,canEdit:true}));
 vi.mock('next/link',()=>({default:({children,...props}:any)=><a {...props}>{children}</a>}));
 vi.mock('next/navigation',()=>({useRouter:()=>({refresh:vi.fn()})}));
-vi.mock('next-intl/server',()=>({getLocale:async()=>state.locale,getTranslations:async(namespace:string)=>createTranslator({locale:state.locale,messages:copies[state.locale],namespace})}));
+vi.mock('next-intl/server',()=>({getLocale:async()=>state.locale,getTranslations:async(namespace:'rewards'|'rewardsPreparation'|'rewards.governance'|'rewardSetup'|'onehr')=>createTranslator({locale:state.locale,messages:copies[state.locale],namespace})}));
 vi.mock('../lib/authz',()=>({requireModule:vi.fn()}));
 vi.mock('../lib/scope',()=>({scopedSession:async()=>({s:{tenantId:'fictional-tenant',userId:'fictional-gr'}})}));
 vi.mock('../app/rewards/preparation-actions',()=>({preparationAction:vi.fn()}));
