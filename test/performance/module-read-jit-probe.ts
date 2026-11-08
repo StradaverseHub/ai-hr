@@ -1,4 +1,4 @@
-/** Closed disposable test owner. No product hook, SQL rewrite, authority or JIT policy. */
+/** Closed disposable test owner. Observes product policy and separate native counterfactuals. */
 import assert from 'node:assert/strict';
 import {createHash,randomUUID} from 'node:crypto';
 import {readFileSync} from 'node:fs';
@@ -19,15 +19,17 @@ export type JitMode='on'|'off';
 export type CapturedStatement={statement:SQL;text:string;params:unknown[];digest:string;classification:string;ordinal:number;rows:number|null;elapsedMs:number;succeeded:boolean};
 export const digest=(value:unknown)=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const bytesDigest=(value:string|Buffer)=>createHash('sha256').update(value).digest('hex');
-const settingSql=`select pg_backend_pid()as pid,current_user as role,session_user as login,
+export const moduleJitDiagnosticSettingsSql=`select pg_backend_pid()as pid,current_user as role,session_user as login,
  current_setting('jit')as jit,pg_jit_available()as available,current_setting('server_version_num')as version,
  current_setting('jit_above_cost')as above,current_setting('jit_inline_above_cost')as inline,
  current_setting('jit_optimize_above_cost')as optimize,current_setting('work_mem')as work,
  current_setting('hash_mem_multiplier')as hash,current_setting('plan_cache_mode')as cache,
  current_setting('statement_timeout')as statement,current_setting('lock_timeout')as "lock",
  current_setting('row_security')as rls`;
+const settingSql=moduleJitDiagnosticSettingsSql;
 export function classifyNativeStatement(text:string){
  const q=text.toLowerCase().replace(/\s+/g,' ');
+ if(text==='set local jit=off')return 'presentation-jit-policy';
  if(q.includes('public.app_user u'))return 'principal';
  if(q.includes('attendance_month_population'))return 'attendance-population';
  if(q.includes('from \"attendance\"'))return 'attendance-days';
@@ -148,7 +150,8 @@ function safePlan(raw:unknown){
 export async function createModuleReadJitProbe(ctx:SessionContext,save:()=>void){
  // Registered sole-file admission precedes this function; it owns the fixture pool.
  await database.client.end({timeout:5});
- const url=new URL(process.env.TEST_DATABASE_URL!);url.searchParams.set('application_name','module_read_jit_'+randomUUID().replaceAll('-',''));
+ const applicationName='module_read_jit_'+randomUUID().replaceAll('-','');
+ const url=new URL(process.env.TEST_DATABASE_URL!);url.searchParams.set('application_name',applicationName);
  const single=database.createDb(url.toString(),{max:1}),dialect=new PgDialect();assert.equal(single.client.options.max,1);
  try{
  const audit=(text:string)=>single.client.unsafe(text,[],{prepare:false});
@@ -159,6 +162,8 @@ export async function createModuleReadJitProbe(ctx:SessionContext,save:()=>void)
   assert(rows.length<=128,'Prepared audit detail overflow');return Array.from(rows);
  };
  let busy=false,poisoned=false,closed=false,mode:JitMode='on',calls=0;
+ let policyCommandCount=0,policyObservationMs=0,policyHookMs=0,policyFacts:Settings|undefined;
+ let afterPolicy:((tx:Tx,facts:Settings)=>Promise<void>)|undefined;
  let queries:CapturedStatement[]=[],identities:unknown[]=[];const pending=new Set<Promise<unknown>>(),owned=new Set<Promise<unknown>>();
  const receipts:Record<string,unknown>[]=[],plans:Record<string,unknown>[]=[];
  const tracked=<T>(work:Promise<T>)=>{pending.add(work);void work.catch(()=>{});void work.finally(()=>pending.delete(work)).catch(()=>{});return work;};
@@ -182,23 +187,38 @@ export async function createModuleReadJitProbe(ctx:SessionContext,save:()=>void)
      row_security_active('public.employment'::regclass)as employment,row_security_active('public.assignment'::regclass)as assignment,row_security_active('public.person'::regclass)as person,row_security_active('public.company'::regclass)as company`);
    assert.deepEqual(identity,{pid:defaults.pid,role:'ai_hr_app',login:'ai_hr_app',tenant:ctx.tenantId,user:ctx.userId,isolation:'repeatable read',readOnly:true,jit:mode,employment:true,assignment:true,person:true,company:true});
    const [controlled]=await tx.execute(sql.raw(settingSql));assert.deepEqual(controlled,{...defaults,jit:mode,available:mode==='on'});
-   identities.push({pid:identity.pid,role:identity.role,login:identity.login,isolation:identity.isolation,readOnly:identity.readOnly,jit:identity.jit,allPrincipalAndRlsFactsExact:true});
+   identities.push({pid:identity.pid,role:identity.role,login:identity.login,isolation:identity.isolation,readOnly:identity.readOnly,jitAtAdmission:identity.jit,requestedJit:mode,allPrincipalAndRlsFactsExact:true});
    const proxy=new Proxy(tx,{get(target,key,receiver){
     if(key==='select'||key==='selectDistinct')return (...args:unknown[])=>wrap(Reflect.apply(target[key],target,args));
-    if(key==='execute')return (query:SQL)=>observe(query,()=>target.execute(query));
+    if(key==='execute')return async(query:SQL)=>{
+     const result=await observe(query,()=>target.execute(query));
+     if(dialect.sqlToQuery(query).sql==='set local jit=off'){
+      assert.equal(++policyCommandCount,1,'One fixed product policy command required');
+      const started=performance.now();
+      try{
+       const [facts]=await target.execute(sql.raw(settingSql));
+       assert.deepEqual(facts,{...defaults,jit:'off',available:false});policyFacts=facts as unknown as Settings;
+      }finally{policyObservationMs+=performance.now()-started;}
+      if(afterPolicy){const hookStarted=performance.now();try{await afterPolicy(tx,policyFacts!);}finally{policyHookMs+=performance.now()-hookStarted;}}
+     }
+     return result;
+    };
     const value=Reflect.get(target,key,receiver);return typeof value==='function'?value.bind(target):value;
    }});
    const start=performance.now();let bodyFinished=false;try{const result=await read(proxy);await Promise.allSettled([...pending]);callbackMs=performance.now()-start;bodyFinished=true;
-    const [after]=await tx.execute(sql.raw(settingSql));assert.deepEqual(after,{...defaults,jit:mode,available:mode==='on'});return result;}finally{
+    const effective=policyCommandCount===1?'off':mode;
+    const [after]=await tx.execute(sql.raw(settingSql));assert.deepEqual(after,{...defaults,jit:effective,available:effective==='on'});
+    if(afterPolicy)assert.equal(policyCommandCount,1,'Policy control must reach the actual product command');return result;}finally{
     // Query await sums overlap under the preserved same-Tx Promise.all bodies.
     await Promise.allSettled([...pending]);if(!bodyFinished)callbackMs=performance.now()-start;
    }
   },options);
  });
  let callbackMs=0;
- async function run<T>(label:string,jit:JitMode,work:()=>Promise<T>){
+ async function run<T>(label:string,jit:JitMode,work:()=>Promise<T>,afterProductPolicy?:((tx:Tx,facts:Settings)=>Promise<void>)){
   assert(!busy&&!poisoned&&!closed,'Diagnostic owner is busy, poisoned or closed');busy=true;mode=jit;calls=0;queries=[];identities=[];callbackMs=0;
-  const receipt:Record<string,unknown>={label,mode:jit,complete:false,freshPlan:false,firstSampleIsStorageCold:false};receipts.push(receipt);save();
+  policyCommandCount=0;policyFacts=undefined;policyObservationMs=0;policyHookMs=0;afterPolicy=afterProductPolicy;
+  const receipt:Record<string,unknown>={label,mode:jit,modeMeaning:'requested-test-parent',requestedJit:jit,complete:false,freshPlan:false,firstSampleIsStorageCold:false};receipts.push(receipt);save();
   let primary:unknown,hasPrimary=false,result:T|undefined;const operation=(async()=>{
    try{
     assert.deepEqual(await settings(),defaults);await audit('discard plans');receipt.freshPlan=true;receipt.preparedBefore=await prepared();
@@ -210,11 +230,16 @@ export async function createModuleReadJitProbe(ctx:SessionContext,save:()=>void)
    }catch(error){hasPrimary=true;primary=error;receipt.failed=true;}
    finally{
     await Promise.allSettled([...pending]);
-    receipt.identities=identities;receipt.transactionCalls=calls;
+    receipt.identities=identities;receipt.transactionCalls=calls;receipt.policyCommandCount=policyCommandCount;
+    receipt.jitAtAdmission=identities.length?jit:null;receipt.effectiveJitAfterProductPolicy=policyFacts?.jit??null;
+    receipt.effectiveJitAtCompletion=receipt.complete===true?(policyFacts?.jit??jit):null;
+    receipt.policyOrdinal=queries.find(query=>query.text==='set local jit=off')?.ordinal??null;
+    receipt.policyObservationMs=policyObservationMs;receipt.policyHookMs=policyHookMs;
+    receipt.callbackTimingIncludesPolicyObservationAndHook=true;
     receipt.statements=queries.map(({digest,classification,ordinal,rows,elapsedMs,succeeded})=>({digest,classification,ordinal,rows,elapsedMs,succeeded}));
     receipt.census={statements:queries.length,rows:queries.reduce((n,q)=>n+(q.rows??0),0),unknownRows:queries.filter(q=>q.rows===null).length,failed:queries.filter(q=>!q.succeeded).length,unclassified:queries.filter(q=>q.classification==='unclassified').length};
     try{assert.deepEqual(await settings(),defaults);receipt.defaultsRestoredSamePid=true;}catch(error){poisoned=true;receipt.defaultsRestoredSamePid=false;primary=hasPrimary?new AggregateError([primary,error],'Diagnostic restoration failed'):error;hasPrimary=true;}
-    receipt.complete=receipt.complete===true&&!hasPrimary;busy=false;
+    receipt.complete=receipt.complete===true&&!hasPrimary;busy=false;afterPolicy=undefined;
     try{save();}catch(error){primary=hasPrimary?new AggregateError([primary,error],'Diagnostic receipt persistence failed'):error;hasPrimary=true;}
    }
    if(hasPrimary)throw primary;return {value:result!,queries:queries.slice(),receipt};
@@ -230,7 +255,10 @@ export async function createModuleReadJitProbe(ctx:SessionContext,save:()=>void)
    return module==='attendance'?withModulePresentationRead(ctx,'attendance',tx=>explainTx(tx)):
     database.withTenant(ctx,async tx=>{await assertAiPresentationPrincipalTx(tx,ctx);return explainTx(tx);},{readOnlySnapshot:true});
   });
-  const plan={module,mode:jit,order,digest:shape.digest,...result.value};plans.push(plan);save();
+  assert.equal(result.receipt.policyCommandCount,0,'Counterfactual shape owner must not invoke a product entry');
+  assert.equal(result.receipt.effectiveJitAtCompletion,jit);
+  result.receipt.course='COUNTERFACTUAL_NATIVE_SHAPE_NOT_PRODUCT_WHOLE_READ';
+  const plan={kind:'COUNTERFACTUAL_NATIVE_SHAPE_NOT_PRODUCT_WHOLE_READ',module,mode:jit,requestedJit:jit,effectiveJit:jit,order,digest:shape.digest,...result.value};plans.push(plan);save();
   if(jit==='off')assert.equal(plan.jit,null);else if(Number(plan.nodes[0]['Total Cost'])>Number(defaults.above))assert(plan.jit,'Eligible native on plan must actually compile');
   return plan;
  }
@@ -241,7 +269,7 @@ export async function createModuleReadJitProbe(ctx:SessionContext,save:()=>void)
   const rejected=settled.filter((r):r is PromiseRejectedResult=>r.status==='rejected');errors.push(...rejected.map(r=>r.reason));
   if(errors.length)throw new AggregateError(errors,'Diagnostic owner cleanup failed');
  }
- return {run,explain,close,defaults,receipts,plans,
+ return {run,explain,close,defaults,receipts,plans,applicationName,
   sameQueries:(a:CapturedStatement[],b:CapturedStatement[])=>a.length===b.length&&a.every((q,i)=>q.text===b[i].text&&isDeepStrictEqual(q.params,b[i].params)&&q.rows===b[i].rows),
   snapshot:()=>({defaults,receipts,plans,poisoned,busy,closed,pendingQueries:pending.size,ownedOperations:owned.size,maxAppConnections:1,
    limits:{statementsPerCall:256,preparedStatements:128,plans:20,planNodes:2048},includesSqlParamsResultsOrNativeErrorContent:false})};

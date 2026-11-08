@@ -3552,6 +3552,7 @@ export async function attendanceMonthSummaryPage(ctx:SessionContext,
   const monthStart=`${p.month}-01`,[y,m]=p.month.split('-').map(Number);
   const monthEnd=new Date(Date.UTC(y,m,0)).toISOString().slice(0,10),today=p.today??todayInKualaLumpur();
   const population=attendanceMonthEmployeesSourceTx(tx,p.companyIds).as('attendance_month_population');
+  await tx.execute(sql`set local jit=off`);
   const [counted]=await tx.select({total:sql<number>`count(*)`.mapWith(Number)}).from(population);
   const total=counted?.total??0;
   // The existing route parser admits00/13 months. A nonempty full reader would

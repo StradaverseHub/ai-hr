@@ -58,7 +58,7 @@ async function fixture(){
  ]);
  return {b,ctx,employees};
 }
-const dataQueries=(queries:Query[])=>queries.filter(q=>!q.sql.includes('public.app_user u'));
+const dataQueries=(queries:Query[])=>queries.filter(q=>!q.sql.includes('public.app_user u')&&q.sql!=='set local jit=off');
 
 it('matches all thirteen public report owners and independent facts with one real RR/RO transaction',async()=>{
  const f=await fixture(),p=input(),baseline=observe();let expected:Awaited<ReturnType<typeof standaloneDashboard>>;
@@ -70,6 +70,10 @@ it('matches all thirteen public report owners and independent facts with one rea
  expect(result!).toEqual(expected!);expect(candidate.properties).toHaveLength(1);
  expect(candidate.properties[0]).toMatchObject({role:'ai_hr_app',isolation:'repeatable read',readOnly:true});
  expect(candidate.state).toEqual({active:0,maxActive:1});
+ const policy=candidate.queries.filter(q=>q.sql==='set local jit=off');expect(policy).toHaveLength(1);expect(policy[0].params).toEqual([]);
+ expect(baseline.queries.filter(q=>q.sql==='set local jit=off')).toHaveLength(0);
+ expect(candidate.queries.indexOf(policy[0])).toBeGreaterThan(candidate.queries.findIndex(q=>q.sql.includes('public.app_user u')));
+ expect(candidate.queries.indexOf(policy[0])).toBeLessThan(candidate.queries.findIndex(q=>q.sql.includes('analytics_headcount')));
  expect(dataQueries(candidate.queries)).toEqual(dataQueries(baseline.queries));
  expect(baseline.queries.filter(q=>q.sql.includes('public.app_user u'))).toHaveLength(5);
  expect(candidate.queries.filter(q=>q.sql.includes('public.app_user u'))).toHaveLength(1);

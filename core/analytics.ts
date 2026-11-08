@@ -1434,6 +1434,7 @@ export async function analyticsDashboard(supplied:SessionContext,scopeIds:string
   const pages={hires:validatedReportPage(p.pages.hires),terms:validatedReportPage(p.pages.terms),
     changeJobs:validatedReportPage(p.pages.changeJobs),carryForward:validatedReportPage(p.pages.carryForward)};
   return withAnalyticsPresentation(ctx,async tx=>{
+    await tx.execute(sql`set local jit=off`);
     const hc=await headcountSummaryTx(tx,scope,{asOf:to});
     const hires=await newHiresPageTx(tx,scope,{from,to,filter},pages.hires);
     const terms=await terminationsPageTx(tx,scope,{from,to,filter},pages.terms);
