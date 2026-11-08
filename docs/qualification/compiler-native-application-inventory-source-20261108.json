@@ -1,7 +1,7 @@
 {
   "version": 1,
   "kind": "COMPILER_NATIVE_APPLICATION_INVENTORY_SOURCE_NOT_QUALIFICATION",
-  "sourceRef": "codex/compiler-native-jsdoc-traversal-20261108",
+  "sourceRef": "codex/compiler-native-jsdoc-binding-recovery-20261108",
   "reviewedIntegration": "1ffaffae266870a0b298ec8094433eeeb0dcb57e",
   "reviewedDesign": "047a0748b41bad3b2abde1c170f1a01c16f97687",
   "requiredCurrentSharedAncestor": "29d9edcbc4368be871688e9fdf35347676a7841c",
@@ -21,10 +21,11 @@
     ".github/ci/diagnostics/native-reference/admission.test.mjs": "3e0f32e5ad02a70bfff5e11eeecb5608a2a14c658773522be6f7aa89f464769a",
     ".github/ci/diagnostics/native-reference/application-inputs.mjs": "7a765d7af7f711d0c9c65026f45efed8f66be3fd74ecdc5137deb337713d3727",
     ".github/ci/diagnostics/native-reference/application-inventory.mjs": "5743026bf5cd081b60ffd8e6e88f994111c5ab9399fe850089030a5309f7a592",
+    ".github/ci/diagnostics/native-reference/application-jsdoc-binding-inverse.json": "7a613c5d1d9533cba7b9581b2be2d338e229561e5b9a0dcb6b39c41c8125d036",
     ".github/ci/diagnostics/native-reference/application-jsdoc-inverse.json": "c55d07a421dd4a8e8a00f19a8d992e627a760149dae4fb02d76da07332f0c96c",
-    ".github/ci/diagnostics/native-reference/application-mode-native.test.mjs": "9ea9bf8f10f8bb0f8c4bfdab3f6e3cb6651199ba1036738610dff5c4367d5867",
+    ".github/ci/diagnostics/native-reference/application-mode-native.test.mjs": "6a38ad8ea3eb3f7ccb4b3dbb03540af8eb3c58c796884b4f87b4395668736eef",
     ".github/ci/diagnostics/native-reference/application-mode.mjs": "b8dee0b836e1047d3574cf5ca30515c521096fef383741aa87d56202243957dd",
-    ".github/ci/diagnostics/native-reference/application-mode.test.mjs": "22eac521d26f34ecb5133afeeb8fa6e488fb1bb1e4101dca6d7a4c90b03b47a7",
+    ".github/ci/diagnostics/native-reference/application-mode.test.mjs": "736f8e46a7d2e45965192984f750bf29575cf47b9607ff237a616271401a2b46",
     ".github/ci/diagnostics/native-reference/application-owner-inverse.json": "8584d652e8e62ae358a286adbc9535de49b3c2fc03d40d2b5fc17da0597f828c",
     ".github/ci/diagnostics/native-reference/application-parent-context-inverse.json": "176db10f6b9cb53a70aa5bf6f1c201317eb9cbd94882f902e1f966fff66ec816",
     ".github/ci/diagnostics/native-reference/application-protocol.mjs": "a3daa34c48285dd3ea17573245730fdcdb9f03a79f462a77735eff059a056376",
@@ -67,6 +68,7 @@
     "docs/qualification/compiler-native-current-integration-20261108.md": "e6bef132ee2d635896956de1a7a61a1f5e22d4136495254865d6f63183049345",
     "docs/qualification/compiler-native-current-integration-source-20261108.json": "3a3396ec2f9e6aa0af3cf23f9fd70f25dbdb0274d65f9be45997ae7230826763",
     "docs/qualification/compiler-native-input-stat-diagnostic-20261108.md": "add5be85743f9361ed21c2cc5c9812e570c5afa93ea3970f57cbccd8f33cad8e",
+    "docs/qualification/compiler-native-jsdoc-binding-recovery-20261108.md": "4a26e86c5b5f48a0e5b5f663f1a325453d00803a0aff38456f2dceffe10c9b4d",
     "docs/qualification/compiler-native-jsdoc-traversal-20261108.md": "0640df25bd17a192e53d0bf5948f7952ffb8f862f3969e2b7a5f2811b2ff9369",
     "docs/qualification/compiler-native-json-context-20261108.md": "4f690fd761ff0a9b7cc6ef256c220a1786610472c27b171877581f60320d5b03",
     "docs/qualification/compiler-native-package-context-20261108.md": "6cb18fafa9cc412ac1d8249b66367331911174b6994bb02351a57cd2c2b314d3",
@@ -200,5 +202,48 @@
     "fullOriginalProgramOwnDescriptorAssertionsPrepared": true,
     "newNativeDocumentsExpected": 8,
     "newNativeReferencesExpected": 7
+  },
+  "jsdocNativeBindingRecovery": {
+    "predecessor": "aca13b6136a58e14e2f7445be98483364e81434d",
+    "reportedOriginalRun": "42467247331",
+    "artifact": "13611678414",
+    "zipSha256": "b5f2d667b1c241fe54d9a7a860a212cf6a0d6ee19d2e690ccf787adb75269508",
+    "rootArtifactAuthenticationPendingAtPreparation": true,
+    "reportedWrapperOutcomes": {
+      "total": 3,
+      "pass": 1,
+      "fail": 2
+    },
+    "reportedSourceCases": {
+      "total": 19,
+      "pass": 18,
+      "fail": 1
+    },
+    "reportedNativeCases": {
+      "total": 3,
+      "pass": 2,
+      "fail": 1
+    },
+    "reportedPythonCases": {
+      "total": 9,
+      "pass": 9
+    },
+    "nativeFix": "Unique original host jsDoc DATA descriptor/document.tags identity; no assumed tag.parent/document.parent or AST modification.",
+    "historyFix": "Whole new ACA inverse then whole ACA-to-a1 inverse before immutable e54/267d body assertions; current full component pins still checked.",
+    "wholePredecessorInverse": ".github/ci/diagnostics/native-reference/application-jsdoc-binding-inverse.json",
+    "wholePredecessorFiles": 3,
+    "retainedPreviousComponentMembers": 101,
+    "currentComponentMembers": 103,
+    "sourceIntentionsRetained": 19,
+    "nativeCasesRetained": 3,
+    "originalNineFormsRetained": true,
+    "productionTraversalAndWorkerChanged": false,
+    "modeKernelOrResourcesChanged": false,
+    "oldInversesChanged": false,
+    "testsExecuted": false,
+    "ordinaryCompilerQualified": false,
+    "fullApplicationFiveNegativesQualified": false,
+    "sourceOnly": true,
+    "releaseAuthorized": false
   }
 }
