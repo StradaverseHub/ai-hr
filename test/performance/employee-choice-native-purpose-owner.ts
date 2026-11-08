@@ -14,7 +14,8 @@ export async function employeeChoiceNativeSecurity(){
   grants:Array.from(await owner.client`select table_schema,table_name,grantee,privilege_type,is_grantable from information_schema.role_table_grants where table_schema in('public','app') order by table_schema,table_name,grantee,privilege_type`),
   roleEdges:Array.from(await owner.client`select * from pg_auth_members order by roleid,member`)};
 }
-export async function installEmployeeChoiceNativePrototype(){
+export type EmployeeChoiceNativeInstallation={database:string;sourceSha256:string;installed:{definition:string;identity:unknown};security:Awaited<ReturnType<typeof employeeChoiceNativeSecurity>>;unchanged:()=>Promise<void>;remove:()=>Promise<void>};
+export async function installEmployeeChoiceNativePrototype(adopt?:(value:EmployeeChoiceNativeInstallation)=>void):Promise<EmployeeChoiceNativeInstallation>{
  expect(sha('core/employee-choice.ts')).toBe('ce1e3559addbffa4b4e780594ebcc5fcf917ddffde79a6155cc7fbcecdbcfbd5');
  expect(sha('test/performance/employee-choice-native-current-baseline.ts')).toBe('fc1a1603aa7a032a0450dfca98eddd6068de5a1913478d25e5e7e90eea8e3816');
  expect(sha('test/fixtures/employee-choice-native-purpose.sql')).toBe(employeeChoicePrototypeSqlSha256);
@@ -27,36 +28,46 @@ export async function installEmployeeChoiceNativePrototype(){
  const [identity]=await owner.client`select current_user as role,session_user as login,current_database() as database,inet_server_addr()='127.0.0.1'::inet as loopback`;
  expect(identity).toEqual({role:'postgres',login:'postgres',database,loopback:true});
  const security=await employeeChoiceNativeSecurity(),source=readFileSync('test/fixtures/employee-choice-native-purpose.sql','utf8');
- const installed=await owner.client.begin(async tx=>{
+ let installed:EmployeeChoiceNativeInstallation['installed']|undefined,removed=false;
+ const owned=async()=>{
+  if(!installed)throw Error('Native prototype witness missing');
+  expect((await owner.client`select count(*)::int as count from pg_proc where pronamespace='app'::regnamespace and proname='employee_choice_native_prototype'`)[0].count).toBe(1);
+  const [current]=await owner.client`select pg_get_functiondef(p.oid) as definition,to_jsonb(p) as identity from pg_proc p where p.oid=${employeeChoicePrototypeSignature}::regprocedure`;
+  expect(current).toEqual({definition:installed.definition,identity:installed.identity});
+ };
+ let resource:EmployeeChoiceNativeInstallation|undefined;
+ await owner.client.begin(async tx=>{
   await tx`select set_config('aihr.employee_choice_probe.database',${database},true)`;
   await tx.unsafe(source);
- const [created]=await tx`select pg_get_functiondef(p.oid) as definition,to_jsonb(p) as identity,p.prosecdef,p.provolatile,p.proparallel,
+ const [created]=await tx<{definition:string;identity:unknown}[]>`select pg_get_functiondef(p.oid) as definition,to_jsonb(p) as identity,p.prosecdef,p.provolatile,p.proparallel,
   p.proconfig,p.pronargs,p.proisstrict,p.proleakproof,p.prokind,p.proowner::regrole::text as owner,
   has_function_privilege('ai_hr_app',p.oid,'EXECUTE') as app,
   exists(select 1 from aclexplode(coalesce(p.proacl,acldefault('f',p.proowner))) a where a.grantee=0) as public,
   (select count(*)::int from aclexplode(coalesce(p.proacl,acldefault('f',p.proowner)))) as acl_count
   from pg_proc p where p.oid=${employeeChoicePrototypeSignature}::regprocedure`;
+ if(!created)throw Error('Native created function witness missing');
  expect(created).toMatchObject({prosecdef:false,provolatile:'s',proparallel:'u',proconfig:['search_path=pg_catalog, pg_temp','jit=off'],
   pronargs:20,proisstrict:false,proleakproof:false,prokind:'f',owner:'postgres',app:true,public:false,acl_count:2});
  const acl=await tx`select a.grantor::regrole::text as grantor,a.grantee::regrole::text as grantee,a.privilege_type,a.is_grantable from pg_proc p,aclexplode(p.proacl) a where p.oid=${employeeChoicePrototypeSignature}::regprocedure order by a.grantee::regrole::text`;
  expect(Array.from(acl)).toEqual([{grantor:'postgres',grantee:'ai_hr_app',privilege_type:'EXECUTE',is_grantable:false},{grantor:'postgres',grantee:'postgres',privilege_type:'EXECUTE',is_grantable:false}]);
  expect(await employeeChoiceNativeSecurity()).toEqual(security);
- return created;
- });
- let removed=false;
- const owned=async()=>{
-  expect((await owner.client`select count(*)::int as count from pg_proc where pronamespace='app'::regnamespace and proname='employee_choice_native_prototype'`)[0].count).toBe(1);
-  const [current]=await owner.client`select pg_get_functiondef(p.oid) as definition,to_jsonb(p) as identity from pg_proc p where p.oid=${employeeChoicePrototypeSignature}::regprocedure`;
-  expect(current).toEqual({definition:installed.definition,identity:installed.identity});
- };
- return {database,sourceSha256:createHash('sha256').update(source).digest('hex'),installed,security,
+ installed=created;
+ resource={database,sourceSha256:createHash('sha256').update(source).digest('hex'),installed:created,security,
   async unchanged(){await owned();expect(await employeeChoiceNativeSecurity()).toEqual(security);},
   async remove(){
    if(removed)return;
+   const [present]=await owner.client`select count(*)::int as count from pg_proc where pronamespace='app'::regnamespace and proname='employee_choice_native_prototype'`;
+   // Predecessor guard established complete absence. A rolled-back/lost COMMIT
+   // may leave that exact predecessor; never drop an unrecognized replacement.
+   if(present.count===0){expect(await employeeChoiceNativeSecurity()).toEqual(security);removed=true;return;}
    await owned();
-   // Signature is fixed source, never a supplied identifier or SQL program.
    await owner.client.unsafe('drop function '+employeeChoicePrototypeSignature);removed=true;
    expect((await owner.client`select to_regprocedure(${employeeChoicePrototypeSignature}) as function`)[0].function).toBeNull();
    expect(await employeeChoiceNativeSecurity()).toEqual(security);
   }};
+ // Own the native OID/body/metadata witness BEFORE the COMMIT response can be
+ // lost. Cleanup accepts only this exact result or the guarded absent predecessor.
+ adopt?.(resource);
+ });
+ if(!resource)throw Error('Native prototype adoption missing');return resource;
 }

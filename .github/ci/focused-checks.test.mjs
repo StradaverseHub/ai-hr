@@ -1,7 +1,7 @@
 /** Controller-only regressions; no app imports, database, compiler or provider calls. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {parseSelection, partitionSelection, verifyFocusedResult} from './focused-checks.mjs';
+import {parseSelection, partitionSelection, verifyFocusedResult, isEmployeeChoiceBenchmark, employeeBenchmarkFile} from './focused-checks.mjs';
 
 const files = ['test/example.test.ts', 'test/screen.dom.test.tsx'];
 test('Manifest retains exact file identities and sorts a copied selection', () => {
@@ -80,4 +80,9 @@ test('focused plan identity binds cap and peak budget independently of selected 
     assert.notEqual(altered.fingerprint, original.fingerprint);
     assert.deepEqual(altered.files, original.files);
   }
+});
+
+test('only the exact sole experimental employee plan takes the supervised execution seam',()=>{
+ assert.equal(isEmployeeChoiceBenchmark([employeeBenchmarkFile]),true);
+ for(const selected of [[],files,[employeeBenchmarkFile,files[0]],['test/employee-choice-benchmark-owner-native.test.ts'],['test/employee-choice-native-purpose.test.ts']])assert.equal(isEmployeeChoiceBenchmark(selected),false);
 });
