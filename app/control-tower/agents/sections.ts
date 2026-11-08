@@ -5,8 +5,8 @@
  * spend policy, provider setup without group-wide authority) is not offered, and opening it goes to the Overview rather than rendering an empty page. */
 /** AI Centre restructure (4 Nov 2026): Workers (`features`) is the one list of AI pieces, the inventory among them, so the
  * Inventory page is a guarded forward stub rather than a section. */
-export const AI_MANAGEMENT_SECTIONS = ['overview','provider','assistant','features','allowances','spending','orchestrator','runs'] as const;
-export type AiManagementSection = (typeof AI_MANAGEMENT_SECTIONS)[number];
+import {AI_MANAGEMENT_SECTIONS,type AiManagementSection} from '@/lib/ai/management-sections';
+export {AI_MANAGEMENT_SECTIONS,type AiManagementSection} from '@/lib/ai/management-sections';
 export const AI_MANAGEMENT_PAGE = '/control-tower/agents';
 export function availableAiManagementSections(scope:{spend:boolean;provider:boolean}):AiManagementSection[]{
   return AI_MANAGEMENT_SECTIONS.filter(s=>(s!=='spending'||scope.spend)&&(s!=='provider'||scope.provider));

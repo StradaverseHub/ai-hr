@@ -9,17 +9,22 @@ import {readMandateKeysTx} from '@/core/mandates/mandates';
 import {delegableJobType} from '@/core/mandates/job-types';
 import {setAiCentreFunctionAction,setAiCentreJobAction,setAiCentreStopAction} from './centre-control-actions';
 
-export async function AiCentreControls({session}:{session:SessionContext}){
- const t=await getTranslations('aiCentre.controls');
- const features=await getTranslations('aiManagement');
- const workers=await getTranslations('aiCentre.registry');
- const [state,controls,jobs]=await Promise.all([
+/** Exact independent display reads shared with the server-owner timing course. No action authority. */
+export async function aiCentreControlReads(session:SessionContext){
+ return Promise.all([
   aiCentreControlState(session).catch(()=>null),aiCentreReadControls(session).catch(()=>null),
   withTenant(session,async tx=>Promise.all(aiCentreJobTypes().map(async id=>{
    const jobType=delegableJobType(id),keys=await readMandateKeysTx(tx,session.tenantId,jobType);
    return{jobType,enabled:keys.enablement?.enabled===true,maxValidityDays:keys.enablement?.maxValidityDays??90,maxRunsPerDay:keys.enablement?.maxRunsPerDay??1};
   }))).catch(()=>null),
  ]);
+}
+
+export async function AiCentreControls({session}:{session:SessionContext}){
+ const t=await getTranslations('aiCentre.controls');
+ const features=await getTranslations('aiManagement');
+ const workers=await getTranslations('aiCentre.registry');
+ const [state,controls,jobs]=await aiCentreControlReads(session);
  const functions=aiCentreFunctions();
  const label=(name:string)=>name.replaceAll('_',' ').replaceAll('.',' ');
  const functionName=(row:(typeof functions)[number])=>row.key.startsWith('feature:')&&features.has('features.'+row.name)?features('features.'+row.name):row.key.startsWith('worker:')&&workers.has('workers.'+row.key.slice(7))?workers('workers.'+row.key.slice(7)):label(row.name);

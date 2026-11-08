@@ -1,0 +1,380 @@
+{
+  "kind": "AI_MANAGEMENT_SECTION_SOURCE_ONLY_NOT_QUALIFICATION",
+  "base": "cd47c63c77d26431ee33de38b75790c62924a1ad",
+  "sourceRef": "codex/ai-management-section-projection-20261109",
+  "currentSourceSha256": {
+    "app/control-tower/agents/centre-controls.tsx": "3ce6b612fec0b328103b5221b673714e59f4548bf37be243211cfc4293d18915",
+    "app/control-tower/agents/screen.tsx": "a137c62df804c0c4e6e40f11d3ecca1e295fabb3b817fb1d440225e38a172d12",
+    "app/control-tower/agents/sections.ts": "b81f66a6d5b3ae8bca6ee5ef348187ba00782c63daffadc654bc03e7f690855b",
+    "core/ai-inventory.ts": "39fb65f86aacfe0f624a92b3ec9bded28969121af5c30dcb76e2b32618f3efd1",
+    "core/ai-management.ts": "759c3bb016c250ac1f8f9d56a29e7049e32854e7a654e9d698b7e3df49118255",
+    "test/ai-centre-evidence.dom.test.tsx": "db1bd6f55113e6868576c33e8f533716203a5ab96611263098fc0edc46504a32",
+    "test/ai-centre-page-timing.test.ts": "f2b9c76d2f69a8f94c20f228b6406a0926d7e31ba4749b80fbd5d18c64c3d25a",
+    "test/ai-centre-step5-evidence.dom.test.tsx": "3ba0ff3f95a9021e5c0e65c84757538147f1d3a971e57a9c8e82539580693b0f",
+    "test/ai-inventory-screen.dom.test.tsx": "baa3a23c8fca70d880ba85c431d3a2107b8b36f9cf933ebe5119a6e86f0c2022",
+    "test/ai-management-naming.dom.test.tsx": "a021913c8197b4d5b0ae5bb6bc212129252fe9f024c454e9e99ca96cb712fd02",
+    "test/ai-management-page.dom.test.tsx": "99f7ff069d531178d63e5d63e9d236078b729eb0b39e6d178b70989cae22be0d",
+    "test/ai-probe-history-page.dom.test.tsx": "5a542bb1006998a816ac04326f98862b97f79a7e65fb275288e51bb26f48e778",
+    "test/automatic-followup-features.dom.test.tsx": "6073798a23f0a48fbcfb871e4c42cdd33c5e321a22104b08c5ff2f8c0da9522c",
+    "lib/ai/management-sections.ts": "d7efd0b96f9875c560c6b075c9ff1688a7bf0851684adbdab45c399f3cb5c783",
+    "test/ai-management-section-projection.test.ts": "faa9cd23815cefaac34f10b62f4b3260178ffc6599429f2e209e86b420d92f0f",
+    "docs/adr/2026-11-09-ai-management-section-projection.md": "4e22bbd109cdd9530d519878194e5eaf59b47f038b1b21b0e5843e93b86ef127"
+  },
+  "selfExcluded": "docs/qualification/ai-management-section-projection-source-20261109.json",
+  "wholeParentGitPreimages": {
+    "app/control-tower/agents/centre-controls.tsx": {
+      "gitBlob": "7eb0a150ef93da9f5511ab69f05424ff0bf24f41",
+      "sha256": "435e7276089c7cef7647da0733a8b4d39eef8638e4a033d05ac32f14a7257395",
+      "bytes": 5248
+    },
+    "app/control-tower/agents/screen.tsx": {
+      "gitBlob": "25f11066b25f243c27cf46b2889a379252001845",
+      "sha256": "371ae6eb3cbcb9f32972c137119a32c685f9ab2b48194c8333123d738214d614",
+      "bytes": 45920
+    },
+    "app/control-tower/agents/sections.ts": {
+      "gitBlob": "ca74ed5048bc6fa4d8646e6109512cd52f439652",
+      "sha256": "b51f39b0475c214db87e5bfb35a409a8562d77fbbfe54ca697272d6fa3cf7588",
+      "bytes": 2190
+    },
+    "core/ai-inventory.ts": {
+      "gitBlob": "846eda0d13bb803f314c6da4112c30581286e7ea",
+      "sha256": "61e153c6c90ce5581229222e787773bac7da75af47e3800758d839f978fd56ed",
+      "bytes": 16845
+    },
+    "core/ai-management.ts": {
+      "gitBlob": "dd18e5143f06c1bb1f0e9a63ea082068006f58bf",
+      "sha256": "2e2c25f9ad2685ed6072da4aaa4929604ddecb4d5a323b3acf9966ab63473a01",
+      "bytes": 43974
+    },
+    "test/ai-centre-evidence.dom.test.tsx": {
+      "gitBlob": "587c4d500577bc36a3a396b8aa311b116fe5a9de",
+      "sha256": "32a86856b49e99ed30d2b4cfeb7061cd0302625d636b89790a455599be1682f6",
+      "bytes": 13959
+    },
+    "test/ai-centre-page-timing.test.ts": {
+      "gitBlob": "e49073cdb243c4bf7a33e299a2468108c5c3a978",
+      "sha256": "892cc01088315040e4c2f6331dc2d34fe85160dca1a201e5c9f311437e63df04",
+      "bytes": 18961
+    },
+    "test/ai-centre-step5-evidence.dom.test.tsx": {
+      "gitBlob": "d411df0f76ecd7da9bda2be63b272d7efab9894b",
+      "sha256": "60219d39ae7691e03fd241d32b74d0423f5ab3e81f93928feb3ad092f07641a1",
+      "bytes": 12580
+    },
+    "test/ai-inventory-screen.dom.test.tsx": {
+      "gitBlob": "99eb915f7c95d6bf4beebb5bcb5161ab96013a52",
+      "sha256": "2a2359b8be553c0ff99d5717f4cece51068f6e04f2a4d16d277fddb8116b8ce9",
+      "bytes": 10546
+    },
+    "test/ai-management-naming.dom.test.tsx": {
+      "gitBlob": "e742a0499f11d30991cb4709c7074b47685b457f",
+      "sha256": "cc3df82f70a1cc2f9579c25e4249d7ce700323c4c99f31b0fff474cc72057f1c",
+      "bytes": 6628
+    },
+    "test/ai-management-page.dom.test.tsx": {
+      "gitBlob": "1b082793bbd60ed291f37b48b6dacb6195827fdb",
+      "sha256": "b2fd7d41b22cccea7bbed11ff44d5796c1c6cac559bdac2205a9e653b275f52e",
+      "bytes": 17881
+    },
+    "test/ai-probe-history-page.dom.test.tsx": {
+      "gitBlob": "1359ca5d523fd95ffafe0b0099c7e044be6bac49",
+      "sha256": "8f0682d048150a9b6d1d0ecc1ee810da5c4ea6353394045986c7e7b6207cdc5c",
+      "bytes": 4837
+    },
+    "test/automatic-followup-features.dom.test.tsx": {
+      "gitBlob": "371f5354ed223d18921df2cafd923ef51654b8c5",
+      "sha256": "e19c8770862116bfc6de300f243a2cc6907b47ba5793d65ef5164a87d55c9865",
+      "bytes": 4179
+    }
+  },
+  "newAbsentFromParent": [
+    "lib/ai/management-sections.ts",
+    "test/ai-management-section-projection.test.ts",
+    "docs/adr/2026-11-09-ai-management-section-projection.md"
+  ],
+  "inverseCoordinates": "ZERO_BASED_HALF_OPEN_CURRENT_LINES_DESCENDING",
+  "wholeProductParentInverses": {
+    "app/control-tower/agents/centre-controls.tsx": {
+      "currentSha256": "3ce6b612fec0b328103b5221b673714e59f4548bf37be243211cfc4293d18915",
+      "parentSha256": "435e7276089c7cef7647da0733a8b4d39eef8638e4a033d05ac32f14a7257395",
+      "changes": [
+        {
+          "startLine": 20,
+          "endLine": 27,
+          "after": "}\n\nexport async function AiCentreControls({session}:{session:SessionContext}){\n const t=await getTranslations('aiCentre.controls');\n const features=await getTranslations('aiManagement');\n const workers=await getTranslations('aiCentre.registry');\n const [state,controls,jobs]=await aiCentreControlReads(session);\n",
+          "before": ""
+        },
+        {
+          "startLine": 11,
+          "endLine": 14,
+          "after": "/** Exact independent display reads shared with the server-owner timing course. No action authority. */\nexport async function aiCentreControlReads(session:SessionContext){\n return Promise.all([\n",
+          "before": "export async function AiCentreControls({session}:{session:SessionContext}){\n const t=await getTranslations('aiCentre.controls');\n const features=await getTranslations('aiManagement');\n const workers=await getTranslations('aiCentre.registry');\n const [state,controls,jobs]=await Promise.all([\n"
+        }
+      ]
+    },
+    "app/control-tower/agents/screen.tsx": {
+      "currentSha256": "a137c62df804c0c4e6e40f11d3ecca1e295fabb3b817fb1d440225e38a172d12",
+      "parentSha256": "371ae6eb3cbcb9f32972c137119a32c685f9ab2b48194c8333123d738214d614",
+      "changes": [
+        {
+          "startLine": 327,
+          "endLine": 328,
+          "after": "    <Card className=\"p-5\"><SectionHeader title={t('inherited')}/><p className=\"mt-1 text-sm text-muted-foreground\">{t('businessLimits')}</p>{view.allowances.legacyBudget&&<p className=\"mt-2 text-sm\">{t('legacyAssistant',{daily:numbers(view.allowances.legacyBudget.daily),tokens:numbers(view.allowances.legacyBudget.monthly)})}</p>}<p className=\"mt-2 text-xs text-muted-foreground\">{t('humanDecisions')}</p></Card>\n",
+          "before": "    <Card className=\"p-5\"><SectionHeader title={t('inherited')}/><p className=\"mt-1 text-sm text-muted-foreground\">{t('businessLimits')}</p>{view.legacyBudget&&<p className=\"mt-2 text-sm\">{t('legacyAssistant',{daily:numbers(view.legacyBudget.daily),tokens:numbers(view.legacyBudget.monthly)})}</p>}<p className=\"mt-2 text-xs text-muted-foreground\">{t('humanDecisions')}</p></Card>\n"
+        },
+        {
+          "startLine": 324,
+          "endLine": 326,
+          "after": "      <ul className=\"mt-2 divide-y divide-border\">{view.allowances.users.map(userRow)}</ul>\n      {view.allowances.users.length===0&&<p className=\"py-4 text-sm text-muted-foreground\">{t('noUsers')}</p>}{view.allowances.moreUsers&&<p className=\"text-xs text-muted-foreground\">{t('moreUsers')}</p>}\n",
+          "before": "      <ul className=\"mt-2 divide-y divide-border\">{view.users.map(userRow)}</ul>\n      {view.users.length===0&&<p className=\"py-4 text-sm text-muted-foreground\">{t('noUsers')}</p>}{view.moreUsers&&<p className=\"text-xs text-muted-foreground\">{t('moreUsers')}</p>}\n"
+        },
+        {
+          "startLine": 252,
+          "endLine": 253,
+          "after": "    {view.section==='allowances'&&<>\n",
+          "before": "    {section==='allowances'&&<>\n"
+        },
+        {
+          "startLine": 123,
+          "endLine": 124,
+          "after": "  const userRow = (u:AiManagementAllowanceUser) => <li key={u.id} id={`ai-user-${u.id}`} className=\"scroll-mt-4 py-4\">\n",
+          "before": "  const userRow = (u:typeof view.users[number]) => <li key={u.id} id={`ai-user-${u.id}`} className=\"scroll-mt-4 py-4\">\n"
+        },
+        {
+          "startLine": 41,
+          "endLine": 42,
+          "after": "  const view = await aiManagementPageView(s, section, sp.q, runFilter);\n",
+          "before": "  const view = await aiManagementView(s, sp.q, runFilter);\n"
+        },
+        {
+          "startLine": 7,
+          "endLine": 8,
+          "after": "import { AI_RUN_STATE_FILTERS, aiManagementPageView, bulkAssistantDepartments, previewBulkAssistantAccess, type BulkAssistantPreview, type AiAllowanceUse, type AiRunFilter, type AiUsageSummary, type AiManagementAllowanceUser } from '@/core/ai-management';\n",
+          "before": "import { AI_RUN_STATE_FILTERS, aiManagementView, bulkAssistantDepartments, previewBulkAssistantAccess, type BulkAssistantPreview, type AiAllowanceUse, type AiRunFilter, type AiUsageSummary } from '@/core/ai-management';\n"
+        }
+      ]
+    },
+    "app/control-tower/agents/sections.ts": {
+      "currentSha256": "b81f66a6d5b3ae8bca6ee5ef348187ba00782c63daffadc654bc03e7f690855b",
+      "parentSha256": "b51f39b0475c214db87e5bfb35a409a8562d77fbbfe54ca697272d6fa3cf7588",
+      "changes": [
+        {
+          "startLine": 7,
+          "endLine": 9,
+          "after": "import {AI_MANAGEMENT_SECTIONS,type AiManagementSection} from '@/lib/ai/management-sections';\nexport {AI_MANAGEMENT_SECTIONS,type AiManagementSection} from '@/lib/ai/management-sections';\n",
+          "before": "export const AI_MANAGEMENT_SECTIONS = ['overview','provider','assistant','features','allowances','spending','orchestrator','runs'] as const;\nexport type AiManagementSection = (typeof AI_MANAGEMENT_SECTIONS)[number];\n"
+        }
+      ]
+    },
+    "core/ai-inventory.ts": {
+      "currentSha256": "39fb65f86aacfe0f624a92b3ec9bded28969121af5c30dcb76e2b32618f3efd1",
+      "parentSha256": "61e153c6c90ce5581229222e787773bac7da75af47e3800758d839f978fd56ed",
+      "changes": [
+        {
+          "startLine": 31,
+          "endLine": 33,
+          "after": "type ManagementView=Pick<Awaited<ReturnType<typeof aiManagementView>>,\n 'attention'|'spend'|'features'|'agentSwitches'|'userDefault'|'provider'>;\n",
+          "before": "type ManagementView=Awaited<ReturnType<typeof aiManagementView>>;\n"
+        }
+      ]
+    },
+    "core/ai-management.ts": {
+      "currentSha256": "759c3bb016c250ac1f8f9d56a29e7049e32854e7a654e9d698b7e3df49118255",
+      "parentSha256": "2e2c25f9ad2685ed6072da4aaa4929604ddecb4d5a323b3acf9966ab63473a01",
+      "changes": [
+        {
+          "startLine": 238,
+          "endLine": 239,
+          "after": "    const legacyBudgets = purpose!=='status' && isGroupAdmin(ctx) ? await tx.select({monthly:assistantBudget.monthlyTokenCeiling,daily:assistantBudget.perUserDailyQuestions,effectiveFrom:assistantBudget.effectiveFrom}).from(assistantBudget).where(and(eq(assistantBudget.tenantId,ctx.tenantId),sql`${assistantBudget.archivedAt} is null`,sql`${assistantBudget.effectiveFrom} <= ${todayInKualaLumpur()}::date`)).orderBy(desc(assistantBudget.effectiveFrom),desc(assistantBudget.id)).limit(1) : [];\n",
+          "before": "    const legacyBudgets = isGroupAdmin(ctx) ? await tx.select({monthly:assistantBudget.monthlyTokenCeiling,daily:assistantBudget.perUserDailyQuestions,effectiveFrom:assistantBudget.effectiveFrom}).from(assistantBudget).where(and(eq(assistantBudget.tenantId,ctx.tenantId),sql`${assistantBudget.archivedAt} is null`,sql`${assistantBudget.effectiveFrom} <= ${todayInKualaLumpur()}::date`)).orderBy(desc(assistantBudget.effectiveFrom),desc(assistantBudget.id)).limit(1) : [];\n"
+        },
+        {
+          "startLine": 234,
+          "endLine": 235,
+          "after": "    const runs = purpose==='full' && isGroupAdmin(ctx) ? await tx.select({id:aiModelRun.id,actor:sql<string|null>`coalesce(${person.fullName},${appUser.workosUserId})`,feature:aiModelRun.featureId,operation:aiModelRun.operation,provider:aiModelRun.provider,model:aiModelRun.model,state:aiModelRun.state,reason:aiModelRun.reason,actual:aiModelRun.actualTokens,reserved:aiModelRun.reservedTokens,startedAt:aiModelRun.startedAt,finishedAt:aiModelRun.finishedAt,reportedCredits:aiModelRun.openrouterAccountCostCredits,roundTripMs:aiModelRun.observedRoundTripMs,observationStatus:aiModelRun.providerObservationStatus})\n",
+          "before": "    const runs = isGroupAdmin(ctx) ? await tx.select({id:aiModelRun.id,actor:sql<string|null>`coalesce(${person.fullName},${appUser.workosUserId})`,feature:aiModelRun.featureId,operation:aiModelRun.operation,provider:aiModelRun.provider,model:aiModelRun.model,state:aiModelRun.state,reason:aiModelRun.reason,actual:aiModelRun.actualTokens,reserved:aiModelRun.reservedTokens,startedAt:aiModelRun.startedAt,finishedAt:aiModelRun.finishedAt,reportedCredits:aiModelRun.openrouterAccountCostCredits,roundTripMs:aiModelRun.observedRoundTripMs,observationStatus:aiModelRun.providerObservationStatus})\n"
+        },
+        {
+          "startLine": 192,
+          "endLine": 193,
+          "after": "    const userRows = purpose!=='status' && isGroupAdmin(ctx) ? Array.from(await tx.execute<UserUsageRow & {assistant_granted:boolean}>(sql`\n",
+          "before": "    const userRows = isGroupAdmin(ctx) ? Array.from(await tx.execute<UserUsageRow & {assistant_granted:boolean}>(sql`\n"
+        },
+        {
+          "startLine": 96,
+          "endLine": 120,
+          "after": "  return readAiManagement(ctx, search, runFilter, 'full');\n}\n\ntype FullManagementView=Awaited<ReturnType<typeof aiManagementView>>;\ntype SharedManagementView=Omit<FullManagementView,'users'|'moreUsers'|'legacyBudget'|'runs'|'runFilter'>;\nexport type AiManagementPageView=SharedManagementView&(\n | {section:'allowances';allowances:Pick<FullManagementView,'users'|'moreUsers'|'legacyBudget'>}\n | {section:Exclude<AiManagementSection,'allowances'>;allowances:null}\n);\n\n/** Page-purpose projection. A missing detail is omitted data, never a zero/empty full read.\n * All common authority, provider usability, attention, switch and spend reads stay identical.\n * The Runs page owns its separate dated/paged history; no page consumes legacy recent runs. */\nexport async function aiManagementPageView(ctx:SessionContext,section:AiManagementSection,search='',runFilter:AiRunFilter={}):Promise<AiManagementPageView>{\n  if(!AI_MANAGEMENT_SECTIONS.some(value=>value===section))throw new AiControlError('Unknown AI management section.');\n  const full=await readAiManagement(ctx,search,{...runFilter},section==='allowances'?'allowances':'status');\n  const {users,moreUsers,legacyBudget,runs:_runs,runFilter:_runFilter,...common}=full;\n  if(section==='allowances')return {...common,section,allowances:{users,moreUsers,legacyBudget}};\n  return {...common,section,allowances:null};\n}\nexport type AiManagementAllowanceUser=FullManagementView['users'][number];\n\n/** One existing query/derivation owner. The purpose only excludes unused page detail reads. */\nasync function readAiManagement(ctx:SessionContext,search:string,runFilter:AiRunFilter,purpose:'full'|'allowances'|'status') {\n",
+          "before": ""
+        },
+        {
+          "startLine": 94,
+          "endLine": 95,
+          "after": "/** The full legacy API retains users, recent runs and budgets for its existing consumers. */\n",
+          "before": ""
+        },
+        {
+          "startLine": 17,
+          "endLine": 18,
+          "after": "import {AI_MANAGEMENT_SECTIONS,type AiManagementSection} from '../lib/ai/management-sections';\n",
+          "before": ""
+        }
+      ]
+    }
+  },
+  "protectedWholeParentSha256": {
+    "db/client.ts": "bdd700ea682bafbf0cad2c255b8dacb96c13d82dc7fa0ae9446d4a1da265cd3f",
+    "db/schema.ts": "8333f7a44c82fc43411dd4735314a555c4a69e0f805f0dc6b29e62c997ea9112",
+    "core/ai-config.ts": "6f6345624735f94d5c1faa9306d7a3fa913a61e0cbfb29c5e46b367aea8ea252",
+    "core/ai-principal.ts": "3a77b8ed03ca1b9895310f6a7535473bbfd9a31d6c6d003612bd71e0dcbd6d21",
+    "core/ai-provider-snapshot.ts": "2493d3e18549b2903032835525e67b90f0e00341bbfbbd65a34be79a9ab4675b",
+    "core/ai-provider-authority.ts": "d37a6b5aa76de0ca92a5a2d3006f0b34b7a111458d51d0e783f7e9b471b7a38d",
+    "core/ai-provider-readiness.ts": "aad2948b7727b44c4e830ff4dc496bc7825127ab2a4e6bc493e54d2f6139a2d1",
+    "core/ai-spend-management.ts": "c0d2ee3d5dd90e033f9e5968c34d41c624d287ed40a56c889da1196a6bbfe048",
+    "core/ai-centre-control.ts": "90b4b0161664f5f17cc0f4cc548def2cc00271d117b1852301a29aa5769db33a",
+    "core/ai-centre-inventory.ts": "60744c123a892115c8fc2ae8c5049cc82ecd02e622decbe88ebbcd10c56dd7c0",
+    "core/mandates/mandates.ts": "f4deafef68d764f6405d29e8ae66b7a186f050718c0429b989bd188e96e34014",
+    "core/mandates/job-types.ts": "9e0c9648dd55f85d020e236527a5f5be898885d88f4e7b9c4cbee5365eaa50cb",
+    "core/agent-registry/views.ts": "fe8c5c30adbef31ab6db541c019d6651544df71ab1f31daacd1133cf3959f097",
+    "core/agent-registry/controls.ts": "0371372b00ea597897202162724ba6541d93b1f0b983583d8b580f0ca89e6586",
+    "app/control-tower/agents/centre-control-actions.ts": "ac8ea194970bfc3f0728b9c55bb92acc97d1ee8d3bbcb3c8873ba28c30dae921",
+    "app/control-tower/agents/features/page.tsx": "1ce2e7d1e9a73aea4c4a40e3bf3820eba4ec4bcc19df965b09d36101b27e6da3",
+    "app/control-tower/agents/actions.ts": "13a5168e02bfc9fa646714ad78204fd70bcc8fa338a6c3d750cee19e19ecb3a6",
+    "test/ai-management.test.ts": "2bc9659cb731c284ca8a307461a2d55574fc2b4e4f246475f98dd159c2919015",
+    "test/ai-inventory-db.test.ts": "9b010f60cf146ea6a0e7721f877b6dca68d3b0eb3dc550ef2dbd89da3b975716",
+    "test/ai-principal.test.ts": "f69af9d90df93496934c819d24049e18dc67772f60d1b7b8259433bd87b3ab57",
+    "test/ai-centre-controls.dom.test.tsx": "f718bdcc4cdff6d85b90e2b7d02209d0a864346efbb2cec9938089d811378059",
+    "test/ai-centre.test.ts": "a67f8862aed73bce63e88c54a3e74f78d8e930b570590e69649aebbf428f7c67",
+    "db/migrations/3500_ai_centre_architecture_compatibility.sql": "3286f17e76b8d997c46b22019df613b9eef1d1b82c85c125cdb57b80392884ca",
+    "db/migrations/3501_ai_centre_mandate_write_order.sql": "821312765fb359ee0c761a200b519525d1d667bfe20b11f1889829f6d4976d76",
+    "package.json": "7f67e35d869a29d2cb58d65c6f63413afc63db2cc6c6cf9dacb5086bce70ec2c",
+    "pnpm-lock.yaml": "0413a070eca23d390fabdcd78cb63b2dcf4b0b69fe90408c7b57a4f672d21dbd",
+    "tsconfig.json": "0ee72fb11a698bad9b18c39223569adf5758727272b35bfa99ec7bfa57c3530a"
+  },
+  "contracts": {
+    "closedSections": [
+      "overview",
+      "provider",
+      "assistant",
+      "features",
+      "allowances",
+      "spending",
+      "orchestrator",
+      "runs"
+    ],
+    "oneSharedSectionOwner": true,
+    "legacyThreeArgumentApiFull": true,
+    "allCommonQueryAndDerivationBytesPreserved": true,
+    "onlyNativeQueryPurposeGuardsAdded": 3,
+    "nonAllowancesUserAndBudgetQueriesOmitted": 7,
+    "allPageLegacyRecentRunQueriesOmitted": 8,
+    "pageDtoHasNoLegacyUsersRunsFilterFields": true,
+    "allowancesDetailsDiscriminated": true,
+    "inventoryRuntimeBodiesWhole": true,
+    "screenWholeOriginalJsxAfterNamedReadTypeAndDetailPathInverse": true,
+    "controlsOriginalPromiseAllBlockWhole": true,
+    "controlsIndependentCatchOrderTuplePreserved": true,
+    "controlsNoServerActionDirectiveOrNewEndpoint": true,
+    "noIsolationLockCommandStopAuditProviderEgressChange": true,
+    "membershipInputsShrinkToAllAttentionActorsWhenUnusedUserListOmitted": true,
+    "allEightGroupMatrixPurposesExerciseRealGroupMemberships": true
+  },
+  "authoredNotExecutedCensus": {
+    "newNativeCases": 16,
+    "existingDomCases": 71,
+    "existingDomFiles": 7,
+    "preservedDomExpectCallExpressions": 294,
+    "existingTimingOuterCases": 1,
+    "newTimingCurrentWorkersCourses": 2,
+    "historicalCoursesMarked": true,
+    "fourBalancedScaledArms": [
+      "full",
+      "page",
+      "page",
+      "full"
+    ]
+  },
+  "timing": {
+    "schemaVersion": 2,
+    "actualRegistryPromiseAllCohort": true,
+    "actualExtractedControlsOwner": true,
+    "inventoryAndSelectedWorkerIncluded": true,
+    "excludes": [
+      "session",
+      "translations",
+      "React/JSX",
+      "RSC serialization",
+      "network"
+    ],
+    "overlapArithmeticNotConcurrencyQualification": true
+  },
+  "newRuntimeSourceOwner": {
+    "path": "lib/ai/management-sections.ts",
+    "incomingStaticEdges": [
+      {
+        "from": "core/ai-management.ts",
+        "to": "lib/ai/management-sections.ts",
+        "specifier": "../lib/ai/management-sections"
+      },
+      {
+        "from": "app/control-tower/agents/sections.ts",
+        "to": "lib/ai/management-sections.ts",
+        "specifier": "@/lib/ai/management-sections"
+      },
+      {
+        "from": "app/control-tower/agents/sections.ts",
+        "to": "lib/ai/management-sections.ts",
+        "specifier": "@/lib/ai/management-sections"
+      }
+    ],
+    "employeeStaticSourceBinding": "PENDING_ROOT_COHERENT_INTEGRATION_OWNER; no .github files edited",
+    "jitAndRewardsEntryGraphsAtThisBaseDoNotReachLeaf": true,
+    "globalSourceBindingQualified": false
+  },
+  "sourceProofs": [
+    {
+      "path": "/private/tmp/aihr-ai-management-section-external-ast-review-20261109.json",
+      "sha256": "cbf8611ecf0c97e94bb72df70bc1af525191ca95c4c1849af612365a13c2a0e9"
+    },
+    {
+      "path": "/private/tmp/aihr-ai-management-section-census-20261109.json",
+      "sha256": "25147e6510fdbf90aa446444a9f645944b133dcc4ddb1b3b235ba02f37f3ac0b"
+    },
+    {
+      "path": "/private/tmp/aihr-ai-management-section-runtime-edge-review-20261109.json",
+      "sha256": "8a90b90e816a9a84a301baadd981c846e4506f67acb067e53788d2b6772a8fbf"
+    },
+    {
+      "path": "/private/tmp/aihr-ai-management-section-whole-inverses-20261109.json",
+      "sha256": "d37721ed4931b493103df2653f3c86e7a061ed570e5b4608d8afddafab456848"
+    }
+  ],
+  "proposedHostedSelectors": [
+    "test/ai-management-section-projection.test.ts",
+    "test/ai-management.test.ts",
+    "test/ai-inventory-db.test.ts",
+    "test/ai-principal.test.ts",
+    "test/ai-feature-switch-owner-db.test.ts",
+    "test/ai-management-contract.test.ts",
+    "test/ai-centre.test.ts",
+    "test/ai-centre-page-timing.test.ts",
+    "test/ai-centre-step5-evidence.dom.test.tsx",
+    "test/ai-probe-history-page.dom.test.tsx",
+    "test/automatic-followup-features.dom.test.tsx",
+    "test/ai-inventory-screen.dom.test.tsx",
+    "test/ai-management-naming.dom.test.tsx",
+    "test/ai-management-page.dom.test.tsx",
+    "test/ai-centre-evidence.dom.test.tsx",
+    "test/ai-centre-controls.dom.test.tsx",
+    "test/review/review-ui-worker-registry-job-type-dead-end.dom.test.tsx"
+  ],
+  "repositoryBehaviorExecutedLocally": false,
+  "runtimeQualified": false,
+  "providerCallResultVerified": false,
+  "browserOrLoadVerified": false,
+  "published": false,
+  "releaseAuthorized": false,
+  "productionHeld": true,
+  "candidateCommit": "Recorded externally after freeze; no self-hash cycle",
+  "selfAbsentFromParent": true
+}

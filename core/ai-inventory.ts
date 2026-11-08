@@ -29,7 +29,8 @@ import {AI_DATA_REGISTER,AI_RUN_PAGE_SIZE,aiInventoryComponents,aiRunPageOffset,
 import {assertAiPrincipalTx,assertAiPresentationPrincipalTx} from './ai-principal';
 import {AiControlError,type aiManagementView,type AiRunFilter} from './ai-management';
 
-type ManagementView=Awaited<ReturnType<typeof aiManagementView>>;
+type ManagementView=Pick<Awaited<ReturnType<typeof aiManagementView>>,
+ 'attention'|'spend'|'features'|'agentSwitches'|'userDefault'|'provider'>;
 const capture=(ctx:SessionContext):SessionContext=>({...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(g=>({...g}))});
 /** Call only AFTER the matching native AI principal proof in the same transaction (which is what makes the claim current). */
 async function groupAdminClaimTx(tx:Tx,ctx:SessionContext){
