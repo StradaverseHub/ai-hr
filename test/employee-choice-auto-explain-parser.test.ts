@@ -1,0 +1,169 @@
+/** Synthetic parser/refusal coverage only. No native plan or timing claim. */
+import {expect,it} from 'vitest';
+import {employeeChoiceAutoExplainMessages,employeeChoiceSqlFingerprint,bindEmployeeChoiceNativePlans,employeeChoiceNativeInvocation,employeeChoiceNativeInvocations,employeeChoiceNativeProjectMembership,employeeChoiceNativeServerMembership,employeeChoiceNativePagination,employeeChoiceNativeProjectionAssignments,type AutoExplainMessage,type PlanMarker} from './performance/employee-choice-auto-explain-parser';
+const pid=123,body='WITH employee_choice_employments AS MATERIALIZED(select 1) select * from employee_choice_employments';
+const marker:PlanMarker={label:'native:initial',begin:'select 1 as "aihr_emp_marker_native_initial_begin"',end:'select 1 as "aihr_emp_marker_native_initial_end"',native:true};
+function message(query:string,backend=pid,context=''){
+ return '2026-11-08 00:00:00 UTC ['+backend+'] LOG:  duration: 1.250 ms  plan:\n'+JSON.stringify({'Query Text':query,Plan:{'Node Type':'Result','Actual Rows':1,'Actual Loops':1,'Shared Hit Blocks':0,'Shared Read Blocks':0}},null,2)+'\n'+context+'\n';
+}
+const nativeContext='CONTEXT: SQL statement "fixed native source"\nPL/pgSQL function app.employee_choice_native_prototype(uuid) line 55 at RETURN QUERY';
+function projectionPlan(matches:number){return{'Node Type':'Append','Actual Rows':1,'Actual Loops':1,Plans:[
+ {'Node Type':'Function Scan','Function Name':'unnest','Subplan Name':'CTE employee_choice_project_ids','Actual Rows':matches,'Actual Loops':1},
+ {'Node Type':'Seq Scan','Relation Name':'employment','Actual Rows':matches,'Actual Loops':1,Filter:"(($19 <> 'project') OR ((hashed SubPlan 7) IS TRUE))",Plans:[
+  {'Node Type':'CTE Scan','CTE Name':'employee_choice_project_ids','Parent Relationship':'SubPlan','Subplan Name':'SubPlan 7','Actual Rows':matches,'Actual Loops':1},
+ ]},
+]};}
+it('parses genuine PG-shaped JSON quoting and binds exact backend/marker/body/context identities',()=>{
+ const log=message(marker.begin)+message('select "{quoted}"',456)+message(body,pid,nativeContext)+message(marker.end);
+ const parsed=employeeChoiceAutoExplainMessages(log,pid);expect(parsed).toHaveLength(3);expect(parsed[1].durationMs).toBe(1.25);
+ expect(bindEmployeeChoiceNativePlans(parsed,[marker],body).get(marker.label)).toHaveLength(1);
+ expect(employeeChoiceSqlFingerprint(body+';')).toBe(employeeChoiceSqlFingerprint(body));
+});
+it('refuses truncated JSON, missing executable counters/plan shape and wrong backend evidence',()=>{
+ expect(()=>employeeChoiceAutoExplainMessages(message(body).slice(0,-5),pid)).toThrow();
+ expect(()=>employeeChoiceAutoExplainMessages('2026 UTC [123] LOG: duration: 1 ms plan:\n{"Query Text":"select 1"}\n',pid)).toThrow('executable plan');
+ expect(()=>bindEmployeeChoiceNativePlans(employeeChoiceAutoExplainMessages(message(marker.begin)+message(body,456,nativeContext)+message(marker.end),pid),[marker],body)).toThrow('Missing actual phase plans');
+});
+it('requires actual nested body context and refuses outer-only, duplicate, unbound or incomplete phases',()=>{
+ for(const log of [message(marker.begin)+message('select * from app.employee_choice_native_prototype()')+message(marker.end),
+  message(marker.begin)+message(body)+message(marker.end),
+  message(marker.begin)+message(body,pid,nativeContext)+message(body,pid,nativeContext)+message(marker.end),
+  message(body,pid,nativeContext),message(marker.begin)+message(body,pid,nativeContext)]){
+  expect(()=>bindEmployeeChoiceNativePlans(employeeChoiceAutoExplainMessages(log,pid),[marker],body)).toThrow();
+ }
+});
+it('does not label a current-root SQL plan as native function proof',()=>{
+ const control={...marker,label:'current:initial',native:false};
+ expect(()=>bindEmployeeChoiceNativePlans(employeeChoiceAutoExplainMessages(message(control.begin)+message(body,pid,nativeContext)+message(control.end),pid),[control],body)).toThrow('outside its admitted phase');
+});
+it('requires both actual inner stream and outer Function Scan row counts against an independent expectation',()=>{
+ const nested=employeeChoiceAutoExplainMessages(message(body,pid,nativeContext),pid)[0];
+ const outer:AutoExplainMessage={...nested,query:'select * from app.employee_choice_native_prototype($1)',context:'',
+  document:{Plan:{'Node Type':'Sort','Actual Rows':1,'Actual Loops':1,Plans:[{'Node Type':'Function Scan','Function Name':'employee_choice_native_prototype','Actual Rows':1,'Actual Loops':1}]}}};
+ expect(employeeChoiceNativeInvocation([nested,outer],body,1)).toMatchObject({expectedRows:1,nestedRows:1,functionRows:1});
+ for(const entries of [[outer],[nested],[nested,outer,outer],
+  [nested,{...outer,document:{Plan:{'Node Type':'Function Scan','Function Name':'employee_choice_native_prototype','Actual Rows':0,'Actual Loops':1}}}],
+  [nested,{...outer,document:{Plan:{'Node Type':'Function Scan','Function Name':'other_function','Actual Rows':1,'Actual Loops':1}}}],
+  [{...nested,document:{...nested.document,Plan:{'Node Type':'Result','Actual Rows':2,'Actual Loops':1}}},outer]]){
+  expect(()=>employeeChoiceNativeInvocation(entries,body,1)).toThrow();
+ }
+ expect(()=>employeeChoiceNativeInvocation([nested,outer],body,-1)).toThrow('Independent native stream count');
+});
+it('accounts candidate and projection body/outer calls separately and refuses missing, reordered, extra or wrong-purpose work',()=>{
+ const nested=employeeChoiceAutoExplainMessages(message(body,pid,nativeContext),pid)[0];
+ const outer=(port:'page'|'project'):AutoExplainMessage=>({...nested,query:'/* employee-choice-native:'+port+' */ select * from app.employee_choice_native_prototype($1)',context:'',
+  document:{Plan:{'Node Type':'Function Scan','Function Name':'employee_choice_native_prototype','Actual Rows':1,'Actual Loops':1}}});
+ const candidate=outer('page'),projection=outer('project'),projectBody={...nested,document:{...nested.document,Plan:projectionPlan(1)}},entries=[nested,candidate,projectBody,projection];
+ const expected=[{port:'page' as const,rows:1},{port:'project' as const,rows:1,matchedIds:1}];
+ expect(employeeChoiceNativeInvocations(entries,body,expected).map(call=>call.port)).toEqual(['page','project']);
+ for(const changed of [[nested,candidate],[nested,candidate,nested,candidate],[nested,projection,nested,candidate],
+  [nested,nested,candidate,projection],[...entries,nested,projection]])expect(()=>employeeChoiceNativeInvocations(changed,body,expected)).toThrow();
+ const plan={...marker,expectedNativeCalls:expected};
+ const boundaries=employeeChoiceAutoExplainMessages(message(plan.begin)+message(plan.end),pid);
+ expect(()=>bindEmployeeChoiceNativePlans([boundaries[0],...entries,boundaries[1]],[plan],body)).not.toThrow();
+ expect(()=>bindEmployeeChoiceNativePlans([boundaries[0],nested,candidate,boundaries[1]],[plan],body)).toThrow();
+});
+it('binds the entire modeled50000-ID set to one materialization and the actual employment hashed subplan',()=>{
+ expect(employeeChoiceNativeProjectMembership(projectionPlan(50000),50000)).toMatchObject({matchedIds:50000,unnestRows:50000,unnestLoops:1,membershipRows:50000,membershipLoops:1,hashedSubplan:'SubPlan 7'});
+});
+it('rejects scalar parameter-array membership even when its node work and an unrelated hashed set look bounded',()=>{
+ const plan=projectionPlan(50000);plan.Plans[1].Filter="(($19 <> 'project') OR (id = ANY ($20))) AND (hashed SubPlan 7)";
+ expect(()=>employeeChoiceNativeProjectMembership(plan,50000)).toThrow('ScalarArray');
+ plan.Plans[1].Filter='id = ANY (p_matched_ids)';expect(()=>employeeChoiceNativeProjectMembership(plan,50000)).toThrow('ScalarArray');
+});
+it('refuses clipped, repeatedly evaluated, unbound or falsely claimed projection membership',()=>{
+ for(const change of [(p:ReturnType<typeof projectionPlan>)=>{p.Plans[0]['Actual Rows']=49999;},
+  (p:ReturnType<typeof projectionPlan>)=>{p.Plans[0]['Actual Loops']=50000;},
+  (p:ReturnType<typeof projectionPlan>)=>{p.Plans[1].Plans![0]['Actual Rows']=25;},
+  (p:ReturnType<typeof projectionPlan>)=>{p.Plans[1].Plans![0]['Actual Loops']=50000;},
+  (p:ReturnType<typeof projectionPlan>)=>{p.Plans[1].Filter='(hashed SubPlan 8)';},
+  (p:ReturnType<typeof projectionPlan>)=>{p.Plans[1].Filter='(hashed SubPlan 70)';},
+  (p:ReturnType<typeof projectionPlan>)=>{p.Plans[0]['Function Name']='claimed_hash';}]){
+  const plan=projectionPlan(50000);change(plan);expect(()=>employeeChoiceNativeProjectMembership(plan,50000)).toThrow();
+ }
+ for(const count of [undefined,0,-1,1.5])expect(()=>employeeChoiceNativeProjectMembership(projectionPlan(50000),count)).toThrow('Independent complete');
+});
+
+function paginationPlan(total=50000,offset=49975,limit=25){
+ const k=Math.max(0,Math.min(limit,total-offset)),r=Math.max(0,total-offset-k),descending=offset>r;
+ const branch=(name:'ascending'|'descending')=>{
+  const enabled=(name==='descending')===descending,loops=enabled?1:0,rows=enabled?(name==='ascending'?offset:r)+k:0;
+  const source={'Node Type':'CTE Scan','CTE Name':'employee_choice_matching','Actual Rows':enabled?total:0,'Actual Loops':loops};
+  const sort={'Node Type':'Sort','Sort Key':name==='ascending'?['m.name','m."employmentId"']:['m.name DESC','m."employmentId" DESC'],
+   'Actual Rows':rows,'Actual Loops':loops,'Sort Method':enabled?'top-N heapsort':'','Sort Space Type':enabled?'Memory':'',Plans:[source]};
+  return{root:{'Node Type':'Nested Loop','Subplan Name':'CTE employee_choice_page_'+name,'Actual Rows':enabled?k:0,'Actual Loops':1,
+   Plans:[{'Node Type':'Limit','Actual Rows':enabled?k:0,'Actual Loops':loops,Plans:[sort]}]},sort,source};
+ };
+ const ascending=branch('ascending'),descendingBranch=branch('descending');
+ return{plan:{'Node Type':'Append','Actual Rows':k,'Actual Loops':1,Plans:[ascending.root,descendingBranch.root]},
+  active:descending?descendingBranch:ascending,inactive:descending?ascending:descendingBranch};
+}
+it('requires native bounded last-page/first-page tuple sorts and zero unused-branch source work',()=>{
+ for(const offset of [0,49975,49990]){
+  const model=paginationPlan(50000,offset,25);
+  expect(employeeChoiceNativePagination(model.plan,{total:50000,offset,limit:25})).toMatchObject({direction:offset===0?'ascending':'descending',rowGoal:offset===49990?10:25,unusedSourceSortLimitLoops:0});
+ }
+});
+it('rejects full/dead-branch sorts, rewritten collation keys and claimed directions without actual top-N work',()=>{
+ for(const alter of [(m:ReturnType<typeof paginationPlan>)=>{m.inactive.source['Actual Loops']=1;},
+  (m:ReturnType<typeof paginationPlan>)=>{m.inactive.sort['Actual Loops']=1;},
+  (m:ReturnType<typeof paginationPlan>)=>{m.active.sort['Actual Rows']=50000;},
+  (m:ReturnType<typeof paginationPlan>)=>{m.active.source['Actual Rows']=49999;},
+  (m:ReturnType<typeof paginationPlan>)=>{m.inactive.root.Plans.pop();},
+  (m:ReturnType<typeof paginationPlan>)=>{m.active.sort['Sort Method']='external merge';},
+  (m:ReturnType<typeof paginationPlan>)=>{m.active.sort['Sort Space Type']='Disk';},
+  (m:ReturnType<typeof paginationPlan>)=>{m.active.sort['Sort Key']=['m.name','m."employmentId"'];},
+  (m:ReturnType<typeof paginationPlan>)=>{m.plan.Plans.pop();}]){
+  const model=paginationPlan();alter(model);expect(()=>employeeChoiceNativePagination(model.plan,{total:50000,offset:49975,limit:25})).toThrow();
+ }
+ expect(()=>employeeChoiceNativePagination(paginationPlan().plan,{total:50000,offset:Number.MAX_SAFE_INTEGER,limit:25})).toThrow('Nonempty');
+});
+it('requires the entire50000-ID server population set and rejects its separate linear array predicate',()=>{
+ const scope=()=>{const p=projectionPlan(50000);p.Plans[0]['Subplan Name']='CTE employee_choice_scope_ids';
+  p.Plans[1].Plans![0]['CTE Name']='employee_choice_scope_ids';p.Plans[1].Filter='(($8 IS NULL) OR ((hashed SubPlan 7) IS TRUE))';return p;};
+ expect(employeeChoiceNativeServerMembership(scope(),50000)).toMatchObject({scopeIds:50000,unnestRows:50000,membershipRows:50000});
+ for(const expression of ['id=ANY($8) AND (hashed SubPlan 7)','id=ANY(p_employee_scope) AND (hashed SubPlan 7)']){
+  const model=scope();model.Plans[1].Filter=expression;expect(()=>employeeChoiceNativeServerMembership(model,50000)).toThrow('ScalarArray');
+ }
+ const clipped=scope();clipped.Plans[0]['Actual Rows']=49999;expect(()=>employeeChoiceNativeServerMembership(clipped,50000)).toThrow();
+});
+
+// Synthetic controls only; actual source/backend-bound plans must establish this
+// shape independently. The retained fixture has one current Assignment per ID.
+function assignmentHydrationPlan(pageRows:number){
+ const source:Record<string,unknown>={'Node Type':'Index Scan','Relation Name':'assignment','Actual Loops':pageRows,'Actual Rows':1,'Rows Removed by Filter':0};
+ const full:Record<string,unknown>={'Node Type':'Seq Scan','Relation Name':'assignment','Actual Loops':0,'Actual Rows':0};
+ const root:Record<string,unknown>={'Node Type':'Nested Loop','Subplan Name':'CTE employee_choice_page_assignments','Actual Loops':1,'Actual Rows':pageRows,Plans:[source]};
+ const plan:Record<string,unknown>={'Node Type':'Append',Plans:[full,root]};return{plan,source,full,root};
+}
+it('requires actual page-only Assignment source work for independent1,25 and All2000 fixtures',()=>{
+ for(const size of [1,25,2000])expect(employeeChoiceNativeProjectionAssignments(assignmentHydrationPlan(size).plan,size)).toMatchObject({pageRows:size,probes:size,tupleWork:size,fullAssignmentSourceWork:0});
+});
+it('refuses active full Assignment sources even alongside a correctly bounded page CTE',()=>{
+ for(const field of ['Actual Loops','Actual Rows','Rows Removed by Filter','Rows Removed by Index Recheck']){
+  const model=assignmentHydrationPlan(25);model.full[field]=1;expect(()=>employeeChoiceNativeProjectionAssignments(model.plan,25)).toThrow('Full Assignment source');
+ }
+});
+it('counts source tuples removed inside a purported page CTE and rejects broad hidden scans',()=>{
+ for(const field of ['Rows Removed by Filter','Rows Removed by Join Filter','Rows Removed by Index Recheck','Rows Removed by Conflict Filter']){
+  const model=assignmentHydrationPlan(25);model.source[field]=50000;expect(()=>employeeChoiceNativeProjectionAssignments(model.plan,25)).toThrow('independent page bound');
+ }
+});
+it('refuses unexecuted, repeated and incomplete hydration instead of accepting only a claimed upper bound',()=>{
+ for(const [loops,rows]of [[0,0],[26,1],[24,1],[25,0],[25,2]]){
+  const model=assignmentHydrationPlan(25);model.source['Actual Loops']=loops;model.source['Actual Rows']=rows;
+  expect(()=>employeeChoiceNativeProjectionAssignments(model.plan,25)).toThrow('independent page bound');
+ }
+});
+it('requires one real bounded CTE and valid complete Assignment counters',()=>{
+ for(const alter of [(m:ReturnType<typeof assignmentHydrationPlan>)=>{delete m.root['Subplan Name'];},
+  (m:ReturnType<typeof assignmentHydrationPlan>)=>{m.plan.Plans=[m.root,m.root];},
+  (m:ReturnType<typeof assignmentHydrationPlan>)=>{m.root.Plans=[];},
+  (m:ReturnType<typeof assignmentHydrationPlan>)=>{m.source['Actual Loops']=NaN;},
+  (m:ReturnType<typeof assignmentHydrationPlan>)=>{delete m.source['Actual Rows'];},
+  (m:ReturnType<typeof assignmentHydrationPlan>)=>{m.source['Rows Removed by Filter']=-1;},
+  (m:ReturnType<typeof assignmentHydrationPlan>)=>{m.root.Plans={};}]){
+  const model=assignmentHydrationPlan(25);alter(model);expect(()=>employeeChoiceNativeProjectionAssignments(model.plan,25)).toThrow();
+ }
+ for(const limit of [0,-1,2001,1.5,NaN])expect(()=>employeeChoiceNativeProjectionAssignments(assignmentHydrationPlan(25).plan,limit)).toThrow('Independent bounded native page');
+});
