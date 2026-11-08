@@ -179,6 +179,7 @@ export function attendanceApplicationFilterOptions(ctx: SessionContext, companyI
           for(const employee of selected)if(!approverEmployees.some(row=>row.id===employee.id))approverEmployees.push(employee);
         }
         const availability=companies.length===1?await tx.execute(sql`select app.attendance_workflow_approver_availability(${companies[0].id}::uuid) as reason`) as unknown as {reason:'available'|'noEmployees'|'noActiveEmployees'|'noLinkedLogin'|'noEligible'|null}[]:[];
-        return { companies, departments, businessUnits, grades, divisions, employees, approverEmployees, approverAvailability:availability[0]?.reason??undefined, positions, profileFields };
+        const [allCompany]=await tx.execute<{ok:boolean}>(sql`select app.principal_snapshot_current() and app.is_admin_for(NULL::uuid) as ok`);
+        return { canManageAllCompanies:allCompany?.ok===true, companies, departments, businessUnits, grades, divisions, employees, approverEmployees, approverAvailability:availability[0]?.reason??undefined, positions, profileFields };
     });
 }

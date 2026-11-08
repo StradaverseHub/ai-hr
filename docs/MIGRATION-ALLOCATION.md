@@ -1,3 +1,13 @@
+# Attendance workflow lifecycle and scope — 9 November 2026 (unapplied reservation)
+
+Branch codex/board3-workflow-20261109 reserves 3800_attendance_workflow_lifecycle_scope,
+idx3100 / when1793330003400. The coordinating Board 3 controller refreshed main/alpha,
+all committed ref journals and readable registered worktree journals, and the read-only
+staging ledger. The peer six-item source reserves through3706 / idx3006 /
+when1793330003306; the live ledger has710 entries with watermark1793330003000.
+Preserve the complete integration and installed SQL/hash prefixes. Recheck peer claims
+and installed ledger before admission. This reservation grants no deployment authority.
+
 # System Labels company scope — 8 November 2026 (unapplied reservation)
 
 Branch codex/board1-system-labels-plan-20261108 reserves 3400_system_label_company_scope, idx2700 / when1793330003000. A fresh scan of 495 distinct committed journals and readable registered worktree journals found maximum idx2603 / when1793330002903 through3303. A read-only live survey matched 709 applied entries with watermark1793330002801, below this reservation. Preserve the full current main/alpha prefix and the then-installed prefix. Recheck live ledger and peer claims before admission; this is source allocation only.

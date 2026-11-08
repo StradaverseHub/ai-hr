@@ -39,7 +39,7 @@ describe('company workflow editor outcomes', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Save workflow' }));
     await waitFor(() => expect(save).toHaveBeenCalledTimes(1));
     expect(save.mock.calls[0][1]).toMatchObject({ companyId, applicationType: 'self_overtime', criteria: { departmentIds: ['d1', 'd2'], businessUnitIds: ['b1', 'b2'], gradeIds: ['g1', 'g2'], orgDivision: ['v1', 'v2'] } });
-    await waitFor(() => expect(router.push).toHaveBeenCalledWith('/admin/attendance/approval-workflow/saved-lineage'));
+    await waitFor(() => expect(router.push).toHaveBeenCalledWith('/admin/attendance/approval-workflow/saved-lineage?notice=saved'));
   });
   it('reopens saved selections, preserves unavailable choices, and invalidates preview when a chip is removed', async () => {
     const value = initial(); value.criteria = { departmentIds: ['d1', 'missing'] }; form(value);
@@ -53,7 +53,7 @@ describe('company workflow editor outcomes', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Save workflow' }));
     await waitFor(() => expect(save).toHaveBeenCalled());
     expect(save.mock.calls[0][1].criteria.departmentIds).toEqual(['d1']);
-    await waitFor(() => expect(router.push).toHaveBeenCalledWith('/admin/attendance/approval-workflow/saved-lineage'));
+    await waitFor(() => expect(router.push).toHaveBeenCalledWith('/admin/attendance/approval-workflow/saved-lineage?notice=saved'));
   });
   it('keeps names with reordered stages, derives mode from alternatives, and offers only Attendance authorities', async () => {
     form();
@@ -70,7 +70,7 @@ describe('company workflow editor outcomes', () => {
     expect(payload.stages.map((stage: { name: string }) => stage.name)).toEqual(['Final review', 'Manager review']);
     expect(payload.stages[1].level).toMatchObject({ kind: 'hr_admin', alternates: [{ kind: 'direct_manager', employmentId: null }] });
     expect(payload).not.toHaveProperty('mode');
-    await waitFor(() => expect(router.push).toHaveBeenCalledWith('/admin/attendance/approval-workflow/saved-lineage'));
+    await waitFor(() => expect(router.push).toHaveBeenCalledWith('/admin/attendance/approval-workflow/saved-lineage?notice=saved'));
   });
   it('switching to sequential removes alternatives and cancel preserves edits unless confirmed', () => {
     const value = initial(); value.stages[1].level.alternates = [{ kind: 'direct_manager', employmentId: null }]; form(value);
@@ -146,4 +146,18 @@ describe('797ba70b: auto levels and complete assignment controls', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Save workflow' })); await waitFor(() => expect(save).toHaveBeenCalled());
     expect(save.mock.calls[0][1].criteria.employeeIds).toEqual(['e1', 'e2']);
   });
+});
+
+it('defaults new organisation-wide workflows to All Company and restores explicit saved scope',async()=>{
+ const catalogues={...options,canManageAllCompanies:true,companies:[...options.companies,{id:'00000000-0000-0000-0000-000000000002',name:'Company B'}]};
+ form(null,en,catalogues);
+ expect(screen.getByRole('checkbox',{name:'All Company'})).toBeChecked();
+ fireEvent.click(screen.getByRole('checkbox',{name:'All Company'}));
+ expect(screen.getByRole('checkbox',{name:'All Company'})).not.toBeChecked();
+ cleanup();form(initial(),en,catalogues);
+ expect(screen.getByRole('checkbox',{name:'All Company'})).not.toBeChecked();
+});
+it('explains the organisation-wide permission requirement for company-scoped administrators',()=>{
+ form(null);expect(screen.getByRole('checkbox',{name:'All Company'})).toBeDisabled();
+ expect(screen.getByText(en.attendanceWorkflow.allCompanyRestricted)).toBeVisible();
 });

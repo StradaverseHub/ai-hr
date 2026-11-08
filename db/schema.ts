@@ -10816,6 +10816,7 @@ export const hrOrchestrationCase = pgTable('hr_orchestration_case', {
   index('hr_orchestration_case_queue').on(t.tenantId, t.state, t.openedAt)]);
 // Attendance approval configuration and immutable resolved stages, independent of Leave.
 export const attendanceWorkflowTemplate = pgTable('attendance_workflow_template', {
+    allCompanies: boolean('all_companies').notNull().default(false),
     id: id(), tenantId: tenantId(), companyId: uuid('company_id').notNull().references(() => company.id),
     code: text('code').notNull(), name: text('name').notNull(), description: text('description'),
     applicationType: text('application_type').notNull().$type<'irregularity' | 'self_overtime'>(),

@@ -5,9 +5,9 @@ import {AttendanceCcError} from '@/lib/attendance-workflow-v4';
 import { AttendanceLevelError, attendanceLevelProblemMessageKey } from '@/lib/attendance-workflow-v3';
 import { revalidatePath } from 'next/cache';
 import { scopedAdmin } from '@/lib/scope';
-import { saveAttendanceWorkflow, retireAttendanceWorkflow, restoreAttendanceWorkflow, getAttendanceWorkflow, setAttendanceWorkflowEnabled, previewAttendanceWorkflow, AttendanceWorkflowError, type AttendanceWorkflowInput, type AttendanceApplicationType } from '@/packs/attendance/service';
+import { saveAttendanceWorkflow, archiveAttendanceWorkflow, attendanceWorkflowWarningPage, retireAttendanceWorkflow, restoreAttendanceWorkflow, getAttendanceWorkflow, setAttendanceWorkflowEnabled, previewAttendanceWorkflow, AttendanceWorkflowError, type AttendanceWorkflowInput, type AttendanceApplicationType } from '@/packs/attendance/service';
 const LIST = '/admin/attendance/approval-workflow';
-async function publicError(e: unknown) { if(e instanceof AttendanceCcError)return(await getTranslations('attendanceWorkflow.v4'))(e.code);if(e instanceof AttendanceWorkflowError&&e.code==='inUse')return(await getTranslations('attendanceWorkflow.v4'))('deletePending');if(e instanceof AttendanceWorkflowError&&e.code==='stale')return(await getTranslations('attendanceWorkflow.v4'))('deleteChanged'); if (e instanceof AttendanceLevelError) return (await getTranslations('attendanceWorkflow.v3'))(attendanceLevelProblemMessageKey(e.problem)); return e instanceof AttendanceWorkflowError ? e.message : 'The workflow could not be saved. Check the configuration and try again.'; }
+async function publicError(e: unknown) { if(e instanceof AttendanceCcError)return(await getTranslations('attendanceWorkflow.v4'))(e.code);if(e instanceof AttendanceWorkflowError&&e.code==='inUse')return(await getTranslations('attendanceWorkflow.v4'))('usedCannotDelete');if(e instanceof AttendanceWorkflowError&&e.code==='stale')return(await getTranslations('attendanceWorkflow.v4'))('deleteChanged'); if (e instanceof AttendanceLevelError) return (await getTranslations('attendanceWorkflow.v3'))(attendanceLevelProblemMessageKey(e.problem)); return e instanceof AttendanceWorkflowError ? e.message : 'The workflow could not be saved. Check the configuration and try again.'; }
 export async function saveAttendanceWorkflowAction(lineageId: string | null, input: AnyAttendanceWorkflowInput, autoPriority = false) {
     const { s, scopeIds,allowedCompanyIds } = await scopedAdmin();
     if ((input.companyIds??[input.companyId]).some(id=>!(allowedCompanyIds??scopeIds).includes(id)))
@@ -17,7 +17,7 @@ export async function saveAttendanceWorkflowAction(lineageId: string | null, inp
         revalidatePath(LIST);
         revalidatePath(`${LIST}/${row.lineageId}`);
         revalidatePath(`${LIST}/${row.lineageId}/edit`);
-        return { ok: true as const, lineageId: row.lineageId };
+        return { ok: true as const, lineageId: row.lineageId, ...(row.warningCount?{warningCount:row.warningCount}:{}) };
     }
     catch (e) {
         return { ok: false as const, error: await publicError(e), levelProblem: e instanceof AttendanceLevelError ? e.problem : null };
@@ -66,4 +66,14 @@ export async function searchAttendanceApproversAction(input:{companyIds:string[]
   const {searchAttendanceApprovers}=await import('@/packs/attendance/service');
   return {ok:true as const,value:await searchAttendanceApprovers(s,input)};
  }catch(error){return {ok:false as const,error:await publicError(error)};}
+}
+
+export async function archiveAttendanceWorkflowAction(lineageId:string,version:number){
+ const {s,scopeIds,allowedCompanyIds}=await scopedAdmin();
+ try{const current=await getAttendanceWorkflow(s,lineageId,allowedCompanyIds??scopeIds);if(!current)throw new AttendanceWorkflowError('stale','The workflow changed. Reload.');await archiveAttendanceWorkflow(s,lineageId,version);revalidatePath(LIST);revalidatePath(`${LIST}/${lineageId}`);return{ok:true as const,companyId:current.companyId,applicationType:current.applicationType};}
+ catch(error){return{ok:false as const,error:await publicError(error)};}
+}
+export async function attendanceWorkflowWarningPageAction(lineageId:string,offset:number){
+ const {s,scopeIds,allowedCompanyIds}=await scopedAdmin();
+ try{return{ok:true as const,page:await attendanceWorkflowWarningPage(s,lineageId,allowedCompanyIds??scopeIds,offset)};}catch(error){return{ok:false as const,error:await publicError(error)};}
 }

@@ -30,7 +30,7 @@ describe('prepared per-level Attendance v3 editor (live conversion remains disab
     it('retains an independent fifth-superior depth after a named first level', () => {
         show();
         fireEvent.change(within(levels()[0]).getByLabelText('Approver source'), { target: { value: 'specific_employee' } });
-        fireEvent.click(within(levels()[0]).getByRole('button',{name:en.attendanceWorkflow.v3.choosePerson}));fireEvent.click(within(levels()[0]).getByRole('checkbox',{name:/EMP-A/}));
+        fireEvent.click(within(levels()[0]).getByRole('button',{name:en.attendanceWorkflow.selectEmployee}));fireEvent.click(within(levels()[0]).getByRole('checkbox',{name:/EMP-A/}));
         fireEvent.change(within(levels()[1]).getByLabelText('Superior depth'), { target: { value: '5' } });
         expect(saved()[0].source).toEqual({ kind: 'specific_employee', employmentIds: ['employee-a'] });
         expect(saved()[1].source).toEqual({ kind: 'direct_manager', depth: 5 });
@@ -38,7 +38,7 @@ describe('prepared per-level Attendance v3 editor (live conversion remains disab
     it('shows employee codes and names and preserves the explicitly edited order', () => {
         show();
         fireEvent.change(within(levels()[0]).getByLabelText('Approver source'), { target: { value: 'specific_employee' } });
-        fireEvent.click(within(levels()[0]).getByRole('button',{name:en.attendanceWorkflow.v3.choosePerson}));
+        fireEvent.click(within(levels()[0]).getByRole('button',{name:en.attendanceWorkflow.selectEmployee}));
         fireEvent.click(within(levels()[0]).getByRole('checkbox',{name:/EMP-A/}));
         fireEvent.click(within(levels()[0]).getByRole('checkbox',{name:/EMP-B/}));
         expect(within(levels()[0]).getByText('1. EMP-A · Fictional Arjun')).toBeVisible();

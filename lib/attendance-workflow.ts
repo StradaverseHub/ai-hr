@@ -112,6 +112,7 @@ export function attendanceScopesOverlap(a: AttendanceWorkflowCriteria, b: Attend
 }
 
 export type AttendanceWorkflowOptions = {
+    canManageAllCompanies?: boolean;
     companies: { id: string; name: string }[];
     departments: { id: string; name: string }[];
     businessUnits: { id: string; name: string }[];

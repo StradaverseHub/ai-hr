@@ -5,7 +5,7 @@ import {getTableColumns as templateColumnsOf, and, asc, desc, eq, inArray, isNul
 import { type SessionContext, type Tx } from '../db/client';
 import { withAttendanceTenant as withTenant,assertModuleGate } from './module-gate';
 import { actorOf, appendEvent, type AppendEventArgs } from '../db/events';
-import { attendanceWorkflowTemplate as template, attendanceWorkflowSetting as setting, attendanceWorkflowRequest as request, attendanceWorkflowDecision as decision, attendanceWorkflowReassignment as reassignment, attendanceWorkflowParticipantDecision as participantDecision, attendanceWorkflowParticipantReassignment as participantReassignment, employment, person, department, businessUnit, jobGrade, profileOption, position } from '../db/schema';
+import { company, attendanceWorkflowTemplate as template, attendanceWorkflowSetting as setting, attendanceWorkflowRequest as request, attendanceWorkflowDecision as decision, attendanceWorkflowReassignment as reassignment, attendanceWorkflowParticipantDecision as participantDecision, attendanceWorkflowParticipantReassignment as participantReassignment, employment, person, department, businessUnit, jobGrade, profileOption, position } from '../db/schema';
 import { approversOf } from '../lib/leave-approval-kinds';
 import { todayInKualaLumpur } from '../lib/hr-date';
 import { resolveOrgCriteriaTargets } from './org-criteria';
@@ -28,20 +28,28 @@ async function adminFor(tx: Tx, companyId: string) {
         throw new AttendanceWorkflowError('scope', 'Only an administrator for this company may configure attendance workflows.');
 }
 const companyLock = (tx: Tx, tenantId: string, companyId: string, type: string) => tx.execute(sql `select pg_advisory_xact_lock(hashtextextended(${tenantId + ':attendance-workflow:' + companyId + ':' + type},0))`);
+/** All-company scope includes future companies; a complete list of today's grants is insufficient. */
+async function allCompanyAuthority(tx:Tx){const [row]=await tx.execute<{ok:boolean}>(sql`select app.principal_snapshot_current() and app.is_admin_for(NULL::uuid) as ok`);return row?.ok===true;}
+async function configurationCompanies(tx:Tx,input:AnyAttendanceWorkflowInput){
+ if(!input.allCompanies)return input.companyIds??[input.companyId];
+ if(!await allCompanyAuthority(tx))throw new AttendanceWorkflowError('scope','All Company requires organisation-wide administration.');
+ return (await tx.select({id:company.id}).from(company).where(eq(company.tenantId,sql`app.current_tenant_id()`)).orderBy(asc(company.id))).map(c=>c.id);
+}
+/** Shared by every submission and configuration mutation; acquire before company/lineage locks. */
+const configurationLock=(tx:Tx,tenantId:string,type:string)=>tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${tenantId+':attendance-workflow-scope:'+type},0))`);
 const templateColumns=()=>templateColumnsOf(template);
 const applies=(companyId:string)=>sql`app.attendance_workflow_applies(${template.id},${companyId}::uuid)`;
+const used=sql<boolean>`exists(select 1 from attendance_workflow_request w join attendance_workflow_template historical on historical.id=w.template_id and historical.tenant_id=w.tenant_id where historical.lineage_id=${template.lineageId} and historical.tenant_id=app.current_tenant_id())`.as('used');
 const assignments=sql<string[]>`app.attendance_workflow_companies(${template.id})`.as('companyIds');
 async function assignedCompanies(tx:Tx,id:string){const [row]=await tx.execute<{ids:string[]}>(sql`select app.attendance_workflow_companies(${id}::uuid) as ids`);return row?.ids??[];}
 async function requireAllCompanies(tx:Tx,ids:string[]){if(!ids.length)throw new AttendanceWorkflowError('scope','This shared workflow requires permission for every assigned company.');for(const id of ids)await adminFor(tx,id);}
 async function validateScope(tx: Tx, ctx: SessionContext, input: AnyAttendanceWorkflowInput) {
     if (input.routingVersion === 3 || input.routingVersion === 4) {
-        const eligible = await tx.execute(sql`select id from app.attendance_workflow_v3_approver_options(ARRAY[${input.companyId}::uuid]::uuid[])`) as unknown as { id: string }[];
-        const allowed = new Set(eligible.map(row => row.id));
-        for (const [levelIndex, stage] of input.stages.entries()) {
-            for (const source of 'sources' in stage ? stage.sources : [stage.source]) {
-            if (source.kind !== 'specific_employee') continue;
-            for (const [participantIndex, employmentId] of source.employmentIds.entries()) if (!allowed.has(employmentId)) throw new AttendanceLevelError({ code: 'employee_unavailable', levelIndex, participantIndex });
-            }
+        const selected=input.stages.flatMap(stage=>'sources' in stage?stage.sources:[stage.source]).flatMap(source=>source.kind==='specific_employee'?source.employmentIds:[]);
+        if(selected.length){
+         const visible=await tx.select({id:employment.id}).from(employment).where(and(inArray(employment.id,selected),sql`app.is_admin_for(${employment.companyId}) and app.access_workforce_employment(${employment.id},'workforce.view')`));
+         const allowed=new Set(visible.map(row=>row.id));
+         for(const [levelIndex,stage] of input.stages.entries())for(const source of 'sources' in stage?stage.sources:[stage.source])if(source.kind==='specific_employee')for(const [participantIndex,id] of source.employmentIds.entries())if(!allowed.has(id))throw new AttendanceLevelError({code:'employee_unavailable',levelIndex,participantIndex});
         }
     }
 
@@ -66,7 +74,7 @@ async function validateScope(tx: Tx, ctx: SessionContext, input: AnyAttendanceWo
     }
     const selectedEmployees = input.criteria.employeeIds ?? [];
     if (selectedEmployees.length) {
-        const rows = await resolveOrgCriteriaTargets(tx, { criteria: { companyIds: input.companyIds??[input.companyId] }, asOf: todayInKualaLumpur(), employmentIds: selectedEmployees });
+        const rows = await resolveOrgCriteriaTargets(tx, { criteria: { companyIds: await configurationCompanies(tx,input) }, asOf: todayInKualaLumpur(), employmentIds: selectedEmployees });
         if (rows.length !== selectedEmployees.length) throw new AttendanceWorkflowError('invalid', 'An employee is missing, inactive or outside the selected company.');
     }
 
@@ -135,11 +143,14 @@ async function resolveStages(tx: Tx, employmentId: string, configured: AnyAttend
             : hr[0]?.ok === true ? [{ kind: 'hr_admin' as const, employmentId: null, name: 'HR administrators' }] : []),
     }));
 }
-async function validateActivation(tx: Tx, ctx: SessionContext, input: AnyAttendanceWorkflowInput, lineageId?: string) {
+export type AttendanceWorkflowWarning={employmentId:string;employeeCode:string|null;name:string;companyId:string;levelIndex:number|null;problem:AttendanceLevelProblem|null;legacy:boolean};
+async function validateActivation(tx: Tx, ctx: SessionContext, input: AnyAttendanceWorkflowInput, lineageId?: string,checkOverlap=true,strict=true) {
+    const warnings:AttendanceWorkflowWarning[]=[];
     const others = await tx.select().from(template).where(and(applies(input.companyId), eq(template.applicationType, input.applicationType), eq(template.active, true), isNull(template.supersededAt)));
-    if (others.some(t => t.lineageId !== lineageId && t.priority === input.priority && attendanceScopesOverlap(t.criteria, input.criteria)))
+    if (checkOverlap&&others.some(t => t.lineageId !== lineageId && t.priority === input.priority && attendanceScopesOverlap(t.criteria, input.criteria)))
         throw new AttendanceWorkflowError('overlap', 'An active workflow at this priority overlaps this assignment. Use a different priority or disjoint scope. Lower priority numbers apply first.');
     const targets=await workflowTargets(tx,input.criteria,input.companyId);
+    const warning=async(id:string,problem:AttendanceLevelProblem|null)=>{const [who]=await tx.select({name:person.fullName,employeeCode:employment.employeeCode}).from(employment).innerJoin(person,eq(person.id,employment.personId)).where(eq(employment.id,id));warnings.push({employmentId:id,employeeCode:who?.employeeCode??null,name:who?.name??id,companyId:input.companyId,levelIndex:problem?.levelIndex??null,problem,legacy:!problem});};
     const sources=input.routingVersion===3?input.stages.map(stage=>stage.source):input.routingVersion===4?input.stages.flatMap(stage=>stage.sources):[];
     const selected=sources.flatMap(source=>source.kind==='specific_employee'?source.employmentIds:[]);
     if(selected.length){
@@ -151,25 +162,31 @@ async function validateActivation(tx: Tx, ctx: SessionContext, input: AnyAttenda
      catch(error){
       if(error instanceof AttendanceLevelError&&error.problem.levelIndex!==null){
        const stage=input.stages[error.problem.levelIndex];
-       const dynamic=stage&&('sources' in stage?stage.sources:'source' in stage?[stage.source]:[]).some(source=>source.kind==='direct_manager');
-       if(dynamic&&['missing_superior','ambiguous_superior','cycle','inactive_superior','outside_company_scope','missing_or_ambiguous_login','missing_person'].includes(error.problem.code))continue;
+       const sources=stage&&('sources' in stage?stage.sources:'source' in stage?[stage.source]:[])||[];
+       const dynamic=sources.some(source=>source.kind==='direct_manager');
+       if(sources.some(source=>source.kind==='specific_employee')&&['employee_unavailable','missing_or_ambiguous_login'].includes(error.problem.code)){await warning(id,error.problem);continue;}
+       if(dynamic&&['missing_superior','ambiguous_superior','cycle','inactive_superior','outside_company_scope','missing_or_ambiguous_login','missing_person'].includes(error.problem.code)){await warning(id,error.problem);continue;}
       }
-      if(error instanceof AttendanceWorkflowError&&error.code==='unresolved'&&(input.routingVersion??1)<=2&&input.stages.some(stage=>'level' in stage&&approversOf(stage.level).some(actor=>actor.kind==='direct_manager')))continue;
+      if(error instanceof AttendanceWorkflowError&&error.code==='unresolved'&&(input.routingVersion??1)<=2&&input.stages.some(stage=>'level' in stage&&approversOf(stage.level).some(actor=>actor.kind==='direct_manager'))){await warning(id,null);continue;}
+      if(!strict&&(error instanceof AttendanceLevelError||error instanceof AttendanceWorkflowError&&error.code==='unresolved')){await warning(id,error instanceof AttendanceLevelError?error.problem:null);continue;}
       throw error;
      }
     }
     // Submission still resolves every required level and never treats an unresolved route as approved.
-
+    return warnings;
 }
 export async function saveAttendanceWorkflow(ctx: SessionContext, raw: unknown, lineageId?: string, restoreVersion?:number, autoPriority = false) {
     const input = validateAnyAttendanceWorkflow(raw);
     return withTenant(ctx, async (tx) => {
+        await configurationLock(tx,ctx.tenantId,input.applicationType);
         // Serialize the lineage before discovering its complete prior assignment set.
         if(lineageId)await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${ctx.tenantId+':attendance-workflow-lineage:'+lineageId},0))`);
         const existing=lineageId?(await tx.select().from(template).where(eq(template.lineageId,lineageId)).orderBy(desc(template.version)).limit(1))[0]:undefined;
         const previousCompanies=existing?await assignedCompanies(tx,existing.id):[];
         if(existing)await requireAllCompanies(tx,previousCompanies);
-        const companies=input.companyIds??[input.companyId];
+        if(existing?.allCompanies&&!await allCompanyAuthority(tx))throw new AttendanceWorkflowError('scope','All Company requires organisation-wide administration.');
+        const companies=await configurationCompanies(tx,input);
+        const warnings:AttendanceWorkflowWarning[]=[];
         for(const companyId of [...new Set([...previousCompanies,...companies])].sort()){await adminFor(tx,companyId);await companyLock(tx,ctx.tenantId,companyId,input.applicationType);}
         let [old] = lineageId ? await tx.select().from(template).where(and(eq(template.lineageId, lineageId), isNull(template.supersededAt))).for('update') : [];
         if(old && restoreVersion!==undefined)throw new AttendanceWorkflowError('stale','This workflow already has a current version. Reload before restoring.');
@@ -189,7 +206,7 @@ export async function saveAttendanceWorkflow(ctx: SessionContext, raw: unknown, 
             if (priority > 9999) throw new AttendanceWorkflowError('overlap', 'All automatic workflow priorities are in use.');
             input.priority = priority;
         }
-        for(const companyId of companies){const scoped={...input,companyId};await validateScope(tx,ctx,scoped);if(input.active)await validateActivation(tx,ctx,scoped,lineageId);
+        for(const companyId of companies){const scoped={...input,companyId};await validateScope(tx,ctx,scoped);warnings.push(...await validateActivation(tx,ctx,scoped,lineageId,input.active));
          const duplicate=await tx.select({lineageId:template.lineageId}).from(template).where(and(applies(companyId),eq(template.code,input.code),isNull(template.supersededAt)));
          if(duplicate.some(row=>row.lineageId!==lineageId))throw new AttendanceWorkflowError('invalid','Workflow Code is already used in a selected company.');
         }
@@ -200,33 +217,40 @@ export async function saveAttendanceWorkflow(ctx: SessionContext, raw: unknown, 
         const [row] = await tx.insert(template).values({ tenantId: ctx.tenantId, ...configuration, lineageId: lineage, version: (old?.version ?? 0) + 1 }).returning();
         for(const companyId of companies.filter(id=>id!==input.companyId))await tx.execute(sql`insert into attendance_workflow_company(tenant_id,template_id,company_id) values(${ctx.tenantId}::uuid,${row.id}::uuid,${companyId}::uuid)`);
         await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: 'attendance-workflow-template', aggregateId: lineage, eventType: old?.retiredAt?'attendance-workflow-template.restored':old ? 'attendance-workflow-template.versioned' : 'attendance-workflow-template.created', actor: actorOf(ctx), payload: { companyId: input.companyId, templateId: row.id, version: row.version, before: old ?? null, after: input } });
-        return {...row,companyIds:companies};
+        return {...row,companyIds:companies,warningCount:warnings.length};
     });
+}
+export async function attendanceWorkflowWarningPage(ctx:SessionContext,lineageId:string,companyIds:string[],offset=0){
+ if(!Number.isInteger(offset)||offset<0||offset>100000)throw new AttendanceWorkflowError('invalid','Choose a valid warning page.');
+ const row=await getAttendanceWorkflow(ctx,lineageId,companyIds);if(!row)throw new AttendanceWorkflowError('scope','The workflow is not available.');
+ return withTenant(ctx,async tx=>{const input=attendanceWorkflowConfiguration(row),warnings:AttendanceWorkflowWarning[]=[];for(const companyId of await configurationCompanies(tx,input)){await adminFor(tx,companyId);warnings.push(...await validateActivation(tx,ctx,{...input,companyId},lineageId,false,false));}return{rows:warnings.slice(offset,offset+50),total:warnings.length,offset,hasMore:offset+50<warnings.length};});
 }
 function manageableInScope(companyIds:string[]){return sql`app.attendance_workflow_all_companies_admin(${template.id}) and app.attendance_workflow_companies(${template.id}) && ARRAY[${sql.join(companyIds.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[]`;}
 export function listAttendanceWorkflows(ctx:SessionContext,companyIds:string[]){
- return withTenant(ctx,tx=>companyIds.length?tx.select({...templateColumns(),companyIds:assignments}).from(template).where(and(manageableInScope(companyIds),isNull(template.supersededAt))).orderBy(asc(template.applicationType),asc(template.priority),asc(template.code)):Promise.resolve([]));
+ return withTenant(ctx,tx=>companyIds.length?tx.select({...templateColumns(),companyIds:assignments,used}).from(template).where(and(manageableInScope(companyIds),isNull(template.supersededAt))).orderBy(asc(template.applicationType),asc(template.priority),asc(template.code)):Promise.resolve([]));
 }
 export function getAttendanceWorkflow(ctx:SessionContext,lineageId:string,companyIds:string[],includeRetired=false){
- return withTenant(ctx,async tx=>companyIds.length?(await tx.select({...templateColumns(),companyIds:assignments}).from(template).where(and(eq(template.lineageId,lineageId),manageableInScope(companyIds),includeRetired?undefined:isNull(template.supersededAt))).orderBy(desc(template.version)).limit(1))[0]??null:null);
+ return withTenant(ctx,async tx=>companyIds.length?(await tx.select({...templateColumns(),companyIds:assignments,used}).from(template).where(and(eq(template.lineageId,lineageId),manageableInScope(companyIds),includeRetired?undefined:isNull(template.supersededAt))).orderBy(desc(template.version)).limit(1))[0]??null:null);
 }
 export function listRetiredAttendanceWorkflows(ctx:SessionContext,companyIds:string[]){
- return withTenant(ctx,tx=>companyIds.length?tx.select({...templateColumns(),companyIds:assignments}).from(template).where(and(manageableInScope(companyIds),isNotNull(template.retiredAt),sql`not exists(select 1 from attendance_workflow_template later where later.tenant_id=${template.tenantId} and later.lineage_id=${template.lineageId} and later.version>${template.version})`)).orderBy(asc(template.code)):Promise.resolve([]));
+ return withTenant(ctx,tx=>companyIds.length?tx.select({...templateColumns(),companyIds:assignments,used}).from(template).where(and(manageableInScope(companyIds),isNotNull(template.retiredAt),sql`not exists(select 1 from attendance_workflow_template later where later.tenant_id=${template.tenantId} and later.lineage_id=${template.lineageId} and later.version>${template.version})`)).orderBy(asc(template.code)):Promise.resolve([]));
 }
-export async function retireAttendanceWorkflow(ctx:SessionContext,lineageId:string,expectedVersion:number) {
- if(!/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(lineageId)||!Number.isInteger(expectedVersion)||expectedVersion<1)throw new AttendanceWorkflowError('invalid','Reload the workflow before deleting.');
+export async function retireAttendanceWorkflow(ctx:SessionContext,lineageId:string,expectedVersion:number){return removeAttendanceWorkflow(ctx,lineageId,expectedVersion,false);}
+export async function archiveAttendanceWorkflow(ctx:SessionContext,lineageId:string,expectedVersion:number){return removeAttendanceWorkflow(ctx,lineageId,expectedVersion,true);}
+async function removeAttendanceWorkflow(ctx:SessionContext,lineageId:string,expectedVersion:number,archive:boolean){
+ if(!/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(lineageId)||!Number.isInteger(expectedVersion)||expectedVersion<1)throw new AttendanceWorkflowError('invalid','Reload the workflow before changing it.');
  return withTenant(ctx,async tx=>{
   const [old]=await tx.select().from(template).where(and(eq(template.lineageId,lineageId),isNull(template.supersededAt))).limit(1);
-  if(!old)throw new AttendanceWorkflowError('stale','The workflow changed. Reload before deleting.');
+  if(!old)throw new AttendanceWorkflowError('stale','The workflow changed. Reload before changing it.');
+  await configurationLock(tx,ctx.tenantId,old.applicationType);
   await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${ctx.tenantId+':attendance-workflow-lineage:'+lineageId},0))`);
-  const companies=await assignedCompanies(tx,old.id);await requireAllCompanies(tx,companies);for(const id of companies.sort())await companyLock(tx,ctx.tenantId,id,old.applicationType);
-  let result:{id:string}|undefined;
-  try{[result]=await tx.execute(sql`select app.attendance_workflow_retire(${lineageId}::uuid,${expectedVersion}) as id`) as unknown as {id:string}[];}
-  catch(error){const top=error as {code?:string;cause?:{code?:string}};const code=top.cause?.code??top.code;if(code==='P5101')throw new AttendanceWorkflowError('inUse','Pending applications still depend on this workflow.');if(code==='P5102')throw new AttendanceWorkflowError('stale','The workflow changed. Reload before deleting.');throw error;}
+  const companies=await assignedCompanies(tx,old.id);await requireAllCompanies(tx,companies);
+  if(old.allCompanies&&!await allCompanyAuthority(tx))throw new AttendanceWorkflowError('scope','All Company requires organisation-wide administration.');
+  for(const id of companies.sort())await companyLock(tx,ctx.tenantId,id,old.applicationType);
+  try{await tx.execute(sql`select app.attendance_workflow_remove(${lineageId}::uuid,${expectedVersion},${archive})`);}
+  catch(error){const top=error as {code?:string;cause?:{code?:string}};const code=top.cause?.code??top.code;if(code==='P5101')throw new AttendanceWorkflowError('inUse','This workflow has already been used by approval transactions and cannot be deleted. Please archive it instead.');if(code==='P5102')throw new AttendanceWorkflowError('stale','The workflow changed. Reload before changing it.');throw error;}
 
-  if(!result?.id)throw new AttendanceWorkflowError('stale','The workflow changed. Reload before deleting.');
-  await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'attendance-workflow-template',aggregateId:lineageId,eventType:'attendance-workflow-template.retired',actor:actorOf(ctx),payload:{companyId:old.companyId,templateId:result.id,version:expectedVersion,name:old.name}});
-  return {companyId:old.companyId,applicationType:old.applicationType};
+  return{companyId:old.companyId,applicationType:old.applicationType};
  });
 }
 export async function restoreAttendanceWorkflow(ctx:SessionContext,lineageId:string,expectedVersion:number,companyIds:string[]) {
@@ -578,7 +602,8 @@ async function previewAttendanceWorkflowCompany(ctx: SessionContext, raw: unknow
 }
 export async function previewAttendanceWorkflow(ctx:SessionContext,raw:unknown,lineageId?:string){
  const input=validateAnyAttendanceWorkflow(raw),results=[];
- for(const companyId of input.companyIds??[input.companyId])results.push(await previewAttendanceWorkflowCompany(ctx,{...input,companyId},lineageId));
+ const companies=await withTenant(ctx,tx=>configurationCompanies(tx,input));
+ for(const companyId of companies)results.push(await previewAttendanceWorkflowCompany(ctx,{...input,companyId},lineageId));
  return {total:results.reduce((n,r)=>n+r.total,0),rows:results.flatMap(r=>r.rows),truncated:results.some(r=>r.truncated)};
 }
 export async function attendanceWorkflowsForTx(tx: Tx, ids: string[]) {

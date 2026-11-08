@@ -7,7 +7,7 @@ import {withTenant,type SessionContext,type Tx} from '../db/client';
 import * as schema from '../db/schema';
 import {hireEmployee,setReportingLine} from '../core/org';
 import {checkIn,checkOut,requestAttendanceCorrection,decideAttendanceCorrection,cancelAttendanceApplication,listAttendanceCorrections,myOvertimePlans} from '../core/attendance';
-import {saveAttendanceWorkflow,setAttendanceWorkflowEnabled,previewAttendanceWorkflow,retireAttendanceWorkflow,restoreAttendanceWorkflow,listAttendanceWorkflows,listRetiredAttendanceWorkflows,decideAttendanceWorkflowStageTx} from '../core/attendance-workflow';
+import {saveAttendanceWorkflow,setAttendanceWorkflowEnabled,previewAttendanceWorkflow,archiveAttendanceWorkflow,retireAttendanceWorkflow,restoreAttendanceWorkflow,listAttendanceWorkflows,listRetiredAttendanceWorkflows,decideAttendanceWorkflowStageTx} from '../core/attendance-workflow';
 import {attendanceApplicationDetail,attendanceApplicationFilterOptions} from '../core/attendance-application-history';
 import {saveNotificationEmailPolicy,saveNotificationEmailPreferences} from '../core/notification-email';
 import {createNotificationEmailService} from '../deploy/identity-email/notifications';
@@ -143,11 +143,18 @@ describe('v4 final effects require fresh real-actor writes and the actual target
 });
 describe('retirement preserves dependencies and requires a fresh revision',()=>{
  it('refuses a pending dependency in an older version and preserves its frozen route',async()=>{const f=await fixture(),before=await detail(f);const newer=await saveAttendanceWorkflow(f.root,{...f.input,name:'Fictional next version'},f.template.lineageId);await expect(retireAttendanceWorkflow(f.root,f.template.lineageId,newer.version)).rejects.toMatchObject({code:'inUse'});expect((await detail(f)).workflow!.stages).toEqual(before.workflow!.stages);expect(await listAttendanceWorkflows(f.root,[base.companyId])).toEqual([expect.objectContaining({version:2})]);});
- it('deletes future configuration, retains history, refuses no-match fallback and restores as a new version',async()=>{
-  const f=await fixture();await decide(f,f.first,'0:0','rejected');await expect(retireAttendanceWorkflow(f.root,f.template.lineageId,f.template.version+1)).rejects.toMatchObject({code:'stale'});await retireAttendanceWorkflow(f.root,f.template.lineageId,f.template.version);expect(await listAttendanceWorkflows(f.root,[base.companyId])).toEqual([]);expect((await detail(f)).workflow!.templateVersion).toBe(1);expect(await listRetiredAttendanceWorkflows(f.root,[base.companyId])).toEqual([expect.objectContaining({lineageId:f.template.lineageId})]);
+ it('archives used configuration, retains history, refuses no-match fallback and restores as a new version',async()=>{
+  const f=await fixture();await decide(f,f.first,'0:0','rejected');await expect(retireAttendanceWorkflow(f.root,f.template.lineageId,f.template.version+1)).rejects.toMatchObject({code:'stale'});await expect(retireAttendanceWorkflow(f.root,f.template.lineageId,f.template.version)).rejects.toMatchObject({code:'inUse'});await archiveAttendanceWorkflow(f.root,f.template.lineageId,f.template.version);expect(await listAttendanceWorkflows(f.root,[base.companyId])).toEqual([]);expect((await detail(f)).workflow!.templateVersion).toBe(1);expect(await listRetiredAttendanceWorkflows(f.root,[base.companyId])).toEqual([expect.objectContaining({lineageId:f.template.lineageId})]);
   await expect(f.submit()).rejects.toMatchObject({code:'noMatch'});const restored=await restoreAttendanceWorkflow(f.root,f.template.lineageId,1,[base.companyId]);expect(restored.version).toBe(2);expect((await detail(f)).workflow!.templateVersion).toBe(1);expect(await listRetiredAttendanceWorkflows(f.root,[base.companyId])).toEqual([]);
  });
- it('serializes a racing submission and retirement without losing a pending route',async()=>{const f=await fixture();await decide(f,f.first,'0:0','rejected');const outcomes=await Promise.allSettled([f.submit(),retireAttendanceWorkflow(f.root,f.template.lineageId,1)]);expect(outcomes.filter(result=>result.status==='fulfilled')).toHaveLength(1);const submitted=outcomes[0];if(submitted.status==='fulfilled'){const pending=await attendanceApplicationDetail(f.root,[base.companyId],submitted.value.correctionId);expect(pending!.application.status).toBe('pending');expect(pending!.workflow!.templateId).toBe(f.template.id);expect(await listAttendanceWorkflows(f.root,[base.companyId])).toHaveLength(1);}else{expect(await listAttendanceWorkflows(f.root,[base.companyId])).toEqual([]);expect(await listRetiredAttendanceWorkflows(f.root,[base.companyId])).toHaveLength(1);}});
+ it('serializes racing submission and archive while retaining every committed request',async()=>{
+  const f=await fixture();await decide(f,f.first,'0:0','rejected');
+  const outcomes=await Promise.allSettled([f.submit(),archiveAttendanceWorkflow(f.root,f.template.lineageId,1)]);
+  expect(outcomes[1].status).toBe('fulfilled');
+  expect(await listAttendanceWorkflows(f.root,[base.companyId])).toEqual([]);
+  expect(await listRetiredAttendanceWorkflows(f.root,[base.companyId])).toHaveLength(1);
+  const submitted=outcomes[0];if(submitted.status==='fulfilled'){const pending=await attendanceApplicationDetail(f.root,[base.companyId],submitted.value.correctionId);expect(pending!.workflow!.templateId).toBe(f.template.id);}
+ });
  it('cannot bypass retirement checks by superseding a current version without a successor',async()=>{const f=await fixture();await expect(withTenant(f.root,tx=>tx.update(schema.attendanceWorkflowTemplate).set({supersededAt:new Date()}).where(eq(schema.attendanceWorkflowTemplate.id,f.template.id)))).rejects.toThrow();expect(await listAttendanceWorkflows(f.root,[base.companyId])).toHaveLength(1);});
 });
 describe('CC outbox follows real committed actions only',()=>{

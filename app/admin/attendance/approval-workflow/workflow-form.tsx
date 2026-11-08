@@ -25,7 +25,7 @@ export function WorkflowForm({ initial, lineageId, context, options, defaultPrio
     const employmentTypeLabel = useTranslations('people.wizard.employmentType');
     const v3 = useTranslations('attendanceWorkflow.v3');
     const t = useTranslations('attendanceWorkflow'), choices = useTranslations('admin.leave'), router = useRouter();
-    const [input, setInput] = useState<AnyAttendanceWorkflowInput>(initial ?? { ...context, companyIds:[context.companyId], routingVersion: 4, cc:[], code: '', name: '', description: '', priority: defaultPriority, criteria: {}, stages: [emptyAttendanceV4Level(0)], active: false });
+    const [input, setInput] = useState<AnyAttendanceWorkflowInput>(initial ?? { ...context, companyIds:options.canManageAllCompanies?options.companies.map(c=>c.id):[context.companyId], allCompanies:options.canManageAllCompanies===true, routingVersion: 4, cc:[], code: '', name: '', description: '', priority: defaultPriority, criteria: {}, stages: [emptyAttendanceV4Level(0)], active: false });
     const [levelProblems, setLevelProblems] = useState<AttendanceLevelProblem[]>([]);
     const [error, setError] = useState(''), [pending, start] = useTransition();
     const [savedRevision, setSavedRevision] = useState(0);
@@ -49,7 +49,7 @@ export function WorkflowForm({ initial, lineageId, context, options, defaultPrio
         }[];
         truncated: boolean;
     } | null>(null);
-    const baseline = JSON.stringify(initial ?? { ...context, companyIds:[context.companyId], routingVersion: 4, cc:[], code: '', name: '', description: '', priority: defaultPriority, criteria: {}, stages: [emptyAttendanceV4Level(0)], active: false });
+    const baseline = JSON.stringify(initial ?? { ...context, companyIds:options.canManageAllCompanies?options.companies.map(c=>c.id):[context.companyId], allCompanies:options.canManageAllCompanies===true, routingVersion: 4, cc:[], code: '', name: '', description: '', priority: defaultPriority, criteria: {}, stages: [emptyAttendanceV4Level(0)], active: false });
     const dirty = JSON.stringify(input) !== baseline;
     const change = <K extends keyof AnyAttendanceWorkflowInput>(k: K, v: AnyAttendanceWorkflowInput[K]) => { setInput(p => ({ ...p, [k]: v } as AnyAttendanceWorkflowInput)); setPreview(null); };
     const inFlight = useRef(false);
@@ -65,7 +65,7 @@ export function WorkflowForm({ initial, lineageId, context, options, defaultPrio
             const result = await saveAttendanceWorkflowAction(lineageId, input, !lineageId && !priorityEdited.current);
             if (result.ok) {
                 setSavedRevision(revision => revision + 1);
-                setSavedDestination(`/admin/attendance/approval-workflow/${result.lineageId}`);
+                setSavedDestination(`/admin/attendance/approval-workflow/${result.lineageId}?notice=saved`);
             }
             else {
                 setError(result.error);
@@ -87,9 +87,10 @@ export function WorkflowForm({ initial, lineageId, context, options, defaultPrio
       });
     };
     const fields = attendanceWorkflowCriteriaFields(options, employmentTypeLabel);
-    return <WorkflowCompanyContext.Provider value={input.companyIds??[input.companyId]}><AttendanceSettingsNavigation formId="attendance-workflow-form" savedRevision={savedRevision}/><form id="attendance-workflow-form" className="space-y-5" onSubmit={e => { e.preventDefault(); run(true); }}><fieldset disabled={pending} className="min-w-0 space-y-5">
+    return <WorkflowCompanyContext.Provider value={input.allCompanies?options.companies.map(c=>c.id):input.companyIds??[input.companyId]}><AttendanceSettingsNavigation formId="attendance-workflow-form" savedRevision={savedRevision}/><form id="attendance-workflow-form" className="space-y-5" onSubmit={e => { e.preventDefault(); run(true); }}><fieldset disabled={pending} className="min-w-0 space-y-5">
   <Card className="space-y-4 p-5"><h2 className="font-semibold">{t('information')}</h2><div className="grid gap-4 sm:grid-cols-2">
-   <div><ChipMultiSelect name="companyIds" label={t('company')} options={options.companies.map(c=>({value:c.id,label:c.name}))} defaultSelected={input.companyIds??[input.companyId]} addPlaceholder={t('chooseCompanies')} searchPlaceholder={t('searchCompanies')} removeLabelFor={value=>t('removeCompany',{value})} onSelectionChange={companyIds=>{setInput(old=>({...old,companyIds,companyId:companyIds.includes(old.companyId)?old.companyId:companyIds[0]??old.companyId}));setPreview(null);}}/><p className="mt-2 text-xs text-muted-foreground">{t('sharedCompanyHelp')}</p></div>
+   <div><label className="mb-3 flex min-h-11 items-center gap-2 text-sm"><input name="allCompanies" type="checkbox" checked={input.allCompanies===true} disabled={!options.canManageAllCompanies} onChange={event=>{const allCompanies=event.target.checked;setInput(old=>({...old,allCompanies,companyIds:allCompanies?options.companies.map(c=>c.id):[old.companyId]}));setPreview(null);}}/>{t('allCompany')}</label>
+   {!input.allCompanies&&<ChipMultiSelect name="companyIds" label={t('company')} options={options.companies.map(c=>({value:c.id,label:c.name}))} defaultSelected={input.companyIds??[input.companyId]} addPlaceholder={t('chooseCompanies')} searchPlaceholder={t('searchCompanies')} removeLabelFor={value=>t('removeCompany',{value})} onSelectionChange={companyIds=>{setInput(old=>({...old,companyIds,companyId:companyIds.includes(old.companyId)?old.companyId:companyIds[0]??old.companyId}));setPreview(null);}}/>}<p className="mt-2 text-xs text-muted-foreground">{t(options.canManageAllCompanies?'allCompanyHelp':'allCompanyRestricted')}</p></div>
    <label>{t('applicationType')}<select name="applicationType" className={inputCls} value={input.applicationType} disabled onChange={e => change('applicationType', e.target.value as AttendanceWorkflowInput['applicationType'])}><option value="irregularity">{t('types.irregularity')}</option><option value="self_overtime">{t('types.self_overtime')}</option></select></label>
    <label>{t('code')}<input name="code" required maxLength={40} pattern="[A-Za-z0-9_-]+" className={inputCls} value={input.code} onChange={e => change('code', e.target.value)}/></label>
    <label>{t('name')}<input name="name" required maxLength={120} className={inputCls} value={input.name} onChange={e => change('name', e.target.value)}/></label>
