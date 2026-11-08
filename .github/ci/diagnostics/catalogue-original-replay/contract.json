@@ -1,0 +1,331 @@
+{
+  "kind": "FROZEN_ORIGINAL_CATALOGUE_PAIR_42440920409_NOT_PROFILE",
+  "repository": {
+    "id": 1333414856,
+    "full_name": "StradaverseHub/ai-hr"
+  },
+  "workflow": {
+    "id": 395777276,
+    "path": ".github/workflows/alpha-staging.yml"
+  },
+  "run": {
+    "id": 42440920409,
+    "head_sha": "032b772c2387cbab348999a7b9574485050bb1b4",
+    "head_branch": "codex/notification-catalogue-comparison-source-recovery-20261108",
+    "event": "workflow_dispatch",
+    "status": "completed",
+    "conclusion": "success",
+    "run_attempt": 1,
+    "workflow_id": 395777276,
+    "path": ".github/workflows/alpha-staging.yml"
+  },
+  "originalCandidate": "032b772c2387cbab348999a7b9574485050bb1b4",
+  "originalController": "032b772c2387cbab348999a7b9574485050bb1b4",
+  "originalMigrationBase": "d4536294f2e81afed3b203e7320db5adc3e22cdf",
+  "originalPlanFingerprint": "6abf7429d94333affe6512d42457fe27f98c50fa316fde4bd7a67541f1ddec3e",
+  "originalPlanSha256": "2381ec9be56b2e5ba298ea9b9948ce6f4614dd1219c6010403b18bfe42c7b078",
+  "originalPlanSchemaVersion": 2,
+  "originalPolicyVersion": "aihr-staging-ci/v20",
+  "originalPlanRuntime": {
+    "node": "22.23.3",
+    "platform": "linux",
+    "arch": "x64"
+  },
+  "originalPlanUnits": 107,
+  "originalSuiteFiles": 3599,
+  "jobs": [
+    {
+      "id": 128609770982,
+      "name": "resolve",
+      "status": "completed",
+      "conclusion": "success",
+      "head_sha": "032b772c2387cbab348999a7b9574485050bb1b4",
+      "run_id": 42440920409,
+      "run_attempt": 1,
+      "runner_group_name": "GitHub Actions",
+      "labels": [
+        "ubuntu-24.04"
+      ]
+    },
+    {
+      "id": 128609901770,
+      "name": "plan",
+      "status": "completed",
+      "conclusion": "success",
+      "head_sha": "032b772c2387cbab348999a7b9574485050bb1b4",
+      "run_id": 42440920409,
+      "run_attempt": 1,
+      "runner_group_name": "GitHub Actions",
+      "labels": [
+        "ubuntu-24.04"
+      ]
+    },
+    {
+      "id": 128609902629,
+      "name": "typecheck",
+      "status": "completed",
+      "conclusion": "skipped",
+      "head_sha": "032b772c2387cbab348999a7b9574485050bb1b4",
+      "run_id": 42440920409,
+      "run_attempt": 1,
+      "runner_group_name": null,
+      "labels": [
+        "ubuntu-24.04"
+      ]
+    },
+    {
+      "id": 128609902805,
+      "name": "migrations",
+      "status": "completed",
+      "conclusion": "skipped",
+      "head_sha": "032b772c2387cbab348999a7b9574485050bb1b4",
+      "run_id": 42440920409,
+      "run_attempt": 1,
+      "runner_group_name": null,
+      "labels": [
+        "ubuntu-24.04"
+      ]
+    },
+    {
+      "id": 128609903123,
+      "name": "runner-diagnostics",
+      "status": "completed",
+      "conclusion": "skipped",
+      "head_sha": "032b772c2387cbab348999a7b9574485050bb1b4",
+      "run_id": 42440920409,
+      "run_attempt": 1,
+      "runner_group_name": null,
+      "labels": [
+        "ubuntu-24.04"
+      ]
+    },
+    {
+      "id": 128609903158,
+      "name": "controller-tests",
+      "status": "completed",
+      "conclusion": "skipped",
+      "head_sha": "032b772c2387cbab348999a7b9574485050bb1b4",
+      "run_id": 42440920409,
+      "run_attempt": 1,
+      "runner_group_name": null,
+      "labels": [
+        "ubuntu-24.04"
+      ]
+    },
+    {
+      "id": 128610082624,
+      "name": "test (db-7bbd9806a4265fae)",
+      "status": "completed",
+      "conclusion": "success",
+      "head_sha": "032b772c2387cbab348999a7b9574485050bb1b4",
+      "run_id": 42440920409,
+      "run_attempt": 1,
+      "runner_group_name": "GitHub Actions",
+      "labels": [
+        "ubuntu-24.04"
+      ]
+    },
+    {
+      "id": 128610082655,
+      "name": "test (db-f9dee844711312af)",
+      "status": "completed",
+      "conclusion": "success",
+      "head_sha": "032b772c2387cbab348999a7b9574485050bb1b4",
+      "run_id": 42440920409,
+      "run_attempt": 1,
+      "runner_group_name": "GitHub Actions",
+      "labels": [
+        "ubuntu-24.04"
+      ]
+    },
+    {
+      "id": 128610083902,
+      "name": "build",
+      "status": "completed",
+      "conclusion": "skipped",
+      "head_sha": "032b772c2387cbab348999a7b9574485050bb1b4",
+      "run_id": 42440920409,
+      "run_attempt": 1,
+      "runner_group_name": null,
+      "labels": [
+        "ubuntu-24.04"
+      ]
+    },
+    {
+      "id": 128610083968,
+      "name": "browser",
+      "status": "completed",
+      "conclusion": "skipped",
+      "head_sha": "032b772c2387cbab348999a7b9574485050bb1b4",
+      "run_id": 42440920409,
+      "run_attempt": 1,
+      "runner_group_name": null,
+      "labels": [
+        "ubuntu-24.04"
+      ]
+    },
+    {
+      "id": 128610083979,
+      "name": "native-test",
+      "status": "completed",
+      "conclusion": "skipped",
+      "head_sha": "032b772c2387cbab348999a7b9574485050bb1b4",
+      "run_id": 42440920409,
+      "run_attempt": 1,
+      "runner_group_name": null,
+      "labels": [
+        "ubuntu-24.04"
+      ]
+    },
+    {
+      "id": 128611165182,
+      "name": "commission-summary",
+      "status": "completed",
+      "conclusion": "success",
+      "head_sha": "032b772c2387cbab348999a7b9574485050bb1b4",
+      "run_id": 42440920409,
+      "run_attempt": 1,
+      "runner_group_name": "GitHub Actions",
+      "labels": [
+        "ubuntu-24.04"
+      ]
+    },
+    {
+      "id": 128611165444,
+      "name": "deployment-hold",
+      "status": "completed",
+      "conclusion": "success",
+      "head_sha": "032b772c2387cbab348999a7b9574485050bb1b4",
+      "run_id": 42440920409,
+      "run_attempt": 1,
+      "runner_group_name": "GitHub Actions",
+      "labels": [
+        "ubuntu-24.04"
+      ]
+    },
+    {
+      "id": 128611166423,
+      "name": "verify",
+      "status": "completed",
+      "conclusion": "skipped",
+      "head_sha": "032b772c2387cbab348999a7b9574485050bb1b4",
+      "run_id": 42440920409,
+      "run_attempt": 1,
+      "runner_group_name": null,
+      "labels": [
+        "ubuntu-24.04"
+      ]
+    }
+  ],
+  "artifacts": [
+    {
+      "id": 13600858881,
+      "name": "commission-plan",
+      "size_in_bytes": 398554,
+      "digest": "sha256:99f531a96a007a9980b04262935c9e0a8c6b34eee16e0ad4889e7e5e266db887",
+      "expired": false,
+      "workflow_run": {
+        "id": 42440920409,
+        "repository_id": 1333414856,
+        "head_repository_id": 1333414856,
+        "head_branch": "codex/notification-catalogue-comparison-source-recovery-20261108",
+        "head_sha": "032b772c2387cbab348999a7b9574485050bb1b4"
+      },
+      "members": [
+        "ci-plan.json",
+        "commission-selection.json"
+      ]
+    },
+    {
+      "id": 13601347757,
+      "name": "commission-unit-db-7bbd9806a4265fae",
+      "size_in_bytes": 4499857,
+      "digest": "sha256:f504a324f5915522a74b6e08cb74bd62f7f4c973d307a3f1b24b905929a495e6",
+      "expired": false,
+      "workflow_run": {
+        "id": 42440920409,
+        "repository_id": 1333414856,
+        "head_repository_id": 1333414856,
+        "head_branch": "codex/notification-catalogue-comparison-source-recovery-20261108",
+        "head_sha": "032b772c2387cbab348999a7b9574485050bb1b4"
+      },
+      "members": [
+        "db-7bbd9806a4265fae-batch-0.json",
+        "db-7bbd9806a4265fae-singleton.json",
+        "health-before-db-7bbd9806a4265fae.json",
+        "notification-canonical-normalized.json",
+        "notification-canonical-raw.json",
+        "notification-canonical-report.json",
+        "notification-canonical-source.json",
+        "pdf-tools-setup.json",
+        "personnel-dd-full-role-db-7bbd9806a4265fae-offset-0.json",
+        "unit-db-7bbd9806a4265fae.json"
+      ]
+    },
+    {
+      "id": 13601807564,
+      "name": "commission-summary",
+      "size_in_bytes": 1752,
+      "digest": "sha256:13e1d02dfb7c83b0dd63d39a7cea9bc78c3763fb0a68af4d4bfd23e917e828d2",
+      "expired": false,
+      "workflow_run": {
+        "id": 42440920409,
+        "repository_id": 1333414856,
+        "head_repository_id": 1333414856,
+        "head_branch": "codex/notification-catalogue-comparison-source-recovery-20261108",
+        "head_sha": "032b772c2387cbab348999a7b9574485050bb1b4"
+      },
+      "members": [
+        "singleton-commissioning.json"
+      ]
+    },
+    {
+      "id": 13601990190,
+      "name": "commission-unit-db-f9dee844711312af",
+      "size_in_bytes": 4494719,
+      "digest": "sha256:57282a56ac8fcf998b55746025721e05d62a4d2d9783b6bc547b7d97e6e3e932",
+      "expired": false,
+      "workflow_run": {
+        "id": 42440920409,
+        "repository_id": 1333414856,
+        "head_repository_id": 1333414856,
+        "head_branch": "codex/notification-catalogue-comparison-source-recovery-20261108",
+        "head_sha": "032b772c2387cbab348999a7b9574485050bb1b4"
+      },
+      "members": [
+        "db-f9dee844711312af-batch-0.json",
+        "db-f9dee844711312af-singleton.json",
+        "health-before-db-f9dee844711312af.json",
+        "notification-canonical-normalized.json",
+        "notification-canonical-raw.json",
+        "notification-canonical-report.json",
+        "notification-canonical-source.json",
+        "pdf-tools-setup.json",
+        "personnel-dd-full-role-db-f9dee844711312af-offset-0.json",
+        "unit-db-f9dee844711312af.json"
+      ]
+    }
+  ],
+  "pairs": [
+    {
+      "mode": "baseline",
+      "artifactId": 13601990190,
+      "unit": "db-f9dee844711312af",
+      "file": "test/notification-final-catalogue-baseline.test.ts",
+      "jobId": 128610082655,
+      "sourceMembers": 1738,
+      "observedNativeFunctions": 2308
+    },
+    {
+      "mode": "oid-shift",
+      "artifactId": 13601347757,
+      "unit": "db-7bbd9806a4265fae",
+      "file": "test/notification-final-catalogue-oid-shift.test.ts",
+      "jobId": 128610082624,
+      "sourceMembers": 1738,
+      "observedNativeFunctions": 2308
+    }
+  ],
+  "expectedProfileAuthorized": false,
+  "releaseAuthorized": false
+}
