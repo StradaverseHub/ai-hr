@@ -907,6 +907,36 @@ def main():
         need(False)
 
 
+# Immutable source symbols only. This is failure-location data, never a cause
+# assertion, trace rendering, exception message, executable source or authority.
+FAILURE_FUNCTIONS = frozenset(('<dictcomp>', '<genexpr>', '<lambda>', '<listcomp>', '<module>', '<setcomp>', 'Capabilities', 'Header', 'Iovec', 'RootFamily', '__init__', 'allocate', 'allocation_controls', 'bind', 'bootstrap_read', 'canonical', 'capture', 'close', 'custody', 'digest', 'exited', 'failure_locations', 'finish', 'hooks', 'identity_actors', 'kernel', 'load_state', 'main', 'need', 'prepare', 'probe', 'process', 'publish', 'refused', 'require_identity_free', 'restrict', 'restricted', 'restricted_status', 'root_fault', 'root_for_run', 'run_role', 'secure_read', 'settle', 'spawn', 'supervise', 'uid_actors', 'value_refused', 'wait', 'write_new'))
+FAILURE_BUILTINS = (ValueError, OSError, FileNotFoundError, ProcessLookupError,
+                    PermissionError, TimeoutError, KeyError, TypeError, AssertionError,
+                    RuntimeError, OverflowError, MemoryError, RecursionError, ImportError,
+                    ModuleNotFoundError, AttributeError, UnicodeError, UnicodeDecodeError,
+                    UnicodeEncodeError, ZeroDivisionError, IndexError, SystemExit,
+                    KeyboardInterrupt, EOFError, InterruptedError, BrokenPipeError,
+                    IsADirectoryError, NotADirectoryError, FileExistsError)
+
+
+def failure_locations(error):
+    frames = []
+    trace = error.__traceback__
+    walked = 0
+    while trace is not None and walked < 64 and len(frames) < 8:
+        code = trace.tb_frame.f_code
+        if code.co_filename == __file__ and code.co_name in FAILURE_FUNCTIONS and 1 <= trace.tb_lineno <= 4096:
+            frames.append({'function': code.co_name, 'line': trace.tb_lineno})
+        trace = trace.tb_next
+        walked += 1
+    value = {'frames': frames}
+    if type(error) in FAILURE_BUILTINS:
+        value['exception'] = type(error).__name__
+    raw = canonical(value)
+    if len(raw) <= 1024:
+        sys.stderr.write('Native UID failure locations ' + raw.decode('ascii'))
+
+
 if __name__ == '__main__':
     try:
         main()
@@ -922,7 +952,11 @@ if __name__ == '__main__':
                             'complete': False, 'cleanupKnown': False, 'nativeSixOperationJoinVerified': False,
                             'nativeApiContextIssued': False, 'semanticParentVerified': False,
                             'normalNoDbVerified': False, 'releaseAuthorized': False})
-            except BaseException:
+            except BaseException as failure:
                 pass
+        try:
+            failure_locations(failure)
+        except BaseException:
+            pass
         sys.stderr.write('Native UID isolation component refused\n')
         raise SystemExit(1)
