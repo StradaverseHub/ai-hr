@@ -5,6 +5,8 @@ import {createHash,randomUUID} from 'node:crypto';
 import {readFileSync,writeFileSync,mkdirSync,realpathSync,lstatSync,existsSync,renameSync} from 'node:fs';
 import {join,resolve} from 'node:path';
 import {employeeChoiceBenchmarkOwner} from './performance/employee-choice-benchmark-owner';
+import {employeeChoiceAsciiTerminalWitness} from './performance/employee-choice-ascii-terminal-witness';
+import {employeeChoiceRestorationCleanup} from './performance/employee-choice-restoration-cleanup';
 import {employeeChoiceBenchmarkLifetime,employeeChoiceBenchmarkBounds,adoptEmployeeChoiceBenchmarkResource} from './performance/employee-choice-benchmark-lifetime';
 import {employeeChoiceNativeLogCollector} from './performance/employee-choice-native-log-collector';
 import {employeeChoiceNativePlanPhases,employeeChoiceNativeLogRecords} from './performance/employee-choice-native-log-stream';
@@ -367,22 +369,39 @@ it.for(variants)('preserves actual current-root native authority/history with %s
 }));
 
 async function cleanupOwned(){
- const failures:unknown[]=[];const finish=async(name:string,work:()=>Promise<unknown>)=>{progress({kind:'cleanup-started',phase:name});try{await work();progress({kind:'cleanup-completed',phase:name});}catch(error){failures.push(error);const errors=(report.cleanupFailures??=[])as string[];errors.push(name);}};
- await finish('owned-cleanup-carrier',async()=>ownedPools?.beginCleanup());
- await finish('plan-client',async()=>plansSession?.close());await finish('native-follower',async()=>planLog?.close());await finish('plan-config',async()=>logging?.restore());await finish('timing-client',async()=>timing?.close());
- await finish('prototype-function',async()=>installation?.remove());await finish('pools',closeAll);await finish('owned-pools',async()=>ownedPools?.close());
- report.cleanupComplete=failures.length===0;
+ const terminal=employeeChoiceAsciiTerminalWitness(),cleanup=employeeChoiceRestorationCleanup(()=>{report.cleanupTelemetryRefused=true;report.complete=false;},name=>{const errors=(report.cleanupFailures??=[])as string[];errors.push(name);});
+ const {failures,telemetry}=cleanup;
+ const priorPrototype=report.prototypeCleanupWitness,priorLogging=report.loggingCleanupWitness;
+ const prototypeWitness:Record<string,unknown>=priorPrototype&&typeof priorPrototype==='object'&&!Array.isArray(priorPrototype)?{...priorPrototype,proof:undefined,restorationAccepted:false}:{restorationAccepted:false};
+ const loggingWitness:Record<string,unknown>=priorLogging&&typeof priorLogging==='object'&&!Array.isArray(priorLogging)?{...priorLogging,proof:undefined,restorationAccepted:false}:{restorationAccepted:false};
+ report.prototypeCleanupWitness=prototypeWitness;report.loggingCleanupWitness=loggingWitness;report.terminalWitnesses=terminal.snapshot();telemetry(save);
+ const finish=(name:string,work:()=>Promise<unknown>)=>cleanup.run(name,work,status=>progress({kind:'cleanup-'+status,phase:name}));
+ const cleanupDeadline=Number(process.hrtime.bigint())/1e6+Math.min(26000,Math.max(0,employeeChoiceBenchmarkBounds.totalMs-lifetime.snapshot().elapsedMs));
+ const ready=await finish('owned-cleanup-carrier',async()=>{if(!ownedPools)throw Error('Owned setup absent');await ownedPools.beginCleanup(cleanupDeadline);});
+ await finish('plan-client',async()=>plansSession?.close());await finish('native-follower',async()=>planLog?.close());await finish('timing-client',async()=>timing?.close());
+ if(ready){
+  await finish('plan-config',()=>terminal.prove('logging',async()=>{if(!logging)throw Error('PreCOMMIT logging witness missing');await logging.restore();loggingWitness.proof=await logging.restoration();loggingWitness.restorationAccepted=true;}));
+  await finish('prototype-function',()=>terminal.prove('prototype',async()=>{if(!installation)throw Error('PreCOMMIT prototype witness missing');await installation.remove();prototypeWitness.proof=await installation.restoration();prototypeWitness.restorationAccepted=true;}));
+ }else failures.push(Error('Global owned cleanup handoff refused; semantic restoration not admitted'));
+ await finish('pools',closeAll);await finish('owned-pools',async()=>ownedPools?.close());
+ report.terminalWitnesses=terminal.snapshot();report.cleanupComplete=failures.length===0;
+ if(failures.length)poison(new AggregateError(failures,'Owned native restoration uncertain'));
  report.failedCase=failedCase;report.sessionPoisoned=blocked!==undefined;
- report.complete=!failedCase&&!blocked&&report.preparationComplete===true&&report.actualPlansComplete===true&&report.instrumentationRestored===true&&report.authorityComplete===true&&report.cleanupComplete===true
+ report.complete=!failedCase&&!blocked&&report.preparationComplete===true&&report.actualPlansComplete===true&&report.instrumentationRestored===true&&report.authorityComplete===true&&report.cleanupComplete===true&&terminal.snapshot().complete===true&&prototypeWitness.restorationAccepted===true&&loggingWitness.restorationAccepted===true
   &&variants.every(variant=>(report.performanceVariants as string[]|undefined)?.includes(variant));
  report.wholePortTargets=Object.fromEntries(variants.map(variant=>{const ports=Object.entries((report.ports??{})as Record<string,{samples?:number[];ms?:number}>).filter(([key])=>key.startsWith(variant+':'));
   return [variant,{targetMs:1000,measuredPorts:ports.length,allUnderTarget:report.complete===true?ports.length===18&&ports.every(([,port])=>port.samples?.length?port.samples.every(ms=>ms<1000):typeof port.ms==='number'&&port.ms<1000):null}];}));
- report.phase=report.complete?'complete':'incomplete';save();if(failures.length)throw new AggregateError(failures,'Owned prototype cleanup failed');
+ report.phase=report.complete?'complete':'incomplete';telemetry(save);if(failures.length)throw new AggregateError(failures,'Owned prototype cleanup failed');
 }
 async function finishOwned(){
- try{await lifetime.finish(cleanupOwned);}finally{
+ const failures:unknown[]=[];
+ try{await lifetime.finish(cleanupOwned);}catch(error){failures.push(error);}
+ try{
   report.lifetime=lifetime.snapshot();if(lifetime.snapshot().stopped||lifetime.snapshot().uncertain||lifetime.snapshot().elapsedMs>employeeChoiceBenchmarkBounds.totalMs)report.complete=false;
-  if(report.complete!==true){report.phase='incomplete';const targets=report.wholePortTargets as Record<string,{allUnderTarget:boolean|null}>|undefined;if(targets)for(const row of Object.values(targets))row.allUnderTarget=null;}save();
- }
+  if(report.complete!==true){report.phase='incomplete';const targets=report.wholePortTargets as Record<string,{allUnderTarget:boolean|null}>|undefined;if(targets)for(const row of Object.values(targets))row.allUnderTarget=null;}
+  const nativeTarget=(report.wholePortTargets as Record<string,{allUnderTarget:boolean|null}>|undefined)?.native;report.performanceTargetPassed=report.complete===true?nativeTarget?.allUnderTarget===true:null;save();
+ }catch(error){report.complete=false;failures.push(error);}
+ if(failures.length===1)throw failures[0];if(failures.length)throw new AggregateError(failures,'Native cleanup and terminal publication refused');
+ if(report.complete===true)expect(report.performanceTargetPassed,'All18 native whole ports must meet the unchanged1000ms target').toBe(true);
 }
 afterAll(finishOwned);

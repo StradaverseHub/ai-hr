@@ -7,6 +7,7 @@ import {join,resolve} from 'node:path';
 import {employeeChoiceBenchmarkOwner} from './performance/employee-choice-benchmark-owner';
 import {employeeChoicePrototypeCarriers} from './performance/employee-choice-prototype-carriers';
 import {employeeChoiceAsciiTerminalWitness} from './performance/employee-choice-ascii-terminal-witness';
+import {employeeChoiceRestorationCleanup} from './performance/employee-choice-restoration-cleanup';
 import {employeeChoiceNativePrototypeOwner,employeeChoicePrototypeSignature} from './performance/employee-choice-native-purpose-owner-factory';
 import {exactAsciiEmployeeChoiceOwner,type ExactAsciiInstallation,type ExactAsciiOwnership} from './performance/employee-choice-exact-ascii-owner-factory';
 import {employeeChoiceBenchmarkLifetime,employeeChoiceBenchmarkBounds,adoptEmployeeChoiceBenchmarkResource} from './performance/employee-choice-benchmark-lifetime';
@@ -389,13 +390,13 @@ it.for(variants)('preserves actual current-root native authority/history with %s
 }));
 
 async function cleanupOwned(){
- const failures:unknown[]=[],terminal=employeeChoiceAsciiTerminalWitness();
- const telemetry=(write:()=>void)=>{try{write();}catch(error){failures.push(error);report.cleanupTelemetryRefused=true;report.complete=false;}};
+ const terminal=employeeChoiceAsciiTerminalWitness(),cleanup=employeeChoiceRestorationCleanup(()=>{report.cleanupTelemetryRefused=true;report.complete=false;},name=>{const errors=(report.cleanupFailures??=[])as string[];errors.push(name);});
+ const {failures,telemetry}=cleanup;
  const priorPrototype=report.prototypeCleanupWitness,priorLogging=report.loggingCleanupWitness;
- const prototypeWitness=priorPrototype&&typeof priorPrototype==='object'&&!Array.isArray(priorPrototype)?{...priorPrototype,restorationAccepted:false}:{restorationAccepted:false};
- const loggingWitness=priorLogging&&typeof priorLogging==='object'&&!Array.isArray(priorLogging)?{...priorLogging,restorationAccepted:false}:{restorationAccepted:false};
+ const prototypeWitness:Record<string,unknown>=priorPrototype&&typeof priorPrototype==='object'&&!Array.isArray(priorPrototype)?{...priorPrototype,proof:undefined,restorationAccepted:false}:{restorationAccepted:false};
+ const loggingWitness:Record<string,unknown>=priorLogging&&typeof priorLogging==='object'&&!Array.isArray(priorLogging)?{...priorLogging,proof:undefined,restorationAccepted:false}:{restorationAccepted:false};
  report.prototypeCleanupWitness=prototypeWitness;report.loggingCleanupWitness=loggingWitness;report.terminalWitnesses=terminal.snapshot();telemetry(save);
- const finish=async(name:string,work:()=>Promise<unknown>)=>{telemetry(()=>progress({kind:'cleanup-started',phase:name}));try{await work();telemetry(()=>progress({kind:'cleanup-completed',phase:name}));return true;}catch(error){failures.push(error);const errors=(report.cleanupFailures??=[])as string[];errors.push(name);return false;}};
+ const finish=(name:string,work:()=>Promise<unknown>)=>cleanup.run(name,work,status=>progress({kind:'cleanup-'+status,phase:name}));
  const cleanupDeadline=Number(process.hrtime.bigint())/1e6+Math.min(26000,Math.max(0,employeeChoiceBenchmarkBounds.totalMs-lifetime.snapshot().elapsedMs));
  const setupReady=await finish('owned-cleanup-carrier',async()=>{if(!ownedPools)throw Error('Owned setup absent');await ownedPools.beginCleanup(cleanupDeadline);});
  const metadataReady=await finish('prototype-cleanup-carrier',async()=>{if(!metadata)throw Error('Owned metadata absent');await metadata.beginCleanup(cleanupDeadline);});
@@ -403,20 +404,20 @@ async function cleanupOwned(){
  if(setupReady&&metadataReady){
   await finish('plan-config',()=>terminal.prove('logging',async()=>{
    if(!logging)throw Error('PreCOMMIT logging witness missing');await logging.restore();
-   const [actual]=await owner.client`select coalesce((select s.setconfig from pg_db_role_setting s where s.setdatabase=(select oid from pg_database where datname=current_database()) and s.setrole=0),'{}'::text[])as config`;
-   const config:unknown=actual.config;if(!Array.isArray(config)||config.some(entry=>typeof entry!=='string'||entry.indexOf('=')<1))throw Error('Complete terminal native settings required');
-   expect(createHash('sha256').update(JSON.stringify(config)).digest('hex')).toBe(logging.beforeSha256);metadata!.getPhase();loggingWitness.restorationAccepted=true;
+   loggingWitness.proof=await logging.restoration();metadata!.getPhase();loggingWitness.restorationAccepted=true;
   }));
   await finish('prototype-function',()=>terminal.prove('prototype',async()=>{
    if(!custody||!installation||!metadata)throw Error('PreCOMMIT prototype witness missing');await custody.remove();
    expect((await metadata.getQuery()`select to_regprocedure(${employeeChoicePrototypeSignature})as present`)[0].present).toBeNull();
-   expect(await employeeChoiceNativePrototypeOwner(metadata.getQuery).security()).toEqual(installation.security);metadata.getPhase();prototypeWitness.restorationAccepted=true;
+   expect(await employeeChoiceNativePrototypeOwner(metadata.getQuery).security()).toEqual(installation.security);
+   prototypeWitness.proof=await installation.restoration();metadata.getPhase();prototypeWitness.restorationAccepted=true;
   }));
  }else failures.push(Error('Global owned cleanup handoff refused; semantic restoration not admitted'));
  telemetry(()=>{report.runtimeBeforeShutdown=exactAsciiPrototypeRuntimeEvidence();});await finish('runtime-owner',async()=>{closeExactAsciiPrototypeRuntime();});
  await finish('prototype-metadata-pools',async()=>metadata?.close());await finish('pools',closeAll);await finish('owned-pools',async()=>ownedPools?.close());
  report.terminalWitnesses=terminal.snapshot();
  report.cleanupComplete=failures.length===0;
+ if(failures.length)poison(new AggregateError(failures,'Owned native restoration uncertain'));
  report.failedCase=failedCase;report.sessionPoisoned=blocked!==undefined;
  report.complete=!failedCase&&!blocked&&report.preparationComplete===true&&report.actualPlansComplete===true&&report.instrumentationRestored===true&&report.authorityComplete===true&&report.cleanupComplete===true&&terminal.snapshot().complete===true&&prototypeWitness.restorationAccepted===true&&loggingWitness.restorationAccepted===true
   &&variants.every(variant=>(report.performanceVariants as string[]|undefined)?.includes(variant));
@@ -425,13 +426,14 @@ async function cleanupOwned(){
  report.phase=report.complete?'complete':'incomplete';telemetry(save);if(failures.length)throw new AggregateError(failures,'Owned prototype cleanup failed');
 }
 async function finishOwned(){
- try{await lifetime.finish(cleanupOwned);}finally{
+ const failures:unknown[]=[];
+ try{await lifetime.finish(cleanupOwned);}catch(error){failures.push(error);}
+ try{
   report.lifetime=lifetime.snapshot();if(lifetime.snapshot().stopped||lifetime.snapshot().uncertain||lifetime.snapshot().elapsedMs>employeeChoiceBenchmarkBounds.totalMs)report.complete=false;
   if(report.complete!==true){report.phase='incomplete';const targets=report.wholePortTargets as Record<string,{allUnderTarget:boolean|null}>|undefined;if(targets)for(const row of Object.values(targets))row.allUnderTarget=null;}
   const nativeTarget=(report.wholePortTargets as Record<string,{allUnderTarget:boolean|null}>|undefined)?.native;report.performanceTargetPassed=report.complete===true?nativeTarget?.allUnderTarget===true:null;save();
- }
- // Measurement completion and target acceptance are separate. Preserve every
- // actual port/raw plan/cleanup fact BEFORE this strict existing1000ms gate.
+ }catch(error){report.complete=false;failures.push(error);}
+ if(failures.length===1)throw failures[0];if(failures.length)throw new AggregateError(failures,'Native cleanup and terminal publication refused');
  if(report.complete===true)expect(report.performanceTargetPassed,'All18 native whole ports, including actual cold qualification, must meet the unchanged1000ms target').toBe(true);
 }
 afterAll(finishOwned);

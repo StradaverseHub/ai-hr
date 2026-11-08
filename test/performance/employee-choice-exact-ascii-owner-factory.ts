@@ -43,7 +43,7 @@ export function exactAsciiEmployeeChoiceOwner(getQuery:()=>Sql,getPhase:()=> 'wo
   const custody:ExactAsciiOwnership=Object.freeze({
    witness(){const {original,before}=originalWitness();return structuredClone({database:original.database,sourceSha256,originalSourceSha256:original.sourceSha256,original:before,candidate:state.candidate??null,security:original.security});},
    async remove(){
-   if(removed)return;const {original}=originalWitness();
+   if(removed){await originalWitness().original.remove();return;}const {original}=originalWitness();
    const [present]=await getQuery()`select count(*)::int as count from pg_proc where pronamespace='app'::regnamespace and proname='employee_choice_native_prototype'`;
    if(present.count===0){await original.remove();removed=true;return;}
    expect(present.count).toBe(1);await restore();await original.remove();removed=true;
@@ -64,7 +64,7 @@ export function exactAsciiEmployeeChoiceOwner(getQuery:()=>Sql,getPhase:()=> 'wo
   expect(await native.security()).toEqual(nativeOriginal.security);
   const installed=state.candidate;if(!installed)throw Error('Exact ASCII candidate identity unavailable');
   async function unchanged(){if(removed)throw Error('No owned exact ASCII installation');expect(await definition(getQuery())).toEqual(installed);expect(await native.security()).toEqual(nativeOriginal.security);}
-  return{database:nativeOriginal.database,sourceSha256,originalSourceSha256:nativeOriginal.sourceSha256,installed:structuredClone(installed),security:structuredClone(nativeOriginal.security),unchanged,remove:custody.remove};
+  return{database:nativeOriginal.database,sourceSha256,originalSourceSha256:nativeOriginal.sourceSha256,installed:structuredClone(installed),security:structuredClone(nativeOriginal.security),unchanged,remove:custody.remove,restoration:()=>originalWitness().original.restoration()};
  }
  return{install};
 }

@@ -1,0 +1,123 @@
+{
+  "kind": "EMPLOYEE_NATIVE_RESTORATION_SOURCE_ONLY_NOT_QUALIFICATION",
+  "base": "ee5722312689fc88d8a9253c232945e6f2599900",
+  "operationalBase": "517c5a697f9260b9342ce612125c6325bf334131",
+  "sourceRef": "codex/employee-native-restoration-20261108",
+  "sourceSha256": {
+    ".github/ci/employee-lifecycle-native.mjs": "7f39580cc54029ab9aac7bd281e0fb06e52e0fb35b2d5da511582a750babb81c",
+    ".github/ci/employee-lifecycle-profile.json": "90972f3b57d62a473dafa3a48b671137234cf43de33c964b0eea00f0af05979e",
+    ".github/ci/employee-lifecycle-sources.mjs": "25937a3c1e60c6f738898e420c4b7d567de1fa5b3d2a50a2795749146ee3ea1f",
+    ".github/ci/employee-lifecycle-sources.test.mjs": "868437262dcaf38c5638b5b86a8fcc1176c3283d325c93f896377739e8b7f44c",
+    ".github/ci/employee-restoration-proof.mjs": "0c1a6ea0a0b72d684fd2d01fcbebd414f8e258952d4df2000bb309baa599ba04",
+    ".github/ci/owned-process.py": "cb1a2cc2879267f8834dc11ea0e1c52f8326b0bd4e45dcd94ccf2ac43463f28c",
+    ".github/ci/policy-version.mjs": "cbb9871c2e11c3f7434bdcb0fe25cd2c8323f683d588d892ec9dbff194232c97",
+    "docs/qualification/employee-native-restoration-20261108.md": "55291bf0fcc5779408b8910e6ff839e1684fe6a186f716bece9e43a04effa00a",
+    "docs/qualification/employee-native-restoration-inverse-20261108.json": "59ec94a14fa94f763d3ae5d5455fb1ddbb20a2faa845afe54c6d333057da867f",
+    "test/employee-choice-ascii-terminal-witness.test.ts": "5c88b58549e0f14dfba796a546dbea8ff875e6abbfe252e2fce737f9f5b6d8ee",
+    "test/employee-choice-exact-ascii-owner-source.test.ts": "fcf64ec74dabb477c0fdec59b1585f21e1c35144490d96d2f0b4939c1ddf126f",
+    "test/employee-choice-exact-ascii-plan.test.ts": "350830e5dd359e6b3e35166163f785c88e9487233d300c8c46f26936b56fb186",
+    "test/employee-choice-native-owner-factory-source.test.ts": "5c8a442b67ea31bdbb22f065e59cd7898d08d0de7e7666df866a585877da7bd8",
+    "test/employee-choice-native-owner-factory.test.ts": "86f18bb75c07d7f9ba74ab25939cc27986978b9d4ed2f152c8d34237b914a612",
+    "test/employee-choice-native-purpose-plan.test.ts": "c9f47bb51008c7157ed25ff969323ab2a6229f4f1f0a8d7630fb61d5a6371f50",
+    "test/employee-choice-restoration-proof.test.ts": "2bd777fbe19d65f838f8c8a5a5bfbea8195d4518c6eb84592c586a187ee62ef2",
+    "test/fixtures/employee-choice-exact-ascii-purpose.sql": "10b0d44d8943fdfbb76e748028e8fbd2938a514ea22c57b70cfcc665b6a41743",
+    "test/fixtures/employee-choice-native-purpose.sql": "d72e6ded4a07cbbb848856c35391e1e56fdd02ad793c71a18360754e11fe8efc",
+    "test/performance/employee-choice-ascii-terminal-witness.ts": "5cacd1dbf0154181de2b60bcdc4ed554e361eaaa61481414a9b58997063feaab",
+    "test/performance/employee-choice-auto-explain.ts": "e4d1eaed529b6fb9f20ec53b30a5a22bf875915a1231e6c8b1fea14977fd3332",
+    "test/performance/employee-choice-exact-ascii-owner-factory.ts": "0d8345cfe218a4a0d89054cc84c320c1681e04f268451530aaeb9f4c5274d690",
+    "test/performance/employee-choice-native-purpose-owner-factory.ts": "65c9b170f78eac82f0db5baa69f59e260d53b8b917f7e0c154a9b7acab4e9a76",
+    "test/performance/employee-choice-restoration-cleanup.ts": "88eb0e5c0940a1a6677587892dd10cc3e4e78571c58da131085f01d2fab7d0af",
+    "test/performance/employee-choice-restoration-source.ts": "d05d3307bfae4867ce818a5208e975a2dccd16a14cc49f0ffc53e820934d43dd"
+  },
+  "completeComponentBase": {
+    "file": "docs/qualification/employee-normal-policy-v21-source-20261108.json",
+    "sha256": "a1a54611adcbbc4013812578dc21b6f374312054b6f71885e92b6832bc7b8163"
+  },
+  "componentSourceOverrides": {
+    ".github/ci/employee-lifecycle-native.mjs": "7f39580cc54029ab9aac7bd281e0fb06e52e0fb35b2d5da511582a750babb81c",
+    ".github/ci/employee-lifecycle-sources.mjs": "25937a3c1e60c6f738898e420c4b7d567de1fa5b3d2a50a2795749146ee3ea1f",
+    ".github/ci/employee-lifecycle-sources.test.mjs": "868437262dcaf38c5638b5b86a8fcc1176c3283d325c93f896377739e8b7f44c",
+    ".github/ci/employee-restoration-proof.mjs": "0c1a6ea0a0b72d684fd2d01fcbebd414f8e258952d4df2000bb309baa599ba04",
+    "docs/qualification/employee-native-restoration-inverse-20261108.json": "59ec94a14fa94f763d3ae5d5455fb1ddbb20a2faa845afe54c6d333057da867f",
+    "test/employee-choice-exact-ascii-plan.test.ts": "350830e5dd359e6b3e35166163f785c88e9487233d300c8c46f26936b56fb186",
+    "test/employee-choice-native-owner-factory.test.ts": "86f18bb75c07d7f9ba74ab25939cc27986978b9d4ed2f152c8d34237b914a612",
+    "test/employee-choice-native-purpose-plan.test.ts": "c9f47bb51008c7157ed25ff969323ab2a6229f4f1f0a8d7630fb61d5a6371f50",
+    "test/employee-choice-restoration-proof.test.ts": "2bd777fbe19d65f838f8c8a5a5bfbea8195d4518c6eb84592c586a187ee62ef2",
+    "test/performance/employee-choice-auto-explain.ts": "e4d1eaed529b6fb9f20ec53b30a5a22bf875915a1231e6c8b1fea14977fd3332",
+    "test/performance/employee-choice-exact-ascii-owner-factory.ts": "0d8345cfe218a4a0d89054cc84c320c1681e04f268451530aaeb9f4c5274d690",
+    "test/performance/employee-choice-native-purpose-owner-factory.ts": "65c9b170f78eac82f0db5baa69f59e260d53b8b917f7e0c154a9b7acab4e9a76",
+    "test/performance/employee-choice-restoration-cleanup.ts": "88eb0e5c0940a1a6677587892dd10cc3e4e78571c58da131085f01d2fab7d0af",
+    "test/performance/employee-choice-restoration-source.ts": "d05d3307bfae4867ce818a5208e975a2dccd16a14cc49f0ffc53e820934d43dd"
+  },
+  "newComponentMembers": [
+    ".github/ci/employee-restoration-proof.mjs",
+    "docs/qualification/employee-native-restoration-inverse-20261108.json",
+    "test/employee-choice-restoration-proof.test.ts",
+    "test/performance/employee-choice-restoration-cleanup.ts",
+    "test/performance/employee-choice-restoration-source.ts"
+  ],
+  "completeComponentMapEncoding": "UTF8 compact sorted JSON object plus final LF",
+  "completeComponentMapSha256": "b3097120020b8e3a9862afd1d3591a1846ee2685a139b74ae7a2352a1fbe553a",
+  "sourceMembers": 3447,
+  "controllerMembers": 66,
+  "wholeParentInverse": {
+    "file": "docs/qualification/employee-native-restoration-inverse-20261108.json",
+    "sha256": "59ec94a14fa94f763d3ae5d5455fb1ddbb20a2faa845afe54c6d333057da867f",
+    "files": 11
+  },
+  "originalComponentMembersRetained": 3442,
+  "existingNativeCases": [
+    6,
+    2,
+    3,
+    9,
+    6
+  ],
+  "existingPlanPhases": 44,
+  "existingNativeCallPairs": [
+    27,
+    22
+  ],
+  "newPureIntentions": 8,
+  "originalTerminalIntentionsRetained": 4,
+  "originalFactorySourceIntentionsRetained": 3,
+  "affectedSelectors": [
+    "test/employee-choice-restoration-proof.test.ts",
+    "test/employee-choice-ascii-terminal-witness.test.ts",
+    "test/employee-choice-native-owner-factory-source.test.ts",
+    "test/employee-choice-exact-ascii-owner-source.test.ts",
+    "test/employee-choice-lifecycle-evidence-contract.test.ts"
+  ],
+  "nativeFactoryFile": "test/employee-choice-native-owner-factory.test.ts",
+  "nativeFactoryCases": 3,
+  "subsequentRequiredNativeUnits": [
+    "test/employee-choice-native-purpose-plan.test.ts",
+    "test/employee-choice-benchmark-owner-native.test.ts",
+    "test/employee-choice-exact-ascii-purpose.test.ts",
+    "test/employee-choice-exact-ascii-plan.test.ts"
+  ],
+  "integrationRequiredBeforeDispatch": {
+    "controllerFixtureRecovery": "bd63c9f8559c037d4e29c8d738bced5c0aaf01a3",
+    "preserveWholeBranchesAndHistoricalEvidence": true,
+    "newIntegratedSourceBindingRequired": true,
+    "hashOnlyReceiptTransferForbidden": true
+  },
+  "currentPolicy": "aihr-staging-ci/v21",
+  "policyAllocatedHere": false,
+  "sharedProcessKernelSha256": "cb1a2cc2879267f8834dc11ea0e1c52f8326b0bd4e45dcd94ccf2ac43463f28c",
+  "historicalInverseRecordsUnchanged": true,
+  "newPoolOrNativeCaseCreated": false,
+  "newPrivateBusinessGrantCreated": false,
+  "performanceAlgorithmChanged": false,
+  "sqlBodiesChanged": false,
+  "limitsChanged": false,
+  "strictNativeWholePortSampleMs": 1000,
+  "onlyLocalChecks": "static Git/hash/source inversion and AST/syntax, no Program or behavior",
+  "testsExecuted": false,
+  "nativeQualificationComplete": false,
+  "restorationQualified": false,
+  "applicationAdoption": false,
+  "releaseAuthorized": false,
+  "stagingHeld": true,
+  "productionHeld": true
+}

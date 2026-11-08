@@ -3,6 +3,7 @@
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
 import {isDeepStrictEqual} from 'node:util';
+import {employeeRestorationHash,verifyEmployeePrototypeRestoration,verifyEmployeeLoggingRestoration} from './employee-restoration-proof.mjs';
 import {employeeChoiceNativeLogBounds as bounds,employeeChoiceNativeLogPartBytes,employeeChoiceNativeLogRecords,employeeChoiceNativePlanPhases,employeeChoiceNativeInvocations,employeeChoiceSqlFingerprint,employeeChoiceNativeBody,employeeChoicePlanWork} from './employee-native-log-codec.mjs';
 const sha=value=>createHash('sha256').update(value).digest('hex');
 const phases=Object.freeze(['initial:0','initial:1','deep:0','search:0','department-active:0','department-active:1','department-and-unit:0','unit-active:0','organisation-deep:0','organisation-search:0','empty-unit:0','missing-search:0','broad-search:0','deep-broad-search:0','foreign-company:0','complete-ids:0','held-access:0','held-history:0','full-server-population:0','full-server-ids:0','full-server-search-population:0','sparse-server-population:0']);
@@ -28,6 +29,23 @@ export function verifyEmployeeLifecycleNativePlans({plan,unit,profile,members,so
  const report=JSON.parse(read(ascii?'employee-choice-exact-ascii-plan.json':'employee-choice-native-purpose-plan.json',67108864));
  for(const key of ['complete','preparationComplete','actualPlansComplete','instrumentationRestored','authorityComplete','cleanupComplete'])assert.equal(report[key],true);assert.equal(report.registration,'full-ci-singleton');assert.equal(report.phase,'complete');assert.equal(report.lifetime?.started,true);assert.equal(report.lifetime?.finished,true);for(const key of ['stopped','pending','cancellationPending','uncertain'])assert.equal(report.lifetime[key],false);assert.equal(report.lifetime.workBudgetMs,840000);assert.equal(report.lifetime.totalBudgetMs,900000);assert.equal(report.lifetime.reserveMs,60000);assert(typeof report.lifetime.elapsedMs==='number'&&report.lifetime.elapsedMs>=0&&report.lifetime.elapsedMs<=900000);assert.equal(report.failedCase,false);assert.equal(report.sessionPoisoned,false);assert.equal(report.releaseEligible,false);assert.equal(report.productionPolicyApproved,false);assert.equal(report.migrationAllocated,false);assert.equal(report.employees,50000);assert.equal(report.actualPlanCases,44);assert.equal(report.actualNativeCallPairs,profile.callPairs);assert.deepEqual(report.planVerificationFailures,[]);
  assert.equal(report.prototypeCleanupWitness?.restorationAccepted,true,'Native function restoration has no source-executed terminal acceptance');assert.equal(report.loggingCleanupWitness?.restorationAccepted,true,'Native logging restoration has no source-executed terminal acceptance');
+ assert.deepEqual(report.terminalWitnesses,{prototype:true,logging:true,complete:true});
+ const prototypeWitness=report.prototypeCleanupWitness,loggingWitness=report.loggingCleanupWitness,prototypeSource=plan.singletonSources[unit.id]['test/fixtures/employee-choice-native-purpose.sql'];
+ assert(/^[a-f0-9]{64}$/.test(prototypeSource));
+ let installedHash,retainedSecurity;
+ if(ascii){
+  const witness=prototypeWitness.witness;assert.equal(prototypeWitness.ownedBeforeCommit,true);assert.equal(prototypeWitness.phase,'candidate');assert.equal(employeeRestorationHash(witness),prototypeWitness.nativeIdentitySha256);
+  assert.equal(witness.database,report.planBackend.database);assert.equal(witness.sourceSha256,sha(sourceSql));assert.equal(witness.originalSourceSha256,prototypeSource);assert(witness.original&&witness.candidate);
+  assert.deepEqual(prototypeWitness.proof?.installed?.identity,witness.original.identity);assert.equal(prototypeWitness.proof?.installed?.definition,witness.original.definition);
+  installedHash=employeeRestorationHash(prototypeWitness.proof.installed);retainedSecurity=witness.security;
+ }else{
+  assert.equal(prototypeWitness.database,report.planBackend.database);assert.equal(prototypeWitness.sourceSha256,prototypeSource);assert.equal(report.function.sourceSha256,prototypeSource);
+  installedHash=prototypeWitness.nativeIdentitySha256;retainedSecurity=report.function.security;assert.equal(prototypeWitness.proof?.installed?.definition,report.function.signature);
+ }
+ verifyEmployeePrototypeRestoration(prototypeWitness.proof,{database:report.planBackend.database,sourceSha256:prototypeSource,installedSha256:installedHash,securitySha256:employeeRestorationHash(retainedSecurity)});
+ verifyEmployeeLoggingRestoration(loggingWitness.proof,{database:report.planBackend.database,beforeSha256:loggingWitness.beforeSha256,instrumentedSha256:loggingWitness.instrumentedSha256});
+ assert.equal(report.instrumentationConfig.beforeSha256,loggingWitness.beforeSha256);assert.equal(report.instrumentationConfig.instrumentedSha256,loggingWitness.instrumentedSha256);
+
  assert.deepEqual(report.variants,['current','native']);assert.deepEqual(report.performanceVariants,['current','native']);assert.equal(report.targetMs,1000);assert.equal(report.wholePortsPerVariant,18);
  const replay=replayEmployeeLifecycleNativeLog({plan,unit,profile,members,sourceSql,resource,job,report});
  const ports=Object.keys(report.ports).filter(key=>key.startsWith('native:')).sort();assert.deepEqual(ports,portNames.map(name=>'native:'+name).sort());const measured=[];
