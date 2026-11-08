@@ -220,6 +220,13 @@ test('Rewards native policy and original read family retain complete isolated so
  const files=['test/rewards-audit-policy-native.test.ts','test/rewards-audited-read-prototype.test.ts'];
  const critical=[
   '.github/ci/rewards-native-sources.mjs','test/prototypes/rewards-audit-policy-native-cases.ts',
+  'test/prototypes/rewards-audit-default-controller-child.ts',
+  'test/prototypes/rewards-audit-default-controller-process.ts',
+  'test/prototypes/rewards-audit-default-controller-protocol.ts',
+  'test/prototypes/rewards-audit-default-custody.ts',
+  'test/prototypes/rewards-audit-fixture-context.ts',
+  'test/prototypes/rewards-audit-native-postimage.ts',
+  'test/prototypes/rewards-audit-owner-context-original.json',
   'test/prototypes/rewards-audit-policy-owner.ts','test/prototypes/rewards-audit-policy-controller.ts',
   'test/prototypes/rewards-audit-policy-lifetime.ts','test/prototypes/rewards-audit-policy-controlled-wait.ts',
   'test/prototypes/rewards-audit-policy-contract.ts','test/prototypes/rewards-audit-policy.sql',
@@ -257,7 +264,8 @@ test('Rewards native policy and original read family retain complete isolated so
   assert(text.includes("admitSingletonTest('"+file+"')"));assert(!/AIHR_FOCUSED_|\.(?:skipIf|runIf)\s*\(/.test(text));
  }
  const wrapper=readFileSync(new URL('../../test/rewards-audit-policy-native.test.ts',import.meta.url),'utf8');
- assert(wrapper.indexOf("admitSingletonTest('")<wrapper.indexOf('registerRewardsAuditPolicyNativeCases();'));
+ const admit=wrapper.indexOf("admitSingletonTest('"),capture=wrapper.indexOf('registerRewardsAuditPolicyNativeCases(admission.evidenceDirectory);');
+ assert(admit>=0&&capture>admit);assert(wrapper.includes('const admission=admitSingletonTest('));
  const existing=readFileSync(new URL('../../test/rewards-audited-read-prototype.test.ts',import.meta.url),'utf8');
  assert(existing.indexOf("admitSingletonTest('")<existing.indexOf('beforeAll(async()=>'));
 });

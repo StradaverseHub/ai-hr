@@ -1635,6 +1635,13 @@ export const REWARDS_NATIVE_SOURCES=Object.freeze([
  "test/harness-reset-errors.ts",
  "test/harness.ts",
  "test/profile.ts",
+ "test/prototypes/rewards-audit-default-controller-child.ts",
+ "test/prototypes/rewards-audit-default-controller-process.ts",
+ "test/prototypes/rewards-audit-default-controller-protocol.ts",
+ "test/prototypes/rewards-audit-default-custody.ts",
+ "test/prototypes/rewards-audit-fixture-context.ts",
+ "test/prototypes/rewards-audit-native-postimage.ts",
+ "test/prototypes/rewards-audit-owner-context-original.json",
  "test/prototypes/rewards-audit-policy-contract.ts",
  "test/prototypes/rewards-audit-policy-controlled-wait.ts",
  "test/prototypes/rewards-audit-policy-controller.ts",
@@ -1658,5 +1665,5 @@ export const REWARDS_NATIVE_SOURCES=Object.freeze([
  "test/prototypes/rewards-audited-read-port.ts",
  "test/prototypes/rewards-audited-read-predecessors.json",
  "test/prototypes/rewards-audited-read.sql",
- "test/rewards-setup-fixture.ts"
+ "test/rewards-setup-fixture.ts",
 ]);
