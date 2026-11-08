@@ -1,3 +1,4 @@
+import {restoreHistoricalAttendanceSubmission} from './helpers/attendance-submission-fixture';
 import {restorePreOrgRootReportingLines} from './helpers/pre-org-root-reporting-fixture';
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -296,7 +297,9 @@ describe('797ba70b: savepoint proof and canonical same-day plan dependencies', (
   });
   it('lands an already-approved future OT plan through the canonical clock-correction owner, preserving its original approval', async () => {
     const f = await fixture(), future=addDays(todayInKualaLumpur(),8);
-    const planId=await submit(f.self,f.d.employmentId,true,future);
+    // This is an existing pre-enablement plan; new plans must have their own configured route.
+    const historical=await restoreHistoricalAttendanceSubmission(b,{employmentId:f.d.employmentId,attendanceDate:future,requestedOtMinutes:60,requestKind:'self_overtime',reason:'Hierarchy verification'});
+    const planId=historical.id;
     await decideAttendanceCorrection(f.a,{correctionId:planId,decision:'approved'});
     const original=await readCorrection(planId); expect(original.status).toBe('approved'); expect(original.appliedAt).toBeNull();
     vi.useFakeTimers({toFake:['Date']}); vi.setSystemTime(new Date(`${addDays(future,1)}T12:00:00+08:00`));
