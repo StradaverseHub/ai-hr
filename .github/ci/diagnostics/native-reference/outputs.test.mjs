@@ -7,6 +7,7 @@ import {join} from 'node:path';
 import {nativeOutputNames,outputOwnership,regularHash,dependencyInputHash,digest,assertOutputSeal} from './outputs.mjs';
 import {planNativeReferences} from './graph.mjs';
 import {writeNativeReferenceConfigs,assertNativeParsedConfig} from './config.mjs';
+import {nativeFixtureIdentity,assertNativeIdentityRows,fixturePackageRoot,FIXTURE_PACKAGE_MANIFEST,FIXTURE_PACKAGE_BODY_SHA256,FIXTURE_PACKAGE_BODY_BYTES} from './package-context.mjs';
 const file=(id,kind='implementation')=>({id,kind,sha256:'1'.repeat(64)});
 test('native fixture mirror keeps ordinary JS/declarations and JSON paths without inventing a JSON declaration',()=>{
  for(const ext of ['ts','tsx','js','jsx'])assert.deepEqual(nativeOutputNames('producer/index.'+ext),['producer/index.js','producer/index.d.ts']);
@@ -80,6 +81,37 @@ test('dependency inputs retain exact positive byte bounds and the worker exclude
  try{const path=join(root,'native.d.ts'),body='export {};\n';writeFileSync(path,body);const expected=digest(Buffer.from(body));assert.throws(()=>dependencyInputHash(path,root,expected,body.length-1),/Read-only dependency input refused/);assert.throws(()=>dependencyInputHash(path,root,'0'.repeat(63)));assert.throws(()=>dependencyInputHash(path,root,expected,0));assert.throws(()=>dependencyInputHash(path,root,expected,513*1024**2));assert.equal(dependencyInputHash(path,root,expected,body.length).bytes,body.length);const empty=join(root,'empty.d.ts');writeFileSync(empty,'');assert.equal(dependencyInputHash(empty,root,digest(Buffer.alloc(0))).bytes,0);
   const worker=readFileSync(new URL('worker.mjs',import.meta.url),'utf8');assert(worker.includes('(external||defaultLibrary)&&inside(dependencyRoot,path)&&!configured.has(path)&&!inside(source,path)&&!owned.has(path)'));assert(worker.includes("assert.equal(realpathSync(dependencyRoot),dependencyRoot,'External dependency tree refused')"));
   assert(worker.includes('assertOutputSeal(seals);assertOutputSeal(projectSeals);'));assert.equal(worker.split('assertOutputSeal(seals);').length-1,4);
-  const inverse=JSON.parse(readFileSync(new URL('dependency-custody-inverse.json',import.meta.url),'utf8'));assert.equal(inverse.base,'7c6d847abdc44a49db179e1c848cea06e63661a3');for(const[name,row]of Object.entries(inverse.files)){let text=readFileSync(new URL('../../../../'+name,import.meta.url),'utf8');assert.equal(digest(Buffer.from(text)),row.currentSha256);let frontier=text.length;for(const edit of row.edits){assert(edit.start>=0&&edit.end<=frontier);assert.equal(text.slice(edit.start,edit.end),edit.current);text=text.slice(0,edit.start)+edit.original+text.slice(edit.end);frontier=edit.start;}assert.equal(digest(Buffer.from(text)),row.originalSha256);}
+  const layer=JSON.parse(readFileSync(new URL('package-context-inverse.json',import.meta.url),'utf8'));assert.equal(layer.base,'5c86c5630341c4ea17085b4f8bf8a8171b047b52');const restored=new Map();for(const[name,row]of Object.entries(layer.files)){let text=readFileSync(new URL('../../../../'+name,import.meta.url),'utf8');assert.equal(digest(Buffer.from(text)),row.currentSha256);let frontier=text.length;for(const edit of row.edits){assert(edit.start>=0&&edit.end<=frontier);assert.equal(text.slice(edit.start,edit.end),edit.current);text=text.slice(0,edit.start)+edit.original+text.slice(edit.end);frontier=edit.start;}assert.equal(digest(Buffer.from(text)),row.originalSha256);restored.set(name,text);}
+  const inverse=JSON.parse(readFileSync(new URL('dependency-custody-inverse.json',import.meta.url),'utf8'));assert.equal(inverse.base,'7c6d847abdc44a49db179e1c848cea06e63661a3');for(const[name,row]of Object.entries(inverse.files)){let text=restored.get(name)??readFileSync(new URL('../../../../'+name,import.meta.url),'utf8');assert.equal(digest(Buffer.from(text)),row.currentSha256);let frontier=text.length;for(const edit of row.edits){assert(edit.start>=0&&edit.end<=frontier);assert.equal(text.slice(edit.start,edit.end),edit.current);text=text.slice(0,edit.start)+edit.original+text.slice(edit.end);frontier=edit.start;}assert.equal(digest(Buffer.from(text)),row.originalSha256);}
  }finally{rmSync(dir,{recursive:true});}
+});
+
+test('native identities distinguish the one common fictional package from actual pinned default libraries',()=>{
+ const source='/private-fixture/source',compilerLib='/candidate/node_modules/typescript/lib',options={source,compilerLib,declaration:true,external:true,defaultLibrary:false};
+ assert.equal(fixturePackageRoot(source),'/private-fixture/node_modules/fixture-external');
+ assert.equal(nativeFixtureIdentity(source+'/producer/index.ts',{...options,declaration:false,external:false}),'producer/index.ts');
+ assert.equal(nativeFixtureIdentity(fixturePackageRoot(source)+'/index.d.ts',options),'external/fixture-external/index.d.ts');
+ assert.equal(nativeFixtureIdentity(compilerLib+'/lib.esnext.d.ts',{...options,defaultLibrary:true}),'external/typescript/lib.esnext.d.ts');
+ for(const path of ['/foreign/index.d.ts','/foreign/lib.esnext.d.ts',compilerLib+'/index.d.ts',compilerLib+'/sub/lib.esnext.d.ts'])assert.throws(()=>nativeFixtureIdentity(path,{...options,defaultLibrary:true}),/Unknown outside-source/);
+ for(const changed of [{declaration:false},{external:false},{defaultLibrary:true}])assert.throws(()=>nativeFixtureIdentity(fixturePackageRoot(source)+'/index.d.ts',{...options,...changed}),/classification differs/);
+ assert.throws(()=>nativeFixtureIdentity('/private-fixture/source/../unknown.d.ts',options),/Canonical/);
+});
+test('complete native identity rows refuse duplicate IDs or aliased paths rather than mislabel another package',()=>{
+ assertNativeIdentityRows([{id:'producer/index.ts',path:'/private/source/producer/index.ts'},{id:'external/fixture-external/index.d.ts',path:'/private/node_modules/fixture-external/index.d.ts'}]);
+ for(const rows of [[{id:'a',path:'/one'},{id:'a',path:'/two'}],[{id:'a',path:'/one'},{id:'b',path:'/one'}]])assert.throws(()=>assertNativeIdentityRows(rows),/Duplicate native context identity/);
+});
+test('one owned fictional package lives at the common ancestor and both manifest and original declaration stay strictly sealed',()=>{
+ const dir=realpathSync(mkdtempSync(join(tmpdir(),'native-common-package-'))),source=join(dir,'source'),emitted=join(dir,'projects/emitted');mkdirSync(source);mkdirSync(emitted,{recursive:true});const root=fixturePackageRoot(source);mkdirSync(root,{recursive:true});
+ try{const body=readFileSync(new URL('../../../../test/fixtures/compiler-native-reference/external/index.d.ts.fixture',import.meta.url));assert.equal(body.length,FIXTURE_PACKAGE_BODY_BYTES);assert.equal(digest(body),FIXTURE_PACKAGE_BODY_SHA256);writeFileSync(join(root,'package.json'),FIXTURE_PACKAGE_MANIFEST,{flag:'wx'});writeFileSync(join(root,'index.d.ts'),body,{flag:'wx'});const seals=['package.json','index.d.ts'].map(name=>regularHash(join(root,name)));
+  assert.equal(existsSync(join(source,'node_modules')),false);assert.equal(existsSync(join(emitted,'node_modules')),false);
+  for(const row of seals){const original=readFileSync(row.path);try{writeFileSync(row.path,Buffer.concat([original,Buffer.from('changed')]));assert.throws(()=>assertOutputSeal(seals));}finally{writeFileSync(row.path,original);}assertOutputSeal(seals);}
+  const alias=join(dir,'foreign-package-alias');linkSync(join(root,'index.d.ts'),alias);assert.throws(()=>regularHash(join(root,'index.d.ts')),/Native regular file custody refused/);
+ }finally{rmSync(dir,{recursive:true});}
+});
+test('every real native observation checks exact shared package membership and fixed default host without introducing resolution shims',()=>{
+ const worker=readFileSync(new URL('worker.mjs',import.meta.url),'utf8'),fixture=readFileSync(new URL('fixture.mjs',import.meta.url),'utf8'),owner=readFileSync(new URL('package-context.mjs',import.meta.url),'utf8');
+ assert.equal(worker.split('fixtureExternal:observedFixturePackage(').length-1,3);assert(worker.includes("dirname(realpathSync(owner.api))"));assert(worker.includes('assertNativeIdentityRows(files)'));
+ assert(owner.includes('program.getSourceFiles()'));assert(owner.includes('ts.resolveModuleName(literal.text,file.fileName,options,ts.sys'));assert(owner.includes('syntheticResolution:false'));
+ assert(fixture.includes('const external=fixturePackageRoot(source)'));assert(fixture.includes('packageContext(validated)'));assert(fixture.includes('packageContext(externalControl)'));
+ assert(!fixture.includes("join(source,'node_modules/fixture-external')"));assert(!owner.includes('createCompilerHost'));assert(!owner.includes('resolveModuleNames:'));
 });

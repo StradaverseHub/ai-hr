@@ -1,7 +1,7 @@
 {
   "version": 1,
   "kind": "COMPILER_REFERENCE_OWNED_PROCESS_SOURCE_NOT_QUALIFICATION",
-  "sourceRef": "codex/compiler-native-json-semantic-custody-20261108",
+  "sourceRef": "codex/compiler-native-package-context-20261108",
   "historicalUnrunPrototype": "fcd898ed1a4c4d886f70ac700fd1aff417240564",
   "reviewedConfiguredRootRepair": "665eee3c36557dc750736a6d9a4fd8caedb1b83e",
   "qualifiedKernelPredecessor": "756e834dc0db88b5131547bc6d5108284201ab48",
@@ -18,14 +18,16 @@
     ".github/ci/diagnostics/native-reference/admission.test.mjs": "3e0f32e5ad02a70bfff5e11eeecb5608a2a14c658773522be6f7aa89f464769a",
     ".github/ci/diagnostics/native-reference/config.mjs": "4dcc669c3abf1d9d08863b36ec8958508195445e926a242f5b7a27d5bd57fe95",
     ".github/ci/diagnostics/native-reference/dependency-custody-inverse.json": "d32319321ced719bc1898cf6a26d6bc5225fe14d1806f2285cc44f06499a2fa2",
-    ".github/ci/diagnostics/native-reference/fixture.mjs": "436d8c4e5484cd47585c4babadbf2b3a8c16ce6844e08281bbb8c22ba29c34ea",
+    ".github/ci/diagnostics/native-reference/fixture.mjs": "9542df648d16320338174d1f692fd243696142b2e91dfa7e95184acba0712c84",
     ".github/ci/diagnostics/native-reference/graph.mjs": "c555b649e7cebb95e5135af87ab7275d248c4c9b3a27b8742e7f8407944bace3",
     ".github/ci/diagnostics/native-reference/graph.test.mjs": "cc9187838c5f5d402917dbe355e004ade36807b95ef0373d15b347ed29f8940f",
     ".github/ci/diagnostics/native-reference/outputs.mjs": "f80442a765b03277548faffd076b0e13b037bef633cda8b013443d043eb8427d",
-    ".github/ci/diagnostics/native-reference/outputs.test.mjs": "e70e9ea5c4ea7f884be47cd23d2a7148df385568634fc9899faeed24f8d09881",
+    ".github/ci/diagnostics/native-reference/outputs.test.mjs": "13f71830702786a1d52cba90d2f95e0bbb2f957fe26b6440b8de6163346e1c2d",
+    ".github/ci/diagnostics/native-reference/package-context-inverse.json": "becb91b9af6b141da28374bcb0a0cdfa658949f9eb7e9973fa3ada99a7864c37",
+    ".github/ci/diagnostics/native-reference/package-context.mjs": "b60bcd493e5867f0167446ab28eb78c556cbc8071394ee2feb202541bb68e6e9",
     ".github/ci/diagnostics/native-reference/process.mjs": "798b305f20088ee77c1ce0cc01c08427718671f769aec446d1946b0b844879ba",
     ".github/ci/diagnostics/native-reference/process.test.mjs": "c2df40d57fd9964a405326952c9c4543ad5da0d837db7761553cbc5b5ea57912",
-    ".github/ci/diagnostics/native-reference/worker.mjs": "227118d4fa84a119fd1db100bdec1010da8c3eca33d85df63cd385150bb27741",
+    ".github/ci/diagnostics/native-reference/worker.mjs": "a0599b5ea4dc2b4bc32c59049408d50d62129f92043b61b1623a6c18b8ecd10a",
     ".github/ci/employee-benchmark-supervisor.py": "68a47dce71197e7fc1f57702cbc1dc99495ac58d5cf43243c702c82873467926",
     ".github/ci/employee-benchmark-supervisor.test.py": "d95721c1172ed25318eb1d209a6d4aa5d7ce2e741c177bce103920c38e08490d",
     ".github/ci/focused-checks.mjs": "b085f4e6d991bdccf2d86aaf674594bf34acc5dd2817b7f159af287163722994",
@@ -43,6 +45,9 @@
     ".github/workflows/alpha-staging-diagnostics.yml": "52c18222811f9ec289cc4fdbe01a58bcca70a671dad4209cd1cab7ae032c43cd",
     "docs/qualification/compiler-native-input-stat-diagnostic-20261108.md": "add5be85743f9361ed21c2cc5c9812e570c5afa93ea3970f57cbccd8f33cad8e",
     "docs/qualification/compiler-native-json-context-20261108.md": "4f690fd761ff0a9b7cc6ef256c220a1786610472c27b171877581f60320d5b03",
+    "docs/qualification/compiler-native-package-context-20261108.md": "6cb18fafa9cc412ac1d8249b66367331911174b6994bb02351a57cd2c2b314d3",
+    "docs/qualification/compiler-native-package-context-design-20261108.md": "5c259bae3fd9c47f16c548210c95f5d789ad081311623802bbc8094919ca800b",
+    "docs/qualification/compiler-native-package-context-design-source-20261108.json": "08a1cccdb92a94a4e3324ddd7a9d75a1532985266440f69be1d02a3672d354c2",
     "docs/qualification/compiler-owned-controls-recovery-20261108.md": "fc56c99214ee76ad4e6e90021906260c503dc00374db8d0563a1a1b0ed6f9b86",
     "docs/qualification/compiler-readonly-dependency-custody-20261108.md": "f8b2263c0e7b36479cf9aa08eaa48363bd6d7456f1db49db7356197983176e3a",
     "docs/qualification/compiler-reference-owned-supervision-20261108.md": "bdfcad6547d89647259848c61a9c898d3b81d7d7d4d0ca573c77aa119a386624",
@@ -53,7 +58,7 @@
     "scripts/test-duration-order.mjs": "09579d75363a8a1d4b514591e6dc6c4bef4b25f6599f8026e595c595dbdbb822",
     "scripts/test-duration-sequencer.mjs": "1865d0ad3fe4f61dc964ae684fa3c8cbc1e0166b1cb8210d6be03f1ba69245a6",
     "test/compiler-native-reference-fixture.test.ts": "d3d4eb099a881a08f309779bc045188e4888c384ad05d41c448eb8333ad86ea3",
-    "test/compiler-native-reference-graph.test.ts": "f07a4f4d18905b6464710511bf1face04d5908615879d8b3b6dbb4767cc94cf5",
+    "test/compiler-native-reference-graph.test.ts": "1ccd72e69524542ef5e43116cc5eb171d55392e3b480a48df95b20a63fdd7c0f",
     "test/compiler-native-reference-process.test.ts": "a544911c24e4cf2517aa80d083c943e03466a9f12cd2bcb0a55a6922fa0cba8d",
     "test/compiler-native-reference-supervisor.test.ts": "1b127edfecfdc748c0e59c0d9da6a7317bb27b6cd5536d35dba371315d164f54",
     "test/db-names.ts": "f6052b4e43c16d364dab4401403e30354b25b02f3f2166e1f0247133f9e2d55b",
@@ -75,7 +80,7 @@
   "prospectiveAreas": [
     {
       "selector": "test/compiler-native-reference-graph.test.ts",
-      "controls": 27,
+      "controls": 31,
       "claim": "source graph/output models only"
     },
     {
@@ -139,5 +144,25 @@
     "nativeEmittedBytes": 48,
     "semanticEqualityRequired": true,
     "runTransferred": false
+  },
+  "packageContextRecovery": {
+    "reviewedDesign": "fb96efc3439c31ba29049b8971c73c6c38a15605",
+    "base": "5c86c5630341c4ea17085b4f8bf8a8171b047b52",
+    "runId": "42454779620",
+    "artifactId": "13606724187",
+    "zipSha256": "48d10c5e8ea5628ac961ca57babcbc1a90cd9421422946e434b89d19869099e7",
+    "failedNativePhase": "owned-declarations",
+    "ownedDiagnosticCode": 2307,
+    "successfulOrExpectedRefusalDeclaredPhasesBeforeFailure": 7,
+    "jsonContextWasObservationNotPhase": true,
+    "packageCount": 1,
+    "packageRoot": "compiler-native-reference/node_modules/fixture-external",
+    "fixtureBodyBytes": 93,
+    "fixtureBodySha256": "38a6bfb17b33b2a8c87daf3f85253e90be6b3ebcd30253a4c4d4de83a04a1cd9",
+    "plannedGraphCustodyControls": 31,
+    "plannedNativePhases": 13,
+    "noLocalBehavioralExecution": true,
+    "applicationDependencyContextQualified": false,
+    "ordinaryCompilerQualified": false
   }
 }
