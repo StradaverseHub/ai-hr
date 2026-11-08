@@ -36732,6 +36732,38 @@
       "ot30": "Overtime 3.0",
       "absent": "Vắng mặt",
       "late": "Đi muộn"
-    }
+    },
+    "payItemsTitle": "Chấm công & Khoản lương",
+    "payItemsHelp": "Tính công thức đang hoạt động từ dữ liệu thực, kiểm tra chi tiết rồi rà soát và duyệt từng kết quả trước khi chuyển sang lương. Lịch sử được giữ lại.",
+    "activeFormula": "Công thức đang hoạt động",
+    "chooseFormula": "Chọn công thức",
+    "calculatePayItem": "Tính khoản lương",
+    "calculatedNotice": "Đã lưu phép tính để rà soát.",
+    "noPayItems": "Không có kết quả công thức trong kỳ này.",
+    "selectResult": "Chọn",
+    "quantity": "Số lượng / Đơn vị",
+    "rate": "Đơn giá",
+    "actions": "Thao tác",
+    "selectResultName": "Chọn {code}, {from} đến {to}",
+    "reviewReason": "Lý do rà soát / chuyển",
+    "reviewResult": "Đánh dấu đã rà soát",
+    "approveResult": "Duyệt kết quả",
+    "reviewRecorded": "Đã ghi nhận rà soát.",
+    "closeEvidence": "Đóng chi tiết",
+    "transferTitle": "Chuyển sang lương",
+    "transferHelp": "Chọn đầy đủ kết quả đã duyệt và đợt lương thường ở bản nháp phù hợp. Nguồn xung đột hoặc cũ sẽ bị từ chối. Hoàn tác khoản đã chuyển qua đầu vào bản nháp lương trước khi tính lại.",
+    "payrollRun": "Đợt lương",
+    "chooseRun": "Chọn đợt bản nháp",
+    "transferToPayroll": "Chuyển kết quả đã chọn",
+    "transferRecorded": "Đã ghi nhận chuyển lương.",
+    "resultStates": {
+      "calculated": "Đã tính · Chờ rà soát",
+      "reviewed": "Đã rà soát",
+      "approved": "Đã duyệt · Sẵn sàng chuyển lương",
+      "superseded": "Đã thay thế",
+      "posted": "Đã chuyển lương",
+      "reversed": "Đã hoàn tác"
+    },
+    "status": "Trạng thái"
   }
 }

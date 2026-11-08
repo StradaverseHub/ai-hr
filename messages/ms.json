@@ -36732,6 +36732,38 @@
       "ot30": "Overtime 3.0",
       "absent": "Tidak hadir",
       "late": "Lewat masuk"
-    }
+    },
+    "payItemsTitle": "Kehadiran & Item Gaji",
+    "payItemsHelp": "Kira formula aktif menggunakan kehadiran sebenar, semak butiran dan luluskan setiap hasil sebelum pemindahan Gaji. Sejarah hasil dikekalkan.",
+    "activeFormula": "Formula aktif",
+    "chooseFormula": "Pilih formula aktif",
+    "calculatePayItem": "Kira Item Gaji",
+    "calculatedNotice": "Pengiraan disimpan untuk semakan.",
+    "noPayItems": "Tiada hasil formula bagi tempoh kehadiran ini.",
+    "selectResult": "Pilih",
+    "quantity": "Kuantiti / Unit",
+    "rate": "Kadar",
+    "actions": "Tindakan",
+    "selectResultName": "Pilih {code}, {from} hingga {to}",
+    "reviewReason": "Sebab semakan / pemindahan",
+    "reviewResult": "Tandakan disemak",
+    "approveResult": "Luluskan hasil",
+    "reviewRecorded": "Semakan direkodkan.",
+    "closeEvidence": "Tutup butiran",
+    "transferTitle": "Pindah ke Gaji",
+    "transferHelp": "Pilih set lengkap hasil diluluskan dan larian Gaji biasa berstatus draf yang sepadan. Sumber bercanggah atau lapuk menolak pemindahan. Balikkan sumbangan dipos melalui input Gaji draf sebelum pengiraan semula.",
+    "payrollRun": "Larian Gaji",
+    "chooseRun": "Pilih larian draf",
+    "transferToPayroll": "Pindah hasil dipilih",
+    "transferRecorded": "Pemindahan Gaji direkodkan.",
+    "resultStates": {
+      "calculated": "Dikira · Menunggu semakan",
+      "reviewed": "Disemak",
+      "approved": "Diluluskan · Sedia untuk Gaji",
+      "superseded": "Digantikan",
+      "posted": "Dipos ke Gaji",
+      "reversed": "Dibalikkan"
+    },
+    "status": "Status"
   }
 }

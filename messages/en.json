@@ -36732,6 +36732,38 @@
       "ot30": "Overtime 3.0",
       "absent": "Absent",
       "late": "Late In"
-    }
+    },
+    "payItemsTitle": "Attendance & Pay Items",
+    "payItemsHelp": "Calculate active formulas against actual attendance, inspect the calculation details, then review and approve each result before Payroll transfer. Historical results remain visible.",
+    "activeFormula": "Active formula",
+    "chooseFormula": "Choose an active formula",
+    "calculatePayItem": "Calculate Pay Item",
+    "calculatedNotice": "Calculation saved for review.",
+    "noPayItems": "No formula results for this attendance period.",
+    "selectResult": "Select",
+    "quantity": "Quantity / Units",
+    "rate": "Rate",
+    "actions": "Actions",
+    "selectResultName": "Select {code}, {from} to {to}",
+    "reviewReason": "Review / transfer reason",
+    "reviewResult": "Mark reviewed",
+    "approveResult": "Approve result",
+    "reviewRecorded": "Review recorded.",
+    "closeEvidence": "Close details",
+    "transferTitle": "Transfer to Payroll",
+    "transferHelp": "Select the complete set of approved results and the matching regular draft Payroll run. Conflicting or stale sources refuse transfer. Reverse a posted contribution through the draft Payroll input before recalculation.",
+    "payrollRun": "Payroll run",
+    "chooseRun": "Choose a draft run",
+    "transferToPayroll": "Transfer selected results",
+    "transferRecorded": "Payroll transfer recorded.",
+    "resultStates": {
+      "calculated": "Calculated · Pending review",
+      "reviewed": "Reviewed",
+      "approved": "Approved · Ready for Payroll",
+      "superseded": "Superseded",
+      "posted": "Posted to Payroll",
+      "reversed": "Reversed"
+    },
+    "status": "Status"
   }
 }

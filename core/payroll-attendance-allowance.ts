@@ -141,3 +141,7 @@ export async function verifyAttendanceFormulaPayrollSourcesTx(tx:Tx,ctx:SessionC
  }
  return {verified:sources.length};
 }
+export function attendanceFormulaPayrollRuns(ctx:SessionContext,companyIds:string[]){return withTenant(ctx,async tx=>{
+ if(!companyIds.length)return [];if(companyIds.length>500)throw Error('Narrow the Payroll company scope.');
+ return tx.select({id:payrollBatch.id,companyId:payrollBatch.companyId,period:payrollBatch.payPeriod,cycleId:payrollBatch.payrollCycleId}).from(payrollBatch).where(and(inArray(payrollBatch.companyId,companyIds),eq(payrollBatch.status,'draft'),eq(payrollBatch.runType,'regular'),sql`app.can_admin_payroll_for(${payrollBatch.companyId})`)).orderBy(payrollBatch.payPeriod,payrollBatch.id).limit(101);
+});}

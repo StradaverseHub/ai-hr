@@ -36732,6 +36732,38 @@
       "ot30": "Overtime 3.0",
       "absent": "缺勤",
       "late": "迟到"
-    }
+    },
+    "payItemsTitle": "考勤与薪资项目",
+    "payItemsHelp": "根据实际考勤计算启用的公式，检查计算详情，并在传至薪资前逐项审核和批准。保留历史结果。",
+    "activeFormula": "启用的公式",
+    "chooseFormula": "选择启用的公式",
+    "calculatePayItem": "计算薪资项目",
+    "calculatedNotice": "计算已保存，等待审核。",
+    "noPayItems": "此考勤期间暂无公式结果。",
+    "selectResult": "选择",
+    "quantity": "数量／单位",
+    "rate": "费率",
+    "actions": "操作",
+    "selectResultName": "选择 {code}，{from} 至 {to}",
+    "reviewReason": "审核／传输原因",
+    "reviewResult": "标记已审核",
+    "approveResult": "批准结果",
+    "reviewRecorded": "审核已记录。",
+    "closeEvidence": "关闭详情",
+    "transferTitle": "传至薪资",
+    "transferHelp": "选择完整的已批准结果及相符的常规薪资草稿。来源冲突或过时将拒绝传输。重新计算前，请通过薪资草稿输入冲销已入账的结果。",
+    "payrollRun": "薪资批次",
+    "chooseRun": "选择草稿批次",
+    "transferToPayroll": "传输所选结果",
+    "transferRecorded": "薪资传输已记录。",
+    "resultStates": {
+      "calculated": "已计算·待审核",
+      "reviewed": "已审核",
+      "approved": "已批准·可传薪资",
+      "superseded": "已被替代",
+      "posted": "已传至薪资",
+      "reversed": "已冲销"
+    },
+    "status": "状态"
   }
 }
