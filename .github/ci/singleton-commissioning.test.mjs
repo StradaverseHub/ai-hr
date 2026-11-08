@@ -12,7 +12,7 @@ import {COMMISSION_TITLE,commissioningIntent,selectCommissioning,summarizeCommis
 const browser=['test/fictional.browser.test.tsx'];
 function fixture(file='test/runtime-ready-admission-native.test.ts'){
  const kind=singletonKind(singletonDescriptor(file).profile),units=buildUnits([file],{db:kind==='db'?[file]:[],nodb:kind==='nodb'?[file]:[]},browser),unit=units[0];
- const body={schemaVersion:2,policyVersion:'aihr-staging-ci/v20',sha:'a'.repeat(40),controller:'b'.repeat(40),migrationBase:'d'.repeat(40),runtime:{node:'22.23.3',platform:'linux',arch:'x64'},execution:CI_EXECUTION,suite:[file],units,
+ const body={schemaVersion:2,policyVersion:'aihr-staging-ci/v21',sha:'a'.repeat(40),controller:'b'.repeat(40),migrationBase:'d'.repeat(40),runtime:{node:'22.23.3',platform:'linux',arch:'x64'},execution:CI_EXECUTION,suite:[file],units,
   singletonSources:{[unit.id]:Object.fromEntries(singletonSources(unit).map(path=>[path,'c'.repeat(64)]))}};
  const plan={...body,fingerprint:protocolHash(body)},witness={runId:123,attempt:1};
  const prerequisites=kind==='db'?{kind:'fresh-job-postgres-cluster',workers:1,database:{schemaVersion:2,profileVersion:2,configuredCapBytes:2113929216,peakBudgetBytes:2147483648,errors:{},memoryLimit:2113929216,memorySwap:2113929216,memoryMax:2113929216,memorySwapMax:0,memoryPeak:1500000000,memoryEvents:{max:0,oom:0,oom_kill:0},state:{Running:true,OOMKilled:false,Dead:false},settings:{jit:'on',jitAvailable:true,serverVersionNum:'160015'},name:`aihr-ci-123-1-${unit.id}`}}:
