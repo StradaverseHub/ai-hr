@@ -1724,6 +1724,7 @@ export const NOTIFICATION_CATALOGUE_SOURCES=Object.freeze([
  "test/fixtures/notification-worker/database.ts",
  "test/fixtures/notification-worker/diagnostic-ownership.ts",
  "test/fixtures/notification-worker/final-catalogue-cases.ts",
+ "test/fixtures/notification-worker/final-catalogue-comparison.ts",
  "test/fixtures/notification-worker/final-catalogue-replay-prerequisite.ts",
  "test/fixtures/notification-worker/replay-prefix-ownership.ts",
  "test/helpers/personnel-draft-discard-ci-role-fixture.ts",
