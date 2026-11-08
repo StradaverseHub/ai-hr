@@ -36689,6 +36689,15 @@
     "archiveHelp": "Pengarkiban mengekalkan setiap versi dan ujian. Formula diarkibkan tidak boleh diedit atau diaktifkan semula.",
     "result": "Hasil: {amount}",
     "calculationTrace": "Jejak pengiraan",
-    "sourceEvidence": "Bukti sumber kehadiran"
+    "sourceEvidence": "Bukti sumber kehadiran",
+    "ai": "Tanya AI",
+    "aiRequirement": "Terangkan peraturan",
+    "aiDisclosure": "Saya bersetuju menghantar ayat di atas kepada penyedia AI yang dikonfigurasi. Jangan masukkan nama, butiran pekerja atau rekod kehadiran peribadi. Tatabahasa formula awam disertakan; formula disimpan dan rekod asal tidak dihantar.",
+    "aiGenerate": "Cadangkan formula",
+    "aiApply": "Gantikan ungkapan belum disimpan dengan draf ini",
+    "aiApplied": "Cadangan digunakan pada draf belum disimpan.",
+    "aiHelp": "Ini menggantikan formula dan syarat draf. Semak setiap andaian, simpan versi, uji kehadiran sebenar dan luluskan pengaktifan secara nyata. AI tidak mengira atau meluluskan gaji.",
+    "aiReviewRequired": "Tujuan draf AI ini memerlukan semakan pendedahan pemilik sebelum menghantar permintaan.",
+    "aiFailed": "Cadangan tidak dapat disediakan. Semak ketersediaan dan akses AI, kemudian cuba lagi."
   }
 }

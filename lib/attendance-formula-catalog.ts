@@ -1,6 +1,6 @@
 import type {FormulaType} from './pay-formula-registry';
 /** Stable reporter IDs; business labels use the answered Before Shift / After Shift terminology. */
-export type AttendanceFormulaUnit='minutes'|'count'|'clock-minute'|'date'|'flag'|'code';
+export type AttendanceFormulaUnit='minutes'|'count'|'clock-minute'|'date'|'flag'|'code'|'days';
 export type AttendanceFormulaVariable={ordinal:number;id:string;label:string;type:FormulaType;unit:AttendanceFormulaUnit;owner:string;aggregation:'sum'|'last'|'invariant'};
 export const ATTENDANCE_FORMULA_CATALOG_VERSION='attendance-formula-1';
 export const REMOVED_ATTENDANCE_FORMULA_VARIABLES=['CallbackInShift','ZoneACallbackOT','ZoneACallbackPreOT','ZoneBCallbackOT','ZoneBCallbackPreOT'] as const;
@@ -71,8 +71,8 @@ export const ATTENDANCE_FORMULA_VARIABLES:readonly AttendanceFormulaVariable[]=[
  {ordinal:65,id:'LeaveOnBreak2',label:"Leave On Break2",type:'decimal',unit:'minutes',owner:'approved-leave',aggregation:'sum'},
  {ordinal:66,id:'LeaveOnBreak3',label:"Leave On Break3",type:'decimal',unit:'minutes',owner:'approved-leave',aggregation:'sum'},
  {ordinal:67,id:'LeaveOnBreak4',label:"Leave On Break4",type:'decimal',unit:'minutes',owner:'approved-leave',aggregation:'sum'},
- {ordinal:68,id:'LeaveValue1stHalf',label:"Leave Value1st Half",type:'decimal',unit:'count',owner:'approved-leave',aggregation:'sum'},
- {ordinal:69,id:'LeaveValue2ndHalf',label:"Leave Value2nd Half",type:'decimal',unit:'count',owner:'approved-leave',aggregation:'sum'},
+ {ordinal:68,id:'LeaveValue1stHalf',label:"Leave Value1st Half",type:'decimal',unit:'days',owner:'approved-leave',aggregation:'sum'},
+ {ordinal:69,id:'LeaveValue2ndHalf',label:"Leave Value2nd Half",type:'decimal',unit:'days',owner:'approved-leave',aggregation:'sum'},
  {ordinal:70,id:'OnHourlyLeaveEarlyOut',label:"On Hourly Leave Early Out",type:'decimal',unit:'minutes',owner:'approved-leave',aggregation:'sum'},
  {ordinal:71,id:'OnHourlyLeaveLateIn',label:"On Hourly Leave Late In",type:'decimal',unit:'minutes',owner:'approved-leave',aggregation:'sum'},
  {ordinal:72,id:'OnLeaveDurationMins',label:"On Leave Duration Mins",type:'decimal',unit:'minutes',owner:'approved-leave',aggregation:'sum'},

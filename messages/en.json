@@ -36689,6 +36689,15 @@
     "archiveHelp": "Archiving retains every saved version and test. An archived formula cannot be edited or reactivated.",
     "result": "Result: {amount}",
     "calculationTrace": "Calculation trace",
-    "sourceEvidence": "Attendance source evidence"
+    "sourceEvidence": "Attendance source evidence",
+    "ai": "Ask AI",
+    "aiRequirement": "Describe the rule",
+    "aiDisclosure": "I agree to send the wording above to the configured AI provider. Do not enter names, employee details or private attendance records. Public formula grammar is included; saved formulas and native records are not sent.",
+    "aiGenerate": "Suggest a formula",
+    "aiApply": "Replace unsaved expressions with this draft",
+    "aiApplied": "Suggestion applied to the unsaved draft.",
+    "aiHelp": "This replaces the draft formula and conditions. Review every assumption, save a version, test actual attendance and explicitly approve activation. AI does not calculate or approve pay.",
+    "aiReviewRequired": "This AI drafting purpose needs the owner’s disclosure review before it can send a request.",
+    "aiFailed": "The suggestion could not be prepared. Check AI availability and access, then try again."
   }
 }

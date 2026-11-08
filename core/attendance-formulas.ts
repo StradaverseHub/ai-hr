@@ -20,6 +20,7 @@ const hash=(value:unknown)=>createHash('sha256').update(JSON.stringify(value,(_k
 const uuid=/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i;
 function actor(ctx:SessionContext){if(!ctx.userId||!uuid.test(ctx.userId))throw Error('Use an authenticated administrator to maintain Attendance formulas.');return ctx.userId;}
 async function scope(tx:Tx,companyId:string){if(!uuid.test(companyId))throw Error('Choose a formula company.');const [allowed]=await tx.execute<{ok:boolean}>(sql`select app.attendance_policy_principal_current() and app.is_admin_for(${companyId}::uuid) as ok`);if(!allowed?.ok)throw Error('Company administration access is required.');}
+export async function assertAttendanceFormulaAuthorTx(tx:Tx,ctx:SessionContext,companyId:string){actor(ctx);await scope(tx,companyId);}
 async function lock(tx:Tx,ctx:SessionContext,id:string){if(!uuid.test(id))throw Error('Formula is unavailable.');await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${ctx.tenantId.toLowerCase()+':attendance-formula:'+id.toLowerCase()},0))`);}
 async function identity(tx:Tx,id:string){if(!uuid.test(id))throw Error('Formula is unavailable.');const [formula]=await tx.select().from(attendanceFormula).where(eq(attendanceFormula.id,id));if(!formula)throw Error('Formula or company scope is unavailable.');return formula;}
 async function events(tx:Tx,id:string){return tx.select().from(attendanceFormulaEvent).where(eq(attendanceFormulaEvent.formulaId,id)).orderBy(desc(attendanceFormulaEvent.sequence)).limit(100);}

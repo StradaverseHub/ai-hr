@@ -109,7 +109,7 @@ export async function readAttendanceFormulaDaysTx(tx:Tx,ctx:SessionContext,p:{co
      decimal('Zone'+zone+'WorkingMins',count(covered,4320),'canonical-net-positioned-work');
      const classes=context?.state==='policy'?covered.flatMap(part=>{const output:string[]=[];for(let offset=Math.floor(part.from/1440);offset<=Math.floor((part.to-1)/1440);offset++){const proof=context.calendar.find(proof=>proof.date===addDaysIso(date,offset));if(proof?.state!=='known')return ['unavailable'];output.push(proof.dayClass);}return output;}):[];
      if(classes.length&&new Set(classes).size===1&&classes[0]!=='unavailable'){string('Zone'+zone+'DayType',classes[0],'canonical-dated-calendar');if(zone==='A')string('ZoneADayTypeDesc',classes[0],'canonical-dated-calendar');}
-     if(approved){const approvedMinutes=window.to>window.from?count(intersect(approved,[window],4320),4320):0;decimal('ApproveZone'+zone+'OT',approvedMinutes,'canonical-positioned-approval');}
+     // Legacy approval IDs remain unavailable until their requested distinctions are defined.
     }
     if(approved)decimal('OTAssignmentInShift',count(intersect(approved,[{from:schedule.startAbs,to:schedule.endAbs}],4320),4320),'canonical-positioned-approval');
    }

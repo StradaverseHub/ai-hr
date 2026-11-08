@@ -108,3 +108,7 @@ END $$;
 REVOKE ALL ON FUNCTION app.attendance_formula_binding_guard() FROM PUBLIC;
 CREATE TRIGGER attendance_formula_revision_bind BEFORE INSERT ON public.attendance_formula_revision FOR EACH ROW EXECUTE FUNCTION app.attendance_formula_binding_guard();
 CREATE TRIGGER attendance_formula_event_bind BEFORE INSERT ON public.attendance_formula_event FOR EACH ROW EXECUTE FUNCTION app.attendance_formula_binding_guard();
+
+--> statement-breakpoint
+-- Independent child restriction for this authoring purpose; disclosure review remains fail-closed.
+INSERT INTO app.ai_centre_function_kind(function_key,default_enabled) VALUES('read:operation_attendance_formula_draft',true);

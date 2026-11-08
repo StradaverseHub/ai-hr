@@ -56,7 +56,7 @@ export const APPROVED_UPGRADE_TAIL=[
 ] as const;
 // Final pending 2109/2126 bytes reviewed from engine 128bc2539; no applied-prefix hashes change.
 const APPROVED_UPGRADE_HASHES:Record<string,string>={
- '3303_attendance_formula_versions':'0e7d92012b211ab5966936afe8516be27a56b87bef3335ee8e8dad358951f858',
+ '3303_attendance_formula_versions':'0d98a960b648854e94c943d3c10f022c578861e7f53efe174fc850185d0229f6',
  '3302_maybank_payment_arrangement':'19334a66cee1af68b561a8a8795dc74748e5825507f268d0138f7aff7cd91dfa',
  '3300_pay_item_company_applicability':'ff67d0990fce26f759b7d0e07a6805aced04e70af893c98dcf41c23774aa9c3c',
  '3301_rewards_unit_preparation':'4d8969bfc0b8f134f8cc01c42a738eb6cc4babdcb1ccfb0ec824a61d9b9fee11',

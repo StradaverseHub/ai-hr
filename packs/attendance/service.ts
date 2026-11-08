@@ -119,3 +119,5 @@ export {lockAttendanceDayScheduleIntervalTx} from './day-adjustment';
 export {classifyDay,KIND_OF_SECTION,type ExceptionDay} from './exceptions';
 export {readAttendanceFormulaDaysTx} from './formula-sources';
 export {saveAttendanceFormula,testAttendanceFormula,activateAttendanceFormula,changeAttendanceFormulaStatus,getAttendanceFormula,readAttendanceFormulaTest,attendanceFormulaSetup,listAttendanceFormulas,searchAttendanceFormulaEmployees} from '../../core/attendance-formulas';
+
+export {draftAttendanceFormula} from '../../core/attendance-formula-ai';

@@ -1,12 +1,12 @@
 import * as React from 'react';
 import {afterEach,beforeEach,describe,expect,it,vi} from 'vitest';
-import {cleanup,fireEvent,render,screen,waitFor} from '@testing-library/react';
+import {cleanup,fireEvent,render,screen,waitFor,within} from '@testing-library/react';
 import {NextIntlClientProvider} from 'next-intl';
 import en from '../messages/en.json';import ms from '../messages/ms.json';import zh from '../messages/zh.json';import viMessages from '../messages/vi.json';import ta from '../messages/ta.json';import th from '../messages/th.json';
 import {AttendanceFormulaEditor} from '../app/admin/attendance/settings/formula-builder/editor';
-const mocks=vi.hoisted(()=>({save:vi.fn(),test:vi.fn(),activate:vi.fn(),status:vi.fn(),read:vi.fn(),search:vi.fn(),replace:vi.fn()}));
+const mocks=vi.hoisted(()=>({draft:vi.fn(),save:vi.fn(),test:vi.fn(),activate:vi.fn(),status:vi.fn(),read:vi.fn(),search:vi.fn(),replace:vi.fn()}));
 vi.mock('next/navigation',()=>({useRouter:()=>({replace:mocks.replace})}));
-vi.mock('../app/admin/attendance/settings/formula-builder/actions',()=>({saveAttendanceFormulaAction:mocks.save,testAttendanceFormulaAction:mocks.test,activateAttendanceFormulaAction:mocks.activate,statusAttendanceFormulaAction:mocks.status,readAttendanceFormulaTestAction:mocks.read,searchAttendanceFormulaEmployeesAction:mocks.search}));
+vi.mock('../app/admin/attendance/settings/formula-builder/actions',()=>({draftAttendanceFormulaAction:mocks.draft,saveAttendanceFormulaAction:mocks.save,testAttendanceFormulaAction:mocks.test,activateAttendanceFormulaAction:mocks.activate,statusAttendanceFormulaAction:mocks.status,readAttendanceFormulaTestAction:mocks.read,searchAttendanceFormulaEmployeesAction:mocks.search}));
 vi.mock('../app/admin/attendance-allowance/actions',()=>({searchAllowanceEmployees:vi.fn(async()=>({rows:[],total:0,unavailable:[]})),searchAllowanceEmployeeValues:vi.fn(async()=>({rows:[],hasMore:false}))}));
 const companyId='10000000-0000-4000-8000-000000000001',payItemId='20000000-0000-4000-8000-000000000001';
 const options={companies:[{id:companyId,label:'Fictional formula company',currency:'MYR'}],payItems:[{id:payItemId,code:'ATTENDANCE',name:'Fictional attendance earning',kind:'allowance',companyIds:[companyId]}]};
@@ -25,7 +25,7 @@ describe('attendance authoring remains an explicit unsaved draft',()=>{
  it('inserts the exact stable variable ID into the unsaved source and supports criteria without activation',()=>{
   mount();fireEvent.change(screen.getByLabelText(en.attendanceFormula.code),{target:{value:'WORKED'}});
   fireEvent.click(screen.getByRole('button',{name:en.attendanceFormula.variables}));fireEvent.change(screen.getByLabelText(en.attendanceFormula.searchVariables),{target:{value:'ZoneAWorkingMins'}});
-  expect(screen.getByText(/Before Shift Working Mins/)).toBeTruthy();fireEvent.click(screen.getByRole('button',{name:en.attendanceFormula.insert}));
+  const variable=screen.getByText('ZoneAWorkingMins').parentElement!;expect(within(variable).getByText('Before Shift Working Mins · minutes')).toBeTruthy();fireEvent.click(within(variable.parentElement!).getByRole('button',{name:en.attendanceFormula.insert}));
   expect(screen.getByRole('textbox',{name:en.attendanceFormula.formulaExpression})).toHaveValue('{#FormulaID}("ZoneAWorkingMins")');
   fireEvent.change(screen.getByLabelText(en.attendanceFormula.employeeSelection),{target:{value:'criteria'}});expect(screen.getByText(en.allowanceV4.employeeGroup)).toBeTruthy();
   expect(mocks.save).not.toHaveBeenCalled();expect(mocks.activate).not.toHaveBeenCalled();
@@ -36,4 +36,12 @@ describe('attendance authoring remains an explicit unsaved draft',()=>{
   fireEvent.click(screen.getByRole('button',{name:en.attendanceFormula.save}));await waitFor(()=>expect(screen.getByRole('alert').textContent).toBe('Fictional scoped owner refusal'));
   expect(mocks.save).toHaveBeenCalledWith({id:undefined,expectedRevisionId:undefined,configuration:expect.objectContaining({code:'WORKED',companyId,payItemId,eligibility:{mode:'all'}})});expect(mocks.test).not.toHaveBeenCalled();expect(mocks.activate).not.toHaveBeenCalled();expect(mocks.replace).not.toHaveBeenCalled();
  });
+});
+
+it('requires explicit disclosure and applies a proposal only to the unsaved draft',async()=>{
+ mocks.draft.mockResolvedValue({ok:true,value:{source:'Return 1',conditions:[],explanation:'Fictional proposal',questions:[],assumptions:[],valid:true}});mount();
+ fireEvent.click(screen.getByRole('button',{name:en.attendanceFormula.ai}));fireEvent.change(screen.getByLabelText(en.attendanceFormula.aiRequirement),{target:{value:'Fictional attendance rule'}});
+ expect(screen.getByRole('button',{name:en.attendanceFormula.aiGenerate})).toBeDisabled();fireEvent.click(screen.getByRole('checkbox',{name:en.attendanceFormula.aiDisclosure}));fireEvent.click(screen.getByRole('button',{name:en.attendanceFormula.aiGenerate}));
+ await waitFor(()=>expect(screen.getByText('Fictional proposal')).toBeTruthy());expect(mocks.draft).toHaveBeenCalledWith({companyId,requirement:'Fictional attendance rule',disclosureAccepted:true});
+ fireEvent.click(screen.getByRole('button',{name:en.attendanceFormula.aiApply}));expect(screen.getByRole('textbox',{name:en.attendanceFormula.formulaExpression})).toHaveValue('Return 1');expect(mocks.save).not.toHaveBeenCalled();expect(mocks.activate).not.toHaveBeenCalled();
 });

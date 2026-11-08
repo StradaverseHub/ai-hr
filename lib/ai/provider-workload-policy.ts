@@ -2,6 +2,7 @@
  * provider admission. Native owners must replay raw source fingerprints in the admission Tx. */
 import {architectureAiPrompt} from './job-architecture-policy';
 import {captureRewardAdvisorOutline} from './rewards-advisor-policy';
+import {attendanceFormulaDraftPrompt} from '../attendance-formula-ai';
 import {payFormulaDraftPrompt} from '../pay-formula-ai';
 import {createHash} from 'node:crypto';
 import {types as nodeTypes} from 'node:util';
@@ -195,6 +196,7 @@ const contracts=Object.freeze({
   if(!candidates.length)return refuse();return {args:Object.freeze({system:'Select at most one of the native-adjudicated payroll hypothesis candidates, or abstain. Candidates are questions for human investigation, never verified causes or payroll changes. Copy one supplied claim/evidence pair exactly, or return {"claim":"nothing_notable","evidence":[]}. Return only that JSON object, no prose, money, figures or actions.',prompt:JSON.stringify({candidates}),maxTokens:200})};
  }),
  payroll_detector_explanation_v1:descriptor(['payroll_explanation'],'draft',input=>{const r=row(input,['detector','fields','source']),detector=member(r.detector,detectors),fields=list(r.fields,20).map(k=>member(k,detectorFields));if(!fields.length||new Set(fields).size!==fields.length)return refuse();return {args:Object.freeze({system:'Choose the most useful recorded field references to show beside an existing payroll detector finding. Return only JSON {"fields":["suppliedField"]}, distinct supplied fields, maximum5. Do not infer causes, calculate pay, provide prose, or decide employment/pay outcomes. The application restores exact authorized values locally.',prompt:JSON.stringify({detector,fields}),maxTokens:180}),local:Object.freeze({fields})};}),
+ authored_attendance_formula_v1:descriptor(['pay_rule_draft'],'draft',input=>({args:Object.freeze(attendanceFormulaDraftPrompt(input))})),
  authored_pay_formula_v2:descriptor(['pay_rule_draft'],'draft',input=>({args:Object.freeze(payFormulaDraftPrompt(input))})),
  authored_pay_formula_v1:descriptor(['pay_rule_draft'],'draft',input=>({args:Object.freeze(payFormulaDraftPrompt(input))})),
  authored_pay_rule_v1:descriptor(['pay_rule_draft'],'draft',input=>{const r=row(input,['description','prorates']);if(typeof r.description!=='string'||typeof r.prorates!=='boolean')return refuse();const rule=protectedPayRuleInput(r.description);return {args:Object.freeze({system:'Confirm the requested declarative pay-rule KIND only. Return exactly JSON {"kind":"suppliedKind"}. No numbers, money calculation, prose or employment actions. The human-supplied numeric parameters are withheld and restored locally before native validation.',prompt:JSON.stringify({requestedKind:rule.kind,componentProrates:r.prorates}),maxTokens:80}),local:Object.freeze({kind:rule.kind})};}),
@@ -239,6 +241,7 @@ export const PROVIDER_WORKLOAD_AVAILABILITY=Object.freeze([
  {feature:'claims_triage',variant:'description_completeness',contracts:['claim_detail_triage_v1'],remaining:['raw_description_category_date_subject_interpretation']},
  {feature:'payroll_hypotheses',variant:'native_adjudicated_candidate_ranking',contracts:['payroll_feature_hypothesis_v1'],remaining:[]},
  {feature:'payroll_explanation',variant:'native_detector_field_selection',contracts:['payroll_detector_explanation_v1'],remaining:['arbitrary_unsupported_detector_facts']},
+ {feature:'pay_rule_draft',variant:'validated_attendance_formula_draft',contracts:['authored_attendance_formula_v1'],remaining:['human_calculation_intent_review','actual_attendance_test_and_activation']},
  {feature:'pay_rule_draft',variant:'validated_formula_draft',contracts:['authored_pay_formula_v2'],remaining:['human_calculation_intent_review']},
  {feature:'pay_rule_draft',variant:'closed_rule_intent_with_local_parameters',contracts:['authored_pay_rule_v1'],remaining:['unstructured_rule_semantics','formula_dependencies']},
  {feature:'report_insight',variant:'closed_report_column_intent',contracts:['authored_report_plan_v1'],remaining:['unstructured_request_semantics','private_filter_values']},

@@ -36689,6 +36689,15 @@
     "archiveHelp": "归档会保留所有版本和测试。已归档公式不能编辑或重新启用。",
     "result": "结果：{amount}",
     "calculationTrace": "计算过程",
-    "sourceEvidence": "考勤来源证据"
+    "sourceEvidence": "考勤来源证据",
+    "ai": "询问AI",
+    "aiRequirement": "描述规则",
+    "aiDisclosure": "我同意将上述文字发送给已配置的AI提供商。请勿输入姓名、员工详情或私密考勤记录。请求包含公开公式语法，不发送已保存公式和原始记录。",
+    "aiGenerate": "建议公式",
+    "aiApply": "用此草稿替换未保存表达式",
+    "aiApplied": "建议已应用到未保存草稿。",
+    "aiHelp": "此操作会替换草稿公式和条件。请审核所有假设、保存版本、测试实际考勤，并明确批准启用。AI不会计算或批准薪资。",
+    "aiReviewRequired": "此AI起草用途需要所有者审核披露范围后才能发送请求。",
+    "aiFailed": "无法生成建议。请检查AI可用性和访问权限后重试。"
   }
 }

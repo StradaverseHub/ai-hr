@@ -36689,6 +36689,15 @@
     "archiveHelp": "Lưu trữ giữ lại mọi phiên bản và kiểm thử. Không thể sửa hoặc kích hoạt lại công thức đã lưu trữ.",
     "result": "Kết quả: {amount}",
     "calculationTrace": "Chi tiết phép tính",
-    "sourceEvidence": "Bằng chứng nguồn chấm công"
+    "sourceEvidence": "Bằng chứng nguồn chấm công",
+    "ai": "Hỏi AI",
+    "aiRequirement": "Mô tả quy tắc",
+    "aiDisclosure": "Tôi đồng ý gửi nội dung trên đến nhà cung cấp AI đã cấu hình. Không nhập tên, thông tin nhân viên hoặc bản ghi chấm công riêng tư. Có gửi ngữ pháp công khai; không gửi công thức đã lưu hay bản ghi gốc.",
+    "aiGenerate": "Đề xuất công thức",
+    "aiApply": "Thay biểu thức chưa lưu bằng bản nháp này",
+    "aiApplied": "Đã áp dụng đề xuất vào bản nháp chưa lưu.",
+    "aiHelp": "Thao tác này thay công thức và điều kiện nháp. Xem xét mọi giả định, lưu phiên bản, kiểm thử chấm công thực tế và phê duyệt kích hoạt rõ ràng. AI không tính hay phê duyệt lương.",
+    "aiReviewRequired": "Mục đích soạn thảo AI này cần chủ sở hữu xem xét việc tiết lộ trước khi gửi yêu cầu.",
+    "aiFailed": "Không thể chuẩn bị đề xuất. Kiểm tra tính khả dụng và quyền AI rồi thử lại."
   }
 }
