@@ -1,3 +1,4 @@
+import {DEFAULT_MAYBANK_PAYMENT_SETTINGS} from '@/lib/maybank-payment-settings';
 import { recordPayrollExport } from '@/core/payroll-audit/access-log';
 import { and, eq, sql } from 'drizzle-orm';
 import { z } from 'zod';
@@ -84,7 +85,7 @@ export async function GET(req: Request) {
       }
       const ready = new Set(batches.filter((b) => !b.historyImportAttemptId && !b.needsRecalcAt && ['processed', 'closed'].includes(b.status)).map((b) => b.runSeq));
       return Response.json({
-        accounts: accounts.filter((a) => a.bank === (maybank?'maybank':'ocbc_bank') && a.currency === 'MYR' && (!maybank||a.id===mappedId&&a.maybankPaymentSettings?.version==='7.4')).map((a) => ({ id: a.id, label: a.accountLabel || 'OCBC', last4: a.debitAccountNo.replace(/\D/g, '').slice(-4) })),
+        accounts: accounts.filter((a) => a.bank === (maybank?'maybank':'ocbc_bank') && a.currency === 'MYR' && (!maybank||a.id===mappedId&&(a.maybankPaymentSettings??DEFAULT_MAYBANK_PAYMENT_SETTINGS).version==='7.4')).map((a) => ({ id: a.id, label: a.accountLabel || (maybank?'Maybank':'OCBC'), last4: a.debitAccountNo.replace(/\D/g, '').slice(-4) })),
         runs: runs.filter((r) => ready.has(r.runSeq)),...(maybank?{configuredAccountId:mappedId}:{}),
       }, { headers });
     } catch (error) { return errorResponse(error); }

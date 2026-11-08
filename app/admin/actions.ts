@@ -535,7 +535,7 @@ export async function setCompanyBankProfileAction(formData: FormData) {
       branch: (formData.get('branch') as string) || null,
       swiftCode: (formData.get('swiftCode') as string) || null,
       currency: (formData.get('currency') as string) || null,
-      ...(formData.get('maybankSettingsPresent')==='1'?{maybankPaymentSettings:formData.get('maybankVersion')==='7.4'?{version:'7.4' as const,hashMode:String(formData.get('maybankHashMode')??'unconfirmed') as 'unconfirmed'|'not-required',zakatClassification:String(formData.get('maybankZakatClass')??'1') as '1'|'2'|'3'|'4'|'5'}:null,fileContactName:String(formData.get('fileContactName')??''),fileContactPhone:String(formData.get('fileContactPhone')??''),fileStateCode:String(formData.get('fileStateCode')??'')}:{}),
+      ...(formData.get('maybankSettingsPresent')==='1'?{maybankPaymentSettings:formData.get('maybankVersion')==='7.4'?{version:'7.4' as const,hashMode:String(formData.get('maybankHashMode')??'not-required') as 'unconfirmed'|'not-required',zakatClassification:String(formData.get('maybankZakatClass')??'1') as '1'|'2'|'3'|'4'|'5'}:null,fileContactName:String(formData.get('fileContactName')??''),fileContactPhone:String(formData.get('fileContactPhone')??''),fileStateCode:String(formData.get('fileStateCode')??'')}:{}),
       ...(formData.get('bankFileSettingsPresent')==='1'?{fileContactName:String(formData.get('fileContactName')??''),fileContactPhone:String(formData.get('fileContactPhone')??''),fileStateCode:String(formData.get('fileStateCode')??''),requirePayeeIdCheck:formData.get('requirePayeeIdCheck')==='on'}:{}),
       isPrimary: formData.get('isPrimary') === 'on' || formData.get('isPrimary') === 'true',
     });

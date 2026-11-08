@@ -35,6 +35,16 @@ describe('Maybank configured category and immutable export owner',()=>{
   expect(await owner.db.select().from(bankPaymentExport)).toHaveLength(1);expect(await owner.db.select().from(payslip).where(eq(payslip.batchId,batchId))).toEqual(before);
   const[batch]=await owner.db.select().from(payrollBatch).where(eq(payrollBatch.id,batchId));expect(batch.status).toBe('processed');
  });
+ it('uses the approved initial blank-hash default for an existing unconfigured Maybank account',async()=>{
+  const {ctx,request,batchId}=await fixture(),before=await owner.db.select().from(payslip).where(eq(payslip.batchId,batchId));
+  const configured=await ocbcBankPaymentFiles.preview(ctx,request);
+  await owner.db.update(companyBankProfile).set({maybankPaymentSettings:null}).where(eq(companyBankProfile.id,request.bankProfileId));
+  const preview=await ocbcBankPaymentFiles.preview(ctx,request);expect(preview.totalCents).toBe(configured.totalCents);
+  const file=await ocbcBankPaymentFiles.download(ctx,{...request,expectedDigest:preview.digest,requestKey:randomUUID()});
+  const rows=file.content.trimEnd().split('\r\n').map(row=>row.split('|'));expect(rows.map(row=>row.length)).toEqual([29,337,29]);
+  expect(rows[0].slice(3).every(field=>field==='')).toBe(true);expect(rows[2].slice(3).every(field=>field==='')).toBe(true);
+  expect(await owner.db.select().from(payslip).where(eq(payslip.batchId,batchId))).toEqual(before);
+ });
  it('reconciles all four saved statutory categories including the distinct Lindung leg',async()=>{
   const{ctx,request,batchId}=await fixture();await owner.db.update(payslip).set({statutory:{epfEmployee:110,epfEmployer:130,socsoEmployee:4.95,socsoEmployer:17.35,socsoSkbbk:12,pcb:10.1,cp38:5.05,zakat:12.34,bases:{epf:1000,epfAdditional:0}}}).where(eq(payslip.batchId,batchId));
   const{runSeq:_run,...month}=request;
@@ -50,7 +60,7 @@ describe('Maybank configured category and immutable export owner',()=>{
   await expect(ocbcBankPaymentFiles.preview(ctx,{...month,formatId:'my.maybank74.socso'})).rejects.toThrow(/Configure.*category/);
   const foreign=await seedBase();await expect(ocbcBankPaymentFiles.preview(ctx,{...request,companyId:foreign.companyId})).rejects.toThrow();
   await owner.db.update(companyBankProfile).set({maybankPaymentSettings:{version:'7.4',hashMode:'unconfirmed',zakatClassification:'1'}}).where(eq(companyBankProfile.id,request.bankProfileId));
-  await expect(ocbcBankPaymentFiles.preview(ctx,request)).rejects.toThrow(/hashing arrangement/);expect(await owner.db.select().from(bankPaymentExport)).toHaveLength(0);
+  await expect(ocbcBankPaymentFiles.preview(ctx,request)).rejects.toThrow(/hashing details/);expect(await owner.db.select().from(bankPaymentExport)).toHaveLength(0);
  });
  it('refuses missing payee residency and detects a changed arrangement after preview',async()=>{
   const{ctx,request,employee}=await fixture();const preview=await ocbcBankPaymentFiles.preview(ctx,request);

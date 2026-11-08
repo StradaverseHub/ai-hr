@@ -1,6 +1,6 @@
 /** Maybank2E-RC V7.4 pipe-delimited domestic/statutory payment writer.
  * Private reporter specification: feedback 566a19dc, revision 6 Aug 2026, pp7–22/32–40/50.
- * No guessed hash: generation requires the bank arrangement to explicitly waive it.
+ * No guessed hash: the initial file leaves it blank; an explicit hashing hold refuses generation.
  */
 import {BankPaymentFileError} from '../country-pack';
 import {isCalendarDate} from '../../lib/calendar-date';
@@ -37,7 +37,7 @@ export function maybankReceivingBank(bank:string,account:string){
 }
 export function buildMaybankV74File(p:MaybankInput){
  const settings=maybankPaymentSettingsSchema.parse(p.payer.settings);
- if(settings.hashMode!=='not-required')fail('Confirm the Maybank hashing arrangement. A bank-required hash cannot be generated without its bank-issued formula.');
+ if(settings.hashMode!=='not-required')fail('This account is on hold for hashing details. Obtain the bank-issued formula before generating its payment file.');
  if(p.testFile)fail('The supplied Maybank V7.4 layout has no test-file indicator.');
  if(!isCalendarDate(p.paymentDate)||!/^\d{4}-(0[1-9]|1[0-2])$/.test(p.periodKey))fail('Choose a valid payment date and contribution month.');
  if(!Number.isInteger(p.tapeId)||p.tapeId<1||p.tapeId>999)fail('A unique bank file sequence is required.');
