@@ -34,16 +34,16 @@ export function attendanceFormulaRecordedMeasurements(trace:AttendanceTraceV1,ph
   // A whole-shift allowance or a clamped short day cannot be attributed to individual break rows.
   if(frozen.flexibleBreakMinutes===null&&gross!>=allowance&&(region!=='Shift'||allowance<=trace.schedule.breakSpanned!))values['FlexiBreakOn'+region]=allowance;
   const windows=breaks.filter(row=>!row.flexible).map(({from,to})=>({from,to}));
-  if(region!=='Shift')values[region+'BreakWorkingMins']=minutes(intersect(physical,windows,4320),4320);
+  if(region!=='Shift'&&breaks.every(row=>!row.flexible&&row.clockingRequired===true))values[region+'BreakWorkingMins']=minutes(intersect(physical,windows,4320),4320);
  }
  if(physical){
   const covered=union(physical,4320);if(!covered.length)return {values,breaks:rows};
   if(trace.formulaBreaks&&trace.formulaBreaks.v===1&&trace.punch.workedMinutes!==null&&gross!-trace.punch.workedMinutes===trace.formulaBreaks.actualBefore+trace.formulaBreaks.actualAfter+trace.formulaBreaks.actualShift){values.ActualPreOTBreak=trace.formulaBreaks.actualBefore;values.ActualPostOTBreak=trace.formulaBreaks.actualAfter;values.ActualShiftBreak=trace.formulaBreaks.actualShift;}
   // Clocked work during a declared fixed break proves its unused portion; flexible allowances have no position.
-  if(!rows.some(row=>row.flexible)&&frozen.flexibleBreakMinutes===null)values.UnUtilisedBreak=minutes(intersect(physical,rows.filter(row=>!row.paid).map(({from,to})=>({from,to})),4320),4320);
+  if(rows.every(row=>!row.flexible&&(row.paid||row.clockingRequired===true))&&frozen.flexibleBreakMinutes===null)values.UnUtilisedBreak=minutes(intersect(physical,rows.filter(row=>!row.paid).map(({from,to})=>({from,to})),4320),4320);
   const gaps=covered.slice(1).map((part,index)=>({from:covered[index].to,to:part.from}));
   for(const [region,breaks]of Object.entries(regions)){
-   if(breaks.some(row=>row.flexible))continue;
+   if(breaks.some(row=>row.flexible||row.clockingRequired!==true))continue;
    let late=0,early=0,known=true;
    for(const row of breaks){
     if(covered[0].from>row.from||covered.at(-1)!.to<row.to){known=false;break;}

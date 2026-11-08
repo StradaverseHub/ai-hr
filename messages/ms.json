@@ -36699,6 +36699,15 @@
     "aiHelp": "Ini menggantikan formula dan syarat draf. Semak setiap andaian, simpan versi, uji kehadiran sebenar dan luluskan pengaktifan secara nyata. AI tidak mengira atau meluluskan gaji.",
     "aiReviewRequired": "Tujuan draf AI ini memerlukan semakan pendedahan pemilik sebelum menghantar permintaan.",
     "aiFailed": "Cadangan tidak dapat disediakan. Semak ketersediaan dan akses AI, kemudian cuba lagi.",
-    "activeVersion": "Sedang aktif: versi {version}"
+    "activeVersion": "Sedang aktif: versi {version}",
+    "noEmployeeResults": "Tiada pekerja sepadan dengan carian dan tempoh ini. Cuba nama, kod atau tempoh lain.",
+    "traceLine": "Baris {line}",
+    "true": "Benar",
+    "false": "Palsu",
+    "traceRead": "Baca {reference}: {value}",
+    "traceCondition": "Syarat: {value}",
+    "traceElse": "Menggunakan cabang Else.",
+    "traceSet": "Tetapkan {name} kepada {value}",
+    "traceReturn": "Memulangkan {value}"
   }
 }

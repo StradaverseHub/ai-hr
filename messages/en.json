@@ -36699,6 +36699,15 @@
     "aiHelp": "This replaces the draft formula and conditions. Review every assumption, save a version, test actual attendance and explicitly approve activation. AI does not calculate or approve pay.",
     "aiReviewRequired": "This AI drafting purpose needs the owner’s disclosure review before it can send a request.",
     "aiFailed": "The suggestion could not be prepared. Check AI availability and access, then try again.",
-    "activeVersion": "Currently active: version {version}"
+    "activeVersion": "Currently active: version {version}",
+    "noEmployeeResults": "No employees match this search and period. Try another name, code or period.",
+    "traceLine": "Line {line}",
+    "true": "True",
+    "false": "False",
+    "traceRead": "Read {reference}: {value}",
+    "traceCondition": "Condition: {value}",
+    "traceElse": "Used the Else branch.",
+    "traceSet": "Set {name} to {value}",
+    "traceReturn": "Returned {value}"
   }
 }

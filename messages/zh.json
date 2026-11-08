@@ -36699,6 +36699,15 @@
     "aiHelp": "此操作会替换草稿公式和条件。请审核所有假设、保存版本、测试实际考勤，并明确批准启用。AI不会计算或批准薪资。",
     "aiReviewRequired": "此AI起草用途需要所有者审核披露范围后才能发送请求。",
     "aiFailed": "无法生成建议。请检查AI可用性和访问权限后重试。",
-    "activeVersion": "当前启用：版本{version}"
+    "activeVersion": "当前启用：版本{version}",
+    "noEmployeeResults": "没有员工符合此次搜索和周期。请尝试其他姓名、编号或周期。",
+    "traceLine": "第{line}行",
+    "true": "真",
+    "false": "假",
+    "traceRead": "读取{reference}：{value}",
+    "traceCondition": "条件：{value}",
+    "traceElse": "使用Else分支。",
+    "traceSet": "将{name}设为{value}",
+    "traceReturn": "返回{value}"
   }
 }
