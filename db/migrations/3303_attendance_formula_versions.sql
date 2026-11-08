@@ -1,3 +1,6 @@
+-- The existing primary key already makes this pair unique; expose it for tenant-bound references.
+ALTER TABLE public.pay_component ADD CONSTRAINT attendance_formula_pay_component_tenant_uq UNIQUE(id,tenant_id);
+--> statement-breakpoint
 -- Formula configuration, immutable versions and private testing evidence. No payroll ledger or settlement.
 CREATE TABLE public.attendance_formula (
  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),tenant_id uuid NOT NULL REFERENCES public.tenant(id),
