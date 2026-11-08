@@ -49,7 +49,10 @@ CREATE TRIGGER label_scope_guard BEFORE INSERT OR UPDATE ON grade_group FOR EACH
 --> statement-breakpoint
 -- A person without one unambiguous visible company may pick only global values.
 CREATE FUNCTION app.system_label_person_company(p_person uuid) RETURNS uuid LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
- SELECT coalesce((SELECT co.id FROM public.company co WHERE co.id=nullif(current_setting('app.system_label_operation_company',true),'')::uuid AND co.tenant_id=app.current_tenant_id() AND co.archived_at IS NULL AND app.is_admin_for(co.id)),
+ SELECT coalesce((SELECT co.id FROM public.company co WHERE co.id=nullif(current_setting('app.system_label_operation_company',true),'')::uuid AND co.tenant_id=app.current_tenant_id() AND co.archived_at IS NULL
+  AND (app.is_admin_for(co.id) OR EXISTS(SELECT 1 FROM public.employment own_e WHERE own_e.tenant_id=co.tenant_id AND own_e.person_id=p_person AND own_e.company_id=co.id AND app.is_self_person(own_e.person_id) AND app.can_see_employment(own_e.id)))
+  AND (NOT EXISTS(SELECT 1 FROM public.employment any_e WHERE any_e.tenant_id=co.tenant_id AND any_e.person_id=p_person)
+   OR EXISTS(SELECT 1 FROM public.employment subject_e WHERE subject_e.tenant_id=co.tenant_id AND subject_e.person_id=p_person AND subject_e.company_id=co.id))),
  CASE WHEN count(DISTINCT e.company_id)=1 THEN (array_agg(DISTINCT e.company_id))[1] END) FROM public.employment e
  WHERE e.tenant_id=app.current_tenant_id() AND e.person_id=p_person AND app.can_see_employment(e.id)
  AND e.hired_on<=(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date AND (e.terminated_on IS NULL OR e.terminated_on>(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date);
@@ -63,7 +66,7 @@ CREATE OR REPLACE FUNCTION app.profile_option_value_allowed(p_category text,p_va
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
  SELECT p_value IS NULL OR p_value='' OR p_value IS NOT DISTINCT FROM p_legacy
  OR NOT EXISTS(SELECT 1 FROM public.profile_option p WHERE p.tenant_id=app.current_tenant_id() AND p.category=p_category)
- OR EXISTS(SELECT 1 FROM public.profile_option p WHERE p.tenant_id=app.current_tenant_id() AND p.category=p_category AND p.value=p_value AND p.is_active AND p.scope_company_ids IS NULL);
+ OR EXISTS(SELECT 1 FROM public.profile_option p WHERE p.tenant_id=app.current_tenant_id() AND p.category=p_category AND p.value=p_value AND p.is_active AND app.system_label_scope_applies(p.scope_company_ids,nullif(current_setting('app.system_label_operation_company',true),'')::uuid));
 $$;
 CREATE FUNCTION app.profile_option_value_allowed(p_category text,p_value text,p_legacy text,p_company uuid) RETURNS boolean
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
@@ -92,6 +95,7 @@ BEGIN
  mapping:=CASE TG_TABLE_NAME
  WHEN 'employment' THEN '{"org_division":"division","org_branch":"branch","org_region":"region","org_line":"line","org_section":"section","org_team":"team","org_base":"base","employment_category":"category"}'::jsonb
  WHEN 'person' THEN '{"salutation":"salutation","religion":"religion","race":"race","nationality":"nationality","state":"state","country":"country","permanent_state":"state","permanent_country":"country","correspondence_state":"state","correspondence_country":"country"}'::jsonb
+ WHEN 'location' THEN '{"branch":"branch"}'::jsonb
  WHEN 'person_emergency_contact' THEN '{"relationship":"relationship"}'::jsonb
  WHEN 'employee_dependent' THEN '{"relationship":"dependentRelationship","study_country":"country"}'::jsonb
  WHEN 'employee_qualification' THEN '{"qualification":"qualificationLevel"}'::jsonb ELSE '{}'::jsonb END;
@@ -140,3 +144,13 @@ GRANT EXECUTE ON FUNCTION app.system_label_catalog_conflicts(jsonb) TO ai_hr_app
 CREATE POLICY label_scope_insert ON grade_group_member AS RESTRICTIVE FOR INSERT WITH CHECK(EXISTS(SELECT 1 FROM grade_group g WHERE g.id=grade_group_id AND g.tenant_id=grade_group_member.tenant_id AND app.system_label_scope_admin(g.scope_company_ids)));
 CREATE POLICY label_scope_update ON grade_group_member AS RESTRICTIVE FOR UPDATE USING(EXISTS(SELECT 1 FROM grade_group g WHERE g.id=grade_group_id AND g.tenant_id=grade_group_member.tenant_id AND app.system_label_scope_admin(g.scope_company_ids))) WITH CHECK(EXISTS(SELECT 1 FROM grade_group g WHERE g.id=grade_group_id AND g.tenant_id=grade_group_member.tenant_id AND app.system_label_scope_admin(g.scope_company_ids)));
 CREATE POLICY label_scope_delete ON grade_group_member AS RESTRICTIVE FOR DELETE USING(EXISTS(SELECT 1 FROM grade_group g WHERE g.id=grade_group_id AND g.tenant_id=grade_group_member.tenant_id AND app.system_label_scope_admin(g.scope_company_ids)));
+
+--> statement-breakpoint
+CREATE TRIGGER label_selection_guard BEFORE INSERT OR UPDATE ON location FOR EACH ROW EXECUTE FUNCTION app.system_label_selection_guard();
+-- One company identifier, available only through an already-authorized employment/maintenance read.
+CREATE FUNCTION app.system_label_employment_company(p_employment uuid) RETURNS uuid LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT e.company_id FROM public.employment e WHERE e.id=p_employment AND e.tenant_id=app.current_tenant_id()
+ AND (app.can_see_employment(e.id) OR app.access_workforce_editor(e.id) IS NOT NULL);
+$$;
+REVOKE ALL ON FUNCTION app.system_label_employment_company(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.system_label_employment_company(uuid) TO ai_hr_app;

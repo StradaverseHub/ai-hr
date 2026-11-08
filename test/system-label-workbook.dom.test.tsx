@@ -29,6 +29,14 @@ const fixtureRow = {
   'Head Employee Code': '000007', 'Grade Codes': 'G01', 'Sort Order': '7', Rank: '3', Status: 'Active',
 };
 const elements = (parent: Document | Element, name: string) => Array.from(parent.getElementsByTagNameNS(namespace, name));
+function worksheetMetadata(xml:string){
+  // These fixtures contain only a header and one optional data row. Verify that later rows really
+  // are empty formatting, then avoid building a jsdom tree for 500 blank rows on each of 23 sheets.
+  const formatted:string[]=[];
+  const compact=xml.replace(/<row\b[^>]*\br="(\d+)"[^>]*>[\s\S]*?<\/row>/g,(row,index)=>Number(index)>2?(formatted.push(row),''):row);
+  expect(formatted.join('')).not.toMatch(/<v>[^<]+<\/v>|<f[ >]|<t>[^<]+<\/t>/);
+  return compact;
+}
 function parseXml(xml: string) {
   const document = new DOMParser().parseFromString(xml, 'application/xml');
   expect(document.getElementsByTagName('parsererror')).toHaveLength(0);
@@ -55,7 +63,7 @@ describe('System Labels workbook native worksheet structure', () => {
     let listsWithoutRules = 0;
     for (const definition of LABEL_IMPORT_DEFINITIONS) {
       const index = workbook.SheetNames.indexOf(definition.kind);
-      const document = parseXml(await zip.file(`xl/worksheets/sheet${index + 1}.xml`)!.async('string'));
+      const document = parseXml(worksheetMetadata(await zip.file(`xl/worksheets/sheet${index + 1}.xml`)!.async('string')));
       const containers = elements(document, 'dataValidations');
       const rules = elements(document, 'dataValidation');
       const ranges:Record<string,string>={Company:'Reference!$A$2:$A$3',Criteria:'Reference!$C$2:$C$3','Criteria Companies':'Reference!$A$2:$A$3','Head Employee Code':'Reference!$E$2:$E$3','Grade Codes':'Reference!$G$2:$G$3'};

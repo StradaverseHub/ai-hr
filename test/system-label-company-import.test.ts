@@ -2,6 +2,7 @@ import {beforeAll,beforeEach,afterAll,describe,it,expect} from 'vitest';
 import {eq,sql} from 'drizzle-orm';
 import {adminCtx,closeAll,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
 import {withTenant} from '../db/client';
+import {withSystemLabelCompanyTx} from '../core/system-label-selection';
 import * as s from '../db/schema';
 import {createCompany,createJobGrade,createDepartment} from '../core/admin';
 import {createGradeGroup} from '../packs/leave/service';
@@ -60,6 +61,27 @@ describe('Company-aware System Labels imports and canonical consumers',()=>{
   await owner.db.update(s.employment).set({orgDivision:'ONLY_THIS'}).where(eq(s.employment.id,hired.employmentId));
   await withTenant(adminCtx(b),tx=>tx.update(s.employment).set({orgDivision:'ONLY_THIS'}).where(eq(s.employment.id,hired.employmentId)));
   expect((await owner.db.select().from(s.employment).where(eq(s.employment.id,hired.employmentId)))[0].orgDivision).toBe('ONLY_THIS');
+ });
+ it('binds context-free catalogue validation to the owned operation and restores it after failure',async()=>{
+  await createProfileOption(adminCtx(b),{category:'division',value:'OPERATION_SCOPED',scopeCompanyIds:[b.companyId]});
+  await withTenant(adminCtx(b),async tx=>{
+   const allowed=async()=>{const [row]=await tx.execute<{allowed:boolean}>(sql`select app.profile_option_value_allowed('division','OPERATION_SCOPED',null) as allowed`);return row.allowed;};
+   expect(await allowed()).toBe(false);
+   await withSystemLabelCompanyTx(tx,b.companyId,async()=>expect(await allowed()).toBe(true));
+   expect(await allowed()).toBe(false);
+   await expect(withSystemLabelCompanyTx(tx,b.companyId,async()=>{throw new Error('Fictional validation refusal');})).rejects.toThrow('Fictional validation refusal');
+   expect(await allowed()).toBe(false);
+  });
+ });
+ it('refuses blank global imports for a real company administrator and permits their own company input',async()=>{
+  const [user]=await owner.db.insert(s.appUser).values({tenantId:b.tenantId,workosUserId:'fictional-scoped-label-admin'}).returning();
+  await owner.db.insert(s.roleAssignment).values({tenantId:b.tenantId,appUserId:user.id,role:'hr_admin',companyId:b.companyId});
+  const ctx={...adminCtx(b),userId:user.id};
+  const bytes=await book({department:[{Code:'SCOPED_ADMIN_GLOBAL'},{Code:'SCOPED_ADMIN_OWN',Company:b.companyId}]}),preview=await previewSystemLabelImport(ctx,bytes);
+  expect(preview.rows[0]).toMatchObject({outcome:'error',reason:'globalAdminRequired'});
+  expect(preview.rows[1]).toMatchObject({outcome:'add',after:{Criteria:'companies'}});
+  expect(await applySystemLabelImport(ctx,{bytes,token:preview.token})).toMatchObject({imported:1,failed:1});
+  expect(await owner.db.select().from(s.department).where(eq(s.department.name,'SCOPED_ADMIN_GLOBAL'))).toHaveLength(0);
  });
  it('rejects foreign-tenant company arrays at the canonical writer',async()=>{
   await expect(createProfileOption(adminCtx(b),{category:'religion',value:'FOREIGN',scopeCompanyIds:['00000000-0000-4000-8000-000000000999']})).rejects.toThrow();

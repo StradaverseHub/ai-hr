@@ -12,7 +12,7 @@ import * as s from '../db/schema';
 import {buildSystemLabelWorkbook,readSystemLabelWorkbook} from '../lib/system-label-workbook';
 import {LOCALE_COOKIE,locales} from '../i18n/config';
 import en from '../messages/en.json';
-let server:ChildProcess|undefined,browser:Browser|undefined;
+let server:ChildProcess|undefined,browser:Browser|undefined,serverLog:ReturnType<typeof createWriteStream>|undefined;
 async function stop(){
  await browser?.close();browser=undefined;
  if(server?.pid&&server.exitCode===null){
@@ -20,6 +20,7 @@ async function stop(){
   for(let n=0;n<50&&server.exitCode===null;n++)await delay(100);
   if(server.exitCode===null)try{process.kill(-server.pid,'SIGKILL');}catch{}
  }
+ serverLog?.end();
  await closeAll();
 }
 afterAll(stop,30000);
@@ -34,12 +35,12 @@ describe('System Labels authenticated Excel browser journey',()=>{
   const [restricted]=await owner.db.insert(s.appUser).values({tenantId:b.tenantId,workosUserId:'fictional-label-browser-restricted',onboardedAt:new Date()}).returning();
   await owner.db.insert(s.roleAssignment).values({tenantId:b.tenantId,appUserId:restricted.id,role:'hr_admin',companyId:b.companyId});
   const evidence=resolve(process.env.AIHR_FOCUSED_EVIDENCE_DIR??'/tmp/aihr-label-browser-evidence');mkdirSync(evidence,{recursive:true});
-  const log=join(evidence,'system-label-browser-server.log'),stream=createWriteStream(log);
+  const log=join(evidence,'system-label-browser-server.log'),stream=createWriteStream(log);serverLog=stream;
   const port=3149,origin=`http://127.0.0.1:${port}`;
   // No production credentials or identity provider. This is the existing explicit developer identity route.
   server=spawn(process.execPath,['node_modules/next/dist/bin/next','dev','--webpack','--hostname','127.0.0.1','--port',String(port)],{
    detached:true,cwd:process.cwd(),env:{...process.env,NODE_ENV:'development',NEXT_TELEMETRY_DISABLED:'1',AUTH_PROVIDER:'workos',ALLOW_DEMO_SESSION:'true',DEV_USER_ID:'',DATABASE_URL:process.env.TEST_DATABASE_URL!,MIGRATION_DATABASE_URL:process.env.TEST_MIGRATION_DATABASE_URL!,NODE_OPTIONS:'--max-old-space-size=4096'},stdio:['ignore','pipe','pipe']});
-  server.stdout?.pipe(stream);server.stderr?.pipe(stream);
+  server.stdout?.pipe(stream,{end:false});server.stderr?.pipe(stream,{end:false});
   let ready=false;
   for(let attempt=0;attempt<120;attempt++){
    if(server.exitCode!==null)throw new Error('Owned preview server stopped: '+readFileSync(log,'utf8').slice(-5000));
@@ -80,7 +81,7 @@ describe('System Labels authenticated Excel browser journey',()=>{
   expect(await page.getByRole('dialog').innerText()).toContain('Fictional browser company B');
   await page.screenshot({path:join(evidence,'system-label-preview-en-desktop.png'),fullPage:true});
   await page.getByRole('button',{name:'Import 2 new codes',exact:true}).click();
-  await expect.poll(async()=>page.getByRole('dialog').innerText()).toContain('1 failed rows');
+  await expect.poll(async()=>page.getByRole('dialog').innerText()).toContain('Failed rows: 1');
   const [global]=await owner.db.select().from(s.department).where(eq(s.department.name,'BROWSER_GLOBAL_LABEL'));
   expect(global).toMatchObject({tenantId:b.tenantId,isGlobal:true});
   const [scoped]=await owner.db.select().from(s.profileOption).where(eq(s.profileOption.value,'BROWSER_COMPANY_LABEL'));
