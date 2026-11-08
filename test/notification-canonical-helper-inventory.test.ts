@@ -12,7 +12,7 @@ import {notificationDiagnosticOwnership} from './fixtures/notification-worker/di
 import {readDraftDiscardRoleCatalog,assertDraftDiscardRoleCatalog} from './helpers/personnel-draft-discard-ci-role-fixture';
 import {notificationCanonicalInventoryQuery} from './fixtures/notification-worker/canonical-inventory-query';
 import {normalizeNotificationCanonicalInventory,nativeInventoryCanonical} from './fixtures/notification-worker/canonical-inventory';
-import {inventorySource,inventoryRegularBytes,inventoryHash,assertInventoryLedger,writeInventoryEvidence} from './fixtures/notification-worker/canonical-inventory-evidence';
+import {inventorySource,inventoryRegularBytes,inventoryHash,assertInventoryLedger,writeInventoryEvidence,InventoryEvidenceSizeError} from './fixtures/notification-worker/canonical-inventory-evidence';
 import {FULL_CI_ROLE_MODE,fullCiRoleReceiptBasename} from '../scripts/lib/discard-premigration';
 import {DB_BATCH_FILES} from '../.github/ci/manifest.mjs';
 import {validateFullCiRoleReceipt} from '../.github/ci/run-unit.mjs';
@@ -58,10 +58,10 @@ it('captures every canonical helper and exact CI source/prerequisite/ledger in o
   // Preserve the complete raw native facts BEFORE portability validation.
   phase='raw-evidence-publication';members.push(writeInventoryEvidence(directory,'notification-canonical-raw.json',{...identity,...captured}));
   context.signal.throwIfAborted();phase='lossless-reference-normalization';const normalized=normalizeNotificationCanonicalInventory(captured.inventory);
-  members.push(writeInventoryEvidence(directory,'notification-canonical-normalized.json',{...identity,...normalized}));report.normalization={rawSha256:normalized.rawSha256,normalizedSha256:normalized.normalizedSha256,functionCount:normalized.functionCount,sourceBytes:normalized.sourceBytes,unknownColumns:normalized.unknownColumns,unresolvedPortability:normalized.unresolvedPortability};
+  members.push(writeInventoryEvidence(directory,'notification-canonical-normalized.json',{...identity,...normalized}));report.normalization={captureFormatVersion:normalized.captureFormatVersion,referenceCounts:normalized.referenceCounts,rawSha256:normalized.rawSha256,normalizedSha256:normalized.normalizedSha256,functionCount:normalized.functionCount,sourceBytes:normalized.sourceBytes,unknownColumns:normalized.unknownColumns,unresolvedPortability:normalized.unresolvedPortability};
   // Re-read BOTH original receipts and all source bytes before publishing complete.
   phase='source-and-receipt-recheck';assert(inventoryRegularBytes(join(directory,prerequisiteName),32768).equals(prerequisiteBytes));assert(inventoryRegularBytes(join(directory,admission.databaseUnit+'-singleton.json'),1024*1024,true).equals(singletonBytes));assert.equal(nativeInventoryCanonical(inventorySource()),nativeInventoryCanonical(source));
- }catch(error){refused=true;failed=error;}
+ }catch(error){refused=true;failed=error;if(error instanceof InventoryEvidenceSizeError)report.byteRefusal={observedBytes:error.byteLength,maximumBytes:error.maximumBytes};}
  finally{
   try{await stopping;if(connection)await connection.end({timeout:0});if(closeRefused)throw closeFailure;report.socketClosed=true;}
   catch(error){phase='owned-socket-close';failed=refused?new AggregateError([failed,error],'Inventory capture and close refused'):error;refused=true;ownership.poison(error instanceof Error?error:Error('Inventory socket close refused'));report.socketClosed=false;}

@@ -11,8 +11,11 @@ function sample(offset=0){
  const type={oid:16+offset,schema:'pg_catalog',namespaceOid:11+offset,name:'bool',identity:'pg_catalog.bool',formatted:'boolean',raw:{oid:String(16+offset),typnamespace:String(11+offset),typname:'bool'}};
  const raw={oid:String(101+offset),proname:'example',pronamespace:String(201+offset),proowner:String(301+offset),prolang:String(401+offset),prorettype:String(16+offset),proargtypes:[String(16+offset)],proallargtypes:null,protrftypes:null,provariadic:'0',prosupport:'-',proacl:null,
   procost:100,prorows:0,prokind:'f',prosecdef:true,proleakproof:false,proisstrict:false,proretset:false,provolatile:'v',proparallel:'u',pronargs:1,pronargdefaults:0,proargmodes:null,proargnames:['input'],prosrc:'BEGIN -- 9001 is source, not an OID replacement\n RETURN TRUE; END',probin:null,prosqlbody:null,proconfig:['search_path=pg_catalog'],proargdefaults:null};
- const row={raw,signature:'app.example(boolean)',namespace:{oid:201+offset,name:'app',raw:{oid:String(201+offset),nspname:'app'}},owner:{oid:301+offset,name:'app_owner'},language:{oid:401+offset,name:'plpgsql',raw:{oid:String(401+offset),lanname:'plpgsql'}},returnType:type,inputTypes:[type],allTypes:null,transformTypes:null,variadicType:null,support:null,supportOid:0,supportText:'-',acl:[{grantorOid:301+offset,grantor:'app_owner',granteeOid:0,grantee:'PUBLIC',privilege:'EXECUTE',grantable:false}],nativeArguments:'input boolean',nativeIdentityArguments:'input boolean',nativeResult:'boolean',nativeDefaults:null,nativeDefinition:'CREATE FUNCTION app.example(input boolean) RETURNS boolean ...',sourceBytes:Buffer.byteLength(raw.prosrc),sourceSha256:hash(raw.prosrc)};
- return{columns:Object.keys(raw),functionCount:1,functions:[row],dependencies:[{raw:{classid:'1255',objid:String(101+offset),refclassid:'2615',refobjid:String(201+offset)},object:{identity:'app.example(boolean)'},reference:{identity:'app'}}],sharedDependencies:[{raw:{classid:'1255',objid:String(101+offset),refclassid:'1260',refobjid:String(301+offset)},referenceRole:{oid:301+offset,name:'app_owner'}}]};
+ const row={raw,signature:'app.example(boolean)',namespaceOid:201+offset,ownerOid:301+offset,languageOid:401+offset,returnTypeOid:type.oid,inputTypeOids:[type.oid],allTypeOids:null,transformTypeOids:null,variadicTypeOid:0,supportOid:0,supportText:'-',
+  acl:[{grantorOid:301+offset,granteeOid:0,privilege:'EXECUTE',grantable:false}],nativeArguments:'input boolean',nativeIdentityArguments:'input boolean',nativeResult:'boolean',nativeDefaults:null,nativeDefinition:'CREATE FUNCTION app.example(input boolean) RETURNS boolean ...',sourceBytes:Buffer.byteLength(raw.prosrc),sourceSha256:hash(raw.prosrc)};
+ return{formatVersion:2,columns:Object.keys(raw),functionCount:1,referenceCounts:{types:1,namespaces:2,languages:1,roles:2,supports:0},
+  dictionaries:{types:{[type.oid]:type},namespaces:{[201+offset]:{oid:201+offset,name:'app',raw:{oid:String(201+offset),nspname:'app'}},[11+offset]:{oid:11+offset,name:'pg_catalog',raw:{oid:String(11+offset),nspname:'pg_catalog'}}},languages:{[401+offset]:{oid:401+offset,name:'plpgsql',raw:{oid:String(401+offset),lanname:'plpgsql'}}},roles:{[301+offset]:{oid:301+offset,name:'app_owner'},0:{oid:0,name:'PUBLIC'}},supports:{}},
+  functions:[row],dependencies:[{raw:{classid:'1255',objid:String(101+offset),refclassid:'2615',refobjid:String(201+offset)},object:{identity:'app.example(boolean)'},reference:{identity:'app'}}],sharedDependencies:[{raw:{classid:'1255',objid:String(101+offset),refclassid:'1260',refobjid:String(301+offset)},referenceRole:{oid:301+offset,name:'app_owner'}}]};
 }
 const directories:string[]=[];const directory=()=>{const value=mkdtempSync(join(tmpdir(),'aihr-canonical-inventory-model-'));directories.push(value);return value;};
 afterEach(()=>{for(const path of directories.splice(0))rmSync(path,{recursive:true,force:true});});
@@ -21,7 +24,7 @@ it('normalizes only typed references and preserves complete bodies, ACL represen
  expect(a.normalizedSha256).toBe(b.normalizedSha256);expect(a.rawSha256).not.toBe(b.rawSha256);expect(a.normalized[0].prosrc).toBe(before.functions[0].raw.prosrc);
  expect(a).toMatchObject({functionCount:1,expectedProfileAuthorized:false,releaseAuthorized:false,portableExpectedProfileApproved:false});
  expect(a.dependencies).toMatchObject({rawRows:1,sharedRows:1});expect(a.dependencies.rawSha256).not.toBe(b.dependencies.rawSha256);
- expect(normalizeNotificationCanonicalInventory({...before,functions:[{...before.functions[0],raw:{...before.functions[0].raw,proacl:[]},acl:[]}]}).normalizedSha256).not.toBe(a.normalizedSha256);
+ expect(normalizeNotificationCanonicalInventory({...before,referenceCounts:{...before.referenceCounts,roles:1},dictionaries:{...before.dictionaries,roles:{[301]:before.dictionaries.roles[301]}},functions:[{...before.functions[0],raw:{...before.functions[0].raw,proacl:[]},acl:[]}]}).normalizedSha256).not.toBe(a.normalizedSha256);
  expect(()=>normalizeNotificationCanonicalInventory({...before,functions:[]})).toThrow(/inventory/);
  expect(()=>normalizeNotificationCanonicalInventory({...before,functionCount:2,functions:[before.functions[0],before.functions[0]]})).toThrow(/Duplicate/);
 });
@@ -35,7 +38,7 @@ it('retains opaque native node/default/external/unknown metadata without OID tex
 it('refuses source-byte damage, wrong native reference maps and native JSON values which serialization would erase',()=>{
  const value=sample(),row=value.functions[0];
  expect(()=>normalizeNotificationCanonicalInventory({...value,functions:[{...row,raw:{...row.raw,prosrc:row.raw.prosrc+' '}}]})).toThrow(/source bytes/);
- expect(()=>normalizeNotificationCanonicalInventory({...value,functions:[{...row,returnType:{...row.returnType,oid:99}}]})).toThrow(/return type/);
+ expect(()=>normalizeNotificationCanonicalInventory({...value,functions:[{...row,returnTypeOid:99}]})).toThrow(/return type/);
  expect(()=>normalizeNotificationCanonicalInventory({...value,functions:[{...row,raw:{...row.raw,proargtypes:['999']}}]})).toThrow(/input OID/);
  expect(()=>normalizeNotificationCanonicalInventory({...value,functions:[{...row,supportText:'other'}]})).toThrow(/regproc/);
  for(const invalid of [undefined,new Date(),BigInt(1),NaN,Infinity,{lost:undefined},Array(2)])expect(()=>nativeInventoryCanonical(invalid)).toThrow();
@@ -73,4 +76,34 @@ it('bounds actual descriptor growth, detects short reads and EOF, and refuses in
  expect(()=>inventoryRegularBytes(path,8)).toThrow();
  writeFileSync(path,'abc');fd=openSync(path,'r');
  try{for(const [size,bound]of [[9,8],[3,0],[3,nativeInventoryLimits.fileBytes+1]])expect(()=>inventoryDescriptorBytes(fd,size,bound)).toThrow(/refused/);const next=Buffer.alloc(1);expect(readSync(fd,next,0,1,null)).toBe(1);expect(next.toString()).toBe('a');}finally{closeSync(fd);}
+});
+
+it('requires every compact dictionary key/raw identity and exact referenced membership without extra or dangling facts',()=>{
+ const original=sample();
+ for(const dictionaries of [{...original.dictionaries,types:{}},{...original.dictionaries,namespaces:{}},{...original.dictionaries,languages:{}},{...original.dictionaries,roles:{}}])expect(()=>normalizeNotificationCanonicalInventory({...original,dictionaries})).toThrow();
+ for(const name of ['types','namespaces','languages','roles','supports']as const){
+  const counted={...original,referenceCounts:{...original.referenceCounts,[name]:original.referenceCounts[name]+1}};expect(()=>normalizeNotificationCanonicalInventory(counted)).toThrow(/dictionary count/);
+ }
+ const extra=sample();extra.dictionaries.types[999]={...extra.dictionaries.types[16],oid:999,raw:{...extra.dictionaries.types[16].raw,oid:'999'}};extra.referenceCounts.types++;
+ expect(()=>normalizeNotificationCanonicalInventory(extra)).toThrow(/complete referenced dictionary membership/);
+ for(const dictionaries of [
+  {...original.dictionaries,namespaces:{...original.dictionaries.namespaces,999:{oid:999,name:'extra',raw:{oid:'999',nspname:'extra'}}}},
+  {...original.dictionaries,languages:{...original.dictionaries.languages,999:{oid:999,name:'extra',raw:{oid:'999',lanname:'extra'}}}},
+  {...original.dictionaries,roles:{...original.dictionaries.roles,999:{oid:999,name:'extra'}}},
+  {...original.dictionaries,supports:{999:{oid:999,identity:'pg_catalog.extra()',raw:{oid:'999'}}}},
+ ])expect(()=>normalizeNotificationCanonicalInventory({...original,dictionaries})).toThrow(/complete referenced dictionary membership/);
+ const support={oid:901,identity:'pg_catalog.support(internal)',raw:{oid:'901',prosrc:'opaque native support source'}};
+ const supported={...original,referenceCounts:{...original.referenceCounts,supports:1},dictionaries:{...original.dictionaries,supports:{901:support}},functions:[{...original.functions[0],raw:{...original.functions[0].raw,prosupport:'support'},supportOid:901,supportText:'support'}]};
+ expect(normalizeNotificationCanonicalInventory(supported).normalized[0].prosupport).toBe(support.identity);
+ expect(()=>normalizeNotificationCanonicalInventory({...supported,dictionaries:{...supported.dictionaries,supports:{}}})).toThrow(/Dangling native support/);
+ const duplicate=sample();duplicate.dictionaries.types[999]=duplicate.dictionaries.types[16];expect(()=>normalizeNotificationCanonicalInventory(duplicate)).toThrow(/Duplicate/);
+ const raw=sample();raw.dictionaries.types[16].raw.oid='999';expect(()=>normalizeNotificationCanonicalInventory(raw)).toThrow(/referenced type OID/);
+ const namespace=sample();namespace.dictionaries.types[16].schema='other';expect(()=>normalizeNotificationCanonicalInventory(namespace)).toThrow(/namespace identity/);
+ const referenced=sample();referenced.functions[0].inputTypeOids=[999];referenced.functions[0].raw.proargtypes=['999'];expect(()=>normalizeNotificationCanonicalInventory(referenced)).toThrow(/Dangling native type/);
+});
+it('retains shared raw reference facts once across multiple complete helpers without changing their exact bodies or ABI',()=>{
+ const first=sample(),second={...first.functions[0],raw:{...first.functions[0].raw,oid:'102',proname:'example2'},signature:'app.example2(boolean)',nativeDefinition:'CREATE FUNCTION app.example2(input boolean) RETURNS boolean ...'};
+ const capture={...first,functionCount:2,functions:[first.functions[0],second]},result=normalizeNotificationCanonicalInventory(capture);
+ expect(result.functionCount).toBe(2);expect(result.referenceCounts).toEqual(first.referenceCounts);expect(result.normalized.map(row=>row.prosrc)).toEqual([first.functions[0].raw.prosrc,second.raw.prosrc]);
+ expect(Object.keys(capture.dictionaries.types)).toHaveLength(1);expect(Object.keys(capture.dictionaries.languages)).toHaveLength(1);expect(result.expectedProfileAuthorized).toBe(false);
 });

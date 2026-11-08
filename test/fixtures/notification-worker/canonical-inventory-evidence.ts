@@ -8,6 +8,10 @@ import {z} from 'zod';
 import {nativePreparationEnvironment} from '../../../.github/ci/candidate-environment.mjs';
 import {nativeInventoryCanonical,nativeInventoryLimits} from './canonical-inventory';
 export const inventoryHash=(bytes:Buffer|string)=>createHash('sha256').update(bytes).digest('hex');
+/** Safe dimensions only; no catalogue/source/driver text enters refusals. */
+export class InventoryEvidenceSizeError extends Error{
+ constructor(readonly byteLength:number,readonly maximumBytes:number){super('Complete inventory member exceeds16MiB; refused without truncation');this.name='InventoryEvidenceSizeError';}
+}
 /** A real descriptor read, hard-bounded before IO/allocation. Immutable evidence
  * must have the original size: read at most that size plus one byte, never to EOF
  * through an unbounded readFileSync even if another descriptor grows the file. */
@@ -68,7 +72,7 @@ export function inventorySource(){
 export function writeInventoryEvidence(directory:string,name:string,value:unknown){
  assert(/^notification-canonical-(?:raw|normalized|source|report|incomplete)\.json$/.test(name));
  assert.equal(realpathSync(directory),directory);const parent=lstatSync(directory);assert(parent.isDirectory()&&!parent.isSymbolicLink());assert.equal(parent.uid,process.getuid!());
- const bytes=Buffer.from(nativeInventoryCanonical(value)+'\n');assert(bytes.length<=nativeInventoryLimits.fileBytes,'Complete inventory member exceeds16MiB; refused without truncation');
+ const bytes=Buffer.from(nativeInventoryCanonical(value)+'\n');if(bytes.length>nativeInventoryLimits.fileBytes)throw new InventoryEvidenceSizeError(bytes.length,nativeInventoryLimits.fileBytes);
  const path=join(directory,name),fd=openSync(path,constants.O_WRONLY|constants.O_CREAT|constants.O_EXCL|constants.O_NOFOLLOW,0o600);
  try{writeFileSync(fd,bytes);fsyncSync(fd);}finally{closeSync(fd);}
  const retained=inventoryRegularBytes(path,nativeInventoryLimits.fileBytes,true);assert(retained.equals(bytes),'Retained inventory bytes differ');return{file:name,bytes:bytes.length,sha256:inventoryHash(bytes)};
