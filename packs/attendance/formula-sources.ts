@@ -61,6 +61,7 @@ export async function readAttendanceFormulaDaysTx(tx:Tx,ctx:SessionContext,p:{co
  const needsToil=p.variables?.some(id=>id==='OTtoLeave_isUtilizeAll'||id==='OTtoLeave_TotalOTUsed')===true;
  const toilSource=needsToil?await attendanceFormulaToilSourceTx(tx,ctx,{employmentId:p.employmentId,from:p.from,to:p.to}):null;
  const sourceDigest=digest({toilSource,clockAdjustments,datedEmployment:[...datedEmployment],companyFields,snapshots:[...snapshots],companyId:p.companyId,employment:subject.row,employers:[...employers],records,punches,leave:[...leave],types});
+ const overtimeCoverage=new Map<string,{sourceDate:string;approvalStatus:string;parts:{date:string;dayClass:string;minutes:number;intervals:AttendancePolicyInterval[]}[]}>();
  const projectedDays:AttendanceFormulaDay[]=readDates.map(date=>{
   const row=records.find(record=>record.attendanceDate===date),trace=isAttendanceTrace(row?.calcTrace)?row.calcTrace:null;
   const values:Record<string,AttendanceFormulaFact>=Object.fromEntries(ATTENDANCE_FORMULA_VARIABLES.map(variable=>[variable.id,{state:'unavailable',reason:'Required canonical evidence is unavailable for this date.'}]));
@@ -150,6 +151,19 @@ export async function readAttendanceFormulaDaysTx(tx:Tx,ctx:SessionContext,p:{co
     decimal('ShiftWorkingMins',count(intersect(net,[{from:schedule.startAbs,to:schedule.endAbs}],4320),4320),'canonical-net-positioned-work');
     const approved=snapshot?.input.approval.status==='notRequired'&&!activePlans?.length?net:plans?intersect(net,plans,4320):undefined;
     for(const [id,value]of Object.entries(attendanceFormulaOvertimeMeasurements({net,approved:approved??null,eligible:context?.state==='policy'&&context.placement.state==='known'?intersect(net,context.placement.eligibilityWindows,4320):null,start:schedule.startAbs,end:schedule.endAbs,crossesMidnight:schedule.crossesMidnight})))decimal(id,value,'canonical-positioned-work-and-approval');
+    // Financial consumers receive only proved disjoint approved physical coverage. This is
+    // not a payment: Payroll must replay it, apply dated floors/caps and reserve the parent.
+    if(approved&&context?.state==='policy'&&context.placement.state==='known'&&['approved','notRequired'].includes(snapshot!.input.approval.status)&&recordedMeasurements.breaks){
+     const breaks=recordedMeasurements.breaks,unknown=breaks.filter(row=>row.flexible||row.clockingRequired!==true);
+     const plannedWork=plans?intersect(work,plans,4320):[];
+     if(!unknown.some(row=>intersect(plannedWork,[{from:row.from,to:row.to}],4320).length)){
+      const baseCoverage=intersect(intersect(net,approved,4320),context.placement.eligibilityWindows,4320);
+      const breakCoverage=plans?intersect(plannedWork,breaks.filter(row=>!row.flexible&&row.clockingRequired===true).map(({from,to})=>({from,to})),4320):[];
+      const coverage=union([...baseCoverage,...breakCoverage],4320),parts:{date:string;dayClass:string;minutes:number;intervals:AttendancePolicyInterval[]}[]=[];let complete=true;
+      for(let offset=0;offset<3;offset++){const intervals=intersect(coverage,[{from:offset*1440,to:(offset+1)*1440}],4320);if(!intervals.length)continue;const on=addDaysIso(date,offset),calendar=context.calendar.find(row=>row.date===on);if(calendar?.state!=='known'){complete=false;break;}parts.push({date:on,dayClass:calendar.dayClass,minutes:count(intervals,4320),intervals});}
+      if(complete)overtimeCoverage.set(date,{sourceDate:date,approvalStatus:snapshot!.input.approval.status,parts});
+     }
+    }
     for(const [zone,window]of [['A',{from:0,to:schedule.startAbs}],['B',{from:schedule.endAbs,to:4320}]] as const){
      const covered=window.to>window.from?intersect(net,[window],4320):[];
      decimal('Zone'+zone+'WorkingMins',count(covered,4320),'canonical-net-positioned-work');if(zone==='A')decimal('EarlyIn',count(covered,4320),'canonical-net-before-shift-work');
@@ -169,5 +183,5 @@ export async function readAttendanceFormulaDaysTx(tx:Tx,ctx:SessionContext,p:{co
   const end=[subject.row.resignationDate,subject.row.lastWorkingDate,subject.row.terminatedOn].filter((value):value is string=>!!value).sort()[0];
   return {date,facts:{companyId:p.companyId,departmentId:field('departmentId'),businessUnitId:field('businessUnitId'),positionId:field('positionId'),gradeId:field('gradeId'),employmentType:field('employmentType'),employmentCategory:field('employmentCategory'),branch:field('orgBranch'),division:field('orgDivision'),region:field('orgRegion'),line:field('orgLine'),section:field('orgSection'),team:field('orgTeam'),base:field('orgBase'),status:end&&end<date?'terminated':'active'}};
  }):[];
- return {days,sourceDigest,eligibilityFacts};
+ return {days,sourceDigest,eligibilityFacts,overtimeCoverage:dates.map(date=>overtimeCoverage.get(date)??null)};
 }

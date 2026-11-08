@@ -21,7 +21,7 @@ it('calculates a separate immutable native result and explicitly reviews/approve
  await reviewAttendanceFormulaResult(f.ctx,{resultId:result.id,command:'review',reason:'Checked actual clock evidence'});
  await reviewAttendanceFormulaResult(f.ctx,{resultId:result.id,command:'approve',reason:'Authorized fictional earning'});
  const rows=await listAttendanceFormulaResults(f.ctx,{employmentId:f.employmentId,date:f.date});expect(rows).toHaveLength(1);expect(rows[0]).toMatchObject({state:'approved',code:'WORKED_HOURS',payCode:'ATTENDANCE'});
- const {attendanceFormulaResult}=await import('../db/schema');await expect(owner.db.update(attendanceFormulaResult).set({amount:'999.00'}).where(eq(attendanceFormulaResult.id,result.id))).rejects.toThrow(/append-only/);
+ const {attendanceFormulaResult}=await import('../db/schema');await expect(owner.db.update(attendanceFormulaResult).set({amount:'999.00'}).where(eq(attendanceFormulaResult.id,result.id))).rejects.toMatchObject({cause:expect.objectContaining({message:expect.stringMatching(/append-only/)})});expect((await owner.db.select().from(attendanceFormulaResult).where(eq(attendanceFormulaResult.id,result.id)))[0].amount).toBe('100.00');
 });
 it('refuses stale review and preserves previous calculation history when actual clocks change',async()=>{
  const f=await active(),first=await calculateAttendanceFormulaResult(f.ctx,f);
@@ -41,7 +41,7 @@ it('posts an approved earning through the native source projector once and refus
  await reviewAttendanceFormulaResult(f.ctx,{resultId:result.id,command:'review',reason:'Checked actual source'});await reviewAttendanceFormulaResult(f.ctx,{resultId:result.id,command:'approve',reason:'Approved earning'});
  const {createBatch,transferAttendanceFormulaResults,verifyAttendanceFormulaPayrollSourcesTx}=await import('../packs/payroll/service');
  const {batchId}=await createBatch(f.ctx,{companyId:base.companyId,payPeriod:f.date.slice(0,7),scope:{employmentIds:[f.employmentId]}});
- const request={batchId,resultIds:[result.id],reason:'Transfer checked fixture earning'};expect((await transferAttendanceFormulaResults(f.ctx,request)).idempotent).toBe(false);expect((await transferAttendanceFormulaResults(f.ctx,request)).idempotent).toBe(true);
+ const request={batchId,resultIds:[result.id],reason:'Transfer checked fixture earning'};await expect(transferAttendanceFormulaResults(f.ctx,request)).rejects.toThrow(/typed_pay_components/);const {setModule,entitledCtx}=await import('./harness');await setModule(base.tenantId,'typed_pay_components','active');f.ctx=await entitledCtx(base);expect((await transferAttendanceFormulaResults(f.ctx,request)).idempotent).toBe(false);expect((await transferAttendanceFormulaResults(f.ctx,request)).idempotent).toBe(true);
  const s=await import('../db/schema');const sources=await owner.db.select().from(s.payrollAttendanceAllowanceSource).where(eq(s.payrollAttendanceAllowanceSource.batchId,batchId));expect(sources).toHaveLength(1);expect(sources[0]).toMatchObject({policyId:null,resultId:null,formulaResultId:result.id,formulaId:f.id,amount:'100.00'});
  const inputs=await owner.db.select().from(s.payrollBatchComponent).where(eq(s.payrollBatchComponent.batchId,batchId));expect(inputs).toHaveLength(1);expect(inputs[0].amount).toBe('100.00');
  expect(await withTenant(f.ctx,tx=>verifyAttendanceFormulaPayrollSourcesTx(tx,f.ctx,batchId))).toEqual({verified:1});await expect(calculateAttendanceFormulaResult(f.ctx,f)).rejects.toThrow(/posted/);
