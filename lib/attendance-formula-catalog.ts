@@ -154,6 +154,7 @@ export const ATTENDANCE_FORMULA_FIELDS=[
  {function:'EmployeeProfile',key:'resignationDate',type:'date',source:'employment-resignation-date',dateBasis:'current-only'},
  {function:'EmployeeProfile',key:'confirmationDate',type:'date',source:'employment-confirmation-date',dateBasis:'current-only'},
  {function:'EmployeeProfile',key:'lastWorkingDate',type:'date',source:'employment-last-working-date',dateBasis:'current-only'},
+ {function:'EmployeeInformation',key:'basicSalary',type:'decimal',source:'effective-compensation',dateBasis:'effective-date'},
  {function:'EmployeeInformation',key:'employmentType',type:'string',source:'dated-assignment-employment-type',dateBasis:'effective-date'},
  {function:'EmployeeInformation',key:'departmentId',type:'string',source:'dated-assignment-department',dateBasis:'effective-date'},
  {function:'EmployeeInformation',key:'businessUnitId',type:'string',source:'dated-assignment-business-unit',dateBasis:'effective-date'},

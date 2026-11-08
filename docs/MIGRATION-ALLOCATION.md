@@ -1,5 +1,18 @@
 # Coordinated migration reservations
 
+## Attendance Formula Builder — 8 November 2026 (unapplied source reservation)
+
+Branch `codex/board-staging-integration-20261108` reserves
+`3303_attendance_formula_versions`, idx2603 / when1793330002903, after its existing
+3300–3302 reservations. A refreshed read-only survey found1049 distinct journal blobs,
+725 readable worktree journals and maxima3302 / idx2602 / when1793330002902.
+Freshly fetched main and alpha remain29d9edcbc; the integrated incoming9dd3847b4
+prefix is preserved. An independent read-only staging ledger comparison matched all709
+ordered rows against9dd3847b4, through1793330002801. The foreign release lease remains
+owned by its controller; this reservation neither installs SQL nor authorizes deployment.
+Recheck peers, refs and the complete live ledger at admission. These new tables hold
+formula configuration and testing/audit evidence, not another payroll or OT settlement ledger.
+
 ## AI centre after accepted PR233 — 8 November 2026 (unapplied reallocation)
 
 The installed PR233 source `29d9edcbc4368be871688e9fdf35347676a7841c`

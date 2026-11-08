@@ -52,9 +52,11 @@ export const APPROVED_UPGRADE_TAIL=[
  {idx:2600,when:1793330002900,tag:'3300_pay_item_company_applicability'},
  {idx:2601,when:1793330002901,tag:'3301_rewards_unit_preparation'},
  {idx:2602,when:1793330002902,tag:'3302_maybank_payment_arrangement'},
+ {idx:2603,when:1793330002903,tag:'3303_attendance_formula_versions'},
 ] as const;
 // Final pending 2109/2126 bytes reviewed from engine 128bc2539; no applied-prefix hashes change.
 const APPROVED_UPGRADE_HASHES:Record<string,string>={
+ '3303_attendance_formula_versions':'db28404e08f6a4caef41ad42b7fb282ec5fcd03fee03f0cc7cb192e21292132c',
  '3302_maybank_payment_arrangement':'19334a66cee1af68b561a8a8795dc74748e5825507f268d0138f7aff7cd91dfa',
  '3300_pay_item_company_applicability':'ff67d0990fce26f759b7d0e07a6805aced04e70af893c98dcf41c23774aa9c3c',
  '3301_rewards_unit_preparation':'4d8969bfc0b8f134f8cc01c42a738eb6cc4babdcb1ccfb0ec824a61d9b9fee11',

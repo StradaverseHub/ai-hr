@@ -1,5 +1,5 @@
 import {ATTENDANCE_FORMULA_CATALOG_VERSION,ATTENDANCE_FORMULA_VARIABLES,ATTENDANCE_FORMULA_FIELDS,attendanceFormulaVariable} from './attendance-formula-catalog';
-import {parsePayFormula,validatePayFormula,evaluatePayFormula,addFormulaDecimal,type FormulaDialect,type FormulaProgram,type FormulaTraceEvent} from './pay-formula-language';
+import {parsePayFormula,validatePayFormula,evaluatePayFormula,addFormulaDecimal,type FormulaDialect,type FormulaProgram,type FormulaTraceEvent,type FormulaRequest} from './pay-formula-language';
 import {payFormulaFunction,type FormulaFunction,type FormulaValue} from './pay-formula-registry';
 export type AttendanceFormulaDefinition={code:string;source:string};
 export type AttendanceFormulaLibrary={formulas:readonly AttendanceFormulaDefinition[];conditions:readonly (AttendanceFormulaDefinition&{type?:'decimal'|'boolean'})[]};
@@ -12,17 +12,25 @@ function dialectFor(library:AttendanceFormulaLibrary):FormulaDialect{
  const functions=[...fieldFunctions,referenceFunction('FormulaID',[...ATTENDANCE_FORMULA_VARIABLES.map(v=>v.id),...library.formulas.map(f=>f.code)],'field'),referenceFunction('ConditionID',library.conditions.map(c=>c.code),'field')];
  return {version:ATTENDANCE_FORMULA_CATALOG_VERSION,extendedSyntax:true,lookup:code=>functions.find(f=>f.code.toLowerCase()===code.toLowerCase())??(['Rounding','Date'].includes(payFormulaFunction(code)?.code??'')?payFormulaFunction(code):undefined),fieldType:(code,field)=>code==='ConditionID'?(library.conditions.find(condition=>condition.code===field)?.type??'decimal'):code==='FormulaID'?attendanceFormulaVariable(field)?.type??(library.formulas.some(f=>f.code===field)?'decimal':undefined):ATTENDANCE_FORMULA_FIELDS.find(descriptor=>descriptor.function===code&&descriptor.key===field)?.type};
 }
-export function compileAttendanceFormulaLibrary(library:AttendanceFormulaLibrary){
+export function compileAttendanceFormulaLibrary(library:AttendanceFormulaLibrary,rootCode?:string){
  if(JSON.stringify(library).length>262144)throw Error('The complete attendance dependency plan exceeds 256 KB.');
  if(library.formulas.length>64||library.conditions.length>64)throw Error('Keep at most 64 formulas and 64 conditions in one dependency plan.');
  const names=new Set<string>();for(const item of [...library.formulas,...library.conditions]){if(!idPattern.test(item.code)||names.has(item.code.toLowerCase())||ATTENDANCE_FORMULA_VARIABLES.some(variable=>variable.id.toLowerCase()===item.code.toLowerCase()))throw Error('Choose unique formula and condition IDs outside the variable library.');names.add(item.code.toLowerCase());}
  const dialect=dialectFor(library),programs=new Map<string,FormulaProgram>();
  const conditionTypes=new Map(library.conditions.map(condition=>[condition.code,condition.type??'decimal']));
  for(const item of [...library.formulas,...library.conditions])programs.set(item.code,parsePayFormula(item.source,{...dialect,returnType:conditionTypes.get(item.code)??'decimal'}));
+ const allCalls:FormulaRequest[]=[],callsByCode=new Map<string,FormulaRequest[]>();
  const visiting=new Set<string>(),visited=new Set<string>();
- const visit=(code:string,depth:number)=>{if(depth>12||visiting.has(code))throw Error('Formula references contain a cycle or exceed 12 levels.');if(visited.has(code))return;visiting.add(code);const program=programs.get(code);if(!program)throw Error('Formula reference is unavailable.');for(const call of validatePayFormula(program,{...dialect,returnType:conditionTypes.get(code)??'decimal'}).calls){if(['FormulaID','ConditionID'].includes(call.code)){const target=String(call.args[0].value);if(programs.has(target))visit(target,depth+1);}}visiting.delete(code);visited.add(code);};
+ const visit=(code:string,depth:number)=>{if(depth>12||visiting.has(code))throw Error('Formula references contain a cycle or exceed 12 levels.');if(visited.has(code))return;visiting.add(code);const program=programs.get(code);if(!program)throw Error('Formula reference is unavailable.');const calls=validatePayFormula(program,{...dialect,returnType:conditionTypes.get(code)??'decimal'}).calls;allCalls.push(...calls);callsByCode.set(code,calls);for(const call of calls){if(['FormulaID','ConditionID'].includes(call.code)){const target=String(call.args[0].value);if(programs.has(target))visit(target,depth+1);}}visiting.delete(code);visited.add(code);};
  for(const code of programs.keys())visit(code,0);
- return {dialect,programs};
+ const heights=new Map<string,number>();
+ const height=(code:string):number=>{const old=heights.get(code);if(old!==undefined)return old;const targets=(callsByCode.get(code)??[]).filter(call=>['FormulaID','ConditionID'].includes(call.code)&&programs.has(String(call.args[0].value))).map(call=>String(call.args[0].value));const result=1+Math.max(0,...targets.map(height));if(result>12)throw Error('Formula dependencies exceed 12 levels.');heights.set(code,result);return result;};
+ for(const code of programs.keys())height(code);
+ const reachable=new Set<string>();const collect=(code:string)=>{if(reachable.has(code))return;if(!programs.has(code))throw Error('Choose a saved root formula.');reachable.add(code);for(const call of callsByCode.get(code)??[]){const target=String(call.args[0]?.value);if(['FormulaID','ConditionID'].includes(call.code)&&programs.has(target))collect(target);}};
+ if(rootCode)collect(rootCode);
+ const sourceCalls=rootCode?[...reachable].flatMap(code=>callsByCode.get(code)??[]):allCalls;
+ const fields=[...new Map(sourceCalls.filter(call=>ATTENDANCE_FORMULA_FIELDS.some(field=>field.function===call.code&&field.key===String(call.args[0]?.value))).map(call=>[call.code+':'+String(call.args[0].value),{code:call.code,key:String(call.args[0].value)}])).values()].sort((a,b)=>(a.code+':'+a.key).localeCompare(b.code+':'+b.key));
+ return {dialect,programs,fields,requirements:{financial:fields.some(field=>field.code==='EmployeeInformation'&&field.key==='basicSalary'),workforce:fields.some(field=>field.code.startsWith('Employee')&&field.key!=='basicSalary')}};
 }
 /** Every value comes from an authorized native source. This engine cannot read storage or post pay. */
 export function evaluateAttendanceFormula(library:AttendanceFormulaLibrary,code:string,days:readonly AttendanceFormulaDay[]){

@@ -11703,3 +11703,23 @@ export const orgChartRoot=pgTable('org_chart_root',{
  id:id(),tenantId:tenantId(),employmentId:uuid('employment_id').notNull().references(()=>employment.id),
  validFrom:date('valid_from').notNull(),validTo:date('valid_to'),createdAt:createdAt(),
 },t=>[index('org_chart_root_employment_idx').on(t.tenantId,t.employmentId,t.validFrom)]);
+
+/** Attendance owns configuration and testing evidence; existing Payroll/OT owners retain settlement. */
+export const attendanceFormula = pgTable('attendance_formula', {
+ id:id(),tenantId:tenantId(),companyId:uuid('company_id').notNull().references(()=>company.id),code:text('code').notNull(),
+ createdBy:uuid('created_by').notNull().references(()=>appUser.id),createdAt:createdAt(),
+},t=>[uniqueIndex('attendance_formula_code_uq').on(t.tenantId,t.companyId,sql`lower(${t.code})`)]);
+export const attendanceFormulaRevision = pgTable('attendance_formula_revision', {
+ id:id(),tenantId:tenantId(),companyId:uuid('company_id').notNull().references(()=>company.id),formulaId:uuid('formula_id').notNull().references(()=>attendanceFormula.id),ordinal:integer('ordinal').notNull(),
+ payComponentId:uuid('pay_component_id').notNull().references(()=>payComponent.id),definition:jsonb('definition').$type<import('../lib/attendance-formula-model').AttendanceFormulaConfiguration>().notNull(),
+ contentHash:text('content_hash').notNull(),readRequirements:jsonb('read_requirements').$type<{financial:boolean;workforce:boolean}>().notNull(),createdBy:uuid('created_by').notNull().references(()=>appUser.id),createdAt:createdAt(),
+},t=>[uniqueIndex('attendance_formula_revision_ordinal_uq').on(t.formulaId,t.ordinal)]);
+export const attendanceFormulaTest = pgTable('attendance_formula_test', {
+ id:id(),tenantId:tenantId(),companyId:uuid('company_id').notNull().references(()=>company.id),formulaId:uuid('formula_id').notNull().references(()=>attendanceFormula.id),revisionId:uuid('revision_id').notNull().references(()=>attendanceFormulaRevision.id),
+ employmentId:uuid('employment_id').notNull().references(()=>employment.id),periodFrom:date('period_from').notNull(),periodTo:date('period_to').notNull(),passed:boolean('passed').notNull(),sourceHash:text('source_hash').notNull(),payload:jsonb('payload').$type<Record<string,unknown>>().notNull(),
+ createdBy:uuid('created_by').notNull().references(()=>appUser.id),createdAt:createdAt(),
+});
+export const attendanceFormulaEvent = pgTable('attendance_formula_event', {
+ id:id(),sequence:bigserial('sequence',{mode:'number'}).notNull(),tenantId:tenantId(),companyId:uuid('company_id').notNull().references(()=>company.id),formulaId:uuid('formula_id').notNull().references(()=>attendanceFormula.id),
+ revisionId:uuid('revision_id').references(()=>attendanceFormulaRevision.id),testId:uuid('test_id').references(()=>attendanceFormulaTest.id),kind:text('kind').notNull().$type<'created'|'saved'|'tested'|'activated'|'deactivated'|'archived'>(),detail:jsonb('detail').$type<Record<string,unknown>>().notNull().default({}),createdBy:uuid('created_by').notNull().references(()=>appUser.id),createdAt:createdAt(),
+});
