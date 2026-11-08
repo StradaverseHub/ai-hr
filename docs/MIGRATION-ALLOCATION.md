@@ -1,5 +1,28 @@
 # Coordinated migration reservations
 
+## Access editor presentation — 8 November 2026 (uninstalled)
+
+Reserve `3103_access_editor_presentation`, idx2403 / when1793330002703.
+SQL SHA-256 `bb171333ef940c173ac9ca0a647398116dfd8ee8dd87d77c8f59e92b0281fe47`.
+Fresh main/alpha both identify109a046ef38f90514f1da458056aa09e015a47a4.
+An all-ref/tag/root-tree and captured-WIP scan covered5898 refs,3151 root trees,
+678 migration trees,484 committed journals and439 readable worktrees. All captured
+migration WIP remained stable. Previous maxima were3102 /2402 /1793330002702;
+one malformed foreign journal was preserved and its literal claims included.
+All739 predecessor entries and historical SQL bytes remain unchanged.
+
+The exact predecessor native bootstrap body/identity/ACL must match before one
+canonical eligibility predicate is factored privately. Original locking,
+initialization effects, grants, recovery invariant and audit remain. A new narrow
+native projection enforces RR/RO, current principal/login and current configure
+authority; only a legitimate uninitialized bootstrap actor receives an explicit
+status. The isolated prototype42392922965 passed43 tests, including held Access/
+History and retained command correctness. This is component evidence, not actual
+append, populated upgrade or installed-application acceptance. The guarded append,
+application adoption, complete upgrade identities and actual target ordered ledger
+still require qualification. Recheck reservations and installed watermark before
+integration/installation. Production remains on hold.
+
 ## Typed Personnel overview filters — 7 November 2026 (uninstalled)
 
 `2701_personnel_typed_overview_filter_fields`, idx2001 / when1793330002301,
@@ -2372,3 +2395,27 @@ tenant/void/bank/partner authority or database setting changes. Actual appended-
 authority, populated replay and representative performance qualification remain required;
 the diagnostic alone is not deployment authority. Reconcile current reservations and the
 actual ordered installed ledger/watermark before staging. Production remains on hold.
+
+
+## Statement-local Assignment membership — 7 November 2026 (uninstalled candidate)
+
+Reserve `3102_assignment_membership_initplan`, idx2402 / when1793330002702,
+SQL SHA-256 `5cb2e363d5fb27d7de67c8317d1d0c59a5545d86dc835e0d4d1c4cfaa126c2d6`.
+Fresh main/alpha identify109a046ef38f90514f1da458056aa09e015a47a4. The all-ref
+and captured-WIP scan covered5826 refs,3112 distinct root trees,677 migration
+trees,483 committed journals and406 readable worktrees. Previous maxima were
+3101 /2401 /1793330002701. One malformed foreign journal remains untouched;
+its literal claims are included. All738 predecessor tuples and SQL bytes remain
+unchanged. Recheck current claims and the actual ordered installation ledger
+before release admission.
+
+The controlled50k experiment42383332942 compared both native authorities,
+all eight full ports and actual plans on the same application backend. It changed
+only this positive membership representation and restored exact original security
+and settings. Initial warm reads measured6915ms to1270ms, department+unit13383ms
+to3489ms, empty-unit24878ms to8898ms. All result/count/selection/facet and
+authority checks passed. Residual40000/50000 lateral probes remain and require
+a separate query/index correction; these are component measurements only.
+The real append requires independent review, native populated replay, drift
+refusal and integration qualification. It is not installed and grants no staging
+or production authority. Production remains on hold.

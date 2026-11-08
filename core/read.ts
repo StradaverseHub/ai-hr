@@ -298,6 +298,70 @@ const payrollProcessEmployeeFrom = sql`
   left join ${businessUnit} on ${businessUnit.id} = ${assignment.businessUnitId}
 `;
 
+/** Leave inquiry uses this exact legacy list population, including NULL-ended
+ * assignments and ended employments. Its display rows do not need personal/card,
+ * position or lifecycle-detail columns from the general employee DTO. */
+export type LeaveInquiryEmployee = Pick<Awaited<ReturnType<typeof listEmployees>>[number],
+ 'employmentId'|'name'|'employeeCode'|'company'|'companyId'|'department'|'departmentId'|
+ 'businessUnit'|'businessUnitId'|'terminatedOn'>;
+export async function listLeaveInquiryEmployeesTx(ctx:SessionContext,tx:Tx,companyIds:string[],employmentIds?:readonly string[]):Promise<LeaveInquiryEmployee[]>{
+ ctx=structuredClone(ctx);companyIds=companyIds.slice();employmentIds=employmentIds?.slice();
+ await assertReadCompositionPrincipalTx(tx,ctx);
+ if(!companyIds.length||employmentIds?.length===0)return [];
+ return tx.execute<LeaveInquiryEmployee>(sql`select ${employment.id} as "employmentId",${person.fullName} as name,
+  ${employment.employeeCode} as "employeeCode",${company.legalName} as company,${employment.companyId} as "companyId",
+  ${department.name} as department,${assignment.departmentId} as "departmentId",
+  ${businessUnit.name} as "businessUnit",${assignment.businessUnitId} as "businessUnitId",
+  ${employment.terminatedOn}::text as "terminatedOn"
+  ${payrollProcessEmployeeFrom} where ${inArray(employment.companyId,companyIds)}
+   ${employmentIds?sql`and ${inArray(employment.id,employmentIds)}`:sql``} order by ${person.fullName}`);
+}
+
+
+/** Minimal exact legacy picker candidates. All company/org/status predicates are
+ * native; Unicode search candidates remain conservative until the JS matcher. */
+export type LeaveInquiryPickerIdentity=Pick<LeaveInquiryEmployee,'employmentId'|'name'|'employeeCode'|'company'|'companyId'>&{assignmentId:string|null};
+export type LeaveInquiryPickerFilters={query:string;companyId:string;businessUnitId:string;departmentId:string;status:string};
+export async function listLeaveInquiryPickerIdentitiesTx(ctx:SessionContext,tx:Tx,companyIds:readonly string[],filters:LeaveInquiryPickerFilters){
+ ctx=structuredClone(ctx);companyIds=companyIds.slice();filters={...filters};await assertReadCompositionPrincipalTx(tx,ctx);
+ if(!companyIds.length)return [];
+ const q=filters.query.trim().toLowerCase(),escaped='%'+q.replace(/[\\%_]/g,char=>'\\'+char)+'%';
+ const unicode=sql`((${person.fullName} collate "C") ~ '[^ -~]' or (coalesce(${employment.employeeCode},'') collate "C") ~ '[^ -~]')`;
+ const search=!q?sql`true`:q.includes('\0')?sql`false`:/^[\x00-\x7f]*$/.test(q)?sql`(${unicode}
+   or lower(${person.fullName} collate "C") like ${escaped} escape '\\'
+   or lower(coalesce(${employment.employeeCode},'') collate "C") like ${escaped} escape '\\')`:unicode;
+ return tx.execute<LeaveInquiryPickerIdentity>(sql`select ${employment.id} as "employmentId",${person.fullName} as name,
+  ${employment.employeeCode} as "employeeCode",${company.legalName} as company,${employment.companyId} as "companyId",${assignment.id} as "assignmentId"
+  ${payrollProcessEmployeeFrom} where ${inArray(employment.companyId,companyIds)}
+  and ${filters.companyId?sql`${employment.companyId}=${filters.companyId}::uuid`:sql`true`}
+  and ${filters.businessUnitId?sql`${assignment.businessUnitId}=${filters.businessUnitId}::uuid`:sql`true`}
+  and ${filters.departmentId?sql`${assignment.departmentId}=${filters.departmentId}::uuid`:sql`true`}
+  and ${filters.status?filters.status==='active'?sql`${employment.terminatedOn} is null`:sql`${employment.terminatedOn} is not null`:sql`true`}
+  and ${search} order by ${person.fullName}`);
+}
+export type LeaveInquiryPickerFacet=Pick<LeaveInquiryEmployee,'companyId'|'company'|'departmentId'|'department'|'businessUnitId'|'businessUnit'>;
+export async function leaveInquiryPickerFacetsTx(ctx:SessionContext,tx:Tx,companyIds:readonly string[]){
+ ctx=structuredClone(ctx);companyIds=companyIds.slice();await assertReadCompositionPrincipalTx(tx,ctx);
+ if(!companyIds.length)return {populationTotal:0,rows:[] as LeaveInquiryPickerFacet[]};
+ // One complete native population walk retains exact multiplicity and distinct represented facets.
+ const rows=await tx.execute<LeaveInquiryPickerFacet&{populationTotal:number}>(sql`select distinct
+  ${employment.companyId} as "companyId",${company.legalName} as company,${assignment.departmentId} as "departmentId",${department.name} as department,
+  ${assignment.businessUnitId} as "businessUnitId",${businessUnit.name} as "businessUnit",(count(*) over())::int as "populationTotal"
+  ${payrollProcessEmployeeFrom} where ${inArray(employment.companyId,companyIds)}`);
+ return {populationTotal:rows[0]?.populationTotal??0,rows:rows.map(({populationTotal,...row})=>row)};
+}
+/** Hydrate only retained candidate rows, preserving the legacy join identity. */
+export async function leaveInquiryPickerDisplayRowsTx(ctx:SessionContext,tx:Tx,companyIds:readonly string[],identities:readonly LeaveInquiryPickerIdentity[]){
+ ctx=structuredClone(ctx);companyIds=companyIds.slice();identities=identities.map(row=>({...row}));await assertReadCompositionPrincipalTx(tx,ctx);
+ if(!companyIds.length||!identities.length)return [];
+ if(identities.length>200)throw new Error('Inquiry picker display page exceeds 200 rows');
+ return tx.execute<LeaveInquiryEmployee&{assignmentId:string|null}>(sql`select ${employment.id} as "employmentId",${person.fullName} as name,
+  ${employment.employeeCode} as "employeeCode",${company.legalName} as company,${employment.companyId} as "companyId",
+  ${department.name} as department,${assignment.departmentId} as "departmentId",${businessUnit.name} as "businessUnit",${assignment.businessUnitId} as "businessUnitId",
+  ${employment.terminatedOn}::text as "terminatedOn",${assignment.id} as "assignmentId"
+  ${payrollProcessEmployeeFrom} where ${inArray(employment.companyId,companyIds)} and ${or(...identities.map(row=>sql`(${employment.id}=${row.employmentId}::uuid and ${assignment.id} is not distinct from ${row.assignmentId}::uuid)`))}`);
+}
+
 type PayrollTransactionEmployee = Pick<Awaited<ReturnType<typeof listEmployees>>[number],
   'employmentId' | 'name' | 'employeeCode' | 'company' | 'companyId' |
   'department' | 'departmentLabel' | 'departmentCode' | 'departmentId' |
@@ -3416,8 +3480,26 @@ export function leaveBalanceInquiryMembership(ctx: SessionContext, employmentIds
 export async function leaveBalanceInquiryMembershipTx(tx: Tx, ctx: SessionContext, employmentIds: string[], asOf: string, locale: string) {
   if (employmentIds.length > 100) throw new Error('Inquiry membership chunk exceeds 100 employments');
     if (!employmentIds.length) return [];
+    return leaveBalanceInquiryMembershipRowsTx(tx,employmentIds,asOf,locale,leaveInquiryMembershipTypesTx(tx));
+}
+function leaveInquiryMembershipTypesTx(tx:Tx){
+ return tx.select({ id: leaveType.id, name: leaveType.name, code: leaveType.code, i18n: leaveType.i18n, eligibility: leaveType.eligibility, archivedAt: leaveType.archivedAt }).from(leaveType);
+}
+/** The catalogue is private to this physical transaction/read invocation. It is
+ * neither caller-provided eligibility nor a cross-request authorization cache. */
+export async function createLeaveInquiryMembershipReaderTx(ctx:SessionContext,tx:Tx,asOf:string,locale:string){
+ ctx=structuredClone(ctx);await assertReadCompositionPrincipalTx(tx,ctx);
+ const types=await leaveInquiryMembershipTypesTx(tx);
+ return (employmentIds:readonly string[])=>{
+  const ids=employmentIds.slice();
+  if(ids.length>100)throw new Error('Inquiry membership chunk exceeds 100 employments');
+  return ids.length?leaveBalanceInquiryMembershipRowsTx(tx,ids,asOf,locale,types):Promise.resolve([]);
+ };
+}
+async function leaveBalanceInquiryMembershipRowsTx(tx:Tx,employmentIds:string[],asOf:string,locale:string,
+ typeRead:ReturnType<typeof leaveInquiryMembershipTypesTx>|Awaited<ReturnType<typeof leaveInquiryMembershipTypesTx>>){
     const [types, profiles, ledger, pending] = await Promise.all([
-      tx.select({ id: leaveType.id, name: leaveType.name, code: leaveType.code, i18n: leaveType.i18n, eligibility: leaveType.eligibility, archivedAt: leaveType.archivedAt }).from(leaveType),
+      typeRead,
       tx.select({ employmentId: employment.id, gender: person.gender, marital: person.maritalStatus, hiredOn: employment.hiredOn, orgDivision: employment.orgDivision, orgBranch: employment.orgBranch, orgRegion: employment.orgRegion, orgLine: employment.orgLine, orgSection: employment.orgSection, orgTeam: employment.orgTeam, orgBase: employment.orgBase, employmentCategory: employment.employmentCategory }).from(employment).innerJoin(person, eq(person.id, employment.personId)).where(inArray(employment.id, employmentIds)),
       tx.selectDistinct({ employmentId: leaveLedger.employmentId, leaveTypeId: leaveLedger.leaveTypeId }).from(leaveLedger).where(and(inArray(leaveLedger.employmentId, employmentIds), lte(leaveLedger.effectiveOn, asOf))),
       tx.selectDistinct({ employmentId: leaveRequest.employmentId, leaveTypeId: leaveRequest.leaveTypeId }).from(leaveRequest).where(and(inArray(leaveRequest.employmentId, employmentIds), eq(leaveRequest.status, 'pending'), lte(leaveRequest.startDate, asOf))),

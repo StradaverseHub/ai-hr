@@ -138,8 +138,8 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
   const beforePerformancePrivileges=await privileges();
   await migrate(storage.db,{migrationsFolder:'db/migrations'});
   const afterPerformancePrivileges=await privileges();
-  const privateFunctions=['app._ai_control_context_for_purpose(text,boolean,boolean)','app._access_workforce_list_rows(uuid[])','app._assistant_assigned_index_login(uuid,boolean)','app.notification_event_processing_enqueue()'];
-  const addedFunctions=[...privateFunctions,'app.access_profile_policy_read_lock()','app.access_workforce_list_facts()','app.access_workforce_list_rows_for_ids(uuid[])','app.attendance_frozen_actor_identity_keys(jsonb,text)','app.delegated_approval_subjects(uuid[],text,text)',
+  const privateFunctions=['app._access_bootstrap_eligible(uuid,uuid)','app._ai_control_context_for_purpose(text,boolean,boolean)','app._access_workforce_list_rows(uuid[])','app._assistant_assigned_index_login(uuid,boolean)','app.notification_event_processing_enqueue()'];
+  const addedFunctions=[...privateFunctions,'app.access_editor_presentation_v1()','app.access_profile_policy_read_lock()','app.access_workforce_list_facts()','app.access_workforce_list_rows_for_ids(uuid[])','app.attendance_frozen_actor_identity_keys(jsonb,text)','app.delegated_approval_subjects(uuid[],text,text)',
    'app.may_have_attendance_task_metadata()',
    'app.attendance_pending_visible_headers(uuid)',
    'app.personnel_overview_narrow_rows(date,uuid[])',
@@ -201,6 +201,27 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
   expect(afterEmployment?.qual?.split(wrappedMembership)).toHaveLength(3);
   expect(beforeEmployment).toMatchObject({permissive:'PERMISSIVE',roles:'{ai_hr_app}',cmd:'ALL',with_check:'((tenant_id = app.current_tenant_id()) AND app.is_admin_for(company_id))'});
   expect({...afterEmployment,qual:expectedEmploymentQuals[0]}).toEqual(beforeEmployment);
+  // Independently parse the one reviewed Assignment transition from 3102. The
+  // same complete tenant/WITH CHECK/role/command metadata must survive replay.
+  const expectedAssignmentQuals=await storage.client.begin(async tx=>{
+   const expressions=[
+    'tenant_id=app.current_tenant_id() and employment_id=any((select app.visible_employment_ids())::uuid[])',
+    'tenant_id=app.current_tenant_id() and employment_id in(select unnest((select app.visible_employment_ids())))',
+   ],qualifiers:string[]=[];
+   for(const expression of expressions){
+    await tx.unsafe('create policy performance_expected_assignment_membership on public.assignment for select to ai_hr_app using ('+expression+')');
+    const [row]=await tx<{qual:string}[]>`select qual from pg_policies where schemaname='public' and tablename='assignment' and policyname='performance_expected_assignment_membership'`;
+    qualifiers.push(row.qual);await tx.unsafe('drop policy performance_expected_assignment_membership on public.assignment');
+   }
+   return qualifiers;
+  });
+  const isAssignmentPolicy=(row:(typeof beforePerformancePrivileges.policies)[number])=>row.schemaname==='public'&&row.tablename==='assignment'&&row.policyname==='assignment_rls';
+  const beforeAssignment=beforePerformancePrivileges.policies.find(isAssignmentPolicy),afterAssignment=afterPerformancePrivileges.policies.find(isAssignmentPolicy);
+  expect(beforeAssignment?.qual).toBe(expectedAssignmentQuals[0]);expect(afterAssignment?.qual).toBe(expectedAssignmentQuals[1]);
+  const assignmentMembership='(employment_id IN ( SELECT unnest(( SELECT app.visible_employment_ids() AS visible_employment_ids)) AS unnest))';
+  expect(afterAssignment?.qual?.split(assignmentMembership)).toHaveLength(2);
+  expect(beforeAssignment).toMatchObject({permissive:'PERMISSIVE',roles:'{ai_hr_app}',cmd:'ALL',with_check:'((tenant_id = app.current_tenant_id()) AND app.can_admin_employment(employment_id))'});
+  expect({...afterAssignment,qual:expectedAssignmentQuals[0]}).toEqual(beforeAssignment);
   // Inspect the new receipt table separately, then compare every pre-existing ACL and policy.
   const receiptTable='notification_event_processing';
   const receiptRelation=afterPerformancePrivileges.relations.find(row=>row.rel===receiptTable);
@@ -225,7 +246,8 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    columns:afterPerformancePrivileges.columns.filter(row=>row.rel!==receiptTable),
    functions:afterPerformancePrivileges.functions.filter(row=>!addedFunctions.includes(row.fn)),
    policies:afterPerformancePrivileges.policies.filter(row=>!receiptPolicies.includes(row)).map(row=>
-    isClaimPolicy(row)?{...row,qual:expectedClaimQuals[0]}:isEmploymentPolicy(row)?{...row,qual:expectedEmploymentQuals[0]}:row),
+    isClaimPolicy(row)?{...row,qual:expectedClaimQuals[0]}:isEmploymentPolicy(row)?{...row,qual:expectedEmploymentQuals[0]}:
+     isAssignmentPolicy(row)?{...row,qual:expectedAssignmentQuals[0]}:row),
   }).toEqual(beforePerformancePrivileges);
   const complete=await ledger();expect(complete).toHaveLength(671+APPROVED_UPGRADE_TAIL.length);expect(complete.slice(0,671)).toEqual(afterLedger);
   expect(complete.slice(0,performanceStart)).toEqual(beforePerformanceLedger);

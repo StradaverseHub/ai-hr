@@ -6,8 +6,10 @@ import {writeFileSync} from 'node:fs';
 import {join} from 'node:path';
 import type {Page,Response} from 'playwright';
 import {fixtureNavigationActor,navigationExpectedText,NAVIGATION_CAPTURE_MEMBER,NAVIGATION_CAPTURE_VERSION,validateNavigationCapture,
- type NavigationCapture,type NavigationCaptureBundle,type NavigationObservation,type NavigationScenario} from './navigation-protocol';
+ type NavigationCapture,type NavigationCaptureBundle,type NavigationObservation,type NavigationScenario,type NavigationFixtureTextBindings} from './navigation-protocol';
 import {navigationCleanHead,navigationSourceIdentity} from './navigation-source';
+import {readNavigationFixtureBindings} from './navigation-fixture-bindings';
+import {navigationScenarioEntry} from './navigation-entry';
 const BASE='https://localhost:3443';
 const failuresSelector={busy:'main[data-personnel-busy],main[data-page-busy],main [data-personnel-busy],main [data-page-busy]',
  unavailable:'main [data-read-unavailable],main [data-today-unavailable]',alerts:'main [role="alert"]'} as const;
@@ -42,7 +44,7 @@ export function createNavigationCaptureCollector({phase,sourceRoot=process.cwd()
  const candidateSha=navigationCleanHead(sourceRoot),controllerSha=process.env.AIHR_CI_CONTROL_HEAD??'';
  assert(candidateSha===process.env.AIHR_CI_HEAD&&/^[a-f0-9]{40}$/.test(controllerSha),'Exact navigation candidate/controller required');
  const runId=Number(process.env.GITHUB_RUN_ID);assert(Number.isSafeInteger(runId)&&runId>0&&process.env.GITHUB_RUN_ATTEMPT==='1','First hosted navigation attempt required');
- const identity=navigationSourceIdentity(sourceRoot,candidateSha),observations:NavigationObservation[]=[],seen=new Set<string>();
+ const identity=navigationSourceIdentity(sourceRoot,candidateSha),fixtureBindings=readNavigationFixtureBindings(),observations:NavigationObservation[]=[],seen=new Set<string>();
  let sealed=false;
  return {
   phase,
@@ -52,7 +54,8 @@ export function createNavigationCaptureCollector({phase,sourceRoot=process.cwd()
    assert(scenarios.length>0&&!scenarios.some(row=>seen.has(row.id)),'Navigation role missing or captured twice');
    assert(phase==='baseline'||typeof loadState==='function','Loaded navigation needs actual traffic state');
    for(const scenario of scenarios){
-    const observation=await captureScenario(page,actorIndex,scenario,phase,loadState);
+    const bindings=fixtureBindings.get(actorIndex);assert(bindings&&bindings.actorName===actor.name,'Native fictional actor binding missing');
+    const observation=await captureScenario(page,actorIndex,scenario,phase,bindings,loadState);
     observations.push(observation);seen.add(scenario.id);
    }
   },
@@ -65,8 +68,8 @@ export function createNavigationCaptureCollector({phase,sourceRoot=process.cwd()
   },
  };
 }
-async function captureScenario(page:Page,actorIndex:number,scenario:NavigationScenario,phase:'baseline'|'loaded',loadState?:()=>LoadState):Promise<NavigationObservation>{
- const actor=fixtureNavigationActor(actorIndex),started=performance.now(),deadline=started+90000;
+async function captureScenario(page:Page,actorIndex:number,scenario:NavigationScenario,phase:'baseline'|'loaded',bindings:Readonly<NavigationFixtureTextBindings>,loadState?:()=>LoadState):Promise<NavigationObservation>{
+ const actor=fixtureNavigationActor(actorIndex),entry=navigationScenarioEntry(scenario),started=performance.now(),deadline=started+90000;
  const remaining=()=>{const ms=Math.floor(deadline-performance.now());assert(ms>0,'Navigation scenario deadline exceeded');return ms;};
  const sample=()=>{const state=loadState?.();if(phase==='loaded')assert(state?.active===500&&state.inSteadyWindow===true,'Navigation must start and finish within steady 500-user load');return state?{active:state.active,inSteadyWindow:state.inSteadyWindow}:undefined;};
  const startedWith=sample(),failures={busy:0,unavailable:0,alerts:0,http500:0,pageErrors:0};
@@ -81,8 +84,8 @@ async function captureScenario(page:Page,actorIndex:number,scenario:NavigationSc
   const origin=await page.goto(BASE+(scenario.outcome==='denied'?scenario.href:scenario.originHref),{waitUntil:'domcontentloaded',timeout:remaining()});
   assert(origin?.status()===200,'Navigation origin did not finish successfully');
   const originFailures=await capturedFailures(page);for(const key of ['busy','unavailable','alerts']as const)failures[key]+=originFailures[key];
-  if(scenario.outcome==='usable'){
-   const anchor=page.locator('a[data-navigation-destination="'+scenario.destinationId+'"]');
+  if(scenario.outcome==='usable'&&entry.selector){
+   const anchor=page.locator(entry.selector);
    await anchor.first().waitFor({state:'visible',timeout:remaining()});
    assert(await anchor.count()===1,'Canonical native destination link missing or ambiguous');
    assert(await anchor.getAttribute('href')===scenario.href,'Native destination address differs from reviewed scenario');
@@ -118,18 +121,26 @@ async function captureScenario(page:Page,actorIndex:number,scenario:NavigationSc
    const matches=page.locator(check.selector);await matches.first().waitFor({state:'visible',timeout:remaining()});
    const visible=[];for(const match of await matches.all())if(await match.isVisible())visible.push(match);
    assert(visible.length>0,'Reviewed usable-content selector has no visible result');
-   if(check.kind==='count')assert(visible.length>=check.minimum&&(check.maximum===undefined||visible.length<=check.maximum),'Usable-content count differs');
-   else if(check.kind==='enabled'){
+   if(check.kind==='count'||check.kind==='fixture-roster-rows')assert(visible.length>=check.minimum&&(check.maximum===undefined||visible.length<=check.maximum),'Usable-content count differs');
+   if(check.kind==='fixture-roster-rows'){
+    const ids=new Set<string>();
+    for(const row of visible){
+     const id=await row.getAttribute('data-roster-employment-id',{timeout:remaining()});
+     assert(id&&!ids.has(id)&&Object.hasOwn(bindings.rosterScope,id),'Roster rendered an unknown, duplicate or out-of-scope native fixture employment');ids.add(id);
+     const expected=bindings.rosterScope[id];if(expected!==null)assert((await row.innerText({timeout:remaining()})).includes(expected),'Roster omitted the independently seeded employee identity');
+    }
+   }else if(check.kind==='enabled'){
     assert(await visible[0].evaluate(element=>element.tagName.toLowerCase())===check.tag&&await visible[0].isEnabled(),'Reviewed native control is unavailable');
-   }else if(check.kind==='text')assert((await visible[0].innerText({timeout:remaining()})).includes(navigationExpectedText(check.expected,actorIndex)),'Expected independent fixture content missing');
-   else if(check.kind==='value')assert(await visible[0].inputValue({timeout:remaining()})===navigationExpectedText(check.expected,actorIndex),'Expected native control value differs');
-   else assert(await visible[0].getAttribute(check.name)===check.expected,'Reviewed native control attribute differs');
+   }else if(check.kind==='text-exact')assert((await visible[0].innerText({timeout:remaining()})).trim()===navigationExpectedText(check.expected,actorIndex,bindings),'Expected exact native fixture content differs');
+   else if(check.kind==='text')assert((await visible[0].innerText({timeout:remaining()})).includes(navigationExpectedText(check.expected,actorIndex,bindings)),'Expected independent fixture content missing');
+   else if(check.kind==='value')assert(await visible[0].inputValue({timeout:remaining()})===navigationExpectedText(check.expected,actorIndex,bindings),'Expected native control value differs');
+   else if(check.kind==='attribute')assert(await visible[0].getAttribute(check.name)===check.expected,'Reviewed native control attribute differs');
    checks.push({id:check.id,passed:true,observedCount:visible.length});
   }
   const observed=await capturedFailures(page);for(const key of ['busy','unavailable','alerts']as const)failures[key]+=observed[key];
   assert(Object.values(failures).every(count=>count===0),'Navigation rendered failure state or browser/server error');
   const usableWith=sample();remaining();
-  return {scenarioId:scenario.id,destinationId:scenario.destinationId,role:actor.role,actorIndex,href:scenario.href,outcome:scenario.outcome,readiness:scenario.readiness,
+  return {entry:entry.kind,scenarioId:scenario.id,destinationId:scenario.destinationId,role:actor.role,actorIndex,href:scenario.href,outcome:scenario.outcome,readiness:scenario.readiness,
    status:200,finalPath:target.pathname,internalSessionObserved:true,fixtureIdentityObserved:true,elapsedMs:performance.now()-started,checks,failures,
    ...(startedWith?{startedWith}:{}),...(usableWith?{usableWith}:{})};
  }finally{page.off('response',response);page.off('pageerror',pageError);page.off('console',consoleError);}

@@ -11,7 +11,11 @@ import { captureAiReviewScreenshots } from './helpers/ai-review-screenshots';
 const copies={en,ms,zh,vi:viCopy,th,ta};
 const visual=vi.hoisted(()=>({locale:'en' as 'en'|'ms'|'zh'|'vi'|'th'|'ta'}));
 vi.mock('next-intl/server',()=>({
- getTranslations:async(namespace:any)=>createTranslator({locale:visual.locale,messages:copies[visual.locale],namespace}),
+ // The renderer owns exactly these two namespaces. Infer keys from their real
+ // locale subtree, rather than recursively enumerating every module's messages.
+ getTranslations:async(namespace:'processAssessment'|'processAssessment.buildList')=>createTranslator({
+  locale:visual.locale,messages:{processAssessment:copies[visual.locale].processAssessment},namespace,
+ }),
  getFormatter:async()=>createFormatter({locale:visual.locale,timeZone:'Asia/Kuala_Lumpur'}),
 }));
 import { RankedBuildList } from '../app/control-tower/agents/build-list/build-list';
@@ -54,6 +58,8 @@ describe('group-admin ranked build-list source',()=>{
    visual.locale=locale;
    const html=renderToStaticMarkup(await RankedBuildList({view}));
    expect(html).toContain(copies[locale].processAssessment.buildList.title);
+   expect(html).toContain(copies[locale].processAssessment.buildList.rank);
+   expect(html).toContain(copies[locale].processAssessment.processes.leave);
    expect(html).toContain('adminCancelLeaveAction');
    expect(html).not.toContain('Build fixture');
    await captureAiReviewScreenshots(html,locale,'build-list');

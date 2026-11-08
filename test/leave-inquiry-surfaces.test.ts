@@ -323,8 +323,8 @@ describe('20c699f8: Employee Balances', () => {
 
   it('re-runs BOTH reads when the as-at date changes (nothing is cached against another date)', () => {
     expect(balancesPage).toContain('name="asOf"');
-    expect(balancesPage).toContain('inquiryBalancePage(session, inquiry, query, locale)');
-    expect(read('app/leave/employee-balances/inquiry-data.ts')).toContain('employeeBalanceRows(ctx, employmentId, query.asOf, locale');
+    expect(balancesPage).toContain('inquiryBalancePage(session,scope,query,locale,query.pq,tx)');
+    expect(read('app/leave/employee-balances/inquiry-data.ts')).toContain('employeeBalanceRows(hydrationContext, employmentId, query.asOf, locale');
     // 3ddae357 — the title of this case was true of the BREAKDOWN and false of the balances, which is how
     // the defect passed review for four releases. The claim is only worth making if both reads take the
     // date, so the second half is pinned here too. Point-in-time behaviour itself is proven against real
@@ -352,8 +352,8 @@ describe('20c699f8: Employee Balances', () => {
 
 describe('953be4b0: Employee Leave Record', () => {
   it('reads the canonical transaction projection within the authorized All/single scope and leave-type filter', () => {
-    expect(recordsPage).toContain('await leaveInquiryContext(session, scopeIds, query)');
-    expect(recordsPage).toContain('leaveInquiryRecordsPage(session, inquiry, query)');
+    expect(recordsPage).toContain('await leaveInquirySnapshot(session,scopeIds,query,async(tx,scope)');
+    expect(recordsPage).toContain('leaveInquiryRecordsPageTx(tx,session,scope,query)');
     const owner = read('core/leave-inquiry.ts');
     const from = owner.indexOf('export async function leaveInquiryRecordsPageTx(');
     const to = owner.indexOf('function checkWindow(', from);
@@ -362,7 +362,7 @@ describe('953be4b0: Employee Leave Record', () => {
     const projection = owner.slice(from, to);
     expect(projection).toContain('scope = authorizedScope(ctx, scope, query)');
     expect(projection).toContain('if (!scope.companyIds.length) return { rows: [], total: 0 }');
-    expect(projection).toContain('listLeaveRequestsPageTx(tx, ctx, {');
+    expect(projection).toContain('listLeaveRequestsPageTx(tx, verified!.session, {');
     expect(projection).toContain('companyIds: scope.companyIds, employmentIds: scope.selected ? [scope.selected.employmentId] : undefined');
     expect(projection).toContain('leaveTypeIds: query.typeIds');
   });
@@ -456,7 +456,7 @@ describe('r378 · the old employee listing is gone, while scoped inquiry selecti
     for(const name of ['employee-balances','employee-records']) {
       const source=read(`app/leave/${name}/page.tsx`);
       expect(source).toContain('await scopedAdmin()');
-      expect(source).toContain('await leaveInquiryContext(session, scopeIds, query)');
+      expect(source).toContain('await leaveInquirySnapshot(session,scopeIds,query,async(tx,scope)');
       expect(source).toContain('const selected = inquiry.selected;');
       expect(source).toContain('preservePicker');
     }

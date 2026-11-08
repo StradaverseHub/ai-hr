@@ -1,4 +1,4 @@
-/** Exact approved forward tail and its ONE intended populated permission transition.
+/** Exact approved forward tail and its intended populated permission transitions.
  * Historical receipts remain pinned by each owning fixture. No migration or old audit row is skipped. */
 import {expect} from 'vitest';
 import {PERFORMANCE_MIGRATION_IDENTITIES} from '../performance-migration-identities';

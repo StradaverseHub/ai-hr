@@ -1,55 +1,88 @@
+import {readFileSync} from 'node:fs';
 import {expect,it} from 'vitest';
-import {firstGroupNavigationRoutes,navigationRoutesForIteration} from '../scripts/performance/route-scheduling.mjs';
+import {createSteadyRouteScheduler,firstGroupNavigationRoutes,modelSteadyRouteCapacity,navigationProtocol,navigationRoutesForIteration,planSteadyRouteCoverage} from '../scripts/performance/route-scheduling.mjs';
 import {routePools} from '../scripts/performance/system-route-manifest.mjs';
-it('uses disjoint role lanes and preserves non-group navigation counts',()=>{
- const pool=Array.from({length:12},(_,i)=>'/route/'+i);
+const roles=['employee','manager','companyHR','groupHR']as const;
+// Actual native fixture role allocation and actor positions, including Group HR0/250.
+const users=Array.from({length:500},(_,index)=>{const i=index%250,company=Math.floor(i/50),position=i%50;return{index,role:position===0&&company===0?'groupHR':position<2?'companyHR':position<4?'manager':'employee'};});
+const counts=new Map(roles.map(role=>[role,users.filter(u=>u.role===role).length]));
+const scheduler=()=>createSteadyRouteScheduler({pools:routePools,roleCounts:counts,steadyStart:10000,steadyUntil:310000});
+const slot=(extra:Record<string,unknown>={})=>({role:'groupHR',ordinal:0,actors:2,iteration:0,slot:0,startedMs:10000,...extra});
+it('retains disjoint fallback lanes, three non-group reads and the explicit bounded seven-slot minimum',()=>{
+ const pool=Array.from({length:14},(_,i)=>'/route/'+i);
  expect(navigationRoutesForIteration(pool,{role:'companyHR',ordinal:0,actors:2,iteration:0})).toEqual(pool.slice(0,3));
  expect(navigationRoutesForIteration(pool,{role:'companyHR',ordinal:1,actors:2,iteration:0})).toEqual(pool.slice(3,6));
  expect(navigationRoutesForIteration(pool,{role:'companyHR',ordinal:0,actors:2,iteration:1})).toEqual(pool.slice(6,9));
- expect(navigationRoutesForIteration(pool,{role:'groupHR',ordinal:0,actors:2,iteration:0})).toEqual(pool.slice(0,6));
- expect(navigationRoutesForIteration(pool,{role:'groupHR',ordinal:1,actors:2,iteration:0})).toEqual(pool.slice(6));
+ expect(navigationRoutesForIteration(pool,{role:'groupHR',ordinal:0,actors:2,iteration:0})).toEqual(pool.slice(0,7));
+ expect(navigationRoutesForIteration(pool,{role:'groupHR',ordinal:1,actors:2,iteration:0})).toEqual(pool.slice(7));
+ expect(scheduler().slots('groupHR')).toBe(7);expect(scheduler().slots('groupHR',0,0)).toBe(9);for(const role of roles.slice(0,3))expect(scheduler().slots(role)).toBe(3);
 });
-it.each([1000,5000])('can cover every group-HR route during the steady hold at%sms without removing mutation steps',think=>{
- const visited=new Set<string>();
- // Same two actors (indices0/250),10s ramp and5m steady window. GET900ms/POST400ms
- // are deliberately close to the unchanged1000ms/500ms ceilings, not zero-cost requests.
- for(let ordinal=0;ordinal<2;ordinal++){
-  let now=ordinal*5000,iteration=0;
-  while(now<310000){
-   for(const route of navigationRoutesForIteration(routePools.groupHR,{role:'groupHR',ordinal,actors:2,iteration})){
-    if(now>=10000&&now<310000)visited.add(route);now+=900+think;
-   }
-   if(iteration===0){now+=400+think;now+=900+think;} // initial payroll process + export
-   else for(let mutation=0;mutation<3;mutation++)now+=400+think; // full create/edit/delete
-   iteration++;
-  }
+it('preserves actual first-cycle Group HR priority routes during ramp without consuming steady obligations',()=>{
+ const s=scheduler(),first=firstGroupNavigationRoutes(routePools,counts);
+ for(let ordinal=0;ordinal<2;ordinal++)for(let i=0;i<first[ordinal].length;i++){
+  const lease=s.reserve(slot({ordinal,slot:i,startedMs:ordinal*5000}));expect(lease.route).toBe(first[ordinal][i]);s.complete(lease,true);
  }
- expect([...visited].sort()).toEqual([...routePools.groupHR].sort());
+ expect(s.snapshot().every(row=>row.completed===0&&row.pending.length===row.required)).toBe(true);
+ const firstSteady=s.reserve(slot());expect(first.flat()).toContain(firstSteady.route);s.complete(firstSteady,true);
+ expect(s.snapshot().find(row=>row.role==='groupHR')!.completed).toBe(1);
 });
-it('covers all authorized routes when each of the 500 fixture actors completes only one cycle',()=>{
- const counts=new Map([['employee',460],['manager',20],['companyHR',18],['groupHR',2]]);
- const visited=new Set<string>();
- for(const role of ['employee','manager','companyHR'] as const){
-  const actors=counts.get(role)!;
-  for(let ordinal=0;ordinal<actors;ordinal++)
-   for(const route of navigationRoutesForIteration(routePools[role],{role,ordinal,actors,iteration:0}))visited.add(route);
- }
- const uncovered=routePools.groupHR.filter(route=>!visited.has(route)).length;
- const groupRoutes=firstGroupNavigationRoutes(routePools,counts);
- expect(groupRoutes).toHaveLength(counts.get('groupHR')!);
- // Six ordinary slots per actor; extra first-cycle slots are needed only when
- // the independently uncovered destinations exceed that combined capacity.
- const lengths=groupRoutes.map(routes=>routes.length),maximum=Math.max(6,Math.ceil(uncovered/counts.get('groupHR')!));
- expect(lengths.every(length=>length>=6&&length<=maximum)).toBe(true);
- expect(Math.max(...lengths)-Math.min(...lengths)).toBeLessThanOrEqual(1);
- for(const routes of groupRoutes)for(const route of routes){
-  expect(routePools.groupHR).toContain(route);
-  visited.add(route);
- }
- expect([...visited].sort()).toEqual([...new Set(Object.values(routePools).flat())].sort());
+it('shares pending work per actual role, reserves concurrent routes once and releases failed requests',()=>{
+ const s=scheduler(),one=s.reserve(slot()),two=s.reserve(slot({ordinal:1}));expect(one.route).not.toBe(two.route);
+ expect(s.snapshot().find(row=>row.role==='groupHR')!.inflight).toEqual([one.route,two.route]);
+ s.complete(one,false);s.complete(two,true);
+ const next=s.reserve(slot());expect(next.route).toBe(one.route);s.complete(next,true);
+ const state=s.snapshot();expect(state.find(row=>row.role==='groupHR')!.completed).toBe(2);
+ expect(state.filter(row=>row.role!=='groupHR').every(row=>row.completed===0)).toBe(true);
+ expect(()=>s.complete(next,true)).toThrow(RangeError);
 });
-it('refuses missing actors, invalid ordinals and unknown roles',()=>{
- for(const input of [{role:'employee',ordinal:0,actors:0,iteration:0},{role:'employee',ordinal:2,actors:2,iteration:0},{role:'unknown',ordinal:0,actors:1,iteration:0},{role:'employee',ordinal:0,actors:1,iteration:-1}])
-  expect(()=>navigationRoutesForIteration(['/'],input)).toThrow(RangeError);
+it('does not count warmup/post-window or failed work and admits at the inclusive start/exclusive end',()=>{
+ const s=scheduler();for(const startedMs of [9999,310000]){const lease=s.reserve(slot({startedMs}));s.complete(lease,true);}
+ expect(s.snapshot().every(row=>row.completed===0)).toBe(true);
+ const failed=s.reserve(slot());s.complete(failed,false);expect(s.snapshot().every(row=>row.completed===0)).toBe(true);
+ const lateFinish=s.reserve(slot({startedMs:309999}));s.complete(lateFinish,true);
+ expect(s.snapshot().find(row=>row.role==='groupHR')!.completed).toBe(1);
+});
+it('does not stall or duplicate an obligation when all pending routes are in flight, and keeps traffic after coverage',()=>{
+ const pools=Object.fromEntries(roles.map(role=>[role,['/one','/two']])),s=createSteadyRouteScheduler({pools,roleCounts:counts,steadyStart:10000,steadyUntil:310000});
+ const one=s.reserve(slot()),two=s.reserve(slot({ordinal:1})),fallback=s.reserve(slot({slot:1}));
+ expect(s.snapshot().find(row=>row.role==='groupHR')!.inflight).toHaveLength(2);
+ s.complete(fallback,false);s.complete(one,true);s.complete(two,true);
+ expect(s.snapshot().find(row=>row.role==='groupHR')!.pending).toEqual([]);
+ const continued=s.reserve(slot({iteration:10}));expect(pools.groupHR).toContain(continued.route);s.complete(continued,true);
+ expect(s.snapshot().find(row=>row.role==='groupHR')!.completed).toBe(2);
+});
+it.each([1000,5000])('models actual 500 actor offsets and first-cycle priorities at %sms with all per-role steady obligations and retained mutations',thinkTimeMs=>{
+ expect(users.filter(u=>u.role==='groupHR').map(u=>u.index)).toEqual([0,250]);expect([...counts.values()]).toEqual([460,20,18,2]);
+ for(const [getMs,postMs]of [[900,400],[1000,500]]){
+  const plan=modelSteadyRouteCapacity({pools:routePools,users,thinkTimeMs,steadyHoldMs:300000,getMs,postMs});
+  expect(plan.kind).toBe('PLANNING_ONLY');expect(plan.feasible,JSON.stringify(plan.rows)).toBe(true);
+  for(const row of plan.rows){expect(row.completed).toBe(routePools[row.role as keyof typeof routePools].length);expect(row.pending).toEqual([]);expect(row.inflight).toEqual([]);}
+  expect(plan.steps.payrollProcess).toBe(2);expect(plan.steps.payrollExport).toBe(2);
+  expect(plan.steps.ordinaryMutations).toBeGreaterThan(0);expect(plan.steps.clockingActions).toBeGreaterThan(0);expect(plan.iterations.groupHR).toBeGreaterThan(2);
+ }
+ const bounded=planSteadyRouteCoverage({pools:routePools,users,thinkTimeMs,steadyHoldMs:300000});expect(bounded.protocol).toBe(navigationProtocol);expect(bounded.groupReadSlots).toBe(7);
+});
+it('handles future route cardinality through a bounded explicit revision or refuses, never drops required routes',()=>{
+ const more={...routePools,groupHR:[...routePools.groupHR,...Array.from({length:6},(_,i)=>'/future/'+i)]};
+ const plan=planSteadyRouteCoverage({pools:more,users,thinkTimeMs:5000,steadyHoldMs:300000});expect(plan.groupReadSlots).toBeGreaterThan(7);expect(plan.groupReadSlots).toBeLessThanOrEqual(12);
+ expect(plan.rows.find(row=>row.role==='groupHR')!.completed).toBe(more.groupHR.length);
+ const impossible={...routePools,groupHR:[...routePools.groupHR,...Array.from({length:1000},(_,i)=>'/future/'+i)]};
+ expect(()=>planSteadyRouteCoverage({pools:impossible,users,thinkTimeMs:5000,steadyHoldMs:300000})).toThrow(/capacity/);
+ expect(()=>planSteadyRouteCoverage({pools:routePools,users,thinkTimeMs:5000,steadyHoldMs:30000})).toThrow(/capacity/);
+});
+it('uses the same slot scheduler in the real driver and preserves complete native mutation ownership',()=>{
+ const driver=readFileSync(new URL('../scripts/performance/system-load.mjs',import.meta.url),'utf8'),mixed=readFileSync(new URL('../scripts/performance/mixed-workflows.mjs',import.meta.url),'utf8');
+ expect(driver).toContain('navigationScheduler?.reserve(');expect(driver).toContain('navigationScheduler.complete(lease,usable)');
+ expect(driver).toContain('await mixedWorkflows.run(user,iteration)');expect(driver).toContain('await pause(i*20)');
+ expect(driver).not.toContain('iteration===0&&user.role===\'groupHR\'?firstGroupRoutes');
+ // Native business workflows are unchanged; the source guard supplements the event-time
+ // scheduling tests, it cannot establish execution or native persistence on its own.
+ for(const action of ['templates.payrollProcess','await exportPayroll(','templates.personnelCreate','templates.personnelEdit','templates.personnelDelete','templates.importValidate','templates.importCommit'])expect(mixed).toContain(action);
+});
+it('refuses invalid lane, budget, reservation and fixture declarations',()=>{
+ for(const input of [{role:'employee',ordinal:0,actors:0,iteration:0},{role:'employee',ordinal:2,actors:2,iteration:0},{role:'unknown',ordinal:0,actors:1,iteration:0},{role:'employee',ordinal:0,actors:1,iteration:-1},{role:'groupHR',ordinal:0,actors:1,iteration:0,groupReadSlots:6},{role:'groupHR',ordinal:0,actors:1,iteration:0,groupReadSlots:13}])expect(()=>navigationRoutesForIteration(['/'],input)).toThrow(RangeError);
  expect(()=>navigationRoutesForIteration([],{role:'employee',ordinal:0,actors:1,iteration:0})).toThrow(RangeError);
+ const s=scheduler();for(const extra of [{actors:3},{slot:12},{startedMs:NaN}])expect(()=>s.reserve(slot(extra))).toThrow(RangeError);
+ expect(()=>s.complete({route:'/fake'},true)).toThrow(RangeError);
+ expect(()=>modelSteadyRouteCapacity({pools:routePools,users:users.slice(1),thinkTimeMs:5000,steadyHoldMs:300000})).toThrow(RangeError);
 });

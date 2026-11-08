@@ -1,7 +1,8 @@
 /** Controller-only regressions; no app imports, database, compiler or provider calls. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {parseSelection, partitionSelection, verifyFocusedResult} from './focused-checks.mjs';
+import {readFileSync} from 'node:fs';
+import {parseSelection, partitionSelection, verifyFocusedResult, isEmployeeChoiceBenchmark, employeeBenchmarkFile} from './focused-checks.mjs';
 
 const files = ['test/example.test.ts', 'test/screen.dom.test.tsx'];
 test('Manifest retains exact file identities and sorts a copied selection', () => {
@@ -80,4 +81,54 @@ test('focused plan identity binds cap and peak budget independently of selected 
     assert.notEqual(altered.fingerprint, original.fingerprint);
     assert.deepEqual(altered.files, original.files);
   }
+});
+
+test('only the exact sole experimental employee plan takes the supervised execution seam',()=>{
+ assert.equal(isEmployeeChoiceBenchmark([employeeBenchmarkFile]),true);
+ for(const selected of [[],files,[employeeBenchmarkFile,files[0]],['test/employee-choice-benchmark-owner-native.test.ts'],['test/employee-choice-native-purpose.test.ts']])assert.equal(isEmployeeChoiceBenchmark(selected),false);
+});
+
+test('partial evidence failure cannot prevent mandatory cleanup or erase its independent failure',async()=>{
+ const {finalizeFocusedBenchmark}=await import('./focused-checks.mjs');let cleaned=0,refused=0;
+ finalizeFocusedBenchmark(()=>{throw Error('PRIVATE_PAYLOAD');},()=>{cleaned++;},()=>{refused++;});assert.equal(cleaned,1);assert.equal(refused,1);
+ const cleanup=Error('fixed independent cleanup refusal');let failure;
+ try{finalizeFocusedBenchmark(()=>{throw Error('PRIVATE_PAYLOAD');},()=>{cleaned++;throw cleanup;},()=>{refused++;});}catch(error){failure=error;}
+ assert(failure instanceof AggregateError);assert.equal(failure.errors[1],cleanup);assert(!failure.errors[0].message.includes('PRIVATE'));assert.equal(cleaned,2);
+ assert.throws(()=>finalizeFocusedBenchmark(()=>{throw Error('private');},()=>{cleaned++;},()=>{throw Error('private refusal callback');}));assert.equal(cleaned,3);
+});
+test('uncertain process owner permanently refuses further reset/migration/test SQL while safe stop remains available',async()=>{
+ const {focusedBenchmarkStageFrontier}=await import('./focused-checks.mjs');
+ for(const failed of ['benchmark','native-controls','native-factory','ascii-purpose','ascii-plan']){
+  const calls=[],stage=focusedBenchmarkStageFrontier(name=>{calls.push(name);return{status:name===failed?1:0};});
+  stage(failed);for(const name of ['reset','migrate','benchmark','native-controls','native-factory','ascii-purpose','ascii-plan'])assert.throws(()=>stage(name));
+  for(const name of ['evidence','stats','stop'])stage(name);assert.deepEqual(calls,[failed,'evidence','stats','stop']);
+ }
+});
+
+test('new native owner controls alone use their separate fixed outer command and retain strict selection',async()=>{
+ const {isEmployeeChoiceNativeControls,employeeNativeControlFile}=await import('./focused-checks.mjs');
+ assert.equal(isEmployeeChoiceNativeControls([employeeNativeControlFile]),true);
+ for(const selected of [[],files,[employeeNativeControlFile,files[0]],[employeeBenchmarkFile]])assert.equal(isEmployeeChoiceNativeControls(selected),false);
+});
+
+
+test('only the exact sole three-case native factory uses its own supervised route and mandatory workflow cleanup',async()=>{
+ const {isEmployeeChoiceNativeFactory,employeeNativeFactoryFile,isEmployeeChoiceNativeControls,employeeNativeControlFile}=await import('./focused-checks.mjs');
+ assert.equal(isEmployeeChoiceNativeFactory([employeeNativeFactoryFile]),true);
+ for(const selected of [[],files,[employeeNativeFactoryFile,files[0]],[employeeNativeControlFile],[employeeBenchmarkFile],[employeeNativeFactoryFile+'.extra']])assert.equal(isEmployeeChoiceNativeFactory(selected),false);
+ assert.equal(isEmployeeChoiceNativeControls([employeeNativeControlFile]),true);assert.equal(isEmployeeChoiceNativeControls([employeeNativeFactoryFile]),false);assert.equal(isEmployeeChoiceBenchmark([employeeNativeFactoryFile]),false);
+ const workflow=readFileSync(new URL('../workflows/alpha-focused-checks.yml',import.meta.url),'utf8'),anchor=workflow.indexOf('- name: Anchor first executable focused job step'),checkout=workflow.indexOf('- uses: actions/checkout@',anchor);
+ assert(anchor>=0&&checkout>anchor);assert(workflow.includes("'[\"test/employee-choice-native-owner-factory.test.ts\"]'"));
+ const owner=readFileSync(new URL('./focused-checks.mjs',import.meta.url),'utf8');assert(owner.includes("stage(nativeFactory?'native-factory':nativeControls?'native-controls':asciiPurpose?'ascii-purpose':asciiPlan?'ascii-plan':'benchmark'"));
+ assert(owner.includes('!isEmployeeChoiceNativeFactory(files)'));
+});
+
+test('ASCII purpose and plan have separate sole closed commands and mandatory cleanup, never mixed selections',async()=>{
+ const {isEmployeeChoiceAsciiPurpose,isEmployeeChoiceAsciiPlan,employeeAsciiPurposeFile,employeeAsciiPlanFile,employeeNativeFactoryFile}=await import('./focused-checks.mjs');
+ for(const [accept,file,other]of [[isEmployeeChoiceAsciiPurpose,employeeAsciiPurposeFile,employeeAsciiPlanFile],[isEmployeeChoiceAsciiPlan,employeeAsciiPlanFile,employeeAsciiPurposeFile]]){
+  assert.equal(accept([file]),true);
+  for(const selected of [[],[other],[file,other],[file,file],[file+'.extra'],[employeeBenchmarkFile],[employeeNativeFactoryFile]])assert.equal(accept(selected),false);
+ }
+ const workflow=readFileSync(new URL('../workflows/alpha-focused-checks.yml',import.meta.url),'utf8');
+ for(const file of [employeeAsciiPurposeFile,employeeAsciiPlanFile])assert(workflow.includes(`'["${file}"]'`));
 });

@@ -398,12 +398,16 @@ describe('r168a — an out-of-scope ?employmentId= selects NOTHING on every scre
     });
     expect(panelSelection(tampered), 'a company outside scope must coerce to no selection').toBeNull();
 
-    // The rail is fed the same scope-fenced read the search box was; restoring it must not have widened it.
-    // Note the key is `employmentId` on the panel, where the search field called it `value`.
-    const offered: string[] = findByType(tampered, EmployeeScopePanel)[0].props.employees.map(
+    // The bounded rail must retain the same company fence and ended-employee population. This fixture
+    // fits in its first page, so both legitimate employees must be offered without the foreign one.
+    const initial = findByType(tampered, EmployeeScopePanel)[0].props.remote.initial;
+    expect(initial.selected).toBeNull();
+    expect(initial.total).toBe(2);
+    const offered: string[] = initial.rows.map(
       (e: { employmentId: string }) => e.employmentId,
     );
     expect(offered).toContain(mine.employmentId);
+    expect(offered).toContain(terminated.employmentId);
     expect(offered, 'restoring the rail must not have widened what it can reach').not.toContain(
       foreign.employmentId,
     );
@@ -521,10 +525,14 @@ describe('r168a — an out-of-scope ?employmentId= selects NOTHING on every scre
         `${tab}: there is no surviving selection to carry`,
       ).toHaveLength(0);
 
-      const offered: string[] = findByType(tree, EmployeeScopePanel)[0].props.employees.map(
+      const initial = findByType(tree, EmployeeScopePanel)[0].props.remote.initial;
+      expect(initial.selected, `${tab}: the remote picker must also refuse the foreign selection`).toBeNull();
+      expect(initial.total, `${tab}: both legitimate employees remain in the bounded population`).toBe(2);
+      const offered: string[] = initial.rows.map(
         (e: { employmentId: string }) => e.employmentId,
       );
       expect(offered).toContain(mine.employmentId);
+      expect(offered).toContain(terminated.employmentId);
       expect(offered, `${tab}: the panel must not reach past the company fence`).not.toContain(
         foreign.employmentId,
       );
@@ -735,10 +743,12 @@ describe('r168a — an out-of-scope ?employmentId= selects NOTHING on every scre
       expect(findByType(none, EmployeeScopePanel)[0].props.allowAll).toBe(true);
       expect(findByType(none, EmployeeScopePanel)[0].props.resetToAll).toBe(true);
       // …and the screen really does hold somebody it COULD have fallen back to, so the case is not vacuous.
-      const offered: string[] = findByType(none, EmployeeScopePanel)[0].props.employees.map(
+      const offered: string[] = findByType(none, EmployeeScopePanel)[0].props.remote.initial.rows.map(
         (e: { employmentId: string }) => e.employmentId,
       );
-      expect(offered.length, 'the panel is offering employees, so a fallback was available').toBeGreaterThan(0);
+      expect(findByType(none, EmployeeScopePanel)[0].props.remote.endpoint).toBe('/api/leave/inquiry/employees');
+      expect(findByType(none, EmployeeScopePanel)[0].props.remote.initial.total).toBeGreaterThan(0);
+      expect(offered.length, 'the bounded first page offers employees, so a fallback was available').toBeGreaterThan(0);
       expect(offered).toContain(mine.employmentId);
       expect(offered, 'a cross-company employee must not be offered').not.toContain(foreign.employmentId);
       // Every row offered must survive the page's own guard — proved by feeding each back in.

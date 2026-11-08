@@ -4,7 +4,8 @@ import {and,eq,sql} from 'drizzle-orm';
 import {afterAll,beforeAll,beforeEach,expect,it,vi} from 'vitest';
 import * as database from '../db/client';
 import type {SessionContext,Tx} from '../db/client';
-import {domainEvent,employment,rosterAssignment} from '../db/schema';
+import {domainEvent,employment,payPeriod,payrollBatch,payslip,rosterAssignment} from '../db/schema';
+import {lockPayrollForAttendanceChange} from '../packs/payroll/service';
 import {assignShiftBulk,copyRoster,createShift,setRestDayBulk} from '../core/roster';
 import {assertUniqueRosterWriteKeys,rosterUuidSet} from '../core/roster-write-batches';
 import {hireEmployee} from '../core/org';
@@ -51,6 +52,10 @@ it.each(modes)('writes every %s row across the statement boundary with original 
  await prepare(mode);const beforeEvents=await events();
  const result=await observed(()=>run(mode));expect(result.identities.length).toBeGreaterThan(0);
  expect(result.value).toEqual(mode==='assign'?{assigned:1460}:mode==='rest'?{rested:1460}:{copied:1460,sourceRows:1460});
+ // Observe actual native SQL, rather than a mocked protection helper. Date
+ // cardinality must not multiply the same Payroll protection read per subject.
+ const payrollReads=result.wire.filter(row=>row.text.includes('select * from app.attendance_payroll_protection('));
+ expect(payrollReads).toHaveLength(ids.length);
  const inserts=result.wire.filter(row=>/^insert into "roster_assignment"/i.test(row.text));
  expect(inserts.length).toBeGreaterThan(1);expect(inserts.every(row=>row.parameters.length<=65535)).toBe(true);
  const stored=await rows(),target=mode==='copy'?stored.filter(row=>row.shiftDate>='2100-01-01'):stored;
@@ -104,8 +109,8 @@ it('proves the predecessor statement would exceed protocol arity without claimin
  const hypothetical=Array.from({length:40},()=>randomUUID()).flatMap(employmentId=>dates.map(shiftDate=>({tenantId:b.tenantId,employmentId,shiftDate,shiftId,isRestDay:false})));
  const query=owner.db.insert(rosterAssignment).values(hypothetical).onConflictDoUpdate({target:[rosterAssignment.tenantId,rosterAssignment.employmentId,rosterAssignment.shiftDate],set:{shiftId:sql`excluded.shift_id`,isRestDay:false,updatedAt:new Date()}}).toSQL();
  expect(hypothetical).toHaveLength(14600);expect(query.params.length).toBeGreaterThan(65535);
- // Compilation only: executing14,600 day locks would conflate SQL arity with
- // the independent, still-unqualified shared advisory-lock capacity.
+ // Compilation only: no claim that this target/date workload fits the complete
+ // command time/memory, subject advisory-lock and existing-row lock envelope.
 });
 
 it('refuses cross-boundary physical duplicates in accepted UUID spellings without writing',async()=>{
@@ -152,3 +157,40 @@ it('uses one fully parsed UUID array, preserves native UUID spellings and refuse
  expect(boundArrays.some(row=>row.types[0]===2951&&typeof row.parameters[0]==='string')).toBe(true);
  }finally{database.client.options.debug=previousDebug;}
 });
+
+
+it('retains exact two-period coverage, processed marks and late closed-period whole-command refusal',async()=>{
+ const batches:string[]=[];
+ for(const period of ['2099-01','2099-02']){
+  const [parent]=await owner.db.insert(payPeriod).values({tenantId:b.tenantId,companyId:b.companyId,period}).returning({id:payPeriod.id});
+  const [batch]=await owner.db.insert(payrollBatch).values({tenantId:b.tenantId,companyId:b.companyId,payPeriodId:parent.id,payPeriod:period,batchDate:period+'-28',status:'processed'}).returning({id:payrollBatch.id});
+  batches.push(batch.id);
+  await owner.db.insert(payslip).values(ids.map(employmentId=>({tenantId:b.tenantId,batchId:batch.id,employmentId,basicSalary:'0',grossPay:'0',statutory:{},totalDeductions:'0',netPay:'0',employerCost:'0'})));
+ }
+ const crossing=['2099-01-31','2099-02-01'];
+ await database.withTenant(ctx,async tx=>{
+  const previous=new Map<string,{batchId:string;status:'processed'|'closed'}>();
+  for(const date of crossing)for(const row of await lockPayrollForAttendanceChange(tx,ids[0],date))previous.set(row.batchId,row);
+  expect([...previous.keys()].sort()).toEqual([...batches].sort());
+  const complete=await lockPayrollForAttendanceChange(tx,ids[0],crossing);
+  expect([...complete].sort((a,b)=>a.batchId.localeCompare(b.batchId))).toEqual([...previous.values()].sort((a,b)=>a.batchId.localeCompare(b.batchId)));
+  expect(await lockPayrollForAttendanceChange(tx,ids[0],['2099-03-15'])).toEqual([]);
+ });
+ const result=await observed(()=>assignShiftBulk(ctx,{employmentIds:ids,shiftDates:crossing,shiftId}));
+ expect(result.value).toEqual({assigned:8});
+ expect(result.wire.filter(row=>row.text.includes('select * from app.attendance_payroll_protection('))).toHaveLength(4);
+ const marks=await owner.db.select({id:payrollBatch.id,marked:payrollBatch.needsRecalcAt,ids:payrollBatch.recalcEmploymentIds}).from(payrollBatch).where(eq(payrollBatch.tenantId,b.tenantId));
+ expect(marks).toHaveLength(2);
+ for(const mark of marks){expect(mark.marked).not.toBeNull();expect([...(mark.ids??[])].sort()).toEqual([...ids].sort());}
+ const markedEvents=(await events()).filter(row=>row.eventType==='payroll-batch.recalc-required');
+ expect(markedEvents).toHaveLength(8);
+ for(const employmentId of ids)expect(markedEvents.filter(row=>row.subjectEmploymentId===employmentId).map(row=>row.aggregateId).sort()).toEqual([...batches].sort());
+ // The later date is protected by a closed run; an earlier valid date must not
+ // leave rows, recalc flags or audits behind when the full command is refused.
+ await owner.db.update(payrollBatch).set({status:'closed',needsRecalcAt:null,recalcEmploymentIds:null}).where(eq(payrollBatch.id,batches[1]));
+ const beforeRows=await rows(),beforeEvents=await events();
+ const beforeBatches=await owner.db.select().from(payrollBatch).where(eq(payrollBatch.tenantId,b.tenantId)).orderBy(payrollBatch.id);
+ await expect(assignShiftBulk(ctx,{employmentIds:ids,shiftDates:['2099-01-30','2099-02-02'],shiftId})).rejects.toThrow('closed payroll attendance period');
+ expect(await rows()).toEqual(beforeRows);expect(await events()).toEqual(beforeEvents);
+ expect(await owner.db.select().from(payrollBatch).where(eq(payrollBatch.tenantId,b.tenantId)).orderBy(payrollBatch.id)).toEqual(beforeBatches);
+},120000);

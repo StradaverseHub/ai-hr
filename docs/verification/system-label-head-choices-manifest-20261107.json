@@ -1,0 +1,44 @@
+{
+  "kind": "SYSTEM_LABEL_HEAD_CHOICES_SOURCE_QUALIFICATION_REQUEST",
+  "releaseEligible": false,
+  "baseCommit": "a33e813e28ec7fd3f651a6bcf0bce7020eb1b41f",
+  "baselineCommit": "0e7d2f22d9dfa10e675087e27b8f10b2fa7903ae",
+  "baselineRun": "42380190578",
+  "sourceBranch": "codex/system-label-head-choices-20261107",
+  "execution": "Standard hosted Actions only; integration owner dispatches frozen candidate",
+  "runTypecheck": true,
+  "runBuild": true,
+  "newTests": [
+    "test/system-label-head-choices.test.ts",
+    "test/system-label-head-transport.test.ts",
+    "test/system-label-head-choice.dom.test.tsx",
+    "test/system-label-head-page.dom.test.tsx"
+  ],
+  "affectedTests": [
+    "test/system-labels-head-column.dom.test.tsx",
+    "test/system-labels-head-routing.test.ts",
+    "test/employee-search-shared.test.ts",
+    "test/system-labels-global-scope.test.ts",
+    "test/system-labels-readonly.dom.test.tsx",
+    "test/system-labels-draft-pagination.dom.test.tsx",
+    "test/system-labels-standard-columns.test.ts",
+    "test/system-label-criteria-owner.test.ts",
+    "test/system-label-criteria-lock-order.test.ts",
+    "test/system-label-workbook.dom.test.tsx",
+    "test/system-label-upload-template-service.test.ts",
+    "test/system-label-template-route.test.ts"
+  ],
+  "requiredRuntimeProofs": [
+    "Actual System Labels browser entry with useful nonempty current-head markup before hydration",
+    "Actual head browser search, page/deep choice, None/unchanged/changed Save and scoped admin journey",
+    "All-module worker coverage includes System Labels and its POST choice journey",
+    "2, 4 and 8 worker scenarios qualified by integration owner before staging"
+  ],
+  "limitations": [
+    "Source request only; no new hosted pass, latency or capacity claim",
+    "No local app tests, compiler, build or runtime executed",
+    "Exact count and deep-offset search costs remain population-dependent",
+    "No canonical writers, label/workbook limit, schema, migration or disclosure literal changes",
+    "No push, CI dispatch, provider, staging or production operation by this checkpoint owner"
+  ]
+}

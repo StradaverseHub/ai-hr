@@ -6,9 +6,9 @@ const expected={candidateSha:'a'.repeat(40),controllerSha:'b'.repeat(40),runId:1
 const indices={groupHR:0,companyHR:1,manager:2,employee:4};
 function capture(plan:NavigationScenarioPlan,phase:'baseline'|'loaded'='baseline'){
  return {schemaVersion:1,protocol:NAVIGATION_CAPTURE_VERSION,releaseAuthorized:false,fixture:plan.fixture,engine:plan.engine,...expected,phase,runAttempt:1,complete:true,
-  observations:plan.scenarios.map(s=>({scenarioId:s.id,destinationId:s.destinationId,role:s.role,actorIndex:indices[s.role],href:s.href,outcome:s.outcome,readiness:s.readiness,
+  observations:plan.scenarios.map(s=>({entry:s.entry??'canonical-link',scenarioId:s.id,destinationId:s.destinationId,role:s.role,actorIndex:indices[s.role],href:s.href,outcome:s.outcome,readiness:s.readiness,
    status:200,finalPath:s.outcome==='denied'?'/':s.href,internalSessionObserved:true,fixtureIdentityObserved:true,elapsedMs:120,
-   checks:s.checks.map(c=>({id:c.id,passed:true,observedCount:c.kind==='count'?c.minimum:1})),failures:{busy:0,unavailable:0,alerts:0,http500:0,pageErrors:0},
+   checks:s.checks.map(c=>({id:c.id,passed:true,observedCount:c.kind==='count'||c.kind==='fixture-roster-rows'?c.minimum:1})),failures:{busy:0,unavailable:0,alerts:0,http500:0,pageErrors:0},
    ...(phase==='loaded'?{startedWith:{active:500,inSteadyWindow:true},usableWith:{active:500,inSteadyWindow:true}}:{})}))};
 }
 describe('closed source-reviewed navigation development protocol (not authenticated execution)',()=>{
@@ -23,10 +23,10 @@ describe('closed source-reviewed navigation development protocol (not authentica
   for(const href of ['https://evil.invalid','//evil.invalid','/x\\y','/x#private','/x\n'])expect(localNavigationHref(href)).toBe(false);
  });
  it('keeps source scenarios explicitly partial and includes positive and denied native roles',()=>{
-  const plan=validateNavigationScenarioPlan(readPlan());expect(plan.scenarios).toHaveLength(24);
-  expect(new Set(plan.scenarios.map(s=>s.destinationId)).size).toBe(6);
-  for(const id of new Set(plan.scenarios.map(s=>s.destinationId)))expect(new Set(plan.scenarios.filter(s=>s.destinationId===id).map(s=>s.role)).size).toBe(4);
-  expect(validateNavigationCapture(capture(plan),plan,expected).observations).toHaveLength(24);
+  const plan=validateNavigationScenarioPlan(readPlan());expect(plan.scenarios).toHaveLength(48);
+  expect(new Set(plan.scenarios.map(s=>s.destinationId)).size).toBe(14);
+  for(const id of new Set(plan.scenarios.map(s=>s.destinationId))){const cases=plan.scenarios.filter(s=>s.destinationId===id);expect(new Set(cases.map(s=>s.role)).size).toBe(cases[0].entry==='direct-route-content'?2:4);}
+  expect(validateNavigationCapture(capture(plan),plan,expected).observations).toHaveLength(48);
   expect(validateNavigationCapture(capture(plan,'loaded'),plan,{...expected,phase:'loaded'}).phase).toBe('loaded');
  });
  it('rejects heading-only proof, URL query context not yet observed, unknown steps, and duplicate scenario IDs',()=>{

@@ -46,3 +46,13 @@ it('shows a retryable read failure rather than a false empty list',async()=>{
  expect(await screen.findByRole('alert')).toBeTruthy();expect(screen.queryByText('No employees match your filters.')).toBeNull();expect(document.body.textContent).not.toContain('PRIVATE_DRIVER_ERROR');
  fireEvent.click(screen.getByRole('button',{name:'Retry'}));await screen.findByText('Employee 1');expect(fetcher).toHaveBeenCalledTimes(2);
 });
+
+it('uses an explicit module endpoint while preserving default consumers and navigation context',async()=>{
+ const fetcher=vi.fn().mockResolvedValue({ok:true,json:async()=>page(25)});vi.stubGlobal('fetch',fetcher);
+ window.history.replaceState(null,'','/leave/employee-balances');
+ render(<NextIntlClientProvider locale="en" messages={messages}><EmployeeScopePanel remote={{initial:page(),endpoint:'/api/leave/inquiry/employees'}} selectedId="e99" basePath="/leave/employee-balances" selectParam="emp" preservePicker allowAll resetToAll preserve={{type:['annual','pool'],department:['dept-a'],asOf:'2026-07-01'}}/></NextIntlClientProvider>);
+ fireEvent.click(screen.getByRole('button',{name:'Next'}));await screen.findByText('Employee 26');
+ expect(fetcher.mock.calls[0][0]).toBe('/api/leave/inquiry/employees');expect(JSON.parse(fetcher.mock.calls[0][1].body)).toMatchObject({offset:25,selectedId:'e99'});
+ fireEvent.click(screen.getByRole('button',{name:/Employee 26/}));
+ const url=new URL(push.mock.calls[0][0],'https://fixture.invalid');expect(url.pathname).toBe('/leave/employee-balances');expect(url.searchParams.getAll('type')).toEqual(['annual','pool']);expect(url.searchParams.get('asOf')).toBe('2026-07-01');expect(url.searchParams.get('emp')).toBe('e26');
+});

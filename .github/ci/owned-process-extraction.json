@@ -1,0 +1,7 @@
+{
+  "kind": "MECHANICAL_SHARED_PROCESS_KERNEL_EXTRACTION",
+  "base": "c73c8e15400890e5dfcb0d32d178929a5522ab5c",
+  "originalSha256": "bb81ee3b98e0f45c2c4d560f336d52387aa02a47bc0129af97d3b8b55167f1d4",
+  "extractedSpanSha256": "c76e9b92bdc8976817ccf96b182885a96185e7f6e37fe7e93054e00bed190ae7",
+  "loader": "# Compile the fixed source-owned sibling bytes directly. -I/-B do not stop\n# SourceFileLoader from reading an ignored timestamp-valid .pyc.\nfrom types import ModuleType\n_kernel_path = Path(__file__).resolve().with_name('owned-process.py')\n_owned_process = ModuleType('aihr_owned_process')\n_owned_process.__file__ = str(_kernel_path)\nexec(compile(_kernel_path.read_bytes(), str(_kernel_path), 'exec', dont_inherit=True), _owned_process.__dict__)\nrequire = _owned_process.require\nappend_event = _owned_process.append_event\nsupervise = _owned_process.supervise\nown_children = _owned_process.own_children\n\n\n"
+}
