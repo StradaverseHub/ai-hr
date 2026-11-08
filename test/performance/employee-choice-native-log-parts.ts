@@ -2,9 +2,10 @@
 import {createHash} from 'node:crypto';
 import {constants,openSync,closeSync,writeSync,fsyncSync,fstatSync,lstatSync,readFileSync,realpathSync,renameSync,existsSync,readdirSync} from 'node:fs';
 import {join} from 'node:path';
-import {gzipSync,gunzipSync,inflateRawSync} from 'node:zlib';
+import {gzipSync} from 'node:zlib';
+import {employeeChoiceNativeLogPartBytes as decodePart,employeeChoiceNativeLogBounds as nativeBounds} from '../../.github/ci/employee-native-log-codec.mjs';
 const MiB=1024*1024;
-export const employeeChoiceNativeLogBounds=Object.freeze({partRawBytes:8*MiB,rawAggregateBytes:128*MiB,gzipAggregateBytes:32*MiB,indexBytes:2*MiB,parts:128,recordBytes:64*MiB,phaseBytes:64*MiB,memberBytes:64*MiB,checkpointMs:20000});
+export const employeeChoiceNativeLogBounds=nativeBounds;
 export type NativeLogChannel='stdout'|'stderr';
 export type NativeLogBinding={source:string;controller:string;run:string;attempt:string;pid:number;container:string;containerId:string;startedAt:string};
 export type NativeLogPart={channel:NativeLogChannel;sequence:number;start:number;rawBytes:number;gzipBytes:number;rawSha256:string;gzipSha256:string;file:string};
@@ -12,18 +13,8 @@ export type NativeLogIndex={kind:'ACTUAL_LOSSLESS_NATIVE_LOG_PARTS_NOT_RELEASE';
 const sha=(value:Buffer|string)=>createHash('sha256').update(value).digest('hex');
 const channels:readonly NativeLogChannel[]=['stdout','stderr'];
 /** Pure bounded decoding only; source/index ownership is established by caller. */
-export function employeeChoiceNativeLogPartBytes(gzip:Buffer,part:Pick<NativeLogPart,'rawBytes'|'gzipBytes'|'rawSha256'|'gzipSha256'>){
- if(!Number.isSafeInteger(part.rawBytes)||part.rawBytes<1||part.rawBytes>employeeChoiceNativeLogBounds.partRawBytes||gzip.length>employeeChoiceNativeLogBounds.memberBytes
-  ||gzip.length!==part.gzipBytes||sha(gzip)!==part.gzipSha256||gzip.length<18||gzip[0]!==31||gzip[1]!==139||gzip[2]!==8||gzip[3]!==0||gzip.readUInt32LE(gzip.length-4)!==part.rawBytes)throw Error('Exact single native gzip member required');
- // A native raw-deflate decoder reports the exact consumed stream length. This
- // rejects trailing/concatenated members even if a final empty member or equal
- // ISIZE could otherwise mask their presence. gunzip separately validates CRC.
- const stream:unknown=inflateRawSync(gzip.subarray(10,gzip.length-8),{info:true,maxOutputLength:employeeChoiceNativeLogBounds.partRawBytes});
- if(!stream||typeof stream!=='object'||!('engine'in stream)||!stream.engine||typeof stream.engine!=='object'||!('bytesWritten'in stream.engine)
-  ||stream.engine.bytesWritten!==gzip.length-18||!('buffer'in stream)||!Buffer.isBuffer(stream.buffer))throw Error('Trailing or concatenated native gzip member');
- const raw=gunzipSync(gzip,{maxOutputLength:employeeChoiceNativeLogBounds.partRawBytes});
- if(raw.length!==part.rawBytes||sha(raw)!==part.rawSha256||!raw.equals(stream.buffer))throw Error('Native raw part bytes differ');return raw;
-}
+export function employeeChoiceNativeLogPartBytes(gzip:Buffer,part:Pick<NativeLogPart,'rawBytes'|'gzipBytes'|'rawSha256'|'gzipSha256'>):Buffer{return decodePart(gzip,part);}
+
 export function employeeChoiceNativeLogParts(directory:string,binding:NativeLogBinding){
  const original=lstatSync(directory);
  if(!original.isDirectory()||original.isSymbolicLink()||original.uid!==process.getuid!()||(original.mode&0o777)!==0o700||realpathSync(directory)!==directory)throw Error('Owned private native log directory required');

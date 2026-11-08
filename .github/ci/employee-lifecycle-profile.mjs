@@ -31,7 +31,7 @@ export const EMPLOYEE_LIFECYCLE_PROFILE=validateEmployeeLifecycleProfile(JSON.pa
 export const EMPLOYEE_LIFECYCLE_PROFILE_SHA256=createHash('sha256').update(bytes).digest('hex');
 export function employeeLifecycleFile(file){return EMPLOYEE_LIFECYCLE_PROFILE.files.find(row=>row.file===file);}
 export function employeeLifecycleStage(stage){const value=EMPLOYEE_LIFECYCLE_PROFILE.files.find(row=>row.stage===stage);assert(value,'Unknown closed employee lifecycle stage');return value;}
-export const EMPLOYEE_LIFECYCLE_STAGES=Object.freeze({'git-head':10,'git-status':10,'git-tracked':10,evidence:30,classifier:15,reset:60,migrate:60,stats:10,logs:10,inspect:10,stop:9,...Object.fromEntries(EMPLOYEE_LIFECYCLE_PROFILE.files.map(row=>[row.stage,row.stageSeconds]))});
+export const EMPLOYEE_LIFECYCLE_STAGES=Object.freeze({'git-head':10,'git-status':10,'git-tracked':10,'controller-head':10,'controller-status':10,evidence:30,classifier:15,reset:60,migrate:60,stats:10,stop:9,...Object.fromEntries(EMPLOYEE_LIFECYCLE_PROFILE.files.map(row=>[row.stage,row.stageSeconds]))});
 /** Pure arithmetic only. Real owners corroborate native anchors/processes. */
 export function employeeLifecycleNormalBudget(stage,elapsed){
  assert(Object.hasOwn(EMPLOYEE_LIFECYCLE_STAGES,stage)&&Number.isFinite(elapsed)&&elapsed>=0);
@@ -45,7 +45,7 @@ export function employeeLifecycleNormalBudget(stage,elapsed){
 /** Pure stage order; this state grants no host/resource authority by itself. */
 export function employeeLifecycleFrontier(file){
  const profile=employeeLifecycleFile(file);assert(profile);let reset=false,migrated=false,test=false,poisoned=false,closed=false;
- const observations=['git-head','git-status','git-tracked','evidence','classifier','stats','logs','inspect','stop'];
+ const observations=['git-head','git-status','git-tracked','controller-head','controller-status','evidence','classifier','stats','stop'];
  return Object.freeze({
   admit(stage){assert(observations.includes(stage)||['reset','migrate',profile.stage].includes(stage),'Unknown/cross-file stage');if(stage==='stop')return;assert(!closed,'Lifecycle closed');if(observations.includes(stage))return;assert(!poisoned,'Poisoned lifecycle forbids SQL');if(stage==='reset'){assert(!reset&&!migrated&&!test,'Reset already consumed');return;}if(stage==='migrate'){assert(reset&&!migrated&&!test,'Actual owned reset required');return;}assert(migrated&&!test,'Actual owned migration required');},
   record(stage,success){assert(typeof success==='boolean');if(!success)poisoned=true;if(stage==='reset')reset=true;if(stage==='migrate')migrated=true;if(stage===profile.stage)test=true;},

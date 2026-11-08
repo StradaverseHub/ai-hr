@@ -17,6 +17,8 @@ import {actualSingletonHost,provisionSingletonHost,writeSingletonBinding} from '
 
 import {candidateEnvironment,nativePreparationEnvironment} from './candidate-environment.mjs';
 import {provisionNativeNextBuild,captureNativeNextInstallation} from './native-next-build-packet.mjs';
+import {employeeLifecycleUnit} from './employee-lifecycle-profile.mjs';
+import {prepareEmployeeLifecycle,runEmployeeLifecycleStage,authorizeEmployeeLifecycleTest,closeEmployeeLifecycle} from './employee-lifecycle.mjs';
 import {catalogueReplayMode,CATALOGUE_REPLAY_SOURCES,validateCatalogueReplayReceipt,catalogueReplayRoleHash} from './notification-catalogue-replay.mjs';
 
 // Frozen full-CI handshake v1. Diagnostic setup receipt only; never installation/release authority.
@@ -134,12 +136,16 @@ function actualFullCiRoleApplicability(){
  const root=process.cwd();
  return inspectFullCiRoleApplicability(file=>{const path=join(root,file);assert.equal(path,realpathSync(path));return ownedRegularBytes(path,1048576).toString('utf8');},file=>{const path=join(root,file);if(!existsSync(path))return false;assert.equal(path,realpathSync(path));assert(lstatSync(path).isFile(),'Unexpected role-profile source shape');return true;});
 }
-function actualFullCiRoleContext(plan,unit,offset,batchSize,files,dir,resetStatus){
+function actualFullCiRoleContext(plan,unit,offset,batchSize,files,dir,resetStatus,metadata){
  const env=process.env,workspace=realpathSync(env.GITHUB_WORKSPACE),source=realpathSync(join(workspace,'source')),
   automation=realpathSync(singletonControllerPath(unit,workspace,env.GITHUB_RUN_ID)),temp=realpathSync(env.RUNNER_TEMP);
  assert.equal(resolve(join(workspace,'source')),source);assert.equal(resolve(dir),realpathSync(dir));
  if(nativeNextUnit(unit)){const bootstrap=readProtectedBootstrap(env);assert.equal(bootstrap.automation,automation);assert.equal(realpathSync('/proc/self/exe'),bootstrap.protectedNodePath);}
- const git=(cwd,...args)=>execFileSync('git',['-c','safe.directory='+cwd,'-c','core.fsmonitor=false','-c','core.hooksPath=/dev/null','-C',cwd,...args],{env:nativePreparationEnvironment(process.env),encoding:'utf8'}).trim();
+ const git=(cwd,...args)=>{
+  if(metadata){assert([source,automation].includes(cwd));assert([JSON.stringify(['rev-parse','HEAD']),JSON.stringify(['status','--porcelain'])].includes(JSON.stringify(args)));
+   return metadata((cwd===source?'git-':'controller-')+(args[0]==='rev-parse'?'head':'status'));}
+  return execFileSync('git',['-c','safe.directory='+cwd,'-c','core.fsmonitor=false','-c','core.hooksPath=/dev/null','-C',cwd,...args],{env:nativePreparationEnvironment(process.env),encoding:'utf8',timeout:10000,killSignal:'SIGTERM'}).trim();
+ };
  const sourceHashes=Object.fromEntries(Object.entries(fullRoleSources).map(([key,file])=>{const path=join(source,file);assert.equal(path,realpathSync(path));return[key,createHash('sha256').update(ownedRegularBytes(path,262144)).digest('hex')];}));
  const event=JSON.parse((nativeNextUnit(unit)?readProtectedNativeEvent(env):ownedRegularBytes(env.GITHUB_EVENT_PATH,1048576)).toString('utf8'));
  const layout={platform:process.platform,workspace,source,automation,temp,evidence:realpathSync(dir),cwd:realpathSync(process.cwd()),controllerScript:realpathSync(fileURLToPath(import.meta.url)),sourceHead:git(source,'rev-parse','HEAD'),controllerHead:git(automation,'rev-parse','HEAD'),sourceClean:git(source,'status','--porcelain')==='',controllerClean:git(automation,'status','--porcelain')===''};
@@ -159,8 +165,14 @@ if (!unit || !destination) throw Error('Unknown CI unit or missing evidence dire
 const dir = resolve(destination); mkdirSync(dir, {recursive: true});
 const report = {healthBefore: null, schemaVersion: 1, sha: plan.sha, fingerprint: plan.fingerprint, id, cwd: process.cwd(), files: unit.files, batches: [], exitCode: 1};
 const closed = 'postgres://nobody:nothing@127.0.0.1:1/no_database';
-let failure = false;
+let failure = false,lifecycle;
+const lifecycleProfile=employeeLifecycleUnit(unit);
+const fixedStage=(stage,environment=candidateEnvironment(process.env))=>{assert(lifecycle,'Actual owned lifecycle required');const result=runEmployeeLifecycleStage(lifecycle,stage,environment);if(result.error||result.signal||result.status!==0)throw Error('Owned employee stage refused: '+stage);return result;};
+const metadata=stage=>fixedStage(stage).stdout.trim();
+const nativeEvidence=()=>{const value=JSON.parse(fixedStage('evidence').stdout);validatePostgresEvidence(value,plan.execution);return value;};
 try {
+  if(lifecycleProfile){lifecycle=prepareEmployeeLifecycle(lifecycleProfile.file);assert.equal(metadata('git-head'),plan.sha);assert.equal(metadata('git-status'),'');}
+
   if(nativeNextUnit(unit)){
    const bootstrap=readProtectedBootstrap();
    execFileSync(bootstrap.protectedNodePath,[join(bootstrap.automation,'.github/ci/native-controller-owner.mjs'),'pdf-tools','--unit',id],
@@ -176,12 +188,13 @@ try {
     const files = unit.files.slice(offset, offset + batchSize), path = join(dir, `${id}-batch-${offset}.json`);
     let rolePrerequisites=null;
     const roleProfile=unit.kind==='db'?actualFullCiRoleApplicability():null;
+    if(lifecycle)assert.equal(roleProfile,fullRoleMode,'Employee lifecycle requires the actual complete role prerequisite owner');
     if (unit.kind === 'db') {
       if (!hostHealth().ok) throw Error('Runner disk headroom too low before DB batch');
-      const reset = spawnSync('bash', [postgres, 'reset'], {stdio: 'inherit', env: {...process.env, AIHR_CI_UNIT: id}});
+      const reset = lifecycle?fixedStage('reset'):spawnSync('bash', [postgres, 'reset'], {stdio: 'inherit', env: {...process.env, AIHR_CI_UNIT: id}});
       if (reset.status !== 0) throw Error('Owned CI PostgreSQL reset failed');
-      const roleContext=roleProfile===fullRoleMode?actualFullCiRoleContext(plan,unit,offset,batchSize,files,dir,reset.status):null;
-      const migrate = roleContext?spawnSync('pnpm', ['db:migrate'], {stdio: 'inherit',env:roleContext.env}):spawnSync('pnpm', ['db:migrate'], {stdio: 'inherit',env:candidateEnvironment(process.env)});
+      const roleContext=roleProfile===fullRoleMode?actualFullCiRoleContext(plan,unit,offset,batchSize,files,dir,reset.status,lifecycle?metadata:undefined):null;
+      const migrate = lifecycle?fixedStage('migrate',roleContext?.env??candidateEnvironment(process.env)):roleContext?spawnSync('pnpm', ['db:migrate'], {stdio: 'inherit',env:roleContext.env}):spawnSync('pnpm', ['db:migrate'], {stdio: 'inherit',env:candidateEnvironment(process.env)});
       if(migrate.status !== 0)throw Error('CI migration failed');
       if(roleContext)rolePrerequisites=readFullCiRoleReceipt(dir,roleContext.binding,roleContext.sourceHashes,process.env.RUNNER_TEMP,roleContext.catalogueReplaySources);
     }
@@ -210,27 +223,32 @@ try {
         env.AIHR_NATIVE_NEXT_PACKET_DIR=build.packetDirectory;env.AIHR_NATIVE_NEXT_BUILD_BINDING=build.bindingPath;
         // GitHub credentials belong to the provisioning owner, never the app/test child.
         delete env.GH_TOKEN;delete env.GITHUB_TOKEN;
-      }else prerequisites=unit.kind==='db'?{kind:'fresh-job-postgres-cluster',workers:1,database:capturePostgresEvidence(id,plan.execution.postgres)}:provisionSingletonHost(plan,unit,dir);
+      }else prerequisites=unit.kind==='db'?{kind:'fresh-job-postgres-cluster',workers:1,database:lifecycle?nativeEvidence():capturePostgresEvidence(id,plan.execution.postgres)}:provisionSingletonHost(plan,unit,dir);
       if(unit.kind==='db')validatePostgresEvidence(prerequisites.database,plan.execution);
       singleton=writeSingletonBinding(plan,unit,dir,prerequisites);env.AIHR_CI_SINGLETON_BINDING=singleton.path;report.singleton=singleton.binding;
+      if(lifecycle)Object.assign(env,authorizeEmployeeLifecycleTest(lifecycle,singleton.path));
     }
-    const child = spawnSync('pnpm', args, {stdio: 'inherit', env});
+    const child = lifecycle?fixedStage(lifecycleProfile.stage,env):spawnSync('pnpm', args, {stdio: 'inherit', env});
     if(singleton&&readFileSync(singleton.path,'utf8')!==singleton.bytes)throw Error('Singleton admission receipt changed during test');
     const exitCode = child.status ?? 1;
-    const stats = unit.kind === 'db' ? spawnSync('bash', [postgres, 'stats'], {encoding:'utf8', env:{...process.env, AIHR_CI_UNIT:id}}) : null;
-    const databaseEvidence=unit.kind==='db'?capturePostgresEvidence(id,plan.execution.postgres):null;
+    const stats = lifecycle?fixedStage('stats'):unit.kind === 'db' ? spawnSync('bash', [postgres, 'stats'], {encoding:'utf8', env:{...process.env, AIHR_CI_UNIT:id}}) : null;
+    const databaseEvidence=lifecycle?nativeEvidence():unit.kind==='db'?capturePostgresEvidence(id,plan.execution.postgres):null;
+    if(lifecycle)report.databaseTerminalEvidence=databaseEvidence;
     report.batches.push({exitCode,databaseEvidence,...(rolePrerequisites?{rolePrerequisites}:{}), databaseResourceSnapshot: stats?.status === 0 ? JSON.parse(stats.stdout) : null, result: JSON.parse(readFileSync(path, 'utf8'))});
     if(databaseEvidence)validatePostgresEvidence(databaseEvidence,plan.execution);
     failure ||= exitCode !== 0;
   }
-  if(createPlan().fingerprint!==plan.fingerprint)throw Error('Candidate changed during CI execution');
+  if(lifecycle){assert.equal(metadata('git-head'),plan.sha);assert.equal(metadata('git-status'),'');}
+  else if(createPlan().fingerprint!==plan.fingerprint)throw Error('Candidate changed during CI execution');
   report.exitCode = failure ? 1 : 0;
 } catch (error) {
   report.error = error instanceof Error ? error.stack : String(error);
   throw error;
 } finally {
+  // Mandatory owned PG stop precedes EVERY terminal report/receipt publication.
+  if(lifecycle){try{const terminal=closeEmployeeLifecycle(lifecycle);report.employeeLifecycle=terminal.proof;if(!terminal.complete)report.exitCode=1;}catch{report.exitCode=1;report.employeeLifecycleSettlementRefused=true;}}
   report.healthAfter = hostHealth();
-  if (unit.kind === 'db') {
+  if (unit.kind === 'db'&&!lifecycleProfile) {
     try{report.databaseTerminalEvidence=capturePostgresEvidence(id,plan.execution.postgres);validatePostgresEvidence(report.databaseTerminalEvidence,plan.execution);}catch(error){report.databaseTelemetryError=String(error);report.exitCode=1;}
     const cleanup = spawnSync('bash', [postgres, 'stop'], {stdio: 'inherit', env: {...process.env, AIHR_CI_UNIT: id}});
     if (cleanup.status !== 0) report.exitCode = 1;

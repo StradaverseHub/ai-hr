@@ -11,7 +11,7 @@ import {buildUnits,hash,CI_EXECUTION} from './manifest.mjs';
 import {candidateEnvironment,nativePreparationEnvironment} from './candidate-environment.mjs';
 export {hash};
 export function createPlan(cwd = process.cwd()) {
-  const git = (...args) => execFileSync('git', ['-c','safe.directory='+cwd,'-c','core.fsmonitor=false','-c','core.hooksPath=/dev/null',...args], {cwd, env:nativePreparationEnvironment(process.env),encoding: 'utf8'}).trim();
+  const git = (...args) => execFileSync('git', ['-c','safe.directory='+cwd,'-c','core.fsmonitor=false','-c','core.hooksPath=/dev/null',...args], {cwd, env:nativePreparationEnvironment(process.env),encoding: 'utf8',timeout:10000,killSignal:'SIGTERM'}).trim();
   const sha = git('rev-parse', 'HEAD');
   if (git('status', '--porcelain')) throw Error('CI requires a clean candidate');
   if (process.env.AIHR_CI_HEAD && process.env.AIHR_CI_HEAD !== sha) throw Error('CI checkout does not match requested HEAD');
@@ -25,7 +25,7 @@ export function createPlan(cwd = process.cwd()) {
   if(classifierRuntime==='native'&&(major!==22||minor<18))throw Error('Native classifier requires Node 22.18+');
   const loader=classifierRuntime==='native'?['--experimental-strip-types']:['--import','tsx'];
   const classified = execFileSync(process.execPath, [...loader, 'scripts/gate-db-classify.ts', 'explain'], {
-    cwd, env:candidateEnvironment(process.env), input: suite.join('\n') + '\n', encoding: 'utf8', maxBuffer: 16 * 1024 * 1024,
+    cwd, env:candidateEnvironment(process.env), timeout:15000,killSignal:'SIGTERM', input: suite.join('\n') + '\n', encoding: 'utf8', maxBuffer: 16 * 1024 * 1024,
   }).trim().split('\n').map(line => line.split('\t'));
   const groups = {nodb: [], db: []};
   for (const [kind, file] of classified) {

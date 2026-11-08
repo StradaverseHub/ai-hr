@@ -1,0 +1,271 @@
+{
+  "kind": "MECHANICAL_PURE_NATIVE_LOG_CODEC_EXTRACTION_NOT_QUALIFICATION",
+  "base": "8a494e850f287b5a47191d62d762ad00281d2c70",
+  "originalSources": {
+    "test/performance/employee-choice-auto-explain-parser.ts": {
+      "sha256": "d2465c782990fe4a03896d0b4378526d0b49e9e9302a98b3bc76dfd625f502d4",
+      "bytes": "/** Pure bounded PG16 log parsing; native provenance is checked separately. */\nimport {createHash} from 'node:crypto';\nexport type AutoExplainMessage={pid:number;durationMs:number;query:string;document:Record<string,unknown>;context:string};\n/** Parse real PG16 auto_explain JSON objects, retaining native error context.\n * Synthetic parser tests establish parsing only; a source hash never replaces a plan. */\nexport function employeeChoiceAutoExplainMessages(log:string,pid:number):AutoExplainMessage[]{\n if(Buffer.byteLength(log)>64*1024*1024||!Number.isSafeInteger(pid)||pid<1)throw Error('Unbounded native plan log');\n const headers=[...log.matchAll(/^.*?\\[([0-9]+)\\]\\s+(?:LOG|NOTICE|WARNING|ERROR|FATAL|PANIC):/gm)];\n if(headers.length>100000)throw Error('Excessive native log messages');\n const result:AutoExplainMessage[]=[];\n for(let index=0;index<headers.length;index++){\n  const header=headers[index];if(Number(header[1])!==pid)continue;\n  const text=log.slice(header.index!+header[0].length,headers[index+1]?.index??log.length);\n  const timing=/^\\s*duration:\\s*([0-9]+(?:\\.[0-9]+)?)\\s+ms\\s+plan:\\s*/.exec(text);if(!timing)continue;\n  const source=text.slice(timing[0].length);if(source[0]!=='{')throw Error('Native plan JSON object required');\n  let depth=0,quoted=false,escaped=false,end=-1;\n  for(let position=0;position<source.length;position++){\n   const char=source[position];\n   if(quoted){if(escaped)escaped=false;else if(char==='\\\\')escaped=true;else if(char==='\"')quoted=false;continue;}\n   if(char==='\"')quoted=true;else if(char==='{')depth++;else if(char==='}'&&--depth===0){end=position+1;break;}\n  }\n  if(end<0)throw Error('Truncated native plan JSON');\n  const document:unknown=JSON.parse(source.slice(0,end));\n  if(!document||typeof document!=='object'||Array.isArray(document)||!('Query Text'in document)||typeof document['Query Text']!=='string'\n   ||!('Plan'in document)||!document.Plan||typeof document.Plan!=='object'||Array.isArray(document.Plan))throw Error('Native executable plan fields required');\n  const durationMs=Number(timing[1]);if(!Number.isFinite(durationMs)||durationMs<0)throw Error('Finite native plan duration required');\n  result.push({pid,durationMs,query:document['Query Text'],document:document as Record<string,unknown>,context:source.slice(end)});\n }\n return result;\n}\nexport const employeeChoiceSqlFingerprint=(sql:string)=>createHash('sha256').update(sql.trim().replace(/;$/,'').replace(/\\s+/g,' ').toLowerCase()).digest('hex');\nexport function employeeChoiceNativeBody(source:string){\n const begin=source.indexOf(' RETURN QUERY WITH'),end=source.indexOf('\\nEND;\\n$employee_choice$;');\n if(begin<0||end<=begin)throw Error('Fixed native purpose body missing');\n return source.slice(begin+' RETURN QUERY '.length,end).trim();\n}\nexport type NativePageExpectation={total:number;offset:number;limit:number};\nexport type NativeCallExpectation={port:'page'|'ids'|'project';rows:number;matchedIds?:number;serverScopeIds?:number;pagination?:NativePageExpectation;assignmentPageRows?:number};\nexport type PlanMarker={label:string;begin:string;end:string;native:boolean;expectedNativeRows?:number;expectedNativeCalls?:readonly NativeCallExpectation[]};\n/** Require both the real nested statement and its actual function invocation.\n * An outer Function Scan alone cannot establish the work performed inside it. */\nexport function employeeChoiceNativeInvocation(entries:readonly AutoExplainMessage[],body:string,expectedRows:number){\n if(!Number.isSafeInteger(expectedRows)||expectedRows<0)throw Error('Independent native stream count required');\n const bodyHash=employeeChoiceSqlFingerprint(body),bodies=entries.filter(entry=>employeeChoiceSqlFingerprint(entry.query)===bodyHash);\n const invocations=entries.filter(entry=>/\\bapp\\.employee_choice_native_prototype\\s*\\(/i.test(entry.query)&&employeeChoiceSqlFingerprint(entry.query)!==bodyHash);\n if(bodies.length!==1||invocations.length!==1)throw Error('One actual body and outer function invocation required');\n const actual=(node:Record<string,unknown>)=>{\n  if(node['Actual Loops']!==1||node['Actual Rows']!==expectedRows)throw Error('Actual native returned stream count differs from independent fixture');\n };\n const bodyPlan=bodies[0].document.Plan;if(!bodyPlan||typeof bodyPlan!=='object'||Array.isArray(bodyPlan))throw Error('Actual native body plan required');\n const nativeBodyPlan=bodyPlan as Record<string,unknown>;actual(nativeBodyPlan);\n const scans:Record<string,unknown>[]=[];\n const visit=(node:unknown)=>{\n  if(!node||typeof node!=='object'||Array.isArray(node))throw Error('Actual native invocation plan required');\n  const value=node as Record<string,unknown>;if(value['Node Type']==='Function Scan')scans.push(value);\n  if(value.Plans!==undefined&&!Array.isArray(value.Plans))throw Error('Actual native invocation children required');\n  for(const child of value.Plans??[])visit(child);\n };\n visit(invocations[0].document.Plan);if(scans.length!==1||scans[0]['Function Name']!=='employee_choice_native_prototype')throw Error('One actual outer native Function Scan required');actual(scans[0]);\n return {expectedRows,nestedRows:nativeBodyPlan['Actual Rows'],functionRows:scans[0]['Actual Rows'],nestedDurationMs:bodies[0].durationMs};\n}\n/** Every real body and outer invocation is paired in native log order. A second\n * projection scan is measured separately, never folded into the old single-call proof. */\nexport function employeeChoiceNativeInvocations(entries:readonly AutoExplainMessage[],body:string,expected:readonly NativeCallExpectation[]){\n const hash=employeeChoiceSqlFingerprint(body),bodyIndices:number[]=[],outerIndices:number[]=[];\n for(const [index,entry]of entries.entries()){\n  if(employeeChoiceSqlFingerprint(entry.query)===hash)bodyIndices.push(index);\n  else if(/\\bapp\\.employee_choice_native_prototype\\s*\\(/i.test(entry.query))outerIndices.push(index);\n }\n if(bodyIndices.length!==expected.length||outerIndices.length!==expected.length)throw Error('Every actual native call/body must be accounted separately');\n const result=[];let previous=-1;\n for(const [index,call]of expected.entries()){\n  const inner=bodyIndices[index],outer=outerIndices[index];\n  if(inner<=previous||inner>=outer)throw Error('Native body/outer invocation sequence is unbound');\n  const entry=entries[outer],ports=[...entry.query.matchAll(/\\/\\* employee-choice-native:(page|ids|project) \\*\\//g)].map(match=>match[1]);\n  if(ports.length!==1||ports[0]!==call.port)throw Error('Actual native purpose differs from independently expected call sequence');\n  if(!entries[inner].context.includes('employee_choice_native_prototype(')||!/at RETURN QUERY/i.test(entries[inner].context))throw Error('Actual native call body context required');\n  const invocation=employeeChoiceNativeInvocation([entries[inner],entry],body,call.rows);\n  const membership=call.port==='project'?employeeChoiceNativeProjectMembership(entries[inner].document.Plan,call.matchedIds):undefined;\n  const serverScope=call.serverScopeIds===undefined?undefined:employeeChoiceNativeServerMembership(entries[inner].document.Plan,call.serverScopeIds);\n  const pagination=call.pagination===undefined?undefined:employeeChoiceNativePagination(entries[inner].document.Plan,call.pagination);\n  const assignmentHydration=call.assignmentPageRows===undefined?undefined:employeeChoiceNativeProjectionAssignments(entries[inner].document.Plan,call.assignmentPageRows);\n  result.push({port:call.port,...invocation,...(membership?{membership}:{}),...(serverScope?{serverScope}:{}),...(pagination?{pagination}:{}),...(assignmentHydration?{assignmentHydration}:{})});previous=outer;\n }\n return result;\n}\n/** A row/loop envelope cannot bound per-row ScalarArrayOp comparisons. For each\n * real projection, bind the independently expected COMPLETE match set to the\n * materialized unnest and its one-time hashed membership subplan. This oracle\n * alone is synthetic; its caller must first bind actual PID/source/body/port. */\nexport function employeeChoiceNativeProjectMembership(plan:unknown,matchedIds:unknown){\n return completeNativeMembership(plan,matchedIds,'employee_choice_project_ids',/\\bANY\\s*\\(\\s*\\(*\\s*(?:\\$20\\b|p_matched_ids\\b)/i);\n}\nexport function employeeChoiceNativeServerMembership(plan:unknown,scopeIds:unknown){\n return{...completeNativeMembership(plan,scopeIds,'employee_choice_scope_ids',/\\bANY\\s*\\(\\s*\\(*\\s*(?:\\$8\\b|p_employee_scope\\b)/i),scopeIds};\n}\nfunction completeNativeMembership(plan:unknown,matchedIds:unknown,cte:string,linear:RegExp){\n if(typeof matchedIds!=='number'||!Number.isSafeInteger(matchedIds)||matchedIds<1)throw Error('Independent complete projection match count required');\n type Node=Record<string,unknown>;\n const nodes:Node[]=[],children=new Map<Node,Node[]>();\n function visit(value:unknown):Node{\n  if(!value||typeof value!=='object'||Array.isArray(value))throw Error('Actual projection plan node required');\n  const node=value as Node;nodes.push(node);if(nodes.length>100000)throw Error('Projection plan node bound exceeded');\n  if(node.Plans!==undefined&&!Array.isArray(node.Plans))throw Error('Projection plan children required');\n  children.set(node,(node.Plans??[]).map(visit));return node;\n }\n visit(plan);\n const predicates=['Filter','Index Cond','Recheck Cond','Hash Cond','Merge Cond','Join Filter','TID Cond','One-Time Filter'];\n for(const node of nodes)for(const key of predicates){const expression=node[key];\n  if(typeof expression==='string'&&linear.test(expression))throw Error('Linear matched-ID ScalarArray membership refused');\n }\n const materialized=nodes.filter(node=>node['Subplan Name']==='CTE '+cte);\n if(materialized.length!==1)throw Error('One actual materialized projection set required');\n const descendants=(node:Node):Node[]=>[node,...(children.get(node)??[]).flatMap(descendants)];\n const unnest=descendants(materialized[0]).filter(node=>node['Node Type']==='Function Scan'&&node['Function Name']==='unnest');\n if(unnest.length!==1||unnest[0]['Actual Loops']!==1||unnest[0]['Actual Rows']!==matchedIds)throw Error('Complete projection set must be unnested exactly once');\n const scans=nodes.filter(node=>node['Node Type']==='CTE Scan'&&node['CTE Name']===cte);\n if(scans.length!==1||scans[0]['Actual Loops']!==1||scans[0]['Actual Rows']!==matchedIds\n  ||scans[0]['Parent Relationship']!=='SubPlan'||typeof scans[0]['Subplan Name']!=='string'\n  ||!/^SubPlan [1-9][0-9]*$/.test(scans[0]['Subplan Name']))throw Error('Complete one-time projection membership scan required');\n const hashed=new RegExp('\\\\bhashed '+scans[0]['Subplan Name']+'\\\\b');\n const employment=nodes.filter(node=>node['Relation Name']==='employment'&&typeof node.Filter==='string'&&hashed.test(node.Filter));\n if(employment.length!==1||employment[0]['Actual Loops']!==1)throw Error('Actual employment filter must use its complete hashed projection set');\n return{kind:'ACTUAL_COMPLETE_MATERIALIZED_HASHED_MEMBERSHIP',matchedIds,unnestRows:unnest[0]['Actual Rows'],unnestLoops:1,\n  membershipRows:scans[0]['Actual Rows'],membershipLoops:1,hashedSubplan:scans[0]['Subplan Name'],linearMatchedArrayRefused:true};\n}\n/** Native branch/sort proof, bound to independently known N/O/L rather than\n * trusting a claimed direction or output count. Both branches must exist; the\n * unused branch's actual source/sort/limit work must remain unexecuted. */\nexport function employeeChoiceNativePagination(plan:unknown,expected:NativePageExpectation){\n const {total,offset,limit}=expected;\n if(!Number.isSafeInteger(total)||total<1||!Number.isSafeInteger(offset)||offset<0||!Number.isSafeInteger(limit)||limit<1||limit>2000)throw Error('Independent native pagination facts required');\n const k=Math.max(0,Math.min(limit,total-offset)),r=Math.max(0,total-offset-k),direction=offset<=r?'ascending':'descending';\n if(k===0)throw Error('Nonempty actual pagination proof required');\n type Node=Record<string,unknown>;const nodes:Node[]=[];\n const visit=(value:unknown):Node=>{\n  if(!value||typeof value!=='object'||Array.isArray(value))throw Error('Actual pagination plan node required');\n  const node=value as Node;nodes.push(node);if(nodes.length>100000||node.Plans!==undefined&&!Array.isArray(node.Plans))throw Error('Bounded pagination children required');\n  for(const child of node.Plans??[])visit(child);return node;\n };\n visit(plan);\n const descendants=(node:Node):Node[]=>[node,...((node.Plans??[])as Node[]).flatMap(descendants)];\n const branches=['ascending','descending'].map(name=>{\n  const roots=nodes.filter(node=>node['Subplan Name']==='CTE employee_choice_page_'+name);\n  if(roots.length!==1)throw Error('Both actual native pagination branches required');\n  return{name,nodes:descendants(roots[0])};\n });\n const active=branches.find(branch=>branch.name===direction)!,inactive=branches.find(branch=>branch.name!==direction)!;\n // The gate may run once to decide not to enter its lateral child. Every\n // actual matching-source, Sort and Limit beneath it must have zero loops.\n const inactiveSorts=inactive.nodes.filter(node=>node['Node Type']==='Sort'),inactiveLimits=inactive.nodes.filter(node=>node['Node Type']==='Limit'),\n  inactiveSources=inactive.nodes.filter(node=>node['CTE Name']==='employee_choice_matching');\n const work=[...inactiveSorts,...inactiveLimits,...inactiveSources];\n if(inactiveSorts.length!==1||inactiveLimits.length!==1||inactiveSources.length!==1||work.some(node=>node['Actual Loops']!==0||node['Actual Rows']!==0))throw Error('Unused native pagination branch executed or missing');\n const sorts=active.nodes.filter(node=>node['Node Type']==='Sort'),scans=active.nodes.filter(node=>node['CTE Name']==='employee_choice_matching'),limits=active.nodes.filter(node=>node['Node Type']==='Limit');\n const rowGoal=(direction==='ascending'?offset:r)+k;\n if(sorts.length!==1||scans.length!==1||limits.length!==1||sorts[0]['Actual Loops']!==1||scans[0]['Actual Loops']!==1||scans[0]['Actual Rows']!==total\n  ||limits[0]['Actual Loops']!==1||limits[0]['Actual Rows']!==k||sorts[0]['Actual Rows']!==rowGoal||sorts[0]['Sort Method']!=='top-N heapsort'||sorts[0]['Sort Space Type']!=='Memory')throw Error('Actual bounded top-N native pagination required');\n const keys=sorts[0]['Sort Key'];\n if(!Array.isArray(keys)||keys.length!==2||typeof keys[0]!=='string'||typeof keys[1]!=='string'\n  ||!(direction==='ascending'?/\\.name$/:/\\.name DESC$/).test(keys[0])\n  ||!(direction==='ascending'?/\\.\"employmentId\"$/:/\\.\"employmentId\" DESC$/).test(keys[1]))throw Error('Native name/employment tuple direction differs');\n return{kind:'ACTUAL_NEARER_END_NATIVE_PAGINATION',...expected,k,r,direction,rowGoal,unusedSourceSortLimitLoops:0,sortMethod:sorts[0]['Sort Method']};\n}\nexport function bindEmployeeChoiceNativePlans(messages:readonly AutoExplainMessage[],markers:readonly PlanMarker[],body:string){\n const known=new Map<string,{marker:PlanMarker;edge:'begin'|'end'}>();\n for(const marker of markers)for(const edge of ['begin','end']as const){const key=employeeChoiceSqlFingerprint(marker[edge]);if(known.has(key))throw Error('Duplicate native plan marker');known.set(key,{marker,edge});}\n const results=new Map<string,AutoExplainMessage[]>(),completed=new Set<string>();let active:PlanMarker|undefined;\n const bodyHash=employeeChoiceSqlFingerprint(body);\n for(const message of messages){\n  const key=employeeChoiceSqlFingerprint(message.query),boundary=known.get(key);\n  if(boundary){\n   if(boundary.edge==='begin'){if(active||results.has(boundary.marker.label))throw Error('Duplicate or nested native plan phase');active=boundary.marker;results.set(active.label,[]);}\n   else{if(!active||active.label!==boundary.marker.label)throw Error('Unmatched native plan phase');completed.add(active.label);active=undefined;}\n   continue;\n  }\n  const native=key===bodyHash;\n  if(native&&(!active||!active.native))throw Error('Native body plan outside its admitted phase');\n  if(active)results.get(active.label)!.push(message);\n }\n if(active||completed.size!==markers.length)throw Error('Incomplete actual native plan phases');\n for(const marker of markers){\n  const entries=results.get(marker.label)!;if(!entries.length)throw Error('Missing actual phase plans');\n  const bodies=entries.filter(entry=>employeeChoiceSqlFingerprint(entry.query)===bodyHash);\n  if(marker.native){\n   const expected=marker.expectedNativeCalls?.length??1;\n   if(bodies.length!==expected||bodies.some(entry=>!entry.context.includes('employee_choice_native_prototype(')||!/at RETURN QUERY/i.test(entry.context)))throw Error('Actual nested native body/context proof required for every call');\n   if(marker.expectedNativeCalls)employeeChoiceNativeInvocations(entries,body,marker.expectedNativeCalls);\n  }else if(bodies.length)throw Error('Current-root control unexpectedly used the prototype');\n }\n return results;\n}\n\n/** Actual source-work proof for identity-only projection. The fixture independently\n * supplies its page size; no current plan cardinality chooses this work budget. */\nexport function employeeChoiceNativeProjectionAssignments(plan:unknown,pageRows:number){\n if(!Number.isSafeInteger(pageRows)||pageRows<1||pageRows>2000)throw Error('Independent bounded native page required');\n let nodes=0,boundedRoots=0,boundedSources=0,probes=0,tupleWork=0;\n const counter=(node:Record<string,unknown>,key:string,optional=false)=>{const value=node[key]??(optional?0:NaN);if(typeof value!=='number'||!Number.isFinite(value)||value<0)throw Error('Invalid native assignment counter');return value;};\n const visit=(value:unknown,within=false)=>{\n  if(!value||typeof value!=='object'||Array.isArray(value)||++nodes>100000)throw Error('Bounded actual native assignment plan required');\n  const node=value as Record<string,unknown>,root=node['Subplan Name']==='CTE employee_choice_page_assignments',inside=within||root;\n  if(root)boundedRoots++;\n  if(node['Relation Name']==='assignment'){\n   const loops=counter(node,'Actual Loops'),rows=counter(node,'Actual Rows'),removed=['Rows Removed by Filter','Rows Removed by Join Filter','Rows Removed by Index Recheck','Rows Removed by Conflict Filter'].reduce((sum,key)=>sum+counter(node,key,true),0);\n   if(!inside&&(loops!==0||rows!==0||removed!==0))throw Error('Full Assignment source executed during bounded projection');\n   if(inside){boundedSources++;probes+=loops;tupleWork+=loops*(rows+removed);}\n  }\n  if(node.Plans!==undefined&&!Array.isArray(node.Plans))throw Error('Native assignment children required');\n  for(const child of node.Plans??[])visit(child,inside);\n };\n visit(plan);\n if(boundedRoots!==1||boundedSources<1||probes!==pageRows||tupleWork!==pageRows)throw Error('Native Assignment hydration exceeded independent page bound');\n return{kind:'ACTUAL_PAGE_ONLY_ASSIGNMENT_HYDRATION',pageRows,boundedSources,probes,tupleWork,fullAssignmentSourceWork:0};\n}\n"
+    },
+    "test/performance/employee-choice-native-log-stream.ts": {
+      "sha256": "5c5a215f509cd33e0aa4410eca27c626c96ffadeaa8fe79e297b101e1a8c53db",
+      "bytes": "/** Continuous native framing. Raw retention and semantic qualification stay separate. */\nimport {TextDecoder} from 'node:util';\nimport {employeeChoiceAutoExplainMessages,employeeChoiceSqlFingerprint,bindEmployeeChoiceNativePlans,type AutoExplainMessage,type PlanMarker} from './employee-choice-auto-explain-parser';\nimport {employeeChoiceNativeLogBounds} from './employee-choice-native-log-parts';\nconst header=/^.*?\\[([0-9]+)\\]\\s+(?:LOG|NOTICE|WARNING|ERROR|FATAL|PANIC):/gm;\nexport type NativeLogRecord={pid:number;bytes:number;text:string};\nexport function* employeeChoiceNativeLogRecords(parts:Iterable<{bytes:Buffer}>):Generator<NativeLogRecord>{\n const decoder=new TextDecoder('utf-8',{fatal:true});let pending='',records=0;\n function* take(final:boolean):Generator<NativeLogRecord>{\n  const matches=[...pending.matchAll(new RegExp(header.source,'gm'))];\n  if(matches.length>100000)throw Error('Excessive native log messages');\n  const count=final?matches.length:Math.max(0,matches.length-1);\n  for(let i=0;i<count;i++){\n   const begin=matches[i].index!,end=matches[i+1]?.index??pending.length,text=pending.slice(begin,end),bytes=Buffer.byteLength(text);\n   if(++records>100000||bytes>employeeChoiceNativeLogBounds.recordBytes)throw Error('Native log record bound exceeded');\n   yield{pid:Number(matches[i][1]),bytes,text};\n  }\n  if(final)pending='';else if(matches.length)pending=pending.slice(matches.at(-1)!.index!);\n  if(Buffer.byteLength(pending)>employeeChoiceNativeLogBounds.recordBytes)throw Error('Incomplete native record exceeds bound');\n }\n for(const part of parts){pending+=decoder.decode(part.bytes,{stream:true});yield* take(false);}\n pending+=decoder.decode();yield* take(true);\n}\n/** One real phase in memory at a time, with the original binder/oracles. Every\n * record is still visited: a native body outside its actual phase refuses. */\nexport function* employeeChoiceNativePlanPhases(parts:Iterable<{bytes:Buffer}>,pid:number,markers:readonly PlanMarker[],body:string){\n const known=new Map<string,{marker:PlanMarker;edge:'begin'|'end'}>(),completed=new Set<string>(),bodyKey=employeeChoiceSqlFingerprint(body);\n for(const marker of markers)for(const edge of ['begin','end']as const){const key=employeeChoiceSqlFingerprint(marker[edge]);if(known.has(key))throw Error('Duplicate native plan marker');known.set(key,{marker,edge});}\n let active:PlanMarker|undefined,entries:AutoExplainMessage[]=[],bytes=0;\n for(const record of employeeChoiceNativeLogRecords(parts)){\n  if(active){bytes+=record.bytes;if(bytes>employeeChoiceNativeLogBounds.phaseBytes)throw Error('Native phase exceeds64MiB');}\n  if(record.pid!==pid)continue;\n  for(const message of employeeChoiceAutoExplainMessages(record.text,pid)){\n   const key=employeeChoiceSqlFingerprint(message.query),boundary=known.get(key);\n   if(boundary?.edge==='begin'){\n    if(active||completed.has(boundary.marker.label))throw Error('Duplicate or nested native plan phase');\n    if(markers[completed.size]!==boundary.marker)throw Error('Actual native phase order differs from canonical marker order');\n    active=boundary.marker;entries=[message];bytes=record.bytes;continue;\n   }\n   if(key===bodyKey&&(!active||!active.native))throw Error('Native body plan outside its admitted phase');\n   if(active)entries.push(message);\n   if(boundary?.edge==='end'){\n    if(!active||active.label!==boundary.marker.label)throw Error('Unmatched native plan phase');\n    const bound=bindEmployeeChoiceNativePlans(entries,[active],body),label=active.label;completed.add(label);active=undefined;entries=[];bytes=0;\n    yield{label,entries:bound.get(label)!};\n   }\n  }\n }\n if(active||completed.size!==markers.length)throw Error('Incomplete actual native plan phases');\n}\n/** End-marker readiness does not await the NEXT record header. Its trailing\n * native context remains in raw parts and is checked by the final full framer. */\nexport function employeeChoiceNativeMarkerObserver(pid:number,onMarker:(query:string)=>void){\n const decoder=new TextDecoder('utf-8',{fatal:true});let pending='',markerRecord=false,notified=false,bytes=0,candidate='',querySeen=false;\n return{append(value:Buffer){\n  pending+=decoder.decode(value,{stream:true});\n  let end:number;while((end=pending.indexOf('\\n'))>=0){const line=pending.slice(0,end+1);pending=pending.slice(end+1);\n   header.lastIndex=0;const start=header.exec(line);\n   if(start){markerRecord=Number(start[1])===pid&&/duration:.*ms\\s+plan:/.test(line);notified=false;bytes=0;candidate='';querySeen=false;}\n   bytes+=Buffer.byteLength(line);if(bytes>employeeChoiceNativeLogBounds.recordBytes)throw Error('Live native record exceeds bound');\n   // The canonical marker query is a single JSON string property. Parse that\n   // property natively, never reconstruct or execute any logged statement.\n   if(markerRecord&&!notified){if(!querySeen)candidate+=line;const query=/^\\s*\"Query Text\":\\s*(\"(?:[^\"\\\\]|\\\\.)*\")\\s*,?\\s*$/.exec(line);\n    if(query){const text:unknown=JSON.parse(query[1]);if(typeof text!=='string')throw Error('Native marker query string required');querySeen=true;if(!/^select 1 as \"aihr_ecp_[a-f0-9]{24}_(?:begin|end)\"$/i.test(text.trim())){markerRecord=false;candidate='';}}\n    else if(querySeen)candidate+=line;\n    if(querySeen&&markerRecord){let depth=0,quoted=false,escaped=false,complete=false;const begin=candidate.indexOf('{');\n     for(const char of candidate.slice(begin)){if(quoted){if(escaped)escaped=false;else if(char==='\\\\')escaped=true;else if(char==='\"')quoted=false;}else if(char==='\"')quoted=true;else if(char==='{')depth++;else if(char==='}'&&--depth===0){complete=true;break;}}\n     if(complete){const messages=employeeChoiceAutoExplainMessages(candidate,pid);if(messages.length!==1)throw Error('One complete native marker required');notified=true;onMarker(messages[0].query);}\n    }\n   }\n  }\n  if(Buffer.byteLength(pending)>employeeChoiceNativeLogBounds.recordBytes)throw Error('Live native partial line exceeds bound');\n },finish(){decoder.decode();if(pending)throw Error('Native follower ended with a partial line');}};\n}\n"
+    },
+    "test/performance/employee-choice-native-log-parts.ts": {
+      "sha256": "9e4f031ce19b8f851d5b284f1709dbdb8e351a325e2c04173fd89e352a84e1a9",
+      "bytes": "/** Lossless owned native log bytes only. No native-plan or release authority. */\nimport {createHash} from 'node:crypto';\nimport {constants,openSync,closeSync,writeSync,fsyncSync,fstatSync,lstatSync,readFileSync,realpathSync,renameSync,existsSync,readdirSync} from 'node:fs';\nimport {join} from 'node:path';\nimport {gzipSync,gunzipSync,inflateRawSync} from 'node:zlib';\nconst MiB=1024*1024;\nexport const employeeChoiceNativeLogBounds=Object.freeze({partRawBytes:8*MiB,rawAggregateBytes:128*MiB,gzipAggregateBytes:32*MiB,indexBytes:2*MiB,parts:128,recordBytes:64*MiB,phaseBytes:64*MiB,memberBytes:64*MiB,checkpointMs:20000});\nexport type NativeLogChannel='stdout'|'stderr';\nexport type NativeLogBinding={source:string;controller:string;run:string;attempt:string;pid:number;container:string;containerId:string;startedAt:string};\nexport type NativeLogPart={channel:NativeLogChannel;sequence:number;start:number;rawBytes:number;gzipBytes:number;rawSha256:string;gzipSha256:string;file:string};\nexport type NativeLogIndex={kind:'ACTUAL_LOSSLESS_NATIVE_LOG_PARTS_NOT_RELEASE';version:1;binding:NativeLogBinding;checkpoint:string;transportClosed:boolean;semanticQualification:false;releaseAuthorized:false;rawBytes:number;gzipBytes:number;channels:Record<NativeLogChannel,{bytes:number;sha256:string}>;parts:NativeLogPart[]};\nconst sha=(value:Buffer|string)=>createHash('sha256').update(value).digest('hex');\nconst channels:readonly NativeLogChannel[]=['stdout','stderr'];\n/** Pure bounded decoding only; source/index ownership is established by caller. */\nexport function employeeChoiceNativeLogPartBytes(gzip:Buffer,part:Pick<NativeLogPart,'rawBytes'|'gzipBytes'|'rawSha256'|'gzipSha256'>){\n if(!Number.isSafeInteger(part.rawBytes)||part.rawBytes<1||part.rawBytes>employeeChoiceNativeLogBounds.partRawBytes||gzip.length>employeeChoiceNativeLogBounds.memberBytes\n  ||gzip.length!==part.gzipBytes||sha(gzip)!==part.gzipSha256||gzip.length<18||gzip[0]!==31||gzip[1]!==139||gzip[2]!==8||gzip[3]!==0||gzip.readUInt32LE(gzip.length-4)!==part.rawBytes)throw Error('Exact single native gzip member required');\n // A native raw-deflate decoder reports the exact consumed stream length. This\n // rejects trailing/concatenated members even if a final empty member or equal\n // ISIZE could otherwise mask their presence. gunzip separately validates CRC.\n const stream:unknown=inflateRawSync(gzip.subarray(10,gzip.length-8),{info:true,maxOutputLength:employeeChoiceNativeLogBounds.partRawBytes});\n if(!stream||typeof stream!=='object'||!('engine'in stream)||!stream.engine||typeof stream.engine!=='object'||!('bytesWritten'in stream.engine)\n  ||stream.engine.bytesWritten!==gzip.length-18||!('buffer'in stream)||!Buffer.isBuffer(stream.buffer))throw Error('Trailing or concatenated native gzip member');\n const raw=gunzipSync(gzip,{maxOutputLength:employeeChoiceNativeLogBounds.partRawBytes});\n if(raw.length!==part.rawBytes||sha(raw)!==part.rawSha256||!raw.equals(stream.buffer))throw Error('Native raw part bytes differ');return raw;\n}\nexport function employeeChoiceNativeLogParts(directory:string,binding:NativeLogBinding){\n const original=lstatSync(directory);\n if(!original.isDirectory()||original.isSymbolicLink()||original.uid!==process.getuid!()||(original.mode&0o777)!==0o700||realpathSync(directory)!==directory)throw Error('Owned private native log directory required');\n if(!/^[a-f0-9]{40}$/.test(binding.source)||!/^[a-f0-9]{40}$/.test(binding.controller)||!/^\\d{1,16}$/.test(binding.run)||binding.attempt!=='1'\n  ||!Number.isSafeInteger(binding.pid)||binding.pid<1||!/^aihr-ci-[A-Za-z0-9-]+$/.test(binding.container)||!/^[a-f0-9]{64}$/.test(binding.containerId)||!Number.isFinite(Date.parse(binding.startedAt)))throw Error('Exact native log source and observed process binding required');\n const bound={...binding},parts:NativeLogPart[]=[],state={stdout:{chunks:[]as Buffer[],pending:0,bytes:0,stored:0,hash:createHash('sha256')},stderr:{chunks:[]as Buffer[],pending:0,bytes:0,stored:0,hash:createHash('sha256')}};\n let rawBytes=0,gzipBytes=0,generation=0,closed=false,indexBytes:Buffer|undefined,indexSha256:string|undefined,published:NativeLogIndex|undefined;\n const pointer=join(directory,'native-log-index.json');\n const owner=()=>{const now=lstatSync(directory);if(!now.isDirectory()||now.isSymbolicLink()||now.uid!==original.uid||now.dev!==original.dev||now.ino!==original.ino||(now.mode&0o777)!==0o700||realpathSync(directory)!==directory)throw Error('Native log directory identity changed');};\n const sameFile=(a:ReturnType<typeof fstatSync>,b:ReturnType<typeof fstatSync>)=>a.dev===b.dev&&a.ino===b.ino&&a.size===b.size&&a.mode===b.mode&&a.uid===b.uid&&a.gid===b.gid&&a.mtimeMs===b.mtimeMs&&a.ctimeMs===b.ctimeMs;\n function readOwned(name:string,maximum:number){\n  owner();const path=join(directory,name),fd=openSync(path,constants.O_RDONLY|constants.O_NOFOLLOW|constants.O_NONBLOCK);\n  try{const before=fstatSync(fd);if(!before.isFile()||before.nlink!==1||before.uid!==original.uid||(before.mode&0o777)!==0o600||before.size>maximum)throw Error('Bounded owned native log file required');\n   const raw=readFileSync(fd);if(!sameFile(before,fstatSync(fd))||!sameFile(before,lstatSync(path)))throw Error('Native log file identity changed');owner();return raw;\n  }finally{closeSync(fd);}\n }\n function writeOwned(name:string,payload:Buffer){\n  owner();const path=join(directory,name),fd=openSync(path,constants.O_WRONLY|constants.O_CREAT|constants.O_EXCL|constants.O_NOFOLLOW,0o600);\n  try{let offset=0;while(offset<payload.length){const n=writeSync(fd,payload,offset,payload.length-offset);if(n<=0)throw Error('Native log write made no progress');offset+=n;}fsyncSync(fd);\n   const info=fstatSync(fd);if(!info.isFile()||info.uid!==original.uid||info.nlink!==1||info.size!==payload.length||(info.mode&0o777)!==0o600||!sameFile(info,lstatSync(path)))throw Error('Native log written file changed');owner();\n  }finally{closeSync(fd);}\n }\n function flush(channel:NativeLogChannel){\n  const current=state[channel];if(!current.pending)return;\n  if(parts.length>=employeeChoiceNativeLogBounds.parts)throw Error('Native log part count exceeded');\n  const raw=Buffer.concat(current.chunks,current.pending),gzip=gzipSync(raw,{level:6});\n  if(raw.length>employeeChoiceNativeLogBounds.partRawBytes||gzip.length>employeeChoiceNativeLogBounds.memberBytes||gzipBytes+gzip.length>employeeChoiceNativeLogBounds.gzipAggregateBytes)throw Error('Native log compressed part bounds exceeded');\n  const part:NativeLogPart={channel,sequence:parts.length+1,start:current.stored,rawBytes:raw.length,gzipBytes:gzip.length,rawSha256:sha(raw),gzipSha256:sha(gzip),file:'native-log-part-'+(parts.length+1)+'.'+channel+'.log.gz'};\n  writeOwned(part.file,gzip);parts.push(part);gzipBytes+=gzip.length;current.stored+=raw.length;current.chunks=[];current.pending=0;\n }\n function append(channel:NativeLogChannel,value:Buffer){\n  if(closed||!channels.includes(channel)||!Buffer.isBuffer(value))throw Error('Native log stream admission refused');\n  if(rawBytes+value.length>employeeChoiceNativeLogBounds.rawAggregateBytes)throw Error('Native raw aggregate bound exceeded');\n  const current=state[channel];current.hash.update(value);current.bytes+=value.length;rawBytes+=value.length;\n  let offset=0;while(offset<value.length){const size=Math.min(value.length-offset,employeeChoiceNativeLogBounds.partRawBytes-current.pending);current.chunks.push(Buffer.from(value.subarray(offset,offset+size)));current.pending+=size;offset+=size;if(current.pending===employeeChoiceNativeLogBounds.partRawBytes)flush(channel);}\n }\n function checkpoint(label:string,transportClosed=false){\n  if(closed||typeof label!=='string'||label.length>160||label.includes('\\0'))throw Error('Native log checkpoint refused');\n  for(const channel of channels)flush(channel);\n  if(indexBytes){if(sha(readOwned('native-log-index.json',employeeChoiceNativeLogBounds.indexBytes))!==indexSha256)throw Error('Native log index changed');}\n  else if(existsSync(pointer))throw Error('Foreign native log index exists');\n  const index:NativeLogIndex={kind:'ACTUAL_LOSSLESS_NATIVE_LOG_PARTS_NOT_RELEASE',version:1,binding:{...bound},checkpoint:label,transportClosed,semanticQualification:false,releaseAuthorized:false,rawBytes,gzipBytes,\n   channels:{stdout:{bytes:state.stdout.bytes,sha256:state.stdout.hash.copy().digest('hex')},stderr:{bytes:state.stderr.bytes,sha256:state.stderr.hash.copy().digest('hex')}},parts:parts.map(part=>({...part}))};\n  const raw=Buffer.from(JSON.stringify(index,null,2)+'\\n');if(raw.length>employeeChoiceNativeLogBounds.indexBytes)throw Error('Native log index byte bound exceeded');\n  const temporary='native-log-index-'+(++generation)+'.pending';writeOwned(temporary,raw);renameSync(join(directory,temporary),pointer);\n  const descriptor=openSync(directory,constants.O_RDONLY|constants.O_DIRECTORY|constants.O_NOFOLLOW);try{fsyncSync(descriptor);}finally{closeSync(descriptor);}\n  indexBytes=raw;indexSha256=sha(raw);published=index;closed=transportClosed;return{file:'native-log-index.json',sha256:indexSha256,rawBytes,gzipBytes,parts:parts.length,transportClosed};\n }\n function verifyIndex(){\n  if(!indexBytes||!indexSha256||!published)throw Error('No actual native log index retained');\n  // A durable pointer describes ONLY its published snapshot. Newly buffered or\n  // written parts cannot inherit an earlier checkpoint hash after publication\n  // failure, even when every new byte is owned by this same collector.\n  if(rawBytes!==published.rawBytes||gzipBytes!==published.gzipBytes||closed!==published.transportClosed||JSON.stringify(parts)!==JSON.stringify(published.parts)\n   ||channels.some(channel=>state[channel].pending!==0||state[channel].stored!==published!.channels[channel].bytes||state[channel].bytes!==published!.channels[channel].bytes\n    ||state[channel].hash.copy().digest('hex')!==published!.channels[channel].sha256))throw Error('Native log has unpublished bytes or parts');\n  const actual=readOwned('native-log-index.json',employeeChoiceNativeLogBounds.indexBytes);if(!actual.equals(indexBytes)||sha(actual)!==indexSha256)throw Error('Native log index differs from its source owner');\n  const expected=new Set(published.parts.map(part=>part.file));for(const name of readdirSync(directory))if(name.startsWith('native-log-part-')&&!expected.has(name))throw Error('Unindexed native log part present');\n  return{file:'native-log-index.json',sha256:indexSha256,rawBytes:published.rawBytes,gzipBytes:published.gzipBytes,parts:published.parts.length,transportClosed:published.transportClosed};\n }\n function* read(channel:NativeLogChannel){\n  verifyIndex();if(!channels.includes(channel))throw Error('Native log channel refused');let offset=0;const hash=createHash('sha256');\n  for(const part of published!.parts.filter(part=>part.channel===channel)){\n   if(part.start!==offset||part.sequence<1||part.rawBytes<1||part.rawBytes>employeeChoiceNativeLogBounds.partRawBytes)throw Error('Native part sequence/range differs');\n   const gzip=readOwned(part.file,employeeChoiceNativeLogBounds.memberBytes);\n   const raw=employeeChoiceNativeLogPartBytes(gzip,part);offset+=raw.length;hash.update(raw);yield{start:part.start,bytes:raw};\n  }\n  if(offset!==state[channel].stored||offset!==state[channel].bytes||hash.digest('hex')!==state[channel].hash.copy().digest('hex'))throw Error('Complete native channel coverage differs');verifyIndex();\n }\n return{append,checkpoint,verifyIndex,read,snapshot:()=>({current:{rawBytes,gzipBytes,parts:parts.length,transportClosed:closed,pendingBytes:state.stdout.pending+state.stderr.pending},published:published&&indexSha256?{sha256:indexSha256,rawBytes:published.rawBytes,gzipBytes:published.gzipBytes,parts:published.parts.length,transportClosed:published.transportClosed}:null})};\n}\n"
+    },
+    "test/performance/employee-choice-plan-work.ts": {
+      "sha256": "4a6eb56b6e96e5311b233ce5259f5cdc2edc149c1e5bde33d92d980662670560",
+      "bytes": "/** Development rejection envelopes, not runtime acceptance or a query-shape contract. */\nimport {sql} from 'drizzle-orm';\nimport type {Tx} from '../../db/client';\nexport type EmployeeChoiceCardinalities={employment:number;person:number;assignment:number;company:number;department:number;businessUnit:number};\n/** Exact counts in the caller's real session. The owner captures the whole owned\n * fictional database; an application session captures independently visible rows. */\nexport async function employeeChoiceActualCardinalities(tx:Pick<Tx,'execute'>){\n const [row]=await tx.execute<EmployeeChoiceCardinalities>(sql`select\n  (select count(*)::int from public.employment) as employment,(select count(*)::int from public.person) as person,\n  (select count(*)::int from public.assignment) as assignment,(select count(*)::int from public.company) as company,\n  (select count(*)::int from public.department) as department,(select count(*)::int from public.business_unit) as \"businessUnit\"`);\n if(!row)throw Error('Native fixture cardinalities missing');return row;\n}\n/** Independent native server-population facts; no browser search/status/facet/page\n * filters and no candidate CTE. Person, Company and Assignment retain their own RLS. */\nexport async function employeeChoiceAuthorizedPopulationFacts(tx:Tx,tenantId:string,companyIds:readonly string[]){\n const where=sql`e.tenant_id=${tenantId}::uuid and ${companyIds.length?sql`e.company_id=any(${'{'+companyIds.join(',')+'}'}::uuid[])`:sql`true`}`;\n const identity=sql`from public.employment e join public.person p on p.id=e.person_id and p.tenant_id=${tenantId}::uuid\n  join public.company c on c.id=e.company_id and c.tenant_id=${tenantId}::uuid`;\n const [population]=await tx.execute<{identities:number;companies:number;departmentPairs:number;unitPairs:number}>(sql`select\n  (select count(*)::int ${identity} where ${where}) as identities,\n  (select count(distinct e.company_id)::int ${identity} where ${where}) as companies,\n  (select count(distinct(e.company_id,a.department_id))::int ${identity} join public.assignment a on a.employment_id=e.id\n   and a.tenant_id=${tenantId}::uuid and a.valid_to is null and a.superseded_at is null where ${where} and a.department_id is not null) as \"departmentPairs\",\n  (select count(distinct(e.company_id,a.business_unit_id))::int ${identity} join public.assignment a on a.employment_id=e.id\n   and a.tenant_id=${tenantId}::uuid and a.valid_to is null and a.superseded_at is null where ${where} and a.business_unit_id is not null) as \"unitPairs\"`);\n if(!population)throw Error('Native server population facts missing');\n return{scope:{tenantId,companyIds:[...companyIds]},visibleRelationCounts:await employeeChoiceActualCardinalities(tx),population};\n}\nconst removedFields=['Rows Removed by Filter','Rows Removed by Join Filter','Rows Removed by Index Recheck','Rows Removed by Conflict Filter']as const;\nconst keys=['employment','person','assignment','company','department','businessUnit']as const;\nexport function employeeChoicePlanLimits(counts:EmployeeChoiceCardinalities){\n if(keys.some(key=>!Number.isSafeInteger(counts[key])||counts[key]<0))throw Error('Invalid exact native cardinalities');\n const scaleRows=Math.max(1,...keys.map(key=>counts[key]));\n // Linear below the retained50k benchmark scale, capped at its original work/buffer\n // ceilings. A larger future fixture requires review, never an automatic larger budget.\n return{scaleScope:'largest exact whole-owned-fixture base relation, all fixture tenants; not reltuples or authorized output count',scaleRows,\n  maxNodeWork:Math.min(1_600_000,32*scaleRows),maxRootSharedBlocks:Math.min(150_000,Math.max(4096,3*scaleRows)),\n  metric:'Actual Loops * (Actual Rows + four Rows Removed counters); PostgreSQL per-loop averages may be rounded'};\n}\nexport function employeeChoicePlanWork(plan:Record<string,unknown>,counts:EmployeeChoiceCardinalities){\n const limits=employeeChoicePlanLimits(counts),nodes:Record<string,unknown>[]=[],rejectionReasons:string[]=[];let maximumNodeWork=0;\n const counter=(node:Record<string,unknown>,key:string,required=false)=>{\n  const value=node[key]??(required?NaN:0);if(typeof value!=='number'||!Number.isFinite(value)||value<0)throw Error('Invalid actual plan counter: '+key);return value;\n };\n const visit=(node:Record<string,unknown>,path:string)=>{\n  const loops=counter(node,'Actual Loops',true),rows=counter(node,'Actual Rows',true),removed=Object.fromEntries(removedFields.map(key=>[key,counter(node,key)]));\n  const work=loops*(rows+Object.values(removed).reduce((sum,value)=>sum+value,0));\n  maximumNodeWork=Math.max(maximumNodeWork,work);\n  if(!Number.isFinite(work)||work>limits.maxNodeWork)rejectionReasons.push(path+':node-work');\n  nodes.push({path,nodeType:node['Node Type'],relation:node['Relation Name']??null,index:node['Index Name']??null,cte:node['CTE Name']??null,loops,rows,removed,work});\n  if(node.Plans!==undefined&&!Array.isArray(node.Plans))throw Error('Invalid actual plan children');\n  for(const [index,child]of ((node.Plans??[])as Record<string,unknown>[]).entries())visit(child,path+'.'+index);\n };\n visit(plan,'root');\n const rootSharedBlocks=counter(plan,'Shared Hit Blocks',true)+counter(plan,'Shared Read Blocks',true);\n if(rootSharedBlocks>limits.maxRootSharedBlocks)rejectionReasons.push('root:shared-blocks');\n return{kind:'DEVELOPMENT_COMPLEXITY_REJECTION_ONLY',limits,rootSharedBlocks,maximumNodeWork,nodes,rejectionReasons};\n}\n"
+    }
+  },
+  "composition": {
+    "parts": {
+      "start": "export function employeeChoiceNativeLogPartBytes(",
+      "end": "\nexport function employeeChoiceNativeLogParts("
+    },
+    "parserAndStream": "Remove ONLY import and export type lines; retain all other ordered source lines",
+    "header": "/** One read-only native log codec. No DB, app, Vitest, execution or authority API.\n * Mechanically extracted typed bodies; inverse source record retains all originals. */\nimport {createHash} from 'node:crypto';\nimport {TextDecoder} from 'node:util';\nimport {gunzipSync,inflateRawSync} from 'node:zlib';\nconst MiB=1024*1024;\nexport const employeeChoiceNativeLogBounds=Object.freeze({partRawBytes:8*MiB,rawAggregateBytes:128*MiB,gzipAggregateBytes:32*MiB,indexBytes:2*MiB,parts:128,recordBytes:64*MiB,phaseBytes:64*MiB,memberBytes:64*MiB,checkpointMs:20000});\nconst sha=(value)=>createHash('sha256').update(value).digest('hex');\n"
+  },
+  "typeErasures": [
+    {
+      "before": "Pick<NativeLogPart,'rawBytes'|'gzipBytes'|'rawSha256'|'gzipSha256'>",
+      "after": "PART_TYPE",
+      "count": 1
+    },
+    {
+      "before": "new Map<string,{marker:PlanMarker;edge:'begin'|'end'}>()",
+      "after": "new Map()",
+      "count": 2
+    },
+    {
+      "before": "new Map<string,AutoExplainMessage[]>()",
+      "after": "new Map()",
+      "count": 1
+    },
+    {
+      "before": "new Map<Node,Node[]>()",
+      "after": "new Map()",
+      "count": 1
+    },
+    {
+      "before": "new Set<string>()",
+      "after": "new Set()",
+      "count": 2
+    },
+    {
+      "before": "type Node=Record<string,unknown>;",
+      "after": "",
+      "count": 2
+    },
+    {
+      "before": ":readonly NativeCallExpectation[]",
+      "after": "",
+      "count": 1
+    },
+    {
+      "before": ":readonly AutoExplainMessage[]",
+      "after": "",
+      "count": 3
+    },
+    {
+      "before": ":readonly PlanMarker[]",
+      "after": "",
+      "count": 2
+    },
+    {
+      "before": ":Iterable<{bytes:Buffer}>",
+      "after": "",
+      "count": 2
+    },
+    {
+      "before": ":Generator<NativeLogRecord>",
+      "after": "",
+      "count": 2
+    },
+    {
+      "before": ":(query:string)=>void",
+      "after": "",
+      "count": 1
+    },
+    {
+      "before": " as Record<string,unknown>",
+      "after": "",
+      "count": 4
+    },
+    {
+      "before": "as Node[]",
+      "after": "",
+      "count": 1
+    },
+    {
+      "before": " as Node",
+      "after": "",
+      "count": 2
+    },
+    {
+      "before": "as const",
+      "after": "",
+      "count": 2
+    },
+    {
+      "before": ":number[]",
+      "after": "",
+      "count": 2
+    },
+    {
+      "before": ":AutoExplainMessage[]",
+      "after": "",
+      "count": 3
+    },
+    {
+      "before": ":PlanMarker|undefined",
+      "after": "",
+      "count": 2
+    },
+    {
+      "before": ":NativePageExpectation",
+      "after": "",
+      "count": 1
+    },
+    {
+      "before": ":Node[]",
+      "after": "",
+      "count": 4
+    },
+    {
+      "before": ":Record<string,unknown>[]",
+      "after": "",
+      "count": 1
+    },
+    {
+      "before": ":Record<string,unknown>",
+      "after": "",
+      "count": 2
+    },
+    {
+      "before": ":PART_TYPE",
+      "after": "",
+      "count": 1
+    },
+    {
+      "before": ":RegExp",
+      "after": "",
+      "count": 1
+    },
+    {
+      "before": ":Buffer",
+      "after": "",
+      "count": 2
+    },
+    {
+      "before": ":unknown",
+      "after": "",
+      "count": 15
+    },
+    {
+      "before": ":number",
+      "after": "",
+      "count": 6
+    },
+    {
+      "before": ":boolean",
+      "after": "",
+      "count": 1
+    },
+    {
+      "before": ":string",
+      "after": "",
+      "count": 9
+    },
+    {
+      "before": ":Node",
+      "after": "",
+      "count": 4
+    },
+    {
+      "before": "header.index!",
+      "after": "header.index",
+      "count": 1
+    },
+    {
+      "before": "matches[i].index!",
+      "after": "matches[i].index",
+      "count": 1
+    },
+    {
+      "before": "matches.at(-1)!.index!",
+      "after": "matches.at(-1).index",
+      "count": 1
+    },
+    {
+      "before": "results.get(active.label)!",
+      "after": "results.get(active.label)",
+      "count": 1
+    },
+    {
+      "before": "results.get(marker.label)!",
+      "after": "results.get(marker.label)",
+      "count": 1
+    },
+    {
+      "before": "bound.get(label)!",
+      "after": "bound.get(label)",
+      "count": 1
+    },
+    {
+      "before": "branch.name===direction)!",
+      "after": "branch.name===direction)",
+      "count": 1
+    },
+    {
+      "before": "branch.name!==direction)!",
+      "after": "branch.name!==direction)",
+      "count": 1
+    }
+  ],
+  "canonicalSha256": "43096f695077583b6b5c3bbdc450dad2eb4c90b44dea1397e30f453fb98dfd64",
+  "semanticBehaviorQualified": false,
+  "releaseAuthorized": false,
+  "additionalPureWork": {
+    "source": "test/performance/employee-choice-plan-work.ts",
+    "start": "const removedFields=",
+    "typeErasures": [
+      {
+        "before": "as const",
+        "after": "",
+        "count": 2
+      },
+      {
+        "before": ":Record<string,unknown>[]",
+        "after": "",
+        "count": 1
+      },
+      {
+        "before": ":Record<string,unknown>",
+        "after": "",
+        "count": 3
+      },
+      {
+        "before": ":EmployeeChoiceCardinalities",
+        "after": "",
+        "count": 2
+      },
+      {
+        "before": ":string[]",
+        "after": "",
+        "count": 1
+      },
+      {
+        "before": ":string",
+        "after": "",
+        "count": 2
+      },
+      {
+        "before": "as Record<string,unknown>[]",
+        "after": "",
+        "count": 1
+      }
+    ]
+  }
+}
