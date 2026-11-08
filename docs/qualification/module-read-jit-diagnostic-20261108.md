@@ -175,3 +175,20 @@ fingerprints and maintenance cost have not been measured. The same three300s
 cases,30s hooks and20min focused outer limit remain. Preserve any timeout; no
 capacity increase or performance acceptance follows from this source proposal.
 The1549-member path list is unchanged; current three source hashes change.
+
+
+## Actual controller model wrapper
+
+The existing51-case singleton-profiles.test.mjs owner had no normal-discovered
+TypeScript wrapper. This successor adds exactly one ordinary NoDB wrapper for
+that ACTUAL owner, preserving every model body and the1549-member JIT path list.
+The wrapper's unchanged default30s Vitest case gives its fixed Node subprocess
+25s and1MiB output buffers, without retry. It requires exit0/noerror/nosignal,
+all51 exact ordered Subtest/ok names and numbers, exact plan/tests/pass totals,
+zero failed/cancelled/skipped/todo/suites and no SKIP/TODO directive. Omitted,
+renamed, substituted, hanging or failed controls cannot be counted as a pass.
+The new27th singleton/every-member source omission assertion executes in that
+real controller owner. No mirrored replacement model or new test-case budget.
+Root+independent affectedFULL review of this frozen source precedes publication.
+Only after actual hosted1wrapper+51nestedcases pass may the separately authorized
+sole3caseJIT diagnostic run. This adds no native/normal/release qualification.
