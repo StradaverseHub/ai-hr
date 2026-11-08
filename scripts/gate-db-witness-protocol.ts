@@ -243,19 +243,21 @@ export function inspectOwnershipLedger(raw:Uint8Array,p:Purpose):LedgerInspectio
  need(raw instanceof Uint8Array&&raw.length<=OWNERSHIP_LIMITS.bytes);const bytes=new Uint8Array(raw),names=stageNames(p);
  const actors:ActorImage[]=[],stages:StageImage[]=[],rows:OwnershipRow[]=[],monitorIdentities=new Set<string>();let loss=false,rootClosed=false,issue:LedgerInspection['issue']=null,completeRows=0,offset=0;
  const active=()=>actors.map((a,id)=>({a,id})).filter(({a})=>a.close===null);
- const stageEnter=(stage:string):StageImage=>{
+ // Return a trial image only. No accepted-prefix state changes before ALL row guards.
+ const stageCandidate=(stage:string):StageImage=>{
   const index=names.indexOf(stage);need(index>=0);let s=stages.at(-1);
   if(!s||s.index!==index){need(!loss&&index===(s?s.index+1:0));if(s){need(s.result?.reason==='complete');need(!active().some(({a})=>a.stage===names[s!.index]));}
-   s={index,ownerId:active().at(-1)!.id,packets:[],result:null};stages.push(s);
+   s={index,ownerId:active().at(-1)!.id,packets:[],result:null};
   }return s;
  };
+ const commitStage=(s:StageImage)=>{if(stages.at(-1)!==s)stages.push(s);};
  function accept(row:OwnershipRow){
   need(row.sequence===rows.length&&!rootClosed);
   if(row.kind==='owner-pinned'){
-   const a=row.payload;need(a.pid!==a.parentPid);need(a.actorId===actors.length&&actors.length<=1+2*names.length);need(!actors.some(x=>x.pin.pid===a.pid&&x.pin.startTicks===a.startTicks));
+   const a=row.payload;let trial:StageImage|null=null;need(a.pid!==a.parentPid);need(a.actorId===actors.length&&actors.length<=1+OWNERSHIP_LIMITS.actorsPerStage*names.length);need(!actors.some(x=>x.pin.pid===a.pid&&x.pin.startTicks===a.startTicks));
    if(a.role==='root')need(actors.length===0&&row.stage===null);
-   else {need(actors.length>0&&row.stage!==null&&!loss);const s=stageEnter(row.stage);need(s.packets.length===0&&actors.filter(x=>x.stage===row.stage).length<2);const parent=active().at(-1)!;need(a.parentPid===parent.a.pin.pid&&a.parentStartTicks===parent.a.pin.startTicks);need(parent.a.pin.children.state==='empty');}
-   actors.push({stage:row.stage,pin:a,close:null,returned:false,entered:false});return;
+   else {need(actors.length>0&&row.stage!==null&&!loss);trial=stageCandidate(row.stage);need(trial.packets.length===0&&actors.filter(x=>x.stage===row.stage).length<OWNERSHIP_LIMITS.actorsPerStage);const parent=active().at(-1)!;need(a.parentPid===parent.a.pin.pid&&a.parentStartTicks===parent.a.pin.startTicks);need(parent.a.pin.children.state==='empty');}
+   if(trial)commitStage(trial);actors.push({stage:row.stage,pin:a,close:null,returned:false,entered:false});return;
   }
   need(actors.length>0);
   if(row.kind==='owner-close-observed'){
@@ -266,24 +268,32 @@ export function inspectOwnershipLedger(raw:Uint8Array,p:Purpose):LedgerInspectio
   }
   if(row.kind==='upstream-owner-lost'){
    need(!loss);const a=actors[row.payload.actorId];need(a&&a.close===null&&row.payload.pid===a.pin.parentPid&&row.payload.startTicks===a.pin.parentStartTicks);
-   if(row.stage===null)need(stages.length===0);else stageEnter(row.stage);loss=true;return;
+   const trial=row.stage===null?null:stageCandidate(row.stage);if(row.stage===null)need(stages.length===0);if(trial)commitStage(trial);loss=true;return;
   }
-  need(row.stage!==null);const s=stageEnter(row.stage),packet=row.payload;need(s.result===null&&active().every(({a})=>a.pin.children.state==='empty'));
-  const actor=active().at(-1)!;need(actor.a.stage===null||actor.a.stage===row.stage);if(s.packets.length===0)s.ownerId=actor.id;need(s.ownerId===actor.id);actor.a.entered=true;
+  need(row.stage!==null);const s=stageCandidate(row.stage),packet=row.payload;need(s.result===null&&active().every(({a})=>a.pin.children.state==='empty'));
+  const actor=active().at(-1)!;need(actor.a.stage===null||actor.a.stage===row.stage);const ownerId=s.packets.length===0?actor.id:s.ownerId;need(ownerId===actor.id);let monitorKey:string|null=null,terminal:StageImage['result']=null;
   const prior=s.packets.map(x=>x.kind);
   if(packet.kind==='session-admitted'){
-   need(!loss&&prior.length===0&&!actors.some(x=>x.pin.pid===packet.pid&&x.pin.startTicks===String(packet.start)));const key=packet.pid+':'+packet.start;need(!monitorIdentities.has(key));monitorIdentities.add(key);
-  }else if(packet.kind==='group-stop-before-reap')same(prior,['session-admitted']);
+   need(!loss&&prior.length===0&&!actors.some(x=>x.pin.pid===packet.pid&&x.pin.startTicks===String(packet.start)));monitorKey=packet.pid+':'+packet.start;need(!monitorIdentities.has(monitorKey));
+  }else if(packet.kind==='group-stop-before-reap'){same(prior,['session-admitted']);need(packet.reason!=='group-uncertain'&&packet.reason!=='session-escaped');}
   else if(packet.kind==='group-quiescent-then-reaped')need(prior.length===0||canonicalJson(prior)===canonicalJson(['session-admitted','group-stop-before-reap']));
   else {
    const admitted=prior.includes('session-admitted'),quiescent=prior.includes('group-quiescent-then-reaped');need(packet.admitted===admitted&&packet.reaped===quiescent&&packet.groupQuiescent===packet.reaped);
    same(prior,admitted?['session-admitted','group-stop-before-reap',...(quiescent?['group-quiescent-then-reaped']:[])]:quiescent?['group-quiescent-then-reaped']:[]);
    if(quiescent)need(packet.escapedSession===(s.packets.at(-1) as Extract<KernelPacket,{kind:'group-quiescent-then-reaped'}>).escapedSession);
+   if(admitted){
+    const stop=s.packets.find(x=>x.kind==='group-stop-before-reap') as Extract<KernelPacket,{kind:'group-stop-before-reap'}>;
+    const afterCleanup=!quiescent?'group-uncertain':stop.reason==='complete'&&packet.escapedSession?'session-escaped':stop.reason;
+    // cb1 may retain the stop reason, degrade on cleanup, then refuse event failure; never improve it.
+    need(packet.reason===afterCleanup||packet.reason==='protocol-refused');
+   }
    if(packet.reason==='complete')need(admitted&&quiescent&&!packet.escapedSession&&packet.commandExit===0);
    if(!admitted)need(packet.commandExit===null);
    if(packet.reason==='command-failed')need(admitted&&packet.commandExit!==null&&packet.commandExit!==0);
-   s.result=packet;actor.a.returned=true;
-  }s.packets.push(packet);
+   terminal=packet;
+  }
+  // Single accepted-row commit frontier: every schema/order/identity/causal guard above has passed.
+  commitStage(s);s.ownerId=ownerId;actor.a.entered=true;if(monitorKey!==null)monitorIdentities.add(monitorKey);if(terminal){s.result=terminal;actor.a.returned=true;}s.packets.push(packet);
  }
  for(let i=0;i<bytes.length;i++)if(bytes[i]===10){
   completeRows++;if(issue===null){if(completeRows>OWNERSHIP_LIMITS.rows)issue='row-bound';else try{need(i-offset+1<=OWNERSHIP_LIMITS.rowBytes);const row=decodeCanonicalJson(utf8.decode(bytes.subarray(offset,i+1)));ownershipRowCheck(row);accept(row as OwnershipRow);rows.push(row as OwnershipRow);}catch{issue='row-schema-or-order';}}offset=i+1;
