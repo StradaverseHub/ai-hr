@@ -24,7 +24,7 @@ describe('Company-aware System Labels imports and canonical consumers',()=>{
    await tx.execute(sql`select set_config('app.tenant_id',${b.tenantId},true),set_config('app.user_id',${b.adminUserId},true),set_config('app.roles','hr_admin',true),set_config('app.grants',${JSON.stringify([{role:'hr_admin',companyId:b.companyId}])},true)`);
    for(const role of ['ai_hr_architecture_grade_guard','ai_hr_reward_setup_reader','ai_hr_reward_upload_reader','ai_hr_rewards_post_reader']){
     await tx.execute(sql.raw('set local role '+role));
-    const rows=await tx.execute<{id:string}>(sql`select id from public.job_grade where tenant_id=${b.tenantId}::uuid and id=any(${[global.id,own.id,hidden.id]}::uuid[]) order by code`);
+    const rows=await tx.execute<{id:string}>(sql`select id from public.job_grade where tenant_id=${b.tenantId}::uuid and id=any(array[${global.id}::uuid,${own.id}::uuid,${hidden.id}::uuid]) order by code`);
     expect(rows.map(r=>r.id),role).toEqual([global.id,own.id]);
     await tx.execute(sql`reset role`);
    }
@@ -33,6 +33,22 @@ describe('Company-aware System Labels imports and canonical consumers',()=>{
    const [scope]=await tx.execute<{global:boolean;own:boolean;hidden:boolean}>(sql`select app.system_label_scope_read(null::uuid[]) as global,app.system_label_scope_read(array[${b.companyId}::uuid]) as own,app.system_label_scope_read(array[${other.id}::uuid]) as hidden`);
    expect(scope).toEqual({global:true,own:true,hidden:false});
   });
+ });
+ it('reserves global catalogue mutations for group administrators across canonical writers',async()=>{
+  const ctx={...adminCtx(b),grants:[{role:'hr_admin',companyId:b.companyId}]};
+  const global=await createProfileOption(adminCtx(b),{category:'division',value:'GLOBAL_RETAINED'});
+  await expect(createProfileOption(ctx,{category:'division',value:'GLOBAL_DENIED'})).rejects.toMatchObject({cause:{code:'42501'}});
+  await expect(createJobGrade(ctx,{code:'GLOBAL_DENIED',name:'Global denied'})).rejects.toMatchObject({cause:{code:'42501'}});
+  await expect(createGradeGroup(ctx,{name:'Global denied'})).rejects.toMatchObject({cause:{code:'42501'}});
+  await withTenant(ctx,async tx=>{
+   expect(await tx.update(s.profileOption).set({label:'Forbidden edit'}).where(eq(s.profileOption.id,global.id)).returning({id:s.profileOption.id})).toEqual([]);
+   expect(await tx.delete(s.profileOption).where(eq(s.profileOption.id,global.id)).returning({id:s.profileOption.id})).toEqual([]);
+  });
+  expect((await owner.db.select().from(s.profileOption).where(eq(s.profileOption.id,global.id)))[0]).toMatchObject({value:'GLOBAL_RETAINED',label:'GLOBAL_RETAINED'});
+  const own=await createProfileOption(ctx,{category:'division',value:'COMPANY_ALLOWED',scopeCompanyIds:[b.companyId]});
+  const grade=await createJobGrade(ctx,{code:'COMPANY_ALLOWED',name:'Company allowed',scopeCompanyIds:[b.companyId]});
+  const group=await createGradeGroup(ctx,{name:'Company allowed',gradeIds:[grade.id],scopeCompanyIds:[b.companyId]});
+  expect(own.id).toBeTruthy();expect(group.id).toBeTruthy();
  });
  it('imports blank scope as global without requiring an entered owner',async()=>{
   const bytes=await book({department:[{Code:'BLANK_GLOBAL',Label:'Global department',Status:'Active'}]}),preview=await previewSystemLabelImport(adminCtx(b),bytes);

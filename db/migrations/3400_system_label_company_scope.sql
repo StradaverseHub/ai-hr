@@ -11,8 +11,8 @@ CREATE FUNCTION app.system_label_scope_read(ids uuid[]) RETURNS boolean LANGUAGE
   OR EXISTS(SELECT 1 FROM public.employment e WHERE e.tenant_id=app.current_tenant_id() AND e.company_id=c.id AND app.is_self_person(e.person_id)));
 $$;
 CREATE FUNCTION app.system_label_scope_admin(ids uuid[]) RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
- SELECT ids IS NULL OR (cardinality(ids)>0 AND NOT EXISTS(SELECT 1 FROM unnest(ids) c(id) WHERE c.id IS NULL OR NOT EXISTS(
-  SELECT 1 FROM public.company co WHERE co.id=c.id AND co.tenant_id=app.current_tenant_id() AND co.archived_at IS NULL AND app.is_admin_for(co.id))));
+ SELECT CASE WHEN ids IS NULL THEN app.is_group_admin() ELSE (cardinality(ids)>0 AND NOT EXISTS(SELECT 1 FROM unnest(ids) c(id) WHERE c.id IS NULL OR NOT EXISTS(
+  SELECT 1 FROM public.company co WHERE co.id=c.id AND co.tenant_id=app.current_tenant_id() AND co.archived_at IS NULL AND app.is_admin_for(co.id)))) END;
 $$;
 REVOKE ALL ON FUNCTION app.system_label_scope_applies(uuid[],uuid),app.system_label_scope_read(uuid[]),app.system_label_scope_admin(uuid[]) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.system_label_scope_applies(uuid[],uuid),app.system_label_scope_read(uuid[]),app.system_label_scope_admin(uuid[]) TO ai_hr_app;
