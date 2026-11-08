@@ -119,6 +119,7 @@ export const COMPANY_REFERRERS: readonly CompanyRef[] = [
   // cannot count, so one fixed SECURITY DEFINER boolean answers for all four (repair fragment
   // guards-fixtures). They refuse rather than cascade: they are audit of what a person reviewed or what a
   // model was asked, and they leave only through their own expiry/retention owners.
+  {table:'pay_component',column:'applied_company_ids',disposition:'other',existsFunction:'app.pay_component_company_in_use',note:'Selected-company Pay Items retain their configured company identities.'},
   {table:'ai_agent_promotion',column:'company_id',disposition:'other',existsFunction:'app.ai_assistance_company_in_use',note:'Company-scoped promotion history retains its company without exposing private candidate or promotion rows.'},
   {table:'assistant_own_leave_review',column:'allocation_effective_company_id',disposition:'other',existsFunction:'app.ai_assistance_company_in_use',note:'A retained cost-allocation review preserves its effective-dated company as well as its original company; expose only a scoped retention boolean.'},
   {table:'assistant_own_leave_review',column:'company_id',disposition:'other',existsFunction:'app.ai_assistance_company_in_use',note:'A reviewed Assistant action custody record scoped to this company is retained audit; expose only a scoped retention boolean.'},

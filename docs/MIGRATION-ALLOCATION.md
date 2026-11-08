@@ -1779,3 +1779,14 @@ The non-superuser owner regression and hosted requalification remain required.
 Unapplied peer `3102`/`3103` drafts must reallocate above the actually installed
 prefix when integrating; no lower timestamp may be silently skipped. This is a
 source reservation, not evidence that the repair is applied or accepted.
+
+## Six approved board items — 8 November 2026 (unapplied)
+
+Branch codex/board-open-items-20261108 reserves 3300_pay_item_company_applicability
+at idx2600 / when1793330002900. Fresh origin main/alpha remain 29d9edcbc.
+A full origin fetch and read-only survey of 1043 distinct historical journal blobs
+and 671 readable registered worktrees found highest competing file3211,
+idx2545 and when1793330002845. Read-only staging had 706 applied migrations
+through1793330002701. The canonical journal prefix and applied SQL bytes remain
+unchanged. Refresh the exact ordered target ledger and peer reservations before
+integration or release; this reservation grants no installation priority.

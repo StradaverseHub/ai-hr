@@ -1,3 +1,5 @@
+import { payComponentCompanyChoices } from '@/packs/payroll/service';
+import { CompanyApplicability } from './company-applicability';
 import {isModuleEnabled} from '@/core/entitlements';
 import {payFormulaOptions} from '@/packs/payroll/service';
 import { packFor } from '@/localization/registry';
@@ -65,6 +67,7 @@ export async function ComponentForm({
   // rejects it with SELF_REFERENCE, and the picker should not offer the mistake in the first place) and
   // every statutory line (legislated, out of bounds for a tenant rule).
   const s = await requireAdmin();
+  const companyChoices = await payComponentCompanyChoices(s);
   const builderEnabled=isModuleEnabled(s,'payroll')&&isModuleEnabled(s,'typed_pay_components');
   const [allItems, previewEmployees, formulaOptions] = await Promise.all([loadPayComponents(s), listPayRulePreviewCandidates(s),builderEnabled?payFormulaOptions(s):Promise.resolve({activeFormulas:[]})]);
   const payItems = allItems
@@ -119,6 +122,7 @@ export async function ComponentForm({
             <Field label={t('colName')}>
               <input name="name" required={editing} defaultValue={component?.name ?? ''} placeholder={t('namePlaceholder')} className={inputCls} />
             </Field>
+            <CompanyApplicability companies={companyChoices.companies} initialIds={component?.appliedCompanyIds?.filter(id => companyChoices.companies.some(company => company.id === id)) ?? null} canEdit={companyChoices.canManageAll} />
             <Field label={t('colDescription')}>
               <textarea name="description" maxLength={200} defaultValue={component?.description ?? ''} className={inputCls} />
             </Field>

@@ -14299,6 +14299,15 @@
     "carryForwardReasonExpiry": "Auto forfeit due to expiry"
   },
   "payComponents": {
+    "companyApplicability": {
+      "label": "Applied for Company",
+      "all": "All Companies",
+      "selected": "Selected Companies",
+      "search": "Search companies",
+      "required": "Select at least one company.",
+      "empty": "No matching companies.",
+      "locked": "A group administrator can change company applicability. Other Pay Item settings can still be saved."
+    },
     "title": "Pay Items",
     "description": "Define configurable pay items and their statutory treatment (EPF / SOCSO / PCB / HRDF).",
     "previewNotice": "Preview. The catalog is available. Payroll continues to use basic pay, allowances, overtime and bonuses until the new pay component setup is enabled.",

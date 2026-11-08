@@ -14299,6 +14299,15 @@
     "carryForwardReasonExpiry": "Tự động tịch thu do hết hạn"
   },
   "payComponents": {
+    "companyApplicability": {
+      "label": "Áp dụng cho công ty",
+      "all": "Tất cả công ty",
+      "selected": "Các công ty đã chọn",
+      "search": "Tìm công ty",
+      "required": "Chọn ít nhất một công ty.",
+      "empty": "Không có công ty phù hợp.",
+      "locked": "Quản trị viên tập đoàn có thể thay đổi công ty áp dụng. Các thiết lập khoản lương khác vẫn có thể lưu."
+    },
     "title": "Khoản mục lương",
     "description": "Xác định các khoản mục lương có thể cấu hình và cách xử lý luật định (EPF / SOCSO / PCB / HRDF).",
     "previewNotice": "Xem trước. Danh mục đã sẵn sàng. Lương tiếp tục sử dụng lương cơ bản, phụ cấp, làm thêm giờ và thưởng cho đến khi thiết lập thành phần lương mới được bật.",

@@ -7133,6 +7133,7 @@ export const payComponent = pgTable(
     // (core/admin.ts): label uniqueness, if ever specified, is enforced in the service, not a DB index.
     label: text('label'),
     description: text('description'),
+    appliedCompanyIds: uuid('applied_company_ids').array(),
     // Imported calculations have no operands yet. NULL preserves the existing ready/fixed contract;
     // non-NULL records the requested kind and MUST be refused by assignment and payroll owners.
     pendingInputKind: text('pending_input_kind').$type<PendingPayInputKind | null>(),

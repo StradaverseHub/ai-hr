@@ -1,3 +1,5 @@
+import { preparePayComponentCompaniesTx, assertPayComponentCompaniesTx } from './pay-component-company';
+import { payComponentAppliesToCompany } from '../lib/pay-component-company';
 import {normalizeFormulaDecimal} from '../lib/pay-formula-language';
 import {createHash} from 'node:crypto';
 import {bindPayFormulaRuleTx,recordPayFormulaLinkTx} from './pay-formula';
@@ -316,10 +318,10 @@ export function getEmploymentPayComponent(
   });
 }
 
-export function listPayComponents(ctx: SessionContext, opts: { includeArchived?: boolean; readyOnly?: boolean } = {}) {
+export function listPayComponents(ctx: SessionContext, opts: { includeArchived?: boolean; readyOnly?: boolean; companyId?: string } = {}) {
   return withTenant(ctx, async (tx) => {
     const rows = await tx.select().from(payComponent).where(eq(payComponent.tenantId, ctx.tenantId)).orderBy(payComponent.code);
-    return rows.filter(r => (opts.includeArchived || r.archivedAt == null) && (!opts.readyOnly || r.pendingInputKind == null));
+    return rows.filter(r => (opts.includeArchived || r.archivedAt == null) && (!opts.readyOnly || r.pendingInputKind == null) && (!opts.companyId || payComponentAppliesToCompany(r, opts.companyId)));
   });
 }
 
@@ -340,6 +342,7 @@ export function listSupportedBatchComponents(ctx: SessionContext) {
 }
 
 export type PayComponentInput = {
+  appliedCompanyIds?: string[] | null;
   code: string;
   name: string;
   // New rows require a short display label. On existing rows, omission preserves the stored label;
@@ -743,7 +746,7 @@ export function createPayComponentsFromImport(ctx: SessionContext, rows: { input
 // The diffable catalog fields for the trimmed audit payload (changed field NAMES only — no values:
 // app/admin/audit/page.tsx never renders payloads, and free-text name/label in the immutable event
 // stream would violate the payload discipline the comment below enforces).
-const DIFF_FIELDS = ['name', 'label', 'description', 'pendingInputKind', 'kind', 'includedInEpf', 'includedInSocsoEis', 'includedInPcb', 'includedInHrdfBase', 'isNonPayable', 'prorates', 'eaFormLine', 'roundingMethod', 'rule', 'formulaContext', 'epfBonus2012', 'pcbRemunerationType', 'pcbExemptionCode', 'displayCategory', 'orpOvertime', 'orpUnpaidLeave'] as const;
+const DIFF_FIELDS = ['name', 'label', 'description', 'pendingInputKind', 'kind', 'includedInEpf', 'includedInSocsoEis', 'includedInPcb', 'includedInHrdfBase', 'isNonPayable', 'prorates', 'eaFormLine', 'roundingMethod', 'rule', 'formulaContext', 'epfBonus2012', 'pcbRemunerationType', 'pcbExemptionCode', 'displayCategory', 'orpOvertime', 'orpUnpaidLeave', 'appliedCompanyIds'] as const;
 
 // ── 61bf109d — dependency-graph plumbing ─────────────────────────────────────────────────────────────
 // A pay item may now be a percentage of ANOTHER pay item, or a formula that reads one, so the catalog is a
@@ -836,9 +839,9 @@ export async function assertNoPendingPayComponentsTx(tx: Tx, p: { batchId: strin
   for (const component of [...recurring, ...batch, ...individual]) assertPayComponentReady(component);
 }
 
-function payComponentCreateValues(ctx:SessionContext,p:PayComponentInput,prepared:{rule:PayRule|null;label:string|null|undefined;storedCode:string;description:{description?:string|null};pending:{pendingInputKind?:PendingPayInputKind|null}},options:{archived?:boolean}){
- const {rule,label,storedCode,description,pending}=prepared;
- return { tenantId: ctx.tenantId, code: storedCode, name: p.name, label: label ?? null, kind: p.kind, ...flagsOf(p), ...attrsOf(p), ...classificationOf(p), ...displayCategoryOf(p), ...orpOfInsert(p, rule), rule, ...description, ...pending, ...(options.archived ? { archivedAt: sql`now()` } : {}) };
+function payComponentCreateValues(ctx:SessionContext,p:PayComponentInput,prepared:{rule:PayRule|null;label:string|null|undefined;storedCode:string;description:{description?:string|null};pending:{pendingInputKind?:PendingPayInputKind|null};companies:{appliedCompanyIds?:string[]|null}},options:{archived?:boolean}){
+ const {rule,label,storedCode,description,pending,companies}=prepared;
+ return { tenantId: ctx.tenantId, code: storedCode, name: p.name, label: label ?? null, kind: p.kind, ...flagsOf(p), ...attrsOf(p), ...classificationOf(p), ...displayCategoryOf(p), ...orpOfInsert(p, rule), rule, ...description, ...pending, ...companies, ...(options.archived ? { archivedAt: sql`now()` } : {}) };
 }
 
 async function preparePayComponentWriteTx(tx:Tx,ctx:SessionContext,p:PayComponentInput,options:{ createOnly?: boolean; updateOnly?: boolean; archived?: boolean; importFileName?: string; deferResolutionOrder?: boolean; returnCreatedEventId?: boolean }) {
@@ -892,22 +895,23 @@ async function preparePayComponentWriteTx(tx:Tx,ctx:SessionContext,p:PayComponen
       : rule != null || p.rule?.kind === 'fixed' ? { pendingInputKind: null } : {};
     if (existing?.pendingInputKind && p.pendingInputKind === null && rule == null && p.rule?.kind !== 'fixed')
       throw new PayComponentInputError([{ field: 'inputKind', code: 'calculationRequired' }]);
-    return {rule,label,existing,storedCode,description,pending};
+    const companies = await preparePayComponentCompaniesTx(tx, ctx, p.appliedCompanyIds, existing);
+    return {rule,label,existing,storedCode,description,pending,companies};
 }
 
 async function upsertPayComponentTx(tx: Tx, ctx: SessionContext, p: PayComponentInput,
   options: { createOnly?: boolean; updateOnly?: boolean; archived?: boolean; importFileName?: string; deferResolutionOrder?: boolean; returnCreatedEventId?: boolean } = {}) {
     p=structuredClone(p);ctx=capturePayCatalogContext(ctx);options={...options};
-    const {rule,label,existing,storedCode,description,pending}=await preparePayComponentWriteTx(tx,ctx,p,options);
+    const {rule,label,existing,storedCode,description,pending,companies}=await preparePayComponentWriteTx(tx,ctx,p,options);
     let id: string;
     let changed: string[] = [];
     if (existing) {
-      const next = { name: p.name, kind: p.kind, ...flagsOf(p), ...attrsOf(p), ...classificationOf(p), ...displayCategoryOf(p), ...orpOf(p), rule, ...description, ...pending, ...(label !== undefined ? { label } : {}) };
+      const next = { name: p.name, kind: p.kind, ...flagsOf(p), ...attrsOf(p), ...classificationOf(p), ...displayCategoryOf(p), ...orpOf(p), rule, ...description, ...pending, ...companies, ...(label !== undefined ? { label } : {}) };
       changed = DIFF_FIELDS.filter((f) => {
         if (!(f in next)) return false; // label omitted ⇒ untouched ⇒ not a change
         const a = (next as Record<string, unknown>)[f];
         const b = (existing as unknown as Record<string, unknown>)[f];
-        return (f === 'rule'||f==='formulaContext') ? JSON.stringify(a ?? null) !== JSON.stringify(b ?? null) : a !== b;
+        return (f === 'rule'||f==='formulaContext'||f==='appliedCompanyIds') ? JSON.stringify(a ?? null) !== JSON.stringify(b ?? null) : a !== b;
       });
       const nonCashKey = (r: typeof existing) => {
         if (!r.isNonPayable || !r.includedInPcb) return null;
@@ -920,7 +924,7 @@ async function upsertPayComponentTx(tx: Tx, ctx: SessionContext, p: PayComponent
     } else {
       const [row] = await tx
         .insert(payComponent)
-        .values(payComponentCreateValues(ctx,p,{rule,label,storedCode,description,pending},options))
+        .values(payComponentCreateValues(ctx,p,{rule,label,storedCode,description,pending,companies},options))
         .returning({ id: payComponent.id });
       id = row.id;
     }
@@ -1977,6 +1981,7 @@ export function setEmploymentPayComponent(
     const [component] = await tx.select({ code: payComponent.code, pendingInputKind: payComponent.pendingInputKind })
       .from(payComponent).where(eq(payComponent.id, p.componentId)).limit(1);
     if (component) assertPayComponentReady(component);
+    if (!p.allowClosedPeriod) await assertPayComponentCompaniesTx(tx, ctx, [{componentId:p.componentId,employmentId:p.employmentId,effectiveDate:p.effectiveFrom}]);
     // Amount>0 invariant on the aggregate — inherited by every UI write path. The backfill opts out for its
     // legitimate zero-allowance seed rows only (allowZeroAmount).
     if (!p.allowZeroAmount && !(p.amount > 0)) throw new FixedTransactionAmountError();
@@ -2634,6 +2639,9 @@ export function setPayrollBatchComponent(
       .limit(1);
     if (comp) assertPayComponentReady(comp);
     if (comp && isUnsupportedTaxableComponent(comp)) throw new UnsupportedBatchComponentError(comp.code);
+    const [batch] = await tx.select({payPeriod:payrollBatch.payPeriod}).from(payrollBatch).where(eq(payrollBatch.id,p.batchId)).limit(1);
+    if (!batch) throw new Error('Payroll run is unavailable.');
+    await assertPayComponentCompaniesTx(tx, ctx, [{componentId:p.componentId,employmentId:p.employmentId,effectiveDate:batch.payPeriod+'-01'}]);
     const [cur] = await tx
       .select({ id: payrollBatchComponent.id })
       .from(payrollBatchComponent)

@@ -4950,6 +4950,13 @@
       "when": 1793330002710,
       "tag": "3110_attendance_workflow_owner_rls",
       "breakpoints": true
+    },
+    {
+      "idx": 2600,
+      "version": "7",
+      "when": 1793330002900,
+      "tag": "3300_pay_item_company_applicability",
+      "breakpoints": true
     }
   ]
 }
