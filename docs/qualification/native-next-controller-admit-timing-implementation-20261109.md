@@ -87,3 +87,49 @@ A private pure decision distinguishes empty/old/new invocation IDs but grants no
 Before calling the byte-whole1s initial environment observer, the caller requires the original first7s phase and >1.05s remaining, including a fixed50ms admission reserve. Immediate post-call accounting refuses any consumed reserve/frontier. This narrows admission without changing the observer, any native cap or the20/27/30/35/90s bounds. Ordinary models expand an existing new method for the actual identity decision and slot boundaries; method counts stay50/43 and285Python/333underlying (213/261 affected). The census now explicitly records unittest entry position and before/after definition counts; these are source facts, not test results.
 
 All five active inverses retain their SAME whole original targets/preimages and initial construction bases. Existing non-runtime ffe8 Git rows remain intact with additional immutable DAE-parent references, without a source-hash cycle. No local repository imports, tests, native execution, compiler/build, network, push or dispatch occurred. Different-peer and root FULL review must accept the new freeze before any hosted pure course. Old native refusal10 cause remains UNKNOWN; fullNext and production stay held.
+
+
+## Authenticated61620 pure-control failure and bounded test repair
+
+Run42518834654 attempt1/source61620c3874ee5f326a72e06f1ab8d48e3b8845f4,
+controller00a27edbe7de417dd97b0a82bdab48b8e79214a7, finished every planned
+job. Actual213 Python yielded208 passes,3 failures and2 errors;45TAP and3VM
+passed. Eleven outer wrappers yielded8 passes and3 failures. The failure and
+its original authenticated artifact13632293488 remain unchanged. No HOST ran.
+
+This new direct61620 source-only child changes two pure test owners. The
+constructor-refusal mock now accepts the actual exit code and raises
+ExitObserved(code), retaining exact exit1/spawn-once/fixed stderr facts; the
+signal model imports its os namespace. No production launcher behavior changes.
+The manager historical clock literal is checked on its validated whole5383
+preimage. Current H is checked with strict Python AST equivalence for the
+single STARTED anchor, total+27, cleanup-7, first phase+7, remaining minimum and
+closed phase advance after the previous live-frontier check. Seven finite
+mutation refusals are authored inside the existing method. They are source
+models, not native clock or cap-fit evidence.
+
+The two historical SHA failures shared a missing TS-wrapper source layer:
+current wrapper6072e68bb82bf5270a4afe8d0849ab8507846765c553ebd9ad2a8cd060237757
+requires43 methods. Whole actual c045/ffe8 wrapper
+e57287d83cee40072b199f02c8bfce14ed82c2db445cbe3ffe2439a3dc585509 requires37.
+One new active receipt inverse row reconstructs that exact whole c045 wrapper
+BEFORE the old key-name/terminal/phase layers. The original expected hash and
+both environment/host historical assertion bodies stay whole. All48 existing
+active inverse targets and original preimages stay unchanged;49 actual current
+rows reconstruct their genuine whole Git targets. Older inactive history stays
+whole. Dependency-ordered source-data composition retains real patch ranges
+and avoids unnecessary large replacement hunks; it does not recapture PASS.
+
+All P/H/C/F/N/template/kernel/runtime owners,46 old plus4 new timing methods,
+43 environment and25 manager method identities, case caps and direct-file
+ordering remain. The133 current-source map is derived again from actual
+source/data;21 HOST and41 full pin path sets remain unchanged. No new runtime
+helper or dependency is introduced. Counts remain285Python/333underlying and
+affected213Python/261underlying; these source counts do not imply execution.
+
+The repaired candidate must receive root and different-peer full source/data
+review before the existing failed/affected pure hosted selectors may run.
+Native HOST is held until purePASS and the independent normal-manifest
+generation guard repair qualify. The native20-second fit and the cause of the
+older failure10 remain unknown. No local repository import, module/test/native
+execution, SQL, compiler/build, network or dispatch was used. Production HELD.

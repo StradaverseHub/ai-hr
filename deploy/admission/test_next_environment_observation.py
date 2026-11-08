@@ -4,6 +4,7 @@ import base64
 import copy
 import hashlib
 import json
+import os
 import pathlib
 import signal
 import sys
@@ -756,8 +757,10 @@ class FreshChildOwnerModels(unittest.TestCase):
             with self.assertRaises(AssertionError):P._fixed_child('arbitrary')
             spawn.assert_not_called()
         own='/usr/local/lib/aihr-admission/next_fixture_poststart.py'
-        with patch.object(P,'__file__',own),patch.object(P.pathlib.Path,'resolve',return_value=pathlib.Path(own)),patch.object(P.os,'geteuid',return_value=0),patch.object(P.sys,'argv',[own,F.UNITS[0]]),patch.dict(P.os.environ,{'INVOCATION_ID':'a'*32},clear=True),patch.object(P.subprocess,'Popen',side_effect=OSError('private')) as spawn,patch.object(P.os,'write') as write,patch.object(P.os,'_exit',side_effect=self.ExitObserved) as exit_:
-            with self.assertRaises(self.ExitObserved):P._fixed_child(F.UNITS[0])
+        def child_exit(code):raise self.ExitObserved(code)
+        with patch.object(P,'__file__',own),patch.object(P.pathlib.Path,'resolve',return_value=pathlib.Path(own)),patch.object(P.os,'geteuid',return_value=0),patch.object(P.sys,'argv',[own,F.UNITS[0]]),patch.dict(P.os.environ,{'INVOCATION_ID':'a'*32},clear=True),patch.object(P.subprocess,'Popen',side_effect=OSError('private')) as spawn,patch.object(P.os,'write') as write,patch.object(P.os,'_exit',side_effect=child_exit) as exit_:
+            with self.assertRaises(self.ExitObserved) as observed:P._fixed_child(F.UNITS[0])
+            self.assertEqual(observed.exception.code,1)
             self.assertEqual(spawn.call_count,1);exit_.assert_called_once_with(1);write.assert_called_once_with(2,b'Fixed post-start child refused\n')
 
 

@@ -187,7 +187,11 @@ class ManagerEnvironmentModels(unittest.TestCase):
 
     def test_whole_parent_history_and_unchanged_guards_pipe_observers_and_stock_exec(self):
         inverse=json.loads((ROOT/'deploy/admission/next_manager_environment_inverse.json').read_text())
-        def parent(path):return base64.b64decode(inverse['files'][path]['originalBase64']).decode()
+        self.assertEqual(inverse['base'],'5383d212e073206db552d7f95a362895c3023323')
+        def parent(path):
+            row=inverse['files'][path];raw=base64.b64decode(row['originalBase64'],validate=True)
+            self.assertEqual(hashlib.sha256(raw).hexdigest(),row['originalSha256'])
+            return raw.decode()
         def segment(source,name):
             tree=ast.parse(source);node=next(n for n in ast.walk(tree) if isinstance(n,(ast.FunctionDef,ast.AsyncFunctionDef)) and n.name==name)
             return ast.get_source_segment(source,node)
@@ -197,7 +201,54 @@ class ManagerEnvironmentModels(unittest.TestCase):
         current=(ROOT/'deploy/admission/test_next_native.py').read_text();before=parent('deploy/admission/test_next_native.py')
         stock=next(line for line in before.splitlines() if line.startswith("ExecStart={plan['nodePath']}"))
         self.assertIn(stock,current);self.assertEqual(current.count('manager_projection_snapshot(N, projection_ledger,'),2)
-        self.assertIn('TOTAL_DEADLINE = time.monotonic() + 27',(ROOT/'deploy/admission/test_next_host_view_native.py').read_text())
+        host='deploy/admission/test_next_host_view_native.py'
+        self.assertIn('TOTAL_DEADLINE = time.monotonic() + 27',parent(host))
+        # Source equivalence only: one T0 owns the total, work and phase
+        # frontiers. No execution of H or refreshed native allowance is implied.
+        assignments={
+            'STARTED':'time.monotonic()', 'TOTAL_DEADLINE':'STARTED + 27',
+            'DEADLINE':'TOTAL_DEADLINE - 7', 'PHASE_DEADLINE':'STARTED + 7',
+        }
+        clock_owners={
+            'limit':"""def limit(cap=3):
+    frontier = min(DEADLINE, PHASE_DEADLINE) if WORK_PHASE_ACTIVE else DEADLINE
+    left = frontier - time.monotonic()
+    require(left > 0, 'Host conformance aggregate deadline exceeded')
+    return min(cap, left)
+""",
+            '_advance_work_phase':"""def _advance_work_phase(offset):
+    global PHASE_DEADLINE
+    require(WORK_PHASE_ACTIVE and offset in (11, 13, 17, 20)
+            and STARTED + offset > PHASE_DEADLINE, 'Closed work phase transition')
+    limit()
+    PHASE_DEADLINE = STARTED + offset
+""",
+        }
+        def clock_contract(source):
+            tree=ast.parse(source)
+            for name,expression in assignments.items():
+                nodes=[node for node in tree.body if isinstance(node,ast.Assign)
+                       and any(isinstance(target,ast.Name) and target.id==name for target in node.targets)]
+                self.assertEqual(len(nodes),1)
+                self.assertEqual(ast.dump(nodes[0],include_attributes=False),
+                                 ast.dump(ast.parse(name+' = '+expression).body[0],include_attributes=False))
+            for name,expected in clock_owners.items():
+                nodes=[node for node in tree.body if isinstance(node,ast.FunctionDef) and node.name==name]
+                self.assertEqual(len(nodes),1)
+                self.assertEqual(ast.dump(nodes[0],include_attributes=False),
+                                 ast.dump(ast.parse(expected).body[0],include_attributes=False))
+        current_host=(ROOT/host).read_text();clock_contract(current_host)
+        for original,changed in (
+                ('TOTAL_DEADLINE = STARTED + 27','TOTAL_DEADLINE = time.monotonic() + 27'),
+                ('TOTAL_DEADLINE = STARTED + 27','TOTAL_DEADLINE = STARTED + 28'),
+                ('DEADLINE = TOTAL_DEADLINE - 7','DEADLINE = TOTAL_DEADLINE - 6'),
+                ('PHASE_DEADLINE = STARTED + 7','PHASE_DEADLINE = time.monotonic() + 7'),
+                ('min(DEADLINE, PHASE_DEADLINE) if WORK_PHASE_ACTIVE else DEADLINE','DEADLINE'),
+                ('left = frontier - time.monotonic()','left = frontier - STARTED'),
+                ('    limit()  # The previous absolute frontier must still be live.\n','')):
+            self.assertEqual(current_host.count(original),1)
+            mutated=current_host.replace(original,changed,1);self.assertNotEqual(mutated,current_host)
+            with self.assertRaises(AssertionError):clock_contract(mutated)
         for path,row in inverse['files'].items():
             current=(ROOT/path).read_bytes();self.assertEqual(hashlib.sha256(current).hexdigest(),row['currentSha256'])
             lines=current.decode().splitlines(keepends=True)

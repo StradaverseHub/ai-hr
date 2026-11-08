@@ -1,7 +1,7 @@
 {
   "kind": "EXACT_SOURCE_CENSUS_NOT_EXECUTED_CASE_EVENTS",
   "base": "ffe8ced4d5ef226aad2da56d11a35483ffa35728",
-  "sourceRef": "codex/next-poststart-fresh-child-repair-20261109",
+  "sourceRef": "codex/next-poststart-pure-control-repair-20261109",
   "focusedFiles": 10,
   "focusedWrappers": 14,
   "underlying": 333,
@@ -17,217 +17,217 @@
         {
           "class": "EnvironmentObservationModels",
           "method": "test_closed_receiver_rejects_extra_missing_unknown_labels_and_inconsistent_counts",
-          "line": 187
+          "line": 188
         },
         {
           "class": "EnvironmentObservationModels",
           "method": "test_even_keyboard_interrupt_in_observation_executes_original_scrubbed_admission",
-          "line": 247
+          "line": 248
         },
         {
           "class": "EnvironmentObservationModels",
           "method": "test_exact_known_vocabulary_and_always_allowed_locale_labels",
-          "line": 108
+          "line": 109
         },
         {
           "class": "EnvironmentObservationModels",
           "method": "test_expired_native_read_never_opens_additional_environment_data",
-          "line": 266
+          "line": 267
         },
         {
           "class": "EnvironmentObservationModels",
           "method": "test_fixed_journal_message_fits_existing_bounds_with_all_known_labels",
-          "line": 226
+          "line": 227
         },
         {
           "class": "EnvironmentObservationModels",
           "method": "test_foreign_principal_invocation_command_cgroup_and_pid_reuse_refuse",
-          "line": 171
+          "line": 172
         },
         {
           "class": "EnvironmentObservationModels",
           "method": "test_journal_duplicate_records_duplicate_keys_and_extra_payload_fields_refuse",
-          "line": 209
+          "line": 210
         },
         {
           "class": "EnvironmentObservationModels",
           "method": "test_malformed_utf8_missing_nul_empty_duplicate_and_oversized_sources_refuse",
-          "line": 142
+          "line": 143
         },
         {
           "class": "EnvironmentObservationModels",
           "method": "test_native_owner_authority_requires_both_custody_checks_and_stable_pinned_process",
-          "line": 164
+          "line": 165
         },
         {
           "class": "EnvironmentObservationModels",
           "method": "test_observation_budget_and_telemetry_failures_cancel_timer_and_restore_handler",
-          "line": 234
+          "line": 235
         },
         {
           "class": "EnvironmentObservationModels",
           "method": "test_original_controller_literal_branch_does_not_accept_helper_observation_as_admission",
-          "line": 220
+          "line": 221
         },
         {
           "class": "EnvironmentObservationModels",
           "method": "test_original_environment_guard_still_refuses_known_unknown_and_forbidden_fields",
-          "line": 148
+          "line": 149
         },
         {
           "class": "EnvironmentObservationModels",
           "method": "test_pure_counts_never_claim_process_or_source_authority",
-          "line": 121
+          "line": 122
         },
         {
           "class": "EnvironmentObservationModels",
           "method": "test_root_helper_journal_branch_requires_exact_source_and_native_metadata",
-          "line": 199
+          "line": 200
         },
         {
           "class": "EnvironmentObservationModels",
           "method": "test_unknown_keys_values_and_prefix_variants_remain_aggregate_only",
-          "line": 132
+          "line": 133
         },
         {
           "class": "EnvironmentObservationModels",
           "method": "test_unknown_or_changed_custody_never_yields_a_native_success",
-          "line": 177
+          "line": 178
         },
         {
           "class": "FreshChildOwnerModels",
           "method": "test_fresh_owner_exact_two_fixed_contexts_and_inherited_stream_flags",
-          "line": 711
+          "line": 712
         },
         {
           "class": "FreshChildOwnerModels",
           "method": "test_fresh_owner_observation_baseexception_still_invokes_current_child_once",
-          "line": 735
+          "line": 736
         },
         {
           "class": "FreshChildOwnerModels",
           "method": "test_fresh_owner_refuses_foreign_context_and_constructor_failure_without_retry",
-          "line": 754
+          "line": 755
         },
         {
           "class": "FreshChildOwnerModels",
           "method": "test_fresh_owner_terminal_signals_never_become_numeric_success",
-          "line": 724
+          "line": 725
         },
         {
           "class": "FreshChildOwnerModels",
           "method": "test_fresh_owner_wait_interrupt_and_secondary_failures_still_attempt_kill_and_reap",
-          "line": 743
+          "line": 744
         },
         {
           "class": "FreshChildOwnerModels",
           "method": "test_fresh_owner_zero_and_nonzero_status_are_exact_after_reap",
-          "line": 719
+          "line": 720
         },
         {
           "class": "KeyNameDigestModels",
           "method": "test_closed_key_codec_rejects_boolean_count_unknown_state_extra_raw_data_and_bad_hash_sets",
-          "line": 525
+          "line": 526
         },
         {
           "class": "KeyNameDigestModels",
           "method": "test_complete_zero_one_four_and_strict_utf8_names_never_encode_values_or_known_names",
-          "line": 503
+          "line": 504
         },
         {
           "class": "KeyNameDigestModels",
           "method": "test_host_component_six_hooks_and_canary_data_cannot_be_a_full_worker_terminal",
-          "line": 647
+          "line": 648
         },
         {
           "class": "KeyNameDigestModels",
           "method": "test_malformed_duplicate_wrong_subject_count_or_prefix_terminal_preserves_old_v1_observation",
-          "line": 594
+          "line": 595
         },
         {
           "class": "KeyNameDigestModels",
           "method": "test_missing_native_environment_or_unfinished_helper_never_publishes_digest_authority",
-          "line": 585
+          "line": 586
         },
         {
           "class": "KeyNameDigestModels",
           "method": "test_native_capture_seam_uses_one_existing_environ_read_and_keys_only_before_postchecks",
-          "line": 535
+          "line": 536
         },
         {
           "class": "KeyNameDigestModels",
           "method": "test_overflow_has_no_prefix_and_duplicate_collision_mismatch_or_surrogate_refuses",
-          "line": 517
+          "line": 518
         },
         {
           "class": "KeyNameDigestModels",
           "method": "test_source_sealed_terminal_joins_real_shaped_v1_and_counts_each_record_only_once",
-          "line": 575
+          "line": 576
         },
         {
           "class": "KeyNameDigestModels",
           "method": "test_terminal_v2_keeps_fourteen_rows_fifteen_messages_and_original_phase_codec",
-          "line": 561
+          "line": 562
         },
         {
           "class": "KeyNameDigestModels",
           "method": "test_unavailable_overflow_is_finished_metadata_not_hash_or_readiness_success",
-          "line": 607
+          "line": 608
         },
         {
           "class": "KeyNameDigestModels",
           "method": "test_v2_terminal_uncertain_write_and_actual_post_try_abort_cannot_publish_a_second_terminal",
-          "line": 614
+          "line": 615
         },
         {
           "class": "KeyNameDigestModels",
           "method": "test_whole_native_guards_v1_codecs_original_exec_and_single_read_are_source_exact",
-          "line": 656
+          "line": 657
         },
         {
           "class": "PhaseDiagnosticModels",
           "method": "test_actual_post_write_async_abort_cannot_publish_a_second_terminal_frame",
-          "line": 423
+          "line": 424
         },
         {
           "class": "PhaseDiagnosticModels",
           "method": "test_actual_tracker_emits_exact_bounded_closed_order_without_native_authority",
-          "line": 292
+          "line": 293
         },
         {
           "class": "PhaseDiagnosticModels",
           "method": "test_bad_phase_ledgers_and_optional_receiver_failure_never_discard_original_valid_observation",
-          "line": 359
+          "line": 360
         },
         {
           "class": "PhaseDiagnosticModels",
           "method": "test_census_preserves_untrusted_controller_foreign_and_missing_metadata_without_reflection",
-          "line": 347
+          "line": 348
         },
         {
           "class": "PhaseDiagnosticModels",
           "method": "test_closed_failure_families_never_publish_private_errors_or_extra_fields",
-          "line": 312
+          "line": 313
         },
         {
           "class": "PhaseDiagnosticModels",
           "method": "test_every_original_native_check_and_environment_validator_remains_whole_source_exact",
-          "line": 378
+          "line": 379
         },
         {
           "class": "PhaseDiagnosticModels",
           "method": "test_partial_write_expiry_and_occupied_timer_never_retry_or_start_more_observation",
-          "line": 323
+          "line": 324
         },
         {
           "class": "PhaseDiagnosticModels",
           "method": "test_real_best_effort_failure_reports_only_its_entered_phase_and_restores_original_timer",
-          "line": 335
+          "line": 336
         },
         {
           "class": "PhaseDiagnosticModels",
           "method": "test_shared_native_hook_subsequence_is_exact_and_never_a_full_helper_ledger",
-          "line": 369
+          "line": 370
         }
       ],
       "count": 43
@@ -1718,7 +1718,7 @@
     "files": [
       {
         "source": "deploy/admission/test_next_environment_observation.py",
-        "unittestMainLine": 764,
+        "unittestMainLine": 768,
         "authoredMethods": 43,
         "definedBeforeMain": 43,
         "definedAfterMain": 0,
@@ -1726,7 +1726,7 @@
       },
       {
         "source": "deploy/admission/test_next_host_view.py",
-        "unittestMainLine": 498,
+        "unittestMainLine": 499,
         "authoredMethods": 21,
         "definedBeforeMain": 21,
         "definedAfterMain": 0,
@@ -1734,7 +1734,7 @@
       },
       {
         "source": "deploy/admission/test_next_failure_diagnostic.py",
-        "unittestMainLine": 433,
+        "unittestMainLine": 434,
         "authoredMethods": 22,
         "definedBeforeMain": 22,
         "definedAfterMain": 0,
@@ -1742,7 +1742,7 @@
       },
       {
         "source": "deploy/admission/test_next_plain_key_names.py",
-        "unittestMainLine": 307,
+        "unittestMainLine": 308,
         "authoredMethods": 25,
         "definedBeforeMain": 25,
         "definedAfterMain": 0,
@@ -1750,7 +1750,7 @@
       },
       {
         "source": "deploy/admission/test_next_manager_environment.py",
-        "unittestMainLine": 209,
+        "unittestMainLine": 260,
         "authoredMethods": 25,
         "definedBeforeMain": 25,
         "definedAfterMain": 0,
@@ -1766,7 +1766,7 @@
       },
       {
         "source": "deploy/admission/test_next_profile.py",
-        "unittestMainLine": 517,
+        "unittestMainLine": 518,
         "authoredMethods": 16,
         "definedBeforeMain": 16,
         "definedAfterMain": 0,
@@ -1774,7 +1774,7 @@
       },
       {
         "source": "deploy/admission/test_state.py",
-        "unittestMainLine": 630,
+        "unittestMainLine": 631,
         "authoredMethods": 25,
         "definedBeforeMain": 25,
         "definedAfterMain": 0,
@@ -1782,7 +1782,7 @@
       },
       {
         "source": "deploy/admission/test_controller_admit_timing.py",
-        "unittestMainLine": 560,
+        "unittestMainLine": 561,
         "authoredMethods": 50,
         "definedBeforeMain": 50,
         "definedAfterMain": 0,
@@ -1790,7 +1790,7 @@
       },
       {
         "source": "deploy/admission/test_next_prepackage_diagnostic.py",
-        "unittestMainLine": 522,
+        "unittestMainLine": 523,
         "authoredMethods": 31,
         "definedBeforeMain": 31,
         "definedAfterMain": 0,
@@ -1807,6 +1807,18 @@
       "F4"
     ],
     "newMethodCount": 0,
+    "actualExecution": false
+  },
+  "pureControlFailureRepair": {
+    "parent": "61620c3874ee5f326a72e06f1ab8d48e3b8845f4",
+    "failureRun": 42518834654,
+    "newMethods": 0,
+    "all285MethodNamesPreserved": true,
+    "sameAffectedPython213": true,
+    "sameAffectedUnderlying261": true,
+    "twoFixtureRepairs": "os import and code-accepting ExitObserved callback",
+    "currentClockProof": "strict AST assignments/limit/advance plus seven defined finite mutation refusals; not executed",
+    "wholeHistoricalWrapperPreimageAdded": true,
     "actualExecution": false
   }
 }

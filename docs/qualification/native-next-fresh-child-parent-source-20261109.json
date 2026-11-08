@@ -338,5 +338,102 @@
       }
     ],
     "runtimeEvidenceTransferred": false
+  },
+  "pureControlFailureRepairParent": {
+    "commit": "61620c3874ee5f326a72e06f1ab8d48e3b8845f4",
+    "branch": "codex/next-poststart-pure-control-repair-20261109",
+    "proposalSha256": "1a94dee0a657ca62e491dfe0b8dabf21b0ba7ffe7aaf0ad286150ae70d23ea85",
+    "failureRun": 42518834654,
+    "authenticationSha256": "a6ea0e7f78c1e04f6ba45ff0b55761e43b2fad6bb24543a0490ae8a0b3f6b719",
+    "failureReceiptSha256": "59cd4eb9771d4c369359fe14a5a99f2464bedce72f125440ca8d7d772d085e6f",
+    "files": [
+      {
+        "path": "deploy/admission/test_next_environment_observation.py",
+        "commit": "61620c3874ee5f326a72e06f1ab8d48e3b8845f4",
+        "gitBlob": "cfc833cf78b3704bb8716430f00cadb5fea2559a",
+        "sha256": "e058563ea5e6f5bcd9cfe05cf0670c61e5a8e12b075fa4ac5a7bd2b676398cdd",
+        "bytes": 58377
+      },
+      {
+        "path": "deploy/admission/test_next_manager_environment.py",
+        "commit": "61620c3874ee5f326a72e06f1ab8d48e3b8845f4",
+        "gitBlob": "82dcd0f40e6cf71eb365c68aca182a3fd4447d22",
+        "sha256": "0a9420133d5ac20bbd3f6a0daad5bc29ae4ea04f62c8d212f5db28b97112cd09",
+        "bytes": 16529
+      },
+      {
+        "path": "deploy/admission/next_host_key_receipt_inverse.json",
+        "commit": "61620c3874ee5f326a72e06f1ab8d48e3b8845f4",
+        "gitBlob": "036c42b0cc9e6d252bb6f769b7688a7cb6126f55",
+        "sha256": "a79568f833356c65fe40600066b064ee13f869c8899e6af219fc1c831543d191",
+        "bytes": 640987
+      },
+      {
+        "path": "deploy/admission/next_manager_environment_inverse.json",
+        "commit": "61620c3874ee5f326a72e06f1ab8d48e3b8845f4",
+        "gitBlob": "920048ea529b8b95143cd69e062425b208a077ff",
+        "sha256": "1b646ab28c9733e15cceadb831bc42b055b869830b853be68cd6957a7181115d",
+        "bytes": 1350266
+      },
+      {
+        "path": "deploy/admission/next_bootstrap_session_inverse.json",
+        "commit": "61620c3874ee5f326a72e06f1ab8d48e3b8845f4",
+        "gitBlob": "61c35294d13d4ef8894ec80715f762b873c116b0",
+        "sha256": "00f6e6516f9463356b526a1ede1354d21a44d2dee7b0a5a5c1dcec7786603ba5",
+        "bytes": 3072046
+      },
+      {
+        "path": "deploy/admission/next_controller_admit_timing_inverse.json",
+        "commit": "61620c3874ee5f326a72e06f1ab8d48e3b8845f4",
+        "gitBlob": "d0ca211d2a52e063a58f0d03a2fa50cbd3e266d0",
+        "sha256": "c84dd271bb8640f918040218f243ce45d59deaf913db460c644b4b6fcdbfb5bb",
+        "bytes": 7477477
+      },
+      {
+        "path": "deploy/admission/next_controller_admit_terminal_inverse.json",
+        "commit": "61620c3874ee5f326a72e06f1ab8d48e3b8845f4",
+        "gitBlob": "f471f030d7d57fc4d2cf541878aa6d0b5fe95398",
+        "sha256": "0312eb6a9a8d05e5867fe845e71e17d07220db49e429fcdcd4d702e996270fef",
+        "bytes": 21688770
+      },
+      {
+        "path": "docs/qualification/native-next-controller-admit-timing-census-20261109.json",
+        "commit": "61620c3874ee5f326a72e06f1ab8d48e3b8845f4",
+        "gitBlob": "4703043c746aff9a5cc3e37d6a91649f10794a28",
+        "sha256": "72e464941472040e7567292ec8a659a7d985b6a12dc0ef9dd866f7ed70cec4f0",
+        "bytes": 67170
+      },
+      {
+        "path": "docs/qualification/native-next-controller-admit-timing-implementation-20261109.md",
+        "commit": "61620c3874ee5f326a72e06f1ab8d48e3b8845f4",
+        "gitBlob": "080e4b20393d37e1dc7a4ae9b60e474169b63979",
+        "sha256": "bd778a02b1d96d54787b5c8d6bfced460d49dbecda0a1c20fe6a49366ff00403",
+        "bytes": 21320
+      },
+      {
+        "path": "docs/qualification/native-next-controller-admit-timing-source-20261109.json",
+        "commit": "61620c3874ee5f326a72e06f1ab8d48e3b8845f4",
+        "gitBlob": "973fdd1ea739119854754126a30191075b852401",
+        "sha256": "429d27066ad71577bcbb7b55e72f4064ff441336f9722dfb6248a6f441d0bba5",
+        "bytes": 29521
+      },
+      {
+        "path": "docs/qualification/native-next-fresh-child-parent-source-20261109.json",
+        "commit": "61620c3874ee5f326a72e06f1ab8d48e3b8845f4",
+        "gitBlob": "1f41f89578578bb403bb053ac3fdd55bebcb387b",
+        "sha256": "20c4cf0d56b42ea7077106a119293d1e3525ec4dd5774819d4d6a4c5053dcdf4",
+        "bytes": 15177
+      }
+    ],
+    "all48OldOriginalTargetsPreserved": true,
+    "newWrapperC045WholePreimage": {
+      "inverse": "next_host_key_receipt_inverse.json",
+      "path": "test/runtime-next-environment-observation.test.ts",
+      "commit": "c0456f6a98e5f3feaf11ca4d759d57c8b76e25da",
+      "gitBlob": "d6506ee5d302d1ef81eea040f9295376e9e60670",
+      "bytes": 838,
+      "sha256": "e57287d83cee40072b199f02c8bfce14ed82c2db445cbe3ffe2439a3dc585509"
+    },
+    "runtimeEvidenceTransferred": false
   }
 }
