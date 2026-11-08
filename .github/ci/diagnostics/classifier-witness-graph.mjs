@@ -29,7 +29,7 @@ function inputs(suite,entries){
  need(new Set(suite).size===suite.length&&JSON.stringify([...suite].sort())===JSON.stringify(suite));
  need(Array.isArray(entries));const values=new Map(),sourceIds=new Map();
  for(const [id,row]of entries.entries()){
-  need(row&&Object.keys(row).sort().join('|')==='path|text'&&typeof row.path==='string'&&!row.path.includes('\0')&&(row.text===null||typeof row.text==='string')&&!values.has(row.path));
+  need(row&&Object.keys(row).sort().join('|')==='path|text'&&typeof row.path==='string'&&(row.text===null||typeof row.text==='string')&&!values.has(row.path));
   if(id)need(entries[id-1].path<row.path);values.set(row.path,row.text);sourceIds.set(row.path,id);
  }
  for(const root of suite)need(values.has(root));

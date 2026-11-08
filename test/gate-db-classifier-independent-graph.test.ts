@@ -70,4 +70,17 @@ describe('independent complete-source graph witness without native authority',()
   expect(data.entries.find(row=>row.path===suite[0])!.text).toBe(source);expect(witness.verdicts[0]).toEqual({rootId:0,kind:'DB',reason:'test/a.test.ts: mentions a '+url});
  });
 
+ it('retains actual C logical NUL miss probes as sealed null and still refuses an unknown logical key',()=>{
+  const nul=String.fromCharCode(0),suite=['test/a.test.ts'],spec='./missing'+nul+'key',data=fixture({'test/a.test.ts':`import '${spec}';`},suite);
+  expect(data.entries.some(row=>row.path.includes(nul)&&row.text===null)).toBe(true);
+  const witness=requireGraphMatchesClassifier(suite,data.entries,data.actual);expect(witness.verdicts).toEqual([{rootId:0,kind:'DB',reason:`test/a.test.ts: import '${spec}' does not resolve`}]);
+  const nulMiss=data.entries.findIndex(row=>row.path.includes(nul));expect(()=>replayClassifierGraph(suite,data.entries.filter((_,index)=>index!==nulMiss))).toThrow();
+ });
+
+ it('retains complete55ef graph and twelve-control preimages under current whole-file bindings',()=>{
+  const inverse=JSON.parse(readFileSync('docs/qualification/classifier-witness-logical-key-correction-inverse-20261108.json','utf8'));
+  expect(inverse.base).toBe('55ef73b09da42a1bd96bdcd9857f16b47f50d9e5');expect(Object.keys(inverse.files).sort()).toEqual(['.github/ci/diagnostics/classifier-witness-graph.mjs','test/gate-db-classifier-independent-graph.test.ts']);
+  for(const [file,record]of Object.entries(inverse.files)as [string,any][]){const original=Buffer.from(record.originalBase64,'base64');expect(createHash('sha256').update(readFileSync(file)).digest('hex')).toBe(record.currentSha256);expect(createHash('sha256').update(original).digest('hex')).toBe(record.originalSha256);}
+ });
+
 });
