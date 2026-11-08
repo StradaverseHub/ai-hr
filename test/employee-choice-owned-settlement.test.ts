@@ -6,13 +6,13 @@ import {employeeChoiceCloseRegistry,employeeChoiceWorkRegistry} from './performa
 function deferred(){let resolve!:()=>void;const promise=new Promise<void>(done=>{resolve=done;});return{promise,resolve};}
 const aggregate=(value:unknown)=>{expect(value).toBeInstanceOf(AggregateError);if(!(value instanceof AggregateError))throw Error('Full compound settlement failure required');return value;};
 it('cannot restore the owner after socket failure until the actual callback AND its late adopted resource drain',async()=>{
- const callbacks=employeeChoiceWorkRegistry(),resources=employeeChoiceCloseRegistry(),entered=deferred(),release=deferred(),lateStarted=deferred(),lateRelease=deferred(),socket=Error('fixed socket failure'),late=Error('fixed late close failure');let restored=false,gate=true;
+ const callbacks=employeeChoiceWorkRegistry(),resources=employeeChoiceCloseRegistry(),entered=deferred(),release=deferred(),lateStarted=deferred(),lateRelease=deferred(),initialStopSettled=deferred(),socket=Error('fixed socket failure'),late=Error('fixed late close failure');let restored=false,gate=true;
  resources.register(async()=>{throw socket;});
  const work=callbacks.own(async()=>{entered.resolve();try{await release.promise;}finally{resources.register(async()=>{lateStarted.resolve();await lateRelease.promise;throw late;});}});void work.catch(()=>{});
  await entered.promise;
- const settlement=employeeChoiceOwnedSettlement({stop(){gate=false;callbacks.stop();return resources.stop();},callbacks:()=>callbacks.settle(),resources:()=>resources.settle()});
+ const settlement=employeeChoiceOwnedSettlement({stop(){gate=false;callbacks.stop();return resources.stop().finally(()=>{initialStopSettled.resolve();});},callbacks:()=>callbacks.settle(),resources:()=>resources.settle()});
  const result=settlement.catch((error:unknown)=>error).finally(()=>{restored=true;});expect(gate).toBe(false);
- await Promise.resolve();expect(restored).toBe(false);release.resolve();await lateStarted.promise;expect(restored).toBe(false);lateRelease.resolve();
+ await initialStopSettled.promise;expect(restored).toBe(false);release.resolve();await lateStarted.promise;expect(restored).toBe(false);lateRelease.resolve();
  const error=aggregate(await result);expect(restored).toBe(true);expect(error.errors).toHaveLength(2);
  expect(aggregate(error.errors[0]).errors).toEqual([socket]);expect(aggregate(error.errors[1]).errors).toEqual([socket,late]);
 });

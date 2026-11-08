@@ -80,6 +80,11 @@ class BudgetModels(unittest.TestCase):
         self.assertEqual(module.job_budget('native-controls', anchor, env, 'fixed-host', 1800), (180, 800))
         with self.assertRaises(ValueError):
             module.job_budget('native-controls', anchor, env, 'fixed-host', 1865)
+        self.assertEqual(module.LIMITS['native-controls'], 180)
+        self.assertEqual(module.LIMITS['native-factory'], 128 + 3 * 26)
+        self.assertEqual(module.job_budget('native-factory', anchor, env, 'fixed-host', 1800), (206, 800))
+        with self.assertRaises(ValueError):
+            module.job_budget('native-factory', anchor, env, 'fixed-host', 1839)
 
     def test_file_clock_never_acknowledges_an_incomplete900_second_envelope(self):
         env = {'GITHUB_RUN_ID': '123', 'GITHUB_RUN_ATTEMPT': '1'}
@@ -136,6 +141,17 @@ class ClosedEntryModels(unittest.TestCase):
                     module.request_command({**request, 'stage': 'benchmark'})
             with patch.dict(os.environ, env), self.assertRaises(ValueError):
                 module.request_command({**request, 'stage': 'native-controls'})
+            for selected, expected_stage, fixed_file in [([module.FILE], 'benchmark', module.FILE), ([module.CONTROL_FILE], 'native-controls', module.CONTROL_FILE), ([module.FACTORY_FILE], 'native-factory', module.FACTORY_FILE)]:
+                with patch.dict(os.environ, {**env, 'AIHR_FOCUSED_TESTS': json.dumps(selected)}):
+                    stage, command, _ = module.request_command({**request, 'stage': expected_stage})
+                    self.assertEqual(stage, expected_stage)
+                    self.assertEqual(command, ['pnpm', 'exec', 'vitest', 'run', fixed_file, '--reporter=default', '--reporter=json', '--outputFile.json=' + str(destination / 'db.vitest.json')])
+                    for other in {'benchmark', 'native-controls', 'native-factory'} - {expected_stage}:
+                        with self.assertRaises(ValueError):
+                            module.request_command({**request, 'stage': other})
+            for selected in [[], [module.FACTORY_FILE, module.CONTROL_FILE], [module.FACTORY_FILE, module.FACTORY_FILE], [module.FACTORY_FILE + '.extra']]:
+                with patch.dict(os.environ, {**env, 'AIHR_FOCUSED_TESTS': json.dumps(selected)}), self.assertRaises(ValueError):
+                    module.request_command({**request, 'stage': 'native-factory'})
 
 if __name__ == '__main__':
     unittest.main()

@@ -1,6 +1,7 @@
 /** Controller-only regressions; no app imports, database, compiler or provider calls. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
 import {parseSelection, partitionSelection, verifyFocusedResult, isEmployeeChoiceBenchmark, employeeBenchmarkFile} from './focused-checks.mjs';
 
 const files = ['test/example.test.ts', 'test/screen.dom.test.tsx'];
@@ -96,14 +97,28 @@ test('partial evidence failure cannot prevent mandatory cleanup or erase its ind
  assert.throws(()=>finalizeFocusedBenchmark(()=>{throw Error('private');},()=>{cleaned++;},()=>{throw Error('private refusal callback');}));assert.equal(cleaned,3);
 });
 test('uncertain process owner permanently refuses further reset/migration/test SQL while safe stop remains available',async()=>{
- const {focusedBenchmarkStageFrontier}=await import('./focused-checks.mjs');const calls=[];
- const stage=focusedBenchmarkStageFrontier(name=>{calls.push(name);return{status:name==='benchmark'?1:0};});
- stage('benchmark');for(const name of ['reset','migrate','benchmark'])assert.throws(()=>stage(name));
- for(const name of ['evidence','stats','stop'])stage(name);assert.deepEqual(calls,['benchmark','evidence','stats','stop']);
+ const {focusedBenchmarkStageFrontier}=await import('./focused-checks.mjs');
+ for(const failed of ['benchmark','native-controls','native-factory']){
+  const calls=[],stage=focusedBenchmarkStageFrontier(name=>{calls.push(name);return{status:name===failed?1:0};});
+  stage(failed);for(const name of ['reset','migrate','benchmark','native-controls','native-factory'])assert.throws(()=>stage(name));
+  for(const name of ['evidence','stats','stop'])stage(name);assert.deepEqual(calls,[failed,'evidence','stats','stop']);
+ }
 });
 
 test('new native owner controls alone use their separate fixed outer command and retain strict selection',async()=>{
  const {isEmployeeChoiceNativeControls,employeeNativeControlFile}=await import('./focused-checks.mjs');
  assert.equal(isEmployeeChoiceNativeControls([employeeNativeControlFile]),true);
  for(const selected of [[],files,[employeeNativeControlFile,files[0]],[employeeBenchmarkFile]])assert.equal(isEmployeeChoiceNativeControls(selected),false);
+});
+
+
+test('only the exact sole three-case native factory uses its own supervised route and mandatory workflow cleanup',async()=>{
+ const {isEmployeeChoiceNativeFactory,employeeNativeFactoryFile,isEmployeeChoiceNativeControls,employeeNativeControlFile}=await import('./focused-checks.mjs');
+ assert.equal(isEmployeeChoiceNativeFactory([employeeNativeFactoryFile]),true);
+ for(const selected of [[],files,[employeeNativeFactoryFile,files[0]],[employeeNativeControlFile],[employeeBenchmarkFile],[employeeNativeFactoryFile+'.extra']])assert.equal(isEmployeeChoiceNativeFactory(selected),false);
+ assert.equal(isEmployeeChoiceNativeControls([employeeNativeControlFile]),true);assert.equal(isEmployeeChoiceNativeControls([employeeNativeFactoryFile]),false);assert.equal(isEmployeeChoiceBenchmark([employeeNativeFactoryFile]),false);
+ const workflow=readFileSync(new URL('../workflows/alpha-focused-checks.yml',import.meta.url),'utf8'),anchor=workflow.indexOf('- name: Anchor first executable focused job step'),checkout=workflow.indexOf('- uses: actions/checkout@',anchor);
+ assert(anchor>=0&&checkout>anchor);assert(workflow.includes("[\"test/employee-choice-native-owner-factory.test.ts\"]' ]; then"));
+ const owner=readFileSync(new URL('./focused-checks.mjs',import.meta.url),'utf8');assert(owner.includes("stage(nativeFactory?'native-factory':nativeControls?'native-controls':'benchmark'"));
+ assert(owner.includes('!isEmployeeChoiceNativeFactory(files)'));
 });
