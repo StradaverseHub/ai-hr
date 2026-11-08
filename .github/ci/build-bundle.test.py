@@ -152,11 +152,15 @@ class BundleTests(unittest.TestCase):
                         selected.rename(self.root / ('preserved-' + kind))
                         selected.symlink_to(outside, target_is_directory=True)
                     return actual_stat(name, *args, **kwargs)
-                with self.assertRaises((ValueError, OSError)):
-                    with bundle.inventory.PinnedTree(root) as tree:
-                        self.assertEqual(tree.read_bytes('member', 32), b'original')
-                        with mock.patch.object(os, 'stat', side_effect=raced), mock.patch.object(os, 'fdopen', side_effect=AssertionError('foreign payload must not be read')):
+                # A later __exit__ recheck must not satisfy this explicit-call refusal.
+                tree = bundle.inventory.PinnedTree(root)
+                try:
+                    self.assertEqual(tree.read_bytes('member', 32), b'original')
+                    with mock.patch.object(os, 'stat', side_effect=raced), mock.patch.object(os, 'fdopen', side_effect=AssertionError('foreign payload must not be read')):
+                        with self.assertRaises((ValueError, OSError)):
                             tree.assert_unchanged()
+                finally:
+                    tree.close()
                 self.assertTrue(changed)
                 self.assertEqual((outside / 'member').read_bytes(), b'foreign')
 
@@ -172,11 +176,14 @@ class BundleTests(unittest.TestCase):
                 changed = True; (root / 'nested').rename(root / 'preserved')
                 (root / 'nested').symlink_to(outside, target_is_directory=True)
             return fd
-        with self.assertRaises((ValueError, OSError)):
-            with bundle.inventory.PinnedTree(root) as tree:
-                self.assertEqual(tree.read_bytes('nested/member', 32), b'original')
-                with mock.patch.object(os, 'open', side_effect=raced), mock.patch.object(os, 'fdopen', side_effect=AssertionError('foreign payload must not be read')):
+        tree = bundle.inventory.PinnedTree(root)
+        try:
+            self.assertEqual(tree.read_bytes('nested/member', 32), b'original')
+            with mock.patch.object(os, 'open', side_effect=raced), mock.patch.object(os, 'fdopen', side_effect=AssertionError('foreign payload must not be read')):
+                with self.assertRaises((ValueError, OSError)):
                     tree.assert_unchanged()
+        finally:
+            tree.close()
         self.assertTrue(changed)
         self.assertEqual((outside / 'member').read_bytes(), b'foreign')
 
@@ -198,11 +205,14 @@ class BundleTests(unittest.TestCase):
                         else:
                             os.link(member, self.root / 'outside-hardlink')
                     return found
-                with self.assertRaises((ValueError, OSError)):
-                    with bundle.inventory.PinnedTree(root) as tree:
-                        self.assertEqual(tree.read_bytes('member', 32), b'first')
-                        with mock.patch.object(os, 'stat', side_effect=raced):
+                tree = bundle.inventory.PinnedTree(root)
+                try:
+                    self.assertEqual(tree.read_bytes('member', 32), b'first')
+                    with mock.patch.object(os, 'stat', side_effect=raced):
+                        with self.assertRaises((ValueError, OSError)):
                             tree.assert_unchanged()
+                finally:
+                    tree.close()
                 self.assertTrue(changed)
 
     def test_linear_revalidation_refuses_link_target_races_and_special_member_substitution(self):
@@ -214,11 +224,14 @@ class BundleTests(unittest.TestCase):
             if name == 'link' and kwargs.get('dir_fd') is not None and not changed:
                 changed = True; link.unlink(); link.symlink_to('missing')
             return value
-        with self.assertRaises((ValueError, OSError)):
-            with bundle.inventory.PinnedTree(root) as tree:
-                self.assertEqual(tree.readlink('link'), 'member')
-                with mock.patch.object(os, 'readlink', side_effect=raced_link):
+        tree = bundle.inventory.PinnedTree(root)
+        try:
+            self.assertEqual(tree.readlink('link'), 'member')
+            with mock.patch.object(os, 'readlink', side_effect=raced_link):
+                with self.assertRaises((ValueError, OSError)):
                     tree.assert_unchanged()
+        finally:
+            tree.close()
         self.assertTrue(changed)
         special = self.root / 'linear-special'; special.mkdir(); member = special / 'member'; member.write_bytes(b'first')
         actual_stat = os.stat; substituted = False
@@ -228,11 +241,14 @@ class BundleTests(unittest.TestCase):
             if name == 'member' and kwargs.get('dir_fd') is not None and not substituted:
                 substituted = True; member.unlink(); os.mkfifo(member)
             return found
-        with self.assertRaises((ValueError, OSError)):
-            with bundle.inventory.PinnedTree(special) as tree:
-                self.assertEqual(tree.read_bytes('member', 32), b'first')
-                with mock.patch.object(os, 'stat', side_effect=raced_file), mock.patch.object(os, 'fdopen', side_effect=AssertionError('special payload must not be read')):
+        tree = bundle.inventory.PinnedTree(special)
+        try:
+            self.assertEqual(tree.read_bytes('member', 32), b'first')
+            with mock.patch.object(os, 'stat', side_effect=raced_file), mock.patch.object(os, 'fdopen', side_effect=AssertionError('special payload must not be read')):
+                with self.assertRaises((ValueError, OSError)):
                     tree.assert_unchanged()
+        finally:
+            tree.close()
         self.assertTrue(substituted)
 
     def test_linear_revalidation_refuses_arrivals_deletions_and_directory_changes_after_entry(self):
@@ -254,11 +270,14 @@ class BundleTests(unittest.TestCase):
                         else:
                             (root / 'nested').chmod(0o700)
                     return found
-                with self.assertRaises((ValueError, OSError)):
-                    with bundle.inventory.PinnedTree(root) as tree:
-                        self.assertEqual(tree.read_bytes('nested/member', 32), b'first')
-                        with mock.patch.object(os, 'stat', side_effect=raced):
+                tree = bundle.inventory.PinnedTree(root)
+                try:
+                    self.assertEqual(tree.read_bytes('nested/member', 32), b'first')
+                    with mock.patch.object(os, 'stat', side_effect=raced):
+                        with self.assertRaises((ValueError, OSError)):
                             tree.assert_unchanged()
+                finally:
+                    tree.close()
                 self.assertTrue(changed)
 
     def test_linear_revalidation_closes_only_its_actual_traversal_descriptors_on_all_paths(self):

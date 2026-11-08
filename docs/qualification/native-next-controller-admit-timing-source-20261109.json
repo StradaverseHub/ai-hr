@@ -1,7 +1,7 @@
 {
   "kind": "CURRENT_CONTROLLER_ADMIT_TIMING_SOURCE_NOT_RUN_EVIDENCE",
   "base": "615274a2556686946610c66ccd1422506338946c",
-  "sourceRef": "codex/linear-runtime-inventory-revalidation-order-20261109",
+  "sourceRef": "codex/linear-inventory-refusal-boundary-tests-20261109",
   "currentCount": 133,
   "sourceSha256": {
     ".github/actions/setup-alpha/action.yml": "13bb384ff8b5cab52e9f894a109aaf46384e221ac156ffc289d752e3b334f150",
@@ -488,7 +488,7 @@
     "sourceOnly": true,
     "parent": "7fc113e3b413321ca0a8fa4ad21bd9f595d0a32d",
     "recordPath": "docs/qualification/native-next-linear-inventory-source-20261109.json",
-    "recordSha256": "c1d7f04422abccdc8dee0d37bdf39639f60821ad3aa73daf8154c74f1e6b88fd",
+    "recordSha256": "a0b8342f17ec08f579b5a35f316f7af7da2e8dd503669ac5d9e9d76bd242ed34",
     "all12FreshTreeChecksRetained": true,
     "sourceControlsAuthoredOnly": {
       "bundle": 65,
