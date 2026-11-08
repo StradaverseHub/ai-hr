@@ -5,11 +5,12 @@ import assert from 'node:assert/strict';
 import {writeFileSync} from 'node:fs';
 import {join} from 'node:path';
 import type {Page,Response} from 'playwright';
-import {fixtureNavigationActor,navigationExpectedText,NAVIGATION_CAPTURE_MEMBER,NAVIGATION_CAPTURE_VERSION,validateNavigationCapture,
+import {fixtureNavigationActor,NAVIGATION_CAPTURE_MEMBER,NAVIGATION_CAPTURE_VERSION,validateNavigationCapture,
  type NavigationCapture,type NavigationCaptureBundle,type NavigationObservation,type NavigationScenario,type NavigationFixtureTextBindings} from './navigation-protocol';
 import {navigationCleanHead,navigationSourceIdentity} from './navigation-source';
 import {readNavigationFixtureBindings} from './navigation-fixture-bindings';
 import {navigationScenarioEntry} from './navigation-entry';
+import {observeNavigationUIContent} from './navigation-browser-ui';
 import {clickNativeShellDestination,assertNativeShellDestinationHidden} from './navigation-shell-browser';
 const BASE='https://localhost:3443';
 const failuresSelector={busy:'main[data-personnel-busy],main[data-page-busy],main [data-personnel-busy],main [data-page-busy]',
@@ -113,39 +114,7 @@ async function captureScenario(page:Page,actorIndex:number,scenario:NavigationSc
   await signedInName.first().waitFor({state:'visible',timeout:remaining()});
   assert(await signedInName.count()===1&&await signedInName.innerText({timeout:remaining()})===actor.name,'Native signed-in fixture identity differs');
   if(scenario.outcome==='denied')assert(await page.locator('main [data-navigation-destination="'+scenario.destinationId+'"]').count()===0,'Denied private destination remained rendered');
-  for(const step of scenario.steps){
-   const details=page.locator(step.selector);
-   await details.first().waitFor({state:'visible',timeout:remaining()});
-   assert(await details.count()===1,'Native disclosure missing or ambiguous');
-   assert(await details.evaluate(element=>element.tagName==='DETAILS'),'Only native read disclosure steps are permitted');
-   if(await details.getAttribute('open',{timeout:remaining()})===null){
-    const summary=details.locator(':scope > summary');
-    await summary.first().waitFor({state:'visible',timeout:remaining()});
-    assert(await summary.count()===1&&await summary.isEnabled({timeout:remaining()}),'Native disclosure trigger missing, ambiguous or unavailable');
-    await summary.click({timeout:remaining()});
-   }
-  }
-  const checks:NavigationObservation['checks']=[];
-  for(const check of scenario.checks){
-   const matches=page.locator(check.selector);await matches.first().waitFor({state:'visible',timeout:remaining()});
-   const visible=[];for(const match of await matches.all())if(await match.isVisible())visible.push(match);
-   assert(visible.length>0,'Reviewed usable-content selector has no visible result');
-   if(check.kind==='count'||check.kind==='fixture-roster-rows')assert(visible.length>=check.minimum&&(check.maximum===undefined||visible.length<=check.maximum),'Usable-content count differs');
-   if(check.kind==='fixture-roster-rows'){
-    const ids=new Set<string>();
-    for(const row of visible){
-     const id=await row.getAttribute('data-roster-employment-id',{timeout:remaining()});
-     assert(id&&!ids.has(id)&&Object.hasOwn(bindings.rosterScope,id),'Roster rendered an unknown, duplicate or out-of-scope native fixture employment');ids.add(id);
-     const expected=bindings.rosterScope[id];if(expected!==null)assert((await row.innerText({timeout:remaining()})).includes(expected),'Roster omitted the independently seeded employee identity');
-    }
-   }else if(check.kind==='enabled'){
-    assert(await visible[0].evaluate(element=>element.tagName.toLowerCase())===check.tag&&await visible[0].isEnabled(),'Reviewed native control is unavailable');
-   }else if(check.kind==='text-exact')assert((await visible[0].innerText({timeout:remaining()})).trim()===navigationExpectedText(check.expected,actorIndex,bindings),'Expected exact native fixture content differs');
-   else if(check.kind==='text')assert((await visible[0].innerText({timeout:remaining()})).includes(navigationExpectedText(check.expected,actorIndex,bindings)),'Expected independent fixture content missing');
-   else if(check.kind==='value')assert(await visible[0].inputValue({timeout:remaining()})===navigationExpectedText(check.expected,actorIndex,bindings),'Expected native control value differs');
-   else if(check.kind==='attribute')assert(await visible[0].getAttribute(check.name)===check.expected,'Reviewed native control attribute differs');
-   checks.push({id:check.id,passed:true,observedCount:visible.length});
-  }
+  const checks=await observeNavigationUIContent(page,scenario,actorIndex,bindings,remaining);
   const observed=await capturedFailures(page);for(const key of ['busy','unavailable','alerts']as const)failures[key]+=observed[key];
   assert(Object.values(failures).every(count=>count===0),'Navigation rendered failure state or browser/server error');
   const usableWith=sample();remaining();
