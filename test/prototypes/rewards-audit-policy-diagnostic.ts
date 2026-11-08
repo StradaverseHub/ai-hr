@@ -1,8 +1,9 @@
 /** Test-only observations. No messages, SQL, parameters, stack or authority output. */
-const phases=['tenant-callback','agent-guard','bank-actor','bank-interval','bank-source','bank-metadata-parse','bank-stored-parse','catalogue-lock','catalogue-source','catalogue-metadata-parse','catalogue-stored-parse']as const;
+import {rewardPolicyNativeGuards} from './rewards-audit-policy-native-guards';
+const phases=['tenant-callback','agent-guard','bank-actor','bank-interval','bank-source','bank-metadata-parse','bank-stored-parse','catalogue-lock','catalogue-source','catalogue-confirm','catalogue-native-save','catalogue-metadata-parse','catalogue-stored-parse']as const;
 export type RewardPolicyCallbackPhase=typeof phases[number];
 type Phase=RewardPolicyCallbackPhase;
-type CallbackObservation=Readonly<{kind:'callback-refused';phase:Phase;sqlstate:string|null}>;
+type CallbackObservation=Readonly<{kind:'callback-refused';phase:Phase;sqlstate:string|null;nativeGuard?:typeof rewardPolicyNativeGuards[number]['code']}>;
 const steps=['writer-entered','writer-stamped','writer-insert-submitted','receipt-finalize-submitted']as const;
 export type RewardPolicySourceStep=typeof steps[number];
 export type RewardPolicyWaitObservation=Readonly<{kind:'wait-unavailable';waitingPresent:boolean;holderPresent:boolean;waitingActive:boolean;waitingOnLock:boolean;ownedBlocking:boolean;waitingFloorWrite:boolean;waitingHistoryLock:boolean;waitingStatementOlderThanWindow:boolean}>;
@@ -18,10 +19,21 @@ function sqlstate(error:unknown):string|null{
  }
  return null;
 }
+function nativeGuard(error:unknown){
+ const seen=new Set<unknown>();let current=error;
+ for(let depth=0;depth<4&&current!==null&&typeof current==='object'&&!seen.has(current);depth++){
+  seen.add(current);const code=Object.getOwnPropertyDescriptor(current,'code'),message=Object.getOwnPropertyDescriptor(current,'message');
+  if(code&&'value'in code&&typeof code.value==='string'&&code.value.length===5&&/^[0-9A-Z]{5}$/.test(code.value)&&message&&'value'in message&&typeof message.value==='string'){
+   const known=rewardPolicyNativeGuards.find(row=>row.message===message.value&&row.sqlstates.some(state=>state===code.value));if(known)return known.code;
+  }
+  const cause=Object.getOwnPropertyDescriptor(current,'cause');current=cause&&'value'in cause?cause.value:undefined;
+ }
+ return undefined;
+}
 export function rewardsPolicyDiagnostics(){
  const rows:Observation[]=[],pending=new Set<Promise<void>>();let overflow=false;
  function add(row:Observation){if(rows.length===64){overflow=true;return;}rows.push(Object.freeze(row));}
- function refused(phase:Phase,error:unknown){let state:string|null=null;try{state=sqlstate(error);}catch{overflow=true;}add({kind:'callback-refused',phase,sqlstate:state});}
+ function refused(phase:Phase,error:unknown){let state:string|null=null,guard:typeof rewardPolicyNativeGuards[number]['code']|undefined;try{state=sqlstate(error);guard=nativeGuard(error);}catch{overflow=true;}add({kind:'callback-refused',phase,sqlstate:state,...(guard?{nativeGuard:guard}:{})});}
  function returned(phase:Phase){if(phase!=='tenant-callback')add({kind:'callback-returned',phase});}
  return Object.freeze({
   async callback<T>(phase:Phase,work:()=>PromiseLike<T>):Promise<T>{

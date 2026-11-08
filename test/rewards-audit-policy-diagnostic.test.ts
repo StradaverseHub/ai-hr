@@ -86,9 +86,29 @@ it('keeps submitted source steps separate from strict native booleans and reject
 });
 it('binds the actual preimport delegates, two schema owners and canonical native History derivation without a timing change',()=>{
  const source=readFileSync(new URL('./prototypes/rewards-audit-policy-native-cases.ts',import.meta.url),'utf8'),controller=readFileSync(new URL('./prototypes/rewards-audit-policy-controller.ts',import.meta.url),'utf8');
- expect(source.match(/vi\.mock\(/g)).toHaveLength(4);expect(source.match(/await importOriginal</g)).toHaveLength(4);
- for(const name of ['withAgentActionGuard','assertBankMaintenanceActorTx','withBankMaintenanceIntervalTx','prepareBankMaintenanceSourceTx','lockPositionArchiveSourceTx','preparePositionArchiveTx'])expect(source).toContain('actual.'+name+'(');
+ expect(source.match(/vi\.mock\(/g)).toHaveLength(5);expect(source.match(/await importOriginal</g)).toHaveLength(5);
+ for(const name of ['withAgentActionGuard','assertBankMaintenanceActorTx','withBankMaintenanceIntervalTx','prepareBankMaintenanceSourceTx','lockPositionArchiveSourceTx','preparePositionArchiveTx','confirmPositionArchiveTx','bulkSaveLabels'])expect(source).toContain('actual.'+name+'(');
  expect(source.match(/rewardPolicyObservedParse\(spec\.(metadata|stored)/g)).toHaveLength(4);expect(source).toContain("if(spec.action==='employees.bank.maintain')");expect(source).toContain("if(spec.action==='org.position.archive')");expect(source).toContain('return actual.createReviewCustody(spec);');expect(source).not.toMatch(/rewardPolicyObservedParse\(spec\.human|vi\.spyOn\((agentGuardOwner|bankSourceOwner|catalogueSourceOwner)/);
  expect(source).toContain('const until=Date.now()+200;');expect(source).toContain('await observed.drain();spy.mockRestore();');
  expect(controller).toContain("hashtext('audit-chain:'||${tenant}::uuid::text)::bigint");expect(controller).toContain("clock_timestamp()-query_start>=interval '200 milliseconds'");expect(controller).toContain('backend_start=${waiting.started}::text::timestamptz and datname=${database}');expect(controller).not.toMatch(/select[^\n]*query\s*[, ]/i);
+});
+
+import {rewardPolicyNativeGuards} from './prototypes/rewards-audit-policy-native-guards';
+it('classifies only exact source-owned native message AND SQLSTATE pairs and never emits the message',async()=>{
+ const diagnostics=rewardsPolicyDiagnostics();
+ for(const guard of rewardPolicyNativeGuards)for(const state of guard.sqlstates){
+  const native=Object.assign(Error(guard.message),{code:state}),outer=Error('never emit raw wrapped payload',{cause:native});
+  await expect(diagnostics.callback('catalogue-confirm',()=>Promise.reject(outer))).rejects.toBe(outer);
+  expect(diagnostics.snapshot().observations.at(-1)).toEqual({kind:'callback-refused',phase:'catalogue-confirm',sqlstate:state,nativeGuard:guard.code});
+ }
+ expect(diagnostics.snapshot().complete).toBe(true);expect(JSON.stringify(diagnostics.snapshot())).not.toMatch(/never emit raw|Catalogue interval unavailable|Actual native History frame required/);
+ const source=rewardPolicyNativeGuards.find(row=>row.message==='Catalogue interval unavailable');expect(source).toBeDefined();
+ for(const error of [Object.assign(Error('Catalogue interval unavailable'),{code:'22023'}),Object.assign(Error('Catalogue interval unavailable private payload'),{code:'42501'}),{code:'42501',get message(){throw Error('private getter');}}]){
+  await expect(diagnostics.callback('catalogue-native-save',()=>Promise.reject(error))).rejects.toBe(error);expect(diagnostics.snapshot().observations.at(-1)).toEqual({kind:'callback-refused',phase:'catalogue-native-save',sqlstate:error.code});
+ }
+});
+it('binds every diagnostic guard to a literal canonical source refusal without copying native business decisions',()=>{
+ expect(new Set(rewardPolicyNativeGuards.map(row=>row.code)).size).toBe(rewardPolicyNativeGuards.length);
+ for(const guard of rewardPolicyNativeGuards){const body=readFileSync(guard.source,'utf8');expect(body).toContain("RAISE EXCEPTION '"+guard.message+"'");expect(guard.message).not.toContain('%');expect(guard.code).toMatch(/^[a-z0-9-]+$/);for(const state of guard.sqlstates)expect(state).toHaveLength(5);}
+ const native=readFileSync('test/prototypes/rewards-audit-policy-native-cases.ts','utf8');expect(native).toContain("'catalogue-confirm',()=>actual.confirmPositionArchiveTx(...args)");expect(native).toContain("'catalogue-native-save',()=>actual.bulkSaveLabels(...args)");
 });

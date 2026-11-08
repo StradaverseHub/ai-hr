@@ -1648,6 +1648,8 @@ export const REWARDS_NATIVE_SOURCES=Object.freeze([
  "test/prototypes/rewards-audit-policy-diagnostic.ts",
  "test/prototypes/rewards-audit-policy-lifetime.ts",
  "test/prototypes/rewards-audit-policy-native-cases.ts",
+ "test/prototypes/rewards-audit-policy-native-guards.ts",
+ "test/prototypes/rewards-audit-policy-native-progress.ts",
  "test/prototypes/rewards-audit-policy-observation-context.ts",
  "test/prototypes/rewards-audit-policy-owner.ts",
  "test/prototypes/rewards-audit-policy-predecessors.json",

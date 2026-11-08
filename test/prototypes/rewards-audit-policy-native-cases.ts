@@ -5,6 +5,9 @@ import {randomUUID} from 'node:crypto';
 import {writeFileSync} from 'node:fs';
 import {join} from 'node:path';
 import postgres from 'postgres';
+import {z} from 'zod';
+import {assertAiPrincipalTx} from '../../core/ai-principal';
+import {assertReportPrincipalTx,MasterReportAccessError} from '../../core/employee-master-access';
 import {afterAll,afterEach,beforeEach,expect,it,vi,type TestContext} from 'vitest';
 import {sql,eq} from 'drizzle-orm';
 import type {TransactionSql} from 'postgres';
@@ -35,6 +38,7 @@ import {rewardsAuditPolicyFixtureOwner,type RewardsAuditPolicyFixtureOwner} from
 import {rewardsAuditCanonicalTruthContract} from './rewards-audit-policy-contract';
 import {rewardPolicyReaderProcess} from './rewards-audit-policy-reader-process';
 import {controlledPolicyWait} from './rewards-audit-policy-controlled-wait';
+import {waitRewardPolicyNativeProgress} from './rewards-audit-policy-native-progress';
 import {rewardsPolicyDiagnostics} from './rewards-audit-policy-diagnostic';
 
 // Registered by Vitest BEFORE the review-store imports evaluate their factory
@@ -59,7 +63,14 @@ vi.mock('../../core/assistant-actions/position-archive-source',async importOrigi
  const {rewardPolicyObservedCallback}=await import('./rewards-audit-policy-observation-context');
  const lockPositionArchiveSourceTx:typeof actual.lockPositionArchiveSourceTx=(...args)=>rewardPolicyObservedCallback(()=>observationContext.current,'catalogue-lock',()=>actual.lockPositionArchiveSourceTx(...args));
  const preparePositionArchiveTx:typeof actual.preparePositionArchiveTx=(...args)=>rewardPolicyObservedCallback(()=>observationContext.current,'catalogue-source',()=>actual.preparePositionArchiveTx(...args));
- return{...actual,lockPositionArchiveSourceTx,preparePositionArchiveTx};
+ const confirmPositionArchiveTx:typeof actual.confirmPositionArchiveTx=(...args)=>rewardPolicyObservedCallback(()=>observationContext.current,'catalogue-confirm',()=>actual.confirmPositionArchiveTx(...args));
+ return{...actual,lockPositionArchiveSourceTx,preparePositionArchiveTx,confirmPositionArchiveTx};
+});
+vi.mock('../../core/admin',async importOriginal=>{
+ const actual=await importOriginal<typeof import('../../core/admin')>();
+ const {rewardPolicyObservedCallback}=await import('./rewards-audit-policy-observation-context');
+ const bulkSaveLabels:typeof actual.bulkSaveLabels=(...args)=>rewardPolicyObservedCallback(()=>observationContext.current,'catalogue-native-save',()=>actual.bulkSaveLabels(...args));
+ return{...actual,bulkSaveLabels};
 });
 vi.mock('../../core/assistant-actions/generic-review-custody',async importOriginal=>{
  const actual=await importOriginal<typeof import('../../core/assistant-actions/generic-review-custody')>();
@@ -133,6 +144,13 @@ export function registerRewardsAuditPolicyNativeCases(evidenceDirectory:string){
   throw primary;
  }
 
+
+ async function ownsNativeFloorWrite(waiting:{pid:number;started:string}){
+  const [row]=await owner.client`select exists(select 1 from pg_stat_activity a join pg_locks l on l.pid=a.pid
+   where a.pid=${waiting.pid} and a.backend_start=${waiting.started}::text::timestamptz and a.datname=${controller.database}
+   and l.locktype='relation' and l.relation='reward_audit_policy_private.floor_marker'::regclass and l.granted and l.mode='RowExclusiveLock')as ready`;
+  if(!row||typeof row.ready!=='boolean')throw Error('Exact native floor write progress unavailable');return row.ready;
+ }
  function nativeIt(index:number,work:(ctx:TestContext)=>Promise<void>){it(rewardsAuditPolicyNativeCaseNames[index],context=>ownership.run(context,async()=>{
   const observed=rewardsPolicyDiagnostics();if(observationContext.current)throw Error('Previous canonical observations have not drained');diagnostics=observed;observationContext.current=observed;
   // Only budget instrumentation: every real application Tx and canonical service
@@ -377,7 +395,11 @@ export function registerRewardsAuditPolicyNativeCases(evidenceDirectory:string){
     await control.run(async()=>{
      await holder`select pg_advisory_lock(${key}::text::bigint)`;
      const command=control.start(()=>writer.begin('isolation level repeatable read',async tx=>{diagnostics?.step('writer-entered');await stamp(tx,f.ctx);diagnostics?.step('writer-stamped');roots.push(await rootIdentity(tx));diagnostics?.step('writer-insert-submitted');return(await tx`insert into public.domain_event(tenant_id,aggregate_type,aggregate_id,event_type,actor_type,actor_id)values(${f.b.tenantId}::uuid,'policy-fixture',${randomUUID()}::uuid,'policy.probe-before-first-floor','user',${f.ctx.userId!}::uuid)returning chain_seq::int as seq`)[0];}));
-     await blocking(context,writerIdentity,holderIdentity,f.b.tenantId);finalize.resolve();
+     await blocking(context,writerIdentity,holderIdentity,f.b.tenantId);
+     // No floor write exists while the actual reader is parked before finalize.
+     // Admission/profile work belongs before the intended200ms UNIQUE wait.
+     expect(await ownsNativeFloorWrite(readerIdentity)).toBe(false);finalize.resolve();
+     await waitRewardPolicyNativeProgress(control,receipt,context.signal,()=>ownsNativeFloorWrite(readerIdentity));
      await blocking(context,readerIdentity,writerIdentity,f.b.tenantId);
      expect((await holder`select pg_advisory_unlock(${key}::text::bigint)as released`)[0].released).toBe(true);
      expect(await command.value()).toEqual({seq:null});expect((await receipt.value()).id).toBe(receiptId);
@@ -391,26 +413,36 @@ export function registerRewardsAuditPolicyNativeCases(evidenceDirectory:string){
  });
  async function bankFirstFloorRace(context:TestContext,counterexample:boolean){
   const f=await setup(),pack=requirePackFor('MY');
-  await pack.statutory.set(f.ctx,{personId:f.person.personId,icNumber:null,epfNumber:'FICTIONAL-RETAINED-EPF',socsoNumber:'FICTIONAL-RETAINED-SOCSO',taxNumber:'FICTIONAL-RETAINED-TAX',bankName:'Fictional legacy bank',bankAccountNo:'FLOOR-OLD'});
-  await pack.statutory.setBank(f.ctx,{personId:f.person.personId,bankName:'Fictional legacy bank',bankAccountNo:'FLOOR-OLD',enableCustomHolderName:true,customHolderName:'Fictional old payee',enableCustomHolderId:true,customHolderId:'FICTIONAL-OLD-HOLDER'});
+  // seedBase has a real global HR grant; legacy adminCtx supplies only roles.
+  // Prove that the SAME live identity passes AI admission but its incomplete
+  // explicit report snapshot refuses, before rebinding from native facts.
+  const [rawPrincipal]=await owner.client`select tenant_id as "tenantId",person_id as "personId",grants from app.principal(${f.ctx.userId!}::uuid)`;
+  const principal=z.object({tenantId:z.guid(),personId:z.guid(),grants:z.array(z.object({role:z.string(),companyId:z.guid().nullable()}).strict())}).strict().parse(rawPrincipal);
+  expect(principal.tenantId).toBe(f.b.tenantId);expect(principal.personId).toBe(f.ctx.personId);expect(principal.grants).toEqual([{role:'hr_admin',companyId:null}]);expect(f.ctx.grants).toBeUndefined();
+  await expect(database.withTenant(f.ctx,async tx=>{await assertAiPrincipalTx(tx,f.ctx);await assertReportPrincipalTx(tx,f.ctx);})).rejects.toBeInstanceOf(MasterReportAccessError);
+  const ctx={...f.ctx,grants:principal.grants};expect(ctx.roles).toEqual(principal.grants.map(grant=>grant.role));
+  await database.withTenant(ctx,async tx=>{await assertAiPrincipalTx(tx,ctx);await assertReportPrincipalTx(tx,ctx);});
+
+  await pack.statutory.set(ctx,{personId:f.person.personId,icNumber:null,epfNumber:'FICTIONAL-RETAINED-EPF',socsoNumber:'FICTIONAL-RETAINED-SOCSO',taxNumber:'FICTIONAL-RETAINED-TAX',bankName:'Fictional legacy bank',bankAccountNo:'FLOOR-OLD'});
+  await pack.statutory.setBank(ctx,{personId:f.person.personId,bankName:'Fictional legacy bank',bankAccountNo:'FLOOR-OLD',enableCustomHolderName:true,customHolderName:'Fictional old payee',enableCustomHolderId:true,customHolderId:'FICTIONAL-OLD-HOLDER'});
   const fields={bankName:pack.client.bankNames[0],bankAccountNo:'FLOOR-NEW',enableCustomHolderName:false,customHolderName:'discarded disabled name',enableCustomHolderId:false,customHolderId:'discarded disabled ID'};
-  const human=Bank.Human.parse({action:Bank.action,contractVersion:1,employmentId:f.person.employmentId,subjectId:f.person.personId,fields}),prepared=(await bankMaintenanceReviews.prepare(f.ctx,human)).review;
+  const human=Bank.Human.parse({action:Bank.action,contractVersion:1,employmentId:f.person.employmentId,subjectId:f.person.personId,fields}),prepared=(await bankMaintenanceReviews.prepare(ctx,human)).review;
   const nativeBefore=Array.from(await owner.client`select to_jsonb(s)as value from public.employee_statutory_my s where s.tenant_id=${f.b.tenantId}::uuid order by s.id`),financial=await money(f.b.tenantId);
   // Older reader establishes true BEFORE the setting writer; no setting writer
   // is attempted behind the Bank command's subsequently owned Access barrier.
   const connection=reader(),observed=deferred(),finalize=deferred(),bankEntered=deferred(),finishBank=deferred();let bankPid=0,bankStart='',receiptId:string|undefined;
   await setSetting(f.b.tenantId,'audit.hash_chain_enabled',true);
   const abort=()=>{finalize.resolve();finishBank.resolve();};context.signal.addEventListener('abort',abort,{once:true});
-  const control=controlledPolicyWait(ownership.poison),receipt=control.start(()=>connection.begin('isolation level repeatable read',async tx=>{await stamp(tx,f.ctx);const [row]=await tx`select reward_audit_read.begin_read('libraries','salary',${f.year})as id`;if(typeof row.id!=='string')throw Error('Actual older armed reader required');receiptId=row.id;observed.resolve();await finalize.promise;context.signal.throwIfAborted();return(await tx`select * from reward_audit_read.finalize_read(${row.id}::uuid)`)[0];}));
+  const control=controlledPolicyWait(ownership.poison),receipt=control.start(()=>connection.begin('isolation level repeatable read',async tx=>{await stamp(tx,ctx);const [row]=await tx`select reward_audit_read.begin_read('libraries','salary',${f.year})as id`;if(typeof row.id!=='string')throw Error('Actual older armed reader required');receiptId=row.id;observed.resolve();await finalize.promise;context.signal.throwIfAborted();return(await tx`select * from reward_audit_read.finalize_read(${row.id}::uuid)`)[0];}));
   await control.run(async()=>{
    await control.ready(observed.promise,receipt,context.signal,'Actual older reader exited before native Bank PRE');await setSetting(f.b.tenantId,'audit.hash_chain_enabled',false);
    const exercise=async()=>{
-    const command=control.start(()=>database.withTenant(f.ctx,async tx=>{
+    const command=control.start(()=>database.withTenant(ctx,async tx=>{
      await tx.execute(sql`select app.assistant_bank_review_arm(${prepared.actionId}::uuid)`);
      const [frame]=await tx.execute<{pid:number;started:string;pre:{armed:boolean;priorSeq:null;priorHash:null};history:boolean}>(sql`select pg_backend_pid()as pid,(select backend_start::text from pg_stat_activity where pid=pg_backend_pid())as started,bank_audit_preimage as pre,exists(select 1 from pg_locks where pid=pg_backend_pid()and locktype='advisory'and granted and mode='ExclusiveLock'and objsubid=1 and classid=((hashtext(${'audit-chain:'+f.b.tenantId})::bigint>>32)&4294967295)::oid and objid=(hashtext(${'audit-chain:'+f.b.tenantId})::bigint&4294967295)::oid)as history from app.assistant_own_leave_review where id=${prepared.actionId}::uuid`);
      // Derive both physical advisory-key halves natively, including sign.
      expect(frame.history).toBe(true);expect(frame.pre).toEqual({armed:false,priorSeq:null,priorHash:null});bankPid=frame.pid;bankStart=frame.started;bankEntered.resolve();await finishBank.promise;context.signal.throwIfAborted();
-     const native=await pack.statutory.setBank(f.ctx,{personId:f.person.personId,...fields},tx);
+     const native=await pack.statutory.setBank(ctx,{personId:f.person.personId,...fields},tx);
      const events=await tx.execute<{id:string}>(sql`select id from public.domain_event where tenant_id=${f.b.tenantId}::uuid and aggregate_id=${native.id}::uuid and event_type='employee.bank.updated'and xmin=pg_current_xact_id()::xid`);expect(events).toHaveLength(1);
      await tx.execute(sql`select app.assistant_assigned_review_complete(${prepared.actionId}::uuid,${Bank.action},${prepared.reviewedDigest},${events[0].id}::uuid)`);return events[0].id;
     }));
@@ -426,7 +458,7 @@ export function registerRewardsAuditPolicyNativeCases(evidenceDirectory:string){
     },async()=>{finalize.resolve();finishBank.resolve();});
    };
    if(counterexample)await owned().fixture.withFreshFloorCounterexample(exercise);else await exercise();
-   expect(await money(f.b.tenantId)).toEqual(financial);expect((await event(app(),f.ctx,'policy.after-bank-first-floor')).chain_seq).toBe(1);
+   expect(await money(f.b.tenantId)).toEqual(financial);expect((await event(app(),ctx,'policy.after-bank-first-floor')).chain_seq).toBe(1);
   },async()=>{finalize.resolve();finishBank.resolve();},()=>context.signal.removeEventListener('abort',abort));
  }
  nativeIt(16,context=>bankFirstFloorRace(context,true));
