@@ -1,3 +1,4 @@
+import {withAiCentreActivity} from './ai-centre-control';
 import {assertAgentActionUnpausedTx} from './agent-action-pause';
 import {AiAllowanceError} from '../lib/ai/types';
 /** WP13 c/d/e. Fixed-template, principal-only reminders. This module never calls a model, writes clocks,
@@ -68,7 +69,11 @@ async function sendOne(tx:Tx,ctx:SessionContext,action:FollowupAction,item:Follo
   payload:{action:action.id,source,stage:item.stage,companyId:item.companyId,waitingOn:item.waitingOn,eligibleOn:today,chaseNumber:prior.length+1,...agentStamp(fresh,[specialistOf(action)])}});
  return 'sent' as const;
 }
-export async function runAutomaticFollowups(ctx:SessionContext,opts:ChaserRunOptions):Promise<FollowupRunResult>{
+export async function runAutomaticFollowups(...args:Parameters<typeof runAutomaticFollowupsActivity>):Promise<Awaited<ReturnType<typeof runAutomaticFollowupsActivity>>>{
+ args=[structuredClone(args[0]),{...args[1]}];
+ return withAiCentreActivity(args[0],()=>runAutomaticFollowupsActivity(...args));
+}
+async function runAutomaticFollowupsActivity(ctx:SessionContext,opts:ChaserRunOptions):Promise<FollowupRunResult>{
  if(!isAgentContext(ctx))throw new AutomaticChaserRefusal('not_agent');if(typeof opts.calendar!=='function')throw Error('Follow-ups need the engine calendar');
  const today=opts.today??todayInKualaLumpur(),result:FollowupRunResult={sent:0,stopped:false,byAction:{}};
  for(const action of FOLLOWUP_ACTIONS){const specialist=specialistOf(action),source=sourceOf(action);

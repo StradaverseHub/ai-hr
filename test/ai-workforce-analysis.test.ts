@@ -6,6 +6,13 @@ import {prepareProviderAnalysis,inspectPreparedProviderAnalysis,retireProviderAn
 const h=vi.hoisted(()=>({tenant:vi.fn(),principal:vi.fn(),fields:vi.fn(),entitlements:vi.fn(),module:vi.fn(),allowed:vi.fn(),native:vi.fn(),configuration:vi.fn(),privateAnalysis:vi.fn(),
  today:'2026-10-30',issuedCtx:null as unknown,contexts:[] as unknown[],sources:[] as unknown[],admin:true,
  configTx:{tag:'configuration',execute:vi.fn()},preparedTx:{tag:'prepared',execute:vi.fn()},admittedTx:{tag:'admitted',execute:vi.fn()}}));
+// This suite explicitly doubles database boundaries. Stop/generation/function authority is
+// exercised against the real database in ai-centre-controls and assistant-read-session tests.
+vi.mock('../core/ai-centre-control',()=>({
+ withAiCentreActivity:async(_ctx:unknown,work:()=>Promise<unknown>)=>work(),
+ withAiCentreFunction:async(_ctx:unknown,_key:unknown,work:()=>Promise<unknown>)=>work(),
+ assertAiCentreRunningTx:async()=>0,
+}));
 vi.mock('../db/client',()=>({withTenant:h.tenant}));
 vi.mock('../core/employee-master-access',()=>({assertReportPrincipalTx:h.principal,masterReportFieldsTx:h.fields}));
 vi.mock('../core/entitlements',()=>({resolveEntitlementsTx:h.entitlements,assertModuleEnabled:h.module}));

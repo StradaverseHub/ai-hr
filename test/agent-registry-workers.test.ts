@@ -67,6 +67,7 @@ describe('one contract for every worker',()=>{
   expect(workerDeclarationProblems({...copy(),effect:'notify'})).toContain('effect');
   expect(workerDeclarationProblems({...copy(),family:'decider',effect:'complete_under_mandate'})).toContain('authority');
   expect(workerDeclarationProblems({...copy(),stop:{honoured:false,pending:''}})).toContain('stop');
+  expect(workerDeclarationProblems({...copy(),stop:{honoured:false,pending:'Waiting for a future stop implementation'}})).toContain('stop');
   expect(workerDeclarationProblems({...copy(),metrics:{kind:'not_measurable',reason:' '}})).toContain('metrics');
   expect(workerDeclarationProblems({...copy(),trigger:{kind:'whenever',detail:'x'}})).toContain('trigger');
   expect(()=>buildRegistry([good,good])).toThrow(WorkerNotRegistrable);
@@ -112,7 +113,7 @@ describe('switches and the stop switch',()=>{
   expect(await recommendLeaveDecision(manager,{leaveRequestId:randomUUID()})).toEqual({kind:'unavailable',reason:'switched_off'});
   const rows=await listWorkers(hr);
   expect(rows.map(row=>[row.id,row.switch.on,row.lastRunAt])).toEqual(IDS.map(id=>[id,false,null]));
-  expect(rows.find(row=>row.id==='approval_chasers')).toMatchObject({switch:{owner:'tenant_setting'},stopHonoured:false,metrics:{measured:false,acceptanceRate:null}});
+  expect(rows.find(row=>row.id==='approval_chasers')).toMatchObject({switch:{owner:'tenant_setting'},stopHonoured:true,metrics:{measured:false,acceptanceRate:null}});
   expect(rows.find(row=>row.id==='daily_digest')).toMatchObject({switch:{owner:'job_type'},stopHonoured:true,mandates:{active:0,total:0}});
  });
 
@@ -140,8 +141,8 @@ describe('switches and the stop switch',()=>{
   expect(await recommendLeaveDecision(manager,{leaveRequestId:randomUUID()})).toEqual({kind:'unavailable',reason:'stopped'});
   expect(await runMandate({tenantId:b.tenantId,principalId,entitlements:(await entitledCtx(b)).entitlements!,mandateId:mandate.id})).toMatchObject({status:'stopped',failed:['stop_switch']});
   expect((await listWorkers(hr)).every(row=>row.stopped)).toBe(true);
-  // Workers whose run path cannot consult the stop yet say so, with the reason.
-  for(const row of await listWorkers(hr))if(!row.stopHonoured)expect(row.stopPending,row.id).toMatch(/\w/);
+  // Every registered execution path is now behind the common stop barrier.
+  expect((await listWorkers(hr)).every(row=>row.stopHonoured)).toBe(true);
   await setMandateStopSwitch(hr,false);
   expect((await workerRunGate(hr,'explainers')).run).toBe(true);
  });

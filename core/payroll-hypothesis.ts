@@ -1,3 +1,4 @@
+import {withAiCentreActivity,assertAiCentreRunningTx} from './ai-centre-control';
 import {withAiAdmissionCheck} from './ai-governance';
 import {bindAiSpendTaskTx} from './ai-spend-task';
 import {draftInputDigest} from '../lib/ai/draft-input';
@@ -574,7 +575,11 @@ async function hypothesisSourceTx(tx:Tx,supplied:SessionContext,p:{batchId:strin
  const digest=digestOf({contexts:[...contexts].sort((a,b)=>a.employmentId.localeCompare(b.employmentId)),features:[...features].sort(([a],[b])=>a.localeCompare(b)),verdicts});return{contexts,features,verdicts,digest};
 }
 
-export async function proposeHypotheses(
+export async function proposeHypotheses(...args:Parameters<typeof proposeHypothesesActivity>):Promise<Awaited<ReturnType<typeof proposeHypothesesActivity>>>{
+ args=structuredClone(args);
+ return withAiCentreActivity(args[0],()=>proposeHypothesesActivity(...args));
+}
+async function proposeHypothesesActivity(
   ctx: SessionContext,
   p: { batchId: string },
 ): Promise<HypothesisRun> {
@@ -671,7 +676,8 @@ export async function proposeHypotheses(
     }
 
     if (!cfgResolved) {
-      cfg = await withTenant(ctx,async tx=>{if((await hypothesisSourceTx(tx,ctx,p)).digest!==source.digest)throw Error('Current payroll source unavailable.');const resolved=await resolveActiveAiConfig(tx,ctx,'payroll_hypotheses');return resolved?bindAiSpendTaskTx(tx,ctx,resolved,{kind:'payroll_batch',sourceId:p.batchId}):null;}).catch(()=>null);
+      cfg = await withTenant(ctx,async tx=>{await assertAiCentreRunningTx(tx,ctx);
+      if((await hypothesisSourceTx(tx,ctx,p)).digest!==source.digest)throw Error('Current payroll source unavailable.');const resolved=await resolveActiveAiConfig(tx,ctx,'payroll_hypotheses');return resolved?bindAiSpendTaskTx(tx,ctx,resolved,{kind:'payroll_batch',sourceId:p.batchId}):null;}).catch(()=>null);
       cfgResolved = true;
     }
     // NOT an error, and nothing is recorded: a tenant with no provider proposed nothing, and counting

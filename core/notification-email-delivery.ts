@@ -1,3 +1,4 @@
+import {sql as centreSql} from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 import { and, eq, isNull, or, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext } from '../db/client';
@@ -38,6 +39,8 @@ export async function deliverNotificationEmails(ctx:SessionContext,transport:Not
     if(status?.ready&&job.kind==='performance.reminder'&&(!status.assessmentReminders||!status.assessmentReminderWords)){unavailable=true;continue;}
     const leaseToken=randomUUID();
     const claimed=await withTenant(ctx,async tx=>{
+      const [held]=await tx.execute<{held:boolean}>(centreSql`select exists(select 1 from public.domain_event e join public.teras_mandate_control c on c.tenant_id=e.tenant_id where e.id=${job.source_event_id}::uuid and e.tenant_id=app.current_tenant_id() and c.stopped and (e.event_type like 'automatic-chase.%' or e.event_type in ('readiness.nudge-raised','claim-request.triage-queried','teras-loop.action.applied','teras-loop.request.sent','teras-loop.cut-off-reminder'))) as held`);
+      if(held?.held)return 'held';
       if (!await notificationStillTargets(tx,job.source_event_id,job.kind,job.category,job.recipient_employment_id,noticeReader,noticeEventReader,options.noticeSweep)) {
         await tx.update(notificationDelivery).set({status:'skipped',lastError:'notEligible',updatedAt:sql`now()`}).where(and(eq(notificationDelivery.id,job.id),eq(notificationDelivery.status,'pending'),isNull(notificationDelivery.startedAt),or(isNull(notificationDelivery.leaseUntil),sql`${notificationDelivery.leaseUntil}<now()`)));
         return 'skipped';

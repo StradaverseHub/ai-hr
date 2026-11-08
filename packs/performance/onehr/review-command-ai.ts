@@ -1,3 +1,4 @@
+import {withAiCentreFunction} from '../../../core/ai-centre-control';
 import {createHash} from 'node:crypto';
 import type {SessionContext,Tx} from '../../../db/client';
 import {withPerformanceTenant} from '../../../core/module-gate';
@@ -25,7 +26,13 @@ async function confirmLiteral(cfg:ResolvedAiConfig,channel:'career'|'setting'|'r
  const task=await preparePrivateAiTask(bound,'performance_explicit_commands_v1',current);
  try{if(task.operation!=='draft')throw Error('Protected command operation unavailable.');expected=draftInputDigest(task.args);const raw=await generateDraft(task.configuration,task.args);try{const selected=indices(raw,proposal.commands.length);if(selected.length!==proposal.commands.length)throw Error('Explicit command selection was not confirmed.');return JSON.stringify(proposal);}catch{return JSON.stringify({unsupportedProtectedSelection:true});}}finally{task.dispose();}
 }
-export async function proposeSettingSuggestion(ctx:SessionContext,reviewId:string,facts:SettingCommandFacts,replay:(tx:Tx)=>Promise<SettingCommandFacts|null>){
+export async function proposeSettingSuggestion(...args:Parameters<typeof proposeSettingSuggestionActivity>):Promise<Awaited<ReturnType<typeof proposeSettingSuggestionActivity>>>{
+ const ctx=args[0];
+ // Replay callbacks and the issued message-spend capability keep their private identity.
+ args=[{...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))},args[1],structuredClone(args[2]),args[3]];
+ return withAiCentreFunction(args[0],'read:operation_performance_setting_suggestion',()=>proposeSettingSuggestionActivity(...args));
+}
+async function proposeSettingSuggestionActivity(ctx:SessionContext,reviewId:string,facts:SettingCommandFacts,replay:(tx:Tx)=>Promise<SettingCommandFacts|null>){
  ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(g=>({...g}))};facts=structuredClone(facts);
  const cfg=await withPerformanceTenant(ctx,tx=>assessmentAiConfigTx(tx,ctx,'pm'));if(!cfg)return null;
  const eligible=facts.library.slice(0,100).filter(item=>settingNumbersComplete(item.defaultScoring??item.scoring));if(!eligible.length)return null;
@@ -38,24 +45,48 @@ export async function proposeSettingSuggestion(ctx:SessionContext,reviewId:strin
  await recordProposal(ctx,{type:'performance_draft_command',subject:{type:'performance-review',id:reviewId},facts:{kind:'setting_suggestion',text:facts.text,library:facts.library},proposal:checked?{kpis:checked.kpis}:{},adjudication:checked?{ok:true}:{ok:false,reason:'No eligible usable scorecard selection.'},provider:cfg.provider,model:cfg.model});
  if(!(await withPerformanceTenant(ctx,tx=>assessmentAiFeatureEnabledTx(tx,ctx,'pm'))))return null;return checked;
 }
-export async function proposeCareerCommands(ctx:SessionContext,reviewId:string,facts:CareerCommandFacts,replay:(tx:Tx)=>Promise<CareerCommandFacts|null>,spendTask?:PerformanceMessageSpendTask){
+export async function proposeCareerCommands(...args:Parameters<typeof proposeCareerCommandsActivity>):Promise<Awaited<ReturnType<typeof proposeCareerCommandsActivity>>>{
+ const ctx=args[0];
+ // Replay callbacks and the issued message-spend capability keep their private identity.
+ args=[{...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))},args[1],structuredClone(args[2]),args[3],args[4]];
+ return withAiCentreFunction(args[0],'read:operation_performance_career_commands',()=>proposeCareerCommandsActivity(...args));
+}
+async function proposeCareerCommandsActivity(ctx:SessionContext,reviewId:string,facts:CareerCommandFacts,replay:(tx:Tx)=>Promise<CareerCommandFacts|null>,spendTask?:PerformanceMessageSpendTask){
  ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(g=>({...g}))};facts=structuredClone(facts);const proposal=literalCareerProposal(facts);if(!proposal)return null;
  const initial=adjudicateCareerCommands(JSON.stringify(proposal),facts);if(!initial.ok)return null;
  const available=await withPerformanceTenant(ctx,tx=>assessmentAiConfigTx(tx,ctx));if(!available)return null;const cfg=bindPerformanceMessageSpend(available,ctx,reviewId,spendTask);
  const raw=await confirmLiteral(cfg,'career',facts,proposal,replay),checked=adjudicateCareerCommands(raw,facts);
  await recordProposal(ctx,{type:'performance_draft_command',subject:{type:'performance-review',id:reviewId},facts:{text:facts.text,kind:'career',goals:facts.goals.map(g=>({id:g.id,label:g.area})),roles:facts.roles,canEditCareer:facts.canEditCareer,canEditGoals:facts.canEditGoals},proposal:checked.ok?checked.proposal:{},adjudication:checked.ok?{ok:true}:{ok:false,reason:checked.reason},provider:cfg.provider,model:cfg.model});return checked.ok&&(checked.careerChanged||checked.goalsChanged)?checked:null;
 }
-export async function proposeSettingCommands(ctx:SessionContext,reviewId:string,facts:SettingCommandFacts,replay:(tx:Tx)=>Promise<SettingCommandFacts|null>,spendTask?:PerformanceMessageSpendTask){
+export async function proposeSettingCommands(...args:Parameters<typeof proposeSettingCommandsActivity>):Promise<Awaited<ReturnType<typeof proposeSettingCommandsActivity>>>{
+ const ctx=args[0];
+ // Replay callbacks and the issued message-spend capability keep their private identity.
+ args=[{...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))},args[1],structuredClone(args[2]),args[3],args[4]];
+ return withAiCentreFunction(args[0],'read:operation_performance_setting_commands',()=>proposeSettingCommandsActivity(...args));
+}
+async function proposeSettingCommandsActivity(ctx:SessionContext,reviewId:string,facts:SettingCommandFacts,replay:(tx:Tx)=>Promise<SettingCommandFacts|null>,spendTask?:PerformanceMessageSpendTask){
  ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(g=>({...g}))};facts=structuredClone(facts);const proposal=literalSettingProposal(facts);if(!proposal||!adjudicateSettingCommands(JSON.stringify(proposal),facts).ok)return null;
  const available=await withPerformanceTenant(ctx,tx=>assessmentAiConfigTx(tx,ctx));if(!available)return null;const cfg=bindPerformanceMessageSpend(available,ctx,reviewId,spendTask),raw=await confirmLiteral(cfg,'setting',facts,proposal,replay),checked=adjudicateSettingCommands(raw,facts);
  await recordProposal(ctx,{type:'performance_draft_command',subject:{type:'performance-review',id:reviewId},facts:{text:facts.text,kind:'setting',targets:facts.kpis.map(k=>({id:k.id,label:k.title})),library:facts.library.map(k=>({id:k.id,label:k.title}))},proposal:checked.ok?checked.proposal:{},adjudication:checked.ok?{ok:true}:{ok:false,reason:checked.reason},provider:cfg.provider,model:cfg.model});return checked.ok&&checked.changed?checked:null;
 }
-export async function proposeReviewCommands(ctx:SessionContext,reviewId:string,facts:ReviewCommandFacts,replay:(tx:Tx)=>Promise<ReviewCommandFacts|null>,spendTask?:PerformanceMessageSpendTask){
+export async function proposeReviewCommands(...args:Parameters<typeof proposeReviewCommandsActivity>):Promise<Awaited<ReturnType<typeof proposeReviewCommandsActivity>>>{
+ const ctx=args[0];
+ // Replay callbacks and the issued message-spend capability keep their private identity.
+ args=[{...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))},args[1],structuredClone(args[2]),args[3],args[4]];
+ return withAiCentreFunction(args[0],'read:operation_performance_review_commands',()=>proposeReviewCommandsActivity(...args));
+}
+async function proposeReviewCommandsActivity(ctx:SessionContext,reviewId:string,facts:ReviewCommandFacts,replay:(tx:Tx)=>Promise<ReviewCommandFacts|null>,spendTask?:PerformanceMessageSpendTask){
  ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(g=>({...g}))};facts=structuredClone(facts);const proposal=literalReviewProposal(facts);if(!proposal||!adjudicateReviewCommands(JSON.stringify(proposal),facts).ok)return null;
  const available=await withPerformanceTenant(ctx,tx=>assessmentAiConfigTx(tx,ctx));if(!available)return null;const cfg=bindPerformanceMessageSpend(available,ctx,reviewId,spendTask),raw=await confirmLiteral(cfg,'review',facts,proposal,replay),checked=adjudicateReviewCommands(raw,facts);
  await recordProposal(ctx,{type:'performance_draft_command',subject:{type:'performance-review',id:reviewId},facts:{text:facts.text,kind:facts.draft.kind,targets:facts.targets},proposal:checked.ok?checked.proposal:{},adjudication:checked.ok?{ok:true}:{ok:false,reason:checked.reason},provider:cfg.provider,model:cfg.model});return checked.ok&&(checked.changed||checked.reflection)?checked:null;
 }
-export async function proposeJourneyCommands(ctx:SessionContext,reviewId:string,review:ReviewCommandFacts|null,evidence:EvidenceCommandFacts|null,replay:(tx:Tx)=>Promise<{review:ReviewCommandFacts|null;evidence:EvidenceCommandFacts|null}>,spendTask?:PerformanceMessageSpendTask){
+export async function proposeJourneyCommands(...args:Parameters<typeof proposeJourneyCommandsActivity>):Promise<Awaited<ReturnType<typeof proposeJourneyCommandsActivity>>>{
+ const ctx=args[0];
+ // Capture facts before the gate; never clone the replay callback or issued spend capability.
+ args=[{...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))},args[1],structuredClone(args[2]),structuredClone(args[3]),args[4],args[5]];
+ return withAiCentreFunction(args[0],'read:operation_performance_journey_commands',()=>proposeJourneyCommandsActivity(...args));
+}
+async function proposeJourneyCommandsActivity(ctx:SessionContext,reviewId:string,review:ReviewCommandFacts|null,evidence:EvidenceCommandFacts|null,replay:(tx:Tx)=>Promise<{review:ReviewCommandFacts|null;evidence:EvidenceCommandFacts|null}>,spendTask?:PerformanceMessageSpendTask){
  ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(g=>({...g}))};review=structuredClone(review);evidence=structuredClone(evidence);
  const r=review?literalReviewProposal(review):null,e=evidence?literalEvidenceProposal(evidence):null;if(!r&&!e)return null;
  const rp=r??{commands:[]},ep=e??{commands:[]};if(review&&!adjudicateReviewCommands(JSON.stringify(rp),review).ok||evidence&&!adjudicateEvidenceCommands(JSON.stringify(ep),evidence).ok)return null;

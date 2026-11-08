@@ -1,6 +1,8 @@
 import {beforeEach,describe,expect,it,vi} from 'vitest';
-const m=vi.hoisted(()=>({principal:vi.fn(),assistant:vi.fn(),module:vi.fn(),resolve:vi.fn(),generate:vi.fn(),admission:null as null|(()=>Promise<void>)}));
-vi.mock('../db/client',()=>({withTenant:async(_ctx:unknown,run:(tx:object)=>unknown)=>run({})}));
+import {PgDialect} from 'drizzle-orm/pg-core';
+import type {SQL} from 'drizzle-orm';
+const m=vi.hoisted(()=>({tx:{execute:vi.fn()},principal:vi.fn(),assistant:vi.fn(),module:vi.fn(),resolve:vi.fn(),generate:vi.fn(),admission:null as null|(()=>Promise<void>)}));
+vi.mock('../db/client',()=>({withTenant:async(_ctx:unknown,run:(tx:object)=>unknown)=>run(m.tx)}));
 vi.mock('../core/ai-principal',()=>({assertAiPrincipalTx:m.principal}));
 vi.mock('../core/assistant-grant',()=>({assertMayUseAssistant:m.assistant}));
 vi.mock('../core/entitlements',()=>({assertModuleEnabled:m.module,resolveEntitlementsTx:async()=>undefined}));
@@ -10,12 +12,21 @@ vi.mock('../lib/ai',()=>({generateDraft:m.generate}));
 import {prepareAssistantImport} from '../core/assistant-import';
 const ctx={tenantId:'tenant',userId:'admin',roles:['hr_admin']};
 const input={target:'employee',source:'Alice',instruction:'Prepare employees',consent:true};
-beforeEach(()=>{vi.resetAllMocks();m.admission=null;m.resolve.mockResolvedValue({provider:'test'});m.generate.mockImplementation(async()=>{await m.admission?.();return JSON.stringify({rows:[{cells:[{field:'full_name',start:0,end:5}]}]});});});
+beforeEach(()=>{vi.resetAllMocks();m.admission=null;
+ // Explicit transaction double for the real control boundary. This fixture still tests native
+ // authority/dispatch; real off/stop behavior is covered by ai-centre-operation-boundaries.test.ts.
+ m.tx.execute.mockImplementation(async(query:SQL)=>{const {sql,params}=new PgDialect().sqlToQuery(query);
+  if(sql.includes('pg_advisory_xact_lock'))return [];
+  if(sql.includes('app.ai_centre_assert_running('))return [{generation:0}];
+  if(sql.includes('app.ai_centre_read_allowed(')&&['read:operation_assistant_import','read:operation_assistant_import_employee'].includes(String(params[0])))return [{allowed:true}];
+  throw Error('Unexpected transaction call in Assistant import authority fixture');
+ });
+ m.resolve.mockResolvedValue({provider:'test'});m.generate.mockImplementation(async()=>{await m.admission?.();return JSON.stringify({rows:[{cells:[{field:'full_name',start:0,end:5}]}]});});});
 describe('assistant import authority and dispatch',()=>{
  it('checks the fresh principal, assistant grant and module before resolution and again at admission',async()=>{
   const result=await prepareAssistantImport(ctx,input);expect(result.rows[0]).toContain('Alice');
   expect(m.principal).toHaveBeenCalledTimes(2);expect(m.assistant).toHaveBeenCalledTimes(2);expect(m.module).toHaveBeenCalledWith(ctx,'employees');
-  expect(m.resolve).toHaveBeenCalledWith({},ctx,'hr_assistant');expect(m.generate).toHaveBeenCalledTimes(1);
+  expect(m.resolve).toHaveBeenCalledWith(m.tx,ctx,'hr_assistant');expect(m.generate).toHaveBeenCalledTimes(1);
  });
  it.each(['principal','assistant','module'] as const)('refuses %s failures before any provider dispatch',async gate=>{
   m[gate].mockImplementation(()=>{throw Error('denied');});await expect(prepareAssistantImport(ctx,input)).rejects.toThrow();expect(m.generate).not.toHaveBeenCalled();expect(m.resolve).not.toHaveBeenCalled();

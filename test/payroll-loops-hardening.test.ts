@@ -1,3 +1,5 @@
+import {withAiCentreActivity} from '../core/ai-centre-control';
+import {setMandateStopSwitch} from '../core/mandates/mandates';
 /** AI v2 Phase 2 hardening (4 November 2026) — the payroll loops, the Audit loop and the checklist, on fictional data, over
  * the real owners and the real database (migrations 2005, 2006, 2008 as edited and 2011).
  *
@@ -434,6 +436,14 @@ describe('B6: automatic cut-off reminders',()=>{
   expect(await twoDays()).toMatchObject({sent:0});
   await setPayrollLoopSetting(group,{companyId:b.companyId,remindersEnabled:true});
   expect(await twoDays()).toMatchObject({sent:2});
+  const stamps=await owner.db.execute<{generation:number}>(sql`select g.generation from app.ai_centre_event_generation g join public.domain_event e on e.id=g.event_id where e.tenant_id=${b.tenantId}::uuid and e.event_type='teras-loop.cut-off-reminder' order by e.id`);
+  expect(Array.from(stamps).map(row=>row.generation)).toEqual([0,0,0,0]);
+  const beforeStop=await ledger();
+  await expect(withAiCentreActivity(agentOf(entitlements),async()=>{
+   await setMandateStopSwitch(group,true);await setMandateStopSwitch(group,false);
+   expect(await sendCutOffReminders({tenantId:b.tenantId,principalId,runId:randomUUID(),agent:agentOf(entitlements),sponsor:group,companies:[b.companyId],today:'2026-07-24'})).toMatchObject({sent:0});
+  })).rejects.toMatchObject({reason:'paused'});
+  expect(await ledger()).toEqual(beforeStop);
   // A paused company gets none (the database refuses the agent's write).
   await setLoopPause(group,{workerId:'loop_payroll_inputs',companyId:b.companyId,paused:true});
   expect(await sendCutOffReminders({tenantId:b.tenantId,principalId,runId:randomUUID(),agent:agentOf(entitlements),sponsor:group,companies:[b.companyId],today:'2026-07-24'})).toMatchObject({sent:0});

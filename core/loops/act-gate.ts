@@ -1,3 +1,4 @@
+import {assertAiCentreRunningTx} from '../ai-centre-control';
 /** AI v2 Phase 2 hardening (4 November 2026) — whether a loop may still act for a company, re-checked INSIDE the
  * transaction that applies an automatic action (core/loops/act-clock-outs.ts applyClockOut, act-requests.ts
  * applyRequest), at its start and again just before it commits.
@@ -13,6 +14,7 @@ import type {Tx} from '../../db/client';
 import {LoopActRefused} from './act-clock-outs';
 
 export async function loopMayStillActTx(tx:Tx,p:Readonly<{tenantId:string;workerId:string;companyId:string}>):Promise<boolean>{
+ await assertAiCentreRunningTx(tx,{tenantId:p.tenantId});
  const [row]=await tx.execute(sql`select exists(select 1 from public.teras_worker_control w where w.tenant_id=${p.tenantId}::uuid and w.worker_id=${p.workerId} and w.enabled)
   and not exists(select 1 from public.teras_mandate_control c where c.tenant_id=${p.tenantId}::uuid and c.stopped)
   and not exists(select 1 from public.teras_loop_pause s where s.tenant_id=${p.tenantId}::uuid and s.worker_id=${p.workerId} and s.company_id=${p.companyId}::uuid and s.paused)

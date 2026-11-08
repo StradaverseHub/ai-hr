@@ -9,7 +9,7 @@ import { setAiFeatureAction } from './actions';
 
 /** AI centre › Workers for a group administrator: the registered workers (ADR-0170 §3.13) as the step 5
  * registry reports them (core/agent-registry/views.ts listWorkers). Every value is read from the system;
- * an unmeasured rate is shown with its reason, never as 0. Every worker links to where its existing switch lives (a job-type worker, which no screen can switch yet, says so); the two
+ * an unmeasured rate is shown with its reason, never as 0. Every worker links to where its existing switch lives (a job-type worker links to its enablement control); the two
  * registry-controlled switches (approver recommendations, explainers) are changed here (see switchControl). Company administrators never
  * receive these rows: the service refuses them and the page shows the feature table only. */
 const percent = (value: number) => `${Math.round(value * 100)}%`;
@@ -33,10 +33,8 @@ function switchControl(t: ReturnType<typeof useTranslations>, row: WorkerRow) {
       <p className="mt-1 text-xs text-muted-foreground">{t('switchOwner.worker_control')}</p>
     </form>
   );
-  // A job-type worker is switched on per tenant by enabling its job type and per person by a mandate
-  // (core/mandates/mandates.ts). No screen calls those services yet, so the row says so instead of linking to
-  // Delegated jobs, which has no control (review M12). Link it here once that control exists.
-  if (row.switch.owner === 'job_type') return <p data-switch-unavailable className="text-sm text-muted-foreground">{t('switchOwner.job_type')}</p>;
+  // Job-type enablement is managed here; each person still needs a valid mandate.
+  if (row.switch.owner === 'job_type') return <Link href="#ai-centre-jobs" className="text-sm font-medium text-primary hover:underline">{t('switchOwner.job_type')}</Link>;
   const href = aiManagementHref('features', { anchor: '#ai-features' });
   return <Link href={href} className="text-sm font-medium text-primary hover:underline">{t(`switchOwner.${row.switch.owner}`)}</Link>;
 }

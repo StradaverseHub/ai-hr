@@ -46,6 +46,7 @@ export const AGENT_ACTION_CATEGORY=Object.freeze(Object.fromEntries(AGENT_ACTION
 export type RegisteredAgentActionPolicies={[K in AgentActionId]:AgentActionOf<K>['policy']};
 
 export const AGENT_CAPABILITY_INVENTORY:Readonly<Record<string,Readonly<Record<string,AgentCapabilityClass>>>>=Object.freeze({
+ "app/control-tower/agents/centre-control-actions.ts":{"setAiCentreFunctionAction":"handoff:ai_governance","setAiCentreJobAction":"handoff:ai_governance","setAiCentreStopAction":"handoff:ai_governance"},
  "app/admin/organization/organisation-tagging-actions.ts":{"prepareOrganisationAction":"backlog:approve","decideOrganisationAction":"backlog:approve","processOrganisationAction":"backlog:approve"},
  "app/admin/personnel/derived-organisation-actions.ts":{"derivedOrganisationAction":"internal:session_and_presentation"},
  "app/admin/personnel/search/route.ts#route":{"POST":"internal:session_and_presentation"},

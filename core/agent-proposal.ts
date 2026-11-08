@@ -1,3 +1,4 @@
+import {assertAiCentreRunningTx} from './ai-centre-control';
 /**
  * ADR-0084 §2.3 / §2.4 — THE PROPOSAL LEDGER AND THE ADJUDICATION CONTRACT.
  *
@@ -156,6 +157,7 @@ export async function recordProposal(
   const decided = p.adjudication.ok ? p.decision : undefined;
   try {
     await withTenant(ctx, async (tx) => {
+      if(p.provider)await assertAiCentreRunningTx(tx,ctx);
       await tx.insert(schema.agentProposal).values({
         id,
         tenantId: ctx.tenantId,

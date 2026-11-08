@@ -2,6 +2,7 @@
  * provider transport and its explicitly fictional monetary certificate are mocked.
  * No live provider/key, forged governance, source permissions or receipts. */
 import {randomUUID} from 'node:crypto';
+import {AsyncResource} from 'node:async_hooks';
 import {readFileSync} from 'node:fs';
 import {and,eq,sql} from 'drizzle-orm';
 import {afterAll,afterEach,beforeAll,beforeEach,describe,expect,it,vi} from 'vitest';
@@ -27,9 +28,12 @@ import framework from '../packs/performance/onehr/framework.json';
 import {createOnehrServiceFixtures,year} from './onehr-service-fixture';
 import {closeAll,createAppUser,entitledCtx,migrateTestDb,owner,resetDb,seedBase,setModule,type Base} from './harness';
 import { switchOnPerformanceAi } from './performance-ai-switches-fixture';
+import {setAiCentreReadControl} from '../core/ai-centre-inventory';
+import {setMandateStopSwitch} from '../core/mandates/mandates';
 let b:Base,a:SessionContext,self:SessionContext,mgr:SessionContext,subject:{employmentId:string;personId:string},manager:{employmentId:string;personId:string},peers:{employmentId:string;ctx:SessionContext}[],cycleId:string,reviewId:string;
 let spendPrice:Awaited<ReturnType<typeof installSyntheticSpendCapability>>;
 let beforeAdmission:(()=>Promise<void>)|undefined,sourceChange:Promise<void>|undefined,afterSourceReplay:(()=>Promise<void>)|undefined,alterInput=false;
+let actualGenerateDraft:typeof ai.generateDraft;
 const f=createOnehrServiceFixtures({get b(){return b;},get a(){return a;},get subject(){return subject;},get manager(){return manager;},get self(){return self;},get mgr(){return mgr;},get cycleId(){return cycleId;},get reviewId(){return reviewId;},get peers(){return peers;}});
 beforeAll(migrateTestDb);afterAll(closeAll);afterEach(()=>{spendPrice?.restore();vi.restoreAllMocks();vi.unstubAllEnvs();});
 beforeEach(async()=>{
@@ -47,11 +51,14 @@ beforeEach(async()=>{
  const [review]=await owner.db.select().from(schema.performanceReview).where(and(eq(schema.performanceReview.cycleId,cycleId),eq(schema.performanceReview.employmentId,subject.employmentId)));reviewId=review.id;
  vi.stubEnv('OPENAI_API_KEY','fictional-admission-transport-never-sent');for(const key of ['ANTHROPIC_API_KEY','GOOGLE_API_KEY','GEMINI_API_KEY'])vi.stubEnv(key,'');beforeAdmission=undefined;sourceChange=undefined;afterSourceReplay=undefined;alterInput=false;
  const issued=await withTenant(a,tx=>resolveActiveAiConfig(tx,a,'performance_review'));if(!issued)throw Error('Missing actual fixture provider');spendPrice=await installSyntheticSpendCapability(a,{provider:issued.provider,model:issued.model});
- const issue=governance.withAiAdmissionCheck;vi.spyOn(governance,'withAiAdmissionCheck').mockImplementation((config,feature,check)=>issue(config,feature,async(tx,request)=>{await check(tx,request);const tail=afterSourceReplay;afterSourceReplay=undefined;if(tail)await tail();}));
- const original=ai.generateDraft;vi.spyOn(ai,'generateDraft').mockImplementation(async(cfg,args)=>{
+ // Competing human requests are independent requests, not descendants of the AI work whose
+ // native source custody they challenge. Bind outside the activity; keep real services/RLS/locks.
+ const independentHuman=AsyncResource.bind(async(work:()=>Promise<void>)=>work());
+ const issue=governance.withAiAdmissionCheck;vi.spyOn(governance,'withAiAdmissionCheck').mockImplementation((config,feature,check)=>issue(config,feature,async(tx,request)=>{await check(tx,request);const tail=afterSourceReplay;afterSourceReplay=undefined;if(tail)await independentHuman(tail);}));
+ const original=ai.generateDraft;actualGenerateDraft=original;vi.spyOn(ai,'generateDraft').mockImplementation(async(cfg,args)=>{
   // Every concurrent call (the career plan sends two) waits for the one source change, so none reaches admission
   // first and holds source custody while the change is refused as busy.
-  if(beforeAdmission){sourceChange=beforeAdmission();beforeAdmission=undefined;}if(sourceChange)await sourceChange;return original(cfg,alterInput?{...args,prompt:args.prompt+' CHANGED'}:args);});
+  if(beforeAdmission){sourceChange=independentHuman(beforeAdmission);beforeAdmission=undefined;}if(sourceChange)await sourceChange;return original(cfg,alterInput?{...args,prompt:args.prompt+' CHANGED'}:args);});
  vi.spyOn(openaiAdapter,'generate').mockImplementation(async(_cfg,args)=>{args.onUsage?.({inputTokens:0,outputTokens:0,cachedInputTokens:0});if(args.system.includes('Performance guide'))return '{"items":[0],"unanswered":false}';if(args.system.includes('explicit user draft command'))return JSON.stringify({items:[0]});if(args.system.includes('longer-term career aspiration'))return '{"aspirationLong":"I aim to deepen my delivery practice."}';if(args.system.startsWith('Propose development goals'))return '[{"title":"Collaborative delivery","area":"Collaborative delivery","item_ids":["lp:0"],"experience":"Lead a delivery retrospective","exposure":"Seek colleague feedback","education":"Study facilitation"}]';return '{"items":[0]}';});
 });
 const runs=()=>owner.db.select().from(schema.aiModelRun).where(eq(schema.aiModelRun.tenantId,b.tenantId));
@@ -66,6 +73,40 @@ const sources=['narrative','guide','development','career'] as const;
 type Source=typeof sources[number];
 async function prepare(kind:Source){if(kind==='development'||kind==='career'){await f.complete();await perf.releaseOnehrResult(a,reviewId,'feedback',true);}}
 const call=(kind:Source)=>kind==='narrative'?perf.draftOnehrNarrative(self,reviewId,'Completed the agreed delivery.'):kind==='guide'?askPerformanceGuide(self,'What are my current tasks?'):kind==='development'?perf.suggestAssessmentDevelopmentGoals(self,reviewId,randomUUID()):perf.suggestAssessmentCareerPlan(self,reviewId,randomUUID());
+describe('independent summary generation control and late native cache barrier',()=>{
+ beforeEach(withoutUsdCap);
+ const group=()=>({...a,grants:[{role:'hr_admin',companyId:null}]});
+ const selectOfferedOutline=(args:Parameters<typeof ai.generateDraft>[1])=>{const {sections}=JSON.parse(args.prompt) as {sections:{index:number}[]};expect(Array.isArray(sections)&&sections.length>0).toBe(true);return JSON.stringify({items:sections.map(section=>section.index)});};
+ async function summaryFixture(){await f.complete(true,'Verified delivery outcomes.');const actor=peers[0].ctx,sid=await perf.createOnehrCalibration(a,cycleId,{name:'Controlled written summary',companyId:b.companyId,tier:'hod',reviewerUserIds:[actor.userId!],reviewIds:[reviewId],pbtAchievement:100,mode:'after'});return{actor,sid};}
+ it('permits a real governed generation when on, refuses it when off, and preserves cached viewing',async()=>{
+  const {actor,sid}=await summaryFixture();
+  await setAiCentreReadControl(group(),'read:operation_written_performance',false);
+  await expect(perf.getAssessmentWrittenRemarks(actor,reviewId,sid,'pm',{generate:true})).rejects.toMatchObject({reason:'paused'});
+  expect(await runs()).toEqual([]);expect(openaiAdapter.generate).not.toHaveBeenCalled();
+  await setAiCentreReadControl(group(),'read:operation_written_performance',true);
+  vi.mocked(openaiAdapter.generate).mockImplementationOnce(async(_cfg,args)=>{args.onUsage?.({inputTokens:0,outputTokens:0,cachedInputTokens:0});return selectOfferedOutline(args);});
+  const generated=await perf.getAssessmentWrittenRemarks(actor,reviewId,sid,'pm',{generate:true});expect(generated.source).toBe('ai');expect(openaiAdapter.generate).toHaveBeenCalledOnce();
+  await setAiCentreReadControl(group(),'read:operation_written_performance',false);
+  expect(await perf.getAssessmentWrittenRemarks(actor,reviewId,sid,'pm')).toEqual(generated);
+  expect(openaiAdapter.generate).toHaveBeenCalledOnce();expect(await runs()).toMatchObject([{state:'completed'}]);
+ });
+ it.each(['child','stop_resume'] as const)('%s after settled provider return refuses the next native cache write without forgiving usage',async kind=>{
+  const {actor,sid}=await summaryFixture(),human=new AsyncResource('fixture-independent-human-control');
+  let returned=false,changed=false;
+  vi.mocked(openaiAdapter.generate).mockImplementationOnce(async(_cfg,args)=>{args.onUsage?.({inputTokens:3,outputTokens:4,cachedInputTokens:0});return selectOfferedOutline(args);});
+  vi.mocked(ai.generateDraft).mockImplementation(async(cfg,args)=>{const result=await actualGenerateDraft(cfg,args);returned=true;return result;});
+  const native=moduleGate.withPerformanceTenant;
+  vi.spyOn(moduleGate,'withPerformanceTenant').mockImplementation(async<T>(current:SessionContext,work:(tx:Tx)=>Promise<T>):Promise<T>=>{
+   if(returned&&!changed){changed=true;await human.runInAsyncScope(async()=>{if(kind==='child')await setAiCentreReadControl(group(),'read:operation_written_performance',false);else{await setMandateStopSwitch(group(),true);await setMandateStopSwitch(group(),false);}});}
+   return native(current,work);
+  });
+  const before=await owner.db.select().from(schema.assessmentSummary);
+  try{await expect(perf.getAssessmentWrittenRemarks(actor,reviewId,sid,'pm',{generate:true})).rejects.toMatchObject({reason:'paused'});}finally{human.emitDestroy();}
+  expect(returned).toBe(true);expect(changed).toBe(true);expect(openaiAdapter.generate).toHaveBeenCalledOnce();
+  expect(await owner.db.select().from(schema.assessmentSummary)).toEqual(before);
+  expect(await runs()).toMatchObject([{state:'completed',actualTokens:7}]);
+ });
+});
 describe('OneHR legacy drafting replays actual native source before provider admission',()=>{
  beforeEach(withoutUsdCap);
  it.each(sources)('%s stable source reaches actual issued gateway and transport without saving a plan',async kind=>{await prepare(kind);await call(kind);expect(openaiAdapter.generate).toHaveBeenCalled();const observed=await runs();expect(observed.length).toBeGreaterThan(0);expect(observed.every(row=>row.state==='completed')).toBe(true);expect((await f.view(self)).plans).toEqual([]);});
