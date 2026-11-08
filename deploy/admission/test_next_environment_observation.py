@@ -40,17 +40,19 @@ class EnvironmentObservationModels(unittest.TestCase):
         return dict(pid=42, invocation='a'*32, uid=65534, executable='/owned/node', cwd='/owned/release',
             cgroup='/owned/worker', argv=['/owned/node', 'start'], title=None, subject='worker-1')
 
-    def observe(self, *, uid=65534, invocation=None, field=None, second_ticks=None, custody=None, named_inode=2, phase=None):
+    def observe(self, *, uid=65534, invocation=None, field=None, second_ticks=None, custody=None, named_inode=2, phase=None, key_names=None, environment_values=None, read_calls=None):
         expected = self.expected()
         stat_calls = 0
         def read(_fd, name, _bound, _deadline):
             nonlocal stat_calls
+            if read_calls is not None:
+                read_calls.append(name)
             if name == 'stat':
                 stat_calls += 1
                 ticks = second_ticks if stat_calls == 2 and second_ticks is not None else b'1234'
                 return b'42 (model comm) ' + b' '.join([b'S'] + [b'0']*18 + [ticks])
             if name == 'environ':
-                return raw({'INVOCATION_ID': invocation or 'a'*32, 'LANGUAGE': 'fictional-private'})
+                return raw(environment_values if environment_values is not None else {'INVOCATION_ID': invocation or 'a'*32, 'LANGUAGE': 'fictional-private'})
             if field == name:
                 return b'foreign\0' if name == 'cmdline' else b'0::/foreign\n'
             return b'/owned/node\0start\0' if name == 'cmdline' else b'0::/owned/worker\n'
@@ -64,7 +66,7 @@ class EnvironmentObservationModels(unittest.TestCase):
                 patch.object(N.os, 'fstat', return_value=info), patch.object(pathlib.Path, 'stat', return_value=types.SimpleNamespace(st_uid=uid, st_dev=1, st_ino=named_inode)), \
                 patch.object(N.os, 'readlink', side_effect=lambda name, **_kw: '/foreign' if name == field else '/owned/node' if name == 'exe' else '/owned/release'), \
                 patch.object(N, 'environment_process_read', side_effect=read):
-            value = N.observe_owned_environment(expected, own, float('inf'), _phase=phase)
+            value = N.observe_owned_environment(expected, own, float('inf'), _phase=phase, _key_names=key_names)
         return value, calls
 
     def value(self):
@@ -362,9 +364,21 @@ class PhaseDiagnosticModels(unittest.TestCase):
         self.assertEqual(layer['base'], '847139e7a2f29faf7a00ffaf17b80739d53acc0e')
         terminal=json.loads((ROOT/'deploy/admission/next_phase_terminal_latch_inverse.json').read_text())
         self.assertEqual(terminal['base'], '74de8af009aa0ed39d8077343d9662b5dc31bbc8')
+        key_layer=json.loads((ROOT/'deploy/admission/next_key_name_digest_inverse.json').read_text())
+        self.assertEqual(key_layer['base'], '4d4375a489e152772a0f225057ec41c5534b9aa9')
+        def restored4d(name):
+            source=(ROOT/name).read_text()
+            if name in key_layer['files']:
+                row=key_layer['files'][name];self.assertEqual(hashlib.sha256(source.encode()).hexdigest(),row['currentSha256'])
+                lines=source.splitlines(keepends=True)
+                for edit in row['changes']:
+                    self.assertEqual(''.join(lines[edit['start']:edit['end']]),edit['after']);lines[edit['start']:edit['end']]=edit['before'].splitlines(keepends=True)
+                source=''.join(lines);self.assertEqual(hashlib.sha256(source.encode()).hexdigest(),row['originalSha256'])
+            return source
+        for name in key_layer['files']:restored4d(name)
         originals={}
         for name,row in layer['files'].items():
-            source=(ROOT/name).read_text()
+            source=restored4d(name)
             if name in terminal['files']:
                 fixed=terminal['files'][name];self.assertEqual(hashlib.sha256(source.encode()).hexdigest(), fixed['currentSha256'])
                 lines=source.splitlines(keepends=True)
@@ -378,7 +392,7 @@ class PhaseDiagnosticModels(unittest.TestCase):
             originals[name]=''.join(lines);self.assertEqual(hashlib.sha256(originals[name].encode()).hexdigest(), row['originalSha256'])
         def function(text,name):
             tree=ast.parse(text);return ast.get_source_segment(text,next(node for node in tree.body if isinstance(node,ast.FunctionDef) and node.name==name))
-        name='deploy/admission/next_profile.py';original=originals[name];current=(ROOT/name).read_text()
+        name='deploy/admission/next_profile.py';original=originals[name];current=restored4d(name)
         reduced='\n'.join(line for line in current.split('\n') if 'if _phase is not None: _phase(' not in line).replace(', *, _phase=None):', '):')
         self.assertEqual(reduced, original)
         name='deploy/admission/test_next_native.py';self.assertEqual(function((ROOT/name).read_text(),'runtime_environment_journal_observation'),function(originals[name],'runtime_environment_journal_observation'))
@@ -437,6 +451,194 @@ class PhaseDiagnosticModels(unittest.TestCase):
                 with self.assertRaises(OSError):tracker.finish()
                 tracker.fail(KeyboardInterrupt('Fictional later abort'))
                 self.assertEqual(write.call_count,1);self.assertTrue(tracker.terminal and tracker.broken)
+
+class KeyNameDigestModels(unittest.TestCase):
+    def base(self):
+        return EnvironmentObservationModels()
+
+    def phase_models(self):
+        return PhaseDiagnosticModels()
+
+    def keys(self, count=1):
+        return ['FICTIONAL_UNKNOWN_KEY_' + str(i) for i in range(count)]
+
+    def value(self, count=1):
+        return N.key_name_digests(self.keys(count), count)
+
+    def environment(self, count=1):
+        return self.base().observe(environment_values={'INVOCATION_ID': 'a'*32} | dict.fromkeys(self.keys(count), 'FICTIONAL_PRIVATE_VALUE'))[0]
+
+    def terminal(self, keys=None):
+        return {'version': 2, 'kind': 'CLOSED_PHASE_TERMINAL_KEY_NAME_DIGEST_NOT_ADMISSION',
+            'phase': self.phase_models().packet(P.PHASES[-1], 'finished'), 'keyNames': keys if keys is not None else self.value()}
+
+    def journal(self, terminal=None, count=1, with_environment=True):
+        models=self.phase_models()
+        rows=self.base().journal(self.environment(count)) if with_environment else b''
+        rows+=b''.join(models.journal(models.packet(name)) for name in P.PHASES)
+        return rows+self.base().journal(message=P.TERMINAL_PREFIX+json.dumps(terminal if terminal is not None else self.terminal()))
+
+    def test_complete_zero_one_four_and_strict_utf8_names_never_encode_values_or_known_names(self):
+        for count in (0,1,4):
+            names=self.keys(count)+['NODE_ENV','LANGUAGE','LANG','INVOCATION_ID']
+            value=N.key_name_digests(names,count)
+            expected=sorted(hashlib.sha256(b'AIHR_INITIAL_ENV_OTHER_KEY_NAME_SHA256_V1\0'+name.encode('utf8')).hexdigest() for name in self.keys(count))
+            self.assertEqual(value['digests'],expected);self.assertEqual(value['count'],count)
+            self.assertEqual(value['state'],'complete');self.assertNotIn('sourceVerified',value)
+            for name in names:self.assertNotIn(name,json.dumps(value))
+        name='FICTIONAL_鍵_😀';self.assertEqual(N.key_name_digests([name],1)['digests'],[hashlib.sha256(N.KEY_NAME_DIGEST_DOMAIN+name.encode('utf8')).hexdigest()])
+        first=N.environment_observation_values(raw({'FICTIONAL_KEY':'PRIVATE-FIRST'}))
+        second=N.environment_observation_values(raw({'FICTIONAL_KEY':'PRIVATE-SECOND-LONGER'}))
+        self.assertEqual(N.key_name_digests(first.keys(),1),N.key_name_digests(second.keys(),1))
+        self.assertNotIn('PRIVATE',json.dumps(N.key_name_digests(first.keys(),1)))
+
+    def test_overflow_has_no_prefix_and_duplicate_collision_mismatch_or_surrogate_refuses(self):
+        value=N.key_name_digests(self.keys(5),5)
+        self.assertEqual(value,N.unavailable_key_name_digests(5,'overflow'));self.assertEqual(value['digests'],[])
+        for names,count in [(['FICTIONAL','FICTIONAL'],1),(['FICTIONAL'],0),(['\ud800'],1),([''],1),(['A=B'],1),(['A\0B'],1)]:
+            with self.assertRaises((ValueError,UnicodeError)):N.key_name_digests(names,count)
+        digest=types.SimpleNamespace(hexdigest=lambda:'a'*64)
+        with patch.object(N.hashlib,'sha256',return_value=digest),self.assertRaises(ValueError):N.key_name_digests(self.keys(2),2)
+
+    def test_closed_key_codec_rejects_boolean_count_unknown_state_extra_raw_data_and_bad_hash_sets(self):
+        good=self.value(2)
+        variants=[good|{'version':True},good|{'count':True},good|{'digests':good['digests'][:1]},good|{'digests':good['digests'][::-1]},
+            good|{'digests':[good['digests'][0]]*2},good|{'digests':['X'*64]*2},good|{'rawName':'FICTIONAL_PRIVATE'},
+            good|{'state':'ready'},good|{'state':'unavailable','digests':[],'reason':'overflow'},N.unavailable_key_name_digests(5)|{'reason':'capture-unavailable'}]
+        for value in variants:
+            with self.assertRaises(ValueError):N.validate_key_name_digests(value)
+        with self.assertRaises(ValueError):N.validate_key_name_digests(good,1)
+        with self.assertRaises(ValueError):N.validate_environment_observation(good,'worker-1')
+
+    def test_native_capture_seam_uses_one_existing_environ_read_and_keys_only_before_postchecks(self):
+        reads,stages,captured=[],[],[]
+        def capture(keys,count):
+            self.assertNotIsInstance(keys,dict)
+            captured.append(N.key_name_digests(keys,count))
+        value,custody=self.base().observe(environment_values={'INVOCATION_ID':'a'*32,'FICTIONAL_UNKNOWN':'PRIVATE-VALUE'},
+            read_calls=reads,key_names=capture,phase=stages.append)
+        self.assertEqual(reads.count('environ'),1);self.assertEqual(reads,['stat','cgroup','cmdline','environ','stat','cgroup','cmdline'])
+        self.assertEqual(custody,['custody','custody']);self.assertEqual(stages,['declaration-before','process-before','environment-read','environment-classified','process-after','custody-after'])
+        self.assertEqual(captured[0]['count'],value['otherUnqualifiedCount']);self.assertNotIn('PRIVATE-VALUE',json.dumps(captured))
+        with self.assertRaises(ValueError):self.base().observe(key_names=capture,second_ticks=b'9999')
+
+    def test_terminal_v2_keeps_fourteen_rows_fifteen_messages_and_original_phase_codec(self):
+        messages=[]
+        with patch.object(P.time,'monotonic',return_value=1),patch.object(P.os,'write',side_effect=lambda _fd,message:messages.append(message) or len(message)):
+            tracker=P.PhaseTracker(F.UNITS[0],2)
+            for phase in P.PHASES:tracker.enter(phase)
+            tracker.capture_keys(self.value(4),N.validate_key_name_digests);tracker.finish()
+        self.assertEqual(len(messages),14);self.assertTrue(all(len(message)<=1024 and message.endswith(b'\n') for message in messages))
+        self.assertTrue(all(message.startswith(P.PHASE_PREFIX.encode()) for message in messages[:-1]))
+        self.assertTrue(messages[-1].startswith(P.TERMINAL_PREFIX.encode()));self.assertLessEqual(sum(map(len,messages))+4096,18432)
+        terminal=json.loads(messages[-1][len(P.TERMINAL_PREFIX):]);P.validate_terminal_observation(terminal,'worker-1',N.validate_key_name_digests)
+        self.assertEqual(terminal['phase'],self.phase_models().packet(P.PHASES[-1],'finished'))
+        self.assertIs(P.validate_phase_observation(terminal['phase'],'worker-1'),terminal['phase'])
+        with self.assertRaises(ValueError):P.validate_phase_observation(terminal,'worker-1')
+
+    def test_source_sealed_terminal_joins_real_shaped_v1_and_counts_each_record_only_once(self):
+        models=self.phase_models();rows=self.journal()+b''.join(self.base().journal(message='closed noncandidate') for _ in range(6))
+        result=models.receive(rows);diag=result['diagnostic'];keys=diag['keyNameDiagnostic']
+        self.assertEqual(len(diag['phases']),14);self.assertEqual(diag['census']['records'],21)
+        self.assertEqual(diag['census']['phaseCandidates'],14);self.assertEqual(diag['census']['environmentCandidates'],1)
+        self.assertEqual(diag['census']['trustedHelperCandidates'],15);self.assertEqual(diag['census']['metadataMatches'],dict.fromkeys(('uid','executable','unit','invocation'),15))
+        self.assertEqual(result['observations'],[self.environment()]);self.assertEqual(keys['helperCompletion'],'finished')
+        self.assertEqual(keys['state'],'complete');self.assertEqual(keys['digests'],self.value()['digests'])
+        self.assertNotIn('FICTIONAL_UNKNOWN',json.dumps(result));self.assertNotIn('FICTIONAL_PRIVATE_VALUE',json.dumps(result))
+
+    def test_missing_native_environment_or_unfinished_helper_never_publishes_digest_authority(self):
+        models=self.phase_models();diag=models.receive(self.journal(with_environment=False))['diagnostic']['keyNameDiagnostic']
+        self.assertEqual(diag['state'],'unavailable');self.assertEqual(diag['helperCompletion'],'finished');self.assertEqual(diag['digests'],[])
+        self.assertEqual(diag['reason'],'environment-observation-missing')
+        result=models.receive(self.base().journal(self.environment()))
+        self.assertEqual(result['observations'],[self.environment()]);self.assertEqual(result['diagnostic']['keyNameDiagnostic']['state'],'helper-not-finished')
+        old=self.base().journal(self.environment())+b''.join(models.journal(models.packet(name)) for name in P.PHASES)+models.journal(models.packet(P.PHASES[-1],'finished'))
+        diag=models.receive(old)['diagnostic']['keyNameDiagnostic'];self.assertEqual(diag['state'],'unavailable');self.assertEqual(diag['reason'],'terminal-v2-absent')
+
+    def test_malformed_duplicate_wrong_subject_count_or_prefix_terminal_preserves_old_v1_observation(self):
+        models=self.phase_models();good=self.terminal();variants=[good|{'version':True},good|{'rawName':'PRIVATE'},good|{'keyNames':self.value(2)},
+            good|{'phase':good['phase']|{'subject':'worker-2'}},good|{'phase':models.packet()},good|{'keyNames':good['keyNames']|{'digests':[]}}]
+        for terminal in variants:
+            result=models.receive(self.journal(terminal));self.assertEqual(result['observations'],[self.environment()])
+            self.assertTrue(result['diagnostic']['phaseUnavailable']);self.assertEqual(result['diagnostic']['keyNameDiagnostic']['digests'],[])
+        prefix=self.base().journal(self.environment())+b''.join(models.journal(models.packet(name)) for name in P.PHASES)
+        for tail in [self.base().journal(message=P.TERMINAL_PREFIX+json.dumps(good).replace('"version": 2','"version": 2, "version": 2',1)),
+                self.base().journal(message=P.PHASE_PREFIX+json.dumps(good))]:
+            result=models.receive(prefix+tail);self.assertEqual(result['observations'],[self.environment()]);self.assertTrue(result['diagnostic']['phaseUnavailable'])
+        result=models.receive(self.journal()+models.journal(models.packet(P.PHASES[-1],'finished')))
+        self.assertEqual(result['observations'],[self.environment()]);self.assertTrue(result['diagnostic']['phaseUnavailable'])
+
+    def test_unavailable_overflow_is_finished_metadata_not_hash_or_readiness_success(self):
+        result=self.phase_models().receive(self.journal(self.terminal(N.unavailable_key_name_digests(5)),count=5))
+        self.assertEqual(result['observations'],[self.environment(5)]);diag=result['diagnostic']
+        self.assertFalse(diag['phaseUnavailable']);self.assertEqual(diag['keyNameDiagnostic']['helperCompletion'],'finished')
+        self.assertEqual(diag['keyNameDiagnostic']['state'],'unavailable');self.assertEqual(diag['keyNameDiagnostic']['reason'],'overflow');self.assertEqual(diag['keyNameDiagnostic']['digests'],[])
+        self.assertFalse(result['observations'][0]['nextApplicationVerified'] or result['observations'][0]['releaseEligible'])
+
+    def test_v2_terminal_uncertain_write_and_actual_post_try_abort_cannot_publish_a_second_terminal(self):
+        source=(ROOT/'deploy/admission/next_fixture_poststart.py').read_text();tree=ast.parse(source)
+        owner=next(node for node in tree.body if isinstance(node,ast.ClassDef) and node.name=='PhaseTracker')
+        write=next(node for node in owner.body if isinstance(node,ast.FunctionDef) and node.name=='write');native_try=next(node for node in write.body if isinstance(node,ast.Try))
+        boundary=next(node.lineno for node in write.body if node.lineno>native_try.end_lineno);code=P.PhaseTracker.write.__code__
+        records=[];state={'written':False,'aborted':False}
+        def output(_fd,message):
+            records.append(message)
+            if message.startswith(P.TERMINAL_PREFIX.encode()):state['written']=True
+            return len(message)
+        def interrupt(frame,event,_arg):
+            if frame.f_code is code and event=='line' and frame.f_lineno==boundary and state['written'] and not state['aborted']:
+                state['aborted']=True;raise KeyboardInterrupt('Fictional post-write abort')
+            return interrupt
+        with patch.object(P.time,'monotonic',return_value=1),patch.object(P.os,'write',side_effect=output):
+            tracker=P.PhaseTracker(F.UNITS[0],2)
+            for phase in P.PHASES:tracker.enter(phase)
+            tracker.capture_keys(self.value(),N.validate_key_name_digests);previous=sys.gettrace()
+            try:
+                sys.settrace(interrupt)
+                with self.assertRaises(KeyboardInterrupt):tracker.finish()
+            finally:sys.settrace(previous)
+            self.assertIs(sys.gettrace(),previous);tracker.fail(KeyboardInterrupt('Fictional best-effort error'))
+        self.assertTrue(state['aborted']);self.assertEqual(len(records),14);self.assertEqual(sum(message.startswith(P.TERMINAL_PREFIX.encode()) for message in records),1)
+        for outcome in (1,OSError('Fictional uncertain write')):
+            with patch.object(P.time,'monotonic',return_value=1),patch.object(P.os,'write',side_effect=lambda _fd,message:len(message)):
+                tracker=P.PhaseTracker(F.UNITS[0],2)
+                for phase in P.PHASES:tracker.enter(phase)
+                tracker.capture_keys(self.value(),N.validate_key_name_digests)
+            with patch.object(P.time,'monotonic',return_value=1),patch.object(P.os,'write',side_effect=outcome if isinstance(outcome,BaseException) else lambda _fd,_message:outcome) as writing:
+                with self.assertRaises(OSError):tracker.finish()
+                tracker.fail(KeyboardInterrupt());self.assertEqual(writing.call_count,1);self.assertTrue(tracker.terminal and tracker.broken)
+
+    def test_host_component_six_hooks_and_canary_data_cannot_be_a_full_worker_terminal(self):
+        host=self.environment()|{'subject':'host-component'}
+        with self.assertRaises(ValueError):self.base().receive(self.base().journal(host))
+        terminal=self.terminal();terminal['phase']['subject']='host-component'
+        with self.assertRaises(ValueError):P.validate_terminal_observation(terminal,'worker-1',N.validate_key_name_digests)
+        keys=N.key_name_digests(['AIHR_OBSERVATION_CANARY'],1)
+        self.assertEqual(keys['digests'],[hashlib.sha256(N.KEY_NAME_DIGEST_DOMAIN+b'AIHR_OBSERVATION_CANARY').hexdigest()])
+        self.assertNotIn('fullHelperVerified',keys);self.assertNotIn('sourceVerified',keys)
+
+    def test_whole_native_guards_v1_codecs_original_exec_and_single_read_are_source_exact(self):
+        inverse=json.loads((ROOT/'deploy/admission/next_key_name_digest_inverse.json').read_text())
+        def original(name):
+            row=inverse['files'][name];value=base64.b64decode(row['originalBase64']).decode()
+            self.assertEqual(hashlib.sha256(value.encode()).hexdigest(),row['originalSha256']);return value
+        def functions(text):
+            tree=ast.parse(text);return {node.name:ast.get_source_segment(text,node) for node in tree.body if isinstance(node,ast.FunctionDef)}
+        for name,names in [('deploy/admission/next_profile.py',['environment_observation_values','environment_observation_counts','validate_environment_observation','forbidden_environment']),
+                ('deploy/admission/next_fixture_poststart.py',['validate_phase_observation','main']),('deploy/admission/test_next_native.py',['runtime_environment_journal_observation','runtime_journal_observation'])]:
+            old,new=functions(original(name)),functions((ROOT/name).read_text())
+            for function in names:self.assertEqual(new[function],old[function])
+        old=ast.parse(original('deploy/admission/next_profile.py'));new=ast.parse((ROOT/'deploy/admission/next_profile.py').read_text())
+        runtime=lambda tree:next(node for node in tree.body if isinstance(node,ast.ClassDef) and node.name=='NextRuntime')
+        method=lambda tree,name:ast.dump(next(node for node in runtime(tree).body if isinstance(node,ast.FunctionDef) and node.name==name),include_attributes=False)
+        self.assertEqual(method(old,'_environment'),method(new,'_environment'))
+        native=next(node for node in new.body if isinstance(node,ast.FunctionDef) and node.name=='observe_owned_environment')
+        reads=[node for node in ast.walk(native) if isinstance(node,ast.Call) and isinstance(node.func,ast.Name) and node.func.id=='environment_process_read' and len(node.args)>1 and isinstance(node.args[1],ast.Constant) and node.args[1].value=='environ']
+        self.assertEqual(len(reads),1)
+        digest=functions((ROOT/'deploy/admission/next_profile.py').read_text())['key_name_digests']
+        self.assertNotIn('os.environ',digest);self.assertNotIn('getenvironment',digest);self.assertNotIn('environment_process_read',digest)
+        function=ast.parse(digest).body[0];self.assertEqual([arg.arg for arg in function.args.args],['keys','expected_count'])
+        self.assertFalse(any(isinstance(node,ast.Attribute) and node.attr=='values' for node in ast.walk(function)))
 
 
 if __name__ == '__main__':

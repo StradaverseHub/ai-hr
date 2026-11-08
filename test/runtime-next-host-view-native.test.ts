@@ -67,6 +67,17 @@ it('proves privileged cache overlays and bounded owned stop with actual systemd2
  expect(hooks).toEqual({kind:'ACTUAL_SHARED_OBSERVER_HOOKS_NOT_FULL_HELPER_OR_NEXT',
   stages:['declaration-before','process-before','environment-read','environment-classified','process-after','custody-after'],
   fullHelperVerified:false,nextApplicationVerified:false,releaseEligible:false});
+ const keyProof=report.initialEnvironmentKeyNameObservation;
+ expect(Object.keys(keyProof).sort()).toEqual(['kind','subject','keyNames','fullHelperVerified','nextApplicationVerified','releaseEligible'].sort());
+ expect(keyProof).toMatchObject({kind:'ACTUAL_SHARED_KEY_NAME_DIGEST_COMPONENT_NOT_FULL_HELPER_OR_NEXT',subject:'host-component',fullHelperVerified:false,nextApplicationVerified:false,releaseEligible:false});
+ const keys=keyProof.keyNames;
+ expect(Object.keys(keys).sort()).toEqual(['version','kind','state','count','digests','reason'].sort());
+ expect(keys).toMatchObject({version:1,kind:'INITIAL_ENV_OTHER_KEY_NAMES_SHA256_NOT_ADMISSION',state:'complete',reason:'none',count:observed.otherUnqualifiedCount});
+ expect(Number.isInteger(keys.count)&&keys.count>=1&&keys.count<=4).toBe(true);
+ expect(keys.digests).toHaveLength(keys.count);expect(keys.digests).toEqual([...new Set(keys.digests)].sort());
+ expect(keys.digests.every((value:unknown)=>typeof value==='string'&&/^[a-f0-9]{64}$/.test(value))).toBe(true);
+ expect(keys.digests).toContain(createHash('sha256').update(Buffer.concat([Buffer.from('AIHR_INITIAL_ENV_OTHER_KEY_NAME_SHA256_V1\0'),Buffer.from('AIHR_OBSERVATION_CANARY')])).digest('hex'));
+ expect(JSON.stringify(keyProof)).not.toMatch(/fictional-private-canary|AIHR_OBSERVATION_CANARY|fictional-observation/);
  const topology=report.resourceTopology;
  expect(topology).toMatchObject({kind:'ACTUAL_UNCHANGED_RESOURCE_METHOD_DIAGNOSTIC_NOT_READINESS',
   actualProcessUnchanged:true,profileConstructorVerified:false,nextApplicationVerified:false,releaseEligible:false});

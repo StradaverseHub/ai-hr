@@ -1152,6 +1152,63 @@ def validate_environment_observation(value, subject):
     return value
 
 
+
+KEY_NAME_DIGEST_DOMAIN = b'AIHR_INITIAL_ENV_OTHER_KEY_NAME_SHA256_V1\0'
+KEY_NAME_DIGEST_KIND = 'INITIAL_ENV_OTHER_KEY_NAMES_SHA256_NOT_ADMISSION'
+KEY_NAME_DIGEST_MAX = 4
+
+
+def validate_key_name_digests(value, expected_count=None):
+    if (type(value) is not dict or set(value) != {'version', 'kind', 'state', 'count', 'digests', 'reason'}
+            or type(value['version']) is not int or value['version'] != 1 or value['kind'] != KEY_NAME_DIGEST_KIND
+            or type(value['count']) is not int or not 0 <= value['count'] <= 1024**2
+            or type(value['digests']) is not list
+            or expected_count is not None and (type(expected_count) is not int or value['count'] != expected_count)):
+        raise ValueError('Closed key-name digest schema refused')
+    if value['state'] == 'complete':
+        hashes = value['digests']
+        if (value['count'] > KEY_NAME_DIGEST_MAX or value['reason'] != 'none'
+                or len(hashes) != value['count'] or any(type(item) is not str or SHA.fullmatch(item) is None for item in hashes)
+                or hashes != sorted(set(hashes))):
+            raise ValueError('Complete key-name digest set refused')
+    elif value['state'] == 'unavailable':
+        if (value['digests'] != [] or value['reason'] not in ('overflow', 'digest-unavailable', 'capture-unavailable')
+                or (value['reason'] == 'overflow') != (value['count'] > KEY_NAME_DIGEST_MAX)):
+            raise ValueError('Unavailable key-name digest state refused')
+    else:
+        raise ValueError('Closed key-name digest state refused')
+    return value
+
+
+def unavailable_key_name_digests(count, reason='capture-unavailable'):
+    return validate_key_name_digests({'version': 1, 'kind': KEY_NAME_DIGEST_KIND,
+        'state': 'unavailable', 'count': count, 'digests': [],
+        'reason': 'overflow' if type(count) is int and count > KEY_NAME_DIGEST_MAX else reason})
+
+
+def key_name_digests(keys, expected_count):
+    """PURE keys-only diagnostic. No value, process/source or permission proof."""
+    if type(expected_count) is not int or not 0 <= expected_count <= 1024**2:
+        raise ValueError('Key-name digest count refused')
+    if expected_count > KEY_NAME_DIGEST_MAX:
+        return unavailable_key_name_digests(expected_count, 'overflow')
+    allowed = APP_ENVIRONMENT | FLEET_ENVIRONMENT | SYSTEMD_ENVIRONMENT
+    hashes, seen = [], set()
+    for name in keys:
+        if type(name) is not str or not name or '\0' in name or '=' in name or name in seen:
+            raise ValueError('Key-name digest input refused')
+        seen.add(name)
+        encoded = name.encode('utf8', 'strict')
+        if encoded.decode('utf8', 'strict') != name:
+            raise ValueError('Key-name digest encoding refused')
+        if name not in allowed and name not in ENVIRONMENT_OBSERVATION_NAMES:
+            if len(hashes) >= KEY_NAME_DIGEST_MAX:
+                raise ValueError('Key-name digest count differs')
+            hashes.append(hashlib.sha256(KEY_NAME_DIGEST_DOMAIN + encoded).hexdigest())
+    return validate_key_name_digests({'version': 1, 'kind': KEY_NAME_DIGEST_KIND,
+        'state': 'complete', 'count': expected_count, 'digests': sorted(hashes), 'reason': 'none'}, expected_count)
+
+
 def environment_process_read(directory, name, bound, deadline):
     import time
     if name not in ('stat', 'cmdline', 'cgroup', 'environ'):
@@ -1172,7 +1229,7 @@ def environment_process_read(directory, name, bound, deadline):
         os.close(fd)
 
 
-def observe_owned_environment(expected, custody, deadline, *, _phase=None):
+def observe_owned_environment(expected, custody, deadline, *, _phase=None, _key_names=None):
     """Native authority only after protected custody + two pinned live checks.
 
     The full hook supplies its systemd MAINPID and INVOCATION_ID, protected fixed
@@ -1227,6 +1284,7 @@ def observe_owned_environment(expected, custody, deadline, *, _phase=None):
         if values.get('INVOCATION_ID') != expected['invocation']:
             raise ValueError('Environment observation invocation refused')
         result = environment_observation_counts(raw)
+        if _key_names is not None: _key_names(values.keys(), result['otherUnqualifiedCount'])
         if _phase is not None: _phase('process-after')
         if current() != identity:
             raise ValueError('Environment observation start identity changed')

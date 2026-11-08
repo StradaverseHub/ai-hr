@@ -17,6 +17,7 @@ PROFILE = pathlib.Path('/etc/aihr-admission/profile.json')
 
 # Diagnostic states only. None establishes source/process/environment/admission authority.
 PHASE_PREFIX = 'AIHR_OWNED_ENV_OBSERVER_PHASE_V1 '
+TERMINAL_PREFIX = 'AIHR_OWNED_ENV_OBSERVER_TERMINAL_V2 '
 PHASES = ('timer-armed', 'context-read', 'profile-bound', 'helpers-bound',
     'observer-loaded', 'main-selector', 'declaration-before', 'process-before',
     'environment-read', 'environment-classified', 'process-after', 'custody-after',
@@ -41,11 +42,26 @@ def validate_phase_observation(value, subject):
     return value
 
 
+def validate_terminal_observation(value, subject, validate_keys):
+    # The fixed caller supplies the codec from its independently source-sealed
+    # next_profile owner. This pure envelope grants no native/provenance authority.
+    if (type(value) is not dict or set(value) != {'version', 'kind', 'phase', 'keyNames'}
+            or type(value['version']) is not int or value['version'] != 2
+            or value['kind'] != 'CLOSED_PHASE_TERMINAL_KEY_NAME_DIGEST_NOT_ADMISSION'):
+        raise ValueError('Closed key-name terminal required')
+    phase = validate_phase_observation(value['phase'], subject)
+    if phase['result'] != 'finished' or phase['sequence'] != len(PHASES):
+        raise ValueError('Key-name terminal completion refused')
+    validate_keys(value['keyNames'])
+    return value
+
+
 class PhaseTracker:
     """Private bounded helper telemetry. A copied phase packet proves no native state."""
     def __init__(self, unit, deadline):
         self.subject, self.deadline = 'worker-' + unit[9], deadline
         self.index, self.terminal, self.broken = -1, False, False
+        self.key_names, self.key_codec = None, None
 
     def write(self, result, cause='none'):
         if self.broken or self.terminal or time.monotonic() >= self.deadline:
@@ -54,7 +70,13 @@ class PhaseTracker:
             'kind': 'OWNED_OBSERVER_PHASE_NOT_ENVIRONMENT_OR_ADMISSION', 'subject': self.subject,
             'sequence': self.index if result == 'entered' else self.index + 1,
             'phase': PHASES[self.index], 'result': result, 'cause': cause}, self.subject)
-        message = PHASE_PREFIX.encode() + (json.dumps(value, sort_keys=True, separators=(',', ':')) + '\n').encode()
+        prefix = PHASE_PREFIX
+        if result == 'finished' and self.key_names is not None:
+            value = validate_terminal_observation({'version': 2,
+                'kind': 'CLOSED_PHASE_TERMINAL_KEY_NAME_DIGEST_NOT_ADMISSION',
+                'phase': value, 'keyNames': self.key_names}, self.subject, self.key_codec)
+            prefix = TERMINAL_PREFIX
+        message = prefix.encode() + (json.dumps(value, sort_keys=True, separators=(',', ':')) + '\n').encode()
         if len(message) > 1024:
             raise ValueError('Observer phase bound refused')
         # Latch BEFORE publishing: an asynchronous abort after a complete terminal
@@ -78,6 +100,11 @@ class PhaseTracker:
             raise ValueError('Observer phase order refused')
         self.index += 1
         self.write('entered')
+
+    def capture_keys(self, value, validate_keys):
+        if self.key_names is not None or self.terminal or self.broken:
+            raise ValueError('Repeated key-name capture refused')
+        self.key_names, self.key_codec = validate_keys(value), validate_keys
 
     def finish(self):
         if self.index != len(PHASES) - 1:
@@ -123,7 +150,7 @@ def protected_read(file, bound):
         os.close(fd)
 
 
-def full_observation(unit, deadline, phase=None):
+def full_observation(unit, deadline, phase=None, key_capture=None):
     mark = phase if phase is not None else lambda _stage: None
     mark('context-read')
     raw_context, context_identity = protected_read(CONTEXT, 65536)
@@ -184,12 +211,26 @@ def full_observation(unit, deadline, phase=None):
     main_pid = os.environ.get('MAINPID', '')
     if re.fullmatch(r'[1-9][0-9]{0,9}', main_pid) is None:
         raise ValueError('Observation main identity unavailable')
+    captured = None
+    def capture(keys, count):
+        nonlocal captured
+        if captured is not None:
+            raise ValueError('Repeated native key-name capture refused')
+        try:
+            captured = N.key_name_digests(keys, count)
+        except (ValueError, TypeError, UnicodeError, OverflowError):
+            captured = N.unavailable_key_name_digests(count)
     result = N.observe_owned_environment({'pid': int(main_pid), 'invocation': os.environ.get('INVOCATION_ID', ''),
         'uid': spec['workerUid'], 'executable': spec['executable'], 'cwd': spec['releaseDirectory'],
         'cgroup': profile['resourceEnvelope']['cgroupPath'] + '/' + unit,
         'argv': [spec['executable'], '--max-old-space-size=2048',
             spec['releaseDirectory'] + '/node_modules/next/dist/bin/next', 'start', '--hostname', '127.0.0.1'],
-        'title': 'next-server (v16.4.1)', 'subject': 'worker-' + unit[9]}, custody, deadline, _phase=mark)
+        'title': 'next-server (v16.4.1)', 'subject': 'worker-' + unit[9]}, custody, deadline, _phase=mark,
+        _key_names=capture if key_capture is not None else None)
+    if key_capture is not None:
+        if captured is None:
+            captured = N.unavailable_key_name_digests(result['otherUnqualifiedCount'])
+        key_capture(N.validate_key_name_digests(captured, result['otherUnqualifiedCount']), N.validate_key_name_digests)
     mark('environment-packet')
     message = N.ENVIRONMENT_OBSERVATION_PREFIX.encode() + N.canonical(result)
     if len(message) > 4096:
@@ -213,7 +254,7 @@ def best_effort_observation(unit):
         signal.setitimer(signal.ITIMER_REAL, 1)
         tracker = PhaseTracker(unit, deadline)
         tracker.enter('timer-armed')
-        message = full_observation(unit, deadline, tracker.enter)
+        message = full_observation(unit, deadline, tracker.enter, tracker.capture_keys)
         if time.monotonic() >= deadline:
             raise TimeoutError('Environment packet budget exhausted')
         try:

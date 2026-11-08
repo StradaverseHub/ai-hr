@@ -334,7 +334,7 @@ class FailureDiagnosticModels(unittest.TestCase):
         source = self.sources['fixture'].decode()
         # Verify/reverse the complete new observation layer, then the existing
         # CPU constructor layer, before the original cleanup inverse consumes it.
-        for filename in ('next_phase_observation_inverse.json', 'next_environment_observation_inverse.json', 'next_cpu_weight_constructor_inverse.json'):
+        for filename in ('next_key_name_digest_inverse.json', 'next_phase_observation_inverse.json', 'next_environment_observation_inverse.json', 'next_cpu_weight_constructor_inverse.json'):
             layer = json.loads(pathlib.Path(__file__).with_name(filename).read_text())
             row = layer['files']['deploy/admission/test_next_native.py']
             self.assertEqual(hashlib.sha256(source.encode()).hexdigest(), row['currentSha256'])

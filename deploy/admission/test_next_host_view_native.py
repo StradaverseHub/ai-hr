@@ -243,7 +243,14 @@ def initial_environment_observation(N, started, files, source_hashes):
             require(file.stat().st_size <= 256 * 1024
                     and hashlib.sha256(file.read_bytes()).hexdigest() == wanted, 'Host environment source changed')
     declaration_sha = hashlib.sha256(pathlib.Path('/etc/systemd/system', UNIT).read_bytes()).hexdigest()
-    stages = []
+    stages, captured = [], None
+    def capture(keys, count):
+        nonlocal captured
+        require(captured is None, 'Repeated host key-name capture refused')
+        try:
+            captured = N.key_name_digests(keys, count)
+        except (ValueError, TypeError, UnicodeError, OverflowError):
+            captured = N.unavailable_key_name_digests(count)
     try:
         deadline = min(DEADLINE, time.monotonic() + 1)
         require(deadline > time.monotonic(), 'Host environment observation budget unavailable')
@@ -253,14 +260,19 @@ def initial_environment_observation(N, started, files, source_hashes):
             'uid': 65534, 'executable': str(pathlib.Path('/usr/bin/python3').resolve(strict=True)),
             'cwd': str(RELEASE), 'cgroup': AGGREGATE_GROUP + '/' + UNIT,
             'argv': ['/usr/bin/python3', '-I', '-B', str(ROOT / 'probe.py'), 'app'],
-            'title': None, 'subject': 'host-component'}, custody, deadline, _phase=stages.append)
+            'title': None, 'subject': 'host-component'}, custody, deadline, _phase=stages.append, _key_names=capture)
         require(result['knownUnqualified']['locale-language'] and result['knownUnqualified']['locale-numeric']
                 and result['knownUnqualified']['process-pwd'] and result['otherUnqualifiedCount'] >= 1,
                 'Actual synthetic initial environment observations absent')
         require(stages == ['declaration-before', 'process-before', 'environment-read',
                 'environment-classified', 'process-after', 'custody-after'], 'Actual native hook sequence differs')
+        keys = N.validate_key_name_digests(captured, result['otherUnqualifiedCount'])
+        require(keys['state'] == 'complete' and hashlib.sha256(N.KEY_NAME_DIGEST_DOMAIN + b'AIHR_OBSERVATION_CANARY').hexdigest()
+                in keys['digests'], 'Actual source-owned canary key-name digest unavailable')
         return result, {'kind': 'ACTUAL_SHARED_OBSERVER_HOOKS_NOT_FULL_HELPER_OR_NEXT', 'stages': stages,
-            'fullHelperVerified': False, 'nextApplicationVerified': False, 'releaseEligible': False}
+            'fullHelperVerified': False, 'nextApplicationVerified': False, 'releaseEligible': False}, {
+            'kind': 'ACTUAL_SHARED_KEY_NAME_DIGEST_COMPONENT_NOT_FULL_HELPER_OR_NEXT', 'subject': 'host-component',
+            'keyNames': keys, 'fullHelperVerified': False, 'nextApplicationVerified': False, 'releaseEligible': False}
     finally:
         signal.setitimer(signal.ITIMER_REAL, 0)
         signal.signal(signal.SIGALRM, old_handler)
@@ -583,7 +595,7 @@ def main():
                 and actual_slice.get('Transient') == 'no', 'Effective aggregate source differs')
         start_owned(UNIT)
         started = properties(UNIT);invocations[UNIT] = started['InvocationID']
-        report['initialEnvironmentObservation'], report['initialEnvironmentHookObservation'] = initial_environment_observation(N, started, files, report['sourceSha256'])
+        report['initialEnvironmentObservation'], report['initialEnvironmentHookObservation'], report['initialEnvironmentKeyNameObservation'] = initial_environment_observation(N, started, files, report['sourceSha256'])
         slice_state = properties(AGGREGATE)
         require(slice_state.get('ActiveState') == 'active' and slice_state.get('ControlGroup') == AGGREGATE_GROUP,
                 'Actual resource slice did not activate')

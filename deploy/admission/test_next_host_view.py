@@ -413,9 +413,11 @@ class HostViewModels(unittest.TestCase):
         self.assertEqual(phase['base'], '847139e7a2f29faf7a00ffaf17b80739d53acc0e')
         terminal = json.loads((ROOT / 'deploy/admission/next_phase_terminal_latch_inverse.json').read_text())
         self.assertEqual(terminal['base'], '74de8af009aa0ed39d8077343d9662b5dc31bbc8')
+        key_names = json.loads((ROOT / 'deploy/admission/next_key_name_digest_inverse.json').read_text())
+        self.assertEqual(key_names['base'], '4d4375a489e152772a0f225057ec41c5534b9aa9')
         def current(name):
             source = (ROOT / name).read_text()
-            for layer in (terminal, phase, observation):
+            for layer in (key_names, terminal, phase, observation):
                 if name not in layer['files']:
                     continue
                 row = layer['files'][name]
@@ -428,7 +430,7 @@ class HostViewModels(unittest.TestCase):
                 source = ''.join(lines)
                 self.assertEqual(hashlib.sha256(source.encode()).hexdigest(), row['originalSha256'])
             return source
-        for name in set(terminal['files']) | set(phase['files']) | set(observation['files']):
+        for name in set(key_names['files']) | set(terminal['files']) | set(phase['files']) | set(observation['files']):
             current(name)
         layer = json.loads((ROOT / 'deploy/admission/next_cpu_weight_constructor_inverse.json').read_text())
         self.assertEqual(layer['base'], '6115dd5a6a6e1f2d2dedf4723e0e8ca2b568da65')
