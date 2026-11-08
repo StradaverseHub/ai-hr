@@ -1,0 +1,59 @@
+{
+  "kind": "DRAFT_PRESENTATION_GENERATED_SOURCE_IDENTITY_NOT_DISCLOSURE_APPROVAL",
+  "base": "0e9351826d61387623a8f5f3c220f14efd05beee",
+  "sourceRef": "codex/employee-draft-presentation-manifests-20261108",
+  "sourceSha256": {
+    "lib/ai/provider-data-source-manifest.ts": "aa0b4efa3631a39ea0ee0cb04939a606cfcf66c39c6f5cfa1b54ab117bdaea36",
+    "lib/ai/module-agent-source-manifest.ts": "d24842140150c81335fc0e8bfce48177aa09864911aa9a4a1475910f1a7d52c8",
+    "test/employee-draft-presentation-manifests.test.ts": "e63a0900f096fd2d99b762e27c444c136bd8fec0b6a260f6417db1863e6f639f",
+    "docs/qualification/employee-draft-presentation-manifests-20261108.md": "6c860e6829b4d0ea21b148c661a0c9a13ee59e6152c7cf417726a8d7316c3c2e"
+  },
+  "unchangedSha256": {
+    "core/employee-draft.ts": "cad2f7b93ff7dd856409830aad0a089e663bb2e08de89c896443ac5a219827d7",
+    "test/employee-draft-presentation-tx.test.ts": "87424bc3c1b835c17af618da80b3c26d4a84108532dfa5cad5a6c15759a441e2",
+    "test/employee-draft-presentation-source.test.ts": "a2ca457f81f382da7b52ee0c16b93d13ff8055df7d4d527f947c102f02b640b4",
+    "docs/qualification/employee-draft-presentation-tx-source-20261108.json": "19fa820d75acecc920d0c5a8de2d8d98f3b4009c107674cb739b55774c88963c",
+    "docs/qualification/employee-draft-presentation-inverse-20261108.json": "19427a5c78c27b84bebba80f60f8b791b971220fc9c5de2d2d75b8d83ef45dba",
+    "lib/ai/provider-data-approvals.ts": "2ff41dba3f519e1c42ab305e281a27baef2b67a1734cdba511a6d8f3d80ae6ac",
+    "lib/ai/agent-capability-inventory.ts": "f0a0fffd2caf27be213fc33a802cc3f10b1bfa3ab94bd4e61873bb576ee1288c",
+    "scripts/ai-provider-data-source-manifest.mjs": "e44aaf23501e946c2256699b35f072a7007611dcfadd49b28c38167e57d58c10",
+    "scripts/ai-agent-source-manifest.mjs": "b5598eac8058d377235f0f2da6b6b3ca4cde178dcd8b8239a97738f695630053",
+    "scripts/ai-agent-source-scope.mjs": "d8de474462f41bc2568e93e5a110955e07cf0241ba5f09d7d3c0abc11a644577",
+    ".github/ci/ai-manifest-admission.mjs": "180b439bbce1605e60271841c57386c5f6dba977edfeb1c36402bd1649157f76",
+    ".github/workflows/alpha-focused-checks.yml": "b80b0ca5884c3e0e39ee898068526fcb28f4fc4df64ecd72ddcd10b903d5138d"
+  },
+  "providerFiles": 1486,
+  "providerDigest": "5e08349b13b32671cc3a6f73fdf66eb8d2561d0123a0317564d6329f297cdecc",
+  "agentFiles": 472,
+  "agentDigest": "391d1212d82d6f947a1306341bbdbd91f253b8ac8d8e38443379313323d7dca9",
+  "newSelectors": [
+    {
+      "file": "test/employee-draft-presentation-source.test.ts",
+      "cases": 1
+    },
+    {
+      "file": "test/employee-draft-presentation-tx.test.ts",
+      "cases": 10
+    },
+    {
+      "file": "test/employee-draft-presentation-manifests.test.ts",
+      "cases": 1
+    }
+  ],
+  "affectedLegacySelectors": [
+    "test/employee-draft-wizard.test.ts",
+    "test/employee-draft-family.test.ts",
+    "test/draft-company-scope.test.ts",
+    "test/draft-activation-atomicity.test.ts",
+    "test/employee-draft-discard-native.test.ts"
+  ],
+  "sourceOnly": true,
+  "localBehaviorExecuted": false,
+  "providerApprovalRenewed": false,
+  "pendingContractsChanged": false,
+  "providerCallAuthorized": false,
+  "nativeQualificationComplete": false,
+  "releaseAuthorized": false,
+  "stagingHeld": true,
+  "productionHeld": true
+}
