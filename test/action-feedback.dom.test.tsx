@@ -1,8 +1,9 @@
-import {useState} from 'react';
+import {useState,type FormEvent} from 'react';
 import {afterEach,describe,expect,it,vi} from 'vitest';
 import {act,cleanup,fireEvent,render,screen,waitFor} from '@testing-library/react';
 import {ActionFeedback,ActionFeedbackProvider,useActionFeedback} from '@/components/action-feedback';
 import {ActionButton} from '@/components/ui/action-button';
+import {Button} from '@/components/ui/button';
 
 const notices=vi.hoisted(()=>({error:vi.fn()}));
 vi.mock('sonner',()=>({toast:notices}));
@@ -15,6 +16,25 @@ describe('owned action processing feedback',()=>{
  it('disables explicit busy actions in every theme, shows a real spinner and keeps another action usable',()=>{
   const click=vi.fn();render(<ActionFeedbackProvider><ActionButton aria-busy actionKind="saving" pendingLabel="Saving…" onClick={click}>Save</ActionButton><ActionButton type="button">Other action</ActionButton></ActionFeedbackProvider>);
   const busy=screen.getByRole('button',{name:'Saving…'});expect(busy).toBeDisabled();expect(busy.querySelector('.action-spinner')).not.toBeNull();fireEvent.click(busy);expect(click).not.toHaveBeenCalled();expect(screen.getByRole('button',{name:'Other action'})).toBeEnabled();
+ });
+ it('applies two successive synchronous local Add level edits without waiting for a microtask',()=>{
+  function Editor(){const [levels,setLevels]=useState(1);return <><Button type="button" onClick={()=>setLevels(value=>value+1)}>Add level</Button><output aria-label="Level count">{levels}</output></>;}
+  render(<ActionFeedbackProvider><Editor/></ActionFeedbackProvider>);const button=screen.getByRole('button',{name:'Add level'});
+  fireEvent.click(button);fireEvent.click(button);expect(screen.getByLabelText('Level count')).toHaveTextContent('3');expect(button).toBeEnabled();expect(button).not.toHaveAttribute('data-action-pending');
+  const leaving=new Event('beforeunload',{cancelable:true});window.dispatchEvent(leaving);expect(leaving.defaultPrevented).toBe(false);
+ });
+ it.each(['busy','kind','guard'] as const)('keeps the event-turn guard for a declared %s owner before pending renders',ownership=>{
+  const click=vi.fn(),props=ownership==='busy'?{'aria-busy':false as const}:ownership==='kind'?{actionKind:'saving' as const}:{guardNavigation:true};
+  render(<ActionButton type="button" {...props} onClick={click}>Save</ActionButton>);const button=screen.getByRole('button',{name:'Save'});fireEvent.click(button);fireEvent.click(button);expect(click).toHaveBeenCalledTimes(1);
+ });
+ it('retains native submit duplicate protection before form pending renders',()=>{
+  const submit=vi.fn((event:FormEvent<HTMLFormElement>)=>event.preventDefault());render(<form onSubmit={submit}><ActionButton type="submit">Save</ActionButton></form>);
+  const button=screen.getByRole('button',{name:'Save'});fireEvent.click(button);fireEvent.click(button);expect(submit).toHaveBeenCalledTimes(1);
+ });
+ it('detects an undeclared Promise callback as an asynchronous owner and exposes its rejection',async()=>{
+  const work=deferred<void>(),click=vi.fn(()=>work.promise);render(<ActionButton type="button" onClick={click}>Apply</ActionButton>);
+  fireEvent.click(screen.getByRole('button',{name:'Apply'}));fireEvent.click(screen.getByRole('button',{name:'Processing…'}));expect(click).toHaveBeenCalledTimes(1);
+  await act(async()=>work.reject(new Error('Interrupted')));expect(screen.getByRole('button',{name:'Apply'})).toBeEnabled();expect(notices.error).toHaveBeenCalledWith(expect.stringContaining('could not be confirmed'));
  });
  it('holds async callbacks pending through settlement and refuses repeated activation without declaring success',async()=>{
   const work=deferred<void>(),click=vi.fn(()=>work.promise);

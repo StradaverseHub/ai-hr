@@ -11,8 +11,9 @@ type Props=ButtonHTMLAttributes<HTMLButtonElement>&{pendingLabel?:string;actionK
 
 /** Shared React-form and explicit async feedback. Outcomes remain owned by the confirmed action response. */
 export const ActionButton=forwardRef<HTMLButtonElement,Props>(function ActionButton(
- {children,disabled,pendingLabel,actionKind='processing',guardNavigation,onClick,'aria-busy':explicitBusy,...props},ref,
+ {children,disabled,pendingLabel,actionKind:declaredKind,guardNavigation,onClick,'aria-busy':explicitBusy,...props},ref,
 ){
+ const actionKind=declaredKind??'processing';
  const form=useFormStatus(),externalFormPending=useExternalActionFormPending(props.form),labels=useActionFeedbackLabels();
  const [callbackPending,setCallbackPending]=useState(false);
  const activating=useRef(false),mounted=useRef(true),activated=useRef(false),currentPending=useRef(false);
@@ -30,10 +31,16 @@ export const ActionButton=forwardRef<HTMLButtonElement,Props>(function ActionBut
   if(pending||activating.current){event.preventDefault();return;}
   activating.current=true;activated.current=true;
   setTimeout(()=>{if(!currentPending.current)activated.current=false;},0);
-  // Guard another activation in this event turn; after React commits, the real pending owner takes over.
-  queueMicrotask(()=>{activating.current=false;});
-  const result=onClick?.(event) as unknown;
-  if(result&&typeof (result as Promise<unknown>).then==='function'&&(props.type==='button'||!event.currentTarget.form||event.defaultPrevented)){
+  let result:unknown;
+  try{result=onClick?.(event);}catch(error){queueMicrotask(()=>{activating.current=false;});throw error;}
+  const promise=result!==null&&result!==undefined&&typeof (result as Promise<unknown>).then==='function';
+  const submitting=props.type!=='button'&&props.type!=='reset'&&event.currentTarget.form!==null;
+  const ownsProcessing=submitting||explicitBusy!==undefined||declaredKind!==undefined||pendingLabel!==undefined||guardNavigation===true||promise;
+  // Form/async owners need the event-turn gap until pending renders. Pure local editing has no such operation.
+  // Keep the latch during the callback itself to refuse reentry, then permit the next local edit immediately.
+  if(ownsProcessing)queueMicrotask(()=>{activating.current=false;});
+  else{activating.current=false;activated.current=false;}
+  if(promise&&(props.type==='button'||!event.currentTarget.form||event.defaultPrevented)){
    setCallbackPending(true);
    // The callback owns its confirmed success/error messaging. A rejected callback must remain visible.
    void Promise.resolve(result).then(()=>{if(mounted.current)setCallbackPending(false);},error=>{if(mounted.current){setCallbackPending(false);if(!isHandledActionRedirect(error))toast.error(labels.uncertain);}});
