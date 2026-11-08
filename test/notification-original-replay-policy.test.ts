@@ -10,7 +10,7 @@ it('proves six actual Linux cancellation and ownership controls without API or c
 });
 
 it('proves eight actual fixed Node transport and peer-liveness intentions without replay or API authority',{timeout:30000},async()=>{
- const result=spawnSync('/usr/bin/python3',['-I','-B','.github/ci/diagnostics/catalogue-original-replay/input-controls-owner.py'],{env:{PATH:'/usr/bin:/bin',LANG:'C',IPC_TEST_NODE:process.execPath},encoding:'utf8',timeout:28000,maxBuffer:1024*1024});expect(result.error).toBeUndefined();expect(result.signal).toBeNull();expect(result.status,result.stderr).toBe(0);expect(result.stderr).toBe('');expect(result.stdout).toBe('Original replay native input controls complete:8\nOriginal replay native input supervised complete:8\n');
+ const result=spawnSync('/usr/bin/python3',['-I','-B','.github/ci/diagnostics/catalogue-original-replay/input-controls-owner.py'],{env:{PATH:'/usr/bin:/bin',LANG:'C',LC_ALL:'C',IPC_TEST_NODE:process.execPath},encoding:'utf8',timeout:28000,maxBuffer:1024*1024});expect(result.error).toBeUndefined();expect(result.signal).toBeNull();expect(result.status,result.stderr).toBe(0);expect(result.stderr).toBe('');expect(result.stdout).toBe('Original replay native input controls complete:8\nOriginal replay native input supervised complete:8\n');
 });
 
 it('retains six strict transport observation and complete predecessor controls',()=>{

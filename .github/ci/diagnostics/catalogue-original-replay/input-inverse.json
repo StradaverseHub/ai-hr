@@ -94,13 +94,13 @@
     },
     "test/notification-original-replay-policy.test.ts": {
       "originalSha256": "f754e6bd0898aadb916225f079b0376bef572f76e28cb11e758b698ab95383c3",
-      "currentSha256": "29b2edc8fef0fff08908dbdaeec6b8d5e9fee8fa27379529938242709b17deb0",
+      "currentSha256": "7c4a5b1d3aa47925b1fe61c5f90e0b9782222acf97876426ff88f3ba7f8427ef",
       "changes": [
         {
           "start": 10,
           "end": 19,
           "before": "",
-          "after": "\nit('proves eight actual fixed Node transport and peer-liveness intentions without replay or API authority',{timeout:30000},async()=>{\n const result=spawnSync('/usr/bin/python3',['-I','-B','.github/ci/diagnostics/catalogue-original-replay/input-controls-owner.py'],{env:{PATH:'/usr/bin:/bin',LANG:'C',IPC_TEST_NODE:process.execPath},encoding:'utf8',timeout:28000,maxBuffer:1024*1024});expect(result.error).toBeUndefined();expect(result.signal).toBeNull();expect(result.status,result.stderr).toBe(0);expect(result.stderr).toBe('');expect(result.stdout).toBe('Original replay native input controls complete:8\\nOriginal replay native input supervised complete:8\\n');\n});\n\nit('retains six strict transport observation and complete predecessor controls',()=>{\n const result=spawnSync(process.execPath,['--test','.github/ci/diagnostics/catalogue-original-replay/input-policy.test.mjs'],{encoding:'utf8',timeout:10000,maxBuffer:1024*1024});const output=(result.stdout??'')+(result.stderr??'');expect(result.error).toBeUndefined();expect(result.signal).toBeNull();expect(result.status,output).toBe(0);\n for(const[name,n]of [['tests',6],['pass',6],['fail',0],['cancelled',0],['skipped',0],['todo',0]])expect(output).toMatch(new RegExp('# '+name+' '+n+'(?:\\\\r?\\\\n)'));process.stdout.write(output);\n});\n"
+          "after": "\nit('proves eight actual fixed Node transport and peer-liveness intentions without replay or API authority',{timeout:30000},async()=>{\n const result=spawnSync('/usr/bin/python3',['-I','-B','.github/ci/diagnostics/catalogue-original-replay/input-controls-owner.py'],{env:{PATH:'/usr/bin:/bin',LANG:'C',LC_ALL:'C',IPC_TEST_NODE:process.execPath},encoding:'utf8',timeout:28000,maxBuffer:1024*1024});expect(result.error).toBeUndefined();expect(result.signal).toBeNull();expect(result.status,result.stderr).toBe(0);expect(result.stderr).toBe('');expect(result.stdout).toBe('Original replay native input controls complete:8\\nOriginal replay native input supervised complete:8\\n');\n});\n\nit('retains six strict transport observation and complete predecessor controls',()=>{\n const result=spawnSync(process.execPath,['--test','.github/ci/diagnostics/catalogue-original-replay/input-policy.test.mjs'],{encoding:'utf8',timeout:10000,maxBuffer:1024*1024});const output=(result.stdout??'')+(result.stderr??'');expect(result.error).toBeUndefined();expect(result.signal).toBeNull();expect(result.status,output).toBe(0);\n for(const[name,n]of [['tests',6],['pass',6],['fail',0],['cancelled',0],['skipped',0],['todo',0]])expect(output).toMatch(new RegExp('# '+name+' '+n+'(?:\\\\r?\\\\n)'));process.stdout.write(output);\n});\n"
         }
       ]
     }

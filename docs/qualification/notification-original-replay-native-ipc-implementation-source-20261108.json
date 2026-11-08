@@ -2,19 +2,19 @@
   "kind": "ORIGINAL_REPLAY_FIXED_NATIVE_INPUT_SOURCE_ONLY_NOT_COMPARISON_QUALIFICATION",
   "base": "1bbf5dd609c9698530a29222ddd4dace8d9cb691",
   "originalCodeBase": "fe8c3aad28991cb9477a0040f500fc59982d6a4b",
-  "sourceRef": "codex/original-replay-native-ipc-implementation-20261108",
+  "sourceRef": "codex/original-replay-ipc-locale-boundary-20261108",
   "sourceSha256": {
     ".github/ci/diagnostics/catalogue-original-replay/adapter.py": "ee69beb43503978edfd32f8f791466e65ec2149bda927cae463191b5fd09486b",
     ".github/ci/diagnostics/catalogue-original-replay/policy.test.mjs": "cd26a8fe4bd7fe53b9ec08d5647fe680010d74bef0b0c894a488697924febdd4",
-    "test/notification-original-replay-policy.test.ts": "29b2edc8fef0fff08908dbdaeec6b8d5e9fee8fa27379529938242709b17deb0",
-    ".github/ci/diagnostics/catalogue-original-replay/input-controls-owner.py": "81c1d3e08e422b91c01774165543064d606259fedc3d1c8371af4fd61123304b",
+    "test/notification-original-replay-policy.test.ts": "7c4a5b1d3aa47925b1fe61c5f90e0b9782222acf97876426ff88f3ba7f8427ef",
+    ".github/ci/diagnostics/catalogue-original-replay/input-controls-owner.py": "08101e6480a42910a58c660a2859f9785e16f675f421ff84dee7930b4b04f2b9",
     ".github/ci/diagnostics/catalogue-original-replay/input-controls.mjs": "ec9800ed6f24d62f59618e3cc11a897775d9d7141c34c753b668651cd904a99a",
     ".github/ci/diagnostics/catalogue-original-replay/input-descriptor.py": "c51e5b398d3168ecac2be1e03f4589acd306bf17a87ec231d335df997bcd9ddd",
-    ".github/ci/diagnostics/catalogue-original-replay/input-inverse.json": "906723e8fd5493c9bcdf620b4ddc80dbb0d0197510eb4d0d0390364a6071443b",
+    ".github/ci/diagnostics/catalogue-original-replay/input-inverse.json": "75f944d61f1f4646e86ba0054f9f4b1a757f1803291d78b222d8aff402b8d957",
     ".github/ci/diagnostics/catalogue-original-replay/input-parent.mjs": "28b1ea17193ba5a36c74c38a93eab624a2c53a8ab9cc0a550d34fd18af79e914",
     ".github/ci/diagnostics/catalogue-original-replay/input-policy.test.mjs": "ff5da99bf490b1b6e4feea8033e7ca4cd985e94fab2f3bb0e60ca94eaad32e7f",
     ".github/ci/diagnostics/catalogue-original-replay/input-probe.py": "576edad5587e15011c01075002cd843f11d4091412f06072dcad12aba96b109a",
-    "docs/qualification/notification-original-replay-native-ipc-implementation-20261108.md": "510a3d82de1f4da8bb2cbe8297caf46c74436ff34f9770b14cea4aebf297aa9d"
+    "docs/qualification/notification-original-replay-native-ipc-implementation-20261108.md": "bed07fc0430530768eadd4349518f0809373ca8617a2fde973ccc0cfd6ccf415"
   },
   "unchangedSha256": {
     ".github/ci/owned-process.py": "cb1a2cc2879267f8834dc11ea0e1c52f8326b0bd4e45dcd94ccf2ac43463f28c",
@@ -67,5 +67,10 @@
   "expectedProfileAuthorized": false,
   "releaseAuthorized": false,
   "nonmergeableFeatureDiagnostic": true,
-  "productionHeld": true
+  "productionHeld": true,
+  "reviewRecovery": {
+    "parent": "bf95abd0e33ff6e47a7fca9969518c39b02ad61a",
+    "kind": "PRE_EXECUTION_EXPLICIT_TEST_OWNER_LOCALE_BOUNDARY",
+    "behaviorExecuted": false
+  }
 }

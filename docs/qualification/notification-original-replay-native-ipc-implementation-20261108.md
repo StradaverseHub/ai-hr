@@ -103,3 +103,15 @@ cannot qualify the original catalogue pair, close profile/OID gaps, change eithe
 observed2308 count, approve expectedProfileAuthorized or authorize a release.
 Do not reupload original private captures/archives or relabel an old receipt.
 Production remains held.
+
+
+## Pre-execution locale boundary correction
+
+Frozenbf95 was not executed. Static follow-up found its test owner's exact
+PATH/LANG/IPC_TEST_NODE environment could be invalidated by Python's locale
+coercion when LANG=C and LC_ALL was absent. This separate successor explicitly
+supplies and requires LC_ALL=C, matching the production owner's existing locale
+contract. It retains exact four-key tokenless startup and fixed PATH/LANG/LC_ALL
+values; no alternate environment key is accepted. The source-only cause remains
+an inference until the actual test owner runs. Production adapter, its native
+input checks, all control counts and all time budgets are unchanged.
