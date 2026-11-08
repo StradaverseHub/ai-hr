@@ -4,6 +4,7 @@ import { createContext, useContext, useRef, useState, useTransition, type Compon
 import { isRedirectError } from 'next/dist/client/components/redirect-error';
 import { useTranslations } from 'next-intl';
 import { Button } from './ui/button';
+import { usePendingAction } from './action-feedback';
 const SubmissionPending = createContext(false);
 
 export type AttendanceSubmissionAction = (data: FormData) => void | { error: string } | Promise<void | { error: string }>;
@@ -18,6 +19,7 @@ export function AttendanceSubmissionForm({ action, className, children, onSubmit
   const t = useTranslations('attendanceWorkflow');
   const [pending, start] = useTransition();
   const [error, setError] = useState('');
+  usePendingAction(pending,t('submissionSending'),true);
   const inFlight = useRef(false);
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -49,5 +51,5 @@ export function AttendanceSubmissionForm({ action, className, children, onSubmit
 
 export function AttendanceSubmissionButton(props: ComponentProps<typeof Button>) {
   const pending=useContext(SubmissionPending), t=useTranslations('attendanceWorkflow');
-  return <Button {...props} type="submit" aria-busy={pending} disabled={pending || props.disabled} pendingLabel={t('submissionSending')}/>;
+  return <Button {...props} type="submit" aria-busy={pending} disabled={pending || props.disabled} pendingLabel={t('submissionSending')} actionKind="submitting"/>;
 }

@@ -112,7 +112,7 @@ export default async function ApplyOtPlanPage({
     isPast ? attendanceForEmploymentRange(s, me.employmentId, date, date) : Promise.resolve([]),
   ]);
   const routeCopy = await getTranslations('attendanceWorkflow');
-  const approver = route.available ? route.stages.map(stage => stage.approvers.map(actor => actor.name).join(' / ')).join('; ') : routeCopy('submissionContactHr');
+  const approver = route.available ? route.stages.map(stage => stage.approvers.map(actor => actor.kind === 'hr_admin' ? routeCopy('hr') : actor.name).join(' / ')).join('; ') : routeCopy('submissionContactHr');
 
   const day: OtPlanCalendarDay | undefined = calendar.find((d) => d.date === date);
   const clocked = actual[0];

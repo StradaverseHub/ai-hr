@@ -147,7 +147,7 @@ export default async function AttendanceIrregularityPage({
     ownAttendanceSubmissionRoute(s, me.employmentId, 'irregularity'),
   ]);
   const routeCopy = await getTranslations('attendanceWorkflow');
-  const approver = route.available ? route.stages.map(stage => stage.approvers.map(actor => actor.name).join(' / ')).join('; ') : routeCopy('submissionContactHr');
+  const approver = route.available ? route.stages.map(stage => stage.approvers.map(actor => actor.kind === 'hr_admin' ? routeCopy('hr') : actor.name).join(' / ')).join('; ') : routeCopy('submissionContactHr');
 
   // An employee who is not on clocking at all has no attendance rows, and every scheduled day in the
   // window would then read as an unexplained absence — a wall of red for somebody whose company simply
