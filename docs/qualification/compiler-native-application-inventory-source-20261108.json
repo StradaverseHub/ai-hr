@@ -1,7 +1,7 @@
 {
   "version": 1,
   "kind": "COMPILER_NATIVE_APPLICATION_INVENTORY_SOURCE_NOT_QUALIFICATION",
-  "sourceRef": "codex/compiler-native-jsdoc-binding-recovery-20261108",
+  "sourceRef": "codex/compiler-native-jsdoc-binding-doc-20261108",
   "reviewedIntegration": "1ffaffae266870a0b298ec8094433eeeb0dcb57e",
   "reviewedDesign": "047a0748b41bad3b2abde1c170f1a01c16f97687",
   "requiredCurrentSharedAncestor": "29d9edcbc4368be871688e9fdf35347676a7841c",
@@ -68,7 +68,7 @@
     "docs/qualification/compiler-native-current-integration-20261108.md": "e6bef132ee2d635896956de1a7a61a1f5e22d4136495254865d6f63183049345",
     "docs/qualification/compiler-native-current-integration-source-20261108.json": "3a3396ec2f9e6aa0af3cf23f9fd70f25dbdb0274d65f9be45997ae7230826763",
     "docs/qualification/compiler-native-input-stat-diagnostic-20261108.md": "add5be85743f9361ed21c2cc5c9812e570c5afa93ea3970f57cbccd8f33cad8e",
-    "docs/qualification/compiler-native-jsdoc-binding-recovery-20261108.md": "4a26e86c5b5f48a0e5b5f663f1a325453d00803a0aff38456f2dceffe10c9b4d",
+    "docs/qualification/compiler-native-jsdoc-binding-recovery-20261108.md": "21aee4afc6fcffa44e25ceadc030042f006fa0f5ab1fa6662297943d9c2d861c",
     "docs/qualification/compiler-native-jsdoc-traversal-20261108.md": "0640df25bd17a192e53d0bf5948f7952ffb8f862f3969e2b7a5f2811b2ff9369",
     "docs/qualification/compiler-native-json-context-20261108.md": "4f690fd761ff0a9b7cc6ef256c220a1786610472c27b171877581f60320d5b03",
     "docs/qualification/compiler-native-package-context-20261108.md": "6cb18fafa9cc412ac1d8249b66367331911174b6994bb02351a57cd2c2b314d3",

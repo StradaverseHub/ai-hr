@@ -58,7 +58,7 @@ ACA JSDoc inverse, e54 inverse and all still older records stay immutable.
 Only the two fixture files, current manifest, new inverse and this request change.
 The shared public helper, actual application worker/entry source pin, native mode
 owner, source custody, three approved metadata observations,20s/25s native wrapper,
-10s source wrapper,120s phase caps,720s/848s compiler envelope,12288-MiB heap,
+15s source child/20s Vitest wrapper,120s phase caps,720s/848s compiler envelope,12288-MiB heap,
 qualified-kernel predecessor inverse/default900, and strict settlement are exact
 ACA bytes. The source case count remains19 and native count remains3. Whole files
 must run; earlier individual passing assertions do not authorize skips.
