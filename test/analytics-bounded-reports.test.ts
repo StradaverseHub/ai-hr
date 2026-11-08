@@ -1,3 +1,5 @@
+import {writeFileSync} from 'node:fs';
+import {join} from 'node:path';
 import {randomUUID} from 'node:crypto';
 import {eq,inArray,sql,type SQL} from 'drizzle-orm';
 import {PgDialect} from 'drizzle-orm/pg-core';
@@ -16,19 +18,21 @@ import {pgSqlState} from '../lib/db-error';
 import {observeNativeRead} from './helpers/native-read-observer';
 import {adminCtx,closeAll,createAppUser,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
 
-beforeAll(migrateTestDb);beforeEach(resetDb);afterAll(closeAll);
+beforeAll(migrateTestDb);beforeEach(async()=>{carryBoundaryScope?.refuseUnsettled();await resetDb();});afterAll(async()=>{carryBoundaryScope?.refuseUnsettled();await closeAll();});
 const period={from:'2020-01-01',to:'2026-12-31'};
 const first=parsePageQuery();
-async function seedRows(b:Base,n:number,p:{terminatedOn?:string;name?:(i:number)=>string;hiredOn?:string}={}){
+async function seedRows(b:Base,n:number,p:{terminatedOn?:string;name?:(i:number)=>string;hiredOn?:string}={},owned?:{tx:Tx;scope:CarryBoundaryScope}){
  const ids:string[]=[],people:string[]=[];
  for(let offset=0;offset<n;offset+=500){
   const indices=Array.from({length:Math.min(500,n-offset)},(_,i)=>offset+i);
   const personRows=indices.map(i=>({id:randomUUID(),tenantId:b.tenantId,fullName:p.name?.(i)??`Fictional report ${String(i).padStart(5,'0')}`,primaryEmail:randomUUID()+'@example.invalid'}));
   const employmentRows=personRows.map(row=>({id:randomUUID(),tenantId:b.tenantId,personId:row.id,companyId:b.companyId,hiredOn:p.hiredOn??'2020-01-01',terminatedOn:p.terminatedOn??null}));
-  await owner.db.insert(person).values(personRows);
-  await owner.db.insert(employment).values(employmentRows);
-  await owner.db.insert(assignment).values(employmentRows.map(row=>({tenantId:b.tenantId,employmentId:row.id,companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time' as const,validFrom:row.hiredOn})));
+  owned?.scope.check();const target=owned?.tx??owner.db;
+  await target.insert(person).values(personRows);
+  await target.insert(employment).values(employmentRows);
+  await target.insert(assignment).values(employmentRows.map(row=>({tenantId:b.tenantId,employmentId:row.id,companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time' as const,validFrom:row.hiredOn})));
   ids.push(...employmentRows.map(row=>row.id));people.push(...personRows.map(row=>row.id));
+  owned?.scope.event('seed-batch-return',{rows:indices.length});
  }
  return {ids,people};
 }
@@ -311,27 +315,183 @@ it('counts the complete change-job relation beyond All and preserves complete ex
  const full=await changeJobTransactions(ctx,[],request);expect(full).toHaveLength(2052);expect(all.rows).toEqual(full.slice(0,2000));
 },120000);
 
+type CarryBoundaryStage='abort'|'seed-start'|'seed-return'|'seed-batch-return'|'pair-start'|'pair-return'|'ordered-start'|'ordered-return'|'phase-start'|'rename-reset'|'rename-return'|'active-batch-return'|'unicode-late-return'|'page-start'|'fetch-return'|'oracle-complete'|'phase-complete'|'drain-start'|'drain-complete'|'final';
+type CarryBoundaryEvent={stage:CarryBoundaryStage;epochMs:number;elapsedMs:number;phase:number;page:number;rows?:number;nativeMs?:number;assertionMs?:number;returned?:boolean};
+type CarryBoundaryIdentity={pid:number;started:string;database:string;login:string;role:string;isolation:string;readOnly:boolean};
+type CarryBoundarySlot={epoch:number;armed:boolean;closing:boolean;active:number;pending:Set<Promise<unknown>>;identity?:CarryBoundaryIdentity;cancel?:Promise<void>;tag:string};
+/** B1-only lifetime owner. Private native identities never enter the bounded receipt. */
+class CarryBoundaryScope{
+ readonly events:CarryBoundaryEvent[]=[];phase=-1;page=-1;stopped=false;settled=false;poisoned=false;
+ private readonly started=performance.now();private nextEpoch=0;private readonly slots=new Set<CarryBoundarySlot>();
+ private pending?:Promise<void>;private finishing?:Promise<void>;private restore?:()=>void;private bodyFailed=false;
+ private control?:Awaited<ReturnType<typeof owner.client.reserve>>;private readonly identities:CarryBoundaryIdentity[]=[];private idleVerified=false;private controlUncertain=false;private controlIdentity?:CarryBoundaryIdentity;private visibleTargets=0;
+ nativeOperations=0;nativeAwaitMs=0;
+ private evidenceFailed=false;private ownerDatabase='';private ownerLogin='';private cancellationIssued=false;private cancellationSettled=true;private cancellationResult:'not-issued'|'pending'|'no-match'|'accepted'|'refused'|'unavailable'='not-issued';
+ private observerInstalled=false;private observerRestored=false;private resolverInstalled=false;private resolverRestored=false;
+ private readonly abort=()=>{this.stopped=true;this.event('abort');for(const slot of this.slots)this.cancel(slot);};
+ constructor(private readonly signal:AbortSignal){signal.addEventListener('abort',this.abort,{once:true});if(signal.aborted)this.abort();}
+ check(){if(this.stopped||this.signal.aborted)throw this.signal.reason??new Error('Carry boundary aborted');}
+ event(stage:CarryBoundaryStage,extra:Partial<Pick<CarryBoundaryEvent,'rows'|'nativeMs'|'assertionMs'|'returned'>>={}){
+  if(this.events.length>=128){this.evidenceFailed=true;return undefined;}
+  const event={stage,epochMs:Date.now(),elapsedMs:performance.now()-this.started,phase:this.phase,page:this.page,...extra};this.events.push(event);this.save();return event;
+ }
+ save(){
+  const directory=process.env.AIHR_FOCUSED_EVIDENCE_DIR;if(!directory)return;
+  const report={kind:'NATIVE_CARRY_BOUNDARY_PHASES_COMPONENT_ONLY',releaseEligible:false,source:process.env.AIHR_CI_HEAD,controller:process.env.AIHR_CI_CONTROL_HEAD,
+   runId:process.env.GITHUB_RUN_ID,attempt:process.env.GITHUB_RUN_ATTEMPT,complete:this.settled&&!this.bodyFailed&&!this.poisoned&&!this.evidenceFailed,
+   stopped:this.stopped,settled:this.settled,poisoned:this.poisoned,cancellationIssued:this.cancellationIssued,cancellationSettled:this.cancellationSettled,cancellationResult:this.cancellationResult,observerInstalled:this.observerInstalled,observerRestored:this.observerRestored,resolverInstalled:this.resolverInstalled,resolverRestored:this.resolverRestored,idleVerified:this.idleVerified,controlUncertain:this.controlUncertain,nativeIdentities:this.identities.length,nativeOperations:this.nativeOperations,nativeAwaitMs:this.nativeAwaitMs,rowTypeChecks:this.events.filter(event=>event.stage==='fetch-return').reduce((n,event)=>n+2*(event.rows??0),0),distinctControlVerified:this.controlIdentity!==undefined&&this.visibleTargets===this.identities.length,active:[...this.slots].reduce((n,s)=>n+s.active,0),held:this.slots.size,events:this.events};
+  try{const bytes=JSON.stringify(report);if(Buffer.byteLength(bytes)>65536){this.evidenceFailed=true;return;}writeFileSync(join(directory,'analytics-carry-boundaries.json'),bytes);}catch{this.evidenceFailed=true;}
+ }
+ async prepare(){
+  try{this.check();if(owner.client.options.max<2)throw new Error('Carry boundary owner control capacity unavailable');
+  this.control=await owner.client.reserve();
+  const facts=await this.controlTransaction(async connection=>{
+   const [facts]=await connection<CarryBoundaryIdentity[]>`select pg_backend_pid() as pid,a.backend_start::text as started,current_database() as database,session_user as login,current_user as role,current_setting('transaction_isolation') as isolation,current_setting('transaction_read_only')='on' as "readOnly" from pg_stat_activity a where a.pid=pg_backend_pid()`;
+   return facts;
+  });
+  this.check();if(!facts?.database||facts.login!=='postgres'||facts.role!=='postgres'||facts.isolation!=='read committed'||facts.readOnly||!Number.isSafeInteger(facts.pid)||facts.pid<=0||!facts.started)throw new Error('Carry boundary owner context unavailable');
+  this.controlIdentity=facts;this.ownerDatabase=facts.database;this.ownerLogin=facts.login;
+  }catch(error){this.poisoned=true;throw error;}
+ }
+ /** ReservedSql's pinned runtime exposes tagged SQL/release, not its declared .begin. */
+ private async controlTransaction<T>(work:(connection:Awaited<ReturnType<typeof owner.client.reserve>>)=>Promise<T>):Promise<T>{
+  const control=this.control;if(!control){this.controlUncertain=true;this.poisoned=true;throw new Error('Carry boundary reserved control unavailable');}
+  try{
+   await control`begin`;await control`set local statement_timeout='1s'`;await control`set local lock_timeout='300ms'`;
+   if(this.controlIdentity){
+    const [current]=await control<Pick<CarryBoundaryIdentity,'pid'|'started'|'database'|'login'|'role'>[]>`select pg_backend_pid() as pid,a.backend_start::text as started,current_database() as database,session_user as login,current_user as role from pg_stat_activity a where a.pid=pg_backend_pid()`;
+    const original=this.controlIdentity;
+    if(!current||current.pid!==original.pid||current.started!==original.started||current.database!==original.database||current.login!==original.login||current.role!==original.role)throw new Error('Carry boundary reserved physical identity changed');
+   }
+   const result=await work(control);await control`commit`;return result;
+  }catch(error){
+   this.controlUncertain=true;this.poisoned=true;
+   try{await control`rollback`;}catch{this.controlUncertain=true;this.poisoned=true;}
+   throw error;
+  }
+ }
+ private cancel(slot:CarryBoundarySlot){
+  if(this.cancellationIssued||!this.slots.has(slot)||!slot.armed||slot.closing||slot.active!==1||!slot.identity)return;
+  this.cancellationIssued=true;this.cancellationSettled=false;this.cancellationResult='pending';const identity=slot.identity,tag=slot.tag;
+  // Publish before native work. This promise must never await the target callback/body.
+  const control=this.control;if(!control){this.controlUncertain=true;this.poisoned=true;return;}
+  slot.cancel=Promise.resolve().then(()=>this.controlTransaction(async connection=>{
+   const result=await connection<{cancelled:boolean}[]>`select pg_cancel_backend(a.pid) as cancelled from pg_stat_activity a
+    where a.pid=${identity.pid} and a.backend_start::text=${identity.started} and a.datname=${identity.database}
+     and a.usename=${identity.login} and a.application_name=${tag} and a.state='active' and a.backend_type='client backend'`;
+   if(result.length>1||result.some(row=>typeof row.cancelled!=='boolean'))throw new Error('Carry boundary cancellation reply refused');
+   this.cancellationResult=result.length===0?'no-match':result[0].cancelled?'accepted':'refused';
+  })).catch(()=>{this.cancellationResult='unavailable';this.poisoned=true;}).finally(()=>{this.cancellationSettled=true;});
+ }
+ private async native<T>(slot:CarryBoundarySlot,work:()=>Promise<T>):Promise<T>{
+  this.check();if(slot.closing||!slot.armed)throw new Error('Carry boundary transaction is closing');
+  if(slot.active!==0){this.poisoned=true;throw new Error('Concurrent carry boundary native work');}
+  const started=performance.now();slot.active++;const pending=Promise.resolve().then(()=>{this.check();return work();});slot.pending.add(pending);
+  try{const result=await pending;this.check();return result;}finally{this.nativeOperations++;this.nativeAwaitMs+=performance.now()-started;slot.active--;slot.pending.delete(pending);}
+ }
+ private guard<T extends object>(value:T,slot:CarryBoundarySlot):T{
+  return new Proxy(value,{get:(target,key)=>{
+   const member=Reflect.get(target,key,target);
+   if(key==='then'&&typeof member==='function')return(onFulfilled:unknown,onRejected:unknown)=>
+    Reflect.apply(Promise.prototype.then,this.native(slot,()=>Promise.resolve(target)),[onFulfilled,onRejected]);
+   if(typeof member!=='function')return member;
+   return(...args:unknown[])=>{this.check();const next=Reflect.apply(member,target,args);return next!==null&&typeof next==='object'?this.guard(next,slot):next;};
+  }});
+ }
+ async held<T>(tx:Tx,kind:'fixture'|'command'|'read',body:(guarded:Tx)=>Promise<T>):Promise<T>{
+  this.check();const slot:CarryBoundarySlot={epoch:++this.nextEpoch,armed:false,closing:false,active:0,pending:new Set(),tag:'carry-boundary-'+randomUUID()};this.slots.add(slot);
+  let outcome:{ok:true;value:T}|{ok:false;error:unknown};
+  try{
+   await tx.execute(sql`set local statement_timeout='20s'`);await tx.execute(sql`set local lock_timeout='300ms'`);
+   await tx.execute(sql`select set_config('application_name',${slot.tag},true)`);
+   const [identity]=await tx.execute<CarryBoundaryIdentity>(sql`select pg_backend_pid() as pid,a.backend_start::text as started,current_database() as database,
+    session_user as login,current_user as role,current_setting('transaction_isolation') as isolation,current_setting('transaction_read_only')='on' as "readOnly"
+    from pg_stat_activity a where a.pid=pg_backend_pid()`);
+   if(!identity||!Number.isSafeInteger(identity.pid)||identity.pid<=0||!identity.started||identity.database!==this.ownerDatabase
+    ||identity.login!==(kind==='fixture'?this.ownerLogin:'ai_hr_app')||identity.role!==(kind==='fixture'?this.ownerLogin:'ai_hr_app')
+    ||(kind==='read'&&(identity.isolation!=='repeatable read'||!identity.readOnly))
+    ||(kind!=='read'&&(identity.isolation!=='read committed'||identity.readOnly)))throw new Error('Carry boundary native identity refused');
+   const control=this.control;if(!control||identity.pid===this.controlIdentity?.pid)throw new Error('Carry boundary distinct control unavailable');
+   await this.controlTransaction(async connection=>{
+     const [visible]=await connection<{matches:number}[]>`select count(*)::int as matches from pg_stat_activity
+     where pid=${identity.pid} and backend_start::text=${identity.started} and datname=${identity.database} and usename=${identity.login} and application_name=${slot.tag}`;
+    if(visible?.matches!==1)throw new Error('Carry boundary native control target unavailable');
+   });this.visibleTargets++;
+   slot.identity=identity;this.identities.push(identity);slot.armed=true;this.check();outcome={ok:true,value:await body(this.guard(tx,slot))};
+  }catch(error){if(!slot.identity)this.poisoned=true;outcome={ok:false,error};}
+  // Synchronous admission frontier: no later abort may enqueue against this epoch.
+  slot.closing=true;slot.armed=false;
+  if(slot.pending.size)await Promise.allSettled([...slot.pending]);
+  if(slot.cancel)await slot.cancel;
+  if(slot.active!==0||this.controlUncertain){this.poisoned=true;this.save();await new Promise<never>(()=>{});}
+  this.slots.delete(slot);
+  if(!outcome.ok)throw outcome.error;this.check();return outcome.value;
+ }
+ fixture<T>(body:(tx:Tx)=>Promise<T>){return owner.db.transaction(tx=>this.held(tx,'fixture',body));}
+ setRestore(restore:()=>void){this.observerInstalled=true;this.restore=restore;}
+ markResolverInstalled(){this.resolverInstalled=true;}
+ markResolverRestored(){this.resolverRestored=true;}
+ run(body:()=>Promise<void>){
+  if(this.pending)throw new Error('Carry boundary body already owned');
+  this.pending=Promise.resolve().then(body).catch(error=>{this.bodyFailed=true;throw error;});
+  void this.pending.catch(()=>{});return this.pending;
+ }
+ finish(){
+  if(this.finishing)return this.finishing;
+  this.finishing=(async()=>{
+   this.event('drain-start');if(this.pending)try{await this.pending;}catch{/* Original body/timeout remains the test failure. */}
+   if(this.slots.size){this.poisoned=true;throw new Error('Carry boundary held callbacks remain');}
+   if(this.poisoned){this.save();throw new Error('Carry boundary ownership poisoned; reserved holder retained');}
+   const control=this.control;
+   if(control){
+    await this.controlTransaction(async connection=>{
+       for(const identity of this.identities){
+      const activity=await connection<{state:string;xactStart:string|null}[]>`select state,xact_start::text as "xactStart" from pg_stat_activity
+       where pid=${identity.pid} and backend_start::text=${identity.started} and datname=${identity.database} and usename=${identity.login}`;
+      if(activity.length>1||activity.some(row=>row.state!=='idle'||row.xactStart!==null)){this.poisoned=true;throw new Error('Carry boundary original backend not idle');}
+     }
+    });this.idleVerified=true;control.release();this.control=undefined;
+   }else if(this.identities.length){this.poisoned=true;throw new Error('Carry boundary idle observer unavailable');}
+   this.signal.removeEventListener('abort',this.abort);this.restore?.();this.observerRestored=this.observerInstalled;this.restore=undefined;
+   this.event('drain-complete');this.event('final');
+   if(!this.bodyFailed){
+    const count=(stage:CarryBoundaryStage)=>this.events.filter(event=>event.stage===stage).length;
+    const rows=(stage:CarryBoundaryStage)=>this.events.filter(event=>event.stage===stage).reduce((n,event)=>n+(event.rows??0),0);
+    if(this.stopped||!this.observerRestored||!this.resolverRestored||!this.cancellationSettled||this.events.length!==125||count('phase-complete')!==7||count('page-start')!==11||count('fetch-return')!==17||count('oracle-complete')!==11
+     ||count('active-batch-return')!==33||count('seed-batch-return')!==9||rows('fetch-return')!==30212||rows('oracle-complete')!==30212
+     ||this.events.some(event=>event.stage==='page-start'&&!event.returned))this.evidenceFailed=true;
+   }
+   this.settled=true;this.save();
+   if(this.poisoned||this.evidenceFailed)throw new Error('Carry boundary settlement or evidence unavailable');
+  })();return this.finishing;
+ }
+ refuseUnsettled(){if(!this.settled||this.poisoned)throw new Error('Carry boundary must settle before reset or close');}
+}
+let carryBoundaryScope:CarryBoundaryScope|undefined;
+
 type ObservedCarryIdentity={employmentId:string;name:string};
 type ObservedCarryProperties={role:string;isolation:string;readOnly:boolean;pid:number};
 /** Case-private observation of the actual app cursor; rows never leave test memory.
  * The original RowList is returned unchanged, and the oracle below sorts this SAME stream. */
-function observeCarryCursor(failAfterFirstFetch=false){
+function observeCarryCursor(failAfterFirstFetch=false,scope?:CarryBoundaryScope){
  const actual=database.withTenant,dialect=new PgDialect(),rows:ObservedCarryIdentity[]=[],batches:number[]=[],queries:string[]=[],properties:ObservedCarryProperties[]=[];
  const state={active:0,maxActive:0};let originalFetchFailure:unknown,controlClosed=false;
  const spy=vi.spyOn(database,'withTenant').mockImplementation(<T>(context:SessionContext,read:(tx:Tx)=>Promise<T>,options?:Parameters<typeof database.withTenant>[2])=>actual(context,async tx=>{
+  scope?.check();
   const [facts]=await tx.execute<ObservedCarryProperties>(sql`select current_user as role,current_setting('transaction_isolation')as isolation,
    current_setting('transaction_read_only')='on'as "readOnly",pg_backend_pid()as pid`);
-  properties.push(facts);
-  return read(new Proxy(tx,{get(target,key,receiver){
+  scope?.check();properties.push(facts);
+  const invoke=(native:Tx)=>read(new Proxy(native,{get(target,key,receiver){
    if(key==='execute')return async(statement:SQL)=>{
     const compiled=dialect.sqlToQuery(statement),text=compiled.sql.trim().toLowerCase().replace(/\s+/g,' ');
     queries.push(text);state.active++;state.maxActive=Math.max(state.maxActive,state.active);
     try{
-     let result:Awaited<ReturnType<Tx['execute']>>;
+     let result:Awaited<ReturnType<Tx['execute']>>;const nativeStarted=performance.now();
      try{result=await target.execute(statement);}catch(error){
       if(text==='fetch forward 4096 from analytics_carry_identities')originalFetchFailure=error;
       throw error;
      }
+     const nativeMs=performance.now()-nativeStarted,assertionStarted=performance.now();
      if(text==='fetch forward 4096 from analytics_carry_identities'){
       expect(compiled.params).toEqual([]);expect(Array.isArray(result)).toBe(true);expect(result.length).toBeLessThanOrEqual(4096);
       batches.push(result.length);
@@ -339,6 +499,7 @@ function observeCarryCursor(failAfterFirstFetch=false){
        expect(typeof row.employmentId).toBe('string');expect(typeof row.name).toBe('string');
        rows.push({employmentId:row.employmentId as string,name:row.name as string});
       }
+      scope?.event('fetch-return',{rows:result.length,nativeMs,assertionMs:performance.now()-assertionStarted});
       if(failAfterFirstFetch&&!controlClosed){
        // A real same-session CLOSE makes the NEXT unmodified product FETCH fail natively.
        await target.execute(sql`close analytics_carry_identities`);controlClosed=true;
@@ -349,8 +510,9 @@ function observeCarryCursor(failAfterFirstFetch=false){
    };
    const value=Reflect.get(target,key,receiver);return typeof value==='function'?value.bind(target):value;
   }}));
+  return scope?scope.held(tx,options?.readOnlySnapshot?'read':'command',invoke):invoke(tx);
  },options));
- return {rows,batches,queries,properties,state,get originalFetchFailure(){return originalFetchFailure;},
+ return {rows,batches,queries,properties,state,resetPage(){if(state.active!==0)throw new Error('Carry boundary observer still active');rows.length=0;batches.length=0;queries.length=0;properties.length=0;state.active=0;state.maxActive=0;},get originalFetchFailure(){return originalFetchFailure;},
   get controlClosed(){return controlClosed;},restore:()=>spy.mockRestore()};
 }
 function expectCarryCursorPage(probe:ReturnType<typeof observeCarryCursor>,page:ReturnType<typeof parsePageQuery>,result:Awaited<ReturnType<typeof carryForwardReportPage>>,total:number){
@@ -369,33 +531,46 @@ async function expectCarryPidSettled(pid:number){
  if(activity.length)expect(activity[0]).toMatchObject({state:'idle',xactStart:null});
 }
 
-it('preserves stable same-native-stream carry pages across fixed4096 fetch boundaries',async()=>{
- const b=await seedBase(),ctx=adminCtx(b),seeded=await seedRows(b,4095);
+it('preserves stable same-native-stream carry pages across fixed4096 fetch boundaries',async(context)=>{
+ const scope=new CarryBoundaryScope(context.signal);carryBoundaryScope=scope;
+ context.onTestFinished(()=>scope.finish());
+ await scope.run(async()=>{
+ scope.event('seed-start');await scope.prepare();
+ const b=await seedBase(),ctx=adminCtx(b),probe=observeCarryCursor(false,scope);scope.setRestore(probe.restore);
+ const seeded=await scope.fixture(tx=>seedRows(b,4095,{}, {tx,scope}));scope.event('seed-return');scope.event('pair-start');
  const paired=await hireEmployee(ctx,{companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:'2020-01-01',
   person:{fullName:'Excluded carry paired',primaryEmail:randomUUID()+'@example.invalid'}});
  const concurrent=await hireEmployee(ctx,{companyId:b.companyId,departmentId:b.deptB,employmentType:'part_time',hiredOn:'2020-01-01',person:{id:paired.personId}});
- const ordered=await owner.db.select({employmentId:employment.id,personId:employment.personId}).from(employment).where(eq(employment.companyId,b.companyId)).orderBy(employment.id);
+ scope.event('pair-return');scope.event('ordered-start');
+ const ordered=await scope.fixture(async tx=>tx.select({employmentId:employment.id,personId:employment.personId}).from(employment).where(eq(employment.companyId,b.companyId)).orderBy(employment.id));scope.event('ordered-return');
  expect(ordered).toHaveLength(4097);
  const latePerson=ordered.at(-1)!.personId,lateEmployment=ordered.at(-1)!.employmentId;
  const unicode=['éclair','Eclair','e\u0301clair','Ångström','Zulu','同名','😀','éclair'];
  const actualResolver=templates.buildTemplateEntitlementResolver,selectedBatches:string[][]=[];
  const resolver=vi.spyOn(templates,'buildTemplateEntitlementResolver').mockImplementation((tx,p)=>{selectedBatches.push(p.employmentIds.slice());return actualResolver(tx,p);});
+ scope.markResolverInstalled();
  try{
-  for(const n of [0,511,512,513,4095,4096,4097]){
+  for(const [phase,n] of [0,511,512,513,4095,4096,4097].entries()){
+   scope.check();scope.phase=phase;scope.page=-1;scope.event('phase-start');
    // One Person may own two legal distinct Employments. Select counts through
    // real Person names without trying to hide only one of that Person's rows.
    const activePeople=n<=4095?seeded.people.slice(0,n):[...seeded.people.slice(0,n===4096?4094:4095),paired.personId];
-   await owner.db.update(person).set({fullName:sql`'Excluded carry ' || ${person.id}::text`}).where(eq(person.tenantId,b.tenantId));
-   for(let start=0;start<activePeople.length;start+=500)await owner.db.update(person).set({fullName:sql`'Carry boundary z ' || ${person.id}::text`}).where(inArray(person.id,activePeople.slice(start,start+500)));
+   scope.event('rename-reset');
+   await scope.fixture(async tx=>{
+   await tx.update(person).set({fullName:sql`'Excluded carry ' || ${person.id}::text`}).where(eq(person.tenantId,b.tenantId));
+   scope.event('rename-return');
+   for(let start=0;start<activePeople.length;start+=500){await tx.update(person).set({fullName:sql`'Carry boundary z ' || ${person.id}::text`}).where(inArray(person.id,activePeople.slice(start,start+500)));scope.event('active-batch-return',{rows:Math.min(500,activePeople.length-start)});}
    const unicodePeople=activePeople.filter(id=>id!==latePerson).slice(0,unicode.length);
-   for(const [index,name]of unicode.entries())if(unicodePeople[index])await owner.db.update(person).set({fullName:'Carry boundary '+name}).where(eq(person.id,unicodePeople[index]));
-   if(activePeople.includes(latePerson))await owner.db.update(person).set({fullName:'Carry boundary 000 late winner'}).where(eq(person.id,latePerson));
+   for(const [index,name]of unicode.entries())if(unicodePeople[index])await tx.update(person).set({fullName:'Carry boundary '+name}).where(eq(person.id,unicodePeople[index]));
+   if(activePeople.includes(latePerson))await tx.update(person).set({fullName:'Carry boundary 000 late winner'}).where(eq(person.id,latePerson));
+   });scope.event('unicode-late-return');
    const pages=[first];
    if(n===4097)for(const size of [25,50,100,200])pages.push(parsePageQuery({size:String(size),page:String(Math.floor((n-1)/size))}));
    for(const page of pages){
-    selectedBatches.length=0;const probe=observeCarryCursor();
+    scope.check();scope.page++;selectedBatches.length=0;probe.resetPage();const pageEvent=scope.event('page-start'),nativeStarted=scope.nativeAwaitMs;
     let result:Awaited<ReturnType<typeof carryForwardReportPage>>;
-    try{result=await carryForwardReportPage(ctx,[b.companyId],{year:2026,filter:{q:'Carry boundary %'},page});}finally{probe.restore();}
+    result=await carryForwardReportPage(ctx,[b.companyId],{year:2026,filter:{q:'Carry boundary %'},page});if(pageEvent){pageEvent.returned=true;pageEvent.nativeMs=scope.nativeAwaitMs-nativeStarted;scope.save();}
+    scope.check();const oracleStarted=performance.now();
     expectCarryCursorPage(probe,page,result!,n);
     expect(probe.batches).toEqual(n<4096?[n]:n===4096?[4096,0]:[4096,1]);
     expect(new Set(probe.rows.map(row=>row.employmentId)).size).toBe(n);
@@ -411,9 +586,12 @@ it('preserves stable same-native-stream carry pages across fixed4096 fetch bound
      expect(probe.rows.at(-1)?.employmentId).toBe(lateEmployment);
      expect(result!.rows.map(row=>row.employmentId)).toContain(lateEmployment);
     }
+    scope.event('oracle-complete',{rows:n,assertionMs:performance.now()-oracleStarted});
    }
+   scope.event('phase-complete');
   }
- }finally{resolver.mockRestore();}
+ }finally{resolver.mockRestore();scope.markResolverRestored();}
+ });
 },120000);
 
 it('retains full carry population and exports for All and safe very-deep page arithmetic',async()=>{

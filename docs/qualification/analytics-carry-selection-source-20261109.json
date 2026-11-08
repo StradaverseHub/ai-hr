@@ -70,8 +70,8 @@
     {
       "path": "test/analytics-bounded-reports.test.ts",
       "current": {
-        "bytes": 37575,
-        "sha256": "ced902cb89e515db8708489826872c9b0b8263525b33f6feaca33858c165d091"
+        "bytes": 54510,
+        "sha256": "558807fcbf40ea2f1e81f55e5b285ab25645fff64d656bfa8c38a893c77c965f"
       },
       "wholeParent": {
         "source": "817f28a45d4411bdf7e940576f2087460dd24e0a",
@@ -81,25 +81,153 @@
       },
       "inverseHunks": [
         {
-          "currentStart": 40,
-          "currentEnd": 140,
-          "currentRangeSha256": "90018f27ce9d9fe4d085921960e61ead04c03ab0859318f9f17d1fcd230c821a",
-          "parentStart": 40,
-          "parentEnd": 84,
-          "parentText": "import {eq,inArray,sql} from 'drizzle-orm';\n"
-        },
-        {
-          "currentStart": 873,
-          "currentEnd": 917,
-          "currentRangeSha256": "1019cfc33cbf01e065581f626544d4c897960fb2ce2b9b023b530bdb1f39d0ac",
-          "parentStart": 817,
-          "parentEnd": 817,
+          "currentStart": 0,
+          "currentEnd": 71,
+          "currentRangeSha256": "5b681c827b61c0ef2961acb3206c4b6ef88218b49140b9e23a0ce8a47531bfcc",
+          "parentStart": 0,
+          "parentEnd": 0,
           "parentText": ""
         },
         {
-          "currentStart": 27137,
-          "currentEnd": 37575,
-          "currentRangeSha256": "fb27381eb548156e55a99cb5cd74b29d0506aafcdc662b3579171b9ad611308a",
+          "currentStart": 133,
+          "currentEnd": 142,
+          "currentRangeSha256": "84ae8b0a92d99797e3fef6793dfd7eabe1498cb99d9bceab2b2ca063de8e17a2",
+          "parentStart": 62,
+          "parentEnd": 62,
+          "parentText": ""
+        },
+        {
+          "currentStart": 161,
+          "currentEnd": 208,
+          "currentRangeSha256": "0168a375905680406b9d89950dfb2b2d77d18f5eaef9f825a77e02dbee58056f",
+          "parentStart": 81,
+          "parentEnd": 81,
+          "parentText": ""
+        },
+        {
+          "currentStart": 952,
+          "currentEnd": 996,
+          "currentRangeSha256": "ae87181786964cc305b7e9eb889f219cc53873ddddb068ac64dd5dd9ece3f4dc",
+          "parentStart": 825,
+          "parentEnd": 825,
+          "parentText": ""
+        },
+        {
+          "currentStart": 1197,
+          "currentEnd": 1251,
+          "currentRangeSha256": "cef10bfe3ca56d837c02134fd106d9777d1b49c3e55379822eb5c7289849847e",
+          "parentStart": 1026,
+          "parentEnd": 1026,
+          "parentText": ""
+        },
+        {
+          "currentStart": 1258,
+          "currentEnd": 1262,
+          "currentRangeSha256": "f445374de43d851d0d7bce3d5cb8653b6649105c3f41926128c61c6940a76cc1",
+          "parentStart": 1033,
+          "parentEnd": 1033,
+          "parentText": ""
+        },
+        {
+          "currentStart": 1273,
+          "currentEnd": 1327,
+          "currentRangeSha256": "cef10bfe3ca56d837c02134fd106d9777d1b49c3e55379822eb5c7289849847e",
+          "parentStart": 1044,
+          "parentEnd": 1044,
+          "parentText": ""
+        },
+        {
+          "currentStart": 1335,
+          "currentEnd": 1339,
+          "currentRangeSha256": "f445374de43d851d0d7bce3d5cb8653b6649105c3f41926128c61c6940a76cc1",
+          "parentStart": 1052,
+          "parentEnd": 1052,
+          "parentText": ""
+        },
+        {
+          "currentStart": 1529,
+          "currentEnd": 1569,
+          "currentRangeSha256": "8847f44012adf92aa8f142177827e191d64caa991b5421493aa06ab98a192a04",
+          "parentStart": 1242,
+          "parentEnd": 1242,
+          "parentText": ""
+        },
+        {
+          "currentStart": 2116,
+          "currentEnd": 2117,
+          "currentRangeSha256": "65c74c15a686187bb6bbf9958f494fc6b80068034a659a9ad44991b08c58f2d2",
+          "parentStart": 1789,
+          "parentEnd": 1790,
+          "parentText": "a"
+        },
+        {
+          "currentStart": 2118,
+          "currentEnd": 2141,
+          "currentRangeSha256": "aa007fec2ecc0160fb4d820c8a7d32f897396f2fe964006fd09db8053030c735",
+          "parentStart": 1791,
+          "parentEnd": 1793,
+          "parentText": "ai"
+        },
+        {
+          "currentStart": 2143,
+          "currentEnd": 2161,
+          "currentRangeSha256": "62da5d962ec50f3676e2484fc0bbb66899689393a12bda79d9887e7abb8cf6cb",
+          "parentStart": 1795,
+          "parentEnd": 1795,
+          "parentText": ""
+        },
+        {
+          "currentStart": 2169,
+          "currentEnd": 2185,
+          "currentRangeSha256": "5c51cf0c80ca34936fd7b9e3684fc0c9402dda6268c8200953d620321f7261f5",
+          "parentStart": 1803,
+          "parentEnd": 1803,
+          "parentText": ""
+        },
+        {
+          "currentStart": 2229,
+          "currentEnd": 2231,
+          "currentRangeSha256": "76592b9de6d38238a52a3651867871e5c670e6320a8ef46a84b5590f8933f33e",
+          "parentStart": 1847,
+          "parentEnd": 1851,
+          "parentText": "owne"
+        },
+        {
+          "currentStart": 2232,
+          "currentEnd": 2235,
+          "currentRangeSha256": "2998b3232d29e8dc5a78d97a32ce83f556f3ed31b057077503df05641dd79158",
+          "parentStart": 1852,
+          "parentEnd": 1855,
+          "parentText": ".db"
+        },
+        {
+          "currentStart": 2287,
+          "currentEnd": 2289,
+          "currentRangeSha256": "76592b9de6d38238a52a3651867871e5c670e6320a8ef46a84b5590f8933f33e",
+          "parentStart": 1907,
+          "parentEnd": 1911,
+          "parentText": "owne"
+        },
+        {
+          "currentStart": 2290,
+          "currentEnd": 2293,
+          "currentRangeSha256": "2998b3232d29e8dc5a78d97a32ce83f556f3ed31b057077503df05641dd79158",
+          "parentStart": 1912,
+          "parentEnd": 1915,
+          "parentText": ".db"
+        },
+        {
+          "currentStart": 2581,
+          "currentEnd": 2646,
+          "currentRangeSha256": "40039eb7b629b774be8045c08ced5d870c46acd19b008acff4cd66df1dd9932f",
+          "parentStart": 2203,
+          "parentEnd": 2203,
+          "parentText": ""
+        },
+        {
+          "currentStart": 27480,
+          "currentEnd": 54510,
+          "currentRangeSha256": "8659bcbefe5d68c03b4a652564fef4e08f79c41609a66c6bd7375e6bb9a632ff",
           "parentStart": 27037,
           "parentEnd": 27037,
           "parentText": ""
@@ -241,8 +369,8 @@
     {
       "path": "docs/adr/2026-11-09-analytics-employment-aggregates.md",
       "current": {
-        "bytes": 15935,
-        "sha256": "fd58d4087e994df4a2318656cf8359eb22ac2505a14b0bf525c08e9b32f308ea"
+        "bytes": 19437,
+        "sha256": "ed090e41b830b34c9c7c34006058f7b668991bbd991e0bb20f3a5137627efc62"
       },
       "wholeParent": {
         "source": "817f28a45d4411bdf7e940576f2087460dd24e0a",
@@ -253,8 +381,8 @@
       "inverseHunks": [
         {
           "currentStart": 13334,
-          "currentEnd": 15935,
-          "currentRangeSha256": "fa78d219d121634f605e9b0510453ac95468c999cf2ae8d7093807867015cd2a",
+          "currentEnd": 19437,
+          "currentRangeSha256": "24e4d962dba72ec495716d8d1fdfc80d77c2c0858de6cac57e11fa9e56adbcdb",
           "parentStart": 13334,
           "parentEnd": 13334,
           "parentText": ""
@@ -626,5 +754,13 @@
     "workerTests": false,
     "stagingQualified": false,
     "productionHeld": true
+  },
+  "ownedSettlementFollowup": {
+    "sourceOnly": true,
+    "parentSource": "fca1bdd3f9afcf598c643ac2c4cfb482a21bb824",
+    "recordPath": "docs/qualification/analytics-carry-boundary-owned-settlement-source-20261109.json",
+    "recordSha256": "8409acdd624bd3838cd00aa236d4af19715250d1d1251b63e6998a65434c3880",
+    "historicalFca1CoursesNotRelabeled": true,
+    "currentRuntimeQualification": false
   }
 }

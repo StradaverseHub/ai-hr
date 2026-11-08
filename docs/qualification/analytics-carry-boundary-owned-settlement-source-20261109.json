@@ -1,0 +1,729 @@
+{
+  "kind": "ANALYTICS_CARRY_B1_OWNED_SETTLEMENT_SOURCE_ONLY",
+  "parentSource": "fca1bdd3f9afcf598c643ac2c4cfb482a21bb824",
+  "leasedPaths": [
+    "test/analytics-bounded-reports.test.ts",
+    "docs/adr/2026-11-09-analytics-employment-aggregates.md",
+    "docs/qualification/analytics-carry-selection-source-20261109.json",
+    "docs/qualification/analytics-carry-boundary-owned-settlement-source-20261109.json"
+  ],
+  "currentSourceRows": [
+    {
+      "path": "test/analytics-bounded-reports.test.ts",
+      "current": {
+        "bytes": 54510,
+        "sha256": "558807fcbf40ea2f1e81f55e5b285ab25645fff64d656bfa8c38a893c77c965f"
+      },
+      "wholeParent": {
+        "source": "fca1bdd3f9afcf598c643ac2c4cfb482a21bb824",
+        "gitBlob": "7d13cfcc23b07e86e3bc458de84b2425bac4062b",
+        "bytes": 37575,
+        "sha256": "ced902cb89e515db8708489826872c9b0b8263525b33f6feaca33858c165d091"
+      },
+      "inverseHunks": [
+        {
+          "currentStart": 0,
+          "currentEnd": 71,
+          "currentRangeSha256": "5b681c827b61c0ef2961acb3206c4b6ef88218b49140b9e23a0ce8a47531bfcc",
+          "parentStart": 0,
+          "parentEnd": 0,
+          "parentText": ""
+        },
+        {
+          "currentStart": 1197,
+          "currentEnd": 1251,
+          "currentRangeSha256": "cef10bfe3ca56d837c02134fd106d9777d1b49c3e55379822eb5c7289849847e",
+          "parentStart": 1126,
+          "parentEnd": 1126,
+          "parentText": ""
+        },
+        {
+          "currentStart": 1258,
+          "currentEnd": 1262,
+          "currentRangeSha256": "f445374de43d851d0d7bce3d5cb8653b6649105c3f41926128c61c6940a76cc1",
+          "parentStart": 1133,
+          "parentEnd": 1133,
+          "parentText": ""
+        },
+        {
+          "currentStart": 1273,
+          "currentEnd": 1327,
+          "currentRangeSha256": "cef10bfe3ca56d837c02134fd106d9777d1b49c3e55379822eb5c7289849847e",
+          "parentStart": 1144,
+          "parentEnd": 1144,
+          "parentText": ""
+        },
+        {
+          "currentStart": 1335,
+          "currentEnd": 1339,
+          "currentRangeSha256": "f445374de43d851d0d7bce3d5cb8653b6649105c3f41926128c61c6940a76cc1",
+          "parentStart": 1152,
+          "parentEnd": 1152,
+          "parentText": ""
+        },
+        {
+          "currentStart": 1529,
+          "currentEnd": 1569,
+          "currentRangeSha256": "8847f44012adf92aa8f142177827e191d64caa991b5421493aa06ab98a192a04",
+          "parentStart": 1342,
+          "parentEnd": 1342,
+          "parentText": ""
+        },
+        {
+          "currentStart": 2116,
+          "currentEnd": 2117,
+          "currentRangeSha256": "65c74c15a686187bb6bbf9958f494fc6b80068034a659a9ad44991b08c58f2d2",
+          "parentStart": 1889,
+          "parentEnd": 1890,
+          "parentText": "a"
+        },
+        {
+          "currentStart": 2118,
+          "currentEnd": 2141,
+          "currentRangeSha256": "aa007fec2ecc0160fb4d820c8a7d32f897396f2fe964006fd09db8053030c735",
+          "parentStart": 1891,
+          "parentEnd": 1893,
+          "parentText": "ai"
+        },
+        {
+          "currentStart": 2143,
+          "currentEnd": 2161,
+          "currentRangeSha256": "62da5d962ec50f3676e2484fc0bbb66899689393a12bda79d9887e7abb8cf6cb",
+          "parentStart": 1895,
+          "parentEnd": 1895,
+          "parentText": ""
+        },
+        {
+          "currentStart": 2169,
+          "currentEnd": 2185,
+          "currentRangeSha256": "5c51cf0c80ca34936fd7b9e3684fc0c9402dda6268c8200953d620321f7261f5",
+          "parentStart": 1903,
+          "parentEnd": 1903,
+          "parentText": ""
+        },
+        {
+          "currentStart": 2229,
+          "currentEnd": 2231,
+          "currentRangeSha256": "76592b9de6d38238a52a3651867871e5c670e6320a8ef46a84b5590f8933f33e",
+          "parentStart": 1947,
+          "parentEnd": 1951,
+          "parentText": "owne"
+        },
+        {
+          "currentStart": 2232,
+          "currentEnd": 2235,
+          "currentRangeSha256": "2998b3232d29e8dc5a78d97a32ce83f556f3ed31b057077503df05641dd79158",
+          "parentStart": 1952,
+          "parentEnd": 1955,
+          "parentText": ".db"
+        },
+        {
+          "currentStart": 2287,
+          "currentEnd": 2289,
+          "currentRangeSha256": "76592b9de6d38238a52a3651867871e5c670e6320a8ef46a84b5590f8933f33e",
+          "parentStart": 2007,
+          "parentEnd": 2011,
+          "parentText": "owne"
+        },
+        {
+          "currentStart": 2290,
+          "currentEnd": 2293,
+          "currentRangeSha256": "2998b3232d29e8dc5a78d97a32ce83f556f3ed31b057077503df05641dd79158",
+          "parentStart": 2012,
+          "parentEnd": 2015,
+          "parentText": ".db"
+        },
+        {
+          "currentStart": 2581,
+          "currentEnd": 2646,
+          "currentRangeSha256": "40039eb7b629b774be8045c08ced5d870c46acd19b008acff4cd66df1dd9932f",
+          "parentStart": 2303,
+          "parentEnd": 2303,
+          "parentText": ""
+        },
+        {
+          "currentStart": 27486,
+          "currentEnd": 42288,
+          "currentRangeSha256": "a55a341c6563363cfdf06b7fb8770ff49c0c5b199d277e327c4aead2b26771a0",
+          "parentStart": 27143,
+          "parentEnd": 27143,
+          "parentText": ""
+        },
+        {
+          "currentStart": 42666,
+          "currentEnd": 42692,
+          "currentRangeSha256": "f0877e15e2a0154d03f7fb14eff0428fe2426479e00d6189550c9bfeee05530a",
+          "parentStart": 27521,
+          "parentEnd": 27521,
+          "parentText": ""
+        },
+        {
+          "currentStart": 43153,
+          "currentEnd": 43171,
+          "currentRangeSha256": "744c3eccfb6522dcdeaf9b61e1da156fd8b8c22afdd4e282c4f3bc79b8ae4d53",
+          "parentStart": 27982,
+          "parentEnd": 27982,
+          "parentText": ""
+        },
+        {
+          "currentStart": 43403,
+          "currentEnd": 43418,
+          "currentRangeSha256": "6d6cc52dce05a1f804a62217eef8a2f5a07727881ee248b78a66931119713257",
+          "parentStart": 28214,
+          "parentEnd": 28214,
+          "parentText": ""
+        },
+        {
+          "currentStart": 43444,
+          "currentEnd": 43446,
+          "currentRangeSha256": "c330ec504d82c24fcd10be978fa74b8a3185a8df719604a85443bb9ca279f5a2",
+          "parentStart": 28240,
+          "parentEnd": 28245,
+          "parentText": "retur"
+        },
+        {
+          "currentStart": 43447,
+          "currentEnd": 43449,
+          "currentRangeSha256": "56af4bde70a47ae7d0f1ebb30e45ed336165d5c9ec00ba9a92311e33a4256d74",
+          "parentStart": 28246,
+          "parentEnd": 28246,
+          "parentText": ""
+        },
+        {
+          "currentStart": 43450,
+          "currentEnd": 43470,
+          "currentRangeSha256": "940b0f8870c2822136af16f91e2781ede696c0c706795154a8f8de73f5b5344a",
+          "parentStart": 28247,
+          "parentEnd": 28247,
+          "parentText": ""
+        },
+        {
+          "currentStart": 43485,
+          "currentEnd": 43487,
+          "currentRangeSha256": "3d9fc4bde7ceef058d65b00186e79c1f14b42687b491644c303065135b644e18",
+          "parentStart": 28262,
+          "parentEnd": 28262,
+          "parentText": ""
+        },
+        {
+          "currentStart": 43488,
+          "currentEnd": 43491,
+          "currentRangeSha256": "f086f1f934cb060add256c3c98a725f269b1faa6686aa2fe3754d1d0759812fd",
+          "parentStart": 28263,
+          "parentEnd": 28264,
+          "parentText": "x"
+        },
+        {
+          "currentStart": 43835,
+          "currentEnd": 43873,
+          "currentRangeSha256": "d9098e34da25b413d816e4b28eb296659ce77411af97a6fdb4ccf972b5f48310",
+          "parentStart": 28608,
+          "parentEnd": 28608,
+          "parentText": ""
+        },
+        {
+          "currentStart": 44059,
+          "currentEnd": 44147,
+          "currentRangeSha256": "eb98cbeb7b1c6ffa768e6dc6decc5181dd77f200f9f52f2a63c5cd160ba15a6a",
+          "parentStart": 28794,
+          "parentEnd": 28794,
+          "parentText": ""
+        },
+        {
+          "currentStart": 44610,
+          "currentEnd": 44723,
+          "currentRangeSha256": "17d0e55d44c455d8d7172d43f150c8dab721fc686023a4616c581e85efdee067",
+          "parentStart": 29257,
+          "parentEnd": 29257,
+          "parentText": ""
+        },
+        {
+          "currentStart": 45129,
+          "currentEnd": 45221,
+          "currentRangeSha256": "6e95047f21b6325c43af665f9f36cc61d16a493a3ffe33c8cdbe9e8e81268e4f",
+          "parentStart": 29663,
+          "parentEnd": 29663,
+          "parentText": ""
+        },
+        {
+          "currentStart": 45280,
+          "currentEnd": 45471,
+          "currentRangeSha256": "834fc8d32edd39aa4bd6ba81569317a0b576d93b3d90e677702da18667e33a25",
+          "parentStart": 29722,
+          "parentEnd": 29722,
+          "parentText": ""
+        },
+        {
+          "currentStart": 47072,
+          "currentEnd": 47079,
+          "currentRangeSha256": "ea7792a26f405e2ae9c6f49ca93bbe6076ceac0a1fc53d83426c7d7f2d9377e4",
+          "parentStart": 31323,
+          "parentEnd": 31323,
+          "parentText": ""
+        },
+        {
+          "currentStart": 47083,
+          "currentEnd": 47284,
+          "currentRangeSha256": "42fc1ab0980c9b81a3ce965883e4230c6c46a426b71f41e21edf0295ecc58e60",
+          "parentStart": 31327,
+          "parentEnd": 31327,
+          "parentText": ""
+        },
+        {
+          "currentStart": 47327,
+          "currentEnd": 47405,
+          "currentRangeSha256": "3b402cc60f6ff0e4489f8e3f90790257f1484c8bf9249714142e84e07fbb085a",
+          "parentStart": 31370,
+          "parentEnd": 31370,
+          "parentText": ""
+        },
+        {
+          "currentStart": 47418,
+          "currentEnd": 47436,
+          "currentRangeSha256": "6ea450f6af5b1f569bcfa7a97a72f2799c6060820bca43b8c209049c03a47d07",
+          "parentStart": 31383,
+          "parentEnd": 31383,
+          "parentText": ""
+        },
+        {
+          "currentStart": 47451,
+          "currentEnd": 47520,
+          "currentRangeSha256": "b80591317105e468b866b336cf6d8ba1c4219c61c95f76a498a5b1e5802ae84a",
+          "parentStart": 31398,
+          "parentEnd": 31398,
+          "parentText": ""
+        },
+        {
+          "currentStart": 47910,
+          "currentEnd": 47968,
+          "currentRangeSha256": "d5bd235588c84cc773d2df7df781c5074f9dd75600760ccde6ed3e1e0182dd6a",
+          "parentStart": 31788,
+          "parentEnd": 31788,
+          "parentText": ""
+        },
+        {
+          "currentStart": 47988,
+          "currentEnd": 47990,
+          "currentRangeSha256": "e0b9a8799f32453a478c9122f8b83cee68e16db18f493ac81bc1d474594b5df4",
+          "parentStart": 31808,
+          "parentEnd": 31808,
+          "parentText": ""
+        },
+        {
+          "currentStart": 47991,
+          "currentEnd": 47992,
+          "currentRangeSha256": "148de9c5a7a44d19e56cd9ae1a554bf67847afb0c58f6e12fa29ac7ddfca9940",
+          "parentStart": 31809,
+          "parentEnd": 31811,
+          "parentText": "wn"
+        },
+        {
+          "currentStart": 47993,
+          "currentEnd": 47993,
+          "currentRangeSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "parentStart": 31812,
+          "parentEnd": 31813,
+          "parentText": "r"
+        },
+        {
+          "currentStart": 47994,
+          "currentEnd": 48014,
+          "currentRangeSha256": "5b3ea3a0142803bb18ee918aafe6930911d6ab6a4293e1158807515b04857799",
+          "parentStart": 31814,
+          "parentEnd": 31816,
+          "parentText": "db"
+        },
+        {
+          "currentStart": 48163,
+          "currentEnd": 48194,
+          "currentRangeSha256": "2ac19b7f2bf97f19c8aa0856beea63b092060974bf8e183a5ad122d834fd2795",
+          "parentStart": 31965,
+          "parentEnd": 31965,
+          "parentText": ""
+        },
+        {
+          "currentStart": 48694,
+          "currentEnd": 48726,
+          "currentRangeSha256": "78305343cbc932ecca831774d17c22d38cc722830a4fe9ba3f9eecee2f53f0f8",
+          "parentStart": 32465,
+          "parentEnd": 32465,
+          "parentText": ""
+        },
+        {
+          "currentStart": 48743,
+          "currentEnd": 48750,
+          "currentRangeSha256": "f8429d20d42ca7c47fa431e8f056cae09e655491b0f4bd4e22ef66942be3841e",
+          "parentStart": 32482,
+          "parentEnd": 32482,
+          "parentText": ""
+        },
+        {
+          "currentStart": 48751,
+          "currentEnd": 48752,
+          "currentRangeSha256": "cfae0d4248f7142f7b17f826cd7a519280e312577690e957830d23dcf35a3fff",
+          "parentStart": 32483,
+          "parentEnd": 32483,
+          "parentText": ""
+        },
+        {
+          "currentStart": 48786,
+          "currentEnd": 48796,
+          "currentRangeSha256": "8b64bdb8c4c9acc6cc0cfb92ea2bad8a8392c75c9db4b5c7373b655f0eecca39",
+          "parentStart": 32517,
+          "parentEnd": 32517,
+          "parentText": ""
+        },
+        {
+          "currentStart": 48798,
+          "currentEnd": 48875,
+          "currentRangeSha256": "7b1315c17008efccb9c3d11e1d9142ba42e14dbc7ef0f7e13d3409bad59eab60",
+          "parentStart": 32519,
+          "parentEnd": 32519,
+          "parentText": ""
+        },
+        {
+          "currentStart": 49156,
+          "currentEnd": 49188,
+          "currentRangeSha256": "2b81df2d3c9aa54d8e1c6542270b83055a4b34a7199a75580a113e96324ba0dc",
+          "parentStart": 32800,
+          "parentEnd": 32800,
+          "parentText": ""
+        },
+        {
+          "currentStart": 49194,
+          "currentEnd": 49196,
+          "currentRangeSha256": "e0b9a8799f32453a478c9122f8b83cee68e16db18f493ac81bc1d474594b5df4",
+          "parentStart": 32806,
+          "parentEnd": 32806,
+          "parentText": ""
+        },
+        {
+          "currentStart": 49197,
+          "currentEnd": 49198,
+          "currentRangeSha256": "148de9c5a7a44d19e56cd9ae1a554bf67847afb0c58f6e12fa29ac7ddfca9940",
+          "parentStart": 32807,
+          "parentEnd": 32809,
+          "parentText": "wn"
+        },
+        {
+          "currentStart": 49199,
+          "currentEnd": 49199,
+          "currentRangeSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "parentStart": 32810,
+          "parentEnd": 32811,
+          "parentText": "r"
+        },
+        {
+          "currentStart": 49200,
+          "currentEnd": 49231,
+          "currentRangeSha256": "23b93301fe413eeb97ed683e155207e909e328c2f89241d515146b4369a9af45",
+          "parentStart": 32812,
+          "parentEnd": 32814,
+          "parentText": "db"
+        },
+        {
+          "currentStart": 49350,
+          "currentEnd": 49383,
+          "currentRangeSha256": "a417b470029e688f0f5dc8fb7a9c325d7a5ee342aae4ab58deca67e9d0402b7b",
+          "parentStart": 32933,
+          "parentEnd": 32933,
+          "parentText": ""
+        },
+        {
+          "currentStart": 49436,
+          "currentEnd": 49437,
+          "currentRangeSha256": "021fb596db81e6d02bf3d2586ee3981fe519f275c0ac9ca76bbcf2ebb4097d96",
+          "parentStart": 32986,
+          "parentEnd": 32986,
+          "parentText": ""
+        },
+        {
+          "currentStart": 49443,
+          "currentEnd": 49445,
+          "currentRangeSha256": "1b5b9ccb3e8d006a5230de9bda23ff91edc794d4f56410560830b418528e446c",
+          "parentStart": 32992,
+          "parentEnd": 33000,
+          "parentText": "owner.db"
+        },
+        {
+          "currentStart": 49586,
+          "currentEnd": 49669,
+          "currentRangeSha256": "986cfa02db263ca51b826610447692f32a6e93567060c70cf70642aed567b063",
+          "parentStart": 33141,
+          "parentEnd": 33141,
+          "parentText": ""
+        },
+        {
+          "currentStart": 49835,
+          "currentEnd": 49837,
+          "currentRangeSha256": "1b5b9ccb3e8d006a5230de9bda23ff91edc794d4f56410560830b418528e446c",
+          "parentStart": 33307,
+          "parentEnd": 33315,
+          "parentText": "owner.db"
+        },
+        {
+          "currentStart": 49981,
+          "currentEnd": 49983,
+          "currentRangeSha256": "1b5b9ccb3e8d006a5230de9bda23ff91edc794d4f56410560830b418528e446c",
+          "parentStart": 33459,
+          "parentEnd": 33467,
+          "parentText": "owner.db"
+        },
+        {
+          "currentStart": 50078,
+          "currentEnd": 50120,
+          "currentRangeSha256": "f308ba93613bd4ae0c8ed36bca49bfe35f10d099065c7adb563a109f5633aeb7",
+          "parentStart": 33562,
+          "parentEnd": 33562,
+          "parentText": ""
+        },
+        {
+          "currentStart": 50315,
+          "currentEnd": 50342,
+          "currentRangeSha256": "858f5d7e56899dc4e3f2591e2877b85ce0997fbf041893180f84dc43a0172be8",
+          "parentStart": 33757,
+          "parentEnd": 33757,
+          "parentText": ""
+        },
+        {
+          "currentStart": 50366,
+          "currentEnd": 50384,
+          "currentRangeSha256": "e19ff514f439657df698f519032bc2a8ca74f9f7513043b0815c6a1766900a80",
+          "parentStart": 33781,
+          "parentEnd": 33781,
+          "parentText": ""
+        },
+        {
+          "currentStart": 50391,
+          "currentEnd": 50393,
+          "currentRangeSha256": "9aaf680776b98fd17fe63376120525cbcdffc01bc66f71df96b6e90b87f39b86",
+          "parentStart": 33788,
+          "parentEnd": 33791,
+          "parentText": "rob"
+        },
+        {
+          "currentStart": 50394,
+          "currentEnd": 50395,
+          "currentRangeSha256": "a9f51566bd6705f7ea6ad54bb9deb449f795582d6529a0e22207b8981233ec58",
+          "parentStart": 33792,
+          "parentEnd": 33798,
+          "parentText": "=obser"
+        },
+        {
+          "currentStart": 50397,
+          "currentEnd": 50420,
+          "currentRangeSha256": "164b6ed5790b64a22016e8ed5560e82dc545f1ebe5f0091d758000532e7fad24",
+          "parentStart": 33800,
+          "parentEnd": 33801,
+          "parentText": "C"
+        },
+        {
+          "currentStart": 50422,
+          "currentEnd": 50424,
+          "currentRangeSha256": "77970456be0eda56688aab4e2b941045e767cfada6634e6515fafd584b550779",
+          "parentStart": 33803,
+          "parentEnd": 33812,
+          "parentText": "ryCursor("
+        },
+        {
+          "currentStart": 50425,
+          "currentEnd": 50459,
+          "currentRangeSha256": "bafed04930328cd6e2fa76be2769e372350670f129afde0baf986336846c9e5a",
+          "parentStart": 33813,
+          "parentEnd": 33813,
+          "parentText": ""
+        },
+        {
+          "currentStart": 50532,
+          "currentEnd": 50532,
+          "currentRangeSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "parentStart": 33886,
+          "parentEnd": 33890,
+          "parentText": "try{"
+        },
+        {
+          "currentStart": 50634,
+          "currentEnd": 50634,
+          "currentRangeSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "parentStart": 33992,
+          "parentEnd": 33994,
+          "parentText": "}f"
+        },
+        {
+          "currentStart": 50635,
+          "currentEnd": 50638,
+          "currentRangeSha256": "b5d1c137063f3bef9874f0be00d63d0129811328cc9c15d13bd8ede0204087ac",
+          "parentStart": 33995,
+          "parentEnd": 33996,
+          "parentText": "n"
+        },
+        {
+          "currentStart": 50639,
+          "currentEnd": 50647,
+          "currentRangeSha256": "af62954b6a3ca31929d4124fe746504ab17598302d0cbb68054e504f1963ce24",
+          "parentStart": 33997,
+          "parentEnd": 34000,
+          "parentText": "lly"
+        },
+        {
+          "currentStart": 50649,
+          "currentEnd": 50651,
+          "currentRangeSha256": "9aaf680776b98fd17fe63376120525cbcdffc01bc66f71df96b6e90b87f39b86",
+          "parentStart": 34002,
+          "parentEnd": 34005,
+          "parentText": "rob"
+        },
+        {
+          "currentStart": 50652,
+          "currentEnd": 50657,
+          "currentRangeSha256": "4e1f49a9c8ae8a158434e647c0c410352d718984a4fcd144d26cca3c394caa02",
+          "parentStart": 34006,
+          "parentEnd": 34006,
+          "parentText": ""
+        },
+        {
+          "currentStart": 50660,
+          "currentEnd": 50660,
+          "currentRangeSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "parentStart": 34009,
+          "parentEnd": 34010,
+          "parentText": "s"
+        },
+        {
+          "currentStart": 50661,
+          "currentEnd": 50662,
+          "currentRangeSha256": "0bfe935e70c321c7ca3afc75ce0d0ca2f98b5422e008bb31c00c6d7f1f1c0ad6",
+          "parentStart": 34011,
+          "parentEnd": 34012,
+          "parentText": "o"
+        },
+        {
+          "currentStart": 50663,
+          "currentEnd": 50734,
+          "currentRangeSha256": "c42a65b42d6363288740f8d6d799726eaf770f57fdbcc9696a7a492deb4a0a75",
+          "parentStart": 34013,
+          "parentEnd": 34013,
+          "parentText": ""
+        },
+        {
+          "currentStart": 50739,
+          "currentEnd": 50796,
+          "currentRangeSha256": "f13ef3aa7814476839a671f72b6e7cacf0f61e09fba57b8f0889c0f050a383db",
+          "parentStart": 34018,
+          "parentEnd": 34018,
+          "parentText": ""
+        },
+        {
+          "currentStart": 51763,
+          "currentEnd": 51845,
+          "currentRangeSha256": "c2f06c16471311a83eaf7a83aef3603cb8f9edae366c70cd025f75896729b952",
+          "parentStart": 34985,
+          "parentEnd": 34985,
+          "parentText": ""
+        },
+        {
+          "currentStart": 51846,
+          "currentEnd": 51887,
+          "currentRangeSha256": "8835b1110123635e549f5dc94a1b44815939c2f20f0c153a771f9e49580c4a44",
+          "parentStart": 34986,
+          "parentEnd": 34986,
+          "parentText": ""
+        },
+        {
+          "currentStart": 51925,
+          "currentEnd": 51954,
+          "currentRangeSha256": "237ab1237353b4d4693bcb8e796ad9b99884b86f1cf5a406b891e81c99cb8118",
+          "parentStart": 35024,
+          "parentEnd": 35024,
+          "parentText": ""
+        },
+        {
+          "currentStart": 51955,
+          "currentEnd": 51960,
+          "currentRangeSha256": "d6ca11d75b4acd91caea32f498c9311af79359b6185ddbd54238149c24d14c0a",
+          "parentStart": 35025,
+          "parentEnd": 35025,
+          "parentText": ""
+        }
+      ]
+    },
+    {
+      "path": "docs/adr/2026-11-09-analytics-employment-aggregates.md",
+      "current": {
+        "bytes": 19437,
+        "sha256": "ed090e41b830b34c9c7c34006058f7b668991bbd991e0bb20f3a5137627efc62"
+      },
+      "wholeParent": {
+        "source": "fca1bdd3f9afcf598c643ac2c4cfb482a21bb824",
+        "gitBlob": "e36ad16aebe30300c33ccff53ecb8c8ce8f4770e",
+        "bytes": 15935,
+        "sha256": "fd58d4087e994df4a2318656cf8359eb22ac2505a14b0bf525c08e9b32f308ea"
+      },
+      "inverseHunks": [
+        {
+          "currentStart": 15935,
+          "currentEnd": 19437,
+          "currentRangeSha256": "36385cdd6746458f496061a630b9a745b99cf3ed5ccbaa12da6a7b7fc39c31f7",
+          "parentStart": 15935,
+          "parentEnd": 15935,
+          "parentText": ""
+        }
+      ]
+    }
+  ],
+  "indexWholeParent": {
+    "source": "fca1bdd3f9afcf598c643ac2c4cfb482a21bb824",
+    "gitBlob": "f755388245d97cc4a25f41134bac5083795af74b",
+    "bytes": 22556,
+    "sha256": "1142b0a85dfef0d1b5997c0a57f4d048ed1f512fa3e28d97a587a08789233635"
+  },
+  "indexReconstruction": "Whole original index bytes are immutable in this Git blob; current index is independently source-authenticated. No current index digest or self-referential hunk is embedded here.",
+  "protectedAllOtherTrackedPaths": "Whole parent Git bytes; only four leased paths may differ.",
+  "sourceContract": {
+    "minimalPlanSha256": "2127bf3f137d7d340ae9c1583642256f2a8d6f140246d108e072ca0a4eb2521a",
+    "mandatoryClosingClarificationSha256": "010e3b241d5af826a05fc5ba347a8d3c5cb4b57b95c48b8c48290deea0ead3f7",
+    "lifetime": "Owned pending body before initial await; existing-owner dedicated reserved control; real held transaction/native target observation; same callback closing/disarm then native/issued-cancel settlement before release; whole body and idle proof before reset/close.",
+    "nativeApi": "Existing postgres3.4.9 public reserve/tagged SQL/release, same owner pool/max/authority. Its runtime reserve result lacks the begin method promised by types; private control SQL BEGIN/COMMIT/awaited ROLLBACK owns that physical reservation. Uncertain rollback retains the target callback until external owned cleanup. Actual native qualification pending.",
+    "evidence": "Fixed closed20stage enum;125 full-success events or126 with abort, max128/64KiB. No PII/SQL/IDs/parameters/raw errors.",
+    "caps": "Original B1 120000ms/hook30000ms/outer20m; native20s statement/300ms lock and one bounded cancellation SELECT; metadata/control statements use1s LOCAL bounds. No new watchdog.",
+    "data": "All original seven N, eleven pages,30212 same-stream oracle rows/60424 row-type checks, Unicode/ties/legal duplicate employments retained.",
+    "unknownFailure": "Poisoned holder remains; no reset/close or timeout-race backend reuse; existing external owned-job cleanup responsible."
+  },
+  "caseCensus": {
+    "directCases": 14,
+    "wholeOtherCallbackBodies": 13,
+    "changedCallbacks": [
+      "preserves stable same-native-stream carry pages across fixed4096 fetch boundaries"
+    ],
+    "all142OriginalExpectSubtreesIdentical": true,
+    "nativeExecution": false
+  },
+  "historicalEvidence": {
+    "ordinaryRun": 42526765409,
+    "source": "fca1bdd3f9afcf598c643ac2c4cfb482a21bb824",
+    "rawStatuses": {
+      "passed": 34,
+      "failed": 1
+    },
+    "failedCase": "preserves stable same-native-stream carry pages across fixed4096 fetch boundaries",
+    "timeoutMs": 120993.640559,
+    "actualInnerPhase": "UNKNOWN",
+    "separateUnhandledDriverErrors": 1,
+    "ordinaryAuthenticationSha256": "014ed86f76572abb37a634f6e331b8dccd6f3d855f7bca2cbfb828a1196e627c",
+    "unhandledSupplementSha256": "bf4af303bfcf6d949a3305485170e46153bd5073d36bb11bd65cc2ecbb09bcbe",
+    "separateJitRun": 42526767636,
+    "separateJitAuthenticationSha256": "8f862cf216cb179625ce58e3ee74f28c0380b468a607c9a28cd8bc06c4b1487e",
+    "currentSourceQualified": false,
+    "cause": "UNKNOWN"
+  },
+  "authority": {
+    "recordRuntimeRead": false,
+    "repoImports": false,
+    "testsExecuted": false,
+    "typecheck": false,
+    "native": false,
+    "upload": false,
+    "stagingQualified": false,
+    "productionHeld": true
+  }
+}
