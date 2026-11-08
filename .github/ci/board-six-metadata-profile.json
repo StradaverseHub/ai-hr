@@ -4,7 +4,7 @@
   "candidate": "e70686353134de3471f08fe7a27e937f14fdcc95",
   "baseTree": "2be88dc2f45e84a37c4d41d3132179d866d96ca8",
   "headTree": "9b979304c16e0779918bbd6bfa0c51922c041a3e",
-  "diffSha256": "4b3b1bf567d084d713f2a0b162fcbef9fd3d8b01db2f7e29a0884ccb2b88df61",
+  "diffSha256": "a79b7904aeb5b2b2daa07a15efa726b5a73ad29a3fb5286efa3a74172a9786eb",
   "changed": [
     "db/migrations/3703_attendance_formula_versions.sql",
     "docs/me-profile-field-visibility.md",

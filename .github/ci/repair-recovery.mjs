@@ -42,7 +42,7 @@ export function validateRepairDelta({cwd,original,candidate}){
  const records=git(cwd,'diff','--name-status','--no-renames',original,candidate).split('\n').filter(Boolean);
  assert(records.length>0&&records.length<=64,'Bounded nonempty repair delta required');
  if(original===SIX_METADATA_PROFILE.original||candidate===SIX_METADATA_PROFILE.candidate){
-  const facts={kind:SIX_METADATA_PROFILE.kind,original,candidate,baseTree:git(cwd,'rev-parse',original+'^{tree}'),headTree:git(cwd,'rev-parse',candidate+'^{tree}'),diffSha256:hash(git(cwd,'diff','--binary','--no-ext-diff',original,candidate)),changed:records.map(line=>{const [status,path,...extra]=line.split('\t');assert(status==='M'&&extra.length===0,'Metadata repair must only modify six existing files');return path;}).sort()};
+  const facts={kind:SIX_METADATA_PROFILE.kind,original,candidate,baseTree:git(cwd,'rev-parse',original+'^{tree}'),headTree:git(cwd,'rev-parse',candidate+'^{tree}'),diffSha256:hash(git(cwd,'diff','--binary','--no-ext-diff','--full-index','--no-color','--no-textconv','--diff-algorithm=myers','--no-indent-heuristic','--unified=3','--src-prefix=a/','--dst-prefix=b/',original,candidate)),changed:records.map(line=>{const [status,path,...extra]=line.split('\t');assert(status==='M'&&extra.length===0,'Metadata repair must only modify six existing files');return path;}).sort()};
   return {...facts,metadataProfile:validateSixMetadataDelta(facts)};
  }
  const changed=records.map(line=>{const [status,path,...extra]=line.split('\t');assert(status==='M'&&extra.length===0&&/^(app|components|core|lib|packs)\/[A-Za-z0-9_./()\[\]-]+\.(ts|tsx)$/.test(path),'Only existing product TypeScript repairs supported');

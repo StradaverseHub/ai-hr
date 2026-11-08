@@ -37,7 +37,8 @@ test('separately versioned disposition preserves raw full impact and retains onl
  const tampered=structuredClone(input);tampered.impactContext.metadataProfile.seeds=[];assert.throws(()=>repairDisposition(tampered));
 });
 if(process.env.AIHR_SIX_METADATA_GIT_AUDIT==='1')test('actual committed six-file delta matches the closed profile, including every unchanged file',()=>{
- const d=validateRepairDelta({cwd:process.cwd(),original:P.original,candidate:P.candidate});assert.deepEqual(d.metadataProfile,binding());
+ const previous={...process.env};
+ try{for(const abbreviation of ['7','9','40']){process.env.GIT_CONFIG_COUNT='2';process.env.GIT_CONFIG_KEY_0='core.abbrev';process.env.GIT_CONFIG_VALUE_0=abbreviation;process.env.GIT_CONFIG_KEY_1='diff.algorithm';process.env.GIT_CONFIG_VALUE_1='patience';const d=validateRepairDelta({cwd:process.cwd(),original:P.original,candidate:P.candidate});assert.deepEqual(d.metadataProfile,binding());}}finally{for(const key of ['GIT_CONFIG_COUNT','GIT_CONFIG_KEY_0','GIT_CONFIG_VALUE_0','GIT_CONFIG_KEY_1','GIT_CONFIG_VALUE_1']){if(previous[key]===undefined)delete process.env[key];else process.env[key]=previous[key];}}
  const git=(...args)=>execFileSync('git',args,{encoding:'utf8'});
  const sql='db/migrations/3703_attendance_formula_versions.sql',old=git('show',P.original+':'+sql),current=git('show',P.candidate+':'+sql);
  const oldInsert="VALUES('read:operation_attendance_formula_draft',true);",replacement="VALUES('read:operation_attendance_formula_draft',true),\n ('read:attendance_formula_library_guidance',true),\n ('read:attendance_formula_authoring_guidance',true),\n ('read:reward_reviews_guidance',true);";
