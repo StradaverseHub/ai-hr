@@ -1,7 +1,6 @@
 -- Installation DBA only: failure cleanup without requiring uncommitted functions to exist.
 -- Exact same topology/attribute checks and removal as successful postflight; no HR rows change.
 DO $check$
-DECLARE r record;
 BEGIN
  IF NOT EXISTS(SELECT 1 FROM pg_roles WHERE rolname=current_user AND rolsuper) THEN RAISE EXCEPTION 'Installation DBA required'; END IF;
  IF EXISTS(SELECT 1 FROM pg_roles WHERE rolname IN('ai_hr_owner','ai_hr_app') AND(rolsuper OR rolbypassrls OR rolcreaterole OR rolcreatedb OR rolreplication)) OR pg_has_role('ai_hr_app','ai_hr_owner','MEMBER') THEN RAISE EXCEPTION 'Owner/app attributes changed'; END IF;
