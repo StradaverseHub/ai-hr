@@ -6,7 +6,7 @@ import {rewardSalaryDisplay} from '@/packs/rewards/dashboard-model';
 import {deskMoney,DeskMeter} from './[unitId]/desk/salary-increase-table';
 import {saveDashboardAction} from './dashboard-actions';
 export function RewardsDashboard({value}:{value:RewardDashboard}){
- const t=useTranslations('rewardDashboard'),r=useTranslations('rewards'),locale=useLocale();
+ const t=useTranslations('rewardDashboard'),r=useTranslations('rewards'),prep=useTranslations('rewardsPreparation'),locale=useLocale();
  const money=(n:number)=>deskMoney(n,locale),salary=(n:number)=>money(rewardSalaryDisplay(n,value.choice.period));
  const units=value.units.slice(0,3),waiting=value.waiting.slice(0,5);
  const section=(kind:'salary'|'bonus')=><Card className="min-w-0"><div className="flex items-center justify-between gap-3 border-b border-border p-5"><h2 className="font-semibold">{t(kind)}</h2><Link href="/rewards/reviews" aria-label={t('allReviews')} className="text-sm text-primary hover:underline">{t('open')}</Link></div>
@@ -20,10 +20,11 @@ export function RewardsDashboard({value}:{value:RewardDashboard}){
   {!units.length&&<p className="p-5 text-sm text-muted-foreground">{t('empty')}</p>}
  </Card>;
  return <div className="space-y-5">
-  <form action={saveDashboardAction} className="flex flex-wrap items-end gap-3" aria-label={t('preferences')}>
+  {(value.notices??[]).map(notice=><Card key={notice.unitId} className="space-y-2 p-5"><h2 className="font-medium">{notice.company} · {notice.unit} · {notice.cycle}</h2><p role="status" className="text-sm">{prep('preparing')}</p><p className="text-sm text-muted-foreground">{notice.expectedRelease?prep('expectedOn',{date:notice.expectedRelease}):prep('datePending')}</p><Link href={`/rewards/${notice.unitId}`} className="inline-block text-sm text-primary hover:underline">{r('openReview')}</Link></Card>)}
+  {value.scopes.length>0&&<form action={saveDashboardAction} className="flex flex-wrap items-end gap-3" aria-label={t('preferences')}>
    <label className="min-w-0 space-y-1 text-sm"><span className="block">{r('unit')}</span><select name="scope" defaultValue={value.choice.scope} className={`${inputCls} max-w-full sm:max-w-xl`}>{value.canSelectAll&&<option value="all">{t('allAssigned')}</option>}{value.scopes.map(scope=><option key={scope.id} value={scope.id}>{scope.label}</option>)}</select></label>
    <label className="space-y-1 text-sm"><span className="block">{t('salaryPeriod')}</span><select name="period" defaultValue={value.choice.period} className={inputCls}><option value="monthly">{t('monthly')}</option><option value="annual">{t('annual')}</option></select></label><Button type="submit">{r('reviewList.apply')}</Button>
-  </form>
+  </form>}
   {value.units.length>0&&<p className="text-sm text-muted-foreground">{t('yourRoles')}: {[...new Set(value.units.flatMap(unit=>unit.roles))].map(role=>r(`board.seat.${role}`)).join(', ')} · {t('separate')}</p>}
   <div className="grid items-start gap-5 xl:grid-cols-3">{section('salary')}{section('bonus')}<Card className="min-w-0"><div className="flex items-center justify-between gap-3 border-b border-border p-5"><h2 className="font-semibold">{t('waiting',{count:value.waiting.length})}</h2><Link href="/rewards/approvals" className="text-sm text-primary hover:underline">{t('open')}</Link></div>
    {waiting.length?<ul className="divide-y divide-border">{waiting.map(unit=><li key={unit.id} className="space-y-2 p-5 text-sm"><Link href={`/rewards/${unit.id}`} className="font-medium text-primary hover:underline">{unit.company} · {unit.name}</Link><p>{r('openReview')}</p><p className={unit.daysUntilDue!==null&&unit.daysUntilDue<0?'text-destructive':'text-muted-foreground'}>{unit.due?`${r('dueOn',{date:unit.due})}${unit.daysUntilDue!==null&&unit.daysUntilDue<0?' · '+t('overdue'):''}`:t('noDue')}</p><Link href={`/rewards/${unit.id}#checks`} className={unit.blocking?'font-medium text-destructive hover:underline':'text-muted-foreground hover:underline'}>{r('reviewList.blocking',{count:unit.blocking})} · {r('reviewList.exceptions',{count:unit.exceptions})}</Link></li>)}</ul>:<p className="p-5 text-sm text-muted-foreground">{r('board.noneWaiting')}</p>}

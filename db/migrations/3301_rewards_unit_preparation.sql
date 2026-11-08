@@ -261,3 +261,29 @@ END $$;
 REVOKE ALL ON FUNCTION app.reward_preparation_decision_guard() FROM PUBLIC;
 CREATE TRIGGER reward_preparation_decision_guard BEFORE UPDATE OF status ON public.reward_unit
  FOR EACH ROW EXECUTE FUNCTION app.reward_preparation_decision_guard();
+--> statement-breakpoint
+-- Preparing reviewers need a discoverable notice, while reward_unit/entry RLS withholds financial data.
+CREATE FUNCTION app.reward_preparation_notices() RETURNS TABLE("unitId" uuid,"companyId" uuid,company text,unit text,cycle text,"expectedRelease" text)
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,app AS $$
+DECLARE candidate record; notice jsonb;
+BEGIN
+ FOR candidate IN SELECT u.id,u.company_id,c.legal_name,b.name AS unit_name,cy.name AS cycle_name
+  FROM public.reward_unit u JOIN public.company c ON c.id=u.company_id AND c.tenant_id=u.tenant_id
+  JOIN public.business_unit b ON b.id=u.business_unit_id AND b.tenant_id=u.tenant_id
+  JOIN public.reward_cycle cy ON cy.id=u.cycle_id AND cy.tenant_id=u.tenant_id
+  WHERE u.tenant_id=app.current_tenant_id() AND u.deleted_at IS NULL AND u.kind='annual' AND u.preparation_required
+  ORDER BY c.legal_name,b.name,cy.name,u.id
+ LOOP
+  notice:=app.reward_preparation_view(candidate.id);
+  IF notice IS NOT NULL AND NOT (notice->>'released')::boolean AND NOT (notice->>'setupVisible')::boolean THEN
+   "unitId":=candidate.id;"companyId":=candidate.company_id;company:=candidate.legal_name;unit:=candidate.unit_name;cycle:=candidate.cycle_name;"expectedRelease":=notice->>'expectedRelease';RETURN NEXT;
+  END IF;
+ END LOOP;
+END $$;
+DO $$ DECLARE native_owner name; BEGIN
+ SELECT pg_get_userbyid(proowner) INTO native_owner FROM pg_proc WHERE oid='app.reward_roles_preparation_audience(uuid)'::regprocedure;
+ EXECUTE format('ALTER FUNCTION app.reward_preparation_notices() OWNER TO %I',native_owner);
+ EXECUTE format('GRANT EXECUTE ON FUNCTION app.reward_preparation_view(uuid) TO %I',native_owner);
+END $$;
+REVOKE ALL ON FUNCTION app.reward_preparation_notices() FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.reward_preparation_notices() TO ai_hr_app;

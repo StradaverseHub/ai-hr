@@ -2005,10 +2005,14 @@ export async function rewardDashboard(ctx:SessionContext,companyIds:string[],pre
     budgets,poolStatus:v.poolStatus,restricted,uploaded:v.uploaded,setupVisible:v.roles.some(role=>['gr','ctro','ec'].includes(role)),
     waiting:board.waiting,action:board.action,due:board.due,daysUntilDue:board.daysUntilDue,blocking:board.blocking,exceptions:board.exceptions});
   }
-  return {choice,emptyReason:list.emptyReason,year:list.year,
+  const notices=(await tx.execute<{unitId:string;companyId:string;company:string;unit:string;cycle:string;expectedRelease:string|null}>(sql`select * from app.reward_preparation_notices()`)).filter(notice=>companyIds.includes(notice.companyId));
+  return {choice,notices,emptyReason:list.emptyReason,year:list.year,
    canSelectAll:available.length>0&&available.every(row=>row.roles.some(role=>['gr','ctro','ec'].includes(role))),
    scopes:available.map(row=>({id:row.id,label:`${row.company} · ${row.unit} · ${row.cycle}`})),units,
    waiting:units.filter(row=>row.waiting).sort((a,b)=>(a.due??'9999').localeCompare(b.due??'9999')||a.id.localeCompare(b.id))};
  });
 }
 export type RewardDashboard=Awaited<ReturnType<typeof rewardDashboard>>;
+
+/** Metadata only, from the original dated preparation audience. No raw unit/policy row is exposed. */
+export function rewardPreparationNotices(ctx:SessionContext){return withRewardsTenant(ctx,tx=>tx.execute<{unitId:string;companyId:string;company:string;unit:string;cycle:string;expectedRelease:string|null}>(sql`select * from app.reward_preparation_notices()`));}

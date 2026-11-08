@@ -9,7 +9,7 @@ import { createAppUser,owner,closeAll,resetDb,migrateTestDb,seedBase,setModule,e
 import { createApprovedRewardUnit } from './rewards-setup-fixture';
 import { initializeRewardGovernanceFixture,refreshRewardFixtureBudget } from './rewards-governance-fixture';
 import { setRewardMember } from './rewards-access-fixture';
-import { getRewardUnit,getRewardUnitGovernance,refreshRewardSources,importRewardFacts,getRewardPreparationStatus,getRewardPreparationChecklist,changeRewardPreparation,saveRewardUnitInputs,decideRewardUnit,rewardDashboard,getRewardDashboardPreference,saveRewardDashboardPreference } from '../packs/rewards/service';
+import { getRewardUnit,getRewardUnitGovernance,refreshRewardSources,importRewardFacts,getRewardPreparationStatus,getRewardPreparationChecklist,changeRewardPreparation,saveRewardUnitInputs,decideRewardUnit,rewardPreparationNotices,rewardDashboard,getRewardDashboardPreference,saveRewardDashboardPreference } from '../packs/rewards/service';
 import { REWARD_PREPARATION_STEPS } from '../packs/rewards/preparation-model';
 
 let base:Base,gr:SessionContext,checker:SessionContext,reviewer:SessionContext,unitId:string,employmentId:string;
@@ -100,7 +100,8 @@ describe('native checked preparation of new annual Rewards reviews',()=>{
  });
 
  it('projects dashboard totals only inside live scope and saves presentation for the current login',async()=>{
-  const pending=await rewardDashboard(reviewer,[base.companyId],{scope:unitId});expect(pending.units).toEqual([]);
+  const pending=await rewardDashboard(reviewer,[base.companyId],{scope:unitId});expect(pending.units).toEqual([]);expect(pending.notices).toHaveLength(1);expect(pending.notices[0].unitId).toBe(unitId);
+  expect(await rewardPreparationNotices({...reviewer,userId:randomUUID(),personId:undefined})).toEqual([]);
   await confirmAll();await change(checker,{kind:'release'});
   const native=await getRewardUnit(gr,unitId),dashboard=await rewardDashboard(gr,[base.companyId],{scope:unitId,period:'annual'});
   expect(dashboard.units).toHaveLength(1);expect(dashboard.choice.period).toBe('annual');

@@ -31,7 +31,7 @@ An independent native publisher can change source or confidentiality evidence ou
 
 ## Compatibility
 
-Existing exposed reviews retain a legacy compatibility marker and their existing Group Rewards setup editing. Checklist confirmations and release actions stay unavailable for those historical records. No historical doer, checker or release event is invented. The new setup view labels their preparation history as unrecorded. New annual reviews require the checked release process. The compatibility marker is outside ordinary runtime form control. Off-cycle and posted payroll ownership remain unchanged.
+Existing exposed reviews retain a legacy compatibility marker and their existing Group Rewards setup editing. Checklist confirmations and release actions stay unavailable for those historical records. No historical doer, checker or release event is invented. The new setup view labels their preparation history as unrecorded. New annual reviews require the checked release process. A bounded metadata-only notice keeps the Rewards navigation and pending review destination discoverable without exposing the raw financial unit or its entries. The compatibility marker is outside ordinary runtime form control. Off-cycle and posted payroll ownership remain unchanged.
 
 PAT remains owned by PAT Inputs. Preparation reads its recorded binding; it neither calculates a second budget nor creates another payroll ledger. Applied library names and versions are projected only for the authorized unit, including read-only CTRO/EC inspection without granting global library editing.
 

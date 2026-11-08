@@ -64,6 +64,7 @@ export async function rewardVisibleCompanies(ctx: SessionContext) {
     from reward_unit u
     where u.tenant_id = app.current_tenant_id() and u.deleted_at is null
       and (app.reward_admin(u.company_id) or exists(select 1 from app.reward_roles(u.id)))
+    union select n."companyId" as id,false as "wholeGroup" from app.reward_preparation_notices() n
   `));
 }
 export async function rewardSetupEntry(ctx:SessionContext){return withRewardsTenant(ctx,async tx=>{const [entry]=await tx.execute<{manage:boolean;libraries:boolean;bootstrap:boolean}>(sql`select (app.reward_setup_allowed(NULL,'manage') or exists(select 1 from company c where c.tenant_id=app.current_tenant_id() and app.reward_setup_allowed(c.id,'manage'))) as manage,(app.reward_setup_allowed(NULL,'library_view') or exists(select 1 from company c where c.tenant_id=app.current_tenant_id() and app.reward_setup_allowed(c.id,'library_view'))) as libraries,app.is_group_admin() as bootstrap`);return entry??{manage:false,libraries:false,bootstrap:false};});}
@@ -83,7 +84,7 @@ export function rewardNavigation(ctx: SessionContext, isPlatformAdmin: boolean) 
         where tenant_id = app.current_tenant_id() and deleted_at is null
       )
       select
-        exists(select 1 from visible_units u where app.reward_capability(u.id, 'review.view')) as review,
+        (exists(select 1 from visible_units u where app.reward_capability(u.id, 'review.view')) or exists(select 1 from app.reward_preparation_notices())) as review,
         exists(select 1 from visible_units u where app.reward_capability(u.id, 'analytics.view')) as analytics,
         exists(select 1 from visible_units u where app.reward_capability(u.id, 'approvals.view')) as approvals,
         exists(select 1 from visible_units u where app.reward_capability(u.id, 'rules.view')) as rules,
