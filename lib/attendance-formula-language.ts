@@ -1,6 +1,6 @@
-import {ATTENDANCE_FORMULA_CATALOG_VERSION,ATTENDANCE_FORMULA_VARIABLES,attendanceFormulaVariable} from './attendance-formula-catalog';
+import {ATTENDANCE_FORMULA_CATALOG_VERSION,ATTENDANCE_FORMULA_VARIABLES,ATTENDANCE_FORMULA_FIELDS,attendanceFormulaVariable} from './attendance-formula-catalog';
 import {parsePayFormula,validatePayFormula,evaluatePayFormula,addFormulaDecimal,type FormulaDialect,type FormulaProgram,type FormulaTraceEvent} from './pay-formula-language';
-import {payFormulaFunction,PAY_FORMULA_FIELD_TYPES,type FormulaFunction,type FormulaValue} from './pay-formula-registry';
+import {payFormulaFunction,type FormulaFunction,type FormulaValue} from './pay-formula-registry';
 export type AttendanceFormulaDefinition={code:string;source:string};
 export type AttendanceFormulaLibrary={formulas:readonly AttendanceFormulaDefinition[];conditions:readonly AttendanceFormulaDefinition[]};
 export type AttendanceFormulaFact={state:'known';value:FormulaValue;source:string;revision:string}|{state:'unavailable';reason:string};
@@ -8,8 +8,9 @@ export type AttendanceFormulaDay={date:string;values:Readonly<Record<string,Atte
 const idPattern=/^[A-Za-z][A-Za-z0-9_]{0,63}$/;
 function referenceFunction(code:string,choices:readonly string[],returns:FormulaFunction['returns']):FormulaFunction{return {code,aliases:[],category:'attendance',label:code,description:'An exact versioned attendance reference.',returns,parameters:[{name:'ID',type:'string',literal:true,choices}],source:'canonical attendance'};}
 function dialectFor(library:AttendanceFormulaLibrary):FormulaDialect{
- const functions=[referenceFunction('FormulaID',[...ATTENDANCE_FORMULA_VARIABLES.map(v=>v.id),...library.formulas.map(f=>f.code)],'field'),referenceFunction('ConditionID',library.conditions.map(c=>c.code),'boolean')];
- return {version:ATTENDANCE_FORMULA_CATALOG_VERSION,lookup:code=>functions.find(f=>f.code.toLowerCase()===code.toLowerCase())??(['Rounding','Date','EmployeeProfile','EmployeeInformation'].includes(payFormulaFunction(code)?.code??'')?payFormulaFunction(code):undefined),fieldType:(code,field)=>code==='FormulaID'?attendanceFormulaVariable(field)?.type??(library.formulas.some(f=>f.code===field)?'decimal':undefined):PAY_FORMULA_FIELD_TYPES[code==='EmployeeProfile'?'profile':'employee'][field]};
+ const fieldFunctions=[...new Set(ATTENDANCE_FORMULA_FIELDS.map(field=>field.function))].map(code=>referenceFunction(code,ATTENDANCE_FORMULA_FIELDS.filter(field=>field.function===code).map(field=>field.key),'field'));
+ const functions=[...fieldFunctions,referenceFunction('FormulaID',[...ATTENDANCE_FORMULA_VARIABLES.map(v=>v.id),...library.formulas.map(f=>f.code)],'field'),referenceFunction('ConditionID',library.conditions.map(c=>c.code),'boolean')];
+ return {version:ATTENDANCE_FORMULA_CATALOG_VERSION,lookup:code=>functions.find(f=>f.code.toLowerCase()===code.toLowerCase())??(['Rounding','Date'].includes(payFormulaFunction(code)?.code??'')?payFormulaFunction(code):undefined),fieldType:(code,field)=>code==='FormulaID'?attendanceFormulaVariable(field)?.type??(library.formulas.some(f=>f.code===field)?'decimal':undefined):ATTENDANCE_FORMULA_FIELDS.find(descriptor=>descriptor.function===code&&descriptor.key===field)?.type};
 }
 export function compileAttendanceFormulaLibrary(library:AttendanceFormulaLibrary){
  if(library.formulas.length>64||library.conditions.length>64)throw Error('Keep at most 64 formulas and 64 conditions in one dependency plan.');

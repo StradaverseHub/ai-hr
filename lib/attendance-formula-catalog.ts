@@ -138,3 +138,25 @@ export const ATTENDANCE_FORMULA_VARIABLES:readonly AttendanceFormulaVariable[]=[
 ];
 const byId=new Map(ATTENDANCE_FORMULA_VARIABLES.map(variable=>[variable.id,variable]));
 export function attendanceFormulaVariable(id:string){return byId.get(id);}
+/** Attendance's own closed source descriptors. Sensitive Payroll source categories are not imported. */
+export const ATTENDANCE_FORMULA_FIELDS=[
+ {function:'ShiftCode',key:'id',type:'string',source:'recorded-shift',dateBasis:'recorded'},
+ {function:'ShiftCode',key:'start',type:'decimal',source:'recorded-shift-start-minute',dateBasis:'recorded'},
+ {function:'ShiftCode',key:'end',type:'decimal',source:'recorded-shift-end-minute',dateBasis:'recorded'},
+ {function:'ShiftCode',key:'workingMinutes',type:'decimal',source:'recorded-shift-normal-minutes',dateBasis:'recorded'},
+ {function:'ShiftCode',key:'breakMinutes',type:'decimal',source:'recorded-shift-break-minutes',dateBasis:'recorded'},
+ {function:'CompanyCode',key:'id',type:'string',source:'effective-employer',dateBasis:'effective-date'},
+ {function:'CompanyCode',key:'code',type:'string',source:'company-code',dateBasis:'current-only'},
+ {function:'CompanyCode',key:'name',type:'string',source:'company-legal-name',dateBasis:'current-only'},
+ {function:'EmployeeProfile',key:'employeeNo',type:'string',source:'employment-employee-code',dateBasis:'current-only'},
+ {function:'EmployeeProfile',key:'joinDate',type:'date',source:'dated-employment-join-date',dateBasis:'effective-date'},
+ {function:'EmployeeProfile',key:'groupJoinDate',type:'date',source:'dated-employment-hire-date',dateBasis:'effective-date'},
+ {function:'EmployeeProfile',key:'resignationDate',type:'date',source:'employment-resignation-date',dateBasis:'current-only'},
+ {function:'EmployeeProfile',key:'confirmationDate',type:'date',source:'employment-confirmation-date',dateBasis:'current-only'},
+ {function:'EmployeeProfile',key:'lastWorkingDate',type:'date',source:'employment-last-working-date',dateBasis:'current-only'},
+ {function:'EmployeeInformation',key:'employmentType',type:'string',source:'dated-assignment-employment-type',dateBasis:'effective-date'},
+ {function:'EmployeeInformation',key:'departmentId',type:'string',source:'dated-assignment-department',dateBasis:'effective-date'},
+ {function:'EmployeeInformation',key:'businessUnitId',type:'string',source:'dated-assignment-business-unit',dateBasis:'effective-date'},
+ {function:'EmployeeInformation',key:'positionId',type:'string',source:'dated-assignment-position',dateBasis:'effective-date'},
+ ...['gradeId','orgDivision','orgBranch','orgRegion','orgLine','orgSection','orgTeam','orgBase','employmentCategory'].map(key=>({function:'EmployeeInformation',key,type:'string' as const,source:'recorded-personnel-'+key,dateBasis:'recorded'})),
+] as const;

@@ -2,12 +2,14 @@
 import {createHash} from 'node:crypto';
 import {and,asc,eq,gte,inArray,isNull,lte,sql} from 'drizzle-orm';
 import type {SessionContext,Tx} from '../../db/client';
-import {attendance,attendancePunch,employment,leaveType} from '../../db/schema';
+import {attendance,attendancePunch,employment,leaveType,company} from '../../db/schema';
 import {assertModuleGate} from '../../core/module-gate';
+import {employmentInformationAt} from '../../core/information-correction-history';
+import {assertWorkforceEmploymentTx} from '../../core/workforce-access';
 import {provenCompanyDatesTx} from '../../core/employment-company';
 import {isAttendanceTrace} from '../../core/attendance-trace';
 import {approvedLeaveMeasurementsTx} from '../leave/service';
-import {ATTENDANCE_FORMULA_VARIABLES} from '../../lib/attendance-formula-catalog';
+import {ATTENDANCE_FORMULA_VARIABLES,ATTENDANCE_FORMULA_FIELDS} from '../../lib/attendance-formula-catalog';
 import type {AttendanceFormulaDay,AttendanceFormulaFact} from '../../lib/attendance-formula-language';
 import type {FormulaValue} from '../../lib/pay-formula-registry';
 import {addDaysIso,datesBetween,isoWeekdayOf} from '../../lib/roster-month';
@@ -18,9 +20,11 @@ import {OvertimeOwnerError,type CanonicalOvertimeSnapshot} from './overtime-patt
 import {intersectAttendancePolicyIntervals as intersect,attendancePolicyIntervalMinutes as count,subtractAttendancePolicyIntervals as subtract,unionAttendancePolicyIntervals as union,type AttendancePolicyInterval} from '../../lib/attendance-policy-intervals';
 const digest=(value:unknown)=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
 /** Authorization is checked against the real effective employer for every requested date. */
-export async function readAttendanceFormulaDaysTx(tx:Tx,ctx:SessionContext,p:{companyId:string;employmentId:string;from:string;to:string}){
+export async function readAttendanceFormulaDaysTx(tx:Tx,ctx:SessionContext,p:{companyId:string;employmentId:string;from:string;to:string;fields?:readonly {code:string;key:string}[]}){
  assertModuleGate(ctx,'attendance');
  if(!isCalendarDate(p.from)||!isCalendarDate(p.to)||p.to<p.from||p.to>addDaysIso(p.from,61)||p.to>todayInKualaLumpur())throw Error('Choose a valid attendance period.');
+ if((p.fields?.length??0)>32||p.fields?.some(request=>!ATTENDANCE_FORMULA_FIELDS.some(field=>field.function===request.code&&field.key===request.key)))throw Error('Choose fields from the Attendance variable library.');
+ if(p.fields?.some(request=>request.code.startsWith('Employee')))await assertWorkforceEmploymentTx(tx,ctx,p.employmentId,'view');
  const dates=datesBetween(p.from,p.to);if(dates.length>62)throw Error('An attendance formula period is limited to 62 days.');
  const [subject]=await tx.select({row:employment,allowed:sql<boolean>`app.can_admin_employment(${employment.id}) and app.is_admin_for(${p.companyId}::uuid)`}).from(employment).where(and(eq(employment.tenantId,ctx.tenantId),eq(employment.id,p.employmentId))).limit(1);
  if(!subject?.allowed)throw Error('Attendance formula testing requires the employee and company administrative scope.');
@@ -36,7 +40,10 @@ export async function readAttendanceFormulaDaysTx(tx:Tx,ctx:SessionContext,p:{co
  const leaveCodes=(date:string,half:'AM'|'PM')=>{const evidence=leave.get(p.employmentId+':'+date);if(evidence?.leave===null||evidence?.unknownTypes.length)return null;const rows=(evidence?.leave??[]).filter(piece=>piece.session==='full_day'||piece.session===half);const codes=rows.map(piece=>types.find(type=>type.id===piece.typeId)?.code);return codes.some(code=>!code)?null:[...new Set(codes as string[])].sort().join(',');};
  const snapshots=new Map<string,CanonicalOvertimeSnapshot>();
  for(const row of records){try{snapshots.set(row.attendanceDate,await canonicalOvertimeInputTx(tx,ctx,{employmentId:p.employmentId,date:row.attendanceDate}));}catch(error){if(!(error instanceof OvertimeOwnerError)||error.code!=='unavailable')throw error;}}
- const sourceDigest=digest({snapshots:[...snapshots],companyId:p.companyId,employment:subject.row,employers:[...employers],records,punches,leave:[...leave],types});
+ const [companyFields]=p.fields?.some(field=>field.code==='CompanyCode')?await tx.select({code:company.companyLabel,name:company.legalName}).from(company).where(and(eq(company.tenantId,ctx.tenantId),eq(company.id,p.companyId))):[];
+ const datedEmployment=new Map<string,{hiredOn:string;joinDate:string|null}>();
+ for(const date of dates){const [row]=await tx.select({hiredOn:employmentInformationAt('hiredOn',sql`${date}::date`,sql`${employment.hiredOn}`),joinDate:employmentInformationAt('joinDate',sql`${date}::date`,sql`${employment.joinDate}`)}).from(employment).where(eq(employment.id,p.employmentId));if(row)datedEmployment.set(date,row);}
+ const sourceDigest=digest({datedEmployment:[...datedEmployment],companyFields,snapshots:[...snapshots],companyId:p.companyId,employment:subject.row,employers:[...employers],records,punches,leave:[...leave],types});
  const days:AttendanceFormulaDay[]=dates.map(date=>{
   const row=records.find(record=>record.attendanceDate===date),trace=isAttendanceTrace(row?.calcTrace)?row.calcTrace:null;
   const values:Record<string,AttendanceFormulaFact>=Object.fromEntries(ATTENDANCE_FORMULA_VARIABLES.map(variable=>[variable.id,{state:'unavailable',reason:'Required canonical evidence is unavailable for this date.'}]));
@@ -47,11 +54,22 @@ export async function readAttendanceFormulaDaysTx(tx:Tx,ctx:SessionContext,p:{co
   const dateValue=(id:string,value:string|null|undefined,source:string)=>{if(value&&isCalendarDate(value))put(id,{type:'date',value},source);};
   dateValue('RecordDate',date,'canonical-attendance-date');dateValue('ShiftDate',date,'canonical-attendance-date');dateValue('DayDate',date,'canonical-attendance-date');
   decimal('WeekDayNumber',isoWeekdayOf(date),'hr-date');string('WeekDay',['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'][isoWeekdayOf(date)-1],'hr-date');
-  string('PID',subject.row.personId,'effective-employment');dateValue('StartWork',subject.row.hiredOn,'effective-employment');
+  string('PID',subject.row.personId,'effective-employment');dateValue('StartWork',datedEmployment.get(date)?.hiredOn,'dated-employment-information');
   const end=[subject.row.resignationDate,subject.row.lastWorkingDate,subject.row.terminatedOn].filter((value):value is string=>!!value).sort()[0];dateValue('LastWork',end,'effective-employment');flag('isResigned',!!end&&end<date,'effective-employment');
   for(const [prefix,offset]of [['Yesterday',-1],['Tomorrow',1]] as const){const adjacent=addDaysIso(date,offset),other=records.find(record=>record.attendanceDate===adjacent);string(prefix+'NormalDayType',other?.dayType);const am=leaveCodes(adjacent,'AM'),pm=leaveCodes(adjacent,'PM');if(am!==null&&pm!==null)string(prefix+'LeaveCode',[...new Set([am,pm].filter(Boolean))].sort().join(','),'approved-leave');}
   for(const [half,suffix]of [['AM','1stHalf'],['PM','2ndHalf']] as const){const codes=leaveCodes(date,half);if(codes!==null){string('LeaveCode'+suffix,codes,'approved-leave');string('LeaveCode'+suffix+'All',codes,'approved-leave');}const evidence=leave.get(p.employmentId+':'+date);if(!evidence?.unknownTypes.length&&evidence?.leave!==null)decimal('LeaveValue'+suffix,(evidence?.leave??[]).filter(piece=>piece.session===half||piece.session==='full_day').reduce((sum,piece)=>sum+(piece.session==='full_day'?piece.days/2:piece.days),0),'approved-leave');}
   const leaveEvidence=leave.get(p.employmentId+':'+date);if(leaveEvidence?.leave&&!leaveEvidence.unknownTypes.length){const hourly=leaveEvidence.leave.filter(piece=>piece.session==='hourly');if(hourly.every(piece=>piece.minutes!==null))decimal('OnLeaveDurationMins',hourly.reduce((sum,piece)=>sum+piece.minutes!,0),'approved-leave');}else if(!leaveEvidence)decimal('OnLeaveDurationMins',0,'approved-leave-empty');
+  const nativeSnapshot=snapshots.get(date);
+  for(const request of p.fields??[]){
+   const descriptor=ATTENDANCE_FORMULA_FIELDS.find(field=>field.function===request.code&&field.key===request.key)!;
+   if(descriptor.dateBasis==='current-only'&&date!==todayInKualaLumpur())continue;
+   let value:unknown;
+   if(request.code==='CompanyCode')value=request.key==='id'?p.companyId:companyFields?.[request.key as 'code'|'name'];
+   else if(request.code==='EmployeeProfile')value=request.key==='groupJoinDate'?datedEmployment.get(date)?.hiredOn:request.key==='joinDate'?datedEmployment.get(date)?.joinDate:({employeeNo:subject.row.employeeCode,resignationDate:subject.row.resignationDate,confirmationDate:subject.row.confirmationDate,lastWorkingDate:subject.row.lastWorkingDate} as Record<string,unknown>)[request.key];
+   else if(request.code==='EmployeeInformation'){const field=nativeSnapshot?.input.facts[request.key as keyof NonNullable<typeof nativeSnapshot>['input']['facts']];if(field?.state==='known')value=field.value;}
+   else if(request.code==='ShiftCode'&&trace)value=({id:trace.schedule.shiftId,start:trace.schedule.startAbs,end:trace.schedule.endAbs,workingMinutes:trace.schedule.normalMinutesOverride??trace.schedule.scheduledMinutes,breakMinutes:trace.schedule.breakMinutes} as Record<string,unknown>)[request.key];
+   if(value!==undefined&&value!==null&&value!==''){const key=request.code+':'+request.key;if(descriptor.type==='decimal')decimal(key,Number(value),descriptor.source);else if(descriptor.type==='date')dateValue(key,String(value),descriptor.source);else string(key,String(value),descriptor.source);}
+  }
   if(!row)return {date,values};
   const dayPunches=punches.filter(punch=>punch.attendanceId===row.id);
   decimal('ClockSrcCount',dayPunches.length,'canonical-active-punches');
