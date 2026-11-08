@@ -15,3 +15,11 @@ it('refuses mixed/unregistered/native or foreign host input without manufacturin
  vi.stubEnv('TEST_DB_NAMESPACE','');const context=env();expect(admitEmployeeChoiceNativeControl(context)).toEqual({developmentOnly:true,releaseAuthorized:false,normalCiAdmitted:false});
  for(const change of [{GITHUB_ACTIONS:'false'},{CI:'false'},{GITHUB_JOB:'test'},{GITHUB_EVENT_NAME:'pull_request'},{GITHUB_RUN_ATTEMPT:'2'},{AIHR_FOCUSED_TESTS:JSON.stringify([employeeChoiceNativeControlFile,'test/foreign.test.ts'])},{AIHR_FOCUSED_TESTS:'[]'},{AIHR_CI_HEAD:'unknown'},{VITEST_POOL_ID:'0'},{TEST_DATABASE_URL:'postgres://ai_hr_app@127.0.0.1:5432/ai_hr_test_w1'}])expect(()=>admitEmployeeChoiceNativeControl({...context,...change})).toThrow();
 });
+
+it('never retains malformed configured URI contents in the parser failure or cause',()=>{
+ vi.stubEnv('TEST_DB_NAMESPACE','');const secret='PRIVATE_FIXTURE_SECRET',raw='postgres://postgres:'+secret+'@[';let failure:unknown;
+ try{employeeChoiceOwnedUrl(raw,'postgres','fixed','work',env());}catch(error){failure=error;}
+ expect(failure).toBeInstanceOf(Error);if(!(failure instanceof Error))throw Error('Closed endpoint refusal required');
+ expect(failure.message).toBe('Invalid owned employee benchmark endpoint');expect(String(failure)).not.toContain(secret);expect(failure.stack).not.toContain(secret);expect(JSON.stringify(failure)).not.toContain(secret);
+ expect(Reflect.ownKeys(failure)).not.toContain('cause');expect(Reflect.ownKeys(failure)).not.toContain('input');
+});

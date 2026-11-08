@@ -1,7 +1,7 @@
 {
   "kind": "EMPLOYEE_BENCHMARK_REVIEW_RECOVERY_NOT_QUALIFIED",
   "base": "5efe999b85c59739653b81f2ba29f07e9338dc17",
-  "sourceRef": "codex/employee-benchmark-supervision-recovery-20261108",
+  "sourceRef": "codex/employee-benchmark-url-redaction-20261108",
   "qualification": "NOT_RUN; root and independent source review before any hosted execution",
   "sourceSha256": {
     ".github/ci/employee-benchmark-supervisor.py": "ae490770bcd850daefa335aaba2013b52c4b43e982c737d390e24963979d33c4",
@@ -16,7 +16,7 @@
     "test/employee-choice-benchmark-supervisor.test.ts": "93a695eaa9987bc6441d18f2222d5f6b75bfd0882d88e80aea91ecebf7ccc3ca",
     "test/employee-choice-native-case-owner.test.ts": "33f7d7ef108835e27721e6d3b0a04d866859c80b6a96c1de7ba947e637de1a94",
     "test/employee-choice-native-purpose-plan.test.ts": "89beb608e04bbc89f6ab3c3881f533df5b5596b277785b3751062bc0441e8021",
-    "test/employee-choice-owned-binding.test.ts": "3b45d4fccb5ed8ccfa75fed6ed7faa64fbbbc57e8f774e2d4e1d32dd6af14277",
+    "test/employee-choice-owned-binding.test.ts": "a5dc4c3f3cccd071577a81104ee56872ec7c4caf0158e48fc1f86bdaa4f065cf",
     "test/employee-choice-sql-frontier.test.ts": "e5f475bb37eb5020fd3ff2a6f5d1d6c93755bbb2e7850e20a3abf1c4d1dc551a",
     "test/performance/employee-choice-auto-explain.ts": "db4eeea5172dd75617548acb11e574f68d70bc09260fdb2a96a68c6ac93ee30a",
     "test/performance/employee-choice-benchmark-lifetime.ts": "275a28be7d38d815556c9d7ecc5ebaa245a3b559b8835d7c5f7afd3edd86a1d5",
@@ -25,9 +25,10 @@
     "test/performance/employee-choice-native-control-admission.ts": "904f62b98ff9dc0bcec61860ba3c0ffbdf0f70049336b0db67c5b02c53003c98",
     "test/performance/employee-choice-native-purpose-owner.ts": "3df8e3b01b4ab52304675b8d167f68059ac8e47cfa12835c0b3c3db034da4d3d",
     "test/performance/employee-choice-native-purpose-session.ts": "807a1983252ce6c49903baa5f561b17a3f66fd6c601c076820b3305a45587c32",
-    "test/performance/employee-choice-owned-binding.ts": "43efd6cf99a2807b8cae4e1cfe7b5a0f20529fbe9a0454c91a44557f0088a148",
+    "test/performance/employee-choice-owned-binding.ts": "17b329a63aa79151e6bb066ffe10c70ebf253b9000cae2fe6ec1cf610b46d2b0",
     "test/performance/employee-choice-sql-frontier.ts": "cc086b95488cf1ba8b832a965a2737674be1f8b3abbde0cca2fafee7e7c74d8d",
-    "docs/qualification/employee-benchmark-supervision-source-20261108.json": "cc5b7f634d95fcb1b9e6bb2e9c9865237f5530177f9fdf65b7935241e71c3324"
+    "docs/qualification/employee-benchmark-url-redaction-20261108.md": "ccfbb8c01c564c84c2dd5b95129bd5d75892835e1e2e8ee419ce6e2c968520de",
+    "docs/qualification/employee-benchmark-supervision-source-20261108.json": "b92cf7dab91544fcef8f25b05f9a7eed17bbdbcc6d91687bb0e6a3b7bfc341fb"
   },
   "unchangedSha256": {
     "core/employee-choice.ts": "ce1e3559addbffa4b4e780594ebcc5fcf917ddffde79a6155cc7fbcecdbcfbd5",
@@ -43,5 +44,6 @@
   },
   "normalCiAdmitted": false,
   "releaseAuthorized": false,
-  "productionHeld": true
+  "productionHeld": true,
+  "urlRedactionBase": "4761520b00010e7bda199264f9233e6e658579f3"
 }
