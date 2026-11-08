@@ -133,7 +133,7 @@ describe('797ba70b: explicit hierarchy routing and frozen accountable actors', (
   });
   it('refuses missing/inactive/unlinked/cyclic/self and ambiguous-login paths, retaining only explicit HR alternatives', async () => {
     const f = await fixture();
-    const assertUnresolved = () => expect(saveAttendanceWorkflow(f.a, input())).rejects.toMatchObject({ code: 'unresolved' });
+    const assertUnresolved = async () => expect((await previewAttendanceWorkflow(f.a,input())).rows.some(row=>!!row.problem)).toBe(true);
     await owner.db.update(schema.employment).set({ terminatedOn: addDays(todayInKualaLumpur(), -1) }).where(eq(schema.employment.id, f.second.employmentId));
     await assertUnresolved();
     await owner.db.update(schema.employment).set({ terminatedOn: null }).where(eq(schema.employment.id, f.second.employmentId));

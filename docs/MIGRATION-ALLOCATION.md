@@ -1,5 +1,31 @@
 # Coordinated migration reservations
 
+## Closed staging architecture reconciliation — 8 November 2026 (draft, uninstalled)
+
+Root reserves36 suffix entries at idx2510–2545 / when1793330002810–1793330002845,
+following the exact707-entry reviewed staging feature/owner-repair prefix.
+The old36 architecture reservations retain their original source history;34 SQL
+files stay byte-identical. Superseding drafts3210 (idx2528/when1793330002828)
+and3211 (idx2545/when1793330002845) require separately reviewed native guards,
+respectively preserving3101 shared-company trigger behavior and the real Access
+native owner. Their source hashes and actual qualification remain pending.
+Do not install this draft or treat unfilled identities as accepted migrations.
+
+The fresh ref/WIP survey observed6061 refs,3232 root trees,681 migration trees,
+487 committed journals and516 readable worktrees, with stable captured claims.
+File/journal maxima were3111 /2411 /1793330002711; additionally retain the explicit
+PR230 documented3200/3201 reservations at2500/2501 and1793330002800/2801.
+One preserved foreign malformed journal and this then-unresolved merge journal
+contributed their literal claims. Recheck fresh competing claims at admission.
+
+Read-only staging retained706 exact applied rows and both architecture-superseded
+drafts absent. This reservation supports ONLY the reviewed staging lineage;
+production's current applied history is unverified and production remains held.
+No universal never-applied claim, replay waiver or ledger update is authorized.
+See [the explicit mapping](qualification/architecture-staging-lineage-reservations-20261108.json)
+and [the native-owner/history decision](adr/2026-11-08-staging-architecture-history-and-native-owners.md).
+
+
 ## Access editor presentation — 8 November 2026 (uninstalled)
 
 Reserve `3103_access_editor_presentation`, idx2403 / when1793330002703.
@@ -2419,3 +2445,26 @@ a separate query/index correction; these are component measurements only.
 The real append requires independent review, native populated replay, drift
 refusal and integration qualification. It is not installed and grants no staging
 or production authority. Production remains on hold.
+## Four approved feedback items — 7 November 2026 (unapplied)
+
+Branch codex/approved-four-20261107 reserves 3100_pay_formula_saved_availability at idx2400 / when1793330002700 and 3101_attendance_shared_workflow at idx2401 / when1793330002701. Fresh main/alpha are 4a5a9de8c. A scan of local/remote ref journals and readable registered worktree journals found highest competing timestamp1793330002601 (3001_employment_membership_initplan). Read-only staging reports704 applied entries through1793330002200. Preserve all existing SQL bytes and the canonical journal prefix; recheck the exact ordered installation ledger and peer reservations at integration/admission. Neither reservation grants installation priority or deployment authority.
+
+
+## PR233 real-owner RLS forward repair — 8 November 2026 (unapplied)
+
+PR233 reserves `3110_attendance_workflow_owner_rls`, idx `2410`, when
+`1793330002710`. A fresh coordinated survey found no collision for this file,
+index or timestamp. PR230's next reservations remain `3200`/`3201`, idx
+`2500`/`2501`, when `1793330002800`/`1793330002801`.
+
+Staging has already applied the exact `3100`/`3101` bytes from `d4536294f`;
+all 706 ordered hashes and the original 704-entry prefix matched. Its live
+workflow lookup exposed a forced-RLS error under the non-superuser migration
+owner that superuser-owned test functions had hidden. This forward tail enables
+row-security evaluation on five existing security-definer functions, preserving
+their bodies, permission/tenant checks, policies, grants and original records.
+The non-superuser owner regression and hosted requalification remain required.
+
+Unapplied peer `3102`/`3103` drafts must reallocate above the actually installed
+prefix when integrating; no lower timestamp may be silently skipped. This is a
+source reservation, not evidence that the repair is applied or accepted.

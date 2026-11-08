@@ -1,0 +1,41 @@
+import {createHash,randomUUID} from 'node:crypto';
+import {copyFileSync,mkdtempSync,mkdirSync,readFileSync,rmSync,writeFileSync} from 'node:fs';
+import {tmpdir} from 'node:os';
+import {join} from 'node:path';
+import postgres from 'postgres';
+import {migrate} from 'drizzle-orm/postgres-js/migrator';
+import {expect,it} from 'vitest';
+import {createDb} from '../db/client';
+it('upgrades a populated canonical baseline with an exact ledger prefix and preserves existing workflow versions and native records',async()=>{
+ const journal=JSON.parse(readFileSync('db/migrations/meta/_journal.json','utf8')) as {entries:{tag:string;when:number}[]};
+ const boundary=journal.entries.findIndex(row=>row.tag==='3100_pay_formula_saved_availability');expect(boundary).toBeGreaterThan(0);
+ const directory=mkdtempSync(join(tmpdir(),'approved-four-upgrade-')),name='approved_four_'+randomUUID().replaceAll('-','');
+ const ownerUrl=new URL(process.env.TEST_MIGRATION_DATABASE_URL!),appUrl=new URL(process.env.TEST_DATABASE_URL!);
+ expect(['127.0.0.1','localhost']).toContain(ownerUrl.hostname);expect(ownerUrl.username).not.toBe('ai_hr_app');expect(appUrl.username).toBe('ai_hr_app');
+ ownerUrl.pathname='/postgres';const admin=postgres(ownerUrl.toString(),{max:1,onnotice:()=>{}});ownerUrl.pathname='/'+name;appUrl.pathname='/'+name;
+ const storage=createDb(ownerUrl.toString(),{max:1}),application=createDb(appUrl.toString(),{max:1});let created=false;
+ const tenant=randomUUID(),company=randomUUID(),template=randomUUID(),lineage=randomUUID();
+ const ledger=()=>storage.client`select id,hash,created_at::text as created_at from drizzle.__drizzle_migrations order by id`;
+ try{
+  await admin.unsafe(`CREATE DATABASE "${name}"`);created=true;mkdirSync(join(directory,'meta'));
+  for(const entry of journal.entries.slice(0,boundary))copyFileSync('db/migrations/'+entry.tag+'.sql',join(directory,entry.tag+'.sql'));
+  writeFileSync(join(directory,'meta/_journal.json'),JSON.stringify({...journal,entries:journal.entries.slice(0,boundary)}));await migrate(storage.db,{migrationsFolder:directory});
+  await storage.client`insert into tenant(id,workos_org_id,name) values(${tenant},${randomUUID()},'Fictional approved feedback upgrade')`;
+  await storage.client`insert into company(id,tenant_id,legal_name) values(${company},${tenant},'Fictional retained company')`;
+  const stages=[{name:'Original retained stage',level:{kind:'hr_admin',employmentId:null,alternates:[]}}];
+  await storage.client`insert into attendance_workflow_template(id,tenant_id,company_id,code,name,application_type,priority,criteria,stages,version,active,lineage_id) values(${template},${tenant},${company},'RETAINED','Retained original workflow','irregularity',100,'{}'::jsonb,${JSON.stringify(stages)}::jsonb,1,true,${lineage})`;
+  const before=await storage.client`select to_jsonb(t) as row from attendance_workflow_template t where tenant_id=${tenant}`;
+  const beforeCompany=await storage.client`select to_jsonb(c) as row from company c where tenant_id=${tenant}`;
+  const prefix=await ledger();expect(prefix).toHaveLength(boundary);
+  await migrate(storage.db,{migrationsFolder:'db/migrations'});
+  const after=await ledger();expect(after.slice(0,prefix.length)).toEqual(prefix);expect(after).toHaveLength(journal.entries.length);
+  expect(await storage.client`select to_jsonb(t) as row from attendance_workflow_template t where tenant_id=${tenant}`).toEqual(before);
+  expect(await storage.client`select to_jsonb(c) as row from company c where tenant_id=${tenant}`).toEqual(beforeCompany);
+  expect(await storage.client`select tenant_id,template_id,company_id from attendance_workflow_company where template_id=${template}`).toEqual([{tenant_id:tenant,template_id:template,company_id:company}]);
+  for(const [index,entry]of journal.entries.slice(boundary).entries())expect(after[boundary+index].hash).toBe(createHash('sha256').update(readFileSync('db/migrations/'+entry.tag+'.sql')).digest('hex'));
+  expect(await application.client`select * from attendance_workflow_company`).toEqual([]);
+  expect(await application.client`select * from app.pay_formula_saved('UNKNOWN')`).toEqual([]);
+  await expect(application.client`update attendance_workflow_company set company_id=${randomUUID()} where template_id=${template}`).rejects.toThrow();
+  await migrate(storage.db,{migrationsFolder:'db/migrations'});expect(await ledger()).toEqual(after);
+ }finally{await application.client.end();await storage.client.end();if(created)await admin.unsafe(`DROP DATABASE "${name}" WITH (FORCE)`);await admin.end();rmSync(directory,{recursive:true,force:true});}
+},180000);

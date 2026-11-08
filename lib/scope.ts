@@ -44,10 +44,10 @@ export async function scopedSession(): Promise<{ s: SessionContext; scopeIds: st
 }
 
 /** Admin-gated variant: redirects non-admins, then returns the session + active company scope. */
-export async function scopedAdmin(): Promise<{ s: SessionContext; scopeIds: string[] }> {
+export async function scopedAdmin(): Promise<{ s: SessionContext; scopeIds: string[]; allowedCompanyIds?:string[] }> {
   const s = await requireAdmin();
-  const { scopeIds } = await companyContextForPage(s);
-  return { s, scopeIds: [...scopeIds] };
+  const { allowed, scopeIds } = await companyContextForPage(s);
+  return { s, scopeIds: [...scopeIds], allowedCompanyIds: allowed.map(company => company.id) };
 }
 
 /**

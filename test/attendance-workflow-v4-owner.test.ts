@@ -18,9 +18,9 @@ import {todayInKualaLumpur} from '../lib/hr-date';
 import {adminCtx,createAppUser,owner,closeAll,migrateTestDb,resetDb,seedBase,setModule,type Base} from './harness';
 let base:Base;
 beforeAll(migrateTestDb);afterAll(closeAll);beforeEach(async()=>{await resetDb();base=await seedBase();});
-async function actor(name:string,role:'employee'|'hr_admin'='employee',departmentId=base.deptB) {
+async function actor(name:string,role:'employee'|'hr_admin'='employee',departmentId=base.deptB,employeeCode?:string) {
  const email=`${randomUUID()}@example.invalid`;
- const hired=await hireEmployee(adminCtx(base),{person:{fullName:name,primaryEmail:email},companyId:base.companyId,departmentId,employmentType:'full_time',hiredOn:'2020-01-01'});
+ const hired=await hireEmployee(adminCtx(base),{person:{fullName:name,primaryEmail:email},companyId:base.companyId,departmentId,...(employeeCode?{employeeCode}:{}),employmentType:'full_time',hiredOn:'2020-01-01'});
  const userId=await createAppUser(base.tenantId,hired.personId,role);
  const ctx:SessionContext={...adminCtx(base),userId,personId:hired.personId,roles:[role],grants:[{role,companyId:base.companyId}]};return{...hired,ctx,email};
 }
@@ -340,4 +340,91 @@ it('private CC delivery derives its tenant from the validated lease even with ab
  const [company]=await owner.db.insert(schema.company).values({tenantId:foreign.id,legalName:'Fictional foreign CC company'}).returning();
  const proofs=await owner.client`select app.company_org_descendant_for_tenant(${base.tenantId}::uuid,${company.id}::uuid,${company.id}::uuid) as wrong_tenant,app.company_org_descendant_for_tenant(${foreign.id}::uuid,${base.companyId}::uuid,${base.companyId}::uuid) as wrong_child`;
  expect(proofs[0]).toEqual({wrong_tenant:false,wrong_child:false});
+});
+
+describe('approved shared workflows and actor-scoped approver search',()=>{
+ it('saves a shared definition with missing dynamic superiors, previews warnings and refuses an unresolved application',async()=>{
+  const root=adminCtx(base),worker=await actor('Fictional missing-superior applicant','employee',base.deptA,'WARN-001');
+  const [other]=await owner.db.insert(schema.company).values({tenantId:base.tenantId,legalName:'Fictional shared company'}).returning();
+  const input={companyId:base.companyId,companyIds:[base.companyId,other.id],applicationType:'irregularity' as const,routingVersion:4 as const,code:'SHARED_WARNING',name:'Shared warning workflow',priority:1,active:true,criteria:{employeeIds:[worker.employmentId]},stages:[{name:'Level 1',mode:'any_one' as const,sources:[{kind:'direct_manager' as const,depth:1}],hrAlternative:false}],cc:[]};
+  const saved=await saveAttendanceWorkflow(root,input);
+  expect(saved.companyIds.sort()).toEqual([base.companyId,other.id].sort());
+  const assignments=await owner.client`select company_id from attendance_workflow_company where template_id=${saved.id} order by company_id`;
+  expect(assignments.map(row=>row.company_id)).toEqual([base.companyId,other.id].sort());
+  const preview=await previewAttendanceWorkflow(root,input,saved.lineageId);
+  expect(preview.rows.find(row=>row.employmentId===worker.employmentId)).toMatchObject({employeeCode:'WARN-001',levelProblem:{code:'missing_superior',levelIndex:0}});
+  await setAttendanceWorkflowEnabled(root,base.companyId,'irregularity',true);
+  // Company B has no matching employees, but its shared definition legitimately names A's employee.
+  // Enabling B must validate against the complete assignment set rather than treating that ID as foreign.
+  await setAttendanceWorkflowEnabled(root,other.id,'irregularity',true);
+  const on=todayInKualaLumpur();await checkIn(root,{employmentId:worker.employmentId,date:on,time:'08:00',manual:true});await checkOut(root,{employmentId:worker.employmentId,date:on,time:'17:00',manual:true});
+  await expect(requestAttendanceCorrection(worker.ctx,{employmentId:worker.employmentId,date:on,checkIn:'09:00',checkOut:'18:00',reason:'No silent approval bypass'})).rejects.toThrow();
+  expect(await owner.db.select().from(schema.attendanceWorkflowRequest)).toHaveLength(0);
+  const updated=await saveAttendanceWorkflow(root,{...input,name:'Shared revision',expectedVersion:1},saved.lineageId);
+  expect(updated.version).toBe(2);
+  await expect(saveAttendanceWorkflow(root,{...input,expectedVersion:1},saved.lineageId)).rejects.toMatchObject({code:'stale'});
+ });
+ it('discovers an authorized sibling-company approver but does not grant an unqualified candidate new rights',async()=>{
+  const root=adminCtx(base),worker=await actor('Fictional group applicant','employee',base.deptA),reviewer=await actor('Fictional group reviewer');
+  const [other]=await owner.db.insert(schema.company).values({tenantId:base.tenantId,legalName:'Fictional sibling approval company'}).returning();
+  await owner.db.update(schema.employment).set({companyId:other.id}).where(eq(schema.employment.id,reviewer.employmentId));
+  const {searchAttendanceApprovers}=await import('../core/attendance-workflow');
+  const search=await searchAttendanceApprovers(root,{companyIds:[base.companyId],query:'Fictional group reviewer',page:0});
+  expect(search.rows).toEqual([expect.objectContaining({id:reviewer.employmentId,eligible:true,company:'Fictional sibling approval company'})]);
+  const input={companyId:base.companyId,routingVersion:4 as const,applicationType:'irregularity' as const,code:'SIBLING_SELECTED',name:'Authorized sibling reviewer',priority:1,active:true,criteria:{employeeIds:[worker.employmentId]},stages:[{name:'Level 1',mode:'any_one' as const,sources:[{kind:'specific_employee' as const,employmentIds:[reviewer.employmentId]}],hrAlternative:false}],cc:[]};
+  const saved=await saveAttendanceWorkflow(root,input);
+  expect((await previewAttendanceWorkflow(root,input,saved.lineageId)).rows[0].resolvedStages[0].approvers[0].employmentId).toBe(reviewer.employmentId);
+  await owner.db.update(schema.roleAssignment).set({companyId:other.id}).where(eq(schema.roleAssignment.appUserId,reviewer.ctx.userId!));
+  expect((await searchAttendanceApprovers(root,{companyIds:[base.companyId],query:'Fictional group reviewer',page:0})).rows[0].eligible).toBe(false);
+  await expect(saveAttendanceWorkflow(root,{...input,expectedVersion:1},saved.lineageId)).rejects.toThrow();
+ });
+});
+it('refuses a partial-scope edit and serializes shared automatic priorities across reversed company selections',async()=>{
+ const root=adminCtx(base),scoped=await actor('Fictional company-only HR','hr_admin');
+ await owner.db.update(schema.roleAssignment).set({companyId:base.companyId}).where(eq(schema.roleAssignment.appUserId,scoped.ctx.userId!));
+ const [other]=await owner.db.insert(schema.company).values({tenantId:base.tenantId,legalName:'Fictional second shared scope'}).returning();
+ const input={companyId:base.companyId,companyIds:[base.companyId,other.id],applicationType:'irregularity' as const,routingVersion:4 as const,code:'SHARED_LOCK',name:'Shared allocation',priority:1,active:false,criteria:{},stages:[{name:'Level 1',mode:'any_one' as const,sources:[{kind:'direct_manager' as const,depth:1}],hrAlternative:false}],cc:[]};
+ const first=await saveAttendanceWorkflow(root,input);
+ expect((await listAttendanceWorkflows(root,[base.companyId])).map(row=>row.lineageId)).toContain(first.lineageId);
+ await expect(saveAttendanceWorkflow(scoped.ctx,{...input,name:'Must not alter the other company',expectedVersion:1},first.lineageId)).rejects.toMatchObject({code:'scope'});
+ expect((await listAttendanceWorkflows(root,[base.companyId,other.id])).find(row=>row.lineageId===first.lineageId)?.name).toBe('Shared allocation');
+ expect(await listAttendanceWorkflows(scoped.ctx,[base.companyId,other.id])).toEqual([]);
+ await expect(withTenant(root,tx=>tx.execute(sql`insert into attendance_workflow_company(tenant_id,template_id,company_id) values(${base.tenantId}::uuid,${first.id}::uuid,${other.id}::uuid)`))).rejects.toThrow();
+ const created=await Promise.all([
+  saveAttendanceWorkflow(root,{...input,code:'SHARED_AUTO_A'},undefined,undefined,true),
+  saveAttendanceWorkflow(root,{...input,companyId:other.id,companyIds:[other.id,base.companyId],code:'SHARED_AUTO_B'},undefined,undefined,true),
+ ]);
+ expect(created.map(row=>row.priority).sort()).toEqual([2,3]);
+});
+
+
+it('lists approvers with forced RLS under a non-superuser schema-owner identity',async()=>{
+ const eligible=await actor('Fictional real-owner approver');
+ const ctx=adminCtx(base),roles=ctx.roles??[],role='pr233_owner_'+randomUUID().replaceAll('-','');
+ const rollback=new Error('Rollback only this ownership-parity fixture');
+ await expect(owner.client.begin(async connection=>{
+  await connection.unsafe(`CREATE ROLE "${role}" NOLOGIN NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE INHERIT`);
+  const [identity]=await connection`select pg_get_userbyid(relowner) as name from pg_class where oid='public.app_user'::regclass`;
+  const parent=String(identity.name);expect(parent).toMatch(/^[A-Za-z_][A-Za-z0-9_]*$/);
+  // Object ownership is inherited; SUPERUSER/BYPASSRLS attributes are not. The role has no login
+  // or application membership, and every ownership/membership change rolls back with this tx.
+  await connection.unsafe(`GRANT "${parent}" TO "${role}"`);
+  const [attributes]=await connection`select rolsuper,rolbypassrls from pg_roles where rolname=${role}`;
+  expect(attributes).toMatchObject({rolsuper:false,rolbypassrls:false});
+  const functions=await connection`select p.oid::regprocedure::text as signature from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='app' and p.prosecdef and p.prokind='f' order by p.oid`;
+  expect(functions.length).toBeGreaterThan(0);
+  for(const fn of functions)await connection.unsafe(`ALTER FUNCTION ${String(fn.signature)} OWNER TO "${role}"`);
+  await connection.unsafe('SET LOCAL ROLE ai_hr_app');
+  await connection.unsafe('SET LOCAL row_security=on');
+  const grants=ctx.grants??roles.map(value=>({role:value,companyId:null}));
+  await connection`select set_config('app.tenant_id',${ctx.tenantId},true),set_config('app.user_id',${ctx.userId??''},true),set_config('app.roles',${roles.join(',')},true),set_config('app.grants',${JSON.stringify(grants)},true),set_config('app.agent_principal_id','',true),set_config('app.payroll_tax_basis_reader','1',true)`;
+  const rows=await connection.unsafe('select id from app.attendance_workflow_v3_approver_options($1::uuid[])',['{'+base.companyId+'}']);
+  expect(rows.map(row=>row.id)).toContain(eligible.employmentId);
+  const employeeRoles=eligible.ctx.roles??[],employeeGrants=eligible.ctx.grants??employeeRoles.map(role=>({role,companyId:null}));
+  await connection`select set_config('app.user_id',${eligible.ctx.userId??''},true),set_config('app.roles',${employeeRoles.join(',')},true),set_config('app.grants',${JSON.stringify(employeeGrants)},true)`;
+  expect(await connection.unsafe('select id from app.attendance_workflow_v3_approver_options($1::uuid[])',['{'+base.companyId+'}'])).toEqual([]);
+  await connection`select set_config('app.tenant_id',${randomUUID()},true),set_config('app.user_id',${ctx.userId??''},true),set_config('app.roles',${roles.join(',')},true),set_config('app.grants',${JSON.stringify(grants)},true)`;
+  expect(await connection.unsafe('select id from app.attendance_workflow_v3_approver_options($1::uuid[])',['{'+base.companyId+'}'])).toEqual([]);
+  throw rollback;
+ })).rejects.toBe(rollback);
 });

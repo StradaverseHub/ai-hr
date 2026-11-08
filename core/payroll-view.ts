@@ -1,3 +1,4 @@
+import {recordedPayrollReconciliationItems} from '../lib/payroll-comparison-source';
 import { ALL_RECORDED_PAY_ITEMS } from '../lib/payroll-period-comparison';
 import {frozenPayslipInformation,informationPayslipDocument,informationPayslipDocuments,informationDocumentRow,overlayInformationDocument} from './information-correction-history';
 import {payrollComparisonAvailability} from '../lib/payroll-comparison-result';
@@ -3332,7 +3333,7 @@ export async function payrollComparisonSourcesTx(tx: Tx, ctx: SessionContext, p:
   if (availability.issues.length || !batches.length) return { runs, sources: [] };
   const batchById = new Map(batches.map(batch => [batch.id, batch]));
   const results = await tx.select({ id: payslip.id, version: payslip.version, runId: payslip.batchId,
-    employmentId: payslip.employmentId, basicSalary: payslip.basicSalary, statutory: payslip.statutory,
+    employmentId: payslip.employmentId, basicSalary: payslip.basicSalary, allowance:payslip.allowance,overtimePay:payslip.overtimePay,bonus:payslip.bonus,otherDeductions:payslip.otherDeductions,netPay:payslip.netPay,grossPay:payslip.grossPay,totalDeductions:payslip.totalDeductions,employerCost:payslip.employerCost, statutory: payslip.statutory,
     coverageFrom: payslip.coverageFrom, coverageTo: payslip.coverageTo }).from(payslip)
     .where(and(eq(payslip.tenantId, ctx.tenantId), inArray(payslip.batchId, batches.map(batch => batch.id))))
     .orderBy(asc(payslip.id)).limit(20001);
@@ -3343,11 +3344,12 @@ export async function payrollComparisonSourcesTx(tx: Tx, ctx: SessionContext, p:
     const batch = batchById.get(slip.runId)!;
     const period = payPeriodBounds(batch.period);
     if (!period) throw new Error('Saved payroll period is invalid.');
+    const recordedItems=recordedPayrollReconciliationItems(slip.statutory,{'@total/allowance':slip.allowance,'@total/overtime':slip.overtimePay,'@total/bonus':slip.bonus,'@total/otherDeductions':slip.otherDeductions,'@total/netPay':slip.netPay,'@total/grossPay':slip.grossPay,'@total/totalDeductions':slip.totalDeductions,'@total/employerCost':slip.employerCost});
     const allItems = p.payItemCode === ALL_RECORDED_PAY_ITEMS;
     return { id: slip.id, version: slip.version, runId: slip.runId, employmentId: slip.employmentId,
       companyId: batch.companyId, currency: recordedPayrollComparisonCurrency(slip.statutory, batch.companyId),
-      amount: recordedPayrollComparisonAmount(slip.basicSalary, slip.statutory, allItems?'BASIC':p.payItemCode,batch.companyId),
-      recordedItems: allItems ? slip.statutory : undefined,
+      amount: recordedPayrollComparisonAmount(slip.basicSalary, recordedItems, allItems?'BASIC':p.payItemCode,batch.companyId),
+      recordedItems: allItems ? recordedItems : undefined,
       coverage: payslipCoverage(slip, period),
       // The recorded factor describes Basic. It cannot prove a different item's proration.
       proratedCoverage: recordedPayrollProrationCoverage(slip.statutory,batch.companyId,period,allItems?'BASIC':p.payItemCode) };

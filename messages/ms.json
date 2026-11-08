@@ -15750,8 +15750,8 @@
     "builderRate": "Pengganda kadar",
     "builderOrdinaryRate": "Pembahagi kadar biasa",
     "builderContextHint": "Tetapkan hanya ikatan yang digunakan oleh formula ini. Uji formula tersimpan dalam pembina formula dengan pekerja, tempoh dan kitarannya.",
-    "builderNoFormula": "Pilih formula aktif yang diuji",
-    "builderNoneEligible": "Tiada formula sedia digunakan. Uji dan aktifkan formula dalam Pembina Formula Gaji.",
+    "builderNoFormula": "Pilih formula yang disimpan",
+    "builderNoneEligible": "Tiada formula disimpan. Cipta dan simpan formula dalam Pembina Formula Gaji.",
     "builderSavedUnavailable": "{formulaId} (pilihan disimpan, tidak tersedia buat masa ini)",
     "builderFormula": "ID formula",
     "kind_formula_builder": "Pembina Formula Gaji"
@@ -26901,7 +26901,7 @@
       "directSuperior": "Penyelia Langsung",
       "selectedEmployees": "Pekerja Dipilih",
       "depth": "Kedalaman penyelia",
-      "depthOption": "Penyelia Langsung {number}",
+      "depthOption": "Pegawai Atasan Tahap {number}",
       "depthHelp": "Kedalaman dikira daripada pemohon, berasingan daripada peringkat kelulusan lain.",
       "hrAlternative": "Tawarkan alternatif HR yang jelas untuk peringkat penyelia ini",
       "selectedHelp": "Setiap pekerja dipilih tetap diperlukan. Untuk menggantikannya kemudian, HR mesti merekodkan sebab bagi perubahan pada slot tertunggak itu.",
@@ -26959,7 +26959,18 @@
       "noEmployees": "Tiada rekod pekerjaan dalam syarikat ini atau syarikat induk yang dibenarkan.",
       "noActiveEmployees": "Tiada pekerjaan yang memenuhi syarat tarikh dan status aktif semasa.",
       "noLinkedLogin": "Pekerja tersedia tetapi tiada log masuk terpaut yang aktif. HR perlu menyemak pautan akaun sebelum mereka boleh meluluskan."
-    }
+    },
+    "chooseCompanies": "Pilih syarikat",
+    "searchCompanies": "Cari syarikat yang dibenarkan",
+    "removeCompany": "Buang {value}",
+    "sharedCompanyHelp": "Perubahan aliran kerja bersama ini terpakai kepada semua syarikat yang dipilih.",
+    "hierarchyWarning": "Sesetengah hubungan pelaporan tidak lengkap. Aliran kerja yang sah boleh disimpan; permohonan terjejas mesti mempunyai semua pelulus yang diperlukan.",
+    "loadingEmployees": "Memuatkan pekerja…",
+    "retryEmployees": "Cuba lagi",
+    "notEligibleForCompanies": "Tidak layak meluluskan untuk semua syarikat terpilih. Semak pekerjaan, akaun log masuk dan hak kelulusan.",
+    "noEmployeeMatches": "Tiada pekerja sepadan dengan carian.",
+    "previousEmployees": "Pekerja sebelumnya",
+    "nextEmployees": "Lagi pekerja"
   },
   "attendanceHistory": {
     "title": "Sejarah Permohonan",
@@ -31456,6 +31467,7 @@
     "contextUnavailable": "Sesetengah bukti penempatan atau gred bertarikh tidak tersedia. Data induk semasa tidak digunakan sebagai pengganti.",
     "company": "Syarikat",
     "allCompanies": "Semua syarikat dipilih",
+    "allPermittedCompanies": "Semua syarikat yang dibenarkan",
     "department": "Jabatan",
     "allDepartments": "Semua jabatan dibenarkan",
     "generate": "Jana",
@@ -31501,7 +31513,9 @@
       "variancePct": "Perbezaan %",
       "reason": "Sebab",
       "effectiveDate": "Tarikh berkuat kuasa",
-      "remarks": "Catatan"
+      "remarks": "Catatan",
+      "comparisonStatus": "Status Perbandingan",
+      "comparisonResults": "Hasil Perbandingan"
     },
     "reasons": {
       "noChange": "Tiada perubahan",
@@ -31579,7 +31593,20 @@
       "draft": "Draf",
       "processed": "Diproses",
       "closed": "Ditutup"
-    }
+    },
+    "reconciliationTitle": "Rekonsiliasi Gaji",
+    "summaryNetPay": "Asas ringkasan pekerja: Gaji Bersih yang direkodkan",
+    "allPayCycles": "Semua Kitaran Gaji",
+    "basicView": "Paparan Asas",
+    "statusVariance": "Perbezaan",
+    "statusNoVariance": "Tiada Perbezaan",
+    "statusNewJoiner": "Pekerja Baharu",
+    "statusLeaver": "Berhenti / Ditamatkan",
+    "statusOnePeriod": "Bayaran satu tempoh — semakan HR",
+    "backToReconciliation": "Kembali ke Rekonsiliasi Gaji",
+    "searchPayItems": "Cari Item Gaji",
+    "removePayItem": "Buang {value}",
+    "newAmount": "Baharu"
   },
   "loginPresentation": {
     "headline": "Warga anda. Kerja anda. Satu tempat.",
@@ -33519,10 +33546,10 @@
     "currentPayItem": "Item gaji semasa",
     "input": "Input contoh",
     "testSaved": "Uji semakan tersimpan",
-    "saveBeforeTest": "Simpan perubahan sebelum menguji atau mengaktifkan.",
+    "saveBeforeTest": "Simpan perubahan sebelum menguji.",
     "passed": "Lulus",
     "failed": "Gagal",
-    "staleReceipt": "Keputusan ini tidak boleh mengaktifkan semakan dan konteks semasa. Uji semula.",
+    "staleReceipt": "Ujian ini untuk versi atau konteks lain. Uji lagi jika perlu.",
     "working": "Sedang diproses…",
     "save": "Simpan semakan",
     "saved": "Semakan disimpan.",

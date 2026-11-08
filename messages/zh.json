@@ -15750,8 +15750,8 @@
     "builderRate": "倍率",
     "builderOrdinaryRate": "普通费率除数",
     "builderContextHint": "仅设置此公式使用的绑定。请在公式构建器中选择员工、月份及周期测试已保存公式。",
-    "builderNoFormula": "选择已启用且已测试的公式",
-    "builderNoneEligible": "目前没有可用的公式。请在薪资公式生成器中测试并启用公式。",
+    "builderNoFormula": "选择已保存的公式",
+    "builderNoneEligible": "没有已保存的公式。请在薪资公式编辑器中创建并保存公式。",
     "builderSavedUnavailable": "{formulaId}（已保存，目前不可用）",
     "builderFormula": "公式编号",
     "kind_formula_builder": "薪资公式构建器"
@@ -26901,7 +26901,7 @@
       "directSuperior": "直属上级",
       "selectedEmployees": "指定员工",
       "depth": "上级层级",
-      "depthOption": "第 {number} 级直属上级",
+      "depthOption": "第{number}级直属上司",
       "depthHelp": "从申请人开始计算层级，与其他审批级别相互独立。",
       "hrAlternative": "为此上级审批级别明确提供 HR 备选",
       "selectedHelp": "每位指定员工均为必需。如需更换人员，HR 必须对该待处理席位记录更换理由。",
@@ -26959,7 +26959,18 @@
       "noEmployees": "本公司及获准的上级公司中没有任职记录。",
       "noActiveEmployees": "目前没有符合任职日期和有效状态要求的员工。",
       "noLinkedLogin": "存在员工，但都没有有效的关联登录账号。请 HR 检查账号关联后再将他们设为审批人。"
-    }
+    },
+    "chooseCompanies": "选择公司",
+    "searchCompanies": "搜索有权管理的公司",
+    "removeCompany": "移除{value}",
+    "sharedCompanyHelp": "对此共享流程的修改将应用于所有选定公司。",
+    "hierarchyWarning": "部分汇报关系不完整。有效的流程仍可保存；受影响申请必须先确定所有必需审批人才能继续。",
+    "loadingEmployees": "正在加载员工…",
+    "retryEmployees": "重试",
+    "notEligibleForCompanies": "不具备为所有选定公司审批的资格。请检查任职、关联登录及公司审批权限。",
+    "noEmployeeMatches": "没有符合搜索条件的员工。",
+    "previousEmployees": "上一页员工",
+    "nextEmployees": "更多员工"
   },
   "attendanceHistory": {
     "title": "申请历史",
@@ -31456,6 +31467,7 @@
     "contextUnavailable": "部分历史组织或职级依据不可用，未用当前主数据替代。",
     "company": "公司",
     "allCompanies": "所有已选公司",
+    "allPermittedCompanies": "所有获授权的公司",
     "department": "部门",
     "allDepartments": "所有获授权部门",
     "generate": "生成",
@@ -31501,7 +31513,9 @@
       "variancePct": "差额 %",
       "reason": "原因",
       "effectiveDate": "生效日期",
-      "remarks": "备注"
+      "remarks": "备注",
+      "comparisonStatus": "对比状态",
+      "comparisonResults": "对比结果"
     },
     "reasons": {
       "noChange": "无变化",
@@ -31579,7 +31593,20 @@
       "draft": "草稿",
       "processed": "已处理",
       "closed": "已关闭"
-    }
+    },
+    "reconciliationTitle": "薪资对账",
+    "summaryNetPay": "员工汇总依据：已记录的实发工资",
+    "allPayCycles": "所有薪资周期",
+    "basicView": "基本视图",
+    "statusVariance": "有差异",
+    "statusNoVariance": "无差异",
+    "statusNewJoiner": "新入职",
+    "statusLeaver": "离职 / 终止雇佣",
+    "statusOnePeriod": "仅一个期间有付款 — 待人事核查",
+    "backToReconciliation": "返回薪资对账",
+    "searchPayItems": "搜索薪资项目",
+    "removePayItem": "移除{value}",
+    "newAmount": "新增"
   },
   "loginPresentation": {
     "headline": "员工、工作，尽在一处。",
@@ -33519,10 +33546,10 @@
     "currentPayItem": "当前薪资项目",
     "input": "示例输入值",
     "testSaved": "测试已保存版本",
-    "saveBeforeTest": "测试或启用前请先保存更改。",
+    "saveBeforeTest": "请先保存修改再测试。",
     "passed": "通过",
     "failed": "失败",
-    "staleReceipt": "此结果无法启用当前版本及上下文，请重新测试。",
+    "staleReceipt": "此测试属于其他版本或情境。需要时可重新测试。",
     "working": "处理中…",
     "save": "保存版本",
     "saved": "版本已保存。",

@@ -1,4 +1,5 @@
 'use client';
+import {useRouter} from 'next/navigation';
 import {ProtectedInputHelp} from '@/components/assistant/protected-input-help';
 
 /**
@@ -227,6 +228,8 @@ export function PayRuleEditor({
   const [lastPreviewIdentity,setLastPreviewIdentity]=useState<string|null>(null);
   const [reviewedPreviewIdentity,setReviewedPreviewIdentity]=useState<string|null>(null);
   const tc = useTranslations('payComponents');
+  const router=useRouter();
+  useEffect(()=>{const refresh=()=>router.refresh();window.addEventListener('focus',refresh);return ()=>window.removeEventListener('focus',refresh);},[router]);
   const [kind, setKind] = useState<PayRuleKind>(initialRule?.kind ?? pendingInputKind ?? 'fixed');
   const [formulaId,setFormulaId]=useState(initialRule?.kind==='formula_builder'?initialRule.formulaId:'');
   const [builderContext,setBuilderContext]=useState<{ordinaryRate?:string;hoursPerDay?:string;rate?:string}>(formulaContext??{});

@@ -1,5 +1,6 @@
 'use client';
 
+import {ApproverPicker} from './approver-picker';
 import { useEffect, useRef } from 'react';
 import { useTranslations } from 'next-intl';
 import { Button, inputCls } from '@/components/ui';
@@ -60,16 +61,8 @@ export function AttendanceStageEditorV3({ id, stages, employees, onChange, probl
                 </> : <div className="space-y-3">
                     <p className="text-xs text-muted-foreground">{v3('selectedHelp')}</p>
                     {level.hrAlternative && <p role="alert" className="text-sm text-destructive">{v3('groupHrRefused')}</p>}
-                    <ol className="space-y-2">{selected.map((employmentId, participantIndex) => <li key={`${employmentId}-${participantIndex}`} className="flex flex-wrap items-center gap-2 rounded border border-border p-2 text-sm">
-                        <span className="min-w-0 flex-1 break-words">{participantIndex + 1}. {personLabel(employmentId)}</span><div className="flex flex-wrap gap-2">
-                            <Button type="button" variant="secondary" disabled={participantIndex === 0} aria-label={v3('personUp', { name: personLabel(employmentId) })} onClick={() => movePerson(participantIndex, participantIndex - 1)}>{t('moveUp')}</Button>
-                            <Button type="button" variant="secondary" disabled={participantIndex === selected.length - 1} aria-label={v3('personDown', { name: personLabel(employmentId) })} onClick={() => movePerson(participantIndex, participantIndex + 1)}>{v3('moveDown')}</Button>
-                            <Button type="button" variant="secondary" aria-label={v3('removePerson', { name: personLabel(employmentId) })} onClick={() => patch(levelIndex, { ...level, source: { ...source, employmentIds: selected.filter((_, i) => i !== participantIndex) } })}>{t('remove')}</Button>
-                        </div>
-                    </li>)}</ol>
-                    <label className="block text-sm">{v3('addPerson')}<select className={inputCls} value="" name={`${id}-add-${levelIndex}`} disabled={selected.length >= ATTENDANCE_V3_LIMITS.participantsPerLevel || total >= ATTENDANCE_V3_LIMITS.participantsPerWorkflow} onChange={event => { if (event.target.value) patch(levelIndex, { ...level, source: { ...source, employmentIds: [...selected, event.target.value] } }); }}>
-                        <option value="">{v3('choosePerson')}</option>{employees.filter(employee => !selected.includes(employee.id)).map(employee => <option key={employee.id} value={employee.id}>{personLabel(employee.id)}</option>)}
-                    </select></label>
+                    <ApproverPicker value={selected} employees={employees} onChange={employmentIds=>patch(levelIndex,{...level,source:{kind:'specific_employee',employmentIds}})}/>
+
                 </div>}
                 {levelProblems.length > 0 && <ul id={`${id}-errors-${levelIndex}`} className="space-y-1 text-sm text-destructive">{levelProblems.map((problem, index) => <li key={index}>{describe(problem)}</li>)}</ul>}
             </li>;
