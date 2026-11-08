@@ -4,6 +4,7 @@ import postgres from 'postgres';
 import {createHash} from 'node:crypto';
 import {expect} from 'vitest';
 import {z} from 'zod';
+import {controlledPolicyWait} from './rewards-audit-policy-controlled-wait';
 import {rewardsAuditCanonicalTruthContract,rewardsAuditPolicyReplacementBodies} from './rewards-audit-policy-contract';
 import {createRewardsAuditFixtureOwner,type RewardsAuditOwnerDependencies} from './rewards-audited-read-owner-factory';
 const canonicalPath='core/audit-chain-arming.ts',source=readFileSync('test/prototypes/rewards-audited-read.sql','utf8');
@@ -113,7 +114,7 @@ export async function rewardsAuditPolicyFixtureOwner(dependencies:RewardsAuditOw
    await tx`insert into reward_audit_policy_private.trigger_contract select t.oid,to_jsonb(t)from pg_trigger t where t.tgrelid in(select object_oid from reward_audit_policy_private.relation_contract)`;
    await tx`update reward_audit_policy_private.config set enabled=true`;await tx`select reward_audit_policy_private.assert_profile()`;
   });installed=true;
- }catch(error){await base.close();throw error;}
+ }catch(error){await controlledPolicyWait(poison).run(async()=>{throw error;},()=>base.close());throw error;}
  return{
   ...base,
   connect(kind:'reader'|'projector'){const connection=postgres(kind==='reader'?base.readerUrl:base.projectorUrl,{max:1,connect_timeout:2,connection:{statement_timeout:20000,lock_timeout:300}});sockets.add(connection);return connection;},
@@ -126,16 +127,14 @@ export async function rewardsAuditPolicyFixtureOwner(dependencies:RewardsAuditOw
    const [row]=await owner.client`select hashtextextended(${'rewards-policy-probe:'+base.database+':'+tenantId},0)::text as key`;const key=z.string().regex(/^-?[0-9]{1,19}$/).parse(row.key);
    const body="\nBEGIN IF p_tenant='"+tenantId+"'::uuid THEN PERFORM pg_advisory_xact_lock('"+key+"'::bigint);END IF;END\n";
    probeIntent={fixed,body}; // owned intent is retained BEFORE possible COMMIT
-   try{await replaceProbeCheckpoint(fixed,body);await work(key);}
-   finally{try{await restoreProbeCheckpoint();}catch(error){poison(error instanceof Error?error:Error('Native probe restoration uncertain',{cause:error}));throw error;}}
+   await controlledPolicyWait(poison).run(async()=>{await replaceProbeCheckpoint(fixed,body);await work(key);},restoreProbeCheckpoint);
   },
   /** Controlled unsafe proposal counterexample, never an installed/accepted variant. */
   async withFreshFloorCounterexample(work:()=>Promise<void>){
    const signature='app._domain_event_next(uuid,boolean)',fixed=changed.find(row=>row.signature===signature);if(!fixed)throw Error('Owned fixed audit frame absent');
    const fresh=one(fixed.body,'native_floor:=reward_audit_policy_private.floor_for_xact(p_tenant);','PERFORM reward_audit_policy_private.assert_floor_profile();native_floor:=reward_audit_policy_private.durable_floor(p_tenant);');
    counterexampleIntent={fixed,fresh}; // intent precedes the native commit boundary
-   try{await replaceNext(fixed,fresh);await work();}
-   finally{try{await restoreCounterexample();}catch(error){poison(error instanceof Error?error:Error('Native counterexample restoration uncertain',{cause:error}));throw error;}}
+   await controlledPolicyWait(poison).run(async()=>{await replaceNext(fixed,fresh);await work();},restoreCounterexample);
   },
   /** Private owner fixture configuration, not installed startup provenance or an API. */
   async protectedFixtureFallback(value:boolean){await owner.client`select reward_audit_policy_private.assert_profile()`;await owner.client`update reward_audit_policy_private.config set fallback_armed=${value}`;},

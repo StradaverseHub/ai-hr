@@ -1,5 +1,6 @@
 /** Fixed test child. No app/owner URL, environment or SQL crosses its IPC. */
 import {spawn} from 'node:child_process';
+import {controlledPolicyWait} from './rewards-audit-policy-controlled-wait';
 import {z} from 'zod';
 import type {SessionContext} from '../../db/client';
 import type {RewardsAuditPolicyFixtureOwner} from './rewards-audit-policy-owner';
@@ -16,7 +17,10 @@ export async function rewardPolicyReaderProcess(fixture:RewardsAuditPolicyFixtur
  const child=spawn(process.execPath,['--import','tsx','test/prototypes/rewards-audit-policy-reader-child.ts'],{cwd:process.cwd(),env:{PATH:process.env.PATH,TZ:'UTC',LANG:'en_US.UTF-8',GITHUB_ACTIONS:'true',RUNNER_ENVIRONMENT:'github-hosted',GITHUB_REPOSITORY:'StradaverseHub/ai-hr'},stdio:['ignore','pipe','pipe','ipc']});
  let outputBytes=0,invalid=false,exited=false;const messages:Message[]=[],wake=new Set<()=>void>();
  const abort=()=>{if(!exited)child.kill('SIGKILL');};
- const closed=new Promise<{code:number|null;signal:NodeJS.Signals|null}>((resolve,reject)=>{child.once('error',reject);child.once('close',(code,signal)=>{exited=true;resolve({code,signal});for(const call of wake)call();});});void closed.catch(()=>{});
+ // An error event is not the close/drain witness. Retain it until the real
+ // close event, so startup failure cannot release ownership before teardown.
+ let childError:unknown;
+ const closed=new Promise<{code:number|null;signal:NodeJS.Signals|null}>((resolve,reject)=>{child.once('error',error=>{childError=error;});child.once('close',(code,signal)=>{exited=true;if(childError!==undefined)reject(childError);else resolve({code,signal});for(const call of wake)call();});});void closed.catch(()=>{});
  let stopping:Promise<void>|undefined;const stop=()=>stopping??=Promise.resolve().then(async()=>{abort();try{await closed;if(invalid||outputBytes)throw Error('Unexpected policy child output/protocol');}finally{signal.removeEventListener('abort',abort);}});
  // Owned stop registration precedes ready/SQL/message awaits and all callbacks.
  registerStop(stop);signal.addEventListener('abort',abort,{once:true});if(signal.aborted)abort();
@@ -28,7 +32,7 @@ export async function rewardPolicyReaderProcess(fixture:RewardsAuditPolicyFixtur
   wake.add(check);check();
  });}
  const common={database:fixture.database,readerUrl:fixture.readerUrl,tenantId,userId,roles,grants};
- try{await wait('ready');}catch(error){await stop();throw error;}
+ try{await wait('ready');}catch(error){await controlledPolicyWait().run(async()=>{throw error;},stop);throw error;}
  return{child,closed,wait,stop,
   read(year:number,pause:'before-commit'|'after-commit'){signal.throwIfAborted();child.send({...common,kind:'read',year,pause});},
   reconcile(receiptId:string){signal.throwIfAborted();child.send({...common,kind:'reconcile',receiptId});},

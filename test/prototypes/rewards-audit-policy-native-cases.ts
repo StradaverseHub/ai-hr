@@ -32,6 +32,7 @@ import {rewardsAuditPolicyController} from './rewards-audit-policy-controller';
 import {rewardsAuditPolicyFixtureOwner,type RewardsAuditPolicyFixtureOwner} from './rewards-audit-policy-owner';
 import {rewardsAuditCanonicalTruthContract} from './rewards-audit-policy-contract';
 import {rewardPolicyReaderProcess} from './rewards-audit-policy-reader-process';
+import {controlledPolicyWait} from './rewards-audit-policy-controlled-wait';
 
 export const rewardsAuditPolicyNativeCaseNames=[
  'constructs one real bounded injected owner with exact full native PRE/profile and generated canonical truth',
@@ -96,7 +97,7 @@ export function registerRewardsAuditPolicyNativeCases(){
   const spy=vi.spyOn(database,'withTenant').mockImplementation(<T>(ctx:SessionContext,run:(tx:database.Tx)=>Promise<T>,options?:Parameters<typeof database.withTenant>[2])=>realWithTenant(ctx,async tx=>{
    await tx.execute(sql`set local statement_timeout='20s'`);await tx.execute(sql`set local lock_timeout='300ms'`);return run(tx);
   },options));
-  try{await work(context);}finally{spy.mockRestore();}
+  await controlledPolicyWait(ownership.poison).run(()=>work(context),async()=>{spy.mockRestore();});
  }));}
  async function base(){await owned().fixture.finishCase();await owned().fixture.reset();await resetDb();const b=await seedBase();for(const module of ['rewards','assistant','payroll','country-my'])await setModule(b.tenantId,module,'active');await setSetting(b.tenantId,'audit.hash_chain_enabled',false);const ctx=adminCtx(b);await grantAssistant(ctx,{appUserId:b.adminUserId});return{b,ctx};}
  async function setup(){
@@ -182,32 +183,31 @@ export function registerRewardsAuditPolicyNativeCases(){
  });
  nativeIt(7,async context=>{
   const f=await setup(),connection=app(),ready=deferred(),release=deferred();let xid='';const backend:{value?:{pid:number;started:string}}={};const abort=()=>release.resolve();context.signal.addEventListener('abort',abort,{once:true});
-  const pending=connection.begin(async tx=>{await stamp(tx,f.ctx);await tx`insert into public.domain_event(tenant_id,aggregate_type,aggregate_id,event_type,actor_type,actor_id)values(${f.b.tenantId}::uuid,'policy-fixture',${randomUUID()}::uuid,'policy.pending-frame','user',${f.ctx.userId!}::uuid)`;
-   const [physical]=await tx`select pg_current_xact_id()::text as xid,pg_backend_pid()as pid,(select backend_start::text from pg_stat_activity where pid=pg_backend_pid())as started`;xid=physical.xid;backend.value={pid:physical.pid,started:physical.started};ready.resolve();await release.promise;context.signal.throwIfAborted();});void pending.catch(()=>{});
-  try{await Promise.race([ready.promise,pending.then(()=>{throw Error('Active native frame exited before observation');})]);
+  const control=controlledPolicyWait(ownership.poison),pending=control.start(()=>connection.begin(async tx=>{await stamp(tx,f.ctx);await tx`insert into public.domain_event(tenant_id,aggregate_type,aggregate_id,event_type,actor_type,actor_id)values(${f.b.tenantId}::uuid,'policy-fixture',${randomUUID()}::uuid,'policy.pending-frame','user',${f.ctx.userId!}::uuid)`;
+   const [physical]=await tx`select pg_current_xact_id()::text as xid,pg_backend_pid()as pid,(select backend_start::text from pg_stat_activity where pid=pg_backend_pid())as started`;xid=physical.xid;backend.value={pid:physical.pid,started:physical.started};ready.resolve();await release.promise;context.signal.throwIfAborted();}));
+  await control.run(async()=>{await control.ready(ready.promise,pending,context.signal,'Active native frame exited before observation');
    expect((await owner.client`select count(*)::int as n from reward_audit_policy_private.floor_frame where root_xid=${xid}::xid8`)[0].n).toBe(0);
-   await owner.client`select reward_audit_policy_private.cleanup_frames(64)`;release.resolve();await pending;
+   await owner.client`select reward_audit_policy_private.cleanup_frames(64)`;release.resolve();await pending.value();
    expect((await owner.client`select count(*)::int as n from reward_audit_policy_private.floor_frame where root_xid=${xid}::xid8`)[0].n).toBe(1);
    expect((await owner.client`select reward_audit_policy_private.cleanup_frames(64)as n`)[0].n).toBe(1);expect((await owner.client`select count(*)::int as n from reward_audit_policy_private.floor_frame`)[0].n).toBe(0);
    if(!backend.value)throw Error('Actual active backend identity absent');expect((await connection`select pg_backend_pid()as pid,backend_start::text as started from pg_stat_activity where pid=pg_backend_pid()`)[0]).toEqual(backend.value);
    await owner.client.begin(async tx=>{await tx`select app._domain_event_next(${f.b.tenantId}::uuid)`;expect((await tx`select reward_audit_policy_private.cleanup_frames(64)as n`)[0].n).toBe(0);expect((await tx`select count(*)::int as n from reward_audit_policy_private.floor_frame where root_xid=pg_current_xact_id()`)[0].n).toBe(1);});
-  }finally{release.resolve();await pending;context.signal.removeEventListener('abort',abort);}
+  },async()=>{release.resolve();},()=>context.signal.removeEventListener('abort',abort));
  });
  nativeIt(8,async()=>{
   const f=await setup();await setSetting(f.b.tenantId,'audit.hash_chain_enabled',true);await owned().family.libraries(f.ctx,'salary',f.year);await setSetting(f.b.tenantId,'audit.hash_chain_enabled',false);
   await owner.client`alter role ai_hr_reward_audit_read nologin`;
-  try{await refusal(owned().family.libraries(f.ctx,'salary',f.year),'55000');expect((await event(app(),f.ctx,'policy.reader-unavailable')).chain_seq).toBe(1);}
-  finally{await owner.client`alter role ai_hr_reward_audit_read login`;await owner.client`select reward_audit_policy_private.assert_profile()`;}
+  await controlledPolicyWait(ownership.poison).run(async()=>{await refusal(owned().family.libraries(f.ctx,'salary',f.year),'55000');expect((await event(app(),f.ctx,'policy.reader-unavailable')).chain_seq).toBe(1);},async()=>{await owner.client`alter role ai_hr_reward_audit_read login`;await owner.client`select reward_audit_policy_private.assert_profile()`;});
  });
  nativeIt(9,async context=>{
   const f=await setup(),old=app(),ready=deferred(),release=deferred();const abort=()=>release.resolve();context.signal.addEventListener('abort',abort,{once:true});
-  const pending=old.begin('isolation level repeatable read',async tx=>{await stamp(tx,f.ctx);await tx`select count(*)from public.domain_event where tenant_id=${f.b.tenantId}::uuid`;ready.resolve();await release.promise;context.signal.throwIfAborted();
-   const [row]=await tx`insert into public.domain_event(tenant_id,aggregate_type,aggregate_id,event_type,actor_type,actor_id)values(${f.b.tenantId}::uuid,'policy-fixture',${randomUUID()}::uuid,'policy.stale-rr-must-refuse','user',${f.ctx.userId!}::uuid)returning chain_seq::int as seq`;return row;});void pending.catch(()=>{});
-  try{await Promise.race([ready.promise,pending.then(()=>{throw Error('Old RR carrier exited before controlled floor COMMIT');})]);await setSetting(f.b.tenantId,'audit.hash_chain_enabled',true);await owned().family.libraries(f.ctx,'salary',f.year);await setSetting(f.b.tenantId,'audit.hash_chain_enabled',false);release.resolve();await refusal(pending,'40001');
+  const control=controlledPolicyWait(ownership.poison),pending=control.start(()=>old.begin('isolation level repeatable read',async tx=>{await stamp(tx,f.ctx);await tx`select count(*)from public.domain_event where tenant_id=${f.b.tenantId}::uuid`;ready.resolve();await release.promise;context.signal.throwIfAborted();
+   const [row]=await tx`insert into public.domain_event(tenant_id,aggregate_type,aggregate_id,event_type,actor_type,actor_id)values(${f.b.tenantId}::uuid,'policy-fixture',${randomUUID()}::uuid,'policy.stale-rr-must-refuse','user',${f.ctx.userId!}::uuid)returning chain_seq::int as seq`;return row;}));
+  await control.run(async()=>{await control.ready(ready.promise,pending,context.signal,'Old RR carrier exited before controlled floor COMMIT');await setSetting(f.b.tenantId,'audit.hash_chain_enabled',true);await owned().family.libraries(f.ctx,'salary',f.year);await setSetting(f.b.tenantId,'audit.hash_chain_enabled',false);release.resolve();control.consume(pending,await refusal(pending.value(),'40001'));
    expect((await owner.client`select count(*)::int as n from public.domain_event where tenant_id=${f.b.tenantId}::uuid and event_type='policy.stale-rr-must-refuse'`)[0].n).toBe(0);
    const fresh=app();const result=await fresh.begin('isolation level repeatable read',async tx=>{await stamp(tx,f.ctx);return(await tx`insert into public.domain_event(tenant_id,aggregate_type,aggregate_id,event_type,actor_type,actor_id)values(${f.b.tenantId}::uuid,'policy-fixture',${randomUUID()}::uuid,'policy.fresh-rr-floor','user',${f.ctx.userId!}::uuid)returning chain_seq::int as seq`)[0];});expect(result.seq).toBe(1);
    expect((await owner.client`select count(*)::int as n from reward_audit_policy_private.floor_marker where tenant_id=${f.b.tenantId}::uuid`)[0].n).toBe(1);
-  }finally{release.resolve();await Promise.allSettled([pending]);context.signal.removeEventListener('abort',abort);}
+  },async()=>{release.resolve();},()=>context.signal.removeEventListener('abort',abort));
  });
  nativeIt(10,async()=>{
   const f=await setup();await owner.client.begin(async tx=>{
@@ -257,15 +257,15 @@ export function registerRewardsAuditPolicyNativeCases(){
     const identity=await rootIdentity(tx);await tx`set constraints all immediate`;
     expect((await tx`select app._domain_event_next(${f.b.tenantId}::uuid)as pre`)[0].pre).toEqual({armed:false,priorSeq:null,priorHash:null});
     await tx`savepoint observe_restored_marker_timing`;
-    try{
+    await controlledPolicyWait(ownership.poison).run(async()=>{
      // A leaked DEFERRED state would make THIS INSERT succeed, so the
      // refusal assertion fails before any later SET CONSTRAINTS or COMMIT.
      await refusal(tx`insert into reward_audit_policy_private.floor_marker(tenant_id,policy_version)values(${f.b.tenantId}::uuid,1)`,'55000');
-    }finally{
+    },async()=>{
      // Even the deliberately broken-state regression cannot commit a fake
      // floor: always remove its row and queued trigger before the outer TX.
      await tx`rollback to savepoint observe_restored_marker_timing`;await tx`release savepoint observe_restored_marker_timing`;
-    }
+    });
     expect((await tx`select 1 as usable,not exists(select 1 from reward_audit_policy_private.floor_marker where tenant_id=${f.b.tenantId}::uuid)as no_marker`)[0]).toEqual({usable:1,no_marker:true});return identity;
    });
    await exactFrames(f.b.tenantId,ownedBefore,[ownRoot]);
@@ -281,12 +281,12 @@ export function registerRewardsAuditPolicyNativeCases(){
   await setSetting(f.b.tenantId,'audit.hash_chain_enabled',true);
   const older=reader(),observed=deferred(),finalize=deferred();let olderId:string|undefined;
   const abort=()=>finalize.resolve();context.signal.addEventListener('abort',abort,{once:true});
-  const stale=older.begin('isolation level repeatable read',async tx=>{await stamp(tx,f.ctx);const [row]=await tx`select reward_audit_read.begin_read('libraries','salary',${f.year})as id`;if(typeof row.id!=='string')throw Error('Actual own old receipt identity required');olderId=row.id;observed.resolve();await finalize.promise;context.signal.throwIfAborted();return tx`select * from reward_audit_read.finalize_read(${row.id}::uuid)`;});void stale.catch(()=>{});
+  const control=controlledPolicyWait(ownership.poison),stale=control.start(()=>older.begin('isolation level repeatable read',async tx=>{await stamp(tx,f.ctx);const [row]=await tx`select reward_audit_read.begin_read('libraries','salary',${f.year})as id`;if(typeof row.id!=='string')throw Error('Actual own old receipt identity required');olderId=row.id;observed.resolve();await finalize.promise;context.signal.throwIfAborted();return tx`select * from reward_audit_read.finalize_read(${row.id}::uuid)`;}));
   let firstId:string|undefined;
-  try{
-   await Promise.race([observed.promise,stale.then(()=>{throw Error('Older own read exited before genuine first receipt');})]);
-   firstId=(await owned().family.libraries(f.ctx,'salary',f.year)).receipt.id;finalize.resolve();await refusal(stale,'40001');
-  }finally{finalize.resolve();await Promise.allSettled([stale]);context.signal.removeEventListener('abort',abort);}
+  await control.run(async()=>{
+   await control.ready(observed.promise,stale,context.signal,'Older own read exited before genuine first receipt');
+   firstId=(await owned().family.libraries(f.ctx,'salary',f.year)).receipt.id;finalize.resolve();control.consume(stale,await refusal(stale.value(),'40001'));
+  },async()=>{finalize.resolve();},()=>context.signal.removeEventListener('abort',abort));
   expect((await owner.client`select count(*)::int as n from reward_audit_private.receipt where id=${olderId!}::uuid`)[0].n).toBe(0);
   expect((await reader().begin('isolation level repeatable read read only',async tx=>{await stamp(tx,f.ctx);return tx`select reward_audit_read.reconcile_receipt(${olderId!}::uuid)as value`;}))[0].value).toBeNull();
   const before=Array.from(await owner.client`select * from reward_audit_policy_private.floor_marker where tenant_id=${f.b.tenantId}::uuid`);
@@ -301,19 +301,18 @@ export function registerRewardsAuditPolicyNativeCases(){
   const f=await setup(),first=app(),second=app(),holder=app(),before=await allFrames(f.b.tenantId),roots:NativeRoot[]=[];
   const firstIdentity=await backend(first),secondIdentity=await backend(second),holderIdentity=await backend(holder);
   await owned().fixture.withProbeBarrier(f.b.tenantId,async key=>{
-   await holder`select pg_advisory_lock(${key}::text::bigint)`;let a:Promise<unknown>|undefined,b:Promise<unknown>|undefined;
-   try{
-    a=first.begin('isolation level repeatable read',async tx=>{await stamp(tx,f.ctx);roots.push(await rootIdentity(tx));return(await tx`insert into public.domain_event(tenant_id,aggregate_type,aggregate_id,event_type,actor_type,actor_id)values(${f.b.tenantId}::uuid,'policy-fixture',${randomUUID()}::uuid,'policy.two-rr-first','user',${f.ctx.userId!}::uuid)returning chain_seq::int as seq`)[0];});void a.catch(()=>{});
+   const control=controlledPolicyWait(ownership.poison);
+   await control.run(async()=>{
+    await holder`select pg_advisory_lock(${key}::text::bigint)`;
+    const a=control.start(()=>first.begin('isolation level repeatable read',async tx=>{await stamp(tx,f.ctx);roots.push(await rootIdentity(tx));return(await tx`insert into public.domain_event(tenant_id,aggregate_type,aggregate_id,event_type,actor_type,actor_id)values(${f.b.tenantId}::uuid,'policy-fixture',${randomUUID()}::uuid,'policy.two-rr-first','user',${f.ctx.userId!}::uuid)returning chain_seq::int as seq`)[0];}));
     await blocking(context,firstIdentity,holderIdentity);
-    b=second.begin('isolation level repeatable read',async tx=>{await stamp(tx,f.ctx);roots.push(await rootIdentity(tx));return(await tx`insert into public.domain_event(tenant_id,aggregate_type,aggregate_id,event_type,actor_type,actor_id)values(${f.b.tenantId}::uuid,'policy-fixture',${randomUUID()}::uuid,'policy.two-rr-second','user',${f.ctx.userId!}::uuid)returning chain_seq::int as seq`)[0];});void b.catch(()=>{});
+    const b=control.start(()=>second.begin('isolation level repeatable read',async tx=>{await stamp(tx,f.ctx);roots.push(await rootIdentity(tx));return(await tx`insert into public.domain_event(tenant_id,aggregate_type,aggregate_id,event_type,actor_type,actor_id)values(${f.b.tenantId}::uuid,'policy-fixture',${randomUUID()}::uuid,'policy.two-rr-second','user',${f.ctx.userId!}::uuid)returning chain_seq::int as seq`)[0];}));
     await blocking(context,secondIdentity,firstIdentity);
     expect((await holder`select pg_advisory_unlock(${key}::text::bigint)as released`)[0].released).toBe(true);
-    expect(await a).toEqual({seq:null});expect(await b).toEqual({seq:null});
+    expect(await a.value()).toEqual({seq:null});expect(await b.value()).toEqual({seq:null});
     expect(await owner.client`select tenant_id from reward_audit_policy_private.floor_marker where tenant_id=${f.b.tenantId}::uuid`).toHaveLength(0);
     expect(roots).toHaveLength(2);await exactFrames(f.b.tenantId,before,roots);
-   }finally{
-    await holder`select pg_advisory_unlock_all()`;await Promise.allSettled([a,b].filter((value):value is Promise<unknown>=>value!==undefined));
-   }
+   },async()=>{await holder`select pg_advisory_unlock_all()`;});
   });
  });
  nativeIt(15,async context=>{
@@ -321,28 +320,27 @@ export function registerRewardsAuditPolicyNativeCases(){
   const readerIdentity=await backend(readerConnection),writerIdentity=await backend(writer),holderIdentity=await backend(holder);
   await setSetting(f.b.tenantId,'audit.hash_chain_enabled',true);
   const abort=()=>finalize.resolve();context.signal.addEventListener('abort',abort,{once:true});
-  const receipt=readerConnection.begin('isolation level repeatable read',async tx=>{
+  const control=controlledPolicyWait(ownership.poison),receipt=control.start(()=>readerConnection.begin('isolation level repeatable read',async tx=>{
    await stamp(tx,f.ctx);const [row]=await tx`select reward_audit_read.begin_read('libraries','salary',${f.year})as id`;if(typeof row.id!=='string')throw Error('Actual receipt admission identity required');receiptId=row.id;observed.resolve();await finalize.promise;context.signal.throwIfAborted();
    return(await tx`select * from reward_audit_read.finalize_read(${row.id}::uuid)`)[0];
-  });void receipt.catch(()=>{});
-  let command:Promise<unknown>|undefined;
-  try{
-   await Promise.race([observed.promise,receipt.then(()=>{throw Error('Actual armed read exited before controlled probe');})]);await setSetting(f.b.tenantId,'audit.hash_chain_enabled',false);
+  }));
+  await control.run(async()=>{
+   await control.ready(observed.promise,receipt,context.signal,'Actual armed read exited before controlled probe');await setSetting(f.b.tenantId,'audit.hash_chain_enabled',false);
    await owned().fixture.withProbeBarrier(f.b.tenantId,async key=>{
-    await holder`select pg_advisory_lock(${key}::text::bigint)`;
-    try{
-     command=writer.begin('isolation level repeatable read',async tx=>{await stamp(tx,f.ctx);roots.push(await rootIdentity(tx));return(await tx`insert into public.domain_event(tenant_id,aggregate_type,aggregate_id,event_type,actor_type,actor_id)values(${f.b.tenantId}::uuid,'policy-fixture',${randomUUID()}::uuid,'policy.probe-before-first-floor','user',${f.ctx.userId!}::uuid)returning chain_seq::int as seq`)[0];});void command.catch(()=>{});
+    await control.run(async()=>{
+     await holder`select pg_advisory_lock(${key}::text::bigint)`;
+     const command=control.start(()=>writer.begin('isolation level repeatable read',async tx=>{await stamp(tx,f.ctx);roots.push(await rootIdentity(tx));return(await tx`insert into public.domain_event(tenant_id,aggregate_type,aggregate_id,event_type,actor_type,actor_id)values(${f.b.tenantId}::uuid,'policy-fixture',${randomUUID()}::uuid,'policy.probe-before-first-floor','user',${f.ctx.userId!}::uuid)returning chain_seq::int as seq`)[0];}));
      await blocking(context,writerIdentity,holderIdentity);finalize.resolve();
      await blocking(context,readerIdentity,writerIdentity);
      expect((await holder`select pg_advisory_unlock(${key}::text::bigint)as released`)[0].released).toBe(true);
-     expect(await command).toEqual({seq:null});expect((await receipt).id).toBe(receiptId);
-    }finally{finalize.resolve();await holder`select pg_advisory_unlock_all()`;await Promise.allSettled([receipt,...(command?[command]:[])]);}
+     expect(await command.value()).toEqual({seq:null});expect((await receipt.value()).id).toBe(receiptId);
+    },async()=>{finalize.resolve();await holder`select pg_advisory_unlock_all()`;});
    });
    expect((await owner.client`select receipt_id from reward_audit_policy_private.floor_marker where tenant_id=${f.b.tenantId}::uuid`)[0].receipt_id).toBe(receiptId);
    expect((await owner.client`select count(*)::int as n from reward_audit_private.receipt where id=${receiptId!}::uuid`)[0].n).toBe(1);
    expect(roots).toHaveLength(1);await exactFrames(f.b.tenantId,before,roots);
    expect((await event(app(),f.ctx,'policy.fresh-after-transient-probe')).chain_seq).toBe(1);
-  }finally{finalize.resolve();await Promise.allSettled([receipt,...(command?[command]:[])]);context.signal.removeEventListener('abort',abort);}
+  },async()=>{finalize.resolve();},()=>context.signal.removeEventListener('abort',abort));
  });
  async function bankFirstFloorRace(context:TestContext,counterexample:boolean){
   const f=await setup(),pack=requirePackFor('MY');
@@ -356,12 +354,11 @@ export function registerRewardsAuditPolicyNativeCases(){
   const connection=reader(),observed=deferred(),finalize=deferred(),bankEntered=deferred(),finishBank=deferred();let bankPid=0,bankStart='',receiptId:string|undefined;
   await setSetting(f.b.tenantId,'audit.hash_chain_enabled',true);
   const abort=()=>{finalize.resolve();finishBank.resolve();};context.signal.addEventListener('abort',abort,{once:true});
-  const receipt=connection.begin('isolation level repeatable read',async tx=>{await stamp(tx,f.ctx);const [row]=await tx`select reward_audit_read.begin_read('libraries','salary',${f.year})as id`;if(typeof row.id!=='string')throw Error('Actual older armed reader required');receiptId=row.id;observed.resolve();await finalize.promise;context.signal.throwIfAborted();return(await tx`select * from reward_audit_read.finalize_read(${row.id}::uuid)`)[0];});void receipt.catch(()=>{});
-  let command:Promise<string>|undefined;
-  try{
-   await Promise.race([observed.promise,receipt.then(()=>{throw Error('Actual older reader exited before native Bank PRE');})]);await setSetting(f.b.tenantId,'audit.hash_chain_enabled',false);
+  const control=controlledPolicyWait(ownership.poison),receipt=control.start(()=>connection.begin('isolation level repeatable read',async tx=>{await stamp(tx,f.ctx);const [row]=await tx`select reward_audit_read.begin_read('libraries','salary',${f.year})as id`;if(typeof row.id!=='string')throw Error('Actual older armed reader required');receiptId=row.id;observed.resolve();await finalize.promise;context.signal.throwIfAborted();return(await tx`select * from reward_audit_read.finalize_read(${row.id}::uuid)`)[0];}));
+  await control.run(async()=>{
+   await control.ready(observed.promise,receipt,context.signal,'Actual older reader exited before native Bank PRE');await setSetting(f.b.tenantId,'audit.hash_chain_enabled',false);
    const exercise=async()=>{
-    command=database.withTenant(f.ctx,async tx=>{
+    const command=control.start(()=>database.withTenant(f.ctx,async tx=>{
      await tx.execute(sql`select app.assistant_bank_review_arm(${prepared.actionId}::uuid)`);
      const [frame]=await tx.execute<{pid:number;started:string;pre:{armed:boolean;priorSeq:null;priorHash:null};history:boolean}>(sql`select pg_backend_pid()as pid,(select backend_start::text from pg_stat_activity where pid=pg_backend_pid())as started,bank_audit_preimage as pre,exists(select 1 from pg_locks where pid=pg_backend_pid()and locktype='advisory'and granted and mode='ExclusiveLock'and objsubid=1 and classid=((hashtext(${'audit-chain:'+f.b.tenantId})::bigint>>32)&4294967295)::oid and objid=(hashtext(${'audit-chain:'+f.b.tenantId})::bigint&4294967295)::oid)as history from app.assistant_own_leave_review where id=${prepared.actionId}::uuid`);
      // Derive both physical advisory-key halves natively, including sign.
@@ -369,21 +366,21 @@ export function registerRewardsAuditPolicyNativeCases(){
      const native=await pack.statutory.setBank(f.ctx,{personId:f.person.personId,...fields},tx);
      const events=await tx.execute<{id:string}>(sql`select id from public.domain_event where tenant_id=${f.b.tenantId}::uuid and aggregate_id=${native.id}::uuid and event_type='employee.bank.updated'and xmin=pg_current_xact_id()::xid`);expect(events).toHaveLength(1);
      await tx.execute(sql`select app.assistant_assigned_review_complete(${prepared.actionId}::uuid,${Bank.action},${prepared.reviewedDigest},${events[0].id}::uuid)`);return events[0].id;
-    });void command.catch(()=>{});
-    try{
-     await Promise.race([bankEntered.promise,command.then(()=>{throw Error('Native Bank exited before real PRE witness');})]);
+    }));
+    await control.run(async()=>{
+     await control.ready(bankEntered.promise,command,context.signal,'Native Bank exited before real PRE witness');
      expect((await owner.client`select exists(select 1 from pg_stat_activity where pid=${bankPid} and backend_start=${bankStart}::text::timestamptz and usename='ai_hr_app')as actual`)[0].actual).toBe(true);
-     finalize.resolve();expect((await receipt).id).toBe(receiptId);finishBank.resolve();
-     if(counterexample){await refusal(command,'42501');expect(Array.from(await owner.client`select to_jsonb(s)as value from public.employee_statutory_my s where s.tenant_id=${f.b.tenantId}::uuid order by s.id`)).toEqual(nativeBefore);}
+     finalize.resolve();expect((await receipt.value()).id).toBe(receiptId);finishBank.resolve();
+     if(counterexample){control.consume(command,await refusal(command.value(),'42501'));expect(Array.from(await owner.client`select to_jsonb(s)as value from public.employee_statutory_my s where s.tenant_id=${f.b.tenantId}::uuid order by s.id`)).toEqual(nativeBefore);}
      else{
-      const eventId=await command;expect((await owner.client`select chain_seq is null and hash is null and prev_hash is null as retained_unarmed,app._domain_event_preimage_for(e)=r.bank_audit_preimage as same_pre from public.domain_event e join app.assistant_own_leave_review r on r.receipt_event_id=e.id where e.id=${eventId}::uuid`)[0]).toEqual({retained_unarmed:true,same_pre:true});
+      const eventId=await command.value();expect((await owner.client`select chain_seq is null and hash is null and prev_hash is null as retained_unarmed,app._domain_event_preimage_for(e)=r.bank_audit_preimage as same_pre from public.domain_event e join app.assistant_own_leave_review r on r.receipt_event_id=e.id where e.id=${eventId}::uuid`)[0]).toEqual({retained_unarmed:true,same_pre:true});
       expect((await owner.client`select bank_account_no as account,epf_number as epf,socso_number as socso,tax_number as tax from public.employee_statutory_my where tenant_id=${f.b.tenantId}::uuid and person_id=${f.person.personId}::uuid`)[0]).toEqual({account:'FLOOR-NEW',epf:'FICTIONAL-RETAINED-EPF',socso:'FICTIONAL-RETAINED-SOCSO',tax:'FICTIONAL-RETAINED-TAX'});
      }
-    }finally{finishBank.resolve();await Promise.allSettled([receipt,...(command?[command]:[])]);}
+    },async()=>{finalize.resolve();finishBank.resolve();});
    };
    if(counterexample)await owned().fixture.withFreshFloorCounterexample(exercise);else await exercise();
    expect(await money(f.b.tenantId)).toEqual(financial);expect((await event(app(),f.ctx,'policy.after-bank-first-floor')).chain_seq).toBe(1);
-  }finally{finalize.resolve();finishBank.resolve();await Promise.allSettled([receipt,...(command?[command]:[])]);context.signal.removeEventListener('abort',abort);}
+  },async()=>{finalize.resolve();finishBank.resolve();},()=>context.signal.removeEventListener('abort',abort));
  }
  nativeIt(16,context=>bankFirstFloorRace(context,true));
  nativeIt(17,context=>bankFirstFloorRace(context,false));
@@ -394,11 +391,11 @@ export function registerRewardsAuditPolicyNativeCases(){
   const connection=reader(),observed=deferred(),finalize=deferred(),entered=deferred(),finish=deferred();
   await setSetting(f.b.tenantId,'audit.hash_chain_enabled',true);
   const abort=()=>{finalize.resolve();finish.resolve();};context.signal.addEventListener('abort',abort,{once:true});
-  const receipt=connection.begin('isolation level repeatable read',async tx=>{await stamp(tx,f.ctx);const [row]=await tx`select reward_audit_read.begin_read('libraries','salary',${f.year})as id`;observed.resolve();await finalize.promise;context.signal.throwIfAborted();return(await tx`select * from reward_audit_read.finalize_read(${row.id}::uuid)`)[0];});void receipt.catch(()=>{});
-  let command:Promise<unknown>|undefined,armedCallbacks=0;
+  const control=controlledPolicyWait(ownership.poison),receipt=control.start(()=>connection.begin('isolation level repeatable read',async tx=>{await stamp(tx,f.ctx);const [row]=await tx`select reward_audit_read.begin_read('libraries','salary',${f.year})as id`;observed.resolve();await finalize.promise;context.signal.throwIfAborted();return(await tx`select * from reward_audit_read.finalize_read(${row.id}::uuid)`)[0];}));
+  let armedCallbacks=0;
   const actualBulk=adminOwner.bulkSaveLabels,actualSqlState=nativeErrorOwner.pgSqlState,actualErrorChain=nativeErrorOwner.pgErrorChain;const nativeRefusals:Array<{code:string;message:string}>=[];
-  try{
-   await Promise.race([observed.promise,receipt.then(()=>{throw Error('Actual older read exited before Catalogue PRE');})]);await setSetting(f.b.tenantId,'audit.hash_chain_enabled',false);
+  await control.run(async()=>{
+   await control.ready(observed.promise,receipt,context.signal,'Actual older read exited before Catalogue PRE');await setSetting(f.b.tenantId,'audit.hash_chain_enabled',false);
    const exercise=async()=>{
     // Transparent observation: every callback forwards unchanged arguments to
     // the real canonical owner; no owner result or authorization is fabricated.
@@ -415,30 +412,30 @@ export function registerRewardsAuditPolicyNativeCases(){
      }
      return actualBulk(...args);
     });
-    try{
-     command=positionArchiveReviews.confirm(f.ctx,{action:human.action,contractVersion:1,actionId:prepared.actionId,reviewedDigest:prepared.reviewedDigest});void command.catch(()=>{});
-     await Promise.race([entered.promise,command.then(()=>{throw Error('Actual Catalogue command exited before armed callback');})]);
-     finalize.resolve();await receipt;finish.resolve();
+    await control.run(async()=>{
+     const command=control.start(()=>positionArchiveReviews.confirm(f.ctx,{action:human.action,contractVersion:1,actionId:prepared.actionId,reviewedDigest:prepared.reviewedDigest}));
+     await control.ready(entered.promise,command,context.signal,'Actual Catalogue command exited before armed callback');
+     finalize.resolve();await receipt.value();finish.resolve();
      if(counterexample){
-      await expect(command).rejects.toThrow();expect(nativeRefusals).toContainEqual({code:'42501',message:'Catalogue audit decision changed before native INSERT'});
+      await expect(command.value()).rejects.toThrow();expect(nativeRefusals).toContainEqual({code:'42501',message:'Catalogue audit decision changed before native INSERT'});control.consume(command,await command.value().catch((error:unknown)=>error));
       expect(Array.from(await owner.client`select to_jsonb(p)as value from public.position p where p.tenant_id=${f.b.tenantId}::uuid order by p.id`)).toEqual(before);
      }else{
-      expect(await command).toMatchObject({kind:'completed',receipt:{receipt:{positionId:f.b.positionId,archived:true}}});
+      expect(await command.value()).toMatchObject({kind:'completed',receipt:{receipt:{positionId:f.b.positionId,archived:true}}});
       expect((await owner.client`select p.archived_at is not null as archived,e.chain_seq is null and e.hash is null and e.prev_hash is null as retained_unarmed,app._domain_event_preimage_for(e)='{"armed":false,"priorSeq":null,"priorHash":null}'::jsonb as same_pre from public.position p join app.assistant_own_leave_review r on r.receipt_subject_id=p.id join public.domain_event e on e.id=r.receipt_event_id where r.id=${prepared.actionId}::uuid`)[0]).toEqual({archived:true,retained_unarmed:true,same_pre:true});
      }
      expect(armedCallbacks).toBe(1);
-    }finally{finish.resolve();await Promise.allSettled([receipt,...(command?[command]:[])]);callback.mockRestore();errors.mockRestore();}
+    },async()=>{finalize.resolve();finish.resolve();},async()=>{await controlledPolicyWait(ownership.poison).run(async()=>{callback.mockRestore();},async()=>{errors.mockRestore();});});
    };
    if(counterexample)await owned().fixture.withFreshFloorCounterexample(exercise);else await exercise();
    expect(await money(f.b.tenantId)).toEqual(financial);expect((await event(app(),f.ctx,'policy.after-catalogue-first-floor')).chain_seq).toBe(1);
-  }finally{finalize.resolve();finish.resolve();await Promise.allSettled([receipt,...(command?[command]:[])]);context.signal.removeEventListener('abort',abort);}
+  },async()=>{finalize.resolve();finish.resolve();},()=>context.signal.removeEventListener('abort',abort));
  }
  nativeIt(18,context=>catalogueFirstFloorRace(context,true));
  nativeIt(19,context=>catalogueFirstFloorRace(context,false));
  async function receiptProcessKill(context:TestContext,phase:'before-commit'|'after-commit'){
   const f=await setup(),financial=await money(f.b.tenantId);await setSetting(f.b.tenantId,'audit.hash_chain_enabled',true);
   const process=await rewardPolicyReaderProcess(owned().fixture,f.ctx,context.signal,controller.registerStop);
-  try{
+  await controlledPolicyWait(ownership.poison).run(async()=>{
    process.read(f.year,phase);const result=await process.wait(phase==='before-commit'?'finalized':'committed');
    if(result.kind!=='finalized'&&result.kind!=='committed')throw Error('Exact native receipt process identity absent');
    expect((await owner.client`select exists(select 1 from pg_stat_activity where pid=${result.pid} and backend_start=${result.started}::text::timestamptz and usename='ai_hr_reward_audit_read'and datname=${controller.database})as actual`)[0].actual).toBe(true);
@@ -451,15 +448,15 @@ export function registerRewardsAuditPolicyNativeCases(){
    expect((await owner.client`select count(*)::int as n from reward_audit_policy_private.floor_marker where tenant_id=${f.b.tenantId}::uuid and receipt_id=${result.receiptId}::uuid`)[0].n).toBe(expected);
    await setSetting(f.b.tenantId,'audit.hash_chain_enabled',false);
    const restarted=await rewardPolicyReaderProcess(owned().fixture,f.ctx,context.signal,controller.registerStop);
-   try{
+   await controlledPolicyWait(ownership.poison).run(async()=>{
     restarted.reconcile(result.receiptId);const fresh=await restarted.wait('reconciled');if(fresh.kind!=='reconciled')throw Error('Actual restarted receipt reconciliation required');
     expect(fresh.pid!==result.pid||fresh.started!==result.started).toBe(true);
     if(phase==='before-commit')expect(fresh.value).toBeNull();else expect(fresh.value).toMatchObject({id:result.receiptId,armed:true,projected:false});
     expect(await restarted.closed).toEqual({code:0,signal:null});
-   }finally{await restarted.stop();}
+   },()=>restarted.stop());
    expect((await event(app(),f.ctx,'policy.after-receipt-process-kill')).chain_seq).toBe(phase==='after-commit'?1:null);
    expect(await money(f.b.tenantId)).toEqual(financial);
-  }finally{await process.stop();}
+  },()=>process.stop());
  }
  nativeIt(20,context=>receiptProcessKill(context,'before-commit'));
  nativeIt(21,context=>receiptProcessKill(context,'after-commit'));
