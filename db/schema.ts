@@ -1990,6 +1990,8 @@ export const jobGrade = pgTable(
   {
     id: id(),
     tenantId: tenantId(),
+    // Null preserves existing global records; a nonempty list limits NEW selections.
+    scopeCompanyIds: uuid('scope_company_ids').array(),
     code: text('code').notNull(),
     // `name` is the LABEL people read — the column the Job Grade table shows under "Label" (e3c733df).
     // Kept as `name` rather than renamed: it is referenced by employees, leave policies, approval rules,
@@ -2025,6 +2027,8 @@ export const gradeGroup = pgTable(
   {
     id: id(),
     tenantId: tenantId(),
+    // Null preserves existing global records; a nonempty list limits NEW selections.
+    scopeCompanyIds: uuid('scope_company_ids').array(),
     name: text('name').notNull(),
     archivedAt: timestamp('archived_at', { withTimezone: true }),
     createdAt: createdAt(),
@@ -8498,6 +8502,8 @@ export const profileOption = pgTable(
   {
     id: id(),
     tenantId: tenantId(),
+    // Null preserves existing global records; a nonempty list limits NEW selections.
+    scopeCompanyIds: uuid('scope_company_ids').array(),
     // 'religion' | 'race' | 'nationality' | 'state' | 'country' | 'relationship'
     category: text('category').notNull(),
     value: text('value').notNull(), // canonical value stored on the person column

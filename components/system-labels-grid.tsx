@@ -1,5 +1,7 @@
 'use client';
 
+import {SystemLabelExportButton} from './system-label-export-button';
+
 /**
  * SystemLabelsGrid — the Excel-style master-data editor for System Labels (feedback 62de487d).
  *
@@ -636,26 +638,6 @@ export function SystemLabelsGrid({
   }
   const kindHasHead = kind === 'department' || kind === 'business_unit';
 
-  function exportCsv() {
-    const cols = TEXT_COLS[kind].map((c) => String(c.field));
-    const header = [...cols, 'scope', 'status', 'lastUpdatedBy', 'lastUpdatedAt'];
-    const esc = (v: unknown) => {
-      const s = v == null ? '' : String(v);
-      return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-    };
-    const lines = [header.join(',')];
-    for (const r of view) {
-      const cells = cols.map((c) => esc((r as unknown as Record<string, unknown>)[c]));
-      cells.push(esc(scopeLabel(r)), esc(r.archived ? t('statusArchived') : t('statusActive')), esc(r.lastUpdatedBy), esc(r.lastUpdatedAt));
-      lines.push(cells.join(','));
-    }
-    const url = URL.createObjectURL(new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8;' }));
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `system-labels-${kind}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
-  }
 
   const counts = useMemo(() => {
     const c = {} as Record<GridKind, number>;
@@ -818,9 +800,7 @@ export function SystemLabelsGrid({
             <Button type="button" variant="outline" size="sm" onClick={() => setCopyOpen((v) => !v)} disabled={selected.size === 0}>
               {t('copyToCompaniesSelected')}
             </Button>
-            <Button type="button" variant="outline" size="sm" onClick={exportCsv}>
-              {t('exportCsv')}
-            </Button>
+            <SystemLabelExportButton kind={kind}/>
             <Button aria-busy={pending} type="button" size="sm" onClick={save} disabled={!hasChanges || pending}>
               {t('saveAll')}
             </Button>

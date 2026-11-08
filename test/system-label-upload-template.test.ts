@@ -7,9 +7,9 @@ import { LABEL_TEMPLATE_DEFINITIONS, LABEL_TEMPLATE_NOTE } from '../lib/system-l
 const make=()=>buildSystemLabelUploadTemplate({samples:{division:[{Code:'00123',Label:'Live label',Description:'Current example',Status:'Active'}]}});
 const rewrite=(wb:XLSX.WorkBook)=>XLSX.write(wb,{type:'buffer',bookType:'xlsx',compression:true}) as Buffer;
 describe('Labels clean upload template',()=>{
-  it('has exactly fourteen blank business tabs between Instructions and protected Sample',async()=>{
+  it('has exactly twenty-three blank business tabs between Instructions and protected Sample',async()=>{
     const bytes=await make(),wb=XLSX.read(bytes,{type:'buffer',cellStyles:true});
-    expect(wb.SheetNames).toEqual(['Instructions','Departments','Positions','Cost Centres','Business Units','Job Grade','Grade Groups','Division','Branch','Region','Line','Section','Team','Base','Category','Sample']);
+    expect(wb.SheetNames).toEqual(['Instructions',...LABEL_TEMPLATE_DEFINITIONS.map(d=>d.sheet),'Sample']);
     for(const definition of LABEL_TEMPLATE_DEFINITIONS){
       const ws=wb.Sheets[definition.sheet];
       expect(ws.A1.v).toBe(LABEL_TEMPLATE_NOTE);
@@ -20,8 +20,8 @@ describe('Labels clean upload template',()=>{
     expect(wb.Sheets.Sample.A1.v).toBe('SAMPLE ONLY – NOT UPLOADED');
     const sample=XLSX.utils.sheet_to_json<string[]>(wb.Sheets.Sample,{header:1,raw:false});
     expect(sample.some(row=>row.includes('00123'))).toBe(true);
-    expect(sample.filter(row=>row.some(cell=>cell==='(example) New label'||cell==='(example) New grade group'))).toHaveLength(13);
-    const zip=await JSZip.loadAsync(bytes),xml=await zip.file('xl/worksheets/sheet16.xml')!.async('string');
+    expect(sample.filter(row=>row.some(cell=>cell==='(example) New label'||cell==='(example) New grade group'))).toHaveLength(22);
+    const zip=await JSZip.loadAsync(bytes),xml=await zip.file('xl/worksheets/sheet25.xml')!.async('string');
     expect(xml).toMatch(/<sheetProtection\b[^>]*sheet="1"/);
     expect(xml).not.toMatch(/password|hashValue|saltValue/);
     expect(xml).toContain('s="3"');
@@ -48,7 +48,7 @@ describe('Labels clean upload template',()=>{
     }
   });
   it('retains the formula refusal on an otherwise admitted protected Sample',async()=>{
-    const zip=await JSZip.loadAsync(await make()),entry=zip.file('xl/worksheets/sheet16.xml')!;
+    const zip=await JSZip.loadAsync(await make()),entry=zip.file('xl/worksheets/sheet25.xml')!;
     const xml=await entry.async('string');expect(xml).toContain('sheetProtection');
     zip.file(entry.name,xml.replace(/<c r="A1"[^>]*>[\s\S]*?<\/c>/,'<c r="A1"><f>1+1</f><v>2</v></c>'));
     const bytes=await zip.generateAsync({type:'nodebuffer',compression:'DEFLATE'});
@@ -61,7 +61,7 @@ describe('Labels clean upload template',()=>{
     expect(()=>readSystemLabelWorkbook(rewrite(duplicate))).toThrow('Duplicate label worksheet');
     const changed=XLSX.read(original,{type:'buffer'});changed.Sheets.Division.A1.v='Moved header';
     expect(()=>readSystemLabelWorkbook(rewrite(changed))).toThrow('Headers do not match');
-    for(const [path,password]of [['xl/worksheets/sheet2.xml',false],['xl/worksheets/sheet16.xml',true]] as const){
+    for(const [path,password]of [['xl/worksheets/sheet2.xml',false],['xl/worksheets/sheet25.xml',true]] as const){
       const zip=await JSZip.loadAsync(original),entry=zip.file(path)!,xml=await entry.async('string');
       zip.file(path,password?xml.replace('<sheetProtection ','<sheetProtection password="1234" '):xml.replace('</sheetData>','</sheetData><sheetProtection sheet="1"/>'));
       const bytes=await zip.generateAsync({type:'nodebuffer',compression:'DEFLATE'});
@@ -77,8 +77,8 @@ describe('Labels clean upload template',()=>{
   });
   it('grants protection only to the worksheet resolved as Sample, never to a guessed ZIP path',async()=>{
     const zip=await JSZip.loadAsync(await make()),entry=zip.file('xl/_rels/workbook.xml.rels')!,xml=await entry.async('string');
-    expect(xml).toContain('worksheets/sheet16.xml');expect(xml).toContain('worksheets/sheet2.xml');
-    zip.file(entry.name,xml.replace('worksheets/sheet16.xml','worksheets/TEMP.xml').replace('worksheets/sheet2.xml','worksheets/sheet16.xml').replace('worksheets/TEMP.xml','worksheets/sheet2.xml'));
+    expect(xml).toContain('worksheets/sheet25.xml');expect(xml).toContain('worksheets/sheet2.xml');
+    zip.file(entry.name,xml.replace('worksheets/sheet25.xml','worksheets/TEMP.xml').replace('worksheets/sheet2.xml','worksheets/sheet25.xml').replace('worksheets/TEMP.xml','worksheets/sheet2.xml'));
     const bytes=await zip.generateAsync({type:'nodebuffer',compression:'DEFLATE'});
     expect(()=>readSystemLabelWorkbook(bytes)).toThrow('Protected Excel workbooks');
   });

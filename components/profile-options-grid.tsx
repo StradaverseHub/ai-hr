@@ -1,4 +1,7 @@
 'use client';
+import {SystemLabelScope} from './system-label-scope';
+
+import {SystemLabelExportButton} from './system-label-export-button';
 
 /**
  * ProfileOptionsGrid — the Excel-style master-data editor for Profile Options (feedback 15277676).
@@ -10,9 +13,8 @@
  * sort, sticky header, per-row activate/deactivate + delete, and ONE atomic Save that batches every create
  * and update.
  *
- * DELIBERATELY simpler than components/system-labels-grid.tsx: Profile Options is a FLAT tenant-wide catalog
- * with NO company scope, NO sharing, and NO Criteria column (see core/profile-options.ts). The value-
- * immutability rule is preserved — Code is editable only on brand-new draft rows and read-only once saved.
+ * New imports may assign explicit companies. The grid displays that saved assignment; generic edits
+ * preserve it. Existing global records and immutable Codes retain their historical behavior.
  *
  * PAGED SINCE 9da61c86, through the shared client pager. Rows are filtered and sorted FIRST and sliced
  * second, so a column header still orders the whole category rather than the twenty-five rows on screen,
@@ -48,6 +50,7 @@ export type ProfileGridRecord = {
   description: string | null;
   sortOrder: number;
   isActive: boolean;
+  scopeCompanyIds?:string[]|null;
 };
 
 type RowState = {
@@ -388,6 +391,7 @@ export function ProfileOptionsGrid({
             {showFilters ? <ChevronUp className="size-3.5" aria-hidden /> : <ChevronDown className="size-3.5" aria-hidden />}
           </button>
           <div className="ml-auto flex flex-wrap items-center gap-2">
+<SystemLabelExportButton kind={category}/>
             <Button type="button" variant="outline" size="sm" onClick={addRow}>
               {t('addRow')}
             </Button>
@@ -496,6 +500,7 @@ export function ProfileOptionsGrid({
                           {r.value}
                         </span>
                       )}
+                      {!r.isNew&&<div><SystemLabelScope ids={data[category]?.find(row=>row.id===r.id)?.scopeCompanyIds}/></div>}
                       {err && <p className="mt-1 text-xs text-destructive">{err}</p>}
                     </td>
                     <td className="px-3 py-1.5">

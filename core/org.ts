@@ -1,3 +1,4 @@
+import {withSystemLabelCompanyTx} from './system-label-selection';
 import {organisationManagedTx,organisationBusinessUnit} from './organisation-write-policy';
 import {deriveCompanyOrganisationTx,recordEmploymentOrganisationTagsTx,type OrganisationTagTrigger} from './company-organisation';
 import {probationDateAuthorityTx} from './probation-effect-authority';
@@ -210,7 +211,7 @@ export async function hireEmployee(ctx: SessionContext, p: HireParams,
   outerTx?: Tx) {
   p = { ...p, person: { ...p.person }, grantLeaveTypes: p.grantLeaveTypes?.map(type => ({ ...type })) };
   ctx = { ...ctx, roles: ctx.roles?.slice(), grants: ctx.grants?.map(grant => ({ ...grant })) };
-  const run = async (tx:Tx) => {
+  const run = async (tx:Tx) => withSystemLabelCompanyTx(tx,p.companyId,async()=>{
     // Hiring is a Workforce command even when called without a page/import facade. Acquire fresh
     // access before Criteria/data locks; reusing a person cannot cross their retained explicit deny.
     await assertWorkforceCompanyTx(tx,ctx,p.companyId,'maintain');
@@ -234,8 +235,8 @@ export async function hireEmployee(ctx: SessionContext, p: HireParams,
       if(dept?.businessUnitId && dept.businessUnitId!==p.businessUnitId)throw new Error('Choose a department available under the selected business unit.');
     }
     if(p.gradeId){
-      const [grade]=await tx.select({id:jobGrade.id}).from(jobGrade).where(and(eq(jobGrade.tenantId,ctx.tenantId),eq(jobGrade.id,p.gradeId),isNull(jobGrade.archivedAt))).for('share');
-      if(!grade)throw new Error('Choose an active job grade from this organisation.');
+      const [grade]=await tx.select({id:jobGrade.id}).from(jobGrade).where(and(eq(jobGrade.tenantId,ctx.tenantId),eq(jobGrade.id,p.gradeId),isNull(jobGrade.archivedAt),sql`app.system_label_scope_applies(${jobGrade.scopeCompanyIds},${p.companyId}::uuid)`)).for('share');
+      if(!grade)throw new Error('Choose an active job grade available for this company.');
     }
     let personId = p.person.id;
     if (!personId) {
@@ -506,7 +507,7 @@ export async function hireEmployee(ctx: SessionContext, p: HireParams,
     await packFor(taxCompany?.country)?.statutory.initializeHiredTaxSelectionTx?.(tx,ctx,{employmentId:emp.id,companyId:p.companyId,scheme:p.initialTaxScheme??'resident'});
     await recordEmploymentOrganisationTagsTx(tx,ctx,{employmentId:emp.id,companyId:p.companyId,asOf:p.hiredOn,trigger:'hire'});
     return { employmentId: emp.id, personId };
-  };
+  });
   return outerTx ? run(outerTx) : withTenant(ctx,run);
 }
 
@@ -1759,12 +1760,13 @@ async function writePersonProfile(
     // 7d309da7 — the six catalog-backed columns may only take an ACTIVE catalog value, EXCEPT the legacy
     // value already stored (tolerance). Clearing to null is always allowed. Validated against the tenant's
     // profile_option catalog within this same RLS tx.
+    const [labelCompany]=await tx.execute<{companyId:string|null}>(sql`select app.system_label_person_company(${p.personId}::uuid) as "companyId"`);
     for (const [col, category] of Object.entries(CATALOG_BACKED_COLUMNS) as [
       keyof PersonProfileFields,
       ProfileOptionCategory,
     ][]) {
       if (col in profileSet) {
-        try {await assertProfileValueAllowed(tx, category, profileSet[col], (before as Record<string, string | null>)[col]);}
+        try {await assertProfileValueAllowed(tx, category, profileSet[col], (before as Record<string, string | null>)[col],labelCompany?.companyId??null);}
         catch(error){
           if(error instanceof ProfileOptionValueError&&(PERSON_PROFILE_CATALOG_FIELDS as readonly string[]).includes(col))throw new PersonProfileCatalogError(col as PersonProfileCatalogField,error);
           throw error; // Database/network faults remain private system failures, not field validation.
@@ -3228,6 +3230,7 @@ export async function setEmploymentInfo(
       .limit(1);
     if (!before) throw new Error('Employment not found');
 
+    const [labelEmployment]=await tx.select({companyId:employment.companyId}).from(employment).where(eq(employment.id,p.employmentId)).limit(1);
     // 1001ff61 — the org/job fields are now catalog-backed dropdowns. Reject a value that is not an ACTIVE
     // profile_option for its category (empty-catalog tenants keep free-text; the unchanged legacy value is
     // always tolerated). Runs in this tx so it shares the RLS session; a violation aborts before the write.
@@ -3240,6 +3243,7 @@ export async function setEmploymentInfo(
         category,
         set[f] as string | null,
         (before as Record<string, string | null>)[f],
+        labelEmployment?.companyId??null,
       );
     }
 
