@@ -5,7 +5,7 @@ import {readFileSync,writeFileSync,openSync,closeSync,mkdirSync,lstatSync,readdi
 import {join,resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {cpus,totalmem} from 'node:os';
-import {boundaryExecutionSource,BOUNDARY_LIMITS,sha256,admitBoundaryInputs,admitConsumerTraceInputs,CONSUMER_TRACE_INTENT,TRACED_CONSUMERS,boundarySchedule,remainingCompilerMs} from './compiler-boundary-policy.mjs';
+import {ROSTER_GRAPH_SOURCE,ROSTER_GRAPH_INTENT,admitRosterInventoryInputs,boundaryExecutionSource,BOUNDARY_LIMITS,sha256,admitBoundaryInputs,admitConsumerTraceInputs,CONSUMER_TRACE_INTENT,TRACED_CONSUMERS,boundarySchedule,remainingCompilerMs} from './compiler-boundary-policy.mjs';
 
 export function boundaryArguments(worker,out,mode,index,traceOnly=false){
  assert.equal(typeof traceOnly,'boolean');if(traceOnly&&mode==='consumer')assert(TRACED_CONSUMERS.includes(index),'Only fixed consumers may trace');
@@ -52,9 +52,10 @@ export function exactCoverage(inventory,plan,phases){
  return {orderedOriginalRoots:inventory.roots.length,originalResolvedFiles:inventory.files.length,originalResolvedObserved:observed.size,
   producerRoots:plan.producerRoots.length,consumerRoots:plan.consumers.reduce((sum,row)=>sum+row.roots.length,0),consumerPartitions:plan.consumers.length};
 }
-export async function experiment(traceOnly=false){
- assert.equal(typeof traceOnly,'boolean');
- const schedule=traceOnly?'selected-trace':'full',source=boundaryExecutionSource(schedule);
+export async function experiment(traceOnly=false,graphOnly=false){
+ assert.equal(typeof traceOnly,'boolean');assert.equal(typeof graphOnly,'boolean');assert(!(traceOnly&&graphOnly));
+ const schedule=graphOnly?'roster-inventory-only':traceOnly?'selected-trace':'full';
+ let source;if(graphOnly)source=ROSTER_GRAPH_SOURCE;else source=boundaryExecutionSource(schedule);
  assert(process.platform==='linux'&&process.env.GITHUB_ACTIONS==='true'&&process.env.RUNNER_ENVIRONMENT==='github-hosted'
   &&process.env.CI==='true'&&process.env.GITHUB_REPOSITORY==='StradaverseHub/ai-hr','Managed diagnostic runner required');
  assert.equal(process.versions.node,'22.23.3');assert.equal(cpus().length,4);assert(totalmem()>=14*1024**3&&totalmem()<=18*1024**3);
@@ -62,11 +63,12 @@ export async function experiment(traceOnly=false){
  const git=(path,...args)=>execFileSync('git',args,{cwd:path,encoding:'utf8',timeout:30000,maxBuffer:4*1024**2}).trim();
  assert.equal(git(cwd,'rev-parse','HEAD'),source);assert.equal(process.env.AIHR_CI_HEAD,source);assert.equal(git(cwd,'status','--porcelain'),'');
  assert.equal(git(controller,'rev-parse','HEAD'),process.env.AIHR_CI_CONTROL_HEAD);assert.equal(git(controller,'status','--porcelain'),'');
- const temp=realpathSync(process.env.RUNNER_TEMP),out=join(temp,'diagnostic-compiler-boundary');
+ const temp=realpathSync(process.env.RUNNER_TEMP),out=join(temp,graphOnly?'diagnostic-compiler-roster-graph':'diagnostic-compiler-boundary');
  const free=()=>{const value=statfsSync(temp);return value.bavail*value.bsize;};assert(free()>=20*1024**3);mkdirSync(out,{mode:0o700});
- const report={kind:traceOnly?'DEVELOPMENT_SELECTED_CONSUMER_TRACE_NOT_RELEASE':'DEVELOPMENT_COMPILER_DECLARATION_BOUNDARY_NOT_RELEASE',source:source,controller:process.env.AIHR_CI_CONTROL_HEAD,
+ const report={kind:graphOnly?'NATIVE_PROGRAM_GRAPH_INVENTORY_ONLY_NOT_TYPECHECK':traceOnly?'DEVELOPMENT_SELECTED_CONSUMER_TRACE_NOT_RELEASE':'DEVELOPMENT_COMPILER_DECLARATION_BOUNDARY_NOT_RELEASE',source:source,controller:process.env.AIHR_CI_CONTROL_HEAD,
   runId:process.env.GITHUB_RUN_ID,attempt:process.env.GITHUB_RUN_ATTEMPT,releaseAuthorized:false,ordinaryCompilerQualified:false,
   ...(traceOnly?{completeSuite:false,selectedConsumers:TRACED_CONSUMERS,coverageScope:'Diagnostic only: checked fresh producer/declarations and consumers7/8/9; earlier native results retain original identities'}:{}),
+  ...(graphOnly?{nativeGraphOnly:true,semanticCompilerExecuted:false,completeSuite:false}:{}),
   complete:false,limits:BOUNDARY_LIMITS,phases:[],host:{node:process.version,cpus:cpus().length,ramBytes:totalmem()},
   controllerFiles:Object.fromEntries(['compiler-boundary.mjs','compiler-boundary-worker.mjs','compiler-boundary-policy.mjs',...(traceOnly?['compiler-consumer-trace.mjs']:[])].map(name=>[name,sha256(readFileSync(new URL(name,import.meta.url)))]))};
  const outputBytes=()=>{
@@ -78,7 +80,7 @@ export async function experiment(traceOnly=false){
   const name=mode+(index===undefined?'':'-'+index),log=join(out,name+'.log'),fd=openSync(log,'wx',0o600),samples=openSync(join(out,name+'-samples.jsonl'),'wx',0o600);
   const row={mode,index,status:'running',budgetMs:budget,code:null,signal:null,stoppedBecause:null,monitorError:null,elapsedMs:0,sampledPeakRssKiB:0};report.phases.push(row);
   const start=Date.now(),worker=fileURLToPath(new URL('compiler-boundary-worker.mjs',import.meta.url));
-  const child=spawn('/usr/bin/prlimit',['--core=0',`--fsize=${BOUNDARY_LIMITS.fileBytes}`,'--',process.execPath,...boundaryArguments(worker,out,mode,index,traceOnly)],{
+  const child=spawn('/usr/bin/prlimit',['--core=0',`--fsize=${BOUNDARY_LIMITS.fileBytes}`,'--',process.execPath,...boundaryArguments(worker,out,graphOnly?'graph-inventory':mode,index,traceOnly)],{
    cwd,env:{...process.env,AIHR_COMPILER_BOUNDARY_SCHEDULE:schedule,NODE_OPTIONS:'--max-old-space-size=12288'},stdio:['ignore',fd,fd],detached:true});
   let timer,killer;
   const stop=reason=>{if(row.stoppedBecause)return;row.stoppedBecause=reason;if(child.pid)try{process.kill(-child.pid,'SIGTERM');}catch{}
@@ -104,7 +106,14 @@ export async function experiment(traceOnly=false){
   finally{row.elapsedMs=Date.now()-start;clearInterval(timer);clearTimeout(killer);closeSync(fd);closeSync(samples);}
  }
  try{
-  await phase('inventory');const inventory=JSON.parse(readFileSync(join(out,'inventory.json'),'utf8')),plan=JSON.parse(readFileSync(join(out,'plan.json'),'utf8'));
+  await phase('inventory');const inventory=JSON.parse(readFileSync(join(out,'inventory.json'),'utf8'));
+  if(graphOnly){
+   assert.equal(inventory.nativeGraphOnly,true);assert.equal(inventory.semanticCompilerExecuted,false);
+   report.inventorySha256=sha256(readFileSync(join(out,'inventory.json')));
+   report.coverage={nativeProgramRoots:inventory.roots.length,nativeProgramResolvedFiles:inventory.files.length,semanticChecked:false};
+   assert(outputBytes()<=BOUNDARY_LIMITS.totalBytes);report.complete=true;return report;
+  }
+  const plan=JSON.parse(readFileSync(join(out,'plan.json'),'utf8'));
   if(traceOnly){
    assert.equal(sha256(readFileSync(join(out,'inventory.json'))),'803a319b3af6409a251a009fa2cf76f9fb0fa1a5f7fe758025bb4a5c9250a6a8','Original f2 native inventory changed');
    assert.equal(sha256(readFileSync(join(out,'plan.json'))),'33143b33eec77708f21da2eaa979a5df2aea68b74589e3b1f6274c6773de032e','Original400-root native plan changed');
@@ -130,8 +139,8 @@ export async function experiment(traceOnly=false){
   // A failed prerequisite prevents trustworthy dependent work. Record every
   // known planned phase that did not start instead of inventing empty passes.
   const planned=report.plannedPhases??(traceOnly?[{mode:'producer'},{mode:'declarations'},...TRACED_CONSUMERS.map(index=>({mode:'consumer',index}))]:['producer','declarations','source-negative','declaration-negative'].map(mode=>({mode})));
-  report.phases.push(...blockedUnstartedPhases(planned,report.phases,remainingCompilerMs(report.phases)));
-  if(!report.plannedPhases)report.consumerPlanUnavailable={status:'blocked',blockedReason:'inventory-or-plan-failure',consumersKnown:false};
+  if(!graphOnly)report.phases.push(...blockedUnstartedPhases(planned,report.phases,remainingCompilerMs(report.phases)));
+  if(!graphOnly&&!report.plannedPhases)report.consumerPlanUnavailable={status:'blocked',blockedReason:'inventory-or-plan-failure',consumersKnown:false};
   report.sourceRestored=git(cwd,'rev-parse','HEAD')===source&&git(cwd,'status','--porcelain')==='';
   report.controllerRestored=git(controller,'rev-parse','HEAD')===process.env.AIHR_CI_CONTROL_HEAD&&git(controller,'status','--porcelain')==='';
   if(!report.sourceRestored||!report.controllerRestored)report.complete=false;
@@ -142,6 +151,6 @@ export async function experiment(traceOnly=false){
  return report;
 }
 if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url)){
- if(process.argv[2]==='--selection'){const inputs=JSON.parse(process.env.AIHR_COMPILER_BOUNDARY_INPUTS);(inputs.installer_fixture_phase===CONSUMER_TRACE_INTENT?admitConsumerTraceInputs:admitBoundaryInputs)(inputs);}
- else{assert(process.argv.length===2||process.argv.length===3&&process.argv[2]==='--trace-consumers');experiment(process.argv[2]==='--trace-consumers').then(value=>console.log(JSON.stringify(value))).catch(error=>{console.error(error);process.exitCode=1;});}
+ if(process.argv[2]==='--selection'){const inputs=JSON.parse(process.env.AIHR_COMPILER_BOUNDARY_INPUTS);(inputs.installer_fixture_phase===ROSTER_GRAPH_INTENT&&inputs.expected_sha===ROSTER_GRAPH_SOURCE?admitRosterInventoryInputs:inputs.installer_fixture_phase===CONSUMER_TRACE_INTENT?admitConsumerTraceInputs:admitBoundaryInputs)(inputs);}
+ else{assert(process.argv.length===2||process.argv.length===3&&['--trace-consumers','--graph-inventory-only'].includes(process.argv[2]));experiment(process.argv[2]==='--trace-consumers',process.argv[2]==='--graph-inventory-only').then(value=>console.log(JSON.stringify(value))).catch(error=>{console.error(error);process.exitCode=1;});}
 }

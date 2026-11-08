@@ -4,6 +4,13 @@ import {createHash} from 'node:crypto';
 
 export const BOUNDARY_SOURCE='f2b1ae1a9af20bdb30f28ed9b537aa08994dfc10';
 export const BOUNDARY_REF='codex/compiler-rewards-fixture-principal-20261108';
+export const ROSTER_GRAPH_SOURCE='5c8744b2ba3dfc03fc80f729413b2e93340c4ea8';
+export const ROSTER_GRAPH_REF='codex/roster-shift-oracle-import-correction-20261108';
+export const ROSTER_GRAPH_INTENT='compiler-boundary';
+export const ROSTER_GRAPH_ORDERED_SHA='745a88c3a87efecda109d512508cc68047ed55b461bd1b82bf592e6f1cbc0f0e';
+export const ROSTER_GRAPH_FILES=11491;
+export const ROSTER_GRAPH_ROOTS=9022;
+
 export const FULL_BOUNDARY_SOURCE='13d5a5d64512d1daa026836b34cb0b043b4a24cf';
 export const FULL_BOUNDARY_REF='codex/compiler-traced-translator-boundaries-20261108';
 /** Two closed historical/new schedules; no caller-selected source or hybrid. */
@@ -26,14 +33,25 @@ export function admitBoundaryInputs(inputs,traceOnly=false){
   'compiler_origin_run','compiler_origin_sha','compiler_origin_artifact','compiler_origin_digest','next_build_cache_origin'])
   assert(inputs[key]===undefined||inputs[key]==='',key);
 }
-export function admitConsumerTraceInputs(inputs){
+function closedGraphInputFlags(inputs){
  const keys=['candidate_ref','expected_sha','filesystem_activation_probe','installer_fixture_phase','plan_probe','build_transport_probe','transport_origin_run','transport_origin_sha','transport_origin_artifact','transport_origin_digest','compiler_transport_probe','next_build_cache_phase','next_build_cache_origin','managed_compiler_probe','managed_compiler_force_invalid','compiler_compatible_probe','compiler_origin_run','compiler_origin_sha','compiler_origin_artifact','compiler_origin_digest','compiler_probe','statutory_probe','nodb_probe','instrument_copies','layout_probe'];
  assert(inputs&&typeof inputs==='object'&&!Array.isArray(inputs)&&Object.keys(inputs).every(key=>keys.includes(key)),'Only the existing25 diagnostic inputs are accepted');
- assert.equal(inputs.installer_fixture_phase,CONSUMER_TRACE_INTENT);
  for(const key of ['filesystem_activation_probe','plan_probe','build_transport_probe','compiler_transport_probe','managed_compiler_probe','managed_compiler_force_invalid','compiler_compatible_probe','statutory_probe','nodb_probe','instrument_copies','layout_probe'])
   assert(inputs[key]===undefined||inputs[key]===false,'Only false/absent alternate flags are accepted: '+key);
+}
+export function admitConsumerTraceInputs(inputs){
+ closedGraphInputFlags(inputs);assert.equal(inputs.installer_fixture_phase,CONSUMER_TRACE_INTENT);
  admitBoundaryInputs({...inputs,installer_fixture_phase:'compiler-boundary'},true);
 }
+export function admitRosterInventoryInputs(inputs){
+ closedGraphInputFlags(inputs);assert.equal(inputs.installer_fixture_phase,ROSTER_GRAPH_INTENT);
+ assert.equal(inputs.expected_sha,ROSTER_GRAPH_SOURCE);assert.equal(inputs.candidate_ref,ROSTER_GRAPH_REF);
+ assert.equal(inputs.compiler_probe,true);assert.equal(inputs.next_build_cache_phase,'disabled');
+ for(const key of ['transport_origin_run','transport_origin_sha','transport_origin_artifact','transport_origin_digest',
+  'compiler_origin_run','compiler_origin_sha','compiler_origin_artifact','compiler_origin_digest','next_build_cache_origin'])
+  assert(inputs[key]===undefined||inputs[key]==='',key);
+}
+
 export function boundarySchedule(plan,traceOnly=false){
  assert.equal(typeof traceOnly,'boolean');
  assert(Array.isArray(plan.consumers)&&plan.consumers.every((row,index)=>row.id===index),'Exact ordered native consumer plan required');

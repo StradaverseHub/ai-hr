@@ -3,7 +3,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
 import {readFileSync} from 'node:fs';
-import {BOUNDARY_SOURCE,BOUNDARY_REF,FULL_BOUNDARY_SOURCE,FULL_BOUNDARY_REF,boundaryExecutionSource,BOUNDARY_LIMITS,admitBoundaryInputs,remainingCompilerMs,stronglyConnected,planBoundary,ambientEntries,orderedBoundaryRoots,resolutionLeafTargets,assertResolutionLeafBytes,assertDeclarationBytes,sha256,
+import {ROSTER_GRAPH_SOURCE,ROSTER_GRAPH_REF,ROSTER_GRAPH_INTENT,ROSTER_GRAPH_ORDERED_SHA,ROSTER_GRAPH_FILES,ROSTER_GRAPH_ROOTS,admitRosterInventoryInputs,BOUNDARY_SOURCE,BOUNDARY_REF,FULL_BOUNDARY_SOURCE,FULL_BOUNDARY_REF,boundaryExecutionSource,BOUNDARY_LIMITS,admitBoundaryInputs,remainingCompilerMs,stronglyConnected,planBoundary,ambientEntries,orderedBoundaryRoots,resolutionLeafTargets,assertResolutionLeafBytes,assertDeclarationBytes,sha256,
  validateDeclarationCoverage,contractSource,NEGATIVE_CONTRACTS,expectContractRefusals} from './compiler-boundary-policy.mjs';
 import {exactCoverage,validatePhase,boundaryArguments,runIndependentPhases,blockedUnstartedPhases,experiment} from './compiler-boundary.mjs';
 import {boundaryWorker,emitDeclarationSources} from './compiler-boundary-worker.mjs';
@@ -164,6 +164,7 @@ test('workflow keeps25 inputs, old attributionfull-only and every other job outs
  assert(jobs.length>15);for(const [,name,condition]of jobs){
   if(name==='resolve'){for(const intent of ['compiler-boundary','compiler-consumer-trace'])assert(condition.includes(`inputs.installer_fixture_phase == '${intent}'`));continue;}
   if(name==='compiler-boundary'){assert(condition.includes("inputs.installer_fixture_phase == 'compiler-boundary'"));assert(condition.includes(FULL_BOUNDARY_SOURCE));continue;}
+  if(name==='compiler-roster-graph'){assert(condition.includes("inputs.installer_fixture_phase == 'compiler-boundary'"));assert(condition.includes(ROSTER_GRAPH_SOURCE));continue;}
   if(name==='compiler-consumer-trace'){assert(condition.includes("inputs.installer_fixture_phase == 'compiler-consumer-trace'"));assert(condition.includes(BOUNDARY_SOURCE));continue;}
   assert(condition.includes("inputs.installer_fixture_phase != 'compiler-boundary'"),name);
   assert(condition.includes("inputs.installer_fixture_phase != 'compiler-consumer-trace'"),name);
@@ -195,7 +196,7 @@ test('complete13d and historical selected-f2 schedules cannot exchange sources o
 });
 
 test('new complete request pins13d and every current controller byte without adopting diagnostic success as release proof',()=>{
- const request=JSON.parse(readFileSync(new URL('../../../docs/qualification/compiler-roster-attribution-controller-context-20261108.json',import.meta.url),'utf8')).completeBoundary;
+ const request=JSON.parse(readFileSync(new URL('../../../docs/qualification/compiler-roster-native-graph-controller-context-20261108.json',import.meta.url),'utf8')).completeBoundary;
  const historical=readFileSync(new URL('../../../docs/qualification/compiler-post-translator-complete-boundary-request-20261108.json',import.meta.url));
  assert.equal(createHash('sha256').update(historical).digest('hex'),'2eacde993f3682779709423a0123e40e3e5e64d4b1ff09b1206b4e3796a074ed');
  assert.equal(request.historicalRequestSha256,'2eacde993f3682779709423a0123e40e3e5e64d4b1ff09b1206b4e3796a074ed');
@@ -203,4 +204,24 @@ test('new complete request pins13d and every current controller byte without ado
  assert.deepEqual(request.expectedJobs,['resolve','compiler-boundary']);assert.equal(request.requiredScope,'ALL_ORIGINAL_ROOTS_AND_RESOLVED_IDENTITIES');
  assert.equal(request.ordinaryCompilerQualified,false);assert.equal(request.releaseAuthorized,false);
  for(const [name,hash]of Object.entries(request.sourceSha256))assert.equal(createHash('sha256').update(readFileSync(new URL('../../../'+name,import.meta.url))).digest('hex'),hash,name);
+});
+
+
+test('exact failed Roster graph intent admits only inventory and refuses alternate sources, semantic schedules or transport',async()=>{
+ const request=JSON.parse(readFileSync(new URL('../../../docs/qualification/compiler-roster-native-graph-request-20261108.json',import.meta.url),'utf8'));
+ const inputs=request.inputs;assert.equal(Object.keys(inputs).length,25);assert.doesNotThrow(()=>admitRosterInventoryInputs(inputs));
+ assert.equal(ROSTER_GRAPH_SOURCE,'5c8744b2ba3dfc03fc80f729413b2e93340c4ea8');assert.equal(ROSTER_GRAPH_REF,'codex/roster-shift-oracle-import-correction-20261108');
+ assert.equal(inputs.installer_fixture_phase,ROSTER_GRAPH_INTENT);assert.equal(ROSTER_GRAPH_ORDERED_SHA,'745a88c3a87efecda109d512508cc68047ed55b461bd1b82bf592e6f1cbc0f0e');
+ assert.equal(ROSTER_GRAPH_FILES,11491);assert.equal(ROSTER_GRAPH_ROOTS,9022);
+ for(const change of [{expected_sha:FULL_BOUNDARY_SOURCE},{expected_sha:BOUNDARY_SOURCE},{expected_sha:'0'.repeat(40)},{candidate_ref:'main'},
+  {installer_fixture_phase:'full'},{installer_fixture_phase:'compiler-roster-inventory'},{installer_fixture_phase:'compiler-consumer-trace'},
+  {compiler_probe:false},{nodb_probe:true},{layout_probe:'false'},{filesystem_activation_probe:true},{next_build_cache_phase:'warm'},
+  {compiler_origin_run:'1'},{next_build_cache_origin:'1'},{arbitrary:false},{graphRoots:[]},{semantic:true}])assert.throws(()=>admitRosterInventoryInputs({...inputs,...change}));
+ assert.throws(()=>admitBoundaryInputs(inputs));
+ assert.equal(request.semanticCompilerExecuted,false);assert.equal(request.ordinaryCompilerQualified,false);assert.equal(request.releaseAuthorized,false);
+ assert.deepEqual(request.expectedJobs,['resolve','compiler-roster-graph']);
+ for(const [name,hash]of Object.entries(request.sourceSha256))assert.equal(createHash('sha256').update(readFileSync(new URL('../../../'+name,import.meta.url))).digest('hex'),hash,name);
+ const previous=process.env.GITHUB_ACTIONS;
+ try{process.env.GITHUB_ACTIONS='false';await assert.rejects(experiment(false,true),/Managed diagnostic/);await assert.rejects(boundaryWorker('graph-inventory','/foreign'),/Hosted diagnostic/);}
+ finally{if(previous===undefined)delete process.env.GITHUB_ACTIONS;else process.env.GITHUB_ACTIONS=previous;}
 });

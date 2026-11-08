@@ -1,0 +1,71 @@
+{
+  "kind": "EXACT_ROSTER_NATIVE_PROGRAM_GRAPH_INVENTORY_ONLY_NOT_TYPECHECK",
+  "controllerBase": "e4bb2c047c3f2ea903f9e9bb4550f785728e83b4",
+  "controllerRef": "codex/compiler-roster-native-graph-inventory-20261108",
+  "source": "5c8744b2ba3dfc03fc80f729413b2e93340c4ea8",
+  "sourceRef": "codex/roster-shift-oracle-import-correction-20261108",
+  "workflow": "alpha-staging-diagnostics.yml",
+  "inputs": {
+    "candidate_ref": "codex/roster-shift-oracle-import-correction-20261108",
+    "expected_sha": "5c8744b2ba3dfc03fc80f729413b2e93340c4ea8",
+    "filesystem_activation_probe": false,
+    "installer_fixture_phase": "compiler-boundary",
+    "plan_probe": false,
+    "build_transport_probe": false,
+    "transport_origin_run": "",
+    "transport_origin_sha": "",
+    "transport_origin_artifact": "",
+    "transport_origin_digest": "",
+    "compiler_transport_probe": false,
+    "next_build_cache_phase": "disabled",
+    "next_build_cache_origin": "",
+    "managed_compiler_probe": false,
+    "managed_compiler_force_invalid": false,
+    "compiler_compatible_probe": false,
+    "compiler_origin_run": "",
+    "compiler_origin_sha": "",
+    "compiler_origin_artifact": "",
+    "compiler_origin_digest": "",
+    "compiler_probe": true,
+    "statutory_probe": false,
+    "nodb_probe": false,
+    "instrument_copies": false,
+    "layout_probe": false
+  },
+  "expectedJobs": [
+    "resolve",
+    "compiler-roster-graph"
+  ],
+  "requestedPhases": [
+    "inventory"
+  ],
+  "artifact": "diagnostic-compiler-roster-graph",
+  "expectedNativeRoots": 9022,
+  "expectedNativeFiles": 11491,
+  "orderedNativeInventorySha256": "745a88c3a87efecda109d512508cc68047ed55b461bd1b82bf592e6f1cbc0f0e",
+  "retainedFailure": {
+    "run": 42482836874,
+    "attempt": 1,
+    "source": "5c8744b2ba3dfc03fc80f729413b2e93340c4ea8",
+    "controller": "e4bb2c047c3f2ea903f9e9bb4550f785728e83b4",
+    "artifact": 13618293495,
+    "zipSha256": "06ab163ac8993af8dcecbb827fb4bfa309ea71337f284a59421e2eb246d1fc62"
+  },
+  "sourceSha256": {
+    ".github/ci/diagnostics/compiler-boundary-policy.mjs": "885272fea475ac95deca4b1a23b03f1a6e014f7f04fbf6e5f08bdf80a3451bb3",
+    ".github/ci/diagnostics/compiler-boundary-worker.mjs": "1a5feeeeccfff1d028bc1fae22ad57839f6560bcdf1a5ce8e88e78a584bf586f",
+    ".github/ci/diagnostics/compiler-boundary.mjs": "66590e758038f3de060fe1c64b0b0c702c72a4ab1262037382878d674cb11a18",
+    ".github/ci/diagnostics/compiler-boundary.test.mjs": "292c88c637bf6b6a1c97ad4f9fe2f5ddaab8d97bc321791859603d45c816f4cc",
+    ".github/ci/diagnostics/compiler-consumer-trace.test.mjs": "a0beac1e86e2d6ef604dc4ce2d917145989e6eb4291e440d4f0136f507b0f99e",
+    ".github/ci/diagnostics/compiler-attribution.test.mjs": "394e4a22b13cf5f785c694290e3555c8b80138cb783ccb942769018df014d9bc",
+    ".github/workflows/alpha-staging-diagnostics.yml": "03d75d502c7ea64fe13d5757bcc9c459666d4b0deebaa34a82127dd269073142",
+    "docs/qualification/compiler-roster-native-graph-controller-context-20261108.json": "d37f1b9e997349bb2c47a3c6fde91ad30c2461b0a3086aa130cb9682d9baeeb3",
+    "docs/qualification/compiler-roster-native-graph-20261108.md": "4b22a10a751666d7eb6c90682c3430e1d5e1b72f44ae94706bcc5340dcc20fb1"
+  },
+  "semanticCompilerExecuted": false,
+  "ordinaryCompilerQualified": false,
+  "completeSuite": false,
+  "releaseAuthorized": false,
+  "qualification": "NOT_RUN",
+  "production": "HELD"
+}

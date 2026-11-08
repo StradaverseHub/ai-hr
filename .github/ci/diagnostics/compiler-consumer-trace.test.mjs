@@ -68,7 +68,7 @@ test('new intent has one isolated hosted job and retains native trace finalizati
  const worker=readFileSync(new URL('./compiler-boundary-worker.mjs',import.meta.url),'utf8');assert(worker.includes("ts.startTracing('project'"));assert(worker.includes('tracing.stopTracing()'));assert(worker.includes('result.trace.finalizeElapsedMs'));assert(worker.includes('3ae902c92cc44dace175c0e69e13a4b0899f6983c6121d76b9ab8dd5795e7675'));
 });
 test('frozen trace request binds the exact reviewed source footprint, fixed25 inputs and explicit incomplete scope',()=>{
- const request=JSON.parse(readFileSync(new URL('../../../docs/qualification/compiler-roster-attribution-controller-context-20261108.json',import.meta.url),'utf8'));
+ const request=JSON.parse(readFileSync(new URL('../../../docs/qualification/compiler-roster-native-graph-controller-context-20261108.json',import.meta.url),'utf8'));
  const historical=readFileSync(new URL('../../../docs/qualification/compiler-selected-consumer-trace-request-20261108.json',import.meta.url));
  assert.equal(createHash('sha256').update(historical).digest('hex'),'c34cea1ff7a042b6a9cb59b68490d49cac6dba42c922fac871f687dc27549f38');
  assert.equal(request.historicalRequestSha256,'c34cea1ff7a042b6a9cb59b68490d49cac6dba42c922fac871f687dc27549f38');

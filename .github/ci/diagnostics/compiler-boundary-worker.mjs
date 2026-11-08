@@ -5,7 +5,7 @@ import {readFileSync,writeFileSync,mkdirSync,realpathSync,lstatSync,existsSync} 
 import {resolve,relative,dirname,join,sep} from 'node:path';
 import {execFileSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
-import {boundaryExecutionSource,TRACED_CONSUMERS,sha256,planBoundary,orderedBoundaryRoots,validateDeclarationCoverage,assertDeclarationBytes,resolutionLeafTargets,assertResolutionLeafBytes,contractSource,NEGATIVE_CONTRACTS,expectContractRefusals} from './compiler-boundary-policy.mjs';
+import {ROSTER_GRAPH_SOURCE,ROSTER_GRAPH_ORDERED_SHA,ROSTER_GRAPH_FILES,ROSTER_GRAPH_ROOTS,boundaryExecutionSource,TRACED_CONSUMERS,sha256,planBoundary,orderedBoundaryRoots,validateDeclarationCoverage,assertDeclarationBytes,resolutionLeafTargets,assertResolutionLeafBytes,contractSource,NEGATIVE_CONTRACTS,expectContractRefusals} from './compiler-boundary-policy.mjs';
 
 /** Public native per-source emission; every implementation must emit, independently.
  * JSON stays in its original Program but has no declaration output contract. */
@@ -23,17 +23,18 @@ export async function boundaryWorker(mode,out,index,traceConsumer=false){
  assert.equal(typeof traceConsumer,'boolean');if(traceConsumer)assert(mode==='consumer'&&TRACED_CONSUMERS.includes(index),'Only fixed native consumers may trace');
  assert(process.platform==='linux'&&process.env.GITHUB_ACTIONS==='true'&&process.env.RUNNER_ENVIRONMENT==='github-hosted'
   &&process.env.CI==='true'&&process.env.GITHUB_REPOSITORY==='StradaverseHub/ai-hr','Hosted diagnostic child required');
- assert(['inventory','producer','declarations','consumer','source-negative','declaration-negative'].includes(mode));
- const schedule=process.env.AIHR_COMPILER_BOUNDARY_SCHEDULE,source=boundaryExecutionSource(schedule);
+ assert(['inventory','graph-inventory','producer','declarations','consumer','source-negative','declaration-negative'].includes(mode));
+ const graphOnly=mode==='graph-inventory',schedule=process.env.AIHR_COMPILER_BOUNDARY_SCHEDULE;
+ let source;if(graphOnly){assert.equal(schedule,'roster-inventory-only');assert.equal(index,undefined);assert.equal(traceConsumer,false);source=ROSTER_GRAPH_SOURCE;}else source=boundaryExecutionSource(schedule);
  if(traceConsumer)assert.equal(schedule,'selected-trace','Full boundary never traces a consumer');
  const cwd=realpathSync(process.cwd()),temp=realpathSync(process.env.RUNNER_TEMP);
- assert.equal(out,join(temp,'diagnostic-compiler-boundary'));assert.equal(realpathSync(out),out);assert.equal(lstatSync(out).uid,process.getuid());
+ assert.equal(out,join(temp,graphOnly?'diagnostic-compiler-roster-graph':'diagnostic-compiler-boundary'));assert.equal(realpathSync(out),out);assert.equal(lstatSync(out).uid,process.getuid());
  const git=(...args)=>execFileSync('git',args,{cwd,encoding:'utf8',timeout:30000,maxBuffer:4*1024**2}).trim();
  assert.equal(git('rev-parse','HEAD'),source);assert.equal(process.env.AIHR_CI_HEAD,source);assert.equal(git('status','--porcelain'),'');
  assert.equal(process.versions.node,'22.23.3');
  const require=createRequire(join(cwd,'package.json')),ts=require('typescript');assert.equal(ts.version,'5.9.3');
  const apiHash=sha256(readFileSync(require.resolve('typescript')));
- if(traceConsumer)assert.equal(apiHash,'3ae902c92cc44dace175c0e69e13a4b0899f6983c6121d76b9ab8dd5795e7675','Exact native TS5.9.3 tracing API required');
+ if(traceConsumer||graphOnly)assert.equal(apiHash,'3ae902c92cc44dace175c0e69e13a4b0899f6983c6121d76b9ab8dd5795e7675','Exact native TS5.9.3 tracing API required');
  const id=path=>{const value=relative(cwd,resolve(path)).split(sep).join('/');assert(value&&!value.startsWith('../')&&!value.startsWith('/'),'Compiler source outside exact checkout');return value;};
  const config=path=>{
   const file=ts.readConfigFile(join(cwd,path),ts.sys.readFile);assert(!file.error,'Cannot read exact compiler config');
@@ -104,7 +105,7 @@ export async function boundaryWorker(mode,out,index,traceConsumer=false){
   return{nativeWholeProgramSkipped:true,wholeDiagnostics:0,perImplementationSkipped:false,exactNativeBytesMatch:true,jsonInputRetained:true,applicationOptionsChanged:false};
  }
  try{
-  if(mode==='inventory'){
+  if(mode==='inventory'||graphOnly){
    const {host,edges,packages,firstLoads}=compilerHost(parsed.options),program=ts.createProgram({rootNames:parsed.fileNames,options:parsed.options,host});
    const files=program.getSourceFiles().map(file=>{
     let augmentation=false;const visit=node=>{if(ts.isModuleDeclaration(node)&&(ts.isStringLiteral(node.name)||(node.flags&ts.NodeFlags.GlobalAugmentation)!==0))augmentation=true;ts.forEachChild(node,visit);};visit(file);
@@ -122,8 +123,8 @@ export async function boundaryWorker(mode,out,index,traceConsumer=false){
     for(const ref of file.libReferenceDirectives){const suffix='/lib.'+ref.fileName.toLowerCase()+'.d.ts',to=files.find(row=>('/'+row.id).endsWith(suffix))?.id??null;edges.push({kind:'libDirective',from:id(file.fileName),specifier:ref.fileName,to});}
    }
    const inventoryText=program.getSourceFiles().map(file=>file.fileName).join('\n')+'\n';
-   assert.equal(parsed.fileNames.length,8823,'Original root set changed');assert.equal(files.length,11268,'Original resolved graph changed');
-   assert.equal(sha256(inventoryText),'64150993b2990e6b4b405a1211037cca665887fb5068f97bebfb3e1e54a5dbbd','Exact original ordered program inventory changed');
+   assert.equal(parsed.fileNames.length,graphOnly?ROSTER_GRAPH_ROOTS:8823,'Original root set changed');assert.equal(files.length,graphOnly?ROSTER_GRAPH_FILES:11268,'Original resolved graph changed');
+   assert.equal(sha256(inventoryText),graphOnly?ROSTER_GRAPH_ORDERED_SHA:'64150993b2990e6b4b405a1211037cca665887fb5068f97bebfb3e1e54a5dbbd','Exact original ordered program inventory changed');
    assert.equal(identity.configHash,'0ee72fb11a698bad9b18c39223569adf5758727272b35bfa99ec7bfa57c3530a');
    assert.equal(identity.lockHash,'0413a070eca23d390fabdcd78cb63b2dcf4b0b69fe90408c7b57a4f672d21dbd');
    const parsedRealFiles=new Set(firstLoads.map(key=>id(realpathSync(join(cwd,key)))));
@@ -134,6 +135,14 @@ export async function boundaryWorker(mode,out,index,traceConsumer=false){
    });
    const inventory={kind:'EXACT_TS593_SOURCE_GRAPH',identity,roots:parsed.fileNames.map(id),files,edges,firstLoads,resolutionLeaves,packages:[...packages.values()],
     options:parsed.options,buildRoots:config('tsconfig.build.json').fileNames.map(id)};
+   if(graphOnly){
+    inventory.nativeGraphOnly=true;inventory.semanticCompilerExecuted=false;inventory.orderedInventorySha256=sha256(inventoryText);
+    writeFileSync(join(out,'inventory.json'),JSON.stringify(inventory,null,2)+'\n',{flag:'wx',mode:0o600});
+    Object.assign(result,{kind:'NATIVE_PROGRAM_GRAPH_INVENTORY_ONLY_NOT_TYPECHECK',rootNames:inventory.roots.length,
+     resolvedFiles:files.length,resolutionOnlyLeaves:resolutionLeaves.length,orderedInventorySha256:sha256(inventoryText),
+     semanticCompilerExecuted:false,complete:true});
+    writeFileSync(join(out,'inventory-phase.json'),JSON.stringify(result,null,2)+'\n',{flag:'wx',mode:0o600});return;
+   }
    const plan=planBoundary(inventory);
    writeFileSync(join(out,'inventory.json'),JSON.stringify(inventory,null,2)+'\n',{flag:'wx',mode:0o600});
    writeFileSync(join(out,'plan.json'),JSON.stringify(plan,null,2)+'\n',{flag:'wx',mode:0o600});

@@ -1,0 +1,386 @@
+{
+  "kind": "EXACT_LINE_EDITS_WHOLE_GIT_PARENT_RECONSTRUCTION",
+  "parent": "e4bb2c047c3f2ea903f9e9bb4550f785728e83b4",
+  "files": {
+    ".github/ci/diagnostics/compiler-boundary-policy.mjs": {
+      "parentBlob": "a53455438e8e8e92a42ad7279307ce29bc4c671c",
+      "parentSha256": "cf1aef49f7aad7394e3a8de31e1b31e1da80667fbbc9c8f2da16db5795c28ed7",
+      "currentSha256": "885272fea475ac95deca4b1a23b03f1a6e014f7f04fbf6e5f08bdf80a3451bb3",
+      "reverseLineEdits": [
+        {
+          "currentStartLine": 7,
+          "currentLines": [
+            "export const ROSTER_GRAPH_SOURCE='5c8744b2ba3dfc03fc80f729413b2e93340c4ea8';\n",
+            "export const ROSTER_GRAPH_REF='codex/roster-shift-oracle-import-correction-20261108';\n",
+            "export const ROSTER_GRAPH_INTENT='compiler-boundary';\n",
+            "export const ROSTER_GRAPH_ORDERED_SHA='745a88c3a87efecda109d512508cc68047ed55b461bd1b82bf592e6f1cbc0f0e';\n",
+            "export const ROSTER_GRAPH_FILES=11491;\n",
+            "export const ROSTER_GRAPH_ROOTS=9022;\n",
+            "\n"
+          ],
+          "parentLines": []
+        },
+        {
+          "currentStartLine": 36,
+          "currentLines": [
+            "function closedGraphInputFlags(inputs){\n"
+          ],
+          "parentLines": [
+            "export function admitConsumerTraceInputs(inputs){\n"
+          ]
+        },
+        {
+          "currentStartLine": 39,
+          "currentLines": [],
+          "parentLines": [
+            " assert.equal(inputs.installer_fixture_phase,CONSUMER_TRACE_INTENT);\n"
+          ]
+        },
+        {
+          "currentStartLine": 41,
+          "currentLines": [
+            "}\n",
+            "export function admitConsumerTraceInputs(inputs){\n",
+            " closedGraphInputFlags(inputs);assert.equal(inputs.installer_fixture_phase,CONSUMER_TRACE_INTENT);\n"
+          ],
+          "parentLines": []
+        },
+        {
+          "currentStartLine": 46,
+          "currentLines": [
+            "export function admitRosterInventoryInputs(inputs){\n",
+            " closedGraphInputFlags(inputs);assert.equal(inputs.installer_fixture_phase,ROSTER_GRAPH_INTENT);\n",
+            " assert.equal(inputs.expected_sha,ROSTER_GRAPH_SOURCE);assert.equal(inputs.candidate_ref,ROSTER_GRAPH_REF);\n",
+            " assert.equal(inputs.compiler_probe,true);assert.equal(inputs.next_build_cache_phase,'disabled');\n",
+            " for(const key of ['transport_origin_run','transport_origin_sha','transport_origin_artifact','transport_origin_digest',\n",
+            "  'compiler_origin_run','compiler_origin_sha','compiler_origin_artifact','compiler_origin_digest','next_build_cache_origin'])\n",
+            "  assert(inputs[key]===undefined||inputs[key]==='',key);\n",
+            "}\n",
+            "\n"
+          ],
+          "parentLines": []
+        }
+      ]
+    },
+    ".github/ci/diagnostics/compiler-boundary-worker.mjs": {
+      "parentBlob": "a35b4faed7ee64c0a84f56a38ebaa2a153e61a4a",
+      "parentSha256": "5d1986d983cc0a2f5d87670704cb83acaaaf41a26d8068958c83ba89e727c00e",
+      "currentSha256": "1a5feeeeccfff1d028bc1fae22ad57839f6560bcdf1a5ce8e88e78a584bf586f",
+      "reverseLineEdits": [
+        {
+          "currentStartLine": 8,
+          "currentLines": [
+            "import {ROSTER_GRAPH_SOURCE,ROSTER_GRAPH_ORDERED_SHA,ROSTER_GRAPH_FILES,ROSTER_GRAPH_ROOTS,boundaryExecutionSource,TRACED_CONSUMERS,sha256,planBoundary,orderedBoundaryRoots,validateDeclarationCoverage,assertDeclarationBytes,resolutionLeafTargets,assertResolutionLeafBytes,contractSource,NEGATIVE_CONTRACTS,expectContractRefusals} from './compiler-boundary-policy.mjs';\n"
+          ],
+          "parentLines": [
+            "import {boundaryExecutionSource,TRACED_CONSUMERS,sha256,planBoundary,orderedBoundaryRoots,validateDeclarationCoverage,assertDeclarationBytes,resolutionLeafTargets,assertResolutionLeafBytes,contractSource,NEGATIVE_CONTRACTS,expectContractRefusals} from './compiler-boundary-policy.mjs';\n"
+          ]
+        },
+        {
+          "currentStartLine": 26,
+          "currentLines": [
+            " assert(['inventory','graph-inventory','producer','declarations','consumer','source-negative','declaration-negative'].includes(mode));\n",
+            " const graphOnly=mode==='graph-inventory',schedule=process.env.AIHR_COMPILER_BOUNDARY_SCHEDULE;\n",
+            " let source;if(graphOnly){assert.equal(schedule,'roster-inventory-only');assert.equal(index,undefined);assert.equal(traceConsumer,false);source=ROSTER_GRAPH_SOURCE;}else source=boundaryExecutionSource(schedule);\n"
+          ],
+          "parentLines": [
+            " assert(['inventory','producer','declarations','consumer','source-negative','declaration-negative'].includes(mode));\n",
+            " const schedule=process.env.AIHR_COMPILER_BOUNDARY_SCHEDULE,source=boundaryExecutionSource(schedule);\n"
+          ]
+        },
+        {
+          "currentStartLine": 31,
+          "currentLines": [
+            " assert.equal(out,join(temp,graphOnly?'diagnostic-compiler-roster-graph':'diagnostic-compiler-boundary'));assert.equal(realpathSync(out),out);assert.equal(lstatSync(out).uid,process.getuid());\n"
+          ],
+          "parentLines": [
+            " assert.equal(out,join(temp,'diagnostic-compiler-boundary'));assert.equal(realpathSync(out),out);assert.equal(lstatSync(out).uid,process.getuid());\n"
+          ]
+        },
+        {
+          "currentStartLine": 37,
+          "currentLines": [
+            " if(traceConsumer||graphOnly)assert.equal(apiHash,'3ae902c92cc44dace175c0e69e13a4b0899f6983c6121d76b9ab8dd5795e7675','Exact native TS5.9.3 tracing API required');\n"
+          ],
+          "parentLines": [
+            " if(traceConsumer)assert.equal(apiHash,'3ae902c92cc44dace175c0e69e13a4b0899f6983c6121d76b9ab8dd5795e7675','Exact native TS5.9.3 tracing API required');\n"
+          ]
+        },
+        {
+          "currentStartLine": 108,
+          "currentLines": [
+            "  if(mode==='inventory'||graphOnly){\n"
+          ],
+          "parentLines": [
+            "  if(mode==='inventory'){\n"
+          ]
+        },
+        {
+          "currentStartLine": 126,
+          "currentLines": [
+            "   assert.equal(parsed.fileNames.length,graphOnly?ROSTER_GRAPH_ROOTS:8823,'Original root set changed');assert.equal(files.length,graphOnly?ROSTER_GRAPH_FILES:11268,'Original resolved graph changed');\n",
+            "   assert.equal(sha256(inventoryText),graphOnly?ROSTER_GRAPH_ORDERED_SHA:'64150993b2990e6b4b405a1211037cca665887fb5068f97bebfb3e1e54a5dbbd','Exact original ordered program inventory changed');\n"
+          ],
+          "parentLines": [
+            "   assert.equal(parsed.fileNames.length,8823,'Original root set changed');assert.equal(files.length,11268,'Original resolved graph changed');\n",
+            "   assert.equal(sha256(inventoryText),'64150993b2990e6b4b405a1211037cca665887fb5068f97bebfb3e1e54a5dbbd','Exact original ordered program inventory changed');\n"
+          ]
+        },
+        {
+          "currentStartLine": 138,
+          "currentLines": [
+            "   if(graphOnly){\n",
+            "    inventory.nativeGraphOnly=true;inventory.semanticCompilerExecuted=false;inventory.orderedInventorySha256=sha256(inventoryText);\n",
+            "    writeFileSync(join(out,'inventory.json'),JSON.stringify(inventory,null,2)+'\\n',{flag:'wx',mode:0o600});\n",
+            "    Object.assign(result,{kind:'NATIVE_PROGRAM_GRAPH_INVENTORY_ONLY_NOT_TYPECHECK',rootNames:inventory.roots.length,\n",
+            "     resolvedFiles:files.length,resolutionOnlyLeaves:resolutionLeaves.length,orderedInventorySha256:sha256(inventoryText),\n",
+            "     semanticCompilerExecuted:false,complete:true});\n",
+            "    writeFileSync(join(out,'inventory-phase.json'),JSON.stringify(result,null,2)+'\\n',{flag:'wx',mode:0o600});return;\n",
+            "   }\n"
+          ],
+          "parentLines": []
+        }
+      ]
+    },
+    ".github/ci/diagnostics/compiler-boundary.mjs": {
+      "parentBlob": "cfe1a845fae8e70e4a3be6aa5cd1a43f312a7270",
+      "parentSha256": "5fa67c973118053b1760e7adc288d8e429834b468ac38f28040a1e3cd74195d8",
+      "currentSha256": "66590e758038f3de060fe1c64b0b0c702c72a4ab1262037382878d674cb11a18",
+      "reverseLineEdits": [
+        {
+          "currentStartLine": 8,
+          "currentLines": [
+            "import {ROSTER_GRAPH_SOURCE,ROSTER_GRAPH_INTENT,admitRosterInventoryInputs,boundaryExecutionSource,BOUNDARY_LIMITS,sha256,admitBoundaryInputs,admitConsumerTraceInputs,CONSUMER_TRACE_INTENT,TRACED_CONSUMERS,boundarySchedule,remainingCompilerMs} from './compiler-boundary-policy.mjs';\n"
+          ],
+          "parentLines": [
+            "import {boundaryExecutionSource,BOUNDARY_LIMITS,sha256,admitBoundaryInputs,admitConsumerTraceInputs,CONSUMER_TRACE_INTENT,TRACED_CONSUMERS,boundarySchedule,remainingCompilerMs} from './compiler-boundary-policy.mjs';\n"
+          ]
+        },
+        {
+          "currentStartLine": 55,
+          "currentLines": [
+            "export async function experiment(traceOnly=false,graphOnly=false){\n",
+            " assert.equal(typeof traceOnly,'boolean');assert.equal(typeof graphOnly,'boolean');assert(!(traceOnly&&graphOnly));\n",
+            " const schedule=graphOnly?'roster-inventory-only':traceOnly?'selected-trace':'full';\n",
+            " let source;if(graphOnly)source=ROSTER_GRAPH_SOURCE;else source=boundaryExecutionSource(schedule);\n"
+          ],
+          "parentLines": [
+            "export async function experiment(traceOnly=false){\n",
+            " assert.equal(typeof traceOnly,'boolean');\n",
+            " const schedule=traceOnly?'selected-trace':'full',source=boundaryExecutionSource(schedule);\n"
+          ]
+        },
+        {
+          "currentStartLine": 66,
+          "currentLines": [
+            " const temp=realpathSync(process.env.RUNNER_TEMP),out=join(temp,graphOnly?'diagnostic-compiler-roster-graph':'diagnostic-compiler-boundary');\n"
+          ],
+          "parentLines": [
+            " const temp=realpathSync(process.env.RUNNER_TEMP),out=join(temp,'diagnostic-compiler-boundary');\n"
+          ]
+        },
+        {
+          "currentStartLine": 68,
+          "currentLines": [
+            " const report={kind:graphOnly?'NATIVE_PROGRAM_GRAPH_INVENTORY_ONLY_NOT_TYPECHECK':traceOnly?'DEVELOPMENT_SELECTED_CONSUMER_TRACE_NOT_RELEASE':'DEVELOPMENT_COMPILER_DECLARATION_BOUNDARY_NOT_RELEASE',source:source,controller:process.env.AIHR_CI_CONTROL_HEAD,\n"
+          ],
+          "parentLines": [
+            " const report={kind:traceOnly?'DEVELOPMENT_SELECTED_CONSUMER_TRACE_NOT_RELEASE':'DEVELOPMENT_COMPILER_DECLARATION_BOUNDARY_NOT_RELEASE',source:source,controller:process.env.AIHR_CI_CONTROL_HEAD,\n"
+          ]
+        },
+        {
+          "currentStartLine": 71,
+          "currentLines": [
+            "  ...(graphOnly?{nativeGraphOnly:true,semanticCompilerExecuted:false,completeSuite:false}:{}),\n"
+          ],
+          "parentLines": []
+        },
+        {
+          "currentStartLine": 83,
+          "currentLines": [
+            "  const child=spawn('/usr/bin/prlimit',['--core=0',`--fsize=${BOUNDARY_LIMITS.fileBytes}`,'--',process.execPath,...boundaryArguments(worker,out,graphOnly?'graph-inventory':mode,index,traceOnly)],{\n"
+          ],
+          "parentLines": [
+            "  const child=spawn('/usr/bin/prlimit',['--core=0',`--fsize=${BOUNDARY_LIMITS.fileBytes}`,'--',process.execPath,...boundaryArguments(worker,out,mode,index,traceOnly)],{\n"
+          ]
+        },
+        {
+          "currentStartLine": 109,
+          "currentLines": [
+            "  await phase('inventory');const inventory=JSON.parse(readFileSync(join(out,'inventory.json'),'utf8'));\n",
+            "  if(graphOnly){\n",
+            "   assert.equal(inventory.nativeGraphOnly,true);assert.equal(inventory.semanticCompilerExecuted,false);\n",
+            "   report.inventorySha256=sha256(readFileSync(join(out,'inventory.json')));\n",
+            "   report.coverage={nativeProgramRoots:inventory.roots.length,nativeProgramResolvedFiles:inventory.files.length,semanticChecked:false};\n",
+            "   assert(outputBytes()<=BOUNDARY_LIMITS.totalBytes);report.complete=true;return report;\n",
+            "  }\n",
+            "  const plan=JSON.parse(readFileSync(join(out,'plan.json'),'utf8'));\n"
+          ],
+          "parentLines": [
+            "  await phase('inventory');const inventory=JSON.parse(readFileSync(join(out,'inventory.json'),'utf8')),plan=JSON.parse(readFileSync(join(out,'plan.json'),'utf8'));\n"
+          ]
+        },
+        {
+          "currentStartLine": 142,
+          "currentLines": [
+            "  if(!graphOnly)report.phases.push(...blockedUnstartedPhases(planned,report.phases,remainingCompilerMs(report.phases)));\n",
+            "  if(!graphOnly&&!report.plannedPhases)report.consumerPlanUnavailable={status:'blocked',blockedReason:'inventory-or-plan-failure',consumersKnown:false};\n"
+          ],
+          "parentLines": [
+            "  report.phases.push(...blockedUnstartedPhases(planned,report.phases,remainingCompilerMs(report.phases)));\n",
+            "  if(!report.plannedPhases)report.consumerPlanUnavailable={status:'blocked',blockedReason:'inventory-or-plan-failure',consumersKnown:false};\n"
+          ]
+        },
+        {
+          "currentStartLine": 154,
+          "currentLines": [
+            " if(process.argv[2]==='--selection'){const inputs=JSON.parse(process.env.AIHR_COMPILER_BOUNDARY_INPUTS);(inputs.installer_fixture_phase===ROSTER_GRAPH_INTENT&&inputs.expected_sha===ROSTER_GRAPH_SOURCE?admitRosterInventoryInputs:inputs.installer_fixture_phase===CONSUMER_TRACE_INTENT?admitConsumerTraceInputs:admitBoundaryInputs)(inputs);}\n",
+            " else{assert(process.argv.length===2||process.argv.length===3&&['--trace-consumers','--graph-inventory-only'].includes(process.argv[2]));experiment(process.argv[2]==='--trace-consumers',process.argv[2]==='--graph-inventory-only').then(value=>console.log(JSON.stringify(value))).catch(error=>{console.error(error);process.exitCode=1;});}\n"
+          ],
+          "parentLines": [
+            " if(process.argv[2]==='--selection'){const inputs=JSON.parse(process.env.AIHR_COMPILER_BOUNDARY_INPUTS);(inputs.installer_fixture_phase===CONSUMER_TRACE_INTENT?admitConsumerTraceInputs:admitBoundaryInputs)(inputs);}\n",
+            " else{assert(process.argv.length===2||process.argv.length===3&&process.argv[2]==='--trace-consumers');experiment(process.argv[2]==='--trace-consumers').then(value=>console.log(JSON.stringify(value))).catch(error=>{console.error(error);process.exitCode=1;});}\n"
+          ]
+        }
+      ]
+    },
+    ".github/ci/diagnostics/compiler-boundary.test.mjs": {
+      "parentBlob": "41763e9a424055835e45a1b97ebed0af56db2798",
+      "parentSha256": "77aa441090e1910d0b11c14c5e6f47902745cc69b44788ad64ff8547e662695f",
+      "currentSha256": "292c88c637bf6b6a1c97ad4f9fe2f5ddaab8d97bc321791859603d45c816f4cc",
+      "reverseLineEdits": [
+        {
+          "currentStartLine": 6,
+          "currentLines": [
+            "import {ROSTER_GRAPH_SOURCE,ROSTER_GRAPH_REF,ROSTER_GRAPH_INTENT,ROSTER_GRAPH_ORDERED_SHA,ROSTER_GRAPH_FILES,ROSTER_GRAPH_ROOTS,admitRosterInventoryInputs,BOUNDARY_SOURCE,BOUNDARY_REF,FULL_BOUNDARY_SOURCE,FULL_BOUNDARY_REF,boundaryExecutionSource,BOUNDARY_LIMITS,admitBoundaryInputs,remainingCompilerMs,stronglyConnected,planBoundary,ambientEntries,orderedBoundaryRoots,resolutionLeafTargets,assertResolutionLeafBytes,assertDeclarationBytes,sha256,\n"
+          ],
+          "parentLines": [
+            "import {BOUNDARY_SOURCE,BOUNDARY_REF,FULL_BOUNDARY_SOURCE,FULL_BOUNDARY_REF,boundaryExecutionSource,BOUNDARY_LIMITS,admitBoundaryInputs,remainingCompilerMs,stronglyConnected,planBoundary,ambientEntries,orderedBoundaryRoots,resolutionLeafTargets,assertResolutionLeafBytes,assertDeclarationBytes,sha256,\n"
+          ]
+        },
+        {
+          "currentStartLine": 167,
+          "currentLines": [
+            "  if(name==='compiler-roster-graph'){assert(condition.includes(\"inputs.installer_fixture_phase == 'compiler-boundary'\"));assert(condition.includes(ROSTER_GRAPH_SOURCE));continue;}\n"
+          ],
+          "parentLines": []
+        },
+        {
+          "currentStartLine": 199,
+          "currentLines": [
+            " const request=JSON.parse(readFileSync(new URL('../../../docs/qualification/compiler-roster-native-graph-controller-context-20261108.json',import.meta.url),'utf8')).completeBoundary;\n"
+          ],
+          "parentLines": [
+            " const request=JSON.parse(readFileSync(new URL('../../../docs/qualification/compiler-roster-attribution-controller-context-20261108.json',import.meta.url),'utf8')).completeBoundary;\n"
+          ]
+        },
+        {
+          "currentStartLine": 208,
+          "currentLines": [
+            "\n",
+            "\n",
+            "test('exact failed Roster graph intent admits only inventory and refuses alternate sources, semantic schedules or transport',async()=>{\n",
+            " const request=JSON.parse(readFileSync(new URL('../../../docs/qualification/compiler-roster-native-graph-request-20261108.json',import.meta.url),'utf8'));\n",
+            " const inputs=request.inputs;assert.equal(Object.keys(inputs).length,25);assert.doesNotThrow(()=>admitRosterInventoryInputs(inputs));\n",
+            " assert.equal(ROSTER_GRAPH_SOURCE,'5c8744b2ba3dfc03fc80f729413b2e93340c4ea8');assert.equal(ROSTER_GRAPH_REF,'codex/roster-shift-oracle-import-correction-20261108');\n",
+            " assert.equal(inputs.installer_fixture_phase,ROSTER_GRAPH_INTENT);assert.equal(ROSTER_GRAPH_ORDERED_SHA,'745a88c3a87efecda109d512508cc68047ed55b461bd1b82bf592e6f1cbc0f0e');\n",
+            " assert.equal(ROSTER_GRAPH_FILES,11491);assert.equal(ROSTER_GRAPH_ROOTS,9022);\n",
+            " for(const change of [{expected_sha:FULL_BOUNDARY_SOURCE},{expected_sha:BOUNDARY_SOURCE},{expected_sha:'0'.repeat(40)},{candidate_ref:'main'},\n",
+            "  {installer_fixture_phase:'full'},{installer_fixture_phase:'compiler-roster-inventory'},{installer_fixture_phase:'compiler-consumer-trace'},\n",
+            "  {compiler_probe:false},{nodb_probe:true},{layout_probe:'false'},{filesystem_activation_probe:true},{next_build_cache_phase:'warm'},\n",
+            "  {compiler_origin_run:'1'},{next_build_cache_origin:'1'},{arbitrary:false},{graphRoots:[]},{semantic:true}])assert.throws(()=>admitRosterInventoryInputs({...inputs,...change}));\n",
+            " assert.throws(()=>admitBoundaryInputs(inputs));\n",
+            " assert.equal(request.semanticCompilerExecuted,false);assert.equal(request.ordinaryCompilerQualified,false);assert.equal(request.releaseAuthorized,false);\n",
+            " assert.deepEqual(request.expectedJobs,['resolve','compiler-roster-graph']);\n",
+            " for(const [name,hash]of Object.entries(request.sourceSha256))assert.equal(createHash('sha256').update(readFileSync(new URL('../../../'+name,import.meta.url))).digest('hex'),hash,name);\n",
+            " const previous=process.env.GITHUB_ACTIONS;\n",
+            " try{process.env.GITHUB_ACTIONS='false';await assert.rejects(experiment(false,true),/Managed diagnostic/);await assert.rejects(boundaryWorker('graph-inventory','/foreign'),/Hosted diagnostic/);}\n",
+            " finally{if(previous===undefined)delete process.env.GITHUB_ACTIONS;else process.env.GITHUB_ACTIONS=previous;}\n",
+            "});\n"
+          ],
+          "parentLines": []
+        }
+      ]
+    },
+    ".github/ci/diagnostics/compiler-consumer-trace.test.mjs": {
+      "parentBlob": "b75b5077d10a3909571b4b98c5405b2e88d404ec",
+      "parentSha256": "47bd892f43b3bf14b424361c3f063cc73fcd7b8687a5f6d3f216be5273f046ef",
+      "currentSha256": "a0beac1e86e2d6ef604dc4ce2d917145989e6eb4291e440d4f0136f507b0f99e",
+      "reverseLineEdits": [
+        {
+          "currentStartLine": 71,
+          "currentLines": [
+            " const request=JSON.parse(readFileSync(new URL('../../../docs/qualification/compiler-roster-native-graph-controller-context-20261108.json',import.meta.url),'utf8'));\n"
+          ],
+          "parentLines": [
+            " const request=JSON.parse(readFileSync(new URL('../../../docs/qualification/compiler-roster-attribution-controller-context-20261108.json',import.meta.url),'utf8'));\n"
+          ]
+        }
+      ]
+    },
+    ".github/ci/diagnostics/compiler-attribution.test.mjs": {
+      "parentBlob": "ffb238849be478a96d28657eb75250a2ce8685d3",
+      "parentSha256": "c58611cb10f4f2cac3ac4c52755dc13dd9692407fcfcde753853081b98ed075a",
+      "currentSha256": "394e4a22b13cf5f785c694290e3555c8b80138cb783ccb942769018df014d9bc",
+      "reverseLineEdits": [
+        {
+          "currentStartLine": 56,
+          "currentLines": [
+            " const request=JSON.parse(readFileSync(new URL('../../../docs/qualification/compiler-roster-native-graph-controller-context-20261108.json',import.meta.url),'utf8')).wholeAttribution;\n"
+          ],
+          "parentLines": [
+            " const request=JSON.parse(readFileSync(new URL('../../../docs/qualification/compiler-roster-whole-attribution-20261108-request.json',import.meta.url),'utf8'));\n"
+          ]
+        }
+      ]
+    },
+    ".github/workflows/alpha-staging-diagnostics.yml": {
+      "parentBlob": "475cfa133d7a66a06af700fea1cae260cf7ee9b4",
+      "parentSha256": "1ea21419f4f58df1923fd170406d696dcdd5dd5b9c3a2cb385ffa262e064e6a6",
+      "currentSha256": "03d75d502c7ea64fe13d5757bcc9c459666d4b0deebaa34a82127dd269073142",
+      "reverseLineEdits": [
+        {
+          "currentStartLine": 407,
+          "currentLines": [
+            "          include-hidden-files: true\n",
+            "          if-no-files-found: error\n",
+            "          retention-days: 14\n",
+            "\n",
+            "\n",
+            "  compiler-roster-graph:\n",
+            "    if: ${{ inputs.installer_fixture_phase == 'compiler-boundary' && inputs.compiler_probe && inputs.expected_sha == '5c8744b2ba3dfc03fc80f729413b2e93340c4ea8' }}\n",
+            "    needs: resolve\n",
+            "    runs-on: ubuntu-24.04\n",
+            "    timeout-minutes: 20\n",
+            "    defaults: {run: {working-directory: source}}\n",
+            "    env:\n",
+            "      AIHR_CI_HEAD: ${{ needs.resolve.outputs.sha }}\n",
+            "    steps:\n",
+            "      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803\n",
+            "        with: {ref: '${{ github.workflow_sha }}', path: automation, persist-credentials: false}\n",
+            "      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803\n",
+            "        with: {ref: '${{ needs.resolve.outputs.sha }}', path: source, persist-credentials: false}\n",
+            "      - uses: ./automation/.github/actions/setup-alpha\n",
+            "      - name: Generate real unchanged Next route types\n",
+            "        run: pnpm exec next typegen\n",
+            "      - name: Inventory native Program graph only under the original120s boundary\n",
+            "        run: node ../automation/.github/ci/diagnostics/compiler-boundary.mjs --graph-inventory-only\n",
+            "      - if: always()\n",
+            "        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02\n",
+            "        with:\n",
+            "          name: diagnostic-compiler-roster-graph\n",
+            "          path: ${{ runner.temp }}/diagnostic-compiler-roster-graph/\n"
+          ],
+          "parentLines": []
+        }
+      ]
+    }
+  },
+  "absentAtParent": [
+    "docs/qualification/compiler-roster-native-graph-controller-context-20261108.json",
+    "docs/qualification/compiler-roster-native-graph-request-20261108.json",
+    "docs/qualification/compiler-roster-native-graph-20261108.md",
+    "docs/qualification/compiler-roster-native-graph-inverse-20261108.json",
+    "docs/qualification/compiler-roster-native-graph-source-20261108.json"
+  ]
+}

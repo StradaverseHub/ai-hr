@@ -53,7 +53,7 @@ test('existing selector stays within25 inputs and reserves only the pinned sourc
  assert(incremental.includes("inputs.installer_fixture_phase != 'compiler-boundary' && inputs.installer_fixture_phase != 'compiler-consumer-trace' && (inputs.compiler_probe && inputs.expected_sha != '"+ATTRIBUTION_SOURCE+"'"));
  assert.match(workflow,/compiler-attribution:[\s\S]*?runs-on: ubuntu-24.04[\s\S]*?timeout-minutes: 20/);
  assert.match(workflow,/name: diagnostic-compiler-attribution\n\s+path: \$\{\{ runner.temp \}\}\/diagnostic-compiler-attribution\//);
- const request=JSON.parse(readFileSync(new URL('../../../docs/qualification/compiler-roster-whole-attribution-20261108-request.json',import.meta.url),'utf8'));
+ const request=JSON.parse(readFileSync(new URL('../../../docs/qualification/compiler-roster-native-graph-controller-context-20261108.json',import.meta.url),'utf8')).wholeAttribution;
  assert.equal(request.source,ATTRIBUTION_SOURCE);assert.equal(request.inputs.expected_sha,ATTRIBUTION_SOURCE);
  assert.equal(request.inputs.candidate_ref,'codex/roster-shift-oracle-import-correction-20261108');assert.equal(Object.keys(request.inputs).length,25);
  assert.doesNotThrow(()=>validateAttributionSelection(request.inputs));assert.deepEqual(request.expectedJobs,['resolve','compiler-attribution']);

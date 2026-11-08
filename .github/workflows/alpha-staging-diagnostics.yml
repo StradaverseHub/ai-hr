@@ -408,6 +408,34 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+
+  compiler-roster-graph:
+    if: ${{ inputs.installer_fixture_phase == 'compiler-boundary' && inputs.compiler_probe && inputs.expected_sha == '5c8744b2ba3dfc03fc80f729413b2e93340c4ea8' }}
+    needs: resolve
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    defaults: {run: {working-directory: source}}
+    env:
+      AIHR_CI_HEAD: ${{ needs.resolve.outputs.sha }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with: {ref: '${{ github.workflow_sha }}', path: automation, persist-credentials: false}
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with: {ref: '${{ needs.resolve.outputs.sha }}', path: source, persist-credentials: false}
+      - uses: ./automation/.github/actions/setup-alpha
+      - name: Generate real unchanged Next route types
+        run: pnpm exec next typegen
+      - name: Inventory native Program graph only under the original120s boundary
+        run: node ../automation/.github/ci/diagnostics/compiler-boundary.mjs --graph-inventory-only
+      - if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: diagnostic-compiler-roster-graph
+          path: ${{ runner.temp }}/diagnostic-compiler-roster-graph/
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 14
+
   compiler-attribution:
     if: ${{ inputs.installer_fixture_phase != 'compiler-boundary' && inputs.installer_fixture_phase != 'compiler-consumer-trace' && (inputs.compiler_probe && inputs.installer_fixture_phase == 'full' && inputs.expected_sha == '5c8744b2ba3dfc03fc80f729413b2e93340c4ea8') }}
     needs: resolve
