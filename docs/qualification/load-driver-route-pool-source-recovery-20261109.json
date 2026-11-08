@@ -1,0 +1,36 @@
+{
+  "kind": "LOAD_DRIVER_PILOT_ROUTE_BINDING_SOURCE_RECOVERY_UNRUN",
+  "parent": "0bbef1ea9d11ad2ce00d94e21d9a70cd859f7c2d",
+  "sourceRef": "codex/architecture-route-pool-recovery-20261109",
+  "ownedPaths": [
+    "scripts/performance/system-load.mjs",
+    "docs/adr/2026-11-07-worker-generation-admission.md",
+    "docs/qualification/load-driver-route-pool-source-recovery-20261109.json"
+  ],
+  "wholeParentPreimages": [
+    {
+      "path": "scripts/performance/system-load.mjs",
+      "gitBlob": "bd2d7637abc5199778c7b0c501b3e89ba968a24c",
+      "bytes": 98971,
+      "sha256": "ecf1b52c881812e9a9b2e29c2df37501871be9c3809d7b38351a0e169907e5b7",
+      "currentSha256": "fafc4cdbf6e1ebbff2231efccaf80a8823945fa7d2349e3e7bc8a916c37f10e3"
+    },
+    {
+      "path": "docs/adr/2026-11-07-worker-generation-admission.md",
+      "gitBlob": "83e5c6a50ac72af496d1bbfdda809d250a08873c",
+      "bytes": 3906,
+      "sha256": "e55bdcbc727c633f3bacda978a2485da67b7484fdb0ef7c568a16d91c0aba2b8",
+      "currentSha256": "0fea94d5575b1135fa96a928c03c3b3a7cadd755a58bf98845b87a064f4ec7d4"
+    }
+  ],
+  "driverExactInverse": {
+    "removeOnce": "// Keep complete role routes for baseline and whole-system browser pilots.\nconst routePool=user=>routePools[user.role];\n"
+  },
+  "adrAppend": "\n\n## Whole-role pilot selector recovery\n\nSource review found two baseline/browser pilot calls to `routePool(user)` after the steady-navigation change removed that local binding. Restore the original selector from the complete `routePools` manifest. Keep the smaller suite-specific steady pools, role scheduler, workload volumes, pacing, assertions and all resource limits unchanged. Both pilot callers now have their intended source binding; this source correction does not establish a passing browser or worker comparison. Actual native browser preflight still precedes sustained load, and staging and production remain held.\n",
+  "historicalOwner": "892396254abf5a2324d81edbce91f650a7377d12^:scripts/performance/system-load.mjs",
+  "behavior": "Restore complete per-role pilot routes for existing baseline and browser callers; steady pools/scheduler and every other driver byte whole.",
+  "testStrategy": "Existing manifest and scheduler behavior checks plus real protected browser preflight; source binding is not a runtime PASS.",
+  "runtimeQualified": false,
+  "releaseAuthorized": false,
+  "productionHeld": true
+}
