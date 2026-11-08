@@ -31,6 +31,13 @@ for(const [locale,messages]of Object.entries({en,ms,zh,vi:viLocale,ta,th}))it(lo
   fireEvent.click(screen.getByRole('button',{name:messages.attendanceFormula.variables}));fireEvent.change(screen.getByLabelText(messages.attendanceFormula.searchVariables),{target:{value:'InShiftOT'}});
   expect(screen.getByText('ZoneAInShiftOT')).toBeTruthy();expect(screen.getByText('ZoneBPreInShiftOT')).toBeTruthy();await captureAiReviewScreenshots(aiReviewDomHtml(editor.container),locale,'feedback-attendance-library','Actual variable library; documented aliases and conditional availability; fictional teaching values');
   fireEvent.click(screen.getByRole('button',{name:messages.attendanceFormula.references}));fireEvent.click(screen.getByText(messages.attendanceFormula.referenceNames.ot15));await captureAiReviewScreenshots(aiReviewDomHtml(editor.container),locale,'feedback-attendance-references','Actual editable standard references; fictional rates; no policy or statutory claim');
+  fireEvent.click(screen.getByRole('button',{name:messages.attendanceFormula.conditions}));fireEvent.click(screen.getByRole('button',{name:messages.attendanceFormula.addCondition}));
+  const condition=screen.getAllByRole('textbox',{name:messages.attendanceFormula.conditionExpression})[1];fireEvent.change(condition,{target:{value:'Return process.env.SECRET'}});
+  expect(document.getElementById('attendance-source-validation')?.textContent).toContain('CONDITION_2:');expect(screen.getByRole('button',{name:messages.attendanceFormula.save})).toBeDisabled();
+  await captureAiReviewScreenshots(aiReviewDomHtml(editor.container),locale,'feedback-attendance-condition-error','Actual condition edit with visible named validation next to disabled Save; fictional draft');
+  fireEvent.change(condition,{target:{value:'If True Then\nReturn 1\nElse\nReturn 0\nEnd If'}});fireEvent.click(screen.getAllByRole('button',{name:messages.attendanceFormula.formatSource})[1]);
+  expect(condition).toHaveValue('If True Then\n    Return 1\nElse\n    Return 0\nEnd If');expect(screen.getByRole('button',{name:messages.attendanceFormula.save})).toBeEnabled();
+  await captureAiReviewScreenshots(aiReviewDomHtml(editor.container),locale,'feedback-attendance-condition-recovered','Actual condition formatted and validated; Save enabled but never clicked; unsaved fictional draft');
  }
  editor.unmount();
  const result={id:'70000000-0000-4000-8000-000000000001',companyId,formulaId:id,revisionId,employmentId:employeeId,periodFrom:date,periodTo:date,payComponentId:payItemId,quantity:'120',unit:'amount',rate:null,amount:'120.00',createdAt:new Date(date+'T00:00:00Z')};

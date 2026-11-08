@@ -62,3 +62,18 @@ it('adopts the canonical saved definition so trimmed input is ready to test',asy
  mocks.save.mockImplementation(async({configuration})=>{const definition={...configuration,description:configuration.description.trim()};return {ok:true,value:{formula:{id:'30000000-0000-4000-8000-000000000001',companyId,code:definition.code},latest:{id:'40000000-0000-4000-8000-000000000001',ordinal:1,definition},versions:[],tests:[],events:[],status:'inactive',activeRevisionId:null,activeOrdinal:null}};});mount();
  fireEvent.change(screen.getByLabelText(en.attendanceFormula.code),{target:{value:'WORKED'}});fireEvent.change(screen.getByLabelText(en.attendanceFormula.description),{target:{value:'  Fictional draft with outer spaces  '}});fireEvent.change(screen.getByLabelText(en.attendanceFormula.payItem),{target:{value:payItemId}});fireEvent.change(screen.getByRole('textbox',{name:en.attendanceFormula.formulaExpression}),{target:{value:'Return 1'}});fireEvent.click(screen.getByRole('button',{name:en.attendanceFormula.save}));await waitFor(()=>expect(screen.getByLabelText(en.attendanceFormula.description)).toHaveValue('Fictional draft with outer spaces'));expect(screen.getByRole('button',{name:en.attendanceFormula.save})).toBeDisabled();expect(screen.getByText(en.attendanceFormula.savedHelp)).toBeTruthy();expect(mocks.test).not.toHaveBeenCalled();
 });
+
+it('shows invalid condition identity beside Save and restores authoring after correction',()=>{
+ mount();fireEvent.change(screen.getByLabelText(en.attendanceFormula.code),{target:{value:'WORKED'}});
+ fireEvent.change(screen.getByRole('textbox',{name:en.attendanceFormula.formulaExpression}),{target:{value:'Return {#ConditionID}("CONDITION_1")'}});
+ fireEvent.click(screen.getByRole('button',{name:en.attendanceFormula.conditions}));fireEvent.click(screen.getByRole('button',{name:en.attendanceFormula.addCondition}));
+ const input=screen.getByRole('textbox',{name:en.attendanceFormula.conditionExpression});fireEvent.change(input,{target:{value:'Return process.env.SECRET'}});
+ const save=screen.getByRole('button',{name:en.attendanceFormula.save});expect(save).toBeDisabled();expect(document.getElementById(save.getAttribute('aria-describedby')!)?.textContent).toContain('CONDITION_1:');
+ fireEvent.change(input,{target:{value:'If True Then\nReturn 1\nElse\nReturn 0\nEnd If'}});fireEvent.click(screen.getByRole('button',{name:en.attendanceFormula.formatSource}));
+ expect(input).toHaveValue('If True Then\n    Return 1\nElse\n    Return 0\nEnd If');expect(save).toBeEnabled();expect(mocks.save).not.toHaveBeenCalled();
+});
+it('indents the next source line without intercepting Tab navigation',()=>{
+ mount();const input=screen.getByRole('textbox',{name:en.attendanceFormula.formulaExpression}) as HTMLTextAreaElement;
+ fireEvent.change(input,{target:{value:'If True Then'}});input.setSelectionRange(12,12);fireEvent.keyDown(input,{key:'Enter'});expect(input.value).toBe('If True Then\n    ');
+ expect(fireEvent.keyDown(input,{key:'Tab'})).toBe(true);expect(mocks.save).not.toHaveBeenCalled();
+});

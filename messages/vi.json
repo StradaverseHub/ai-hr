@@ -36657,6 +36657,7 @@
     "formulaExpression": "Biểu thức công thức",
     "addFormula": "Thêm công thức tái sử dụng",
     "remove": "Xóa",
+    "formatSource": "Định dạng mã nguồn",
     "syntaxHelp": "Dùng Return với phép tính thập phân chính xác, If / ElseIf / Else hoặc Select Case. Mọi nhánh đều phải trả về giá trị.",
     "conditionHelp": "Điều kiện có ID, mô tả và biểu thức riêng. Tham chiếu bằng ConditionID; chọn Decimal cho số hoặc Boolean cho True/False.",
     "conditionId": "ID điều kiện",

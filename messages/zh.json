@@ -36657,6 +36657,7 @@
     "formulaExpression": "公式表达式",
     "addFormula": "添加可复用公式",
     "remove": "移除",
+    "formatSource": "格式化源码",
     "syntaxHelp": "使用Return、精确小数运算、If / ElseIf / Else或Select Case。每条路径都必须返回值。",
     "conditionHelp": "条件有独立的ID、说明和表达式。通过ConditionID引用；数字结果选Decimal，True/False选Boolean。",
     "conditionId": "条件ID",

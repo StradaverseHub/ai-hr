@@ -36657,6 +36657,7 @@
     "formulaExpression": "சூத்திரக் கோவை",
     "addFormula": "மீண்டும் பயன்படுத்தும் சூத்திரத்தைச் சேர்",
     "remove": "அகற்று",
+    "formatSource": "மூலத்தை வடிவமை",
     "syntaxHelp": "துல்லியமான தசமக் கணக்கீடு, If / ElseIf / Else அல்லது Select Case உடன் Return ஐப் பயன்படுத்தவும். எல்லாப் பாதைகளும் மதிப்பை வழங்க வேண்டும்.",
     "conditionHelp": "நிபந்தனைகளுக்கு தனி ID, விளக்கம், கோவை உள்ளன. ConditionID மூலம் குறிப்பிடவும்; எண் முடிவுகளுக்கு Decimal அல்லது True/False க்கு Boolean தேர்ந்தெடுக்கவும்.",
     "conditionId": "நிபந்தனை ID",

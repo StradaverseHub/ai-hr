@@ -36657,6 +36657,7 @@
     "formulaExpression": "นิพจน์สูตร",
     "addFormula": "เพิ่มสูตรที่ใช้ซ้ำได้",
     "remove": "ลบ",
+    "formatSource": "จัดรูปแบบสูตร",
     "syntaxHelp": "ใช้ Return กับเลขทศนิยมแบบแม่นยำ If / ElseIf / Else หรือ Select Case ทุกเส้นทางต้องส่งคืนค่า",
     "conditionHelp": "แต่ละเงื่อนไขมีรหัส คำอธิบาย และนิพจน์ อ้างอิงด้วย ConditionID เลือก Decimal สำหรับตัวเลข หรือ Boolean สำหรับ True/False",
     "conditionId": "รหัสเงื่อนไข",

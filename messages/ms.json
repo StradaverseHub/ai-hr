@@ -36657,6 +36657,7 @@
     "formulaExpression": "Ungkapan formula",
     "addFormula": "Tambah formula boleh guna semula",
     "remove": "Buang",
+    "formatSource": "Format sumber",
     "syntaxHelp": "Gunakan Return dengan aritmetik perpuluhan tepat, If / ElseIf / Else atau Select Case. Setiap laluan mesti memulangkan nilai.",
     "conditionHelp": "Syarat mempunyai ID, penerangan dan ungkapan sendiri. Rujuk melalui ConditionID; pilih Decimal untuk nombor atau Boolean untuk True/False.",
     "conditionId": "ID Syarat",

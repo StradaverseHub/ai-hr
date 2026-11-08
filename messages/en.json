@@ -36657,6 +36657,7 @@
     "formulaExpression": "Formula expression",
     "addFormula": "Add reusable formula",
     "remove": "Remove",
+    "formatSource": "Format source",
     "syntaxHelp": "Use Return with exact decimal arithmetic, If / ElseIf / Else, or Select Case. Every path must return a value.",
     "conditionHelp": "Conditions have their own ID, description and expression. Reference them with ConditionID; choose Decimal for numeric results or Boolean for True/False.",
     "conditionId": "Condition ID",
