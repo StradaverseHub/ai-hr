@@ -21,4 +21,4 @@ export function assertEmployeeLifecycleAnchor(anchor,expected,nowNs,boot){
 }
 export function assertEmployeeLifecycleParent(actual,expected){assert.deepEqual(actual,expected);assert(Number.isSafeInteger(actual.pid)&&actual.pid>0);assert(Array.isArray(actual.argv)&&actual.argv.length===4);}
 
-export const EMPLOYEE_LIFECYCLE_CONTROLLER_SOURCES=Object.freeze(['.github/ci/employee-lifecycle.mjs','.github/ci/employee-lifecycle-profile.mjs','.github/ci/employee-lifecycle-profile.json','.github/ci/employee-lifecycle-context.mjs','.github/ci/employee-lifecycle-supervisor.py','.github/ci/owned-process.py','.github/ci/employee-postgres-resource.py','.github/ci/run-unit.mjs']);
+export const EMPLOYEE_LIFECYCLE_CONTROLLER_SOURCES=Object.freeze(['.github/ci/employee-lifecycle.mjs','.github/ci/employee-lifecycle-profile.mjs','.github/ci/employee-lifecycle-profile.json','.github/ci/employee-lifecycle-context.mjs','.github/ci/employee-lifecycle-supervisor.py','.github/ci/employee-lifecycle-always-stop.mjs','.github/ci/owned-process.py','.github/ci/employee-postgres-resource.py','.github/ci/employee-postgres-policy.py','.github/ci/run-unit.mjs']);
