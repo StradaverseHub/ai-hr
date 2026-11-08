@@ -200,3 +200,25 @@ model wrapper. Actual nested TAP names/outcomes, including failures, now reach
 the hosted job log for independent authentication. These are the fixed pure
 controller model streams, separate from the UID component's private diagnostics.
 All25s/1MiB/30s bounds,51names and original failure/status guards remain whole.
+
+
+## Effective JIT availability correction
+
+Actual42493362600 failed its preparation rollback control before either module
+pair or any EXPLAIN plan: with jit=off PostgreSQL16.15 pg_jit_available() returned
+false while the fixture copied true from its on defaults. The official16.15
+jit.c pg_jit_available calls provider_init, which immediately returns false when
+jit_enabled is false. This is an effective-mode fact, not a missing provider.
+The successor changes ONLY the two controlled before/after expected rows to
+require available=(mode==='on'). Initial on-provider availability true, every
+other same-PID setting and exact on-default restoration after COMMIT/ROLLBACK
+remain mandatory. The intentional rollback sentinel and all three complete
+cases, fixtures, statements, query/DTO parity, plan limits and resources remain
+whole. No product/global JIT, cap, model or controller changes or relaxed guard.
+Original failed run/sole artifact f9a8a1286299f6506ce556adc3872f0181110af19f07af353ebf5847ba05a32f
+and receipt42d18c5106d684b1a590263e29d3b4d25a0e49b78aeb964877f8156538d2714a
+are retained; they contain zero paired module samples and zero JIT plans.
+Reference: https://raw.githubusercontent.com/postgres/postgres/REL_16_15/src/backend/jit/jit.c
+This source-only correction needs root+independent affectedFULL review before
+publication and any separately authorized hosted diagnostic. No local native
+or repository behavior was executed.

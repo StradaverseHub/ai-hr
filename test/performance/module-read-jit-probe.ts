@@ -181,7 +181,7 @@ export async function createModuleReadJitProbe(ctx:SessionContext,save:()=>void)
      current_setting('transaction_isolation')as isolation,current_setting('transaction_read_only')='on'as "readOnly",current_setting('jit')as jit,
      row_security_active('public.employment'::regclass)as employment,row_security_active('public.assignment'::regclass)as assignment,row_security_active('public.person'::regclass)as person,row_security_active('public.company'::regclass)as company`);
    assert.deepEqual(identity,{pid:defaults.pid,role:'ai_hr_app',login:'ai_hr_app',tenant:ctx.tenantId,user:ctx.userId,isolation:'repeatable read',readOnly:true,jit:mode,employment:true,assignment:true,person:true,company:true});
-   const [controlled]=await tx.execute(sql.raw(settingSql));assert.deepEqual(controlled,{...defaults,jit:mode});
+   const [controlled]=await tx.execute(sql.raw(settingSql));assert.deepEqual(controlled,{...defaults,jit:mode,available:mode==='on'});
    identities.push({pid:identity.pid,role:identity.role,login:identity.login,isolation:identity.isolation,readOnly:identity.readOnly,jit:identity.jit,allPrincipalAndRlsFactsExact:true});
    const proxy=new Proxy(tx,{get(target,key,receiver){
     if(key==='select'||key==='selectDistinct')return (...args:unknown[])=>wrap(Reflect.apply(target[key],target,args));
@@ -189,7 +189,7 @@ export async function createModuleReadJitProbe(ctx:SessionContext,save:()=>void)
     const value=Reflect.get(target,key,receiver);return typeof value==='function'?value.bind(target):value;
    }});
    const start=performance.now();let bodyFinished=false;try{const result=await read(proxy);await Promise.allSettled([...pending]);callbackMs=performance.now()-start;bodyFinished=true;
-    const [after]=await tx.execute(sql.raw(settingSql));assert.deepEqual(after,{...defaults,jit:mode});return result;}finally{
+    const [after]=await tx.execute(sql.raw(settingSql));assert.deepEqual(after,{...defaults,jit:mode,available:mode==='on'});return result;}finally{
     // Query await sums overlap under the preserved same-Tx Promise.all bodies.
     await Promise.allSettled([...pending]);if(!bodyFinished)callbackMs=performance.now()-start;
    }
