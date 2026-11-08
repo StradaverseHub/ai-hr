@@ -1,7 +1,7 @@
 /** Precomputed native output ownership, never a compiler writer/copy hook. */
 import assert from 'node:assert/strict';
 import {join,relative,isAbsolute} from 'node:path';
-import {readFileSync,lstatSync,readdirSync,realpathSync} from 'node:fs';
+import {readFileSync,lstatSync,readdirSync,realpathSync,openSync,readSync,fstatSync,closeSync,constants} from 'node:fs';
 import {createHash} from 'node:crypto';
 import {REFERENCE_LIMITS} from './graph.mjs';
 export const digest=bytes=>createHash('sha256').update(bytes).digest('hex');
@@ -24,6 +24,23 @@ export function outputOwnership(plan,files){
  return[...outputs.values()].sort((a,b)=>a.path.localeCompare(b.path));
 }
 export function regularHash(path,maximum=512*1024**2){const before=lstatSync(path);assert(before.isFile()&&!before.isSymbolicLink()&&before.nlink===1&&before.size<=maximum,'Native regular file custody refused: '+JSON.stringify({regular:before.isFile(),symlink:before.isSymbolicLink(),links:before.nlink,bytes:before.size,maximum}));assert.equal(realpathSync(path),path);const bytes=readFileSync(path);const after=lstatSync(path);assert.equal(after.ino,before.ino);assert.equal(after.dev,before.dev);assert.equal(after.size,before.size);return{path,sha256:digest(bytes),bytes:bytes.length};}
+/** Read-only native dependency input, never an owned config/output/artifact seal.
+ * Package-manager hard links do not grant write or disposal authority. */
+export function dependencyInputHash(path,root,expectedSha256,maximum=REFERENCE_LIMITS.fileBytes){
+ assert(Number.isSafeInteger(maximum)&&maximum>0&&maximum<=REFERENCE_LIMITS.fileBytes);assert(/^[a-f0-9]{64}$/.test(expectedSha256));
+ assert(isAbsolute(root)&&realpathSync(root)===root);const directory=lstatSync(root,{bigint:true});assert(directory.isDirectory()&&!directory.isSymbolicLink());
+ const rel=relative(root,path);assert(isAbsolute(path)&&rel&&!isAbsolute(rel)&&rel!=='..'&&!rel.startsWith('../')&&realpathSync(path)===path,'Dependency outside canonical input tree');
+ const before=lstatSync(path,{bigint:true});assert(before.isFile()&&!before.isSymbolicLink()&&before.nlink>=1n&&before.size>=0n&&before.size<=BigInt(maximum),'Read-only dependency input refused');
+ const fields=['dev','ino','mode','uid','gid','nlink','size','mtimeNs','ctimeNs'],same=observed=>{for(const key of fields)assert.equal(observed[key],before[key],'Dependency input identity or bytes changed');};
+ const fd=openSync(path,constants.O_RDONLY|constants.O_NOFOLLOW|constants.O_NONBLOCK);
+ try{
+  same(fstatSync(fd,{bigint:true}));const hash=createHash('sha256'),chunk=Buffer.alloc(65536);let bytes=0;
+  while(bytes<Number(before.size)){const n=readSync(fd,chunk,0,Math.min(chunk.length,Number(before.size)-bytes),bytes);assert(n>0,'Dependency input truncated');hash.update(chunk.subarray(0,n));bytes+=n;}
+  assert.equal(readSync(fd,chunk,0,1,bytes),0,'Dependency input grew');same(fstatSync(fd,{bigint:true}));same(lstatSync(path,{bigint:true}));assert.equal(realpathSync(path),path);
+  const after=lstatSync(root,{bigint:true});for(const key of ['dev','ino','mode','uid','gid'])assert.equal(after[key],directory[key],'Dependency root changed');assert.equal(realpathSync(root),root);
+  const sha256=hash.digest('hex');assert.equal(sha256,expectedSha256,'Native loaded dependency bytes changed');return{path,sha256,bytes};
+ }finally{closeSync(fd);}
+}
 export function assertOutputSeal(rows){assert(rows.length>0&&new Set(rows.map(r=>r.path)).size===rows.length);for(const row of rows)assert.deepEqual(regularHash(row.path),row,'Stale/foreign native output');}
 export function emittedTree(root){const result=[];function visit(dir){for(const name of readdirSync(dir)){const path=join(dir,name),info=lstatSync(path);assert(!info.isSymbolicLink());if(info.isDirectory())visit(path);else{const row=regularHash(path);assert(!relative(root,path).startsWith('../'));result.push(row);}}}visit(root);return result.sort((a,b)=>a.path.localeCompare(b.path));}
 

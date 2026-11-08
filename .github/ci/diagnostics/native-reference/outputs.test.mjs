@@ -1,10 +1,10 @@
 /** Pure native-layout/custody models, not compiler behavior evidence. */
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {readFileSync,mkdtempSync,writeFileSync,rmSync,mkdirSync,existsSync,realpathSync} from 'node:fs';
+import {readFileSync,mkdtempSync,writeFileSync,rmSync,mkdirSync,existsSync,realpathSync,linkSync,symlinkSync,lstatSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
-import {nativeOutputNames,outputOwnership,regularHash,assertOutputSeal} from './outputs.mjs';
+import {nativeOutputNames,outputOwnership,regularHash,dependencyInputHash,digest,assertOutputSeal} from './outputs.mjs';
 import {planNativeReferences} from './graph.mjs';
 import {writeNativeReferenceConfigs,assertNativeParsedConfig} from './config.mjs';
 const file=(id,kind='implementation')=>({id,kind,sha256:'1'.repeat(64)});
@@ -53,4 +53,33 @@ test('native parsed-file assertion refuses count, complete membership, order or 
  assert.throws(()=>assertNativeParsedConfig({fileNames:names.slice(0,2)},names,{roots:3,ownedClosure:2}),/Native parsed configured membership differs/);
  assert.throws(()=>assertNativeParsedConfig({fileNames:[names[0],names[0]]},[names[0],names[0]],{roots:3,ownedClosure:2}));
  const tooMany=Array.from({length:401},(_,i)=>'/private-model/input-'+i+'.ts');assert.throws(()=>assertNativeParsedConfig({fileNames:tooMany},tooMany),/Actual parsed configured roots exceed/);
+});
+
+test('actual hard-linked dependency input is readable while the same inode remains forbidden as an owned output',()=>{
+ const dir=realpathSync(mkdtempSync(join(tmpdir(),'native-dependency-links-'))),root=join(dir,'node_modules');mkdirSync(root);
+ try{const file=join(root,'native.d.ts'),alias=join(dir,'store-entry'),body='export declare const literal: 7;\n';writeFileSync(file,body);linkSync(file,alias);assert.equal(lstatSync(file).nlink,2);const expected=digest(Buffer.from(body));
+  assert.deepEqual(dependencyInputHash(file,root,expected),{path:file,sha256:expected,bytes:Buffer.byteLength(body)});assert.throws(()=>regularHash(file),/Native regular file custody refused/);assert.throws(()=>assertOutputSeal([{path:file,sha256:expected,bytes:Buffer.byteLength(body)}]),/Native regular file custody refused/);
+  assert.equal(readFileSync(alias,'utf8'),body);assert.equal(lstatSync(file).nlink,2);
+ }finally{rmSync(dir,{recursive:true});}
+});
+test('dependency input refuses outside paths, symlink files and a symlink dependency root',()=>{
+ const dir=realpathSync(mkdtempSync(join(tmpdir(),'native-dependency-path-'))),root=join(dir,'node_modules');mkdirSync(root);
+ try{const outside=join(dir,'foreign.d.ts'),body='export {};\n';writeFileSync(outside,body);const expected=digest(Buffer.from(body)),link=join(root,'link.d.ts');symlinkSync(outside,link);
+  assert.throws(()=>dependencyInputHash(outside,root,expected),/outside canonical input tree/);assert.throws(()=>dependencyInputHash(link,root,expected),/outside canonical input tree/);
+  const rootLink=join(dir,'foreign-root');symlinkSync(root,rootLink);assert.throws(()=>dependencyInputHash(outside,rootLink,expected));assert.equal(readFileSync(outside,'utf8'),body);
+ }finally{rmSync(dir,{recursive:true});}
+});
+test('actual dependency alias mutation cannot match the native loaded byte hash and never changes output policy',()=>{
+ const dir=realpathSync(mkdtempSync(join(tmpdir(),'native-dependency-change-'))),root=join(dir,'node_modules');mkdirSync(root);
+ try{const path=join(root,'native.d.ts'),alias=join(dir,'store-entry'),original='export declare const literal: 7;\n';writeFileSync(path,original);linkSync(path,alias);const expected=digest(Buffer.from(original));
+  writeFileSync(alias,'export declare const literal: 8;\n');assert.throws(()=>dependencyInputHash(path,root,expected),/Native loaded dependency bytes changed/);writeFileSync(alias,original);assert.equal(dependencyInputHash(path,root,expected).sha256,expected);assert.throws(()=>regularHash(path),/Native regular file custody refused/);
+ }finally{rmSync(dir,{recursive:true});}
+});
+test('dependency inputs retain exact positive byte bounds and the worker excludes every configured, fixture and output owner',()=>{
+ const dir=realpathSync(mkdtempSync(join(tmpdir(),'native-dependency-bound-'))),root=join(dir,'node_modules');mkdirSync(root);
+ try{const path=join(root,'native.d.ts'),body='export {};\n';writeFileSync(path,body);const expected=digest(Buffer.from(body));assert.throws(()=>dependencyInputHash(path,root,expected,body.length-1),/Read-only dependency input refused/);assert.throws(()=>dependencyInputHash(path,root,'0'.repeat(63)));assert.throws(()=>dependencyInputHash(path,root,expected,0));assert.throws(()=>dependencyInputHash(path,root,expected,513*1024**2));assert.equal(dependencyInputHash(path,root,expected,body.length).bytes,body.length);const empty=join(root,'empty.d.ts');writeFileSync(empty,'');assert.equal(dependencyInputHash(empty,root,digest(Buffer.alloc(0))).bytes,0);
+  const worker=readFileSync(new URL('worker.mjs',import.meta.url),'utf8');assert(worker.includes('(external||defaultLibrary)&&inside(dependencyRoot,path)&&!configured.has(path)&&!inside(source,path)&&!owned.has(path)'));assert(worker.includes("assert.equal(realpathSync(dependencyRoot),dependencyRoot,'External dependency tree refused')"));
+  assert(worker.includes('assertOutputSeal(seals);assertOutputSeal(projectSeals);'));assert.equal(worker.split('assertOutputSeal(seals);').length-1,4);
+  const inverse=JSON.parse(readFileSync(new URL('dependency-custody-inverse.json',import.meta.url),'utf8'));assert.equal(inverse.base,'7c6d847abdc44a49db179e1c848cea06e63661a3');for(const[name,row]of Object.entries(inverse.files)){let text=readFileSync(new URL('../../../../'+name,import.meta.url),'utf8');assert.equal(digest(Buffer.from(text)),row.currentSha256);let frontier=text.length;for(const edit of row.edits){assert(edit.start>=0&&edit.end<=frontier);assert.equal(text.slice(edit.start,edit.end),edit.current);text=text.slice(0,edit.start)+edit.original+text.slice(edit.end);frontier=edit.start;}assert.equal(digest(Buffer.from(text)),row.originalSha256);}
+ }finally{rmSync(dir,{recursive:true});}
 });
