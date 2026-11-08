@@ -14299,15 +14299,6 @@
     "carryForwardReasonExpiry": "Lucut hak automatik kerana luput"
   },
   "payComponents": {
-    "companyApplicability": {
-      "label": "Digunakan untuk Syarikat",
-      "all": "Semua Syarikat",
-      "selected": "Syarikat Terpilih",
-      "search": "Cari syarikat",
-      "required": "Pilih sekurang-kurangnya satu syarikat.",
-      "empty": "Tiada syarikat sepadan.",
-      "locked": "Pentadbir kumpulan boleh mengubah tetapan syarikat. Tetapan Item Gaji lain masih boleh disimpan."
-    },
     "title": "Item Gaji",
     "description": "Tentukan item gaji yang boleh dikonfigurasi dan layanan berkanunnya (KWSP / PERKESO / PCB / HRDF).",
     "previewNotice": "Pratonton. Katalog tersedia. Gaji terus menggunakan gaji asas, elaun, kerja lebih masa dan bonus sehingga persediaan komponen gaji baharu diaktifkan.",
@@ -36461,5 +36452,14 @@
     "newGrant": "Pemberian baharu",
     "grants": "Pemberian sedia ada",
     "edit": "Edit pemberian"
+  },
+  "payComponentCompany": {
+    "label": "Digunakan untuk Syarikat",
+    "all": "Semua Syarikat",
+    "selected": "Syarikat Terpilih",
+    "search": "Cari syarikat",
+    "required": "Pilih sekurang-kurangnya satu syarikat.",
+    "empty": "Tiada syarikat sepadan.",
+    "locked": "Pentadbir kumpulan boleh mengubah tetapan syarikat. Tetapan Item Gaji lain masih boleh disimpan."
   }
 }

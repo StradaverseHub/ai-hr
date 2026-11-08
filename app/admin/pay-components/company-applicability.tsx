@@ -10,7 +10,7 @@ export function CompanyApplicability({ companies, initialIds, canEdit }: {
   initialIds: string[] | null;
   canEdit: boolean;
 }) {
-  const t = useTranslations('payComponents.companyApplicability');
+  const t = useTranslations('payComponentCompany');
   const [mode, setMode] = useState(initialIds == null ? 'all' : 'selected');
   const [query, setQuery] = useState('');
   const [selected, setSelected] = useState(() => new Set(initialIds ?? []));

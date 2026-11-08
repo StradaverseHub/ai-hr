@@ -21,7 +21,7 @@ describe('Pay Item company applicability at entry, without rewriting historical 
     await resetDb(); base = await seedBase(); ctx = adminCtx(base);
     const [other] = await owner.db.insert(s.company).values({tenantId:base.tenantId,legalName:'Other fictional company'}).returning({id:s.company.id});
     otherCompany = other.id;
-    const hired = await hireEmployee(ctx, {person:{fullName:'Fictional company applicability employee',primaryEmail:'company-rule@fictional.test'},companyId:base.companyId,hiredOn:'2026-01-01',employmentType:'full_time'});
+    const hired = await hireEmployee(ctx, {person:{fullName:'Fictional company applicability employee',primaryEmail:'company-rule@fictional.test'},companyId:base.companyId,departmentId:base.deptA,hiredOn:'2026-01-01',employmentType:'full_time'});
     employmentId = hired.employmentId;
   });
   afterAll(closeAll);
@@ -79,7 +79,7 @@ describe('Pay Item company applicability at entry, without rewriting historical 
     // A retained dated assignment remains the independent expected source after a later entity move.
     const existing = await owner.db.select().from(s.assignment).where(eq(s.assignment.employmentId,employmentId));
     if (existing.length) await owner.db.update(s.assignment).set({companyId:base.companyId,validTo:'2026-07-01'}).where(eq(s.assignment.id,existing[0].id));
-    else await owner.db.insert(s.assignment).values({tenantId:base.tenantId,employmentId,companyId:base.companyId,validFrom:'2026-01-01',validTo:'2026-07-01'});
+    else await owner.db.insert(s.assignment).values({tenantId:base.tenantId,employmentId,companyId:base.companyId,departmentId:base.deptA,validFrom:'2026-01-01',validTo:'2026-07-01'});
     await owner.db.update(s.employment).set({companyId:otherCompany}).where(eq(s.employment.id,employmentId));
     await withTenant(ctx,tx=>assertPayComponentCompaniesTx(tx,ctx,[{componentId:id,employmentId,effectiveDate:'2026-06-01'}]));
     await expect(withTenant(ctx,tx=>assertPayComponentCompaniesTx(tx,ctx,[{componentId:id,employmentId,effectiveDate:date}]))).rejects.toBeInstanceOf(PayComponentCompanyError);

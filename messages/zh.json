@@ -14299,15 +14299,6 @@
     "carryForwardReasonExpiry": "因到期自动没收"
   },
   "payComponents": {
-    "companyApplicability": {
-      "label": "适用公司",
-      "all": "所有公司",
-      "selected": "指定公司",
-      "search": "搜索公司",
-      "required": "请至少选择一家公司。",
-      "empty": "没有匹配的公司。",
-      "locked": "集团管理员可更改适用公司。其他薪资项目设置仍可保存。"
-    },
     "title": "薪资项目",
     "description": "定义可配置的薪资项目及其法定处理（EPF / SOCSO / PCB / HRDF）。",
     "previewNotice": "预览。目录已可使用。启用新的薪资项目配置前，薪资仍按基本工资、津贴、加班费和奖金计算。",
@@ -36461,5 +36452,14 @@
     "newGrant": "新增授权",
     "grants": "现有授权",
     "edit": "编辑授权"
+  },
+  "payComponentCompany": {
+    "label": "适用公司",
+    "all": "所有公司",
+    "selected": "指定公司",
+    "search": "搜索公司",
+    "required": "请至少选择一家公司。",
+    "empty": "没有匹配的公司。",
+    "locked": "集团管理员可更改适用公司。其他薪资项目设置仍可保存。"
   }
 }
