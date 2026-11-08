@@ -14,16 +14,8 @@ END $$;
 GRANT USAGE ON SCHEMA public,app TO ai_hr_reward_preparation_reader;
 GRANT SELECT(id,tenant_id,kind,deleted_at,preparation_required,company_id,business_unit_id) ON public.reward_unit TO ai_hr_reward_preparation_reader;
 GRANT SELECT(unit_id,tenant_id,state) ON public.reward_governance TO ai_hr_reward_preparation_reader;
-GRANT SELECT(id,tenant_id,person_id) ON public.app_user TO ai_hr_reward_preparation_reader;
-GRANT SELECT(id,tenant_id,full_name) ON public.person TO ai_hr_reward_preparation_reader;
-GRANT SELECT(id,unit_id,tenant_id,kind,reason,actor_id,created_at) ON public.reward_governance_history TO ai_hr_reward_preparation_reader;
-GRANT SELECT(id,tenant_id,aggregate_type,aggregate_id,event_type,occurred_at,actor_id) ON public.domain_event TO ai_hr_reward_preparation_reader;
-CREATE POLICY reward_preparation_history_read ON public.reward_governance_history FOR SELECT TO ai_hr_reward_preparation_reader USING(tenant_id=app.current_tenant_id() AND kind LIKE 'preparation-%');
-CREATE POLICY reward_preparation_invalidations_read ON public.domain_event FOR SELECT TO ai_hr_reward_preparation_reader USING(tenant_id=app.current_tenant_id() AND aggregate_type='reward-unit' AND event_type='reward-unit.preparation-invalidated');
 CREATE POLICY reward_preparation_unit_read ON public.reward_unit FOR SELECT TO ai_hr_reward_preparation_reader USING(tenant_id=app.current_tenant_id());
 CREATE POLICY reward_preparation_governance_read ON public.reward_governance FOR SELECT TO ai_hr_reward_preparation_reader USING(tenant_id=app.current_tenant_id());
-CREATE POLICY reward_preparation_actor_read ON public.app_user FOR SELECT TO ai_hr_reward_preparation_reader USING(tenant_id=app.current_tenant_id());
-CREATE POLICY reward_preparation_person_read ON public.person FOR SELECT TO ai_hr_reward_preparation_reader USING(tenant_id=app.current_tenant_id());
 GRANT SELECT(unit_id,tenant_id,salary_version_id,bonus_version_id) ON public.reward_unit_setup TO ai_hr_reward_preparation_reader;
 GRANT SELECT(id,tenant_id,library_id,revision,state) ON public.reward_library_version TO ai_hr_reward_preparation_reader;
 GRANT SELECT(id,tenant_id,name) ON public.reward_library TO ai_hr_reward_preparation_reader;
@@ -68,9 +60,39 @@ $$;
 CREATE POLICY reward_preparation_unit_withholding ON public.reward_unit AS RESTRICTIVE FOR SELECT TO ai_hr_app
  USING(kind<>'annual' OR NOT preparation_required OR EXISTS(SELECT 1 FROM app.reward_roles(id)));
 --> statement-breakpoint
+-- Small personnel/audit projection under the existing native source owner. It admits only a
+-- currently assigned preparation audience and returns no employment/pay fields or other events.
+CREATE FUNCTION app.reward_preparation_context(p_unit uuid) RETURNS jsonb
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,app AS $$
+DECLARE roles text[]; actor_person uuid; g jsonb; actors jsonb; history jsonb;
+BEGIN
+ roles:=ARRAY(SELECT app.reward_roles_preparation_audience(p_unit));
+ IF cardinality(roles)=0 THEN RETURN NULL; END IF;
+ SELECT person_id INTO actor_person FROM public.app_user WHERE id=app.current_user_id() AND tenant_id=app.current_tenant_id();
+ IF roles && ARRAY['gr','ctro','ec'] THEN
+  SELECT state->'preparation' INTO g FROM public.reward_governance WHERE unit_id=p_unit AND tenant_id=app.current_tenant_id();
+  SELECT coalesce(jsonb_object_agg(p.id::text,p.full_name),'{}'::jsonb) INTO actors FROM public.person p
+   WHERE p.tenant_id=app.current_tenant_id() AND p.id IN(SELECT (value->>'actorPersonId')::uuid FROM jsonb_each(coalesce(g->'steps','{}'::jsonb)));
+  SELECT coalesce(jsonb_agg(jsonb_build_object('id',h.id,'kind',h.kind,'reason',h.reason,'actorName',p.full_name,'at',h.at) ORDER BY h.at DESC,h.id DESC),'[]'::jsonb) INTO history
+  FROM (SELECT id,kind,reason,actor_id,created_at AS at FROM public.reward_governance_history
+    WHERE unit_id=p_unit AND tenant_id=app.current_tenant_id() AND kind LIKE 'preparation-%'
+    UNION ALL SELECT id,'preparation-invalidated','source-changed',actor_id,occurred_at FROM public.domain_event
+    WHERE aggregate_id=p_unit AND tenant_id=app.current_tenant_id() AND aggregate_type='reward-unit' AND event_type='reward-unit.preparation-invalidated') h
+  LEFT JOIN public.app_user a ON a.id=h.actor_id AND a.tenant_id=app.current_tenant_id()
+  LEFT JOIN public.person p ON p.id=a.person_id AND p.tenant_id=a.tenant_id;
+ END IF;
+ RETURN jsonb_build_object('personId',actor_person,'actorNames',coalesce(actors,'{}'::jsonb),'history',coalesce(history,'[]'::jsonb));
+END $$;
+DO $$ DECLARE native_owner name; BEGIN
+ SELECT pg_get_userbyid(proowner) INTO native_owner FROM pg_proc WHERE oid='app.reward_roles_preparation_audience(uuid)'::regprocedure;
+ EXECUTE format('ALTER FUNCTION app.reward_preparation_context(uuid) OWNER TO %I',native_owner);
+END $$;
+REVOKE ALL ON FUNCTION app.reward_preparation_context(uuid) FROM PUBLIC,ai_hr_app;
+GRANT EXECUTE ON FUNCTION app.reward_preparation_context(uuid) TO ai_hr_reward_preparation_reader;
+--> statement-breakpoint
 CREATE FUNCTION app.reward_preparation_view(p_unit uuid) RETURNS jsonb
 LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,app SET row_security=on AS $$
-DECLARE u record; g jsonb; full_state jsonb; roles text[]; privileged boolean; actors jsonb; actor_person uuid; independent boolean; bindings jsonb; origin jsonb; history jsonb;
+DECLARE u record; g jsonb; full_state jsonb; roles text[]; privileged boolean; actors jsonb; actor_person uuid; independent boolean; bindings jsonb; origin jsonb; history jsonb; identity jsonb;
 BEGIN
  roles:=ARRAY(SELECT app.reward_roles_preparation_audience(p_unit));
  IF cardinality(roles)=0 THEN RETURN NULL; END IF;
@@ -79,7 +101,8 @@ BEGIN
  SELECT state INTO full_state FROM public.reward_governance WHERE unit_id=p_unit AND tenant_id=app.current_tenant_id();
  g:=full_state->'preparation';
  privileged:=roles && ARRAY['gr','ctro','ec'];
- SELECT person_id INTO actor_person FROM public.app_user WHERE id=app.current_user_id() AND tenant_id=app.current_tenant_id();
+ identity:=app.reward_preparation_context(p_unit);actor_person:=(identity->>'personId')::uuid;
+ actors:=identity->'actorNames';history:=identity->'history';
  independent:=actor_person IS NOT NULL AND 'gr'=ANY(roles) AND NOT EXISTS(SELECT 1
  FROM jsonb_each(coalesce(g->'steps','{}'::jsonb)) proof
  WHERE proof.value->>'actorPersonId' IS NULL OR (proof.value->>'actorPersonId')::uuid=actor_person);
@@ -92,17 +115,7 @@ BEGIN
   JOIN public.reward_library bl ON bl.id=bv.library_id AND bl.tenant_id=bv.tenant_id
   WHERE us.unit_id=p_unit AND us.tenant_id=app.current_tenant_id();
   origin:=app.reward_policy_unit_origin(p_unit);
-  SELECT coalesce(jsonb_agg(jsonb_build_object('id',h.id,'kind',h.kind,'reason',h.reason,'actorName',p.full_name,'at',h.at) ORDER BY h.at DESC,h.id DESC),'[]'::jsonb) INTO history
-  FROM (SELECT id,kind,reason,actor_id,created_at AS at FROM public.reward_governance_history
-    WHERE unit_id=p_unit AND tenant_id=app.current_tenant_id() AND kind LIKE 'preparation-%'
-    UNION ALL SELECT id,'preparation-invalidated','source-changed',actor_id,occurred_at FROM public.domain_event
-    WHERE aggregate_id=p_unit AND tenant_id=app.current_tenant_id() AND aggregate_type='reward-unit' AND event_type='reward-unit.preparation-invalidated') h
-  LEFT JOIN public.app_user a ON a.id=h.actor_id AND a.tenant_id=app.current_tenant_id()
-  LEFT JOIN public.person p ON p.id=a.person_id AND p.tenant_id=a.tenant_id;
-  SELECT coalesce(jsonb_object_agg(p.id::text,p.full_name),'{}'::jsonb) INTO actors
-  FROM public.person p
-  WHERE p.tenant_id=app.current_tenant_id() AND p.id IN(
-   SELECT (value->>'actorPersonId')::uuid FROM jsonb_each(coalesce(g->'steps','{}'::jsonb)));
+
  END IF;
  RETURN jsonb_build_object('unitId',u.id,'required',u.kind='annual' AND u.preparation_required,
   'released',app.reward_preparation_released(p_unit),'setupVisible',privileged,'isGr','gr'=ANY(roles),
