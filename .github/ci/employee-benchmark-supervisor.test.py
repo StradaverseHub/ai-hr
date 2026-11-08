@@ -168,7 +168,13 @@ class ClosedEntryModels(unittest.TestCase):
                 with patch.dict(os.environ, {**env, 'AIHR_FOCUSED_TESTS': json.dumps(selected)}):
                     stage, command, _ = module.request_command({**request, 'stage': expected_stage})
                     self.assertEqual(stage, expected_stage)
-                    self.assertEqual(command, ['pnpm', 'exec', 'vitest', 'run', fixed_file, '--reporter=default', '--reporter=json', '--outputFile.json=' + str(destination / 'db.vitest.json')])
+                    prefix = [request['node'], str(Path.cwd() / 'node_modules/vitest/vitest.mjs'), 'run'] if expected_stage in ('ascii-purpose', 'ascii-plan') else ['pnpm', 'exec', 'vitest', 'run']
+                    self.assertEqual(command, [*prefix, fixed_file, '--reporter=default', '--reporter=json', '--outputFile.json=' + str(destination / 'db.vitest.json')])
+                    if expected_stage in ('ascii-purpose', 'ascii-plan'):
+                        # No env unsetting or eligibility waiver is performed.
+                        with patch.dict(os.environ, {'NODE_PATH': '/fixed-untrusted-startup-control'}):
+                            self.assertEqual(module.request_command({**request, 'stage': expected_stage})[1], command)
+                            self.assertEqual(os.environ['NODE_PATH'], '/fixed-untrusted-startup-control')
                     for other in {'benchmark', 'native-controls', 'native-factory', 'ascii-purpose', 'ascii-plan'} - {expected_stage}:
                         with self.assertRaises(ValueError):
                             module.request_command({**request, 'stage': other})

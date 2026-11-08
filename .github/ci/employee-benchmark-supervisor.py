@@ -61,6 +61,13 @@ def request_command(request):
     require(re.fullmatch(r'[1-9][0-9]{0,19}', os.environ['GITHUB_RUN_ID']) is not None
             and re.fullmatch(r'[1-9][0-9]{0,3}', os.environ['GITHUB_RUN_ATTEMPT']) is not None)
     name = 'aihr-ci-%s-%s-db-1' % (os.environ['GITHUB_RUN_ID'], os.environ['GITHUB_RUN_ATTEMPT'])
+    # Invoke the locked Vitest bin with the SAME verified Node directly. pnpm's
+    # generated shell bin may export NODE_PATH before Node starts; the runtime
+    # guard must still inspect/refuse every actual inherited startup override.
+    vitest = Path.cwd() / 'node_modules/vitest/vitest.mjs'
+    if stage in ('ascii-purpose', 'ascii-plan'):
+        require(vitest.is_file() and (Path.cwd() / 'node_modules').resolve() == Path.cwd() / 'node_modules'
+                and (Path.cwd() / 'node_modules') in vitest.resolve().parents)
     commands = {
         'git-head': ['git', 'rev-parse', 'HEAD'],
         'git-status': ['git', 'status', '--porcelain'],
@@ -71,8 +78,8 @@ def request_command(request):
         'migrate': ['pnpm', 'db:migrate'],
         'native-controls': ['pnpm', 'exec', 'vitest', 'run', CONTROL_FILE, '--reporter=default', '--reporter=json', '--outputFile.json=' + str(destination / 'db.vitest.json')],
         'native-factory': ['pnpm', 'exec', 'vitest', 'run', FACTORY_FILE, '--reporter=default', '--reporter=json', '--outputFile.json=' + str(destination / 'db.vitest.json')],
-        'ascii-purpose': ['pnpm', 'exec', 'vitest', 'run', ASCII_PURPOSE_FILE, '--reporter=default', '--reporter=json', '--outputFile.json=' + str(destination / 'db.vitest.json')],
-        'ascii-plan': ['pnpm', 'exec', 'vitest', 'run', ASCII_PLAN_FILE, '--reporter=default', '--reporter=json', '--outputFile.json=' + str(destination / 'db.vitest.json')],
+        'ascii-purpose': [str(node), str(vitest), 'run', ASCII_PURPOSE_FILE, '--reporter=default', '--reporter=json', '--outputFile.json=' + str(destination / 'db.vitest.json')],
+        'ascii-plan': [str(node), str(vitest), 'run', ASCII_PLAN_FILE, '--reporter=default', '--reporter=json', '--outputFile.json=' + str(destination / 'db.vitest.json')],
         'benchmark': ['pnpm', 'exec', 'vitest', 'run', FILE, '--reporter=default', '--reporter=json', '--outputFile.json=' + str(destination / 'db.vitest.json')],
         'stats': ['bash', str(control / '.github/ci/postgres.sh'), 'stats'],
         'logs': ['docker', 'logs', name],
