@@ -9,27 +9,27 @@ const quote=(value:string)=>'"'+value.replaceAll('"','""')+'"';
 async function inventory(q:ISql,oldOwner:string,newOwner:string):Promise<ObjectRow[]>{
  const rows: ObjectRow[]=[];
  rows.push(...await q<ObjectRow[]>`select 'schema' as kind,quote_ident(n.nspname) as identity,n.nspowner::regrole::text as owner,
-  n.nspowner=${oldOwner}::regrole as move,format('ALTER SCHEMA %I OWNER TO %I',n.nspname,${newOwner}) as command,
+  n.nspowner=${oldOwner}::regrole as move,format('ALTER SCHEMA %I OWNER TO %I',n.nspname,${newOwner}::text) as command,
   to_jsonb(n)-'nspowner'-'nspacl' as attributes,
   (select coalesce(jsonb_agg(jsonb_build_object('grantee',a.grantee::regrole::text,'grantor',a.grantor::regrole::text,'privilege',a.privilege_type,'grantable',a.is_grantable)),'[]') from aclexplode(coalesce(n.nspacl,acldefault('n',n.nspowner)))a)as acl,null::text as definition
   from pg_namespace n where n.nspname=any(${schemas}) order by n.nspname`);
  rows.push(...await q<ObjectRow[]>`select 'relation' as kind,format('%I.%I',n.nspname,c.relname)as identity,c.relowner::regrole::text as owner,
   c.relowner=${oldOwner}::regrole and not exists(select 1 from pg_depend d where d.classid='pg_class'::regclass and d.objid=c.oid and d.deptype='e') as move,
-  format('ALTER %s %I.%I OWNER TO %I',case c.relkind when 'S' then 'SEQUENCE' when 'v' then 'VIEW' when 'm' then 'MATERIALIZED VIEW' when 'f' then 'FOREIGN TABLE' else 'TABLE' end,n.nspname,c.relname,${newOwner})as command,
+  format('ALTER %s %I.%I OWNER TO %I',case c.relkind when 'S' then 'SEQUENCE' when 'v' then 'VIEW' when 'm' then 'MATERIALIZED VIEW' when 'f' then 'FOREIGN TABLE' else 'TABLE' end,n.nspname,c.relname,${newOwner}::text)as command,
   to_jsonb(c)-'relowner'-'relacl' as attributes,
   (select coalesce(jsonb_agg(jsonb_build_object('grantee',a.grantee::regrole::text,'grantor',a.grantor::regrole::text,'privilege',a.privilege_type,'grantable',a.is_grantable)),'[]')from aclexplode(coalesce(c.relacl,acldefault(case when c.relkind='S' then 'S'::"char" else 'r'::"char" end,c.relowner)))a)as acl,
   case when c.relkind in('v','m')then pg_get_viewdef(c.oid,true)else null end as definition
   from pg_class c join pg_namespace n on n.oid=c.relnamespace where n.nspname=any(${schemas}) and c.relkind in('r','p','S','v','m','f')order by n.nspname,c.relname`);
  rows.push(...await q<ObjectRow[]>`select 'function' as kind,format('%I.%I(%s)',n.nspname,p.proname,pg_get_function_identity_arguments(p.oid))as identity,p.proowner::regrole::text as owner,
   p.proowner=${oldOwner}::regrole and not exists(select 1 from pg_depend d where d.classid='pg_proc'::regclass and d.objid=p.oid and d.deptype='e')as move,
-  format('ALTER %s %I.%I(%s) OWNER TO %I',case p.prokind when 'p' then 'PROCEDURE' when 'a' then 'AGGREGATE' else 'FUNCTION' end,n.nspname,p.proname,pg_get_function_identity_arguments(p.oid),${newOwner})as command,
+  format('ALTER %s %I.%I(%s) OWNER TO %I',case p.prokind when 'p' then 'PROCEDURE' when 'a' then 'AGGREGATE' else 'FUNCTION' end,n.nspname,p.proname,pg_get_function_identity_arguments(p.oid),${newOwner}::text)as command,
   to_jsonb(p)-'proowner'-'proacl' as attributes,
   (select coalesce(jsonb_agg(jsonb_build_object('grantee',a.grantee::regrole::text,'grantor',a.grantor::regrole::text,'privilege',a.privilege_type,'grantable',a.is_grantable)),'[]')from aclexplode(coalesce(p.proacl,acldefault('f',p.proowner)))a)as acl,
   case when p.prokind<>'a'then pg_get_functiondef(p.oid)else(select to_jsonb(a)::text from pg_aggregate a where a.aggfnoid=p.oid)end as definition
   from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname=any(${schemas})order by n.nspname,p.proname,p.oid`);
  rows.push(...await q<ObjectRow[]>`select 'type' as kind,format('%I.%I',n.nspname,t.typname)as identity,t.typowner::regrole::text as owner,
   t.typowner=${oldOwner}::regrole and not exists(select 1 from pg_depend d where d.classid='pg_type'::regclass and d.objid=t.oid and d.deptype='e')as move,
-  case when t.typelem=0 and t.typtype<>'m' and(t.typrelid=0 or c.relkind='c')then format('ALTER %s %I.%I OWNER TO %I',case when t.typtype='d'then 'DOMAIN'else 'TYPE'end,n.nspname,t.typname,${newOwner})else null end as command,
+  case when t.typelem=0 and t.typtype<>'m' and(t.typrelid=0 or c.relkind='c')then format('ALTER %s %I.%I OWNER TO %I',case when t.typtype='d'then 'DOMAIN'else 'TYPE'end,n.nspname,t.typname,${newOwner}::text)else null end as command,
   to_jsonb(t)-'typowner'-'typacl' as attributes,
   (select coalesce(jsonb_agg(jsonb_build_object('grantee',a.grantee::regrole::text,'grantor',a.grantor::regrole::text,'privilege',a.privilege_type,'grantable',a.is_grantable)),'[]')from aclexplode(coalesce(t.typacl,acldefault('T',t.typowner)))a)as acl,null::text as definition
   from pg_type t join pg_namespace n on n.oid=t.typnamespace left join pg_class c on c.oid=t.typrelid where n.nspname=any(${schemas})order by n.nspname,t.typname`);

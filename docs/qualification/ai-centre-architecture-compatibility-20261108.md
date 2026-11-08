@@ -88,3 +88,18 @@ owner passes remain attached to7e491/run42483981970. The populated709 owner,
 whole-batch rollback,44+1 drift, raw-stop race and fixture cleanup course remains
 unexecuted. The agent stop snapshot hypothesis is unresolved. No repair has run
 locally, and no new native or release claim is made before hosted evidence.
+
+The six-file DB retry42484550879, attempt1, source0b15beb2037a904b4c9bf94c6b97cdebf751e688 /
+controller9dd, finished all52 cases:51 passed, one failed. The repaired3500
+migration executed successfully. The populated-upgrade case failed in the first
+owner inventory query: PostgreSQL could not infer parameter$2's type in format.
+Its owned database and role were removed; native cleanup absence checks passed.
+Artifact13618943012 is preserved with ZIP SHA256
+9fe7bf9910ee926103da396dc8b76af07d938600a59ccac4354e68d96a0004bd.
+
+This fixture-only child explicitly casts the four newOwner format arguments to
+text. No migration SQL/hash, journal, native case, predicate or assertion changes.
+The51 DB passes retain0b15/run42484550879 identity; the seven source-owner passes
+retain7e491/run42483981970 identity. Only the populated-upgrade fixture needs a
+new hosted retry after dual review. Actual migration-owner LOGIN, whole-batch
+rollback,44+1 drift and held-stop probes remain unexecuted, with no result claimed.
