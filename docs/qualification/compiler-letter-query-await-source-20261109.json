@@ -1,0 +1,353 @@
+{
+  "kind": "SIX_LETTER_SOURCE_QUERY_AWAIT_ARMS_SOURCE_ONLY_UNQUALIFIED",
+  "parent": "817f28a45d4411bdf7e940576f2087460dd24e0a",
+  "sourceRef": "codex/compiler-letter-query-await-20261109",
+  "scope": [
+    "core/letters.ts",
+    "test/letter-presentation-snapshot.test.ts",
+    "docs/adr/2026-11-07-letters-presentation-snapshots.md",
+    "docs/qualification/compiler-letter-query-await-source-20261109.json"
+  ],
+  "wholeActualParentGitPreimages": [
+    {
+      "commit": "817f28a45d4411bdf7e940576f2087460dd24e0a",
+      "path": "core/letters.ts",
+      "gitBlob": "fb4de827f4778953e1d4d7d9d2079f3db73dec08",
+      "mode": "100644",
+      "bytes": 134260,
+      "sha256": "a8a4d1ac3c36394cd6312466619251b5a730110de3499da3ba1c0ef5965d4612"
+    },
+    {
+      "commit": "817f28a45d4411bdf7e940576f2087460dd24e0a",
+      "path": "test/letter-presentation-snapshot.test.ts",
+      "gitBlob": "b67755bc46efb7fb32f73748ab999dbd91ef0f0a",
+      "mode": "100644",
+      "bytes": 31720,
+      "sha256": "614e61bbffad08c8e481d36b80bb44f84cbc8ebaf32e297945550b6b291d463a"
+    },
+    {
+      "commit": "817f28a45d4411bdf7e940576f2087460dd24e0a",
+      "path": "docs/adr/2026-11-07-letters-presentation-snapshots.md",
+      "gitBlob": "ccdc52f900e120d5e7a41e652923ebe4e236b262",
+      "mode": "100644",
+      "bytes": 4463,
+      "sha256": "495c3b8e58010f676565ca1751f9b2b71e3becff5611eebe636a3fd9dcf93faf"
+    }
+  ],
+  "newRecordAbsentFromParent": true,
+  "currentSourceSha256": {
+    "core/letters.ts": "0697579abc1209f2df71c39a7c9c7c6414b80d987459f96ae45bea516f2cd380",
+    "test/letter-presentation-snapshot.test.ts": "2870ff6ce743261cca1c1d6858eaf3e58adc2d7871804a57c3d6bc0e3d430d09",
+    "docs/adr/2026-11-07-letters-presentation-snapshots.md": "5cc6e177996d33427447c25685d854020e78121caa2c742e87f20c146d04041f"
+  },
+  "sixExactCoreInverses": [
+    {
+      "before": "await (presentation?personQuery:personQuery.for('share'))",
+      "after": "(presentation?await personQuery:await personQuery.for('share'))"
+    },
+    {
+      "before": "await (presentation?companyQuery:companyQuery.for('share'))",
+      "after": "(presentation?await companyQuery:await companyQuery.for('share'))"
+    },
+    {
+      "before": "await (presentation?assignmentQuery:assignmentQuery.for('share'))",
+      "after": "(presentation?await assignmentQuery:await assignmentQuery.for('share'))"
+    },
+    {
+      "before": "await (presentation?positionQuery:positionQuery.for('share'))",
+      "after": "(presentation?await positionQuery:await positionQuery.for('share'))"
+    },
+    {
+      "before": "await (presentation?departmentQuery:departmentQuery.for('share'))",
+      "after": "(presentation?await departmentQuery:await departmentQuery.for('share'))"
+    },
+    {
+      "before": "await (presentation?salaryQuery:salaryQuery.for('share'))",
+      "after": "(presentation?await salaryQuery:await salaryQuery.for('share'))"
+    }
+  ],
+  "coreWholeParentAfterSixLiteralInverses": {
+    "sha256": "a8a4d1ac3c36394cd6312466619251b5a730110de3499da3ba1c0ef5965d4612",
+    "bytes": 134260
+  },
+  "testWholeParentInverse": {
+    "import": {
+      "before": "import {hireEmployee,setEmploymentInfo} from '../core/org';",
+      "after": "import {hireEmployee,setEmploymentInfo,setEmploymentAssignment} from '../core/org';"
+    },
+    "method": "Reverse exactly one import string first; require whole parent bytes as exact prefix, authenticate the remaining suffix below, remove that suffix and require exact whole parent SHA/bytes.",
+    "parentPrefixBytesAfterImportInverse": 31720,
+    "appendedSuffixBytes": 6800,
+    "appendedSuffixSha256": "71f542ee2493302d859db29c213d17e9a4257b22d19b603a468a2dda4b01f892"
+  },
+  "adrWholeParentInverse": {
+    "wholeParentPrefixBytes": 4463,
+    "appendedSuffixBytes": 2223,
+    "appendedSuffixSha256": "a539e331bbc6ca49450050b18211aeb0c488e6aea3c859afdf7a4547ccd160fa",
+    "wholeParentSha256": "495c3b8e58010f676565ca1751f9b2b71e3becff5611eebe636a3fd9dcf93faf"
+  },
+  "wholeProtectedOwnerPins": [
+    {
+      "commit": "817f28a45d4411bdf7e940576f2087460dd24e0a",
+      "path": "test/letter-workflow.test.ts",
+      "gitBlob": "69170d573bb1e1d3f98712d56d961beca799f126",
+      "mode": "100644",
+      "bytes": 7341,
+      "sha256": "bb51d4b36f414f7e02d360fb014b4d925347a4432ae5827650a61b86f58608f2"
+    },
+    {
+      "commit": "817f28a45d4411bdf7e940576f2087460dd24e0a",
+      "path": "lib/letter-model.ts",
+      "gitBlob": "3e255b50509df32e29d144b61823503e904538d1",
+      "mode": "100644",
+      "bytes": 12374,
+      "sha256": "9b99dbd503961b72640ae306d30f97aa5380c7ec6372da681ffd4de54ecb3874"
+    },
+    {
+      "commit": "817f28a45d4411bdf7e940576f2087460dd24e0a",
+      "path": "lib/letter-workflow.ts",
+      "gitBlob": "a699b3bbdd69e2f6dfb87718a729379d51615875",
+      "mode": "100644",
+      "bytes": 7390,
+      "sha256": "3e656fa4f4ee9156404a8afe259ea4fbf2ad133a07593e088bb805e7e4e23bdf"
+    },
+    {
+      "commit": "817f28a45d4411bdf7e940576f2087460dd24e0a",
+      "path": "core/org.ts",
+      "gitBlob": "b44c441edafbb767ecfe2ac1994d474defa3f195",
+      "mode": "100644",
+      "bytes": 221124,
+      "sha256": "9391e8b0a047b32ecc21c2a594461cfbe384b579844a88614cf355f0b942d471"
+    },
+    {
+      "commit": "817f28a45d4411bdf7e940576f2087460dd24e0a",
+      "path": "core/comp.ts",
+      "gitBlob": "1063034cae94e4288cbbc2cb17bb7c987dc202dc",
+      "mode": "100644",
+      "bytes": 58073,
+      "sha256": "510048ed7f9f23b73e85d369481166a6f7793e9336bc278f69205130ec922712"
+    },
+    {
+      "commit": "817f28a45d4411bdf7e940576f2087460dd24e0a",
+      "path": "core/workforce-access.ts",
+      "gitBlob": "878138396da3faeec80fe0e8457e46b5ad9c1e19",
+      "mode": "100644",
+      "bytes": 6206,
+      "sha256": "d7c6f74dacd333b179c38b6c953b3a2aeba3ca42528c49f4b6ac54a930c9177a"
+    },
+    {
+      "commit": "817f28a45d4411bdf7e940576f2087460dd24e0a",
+      "path": "core/employment-company.ts",
+      "gitBlob": "43773f378f08ef560c7c5684e8ae840eba7ceb4b",
+      "mode": "100644",
+      "bytes": 25393,
+      "sha256": "844aa8d9d694af5beb6dd0f6a68e8ae8a6c0e8aa157043e72857a38f7eb2052a"
+    },
+    {
+      "commit": "817f28a45d4411bdf7e940576f2087460dd24e0a",
+      "path": "core/module-gate.ts",
+      "gitBlob": "52bb5fb37d400466c87d24a7f0e475659d7a4091",
+      "mode": "100644",
+      "bytes": 14755,
+      "sha256": "e55b20164ce4bcec1b3842e78b91fa20d288f3eb6123457cc54178d19e7fd433"
+    },
+    {
+      "commit": "817f28a45d4411bdf7e940576f2087460dd24e0a",
+      "path": "core/letter-automation.ts",
+      "gitBlob": "aed46e3c1aa38bac1e1cabea9735adffba589059",
+      "mode": "100644",
+      "bytes": 8860,
+      "sha256": "26ba59ff9dad8a84bc6df4ad50ae2c3bc8fd0705cd67b773fba07eb918830be5"
+    },
+    {
+      "commit": "817f28a45d4411bdf7e940576f2087460dd24e0a",
+      "path": "core/letter-automation-sources.ts",
+      "gitBlob": "fb18a69602e6cde7b5ade64204d78068ecfa336d",
+      "mode": "100644",
+      "bytes": 8854,
+      "sha256": "c92b4c9f95e04a0c182b9fe258115b2d5cad8fb7799216f9d4fae54dee5da870"
+    },
+    {
+      "commit": "817f28a45d4411bdf7e940576f2087460dd24e0a",
+      "path": "core/payroll-history-lock.ts",
+      "gitBlob": "c10d125e7738d102c3bff5359cd2dc1de33054ec",
+      "mode": "100644",
+      "bytes": 1422,
+      "sha256": "9924544a8905a039c39c17ad26855225fcbc1299c807fadad9ec981b72f72c92"
+    },
+    {
+      "commit": "817f28a45d4411bdf7e940576f2087460dd24e0a",
+      "path": "core/access-configuration-lock.ts",
+      "gitBlob": "821a3ca3d4f08caff5a035674ea1932abf457cd8",
+      "mode": "100644",
+      "bytes": 1892,
+      "sha256": "9bc7cd8706b1db3d9b223943d4161cbaec5bd8860c436e46195dc9277292f29e"
+    },
+    {
+      "commit": "817f28a45d4411bdf7e940576f2087460dd24e0a",
+      "path": "core/ai-principal.ts",
+      "gitBlob": "85630db56130b32196d12e7ffd04fbb27fb88b22",
+      "mode": "100644",
+      "bytes": 3793,
+      "sha256": "3a77b8ed03ca1b9895310f6a7535473bbfd9a31d6c6d003612bd71e0dcbd6d21"
+    },
+    {
+      "commit": "817f28a45d4411bdf7e940576f2087460dd24e0a",
+      "path": "db/client.ts",
+      "gitBlob": "0c4f28e00393a763608b506d608a3cf7df542c57",
+      "mode": "100644",
+      "bytes": 22595,
+      "sha256": "bdd700ea682bafbf0cad2c255b8dacb96c13d82dc7fa0ae9446d4a1da265cd3f"
+    },
+    {
+      "commit": "817f28a45d4411bdf7e940576f2087460dd24e0a",
+      "path": "db/schema.ts",
+      "gitBlob": "c80eb3180eebc7bf9fb9a30367e4b00746b22592",
+      "mode": "100644",
+      "bytes": 820303,
+      "sha256": "8333f7a44c82fc43411dd4735314a555c4a69e0f805f0dc6b29e62c997ea9112"
+    },
+    {
+      "commit": "817f28a45d4411bdf7e940576f2087460dd24e0a",
+      "path": "tsconfig.json",
+      "gitBlob": "68581393e4d0778b4011b57c6d9d904cf8ecd335",
+      "mode": "100644",
+      "bytes": 676,
+      "sha256": "0ee72fb11a698bad9b18c39223569adf5758727272b35bfa99ec7bfa57c3530a"
+    },
+    {
+      "commit": "817f28a45d4411bdf7e940576f2087460dd24e0a",
+      "path": "tsconfig.build.json",
+      "gitBlob": "18f8b805abdf8003dd1bc1c076ff53b29ef9c6e1",
+      "mode": "100644",
+      "bytes": 200,
+      "sha256": "1c989c374f21f205e7aeb51842cc6032307bc91075faf5a6feccc945fcda49bf"
+    },
+    {
+      "commit": "817f28a45d4411bdf7e940576f2087460dd24e0a",
+      "path": "package.json",
+      "gitBlob": "12091ae79d969edc6146e2d63f40342948b1237b",
+      "mode": "100644",
+      "bytes": 6300,
+      "sha256": "7f67e35d869a29d2cb58d65c6f63413afc63db2cc6c6cf9dacb5086bce70ec2c"
+    },
+    {
+      "commit": "817f28a45d4411bdf7e940576f2087460dd24e0a",
+      "path": "pnpm-lock.yaml",
+      "gitBlob": "86269692f041fb333f44371d004f9a2afe999e3b",
+      "mode": "100644",
+      "bytes": 356104,
+      "sha256": "0413a070eca23d390fabdcd78cb63b2dcf4b0b69fe90408c7b57a4f672d21dbd"
+    },
+    {
+      "commit": "817f28a45d4411bdf7e940576f2087460dd24e0a",
+      "path": "db/migrations/0001_rls_grants_constraints.sql",
+      "gitBlob": "57971441c1decc342c0a286ca2ca22a3c3b1bf29",
+      "mode": "100644",
+      "bytes": 8922,
+      "sha256": "d095267b25cfb696b808b05ff33baf64b19ab2b948fb45e86ee45fa21748ef87"
+    },
+    {
+      "commit": "817f28a45d4411bdf7e940576f2087460dd24e0a",
+      "path": "db/migrations/0004_slice1_comp_statutory_rls.sql",
+      "gitBlob": "dc0a786cec8339884ff33bf3d968628a48a3908f",
+      "mode": "100644",
+      "bytes": 1969,
+      "sha256": "a3df25aa9cf8d5b567b8d9015bfbd8b7fd1aaf81c6d2f24c67984bd0016a62df"
+    }
+  ],
+  "invariants": {
+    "onlySixMeasuredAwaitChoicesChanged": true,
+    "employeeQueryControlWhole": true,
+    "allQueryConstructionPredicatesLocksDatesPayAndAuthorityWhole": true,
+    "defensiveLimit2AndAmbiguityGuardsWholeNotClaimedNativeExercised": true,
+    "allOtherLetterFunctionsAndSignaturesWhole": true,
+    "noNewErasedOrCastQueryRowTypes": true,
+    "legacyLetterWorkflowWhole": true,
+    "oldPresentationCaseBodiesAssertionsCapsWhole": true,
+    "newCasesLegalNativeOnly": true,
+    "noConfigurationTrackedScriptRootSqlOrJournalChanges": true,
+    "noHeapRunnerIncrease": true
+  },
+  "nativeControlsAuthoredNotExecuted": {
+    "newRegistrations": 3,
+    "newExpandedCases": 4,
+    "overlapRefusal": "Actual23P01+exact assignment_no_overlap/compensation_no_overlap identity; failed insert is not converted to a fixture row.",
+    "supersededHistory": "Native-legal overlapping superseded rows; exact current preview and generated draft values retained.",
+    "adjacentBoundary": "Canonical assignment and compensation owners close/open today; exact old/new intervals, department and salary expected independently.",
+    "missing": "Canonical hires with missing optional position or absent compensation produce exact required jobTitle/salary missingField refusals.",
+    "compileTime": "Existing rooted test checks exact preview input and renderer result types; no smaller project or emitted/runtime stub."
+  },
+  "fullProgramSourceData": {
+    "ordinaryWholeCompilerQualification": "OPEN",
+    "actual817fNativeProgramRootsAndGeneratedDependencies": "NOT_OBSERVED_BY_THIS_SOURCE_ONLY_WORK",
+    "sameTrackedScriptPathSetAsParentRequired": true,
+    "parentTrackedScriptPaths": 9578,
+    "configuredRootOptionsAndLockWhole": true,
+    "retainedReferenceOnly": {
+      "run": 42488886729,
+      "source": "5c8744b2ba3dfc03fc80f729413b2e93340c4ea8",
+      "inventorySHA": "3e33f31c4be2b43b94bfca03e2b34c7a228f719e35563e064ca247345f7df076",
+      "roots": 9022,
+      "files": 11491,
+      "notRelabelledOn817f": true
+    },
+    "actual5cVersus817fData": {
+      "core/letters.ts": {
+        "same5cAnd817f": true,
+        "sha256At817f": "a8a4d1ac3c36394cd6312466619251b5a730110de3499da3ba1c0ef5965d4612"
+      },
+      "tsconfig.json": {
+        "same5cAnd817f": true,
+        "sha256At817f": "0ee72fb11a698bad9b18c39223569adf5758727272b35bfa99ec7bfa57c3530a"
+      },
+      "package.json": {
+        "same5cAnd817f": true,
+        "sha256At817f": "7f67e35d869a29d2cb58d65c6f63413afc63db2cc6c6cf9dacb5086bce70ec2c"
+      },
+      "pnpm-lock.yaml": {
+        "same5cAnd817f": true,
+        "sha256At817f": "0413a070eca23d390fabdcd78cb63b2dcf4b0b69fe90408c7b57a4f672d21dbd"
+      }
+    },
+    "changedTestImportResolvesAlreadyImportedCoreOrgOwner": true,
+    "newTypeImportUsesAlreadyImportedLetterModelOwner": true,
+    "futureHostedRequirement": "Bind actual whole candidate roots/files/options/generated input identities and ordinary semantic diagnostics; no prune/skip/partition/heapraise."
+  },
+  "sourceEvidence": [
+    {
+      "path": "/private/tmp/aihr-compiler-repeated-type-boundary-source-proposal-20261109.md",
+      "sha256": "d8ab4f3eafe252149722a33acf5f52191a145593dd068a2e7e9cf9304c1a8009",
+      "bytes": 12427
+    },
+    {
+      "path": "/private/tmp/aihr-compiler-letter-native-controls-addendum-20261109.md",
+      "sha256": "fee3ad830779903056f82f94d7e2ebcc545b1e144cb99b65a35fe16604bfa442",
+      "bytes": 3229
+    },
+    {
+      "path": "/private/tmp/aihr-compiler-relation-source-data-analysis-20261109.json",
+      "sha256": "14fcfc3d4a6dc7a952886967b41e8848aed2874bc75ad1b73370019c4a086fcd",
+      "bytes": 430524
+    },
+    {
+      "path": "/private/tmp/aihr-compiler-trace-coordinate-data-20261109.json",
+      "sha256": "1b4d0452912c33563bf3f866ba92847de8168742fc6064827ac79167d61cccc7",
+      "bytes": 311985
+    }
+  ],
+  "traceInterpretation": {
+    "sixLettersDepthLimitEvents": 307,
+    "allConditionalQueryDepthLimitEvents": 1091,
+    "totalDepthLimitEvents": 2148,
+    "dominantHeapCause": "UNKNOWN",
+    "instrumentedIntervalsNotRetainedHeapProof": true,
+    "typesFileAbsent": true,
+    "ordinaryWholeTscFailureRemainsGateBlocker": true
+  },
+  "repositoryBehaviorImportedTestsCompilerBuildNativeSqlNetworkExecutedLocally": false,
+  "hostedNativeAndCompiler": "UNRUN",
+  "sourceProviderDisclosureApprovalRenewed": false,
+  "releaseAuthorized": false,
+  "productionHeld": true
+}

@@ -276,22 +276,22 @@ async function letterSources(tx:Tx,ctx:SessionContext,co:string,employmentId:str
  const employeeQuery=tx.select().from(employment).where(and(eq(employment.id,employmentId),eq(employment.companyId,co)));
  const [employee]=await (presentation?employeeQuery:employeeQuery.for('share'));if(!employee)throw new LetterWorkflowError('permission');
  const personQuery=tx.select().from(person).where(eq(person.id,employee.personId));
- const [employeePerson]=await (presentation?personQuery:personQuery.for('share'));
+ const [employeePerson]=(presentation?await personQuery:await personQuery.for('share'));
  const companyQuery=tx.select().from(company).where(eq(company.id,co));
- const [entity]=await (presentation?companyQuery:companyQuery.for('share'));if(!employeePerson||!entity)throw new LetterWorkflowError('permission');
+ const [entity]=(presentation?await companyQuery:await companyQuery.for('share'));if(!employeePerson||!entity)throw new LetterWorkflowError('permission');
  // Published organisation changes retain the superseded interval as audit history.
  const assignmentQuery=tx.select().from(assignment).where(and(eq(assignment.employmentId,employmentId),isNull(assignment.supersededAt),lte(assignment.validFrom,referenceDate),or(isNull(assignment.validTo),gt(assignment.validTo,referenceDate)))).limit(2);
- const records=await (presentation?assignmentQuery:assignmentQuery.for('share'));
+ const records=(presentation?await assignmentQuery:await assignmentQuery.for('share'));
  if(records.length>1)throw new LetterWorkflowError('configuration','ambiguousAssignment');const current=records[0];
  const positionQuery=current?.positionId?tx.select().from(position).where(eq(position.id,current.positionId)):null;
- const [job]=positionQuery?await (presentation?positionQuery:positionQuery.for('share')):[];
+ const [job]=positionQuery?(presentation?await positionQuery:await positionQuery.for('share')):[];
  const departmentQuery=current?.departmentId?tx.select().from(department).where(eq(department.id,current.departmentId)):null;
- const [team]=departmentQuery?await (presentation?departmentQuery:departmentQuery.for('share')):[];
+ const [team]=departmentQuery?(presentation?await departmentQuery:await departmentQuery.for('share')):[];
  let salary:typeof compensation.$inferSelect|undefined;
  if(fields.some(field=>field.sensitive)){const [allowed]=await tx.execute<{ok:boolean}>(sql`select app.can_admin_payroll_for(${co}::uuid) as ok`);if(!allowed?.ok)throw new LetterWorkflowError('permission');}
  if(fields.some(field=>field.source==='compensation.basicSalary')){
   const salaryQuery=tx.select().from(compensation).where(and(eq(compensation.employmentId,employmentId),compensationEffectiveOn(referenceDate))).orderBy(desc(compensation.validFrom),asc(compensation.id)).limit(2);
-  const rows=await (presentation?salaryQuery:salaryQuery.for('share'));if(rows.length>1)throw new LetterWorkflowError('configuration','ambiguousSalary');salary=rows[0];
+  const rows=(presentation?await salaryQuery:await salaryQuery.for('share'));if(rows.length>1)throw new LetterWorkflowError('configuration','ambiguousSalary');salary=rows[0];
  }
  const facts:Record<string,LetterValue|null>={};
  const string=(value:string|null|undefined):LetterValue|null=>value?.trim()?{kind:'text',value}:null;

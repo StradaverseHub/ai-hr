@@ -6,7 +6,7 @@ import * as database from '../db/client';
 import type {SessionContext,Tx} from '../db/client';
 import * as s from '../db/schema';
 import * as letters from '../core/letters';
-import {hireEmployee,setEmploymentInfo} from '../core/org';
+import {hireEmployee,setEmploymentInfo,setEmploymentAssignment} from '../core/org';
 import {setCompensation} from '../core/comp';
 import {sweepLetterAutomationFromSweep} from '../core/letter-automation';
 import {listPresentationWorkforcePickPageTx,readPresentationWorkforcePickRowsTx,listReadOnlyWorkforcePickPageTx} from '../core/read';
@@ -271,4 +271,68 @@ it.each(['access-configuration:','payroll-history:'])('keeps actual draft comman
  }finally{release();clearTimeout(watchdog);await writing;await Promise.allSettled(command?[command]:[]);}
  expect(command).toBeDefined();await expect(command!).rejects.toMatchObject({code:'permission'});
  expect(await owner.db.select().from(s.letterGenerationBatch)).toHaveLength(4);
+});
+
+
+// These checked result contracts retain the real renderer and caller/input types;
+// they do not replace query types or weaken the full compiler's source roots.
+type LetterAwaitAssert<T extends true>=T;
+type LetterAwaitSame<A,B>=[A] extends [B]?[B] extends [A]?true:false:false;
+type LetterAwaitPreviewResult=LetterAwaitAssert<LetterAwaitSame<Awaited<ReturnType<typeof letters.previewLetterTemplate>>,ReturnType<typeof import('../lib/letter-model').renderLetterDocument>>>;
+type LetterAwaitPreviewInput=LetterAwaitAssert<LetterAwaitSame<Parameters<typeof letters.previewLetterTemplate>,[SessionContext,{templateVersionId:string;employmentId:string;customValues?:Record<string,LetterValue|null>}]>>;
+
+it('refuses actual current-source overlaps and ignores legal superseded histories in presentation and commands',async()=>{
+ const id=employees[0].employmentId;
+ const assignments=await owner.db.select().from(s.assignment).where(eq(s.assignment.employmentId,id));
+ const salaries=await owner.db.select().from(s.compensation).where(eq(s.compensation.employmentId,id));
+ expect(assignments).toHaveLength(1);expect(salaries).toHaveLength(1);
+ const currentAssignment=assignments[0],currentSalary=salaries[0];
+ const assignmentFailure=await owner.db.insert(s.assignment).values({...currentAssignment,id:randomUUID()}).then(()=>null,error=>error);
+ expect(pgSqlState(assignmentFailure)).toBe('23P01');expect(assignmentFailure).toMatchObject({cause:{code:'23P01',constraint_name:'assignment_no_overlap'}});
+ const salaryFailure=await owner.db.insert(s.compensation).values({...currentSalary,id:randomUUID()}).then(()=>null,error=>error);
+ expect(pgSqlState(salaryFailure)).toBe('23P01');expect(salaryFailure).toMatchObject({cause:{code:'23P01',constraint_name:'compensation_no_overlap'}});
+ // Bounded maintenance fixtures are legal historical rows, not writer-admission proof.
+ // The native exclusions intentionally do not constrain superseded versions.
+ await owner.db.insert(s.assignment).values({...currentAssignment,id:randomUUID(),positionId:null,supersededAt:new Date()});
+ await owner.db.insert(s.compensation).values({...currentSalary,id:randomUUID(),basicSalary:'9999.99',supersededAt:new Date()});
+ const afterAssignments=await owner.db.select().from(s.assignment).where(eq(s.assignment.employmentId,id));
+ const afterSalaries=await owner.db.select().from(s.compensation).where(eq(s.compensation.employmentId,id));
+ expect(afterAssignments).toHaveLength(2);expect(afterAssignments.filter(row=>row.supersededAt===null)).toHaveLength(1);
+ expect(afterSalaries).toHaveLength(2);expect(afterSalaries.filter(row=>row.supersededAt===null)).toHaveLength(1);
+ const before=await owner.db.select({id:s.domainEvent.id}).from(s.domainEvent).orderBy(s.domainEvent.id);
+ expect(await letters.previewLetterTemplate(ctx,{templateVersionId:versionId,employmentId:id,customValues})).toEqual({document:expectedDocument(0),usedFields:definitions.map(field=>field.key).sort()});
+ expect(await owner.db.select({id:s.domainEvent.id}).from(s.domainEvent).orderBy(s.domainEvent.id)).toEqual(before);
+ const generated=await letters.createLetterDraftBatch(ctx,selection([id]));
+ const batch=await letters.getLetterGenerationBatch(ctx,generated.batchId);
+ expect(batch?.rows).toHaveLength(1);expect(batch?.rows[0].revision).toMatchObject({values:expectedValues(0),document:expectedDocument(0)});
+});
+
+it('uses the legal adjacent assignment and compensation intervals at the current-date boundary',async()=>{
+ const id=employees[0].employmentId,today=todayInKualaLumpur();
+ await setEmploymentAssignment(ctx,{employmentId:id,effectiveDate:today,departmentId:b.deptB,positionId:b.positionId});
+ await setCompensation(ctx,{employmentId:id,basicSalary:8899.44,currency:'MYR',effectiveFrom:today});
+ const assignments=await owner.db.select().from(s.assignment).where(eq(s.assignment.employmentId,id));
+ const salaries=await owner.db.select().from(s.compensation).where(eq(s.compensation.employmentId,id));
+ expect(assignments.filter(row=>row.supersededAt===null).map(row=>({from:row.validFrom,to:row.validTo,department:row.departmentId})).sort((a,b)=>a.from.localeCompare(b.from)))
+  .toEqual([{from:'2020-02-03',to:today,department:b.deptA},{from:today,to:null,department:b.deptB}]);
+ expect(salaries.filter(row=>row.supersededAt===null).map(row=>({from:row.validFrom,to:row.validTo,salary:row.basicSalary})).sort((a,b)=>a.from.localeCompare(b.from)))
+  .toEqual([{from:'2020-02-03',to:today,salary:'7654.32'},{from:today,to:null,salary:'8899.44'}]);
+ const expected={version:1,language:'en',blocks:['Fictional snapshot subject 1','SNAP-1','3 February 2020','Operations','Executive','Acme Sdn Bhd','MYR 8,899.44','15 January 2030','MYR 125.50'].map(text=>({type:'paragraph',content:[{type:'text',text}]}))};
+ const before=await owner.db.select({id:s.domainEvent.id}).from(s.domainEvent).orderBy(s.domainEvent.id);
+ expect(await letters.previewLetterTemplate(ctx,{templateVersionId:versionId,employmentId:id,customValues})).toEqual({document:expected,usedFields:definitions.map(field=>field.key).sort()});
+ expect(await owner.db.select({id:s.domainEvent.id}).from(s.domainEvent).orderBy(s.domainEvent.id)).toEqual(before);
+ const generated=await letters.createLetterDraftBatch(ctx,selection([id]));
+ expect((await letters.getLetterGenerationBatch(ctx,generated.batchId))?.rows[0].revision).toMatchObject({document:expected});
+});
+
+it.each(['position','compensation'] as const)('retains the exact required-source refusal for legal missing %s',async missing=>{
+ const hired=await hireEmployee(ctx,{companyId:b.companyId,departmentId:b.deptA,...(missing==='compensation'?{positionId:b.positionId}:{}),employmentType:'full_time',hiredOn:'2020-02-03',
+  person:{fullName:'Fictional missing letter source '+missing,primaryEmail:randomUUID()+'@letters.invalid'}});
+ if(missing==='position')await setCompensation(ctx,{employmentId:hired.employmentId,basicSalary:5432.10,currency:'MYR',effectiveFrom:'2020-02-03'});
+ const [assignment]=await owner.db.select().from(s.assignment).where(eq(s.assignment.employmentId,hired.employmentId));
+ const salary=await owner.db.select().from(s.compensation).where(eq(s.compensation.employmentId,hired.employmentId));
+ expect(assignment.positionId).toBe(missing==='position'?null:b.positionId);expect(salary).toHaveLength(missing==='compensation'?0:1);
+ const before=await owner.db.select({id:s.domainEvent.id}).from(s.domainEvent).orderBy(s.domainEvent.id);
+ await expect(letters.previewLetterTemplate(ctx,{templateVersionId:versionId,employmentId:hired.employmentId,customValues})).rejects.toMatchObject({code:'missingField',path:missing==='position'?'jobTitle':'salary'});
+ expect(await owner.db.select({id:s.domainEvent.id}).from(s.domainEvent).orderBy(s.domainEvent.id)).toEqual(before);
 });

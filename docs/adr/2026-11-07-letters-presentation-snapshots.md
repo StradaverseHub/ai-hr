@@ -71,3 +71,12 @@ All application tests, compiler and build verification use standard hosted
 Actions. Test source and a focused manifest alone do not establish a pass,
 rendered correctness, sustained capacity, release acceptance or deployment
 permission. Existing deadlines and resource limits remain unchanged.
+
+
+## Conditional query-builder comparison: await the same selected source rows
+
+Retained whole-compiler trace42482836874 on source5c8744b2 shows307 recursive type-relation depth-limit events at six person/company/assignment/position/department/compensation lock-choice expressions in `letterSources`. The selected817f integration parent retains those source expressions. The candidate moves each existing await into its selected conditional arm so TypeScript compares the resolved row results rather than two recursive Drizzle builder surfaces. Query construction, predicates, row locks, date/salary selection, native permissions, defensive ambiguity guards, public signatures and all other function bodies stay whole. The unmeasured employee-query ternary remains an unchanged control. No broad database facade, erased type, compiler option, root or heap change is introduced.
+
+Three appended native registrations (four expanded cases) require actual assignment/compensation overlap SQLSTATE23P01 and constraint identities; use only legal superseded history; verify adjacent intervals created by canonical owners at the current-date boundary; and require exact missing-field refusals for legally absent position or compensation. Existing presentation and command results have independent known-value expectations, and preview reads leave events unchanged. Immediate native exclusions make a fixture with overlapping current rows illegal: no guard/constraint is disabled and these controls do not claim to execute the reader's defensive more-than-one-row branches. Existing cases, deadlines and the letter-workflow test remain whole; checked public preview input/result contracts remain rooted in the full compiler Program.
+
+This is a source-authored candidate, not a causal OOM diagnosis or passing compiler/native result. The trace's type catalogue is unavailable and instrumented durations are not retained-heap attribution. A frozen candidate needs ROOT and a different peer source review, then separately authorized standard-hosted native and complete ordinary compiler verification with the full source/roots/options and existing runner limits. No provider/disclosure/source approval or release authority is renewed.
