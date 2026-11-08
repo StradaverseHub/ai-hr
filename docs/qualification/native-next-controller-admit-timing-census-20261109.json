@@ -1,7 +1,7 @@
 {
   "kind": "EXACT_SOURCE_CENSUS_NOT_EXECUTED_CASE_EVENTS",
   "base": "ffe8ced4d5ef226aad2da56d11a35483ffa35728",
-  "sourceRef": "codex/next-poststart-pure-control-repair-20261109",
+  "sourceRef": "codex/next-poststart-receipt-family-repair-20261109",
   "focusedFiles": 10,
   "focusedWrappers": 14,
   "underlying": 333,
@@ -583,7 +583,7 @@
         {
           "class": "PlainKeyNameModels",
           "method": "test_whole_original_guards_observer_v1_parser_v2_validator_exec_and37_models_are_preserved",
-          "line": 286
+          "line": 323
         },
         {
           "class": "PlainKeyNameModels",
@@ -1742,7 +1742,7 @@
       },
       {
         "source": "deploy/admission/test_next_plain_key_names.py",
-        "unittestMainLine": 308,
+        "unittestMainLine": 345,
         "authoredMethods": 25,
         "definedBeforeMain": 25,
         "definedAfterMain": 0,
@@ -1819,6 +1819,19 @@
     "twoFixtureRepairs": "os import and code-accepting ExitObserved callback",
     "currentClockProof": "strict AST assignments/limit/advance plus seven defined finite mutation refusals; not executed",
     "wholeHistoricalWrapperPreimageAdded": true,
+    "actualExecution": false
+  },
+  "plainReceiptFamilyRepair": {
+    "parent": "3d2a66cec5dd8fbcbc226ef0a2a72f926804bb1d",
+    "failureRun": 42521165894,
+    "oneExistingMethodChanged": true,
+    "newMethods": 0,
+    "same285Names333Underlying": true,
+    "affectedPython213Underlying261AreSourceNotPassEvents": true,
+    "allFiveActive49InverseFilesWhole": true,
+    "newCaseNames": [],
+    "negativeDataAdjudicationsAuthoredNotExecuted": 11,
+    "sameAdjudicatorForPositiveAndNegativeRows": true,
     "actualExecution": false
   }
 }

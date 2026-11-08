@@ -435,5 +435,52 @@
       "sha256": "e57287d83cee40072b199f02c8bfce14ed82c2db445cbe3ffe2439a3dc585509"
     },
     "runtimeEvidenceTransferred": false
+  },
+  "plainReceiptFamilyRepairParent": {
+    "commit": "3d2a66cec5dd8fbcbc226ef0a2a72f926804bb1d",
+    "branch": "codex/next-poststart-receipt-family-repair-20261109",
+    "proposalSha256": "bdd6a802151dc5f31877e4d75eb36cb2139cf2c80cf4ab6bd9515722f61cbc2c",
+    "failureRun": 42521165894,
+    "authenticationSha256": "ee84835121a49feaaf8965c8d83d823f37eb54d9975ff6586516634c720c076b",
+    "files": [
+      {
+        "path": "deploy/admission/test_next_plain_key_names.py",
+        "commit": "3d2a66cec5dd8fbcbc226ef0a2a72f926804bb1d",
+        "gitBlob": "72c48b1e24c02f2a48070cfe2ba3a989fdb73d4c",
+        "bytes": 22870,
+        "sha256": "72c6b56ed5e037d249038fcb6cf8f660d7113c06ec3cfc91cd1e7db747a5251c"
+      },
+      {
+        "path": "docs/qualification/native-next-controller-admit-timing-census-20261109.json",
+        "commit": "3d2a66cec5dd8fbcbc226ef0a2a72f926804bb1d",
+        "gitBlob": "6bedde93eb23291ebc353aee678c9a3f81c2ea4c",
+        "bytes": 67712,
+        "sha256": "5be3ff039affcd289ceefed99a5c16ebf158f70d05aa6cc4ad9208361cde09d1"
+      },
+      {
+        "path": "docs/qualification/native-next-controller-admit-timing-implementation-20261109.md",
+        "commit": "3d2a66cec5dd8fbcbc226ef0a2a72f926804bb1d",
+        "gitBlob": "62ebf3af7c52a997d60045a75e4b2afe9ca5fca0",
+        "bytes": 24235,
+        "sha256": "17c6d874a0fb75dd0df6efd3f83d32e8c0e37b77a141ddb710077a1f14b1ef45"
+      },
+      {
+        "path": "docs/qualification/native-next-controller-admit-timing-source-20261109.json",
+        "commit": "3d2a66cec5dd8fbcbc226ef0a2a72f926804bb1d",
+        "gitBlob": "72c05bf73479c711cc7f0552af9299129507a502",
+        "bytes": 31557,
+        "sha256": "ef6e711cfe97718c5d6a6b666cc5760cfd6e9386ea10f7ef97da7ee02bbeb78b"
+      },
+      {
+        "path": "docs/qualification/native-next-fresh-child-parent-source-20261109.json",
+        "commit": "3d2a66cec5dd8fbcbc226ef0a2a72f926804bb1d",
+        "gitBlob": "849ddcf209dae685d69c54ac1c1f88e98d0b6dad",
+        "bytes": 19824,
+        "sha256": "563e152cd578a83e924bdf0d6d3c32db02933fa06a9921e1feab908108e485ba"
+      }
+    ],
+    "priorNewWrapperBindingPreservedWhole": true,
+    "allFiveActive49InverseFilesWhole": true,
+    "runtimeEvidenceTransferred": false
   }
 }

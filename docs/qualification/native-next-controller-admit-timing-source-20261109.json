@@ -1,7 +1,7 @@
 {
   "kind": "CURRENT_CONTROLLER_ADMIT_TIMING_SOURCE_NOT_RUN_EVIDENCE",
   "base": "615274a2556686946610c66ccd1422506338946c",
-  "sourceRef": "codex/next-poststart-pure-control-repair-20261109",
+  "sourceRef": "codex/next-poststart-receipt-family-repair-20261109",
   "currentCount": 133,
   "sourceSha256": {
     ".github/actions/setup-alpha/action.yml": "13bb384ff8b5cab52e9f894a109aaf46384e221ac156ffc289d752e3b334f150",
@@ -61,7 +61,7 @@
     "deploy/admission/test_next_host_view_native.py": "586227c6fb8f185d265ea7d567c231a7f7f289889431b5ad1062ed795ee855e4",
     "deploy/admission/test_next_manager_environment.py": "9f56ba5b625cd710c3979c65fa1afdb4c6d4f14b16c04387ee669f07e6893810",
     "deploy/admission/test_next_native.py": "8dafc69d328219c8a6ec12887d4be708dcbd07f21e31b020fd51a2100c82fa86",
-    "deploy/admission/test_next_plain_key_names.py": "72c6b56ed5e037d249038fcb6cf8f660d7113c06ec3cfc91cd1e7db747a5251c",
+    "deploy/admission/test_next_plain_key_names.py": "092855fe3db242579e135f58051984d17592833021545e3fffc7f645acb33d78",
     "deploy/admission/test_next_profile.py": "ef1b8df8e45b3e5603e30f7b71d400736a445ccc858e53607af082f07b03bf7f",
     "docs/qualification/native-next-bootstrap-profile-session-8bad-source-historical-20261108.json": "6732891348a401a272475f5ac03ad1c3852fa86fbf7c0cb2d4eb302a153a3778",
     "docs/qualification/native-next-bootstrap-profile-session-design-20261108.md": "41d634c0310272271919723e7b1e773e86ecc2d28bfe45b7b6d0e340f98a80a6",
@@ -69,17 +69,17 @@
     "docs/qualification/native-next-bootstrap-profile-session-implementation-20261108.md": "b442a5a9cbb5cc9eb4a0cbff51d53a7449f4b2fbb44f25dd111fc4bcbf1bb3bb",
     "docs/qualification/native-next-bootstrap-profile-session-implementation-source-20261108.json": "c771aa2b2f10937befcc76004c89fc490c0bcef8c01735a49a23d6d32c7a3018",
     "docs/qualification/native-next-controller-admit-timing-96461-source-historical-20261109.json": "f7e0e466df8eb10269f6185854127a2e60a449c261bce3509c7d1fe745fc43e7",
-    "docs/qualification/native-next-controller-admit-timing-census-20261109.json": "5be3ff039affcd289ceefed99a5c16ebf158f70d05aa6cc4ad9208361cde09d1",
+    "docs/qualification/native-next-controller-admit-timing-census-20261109.json": "f5ae0c85333fb9ca17747d8ea3576043aea19dc45fbc2f809af8d298970d89e7",
     "docs/qualification/native-next-controller-admit-timing-db93-source-historical-20261109.json": "bed947e85085a74057a78edd7fa80403db8615cee44bd5f606ab9f83894378d7",
     "docs/qualification/native-next-controller-admit-timing-design-b3fb-20261109.md": "b3fb754c09c8d9a4f58480c36b2cd62a35006b4a17650a069fb3f6ecf234cad3",
     "docs/qualification/native-next-controller-admit-timing-handoff-a140-20261109.md": "a1400decfeda6608f6dfb5797ee73a4de8789946102f8ab4c9ef4d47d5b7e390",
-    "docs/qualification/native-next-controller-admit-timing-implementation-20261109.md": "17c6d874a0fb75dd0df6efd3f83d32e8c0e37b77a141ddb710077a1f14b1ef45",
+    "docs/qualification/native-next-controller-admit-timing-implementation-20261109.md": "c946e42f83d9c63301304e31ef1ad4badf0dd207e54ef10876bb00977b1e6dc6",
     "docs/qualification/native-next-controller-admit-timing-proof-20261109.json": "0d752000458a82ac5fe29e940641e8e248905fe5c04492dd6b0b47fdc171341e",
     "docs/qualification/native-next-environment-observation-20261108.md": "cba118612cfb80d3b764a2e523c063b68ba042b64e9dd351b2e57bccf56d88bd",
     "docs/qualification/native-next-environment-observation-design-20261108.md": "06b160a1f5a52f8c678e1bb87fdd6e6a2adcc594234f13dea4faf9bdebf84dbe",
     "docs/qualification/native-next-environment-observation-design-source-20261108.json": "acf3401d2e48fd8868e571f04475122b1e494bd932b9b05fa2cdc7704e7f824b",
     "docs/qualification/native-next-environment-observation-source-20261108.json": "bfb1e551e6538de76babcd901cb26784c87d6c5e5ab38a6325054ee91ea7dc7b",
-    "docs/qualification/native-next-fresh-child-parent-source-20261109.json": "563e152cd578a83e924bdf0d6d3c32db02933fa06a9921e1feab908108e485ba",
+    "docs/qualification/native-next-fresh-child-parent-source-20261109.json": "2804b45217427169252a321160d9e8fa9e88ef89cef8df68597196b6ba372b2c",
     "docs/qualification/native-next-full-cpu-recovery-request-20261108.md": "676f4a7c20c1830c27232ce1021af86574da4a559d66896cc5effb7352fa1c6f",
     "docs/qualification/native-next-host-key-receipt-binding-20261108.md": "ad04615529c1d9c722c538c3d5d994294b353f9062b858158e3d4db01026c9bf",
     "docs/qualification/native-next-host-key-receipt-binding-source-20261108.json": "a747b462184bf41cdc5d2e018cf7561c3453d43c92d60b95f8e8b61b60a28ae5",
@@ -404,5 +404,84 @@
     "oldFailure10Cause": "UNKNOWN",
     "runtimeEvidenceTransferred": false,
     "reviewPending": true
+  },
+  "plainReceiptFamilyRepair": {
+    "parent": "3d2a66cec5dd8fbcbc226ef0a2a72f926804bb1d",
+    "failureRun": 42521165894,
+    "authenticationSha256": "ee84835121a49feaaf8965c8d83d823f37eb54d9975ff6586516634c720c076b",
+    "parentActualPython": {
+      "total": 213,
+      "passed": 212,
+      "errors": 1,
+      "failures": 0
+    },
+    "parentActualOuter": {
+      "total": 11,
+      "passed": 10,
+      "failed": 1
+    },
+    "onlyExistingMethodChanged": "PlainKeyNameModels.test_composed_receipt_replays_every_byte_and_preserves_all_frozen_parent_preimages",
+    "families": {
+      "before": 4,
+      "plainInverse": 4,
+      "closedC045Wrapper": 1,
+      "unknown": "EXPLICIT_REFUSAL"
+    },
+    "sameAdjudicatorDataNegativesAuthored": 11,
+    "currentPinPathsChanged": {
+      "sourceSha256": [
+        "deploy/admission/test_next_plain_key_names.py",
+        "docs/qualification/native-next-controller-admit-timing-census-20261109.json",
+        "docs/qualification/native-next-controller-admit-timing-implementation-20261109.md",
+        "docs/qualification/native-next-fresh-child-parent-source-20261109.json"
+      ],
+      "nativeHostSourceSha256": [],
+      "nativeFullSourceSha256": []
+    },
+    "all49ActiveRowsAndFiveInverseFileBytesWhole": true,
+    "all50TimingBodiesWhole": true,
+    "all285NamesDirectEntryBeforeMain": true,
+    "other284MethodBodiesWhole": true,
+    "actualConsumerSourceScan": [
+      {
+        "path": "deploy/admission/test_next_environment_observation.py",
+        "sha256": "d4937049466d650dea82e626c31fe99cd152e2d4f6656225a0d82b25cac81a36",
+        "currentSourceChanged": false
+      },
+      {
+        "path": "deploy/admission/test_next_failure_diagnostic.py",
+        "sha256": "5dced34e72083c5d0a9fb55991b6fc9a8fa62e9d0c7120d925bf3cd09edcd7f9",
+        "currentSourceChanged": false
+      },
+      {
+        "path": "deploy/admission/test_next_host_view.py",
+        "sha256": "6a30080018459a8965c732f3c96e542aa7492d692c6b76193ac2f15d4ea35754",
+        "currentSourceChanged": false
+      },
+      {
+        "path": "deploy/admission/test_next_manager_environment.py",
+        "sha256": "9f56ba5b625cd710c3979c65fa1afdb4c6d4f14b16c04387ee669f07e6893810",
+        "currentSourceChanged": false
+      },
+      {
+        "path": "deploy/admission/test_next_bootstrap_session.py",
+        "sha256": "6fd0feabe6aefbfd3269740b1b71ea68018b94c908525af81ce82c47dc5f350c",
+        "currentSourceChanged": false
+      },
+      {
+        "path": "deploy/admission/test_controller_admit_timing.py",
+        "sha256": "3701d28c8ff31d8d2a18cc4fcd8b990878758fe320846fb48066974814b52d0e",
+        "currentSourceChanged": false
+      },
+      {
+        "path": "deploy/admission/test_next_plain_key_names.py",
+        "sha256": "092855fe3db242579e135f58051984d17592833021545e3fffc7f645acb33d78",
+        "currentSourceChanged": true
+      }
+    ],
+    "localCandidateExecution": false,
+    "rootAndDifferentPeerReviewRequired": true,
+    "runtimeEvidenceTransferred": false,
+    "hostStillHeld": true
   }
 }

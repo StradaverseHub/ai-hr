@@ -268,20 +268,57 @@ class PlainKeyNameModels(unittest.TestCase):
         before = json.loads(parent_bytes);current = json.loads((ROOT/name).read_text())
         self.assertEqual(current['base'], before['base']);self.assertFalse(current['composition']['historicalRunEvidenceTransferred'])
         self.assertEqual(current['composition']['wholeParentReceiptSha256'], row['originalSha256'])
-        for file, recipe in current['files'].items():
-            source = (ROOT/file).read_text();self.assertEqual(hashlib.sha256(source.encode()).hexdigest(), recipe['currentSha256'])
-            lines = source.splitlines(keepends=True)
-            for change in recipe['changes']:
-                self.assertEqual(''.join(lines[change['start']:change['end']]), change['after'])
-                lines[change['start']:change['end']] = change['before'].splitlines(keepends=True)
-            restored = ''.join(lines).encode();self.assertEqual(restored, base64.b64decode(recipe['originalBase64']))
-            self.assertEqual(hashlib.sha256(restored).hexdigest(), recipe['originalSha256'])
+        wrapper = 'test/runtime-next-environment-observation.test.ts'
+        provenance = json.loads((ROOT/'docs/qualification/native-next-fresh-child-parent-source-20261109.json').read_text())
+        binding = provenance['pureControlFailureRepairParent']['newWrapperC045WholePreimage']
+        expected_binding = {
+            'inverse': 'next_host_key_receipt_inverse.json', 'path': wrapper,
+            'commit': 'c0456f6a98e5f3feaf11ca4d759d57c8b76e25da',
+            'gitBlob': 'd6506ee5d302d1ef81eea040f9295376e9e60670', 'bytes': 838,
+            'sha256': 'e57287d83cee40072b199f02c8bfce14ed82c2db445cbe3ffe2439a3dc585509',
+        }
+        def adjudicate(file, recipe, wrapper_binding):
             if file in before['files']:
                 self.assertEqual(recipe['originalBase64'], before['files'][file]['originalBase64'])
                 self.assertEqual(recipe['originalSha256'], before['files'][file]['originalSha256'])
-            else:
+            elif file in inverse['files']:
                 self.assertEqual(recipe['originalBase64'], inverse['files'][file]['originalBase64'])
                 self.assertEqual(recipe['originalSha256'], inverse['files'][file]['originalSha256'])
+            elif file == wrapper:
+                self.assertEqual(wrapper_binding, expected_binding)
+                self.assertEqual(recipe['originalSha256'], wrapper_binding['sha256'])
+                original = base64.b64decode(recipe['originalBase64'], validate=True)
+                self.assertEqual(len(original), wrapper_binding['bytes'])
+                self.assertEqual(hashlib.sha256(original).hexdigest(), wrapper_binding['sha256'])
+            else:
+                self.fail('Unknown receipt preimage family')
+        self.assertIn(wrapper, current['files'])
+        for file, recipe in current['files'].items():
+            source = (ROOT/file).read_text();self.assertEqual(hashlib.sha256(source.encode()).hexdigest(), recipe['currentSha256'])
+            lines = source.splitlines(keepends=True);frontier = len(lines)
+            for change in recipe['changes']:
+                self.assertTrue(0 <= change['start'] <= change['end'] <= frontier)
+                self.assertEqual(''.join(lines[change['start']:change['end']]), change['after'])
+                lines[change['start']:change['end']] = change['before'].splitlines(keepends=True);frontier = change['start']
+            restored = ''.join(lines).encode();self.assertEqual(restored, base64.b64decode(recipe['originalBase64']))
+            self.assertEqual(hashlib.sha256(restored).hexdigest(), recipe['originalSha256'])
+            adjudicate(file, recipe, binding)
+        # Exercise the SAME positive adjudicator, never a permissive fallback or
+        # a source-string/count proxy. No new runtime/Git authority is introduced.
+        recipe = current['files'][wrapper]
+        with self.assertRaisesRegex(AssertionError, '^Unknown receipt preimage family$'):
+            adjudicate('test/foreign-receipt-preimage.test.ts', recipe, binding)
+        for key, value in expected_binding.items():
+            changed = {**binding, key: value + 1 if type(value) is int else value + '-foreign'}
+            with self.assertRaises(AssertionError):adjudicate(wrapper, recipe, changed)
+        with self.assertRaises(AssertionError):
+            adjudicate(wrapper, {**recipe, 'originalSha256': '0' * 64}, binding)
+        with self.assertRaises(ValueError):
+            adjudicate(wrapper, {**recipe, 'originalBase64': '!'}, binding)
+        payload = base64.b64decode(recipe['originalBase64'], validate=True)
+        for changed in (payload[:-1], bytes([payload[0] ^ 1]) + payload[1:]):
+            with self.assertRaises(AssertionError):
+                adjudicate(wrapper, {**recipe, 'originalBase64': base64.b64encode(changed).decode()}, binding)
 
     def test_whole_original_guards_observer_v1_parser_v2_validator_exec_and37_models_are_preserved(self):
         inverse = json.loads((ROOT/'deploy/admission/next_plain_key_names_inverse.json').read_text())

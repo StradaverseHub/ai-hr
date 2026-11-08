@@ -133,3 +133,44 @@ Native HOST is held until purePASS and the independent normal-manifest
 generation guard repair qualify. The native20-second fit and the cause of the
 older failure10 remain unknown. No local repository import, module/test/native
 execution, SQL, compiler/build, network or dispatch was used. Production HELD.
+
+
+## Closed third receipt-preimage family after actual3d2a failure
+
+Run42521165894 attempt1/source3d2a66cec5dd8fbcbc226ef0a2a72f926804bb1d,
+controller00a27edbe7de417dd97b0a82bdab48b8e79214a7 finished all planned jobs:
+11 outer cases10PASS/1FAIL;213 Python212PASS/1ERROR. The sole plain-model
+KeyError at line283 assumed two historical source families. All former61620
+fixture/history failures passed on3d2a; their earlier real failure remains.
+Authenticationee84835121a49feaaf8965c8d83d823f37eb54d9975ff6586516634c720c076b
+and the source-specific artifact remain on that original identity. No HOST ran.
+
+This new source child changes only the one existing plain receipt test method.
+Both original preimage families keep their exact Base64 and SHA assertions. A
+third branch accepts only test/runtime-next-environment-observation.test.ts,
+whose already-existing six-field provenance must equal whole actualc045 commit,
+Git blobd6506ee5d302d1ef81eea040f9295376e9e60670,838 bytes and
+e57287d83cee40072b199f02c8bfce14ed82c2db445cbe3ffe2439a3dc585509.
+Strict Base64, exact length and hash checks preserve this whole original source.
+Every other family explicitly fails. The current hash, every exact slice and
+whole restored bytes/hash checks remain and now also enforce descending ranges.
+The SAME local data adjudicator handles positive rows and eleven finite refusal
+inputs: unknown row, six binding fields, wrong original SHA, invalid Base64,
+short payload and same-length changed payload. These authored controls are not
+executed or passing events.
+
+A comprehensive source-name scan found exactly seven active-inverse consumer
+owners. Their complete generic and layered courses were reviewed; only this
+plain method had a two-family assumption. All five active49 inverse JSON files
+remain BYTE-WHOLE, including the genuine new wrapper row and every old target.
+No recipe, historical expected hash, native owner, clock, command, cap, pool or
+wrapper changes. All284 other method bodies and all50 timing methods stay
+whole; all285 names remain before direct-file entry. The current133 map updates
+only actual source/metadata bytes;21 HOST and41 full pins stay whole.
+
+Root and a different peer must fully review the frozen source before a root-
+authorized failed/affected hosted course. The unchanged six other inverse
+consumers and49 inverse files are preserved facts, not relabelled runtime PASS.
+No local import, test/module/native/SQL/compiler/build/network/upload/dispatch
+was performed. HOST still needs actual purePASS plus the independently qualified
+normal manifest gate. Production HELD; old failure10 cause remains UNKNOWN.
