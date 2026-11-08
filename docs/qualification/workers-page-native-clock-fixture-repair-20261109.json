@@ -1,0 +1,107 @@
+{
+  "kind": "WORKERS_NATIVE_CLOCK_FIXTURE_PREMISE_REPAIR_SOURCE_ONLY_UNRUN",
+  "parentCommit": "0912ce413a843182507c9fd81785c000c6ef4907",
+  "sourceRef": "codex/workers-page-native-clock-fixture-20261109",
+  "exactChangedPaths": [
+    "test/agent-registry-page-presentation.test.ts",
+    "docs/adr/2026-11-09-ai-management-section-projection.md",
+    "docs/qualification/workers-page-presentation-source-20261109.json",
+    "docs/qualification/workers-page-native-clock-fixture-repair-20261109.json"
+  ],
+  "wholeParentPreimages": [
+    {
+      "path": "test/agent-registry-page-presentation.test.ts",
+      "bytes": 35137,
+      "sha256": "676270adff325f68920466377cb8d4b4ac954789f525d1d9749f47777b2f22bc",
+      "commit": "0912ce413a843182507c9fd81785c000c6ef4907",
+      "mode": "100644",
+      "gitBlob": "c27d2b0594ac90fdf7dda99a69fd02c91b30f943",
+      "wholeGitBytesVerified": true
+    },
+    {
+      "path": "docs/adr/2026-11-09-ai-management-section-projection.md",
+      "bytes": 18454,
+      "sha256": "c02a6fa1b9e718e55796d151c170cd70b9eba6db35d91fb486b8ca603cfbe19b",
+      "commit": "0912ce413a843182507c9fd81785c000c6ef4907",
+      "mode": "100644",
+      "gitBlob": "a71fb5e445cd95b492c89217855f3ace99d9f61f",
+      "wholeGitBytesVerified": true
+    },
+    {
+      "path": "docs/qualification/workers-page-presentation-source-20261109.json",
+      "bytes": 17370,
+      "sha256": "05e9e9508dbf5fe4ab37cdc799d9aafe89aff20acbb186532cb95c2630f5f0ce",
+      "commit": "0912ce413a843182507c9fd81785c000c6ef4907",
+      "mode": "100644",
+      "gitBlob": "9db2d80165ede04042f033e8d8f33cdddffe6467",
+      "wholeGitBytesVerified": true
+    }
+  ],
+  "newRecordAbsentFromParent": "docs/qualification/workers-page-native-clock-fixture-repair-20261109.json",
+  "currentPins": [
+    {
+      "path": "test/agent-registry-page-presentation.test.ts",
+      "bytes": 35387,
+      "sha256": "969d4c5da56c2b79fe192fa08ea6140dea5ca0c4f57d765fa1f8880a09f76942"
+    },
+    {
+      "path": "docs/adr/2026-11-09-ai-management-section-projection.md",
+      "bytes": 19687,
+      "sha256": "876efcfeb0845aef3c2723344812b912093a0c7f73b6f0d8cf8e53c0685bcdd5"
+    },
+    {
+      "path": "docs/qualification/workers-page-presentation-source-20261109.json",
+      "bytes": 18372,
+      "sha256": "bde3979b0b5c2050057df4be63c8deb62874cec17d97f847a57a90bcfc4b95b5"
+    }
+  ],
+  "repair": "Only commonFacts requests native now()::text, requires actual text, converts to a finite Date and preserves at??nativeAt override. TypeScript generic annotations do not decode raw driver values. No application-clock substitution.",
+  "driverSourcePremise": {
+    "version": "drizzle-orm0.45.2/postgres3.4.9",
+    "driverSha256": "f6752a4b07f849abf09bcb5438fc06a58154d969341eb47253def16fb96578f5",
+    "timestampColumnSha256": "7a98728b3f7c2f14be5d8baec246edc2c73dbadedf3e7ec6e6611d0eea0b62e2",
+    "fact": "Raw1184 timestamp parser is transparent; timestamp schema column mapFromDriverValue produces Date. Source inspected, module never imported."
+  },
+  "rawDatetimeSourceAudit": {
+    "changedRuntimeSourceOwners": 0,
+    "sixProductOwnersWhole": true,
+    "onlyNewRawDatetimeResult": "commonFacts native transaction timestamp",
+    "otherRawResults": "Provider strings/options, native boolean authority, backend IDs, or error/control statements.",
+    "mappedAggregateTimestampFamilies": 5,
+    "builderDates": "Existing selected schema columns retain timestamp column decoders, including five MAX FILTER mapWith(column) aggregates.",
+    "inputDates": "Explicit fixture dates stay unchanged and keep existing boundary tests.",
+    "actualQueryExecution": "NONE"
+  },
+  "authoredNativeCensus": {
+    "registrations": 22,
+    "expandedCases": 33,
+    "newCases": 0,
+    "all33ExistingCaseBodiesAssertionsCapsWhole": true,
+    "status": "UNRUN"
+  },
+  "wholeFixtureInverse": {
+    "before": " const [clock]=await tx.execute<{at:Date}>(sql`select now() as at`);\n return {providerUsable,agentSwitches:await agentSwitchStatesTx(tx,fresh),at:at??clock.at};",
+    "after": " const [clock]=await tx.execute<{at:unknown}>(sql`select now()::text as at`);\n expect(clock).toMatchObject({at:expect.any(String)});\n if(typeof clock?.at!=='string')throw new Error('Expected the actual native timestamp text.');\n const nativeAt=new Date(clock.at);expect(Number.isFinite(nativeAt.getTime())).toBe(true);\n return {providerUsable,agentSwitches:await agentSwitchStatesTx(tx,fresh),at:at??nativeAt};",
+    "restoresWholeParent": true
+  },
+  "externalSourceEvidence": {
+    "basename": "aihr-workers-native-clock-source-review-20261109.json",
+    "bytes": 9738,
+    "sha256": "2815c553f181b6588b14ea842357368579ad3a87f5509bdee5888b6b0526c481",
+    "scope": "External AST syntax, exact full fixture inverse, raw-execute source inventory and installed driver/column source inspection only; no module import/compiler/native execution."
+  },
+  "historicalEvidence": "Original c95a and0912 source/data reviews and findings remain exact-source historical records. This is a source-discovered fixture premise defect, not a claimed runtime FAIL or PASS; original0912 worktree stays clean and whole.",
+  "unchangedCatalogueProposalSha256": "8ae37f8a4ff8b3edd280e7f0d2c63ee23623eee12785f0795c8838c43e365a2c",
+  "status": {
+    "tests": "UNRUN",
+    "compiler": "UNRUN",
+    "nativeWorkersCustody": "OPEN",
+    "sourceDisclosureBinding": "OPEN",
+    "routeComposition": "OPEN",
+    "runtimeQualification": "OPEN",
+    "staging": "HELD",
+    "production": "HELD"
+  },
+  "requiredReview": "Root and different peer FULL source/data before hosted execution; no source purpose, native guard, authority, command, provider, HR egress or release approval changes.",
+  "repositoryImportsTestsNativeSqlNetwork": false
+}

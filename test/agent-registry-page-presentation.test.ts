@@ -67,8 +67,11 @@ async function commonFacts(tx:Tx,ctx:SessionContext,at?:Date):Promise<WorkerPage
  expect(rows.length).toBeLessThanOrEqual(1);
  let providerUsable=false;
  if(rows[0]){try{decodeStoredActiveAiProviderRow(rows[0],ctx.tenantId);providerUsable=true;}catch{/* CPU key refusal is an unavailable display, not an env fallback. */}}
- const [clock]=await tx.execute<{at:Date}>(sql`select now() as at`);
- return {providerUsable,agentSwitches:await agentSwitchStatesTx(tx,fresh),at:at??clock.at};
+ const [clock]=await tx.execute<{at:unknown}>(sql`select now()::text as at`);
+ expect(clock).toMatchObject({at:expect.any(String)});
+ if(typeof clock?.at!=='string')throw new Error('Expected the actual native timestamp text.');
+ const nativeAt=new Date(clock.at);expect(Number.isFinite(nativeAt.getTime())).toBe(true);
+ return {providerUsable,agentSwitches:await agentSwitchStatesTx(tx,fresh),at:at??nativeAt};
 }
 async function page(ctx=group,selected?:string,at?:Date){
  return withTenant(ctx,async tx=>{

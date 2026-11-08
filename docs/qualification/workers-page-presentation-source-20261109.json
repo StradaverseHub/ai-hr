@@ -1,7 +1,7 @@
 {
   "kind": "WORKERS_PAGE_DISPLAY_SERVICE_SOURCE_ONLY_UNQUALIFIED",
   "parentCommit": "d45829993342fcb6de225bb567668f94de898b3e",
-  "sourceRef": "codex/workers-page-refresh-error-20261109",
+  "sourceRef": "codex/workers-page-native-clock-fixture-20261109",
   "exactChangedPaths": [
     "core/control-domains.ts",
     "core/control-tower.ts",
@@ -12,7 +12,8 @@
     "test/agent-registry-page-presentation.test.ts",
     "docs/adr/2026-11-09-ai-management-section-projection.md",
     "docs/qualification/workers-page-presentation-source-20261109.json",
-    "docs/qualification/workers-page-refresh-error-repair-20261109.json"
+    "docs/qualification/workers-page-refresh-error-repair-20261109.json",
+    "docs/qualification/workers-page-native-clock-fixture-repair-20261109.json"
   ],
   "status": {
     "sourceImplementation": "AUTHORED",
@@ -136,13 +137,13 @@
     },
     {
       "path": "test/agent-registry-page-presentation.test.ts",
-      "bytes": 35137,
-      "sha256": "676270adff325f68920466377cb8d4b4ac954789f525d1d9749f47777b2f22bc"
+      "bytes": 35387,
+      "sha256": "969d4c5da56c2b79fe192fa08ea6140dea5ca0c4f57d765fa1f8880a09f76942"
     },
     {
       "path": "docs/adr/2026-11-09-ai-management-section-projection.md",
-      "bytes": 18454,
-      "sha256": "c02a6fa1b9e718e55796d151c170cd70b9eba6db35d91fb486b8ca603cfbe19b"
+      "bytes": 19687,
+      "sha256": "876efcfeb0845aef3c2723344812b912093a0c7f73b6f0d8cf8e53c0685bcdd5"
     }
   ],
   "protectedWholeParentPins": [
@@ -394,7 +395,7 @@
   ],
   "mandatoryReview": "Root plus a different independent peer FULL source/data review before hosted execution. Passing prior unrelated/source-specific courses do not qualify this slice.",
   "immutableEvidenceMethod": "Whole parent preimages use immutable exact commit/path/Git blob/mode plus SHA256 and whole-byte counts; no duplicated historical maps or new runtime Git reader/decoder.",
-  "currentPinDisposition": "Eight current product/test/ADR pins; this index and the repair record are excluded to avoid a content-hash cycle. The repair record independently binds the current index and its whole c95a preimage.",
+  "currentPinDisposition": "Eight current product/test/ADR pins; qualification records are excluded from this pin map to avoid hash cycles. Each repair record independently binds its exact immediate parent metadata preimage. Historical repair records remain whole and bound to their original source.",
   "presentationRefreshRepair": {
     "record": "docs/qualification/workers-page-refresh-error-repair-20261109.json",
     "parentCommit": "c95a8494641c0cf246edf8680fc9e90b8ef85858",
@@ -408,6 +409,22 @@
       "wholeGitBytesVerified": true
     },
     "result": "SOURCE_AUTHORED_UNRUN",
-    "scope": "Only the two successful actual presentation refresh results clear an earlier session error; native admission and actual refresh failure behavior remain unchanged."
+    "scope": "Only the two successful actual presentation refresh results clear an earlier session error; native admission and actual refresh failure behavior remain unchanged.",
+    "disposition": "HISTORICAL_FROZEN_0912_RECORD_WHOLE_NOT_REBOUND_TO_CURRENT_FIXTURE_HELPER"
+  },
+  "nativeClockFixtureRepair": {
+    "record": "docs/qualification/workers-page-native-clock-fixture-repair-20261109.json",
+    "parentCommit": "0912ce413a843182507c9fd81785c000c6ef4907",
+    "wholeParentIndex": {
+      "path": "docs/qualification/workers-page-presentation-source-20261109.json",
+      "bytes": 17370,
+      "sha256": "05e9e9508dbf5fe4ab37cdc799d9aafe89aff20acbb186532cb95c2630f5f0ce",
+      "commit": "0912ce413a843182507c9fd81785c000c6ef4907",
+      "mode": "100644",
+      "gitBlob": "9db2d80165ede04042f033e8d8f33cdddffe6467",
+      "wholeGitBytesVerified": true
+    },
+    "scope": "Fixture commonFacts DB-clock decode only; all product files and all33 case bodies remain whole.",
+    "status": "SOURCE_AUTHORED_UNRUN"
   }
 }
