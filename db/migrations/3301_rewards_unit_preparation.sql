@@ -199,6 +199,7 @@ DO $$ BEGIN
 END $$;
 GRANT USAGE ON SCHEMA public,app TO ai_hr_reward_preparation_invalidator;
 GRANT EXECUTE ON FUNCTION app.reward_preparation_view(uuid) TO ai_hr_reward_preparation_invalidator;
+GRANT EXECUTE ON FUNCTION app.teras_loop_attribution() TO ai_hr_reward_preparation_invalidator;
 GRANT SELECT(id,tenant_id,status,kind,deleted_at,preparation_required),UPDATE(approved_digest,updated_at) ON public.reward_unit TO ai_hr_reward_preparation_invalidator;
 GRANT SELECT(unit_id,tenant_id,state),UPDATE(state,updated_at) ON public.reward_governance TO ai_hr_reward_preparation_invalidator;
 GRANT INSERT(tenant_id,aggregate_type,aggregate_id,event_type,actor_type,actor_id,subject_employment_id,payload) ON public.domain_event TO ai_hr_reward_preparation_invalidator;
