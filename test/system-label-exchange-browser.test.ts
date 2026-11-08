@@ -84,23 +84,26 @@ describe('System Labels authenticated Excel browser journey',()=>{
   const path=await download.path();expect(path).toBeTruthy();
   const exported=readSystemLabelWorkbook(readFileSync(path!));
   expect(exported.some(row=>row.sheet==='department'&&row.values.Code==='Finance')).toBe(true);
-  const bytes=await buildSystemLabelWorkbook({kinds:['department','division'],includeStatus:true,references:{companies:[],grades:[],employees:[]},rows:{
+  const bytes=await buildSystemLabelWorkbook({kinds:['department','division','grade_groups'],includeStatus:true,references:{companies:[],grades:[],employees:[]},rows:{
    department:[{Code:'BROWSER_GLOBAL_LABEL',Label:'Fictional global label'},{Code:'BROWSER_INVALID_LABEL',Company:'Unknown company'}],
    division:[{Code:'BROWSER_COMPANY_LABEL',Label:'Fictional scoped label',Company:other.id}],
+   grade_groups:[{Code:'',Label:'',Name:'BROWSER_GROUP_LABEL'}],
   }});
   await page.getByRole('button',{name:en.admin.systemLabels.excel.import,exact:true}).click();
   await page.locator('input[type=file]').setInputFiles({name:'fictional-labels.xlsx',mimeType:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',buffer:bytes});
   await page.getByRole('button',{name:en.labelsImportWizard.check,exact:true}).click();
-  await page.getByRole('button',{name:'Import 2 new codes',exact:true}).waitFor();
+  await page.getByRole('button',{name:'Import 3 new codes',exact:true}).waitFor();
   expect(await page.getByRole('dialog').innerText()).toContain(en.systemLabelExchange.global);
   expect(await page.getByRole('dialog').innerText()).toContain('Fictional browser company B');
+  expect(await page.getByRole('dialog').innerText()).toContain('BROWSER_GROUP_LABEL');
   await page.screenshot({path:join(evidence,'system-label-preview-en-desktop.png'),fullPage:true});
-  await page.getByRole('button',{name:'Import 2 new codes',exact:true}).click();
+  await page.getByRole('button',{name:'Import 3 new codes',exact:true}).click();
   await expect.poll(async()=>page.getByRole('dialog').innerText()).toContain('Failed rows: 1');
   const [global]=await owner.db.select().from(s.department).where(eq(s.department.name,'BROWSER_GLOBAL_LABEL'));
   expect(global).toMatchObject({tenantId:b.tenantId,isGlobal:true});
   const [scoped]=await owner.db.select().from(s.profileOption).where(eq(s.profileOption.value,'BROWSER_COMPANY_LABEL'));
   expect(scoped).toMatchObject({tenantId:b.tenantId,scopeCompanyIds:[other.id]});
+  const [group]=await owner.db.select().from(s.gradeGroup).where(eq(s.gradeGroup.name,'BROWSER_GROUP_LABEL'));expect(group).toMatchObject({tenantId:b.tenantId,scopeCompanyIds:null});
   expect(await owner.db.select().from(s.department).where(eq(s.department.name,'BROWSER_INVALID_LABEL'))).toHaveLength(0);
   await page.getByRole('button',{name:en.labelsImportWizard.step3,exact:true}).click();
   for(const locale of locales){
@@ -126,7 +129,7 @@ describe('System Labels authenticated Excel browser journey',()=>{
   const allowedExport=await restrictedContext.request.get(origin+'/admin/settings/system-labels/current-data?kind=division&inactive=1');
   expect(allowedExport.status()).toBe(200);expect(readSystemLabelWorkbook(await allowedExport.body()).some(row=>row.values.Code==='BROWSER_COMPANY_LABEL')).toBe(false);
   await restrictedPage.screenshot({path:join(evidence,'system-label-restricted-global-refusal.png'),fullPage:true});
-  writeFileSync(join(evidence,'system-label-browser-results.json'),JSON.stringify({source:process.env.AIHR_CI_HEAD,fixture:'fictional and isolated',download:true,preview:true,imported:2,refused:1,restrictedGlobalRefused:true,foreignCompanyExportHidden:true,locales:locales.length,viewports:2},null,2));
+  writeFileSync(join(evidence,'system-label-browser-results.json'),JSON.stringify({source:process.env.AIHR_CI_HEAD,fixture:'fictional and isolated',download:true,preview:true,imported:3,refused:1,restrictedGlobalRefused:true,foreignCompanyExportHidden:true,locales:locales.length,viewports:2},null,2));
   await restrictedContext.close();await context.close();
  },600000);
 });

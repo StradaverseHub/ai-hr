@@ -174,7 +174,7 @@ export function systemLabelErrorWorkbook(rows: LabelImportPreviewRow[]): Uint8Ar
   const wb = XLSX.utils.book_new();
   const data = [
     ['Worksheet', 'Row', 'Code', 'Result', 'Message'],
-    ...rows.filter(r => r.outcome === 'error'||r.outcome === 'skip').map(r => [safe(r.sheet), r.row, safe(r.values.Code??r.values.Name??''), r.outcome, safe(r.message)]),
+    ...rows.filter(r => r.outcome === 'error'||r.outcome === 'skip').map(r => [safe(r.sheet), r.row, safe(r.values.Code||r.values.Name||''), r.outcome, safe(r.message)]),
   ];
   const sheet = XLSX.utils.aoa_to_sheet(data), widths = [24, 8, 38, 12, 88];
   sheet['!cols'] = widths.map(wch => ({ wch }));

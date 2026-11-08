@@ -116,7 +116,7 @@ export type SystemLabelExportSelection={companyIds:string[];kinds:string[];inclu
 const flatScopeValues=(c:Catalogue,ids:string[]|null)=>({Criteria:ids===null?'global':'companies','Criteria Companies':ids?.map(id=>companyCell(c.companies,id)).sort().join(';')??'',Company:''});
 const flatScopeVisible=(c:Catalogue,ids:string[]|null)=>ids===null||ids.every(id=>c.companies.some(co=>co.id===id&&co.writable&&!co.archived));
 const fingerprint=(values:Record<string,string>)=>createHash('sha256').update(JSON.stringify(Object.keys(values).sort().map(key=>[key,values[key]]))).digest('hex');
-const rowKey=(sheet:string,values:Record<string,string>)=>JSON.stringify([sheet,values.Company??'',values.Code??values.Name??'']);
+const rowKey=(sheet:string,values:Record<string,string>)=>JSON.stringify([sheet,values.Company??'',values.Code||values.Name||'']);
 type ExportRow={id:string;key:string;hash:string};
 type ExportAudit={version:1;rows:ExportRow[];exportedAt:string};
 function exportRows(c:Catalogue,includeInactive:boolean) {

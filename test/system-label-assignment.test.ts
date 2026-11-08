@@ -1,7 +1,7 @@
 import {describe,it,expect} from 'vitest';
 import {resolveLabelAssignment,labelAppliesToCompany} from '../lib/system-label-assignment';
 import {LABEL_IMPORT_DEFINITIONS,LABEL_TEMPLATE_DEFINITIONS} from '../lib/system-label-definition';
-import {buildSystemLabelWorkbook,readSystemLabelWorkbook,buildSystemLabelUploadTemplate} from '../lib/system-label-workbook';
+import {buildSystemLabelWorkbook,readSystemLabelWorkbook,buildSystemLabelUploadTemplate,systemLabelErrorWorkbook} from '../lib/system-label-workbook';
 import * as XLSX from 'xlsx';
 const companies=[{id:'a',name:'Example A',writable:true,archived:null},{id:'b',name:'Example B',writable:true,archived:null},{id:'hidden',name:'Private',writable:false,archived:null}];
 describe('System Labels assignment intent',()=>{
@@ -41,6 +41,10 @@ describe('System Labels assignment intent',()=>{
    expect(wb.Sheets[d.kind].A2.t).toBe('s');
   }
   expect(parsed.find(r=>r.sheet==='religion')?.values).toMatchObject({Code:'0007',Label:'=literal'});
+ });
+ it('keeps Grade Group names visible in errors when common Code is intentionally blank',()=>{
+  const bytes=systemLabelErrorWorkbook([{sheet:'grade_groups',row:3,values:{Code:'',Name:'Fictional preserved group'},outcome:'error',message:'Check assignment',before:null,after:{}}]);
+  const wb=XLSX.read(bytes,{type:'buffer'});expect(wb.Sheets.Errors.C2.v).toBe('Fictional preserved group');
  });
  it('downloads blank upload sheets for all categories with clear global instructions',async()=>{
   const bytes=await buildSystemLabelUploadTemplate({samples:{}}),wb=XLSX.read(bytes,{type:'buffer'});
