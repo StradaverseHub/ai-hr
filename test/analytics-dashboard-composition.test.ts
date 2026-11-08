@@ -59,6 +59,9 @@ async function fixture(){
  return {b,ctx,employees};
 }
 const dataQueries=(queries:Query[])=>queries.filter(q=>!q.sql.includes('public.app_user u')&&q.sql!=='set local jit=off');
+const originalEmploymentAggregate=(query:Query)=>/^select count\(\*\) from "employment" where /.test(query.sql)||
+ query.sql.includes('to_char("employment"."hired_on"')||query.sql.includes('to_char("employment"."terminated_on"');
+const dashboardEmploymentAggregate=(query:Query)=>query.sql.includes('analytics_turnover_leavers')||query.sql.includes('analytics_movement_event');
 
 it('matches all thirteen public report owners and independent facts with one real RR/RO transaction',async()=>{
  const f=await fixture(),p=input(),baseline=observe();let expected:Awaited<ReturnType<typeof standaloneDashboard>>;
@@ -74,7 +77,10 @@ it('matches all thirteen public report owners and independent facts with one rea
  expect(baseline.queries.filter(q=>q.sql==='set local jit=off')).toHaveLength(0);
  expect(candidate.queries.indexOf(policy[0])).toBeGreaterThan(candidate.queries.findIndex(q=>q.sql.includes('public.app_user u')));
  expect(candidate.queries.indexOf(policy[0])).toBeLessThan(candidate.queries.findIndex(q=>q.sql.includes('analytics_headcount')));
- expect(dataQueries(candidate.queries)).toEqual(dataQueries(baseline.queries));
+ expect(dataQueries(baseline.queries).filter(originalEmploymentAggregate)).toHaveLength(5);
+ expect(dataQueries(candidate.queries).filter(dashboardEmploymentAggregate)).toHaveLength(2);
+ expect(dataQueries(candidate.queries).filter(query=>!dashboardEmploymentAggregate(query)))
+  .toEqual(dataQueries(baseline.queries).filter(query=>!originalEmploymentAggregate(query)));
  expect(baseline.queries.filter(q=>q.sql.includes('public.app_user u'))).toHaveLength(5);
  expect(candidate.queries.filter(q=>q.sql.includes('public.app_user u'))).toHaveLength(1);
  expect(result!.hc.total).toBe(2);expect(result!.demographics.total).toBe(2);expect(result!.masterCount).toBe(3);
@@ -88,7 +94,7 @@ it('matches all thirteen public report owners and independent facts with one rea
  if(process.env.AIHR_FOCUSED_EVIDENCE_DIR)writeFileSync(join(process.env.AIHR_FOCUSED_EVIDENCE_DIR,'analytics-dashboard-composition.json'),JSON.stringify({
   kind:'NATIVE_ANALYTICS_COMPOSITION_COMPONENT_ONLY',releaseEligible:false,reportCount:13,baselineTransactions:baseline.properties.length,
   candidateTransactions:candidate.properties.length,baselineStatements:baseline.queries.length,candidateStatements:candidate.queries.length,
-  equalNativeDataQueries:true,exactParity:true,elapsedMs,
+  equalUnaffectedNativeDataQueries:true,nativeEmploymentAggregateStatements:{baseline:5,candidate:2},exactParity:true,elapsedMs,
  },null,2));
 });
 

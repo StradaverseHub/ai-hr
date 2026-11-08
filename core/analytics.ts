@@ -1419,6 +1419,42 @@ async function turnoverRateFilteredTx(tx:Tx,scopeIds:string[]|undefined,p:{from:
     return { leavers, headcountStart, headcountEnd, avgHeadcount, turnoverPct };
 }
 
+/** The dashboard already owns one immutable snapshot. Count its three
+ * Employment-only populations in one scan, without importing the movement
+ * report's Person/Assignment joins or its broader filter set. Standalone RC
+ * readers above retain their original statement boundaries. */
+async function dashboardTurnoverAggregateTx(tx:Tx,scopeIds:string[]|undefined,p:{from:string;to:string},companyWhere:SQL|undefined):Promise<TurnoverResult>{
+ const [row]=await tx.select({
+  leavers:sql<string>`count(*) filter (where ${gte(employment.terminatedOn,p.from)} and ${lte(employment.terminatedOn,p.to)})`.as('analytics_turnover_leavers'),
+  headcountStart:sql<string>`count(*) filter (where ${activeAsOf(p.from)})`.as('analytics_turnover_start'),
+  headcountEnd:sql<string>`count(*) filter (where ${activeAsOf(p.to)})`.as('analytics_turnover_end'),
+ }).from(employment).where(and(scopeWhere(scopeIds),companyWhere));
+ const leavers=Number(row?.leavers??0),headcountStart=Number(row?.headcountStart??0),headcountEnd=Number(row?.headcountEnd??0);
+ const avgHeadcount = round1((headcountStart + headcountEnd) / 2);
+ const turnoverPct = avgHeadcount > 0 ? round1((leavers / avgHeadcount) * 100) : 0;
+ return { leavers, headcountStart, headcountEnd, avgHeadcount, turnoverPct };
+}
+
+/** Expand each joined source row into its two dated events, then aggregate
+ * months natively. A hire and termination in the same month remain two events;
+ * no employment/person deduplication is introduced. The derived-status filter
+ * deliberately keeps its original two-query owner and separate clock reads. */
+async function dashboardMovementAggregateTx(tx:Tx,scopeIds:string[]|undefined,p:{from:string;to:string;filters?:AnalyticsFilters},filters:AnalyticsFilters):Promise<MovementRow[]>{
+ if(filters.assignmentStatus)return movementByMonthTx(tx,scopeIds,p,filters);
+ const eventDate=sql`"analytics_movement_event"."event_date"`;
+ const month=sql<string>`to_char(${eventDate}, 'YYYY-MM')`;
+ const events=sql`(values ('hire'::text,${employment.hiredOn}),('leaver'::text,${employment.terminatedOn})) as "analytics_movement_event"("kind","event_date")`;
+ const rows=await tx.select({month,
+  hires:sql<string>`count(*) filter (where "analytics_movement_event"."kind"='hire')`.as('analytics_movement_hires'),
+  leavers:sql<string>`count(*) filter (where "analytics_movement_event"."kind"='leaver')`.as('analytics_movement_leavers'),
+ }).from(employment).innerJoin(person,eq(person.id,employment.personId)).leftJoin(assignment,currentAssignment)
+  .innerJoinLateral(events,sql`true`)
+  .where(and(gte(eventDate,p.from),lte(eventDate,p.to),analyticsWhere({...filters,lifecycleStatus:undefined},scopeIds,{})))
+  .groupBy(month);
+ return rows.map(row=>{const hires=Number(row.hires),leavers=Number(row.leavers);return {month:row.month,hires,leavers,netChange:hires-leavers};})
+  .sort((a,b)=>a.month.localeCompare(b.month));
+}
+
 export type AnalyticsDashboardInput = {
   from:string;to:string;year:number;filters:AnalyticsFilters;
   pages:{hires:PageQuery;terms:PageQuery;changeJobs:PageQuery;carryForward:PageQuery};
@@ -1438,14 +1474,14 @@ export async function analyticsDashboard(supplied:SessionContext,scopeIds:string
     const hc=await headcountSummaryTx(tx,scope,{asOf:to});
     const hires=await newHiresPageTx(tx,scope,{from,to,filter},pages.hires);
     const terms=await terminationsPageTx(tx,scope,{from,to,filter},pages.terms);
-    const turnover=await turnoverRateFilteredTx(tx,scope,{from,to,filters},filters.companyId?eq(employment.companyId,filters.companyId):undefined);
+    const turnover=await dashboardTurnoverAggregateTx(tx,scope,{from,to},filters.companyId?eq(employment.companyId,filters.companyId):undefined);
     const changeJobs=await changeJobTransactionsPageTx(tx,scope,{from,to,filter},pages.changeJobs);
     const demographics=await workforceDemographicsTx(tx,scope,{asOf:to,filters});
     const nationality=await demographicsByNationalityTx(tx,ctx,scope,{asOf:to,filters},filters);
     const leaveUtil=await leaveUtilisationTx(tx,scope,filters);
     const leaveBalances=await leaveBalancesSummaryTx(tx,scope,filters);
     const sickTrend=await sickLeaveTrendTx(tx,scope,{from,to,filters},filters);
-    const movement=await movementByMonthTx(tx,scope,{from,to,filters},filters);
+    const movement=await dashboardMovementAggregateTx(tx,scope,{from,to,filters},filters);
     const carryForward=await carryForwardReportPageTx(tx,scope,{year,filter,companyId:filters.companyId},pages.carryForward);
     const masterCount=await masterDataCountTx(tx,scope,{filter});
     return {hc,hires,terms,turnover,changeJobs,demographics,nationality,leaveUtil,leaveBalances,sickTrend,movement,carryForward,masterCount};
