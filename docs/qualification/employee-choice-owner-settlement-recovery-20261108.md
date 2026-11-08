@@ -1,0 +1,25 @@
+# Native owner object identity and mandatory settlement recovery
+
+Unexecuted successor of frozen ca2c64b397ec91a19b8174168c3ea9effd12137b. Root authorized implementation only after every planned334 benchmark chunk finished. ca2 and334 sources/results remain immutable. The actual334 50k measurement run42438225461 completed all6 executions/18 ports/44 phases/27 native pairs and cleanup, but its one-second target was FALSE (broad/deep-broad/full-server-search misses). This is preserved measurement evidence, not a performance or architecture release pass.
+
+## Native OID shape
+
+Independent review identified that actual PostgreSQL to_jsonb(pg_proc).oid is canonical decimal TEXT in the retained native catalogue. ca2 incorrectly demanded a JavaScript number. A pure closed decoder now accepts canonical positive uint32 decimal text or an explicitly bounded safe integral numeric alternative and returns canonical text. It refuses zero, signs, leading zeros, whitespace, fractions, exponent notation, overflow, NaN/Infinity, BigInt, null, arrays, symbols and coercible objects without invoking conversion. It uses the existing target-compatible BigInt function (no new target or compiler options).
+
+The original complete raw identity is never changed. Native install/unchanged/remove still compare all original pg_proc bytes/metadata. Cross-recreation comparison excludes ONLY its own OID, retaining two independently decoded positive, different OIDs; all other full native fields, source, ABI, ACL and security remain exact. Three new pure controls exercise real native string shape, bounded numeric alternatives and malformed/no-coercion values.
+
+## Mandatory callback and resource ownership
+
+Independent review found that both ca2's private fixture and334's benchmark owner used stop/socket/resource await followed by callback settlement in one sequential try. A close rejection could skip actual callback/finally drain and allow global owner restoration too early. The new pure employeeChoiceOwnedSettlement owns the fixed order: synchronous stop/frontier close, actual callback settlement, final resource settlement (including late adoption from those callbacks), and optional cleanup socket close. Every phase is attempted and awaited under its own catch. Only the identical failure object is deduplicated; distinct failures remain in a final AggregateError. No cause unwrap, transport-code exemption, timeout rise or silent success is introduced.
+
+BOTH actual owners use this helper for beginCleanup and close. A failed stop still drains callbacks and late resources; any failure prevents cleanup-carrier handoff. Final close shuts both work/cleanup admission before its first await, settles every owned phase, and only then restores the original global wrapper reference. Benchmark reference/mock-restoration failures are also retained with settlement failures instead of masking them. Existing callback-origin checks, native backend-absence proof, separate cleanup carrier, absolute deadlines, pool/connect/SQL/lock caps and permanent caller poison remain.
+
+Five pure controls use the REAL existing work/close registries with deferred callbacks and late resource creation. Failed socket close cannot release the restoration barrier while callback/finally or late adopted close remains pending. Distinct callback-finally and cleanup failures are retained; stop closes admission synchronously; success ordering and same-code distinct-failure preservation are checked. A source-wiring control checks both actual owner paths call the helper twice. These are pure ownership controls, not actual socket/native execution claims.
+
+## Source and hosted boundaries
+
+The factory/wrapper/complete334 inverse/SQL itself is unchanged by this tail. Core reader, native prototype SQL, baseline, harness, all6 workload cases/18 ports/44 phases/27 pairs, schema/grants/native business rules and resources remain byte-identical. Historical manifests stay historical. The new manifest binds current repaired files plus original unchanged critical source.
+
+Prospective source selectors: test/employee-choice-native-owner-factory-source.test.ts (3 retained), test/employee-choice-native-object-identity.test.ts (3 new), test/employee-choice-owned-settlement.test.ts (5 new):11 pure cases. Existing affected native2 owner controls and NEW SOLE3-case factory selector are distinct owned jobs; root must supply the new exact closed selector/stage/source binding before its first run. No new selector may borrow an existing profile, fake admission or arbitrary selected-file authority. Root owns complete-CI registration and affected evidence scheduling.
+
+Only source/Git/hash/whitespace inspection ran locally. No behavioral test, native process, DB, compiler, build, upload or installation ran. This child requires root and independent review before hosted checks. Earlier measured performance/cleanup results retain their actual source identities and are not relabeled. ASCII private-carrier adaptation, normal-CI admission, all-module browser/load acceptance and staging release remain open. Production stays held.

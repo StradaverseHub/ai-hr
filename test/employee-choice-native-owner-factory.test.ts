@@ -2,6 +2,7 @@
  * before execution; no ordinary/shared-file or release qualification is claimed. */
 import {afterAll,expect,it,type TestContext} from 'vitest';
 import {owner} from './harness';
+import {employeeChoiceNativeObjectOid} from './performance/employee-choice-native-object-identity';
 import {employeeChoiceNativeCaseOwner} from './performance/employee-choice-native-case-owner';
 import {admitEmployeeChoiceNativeFactory,employeeChoiceNativeFactoryFixture,type FactoryStatement} from './performance/employee-choice-native-factory-fixture';
 import {employeeChoiceNativePrototypeOwner,employeeChoicePrototypeSignature,type EmployeeChoiceNativeInstallation} from './performance/employee-choice-native-purpose-owner-factory';
@@ -9,16 +10,16 @@ import {employeeChoiceNativeSecurity,installEmployeeChoiceNativePrototype} from 
 admitEmployeeChoiceNativeFactory();
 const cases=employeeChoiceNativeCaseOwner();afterAll(()=>cases.drain());
 type Fixture=ReturnType<typeof employeeChoiceNativeFactoryFixture>;
-let legacy:{full:Record<string,unknown>;security:EmployeeChoiceNativeInstallation['security'];trace:FactoryStatement[];oid:number}|undefined;
+let legacy:{full:Record<string,unknown>;security:EmployeeChoiceNativeInstallation['security'];trace:FactoryStatement[];oid:string}|undefined;
 const metadata=(resource:EmployeeChoiceNativeInstallation)=>{
  const full=Object.fromEntries(Object.entries(resource.installed));
  expect(Object.keys(full).sort()).toEqual(['acl_count','app','definition','identity','owner','proconfig','proisstrict','prokind','proleakproof','pronargs','proparallel','prosecdef','provolatile','public']);
  const identity=resource.installed.identity;if(!identity||typeof identity!=='object'||Array.isArray(identity))throw Error('Complete native pg_proc identity required');
- const fields=Object.fromEntries(Object.entries(identity)),oid=fields.oid;expect(typeof oid).toBe('number');if(typeof oid!=='number'||!Number.isInteger(oid)||oid<=0)throw Error('Actual native object OID required');
+ const fields=Object.fromEntries(Object.entries(identity)),oid=employeeChoiceNativeObjectOid(fields.oid);
  // Two separately CREATEd owned functions necessarily have different OIDs.
  // Retain each full native record; compare EVERY other field without opaque
  // catalogue normalization, owner/ACL waiver or invented equality.
- const {oid:actualOid,...rest}=fields;expect(actualOid).toBe(oid);full.identity=rest;
+ const {oid:actualOid,...rest}=fields;expect(employeeChoiceNativeObjectOid(actualOid)).toBe(oid);full.identity=rest;
  expect(resource.sourceSha256).toBe('d72e6ded4a07cbbb848856c35391e1e56fdd02ad793c71a18360754e11fe8efc');return{full,oid};
 };
 async function facts(scope:Fixture){

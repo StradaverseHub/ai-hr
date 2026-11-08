@@ -1,0 +1,73 @@
+{
+  "kind": "EMPLOYEE_OWNER_MANDATORY_SETTLEMENT_RECOVERY_SOURCE_NOT_EXECUTED",
+  "base": "ca2c64b397ec91a19b8174168c3ea9effd12137b",
+  "legacyBenchmarkBase": "334ed804b794ff945153b70c638f22193fbe177c",
+  "sourceRef": "codex/employee-native-owner-settlement-recovery-20261108",
+  "sourceSha256": {
+    "test/performance/employee-choice-owned-settlement.ts": "e4fe93308ee5ff14b89410f035cff9ed7c3d044151a1843d19919250a9930a27",
+    "test/performance/employee-choice-native-object-identity.ts": "ba5bac996d65bcd88262fd50e45d8ea67fa3f4db98c6b3ea8f169dbc4a252fbd",
+    "test/performance/employee-choice-benchmark-owner.ts": "6281fd843e2843b89806d57e415b9182d4985a2c5aa65c010e5d0b1d30034fbe",
+    "test/performance/employee-choice-native-factory-fixture.ts": "7901c84f48bc113188010dfadc59d6681c60aa40ab564d7ac47aecae3ea762fd",
+    "test/employee-choice-native-owner-factory.test.ts": "255728fbec634ee378e4a9e56bcd0729583cd9dc3441843b7bcfdd4f64f6ab6d",
+    "test/employee-choice-native-object-identity.test.ts": "a40cfc052c27e5f0bb05c8d811d12fe0b2e00a636daf3ae293092a2659a58e2b",
+    "test/employee-choice-owned-settlement.test.ts": "5c1fb9e98c0bcb3d96ba38746b029c4327ba15d2f6de1fafd7f83f4f92d8ca0f",
+    "docs/qualification/employee-choice-owner-settlement-recovery-20261108.md": "d67a378f09d4cfa625c9a13b05cb611fb48187ae10395272ab669969e358ed70"
+  },
+  "unchangedCriticalSha256": {
+    "test/performance/employee-choice-native-purpose-owner.ts": "12f0873b15dfd86e8972bc1d951c62d8827227513b11a2726807c561faf625ef",
+    "test/performance/employee-choice-native-purpose-owner-factory.ts": "481e5f20b38d02325570147c146428066213560d9066aa3141869454924a3e13",
+    "test/performance/employee-choice-native-owner-source.ts": "6594b4b2bc811095c736ccdd0533e7c753b7e6e6612cc617c6dd8283c0dc80a6",
+    "test/employee-choice-native-owner-factory-source.test.ts": "471f3cb7b08165cb9928819086a1a739591d4434877924e0d1e795b00efafc54",
+    "test/fixtures/employee-choice-native-purpose-owner-334.source": "3df8e3b01b4ab52304675b8d167f68059ac8e47cfa12835c0b3c3db034da4d3d",
+    "test/performance/employee-choice-native-case-owner.ts": "167cbacbc058d4d1b5ad68aab7e44386b6be7200a0d8d84a7073f479b8d82580",
+    "test/performance/employee-choice-sql-frontier.ts": "cc086b95488cf1ba8b832a965a2737674be1f8b3abbde0cca2fafee7e7c74d8d",
+    "test/performance/employee-choice-owned-binding.ts": "17b329a63aa79151e6bb066ffe10c70ebf253b9000cae2fe6ec1cf610b46d2b0",
+    "test/fixtures/employee-choice-native-purpose.sql": "d72e6ded4a07cbbb848856c35391e1e56fdd02ad793c71a18360754e11fe8efc",
+    "test/performance/employee-choice-native-current-baseline.ts": "fc1a1603aa7a032a0450dfca98eddd6068de5a1913478d25e5e7e90eea8e3816",
+    "core/employee-choice.ts": "ce1e3559addbffa4b4e780594ebcc5fcf917ddffde79a6155cc7fbcecdbcfbd5",
+    "test/harness.ts": "ab992137979341edd6bc15ba47e38d99d3e96994b788f15afde27cea3ed6db9e",
+    "test/db-names.ts": "f6052b4e43c16d364dab4401403e30354b25b02f3f2166e1f0247133f9e2d55b",
+    "test/global-setup.ts": "831822941d54ec3d79ceb66d3dece99af4af70ac2e4a4b594c843c156ec4ca1d",
+    "test/env.ts": "e8f9c2584f15c4701fc6ea032a3f5c90ea4581e64919bf1c535d79dda6677cf7",
+    "vitest.config.ts": "a2d0d96b3a1f18c322ea76a208de4a0b217b13258cff01f48e3a1f754dba318d",
+    "test/employee-choice-native-purpose-plan.test.ts": "89beb608e04bbc89f6ab3c3881f533df5b5596b277785b3751062bc0441e8021",
+    "test/employee-choice-benchmark-owner-native.test.ts": "d28ec8e7f859bd396577c0708d8e8c92ab0dea11172ee4146bb97ec83ade065d"
+  },
+  "pureSelectors": [
+    {
+      "file": "test/employee-choice-native-owner-factory-source.test.ts",
+      "cases": 3
+    },
+    {
+      "file": "test/employee-choice-native-object-identity.test.ts",
+      "cases": 3
+    },
+    {
+      "file": "test/employee-choice-owned-settlement.test.ts",
+      "cases": 5
+    }
+  ],
+  "nativeFactorySelector": {
+    "file": "test/employee-choice-native-owner-factory.test.ts",
+    "cases": 3,
+    "admission": "BLOCKED until root new fixed selector/stage registration",
+    "workMs": 18000,
+    "completeMs": 26000,
+    "caseAndHookMs": 30000
+  },
+  "fullBenchmarkOriginalRun": {
+    "run": 42438225461,
+    "source": "334ed804b794ff945153b70c638f22193fbe177c",
+    "measurementComplete": true,
+    "performanceTargetPassed": false,
+    "acceptanceTransferred": false
+  },
+  "nativeSqlChanged": false,
+  "applicationChanged": false,
+  "defaultsChanged": false,
+  "limitsChanged": false,
+  "testsExecuted": false,
+  "normalCiAdmitted": false,
+  "releaseAuthorized": false,
+  "productionHeld": true
+}
