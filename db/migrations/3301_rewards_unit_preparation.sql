@@ -62,15 +62,14 @@ CREATE POLICY reward_preparation_unit_withholding ON public.reward_unit AS RESTR
 --> statement-breakpoint
 -- Small personnel/audit projection under the existing native source owner. It admits only a
 -- currently assigned preparation audience and returns no employment/pay fields or other events.
-CREATE FUNCTION app.reward_preparation_context(p_unit uuid) RETURNS jsonb
+CREATE FUNCTION app.reward_preparation_context(p_unit uuid,p_preparation jsonb) RETURNS jsonb
 LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,app AS $$
-DECLARE roles text[]; actor_person uuid; g jsonb; actors jsonb; history jsonb;
+DECLARE roles text[]; actor_person uuid; g jsonb:=p_preparation; actors jsonb; history jsonb;
 BEGIN
  roles:=ARRAY(SELECT app.reward_roles_preparation_audience(p_unit));
  IF cardinality(roles)=0 THEN RETURN NULL; END IF;
  SELECT person_id INTO actor_person FROM public.app_user WHERE id=app.current_user_id() AND tenant_id=app.current_tenant_id();
  IF roles && ARRAY['gr','ctro','ec'] THEN
-  SELECT state->'preparation' INTO g FROM public.reward_governance WHERE unit_id=p_unit AND tenant_id=app.current_tenant_id();
   SELECT coalesce(jsonb_object_agg(p.id::text,p.full_name),'{}'::jsonb) INTO actors FROM public.person p
    WHERE p.tenant_id=app.current_tenant_id() AND p.id IN(SELECT (value->>'actorPersonId')::uuid FROM jsonb_each(coalesce(g->'steps','{}'::jsonb)));
   SELECT coalesce(jsonb_agg(jsonb_build_object('id',h.id,'kind',h.kind,'reason',h.reason,'actorName',p.full_name,'at',h.at) ORDER BY h.at DESC,h.id DESC),'[]'::jsonb) INTO history
@@ -85,10 +84,10 @@ BEGIN
 END $$;
 DO $$ DECLARE native_owner name; BEGIN
  SELECT pg_get_userbyid(proowner) INTO native_owner FROM pg_proc WHERE oid='app.reward_roles_preparation_audience(uuid)'::regprocedure;
- EXECUTE format('ALTER FUNCTION app.reward_preparation_context(uuid) OWNER TO %I',native_owner);
+ EXECUTE format('ALTER FUNCTION app.reward_preparation_context(uuid,jsonb) OWNER TO %I',native_owner);
 END $$;
-REVOKE ALL ON FUNCTION app.reward_preparation_context(uuid) FROM PUBLIC,ai_hr_app;
-GRANT EXECUTE ON FUNCTION app.reward_preparation_context(uuid) TO ai_hr_reward_preparation_reader;
+REVOKE ALL ON FUNCTION app.reward_preparation_context(uuid,jsonb) FROM PUBLIC,ai_hr_app;
+GRANT EXECUTE ON FUNCTION app.reward_preparation_context(uuid,jsonb) TO ai_hr_reward_preparation_reader;
 --> statement-breakpoint
 CREATE FUNCTION app.reward_preparation_view(p_unit uuid) RETURNS jsonb
 LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,app SET row_security=on AS $$
@@ -101,7 +100,7 @@ BEGIN
  SELECT state INTO full_state FROM public.reward_governance WHERE unit_id=p_unit AND tenant_id=app.current_tenant_id();
  g:=full_state->'preparation';
  privileged:=roles && ARRAY['gr','ctro','ec'];
- identity:=app.reward_preparation_context(p_unit);actor_person:=(identity->>'personId')::uuid;
+ identity:=app.reward_preparation_context(p_unit,g);actor_person:=(identity->>'personId')::uuid;
  actors:=identity->'actorNames';history:=identity->'history';
  independent:=actor_person IS NOT NULL AND 'gr'=ANY(roles) AND NOT EXISTS(SELECT 1
  FROM jsonb_each(coalesce(g->'steps','{}'::jsonb)) proof
@@ -143,11 +142,13 @@ CREATE TRIGGER reward_preparation_compatibility_guard BEFORE INSERT OR UPDATE OF
  FOR EACH ROW EXECUTE FUNCTION app.reward_preparation_compatibility_guard();
 --> statement-breakpoint
 CREATE FUNCTION app.reward_preparation_check_guard() RETURNS trigger LANGUAGE plpgsql SET search_path=pg_catalog,public,app AS $$
-DECLARE before_p jsonb; after_p jsonb:=NEW.state->'preparation'; step text; proof jsonb;
+DECLARE before_state jsonb; before_p jsonb; after_p jsonb:=NEW.state->'preparation'; step text; proof jsonb;
 BEGIN
- IF TG_OP='UPDATE' THEN before_p:=OLD.state->'preparation'; END IF;
+ IF TG_OP='UPDATE' THEN before_state:=OLD.state;
+ ELSE SELECT state INTO before_state FROM public.reward_governance WHERE unit_id=NEW.unit_id AND tenant_id=NEW.tenant_id FOR UPDATE; END IF;
+ before_p:=before_state->'preparation';
  IF after_p IS NOT DISTINCT FROM before_p THEN
-  IF before_p->>'state'='released' AND (NEW.state-'preparation') IS DISTINCT FROM (OLD.state-'preparation') THEN
+  IF before_p->>'state'='released' AND (NEW.state-'preparation') IS DISTINCT FROM (before_state-'preparation') THEN
    RAISE EXCEPTION 'Request a controlled change before editing released unit set-up';
   END IF;
   RETURN NEW;
