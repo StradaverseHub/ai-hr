@@ -1,0 +1,21 @@
+{
+  "kind": "COMPLETE_DRAFT_OWNER_PARENT_INVERSE_NOT_RUNTIME_PROOF",
+  "base": "2ea980f2908afbd9ceac73fef3e6b5be5c6bef57",
+  "file": "core/employee-draft.ts",
+  "parentSha256": "8c5b61aea0ca026fd07043e9106918d65c946a08548444799f8bc24b82dd51db",
+  "currentSha256": "cad2f7b93ff7dd856409830aad0a089e663bb2e08de89c896443ac5a219827d7",
+  "changes": [
+    {
+      "before": "import {lockAccessConfigurationTx,tryLockAccessConfigurationTx} from './access-configuration-lock';\n",
+      "after": "import {lockAccessConfigurationTx,tryLockAccessConfigurationTx} from './access-configuration-lock';\nimport {assertAiPresentationPrincipalTx} from './ai-principal';\n"
+    },
+    {
+      "before": "export function getEmployeeDraft(ctx: SessionContext, id: string): Promise<EmployeeDraftDetail | null> {\n  return withTenant(ctx, async (tx) => {\n    const [row] = await tx\n      .select({\n        id: employeeDraft.id,\n        data: employeeDraft.data,\n        currentStep: employeeDraft.currentStep,\n        companyId: employeeDraft.companyId,\n        reservedEmployeeCode: employeeDraft.reservedEmployeeCode,\n      })\n      .from(employeeDraft)\n      .where(eq(employeeDraft.id, id))\n      .limit(1);\n    return row\n      ? {\n          id: row.id,\n          data: asData(row.data),\n          currentStep: row.currentStep,\n          companyId: row.companyId,\n          reservedEmployeeCode: row.reservedEmployeeCode,\n        }\n      : null;\n  });\n}\n",
+      "after": "/** One canonical row/DTO owner. Legacy RC and explicit RR/RO presentation share\n * this exact query; native tenant/company/author/restrictive RLS still decides. */\nasync function readEmployeeDraftRowTx(tx:Tx,id:string):Promise<EmployeeDraftDetail|null>{\n    const [row] = await tx\n      .select({\n        id: employeeDraft.id,\n        data: employeeDraft.data,\n        currentStep: employeeDraft.currentStep,\n        companyId: employeeDraft.companyId,\n        reservedEmployeeCode: employeeDraft.reservedEmployeeCode,\n      })\n      .from(employeeDraft)\n      .where(eq(employeeDraft.id, id))\n      .limit(1);\n    return row\n      ? {\n          id: row.id,\n          data: asData(row.data),\n          currentStep: row.currentStep,\n          companyId: row.companyId,\n          reservedEmployeeCode: row.reservedEmployeeCode,\n        }\n      : null;\n}\n\nexport function getEmployeeDraft(ctx: SessionContext, id: string): Promise<EmployeeDraftDetail | null> {\n  return withTenant(ctx, tx => readEmployeeDraftRowTx(tx,id));\n}\n\nconst captureDraftPresentationSession=(ctx:SessionContext):SessionContext=>({...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))});\n/** Presentation admission only: never authorizes a command, activation or AI send.\n * The supplied real carrier must already be canonical RR/READ ONLY. This borrows\n * that Tx; it opens no pool/transaction and adds no writer or broad Access lock. */\nexport async function getEmployeeDraftPresentationTx(tx:Tx,supplied:SessionContext,id:string,signal?:AbortSignal):Promise<EmployeeDraftDetail|null>{\n  const ctx=captureDraftPresentationSession(supplied);signal?.throwIfAborted();\n  await assertAiPresentationPrincipalTx(tx,ctx);signal?.throwIfAborted();\n  const value=await readEmployeeDraftRowTx(tx,id);signal?.throwIfAborted();return value;\n}\n\n/** Standalone admission snapshot; the legacy getEmployeeDraft retains RC freshness.\n * A missing/invisible draft remains null (the page may offer Create), never404. */\nexport function getEmployeeDraftPresentation(supplied:SessionContext,id:string,signal?:AbortSignal):Promise<EmployeeDraftDetail|null>{\n  const ctx=captureDraftPresentationSession(supplied);signal?.throwIfAborted();\n  return withTenant(ctx,tx=>getEmployeeDraftPresentationTx(tx,ctx,id,signal),{readOnlySnapshot:true,readSignal:signal});\n}\n"
+    }
+  ],
+  "canonicalQueryBodySha256": "2d2164a5fba53fb931d3855659f793b0300dd19da2ee8f9e0eeb7bbe9837468a",
+  "legacySemantics": "original withTenant RC query/DTO; all writer bytes reconstruct exactly",
+  "applicationAdoption": false,
+  "releaseAuthorized": false
+}

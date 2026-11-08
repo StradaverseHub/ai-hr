@@ -2,6 +2,7 @@ import {setTimeout as delay} from 'node:timers/promises';
 import {pgSqlState} from '../lib/db-error';
 import {boundNativeOutcomeTransactionTx} from './module-native-outcome-bounds';
 import {lockAccessConfigurationTx,tryLockAccessConfigurationTx} from './access-configuration-lock';
+import {assertAiPresentationPrincipalTx} from './ai-principal';
 import {lockLeaveDependencyConfigurationTx} from './leave-dependency-lock';
 import {assertWorkforceCompanyTx} from './workforce-access';
 import {hireEmployee,setEmploymentInfo} from './workforce-commands';
@@ -380,8 +381,9 @@ export type EmployeeDraftDetail = {
   reservedEmployeeCode: string | null;
 };
 
-export function getEmployeeDraft(ctx: SessionContext, id: string): Promise<EmployeeDraftDetail | null> {
-  return withTenant(ctx, async (tx) => {
+/** One canonical row/DTO owner. Legacy RC and explicit RR/RO presentation share
+ * this exact query; native tenant/company/author/restrictive RLS still decides. */
+async function readEmployeeDraftRowTx(tx:Tx,id:string):Promise<EmployeeDraftDetail|null>{
     const [row] = await tx
       .select({
         id: employeeDraft.id,
@@ -402,7 +404,27 @@ export function getEmployeeDraft(ctx: SessionContext, id: string): Promise<Emplo
           reservedEmployeeCode: row.reservedEmployeeCode,
         }
       : null;
-  });
+}
+
+export function getEmployeeDraft(ctx: SessionContext, id: string): Promise<EmployeeDraftDetail | null> {
+  return withTenant(ctx, tx => readEmployeeDraftRowTx(tx,id));
+}
+
+const captureDraftPresentationSession=(ctx:SessionContext):SessionContext=>({...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))});
+/** Presentation admission only: never authorizes a command, activation or AI send.
+ * The supplied real carrier must already be canonical RR/READ ONLY. This borrows
+ * that Tx; it opens no pool/transaction and adds no writer or broad Access lock. */
+export async function getEmployeeDraftPresentationTx(tx:Tx,supplied:SessionContext,id:string,signal?:AbortSignal):Promise<EmployeeDraftDetail|null>{
+  const ctx=captureDraftPresentationSession(supplied);signal?.throwIfAborted();
+  await assertAiPresentationPrincipalTx(tx,ctx);signal?.throwIfAborted();
+  const value=await readEmployeeDraftRowTx(tx,id);signal?.throwIfAborted();return value;
+}
+
+/** Standalone admission snapshot; the legacy getEmployeeDraft retains RC freshness.
+ * A missing/invisible draft remains null (the page may offer Create), never404. */
+export function getEmployeeDraftPresentation(supplied:SessionContext,id:string,signal?:AbortSignal):Promise<EmployeeDraftDetail|null>{
+  const ctx=captureDraftPresentationSession(supplied);signal?.throwIfAborted();
+  return withTenant(ctx,tx=>getEmployeeDraftPresentationTx(tx,ctx,id,signal),{readOnlySnapshot:true,readSignal:signal});
 }
 
 /**
