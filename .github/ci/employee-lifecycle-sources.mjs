@@ -2163,6 +2163,8 @@ export const EMPLOYEE_LIFECYCLE_SOURCES=Object.freeze([
  "db/migrations/3102_assignment_membership_initplan.sql",
  "db/migrations/3103_access_editor_presentation.sql",
  "db/migrations/3110_attendance_workflow_owner_rls.sql",
+ "db/migrations/3200_ai_centre_controls.sql",
+ "db/migrations/3201_ai_centre_function_coverage.sql",
  "db/migrations/3210_attendance_shared_workflow_submission_lock.sql",
  "db/migrations/3211_access_editor_native_owner_presentation.sql",
  "db/migrations/meta/0000_snapshot.json",

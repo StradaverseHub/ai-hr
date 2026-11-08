@@ -86,8 +86,8 @@ or second live SQL algorithm was introduced.
 
 ## Source custody and review boundaries
 
-Existing lifecycle closure3447 paths is preserved and extended by24 actual
-owners to3471. The independent three existing source-model bodies/names remain;
+Existing lifecycle closure3447 paths is preserved and extended by26 actual
+owners to3473. The independent three existing source-model bodies/names remain;
 required-owner data now includes actual core/shared harness/compiled helper/
 runtime collector/proof inputs and both delegated model paths. All five original
 profiles remain unchanged. The current runtime snapshot reuses this existing
@@ -108,3 +108,20 @@ The two model paths are owned by the independent frozen32b4fc395b875a0431d258b69
 component and must arrive through normal merge after this retained-owner slice
 freezes. Final coherent tree requires root and independent FULL source review
 before publication, pure hosted models, or either native runtime dispatch.
+
+## Current SQL history omission correction
+
+Frozen025 was not executed. Independent FULL review found its inherited source
+list omitted actual journal3200_ai_centre_controls and
+3201_ai_centre_function_coverage. This isolated successor adds exactly those
+two existing SQL paths: all3471 previous members/order remain, total3473.
+The unchanged positive source model requires EVERY actual current journal path;
+no model, collector, controller, product, harness, worker or profile was edited.
+Source-data validation now independently checks all745 actual ordered journal
+entries and all747 physical SQL files, including both existing unjournaled
+fingerprint inputs. No cd47/JIT3500/3501 source was imported into this repair.
+Only the lifecycle source-owner restoration row is recomposed through its actual
+whole025 preimage to the SAME complete ee572 predecessor. The other ten map rows
+remain whole; all eleven current inverses must still replay exactly. Complete
+previous025 map/source Git preimages augment the preserved b4/630 records.
+This is an unrun source-integrity repair, not a repaired runtime failure.

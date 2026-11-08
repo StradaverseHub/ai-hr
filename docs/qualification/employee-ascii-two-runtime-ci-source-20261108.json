@@ -10,17 +10,17 @@
   },
   "current": {
     ".github/ci/employee-lifecycle-native.mjs": "f7692b8255143b90d6c2f54f848ef3e07967ed6597c5c9d3a68128b8574928e3",
-    ".github/ci/employee-lifecycle-sources.mjs": "45d4209aea46a5acd5a3c8c480ee537ef24df953da3598f24cc0681617b57622",
+    ".github/ci/employee-lifecycle-sources.mjs": "8002f395f615868ee51ad71340c0df7370d152611a0df4a3f21be2b97952622c",
     ".github/ci/employee-lifecycle-sources.test.mjs": "36f5030c502c44f207139cc9e2a74e004e28c56a52d8e2465a210f2137082cfd",
     ".github/ci/focused-checks.mjs": "057055f45e5078af63846b65221ffdd12d94a2c4966f840f80efc46fb2ea5e11",
     ".github/workflows/alpha-focused-checks.yml": "d9ed6026eae9d56904b42bcddb6644bc0132943e27142a415dc3bb8c78c47765",
-    "docs/qualification/employee-native-restoration-inverse-20261108.json": "84794aa14cf4df547c6360d85392801be80fb790e3e2024ff11995c68e959a68",
+    "docs/qualification/employee-native-restoration-inverse-20261108.json": "e2d029a6ccb6de7359302752d605c642f6e446ad82a7595cf00afc5bba770d33",
     "test/performance/employee-choice-benchmark-harness.ts": "e4cc3c70a7c3e39a6bcc0294a9bd623e48d4c097395a804860e4eefa47973c5f",
     ".github/ci/employee-ascii-compiled-source.mjs": "5e61c0886a3f46c2b3539d65f746ebc0b4245c4cb9b9010756584df6c82696f2",
     ".github/ci/employee-ascii-compiled-source.test.mjs": "33ad1612e5f5e3c0095c4a702545e85481bc3a8f1cf320b749f7e4b47a21c4d4",
     ".github/ci/employee-ascii-runtime-qualification.mjs": "c6840d9352628fc1e7c525a187944fe2ded01f6cd91666d8a7b6041119e6f08d",
-    "docs/qualification/employee-ascii-ci-restoration-parent-inverse-20261108.json": "56e06d1de56bbd9ae767a531f473ea58004bc3cf95c61bfad237cf82fa66234b",
-    "docs/qualification/employee-ascii-two-runtime-ci-20261108.md": "2f79877a93f900049b4fdf8e3663ef1cafe204e56baca71dac531991cc07afec"
+    "docs/qualification/employee-ascii-ci-restoration-parent-inverse-20261108.json": "80e946c1db4c5f607324ae352341b7ef8d6af403def3dc6a52bae8f0f1329b50",
+    "docs/qualification/employee-ascii-two-runtime-ci-20261108.md": "5d1f99cedd135062e700a0b8e8af1adaa46631d5a84e5486ba2b41b9a382e488"
   },
   "wholeParentPreimages": {
     ".github/ci/employee-lifecycle-native.mjs": {
@@ -104,11 +104,63 @@
   },
   "sourceClosure": {
     "old": 3447,
-    "current": 3471,
-    "allOldMembersAndOrderPreserved": true
+    "current": 3473,
+    "allOldMembersAndOrderPreserved": true,
+    "previous": 3471,
+    "actualOrderedJournalEntries": 745,
+    "physicalSqlFiles": 747,
+    "unjournaledSqlFiles": [
+      "db/migrations/2301_attendance_workflow_submission_shared_lock.sql",
+      "db/migrations/3103_access_editor_presentation.sql"
+    ],
+    "actualJournalAndPhysicalSqlFullyCovered": true
   },
   "selfExcluded": true,
   "noRuntimeExecution": true,
   "normalAdmission": false,
-  "releaseAuthorized": false
+  "releaseAuthorized": false,
+  "sqlHistorySuccessor": {
+    "parent": "025a9ad77cfc42a72a438a5066870c9451636e1a",
+    "changedPaths": [
+      ".github/ci/employee-lifecycle-sources.mjs",
+      "docs/qualification/employee-native-restoration-inverse-20261108.json",
+      "docs/qualification/employee-ascii-ci-restoration-parent-inverse-20261108.json",
+      "docs/qualification/employee-ascii-two-runtime-ci-20261108.md",
+      "docs/qualification/employee-ascii-two-runtime-ci-source-20261108.json"
+    ],
+    "wholeParentPreimages": {
+      ".github/ci/employee-lifecycle-sources.mjs": {
+        "gitBlob": "9e28f602eb8a295e1c71442a583d271bdf2198f6",
+        "sha256": "45d4209aea46a5acd5a3c8c480ee537ef24df953da3598f24cc0681617b57622",
+        "bytes": 153130
+      },
+      "docs/qualification/employee-native-restoration-inverse-20261108.json": {
+        "gitBlob": "c928afbe3e9265258934dbe5984b545d0bdcb83f",
+        "sha256": "84794aa14cf4df547c6360d85392801be80fb790e3e2024ff11995c68e959a68",
+        "bytes": 134792
+      },
+      "docs/qualification/employee-ascii-ci-restoration-parent-inverse-20261108.json": {
+        "gitBlob": "9d622925df5ea2ec85119780d53f96bc48c38326",
+        "sha256": "56e06d1de56bbd9ae767a531f473ea58004bc3cf95c61bfad237cf82fa66234b",
+        "bytes": 2034
+      },
+      "docs/qualification/employee-ascii-two-runtime-ci-20261108.md": {
+        "gitBlob": "070718a19e0a610e1d8bf362cffa8e3451306816",
+        "sha256": "2f79877a93f900049b4fdf8e3663ef1cafe204e56baca71dac531991cc07afec",
+        "bytes": 7188
+      },
+      "docs/qualification/employee-ascii-two-runtime-ci-source-20261108.json": {
+        "gitBlob": "432ef154e86fc5928ae1666f19075525ad33b609",
+        "sha256": "2e2844485676cc2f4520759450d51e1dcb72507c697e19c05d02585a0279cc8e",
+        "bytes": 8036
+      }
+    },
+    "addedExistingSqlOwners": {
+      "db/migrations/3200_ai_centre_controls.sql": "2182ae4a614d0b847f399af18f9cfc43e82d3c9fd6f42ca960bfe22ebf4f10e2",
+      "db/migrations/3201_ai_centre_function_coverage.sql": "0c7239f512174c0d941dcb441cf98bd3a685a8e4d65973dc92f136dfb6b78d8a"
+    },
+    "onlyChangedRestorationRow": ".github/ci/employee-lifecycle-sources.mjs",
+    "allOther10RowsWhole": true,
+    "sourceFindingNotRuntimeFailure": true
+  }
 }

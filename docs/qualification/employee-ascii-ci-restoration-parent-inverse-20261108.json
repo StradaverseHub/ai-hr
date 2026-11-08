@@ -37,5 +37,25 @@
       "currentShared630Sha256": "91ab7878478676531d720ba91c945b1aae527f5470d9a6151d2098b9786234ab",
       "oldMapExpectedSha256": "c9f47bb51008c7157ed25ff969323ab2a6229f4f1f0a8d7630fb61d5a6371f50"
     }
+  },
+  "sqlHistorySuccessor": {
+    "parent": "025a9ad77cfc42a72a438a5066870c9451636e1a",
+    "sourceOwner": ".github/ci/employee-lifecycle-sources.mjs",
+    "actualWhole025Source": {
+      "gitBlob": "9e28f602eb8a295e1c71442a583d271bdf2198f6",
+      "sha256": "45d4209aea46a5acd5a3c8c480ee537ef24df953da3598f24cc0681617b57622",
+      "bytes": 153130
+    },
+    "actualWhole025Map": {
+      "gitBlob": "c928afbe3e9265258934dbe5984b545d0bdcb83f",
+      "sha256": "84794aa14cf4df547c6360d85392801be80fb790e3e2024ff11995c68e959a68",
+      "bytes": 134792
+    },
+    "changedMapRows": [
+      ".github/ci/employee-lifecycle-sources.mjs"
+    ],
+    "sameRestorationBase": "ee5722312689fc88d8a9253c232945e6f2599900",
+    "oldB4And630PreimagesPreserved": true,
+    "sourceFindingNotRuntimeFailure": true
   }
 }
