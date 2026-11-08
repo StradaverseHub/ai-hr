@@ -244,3 +244,251 @@ policy collision audit/all required normal jobs and independent verification.
 Development preview/commissioning or classifier witness alone cannot authorize
 planning adoption, all-module zero Busy, worker capacity, staging or production.
 This proposal implements nothing and leaves every original failure intact.
+
+## Append-only refinement: exact proposed owners, schedules and archive grammar
+
+This refines6c883 without changing its bytes, runtime52d or any46 case body.
+Everything below is a PROPOSED finite contract, not an existing selector/profile,
+allocated policy, executed case count or permission to implement/run. The source
+index has23 ACTUAL hashed references; it does not have32 invented runtime owners.
+
+### Proposed selector and normal-resource boundary
+
+| Proposed selector (not implemented) | One planned case obligation | Fixed purpose |
+| --- | --- | --- |
+| test/gate-db-classifier-semantic-witness.test.ts | One complete common-source A/B/C plus independent graph conjunction | semantic |
+| test/gate-db-classifier-cli-b.test.ts | One actual complete original-B CLI15s attempt and owned settlement | cli-b |
+| test/gate-db-classifier-cli-c.test.ts | One actual complete current-C CLI15s attempt and owned settlement | cli-c |
+
+Each contract requires exactly1 complete non-skipped native case. Actual assertions
+and controls must be recounted at code freeze; this table is no test result. The
+original46 cases in four selectors remain unchanged. New pure failure/schema
+controls may stay ordinary NODB when they have no infrastructure admission or
+sole-job requirement; their implemented count must be inventoried before upload.
+
+These three proposed native purposes require separate standard ubuntu-24.04
+GitHub jobs, one Vitest worker and a sole complete file because this contract
+mandates separate native owner/benchmark jobs. Therefore they need a closed
+normal NODB/job-host registration and actual canonical admission before normal
+use. This grants no Postgres/systemd/nginx/container/paid-runner authority and
+is not a blanket singleton rule for all metadata tests. Focused developmental
+routes must reflect their real workflow/job; no forged normal/focused variables.
+No profile string or policy version is allocated in these documents.
+
+### First step and exact envelope arithmetic
+
+Each native job has a proposed1800s whole-job envelope, stricter than the existing
+normal120min default. Its FIRST executable step, before checkout/setup, captures
+real boot/monotonic/wall time and actual run/attempt/job/purpose. Actual API job
+start must independently corroborate at most30s pre-anchor time; otherwise the
+witness refuses. Reserve120s artifact tail and6s final job settlement. Before
+starting a case, require elapsed+30+450+120+6<=1800; setup cannot borrow these
+reserves. The matching native case envelope is450s: at most10s admission from
+immediate callback entry,420s outer-owner window,20s final assertion/report tail.
+The actual owner installs abort, finish-hook and child/promise ownership before
+any asynchronous work. No hidden source scan starts at module import.
+
+Every stage has its full listed work allowance PLUS6s kernel settlement. Actual
+CLI work is still15s, Git metadata still10s; no shortened late work or timeout
+increase. Before each stage, the outer owner requires remaining time for that
+ENTIRE stage+settlement AND all mandatory later stages/close. A failed stage
+poisons later work, preserving only mandatory cleanup and bounded partial evidence.
+
+Semantic schedule (13 fixed operations,218s summed maximum):
+
+| Order | Fixed operation | Work | Settlement |
+| --- | --- | --- | --- |
+| 1–5 | source-head, source-status, all-tracked, controller-head, controller-status |10s EACH|6s EACH|
+| 6 | collect complete first-read C/B/A union and seal source snapshot |15s|6s|
+| 7 | sealed actual A/B/C batch calls plus independent complete graph/reason replay |15s|6s|
+| 8–12 | post-source-head, post-source-status, post-all-tracked, post-controller-head, post-controller-status |10s EACH|6s EACH|
+| 13 | fixed evidence-seal and complete member/terminal binding |10s|6s|
+
+The outer420s includes those218s, a separately measured maximum30s non-stage
+owner/source/bootstrap preparation, and6s final owner close. Remaining166s is
+transport/scheduling margin; it cannot extend ANY stage, run another algorithm
+attempt, repair a failed snapshot or borrow artifact reserve. Whole snapshot and
+Git-backed source validation are charged to their stated collect/replay stages;
+there is no unbounded preparatory classifier outside those clocks.
+
+Each CLI job schedule (15 fixed operations,365s summed maximum):
+
+| Order | Fixed operation | Work | Settlement |
+| --- | --- | --- | --- |
+| 1–5 | Same five real Git operations |10s EACH|6s EACH|
+| 6 | Source-bound same-run semantic-parent API/archive conjunction |120s aggregate|6s|
+| 7 | Source/negative-probe stability and exact program/package/input preparation |15s|6s|
+| 8 | ONE actual cli-b OR cli-c, never both |15s|6s|
+| 9 | Source/negative-probe and program postimage validation |15s|6s|
+| 10–14 | Same five post-Git operations |10s EACH|6s EACH|
+| 15 | Fixed evidence-seal |10s|6s|
+
+CLI365s+owner preparation30s+final close6s=401s, within the420s owner window.
+The NEW120s parent-evidence operation is a fixed metadata authentication aggregate,
+not classifier time: at most11 fixed actual API/ZIP requests: one run, up to FOUR100-row job pages,
+up to FOUR100-row artifact pages, one archive download and one exact-domain
+redirect. Every request keeps its existing10s limit. Both inventories must end
+within those four pages (a full final page refuses); no retry/caller URL or
+truncated census. This supports the existing256-unit normal manifest plus its
+fixed jobs/artifacts without pretending a100-row page is the whole run. More
+than the fixed complete envelope refuses. Trusted API credentials
+stay only in that owner/stage and MUST be absent from algorithm/semantic children.
+It authenticates exact same-run completed semantic source/controller/attempt,
+job/artifact identity/digest/size and closed complete archive. The independent
+final collector must repeat API/Git authentication; a producer JSON mode cannot
+authorize anything. Failure preserves incomplete evidence and blocks the CLI.
+
+The outer owner must be asynchronous/bounded: fixed spawn and one exact buffer
+sent via ChildProcess.stdin.end, real finish/close/error/abort observations, no
+blocking prefill before a reader exists. A deadline requests cooperative abort
+through the actual owned adapter/kernel and reserves its cleanup. An unsettled
+family/pipe is UNAVAILABLE, never success; do not guess/signal foreign identities
+or turn a wrapper exit into group-quiescence proof. No further phase may start.
+Normal plan SIGTERM conformance remains separate from the unchanged kernel's
+SIGKILL deadline, with raw status retained in either case.
+
+### Exact package, source and native stdin conditions
+
+B's canonical private scripts/gate-db-classify.ts is byte-identical to its
+historical Git blob. Copy the actual candidate package.json to the private B
+root; prove identical nearest-package type/import/export context, fixed loader
+and Node22.23.3. AST source ownership must prove A/B/C executable imports are only
+the existing literal node:fs CLI builtin, no relative/package/dynamic-code import.
+The module-loader/filename difference is then explicit: same actual main suffix,
+fixed candidate cwd and native Reader, no package substitution or code rewriting.
+Unexpected imports/context make B conformance unavailable, not an accept-both rule.
+
+For every positive source observation compute the complete Git blob ID from the
+actual raw bytes and compare it to the owned clean all-tracked stage0 index, plus
+stable native descriptor/path identity and decoded text evidence. This requires
+no unowned Git subprocess per Reader call. Independent final replay authenticates
+those index IDs against the candidate commit/tree. Every null/nonfile probe is
+revalidated as null/nonfile at the before/after boundaries under the stated phase
+clock. A null that becomes a file, changed blob, unknown positive or changed
+candidate/index refuses. Source-view stability is explicit, not inferred from
+HEAD or identical mtime. Private/untracked positives are never serialized.
+
+Node's stdio PIPE must be interpreted truthfully. The pinned Node22.23.3 libuv
+UV_CREATE_PIPE implementation uses a Unix stream socketpair, not a POSIX FIFO;
+see [pinned source](https://raw.githubusercontent.com/nodejs/node/v22.23.3/deps/uv/src/unix/process.c)
+and [Node stdio contract](https://nodejs.org/download/release/v22.23.0/docs/api/child_process.html#optionsstdio).
+Do not require FIFO/O_RDONLY, equal inode numbers across both socketpair ends,
+or fabricate a peer mapping. Record actual inherited CHILD endpoint type/native
+identity through Python→monitor→CLI, and recheck actual PID/start/fd custody.
+Bind the outer writer by the real source-owned ChildProcess.stdin object, actor,
+exact input buffer/digest, byte/finish/close/error observations and end-to-end
+complete CLI output. Do not invent an unavailable numeric writer FD or child
+input-digest receipt. Any missing required native observation is unavailable.
+The kernel monitor must inherit only the child's stream endpoint; no writer,
+feeder, at-fork handler, tee, regular-file substitution or fd0 pre-read. Success
+requires settled family plus closed writer/reader/output handles and actual EOF.
+EOF/stream refusal, owner death or source change remains a failed attempt.
+
+### Fixed complete archive member sets
+
+The following tables define EXACT flat basename sets for successful artifacts.
+Directory entries, path separators/aliases, unknown/duplicate members and any
+missing required member refuse. Partial failure may retain only a prefix-produced
+SUBSET of these same names with complete=false and explicit missing stages;
+it cannot pass any complete witness. All artifact members are closed source/data
+schemas, never executable instructions or environment/error-message dumps.
+
+Semantic artifact: **35** exact members.
+
+| Required basename |
+| --- |
+| `binding.json` |
+| `anchor.json` |
+| `prerequisites.json` |
+| `suite.json` |
+| `stdin.txt` |
+| `git-source-head.stdout` |
+| `git-source-status.stdout` |
+| `git-source-tracked.bin` |
+| `git-controller-head.stdout` |
+| `git-controller-status.stdout` |
+| `post-git-source-head.stdout` |
+| `post-git-source-status.stdout` |
+| `post-git-source-tracked.bin` |
+| `post-git-controller-head.stdout` |
+| `post-git-controller-status.stdout` |
+| `native-ownership.jsonl` |
+| `report.json` |
+| `program-a.ts` |
+| `program-b.ts` |
+| `program-c.ts` |
+| `snapshot-index.json` |
+| `calls-a.json` |
+| `calls-b.json` |
+| `calls-c.json` |
+| `graph.json` |
+| `reasons.json` |
+| `semantic-a.tsv` |
+| `semantic-b.tsv` |
+| `semantic-c.tsv` |
+| `delta-a-b.json` |
+| `delta-a-c.json` |
+| `delta-b-c.json` |
+| `phase-collect.json` |
+| `phase-replay.json` |
+| `phase-seal.json` |
+
+Each cli-b/cli-c artifact: **30** exact members (purpose in binding,
+not a caller-selected filename).
+
+| Required basename |
+| --- |
+| `binding.json` |
+| `anchor.json` |
+| `prerequisites.json` |
+| `suite.json` |
+| `stdin.txt` |
+| `git-source-head.stdout` |
+| `git-source-status.stdout` |
+| `git-source-tracked.bin` |
+| `git-controller-head.stdout` |
+| `git-controller-status.stdout` |
+| `post-git-source-head.stdout` |
+| `post-git-source-status.stdout` |
+| `post-git-source-tracked.bin` |
+| `post-git-controller-head.stdout` |
+| `post-git-controller-status.stdout` |
+| `native-ownership.jsonl` |
+| `report.json` |
+| `semantic-parent.json` |
+| `snapshot-index.json` |
+| `program.ts` |
+| `package-context.json` |
+| `native-clock.json` |
+| `stdin-stream.json` |
+| `native.stdout` |
+| `native.stderr` |
+| `native-result.json` |
+| `source-pre.json` |
+| `source-post.json` |
+| `phase-parent-auth.json` |
+| `phase-seal.json` |
+
+Raw Git inventory and stdin members use the existing8MiB ceiling; each source,
+TSV, log, graph, snapshot/call/delta/index member uses16MiB. Small native context,
+anchor/clock/phase/outcome/package metadata uses1MiB. Each artifact also retains
+at most100 members,64MiB per-member outer cap,128MiB expanded total and64MiB API ZIP.
+The stricter named-member caps apply before allocation/read, and actual combined
+bytes must fit the outer intersection. No many-small-member or compression-bomb
+exception. Public-source blob references reconstruct FULL positive strings via
+authenticated Git; whole null/call/resolver/graph/delta records cannot be dropped
+for size. Overflow, incomplete source retrieval or any observed blob above the
+reviewed envelope refuses, rather than extending bounds or substituting null.
+
+Semantic/B/C artifacts retain distinct native job and attempt identities. The
+fixed native byte/API receiver is a NEW reviewed owner; generic JSON-only and
+employee receivers/bounds remain unchanged. Actual API job start corroborates
+anchor accounting, actual completed jobs and archive digests/source/controller
+are authenticated independently, and all required files are replayed. Artifact
+upload success or a claimed JSON complete field cannot grant admission.
+
+No current selector/policy/phase implementation is claimed. Root and independent
+review must cover the actual phase registry, named member grammar, failure-prefix
+rules, 46 retained tests and newly implemented controls before ANY upload/run.
+Whole normal NoDB proof remains BLOCKED until its proper native singleton owners
+and full authenticated partition union are ready; no exemption is created here.

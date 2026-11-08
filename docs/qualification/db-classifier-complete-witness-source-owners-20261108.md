@@ -67,3 +67,53 @@ registration/integration work; this design must not invent a bypass.
 No node_modules/application/test module import, model, compiler, native, DB or
 provider behavior ran locally. Only source reads, Git and static bytes/hashes.
 Root/independent review and explicit source freeze precede new implementation.
+
+## Append-only finite bounds refinement of6c883
+
+The23 actual source hash rows above remain unchanged and verified. No32-owner
+claim, native selector, policy or registration is invented. Three NEW selectors
+are PROPOSED only: semantic-witness, cli-b and cli-c under the exact names in the
+companion table, each with one planned complete native case. Implemented controls
+must be independently inventoried at code freeze; the actual46 bodies stay intact.
+
+| Proposed contract | Fixed budget/member fact, not an executed result |
+| --- | --- |
+| Each standard native job |1800s first-step anchored;30s corroborated pre-anchor;120s artifact tail;6s final settlement|
+| Each new native case |450s:10 admission+420 outer owner+20 final assertions/report|
+| Full case launch reserve |elapsed+30+450+120+6<=1800, without borrowing any reserve|
+| Semantic fixed schedule |13 operations,218s sum of complete work+6s each; owner preparation30s/final close6s remain inside420|
+| Each fixed CLI schedule |15 operations,365s sum; includes120s aggregate actual same-run parent API operation, source pre/post and ONE15s CLI|
+| Parent API census |at most4×100 job pages and4×100 artifact pages, one run and download+exact redirect;11 total requests at10s each, whole aggregate120s; full final page refuses|
+| Native classification |original15s work+6s settlement, no timing inflation or helper work stealing its full interval|
+| Git/output transport |existing8MiB complete inventory;16MiB output/large evidence members|
+| Complete semantic artifact |EXACT35 named flat members listed in the companion|
+| Each complete B/C artifact |EXACT30 named flat members listed in the companion|
+| Named metadata |1MiB small native/context/package/phase fields; complete source/TSV/index/log16MiB and Git/stdin8MiB|
+| Archive outer intersection |100 entries,64MiB member,128MiB expanded,64MiB API ZIP, with stricter named caps|
+
+The API aggregate is NEW metadata-work scheduling, not an increase to any actual
+classifier15s, existing10s request, Git10s or kernel6s limit. It supports the real
+normal256-unit manifest instead of pretending a single100-row page is complete.
+The source-checked phase registry must enforce exactly the declared stages and
+mandatory cleanup; no arbitrary command callback, shortened late stage or retry.
+
+Primary native transport reference: pinned Node22.23.3
+[libuv process.c](https://raw.githubusercontent.com/nodejs/node/v22.23.3/deps/uv/src/unix/process.c)
+uses uv_socketpair for UV_CREATE_PIPE. The
+[Node stdio contract](https://nodejs.org/download/release/v22.23.0/docs/api/child_process.html#optionsstdio)
+likewise distinguishes its PIPE from an actual Unix pipe. Consequently no FIFO/
+O_RDONLY/peer-inode invention is allowed. Native custody binds the actual outer
+ChildProcess.stdin writer and unchanged inherited CHILD endpoint through the
+fixed Python/kernel/CLI course. Missing observations, leaked EOF/handle or an
+unsettled family refuse; a regular file or extra feeder cannot substitute.
+
+B private nearest-package context must be actual candidate package.json bytes,
+same fixed loader/basename/cwd, and executable builtin-import-only AST membership.
+Positive snapshot bytes must compute to their owned actual stage0 Git blob IDs;
+all negative probes are revalidated before/after inside the stated source phases.
+Raw private/untracked positives never become evidence or fake null. Independent
+final API/Git replay authenticates the complete source/census/artifact conjunction.
+
+Both document changes append to the full6c883 versions only. No runtime, test,
+source-map, kernel, normal gate, resource policy or evidence receiver is edited.
+Review of the proposed registry/grammar/budget is still required before code.
