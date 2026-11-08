@@ -2,7 +2,10 @@ import {writeFileSync,readFileSync} from 'node:fs';
 import {createHash} from 'node:crypto';
 import {join} from 'node:path';
 import {cpus,totalmem} from 'node:os';
-import {afterAll,beforeAll,expect,it} from 'vitest';
+import {sql,type SQL} from 'drizzle-orm';
+import {afterAll,beforeAll,expect,it,vi} from 'vitest';
+import * as database from '../db/client';
+import type {SessionContext,Tx} from '../db/client';
 import {
  analyticsDashboard,UNKNOWN_BUCKET,analyticsManagerSelection,carryForwardReportPage,changeJobTransactionsPage,headcountSummary,
  masterDataCount,masterDataExport,newHires,newHiresPage,terminationsPage,
@@ -11,10 +14,11 @@ import {parsePageQuery} from '../lib/pagination';
 import {closeAll,migrateTestDb} from './harness';
 import {seedPersonnelNativeFixture} from './performance/personnel-native-fixture';
 import {observeNativeRead} from './helpers/native-read-observer';
+import {originalEmploymentAggregatesTx} from './helpers/analytics-employment-aggregates-original';
 
 // Structural statement shapes from the actual canonical read bodies. This labels
 // observations, never chooses a query/permission or infers a slow business report.
-const analyticsStatementClassifierVersion='analytics-statement-shapes/v3';
+const analyticsStatementClassifierVersion='analytics-statement-shapes/v4';
 function classifyAnalyticsStatement(text:string):string{
  const query=text.toLowerCase().replace(/\s+/g,' ');
  if(text==='set local jit=off')return 'presentation-jit-policy';
@@ -28,6 +32,8 @@ function classifyAnalyticsStatement(text:string):string{
  if(query.startsWith('fetch forward 512 from analytics_carry_identities'))return 'carry-identities-fetch';
  if(query.startsWith('close analytics_carry_identities'))return 'carry-identities-close';
  if(query.includes('analytics_carry_population'))return 'carry-population';
+ if(query.includes('analytics_turnover_leavers'))return 'turnover-aggregate';
+ if(query.includes('analytics_movement_event'))return 'movement-aggregate';
  if(query.includes('"gender"')&&query.includes('"date_of_birth"'))return 'demographic-dimensions';
  if(query.startsWith('select "employee_statutory_my"."epf_citizenship", count(distinct "person"."id")')
   &&query.endsWith('group by "employee_statutory_my"."epf_citizenship"'))return 'nationality';
@@ -40,6 +46,44 @@ function classifyAnalyticsStatement(text:string):string{
  if(query.includes('from "leave_ledger"'))return 'leave-ledger-support';
  if(query.includes('from "entitlement_template'))return 'entitlement-template-support';
  return 'unclassified';
+}
+
+type CapturedSelect={statement:SQL;text:string;digest:string};
+/** Capture actual public builder SQL objects; never reconstruct SQL/parameters
+ * from a string or introduce a product hook. Objects stay in test memory only. */
+function captureSelects(tx:Tx,captured:CapturedSelect[]):Tx{
+ const wrap=(query:object):object=>new Proxy(query,{get(target,key,receiver){
+  const value=Reflect.get(target,key,receiver);
+  if(key==='then'&&typeof value==='function')return (resolve:(rows:unknown)=>unknown,reject:(error:unknown)=>unknown)=>{
+   expect(captured.length).toBeLessThan(128);
+   const builder=target as {getSQL:()=>SQL;toSQL:()=>{sql:string}};
+   const text=builder.toSQL().sql;captured.push({statement:builder.getSQL(),text,digest:createHash('sha256').update(text).digest('hex')});
+   return Reflect.apply(value,target,[resolve,reject]);
+  };
+  return typeof value==='function'?(...args:unknown[])=>{const result=Reflect.apply(value,target,args);return result&&typeof result==='object'&&'then'in result?wrap(result):result;}:value;
+ }});
+ return new Proxy(tx,{get(target,key,receiver){
+  if(key==='select'||key==='selectDistinct')return (...args:unknown[])=>wrap(Reflect.apply(target[key],target,args));
+  const value=Reflect.get(target,key,receiver);return typeof value==='function'?value.bind(target):value;
+ }});
+}
+/** Bounded, content-free EXPLAIN detail. Filters, SQL, parameters, outputs and
+ * native error content never enter the receipt. Any detail overflow refuses. */
+function aggregateNativePlan(raw:unknown){
+ expect(Array.isArray(raw)).toBe(true);const plans=raw as Record<string,unknown>[];expect(plans).toHaveLength(1);
+ const root=plans[0],nodes:Record<string,unknown>[]=[];
+ const visit=(value:unknown,parent:number|null)=>{
+  expect(value&&typeof value==='object').toBeTruthy();expect(nodes.length).toBeLessThan(256);
+  const node=value as Record<string,unknown>,ordinal=nodes.length,item:Record<string,unknown>={ordinal,parent};nodes.push(item);
+  expect(typeof node['Node Type']).toBe('string');expect(String(node['Node Type'])).toMatch(/^[A-Za-z0-9 _-]{1,96}$/);item.type=node['Node Type'];
+  for(const key of ['Actual Rows','Actual Loops','Actual Startup Time','Actual Total Time','Plan Rows','Total Cost','Rows Removed by Filter','Rows Removed by Join Filter','Shared Hit Blocks','Shared Read Blocks','Temp Read Blocks','Temp Written Blocks']){
+   const value=node[key];if(value!==undefined){expect(typeof value).toBe('number');expect(Number.isFinite(value)).toBe(true);item[key]=value;}
+  }
+  const children=node.Plans??[];expect(Array.isArray(children)).toBe(true);for(const child of children as unknown[])visit(child,ordinal);
+ };
+ visit(root.Plan,null);expect(root.JIT).toBeUndefined();
+ for(const key of ['Planning Time','Execution Time']){expect(typeof root[key]).toBe('number');expect(Number.isFinite(root[key])).toBe(true);}
+ return {rawPlanSha256:createHash('sha256').update(JSON.stringify(raw)).digest('hex'),planningMs:root['Planning Time'],executionMs:root['Execution Time'],jit:null,nodes,maximumNodes:256,detailComplete:true};
 }
 
 beforeAll(migrateTestDb);afterAll(closeAll);
@@ -118,10 +162,16 @@ it('measures actual native 50k Analytics reads and complete-export baselines on 
  const telemetry=probe.telemetry();
  expect(telemetry.detailComplete).toBe(true);expect(telemetry.totals.statements).toBeGreaterThan(0);
  expect(telemetry.totals.failed).toBe(0);expect(telemetry.totals.unknownRowCounts).toBe(0);
- // Same thirteen-report/cursor course plus one zero-row fixed JIT policy command.
+ // Same thirteen reports/cursor and one fixed JIT command; only the two
+ // employment aggregates replace their original five SELECTs.
  // Nationality retains its single independently expected Unknown bucket.
- expect(telemetry.totals.statements).toBe(125);
- expect(telemetry.totals.returnedRows).toBe(90091);
+ expect(telemetry.totals.statements).toBe(122);
+ expect(telemetry.totals.returnedRows).toBe(90089);
+ const employmentAggregates=telemetry.summaries.filter(row=>row.classification==='turnover-aggregate'||row.classification==='movement-aggregate');
+ expect(employmentAggregates.map(row=>({classification:row.classification,count:row.count,rows:row.returnedRows}))).toEqual([
+  {classification:'turnover-aggregate',count:1,rows:1},{classification:'movement-aggregate',count:1,rows:2},
+ ]);
+ expect(telemetry.summaries.filter(row=>['turnover-count','movement-hires','movement-leavers'].includes(row.classification))).toEqual([]);
  const policy=telemetry.summaries.filter(row=>row.classification==='presentation-jit-policy');
  expect(policy).toHaveLength(1);expect(policy[0]).toMatchObject({count:1,returnedRows:0,unknownRowCounts:0,failed:0});
  const principalOrdinal=telemetry.samples.find(row=>row.classification==='principal')!.ordinal;
@@ -145,5 +195,60 @@ it('measures actual native 50k Analytics reads and complete-export baselines on 
   instrumentedElapsedMs,nonQueryObservedMs:instrumentedElapsedMs-telemetry.totals.elapsedMs,
   actualTransactions:probe.properties.length,role:probe.properties[0].role,isolation:probe.properties[0].isolation,readOnly:probe.properties[0].readOnly,
   sameCompleteDto:true,limitations:'Second observed call; includes observer overhead and warmed data. Statement awaits exclude after-query callbacks; nonquery remainder includes admission, test identity probe and client aggregation.'};
+ // A separate experiment follows BOTH unchanged whole-dashboard timings. The
+ // real product callback completes before its same admitted RR/RO Tx executes
+ // the frozen source, balanced native replays and seven plans. This extended
+ // callback is not a whole-dashboard speed measurement or a cold course.
+ const aggregateExperiment:Record<string,unknown>={kind:'TARGET_NATIVE_STATEMENTS_ONLY',complete:false,
+  includesSqlParametersResultsOrErrors:false,newPools:0,warmth:'Fixture and all prior report courses warm buffers; ordinary plan reuse, no cold claim',
+  limits:{capturedSelects:128,arms:4,plans:7,planNodesEach:256,unchangedCaseMs:300000},arms:[],plans:[]};
+ report.employmentAggregateExperiment=aggregateExperiment;save();
+ const actualWithTenant=database.withTenant;let experimentTransactions=0;
+ const experimentSpy=vi.spyOn(database,'withTenant').mockImplementation(<T>(supplied:SessionContext,read:(tx:Tx)=>Promise<T>,options?:Parameters<typeof database.withTenant>[2])=>actualWithTenant(supplied,async tx=>{
+  experimentTransactions++;expect(experimentTransactions).toBe(1);expect(options).toEqual({readOnlySnapshot:true});
+  const current:CapturedSelect[]=[],value=await read(captureSelects(tx,current));expect(value).toEqual(dashboard);
+  const [identity]=await tx.execute<{pid:number;role:string;login:string;isolation:string;readOnly:boolean;jit:string;rls:string}>(sql`select pg_backend_pid()as pid,current_user as role,session_user as login,current_setting('transaction_isolation')as isolation,current_setting('transaction_read_only')='on'as "readOnly",current_setting('jit')as jit,current_setting('row_security')as rls`);
+  expect(identity).toMatchObject({role:'ai_hr_app',login:'ai_hr_app',isolation:'repeatable read',readOnly:true,jit:'off',rls:'on'});aggregateExperiment.identity=identity;save();
+  const old:CapturedSelect[]=[],original=await originalEmploymentAggregatesTx(captureSelects(tx,old),[b.companyId],{from:'2020-01-01',to:'2026-01-01',filters:{}});
+  expect(original).toEqual({turnover:dashboard.turnover,movement:dashboard.movement});expect(old).toHaveLength(5);
+  const candidate=current.filter(query=>query.text.includes('analytics_turnover_leavers')||query.text.includes('analytics_movement_event'));expect(candidate).toHaveLength(2);
+  expect(old.slice(0,3).every(query=>classifyAnalyticsStatement(query.text)==='turnover-count')).toBe(true);
+  expect(old.slice(3).map(query=>classifyAnalyticsStatement(query.text))).toEqual(['movement-hires','movement-leavers']);
+  aggregateExperiment.sourceStatements={original:5,candidate:2,originalDigests:old.map(q=>q.digest),candidateDigests:candidate.map(q=>q.digest)};save();
+  const sets={old,new:candidate};let originalRows:unknown[][]|undefined,candidateRows:unknown[][]|undefined;
+  for(const [ordinal,label]of (['old','new','new','old']as const).entries()){
+   const receipt:Record<string,unknown>={ordinal:ordinal+1,source:label,started:true,complete:false,statements:[],samePid:false};
+   (aggregateExperiment.arms as unknown[]).push(receipt);save();const started=performance.now(),results:unknown[][]=[];
+   try{
+    for(const query of sets[label]){
+     const start=performance.now(),rows=await tx.execute<Record<string,unknown>>(query.statement);results.push([...rows]);
+     (receipt.statements as unknown[]).push({digest:query.digest,rows:rows.length,elapsedMs:performance.now()-start});save();
+    }
+    if(label==='old'){
+     const counts=results.slice(0,3)as Record<string,unknown>[][];expect(counts.map(rows=>Number(rows[0].count))).toEqual([10000,50000,40000]);
+     const months=results.slice(3)as Record<string,unknown>[][];expect(months.map(rows=>rows.map(row=>({month:row.to_char,count:Number(row.count)})))).toEqual([[{month:'2020-01',count:50000}],[{month:'2024-01',count:10000}]]);
+     if(originalRows)expect(results).toEqual(originalRows);else originalRows=results;
+    }else{
+     const counts=(results[0]as Record<string,unknown>[])[0];expect([Number(counts.analytics_turnover_leavers),Number(counts.analytics_turnover_start),Number(counts.analytics_turnover_end)]).toEqual([10000,50000,40000]);
+     const months=(results[1]as Record<string,unknown>[]).map(row=>({month:String(row.to_char),hires:Number(row.analytics_movement_hires),leavers:Number(row.analytics_movement_leavers)})).sort((a,b)=>a.month.localeCompare(b.month));
+     expect(months).toEqual([{month:'2020-01',hires:50000,leavers:0},{month:'2024-01',hires:0,leavers:10000}]);
+     if(candidateRows)expect(results).toEqual(candidateRows);else candidateRows=results;
+    }
+    const [after]=await tx.execute<{pid:number;jit:string}>(sql`select pg_backend_pid()as pid,current_setting('jit')as jit`);expect(after).toEqual({pid:identity.pid,jit:'off'});
+    receipt.samePid=true;receipt.independentNativeFacts=true;receipt.complete=true;
+   }finally{receipt.wallMs=performance.now()-started;save();}
+  }
+  for(const [ordinal,query]of [...old,...candidate].entries()){
+   expect(/^select\b/i.test(query.text)).toBe(true);const receipt:Record<string,unknown>={ordinal:ordinal+1,source:ordinal<5?'old':'new',digest:query.digest,started:true,complete:false};
+   (aggregateExperiment.plans as unknown[]).push(receipt);save();
+   const rows=await tx.execute<Record<string,unknown>>(sql`explain(analyze,buffers,timing on,settings,format json) ${query.statement}`);
+   Object.assign(receipt,aggregateNativePlan(rows[0]?.['QUERY PLAN']),{complete:true});save();
+  }
+  const [settled]=await tx.execute<{pid:number;role:string;login:string;isolation:string;readOnly:boolean;jit:string;rls:string}>(sql`select pg_backend_pid()as pid,current_user as role,session_user as login,current_setting('transaction_isolation')as isolation,current_setting('transaction_read_only')='on'as "readOnly",current_setting('jit')as jit,current_setting('row_security')as rls`);
+  expect(settled).toEqual(identity);aggregateExperiment.sameNativeIdentityAtCompletion=true;aggregateExperiment.complete=true;save();return value;
+ },options));
+ try{await timed('employmentAggregateNativeExperimentMs',()=>analyticsDashboard(ctx,[b.companyId],{from:'2020-01-01',to:'2026-01-01',year:2020,filters:{},pages:{hires:page,terms:page,changeJobs:page,carryForward:page}}));}
+ finally{experimentSpy.mockRestore();aggregateExperiment.transactions=experimentTransactions;save();}
+ expect(aggregateExperiment.complete).toBe(true);expect(aggregateExperiment.arms).toHaveLength(4);expect(aggregateExperiment.plans).toHaveLength(7);
  report.exactNativePopulationAndResults=true;report.complete=true;save();
 },300000);
