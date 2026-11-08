@@ -23464,6 +23464,11 @@
       "title": "Corak Kerja Lebih Masa",
       "desc": "Konfigurasi dan semak kerja lebih masa pekerja, tempoh bayaran dan pemetaan gaji.",
       "cta": "Konfigurasi Corak Kerja Lebih Masa"
+    },
+    "formulaBuilder": {
+      "title": "Pembina Formula Kehadiran",
+      "desc": "Konfigurasi dan uji pengiraan kehadiran yang dipautkan ke Item Gaji.",
+      "cta": "Buka pembina formula"
     }
   },
   "rewards": {
@@ -36708,6 +36713,25 @@
     "traceCondition": "Syarat: {value}",
     "traceElse": "Menggunakan cabang Else.",
     "traceSet": "Tetapkan {name} kepada {value}",
-    "traceReturn": "Memulangkan {value}"
+    "traceReturn": "Memulangkan {value}",
+    "standardReferences": "Rujukan formula standard",
+    "standardReferenceHelp": "Contoh harian boleh diedit untuk semua jenis hari. Kadar dan potongan adalah rekaan. Gantikan dengan peraturan syarikat yang dibenarkan, uji kehadiran sebenar dan aktifkan secara jelas.",
+    "referenceOtHelp": "OT sebelum, selepas dan dalam syif yang diluluskan serta kerja waktu rehat yang diluluskan secara jelas. Contoh ini tidak meluluskan OT.",
+    "referenceAbsentHelp": "Hari bekerja berjadual yang direkod lengkap tanpa kerja atau cuti diluluskan. Rekod tidak lengkap menolak pengiraan.",
+    "referenceLateHelp": "Minit lewat direkod selepas peraturan tempoh kelonggaran.",
+    "referenceExample": "Contoh: {minutes} minit; kadar RM{rate}; faktor {multiplier}; jangkaan RM{result}.",
+    "copyReference": "Salin ke draf ini",
+    "sourceReferences": "Rujukan medan sumber",
+    "variableMetadata": "Jenis: {type} · Sumber: {source} · Harian, mingguan dan bulanan.",
+    "availabilityHelp": "Memerlukan bukti sumber bertarikh lengkap dan dibenarkan. Maklumat hilang atau kabur menolak pengiraan; jenis hari bercampur memerlukan formula harian.",
+    "aliasOf": "Alias bagi {id}. Gunakan satu nama sahaja dalam pengiraan.",
+    "referenceNames": {
+      "ot10": "Overtime 1.0",
+      "ot15": "Overtime 1.5",
+      "ot20": "Overtime 2.0",
+      "ot30": "Overtime 3.0",
+      "absent": "Tidak hadir",
+      "late": "Lewat masuk"
+    }
   }
 }

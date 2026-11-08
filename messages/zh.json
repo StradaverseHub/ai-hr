@@ -23464,6 +23464,11 @@
       "title": "加班模式",
       "desc": "配置和审核员工加班、应付时长及薪资映射。",
       "cta": "配置加班模式"
+    },
+    "formulaBuilder": {
+      "title": "考勤公式构建器",
+      "desc": "配置并测试关联薪资项目的考勤计算。",
+      "cta": "打开公式构建器"
     }
   },
   "rewards": {
@@ -36708,6 +36713,25 @@
     "traceCondition": "条件：{value}",
     "traceElse": "使用Else分支。",
     "traceSet": "将{name}设为{value}",
-    "traceReturn": "返回{value}"
+    "traceReturn": "返回{value}",
+    "standardReferences": "标准公式参考",
+    "standardReferenceHelp": "适用于所有日类型的可编辑每日示例。费率及扣款均为虚构。请改为公司授权规则，以实际考勤测试，并明确启用。",
+    "referenceOtHelp": "已批准的班前、班后、班内加班及明确批准的休息期间工作。示例不会产生加班批准。",
+    "referenceAbsentHelp": "完整记录的排班日，没有工作且没有已批准休假。缺失考勤将拒绝计算。",
+    "referenceLateHelp": "按原有宽限规则计算的迟到分钟数。",
+    "referenceExample": "示例：{minutes} 分钟；费率 RM{rate}；系数 {multiplier}；预期 RM{result}。",
+    "copyReference": "复制到此草稿",
+    "sourceReferences": "来源字段参考",
+    "variableMetadata": "类型：{type} · 来源：{source} · 每日、每周及每月。",
+    "availabilityHelp": "需要完整、获授权且按日期记录的来源证据。缺失或含糊的数据将拒绝计算；混合日类型需使用每日公式。",
+    "aliasOf": "{id} 的别名。一次计算只能使用其中一个名称。",
+    "referenceNames": {
+      "ot10": "Overtime 1.0",
+      "ot15": "Overtime 1.5",
+      "ot20": "Overtime 2.0",
+      "ot30": "Overtime 3.0",
+      "absent": "缺勤",
+      "late": "迟到"
+    }
   }
 }

@@ -1,8 +1,8 @@
 /** Company-scoped immutable Attendance formula versions and actual-data testing. No pay posting. */
 import {createHash,randomUUID} from 'node:crypto';
-import {and,asc,desc,eq,ilike,inArray,or,sql} from 'drizzle-orm';
+import {and,asc,desc,eq,gte,lte,ilike,inArray,or,sql} from 'drizzle-orm';
 import type {SessionContext,Tx} from '../db/client';
-import {attendanceFormula,attendanceFormulaRevision,attendanceFormulaTest,attendanceFormulaEvent,payComponent,company,employment,person} from '../db/schema';
+import {attendanceFormula,attendanceFormulaRevision,attendanceFormulaTest,attendanceFormulaEvent,attendanceFormulaResult,attendanceFormulaResultEvent,payComponent,company,employment,person} from '../db/schema';
 import {employedByCompanyDuring,provenCompanyDatesTx} from './employment-company';
 import {withAttendanceTenant} from './module-gate';
 import {assertWorkforceEmploymentTx} from './workforce-access';
@@ -16,6 +16,7 @@ import {assertPayComponentReady} from '../lib/pay-component-contract';
 import {ATTENDANCE_FORMULA_CATALOG_VERSION} from '../lib/attendance-formula-catalog';
 import {PAY_FORMULA_EVALUATOR_VERSION} from '../lib/pay-formula-language';
 import {payComponentAppliesToCompany} from '../lib/pay-component-company';
+import {priceAttendanceFormulaQuantity} from '../packs/payroll/service';
 const hash=(value:unknown)=>createHash('sha256').update(JSON.stringify(value,(_key,entry)=>entry&&typeof entry==='object'&&!Array.isArray(entry)?Object.fromEntries(Object.entries(entry).sort(([a],[b])=>a.localeCompare(b))):entry)).digest('hex');
 const uuid=/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i;
 function actor(ctx:SessionContext){if(!ctx.userId||!uuid.test(ctx.userId))throw Error('Use an authenticated administrator to maintain Attendance formulas.');return ctx.userId;}
@@ -107,4 +108,44 @@ export function searchAttendanceFormulaEmployees(ctx:SessionContext,p:{id:string
  const rows=await tx.select({id:employment.id,code:employment.employeeCode,name:person.fullName}).from(employment).innerJoin(person,and(eq(person.id,employment.personId),eq(person.tenantId,employment.tenantId))).where(and(employedByCompanyDuring(formula.companyId,period.from,period.to),sql`app.can_admin_employment(${employment.id})`,or(ilike(person.fullName,term),ilike(employment.employeeCode,term)),configuration.eligibility.mode==='selected'?inArray(employment.id,configuration.eligibility.employmentIds):undefined)).orderBy(asc(person.fullName),asc(employment.employeeCode),asc(employment.id)).limit(26).offset((p.page-1)*25);
  const page=rows.slice(0,25),proofs=await provenCompanyDatesTx(tx,page.map(row=>({employmentId:row.id,date:period.to})));
  return {rows:page.filter(row=>{const proof=proofs.get(row.id+'|'+period.to);return proof&&!proof.reason&&proof.companyId===formula.companyId;}),hasMore:rows.length>25,period};
+});}
+
+async function resultState(tx:Tx,id:string){const [state]=await tx.select().from(attendanceFormulaResultEvent).where(eq(attendanceFormulaResultEvent.resultId,id)).orderBy(desc(attendanceFormulaResultEvent.sequence)).limit(1);return state;}
+async function resultEvent(tx:Tx,ctx:SessionContext,r:typeof attendanceFormulaResult.$inferSelect,kind:typeof attendanceFormulaResultEvent.$inferInsert.kind,reason:string,batchId?:string){
+ if(typeof reason!=='string'||!reason.trim()||reason.length>1000)throw Error('Give a reason of at most1000characters.');
+ await tx.insert(attendanceFormulaResultEvent).values({tenantId:ctx.tenantId,companyId:r.companyId,employmentId:r.employmentId,resultId:r.id,kind,reason:reason.trim(),batchId,createdBy:actor(ctx)});
+ await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'attendance-formula-result',aggregateId:r.id,eventType:'attendance-formula-result.'+kind,actor:actorOf(ctx),subjectEmploymentId:r.employmentId,payload:{formulaId:r.formulaId,revisionId:r.revisionId,reason:reason.trim(),batchId:batchId??null}});
+}
+/** Called only with a DB-owned immutable result. Testing evidence cannot become a payable result. */
+export async function replayAttendanceFormulaResultTx(tx:Tx,ctx:SessionContext,r:typeof attendanceFormulaResult.$inferSelect){
+ const [revision]=await tx.select().from(attendanceFormulaRevision).where(and(eq(attendanceFormulaRevision.id,r.revisionId),eq(attendanceFormulaRevision.formulaId,r.formulaId)));
+ if(!revision)throw Error('The original formula version is unavailable.');const configuration=validateAttendanceFormulaConfiguration(revision.definition);
+ const evaluated=await evaluate(tx,ctx,revision,r.employmentId,r.periodTo),component=await item(tx,configuration),price=priceAttendanceFormulaQuantity(component,{quantity:evaluated.result.amount,unit:configuration.outputUnit});
+ if(evaluated.period.from!==r.periodFrom||evaluated.period.to!==r.periodTo||r.sourceHash!==evaluated.sourceHash||r.quantity!==evaluated.result.amount||r.unit!==configuration.outputUnit||r.payComponentId!==component.id||r.amount!==price.amount||r.rate!==price.rate||hash(r.payload)!==hash({result:evaluated.result,days:evaluated.days,eligibility:evaluated.eligibility}))throw Error('Attendance, eligibility, formula engine or Pay Item changed. Recalculate and review a new result.');
+ return {configuration,evaluated,component,price};
+}
+/** A single employee-period calculation is bounded and explicit. No Payroll or Attendance rows are changed. */
+export function calculateAttendanceFormulaResult(ctx:SessionContext,p:{id:string;employmentId:string;date:string}){return withAttendanceTenant(ctx,async tx=>{
+ actor(ctx);if(!uuid.test(p.employmentId))throw Error('Choose an employee.');await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${ctx.tenantId+':'+p.employmentId},0))`);await lock(tx,ctx,p.id);
+ const formula=await identity(tx,p.id),state=await lifecycle(tx,p.id);if(state.state?.kind!=='activated'||!state.state.revisionId)throw Error('Activate a tested formula before calculation.');
+ const [revision]=await tx.select().from(attendanceFormulaRevision).where(eq(attendanceFormulaRevision.id,state.state.revisionId));if(!revision)throw Error('The active version is unavailable.');
+ const configuration=validateAttendanceFormulaConfiguration(revision.definition),evaluated=await evaluate(tx,ctx,revision,p.employmentId,p.date);
+ if(evaluated.period.from<configuration.effectiveFrom)throw Error('The whole calculation period must be on or after the formula effective date.');
+ const [companyRow]=await tx.select({currency:company.currency}).from(company).where(eq(company.id,formula.companyId));if(!companyRow||companyRow.currency!=='MYR')throw Error('Attendance formula monetary review currently requires a MYR company.');
+ const component=await item(tx,configuration),price=priceAttendanceFormulaQuantity(component,{quantity:evaluated.result.amount,unit:configuration.outputUnit});
+ const previous=await tx.select().from(attendanceFormulaResult).where(and(eq(attendanceFormulaResult.formulaId,formula.id),eq(attendanceFormulaResult.employmentId,p.employmentId),lte(attendanceFormulaResult.periodFrom,evaluated.period.to),gte(attendanceFormulaResult.periodTo,evaluated.period.from))).orderBy(desc(attendanceFormulaResult.createdAt),desc(attendanceFormulaResult.id)).limit(501);
+ if(previous.length>500)throw Error('The calculation history exceeds the supported review bound.');
+ const current=[];for(const row of previous){const state=await resultState(tx,row.id);if(state?.kind==='posted')throw Error('This period is posted to Payroll. Use the controlled Payroll reversal before recalculating.');if(state&& !['superseded','reversed'].includes(state.kind))current.push(row);}
+ const same=current.find(row=>row.revisionId===revision.id&&row.sourceHash===evaluated.sourceHash&&row.amount===price.amount&&row.rate===price.rate&&row.quantity===evaluated.result.amount&&row.periodFrom===evaluated.period.from&&row.periodTo===evaluated.period.to);if(same&&current.length===1)return same;
+ for(const prior of current)await resultEvent(tx,ctx,prior,'superseded','Recalculated from current actual Attendance evidence.');
+ const [result]=await tx.insert(attendanceFormulaResult).values({tenantId:ctx.tenantId,companyId:formula.companyId,formulaId:formula.id,revisionId:revision.id,employmentId:p.employmentId,periodFrom:evaluated.period.from,periodTo:evaluated.period.to,payComponentId:component.id,quantity:evaluated.result.amount,unit:configuration.outputUnit,rate:price.rate,amount:price.amount,sourceHash:evaluated.sourceHash,readRequirements:{...revision.readRequirements,financial:true},payload:{result:evaluated.result,days:evaluated.days,eligibility:evaluated.eligibility},createdBy:actor(ctx)}).returning();
+ await resultEvent(tx,ctx,result,'calculated','Calculated from the effective active formula and actual Attendance.');return result;
+});}
+export function reviewAttendanceFormulaResult(ctx:SessionContext,p:{resultId:string;command:'review'|'approve';reason:string}){return withAttendanceTenant(ctx,async tx=>{
+ actor(ctx);if(!uuid.test(p.resultId)||!['review','approve'].includes(p.command))throw Error('Choose a result and review action.');const [initial]=await tx.select().from(attendanceFormulaResult).where(eq(attendanceFormulaResult.id,p.resultId));if(!initial)throw Error('Result or permission is unavailable.');await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${ctx.tenantId+':'+initial.employmentId},0))`);const current=await resultState(tx,initial.id);if(current?.kind!==(p.command==='review'?'calculated':'reviewed'))throw Error('Reopen the result current review state.');await replayAttendanceFormulaResultTx(tx,ctx,initial);await resultEvent(tx,ctx,initial,p.command==='review'?'reviewed':'approved',p.reason);return {id:initial.id};
+});}
+export function listAttendanceFormulaResults(ctx:SessionContext,p:{employmentId:string;date:string}){return withAttendanceTenant(ctx,async tx=>{
+ actor(ctx);if(!uuid.test(p.employmentId)||!/^\d{4}-\d{2}-\d{2}$/.test(p.date))throw Error('Choose an employee and date.');
+ const rows=await tx.select({result:attendanceFormulaResult,code:attendanceFormula.code,definition:attendanceFormulaRevision.definition,payCode:payComponent.code,payName:payComponent.name}).from(attendanceFormulaResult).innerJoin(attendanceFormula,eq(attendanceFormula.id,attendanceFormulaResult.formulaId)).innerJoin(attendanceFormulaRevision,eq(attendanceFormulaRevision.id,attendanceFormulaResult.revisionId)).innerJoin(payComponent,eq(payComponent.id,attendanceFormulaResult.payComponentId)).where(and(eq(attendanceFormulaResult.employmentId,p.employmentId),lte(attendanceFormulaResult.periodFrom,p.date),gte(attendanceFormulaResult.periodTo,p.date))).orderBy(desc(attendanceFormulaResult.createdAt),desc(attendanceFormulaResult.id)).limit(501);
+ if(rows.length>500)throw Error('Narrow the result history.');return Promise.all(rows.map(async row=>({...row,state:(await resultState(tx,row.result.id))?.kind??'calculated'})));
 });}

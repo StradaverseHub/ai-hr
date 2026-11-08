@@ -23464,6 +23464,11 @@
       "title": "Overtime Patterns",
       "desc": "Configure and review employee overtime, payable duration and payroll mapping.",
       "cta": "Configure Overtime Patterns"
+    },
+    "formulaBuilder": {
+      "title": "Attendance Formula Builder",
+      "desc": "Configure and test attendance calculations linked to Payroll Pay Items.",
+      "cta": "Open formula builder"
     }
   },
   "rewards": {
@@ -36708,6 +36713,25 @@
     "traceCondition": "Condition: {value}",
     "traceElse": "Used the Else branch.",
     "traceSet": "Set {name} to {value}",
-    "traceReturn": "Returned {value}"
+    "traceReturn": "Returned {value}",
+    "standardReferences": "Standard formula references",
+    "standardReferenceHelp": "Editable daily examples for all day types. Rates and deductions are fictional. Replace them with authorized company rules, then test actual attendance and explicitly activate.",
+    "referenceOtHelp": "Approved Before Shift, After Shift and In-Shift OT plus explicitly approved break work. These examples do not create overtime approval.",
+    "referenceAbsentHelp": "A complete recorded scheduled day with no work and no approved leave. Missing attendance refuses calculation.",
+    "referenceLateHelp": "Recorded late minutes after the native grace rules.",
+    "referenceExample": "Example: {minutes} minutes; rate RM{rate}; factor {multiplier}; expected RM{result}.",
+    "copyReference": "Copy into this draft",
+    "sourceReferences": "Source field references",
+    "variableMetadata": "Type: {type} · Source: {source} · Daily, weekly and monthly.",
+    "availabilityHelp": "Requires complete authorized dated source evidence. Missing or ambiguous facts refuse calculation; mixed day types require a daily formula.",
+    "aliasOf": "Alias of {id}. Use only one name in a calculation.",
+    "referenceNames": {
+      "ot10": "Overtime 1.0",
+      "ot15": "Overtime 1.5",
+      "ot20": "Overtime 2.0",
+      "ot30": "Overtime 3.0",
+      "absent": "Absent",
+      "late": "Late In"
+    }
   }
 }

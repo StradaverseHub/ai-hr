@@ -1,5 +1,15 @@
 # Coordinated migration reservations
 
+## Attendance Formula calculation evidence — 8 November 2026 (unapplied)
+
+The board coordinator reserves3600_attendance_formula_results at idx2900 /
+when1793330003200. Fresh main/alpha82859db9a preserve the709-row installed prefix.
+A read-only survey found1054 distinct journals,805 readable worktrees and
+maxima3501 / idx2801 / when1793330003101. An independent live comparison
+matched all709 ordered hashes through1793330002801. This is a reservation
+only; refresh peer claims and live ledger at release admission.
+
+
 ## Attendance Formula Builder — 8 November 2026 (unapplied source reservation)
 
 Branch `codex/board-staging-integration-20261108` reserves

@@ -121,3 +121,5 @@ export {readAttendanceFormulaDaysTx} from './formula-sources';
 export {assertAttendanceFormulaAuthorTx,saveAttendanceFormula,testAttendanceFormula,activateAttendanceFormula,changeAttendanceFormulaStatus,getAttendanceFormula,readAttendanceFormulaTest,attendanceFormulaSetup,listAttendanceFormulas,searchAttendanceFormulaEmployees} from '../../core/attendance-formulas';
 
 export {draftAttendanceFormula} from '../../core/attendance-formula-ai';
+
+export {calculateAttendanceFormulaResult,reviewAttendanceFormulaResult,listAttendanceFormulaResults,replayAttendanceFormulaResultTx} from '../../core/attendance-formulas';

@@ -4992,6 +4992,13 @@
       "when": 1793330002903,
       "tag": "3303_attendance_formula_versions",
       "breakpoints": true
+    },
+    {
+      "idx": 2900,
+      "version": "7",
+      "when": 1793330003200,
+      "tag": "3600_attendance_formula_results",
+      "breakpoints": true
     }
   ]
 }

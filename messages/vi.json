@@ -23464,6 +23464,11 @@
       "title": "Mẫu làm thêm giờ",
       "desc": "Cấu hình và kiểm tra làm thêm giờ, thời lượng được trả và ánh xạ bảng lương.",
       "cta": "Cấu hình mẫu làm thêm"
+    },
+    "formulaBuilder": {
+      "title": "Trình tạo công thức chấm công",
+      "desc": "Cấu hình và thử phép tính chấm công liên kết khoản lương.",
+      "cta": "Mở trình tạo công thức"
     }
   },
   "rewards": {
@@ -36708,6 +36713,25 @@
     "traceCondition": "Điều kiện: {value}",
     "traceElse": "Đã dùng nhánh Else.",
     "traceSet": "Đặt {name} thành {value}",
-    "traceReturn": "Trả về {value}"
+    "traceReturn": "Trả về {value}",
+    "standardReferences": "Công thức tham khảo chuẩn",
+    "standardReferenceHelp": "Ví dụ theo ngày có thể sửa cho mọi loại ngày. Mức tiền và khấu trừ là giả định. Thay bằng quy định được duyệt, thử dữ liệu thực tế rồi chủ động kích hoạt.",
+    "referenceOtHelp": "OT trước, sau và trong ca đã duyệt cùng thời gian làm trong giờ nghỉ được duyệt rõ ràng. Ví dụ không cấp phê duyệt OT.",
+    "referenceAbsentHelp": "Ngày làm theo lịch có hồ sơ đầy đủ, không làm việc và không nghỉ đã duyệt. Thiếu dữ liệu sẽ từ chối tính.",
+    "referenceLateHelp": "Số phút đi muộn sau quy tắc thời gian cho phép hiện hành.",
+    "referenceExample": "Ví dụ: {minutes} phút; đơn giá RM{rate}; hệ số {multiplier}; dự kiến RM{result}.",
+    "copyReference": "Sao chép vào bản nháp",
+    "sourceReferences": "Trường dữ liệu nguồn",
+    "variableMetadata": "Kiểu: {type} · Nguồn: {source} · Theo ngày, tuần và tháng.",
+    "availabilityHelp": "Cần bằng chứng nguồn đầy đủ, được cấp quyền và đúng ngày. Dữ liệu thiếu hoặc mơ hồ bị từ chối; loại ngày hỗn hợp cần công thức theo ngày.",
+    "aliasOf": "Tên khác của {id}. Chỉ dùng một tên trong mỗi phép tính.",
+    "referenceNames": {
+      "ot10": "Overtime 1.0",
+      "ot15": "Overtime 1.5",
+      "ot20": "Overtime 2.0",
+      "ot30": "Overtime 3.0",
+      "absent": "Vắng mặt",
+      "late": "Đi muộn"
+    }
   }
 }

@@ -1,4 +1,5 @@
 /** Payroll-owned projection of attendance allowance sources. Never overwrites unrelated batch inputs. */
+import {multiplyFormulaDecimal,divideFormulaDecimal,roundFormulaDecimal} from '../lib/pay-formula-language';
 import { and, eq, inArray, ne, sql } from 'drizzle-orm';
 import { withTenant,type SessionContext,type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
@@ -76,4 +77,19 @@ export function listAttendanceAllowancePayCodes(ctx:SessionContext){
     const rows=await tx.select().from(payComponent).where(eq(payComponent.tenantId,ctx.tenantId)).orderBy(payComponent.code);
     return rows.filter(c=>!c.archivedAt&&c.pendingInputKind==null&&!c.isNonPayable&&(!c.rule||c.rule.kind==='fixed')&&(c.kind==='allowance'||c.kind==='deduction')&&!isUnsupportedTaxableComponent(c)).map(c=>({id:c.id,code:c.code,name:c.name,kind:c.kind}));
   });
+}
+
+/** Pay Item owns quantity pricing. The Attendance engine supplies a typed quantity, never a rate. */
+export function priceAttendanceFormulaQuantity(component:typeof payComponent.$inferSelect,p:{quantity:string;unit:'amount'|'minutes'|'hours'|'days'}){
+ assertPayComponentReady(component);
+ if(component.archivedAt||component.isNonPayable||!['allowance','deduction'].includes(component.kind))throw Error('Choose an active payable earning or deduction Pay Item.');
+ const rule=component.rule;
+ let amount=p.quantity,rate:string|null=null;
+ if(p.unit==='amount'){if(rule&&rule.kind!=='fixed')throw Error('An amount formula needs a fixed-amount Pay Item; quantity-priced items require matching hours or days.');}
+ else if((p.unit==='minutes'||p.unit==='hours')&&rule?.kind==='per_hour'){
+  rate=String(rule.rate);amount=multiplyFormulaDecimal(p.unit==='minutes'?divideFormulaDecimal(p.quantity,'60'):p.quantity,rate);
+ }else if(p.unit==='days'&&rule?.kind==='per_day'){rate=String(rule.rate);amount=multiplyFormulaDecimal(p.quantity,rate);}
+ else throw Error('The formula output unit does not match the Pay Item pricing rule.');
+ amount=roundFormulaDecimal(amount,2);if(amount.startsWith('-')||allowanceCents(amount)>BigInt('999999999999'))throw Error('The calculated amount exceeds the supported Payroll amount.');
+ return {amount:allowanceMoney(allowanceCents(amount)),rate};
 }
