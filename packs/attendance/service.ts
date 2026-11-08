@@ -127,3 +127,7 @@ export {calculateAttendanceFormulaResult,reviewAttendanceFormulaResult,listAtten
 export {readAttendanceFormulaResultTx,attendanceFormulaResultStateTx,appendAttendanceFormulaResultEventTx} from '../../core/attendance-formulas';
 
 export {readAttendanceFormulaResult,attendanceFormulaChoicesForDay} from '../../core/attendance-formulas';
+
+export {readAttendanceFormulaOvertimeCoverageTx} from './formula-sources';
+
+export {attendanceFormulaEligibleForPeriodTx} from '../../core/attendance-formulas';

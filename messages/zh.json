@@ -548,7 +548,8 @@
     "myPrivateCases": "我的私密个案",
     "privateCases": "私密个案",
     "probationTracker": "试用期跟踪",
-    "myPayrollReadiness": "我的发薪准备"
+    "myPayrollReadiness": "我的发薪准备",
+    "attendanceFormulaBuilder": "考勤公式"
   },
   "dashboard": {
     "title": "仪表盘",

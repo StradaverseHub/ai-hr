@@ -11270,7 +11270,7 @@ export const attendanceOvertimeLine = pgTable('attendance_overtime_line', {
 export const overtimeSourceSettlement = pgTable('overtime_source_settlement', {
   coverageEmploymentId:uuid('coverage_employment_id').references(()=>employment.id,{onDelete:'restrict'}),
   coverageCalculationId:uuid('coverage_calculation_id').references(()=>attendanceOvertimeCalculation.id,{onDelete:'restrict'}),
-  coverageKind:text('coverage_kind').$type<'legacyUnknown'|'policyPhysical'>(),reservationCoverage:int8multirange('reservation_coverage'),
+  formulaBindingId:uuid('formula_binding_id'),coverageKind:text('coverage_kind').$type<'legacyUnknown'|'policyPhysical'|'formulaPhysical'>(),reservationCoverage:int8multirange('reservation_coverage'),
   id:id(),tenantId:tenantId(),companyId:uuid('company_id').notNull().references(()=>company.id,{onDelete:'restrict'}),sourceId:uuid('source_id').notNull().references(()=>attendanceOvertimeSource.id,{onDelete:'restrict'}),
   ownerReference:jsonb('owner_reference').notNull().$type<{type:'payroll_batch'|'toil_accrual';id:string}>(),mode:text('mode').notNull().$type<'cash'|'toil'>(),calculationId:uuid('calculation_id').references(()=>attendanceOvertimeCalculation.id,{onDelete:'restrict'}),
   payrollBatchId:uuid('payroll_batch_id').references(()=>payrollBatch.id,{onDelete:'set null'}),toilAccrualId:uuid('toil_accrual_id').references(()=>toilAccrual.id,{onDelete:'set null'}),
@@ -11731,3 +11731,13 @@ export const attendanceFormulaResult = pgTable('attendance_formula_result', {
 export const attendanceFormulaResultEvent = pgTable('attendance_formula_result_event', {
  id:id(),sequence:bigserial('sequence',{mode:'number'}).notNull(),tenantId:tenantId(),companyId:uuid('company_id').notNull().references(()=>company.id),employmentId:uuid('employment_id').notNull().references(()=>employment.id),resultId:uuid('result_id').notNull().references(()=>attendanceFormulaResult.id),kind:text('kind').notNull().$type<'calculated'|'reviewed'|'approved'|'superseded'|'posted'|'reversed'>(),reason:text('reason').notNull(),batchId:uuid('batch_id').references(()=>payrollBatch.id),createdBy:uuid('created_by').notNull().references(()=>appUser.id),createdAt:createdAt(),
 });
+
+export const attendanceFormulaOtBinding=pgTable('attendance_formula_ot_binding',{
+ id:id(),tenantId:tenantId(),companyId:uuid('company_id').notNull().references(()=>company.id),employmentId:uuid('employment_id').notNull().references(()=>employment.id),batchId:uuid('batch_id').notNull().references(()=>payrollBatch.id),periodFrom:date('period_from').notNull(),periodTo:date('period_to').notNull(),payload:jsonb('payload').$type<Record<string,unknown>>().notNull(),createdBy:uuid('created_by').notNull().references(()=>appUser.id),createdAt:createdAt(),
+});
+export const attendanceFormulaOtBindingResult=pgTable('attendance_formula_ot_binding_result',{
+ bindingId:uuid('binding_id').notNull().references(()=>attendanceFormulaOtBinding.id),tenantId:tenantId(),companyId:uuid('company_id').notNull().references(()=>company.id),employmentId:uuid('employment_id').notNull().references(()=>employment.id),resultId:uuid('result_id').notNull().references(()=>attendanceFormulaResult.id),
+},t=>[primaryKey({columns:[t.bindingId,t.resultId]})]);
+export const attendanceFormulaOtBindingDay=pgTable('attendance_formula_ot_binding_day',{
+ bindingId:uuid('binding_id').notNull().references(()=>attendanceFormulaOtBinding.id),sourceId:uuid('source_id').notNull().references(()=>attendanceOvertimeSource.id),tenantId:tenantId(),companyId:uuid('company_id').notNull().references(()=>company.id),employmentId:uuid('employment_id').notNull().references(()=>employment.id),coverage:int8multirange('coverage').notNull(),payload:jsonb('payload').$type<Record<string,unknown>>().notNull(),
+},t=>[primaryKey({columns:[t.bindingId,t.sourceId]})]);

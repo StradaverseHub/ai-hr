@@ -548,7 +548,8 @@
     "myPrivateCases": "เรื่องส่วนตัวของฉัน",
     "privateCases": "เรื่องส่วนตัว",
     "probationTracker": "ติดตามทดลองงาน",
-    "myPayrollReadiness": "ความพร้อมสำหรับเงินเดือนของฉัน"
+    "myPayrollReadiness": "ความพร้อมสำหรับเงินเดือนของฉัน",
+    "attendanceFormulaBuilder": "สูตรเวลาทำงาน"
   },
   "dashboard": {
     "title": "แดชบอร์ด",

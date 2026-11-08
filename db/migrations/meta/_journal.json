@@ -5006,6 +5006,13 @@
       "when": 1793330003201,
       "tag": "3601_attendance_formula_payroll_source",
       "breakpoints": true
+    },
+    {
+      "idx": 2902,
+      "version": "7",
+      "when": 1793330003202,
+      "tag": "3602_attendance_formula_overtime_binding",
+      "breakpoints": true
     }
   ]
 }

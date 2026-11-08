@@ -43,6 +43,7 @@ const ALL_TABLES = [
   'system_label_collision_baseline', 'system_label_criteria_epoch',
   'overtime_pattern_epoch','overtime_pattern','overtime_pattern_version','overtime_pattern_version_company','overtime_pattern_version_state','overtime_pattern_legacy_binding','overtime_pattern_assignment','overtime_pattern_assignment_employment',
   'app.attendance_policy_company_epoch','attendance_policy_request_contract',
+  'attendance_formula_ot_binding_day','attendance_formula_ot_binding_result','attendance_formula_ot_binding',
   'attendance_formula_result_event','attendance_formula_result',
   'attendance_overtime_policy_part','attendance_overtime_source','attendance_overtime_personnel_context','attendance_overtime_calculation','attendance_overtime_calculation_evidence','attendance_overtime_line','overtime_source_settlement',
   'custom_report_occurrence','custom_report_schedule','custom_report_run',

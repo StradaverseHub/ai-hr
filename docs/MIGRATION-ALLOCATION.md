@@ -1,5 +1,15 @@
 # Coordinated migration reservations
 
+## Attendance Formula overtime binding — 8 November 2026 (unapplied)
+
+Reserve3602_attendance_formula_overtime_binding, idx2902 / when1793330003202.
+A fresh full origin fetch and survey found1056 journal blobs and809 readable
+worktrees, with maxima3601/2901/1793330003201, all owned by this coordinator.
+The new evidence remains below the existing overtime parent and settlement.
+No current assignment/version UUID is substituted. Refresh the live ledger and
+peer claims at release admission; this reservation grants no staging lease.
+
+
 ## Attendance Formula calculation evidence — 8 November 2026 (unapplied)
 
 The board coordinator reserves3600_attendance_formula_results at idx2900 /

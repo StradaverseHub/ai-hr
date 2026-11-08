@@ -1,6 +1,7 @@
 /** Payroll-owned projection of attendance allowance sources. Never overwrites unrelated batch inputs. */
+import {bindAttendanceFormulaOvertimeTx,readPayrollOvertimePatternCashTx} from './payroll-overtime-pattern';
 import {planAttendanceFormulaPosting} from '../lib/attendance-formula-posting';
-import {readAttendanceFormulaResultTx,attendanceFormulaResultStateTx,replayAttendanceFormulaResultTx,appendAttendanceFormulaResultEventTx} from '../packs/attendance/service';
+import {attendanceFormulaEligibleForPeriodTx,readAttendanceFormulaResultTx,attendanceFormulaResultStateTx,replayAttendanceFormulaResultTx,appendAttendanceFormulaResultEventTx} from '../packs/attendance/service';
 import {multiplyFormulaDecimal,divideFormulaDecimal,roundFormulaDecimal} from '../lib/pay-formula-language';
 import { and, eq, inArray, isNotNull, ne, sql } from 'drizzle-orm';
 import { withTenant,type SessionContext,type Tx } from '../db/client';
@@ -85,7 +86,7 @@ export function listAttendanceAllowancePayCodes(ctx:SessionContext){
 /** Pay Item owns quantity pricing. The Attendance engine supplies a typed quantity, never a rate. */
 export function priceAttendanceFormulaQuantity(component:typeof payComponent.$inferSelect,p:{quantity:string;unit:'amount'|'minutes'|'hours'|'days'}){
  assertPayComponentReady(component);
- if(component.archivedAt||component.isNonPayable||!['allowance','deduction'].includes(component.kind))throw Error('Choose an active payable earning or deduction Pay Item.');
+ if(component.archivedAt||component.isNonPayable||isUnsupportedTaxableComponent(component)||!['allowance','deduction'].includes(component.kind))throw Error('Choose an active payable earning or deduction Pay Item.');
  const rule=component.rule;
  let amount=p.quantity,rate:string|null=null;
  if(p.unit==='amount'){if(rule&&rule.kind!=='fixed')throw Error('An amount formula needs a fixed-amount Pay Item; quantity-priced items require matching hours or days.');}
@@ -103,26 +104,27 @@ export function transferAttendanceFormulaResults(ctx:SessionContext,p:{batchId:s
  if(!ctx.userId||!Array.isArray(p.resultIds)||!p.resultIds.length||p.resultIds.length>128||new Set(p.resultIds).size!==p.resultIds.length||!p.reason?.trim()||p.reason.length>1000)throw Error('Choose approved results and give a transfer reason.');
  const results=await Promise.all(p.resultIds.map(id=>readAttendanceFormulaResultTx(tx,ctx,id)));
  for(const employmentId of [...new Set(results.map(row=>row.employmentId))].sort())await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${ctx.tenantId+':'+employmentId},0))`);
- const [batch]=await tx.select().from(payrollBatch).where(eq(payrollBatch.id,p.batchId)).for('update');
+ const [batch]=await tx.select().from(payrollBatch).where(eq(payrollBatch.id,p.batchId));
  if(!batch||batch.status!=='draft'||batch.runType!=='regular'||results.some(row=>row.companyId!==batch.companyId||row.periodTo.slice(0,7)!==batch.payPeriod))throw Error('Use the matching company regular draft Payroll run and calculation ending month.');
  const [authority]=await tx.execute<{allowed:boolean}>(sql`select app.can_admin_payroll_for(${batch.companyId}::uuid) as allowed`);if(!authority?.allowed)throw Error('Payroll financial authority is required.');
  const candidates=[];
  for(const result of results){
   const state=await attendanceFormulaResultStateTx(tx,result.id),replay=await replayAttendanceFormulaResultTx(tx,ctx,result);
-  if(replay.configuration.purpose==='overtime')throw Error('Overtime results require the canonical overtime cash settlement binding before transfer.');
-  if(state?.kind==='posted'){const [source]=await tx.select().from(payrollAttendanceAllowanceSource).where(eq(payrollAttendanceAllowanceSource.formulaResultId,result.id));if(source?.batchId!==batch.id||source.amount!==result.amount)throw Error('The result belongs to another Payroll contribution.');}
+  if(state?.kind==='posted'){const [source]=await tx.select().from(payrollAttendanceAllowanceSource).where(eq(payrollAttendanceAllowanceSource.formulaResultId,result.id));if(replay.configuration.purpose==='overtime'){const [binding]=await tx.execute<{ok:boolean}>(sql`select true as ok from attendance_formula_ot_binding_result r join attendance_formula_ot_binding b on b.id=r.binding_id where r.result_id=${result.id}::uuid and r.tenant_id=app.current_tenant_id() and b.batch_id=${batch.id}::uuid and exists(select 1 from overtime_source_settlement s where s.formula_binding_id=b.id and s.released_at is null) limit 1`);if(!binding?.ok)throw Error('The result belongs to another overtime Payroll contribution.');}else if(source?.batchId!==batch.id||source.amount!==result.amount)throw Error('The result belongs to another Payroll contribution.');}
   else if(state?.kind!=='approved')throw Error('Review and approve every current result before transfer.');
   const others=await tx.select().from(attendanceFormulaResult).where(and(eq(attendanceFormulaResult.employmentId,result.employmentId),eq(attendanceFormulaResult.payComponentId,result.payComponentId),sql`${attendanceFormulaResult.periodFrom}<=${result.periodTo}::date and ${attendanceFormulaResult.periodTo}>=${result.periodFrom}::date`)).limit(501);if(others.length>500)throw Error('Narrow the overlapping result history.');
   for(const other of others){const state=await attendanceFormulaResultStateTx(tx,other.id);if(state&&!['superseded','reversed'].includes(state.kind)&&!p.resultIds.includes(other.id))throw Error('Include every current result for the overlapping employee, Pay Item and period; incomplete sets cannot post.');}
-  const active=await tx.execute<{id:string}>(sql`select f.id from attendance_formula f join lateral(select e.kind,e.revision_id from attendance_formula_event e where e.formula_id=f.id and e.tenant_id=f.tenant_id and e.kind in('activated','deactivated','archived') order by sequence desc limit 1)state on state.kind='activated' join attendance_formula_revision v on v.id=state.revision_id where f.company_id=${result.companyId}::uuid and f.tenant_id=app.current_tenant_id() and v.pay_component_id=${result.payComponentId}::uuid and v.definition->>'effectiveFrom'<=${result.periodTo}`);
-  if(active.some(formula=>!results.some(row=>row.formulaId===formula.id&&row.employmentId===result.employmentId&&row.periodFrom===result.periodFrom&&row.periodTo===result.periodTo)))throw Error('Calculate and review every active formula using this Pay Item before resolving the complete posting set.');
-  candidates.push({...result,posting:replay.configuration.posting});
+  const active=await tx.execute<{id:string;definition:unknown}>(sql`select f.id,v.definition from attendance_formula f join lateral(select e.kind,e.revision_id from attendance_formula_event e where e.formula_id=f.id and e.tenant_id=f.tenant_id and e.kind in('activated','deactivated','archived') order by sequence desc limit 1)state on state.kind='activated' join attendance_formula_revision v on v.id=state.revision_id where f.company_id=${result.companyId}::uuid and f.tenant_id=app.current_tenant_id() and(v.pay_component_id=${result.payComponentId}::uuid or(${replay.configuration.purpose==='overtime'}::boolean and v.definition->>'purpose'='overtime')) and v.definition->>'effectiveFrom'<=${result.periodTo} limit 129`);
+  if(active.length>128)throw Error('Narrow the active formula conflict set.');for(const formula of active){if(await attendanceFormulaEligibleForPeriodTx(tx,ctx,formula.definition,{employmentId:result.employmentId,from:result.periodFrom,to:result.periodTo})&&!results.some(row=>row.formulaId===formula.id&&row.employmentId===result.employmentId&&row.periodFrom===result.periodFrom&&row.periodTo===result.periodTo))throw Error('Calculate and review every applicable active formula before resolving the complete posting set.');}
+  candidates.push({...result,posting:replay.configuration.posting,purpose:replay.configuration.purpose});
  }
  const plan=planAttendanceFormulaPosting(candidates),selected=results.filter(row=>plan.selected.includes(row.id)),excluded=results.filter(row=>plan.excluded.includes(row.id));
- const states=await Promise.all(selected.map(row=>attendanceFormulaResultStateTx(tx,row.id)));if(states.every(state=>state?.kind==='posted')){await verifyAttendanceFormulaPayrollSourcesTx(tx,ctx,batch.id);return {posted:selected.map(row=>row.id),excluded:excluded.map(row=>row.id),idempotent:true};}if(states.some(state=>state?.kind==='posted'))throw Error('The selected results contain a partially posted set. Review the retained Payroll contribution.');
+ const states=await Promise.all(selected.map(row=>attendanceFormulaResultStateTx(tx,row.id)));if(states.every(state=>state?.kind==='posted')){await verifyAttendanceFormulaPayrollSourcesTx(tx,ctx,batch.id);await readPayrollOvertimePatternCashTx(tx,ctx,{batchId:batch.id});return {posted:selected.map(row=>row.id),excluded:excluded.map(row=>row.id),idempotent:true};}if(states.some(state=>state?.kind==='posted'))throw Error('The selected results contain a partially posted set. Review the retained Payroll contribution.');
+ const overtime=selected.filter(row=>candidates.find(candidate=>candidate.id===row.id)?.purpose==='overtime'),ordinary=selected.filter(row=>!overtime.includes(row));
+ const overtimeGroups=new Map<string,typeof overtime>();for(const row of overtime){const key=row.employmentId+':'+row.periodFrom+':'+row.periodTo;const group=overtimeGroups.get(key)??[];group.push(row);overtimeGroups.set(key,group);}for(const rows of overtimeGroups.values())await bindAttendanceFormulaOvertimeTx(tx,ctx,{results:rows,batch});
  // The same existing source projector aggregates old Allowance and new Formula contributions once.
- for(const formulaId of [...new Set(selected.map(row=>row.formulaId))].sort()){
-  const rows=selected.filter(row=>row.formulaId===formulaId);
+ for(const formulaId of [...new Set(ordinary.map(row=>row.formulaId))].sort()){
+  const rows=ordinary.filter(row=>row.formulaId===formulaId);
   const previous=await tx.select({id:payrollAttendanceAllowanceSource.id}).from(payrollAttendanceAllowanceSource).where(and(eq(payrollAttendanceAllowanceSource.formulaId,formulaId),eq(payrollAttendanceAllowanceSource.payMonth,batch.payPeriod)));if(previous.length)throw Error('Reverse the prior formula/month contribution before replacing its results.');
   await projectAttendanceAllowanceTx(tx,ctx,{kind:'formula',formulaId,batchId:batch.id,companyId:batch.companyId,payMonth:batch.payPeriod,contributions:rows.map(row=>({resultId:row.id,employmentId:row.employmentId,componentId:row.payComponentId,periodKey:row.periodTo,amount:row.amount}))});
  }

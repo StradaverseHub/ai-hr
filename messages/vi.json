@@ -548,7 +548,8 @@
     "myPrivateCases": "Hồ sơ riêng tư của tôi",
     "privateCases": "Hồ sơ riêng tư",
     "probationTracker": "Theo dõi thử việc",
-    "myPayrollReadiness": "Mức sẵn sàng cho kỳ lương của tôi"
+    "myPayrollReadiness": "Mức sẵn sàng cho kỳ lương của tôi",
+    "attendanceFormulaBuilder": "Công thức chấm công"
   },
   "dashboard": {
     "title": "Bảng điều khiển",

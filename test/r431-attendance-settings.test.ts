@@ -97,6 +97,7 @@ describe('r431: the Settings page cards', () => {
       'Registered Clocking Devices',
       'Approval Workflow',
       'Overtime Patterns',
+      'Attendance Formula Builder',
       'Offline clocking',
     ]);
   });

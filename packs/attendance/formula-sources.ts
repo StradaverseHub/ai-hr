@@ -20,6 +20,11 @@ import {attendanceFormulaRecordedMeasurements} from '../../core/attendance-formu
 import {fullFlexiIntervals} from '../../lib/full-flexi-time';
 import {todayInKualaLumpur} from '../../lib/hr-date';
 import {recordedOvertimeWorkIntervals,canonicalOvertimeInputTx} from './overtime-input';
+import {attendancePolicyRecordedApprovalStatus,attendancePolicyDurationReplay} from './policy-duration-replay';
+import {attendancePolicyCountAttribution} from './policy-count-attribution';
+import {attendancePolicySourceReservationCoverage} from './policy-source-reservation-coverage';
+import {canonicalOvertimePayrollInputTx} from './overtime-input';
+import {readOvertimeCalculationTx} from './overtime-patterns';
 import {OvertimeOwnerError,type CanonicalOvertimeSnapshot} from './overtime-patterns';
 import {intersectAttendancePolicyIntervals as intersect,attendancePolicyIntervalMinutes as count,subtractAttendancePolicyIntervals as subtract,unionAttendancePolicyIntervals as union,type AttendancePolicyInterval} from '../../lib/attendance-policy-intervals';
 const digest=(value:unknown)=>createHash('sha256').update(JSON.stringify(value,(_key,entry)=>entry&&typeof entry==='object'&&!Array.isArray(entry)?Object.fromEntries(Object.entries(entry).sort(([a],[b])=>a.localeCompare(b))):entry)).digest('hex');
@@ -149,11 +154,12 @@ export async function readAttendanceFormulaDaysTx(tx:Tx,ctx:SessionContext,p:{co
    if(frozenMatches&&placement?.state==='known'&&placement.scheduled.from===schedule.startAbs&&placement.scheduled.to===schedule.endAbs){
     const net=subtract(work,placement.unpaidWindows,4320);
     decimal('ShiftWorkingMins',count(intersect(net,[{from:schedule.startAbs,to:schedule.endAbs}],4320),4320),'canonical-net-positioned-work');
-    const approved=snapshot?.input.approval.status==='notRequired'&&!activePlans?.length?net:plans?intersect(net,plans,4320):undefined;
+    const nativeApproval=snapshot?attendancePolicyRecordedApprovalStatus(snapshot):'unknown',nativeDuration=snapshot?attendancePolicyDurationReplay(snapshot):null,proposal=snapshot?.policyExecutionProposal;
+    const approved=nativeDuration?.state==='known'&&['approved','notRequired'].includes(nativeApproval)&&proposal?.state==='proposed'&&proposal.duration.status==='calculated'?intersect(net,union(proposal.duration.parts.flatMap(part=>part.allocations),4320),4320):nativeApproval==='notRequired'&&!activePlans?.length?net:plans?intersect(net,plans,4320):undefined;
     for(const [id,value]of Object.entries(attendanceFormulaOvertimeMeasurements({net,approved:approved??null,eligible:context?.state==='policy'&&context.placement.state==='known'?intersect(net,context.placement.eligibilityWindows,4320):null,start:schedule.startAbs,end:schedule.endAbs,crossesMidnight:schedule.crossesMidnight})))decimal(id,value,'canonical-positioned-work-and-approval');
     // Financial consumers receive only proved disjoint approved physical coverage. This is
     // not a payment: Payroll must replay it, apply dated floors/caps and reserve the parent.
-    if(approved&&context?.state==='policy'&&context.placement.state==='known'&&['approved','notRequired'].includes(snapshot!.input.approval.status)&&recordedMeasurements.breaks){
+    if(approved&&context?.state==='policy'&&context.placement.state==='known'&&['approved','notRequired'].includes(nativeApproval)&&recordedMeasurements.breaks){
      const breaks=recordedMeasurements.breaks,unknown=breaks.filter(row=>row.flexible||row.clockingRequired!==true);
      const plannedWork=plans?intersect(work,plans,4320):[];
      if(!unknown.some(row=>intersect(plannedWork,[{from:row.from,to:row.to}],4320).length)){
@@ -161,7 +167,7 @@ export async function readAttendanceFormulaDaysTx(tx:Tx,ctx:SessionContext,p:{co
       const breakCoverage=plans?intersect(plannedWork,breaks.filter(row=>!row.flexible&&row.clockingRequired===true).map(({from,to})=>({from,to})),4320):[];
       const coverage=union([...baseCoverage,...breakCoverage],4320),parts:{date:string;dayClass:string;minutes:number;intervals:AttendancePolicyInterval[]}[]=[];let complete=true;
       for(let offset=0;offset<3;offset++){const intervals=intersect(coverage,[{from:offset*1440,to:(offset+1)*1440}],4320);if(!intervals.length)continue;const on=addDaysIso(date,offset),calendar=context.calendar.find(row=>row.date===on);if(calendar?.state!=='known'){complete=false;break;}parts.push({date:on,dayClass:calendar.dayClass,minutes:count(intervals,4320),intervals});}
-      if(complete)overtimeCoverage.set(date,{sourceDate:date,approvalStatus:snapshot!.input.approval.status,parts});
+      if(complete)overtimeCoverage.set(date,{sourceDate:date,approvalStatus:nativeApproval,parts});
      }
     }
     for(const [zone,window]of [['A',{from:0,to:schedule.startAbs}],['B',{from:schedule.endAbs,to:4320}]] as const){
@@ -184,4 +190,20 @@ export async function readAttendanceFormulaDaysTx(tx:Tx,ctx:SessionContext,p:{co
   return {date,facts:{companyId:p.companyId,departmentId:field('departmentId'),businessUnitId:field('businessUnitId'),positionId:field('positionId'),gradeId:field('gradeId'),employmentType:field('employmentType'),employmentCategory:field('employmentCategory'),branch:field('orgBranch'),division:field('orgDivision'),region:field('orgRegion'),line:field('orgLine'),section:field('orgSection'),team:field('orgTeam'),base:field('orgBase'),status:end&&end<date?'terminated':'active'}};
  }):[];
  return {days,sourceDigest,eligibilityFacts,overtimeCoverage:dates.map(date=>overtimeCoverage.get(date)??null)};
+}
+
+/** Financial duration/coverage is owned by the existing canonical OT parent. Rounded count
+ * remainders keep the native attribution; no rounded minute becomes a new physical interval. */
+export async function readAttendanceFormulaOvertimeCoverageTx(tx:Tx,ctx:SessionContext,p:{employmentId:string;date:string;companyId:string}){
+ const snapshot=await canonicalOvertimePayrollInputTx(tx,ctx,p),read=await readOvertimeCalculationTx(tx,ctx,p);
+ if(!read?.calculation||read.source.companyId!==p.companyId||!['ready','ineligible'].includes(read.calculation.outcome))throw Error('Recalculate a complete canonical payable overtime source before formula transfer.');
+ const duration=attendancePolicyDurationReplay(snapshot),proposal=snapshot.policyExecutionProposal,status=attendancePolicyRecordedApprovalStatus(snapshot);
+ if(duration.state!=='known'||!['approved','notRequired'].includes(status)||proposal?.state!=='proposed'||proposal.duration.status!=='calculated')throw Error('Canonical overtime duration or approval is unavailable.');
+ const count=attendancePolicyCountAttribution(proposal.duration);if(count.state!=='known')throw Error('Canonical overtime count attribution is unavailable.');
+ if(count.minutes===0)return {source:read.source,calculationId:read.calculation.id,sourceHash:digest({snapshot,duration,count,header:read.calculation}),approvalStatus:status,reservationIntervals:[],parts:[]};
+ if(read.calculation.outcome!=='ready'||!read.calculation.transferable)throw Error('The canonical overtime parent is not transferable.');
+ const coverage=attendancePolicySourceReservationCoverage({tenantId:ctx.tenantId,companyId:p.companyId,employmentId:p.employmentId,sourceId:read.source.id,calculationId:read.calculation.id,date:p.date},snapshot);
+ if(coverage.state!=='prepared')throw Error('Canonical physical overtime reservation coverage is unavailable.');
+ return {source:read.source,calculationId:read.calculation.id,sourceHash:digest({snapshot,duration,count,coverage,header:read.calculation}),approvalStatus:status,reservationIntervals:coverage.intervals,
+  parts:count.parts.filter(part=>part.minutes>0).map(part=>({date:part.calendarDate,dayClass:part.dayClass,minutes:part.minutes,physicalMinutes:part.physicalMinutes,roundedMinutes:part.roundedMinutes,roundingCountAttributions:part.roundingCountAttributions,intervals:proposal.duration.status==='calculated'?proposal.duration.parts[part.sequence].allocations:[]}))};
 }

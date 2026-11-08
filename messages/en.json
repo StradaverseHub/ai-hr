@@ -548,7 +548,8 @@
     "myPrivateCases": "My private cases",
     "privateCases": "Private cases",
     "probationTracker": "Probation tracker",
-    "myPayrollReadiness": "My payroll readiness"
+    "myPayrollReadiness": "My payroll readiness",
+    "attendanceFormulaBuilder": "Attendance formulas"
   },
   "dashboard": {
     "title": "Dashboard",

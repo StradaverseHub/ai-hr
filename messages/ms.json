@@ -548,7 +548,8 @@
     "myPrivateCases": "Kes peribadi saya",
     "privateCases": "Kes peribadi",
     "probationTracker": "Penjejak percubaan",
-    "myPayrollReadiness": "Kesediaan gaji saya"
+    "myPayrollReadiness": "Kesediaan gaji saya",
+    "attendanceFormulaBuilder": "Formula kehadiran"
   },
   "dashboard": {
     "title": "Papan pemuka",
