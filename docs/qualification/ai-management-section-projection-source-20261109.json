@@ -1,7 +1,7 @@
 {
   "kind": "AI_MANAGEMENT_SECTION_SOURCE_ONLY_NOT_QUALIFICATION",
   "base": "cd47c63c77d26431ee33de38b75790c62924a1ad",
-  "sourceRef": "codex/ai-management-active-model-correctness-20261109",
+  "sourceRef": "codex/ai-provider-active-row-decoder-20261109",
   "currentSourceSha256": {
     "app/control-tower/agents/centre-controls.tsx": "3ce6b612fec0b328103b5221b673714e59f4548bf37be243211cfc4293d18915",
     "app/control-tower/agents/screen.tsx": "a137c62df804c0c4e6e40f11d3ecca1e295fabb3b817fb1d440225e38a172d12",
@@ -18,13 +18,17 @@
     "test/automatic-followup-features.dom.test.tsx": "c442c9253dd293a278e7998fec67451d0732dc78a117c1752ff8ddb51467b6e2",
     "lib/ai/management-sections.ts": "d7efd0b96f9875c560c6b075c9ff1688a7bf0851684adbdab45c399f3cb5c783",
     "test/ai-management-section-projection.test.ts": "46aabd77f1f53aa524d1bb57ff6cc0f0ade4eb23bc5f660072a906d4fa34084d",
-    "docs/adr/2026-11-09-ai-management-section-projection.md": "fd4307fa0279f4fd78498fbad10c523dfef7653e0465bdc3bdd3d697269b8d4a",
+    "docs/adr/2026-11-09-ai-management-section-projection.md": "7b9c1565609c913ef8a68d9ef8815f39571821cc3e8942729cfdee4203378b08",
     "test/ai-management-contract.test.ts": "26311cc5725a931b951cf8825f0355c8c752eaaeb3210153f1fbc9c127a7a808",
     "docs/qualification/ai-management-hosted-fixture-recovery-source-20261109.json": "a64ae179f8a3c9379d1f014a8f5c302b9642ff9837fb053144320ae5026fff91",
     "components/ai-centre/how-it-works.tsx": "e3e4e132419a5676d3be77c82883093b81d824ed2237ad03d508b4a232084265",
     "docs/qualification/ai-centre-mobile-fixture-recovery-source-20261109.json": "6e2f36e1a595674eb37a462554e331275b9f6a2c73318a76d342b0810c18c071",
     "docs/qualification/ai-management-reviewed-recovery-composition-20261109.json": "26e5e66fb2a547709529089c67c90c7a1c3769afb3c8a949a7b1c2f2ce0aa5dc",
-    "docs/qualification/ai-management-active-model-correctness-source-20261109.json": "c80d5122f7b3da15ee30db02471c34d70d6646486a79e36b2fae4427cf8b53e0"
+    "docs/qualification/ai-management-active-model-correctness-source-20261109.json": "c80d5122f7b3da15ee30db02471c34d70d6646486a79e36b2fae4427cf8b53e0",
+    "core/ai-provider-snapshot.ts": "945a01c642f23e7a7603b2d917e5b2a47db6547121a41a29082b1542f6c09a4c",
+    "core/ai-provider-row.ts": "cfdb19a9c3c325862ccae535c8aba377e0952bec3270616996dded3774fddfe8",
+    "test/ai-provider-snapshot.test.ts": "6680a24e0ee210eaf540a8b086fccebb9789c08b9974f809c7dcb6bb5a4248c3",
+    "docs/qualification/ai-provider-active-row-decoder-source-20261109.json": "7db18eb59a7eeafe0d82ade9e8bfac7305cca4cd5fe489e194b47891b06886a8"
   },
   "selfExcluded": "docs/qualification/ai-management-section-projection-source-20261109.json",
   "wholeParentGitPreimages": {
@@ -239,7 +243,6 @@
     "db/schema.ts": "8333f7a44c82fc43411dd4735314a555c4a69e0f805f0dc6b29e62c997ea9112",
     "core/ai-config.ts": "6f6345624735f94d5c1faa9306d7a3fa913a61e0cbfb29c5e46b367aea8ea252",
     "core/ai-principal.ts": "3a77b8ed03ca1b9895310f6a7535473bbfd9a31d6c6d003612bd71e0dcbd6d21",
-    "core/ai-provider-snapshot.ts": "2493d3e18549b2903032835525e67b90f0e00341bbfbbd65a34be79a9ab4675b",
     "core/ai-provider-authority.ts": "d37a6b5aa76de0ca92a5a2d3006f0b34b7a111458d51d0e783f7e9b471b7a38d",
     "core/ai-provider-readiness.ts": "aad2948b7727b44c4e830ff4dc496bc7825127ab2a4e6bc493e54d2f6139a2d1",
     "core/ai-spend-management.ts": "c0d2ee3d5dd90e033f9e5968c34d41c624d287ed40a56c889da1196a6bbfe048",
@@ -469,6 +472,30 @@
     "pageOnlyCorrectnessException": "Validated active modelA; candidateB remains pending form metadata and legacy full selection.",
     "allFiveCurrentProductInversesRestoreSameWholeOriginalTargets": true,
     "currentState": "SOURCE_ONLY_UNQUALIFIED",
+    "runtimeQualified": false,
+    "releaseAuthorized": false
+  },
+  "providerDecoderExtraction": {
+    "parent": "b88405ee85f95eee9da4c41b9ada126ca1a10f7e",
+    "record": "docs/qualification/ai-provider-active-row-decoder-source-20261109.json",
+    "recordSha256": "7db18eb59a7eeafe0d82ade9e8bfac7305cca4cd5fe489e194b47891b06886a8",
+    "wholeParentIndex": {
+      "commit": "b88405ee85f95eee9da4c41b9ada126ca1a10f7e",
+      "path": "docs/qualification/ai-management-section-projection-source-20261109.json",
+      "gitBlob": "ec3d5e500b46a5f952a8459e64b1512cc42eb427",
+      "sha256": "f2e963c37f6bde1ac19bd98cdc6e7fb418117405025f0c4b16247f57d49353fd",
+      "bytes": 29557
+    },
+    "oldProtectedSnapshotClaim": "Historical sealed b884 whole source only; current snapshot source and exact parent inverse live in the extraction record.",
+    "allFiveExistingProductInverseObjectsWhole": true,
+    "sourceDerivedCases": {
+      "originalSnapshot": 10,
+      "addedSnapshot": 11,
+      "currentSnapshot": 21
+    },
+    "currentGraphAndDisclosureBindingOpen": true,
+    "noRrroPresentationOrNativeAuthorityAdded": true,
+    "sourceOnly": true,
     "runtimeQualified": false,
     "releaseAuthorized": false
   }

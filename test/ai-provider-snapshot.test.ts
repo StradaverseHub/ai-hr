@@ -10,6 +10,7 @@ vi.mock('../lib/ai/provider-privacy-request', async importActual => {
 });
 
 /** Actual current-config admission cases, authored UNRUN. Fake keys; mocked callbacks/transports only. */
+import { createHash } from 'node:crypto';
 import { eq, sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as tenantDb from '../db/client';
@@ -17,10 +18,17 @@ import { withTenant } from '../db/client';
 import * as schema from '../db/schema';
 import { disableAi, resolveActiveAiConfig, saveAiProviderConfig } from '../core/ai-config';
 import { governedAiConfig } from '../core/ai-governance';
-import { resolveAiProviderSnapshotTx, AI_PROVIDER_SNAPSHOT_MAX_AGE_MS } from '../core/ai-provider-snapshot';
+import { resolveAiProviderSnapshotTx, assertAiProviderSnapshot, assertAiProviderSnapshotFeature, AI_PROVIDER_SNAPSHOT_MAX_AGE_MS } from '../core/ai-provider-snapshot';
+import { decodeStoredActiveAiProviderRow } from '../core/ai-provider-row';
+import { encryptSecret } from '../lib/ai/crypto';
+import type {AiAdapter} from '../lib/ai/types';
 import { generateDraft, converse } from '../lib/ai';
 import { defaultModelFor } from '../lib/ai/registry';
 import { openrouterAdapter } from '../lib/ai/providers/openrouter';
+import {openaiAdapter} from '../lib/ai/providers/openai';
+import {anthropicAdapter} from '../lib/ai/providers/anthropic';
+import {googleAdapter} from '../lib/ai/providers/google';
+import {gatewayAdapter} from '../lib/ai/providers/gateway';
 import { readOpenRouterOptions } from '../lib/ai/providers/openrouter-configuration';
 import { activateSyntheticCandidate } from './provider-evaluation-fixture';
 import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
@@ -142,4 +150,93 @@ describe('prepared provider configuration binding', () => {
       expect(transport).toHaveBeenCalledTimes(1);
     } finally { release(); await pending.catch(() => {}); boundary.mockRestore(); transport.mockRestore(); }
   });
+});
+
+/** Extra decoding controls use only actual native reads and CPU work. Legacy transport cases above stay whole. */
+async function withoutProviderTransport<T>(work:()=>Promise<T>):Promise<T>{
+  const attempted=vi.fn(),restore:(()=>void)[]=[];
+  const forbidden=async()=>{attempted();throw new Error('Provider transport is outside stored-row decoding');};
+  const adapters:AiAdapter[]=[openaiAdapter,anthropicAdapter,googleAdapter,gatewayAdapter,openrouterAdapter];
+  try{
+    for(const adapter of adapters){
+      const generate=vi.spyOn(adapter,'generate').mockImplementation(forbidden),validate=vi.spyOn(adapter,'validate').mockImplementation(forbidden);
+      restore.push(()=>generate.mockRestore(),()=>validate.mockRestore());
+      if(adapter.converse){const converse=vi.spyOn(adapter,'converse').mockImplementation(forbidden);restore.push(()=>converse.mockRestore());}
+      if(adapter.readImage){const image=vi.spyOn(adapter,'readImage').mockImplementation(forbidden);restore.push(()=>image.mockRestore());}
+    }
+    const fetch=vi.spyOn(globalThis,'fetch').mockImplementation(forbidden);restore.push(()=>fetch.mockRestore());
+    return await work();
+  }finally{for(const finish of restore.reverse())finish();expect(attempted).not.toHaveBeenCalled();}
+}
+
+describe('stored active-row CPU extraction preserves native snapshot issuance',()=>{
+  it.each(['anthropic','openai','google','openrouter','ai_gateway'] as const)('decodes actual stored %s values with the identical independent origin fingerprint',async provider=>withoutProviderTransport(async()=>{
+    const ctx=adminCtx(base),key='fictional-'+provider+'-decoder-key',model=provider==='openrouter'?'fictional/decoder-model':'fictional-decoder-model';
+    const routing={version:1,routing:{allowedProviders:['approved-a'],allowFallbacks:false,sort:'latency'}};
+    const gateway={version:1,baseUrl:'https://fictional-gateway.example.invalid/v1'};
+    const provider_options=provider==='openrouter'?routing:provider==='ai_gateway'?gateway:{};
+    const api_key_ciphertext=encryptSecret(key,base.tenantId);
+    await owner.db.insert(schema.aiProviderConfig).values({tenantId:base.tenantId,provider,model,providerOptions:provider_options,
+      apiKeyCiphertext:api_key_ciphertext,keyLast4:key.slice(-4),isActive:true});
+    const snapshot=await withTenant(ctx,async tx=>{
+      expect(Array.from(await tx.execute(sql`select current_user as role,current_setting('transaction_isolation') as isolation,current_setting('transaction_read_only') as read_only`))).toEqual([{role:'ai_hr_app',isolation:'read committed',read_only:'off'}]);
+      return resolveAiProviderSnapshotTx(tx,ctx);
+    });
+    if(!snapshot)throw new Error('Missing actual stored snapshot');
+    const expected={provider,model,apiKey:key,...(provider==='openrouter'?{providerOptions:routing}:{}),...(provider==='ai_gateway'?{gatewayBaseUrl:gateway.baseUrl}:{})};
+    expect(snapshot.configuration).toEqual(expected);expect(Object.isFrozen(snapshot.configuration)).toBe(true);
+    expect(snapshot.fingerprint).toBe(createHash('sha256').update(JSON.stringify(['stored-v1',base.tenantId,provider,model,api_key_ciphertext,provider==='openrouter'?routing:provider==='ai_gateway'?gateway.baseUrl:{}])).digest('hex'));
+    const decoded=decodeStoredActiveAiProviderRow({provider,model,api_key_ciphertext,provider_options},base.tenantId);
+    expect(decoded).toEqual(expected);expect(Object.isFrozen(decoded)).toBe(true);
+    expect(decoded).not.toHaveProperty('fingerprint');expect(decoded).not.toHaveProperty('governance');expect(decoded).not.toHaveProperty('preparedAt');
+    expect(()=>assertAiProviderSnapshot(snapshot,ctx)).not.toThrow();
+    expect(()=>assertAiProviderSnapshotFeature(snapshot,'pay_rule_draft')).not.toThrow();
+    expect(()=>assertAiProviderSnapshotFeature(snapshot,'provider_evaluation')).toThrow('current AI configuration');
+    expect(()=>assertAiProviderSnapshot(decoded as unknown as Parameters<typeof assertAiProviderSnapshot>[0],ctx)).toThrow('current AI configuration');
+    expect(await allRows()).toEqual([]);
+  }));
+
+  it.each(['blank-model','corrupt-ciphertext','foreign-aad','invalid-openrouter-key'] as const)('refuses native present-invalid %s without using a working environment fallback',async invalid=>withoutProviderTransport(async()=>{
+    const ctx=adminCtx(base),provider=invalid==='invalid-openrouter-key'?'openrouter':'openai';
+    const fallback=await withTenant(ctx,tx=>resolveAiProviderSnapshotTx(tx,ctx));
+    expect(fallback?.configuration).toEqual({provider:'openai',model:defaultModelFor('openai'),apiKey:'fixture-platform-key'});
+    const key=invalid==='invalid-openrouter-key'?'fictional-invalid\nkey':'fictional-decoder-key';
+    const aad=invalid==='foreign-aad'?'00000000-0000-4000-8000-0000000000aa':base.tenantId;
+    expect(base.tenantId).not.toBe('00000000-0000-4000-8000-0000000000aa');
+    const apiKeyCiphertext=invalid==='corrupt-ciphertext'?'fictional-corrupt-ciphertext':encryptSecret(key,aad);
+    await owner.db.insert(schema.aiProviderConfig).values({tenantId:base.tenantId,provider,
+      model:invalid==='blank-model'?' ':provider==='openrouter'?'fictional/decoder-model':'fictional-decoder-model',
+      providerOptions:provider==='openrouter'?{version:1,routing:{allowedProviders:['approved-a'],allowFallbacks:false,sort:'latency'}}:{},
+      apiKeyCiphertext,keyLast4:'none',isActive:true});
+    await expect(withTenant(ctx,tx=>resolveAiProviderSnapshotTx(tx,ctx))).rejects.toThrow('The current AI configuration could not be confirmed.');
+    expect(await allRows()).toEqual([]);
+  }));
+
+  it('leaves absent-row environment fallback solely in the snapshot owner',async()=>withoutProviderTransport(async()=>{
+    const ctx=adminCtx(base),snapshot=await withTenant(ctx,tx=>resolveAiProviderSnapshotTx(tx,ctx));
+    if(!snapshot)throw new Error('Missing actual environment snapshot');
+    const expected={provider:'openai',model:defaultModelFor('openai'),apiKey:'fixture-platform-key'};
+    expect(snapshot.configuration).toEqual(expected);expect(Object.isFrozen(snapshot.configuration)).toBe(true);
+    const parameters=createHash('sha256').update(JSON.stringify([expected.provider,expected.model,expected.apiKey,null,null])).digest('hex');
+    expect(snapshot.fingerprint).toBe(createHash('sha256').update(JSON.stringify(['environment-v1',base.tenantId,parameters])).digest('hex'));
+    vi.stubEnv('OPENAI_API_KEY','');
+    expect(await withTenant(ctx,tx=>resolveAiProviderSnapshotTx(tx,ctx))).toBeNull();
+    expect(await allRows()).toEqual([]);
+  }));
+
+  it('keeps the original strict CPU model options transport and safe-error checks without relaxing native constraints',()=>withoutProviderTransport(async()=>{
+    const row={provider:'openai',model:'fictional-model',api_key_ciphertext:encryptSecret('fictional-decoder-key',base.tenantId),provider_options:{} as unknown};
+    const invalidRows=[
+      {...row,provider:'unregistered'},...['',' ',' padded','padded '].map(model=>({...row,model})),
+      ...[null,[],{extra:true}].map(provider_options=>({...row,provider_options})),
+      {...row,provider:'openrouter',model:'fictional/model',provider_options:{version:1,routing:{allowedProviders:[]}}},
+      {...row,provider:'openrouter',model:'openrouter/forbidden',provider_options:{version:1,routing:{allowedProviders:['approved-a'],allowFallbacks:false,sort:'latency'}}},
+      {...row,provider:'ai_gateway',provider_options:{version:1,baseUrl:'http://localhost'}},
+      {...row,provider:'ai_gateway',provider_options:{version:1,baseUrl:'https://fictional-gateway.example.invalid',extra:true}},
+    ];
+    for(const invalid of invalidRows)expect(()=>decodeStoredActiveAiProviderRow(invalid,base.tenantId)).toThrow('The current AI configuration could not be confirmed.');
+    // Zod's existing default normalization is CPU behavior; native stored options still require all three routing fields.
+    expect(decodeStoredActiveAiProviderRow({...row,provider:'openrouter',model:'fictional/model',provider_options:{version:1,routing:{allowedProviders:['approved-a']}}},base.tenantId).providerOptions).toEqual({version:1,routing:{allowedProviders:['approved-a'],allowFallbacks:false,sort:'latency'}});
+    expect(await allRows()).toEqual([]);
+  }));
 });

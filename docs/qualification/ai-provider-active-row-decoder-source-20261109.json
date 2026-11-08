@@ -1,0 +1,307 @@
+{
+  "kind": "AI_STORED_ACTIVE_ROW_CPU_EXTRACTION_SOURCE_ONLY_NOT_QUALIFICATION",
+  "parent": "b88405ee85f95eee9da4c41b9ada126ca1a10f7e",
+  "branch": "codex/ai-provider-active-row-decoder-20261109",
+  "scope": [
+    "core/ai-provider-snapshot.ts",
+    "core/ai-provider-row.ts",
+    "test/ai-provider-snapshot.test.ts",
+    "docs/adr/2026-11-09-ai-management-section-projection.md",
+    "docs/qualification/ai-management-section-projection-source-20261109.json",
+    "docs/qualification/ai-provider-active-row-decoder-source-20261109.json"
+  ],
+  "wholeActualParentGitPreimages": [
+    {
+      "commit": "b88405ee85f95eee9da4c41b9ada126ca1a10f7e",
+      "path": "core/ai-provider-snapshot.ts",
+      "gitBlob": "a7ecfa3a157acff1a44188c082288357b1fe2931",
+      "sha256": "2493d3e18549b2903032835525e67b90f0e00341bbfbbd65a34be79a9ab4675b",
+      "bytes": 12306
+    },
+    {
+      "commit": "b88405ee85f95eee9da4c41b9ada126ca1a10f7e",
+      "path": "test/ai-provider-snapshot.test.ts",
+      "gitBlob": "06b6a8d8d1e7f39149f6534581e28c2d60eb3b43",
+      "sha256": "09e1b69aa97bae93bc98691a05b3c570621583e32f6d6df28585d56bd799a96d",
+      "bytes": 10475
+    },
+    {
+      "commit": "b88405ee85f95eee9da4c41b9ada126ca1a10f7e",
+      "path": "docs/adr/2026-11-09-ai-management-section-projection.md",
+      "gitBlob": "18d6d50d3778ca8cabba9d9a34a069e829e848f1",
+      "sha256": "fd4307fa0279f4fd78498fbad10c523dfef7653e0465bdc3bdd3d697269b8d4a",
+      "bytes": 10946
+    },
+    {
+      "commit": "b88405ee85f95eee9da4c41b9ada126ca1a10f7e",
+      "path": "docs/qualification/ai-management-section-projection-source-20261109.json",
+      "gitBlob": "ec3d5e500b46a5f952a8459e64b1512cc42eb427",
+      "sha256": "f2e963c37f6bde1ac19bd98cdc6e7fb418117405025f0c4b16247f57d49353fd",
+      "bytes": 29557
+    }
+  ],
+  "historicalWholeProtectedSnapshotPin": {
+    "status": "HISTORICAL_PARENT_ONLY_NOT_CURRENT_WHOLE_SOURCE",
+    "ref": {
+      "commit": "b88405ee85f95eee9da4c41b9ada126ca1a10f7e",
+      "path": "core/ai-provider-snapshot.ts",
+      "gitBlob": "a7ecfa3a157acff1a44188c082288357b1fe2931",
+      "sha256": "2493d3e18549b2903032835525e67b90f0e00341bbfbbd65a34be79a9ab4675b",
+      "bytes": 12306
+    }
+  },
+  "newFilesAbsentFromParent": [
+    "core/ai-provider-row.ts",
+    "docs/qualification/ai-provider-active-row-decoder-source-20261109.json"
+  ],
+  "currentSourceSha256": {
+    "core/ai-provider-snapshot.ts": "945a01c642f23e7a7603b2d917e5b2a47db6547121a41a29082b1542f6c09a4c",
+    "core/ai-provider-row.ts": "cfdb19a9c3c325862ccae535c8aba377e0952bec3270616996dded3774fddfe8",
+    "test/ai-provider-snapshot.test.ts": "6680a24e0ee210eaf540a8b086fccebb9789c08b9974f809c7dcb6bb5a4248c3",
+    "docs/adr/2026-11-09-ai-management-section-projection.md": "7b9c1565609c913ef8a68d9ef8815f39571821cc3e8942729cfdee4203378b08"
+  },
+  "wholeCurrentSnapshotToParentInverse": {
+    "coordinates": "ZERO_BASED_HALF_OPEN_CURRENT_LINES_DESCENDING",
+    "changes": [
+      {
+        "startLine": 55,
+        "endLine": 57,
+        "after": "      configuration = decodeStoredActiveAiProviderRow(row, ctx.tenantId);\n      fingerprint = digest(['stored-v1', ctx.tenantId, row.provider, row.model, row.api_key_ciphertext, configuration.providerOptions ?? configuration.gatewayBaseUrl ?? {}]);\n",
+        "before": "      let gatewayBaseUrl: string | undefined;\n      if (row.provider === 'openrouter') providerOptions = readOpenRouterOptions(row.provider_options);\n      // 0661: the gateway's address is its only option; it is re-validated on read and before every call.\n      else if (row.provider === 'ai_gateway') gatewayBaseUrl = readGatewayOptions(row.provider_options).baseUrl;\n      else if (!row.provider_options || typeof row.provider_options !== 'object' || Array.isArray(row.provider_options) || Object.keys(row.provider_options).length) return refuse();\n      const apiKey = decryptSecret(row.api_key_ciphertext, ctx.tenantId);\n      if (row.provider === 'openrouter' && !OpenRouterTransportConfiguration.safeParse({ model: row.model, apiKey, routing: providerOptions!.routing }).success) return refuse();\n      configuration = Object.freeze({ provider: row.provider, model: row.model, apiKey, ...(providerOptions ? { providerOptions } : {}), ...(gatewayBaseUrl ? { gatewayBaseUrl } : {}) });\n      fingerprint = digest(['stored-v1', ctx.tenantId, row.provider, row.model, row.api_key_ciphertext, providerOptions ?? gatewayBaseUrl ?? {}]);\n"
+      },
+      {
+        "startLine": 54,
+        "endLine": 54,
+        "after": "",
+        "before": "    if (!isProvider(row.provider) || typeof row.model !== 'string' || !row.model.trim() || row.model !== row.model.trim()) return refuse();\n    let providerOptions: ResolvedAiConfig['providerOptions'];\n"
+      },
+      {
+        "startLine": 14,
+        "endLine": 15,
+        "after": "import { decodeStoredActiveAiProviderRow } from './ai-provider-row';\n",
+        "before": ""
+      },
+      {
+        "startLine": 8,
+        "endLine": 9,
+        "after": "import { envFallbackConfig } from '../lib/ai/registry';\n",
+        "before": "import { envFallbackConfig, isProvider } from '../lib/ai/registry';\n"
+      }
+    ]
+  },
+  "wholeCurrentTestToParentInverse": {
+    "currentAppendStartByte": 10989,
+    "appendedByteCount": 8255,
+    "appendedSha256": "e1f5337cfcdd598bc621404ef4aa2132b225362ffa2d09d02c0281ca075f2ff9",
+    "removeOnlyExactPinnedSuffixThenImportChanges": [
+      {
+        "startLine": 27,
+        "endLine": 31,
+        "after": "import {openaiAdapter} from '../lib/ai/providers/openai';\nimport {anthropicAdapter} from '../lib/ai/providers/anthropic';\nimport {googleAdapter} from '../lib/ai/providers/google';\nimport {gatewayAdapter} from '../lib/ai/providers/gateway';\n",
+        "before": ""
+      },
+      {
+        "startLine": 20,
+        "endLine": 24,
+        "after": "import { resolveAiProviderSnapshotTx, assertAiProviderSnapshot, assertAiProviderSnapshotFeature, AI_PROVIDER_SNAPSHOT_MAX_AGE_MS } from '../core/ai-provider-snapshot';\nimport { decodeStoredActiveAiProviderRow } from '../core/ai-provider-row';\nimport { encryptSecret } from '../lib/ai/crypto';\nimport type {AiAdapter} from '../lib/ai/types';\n",
+        "before": "import { resolveAiProviderSnapshotTx, AI_PROVIDER_SNAPSHOT_MAX_AGE_MS } from '../core/ai-provider-snapshot';\n"
+      },
+      {
+        "startLine": 12,
+        "endLine": 13,
+        "after": "import { createHash } from 'node:crypto';\n",
+        "before": ""
+      }
+    ]
+  },
+  "adrAppendOnly": true,
+  "wholeProtectedOwners": [
+    {
+      "commit": "b88405ee85f95eee9da4c41b9ada126ca1a10f7e",
+      "path": "core/ai-config.ts",
+      "gitBlob": "ef9f1a64435a1d1e0cf9c2110fc28175afc227bb",
+      "sha256": "6f6345624735f94d5c1faa9306d7a3fa913a61e0cbfb29c5e46b367aea8ea252",
+      "bytes": 21367
+    },
+    {
+      "commit": "b88405ee85f95eee9da4c41b9ada126ca1a10f7e",
+      "path": "core/ai-governance.ts",
+      "gitBlob": "e81864902153acd0c99842e0b7e9c3ed70ed13bc",
+      "sha256": "f42e9f2c99954394a943127e26ff0548d130f03514471e9a3f2bc3e0188c496a",
+      "bytes": 27977
+    },
+    {
+      "commit": "b88405ee85f95eee9da4c41b9ada126ca1a10f7e",
+      "path": "core/ai-principal.ts",
+      "gitBlob": "85630db56130b32196d12e7ffd04fbb27fb88b22",
+      "sha256": "3a77b8ed03ca1b9895310f6a7535473bbfd9a31d6c6d003612bd71e0dcbd6d21",
+      "bytes": 3793
+    },
+    {
+      "commit": "b88405ee85f95eee9da4c41b9ada126ca1a10f7e",
+      "path": "core/ai-provider-authority.ts",
+      "gitBlob": "d74986076258249925cd0942ef883682e2f0a19a",
+      "sha256": "d37a6b5aa76de0ca92a5a2d3006f0b34b7a111458d51d0e783f7e9b471b7a38d",
+      "bytes": 508
+    },
+    {
+      "commit": "b88405ee85f95eee9da4c41b9ada126ca1a10f7e",
+      "path": "db/client.ts",
+      "gitBlob": "0c4f28e00393a763608b506d608a3cf7df542c57",
+      "sha256": "bdd700ea682bafbf0cad2c255b8dacb96c13d82dc7fa0ae9446d4a1da265cd3f",
+      "bytes": 22595
+    },
+    {
+      "commit": "b88405ee85f95eee9da4c41b9ada126ca1a10f7e",
+      "path": "db/schema.ts",
+      "gitBlob": "c80eb3180eebc7bf9fb9a30367e4b00746b22592",
+      "sha256": "8333f7a44c82fc43411dd4735314a555c4a69e0f805f0dc6b29e62c997ea9112",
+      "bytes": 820303
+    },
+    {
+      "commit": "b88405ee85f95eee9da4c41b9ada126ca1a10f7e",
+      "path": "lib/ai/crypto.ts",
+      "gitBlob": "4a8d2293c1f91bff9fe5e01bc2aa132321521d89",
+      "sha256": "b7b3963a4ab4390f5061e6a374c98f1343c7b0503a01f50af44dd92697077f3d",
+      "bytes": 5306
+    },
+    {
+      "commit": "b88405ee85f95eee9da4c41b9ada126ca1a10f7e",
+      "path": "lib/ai/types.ts",
+      "gitBlob": "82098b38dd641f8f3a1b12555a5a4d02f04e2dbe",
+      "sha256": "da8d161d20a10e34fb39d5d8767ddcc3f139d1f617246b6c58840d99a1937696",
+      "bytes": 12046
+    },
+    {
+      "commit": "b88405ee85f95eee9da4c41b9ada126ca1a10f7e",
+      "path": "lib/ai/registry.ts",
+      "gitBlob": "27c603ef11fe39c7b27254b941333674f1b3d3ff",
+      "sha256": "68211cdf669941d312d5c3ce57f1efa55c288acf6324fc848c32b20694104712",
+      "bytes": 2740
+    },
+    {
+      "commit": "b88405ee85f95eee9da4c41b9ada126ca1a10f7e",
+      "path": "lib/ai/providers/openrouter-configuration.ts",
+      "gitBlob": "5b5ec102dd129e6b9afc2ba84e9f8f534a9e835a",
+      "sha256": "34aa946628268800dd7c04541a39daae764fdd93842693f3fca730188bc7502d",
+      "bytes": 1133
+    },
+    {
+      "commit": "b88405ee85f95eee9da4c41b9ada126ca1a10f7e",
+      "path": "lib/ai/providers/openrouter-policy.ts",
+      "gitBlob": "b13d2c38354be35d72e7b253affb895d4397f375",
+      "sha256": "f159293661bf7c40cc5cab236a3c829ae54ea68a917eacf75965c97f98deb370",
+      "bytes": 1680
+    },
+    {
+      "commit": "b88405ee85f95eee9da4c41b9ada126ca1a10f7e",
+      "path": "lib/ai/providers/openrouter-transport.ts",
+      "gitBlob": "1a4d18adfc504230d1e10989a5caceba6f1d0f84",
+      "sha256": "3e2bec947be6dcca7f2e5a867c5e62a95aa74c99ff0587b6a8917a7df9cf102b",
+      "bytes": 13864
+    },
+    {
+      "commit": "b88405ee85f95eee9da4c41b9ada126ca1a10f7e",
+      "path": "lib/ai/providers/gateway-options.ts",
+      "gitBlob": "720cedd98c990e96aad4b1f96655b4afb7a4cf6c",
+      "sha256": "e0aa262ae6c74145c0178d62591ad3898dc6b58be93c29b8672182d5bef0dced",
+      "bytes": 3133
+    },
+    {
+      "commit": "b88405ee85f95eee9da4c41b9ada126ca1a10f7e",
+      "path": "db/migrations/0058_chunky_beast.sql",
+      "gitBlob": "ad49283620159792a68fcf94236304a397fa130a",
+      "sha256": "7499a3adcd769a8bebad4a4ae1e2f8683404f373e2e137f4bf1c9137fcc64f9a",
+      "bytes": 942
+    },
+    {
+      "commit": "b88405ee85f95eee9da4c41b9ada126ca1a10f7e",
+      "path": "db/migrations/0059_ai_provider_config_rls.sql",
+      "gitBlob": "d0a925357abf36326f57fbc77ed0283d3703244a",
+      "sha256": "632e6365830bfd939b3b43ea1fe18f632ce2addaf114af3a9a3dbf6278885905",
+      "bytes": 3970
+    },
+    {
+      "commit": "b88405ee85f95eee9da4c41b9ada126ca1a10f7e",
+      "path": "db/migrations/0623_openrouter_provider_options.sql",
+      "gitBlob": "01754463e8ccc6fe8204d51eec4ff30849be0538",
+      "sha256": "0f78416bd82c8e7328732b4234fe071ba15248f387ab9aa8ef911ee1822cd319",
+      "bytes": 4288
+    },
+    {
+      "commit": "b88405ee85f95eee9da4c41b9ada126ca1a10f7e",
+      "path": "db/migrations/0625_provider_readiness.sql",
+      "gitBlob": "c726037cfbce63df162990472f9a2d111e5a0be2",
+      "sha256": "8634525e4ac5a6810435518b54b92f5f478f75c9004413180fdeabbf46bc15f1",
+      "bytes": 17498
+    },
+    {
+      "commit": "b88405ee85f95eee9da4c41b9ada126ca1a10f7e",
+      "path": "db/migrations/0651_ai_spend_controls.sql",
+      "gitBlob": "7a2a15de48c2b2b6c2cab844c27bf716f779b3a3",
+      "sha256": "3985c5bfc2bc3cddaae19db086ecc75627f3a8dbcdf7f1d65802f7bf32668ac3",
+      "bytes": 69872
+    },
+    {
+      "commit": "b88405ee85f95eee9da4c41b9ada126ca1a10f7e",
+      "path": "db/migrations/0661_ai_gateway_provider.sql",
+      "gitBlob": "57c3e3ae7a04bdecba586444d958e214cd1dba2d",
+      "sha256": "24c4aa02c017e7f55ab538041a1fc206c49d9ddb87f1855865cdce1abcc23f33",
+      "bytes": 2102
+    },
+    {
+      "commit": "b88405ee85f95eee9da4c41b9ada126ca1a10f7e",
+      "path": "db/migrations/0686_ai_provider_custody_owner_rls.sql",
+      "gitBlob": "ac68caa5fabb19b598f419c3ea5df3b0e2aabda5",
+      "sha256": "571fe5c0865f1419cf500d3ce90f82fea8b80145dec8a48e0c75a0aa3d31555d",
+      "bytes": 1567
+    },
+    {
+      "commit": "b88405ee85f95eee9da4c41b9ada126ca1a10f7e",
+      "path": "db/migrations/0814_ai_provider_change_gate.sql",
+      "gitBlob": "243d3d5cedbacd5507ab1f52debabd4f4c8b2d28",
+      "sha256": "acd288d90f61190327a327defd4671cea63f255f307a6ac73bee93b20c717441",
+      "bytes": 25227
+    },
+    {
+      "commit": "b88405ee85f95eee9da4c41b9ada126ca1a10f7e",
+      "path": "test/harness.ts",
+      "gitBlob": "2239a072cbc922366ebb0ad1f3ec7c85c8668685",
+      "sha256": "ab992137979341edd6bc15ba47e38d99d3e96994b788f15afde27cea3ed6db9e",
+      "bytes": 50558
+    }
+  ],
+  "sourceContract": {
+    "onlyStoredActiveRowCpuBodyExtracted": true,
+    "oldCpuExactUnderTenantArgumentAndReturnSubstitutions": true,
+    "leafOnlyReturnsFrozenResolvedConfiguration": true,
+    "leafHasNoDatabaseFallbackAuthorityIssuerOrProviderCall": true,
+    "oldNativePrincipalSqlCardinalityAndAbsentFallbackWhole": true,
+    "storedFingerprintFirstFiveOriginInputsWhole": true,
+    "lastFingerprintInputSameNormalizedOptionsOrGatewayOrEmptyObject": true,
+    "candidateBaselineFeatureFreshnessAndCurrentFunctionsWhole": 5,
+    "oldWeakSetPrincipalTimestampAndAgeOwnerUnchanged": true,
+    "oldFiveProductInverseObjectsWhole": true,
+    "noServerOnlyPackageImportConditionChange": true,
+    "noSqlGrantsLockIsolationOrCommandBehaviorChange": true
+  },
+  "sourceDerivedNativeCensus": {
+    "originalRegistrationsWhole": 6,
+    "originalExpandedCasesWhole": 10,
+    "addedValidStoredProviders": 5,
+    "addedNativePresentInvalid": 4,
+    "addedAbsentFallback": 1,
+    "addedStrictCpuTable": 1,
+    "currentRegistrations": 10,
+    "currentExpandedCases": 21,
+    "authoredNotExecuted": true
+  },
+  "fixtureDistinction": "Stored native model/options constraints remain unchanged. The CPU malformed-input table does not claim those rows were inserted. Native corrupt/AAD/blank-direct-model/control-character-key fixtures are legal storage states that fail decoding. Preexisting active rows are not promotion/receipt qualification.",
+  "newTransportGuards": "Only the eleven new cases install/reliably restore forbidden adapter+fetch guards; original synthetic transport callbacks/guards stay whole.",
+  "bindingLimitations": "New leaf and import edge are not yet globally approved or source-closure/release-qualified. Existing original failures and prior passes remain at their original identities.",
+  "runtimeQualified": false,
+  "repositoryBehaviorExecutedLocally": false,
+  "published": false,
+  "releaseAuthorized": false,
+  "productionHeld": true
+}
