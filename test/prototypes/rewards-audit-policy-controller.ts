@@ -7,6 +7,7 @@ import {defaultControllerApplication} from './rewards-audit-default-controller-p
 import {rewardsAuditPolicyLifetime} from './rewards-audit-policy-lifetime';
 import type {RewardPolicyWaitObservation} from './rewards-audit-policy-diagnostic';
 const identitySchema=z.object({pid:z.number().int().positive(),started:z.string().min(20),database:z.string(),session_user:z.string(),current_user:z.string(),loopback:z.literal(true),statement:z.string(),lock:z.string(),isolation:z.string(),readonly:z.string(),native_owner:z.literal(true)}).strict();
+const waitObserverApplication='owned_rewards_policy_wait_observer';
 type Identity=z.infer<typeof identitySchema>;
 export function rewardsAuditPolicyController(){
  if(process.env.GITHUB_ACTIONS!=='true'||process.env.RUNNER_ENVIRONMENT!=='github-hosted'||process.env.GITHUB_REPOSITORY!=='StradaverseHub/ai-hr')throw Error('Authenticated sole hosted policy profile required');
@@ -35,7 +36,7 @@ export function rewardsAuditPolicyController(){
   /** Failure-only read: no raw activity/query/lock values leave this boundary. */
   async waitSnapshot(waiting:{pid:number;started:string},holder:{pid:number;started:string},signal:AbortSignal):Promise<RewardPolicyWaitObservation>{
    signal.throwIfAborted();if(lifetime.ownerPhase()!=='work')throw Error('Actual Rewards diagnostic work admission required');
-   const connection=postgres(url.toString(),{max:1,connect_timeout:2,connection:{statement_timeout:2000,lock_timeout:300,default_transaction_read_only:'on',application_name:'owned_rewards_policy_wait_observer'}});
+   const connection=postgres(url.toString(),{max:1,connect_timeout:2,connection:{statement_timeout:2000,lock_timeout:300,default_transaction_read_only:'on',application_name:waitObserverApplication}});
    let stopped:Promise<void>|undefined;const close=()=>stopped??=connection.end({timeout:0});stops.add(close);
    let stopFailure=false,stopping=false;const stop=()=>{stopping=true;void close().catch(()=>{stopFailure=true;});};
    const timer=setTimeout(stop,2000);signal.addEventListener('abort',stop,{once:true});
@@ -66,7 +67,7 @@ export function rewardsAuditPolicyController(){
       const [actual]=await observer`select current_database()as database,current_user,inet_server_addr()='127.0.0.1'::inet as loopback,
        not exists(select 1 from pg_stat_activity s join jsonb_to_recordset(${JSON.stringify(identities)}::text::jsonb)as owned(pid integer,started text,"session_user" text)
         on s.pid=owned.pid and s.backend_start=owned.started::timestamptz and s.usename=owned."session_user" where s.datname=${database})
-       and not exists(select 1 from pg_stat_activity s where s.datname=${database} and s.usename=${decodeURIComponent(url.username)} and s.application_name=any(${[...defaultControllers]}::text[]))as absent`;
+       and not exists(select 1 from pg_stat_activity s where s.datname=${database} and s.usename=${decodeURIComponent(url.username)} and s.application_name=any(${[...defaultControllers,waitObserverApplication]}::text[]))as absent`;
       expect(actual).toMatchObject({database,current_user:decodeURIComponent(url.username),loopback:true});
       if(actual.absent===true){absent=true;break;}if(performance.now()>=deadline)break;await new Promise(resolve=>setTimeout(resolve,10));
      }while(performance.now()<deadline);

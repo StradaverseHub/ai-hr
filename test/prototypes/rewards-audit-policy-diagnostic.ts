@@ -10,7 +10,7 @@ function sqlstate(error:unknown):string|null{
   seen.add(current);
   // Do not invoke arbitrary getters, toString(), stack access or foreign codecs.
   const code=Object.getOwnPropertyDescriptor(current,'code');
-  if(code&&'value'in code&&typeof code.value==='string'&&/^[0-9A-Z]{5}$/.test(code.value))return code.value;
+  if(code&&'value'in code&&typeof code.value==='string'&&code.value.length===5&&/^[0-9A-Z]{5}$/.test(code.value))return code.value;
   const cause=Object.getOwnPropertyDescriptor(current,'cause');current=cause&&'value'in cause?cause.value:undefined;
  }
  return null;

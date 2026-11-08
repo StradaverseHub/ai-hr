@@ -17,6 +17,11 @@ it('records only closed native SQLSTATE through bounded data causes without read
  await expect(diagnostics.callback('catalogue-source',()=>{throw getter;})).rejects.toBe(getter);
  const malformed={code:'PRIVATE',cause:{code:'22023'}};await expect(diagnostics.callback('catalogue-lock',()=>{throw malformed;})).rejects.toBe(malformed);
  expect(diagnostics.snapshot().observations).toEqual([{kind:'callback-refused',phase:'agent-guard',sqlstate:'55000'},{kind:'callback-refused',phase:'catalogue-source',sqlstate:null},{kind:'callback-refused',phase:'catalogue-lock',sqlstate:'22023'}]);
+ for(const ending of ['\n','\r','\r\n','\u2028','\u2029']){
+  const suffixed=Object.assign(Error('private suffix'),{code:'42501'+ending});
+  await expect(diagnostics.callback('bank-source',()=>{throw suffixed;})).rejects.toBe(suffixed);
+  expect(diagnostics.snapshot().observations.at(-1)).toEqual({kind:'callback-refused',phase:'bank-source',sqlstate:null});
+ }
  const hostile=new Proxy({},{getOwnPropertyDescriptor(){throw Error('private reflective payload');}});
  await expect(diagnostics.callback('bank-actor',()=>{throw hostile;})).rejects.toBe(hostile);
  expect(diagnostics.snapshot().complete).toBe(false);expect(diagnostics.snapshot().observations.at(-1)).toEqual({kind:'callback-refused',phase:'bank-actor',sqlstate:null});
