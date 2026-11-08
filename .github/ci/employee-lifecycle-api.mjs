@@ -33,6 +33,17 @@ export function employeeLifecycleControllerBlob(bytes,expected){
  assert(Buffer.isBuffer(bytes)&&bytes.length>0&&bytes.length<=1048576&&typeof expected==='string'&&/^[a-f0-9]{40}$/.test(expected));
  const blob=createHash('sha1').update('blob '+bytes.length+'\0').update(bytes).digest('hex');assert.equal(blob,expected);return sha(bytes);
 }
+/** Bounded native Git object framing; object lookup output is never trusted
+ * merely because Git returned it. No ref, path or application execution API. */
+export function employeeLifecycleGitObject(kind,bytes,expected){
+ assert(['commit','tree'].includes(kind)&&Buffer.isBuffer(bytes)&&bytes.length>0&&bytes.length<=1048576&&typeof expected==='string'&&/^[a-f0-9]{40}$/.test(expected));
+ assert.equal(createHash('sha1').update(kind+' '+bytes.length+'\0').update(bytes).digest('hex'),expected);return bytes;
+}
+export function employeeLifecycleGitTree(bytes){
+ assert(Buffer.isBuffer(bytes)&&bytes.length>0&&bytes.length<=1048576);const entries=new Map();let offset=0;
+ while(offset<bytes.length){const space=bytes.indexOf(32,offset),zero=bytes.indexOf(0,space+1);assert(space>offset&&space-offset<=6&&zero>space+1&&zero-space<=4097&&zero+21<=bytes.length);const mode=bytes.subarray(offset,space).toString('utf8'),name=bytes.subarray(space+1,zero);assert(['40000','100644','100755','120000','160000'].includes(mode)&&!name.includes(47)&&!name.equals(Buffer.from('.'))&&!name.equals(Buffer.from('..')));const key=name.toString('hex');assert(!entries.has(key)&&entries.size<10000);entries.set(key,{mode,id:bytes.subarray(zero+1,zero+21).toString('hex')});offset=zero+21;}
+ assert.equal(offset,bytes.length);return entries;
+}
 /** Exact clean controller checkout plus actual commit/tree/blob identity. This
  * reads ONLY the fixed complete CI-owner closure, never candidate-provided paths.
  * API run/controller binding is independently checked by the transport owner. */
@@ -41,9 +52,11 @@ export function readEmployeeLifecycleControllerFacts(controller){
  const metadataEnvironment=Object.fromEntries(Object.entries(nativePreparationEnvironment(process.env)).filter(([name])=>!name.startsWith('GIT_')));Object.assign(metadataEnvironment,{GIT_CONFIG_NOSYSTEM:'1',GIT_CONFIG_GLOBAL:'/dev/null',GIT_ATTR_NOSYSTEM:'1',GIT_TERMINAL_PROMPT:'0'});
  const git=(...args)=>execFileSync('git',['--no-replace-objects','-c','safe.directory='+root,'-c','core.fsmonitor=false','-c','core.hooksPath=/dev/null','-C',root,...args],{env:metadataEnvironment,encoding:'utf8',timeout:10000,killSignal:'SIGTERM',maxBuffer:1048576}).trim();
  const clean=()=>{assert.equal(git('rev-parse','HEAD'),controller);assert.equal(git('status','--porcelain'),'');};clean();
- const tree=execFileSync('git',['--no-replace-objects','-C',root,'ls-tree','-r','-z',controller,'--',...EMPLOYEE_LIFECYCLE_CONTROLLER_PATHS],{env:metadataEnvironment,timeout:10000,killSignal:'SIGTERM',maxBuffer:1048576});
- const rows=tree.toString('utf8').split('\0');assert.equal(rows.pop(),'');const blobs=new Map();
- for(const row of rows){const match=/^(100644|100755) blob ([a-f0-9]{40})\t([^\0]+)$/.exec(row);assert(match&&EMPLOYEE_LIFECYCLE_CONTROLLER_PATHS.includes(match[3])&&!blobs.has(match[3]));blobs.set(match[3],{mode:match[1],id:match[2]});}
+ const objects=new Map();
+ const object=(kind,id)=>{assert(/^[a-f0-9]{40}$/.test(id));const key=kind+':'+id;if(!objects.has(key)){const bytes=execFileSync('git',['--no-replace-objects','-C',root,'cat-file',kind,id],{env:metadataEnvironment,timeout:10000,killSignal:'SIGTERM',maxBuffer:1048576});objects.set(key,employeeLifecycleGitObject(kind,bytes,id));}return objects.get(key);};
+ const commit=object('commit',controller),header=/^tree ([a-f0-9]{40})\n/.exec(commit.toString('utf8'));assert(header);const trees=new Map(),blobs=new Map();
+ const tree=id=>{if(!trees.has(id))trees.set(id,employeeLifecycleGitTree(object('tree',id)));return trees.get(id);};
+ for(const file of EMPLOYEE_LIFECYCLE_CONTROLLER_PATHS){let id=header[1];const parts=file.split('/');for(const [index,name]of parts.entries()){const entry=tree(id).get(Buffer.from(name).toString('hex'));assert(entry);if(index===parts.length-1){assert(['100644','100755'].includes(entry.mode));blobs.set(file,entry);}else{assert.equal(entry.mode,'40000');id=entry.id;}}}
  assert.equal(blobs.size,EMPLOYEE_LIFECYCLE_CONTROLLER_PATHS.length);const sourceHashes={},gitBlobs={};
  for(const file of EMPLOYEE_LIFECYCLE_CONTROLLER_PATHS){
   const path=join(root,file);assert.equal(realpathSync(path),path);const fd=openSync(path,constants.O_RDONLY|constants.O_NOFOLLOW|constants.O_NONBLOCK);
@@ -74,7 +87,12 @@ export async function collectEmployeeLifecycleWitness(plan,units,sourceRoot=proc
  let pullRequest;if(run.event==='pull_request'){assert.equal(run.pull_requests?.length,1);const number=run.pull_requests[0].number;assert(Number.isSafeInteger(number)&&number>0);pullRequest=api('pulls/'+number);}
  const commissioning=typeof run.display_title==='string'&&run.display_title.startsWith('Singleton commissioning only');assert.equal(process.env.GITHUB_JOB==='commission-summary',commissioning);
  const controllerFacts=readEmployeeLifecycleControllerFacts(plan.controller);
- const cases=selected.map(unit=>{const matches=jobs.filter(job=>job.name===`test (${unit.id})`),archives=artifacts.filter(artifact=>artifact.name===(commissioning?'commission-unit-':'unit-')+unit.id);assert.equal(matches.length,1);assert.equal(archives.length,1);const job=matches[0],artifact=archives[0];validateEmployeeLifecycleTransport({run,job,artifact,pullRequest},plan,unit,runId);return{unit,job,artifact};});
+ const cases=[];for(const unit of selected){const matches=jobs.filter(job=>job.name===`test (${unit.id})`),archives=artifacts.filter(artifact=>artifact.name===(commissioning?'commission-unit-':'unit-')+unit.id);assert(matches.length<=1&&archives.length<=1,'Duplicated employee API inventory');
+  // A failed worker may upload nothing. Preserve the summary's existing missing
+  // outcome; an absent API/member map can never satisfy unit verification.
+  if(matches.length===0||archives.length===0)continue;
+  const job=matches[0],artifact=archives[0];validateEmployeeLifecycleTransport({run,job,artifact,pullRequest},plan,unit,runId);cases.push({unit,job,artifact});}
+ if(!cases.length)return new Map();
  const temporary=realpathSync(process.env.RUNNER_TEMP),directory=join(temporary,'employee-api-evidence-'+randomUUID());mkdirSync(directory,{mode:0o700});
  // Dynamic FIXED import avoids the existing release-policy/commission-summary
  // ESM cycle; it is never a caller-selected module or application loader.

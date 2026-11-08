@@ -105,18 +105,25 @@ function readEmployeeArchives({plan,run,jobs,artifacts,dir,sourceRoot}){
 export async function revalidateCi(evidence){
  const local=createPlan(evidence.candidatePath);
  if(cleanHead(controllerRoot)!==evidence.controller||cleanHead(evidence.candidatePath)!==evidence.sha)throw Error('Source changed after CI verification');
+ if(local.units.some(unit=>employeeLifecycleUnit(unit))){
+  // A new verification owns fresh API inventories, freshly authenticated ZIPs,
+  // canonical gate-plan runtime, native members and actual controller blob facts.
+  // No retained parsed report or caller-supplied controller map is re-used.
+  const fresh=await verifyCi({candidatePath:evidence.candidatePath,runId:evidence.runId,baseline:evidence.baseline});
+  const stable=value=>Object.fromEntries(['policyVersion','tier','result','sha','controller','baseline','runId','suiteFiles','browserFiles','tests','fingerprint','build','candidatePath','controllerBranch','url'].map(key=>[key,value[key]]));
+  const artifacts=value=>value.map(({id,name,digest})=>({id,name,digest})).sort((a,b)=>a.name.localeCompare(b.name));
+  if(!isDeepStrictEqual(stable(fresh),stable(evidence))||!isDeepStrictEqual(artifacts(fresh.artifacts),artifacts(evidence.artifacts)))throw Error('Reauthenticated employee CI witness changed');
+  return true;
+ }
  const p={controller:evidence.controller,candidate:evidence.sha,runId:evidence.runId,baseline:evidence.baseline,controllerBranch:evidence.controllerBranch};
  const expectedPlan=bindPlanWitnessIdentity(local,p);
- const run=api(`actions/runs/${p.runId}`);validateRun(run,p);
+ validateRun(api(`actions/runs/${p.runId}`),p);
  const jobs=pages(`actions/runs/${p.runId}/jobs?filter=all`,'jobs');validateJobs(jobs,local);
  const artifacts=pages(`actions/runs/${p.runId}/artifacts`,'artifacts');validateArtifacts(artifacts,p,local);
  const identity=a=>JSON.stringify(a.map(x=>({id:x.id,name:x.name,digest:x.digest})).sort((a,b)=>a.name.localeCompare(b.name)));
  if(identity(artifacts)!==identity(evidence.artifacts)||![p.baseline,p.candidate].includes(api('git/ref/heads/alpha').object?.sha))throw Error('CI evidence or alpha moved after verification');
  const build=await sourceBoundBuild({candidatePath:evidence.candidatePath,dir:evidence.evidenceDirectory,p,jobs});
- const employeeUnits=readEmployeeArchives({plan:expectedPlan,run,jobs,artifacts,dir:evidence.evidenceDirectory,sourceRoot:evidence.candidatePath});
- const reports=local.units.map(unit=>JSON.parse(employeeUnits.has(unit.id)?employeeUnits.get(unit.id).members.get(`unit-${unit.id}.json`):readFileSync(join(evidence.evidenceDirectory,'unit-'+unit.id,'unit-'+unit.id+'.json'),'utf8')));
- const proofPlan=JSON.parse(readFileSync(join(evidence.evidenceDirectory,'gate-plan/ci-plan.json'),'utf8')),receipt=JSON.parse(readFileSync(join(evidence.evidenceDirectory,'gate-evidence/ci-receipt.json'),'utf8'));
- validateProof({plan:proofPlan,reports,receipt,expectedPlan,p,employeeUnits});
+ const reports=local.units.map(u=>JSON.parse(readFileSync(join(evidence.evidenceDirectory,'unit-'+u.id,'unit-'+u.id+'.json'),'utf8')));
  assertNativeBuildMatches(expectedPlan,reports,build,artifacts.find(a=>a.name===BUILD_ARTIFACT),jobs.find(j=>j.name==='build').id);
  if(!isDeepStrictEqual(build,evidence.build)||cleanHead(controllerRoot)!==p.controller||cleanHead(evidence.candidatePath)!==p.candidate)throw Error('Validated build bytes or canonical source changed');
  return true;

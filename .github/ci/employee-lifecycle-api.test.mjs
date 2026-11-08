@@ -1,8 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
+import {execFileSync} from 'node:child_process';
+import {readFileSync} from 'node:fs';
+import {fileURLToPath} from 'node:url';
+import {EMPLOYEE_LIFECYCLE_CONTROLLER_PATHS} from './employee-lifecycle-sources.mjs';
+import {nativePreparationEnvironment} from './candidate-environment.mjs';
 import {EMPLOYEE_LIFECYCLE_PROFILE} from './employee-lifecycle-profile.mjs';
-import {validateEmployeeLifecycleTransport,readEmployeeLifecycleArchive,employeeLifecycleControllerBlob} from './employee-lifecycle-api.mjs';
+import {validateEmployeeLifecycleTransport,readEmployeeLifecycleArchive,employeeLifecycleControllerBlob,employeeLifecycleGitObject,employeeLifecycleGitTree,readEmployeeLifecycleControllerFacts} from './employee-lifecycle-api.mjs';
 const repository={id:1333414856,full_name:'StradaverseHub/ai-hr'},source='a'.repeat(40),controller='b'.repeat(40);
 function fixture(row=EMPLOYEE_LIFECYCLE_PROFILE.files[0]){
  const descriptor={version:1,profile:'controlled-database-v1',workers:1,isolation:'job-postgres-cluster'};
@@ -36,4 +41,20 @@ test('actual Git blob identity frames byte length, rejects changed content and n
  assert.equal(employeeLifecycleControllerBlob(Buffer.from('abc'),'f2ba8f84ab5c1bce84a7b441cb1959cfc7093b7f'),createHash('sha256').update('abc').digest('hex'));
  assert.equal(employeeLifecycleControllerBlob(Buffer.from('é'),'4b04fff51468d8ab5201ab02b725dc477bc7cb45'),createHash('sha256').update('é').digest('hex'));
  for(const [bytes,blob]of [[Buffer.from('abd'),'f2ba8f84ab5c1bce84a7b441cb1959cfc7093b7f'],[Buffer.alloc(0),'e69de29bb2d1d6434b8b29ae775ad8c2e48c5391'],[Buffer.from('abc'),'0'.repeat(64)],['abc','f2ba8f84ab5c1bce84a7b441cb1959cfc7093b7f']])assert.throws(()=>employeeLifecycleControllerBlob(bytes,blob));
+});
+
+test('controller commit/tree object bytes and every native tree boundary are independently verified',()=>{
+ const blob='f2ba8f84ab5c1bce84a7b441cb1959cfc7093b7f',tree=Buffer.concat([Buffer.from('100644 fixed.mjs\0'),Buffer.from(blob,'hex')]),id=createHash('sha1').update('tree '+tree.length+'\0').update(tree).digest('hex');assert.deepEqual(employeeLifecycleGitObject('tree',tree,id),tree);assert.deepEqual(employeeLifecycleGitTree(tree).get(Buffer.from('fixed.mjs').toString('hex')),{mode:'100644',id:blob});
+ assert.throws(()=>employeeLifecycleGitObject('tree',Buffer.concat([tree,Buffer.from('x')]),id));assert.throws(()=>employeeLifecycleGitObject('blob',tree,id));assert.throws(()=>employeeLifecycleGitObject('tree',tree,'0'.repeat(40)));
+ for(const invalid of [tree.subarray(0,-1),Buffer.concat([tree,tree]),Buffer.concat([Buffer.from('100644 ../foreign\0'),Buffer.from(blob,'hex')]),Buffer.concat([Buffer.from('777777 fixed.mjs\0'),Buffer.from(blob,'hex')]),Buffer.from('100644 incomplete'),Buffer.concat([Buffer.from([0xb1,0x30,0x30,0x36,0x34,0x34,32]),Buffer.from('fixed.mjs\0'),Buffer.from(blob,'hex')])])assert.throws(()=>employeeLifecycleGitTree(invalid));
+});
+
+test('the fixed controller owner binds its actual clean Git commit, descriptors and complete CI closure',()=>{
+ // This is real read-only Git/filesystem I/O in the hosted controller checkout.
+ // It is not API, application, database, host-admission or release evidence.
+ // The separate reviewed PG owner must be integrated before this source check.
+ const root=fileURLToPath(new URL('../../',import.meta.url)).replace(/\/$/,''),head=execFileSync('git',['-C',root,'rev-parse','HEAD'],{env:nativePreparationEnvironment(process.env),encoding:'utf8',timeout:10000,killSignal:'SIGTERM'}).trim(),facts=readEmployeeLifecycleControllerFacts(head);
+ assert.equal(facts.controller,head);assert.deepEqual(Object.keys(facts.sourceHashes),EMPLOYEE_LIFECYCLE_CONTROLLER_PATHS);assert.deepEqual(Object.keys(facts.gitBlobs),EMPLOYEE_LIFECYCLE_CONTROLLER_PATHS);assert.equal(facts.closureSha256,createHash('sha256').update(JSON.stringify(EMPLOYEE_LIFECYCLE_CONTROLLER_PATHS)).digest('hex'));
+ for(const file of EMPLOYEE_LIFECYCLE_CONTROLLER_PATHS)assert.equal(facts.sourceHashes[file],createHash('sha256').update(readFileSync(root+'/'+file)).digest('hex'));
+ assert.throws(()=>readEmployeeLifecycleControllerFacts('0'.repeat(40)));
 });

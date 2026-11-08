@@ -7,7 +7,7 @@ import {join} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {buildUnits,CI_EXECUTION} from './manifest.mjs';
 import {protocolHash,singletonDescriptor,singletonKind,singletonSources} from './singleton-protocol.mjs';
-import {employeeLifecycleMatrixRow} from './employee-lifecycle-profile.mjs';
+import {EMPLOYEE_LIFECYCLE_PROFILE,employeeLifecycleMatrixRow} from './employee-lifecycle-profile.mjs';
 import {COMMISSION_TITLE,commissioningIntent,selectCommissioning,summarizeCommissioning} from './singleton-commissioning.mjs';
 const browser=['test/fictional.browser.test.tsx'];
 function fixture(file='test/runtime-ready-admission-native.test.ts'){
@@ -141,4 +141,14 @@ test('native hybrid commissioning consumes one canonical build while ordinary un
  assert(captureAt>=0&&classifyAt>captureAt,'Retained installation capture must precede candidate classification');
  assert(owner.includes('delete env.GH_TOKEN;delete env.GITHUB_TOKEN'));
  assert(owner.includes("nativeNextUnit(unit)?'native-test':'test'"));
+});
+
+test('the real matrix subprocess derives every one of the five lifecycle hints from complete registered units',()=>{
+ const files=EMPLOYEE_LIFECYCLE_PROFILE.files.map(row=>row.file),suite=[...files,'test/ordinary.test.ts'],units=buildUnits(suite,{db:files,nodb:['test/ordinary.test.ts']},browser),ordinary=fixture();
+ const body={...ordinary.plan,suite,units,singletonSources:Object.fromEntries(units.filter(unit=>unit.singleton).map(unit=>[unit.id,Object.fromEntries(singletonSources(unit).map(file=>[file,'e'.repeat(64)]))]))};delete body.fingerprint;const planValue={...body,fingerprint:protocolHash(body)};
+ const directory=mkdtempSync(join(tmpdir(),'employee-matrix-model-'));try{
+  const event=join(directory,'event.json'),plan=join(directory,'plan.json'),output=join(directory,'output'),selection=join(directory,'selection.json'),bytes=JSON.stringify(planValue);writeFileSync(plan,bytes);writeFileSync(event,JSON.stringify({inputs:{}}));writeFileSync(output,'');
+  const child=spawnSync(process.execPath,[fileURLToPath(new URL('./singleton-commissioning.mjs',import.meta.url)),'matrix',plan,selection],{encoding:'utf8',timeout:5000,env:{...process.env,GITHUB_EVENT_PATH:event,GITHUB_EVENT_NAME:'workflow_dispatch',GITHUB_RUN_ATTEMPT:'1',GITHUB_OUTPUT:output}});assert.equal(child.status,0,child.stderr);assert.equal(readFileSync(plan,'utf8'),bytes);
+  const matrix=JSON.parse(readFileSync(output,'utf8').split('\n').find(line=>line.startsWith('test_matrix=')).slice('test_matrix='.length));assert.equal(matrix.include.filter(row=>row.employeeLifecycle).length,5);assert.deepEqual(matrix.include,units.filter(unit=>unit.kind!=='browser').map(employeeLifecycleMatrixRow));assert.equal(matrix.include.filter(row=>!row.employeeLifecycle).length,1);
+ }finally{rmSync(directory,{recursive:true,force:true});}
 });
