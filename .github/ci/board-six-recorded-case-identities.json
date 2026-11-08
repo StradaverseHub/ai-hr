@@ -1,0 +1,40 @@
+[
+  {
+    "path": "test/microsoft365-smtp.test.ts",
+    "originalRunId": 42513131432,
+    "replacementRunId": 42515576720,
+    "testSourceSha256": "f7b3440d66f5ad7dcc1e4dcda41fe377ce210e0178bc5ea1eaa8852da11ceb94",
+    "mappings": [
+      {
+        "original": "Microsoft 365 application SMTP credentials rejects malformed or redirected application configuration: {\"oauth2\":{\"tenantId\":\"../common\",\"clientId\":\"a1f71c77-e97c-4b8d-b3ca-51289ffffc67\"}}",
+        "replacement": "Microsoft 365 application SMTP credentials rejects malformed or redirected application configuration: {\"oauth2\":{\"tenantId\":\"../common\",\"clientId\":\"ff6979a3-ec50-40e4-a219-1e003af03562\"}}"
+      }
+    ],
+    "caseCount": 21,
+    "originalCasesHash": "768ac37887f203b5961c1258108e3b8d1ce08d1ea9226df770ce7f1629f9b42a",
+    "replacementCasesHash": "34f30f00fc02858001fb686c834b59d05b78a1f921aff96c45bf2dd10ad52103"
+  },
+  {
+    "path": "test/mobile-company-connection.test.ts",
+    "originalRunId": 42513131432,
+    "replacementRunId": 42515576720,
+    "testSourceSha256": "d35483ad86af3990943e6ef4c70cc8be5510abc90e6567a8901985fd199cab3a",
+    "mappings": [
+      {
+        "original": "trusted mobile company profiles refuses unsupported, expired or unsafe profile {\"expiresAt\":1794165070}",
+        "replacement": "trusted mobile company profiles refuses unsupported, expired or unsafe profile {\"expiresAt\":1794166503}"
+      },
+      {
+        "original": "trusted mobile company profiles refuses unsupported, expired or unsafe profile {\"expiresAt\":1828725071}",
+        "replacement": "trusted mobile company profiles refuses unsupported, expired or unsafe profile {\"expiresAt\":1828726504}"
+      },
+      {
+        "original": "trusted mobile company profiles refuses unsupported, expired or unsafe profile {\"notBefore\":1794165131}",
+        "replacement": "trusted mobile company profiles refuses unsupported, expired or unsafe profile {\"notBefore\":1794166564}"
+      }
+    ],
+    "caseCount": 32,
+    "originalCasesHash": "3e5d0dbdc86307493ea65a717a9a8b9fb421ee2622f6aff02d59c6cb7a5f04aa",
+    "replacementCasesHash": "b74d9dbc8eaac7cf89f4512025dc5b0ae4ac1c89427e3c485f2a54bb7115216c"
+  }
+]

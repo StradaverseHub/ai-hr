@@ -1,7 +1,8 @@
 import test from 'node:test';
+import {readFileSync} from 'node:fs';
 import assert from 'node:assert/strict';
 import {execFileSync} from 'node:child_process';
-import {SIX_METADATA_PROFILE as P,validateSixMetadataDelta,validateSixMetadataContext,validateSixQueueOnlyCancellation,SIX_QUEUE_ONLY_IDS,METADATA_RECOVERY_POLICY,validateSixMetadataCertificate} from './board-six-metadata-recovery.mjs';
+import {SIX_METADATA_PROFILE as P,validateSixMetadataDelta,validateSixMetadataContext,validateSixQueueOnlyCancellation,SIX_QUEUE_ONLY_IDS,METADATA_RECOVERY_POLICY,validateSixMetadataCertificate,validateSixRecordedCaseIdentity} from './board-six-metadata-recovery.mjs';
 import {repairDisposition} from './repair-recovery-policy.mjs';
 import {hash} from './manifest.mjs';
 const facts=()=>{const {seeds,...f}=P;return structuredClone(f);};
@@ -20,7 +21,8 @@ test('six observed queue cancellations remain cancelled with independently authe
 for(const [name,change] of [['executed job',x=>x.jobs=[{name:'selected-tests'}]],['unlisted run',x=>x.run.id=1],['real failed process',x=>x.run.conclusion='failure'],['rerun',x=>x.run.run_attempt=2],['foreign repository',x=>x.run.repository.id=1],['wrong controller',x=>x.run.head_sha='a'.repeat(40)]])test('queue observation refuses '+name,()=>{const x=cancellation();change(x);assert.throws(()=>validateSixQueueOnlyCancellation(x));});
 test('metadata grant certificate cannot omit queue failures or substitute another source',()=>{
  const c={recoveryPolicy:METADATA_RECOVERY_POLICY,originalSha:P.original,sha:P.candidate,disposition:{metadataProfile:binding()},history:{queueOnlyCancellations:SIX_QUEUE_ONLY_IDS.map(runId=>({runId,conclusion:'cancelled',executedJobs:0,metadataFingerprint:'a'.repeat(64)}))}};
- assert.doesNotThrow(()=>validateSixMetadataCertificate(c));for(const change of [x=>x.sha='f'.repeat(40),x=>x.history.queueOnlyCancellations.pop(),x=>x.history.queueOnlyCancellations[0].executedJobs=1,x=>x.disposition.metadataProfile.seeds=[]]){const x=structuredClone(c);change(x);assert.throws(()=>validateSixMetadataCertificate(x));}
+ const fixtures=JSON.parse(readFileSync(new URL('./testdata/board-six-recorded-case-inventories.json',import.meta.url),'utf8'));c.units=[{kind:'repaired-source',files:fixtures.map(r=>({path:r.path,runId:r.replacementRunId,cases:r.replacementCases,recordedCaseIdentity:validateSixRecordedCaseIdentity({...r,originalSha:P.original,candidate:P.candidate})}))}];
+ assert.doesNotThrow(()=>validateSixMetadataCertificate(c));for(const change of [x=>x.sha='f'.repeat(40),x=>x.history.queueOnlyCancellations.pop(),x=>x.history.queueOnlyCancellations[0].executedJobs=1,x=>x.disposition.metadataProfile.seeds=[],x=>x.units[0].files.pop(),x=>x.units[0].files[0].recordedCaseIdentity.record.caseCount++]){const x=structuredClone(c);change(x);assert.throws(()=>validateSixMetadataCertificate(x));}
 });
 import {buildUnits,CI_EXECUTION} from './manifest.mjs';
 import {validateRepairDelta,validateLatestRepairHistory} from './repair-recovery.mjs';
@@ -45,4 +47,5 @@ if(process.env.AIHR_SIX_METADATA_GIT_AUDIT==='1')test('actual committed six-file
  assert.equal(old.replace(oldInsert,replacement),current,'SQL must only add three public literal catalogue rows');
  assert.equal(git('diff',P.original,P.candidate,'--','app','components','core','lib','packs','package.json','pnpm-lock.yaml','.github','db/schema','db/migrations/meta'),'','Runtime, schema, journal and CI inputs must remain unchanged');
  const modified=git('diff','--name-only',P.original,P.candidate,'--','db/migrations').trim().split('\n');assert.deepEqual(modified,[sql]);
+ const records=JSON.parse(readFileSync(new URL('./board-six-recorded-case-identities.json',import.meta.url),'utf8'));for(const r of records){const oldSource=git('show',P.original+':'+r.path),newSource=git('show',P.candidate+':'+r.path);assert.equal(oldSource,newSource,'Dynamic-name test source changed');assert.equal(hash(oldSource),r.testSourceSha256,'Dynamic-name test source hash differs');}
 });

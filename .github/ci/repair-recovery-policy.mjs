@@ -1,6 +1,6 @@
 /** Cross-source v2 accounting. API/archive/source authentication belongs to the adapter. */
 import assert from 'node:assert/strict';
-import {METADATA_RECOVERY_POLICY,validateSixMetadataContext,validateSixMetadataCertificate} from './board-six-metadata-recovery.mjs';
+import {METADATA_RECOVERY_POLICY,validateSixMetadataContext,validateSixMetadataCertificate,validateSixRecordedCaseIdentity} from './board-six-metadata-recovery.mjs';
 import {isDeepStrictEqual} from 'node:util';
 import {relative} from 'node:path';
 import {hash,requiredEvidence} from './manifest.mjs';
@@ -119,7 +119,7 @@ export function verifyRepairRecovery({sourcePlan,plan,assessment,sourceRun,repor
   same(report.files,u.files,'Original process coverage changed');const originals=new Map();
   for(const batch of report.batches??[]){const files=(batch.result?.testResults??[]).map(f=>relative(report.cwd,f.name).split('\\').join('/'));assert(files.length>0&&files.every(p=>u.files.includes(p)),'Original batch has foreign coverage');const names=caseInventory(batch.result,files,report.cwd,{passing:false});for(const [path,cases] of names){assert(!originals.has(path),'Duplicate original assertion file');originals.set(path,cases);}}
   assert(originals.size===u.files.length,'Original failed/affected process did not enumerate every file');let count=0;const files=[];
-  for(const path of u.files){const replacement=replacements.get(path);assert(replacement,'Missing failed/affected file: '+path);same(replacement.cases,originals.get(path),'Dropped/changed original assertions');count+=replacement.cases.length;files.push({path,...replacement});}
+  for(const path of u.files){const replacement=replacements.get(path);assert(replacement,'Missing failed/affected file: '+path);let recordedCaseIdentity=null;if(disposition.metadataProfile&&!isDeepStrictEqual(replacement.cases,originals.get(path)))recordedCaseIdentity=validateSixRecordedCaseIdentity({path,originalCases:originals.get(path),replacementCases:replacement.cases,originalRunId:sourceRun.id,replacementRunId:replacement.runId,originalSha:sourcePlan.sha,candidate:plan.sha});else same(replacement.cases,originals.get(path),'Dropped/changed original assertions');count+=replacement.cases.length;files.push({path,...replacement,...(recordedCaseIdentity?{recordedCaseIdentity}:{})});}
   tests+=count;units.push({id:u.id,kind:'repaired-source',originalReportHash:hash(report),tests:count,files});
  }
  assert(replacements.size===plan.units.filter(u=>fresh.has(u.id)).reduce((n,u)=>n+u.files.length,0),'Incomplete or excessive replacement coverage');
