@@ -216,8 +216,13 @@ remain mandatory. The intentional rollback sentinel and all three complete
 cases, fixtures, statements, query/DTO parity, plan limits and resources remain
 whole. No product/global JIT, cap, model or controller changes or relaxed guard.
 Original failed run/sole artifact f9a8a1286299f6506ce556adc3872f0181110af19f07af353ebf5847ba05a32f
-and receipt42d18c5106d684b1a590263e29d3b4d25a0e49b78aeb964877f8156538d2714a
-are retained; they contain zero paired module samples and zero JIT plans.
+and raw module-read-jit-diagnostic.json (10931bytes, SHA256
+230ed44ba3f3ff8eaf2a03787857c0dba172a4b4768721db00a6bfdf874fdc03) are retained.
+The separate private operator authentication Markdown
+aihr-module-jit-diagnostic-receipt-42493362600.md (4299bytes) has SHA256
+42d18c5106d684b1a590263e29d3b4d25a0e49b78aeb964877f8156538d2714a;
+that Markdown digest is not the raw JSON digest. No paired module samples or JIT
+plans were produced.
 Reference: https://raw.githubusercontent.com/postgres/postgres/REL_16_15/src/backend/jit/jit.c
 This source-only correction needs root+independent affectedFULL review before
 publication and any separately authorized hosted diagnostic. No local native
