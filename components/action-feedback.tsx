@@ -1,6 +1,6 @@
 'use client';
 
-import {createContext,useCallback,useContext,useEffect,useRef,useState,type ReactNode} from 'react';
+import {createContext,useCallback,useContext,useEffect,useMemo,useRef,useState,type ReactNode} from 'react';
 import {useTranslations} from 'next-intl';
 import {registerUnsavedGuard} from '@/lib/unsaved-changes';
 
@@ -15,9 +15,9 @@ export function ActionFeedbackProvider({children}:{children:ReactNode}) {
  const t=useTranslations('common.actionFeedback');
  const [actions,setActions]=useState(new Map<symbol,Pending>());
  const current=useRef(actions);current.current=actions;
- const labels=Object.fromEntries(Object.keys(fallback).map(key=>[key,t(key)])) as Labels;
+ const labels=useMemo(()=>Object.fromEntries(Object.keys(fallback).map(key=>[key,t(key)])) as Labels,[t]);
  const labelRef=useRef(labels);labelRef.current=labels;
- const register=useCallback((id:symbol,value:Pending|null)=>setActions(previous=>{const next=new Map(previous);if(value)next.set(id,value);else next.delete(id);return next;}),[]);
+ const register=useCallback((id:symbol,value:Pending|null)=>setActions(previous=>{if(!value&&!previous.has(id))return previous;const next=new Map(previous);if(value)next.set(id,value);else next.delete(id);return next;}),[]);
  useEffect(()=>{
   const pending=()=>[...current.current.values()].some(action=>action.important);
   const before=(event:BeforeUnloadEvent)=>{if(pending()){event.preventDefault();event.returnValue='';}};
@@ -45,7 +45,8 @@ export function ActionFeedbackProvider({children}:{children:ReactNode}) {
   return()=>{unregister();window.removeEventListener('beforeunload',before);document.removeEventListener('click',click,true);document.removeEventListener('submit',submit,true);};
  },[]);
  const last=[...actions.values()].at(-1);
- return <Context.Provider value={{labels,register}}>{children}<div className="action-feedback-announcement" role="status" aria-live="polite" aria-atomic="true">{last?.message??''}</div></Context.Provider>;
+ const context=useMemo(()=>({labels,register}),[labels,register]);
+ return <Context.Provider value={context}>{children}<div className="action-feedback-announcement" role="status" aria-live="polite" aria-atomic="true">{last?.message??''}</div></Context.Provider>;
 }
 
 export function useActionFeedbackLabels(){return useContext(Context).labels;}
