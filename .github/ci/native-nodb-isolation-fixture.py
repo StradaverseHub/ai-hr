@@ -37,6 +37,9 @@ SAFE = {'PATH': '/usr/sbin:/usr/bin:/sbin:/bin', 'LANG': 'C.UTF-8', 'LC_ALL': 'C
 SECRET_KEYS = frozenset({'GH_TOKEN', 'GITHUB_TOKEN', 'ACTIONS_RUNTIME_TOKEN',
                          'ACTIONS_ID_TOKEN_REQUEST_TOKEN'})
 MAX = 8 * 1024**2
+NODE_VENDOR_SOURCE = Path('/opt/hostedtoolcache/node/22.23.3/x64/bin/node')
+NODE_VENDOR_BYTES = 124827920
+NODE_VENDOR_SHA256 = 'fde6a4bf8d0562f7751d1a2d6cb9b417c4cfe107bbcb0aa3e9a24e125e348f48'
 
 
 def need(ok):
@@ -639,6 +642,102 @@ def run_role(root, operation):
     return json.loads(output)
 
 
+def protect_vendor_node(root, anchor):
+    """One fixed public transfer path; only immutable vendor bytes may publish.
+
+    Source/K custody still uses bootstrap_read. No writable cache ancestor is
+    executable authority, no caller supplies a path/hash/FD, and no network runs.
+    """
+    need(os.geteuid() == 0 and not SECRET_KEYS.intersection(os.environ))
+    started = time.monotonic_ns()
+    work_end, settle_end = started + 10 * 10**9, started + 16 * 10**9
+    need(started + (16 + 10 + 120) * 10**9 < int(anchor['startNs']) + 1800 * 10**9)
+    descriptors = []
+    negative_path = root / 'private/node-altered-copy'
+
+    def node_budget():
+        need(time.monotonic_ns() <= work_end)
+
+    def node_identity(info):
+        return (info.st_dev, info.st_ino, info.st_mode, info.st_uid, info.st_gid,
+                info.st_nlink, info.st_size, info.st_mtime_ns, info.st_ctime_ns)
+
+    def copy_node(source_fd, destination_fd, *, altered=False):
+        before = node_identity(os.fstat(source_fd))
+        os.lseek(source_fd, 0, os.SEEK_SET)
+        count, changed = 0, False
+        checksum = hashlib.sha256()
+        while True:
+            node_budget()
+            part = os.read(source_fd, min(1024**2, NODE_VENDOR_BYTES + 1 - count))
+            if not part:
+                break
+            need(count + len(part) <= NODE_VENDOR_BYTES)
+            if altered and count <= 4096 < count + len(part):
+                offset = 4096 - count
+                part = part[:offset] + bytes([part[offset] ^ 1]) + part[offset + 1:]
+                changed = True
+            checksum.update(part)
+            view = memoryview(part)
+            while view:
+                node_budget(); written = os.write(destination_fd, view)
+                need(written > 0); view = view[written:]
+            count += len(part)
+        need(count == NODE_VENDOR_BYTES and changed is altered
+             and node_identity(os.fstat(source_fd)) == before)
+        return checksum.hexdigest()
+
+    def node_is_vendor(fd):
+        before = os.fstat(fd)
+        need(stat.S_ISREG(before.st_mode) and before.st_uid == 0 and before.st_nlink == 1
+             and before.st_size == NODE_VENDOR_BYTES and stat.S_IMODE(before.st_mode) == 0)
+        os.lseek(fd, 0, os.SEEK_SET)
+        header = os.read(fd, 64)
+        need(len(header) == 64 and header[:6] == b'\x7fELF\x02\x01' and int.from_bytes(header[18:20], 'little') == 62)
+        os.lseek(fd, 0, os.SEEK_SET)
+        count, checksum = 0, hashlib.sha256()
+        while True:
+            node_budget(); part = os.read(fd, min(1024**2, NODE_VENDOR_BYTES + 1 - count))
+            if not part:
+                break
+            count += len(part); need(count <= NODE_VENDOR_BYTES); checksum.update(part)
+        need(count == NODE_VENDOR_BYTES and node_identity(before) == node_identity(os.fstat(fd)))
+        return checksum.hexdigest() == NODE_VENDOR_SHA256
+
+    try:
+        source = os.open(NODE_VENDOR_SOURCE, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+        descriptors.append(source)
+        before = os.fstat(source)
+        need(stat.S_ISREG(before.st_mode) and before.st_nlink == 1 and before.st_size == NODE_VENDOR_BYTES)
+        need(node_identity(before) == node_identity(NODE_VENDOR_SOURCE.lstat()))
+        destination = os.open(root / 'node', os.O_RDWR | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0)
+        descriptors.append(destination)
+        need(copy_node(source, destination) == NODE_VENDOR_SHA256)
+        need(node_identity(before) == node_identity(os.fstat(source)) == node_identity(NODE_VENDOR_SOURCE.lstat()))
+        node_budget(); os.fsync(destination); need(node_is_vendor(destination))
+        negative = os.open(negative_path, os.O_RDWR | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0)
+        descriptors.append(negative)
+        need(copy_node(destination, negative, altered=True) != NODE_VENDOR_SHA256)
+        node_budget(); os.fsync(negative)
+        # Same exact-size/ELF/identity validator; only the pinned SHA must refuse.
+        need(node_is_vendor(negative) is False and stat.S_IMODE(os.fstat(negative).st_mode) == 0)
+        need(node_identity(os.fstat(negative)) == node_identity(negative_path.lstat()))
+        os.unlink(negative_path)  # Sole owned non-executable control; never publish.
+        node_budget(); os.fchmod(destination, 0o555); os.fsync(destination); node_budget()
+        published = os.fstat(destination)
+        need(published.st_uid == 0 and published.st_nlink == 1 and stat.S_IMODE(published.st_mode) == 0o555
+             and node_identity(published) == node_identity((root / 'node').lstat()))
+        write_new(root / 'private/node-vendor-controls.json', canonical({
+            'kind': 'PINNED_NODE_VENDOR_BYTES_BEFORE_HOOKS', 'bytes': NODE_VENDOR_BYTES,
+            'vendorSha256': NODE_VENDOR_SHA256, 'positiveHeldCopyVerified': True,
+            'equalSizeAlteredCopyRejectedBySha': True, 'alteredCopyNeverExecutableOrPublished': True,
+            'rootProtectedBeforeHooks': True, 'releaseAuthorized': False}))
+    finally:
+        for descriptor in reversed(descriptors):
+            os.close(descriptor)
+        need(time.monotonic_ns() <= settle_end)
+
+
 def prepare():
     need(os.geteuid() == 0 and os.environ.get('GITHUB_ACTIONS') == 'true'
          and os.environ.get('RUNNER_ENVIRONMENT') == 'github-hosted'
@@ -679,12 +778,10 @@ def prepare():
     for name, relative in CODE.items():
         raw = bootstrap_read(source / relative, 1024**2, runner)
         write_new(root / name, raw, 0o444); code[name] = {'bytes': len(raw), 'sha256': digest(raw)}
-    node = Path('/opt/hostedtoolcache/node/22.23.3/x64/bin/node')
-    raw = bootstrap_read(node, 256 * 1024**2, runner); need(raw.startswith(b'\x7fELF'))
-    write_new(root / 'node', raw, 0o555)
+    protect_vendor_node(root, anchor)
     state = {'run': os.environ['GITHUB_RUN_ID'], 'sourceSha': os.environ['GITHUB_SHA'], 'source': str(source),
              'runner': runner, 'runnerGid': int(os.environ['SUDO_GID']), 'uid': UID, 'gid': GID,
-             'code': code, 'nodeSha256': digest(raw), 'anchorNs': anchor['startNs'], 'bootId': anchor['bootId'],
+             'code': code, 'nodeSha256': NODE_VENDOR_SHA256, 'anchorNs': anchor['startNs'], 'bootId': anchor['bootId'],
              'startedNs': str(time.monotonic_ns())}
     write_new(root / 'private/state.json', canonical(state))
     os.execve('/usr/bin/python3', ['/usr/bin/python3', '-I', '-B', str(root / 'fixture.py'), 'allocate'],
@@ -760,6 +857,7 @@ def custody(root, state):
         report = {'kind': 'ACTUAL_DEDICATED_UID_ISOLATION_COMPONENT_ONLY', 'run': state['run'], 'source': state['sourceSha'],
                   'hooksSettledBeforeTokenStep': True, 'actualTokenEnvironmentPresent': True,
                   'credentialBearingAncestorTargets': len(targets), 'result': row,
+                  'nodeVendorControls': json.loads(secure_read(root / 'private/node-vendor-controls.json', 65536)),
                   'allocationControls': json.loads(secure_read(root / 'private/allocation-controls.json', 65536)),
                   'nativeRootFailureControl': hooks_packet['rows'][0],
                   'rootRoleClosures': [json.loads(secure_read(root / ('private/' + operation + '.role-closed.json'), 65536))
@@ -909,7 +1007,7 @@ def main():
 
 # Immutable source symbols only. This is failure-location data, never a cause
 # assertion, trace rendering, exception message, executable source or authority.
-FAILURE_FUNCTIONS = frozenset(('<dictcomp>', '<genexpr>', '<lambda>', '<listcomp>', '<module>', '<setcomp>', 'Capabilities', 'Header', 'Iovec', 'RootFamily', '__init__', 'allocate', 'allocation_controls', 'bind', 'bootstrap_read', 'canonical', 'capture', 'close', 'custody', 'digest', 'exited', 'failure_locations', 'finish', 'hooks', 'identity_actors', 'kernel', 'load_state', 'main', 'need', 'prepare', 'probe', 'process', 'publish', 'refused', 'require_identity_free', 'restrict', 'restricted', 'restricted_status', 'root_fault', 'root_for_run', 'run_role', 'secure_read', 'settle', 'spawn', 'supervise', 'uid_actors', 'value_refused', 'wait', 'write_new'))
+FAILURE_FUNCTIONS = frozenset(('<dictcomp>', '<genexpr>', '<lambda>', '<listcomp>', '<module>', '<setcomp>', 'Capabilities', 'Header', 'Iovec', 'RootFamily', '__init__', 'allocate', 'allocation_controls', 'bind', 'bootstrap_read', 'canonical', 'capture', 'close', 'copy_node', 'custody', 'digest', 'exited', 'failure_locations', 'finish', 'hooks', 'identity_actors', 'kernel', 'load_state', 'main', 'need', 'node_budget', 'node_identity', 'node_is_vendor', 'prepare', 'probe', 'process', 'protect_vendor_node', 'publish', 'refused', 'require_identity_free', 'restrict', 'restricted', 'restricted_status', 'root_fault', 'root_for_run', 'run_role', 'secure_read', 'settle', 'spawn', 'supervise', 'uid_actors', 'value_refused', 'wait', 'write_new'))
 FAILURE_BUILTINS = (ValueError, OSError, FileNotFoundError, ProcessLookupError,
                     PermissionError, TimeoutError, KeyError, TypeError, AssertionError,
                     RuntimeError, OverflowError, MemoryError, RecursionError, ImportError,

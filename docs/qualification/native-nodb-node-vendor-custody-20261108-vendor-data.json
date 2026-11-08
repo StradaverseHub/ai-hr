@@ -1,0 +1,35 @@
+{
+  "kind": "PUBLIC_VENDOR_PACKAGE_DATA_NOT_NATIVE_EXECUTION",
+  "packages": [
+    {
+      "archive": "node-v22.23.3-linux-x64.tar.xz",
+      "archiveBytes": 31001304,
+      "archiveSha256": "df450af89261115ef9f9e3830c3eeb2cc9213b63c720b1af623cb5dcbe2e02de",
+      "member": "node-v22.23.3-linux-x64/bin/node",
+      "nodeBytes": 124827920,
+      "nodeSha256": "fde6a4bf8d0562f7751d1a2d6cb9b417c4cfe107bbcb0aa3e9a24e125e348f48",
+      "elfClass": 2,
+      "elfEndian": 1,
+      "elfMachine": 62
+    },
+    {
+      "archive": "actions-node-22.23.3-linux-x64.tar.gz",
+      "archiveBytes": 57187711,
+      "archiveSha256": "cf9cfe18f485ac615fbc237e269549f4014fd843395568cf81698ce1903e9bcf",
+      "member": "./bin/node",
+      "nodeBytes": 124827920,
+      "nodeSha256": "fde6a4bf8d0562f7751d1a2d6cb9b417c4cfe107bbcb0aa3e9a24e125e348f48",
+      "elfClass": 2,
+      "elfEndian": 1,
+      "elfMachine": 62
+    }
+  ],
+  "officialShasums": "https://nodejs.org/download/release/v22.23.3/SHASUMS256.txt",
+  "actionsRelease": "https://github.com/actions/node-versions/releases/tag/22.23.3-35947643734",
+  "actionsReleaseId": 395260154,
+  "actionsLinuxAssetId": 585003209,
+  "approvedPlanSha256": "74bf3331fe7a7b76875a53d3f75441f4d401aa18ca5b708db0cae04cd71c011f",
+  "archiveBytesInspected": true,
+  "binaryExecuted": false,
+  "pgpSignatureVerified": false
+}

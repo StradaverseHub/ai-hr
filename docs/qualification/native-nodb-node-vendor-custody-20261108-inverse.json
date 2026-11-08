@@ -1,0 +1,163 @@
+{
+  "kind": "EXACT_LINE_EDITS_WHOLE_D5AA_RECONSTRUCTION",
+  "parent": "d5aa8b221c090cfbb1390ce2111513ffa302a88d",
+  "path": ".github/ci/native-nodb-isolation-fixture.py",
+  "parentBlob": "3c36dffd692be453ff84e6dbddce65e18f252805",
+  "parentSha256": "0ef9f84e8749637521ab0fd2b362c0761a53ff5647a18d2fee0e9d55b6ca58d3",
+  "currentSha256": "0c7aa836dba2d14e8e94865304469d8bbe9f9c9317604abf5220002c7b799751",
+  "reverseLineEdits": [
+    {
+      "currentStartLine": 40,
+      "currentLines": [
+        "NODE_VENDOR_SOURCE = Path('/opt/hostedtoolcache/node/22.23.3/x64/bin/node')\n",
+        "NODE_VENDOR_BYTES = 124827920\n",
+        "NODE_VENDOR_SHA256 = 'fde6a4bf8d0562f7751d1a2d6cb9b417c4cfe107bbcb0aa3e9a24e125e348f48'\n"
+      ],
+      "parentLines": []
+    },
+    {
+      "currentStartLine": 645,
+      "currentLines": [
+        "def protect_vendor_node(root, anchor):\n",
+        "    \"\"\"One fixed public transfer path; only immutable vendor bytes may publish.\n",
+        "\n",
+        "    Source/K custody still uses bootstrap_read. No writable cache ancestor is\n",
+        "    executable authority, no caller supplies a path/hash/FD, and no network runs.\n",
+        "    \"\"\"\n",
+        "    need(os.geteuid() == 0 and not SECRET_KEYS.intersection(os.environ))\n",
+        "    started = time.monotonic_ns()\n",
+        "    work_end, settle_end = started + 10 * 10**9, started + 16 * 10**9\n",
+        "    need(started + (16 + 10 + 120) * 10**9 < int(anchor['startNs']) + 1800 * 10**9)\n",
+        "    descriptors = []\n",
+        "    negative_path = root / 'private/node-altered-copy'\n",
+        "\n",
+        "    def node_budget():\n",
+        "        need(time.monotonic_ns() <= work_end)\n",
+        "\n",
+        "    def node_identity(info):\n",
+        "        return (info.st_dev, info.st_ino, info.st_mode, info.st_uid, info.st_gid,\n",
+        "                info.st_nlink, info.st_size, info.st_mtime_ns, info.st_ctime_ns)\n",
+        "\n",
+        "    def copy_node(source_fd, destination_fd, *, altered=False):\n",
+        "        before = node_identity(os.fstat(source_fd))\n",
+        "        os.lseek(source_fd, 0, os.SEEK_SET)\n",
+        "        count, changed = 0, False\n",
+        "        checksum = hashlib.sha256()\n",
+        "        while True:\n",
+        "            node_budget()\n",
+        "            part = os.read(source_fd, min(1024**2, NODE_VENDOR_BYTES + 1 - count))\n",
+        "            if not part:\n",
+        "                break\n",
+        "            need(count + len(part) <= NODE_VENDOR_BYTES)\n",
+        "            if altered and count <= 4096 < count + len(part):\n",
+        "                offset = 4096 - count\n",
+        "                part = part[:offset] + bytes([part[offset] ^ 1]) + part[offset + 1:]\n",
+        "                changed = True\n",
+        "            checksum.update(part)\n",
+        "            view = memoryview(part)\n",
+        "            while view:\n",
+        "                node_budget(); written = os.write(destination_fd, view)\n",
+        "                need(written > 0); view = view[written:]\n",
+        "            count += len(part)\n",
+        "        need(count == NODE_VENDOR_BYTES and changed is altered\n",
+        "             and node_identity(os.fstat(source_fd)) == before)\n",
+        "        return checksum.hexdigest()\n",
+        "\n",
+        "    def node_is_vendor(fd):\n",
+        "        before = os.fstat(fd)\n",
+        "        need(stat.S_ISREG(before.st_mode) and before.st_uid == 0 and before.st_nlink == 1\n",
+        "             and before.st_size == NODE_VENDOR_BYTES and stat.S_IMODE(before.st_mode) == 0)\n",
+        "        os.lseek(fd, 0, os.SEEK_SET)\n",
+        "        header = os.read(fd, 64)\n",
+        "        need(len(header) == 64 and header[:6] == b'\\x7fELF\\x02\\x01' and int.from_bytes(header[18:20], 'little') == 62)\n",
+        "        os.lseek(fd, 0, os.SEEK_SET)\n",
+        "        count, checksum = 0, hashlib.sha256()\n",
+        "        while True:\n",
+        "            node_budget(); part = os.read(fd, min(1024**2, NODE_VENDOR_BYTES + 1 - count))\n",
+        "            if not part:\n",
+        "                break\n",
+        "            count += len(part); need(count <= NODE_VENDOR_BYTES); checksum.update(part)\n",
+        "        need(count == NODE_VENDOR_BYTES and node_identity(before) == node_identity(os.fstat(fd)))\n",
+        "        return checksum.hexdigest() == NODE_VENDOR_SHA256\n",
+        "\n",
+        "    try:\n",
+        "        source = os.open(NODE_VENDOR_SOURCE, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)\n",
+        "        descriptors.append(source)\n",
+        "        before = os.fstat(source)\n",
+        "        need(stat.S_ISREG(before.st_mode) and before.st_nlink == 1 and before.st_size == NODE_VENDOR_BYTES)\n",
+        "        need(node_identity(before) == node_identity(NODE_VENDOR_SOURCE.lstat()))\n",
+        "        destination = os.open(root / 'node', os.O_RDWR | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0)\n",
+        "        descriptors.append(destination)\n",
+        "        need(copy_node(source, destination) == NODE_VENDOR_SHA256)\n",
+        "        need(node_identity(before) == node_identity(os.fstat(source)) == node_identity(NODE_VENDOR_SOURCE.lstat()))\n",
+        "        node_budget(); os.fsync(destination); need(node_is_vendor(destination))\n",
+        "        negative = os.open(negative_path, os.O_RDWR | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0)\n",
+        "        descriptors.append(negative)\n",
+        "        need(copy_node(destination, negative, altered=True) != NODE_VENDOR_SHA256)\n",
+        "        node_budget(); os.fsync(negative)\n",
+        "        # Same exact-size/ELF/identity validator; only the pinned SHA must refuse.\n",
+        "        need(node_is_vendor(negative) is False and stat.S_IMODE(os.fstat(negative).st_mode) == 0)\n",
+        "        need(node_identity(os.fstat(negative)) == node_identity(negative_path.lstat()))\n",
+        "        os.unlink(negative_path)  # Sole owned non-executable control; never publish.\n",
+        "        node_budget(); os.fchmod(destination, 0o555); os.fsync(destination); node_budget()\n",
+        "        published = os.fstat(destination)\n",
+        "        need(published.st_uid == 0 and published.st_nlink == 1 and stat.S_IMODE(published.st_mode) == 0o555\n",
+        "             and node_identity(published) == node_identity((root / 'node').lstat()))\n",
+        "        write_new(root / 'private/node-vendor-controls.json', canonical({\n",
+        "            'kind': 'PINNED_NODE_VENDOR_BYTES_BEFORE_HOOKS', 'bytes': NODE_VENDOR_BYTES,\n",
+        "            'vendorSha256': NODE_VENDOR_SHA256, 'positiveHeldCopyVerified': True,\n",
+        "            'equalSizeAlteredCopyRejectedBySha': True, 'alteredCopyNeverExecutableOrPublished': True,\n",
+        "            'rootProtectedBeforeHooks': True, 'releaseAuthorized': False}))\n",
+        "    finally:\n",
+        "        for descriptor in reversed(descriptors):\n",
+        "            os.close(descriptor)\n",
+        "        need(time.monotonic_ns() <= settle_end)\n",
+        "\n",
+        "\n"
+      ],
+      "parentLines": []
+    },
+    {
+      "currentStartLine": 781,
+      "currentLines": [
+        "    protect_vendor_node(root, anchor)\n"
+      ],
+      "parentLines": [
+        "    node = Path('/opt/hostedtoolcache/node/22.23.3/x64/bin/node')\n",
+        "    raw = bootstrap_read(node, 256 * 1024**2, runner); need(raw.startswith(b'\\x7fELF'))\n",
+        "    write_new(root / 'node', raw, 0o555)\n"
+      ]
+    },
+    {
+      "currentStartLine": 784,
+      "currentLines": [
+        "             'code': code, 'nodeSha256': NODE_VENDOR_SHA256, 'anchorNs': anchor['startNs'], 'bootId': anchor['bootId'],\n"
+      ],
+      "parentLines": [
+        "             'code': code, 'nodeSha256': digest(raw), 'anchorNs': anchor['startNs'], 'bootId': anchor['bootId'],\n"
+      ]
+    },
+    {
+      "currentStartLine": 860,
+      "currentLines": [
+        "                  'nodeVendorControls': json.loads(secure_read(root / 'private/node-vendor-controls.json', 65536)),\n"
+      ],
+      "parentLines": []
+    },
+    {
+      "currentStartLine": 1010,
+      "currentLines": [
+        "FAILURE_FUNCTIONS = frozenset(('<dictcomp>', '<genexpr>', '<lambda>', '<listcomp>', '<module>', '<setcomp>', 'Capabilities', 'Header', 'Iovec', 'RootFamily', '__init__', 'allocate', 'allocation_controls', 'bind', 'bootstrap_read', 'canonical', 'capture', 'close', 'copy_node', 'custody', 'digest', 'exited', 'failure_locations', 'finish', 'hooks', 'identity_actors', 'kernel', 'load_state', 'main', 'need', 'node_budget', 'node_identity', 'node_is_vendor', 'prepare', 'probe', 'process', 'protect_vendor_node', 'publish', 'refused', 'require_identity_free', 'restrict', 'restricted', 'restricted_status', 'root_fault', 'root_for_run', 'run_role', 'secure_read', 'settle', 'spawn', 'supervise', 'uid_actors', 'value_refused', 'wait', 'write_new'))\n"
+      ],
+      "parentLines": [
+        "FAILURE_FUNCTIONS = frozenset(('<dictcomp>', '<genexpr>', '<lambda>', '<listcomp>', '<module>', '<setcomp>', 'Capabilities', 'Header', 'Iovec', 'RootFamily', '__init__', 'allocate', 'allocation_controls', 'bind', 'bootstrap_read', 'canonical', 'capture', 'close', 'custody', 'digest', 'exited', 'failure_locations', 'finish', 'hooks', 'identity_actors', 'kernel', 'load_state', 'main', 'need', 'prepare', 'probe', 'process', 'publish', 'refused', 'require_identity_free', 'restrict', 'restricted', 'restricted_status', 'root_fault', 'root_for_run', 'run_role', 'secure_read', 'settle', 'spawn', 'supervise', 'uid_actors', 'value_refused', 'wait', 'write_new'))\n"
+      ]
+    }
+  ],
+  "absentAtParent": [
+    "docs/qualification/native-nodb-node-vendor-custody-20261108.md",
+    "docs/qualification/native-nodb-node-vendor-custody-20261108-vendor-data.json",
+    "docs/qualification/native-nodb-node-vendor-custody-20261108-inverse.json",
+    "docs/qualification/native-nodb-node-vendor-custody-20261108-source.json"
+  ]
+}
