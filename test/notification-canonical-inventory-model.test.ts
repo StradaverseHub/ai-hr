@@ -90,9 +90,9 @@ it('requires every compact dictionary key/raw identity and exact referenced memb
   {...original.dictionaries,namespaces:{...original.dictionaries.namespaces,999:{oid:999,name:'extra',raw:{oid:'999',nspname:'extra'}}}},
   {...original.dictionaries,languages:{...original.dictionaries.languages,999:{oid:999,name:'extra',raw:{oid:'999',lanname:'extra'}}}},
   {...original.dictionaries,roles:{...original.dictionaries.roles,999:{oid:999,name:'extra'}}},
-  {...original.dictionaries,supports:{999:{oid:999,identity:'pg_catalog.extra()',raw:{oid:'999'}}}},
+  {...original.dictionaries,supports:{999:{oid:999,identity:'pg_catalog.extra()',regprocText:'extra',raw:{oid:'999'}}}},
  ])expect(()=>normalizeNotificationCanonicalInventory({...original,dictionaries})).toThrow(/complete referenced dictionary membership/);
- const support={oid:901,identity:'pg_catalog.support(internal)',raw:{oid:'901',prosrc:'opaque native support source'}};
+ const support={oid:901,identity:'pg_catalog.support(internal)',regprocText:'support',raw:{oid:'901',prosrc:'opaque native support source'}};
  const supported={...original,referenceCounts:{...original.referenceCounts,supports:1},dictionaries:{...original.dictionaries,supports:{901:support}},functions:[{...original.functions[0],raw:{...original.functions[0].raw,prosupport:'support'},supportOid:901,supportText:'support'}]};
  expect(normalizeNotificationCanonicalInventory(supported).normalized[0].prosupport).toBe(support.identity);
  expect(()=>normalizeNotificationCanonicalInventory({...supported,dictionaries:{...supported.dictionaries,supports:{}}})).toThrow(/Dangling native support/);
@@ -106,4 +106,16 @@ it('retains shared raw reference facts once across multiple complete helpers wit
  const capture={...first,functionCount:2,functions:[first.functions[0],second]},result=normalizeNotificationCanonicalInventory(capture);
  expect(result.functionCount).toBe(2);expect(result.referenceCounts).toEqual(first.referenceCounts);expect(result.normalized.map(row=>row.prosrc)).toEqual([first.functions[0].raw.prosrc,second.raw.prosrc]);
  expect(Object.keys(capture.dictionaries.types)).toHaveLength(1);expect(Object.keys(capture.dictionaries.languages)).toHaveLength(1);expect(result.expectedProfileAuthorized).toBe(false);
+});
+
+it('binds zero and nonzero support OIDs to their exact independently captured native regproc text',()=>{
+ const original=sample(),support={oid:901,identity:'pg_catalog.support(internal)',regprocText:'support',raw:{oid:'901',prosrc:'opaque native support source'}};
+ const coherent={...original,referenceCounts:{...original.referenceCounts,supports:1},dictionaries:{...original.dictionaries,supports:{901:support}},functions:[{...original.functions[0],raw:{...original.functions[0].raw,prosupport:'support'},supportOid:901,supportText:'support'}]};
+ expect(normalizeNotificationCanonicalInventory(coherent).normalized[0].prosupport).toBe(support.identity);
+ const zeroToForeign={...coherent,functions:[{...original.functions[0],supportOid:901}]};
+ expect(()=>normalizeNotificationCanonicalInventory(zeroToForeign)).toThrow(/support OID\/text binding/);
+ expect(()=>normalizeNotificationCanonicalInventory({...original,functions:[{...original.functions[0],raw:{...original.functions[0].raw,prosupport:'support'},supportText:'support'}]})).toThrow(/support OID\/text binding/);
+ expect(()=>normalizeNotificationCanonicalInventory({...coherent,dictionaries:{...coherent.dictionaries,supports:{901:{...support,regprocText:'another_native_support'}}}})).toThrow(/support OID\/text binding/);
+ expect(()=>normalizeNotificationCanonicalInventory({...zeroToForeign,dictionaries:{...coherent.dictionaries,supports:{901:{...support,regprocText:'-'}}}})).toThrow();
+ expect(()=>normalizeNotificationCanonicalInventory({...coherent,dictionaries:{...coherent.dictionaries,supports:{901:{...support,raw:{...support.raw,oid:'902'}}}}})).toThrow(/support raw OID/);
 });

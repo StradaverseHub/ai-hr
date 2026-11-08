@@ -23,7 +23,7 @@ acl_rows as materialized(select a.oid,jsonb_agg(jsonb_build_object('grantorOid',
 role_oids as materialized(select proowner as oid from canonical union select grantor from function_acls union select grantee from function_acls),
 roles as materialized(select wanted.oid,jsonb_build_object('oid',wanted.oid::bigint,'name',case when wanted.oid=0 then 'PUBLIC'else r.rolname end)as value
  from role_oids wanted left join pg_catalog.pg_roles r on r.oid=wanted.oid),
-supports as materialized(select p.oid,jsonb_build_object('oid',p.oid::bigint,'identity',p.oid::regprocedure::text,'raw',to_jsonb(p))as value
+supports as materialized(select p.oid,jsonb_build_object('oid',p.oid::bigint,'identity',p.oid::regprocedure::text,'regprocText',p.oid::regproc::text,'raw',to_jsonb(p))as value
  from pg_catalog.pg_proc p where p.oid in(select prosupport::oid from canonical where prosupport::oid<>0)),
 functions as materialized(select p.oid,p.oid::regprocedure::text as signature,jsonb_build_object(
  'raw',to_jsonb(p),'signature',p.oid::regprocedure::text,

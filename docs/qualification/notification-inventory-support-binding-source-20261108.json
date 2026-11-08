@@ -1,0 +1,71 @@
+{
+  "kind": "LOSSLESS_NATIVE_INVENTORY_SUPPORT_BINDING_RECOVERY_NOT_EXPECTED_PROFILE",
+  "base": "ebc639ead3a4ed2fa40c1e62cf972648f3b714e8",
+  "sourceRef": "codex/notification-inventory-support-binding-recovery-20261108",
+  "qualification": "NOT_RUN; root and independent full ebc reviews complete except now-addressed support P2; narrow closure before hosted checks",
+  "nativeCaptureFormat": 2,
+  "pureSelector": {
+    "file": "test/notification-canonical-inventory-model.test.ts",
+    "cases": 9
+  },
+  "nativeSelector": {
+    "file": "test/notification-canonical-helper-inventory.test.ts",
+    "cases": 1,
+    "profile": "controlled-database-v1",
+    "mode": "full-ci-singleton only"
+  },
+  "originalFailure": {
+    "run": "42427418293",
+    "source": "b6d626d98c04e80019f0a814c60c97ccee6d5e0f",
+    "artifact": "13595509088",
+    "zipSha256": "f6eb6e3f66fc3cf291d3906a89808b1803944967a591678dd5676f35bae7b7ec",
+    "passed": 0,
+    "failed": 1,
+    "pending": 0,
+    "durationMs": 28129.597936,
+    "failedPhase": "raw-evidence-publication",
+    "rawSizeRetained": false,
+    "rawCataloguePublished": false,
+    "normalizationProved": false,
+    "socketClosed": true
+  },
+  "sourceHashes": {
+    "test/notification-canonical-helper-inventory.test.ts": "7f6d327ed6b517ef31c6df4a515968c98039851bca94a7d22fe02b748dc89f4d",
+    "test/notification-canonical-inventory-model.test.ts": "64c81d2702e28341ff1aec4b68ba2e040ff3207ef943721a1e681b37db6ded09",
+    "test/fixtures/notification-worker/canonical-inventory.ts": "4d3e0b6d3c0e854449e223c137ce98056b831f6e42b44126186f518f8bcc16a4",
+    "test/fixtures/notification-worker/canonical-inventory-query.ts": "63c5fea155807fa52c365de29c34581b4153c93fc0898ebe8cf4861cdf124eef",
+    "test/fixtures/notification-worker/canonical-inventory-evidence.ts": "7679ea2d7bbe146503076432773669e757072840d4f3a4e3eb3d15ff62e18bca",
+    "docs/adr/2026-11-08-notification-canonical-inventory-diagnostic.md": "f6319147a4ef3d94598ad6b65ee708106b553f8e3d916a5d7028465f6022e2ef",
+    "test/fixtures/notification-worker/database.ts": "a564ca2ff3e4840c44105801001a20fa5d2585e83b8a29477849fb83cc390ae2",
+    "test/fixtures/notification-worker/diagnostic-ownership.ts": "6ad059743db90ad0e4991d7b825471870069802650ae2dda6d564b0085c4c640",
+    "test/helpers/ci-singleton-admission.ts": "52b21da08ae38fae1a51096213318841081042d109f6fed647bab23d3e8a755d",
+    "test/helpers/personnel-draft-discard-ci-role-fixture.ts": "1e7372f0e2e02770258a91b423466e4ec3a137a0677db961d369e0117aa1470f",
+    "test/db-names.ts": "f6052b4e43c16d364dab4401403e30354b25b02f3f2166e1f0247133f9e2d55b",
+    "scripts/lib/discard-premigration.ts": "ce856d78b3d3e02e3d086969acecf398c9bb28fd3df03ee22dc43c8b37af497f",
+    "scripts/migrate-with-focused-prerequisites.ts": "54c2248593444232488028fd2713709081f030aaacef616bb9f8aa281c9d88cc",
+    ".github/ci/run-unit.mjs": "025f379e3edb2d0ac7c3c7b4ba9b55e77db31fcec2cfd5ac6825e509a543805a",
+    ".github/ci/manifest.mjs": "6fd081b890148a35014927200e1b0ae9053d565895b68b400eab08e49b858143",
+    ".github/ci/candidate-environment.mjs": "638d7af878bb04866872464d026484895ef5c110343986965d15db95987c2ec4",
+    ".github/ci/singleton-protocol.mjs": "bab48464a8a2ac34616ef45d70372b6114643e124bb5aa3ac8bdd0b22bb5e3d0",
+    ".github/ci/singleton-profiles.test.mjs": "550c118df56fd7741b363d2d2faf27b0acd618c39d6ecefeb0f0605cbf132d95",
+    "docs/qualification/notification-inventory-singleton-registration-20261108.md": "ba283eba99ed16533239149fd696f86e042b0d1f4e738a71ccff852576932fd3",
+    "docs/qualification/notification-inventory-bounded-read-20261108.md": "431ca9e2482b5ebc457d4dd17f607ca80300aeac3bc2331bb6643aa60cbae23e",
+    "docs/qualification/notification-inventory-reference-dictionaries-20261108.md": "ef23791f96f49c6da2be6ab090819c6e438d6d8b709a01c9a3973a418848f315",
+    "docs/qualification/notification-inventory-support-binding-20261108.md": "7352bc185791003b99e49f9e819a67d2f95d32fffd1bafe3e5d58f0c139211b3"
+  },
+  "bounds": {
+    "caseMs": 30000,
+    "statementMs": 20000,
+    "lockMs": 300,
+    "connectSeconds": 2,
+    "memberBytes": 16777216,
+    "artifactZipBytes": 67108864
+  },
+  "registryOrAdmissionOrNativeProfileOrMigrationChanged": false,
+  "opaqueSourceDefaultBodyMetadataRewritten": false,
+  "expectedProfileAuthorized": false,
+  "releaseAuthorized": false,
+  "productionHeld": true,
+  "supportBinding": "same-query native regprocText; exact zero sentinel biconditional; positive OID/key/rawOID/native-text/complete membership",
+  "parentEbcHosted": false
+}
