@@ -76,3 +76,11 @@ it('does not let returned metadata copies or frozen full entries alter the priva
  const sealed=finish(createClassifierSourceView({source,tracked}),['test/a.ts']),index=sealed.index(),calls=sealed.calls('c');index.rows[0].value.rawSha256='forged';calls.rows[0].sourceId=99;
  expect(sealed.index().rows[0].value.rawSha256).not.toBe('forged');expect(sealed.calls('c').rows[0].sourceId).toBe(0);expect(Object.isFrozen(sealed.entries)&&Object.isFrozen(sealed.entries[0])).toBe(true);expect(sealed.read('test/a.ts')).toBe('a');sealed.assertStable();
 }));
+
+it('accepts canonical Git644 when only group or other executable bits exist on the actual file',()=>{
+ for(const mode of [0o654,0o645])fixture({'test/a.ts':'a'},({source,tracked})=>{chmodSync(join(source,'test/a.ts'),mode);const sealed=finish(createClassifierSourceView({source,tracked}),['test/a.ts']);expect(sealed.index().rows[0].value.mode).toBe('100644');expect(sealed.read('test/a.ts')).toBe('a');sealed.assertStable();});
+});
+it('requires owner execute for canonical Git755 and accepts the owner-only executable variant',()=>{
+ fixture({'test/a.ts':'a'},({source,tracked})=>{const executable=Buffer.from(tracked.toString().replace('100644 ','100755 '));chmodSync(join(source,'test/a.ts'),0o654);expect(()=>createClassifierSourceView({source,tracked:executable}).begin('c')('test/a.ts')).toThrow();});
+ fixture({'test/a.ts':'a'},({source,tracked})=>{const executable=Buffer.from(tracked.toString().replace('100644 ','100755 '));chmodSync(join(source,'test/a.ts'),0o744);const sealed=finish(createClassifierSourceView({source,tracked:executable}),['test/a.ts']);expect(sealed.index().rows[0].value.mode).toBe('100755');expect(sealed.read('test/a.ts')).toBe('a');sealed.assertStable();});
+});

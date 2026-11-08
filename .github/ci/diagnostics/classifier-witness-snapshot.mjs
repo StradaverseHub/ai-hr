@@ -44,7 +44,7 @@ export function createClassifierSourceView({source,tracked,signal}){
   // Authenticate the source path/index BEFORE opening/retaining a positive byte.
   const registered=index.get(path);need(!logical.includes('\0')&&registered&&realpathSync(absolute)===target);
   const named=lstatSync(absolute,{bigint:true});need(named.isFile()&&!named.isSymbolicLink()&&named.nlink===1n&&match(named,native)&&named.size<=BigInt(blobLimit));
-  need((named.mode&0o111n)!==0n?registered.mode==='100755':registered.mode==='100644');
+  need((named.mode&0o100n)!==0n?registered.mode==='100755':registered.mode==='100644');
   let descriptor,failed=false,primary;
   try{
    descriptor=openSync(absolute,constants.O_RDONLY|constants.O_NOFOLLOW|constants.O_NONBLOCK);
