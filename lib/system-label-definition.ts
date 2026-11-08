@@ -2,6 +2,9 @@
 export const ORGANISATION_LABEL_KINDS = ['department', 'position', 'cost_center', 'business_unit'] as const;
 export type OrganisationLabelKind = typeof ORGANISATION_LABEL_KINDS[number];
 export const EMPLOYMENT_LABEL_CATEGORIES = ['division', 'branch', 'region', 'line', 'section', 'team', 'base', 'category'] as const;
+export const PERSON_LABEL_CATEGORIES = ['religion','race','nationality','state','country','relationship','salutation','dependentRelationship','qualificationLevel'] as const;
+export const PROFILE_LABEL_CATEGORIES = [...EMPLOYMENT_LABEL_CATEGORIES,...PERSON_LABEL_CATEGORIES] as const;
+export const LABEL_SCOPE_COLUMNS = ['Criteria','Criteria Companies','Company'];
 export const ORGANISATION_LABEL_COLUMNS = {
   department: [{ headerKey: 'code', field: 'name', required: true }, { headerKey: 'label', field: 'label' }, { headerKey: 'description', field: 'description' }],
   position: [{ headerKey: 'code', field: 'title', required: true }, { headerKey: 'label', field: 'label' }, { headerKey: 'description', field: 'description' }],
@@ -13,9 +16,9 @@ export const LABEL_IMPORT_DEFINITIONS = [
   ...ORGANISATION_LABEL_KINDS.map(kind => ({ kind, scope: 'company' as const,
     columns: ['Company', 'Criteria', 'Criteria Companies', ...ORGANISATION_LABEL_COLUMNS[kind].map(c => ({code:'Code',label:'Label',description:'Description'}[c.headerKey])),
       ...(['department', 'business_unit'].includes(kind) ? ['Head Employee Code'] : [])] })),
-  ...EMPLOYMENT_LABEL_CATEGORIES.map(kind => ({ kind, scope: 'tenant' as const, columns: ['Code', 'Label', 'Description', 'Sort Order'] })),
-  { kind: 'grades', scope: 'tenant' as const, columns: ['Code', 'Label', 'Description', 'Rank'] },
-  { kind: 'grade_groups', scope: 'tenant' as const, columns: ['Name', 'Grade Codes'] },
+  ...PROFILE_LABEL_CATEGORIES.map(kind => ({ kind, scope: 'tenant' as const, columns: ['Code', 'Label', 'Description', 'Sort Order',...LABEL_SCOPE_COLUMNS] })),
+  { kind: 'grades', scope: 'tenant' as const, columns: ['Code', 'Label', 'Description', 'Rank',...LABEL_SCOPE_COLUMNS] },
+  { kind: 'grade_groups', scope: 'tenant' as const, columns: ['Code','Label','Description','Name', 'Grade Codes',...LABEL_SCOPE_COLUMNS] },
 ];
 export type LabelImportKind = typeof LABEL_IMPORT_DEFINITIONS[number]['kind'];
 export const LABEL_TEMPLATE_NOTE = 'See the Sample sheet for examples. Existing codes will be skipped.';
@@ -29,9 +32,9 @@ export const LABEL_TEMPLATE_DEFINITIONS = [
       ['Company', 'Company'], ['Criteria', 'Criteria'], ['Criteria Companies', 'Criteria Companies'], ['Status', 'Status'],
     ],
   })),
-  { kind: 'grades', sheet: 'Job Grade', columns: [['Code', 'Code'], ['Label', 'Label'], ['Description', 'Description'], ['Rank', 'Rank'], ['Status', 'Status']] },
-  { kind: 'grade_groups', sheet: 'Grade Groups', columns: [['Group name', 'Name'], ['Grades in this group', 'Grade Codes']] },
-  ...EMPLOYMENT_LABEL_CATEGORIES.map(kind => ({ kind, sheet: kind[0].toUpperCase() + kind.slice(1), columns: [['Code', 'Code'], ['Label', 'Label'], ['Description', 'Description'], ['Status', 'Status']] })),
+  { kind: 'grades', sheet: 'Job Grade', columns: [['Code', 'Code'], ['Label', 'Label'], ['Description', 'Description'], ['Rank', 'Rank'],...LABEL_SCOPE_COLUMNS.map(c=>[c,c]), ['Status', 'Status']] },
+  { kind: 'grade_groups', sheet: 'Grade Groups', columns: [['Group name', 'Name'], ['Grades in this group', 'Grade Codes'],...LABEL_SCOPE_COLUMNS.map(c=>[c,c])] },
+  ...PROFILE_LABEL_CATEGORIES.map(kind => ({ kind, sheet: ({dependentRelationship:'Family Relationship',qualificationLevel:'Qualification Level'} as Record<string,string>)[kind]??kind[0].toUpperCase() + kind.slice(1), columns: [['Code', 'Code'], ['Label', 'Label'], ['Description', 'Description'],...LABEL_SCOPE_COLUMNS.map(c=>[c,c]), ['Status', 'Status']] })),
 ] as const;
 export type LabelImportMode = 'add' | 'update' | 'merge';
 export type LabelImportRow = { sheet: string; row: number; values: Record<string, string>; warnings?:string[] };

@@ -717,7 +717,7 @@ export default async function EmployeePage({
   // country / relationship). Active options only for the pickers; the ProfileOptionSelect renders any
   // out-of-catalog stored value as a pre-selected extra so a Save never blanks legacy data.
   const profileOptions = admin
-    ? await listAllProfileOptions(s, { activeOnly: true })
+    ? await listAllProfileOptions(s, { activeOnly: true,companyId:orgScopeCompanyId })
     : ({
         religion: [],
         race: [],

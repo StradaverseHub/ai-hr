@@ -1,3 +1,4 @@
+import {labelAppliesToCompany} from '../lib/system-label-assignment';
 import { tenantMutation } from '../db/tenant-mutation';
 /**
  * Configurable Personnel-profile dropdown catalogs (7d309da7) — a generic, tenant-wide option table that
@@ -227,6 +228,7 @@ export type ProfileOptionRow = {
   description: string | null;
   sortOrder: number;
   isActive: boolean;
+  scopeCompanyIds?:string[]|null;
 };
 
 /** Thrown when an option cannot be deleted because a person still references its value. */
@@ -244,7 +246,7 @@ export class ProfileOptionInUseError extends Error {
 export function listProfileOptions(
   ctx: SessionContext,
   category: ProfileOptionCategory,
-  opts: { activeOnly?: boolean } = {},
+  opts: { activeOnly?: boolean; companyId?:string|null } = {},
 ): Promise<ProfileOptionRow[]> {
   return withTenant(ctx, async (tx) => {
     const where = opts.activeOnly
@@ -255,7 +257,7 @@ export function listProfileOptions(
       .from(profileOption)
       .where(where)
       .orderBy(asc(profileOption.sortOrder), asc(profileOption.value));
-    return rows.map((r) => ({
+    return rows.filter(r=>!opts.activeOnly||labelAppliesToCompany(r.scopeCompanyIds,opts.companyId)).map((r) => ({
       id: r.id,
       category: r.category as ProfileOptionCategory,
       value: r.value,
@@ -263,6 +265,7 @@ export function listProfileOptions(
       description: r.description ?? null,
       sortOrder: r.sortOrder,
       isActive: r.isActive,
+      scopeCompanyIds:r.scopeCompanyIds,
     }));
   });
 }
@@ -270,7 +273,7 @@ export function listProfileOptions(
 /** All categories in one round-trip (the admin CRUD page). Keyed by category. */
 export async function listAllProfileOptions(
   ctx: SessionContext,
-  opts: { activeOnly?: boolean } = {},
+  opts: { activeOnly?: boolean; companyId?:string|null } = {},
 ): Promise<Record<ProfileOptionCategory, ProfileOptionRow[]>> {
   return withTenant(ctx, async (tx) => {
     const where = opts.activeOnly ? eq(profileOption.isActive, true) : undefined;
@@ -284,7 +287,7 @@ export async function listAllProfileOptions(
       ProfileOptionRow[]
     >;
     for (const r of rows) {
-      if (isProfileOptionCategory(r.category)) {
+      if (isProfileOptionCategory(r.category)&&(!opts.activeOnly||labelAppliesToCompany(r.scopeCompanyIds,opts.companyId))) {
         out[r.category].push({
           id: r.id,
           category: r.category,
@@ -293,6 +296,7 @@ export async function listAllProfileOptions(
           description: r.description ?? null,
           sortOrder: r.sortOrder,
           isActive: r.isActive,
+      scopeCompanyIds:r.scopeCompanyIds,
         });
       }
     }
@@ -340,7 +344,7 @@ export function seedProfileOptions(
 
 export async function createProfileOption(
   ctx: SessionContext,
-  p: { category: string; value: string; label?: string | null; description?: string | null; sortOrder?: number | null; isActive?: boolean },
+  p: { category: string; value: string; label?: string | null; description?: string | null; sortOrder?: number | null; isActive?: boolean; scopeCompanyIds?: string[]|null },
   existingTx?: Tx,
 ): Promise<{ id: string }> {
   if (!isProfileOptionCategory(p.category)) throw new Error('Unknown option category');
@@ -359,7 +363,7 @@ export async function createProfileOption(
     if (dupe) throw new Error(`"${value}" already exists in this list`);
     const [row] = await tx
       .insert(profileOption)
-      .values({ tenantId: ctx.tenantId, category: p.category, value, label, description, sortOrder, isActive: p.isActive ?? true })
+      .values({ tenantId: ctx.tenantId, category: p.category, value, label, description, sortOrder, isActive: p.isActive ?? true, scopeCompanyIds:p.scopeCompanyIds??null })
       .returning({ id: profileOption.id });
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
@@ -367,7 +371,7 @@ export async function createProfileOption(
       aggregateId: row.id,
       eventType: 'profile-option.created',
       actor: actorOf(ctx),
-      payload: { category: p.category, value, label, description, sortOrder, isActive: p.isActive ?? true },
+      payload: { category: p.category, value, label, description, sortOrder, isActive: p.isActive ?? true, scopeCompanyIds:p.scopeCompanyIds??null },
     });
     return { id: row.id };
   });
@@ -525,10 +529,11 @@ export async function assertProfileValueAllowed(
   category: ProfileOptionCategory,
   newValue: string | null,
   legacyValue: string | null,
+  companyId:string|null=null,
 ): Promise<void> {
   if (newValue == null || newValue === '') return; // clearing is always allowed
   if (newValue === legacyValue) return; // unchanged legacy value is permitted (tolerance)
-  const [result]=await tx.execute<{allowed:boolean}>(sql`select app.profile_option_value_allowed(${category},${newValue},${legacyValue}) as allowed`);
+  const [result]=await tx.execute<{allowed:boolean}>(sql`select app.profile_option_value_allowed(${category},${newValue},${legacyValue},${companyId}::uuid) as allowed`);
   if(typeof result?.allowed!=='boolean')throw new Error('Profile option validation unavailable');
   if(result?.allowed===true)return;
   throw new ProfileOptionValueError(category,newValue);

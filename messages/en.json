@@ -36452,5 +36452,14 @@
     "newGrant": "New grant",
     "grants": "Existing grants",
     "edit": "Edit grant"
+  },
+  "systemLabelExchange": {
+    "export": "Export",
+    "exporting": "Exporting…",
+    "failed": "Export failed. Please try again.",
+    "scopeHelp": "Leave Criteria, Criteria Companies and Company blank for Global (All Companies). Company entries apply only to those companies. Global imports require a group administrator.",
+    "global": "Global (All Companies)",
+    "companies": "{count} selected companies",
+    "assignment": "Assignment"
   }
 }

@@ -1759,12 +1759,13 @@ async function writePersonProfile(
     // 7d309da7 — the six catalog-backed columns may only take an ACTIVE catalog value, EXCEPT the legacy
     // value already stored (tolerance). Clearing to null is always allowed. Validated against the tenant's
     // profile_option catalog within this same RLS tx.
+    const [labelCompany]=await tx.execute<{companyId:string|null}>(sql`select app.system_label_person_company(${p.personId}::uuid) as "companyId"`);
     for (const [col, category] of Object.entries(CATALOG_BACKED_COLUMNS) as [
       keyof PersonProfileFields,
       ProfileOptionCategory,
     ][]) {
       if (col in profileSet) {
-        try {await assertProfileValueAllowed(tx, category, profileSet[col], (before as Record<string, string | null>)[col]);}
+        try {await assertProfileValueAllowed(tx, category, profileSet[col], (before as Record<string, string | null>)[col],labelCompany?.companyId??null);}
         catch(error){
           if(error instanceof ProfileOptionValueError&&(PERSON_PROFILE_CATALOG_FIELDS as readonly string[]).includes(col))throw new PersonProfileCatalogError(col as PersonProfileCatalogField,error);
           throw error; // Database/network faults remain private system failures, not field validation.
@@ -3228,6 +3229,7 @@ export async function setEmploymentInfo(
       .limit(1);
     if (!before) throw new Error('Employment not found');
 
+    const [labelEmployment]=await tx.select({companyId:employment.companyId}).from(employment).where(eq(employment.id,p.employmentId)).limit(1);
     // 1001ff61 — the org/job fields are now catalog-backed dropdowns. Reject a value that is not an ACTIVE
     // profile_option for its category (empty-catalog tenants keep free-text; the unchanged legacy value is
     // always tolerated). Runs in this tx so it shares the RLS session; a violation aborts before the write.
@@ -3240,6 +3242,7 @@ export async function setEmploymentInfo(
         category,
         set[f] as string | null,
         (before as Record<string, string | null>)[f],
+        labelEmployment?.companyId??null,
       );
     }
 

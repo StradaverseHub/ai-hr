@@ -1,4 +1,7 @@
 'use client';
+import {SystemLabelScope} from './system-label-scope';
+
+import {SystemLabelExportButton} from './system-label-export-button';
 
 /**
  * GradeLabelsGrid — the spreadsheet editor for GRADES on System Settings → System Label → Organisation
@@ -84,6 +87,7 @@ export type GradeGridRecord = {
   rank: number;
   archivedAt: Date | null;
   inUse: boolean;
+  scopeCompanyIds?:string[]|null;
 };
 
 type RowState = {
@@ -435,6 +439,7 @@ export function GradeLabelsGrid({ data, actions }: { data: GradeGridRecord[]; ac
           {showFilters ? <ChevronUp className="size-3.5" aria-hidden /> : <ChevronDown className="size-3.5" aria-hidden />}
         </button>
         <div className="ml-auto flex flex-wrap items-center gap-2">
+<SystemLabelExportButton kind={'grades'}/>
           <Button type="button" variant="outline" size="sm" onClick={addRow}>
             {t('addRow')}
           </Button>
@@ -595,12 +600,7 @@ export function GradeLabelsGrid({ data, actions }: { data: GradeGridRecord[]; ac
                         is no per-company assignment to open, so a clickable control would be a dead end.
                         Rendered for drafts too: a grade is tenant-wide the moment it exists, so unlike the
                         company grid there is nothing to "save first" before the scope is known. */}
-                    <span
-                      title={t('assignmentAll')}
-                      className="inline-flex items-center rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary"
-                    >
-                      {t('scopeGlobal')}
-                    </span>
+                    <SystemLabelScope ids={data.find(row=>row.id===r.id)?.scopeCompanyIds}/>
                   </td>
                   <td className="px-3 py-1.5">
                     <StatusBadge
