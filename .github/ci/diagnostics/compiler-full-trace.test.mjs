@@ -2,10 +2,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
-import {readFileSync,writeFileSync,mkdtempSync,realpathSync,chmodSync,symlinkSync,linkSync,unlinkSync,rmSync,lstatSync} from 'node:fs';
+import {readFileSync,writeFileSync,mkdtempSync,realpathSync,chmodSync,symlinkSync,linkSync,unlinkSync,rmSync,lstatSync,mkdirSync,truncateSync,readdirSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
-import {LIMITS,validatePairData,validateTraceInputs,stageBudget,stockCommand,compilerOutcome,
+import {retainTraceDiagnostics,validateWorkflowRef,LIMITS,validatePairData,validateTraceInputs,stageBudget,stockCommand,compilerOutcome,
  readHeld,sameStat,validateExportEntries,copyHeld,traceState,validateAnchorData,validateProducerFragment,
  validateTypegenSuccess,verifyFileManifest,cleanupReceiptRequired} from './compiler-full-trace.mjs';
 const original=JSON.parse(readFileSync(new URL('./compiler-full-trace-pair.json',import.meta.url),'utf8'));
@@ -212,4 +212,128 @@ test('workflow trace selection keeps default-off ordinary commands, original job
  assert(block.includes('      - run: pnpm exec next typegen\n        if: '+open+' !inputs.compiler_full_trace }}'));
  assert(block.includes('      - run: bash ../automation/.github/ci/typecheck.sh\n        if: '+open+' !inputs.compiler_full_trace }}'));
  assert(!block.includes('continue-on-error'));
+});
+
+
+/** Real fixed retention operation only; these fixtures do not authenticate a hosted producer. */
+function retentionFixture(){
+ const base=fixture(),root=join(base,'diagnostic-compiler-full-trace'),pending=join(base,'compiler-full-trace-export-pending');
+ mkdirSync(root,{mode:0o700});mkdirSync(pending,{mode:0o700});mkdirSync(join(root,'trace'),{mode:0o700});
+ const report=Buffer.from('{"nativePhase":"fixed fixture only","complete":false}\n'),log=Buffer.from('FATAL ERROR: fixture heap allocation failed\n');
+ writeFileSync(join(root,'report.json'),report,{mode:0o600});writeFileSync(join(root,'compiler.log'),log,{mode:0o600});
+ writeFileSync(join(root,'resources.json'),'{}\n',{mode:0o600});
+ return {base,root,pending,report,log,cleanup:()=>rmSync(base,{recursive:true,force:true})};
+}
+const nineMembers=['report.json','inputs.json','resources.json','compiler.log','monitor.jsonl','typegen.json',
+ 'swap-cleanup.json','trace/trace.json','trace/types.json'];
+function assertSafeRefusal(f,result,firstFailure){
+ assert.equal(result.status,1);assert.equal(result.refused,true);assert.equal(result.complete,false);assert.equal(result.rawCaptureComplete,false);
+ assert.equal(result.firstFailure,firstFailure);assert.equal(result.safeMetadataRetained,true);
+ assert.deepEqual(readFileSync(join(result.retentionRoot,'report.json')),f.report);
+ assert.deepEqual(readFileSync(join(result.retentionRoot,'compiler.log')),f.log);
+ assert(!readdirSync(result.retentionRoot).includes('trace'));assert(!exists(join(result.retentionRoot,'whole-project.tsbuildinfo')));
+ assert.deepEqual(result.inventory.map(row=>row.path),nineMembers);
+ assert.deepEqual([...result.files.map(row=>row.path),...result.omitted.map(row=>row.path)].sort(),nineMembers.slice().sort());
+ assert(result.omitted.every(row=>nineMembers.includes(row.path)&&typeof row.reason==='string'));
+}
+const exists=path=>{try{lstatSync(path);return true;}catch(e){if(e.code==='ENOENT')return false;throw e;}};
+test('actual fixed retention omits unsafe raw member while preserving exact safe report/log and complete known-member facts',()=>{
+ const f=retentionFixture();
+ try{
+  const secret=join(f.base,'foreign');writeFileSync(secret,'foreign bytes',{mode:0o600});
+  symlinkSync(secret,join(f.root,'trace/types.json'));writeFileSync(join(f.root,'trace/trace.json'),'[incomplete',{mode:0o600});
+  const result=retainTraceDiagnostics(f.root,f.pending);assertSafeRefusal(f,result,'MEMBER_UNSAFE');
+  assert.deepEqual(result.omitted.find(row=>row.path==='trace/types.json'),{path:'trace/types.json',bytes:lstatSync(join(f.root,'trace/types.json')).size,kind:'SYMLINK',reason:'UNSAFE_CUSTODY'});
+  assert.equal(result.omitted.find(row=>row.path==='trace/trace.json').reason,'RAW_CAPTURE_REFUSED');
+  assert(!result.files.some(row=>row.path.startsWith('trace/')));assert.equal(readFileSync(secret,'utf8'),'foreign bytes');
+ }finally{f.cleanup();}
+});
+test('actual sparse over-cap raw member is refused before payload copy and other safe bytes survive',()=>{
+ const f=retentionFixture();
+ try{
+  const huge=join(f.root,'trace/types.json');writeFileSync(huge,'',{mode:0o600});truncateSync(huge,LIMITS.fileBytes+1);
+  const result=retainTraceDiagnostics(f.root,f.pending);assertSafeRefusal(f,result,'MEMBER_OVERSIZE');
+  assert.equal(result.omitted.find(row=>row.path==='trace/types.json').bytes,LIMITS.fileBytes+1);
+  assert.equal(result.omitted.find(row=>row.path==='trace/types.json').reason,'OVERSIZE');
+ }finally{f.cleanup();}
+});
+test('actual two sparse512MiB raw files refuse aggregate budget including manifest while safe metadata survives',()=>{
+ const f=retentionFixture();
+ try{
+  for(const name of ['trace.json','types.json']){const path=join(f.root,'trace',name);writeFileSync(path,'',{mode:0o600});truncateSync(path,LIMITS.fileBytes);}
+  const result=retainTraceDiagnostics(f.root,f.pending);assertSafeRefusal(f,result,'AGGREGATE_LIMIT');
+  for(const name of ['trace/trace.json','trace/types.json'])assert.deepEqual(result.omitted.find(row=>row.path===name),
+   {path:name,bytes:LIMITS.fileBytes,kind:'REGULAR',reason:'RAW_CAPTURE_REFUSED'});
+  assert.equal(readdirSync(join(f.pending,'raw')).length,0);
+ }finally{f.cleanup();}
+});
+test('actual fallback omits an unsafe safe member independently while other safe metadata remains exact',()=>{
+ const f=retentionFixture();
+ try{
+  const foreign=join(f.base,'foreign-log');writeFileSync(foreign,'must not copy',{mode:0o600});
+  unlinkSync(join(f.root,'compiler.log'));symlinkSync(foreign,join(f.root,'compiler.log'));
+  const result=retainTraceDiagnostics(f.root,f.pending);assert.equal(result.status,1);assert.equal(result.firstFailure,'MEMBER_UNSAFE');
+  assert.equal(result.complete,false);assert.deepEqual(readFileSync(join(result.retentionRoot,'report.json')),f.report);
+  assert.equal(readFileSync(join(result.retentionRoot,'resources.json'),'utf8'),'{}\n');assert(!exists(join(result.retentionRoot,'compiler.log')));
+  assert.equal(result.omitted.find(row=>row.path==='compiler.log').reason,'UNSAFE_CUSTODY');
+  assert.deepEqual([...result.files.map(row=>row.path),...result.omitted.map(row=>row.path)].sort(),nineMembers.slice().sort());
+ }finally{f.cleanup();}
+});
+test('actual cleanup-refusal path keeps its first failure/nonzero status and never publishes raw trace or buildinfo',()=>{
+ const f=retentionFixture();
+ try{
+  for(const name of ['trace.json','types.json'])writeFileSync(join(f.root,'trace',name),'[]\n',{mode:0o600});
+  writeFileSync(join(f.root,'whole-project.tsbuildinfo'),'private compiler state',{mode:0o600});
+  const cleanup=Buffer.from('{"cleanupExit":1,"swapAbsent":false}\n');writeFileSync(join(f.root,'swap-cleanup.json'),cleanup,{mode:0o600});
+  const result=retainTraceDiagnostics(f.root,f.pending,'SWAP_CLEANUP_REFUSED');assertSafeRefusal(f,result,'SWAP_CLEANUP_REFUSED');
+  assert.deepEqual(readFileSync(join(result.retentionRoot,'swap-cleanup.json')),cleanup);
+  assert.equal(result.compilerCompletion,'NOT_ADJUDICATED_BY_FILE_RETENTION');
+  assert.throws(()=>retainTraceDiagnostics(f.root,f.pending,'arbitrary reason'));
+ }finally{f.cleanup();}
+});
+test('actual unknown raw-name refusal preserves all fixed omission facts without reflecting or copying the unknown path',()=>{
+ const f=retentionFixture();
+ try{
+  const name='foreign-private-filename';writeFileSync(join(f.root,name),'foreign',{mode:0o600});
+  const result=retainTraceDiagnostics(f.root,f.pending);assertSafeRefusal(f,result,'UNKNOWN_RAW_MEMBER');
+  assert(!JSON.stringify(result).includes(name));assert(!exists(join(result.retentionRoot,name)));
+ }finally{f.cleanup();}
+});
+test('actual fixed file operation copies both raw files exactly and distinguishes missing native output from completeness',()=>{
+ for(const missing of [false,true]){
+  const f=retentionFixture();
+  try{
+   for(const name of ['inputs.json','monitor.jsonl','typegen.json','swap-cleanup.json'])writeFileSync(join(f.root,name),'{}\n',{mode:0o600});
+   const trace=Buffer.from('[{"name":"fixture"}'),types=Buffer.from('[]\n');writeFileSync(join(f.root,'trace/trace.json'),trace,{mode:0o600});
+   if(!missing)writeFileSync(join(f.root,'trace/types.json'),types,{mode:0o600});
+   const result=retainTraceDiagnostics(f.root,f.pending);assert.equal(result.refused,false);
+   assert.deepEqual(readFileSync(join(result.retentionRoot,'trace/trace.json')),trace);
+   assert.equal(result.complete,!missing);assert.equal(result.rawCaptureComplete,!missing);assert.equal(result.status,missing?1:0);assert.equal(result.files.length,missing?8:9);
+   assert.equal(result.trace.jsonArrayValidity,'UNKNOWN_NOT_PARSED');assert.equal(result.trace.endsWithClosingBracket,false);
+   for(const row of result.files)assert.equal(row.sha256,digest(readFileSync(join(result.retentionRoot,row.path))));
+   if(missing)assert.equal(result.firstFailure,'RAW_CAPTURE_INCOMPLETE');
+  }finally{f.cleanup();}
+ }
+});
+test('actual workflow-ref adjudicator admits only main and one literal commissioning branch as data, never hosted authority',()=>{
+ const prefix='StradaverseHub/ai-hr/.github/workflows/alpha-focused-checks.yml@refs/heads/',commission='codex/compiler-full-stock-trace-mode-20261109';
+ for(const value of [prefix+'main',prefix+commission])assert.equal(validateWorkflowRef(value),value);
+ for(const value of [undefined,null,'',prefix+'alpha',prefix+'codex/compiler-full-stock-trace-recovery-20261109',prefix+commission+'-extra',
+  prefix+commission+'\n',prefix+commission+'/',prefix+'main/extra',prefix.replace('StradaverseHub','foreign')+'main',
+  prefix.replace('alpha-focused-checks.yml','other.yml')+'main',prefix.replace('refs/heads','refs/tags')+commission,
+  'foreign/'+prefix+'main'])assert.throws(()=>validateWorkflowRef(value));
+});
+
+test('actual unreadable safe member causes raw copy refusal and isolated fallback retains other complete safe bytes',()=>{
+ assert.notEqual(process.getuid(),0,'Real private-file refusal requires the standard unprivileged runner');
+ const f=retentionFixture();
+ try{
+  chmodSync(join(f.root,'resources.json'),0o200);
+  const result=retainTraceDiagnostics(f.root,f.pending);assertSafeRefusal(f,result,'RAW_COPY_REFUSED');
+  assert.deepEqual(result.rawFailureFact,{point:'COPY',path:'resources.json',reason:'RAW_COPY_REFUSED'});
+  assert.equal(result.omitted.find(row=>row.path==='resources.json').reason,'SAFE_COPY_REFUSED');
+  assert(!exists(join(result.retentionRoot,'resources.json')));
+  assert.deepEqual(readFileSync(join(f.pending,'raw/report.json')),f.report);
+  assert.notEqual(result.retentionRoot,join(f.pending,'raw'));
+ }finally{chmodSync(join(f.root,'resources.json'),0o600);f.cleanup();}
 });
