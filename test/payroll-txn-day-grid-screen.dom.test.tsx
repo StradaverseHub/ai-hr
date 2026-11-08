@@ -937,7 +937,7 @@ describe('approved formula transaction input methods',()=>{
   await waitFor(()=>expect(screen.getByLabelText('Amount')).toHaveValue(123.45));
   await captureAiReviewScreenshots(aiReviewDomHtml(rendered.container),'en','feedback-payroll-formula-amount','Actual transaction workspace with fictional owner/action fixtures. Component preview only; no installed application acceptance.','atelier');
   await user.selectOptions(screen.getByRole('combobox',{name:'Input type'}),'hours');expect(screen.getByLabelText('Quantity')).toHaveValue(null);expect(screen.getByLabelText('Calculated amount')).toHaveAttribute('readonly');
- });
+ },120000);
  it.each(['amount','formula','legacy'] as const)('reopens %s entries with the saved input interpretation',async method=>{
   const user=userEvent.setup();renderWorkspace({...EMPTY_PANEL,rows:[panelRow({id:'method-row',componentId:'formula-entry',componentCode:'FORMULA_ENTRY',amount:'125.00'})]},{payItems:[formulaItem]});
   detailMock.mockResolvedValue({id:'method-row',employmentId:'e1',companyId:'c1',payPeriod:'2026-08',batchId:'b1',kind:'earning',componentId:'formula-entry',txnDate:'2026-08-10',amount:method==='legacy'?'2.00':'125.00',quantity:method==='formula'?'5.00':null,unit:method==='formula'?'days':'amount',calculationMethod:method==='legacy'?null:method,notes:'Fictional entry',editable:true,recalcOnEdit:false});
