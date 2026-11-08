@@ -1,3 +1,4 @@
+import {seedAttendanceSubmissionBase} from './helpers/attendance-submission-fixture';
 /** AI v2 W2 — an attendance correction and an overtime request prepared in chat, on fictional data, over the real
  * owners: the chat preparer reads the person's own attendance day and asks one question when something is missing,
  * the review stores run the attendance service's own preparation and save a sealed review, a signed proposal is issued,
@@ -43,7 +44,7 @@ beforeEach(async()=>{
  vi.stubEnv('AUTH_PROVIDER','workos');vi.stubEnv('NODE_ENV','test');vi.stubEnv('ALLOW_DEMO_SESSION','false');
  vi.stubEnv('AI_CONFIG_SECRET','fictional-attendance-chat-custody-key-1234');
  vi.stubEnv('TERAS_PROPOSAL_SECRET','fictional-proposal-signing-secret-0123456789abcdef');
- await resetDb();base=await seedBase();await setModule(base.tenantId,'assistant','active');await setModule(base.tenantId,'attendance','active');
+ await resetDb();base=await seedAttendanceSubmissionBase();await setModule(base.tenantId,'assistant','active');await setModule(base.tenantId,'attendance','active');
  worker=await hire('Fictional Chat Clocker');colleague=await hire('Fictional Chat Colleague');
  worked=calendarDate(-2);unclocked=calendarDate(-3);planned=calendarDate(4);
  // The day the person forgot to clock out: a clock-in on record and no clock-out.

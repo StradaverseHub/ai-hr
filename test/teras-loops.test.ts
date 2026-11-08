@@ -1,3 +1,4 @@
+import {seedAttendanceSubmissionBase} from './helpers/attendance-submission-fixture';
 /** AI v2 W8 — the first five loops at the Prepare level, on fictional data (migration 0960, core/loops).
  *
  *  1. Off by default: a switched-off loop does not run, writes no case and no run record, and the database refuses
@@ -79,7 +80,7 @@ const day=(offset:number)=>new Date(Date.parse(`${TODAY}T00:00:00Z`)+offset*86_4
 beforeAll(migrateTestDb);afterAll(closeAll);
 beforeEach(async()=>{
  model.calls=0;
- await resetDb();b=await seedBase();
+ await resetDb();b=await seedAttendanceSubmissionBase();
  await setModule(b.tenantId,'payroll','active');await setModule(b.tenantId,'attendance','active');
  group=await login(b,'Fictional Group Administrator','hr_admin');
  principalId=await ensureAgentPrincipal(owner.db,b.tenantId);
@@ -342,7 +343,7 @@ describe('loop 4: missed clock-outs',()=>{
   const {correctionId}=await requestAttendanceCorrection(a,{employmentId:e.employmentId,date:TUESDAY,checkIn:'08:55',checkOut:'18:00',reason:'Fictional: forgot to clock out'});
   await run('loop_missed_clock_outs');
   expect(await caseOf('loop_missed_clock_outs',tue)).toMatchObject({state:'waiting'});
-  await decideAttendanceCorrection(m,{correctionId,decision:'rejected',rejectReason:'Fictional: left later'});
+  await decideAttendanceCorrection(m,{ expectedStageIndex: 0,correctionId,decision:'rejected',rejectReason:'Fictional: left later'});
   await run('loop_missed_clock_outs');
   expect(await caseOf('loop_missed_clock_outs',tue)).toMatchObject({state:'open',reopenCount:0});
   // Wednesday's clock-out is recorded at the proposed time, Tuesday's at another time.

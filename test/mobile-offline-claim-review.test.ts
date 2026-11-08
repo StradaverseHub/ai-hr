@@ -1,3 +1,4 @@
+import {seedAttendanceSubmissionBase} from './helpers/attendance-submission-fixture';
 /** HR review and human resolution of offline claims on draft 0647 (owner decisions 2026-10-28, protocol decision 6):
  * real claim custody, RLS as the application role, the attendance-correction owner that records an accept, payroll and
  * the canonical offline writer for the employee's own later clockings. The claim service's vendor preparation and
@@ -25,7 +26,7 @@ import {installOfflineDraftForWorker} from './helpers/mobile-offline-draft';
 let base:Base,other:string,restore:(()=>Promise<void>)|undefined,restoreCustody:(()=>Promise<void>)|undefined;
 beforeAll(async()=>{restoreCustody=await installCustodyDraftForWorker();restore=await installOfflineDraftForWorker();});
 beforeEach(async()=>{
- vi.stubEnv('AI_CONFIG_SECRET','synthetic-offline-claim-review-fixture-secret-2026');await resetDb();base=await seedBase();
+ vi.stubEnv('AI_CONFIG_SECRET','synthetic-offline-claim-review-fixture-secret-2026');await resetDb();base=await seedAttendanceSubmissionBase();
  [{id:other}]=await owner.db.insert(S.company).values({tenantId:base.tenantId,legalName:'Offline Review Other Sdn Bhd'}).returning({id:S.company.id});
 });
 afterAll(async()=>{try{await resetDb();await restore?.();await restoreCustody?.();}finally{vi.unstubAllEnvs();await closeAll();}});

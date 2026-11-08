@@ -1,3 +1,4 @@
+import {seedAttendanceSubmissionBase} from './helpers/attendance-submission-fixture';
 import {updateLeaveType} from '../core/admin';
 import {requestLeave,decideLeave} from '../core/leave';
 import {saveScheduleGroupControl} from '../core/schedule-group-controls';
@@ -40,7 +41,7 @@ let b:Base,ctx:SessionContext;
 const day=(offset:number)=>new Date(Date.parse(todayInKualaLumpur()+'T00:00:00Z')+offset*86400000).toISOString().slice(0,10);
 
 beforeAll(migrateTestDb);afterAll(closeAll);
-beforeEach(async()=>{await resetDb();b=await seedBase();await setModule(b.tenantId,'attendance','active');ctx=adminCtx(b);});
+beforeEach(async()=>{await resetDb();b=await seedAttendanceSubmissionBase();await setModule(b.tenantId,'attendance','active');ctx=adminCtx(b);});
 const {capturedClock,fixture,header,part}=createAttendancePolicyStorageFixtures({get b(){return b;},get ctx(){return ctx;},day});
 
 type Fixture=Awaited<ReturnType<typeof fixture>>;

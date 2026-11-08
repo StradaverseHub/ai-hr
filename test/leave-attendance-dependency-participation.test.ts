@@ -1,3 +1,4 @@
+import {seedAttendanceSubmissionBase} from './helpers/attendance-submission-fixture';
 /** Actual two-connection root-owner cases, authored UNRUN. This fixture proves Attendance root
  * participation/no effects on a held leave interval; existing TOIL suites must separately prove
  * actual credit eligibility/arithmetic. No mocked lock, schedule, authority or writer. */
@@ -20,7 +21,7 @@ import {BUILTIN_MAPPING_ID} from '../lib/clocking-file';
 import {adminCtx,entitledCtx,setModule,createAppUser,closeAll,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
 let b:Base;
 const date='2026-07-15';
-beforeAll(migrateTestDb);beforeEach(async()=>{await resetDb();b=await seedBase();});afterAll(closeAll);
+beforeAll(migrateTestDb);beforeEach(async()=>{await resetDb();b=await seedAttendanceSubmissionBase();});afterAll(closeAll);
 async function fixture(){
  const admin=adminCtx(b),e=await hireEmployee(admin,{person:{fullName:'Fictional Attendance Barrier Subject',primaryEmail:randomUUID()+'@fixture.test'},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:'2020-01-01'});
  const userId=await createAppUser(b.tenantId,e.personId,'employee');
@@ -56,7 +57,7 @@ describe('Attendance roots join leave dependency ownership before existing locks
    switch(command){
     case 'in':return withTenant(f.admin,tx=>checkInTx(f.admin,{employmentId:f.employmentId,date,time:'08:00',manual:true},tx));
     case 'out':return withTenant(f.admin,tx=>checkOutTx(f.admin,{employmentId:f.employmentId,date,time:'17:00',manual:true},tx));
-    case 'decide':return decideAttendanceCorrection(f.admin,{correctionId,decision:'approved'});
+    case 'decide':return decideAttendanceCorrection(f.admin,{ expectedStageIndex: 0,correctionId,decision:'approved'});
     case 'own-cancel':return cancelOwnAttendanceCorrection(f.self,{correctionId});
     case 'admin-cancel':return cancelAttendanceApplication(f.admin,{correctionId,kind:'cancelled',reason:'Fictional administrator cancellation'});
     case 'amend':return amendExistingAttendanceApplication(f.admin,{employmentId:f.employmentId,date,correctionId,baseline:editor!.baseline,reason:'Fictional verified administrator correction',checkIn:'09:00',checkOut:'18:00'});
@@ -111,7 +112,7 @@ describe('Attendance roots join leave dependency ownership before existing locks
   await setToilPolicy(admin,{companyId:b.companyId,enabled:true,accrualBasis:'hours_worked',expiryDays:90,onExpiry:'convert_to_pay',allowFirstScheduleEligible:false,autoAccrueOnApproval:true,carryForwardAtYearEnd:false});
   await setRestDay(admin,{employmentId:f.employmentId,shiftDate:date});
   const {correctionId}=await requestAttendanceCorrection(admin,{employmentId:f.employmentId,date,checkIn:'08:00',checkOut:'17:00',reason:'Fictional verified rest-day work'});
-  const before=await state(),approve=()=>decideAttendanceCorrection(admin,{correctionId,decision:'approved'});
+  const before=await state(),approve=()=>decideAttendanceCorrection(admin,{ expectedStageIndex: 0,correctionId,decision:'approved'});
   await held(f.employmentId,async()=>{await expect(approve()).rejects.toThrow('Leave source is unavailable');expect(await state()).toEqual(before);});
   await approve();const credits=await owner.db.select().from(s.toilAccrual).where(eq(s.toilAccrual.employmentId,f.employmentId));
   expect(credits).toHaveLength(1);expect(credits[0]).toMatchObject({workedDate:date,dayType:'rest_day',daysCredited:'1.00'});

@@ -1,3 +1,4 @@
+import {seedAttendanceSubmissionBase} from './helpers/attendance-submission-fixture';
 import {attendancePolicyIndependentSource} from '../packs/attendance/policy-duration-replay';
 import {attendancePolicyFinancialDurationContract,attendancePolicyFinancialContract} from '../packs/attendance/policy-financial-contract';
 import {randomUUID} from 'node:crypto';
@@ -22,7 +23,7 @@ function policy():AttendanceGroupPolicy{return {version:1,clock:{pairing:'auto',
   overtime:{enabled:false,beforeShift:false,afterShift:true,allowBackdatedWithoutClock:false,splitAtMidnight:false,offsetLateness:false,approval:'manual',autoMethod:'actual',rounding:{mode:'none',step:null},
     days:Object.fromEntries(ATTENDANCE_POLICY_DAY_CLASSES.map(key=>[key,{minimumMinutes:0,maximumMinutes:null,patternVersionId:null}])) as AttendanceGroupPolicy['overtime']['days']}};}
 beforeAll(migrateTestDb);afterAll(closeAll);
-beforeEach(async()=>{await resetDb();b=await seedBase();await setModule(b.tenantId,'attendance','active');ctx=adminCtx(b);});
+beforeEach(async()=>{await resetDb();b=await seedAttendanceSubmissionBase();await setModule(b.tenantId,'attendance','active');ctx=adminCtx(b);});
 async function fixture(){
   const ruleId=(await ensureStandardRule(ctx)).id;
   const e=await hireEmployee(ctx,{person:{fullName:'Fictional policy context',primaryEmail:randomUUID()+'@fixture.invalid'},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:day(-20)});
@@ -197,7 +198,7 @@ describe('dated-policy raw writer routing',()=>{
   try{
   const request=await requestAttendanceCorrection(ctx,{employmentId:f.employmentId,date:target,checkIn:'09:30',checkOut:'18:00',
    reason:'Fictional proposed-pair correction without captured instants'});
-  await decideAttendanceCorrection(ctx,{correctionId:request.correctionId,decision:'approved'});
+  await decideAttendanceCorrection(ctx,{ expectedStageIndex: 0,correctionId:request.correctionId,decision:'approved'});
   const [saved]=await owner.db.select().from(s.attendance).where(and(eq(s.attendance.employmentId,f.employmentId),eq(s.attendance.attendanceDate,target)));
   expect(saved).toMatchObject({checkInAt:'09:30:00',checkOutAt:'18:00:00',workedMinutes:null,lateMinutes:null,lateDeductMinutes:null,otMinutes:null});
   const punches=await owner.db.select().from(s.attendancePunch).where(eq(s.attendancePunch.attendanceId,saved.id));
@@ -412,7 +413,7 @@ describe('dated-policy raw writer routing',()=>{
   const [receipt]=await owner.db.select().from(s.attendancePolicyRequestContract).where(eq(s.attendancePolicyRequestContract.correctionId,request.id));
   const [storedPolicy]=await owner.db.select().from(s.attendanceGroupPolicyRevision).where(eq(s.attendanceGroupPolicyRevision.id,revision.id));
   expect(receipt).toMatchObject({kind:'epoch',visibleEpoch:storedPolicy.activationEpoch,companyId:b.companyId});expect(receipt.visibleEpoch).toBeGreaterThan(0);
-  await decideAttendanceCorrection(ctx,{correctionId:request.id,decision:'approved'});await capturedClock(f.employmentId,day(1));
+  await decideAttendanceCorrection(ctx,{ expectedStageIndex: 0,correctionId:request.id,decision:'approved'});await capturedClock(f.employmentId,day(1));
   const snapshot=await withTenant(ctx,tx=>canonicalOvertimeInputTx(tx,ctx,{employmentId:f.employmentId,date:day(1)}));
   expect(snapshot.policyApprovalInput?.requests.find(row=>row.id===request.id)?.submissionContract).toMatchObject({state:'recorded',correctionId:request.id,
    tenantId:b.tenantId,employmentId:f.employmentId,date:day(1),companyId:b.companyId,kind:'epoch',visibleEpoch:storedPolicy.activationEpoch,recordedAt:receipt.recordedAt.toISOString()});
@@ -448,7 +449,7 @@ describe('dated-policy raw writer routing',()=>{
   const f=await fixture();
   const request=await requestAttendanceCorrection(ctx,{employmentId:f.employmentId,date:day(1),requestedOtMinutes:120,
    reason:'Fictional pre-policy approved plan',plannedStartTime:'18:00',plannedEndTime:'20:00',otReasonCategory:'project_deadline'});
-  await decideAttendanceCorrection(ctx,{correctionId:request.correctionId,decision:'approved'});
+  await decideAttendanceCorrection(ctx,{ expectedStageIndex: 0,correctionId:request.correctionId,decision:'approved'});
   const [before]=await owner.db.select().from(s.attendanceCorrection).where(eq(s.attendanceCorrection.id,request.correctionId));
   await f.save();await clock(f.employmentId,day(1));
   const [after]=await owner.db.select().from(s.attendanceCorrection).where(eq(s.attendanceCorrection.id,request.correctionId));
@@ -463,7 +464,7 @@ describe('dated-policy raw writer routing',()=>{
   const f=await fixture();
   const old=await requestAttendanceCorrection(ctx,{employmentId:f.employmentId,date:day(1),requestedOtMinutes:120,
    reason:'Fictional original legacy plan',plannedStartTime:'18:00',plannedEndTime:'20:00',otReasonCategory:'project_deadline'});
-  await decideAttendanceCorrection(ctx,{correctionId:old.correctionId,decision:'approved'});
+  await decideAttendanceCorrection(ctx,{ expectedStageIndex: 0,correctionId:old.correctionId,decision:'approved'});
   const revision=await f.save();
   await expect(requestAttendanceCorrection(ctx,{employmentId:f.employmentId,date:day(1),requestedOtMinutes:60,
    reason:'Fictional duplicate approved plan refusal',plannedStartTime:'18:00',plannedEndTime:'19:00',otReasonCategory:'project_deadline'})).rejects.toThrow('approved overtime plan');
@@ -471,7 +472,7 @@ describe('dated-policy raw writer routing',()=>{
   await cancelAttendanceApplication(ctx,{correctionId:old.correctionId,kind:'withdrawn',reason:'Fictional explicit replacement after policy activation'});
   const next=await requestAttendanceCorrection(ctx,{employmentId:f.employmentId,date:day(1),requestedOtMinutes:60,
    reason:'Fictional new policy application',plannedStartTime:'18:00',plannedEndTime:'19:00',otReasonCategory:'project_deadline'});
-  await decideAttendanceCorrection(ctx,{correctionId:next.correctionId,decision:'approved'});
+  await decideAttendanceCorrection(ctx,{ expectedStageIndex: 0,correctionId:next.correctionId,decision:'approved'});
   await capturedClock(f.employmentId,day(1));
   expect(await detected(f.employmentId,day(1))).toBe(true);
   const snapshot=await withTenant(ctx,tx=>canonicalOvertimeInputTx(tx,ctx,{employmentId:f.employmentId,date:day(1)}));
@@ -484,7 +485,7 @@ describe('dated-policy raw writer routing',()=>{
   const f=await fixture();await f.save();
   const request=await requestAttendanceCorrection(ctx,{employmentId:f.employmentId,date:day(3),requestedOtMinutes:120,
    reason:'Fictional existing new-policy application',plannedStartTime:'18:00',plannedEndTime:'20:00',otReasonCategory:'project_deadline'});
-  await decideAttendanceCorrection(ctx,{correctionId:request.correctionId,decision:'approved'});
+  await decideAttendanceCorrection(ctx,{ expectedStageIndex: 0,correctionId:request.correctionId,decision:'approved'});
   const changed=policy();changed.clock.pairing='firstInLastOut';const next=await f.save(changed,1,day(2));
   await capturedClock(f.employmentId,day(3));expect(await detected(f.employmentId,day(3))).toBe(true);
   const snapshot=await withTenant(ctx,tx=>canonicalOvertimeInputTx(tx,ctx,{employmentId:f.employmentId,date:day(3)}));
@@ -496,7 +497,7 @@ describe('dated-policy raw writer routing',()=>{
   const f=await fixture();await f.save();
   const requested=await requestAttendanceCorrection(ctx,{employmentId:f.employmentId,date:day(1),requestedOtMinutes:120,
    reason:'Fictional policy routing plan',plannedStartTime:'18:00',plannedEndTime:'20:00',otReasonCategory:'project_deadline'});
-  await decideAttendanceCorrection(ctx,{correctionId:requested.correctionId,decision:'approved'});
+  await decideAttendanceCorrection(ctx,{ expectedStageIndex: 0,correctionId:requested.correctionId,decision:'approved'});
   await capturedClock(f.employmentId,day(1));
   const [first]=await owner.db.select().from(s.attendanceCorrection).where(eq(s.attendanceCorrection.id,requested.correctionId)).limit(1);
   expect(first.appliedAt).toBeNull();

@@ -1,3 +1,4 @@
+import {configureAttendanceSubmissionFixtures,restoreHistoricalAttendanceSubmission} from './helpers/attendance-submission-fixture';
 import {restorePreOrgRootReportingLines} from './helpers/pre-org-root-reporting-fixture';
 import {listPendingTasks} from '../core/approvals-inbox';
 import { randomUUID } from 'node:crypto';
@@ -126,9 +127,11 @@ describe('Attendance approval routing and exactly-once effects', () => {
         await decideAttendanceCorrection(a, { correctionId: id, decision: 'approved', expectedStageIndex: 1 });
         expect((await correction(id)).status).toBe('approved');
     });
-    it('keeps routing off by default and preserves a pre-enablement pending request', async () => {
+    it('refuses new submissions with routing off while preserving a restored pre-enablement pending request', async () => {
         const { a, worker } = await fixture();
-        const id = await submit(a, worker.employmentId);
+        await expect(submit(a, worker.employmentId)).rejects.toMatchObject({ code: 'noMatch' });
+        expect(await owner.db.select().from(schema.attendanceCorrection)).toHaveLength(0);
+        const {id} = await restoreHistoricalAttendanceSubmission(b, { employmentId: worker.employmentId, attendanceDate: date, proposedCheckIn: '09:00', proposedCheckOut: '18:00', reason: 'Restored pre-enablement pending request' });
         await enable(a);
         await decideAttendanceCorrection(a, { correctionId: id, decision: 'approved' });
         expect((await correction(id)).status).toBe('approved');
@@ -220,8 +223,8 @@ describe('Attendance approval routing and exactly-once effects', () => {
         expect((await correction(id)).rejectReason).toBe('Clock evidence is incomplete');
         expect((await day(worker.employmentId)).checkInAt).toBe('08:00:00');
         await expect(cancelAttendanceApplication(a, { correctionId: id, kind: 'cancelled', reason: 'No longer needed' })).rejects.toThrow(/pending or approved/);
-        const ot = await requestAttendanceCorrection(a, { employmentId: worker.employmentId, date, requestedOtMinutes: 60, requestKind: 'self_overtime', reason: 'Separate application type' });
-        expect((await attendanceApplicationDetail(a, [b.companyId], ot.correctionId))?.workflow).toBeNull();
+        await expect(requestAttendanceCorrection(a, { employmentId: worker.employmentId, date, requestedOtMinutes: 60, requestKind: 'self_overtime', reason: 'Separate application type' })).rejects.toMatchObject({ code: 'noMatch' });
+        expect(await owner.db.select().from(schema.attendanceCorrection).where(eq(schema.attendanceCorrection.requestKind, 'self_overtime'))).toHaveLength(0);
         const [decision] = await decisions();
         await expect(owner.db.update(schema.attendanceWorkflowDecision).set({ remarks: 'Tampered' }).where(eq(schema.attendanceWorkflowDecision.id, decision.id))).rejects.toThrow();
         expect((await decisions())[0].remarks).toBe(decision.remarks);
@@ -281,6 +284,7 @@ describe('request-bound delegated final effects', () => {
 describe('scoped application history and reversible cancellation', () => {
     it('filters the canonical applications, paginates deterministically and refuses cross-tenant/admin access', async () => {
         const { a, worker, self } = await fixture();
+        await configureAttendanceSubmissionFixtures(b);
         const id = await submit(a, worker.employmentId);
         const history = await listAttendanceApplicationHistory(a, [b.companyId], { departmentId: b.deptA, applicationType: 'irregularity', query: id.slice(0, 8), pageSize: 10 });
         expect(history.total).toBe(1);
@@ -378,8 +382,8 @@ describe('live non-self approver validation', () => {
         const id = await submit(a, worker.employmentId);
         expect((await attendanceApplicationDetail(a, [b.companyId], id))?.workflow?.templateCode).toBe('FIRST');
         await setAttendanceWorkflowEnabled(a, b.companyId, 'irregularity', false);
-        const legacy = (await requestAttendanceCorrection(a, {employmentId: worker.employmentId, date: '2026-07-14', checkIn: '09:00', checkOut: '18:00', reason: 'Distinct legacy day after routing was disabled'})).correctionId;
-        expect((await attendanceApplicationDetail(a, [b.companyId], legacy))?.workflow).toBeNull();
+        await expect(requestAttendanceCorrection(a, {employmentId: worker.employmentId, date: '2026-07-14', checkIn: '09:00', checkOut: '18:00', reason: 'New request while routing is disabled'})).rejects.toMatchObject({ code: 'noMatch' });
+        expect(await owner.db.select().from(schema.attendanceCorrection).where(eq(schema.attendanceCorrection.attendanceDate, '2026-07-14'))).toHaveLength(0);
         await expect(decideAttendanceCorrection(mgr, { correctionId: id, decision: 'approved', expectedStageIndex: 0 })).rejects.toThrow(/assigned approver/);
         await decideAttendanceCorrection(a, { correctionId: id, decision: 'approved', expectedStageIndex: 0 });
     });
@@ -433,6 +437,7 @@ describe('delegation scope, database guards and failed effects', () => {
 describe('all history filters and protected cancellation', () => {
     it('applies company, business unit, grade, division, submission dates and status server-side', async () => {
         const { a, worker } = await fixture();
+        await configureAttendanceSubmissionFixtures(b);
         const [unit] = await owner.db.insert(schema.businessUnit).values({ tenantId: b.tenantId, companyId: b.companyId, code: 'FILTER', name: 'History unit' }).returning();
         const [grade] = await owner.db.insert(schema.jobGrade).values({ tenantId: b.tenantId, code: 'FILTER', name: 'History grade' }).returning();
         await owner.db.update(schema.assignment).set({ businessUnitId: unit.id }).where(eq(schema.assignment.employmentId, worker.employmentId));
@@ -453,6 +458,7 @@ describe('all history filters and protected cancellation', () => {
         const [company] = await owner.db.insert(schema.company).values({ tenantId: b.tenantId, legalName: 'Private sibling' }).returning();
         const [department] = await owner.db.insert(schema.department).values({ tenantId: b.tenantId, companyId: company.id, name: 'Private team' }).returning();
         const foreign = await hireEmployee(a, { person: { fullName: 'Other company worker', primaryEmail: `${randomUUID()}@workflow.test` }, companyId: company.id, departmentId: department.id, employmentType: 'full_time', hiredOn: '2020-01-01' });
+        await configureAttendanceSubmissionFixtures(b,[b.companyId,company.id]);
         const ownId = await submit(a, worker.employmentId);
         const foreignId = await submit(a, foreign.employmentId);
         const scoped: SessionContext = { ...a, roles: undefined, grants: [{ role: 'hr_admin', companyId: b.companyId }] };
@@ -646,9 +652,10 @@ describe('attendance command lock order and historical OT evidence', () => {
             let id: string;
             let command: () => Promise<unknown>;
             if (action === 'own OT withdraw') {
+                await configureAttendanceSubmissionFixtures(b,[b.companyId],['self_overtime']);
                 id = (await requestAttendanceCorrection(self, { employmentId: worker.employmentId, date: '2099-07-15',
                     requestedOtMinutes: 60, requestKind: 'self_overtime', reason: 'Future deferred plan' })).correctionId;
-                await decideAttendanceCorrection(a, { correctionId: id, decision: 'approved' });
+                await decideAttendanceCorrection(a, { expectedStageIndex: 0, correctionId: id, decision: 'approved' });
                 command = () => cancelPlannedOvertime(self, { correctionId: id });
             } else {
                 await enable(a, input(['hr_admin']));
@@ -668,9 +675,10 @@ describe('attendance command lock order and historical OT evidence', () => {
 
     it('rechecks landed OT after withdrawal waits behind the landing subject lock', async () => {
         const { a, worker, self } = await fixture();
+        await configureAttendanceSubmissionFixtures(b);
         const id = (await requestAttendanceCorrection(self, { employmentId: worker.employmentId, date: '2099-07-15',
             requestedOtMinutes: 60, requestKind: 'self_overtime', reason: 'Future deferred plan' })).correctionId;
-        await decideAttendanceCorrection(a, { correctionId: id, decision: 'approved' });
+        await decideAttendanceCorrection(a, { expectedStageIndex: 0, correctionId: id, decision: 'approved' });
         expect((await correction(id)).appliedAt).toBeNull();
         const result = await commandBehindSubjectLock(a, worker.employmentId, id,
             () => cancelPlannedOvertime(self, { correctionId: id }),
@@ -688,11 +696,12 @@ describe('attendance command lock order and historical OT evidence', () => {
 
     it('does not land an approved OT snapshot cancelled by a concurrent legacy writer before its claim', async () => {
         const { a, worker } = await fixture();
+        await configureAttendanceSubmissionFixtures(b);
         const future = '2099-07-15';
         await checkIn(a, { employmentId: worker.employmentId, date: future, time: '08:00', manual: true });
         const id = (await requestAttendanceCorrection(a, { employmentId: worker.employmentId, date: future,
             requestedOtMinutes: 180, requestKind: 'self_overtime', reason: 'Concurrent cancellation' })).correctionId;
-        await decideAttendanceCorrection(a, { correctionId: id, decision: 'approved' });
+        await decideAttendanceCorrection(a, { expectedStageIndex: 0, correctionId: id, decision: 'approved' });
         await owner.db.update(schema.attendanceCorrection).set({ otApprovalMethod: 'requested' })
             .where(eq(schema.attendanceCorrection.id, id));
         let clockOut: Promise<{ error?: unknown }> | undefined;
@@ -746,10 +755,11 @@ describe('attendance command lock order and historical OT evidence', () => {
 
     it('allows admin cancellation of positively proven unlanded deferred OT without creating attendance', async () => {
         const { a, worker } = await fixture();
+        await configureAttendanceSubmissionFixtures(b);
         const future = '2099-07-15';
         const id = (await requestAttendanceCorrection(a, { employmentId: worker.employmentId, date: future,
             requestedOtMinutes: 60, requestKind: 'self_overtime', reason: 'No longer scheduled' })).correctionId;
-        await decideAttendanceCorrection(a, { correctionId: id, decision: 'approved' });
+        await decideAttendanceCorrection(a, { expectedStageIndex: 0, correctionId: id, decision: 'approved' });
         expect((await correction(id)).appliedAt).toBeNull();
         expect((await events(id, 'attendance-correction.approved'))[0].payload).toMatchObject({ deferred: true });
         expect(await cancelAttendanceApplication(a, { correctionId: id, kind: 'cancelled', reason: 'Plan withdrawn before work' }))
@@ -887,7 +897,8 @@ describe('Application History status counts and Overview migration parity', () =
     expect((await listAttendanceApplicationHistory(a,[b.companyId],{query:'no matching request'})).counts.all).toBe(0);
   });
   it('every legacy Overview correction and permitted action survives through HR History or the manager inbox', async () => {
-    const {a,worker,mgr}=await fixture(); const id=await submit(a,worker.employmentId);
+    const {a,worker,mgr}=await fixture();
+    const {id}=await restoreHistoricalAttendanceSubmission(b,{employmentId:worker.employmentId,attendanceDate:date,proposedCheckIn:'09:00',proposedCheckOut:'18:00',reason:'Restored historical Overview correction'});
     expect((await attendanceApplicationDetail(a,[b.companyId],id))?.workflow).toBeNull();
     for(const ctx of [a,mgr]){
       const overview=await listAttendanceCorrections(ctx,{companyIds:[b.companyId],status:'pending'});

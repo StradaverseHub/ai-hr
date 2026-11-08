@@ -1,3 +1,4 @@
+import {seedAttendanceSubmissionBase} from './helpers/attendance-submission-fixture';
 /**
  * dae7a10f — an administrator fixes a day in one action, and still leaves the same trail.
  *
@@ -75,7 +76,7 @@ afterAll(async () => {
 });
 beforeEach(async () => {
   await resetDb();
-  b = await seedBase();
+  b = await seedAttendanceSubmissionBase();
 });
 
 describe('dae7a10f · one action, and the same trail', () => {
@@ -90,7 +91,7 @@ describe('dae7a10f · one action, and the same trail', () => {
       checkOut: '18:00',
       reason: 'Gate log shows 18:00; device missed the punch',
     });
-    await decideAttendanceCorrection(a, { correctionId, decision: 'approved' });
+    await decideAttendanceCorrection(a, { expectedStageIndex: 0, correctionId, decision: 'approved' });
 
     const row = await correctionRow(correctionId);
     expect(row.status, 'approved in the same breath it was raised').toBe('approved');
@@ -115,7 +116,7 @@ describe('dae7a10f · one action, and the same trail', () => {
     });
 
     await expect(
-      decideAttendanceCorrection(self, { correctionId, decision: 'approved' }),
+      decideAttendanceCorrection(self, { expectedStageIndex: 0, correctionId, decision: 'approved' }),
       'self-approval must be refused',
     ).rejects.toThrow(/cannot decide your own/i);
   });
@@ -129,7 +130,7 @@ describe('dae7a10f · one action, and the same trail', () => {
     const { correctionId } = await requestAttendanceCorrection(self, {
       employmentId, date: DATE, checkIn: '09:00', checkOut: '19:30', reason: 'my own overtime',
     });
-    await expect(decideAttendanceCorrection(self, { correctionId, decision: 'approved' })).rejects.toThrow();
+    await expect(decideAttendanceCorrection(self, { expectedStageIndex: 0, correctionId, decision: 'approved' })).rejects.toThrow();
 
     expect((await correctionRow(correctionId)).status, 'still there, awaiting somebody else').toBe('pending');
   });
@@ -140,9 +141,9 @@ describe('dae7a10f · one action, and the same trail', () => {
     const { correctionId } = await requestAttendanceCorrection(a, {
       employmentId, date: DATE, checkIn: '09:00', checkOut: '18:00', reason: 'fix',
     });
-    await decideAttendanceCorrection(a, { correctionId, decision: 'approved' });
+    await decideAttendanceCorrection(a, { expectedStageIndex: 0, correctionId, decision: 'approved' });
     await expect(
-      decideAttendanceCorrection(a, { correctionId, decision: 'approved' }),
+      decideAttendanceCorrection(a, { expectedStageIndex: 0, correctionId, decision: 'approved' }),
       'approving twice would re-derive the day a second time',
     ).rejects.toThrow(/already approved/i);
   });

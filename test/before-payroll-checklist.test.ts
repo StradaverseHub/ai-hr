@@ -1,3 +1,4 @@
+import {seedAttendanceSubmissionBase} from './helpers/attendance-submission-fixture';
 /** AI v2 Phase 2, P2-3 — the "Before payroll" checklist over the REAL owners, on fictional data.
  *
  * Two employees with two different managers, each with a missed clock-out yesterday, a leave request and an attendance
@@ -46,7 +47,7 @@ const kinds=(result:PayrollReadiness)=>result.items.map(row=>[row.kind,row.state
 let aina:Login,siti:Login,ravi:Login,mei:Login,group:Login,leave:{aina:string;siti:string};
 beforeAll(migrateTestDb);afterAll(closeAll);
 beforeEach(async()=>{
- await resetDb();b=await seedBase();
+ await resetDb();b=await seedAttendanceSubmissionBase();
  for(const code of ['payroll','attendance'])await setModule(b.tenantId,code,'active');
  const a=adminCtx(b);
  group=await login('Fictional Group Administrator','hr_admin');

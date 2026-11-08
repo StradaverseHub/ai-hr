@@ -1,3 +1,4 @@
+import {seedAttendanceSubmissionBase} from './helpers/attendance-submission-fixture';
 /**
  * The self overtime plan in the app (GET /api/mobile/v2/attendance/overtime-plans/offer, POST .../overtime-plans)
  * through the REAL route handlers, core and RLS. Only bearer session resolution is injected (as
@@ -58,7 +59,7 @@ const refreshed = (ctx: SessionContext): SessionContext => ({ ...ctx, entitlemen
 
 beforeAll(migrateTestDb);
 afterAll(closeAll);
-beforeEach(async () => { await resetDb(); base = await seedBase(); blocked = false; });
+beforeEach(async () => { await resetDb(); base = await seedAttendanceSubmissionBase(); blocked = false; });
 
 describe('offer', () => {
   it('offers the form to an own employment while Attendance is on, as the web apply page does', async () => {
@@ -148,7 +149,7 @@ describe('submit', () => {
     caller = employee.ctx;
     const first = await post(plans.POST, '/overtime-plans', { requestId: randomUUID(), date: OTHER_DAY, plannedStart: '18:00', plannedEnd: '21:00', reason: 'Audit' });
     expect(first.body.outcome).toBe('submitted');
-    await decideAttendanceCorrection(adminCtx(base), { correctionId: first.body.id, decision: 'approved' });
+    await decideAttendanceCorrection(adminCtx(base), { expectedStageIndex: 0, correctionId: first.body.id, decision: 'approved' });
     const second = await post(plans.POST, '/overtime-plans', { requestId: randomUUID(), date: OTHER_DAY, plannedStart: '21:00', plannedEnd: '22:00', reason: 'Audit again' });
     expect(second.body).toMatchObject({ outcome: 'refused', code: 'invalid' });
     expect(second.body.message).toMatch(/already have an approved overtime plan/i);

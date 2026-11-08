@@ -1,3 +1,4 @@
+import {seedAttendanceSubmissionBase} from './helpers/attendance-submission-fixture';
 import {requirePackFor} from '../localization/registry';
 import {requestCurrentProfileChange as requestProfileChange} from './helpers/profile-requests';
 /**
@@ -146,7 +147,7 @@ beforeAll(async () => {
 });
 beforeEach(async () => {
   await resetDb();
-  base = await seedBase();
+  base = await seedAttendanceSubmissionBase();
 });
 afterAll(async () => {
   await closeAll();
@@ -1501,7 +1502,7 @@ describe('Attendance corrections — request → decide (ADR-0011 Phase B)', () 
       checkOut: '19:30',
       reason: 'Forgot to clock in',
     });
-    await decideAttendanceCorrection(a, { correctionId, decision: 'approved' });
+    await decideAttendanceCorrection(a, { expectedStageIndex: 0, correctionId, decision: 'approved' });
 
     const [row] = await attRow(employmentId, '2026-06-03');
     expect(row.checkInAt).toBe('09:00:00');
@@ -1533,7 +1534,7 @@ describe('Attendance corrections — request → decide (ADR-0011 Phase B)', () 
       checkOut: '19:00', // really stayed to 19:00
       reason: 'Correction',
     });
-    await decideAttendanceCorrection(a, { correctionId, decision: 'approved' });
+    await decideAttendanceCorrection(a, { expectedStageIndex: 0, correctionId, decision: 'approved' });
 
     const rows = await attRow(employmentId, '2026-06-04');
     expect(rows.length).toBe(1); // upsert, not a second row
@@ -1576,7 +1577,7 @@ describe('Attendance corrections — request → decide (ADR-0011 Phase B)', () 
       userId: uM,
       personId: M.personId,
     };
-    await decideAttendanceCorrection(mgrCtx, { correctionId, decision: 'approved' });
+    await decideAttendanceCorrection(mgrCtx, { expectedStageIndex: 0, correctionId, decision: 'approved' });
     const [row] = await attRow(E.employmentId, '2026-06-03');
     expect(row.status).toBe('present');
   });
@@ -1603,7 +1604,7 @@ describe('Attendance corrections — request → decide (ADR-0011 Phase B)', () 
       personId,
     };
     await expect(
-      decideAttendanceCorrection(selfCtx, { correctionId, decision: 'approved' }),
+      decideAttendanceCorrection(selfCtx, { expectedStageIndex: 0, correctionId, decision: 'approved' }),
     ).rejects.toThrow('You cannot decide your own attendance application');
   });
 
@@ -1617,7 +1618,7 @@ describe('Attendance corrections — request → decide (ADR-0011 Phase B)', () 
       checkOut: '18:00',
       reason: 'Correction',
     });
-    await decideAttendanceCorrection(a, { correctionId, decision: 'rejected', rejectReason: 'Fixture rejection explanation' });
+    await decideAttendanceCorrection(a, { expectedStageIndex: 0, correctionId, decision: 'rejected', rejectReason: 'Fixture rejection explanation' });
     const rows = await attRow(employmentId, '2026-06-03');
     expect(rows.length).toBe(0); // no attendance row materialized — that is the proof reject is a no-op
     const evs = await eventTypesFor(base.tenantId, correctionId);

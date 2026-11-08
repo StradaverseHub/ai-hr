@@ -1,3 +1,4 @@
+import {seedAttendanceSubmissionBase} from './helpers/attendance-submission-fixture';
 /**
  * ADR-0069 Attendance Request Management — overtime request on attendance_correction + the company-level
  * OT-approval-calculation setting. Asserts:
@@ -109,7 +110,7 @@ afterAll(async () => {
 });
 beforeEach(async () => {
   await resetDb();
-  b = await seedBase();
+  b = await seedAttendanceSubmissionBase();
 });
 // No afterEach: the TOIL gate used to be an env var that had to be unset between tests. It is a
 // tenant_module ROW now, and beforeEach's resetDb() TRUNCATEs tenant_module before seeding a brand-new
@@ -202,7 +203,7 @@ describe('attendance OT approval — 3 calculation settings', () => {
 
   it('requested: approved OT = the employee figure (180)', async () => {
     const { a, employmentId, correctionId } = await setup('requested');
-    await decideAttendanceCorrection(a, { correctionId, decision: 'approved' });
+    await decideAttendanceCorrection(a, { expectedStageIndex: 0, correctionId, decision: 'approved' });
     expect(await otMinutesOf(employmentId, DATE)).toBe(180);
     const row = await correctionRow(correctionId);
     expect(row.approvedOtMinutes).toBe(180);
@@ -211,14 +212,14 @@ describe('attendance OT approval — 3 calculation settings', () => {
 
   it('system_calculated: approved OT = the engine figure (120)', async () => {
     const { a, employmentId, correctionId } = await setup('system_calculated');
-    await decideAttendanceCorrection(a, { correctionId, decision: 'approved' });
+    await decideAttendanceCorrection(a, { expectedStageIndex: 0, correctionId, decision: 'approved' });
     expect(await otMinutesOf(employmentId, DATE)).toBe(120);
     expect((await correctionRow(correctionId)).approvedOtMinutes).toBe(120);
   });
 
   it('smaller_of: approved OT = min(180, 120) = 120', async () => {
     const { a, employmentId, correctionId } = await setup('smaller_of');
-    await decideAttendanceCorrection(a, { correctionId, decision: 'approved' });
+    await decideAttendanceCorrection(a, { expectedStageIndex: 0, correctionId, decision: 'approved' });
     expect(await otMinutesOf(employmentId, DATE)).toBe(120);
   });
 
@@ -232,7 +233,7 @@ describe('attendance OT approval — 3 calculation settings', () => {
       requestedOtMinutes: 180,
       reason: 'Overran',
     });
-    await decideAttendanceCorrection(a, { correctionId, decision: 'approved' });
+    await decideAttendanceCorrection(a, { expectedStageIndex: 0, correctionId, decision: 'approved' });
     expect(await otMinutesOf(employmentId, DATE)).toBe(120); // system figure, not the requested 180
     expect((await correctionRow(correctionId)).otApprovalMethod).toBe('system_calculated');
   });
@@ -258,7 +259,7 @@ describe('TOIL auto-accrual reads the POLICY-ADJUSTED approved OT (ADR-0069 pinn
       requestedOtMinutes: 240, // employee only claims 4h; requested-method makes THAT the approved figure
       reason: 'Weekend cover',
     });
-    await decideAttendanceCorrection(a, { correctionId, decision: 'approved' });
+    await decideAttendanceCorrection(a, { expectedStageIndex: 0, correctionId, decision: 'approved' });
     // attendance.otMinutes is the approved (requested) figure, 240 — NOT the engine's 480.
     expect(await otMinutesOf(employmentId, REST_DAY)).toBe(240);
     // The RL credit is 240/480 = 0.5 day (hours_worked basis) — proving auto-accrual consumed the APPROVED OT.
@@ -280,7 +281,7 @@ describe('payroll OT prefill picks up the approved value', () => {
       requestedOtMinutes: 180,
       reason: 'Overran',
     });
-    await decideAttendanceCorrection(a, { correctionId, decision: 'approved' });
+    await decideAttendanceCorrection(a, { expectedStageIndex: 0, correctionId, decision: 'approved' });
     // A July batch: the approved workday OT (>0) is monetised for this employee.
     const { batchId } = await createBatch(a, { companyId: b.companyId, payPeriod: '2026-07' });
     expect((await prefillOvertimeFromAttendance(a, { batchId })).applied).toBe(1);

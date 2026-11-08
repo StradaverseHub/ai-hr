@@ -1,3 +1,4 @@
+import {seedAttendanceSubmissionBase} from './helpers/attendance-submission-fixture';
 /**
  * 1e9145d4 · PLAN OT — overtime agreed BEFORE it is worked.
  *
@@ -206,7 +207,7 @@ afterAll(async () => {
 });
 beforeEach(async () => {
   await resetDb();
-  b = await seedBase();
+  b = await seedAttendanceSubmissionBase();
 });
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -215,7 +216,7 @@ describe('1 · approval works AHEAD of the date (the item)', () => {
     const { a, employmentId } = await hire();
     const { correctionId } = await filePlan(a, employmentId, FUTURE, 180);
 
-    const res = await decideAttendanceCorrection(a, { correctionId, decision: 'approved' });
+    const res = await decideAttendanceCorrection(a, { expectedStageIndex: 0, correctionId, decision: 'approved' });
     expect(res.status).toBe('approved');
     expect(res.deferred, 'a future-dated plan is HELD, not applied').toBe(true);
 
@@ -238,7 +239,7 @@ describe('1 · approval works AHEAD of the date (the item)', () => {
   it('THE REGRESSION LINE: a PAST-dated OT request with no attendance row still refuses', async () => {
     const { a, employmentId } = await hire();
     const { correctionId } = await filePlan(a, employmentId, PAST, 120);
-    await expect(decideAttendanceCorrection(a, { correctionId, decision: 'approved' })).rejects.toThrow(
+    await expect(decideAttendanceCorrection(a, { expectedStageIndex: 0, correctionId, decision: 'approved' })).rejects.toThrow(
       /No attendance record exists/i,
     );
   });
@@ -250,7 +251,7 @@ describe('1 · approval works AHEAD of the date (the item)', () => {
     await checkOut(a, { employmentId, date: PAST, time: '20:00' });
     const { correctionId } = await filePlan(a, employmentId, PAST, 180, { plannedStartTime: null, plannedEndTime: null });
 
-    const res = await decideAttendanceCorrection(a, { correctionId, decision: 'approved' });
+    const res = await decideAttendanceCorrection(a, { expectedStageIndex: 0, correctionId, decision: 'approved' });
     expect(res.deferred, 'past dates keep the immediate path').toBe(false);
     expect((await attendanceRow(employmentId, PAST)).otMinutes).toBe(180);
     // applied_at means "these hours are on the day", so the immediate path stamps it too. Only a DEFERRED
@@ -266,7 +267,7 @@ describe('1 · approval works AHEAD of the date (the item)', () => {
     await checkIn(a, { employmentId, date: PAST, time: '09:00' });
     await checkOut(a, { employmentId, date: PAST, time: '20:00' });
     const { correctionId } = await filePlan(a, employmentId, PAST, 180, { plannedStartTime: null, plannedEndTime: null });
-    await decideAttendanceCorrection(a, { correctionId, decision: 'approved' });
+    await decideAttendanceCorrection(a, { expectedStageIndex: 0, correctionId, decision: 'approved' });
 
     const cap = await otMonthToDateMinutes(a, employmentId, PAST);
     expect(cap.recordedMinutes).toBe(180);
@@ -280,7 +281,7 @@ describe('1 · approval works AHEAD of the date (the item)', () => {
     await checkIn(a, { employmentId, date: PAST, time: '09:00' });
     await checkOut(a, { employmentId, date: PAST, time: '20:00' });
     const { correctionId } = await filePlan(a, employmentId, PAST, 180, { plannedStartTime: null, plannedEndTime: null });
-    await decideAttendanceCorrection(a, { correctionId, decision: 'approved' });
+    await decideAttendanceCorrection(a, { expectedStageIndex: 0, correctionId, decision: 'approved' });
     const stampedAt = (await correctionRow(correctionId)).appliedAt;
 
     await checkIn(a, { employmentId, date: PAST, time: '21:00' });
@@ -306,7 +307,7 @@ describe('2 · the plan LANDS when the day is worked', () => {
     const { a, employmentId } = await hire();
     await setAttendancePolicy(a, { ...BASE_POLICY(b.companyId), otApprovalCalculation: method });
     const { correctionId } = await filePlan(a, employmentId, FUTURE, REQUESTED);
-    await decideAttendanceCorrection(a, { correctionId, decision: 'approved' });
+    await decideAttendanceCorrection(a, { expectedStageIndex: 0, correctionId, decision: 'approved' });
 
     await checkIn(a, { employmentId, date: FUTURE, time: '09:00' });
     const out = await checkOut(a, { employmentId, date: FUTURE, time: '20:00' });
@@ -324,7 +325,7 @@ describe('2 · the plan LANDS when the day is worked', () => {
     const { a, employmentId } = await hire();
     await setAttendancePolicy(a, { ...BASE_POLICY(b.companyId), otApprovalCalculation: 'requested' });
     const { correctionId } = await filePlan(a, employmentId, FUTURE, REQUESTED);
-    await decideAttendanceCorrection(a, { correctionId, decision: 'approved' });
+    await decideAttendanceCorrection(a, { expectedStageIndex: 0, correctionId, decision: 'approved' });
     await checkIn(a, { employmentId, date: FUTURE, time: '09:00' });
     await checkOut(a, { employmentId, date: FUTURE, time: '20:00' });
 
@@ -346,7 +347,7 @@ describe('2 · the plan LANDS when the day is worked', () => {
     // after the extra punches, so a silent re-resolution would be visible here.
     await setAttendancePolicy(a, { ...BASE_POLICY(b.companyId), otApprovalCalculation: 'system_calculated' });
     const { correctionId } = await filePlan(a, employmentId, FUTURE, REQUESTED);
-    await decideAttendanceCorrection(a, { correctionId, decision: 'approved' });
+    await decideAttendanceCorrection(a, { expectedStageIndex: 0, correctionId, decision: 'approved' });
 
     await checkIn(a, { employmentId, date: FUTURE, time: '09:00' });
     await checkOut(a, { employmentId, date: FUTURE, time: '20:00' });
@@ -374,7 +375,7 @@ describe('2 · the plan LANDS when the day is worked', () => {
     const { a, employmentId } = await hire('PLANOT1');
     await setAttendancePolicy(a, { ...BASE_POLICY(b.companyId), otApprovalCalculation: 'requested' });
     const { correctionId } = await filePlan(a, employmentId, FUTURE, REQUESTED);
-    await decideAttendanceCorrection(a, { correctionId, decision: 'approved' });
+    await decideAttendanceCorrection(a, { expectedStageIndex: 0, correctionId, decision: 'approved' });
 
     // r424 — a clocking file can no longer carry a FUTURE date (Import Clocking Data refuses one, plan
     // item 13), and the clock cannot be moved in a test. So the approved, not-yet-landed plan's day is
@@ -391,7 +392,7 @@ describe('2 · the plan LANDS when the day is worked', () => {
   it('a DRY-RUN import consumes nothing', async () => {
     const { a, employmentId } = await hire('PLANOT2');
     const { correctionId } = await filePlan(a, employmentId, FUTURE, REQUESTED);
-    await decideAttendanceCorrection(a, { correctionId, decision: 'approved' });
+    await decideAttendanceCorrection(a, { expectedStageIndex: 0, correctionId, decision: 'approved' });
 
     // r424 — Validate is the dry run; the plan's day is moved into the past as in the case above, so the
     // lines are VALID and the only thing standing between them and the plan is that nothing is written.
@@ -417,7 +418,7 @@ describe('3 · *** the replacement-leave credit survives pre-approval ***', () =
     const { correctionId } = await filePlan(a, employmentId, FUTURE_REST, 240, {
       reason: 'Weekend cut-over cover',
     });
-    await decideAttendanceCorrection(a, { correctionId, decision: 'approved' });
+    await decideAttendanceCorrection(a, { expectedStageIndex: 0, correctionId, decision: 'approved' });
 
     // Nothing yet — and this is CORRECT, not the bug. There is no worked day to bank against.
     expect(await replacementBalance(employmentId)).toBe(0);
@@ -451,7 +452,7 @@ describe('3 · *** the replacement-leave credit survives pre-approval ***', () =
     await setToilPolicy(a, toilPolicyInput(b.companyId));
     await setRestDay(a, { employmentId, shiftDate: FUTURE_REST });
     const { correctionId } = await filePlan(a, employmentId, FUTURE_REST, 240, { reason: 'Weekend cover' });
-    await decideAttendanceCorrection(a, { correctionId, decision: 'approved' });
+    await decideAttendanceCorrection(a, { expectedStageIndex: 0, correctionId, decision: 'approved' });
 
     await checkIn(a, { employmentId, date: FUTURE_REST, time: '08:00' });
     await checkOut(a, { employmentId, date: FUTURE_REST, time: '17:00' });
@@ -467,7 +468,7 @@ describe('4 · one approved plan per date', () => {
   it('refuses a second OT plan for a date that already has an APPROVED, unapplied one', async () => {
     const { a, employmentId } = await hire();
     const { correctionId } = await filePlan(a, employmentId, FUTURE, 180);
-    await decideAttendanceCorrection(a, { correctionId, decision: 'approved' });
+    await decideAttendanceCorrection(a, { expectedStageIndex: 0, correctionId, decision: 'approved' });
 
     await expect(filePlan(a, employmentId, FUTURE, 60)).rejects.toThrow(/already have an approved overtime plan/i);
   });
@@ -476,7 +477,7 @@ describe('4 · one approved plan per date', () => {
     const { a, employmentId, personId } = await hire();
     const emp = await employeeCtx(personId);
     const { correctionId } = await filePlan(a, employmentId, FUTURE, 180);
-    await decideAttendanceCorrection(a, { correctionId, decision: 'approved' });
+    await decideAttendanceCorrection(a, { expectedStageIndex: 0, correctionId, decision: 'approved' });
     await cancelPlannedOvertime(emp, { correctionId });
 
     await expect(filePlan(a, employmentId, FUTURE, 60)).resolves.toBeTruthy();
@@ -485,7 +486,7 @@ describe('4 · one approved plan per date', () => {
   it('a REJECTED plan leaves the date free (nothing was agreed)', async () => {
     const { a, employmentId } = await hire();
     const { correctionId } = await filePlan(a, employmentId, FUTURE, 180);
-    await decideAttendanceCorrection(a, { correctionId, decision: 'rejected', rejectReason: 'Fixture rejection explanation' });
+    await decideAttendanceCorrection(a, { expectedStageIndex: 0, correctionId, decision: 'rejected', rejectReason: 'Fixture rejection explanation' });
     await expect(filePlan(a, employmentId, FUTURE, 60)).resolves.toBeTruthy();
   });
 
@@ -494,7 +495,7 @@ describe('4 · one approved plan per date', () => {
     // request answering a different question, and blocking it would be scope the plan does not ask for.
     const { a, employmentId } = await hire();
     const { correctionId } = await filePlan(a, employmentId, FUTURE, 180);
-    await decideAttendanceCorrection(a, { correctionId, decision: 'approved' });
+    await decideAttendanceCorrection(a, { expectedStageIndex: 0, correctionId, decision: 'approved' });
     await expect(
       requestAttendanceCorrection(a, { employmentId, date: FUTURE, checkIn: '09:00', reason: 'forgot' }),
     ).rejects.toBeInstanceOf(AttendanceCorrectionFutureDateError);
@@ -533,7 +534,7 @@ describe('4 · one approved plan per date', () => {
         plannedStartTime: null,
         plannedEndTime: null,
       });
-      await decideAttendanceCorrection(a, { correctionId, decision: 'approved' });
+      await decideAttendanceCorrection(a, { expectedStageIndex: 0, correctionId, decision: 'approved' });
       // THE PREMISE, ASSERTED IN ITS OWN RIGHT — not as a by-product of the case under test.
       expect((await attendanceRow(employmentId, PAST)).otMinutes, 'the first plan must really have counted').toBe(180);
       expect(
@@ -612,7 +613,7 @@ describe('4 · one approved plan per date', () => {
         requestedOtMinutes: 300,
         reason: 'Stayed later than the plan said',
       });
-      await decideAttendanceCorrection(a, { correctionId, decision: 'approved' });
+      await decideAttendanceCorrection(a, { expectedStageIndex: 0, correctionId, decision: 'approved' });
       expect(
         (await attendanceRow(employmentId, PAST)).otMinutes,
         "the correction's figure must be on the day before anything can revert it",
@@ -659,7 +660,7 @@ describe('4 · one approved plan per date', () => {
         plannedEndTime: null,
         reason: 'Weekend cut-over cover',
       });
-      await decideAttendanceCorrection(a, { correctionId: first.correctionId, decision: 'approved' });
+      await decideAttendanceCorrection(a, { expectedStageIndex: 0, correctionId: first.correctionId, decision: 'approved' });
       // THE PREMISE: a non-zero counted figure AND a credit that actually exists. 240 approved minutes over
       // a 480-minute standard day is 0.5 of a day on the hours_worked basis.
       expect((await attendanceRow(employmentId, PAST_REST)).otMinutes).toBe(240);
@@ -682,7 +683,7 @@ describe('4 · one approved plan per date', () => {
         requestedOtMinutes: 480,
         reason: 'Worked longer than the plan; correcting punches and hours together',
       });
-      await decideAttendanceCorrection(a, { correctionId, decision: 'approved' });
+      await decideAttendanceCorrection(a, { expectedStageIndex: 0, correctionId, decision: 'approved' });
       expect((await attendanceRow(employmentId, PAST_REST)).otMinutes).toBe(480);
 
       const credits = await owner.db
@@ -735,7 +736,7 @@ describe('4 · one approved plan per date', () => {
         requestedOtMinutes: 240,
         reason: 'Forgot to clock out; correcting the punches and the hours together',
       });
-      await decideAttendanceCorrection(a, { correctionId, decision: 'approved' });
+      await decideAttendanceCorrection(a, { expectedStageIndex: 0, correctionId, decision: 'approved' });
 
       // PREMISE 2 — the CORRECTION is what counted the day, and "counted" means applied_at is stamped.
       expect(
@@ -778,7 +779,7 @@ describe('4 · one approved plan per date', () => {
       // screen that showed the wrong one would send the employee somewhere that cannot help them.
       const { a, employmentId } = await hire();
       const { correctionId } = await filePlan(a, employmentId, FUTURE, 180);
-      await decideAttendanceCorrection(a, { correctionId, decision: 'approved' });
+      await decideAttendanceCorrection(a, { expectedStageIndex: 0, correctionId, decision: 'approved' });
       await expect(filePlan(a, employmentId, FUTURE, 60)).rejects.toThrow(OvertimePlanAlreadyApprovedError);
       await expect(filePlan(a, employmentId, FUTURE, 60)).rejects.toThrow(/Withdraw it first/i);
       const err = await filePlan(a, employmentId, FUTURE, 60).catch((e: unknown) => e);
@@ -804,7 +805,7 @@ describe('5 · withdraw', () => {
     const { a, employmentId, personId } = await hire();
     const emp = await employeeCtx(personId);
     const { correctionId } = await filePlan(a, employmentId, FUTURE, 180);
-    await decideAttendanceCorrection(a, { correctionId, decision: 'approved' });
+    await decideAttendanceCorrection(a, { expectedStageIndex: 0, correctionId, decision: 'approved' });
     await expect(cancelPlannedOvertime(emp, { correctionId })).resolves.toEqual({ status: 'cancelled' });
   });
 
@@ -813,7 +814,7 @@ describe('5 · withdraw', () => {
     const emp = await employeeCtx(personId);
     await setAttendancePolicy(a, { ...BASE_POLICY(b.companyId), otApprovalCalculation: 'requested' });
     const { correctionId } = await filePlan(a, employmentId, FUTURE, 180);
-    await decideAttendanceCorrection(a, { correctionId, decision: 'approved' });
+    await decideAttendanceCorrection(a, { expectedStageIndex: 0, correctionId, decision: 'approved' });
     await checkIn(a, { employmentId, date: FUTURE, time: '09:00' });
     await checkOut(a, { employmentId, date: FUTURE, time: '20:00' });
 
@@ -825,7 +826,7 @@ describe('5 · withdraw', () => {
     const { a, employmentId, personId } = await hire();
     const emp = await employeeCtx(personId);
     const { correctionId } = await filePlan(a, employmentId, FUTURE, 180);
-    await decideAttendanceCorrection(a, { correctionId, decision: 'approved' });
+    await decideAttendanceCorrection(a, { expectedStageIndex: 0, correctionId, decision: 'approved' });
     // `today` is injectable so the boundary can be exercised without waiting a year for it.
     await expect(cancelPlannedOvertime(emp, { correctionId, today: '2027-06-03' })).rejects.toThrow(
       /date has passed/i,
@@ -836,7 +837,7 @@ describe('5 · withdraw', () => {
     const { a, employmentId, personId } = await hire();
     const emp = await employeeCtx(personId);
     const { correctionId } = await filePlan(a, employmentId, FUTURE, 180);
-    await decideAttendanceCorrection(a, { correctionId, decision: 'approved' });
+    await decideAttendanceCorrection(a, { expectedStageIndex: 0, correctionId, decision: 'approved' });
     await expect(cancelPlannedOvertime(emp, { correctionId, today: FUTURE })).resolves.toEqual({
       status: 'cancelled',
     });
@@ -852,7 +853,7 @@ describe('5 · withdraw', () => {
     const { a, employmentId, personId } = await hire();
     const emp = await employeeCtx(personId);
     const rejected = await filePlan(a, employmentId, FUTURE, 180);
-    await decideAttendanceCorrection(a, { correctionId: rejected.correctionId, decision: 'rejected', rejectReason: 'Fixture rejection explanation' });
+    await decideAttendanceCorrection(a, { expectedStageIndex: 0, correctionId: rejected.correctionId, decision: 'rejected', rejectReason: 'Fixture rejection explanation' });
     await expect(cancelPlannedOvertime(emp, { correctionId: rejected.correctionId })).rejects.toThrow(
       /not approved/i,
     );
@@ -869,7 +870,7 @@ describe('5 · withdraw', () => {
     const emp = await employeeCtx(personId);
     await setAttendancePolicy(a, { ...BASE_POLICY(b.companyId), otApprovalCalculation: 'requested' });
     const { correctionId } = await filePlan(a, employmentId, FUTURE, 180);
-    await decideAttendanceCorrection(a, { correctionId, decision: 'approved' });
+    await decideAttendanceCorrection(a, { expectedStageIndex: 0, correctionId, decision: 'approved' });
     await cancelPlannedOvertime(emp, { correctionId });
 
     await checkIn(a, { employmentId, date: FUTURE, time: '09:00' });
@@ -912,7 +913,7 @@ describe('6 · the two warnings — the kind of day, and the monthly ceiling', (
     // One approved plan for the exact ceiling. The warning fires on STRICTLY MORE than the cap, so this is
     // the boundary that must NOT warn — and the figure must count even though no day has been worked.
     const { correctionId } = await filePlan(a, employmentId, FUTURE, OT_CAP_MINUTES);
-    await decideAttendanceCorrection(a, { correctionId, decision: 'approved' });
+    await decideAttendanceCorrection(a, { expectedStageIndex: 0, correctionId, decision: 'approved' });
 
     const atCap = await otMonthToDateMinutes(a, employmentId, FUTURE);
     expect(atCap.plannedMinutes).toBe(OT_CAP_MINUTES);
@@ -921,7 +922,7 @@ describe('6 · the two warnings — the kind of day, and the monthly ceiling', (
 
     // One more minute on another day of the same month, and it is over.
     const more = await filePlan(a, employmentId, FUTURE_2, 1);
-    await decideAttendanceCorrection(a, { correctionId: more.correctionId, decision: 'approved' });
+    await decideAttendanceCorrection(a, { expectedStageIndex: 0, correctionId: more.correctionId, decision: 'approved' });
     const over = await otMonthToDateMinutes(a, employmentId, FUTURE);
     expect(over.totalMinutes > over.capMinutes).toBe(true);
   });
@@ -930,7 +931,7 @@ describe('6 · the two warnings — the kind of day, and the monthly ceiling', (
     const { a, employmentId } = await hire();
     await setAttendancePolicy(a, { ...BASE_POLICY(b.companyId), otApprovalCalculation: 'requested' });
     const { correctionId } = await filePlan(a, employmentId, FUTURE, 180);
-    await decideAttendanceCorrection(a, { correctionId, decision: 'approved' });
+    await decideAttendanceCorrection(a, { expectedStageIndex: 0, correctionId, decision: 'approved' });
     expect((await otMonthToDateMinutes(a, employmentId, FUTURE)).totalMinutes).toBe(180);
 
     await checkIn(a, { employmentId, date: FUTURE, time: '09:00' });
@@ -983,7 +984,7 @@ describe('8 · BULK approve reaches the deferred branch', () => {
     const userId = await createAppUser(b.tenantId, decider.personId, 'hr_admin');
     const actor = { ...a, userId, personId: decider.personId };
     const { correctionId } = await filePlan(a, employmentId, FUTURE, 180);
-    const res = await decideAttendanceCorrection(actor, {
+    const res = await decideAttendanceCorrection(actor, { expectedStageIndex: 0,
       correctionId,
       decision: 'approved',
       deciderEmploymentId: decider.employmentId,
@@ -1024,7 +1025,7 @@ describe('9 · notifications — the superior on arrival, the subject on the ans
     // NOT to the person who filed it.
     expect((await notificationsFor(sub.employmentId)).map((n) => n.kind)).not.toContain('attendance.ot-requested');
 
-    await decideAttendanceCorrection(a, { correctionId, decision: 'approved' });
+    await decideAttendanceCorrection(a, { expectedStageIndex: 0, correctionId, decision: 'approved' });
     await dispatchNotifications(a, {});
     const answered = await notificationsFor(sub.employmentId);
     const approved = answered.find((n) => n.kind === 'attendance.ot-approved');
@@ -1052,7 +1053,7 @@ describe('9 · notifications — the superior on arrival, the subject on the ans
       checkOut: '18:00',
       reason: 'forgot to clock out',
     });
-    await decideAttendanceCorrection(a, { correctionId, decision: 'approved' });
+    await decideAttendanceCorrection(a, { expectedStageIndex: 0, correctionId, decision: 'approved' });
     await dispatchNotifications(a, {});
 
     // Widening these three notices to clock corrections is a defensible improvement and a one-line change,
@@ -1068,7 +1069,7 @@ describe('9 · notifications — the superior on arrival, the subject on the ans
     // and dispatchNotifications is a no-op for a context that does not have the module.
     const a = adminCtx(b);
     const { correctionId } = await filePlan(a, employmentId, FUTURE, 180);
-    await decideAttendanceCorrection(a, { correctionId, decision: 'rejected', rejectReason: 'Fixture rejection explanation' });
+    await decideAttendanceCorrection(a, { expectedStageIndex: 0, correctionId, decision: 'rejected', rejectReason: 'Fixture rejection explanation' });
     await dispatchNotifications(a, {});
     expect((await notificationsFor(employmentId)).map((n) => n.kind)).toContain('attendance.ot-rejected');
   });

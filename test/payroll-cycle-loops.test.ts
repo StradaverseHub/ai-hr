@@ -1,3 +1,4 @@
+import {seedAttendanceSubmissionBase} from './helpers/attendance-submission-fixture';
 /** AI v2 P2-2a — the Pre-salary loop and the Salary payroll loop, on fictional data (migration 0964, core/loops).
  *
  *  1. Each Pre-salary check, read through its own owner, on a fictional company where every item is known.
@@ -92,7 +93,7 @@ async function hire(name:string,options:Readonly<{hiredOn?:string;basic?:number;
 }
 
 beforeAll(migrateTestDb);afterAll(closeAll);
-beforeEach(async()=>{model.calls=0;seq=0;await resetDb();b=await seedBase();});
+beforeEach(async()=>{model.calls=0;seq=0;await resetDb();b=await seedAttendanceSubmissionBase();});
 afterEach(()=>{expect(model.calls,'a payroll loop called a model').toBe(0);});
 
 describe('the Pre-salary loop',()=>{

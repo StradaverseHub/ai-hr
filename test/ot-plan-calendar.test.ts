@@ -1,3 +1,4 @@
+import {seedAttendanceSubmissionBase} from './helpers/attendance-submission-fixture';
 /**
  * ce5ded11 (r362) · THE OT CALENDAR'S MONTH READ — `otPlanCalendarMonth`.
  *
@@ -103,7 +104,7 @@ afterAll(async () => {
 });
 beforeEach(async () => {
   await resetDb();
-  b = await seedBase();
+  b = await seedAttendanceSubmissionBase();
 });
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────────────

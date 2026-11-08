@@ -1,3 +1,4 @@
+import {seedAttendanceSubmissionBase} from './helpers/attendance-submission-fixture';
 import { randomUUID } from 'node:crypto';
 import { and,eq,sql } from 'drizzle-orm';
 import { afterAll,afterEach,beforeAll,beforeEach,describe,expect,it,vi } from 'vitest';
@@ -15,7 +16,7 @@ import { decodeClockPhoto,CLOCK_PHOTO_MAX_BYTES } from '../lib/attendance-photo'
 import { formatMinutesToHM,plannedOvertimeMinutes } from '../lib/overtime-duration';
 import { todayInKualaLumpur } from '../lib/hr-date';
 let b:Base;
-beforeAll(migrateTestDb);afterAll(closeAll);beforeEach(async()=>{await resetDb();b=await seedBase();});afterEach(()=>vi.useRealTimers());
+beforeAll(migrateTestDb);afterAll(closeAll);beforeEach(async()=>{await resetDb();b=await seedAttendanceSubmissionBase();});afterEach(()=>vi.useRealTimers());
 // r423 — the employee's "Use Geofencing for Clocking" switch decides the Clock screen too. These r378
 // cases are about a GEOFENCED employee, so the subject is created with the switch ON and one site; the
 // switch-OFF behaviour (r378's "a capture requires an enforced geofence", narrowed) is the r423 block below.
@@ -88,7 +89,7 @@ describe('r378 private capture command integrity',()=>{
   await captureEmployeeClock(x.ctx,x.intent);vi.setSystemTime(new Date(date+'T10:00:10+08:00'));
   await captureEmployeeClock(x.ctx,{...x.intent,action:'out',requestId:randomUUID()});
   const request=await requestAttendanceCorrection(x.ctx,{employmentId:x.h.employmentId,date,checkIn:'08:00',checkOut:'11:00',reason:'Synthetic correction review'});
-  await decideAttendanceCorrection(x.admin,{correctionId:request.correctionId,decision:'approved'});
+  await decideAttendanceCorrection(x.admin,{ expectedStageIndex: 0,correctionId:request.correctionId,decision:'approved'});
   const [corrected]=await owner.db.select().from(schema.attendance).where(eq(schema.attendance.employmentId,x.h.employmentId));
   expect(corrected.checkInAt).toBe('08:00:00');expect(corrected.checkOutAt).toBe('11:00:00');
   vi.setSystemTime(new Date(date+'T12:00:10+08:00'));
@@ -148,9 +149,9 @@ describe('r378 correction originals and rejection facts',()=>{
   expect(before.originalClockSnapshot).toMatchObject({version:1,originalCheckIn:'09:00:00',originalCheckOut:null});
   const requested=await latestEventPayload(b.tenantId,request.correctionId,'attendance-correction.requested');expect(requested?.originalClockSnapshot).toEqual(before.originalClockSnapshot);
   await checkOut(x.admin,{employmentId:x.h.employmentId,date,time:'10:00',manual:true});
-  await expect(decideAttendanceCorrection(x.admin,{correctionId:request.correctionId,decision:'rejected',rejectReason:'   '})).rejects.toBeInstanceOf(MissingAttendanceRejectReasonError);
-  await expect(decideAttendanceCorrection(x.admin,{correctionId:request.correctionId,decision:'rejected',rejectReason:'x'.repeat(1001)})).rejects.toBeInstanceOf(MissingAttendanceRejectReasonError);
-  await decideAttendanceCorrection(x.admin,{correctionId:request.correctionId,decision:'rejected',rejectReason:'  Please correct the date  '});
+  await expect(decideAttendanceCorrection(x.admin,{ expectedStageIndex: 0,correctionId:request.correctionId,decision:'rejected',rejectReason:'   '})).rejects.toBeInstanceOf(MissingAttendanceRejectReasonError);
+  await expect(decideAttendanceCorrection(x.admin,{ expectedStageIndex: 0,correctionId:request.correctionId,decision:'rejected',rejectReason:'x'.repeat(1001)})).rejects.toBeInstanceOf(MissingAttendanceRejectReasonError);
+  await decideAttendanceCorrection(x.admin,{ expectedStageIndex: 0,correctionId:request.correctionId,decision:'rejected',rejectReason:'  Please correct the date  '});
   const [row]=await myAttendanceCorrections(x.ctx,x.h.employmentId,{date,limit:20});expect(row.rejectReason).toBe('Please correct the date');expect(row.originalClockSnapshot).toEqual(before.originalClockSnapshot);expect(row.decidedAt).toBeInstanceOf(Date);
   const rejected=await latestEventPayload(b.tenantId,request.correctionId,'attendance-correction.rejected');expect(rejected?.rejectReason).toBe(row.rejectReason);
   const [day]=await owner.db.select().from(schema.attendance);expect(day.checkInAt).toBe('09:00:00');expect(day.checkOutAt).toBe('10:00:00');
@@ -160,7 +161,7 @@ describe('r378 correction originals and rejection facts',()=>{
   const x=await subject(),date=todayInKualaLumpur();
   const request=await requestAttendanceCorrection(x.ctx,{employmentId:x.h.employmentId,date,checkIn:'09:00',checkOut:'18:00',reason:'Missing attendance'});
   const [row]=await owner.db.select().from(schema.attendanceCorrection).where(eq(schema.attendanceCorrection.id,request.correctionId));expect(row.originalClockSnapshot).toMatchObject({version:1,attendanceId:null,originalCheckIn:null,originalCheckOut:null});
-  await decideAttendanceCorrection(x.admin,{correctionId:request.correctionId,decision:'rejected',rejectReason:'Record not supported'});
+  await decideAttendanceCorrection(x.admin,{ expectedStageIndex: 0,correctionId:request.correctionId,decision:'rejected',rejectReason:'Record not supported'});
   const future=todayInKualaLumpur(new Date(Date.now()+2*86400000));
   const ot=await requestAttendanceCorrection(x.ctx,{employmentId:x.h.employmentId,date:future,requestedOtMinutes:210,plannedStartTime:'22:00',plannedEndTime:'01:30',reason:'Night work'});
   const [otRow]=await owner.db.select().from(schema.attendanceCorrection).where(eq(schema.attendanceCorrection.id,ot.correctionId));expect(otRow.originalClockSnapshot).toBeNull();expect(otRow.requestedOtMinutes).toBe(210);expect(otRow.otReasonCategory).toBeNull();

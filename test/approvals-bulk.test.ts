@@ -1,3 +1,4 @@
+import {seedAttendanceSubmissionBase} from './helpers/attendance-submission-fixture';
 /**
  * Bulk approval (feedback fb99474b — "Bulk Approval Function for Managers and HR Admin").
  *
@@ -52,7 +53,7 @@ function bulkDispatch(
         await decideClaim(s, { claimRequestId: item.id, decision: decision === 'approved' ? 'approve' : 'reject', deciderEmploymentId: decider ?? null });
         return;
       case 'attendance':
-        await decideAttendanceCorrection(s, { correctionId: item.id, decision, deciderEmploymentId: decider });
+        await decideAttendanceCorrection(s, { expectedStageIndex: 0, correctionId: item.id, decision, deciderEmploymentId: decider });
         return;
     }
   };
@@ -118,7 +119,7 @@ describe('bulk approval — integration (real decide services + events + authori
   });
   beforeEach(async () => {
     await resetDb();
-    base = await seedBase();
+    base = await seedAttendanceSubmissionBase();
   });
   afterAll(async () => {
     await closeAll();

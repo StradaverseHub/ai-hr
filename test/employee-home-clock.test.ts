@@ -1,3 +1,4 @@
+import {seedAttendanceSubmissionBase} from './helpers/attendance-submission-fixture';
 import {randomUUID} from 'node:crypto';
 import {eq} from 'drizzle-orm';
 import {afterAll,beforeAll,beforeEach,describe,expect,it} from 'vitest';
@@ -11,7 +12,7 @@ import {clockCommandContext} from '../lib/clock-command-context';
 import {adminCtx,closeAll,createAppUser,harnessSnapshot,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
 let b:Base;
 beforeAll(migrateTestDb);afterAll(closeAll);
-beforeEach(async()=>{await resetDb();b=await seedBase();});
+beforeEach(async()=>{await resetDb();b=await seedAttendanceSubmissionBase();});
 async function worker(role:'employee'|'hr_admin'='employee'){
  const hired=await hireEmployee(adminCtx(b),{person:{fullName:'Fictional Home clock '+randomUUID(),primaryEmail:randomUUID()+'@example.test'},
   companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:todayInKualaLumpur()});

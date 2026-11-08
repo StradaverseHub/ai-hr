@@ -1,3 +1,4 @@
+import {seedAttendanceSubmissionBase} from './helpers/attendance-submission-fixture';
 /** AI v2 Phase 2 P2-1 — the autonomy ladder on fictional data over the real owners (migration 0963, core/loops).
  *
  *  1. The cap: pay, employment status, access, discipline and statutory filing loops (probation, payroll inputs and
@@ -126,7 +127,7 @@ const failure=(work:Promise<unknown>)=>work.then(()=>'no error',(error:unknown)=
 beforeAll(migrateTestDb);afterAll(closeAll);
 beforeEach(async()=>{
  model.calls=0;
- await resetDb();b=await seedBase();
+ await resetDb();b=await seedAttendanceSubmissionBase();
  for(const module of ['payroll','attendance','notifications'])await setModule(b.tenantId,module,'active');
  group=await login(b,'Fictional Group Administrator','hr_admin');
  principalId=await ensureAgentPrincipal(owner.db,b.tenantId);
@@ -463,7 +464,7 @@ describe('automatic demotion',()=>{
   const raw=await attendanceClockData(adminCtx(b),e2.employmentId,EARLIER);
   const entries=raw.rows.filter(row=>!row.voidedAt).map(row=>row.direction==='out'?{punchAt:'19:10',direction:'out' as const}:{id:row.id,punchAt:row.punchAt,direction:row.direction});
   const {correctionId}=await requestAttendanceCorrection(adminCtx(b),{employmentId:e2.employmentId,date:EARLIER,reason:'Fictional: left at 19:10',clockChanges:{version:1,baseline:raw.baseline,entries}});
-  await decideAttendanceCorrection(adminCtx(b),{correctionId,decision:'approved'});
+  await decideAttendanceCorrection(adminCtx(b),{ expectedStageIndex: 0,correctionId,decision:'approved'});
   // A clocking a person removed keeps the person, not a loop.
   const removed=(await attendanceClockData(adminCtx(b),e2.employmentId,EARLIER)).rows.filter(row=>row.voidedAt);
   expect(removed.map(row=>row.punchAt)).toEqual(['18:00:00']);

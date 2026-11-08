@@ -1,3 +1,4 @@
+import {seedAttendanceSubmissionBase} from './helpers/attendance-submission-fixture';
 /**
  * M12 (D13) — the v2 own-attendance endpoints through the REAL route handlers, core and RLS. Only bearer session
  * resolution is injected (as test/mobile-v2-leave.test.ts does).
@@ -82,7 +83,7 @@ const refreshed = (ctx: SessionContext): SessionContext => ({ ...ctx, entitlemen
 
 beforeAll(migrateTestDb);
 afterAll(closeAll);
-beforeEach(async () => { await resetDb(); base = await seedBase(); blocked = false; });
+beforeEach(async () => { await resetDb(); base = await seedAttendanceSubmissionBase(); blocked = false; });
 
 describe('own selected employment only', () => {
   it('a manager cannot read or withdraw a subordinate’s application through the own endpoints, although RLS shows it to them', async () => {
@@ -137,10 +138,10 @@ describe('records and roster', () => {
       await checkOut(a, { employmentId: employee.employmentId, date, time: '17:00', manual: true });
     }
     const fix = await requestAttendanceCorrection(a, { employmentId: employee.employmentId, date: CORRECTED, checkIn: '09:00', checkOut: '18:00', reason: 'Gate log' });
-    await decideAttendanceCorrection(a, { correctionId: fix.correctionId, decision: 'approved' });
+    await decideAttendanceCorrection(a, { expectedStageIndex: 0, correctionId: fix.correctionId, decision: 'approved' });
     const raw = await attendanceClockData(a, employee.employmentId, VOIDED);
     const voiding = await requestAttendanceCorrection(a, { employmentId: employee.employmentId, date: VOIDED, reason: 'Clocked on the wrong badge', clockChanges: { version: 1, baseline: raw.baseline, entries: [] } });
-    await decideAttendanceCorrection(a, { correctionId: voiding.correctionId, decision: 'approved' });
+    await decideAttendanceCorrection(a, { expectedStageIndex: 0, correctionId: voiding.correctionId, decision: 'approved' });
 
     caller = employee.ctx;
     const got = await call(records.GET, `/records?from=${JULY.from}&to=${JULY.to}`);
@@ -228,12 +229,12 @@ describe('own application history', () => {
     const file = (date: string) => requestAttendanceCorrection(employee.ctx, { employmentId: employee.employmentId, date, checkIn: '09:00', checkOut: '18:00', reason: `Fix ${date}` }).then((r) => r.correctionId);
     const d1 = await file('2026-06-01');
     const d2rejected = await file('2026-06-02');
-    await decideAttendanceCorrection(a, { correctionId: d2rejected, decision: 'rejected', rejectReason: 'Fixture rejection explanation' });
+    await decideAttendanceCorrection(a, { expectedStageIndex: 0, correctionId: d2rejected, decision: 'rejected', rejectReason: 'Fixture rejection explanation' });
     const d2pending = await file('2026-06-02'); // same attendance date as the rejected one: the tie is broken by filing order
     const d3 = await file('2026-06-03');
     await cancelOwnAttendanceCorrection(employee.ctx, { correctionId: d3 });
     const d4 = await file('2026-06-04');
-    await decideAttendanceCorrection(a, { correctionId: d4, decision: 'approved' });
+    await decideAttendanceCorrection(a, { expectedStageIndex: 0, correctionId: d4, decision: 'approved' });
 
     caller = employee.ctx;
     const seen: string[] = [];
@@ -265,7 +266,7 @@ describe('own application history', () => {
     expect((await call(apps.GET, '/applications?cursor=!!garbage')).status).toBe(400);
 
     const rejected = await call(app.GET, `/applications/${d2rejected}`);
-    expect(rejected.body).toMatchObject({ outcome: 'found', application: { id: d2rejected, status: 'rejected', displayStatus: 'rejected', rejectReason: 'Fixture rejection explanation', routing: null, actions: { withdraw: false }, asked: { checkIn: '09:00', checkOut: '18:00' }, reason: 'Fix 2026-06-02' } });
+    expect(rejected.body).toMatchObject({ outcome: 'found', application: { id: d2rejected, status: 'rejected', displayStatus: 'rejected', rejectReason: 'Fixture rejection explanation', routing: expect.objectContaining({templateName:'Explicit fixture manager or HR review',currentLevel:null,levels:[expect.objectContaining({status:'rejected'})]}), actions: { withdraw: false }, asked: { checkIn: '09:00', checkOut: '18:00' }, reason: 'Fix 2026-06-02' } });
     expect(rejected.body.application.decidedAt).not.toBeNull();
     expect((await call(app.GET, `/applications/${d3}`)).body.application).toMatchObject({ displayStatus: 'withdrawn', actions: { withdraw: false } });
     expect((await call(app.GET, `/applications/${d1}`)).body.application.actions).toEqual({ withdraw: true });
@@ -306,7 +307,7 @@ describe('own application history', () => {
     const a = adminCtx(base), employee = await hire('Withdraw Worker');
     const file = (date: string) => requestAttendanceCorrection(employee.ctx, { employmentId: employee.employmentId, date, checkIn: '09:00', checkOut: '18:00', reason: 'r' }).then((r) => r.correctionId);
     const first = await file('2026-06-01'), second = await file('2026-06-02'), decided = await file('2026-06-03');
-    await decideAttendanceCorrection(a, { correctionId: decided, decision: 'approved' });
+    await decideAttendanceCorrection(a, { expectedStageIndex: 0, correctionId: decided, decision: 'approved' });
     const [plan] = await owner.db.insert(schema.attendanceCorrection).values({ tenantId: base.tenantId, employmentId: employee.employmentId, attendanceDate: '2026-06-04', requestedOtMinutes: 60, reason: 'Overtime plan' }).returning({ id: schema.attendanceCorrection.id });
 
     caller = employee.ctx;
@@ -367,7 +368,7 @@ describe('correction request', () => {
     // closed payroll; approval is (lockAttendancePayrollTx). The app shows what the kernel decides, nothing more.
     const sent = await post(corrections.POST, '/corrections', { requestId: randomUUID(), date: MULTI, checkIn: '09:00', checkOut: '18:00', reason: 'Late badge' });
     expect(sent.body.outcome).toBe('submitted');
-    await expect(decideAttendanceCorrection(a, { correctionId: sent.body.id, decision: 'approved' })).rejects.toBeInstanceOf(AttendancePayrollClosedError);
+    await expect(decideAttendanceCorrection(a, { expectedStageIndex: 0, correctionId: sent.body.id, decision: 'approved' })).rejects.toBeInstanceOf(AttendancePayrollClosedError);
     expect((await call(app.GET, `/applications/${sent.body.id}`)).body.application).toMatchObject({ status: 'pending', actions: { withdraw: true } });
     // Where the kernel does throw it (on every path that locks payroll), the command answers the typed code.
     expect(attendanceCommandRefusal(new AttendancePayrollClosedError())).toMatchObject({ outcome: 'refused', code: 'payroll_closed' });

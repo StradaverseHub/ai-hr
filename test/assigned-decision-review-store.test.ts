@@ -1,3 +1,4 @@
+import {seedAttendanceSubmissionBase} from './helpers/attendance-submission-fixture';
 /** ADR-0151 wave 1b: an ASSIGNED approver decides someone else's pending claim, attendance request or
  * replacement-leave (TOIL) request through the generic assigned-review store (migration 0671).
  * Real migrated database and the real native decision services; fictional fixtures only.
@@ -62,7 +63,7 @@ async function login(personId:string,role:Role,base:Base=b):Promise<SessionConte
 beforeAll(async()=>{await migrateTestDb();const [installed]=await owner.db.execute<{ok:boolean}>(sql`select to_regprocedure('app.assistant_assigned_review_prepare(text,uuid,uuid,uuid,uuid,uuid,uuid,text,text,text,text,text)') is not null as ok`);expect(installed.ok,'Migration 0671 must be installed.').toBe(true);});
 afterAll(closeAll);afterEach(()=>{vi.restoreAllMocks();vi.unstubAllEnvs();});
 beforeEach(async()=>{vi.stubEnv('AI_CONFIG_SECRET','fictional-assigned-decision-custody-key-1234');
- await resetDb();b=await seedBase();seq=0;for(const code of ['assistant','claims','attendance','toil'])await setModule(b.tenantId,code,'active');
+ await resetDb();b=await seedAttendanceSubmissionBase();seq=0;for(const code of ['assistant','claims','attendance','toil'])await setModule(b.tenantId,code,'active');
  subject=await hire('Fictional Decision Subject',b.deptA);manager=await hire('Fictional Line Manager');hrPerson=await hire('Fictional HR Approver');outsider=await hire('Fictional Unrelated Colleague');
  await setReportingLine(group(),{subordinateEmploymentId:subject.employmentId,managerEmploymentId:manager.employmentId,lineType:'administrative',validFrom:hiredOn()});
  await setCompensation(group(),{employmentId:subject.employmentId,basicSalary:8000,monthlyAllowance:0,effectiveFrom:hiredOn()});
@@ -83,9 +84,9 @@ const KINDS:Record<'claim'|'attendance'|'toil',Kind>={
   // A future planned overtime request (deferred approval: no attendance day is needed or written).
   async create(){return (await requestAttendanceCorrection(subjectCtx,{employmentId:subject.employmentId,date:calendarDate(7+seq++),plannedStartTime:'18:00',plannedEndTime:'19:00',requestedOtMinutes:60,reason:'Fictional planned release work',requestKind:'self_overtime'})).correctionId;},
   human:(id,decision='approved')=>({action:ASSIGNED_ATTENDANCE_DECISION_ACTION,contractVersion:1,employmentId:subject.employmentId,subjectId:id,decision,...(decision==='rejected'?{note:'Fictional explicit rejection reason'}:{})}),
-  elsewhere:id=>decideAttendanceCorrection(group(),{correctionId:id,decision:'approved'}),
-  async nativeTx(tx,who,id){await decideAttendanceCorrection(who,{correctionId:id,decision:'approved'},tx);const [row]=await tx.execute<{id:string}>(sql`select id from public.domain_event where aggregate_id=${id}::uuid and event_type='attendance-correction.approved' order by id desc limit 1`);return row.id;},
-  nativeDecide:(who,id)=>decideAttendanceCorrection(who,{correctionId:id,decision:'approved'})},
+  elsewhere:id=>decideAttendanceCorrection(group(),{ expectedStageIndex: 0,correctionId:id,decision:'approved'}),
+  async nativeTx(tx,who,id){await decideAttendanceCorrection(who,{ expectedStageIndex: 0,correctionId:id,decision:'approved'},tx);const [row]=await tx.execute<{id:string}>(sql`select id from public.domain_event where aggregate_id=${id}::uuid and event_type='attendance-correction.approved' order by id desc limit 1`);return row.id;},
+  nativeDecide:(who,id)=>decideAttendanceCorrection(who,{ expectedStageIndex: 0,correctionId:id,decision:'approved'})},
  toil:{action:ASSIGNED_TOIL_DECISION_ACTION,store:toilDecisionReviews,choices:readToilDecisionChoices,table:'replacement_leave_request',subjectKind:'replacement_leave_request',decided:d=>'replacement-leave-request.'+d,
   async create(){const date=calendarDate(-3-seq++);await setRestDay(group(),{employmentId:subject.employmentId,shiftDate:date});
    return (await submitReplacementLeaveRequest(subjectCtx,{employmentId:subject.employmentId,unit:'day',lines:[{workedDate:date,days:1}],reason:'Fictional rest-day release support',today:todayInKualaLumpur()})).requestId;},

@@ -1,3 +1,4 @@
+import {seedAttendanceSubmissionBase} from './helpers/attendance-submission-fixture';
 /** Owner-approved delegated approvals: real DB, native services and Assistant custody; fictional fixtures.
  * Authored for GitHub Actions only. No installation or provider request. */
 import {randomUUID} from 'node:crypto';
@@ -29,7 +30,7 @@ async function login(p:Person,role:'employee'|'manager'){
 }
 beforeAll(migrateTestDb);afterAll(closeAll);afterEach(()=>vi.unstubAllEnvs());
 beforeEach(async()=>{
- vi.stubEnv('AI_CONFIG_SECRET','fictional-delegation-custody-secret-2026');await resetDb();b=await seedBase();
+ vi.stubEnv('AI_CONFIG_SECRET','fictional-delegation-custody-secret-2026');await resetDb();b=await seedAttendanceSubmissionBase();
  for(const code of ['assistant','claims','attendance','toil'])await setModule(b.tenantId,code,'active');
  root={...adminCtx(b),grants:[{role:'hr_admin',companyId:null}]};
  subject=await hire('Fictional Claim Subject',b.deptA);manager=await hire('Fictional Manager');stand=await hire('Fictional Stand-in');
@@ -56,7 +57,7 @@ async function noPersonnel(){
 }
 const kinds={
  claim:{action:'approvals.claim.decide',store:claimDecisionReviews,choices:readClaimDecisionChoices,create:()=>claim(),native:(id:string,decision:'approved'|'rejected')=>decideClaim(delegate,{claimRequestId:id,decision:decision==='approved'?'approve':'reject'}),table:'claim_request',event:'claim-request.'},
- attendance:{action:'approvals.attendance.decide',store:attendanceDecisionReviews,choices:readAttendanceDecisionChoices,create:()=>attendance(),native:(id:string,decision:'approved'|'rejected')=>decideAttendanceCorrection(delegate,{correctionId:id,decision,...(decision==='rejected'?{rejectReason:'Fictional refusal'}:{})}),table:'attendance_correction',event:'attendance-correction.'},
+ attendance:{action:'approvals.attendance.decide',store:attendanceDecisionReviews,choices:readAttendanceDecisionChoices,create:()=>attendance(),native:(id:string,decision:'approved'|'rejected')=>decideAttendanceCorrection(delegate,{ expectedStageIndex: 0,correctionId:id,decision,...(decision==='rejected'?{rejectReason:'Fictional refusal'}:{})}),table:'attendance_correction',event:'attendance-correction.'},
  toil:{action:'approvals.toil.decide',store:toilDecisionReviews,choices:readToilDecisionChoices,create:()=>toil(),native:(id:string,decision:'approved'|'rejected')=>decideReplacementLeaveRequest(delegate,{requestId:id,decision,note:'Fictional decision'}),table:'replacement_leave_request',event:'replacement-leave-request.'},
 };
 describe.each(Object.keys(kinds) as (keyof typeof kinds)[])('delegated %s decisions',name=>{

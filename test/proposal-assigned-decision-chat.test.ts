@@ -1,3 +1,4 @@
+import {seedAttendanceSubmissionBase} from './helpers/attendance-submission-fixture';
 /** AI v2 W2 slice 3 — an assigned approver's decision on someone else's claim or overtime request, prepared in chat, on
  * fictional data, over the real owners (approvals.claim.decide and approvals.attendance.decide).
  *
@@ -46,7 +47,7 @@ beforeAll(migrateTestDb);afterAll(closeAll);afterEach(()=>{vi.restoreAllMocks();
 beforeEach(async()=>{
  vi.stubEnv('AI_CONFIG_SECRET','fictional-assigned-decision-chat-key-12345678');
  vi.stubEnv('TERAS_PROPOSAL_SECRET','fictional-proposal-signing-secret-0123456789abcdef');
- await resetDb();b=await seedBase();for(const code of ['assistant','claims','attendance'])await setModule(b.tenantId,code,'active');
+ await resetDb();b=await seedAttendanceSubmissionBase();for(const code of ['assistant','claims','attendance'])await setModule(b.tenantId,code,'active');
  // Siti and Wei report to Ravi; Daniel manages nobody here; Aina is an unrelated colleague.
  siti=await hire('Siti Fictional',b.deptA);wei=await hire('Wei Fictional');ravi=await hire('Ravi Fictional');daniel=await hire('Daniel Fictional');aina=await hire('Aina Fictional');
  for(const report of [siti,wei])await setReportingLine(group(),{subordinateEmploymentId:report.employmentId,managerEmploymentId:ravi.employmentId,lineType:'administrative',validFrom:hiredOn()});

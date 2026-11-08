@@ -1,3 +1,4 @@
+import {seedAttendanceSubmissionBase} from './helpers/attendance-submission-fixture';
 import { randomUUID } from 'node:crypto';
 import { and, eq } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -24,7 +25,7 @@ vi.mock('next/cache',()=>({revalidatePath:vi.fn()}));
 const {adminCorrectAttendanceDayAction}=await import('../app/attendance/individual/[date]/actions');
 const DATE=()=>todayInKualaLumpur(new Date(Date.now()-86400000));
 const nextDay=(date:string)=>new Date(Date.parse(date+'T00:00:00Z')+86400000).toISOString().slice(0,10);
-beforeAll(migrateTestDb);afterAll(closeAll);beforeEach(async()=>{await resetDb();b=await seedBase();CALLER=adminCtx(b);});
+beforeAll(migrateTestDb);afterAll(closeAll);beforeEach(async()=>{await resetDb();b=await seedAttendanceSubmissionBase();CALLER=adminCtx(b);});
 async function hire(name='Date worker'){
   const e=await hireEmployee(adminCtx(b),{person:{fullName:name,primaryEmail:`${randomUUID()}@day.test`},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:'2020-01-01'});
   const [row]=await owner.db.select({code:s.employment.employeeCode}).from(s.employment).where(eq(s.employment.id,e.employmentId));return {...e,code:row.code!};

@@ -1,3 +1,4 @@
+import {seedAttendanceSubmissionBase} from './helpers/attendance-submission-fixture';
 /**
  * r406 952129bb · HR's + ADD LEAVE CREDIT AS THE EMPLOYEE'S FORM — `grantLeaveCreditRows`, against a real roster.
  *
@@ -168,7 +169,7 @@ afterAll(async () => {
 });
 beforeEach(async () => {
   await resetDb();
-  b = await seedBase();
+  b = await seedAttendanceSubmissionBase();
   await setModule(b.tenantId, 'toil', 'active');
   ctx = await entitledCtx(b);
 });

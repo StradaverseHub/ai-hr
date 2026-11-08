@@ -1,3 +1,4 @@
+import {seedAttendanceSubmissionBase} from './helpers/attendance-submission-fixture';
 import { randomUUID } from 'node:crypto';
 import sharp from 'sharp';
 import { captureEmployeeClock } from '../core/attendance-clock';
@@ -22,7 +23,7 @@ let b: Base;
 const date = '2026-07-15';
 beforeAll(migrateTestDb);
 afterAll(closeAll);
-beforeEach(async () => { await resetDb(); b = await seedBase(); });
+beforeEach(async () => { await resetDb(); b = await seedAttendanceSubmissionBase(); });
 async function fixture() {
   const a = adminCtx(b);
   const e = await hireEmployee(a, { person: { fullName: 'Clock data worker', primaryEmail: 'clock-data@test.local' }, companyId: b.companyId, departmentId: b.deptA, employmentType: 'full_time', hiredOn: '2020-01-01' });
@@ -38,7 +39,7 @@ async function save(a: ReturnType<typeof adminCtx>, employmentId: string, entrie
 }[]) {
   const data = await attendanceClockData(a, employmentId, date);
   const { correctionId } = await requestAttendanceCorrection(a, { employmentId, date, reason: 'Verified gate log', clockChanges: { version: 1, baseline: data.baseline, entries } });
-  await decideAttendanceCorrection(a, { correctionId, decision: 'approved' });
+  await decideAttendanceCorrection(a, { expectedStageIndex: 0, correctionId, decision: 'approved' });
   return correctionId;
 }
 describe('approved attendance clock-data corrections', () => {
@@ -72,7 +73,7 @@ describe('approved attendance clock-data corrections', () => {
   it('legacy pair corrections also replace effective clockings without destroying originals', async () => {
     const { a, employmentId } = await fixture();
     const { correctionId } = await requestAttendanceCorrection(a, { employmentId, date, checkIn: '09:00', checkOut: '18:00', reason: 'Gate log' });
-    await decideAttendanceCorrection(a, { correctionId, decision: 'approved' });
+    await decideAttendanceCorrection(a, { expectedStageIndex: 0, correctionId, decision: 'approved' });
     const raw = await attendanceClockData(a, employmentId, date);
     expect(raw.rows.filter(r => !r.voidedAt).map(r => r.punchAt)).toEqual(['09:00:00', '18:00:00']);
     expect(raw.rows.filter(r => r.voidedAt)).toHaveLength(2);
@@ -82,7 +83,7 @@ describe('approved attendance clock-data corrections', () => {
     const raw = await attendanceClockData(a, employmentId, date);
     const { correctionId } = await requestAttendanceCorrection(a, { employmentId, date, reason: 'Proposed before a new clocking', clockChanges: { version: 1, baseline: raw.baseline, entries: [] } });
     await checkIn(a, { employmentId, date, time: '18:00', manual: true });
-    await expect(decideAttendanceCorrection(a, { correctionId, decision: 'approved' })).rejects.toBeInstanceOf(ClockDataChangedError);
+    await expect(decideAttendanceCorrection(a, { expectedStageIndex: 0, correctionId, decision: 'approved' })).rejects.toBeInstanceOf(ClockDataChangedError);
     expect((await attendanceClockData(a, employmentId, date)).rows.filter(r => r.voidedAt)).toHaveLength(0);
     expect((await owner.db.select().from(schema.attendanceCorrection).where(eq(schema.attendanceCorrection.id, correctionId)))[0].status).toBe('pending');
   });
@@ -98,7 +99,7 @@ describe('approved attendance clock-data corrections', () => {
     const self = { ...a, personId };
     const raw = await attendanceClockData(self, employmentId, date);
     const { correctionId } = await requestAttendanceCorrection(self, { employmentId, date, reason: 'Own attendance', clockChanges: { version: 1, baseline: raw.baseline, entries: [] } });
-    await expect(decideAttendanceCorrection(self, { correctionId, decision: 'approved' })).rejects.toThrow(/cannot decide your own/);
+    await expect(decideAttendanceCorrection(self, { expectedStageIndex: 0, correctionId, decision: 'approved' })).rejects.toThrow(/cannot decide your own/);
     expect((await attendanceClockData(a, employmentId, date)).rows.filter(r => r.voidedAt)).toHaveLength(0);
   });
   it('refuses changes to dates owned by a closed payroll', async () => {
@@ -197,10 +198,10 @@ describe('approved attendance clock-data corrections', () => {
     expect(Object.keys(facts[0]).sort()).toEqual(['attendance_cutoff_day', 'batch_id', 'pay_period', 'policy_config', 'status']);
     if (status === 'closed') {
       await owner.db.update(schema.payrollBatch).set({ status: 'closed' }).where(eq(schema.payrollBatch.id, batchId));
-      await expect(decideAttendanceCorrection(mgr, { correctionId, decision: 'approved' })).rejects.toBeInstanceOf(AttendancePayrollClosedError);
+      await expect(decideAttendanceCorrection(mgr, { expectedStageIndex: 0, correctionId, decision: 'approved' })).rejects.toBeInstanceOf(AttendancePayrollClosedError);
       expect((await day(employmentId)).checkInAt).toBe('08:00:00');
     } else {
-      await decideAttendanceCorrection(mgr, { correctionId, decision: 'approved' });
+      await decideAttendanceCorrection(mgr, { expectedStageIndex: 0, correctionId, decision: 'approved' });
       const [batch] = await owner.db.select().from(schema.payrollBatch).where(eq(schema.payrollBatch.id, batchId));
       expect(batch.needsRecalcAt).not.toBeNull();
       expect(batch.recalcEmploymentIds).toContain(employmentId);
@@ -235,13 +236,13 @@ describe('approved attendance clock-data corrections', () => {
     expect(facts[0]).toMatchObject({ batch_id: batchId, status, attendance_cutoff_day: 10, policy_config: null });
     expect(Object.keys(facts[0]).sort()).toEqual(['attendance_cutoff_day', 'batch_id', 'pay_period', 'policy_config', 'status']);
     if (status === 'closed') {
-      await expect(decideAttendanceCorrection(decider, { correctionId, decision: 'approved' })).rejects.toBeInstanceOf(AttendancePayrollClosedError);
+      await expect(decideAttendanceCorrection(decider, { expectedStageIndex: 0, correctionId, decision: 'approved' })).rejects.toBeInstanceOf(AttendancePayrollClosedError);
       expect((await day(employmentId)).checkInAt).toBe('08:00:00');
       const [pending] = await owner.db.select().from(schema.attendanceCorrection).where(eq(schema.attendanceCorrection.id, correctionId));
       expect(pending.status).toBe('pending');
       expect((await attendanceClockData(scoped, employmentId, date)).baseline).toBe(original.baseline);
     } else {
-      await decideAttendanceCorrection(decider, { correctionId, decision: 'approved' });
+      await decideAttendanceCorrection(decider, { expectedStageIndex: 0, correctionId, decision: 'approved' });
       expect((await day(employmentId)).checkInAt).toBe('09:00:00');
       const [batch] = await owner.db.select().from(schema.payrollBatch).where(eq(schema.payrollBatch.id, batchId));
       expect(batch.needsRecalcAt).not.toBeNull(); expect(batch.recalcEmploymentIds).toContain(employmentId);
@@ -261,7 +262,7 @@ describe('approved attendance clock-data corrections', () => {
     expect(before.photoBytes!.length).toBeGreaterThan(0);
     const today = todayInKualaLumpur(), raw = await attendanceClockData(a, employmentId, today);
     const { correctionId } = await requestAttendanceCorrection(a, { employmentId, date: today, reason: 'Verified current-day clockings', clockChanges: { version: 1, baseline: raw.baseline, entries: [{ punchAt: '08:00', direction: 'in' }, { punchAt: '12:00', direction: 'out' }, { punchAt: '13:00', direction: 'in' }, { punchAt: '17:00', direction: 'out' }] } });
-    await decideAttendanceCorrection(a, { correctionId, decision: 'approved' });
+    await decideAttendanceCorrection(a, { expectedStageIndex: 0, correctionId, decision: 'approved' });
     const [after] = await owner.db.select().from(schema.attendanceClockCapture).where(eq(schema.attendanceClockCapture.id, receipt.id));
     expect(after).toEqual(before);
     const live = await ownClockToday(employee);

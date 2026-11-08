@@ -1,3 +1,4 @@
+import {seedAttendanceSubmissionBase} from './helpers/attendance-submission-fixture';
 /** Attendance punch readers over accepted offline punches (draft 0647): the true instant coalesce(effective_at,
  * server_recorded_at) orders and times every reader, HR raw clock data exposes both instants, and an employee
  * cannot remove an offline punch. The same readers first run on a database WITHOUT the draft's column. */
@@ -17,7 +18,7 @@ import {adminCtx,closeAll,createAppUser,harnessSnapshot,migrateTestDb,owner,rese
 import {installOfflineDraftForWorker} from './helpers/mobile-offline-draft';
 let base:Base;
 beforeAll(migrateTestDb);
-beforeEach(async()=>{vi.stubEnv('AIHR_MOBILE_CLOCK_POLICY','');await resetDb();base=await seedBase();
+beforeEach(async()=>{vi.stubEnv('AIHR_MOBILE_CLOCK_POLICY','');await resetDb();base=await seedAttendanceSubmissionBase();
  await setAttendancePolicy(adminCtx(base),{companyId:base.companyId,workStart:'09:00',workEnd:'18:00',breakMinutes:60,lateAfter:'09:15',halfDayBefore:'13:00',workingDays:[1,2,3,4,5]});});
 afterAll(async()=>{try{await resetDb();}finally{vi.unstubAllEnvs();await closeAll();}});
 async function employee(){

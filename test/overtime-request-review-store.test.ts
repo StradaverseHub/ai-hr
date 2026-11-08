@@ -1,3 +1,4 @@
+import {seedAttendanceSubmissionBase} from './helpers/attendance-submission-fixture';
 /** ADR-0151 wave 1b: the person's OWN overtime request through the generic own-review store (migration 0671).
  * Real migrated database and the real native attendance request service; fictional fixtures only.
  * Authored UNRUN (tests run on GitHub Actions under the owner's policy). */
@@ -28,7 +29,7 @@ async function login(personId:string,role:'employee'|'hr_admin'='employee',base:
 beforeAll(async()=>{await migrateTestDb();const [installed]=await owner.db.execute<{ok:boolean}>(sql`select app._assistant_generic_review_subject_kind('attendance.overtime.request')='employment' as ok`);expect(installed.ok,'Migration 0671 must be installed.').toBe(true);});
 afterAll(closeAll);afterEach(()=>{vi.restoreAllMocks();vi.unstubAllEnvs();});
 beforeEach(async()=>{vi.stubEnv('AI_CONFIG_SECRET','fictional-overtime-request-custody-key-1234');
- await resetDb();b=await seedBase();await setModule(b.tenantId,'assistant','active');await setModule(b.tenantId,'attendance','active');
+ await resetDb();b=await seedAttendanceSubmissionBase();await setModule(b.tenantId,'assistant','active');await setModule(b.tenantId,'attendance','active');
  subject=await hire('Fictional Overtime Requester');ctx=await login(subject.personId);
 });
 const human=(extra:Record<string,unknown>={})=>({action,contractVersion:1 as const,employmentId:subject.employmentId,date:calendarDate(7),plannedStartTime:'18:00',plannedEndTime:'20:00',reason:'Fictional release preparation',remark:'Fictional optional note',...extra});

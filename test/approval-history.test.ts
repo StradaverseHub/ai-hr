@@ -1,3 +1,4 @@
+import {seedAttendanceSubmissionBase} from './helpers/attendance-submission-fixture';
 /**
  * Approval activity history (feedback 44a89810) — the SECURITY-DEFINER read model behind the bell's
  * History tab (app.approval_history, migration 0288) via listApprovalHistory. Covers, against the real
@@ -89,7 +90,7 @@ afterAll(async () => {
 });
 beforeEach(async () => {
   await resetDb();
-  b = await seedBase();
+  b = await seedAttendanceSubmissionBase();
   // r79 0322 — the company's default chain decides single- vs multi-step now (there is no
   // company.leave_multi_approval switch). Most cases here are single-approver manager decisions, so the
   // company starts on a ONE-step chain — the shape the old opted-out default produced. Case (a+d)
@@ -226,7 +227,7 @@ describe('Approval activity history (44a89810)', () => {
       checkOut: '18:00',
       reason: 'Forgot to clock in',
     });
-    await decideAttendanceCorrection(mgrCtx, { correctionId, decision: 'rejected', rejectReason: 'Fixture rejection explanation' });
+    await decideAttendanceCorrection(mgrCtx, { expectedStageIndex: 0, correctionId, decision: 'rejected', rejectReason: 'Fixture rejection explanation' });
 
     const all = await listApprovalHistory(mgrCtx);
     expect(all.map((r) => r.eventType).sort()).toEqual(['attendance-correction.rejected', 'claim-request.approved']);
