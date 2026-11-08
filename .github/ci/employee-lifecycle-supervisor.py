@@ -63,7 +63,9 @@ def publish(path, value):
     data = json.dumps(value, separators=(',', ':')).encode()
     require(len(data) <= 16384)
     path = Path(path)
-    pending = path.with_name(path.name + '.pending')
+    # One fresh bounded temporary name per attempt. An interrupted earlier
+    # attempt remains untouched and cannot permanently block public repair.
+    pending = path.with_name(path.name + '.pending-' + os.urandom(16).hex())
     fd = os.open(pending, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
     try:
         require(os.write(fd, data) == len(data))

@@ -41,7 +41,9 @@ live acknowledged kernel owns process-family teardown. A failed/late Docker
 response is uncertainty; runner disposal is not a successful cleanup receipt.
 
 Python metadata publication uses Linux atomic RENAME_NOREPLACE after a complete
-exclusive0600 pending file. There is no transient hard-link reader race and no
+exclusive0600 pending file with one fresh random bounded name per attempt.
+Interrupted partial/complete pending inodes remain untouched; they cannot block
+publication to the final no-overwrite target. There is no hard-link reader race and no
 foreign overwrite or weaker fallback. A private stopped receipt is validated
 against its original creation/removal custody and fresh native absence before
 repairing a missing public member; a conflicting public member refuses.
@@ -63,9 +65,15 @@ actual API job/run/source/artifact identities, raw native test/plan oracles,
 role/authority/restoration and original performance targets.
 
 Prospective new controls: eight pure custody counterexample models, one stubbed
-aggregate deadline control, and two actual Linux filesystem controls for atomic
-no-overwrite publication and idempotent public repair. These11 controls use no
+aggregate deadline control, and three actual Linux filesystem controls for atomic
+no-overwrite publication and idempotent public repair. These12 controls use no
 Docker/database/provider and cannot qualify native container custody. Standard
 hosted execution is required; only source syntax/AST/hash checks ran locally.
 Actual healthy/faulted normal-job, parent death, partial-creation and independent
 cleanup outcomes remain required commissioning work. Production remains held.
+
+The894 source checkpoint remains preserved. This successor closes its interrupted
+pending-publication retry defect with an actual filesystem counterexample. The
+new controller-head/status adapter seam remains INERT until the independently
+owned profile/frontier/operational integration lands; this component does not
+claim those opcodes can be invoked successfully at this isolated source.

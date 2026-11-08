@@ -138,11 +138,30 @@ class ActualAtomicPublication(unittest.TestCase):
             adapter.publish(path, {'version': 1, 'fictional': True})
             self.assertEqual(path.stat().st_nlink, 1)
             self.assertEqual(json.loads(path.read_bytes()), {'version': 1, 'fictional': True})
-            self.assertFalse(path.with_name(path.name + '.pending').exists())
+            self.assertEqual(list(Path(directory).iterdir()), [path])
             before = path.read_bytes()
             with self.assertRaises(FileExistsError):
                 adapter.publish(path, {'foreign': 'must never replace owned proof'})
             self.assertEqual(path.read_bytes(), before)
+
+    def test_interrupted_partial_and_complete_pending_members_neither_block_nor_get_overwritten(self):
+        actual = self.resource_owner()
+        with tempfile.TemporaryDirectory(prefix='employee-interrupted-publication-') as directory:
+            context = {'evidenceDirectory': directory, 'unit': 'db-' + 'a' * 16}
+            value = {'version': 1, 'complete': True, 'fictional': True}
+            path = Path(directory) / (context['unit'] + '-employee-container-stopped.json')
+            complete = path.with_name(path.name + '.pending-' + '0' * 32)
+            partial = path.with_name(path.name + '.pending-' + '1' * 32)
+            complete.write_bytes(json.dumps(value, separators=(',', ':')).encode())
+            partial.write_bytes(b'{"ver')
+            before = [(p, p.stat().st_ino, p.read_bytes()) for p in (complete, partial)]
+            with patch.object(actual.adapter.os, 'urandom', return_value=b'\x22' * 16):
+                actual.publish_stopped(context, value)
+            self.assertEqual(json.loads(path.read_bytes()), value)
+            self.assertEqual(path.stat().st_nlink, 1)
+            for old, inode, data in before:
+                self.assertEqual(old.stat().st_ino, inode)
+                self.assertEqual(old.read_bytes(), data)
 
     def test_missing_public_stop_can_be_repaired_without_overwriting_a_conflicting_member(self):
         actual = self.resource_owner()
