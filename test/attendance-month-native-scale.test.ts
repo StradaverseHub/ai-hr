@@ -32,7 +32,12 @@ it('measures an actual nonempty month page among50000 employees without loading 
  const attendanceQueries=probe.queries.filter(query=>query.sql.includes('from "attendance"'));
  expect(attendanceQueries.length).toBeGreaterThan(0);expect(attendanceQueries.every(query=>(query.rows??0)<=25)).toBe(true);
  expect(probe.queries.some(query=>query.sql.includes('attendance_month_population'))).toBe(true);
+ const policy=probe.queries.filter(query=>query.sql==='set local jit=off');expect(policy).toHaveLength(1);
+ expect(policy[0]).toMatchObject({params:[],rows:0});
+ expect(probe.queries.indexOf(policy[0])).toBeGreaterThan(probe.queries.findIndex(query=>query.sql.includes('public.app_user u')));
+ expect(probe.queries.indexOf(policy[0])).toBeLessThan(probe.queries.findIndex(query=>query.sql.includes('attendance_month_population')));
  const telemetry=probe.telemetry();expect(telemetry.detailComplete).toBe(true);expect(telemetry.totals.failed).toBe(0);
+ expect(telemetry.totals).toMatchObject({statements:32,returnedRows:208,unknownRowCounts:0});
  report.complete=true;report.phase='complete';report.actualTotal=page!.state.total;report.returnedRows=page!.rows.length;report.elapsedMs=elapsedMs;
  report.attendanceQueryRows=attendanceQueries.map(query=>query.rows);report.queryTelemetry=telemetry;
  report.actualTransactions=probe.properties.length;report.knownFixtureFacts=true;save();

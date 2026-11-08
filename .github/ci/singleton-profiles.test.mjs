@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {readFileSync,lstatSync} from 'node:fs';
+import {readFileSync,lstatSync,readdirSync} from 'node:fs';
 import {createHash} from 'node:crypto';
 import {spawnSync,execFileSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
@@ -232,19 +232,27 @@ test('Rewards native policy and original read family retain complete isolated so
   'test/prototypes/rewards-audit-projector-process.ts','test/prototypes/rewards-audit-projector-child.ts',
   'test/harness.ts','test/rewards-setup-fixture.ts','db/client.ts','db/schema.ts','db/events.ts',
   'core/org.ts','core/comp.ts','core/admin.ts','core/audit-chain.ts','core/audit-chain-arming.ts',
+  'core/ai-centre-control.ts','core/module-presentation-read.ts','lib/ai/centre-activity.ts',
   'core/assistant-actions/bank-maintenance-review-store.ts','core/assistant-actions/position-archive-review-store.ts',
   'packs/rewards/setup-query-owner.ts','packs/rewards/setup-legacy-query-port.ts',
   'localization/registry.ts','lib/hr-date.ts','db/migrations/meta/_journal.json',
   'db/migrations/0863_assistant_bank_effect_closure.sql','db/migrations/0864_assistant_catalogue_effect_closure.sql',
   'db/migrations/3210_attendance_shared_workflow_submission_lock.sql','db/migrations/3211_access_editor_native_owner_presentation.sql',
+  'db/migrations/2301_attendance_workflow_submission_shared_lock.sql','db/migrations/3103_access_editor_presentation.sql',
+  'db/migrations/3200_ai_centre_controls.sql','db/migrations/3201_ai_centre_function_coverage.sql',
+  'db/migrations/3500_ai_centre_architecture_compatibility.sql','db/migrations/3501_ai_centre_mandate_write_order.sql',
  ];
  const journal=JSON.parse(readFileSync(new URL('../../db/migrations/meta/_journal.json',import.meta.url)));
+ assert.equal(journal.entries.length,747);const journalSql=journal.entries.map(row=>'db/migrations/'+row.tag+'.sql');assert.equal(new Set(journalSql).size,747);
+ const physicalSql=readdirSync(new URL('../../db/migrations/',import.meta.url)).filter(name=>name.endsWith('.sql')).sort().map(name=>'db/migrations/'+name);assert.equal(physicalSql.length,749);
+ assert.deepEqual(physicalSql.filter(path=>!journalSql.includes(path)),['db/migrations/2301_attendance_workflow_submission_shared_lock.sql','db/migrations/3103_access_editor_presentation.sql']);
  for(const file of files){
   const f=fixture(file),sources=singletonSources(f.unit);
   assert.deepEqual(f.unit.singleton,{version:1,profile:'controlled-database-v1',workers:1,isolation:'job-postgres-cluster'});
   assert.equal(f.unit.kind,'db');assert.deepEqual(f.unit.files,[file]);assert.equal(new Set(sources).size,sources.length);
   validateSingletonHost(f);validateSingletonBinding(f.binding,f.plan,f.unit,f.witness);
   for(const entry of journal.entries)assert(sources.includes('db/migrations/'+entry.tag+'.sql'));
+  for(const path of physicalSql)assert(sources.includes(path),'Actual Rewards SQL/fingerprint input omitted: '+path);
   for(const source of critical){
    assert(sources.includes(source),source);assert(readFileSync(new URL('../../'+source,import.meta.url)).length>0);
    const changed=structuredClone(f);delete changed.plan.singletonSources[changed.unit.id][source];delete changed.binding.sourceHashes[source];
@@ -279,7 +287,13 @@ test('shared module JIT diagnostic owns one unchanged controlled database and ca
  const file='test/module-read-jit-diagnostic.test.ts',f=fixture(file),sources=singletonSources(f.unit);
  assert.deepEqual(f.unit.singleton,{version:1,profile:'controlled-database-v1',workers:1,isolation:'job-postgres-cluster'});
  assert.equal(f.unit.kind,'db');assert.deepEqual(f.unit.files,[file]);assert.equal(new Set(sources).size,sources.length);
- assert.equal(sources.length,1549);assert.equal(createHash('sha256').update(JSON.stringify(sources)).digest('hex'),'2987dc2d5196fa7497e1f9675af7481b058f7be2058f355136f1640ac4cff79c');
+ assert.equal(sources.length,1556);assert.equal(createHash('sha256').update(JSON.stringify(sources)).digest('hex'),'742577028ddcab2a088f16a9c810a9c978ed44f7523cd331bed84aef708503a5');
+ for(const required of ["core/ai-centre-control.ts", "db/migrations/3200_ai_centre_controls.sql", "db/migrations/3201_ai_centre_function_coverage.sql", "db/migrations/3500_ai_centre_architecture_compatibility.sql", "db/migrations/3501_ai_centre_mandate_write_order.sql", "lib/ai/centre-activity.ts", "test/helpers/native-read-observer.ts"])assert(sources.includes(required),'Actual JIT read owner omitted: '+required);
+ const journal=JSON.parse(readFileSync(new URL('../../db/migrations/meta/_journal.json',import.meta.url),'utf8'));
+ assert.equal(journal.entries.length,747);const journalSql=journal.entries.map(row=>'db/migrations/'+row.tag+'.sql');assert.equal(new Set(journalSql).size,747);
+ const physicalSql=readdirSync(new URL('../../db/migrations/',import.meta.url)).filter(name=>name.endsWith('.sql')).sort().map(name=>'db/migrations/'+name);assert.equal(physicalSql.length,749);
+ for(const path of [...journalSql,...physicalSql])assert(sources.includes(path),'Actual canonical SQL/fingerprint input omitted: '+path);
+ assert.deepEqual(physicalSql.filter(path=>!journalSql.includes(path)),['db/migrations/2301_attendance_workflow_submission_shared_lock.sql','db/migrations/3103_access_editor_presentation.sql']);
  validateSingletonHost(f);validateSingletonBinding(f.binding,f.plan,f.unit,f.witness);
  for(const source of sources){
   const bytes=readFileSync(new URL('../../'+source,import.meta.url));assert(bytes.length>0&&bytes.length<=singletonSourceMaximum(source),source);

@@ -1,0 +1,110 @@
+{
+  "kind": "JIT_RUNTIME_SOURCE_RECONCILIATION_NOT_QUALIFICATION",
+  "parent": "3a5944f5ef41e6a1f759b3c79fd64ccfb9f8ef66",
+  "currentAndWholeParentInverses": {
+    ".github/ci/singleton-protocol.mjs": {
+      "currentSha256": "9f5411fbe5cc92c2e43c871dec6981291302d32314a75b30eb3f370878d23c6c",
+      "wholeParentSha256": "5801e217d8f08282545f5d37a55d4073cf80c6db60bc500da096421717607981",
+      "wholeParentGitBlob": "db898ccb27269877449b2a0203d1a07b559d127a",
+      "wholeParentBytes": 85679,
+      "inverseChanges": [
+        {
+          "startLine": 587,
+          "endLine": 588,
+          "before": "  \"test/harness-reset-errors.ts\",\"test/harness.ts\",\"test/helpers/personnel-draft-discard-ci-role-fixture.ts\",\n",
+          "after": "  \"test/harness-reset-errors.ts\",\"test/harness.ts\",\"test/helpers/native-read-observer.ts\",\"test/helpers/personnel-draft-discard-ci-role-fixture.ts\",\n"
+        },
+        {
+          "startLine": 410,
+          "endLine": 411,
+          "before": "  \"lib/ai/assistant-conversation-system.ts\",\"lib/ai/assistant-tool-catalogue.ts\",\"lib/ai/conversation-input.ts\",\n",
+          "after": "  \"lib/ai/assistant-conversation-system.ts\",\"lib/ai/assistant-tool-catalogue.ts\",\"lib/ai/centre-activity.ts\",\"lib/ai/conversation-input.ts\",\n"
+        },
+        {
+          "startLine": 403,
+          "endLine": 405,
+          "before": "  \"db/migrations/3103_access_editor_presentation.sql\",\"db/migrations/3110_attendance_workflow_owner_rls.sql\",\"db/migrations/3210_attendance_shared_workflow_submission_lock.sql\",\n  \"db/migrations/3211_access_editor_native_owner_presentation.sql\",\"db/migrations/meta/_journal.json\",\"db/payroll-audit-schema.ts\",\n",
+          "after": "  \"db/migrations/3103_access_editor_presentation.sql\",\"db/migrations/3110_attendance_workflow_owner_rls.sql\",\"db/migrations/3200_ai_centre_controls.sql\",\"db/migrations/3201_ai_centre_function_coverage.sql\",\"db/migrations/3210_attendance_shared_workflow_submission_lock.sql\",\n  \"db/migrations/3211_access_editor_native_owner_presentation.sql\",\"db/migrations/3500_ai_centre_architecture_compatibility.sql\",\"db/migrations/3501_ai_centre_mandate_write_order.sql\",\"db/migrations/meta/_journal.json\",\"db/payroll-audit-schema.ts\",\n"
+        },
+        {
+          "startLine": 81,
+          "endLine": 82,
+          "before": "  \"core/agent-proposal.ts\",\"core/ai-config.ts\",\"core/ai-governance.ts\",\n",
+          "after": "  \"core/agent-proposal.ts\",\"core/ai-centre-control.ts\",\"core/ai-config.ts\",\"core/ai-governance.ts\",\n"
+        }
+      ]
+    },
+    ".github/ci/singleton-profiles.test.mjs": {
+      "currentSha256": "29bfec86332fdb56d01b3aa73e2a1718d5ed7393f2ead10bd1fcf01b815ec55b",
+      "wholeParentSha256": "83ecfcc5b9d8457fa33b2a75cb9465fe090fd37160b6045cbd958ab5b273cff8",
+      "wholeParentGitBlob": "cd5e512d581faf4305f754c3dd3456f84caece05",
+      "wholeParentBytes": 32484,
+      "inverseChanges": [
+        {
+          "startLine": 281,
+          "endLine": 288,
+          "before": " assert.equal(sources.length,1549);assert.equal(createHash('sha256').update(JSON.stringify(sources)).digest('hex'),'2987dc2d5196fa7497e1f9675af7481b058f7be2058f355136f1640ac4cff79c');\n",
+          "after": " assert.equal(sources.length,1556);assert.equal(createHash('sha256').update(JSON.stringify(sources)).digest('hex'),'742577028ddcab2a088f16a9c810a9c978ed44f7523cd331bed84aef708503a5');\n for(const required of [\"core/ai-centre-control.ts\", \"db/migrations/3200_ai_centre_controls.sql\", \"db/migrations/3201_ai_centre_function_coverage.sql\", \"db/migrations/3500_ai_centre_architecture_compatibility.sql\", \"db/migrations/3501_ai_centre_mandate_write_order.sql\", \"lib/ai/centre-activity.ts\", \"test/helpers/native-read-observer.ts\"])assert(sources.includes(required),'Actual JIT read owner omitted: '+required);\n const journal=JSON.parse(readFileSync(new URL('../../db/migrations/meta/_journal.json',import.meta.url),'utf8'));\n assert.equal(journal.entries.length,747);const journalSql=journal.entries.map(row=>'db/migrations/'+row.tag+'.sql');assert.equal(new Set(journalSql).size,747);\n const physicalSql=readdirSync(new URL('../../db/migrations/',import.meta.url)).filter(name=>name.endsWith('.sql')).sort().map(name=>'db/migrations/'+name);assert.equal(physicalSql.length,749);\n for(const path of [...journalSql,...physicalSql])assert(sources.includes(path),'Actual canonical SQL/fingerprint input omitted: '+path);\n assert.deepEqual(physicalSql.filter(path=>!journalSql.includes(path)),['db/migrations/2301_attendance_workflow_submission_shared_lock.sql','db/migrations/3103_access_editor_presentation.sql']);\n"
+        },
+        {
+          "startLine": 2,
+          "endLine": 3,
+          "before": "import {readFileSync,lstatSync} from 'node:fs';\n",
+          "after": "import {readFileSync,lstatSync,readdirSync} from 'node:fs';\n"
+        }
+      ]
+    }
+  },
+  "allOldMembers": 1549,
+  "inlineMembers": 1547,
+  "commonMembers": 9,
+  "currentMembers": 1556,
+  "pathListSha256": "742577028ddcab2a088f16a9c810a9c978ed44f7523cd331bed84aef708503a5",
+  "addedActualOwners": {
+    "core/ai-centre-control.ts": "90b4b0161664f5f17cc0f4cc548def2cc00271d117b1852301a29aa5769db33a",
+    "db/migrations/3200_ai_centre_controls.sql": "2182ae4a614d0b847f399af18f9cfc43e82d3c9fd6f42ca960bfe22ebf4f10e2",
+    "db/migrations/3201_ai_centre_function_coverage.sql": "0c7239f512174c0d941dcb441cf98bd3a685a8e4d65973dc92f136dfb6b78d8a",
+    "db/migrations/3500_ai_centre_architecture_compatibility.sql": "3286f17e76b8d997c46b22019df613b9eef1d1b82c85c125cdb57b80392884ca",
+    "db/migrations/3501_ai_centre_mandate_write_order.sql": "821312765fb359ee0c761a200b519525d1d667bfe20b11f1889829f6d4976d76",
+    "lib/ai/centre-activity.ts": "7397410f0b1708b9bc0995cc96604a608fd11d5256407badddcfd917109a68ef",
+    "test/helpers/native-read-observer.ts": "401bd549ee1ff0ad4ae7241743860682dd8a081ee71e9ee401056b0dc95787d5"
+  },
+  "actualRuntimeImportRoots": [
+    "test/module-read-jit-diagnostic.test.ts",
+    "test/performance/module-read-jit-probe.ts",
+    "test/harness.ts",
+    "test/global-setup.ts",
+    "test/env.ts",
+    "vitest.config.ts",
+    "scripts/migrate-with-focused-prerequisites.ts",
+    "drizzle.config.ts"
+  ],
+  "actualRuntimeImportedFiles": 800,
+  "actualLocalEdges": 3151,
+  "unresolvedLocal": [],
+  "dynamicImports": [],
+  "actualJournalEntries": 747,
+  "physicalSqlFiles": 749,
+  "moduleProductSliceWhole": {
+    "core/analytics.ts": "328e0037e6ad23b15cccaea91a0e68834b14c83a05420d07faab7203268b44b0",
+    "core/attendance.ts": "8dfff7caf9f98f8f4b5f4b13adb3149ea162cf76b1b7dd2d6ecf555c487eba02",
+    "docs/adr/2026-11-08-measured-presentation-jit-policy.md": "aad3e42e1903a28b66821304934cbef96d1dc0c39332638821d4526dc28a172f",
+    "test/analytics-dashboard-composition.test.ts": "9031fe507bf9aa4dbb2d20272a6f3731a5ceefc26c819627e91b634f2ce91140",
+    "test/analytics-native-scale.test.ts": "20255173e4282d6de6845c19002a8125ab8f590b01cfb750989b312f8306b1bd",
+    "test/attendance-month-native-scale.test.ts": "b97925982f407f8824c4ecbb74ed224c80c9cb682db157e278d80f406ebdc980",
+    "test/module-read-jit-diagnostic.test.ts": "d57b9069bc869006d4d72eb256bd976bfe6f568d6529425beaea6b55d278f22d",
+    "test/performance/module-read-jit-probe.ts": "49efc0fd9630b782a550b046f151edbbe54f919d32c6c7cb36ebadd48c98be9b"
+  },
+  "allOtherProfilesAndCapsUnchanged": true,
+  "modelCasesUnchanged": 51,
+  "noLocalRepositoryBehavior": true,
+  "noLookupMerge": true,
+  "sourceOnly": true,
+  "releaseAuthorized": false,
+  "notes": [
+    "Preserve all1549 original members and their order, all9 common members, every other descriptor/profile/model name/cap and the whole8-path product slice.",
+    "Seven additions are actual runtime/read inputs: AI control/activity, four canonical SQL files and newly imported native-read-observer. Type-only compiler dependencies are excluded consistently with the original runtime graph.",
+    "Existing model keeps its every-source-omission loop and all admission checks; adds explicit current747journal/749physicalSQL and seven required-owner checks within the same case.",
+    "No new source loader/pool/protocol layer, semantic compiler, lookup39006 merge, kernel repin, activation, publication or runtime execution. Original f924 JIT evidence is not relabeled onto this source."
+  ]
+}

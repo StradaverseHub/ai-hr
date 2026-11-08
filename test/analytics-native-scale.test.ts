@@ -14,9 +14,10 @@ import {observeNativeRead} from './helpers/native-read-observer';
 
 // Structural statement shapes from the actual canonical read bodies. This labels
 // observations, never chooses a query/permission or infers a slow business report.
-const analyticsStatementClassifierVersion='analytics-statement-shapes/v2';
+const analyticsStatementClassifierVersion='analytics-statement-shapes/v3';
 function classifyAnalyticsStatement(text:string):string{
  const query=text.toLowerCase().replace(/\s+/g,' ');
+ if(text==='set local jit=off')return 'presentation-jit-policy';
  if(query.includes('public.app_user u'))return 'principal';
  for(const [marker,label]of [
   ['analytics_headcount','headcount'],['analytics_newhires_page','hires-page'],
@@ -117,9 +118,15 @@ it('measures actual native 50k Analytics reads and complete-export baselines on 
  const telemetry=probe.telemetry();
  expect(telemetry.detailComplete).toBe(true);expect(telemetry.totals.statements).toBeGreaterThan(0);
  expect(telemetry.totals.failed).toBe(0);expect(telemetry.totals.unknownRowCounts).toBe(0);
- // Same thirteen-report/cursor course; only nationality's transport cardinality
- // changes from40000 people to its single independently expected Unknown bucket.
- expect(telemetry.totals.statements).toBe(124);
+ // Same thirteen-report/cursor course plus one zero-row fixed JIT policy command.
+ // Nationality retains its single independently expected Unknown bucket.
+ expect(telemetry.totals.statements).toBe(125);
+ expect(telemetry.totals.returnedRows).toBe(90091);
+ const policy=telemetry.summaries.filter(row=>row.classification==='presentation-jit-policy');
+ expect(policy).toHaveLength(1);expect(policy[0]).toMatchObject({count:1,returnedRows:0,unknownRowCounts:0,failed:0});
+ const principalOrdinal=telemetry.samples.find(row=>row.classification==='principal')!.ordinal;
+ expect(policy[0].firstOrdinal).toBeGreaterThan(principalOrdinal);
+ expect(policy[0].firstOrdinal).toBeLessThan(telemetry.samples.find(row=>row.classification==='headcount')!.ordinal);
  const nationality=telemetry.summaries.filter(row=>row.classification==='nationality');
  expect(nationality).toHaveLength(1);expect(nationality[0].count).toBe(1);
  expect(nationality[0].returnedRows).toBe(1);expect(nationality[0].returnedRows).toBeLessThanOrEqual(4);
