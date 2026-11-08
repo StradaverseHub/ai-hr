@@ -7,7 +7,7 @@ import {join,resolve} from 'node:path';
 import {cpus,totalmem} from 'node:os';
 import {fileURLToPath} from 'node:url';
 
-export const ATTRIBUTION_SOURCE='13d5a5d64512d1daa026836b34cb0b043b4a24cf';
+export const ATTRIBUTION_SOURCE='5c8744b2ba3dfc03fc80f729413b2e93340c4ea8';
 const GiB=1024**3,FILE_CAP=512*1024**2,TOTAL_CAP=GiB,MIN_FREE=20*GiB;
 const hash=value=>createHash('sha256').update(value).digest('hex');
 const git=(cwd,...args)=>execFileSync('git',args,{cwd,encoding:'utf8',timeout:30000,maxBuffer:4*1024**2}).trim();

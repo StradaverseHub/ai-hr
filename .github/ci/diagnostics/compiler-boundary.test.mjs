@@ -195,7 +195,10 @@ test('complete13d and historical selected-f2 schedules cannot exchange sources o
 });
 
 test('new complete request pins13d and every current controller byte without adopting diagnostic success as release proof',()=>{
- const request=JSON.parse(readFileSync(new URL('../../../docs/qualification/compiler-post-translator-complete-boundary-request-20261108.json',import.meta.url),'utf8'));
+ const request=JSON.parse(readFileSync(new URL('../../../docs/qualification/compiler-roster-attribution-controller-context-20261108.json',import.meta.url),'utf8')).completeBoundary;
+ const historical=readFileSync(new URL('../../../docs/qualification/compiler-post-translator-complete-boundary-request-20261108.json',import.meta.url));
+ assert.equal(createHash('sha256').update(historical).digest('hex'),'2eacde993f3682779709423a0123e40e3e5e64d4b1ff09b1206b4e3796a074ed');
+ assert.equal(request.historicalRequestSha256,'2eacde993f3682779709423a0123e40e3e5e64d4b1ff09b1206b4e3796a074ed');
  assert.equal(request.source,FULL_BOUNDARY_SOURCE);assert.equal(request.sourceRef,FULL_BOUNDARY_REF);assert.equal(Object.keys(request.inputs).length,25);admitBoundaryInputs(request.inputs);
  assert.deepEqual(request.expectedJobs,['resolve','compiler-boundary']);assert.equal(request.requiredScope,'ALL_ORIGINAL_ROOTS_AND_RESOLVED_IDENTITIES');
  assert.equal(request.ordinaryCompilerQualified,false);assert.equal(request.releaseAuthorized,false);

@@ -2,17 +2,18 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
+import {createHash} from 'node:crypto';
 import {compilerArguments,lastCheckedSource,actualCompilerResult,attributeCompiler,ATTRIBUTION_SOURCE,validateAttributionSelection} from './compiler-attribution.mjs';
 
 test('selection admits only the exact source and no other diagnostics or transport',()=>{
  const inputs={installer_fixture_phase:'full',expected_sha:ATTRIBUTION_SOURCE,compiler_probe:true,nodb_probe:false,layout_probe:false,next_build_cache_phase:'disabled',
   ...Object.fromEntries(['transport_origin_run','transport_origin_sha','transport_origin_artifact','transport_origin_digest','compiler_origin_run','compiler_origin_sha','compiler_origin_artifact','compiler_origin_digest'].map(key=>[key,'']))};
  assert.doesNotThrow(()=>validateAttributionSelection(inputs));
- for(const changed of [{expected_sha:'0'.repeat(40)},{installer_fixture_phase:'compiler-boundary'},{compiler_probe:false},{nodb_probe:true},{layout_probe:true},{run_build:true},{next_build_cache_phase:'cold'},{compiler_origin_run:'123'},{transport_origin_run:'123'}])assert.throws(()=>validateAttributionSelection({...inputs,...changed}));
+ for(const changed of [{expected_sha:'0'.repeat(40)},{expected_sha:'13d5a5d64512d1daa026836b34cb0b043b4a24cf'},{installer_fixture_phase:'compiler-boundary'},{compiler_probe:false},{nodb_probe:true},{layout_probe:true},{run_build:true},{next_build_cache_phase:'cold'},{compiler_origin_run:'123'},{transport_origin_run:'123'}])assert.throws(()=>validateAttributionSelection({...inputs,...changed}));
 });
 
 test('actual GitHub input shape may omit only empty known transport origins',()=>{
- const inputs=JSON.parse('{"candidate_ref":"codex/compiler-proven-message-boundaries-20261108","expected_sha":"13d5a5d64512d1daa026836b34cb0b043b4a24cf","filesystem_activation_probe":false,"installer_fixture_phase":"full","plan_probe":false,"build_transport_probe":false,"compiler_transport_probe":false,"next_build_cache_phase":"disabled","managed_compiler_probe":false,"managed_compiler_force_invalid":false,"compiler_compatible_probe":false,"compiler_probe":true,"statutory_probe":false,"nodb_probe":false,"instrument_copies":false,"layout_probe":false}');
+ const inputs=JSON.parse('{"candidate_ref":"codex/roster-shift-oracle-import-correction-20261108","expected_sha":"5c8744b2ba3dfc03fc80f729413b2e93340c4ea8","filesystem_activation_probe":false,"installer_fixture_phase":"full","plan_probe":false,"build_transport_probe":false,"compiler_transport_probe":false,"next_build_cache_phase":"disabled","managed_compiler_probe":false,"managed_compiler_force_invalid":false,"compiler_compatible_probe":false,"compiler_probe":true,"statutory_probe":false,"nodb_probe":false,"instrument_copies":false,"layout_probe":false}');
  assert.doesNotThrow(()=>validateAttributionSelection(inputs));
  for(const key of ['transport_origin_run','transport_origin_sha','transport_origin_artifact','transport_origin_digest','compiler_origin_run','compiler_origin_sha','compiler_origin_artifact','compiler_origin_digest']){
   for(const absent of [undefined,''])assert.doesNotThrow(()=>validateAttributionSelection({...inputs,[key]:absent}));
@@ -25,7 +26,7 @@ test('attribution retains whole-project config and a fresh owned graph without w
  const args=compilerArguments('/source','/owned');
  assert.deepEqual(args,['/source/node_modules/typescript/lib/tsc.js','--noEmit','--pretty','false','--tsBuildInfoFile','/owned/whole-project.tsbuildinfo','--extendedDiagnostics','--generateTrace','/owned/trace']);
  assert.deepEqual(compilerArguments('/source','/owned',true),['/source/node_modules/typescript/lib/tsc.js','--noEmit','--pretty','false','--tsBuildInfoFile','/owned/inventory.tsbuildinfo','--listFilesOnly']);
- assert.equal(ATTRIBUTION_SOURCE,'13d5a5d64512d1daa026836b34cb0b043b4a24cf');
+ assert.equal(ATTRIBUTION_SOURCE,'5c8744b2ba3dfc03fc80f729413b2e93340c4ea8');
 });
 test('the final complete begin event survives incomplete or truncated trace tails',()=>{
  const begin=path=>JSON.stringify({name:'checkSourceFile',ph:'B',args:{path}});
@@ -52,6 +53,15 @@ test('existing selector stays within25 inputs and reserves only the pinned sourc
  assert(incremental.includes("inputs.installer_fixture_phase != 'compiler-boundary' && inputs.installer_fixture_phase != 'compiler-consumer-trace' && (inputs.compiler_probe && inputs.expected_sha != '"+ATTRIBUTION_SOURCE+"'"));
  assert.match(workflow,/compiler-attribution:[\s\S]*?runs-on: ubuntu-24.04[\s\S]*?timeout-minutes: 20/);
  assert.match(workflow,/name: diagnostic-compiler-attribution\n\s+path: \$\{\{ runner.temp \}\}\/diagnostic-compiler-attribution\//);
+ const request=JSON.parse(readFileSync(new URL('../../../docs/qualification/compiler-roster-whole-attribution-20261108-request.json',import.meta.url),'utf8'));
+ assert.equal(request.source,ATTRIBUTION_SOURCE);assert.equal(request.inputs.expected_sha,ATTRIBUTION_SOURCE);
+ assert.equal(request.inputs.candidate_ref,'codex/roster-shift-oracle-import-correction-20261108');assert.equal(Object.keys(request.inputs).length,25);
+ assert.doesNotThrow(()=>validateAttributionSelection(request.inputs));assert.deepEqual(request.expectedJobs,['resolve','compiler-attribution']);
+ assert.equal(request.ordinaryCompilerQualified,false);assert.equal(request.releaseAuthorized,false);assert.equal(request.qualification,'NOT_RUN');
+ for(const [name,hash]of Object.entries(request.sourceSha256))assert.equal(createHash('sha256').update(readFileSync(new URL('../../../'+name,import.meta.url))).digest('hex'),hash,name);
+ const inventory=JSON.parse(readFileSync(new URL('../../../'+request.targetSourceInventory,import.meta.url),'utf8'));
+ assert.equal(inventory.source,ATTRIBUTION_SOURCE);assert.equal(inventory.trackedBlobs,12530);assert.equal(inventory.files.length,12530);
+ assert.equal(new Set(inventory.files.map(row=>row.path)).size,12530);assert.equal(inventory.nativeConfiguredRoots,null);assert.equal(inventory.nativeResolvedProgramFiles,null);
 });
 test('non-hosted invocation refuses before reading candidate files',async()=>{
  const previous=process.env.GITHUB_ACTIONS;

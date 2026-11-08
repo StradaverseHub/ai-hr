@@ -104,7 +104,7 @@ on:
         default: ""
         type: string
       compiler_probe:
-        description: Whole compiler diagnostic; exact 38b047 source selects bounded attribution, other sources retain cold/warm error-refusal controls
+        description: Whole compiler diagnostic; exact reviewed5c874 source selects bounded attribution, other sources retain cold/warm error-refusal controls
         required: false
         default: false
         type: boolean
@@ -162,10 +162,10 @@ jobs:
         if: ${{ inputs.compiler_probe }}
         run: node --test .github/ci/diagnostics/compiler-incremental.test.mjs
       - name: Whole compiler attribution controller checks
-        if: ${{ inputs.compiler_probe && inputs.installer_fixture_phase == 'full' && inputs.expected_sha == '13d5a5d64512d1daa026836b34cb0b043b4a24cf' }}
+        if: ${{ inputs.compiler_probe && inputs.installer_fixture_phase == 'full' && inputs.expected_sha == '5c8744b2ba3dfc03fc80f729413b2e93340c4ea8' }}
         run: node --test .github/ci/diagnostics/compiler-attribution.test.mjs
       - name: Admit compiler-only attribution scope
-        if: ${{ inputs.compiler_probe && inputs.installer_fixture_phase == 'full' && inputs.expected_sha == '13d5a5d64512d1daa026836b34cb0b043b4a24cf' }}
+        if: ${{ inputs.compiler_probe && inputs.installer_fixture_phase == 'full' && inputs.expected_sha == '5c8744b2ba3dfc03fc80f729413b2e93340c4ea8' }}
         run: node .github/ci/diagnostics/compiler-attribution.mjs --selection
         env:
           AIHR_COMPILER_ATTRIBUTION_INPUTS: ${{ toJSON(inputs) }}
@@ -409,7 +409,7 @@ jobs:
           retention-days: 14
 
   compiler-attribution:
-    if: ${{ inputs.installer_fixture_phase != 'compiler-boundary' && inputs.installer_fixture_phase != 'compiler-consumer-trace' && (inputs.compiler_probe && inputs.installer_fixture_phase == 'full' && inputs.expected_sha == '13d5a5d64512d1daa026836b34cb0b043b4a24cf') }}
+    if: ${{ inputs.installer_fixture_phase != 'compiler-boundary' && inputs.installer_fixture_phase != 'compiler-consumer-trace' && (inputs.compiler_probe && inputs.installer_fixture_phase == 'full' && inputs.expected_sha == '5c8744b2ba3dfc03fc80f729413b2e93340c4ea8') }}
     needs: resolve
     runs-on: ubuntu-24.04
     timeout-minutes: 20
@@ -435,7 +435,7 @@ jobs:
           retention-days: 14
 
   compiler-incremental:
-    if: ${{ inputs.installer_fixture_phase != 'compiler-boundary' && inputs.installer_fixture_phase != 'compiler-consumer-trace' && (inputs.compiler_probe && inputs.expected_sha != '13d5a5d64512d1daa026836b34cb0b043b4a24cf') }}
+    if: ${{ inputs.installer_fixture_phase != 'compiler-boundary' && inputs.installer_fixture_phase != 'compiler-consumer-trace' && (inputs.compiler_probe && inputs.expected_sha != '5c8744b2ba3dfc03fc80f729413b2e93340c4ea8') }}
     needs: resolve
     runs-on: ubuntu-24.04
     timeout-minutes: 20
