@@ -1,0 +1,39 @@
+{
+  "kind": "COMPLETE_CLASSIFIER_HAZARD_CLOSURE_SOURCE_NOT_ADOPTION",
+  "base": "42aef592777b713a9d218f4ba94522e8249ccbb7",
+  "sourceRef": "codex/db-classifier-complete-graph-20261108",
+  "sourceSha256": {
+    "scripts/gate-db-classify.ts": "3ea38a9643463dc23bf7e5c65dc5386e5e7e33ef2e22f5f7d09f5c3da924dfb2",
+    "test/gate-db-classify-graph.test.ts": "b8b076969d51701e9d9b81d67274e36ab0bc2277dea8df886fbb089eaec028ec",
+    "docs/qualification/db-classifier-complete-graph-20261108.md": "39c08a3c86a89625719a482c6776bcf9fe263c802a22a2331fc76c360aff539f",
+    "docs/qualification/db-classifier-complete-graph-inverse-20261108.json": "7c99b900d3ca8528b5adae5e418b5111ac96c76e2f7886b64f43cb5d64c0d244"
+  },
+  "unchangedSha256": {
+    "test/gate-db-classify-cycle-regression.test.ts": "842dfd47a4305bb170c7cc53d3a104b1b613844ade12ff97a642a1aedc535ac0",
+    "test/r417-gate-db-classify.test.ts": "3e98f97f697900c55784ff2de4c898314e6899fbd1cded922469c4fba0d6282b",
+    ".github/ci/plan.mjs": "c8579a354b03654e453f83990561255f28217110ee1d6a14d3e19510830d2952",
+    ".github/ci/focused-checks.mjs": "8344d6a312adbfdd4a49fb4ea34565264e7aa96a222c252a0d4289e0de3a1b77",
+    ".github/workflows/alpha-focused-checks.yml": "b80b0ca5884c3e0e39ee898068526fcb28f4fc4df64ecd72ddcd10b903d5138d",
+    ".github/ci/policy-version.mjs": "cbb9871c2e11c3f7434bdcb0fe25cd2c8323f683d588d892ec9dbff194232c97"
+  },
+  "originalRegression": {
+    "runId": "42460484371",
+    "source": "42aef592777b713a9d218f4ba94522e8249ccbb7",
+    "artifactId": "13608569514",
+    "zipSha256": "364561d9fe7512c35814c392c8a7ac21dcb6fe307fd78616c443b846c9763601",
+    "total": 32,
+    "passed": 30,
+    "failed": 2,
+    "pending": 0
+  },
+  "intendedAssertions": 38,
+  "performanceOptimization": false,
+  "timeoutChanged": false,
+  "completeSuiteComparisonRequired": true,
+  "closedPortProofRequiredBeforeAdoption": true,
+  "testsExecuted": false,
+  "classificationAdopted": false,
+  "releaseAuthorized": false,
+  "stagingHeld": true,
+  "productionHeld": true
+}
