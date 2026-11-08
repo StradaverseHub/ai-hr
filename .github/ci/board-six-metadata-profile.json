@@ -1,0 +1,36 @@
+{
+  "kind": "BOARD_SIX_METADATA_CATALOGUE_REPAIR_V1",
+  "original": "df32d8955525e991f42b31eca2a8fbfd71dcbaa2",
+  "candidate": "e70686353134de3471f08fe7a27e937f14fdcc95",
+  "baseTree": "2be88dc2f45e84a37c4d41d3132179d866d96ca8",
+  "headTree": "9b979304c16e0779918bbd6bfa0c51922c041a3e",
+  "diffSha256": "4b3b1bf567d084d713f2a0b162fcbef9fd3d8b01db2f7e29a0884ccb2b88df61",
+  "changed": [
+    "db/migrations/3703_attendance_formula_versions.sql",
+    "docs/me-profile-field-visibility.md",
+    "test/ai-centre-controls.test.ts",
+    "test/harness-spec-v18.test.ts",
+    "test/helpers/approved-upgrade.ts",
+    "test/teras-harness-units.test.ts"
+  ],
+  "seeds": [
+    "test/ai-centre-controls.test.ts",
+    "test/ai-dev-populated-upgrade.test.ts",
+    "test/approved-board-populated-upgrade.test.ts",
+    "test/bank-import-point-read-upgrade.test.ts",
+    "test/board-eight-populated-upgrade.test.ts",
+    "test/board-nine-populated-upgrade.test.ts",
+    "test/explainer-owners.test.ts",
+    "test/explainer-semantic-model.test.ts",
+    "test/harness-spec-v18.test.ts",
+    "test/information-correction-upgrade.test.ts",
+    "test/lifecycle-v9-populated-upgrade.test.ts",
+    "test/me-profile-visibility.test.ts",
+    "test/original-five-populated-upgrade.test.ts",
+    "test/pay-formula-upgrade.test.ts",
+    "test/payroll-tax-basis-upgrade.test.ts",
+    "test/rewards-populated-upgrade.test.ts",
+    "test/tenant-company-fk-upgrade.test.ts",
+    "test/teras-harness-units.test.ts"
+  ]
+}
