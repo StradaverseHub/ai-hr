@@ -9,6 +9,7 @@ import {hostHealth} from './host-health.mjs';
 import {CI_POLICY} from './policy-version.mjs';
 import {restrictedPortRequest,executeDatabaseSetup,runRestrictedPortQualification,SOURCE_PINS} from './restricted-port-qualification.mjs';
 import {capturePostgresEvidence, validatePostgresEvidence, postgresProfileFromEnv, V15_POSTGRES_PROFILE} from './postgres-evidence.mjs';
+import {compilerProcIdentity,boundedCompilerBytes} from './diagnostics/native-reference/admission.mjs';
 
 const postgres = fileURLToPath(new URL('./postgres.sh', import.meta.url));
 const hash = text => createHash('sha256').update(text).digest('hex');
@@ -18,7 +19,9 @@ export const employeeNativeControlFile='test/employee-choice-benchmark-owner-nat
 export const employeeNativeFactoryFile='test/employee-choice-native-owner-factory.test.ts';
 export const employeeAsciiPurposeFile='test/employee-choice-exact-ascii-purpose.test.ts';
 export const employeeAsciiPlanFile='test/employee-choice-exact-ascii-plan.test.ts';
+export const compilerReferenceFile='test/compiler-native-reference-fixture.test.ts';
 const benchmarkSupervisor=fileURLToPath(new URL('./employee-benchmark-supervisor.py',import.meta.url));
+const compilerSupervisor=fileURLToPath(new URL('./compiler-reference-supervisor.py',import.meta.url));
 const closed = 'postgres://nobody:nothing@127.0.0.1:1/no_database';
 const databaseKeys = ['DATABASE_URL', 'MIGRATION_DATABASE_URL', 'TEST_DATABASE_URL', 'TEST_MIGRATION_DATABASE_URL'];
 
@@ -72,10 +75,12 @@ export function isEmployeeChoiceNativeFactory(files){return files.length===1&&fi
 
 export function isEmployeeChoiceAsciiPurpose(files){return files.length===1&&files[0]===employeeAsciiPurposeFile;}
 export function isEmployeeChoiceAsciiPlan(files){return files.length===1&&files[0]===employeeAsciiPlanFile;}
+export function isCompilerReferenceFixture(files){return files.length===1&&files[0]===compilerReferenceFile;}
 
 export function focusedBenchmarkStageFrontier(execute){
  let poisoned=false;
  return(name,options={})=>{
+  if(poisoned&&name==='compiler-reference')throw Error('Uncertain compiler owner refuses new work');
   if(poisoned&&['reset','migrate','benchmark','native-controls','native-factory','ascii-purpose','ascii-plan'].includes(name))throw Error('Uncertain benchmark owner refuses new SQL work');
   try{const result=execute(name,options);if(result.error||result.status!==0)poisoned=true;return result;}catch(error){poisoned=true;throw error;}
  };
@@ -141,22 +146,32 @@ export function runFocused(destination) {
   const cwd = process.cwd(), sha = process.env.AIHR_CI_HEAD, controller = process.env.AIHR_CI_CONTROL_HEAD;
   if (!/^[0-9a-f]{40}$/.test(controller ?? '')) throw Error('Missing exact focused controller identity');
   const files = parseSelection(process.env.AIHR_FOCUSED_TESTS);
-  const benchmark=isEmployeeChoiceBenchmark(files),nativeControls=isEmployeeChoiceNativeControls(files),nativeFactory=isEmployeeChoiceNativeFactory(files),asciiPurpose=isEmployeeChoiceAsciiPurpose(files),asciiPlan=isEmployeeChoiceAsciiPlan(files),supervised=benchmark||nativeControls||nativeFactory||asciiPurpose||asciiPlan;
+  const benchmark=isEmployeeChoiceBenchmark(files),nativeControls=isEmployeeChoiceNativeControls(files),nativeFactory=isEmployeeChoiceNativeFactory(files),asciiPurpose=isEmployeeChoiceAsciiPurpose(files),asciiPlan=isEmployeeChoiceAsciiPlan(files),compiler=isCompilerReferenceFixture(files),supervised=benchmark||nativeControls||nativeFactory||asciiPurpose||asciiPlan||compiler;
   const dir = resolve(destination), runnerTemp = realpathSync(process.env.RUNNER_TEMP);
   if (!relative(runnerTemp, dir) || relative(runnerTemp, dir).startsWith('../') || isAbsolute(relative(runnerTemp, dir)))
     throw Error('Evidence must use an owned directory under RUNNER_TEMP');
   mkdirSync(dir, {recursive: true});
-  const stage=focusedBenchmarkStageFrontier((name,options={})=>spawnSync('python3',['-I','-B',benchmarkSupervisor,JSON.stringify({stage:name,node:process.execPath,
+  const stage=focusedBenchmarkStageFrontier((name,options={})=>spawnSync(compiler?'/usr/bin/python3':'python3',['-I','-B',compiler?compilerSupervisor:benchmarkSupervisor,JSON.stringify({stage:name,node:process.execPath,
     controller:resolve(fileURLToPath(new URL('../..',import.meta.url))),destination:dir})],{cwd,...options}));
   const metadata=supervised?name=>{const result=stage(name,{encoding:'utf8',maxBuffer:1024*1024});if(result.error||result.status!==0)throw Error('Supervised metadata refused');return result.stdout.trimEnd();}:undefined;
   assertCandidate(cwd,sha,metadata);
   checkedTrackedFiles(cwd, files,metadata);
+  if(compiler){if(metadata('controller-head')!==controller||metadata('controller-status')!=='')throw Error('Compiler controller is not the clean exact SHA');}
   const classifier = 'scripts/gate-db-classify.ts';
   const classificationOptions={cwd,input:files.join('\n')+'\n',encoding:'utf8',maxBuffer:1024*1024};
   const classification=supervised?stage('classifier',classificationOptions):null;
   if(supervised&&(classification.error||classification.status!==0))throw Error('Supervised classifier refused');
   const output=supervised?classification.stdout:execFileSync(process.execPath,['--import','tsx',classifier,'explain'],classificationOptions);
   const groups = partitionSelection(files, output);
+  if(compiler){
+    if(groups.DB.length||JSON.stringify(groups.NODB)!==JSON.stringify([compilerReferenceFile]))throw Error('Closed compiler fixture requires actual NODB classification');
+    const control=resolve(fileURLToPath(new URL('../..',import.meta.url))),relativeManifest='docs/qualification/compiler-reference-owned-source-20261108.json';
+    const raw=readFileSync(join(cwd,relativeManifest));if(!raw.equals(readFileSync(join(control,relativeManifest))))throw Error('Compiler source/controller declaration differs');
+    const declaration=JSON.parse(raw);if(declaration.kind!=='COMPILER_REFERENCE_OWNED_PROCESS_SOURCE_NOT_QUALIFICATION')throw Error('Closed compiler source declaration required');
+    for(const [path,wanted]of Object.entries(declaration.componentSources))if(hash(readFileSync(join(cwd,path)))!==wanted||hash(readFileSync(join(control,path)))!==wanted)throw Error('Compiler source/controller bytes differ');
+    const self=compilerProcIdentity(process.pid);
+    writeFileSync(join(dir,'compiler-reference-preflight.json'),JSON.stringify({version:1,kind:'OWNED_COMPILER_REFERENCE_PREFLIGHT_NOT_RELEASE',source:sha,controller,run:process.env.GITHUB_RUN_ID,attempt:process.env.GITHUB_RUN_ATTEMPT,actor:{pid:self.pid,start:self.start},sourceHashes:declaration.componentSources}),{flag:'wx',mode:0o600});
+  }
   const qualifyPort = restrictedPortRequest(process.env.AIHR_QUALIFY_RESTRICTED_PORT, groups, process.env.AIHR_RESTRICTED_PORT_TYPECHECK);
   const postgresProfile = groups.DB.length ? assertFocusedPostgresProfile(process.env) : null;
 
@@ -193,7 +208,7 @@ export function runFocused(destination) {
         const args = ['exec', 'vitest', 'run'];
         if (kind === 'NODB') args.push('--config', 'vitest.nodb.config.ts');
         args.push(...selected, '--reporter=default', '--reporter=json', '--outputFile.json=' + resultPath);
-        const child = supervised?stage(nativeFactory?'native-factory':nativeControls?'native-controls':asciiPurpose?'ascii-purpose':asciiPlan?'ascii-plan':'benchmark',{stdio:'inherit',env}):spawnSync('pnpm', args, {stdio: 'inherit', env});
+        const child = supervised?stage(compiler?'compiler-reference':nativeFactory?'native-factory':nativeControls?'native-controls':asciiPurpose?'ascii-purpose':asciiPlan?'ascii-plan':'benchmark',{stdio:'inherit',env}):spawnSync('pnpm', args, {stdio: 'inherit', env});
         batch.processExitCode = child.status; batch.signal = child.signal;
         if (child.error || child.status !== 0) throw Error('Selected test process failed');
         batch.assertions = verifyFocusedResult(JSON.parse(readFileSync(resultPath, 'utf8')), selected, cwd);
@@ -207,6 +222,7 @@ export function runFocused(destination) {
   finally {
     const partial=()=>writeFileSync(join(dir,'focused-partial.json'),JSON.stringify({...report,kind:'FOCUSED_PARTIAL_ONLY',complete:false,exitCode:1,endedAt:new Date().toISOString()},null,2)+'\n',{flag:'wx',mode:0o600});
     const cleanup=()=>{
+    if(compiler){try{report.compilerSettlement=verifyCompilerSettlement(dir);}catch{report.exitCode=1;report.compilerSettlementRefused=true;}}
     if (touchedDatabase) {
       const terminal=()=>{
       try {
@@ -239,6 +255,58 @@ export function runFocused(destination) {
   return report.exitCode;
 }
 
+/** Read-only native corroboration, never a stale-PID recovery/kill mechanism. */
+export function verifyCompilerSettlement(destination){
+  runnerOnly();if(!isCompilerReferenceFixture(parseSelection(process.env.AIHR_FOCUSED_TESTS)))throw Error('Sole compiler settlement required');
+  const dir=resolve(destination);if(dir!==join(realpathSync(process.env.RUNNER_TEMP),'aihr-focused'))throw Error('Fixed compiler evidence directory required');
+  const raw=boundedCompilerBytes(join(dir,'compiler-supervisor.jsonl'),131072).toString('utf8'),lines=raw.trimEnd().split('\n');
+  if(!raw.endsWith('\n')||!lines.length||lines.length>1000)throw Error('Complete compiler ownership stream required');
+  const monitors=parseCompilerSettlementRows(raw,{source:process.env.AIHR_CI_HEAD,controller:process.env.AIHR_CI_CONTROL_HEAD,run:process.env.GITHUB_RUN_ID});
+  requireCompilerMonitorsAbsent(monitors);
+  return{kind:'READ_ONLY_COMPILER_NATIVE_SETTLEMENT_NOT_RELEASE',source:process.env.AIHR_CI_HEAD,controller:process.env.AIHR_CI_CONTROL_HEAD,run:process.env.GITHUB_RUN_ID,operations:9,nativeMonitorsAbsent:monitors.length,releaseAuthorized:false};
+}
+
+/** Source-model parser only. A parsed stream ALONE never establishes native settlement. */
+export function parseCompilerSettlementRows(raw,context){
+  if(!context||!['source','controller'].every(key=>typeof context[key]==='string'&&/^[a-f0-9]{40}$/.test(context[key]))||typeof context.run!=='string'||!/^[1-9][0-9]{0,19}$/.test(context.run))throw Error('Exact compiler context required');
+  if(typeof raw!=='string'||Buffer.byteLength(raw)>131072||!raw.endsWith('\n'))throw Error('Bounded complete compiler stream required');
+  const lines=raw.trimEnd().split('\n');if(!lines.length||lines.length>1000)throw Error('Complete compiler stream required');
+  const operations=new Map(),stages=new Set(),monitors=[];let previousOperation,owner;
+  for(const line of lines){const row=JSON.parse(line);for(const [key,value]of Object.entries({source:context.source,controller:context.controller,run:context.run,attempt:'1'}))if(row[key]!==value)throw Error('Foreign compiler ownership stream');
+    if(!/^[a-f0-9]{32}$/.test(row.operation??'')||row.releaseAuthorized!==false||!['stage-started','session-admitted','group-stop-before-reap','group-quiescent-then-reaped','stage-ended'].includes(row.kind))throw Error('Closed compiler operation required');
+    if(previousOperation!==undefined&&previousOperation!==row.operation&&operations.has(row.operation))throw Error('Interleaved compiler operations');
+    const rows=operations.get(row.operation)??[];rows.push(row);operations.set(row.operation,rows);previousOperation=row.operation;
+  }
+  const required=['git-head','git-status','git-tracked','controller-head','controller-status','classifier','compiler-reference'];
+  if(JSON.stringify([...operations.values()].map(rows=>rows[0].stage))!==JSON.stringify([...required,'git-head','git-status']))throw Error('Compiler metadata/execution order differs');
+  for(const rows of operations.values()){
+    const first=rows[0];owner??=first.owner;if(JSON.stringify(owner)!==JSON.stringify(first.owner))throw Error('Compiler focused owner changed');if(first.kind!=='stage-started'||rows.filter(row=>row.kind==='stage-started').length!==1||!required.includes(first.stage)||rows.some(row=>row.stage!==first.stage||JSON.stringify(row.writer)!==JSON.stringify(first.writer)||JSON.stringify(row.owner)!==JSON.stringify(first.owner)))throw Error('Compiler stage chronology differs');
+    for(const actor of [first.writer,first.owner])if(!actor||JSON.stringify(Object.keys(actor).sort())!==JSON.stringify(['pid','start'])||!Object.values(actor).every(value=>Number.isSafeInteger(value)&&value>1))throw Error('Compiler native actor identity differs');
+    const once=kind=>{const found=rows.map((row,index)=>({row,index})).filter(value=>value.row.kind===kind);if(found.length!==1)throw Error('Incomplete compiler ownership chronology');return found[0];};
+    const admitted=once('session-admitted'),stop=once('group-stop-before-reap'),reaped=once('group-quiescent-then-reaped'),end=once('stage-ended');
+    if(!(admitted.index<stop.index&&stop.index<reaped.index&&reaped.index<end.index&&end.index===rows.length-1)
+      ||stop.row.reason!=='complete'||end.row.reason!=='complete'||end.row.commandExit!==0||end.row.admitted!==true||end.row.reaped!==true||end.row.groupQuiescent!==true||end.row.escapedSession!==false||reaped.row.escapedSession!==false)throw Error('Compiler native settlement is uncertain');
+    if(!Number.isSafeInteger(admitted.row.pid)||admitted.row.pid<=1||!Number.isSafeInteger(admitted.row.start)||admitted.row.start<=0)throw Error('Native compiler monitor identity absent');
+    stages.add(first.stage);monitors.push({pid:admitted.row.pid,start:admitted.row.start});
+  }
+  if(required.some(stage=>!stages.has(stage)))throw Error('Missing compiler execution/ownership stage');
+  return monitors;
+}
+/** Always inspects the actual native process table. This never sends a signal. */
+export function requireCompilerMonitorsAbsent(monitors){
+  if(!Array.isArray(monitors)||!monitors.length||monitors.length>1000)throw Error('Bounded native monitor set required');
+  for(const row of monitors)if(!row||!Number.isSafeInteger(row.pid)||row.pid<=1||!Number.isSafeInteger(row.start)||row.start<=0)throw Error('Native monitor identity required');
+  const until=performance.now()+1000;
+  for(;;){let remaining=0;for(const row of monitors){try{if(compilerProcIdentity(row.pid).start===row.start)remaining++;}catch(error){if(!['ENOENT','ESRCH'].includes(error.code))throw error;}}
+    if(!remaining)return;if(performance.now()>=until)throw Error('Compiler native monitor remains; no recovery signal permitted');
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)),0,0,20);
+  }
+}
+
+export function cleanupCompilerReference(destination){
+  const proof=verifyCompilerSettlement(destination);writeFileSync(join(resolve(destination),'compiler-settlement.json'),JSON.stringify(proof,null,2)+'\n',{flag:'wx',mode:0o600});return 0;
+}
+
 export function cleanupEmployeeChoiceBenchmark(destination){
   runnerOnly();
   const files=parseSelection(process.env.AIHR_FOCUSED_TESTS);if(!isEmployeeChoiceBenchmark(files)&&!isEmployeeChoiceNativeControls(files)&&!isEmployeeChoiceNativeFactory(files)&&!isEmployeeChoiceAsciiPurpose(files)&&!isEmployeeChoiceAsciiPlan(files))throw Error('Sole employee benchmark/control cleanup required');
@@ -256,6 +324,7 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
     const files = parseSelection(process.env.AIHR_FOCUSED_TESTS);
     appendFileSync(process.env.GITHUB_OUTPUT, `tests=${JSON.stringify(files)}\n`);
   } else if (command === 'run' && process.argv.length === 4) process.exitCode = runFocused(process.argv[3]);
+  else if(command === 'compiler-settled' && process.argv.length === 4)process.exitCode=cleanupCompilerReference(process.argv[3]);
   else if(command === 'cleanup' && process.argv.length === 4) process.exitCode=cleanupEmployeeChoiceBenchmark(process.argv[3]);
   else throw Error('Usage: focused-checks.mjs selection | run <owned-evidence-directory> | cleanup <fixed-benchmark-evidence-directory>');
 }

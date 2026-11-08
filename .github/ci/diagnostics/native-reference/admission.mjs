@@ -15,7 +15,7 @@ const sourceSha=value=>typeof value==='string'&&/^[a-f0-9]{40}(?![\s\S])/.test(v
 export function boundedCompilerBytes(path,maximum,{proc=false}={}){
  const fd=openSync(path,constants.O_RDONLY|constants.O_NOFOLLOW|constants.O_NONBLOCK);
  try{
-  const before=fstatSync(fd);assert(before.isFile()&&before.nlink===1);
+  const before=fstatSync(fd);assert(before.isFile()&&before.nlink===1&&before.uid===process.getuid());
   if(!proc)assert(before.uid===process.getuid()&&(before.mode&0o022)===0&&before.size>0&&before.size<=maximum);
   const output=Buffer.alloc(maximum+1);let count=0;
   while(count<output.length){const n=readSync(fd,output,count,output.length-count,null);if(!n)break;count+=n;}
@@ -64,7 +64,7 @@ export function admitCompilerReference(role='wrapper'){
  const manifest=regular(join(source,names.manifest));assert(manifest.equals(regular(join(controller,names.manifest))));
  const declaration=JSON.parse(manifest);assert(declaration.kind==='COMPILER_REFERENCE_OWNED_PROCESS_SOURCE_NOT_QUALIFICATION');
  assert(same(preflight.sourceHashes,declaration.componentSources));
- for(const [path,wanted]of Object.entries(declaration.componentSources)){assert(/^\.github\/|^test\/|^vitest[.]/.test(path)&&!path.split('/').includes('..'));assert(sha(regular(join(source,path)))===wanted&&sha(regular(join(controller,path)))===wanted);}
+ for(const [path,wanted]of Object.entries(declaration.componentSources)){assert((/^\.github\/|^test\/|^scripts\/|^docs\/qualification\/|^vitest[.]/.test(path)||['package.json','pnpm-lock.yaml','tsconfig.json','.env.example'].includes(path))&&!path.split('/').includes('..'));assert(typeof wanted==='string'&&/^[a-f0-9]{64}(?![\s\S])/.test(wanted));assert(sha(regular(join(source,path)))===wanted&&sha(regular(join(controller,path)))===wanted);}
  assert(declaration.componentSources[names.adapter]&&declaration.componentSources[names.kernel]&&declaration.componentSources[names.owner]&&declaration.componentSources[names.fixture]);
  if(role==='fixture'){assert(same(argv(process.pid),[process.execPath,'--max-old-space-size=12288',join(source,names.fixture)]));}
  else{const worker=realpathSync(join(source,'node_modules/vitest/dist/workers/forks.js'));assert(realpathSync(process.argv[1])===worker&&realpathSync(argv(process.pid).at(-1))===worker);}

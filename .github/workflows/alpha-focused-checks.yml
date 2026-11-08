@@ -178,16 +178,19 @@ jobs:
       - name: Summarize opt-in harness phase timings
         if: ${{ always() && inputs.profile_database }}
         run: node scripts/report-test-profile.mjs "$RUNNER_TEMP/aihr-focused/harness-profile" "$RUNNER_TEMP/aihr-focused/profile-summary.json"
-      - name: Ensure owned database cleanup after interrupted checks
+      - name: Ensure owned resource settlement after interrupted checks
         if: always()
         run: |
-          if [ "$AIHR_FOCUSED_TESTS" = '["test/employee-choice-native-purpose-plan.test.ts"]' ] || [ "$AIHR_FOCUSED_TESTS" = '["test/employee-choice-benchmark-owner-native.test.ts"]' ] || [ "$AIHR_FOCUSED_TESTS" = '["test/employee-choice-native-owner-factory.test.ts"]' ] || [ "$AIHR_FOCUSED_TESTS" = '["test/employee-choice-exact-ascii-purpose.test.ts"]' ] || [ "$AIHR_FOCUSED_TESTS" = '["test/employee-choice-exact-ascii-plan.test.ts"]' ]; then
+          if [ "$AIHR_RESOLVED_FOCUSED_TESTS" = '["test/compiler-native-reference-fixture.test.ts"]' ]; then
+            node ../automation/.github/ci/focused-checks.mjs compiler-settled "$RUNNER_TEMP/aihr-focused"
+          elif [ "$AIHR_FOCUSED_TESTS" = '["test/employee-choice-native-purpose-plan.test.ts"]' ] || [ "$AIHR_FOCUSED_TESTS" = '["test/employee-choice-benchmark-owner-native.test.ts"]' ] || [ "$AIHR_FOCUSED_TESTS" = '["test/employee-choice-native-owner-factory.test.ts"]' ] || [ "$AIHR_FOCUSED_TESTS" = '["test/employee-choice-exact-ascii-purpose.test.ts"]' ] || [ "$AIHR_FOCUSED_TESTS" = '["test/employee-choice-exact-ascii-plan.test.ts"]' ]; then
             node ../automation/.github/ci/focused-checks.mjs cleanup "$RUNNER_TEMP/aihr-focused"
           else
             bash ../automation/.github/ci/postgres.sh stop
           fi
         env:
-          AIHR_CI_UNIT: db-1
+          AIHR_RESOLVED_FOCUSED_TESTS: ${{ needs.resolve.outputs.tests }}
+          AIHR_CI_UNIT: ${{ needs.resolve.outputs.tests != '["test/compiler-native-reference-fixture.test.ts"]' && 'db-1' || '' }}
       - if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:

@@ -3,38 +3,49 @@ import assert from 'node:assert/strict';
 import {readFileSync,writeFileSync,mkdirSync,realpathSync,existsSync,renameSync} from 'node:fs';
 import {join,dirname,relative,resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {execFileSync} from 'node:child_process';
 import {cpus,totalmem} from 'node:os';
 import {planNativeReferences,REFERENCE_LIMITS} from './graph.mjs';
 import {writeNativeReferenceConfigs,NATIVE_REFERENCE_OVERRIDES,assertNativeParsedConfig} from './config.mjs';
 import {outputOwnership,regularHash,assertOutputSeal,emittedTree,digest,assertArtifactBudget} from './outputs.mjs';
 import {compilerOwner,parsedConfig} from './worker.mjs';
 import {nativeReferenceProcess,requireNativeSuccess} from './process.mjs';
+import {admitCompilerReference,readCompilerReferenceClock} from './admission.mjs';
 import {NEGATIVE_CONTRACTS} from '../compiler-boundary-policy.mjs';
 const fixtureFiles=['base.json','ambient.d.ts','producer/index.ts','producer/math.js','producer/labels.json','consumer/index.ts'];
 const FIXTURE_SELECTOR='test/compiler-native-reference-fixture.test.ts';
 const PLANNED_PHASES=Object.freeze(['inventory','native-solution-graph','missing-native-output','native-project-000','inspect-project-000','native-project-001','inspect-project-001','owned-declarations','external-preexisting-control','missing-ambient','source-api-negative','emitted-api-negative','owned-unresolved-sentinel']);
 const diagnosticCodes=text=>[...text.matchAll(/error TS([0-9]+):/g)].map(match=>Number(match[1]));
 export async function nativeReferenceFixture(){
- const started=performance.now(),deadline=started+REFERENCE_LIMITS.aggregateMs;
+ const controller=new AbortController();let activeNative,deadlineTimer,primary;
+ const interrupted=()=>controller.abort(Error('Native compiler fixture owner interrupted'));
+ process.on('SIGTERM',interrupted);process.on('SIGINT',interrupted);
+ try{
+ const proof=admitCompilerReference('fixture'),clock=readCompilerReferenceClock(proof),startNs=BigInt(clock.startNs);
+ const elapsed=()=>Number(process.hrtime.bigint()-startNs)/1e6;
+ const started=performance.now()-elapsed(),deadline=started+REFERENCE_LIMITS.aggregateMs;
+ const active=()=>{controller.signal.throwIfAborted();assert(performance.now()<deadline-2000,'Native fixture work frontier closed');};
+ deadlineTimer=setTimeout(()=>controller.abort(Error('Native fixture aggregate budget exhausted')),Math.max(0,deadline-performance.now()-2000));
+ active();
  assert.equal(process.platform,'linux');assert.equal(process.env.GITHUB_ACTIONS,'true');assert.equal(process.env.CI,'true');assert.equal(process.env.RUNNER_ENVIRONMENT,'github-hosted');assert.equal(process.env.GITHUB_REPOSITORY,'StradaverseHub/ai-hr');assert.equal(process.env.GITHUB_JOB,'selected-tests');assert.equal(process.env.GITHUB_EVENT_NAME,'workflow_dispatch');assert.equal(process.env.GITHUB_RUN_ATTEMPT,'1');assert(/^[1-9][0-9]{0,19}$/.test(process.env.GITHUB_RUN_ID??''));assert.deepEqual(JSON.parse(process.env.AIHR_FOCUSED_TESTS??'null'),[FIXTURE_SELECTOR]);
  assert.equal(cpus().length,4);assert(totalmem()>=14*1024**3&&totalmem()<=18*1024**3);
- const cwd=realpathSync(process.cwd()),git=(...args)=>execFileSync('git',args,{cwd,encoding:'utf8',timeout:10000,maxBuffer:4*1024**2}).trim();
- const sourceHead=git('rev-parse','HEAD');assert.equal(process.env.AIHR_CI_HEAD,sourceHead);assert.equal(git('status','--porcelain'),'');assert(/^[a-f0-9]{40}$/.test(process.env.AIHR_CI_CONTROL_HEAD??''));
+ const cwd=proof.source,sourceHead=proof.sourceHead;assert.equal(process.env.AIHR_CI_HEAD,sourceHead);assert.equal(process.env.AIHR_CI_CONTROL_HEAD,proof.controllerHead);
  const temp=realpathSync(process.env.RUNNER_TEMP),evidence=join(temp,'aihr-focused');assert.equal(realpathSync(evidence),evidence);assert.equal(process.env.AIHR_FOCUSED_EVIDENCE_DIR,evidence);
  const out=join(evidence,'compiler-native-reference');mkdirSync(out,{mode:0o700});const source=join(out,'source');mkdirSync(source,{mode:0o700});const logs=join(out,'logs');mkdirSync(logs,{mode:0o700});
  const report={kind:'SMALL_NATIVE_REFERENCE_FIXTURES_NOT_APPLICATION',source:sourceHead,controller:process.env.AIHR_CI_CONTROL_HEAD,runId:process.env.GITHUB_RUN_ID,ordinaryCompilerQualified:false,releaseAuthorized:false,applicationInventoryComplete:false,originalApplicationFiveNegativesQualified:false,complete:false,limits:REFERENCE_LIMITS,plannedPhases:PLANNED_PHASES,phases:[],controls:[]};
- const save=()=>writeFileSync(join(out,'report.json'),JSON.stringify({...report,elapsedMs:performance.now()-started},null,2)+'\n',{mode:0o600});
+ const save=()=>writeFileSync(join(out,'report.json'),JSON.stringify({...report,elapsedMs:elapsed()},null,2)+'\n',{mode:0o600});
  const input=[];for(const name of fixtureFiles){const bytes=readFileSync(join(cwd,'test/fixtures/compiler-native-reference',name+'.fixture')),path=join(source,name);mkdirSync(dirname(path),{recursive:true,mode:0o700});writeFileSync(path,bytes,{flag:'wx',mode:0o600});input.push(regularHash(path));}
  const external=join(source,'node_modules/fixture-external');mkdirSync(external,{recursive:true,mode:0o700});writeFileSync(join(external,'package.json'),'{"name":"fixture-external","version":"1.0.0","types":"index.d.ts"}\n',{flag:'wx',mode:0o600});writeFileSync(join(external,'index.d.ts'),readFileSync(join(cwd,'test/fixtures/compiler-native-reference/external/index.d.ts.fixture')),{flag:'wx',mode:0o600});input.push(regularHash(join(external,'package.json')),regularHash(join(external,'index.d.ts')));
  const owner=compilerOwner(cwd),worker=fileURLToPath(new URL('worker.mjs',import.meta.url));report.compiler={typescript:owner.version,node:process.versions.node,apiSha256:owner.apiSha256,cliSha256:owner.cliSha256};report.inputs=input;
  const env={PATH:process.env.PATH,HOME:process.env.HOME,LANG:'C',LC_ALL:'C',TZ:'UTC',RUNNER_TEMP:temp};let sequence=0;
  async function run(label,args,expectation='success'){
-  assertOutputSeal(input);assert(performance.now()<deadline-2000,'Native fixture aggregate work admission closed');
-  const log=join(logs,String(sequence++).padStart(2,'0')+'-'+label+'.log'),result=await nativeReferenceProcess(args,{cwd,env,deadline,log,checkBudget:()=>assertArtifactBudget(out)});const row={label,expectation,...result};report.phases.push(row);save();
+  active();assertOutputSeal(input);
+  const log=join(logs,String(sequence++).padStart(2,'0')+'-'+label+'.log');
+  const pending=nativeReferenceProcess(args,{cwd,env,deadline,log,signal:controller.signal,checkBudget:()=>assertArtifactBudget(out)});activeNative=pending;
+  let result;try{result=await pending;}finally{if(activeNative===pending)activeNative=undefined;}
+  const row={label,expectation,...result};report.phases.push(row);save();controller.signal.throwIfAborted();
   assert.equal(result.signal,null);assert.equal(result.stoppedBecause,null);assert.equal(result.error,null);assertArtifactBudget(out);if(expectation==='success')requireNativeSuccess(result);return{...result,text:readFileSync(log,'utf8')};
  }
- async function api(label,mode,job,expectation='success'){const stem=join(out,label),input=stem+'.input.json',output=stem+'.json';writeFileSync(input,JSON.stringify({...job,source,configSeal:regularHash(job.config)},null,2)+'\n',{flag:'wx',mode:0o600});const result=await run(label,[worker,mode,input,output],expectation);return{result,value:existsSync(output)?JSON.parse(readFileSync(output,'utf8')):null};}
+ async function api(label,mode,job,expectation='success'){active();const stem=join(out,label),input=stem+'.input.json',output=stem+'.json';writeFileSync(input,JSON.stringify({...job,source,configSeal:regularHash(job.config)},null,2)+'\n',{flag:'wx',mode:0o600});const result=await run(label,[worker,mode,input,output],expectation);return{result,value:existsSync(output)?JSON.parse(readFileSync(output,'utf8')):null};}
  const cli=(config)=>[owner.cli,'-p',config,'--pretty','false','--listFiles','--listEmittedFiles'];
  const list=text=>text.split(/\r?\n/).filter(line=>line.startsWith('/')).map(path=>realpathSync(path));
  try{
@@ -64,14 +75,14 @@ export async function nativeReferenceFixture(){
   const json=join(configs.emitted,'producer/labels.json');assert(all.some(row=>row.path===json));assert.deepEqual(JSON.parse(readFileSync(json,'utf8')),JSON.parse(readFileSync(join(source,'producer/labels.json'),'utf8')));
   const consumer=report.controls.find(row=>row.kind==='native-project'&&row.project==='project-001').observed;assert(consumer.files.some(row=>row.path===json),'Consumer must load the ACTUAL native JSON output');assert(consumer.files.some(row=>row.path===join(configs.emitted,'producer/index.d.ts')));assert(!consumer.files.some(row=>row.path===join(source,'producer/index.ts')));
   const owned=all.filter(row=>/\.d\.[cm]?ts$/.test(row.path)).map(row=>row.path),projectConfigs=configs.projects.map(p=>p.config),projectSeals=configSeals.filter(row=>projectConfigs.includes(row.path)),ambient=join(source,'ambient.d.ts');
-  function validator(name,extra=[],includeAmbient=true){const path=join(configRoot,name+'.json'),names=[...owned,...extra,...(includeAmbient?[ambient]:[])];writeFileSync(path,JSON.stringify({extends:join(source,'base.json'),files:names,include:[],references:projectConfigs.map(path=>({path})),compilerOptions:{...NATIVE_REFERENCE_OVERRIDES,noEmit:true,skipLibCheck:false,rootDir:source,outDir:configs.emitted,tsBuildInfoFile:join(configRoot,name+'.tsbuildinfo')}},null,2)+'\n',{flag:'wx',mode:0o600});assertNativeParsedConfig(parsedConfig(owner.ts,path),names);return path;}
+  function validator(name,extra=[],includeAmbient=true){active();const path=join(configRoot,name+'.json'),names=[...owned,...extra,...(includeAmbient?[ambient]:[])];writeFileSync(path,JSON.stringify({extends:join(source,'base.json'),files:names,include:[],references:projectConfigs.map(path=>({path})),compilerOptions:{...NATIVE_REFERENCE_OVERRIDES,noEmit:true,skipLibCheck:false,rootDir:source,outDir:configs.emitted,tsBuildInfoFile:join(configRoot,name+'.tsbuildinfo')}},null,2)+'\n',{flag:'wx',mode:0o600});assertNativeParsedConfig(parsedConfig(owner.ts,path),names);return path;}
   const validation=validator('validate-owned');const validated=(await api('owned-declarations','declarations',{config:validation,owned,seals,projectConfigs,projectSeals})).value;assert(validated&&validated.externalSemanticRequested===false);report.ownedDeclarationValidation=validated;
   const externalControl=(await api('external-preexisting-control','external-control',{config:validation,owned,seals,projectConfigs,projectSeals})).value;assert(externalControl);assert.deepEqual(externalControl.externalControl.map(d=>({code:d.code,file:d.file})),[{code:2304,file:join(external,'index.d.ts')}]);report.externalControl=externalControl;
   const noAmbient=validator('negative-ambient',[],false),ambientControl=await api('missing-ambient','declarations-negative',{config:noAmbient,owned,seals,projectConfigs,projectSeals},'expected-native-refusal');assert.notEqual(ambientControl.result.code,0);assert(ambientControl.value);assert.deepEqual(ambientControl.value.optionsGlobalSyntax,[]);assert.deepEqual(ambientControl.value.ownedSemantic.map(d=>({code:d.code,file:d.file})),[{code:2304,file:join(configs.emitted,'producer/index.d.ts')}],'Exact actual owned global-context loss refusal required');report.controls.push({kind:'ambient-loss',status:'expected-native-refusal',result:ambientControl.value});
   // Same EXACT five historical refusal expressions, against miniature fixture
   // APIs only. Real application contracts remain a separate mandatory gate.
   const positive=readFileSync(join(source,'consumer/index.ts'),'utf8'),negative=positive+'\n'+NEGATIVE_CONTRACTS.map(row=>row.line).join('\n')+'\n',negativePath=join(source,'consumer/negative.ts');writeFileSync(negativePath,negative,{flag:'wx',mode:0o600});report.negativeSource=regularHash(negativePath);
-  const apiConfig=(name,files,references=[])=>{const path=join(out,name+'.json');writeFileSync(path,JSON.stringify({extends:join(source,'base.json'),files,include:[],references,compilerOptions:{...NATIVE_REFERENCE_OVERRIDES,rootDir:source,outDir:join(out,name+'-emitted'),tsBuildInfoFile:join(out,name+'.tsbuildinfo')}},null,2)+'\n',{flag:'wx',mode:0o600});assertNativeParsedConfig(parsedConfig(owner.ts,path),files);return path;};
+  const apiConfig=(name,files,references=[])=>{active();const path=join(out,name+'.json');writeFileSync(path,JSON.stringify({extends:join(source,'base.json'),files,include:[],references,compilerOptions:{...NATIVE_REFERENCE_OVERRIDES,rootDir:source,outDir:join(out,name+'-emitted'),tsBuildInfoFile:join(out,name+'.tsbuildinfo')}},null,2)+'\n',{flag:'wx',mode:0o600});assertNativeParsedConfig(parsedConfig(owner.ts,path),files);return path;};
   const sourceNegative=apiConfig('negative-source',[ambient,join(source,'producer/index.ts'),join(source,'producer/math.js'),join(source,'producer/labels.json'),negativePath]);
   const declarationNegative=apiConfig('negative-native-api',[ambient,negativePath],[{path:configs.projects[0].config}]);
   for(const[label,config]of [['source-api-negative',sourceNegative],['emitted-api-negative',declarationNegative]]){const result=await run(label,cli(config),'expected-native-refusal');assert.notEqual(result.code,0);assert.deepEqual(diagnosticCodes(result.text),NEGATIVE_CONTRACTS.map(row=>row.code));const actual=[...result.text.matchAll(/^(.+)\(([0-9]+),[0-9]+\): error TS([0-9]+):/gm)].map(match=>({file:resolve(cwd,match[1]),line:Number(match[2]),code:Number(match[3])}));assert.deepEqual(actual,NEGATIVE_CONTRACTS.map(row=>({file:negativePath,line:negative.slice(0,negative.indexOf(row.line)).split('\n').length,code:row.code})),'Expected native refusals must belong to all exact expression/source lines');report.controls.push({kind:label,status:'expected-native-refusal',rawCode:result.code,codes:diagnosticCodes(result.text)});}
@@ -82,8 +93,14 @@ export async function nativeReferenceFixture(){
   const configOriginal=readFileSync(configs.projects[1].config);try{writeFileSync(configs.projects[1].config,JSON.stringify({...JSON.parse(configOriginal),references:[{path:join(out,'foreign-project.json')}]}));assert.throws(()=>assertOutputSeal(configSeals));}finally{writeFileSync(configs.projects[1].config,configOriginal);}assertOutputSeal(configSeals);report.controls.push({kind:'foreign-reference-config',status:'expected-custody-refusal'});
   const collisionFiles=[{id:'collision.ts',kind:'implementation',sha256:'1'.repeat(64)},{id:'collision.tsx',kind:'implementation',sha256:'2'.repeat(64)}];assert.throws(()=>outputOwnership({projects:[{index:0,owned:collisionFiles.map(f=>f.id),context:[]}]},collisionFiles));report.controls.push({kind:'duplicate-output-writer',status:'expected-planner-refusal'});
   assert.deepEqual(report.phases.map(p=>p.label),PLANNED_PHASES);
-  assertOutputSeal(input);assertOutputSeal(seals);assertOutputSeal(configSeals);assert.equal(git('status','--porcelain'),'');assert.equal(git('rev-parse','HEAD'),sourceHead);assert(performance.now()<=deadline);report.artifactBudget=assertArtifactBudget(out);report.complete=true;
- }catch(error){report.failure={name:error.name,message:error.message};report.blocked=PLANNED_PHASES.filter(label=>!report.phases.some(p=>p.label===label)).map(label=>({label,status:'blocked',reason:performance.now()>=deadline-2000?'aggregate-budget':'failed-fixture-prerequisite-or-control'}));throw error;}finally{save();}
+  assertOutputSeal(input);assertOutputSeal(seals);assertOutputSeal(configSeals);assert.equal(JSON.stringify(readCompilerReferenceClock(admitCompilerReference('fixture'))),JSON.stringify(clock));assert(performance.now()<=deadline);report.artifactBudget=assertArtifactBudget(out);report.complete=true;
+ }catch(error){primary=error;report.failure={name:error.name,message:error.message};report.blocked=PLANNED_PHASES.filter(label=>!report.phases.some(p=>p.label===label)).map(label=>({label,status:'blocked',reason:performance.now()>=deadline-2000?'aggregate-budget':'failed-fixture-prerequisite-or-control'}));throw error;}finally{try{save();}catch(error){if(primary)throw new AggregateError([primary,error],'Native fixture and partial report both refused');throw error;}}
  return report;
+ }catch(error){primary=error;throw error;}
+ finally{
+  if(activeNative&&!controller.signal.aborted)controller.abort(Error('Native fixture settlement required'));
+  try{await activeNative;}catch(error){if(primary&&primary!==error)throw new AggregateError([primary,error],'Native fixture and process settlement both refused');throw error;}
+  finally{if(deadlineTimer)clearTimeout(deadlineTimer);process.removeListener('SIGTERM',interrupted);process.removeListener('SIGINT',interrupted);}
+ }
 }
 if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url)){assert.equal(process.argv.length,2);await nativeReferenceFixture();}

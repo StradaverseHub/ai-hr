@@ -37,8 +37,9 @@ export function createNativeReferenceProcess(runtime){
     signal?.removeEventListener('abort',abort);
     const raw=Buffer.concat(output);try{runtime.write(log,raw);}catch(error){remember(error);}
     if(runtime.now()>deadline)stoppedBecause??='aggregate-budget';
-    const error=failures.length>1?new AggregateError(failures,'Native child and settlement both refused'):failures[0];
-    resolve({code,signal:childSignal,stoppedBecause,error:error?{name:error.name,code:error.code??null,count:failures.length}:null,
+    const error=failures[0];
+    resolve({code,signal:childSignal,stoppedBecause,error:error?{name:error.name,code:error.code??null,count:failures.length,
+     causes:failures.map(value=>({name:value?.name??'UnknownFailure',code:value?.code??null}))}:null,
      elapsedMs:runtime.now()-started,peakRss,log,logBytes:raw.length});
    });
    for(const stream of [child.stdout,child.stderr]){
