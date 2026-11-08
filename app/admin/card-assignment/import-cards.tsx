@@ -55,9 +55,9 @@ export function ImportCards({ company = '' }: { company?: string }) {
   const replacements = preview?.rows.some(r => selection.includes(r.row) && ['replace', 'reset'].includes(r.effect));
   return <section className="space-y-4" aria-label={t('bulkTitle')}>
     <div className="flex flex-wrap gap-2">
-      <Button type="button" variant="secondary" className="min-h-11" disabled={busy} onClick={() => template(false)}>{t('template')}</Button>
-      <Button type="button" variant="secondary" className="min-h-11" disabled={busy} onClick={() => template(true)}>{t('existing')}</Button>
-      <Button ref={importButton} type="button" className="min-h-11" disabled={busy} aria-expanded={open} aria-controls="card-import-panel" onClick={() => setOpen(true)}>{t('importExcel')}</Button>
+      <Button aria-busy={busy} type="button" variant="secondary" className="min-h-11" disabled={busy} onClick={() => template(false)}>{t('template')}</Button>
+      <Button aria-busy={busy} type="button" variant="secondary" className="min-h-11" disabled={busy} onClick={() => template(true)}>{t('existing')}</Button>
+      <Button aria-busy={busy} ref={importButton} type="button" className="min-h-11" disabled={busy} aria-expanded={open} aria-controls="card-import-panel" onClick={() => setOpen(true)}>{t('importExcel')}</Button>
     </div>
     {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
     {open && <Card id="card-import-panel" className="space-y-4 p-4 sm:p-5" aria-busy={busy}>
@@ -69,7 +69,7 @@ export function ImportCards({ company = '' }: { company?: string }) {
           if (chosen && (!/\.xlsx$/i.test(chosen.name) || chosen.size > CARD_IMPORT_MAX_BYTES)) setError(t(chosen.size > CARD_IMPORT_MAX_BYTES ? 'tooLarge' : 'invalidWorkbook'));
           else setFile(chosen);
         }} /><span className="block text-muted-foreground">{t('limits')}</span></label>
-        <div className="flex flex-wrap gap-2"><Button className="min-h-11" disabled={busy || !file} onClick={() => send('preview')}>{t(busy ? 'working' : 'check')}</Button><Button className="min-h-11" variant="secondary" disabled={busy} onClick={close}>{t('cancel')}</Button></div>
+        <div className="flex flex-wrap gap-2"><Button aria-busy={busy} className="min-h-11" disabled={busy || !file} onClick={() => send('preview')}>{t(busy ? 'working' : 'check')}</Button><Button aria-busy={busy} className="min-h-11" variant="secondary" disabled={busy} onClick={close}>{t('cancel')}</Button></div>
       </div> : <>
         {result ? <p role="status" className="text-sm">{t('totals', { total: result.total, imported: result.imported, updated: result.updated, unchanged: result.unchanged, failed: result.failed, skipped: result.skipped })}</p> : <p role="status" className="text-sm">{t('previewCounts', { total: rows.length, selected: selection.length, failed: rows.filter(r => r.issues.length).length })}</p>}
         <div className="max-h-[55dvh] overflow-auto rounded-lg border border-border"><table className="w-full min-w-[750px] text-left text-sm"><caption className="sr-only">{t('preview')}</caption><thead className="sticky top-0 bg-muted"><tr>{[t('select'), t('row'), t('employeeId'), t('currentCard'), t('proposedCard'), t('operation'), t('review')].map(text => <th key={text} className="p-3 font-medium" scope="col">{text}</th>)}</tr></thead><tbody className="divide-y divide-border">
@@ -82,9 +82,9 @@ export function ImportCards({ company = '' }: { company?: string }) {
         </tbody></table></div>
         {!result && <><p className="text-sm text-muted-foreground">{t('reviewHelp')}</p>{replacements && <label className="flex min-h-11 items-start gap-3 text-sm"><input type="checkbox" className="mt-1" disabled={busy} checked={confirmed} onChange={event => setConfirmed(event.target.checked)} /><span>{t('confirmReplacements')}</span></label>}</>}
         <div className="flex flex-wrap justify-end gap-2">
-          <Button className="min-h-11" variant="secondary" disabled={busy} onClick={close}>{t(result ? 'close' : 'cancel')}</Button>
-          <Button className="min-h-11" variant="secondary" disabled={busy} onClick={errors}>{t('downloadErrors')}</Button>
-          {!result && <Button className="min-h-11" disabled={busy || !selection.length || !!replacements && !confirmed} onClick={() => send('confirm')}>{t(busy ? 'working' : 'confirm')}</Button>}
+          <Button aria-busy={busy} className="min-h-11" variant="secondary" disabled={busy} onClick={close}>{t(result ? 'close' : 'cancel')}</Button>
+          <Button aria-busy={busy} className="min-h-11" variant="secondary" disabled={busy} onClick={errors}>{t('downloadErrors')}</Button>
+          {!result && <Button aria-busy={busy} className="min-h-11" disabled={busy || !selection.length || !!replacements && !confirmed} onClick={() => send('confirm')}>{t(busy ? 'working' : 'confirm')}</Button>}
         </div>
       </>}
     </Card>}

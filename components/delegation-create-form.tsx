@@ -168,7 +168,7 @@ export function DelegationCreateForm({
         <DelegationScopePicker />
       </div>
       <div className={span}>
-        <button className={btnPrimary} disabled={isPending}>
+        <button aria-busy={isPending} className={btnPrimary} disabled={isPending}>
           {t('create')}
         </button>
       </div>

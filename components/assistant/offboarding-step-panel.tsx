@@ -38,16 +38,16 @@ export function OffboardingStepPanel({resumeActionId}:{resumeActionId?:string}){
  const act=(operation:'confirm'|'discard')=>{if(!review)return;void dispatch({action:C.action,operation,confirmation:{action:C.action,contractVersion:1,actionId:review.actionId,...(operation==='confirm'?{reviewedDigest:review.reviewedDigest}:{})}});};
  return <section className="space-y-4" aria-busy={busy}>
   <p role="status" aria-live="polite">{busy?t('working'):''}</p>{error&&<p role="alert">{t('unavailable')}</p>}
-  {uncertain!==false&&<div className="space-y-2"><p>{t('uncertain')}</p>{uncertain&&<Button disabled={busy} onClick={()=>void dispatch({action:C.action,operation:'reopen',actionId:uncertain})}>{t('reopen')}</Button>}</div>}
+  {uncertain!==false&&<div className="space-y-2"><p>{t('uncertain')}</p>{uncertain&&<Button aria-busy={busy} disabled={busy} onClick={()=>void dispatch({action:C.action,operation:'reopen',actionId:uncertain})}>{t('reopen')}</Button>}</div>}
   {!review&&uncertain===false&&result?.kind!=='completed'&&<div className="space-y-3">
    <label className="block">{t('caseNumber')}<input className={inputCls} value={caseNumber} maxLength={100} disabled={busy} onChange={e=>{setCaseNumber(e.target.value);setResult(null);setStepKey('');}}/></label>
-   <Button disabled={busy||!caseNumber.trim()} onClick={()=>void dispatch({action:C.action,operation:'choices',selection:{caseNumber:caseNumber.trim()}})}>{t('load')}</Button>
+   <Button aria-busy={busy} disabled={busy||!caseNumber.trim()} onClick={()=>void dispatch({action:C.action,operation:'choices',selection:{caseNumber:caseNumber.trim()}})}>{t('load')}</Button>
    {choices&&<><label className="block">{t('step')}<select className={inputCls} disabled={busy} value={stepKey} onChange={e=>setStepKey(e.target.value)}><option value="">{t('choose')}</option>{choices.steps.map(step=><option key={step.key} value={step.key}>{step.label}</option>)}</select></label>
     <label className="block">{t('reference')}<input className={inputCls} maxLength={100} disabled={busy} value={reference} onChange={e=>setReference(e.target.value)}/></label>
     <label className="block">{t('notes')}<textarea className={inputCls} maxLength={2000} disabled={busy} value={notes} onChange={e=>setNotes(e.target.value)}/></label>
     <label className="flex gap-2"><input type="checkbox" checked={consent} disabled={busy} onChange={e=>setConsent(e.target.checked)}/>{t('stepConsent')}</label>
     <label className="flex gap-2"><input type="checkbox" checked={completionConsent} disabled={busy} onChange={e=>setCompletionConsent(e.target.checked)}/>{t('completionConsent')}</label>
-    <Button disabled={busy||!stepKey||!consent} onClick={()=>void dispatch({action:C.action,operation:'prepare',input:{caseId:choices.caseId,caseNumber:choices.caseNumber,stepKey,reference:reference.trim()||null,notes:notes.trim()||null,confirmStepCompletion:true,acceptDerivedCaseCompletion:completionConsent}})}>{t('prepare')}</Button>
+    <Button aria-busy={busy} disabled={busy||!stepKey||!consent} onClick={()=>void dispatch({action:C.action,operation:'prepare',input:{caseId:choices.caseId,caseNumber:choices.caseNumber,stepKey,reference:reference.trim()||null,notes:notes.trim()||null,confirmStepCompletion:true,acceptDerivedCaseCompletion:completionConsent}})}>{t('prepare')}</Button>
    </>}
   </div>}
   {review&&<div className="space-y-3 rounded border p-4"><h2 className="font-semibold">{review.review.caseNumber} · {review.review.stepLabel}</h2>
@@ -56,11 +56,11 @@ export function OffboardingStepPanel({resumeActionId}:{resumeActionId?:string}){
    <p>{t('reference')}: {review.review.reference??t('none')}</p><p className="whitespace-pre-wrap break-words">{t('notes')}: {review.review.notes??t('none')}</p>
    {review.review.after.caseStatus==='completed'&&<p>{t('completionConsent')}</p>}
    <label className="flex gap-2"><input type="checkbox" disabled={busy} checked={confirmed} onChange={e=>setConfirmed(e.target.checked)}/>{t('confirmConsent')}</label>
-   <div className="flex flex-wrap gap-2"><Button disabled={busy||!confirmed||uncertain!==false||Date.parse(review.expiresAt)<=now} onClick={()=>act('confirm')}>{t('confirm')}</Button><Button variant="outline" disabled={busy} onClick={()=>act('discard')}>{t('discard')}</Button><Button variant="outline" disabled={busy} onClick={()=>void dispatch({action:C.action,operation:'reopen',actionId:review.actionId})}>{t('reopen')}</Button></div>
+   <div className="flex flex-wrap gap-2"><Button aria-busy={busy} disabled={busy||!confirmed||uncertain!==false||Date.parse(review.expiresAt)<=now} onClick={()=>act('confirm')}>{t('confirm')}</Button><Button aria-busy={busy} variant="outline" disabled={busy} onClick={()=>act('discard')}>{t('discard')}</Button><Button aria-busy={busy} variant="outline" disabled={busy} onClick={()=>void dispatch({action:C.action,operation:'reopen',actionId:review.actionId})}>{t('reopen')}</Button></div>
   </div>}
   {result?.kind==='completed'&&<p role="status">{t('recorded')}</p>}{result?.kind==='retired'&&<p role="status">{t('retired')}</p>}
-  <Button variant="outline" disabled={busy} onClick={()=>void dispatch({action:C.action,operation:'list'})}>{t('find')}</Button>
-  {result?.kind==='offboarding_step_review_index'&&<ul className="space-y-2">{result.reviews.map(row=><li key={row.actionId}><Button variant="outline" disabled={busy||typeof uncertain==='string'&&uncertain!==row.actionId} onClick={()=>void dispatch({action:C.action,operation:'reopen',actionId:row.actionId})}>{t('reopen')} · {row.createdAt}</Button></li>)}</ul>}
+  <Button aria-busy={busy} variant="outline" disabled={busy} onClick={()=>void dispatch({action:C.action,operation:'list'})}>{t('find')}</Button>
+  {result?.kind==='offboarding_step_review_index'&&<ul className="space-y-2">{result.reviews.map(row=><li key={row.actionId}><Button aria-busy={busy} variant="outline" disabled={busy||typeof uncertain==='string'&&uncertain!==row.actionId} onClick={()=>void dispatch({action:C.action,operation:'reopen',actionId:row.actionId})}>{t('reopen')} · {row.createdAt}</Button></li>)}</ul>}
   <p><Link className="underline" href="/lifecycle/offboarding">{t('manual')}</Link></p>
  </section>;
 }

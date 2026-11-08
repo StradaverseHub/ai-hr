@@ -69,10 +69,10 @@ export function ComponentImport({ batchId }: { batchId: string }) {
         />
       </Field>
       <div className="flex flex-wrap items-center gap-2">
-        <Button size="sm" onClick={dryRun} disabled={pending || !csv.trim()}>
+        <Button aria-busy={pending} size="sm" onClick={dryRun} disabled={pending || !csv.trim()}>
           {pending && !committed ? t('checking') : t('dryRun')}
         </Button>
-        <Button
+        <Button aria-busy={pending}
           variant="outline"
           size="sm"
           onClick={() => {
@@ -118,7 +118,7 @@ export function ComponentImport({ batchId }: { batchId: string }) {
                 <span className="text-amber-600 dark:text-amber-400"> · {t('errorCount', { count: shown.rows.length - shown.valid })}</span>
               )}
             </span>
-            <Button size="sm" onClick={commit} disabled={pending || shown.valid === 0}>
+            <Button aria-busy={pending} size="sm" onClick={commit} disabled={pending || shown.valid === 0}>
               {pending ? t('importing') : t('commit', { count: shown.valid })}
             </Button>
           </div>

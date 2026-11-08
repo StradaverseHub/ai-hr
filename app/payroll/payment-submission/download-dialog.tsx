@@ -1,5 +1,6 @@
 'use client';
 
+import { useExportDownload } from '@/components/use-export-download';
 import { useState } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
 import { useTranslations } from 'next-intl';
@@ -17,7 +18,7 @@ import type { SubmissionFormat } from './registry';
  *
  * ── STILL A GET THAT WRITES NOTHING, AND THAT IS NOT AN ACCIDENT OF THIS FILE ─────────────────────
  * The dialog contains a plain `<form method="get">` pointed at the same download route the row's link
- * used to point at. No server action, no fetch, no POST: generating a statutory file records no artefact
+ * used to point at. The enhanced submit uses that same GET for download feedback. Generating a statutory file records no artefact
  * and appends no domain event (see the registry header), and the shape of this control is what keeps that
  * cheap to believe. `test/payment-submission-module.test.ts` asserts the row and event counts either side.
  *
@@ -96,6 +97,7 @@ export function DownloadDialog({
    */
   runsEndpoint?: string;
 }) {
+  const feedback = useExportDownload();
   const t = useTranslations('payroll.paymentSubmission');
   const [open, setOpen] = useState(false);
   // A format that needs a cycle and was given none cannot be downloaded — see the header. Not a validation
@@ -126,7 +128,18 @@ export function DownloadDialog({
           <Dialog.Description className="mt-1.5 text-sm text-muted-foreground">
             {t('selectionIntro')}
           </Dialog.Description>
-          <form method="get" action={action} className="mt-4 space-y-3">
+          <form method="get" action={action} className="mt-4 space-y-3" onSubmit={event => {
+            const url = new URL(event.currentTarget.action);
+            if (url.origin !== location.origin) return;
+            event.preventDefault();
+            if (cycleMissing || feedback.pending) return;
+            const query = new URLSearchParams();
+            for (const [key, value] of new FormData(event.currentTarget)) {
+              if (typeof value === 'string') query.append(key, value);
+            }
+            url.search = query.toString();
+            void feedback.download(url);
+          }}>
             <input type="hidden" name="format" value={formatId} />
             <input type="hidden" name="periodKey" value={`${year}-${month}`} />
             <Field label={t('company')}>
@@ -234,8 +247,8 @@ export function DownloadDialog({
               </Dialog.Close>
               {/* Disabled rather than absent: the button an operator is looking for stays where it is, and
                   the reason it cannot be pressed is the sentence beside the missing field above. */}
-              <button type="submit" className={btnPrimary} disabled={cycleMissing}>
-                {t('download')}
+              <button type="submit" className={btnPrimary} disabled={cycleMissing || feedback.pending} aria-busy={feedback.pending}>
+                {feedback.pending ? feedback.status : t('download')}
               </button>
             </div>
           </form>

@@ -2,6 +2,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useRef, useState, useTransition, type ButtonHTMLAttributes, type FormHTMLAttributes } from 'react';
 import { isRedirectError } from 'next/dist/client/components/redirect-error';
+import { useFormStatus } from 'react-dom';
 
 const SavePending = createContext(false);
 
@@ -63,5 +64,7 @@ export function AttendanceSettingsActionForm({ submitAction, preserveDrafts = tr
 
 export function AttendanceSettingsSaveButton({ disabled, ...props }: ButtonHTMLAttributes<HTMLButtonElement>) {
   const pending = useContext(SavePending);
-  return <button {...props} type={props.type ?? 'submit'} disabled={pending || disabled}/>;
+  const form = useFormStatus();
+  return <button {...props} type={props.type ?? 'submit'} disabled={pending || form.pending || disabled}
+    aria-busy={pending || form.pending || props['aria-busy']} data-action-pending={pending || form.pending || undefined}/>;
 }

@@ -147,12 +147,14 @@ export function approvalsReturnUrl(p: {
   sort?: string;
   toast?: string;
   error?: string;
+  approvalSeal?: boolean;
 }): string {
   const qs = new URLSearchParams();
   if (p.category && p.category !== 'all') qs.set('category', p.category);
   if (p.sort) qs.set('sort', p.sort);
   if (p.toast) qs.set('toast', p.toast);
   if (p.error) qs.set('error', p.error);
+  if (p.approvalSeal && p.toast && !p.error) qs.set('approvalSeal', '1');
   const s = qs.toString();
   return s ? `/approvals?${s}` : '/approvals';
 }

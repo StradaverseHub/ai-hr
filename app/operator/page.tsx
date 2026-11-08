@@ -1,3 +1,4 @@
+import { ActionButton } from '@/components/ui/action-button';
 import { HR_LOCAL_TZ } from '@/lib/hr-date';
 import { internalSelected } from '@/lib/internal-auth/config';
 import Link from 'next/link';
@@ -163,9 +164,9 @@ export default async function OperatorPage() {
                       {r.modules.map((code) => (
                         <input key={code} type="hidden" name="modules" value={code} />
                       ))}
-                      <button type="submit" className={btnGhost}>
+                      <ActionButton type="submit" className={btnGhost}>
                         {t('retry')}
-                      </button>
+                      </ActionButton>
                     </form>
                   </div>
                 )}
@@ -179,9 +180,9 @@ export default async function OperatorPage() {
                         <p className="text-xs text-muted-foreground">{t('reissuePending')}</p>
                       ) : (
                         <form action={requestReissueAction.bind(null, r.id)}>
-                          <button type="submit" className={btnGhost}>
+                          <ActionButton type="submit" className={btnGhost}>
                             {t('reissue')}
-                          </button>
+                          </ActionButton>
                           <p className="mt-1 text-xs text-muted-foreground">{t('reissueNote')}</p>
                         </form>
                       )}

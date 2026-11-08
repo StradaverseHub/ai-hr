@@ -13,7 +13,7 @@ export function AllowanceEmployeePreview({companyId,rules,method}:{companyId:str
   const fingerprint=JSON.stringify({companyId,rules,method,month});
   const latest=useRef(fingerprint);
   useEffect(()=>{latest.current=fingerprint;setPreview(null);setError(false);},[fingerprint]);
-  return <div className="space-y-3 border-t border-border pt-4"><h3 className="text-sm font-semibold">{t('previewTitle')}</h3><div className="flex flex-wrap items-end gap-3"><label className="space-y-1 text-sm">{old('paymentMonth')}<input type="month" value={month} className={inputCls} onChange={event=>setMonth(event.target.value)}/></label><Button type="button" variant="secondary" disabled={pending||!companyId||!month} onClick={()=>{
+  return <div className="space-y-3 border-t border-border pt-4"><h3 className="text-sm font-semibold">{t('previewTitle')}</h3><div className="flex flex-wrap items-end gap-3"><label className="space-y-1 text-sm">{old('paymentMonth')}<input type="month" value={month} className={inputCls} onChange={event=>setMonth(event.target.value)}/></label><Button aria-busy={pending} type="button" variant="secondary" disabled={pending||!companyId||!month} onClick={()=>{
     const before=fingerprint;
     start(async()=>{setError(false);try{const result=await previewAllowanceEmployeeSelection({companyId,rules,method,month});if(before===latest.current)setPreview(result);}catch{if(before===latest.current)setError(true);}});
   }}>{pending?t('loading'):t('previewAction')}</Button></div><p className="max-w-prose text-xs text-muted-foreground">{t('previewHelp')}</p>

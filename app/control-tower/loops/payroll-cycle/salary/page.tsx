@@ -1,3 +1,4 @@
+import { ActionButton } from '@/components/ui/action-button';
 import Link from 'next/link';
 import { getFormatter, getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
@@ -132,8 +133,8 @@ export default async function SalaryLoopPage({ searchParams }: { searchParams: P
                   <form key={value} action={disposeSwingGroupAction}>
                     {stay}<input type="hidden" name="target" value={group.companyId} /><input type="hidden" name="pattern" value={group.pattern} />
                     <input type="hidden" name="disposition" value={value} />
-                    <button type="submit" className={cn(value === 'expected' ? btnPrimary : btnGhost, 'pointer-coarse:min-h-11')}
-                      aria-label={`${t(`groups.mark.${value}`, { count: group.members.length })} · ${pattern(group.pattern)}`}>{t(`groups.mark.${value}`, { count: group.members.length })}</button>
+                    <ActionButton type="submit" className={cn(value === 'expected' ? btnPrimary : btnGhost, 'pointer-coarse:min-h-11')}
+                      aria-label={`${t(`groups.mark.${value}`, { count: group.members.length })} · ${pattern(group.pattern)}`}>{t(`groups.mark.${value}`, { count: group.members.length })}</ActionButton>
                   </form>
                 ))}
               </div>
@@ -196,7 +197,7 @@ function FlagRow({ flag, period, filter, t, percent, pattern, usual }: { flag: S
             <form key={value} action={recordSwingDispositionAction}>
               <input type="hidden" name="case" value={flag.caseId} /><input type="hidden" name="disposition" value={value} />
               <input type="hidden" name="period" value={period} />{filter && <input type="hidden" name="company" value={filter} />}
-              <button type="submit" className={cn(btnGhost, 'pointer-coarse:min-h-11')} aria-label={`${t(`flags.mark.${value}`)} · ${who}`}>{t(`flags.mark.${value}`)}</button>
+              <ActionButton type="submit" className={cn(btnGhost, 'pointer-coarse:min-h-11')} aria-label={`${t(`flags.mark.${value}`)} · ${who}`}>{t(`flags.mark.${value}`)}</ActionButton>
             </form>
           ))}
           {flag.employmentId && <form action={acknowledgeCheckAction} className="flex w-full flex-wrap items-end gap-2" data-acknowledge-flag>
@@ -207,7 +208,7 @@ function FlagRow({ flag, period, filter, t, percent, pattern, usual }: { flag: S
               <input name="reason" required maxLength={500} className={cn(inputCls, 'pointer-coarse:min-h-11')} /></label>
             <label className="flex flex-col gap-1 text-xs"><span className="text-muted-foreground">{t('acknowledge.reviewOn')}</span>
               <input type="date" name="reviewOn" className={cn(inputCls, 'pointer-coarse:min-h-11')} /></label>
-            <button type="submit" className={cn(btnGhost, 'pointer-coarse:min-h-11')} aria-label={`${t('acknowledge.person')} · ${who}`}>{t('acknowledge.person')}</button>
+            <ActionButton type="submit" className={cn(btnGhost, 'pointer-coarse:min-h-11')} aria-label={`${t('acknowledge.person')} · ${who}`}>{t('acknowledge.person')}</ActionButton>
           </form>}
         </div>}</td>
     </tr>

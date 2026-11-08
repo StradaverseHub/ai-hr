@@ -46,10 +46,10 @@ function EnabledRewriteField({children,target,enabled,rewriteAction,areaFieldNam
    <Dialog.Title className="text-base font-semibold">{t('title')}</Dialog.Title><ProtectedInputHelp kind="layout" onChoose={setInstruction} disabled={pending}/><Dialog.Description className="text-sm text-muted-foreground">{t('help')}</Dialog.Description>
    <label className="block space-y-1 text-sm"><span>{t('yourWords')}</span><textarea readOnly rows={3} value={original} className={inputCls}/></label>
    <label htmlFor={`${id}-instruction`} className="block space-y-1 text-sm"><span>{t('instruction')}</span><textarea id={`${id}-instruction`} maxLength={500} rows={2} value={instruction} onChange={event=>setInstruction(event.target.value)} disabled={pending} placeholder="format as a paragraph" className={inputCls}/></label>
-   <div className="flex flex-wrap items-center justify-between gap-3"><Button type="button" variant="secondary" disabled={pending||quota?.remaining===0||!original.trim()} onClick={generate}>{pending?t('working'):t('generate')}</Button>{quota&&<p role="status" className="text-xs text-muted-foreground">{t('quota',quota)}</p>}</div>
+   <div className="flex flex-wrap items-center justify-between gap-3"><Button aria-busy={pending} type="button" variant="secondary" disabled={pending||quota?.remaining===0||!original.trim()} onClick={generate}>{pending?t('working'):t('generate')}</Button>{quota&&<p role="status" className="text-xs text-muted-foreground">{t('quota',quota)}</p>}</div>
    {error&&<p role="alert" className="text-sm text-destructive">{error}</p>}
    {suggestion&&<label className="block space-y-1 text-sm"><span>{t('suggestion')}</span><textarea aria-label={t('suggestion')} rows={5} maxLength={4000} value={suggestion} onChange={event=>setSuggestion(event.target.value)} className={inputCls}/></label>}
-   <div className="flex justify-end gap-3"><Dialog.Close asChild><Button type="button" variant="secondary">{t('discard')}</Button></Dialog.Close>{suggestion&&<Button type="button" disabled={pending||!suggestion.trim()} onClick={keep}>{t('keep')}</Button>}</div>
+   <div className="flex justify-end gap-3"><Dialog.Close asChild><Button type="button" variant="secondary">{t('discard')}</Button></Dialog.Close>{suggestion&&<Button aria-busy={pending} type="button" disabled={pending||!suggestion.trim()} onClick={keep}>{t('keep')}</Button>}</div>
   </Dialog.Content></Dialog.Portal>
  </Dialog.Root>}</div>;
 }

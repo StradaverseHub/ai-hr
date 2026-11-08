@@ -39,6 +39,6 @@ export function JobEditor({initial,definition,masters,identity,historicalLabels=
    <Field label={t('reason')}><textarea className={`${inputCls} h-auto min-h-24 py-2`} maxLength={2000} value={value.reason} onChange={e=>update('reason',e.target.value)}/></Field>
    <p className="text-xs text-muted-foreground md:col-span-2">{t('independentApproval')}</p>
   </CardContent></Card>
-  <div className="sticky bottom-0 flex flex-wrap items-center justify-between gap-3 border-t border-border bg-background py-3"><p className="text-sm text-muted-foreground">{t('draftHint')}</p><Button disabled={pending}>{pending?t('saving'):t('saveDraft')}</Button></div>
+  <div className="sticky bottom-0 flex flex-wrap items-center justify-between gap-3 border-t border-border bg-background py-3"><p className="text-sm text-muted-foreground">{t('draftHint')}</p><Button aria-busy={pending} disabled={pending}>{pending?t('saving'):t('saveDraft')}</Button></div>
  </form>;
 }

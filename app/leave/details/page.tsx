@@ -1,3 +1,4 @@
+import { ExportDownloadLink } from '@/components/export-download-link';
 import { getLocale, getTranslations } from 'next-intl/server';
 import { Download } from 'lucide-react';
 
@@ -194,7 +195,7 @@ export default async function LeaveDetailsPage({
         </form>
         {rows.length > 0 && (
           // A plain anchor, not <Link>: a file download must not be prefetched or client-routed.
-          <a
+          <ExportDownloadLink
             href={exportHref}
             data-testid="leave-details-export"
             className={cn(
@@ -205,7 +206,7 @@ export default async function LeaveDetailsPage({
           >
             <Download className="size-4 monolith:hidden" aria-hidden />
             {t('downloadExcel')}
-          </a>
+          </ExportDownloadLink>
         )}
       </div>
 

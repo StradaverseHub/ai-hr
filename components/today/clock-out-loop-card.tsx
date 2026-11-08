@@ -77,7 +77,7 @@ export function ClockOutLoopCard({ caseId, icon, title, meta, awaitingLabel, edi
         )}
       </fieldset>
       <div role="group" aria-label={copy.actionsLabel} aria-busy={busy} className="flex flex-wrap items-center gap-2">
-        <Button type="button" onClick={confirm} disabled={busy || !ready} className={TARGET}>
+        <Button aria-busy={busy} type="button" onClick={confirm} disabled={busy || !ready} className={TARGET}>
           {busy ? copy.confirming : copy.confirm}{' '}<span className="sr-only">· {title}</span>
         </Button>
         <Link href={editHref} aria-disabled={busy || undefined}

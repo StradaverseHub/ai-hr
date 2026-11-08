@@ -34,7 +34,7 @@ export function HolidayCalendarAssignments({employmentId,joinDate,employmentStar
  return <Card id="section-holiday-calendar" className="overflow-hidden">
   <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border p-4">
    <h2 className="text-base font-semibold">{t('title')}</h2>
-   <Button type="button" onClick={()=>edit()} disabled={pending||!!draft}>{t('add')}</Button>
+   <Button aria-busy={pending} type="button" onClick={()=>edit()} disabled={pending||!!draft}>{t('add')}</Button>
   </div>
   <div className="space-y-4 p-4">
    <p className="text-sm text-muted-foreground">{t('fallback',{calendar:fallbackLabel})}</p>
@@ -54,11 +54,11 @@ export function HolidayCalendarAssignments({employmentId,joinDate,employmentStar
     <PersonnelField fieldId="attendance.dated_holiday_calendar.startdate" className="space-y-1 text-sm"><input {...personnelInput('attendance.dated_holiday_calendar.startdate','edit',{employmentStartDate})} id={`${formId}-start`} value={draft.startDate} disabled={pending} onChange={e=>setDraft({...draft,startDate:e.target.value})} className={inputCls}/></PersonnelField>
     <PersonnelField fieldId="attendance.dated_holiday_calendar.enddate" className="space-y-1 text-sm"><input {...personnelInput('attendance.dated_holiday_calendar.enddate','edit',{calendarAssignmentStartDate:draft.startDate||joinDate})} id={`${formId}-end`} aria-label={t('end')} aria-describedby={`${formId}-end-help`} value={draft.endDate} disabled={pending} onChange={e=>setDraft({...draft,endDate:e.target.value})} className={inputCls}/><span id={`${formId}-end-help`} className="block text-xs text-muted-foreground">{t('endHelp')}</span></PersonnelField>
     {error&&<p role="alert" className="text-sm text-destructive sm:col-span-3">{t(`errors.${error}`)}</p>}
-    <div className="flex flex-wrap gap-2 sm:col-span-3"><Button type="submit" disabled={pending}>{t(pending?'saving':'save')}</Button><Button type="button" variant="secondary" disabled={pending} onClick={()=>{setDraft(null);setError(null);}}>{t('cancel')}</Button></div>
+    <div className="flex flex-wrap gap-2 sm:col-span-3"><Button aria-busy={pending} type="submit" disabled={pending}>{t(pending?'saving':'save')}</Button><Button aria-busy={pending} type="button" variant="secondary" disabled={pending} onClick={()=>{setDraft(null);setError(null);}}>{t('cancel')}</Button></div>
    </form>}
    {!active.length?<p className="py-3 text-sm text-muted-foreground">{t('empty')}</p>:<div className="overflow-x-auto"><table className="w-full min-w-[36rem] text-left text-sm">
     <thead><tr className="border-b border-border text-xs text-muted-foreground">{['calendar','start','end','actions'].map(key=><th key={key} scope="col" className="p-3 font-medium">{t(key)}</th>)}</tr></thead>
-    <tbody>{active.map(row=><tr key={row.id} className="border-b border-border last:border-0"><td className="p-3 font-medium">{label(row.choice)}</td><td className="p-3 whitespace-nowrap">{date(row.startDate)}</td><td className="p-3 whitespace-nowrap">{row.endDate?date(row.endDate):t('noEnd')}</td><td className="p-3"><Button type="button" variant="secondary" disabled={pending||!!draft} onClick={()=>edit(row)} aria-label={t('editNamed',{calendar:label(row.choice),date:date(row.startDate)})}>{t('edit')}</Button></td></tr>)}</tbody>
+    <tbody>{active.map(row=><tr key={row.id} className="border-b border-border last:border-0"><td className="p-3 font-medium">{label(row.choice)}</td><td className="p-3 whitespace-nowrap">{date(row.startDate)}</td><td className="p-3 whitespace-nowrap">{row.endDate?date(row.endDate):t('noEnd')}</td><td className="p-3"><Button aria-busy={pending} type="button" variant="secondary" disabled={pending||!!draft} onClick={()=>edit(row)} aria-label={t('editNamed',{calendar:label(row.choice),date:date(row.startDate)})}>{t('edit')}</Button></td></tr>)}</tbody>
    </table></div>}
    <p className="text-xs text-muted-foreground">{t('protection')}</p>
    {history.length>0&&<details className="border-t border-border pt-3"><summary className="cursor-pointer text-sm font-medium">{t('history',{count:history.length})}</summary><ul className="mt-3 space-y-2 text-sm text-muted-foreground">{history.map(row=><li key={row.id}>{label(row.choice)} · {date(row.startDate)} – {row.endDate?date(row.endDate):t('noEnd')} · {t('replaced')}</li>)}</ul></details>}

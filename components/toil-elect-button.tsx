@@ -52,7 +52,7 @@ export function ToilElectButton({ employmentId, workedDate }: { employmentId: st
           {error}
         </span>
       )}
-      <button
+      <button aria-busy={pending}
         type="button"
         onClick={click}
         disabled={pending}

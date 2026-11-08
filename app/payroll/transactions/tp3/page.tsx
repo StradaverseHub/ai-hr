@@ -1,3 +1,4 @@
+import { ActionButton } from '@/components/ui/action-button';
 import { Tp3DeclarationFields } from '@/components/tp3-declaration-fields';
 import Link from 'next/link';
 import { cookies } from 'next/headers';
@@ -262,9 +263,9 @@ export default async function Tp3Page({
 
               <Tp3DeclarationFields record={record} identity={identity} selectedYear={selectedYear} mode="admin"/>
               <div className="flex flex-wrap items-center gap-3">
-                <button type="submit" className={btnPrimary}>
+                <ActionButton type="submit" className={btnPrimary}>
                   {t('tp3.save')}
-                </button>
+                </ActionButton>
                 {sp.toast === 'saved' ? <span className="text-sm text-emerald-600">{t('tp3.saved')}</span> : null}
                 {/* Item 1bb09a73 — the save landed but the four payroll figures did NOT move, because a
                     LATER assessment year holds them. AMBER, not green, and it names the year: a "Saved"
@@ -340,9 +341,9 @@ export default async function Tp3Page({
                           {t('tp3.confirmDeleteBody', { year: selectedYear })}
                         </p>
                       </div>
-                      <button type="submit" className={btnPrimary}>
+                      <ActionButton type="submit" className={btnPrimary}>
                         {t('tp3.confirmDeleteYes')}
-                      </button>
+                      </ActionButton>
                       <Link
                         href={`/payroll/transactions/tp3?employmentId=${encodeURIComponent(
                           selectedEmp.employmentId,

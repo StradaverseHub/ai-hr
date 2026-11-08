@@ -1,5 +1,6 @@
 import {payrollReconciliationItemLabel} from '@/lib/payroll-reconciliation-items';
 import {Fragment} from 'react';
+import { ExportDownloadLink } from '@/components/export-download-link';
 import Link from 'next/link';
 import {notFound} from 'next/navigation';
 import {getTranslations} from 'next-intl/server';
@@ -44,7 +45,7 @@ export default async function PayrollComparisonPage({params,searchParams}:{param
   return <div className="space-y-5">
     <nav aria-label={t('breadcrumb')} className="text-sm text-muted-foreground"><Link href="/reports">{t('reports')}</Link> › <Link href="/reports?cat=payroll">{t('payroll')}</Link> › {t('customReports')}</nav>
     <PageHeader title={builtIn ? t('title') : run.name} description={run.description||t('reportHelp')} back={builtIn?{href:'/payroll/reconciliation'+(returnQuery?'?'+returnQuery:''),label:t('backToReconciliation')}:undefined}/>
-    <div className="flex flex-wrap items-center justify-between gap-3">{!builtIn && <span className="rounded-full bg-primary/10 px-3 py-1 text-xs font-medium text-primary">{t('customTag')}</span>}<div className="flex gap-3 text-sm">{!builtIn&&run.canEdit&&<Link className="rounded-lg border border-border px-3 py-2" href={'/reports/payroll-comparison/'+id+'?edit=1'}>{t('editReport')}</Link>}{run.canExport&&(['pdf','xlsx']as const).map(format=><a key={format} className="rounded-lg bg-primary px-3 py-2 text-primary-foreground" href={'/reports/payroll-comparison/export?id='+id+'&format='+format+'&'+query()}>{t(format==='pdf'?'exportPdf':'exportExcel')}</a>)}</div></div>
+    <div className="flex flex-wrap items-center justify-between gap-3">{!builtIn && <span className="rounded-full bg-primary/10 px-3 py-1 text-xs font-medium text-primary">{t('customTag')}</span>}<div className="flex gap-3 text-sm">{!builtIn&&run.canEdit&&<Link className="rounded-lg border border-border px-3 py-2" href={'/reports/payroll-comparison/'+id+'?edit=1'}>{t('editReport')}</Link>}{run.canExport&&(['pdf','xlsx']as const).map(format=><ExportDownloadLink key={format} className="rounded-lg bg-primary px-3 py-2 text-primary-foreground" href={'/reports/payroll-comparison/export?id='+id+'&format='+format+'&'+query()}>{t(format==='pdf'?'exportPdf':'exportExcel')}</ExportDownloadLink>)}</div></div>
     {builtIn&&sp.noteError&&<ErrorBanner message={t(sp.noteError==='conflict'?'hrRemarkConflict':'hrRemarkFailed')}/>}
     {builtIn&&sp.templateError&&<ErrorBanner message={t('saveFailed')}/>}
     {result.provisional&&<div role="status" className="rounded-xl border border-border bg-muted/50 p-4 text-sm text-foreground">{t('provisional')}</div>}

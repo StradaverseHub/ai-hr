@@ -66,7 +66,7 @@ export function PdpaErasureForm({ initialEmploymentId = '' }: { initialEmploymen
         <span>{t('confirmLabel')}</span>
       </label>
 
-      <Button size="sm" disabled={!confirmed || pending || !employmentId.trim() || !requestRef.trim()} onClick={run}>
+      <Button aria-busy={pending} size="sm" disabled={!confirmed || pending || !employmentId.trim() || !requestRef.trim()} onClick={run}>
         {pending ? t('running') : t('runErasure')}
       </Button>
 

@@ -1,3 +1,4 @@
+import { ActionButton } from '@/components/ui/action-button';
 import { notFound } from 'next/navigation';
 import { getTranslations,getLocale } from 'next-intl/server';
 
@@ -114,16 +115,16 @@ export default async function NoticeDetailPage({
             {n.archivedAt && (
               <form action={restoreNoticeAction}>
                 <input type="hidden" name="id" value={n.id} />
-                <button type="submit" className={btnGhost}>
+                <ActionButton type="submit" className={btnGhost}>
                   {t('restore')}
-                </button>
+                </ActionButton>
               </form>
             )}
             <form action={duplicateNoticeAction}>
               <input type="hidden" name="id" value={n.id} />
-              <button type="submit" className={btnGhost}>
+              <ActionButton type="submit" className={btnGhost}>
                 {t('duplicate')}
-              </button>
+              </ActionButton>
             </form>
             {/* Delete is offered ONLY for a draft. A published notice was broadcast to people; deleting it
                 would erase the fact that the announcement was made. The service refuses it too — this is

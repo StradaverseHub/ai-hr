@@ -30,6 +30,7 @@
  * test/r303-leave-summary-explain.dom.test.tsx against markup captured on the base).
  * Substrate: read-only presentation → NO DomainEvent. // substrate: read-only, no event
  */
+import { ActionButton } from '@/components/ui/action-button';
 import { useState, type ReactNode } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
 import { useLocale, useTranslations } from 'next-intl';
@@ -604,12 +605,12 @@ export function LeaveDetailsPanel({
                   />
                 )}
               </label>
-              <button
+              <ActionButton
                 type="submit"
                 className="rounded-md border border-input bg-background px-2.5 py-1 text-xs font-medium text-foreground hover:bg-muted dark:hover:bg-muted/40"
               >
                 {t('apply')}
-              </button>
+              </ActionButton>
             </form>
             )}
 

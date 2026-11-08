@@ -428,7 +428,7 @@ export function Wizard({
       <div className="flex flex-wrap items-start justify-between gap-3 border-t border-border px-4 py-3">
         {/* Back is enabled from Step 2 in BOTH modes now that resume has a real (read-only) Step 1 to go
             back to (feedback 4f00d8f0). */}
-        <Button type="button" variant="secondary" onClick={() => setStep((s) => Math.max(0, s - 1))} disabled={step === 0 || isPending}>
+        <Button aria-busy={isPending} type="button" variant="secondary" onClick={() => setStep((s) => Math.max(0, s - 1))} disabled={step === 0 || isPending}>
           {t('back')}
         </Button>
         {step < STEPS.length - 1 ? (
