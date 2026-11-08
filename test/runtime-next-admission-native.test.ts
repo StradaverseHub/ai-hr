@@ -71,6 +71,10 @@ it('boots two actual same-build Next workers through protected native admission 
   expect(report.installation).toMatchObject({preCandidateWitnessMatched:true,
    dependencies:{normalization:'ROOT_COPY_DEPENDENCIES_V2'}});
   expect(report.installation.dependencies.sha256).toMatch(/^[a-f0-9]{64}$/);
+  expect(report.ownedPostgresScope).toMatchObject({version:1,kind:'JOB_OWNED_PERSISTENT_ZERO_SWAP',scopeOnly:true});
+  expect(report.ownedPostgresScope.containerIdentitySha256).toMatch(/^[a-f0-9]{64}$/);
+  expect(report.ownedPostgresScope.observations).toEqual(['registered','before-config-reload','after-config-reload',
+   'before-cleanup-reload','after-cleanup-reload','final'].map(stage=>({stage,memoryMax:2113929216,memorySwapMax:0,managerSwapMax:'0'})));
   expect(report.remaining).toContain('500-actor-steady-load');
  }finally{
   for(const[key,value]of original){if(value===undefined)delete process.env[key];else process.env[key]=value;}

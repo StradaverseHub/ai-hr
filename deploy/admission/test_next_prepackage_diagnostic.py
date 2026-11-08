@@ -1,4 +1,5 @@
 """Stdlib source models only: never root, systemd, a Next process or a build witness."""
+import ast
 import copy
 import hashlib
 import contextlib
@@ -384,7 +385,18 @@ class PrepackageDiagnosticModels(unittest.TestCase):
             self.assertEqual((code, stdout), (1, ''))
             self.assertEqual(diagnostic['classification'], 'guard')
             self.assertEqual(diagnostic['owner'], owner)
-            self.assertIn(diagnostic['line'], (58, 59, 60, 61) if owner == 'next-profile' else (41,))
+            if owner == 'next-profile':
+                tree = ast.parse(self.observer_sources()[owner])
+                relative_owner = [node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == 'relative']
+                self.assertEqual(len(relative_owner), 1)
+                statement = relative_owner[0].body[0]
+                self.assertIsInstance(statement, ast.Expr)
+                self.assertIsInstance(statement.value, ast.Call)
+                self.assertIsInstance(statement.value.func, ast.Name)
+                self.assertEqual(statement.value.func.id, 'require')
+                self.assertIn(diagnostic['line'], range(statement.value.lineno, statement.value.end_lineno + 1))
+            else:
+                self.assertEqual(diagnostic['line'], 41)
             self.assertIs(controller.require, original)
             self.assertNotIn('TOKEN=', json.dumps(diagnostic))
 

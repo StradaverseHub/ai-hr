@@ -1011,7 +1011,90 @@ def install_helpers(helper, plan, binding):
     plan['nodePath'] = str(destination / 'node')
 
 
-def configure(plan, binding, N, release, runtime_package):
+class OwnedPostgresScope:
+    """Register ONLY this job's existing zero-swap Docker scope with its manager.
+
+    This fixes persistence before any manager reload, never repairs drift after
+    work or weakens the independently captured final PostgreSQL resource witness.
+    """
+    STAGES = frozenset({'registered', 'before-config-reload', 'after-config-reload',
+                        'before-cleanup-reload', 'after-cleanup-reload', 'final'})
+    FORMAT = ('{"id":{{json .Id}},"name":{{json .Name}},'
+              '"owner":{{json (index .Config.Labels "aihr-owner")}},'
+              '"pid":{{json .State.Pid}},"started":{{json .State.StartedAt}},'
+              '"running":{{json .State.Running}},"memory":{{json .HostConfig.Memory}},'
+              '"swap":{{json .HostConfig.MemorySwap}}}')
+
+    def __init__(self, plan):
+        require(isinstance(plan.get('runId'), str) and re.fullmatch(r'[1-9][0-9]{0,19}', plan['runId'])
+                and isinstance(plan.get('unit'), str) and re.fullmatch(r'db-[a-f0-9]{16}', plan['unit']),
+                'Fixed native PostgreSQL job identity required')
+        self.name = 'aihr-ci-' + plan['runId'] + '-1-' + plan['unit']
+        driver = self.docker('info', '--format', '{{.CgroupDriver}} {{.CgroupVersion}}').stdout.strip()
+        require(driver == b'systemd 2', 'Owned native PostgreSQL requires systemd unified cgroups')
+        self.identity = self.inspect()
+        self.scope = 'docker-' + self.identity['id'] + '.scope'
+        self.group = '/system.slice/' + self.scope
+        # Kernel zero must already exist. Register its intended persistence;
+        # never reset an already drifting workload to manufacture acceptance.
+        self.observe(require_manager_zero=False)
+        systemctl('set-property', '--runtime', self.scope, 'MemorySwapMax=0', timeout=10)
+        self.snapshot('registered')
+
+    @staticmethod
+    def docker(*args):
+        return run(['/usr/bin/docker', '--host', 'unix:///var/run/docker.sock', *args], timeout=10)
+
+    def inspect(self):
+        raw = self.docker('inspect', '--format', self.FORMAT, self.name).stdout
+        require(isinstance(raw, bytes) and 0 < len(raw) <= 4096, 'Bounded native container identity required')
+        row = json.loads(raw)
+        require(isinstance(row, dict) and set(row) == {'id', 'name', 'owner', 'pid', 'started', 'running', 'memory', 'swap'}
+                and isinstance(row['id'], str) and re.fullmatch(r'[a-f0-9]{64}', row['id'])
+                and row['name'] == '/' + self.name and row['owner'] == self.name
+                and type(row['pid']) is int and row['pid'] > 1 and row['running'] is True
+                and isinstance(row['started'], str) and re.fullmatch(r'[0-9TZ:.+-]{20,40}', row['started'])
+                and type(row['memory']) is int and row['memory'] == 2113929216
+                and type(row['swap']) is int and row['swap'] == 2113929216,
+                'Actual owned native PostgreSQL container differs')
+        return row
+
+    def observe(self, require_manager_zero=True):
+        require(self.inspect() == self.identity, 'Native PostgreSQL container changed')
+        keys = {'Id', 'LoadState', 'ActiveState', 'ControlGroup', 'MemorySwapMax'}
+        raw = systemctl('show', self.scope, '--property=' + ','.join(sorted(keys)), timeout=10).stdout
+        require(isinstance(raw, bytes) and 0 < len(raw) <= 16384, 'Bounded native PostgreSQL manager fields required')
+        row = {}
+        for line in raw.decode('utf8').strip().splitlines():
+            key, separator, value = line.partition('=')
+            require(separator == '=' and key in keys and key not in row
+                    and len(value) <= 4096 and '\0' not in value, 'Closed native PostgreSQL manager fields required')
+            row[key] = value
+        require(set(row) == keys, 'Complete native PostgreSQL manager fields required')
+        require(row['Id'] == self.scope and row['LoadState'] == 'loaded' and row['ActiveState'] == 'active'
+                and row['ControlGroup'] == self.group,
+                'Native PostgreSQL manager scope is foreign or inactive')
+        require(pathlib.Path('/proc', str(self.identity['pid']), 'cgroup').read_bytes() == ('0::' + self.group + '\n').encode(),
+                'Actual PostgreSQL native PID belongs to another scope')
+        require(not require_manager_zero or row['MemorySwapMax'] == '0', 'Native PostgreSQL manager swap limit drifted')
+        raw = self.docker('exec', self.name, 'cat', '/sys/fs/cgroup/memory.max', '/sys/fs/cgroup/memory.swap.max').stdout
+        require(raw == b'2113929216\n0\n', 'Native PostgreSQL kernel resource limit drifted')
+        require(self.inspect() == self.identity, 'Native PostgreSQL identity changed during scope observation')
+        return {'memoryMax': 2113929216, 'memorySwapMax': 0, 'managerSwapMax': row['MemorySwapMax']}
+
+    def snapshot(self, stage):
+        require(stage in self.STAGES, 'Unknown native PostgreSQL scope observation')
+        value = self.observe()
+        observations = report.setdefault('ownedPostgresScope', {'version': 1, 'kind': 'JOB_OWNED_PERSISTENT_ZERO_SWAP',
+            'containerIdentitySha256': hashlib.sha256(json.dumps(self.identity, sort_keys=True).encode()).hexdigest(),
+            'scopeOnly': True, 'observations': []})
+        require(len(observations['observations']) < len(self.STAGES), 'Native PostgreSQL observations exceed bound')
+        require(stage not in {row['stage'] for row in observations['observations']}, 'Duplicate native PostgreSQL scope observation')
+        observations['observations'].append({'stage': stage, **value})
+        save()
+
+
+def configure(plan, binding, N, release, runtime_package, postgres_scope):
     phase('protected-native-configuration')
     configuration_phase('principal')
     nobody = pwd.getpwnam('nobody')
@@ -1137,7 +1220,9 @@ UMask=0077
         info = file.stat()
         owned_units[name] = (info.st_dev, info.st_ino)
     configuration_phase('manager-reload')
+    postgres_scope.snapshot('before-config-reload')
     systemctl('daemon-reload')
+    postgres_scope.snapshot('after-config-reload')
     configuration_phase('guarded-profile')
     C = load('actual_next_controller', pathlib.Path('/usr/local/lib/aihr-admission/controller.py'))
     profile = {'version': 2, 'epoch': os.urandom(16).hex(), 'source': plan['candidate'], 'build': binding['nextBuildId'],
@@ -1340,7 +1425,7 @@ def require_stopped(unit):
                     pending.append(pathlib.Path(entry.path))
 
 
-def cleanup():
+def cleanup(postgres_scope):
     # Never remove a package under an unowned/replaced live service declaration.
     for unit, expected in owned_units.items():
         path = pathlib.Path('/etc/systemd/system', unit)
@@ -1362,7 +1447,10 @@ def cleanup():
             systemctl('reset-failed', unit, check=False)
             pathlib.Path('/etc/systemd/system', unit).unlink()
     if owned_units:
-        systemctl('daemon-reload', check=False)
+        require(postgres_scope is not None, 'Owned PostgreSQL reload guard absent')
+        postgres_scope.snapshot('before-cleanup-reload')
+        systemctl('daemon-reload')
+        postgres_scope.snapshot('after-cleanup-reload')
     require(shutil.rmtree.avoids_symlink_attacks, 'Descriptor-safe cleanup unavailable')
     for name in reversed(ROOTS):
         if name in owned_paths:
@@ -1441,11 +1529,13 @@ def main():
             and browser_input['evidenceDirectory'] == plan['evidenceDirectory'], 'Private browser input binding differs')
     save()
     succeeded = False
+    postgres_scope = None
     try:
+        postgres_scope = OwnedPostgresScope(plan)
         fixture_directories()
         install_helpers(helper, plan, binding)
         N, release, runtime_package = package(plan, helper, binding)
-        C = configure(plan, binding, N, release, runtime_package)
+        C = configure(plan, binding, N, release, runtime_package, postgres_scope)
         browser_core(plan, binding, C)
         release_workers(C)
         succeeded = True
@@ -1457,7 +1547,9 @@ def main():
     finally:
         DEADLINE = TOTAL_DEADLINE
         try:
-            cleanup()
+            cleanup(postgres_scope)
+            if postgres_scope is not None:
+                postgres_scope.snapshot('final')
             report['ownedRuntimeCleaned'] = True
         except BaseException:
             report['ownedRuntimeCleaned'] = False
