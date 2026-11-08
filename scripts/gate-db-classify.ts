@@ -124,7 +124,16 @@ const cleanReason = 'no database import, call or URL in it or its test/ helpers'
 
 /** Own the complete reachable helper graph before publishing any clean verdict.
  * A back-edge is a dependency, never a provisional clean result. */
-function classifyRequest(files: string[], read: Reader): Map<string, DbVerdict> {
+function classifyRequest(files: string[], sourceRead: Reader): Map<string, DbVerdict> {
+  // One immutable source view per request. Existence probes and later helper
+  // inspection share COMPLETE strings/nulls; no verdict or state escapes a call.
+  const sources = new Map<string, string | null>();
+  const read: Reader = (path) => {
+    if (sources.has(path)) return sources.get(path)!;
+    const source = sourceRead(path); // Preserve thrown Reader errors unchanged.
+    sources.set(path, source);
+    return source;
+  };
   const graph = new Map<string, Step[]>(), queue: string[] = [];
   const discover = (file: string) => {
     if (!graph.has(file)) { graph.set(file, []); queue.push(file); }
