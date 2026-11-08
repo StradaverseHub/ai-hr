@@ -67,9 +67,17 @@ bounded native wait. A reused different start is safe; the same live identity,
 zombie/unknown state, missing chronology or escaped family fails. It never
 signals a historical process, invokes DB disposal or fabricates cleanup.
 
-Prospective source controls: graph/output23, process/admission11, shared
-kernel17, adapter6 (including actual tiny native parent-death/resistant-child
+Prospective source controls: graph/output23, process/admission12, shared
+kernel17, adapter7 (including actual tiny native parent-death/resistant-child
 controls), plus complete controller regressions. These controls must finish
 before the sole actual native compiler miniature. No skip or partial success
 can establish acceptance. Preserve original fcd/previous compiler failures;
 the whole application compiler remains a separate unresolved gate.
+
+Clock andACK publication have a separate settled-readiness frontier: exclusive
+hard-link publication remains no-overwrite; only AFTER pending unlink does the
+writer atomically mkdir an empty owned0700 .ready marker. Readers wait while
+readiness is absent, then retain all strict nlink1/UID/native identity/bounds.
+Both source readers exercise actual final+pending nlink2 files, absent/early/
+foreign markers and settled positives. DelayedACK uses the real linked stage,
+not direct file creation; T0 and all3/60/720/848/job limits are unchanged.

@@ -1,7 +1,7 @@
 /** Cooperative actual-CI process admission, not an OS/security/release sandbox.
  * This owner starts NO process and cannot authorize a CLI argument or profile. */
 import assert from 'node:assert/strict';
-import {openSync,readSync,closeSync,lstatSync,fstatSync,realpathSync,readlinkSync,writeFileSync,linkSync,unlinkSync,constants} from 'node:fs';
+import {openSync,readSync,closeSync,lstatSync,fstatSync,realpathSync,readlinkSync,writeFileSync,linkSync,unlinkSync,mkdirSync,readdirSync,constants} from 'node:fs';
 import {join,resolve,isAbsolute} from 'node:path';
 import {createHash} from 'node:crypto';
 const selector='test/compiler-native-reference-fixture.test.ts';
@@ -71,17 +71,31 @@ export function admitCompilerReference(role='wrapper'){
  for(const row of [self,monitor,parent,nodeOwner,...ancestors])assert(stable(row,compilerProcIdentity(row.pid)));
  return{source,controller,destination,monitor:{pid:monitor.pid,start:monitor.start},self:{pid:self.pid,start:self.start},nodeOwner:{pid:nodeOwner.pid,start:nodeOwner.start},ancestors,run:preflight.run,attempt:preflight.attempt,sourceHead:preflight.source,controllerHead:preflight.controller,sourceHashes:preflight.sourceHashes};
 }
+/** Atomic mkdir readiness is published ONLY after link/unlink reaches nlink1.
+ * Missing readiness is pending, never a reason to weaken the bounded reader. */
+export function readPublishedCompilerBytes(path,maximum){
+ const ready=path+'.ready';let descriptor;
+ try{descriptor=openSync(ready,constants.O_RDONLY|constants.O_NOFOLLOW|constants.O_NONBLOCK|constants.O_DIRECTORY);}
+ catch(error){if(error.code==='ENOENT')return undefined;throw error;}
+ try{
+  const before=fstatSync(descriptor);assert(before.isDirectory()&&before.uid===process.getuid()&&(before.mode&0o7777)===0o700);
+  assert(realpathSync(ready)===ready&&readdirSync(ready).length===0);
+  const value=boundedCompilerBytes(path,maximum),after=fstatSync(descriptor),named=lstatSync(ready);
+  for(const key of ['dev','ino','mode','uid','mtimeMs','ctimeMs'])assert(before[key]===after[key]&&before[key]===named[key]);
+  return value;
+ }finally{closeSync(descriptor);}
+}
 const clockPath=proof=>join(proof.destination,'compiler-reference-clock.json');
 export async function publishCompilerReferenceClock(proof,signal,started){
  signal?.throwIfAborted();const now=process.hrtime.bigint();assert(typeof started==='bigint'&&started<=now&&now-started<=BigInt(3000000000));
  const startNs=String(started),clock={version:1,kind:'OWNED_COMPILER_REFERENCE_720_CLOCK',run:proof.run,attempt:proof.attempt,source:proof.sourceHead,controller:proof.controllerHead,monitor:proof.monitor,wrapper:proof.self,startNs};
- const file=clockPath(proof),pending=file+'.pending';writeFileSync(pending,JSON.stringify(clock),{flag:'wx',mode:0o600});linkSync(pending,file);unlinkSync(pending);
+ const file=clockPath(proof),pending=file+'.pending';writeFileSync(pending,JSON.stringify(clock),{flag:'wx',mode:0o600});linkSync(pending,file);unlinkSync(pending);mkdirSync(file+'.ready',{mode:0o700});
  const ack=join(proof.destination,'compiler-reference-clock-ack.json'),until=process.hrtime.bigint()+BigInt(3000000000);
- for(;;){signal?.throwIfAborted();try{assert((lstatSync(ack).mode&0o077)===0&&same(JSON.parse(regular(ack)),clock));return clock;}catch(error){if(error.code!=='ENOENT')throw error;}assert(process.hrtime.bigint()<until,'Compiler external clock ACK absent');await new Promise(resolve=>setTimeout(resolve,20));}
+ for(;;){signal?.throwIfAborted();const raw=readPublishedCompilerBytes(ack,4*1024*1024);if(raw!==undefined){assert((lstatSync(ack).mode&0o077)===0&&same(JSON.parse(raw),clock));return clock;}assert(process.hrtime.bigint()<until,'Compiler external clock ACK absent');await new Promise(resolve=>setTimeout(resolve,20));}
 }
 export function readCompilerReferenceClock(proof){
- assert((lstatSync(clockPath(proof)).mode&0o077)===0);const clock=JSON.parse(regular(clockPath(proof)));assert(clock.version===1&&clock.kind==='OWNED_COMPILER_REFERENCE_720_CLOCK'&&positive(clock.startNs));
+ const raw=readPublishedCompilerBytes(clockPath(proof),4*1024*1024);assert(raw!==undefined&&(lstatSync(clockPath(proof)).mode&0o077)===0);const clock=JSON.parse(raw);assert(clock.version===1&&clock.kind==='OWNED_COMPILER_REFERENCE_720_CLOCK'&&positive(clock.startNs));
  assert(clock.source===proof.sourceHead&&clock.controller===proof.controllerHead&&clock.run===proof.run&&clock.attempt===proof.attempt&&same(clock.monitor,proof.monitor));
  const wrapper=compilerProcIdentity(clock.wrapper.pid);assert(wrapper.start===clock.wrapper.start&&wrapper.group===proof.monitor.pid&&wrapper.session===proof.monitor.pid&&proof.ancestors.some(row=>row.pid===wrapper.pid&&row.start===wrapper.start));
- assert(same(JSON.parse(regular(join(proof.destination,'compiler-reference-clock-ack.json'))),clock));return clock;
+ const ack=readPublishedCompilerBytes(join(proof.destination,'compiler-reference-clock-ack.json'),4*1024*1024);assert(ack!==undefined&&same(JSON.parse(ack),clock));return clock;
 }

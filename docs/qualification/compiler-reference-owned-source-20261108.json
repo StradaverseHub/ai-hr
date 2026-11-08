@@ -1,7 +1,7 @@
 {
   "version": 1,
   "kind": "COMPILER_REFERENCE_OWNED_PROCESS_SOURCE_NOT_QUALIFICATION",
-  "sourceRef": "codex/compiler-reference-owned-supervision-20261108",
+  "sourceRef": "codex/compiler-reference-settled-publication-20261108",
   "historicalUnrunPrototype": "fcd898ed1a4c4d886f70ac700fd1aff417240564",
   "reviewedConfiguredRootRepair": "665eee3c36557dc750736a6d9a4fd8caedb1b83e",
   "qualifiedKernelPredecessor": "756e834dc0db88b5131547bc6d5108284201ab48",
@@ -9,12 +9,12 @@
     ".env.example": "466f9b377f9c6f9d3bbf9f7c6e6f3de7354d7c744678cd5c6f694d87020a58fe",
     ".github/actions/setup-alpha/action.yml": "7fbb70fefa00703367fc9a3d2b7915996e56aa237b06b52a87f60688e6ad59c3",
     ".github/ci/compiler-file-window-inverse.json": "6dc7a68c49921b085b9292972fa92e3b413fc01dbb21510578431712172d97ea",
-    ".github/ci/compiler-reference-supervisor.py": "d8c6f6a186e1d3c8ab2cfc0a18d82c33d2e6f912fa97585c2cbb52004f3bb44d",
-    ".github/ci/compiler-reference-supervisor.test.py": "daf3abe74972469932ca69536e7214ec004f268298129e10cf3bbb68e95eaf9a",
+    ".github/ci/compiler-reference-supervisor.py": "f33708cb06ff7d87cea21514862508641b68c8ecd35d5c10809a1c1e670c0344",
+    ".github/ci/compiler-reference-supervisor.test.py": "e6dff34ad1455b8067bd095273730421a184fd02cb0e514df1586ac3797402ec",
     ".github/ci/db-scheduling.mjs": "3728c238eca2dbe342542bc24c57b3070d4e3ec1b8713c14a23f3bcf97347cea",
     ".github/ci/diagnostics/compiler-boundary-policy.mjs": "cf1aef49f7aad7394e3a8de31e1b31e1da80667fbbc9c8f2da16db5795c28ed7",
-    ".github/ci/diagnostics/native-reference/admission.mjs": "4f03852767ae73e2363c2ecd8db335df1ad3332af8236527f74ef46692e3d4fd",
-    ".github/ci/diagnostics/native-reference/admission.test.mjs": "23d4fc90849222f9f0a759c692d9a11cc798ed114e222a367549a446320d94a2",
+    ".github/ci/diagnostics/native-reference/admission.mjs": "38a777ec1108921399f8b3cd4acdb5ad696122f3e18d022a8463e244ef197b15",
+    ".github/ci/diagnostics/native-reference/admission.test.mjs": "a5eece0c822452fcfc53014ec75e3dbde70c25296298c4c7a75310955cc9feec",
     ".github/ci/diagnostics/native-reference/config.mjs": "4dcc669c3abf1d9d08863b36ec8958508195445e926a242f5b7a27d5bd57fe95",
     ".github/ci/diagnostics/native-reference/fixture.mjs": "fd9a59262f8f7ca365ee3ded5ccba43004ba7013083e2816c21c2de14f7891dd",
     ".github/ci/diagnostics/native-reference/graph.mjs": "c555b649e7cebb95e5135af87ab7275d248c4c9b3a27b8742e7f8407944bace3",
@@ -38,7 +38,7 @@
     ".github/ci/restricted-port-qualification.mjs": "6318059f63224b7b26c118f5e185ec0d0bda147085f3c3fe1ef29dad69218724",
     ".github/ci/runner-capacity.mjs": "f57fc158d8e003b9db6e697c8bb9e2ea0e8d75a850b31f3bad32838fa260d473",
     ".github/workflows/alpha-focused-checks.yml": "f3f454d5474a02af38b18b97579e5854bd8897979f6e1ca61f72c1855ae1d991",
-    "docs/qualification/compiler-reference-owned-supervision-20261108.md": "efdc2bab5e4c73894c428ef81b1dfb7e419b5b6c2d4314b082e9d66158a46131",
+    "docs/qualification/compiler-reference-owned-supervision-20261108.md": "5937591695928fd2ae6ac1e22209efaffb429dfa2ae2d989482ab49370f247ba",
     "package.json": "7f67e35d869a29d2cb58d65c6f63413afc63db2cc6c6cf9dacb5086bce70ec2c",
     "pnpm-lock.yaml": "0413a070eca23d390fabdcd78cb63b2dcf4b0b69fe90408c7b57a4f672d21dbd",
     "scripts/gate-db-classify.ts": "cc77445ba5b8a702a5f8f4a4292bdcb99275d520ae4f13b16442a17e78f3f916",
@@ -46,8 +46,8 @@
     "scripts/test-duration-sequencer.mjs": "1865d0ad3fe4f61dc964ae684fa3c8cbc1e0166b1cb8210d6be03f1ba69245a6",
     "test/compiler-native-reference-fixture.test.ts": "d3d4eb099a881a08f309779bc045188e4888c384ad05d41c448eb8333ad86ea3",
     "test/compiler-native-reference-graph.test.ts": "ce8b4bfe6123f412c1353831ad1d8deb682e01b3a0eb2dc0202c33a94f5020fa",
-    "test/compiler-native-reference-process.test.ts": "fcbd80390f104916c1a54163e0a08eaa819ba46b247d42daf3e6184f75734e71",
-    "test/compiler-native-reference-supervisor.test.ts": "da63a1cf5e3febcfc039c86d85a2a50d3c4a5ef0815589188ffe70e9060442a7",
+    "test/compiler-native-reference-process.test.ts": "a544911c24e4cf2517aa80d083c943e03466a9f12cd2bcb0a55a6922fa0cba8d",
+    "test/compiler-native-reference-supervisor.test.ts": "1b127edfecfdc748c0e59c0d9da6a7317bb27b6cd5536d35dba371315d164f54",
     "test/db-names.ts": "f6052b4e43c16d364dab4401403e30354b25b02f3f2166e1f0247133f9e2d55b",
     "test/dom-setup.ts": "5340b53cd4102b3e56e2c82391ac25dfc1a3c55868e83d34ad61be80a27a170d",
     "test/employee-choice-benchmark-supervisor.test.ts": "faea3c093e0049fc42f67bf9bb51455c9072e075375fb36ebf4e424e0b6fa041",
@@ -72,12 +72,12 @@
     },
     {
       "selector": "test/compiler-native-reference-process.test.ts",
-      "controls": 11,
+      "controls": 12,
       "claim": "direct-handle/source-proc controls only"
     },
     {
       "selector": "test/compiler-native-reference-supervisor.test.ts",
-      "controls": 6,
+      "controls": 7,
       "claim": "closed adapter/tiny actual-parent ownership controls only"
     },
     {
@@ -95,5 +95,6 @@
   "ordinaryCompilerQualified": false,
   "applicationInventoryComplete": false,
   "originalApplicationFiveNegativesQualified": false,
-  "releaseAuthorized": false
+  "releaseAuthorized": false,
+  "publicationRepairPredecessor": "d57c758922bd518b5601e22115050f6d182fd566"
 }

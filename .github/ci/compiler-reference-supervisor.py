@@ -153,11 +153,30 @@ def supervise_parent(argv, seconds, event, *, parent, file_clock=None):
             active = False
 
 
+
+def published_bytes(path, maximum):
+    # mkdir is the atomic readiness frontier AFTER no-overwrite link/unlink.
+    ready = Path(str(path) + '.ready')
+    try:
+        fd = os.open(ready, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    except FileNotFoundError:
+        return None
+    try:
+        before = os.fstat(fd)
+        require(stat.S_ISDIR(before.st_mode) and before.st_uid == os.getuid()
+                and stat.S_IMODE(before.st_mode) == 0o700 and os.listdir(fd) == [])
+        raw = bounded(path, maximum);after = os.fstat(fd);named = ready.lstat()
+        require(all(getattr(before, key) == getattr(after, key) == getattr(named, key)
+                    for key in ('st_dev', 'st_ino', 'st_mode', 'st_uid', 'st_mtime_ns', 'st_ctime_ns')))
+        return raw
+    finally:
+        os.close(fd)
+
+
 def compiler_clock(destination, started, now, seconds, binding):
     path = destination / 'compiler-reference-clock.json'
-    try:
-        raw = bounded(path, 2048)
-    except FileNotFoundError:
+    raw = published_bytes(path, 2048)
+    if raw is None:
         return None
     require(not path.lstat().st_mode & 0o077)
     value = json.loads(raw)
@@ -190,6 +209,7 @@ def compiler_clock(destination, started, now, seconds, binding):
     finally:
         os.close(fd)
     os.link(pending, ack, follow_symlinks=False);os.unlink(pending)
+    os.mkdir(str(ack) + '.ready', 0o700)
     return observed
 
 

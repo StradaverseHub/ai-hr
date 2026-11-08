@@ -46,6 +46,29 @@ class CompilerSupervisorControls(unittest.TestCase):
             with self.subTest(change=change), self.assertRaises(ValueError):
                 M.job_budget('compiler-reference', dict(base, **change), env, 'owned-model', 200)
 
+    def test_clock_and_ack_wait_for_real_settled_publication_and_refuse_early_or_foreign_ready(self):
+        with tempfile.TemporaryDirectory(prefix='compiler-published-control-') as directory:
+            for name in ('clock', 'ack'):
+                path = Path(directory) / name;pending = Path(str(path) + '.pending');ready = Path(str(path) + '.ready')
+                pending.write_bytes(b'fixed');os.chmod(pending, 0o600);os.link(pending, path)
+                self.assertEqual(path.stat().st_nlink, 2)
+                self.assertIsNone(M.published_bytes(path, 5))
+                ready.mkdir(mode=0o700)
+                with self.assertRaises(ValueError):
+                    M.published_bytes(path, 5)  # readiness cannot waive nlink1
+                pending.unlink();self.assertEqual(M.published_bytes(path, 5), b'fixed')
+                for mode in (0o755, 0o1700):
+                    ready.chmod(mode)
+                    with self.assertRaises(ValueError):
+                        M.published_bytes(path, 5)
+                ready.chmod(0o700);(ready / 'foreign').write_bytes(b'fixed')
+                with self.assertRaises(ValueError):
+                    M.published_bytes(path, 5)
+                (ready / 'foreign').unlink();ready.rmdir();ready.symlink_to(directory)
+                with self.assertRaises(OSError):
+                    M.published_bytes(path, 5)
+                ready.unlink()
+
     def native_parent(self, dies):
         self.assertEqual(sys.platform, 'linux');node = os.environ['AIHR_BENCHMARK_TEST_NODE']
         self.assertEqual(M._kernel.own_children(), [])
