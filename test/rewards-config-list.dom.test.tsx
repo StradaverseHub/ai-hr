@@ -14,7 +14,11 @@ vi.mock('../lib/scope', () => ({ scopedAdmin: async () => ({ s: { tenantId: 'ten
 vi.mock('../lib/session', () => ({ getSession: async () => ({ tenantId: 'tenant', userId: 'actor' }) }));
 vi.mock('../packs/rewards/group-roles', () => ({ rewardWholeGroupSetupCompanies: async () => [] }));
 vi.mock('../lib/authz', () => ({ requireModule: vi.fn() }));
-vi.mock('../packs/rewards/service', async () => ({ listRewardUnits: ports.list, rewardCoverageForUnits: async () => [], rewardPolicyMemberships:vi.fn(async()=>[{companyId:'company',businessUnitId:'bu-1'},{companyId:'company',businessUnitId:'bu-2'}]),rewardSetupChoices: ports.choices, rewardSharedPolicyChoices: ports.shared, rewardDueWording: (await import('../packs/rewards/calendar')).rewardDueWording }));
+vi.mock('../packs/rewards/service', async () => ({ listRewardUnits: ports.list, rewardCoverageForUnits: async () => [], rewardConfigurationListView: async (ctx: unknown, ids: string[], filter: Record<string,string>={}) => {
+  const all=await ports.list(ctx,ids);
+  const units=all.filter((u:typeof rows[number])=>(!filter.cycle||u.cycleId===filter.cycle)&&(!filter.company||u.companyId===filter.company)&&(!filter.unit||u.businessUnitId===filter.unit)&&(!filter.stage||u.status===filter.stage));
+  return {all,units,coverage:new Map()};
+}, rewardPolicyMemberships:vi.fn(async()=>[{companyId:'company',businessUnitId:'bu-1'},{companyId:'company',businessUnitId:'bu-2'}]),rewardSetupChoices: ports.choices, rewardSharedPolicyChoices: ports.shared, rewardDueWording: (await import('../packs/rewards/calendar')).rewardDueWording }));
 vi.mock('../app/rewards/actions', () => ({ createRewardAction: vi.fn(), deleteRewardAction: vi.fn() }));
 vi.mock('../app/admin/rewards/actions', () => ({ cancelRewardAction: vi.fn() }));
 import AdminPage from '../app/admin/rewards/page';

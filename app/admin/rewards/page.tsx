@@ -9,7 +9,7 @@ import { getLocale, getTranslations } from 'next-intl/server';
 import { scopedAdmin } from '@/lib/scope';
 import { requireModule } from '@/lib/authz';
 import { todayInKualaLumpur } from '@/lib/hr-date';
-import { listRewardUnits, rewardCoverageForUnits, rewardDueWording, rewardSetupChoices,rewardSharedPolicyChoices } from '@/packs/rewards/service';
+import { rewardConfigurationListView, rewardDueWording, rewardSetupChoices,rewardSharedPolicyChoices } from '@/packs/rewards/service';
 import { Badge, Button, Card, ErrorBanner, Field, PageHeader, SectionHeader, inputCls, tableWrapCls, theadCls, thCls, tbodyCls } from '@/components/ui';
 
 type Filters = { cycle?: string; company?: string; unit?: string; stage?: string };
@@ -25,13 +25,10 @@ export default async function RewardsConfigurationPage({ searchParams }: { searc
   const td=await getTranslations('rewardsDeletion'),tc=await getTranslations('rewardsConfig'),locale=await getLocale();
   const choices = await rewardSetupChoices(s, scopeIds, { fields: ['units', 'cycles'] });
   const memberships=await rewardPolicyMemberships(s,choices.companies.map(c=>c.id));
-  const all = await listRewardUnits(s, choices.companies.map(c => c.id));
   // Filters narrow the server-rendered list; options come from the reviews the viewer can already see.
-  const units = all.filter(u => (!filter.cycle || u.cycleId === filter.cycle) && (!filter.company || u.companyId === filter.company) && (!filter.unit || u.businessUnitId === filter.unit) && (!filter.stage || u.status === filter.stage));
+  const {all,units,coverage}=await rewardConfigurationListView(s,choices.companies.map(c=>c.id),filter);
   const options = (pick: (u: typeof all[number]) => [string, string]) => [...new Map(all.map(pick)).entries()];
   const filters = [['cycle', options(u => [u.cycleId, `${u.cycle} (${u.year})`])], ['company', options(u => [u.companyId, u.company])], ['unit', options(u => [u.businessUnitId, u.unit])], ['stage', options(u => [u.status, t(`stages.${u.status}`)])]] as const;
-  // cd72f915 — open reviews only: a finished review needs no further seat holders.
-  const coverage = new Map((await rewardCoverageForUnits(s, units.filter(u => !['posted', 'withdrawn', 'rejected'].includes(u.status)).map(u => u.id))).map(c => [c.unitId, c.missing.length]));
   const ta = await getTranslations('rewardsAccess');
   const today = todayInKualaLumpur(); const ts=await getTranslations('rewardSetup');
   const shared=await rewardSharedPolicyChoices(s,choices.companies.map(c=>c.id));

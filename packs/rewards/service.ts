@@ -10,6 +10,7 @@ import {employedByCompanyDuring} from '../../core/employment-company';
 import {mobileRewardPersonBlock} from './mobile-review-projection';
 import type { Tx as AiReadTx } from '../../db/client';
 import { withCanonicalAiReadTx } from '../../core/ai-read-transaction';
+import {withModulePresentationRead} from '../../core/module-presentation-read';
 import { isDeepStrictEqual } from 'node:util';
 import { createHash, randomUUID } from 'node:crypto';
 import { and, asc, desc, eq, inArray, isNull, lte, or, gt, sql } from 'drizzle-orm';
@@ -461,9 +462,26 @@ const ANNUAL_ROUTE: RewardRole[] = ['bu', 'bg', 'gr', 'ctro', 'ec'];
 export async function listRewardUnits(ctx: SessionContext, companyIds: string[], existingTx?: AiReadTx) {
   ctx = { ...ctx, roles: ctx.roles?.slice(), grants: ctx.grants?.map(grant => ({ ...grant })) };
   companyIds = companyIds.slice();
-  if(!existingTx)await withRewardsTenant(ctx,tx=>tx.execute(sql`select app.reward_access_observe(NULL::uuid)`));
+  if(!existingTx)await observeRewardConfigurationAccess(ctx);
 
   return withCanonicalAiReadTx(ctx, existingTx, 'rewards', withRewardsTenant, tx=>listRewardUnitsTx(tx,companyIds));
+}
+/** Native audit is deliberately a separately committed WRITE before the presentation snapshot. */
+async function observeRewardConfigurationAccess(ctx:SessionContext){
+  await withRewardsTenant(ctx,tx=>tx.execute(sql`select app.reward_access_observe(NULL::uuid)`));
+}
+export type RewardConfigurationFilters={cycle?:string;company?:string;unit?:string;stage?:string};
+/** UI choices are snapshot facts; commands retain their current authority and revalidation. */
+export async function rewardConfigurationListView(ctx:SessionContext,companyIds:string[],filters:RewardConfigurationFilters={}){
+  ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
+  companyIds=companyIds.slice();filters={...filters};
+  await observeRewardConfigurationAccess(ctx);
+  return withModulePresentationRead(ctx,'rewards',async tx=>{
+    const all=await listRewardUnitsTx(tx,companyIds);
+    const units=all.filter(u=>(!filters.cycle||u.cycleId===filters.cycle)&&(!filters.company||u.companyId===filters.company)&&(!filters.unit||u.businessUnitId===filters.unit)&&(!filters.stage||u.status===filters.stage));
+    const coverage=new Map((await rewardUnitCoverage(tx,units.filter(u=>!['posted','withdrawn','rejected'].includes(u.status)).map(u=>u.id))).map(c=>[c.unitId,c.missing.length]));
+    return {all,units,coverage};
+  });
 }
 async function listRewardUnitsTx(tx:Tx,companyIds:string[]){
     if (!companyIds.length) return [];
@@ -496,7 +514,7 @@ async function listRewardUnitsTx(tx:Tx,companyIds:string[]){
     const cancellations = withdrawn.length ? await tx.select({ unitId: domainEvent.aggregateId, at: domainEvent.occurredAt, reason: sql<string | null>`${domainEvent.payload}->>'reason'`, actorName: person.fullName }).from(domainEvent)
       .leftJoin(appUser, eq(appUser.id, domainEvent.actorId)).leftJoin(person, and(eq(person.id, appUser.personId), visibleSeatHolder))
       .where(and(eq(domainEvent.aggregateType, 'reward-unit'), eq(domainEvent.eventType, 'reward-unit.cancelled'), inArray(domainEvent.aggregateId, withdrawn))).orderBy(desc(domainEvent.occurredAt)) : [];
-    const uploadStates=await tx.execute<{unitId:string;pending:boolean}>(sql`select unit_id as "unitId",(current_version=0 or checked_version is distinct from current_version) as pending from reward_uploaded_review where tenant_id=app.current_tenant_id()`);const uploadedIds=new Set(uploadStates.map(r=>r.unitId));
+    const uploadStates=await tx.execute<{unitId:string;pending:boolean}>(sql`select unit_id as "unitId",(current_version=0 or checked_version is distinct from current_version) as pending from reward_uploaded_review where tenant_id=app.current_tenant_id() and unit_id in (${sql.join(ids.map(id=>sql`${id}::uuid`),sql`, `)})`);const uploadedIds=new Set(uploadStates.map(r=>r.unitId));
     const today = todayInKualaLumpur();
     return rows.map(r => {
       const seat = rewardStageSeat(r.status, routeOf(r));
