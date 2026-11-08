@@ -2,8 +2,11 @@
  * Decimal values use 12 fractional / 18 integer digits. Multiplication and division round
  * intermediate results half away from zero at that explicit scale; no monetary float arithmetic. */
 import {isCalendarDate} from './calendar-date';
-import {PAY_FORMULA_FIELD_TYPES,PAY_FORMULA_REGISTRY_VERSION,payFormulaFunction,type FormulaType,type FormulaValue} from './pay-formula-registry';
+import {PAY_FORMULA_FIELD_TYPES,PAY_FORMULA_REGISTRY_VERSION,payFormulaFunction,type FormulaType,type FormulaValue,type FormulaFunction} from './pay-formula-registry';
 export type {FormulaType,FormulaValue} from './pay-formula-registry';
+/** Explicit closed vocabularies share this bounded engine without adding Attendance tokens to Payroll. */
+export type FormulaDialect={version:string;lookup:(code:string)=>FormulaFunction|undefined;fieldType?:(code:string,field:string)=>FormulaType|undefined};
+const payrollDialect:FormulaDialect={version:PAY_FORMULA_REGISTRY_VERSION,lookup:payFormulaFunction};
 export const PAY_FORMULA_EVALUATOR_VERSION='payroll-formula-1';
 export const PAY_FORMULA_LIMITS={source:24000,tokens:6000,statements:512,nodes:3000,depth:24,steps:6000,explanations:64,explanationLength:12000,string:4096} as const;
 export type FormulaLocation={line:number;column:number};
@@ -71,7 +74,7 @@ function tokenize(source:string):Token[]{
   if(c==='"'){let value='',closed=false;i++;column++;while(i<source.length){if(source[i]==='"'){if(source[i+1]==='"'){value+='"';i+=2;column+=2;continue;}i++;column++;closed=true;break;}if(/[\r\n]/.test(source[i]))fail('string','A string must finish on the same line',loc);value+=source[i++];column++;if(value.length>PAY_FORMULA_LIMITS.string)fail('limit','String is too long',loc);}if(!closed)fail('string','Unterminated string',loc);push('string',value,loc);continue;}
   if(c==='{'){const m=/^\{#([A-Za-z][A-Za-z0-9_]*)\}/.exec(source.slice(i));if(!m)fail('token','Use an approved {#Variable} token',loc);push('call',m[1],loc);i+=m[0].length;column+=m[0].length;continue;}
   const n=/^(?:\d+(?:\.\d*)?|\.\d+)/.exec(source.slice(i));if(n){push('number',n[0],loc);i+=n[0].length;column+=n[0].length;continue;}
-  const name=/^[A-Za-z_][A-Za-z0-9_]*/.exec(source.slice(i));if(name){if(name[0].length>64)fail('identifier','Variable name is too long',loc);push('identifier',name[0],loc);i+=name[0].length;column+=name[0].length;continue;}
+  const name=/^[A-Za-z_][A-Za-z0-9_]*/.exec(source.slice(i));if(name){if(name[0].length>64)fail('identifier','Variable name is too long',loc);const alias:Record<string,string>={andalso:'And',orelse:'Or'};if(name[0].toLowerCase()==='endif'){push('identifier','End',loc);push('identifier','If',loc);}else if(name[0].toLowerCase()==='endselect'){push('identifier','End',loc);push('identifier','Select',loc);}else push('identifier',alias[name[0].toLowerCase()]??name[0],loc);i+=name[0].length;column+=name[0].length;continue;}
   const op=/^(?:<=|>=|<>|[()+\-*/=&,< >])/.exec(source.slice(i));if(op){push('symbol',op[0],loc);i+=op[0].length;column+=op[0].length;continue;}
   fail('token',`Unsupported character ${JSON.stringify(c)}`,loc);
  }
@@ -84,7 +87,7 @@ class Parser{
  private index=0;private depth=0;private count=0;
  /** With a sink (diagnostics only) single-line statement errors are recorded and parsing continues on
   * the next line. Without one, the first error throws exactly as before. */
- constructor(private tokens:Token[],private sink?:PayFormulaError[]){}
+ constructor(private tokens:Token[],private sink?:PayFormulaError[],private dialect:FormulaDialect=payrollDialect){}
  private token(){return this.tokens[this.index];}private next(){return this.tokens[this.index++];}
  private is(text:string){return this.token().text.toLowerCase()===text.toLowerCase();}
  private expect(text:string){const t=this.next();if(t.text.toLowerCase()!==text.toLowerCase())fail('syntax',`Expected ${text}`,t.loc);return t;}
@@ -99,7 +102,7 @@ class Parser{
   else if(t.text==='+'||t.text==='-'||t.text.toLowerCase()==='not')left={kind:'unary',operator:t.text.toLowerCase()==='not'?'Not':t.text as '+'|'-',operand:this.expression(t.text.toLowerCase()==='not'?3:7),loc:t.loc};
   else if(t.kind==='identifier'&&['true','false'].includes(t.text.toLowerCase()))left={kind:'literal',value:{type:'boolean',value:t.text.toLowerCase()==='true'},loc:t.loc};
   else if(t.kind==='identifier')left={kind:'name',name:validName(t.text,t.loc),loc:t.loc};
-  else if(t.kind==='call'){const fn=payFormulaFunction(t.text);if(!fn){if(!this.sink)fail('function',`Unsupported payroll function ${t.text}`,t.loc);this.sink.push(new PayFormulaError('function',`Unsupported payroll function ${t.text}`,t.loc,{name:t.text}));}const args:FormulaExpression[]=[];if(this.is('(')){this.next();if(!this.is(')')){do{args.push(this.expression());if(!this.is(','))break;this.next();}while(true);}this.expect(')');}left={kind:'call',code:fn?.code??t.text,args,loc:t.loc};}
+  else if(t.kind==='call'){const fn=this.dialect.lookup(t.text);if(!fn){if(!this.sink)fail('function',`Unsupported payroll function ${t.text}`,t.loc);this.sink.push(new PayFormulaError('function',`Unsupported payroll function ${t.text}`,t.loc,{name:t.text}));}const args:FormulaExpression[]=[];if(this.is('(')){this.next();if(!this.is(')')){do{args.push(this.expression());if(!this.is(','))break;this.next();}while(true);}this.expect(')');}left={kind:'call',code:fn?.code??t.text,args,loc:t.loc};}
   else fail('syntax','Expected a value, variable or approved function',t.loc);
   while(true){const candidate=this.token(),operator=['and','or'].includes(candidate.text.toLowerCase())?candidate.text[0].toUpperCase()+candidate.text.slice(1).toLowerCase():candidate.text,p=precedence[operator];if(p===undefined||p<min)break;this.next();left={kind:'binary',operator,left,right:this.expression(p+1),loc:candidate.loc};}
   this.depth--;return left;
@@ -120,6 +123,17 @@ class Parser{
   if(word==='dim'){const name=this.next();if(name.kind!=='identifier')fail('identifier','A variable name is required',name.loc);validName(name.text,name.loc);this.expect('As');const typeToken=this.next(),type=typeToken.text.toLowerCase();if(!['decimal','string','boolean','date'].includes(type))fail('type','Use Decimal, String, Boolean or Date',typeToken.loc);this.expect('=');return {kind:'declare',name:name.text,type:type as FormulaType,value:this.expression(),loc:t.loc};}
   if(word==='return')return {kind:'return',value:this.expression(),loc:t.loc};
   if(t.kind==='call'&&word==='explain'){this.expect('(');const value=this.expression();this.expect(')');return {kind:'explain',value,loc:t.loc};}
+  if(word==='select'){
+   this.expect('Case');const selected=this.expression();this.lineEnd();if(this.token().kind==='comment')this.next();this.newlines();
+   const branches:{condition:FormulaExpression;body:FormulaStatement[]}[]=[];let otherwise:FormulaStatement[]=[];
+   while(this.is('Case')){const at=this.next().loc;
+    if(this.is('Else')){this.next();this.lineEnd();if(this.token().kind==='comment')this.next();this.newlines();otherwise=this.block(['End']);break;}
+    let condition:FormulaExpression|undefined;
+    do{const value=this.expression(),comparison:FormulaExpression={kind:'binary',operator:'=',left:selected,right:value,loc:at};condition=condition?{kind:'binary',operator:'Or',left:condition,right:comparison,loc:at}:comparison;if(!this.is(','))break;this.next();}while(true);
+    this.lineEnd();if(this.token().kind==='comment')this.next();this.newlines();branches.push({condition:condition!,body:this.block(['Case','End'])});
+   }
+   this.expect('End');this.expect('Select');if(!branches.length)fail('condition','Select Case requires a case',t.loc);return {kind:'if',branches,otherwise,loc:t.loc};
+  }
   if(word==='if'){
    const condition=this.expression();this.expect('Then');this.lineEnd();const headerComment=this.token().kind==='comment'?this.next():null;this.newlines();
    const firstBody=this.block(['ElseIf','Else','End']);if(headerComment)firstBody.unshift({kind:'comment',text:headerComment.text,loc:headerComment.loc});
@@ -133,7 +147,7 @@ class Parser{
  }
  parse():FormulaProgram{const program:FormulaProgram={version:1,statements:this.block()};if(this.token().kind!=='eof')fail('syntax','Unexpected statement terminator',this.token().loc);return program;}
 }
-export function parsePayFormula(source:string):FormulaProgram{const program=new Parser(tokenize(source)).parse();validatePayFormula(program);return program;}
+export function parsePayFormula(source:string,dialect:FormulaDialect=payrollDialect):FormulaProgram{const program=new Parser(tokenize(source),undefined,dialect).parse();validatePayFormula(program,dialect);return program;}
 export function applyFormulaAmount(amount:string,options:{factor?:string;rounding?:'none'|'up'|'down'|'nearest'}={}):string{
  let n=decimal(multiplyFormulaDecimal(amount,options.factor??'1'));n=roundedDivision(n,TEN**BigInt(10))*TEN**BigInt(10);
  const whole=n/SCALE,remainder=n%SCALE;
@@ -154,9 +168,9 @@ function valueOf(value:unknown,loc:FormulaLocation):FormulaValue{
  fail('value','The payroll source returned a missing, malformed or unsupported value',loc);
 }
 function literalValue(expression:FormulaExpression|undefined):FormulaValue|undefined{return expression?.kind==='literal'?expression.value:undefined;}
-function fieldType(code:string,field:string){return PAY_FORMULA_FIELD_TYPES[code==='EmployeeProfile'?'profile':'employee'][field];}
-function callType(expression:Extract<FormulaExpression,{kind:'call'}>,types:FormulaType[]):FormulaType{
- const fn=payFormulaFunction(expression.code),loc=expression.loc;if(!fn)fail('function',`Unsupported payroll function ${expression.code}`,loc,{name:expression.code});
+function fieldType(code:string,field:string,dialect:FormulaDialect=payrollDialect){const type=dialect.fieldType?.(code,field)??PAY_FORMULA_FIELD_TYPES[code==='EmployeeProfile'?'profile':'employee'][field];if(!type)fail('field','Choose an available typed field');return type;}
+function callType(expression:Extract<FormulaExpression,{kind:'call'}>,types:FormulaType[],dialect:FormulaDialect):FormulaType{
+ const fn=dialect.lookup(expression.code),loc=expression.loc;if(!fn)fail('function',`Unsupported payroll function ${expression.code}`,loc,{name:expression.code});
  const required=fn.parameters.filter(p=>!p.optional).length;
  if(expression.args.length<required||expression.args.length>fn.parameters.length)fail('parameter',`${fn.code} requires ${required===fn.parameters.length?required:`${required}–${fn.parameters.length}`} parameter(s)`,loc);
  fn.parameters.forEach((parameter,i)=>{if(i>=types.length)return;const literal=literalValue(expression.args[i]);
@@ -173,13 +187,13 @@ function callType(expression:Extract<FormulaExpression,{kind:'call'}>,types:Form
  }
  if(fn.code==='Rounding'&&expression.args.length===2){const n=literalValue(expression.args[1]);if(n?.type!=='decimal'||!/^\d+$/.test(n.value)||Number(n.value)>12)fail('precision','Rounding precision must be a literal integer from 0 to 12',loc);}
  if(fn.code==='Date'&&(!first||typeof first.value!=='string'||!isCalendarDate(first.value)))fail('date','Use a real ISO calendar date',loc);
- return fn.returns==='field'?fieldType(fn.code,String(first?.value)):fn.returns;
+ return fn.returns==='field'?fieldType(fn.code,String(first?.value),dialect):fn.returns;
 }
 /** Validates untrusted visual-editor ASTs as strictly as written source. No executable values enter it. */
-export function validatePayFormula(program:unknown):FormulaAnalysis{return analyzeProgram(program);}
+export function validatePayFormula(program:unknown,dialect:FormulaDialect=payrollDialect):FormulaAnalysis{return analyzeProgram(program,undefined,dialect);}
 /** With a sink, statement-level problems are recorded and analysis continues so every problem can be
  * listed together. Without one (every payroll path) the first problem throws exactly as before. */
-function analyzeProgram(program:unknown,sink?:PayFormulaError[]):FormulaAnalysis{
+function analyzeProgram(program:unknown,sink?:PayFormulaError[],dialect:FormulaDialect=payrollDialect):FormulaAnalysis{
  const guard=<T,>(run:()=>T,recover:()=>T):T=>{if(!sink)return run();try{return run();}catch(error){if(!(error instanceof PayFormulaError)||error.code==='limit')throw error;sink.push(error);return recover();}};
  if(!object(program)||program.version!==1||!Array.isArray(program.statements)||!program.statements.length)fail('program','A version 1 formula with statements is required');
  let nodes=0,statements=0;const dependencies:FormulaDependency[]=[],calls:FormulaRequest[]=[],functions=new Set<string>();
@@ -198,7 +212,7 @@ function analyzeProgram(program:unknown,sink?:PayFormulaError[]):FormulaAnalysis
     if(left!==right)fail('type','Comparison operands must have the same type',loc);if(left==='boolean'&&!['=','<>'].includes(expression.operator))fail('type','Boolean values support equality comparisons only',loc);return 'boolean';}
    case 'call':{
     if(typeof expression.code!=='string'||!Array.isArray(expression.args))fail('function','A supported payroll function is required',loc);
-    const types=expression.args.map(arg=>infer(arg,scope,depth+1)),type=callType(expression,types),fn=payFormulaFunction(expression.code)!;functions.add(fn.code);
+    const types=expression.args.map(arg=>infer(arg,scope,depth+1)),type=callType(expression,types,dialect),fn=dialect.lookup(expression.code)!;functions.add(fn.code);
     const literals=expression.args.map(literalValue);
     if(!['Rounding','Date'].includes(fn.code)){
      // Every external provider parameter is literal: no dynamic employee-field or item lookup.
@@ -231,7 +245,7 @@ function analyzeProgram(program:unknown,sink?:PayFormulaError[]):FormulaAnalysis
   }return returned;
  };
  if(!block(program.statements,new Map(),0)){const last=[...(program.statements as unknown as FormulaStatement[])].reverse().find(s=>object(s)&&s.kind!=='comment');guard(()=>fail('return','Every formula path must return a Decimal amount',sink&&last?location(last.loc):start),()=>undefined);}
- return {dependencies,calls,functions:[...functions].sort(),registryVersion:PAY_FORMULA_REGISTRY_VERSION,evaluatorVersion:PAY_FORMULA_EVALUATOR_VERSION};
+ return {dependencies,calls,functions:[...functions].sort(),registryVersion:dialect.version,evaluatorVersion:PAY_FORMULA_EVALUATOR_VERSION};
 }
 export const analyzePayFormula=validatePayFormula;
 /** Diagnostics only: parse and validate while collecting every recoverable problem (capped). Never
@@ -265,8 +279,8 @@ export type FormulaTraceEvent=
 export type FormulaRuntime={resolve:(request:FormulaRequest)=>FormulaValue;limits?:Partial<{steps:number;explanations:number;explanationLength:number;reads:number;readLength:number}>;trace?:(event:FormulaTraceEvent)=>void};
 function display(value:FormulaValue){return value.type==='boolean'?(value.value?'True':'False'):value.value;}
 /** All external facts are pre-resolved by the authorized payroll adapter, never loaded by this engine. */
-export function evaluatePayFormula(program:FormulaProgram,runtime:FormulaRuntime):FormulaEvaluation{
- validatePayFormula(program);if(!runtime||typeof runtime.resolve!=='function')fail('source','An authorized payroll source resolver is required');
+export function evaluatePayFormula(program:FormulaProgram,runtime:FormulaRuntime,dialect:FormulaDialect=payrollDialect):FormulaEvaluation{
+ validatePayFormula(program,dialect);if(!runtime||typeof runtime.resolve!=='function')fail('source','An authorized payroll source resolver is required');
  const maxima={steps:PAY_FORMULA_LIMITS.steps,explanations:PAY_FORMULA_LIMITS.explanations,explanationLength:PAY_FORMULA_LIMITS.explanationLength,reads:512,readLength:24000};
  const limits:Record<keyof typeof maxima,number>={...maxima};for(const key of Object.keys(maxima) as (keyof typeof maxima)[]){const proposed=runtime.limits?.[key];if(proposed!==undefined){if(!Number.isInteger(proposed)||proposed<1||proposed>maxima[key])fail('limit','Runtime limits may only narrow the bounded engine limits');limits[key]=proposed;}}
  let steps=0,textLength=0,readLength=0;const explanations:string[]=[],reads:FormulaEvaluation['reads']=[],trace=runtime.trace;
@@ -303,12 +317,12 @@ export function evaluatePayFormula(program:FormulaProgram,runtime:FormulaRuntime
     return {type:'boolean',value:comparison};
    }
    case 'call':{
-    const fn=payFormulaFunction(e.code)!;const args=e.args.map(arg=>expression(arg,env));
+    const fn=dialect.lookup(e.code)!;const args=e.args.map(arg=>expression(arg,env));
     if(fn.code==='Rounding')return {type:'decimal',value:roundFormulaDecimal(String(args[0].value),args[1]?Number(args[1].value):2)};
     if(fn.code==='Date')return {type:'date',value:String(args[0].value)};
     const request:FormulaRequest={code:fn.code,args,loc:e.loc};let supplied:unknown;
     try{supplied=runtime.resolve(request);}catch(error){if(error instanceof PayFormulaError)throw error;fail('source',`Payroll source ${fn.code} is unavailable or not permitted`,e.loc);}
-    const value=valueOf(supplied,e.loc),expected=fn.returns==='field'?fieldType(fn.code,String(args[0].value)):fn.returns;
+    const value=valueOf(supplied,e.loc),expected=fn.returns==='field'?fieldType(fn.code,String(args[0].value),dialect):fn.returns;
     if(value.type!==expected)fail('source_type',`Payroll source ${fn.code} returned the wrong type`,e.loc);
     readLength+=display(value).length+args.reduce((sum,arg)=>sum+display(arg).length,0);if(reads.length>=limits.reads||readLength>limits.readLength)fail('limit','Formula source trace exceeded its limit',e.loc);
     reads.push({...request,args:args.map(arg=>({...arg})),value:{...value}});trace?.({kind:'read',code:fn.code,value:{...value},loc:e.loc});return value;
@@ -326,5 +340,5 @@ export function evaluatePayFormula(program:FormulaProgram,runtime:FormulaRuntime
   }}return undefined;
  };
  const result=block(program.statements,new Map());if(!result||result.type!=='decimal')fail('return','Formula did not return a Decimal amount');
- return {amount:normalizeFormulaDecimal(result.value),explanations,reads,steps,registryVersion:PAY_FORMULA_REGISTRY_VERSION,evaluatorVersion:PAY_FORMULA_EVALUATOR_VERSION};
+ return {amount:normalizeFormulaDecimal(result.value),explanations,reads,steps,registryVersion:dialect.version,evaluatorVersion:PAY_FORMULA_EVALUATOR_VERSION};
 }
