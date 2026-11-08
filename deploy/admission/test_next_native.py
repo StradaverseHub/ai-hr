@@ -1644,6 +1644,18 @@ def runtime_journal_observation(raw, unit, invocation, python_exe, reasons):
             'literalRefusals': refusals, 'closedExceptions': exceptions}
 
 
+def runtime_owned_declaration(unit):
+    """Positive ownership only from this fixture's captured native declaration."""
+    require(unit in RUNTIME_DIAGNOSTIC_UNITS, 'Closed diagnostic owned unit required')
+    expected = owned_units.get(unit)
+    if expected is None:
+        return False
+    info = pathlib.Path('/etc/systemd/system', unit).lstat()
+    require(stat.S_ISREG(info.st_mode) and info.st_uid == 0 and not info.st_mode & 0o022
+            and (info.st_dev, info.st_ino) == expected, 'Diagnostic unit ownership differs')
+    return True
+
+
 def runtime_diagnostic_read(arguments, deadline):
     """Bound both pipe bytes and process lifetime; raw output is never evidence."""
     require(time.monotonic() < deadline - 0.05, 'Diagnostic budget unavailable')
@@ -1712,17 +1724,15 @@ def runtime_failure_diagnostic(kind, error, binding):
                     'Diagnostic installed source identity differs')
         catalog, reasons = runtime_catalog(sources, own_path)
         value['exception'] = runtime_exception_observation(error, catalog)
-        for unit, expected in owned_units.items():
-            require(unit in RUNTIME_DIAGNOSTIC_UNITS, 'Closed diagnostic owned unit required')
-            info = pathlib.Path('/etc/systemd/system', unit).lstat()
-            require(stat.S_ISREG(info.st_mode) and info.st_uid == 0 and not info.st_mode & 0o022
-                    and (info.st_dev, info.st_ino) == expected, 'Diagnostic unit ownership differs')
+        for unit in owned_units:
+            require(runtime_owned_declaration(unit), 'Captured diagnostic declaration required')
         require(time.monotonic() < deadline - 0.05, 'Diagnostic budget unavailable')
         code, raw = runtime_diagnostic_read(['/usr/bin/systemctl', '--system', 'show', '--all', '--no-pager',
             '--property=' + ','.join(sorted(RUNTIME_STATE_KEYS)), *RUNTIME_DIAGNOSTIC_UNITS], deadline)
         value['stateCommandReturnCode'] = code
         states, invocations = runtime_state_observation(raw)
         value['states'] = states
+        value['statesScope'] = 'fixed-unit-snapshot-not-ownership'
         python_path = pathlib.Path('/usr/bin/python3').resolve(strict=True)
         require(str(python_path).startswith('/usr/bin/'), 'Diagnostic Python identity differs')
         current = pathlib.Path('/')
@@ -1732,9 +1742,16 @@ def runtime_failure_diagnostic(kind, error, binding):
             require(python_info.st_uid == 0 and not stat.S_ISLNK(python_info.st_mode)
                     and not python_info.st_mode & 0o022, 'Diagnostic Python ancestor differs')
         require(stat.S_ISREG(python_info.st_mode), 'Diagnostic Python identity differs')
-        journals = []
+        journals, unavailable = [], []
         for unit in UNITS:
+            # A same-named current invocation is not proof that this fixture
+            # owns it. Never read an unowned worker's journal, even when its
+            # native identity or message would match the fixed source catalog.
+            if not runtime_owned_declaration(unit):
+                unavailable.append({'unit': RUNTIME_DIAGNOSTIC_UNITS[unit], 'reason': 'unowned-declaration'})
+                continue
             if unit not in invocations:
+                unavailable.append({'unit': RUNTIME_DIAGNOSTIC_UNITS[unit], 'reason': 'no-current-invocation'})
                 continue
             # Read no previous or foreign invocation. journald's trusted UID/exe/
             # unit/invocation/argv fields are revalidated before literal matching.
@@ -1742,9 +1759,11 @@ def runtime_failure_diagnostic(kind, error, binding):
                 '--output=json', '--output-fields=_UID,_EXE,_CMDLINE,_SYSTEMD_UNIT,_SYSTEMD_INVOCATION_ID,MESSAGE',
                 '--lines=64', '_SYSTEMD_UNIT=' + unit, '_SYSTEMD_INVOCATION_ID=' + invocations[unit]], deadline)
             require(code == 0, 'Diagnostic journal read refused')
+            require(runtime_owned_declaration(unit), 'Diagnostic journal ownership changed')
             journals.append(runtime_journal_observation(raw, unit, invocations[unit], str(python_path), reasons))
         require(time.monotonic() <= deadline, 'Diagnostic aggregate budget exhausted')
-        value.update({'classification': 'bounded-sealed-source-observations', 'journals': journals})
+        value.update({'classification': 'bounded-sealed-source-observations', 'journals': journals,
+                      'unavailableWorkerJournals': unavailable})
     except BaseException:
         # Never publish exception messages, command arguments or unknown native
         # values. Already verified source locations remain useful if IO refuses.
