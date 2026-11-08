@@ -17,6 +17,7 @@ CREATE TABLE public.attendance_formula_revision (
  content_hash text NOT NULL CHECK(content_hash~'^[a-f0-9]{64}$'),read_requirements jsonb NOT NULL,
  created_by uuid NOT NULL REFERENCES public.app_user(id),created_at timestamptz NOT NULL DEFAULT now(),
  UNIQUE(formula_id,ordinal),UNIQUE(id,formula_id,tenant_id,company_id),
+ FOREIGN KEY(company_id,tenant_id) REFERENCES public.company(id,tenant_id),
  FOREIGN KEY(formula_id,tenant_id,company_id) REFERENCES public.attendance_formula(id,tenant_id,company_id),
  FOREIGN KEY(pay_component_id,tenant_id) REFERENCES public.pay_component(id,tenant_id),
  CHECK(jsonb_typeof(definition)='object' AND octet_length(definition::text)<=262144),
@@ -31,6 +32,7 @@ CREATE TABLE public.attendance_formula_test (
  passed boolean NOT NULL,source_hash text NOT NULL CHECK(source_hash~'^[a-f0-9]{64}$'),payload jsonb NOT NULL,
  created_by uuid NOT NULL REFERENCES public.app_user(id),created_at timestamptz NOT NULL DEFAULT now(),
  UNIQUE(id,formula_id,revision_id,tenant_id,company_id),
+ FOREIGN KEY(company_id,tenant_id) REFERENCES public.company(id,tenant_id),
  FOREIGN KEY(revision_id,formula_id,tenant_id,company_id) REFERENCES public.attendance_formula_revision(id,formula_id,tenant_id,company_id),
  FOREIGN KEY(employment_id,tenant_id) REFERENCES public.employment(id,tenant_id),
  CHECK(period_to>=period_from AND period_to-period_from<=61),CHECK(jsonb_typeof(payload)='object' AND octet_length(payload::text)<=2097152)
@@ -40,6 +42,7 @@ CREATE TABLE public.attendance_formula_event (
  tenant_id uuid NOT NULL REFERENCES public.tenant(id),company_id uuid NOT NULL REFERENCES public.company(id),formula_id uuid NOT NULL,
  revision_id uuid,test_id uuid,kind text NOT NULL CHECK(kind IN('created','saved','tested','activated','deactivated','archived')),
  detail jsonb NOT NULL DEFAULT '{}'::jsonb,created_by uuid NOT NULL REFERENCES public.app_user(id),created_at timestamptz NOT NULL DEFAULT now(),
+ FOREIGN KEY(company_id,tenant_id) REFERENCES public.company(id,tenant_id),
  FOREIGN KEY(formula_id,tenant_id,company_id) REFERENCES public.attendance_formula(id,tenant_id,company_id),
  FOREIGN KEY(revision_id,formula_id,tenant_id,company_id) REFERENCES public.attendance_formula_revision(id,formula_id,tenant_id,company_id),
  FOREIGN KEY(test_id,formula_id,revision_id,tenant_id,company_id) REFERENCES public.attendance_formula_test(id,formula_id,revision_id,tenant_id,company_id),

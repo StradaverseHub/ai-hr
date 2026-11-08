@@ -88,3 +88,7 @@ Posting can change compensation and add payroll inputs. Final approval alone doe
 ## Confidentiality and exceptions
 
 Review membership, stage, confidentiality and own-record exclusions control row access. Visible aggregate budgets do not mean every underlying employee row is visible. Do not distribute exports outside the approved audience. Role comparison proposes text for human review; it is not an AI verdict on promotion.
+
+## Open the reviews workspace
+
+Use [Rewards reviews](/rewards/reviews) for the review list and [Rewards](/rewards) for the dashboard. A review appears only within your assigned role and company scope. Opening configuration or reading public guidance does not grant access to employee recommendations, budgets or approvals. Review the current preparation status and evidence on the native page before making a recommendation or confirming a review action.

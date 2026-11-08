@@ -124,8 +124,8 @@ describe('e78fd03d (A) — the Year / Payroll month / SHOW area is gone from the
    * it by accident fails here rather than quietly growing a control.
    */
   it('salary now has a bank writer and alone requires one money-moving cycle', () => {
-    expect(formatsInGroup('salary').map(f => f.id)).toEqual(['my.ocbc.salary']);
-    expect(SUBMISSION_FORMATS.filter(f => f.periodKind === 'month-cycle').map(f => f.id)).toEqual(['my.ocbc.salary']);
+    expect(formatsInGroup('salary').map(f => f.id)).toEqual(['my.ocbc.salary','my.maybank74.salary']);
+    expect(SUBMISSION_FORMATS.filter(f => f.periodKind === 'month-cycle').map(f => f.id)).toEqual(['my.ocbc.salary','my.maybank74.salary']);
   });
 
   it('the three GOVERNMENT statutory formats declare the multi-run kind, and nothing else does', () => {

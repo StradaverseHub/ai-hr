@@ -54,12 +54,13 @@ it('adds durable bank imports without changing retained statutory facts, princip
    expect(rows).toEqual([{person_id:actor.personId,tax_number:'T-RETAINED',bank_account_no:'0001234567'}]);return{proof,rows};
   })));
   const before=await facts(),beforeVisibility=await visibility();expect(before.statutory).toHaveLength(2);
+  const expectedRetained={...before,statutory:before.statutory.map(row=>({...row,bank_payee_residency:null}))};
   const ledger=()=>storage.client`select id,hash,created_at::text as created_at from drizzle.__drizzle_migrations order by created_at,id`;
   const prior=await ledger();expect(prior).toHaveLength(boundary);
   await migrate(storage.db,{migrationsFolder:'db/migrations'});
   const applied=await ledger();expect(applied.slice(0,boundary)).toEqual(prior);expect(applied).toHaveLength(journal.entries.length);
   expect(applied.slice(boundary).map(row=>({hash:row.hash,created_at:row.created_at}))).toEqual(journal.entries.slice(boundary).map((entry:{tag:string;when:number})=>({hash:createHash('sha256').update(readFileSync(`db/migrations/${entry.tag}.sql`)).digest('hex'),created_at:String(entry.when)})));
-  expect(await facts()).toEqual(before);expect(await visibility()).toEqual(beforeVisibility);
+  expect(await facts()).toEqual(expectedRetained);expect(await visibility()).toEqual(beforeVisibility);
   const actor=actors[0],hash=createHash('sha256').update('synthetic-upgrade-source').digest('hex');
   const job=await application.withTenant(ctx(actor),async tx=>{
    const subjects=await tx.execute(sql`select employee_code from app.bank_import_subjects(${JSON.stringify(actors.map(a=>a.code))}::jsonb)`);expect(subjects).toEqual([{employee_code:actor.code}]);
@@ -68,7 +69,7 @@ it('adds durable bank imports without changing retained statutory facts, princip
   });
   expect(await application.withTenant(ctx(actors[1]),tx=>tx.execute(sql`select id from bank_import_job where id=${job.id}::uuid`))).toHaveLength(0);
   await expect(application.withTenant(ctx(actor),tx=>tx.execute(sql`insert into bank_import_job(tenant_id,created_by,context,source_name,source_hash,source_bytes) values(${actor.tenantId}::uuid,${actor.userId}::uuid,'{}','duplicate.csv',${hash},10)`))).rejects.toThrow();
-  await migrate(storage.db,{migrationsFolder:'db/migrations'});expect(await ledger()).toEqual(applied);expect(await facts()).toEqual(before);expect(await visibility()).toEqual(beforeVisibility);
+  await migrate(storage.db,{migrationsFolder:'db/migrations'});expect(await ledger()).toEqual(applied);expect(await facts()).toEqual(expectedRetained);expect(await visibility()).toEqual(beforeVisibility);
   console.info(JSON.stringify({kind:'BANK_IMPORT_POPULATED_UPGRADE',baselineMigrations:boundary,appliedMigrations:applied.length-boundary,retainedStatutoryRows:before.statutory.length,physicalFactsUnchanged:true,currentPrincipals:true,appRoleIsolation:true,activeFileUnique:true,idempotentMigration:true}));
  }finally{
   await application.client.end();await storage.client.end();

@@ -1,7 +1,9 @@
 'use client';
 
 import { useTranslations } from 'next-intl';
-import {Field,inputCls} from '@/components/ui';
+import {inputCls} from '@/components/ui';
+import {PersonnelField} from '@/components/personnel-field';
+import {personnelControl} from '@/lib/personnel-form-contract';
 // 35b7af0a group 5 — the Bank + Bank Account Number field group, shared with the Create New Employee
 // wizard. The BNM catalog it renders moved with it (it was this file's module-level BANK_NAMES).
 import { BankAccountFields } from '@/components/bank-account-fields';
@@ -81,7 +83,7 @@ export function BankInfoCard({
           </div>
         </fieldset>
 
-        <div data-bank-payee-residency><Field label={bankText('payeeResidency')}><select name="bankPayeeResidency" aria-label={bankText('payeeResidency')} defaultValue={defaults.bankPayeeResidency??''} className={inputCls}><option value="">{bankText('notRecorded')}</option><option value="resident">{bankText('resident')}</option><option value="non_resident">{bankText('nonResident')}</option></select><p className="mt-1 text-xs text-muted-foreground">{bankText('residencyHelp')}</p></Field></div>
+        <div data-bank-payee-residency><PersonnelField fieldId="bank_statutory.bank_information.bankpayeeresidency"><select {...personnelControl('bank_statutory.bank_information.bankpayeeresidency')} aria-label={bankText('payeeResidency')} defaultValue={defaults.bankPayeeResidency??''} className={inputCls}><option value="">{bankText('notRecorded')}</option><option value="resident">{bankText('resident')}</option><option value="non_resident">{bankText('nonResident')}</option></select><p className="mt-1 text-xs text-muted-foreground">{bankText('residencyHelp')}</p></PersonnelField></div>
 
         {/* Custom payment holder — pay salary into a third party's account (spouse / authorised person).
             r393 (685d2380 step 3a) — the SAME field group the draft employee's Bank & Statutory tab renders
