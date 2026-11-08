@@ -70,3 +70,16 @@ it('rejects noncanonical/duplicate JSON fields, invalid UTF8/BOM, oversized byte
  expect(parseNavigationExpectedInputBytes(Buffer.from(JSON.stringify(JSON.parse(text))+'\n'),plan,v.source)).toEqual(v);
  expect(v).not.toHaveProperty('authority');expect(v).not.toHaveProperty('releaseAuthorized');
 });
+
+it('refuses impossible company0 reward extras even when the public input is rehashed consistently',()=>{
+ for(const index of [1,2,4]){
+  const v=packet(),row=v.actorInputs.find(actor=>actor.actorIndex===index)!;row.activeHeadcount='51';
+  if(index===1){row.rosterScope.push({employmentId:uuid(999999),expectedName:null});row.rosterScope.sort((a,b)=>a.employmentId.localeCompare(b.employmentId));}
+  const bytes=forgedBytes(v);expect(()=>parseNavigationExpectedInputBytes(bytes,plan,v.source)).toThrow('Fictional expected population differs');
+ }
+ // The producer allocates its sole extra employment to tenant0/company2. Only
+ // groupHR0 spans it among these four actors; company0 actors1/2/4 do not.
+ const source=readFileSync(new URL('../scripts/performance/system-fixture.mjs',import.meta.url),'utf8');
+ expect(source).toContain("if(process.env.PERF_HTTP_SUITE==='workflow-preflight'&&t===0)");
+ expect(source).toContain('companies,company:companies[2]');
+});

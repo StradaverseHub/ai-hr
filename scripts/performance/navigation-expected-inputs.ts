@@ -39,14 +39,14 @@ function actor(value:any,index:number,plan:NavigationScenarioPlan):ActorInput{
  assert(typeof value.seedToday==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(value.seedToday)&&value.seedMonth===value.seedToday.slice(0,7)
   &&value.historicalPayrollMonth===performanceFixtureCalendar(value.seedToday).historicalMonth,'Fictional expected dates differ');
  assert(cases.length>0,'Fictional expected actor has no source scenarios');
- const population=expected.role==='groupHR'?250:50;
- assert(value.activeHeadcount===String(population)||value.activeHeadcount===String(population+1),'Fictional expected population differs');
+ const population=expected.role==='groupHR'?250:50,extra=index===0?1:0;
+ assert(value.activeHeadcount===String(population)||extra===1&&value.activeHeadcount===String(population+1),'Fictional expected population differs');
  const needsHistory=cases.some(row=>row.checks.some(check=>'expected'in check&&check.expected==='$fixture.firstSavedHistoryTitle'));
  closed(value.history,needsHistory?['kind','firstSavedHistoryTitle']:['kind']);
  assert(value.history.kind===(needsHistory?'saved':'none')&&(!needsHistory||value.history.firstSavedHistoryTitle===`PERF saved ${index} root 00`),'Fictional expected history differs');
  const history:History=needsHistory?{kind:'saved',firstSavedHistoryTitle:value.history.firstSavedHistoryTitle}:{kind:'none'};
  const needsRoster=cases.some(row=>row.checks.some(check=>check.kind==='fixture-roster-rows'));
- assert(Array.isArray(value.rosterScope)&&value.rosterScope.length<=(needsRoster?population+1:0),'Fictional expected roster exceeds its source obligation');
+ assert(Array.isArray(value.rosterScope)&&value.rosterScope.length<=(needsRoster?population+extra:0),'Fictional expected roster exceeds its source obligation');
  const rosterScope:ActorInput['rosterScope']=[],ids=new Set<string>(),names=new Set<string>();let nulls=0,last='';
  const first=expected.role==='groupHR'?Math.floor(index/250)*250:Math.floor(index/50)*50;
  const expectedNames=new Set(Array.from({length:population},(_,i)=>fixtureNavigationActor(first+i).name));
@@ -55,7 +55,7 @@ function actor(value:any,index:number,plan:NavigationScenarioPlan):ActorInput{
   if(row.expectedName===null)nulls++;else{assert(expectedNames.has(row.expectedName)&&!names.has(row.expectedName),'Fictional expected roster name differs');names.add(row.expectedName);}
   ids.add(row.employmentId);last=row.employmentId;rosterScope.push({employmentId:row.employmentId,expectedName:row.expectedName});
  }
- assert(nulls<=1&&(!needsRoster||names.size===population&&value.rosterScope.length===Number(value.activeHeadcount)),'Fictional expected roster incomplete');
+ assert(nulls<=extra&&(!needsRoster||names.size===population&&value.rosterScope.length===Number(value.activeHeadcount)),'Fictional expected roster incomplete');
  const routeTargets=routes(plan,index);
  assert(JSON.stringify(value.routeTargets)===JSON.stringify(routeTargets),'Fictional expected route targets differ');
  return {actorIndex:index,roleLabel:expected.role,actorName:expected.name,actorEmployeeCode:value.actorEmployeeCode,firstCompanyPersonName:value.firstCompanyPersonName,
