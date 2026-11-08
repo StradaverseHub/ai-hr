@@ -164,6 +164,15 @@ describe('native checked preparation of new annual Rewards reviews',()=>{
   expect(notices).toHaveLength(1);expect(notices[0].kind).toBe('rewards.preparation-changed');expect(notices[0].linkPath).toBe(`/rewards/${unitId}`);
  });
 
+ it('honors denied review pages and dated personal exceptions for waiting notices',async()=>{
+  await owner.db.execute(sql`insert into reward_role_permission(tenant_id,role,capability,allowed,changed_by,reason) values(${base.tenantId}::uuid,'bu','review.view',false,${gr.userId!}::uuid,'Fictional restricted review page')`);
+  await expect(getRewardPreparationStatus(reviewer,unitId)).rejects.toThrow(/access/);expect(await rewardPreparationNotices(reviewer)).toEqual([]);
+  await owner.db.execute(sql`insert into reward_page_grant(tenant_id,user_id,company_id,capability,valid_from,valid_to,active,created_by,reason) values(${base.tenantId}::uuid,${reviewer.userId!}::uuid,${base.companyId}::uuid,'review.view','2020-01-01','2099-12-31',true,${gr.userId!}::uuid,'Fictional dated personal page exception')`);
+  expect((await getRewardPreparationStatus(reviewer,unitId)).released).toBe(false);expect(await rewardPreparationNotices(reviewer)).toHaveLength(1);
+  await owner.db.execute(sql`update reward_page_grant set valid_to='2020-12-31' where tenant_id=${base.tenantId}::uuid and user_id=${reviewer.userId!}::uuid`);
+  await expect(getRewardPreparationStatus(reviewer,unitId)).rejects.toThrow(/access/);expect(await rewardPreparationNotices(reviewer)).toEqual([]);
+ });
+
  it('keeps the preparation compatibility flag out of ordinary runtime control',async()=>{
   await expect(withTenant(gr,tx=>tx.execute(sql`update reward_unit set preparation_required=false where id=${unitId}::uuid`))).rejects.toThrow();
  });

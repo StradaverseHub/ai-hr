@@ -89,12 +89,34 @@ END $$;
 REVOKE ALL ON FUNCTION app.reward_preparation_context(uuid,jsonb) FROM PUBLIC,ai_hr_app;
 GRANT EXECUTE ON FUNCTION app.reward_preparation_context(uuid,jsonb) TO ai_hr_reward_preparation_reader;
 --> statement-breakpoint
+-- A waiting notice preserves the existing native page matrix, live role overrides and dated
+-- personal exceptions, even though ordinary reward_unit RLS intentionally withholds the raw row.
+CREATE FUNCTION app.reward_preparation_audience_allowed(p_unit uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,app SET row_security=on AS $$
+ SELECT EXISTS(SELECT 1 FROM public.reward_unit u WHERE u.id=p_unit AND u.tenant_id=app.current_tenant_id() AND u.deleted_at IS NULL
+ AND EXISTS(SELECT 1 FROM app.reward_roles_preparation_audience(u.id) AS assigned(role)
+  WHERE app.reward_role_native_capability(assigned.role,'review.view') AND (
+   coalesce((SELECT allowed FROM public.reward_role_permission p WHERE p.tenant_id=u.tenant_id
+    AND p.role=CASE WHEN assigned.role='bg' AND EXISTS(SELECT 1 FROM public.reward_member m WHERE m.unit_id=u.id AND m.tenant_id=u.tenant_id
+     AND m.user_id=app.current_user_id() AND m.role='bg' AND m.covers_user_id IS NOT NULL AND app.reward_member_eligible_internal(m.id)) THEN 'proxy_bg' ELSE assigned.role END
+    AND p.capability='review.view'),true)
+   OR EXISTS(SELECT 1 FROM public.reward_page_grant g WHERE g.tenant_id=u.tenant_id AND g.company_id=u.company_id
+    AND g.user_id=app.current_user_id() AND g.capability='review.view' AND g.active
+    AND g.valid_from<=timezone('Asia/Kuala_Lumpur',now())::date AND(g.valid_to IS NULL OR g.valid_to>=timezone('Asia/Kuala_Lumpur',now())::date)))))
+$$;
+DO $$ DECLARE native_owner name; BEGIN
+ SELECT pg_get_userbyid(proowner) INTO native_owner FROM pg_proc WHERE oid='app.reward_roles_preparation_audience(uuid)'::regprocedure;
+ EXECUTE format('ALTER FUNCTION app.reward_preparation_audience_allowed(uuid) OWNER TO %I',native_owner);
+END $$;
+REVOKE ALL ON FUNCTION app.reward_preparation_audience_allowed(uuid) FROM PUBLIC,ai_hr_app;
+GRANT EXECUTE ON FUNCTION app.reward_preparation_audience_allowed(uuid) TO ai_hr_reward_preparation_reader;
+--> statement-breakpoint
 CREATE FUNCTION app.reward_preparation_view(p_unit uuid) RETURNS jsonb
 LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,app SET row_security=on AS $$
 DECLARE u record; g jsonb; full_state jsonb; roles text[]; privileged boolean; actors jsonb; actor_person uuid; independent boolean; bindings jsonb; origin jsonb; history jsonb; identity jsonb;
 BEGIN
  roles:=ARRAY(SELECT app.reward_roles_preparation_audience(p_unit));
- IF cardinality(roles)=0 THEN RETURN NULL; END IF;
+ IF cardinality(roles)=0 OR NOT app.reward_preparation_audience_allowed(p_unit) THEN RETURN NULL; END IF;
  SELECT id,kind,preparation_required INTO u FROM public.reward_unit WHERE id=p_unit AND tenant_id=app.current_tenant_id() AND deleted_at IS NULL;
  IF NOT FOUND THEN RETURN NULL; END IF;
  SELECT state INTO full_state FROM public.reward_governance WHERE unit_id=p_unit AND tenant_id=app.current_tenant_id();
