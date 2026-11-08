@@ -1,4 +1,5 @@
 'use client';
+import { ActionButton } from '@/components/ui/action-button';
 import { organisationFilterChoices } from '@/lib/organisation-choice-label';
 
 import { useEffect, useId, useMemo, useState, useTransition, type ReactNode } from 'react';
@@ -460,7 +461,7 @@ export function EmployeeScopePanel({
             box: a reader who has typed a name and changed their mind must not have to clear the search to
             find their way back to the whole list. */}
         {allowAll && (
-          <button aria-busy={isPending}
+          <ActionButton aria-busy={isPending}
             type="button"
             aria-current={selectedId == null ? 'true' : undefined}
             onClick={clearSelection}
@@ -476,7 +477,7 @@ export function EmployeeScopePanel({
             {selectedId == null && (
               <span className="shrink-0 text-xs font-medium text-primary">{t('selectedTag')}</span>
             )}
-          </button>
+          </ActionButton>
         )}
         {results.length === 0 && (
           <p className="px-4 py-6 text-center text-sm text-muted-foreground">{t('noEmployees')}</p>
@@ -484,7 +485,7 @@ export function EmployeeScopePanel({
         {results.map((e) => {
           const active = e.employmentId === selectedId;
           return (
-            <button aria-busy={isPending}
+            <ActionButton aria-busy={isPending}
               key={e.employmentId}
               type="button"
               aria-current={active ? 'true' : undefined}
@@ -505,7 +506,7 @@ export function EmployeeScopePanel({
                 </span>
               </span>
               {active && <span className="shrink-0 text-xs font-medium text-primary">{t('selectedTag')}</span>}
-            </button>
+            </ActionButton>
           );
         })}
       </div>

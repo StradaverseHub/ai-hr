@@ -139,7 +139,7 @@ export function InboxScreen({ prompt }: { prompt?: ReactNode } = {}) {
         <Title>{t('tabInbox')}</Title>
         {enabled !== false && unreadCount != null ? <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 8 }}>
           <Muted>{`${t('unreadCount', { n: unreadCount })} ·`}</Muted>
-          <Button title={t('inboxMarkAll')} kind="quiet" disabled={unreadCount === 0 || busyId !== null} onPress={() => void markAll()} />
+          <Button busy={busyId!==null} title={t('inboxMarkAll')} kind="quiet" disabled={unreadCount === 0 || busyId !== null} onPress={() => void markAll()} />
         </View> : null}
         {shownNotice ? <Text accessibilityRole="alert" style={{ color: palette.text }}>{t(shownNotice)}</Text> : null}
         {prompt ?? null}

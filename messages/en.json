@@ -300,7 +300,23 @@
     "moreActions": "More actions",
     "noSearchResults": "No results match your search.",
     "sectionFilter": "Section",
-    "allSections": "All sections"
+    "allSections": "All sections",
+    "actionFeedback": {
+      "processing": "Processing…",
+      "saving": "Saving…",
+      "updating": "Updating…",
+      "uploading": "Uploading…",
+      "submitting": "Submitting…",
+      "generating": "Generating…",
+      "deleting": "Deleting…",
+      "loading": "Loading data…",
+      "leave": "An action has not finished processing. Leave this page?",
+      "uncertain": "The result could not be confirmed. Check the current status before repeating the action.",
+      "failed": "The action failed. Your entered information has been kept where possible.",
+      "cancelled": "Action cancelled.",
+      "success": "Action completed.",
+      "downloadReady": "File prepared: {name}. Your browser handles saving it."
+    }
   },
   "nav": {
     "roster": "Roster",

@@ -1,4 +1,5 @@
 'use client';
+import { ActionButton } from '@/components/ui/action-button';
 import { useActionState, useEffect, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { normalizeRotation, MAX_ROTATION_DAYS, type RotationCycle, type RotationDay, type WeekDayKind } from '@/core/week-pattern';
@@ -76,6 +77,6 @@ export function ScheduleRotationEditor({ruleId, revision, initial, shifts, minim
         </tr>;})}</tbody>
       </table></div>
     </fieldset>
-    {editing&&<>{validation&&<p role="alert" className="text-sm text-destructive">{validation}</p>}<button aria-busy={pending} className={btnPrimary} disabled={pending||!dirty||!!validation||unit!==cycle.unit||Number(length)!==cycle.length}>{pending?t('saving'):t('save')}</button></>}
+    {editing&&<>{validation&&<p role="alert" className="text-sm text-destructive">{validation}</p>}<ActionButton guardNavigation aria-busy={pending} className={btnPrimary} disabled={pending||!dirty||!!validation||unit!==cycle.unit||Number(length)!==cycle.length}>{pending?t('saving'):t('save')}</ActionButton></>}
   </AttendanceSettingsActionForm></>;
 }

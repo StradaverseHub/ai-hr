@@ -1,5 +1,6 @@
 'use client';
 
+import { ActionButton } from '@/components/ui/action-button';
 import { useState, useTransition } from 'react';
 import { btnGhost, btnPrimary } from '@/components/ui';
 import { revealActivationUrlAction } from './actions';
@@ -52,9 +53,9 @@ export function ActivationLink({ requestId, labels }: { requestId: string; label
   if (!claimed) {
     return (
       <div className="space-y-2">
-        <button aria-busy={pending} type="button" className={btnPrimary} onClick={reveal} disabled={pending}>
+        <ActionButton aria-busy={pending} type="button" className={btnPrimary} onClick={reveal} disabled={pending}>
           {labels.reveal}
-        </button>
+        </ActionButton>
         <p className="text-xs text-muted-foreground">{labels.revealWarning}</p>
       </div>
     );

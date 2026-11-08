@@ -1,4 +1,5 @@
 'use client';
+import { ActionButton } from '@/components/ui/action-button';
 import { useEffect, useState } from 'react';
 import type { LifecycleV9CaseDetail, LifecycleV9Command } from '@/packs/lifecycle/service';
 import { unresolvedSourceRuns, unresolvedWorkflowDeliveries, type Case } from '@/lib/lifecycle-v9-model';
@@ -42,7 +43,7 @@ export function CaseCalculator({ c, busy, command }: { c: Case; busy: boolean; c
       {!!deliveries.length && <p className="v9-notice v9-warning">{deliveries.length} workflow email deliveries still need confirmation or review. Clearing this case stops unstarted deliveries and requires an exception reason.</p>}
       {['pending', 'submitted'].includes(c.state) && <label className="v9-field"><span>{c.state === 'pending' ? 'Date decision reason' : open ? 'Exception clearance reason *' : 'Clearance note / date decision reason'}</span><textarea rows={3} value={reason} onChange={e => setReason(e.target.value)} placeholder={open ? 'Explain how outstanding work or unreturned items will be settled.' : 'Record the clearance or source date decision.'}/></label>}
       {c.state === 'submitted' && <>
-        <button type="button" className="v9-button v9-button-primary" disabled={busy || !current || !calc.ready || calc.lastDay !== c.facts.lastDay || open && !reason.trim()} onClick={() => command({ type: 'clear', sourceRevision: calc.sourceRevision, reason })}>Confirm clearance and hand over to Payroll</button>
+        <ActionButton aria-busy={busy} type="button" className="v9-button v9-button-primary" disabled={busy || !current || !calc.ready || calc.lastDay !== c.facts.lastDay || open && !reason.trim()} onClick={() => command({ type: 'clear', sourceRevision: calc.sourceRevision, reason })}>Confirm clearance and hand over to Payroll</ActionButton>
       </>}
       <p className="v9-muted">Salary and Leave come from their current records. Clearance freezes these figures for Payroll review.</p>
     </>}

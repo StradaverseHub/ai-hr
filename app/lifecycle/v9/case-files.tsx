@@ -1,4 +1,5 @@
 'use client';
+import { ActionButton } from '@/components/ui/action-button';
 import {useOnboardingCopy} from '@/lib/onboarding-copy';
 import {CaseSection} from '@/components/lifecycle-v9/case-layout';
 import { useRef, useState, useTransition } from 'react';
@@ -18,7 +19,7 @@ export function CaseFiles({ c, config, emailId, readOnly = false }: { c: Case; c
       if (file.size > 10 * 1024 * 1024) { setError('Choose a file of at most 10 MB.'); return; }
       const data = new FormData(); data.set('file', file); data.set('slot', slot); data.set('revision', String(c.revision));
       start(async () => { try { const response = await fetch(`/lifecycle/v9/files/${c.id}`, { method: 'POST', body: data }); const result = await response.json(); if (!response.ok) setError(result.error ?? 'Upload failed. Refresh and try again.'); else { setFile(null); if (input.current) input.current.value = ''; router.refresh(); } } catch { setError('Upload failed. Refresh and try again.'); } });
-    }}><label className="v9-field"><span>Attachment for</span><select value={slot} disabled={busy} required onChange={e => setSlot(e.target.value)}><option value="">Choose…</option>{[...options].map(([id, label]) => <option value={id} key={id}>{label}</option>)}</select></label><label className="v9-field"><span>File (up to 10 MB)</span><input ref={input} type="file" accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg,.gif,.webp,.txt,.csv" disabled={busy || reserved} required onChange={e => setFile(e.target.files?.[0] ?? null)}/></label><button aria-busy={busy} type="submit" className="v9-button" disabled={busy || reserved || !slot || !file}>{busy ? 'Uploading…' : 'Upload file'}</button></form>}
+    }}><label className="v9-field"><span>Attachment for</span><select value={slot} disabled={busy} required onChange={e => setSlot(e.target.value)}><option value="">Choose…</option>{[...options].map(([id, label]) => <option value={id} key={id}>{label}</option>)}</select></label><label className="v9-field"><span>File (up to 10 MB)</span><input ref={input} type="file" accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg,.gif,.webp,.txt,.csv" disabled={busy || reserved} required onChange={e => setFile(e.target.files?.[0] ?? null)}/></label><ActionButton guardNavigation aria-busy={busy} type="submit" className="v9-button" disabled={busy || reserved || !slot || !file}>{busy ? 'Uploading…' : 'Upload file'}</ActionButton></form>}
     {reserved && <p className="v9-notice">This file is reserved for a queued delivery. Review that delivery before replacing it.</p>}
     {error && <p role="alert" className="v9-error">{error}</p>}
   </CaseSection>;

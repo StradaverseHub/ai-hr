@@ -1,4 +1,5 @@
 'use client';
+import { ActionButton } from '@/components/ui/action-button';
 import {SystemLabelScope} from './system-label-scope';
 
 import {SystemLabelExportButton} from './system-label-export-button';
@@ -611,7 +612,7 @@ export function GradeLabelsGrid({ data, actions }: { data: GradeGridRecord[]; ac
                     <td colSpan={7} className="px-3 pb-2">
                       <div className="flex flex-wrap items-center gap-2 text-xs">
                         <span className="text-destructive">{restoreOffer.message}</span>
-                        <button aria-busy={pending}
+                        <ActionButton guardNavigation aria-busy={pending}
                           type="button"
                           disabled={pending}
                           onClick={() => restoreArchived(r.key, restoreOffer.id)}
@@ -619,7 +620,7 @@ export function GradeLabelsGrid({ data, actions }: { data: GradeGridRecord[]; ac
                         >
                           <ArchiveRestore className="size-3.5" aria-hidden />
                           {t('unarchive')}
-                        </button>
+                        </ActionButton>
                       </div>
                     </td>
                   </tr>

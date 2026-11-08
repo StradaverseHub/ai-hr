@@ -1,5 +1,6 @@
 'use client';
 
+import { ActionButton } from '@/components/ui/action-button';
 import { useExportDownload } from '@/components/use-export-download';
 import { useState } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
@@ -247,9 +248,9 @@ export function DownloadDialog({
               </Dialog.Close>
               {/* Disabled rather than absent: the button an operator is looking for stays where it is, and
                   the reason it cannot be pressed is the sentence beside the missing field above. */}
-              <button type="submit" className={btnPrimary} disabled={cycleMissing || feedback.pending} aria-busy={feedback.pending}>
+              <ActionButton type="submit" className={btnPrimary} disabled={cycleMissing || feedback.pending} aria-busy={feedback.pending}>
                 {feedback.pending ? feedback.status : t('download')}
-              </button>
+              </ActionButton>
             </div>
           </form>
         </Dialog.Content>

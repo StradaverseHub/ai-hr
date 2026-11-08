@@ -1,5 +1,6 @@
 'use client';
 
+import { ActionButton } from '@/components/ui/action-button';
 import { useId, useRef } from 'react';
 import { useFormStatus } from 'react-dom';
 import { ArrowUp } from 'lucide-react';
@@ -63,16 +64,16 @@ function AskFields({
           placeholder={placeholder}
         />
         <div className="atelier-ask-bar">
-          <button type="submit" aria-label={pending ? t('working') : submitLabel} title={submitLabel}
+          <ActionButton type="submit" aria-label={pending ? t('working') : submitLabel} title={submitLabel}
             aria-busy={pending} disabled={!value.trim() || pending} className="atelier-send">
             <ArrowUp aria-hidden className="size-4" />
-          </button>
+          </ActionButton>
         </div>
       </div>
       {suggestions.length > 0 && (
         <div className="atelier-suggest">
           {suggestions.map((s) => (
-            <button
+            <ActionButton aria-busy={pending}
               key={s}
               type="button"
               disabled={pending}
@@ -82,7 +83,7 @@ function AskFields({
               }}
             >
               {s}
-            </button>
+            </ActionButton>
           ))}
         </div>
       )}

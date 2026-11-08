@@ -1,0 +1,20 @@
+/* Shared action state, scoped by the action owner rather than a particular visual theme. */
+.action-spinner {
+ display: inline-block;
+ inline-size: 1em;
+ block-size: 1em;
+ flex: 0 0 1em;
+ margin-inline-end: .4em;
+ vertical-align: -.1em;
+ border: 2px solid currentColor;
+ border-inline-end-color: transparent;
+ border-radius: 50%;
+ animation: action-feedback-spin .8s linear infinite;
+}
+.action-feedback { display: flex; align-items: center; flex-wrap: wrap; gap: .5rem; margin-block: .75rem; font-size: .875rem; }
+.action-feedback[data-action-state='failed'], .action-feedback[data-action-state='uncertain'] { color: var(--destructive); }
+.action-feedback progress { inline-size: 100%; accent-color: var(--primary); }
+.action-feedback-announcement { position: absolute; inline-size: 1px; block-size: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+button[data-action-pending='true'],a[data-action-pending='true'] { cursor: progress; }
+@keyframes action-feedback-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .action-spinner { animation: none; border-style: dotted; } }

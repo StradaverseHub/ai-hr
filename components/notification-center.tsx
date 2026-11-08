@@ -1,5 +1,6 @@
 'use client';
 
+import { ActionButton } from '@/components/ui/action-button';
 import { useCallback,useMemo, useState, useTransition } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -283,9 +284,9 @@ export function NotificationCenter({
               <>
                 {unread > 0 && (
                   <div className="flex justify-end border-b border-border px-4 py-1.5">
-                    <button type="button" onClick={markAll} aria-busy={marking} disabled={marking} className="text-xs font-medium text-primary hover:underline">
+                    <ActionButton type="button" onClick={markAll} aria-busy={marking} disabled={marking} className="text-xs font-medium text-primary hover:underline">
                       {t('markAllRead')}
-                    </button>
+                    </ActionButton>
                   </div>
                 )}
                 {items.length === 0 ? (

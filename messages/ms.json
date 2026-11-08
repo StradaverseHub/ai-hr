@@ -300,7 +300,23 @@
     "moreActions": "Tindakan lain",
     "noSearchResults": "Tiada hasil sepadan dengan carian anda.",
     "sectionFilter": "Bahagian",
-    "allSections": "Semua bahagian"
+    "allSections": "Semua bahagian",
+    "actionFeedback": {
+      "processing": "Sedang diproses…",
+      "saving": "Sedang menyimpan…",
+      "updating": "Sedang mengemas kini…",
+      "uploading": "Sedang memuat naik…",
+      "submitting": "Sedang menghantar…",
+      "generating": "Sedang menjana…",
+      "deleting": "Sedang memadam…",
+      "loading": "Sedang memuatkan data…",
+      "leave": "Tindakan masih diproses. Tinggalkan halaman ini?",
+      "uncertain": "Keputusan tidak dapat disahkan. Semak status semasa sebelum mengulangi tindakan.",
+      "failed": "Tindakan gagal. Maklumat yang dimasukkan dikekalkan jika boleh.",
+      "cancelled": "Tindakan dibatalkan.",
+      "success": "Tindakan selesai.",
+      "downloadReady": "Fail disediakan: {name}. Pelayar anda mengendalikan penyimpanan."
+    }
   },
   "nav": {
     "roster": "Roster",

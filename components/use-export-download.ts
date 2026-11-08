@@ -3,6 +3,7 @@
 import { useRef, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
+import {usePendingAction} from '@/components/action-feedback';
 import { exportFilename } from '@/lib/export-download';
 
 export function useExportDownload() {
@@ -11,6 +12,8 @@ export function useExportDownload() {
   const errors = useTranslations('labelExcelRoundTrip');
   const [phase, setPhase] = useState<'requesting' | 'receiving' | null>(null);
   const running = useRef(false);
+  const status=phase==='requesting'?report('working'):phase==='receiving'?common('loading'):'';
+  usePendingAction(phase!==null,status,true);
 
   async function download(url: URL, options?: RequestInit) {
     if (running.current || url.origin !== location.origin) return false;
@@ -32,7 +35,7 @@ export function useExportDownload() {
         const revoke = URL.revokeObjectURL.bind(URL);
         setTimeout(() => revoke(objectUrl), 1000);
       }
-      toast.success(name);
+      toast.success(common('actionFeedback.downloadReady',{name}));
       return true;
     } catch {
       toast.error(errors('downloadFailed'));
@@ -46,6 +49,6 @@ export function useExportDownload() {
   return {
     download,
     pending: phase !== null,
-    status: phase === 'requesting' ? report('working') : phase === 'receiving' ? common('loading') : '',
+    status,
   };
 }

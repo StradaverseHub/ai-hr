@@ -7,6 +7,7 @@ import { cookies, headers } from 'next/headers';
 import { NextIntlClientProvider } from 'next-intl';
 import { getLocale } from 'next-intl/server';
 import './globals.css';
+import './action-feedback.css';
 import './login/login.css';
 import './onboarding-workspace.css';
 // Atelier is loaded HERE, not as an `@import` in globals.css. On the box a warm Turbopack build cache kept the

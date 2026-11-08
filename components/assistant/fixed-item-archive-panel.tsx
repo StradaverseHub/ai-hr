@@ -1,4 +1,5 @@
 "use client";
+import { ActionButton } from '@/components/ui/action-button';
 /** Human selection and a separate canonical archive confirmation. Every uncertainty reopens the SAME ID. */
 import {useEffect,useRef,useState,type FormEvent} from 'react';
 import Link from 'next/link';
@@ -60,7 +61,7 @@ export function FixedItemArchivePanel({resumeActionId,initialEmploymentId}:{resu
   {state.kind==='completed'&&<div className="space-y-2"><h2 className="font-semibold">{t('done')}</h2><p className="text-sm">{t('history')}</p><p className="text-sm">{t('recalculation')}</p><p className="break-all text-xs text-muted-foreground">{state.receipt.receipt.eventId}</p></div>}
   {state.kind==='retired'&&<p>{t('retired')}</p>}
   <Button aria-busy={busy} type="button" variant="outline" disabled={busy} onClick={()=>void dispatch({action,operation:'list'})}>{t('resume')}</Button>
-  {index&&<ul className="space-y-2">{index.reviews.map(row=><li key={row.actionId}><button aria-busy={busy} type="button" className="min-h-11 text-left text-sm underline" disabled={busy} onClick={()=>void dispatch({action,operation:'reopen',actionId:row.actionId})}>{row.createdAt} · {row.state}</button></li>)}</ul>}
+  {index&&<ul className="space-y-2">{index.reviews.map(row=><li key={row.actionId}><ActionButton aria-busy={busy} type="button" className="min-h-11 text-left text-sm underline" disabled={busy} onClick={()=>void dispatch({action,operation:'reopen',actionId:row.actionId})}>{row.createdAt} · {row.state}</ActionButton></li>)}</ul>}
   <p className="text-sm text-muted-foreground">{t('nativeNote')} <Link href="/payroll/transactions/fixed" className="underline">{t('native')}</Link></p>
  </section>;
 }

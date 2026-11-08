@@ -1,5 +1,6 @@
 'use client';
 
+import { ActionButton } from '@/components/ui/action-button';
 import { useActionState, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { ErrorBanner, inputCls, btnPrimary } from '@/components/ui';
@@ -168,9 +169,9 @@ export function DelegationCreateForm({
         <DelegationScopePicker />
       </div>
       <div className={span}>
-        <button aria-busy={isPending} className={btnPrimary} disabled={isPending}>
+        <ActionButton guardNavigation aria-busy={isPending} className={btnPrimary} disabled={isPending}>
           {t('create')}
-        </button>
+        </ActionButton>
       </div>
     </form>
   );

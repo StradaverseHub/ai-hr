@@ -2,6 +2,7 @@
 
 import * as React from 'react';
 import { ActionButton } from './action-button';
+import type { ActionKind } from '@/components/action-feedback';
 import { Slot } from '@radix-ui/react-slot';
 import { cva, type VariantProps } from 'class-variance-authority';
 import { cn } from '@/lib/utils';
@@ -65,13 +66,15 @@ export interface ButtonProps
     VariantProps<typeof buttonVariants> {
   asChild?: boolean;
   pendingLabel?: string;
+  actionKind?: ActionKind;
+  guardNavigation?: boolean;
 }
 
 export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
-  ({ className, variant, size, asChild = false, pendingLabel, ...props }, ref) => {
+  ({ className, variant, size, asChild = false, pendingLabel, actionKind, guardNavigation, ...props }, ref) => {
     const classes = cn(buttonVariants({ variant, size, className }));
     if (asChild) return <Slot ref={ref} className={classes} {...props} />;
-    return <ActionButton {...props} ref={ref} className={classes} pendingLabel={pendingLabel} />;
+    return <ActionButton {...props} ref={ref} className={classes} pendingLabel={pendingLabel} actionKind={actionKind} guardNavigation={guardNavigation} />;
   },
 );
 Button.displayName = 'Button';

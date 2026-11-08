@@ -1,4 +1,5 @@
 'use client';
+import { ActionButton } from '@/components/ui/action-button';
 import { UpdatedEmailReview } from './updated-email-review';
 import { useState } from 'react';
 import type { LifecycleV9Command } from '@/packs/lifecycle/service';
@@ -39,7 +40,7 @@ function DeliveryRow({ mail, userName, replaced, open, busy, command, caseId }: 
       {error && <p className="v9-notice v9-error" role="alert">{error}</p>}
       {queued && <p role="status">Retry queued for delivery.</p>}
       {caseId&&command&&open&&!replaced&&!mail.test&&mail.templateId&&['failed','cancelled'].includes(mail.status)&&['smtpTemporary','smtpRejected','smtpAuthentication','smtpTls','recipientUnavailable','recipientChanged','documentChanged','notEligible'].includes(mail.failure??'')&&<UpdatedEmailReview caseId={caseId} mailId={mail.id} busy={!!busy} command={command}/>}
-      {retryable && !queued && <><p>Retry sends the same saved message and attachments. The original delivery remains in history.</p><label className="v9-field">Delivery review reason<textarea maxLength={4000} rows={3} value={reason} disabled={busy} onChange={event => setReason(event.target.value)}/></label><button type="button" className="v9-button" disabled={busy || !reason.trim()} onClick={() => void retry()}>Queue retry</button></>}
+      {retryable && !queued && <><p>Retry sends the same saved message and attachments. The original delivery remains in history.</p><label className="v9-field">Delivery review reason<textarea maxLength={4000} rows={3} value={reason} disabled={busy} onChange={event => setReason(event.target.value)}/></label><ActionButton aria-busy={busy} type="button" className="v9-button" disabled={busy || !reason.trim()} onClick={() => void retry()}>Queue retry</ActionButton></>}
     </div></details>
   </li>;
 }

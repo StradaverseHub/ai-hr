@@ -1,5 +1,6 @@
 'use client';
 
+import { ActionButton } from '@/components/ui/action-button';
 import {useId,useRef,useState,useTransition} from 'react';
 import Link from 'next/link';
 import {useRouter} from 'next/navigation';
@@ -35,14 +36,14 @@ export function TodayAsk({label,placeholder,submitLabel,openingLabel,suggestions
    <input ref={box} id={id} name="question" type="text" autoComplete="off" maxLength={MAX_HANDOFF_CHARS} value={value} readOnly={pending}
     onChange={event=>setValue(event.target.value)} placeholder={placeholder}
     className="min-h-11 min-w-0 flex-1 bg-transparent text-[0.9375rem] outline-none placeholder:text-muted-foreground"/>
-   <button type="submit" disabled={!value.trim()||pending} aria-busy={pending} aria-label={pending?openingLabel:submitLabel} title={submitLabel}
+   <ActionButton type="submit" disabled={!value.trim()||pending} aria-busy={pending} aria-label={pending?openingLabel:submitLabel} title={submitLabel}
     className="inline-flex size-11 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60">
     <ArrowUp aria-hidden className="size-4"/>
-   </button>
+   </ActionButton>
   </form>
   {suggestions.length>0&&<div role="group" aria-label={suggestionsLabel} className="flex flex-wrap gap-2">
    {suggestions.map(item=>typeof item==='string'
-    ?<button aria-busy={pending} key={item} type="button" disabled={pending} onClick={()=>{setValue(item);box.current?.focus();}} className={CHIP}>{item}</button>
+    ?<ActionButton aria-busy={pending} key={item} type="button" disabled={pending} onClick={()=>{setValue(item);box.current?.focus();}} className={CHIP}>{item}</ActionButton>
     :<Link key={item.text} href={item.href} data-today-suggestion-link className={CHIP}>{item.text}</Link>)}
   </div>}
  </div>;

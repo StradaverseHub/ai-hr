@@ -1,4 +1,5 @@
 'use client';
+import { ActionButton } from '@/components/ui/action-button';
 import {useAssistantImportIntake} from '@/components/assistant/import-handoff';
 
 import { useMemo, useRef, useState, useTransition } from 'react';
@@ -920,7 +921,7 @@ function ImportLog({
                       {/* A rolled-back run is not offered again; a run that wrote nothing has nothing to
                           undo. Two clicks, because this moves days. */}
                       {!run.reversedAt && run.ledgerRows > 0 && (
-                        <button
+                        <ActionButton aria-busy={busy}
                           type="button"
                           disabled={busy}
                           onClick={() => (confirmId === run.id ? onRollback(run.id) : setConfirmId(run.id))}
@@ -931,7 +932,7 @@ function ImportLog({
                           }`}
                         >
                           {confirmId === run.id ? t('rollbackConfirm') : t('rollback')}
-                        </button>
+                        </ActionButton>
                       )}
                     </td>
                   </tr>

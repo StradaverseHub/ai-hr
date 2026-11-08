@@ -1,4 +1,5 @@
 'use client';
+import { ActionButton } from '@/components/ui/action-button';
 import {useActionState,useEffect,useMemo,useRef,useState,useCallback} from 'react';
 import {useFormStatus} from 'react-dom';
 import type {JSONContent} from '@tiptap/core';
@@ -14,7 +15,7 @@ type Binding=NonNullable<LetterChoice['field']>&{id:string};
 export type LetterTemplateFormLabels={code:string;name:string;category:string;language:string;effectiveFrom:string;letterhead:string;signatory:string;noLetterhead:string;unavailableChoice:string;fields:string;fieldHelp:string;remove:string;none:string;save:string;submit:string;saving:string;versionHelp:string;presentationHelp:string;limit:string;languages:Record<LetterDocument['language'],string>;errors:Record<string,string>;picker:LetterChoiceLabels;editor:LetterEditorLabels};
 export type LetterTemplateInitial={templateId?:string;revision?:number;code:string;name:string;category:string;effectiveFrom:string;document:LetterDocument;fields:Binding[];presentation:LetterTemplatePresentation|null;headLabel?:string;signatoryLabel?:string};
 function SaveButtons({valid,labels}:{valid:boolean;labels:LetterTemplateFormLabels}){
- const {pending}=useFormStatus();return <div className="flex flex-wrap gap-3"><button className={`${btnGhost} min-h-11 border`} type="submit" name="intent" value="draft" disabled={pending||!valid} aria-busy={pending}>{pending?labels.saving:labels.save}</button><button className={`${btnPrimary} min-h-11`} type="submit" name="intent" value="submit" disabled={pending||!valid} aria-busy={pending}>{pending?labels.saving:labels.submit}</button></div>;
+ const {pending}=useFormStatus();return <div className="flex flex-wrap gap-3"><ActionButton className={`${btnGhost} min-h-11 border`} type="submit" name="intent" value="draft" disabled={pending||!valid} aria-busy={pending}>{pending?labels.saving:labels.save}</ActionButton><ActionButton className={`${btnPrimary} min-h-11`} type="submit" name="intent" value="submit" disabled={pending||!valid} aria-busy={pending}>{pending?labels.saving:labels.submit}</ActionButton></div>;
 }
 /** Mount a fresh instance when the company/version changes. No saved version is mutated in place. */
 export function LetterTemplateForm({companyId,today,defaultLanguage,initial,labels}:{companyId:string;today:string;defaultLanguage:LetterDocument['language'];initial?:LetterTemplateInitial;labels:LetterTemplateFormLabels}){

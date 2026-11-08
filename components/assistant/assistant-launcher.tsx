@@ -1,4 +1,5 @@
 'use client';
+import { ActionButton } from '@/components/ui/action-button';
 import * as React from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
@@ -125,7 +126,7 @@ export function AssistantLauncher({ position, hiddenAreas, inboxCount }: { posit
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-1">
-          <button aria-busy={pending} type="button" disabled={pending} onClick={()=>{pageGeneration.current++;previousExchange.current=null;awaitingClarification.current=null;setUncertain(false);setTurns([]);setQuestion('');followLatest.current=true;box.current?.focus();}} className="min-h-11 rounded-md px-2 text-xs text-muted-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-60">{chatCopy('new')}</button>
+          <ActionButton aria-busy={pending} type="button" disabled={pending} onClick={()=>{pageGeneration.current++;previousExchange.current=null;awaitingClarification.current=null;setUncertain(false);setTurns([]);setQuestion('');followLatest.current=true;box.current?.focus();}} className="min-h-11 rounded-md px-2 text-xs text-muted-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-60">{chatCopy('new')}</ActionButton>
           <button type="button" onClick={() => setDocked(value => !value)} aria-label={docked ? t('undock') : t('dock')} title={docked ? t('undock') : t('dock')}
             className="inline-flex size-11 items-center justify-center rounded-md hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">{docked ? <Minimize2 aria-hidden className="size-4"/> : <Maximize2 aria-hidden className="size-4"/>}</button>
           <button type="button" onClick={close} aria-label={t('close')} className="inline-flex size-11 items-center justify-center rounded-md hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"><X aria-hidden className="size-4"/></button>
@@ -159,8 +160,8 @@ export function AssistantLauncher({ position, hiddenAreas, inboxCount }: { posit
             onChange={event => setQuestion(event.target.value)}
             onKeyDown={event => { if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); void send(); } }}
             placeholder={t('placeholder')} className="min-h-11 min-w-0 flex-1 resize-none bg-transparent px-2 py-2 text-sm leading-relaxed outline-none"/>
-          <button type="submit" disabled={pending || uncertain || !question.trim()} aria-busy={pending} aria-label={pending ? t('working') : t('send')} title={t('send')}
-            className="inline-flex size-11 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"><ArrowUp aria-hidden className="size-4"/></button>
+          <ActionButton type="submit" disabled={pending || uncertain || !question.trim()} aria-busy={pending} aria-label={pending ? t('working') : t('send')} title={t('send')}
+            className="inline-flex size-11 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"><ArrowUp aria-hidden className="size-4"/></ActionButton>
         </div>
         <p className="mt-2 text-xs text-muted-foreground">{t('scope')}</p><p className="mt-2 text-xs leading-relaxed text-muted-foreground">{privacyNotice}</p>
       </form>

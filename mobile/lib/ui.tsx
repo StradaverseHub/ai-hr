@@ -4,7 +4,7 @@
  * anyone out.
  */
 import { DesignText as Text, TenantBrand, useTenantDesign } from './design';
-import { useState, type ReactNode } from 'react';
+import { useRef, useState, type ReactNode } from 'react';
 import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
@@ -89,17 +89,21 @@ export function Muted({ children }: { children: ReactNode }) {
  * disabled fade turned the tenant colour into a different tint; pass `selected` for assistive technology instead.
  * Every button is at least 44×44 pt with side padding, so a one-glyph "‹" is a touch target, not a sliver.
  */
-export function Button({ title, onPress, kind = 'primary', disabled = false,accessibilityLabel,selected }: { title: string; onPress: () => void; kind?: 'primary' | 'quiet'; disabled?: boolean;accessibilityLabel?:string;selected?:boolean }) {
+export function Button({ title, onPress, kind = 'primary', disabled = false,busy=false,accessibilityLabel,selected }: { title: string; onPress: () => void; kind?: 'primary' | 'quiet'; disabled?: boolean;busy?:boolean;accessibilityLabel?:string;selected?:boolean }) {
   const { palette, design } = useTenantDesign();
+  const activating=useRef(false);
+  const blocked=disabled||busy;
+ const foreground=kind==='quiet'?palette.accent:design.schemaVersion===2&&design.composition.layout.button!=='solid'?palette.text:palette.onButton;
   return (
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel}
-      accessibilityState={selected === undefined ? { disabled } : { disabled, selected }}
-      disabled={disabled}
-      onPress={onPress}
-      style={({ pressed }) => [styles.button, { backgroundColor: design.schemaVersion === 2 && design.composition.layout.button !== 'solid' ? design.composition.layout.button === 'soft' ? palette.card : 'transparent' : palette.button, borderColor: palette.text, borderWidth: design.schemaVersion === 2 && design.composition.layout.button === 'outline' ? 1 : 0, borderRadius: design.schemaVersion === 2 ? design.composition.layout.radius : design.corners === 'soft' ? 18 : 6 }, kind === 'quiet' && styles.buttonQuiet, kind === 'quiet' && { borderColor: palette.border }, (pressed || disabled) && { opacity: 0.7 }]}
+      accessibilityState={selected === undefined ? { disabled:blocked,busy } : { disabled:blocked,busy,selected }}
+      disabled={blocked}
+      onPress={()=>{if(blocked||activating.current)return;activating.current=true;queueMicrotask(()=>{activating.current=false;});onPress();}}
+      style={({ pressed }) => [styles.button, { backgroundColor: design.schemaVersion === 2 && design.composition.layout.button !== 'solid' ? design.composition.layout.button === 'soft' ? palette.card : 'transparent' : palette.button, borderColor: palette.text, borderWidth: design.schemaVersion === 2 && design.composition.layout.button === 'outline' ? 1 : 0, borderRadius: design.schemaVersion === 2 ? design.composition.layout.radius : design.corners === 'soft' ? 18 : 6 }, kind === 'quiet' && styles.buttonQuiet, kind === 'quiet' && { borderColor: palette.border }, (pressed || blocked) && { opacity: 0.7 }]}
     >
+      {busy&&<ActivityIndicator accessibilityLabel={t('loading')} color={foreground} style={{marginEnd:8}}/>}
       <Text style={[styles.buttonText, { color: design.schemaVersion === 2 && design.composition.layout.button !== 'solid' ? palette.text : palette.onButton }, kind === 'quiet' && [styles.buttonTextQuiet, { color: palette.accent }]]}>{title}</Text>
     </Pressable>
   );
@@ -226,7 +230,7 @@ const styles = StyleSheet.create({
   strong: { fontSize: 17, fontWeight: '700' },
   muted: { fontSize: 14, color: colors.muted },
   body: { fontSize: 15, color: colors.text },
-  button: { backgroundColor: colors.accent, borderRadius: 12, paddingVertical: 14, paddingHorizontal: 16, minHeight: 44, minWidth: 44, alignItems: 'center', justifyContent: 'center', marginTop: 4 },
+  button: { flexDirection:'row',backgroundColor: colors.accent, borderRadius: 12, paddingVertical: 14, paddingHorizontal: 16, minHeight: 44, minWidth: 44, alignItems: 'center', justifyContent: 'center', marginTop: 4 },
   buttonQuiet: { backgroundColor: 'transparent', borderWidth: 1, borderColor: colors.border },
   buttonText: { color: '#FFFFFF', fontSize: 16, fontWeight: '600' },
   buttonTextQuiet: { color: colors.accent },

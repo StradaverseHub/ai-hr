@@ -1,4 +1,5 @@
 'use client';
+import { ActionButton } from '@/components/ui/action-button';
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
@@ -56,7 +57,7 @@ export function ChatRetentionControl({ keepDays, mayChange }: { keepDays: number
         {t('option', { days })}
       </label>)}</div>
     </fieldset>
-    <button aria-busy={pending} type="submit" disabled={pending || choice === null || choice === saved} className={btnPrimary + ' min-h-11'}>{t('save')}</button>
+    <ActionButton aria-busy={pending} type="submit" disabled={pending || choice === null || choice === saved} className={btnPrimary + ' min-h-11'}>{t('save')}</ActionButton>
     {status && <p role={status.kind} className="text-sm">{status.text}</p>}
     {confirming && choice !== null && <ConfirmDialog
       title={t('confirmTitle')}

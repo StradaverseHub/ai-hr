@@ -1,4 +1,5 @@
 'use client';
+import { ActionButton } from '@/components/ui/action-button';
 import {useActionState,useState} from 'react';
 import {useTranslations} from 'next-intl';
 import {accountAction,type AccountActionState} from './actions';
@@ -19,7 +20,7 @@ function Control({type,userId,title}:{type:typeof commands[number];userId:string
   {type==='expiry'&&<label className="block text-sm">{t('activeUntil')}<input type="date" name="activeUntil" className={inputCls}/><span className="text-xs text-muted-foreground">{t('expiryHelp')}</span></label>}
   <label className="block text-sm">{t('reason')}<textarea name="reason" minLength={5} maxLength={500} required className={`${inputCls} min-h-20`}/></label>
   <label className="flex items-start gap-2 text-sm"><input type="checkbox" name="confirmed" required className="mt-1"/>{t('confirm')}</label>
-  <button type="submit" disabled={pending} className={`${btnGhost.replace('h-9','min-h-11')} max-w-full whitespace-normal`}>{title}</button>
+  <ActionButton aria-busy={pending} type="submit" disabled={pending} className={`${btnGhost.replace('h-9','min-h-11')} max-w-full whitespace-normal`}>{title}</ActionButton>
   {state.status!=='idle'&&<p role={state.status==='saved'?'status':'alert'} className="text-sm">{t(state.status)}</p>}
   {state.delivery&&<p role={state.delivery==='sent'?'status':'alert'} className="text-sm">{t(`delivery.${state.delivery}`)}</p>}
   {state.password&&state.password!==hiddenPassword&&<div className="space-y-2 rounded border border-border bg-muted p-3"><p className="text-sm">{t('shownOnce')}</p><code className="block break-all select-all">{state.password}</code><button type="button" className={btnGhost} onClick={()=>setHiddenPassword(state.password??null)}>{t('hide')}</button></div>}

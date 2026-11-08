@@ -129,14 +129,14 @@ export function PushPrompt({ compact = false }: { compact?: boolean } = {}) {
   const run = (work: () => Promise<unknown>) => { if (busy) return; setBusy(true); void work().catch(() => undefined).finally(() => setBusy(false)); };
   if (view === 'checking' || view === 'module_off' || view === 'unsupported') return null;
   // The Inbox's contextual nudge: only the one action, only while notifications are off. Me holds the full control.
-  if (compact) return view === 'off' ? <Button title={t('pushTurnOn')} kind="quiet" disabled={busy} onPress={() => run(() => turnOnNotifications(employmentId))} /> : null;
+  if (compact) return view === 'off' ? <Button busy={busy} title={t('pushTurnOn')} kind="quiet" disabled={busy} onPress={() => run(() => turnOnNotifications(employmentId))} /> : null;
   const body = view === 'on' ? 'pushOnBody' : view === 'server_off' ? 'pushServerOffBody' : view === 'denied' ? 'pushDeniedBody' : view === 'unavailable' ? 'pushUnavailableBody' : 'pushOffBody';
   return <Card>
     <Muted>{t(body)}</Muted>
-    {view === 'off' ? <Button title={t('pushTurnOn')} disabled={busy} onPress={() => run(() => turnOnNotifications(employmentId))} /> : null}
+    {view === 'off' ? <Button busy={busy} title={t('pushTurnOn')} disabled={busy} onPress={() => run(() => turnOnNotifications(employmentId))} /> : null}
     {view === 'denied' ? <Button title={t('pushOpenSettings')} kind="quiet" onPress={openNotificationSettings} /> : null}
-    {view === 'unavailable' ? <Button title={t('pushRetry')} kind="quiet" disabled={busy} onPress={() => run(() => syncPush(employmentId, true))} /> : null}
-    {view === 'on' || view === 'server_off' ? <Button title={t('pushTurnOff')} kind="quiet" disabled={busy} onPress={() => run(() => turnOffNotifications(employmentId))} /> : null}
+    {view === 'unavailable' ? <Button busy={busy} title={t('pushRetry')} kind="quiet" disabled={busy} onPress={() => run(() => syncPush(employmentId, true))} /> : null}
+    {view === 'on' || view === 'server_off' ? <Button busy={busy} title={t('pushTurnOff')} kind="quiet" disabled={busy} onPress={() => run(() => turnOffNotifications(employmentId))} /> : null}
   </Card>;
 }
 

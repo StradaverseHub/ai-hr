@@ -1,5 +1,6 @@
 'use client';
 
+import { ActionButton } from '@/components/ui/action-button';
 import { startTransition, useActionState, useEffect, useRef, useState, type RefObject } from 'react';
 import { useRouter } from 'next/navigation';
 import * as Dialog from '@radix-ui/react-dialog';
@@ -353,9 +354,9 @@ function HolidayForm({
             {labels.cancel}
           </button>
         </Dialog.Close>
-        <button aria-busy={pending} type="submit" className={btnPrimary} disabled={pending}>
+        <ActionButton aria-busy={pending} type="submit" className={btnPrimary} disabled={pending}>
           {pending ? labels.saving : labels.submit}
-        </button>
+        </ActionButton>
       </div>
     </form>
   );

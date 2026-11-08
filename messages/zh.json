@@ -300,7 +300,23 @@
     "moreActions": "更多操作",
     "noSearchResults": "没有与搜索匹配的结果。",
     "sectionFilter": "分区",
-    "allSections": "所有分区"
+    "allSections": "所有分区",
+    "actionFeedback": {
+      "processing": "正在处理…",
+      "saving": "正在保存…",
+      "updating": "正在更新…",
+      "uploading": "正在上传…",
+      "submitting": "正在提交…",
+      "generating": "正在生成…",
+      "deleting": "正在删除…",
+      "loading": "正在加载数据…",
+      "leave": "操作尚未处理完毕。要离开此页面吗？",
+      "uncertain": "无法确认结果。请先检查当前状态，再重复操作。",
+      "failed": "操作失败。已尽可能保留您输入的信息。",
+      "cancelled": "操作已取消。",
+      "success": "操作已完成。",
+      "downloadReady": "文件已准备好：{name}。保存操作由浏览器处理。"
+    }
   },
   "nav": {
     "roster": "排班",

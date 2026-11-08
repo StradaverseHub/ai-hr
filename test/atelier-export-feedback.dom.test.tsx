@@ -39,7 +39,7 @@ describe('export feedback', () => {
     expect(fetcher).toHaveBeenCalledTimes(1);
     expect(notices.success).not.toHaveBeenCalled();
     resolve(new Response('csv', { headers: { 'Content-Disposition': 'attachment; filename="staff.csv"' } }));
-    await waitFor(() => expect(notices.success).toHaveBeenCalledWith('staff.csv'));
+    await waitFor(() => expect(notices.success).toHaveBeenCalledWith('File prepared: staff.csv. Your browser handles saving it.'));
     expect(button).toHaveAttribute('aria-busy', 'false');
     expect(save).toHaveBeenCalledTimes(1);
   });

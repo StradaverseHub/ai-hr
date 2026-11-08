@@ -1,4 +1,5 @@
 'use client';
+import { ActionButton } from '@/components/ui/action-button';
 import {useState} from 'react';
 import {toast} from 'sonner';
 import {btnGhost} from '@/components/ui';
@@ -11,5 +12,5 @@ export function LetterReportDownloads({query,labels}:{query:string;labels:{excel
    const blob=await response.blob(),url=URL.createObjectURL(blob),link=document.createElement('a');link.href=url;link.download='letters-report.'+format;document.body.appendChild(link);link.click();link.remove();toast.success(link.download);setTimeout(()=>URL.revokeObjectURL(url),1000);
   }catch{setError(labels.errors.unavailable);}finally{setWorking(null);}
  }
- return <div className="space-y-3"><div className="flex flex-wrap gap-3"><button type="button" className={`${btnGhost} min-h-11 disabled:opacity-50`} disabled={working!==null} aria-busy={working==='xlsx'} data-action-pending={working==='xlsx'||undefined} onClick={()=>download('xlsx')}>{working==='xlsx'?labels.working:labels.excel}</button><button type="button" className={`${btnGhost} min-h-11 disabled:opacity-50`} disabled={working!==null} aria-busy={working==='pdf'} data-action-pending={working==='pdf'||undefined} onClick={()=>download('pdf')}>{working==='pdf'?labels.working:labels.pdf}</button></div>{error&&<p role="alert" className="max-w-prose text-sm text-destructive">{error}</p>}</div>;
+ return <div className="space-y-3"><div className="flex flex-wrap gap-3"><ActionButton type="button" className={`${btnGhost} min-h-11 disabled:opacity-50`} disabled={working!==null} aria-busy={working==='xlsx'} data-action-pending={working==='xlsx'||undefined} onClick={()=>download('xlsx')}>{working==='xlsx'?labels.working:labels.excel}</ActionButton><ActionButton type="button" className={`${btnGhost} min-h-11 disabled:opacity-50`} disabled={working!==null} aria-busy={working==='pdf'} data-action-pending={working==='pdf'||undefined} onClick={()=>download('pdf')}>{working==='pdf'?labels.working:labels.pdf}</ActionButton></div>{error&&<p role="alert" className="max-w-prose text-sm text-destructive">{error}</p>}</div>;
 }

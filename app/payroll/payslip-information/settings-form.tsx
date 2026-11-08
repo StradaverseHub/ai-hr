@@ -1,4 +1,5 @@
 'use client';
+import { ActionButton } from '@/components/ui/action-button';
 /**
  * Payslip Information Setup — which Employment Info fields a company's payslips show, and in what ORDER
  * (r389, 23bd49d9).
@@ -94,12 +95,12 @@ export function SettingsForm({companyId, companyName, fields, otherCompanies}: {
             {/* Phone width: the Move buttons take their own line under the name and switch (order-last + full
                 basis), so a row is two lines rather than three; from `sm` up everything sits on one line. */}
             <span className="order-last flex shrink-0 basis-full items-center gap-2 pl-[3.25rem] sm:order-none sm:basis-auto sm:pl-0">
-              <button aria-busy={pending} type="button" className={moveCls} aria-label={`${t('moveUp')}: ${label(k)}`} disabled={pending || i === 0} onClick={() => moveTo(i, i - 1)}>
+              <ActionButton guardNavigation aria-busy={pending} type="button" className={moveCls} aria-label={`${t('moveUp')}: ${label(k)}`} disabled={pending || i === 0} onClick={() => moveTo(i, i - 1)}>
                 <ArrowUp className="size-3.5" aria-hidden/>{t('moveUp')}
-              </button>
-              <button aria-busy={pending} type="button" className={moveCls} aria-label={`${t('moveDown')}: ${label(k)}`} disabled={pending || i === shown.length - 1} onClick={() => moveTo(i, i + 1)}>
+              </ActionButton>
+              <ActionButton guardNavigation aria-busy={pending} type="button" className={moveCls} aria-label={`${t('moveDown')}: ${label(k)}`} disabled={pending || i === shown.length - 1} onClick={() => moveTo(i, i + 1)}>
                 <ArrowDown className="size-3.5" aria-hidden/>{t('moveDown')}
-              </button>
+              </ActionButton>
             </span>
             <ShownSwitch on label={label(k)} disabled={pending} onToggle={() => hide(k)}/>
           </li>)}</ol>}

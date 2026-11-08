@@ -4973,7 +4973,6 @@
       "breakpoints": true
     },
     {
-<<<<<<< HEAD
       "idx": 3000,
       "version": "7",
       "when": 1793330003300,
@@ -5020,12 +5019,13 @@
       "version": "7",
       "when": 1793330003306,
       "tag": "3706_attendance_formula_overtime_binding",
-=======
+      "breakpoints": true
+    },
+    {
       "idx": 3100,
       "version": "7",
       "when": 1793330003400,
       "tag": "3800_attendance_workflow_lifecycle_scope",
->>>>>>> 61d36be69 (Implement approved attendance workflow lifecycle and all-company setup)
       "breakpoints": true
     }
   ]

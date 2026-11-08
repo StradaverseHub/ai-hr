@@ -278,9 +278,9 @@ function DelegationEditForm({
           <DelegationScopePicker defaultReason={r.reason ?? ''} defaultScopes={r.scopes} />
         </div>
         <div className="sm:col-span-2">
-          <button aria-busy={isPending} className={btnPrimary} disabled={isPending}>
+          <ActionButton guardNavigation aria-busy={isPending} className={btnPrimary} disabled={isPending}>
             {t('save')}
-          </button>
+          </ActionButton>
         </div>
       </form>
     </details>
@@ -310,7 +310,7 @@ function DelegationRevokeForm({
   return (
     <form action={formAction} className="flex flex-col items-end gap-1">
       <input type="hidden" name="reportingLineId" value={reportingLineId} />
-      <ActionButton aria-busy={isPending}
+      <ActionButton guardNavigation aria-busy={isPending}
         type="submit"
         disabled={isPending}
         className="text-xs text-muted-foreground transition-colors hover:text-red-500 disabled:opacity-50"

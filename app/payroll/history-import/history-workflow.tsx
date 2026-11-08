@@ -1,4 +1,5 @@
 'use client';
+import { ActionButton } from '@/components/ui/action-button';
 import {useAssistantImportIntake} from '@/components/assistant/import-handoff';
 import {useRef,useState} from 'react';
 import {useTranslations} from 'next-intl';
@@ -45,7 +46,7 @@ export function HistoryWorkflow({codes}:{codes:Code[]}){
  const tickedWarnings=[...new Set(replaceable.filter(row=>ticked.has(historyRecordKey(row))).flatMap(row=>row.warnings??[]))];
  const blocked=!preview||busy!==null||!confirmed||preview.plan.counts.invalid>0||preview.plan.issues.length>0;
  return <div className="space-y-6" aria-busy={busy!==null}>
-  <section className="space-y-4 rounded-xl border bg-card p-5"><div className="flex flex-wrap items-start justify-between gap-4"><div><h2 className="font-semibold">{t('fileTitle')}</h2><p className="mt-1 max-w-3xl text-sm text-muted-foreground">{t('fileHint')}</p></div><button type="button" onClick={template} disabled={busy!==null} className={button}>{busy==='template'?t('working'):t('template')}</button></div>
+  <section className="space-y-4 rounded-xl border bg-card p-5"><div className="flex flex-wrap items-start justify-between gap-4"><div><h2 className="font-semibold">{t('fileTitle')}</h2><p className="mt-1 max-w-3xl text-sm text-muted-foreground">{t('fileHint')}</p></div><ActionButton aria-busy={busy} type="button" onClick={template} disabled={busy!==null} className={button}>{busy==='template'?t('working'):t('template')}</ActionButton></div>
    <p className="text-xs text-muted-foreground">{PAYROLL_HISTORY_HEADERS.join(' · ')}</p>
    <label className="block text-sm font-medium">{t('file')}<input type="file" accept=".csv,.xls,.xlsx" disabled={busy!==null} className="mt-2 block w-full rounded-lg border p-3 text-sm" onChange={event=>{setFile(event.target.files?.[0]??null);operation.current=null;setPreview(null);setDone(false);setError(null);}}/></label>
    {file&&file.size>10*1024*1024&&<p role="alert" className="text-sm text-destructive">{t('tooLarge')}</p>}

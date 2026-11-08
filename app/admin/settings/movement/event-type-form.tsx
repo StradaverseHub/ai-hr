@@ -1,5 +1,6 @@
 'use client';
 
+import { ActionButton } from '@/components/ui/action-button';
 import { startTransition, useActionState, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from '@/components/intent-link';
@@ -459,9 +460,9 @@ export function EventTypeForm({
           <Link href={listHref} className={btnGhost}>
             {labels.cancel}
           </Link>
-          <button aria-busy={pending} type="submit" className={btnPrimary} disabled={pending}>
+          <ActionButton aria-busy={pending} type="submit" className={btnPrimary} disabled={pending}>
             {pending ? labels.saving : labels.save}
-          </button>
+          </ActionButton>
         </Card>
       </div>
     </form>

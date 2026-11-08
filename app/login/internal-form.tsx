@@ -1,4 +1,5 @@
 'use client';
+import { ActionButton } from '@/components/ui/action-button';
 import { useEffect, useId, useRef, useState, type FormEvent } from 'react';
 import Image from 'next/image';
 import { authenticatorSetupUri } from '@/lib/authenticator-setup';
@@ -127,12 +128,12 @@ function InternalAuthFields({ organization = '', returnTo = '/', mode = 'login',
         {['enroll','mfa','reset'].includes(state.step) && <label className="block space-y-1.5"><span className="text-sm font-medium">{t(state.step === 'enroll' ? 'code' : 'codeOrRecovery')}</span><input className={field} name="code" required={state.step !== 'reset'} maxLength={64} autoComplete="one-time-code" autoCapitalize="characters" spellCheck={false}/>{state.step === 'reset' && <span className="block text-xs text-muted-foreground">{t('resetMfaHelp')}</span>}</label>}
         {['enroll', 'mfa'].includes(state.step) && !!state.rememberDays && <div className="space-y-2"><label className="flex min-h-11 items-center gap-3 text-sm"><input type="checkbox" name="rememberDevice" aria-describedby="remembered-device-help"/>{rememberedCopy.rememberWeb.replace('{days}', String(state.rememberDays))}</label><p id="remembered-device-help" className="text-xs leading-relaxed text-muted-foreground">{rememberedCopy.personalOnly}</p></div>}
         {state.step === 'accept' && <p className="text-sm leading-relaxed">{t('acceptHelp')}</p>}
-        <button type="submit" disabled={busy} className={button}>{busy ? t('working') : t(state.step === 'login' ? 'signIn' : state.step === 'recovery' ? 'sendLink' : state.step === 'reset' ? 'resetSubmit' : 'continue')}</button>
+        <ActionButton aria-busy={busy} type="submit" disabled={busy} className={button}>{busy ? t('working') : t(state.step === 'login' ? 'signIn' : state.step === 'recovery' ? 'sendLink' : state.step === 'reset' ? 'resetSubmit' : 'continue')}</ActionButton>
         {state.step === 'login' && <a href="/reset-password" className="block text-sm font-medium underline">{t('forgot')}</a>}
         {state.step === 'invite' && <a href={`/login?returnTo=${encodeURIComponent(`/invite/${invitation}/activate`)}`} className="block text-center text-sm underline">{t('existingLogin')}</a>}
         {!['login','invite','accept'].includes(state.step) && <a href="/login" className="block text-center text-sm underline">{t('back')}</a>}
       </form>}
-      {state.step==='login'&&microsoftEnabled&&<form action="/login/entra/start" method="get" className="login-microsoft-form"><input type="hidden" name="organization" value={microsoftOrganization}/><input type="hidden" name="returnTo" value={returnTo}/><button className="login-microsoft" disabled={busy||!microsoftOrganization.trim()}><svg aria-hidden viewBox="0 0 20 20" width={18} height={18}><path fill="#f25022" d="M1 1h8v8H1z"/><path fill="#7fba00" d="M11 1h8v8h-8z"/><path fill="#00a4ef" d="M1 11h8v8H1z"/><path fill="#ffb900" d="M11 11h8v8h-8z"/></svg>{t('microsoft')}</button></form>}
+      {state.step==='login'&&microsoftEnabled&&<form action="/login/entra/start" method="get" className="login-microsoft-form"><input type="hidden" name="organization" value={microsoftOrganization}/><input type="hidden" name="returnTo" value={returnTo}/><ActionButton aria-busy={busy} className="login-microsoft" disabled={busy||!microsoftOrganization.trim()}><svg aria-hidden viewBox="0 0 20 20" width={18} height={18}><path fill="#f25022" d="M1 1h8v8H1z"/><path fill="#7fba00" d="M11 1h8v8h-8z"/><path fill="#00a4ef" d="M1 11h8v8H1z"/><path fill="#ffb900" d="M11 11h8v8h-8z"/></svg>{t('microsoft')}</ActionButton></form>}
     </section>
   </LoginShell>;
 }

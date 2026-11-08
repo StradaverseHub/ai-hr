@@ -1,5 +1,6 @@
 'use client';
 
+import { ActionButton } from '@/components/ui/action-button';
 /**
  * The MONTHLY roster grid (item 23390097) — employees down, every date of the month across.
  *
@@ -593,13 +594,13 @@ export function RosterTemplateButton({
     }
   };
   return (
-    <button aria-busy={busy}
+    <ActionButton aria-busy={busy}
       type="button"
       disabled={busy}
       onClick={() => void download()}
       className="rounded-md border border-border px-2.5 py-1 text-sm text-foreground hover:bg-muted disabled:opacity-50"
     >
       {label}
-    </button>
+    </ActionButton>
   );
 }

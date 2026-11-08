@@ -1,5 +1,6 @@
 'use client';
 
+import { ActionButton } from '@/components/ui/action-button';
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
@@ -52,14 +53,14 @@ export function ToilElectButton({ employmentId, workedDate }: { employmentId: st
           {error}
         </span>
       )}
-      <button aria-busy={pending}
+      <ActionButton guardNavigation aria-busy={pending}
         type="button"
         onClick={click}
         disabled={pending}
         className="rounded-md border border-border px-2 py-1 text-xs font-medium text-foreground transition-colors hover:bg-accent disabled:opacity-50"
       >
         {pending ? t('bankInLieuPending') : t('bankInLieu')}
-      </button>
+      </ActionButton>
     </span>
   );
 }

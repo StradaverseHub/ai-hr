@@ -1,0 +1,31 @@
+# Action processing feedback
+
+The shared action-feedback provider is mounted under the application's existing locale/theme providers. Action owners register pending work; a disappearing spinner, a completed transition, or an unmounted component is never treated as proof that a write succeeded.
+
+## Ownership
+
+- React server forms use ActionButton or Button. The form's pending owner supplies duration; explicit aria-busy also disables the action. Each busy control displays an inline spinner. Existing action-specific child labels remain intact; new controls can supply actionKind and pendingLabel.
+- Callback actions returning a promise remain busy until that promise settles. An unhandled rejection displays an uncertain-result message. Callbacks using useTransition must pass the actual pending flag. UI suppression does not replace deterministic write authorisation, transaction constraints or operation keys.
+- useActionFeedback executes an explicitly owned asynchronous operation. It accepts success, failed, uncertain and cancelled outcomes, and a report function for real processing stages or bounded progress. A thrown request produces uncertain, retaining the entered fields; it never proposes an automatic retry of a possibly completed write.
+- Server-confirmed redirect toast parameters and existing typed action-result renderers remain the outcome owners. A background-job creation response is not job completion. Poll the job owner until its terminal state.
+- usePendingAction binds important unfinished work to beforeunload and the existing tab guard. Navigation-only previews and filters opt out. Normal server-owned redirect completion is not intercepted. Link warnings are best effort; browser refresh/close prompts use the browser's own wording.
+- The provider rejects another mutation-form submit in the same event turn, and blocks submitters/forms already marked busy. The synchronous callback guard and explicit async hook also close the activation-before-rerender gap. Independent forms keep independent buttons and operation owners.
+- ExportDownloadLink waits for a complete attachment response, displays a spinner and hands the file to the browser. Its message says prepared, not saved; browser saving cannot be confirmed by the app.
+
+## Adoption inventory
+
+The common Button already feeds ActionButton. Existing raw buttons with an owned aria-busy, pending, isPending, busy, saving, submitting or uploading flag have been moved to ActionButton across reports, payroll authoring and adjustments, payment-file dialogs, tax-basis recalculation, history-import recovery, security/account policy, leave configuration and credit requests, attendance shift import, delegation maintenance, letter settings/generation/approval, roster/overtime, lifecycle case actions, assistant operations and system-testing observations/uploads. This is a control replacement; their existing permission checks, typed results, error messages and confirmed-success owners remain authoritative.
+
+Explicit success/error/uncertain attachment handling is implemented in TestingScreenshotUpload. It keeps the file until the attachment endpoint confirms persistence and keeps the request busy through the response. Existing long-job screens must continue to show the real job state/counts; no percentage or terminal state is inferred by this shared layer.
+
+Personnel, company configuration and attendance workflow business editors are being changed by their separate board owners. Their shared Button/ActionButton usage receives the common behaviour; their new manual transition forms must pass aria-busy and their own confirmed outcomes. The loading item does not reinterpret their domain responses.
+
+Native mobile Button has a busy prop, ActivityIndicator, busy accessibility state and activation guard. Existing leave submission/review, attendance withdrawal, notification updates and clock-attempt reporting pass their journey-owned pending flag. Existing mobile submission journals, receipt checks, offline states and uncertain-result recovery remain the only completion owners. The clock slider retains its own pending label and disable logic.
+
+All themes use currentColor for the spinner and semantic outcome colors. Reduced motion removes rotation while retaining a visible static indicator and status text. Six application locale catalogues own shared messages. Keyboard focus, field values and permissions remain with their existing owners.
+
+## Verification boundaries
+
+Hosted development checks should include action-feedback.dom.test.tsx, screenshot-upload-feedback.dom.test.tsx, atelier-export-feedback.dom.test.tsx, existing affected module DOM tests, whole-repository type checks and production compilation. Render representative saving, upload, known progress, confirmed success, refused request and uncertain result states on desktop and mobile; inspect every supported theme and reduced motion. Test important-navigation refusal and cleanup after settlement, parallel independent forms, repeated activation and preserved input after failure. Native device verification remains separate from web rendering.
+
+No source inventory or shared-control test establishes every module's business outcome. Release qualification must exercise representative real authorised journeys, including one long-running job to terminal completion, and preserve the separate module owners' coverage records.

@@ -163,7 +163,7 @@ export function AttendanceApplicationScreen({ id }: { id: string }) {
         <Button title={t('leaveCommandDismiss')} kind="quiet" onPress={() => { setCommand(null); detail.reload(); }} />
       </Card>}
       {!command && a.actions.withdraw && !online && <Muted>{t('attCommandsOnline')}</Muted>}
-      {!command && a.actions.withdraw && <Button title={t('attWithdraw')} disabled={!online || busy} onPress={confirmWithdraw} />}
+      {!command && a.actions.withdraw && <Button busy={busy} title={t('attWithdraw')} disabled={!online || busy} onPress={confirmWithdraw} />}
       {!a.actions.withdraw && a.application === 'overtime' && a.status === 'pending' && <Muted>{t('attOvertimeOnWeb')}</Muted>}
       {busy && <Muted>{t('leaveCommandSending')}</Muted>}
     </>}

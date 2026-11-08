@@ -300,7 +300,23 @@
     "moreActions": "Thao tác khác",
     "noSearchResults": "Không có kết quả phù hợp với tìm kiếm.",
     "sectionFilter": "Mục",
-    "allSections": "Tất cả các mục"
+    "allSections": "Tất cả các mục",
+    "actionFeedback": {
+      "processing": "Đang xử lý…",
+      "saving": "Đang lưu…",
+      "updating": "Đang cập nhật…",
+      "uploading": "Đang tải lên…",
+      "submitting": "Đang gửi…",
+      "generating": "Đang tạo…",
+      "deleting": "Đang xóa…",
+      "loading": "Đang tải dữ liệu…",
+      "leave": "Một thao tác vẫn chưa hoàn tất. Bạn muốn rời trang này?",
+      "uncertain": "Không thể xác nhận kết quả. Hãy kiểm tra trạng thái hiện tại trước khi thực hiện lại.",
+      "failed": "Thao tác thất bại. Thông tin đã nhập được giữ lại khi có thể.",
+      "cancelled": "Đã hủy thao tác.",
+      "success": "Đã hoàn tất thao tác.",
+      "downloadReady": "Đã chuẩn bị tệp: {name}. Trình duyệt của bạn sẽ xử lý việc lưu tệp."
+    }
   },
   "nav": {
     "roster": "Lịch ca",

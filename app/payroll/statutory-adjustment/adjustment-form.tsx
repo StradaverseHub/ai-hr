@@ -242,14 +242,14 @@ export function AdjustmentForm({
         </p>
       )}
 
-      <button aria-busy={pending}
+      <ActionButton guardNavigation aria-busy={pending}
         type="button"
         onClick={onReview}
         disabled={pending}
         className="rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground disabled:opacity-60"
       >
         {labels.review}
-      </button>
+      </ActionButton>
     </div>
   );
 }

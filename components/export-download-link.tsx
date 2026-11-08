@@ -21,7 +21,7 @@ export const ExportDownloadLink = forwardRef<HTMLAnchorElement, Props>(function 
       event.preventDefault();
       await download(url);
     }}>
-    {children}
+    {pending&&<span className="action-spinner" aria-hidden="true"/>}{children}
     <span className="sr-only" role="status">{status}</span>
   </a>;
 });

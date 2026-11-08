@@ -1,5 +1,6 @@
 'use client';
 
+import { ActionButton } from '@/components/ui/action-button';
 import { useEffect, useRef, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { inputCls } from '@/components/ui';
@@ -55,8 +56,8 @@ export function InlineRewardIncrease({ unitId, entryId, revision, values }: {
             onBlur={event => { if (event.target.validity.valid) void save(field, event.target.value); }}
             onKeyDown={event => { if (event.key === 'Enter') { event.preventDefault(); event.currentTarget.blur(); } }} />
         </label>
-        {values[field] != null && <button type="button" disabled={busy} className="pb-2 text-primary underline"
-          onMouseDown={event => event.preventDefault()} onClick={() => void save(field, '')}>{t('resetRecommendation')}</button>}
+        {values[field] != null && <ActionButton aria-busy={busy} type="button" disabled={busy} className="pb-2 text-primary underline"
+          onMouseDown={event => event.preventDefault()} onClick={() => void save(field, '')}>{t('resetRecommendation')}</ActionButton>}
       </div>)}
       {message && <p role="status">{message}</p>}
       {error && <p role="alert" className="max-w-56 whitespace-normal text-destructive">{error}</p>}

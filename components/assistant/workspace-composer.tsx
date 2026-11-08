@@ -1,5 +1,6 @@
 'use client';
 
+import { ActionButton } from '@/components/ui/action-button';
 import {lazy,Suspense,useRef,useState,type ReactNode} from 'react';
 import { useFormStatus } from 'react-dom';
 import {ArrowUp} from 'lucide-react';
@@ -46,17 +47,17 @@ export function ComposerFields({ tasks, labels, layout = 'stacked',question,setQ
         placeholder={labels.placeholder} aria-describedby="assistant-question-scope" className="max-h-48 min-h-16 w-full resize-y rounded-t-xl bg-transparent px-4 pt-3 text-sm outline-none" />
       <div className="flex items-center justify-between gap-3 px-3 pb-3">
         <div className="flex min-w-0 items-center gap-2">{attachmentControls}<p id="assistant-question-scope" className="text-xs text-muted-foreground">{labels.scope}</p></div>
-        <button type="submit" disabled={pending || submitDisabled || !question.trim()} aria-busy={pending} aria-label={pending?labels.working:labels.ask} title={labels.ask}
-          className={`${btnPrimary} size-11 shrink-0 p-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60 motion-reduce:transition-none motion-reduce:transform-none`}><ArrowUp aria-hidden className="size-4"/></button>
+        <ActionButton type="submit" disabled={pending || submitDisabled || !question.trim()} aria-busy={pending} aria-label={pending?labels.working:labels.ask} title={labels.ask}
+          className={`${btnPrimary} size-11 shrink-0 p-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60 motion-reduce:transition-none motion-reduce:transform-none`}><ArrowUp aria-hidden className="size-4"/></ActionButton>
       </div>
     </div>
     {externalPending===undefined&&<span className="sr-only" role="status" aria-live="polite">{pending?labels.working:''}</span>}
     {tasks.length > 0 && <section aria-labelledby="assistant-task-heading" className="flex flex-wrap items-center justify-center gap-2">
       <h2 id="assistant-task-heading" className="sr-only">{labels.tasks}</h2>
       <p id="assistant-task-hint" className="sr-only">{labels.taskHint}</p>
-      {tasks.map(task => <button key={task.id} type="button" disabled={pending} aria-describedby="assistant-task-hint"
+      {tasks.map(task => <ActionButton aria-busy={pending} key={task.id} type="button" disabled={pending} aria-describedby="assistant-task-hint"
         className="min-h-11 rounded-full border border-border px-3 py-1.5 text-sm transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:cursor-wait disabled:opacity-60 motion-reduce:transition-none"
-        onClick={() => choose(task)}>{task.label}</button>)}
+        onClick={() => choose(task)}>{task.label}</ActionButton>)}
     </section>}
   </>;
   return <>
@@ -64,9 +65,9 @@ export function ComposerFields({ tasks, labels, layout = 'stacked',question,setQ
       <h2 id="assistant-task-heading" className="text-sm font-medium">{labels.tasks}</h2>
       <p id="assistant-task-hint" className="text-xs text-muted-foreground">{labels.taskHint}</p>
       <div className="flex flex-wrap gap-2" aria-describedby="assistant-task-hint">
-        {tasks.map(task => <button key={task.id} type="button" disabled={pending}
+        {tasks.map(task => <ActionButton aria-busy={pending} key={task.id} type="button" disabled={pending}
           className="min-h-11 rounded-md border px-3 py-2 text-left text-sm transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:cursor-wait disabled:opacity-60 motion-reduce:transition-none"
-          onClick={() => choose(task)}>{task.label}</button>)}
+          onClick={() => choose(task)}>{task.label}</ActionButton>)}
       </div>
     </section>}
     <div className="space-y-2">
@@ -79,8 +80,8 @@ export function ComposerFields({ tasks, labels, layout = 'stacked',question,setQ
     </div>
     <div className="flex flex-wrap items-center justify-between gap-3">
       <div className="flex min-w-0 items-center gap-2">{attachmentControls}<p id="assistant-question-scope" className="text-xs text-muted-foreground">{labels.scope}</p></div>
-      <button type="submit" disabled={pending || submitDisabled || !question.trim()} aria-busy={pending}
-        className={`${btnPrimary} min-h-11 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60 motion-reduce:transition-none motion-reduce:transform-none`}>{pending ? labels.working : labels.ask}</button>
+      <ActionButton type="submit" disabled={pending || submitDisabled || !question.trim()} aria-busy={pending}
+        className={`${btnPrimary} min-h-11 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60 motion-reduce:transition-none motion-reduce:transform-none`}>{pending ? labels.working : labels.ask}</ActionButton>
       {externalPending===undefined&&<span className="sr-only" role="status" aria-live="polite">{pending?labels.working:''}</span>}
       </div>
   </>;

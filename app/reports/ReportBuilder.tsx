@@ -413,14 +413,14 @@ export function ReportBuilder({
           <div className="mt-4">
             <div className="mb-2 flex items-center justify-between">
               <h4 className="text-sm font-semibold">{labels.preview}</h4>
-              <button aria-busy={pending}
+              <ActionButton aria-busy={pending}
                 type="button"
                 onClick={runPreview}
                 disabled={pending || columns.length === 0}
                 className="rounded-lg border border-border px-2.5 py-1 text-xs font-medium hover:bg-accent/60 disabled:opacity-50"
               >
                 {labels.refreshPreview}
-              </button>
+              </ActionButton>
             </div>
             {preview ? (
               <div className={`relative rounded-lg border border-border bg-white p-3 text-black dark:bg-neutral-100 ${orientation === 'landscape' ? '' : ''}`}>
@@ -725,7 +725,7 @@ export function ReportBuilder({
               disabled={!aiEnabled}
               className={`${inputCls} resize-none disabled:opacity-60`}
             />
-            <button aria-busy={pending}
+            <ActionButton aria-busy={pending}
               type="button"
               onClick={runAi}
               disabled={!aiEnabled || pending || !aiText.trim()}
@@ -733,7 +733,7 @@ export function ReportBuilder({
               title={aiEnabled ? undefined : labels.aiNotConfigured}
             >
               {pending ? labels.aiGenerating : labels.aiGenerate}
-            </button>
+            </ActionButton>
             {!aiEnabled && <p className="mt-1 text-[11px] text-muted-foreground">{labels.aiNotConfigured}</p>}
             {aiMsg && <p className="mt-2 rounded-lg bg-muted/60 px-2.5 py-1.5 text-[11px] text-muted-foreground">{aiMsg}</p>}
             {recs && (recs.extraColumns.length > 0 || recs.bestFormat || recs.note) && (
