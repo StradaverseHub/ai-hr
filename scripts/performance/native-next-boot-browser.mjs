@@ -22,7 +22,7 @@ assert(Number.isSafeInteger(input.budgetMs)&&input.budgetMs>0&&input.budgetMs<=3
 assert.equal(realpathSync(input.evidenceDirectory),input.evidenceDirectory);
 const [admin,,,employee]=input.fixture.actors,foreign=input.fixture.actors[5];
 assert.equal(admin.role,'groupHR');assert.equal(employee.role,'employee');assert.notEqual(admin.tenantId,foreign.tenantId);
-const deadline=performance.now()+input.budgetMs,errors=[],report={version:1,kind:'ACTUAL_NEXT_TWO_WORKER_BOOT_AUTH_HOME_ONLY',
+const driverStartedAt=performance.now(),deadline=driverStartedAt+input.budgetMs,errors=[],report={version:1,kind:'ACTUAL_NEXT_TWO_WORKER_BOOT_AUTH_HOME_ONLY',
  complete:false,releaseEligible:false,fullApplicationJourneysVerified:false,fixtureUsers:8,preissuedSessions:0,
  logins:[],home:[],hydratedAccountControls:0,coldBusinessRequests:[],servedPorts:[],
  remaining:['actions-and-response-loss','freshness-and-permission-decrease','image-cache-and-PDF','uploads-and-streaming',
@@ -32,10 +32,15 @@ const remaining=()=>{const value=Math.floor(deadline-performance.now());assert(v
 const lines=createInterface({input:process.stdin,crlfDelay:Infinity}),waiting=new Map();let nextId=0;
 lines.on('line',line=>{assert(Buffer.byteLength(line)<=65536);const value=JSON.parse(line),pending=waiting.get(value.id);
  assert(pending&&value.ok===true&&Object.keys(value).sort().join('|')==='id|ok|result');waiting.delete(value.id);pending(value.result);});
-async function host(operation){const id=++nextId;let timer;
- try{return await Promise.race([new Promise(resolve=>{waiting.set(id,resolve);process.stdout.write(JSON.stringify({id,operation})+'\n');}),
-  new Promise((_,reject)=>{timer=setTimeout(()=>reject(Error('Native host operation timed out')),remaining());})]);}
- finally{clearTimeout(timer);waiting.delete(id);}
+async function host(operation){const id=++nextId,first=id===1&&operation==='start-first',started=performance.now();let timer;
+ const timing=first?(report.firstHostRequestTiming={kind:'ACTUAL_FIRST_HOST_REQUEST_TIMING_NOT_ADMISSION',timeoutMs:null,elapsedMs:null,outcome:'entered',driverFinalElapsedMs:null}):null;
+ try{
+  const result=await Promise.race([new Promise(resolve=>{waiting.set(id,resolve);process.stdout.write(JSON.stringify({id,operation})+'\n');}),
+   new Promise((_,reject)=>{const timeoutMs=remaining();if(timing)timing.timeoutMs=timeoutMs;
+    timer=setTimeout(()=>{if(timing)timing.outcome='timeout';reject(Error('Native host operation timed out'));},timeoutMs);})]);
+  if(timing)timing.outcome='returned';return result;
+ }catch(error){if(timing&&timing.outcome!=='timeout')timing.outcome='refused';throw error;}
+ finally{clearTimeout(timer);waiting.delete(id);if(timing){timing.elapsedMs=Math.floor(performance.now()-started);save();}}
 }
 const worker=response=>{const value=response.headers()['x-aihr-fixture-worker'];assert(/^127\.0\.0\.1:[0-9]+$/.test(value??''));return Number(value.split(':')[1]);};
 function watch(context){context.on('page',page=>{page.on('pageerror',()=>errors.push('PAGE_ERROR'));
@@ -94,6 +99,7 @@ try{
 finally{
  let closed=true;for(const context of contexts)try{await context.close();}catch{closed=false;}
  try{await browser?.close();}catch{closed=false;}lines.close();
+ if(report.firstHostRequestTiming)report.firstHostRequestTiming.driverFinalElapsedMs=Math.floor(performance.now()-driverStartedAt);
  report.complete=succeeded&&closed&&errors.length===0;report.unexpectedBrowserErrors=errors.length;
  if(!report.complete){process.exitCode=1;report.failure??='BOOT_BROWSER_CLEANUP_OR_LATE_FAILURE';}save();
 }

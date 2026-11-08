@@ -458,7 +458,7 @@ def systemctl(*args, check=True, timeout=30):
 
 
 def props(unit, timeout=30):
-    raw = systemctl('show', unit, '--property=LoadState,InvocationID,MainPID,ControlPID,ActiveState,SubState,ExecStart,ExecReload,FragmentPath,ControlGroup,UnsetEnvironment', timeout=timeout).stdout.decode()
+    raw = systemctl('show', unit, '--property=LoadState,InvocationID,MainPID,ControlPID,ActiveState,SubState,ExecStart,ExecReload,FragmentPath,ControlGroup,UnsetEnvironment,ExecMainStartTimestampMonotonic,ExecMainExitTimestampMonotonic', timeout=timeout).stdout.decode()
     return dict(line.split('=', 1) for line in raw.splitlines() if '=' in line)
 
 
@@ -1325,14 +1325,132 @@ UMask=0077
     return C
 
 
-def native_worker(C, row, plan, binding):
+BOOTSTRAP_STAGES = ('profile-open', 'immutable-source-full-read', 'first-owned-start', 'first-ready',
+    'browser-launch', 'first-request-lifetime', 'first-ready-before', 'first-live-proof-composite',
+    'first-filesystem-proof', 'first-ready-after', 'first-reply-flush', 'browser-exit-observed', 'profile-close')
+
+
+def bootstrap_clock():
+    value = time.monotonic_ns() // 1000
+    require(type(value) is int and 0 <= value <= 9007199254740991, 'Bootstrap monotonic clock refused')
+    return value
+
+
+def bootstrap_timing():
+    report['bootstrapTiming'] = {'kind': 'FIXED_OWNER_STAGE_TIMINGS_NOT_ADMISSION',
+        'slots': [{'slot': i, 'stage': stage, 'outcome': 'not-entered', 'startUs': None, 'endUs': None,
+                   'elapsedUs': None, 'returned': False, 'code': None} for i, stage in enumerate(BOOTSTRAP_STAGES)],
+        'browserExit': {'kind': 'OWNED_BROWSER_CLOCK_OBSERVATIONS_NOT_ADMISSION', 'invocationMatched': False,
+            'mainStartUs': None, 'mainExitUs': None, 'wrapperExitObservedUs': None,
+            'wrapperReturnCode': None, 'state': 'unavailable'}, 'browserFirstRequest': None}
+
+
+@contextlib.contextmanager
+def bootstrap_stage(index):
+    require(type(index) is int and 0 <= index < len(BOOTSTRAP_STAGES), 'Bootstrap timing slot refused')
+    row = report['bootstrapTiming']['slots'][index]
+    require(row['outcome'] == 'not-entered', 'Duplicate bootstrap timing slot refused')
+    row.update(outcome='entered', startUs=bootstrap_clock())
+    failure = None
+    try:
+        save()  # Persist entered before the actual bounded source operation.
+        yield row
+    except BaseException as error:
+        failure = error
+        row['outcome'] = 'refused'
+        raise
+    else:
+        row.update(outcome='returned', returned=True)
+    finally:
+        try:
+            if not (row['code'] is None or index == 11 and type(row['code']) is int and -2147483648 <= row['code'] <= 2147483647):
+                row.update(outcome='refused', returned=False, code=None)
+                require(False, 'Bootstrap timing result refused')
+            end = bootstrap_clock()
+            require(end >= row['startUs'], 'Bootstrap timing result refused')
+            row.update(endUs=end, elapsedUs=end-row['startUs'])
+            save()
+        except BaseException as error:
+            if failure is not None:
+                raise BaseExceptionGroup('Bootstrap operation and timing settlement refused', [failure, error])
+            raise
+
+
+def bootstrap_wrapper_exit(code):
+    require(type(code) is int and -2147483648 <= code <= 2147483647, 'Browser wrapper exit code refused')
+    value = report['bootstrapTiming']['browserExit']
+    if value['wrapperExitObservedUs'] is None:
+        value.update(wrapperExitObservedUs=bootstrap_clock(), wrapperReturnCode=code)
+
+
+def bootstrap_service_exit(actual):
+    # Called ONLY after the existing exact transient/source/invocation ownership
+    # checks, with the existing cleanup snapshot. No additional native query.
+    value = report.get('bootstrapTiming', {}).get('browserExit')
+    if value is None:
+        return
+    value['invocationMatched'] = True
+    fields = [actual.get(name) for name in ('ExecMainStartTimestampMonotonic', 'ExecMainExitTimestampMonotonic')]
+    if not all(type(field) is str and re.fullmatch(r'[0-9]{1,16}', field) for field in fields):
+        return
+    start, end = map(int, fields)
+    if 0 < start <= end <= bootstrap_clock():
+        value.update(mainStartUs=start, mainExitUs=end, state='observed')
+
+
+@contextlib.contextmanager
+def bootstrap_profile(C, plan, binding):
+    profile, failure = None, None
+    try:
+        with bootstrap_stage(0):
+            profile = C.Profile(C.PROFILE)
+            host = C.LinuxHost(profile)
+            require(type(profile) is C.Profile and type(host) is C.LinuxHost and host.profile is profile
+                    and profile.value['source'] == plan['candidate'] and profile.value['build'] == binding['nextBuildId']
+                    and profile.next_runtime is not None, 'Fixed bootstrap profile context refused')
+            profile.assert_current()
+        with bootstrap_stage(1):
+            profile.next_runtime.verify_release(profile.value['units'][UNITS[0]])
+        with bootstrap_stage(2):
+            owned_start(UNITS[0], timeout=90)
+        with bootstrap_stage(3):
+            first = until(lambda: ready(UNITS[0]), 'first actual Next worker READY')
+            generation = state()['generations'].get(first['id'], {})
+            require(generation.get('phase') == 'READY' and generation.get('unit') == UNITS[0]
+                    and generation.get('port') == first['port'] and generation.get('epoch') == profile.value['epoch']
+                    and generation.get('profile') == profile.sha and generation.get('invocation') == owned_invocations.get(UNITS[0])
+                    and type(generation.get('process')) is dict and C.alive(generation['process']),
+                    'Prepared first generation context refused')
+            prepared = {'row': dict(first), 'invocation': generation['invocation'], 'process': dict(generation['process'])}
+        yield profile, host, prepared
+    except BaseException as error:
+        failure = error
+        raise
+    finally:
+        if profile is not None:
+            try:
+                with bootstrap_stage(12):
+                    profile.close()
+            except BaseException as error:
+                if failure is not None:
+                    raise BaseExceptionGroup('Bootstrap operation and profile close refused', [failure, error])
+                raise
+
+
+def native_worker(C, row, plan, binding, profile, host, *, first=False):
+    require(type(first) is bool and type(profile) is C.Profile and type(host) is C.LinuxHost and host.profile is profile
+            and profile.value['source'] == plan['candidate'] and profile.value['build'] == binding['nextBuildId'],
+            'Native proof profile context differs')
+    profile.assert_current()
     unit = row['unit']
-    with contextlib.closing(C.Profile(C.PROFILE)) as profile:
-        host = C.LinuxHost(profile)
-        identity_value = host.worker(unit, props(unit)['InvocationID'], row['port'])
+    with bootstrap_stage(7) if first else contextlib.nullcontext():
+        invocation = props(unit)['InvocationID']
+        require(invocation == owned_invocations.get(unit), 'Native proof invocation differs')
+        identity_value = host.worker(unit, invocation, row['port'])
         proof = host.next_worker_evidence[unit]
         require(proof['namespace']['actualKernelMountsVerified'] and proof['namespace']['actualEnvironmentVerified']
                 and proof['resources']['aggregateCapsVerified'], 'Native live kernel proofs absent')
+    with bootstrap_stage(8) if first else contextlib.nullcontext():
         pid = identity_value['pid']
         before = C.process_identity(pid)
         require(before == identity_value, 'Worker changed before namespace write controls')
@@ -1343,13 +1461,16 @@ def native_worker(C, row, plan, binding):
         require(C.process_identity(pid) == before and C.alive(before), 'Worker changed after namespace controls')
         require(filesystem == {'actualNamespaceFilesystemVerified': True, 'cacheWrites': 3,
             'immutableParentRefusals': 5, 'originalCheckoutReadWriteRefusals': 4}, 'Native filesystem control differs')
-        return {'unit': unit, 'port': row['port'], 'invocation': props(unit)['InvocationID'],
-                'process': identity_value, 'kernel': proof, 'filesystem': filesystem}
+    require(props(unit)['InvocationID'] == invocation, 'Native proof invocation changed')
+    profile.assert_current()
+    return {'unit': unit, 'port': row['port'], 'invocation': invocation,
+            'process': identity_value, 'kernel': proof, 'filesystem': filesystem}
 
 
 def browser_core(plan, binding, C):
     global browser
     phase('actual-browser-two-worker-boot')
+    bootstrap_timing()
     runner = pwd.getpwuid(plan['runnerUid'])
     require(runner.pw_gid == plan['runnerGid'] and runner.pw_uid > 0, 'Actual runner identity differs')
     # This transient driver gets no app/owner DB URL, platform token, session key
@@ -1364,83 +1485,135 @@ def browser_core(plan, binding, C):
         '--property=Description=Owned actual Next browser ' + plan['runId'],
         '--setenv=HOME=' + runner.pw_dir, '--setenv=PATH=/usr/bin:/bin', '--setenv=LANG=C.UTF-8',
         plan['nodePath'], '--max-old-space-size=512', driver, plan['browserInputPath']]
-    browser = subprocess.Popen(args, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-        stderr=subprocess.DEVNULL, env=environment, start_new_session=True)
-    until(lambda: record_owned_invocation(BROWSER, transient=True), 'owned native browser invocation', seconds=5)
-    expected = ['start-first', 'start-second-cold', 'admit-second', 'browser-core-finished']
-    completed, first, second, proofs = [], None, None, []
-    selector = selectors.DefaultSelector()
-    selector.register(browser.stdout, selectors.EVENT_READ)
-    buffer = b''
-    try:
-        while len(completed) < len(expected):
-            require(browser.poll() is None, 'Native browser exited before complete protocol')
-            require(selector.select(left(90)), 'Native browser protocol deadline exceeded')
-            block = os.read(browser.stdout.fileno(), 65537)
-            require(block, 'Native browser protocol ended early')
-            buffer += block
-            require(len(buffer) <= 65536, 'Native browser protocol exceeds bound')
-            if b'\n' not in buffer:
-                continue
-            line, buffer = buffer.split(b'\n', 1)
-            request = json.loads(line)
-            index = len(completed)
-            require(request == {'id': index + 1, 'operation': expected[index]}, 'Native browser protocol order/fields differ')
-            operation = expected[index]
-            phase('actual-browser-' + operation)
-            if operation == 'start-first':
-                owned_start(UNITS[0], timeout=90)
-                first = until(lambda: ready(UNITS[0]), 'first actual Next worker READY')
-                proofs.append(native_worker(C, first, plan, binding))
-                result = {'port': first['port']}
-            elif operation == 'start-second-cold':
-                owned_start(UNITS[1], nonblocking=True)
-                second = until(lambda: cold(UNITS[1]), 'second actual Next healthy but unpublished')
-                require(second['port'] != first['port'], 'Cold endpoint reused current peer endpoint')
-                proofs.append(native_worker(C, second, plan, binding))
-                result = {'port': second['port'], 'admitted': False}
-            elif operation == 'admit-second':
-                cold_state = state()
-                require(second['id'] not in cold_state['published']['ready'], 'Cold worker publication happened before gate')
-                access = pathlib.Path('/run/aihr-admission/access.log').read_text()
-                cold_rows = [row for row in access.splitlines() if row.startswith('127.0.0.1:' + str(second['port']) + ' ')]
-                require(not cold_rows, 'Cold worker served business ingress traffic')
-                report['coldBusinessRequests'] = 0
-                write(pathlib.Path('/run/aihr-admission/permit-' + UNITS[1]), b'owned actual admission\n')
-                admitted = until(lambda: ready(UNITS[1]), 'second actual Next worker READY')
-                require(admitted['id'] == second['id'] and admitted['port'] == second['port'], 'Cold generation changed during admission')
-                proofs.append(native_worker(C, admitted, plan, binding))
-                result = {'port': admitted['port']}
-            else:
-                require(first and second, 'Two actual workers were not established')
-                result = {'accepted': True}
-            completed.append(operation)
-            browser.stdin.write((json.dumps({'id': index + 1, 'ok': True, 'result': result}) + '\n').encode())
-            browser.stdin.flush()
-        browser.stdin.close()
-        require(browser.wait(timeout=left(30)) == 0, 'Native browser final assertions or cleanup failed')
-        # No extra out-of-order control request can silently be ignored.
-        require(not buffer.strip() and not browser.stdout.read(65537).strip(), 'Unexpected native browser protocol tail')
-        browser_report = json.loads(regular(pathlib.Path(plan['evidenceDirectory'], 'native-next-boot-browser.json'), plan['runnerUid'], 2 * 1024**2))
-        require(browser_report.get('complete') is True and browser_report.get('unexpectedBrowserErrors') == 0
-                and browser_report.get('hydratedAccountControls', 0) >= 6 and browser_report.get('nonemptyOwnPayrollView') is True
-                and browser_report.get('servedPorts') == sorted([first['port'], second['port']])
-                and len(browser_report.get('logins', [])) == 2, 'Actual browser functional evidence incomplete')
-        report['browser'] = {'complete': True, 'realPasswordTotpLogins': 2,
-            'hydratedAccountControls': browser_report['hydratedAccountControls'], 'unexpectedBrowserErrors': 0,
-            'homeViews': len(browser_report['home']), 'nonemptyOwnPayrollView': True,
-            'servedPorts': browser_report['servedPorts']}
-        report['workers'] = proofs
-        report['postBrowserWorkers'] = [native_worker(C, ready(unit), plan, binding) for unit in UNITS]
-        report['actualNextBootVerified'] = True
-    finally:
-        selector.close()
-        if browser.poll() is None:
-            # The launcher belongs to this invocation. Its systemd child is
-            # stopped only after independently checking transient-unit identity.
-            browser.terminate()
-            with contextlib.suppress(subprocess.TimeoutExpired):
-                browser.wait(timeout=5)
+    with bootstrap_profile(C, plan, binding) as (profile, host, prepared):
+        selector, failure = None, None
+        try:
+            with bootstrap_stage(4):
+                browser = subprocess.Popen(args, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                    stderr=subprocess.DEVNULL, env=environment, start_new_session=True)
+                until(lambda: record_owned_invocation(BROWSER, transient=True), 'owned native browser invocation', seconds=5)
+            expected = ['start-first', 'start-second-cold', 'admit-second', 'browser-core-finished']
+            completed, first, second, proofs = [], None, None, []
+            selector = selectors.DefaultSelector()
+            selector.register(browser.stdout, selectors.EVENT_READ)
+            buffer = b''
+            while len(completed) < len(expected):
+                require(browser.poll() is None, 'Native browser exited before complete protocol')
+                require(selector.select(left(90)), 'Native browser protocol deadline exceeded')
+                block = os.read(browser.stdout.fileno(), 65537)
+                require(block, 'Native browser protocol ended early')
+                buffer += block
+                require(len(buffer) <= 65536, 'Native browser protocol exceeds bound')
+                if b'\n' not in buffer:
+                    continue
+                line, buffer = buffer.split(b'\n', 1)
+                request = json.loads(line)
+                index = len(completed)
+                require(request == {'id': index + 1, 'operation': expected[index]}, 'Native browser protocol order/fields differ')
+                operation = expected[index]
+                phase('actual-browser-' + operation)
+                if operation == 'start-first':
+                    with bootstrap_stage(5):
+                        with bootstrap_stage(6):
+                            first = ready(UNITS[0])
+                            require(first == prepared['row'], 'Prepared first READY generation changed')
+                        proof = native_worker(C, first, plan, binding, profile, host, first=True)
+                        require(proof['invocation'] == prepared['invocation'] and proof['process'] == prepared['process'],
+                                'Prepared first live identity changed')
+                        with bootstrap_stage(9):
+                            require(ready(UNITS[0]) == first and C.process_identity(proof['process']['pid']) == proof['process']
+                                    and C.alive(proof['process']), 'First READY identity changed before reply')
+                        proofs.append(proof)
+                        result = {'port': first['port']}
+                        with bootstrap_stage(10):
+                            code = browser.poll()
+                            if code is not None:
+                                bootstrap_wrapper_exit(code)
+                            require(code is None, 'Native browser exited before first reply')
+                            browser.stdin.write((json.dumps({'id': index + 1, 'ok': True, 'result': result}) + '\n').encode())
+                            browser.stdin.flush()
+                    completed.append(operation)
+                    continue
+                elif operation == 'start-second-cold':
+                    owned_start(UNITS[1], nonblocking=True)
+                    second = until(lambda: cold(UNITS[1]), 'second actual Next healthy but unpublished')
+                    require(second['port'] != first['port'], 'Cold endpoint reused current peer endpoint')
+                    proofs.append(native_worker(C, second, plan, binding, profile, host))
+                    result = {'port': second['port'], 'admitted': False}
+                elif operation == 'admit-second':
+                    cold_state = state()
+                    require(second['id'] not in cold_state['published']['ready'], 'Cold worker publication happened before gate')
+                    access = pathlib.Path('/run/aihr-admission/access.log').read_text()
+                    cold_rows = [row for row in access.splitlines() if row.startswith('127.0.0.1:' + str(second['port']) + ' ')]
+                    require(not cold_rows, 'Cold worker served business ingress traffic')
+                    report['coldBusinessRequests'] = 0
+                    write(pathlib.Path('/run/aihr-admission/permit-' + UNITS[1]), b'owned actual admission\n')
+                    admitted = until(lambda: ready(UNITS[1]), 'second actual Next worker READY')
+                    require(admitted['id'] == second['id'] and admitted['port'] == second['port'], 'Cold generation changed during admission')
+                    proofs.append(native_worker(C, admitted, plan, binding, profile, host))
+                    result = {'port': admitted['port']}
+                else:
+                    require(first and second, 'Two actual workers were not established')
+                    result = {'accepted': True}
+                completed.append(operation)
+                browser.stdin.write((json.dumps({'id': index + 1, 'ok': True, 'result': result}) + '\n').encode())
+                browser.stdin.flush()
+            browser.stdin.close()
+            with bootstrap_stage(11) as exit_slot:
+                code = browser.wait(timeout=left(30))
+                bootstrap_wrapper_exit(code)
+                exit_slot['code'] = code
+                require(code == 0, 'Native browser final assertions or cleanup failed')
+            # No extra out-of-order control request can silently be ignored.
+            require(not buffer.strip() and not browser.stdout.read(65537).strip(), 'Unexpected native browser protocol tail')
+            browser_report = json.loads(regular(pathlib.Path(plan['evidenceDirectory'], 'native-next-boot-browser.json'), plan['runnerUid'], 2 * 1024**2))
+            require(browser_report.get('complete') is True and browser_report.get('unexpectedBrowserErrors') == 0
+                    and browser_report.get('hydratedAccountControls', 0) >= 6 and browser_report.get('nonemptyOwnPayrollView') is True
+                    and browser_report.get('servedPorts') == sorted([first['port'], second['port']])
+                    and len(browser_report.get('logins', [])) == 2, 'Actual browser functional evidence incomplete')
+            report['browser'] = {'complete': True, 'realPasswordTotpLogins': 2,
+                'hydratedAccountControls': browser_report['hydratedAccountControls'], 'unexpectedBrowserErrors': 0,
+                'homeViews': len(browser_report['home']), 'nonemptyOwnPayrollView': True,
+                'servedPorts': browser_report['servedPorts']}
+            timing = browser_report.get('firstHostRequestTiming')
+            require(type(timing) is dict and set(timing) == {'kind', 'timeoutMs', 'elapsedMs', 'outcome', 'driverFinalElapsedMs'}
+                    and timing['kind'] == 'ACTUAL_FIRST_HOST_REQUEST_TIMING_NOT_ADMISSION' and timing['outcome'] == 'returned'
+                    and type(timing['timeoutMs']) is int and 0 < timing['timeoutMs'] <= 90000
+                    and type(timing['elapsedMs']) is int and 0 <= timing['elapsedMs'] <= timing['timeoutMs']
+                    and type(timing['driverFinalElapsedMs']) is int and 0 <= timing['driverFinalElapsedMs'] <= 300000,
+                    'Native browser first request timing incomplete')
+            report['bootstrapTiming']['browserFirstRequest'] = timing
+            report['workers'] = proofs
+            report['postBrowserWorkers'] = [native_worker(C, ready(unit), plan, binding, profile, host) for unit in UNITS]
+            require(time.monotonic() < DEADLINE, 'Native bootstrap operation exceeded its original budget')
+        except BaseException as error:
+            failure = error
+            raise
+        finally:
+            errors = []
+            try:
+                if selector is not None:
+                    selector.close()
+            except BaseException as error:
+                errors.append(error)
+            try:
+                if browser is not None:
+                    code = browser.poll()
+                    if code is None:
+                        # Only this wrapper is terminated here. Existing outer
+                        # cleanup independently admits/stops its transient unit.
+                        browser.terminate()
+                        code = browser.wait(timeout=5)
+                    bootstrap_wrapper_exit(code)
+            except BaseException as error:
+                errors.append(error)
+            if errors:
+                if failure is not None:
+                    errors.insert(0, failure)
+                if len(errors) == 1:
+                    raise errors[0]
+                raise BaseExceptionGroup('Native browser operation and wrapper settlement refused', errors)
+    report['actualNextBootVerified'] = True
 
 
 def release_workers(C):
@@ -1586,6 +1759,7 @@ def cleanup(postgres_scope):
                 'Unexpected browser transient unit; preserve uncertain runtime')
         require(managed_runtime_module is not None, 'Native runtime owner missing')
         managed_runtime_module.require_owned_invocation(transient, owned_invocations.get(BROWSER), require)
+        bootstrap_service_exit(transient)
         safe.append(BROWSER)
     attempt(browser_admit)
     # Enqueue ALL independently admitted service stops before awaiting any one.
@@ -1751,7 +1925,8 @@ def runtime_command_label(arguments):
             if tail == [verb, unit] or tail == [verb, '--no-block', unit]:
                 return verb + '-' + label
         if tail in (['show', unit, '--property=LoadState,InvocationID,MainPID,ControlPID,ActiveState,SubState,ExecStart,ExecReload,FragmentPath,ControlGroup'],
-                    ['show', unit, '--property=LoadState,InvocationID,MainPID,ControlPID,ActiveState,SubState,ExecStart,ExecReload,FragmentPath,ControlGroup,UnsetEnvironment']):
+                    ['show', unit, '--property=LoadState,InvocationID,MainPID,ControlPID,ActiveState,SubState,ExecStart,ExecReload,FragmentPath,ControlGroup,UnsetEnvironment'],
+                    ['show', unit, '--property=LoadState,InvocationID,MainPID,ControlPID,ActiveState,SubState,ExecStart,ExecReload,FragmentPath,ControlGroup,UnsetEnvironment,ExecMainStartTimestampMonotonic,ExecMainExitTimestampMonotonic']):
             return 'properties-' + label
     if tail == ['show', BROWSER, '--property=Description,Transient']:
         return 'browser-owner-check'
