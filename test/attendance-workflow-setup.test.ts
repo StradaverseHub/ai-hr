@@ -59,3 +59,57 @@ it('initialises absent routing switches but preserves an explicit off switch',as
  await saveAttendanceWorkflow(ctx,{...input(),allCompanies:true,active:true});
  const [setting]=await owner.db.select().from(schema.attendanceWorkflowSetting).where(eq(schema.attendanceWorkflowSetting.companyId,b.companyId));expect(setting.enabled).toBe(false);
 });
+
+/** Real independent transactions, held until an observed advisory wait establishes the overlap.
+ * Completion alone would not establish the race: either writer could otherwise finish first. */
+describe('first all-company workflow and new company commit ordering',()=>{
+ const futureSetting=async(companyId:string,type:'irregularity'|'self_overtime')=>{
+  const rows=await owner.db.select().from(schema.attendanceWorkflowSetting).where(eq(schema.attendanceWorkflowSetting.companyId,companyId));
+  expect(rows).toEqual([expect.objectContaining({tenantId:b.tenantId,companyId,applicationType:type,enabled:true})]);
+ };
+ const waitBehind=async(pid:number)=>{
+  await expect.poll(async()=>{
+   const [state]=await owner.db.execute<{blocked:boolean}>(sql`select exists(select 1 from pg_stat_activity a where ${pid}=any(pg_blocking_pids(a.pid)) and a.wait_event_type='Lock' and a.wait_event='advisory') blocked`);
+   return state.blocked;
+  },{timeout:5000,interval:10}).toBe(true);
+ };
+ it.each(['irregularity','self_overtime'] as const)('initialises %s when the global definition commits before the waiting company',async applicationType=>{
+  const ctx=adminCtx(b);let companyWrite:Promise<{id:string}>|undefined;
+  try{
+   await withTenant(ctx,async tx=>{
+    const [backend]=await tx.execute<{pid:number}>(sql`select pg_backend_pid() pid`);
+    await tx.insert(schema.attendanceWorkflowTemplate).values({...input(),tenantId:b.tenantId,applicationType,allCompanies:true,active:true,lineageId:randomUUID(),version:1});
+    // The active definition and its initial settings are still uncommitted. A company
+    // transaction must wait, then read the committed definition rather than its old snapshot.
+    companyWrite=owner.db.transaction(async other=>{
+     await other.execute(sql`set local statement_timeout='10s'`);
+     const [row]=await other.insert(schema.company).values({tenantId:b.tenantId,legalName:'Concurrent future company',country:'MY',currency:'MYR'}).returning({id:schema.company.id});return row;
+    });
+    const observed=companyWrite.then(value=>({value}),error=>({error}));
+    await waitBehind(backend.pid);
+    expect(await owner.db.select().from(schema.attendanceWorkflowTemplate).where(eq(schema.attendanceWorkflowTemplate.code,'SETUP'))).toEqual([]);
+    // Keep a rejection handler attached while the held transaction commits or rolls back.
+    void observed;
+   });
+   const company=await companyWrite!;await futureSetting(company.id,applicationType);
+  }finally{if(companyWrite)await Promise.allSettled([companyWrite]);}
+ });
+ it.each(['irregularity','self_overtime'] as const)('initialises %s when the company commits before the waiting global definition',async applicationType=>{
+  let saving:ReturnType<typeof saveAttendanceWorkflow>|undefined;let futureId='';
+  try{
+   await owner.db.transaction(async tx=>{
+    await tx.execute(sql`set local statement_timeout='10s'`);
+    const [backend]=await tx.execute<{pid:number}>(sql`select pg_backend_pid() pid`);
+    const [company]=await tx.insert(schema.company).values({tenantId:b.tenantId,legalName:'Company before first global definition',country:'MY',currency:'MYR'}).returning({id:schema.company.id});futureId=company.id;
+    // Company creation found no active global definition, but holds both type barriers.
+    // The first active global writer must wait and then include this newly committed company.
+    saving=saveAttendanceWorkflow(adminCtx(b),{...input(),applicationType,allCompanies:true,active:true});
+    const observed=saving.then(value=>({value}),error=>({error}));
+    await waitBehind(backend.pid);
+    expect(await owner.db.select().from(schema.attendanceWorkflowTemplate).where(eq(schema.attendanceWorkflowTemplate.code,'SETUP'))).toEqual([]);
+    void observed;
+   });
+   await saving!;await futureSetting(futureId,applicationType);
+  }finally{if(saving)await Promise.allSettled([saving]);}
+ });
+});

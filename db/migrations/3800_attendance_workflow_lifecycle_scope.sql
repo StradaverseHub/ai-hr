@@ -112,6 +112,13 @@ CREATE FUNCTION app.attendance_workflow_global_setting() RETURNS trigger
 LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,app SET row_security=on AS $$
 BEGIN
  IF TG_TABLE_NAME='company' THEN
+  -- Hold both application-type barriers before reading definitions. The order is fixed;
+  -- ordinary workflow writers take only their one type barrier and never the other.
+  -- This VOLATILE trigger's INSERT/SELECT obtains a fresh READ COMMITTED snapshot after
+  -- a waited-on writer commits, so neither first-definition/first-company commit order
+  -- can miss the other's newly committed row. These locks live through company commit.
+  PERFORM pg_advisory_xact_lock(hashtextextended(NEW.tenant_id::text||':attendance-workflow-scope:irregularity',0));
+  PERFORM pg_advisory_xact_lock(hashtextextended(NEW.tenant_id::text||':attendance-workflow-scope:self_overtime',0));
   INSERT INTO public.attendance_workflow_setting(tenant_id,company_id,application_type,enabled)
    SELECT NEW.tenant_id,NEW.id,t.application_type,true FROM public.attendance_workflow_template t
    WHERE t.tenant_id=NEW.tenant_id AND t.all_companies AND t.active AND t.superseded_at IS NULL AND t.retired_at IS NULL
