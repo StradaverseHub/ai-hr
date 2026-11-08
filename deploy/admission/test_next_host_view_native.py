@@ -16,6 +16,7 @@ import stat
 import subprocess
 import sys
 import time
+import types
 
 ROOT = pathlib.Path('/var/lib/aihr-next-host-conformance')
 UNIT = 'aihr-next-host-conformance.service'
@@ -24,8 +25,11 @@ AGGREGATE = 'aihrnexthostresource.slice'
 AGGREGATE_GROUP = '/' + AGGREGATE
 UNITS = (UNIT, FOREIGN, AGGREGATE)
 RELEASE = ROOT / 'release'
-TOTAL_DEADLINE = time.monotonic() + 27
+STARTED = time.monotonic()
+TOTAL_DEADLINE = STARTED + 27
 DEADLINE = TOTAL_DEADLINE - 7  #20s conformance work +7s owned cleanup;3s transport reserve.
+PHASE_DEADLINE = STARTED + 7
+WORK_PHASE_ACTIVE = False
 ENV = {'PATH': '/usr/sbin:/usr/bin:/sbin:/bin', 'LANG': 'C', 'LC_ALL': 'C'}
 
 
@@ -42,9 +46,18 @@ def load(name, file):
 
 
 def limit(cap=3):
-    left = DEADLINE - time.monotonic()
+    frontier = min(DEADLINE, PHASE_DEADLINE) if WORK_PHASE_ACTIVE else DEADLINE
+    left = frontier - time.monotonic()
     require(left > 0, 'Host conformance aggregate deadline exceeded')
     return min(cap, left)
+
+
+def _advance_work_phase(offset):
+    global PHASE_DEADLINE
+    require(WORK_PHASE_ACTIVE and offset in (11, 13, 17, 20)
+            and STARTED + offset > PHASE_DEADLINE, 'Closed work phase transition')
+    limit()  # The previous absolute frontier must still be live.
+    PHASE_DEADLINE = STARTED + offset
 
 
 def command(*arguments, check=True, cap=3):
@@ -142,7 +155,7 @@ def resource_guard_reason(error):
             'Ancestor CPU cap is below accepted app envelope': 'ancestor-cpu-too-low'}.get(str(error), 'resource-check-refused')
 
 
-def resource_topology(N, I, invocation, files, source_hashes, preparation=None):
+def resource_topology(N, I, invocation, files, source_hashes, preparation=None, identities=None):
     """Closed observation of the UNCHANGED real resource method, not readiness."""
     aggregate = pathlib.Path('/sys/fs/cgroup' + AGGREGATE_GROUP)
     directories = [('worker', aggregate / UNIT), ('aggregate', aggregate), ('root', pathlib.Path('/sys/fs/cgroup'))]
@@ -198,7 +211,7 @@ def resource_topology(N, I, invocation, files, source_hashes, preparation=None):
     before_unit = properties(UNIT);N.require_owned_invocation(before_unit, invocation, require)
     identity = resource_process(before_unit);slice_occupants(N)
     before = capture()
-    handoff = host_admission_handoff(preparation, invocation) if preparation is not None else None
+    handoff = fresh_child_handoff(preparation, invocation, identities) if preparation is not None and identities is not None else None
     runtime = object.__new__(N.NextRuntime)
     runtime.require, runtime.secure_path, runtime.inventory = require, secure, I
     runtime.value = {'units': {UNIT: {}}, 'resourceEnvelope': {'cgroupPath': AGGREGATE_GROUP,
@@ -706,8 +719,287 @@ def cleanup(files, invocations, N, owned_root):
         remove_owned_root(owned_root, N)
 
 
+# Closed HOST-only coordination records. They never select a program/source.
+HOST_SOURCES = ('probe.py', 'next_profile.py', 'runtime_inventory.py', 'next_preparation.py',
+                'controller.py', 'next_fixture_poststart.py')
+
+
+def _host_unique_fields(pairs):
+    result = {}
+    for key, value in pairs:
+        require(key not in result, 'Duplicate host record field')
+        result[key] = value
+    return result
+
+
+def _read_host_record(name, invocation):
+    require(name in ('post-child-ready.json', 'post-child-permit.json')
+            and type(invocation) is str and re.fullmatch(r'[a-f0-9]{32}', invocation), 'Closed host record scope')
+    value = json.loads(_held_host_file(ROOT / name, 512, 0o600), object_pairs_hook=_host_unique_fields)
+    keys = {'version', 'invocation'} | ({'allowComplete'} if name == 'post-child-permit.json' else set())
+    require(type(value) is dict and set(value) == keys and type(value['version']) is int
+            and value['version'] == 1 and value['invocation'] == invocation
+            and (name != 'post-child-permit.json' or value['allowComplete'] is True), 'Host record differs')
+    return value
+
+
+def _held_host_file(file, maximum, mode=None):
+    secure(file, 0)
+    before = file.lstat()
+    require(before.st_nlink == 1 and 0 < before.st_size <= maximum
+            and (mode is None or stat.S_IMODE(before.st_mode) == mode), 'Host file custody refused')
+    fields = ('st_dev', 'st_ino', 'st_mode', 'st_uid', 'st_gid', 'st_nlink', 'st_size', 'st_mtime_ns', 'st_ctime_ns')
+    fd = os.open(file, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    try:
+        require(all(getattr(before, k) == getattr(os.fstat(fd), k) for k in fields), 'Host file replaced')
+        parts, count = [], 0
+        while count <= maximum:
+            block = os.read(fd, min(65536, maximum + 1 - count))
+            if not block:
+                break
+            parts.append(block);count += len(block)
+        require(count == before.st_size and count <= maximum
+                and all(getattr(before, k) == getattr(os.fstat(fd), k) == getattr(file.lstat(), k) for k in fields),
+                'Host file changed')
+        return b''.join(parts)
+    finally:
+        os.close(fd)
+
+
+def _bound_host_module(name, label):
+    require(name in HOST_SOURCES, 'Closed host source required')
+    raw_binding = _held_host_file(ROOT / 'source-bindings.json', 4096, 0o600)
+    binding = json.loads(raw_binding, object_pairs_hook=_host_unique_fields)
+    require(type(binding) is dict and set(binding) == set(HOST_SOURCES)
+            and all(type(v) is str and re.fullmatch(r'[a-f0-9]{64}', v) for v in binding.values()), 'Host binding refused')
+    raw = _held_host_file(ROOT / name, 256 * 1024, 0o644)
+    require(hashlib.sha256(raw).hexdigest() == binding[name], 'Host source differs')
+    value = types.ModuleType(label);value.__file__ = str(ROOT / name)
+    exec(compile(raw, value.__file__, 'exec', dont_inherit=True), value.__dict__)
+    require(_held_host_file(ROOT / name, 256 * 1024, 0o644) == raw
+            and _held_host_file(ROOT / 'source-bindings.json', 4096, 0o600) == raw_binding, 'Host source changed during import')
+    return value
+
+
+def _host_record(name, value):
+    require(name in ('post-child-ready.json', 'post-child-permit.json'), 'Closed host record required')
+    secure(ROOT, 0, directory=True)
+    file = ROOT / name
+    fd = os.open(file, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+    try:
+        raw = (json.dumps(value, sort_keys=True, separators=(',', ':')) + '\n').encode()
+        require(len(raw) <= 512 and os.write(fd, raw) == len(raw), 'Host record incomplete')
+        info = os.fstat(fd)
+        require(info.st_uid == 0 and info.st_nlink == 1 and stat.S_IMODE(info.st_mode) == 0o600, 'Host record custody differs')
+        return (info.st_dev, info.st_ino)
+    finally:
+        os.close(fd)
+
+
+def _fresh_observer():
+    require(os.geteuid() == 0 and pathlib.Path(__file__) == ROOT / 'probe.py', 'Protected host emitter required')
+    return _bound_host_module('controller.py', 'fresh_host_controller').AdmissionPhaseObserver.from_stderr()
+
+
+def poststart_fresh_child():
+    observer = _fresh_observer()
+    try:
+        with observer.stage(0):
+            secure(ROOT / 'probe.py', 0)
+    finally:
+        observer.close()
+    owner = _bound_host_module('next_fixture_poststart.py', 'fresh_host_child_owner')
+    owner._fixed_child()  # The SAME actual P owner, not a copied launcher.
+
+
+def poststart_probe_child():
+    observer = _fresh_observer()
+    try:
+        with observer.stage(0):
+            hook()
+    finally:
+        observer.close()
+    invocation = os.environ.get('INVOCATION_ID', '')
+    require(re.fullmatch(r'[a-f0-9]{32}', invocation) is not None, 'Native child invocation required')
+    signal.signal(signal.SIGTERM, signal.SIG_IGN)
+    _host_record('post-child-ready.json', {'version': 1, 'invocation': invocation})
+    permit = ROOT / 'post-child-permit.json'
+    while not os.path.lexists(permit):
+        time.sleep(.02)  # Existing native unit/outer deadlines remain owners.
+    _read_host_record('post-child-permit.json', invocation)
+
+
+def unavailable_fresh_child(code=18):
+    require(type(code) is int and 1 <= code <= 18, 'Closed fresh child refusal required')
+    return {'kind': 'ACTUAL_FRESH_CHILD_JOURNAL_AVAILABILITY_NOT_ADMISSION', 'state': 'unavailable',
+        'parentPairVerified': False, 'childPairVerified': False, 'distinctPidsObserved': False,
+        'exactDistinctArgvObserved': False, 'actualSharedEmitterTransportVerified': False,
+        'fullControllerAdmissionVerified': False, 'nextApplicationVerified': False, 'releaseEligible': False,
+        'refusalCode': code}
+
+
+def parse_fresh_child_handoff(raw, invocation, python_exe, preparation, parent_pid, child_pid):
+    _handoff_require(type(raw) is bytes and len(raw) <= 131072 and raw.endswith(b'\n')
+            and type(invocation) is str and re.fullmatch(r'[a-f0-9]{32}', invocation)
+            and type(python_exe) is str and python_exe.startswith('/usr/bin/'), 4)
+    lines = raw.splitlines();_handoff_require(0 < len(lines) < 64, 5)
+    expected = {'parent': parent_pid, 'child': child_pid}
+    _handoff_require(all(type(pid) is int and 1 < pid <= 2147483647 for pid in expected.values())
+            and parent_pid != child_pid, 16)
+    commands = {prefix + ' -I -B ' + str(ROOT / 'probe.py') + ' ' + mode: group
+        for prefix in ('/usr/bin/python3', python_exe)
+        for mode, group in (('hook-post', 'parent'), ('hook-post-child', 'child'))}
+    messages, pids = {'parent': [], 'child': []}, {'parent': [], 'child': []}
+    for line in lines:
+        try:
+            row = json.loads(line, object_pairs_hook=preparation.admission_unique_fields)
+        except ValueError:
+            raise _HandoffRefusal(6) from None
+        message = row.get('MESSAGE') if type(row) is dict else None
+        if type(message) is not str or not message.startswith(preparation.ADMISSION_PHASE_PREFIX):
+            continue
+        _handoff_require(row.get('_UID') == '0' and row.get('_EXE') == python_exe
+            and row.get('_SYSTEMD_UNIT') == UNIT and row.get('_SYSTEMD_INVOCATION_ID') == invocation
+            and row.get('_TRANSPORT') == 'stdout' and '_LINE_BREAK' not in row, 7)
+        _handoff_require(type(row.get('_CMDLINE')) is str and row['_CMDLINE'] in commands, 8)
+        _handoff_require(type(row.get('_PID')) is str and re.fullmatch(r'[1-9][0-9]{0,9}', row['_PID'])
+                and int(row['_PID']) <= 2147483647, 9)
+        group = commands[row['_CMDLINE']];messages[group].append(message);pids[group].append(int(row['_PID']))
+    parsed = {}
+    for group, code in (('parent', 10), ('child', 11)):
+        _handoff_require(len(messages[group]) == len(pids[group]) == 2 and set(pids[group]) == {expected[group]}, code)
+        try:
+            parsed[group] = preparation.parse_admission_phase_messages(messages[group], len(lines))
+        except ValueError:
+            raise _HandoffRefusal(code + 2) from None
+        rows_ = parsed[group]['events']
+        _handoff_require([r['p'] for r in rows_] == [0, 0] and [r['e'] for r in rows_] == ['enter', 'return']
+            and not parsed[group]['activeStageCodes'] and parsed[group]['traceComplete'] is False, code + 4)
+    _handoff_require(parsed['parent']['events'][-1]['t'] <= parsed['child']['events'][0]['t'], 17)
+    result = unavailable_fresh_child()
+    result.update(state='observed', parentPairVerified=True, childPairVerified=True, distinctPidsObserved=True,
+        exactDistinctArgvObserved=True, actualSharedEmitterTransportVerified=True, refusalCode=0)
+    return result
+
+
+def fresh_child_handoff(preparation, invocation, identities):
+    try:
+        python_exe = str(pathlib.Path('/usr/bin/python3').resolve(strict=True));secure(pathlib.Path(python_exe), 0)
+        deadline = time.monotonic() + limit(.5)
+        code, raw = preparation.runtime_diagnostic_read(['/usr/bin/journalctl', '--system', '--no-pager', '--quiet',
+            '--output=json', '--output-fields=_UID,_EXE,_CMDLINE,_PID,_SYSTEMD_UNIT,_SYSTEMD_INVOCATION_ID,_TRANSPORT,_LINE_BREAK,MESSAGE',
+            '--lines=64', '_SYSTEMD_UNIT=' + UNIT, '_SYSTEMD_INVOCATION_ID=' + invocation], deadline)
+        _handoff_require(code == 0, 3)
+        return parse_fresh_child_handoff(raw, invocation, python_exe, preparation,
+            identities['parent'][0], identities['child'][0])
+    except _HandoffRefusal as error:
+        return unavailable_fresh_child(error.code)
+    except BaseException:
+        return unavailable_fresh_child()
+
+
+def _bounded_host_proc(file, maximum):
+    fd = os.open(file, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    try:
+        raw = os.read(fd, maximum + 1)
+        require(0 < len(raw) <= maximum, 'Host proc read bound refused')
+        return raw
+    finally:
+        os.close(fd)
+
+
+def _host_source_custody():
+    raw = _held_host_file(ROOT / 'source-bindings.json', 4096, 0o600)
+    binding = json.loads(raw, object_pairs_hook=_host_unique_fields)
+    require(type(binding) is dict and set(binding) == set(HOST_SOURCES), 'Host source closure differs')
+    for name in HOST_SOURCES:
+        require(hashlib.sha256(_held_host_file(ROOT / name, 256 * 1024, 0o644)).hexdigest() == binding[name],
+                'Host source custody changed')
+    require(_held_host_file(ROOT / 'source-bindings.json', 4096, 0o600) == raw, 'Host source binding changed')
+    return raw
+
+
+def _post_family(N, files, invocations):
+    """Private actual proc proof, never a JSON-selected PID or exported row."""
+    source_before = _host_source_custody()
+    file = pathlib.Path('/etc/systemd/system', UNIT);secure(file, 0)
+    info = file.lstat();require((info.st_dev, info.st_ino) == files[UNIT], 'Post declaration replaced')
+    declaration = hashlib.sha256(file.read_bytes()).hexdigest()
+    actual = properties(UNIT);N.require_owned_invocation(actual, invocations[UNIT], require)
+    require(actual.get('ActiveState') == 'activating' and actual.get('SubState') == 'start-post'
+            and actual.get('KillMode') == 'control-group' and actual.get('Delegate') == 'no'
+            and actual.get('ControlGroup') == AGGREGATE_GROUP + '/' + UNIT, 'Post native phase differs')
+    main, control = int(actual['MainPID']), int(actual['ControlPID'])
+    require(main > 1 and control > 1 and main != control, 'Post native roots invalid')
+    directory = pathlib.Path('/sys/fs/cgroup' + actual['ControlGroup']);secure(directory, 0, directory=True)
+    members = (directory / 'cgroup.procs').read_text().split()
+    require(0 < len(members) <= 16 and len(set(members)) == len(members), 'Post family bound differs')
+    rows_ = {}
+    for text in members:
+        limit(.1);require(re.fullmatch(r'[1-9][0-9]{0,9}', text) is not None and 1 < int(text) <= 2147483647, 'Post PID differs')
+        proc = pathlib.Path('/proc') / text
+        raw = _bounded_host_proc(proc / 'stat', 65536)
+        fields = raw[raw.rfind(b')') + 2:].split();require(len(fields) >= 20 and fields[0] not in (b'Z', b'X'), 'Post process not live')
+        args = _bounded_host_proc(proc / 'cmdline', 65536)
+        require((proc / 'exe').resolve() == pathlib.Path('/usr/bin/python3').resolve()
+                and _bounded_host_proc(proc / 'cgroup', 65536).decode() == '0::' + actual['ControlGroup'] + '\n', 'Post executable/cgroup differs')
+        rows_[int(text)] = (int(fields[19]), int(fields[1]), proc.stat().st_uid, args)
+    require(main in rows_ and control in rows_, 'Post native roots absent')
+    argv = lambda mode: [b'/usr/bin/python3', b'-I', b'-B', os.fsencode(ROOT / 'probe.py'), mode.encode(), b'']
+    require(rows_[main][2:] == (65534, b'\0'.join(argv('app')))
+            and rows_[control][2:] == (0, b'\0'.join(argv('hook-post'))), 'Post roots differ')
+    children = [pid for pid, row in rows_.items() if row[1] == control and row[2:] == (0, b'\0'.join(argv('hook-post-child')))]
+    apps = [pid for pid, row in rows_.items() if row[1] == main and row[2:] == rows_[main][2:]]
+    require(len(children) == len(apps) == 1 and set(rows_) == {main, control, children[0], apps[0]}, 'Post family incomplete/foreign')
+    ready = ROOT / 'post-child-ready.json';ready_before = ready.lstat()
+    _read_host_record('post-child-ready.json', invocations[UNIT])
+    ready_identity = (ready_before.st_dev, ready_before.st_ino)
+    require(ready_identity == (ready.lstat().st_dev, ready.lstat().st_ino), 'Post ready record replaced')
+    after = properties(UNIT);N.require_owned_invocation(after, invocations[UNIT], require)
+    require(all(after.get(k) == actual.get(k) for k in ('MainPID', 'ControlPID', 'ControlGroup', 'ActiveState', 'SubState'))
+            and set((directory / 'cgroup.procs').read_text().split()) == set(members)
+            and hashlib.sha256(file.read_bytes()).hexdigest() == declaration, 'Post family changed')
+    for pid, row in rows_.items():
+        proc = pathlib.Path('/proc') / str(pid)
+        data = _bounded_host_proc(proc / 'stat', 65536);fields = data[data.rfind(b')') + 2:].split()
+        require(int(fields[19]) == row[0] and int(fields[1]) == row[1] and fields[0] not in (b'Z', b'X')
+                and proc.stat().st_uid == row[2] and _bounded_host_proc(proc / 'cmdline', 65536) == row[3]
+                and (proc / 'exe').resolve() == pathlib.Path('/usr/bin/python3').resolve()
+                and _bounded_host_proc(proc / 'cgroup', 65536).decode() == '0::' + actual['ControlGroup'] + '\n', 'Post process changed')
+    require(_host_source_custody() == source_before, 'Host source custody changed during process proof')
+    return {'parent': (control, rows_[control][0]), 'child': (children[0], rows_[children[0]][0]),
+            'members': {pid: row[0] for pid, row in rows_.items()}, 'readyIdentity': ready_identity}
+
+
+def _await_post_family(N, files, invocations):
+    while True:
+        try:
+            return _post_family(N, files, invocations)
+        except (FileNotFoundError, ProcessLookupError):
+            limit(.1);time.sleep(.02)
+        except AssertionError:
+            # A queued start can still be in prestart/app-fork setup. Only wait
+            # until the fixed ready record exists; never retry a failed proof.
+            if os.path.lexists(ROOT / 'post-child-ready.json'):
+                raise
+            limit(.1);time.sleep(.02)
+
+
+def _forget_record(name, invocation, identity):
+    require(name in ('post-child-ready.json', 'post-child-permit.json'), 'Closed host record disposal')
+    file = ROOT / name
+    info = file.lstat()
+    require((info.st_dev, info.st_ino) == identity, 'Host record inode changed')
+    raw = _held_host_file(file, 512, 0o600)
+    _read_host_record(name, invocation)
+    require((info.st_dev, info.st_ino) == (file.lstat().st_dev, file.lstat().st_ino), 'Host record replaced')
+    file.unlink()
+
+
+
 def main():
-    global DEADLINE
+    global DEADLINE, PHASE_DEADLINE, WORK_PHASE_ACTIVE
+    WORK_PHASE_ACTIVE = True
     os.umask(0o022)  # Dedicated synthetic public fixture; evidence stays explicit0600.
     require(os.geteuid() == 0 and len(sys.argv) == 2 and sys.platform == 'linux', 'Actual root Linux conformance required')
     require(os.environ.get('GITHUB_ACTIONS') == 'true'
@@ -737,16 +1029,20 @@ def main():
         for name, source in [('probe.py', pathlib.Path(__file__)), ('next_profile.py', pathlib.Path(__file__).with_name('next_profile.py')),
                              ('runtime_inventory.py', pathlib.Path(__file__).resolve().parents[2] / '.github/ci/runtime_inventory.py'),
                              ('next_preparation.py', pathlib.Path(__file__).with_name('test_next_native.py')),
-                             ('controller.py', pathlib.Path(__file__).with_name('controller.py'))]:
+                             ('controller.py', pathlib.Path(__file__).with_name('controller.py')),
+                             ('next_fixture_poststart.py', pathlib.Path(__file__).with_name('next_fixture_poststart.py'))]:
             data = source.read_bytes();require(0 < len(data) <= 256 * 1024, 'Bounded source closure required')
             destination = ROOT / name
             with destination.open('xb') as output:
                 output.write(data)
             destination.chmod(0o644)
             report.setdefault('sourceSha256', {})[name] = hashlib.sha256(data).hexdigest()
-        N, I = load('owned_host_view', ROOT / 'next_profile.py'), load('owned_host_inventory', ROOT / 'runtime_inventory.py')
+        binding_file = ROOT / 'source-bindings.json'
+        with binding_file.open('x') as output:
+            os.fchmod(output.fileno(), 0o600);output.write(json.dumps(report['sourceSha256']))
+        N, I = _bound_host_module('next_profile.py', 'owned_host_view'), _bound_host_module('runtime_inventory.py', 'owned_host_inventory')
         secure(ROOT / 'next_preparation.py', 0)
-        preparation = load('owned_host_next_preparation', ROOT / 'next_preparation.py')
+        preparation = _bound_host_module('next_preparation.py', 'owned_host_next_preparation')
         projection_ledger = []
         report['managerEnvironmentPreparation'] = {'kind': 'ACTUAL_SHARED_TYPED_MANAGER_PREPARATION_NOT_NEXT_OR_ADMISSION',
             'operations': projection_ledger, 'stable': False, 'hostReadCapMs': 500,
@@ -770,7 +1066,7 @@ def main():
         unit += 'Environment=AIHR_APP_WORKERS=2 AIHR_DB_TOTAL_CONNECTIONS=16 AIHR_DB_POOL_MAX=8\n'
         unit += 'ExecStartPre=+/usr/bin/python3 -I -B ' + str(ROOT / 'probe.py') + ' hook-pre\n'
         unit += 'ExecStart=/usr/bin/python3 -I -B ' + str(ROOT / 'probe.py') + ' app\n'
-        unit += 'ExecStartPost=+/usr/bin/python3 -I -B ' + str(ROOT / 'probe.py') + ' hook\n'
+        unit += 'ExecStartPost=+/usr/bin/python3 -I -B ' + str(ROOT / 'probe.py') + ' hook-post\n'
         unit += 'Slice=' + AGGREGATE + '\nDelegate=no\nCPUWeight=100\n'
         unit += 'BindReadOnlyPaths=' + str(RELEASE) + ':' + str(RELEASE) + ':norbind\n'
         unit += ''.join('BindPaths=' + row['source'] + ':' + str(RELEASE / row['target']) + ':norbind\n' for row in rows(N)[UNIT])
@@ -784,10 +1080,12 @@ def main():
         require(host_manager_snapshot(N, preparation, projection_ledger, 1) == manager_unsets,
                 'Host manager projection changed during reload')
         report['managerEnvironmentPreparation']['stable'] = True
-        def start_owned(name, check=True):
+        def start_owned(name, check=True, nonblocking=False):
+            if name == UNIT and name in invocations:
+                require(family_stopped(name), 'Previous owned generation still live')
             result, failures = None, []
             try:
-                result = command('/usr/bin/systemctl', '--system', 'start', name, check=check)
+                result = command('/usr/bin/systemctl', '--system', 'start', *(['--no-block'] if nonblocking else []), name, check=check)
             except BaseException as error:
                 failures.append(error)
             # Failed/timed-out StartUnit may already activate BOTH its service
@@ -797,9 +1095,13 @@ def main():
                     file = pathlib.Path('/etc/systemd/system', observed);info = file.lstat()
                     require((info.st_dev, info.st_ino) == files[observed] and info.st_uid == 0, 'Native start declaration changed')
                     actual = properties(observed)
+                    while nonblocking and not actual.get('InvocationID'):
+                        limit();time.sleep(.02);actual = properties(observed)
                     require(actual.get('FragmentPath') == str(file) and actual.get('DropInPaths') == '', 'Native start source differs')
                     if actual.get('InvocationID'):
                         N.require_owned_invocation(actual, actual['InvocationID'], require)
+                        if observed == AGGREGATE and observed in invocations:
+                            require(actual['InvocationID'] == invocations[observed], 'Owned slice invocation changed')
                         invocations[observed] = actual['InvocationID']
                 except BaseException as error:
                     failures.append(error)
@@ -819,15 +1121,16 @@ def main():
         require(actual_slice.get('FragmentPath') == '/etc/systemd/system/' + AGGREGATE
                 and actual_slice.get('DropInPaths') == '' and actual_slice.get('SourcePath') == ''
                 and actual_slice.get('Transient') == 'no', 'Effective aggregate source differs')
-        start_owned(UNIT)
-        started = properties(UNIT);invocations[UNIT] = started['InvocationID']
+        start_owned(UNIT, nonblocking=True)
+        first_family = _await_post_family(N, files, invocations)
+        started = properties(UNIT);N.require_owned_invocation(started, invocations[UNIT], require)
         report['initialEnvironmentObservation'], report['initialEnvironmentHookObservation'], report['initialEnvironmentKeyNameObservation'], report['initialEnvironmentPlainKeyNameObservation'] = initial_environment_observation(N, started, files, report['sourceSha256'])
         slice_state = properties(AGGREGATE)
         require(slice_state.get('ActiveState') == 'active' and slice_state.get('ControlGroup') == AGGREGATE_GROUP,
                 'Actual resource slice did not activate')
         N.require_owned_invocation(slice_state, slice_state.get('InvocationID'), require)
         invocations[AGGREGATE] = slice_state['InvocationID']
-        report['resourceTopology'] = resource_topology(N, I, started['InvocationID'], files, report['sourceSha256'], preparation)
+        report['resourceTopology'] = resource_topology(N, I, started['InvocationID'], files, report['sourceSha256'], preparation, first_family)
         report['admissionHandoff'] = report['resourceTopology']['admissionHandoff']
         require(report['resourceTopology']['resourceReady'] is True
                 and report['resourceTopology']['guardReason'] == 'resource-check-accepted',
@@ -841,8 +1144,18 @@ def main():
         with I.PinnedTree(RELEASE, require) as tree:
             host = N.immutable_cache_view(str(RELEASE), tree, rows(N), 65534, require, secure)
             require(host['overlaid'] is False and len(host['placeholders']) == 3, 'Host cold placeholders changed')
+        require(report['admissionHandoff']['state'] == 'observed', 'Fresh child journal capability unavailable')
+        require(_post_family(N, files, invocations) == first_family, 'First post family changed')
+        permit_identity = _host_record('post-child-permit.json', {'version': 1, 'invocation': invocations[UNIT], 'allowComplete': True})
+        while True:
+            admitted = properties(UNIT);N.require_owned_invocation(admitted, invocations[UNIT], require)
+            if admitted.get('ActiveState') == 'active' and admitted.get('SubState') == 'running' and admitted.get('ControlPID') == '0':
+                break
+            require(admitted.get('ActiveState') == 'activating', 'Normal post wait refused');limit();time.sleep(.02)
+        report['freshChildZeroWaitVerified'] = True
         while not all((ROOT / 'mutable' / str(index) / 'owned-native-cache').is_file() for index in range(3)):
             limit();time.sleep(0.02)
+        _advance_work_phase(11)
         before = time.monotonic()
         command('/usr/bin/systemctl', '--system', 'stop', '--no-block', UNIT)
         while not family_stopped(UNIT):
@@ -857,6 +1170,32 @@ def main():
         report['hostPlaceholderOwnership'] = [{'uid': identity[3], 'mode': stat.S_IMODE(identity[2])}
                                               for identity in host['placeholders'].values()]
         report['stopElapsedMs'] = (time.monotonic() - before) * 1000
+        _advance_work_phase(13)
+        first_invocation = invocations[UNIT]
+        _forget_record('post-child-permit.json', first_invocation, permit_identity)
+        _forget_record('post-child-ready.json', first_invocation, first_family['readyIdentity'])
+        require(family_stopped(UNIT), 'First generation not stopped before restart')
+        start_owned(UNIT, nonblocking=True)
+        require(invocations[UNIT] != first_invocation, 'Restart reused native invocation')
+        second_family = _await_post_family(N, files, invocations)
+        require(_post_family(N, files, invocations) == second_family, 'Second post family changed')
+        _advance_work_phase(17)
+        post_stop = time.monotonic()
+        command('/usr/bin/systemctl', '--system', 'stop', '--no-block', UNIT)
+        while not family_stopped(UNIT):
+            limit();time.sleep(.02)
+        require(time.monotonic() - post_stop <= 4, 'Live post family stop exceeded bound')
+        for pid, ticks in second_family['members'].items():
+            proc = pathlib.Path('/proc') / str(pid) / 'stat'
+            try:
+                data = _bounded_host_proc(proc, 65536);fields = data[data.rfind(b')') + 2:].split()
+            except FileNotFoundError:
+                continue
+            require(int(fields[19]) != ticks, 'Owned post/app process remains')
+        report['livePostFamilyStopped'] = True
+        report['livePostStopElapsedMs'] = (time.monotonic() - post_stop) * 1000
+        _forget_record('post-child-ready.json', invocations[UNIT], second_family['readyIdentity'])
+        _advance_work_phase(20)
         # A real fourth mount, not a synthetic mountinfo payload, must fail the
         # same production helper before any application command can start.
         file = pathlib.Path('/etc/systemd/system', UNIT)
@@ -890,7 +1229,8 @@ def main():
                     raise AssertionError('Unmounted writable placeholder accepted')
         finally:
             os.chown(point, 0, 0)
-        require(report['admissionHandoff']['state'] == 'observed', 'Same-PID exec journal capability unavailable')
+        require(report['admissionHandoff']['state'] == 'observed', 'Fresh child journal capability unavailable')
+        limit()
         report['complete'] = True
     except BaseException as error:
         primary = error
@@ -898,6 +1238,7 @@ def main():
         report['primaryFailure'] = 'native-assertion' if isinstance(error, AssertionError) else 'bounded-operation-refused'
     finally:
         errors = []
+        WORK_PHASE_ACTIVE = False
         try:
             cleanup(files, invocations, N, owned_root)
         except BaseException as error:
@@ -924,19 +1265,14 @@ def main():
 
 if __name__ == '__main__':
     try:
-        if len(sys.argv) == 2 and sys.argv[1] == 'hook-pre':
-            prestart_handoff()
-        elif len(sys.argv) == 2 and sys.argv[1] in ('hook', 'hook-pre-handoff'):
+        if len(sys.argv) == 2 and sys.argv[1] in ('hook-pre', 'hook-post', 'hook-post-child'):
             try:
-                if sys.argv[1] == 'hook-pre-handoff':
-                    observer = handoff_observer()
-                    try:
-                        with observer.stage(0):
-                            hook()
-                    finally:
-                        observer.close()
-                else:
+                if sys.argv[1] == 'hook-pre':
                     hook()
+                elif sys.argv[1] == 'hook-post':
+                    poststart_fresh_child()
+                else:
+                    poststart_probe_child()
             except AssertionError as error:
                 if str(error) == 'Unknown or partial managed package overlay':
                     (ROOT / 'hook-refusal.json').write_text(json.dumps({'reason': 'unknown-overlay'}))

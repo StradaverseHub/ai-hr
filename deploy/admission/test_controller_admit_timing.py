@@ -496,3 +496,51 @@ class AdmitTimingModels(unittest.TestCase):
         self.assertEqual(2*(len(json.dumps(worst).encode())-359),38)
 
 if __name__=='__main__':unittest.main()
+class FreshChildOriginModels(unittest.TestCase):
+    def rows(self):
+        result=[]
+        for mode,pid,values in [('hook-post',2345,pair(10)),('hook-post-child',2346,pair(20))]:
+            result.extend(native_rows(values,_SYSTEMD_UNIT=H.UNIT,_PID=str(pid),_CMDLINE='/usr/bin/python3 -I -B '+str(H.ROOT/'probe.py')+' '+mode))
+        return result
+
+    def parse(self,rows=None,**changes):
+        return H.parse_fresh_child_handoff(raw(self.rows() if rows is None else rows),changes.get('invocation','a'*32),'/usr/bin/python3.12',F,changes.get('parent',2345),changes.get('child',2346))
+
+    def test_fresh_origin_real_codec_requires_distinct_private_live_identities(self):
+        value=self.parse();self.assertEqual(value['kind'],'ACTUAL_FRESH_CHILD_JOURNAL_AVAILABILITY_NOT_ADMISSION')
+        self.assertTrue(value['parentPairVerified'] and value['childPairVerified'] and value['distinctPidsObserved'])
+        self.assertNotIn('samePidObserved',value);self.assertFalse(value['fullControllerAdmissionVerified'] or value['nextApplicationVerified'] or value['releaseEligible'])
+        with self.assertRaises(AssertionError):self.parse(parent=2345,child=2345)
+        with self.assertRaises(AssertionError):self.parse(parent=2347)
+
+    def test_fresh_origin_missing_duplicate_cached_pid_and_incomplete_newline_refuse(self):
+        rows=self.rows()
+        for changed in (rows[:-1],rows+[rows[0]],[dict(r,_PID='2345') for r in rows],[dict(r,_CMDLINE=rows[0]['_CMDLINE']) for r in rows],list(reversed(rows))):
+            with self.subTest(rows=len(changed)),self.assertRaises(AssertionError):self.parse(changed)
+        with self.assertRaises(AssertionError):H.parse_fresh_child_handoff(raw(rows)[:-1],'a'*32,'/usr/bin/python3.12',F,2345,2346)
+        rows=self.rows();rows[2]['MESSAGE']=pair(0)[0]
+        with self.assertRaises(AssertionError):self.parse(rows)
+
+    def test_fresh_origin_foreign_privilege_argv_linebreak_and_source_binding_refuse(self):
+        for key,value in [('_UID','65534'),('_EXE','/foreign'),('_SYSTEMD_UNIT',H.FOREIGN),('_SYSTEMD_INVOCATION_ID','b'*32),('_TRANSPORT','journal'),('_CMDLINE','foreign'),('_LINE_BREAK','pid-change')]:
+            rows=self.rows();rows[0][key]=value
+            with self.subTest(key=key),self.assertRaises(AssertionError):self.parse(rows)
+        import types
+        binding={name:'a'*64 for name in H.HOST_SOURCES}
+        with patch.object(H,'_held_host_file',side_effect=[json.dumps(binding).encode(),b'not sealed']),patch.object(H.types,'ModuleType') as module:
+            with self.assertRaises(AssertionError):H._bound_host_module('next_fixture_poststart.py','model')
+            module.assert_not_called()
+
+    def test_fresh_schedule_absolute_frontiers_and_invocation_bound_records_are_not_authority(self):
+        with patch.object(H,'TOTAL_DEADLINE',127),patch.object(H,'DEADLINE',120),patch.object(H,'PHASE_DEADLINE',107),patch.object(H,'WORK_PHASE_ACTIVE',True),patch.object(H.time,'monotonic',return_value=106.75):
+            self.assertEqual(H.limit(3),.25)
+            with patch.object(H,'STARTED',100):
+                H._advance_work_phase(11);self.assertEqual(H.PHASE_DEADLINE,111)
+                with patch.object(H.time,'monotonic',return_value=111.1),self.assertRaises(AssertionError):H._advance_work_phase(13)
+        with patch.object(H,'TOTAL_DEADLINE',127),patch.object(H,'DEADLINE',126),patch.object(H,'PHASE_DEADLINE',107),patch.object(H,'WORK_PHASE_ACTIVE',False),patch.object(H.time,'monotonic',return_value=121):
+            self.assertEqual(H.limit(3),3)  # Existing cleanup frontier remains independent.
+        for packet in [b'{"version":true,"invocation":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}',b'{"version":1,"version":1,"invocation":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}',b'{"version":1,"invocation":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}',b'{"version":1,"invocation":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","extra":0}']:
+            with patch.object(H,'_held_host_file',return_value=packet),self.assertRaises(AssertionError):H._read_host_record('post-child-ready.json','a'*32)
+        with patch.object(H,'_held_host_file',return_value=b'{"version":1,"invocation":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}'),patch.object(H.pathlib.Path,'lstat') as stat_,patch.object(H.pathlib.Path,'unlink') as unlink:
+            with self.assertRaises(AssertionError):H._forget_record('post-child-ready.json','a'*32,(stat_.return_value.st_dev,stat_.return_value.st_ino))
+            unlink.assert_not_called()

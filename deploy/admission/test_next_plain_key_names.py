@@ -15,6 +15,19 @@ import test_next_environment_observation as old
 N, P, F = old.N, old.P, old.F
 
 
+def _fresh_parent_bytes(path):
+    """Runtime inverse data only; immutable Git provenance is checked externally."""
+    inverse=json.loads((ROOT/'deploy/admission/next_controller_admit_timing_inverse.json').read_text())
+    row=inverse['files'][path];current=(ROOT/path).read_text()
+    assert hashlib.sha256(current.encode()).hexdigest()==row['currentSha256']
+    lines=current.splitlines(keepends=True)
+    for edit in row['changes']:
+        assert ''.join(lines[edit['start']:edit['end']])==edit['after']
+        lines[edit['start']:edit['end']]=edit['before'].splitlines(keepends=True)
+    parent=''.join(lines).encode();assert hashlib.sha256(parent).hexdigest()==row['originalSha256']
+    return parent
+
+
 class PlainKeyNameModels(unittest.TestCase):
     def keys(self, count=1):
         return tuple('FICTIONAL_OTHER_' + str(index) for index in range(count))
@@ -281,14 +294,14 @@ class PlainKeyNameModels(unittest.TestCase):
                 'environment_observation_counts', 'validate_environment_observation', 'key_name_digests', 'observe_owned_environment']),
                 ('deploy/admission/next_fixture_poststart.py', ['validate_phase_observation', 'validate_terminal_observation', 'main']),
                 ('deploy/admission/test_next_native.py', ['runtime_environment_journal_observation', 'runtime_journal_observation'])]:
-            before, after = nodes(original(file)), nodes((ROOT/file).read_text())
+            before, after = nodes(original(file)), nodes(_fresh_parent_bytes(file).decode() if file=='deploy/admission/next_fixture_poststart.py' else (ROOT/file).read_text())
             for name in names:self.assertEqual(after[name], before[name])
         file = 'deploy/admission/next_profile.py'
         def method(source):
             cls = next(n for n in ast.parse(source).body if isinstance(n, ast.ClassDef) and n.name == 'NextRuntime')
             return ast.get_source_segment(source, next(n for n in cls.body if isinstance(n, ast.FunctionDef) and n.name == '_environment'))
         self.assertEqual(method(original(file)), method((ROOT/file).read_text()))
-        row = inverse['unchanged37Models'];self.assertEqual(hashlib.sha256((ROOT/row['path']).read_bytes()).hexdigest(), row['sha256'])
+        row = inverse['unchanged37Models'];self.assertEqual(hashlib.sha256(_fresh_parent_bytes(row['path'])).hexdigest(), row['sha256'])
 
 
 if __name__ == '__main__':

@@ -6,6 +6,7 @@ import pathlib
 import re
 import signal
 import stat
+import subprocess
 import sys
 import time
 import types
@@ -305,6 +306,87 @@ def best_effort_observation(unit):
         signal.signal(signal.SIGALRM, old_handler)
 
 
+def _fixed_child(unit=None):
+    """Two source-closed native callers; no program/environment injection seam."""
+    installed = HELPER / 'next_fixture_poststart.py'
+    host = pathlib.Path('/var/lib/aihr-next-host-conformance')
+    own = pathlib.Path(__file__)
+    assert os.geteuid() == 0 and own.is_absolute() and own.resolve() == own
+    if own == installed:
+        assert unit in ('aihr-web@1.service', 'aihr-web@2.service') and sys.argv == [str(installed), unit]
+        argv = ['/usr/bin/python3', '-I', '-B', str(HELPER / 'controller.py'), 'admit', unit]
+    else:
+        assert own == host / 'next_fixture_poststart.py' and unit is None
+        assert sys.argv == [str(host / 'probe.py'), 'hook-post']
+        argv = ['/usr/bin/python3', '-I', '-B', str(host / 'probe.py'), 'hook-post-child']
+    invocation = os.environ.get('INVOCATION_ID', '')
+    assert re.fullmatch(r'[a-f0-9]{32}', invocation)
+    env = {'PATH': '/usr/sbin:/usr/bin:/sbin:/bin', 'LANG': 'C', 'LC_ALL': 'C', 'INVOCATION_ID': invocation}
+    child = None
+    try:
+        child = subprocess.Popen(argv, env=env, stdin=subprocess.DEVNULL, close_fds=True)
+        status = child.wait()  # The ONE original systemd post-command timer owns work.
+        assert type(status) is int and status == child.returncode
+    except BaseException as primary:
+        cleanup_errors = []
+        # A returned/reaped handle is never signalled again. A constructor that
+        # returned no handle cannot authorize a guessed PID. Native KillMode is
+        # still the family owner if exceptional settlement is unavailable.
+        if child is not None and child.returncode is None:
+            deadline = time.monotonic() + 2
+            try:
+                child.terminate()
+            except BaseException as error:
+                cleanup_errors.append(error)
+            try:
+                remaining = deadline - time.monotonic()
+                if remaining > 0:
+                    child.wait(timeout=min(1, remaining))
+            except BaseException as error:
+                cleanup_errors.append(error)
+            if child.returncode is None:
+                try:
+                    child.kill()
+                except BaseException as error:
+                    cleanup_errors.append(error)
+                try:
+                    remaining = deadline - time.monotonic()
+                    if remaining > 0:
+                        child.wait(timeout=remaining)
+                except BaseException as error:
+                    cleanup_errors.append(error)
+        # No raw exception, argv, environment or output is reflected. Neither a
+        # missing handle nor an uncertain reap can become a successful relay.
+        failures = (primary, *cleanup_errors)  # Preserve independent failures privately.
+        try:
+            os.write(2, b'Fixed post-start child refused\n')
+        except BaseException:
+            pass
+        finally:
+            os._exit(1)
+    if 0 <= status <= 255:
+        os._exit(status)
+    try:
+        signum = -status
+        nonterminal = {signal.SIGCHLD, signal.SIGCONT, signal.SIGURG, signal.SIGWINCH,
+                       signal.SIGSTOP, signal.SIGTSTP, signal.SIGTTIN, signal.SIGTTOU}
+        assert status < 0 and signum in signal.valid_signals() and signum not in nonterminal
+        if signum != signal.SIGKILL:
+            signal.signal(signum, signal.SIG_DFL)
+            signal.pthread_sigmask(signal.SIG_UNBLOCK, {signum})
+        os.kill(os.getpid(), signum)  # Own process only, after the actual child reap.
+    except BaseException:
+        pass
+    # A genuine unblocked terminal self-signal cannot return here. A failed or
+    # returning delivery is failure1, never a fabricated signal-class success.
+    try:
+        os.write(2, b'Fixed post-start signal relay refused\n')
+    except BaseException:
+        pass
+    os._exit(1)
+
+
+
 def main():
     assert os.geteuid() == 0 and len(sys.argv) == 2
     unit = sys.argv[1]
@@ -322,10 +404,7 @@ def main():
     except BaseException:
         pass
     finally:
-        os.execve('/usr/bin/python3', ['/usr/bin/python3', '-I', '-B',
-            '/usr/local/lib/aihr-admission/controller.py', 'admit', unit],
-            {'PATH': '/usr/sbin:/usr/bin:/sbin:/bin', 'LANG': 'C', 'LC_ALL': 'C',
-             'INVOCATION_ID': os.environ['INVOCATION_ID']})
+        _fixed_child(unit)
 
 
 if __name__ == '__main__':

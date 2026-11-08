@@ -35,6 +35,19 @@ def raw(values):
     return b''.join(key.encode() + b'=' + value.encode() + b'\0' for key, value in values.items())
 
 
+def _fresh_parent_bytes(path):
+    """Runtime inverse data only; immutable Git provenance is checked externally."""
+    inverse=json.loads((ROOT/'deploy/admission/next_controller_admit_timing_inverse.json').read_text())
+    row=inverse['files'][path];current=(ROOT/path).read_text()
+    assert hashlib.sha256(current.encode()).hexdigest()==row['currentSha256']
+    lines=current.splitlines(keepends=True)
+    for edit in row['changes']:
+        assert ''.join(lines[edit['start']:edit['end']])==edit['after']
+        lines[edit['start']:edit['end']]=edit['before'].splitlines(keepends=True)
+    parent=''.join(lines).encode();assert hashlib.sha256(parent).hexdigest()==row['originalSha256']
+    return parent
+
+
 class EnvironmentObservationModels(unittest.TestCase):
     def expected(self):
         return dict(pid=42, invocation='a'*32, uid=65534, executable='/owned/node', cwd='/owned/release',
@@ -232,6 +245,9 @@ class EnvironmentObservationModels(unittest.TestCase):
             self.assertEqual(calls[-2:], [('timer', (signal.ITIMER_REAL, 0)), ('handler', (signal.SIGALRM, signal.SIG_DFL))])
 
     def test_even_keyboard_interrupt_in_observation_executes_original_scrubbed_admission(self):
+        # The exact historical exec course is checked after a genuine whole rewind.
+        P=types.ModuleType('historical_ffe8_poststart');P.__file__=str(ROOT/'deploy/admission/next_fixture_poststart.py')
+        exec(compile(_fresh_parent_bytes('deploy/admission/next_fixture_poststart.py'),P.__file__,'exec'),P.__dict__)
         class ExecObserved(BaseException):
             pass
         info = types.SimpleNamespace(st_uid=0, st_nlink=1, st_mode=0o600)
@@ -402,7 +418,7 @@ class PhaseDiagnosticModels(unittest.TestCase):
         reduced='\n'.join(line for line in current.split('\n') if 'if _phase is not None: _phase(' not in line).replace(', *, _phase=None):', '):')
         self.assertEqual(reduced, original)
         name='deploy/admission/test_next_native.py';self.assertEqual(function((ROOT/name).read_text(),'runtime_environment_journal_observation'),function(originals[name],'runtime_environment_journal_observation'))
-        name='deploy/admission/next_fixture_poststart.py';self.assertEqual(function((ROOT/name).read_text(),'main'),function(originals[name],'main'))
+        name='deploy/admission/next_fixture_poststart.py';self.assertEqual(function(_fresh_parent_bytes(name).decode(),'main'),function(originals[name],'main'))
 
     def test_actual_post_write_async_abort_cannot_publish_a_second_terminal_frame(self):
         inverse=json.loads((ROOT/'deploy/admission/next_phase_terminal_latch_inverse.json').read_text())
@@ -646,7 +662,7 @@ class KeyNameDigestModels(unittest.TestCase):
             tree=ast.parse(text);return {node.name:ast.get_source_segment(text,node) for node in tree.body if isinstance(node,ast.FunctionDef)}
         for name,names in [('deploy/admission/next_profile.py',['environment_observation_values','environment_observation_counts','validate_environment_observation','forbidden_environment']),
                 ('deploy/admission/next_fixture_poststart.py',['validate_phase_observation','main']),('deploy/admission/test_next_native.py',['runtime_environment_journal_observation','runtime_journal_observation'])]:
-            old,new=functions(original(name)),functions((ROOT/name).read_text())
+            old,new=functions(original(name)),functions(_fresh_parent_bytes(name).decode() if name=='deploy/admission/next_fixture_poststart.py' else (ROOT/name).read_text())
             for function in names:self.assertEqual(new[function],old[function])
         old=ast.parse(original('deploy/admission/next_profile.py'));new=ast.parse((ROOT/'deploy/admission/next_profile.py').read_text())
         runtime=lambda tree:next(node for node in tree.body if isinstance(node,ast.ClassDef) and node.name=='NextRuntime')
@@ -659,6 +675,90 @@ class KeyNameDigestModels(unittest.TestCase):
         self.assertNotIn('os.environ',digest);self.assertNotIn('getenvironment',digest);self.assertNotIn('environment_process_read',digest)
         function=ast.parse(digest).body[0];self.assertEqual([arg.arg for arg in function.args.args],['keys','expected_count'])
         self.assertFalse(any(isinstance(node,ast.Attribute) and node.attr=='values' for node in ast.walk(function)))
+
+
+
+class FreshChildOwnerModels(unittest.TestCase):
+    """Fake stdlib handles only; no native unit/process/admission claim."""
+    class ExitObserved(BaseException):
+        def __init__(self, code):self.code=code
+
+    def exercise(self, status=0, *, host=False, failure=None, cleanup=(), terminate_failure=None, kill_failure=None):
+        events=[]
+        class Child:
+            returncode=None
+            def wait(child, timeout=None):
+                events.append(('wait', timeout))
+                if timeout is None and failure is not None:raise failure
+                if timeout is not None and cleanup:
+                    outcome=cleanup[min(sum(e[0]=='wait' and e[1] is not None for e in events)-1,len(cleanup)-1)]
+                    if isinstance(outcome,BaseException):raise outcome
+                child.returncode=status;return status
+            def terminate(child):
+                events.append(('terminate',))
+                if terminate_failure:raise terminate_failure
+            def kill(child):
+                events.append(('kill',))
+                if kill_failure:raise kill_failure
+        child=Child()
+        own='/var/lib/aihr-next-host-conformance/next_fixture_poststart.py' if host else '/usr/local/lib/aihr-admission/next_fixture_poststart.py'
+        argv=['/var/lib/aihr-next-host-conformance/probe.py','hook-post'] if host else [own,F.UNITS[0]]
+        def exit_(code):raise self.ExitObserved(code)
+        with patch.object(P,'__file__',own),patch.object(P.os,'geteuid',return_value=0),patch.object(P.pathlib.Path,'resolve',side_effect=lambda *a,**k:pathlib.Path(own)),patch.object(P.sys,'argv',argv),patch.dict(P.os.environ,{'INVOCATION_ID':'a'*32,'PRIVATE_KEY':'fictional'},clear=True),patch.object(P.subprocess,'Popen',return_value=child) as spawn,patch.object(P.os,'_exit',side_effect=exit_),patch.object(P.os,'write') as write,patch.object(P.os,'kill') as kill,patch.object(P.signal,'signal') as disposition,patch.object(P.signal,'pthread_sigmask') as mask:
+            with self.assertRaises(self.ExitObserved) as caught:P._fixed_child(None if host else F.UNITS[0])
+        return caught.exception.code,events,spawn,write,kill,disposition,mask
+
+    def test_fresh_owner_exact_two_fixed_contexts_and_inherited_stream_flags(self):
+        for host in (False,True):
+            result,events,spawn,*_=self.exercise(host=host)
+            self.assertEqual(result,0);self.assertEqual(events,[('wait',None)])
+            argv=spawn.call_args.args[0]
+            self.assertEqual(argv,['/usr/bin/python3','-I','-B','/var/lib/aihr-next-host-conformance/probe.py','hook-post-child'] if host else ['/usr/bin/python3','-I','-B','/usr/local/lib/aihr-admission/controller.py','admit',F.UNITS[0]])
+            self.assertEqual(spawn.call_args.kwargs,{'env':{'PATH':'/usr/sbin:/usr/bin:/sbin:/bin','LANG':'C','LC_ALL':'C','INVOCATION_ID':'a'*32},'stdin':P.subprocess.DEVNULL,'close_fds':True})
+
+    def test_fresh_owner_zero_and_nonzero_status_are_exact_after_reap(self):
+        for status in (0,1,17,255):
+            result,events,spawn,write,*_=self.exercise(status)
+            self.assertEqual(result,status);self.assertEqual(events,[('wait',None)]);self.assertEqual(spawn.call_count,1);write.assert_not_called()
+
+    def test_fresh_owner_terminal_signals_never_become_numeric_success(self):
+        for sig in (signal.SIGTERM,signal.SIGKILL):
+            result,events,spawn,write,kill,disposition,mask=self.exercise(-sig)
+            self.assertEqual(result,1)  # A returning fake kill is explicitly unavailable.
+            kill.assert_called_once_with(os.getpid(),sig)
+            if sig==signal.SIGKILL:disposition.assert_not_called();mask.assert_not_called()
+            else:disposition.assert_called_once_with(sig,signal.SIG_DFL);mask.assert_called_once_with(signal.SIG_UNBLOCK,{sig})
+        for status in (-signal.SIGSTOP,-signal.SIGCHLD,-999,True,None,256):
+            result,events,spawn,write,kill,*_=self.exercise(status)
+            self.assertEqual(result,1);kill.assert_not_called()
+
+    def test_fresh_owner_observation_baseexception_still_invokes_current_child_once(self):
+        class Called(BaseException):pass
+        info=types.SimpleNamespace(st_uid=0,st_nlink=1,st_mode=0o600)
+        for failure in (KeyboardInterrupt('private'),SystemExit(7),TimeoutError('private')):
+            with patch.object(P.os,'geteuid',return_value=0),patch.object(P.sys,'argv',['fixed',F.UNITS[0]]),patch.object(pathlib.Path,'exists',return_value=True),patch.object(pathlib.Path,'lstat',return_value=info),patch.object(pathlib.Path,'is_symlink',return_value=False),patch.object(pathlib.Path,'is_file',return_value=True),patch.object(P,'best_effort_observation',side_effect=failure),patch.object(P,'_fixed_child',side_effect=Called) as launch:
+                with self.assertRaises(Called):P.main()
+                launch.assert_called_once_with(F.UNITS[0])
+
+    def test_fresh_owner_wait_interrupt_and_secondary_failures_still_attempt_kill_and_reap(self):
+        for failure in (KeyboardInterrupt('private'),SystemExit(9),OSError('private')):
+            result,events,spawn,*_=self.exercise(failure=failure,cleanup=(P.subprocess.TimeoutExpired('fixed',1),0))
+            self.assertEqual(result,1);self.assertEqual([e[0] for e in events],['wait','terminate','wait','kill','wait']);self.assertEqual(spawn.call_count,1)
+            self.assertTrue(0<events[2][1]<=1 and 0<events[4][1]<=2)
+        result,events,*_=self.exercise(failure=KeyboardInterrupt(),cleanup=(KeyboardInterrupt(),KeyboardInterrupt()))
+        self.assertEqual(result,1);self.assertIn(('kill',),events)
+        for term,kill in ((OSError('private terminate'),None),(KeyboardInterrupt(),OSError('private kill'))):
+            result,events,*_=self.exercise(failure=KeyboardInterrupt(),cleanup=(KeyboardInterrupt(),KeyboardInterrupt()),terminate_failure=term,kill_failure=kill)
+            self.assertEqual(result,1);self.assertEqual([e[0] for e in events],['wait','terminate','wait','kill','wait'])
+
+    def test_fresh_owner_refuses_foreign_context_and_constructor_failure_without_retry(self):
+        with patch.object(P.os,'geteuid',return_value=0),patch.object(P.subprocess,'Popen') as spawn:
+            with self.assertRaises(AssertionError):P._fixed_child('arbitrary')
+            spawn.assert_not_called()
+        own='/usr/local/lib/aihr-admission/next_fixture_poststart.py'
+        with patch.object(P,'__file__',own),patch.object(P.pathlib.Path,'resolve',return_value=pathlib.Path(own)),patch.object(P.os,'geteuid',return_value=0),patch.object(P.sys,'argv',[own,F.UNITS[0]]),patch.dict(P.os.environ,{'INVOCATION_ID':'a'*32},clear=True),patch.object(P.subprocess,'Popen',side_effect=OSError('private')) as spawn,patch.object(P.os,'write') as write,patch.object(P.os,'_exit',side_effect=self.ExitObserved) as exit_:
+            with self.assertRaises(self.ExitObserved):P._fixed_child(F.UNITS[0])
+            self.assertEqual(spawn.call_count,1);exit_.assert_called_once_with(1);write.assert_called_once_with(2,b'Fixed post-start child refused\n')
 
 
 if __name__ == '__main__':

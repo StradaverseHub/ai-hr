@@ -138,13 +138,15 @@ test('host cache conformance owns a distinct complete host-only source-bound sin
  assert.deepEqual(f.unit.singleton,{version:1,profile:'linux-systemd-nginx-v1',workers:1,isolation:'job-host'});
  assert.equal(nativeNextUnit(f.unit),false);assert.equal(singletonJobName(f.unit),`test (${f.unit.id})`);
  validateSingletonHost(f);validateSingletonBinding(f.binding,f.plan,f.unit,f.witness);
- const required=['deploy/admission/test_next_host_view_native.py','deploy/admission/test_next_native.py','deploy/admission/next_profile.py','.github/ci/runtime_inventory.py','deploy/admission/controller.py',
+ const required=['deploy/admission/test_next_host_view_native.py','deploy/admission/next_fixture_poststart.py','deploy/admission/test_next_native.py','deploy/admission/next_profile.py','.github/ci/runtime_inventory.py','deploy/admission/controller.py',
   '.github/ci/singleton-profiles.mjs','.github/ci/run-unit.mjs','.github/ci/plan.mjs','.github/ci/manifest.mjs',
   '.github/ci/candidate-environment.mjs','.github/actions/setup-alpha/action.yml','.github/workflows/alpha-staging.yml','scripts/gate-db-classify.ts'];
  for(const source of required){
   assert(singletonSources(f.unit).includes(source));
   const changed=structuredClone(f.binding);delete changed.sourceHashes[source];
   assert.throws(()=>validateSingletonBinding(changed,f.plan,f.unit,f.witness));
+  const tampered=structuredClone(f.binding);tampered.sourceHashes[source]='0'.repeat(64);
+  assert.throws(()=>validateSingletonBinding(tampered,f.plan,f.unit,f.witness));
  }
  const borrowed=fixture();assert.notEqual(f.unit.id,borrowed.unit.id);
  assert.throws(()=>validateSingletonBinding(borrowed.binding,f.plan,f.unit,f.witness));

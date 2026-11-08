@@ -53,7 +53,7 @@ export function singletonSources(unit){
  return [unit.files[0],'test/helpers/ci-singleton-admission.ts','.github/ci/singleton-protocol.mjs','.github/ci/policy-version.mjs',
   'vitest.config.ts','vitest.nodb.config.ts',...(unit.kind==='db'?['test/db-names.ts','test/global-setup.ts','test/env.ts']:['deploy/admission/test_native.py']),
   ...(unit.files[0]==='test/runtime-next-host-view-native.test.ts'?[
-   'deploy/admission/test_next_host_view_native.py','deploy/admission/test_next_native.py','deploy/admission/next_profile.py','.github/ci/runtime_inventory.py','deploy/admission/controller.py',
+   'deploy/admission/test_next_host_view_native.py','deploy/admission/next_fixture_poststart.py','deploy/admission/test_next_native.py','deploy/admission/next_profile.py','.github/ci/runtime_inventory.py','deploy/admission/controller.py',
    '.github/ci/singleton-profiles.mjs','.github/ci/run-unit.mjs','.github/ci/plan.mjs','.github/ci/manifest.mjs',
    '.github/ci/candidate-environment.mjs','.github/actions/setup-alpha/action.yml','.github/workflows/alpha-staging.yml',
    'scripts/gate-db-classify.ts']:[]),

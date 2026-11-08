@@ -1,11 +1,11 @@
 {
   "kind": "EXACT_SOURCE_CENSUS_NOT_EXECUTED_CASE_EVENTS",
-  "base": "615274a2556686946610c66ccd1422506338946c",
-  "sourceRef": "codex/next-host-handoff-refusal-20261109",
+  "base": "ffe8ced4d5ef226aad2da56d11a35483ffa35728",
+  "sourceRef": "codex/next-poststart-fresh-child-20261109",
   "focusedFiles": 10,
   "focusedWrappers": 14,
-  "underlying": 323,
-  "python": 275,
+  "underlying": 333,
+  "python": 285,
   "nodeTap": 45,
   "directVm": 3,
   "pythonOrder": "standard unittest prefix test (NOT test_), class-name then method-name sort; no per-case event claim before actual Actions",
@@ -17,190 +17,220 @@
         {
           "class": "EnvironmentObservationModels",
           "method": "test_closed_receiver_rejects_extra_missing_unknown_labels_and_inconsistent_counts",
-          "line": 174
+          "line": 187
         },
         {
           "class": "EnvironmentObservationModels",
           "method": "test_even_keyboard_interrupt_in_observation_executes_original_scrubbed_admission",
-          "line": 234
+          "line": 247
         },
         {
           "class": "EnvironmentObservationModels",
           "method": "test_exact_known_vocabulary_and_always_allowed_locale_labels",
-          "line": 95
-        },
-        {
-          "class": "EnvironmentObservationModels",
-          "method": "test_expired_native_read_never_opens_additional_environment_data",
-          "line": 250
-        },
-        {
-          "class": "EnvironmentObservationModels",
-          "method": "test_fixed_journal_message_fits_existing_bounds_with_all_known_labels",
-          "line": 213
-        },
-        {
-          "class": "EnvironmentObservationModels",
-          "method": "test_foreign_principal_invocation_command_cgroup_and_pid_reuse_refuse",
-          "line": 158
-        },
-        {
-          "class": "EnvironmentObservationModels",
-          "method": "test_journal_duplicate_records_duplicate_keys_and_extra_payload_fields_refuse",
-          "line": 196
-        },
-        {
-          "class": "EnvironmentObservationModels",
-          "method": "test_malformed_utf8_missing_nul_empty_duplicate_and_oversized_sources_refuse",
-          "line": 129
-        },
-        {
-          "class": "EnvironmentObservationModels",
-          "method": "test_native_owner_authority_requires_both_custody_checks_and_stable_pinned_process",
-          "line": 151
-        },
-        {
-          "class": "EnvironmentObservationModels",
-          "method": "test_observation_budget_and_telemetry_failures_cancel_timer_and_restore_handler",
-          "line": 221
-        },
-        {
-          "class": "EnvironmentObservationModels",
-          "method": "test_original_controller_literal_branch_does_not_accept_helper_observation_as_admission",
-          "line": 207
-        },
-        {
-          "class": "EnvironmentObservationModels",
-          "method": "test_original_environment_guard_still_refuses_known_unknown_and_forbidden_fields",
-          "line": 135
-        },
-        {
-          "class": "EnvironmentObservationModels",
-          "method": "test_pure_counts_never_claim_process_or_source_authority",
           "line": 108
         },
         {
           "class": "EnvironmentObservationModels",
+          "method": "test_expired_native_read_never_opens_additional_environment_data",
+          "line": 266
+        },
+        {
+          "class": "EnvironmentObservationModels",
+          "method": "test_fixed_journal_message_fits_existing_bounds_with_all_known_labels",
+          "line": 226
+        },
+        {
+          "class": "EnvironmentObservationModels",
+          "method": "test_foreign_principal_invocation_command_cgroup_and_pid_reuse_refuse",
+          "line": 171
+        },
+        {
+          "class": "EnvironmentObservationModels",
+          "method": "test_journal_duplicate_records_duplicate_keys_and_extra_payload_fields_refuse",
+          "line": 209
+        },
+        {
+          "class": "EnvironmentObservationModels",
+          "method": "test_malformed_utf8_missing_nul_empty_duplicate_and_oversized_sources_refuse",
+          "line": 142
+        },
+        {
+          "class": "EnvironmentObservationModels",
+          "method": "test_native_owner_authority_requires_both_custody_checks_and_stable_pinned_process",
+          "line": 164
+        },
+        {
+          "class": "EnvironmentObservationModels",
+          "method": "test_observation_budget_and_telemetry_failures_cancel_timer_and_restore_handler",
+          "line": 234
+        },
+        {
+          "class": "EnvironmentObservationModels",
+          "method": "test_original_controller_literal_branch_does_not_accept_helper_observation_as_admission",
+          "line": 220
+        },
+        {
+          "class": "EnvironmentObservationModels",
+          "method": "test_original_environment_guard_still_refuses_known_unknown_and_forbidden_fields",
+          "line": 148
+        },
+        {
+          "class": "EnvironmentObservationModels",
+          "method": "test_pure_counts_never_claim_process_or_source_authority",
+          "line": 121
+        },
+        {
+          "class": "EnvironmentObservationModels",
           "method": "test_root_helper_journal_branch_requires_exact_source_and_native_metadata",
-          "line": 186
+          "line": 199
         },
         {
           "class": "EnvironmentObservationModels",
           "method": "test_unknown_keys_values_and_prefix_variants_remain_aggregate_only",
-          "line": 119
+          "line": 132
         },
         {
           "class": "EnvironmentObservationModels",
           "method": "test_unknown_or_changed_custody_never_yields_a_native_success",
-          "line": 164
+          "line": 177
+        },
+        {
+          "class": "FreshChildOwnerModels",
+          "method": "test_fresh_owner_exact_two_fixed_contexts_and_inherited_stream_flags",
+          "line": 711
+        },
+        {
+          "class": "FreshChildOwnerModels",
+          "method": "test_fresh_owner_observation_baseexception_still_invokes_current_child_once",
+          "line": 735
+        },
+        {
+          "class": "FreshChildOwnerModels",
+          "method": "test_fresh_owner_refuses_foreign_context_and_constructor_failure_without_retry",
+          "line": 754
+        },
+        {
+          "class": "FreshChildOwnerModels",
+          "method": "test_fresh_owner_terminal_signals_never_become_numeric_success",
+          "line": 724
+        },
+        {
+          "class": "FreshChildOwnerModels",
+          "method": "test_fresh_owner_wait_interrupt_and_secondary_failures_still_attempt_kill_and_reap",
+          "line": 743
+        },
+        {
+          "class": "FreshChildOwnerModels",
+          "method": "test_fresh_owner_zero_and_nonzero_status_are_exact_after_reap",
+          "line": 719
         },
         {
           "class": "KeyNameDigestModels",
           "method": "test_closed_key_codec_rejects_boolean_count_unknown_state_extra_raw_data_and_bad_hash_sets",
-          "line": 509
+          "line": 525
         },
         {
           "class": "KeyNameDigestModels",
           "method": "test_complete_zero_one_four_and_strict_utf8_names_never_encode_values_or_known_names",
-          "line": 487
+          "line": 503
         },
         {
           "class": "KeyNameDigestModels",
           "method": "test_host_component_six_hooks_and_canary_data_cannot_be_a_full_worker_terminal",
-          "line": 631
+          "line": 647
         },
         {
           "class": "KeyNameDigestModels",
           "method": "test_malformed_duplicate_wrong_subject_count_or_prefix_terminal_preserves_old_v1_observation",
-          "line": 578
+          "line": 594
         },
         {
           "class": "KeyNameDigestModels",
           "method": "test_missing_native_environment_or_unfinished_helper_never_publishes_digest_authority",
-          "line": 569
+          "line": 585
         },
         {
           "class": "KeyNameDigestModels",
           "method": "test_native_capture_seam_uses_one_existing_environ_read_and_keys_only_before_postchecks",
-          "line": 519
+          "line": 535
         },
         {
           "class": "KeyNameDigestModels",
           "method": "test_overflow_has_no_prefix_and_duplicate_collision_mismatch_or_surrogate_refuses",
-          "line": 501
+          "line": 517
         },
         {
           "class": "KeyNameDigestModels",
           "method": "test_source_sealed_terminal_joins_real_shaped_v1_and_counts_each_record_only_once",
-          "line": 559
+          "line": 575
         },
         {
           "class": "KeyNameDigestModels",
           "method": "test_terminal_v2_keeps_fourteen_rows_fifteen_messages_and_original_phase_codec",
-          "line": 545
+          "line": 561
         },
         {
           "class": "KeyNameDigestModels",
           "method": "test_unavailable_overflow_is_finished_metadata_not_hash_or_readiness_success",
-          "line": 591
+          "line": 607
         },
         {
           "class": "KeyNameDigestModels",
           "method": "test_v2_terminal_uncertain_write_and_actual_post_try_abort_cannot_publish_a_second_terminal",
-          "line": 598
+          "line": 614
         },
         {
           "class": "KeyNameDigestModels",
           "method": "test_whole_native_guards_v1_codecs_original_exec_and_single_read_are_source_exact",
-          "line": 640
+          "line": 656
         },
         {
           "class": "PhaseDiagnosticModels",
           "method": "test_actual_post_write_async_abort_cannot_publish_a_second_terminal_frame",
-          "line": 407
+          "line": 423
         },
         {
           "class": "PhaseDiagnosticModels",
           "method": "test_actual_tracker_emits_exact_bounded_closed_order_without_native_authority",
-          "line": 276
+          "line": 292
         },
         {
           "class": "PhaseDiagnosticModels",
           "method": "test_bad_phase_ledgers_and_optional_receiver_failure_never_discard_original_valid_observation",
-          "line": 343
+          "line": 359
         },
         {
           "class": "PhaseDiagnosticModels",
           "method": "test_census_preserves_untrusted_controller_foreign_and_missing_metadata_without_reflection",
-          "line": 331
+          "line": 347
         },
         {
           "class": "PhaseDiagnosticModels",
           "method": "test_closed_failure_families_never_publish_private_errors_or_extra_fields",
-          "line": 296
+          "line": 312
         },
         {
           "class": "PhaseDiagnosticModels",
           "method": "test_every_original_native_check_and_environment_validator_remains_whole_source_exact",
-          "line": 362
+          "line": 378
         },
         {
           "class": "PhaseDiagnosticModels",
           "method": "test_partial_write_expiry_and_occupied_timer_never_retry_or_start_more_observation",
-          "line": 307
+          "line": 323
         },
         {
           "class": "PhaseDiagnosticModels",
           "method": "test_real_best_effort_failure_reports_only_its_entered_phase_and_restores_original_timer",
-          "line": 319
+          "line": 335
         },
         {
           "class": "PhaseDiagnosticModels",
           "method": "test_shared_native_hook_subsequence_is_exact_and_never_a_full_helper_ledger",
-          "line": 353
+          "line": 369
         }
       ],
-      "count": 37
+      "count": 43
     },
     {
       "wrapper": "test/runtime-next-host-view.test.ts",
@@ -438,127 +468,127 @@
         {
           "class": "PlainKeyNameModels",
           "method": "test65_unicode_whitespace_punctuation_and_escaped_names_are_all_or_nothing",
-          "line": 62
-        },
-        {
-          "class": "PlainKeyNameModels",
-          "method": "test_allowed_private_and_fixed_vocabulary_names_never_enter_plain_payload",
           "line": 75
         },
         {
           "class": "PlainKeyNameModels",
+          "method": "test_allowed_private_and_fixed_vocabulary_names_never_enter_plain_payload",
+          "line": 88
+        },
+        {
+          "class": "PlainKeyNameModels",
           "method": "test_ascii_standard_grammar_accepts_one_and_exact64_without_escaping",
-          "line": 56
+          "line": 69
         },
         {
           "class": "PlainKeyNameModels",
           "method": "test_closed_plain_codec_rejects_extra_fields_wrong_types_duplicates_unsorted_or_partial",
-          "line": 105
+          "line": 118
         },
         {
           "class": "PlainKeyNameModels",
           "method": "test_closed_v3_validator_requires_original_finished_phase_and_digest_pairing",
-          "line": 146
+          "line": 159
         },
         {
           "class": "PlainKeyNameModels",
           "method": "test_complete_zero_one_four_are_explicit_sorted_names_with_old_digest_pairing",
-          "line": 47
+          "line": 60
         },
         {
           "class": "PlainKeyNameModels",
           "method": "test_composed_receipt_replays_every_byte_and_preserves_all_frozen_parent_preimages",
-          "line": 250
+          "line": 263
         },
         {
           "class": "PlainKeyNameModels",
           "method": "test_duplicate_malformed_or_count_mismatched_v3_keeps_old_v1_but_not_names",
-          "line": 194
+          "line": 207
         },
         {
           "class": "PlainKeyNameModels",
           "method": "test_forbidden_other_name_suppresses_entire_plain_set_without_losing_old_hashes",
-          "line": 67
+          "line": 80
         },
         {
           "class": "PlainKeyNameModels",
           "method": "test_foreign_native_metadata_and_helper_command_cannot_publish",
-          "line": 187
+          "line": 200
         },
         {
           "class": "PlainKeyNameModels",
           "method": "test_full14_phase_same_v1_receiver_publishes_names_as_diagnostic_only",
-          "line": 154
+          "line": 167
         },
         {
           "class": "PlainKeyNameModels",
           "method": "test_mapping_views_lists_and_duplicate_tuple_cannot_smuggle_value_capability",
-          "line": 91
+          "line": 104
         },
         {
           "class": "PlainKeyNameModels",
           "method": "test_missing_v1_cannot_turn_a_genuine_v3_phase_ledger_into_publication",
-          "line": 170
+          "line": 183
         },
         {
           "class": "PlainKeyNameModels",
           "method": "test_native_same_read_tuple_seam_keeps_values_private_and_single_environ_read",
-          "line": 113
+          "line": 126
         },
         {
           "class": "PlainKeyNameModels",
           "method": "test_old_v2_packets_retain_hash_diagnostic_without_plain_name_publication",
-          "line": 175
+          "line": 188
         },
         {
           "class": "PlainKeyNameModels",
           "method": "test_overflow_five_or_unavailable_original_digest_never_leaks_a_prefix",
-          "line": 86
+          "line": 99
         },
         {
           "class": "PlainKeyNameModels",
           "method": "test_partial_phase_ledger_or_lone_terminal_cannot_publish_plain_names",
-          "line": 181
+          "line": 194
         },
         {
           "class": "PlainKeyNameModels",
           "method": "test_source_bound_pure_codec_has_no_environment_or_value_access",
-          "line": 125
+          "line": 138
         },
         {
           "class": "PlainKeyNameModels",
           "method": "test_unavailable_plain_preserves_genuine_v1_and_digest_success",
-          "line": 164
+          "line": 177
         },
         {
           "class": "PlainKeyNameModels",
           "method": "test_v3_post_try_abort_latches_before_publish_and_cannot_emit_second_terminal",
-          "line": 224
+          "line": 237
         },
         {
           "class": "PlainKeyNameModels",
           "method": "test_v3_tracker_worst_case998_and_unchanged15_message_aggregate7693",
-          "line": 134
+          "line": 147
         },
         {
           "class": "PlainKeyNameModels",
           "method": "test_v3_uncertain_write_never_retries_or_publishes_failure_with_names",
-          "line": 213
+          "line": 226
         },
         {
           "class": "PlainKeyNameModels",
           "method": "test_v3_unknown_prefix_is_not_a_terminal_or_fallback_name_oracle",
-          "line": 206
+          "line": 219
         },
         {
           "class": "PlainKeyNameModels",
           "method": "test_whole_original_guards_observer_v1_parser_v2_validator_exec_and37_models_are_preserved",
-          "line": 273
+          "line": 286
         },
         {
           "class": "PlainKeyNameModels",
           "method": "test_wrong_hash_domain_or_count_suppresses_producer_and_refuses_complete_receiver",
-          "line": 99
+          "line": 112
         }
       ],
       "count": 25
@@ -1289,9 +1319,29 @@
           "class": "AdmitTimingModels",
           "method": "test_source_hook_guard_body_and_controller_lexical_rewind_are_whole",
           "line": 342
+        },
+        {
+          "class": "FreshChildOriginModels",
+          "method": "test_fresh_origin_foreign_privilege_argv_linebreak_and_source_binding_refuse",
+          "line": 524
+        },
+        {
+          "class": "FreshChildOriginModels",
+          "method": "test_fresh_origin_missing_duplicate_cached_pid_and_incomplete_newline_refuse",
+          "line": 516
+        },
+        {
+          "class": "FreshChildOriginModels",
+          "method": "test_fresh_origin_real_codec_requires_distinct_private_live_identities",
+          "line": 509
+        },
+        {
+          "class": "FreshChildOriginModels",
+          "method": "test_fresh_schedule_absolute_frontiers_and_invocation_bound_records_are_not_authority",
+          "line": 534
         }
       ],
-      "count": 46
+      "count": 50
     },
     {
       "wrapper": "test/runtime-next-prepackage-diagnostic.test.ts",
@@ -1459,7 +1509,7 @@
   "wrappers": [
     {
       "path": "test/runtime-native-controller-admit-timing.test.ts",
-      "name": "bounds actual controller phase emission, strict native decoding and same-PID handoff refusal models",
+      "name": "bounds actual controller phase emission, strict native decoding and historical/fresh-child handoff refusal models",
       "line": 4
     },
     {
@@ -1654,6 +1704,13 @@
   "executedLocally": false,
   "affectedFocusedFiles": 7,
   "affectedOuterWrappers": 11,
-  "affectedPythonCases": 203,
-  "affectedUnderlyingCases": 251
+  "affectedPythonCases": 213,
+  "affectedUnderlyingCases": 261,
+  "freshChildSourceOnly": {
+    "parent": "ffe8ced4d5ef226aad2da56d11a35483ffa35728",
+    "addedEnvironmentMethods": 6,
+    "addedTimingMethods": 4,
+    "runtimeExecuted": false,
+    "nativeWorkFitUnknown": true
+  }
 }
