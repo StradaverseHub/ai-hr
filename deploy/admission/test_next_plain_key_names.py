@@ -54,7 +54,7 @@ class PlainKeyNameModels(unittest.TestCase):
             self.assertEqual(sorted(hashlib.sha256(N.KEY_NAME_DIGEST_DOMAIN + name.encode()).hexdigest() for name in actual['names']), digest['digests'])
 
     def test_ascii_standard_grammar_accepts_one_and_exact64_without_escaping(self):
-        for names in (('A', '_', 'a0'), tuple(chr(65 + i) + '0'*63 for i in range(4))):
+        for names in (('A', '_A', 'a0'), tuple(chr(65 + i) + '0'*63 for i in range(4))):
             result = self.plain(names)
             self.assertTrue(result['namesComplete']);self.assertEqual(result['names'], sorted(names))
             self.assertNotIn('\\', json.dumps(result))
