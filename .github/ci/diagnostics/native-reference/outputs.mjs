@@ -23,7 +23,7 @@ export function outputOwnership(plan,files){
  }
  return[...outputs.values()].sort((a,b)=>a.path.localeCompare(b.path));
 }
-export function regularHash(path,maximum=512*1024**2){const before=lstatSync(path);assert(before.isFile()&&!before.isSymbolicLink()&&before.nlink===1&&before.size<=maximum);assert.equal(realpathSync(path),path);const bytes=readFileSync(path);const after=lstatSync(path);assert.equal(after.ino,before.ino);assert.equal(after.dev,before.dev);assert.equal(after.size,before.size);return{path,sha256:digest(bytes),bytes:bytes.length};}
+export function regularHash(path,maximum=512*1024**2){const before=lstatSync(path);assert(before.isFile()&&!before.isSymbolicLink()&&before.nlink===1&&before.size<=maximum,'Native regular file custody refused: '+JSON.stringify({regular:before.isFile(),symlink:before.isSymbolicLink(),links:before.nlink,bytes:before.size,maximum}));assert.equal(realpathSync(path),path);const bytes=readFileSync(path);const after=lstatSync(path);assert.equal(after.ino,before.ino);assert.equal(after.dev,before.dev);assert.equal(after.size,before.size);return{path,sha256:digest(bytes),bytes:bytes.length};}
 export function assertOutputSeal(rows){assert(rows.length>0&&new Set(rows.map(r=>r.path)).size===rows.length);for(const row of rows)assert.deepEqual(regularHash(row.path),row,'Stale/foreign native output');}
 export function emittedTree(root){const result=[];function visit(dir){for(const name of readdirSync(dir)){const path=join(dir,name),info=lstatSync(path);assert(!info.isSymbolicLink());if(info.isDirectory())visit(path);else{const row=regularHash(path);assert(!relative(root,path).startsWith('../'));result.push(row);}}}visit(root);return result.sort((a,b)=>a.path.localeCompare(b.path));}
 
