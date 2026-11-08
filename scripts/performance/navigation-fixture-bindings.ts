@@ -6,6 +6,7 @@ import {join,resolve} from 'node:path';
 import {performanceFixtureCalendar} from './fixture-workload.mjs';
 import {fixtureNavigationActor,type NavigationFixtureTextBindings} from './navigation-protocol';
 const UUID=/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/;
+const validUuid=(value:unknown):value is string=>typeof value==='string'&&UUID.test(value);
 /** Data projection only; the browser separately proves these expected seeded facts. */
 export function projectNavigationFixtureBindings(value:unknown):ReadonlyMap<number,Readonly<NavigationFixtureTextBindings>>{
  assert(value&&typeof value==='object','Native fictional navigation fixture missing');
@@ -13,15 +14,16 @@ export function projectNavigationFixtureBindings(value:unknown):ReadonlyMap<numb
  assert(typeof fixture.today==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(fixture.today)&&fixture.month===fixture.today.slice(0,7),'Native fictional fixture dates differ');
  const calendar=performanceFixtureCalendar(fixture.today);
  assert(Array.isArray(fixture.users)&&fixture.users.length===500&&Array.isArray(fixture.tenants)&&fixture.tenants.length===2,'Native fictional fixture population differs');
- const companies=new Set<string>(),employments=new Set<string>(),indices=new Set<number>(),bindings=new Map<number,Readonly<NavigationFixtureTextBindings>>();
+ const tenantIds=new Set<string>(),companies=new Set<string>(),employments=new Set<string>(),indices=new Set<number>(),bindings=new Map<number,Readonly<NavigationFixtureTextBindings>>();
  for(const [tenantIndex,tenant]of fixture.tenants.entries()){
-  assert(tenant&&UUID.test(tenant.tenantId)&&Array.isArray(tenant.companies)&&tenant.companies.length===5,'Native fictional company fixture missing');
-  for(const company of tenant.companies){assert(UUID.test(company.companyId)&&!companies.has(company.companyId),'Native fictional company identity differs');companies.add(company.companyId);}
-  if(tenant.rewardDraft)assert(tenant.rewardDraft.companyId===tenant.companies[2].companyId&&UUID.test(tenant.rewardDraft.employmentId),'Native fictional reward prerequisite differs');
+  assert(tenant&&validUuid(tenant.tenantId)&&!tenantIds.has(tenant.tenantId)&&Array.isArray(tenant.companies)&&tenant.companies.length===5,'Native fictional company fixture missing');
+  tenantIds.add(tenant.tenantId);
+  for(const company of tenant.companies){assert(validUuid(company.companyId)&&!companies.has(company.companyId),'Native fictional company identity differs');companies.add(company.companyId);}
+  if(tenant.rewardDraft)assert(tenant.rewardDraft.companyId===tenant.companies[2].companyId&&validUuid(tenant.rewardDraft.employmentId),'Native fictional reward prerequisite differs');
   for(const actor of fixture.users.filter((row:any)=>row?.tenant===tenantIndex)){
    const expected=fixtureNavigationActor(actor.index),companyIndex=Math.floor((actor.index%250)/50);
    assert(!indices.has(actor.index)&&actor.tenant===Math.floor(actor.index/250)&&actor.company===companyIndex&&actor.role===expected.role&&actor.name===expected.name
-    &&actor.tenantId===tenant.tenantId&&actor.companyId===tenant.companies[companyIndex].companyId&&UUID.test(actor.employmentId)&&!employments.has(actor.employmentId),'Native fictional actor allocation differs');
+    &&actor.tenantId===tenant.tenantId&&actor.companyId===tenant.companies[companyIndex].companyId&&validUuid(actor.employmentId)&&!employments.has(actor.employmentId),'Native fictional actor allocation differs');
    indices.add(actor.index);employments.add(actor.employmentId);
    const history=fixture.assistantHistory?.[String(actor.index)];
    let firstSavedHistoryTitle:string|undefined;
@@ -32,7 +34,7 @@ export function projectNavigationFixtureBindings(value:unknown):ReadonlyMap<numb
    }
    const rosterScope:Record<string,string|null>={};
    for(const candidate of fixture.users.filter((row:any)=>row?.tenant===tenantIndex&&(actor.role==='groupHR'||row.company===companyIndex))){
-    const canonical=fixtureNavigationActor(candidate.index);assert(UUID.test(candidate.employmentId)&&candidate.name===canonical.name,'Native roster fixture identity differs');
+    const canonical=fixtureNavigationActor(candidate.index);assert(validUuid(candidate.employmentId)&&candidate.name===canonical.name,'Native roster fixture identity differs');
     rosterScope[candidate.employmentId]=canonical.name;
    }
    const population=actor.role==='groupHR'?250:50;

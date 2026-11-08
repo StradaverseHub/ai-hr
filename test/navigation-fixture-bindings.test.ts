@@ -4,14 +4,9 @@ import {mkdtempSync,mkdirSync,writeFileSync,chmodSync,symlinkSync,rmSync} from '
 import {join} from 'node:path';
 import {tmpdir} from 'node:os';
 import {projectNavigationFixtureBindings,readNavigationFixtureBindings} from '../scripts/performance/navigation-fixture-bindings';
-import {fixtureNavigationActor,navigationExpectedText} from '../scripts/performance/navigation-protocol';
-const uuid=(n:number)=>'00000001-0000-0000-0000-'+String(n).padStart(12,'0');
-function fixture(){
- const tenants=Array.from({length:2},(_,t)=>({tenantId:uuid(1000+t),companies:Array.from({length:5},(_,c)=>({companyId:uuid(2000+t*5+c)})),rewardDraft:undefined as {companyId:string;employmentId:string}|undefined}));
- const users=Array.from({length:500},(_,index)=>{const tenant=Math.floor(index/250),company=Math.floor((index%250)/50);return {index,tenant,company,tenantId:tenants[tenant].tenantId,companyId:tenants[tenant].companies[company].companyId,employmentId:uuid(index+1),...fixtureNavigationActor(index),token:'NEVER_EXPORT_TOKEN',password:'NEVER_EXPORT_PASSWORD'};});
- const assistantHistory=Object.fromEntries([1,4,251,254].map(index=>[index,{version:1,userIndex:index,rowsVerified:true,defaultCompanyScopeOnly:true,threads:20,exchanges:160,rootTitles:Array.from({length:20},(_,n)=>`PERF saved ${index} root ${String(n).padStart(2,'0')}`)}]));
- return {today:'2026-11-07',month:'2026-11',tenants,users,assistantHistory};
-}
+import {navigationExpectedText} from '../scripts/performance/navigation-protocol';
+import {fictionalNavigationFixture,navigationFixtureUuid as uuid} from './helpers/navigation-fixture';
+const fixture=fictionalNavigationFixture;
 const ownedTemporary:string[]=[];
 afterEach(()=>{vi.unstubAllEnvs();for(const path of ownedTemporary.splice(0))rmSync(path,{recursive:true,force:true});});
 describe('bounded expected content from the existing native fictional fixture',()=>{
@@ -48,4 +43,13 @@ describe('bounded expected content from the existing native fictional fixture',(
    const value=fixture();edit(value);expect(()=>projectNavigationFixtureBindings(value)).toThrow();
   }
  });
+});
+
+it('refuses the real producer omission and tenant mismatches rather than manufacturing a tenant claim',()=>{
+ for(const edit of [(v:ReturnType<typeof fixture>)=>{delete(v.users[1]as Partial<(typeof v.users)[number]>).tenantId;},
+  (v:ReturnType<typeof fixture>)=>{v.users[1].tenantId=v.tenants[1].tenantId;},
+  (v:ReturnType<typeof fixture>)=>{(v.users[1]as any).employmentId=[v.users[1].employmentId];},
+  (v:ReturnType<typeof fixture>)=>{v.tenants[1].tenantId=v.tenants[0].tenantId;for(const user of v.users.filter(row=>row.tenant===1))user.tenantId=v.tenants[0].tenantId;}]){
+  const value=fixture();edit(value);expect(()=>projectNavigationFixtureBindings(value)).toThrow();
+ }
 });

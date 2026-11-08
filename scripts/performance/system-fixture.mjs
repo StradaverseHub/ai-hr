@@ -5,6 +5,7 @@ import {readFileSync,writeFileSync} from 'node:fs';
 import {execFileSync} from 'node:child_process';
 import {join} from 'node:path';
 import {fixtureAuditCounts,assertFixtureAudit} from './fixture-audit.ts';
+import {assertNavigationFixtureSeedOwnership} from './navigation-fixture-ownership.ts';
 import {performanceFixtureCalendar,clockingFixtureText} from './fixture-workload.mjs';
 import {attendanceRejectionProbeEnabled,attendanceRejectionSubjects} from './attendance-rejection-browser.mjs';
 assert.equal(process.env.GITHUB_ACTIONS,'true');assert.equal(process.env.AUTH_PROVIDER,'internal');
@@ -118,7 +119,7 @@ try{
     await writeRecord(tx,'family:'+family,{subject},subject,expiry);
     await writeRecord(tx,'session:'+digest(token),{subject,version,family,native:false,absoluteExpiry:expiry},subject,expiry);
    });
-   users.push({index,tenant:t,company:c,role,name,userId,subject,employmentId:hired.employmentId,personId:hired.personId,companyId:company.companyId,batchId:company.batchId,claimTypeId:type.id,leaveTypeId:b.annualLeaveTypeId,token,organization,username,password,secret});
+   users.push({index,tenant:t,tenantId:b.tenantId,company:c,role,name,userId,subject,employmentId:hired.employmentId,personId:hired.personId,companyId:company.companyId,batchId:company.batchId,claimTypeId:type.id,leaveTypeId:b.annualLeaveTypeId,token,organization,username,password,secret});
    operationTimings.identityAndSessionProvisioning.push(performance.now()-identityStarted);
    if(index%50===49)console.log('[system-perf-fixture] provisioned '+(index+1)+' principals');
   }
@@ -231,6 +232,19 @@ try{
  }
  const modules=await owner.client`select tenant_id,array_agg(module_code order by module_code)as modules from tenant_module where tenant_id=any(${tenants.map(t=>t.tenantId)}::uuid[])and status='active'group by tenant_id`;
 
+ // One bounded read on the existing constructor connection, before private publish.
+ // These are seed ownership facts only; rows/IDs never enter public evidence.
+ await fixturePhase(null,'navigation-seed-ownership',async()=>{
+  let rows;
+  try{rows=await owner.client`select u.id as "userId",u.tenant_id as "tenantId",p.id as "personId",
+   e.id as "employmentId",e.company_id as "companyId",e.employee_code as "employeeCode",p.full_name as name
+   from app_user u join person p on p.id=u.person_id and p.tenant_id=u.tenant_id
+   join employment e on e.person_id=p.id and e.tenant_id=p.tenant_id
+   join company c on c.id=e.company_id and c.tenant_id=e.tenant_id
+   where u.id=any(${users.map(user=>user.userId)}::uuid[]) and e.id=any(${users.map(user=>user.employmentId)}::uuid[])
+   order by u.id,e.id limit 501`;}catch{throw Error('Fictional fixture native ownership read unavailable');}
+  assertNavigationFixtureSeedOwnership(users,tenants,rows);
+ });
  const fixturePath=join(process.env.PERF_PRIVATE_DIR,'fixture.json');
  writeFileSync(fixturePath,JSON.stringify({today,month,users,tenants}),{mode:0o600});
  // Use the actual server-only package export only for this child; the existing fixture stays in ordinary Node.
