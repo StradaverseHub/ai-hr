@@ -34,7 +34,7 @@ export function rewardsAuditPolicyController(){
   registerDefaultController(nonce:string){const name=defaultControllerApplication(nonce);if(defaultControllers.has(name)||defaultControllers.size>=2)throw Error('Only two owned default-controller lifetimes allowed');defaultControllers.add(name);},
   registerStop(stop:()=>Promise<void>){let owned:Promise<void>|undefined;stops.add(()=>owned??=Promise.resolve().then(stop));},
   /** Failure-only read: no raw activity/query/lock values leave this boundary. */
-  async waitSnapshot(waiting:{pid:number;started:string},holder:{pid:number;started:string},signal:AbortSignal):Promise<RewardPolicyWaitObservation>{
+  async waitSnapshot(waiting:{pid:number;started:string},holder:{pid:number;started:string},tenant:string,signal:AbortSignal):Promise<RewardPolicyWaitObservation>{
    signal.throwIfAborted();if(lifetime.ownerPhase()!=='work')throw Error('Actual Rewards diagnostic work admission required');
    const connection=postgres(url.toString(),{max:1,connect_timeout:2,connection:{statement_timeout:2000,lock_timeout:300,default_transaction_read_only:'on',application_name:waitObserverApplication}});
    let stopped:Promise<void>|undefined;const close=()=>stopped??=connection.end({timeout:0});stops.add(close);
@@ -43,10 +43,14 @@ export function rewardsAuditPolicyController(){
    let result:RewardPolicyWaitObservation|undefined,failure:Error|undefined;
    try{
     signal.throwIfAborted();
-    const [raw]=await connection`with w as materialized(select pid,state,wait_event_type from pg_stat_activity where pid=${waiting.pid} and backend_start=${waiting.started}::text::timestamptz and datname=${database}),
-     h as materialized(select pid from pg_stat_activity where pid=${holder.pid} and backend_start=${holder.started}::text::timestamptz and datname=${database})
-     select exists(select 1 from w)as "waitingPresent",exists(select 1 from h)as "holderPresent",exists(select 1 from w where state='active')as "waitingActive",exists(select 1 from w where wait_event_type='Lock')as "waitingOnLock",exists(select 1 from w,h where h.pid=any(pg_blocking_pids(w.pid)))as "ownedBlocking"`;
-    const row=z.object({waitingPresent:z.boolean(),holderPresent:z.boolean(),waitingActive:z.boolean(),waitingOnLock:z.boolean(),ownedBlocking:z.boolean()}).strict().parse(raw);
+    const [raw]=await connection`with w as materialized(select pid,state,wait_event_type,query_start from pg_stat_activity where pid=${waiting.pid} and backend_start=${waiting.started}::text::timestamptz and datname=${database}),
+     h as materialized(select pid from pg_stat_activity where pid=${holder.pid} and backend_start=${holder.started}::text::timestamptz and datname=${database}),
+     history as materialized(select hashtext('audit-chain:'||${tenant}::uuid::text)::bigint as key)
+     select exists(select 1 from w)as "waitingPresent",exists(select 1 from h)as "holderPresent",exists(select 1 from w where state='active')as "waitingActive",exists(select 1 from w where wait_event_type='Lock')as "waitingOnLock",exists(select 1 from w,h where h.pid=any(pg_blocking_pids(w.pid)))as "ownedBlocking",
+     exists(select 1 from w join pg_locks l on l.pid=w.pid where l.locktype='relation' and l.relation='reward_audit_policy_private.floor_marker'::regclass and l.granted and l.mode='RowExclusiveLock')as "waitingFloorWrite",
+     exists(select 1 from w join pg_locks l on l.pid=w.pid cross join history where l.locktype='advisory' and l.granted and l.mode='ExclusiveLock' and l.objsubid=1 and l.classid=((history.key>>32)&4294967295)::oid and l.objid=(history.key&4294967295)::oid)as "waitingHistoryLock",
+     exists(select 1 from w where clock_timestamp()-query_start>=interval '200 milliseconds')as "waitingStatementOlderThanWindow"`;
+    const row=z.object({waitingPresent:z.boolean(),holderPresent:z.boolean(),waitingActive:z.boolean(),waitingOnLock:z.boolean(),ownedBlocking:z.boolean(),waitingFloorWrite:z.boolean(),waitingHistoryLock:z.boolean(),waitingStatementOlderThanWindow:z.boolean()}).strict().parse(raw);
     signal.throwIfAborted();if(stopping)throw Error('Owned diagnostic deadline');result={kind:'wait-unavailable',...row};
    }catch{failure=Error('Closed native Rewards wait diagnostic unavailable');}
    finally{clearTimeout(timer);signal.removeEventListener('abort',stop);try{await close();}catch{stopFailure=true;}if(!stopFailure)stops.delete(close);}

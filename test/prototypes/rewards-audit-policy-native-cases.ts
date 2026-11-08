@@ -36,9 +36,41 @@ import {rewardsAuditCanonicalTruthContract} from './rewards-audit-policy-contrac
 import {rewardPolicyReaderProcess} from './rewards-audit-policy-reader-process';
 import {controlledPolicyWait} from './rewards-audit-policy-controlled-wait';
 import {rewardsPolicyDiagnostics} from './rewards-audit-policy-diagnostic';
-import * as actionGuardOwner from '../../core/assistant-actions/agent-action-guard';
-import * as bankSourceOwner from '../../core/assistant-actions/bank-maintenance-source';
-import * as catalogueSourceOwner from '../../core/assistant-actions/position-archive-source';
+
+// Registered by Vitest BEFORE the review-store imports evaluate their factory
+// specs. A case-time spy cannot replace those already captured function values.
+const observationContext=vi.hoisted(()=>{const state:{current:ReturnType<typeof rewardsPolicyDiagnostics>|undefined}={current:undefined};return state;});
+vi.mock('../../core/assistant-actions/agent-action-guard',async importOriginal=>{
+ const actual=await importOriginal<typeof import('../../core/assistant-actions/agent-action-guard')>();
+ const {rewardPolicyObservedCallback}=await import('./rewards-audit-policy-observation-context');
+ const withAgentActionGuard:typeof actual.withAgentActionGuard=(...args)=>rewardPolicyObservedCallback(()=>observationContext.current,'agent-guard',()=>actual.withAgentActionGuard(...args));
+ return{...actual,withAgentActionGuard};
+});
+vi.mock('../../core/assistant-actions/bank-maintenance-source',async importOriginal=>{
+ const actual=await importOriginal<typeof import('../../core/assistant-actions/bank-maintenance-source')>();
+ const {rewardPolicyObservedCallback}=await import('./rewards-audit-policy-observation-context');
+ const assertBankMaintenanceActorTx:typeof actual.assertBankMaintenanceActorTx=(...args)=>rewardPolicyObservedCallback(()=>observationContext.current,'bank-actor',()=>actual.assertBankMaintenanceActorTx(...args));
+ const withBankMaintenanceIntervalTx:typeof actual.withBankMaintenanceIntervalTx=(tx,ctx,id,work)=>rewardPolicyObservedCallback(()=>observationContext.current,'bank-interval',()=>actual.withBankMaintenanceIntervalTx(tx,ctx,id,work));
+ const prepareBankMaintenanceSourceTx:typeof actual.prepareBankMaintenanceSourceTx=(...args)=>rewardPolicyObservedCallback(()=>observationContext.current,'bank-source',()=>actual.prepareBankMaintenanceSourceTx(...args));
+ return{...actual,assertBankMaintenanceActorTx,withBankMaintenanceIntervalTx,prepareBankMaintenanceSourceTx};
+});
+vi.mock('../../core/assistant-actions/position-archive-source',async importOriginal=>{
+ const actual=await importOriginal<typeof import('../../core/assistant-actions/position-archive-source')>();
+ const {rewardPolicyObservedCallback}=await import('./rewards-audit-policy-observation-context');
+ const lockPositionArchiveSourceTx:typeof actual.lockPositionArchiveSourceTx=(...args)=>rewardPolicyObservedCallback(()=>observationContext.current,'catalogue-lock',()=>actual.lockPositionArchiveSourceTx(...args));
+ const preparePositionArchiveTx:typeof actual.preparePositionArchiveTx=(...args)=>rewardPolicyObservedCallback(()=>observationContext.current,'catalogue-source',()=>actual.preparePositionArchiveTx(...args));
+ return{...actual,lockPositionArchiveSourceTx,preparePositionArchiveTx};
+});
+vi.mock('../../core/assistant-actions/generic-review-custody',async importOriginal=>{
+ const actual=await importOriginal<typeof import('../../core/assistant-actions/generic-review-custody')>();
+ const {rewardPolicyObservedParse}=await import('./rewards-audit-policy-observation-context');
+ const createReviewCustody:typeof actual.createReviewCustody=spec=>{
+  if(spec.action==='employees.bank.maintain')return actual.createReviewCustody({...spec,metadata:rewardPolicyObservedParse(spec.metadata,()=>observationContext.current,'bank-metadata-parse'),stored:rewardPolicyObservedParse(spec.stored,()=>observationContext.current,'bank-stored-parse')});
+  if(spec.action==='org.position.archive')return actual.createReviewCustody({...spec,metadata:rewardPolicyObservedParse(spec.metadata,()=>observationContext.current,'catalogue-metadata-parse'),stored:rewardPolicyObservedParse(spec.stored,()=>observationContext.current,'catalogue-stored-parse')});
+  return actual.createReviewCustody(spec);
+ };
+ return{...actual,createReviewCustody};
+});
 
 export const rewardsAuditPolicyNativeCaseNames=[
  'constructs one real bounded injected owner with exact full native PRE/profile and generated canonical truth',
@@ -90,34 +122,26 @@ export function registerRewardsAuditPolicyNativeCases(evidenceDirectory:string){
  }
 
  async function backend(connection:ReturnType<typeof postgres>){const [row]=await connection`select pg_backend_pid()as pid,(select backend_start::text from pg_stat_activity where pid=pg_backend_pid())as started`;if(!row||typeof row.pid!=='number'||typeof row.started!=='string')throw Error('Actual native session identity required');return{pid:row.pid,started:row.started};}
- async function blocking(context:TestContext,waiting:{pid:number;started:string},holder:{pid:number;started:string}){
+ async function blocking(context:TestContext,waiting:{pid:number;started:string},holder:{pid:number;started:string},tenant:string){
   const until=Date.now()+200;
   do{context.signal.throwIfAborted();const [row]=await owner.client`select exists(select 1 from pg_stat_activity w,pg_stat_activity h where w.pid=${waiting.pid} and w.backend_start=${waiting.started}::text::timestamptz and h.pid=${holder.pid} and h.backend_start=${holder.started}::text::timestamptz and h.pid=any(pg_blocking_pids(w.pid)))as owned`;
    if(row.owned===true)return;await new Promise<void>(resolve=>setTimeout(resolve,5));
   }while(Date.now()<until);
   const primary=Error('Actual bounded native blocking witness unavailable');
-  try{context.signal.throwIfAborted();if(!diagnostics)throw Error('No owned diagnostic case');diagnostics.wait(await controller.waitSnapshot(waiting,holder,context.signal));}
+  try{context.signal.throwIfAborted();if(!diagnostics)throw Error('No owned diagnostic case');diagnostics.wait(await controller.waitSnapshot(waiting,holder,tenant,context.signal));}
   catch(error){throw new AggregateError([primary,error],'Native wait witness and diagnostic unavailable',{cause:primary});}
   throw primary;
  }
 
  function nativeIt(index:number,work:(ctx:TestContext)=>Promise<void>){it(rewardsAuditPolicyNativeCaseNames[index],context=>ownership.run(context,async()=>{
-  const observed=rewardsPolicyDiagnostics();diagnostics=observed;
+  const observed=rewardsPolicyDiagnostics();if(observationContext.current)throw Error('Previous canonical observations have not drained');diagnostics=observed;observationContext.current=observed;
   // Only budget instrumentation: every real application Tx and canonical service
   // still executes. No native permission, source, approval or result is mocked.
-  const spy=vi.spyOn(database,'withTenant').mockImplementation(<T>(ctx:SessionContext,run:(tx:database.Tx)=>Promise<T>,options?:Parameters<typeof database.withTenant>[2])=>realWithTenant(ctx,async tx=>{
-   await tx.execute(sql`set local statement_timeout='20s'`);await tx.execute(sql`set local lock_timeout='300ms'`);return observed.callback('tenant-callback',()=>run(tx));
-  },options));
-  const actualGuard=actionGuardOwner.withAgentActionGuard,actualBankActor=bankSourceOwner.assertBankMaintenanceActorTx,actualBank=bankSourceOwner.prepareBankMaintenanceSourceTx,actualCatalogueLock=catalogueSourceOwner.lockPositionArchiveSourceTx,actualCatalogue=catalogueSourceOwner.preparePositionArchiveTx;
-  const observers=[
-   vi.spyOn(actionGuardOwner,'withAgentActionGuard').mockImplementation((...args:Parameters<typeof actualGuard>)=>observed.callback('agent-guard',()=>actualGuard(...args))),
-   vi.spyOn(bankSourceOwner,'assertBankMaintenanceActorTx').mockImplementation((...args:Parameters<typeof actualBankActor>)=>observed.callback('bank-actor',()=>actualBankActor(...args))),
-   vi.spyOn(bankSourceOwner,'prepareBankMaintenanceSourceTx').mockImplementation((...args:Parameters<typeof actualBank>)=>observed.callback('bank-source',()=>actualBank(...args))),
-   vi.spyOn(catalogueSourceOwner,'lockPositionArchiveSourceTx').mockImplementation((...args:Parameters<typeof actualCatalogueLock>)=>observed.callback('catalogue-lock',()=>actualCatalogueLock(...args))),
-   vi.spyOn(catalogueSourceOwner,'preparePositionArchiveTx').mockImplementation((...args:Parameters<typeof actualCatalogue>)=>observed.callback('catalogue-source',()=>actualCatalogue(...args))),
-  ];
+  const spy=vi.spyOn(database,'withTenant').mockImplementation(<T>(ctx:SessionContext,run:(tx:database.Tx)=>Promise<T>,options?:Parameters<typeof database.withTenant>[2])=>realWithTenant(ctx,tx=>observed.callback('tenant-callback',async()=>{
+   await tx.execute(sql`set local statement_timeout='20s'`);await tx.execute(sql`set local lock_timeout='300ms'`);return run(tx);
+  }),options));
   await controlledPolicyWait(ownership.poison).run(()=>work(context),async()=>{
-   spy.mockRestore();for(const observer of observers)observer.mockRestore();diagnostics=undefined;
+   await observed.drain();spy.mockRestore();if(observationContext.current!==observed)throw Error('Foreign canonical observation reset refused');observationContext.current=undefined;diagnostics=undefined;
    const report={...observed.snapshot(),caseIndex:index},bytes=JSON.stringify(report)+'\n';
    if(Buffer.byteLength(bytes,'utf8')>32768)throw Error('Bounded Rewards diagnostic publication refused');
    try{writeFileSync(join(evidenceDirectory,'rewards-policy-case-'+index+'-diagnostic.json'),bytes,{flag:'wx',mode:0o600});}catch{throw Error('Owned Rewards diagnostic publication unavailable');}
@@ -328,9 +352,9 @@ export function registerRewardsAuditPolicyNativeCases(evidenceDirectory:string){
    await control.run(async()=>{
     await holder`select pg_advisory_lock(${key}::text::bigint)`;
     const a=control.start(()=>first.begin('isolation level repeatable read',async tx=>{await stamp(tx,f.ctx);roots.push(await rootIdentity(tx));return(await tx`insert into public.domain_event(tenant_id,aggregate_type,aggregate_id,event_type,actor_type,actor_id)values(${f.b.tenantId}::uuid,'policy-fixture',${randomUUID()}::uuid,'policy.two-rr-first','user',${f.ctx.userId!}::uuid)returning chain_seq::int as seq`)[0];}));
-    await blocking(context,firstIdentity,holderIdentity);
+    await blocking(context,firstIdentity,holderIdentity,f.b.tenantId);
     const b=control.start(()=>second.begin('isolation level repeatable read',async tx=>{await stamp(tx,f.ctx);roots.push(await rootIdentity(tx));return(await tx`insert into public.domain_event(tenant_id,aggregate_type,aggregate_id,event_type,actor_type,actor_id)values(${f.b.tenantId}::uuid,'policy-fixture',${randomUUID()}::uuid,'policy.two-rr-second','user',${f.ctx.userId!}::uuid)returning chain_seq::int as seq`)[0];}));
-    await blocking(context,secondIdentity,firstIdentity);
+    await blocking(context,secondIdentity,firstIdentity,f.b.tenantId);
     expect((await holder`select pg_advisory_unlock(${key}::text::bigint)as released`)[0].released).toBe(true);
     expect(await a.value()).toEqual({seq:null});expect(await b.value()).toEqual({seq:null});
     expect(await owner.client`select tenant_id from reward_audit_policy_private.floor_marker where tenant_id=${f.b.tenantId}::uuid`).toHaveLength(0);
@@ -345,16 +369,16 @@ export function registerRewardsAuditPolicyNativeCases(evidenceDirectory:string){
   const abort=()=>finalize.resolve();context.signal.addEventListener('abort',abort,{once:true});
   const control=controlledPolicyWait(ownership.poison),receipt=control.start(()=>readerConnection.begin('isolation level repeatable read',async tx=>{
    await stamp(tx,f.ctx);const [row]=await tx`select reward_audit_read.begin_read('libraries','salary',${f.year})as id`;if(typeof row.id!=='string')throw Error('Actual receipt admission identity required');receiptId=row.id;observed.resolve();await finalize.promise;context.signal.throwIfAborted();
-   return(await tx`select * from reward_audit_read.finalize_read(${row.id}::uuid)`)[0];
+   diagnostics?.step('receipt-finalize-submitted');return(await tx`select * from reward_audit_read.finalize_read(${row.id}::uuid)`)[0];
   }));
   await control.run(async()=>{
    await control.ready(observed.promise,receipt,context.signal,'Actual armed read exited before controlled probe');await setSetting(f.b.tenantId,'audit.hash_chain_enabled',false);
    await owned().fixture.withProbeBarrier(f.b.tenantId,async key=>{
     await control.run(async()=>{
      await holder`select pg_advisory_lock(${key}::text::bigint)`;
-     const command=control.start(()=>writer.begin('isolation level repeatable read',async tx=>{await stamp(tx,f.ctx);roots.push(await rootIdentity(tx));return(await tx`insert into public.domain_event(tenant_id,aggregate_type,aggregate_id,event_type,actor_type,actor_id)values(${f.b.tenantId}::uuid,'policy-fixture',${randomUUID()}::uuid,'policy.probe-before-first-floor','user',${f.ctx.userId!}::uuid)returning chain_seq::int as seq`)[0];}));
-     await blocking(context,writerIdentity,holderIdentity);finalize.resolve();
-     await blocking(context,readerIdentity,writerIdentity);
+     const command=control.start(()=>writer.begin('isolation level repeatable read',async tx=>{diagnostics?.step('writer-entered');await stamp(tx,f.ctx);diagnostics?.step('writer-stamped');roots.push(await rootIdentity(tx));diagnostics?.step('writer-insert-submitted');return(await tx`insert into public.domain_event(tenant_id,aggregate_type,aggregate_id,event_type,actor_type,actor_id)values(${f.b.tenantId}::uuid,'policy-fixture',${randomUUID()}::uuid,'policy.probe-before-first-floor','user',${f.ctx.userId!}::uuid)returning chain_seq::int as seq`)[0];}));
+     await blocking(context,writerIdentity,holderIdentity,f.b.tenantId);finalize.resolve();
+     await blocking(context,readerIdentity,writerIdentity,f.b.tenantId);
      expect((await holder`select pg_advisory_unlock(${key}::text::bigint)as released`)[0].released).toBe(true);
      expect(await command.value()).toEqual({seq:null});expect((await receipt.value()).id).toBe(receiptId);
     },async()=>{finalize.resolve();await holder`select pg_advisory_unlock_all()`;});

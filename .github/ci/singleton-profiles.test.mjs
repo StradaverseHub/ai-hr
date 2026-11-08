@@ -229,6 +229,7 @@ test('Rewards native policy and original read family retain complete isolated so
   'test/prototypes/rewards-audit-owner-context-original.json',
   'test/prototypes/rewards-audit-policy-owner.ts','test/prototypes/rewards-audit-policy-controller.ts',
   'test/prototypes/rewards-audit-policy-diagnostic.ts',
+  'test/prototypes/rewards-audit-policy-observation-context.ts',
   'test/prototypes/rewards-audit-policy-lifetime.ts','test/prototypes/rewards-audit-policy-controlled-wait.ts',
   'test/prototypes/rewards-audit-policy-contract.ts','test/prototypes/rewards-audit-policy.sql',
   'test/prototypes/rewards-audit-policy-predecessors.json','test/prototypes/rewards-audit-policy-reader-process.ts',
