@@ -2,6 +2,8 @@
 import importlib.util
 import os
 import json
+import ast
+import hashlib
 import time
 import tempfile
 from unittest.mock import patch
@@ -129,7 +131,7 @@ class ClosedEntryModels(unittest.TestCase):
                 if argv != ['bash', str(control / '.github/ci/postgres.sh'), 'stop']:
                     os._exit(95)
                 original_exec(sys.executable, [sys.executable, '-I', '-B', '-c', 'from pathlib import Path;Path('+repr(str(marker))+').write_text("STOPPED")'], values)
-            with patch.dict(os.environ, env), patch.object(sys, 'argv', [__file__, json.dumps(request)]), patch.object(module, 'append_event', side_effect=OSError('PRIVATE_PAYLOAD')), patch.object(module.os, 'execvpe', side_effect=child_edge):
+            with patch.dict(os.environ, env), patch.object(sys, 'argv', [__file__, json.dumps(request)]), patch.object(module, 'append_event', side_effect=OSError('PRIVATE_PAYLOAD')), patch.object(module._owned_process.os, 'execvpe', side_effect=child_edge):
                 self.assertEqual(module.main(), 1)
             self.assertEqual(marker.read_text(), 'STOPPED')
             self.assertEqual(module.own_children(), [])
@@ -152,6 +154,44 @@ class ClosedEntryModels(unittest.TestCase):
             for selected in [[], [module.FACTORY_FILE, module.CONTROL_FILE], [module.FACTORY_FILE, module.FACTORY_FILE], [module.FACTORY_FILE + '.extra']]:
                 with patch.dict(os.environ, {**env, 'AIHR_FOCUSED_TESTS': json.dumps(selected)}), self.assertRaises(ValueError):
                     module.request_command({**request, 'stage': 'native-factory'})
+
+class SharedKernelModels(unittest.TestCase):
+    def test_complete_c73_adapter_reconstruction_and_exact_extracted_helpers(self):
+        folder = Path(__file__).resolve().parent
+        archive = json.loads((folder / 'owned-process-extraction.json').read_text())
+        self.assertEqual(archive['base'], 'c73c8e15400890e5dfcb0d32d178929a5522ab5c')
+        current = (folder / 'employee-benchmark-supervisor.py').read_text()
+        shared = (folder / 'owned-process.py').read_text()
+        span = shared[shared.index('REASONS = '):]
+        self.assertEqual(hashlib.sha256(span.encode()).hexdigest(), archive['extractedSpanSha256'])
+        self.assertEqual(current.count(archive['loader']), 1)
+        original = current.replace(archive['loader'], span)
+        self.assertEqual(hashlib.sha256(original.encode()).hexdigest(), archive['originalSha256'])
+
+    def test_fixed_sibling_and_actual_kernel_globals_have_no_second_command_or_process_loop(self):
+        kernel = module._owned_process
+        self.assertEqual(Path(kernel.__file__).resolve(), Path(__file__).resolve().with_name('owned-process.py'))
+        self.assertIs(module.supervise, kernel.supervise)
+        self.assertIs(module.supervise.__globals__, kernel.__dict__)
+        self.assertIs(module.append_event, kernel.append_event)
+        tree = ast.parse(Path(kernel.__file__).read_text())
+        self.assertEqual([node.name for node in tree.body if isinstance(node, ast.FunctionDef)],
+                         ['require', 'identity', 'live_group', 'own_children', 'subreaper', 'settle_adopted', 'write_packet', 'append_event', 'supervise'])
+        self.assertEqual([alias.name for node in tree.body if isinstance(node, ast.Import) for alias in node.names],
+                         ['json', 'ctypes', 'os', 're', 'select', 'stat', 'signal', 'sys', 'time'])
+        self.assertEqual([(node.module, [alias.name for alias in node.names]) for node in tree.body if isinstance(node, ast.ImportFrom)], [('pathlib', ['Path'])])
+        self.assertEqual([node.targets[0].id for node in tree.body if isinstance(node, ast.Assign)], ['REASONS'])
+        self.assertEqual([type(node).__name__ for node in tree.body if not isinstance(node, (ast.Import, ast.ImportFrom, ast.Assign, ast.FunctionDef))], ['Expr'])
+        self.assertIsInstance(tree.body[0], ast.Expr)
+        self.assertIsInstance(tree.body[0].value, ast.Constant)
+        self.assertIsInstance(tree.body[0].value.value, str)
+        self.assertFalse(any(isinstance(node, ast.If) for node in tree.body))
+        # Patch the ACTUAL shared function globals: a CLI alias would be a no-op.
+        # Refusal must precede subreaper admission and any fork/native workload.
+        with patch.object(kernel, 'own_children', return_value=[123]), patch.object(kernel, 'subreaper') as admission:
+            with self.assertRaises(ValueError):
+                module.supervise([sys.executable, '-I', '-B', '-c', 'pass'], .1, lambda _: None)
+            admission.assert_not_called()
 
 if __name__ == '__main__':
     unittest.main()

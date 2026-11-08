@@ -1,0 +1,7 @@
+{
+  "kind": "MECHANICAL_SHARED_PROCESS_KERNEL_EXTRACTION",
+  "base": "c73c8e15400890e5dfcb0d32d178929a5522ab5c",
+  "originalSha256": "bb81ee3b98e0f45c2c4d560f336d52387aa02a47bc0129af97d3b8b55167f1d4",
+  "extractedSpanSha256": "c76e9b92bdc8976817ccf96b182885a96185e7f6e37fe7e93054e00bed190ae7",
+  "loader": "# Fixed source-owned sibling import; never resolve a kernel through PYTHONPATH.\nimport importlib.util\n_kernel_path = Path(__file__).resolve().with_name('owned-process.py')\n_kernel_spec = importlib.util.spec_from_file_location('aihr_owned_process', _kernel_path)\nif _kernel_spec is None or _kernel_spec.loader is None:\n    raise ValueError('Closed process kernel import refused')\n_owned_process = importlib.util.module_from_spec(_kernel_spec)\n_kernel_spec.loader.exec_module(_owned_process)\nrequire = _owned_process.require\nappend_event = _owned_process.append_event\nsupervise = _owned_process.supervise\nown_children = _owned_process.own_children\n\n\n"
+}
