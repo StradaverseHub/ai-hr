@@ -1,4 +1,5 @@
-/** Pure proposed wire grammar. Shape/equality checks confer NO native/source/admission authority. */
+/** Pure byte/format codec. Fixed crypto hashing ONLY; no filesystem/process/native authority. */
+import {createHash} from 'node:crypto';
 export type Engine = 'a' | 'b' | 'c';
 export type Purpose = 'semantic' | 'cli-b' | 'cli-c';
 export type Verdict = {rootId:number; kind:'DB'|'NODB'; reason:string};
@@ -71,20 +72,21 @@ function stageMembers(p:Purpose):string[][] {
  return p==='semantic' ? [...pre,
   ['suite.json','stdin.txt','snapshot-index.json','calls-a.json','calls-b.json','calls-c.json','phase-collect.json'],
   ['graph.json','reasons.json','semantic-a.tsv','semantic-b.tsv','semantic-c.tsv','delta-a-b.json','delta-a-c.json','delta-b-c.json','phase-replay.json'],...post,
-  ['native-ownership.jsonl']] : [...pre,
+  []] : [...pre,
   ['semantic-parent.json','snapshot-index.json','phase-parent-auth.json'],
   ['suite.json','stdin.txt','program.ts','package-context.json','source-pre.json'],
   ['native-clock.json','stdin-stream.json','native.stdout','native.stderr','native-result.json'],['source-post.json'],...post,
-  ['native-ownership.jsonl']];
+  []];
 }
 export function memberLimit(name:string):number {
+ if(name==='native-ownership.jsonl')return OWNERSHIP_LIMITS.bytes;
  if(name==='stdin.txt'||name.endsWith('tracked.bin'))return 8*1024*1024;
  if(name.endsWith('.ts')||name.endsWith('.tsv')||name==='snapshot-index.json'||name.startsWith('calls-')||name.startsWith('delta-')||['graph.json','reasons.json','native.stdout','native.stderr','native-ownership.jsonl'].includes(name))return 16*1024*1024;
  return 1024*1024;
 }
 const progressCheck:Check=v=>{
  const seal:Check=x=>{const o=object(x);if(o.state==='not-reached')shape(x,{state:fixed('not-reached')});else shape(x,{state:fixed('executed'),phase:phaseCheck});};
- shape(v,{version,kind:fixed('NATIVE_CALLBACK_PROGRESS_NOT_ADMISSION'),purpose,complete:bool,completedStages:list(nonempty),failedStage:nullable(nonempty),failedMembers:list(nonempty),seal});
+ shape(v,{version,kind:fixed('NATIVE_CALLBACK_PROGRESS_NOT_ADMISSION'),purpose,complete:bool,completedStages:list(nonempty),failedStage:nullable(nonempty),failedMembers:list(nonempty),seal,custody:custodyCheck});
 };
 function validateNativePrefix(p:Purpose,names:string[],progress:unknown):void {
  progressCheck(progress);const r=progress as Obj;need(r.purpose===p);unique(names);
@@ -92,9 +94,9 @@ function validateNativePrefix(p:Purpose,names:string[],progress:unknown):void {
  same(done,stages.slice(0,done.length));need(done.length<=stages.length);
  const all=p==='semantic'?SEMANTIC_MEMBERS:CLI_MEMBERS;
  for(const n of names)need(n!=='report.json'&&all.includes(n));
- const base=['binding.json','anchor.json','prerequisites.json','phase-seal.json',...(p==='semantic'?['program-a.ts','program-b.ts','program-c.ts']:[])];
+ const base=['binding.json','anchor.json','prerequisites.json','phase-seal.json','native-ownership.jsonl',...(p==='semantic'?['program-a.ts','program-b.ts','program-c.ts']:[])];
  const groups=stageMembers(p),expected=[...base,...groups.slice(0,done.length).flat()];
- if(r.complete){need(done.length===stages.length&&r.failedStage===null&&failed.length===0);}
+ if(r.complete){need(done.length===stages.length&&r.failedStage===null&&failed.length===0);const custody=r.custody as Custody;need(custody.state==='closed'&&custody.closure==='closed');}
  else {need(done.length<stages.length&&r.failedStage===stages[done.length]);same(failed,groups[done.length].slice(0,failed.length));expected.push(...failed);}
  const seal=r.seal as Obj;
  if(done.length===stages.length||r.failedStage==='seal'){
@@ -203,9 +205,110 @@ const metadata:Record<string,Check>={
 };
 /** Closed JSON schemas for native records are proposals, NOT validation of the represented facts. */
 export function validateMetadataMember(name:string,value:unknown):void { need(Object.hasOwn(metadata,name));metadata[name](value); }
+export const OWNERSHIP_LIMITS=Object.freeze({bytes:131072,rows:128,rowBytes:1024,actorsPerStage:2});
+export type KernelReason='complete'|'command-failed'|'deadline'|'monitor-died'|'handshake-refused'|'protocol-refused'|'descendants-survived'|'session-escaped'|'group-uncertain'|'owner-interrupted';
+export type KernelPacket={kind:'session-admitted';pid:number;start:number}|{kind:'group-stop-before-reap';reason:KernelReason}|{kind:'group-quiescent-then-reaped';monitorExit:number;escapedSession:boolean}|{kind:'stage-ended';reason:KernelReason;commandExit:number|null;admitted:boolean;reaped:boolean;groupQuiescent:boolean;escapedSession:boolean;releaseAuthorized:false};
+export type ChildObservation={state:'empty'}|{state:'nonempty';count:number}|{state:'unavailable';reason:'identity-read'|'owner-changed'|'read-bound'};
+export type OwnerPin={actorId:number;role:'root'|'stage-adapter';pid:number;startTicks:string;parentPid:number;parentStartTicks:string;groupId:number;sessionId:number;uid:number;children:ChildObservation};
+export type OwnerClose={actorId:number;identity:{state:'matched'}|{state:'unavailable';reason:'identity-read'|'owner-changed'|'read-bound'};children:ChildObservation;handles:{writer:'closed'|'not-created'|'unknown';reader:'closed'|'not-created'|'unknown';stdout:'closed'|'not-created'|'unknown';stderr:'closed'|'not-created'|'unknown';pidfds:'closed'|'not-created'|'unknown';kernelDescriptors:'kernel-returned-closed'|'not-entered'|'unknown'}};
+export type OwnershipRow={version:1;sequence:number;stage:string|null}&({kind:'owner-pinned';payload:OwnerPin}|{kind:'kernel';payload:KernelPacket}|{kind:'upstream-owner-lost';payload:{actorId:number;pid:number;startTicks:string}}|{kind:'owner-close-observed';payload:OwnerClose});
+export type Custody={state:'not-started'|'closed'|'owner-loss'|'incomplete';closure:'closed'|'unsettled'|'unknown';bytes:number;sha256:string;completeRows:number;framing:'complete'|'truncated-tail'};
+const kernelReasons:Check=fixed('complete','command-failed','deadline','monitor-died','handshake-refused','protocol-refused','descendants-survived','session-escaped','group-uncertain','owner-interrupted');
+const exit:Check=v=>need(Number.isSafeInteger(v)&&(v as number)>=-64&&(v as number)<=255);
+const childCheck:Check=v=>{const o=object(v);if(o.state==='empty')shape(v,{state:fixed('empty')});else if(o.state==='nonempty')shape(v,{state:fixed('nonempty'),count:positive});else shape(v,{state:fixed('unavailable'),reason:fixed('identity-read','owner-changed','read-bound')});};
+const closeCheck:Check=v=>{shape(v,{actorId:uint,identity:x=>{const o=object(x);if(o.state==='matched')shape(x,{state:fixed('matched')});else shape(x,{state:fixed('unavailable'),reason:fixed('identity-read','owner-changed','read-bound')});},children:childCheck,handles:x=>{shape(x,{writer:fixed('closed','not-created','unknown'),reader:fixed('closed','not-created','unknown'),stdout:fixed('closed','not-created','unknown'),stderr:fixed('closed','not-created','unknown'),pidfds:fixed('closed','not-created','unknown'),kernelDescriptors:fixed('kernel-returned-closed','not-entered','unknown')});}});};
+const kernelCheck:Check=v=>{
+ const o=object(v);
+ if(o.kind==='session-admitted')shape(v,{kind:fixed('session-admitted'),pid:positive,start:uint});
+ else if(o.kind==='group-stop-before-reap')shape(v,{kind:fixed('group-stop-before-reap'),reason:kernelReasons});
+ else if(o.kind==='group-quiescent-then-reaped')shape(v,{kind:fixed('group-quiescent-then-reaped'),monitorExit:exit,escapedSession:bool});
+ else shape(v,{kind:fixed('stage-ended'),reason:kernelReasons,commandExit:nullable(exit),admitted:bool,reaped:bool,groupQuiescent:bool,escapedSession:bool,releaseAuthorized:fixed(false)});
+};
+const ownershipRowCheck:Check=v=>{
+ const o=object(v),payload:Check=o.kind==='owner-pinned'?x=>{shape(x,{actorId:uint,role:fixed('root','stage-adapter'),pid:positive,startTicks:decimal,parentPid:positive,parentStartTicks:decimal,groupId:positive,sessionId:positive,uid:uint,children:childCheck});}:o.kind==='kernel'?kernelCheck:o.kind==='upstream-owner-lost'?x=>{shape(x,{actorId:uint,pid:positive,startTicks:decimal});}:closeCheck;
+ shape(v,{version,sequence:uint,stage:nullable(nonempty),kind:fixed('owner-pinned','kernel','upstream-owner-lost','owner-close-observed'),payload});
+};
+const custodyCheck:Check=v=>{
+ const o=shape(v,{state:fixed('not-started','closed','owner-loss','incomplete'),closure:fixed('closed','unsettled','unknown'),bytes:uint,sha256:sha,completeRows:uint,framing:fixed('complete','truncated-tail')});
+ need((o.bytes as number)<=OWNERSHIP_LIMITS.bytes&&(o.completeRows as number)<=OWNERSHIP_LIMITS.rows);
+ if(o.state==='not-started'||o.state==='closed')need(o.closure==='closed'&&o.framing==='complete');
+ if(o.state==='incomplete')need(o.closure!=='closed');
+};
+type StageImage={index:number;ownerId:number;packets:KernelPacket[];result:Extract<KernelPacket,{kind:'stage-ended'}>|null};
+type ActorImage={stage:string|null;pin:OwnerPin;close:OwnerClose|null;returned:boolean;entered:boolean};
+export type LedgerInspection={kind:'FORMAT_ONLY_NOT_NATIVE_OR_ADMISSION';rawBytes:Uint8Array;bytes:number;sha256:string;completeRows:number;framing:'complete'|'truncated-tail';rows:OwnershipRow[];issue:null|'row-bound'|'row-schema-or-order'|'truncated-tail';closure:'closed'|'unsettled'|'unknown';ownerLoss:boolean;hasKernel:boolean;stageResults:ReadonlyArray<{stage:string;result:Extract<KernelPacket,{kind:'stage-ended'}>|null}>};
+/** Replay canonical COMPLETE rows, preserve the entire raw byte string including invalid tails.
+ * Empty/missing events do NOT establish no-start. The native launch fence is external. */
+export function inspectOwnershipLedger(raw:Uint8Array,p:Purpose):LedgerInspection {
+ need(raw instanceof Uint8Array&&raw.length<=OWNERSHIP_LIMITS.bytes);const bytes=new Uint8Array(raw),names=stageNames(p);
+ const actors:ActorImage[]=[],stages:StageImage[]=[],rows:OwnershipRow[]=[],monitorIdentities=new Set<string>();let loss=false,rootClosed=false,issue:LedgerInspection['issue']=null,completeRows=0,offset=0;
+ const active=()=>actors.map((a,id)=>({a,id})).filter(({a})=>a.close===null);
+ const stageEnter=(stage:string):StageImage=>{
+  const index=names.indexOf(stage);need(index>=0);let s=stages.at(-1);
+  if(!s||s.index!==index){need(!loss&&index===(s?s.index+1:0));if(s){need(s.result?.reason==='complete');need(!active().some(({a})=>a.stage===names[s!.index]));}
+   s={index,ownerId:active().at(-1)!.id,packets:[],result:null};stages.push(s);
+  }return s;
+ };
+ function accept(row:OwnershipRow){
+  need(row.sequence===rows.length&&!rootClosed);
+  if(row.kind==='owner-pinned'){
+   const a=row.payload;need(a.pid!==a.parentPid);need(a.actorId===actors.length&&actors.length<=1+2*names.length);need(!actors.some(x=>x.pin.pid===a.pid&&x.pin.startTicks===a.startTicks));
+   if(a.role==='root')need(actors.length===0&&row.stage===null);
+   else {need(actors.length>0&&row.stage!==null&&!loss);const s=stageEnter(row.stage);need(s.packets.length===0&&actors.filter(x=>x.stage===row.stage).length<2);const parent=active().at(-1)!;need(a.parentPid===parent.a.pin.pid&&a.parentStartTicks===parent.a.pin.startTicks);need(parent.a.pin.children.state==='empty');}
+   actors.push({stage:row.stage,pin:a,close:null,returned:false,entered:false});return;
+  }
+  need(actors.length>0);
+  if(row.kind==='owner-close-observed'){
+   const a=actors[row.payload.actorId];need(a&&a.close===null&&row.stage===a.stage&&active().at(-1)!.id===row.payload.actorId);
+   if(row.payload.handles.kernelDescriptors==='kernel-returned-closed')need(a.returned);
+   if(row.payload.handles.kernelDescriptors==='not-entered')need(!a.entered);
+   a.close=row.payload;if(row.payload.actorId===0)rootClosed=true;return;
+  }
+  if(row.kind==='upstream-owner-lost'){
+   need(!loss);const a=actors[row.payload.actorId];need(a&&a.close===null&&row.payload.pid===a.pin.parentPid&&row.payload.startTicks===a.pin.parentStartTicks);
+   if(row.stage===null)need(stages.length===0);else stageEnter(row.stage);loss=true;return;
+  }
+  need(row.stage!==null);const s=stageEnter(row.stage),packet=row.payload;need(s.result===null&&active().every(({a})=>a.pin.children.state==='empty'));
+  const actor=active().at(-1)!;need(actor.a.stage===null||actor.a.stage===row.stage);if(s.packets.length===0)s.ownerId=actor.id;need(s.ownerId===actor.id);actor.a.entered=true;
+  const prior=s.packets.map(x=>x.kind);
+  if(packet.kind==='session-admitted'){
+   need(!loss&&prior.length===0&&!actors.some(x=>x.pin.pid===packet.pid&&x.pin.startTicks===String(packet.start)));const key=packet.pid+':'+packet.start;need(!monitorIdentities.has(key));monitorIdentities.add(key);
+  }else if(packet.kind==='group-stop-before-reap')same(prior,['session-admitted']);
+  else if(packet.kind==='group-quiescent-then-reaped')need(prior.length===0||canonicalJson(prior)===canonicalJson(['session-admitted','group-stop-before-reap']));
+  else {
+   const admitted=prior.includes('session-admitted'),quiescent=prior.includes('group-quiescent-then-reaped');need(packet.admitted===admitted&&packet.reaped===quiescent&&packet.groupQuiescent===packet.reaped);
+   same(prior,admitted?['session-admitted','group-stop-before-reap',...(quiescent?['group-quiescent-then-reaped']:[])]:quiescent?['group-quiescent-then-reaped']:[]);
+   if(quiescent)need(packet.escapedSession===(s.packets.at(-1) as Extract<KernelPacket,{kind:'group-quiescent-then-reaped'}>).escapedSession);
+   if(packet.reason==='complete')need(admitted&&quiescent&&!packet.escapedSession&&packet.commandExit===0);
+   if(!admitted)need(packet.commandExit===null);
+   if(packet.reason==='command-failed')need(admitted&&packet.commandExit!==null&&packet.commandExit!==0);
+   s.result=packet;actor.a.returned=true;
+  }s.packets.push(packet);
+ }
+ for(let i=0;i<bytes.length;i++)if(bytes[i]===10){
+  completeRows++;if(issue===null){if(completeRows>OWNERSHIP_LIMITS.rows)issue='row-bound';else try{need(i-offset+1<=OWNERSHIP_LIMITS.rowBytes);const row=decodeCanonicalJson(utf8.decode(bytes.subarray(offset,i+1)));ownershipRowCheck(row);accept(row as OwnershipRow);rows.push(row as OwnershipRow);}catch{issue='row-schema-or-order';}}offset=i+1;
+ }
+ const framing=offset===bytes.length?'complete':'truncated-tail';if(issue===null&&framing==='truncated-tail')issue='truncated-tail';
+ const knownUnsettled=actors.some(a=>a.pin.children.state==='nonempty'||a.close?.children.state==='nonempty')||stages.some(s=>s.result?.escapedSession===true||s.result?.reaped===false);
+ const actorsClosed=actors.length>0&&rootClosed&&actors.every(a=>a.pin.children.state==='empty'&&a.close?.identity.state==='matched'&&a.close.children.state==='empty'&&Object.values(a.close.handles).every(x=>x!=='unknown'));
+ const familiesClosed=stages.every(s=>s.packets.length===0||s.result?.reaped===true&&s.result.groupQuiescent&&!s.result.escapedSession);
+ const closure=issue===null&&actorsClosed&&familiesClosed?'closed':knownUnsettled?'unsettled':'unknown';
+ return{kind:'FORMAT_ONLY_NOT_NATIVE_OR_ADMISSION',rawBytes:bytes,bytes:bytes.length,sha256:createHash('sha256').update(bytes).digest('hex'),completeRows,framing,rows,issue,closure,ownerLoss:loss,hasKernel:stages.some(s=>s.packets.length>0),stageResults:stages.map(s=>({stage:names[s.index],result:s.result}))};
+}
+/** Strict complete-row codec; NOT a declaration that the represented native facts happened. */
 export function validateOwnershipJsonl(raw:string,p:Purpose):void {
- need(raw.endsWith('\n'));const lines=raw.slice(0,-1).split('\n');need(lines.length>0);let seq=0;
- for(const line of lines){const o=shape(decodeCanonicalJson(line+'\n'),{version,sequence:uint,stage:nonempty,event:fixed('admitted','started','settled','refused'),pid:positive,startTicks:decimal,parentPid:positive,parentStartTicks:decimal,groupId:positive,sessionId:positive,stdinKind:fixed('socket','not-applicable'),stdinDevice:nullable(decimal),stdinInode:nullable(decimal),settled:bool});need(o.sequence===seq++&&stageNames(p).includes(o.stage as string));need(o.stdinKind==='socket'?(o.stdinDevice!==null&&o.stdinInode!==null):(o.stdinDevice===null&&o.stdinInode===null));}
+ const bytes=new TextEncoder().encode(raw);need(utf8.decode(bytes)===raw);const result=inspectOwnershipLedger(bytes,p);need(result.issue===null&&result.rows.length>0);
+}
+function validateCustody(progress:Obj,raw:Uint8Array,p:Purpose):void {
+ const c=progress.custody as Custody;custodyCheck(c);const ledger=inspectOwnershipLedger(raw,p);
+ need(c.bytes===ledger.bytes&&c.sha256===ledger.sha256&&c.completeRows===ledger.completeRows&&c.framing===ledger.framing&&c.closure===ledger.closure);
+ if(c.state==='owner-loss')need(ledger.ownerLoss);else need(!ledger.ownerLoss);
+ if(c.state==='not-started')need(!ledger.hasKernel&&ledger.closure==='closed');
+ else if(c.state==='closed')need(ledger.hasKernel&&ledger.closure==='closed');
+ else if(c.state==='incomplete')need(ledger.closure!=='closed');
+ const done=progress.completedStages as string[],names=stageNames(p);for(const stage of done)need(ledger.stageResults.some(s=>s.stage===stage&&s.result?.reason==='complete'));
+ for(const s of ledger.stageResults)need(names.indexOf(s.stage)<=done.length-Number(progress.complete));
+ if(progress.complete)need(c.state==='closed'&&ledger.stageResults.length===names.length&&ledger.stageResults.every(s=>s.result?.reason==='complete'));
 }
 
 const utf8 = new TextDecoder('utf-8',{fatal:true,ignoreBOM:true});
@@ -215,7 +318,7 @@ function decodeRawMembers(p:Purpose,input:ArchiveMember[]):Map<string,string|Uin
  need(input.length<=100);unique(input.map(x=>x.name));let total=0;const out=new Map<string,string|Uint8Array>();
  const allowed=p==='semantic'?SEMANTIC_MEMBERS:CLI_MEMBERS;
  for(const {name,bytes} of input){need(allowed.includes(name)&&bytes instanceof Uint8Array&&bytes.length<=memberLimit(name));total+=bytes.length;need(total<=128*1024*1024);
-  if(name.endsWith('tracked.bin')||name==='native.stdout'||name==='native.stderr'||name==='report.json')out.set(name,new Uint8Array(bytes));else{let s:string;try{s=utf8.decode(bytes);}catch{fail();}out.set(name,s!);}
+  if(name.endsWith('tracked.bin')||name==='native.stdout'||name==='native.stderr'||name==='report.json'||name==='native-ownership.jsonl')out.set(name,new Uint8Array(bytes));else{let s:string;try{s=utf8.decode(bytes);}catch{fail();}out.set(name,s!);}
  }
  return out;
 }
@@ -235,7 +338,7 @@ export function validateCallbackArchiveData(p:Purpose,input:ArchiveMember[]):voi
  const report=json('phase-seal.json') as Obj;need(report.purpose===p);
  for(const [name,raw] of data){
   if(Object.hasOwn(metadata,name)){validateMetadataMember(name,json(name));continue;}
-  if(name==='native-ownership.jsonl'){validateOwnershipJsonl(raw as string,p);continue;}
+  if(name==='native-ownership.jsonl'){validateCustody(report,raw as Uint8Array,p);continue;}
   if(name.endsWith('tracked.bin')){parseTracked(raw as Uint8Array);continue;}
   if(name.includes('head.stdout')){need(/^[0-9a-f]{40}\n$/.test(raw as string));continue;}
   if(name.includes('status.stdout')){need(raw==='');continue;}
