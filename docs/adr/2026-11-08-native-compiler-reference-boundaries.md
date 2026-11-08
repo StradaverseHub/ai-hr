@@ -40,7 +40,7 @@ those native semantics on the actual pinned version, not infer them from docs.
 Obtain a fresh native parsed root, resolved input/package/mode, ambient and byte
 inventory for the exact frozen source. Historical13d counts are observations,
 never acceptance constants for a newer candidate. Preserve every original root
-exactly once as an implementation owner; retain every nonroot implementation,
+exactly once in the owning-project inventory; retain every nonroot implementation,
 JSON, JS, declaration, original package identity and resolution-only opaque leaf.
 Unknown roots/resolutions fail. Mobile exclusion stays exactly as originally
 configured; this does not waive its separately required native compiler.
@@ -65,6 +65,10 @@ configs are retained as complete source/run-bound private evidence.
 Each generated config extends the exact original absolute config, supplies only
 its complete files and an explicit empty include, preserves inherited paths and
 original package resolution, and adds native composite/declaration settings.
+The exact emission overrides are noEmit=false, noEmitOnError=true,
+composite=true, declaration=true and emitDeclarationOnly=false. Keep every
+original semantic option, including checkJs and skipLibCheck, unchanged. Native
+JS/JSON emission stays private; none of those bytes are runtime artifacts.
 rootDir is the actual source root; output/build-info files belong to separate
 owned RUNNER_TEMP directories, never checkout or node_modules. No emitted JS is
 installed or served. Output and input containment/hashes are independently bound.
@@ -89,6 +93,12 @@ are native contracts; option presence alone does not prove their execution.
 
 JSON has no invented declaration output. Preserve original JSON bytes and native
 module resolution and explicitly enumerate each project's required JSON context.
+Use the native compiler's normal JS/JSON emission so JSON assets referenced by
+emitted .d.ts files exist at their actual native relative paths. No bespoke JSON
+copy/rewriter or emitted import rewrite fills a missing native output. A
+[TypeScript investigation](https://github.com/microsoft/TypeScript/issues/58684)
+identifies the declaration-only JSON-copy limitation; this motivates the native
+emission choice, while pinned-version fixtures must prove its actual behavior.
 Shared immutable JSON/declaration context may appear in multiple native Programs;
 implementation ownership is still unique. The prior per-source emit diagnostic
 observed a native aggregate JSON emitSkipped quirk. Genuine native CLI behavior
