@@ -1826,3 +1826,12 @@ source reservation, not evidence that the repair is applied or accepted.
 ## Approved payroll input methods — 9 November 2026 (unapplied)
 
 Branch codex/open-feedback-20261108 reserves 3700_individual_transaction_calculation_method, idx 3000 / when 1793330003300. A read-only survey of 3,593 distinct ref heads, 500 distinct journals and 777 readable worktree journals found maximum tag 3602 / idx 2902 / when 1793330003202. Fresh main and alpha are 82859db9a; staging independently reports that same source/build, 709 applied rows and watermark 1793330002801. Preserve the canonical journal prefix and all applied SQL bytes. The new nullable column has no backfill: all existing rows keep legacy interpretation. Recheck peer reservations and the exact ordered installed ledger at release admission. This reservation grants no deployment authority.
+
+
+## Payroll entry methods after coordinated six-item release — 9 November 2026 (unapplied reallocation)
+
+The earlier `3700_individual_transaction_calculation_method` reservation above is superseded and was never installed. OPEN BOARD and OPEN BOARD 2 coordinated six-item-first release order under the owner's explicit coordination approval. Preserve that owner's seven pending 3700–3706 receipts at timestamps 1793330003300–3306, plus peer OPEN BOARD 3 reservations 3800/3801 at 1793330003400–3401.
+
+A fresh full public-ref fetch followed by a read-only survey of 3,561 and 3,619 distinct repository heads, 504 unique committed journal blobs and 804 readable registered worktree journals found maximum tag3801 / idx3101 / when1793330003401. Two conflicted journals were scanned conservatively for both sides; 283 missing registered paths were recorded rather than treated as current source. Independently, the live ledger still matches all710 ordered receipts of installed4ae7953eb, watermark1793330003000. Actual survey details and ledger proof are retained privately.
+
+This branch reserves **3900_individual_transaction_calculation_method**, **idx3200 / when1793330003500**. The four-line SQL payload is byte-identical to the prior unapplied file, SHA256 `f6f4a31109f66bc5c9038315e249829c2655b870db98a9cbb1ede9cfdab958d4`; only its path and owning journal/test pins move. The current710-entry applied prefix is unchanged. Recheck the actual accepted six-item source, newer peer claims and complete ordered live ledger before integration/admission. This is source allocation only; no migration or staging deployment has occurred.

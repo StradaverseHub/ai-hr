@@ -4973,10 +4973,10 @@
       "breakpoints": true
     },
     {
-      "idx": 3000,
+      "idx": 3200,
       "version": "7",
-      "when": 1793330003300,
-      "tag": "3700_individual_transaction_calculation_method",
+      "when": 1793330003500,
+      "tag": "3900_individual_transaction_calculation_method",
       "breakpoints": true
     }
   ]
