@@ -36530,5 +36530,29 @@
     "required": "Pilih sekurang-kurangnya satu syarikat.",
     "empty": "Tiada syarikat sepadan.",
     "locked": "Pentadbir kumpulan boleh mengubah tetapan syarikat. Tetapan Item Gaji lain masih boleh disimpan."
+  },
+  "rewardDashboard": {
+    "greeting": "Selamat datang ke Meja Ganjaran anda",
+    "salary": "Bajet kenaikan gaji",
+    "bonus": "Bajet bonus",
+    "open": "Buka",
+    "allReviews": "Semua semakan",
+    "preferences": "Keutamaan papan pemuka",
+    "allAssigned": "Semua unit ditugaskan",
+    "salaryPeriod": "Paparan gaji",
+    "monthly": "Bulanan",
+    "annual": "Tahunan",
+    "yourRoles": "Peranan anda",
+    "separate": "Setiap syarikat dan pelan mempunyai bajet sendiri.",
+    "oneOff": "Ganjaran sekali sahaja · tidak ditahunkan",
+    "restricted": "Jumlah bajet tidak ditunjukkan kerana semakan ini mengandungi rekod terhad. Buka semakan untuk butiran yang dibenarkan.",
+    "uploaded": "Semakan muat naik ini mengekalkan ganjaran yang direkodkan. Buka semakan untuk butiran.",
+    "missingInputs": "Semak input bajet yang belum lengkap",
+    "more": "Lihat {count} lagi",
+    "empty": "Tiada semakan tahunan dalam skop semasa anda. Buka Semua semakan untuk permohonan lain atau notis persediaan.",
+    "waiting": "Menunggu anda · {count}",
+    "overdue": "Lewat",
+    "noDue": "Tarikh akhir belum ditetapkan",
+    "destinations": "Halaman Ganjaran"
   }
 }

@@ -36530,5 +36530,29 @@
     "required": "Chọn ít nhất một công ty.",
     "empty": "Không có công ty phù hợp.",
     "locked": "Quản trị viên tập đoàn có thể thay đổi công ty áp dụng. Các thiết lập khoản lương khác vẫn có thể lưu."
+  },
+  "rewardDashboard": {
+    "greeting": "Chào mừng đến Bàn làm việc thưởng",
+    "salary": "Ngân sách tăng lương",
+    "bonus": "Ngân sách thưởng",
+    "open": "Mở",
+    "allReviews": "Tất cả đợt xét",
+    "preferences": "Tùy chọn bảng điều khiển",
+    "allAssigned": "Tất cả đơn vị được giao",
+    "salaryPeriod": "Hiển thị lương",
+    "monthly": "Hàng tháng",
+    "annual": "Hàng năm",
+    "yourRoles": "Vai trò của bạn",
+    "separate": "Mỗi công ty và kế hoạch giữ ngân sách riêng.",
+    "oneOff": "Khoản thưởng một lần · không quy đổi năm",
+    "restricted": "Tổng ngân sách được ẩn vì có hồ sơ bị hạn chế. Mở đợt xét để xem chi tiết được phép.",
+    "uploaded": "Đợt xét tải lên này giữ nguyên các khoản thưởng đã ghi nhận. Mở đợt xét để xem chi tiết.",
+    "missingInputs": "Xem dữ liệu ngân sách còn thiếu",
+    "more": "Xem thêm {count}",
+    "empty": "Không có đợt xét hàng năm trong phạm vi hiện tại. Mở Tất cả đợt xét để xem yêu cầu khác hoặc thông báo chuẩn bị.",
+    "waiting": "Chờ bạn xử lý · {count}",
+    "overdue": "Quá hạn",
+    "noDue": "Chưa đặt hạn chót",
+    "destinations": "Các trang thưởng"
   }
 }

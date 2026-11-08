@@ -9,7 +9,7 @@ import { createAppUser,owner,closeAll,resetDb,migrateTestDb,seedBase,setModule,e
 import { createApprovedRewardUnit } from './rewards-setup-fixture';
 import { initializeRewardGovernanceFixture,refreshRewardFixtureBudget } from './rewards-governance-fixture';
 import { setRewardMember } from './rewards-access-fixture';
-import { getRewardUnit,getRewardUnitGovernance,refreshRewardSources,importRewardFacts,getRewardPreparationStatus,getRewardPreparationChecklist,changeRewardPreparation,saveRewardUnitInputs } from '../packs/rewards/service';
+import { getRewardUnit,getRewardUnitGovernance,refreshRewardSources,importRewardFacts,getRewardPreparationStatus,getRewardPreparationChecklist,changeRewardPreparation,saveRewardUnitInputs,rewardDashboard,getRewardDashboardPreference,saveRewardDashboardPreference } from '../packs/rewards/service';
 import { REWARD_PREPARATION_STEPS } from '../packs/rewards/preparation-model';
 
 let base:Base,gr:SessionContext,checker:SessionContext,reviewer:SessionContext,unitId:string,employmentId:string;
@@ -97,6 +97,20 @@ describe('native checked preparation of new annual Rewards reviews',()=>{
   const events=await owner.db.select().from(schema.domainEvent).where(and(eq(schema.domainEvent.aggregateId,unitId),eq(schema.domainEvent.eventType,'reward-unit.preparation-invalidated')));
   expect(events).toHaveLength(1);expect(events[0].payload).toEqual({to:'draft',reason:'source-changed'});
   expect((await getRewardPreparationChecklist(gr,unitId)).preparation.steps).toEqual({});
+ });
+
+ it('projects dashboard totals only inside live scope and saves presentation for the current login',async()=>{
+  const pending=await rewardDashboard(reviewer,[base.companyId],{scope:unitId});expect(pending.units).toEqual([]);
+  await confirmAll();await change(checker,{kind:'release'});
+  const native=await getRewardUnit(gr,unitId),dashboard=await rewardDashboard(gr,[base.companyId],{scope:unitId,period:'annual'});
+  expect(dashboard.units).toHaveLength(1);expect(dashboard.choice.period).toBe('annual');
+  expect(dashboard.units[0].budgets?.standard.used).toEqual(native.budgets.standard.used);
+  expect(dashboard.units[0].budgets?.standard.bonusPoolCents).toBe(native.budgets.standard.bonusPoolCents);
+  expect(JSON.stringify(dashboard)).not.toContain('Fictional preparation employee');
+  expect((await rewardDashboard(gr,[randomUUID()],{scope:unitId})).units).toEqual([]);
+  await saveRewardDashboardPreference(gr,[base.companyId],{scope:unitId,period:'annual'});
+  expect(await getRewardDashboardPreference(gr)).toEqual({scope:unitId,period:'annual'});
+  expect(await getRewardDashboardPreference(reviewer)).toBeNull();
  });
 
  it('keeps the preparation compatibility flag out of ordinary runtime control',async()=>{

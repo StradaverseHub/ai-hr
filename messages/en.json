@@ -36530,5 +36530,29 @@
     "required": "Select at least one company.",
     "empty": "No matching companies.",
     "locked": "A group administrator can change company applicability. Other Pay Item settings can still be saved."
+  },
+  "rewardDashboard": {
+    "greeting": "Welcome to your Reward Desk",
+    "salary": "Salary increase budget",
+    "bonus": "Bonus budget",
+    "open": "Open",
+    "allReviews": "All reviews",
+    "preferences": "Dashboard preferences",
+    "allAssigned": "All assigned units",
+    "salaryPeriod": "Salary display",
+    "monthly": "Monthly",
+    "annual": "Annual",
+    "yourRoles": "Your role",
+    "separate": "Each company and plan keeps its own budget.",
+    "oneOff": "One-off award · not annualized",
+    "restricted": "Budget totals are withheld because this review contains restricted records. Open the review for permitted details.",
+    "uploaded": "This uploaded review keeps its recorded awards. Open the review for details.",
+    "missingInputs": "Review missing budget inputs",
+    "more": "View {count} more",
+    "empty": "No annual reviews are available in your current scope. Open All reviews for other requests or preparation notices.",
+    "waiting": "Waiting on you · {count}",
+    "overdue": "Overdue",
+    "noDue": "No due date set",
+    "destinations": "Rewards pages"
   }
 }

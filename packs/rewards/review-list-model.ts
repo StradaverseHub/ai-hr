@@ -11,5 +11,5 @@ export function rewardReviewUpcoming(rows:readonly RewardReviewListRow[]){
 }
 export function rewardReviewHref(filters:RewardReviewFilters){
  const query=new URLSearchParams(Object.entries(filters).filter(([,value])=>!!value) as [string,string][]).toString();
- return query?`/rewards?${query}`:'/rewards';
+ return query?`/rewards/reviews?${query}`:'/rewards/reviews';
 }

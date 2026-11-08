@@ -36530,5 +36530,29 @@
     "required": "请至少选择一家公司。",
     "empty": "没有匹配的公司。",
     "locked": "集团管理员可更改适用公司。其他薪资项目设置仍可保存。"
+  },
+  "rewardDashboard": {
+    "greeting": "欢迎来到您的薪酬工作台",
+    "salary": "加薪预算",
+    "bonus": "奖金预算",
+    "open": "打开",
+    "allReviews": "所有评审",
+    "preferences": "工作台偏好",
+    "allAssigned": "所有已分配单位",
+    "salaryPeriod": "薪资显示",
+    "monthly": "每月",
+    "annual": "每年",
+    "yourRoles": "您的角色",
+    "separate": "各公司及计划保留各自的预算。",
+    "oneOff": "一次性奖励 · 不按年折算",
+    "restricted": "此评审含受限记录，因此不显示预算总额。请打开评审查看获准的详情。",
+    "uploaded": "此上传评审保留已记录的奖励。请打开评审查看详情。",
+    "missingInputs": "查看缺失的预算资料",
+    "more": "查看其余 {count} 项",
+    "empty": "您当前范围内没有年度评审。请打开所有评审查看其他申请或准备通知。",
+    "waiting": "等待您处理 · {count}",
+    "overdue": "已逾期",
+    "noDue": "未设截止日期",
+    "destinations": "薪酬页面"
   }
 }

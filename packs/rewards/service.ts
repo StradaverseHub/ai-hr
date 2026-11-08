@@ -1961,3 +1961,49 @@ async function assertRewardPreparationMutableTx(tx:Tx,unitId:string){
  const [row]=await tx.execute<{value:RewardPreparationView|null}>(sql`select app.reward_preparation_view(${unitId}::uuid) as value`);
  if(row?.value?.required&&row.value.released)throw new RewardError('Unit set-up is locked. Request a controlled change and give a reason.');
 }
+
+/** Salary-free saved presentation choices. They never confer a scope or authorize a read. */
+export async function getRewardDashboardPreference(ctx:SessionContext){
+ return withRewardsTenant(ctx,async tx=>{const [row]=await tx.execute<{prefs:Record<string,unknown>|null}>(sql`select app.list_preferences_get() as prefs`);return row?.prefs?.rewardDashboard??null;});
+}
+export async function saveRewardDashboardPreference(ctx:SessionContext,companyIds:string[],raw:unknown){
+ const available=await listRewardReviewStatus(ctx,companyIds);
+ const {rewardDashboardPreference}=await import('./dashboard-model');
+ const value=rewardDashboardPreference(raw,available.rows.filter(row=>row.kind==='annual'&&row.roles.length));
+ return withRewardsTenant(ctx,async tx=>{
+  await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`list-prefs:${ctx.tenantId}:${ctx.userId}`},0))`);
+  const [row]=await tx.execute<{prefs:Record<string,unknown>|null}>(sql`select app.list_preferences_get() as prefs`);
+  const envelope=row?.prefs&&typeof row.prefs==='object'&&!Array.isArray(row.prefs)?row.prefs:{};
+  // Personal presentation preference: no business event, HR data or authorization changes.
+  await tx.execute(sql`select app.list_preferences_set(${JSON.stringify({...envelope,rewardDashboard:value})}::jsonb)`);
+  return value;
+ });
+}
+/** Bounded dashboard output contains no personal lines, source records, recommendations or private PAT inputs. */
+export async function rewardDashboard(ctx:SessionContext,companyIds:string[],preference:unknown){
+ const {rewardDashboardPreference}=await import('./dashboard-model');
+ const list=await listRewardReviewStatus(ctx,companyIds);
+ const available=list.rows.filter(row=>row.kind==='annual'&&row.roles.length);
+ const choice=rewardDashboardPreference(preference,available);
+ return withRewardsTenant(ctx,async tx=>{
+  const selected=available.filter(row=>choice.scope==='all'||row.id===choice.scope);
+  const units=[];
+  for(const row of selected){
+   const v=await reviewProjectionTx(tx,ctx,row.id),board=boardRow(v,{cycle:row.cycle,company:row.company},todayInKualaLumpur());
+   // Match the mobile projection's confidentiality floor. Never expose a hidden person's amount
+   // through a unit total, plan split, balance, reference bar or a zero-valued redaction.
+   const restricted=v.hiddenCount>0||v.rows.some(entry=>isSeniorPlanMember(v.unit.policy,entry.facts,entry.source.grade)&&!v.seniorAmountsVisible);
+   const budgets=restricted||v.uploaded?null:Object.fromEntries((['standard','h'] as const).map(plan=>{
+    const b=v.budgets[plan];return [plan,{used:b.used,pools:b.pools,bonusUsedCents:b.bonusUsedCents,lumpCents:b.lumpCents,bonusPoolCents:b.bonusPoolCents}];
+   })) as Record<'standard'|'h',{used:number[];pools:number[];bonusUsedCents:number;lumpCents:number;bonusPoolCents:number}>|null;
+   units.push({id:row.id,name:row.unit,company:row.company,companyId:row.companyId,cycle:row.cycle,snapshotDate:v.unit.snapshotDate,roles:v.roles,
+    budgets,poolStatus:v.poolStatus,restricted,uploaded:v.uploaded,setupVisible:v.roles.some(role=>['gr','ctro','ec'].includes(role)),
+    waiting:board.waiting,action:board.action,due:board.due,daysUntilDue:board.daysUntilDue,blocking:board.blocking,exceptions:board.exceptions});
+  }
+  return {choice,emptyReason:list.emptyReason,year:list.year,
+   canSelectAll:available.length>0&&available.every(row=>row.roles.some(role=>['gr','ctro','ec'].includes(role))),
+   scopes:available.map(row=>({id:row.id,label:`${row.company} · ${row.unit} · ${row.cycle}`})),units,
+   waiting:units.filter(row=>row.waiting).sort((a,b)=>(a.due??'9999').localeCompare(b.due??'9999')||a.id.localeCompare(b.id))};
+ });
+}
+export type RewardDashboard=Awaited<ReturnType<typeof rewardDashboard>>;
