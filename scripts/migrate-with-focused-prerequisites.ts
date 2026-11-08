@@ -24,6 +24,10 @@ export async function migrateWithFocusedPrerequisites():Promise<number>{
     return JSON.parse(execFileSync(process.execPath,['--input-type=module','-e',FULL_CI_PLAN_OBSERVER],{cwd,env:process.env,encoding:'utf8',maxBuffer:16*1024*1024}));
    },},
   loadFocusedRoleOwner:()=>import('../test/helpers/personnel-draft-discard-ci-role-fixture'),
+  prepareCatalogueReplay:async admission=>{
+   const owner=await import('../test/fixtures/notification-worker/final-catalogue-replay-prerequisite');
+   return owner.prepareNotificationCatalogueReplay(admission);
+  },
   fingerprint:path=>createHash('sha256').update(readFileSync(path)).digest('hex'),
   recordPrerequisites:(metadata,full)=>{
    if(metadata.mode===FULL_CI_ROLE_MODE){
