@@ -45,6 +45,128 @@ CREDENTIAL_INSPECTION_STAGES = ('LoadUnit', *CREDENTIAL_PROPERTIES)
 CREDENTIAL_INSPECTION_FAILURES = ('EXECUTION', 'TIMEOUT', 'COMMAND', 'UNIT_NOT_LOADED', 'BUS_UNAVAILABLE', 'INVALID_JSON')
 
 
+ADMISSION_PHASE_PREFIX = 'AIHR_ADMIT_PHASE_V1 '
+ADMISSION_PHASE_MAX = 40
+ADMISSION_PHASE_SAFE_INTEGER = 9007199254740991
+
+
+class AdmissionPhaseObserver:
+    """Bounded journal observations only; never admission or source authority."""
+    def __init__(self):
+        self.stream = None
+        self.disabled, self.sequence, self.last_clock = True, 0, None
+        self.started = set()
+
+    @classmethod
+    def from_stderr(cls):
+        value, duplicate = cls(), None
+        try:
+            if socket.getdefaulttimeout() is not None:
+                return value
+            duplicate = os.dup(2)
+            if not stat.S_ISSOCK(os.fstat(duplicate).st_mode):
+                return value
+            value.stream = socket.socket(fileno=duplicate)
+            duplicate = None
+            value.disabled = False
+        except Exception:
+            value.disabled = True
+        except BaseException:
+            value.disabled = True
+            raise
+        finally:
+            if duplicate is not None:
+                try:
+                    os.close(duplicate)
+                except Exception:
+                    pass
+        return value
+
+    def close(self):
+        stream, self.stream = self.stream, None
+        self.disabled = True
+        if stream is not None:
+            try:
+                stream.close()
+            except Exception:
+                pass
+
+    def clock(self):
+        value = time.monotonic_ns() // 1000
+        if (type(value) is not int or not 0 <= value <= ADMISSION_PHASE_SAFE_INTEGER
+                or self.last_clock is not None and value < self.last_clock):
+            raise ValueError('Invalid diagnostic clock')
+        self.last_clock = value
+        return value
+
+    def emit(self, code, event, stamp, elapsed):
+        if self.disabled:
+            return
+        try:
+            if (self.sequence >= ADMISSION_PHASE_MAX or type(code) is not int or not 0 <= code < 20
+                    or event not in ('enter', 'return', 'raised')
+                    or type(stamp) is not int or not 0 <= stamp <= ADMISSION_PHASE_SAFE_INTEGER
+                    or (elapsed is not None and (type(elapsed) is not int or not 0 <= elapsed <= ADMISSION_PHASE_SAFE_INTEGER))):
+                raise ValueError('Invalid diagnostic frame')
+            packet = (ADMISSION_PHASE_PREFIX + json.dumps({'v': 1, 'q': self.sequence, 'p': code,
+                'e': event, 't': stamp, 'd': elapsed}, separators=(',', ':')) + '\n').encode('ascii')
+            if len(packet) > 128:
+                raise ValueError('Diagnostic frame exceeds bound')
+            # One Python API call, no application retry. CPython may internally
+            # retry EINTR. Never mutate the original stream's persistent flags.
+            self.sequence += 1
+            if self.stream.send(packet, socket.MSG_DONTWAIT | socket.MSG_NOSIGNAL) != len(packet):
+                self.disabled = True
+        except Exception:
+            self.disabled = True
+        except BaseException:
+            self.disabled = True
+            raise
+
+    @contextlib.contextmanager
+    def stage(self, code):
+        entered = None
+        if not self.disabled:
+            try:
+                if type(code) is not int or not 0 <= code < 20:
+                    raise ValueError('Invalid diagnostic stage')
+                if code not in self.started:
+                    self.started.add(code)
+                    entered = self.clock()
+                    self.emit(code, 'enter', entered, None)
+            except Exception:
+                self.disabled = True
+            except BaseException:
+                self.disabled = True
+                raise
+        try:
+            yield
+        except BaseException:
+            # A diagnostic abort cannot replace an already-active body error.
+            try:
+                self.finish(code, entered, 'raised')
+            except BaseException:
+                pass
+            raise
+        else:
+            self.finish(code, entered, 'return')
+
+    def finish(self, code, entered, event):
+        if entered is not None and not self.disabled:
+            try:
+                stamp = self.clock()
+                self.emit(code, event, stamp, stamp - entered)
+            except Exception:
+                self.disabled = True
+            except BaseException:
+                self.disabled = True
+                raise
+
+
+def admission_phase(observer, code):
+    return contextlib.nullcontext() if observer is None else observer.stage(code)
+
+
 class Refused(RuntimeError):
     """Safe, fixed operation refusal; never include command output or HTTP bodies."""
 
@@ -277,6 +399,7 @@ class LinuxHost:
         self.profile = profile
         self.next_worker_evidence = {}
         self.next_configuration_evidence = {}
+        self.admission_timing = None
 
     def boot(self) -> str:
         return pathlib.Path('/proc/sys/kernel/random/boot_id').read_text().strip()
@@ -509,38 +632,45 @@ class LinuxHost:
         return props
 
     def worker(self, unit: str, invocation: str, port: int) -> dict[str, int]:
-        props = self.invocation(unit, invocation)
-        require(admitting_phase(props), 'Worker service is not in an admitting phase')
-        require(props.get('MainPID', '').isdigit(), 'Worker has no process identity')
-        pid = int(props['MainPID'])
-        identity = process_identity(pid)
-        require(identity is not None and pid > 1, 'Worker process has exited')
-        spec = self.profile.value['units'][unit]
-        try:
-            require(pathlib.Path('/proc', str(pid)).stat().st_uid == spec['workerUid'], 'Worker process owner changed')
-            require(os.path.realpath('/proc/' + str(pid) + '/exe') == spec['executable']
-                    and os.path.realpath('/proc/' + str(pid) + '/cwd') == spec['releaseDirectory'], 'Worker executable or release changed')
-        except OSError:
-            raise Refused('Cannot inspect the worker process') from None
+        timing = self.admission_timing
+        with admission_phase(timing, 5):
+            props = self.invocation(unit, invocation)
+            require(admitting_phase(props), 'Worker service is not in an admitting phase')
+            require(props.get('MainPID', '').isdigit(), 'Worker has no process identity')
+            pid = int(props['MainPID'])
+            identity = process_identity(pid)
+            require(identity is not None and pid > 1, 'Worker process has exited')
+            spec = self.profile.value['units'][unit]
+            try:
+                require(pathlib.Path('/proc', str(pid)).stat().st_uid == spec['workerUid'], 'Worker process owner changed')
+                require(os.path.realpath('/proc/' + str(pid) + '/exe') == spec['executable']
+                        and os.path.realpath('/proc/' + str(pid) + '/cwd') == spec['releaseDirectory'], 'Worker executable or release changed')
+            except OSError:
+                raise Refused('Cannot inspect the worker process') from None
         if self.profile.next_runtime is not None:
             try:
                 # Reservation/stop/CHECKONLY may have no live process or cgroup.
                 # Only readiness can issue actual resource/namespace evidence.
-                self.next_configuration_evidence[unit] = self.profile.next_runtime.resource_state(unit, props)
-                proof = self.profile.next_runtime.worker(unit, props, self.next_bindings(unit), identity, port, alive)
+                with admission_phase(timing, 6):
+                    self.next_configuration_evidence[unit] = self.profile.next_runtime.resource_state(unit, props)
+                with admission_phase(timing, 7):
+                    typed = self.next_bindings(unit)
+                with admission_phase(timing, 8):
+                    proof = self.profile.next_runtime.worker(unit, props, typed, identity, port, alive)
                 self.next_worker_evidence[unit] = {'invocation': invocation, 'process': identity.copy(),
                     'packageDigest': self.profile.value['runtimePackage']['manifestSha256'],
                     'namespace': proof, 'resources': self.next_configuration_evidence[unit]}
             except (OSError, ValueError, KeyError, TypeError, UnicodeError):
                 raise Refused('Managed Next worker namespace/runtime is unverified') from None
-        if not self.owns_listener(identity, port):
-            if self.port_free(port):
-                raise EndpointNotReady('Worker has not opened its generation endpoint')
-            raise Refused('Another process owns the generation endpoint')
-        require(alive(identity), 'Worker process changed during inspection')
-        final = self.invocation(unit, invocation)
-        require(admitting_phase(final) and final.get('MainPID') == str(pid),
-                'Worker service stopped or changed during inspection')
+        with admission_phase(timing, 9):
+            if not self.owns_listener(identity, port):
+                if self.port_free(port):
+                    raise EndpointNotReady('Worker has not opened its generation endpoint')
+                raise Refused('Another process owns the generation endpoint')
+            require(alive(identity), 'Worker process changed during inspection')
+            final = self.invocation(unit, invocation)
+            require(admitting_phase(final) and final.get('MainPID') == str(pid),
+                    'Worker service stopped or changed during inspection')
         return identity
 
     def reservation_invocation(self, unit: str, invocation: str) -> dict[str, str]:
@@ -738,6 +868,7 @@ def merge_readers(*groups: list[dict[str, int]]) -> list[dict[str, int]]:
 class Controller:
     def __init__(self, profile: Profile, host: LinuxHost):
         self.profile, self.host, self.store = profile, host, Store(profile)
+        self.admission_timing = None
 
     def render(self, revision: str, ports: list[int]) -> bytes:
         # Only validated integers and generated hexadecimal revision text enter
@@ -937,55 +1068,75 @@ class Controller:
             return copy.deepcopy(generation)
 
     def admit(self, unit: str, invocation: str) -> None:
-        with self.store.locked():
-            state = self.state()
-            generation = copy.deepcopy(state['generations'].get(state['current'].get(unit), {}))
-            if generation.get('phase') == 'READY' and generation.get('invocation') == invocation \
-                    and generation.get('epoch') == state['epoch'] == self.profile.value['epoch'] \
-                    and generation.get('profile') == self.profile.sha and generation['id'] in state['published']['ready']:
-                require(self.host.worker(unit, invocation, generation['port']) == generation['process'], 'Ready worker changed')
-                return
-            require(generation.get('phase') == 'WARMING' and generation.get('invocation') == invocation
-                    and generation.get('epoch') == state['epoch'] == self.profile.value['epoch']
-                    and generation.get('profile') == self.profile.sha, 'Stale warming generation')
+        timing = self.admission_timing
+        with admission_phase(timing, 1):
+            with self.store.locked():
+                state = self.state()
+                generation = copy.deepcopy(state['generations'].get(state['current'].get(unit), {}))
+                if generation.get('phase') == 'READY' and generation.get('invocation') == invocation \
+                        and generation.get('epoch') == state['epoch'] == self.profile.value['epoch'] \
+                        and generation.get('profile') == self.profile.sha and generation['id'] in state['published']['ready']:
+                    with admission_phase(timing, 2):
+                        require(self.host.worker(unit, invocation, generation['port']) == generation['process'], 'Ready worker changed')
+                    return
+                require(generation.get('phase') == 'WARMING' and generation.get('invocation') == invocation
+                        and generation.get('epoch') == state['epoch'] == self.profile.value['epoch']
+                        and generation.get('profile') == self.profile.sha, 'Stale warming generation')
         deadline = time.monotonic() + self.profile.value['healthSeconds']
-        while True:
-            self.profile.assert_current()
-            try:
-                identity = self.host.worker(unit, invocation, generation['port'])
-                if self.host.health(generation['port']):
-                    break
-            except EndpointNotReady:
-                pass
-            require(time.monotonic() < deadline, 'Worker did not establish readiness')
-            time.sleep(0.05)
+        with admission_phase(timing, 3):
+            with contextlib.ExitStack() as repeat_span:
+                repeated, repeat_opened = False, False
+                while True:
+                    if repeated and not repeat_opened:
+                        repeat_span.enter_context(admission_phase(timing, 11))
+                        repeat_opened = True
+                    with admission_phase(timing, 4):
+                        self.profile.assert_current()
+                    try:
+                        identity = self.host.worker(unit, invocation, generation['port'])
+                        with admission_phase(timing, 10):
+                            healthy = self.host.health(generation['port'])
+                        if healthy:
+                            break
+                    except EndpointNotReady:
+                        pass
+                    repeated = True
+                    require(time.monotonic() < deadline, 'Worker did not establish readiness')
+                    time.sleep(0.05)
         # Health is never enough: recheck the exact live process/socket/release
         # and current epoch after reacquiring the lock, immediately before UP.
-        with self.store.locked():
-            state = self.state()
-            current = state['generations'].get(state['current'].get(unit), {})
-            if current.get('phase') == 'READY' and current.get('id') == generation['id'] \
-                    and current.get('invocation') == invocation and current.get('process') == identity \
-                    and state['epoch'] == generation['epoch'] and current['id'] in state['published']['ready']:
-                require(self.host.worker(unit, invocation, generation['port']) == identity, 'Ready worker changed')
-                return
-            require(state['pending'] is None and current == generation and state['epoch'] == generation['epoch'],
-                    'Readiness callback no longer owns the current generation')
-            require(self.host.worker(unit, invocation, generation['port']) == identity,
-                    'Worker changed after readiness')
-            current['process'] = identity
-            self.store.save(state)
-            self.publish(state, [*state['published']['ready'], generation['id']])
-            try:
-                require(self.host.worker(unit, invocation, generation['port']) == identity,
-                        'Worker stopped or changed during proxy publication')
-            except Refused:
-                current['phase'] = 'RETIRED'
-                self.store.save(state)
-                self.publish(state, [item for item in state['published']['ready'] if item != generation['id']])
-                raise
-            current['phase'] = 'READY'
-            self.store.save(state)
+        with admission_phase(timing, 12):
+            with self.store.locked():
+                state = self.state()
+                current = state['generations'].get(state['current'].get(unit), {})
+                if current.get('phase') == 'READY' and current.get('id') == generation['id'] \
+                        and current.get('invocation') == invocation and current.get('process') == identity \
+                        and state['epoch'] == generation['epoch'] and current['id'] in state['published']['ready']:
+                    with admission_phase(timing, 13):
+                        require(self.host.worker(unit, invocation, generation['port']) == identity, 'Ready worker changed')
+                    return
+                require(state['pending'] is None and current == generation and state['epoch'] == generation['epoch'],
+                        'Readiness callback no longer owns the current generation')
+                with admission_phase(timing, 14):
+                    require(self.host.worker(unit, invocation, generation['port']) == identity,
+                            'Worker changed after readiness')
+                with admission_phase(timing, 15):
+                    current['process'] = identity
+                    self.store.save(state)
+                with admission_phase(timing, 16):
+                    self.publish(state, [*state['published']['ready'], generation['id']])
+                try:
+                    with admission_phase(timing, 17):
+                        require(self.host.worker(unit, invocation, generation['port']) == identity,
+                                'Worker stopped or changed during proxy publication')
+                except Refused:
+                    current['phase'] = 'RETIRED'
+                    self.store.save(state)
+                    self.publish(state, [item for item in state['published']['ready'] if item != generation['id']])
+                    raise
+                with admission_phase(timing, 18):
+                    current['phase'] = 'READY'
+                    self.store.save(state)
 
     def withdraw(self, unit: str, invocation: str, *, crash: bool = False) -> str:
         with self.store.locked():
@@ -1101,15 +1252,19 @@ def main() -> int:
     parser.add_argument('operation', choices=['check-only', 'initialize', 'prepare-proxy', 'confirm-proxy', 'begin', 'reserve', 'admit', 'cleanup', 'drain', 'reconcile', 'reload', 'status'])
     parser.add_argument('unit', nargs='?')
     args = parser.parse_args()
-    profile = None
+    profile, timing = None, None
     try:
         require(sys.platform == 'linux' and os.geteuid() == 0, 'The installed admission controller requires Linux root')
         require(pathlib.Path(__file__).absolute() == INSTALLED, 'Use the root-owned installed admission controller')
         secure_path(INSTALLED, 0)
-        profile = Profile(PROFILE)
-        require(hashlib.sha256(INSTALLED.read_bytes()).hexdigest() == profile.value['controllerDigest'],
-                'Installed controller differs from its accepted profile')
-        controller = Controller(profile, LinuxHost(profile))
+        if args.operation == 'admit':
+            timing = AdmissionPhaseObserver.from_stderr()
+        with admission_phase(timing, 0):
+            profile = Profile(PROFILE)
+            require(hashlib.sha256(INSTALLED.read_bytes()).hexdigest() == profile.value['controllerDigest'],
+                    'Installed controller differs from its accepted profile')
+            controller = Controller(profile, LinuxHost(profile))
+        controller.admission_timing = controller.host.admission_timing = timing
         if args.operation in ('reserve', 'admit', 'cleanup', 'drain'):
             require(args.unit in profile.value['units'], 'Unknown worker service')
             invocation = os.environ.get('INVOCATION_ID', '')
@@ -1143,8 +1298,18 @@ def main() -> int:
         print('Admission failed: ' + type(error).__name__ + '; reconcile before retry', file=sys.stderr)
         return 1
     finally:
-        if profile is not None:
-            profile.close()
+        try:
+            if profile is not None:
+                with admission_phase(timing, 19):
+                    profile.close()
+        finally:
+            if timing is not None:
+                pending = sys.exc_info()[0] is not None
+                try:
+                    timing.close()
+                except BaseException:
+                    if not pending:
+                        raise
 
 
 if __name__ == '__main__':

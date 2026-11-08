@@ -23,13 +23,17 @@ it('proves privileged cache overlays and bounded owned stop with actual systemd2
   {encoding:'utf8',timeout:30000,stdio:['ignore','pipe','pipe'],maxBuffer:65536});
  const report=JSON.parse(readFileSync(evidence,'utf8'));
  expect(report).toMatchObject({complete:true,nextApplicationVerified:false,releaseEligible:false,
-  ownedRuntimeCleaned:true,resistantFamilyStopped:true,foreignInvocationRetained:true,
+  ownedRuntimeCleaned:true,admissionHandoffTransportSettled:true,resistantFamilyStopped:true,foreignInvocationRetained:true,
   actualExtraMountRefused:true,unmountedAppOwnedPlaceholderRefused:true});
  expect(report.privilegedHookView).toMatchObject({overlaid:true,rootUid:0,hostPlaceholders:3,nativeNamespaceVerified:true});
  expect(report.privilegedHookView.overlayOwnership).toEqual(Array(3).fill({uid:65534,mode:0o700}));
  expect(report.privilegedHookView.sourceRefusals).toEqual(['foreign-source','link-source','same-path-inode-replaced']);
  expect(report.hostPlaceholderOwnership).toEqual(Array(3).fill({uid:0,mode:0o755}));
- expect(report.sourceSha256).toEqual(Object.fromEntries([['probe.py','deploy/admission/test_next_host_view_native.py'],['next_profile.py','deploy/admission/next_profile.py'],['runtime_inventory.py','.github/ci/runtime_inventory.py'],['next_preparation.py','deploy/admission/test_next_native.py']].map(([name,path])=>[name,createHash('sha256').update(readFileSync(path)).digest('hex')])));
+ expect(report.sourceSha256).toEqual(Object.fromEntries([['probe.py','deploy/admission/test_next_host_view_native.py'],['next_profile.py','deploy/admission/next_profile.py'],['runtime_inventory.py','.github/ci/runtime_inventory.py'],['next_preparation.py','deploy/admission/test_next_native.py'],['controller.py','deploy/admission/controller.py']].map(([name,path])=>[name,createHash('sha256').update(readFileSync(path)).digest('hex')])));
+ expect(report.admissionHandoff).toEqual({kind:'ACTUAL_SAME_PID_EXEC_JOURNAL_AVAILABILITY_NOT_ADMISSION',state:'observed',
+  beforePairVerified:true,afterPairVerified:true,samePidObserved:true,exactDistinctArgvObserved:true,actualSharedEmitterTransportVerified:true,
+  fullControllerAdmissionVerified:false,nextApplicationVerified:false,releaseEligible:false});
+ expect(report.resourceTopology.admissionHandoff).toEqual(report.admissionHandoff);
  expect(report.stopElapsedMs).toBeLessThanOrEqual(4000);
  expect(report.resourceReadinessQualified).toBe(false);
  const preparation=report.managerEnvironmentPreparation;

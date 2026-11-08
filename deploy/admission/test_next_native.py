@@ -2073,6 +2073,136 @@ def runtime_journal_observation(raw, unit, invocation, python_exe, reasons):
 
 
 
+
+ADMISSION_PHASE_PREFIX = 'AIHR_ADMIT_PHASE_V1 '
+ADMISSION_PHASE_STAGES = ('controller-profile', 'admit-initial-state', 'already-ready-worker',
+    'readiness-loop', 'first-loop-profile', 'first-worker-before', 'first-worker-resources',
+    'first-worker-typed', 'first-worker-runtime', 'first-worker-listener-final', 'first-health',
+    'repeat-readiness', 'final-lock-state', 'final-already-ready-worker', 'prepublish-worker',
+    'prepublish-save', 'publish', 'postpublish-worker', 'save-ready', 'profile-close')
+
+
+def admission_unique_fields(pairs):
+    value = {}
+    for key, item in pairs:
+        if key in value:
+            raise ValueError('Duplicate diagnostic field')
+        value[key] = item
+    return value
+
+
+def parse_admission_phase_messages(messages, raw_record_count):
+    """Pure bounded schema/clock/controlflow parser. NO native authority checks."""
+    def need(ok):
+        if not ok:
+            raise ValueError('Invalid bounded admission phase prefix')
+    need(type(raw_record_count) is int and 0 < raw_record_count < 64)
+    need(type(messages) is list and 0 < len(messages) <= 40 and len(messages) <= raw_record_count)
+    events, stack, started, ended = [], [], {}, {}
+    previous, total = None, 0
+    worker_parents = {2, 3, 11, 13, 14, 17}
+    for message in messages:
+        need(type(message) is str and message.startswith(ADMISSION_PHASE_PREFIX) and message.isascii())
+        length = len(message.encode('ascii')) + 1
+        total += length
+        need(length <= 128 and total <= 5120)
+        row = json.loads(message[len(ADMISSION_PHASE_PREFIX):], object_pairs_hook=admission_unique_fields)
+        need(type(row) is dict and set(row) == {'v', 'q', 'p', 'e', 't', 'd'})
+        need(type(row['v']) is int and row['v'] == 1 and type(row['q']) is int and row['q'] == len(events)
+             and type(row['p']) is int and 0 <= row['p'] < 20 and row['e'] in ('enter', 'return', 'raised'))
+        need(type(row['t']) is int and 0 <= row['t'] <= 9007199254740991
+             and (previous is None or row['t'] >= previous))
+        code, event, stamp = row['p'], row['e'], row['t']
+        if event == 'enter':
+            need(row['d'] is None and code not in started)
+            parent = stack[-1] if stack else None
+            if code in (0, 1, 3, 12, 19):
+                need(parent is None)
+                if code == 0:
+                    need(not events)
+                elif code == 1:
+                    need(ended.get(0) == 'return')
+                elif code == 3:
+                    need(ended.get(1) == 'return' and 2 not in started)
+                elif code == 12:
+                    need(ended.get(3) == 'return')
+                else:
+                    need(0 in ended)
+            elif code == 2:
+                need(parent == 1)
+            elif code == 4:
+                need(parent == 3)
+            elif code in (5, 6, 7, 8, 9):
+                need(parent in worker_parents)
+                if code != 5:
+                    need(ended.get(5) == 'return')
+                if code in (7, 8):
+                    need(ended.get(code - 1) == 'return')
+            elif code == 10:
+                need(parent in (3, 11))
+            elif code == 11:
+                need(parent == 3 and ended.get(4) == 'return')
+            else:
+                need(parent == 12)
+                if code == 13:
+                    need(14 not in started)
+                elif code == 14:
+                    need(13 not in started)
+                else:
+                    need(ended.get(code - 1) == 'return')
+            started[code] = stamp
+            stack.append(code)
+        else:
+            need(stack and stack[-1] == code and type(row['d']) is int
+                 and 0 <= row['d'] <= 9007199254740991 and row['d'] == stamp - started[code])
+            stack.pop()
+            ended[code] = event
+        events.append(row)
+        previous = stamp
+    need(events[0]['p'] == 0 and events[0]['e'] == 'enter')
+    complete = not stack and ended.get(19) == 'return'
+    result = {'kind': 'SOURCE_BOUND_CONTROLLER_PHASE_OBSERVATIONS_NOT_ADMISSION',
+        'state': 'complete-prefix' if complete else 'incomplete-prefix', 'events': events,
+        'activeStageCodes': stack, 'lastEnteredStage': next(row['p'] for row in reversed(events) if row['e'] == 'enter'),
+        'lastReturnedStage': next((row['p'] for row in reversed(events) if row['e'] == 'return'), None),
+        'traceComplete': complete}
+    need(len(json.dumps(result, separators=(',', ':')).encode()) <= 8192
+         and len(json.dumps(result, indent=2).encode()) <= 16384)
+    return result
+
+
+def unavailable_admission_phases():
+    return {'kind': 'SOURCE_BOUND_CONTROLLER_PHASE_OBSERVATIONS_NOT_ADMISSION', 'state': 'unavailable',
+        'events': [], 'activeStageCodes': [], 'lastEnteredStage': None, 'lastReturnedStage': None, 'traceComplete': False}
+
+
+def runtime_admission_phase_diagnostic(raw, unit, invocation, python_exe, sources, binding):
+    """Full Next authority stays fixed here; the shared parser cannot confer it."""
+    try:
+        require(unit in UNITS and re.fullmatch(r'[a-f0-9]{32}', invocation)
+                and type(python_exe) is str and python_exe.startswith('/usr/bin/'), 'Closed controller phase identity required')
+        for owner, name in (('controller', 'controller.py'), ('fixture', 'test_next_native.py')):
+            require(hashlib.sha256(sources[owner]).hexdigest() == binding['helpers'][name]['sha256'],
+                    'Controller phase source identity differs')
+        require(type(raw) is bytes and len(raw) <= RUNTIME_DIAGNOSTIC_MAX, 'Controller phase raw bound refused')
+        lines, messages = raw.splitlines(), []
+        require(0 < len(lines) < 64, 'Controller phase journal may be truncated')
+        commands = {prefix + ' -I -B ' + OBSERVER_PATHS['controller'] + ' admit ' + unit
+                    for prefix in ('/usr/bin/python3', python_exe)}
+        for line in lines:
+            row = json.loads(line, object_pairs_hook=admission_unique_fields)
+            message = row.get('MESSAGE') if type(row) is dict else None
+            if type(message) is str and message.startswith(ADMISSION_PHASE_PREFIX):
+                require(row.get('_UID') == '0' and row.get('_EXE') == python_exe
+                        and row.get('_SYSTEMD_UNIT') == unit and row.get('_SYSTEMD_INVOCATION_ID') == invocation
+                        and row.get('_TRANSPORT') == 'stdout' and '_LINE_BREAK' not in row
+                        and type(row.get('_CMDLINE')) is str and row['_CMDLINE'] in commands,
+                        'Controller phase native origin unavailable')
+                messages.append(message)
+        return parse_admission_phase_messages(messages, len(lines))
+    except BaseException:
+        return unavailable_admission_phases()
+
 def runtime_environment_journal_observation(raw, unit, invocation, python_exe, sources, binding):
     """Separate closed helper branch; controller message matching is unchanged."""
     require(unit in UNITS and re.fullmatch(r'[a-f0-9]{32}', invocation)
@@ -2357,7 +2487,7 @@ def runtime_failure_diagnostic(kind, error, binding):
             # Read no previous or foreign invocation. journald's trusted UID/exe/
             # unit/invocation/argv fields are revalidated before literal matching.
             code, raw = runtime_diagnostic_read(['/usr/bin/journalctl', '--system', '--no-pager', '--quiet',
-                '--output=json', '--output-fields=_UID,_EXE,_CMDLINE,_SYSTEMD_UNIT,_SYSTEMD_INVOCATION_ID,MESSAGE',
+                '--output=json', '--output-fields=_UID,_EXE,_CMDLINE,_SYSTEMD_UNIT,_SYSTEMD_INVOCATION_ID,_TRANSPORT,_LINE_BREAK,MESSAGE',
                 '--lines=64', '_SYSTEMD_UNIT=' + unit, '_SYSTEMD_INVOCATION_ID=' + invocations[unit]], deadline)
             require(code == 0, 'Diagnostic journal read refused')
             require(runtime_owned_declaration(unit), 'Diagnostic journal ownership changed')
@@ -2374,6 +2504,12 @@ def runtime_failure_diagnostic(kind, error, binding):
                 value.setdefault('environmentObserverDiagnostics', []).append(diagnostic['diagnostic'])
             except BaseException:
                 value['environmentObservationUnavailable'] = True
+            # Independent optional branch; malformed/missing phase data cannot
+            # discard original literal/helper/v1 observations. No extra query.
+            phase_data = runtime_admission_phase_diagnostic(raw, unit, invocations[unit], str(python_path), sources, binding)
+            if not runtime_owned_declaration(unit):
+                phase_data = unavailable_admission_phases()
+            value.setdefault('controllerAdmissionTiming', []).append({'unit': RUNTIME_DIAGNOSTIC_UNITS[unit], **phase_data})
         require(time.monotonic() <= deadline, 'Diagnostic aggregate budget exhausted')
         value.update({'classification': 'bounded-sealed-source-observations', 'journals': journals,
                       'unavailableWorkerJournals': unavailable})

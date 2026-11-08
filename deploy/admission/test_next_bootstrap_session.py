@@ -325,7 +325,18 @@ class BootstrapSessionModels(unittest.TestCase):
             self.assertEqual(a[name],b[name])
         for literal in ('TOTAL_DEADLINE = time.monotonic() + 480','DEADLINE = TOTAL_DEADLINE - 30','--property=RuntimeMaxSec=300s','left(90)','timeout=5'):
             self.assertIn(literal,current);self.assertIn(literal,parent)
-        for file,want in inv['unchangedOwners'].items():self.assertEqual(hashlib.sha256((ROOT/file).read_bytes()).hexdigest(),want)
+        # This manifest describes the historical249e->8bad construction. New
+        # controller instrumentation is current source, never unchanged8bad.
+        timing=json.loads((ROOT/'deploy/admission/next_controller_admit_timing_inverse.json').read_text())
+        for file,want in inv['unchangedOwners'].items():
+            current=(ROOT/file).read_bytes()
+            if file in ('deploy/admission/controller.py','.github/ci/singleton-protocol.mjs'):
+                row=timing['files'][file];self.assertEqual(hashlib.sha256(current).hexdigest(),row['currentSha256'])
+                lines=current.decode().splitlines(keepends=True)
+                for edit in row['changes']:
+                    self.assertEqual(''.join(lines[edit['start']:edit['end']]),edit['after']);lines[edit['start']:edit['end']]=edit['before'].splitlines(keepends=True)
+                current=''.join(lines).encode();self.assertEqual(current,base64.b64decode(row['originalBase64']));self.assertEqual(hashlib.sha256(current).hexdigest(),row['originalSha256'])
+            self.assertEqual(hashlib.sha256(current).hexdigest(),want)
 
     def test_whole_parent_inverse_replays_each_byte_without_historical_pass_transfer(self):
         inv=json.loads((ROOT/'deploy/admission/next_bootstrap_session_inverse.json').read_text())

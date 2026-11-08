@@ -142,7 +142,7 @@ def resource_guard_reason(error):
             'Ancestor CPU cap is below accepted app envelope': 'ancestor-cpu-too-low'}.get(str(error), 'resource-check-refused')
 
 
-def resource_topology(N, I, invocation, files, source_hashes):
+def resource_topology(N, I, invocation, files, source_hashes, preparation=None):
     """Closed observation of the UNCHANGED real resource method, not readiness."""
     aggregate = pathlib.Path('/sys/fs/cgroup' + AGGREGATE_GROUP)
     directories = [('worker', aggregate / UNIT), ('aggregate', aggregate), ('root', pathlib.Path('/sys/fs/cgroup'))]
@@ -198,6 +198,7 @@ def resource_topology(N, I, invocation, files, source_hashes):
     before_unit = properties(UNIT);N.require_owned_invocation(before_unit, invocation, require)
     identity = resource_process(before_unit);slice_occupants(N)
     before = capture()
+    handoff = host_admission_handoff(preparation, invocation) if preparation is not None else None
     runtime = object.__new__(N.NextRuntime)
     runtime.require, runtime.secure_path, runtime.inventory = require, secure, I
     runtime.value = {'units': {UNIT: {}}, 'resourceEnvelope': {'cgroupPath': AGGREGATE_GROUP,
@@ -220,10 +221,13 @@ def resource_topology(N, I, invocation, files, source_hashes):
     custody()
     kernel = os.uname().release
     require(re.fullmatch(r'[A-Za-z0-9.+_-]{1,128}', kernel) is not None, 'Kernel version syntax differs')
-    return {'kind': 'ACTUAL_UNCHANGED_RESOURCE_METHOD_DIAGNOSTIC_NOT_READINESS', 'before': before, 'after': after,
+    result = {'kind': 'ACTUAL_UNCHANGED_RESOURCE_METHOD_DIAGNOSTIC_NOT_READINESS', 'before': before, 'after': after,
             'resourceReady': verdict, 'guardReason': reason, 'actualProcessUnchanged': True,
             'leafCPUWeightBefore': weights[0], 'leafCPUWeightAfter': weights[1],
             'kernelVersion': kernel, 'profileConstructorVerified': False, 'nextApplicationVerified': False, 'releaseEligible': False}
+    if handoff is not None:
+        result['admissionHandoff'] = handoff
+    return result
 
 
 def initial_environment_observation(N, started, files, source_hashes):
@@ -388,6 +392,89 @@ def host_manager_snapshot(N, preparation, ledger, ordinal):
     entry.update(outcome='complete', returned=True, settled=True, keyCount=len(names), unsetCount=len(projected))
     return projected
 
+
+
+def unavailable_admission_handoff():
+    return {'kind': 'ACTUAL_SAME_PID_EXEC_JOURNAL_AVAILABILITY_NOT_ADMISSION', 'state': 'unavailable',
+        'beforePairVerified': False, 'afterPairVerified': False, 'samePidObserved': False,
+        'exactDistinctArgvObserved': False, 'actualSharedEmitterTransportVerified': False,
+        'fullControllerAdmissionVerified': False, 'nextApplicationVerified': False, 'releaseEligible': False}
+
+
+def parse_host_admission_handoff(raw, invocation, python_exe, preparation):
+    """HOST-only native origin predicates; never a full Next authority route."""
+    require(type(raw) is bytes and len(raw) <= 131072 and re.fullmatch(r'[a-f0-9]{32}', invocation)
+            and type(python_exe) is str and python_exe.startswith('/usr/bin/'), 'Closed handoff input required')
+    lines, messages, pids = raw.splitlines(), {'before': [], 'after': []}, {'before': [], 'after': []}
+    require(0 < len(lines) < 64, 'Handoff journal unavailable or possibly truncated')
+    commands = {prefix + ' -I -B ' + str(ROOT / 'probe.py') + ' ' + mode: group
+                for prefix in ('/usr/bin/python3', python_exe)
+                for mode, group in (('hook-pre', 'before'), ('hook-pre-handoff', 'after'))}
+    for line in lines:
+        row = json.loads(line, object_pairs_hook=preparation.admission_unique_fields)
+        message = row.get('MESSAGE') if type(row) is dict else None
+        if type(message) is not str or not message.startswith(preparation.ADMISSION_PHASE_PREFIX):
+            continue
+        require(row.get('_UID') == '0' and row.get('_EXE') == python_exe
+                and row.get('_SYSTEMD_UNIT') == UNIT and row.get('_SYSTEMD_INVOCATION_ID') == invocation
+                and row.get('_TRANSPORT') == 'stdout' and '_LINE_BREAK' not in row
+                and type(row.get('_CMDLINE')) is str and row['_CMDLINE'] in commands
+                and type(row.get('_PID')) is str and re.fullmatch(r'[1-9][0-9]{0,9}', row['_PID'])
+                and int(row['_PID']) <= 2147483647, 'Handoff exact native origin unavailable')
+        group = commands[row['_CMDLINE']]
+        messages[group].append(message)
+        pids[group].append(row['_PID'])
+    parsed = {}
+    for group in ('before', 'after'):
+        require(len(messages[group]) == len(pids[group]) == 2 and len(set(pids[group])) == 1,
+                'Handoff complete distinct argv pairs unavailable')
+        parsed[group] = preparation.parse_admission_phase_messages(messages[group], len(lines))
+        rows = parsed[group]['events']
+        require([row['p'] for row in rows] == [0, 0] and [row['e'] for row in rows] == ['enter', 'return']
+                and not parsed[group]['activeStageCodes'] and parsed[group]['traceComplete'] is False,
+                'Handoff is only a component codec pair')
+    require(pids['before'][0] == pids['after'][0]
+            and parsed['before']['events'][-1]['t'] <= parsed['after']['events'][0]['t'],
+            'Handoff same PID or clock order unavailable')
+    result = unavailable_admission_handoff()
+    result.update(state='observed', beforePairVerified=True, afterPairVerified=True, samePidObserved=True,
+        exactDistinctArgvObserved=True, actualSharedEmitterTransportVerified=True)
+    return result
+
+
+def host_admission_handoff(preparation, invocation):
+    """Called inside existing resource custody + live invocation before/after."""
+    try:
+        python_exe = str(pathlib.Path('/usr/bin/python3').resolve(strict=True))
+        secure(pathlib.Path(python_exe), 0)
+        deadline = min(DEADLINE, time.monotonic() + limit(.5))
+        code, raw = preparation.runtime_diagnostic_read(['/usr/bin/journalctl', '--system', '--no-pager', '--quiet',
+            '--output=json', '--output-fields=_UID,_EXE,_CMDLINE,_PID,_SYSTEMD_UNIT,_SYSTEMD_INVOCATION_ID,_TRANSPORT,_LINE_BREAK,MESSAGE',
+            '--lines=64', '_SYSTEMD_UNIT=' + UNIT, '_SYSTEMD_INVOCATION_ID=' + invocation], deadline)
+        require(code == 0, 'Handoff bounded native journal read refused')
+        return parse_host_admission_handoff(raw, invocation, python_exe, preparation)
+    except BaseException:
+        return unavailable_admission_handoff()
+
+
+def handoff_observer():
+    require(os.geteuid() == 0 and pathlib.Path(__file__) == ROOT / 'probe.py', 'Fixed protected handoff required')
+    secure(ROOT / 'probe.py', 0)
+    secure(ROOT / 'controller.py', 0)
+    controller = load('host_shared_admission_emitter', ROOT / 'controller.py')
+    return controller.AdmissionPhaseObserver.from_stderr()
+
+
+def prestart_handoff():
+    observer = handoff_observer()
+    try:
+        with observer.stage(0):
+            secure(ROOT / 'probe.py', 0)
+            secure(ROOT / 'controller.py', 0)
+    finally:
+        observer.close()
+    # SAME PID, fixed test-only argv, original stderr, no delay/fork/retry.
+    os.execve('/usr/bin/python3', ['/usr/bin/python3', '-I', '-B', str(ROOT / 'probe.py'), 'hook-pre-handoff'], ENV)
 
 def hook():
     require(os.geteuid() == 0 and pathlib.Path(__file__) == ROOT / 'probe.py', 'Fixed protected hook required')
@@ -607,7 +694,7 @@ def main():
     require(version.startswith(b'systemd 255 ') and len(version) <= 256 and all(32 <= byte <= 126 for byte in version),
             'Native conformance requires actual systemd255')
     primary = None
-    owned_root, N = None, None
+    owned_root, N, preparation = None, None, None
     files, invocations, report = {}, {}, {'version': 1, 'kind': 'ACTUAL_SYSTEMD_HOST_CACHE_CONFORMANCE_NOT_NEXT',
         'complete': False, 'nextApplicationVerified': False, 'releaseEligible': False,
         'resourceReadinessQualified': False, 'systemdVersion': version.decode()}
@@ -619,7 +706,8 @@ def main():
         owned_root = (info.st_dev, info.st_ino)
         for name, source in [('probe.py', pathlib.Path(__file__)), ('next_profile.py', pathlib.Path(__file__).with_name('next_profile.py')),
                              ('runtime_inventory.py', pathlib.Path(__file__).resolve().parents[2] / '.github/ci/runtime_inventory.py'),
-                             ('next_preparation.py', pathlib.Path(__file__).with_name('test_next_native.py'))]:
+                             ('next_preparation.py', pathlib.Path(__file__).with_name('test_next_native.py')),
+                             ('controller.py', pathlib.Path(__file__).with_name('controller.py'))]:
             data = source.read_bytes();require(0 < len(data) <= 256 * 1024, 'Bounded source closure required')
             destination = ROOT / name
             with destination.open('xb') as output:
@@ -650,7 +738,7 @@ def main():
         environment_file.chmod(0o600)
         unit += 'WorkingDirectory=' + str(RELEASE) + '\nEnvironmentFile=' + str(environment_file) + '\n'
         unit += 'Environment=AIHR_APP_WORKERS=2 AIHR_DB_TOTAL_CONNECTIONS=16 AIHR_DB_POOL_MAX=8\n'
-        unit += 'ExecStartPre=+/usr/bin/python3 -I -B ' + str(ROOT / 'probe.py') + ' hook\n'
+        unit += 'ExecStartPre=+/usr/bin/python3 -I -B ' + str(ROOT / 'probe.py') + ' hook-pre\n'
         unit += 'ExecStart=/usr/bin/python3 -I -B ' + str(ROOT / 'probe.py') + ' app\n'
         unit += 'ExecStartPost=+/usr/bin/python3 -I -B ' + str(ROOT / 'probe.py') + ' hook\n'
         unit += 'Slice=' + AGGREGATE + '\nDelegate=no\nCPUWeight=100\n'
@@ -709,7 +797,8 @@ def main():
                 'Actual resource slice did not activate')
         N.require_owned_invocation(slice_state, slice_state.get('InvocationID'), require)
         invocations[AGGREGATE] = slice_state['InvocationID']
-        report['resourceTopology'] = resource_topology(N, I, started['InvocationID'], files, report['sourceSha256'])
+        report['resourceTopology'] = resource_topology(N, I, started['InvocationID'], files, report['sourceSha256'], preparation)
+        report['admissionHandoff'] = report['resourceTopology']['admissionHandoff']
         require(report['resourceTopology']['resourceReady'] is True
                 and report['resourceTopology']['guardReason'] == 'resource-check-accepted',
                 'Explicit leaf CPU constructor did not satisfy unchanged resource method')
@@ -771,6 +860,7 @@ def main():
                     raise AssertionError('Unmounted writable placeholder accepted')
         finally:
             os.chown(point, 0, 0)
+        require(report['admissionHandoff']['state'] == 'observed', 'Same-PID exec journal capability unavailable')
         report['complete'] = True
     except BaseException as error:
         primary = error
@@ -782,6 +872,10 @@ def main():
             cleanup(files, invocations, N, owned_root)
         except BaseException as error:
             errors.append(error)
+        report['admissionHandoffTransportSettled'] = not (preparation is not None
+            and preparation.report.get('diagnosticChildrenSettled') is False)
+        if not report['admissionHandoffTransportSettled']:
+            errors.append(RuntimeError('Component diagnostic transport settlement unavailable'))
         report['ownedRuntimeCleaned'] = not errors
         report['complete'] = report['complete'] and not errors
         try:
@@ -800,9 +894,19 @@ def main():
 
 if __name__ == '__main__':
     try:
-        if len(sys.argv) == 2 and sys.argv[1] == 'hook':
+        if len(sys.argv) == 2 and sys.argv[1] == 'hook-pre':
+            prestart_handoff()
+        elif len(sys.argv) == 2 and sys.argv[1] in ('hook', 'hook-pre-handoff'):
             try:
-                hook()
+                if sys.argv[1] == 'hook-pre-handoff':
+                    observer = handoff_observer()
+                    try:
+                        with observer.stage(0):
+                            hook()
+                    finally:
+                        observer.close()
+                else:
+                    hook()
             except AssertionError as error:
                 if str(error) == 'Unknown or partial managed package overlay':
                     (ROOT / 'hook-refusal.json').write_text(json.dumps({'reason': 'unknown-overlay'}))

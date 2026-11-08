@@ -1,0 +1,181 @@
+{
+  "kind": "SOURCE_AST_AND_ACTUAL_GIT_PREIMAGES_NOT_EXECUTION",
+  "base": "525e39cd1c6eac8d3c1547f764754a436bf41e12",
+  "protected": {
+    "ProfileWhole": true,
+    "StoreWhole": true,
+    "Controller.publishWhole": true,
+    "LinuxHost.check_onlyWhole": true,
+    "LinuxHost.unit_root_boundaryWhole": true,
+    "Controller.admitGuardsExactOrder": true,
+    "LinuxHost.workerGuardsExactOrder": true,
+    ".mainGuardsExactOrder": true,
+    "deploy/admission/next_profile.pyWhole": true,
+    "deploy/admission/next_fixture_poststart.pyWhole": true,
+    "deploy/admission/next_fixture_filesystem.pyWhole": true,
+    ".github/ci/runtime_inventory.pyWhole": true,
+    "scripts/performance/native-next-boot-browser.mjsWhole": true,
+    ".github/workflows/alpha-staging.ymlWhole": true,
+    ".github/workflows/alpha-focused-checks.ymlWhole": true
+  },
+  "history": [
+    {
+      "manifest": "next_controller_admit_timing_inverse.json",
+      "base": "525e39cd1c6eac8d3c1547f764754a436bf41e12",
+      "wholeActualGitPreimages": [
+        {
+          "path": ".github/ci/singleton-profiles.test.mjs",
+          "actualGitPreimageSha256": "5a48ca765cd2742c1732cf894686048218f9a51a5505880cd580dc8a72d90db0"
+        },
+        {
+          "path": ".github/ci/singleton-protocol.mjs",
+          "actualGitPreimageSha256": "5a8837e66f35cf67ea366c19cf72d4b557557f076e57a09e021d14576b6acf22"
+        },
+        {
+          "path": "deploy/admission/controller.py",
+          "actualGitPreimageSha256": "9bcd22c302401cf20ff35eff99bb1762ccd75fed6d0e5780c4edc3369a45fbd4"
+        },
+        {
+          "path": "deploy/admission/next_bootstrap_session_inverse.json",
+          "actualGitPreimageSha256": "fe4d7b1a0df6c3731a8613bb52429064931ed6330c52b26d1ca2e24311164011"
+        },
+        {
+          "path": "deploy/admission/next_host_key_receipt_inverse.json",
+          "actualGitPreimageSha256": "e69a1e595c46b2f667ddf6230fda6fcb4c7b7a8640201d3ad361da7515e313d1"
+        },
+        {
+          "path": "deploy/admission/next_manager_environment_inverse.json",
+          "actualGitPreimageSha256": "2df90838fdacb0d04a645b82af0c8d497b2271a0e34d60372b3a25b61f763037"
+        },
+        {
+          "path": "deploy/admission/test_next_bootstrap_session.py",
+          "actualGitPreimageSha256": "f37e21c3d149b7838796551a1d7c03fd3deee819533773647c7ceb83f2929def"
+        },
+        {
+          "path": "deploy/admission/test_next_host_view_native.py",
+          "actualGitPreimageSha256": "0b2dc7a9d78f3325dc7463392673aa8ef71e08e28142740cd340eac244273abc"
+        },
+        {
+          "path": "deploy/admission/test_next_native.py",
+          "actualGitPreimageSha256": "010c09c94c602e819f16984b0fd13208618d1427cb7ce0e8c738a2db69b56230"
+        },
+        {
+          "path": "deploy/admission/test_next_prepackage_diagnostic.py",
+          "actualGitPreimageSha256": "3074480506c23e792053e61adc80c781ca04a73e2a415adc1c2a69656e4fa532"
+        },
+        {
+          "path": "test/runtime-next-host-view-native.test.ts",
+          "actualGitPreimageSha256": "6a577c082354832d4d163b9bcf97bf7f41d71840cbc71a7ad6ce8cbd27171f86"
+        }
+      ]
+    },
+    {
+      "manifest": "next_host_key_receipt_inverse.json",
+      "base": "c0456f6a98e5f3feaf11ca4d759d57c8b76e25da",
+      "wholeActualGitPreimages": [
+        {
+          "path": "deploy/admission/test_next_environment_observation.py",
+          "actualGitPreimageSha256": "dcef6f229b5a2cfa73dc9c5f2391977d80e0847db6c775f26dacdcfb67ebbfdc"
+        },
+        {
+          "path": "deploy/admission/test_next_failure_diagnostic.py",
+          "actualGitPreimageSha256": "8b0be87d6be0e73e229e5b7fd0bc89938b1312cbe39511cf3add46ae7e7a6614"
+        },
+        {
+          "path": "deploy/admission/test_next_host_view.py",
+          "actualGitPreimageSha256": "f7391364a7d2bc950013ec0103d830aca44dc63bf7631294dbb02f404a326429"
+        },
+        {
+          "path": "test/runtime-next-host-view-native.test.ts",
+          "actualGitPreimageSha256": "d917ebda249e3c0ad2b4706b952d48af305fd0daa66cee47f9a6310ff4b1ca40"
+        },
+        {
+          "path": "deploy/admission/next_profile.py",
+          "actualGitPreimageSha256": "accd256e8d8ff4b848c510a7b6e0b43634966e53d0162e205694ed50e1f635d7"
+        },
+        {
+          "path": "deploy/admission/next_fixture_poststart.py",
+          "actualGitPreimageSha256": "6a1bbd3913fefa6d086f8c33dd8e6a5a691803db4c073c16207cb0a2da065e2b"
+        },
+        {
+          "path": "deploy/admission/test_next_native.py",
+          "actualGitPreimageSha256": "2fbceb495e51bc0deaeb2d9362c04eb4f4893b89f2368d49c0442538e780a8d8"
+        },
+        {
+          "path": "deploy/admission/test_next_host_view_native.py",
+          "actualGitPreimageSha256": "dbe211d49dd247d73bf98f81914f69c467aac9a3f904cee79e80a9a0fc64f602"
+        }
+      ]
+    },
+    {
+      "manifest": "next_manager_environment_inverse.json",
+      "base": "5383d212e073206db552d7f95a362895c3023323",
+      "wholeActualGitPreimages": [
+        {
+          "path": ".github/ci/singleton-profiles.test.mjs",
+          "actualGitPreimageSha256": "1a8832ee1aedc0e3daa37253c2f589342f8bdcf501e697f6138883c974a52d24"
+        },
+        {
+          "path": ".github/ci/singleton-protocol.mjs",
+          "actualGitPreimageSha256": "5d345725b4ebd27b8e9c300bab67cc205d3c4d2398bdda3365f8a9247140a385"
+        },
+        {
+          "path": "deploy/admission/next_profile.py",
+          "actualGitPreimageSha256": "b0d9b25e1ac3f1f6e4f2d1b2b0a64a3e85a344894d624308d00e94344bca4a50"
+        },
+        {
+          "path": "deploy/admission/test_next_host_view_native.py",
+          "actualGitPreimageSha256": "fdfbe7286be16ff356bff16ff2d6f3ef5d13474d506d42d8d7a928deb85fc841"
+        },
+        {
+          "path": "deploy/admission/test_next_native.py",
+          "actualGitPreimageSha256": "0996c64d0fc520c8405988b4fe205ca9f4110104819242a9862c3fa6a255a4ff"
+        },
+        {
+          "path": "test/runtime-next-admission-native.test.ts",
+          "actualGitPreimageSha256": "923c7c20a1b79cb1e5240080eb46ac63eec2829dccdc36d5dac668f4a3a09e07"
+        },
+        {
+          "path": "test/runtime-next-host-view-native.test.ts",
+          "actualGitPreimageSha256": "e8869436a2e4e00261219fcc8ccadb3f30adef2ef5f79f3e623cf9b0108e788c"
+        },
+        {
+          "path": "deploy/admission/next_host_key_receipt_inverse.json",
+          "actualGitPreimageSha256": "b7642adc8f289d59c7606d979584df8bc324417c6d478d5a9d69369bced4021d"
+        }
+      ]
+    },
+    {
+      "manifest": "next_bootstrap_session_inverse.json",
+      "base": "249e9b0ce33dabb69e95b0c1887303e51487e8b9",
+      "wholeActualGitPreimages": [
+        {
+          "path": "deploy/admission/test_next_native.py",
+          "actualGitPreimageSha256": "aa9d6a9e0feb099d597694501ae3ba4a99320644f9d9834f7fa7af8e38769f35"
+        },
+        {
+          "path": "scripts/performance/native-next-boot-browser.mjs",
+          "actualGitPreimageSha256": "59ace1764c5187987287e27cf94c203eeb00b12c33474ce91c8e265a80e569bb"
+        },
+        {
+          "path": "test/runtime-next-admission-native.test.ts",
+          "actualGitPreimageSha256": "f5d169a27c4bbdc30ba53f09a5fad13e574c93f9c4ad08d63db9401472edff53"
+        },
+        {
+          "path": "deploy/admission/next_host_key_receipt_inverse.json",
+          "actualGitPreimageSha256": "37b9bebbb00c7485c298f4df32dd94d71fdbaae66ba1041dc63962c3fa4b56ee"
+        },
+        {
+          "path": "deploy/admission/next_manager_environment_inverse.json",
+          "actualGitPreimageSha256": "46b691622ba7a8f0565b1e13d9041f31136a37b9c0f18efafcebc2c19ef7cdfd"
+        }
+      ]
+    }
+  ],
+  "currentOwnerSha256": {
+    "deploy/admission/controller.py": "4bb895072548eb7c3e279e534097476bad5315a11de97bc66c860db45567b64d",
+    "deploy/admission/test_next_native.py": "10f1d789cc2a37a05bc0b79ec4d15e253a88eb4dc5996d18c4d89676d4b25aea",
+    "deploy/admission/test_next_host_view_native.py": "5d8c1c51b475794ede922d2c69905bf2add4a2d3775f1d4f4a5357287367472e",
+    ".github/ci/singleton-protocol.mjs": "6e4782b307ddfe44a97788d599ccdece7c9c8aa23cc4175a444f567263612e8f"
+  }
+}
