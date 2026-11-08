@@ -1,0 +1,307 @@
+{
+  "kind": "ALLOWANCES_TWO_NATIVE_FIXTURE_RECOVERY_SOURCE_ONLY_UNRUN",
+  "parentCommit": "f2947a298756ada6f337f11daa93a1a602833cb5",
+  "sourceRef": "codex/ai-management-allowance-native-fixture-recovery-20261109",
+  "exactChangedPaths": [
+    "test/ai-management-allowance-presentation.test.ts",
+    "docs/adr/2026-11-09-ai-management-section-projection.md",
+    "docs/qualification/ai-management-section-projection-source-20261109.json",
+    "docs/qualification/ai-management-allowance-native-fixture-recovery-source-20261109.json"
+  ],
+  "currentSourceRows": [
+    {
+      "path": "test/ai-management-allowance-presentation.test.ts",
+      "current": {
+        "path": "test/ai-management-allowance-presentation.test.ts",
+        "bytes": 23747,
+        "sha256": "c1320ccd3d00ae9697741f848767e7dacc89c80fb233512a3bb74cbdfe2e7833"
+      },
+      "wholeParent": {
+        "path": "test/ai-management-allowance-presentation.test.ts",
+        "bytes": 22334,
+        "sha256": "19f416b1b87aeb8e4a6b5c1295dae2b1c1e2933f6e1e3a085ea0acbf5d68c6d4",
+        "commit": "f2947a298756ada6f337f11daa93a1a602833cb5",
+        "gitBlob": "a85bf13c7e14d217ca618f2b77ab9b82d2918d8a",
+        "mode": "100644"
+      },
+      "inverseHunks": [
+        {
+          "currentStart": 10972,
+          "currentEnd": 11837,
+          "currentRangeSha256": "eb5f00b262b95194feb3c4a9d2374bdf398eb50839045154ade0c5885202b2bc",
+          "parentStart": 10972,
+          "parentEnd": 11137,
+          "parentText": " await owner.db.insert(s.department).values(ties.slice().reverse().map(id=>({id,tenantId:b.tenantId,companyId:b.companyId,name:'Unused tie name',label:'A Same'})));\n"
+        },
+        {
+          "currentStart": 15743,
+          "currentEnd": 16062,
+          "currentRangeSha256": "3b569ddfa27845878ab88fcab3f932271253dea7dbc8c00f9bb6fcf61b0f974a",
+          "parentStart": 15043,
+          "parentEnd": 15043,
+          "parentText": ""
+        },
+        {
+          "currentStart": 16672,
+          "currentEnd": 17367,
+          "currentRangeSha256": "3d7fbebf5223f2fbb590f4efa7b43b2f96458b8275fa9195508e63712e1df170",
+          "parentStart": 15653,
+          "parentEnd": 15954,
+          "parentText": " for(const read of [(tx:Tx)=>previewBulkAssistantAccessPageTx(tx,adminCtx(foreign),{kind:'role',role:'employee'},true),(tx:Tx)=>bulkAssistantDepartmentsPageTx(tx,adminCtx(foreign))])await expect(database.withTenant(group,read,{readOnlySnapshot:true})).rejects.toThrow('Current AI calling authority');\n"
+        }
+      ]
+    },
+    {
+      "path": "docs/adr/2026-11-09-ai-management-section-projection.md",
+      "current": {
+        "path": "docs/adr/2026-11-09-ai-management-section-projection.md",
+        "bytes": 26278,
+        "sha256": "4f2f4a4abf64209510288249fd5ed5fdedd020620472b10bede5e89d6f0ee4b8"
+      },
+      "wholeParent": {
+        "path": "docs/adr/2026-11-09-ai-management-section-projection.md",
+        "bytes": 24078,
+        "sha256": "8078a8e523b34ec3d72d078e965476d0e76c8547b1e1871ffd8760b19b88677a",
+        "commit": "f2947a298756ada6f337f11daa93a1a602833cb5",
+        "gitBlob": "7006f1d7d9350f55cf7dea3734ee3e66c2b7dcdb",
+        "mode": "100644"
+      },
+      "inverseHunks": [
+        {
+          "currentStart": 24078,
+          "currentEnd": 26278,
+          "currentRangeSha256": "02ae100409d2b22bbacfffb91c4fcc180441f7313a8714cbf0f4cc7c1b5fe162",
+          "parentStart": 24078,
+          "parentEnd": 24078,
+          "parentText": ""
+        }
+      ]
+    },
+    {
+      "path": "docs/qualification/ai-management-section-projection-source-20261109.json",
+      "current": {
+        "path": "docs/qualification/ai-management-section-projection-source-20261109.json",
+        "bytes": 46173,
+        "sha256": "e78d10902307761cc74c34289ecb22532414ed1f8c6beb902aebc820ecd556da"
+      },
+      "wholeParent": {
+        "path": "docs/qualification/ai-management-section-projection-source-20261109.json",
+        "bytes": 43572,
+        "sha256": "d40dc44fbcb33aef8c5d5df7b3aeabba66ae8a67337fc5722a1e83abae1501a4",
+        "commit": "f2947a298756ada6f337f11daa93a1a602833cb5",
+        "gitBlob": "12913e3e1635775fa340b727f2640901f8f5ec7d",
+        "mode": "100644"
+      },
+      "inverseHunks": [
+        {
+          "currentStart": 121,
+          "currentEnd": 202,
+          "currentRangeSha256": "417352f5588b62fbb0c05edb2011b1a885618c1538b9bdb0d44b3a6b4e62ee0c",
+          "parentStart": 121,
+          "parentEnd": 201,
+          "parentText": "  \"sourceRef\": \"codex/ai-management-allowance-fixture-label-criteria-20261109\",\n"
+        },
+        {
+          "currentStart": 1906,
+          "currentEnd": 2037,
+          "currentRangeSha256": "bdb7ce84faf6da9a69b3c8448355adf406e8b4e3a70ae56c27d0a3a3e5e9395b",
+          "parentStart": 1905,
+          "parentEnd": 2036,
+          "parentText": "    \"docs/adr/2026-11-09-ai-management-section-projection.md\": \"8078a8e523b34ec3d72d078e965476d0e76c8547b1e1871ffd8760b19b88677a\",\n"
+        },
+        {
+          "currentStart": 4120,
+          "currentEnd": 4245,
+          "currentRangeSha256": "7f5394cf181ab85c9d314617052b956baef77b8e0989d4d84efbfafd9e3559cc",
+          "parentStart": 4119,
+          "parentEnd": 4244,
+          "parentText": "    \"test/ai-management-allowance-presentation.test.ts\": \"19f416b1b87aeb8e4a6b5c1295dae2b1c1e2933f6e1e3a085ea0acbf5d68c6d4\",\n"
+        },
+        {
+          "currentStart": 43561,
+          "currentEnd": 46161,
+          "currentRangeSha256": "92e44a4291f0bef22ba0ff84d14f3bbe571c58c3cc4498cc52ae6e174575542c",
+          "parentStart": 43560,
+          "parentEnd": 43560,
+          "parentText": ""
+        }
+      ]
+    }
+  ],
+  "newRecordAbsentFromParent": "docs/qualification/ai-management-allowance-native-fixture-recovery-source-20261109.json",
+  "repair": {
+    "departmentTie": {
+      "onlyChangedValue": "name:'Unused tie name '+id",
+      "sameCompanyDisplayLabelsUuidReverseAndWholeFiveRowExpectedArray": true,
+      "underlyingNamesSatisfyNative0030And0550Keys": true,
+      "independentStoredPremise": "Exact two fixed rows, names, labels, nonGlobal and own-company Criteria/no extras."
+    },
+    "foreignCarrier": {
+      "fixture": "Known real group-wide foreign HR grant plus own native group=true proof.",
+      "wrongCarrier": "Both page Tx readers still execute inside actual LOCAL group RRRO transaction.",
+      "oldExactRefusal": "Current AI calling authority",
+      "nativeObservation": "Exactly two principal_snapshot_current queries, zero SQL execution failures, zero user-target/department query, active work settled.",
+      "allOtherPrincipalAndRevokedCasesWhole": true
+    },
+    "noProductGuardConstraintOrExpectedOutcomeRelaxation": true
+  },
+  "preservation": {
+    "allTopLevelHelpersAndImportsWhole": true,
+    "registrations": 13,
+    "expandedCases": 17,
+    "changedRegistrations": [
+      {
+        "ordinal": 3,
+        "title": "keeps exact department labels, company grouping, UUID ties and foreign/archive exclusion"
+      },
+      {
+        "ordinal": 7,
+        "title": "refuses company, employee, foreign, revoked, agent and synthetic principals without substituting session claims"
+      }
+    ],
+    "wholeOtherRegistrations": 11,
+    "wholeOtherExpandedCaseBodies": 15,
+    "oldDirectExpectAndMatcherExpressions": 61,
+    "old61ExpressionsWholeAndOrdered": true,
+    "newPremiseObservationExpectations": 6,
+    "currentDirectExpectAndMatcherExpressions": 67,
+    "allNamesAndCapsWhole": true,
+    "newCases": 0,
+    "existingRosterCriteriaRepairWhole": true,
+    "allProductionPolicySchemaMigrationsAndOther88AiTestsWhole": true,
+    "allFiveProductInverseObjectsAndOriginalTargetsWhole": true
+  },
+  "canonicalOwnersWhole": [
+    {
+      "path": "core/ai-management.ts",
+      "bytes": 49323,
+      "sha256": "c4b60d3e243eeb23a59feb5a26308b40cf5e89892698a3ba3caaf5cb38429dee",
+      "commit": "f2947a298756ada6f337f11daa93a1a602833cb5",
+      "gitBlob": "f3adf6d4cfe01d9444700fa8bc649a849ae9b745",
+      "mode": "100644"
+    },
+    {
+      "path": "core/ai-principal.ts",
+      "bytes": 3793,
+      "sha256": "3a77b8ed03ca1b9895310f6a7535473bbfd9a31d6c6d003612bd71e0dcbd6d21",
+      "commit": "f2947a298756ada6f337f11daa93a1a602833cb5",
+      "gitBlob": "85630db56130b32196d12e7ffd04fbb27fb88b22",
+      "mode": "100644"
+    },
+    {
+      "path": "lib/authz-model.ts",
+      "bytes": 6338,
+      "sha256": "7be6796f0b6534f3fd9a2e3332d9307ec1fc2bbead8a1607a2890ecaf08e5969",
+      "commit": "f2947a298756ada6f337f11daa93a1a602833cb5",
+      "gitBlob": "f8ae2f260ed1212606b0148af9c61647acd63dfc",
+      "mode": "100644"
+    },
+    {
+      "path": "db/schema.ts",
+      "bytes": 820303,
+      "sha256": "8333f7a44c82fc43411dd4735314a555c4a69e0f805f0dc6b29e62c997ea9112",
+      "commit": "f2947a298756ada6f337f11daa93a1a602833cb5",
+      "gitBlob": "c80eb3180eebc7bf9fb9a30367e4b00746b22592",
+      "mode": "100644"
+    },
+    {
+      "path": "db/migrations/0030_org_catalog_integrity.sql",
+      "bytes": 1888,
+      "sha256": "7140e84f472c95f233f72c07a4b5e93bb16643577ca1db2eb237bdb6bcedffea",
+      "commit": "f2947a298756ada6f337f11daa93a1a602833cb5",
+      "gitBlob": "eef7e2a26fbeb8eb588d177191acb5a272582a92",
+      "mode": "100644"
+    },
+    {
+      "path": "db/migrations/0550_system_label_company_criteria.sql",
+      "bytes": 32423,
+      "sha256": "b1f4e2acc5f6a472c1a7901612f192072ce08c76f6159f3c3437a94ecde9fe19",
+      "commit": "f2947a298756ada6f337f11daa93a1a602833cb5",
+      "gitBlob": "243321d78103e232b478b803d488251dde6d2ae2",
+      "mode": "100644"
+    },
+    {
+      "path": "test/harness.ts",
+      "bytes": 50558,
+      "sha256": "ab992137979341edd6bc15ba47e38d99d3e96994b788f15afde27cea3ed6db9e",
+      "commit": "f2947a298756ada6f337f11daa93a1a602833cb5",
+      "gitBlob": "2239a072cbc922366ebb0ad1f3ec7c85c8668685",
+      "mode": "100644"
+    },
+    {
+      "path": "test/helpers/native-read-observer.ts",
+      "bytes": 5384,
+      "sha256": "401bd549ee1ff0ad4ae7241743860682dd8a081ee71e9ee401056b0dc95787d5",
+      "commit": "f2947a298756ada6f337f11daa93a1a602833cb5",
+      "gitBlob": "fdf10e2b00b0ad0f65d34c17787c0a115961fd26",
+      "mode": "100644"
+    }
+  ],
+  "externalSourceEvidence": {
+    "basename": "aihr-allowance-native-fixture-recovery-external-source-review-20261109.json",
+    "bytes": 1680,
+    "sha256": "499060b2780391049456c72225f4088e3db99701c1070c77a43fb605d9ae08e4",
+    "meaning": "External Babel syntax/AST and whole original expressions only, no repository module/test execution."
+  },
+  "originalFailure": {
+    "runId": 42529862715,
+    "source": "f2947a298756ada6f337f11daa93a1a602833cb5",
+    "controller": "00a27edbe7de417dd97b0a82bdab48b8e79214a7",
+    "attempt": 1,
+    "conclusion": "failure",
+    "all7PlannedJobsTerminal": true,
+    "total": 53,
+    "passed": 51,
+    "failed": 2,
+    "new17": {
+      "passed": 15,
+      "failed": 2
+    },
+    "legacy36Passed": 36,
+    "authenticationSha256": "f97ac4a6d5280f91873b87372a530f113eef9a113d2db053c28322ab96f2b4e6",
+    "actual53CaseSha256": "27a08971313b908ffbd96efb2b54f4531b2267e5508c7c3a029cac464268971c",
+    "rawVitestSha256": "bf65f390aa480895f25d349aa1426aa0084a683a074ecc1ac7f11858eb87c03d",
+    "failureCases": [
+      {
+        "file": "test/ai-management-allowance-presentation.test.ts",
+        "name": "keeps exact department labels, company grouping, UUID ties and foreign/archive exclusion",
+        "status": "failed",
+        "durationMs": 1234.3505229999992,
+        "capMs": 30000,
+        "failureMessageSha256": "c96f3004dc01b4911dd02391761a8b6df0afc22e95ed77ebdf32c49d4225e338"
+      },
+      {
+        "file": "test/ai-management-allowance-presentation.test.ts",
+        "name": "refuses company, employee, foreign, revoked, agent and synthetic principals without substituting session claims",
+        "status": "failed",
+        "durationMs": 1133.125465000001,
+        "capMs": 30000,
+        "failureMessageSha256": "6266ef1635a2f754247fc4b06667eefafaef12fa34c86f2c839cc6378c74608c"
+      }
+    ],
+    "firstCause": "23505 department_company_name_uq at fixture insert118, before display assertions.",
+    "secondCause": "line159 foreign borrowed loop; roles-only adminCtx has no grants, correct local group gate precedes intended native carrier check. Source closure identifies first preview iteration; raw reporter has no subcase instrumentation.",
+    "oldFailuresAndPassesRetainedOnlyAtF294": true,
+    "oldPassingEvidenceAdopted": false
+  },
+  "proposedHostedRecovery": {
+    "selectors": [
+      "test/ai-management-allowance-presentation.test.ts"
+    ],
+    "expandedCases": 17,
+    "requiresRootAndDifferentPeerFullSourceReview": true,
+    "sourceUploadAuthorized": false,
+    "dispatchAuthorized": false,
+    "doesNotRestartWhole53ByDefault": true
+  },
+  "qualification": {
+    "source": "AUTHORED_UNRUN",
+    "repositoryImportsTestsCompilerAppDbNativeNetworkUpload": false,
+    "nativeCustody": "OPEN",
+    "sourceGraphAndDisclosureBinding": "OPEN",
+    "routeBrowserLoadRelease": "OPEN",
+    "staging": "HELD",
+    "production": "HELD"
+  },
+  "acyclicity": "Current index names this record without current hash; record binds current index bytes. Immutable whole Git preimages and bounded inverse hunks retain actual f294 provenance; prior records remain whole, no runtime consumer or decoder."
+}

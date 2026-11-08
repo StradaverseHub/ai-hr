@@ -115,7 +115,9 @@ it('keeps exact department labels, company grouping, UUID ties and foreign/archi
  await owner.db.update(s.department).set({label:'  Display Finance  '}).where(eq(s.department.id,b.deptA));await owner.db.update(s.department).set({label:'   '}).where(eq(s.department.id,b.deptB));
  const [other]=await owner.db.insert(s.company).values({tenantId:b.tenantId,legalName:'Zed Allowances Company'}).returning();
  const ties=['10000000-0000-4000-8000-000000000001','10000000-0000-4000-8000-000000000002'];
- await owner.db.insert(s.department).values(ties.slice().reverse().map(id=>({id,tenantId:b.tenantId,companyId:b.companyId,name:'Unused tie name',label:'A Same'})));
+ await owner.db.insert(s.department).values(ties.slice().reverse().map(id=>({id,tenantId:b.tenantId,companyId:b.companyId,name:'Unused tie name '+id,label:'A Same'})));
+ const storedTies=await owner.client<{id:string;companyId:string;name:string;label:string;isGlobal:boolean;companyIds:string[]}[]>`select d.id::text as id,d.company_id::text as "companyId",d.name,d.label,d.is_global as "isGlobal",array(select lca.company_id::text from public.label_company_assignment lca where lca.tenant_id=d.tenant_id and lca.label_kind='department' and lca.label_id=d.id order by lca.company_id) as "companyIds" from public.department d where d.tenant_id=${b.tenantId}::uuid and d.id=any(${ties}::uuid[]) order by d.id`;
+ expect(storedTies).toEqual(ties.map(id=>({id,companyId:b.companyId,name:'Unused tie name '+id,label:'A Same',isGlobal:false,companyIds:[b.companyId]})));
  const [z]=await owner.db.insert(s.department).values({tenantId:b.tenantId,companyId:other.id,name:'Alpha'}).returning();
  await owner.db.insert(s.department).values({tenantId:b.tenantId,companyId:b.companyId,name:'Archived',archivedAt:new Date()});await seedBase();
  const expected=[...ties.map(id=>({id,label:'A Same · Acme Sdn Bhd'})),{id:b.deptA,label:'Display Finance · Acme Sdn Bhd'},{id:b.deptB,label:'Operations · Acme Sdn Bhd'},{id:z.id,label:'Alpha · Zed Allowances Company'}];
@@ -151,12 +153,21 @@ it('refuses company, employee, foreign, revoked, agent and synthetic principals 
  const companyCtx:SessionContext={...group,userId:companyUser,grants:[{role:'hr_admin',companyId:b.companyId}]};
  const [nativeGroup]=await database.withTenant(companyCtx,tx=>tx.execute<{allowed:boolean}>(sql`select app.is_group_admin() as allowed`),{readOnlySnapshot:true});expect(nativeGroup.allowed).toBe(false);
  const employee=await createAppUser(b.tenantId,null,'employee'),foreign=await seedBase();
+ const foreignGroup:SessionContext={...adminCtx(foreign),grants:[{role:'hr_admin',companyId:null}]};
+ const [nativeForeignGroup]=await database.withTenant(foreignGroup,tx=>tx.execute<{allowed:boolean}>(sql`select app.is_group_admin() as allowed`),{readOnlySnapshot:true});expect(nativeForeignGroup.allowed).toBe(true);
  const refused:SessionContext[]=[companyCtx,{...group,userId:employee,roles:['employee'],grants:[{role:'employee',companyId:null}]},
   {...group,roles:['super_admin'],grants:[{role:'super_admin',companyId:null}]},{...group,personId:randomUUID()},
   {...group,agent:{principalId:randomUUID(),enablements:[]}},{...group,entitlementsExempt:'seeding'},
   {...group,statutoryOverride:'Fictional forbidden marker'}];
  for(const ctx of refused)for(const read of [()=>previewBulkAssistantAccessPage(ctx,{kind:'role',role:'employee'},true),()=>bulkAssistantDepartmentsPage(ctx)])await expect(read()).rejects.toThrow();
- for(const read of [(tx:Tx)=>previewBulkAssistantAccessPageTx(tx,adminCtx(foreign),{kind:'role',role:'employee'},true),(tx:Tx)=>bulkAssistantDepartmentsPageTx(tx,adminCtx(foreign))])await expect(database.withTenant(group,read,{readOnlySnapshot:true})).rejects.toThrow('Current AI calling authority');
+ const foreignProbe=observeNativeRead();
+ try{
+  for(const read of [(tx:Tx)=>previewBulkAssistantAccessPageTx(tx,foreignGroup,{kind:'role',role:'employee'},true),(tx:Tx)=>bulkAssistantDepartmentsPageTx(tx,foreignGroup)])await expect(database.withTenant(group,read,{readOnlySnapshot:true})).rejects.toThrow('Current AI calling authority');
+  expect(foreignProbe.queries.filter(q=>q.sql.includes('app.principal_snapshot_current()'))).toHaveLength(2);
+  expect(foreignProbe.telemetry().totals.failed).toBe(0);
+  for(const q of foreignProbe.queries)expect(q.sql).not.toMatch(/select u\.id,|from public\.department d/);
+  expect(foreignProbe.state.active).toBe(0);
+ }finally{foreignProbe.restore();}
  await createAppUser(b.tenantId,null,'hr_admin');await owner.db.delete(s.roleAssignment).where(eq(s.roleAssignment.appUserId,group.userId!));
  await expect(previewBulkAssistantAccessPage(group,{kind:'role',role:'employee'},true)).rejects.toThrow('Current AI calling authority');await expect(bulkAssistantDepartmentsPage(group)).rejects.toThrow('Current AI calling authority');
 });

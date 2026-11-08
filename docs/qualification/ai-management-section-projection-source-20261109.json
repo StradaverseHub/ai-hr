@@ -1,7 +1,7 @@
 {
   "kind": "AI_MANAGEMENT_SECTION_SOURCE_ONLY_NOT_QUALIFICATION",
   "base": "cd47c63c77d26431ee33de38b75790c62924a1ad",
-  "sourceRef": "codex/ai-management-allowance-fixture-label-criteria-20261109",
+  "sourceRef": "codex/ai-management-allowance-native-fixture-recovery-20261109",
   "currentSourceSha256": {
     "app/control-tower/agents/centre-controls.tsx": "3ce6b612fec0b328103b5221b673714e59f4548bf37be243211cfc4293d18915",
     "app/control-tower/agents/screen.tsx": "a137c62df804c0c4e6e40f11d3ecca1e295fabb3b817fb1d440225e38a172d12",
@@ -18,7 +18,7 @@
     "test/automatic-followup-features.dom.test.tsx": "c442c9253dd293a278e7998fec67451d0732dc78a117c1752ff8ddb51467b6e2",
     "lib/ai/management-sections.ts": "d7efd0b96f9875c560c6b075c9ff1688a7bf0851684adbdab45c399f3cb5c783",
     "test/ai-management-section-projection.test.ts": "55d2463ecd033a32e7dae12b436bde9fb0c883ff685d51f62c213c0af34156f2",
-    "docs/adr/2026-11-09-ai-management-section-projection.md": "8078a8e523b34ec3d72d078e965476d0e76c8547b1e1871ffd8760b19b88677a",
+    "docs/adr/2026-11-09-ai-management-section-projection.md": "4f2f4a4abf64209510288249fd5ed5fdedd020620472b10bede5e89d6f0ee4b8",
     "test/ai-management-contract.test.ts": "26311cc5725a931b951cf8825f0355c8c752eaaeb3210153f1fbc9c127a7a808",
     "docs/qualification/ai-management-hosted-fixture-recovery-source-20261109.json": "a64ae179f8a3c9379d1f014a8f5c302b9642ff9837fb053144320ae5026fff91",
     "components/ai-centre/how-it-works.tsx": "e3e4e132419a5676d3be77c82883093b81d824ed2237ad03d508b4a232084265",
@@ -35,7 +35,7 @@
     "docs/qualification/ai-management-common-presentation-source-20261109.json": "fa453f8aa4783d0761144cdaf0d01000de87b59ed4d0a94de3d1945fd538445e",
     "docs/qualification/ai-management-common-page-error-recovery-source-20261109.json": "8d77ae2e2f9600185b579822ad167f90c0859e8fe685bf70a51b514607f55f08",
     "docs/qualification/ai-management-common-page-error-view-fixture-source-20261109.json": "1dade27d2c480c29d00123ccd818072e67f74e12233a535a586767ea06dc1e81",
-    "test/ai-management-allowance-presentation.test.ts": "19f416b1b87aeb8e4a6b5c1295dae2b1c1e2933f6e1e3a085ea0acbf5d68c6d4",
+    "test/ai-management-allowance-presentation.test.ts": "c1320ccd3d00ae9697741f848767e7dacc89c80fb233512a3bb74cbdfe2e7833",
     "docs/qualification/ai-management-allowance-presentation-source-20261109.json": "12eb90e952bffc852d6a2be31597d258280cd160fd28aa52df88cbed67f6124c"
   },
   "selfExcluded": "docs/qualification/ai-management-section-projection-source-20261109.json",
@@ -665,6 +665,66 @@
       },
       "nativeStatus": "AUTHORED_UNRUN_NO_OLD_PASS_TRANSFER",
       "sourceOnly": true,
+      "currentSourceGraphAndDisclosureBinding": "OPEN",
+      "runtimeQualified": false,
+      "releaseAuthorized": false
+    },
+    "nativeFixtureRecovery": {
+      "parent": "f2947a298756ada6f337f11daa93a1a602833cb5",
+      "record": "docs/qualification/ai-management-allowance-native-fixture-recovery-source-20261109.json",
+      "wholeParentIndex": {
+        "path": "docs/qualification/ai-management-section-projection-source-20261109.json",
+        "bytes": 43572,
+        "sha256": "d40dc44fbcb33aef8c5d5df7b3aeabba66ae8a67337fc5722a1e83abae1501a4",
+        "commit": "f2947a298756ada6f337f11daa93a1a602833cb5",
+        "gitBlob": "12913e3e1635775fa340b727f2640901f8f5ec7d",
+        "mode": "100644"
+      },
+      "previousAffectedPins": [
+        {
+          "path": "test/ai-management-allowance-presentation.test.ts",
+          "bytes": 22334,
+          "sha256": "19f416b1b87aeb8e4a6b5c1295dae2b1c1e2933f6e1e3a085ea0acbf5d68c6d4",
+          "commit": "f2947a298756ada6f337f11daa93a1a602833cb5",
+          "gitBlob": "a85bf13c7e14d217ca618f2b77ab9b82d2918d8a",
+          "mode": "100644"
+        },
+        {
+          "path": "docs/adr/2026-11-09-ai-management-section-projection.md",
+          "bytes": 24078,
+          "sha256": "8078a8e523b34ec3d72d078e965476d0e76c8547b1e1871ffd8760b19b88677a",
+          "commit": "f2947a298756ada6f337f11daa93a1a602833cb5",
+          "gitBlob": "7006f1d7d9350f55cf7dea3734ee3e66c2b7dcdb",
+          "mode": "100644"
+        }
+      ],
+      "earlierSourceRecordsWholeHistoricalNotRebound": true,
+      "scope": "Only department display-tie and foreign-carrier fixture callbacks; all production owners and guards unchanged.",
+      "preservation": {
+        "registrations": 13,
+        "expandedCases": 17,
+        "wholeOtherRegistrations": 11,
+        "wholeOtherExpandedCaseBodies": 15,
+        "all17NamesAndCapsWhole": true,
+        "allOriginal61ExpectExpressionsWhole": true,
+        "addedPremiseAndObservationExpects": 6
+      },
+      "originalFailure": {
+        "runId": 42529862715,
+        "source": "f2947a298756ada6f337f11daa93a1a602833cb5",
+        "controller": "00a27edbe7de417dd97b0a82bdab48b8e79214a7",
+        "attempt": 1,
+        "all7Terminal": true,
+        "total": 53,
+        "passed": 51,
+        "failed": 2,
+        "new17Passed": 15,
+        "new17Failed": 2,
+        "legacy36Passed": 36,
+        "authenticationSha256": "f97ac4a6d5280f91873b87372a530f113eef9a113d2db053c28322ab96f2b4e6",
+        "adoptedOntoSuccessor": false
+      },
+      "status": "SOURCE_AUTHORED_UNRUN_ROOT_AND_DIFFERENT_PEER_FULL_REQUIRED",
       "currentSourceGraphAndDisclosureBinding": "OPEN",
       "runtimeQualified": false,
       "releaseAuthorized": false
