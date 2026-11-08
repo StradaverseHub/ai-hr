@@ -20,7 +20,7 @@ beforeEach(async()=>{
  await setCompensation(ctx,{employmentId:employee,basicSalary:5000,monthlyAllowance:0,effectiveFrom:'2026-01-01'});await setStatutoryProfileMY(ctx,{personId:hired.personId,icNumber:'900101011234'});await seedPayComponentCatalog(ctx);
  const [cycle]=await owner.db.insert(schema.payrollCycle).values({tenantId:base.tenantId,companyId:base.companyId,name:'Method monthly cycle',code:'METHOD',runType:'regular'}).returning();cycleId=cycle.id;
  await savePayFormula(ctx,{formulaId:'ENTRY_METHOD',description:'25 per input',method:'write',source:'Return {#Input} * 25'});
- const c=await upsertPayComponent(ctx,{code:'ENTRY_TEST',name:'Entry method allowance',label:'Entry method allowance',kind:'allowance',includedInEpf:false,includedInSocsoEis:false,includedInPcb:false,includedInHrdfBase:false,isNonPayable:false,prorates:false,rule:{kind:'formula_builder',formulaId:'ENTRY_METHOD',dependencies:[]}});componentId=c.id;
+ const c=await upsertPayComponent(ctx,{code:'ENTRY_TEST',name:'Entry method allowance',label:'Entry method allowance',kind:'allowance',includedInEpf:false,includedInSocsoEis:false,includedInPcb:false,includedInHrdfBase:false,isNonPayable:false,prorates:true,roundingMethod:'up',rule:{kind:'formula_builder',formulaId:'ENTRY_METHOD',dependencies:[]}});componentId=c.id;
 });
 async function create(method:'amount'|'formula'|undefined,amount:number,quantity:number|null,unit:string){
  return createIndividualTxnsBulk(ctx,{companyId:base.companyId,payPeriod:period,employmentIds:[employee],intendedCycleId:cycleId,rows:[{kind:'earning',componentId,txnDate:date,amount,quantity,unit,...(method?{calculationMethod:method}:{})}]});
@@ -43,12 +43,12 @@ it('pays explicit final amounts once while retaining the legacy raw-input interp
  const evaluations=await owner.db.select().from(schema.payFormulaEvaluation).where(eq(schema.payFormulaEvaluation.batchId,batchId));expect(evaluations).toHaveLength(1);expect(Number(evaluations[0].amount)).toBe(50);
 });
 it('does not calculate a manual override even if its linked formula can no longer evaluate',async()=>{
- await create('amount',125,null,'amount');
+ await create('amount',125.25,null,'amount');
  // A newly saved expression may legitimately fail for Input=0; a manual amount never invokes it.
  const {payFormulaOptions,getPayFormula}=await import('../core/pay-formula');const option=(await payFormulaOptions(ctx)).activeFormulas.find(f=>f.formulaId==='ENTRY_METHOD')!;const view=await getPayFormula(ctx,option.id);
  await savePayFormula(ctx,{id:option.id,expectedRevisionId:view!.latest.id,formulaId:'ENTRY_METHOD',description:'Needs input',method:'write',source:'Return 100 / {#Input}'});
  const {batchId}=await createBatch(ctx,{companyId:base.companyId,payPeriod:period,payrollCycleId:cycleId});await generatePayslips(ctx,{batchId});
- const [slip]=await owner.db.select().from(schema.payslip).where(eq(schema.payslip.batchId,batchId));expect(Number(slip.allowance)).toBe(125);
+ const [slip]=await owner.db.select().from(schema.payslip).where(eq(schema.payslip.batchId,batchId));expect(Number(slip.allowance)).toBe(125.25);
  expect(await owner.db.select().from(schema.payFormulaEvaluation).where(eq(schema.payFormulaEvaluation.batchId,batchId))).toHaveLength(0);
 });
 it('refuses a bad quantity or contradictory manual input without writing any ledger row',async()=>{

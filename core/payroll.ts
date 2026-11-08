@@ -5338,7 +5338,7 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
                 kind: t.compKind ?? t.kind,
                 amount: amt,
                 formulaInput:t.amount,
-                rounding: t.compRounding ?? 'none',
+                rounding: t.calculationMethod!=null?'none':t.compRounding ?? 'none',
                 epf: t.compEpf ?? false,
                 socso: t.compSocso ?? false,
                 pcb: t.compPcb ?? false,

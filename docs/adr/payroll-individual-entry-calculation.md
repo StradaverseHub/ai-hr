@@ -8,7 +8,7 @@ records explicit entry intent without reinterpreting any historical row.
 | Method | Entry | Payroll consumption |
 | --- | --- | --- |
 | NULL | Existing writer and historical raw input | Preserve the pre-existing catalogue-formula path |
-| amount | Entered positive Amount, no quantity | Use saved final amount; bypass formula and further proration |
+| amount | Entered positive Amount, no quantity | Use saved final amount; bypass formula, catalogue rounding and further proration |
 | formula | Positive Qty, Hours, Days or Units | Recompute on save with the linked saved formula; use saved final amount in payroll |
 
 The ledger's existing company, employment, writable-run, period, cycle and permission
