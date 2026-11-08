@@ -6,6 +6,7 @@ import {expect} from 'vitest';
 import {employeeChoiceOwnedUrl} from './employee-choice-owned-binding';
 import {employeeChoiceSqlFrontier,employeeChoiceWorkRegistry,employeeChoiceCloseRegistry} from './employee-choice-sql-frontier';
 import {workerDb} from '../db-names';
+import {employeeChoiceOwnedSettlement} from './employee-choice-owned-settlement';
 export const employeeChoiceFactoryNativeFile='test/employee-choice-native-owner-factory.test.ts';
 export function admitEmployeeChoiceNativeFactory(){
  const files:unknown=JSON.parse(process.env.AIHR_FOCUSED_TESTS??'null');
@@ -56,12 +57,13 @@ export function employeeChoiceNativeFactoryFixture(signal:AbortSignal,deadline:n
    await workSql.begin(async tx=>{const [native]=await tx`select pg_backend_pid() as pid`;expect(native.pid).toBeGreaterThan(0);expect(transactionDepth).toBe(1);expect(()=>getQuery()).toThrow('outer checkout');});
   },
   async beginCleanup(){
-   await stop();await callbacks.settle();phase='cleanup';cleanupActive();
+   await employeeChoiceOwnedSettlement({stop,callbacks:()=>callbacks.settle(),resources:()=>resources.settle()});phase='cleanup';cleanupActive();
    for(;;){const [row]=await cleanupSql`select count(*)::int as remaining from pg_stat_activity where datname=current_database() and application_name=${workName}`;cleanupActive();if(row.remaining===0)break;await new Promise(resolve=>setTimeout(resolve,20));}
   },
   async close(){
-   const errors:unknown[]=[];try{await stop();await callbacks.settle();}catch(error){errors.push(error);}
-   try{await cleanupClose();}catch(error){errors.push(error);}clearTimeout(cleanupTimer);closed=true;signal.removeEventListener('abort',abort);
+   closed=true;const errors:unknown[]=[];
+   try{await employeeChoiceOwnedSettlement({stop,callbacks:()=>callbacks.settle(),resources:()=>resources.settle(),cleanup:cleanupClose});}catch(error){errors.push(error);}
+   clearTimeout(cleanupTimer);signal.removeEventListener('abort',abort);
    if(Number(process.hrtime.bigint())/1e6>=deadline)errors.push(Error('Native factory complete cleanup deadline exhausted'));
    if(errors.length)throw new AggregateError(errors,'Native factory ownership settlement refused');
   },
