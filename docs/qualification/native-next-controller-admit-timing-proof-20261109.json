@@ -20,6 +20,36 @@
   },
   "history": [
     {
+      "manifest": "next_controller_admit_terminal_inverse.json",
+      "base": "96461c0fee5dddae990ac474d70f8f137d511148",
+      "wholeActualGitPreimages": [
+        {
+          "path": "deploy/admission/test_next_native.py",
+          "actualGitPreimageSha256": "10f1d789cc2a37a05bc0b79ec4d15e253a88eb4dc5996d18c4d89676d4b25aea"
+        },
+        {
+          "path": "deploy/admission/test_controller_admit_timing.py",
+          "actualGitPreimageSha256": "05b006378a3273d75ea09e45983ad3c2e57c00a546292d1065c4976c3e8d587a"
+        },
+        {
+          "path": "deploy/admission/next_host_key_receipt_inverse.json",
+          "actualGitPreimageSha256": "b2365e2a4ffa617a7efbc3a82bae292679eaabc33f7cc2b2044ca90f4b19bfce"
+        },
+        {
+          "path": "deploy/admission/next_manager_environment_inverse.json",
+          "actualGitPreimageSha256": "7252bd5b9b1741c3610a5d43ec38a008be2361ed6c66e11457b97a2dc83dfbd3"
+        },
+        {
+          "path": "deploy/admission/next_bootstrap_session_inverse.json",
+          "actualGitPreimageSha256": "8b9c6a8763a63e0e8c8e41a76b2d3a3bcdbe772b95dbca556b7f52508c9e85f3"
+        },
+        {
+          "path": "deploy/admission/next_controller_admit_timing_inverse.json",
+          "actualGitPreimageSha256": "a0c120b5d460bf12989a3f85d635f98eb8a142e6bcd4849bd73184583f4f57b6"
+        }
+      ]
+    },
+    {
       "manifest": "next_controller_admit_timing_inverse.json",
       "base": "525e39cd1c6eac8d3c1547f764754a436bf41e12",
       "wholeActualGitPreimages": [
@@ -174,8 +204,24 @@
   ],
   "currentOwnerSha256": {
     "deploy/admission/controller.py": "4bb895072548eb7c3e279e534097476bad5315a11de97bc66c860db45567b64d",
-    "deploy/admission/test_next_native.py": "10f1d789cc2a37a05bc0b79ec4d15e253a88eb4dc5996d18c4d89676d4b25aea",
+    "deploy/admission/test_next_native.py": "8dafc69d328219c8a6ec12887d4be708dcbd07f21e31b020fd51a2100c82fa86",
     "deploy/admission/test_next_host_view_native.py": "5d8c1c51b475794ede922d2c69905bf2add4a2d3775f1d4f4a5357287367472e",
     ".github/ci/singleton-protocol.mjs": "6e4782b307ddfe44a97788d599ccdece7c9c8aa23cc4175a444f567263612e8f"
+  },
+  "revisionBase": "96461c0fee5dddae990ac474d70f8f137d511148",
+  "onlyRuntimeDeltaOneTerminalGuard": true,
+  "unchangedFrom96461": {
+    "deploy/admission/controller.py": "4bb895072548eb7c3e279e534097476bad5315a11de97bc66c860db45567b64d",
+    "deploy/admission/test_next_host_view_native.py": "5d8c1c51b475794ede922d2c69905bf2add4a2d3775f1d4f4a5357287367472e",
+    "deploy/admission/next_profile.py": "80e32be041b80a007bceeb5af60bbf0d922cb490017950fc034057e30476f846",
+    "deploy/admission/next_fixture_poststart.py": "1796325ab09b591604f6977859861f624c80abbf6994ac73052bb0e13e1a9c3b",
+    "deploy/admission/next_fixture_filesystem.py": "5d8a813ef012c82f79e9a4aa0d60ebb640f5549006d71ab380a9e7c5d5975b25",
+    ".github/ci/runtime_inventory.py": "b4207c2e82ee07692f4fd3814b2d5ab7f5d86a9b7471139c2ed56e4f2e86563d",
+    ".github/ci/singleton-protocol.mjs": "6e4782b307ddfe44a97788d599ccdece7c9c8aa23cc4175a444f567263612e8f",
+    ".github/ci/singleton-profiles.test.mjs": "fb2345fa638bb41d227de6e9e3d50533e669c71f38a6b830dc53616f946ca498",
+    "test/runtime-next-host-view-native.test.ts": "4b9c23ab4536f09b4c5475dba677a1c10fc315982345b735b5f6a26628ced9d0",
+    "scripts/performance/native-next-boot-browser.mjs": "f18b593143ac639703a1653e04e712466063b6631f5873ccaa622f0b7c21744f",
+    ".github/workflows/alpha-staging.yml": "43d409be84f24ad1c01f5112fe4bf82fe111665a17cbbcd2dc6438c43cfb68f3",
+    ".github/workflows/alpha-focused-checks.yml": "cc3c8e9bac07370bd70f1333bff6f697c2943120771cb8f8ca07caf87543e827"
   }
 }

@@ -2102,6 +2102,7 @@ def parse_admission_phase_messages(messages, raw_record_count):
     previous, total = None, 0
     worker_parents = {2, 3, 11, 13, 14, 17}
     for message in messages:
+        need(19 not in ended)  # profile-close exit is terminal, including raised exits.
         need(type(message) is str and message.startswith(ADMISSION_PHASE_PREFIX) and message.isascii())
         length = len(message.encode('ascii')) + 1
         total += length

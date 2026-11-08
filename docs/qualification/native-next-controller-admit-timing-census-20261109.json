@@ -1,11 +1,11 @@
 {
   "kind": "EXACT_SOURCE_CENSUS_NOT_EXECUTED_CASE_EVENTS",
-  "base": "525e39cd1c6eac8d3c1547f764754a436bf41e12",
-  "sourceRef": "codex/next-controller-admit-timing-20261109",
+  "base": "96461c0fee5dddae990ac474d70f8f137d511148",
+  "sourceRef": "codex/next-controller-admit-terminal-frontier-20261109",
   "focusedFiles": 10,
   "focusedWrappers": 14,
-  "underlying": 310,
-  "python": 262,
+  "underlying": 311,
+  "python": 263,
   "nodeTap": 45,
   "directVm": 3,
   "pythonOrder": "standard unittest prefix test (NOT test_), class-name then method-name sort; no per-case event claim before actual Actions",
@@ -1063,12 +1063,12 @@
         {
           "class": "AdmitTimingModels",
           "method": "test_actual_linux_worker_resource_typed_runtime_and_final_guards_remain_ordered",
-          "line": 289
+          "line": 305
         },
         {
           "class": "AdmitTimingModels",
           "method": "test_actual_main_profile_close_failure_is_not_hidden_by_observer",
-          "line": 306
+          "line": 322
         },
         {
           "class": "AdmitTimingModels",
@@ -1078,22 +1078,22 @@
         {
           "class": "AdmitTimingModels",
           "method": "test_actual_prestart_is_one_fixed_same_pid_exec_with_observer_closed_first",
-          "line": 252
+          "line": 268
         },
         {
           "class": "AdmitTimingModels",
           "method": "test_actual_state_admit_with_observer_preserves_ready_and_idempotent_fencing",
-          "line": 258
+          "line": 274
         },
         {
           "class": "AdmitTimingModels",
           "method": "test_actual_state_publication_failure_still_raises_and_does_not_admit",
-          "line": 279
+          "line": 295
         },
         {
           "class": "AdmitTimingModels",
           "method": "test_actual_state_repeat_health_has_one_repeat_span_and_no_added_attempt",
-          "line": 268
+          "line": 284
         },
         {
           "class": "AdmitTimingModels",
@@ -1108,7 +1108,7 @@
         {
           "class": "AdmitTimingModels",
           "method": "test_cached_old_or_new_host_metadata_is_never_reclassified_by_order",
-          "line": 229
+          "line": 245
         },
         {
           "class": "AdmitTimingModels",
@@ -1133,12 +1133,12 @@
         {
           "class": "AdmitTimingModels",
           "method": "test_full_next_receiver_requires_both_exact_source_hashes_and_no_partial_claim",
-          "line": 213
+          "line": 229
         },
         {
           "class": "AdmitTimingModels",
           "method": "test_full_next_receiver_requires_every_native_field_and_exact_c_argv",
-          "line": 208
+          "line": 224
         },
         {
           "class": "AdmitTimingModels",
@@ -1148,22 +1148,22 @@
         {
           "class": "AdmitTimingModels",
           "method": "test_host_clock_reverse_truncated_duplicate_or_missing_pairs_reject",
-          "line": 240
+          "line": 256
         },
         {
           "class": "AdmitTimingModels",
           "method": "test_host_foreign_pid_metadata_transport_or_source_course_reject",
-          "line": 235
+          "line": 251
         },
         {
           "class": "AdmitTimingModels",
           "method": "test_host_four_packets_require_exact_distinct_argv_and_actual_same_private_pid",
-          "line": 225
+          "line": 241
         },
         {
           "class": "AdmitTimingModels",
           "method": "test_host_single_bounded_read_unavailable_has_no_boolean_or_raw_claim",
-          "line": 245
+          "line": 261
         },
         {
           "class": "AdmitTimingModels",
@@ -1178,7 +1178,7 @@
         {
           "class": "AdmitTimingModels",
           "method": "test_metadata_duplicate_fields_and_complete_json_eof_are_unavailable",
-          "line": 318
+          "line": 334
         },
         {
           "class": "AdmitTimingModels",
@@ -1198,12 +1198,17 @@
         {
           "class": "AdmitTimingModels",
           "method": "test_original_literal_receiver_and_helper_owners_remain_independent",
-          "line": 220
+          "line": 236
+        },
+        {
+          "class": "AdmitTimingModels",
+          "method": "test_profile_close_exit_rejects_any_later_previously_unused_stage",
+          "line": 200
         },
         {
           "class": "AdmitTimingModels",
           "method": "test_raw_count_exact64_overflow_empty_and_overlong_frames_reject",
-          "line": 204
+          "line": 220
         },
         {
           "class": "AdmitTimingModels",
@@ -1213,7 +1218,7 @@
         {
           "class": "AdmitTimingModels",
           "method": "test_sequence_gap_duplicate_exit_without_enter_and_illegal_stage_parent_reject",
-          "line": 200
+          "line": 216
         },
         {
           "class": "AdmitTimingModels",
@@ -1223,10 +1228,10 @@
         {
           "class": "AdmitTimingModels",
           "method": "test_source_hook_guard_body_and_controller_lexical_rewind_are_whole",
-          "line": 326
+          "line": 342
         }
       ],
-      "count": 33
+      "count": 34
     },
     {
       "wrapper": "test/runtime-next-prepackage-diagnostic.test.ts",

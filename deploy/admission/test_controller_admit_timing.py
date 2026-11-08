@@ -197,6 +197,22 @@ class AdmitTimingModels(unittest.TestCase):
         values=pair();row=json.loads(values[1][len(F.ADMISSION_PHASE_PREFIX):]);row['d']=0;values[1]=F.ADMISSION_PHASE_PREFIX+json.dumps(row)
         with self.assertRaises(ValueError):F.parse_admission_phase_messages(values,2)
 
+    def test_profile_close_exit_rejects_any_later_previously_unused_stage(self):
+        for outcome in ('return','raised'):
+            prefix=pair()
+            for row in [dict(v=1,q=2,p=19,e='enter',t=12,d=None),dict(v=1,q=3,p=19,e=outcome,t=13,d=1)]:
+                prefix.append(F.ADMISSION_PHASE_PREFIX+json.dumps(row,separators=(',',':')))
+            observed=F.parse_admission_phase_messages(prefix,4)
+            self.assertEqual(observed['traceComplete'],outcome=='return')
+            self.assertEqual(observed['activeStageCodes'],[])
+            self.assertNotIn(1,[row['p'] for row in observed['events']])
+            # An early main failure can close without admission. The unused
+            # later stage satisfied all the old schema/sequence/stack guards.
+            tail=[dict(v=1,q=4,p=1,e='enter',t=14,d=None),dict(v=1,q=5,p=1,e='return',t=15,d=1)]
+            values=prefix+[F.ADMISSION_PHASE_PREFIX+json.dumps(row,separators=(',',':')) for row in tail]
+            with self.assertRaises(ValueError):F.parse_admission_phase_messages(values,6)
+            self.assertEqual(receive(native_rows(values)),F.unavailable_admission_phases())
+
     def test_sequence_gap_duplicate_exit_without_enter_and_illegal_stage_parent_reject(self):
         for values in [pair()[1:],pair()+pair(),pair()+[pair()[0]],trace()[2:],pair()+[F.ADMISSION_PHASE_PREFIX+json.dumps({'v':1,'q':2,'p':8,'e':'enter','t':20,'d':None})]]:
             with self.assertRaises(ValueError):F.parse_admission_phase_messages(values,len(values))
@@ -324,12 +340,13 @@ class AdmitTimingModels(unittest.TestCase):
         self.assertEqual(value,F.unavailable_admission_phases())
 
     def test_source_hook_guard_body_and_controller_lexical_rewind_are_whole(self):
-        inverse=json.loads((ROOT/'deploy/admission/next_controller_admit_timing_inverse.json').read_text())
-        for name,row in inverse['files'].items():
-            data=(ROOT/name).read_bytes();self.assertEqual(hashlib.sha256(data).hexdigest(),row['currentSha256']);lines=data.decode().splitlines(keepends=True)
-            for change in row['changes']:
-                self.assertEqual(''.join(lines[change['start']:change['end']]),change['after']);lines[change['start']:change['end']]=change['before'].splitlines(keepends=True)
-            restored=''.join(lines).encode();self.assertEqual(restored,base64.b64decode(row['originalBase64']));self.assertEqual(hashlib.sha256(restored).hexdigest(),row['originalSha256'])
+        for manifest in ('next_controller_admit_terminal_inverse.json','next_controller_admit_timing_inverse.json'):
+            inverse=json.loads((ROOT/'deploy/admission'/manifest).read_text())
+            for name,row in inverse['files'].items():
+                data=(ROOT/name).read_bytes();self.assertEqual(hashlib.sha256(data).hexdigest(),row['currentSha256']);lines=data.decode().splitlines(keepends=True)
+                for change in row['changes']:
+                    self.assertEqual(''.join(lines[change['start']:change['end']]),change['after']);lines[change['start']:change['end']]=change['before'].splitlines(keepends=True)
+                restored=''.join(lines).encode();self.assertEqual(restored,base64.b64decode(row['originalBase64']));self.assertEqual(hashlib.sha256(restored).hexdigest(),row['originalSha256'])
         def function(source,name):return ast.get_source_segment(source,next(n for n in ast.parse(source).body if isinstance(n,ast.FunctionDef) and n.name==name))
         path='deploy/admission/test_next_host_view_native.py';old=base64.b64decode(inverse['files'][path]['originalBase64']).decode()
         self.assertEqual(function(old,'hook'),function((ROOT/path).read_text(),'hook'))
