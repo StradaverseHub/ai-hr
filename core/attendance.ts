@@ -1401,6 +1401,10 @@ function deriveAttendance(
         };
   const baseTrace = (): AttendanceTraceV1 => ({
     v: ATTENDANCE_TRACE_VERSION,
+    formulaSchedule:{v:1,flexiDuration:s.flexiDuration,durationOnly:s.durationOnly===true,
+      flexibleBreakMinutes:s.flexibleBreakMinutes,halfDayBefore:s.halfDayBefore,
+      shiftCode:s.displayShiftCode??null,shiftName:s.displayShiftName??null,scheduleDayKind:s.scheduleDayKind??null,
+      breakPeriods:s.breakPeriods?.map(row=>({...row}))??null},
     ...(exceptionActive?{exemption:{revisionId:exemption!.id,effectiveFrom:exemption!.effectiveFrom,types:['absent','late','early_out'] as const}}:{}),
     schedule: {
       source: s.source,

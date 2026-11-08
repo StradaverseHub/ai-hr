@@ -19,7 +19,7 @@ import {payComponentAppliesToCompany} from '../lib/pay-component-company';
 const hash=(value:unknown)=>createHash('sha256').update(JSON.stringify(value,(_key,entry)=>entry&&typeof entry==='object'&&!Array.isArray(entry)?Object.fromEntries(Object.entries(entry).sort(([a],[b])=>a.localeCompare(b))):entry)).digest('hex');
 const uuid=/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i;
 function actor(ctx:SessionContext){if(!ctx.userId||!uuid.test(ctx.userId))throw Error('Use an authenticated administrator to maintain Attendance formulas.');return ctx.userId;}
-async function scope(tx:Tx,companyId:string){if(!uuid.test(companyId))throw Error('Choose a formula company.');const [allowed]=await tx.execute<{ok:boolean}>(sql`select app.attendance_policy_principal_current() and app.is_admin_for(${companyId}::uuid) as ok`);if(!allowed?.ok)throw Error('Company administration access is required.');}
+async function scope(tx:Tx,companyId:string){if(!uuid.test(companyId))throw Error('Choose a formula company.');const [allowed]=await tx.execute<{ok:boolean}>(sql`select app.attendance_policy_principal_current() and app.is_admin_for(c.id) as ok from public.company c where c.id=${companyId}::uuid and c.tenant_id=app.current_tenant_id()`);if(!allowed?.ok)throw Error('Company administration access is required.');}
 export async function assertAttendanceFormulaAuthorTx(tx:Tx,ctx:SessionContext,companyId:string){actor(ctx);await scope(tx,companyId);}
 async function lock(tx:Tx,ctx:SessionContext,id:string){if(!uuid.test(id))throw Error('Formula is unavailable.');await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${ctx.tenantId.toLowerCase()+':attendance-formula:'+id.toLowerCase()},0))`);}
 async function identity(tx:Tx,id:string){if(!uuid.test(id))throw Error('Formula is unavailable.');const [formula]=await tx.select().from(attendanceFormula).where(eq(attendanceFormula.id,id));if(!formula)throw Error('Formula or company scope is unavailable.');return formula;}
@@ -45,7 +45,7 @@ export function saveAttendanceFormula(ctx:SessionContext,input:{id?:string;expec
 async function evaluate(tx:Tx,ctx:SessionContext,revision:typeof attendanceFormulaRevision.$inferSelect,employmentId:string,date:string){
  if(revision.registryVersion!==ATTENDANCE_FORMULA_CATALOG_VERSION||revision.evaluatorVersion!==PAY_FORMULA_EVALUATOR_VERSION)throw Error('The formula engine changed. Save and test a new version.');
  if(!uuid.test(employmentId))throw Error('Choose a test employee.');const configuration=validateAttendanceFormulaConfiguration(revision.definition),component=await item(tx,configuration),period=attendanceFormulaPeriod(date,configuration.period),compiled=compileAttendanceFormulaLibrary(configuration.library,configuration.code);
- if(period.from<configuration.effectiveFrom)throw Error('Choose a period on or after the formula effective date.');
+ // Testing validates a draft against historical evidence; effectiveFrom governs application to pay.
  const source=await readAttendanceFormulaDaysTx(tx,ctx,{companyId:configuration.companyId,employmentId,from:period.from,to:period.to,fields:compiled.fields,includeEligibility:configuration.eligibility.mode==='criteria'});
  if(configuration.eligibility.mode==='selected'&&!configuration.eligibility.employmentIds.includes(employmentId))throw Error('Choose an employee included by this formula.');
  if(configuration.eligibility.mode==='criteria'){
@@ -72,7 +72,9 @@ export function getAttendanceFormula(ctx:SessionContext,id:string){return withAt
   lifecycle(tx,id),
   tx.select({id:attendanceFormulaTest.id,revisionId:attendanceFormulaTest.revisionId,employmentId:attendanceFormulaTest.employmentId,periodFrom:attendanceFormulaTest.periodFrom,periodTo:attendanceFormulaTest.periodTo,passed:attendanceFormulaTest.passed,createdAt:attendanceFormulaTest.createdAt}).from(attendanceFormulaTest).where(eq(attendanceFormulaTest.formulaId,id)).orderBy(desc(attendanceFormulaTest.createdAt),desc(attendanceFormulaTest.id)).limit(25),
  ]);
- return {formula,latest:current,versions,tests,events:history.history,status:history.state?.kind==='archived'?'archived':history.state?.kind==='activated'?'active':'inactive',activeRevisionId:history.state?.kind==='activated'?history.state.revisionId:null};
+ const activeRevisionId=history.state?.kind==='activated'?history.state.revisionId:null;
+ const [active]=activeRevisionId?await tx.select({ordinal:attendanceFormulaRevision.ordinal}).from(attendanceFormulaRevision).where(and(eq(attendanceFormulaRevision.id,activeRevisionId),eq(attendanceFormulaRevision.formulaId,id))).limit(1):[];
+ return {formula,latest:current,versions,tests,events:history.history,activeOrdinal:active?.ordinal??null,status:history.state?.kind==='archived'?'archived':history.state?.kind==='activated'?'active':'inactive',activeRevisionId:history.state?.kind==='activated'?history.state.revisionId:null};
 });}
 export function readAttendanceFormulaTest(ctx:SessionContext,p:{id:string;testId:string}){return withAttendanceTenant(ctx,async tx=>{actor(ctx);await identity(tx,p.id);if(!uuid.test(p.testId))throw Error('Test result is unavailable.');const [proof]=await tx.select().from(attendanceFormulaTest).where(and(eq(attendanceFormulaTest.id,p.testId),eq(attendanceFormulaTest.formulaId,p.id)));if(!proof)throw Error('Test result or permission is unavailable.');return proof;});}
 export function attendanceFormulaSetup(ctx:SessionContext,companyIds:string[]){return withAttendanceTenant(ctx,async tx=>{

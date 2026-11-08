@@ -17,7 +17,7 @@ const response=()=>JSON.stringify({source:'Return {#FormulaID}("TotalWorkingMins
 const input=()=>({companyId:base.companyId,requirement:'Fictional worked hours rule',disclosureAccepted:true});
 beforeAll(migrateTestDb);afterAll(closeAll);afterEach(()=>{vi.restoreAllMocks();vi.unstubAllEnvs();});
 beforeEach(async()=>{
- await resetDb();base=await seedBase();ctx=await entitledCtx(base);fixture.technicalAdmission=true;beforeAdmission=undefined;retarget=false;
+ await resetDb();base=await seedBase();ctx={...await entitledCtx(base),grants:[{role:'hr_admin',companyId:null}]};fixture.technicalAdmission=true;beforeAdmission=undefined;retarget=false;
  vi.stubEnv('OPENAI_API_KEY','fictional-attendance-transport');for(const key of ['ANTHROPIC_API_KEY','GOOGLE_API_KEY','GEMINI_API_KEY'])vi.stubEnv(key,'');
  const generate=ai.generateDraft;vi.spyOn(ai,'generateDraft').mockImplementation(async(cfg,args)=>{const hook=beforeAdmission;beforeAdmission=undefined;if(hook)await hook();return generate(cfg,retarget?{...args,prompt:args.prompt+' changed'}:args);});
  vi.spyOn(configuration,'resolveActiveAiConfig');vi.spyOn(openaiAdapter,'generate').mockImplementation(async(_cfg,args)=>{args.onUsage?.({inputTokens:0,outputTokens:0,cachedInputTokens:0});return response();});

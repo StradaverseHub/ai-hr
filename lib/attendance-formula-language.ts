@@ -30,7 +30,8 @@ export function compileAttendanceFormulaLibrary(library:AttendanceFormulaLibrary
  if(rootCode)collect(rootCode);
  const sourceCalls=rootCode?[...reachable].flatMap(code=>callsByCode.get(code)??[]):allCalls;
  const fields=[...new Map(sourceCalls.filter(call=>ATTENDANCE_FORMULA_FIELDS.some(field=>field.function===call.code&&field.key===String(call.args[0]?.value))).map(call=>[call.code+':'+String(call.args[0].value),{code:call.code,key:String(call.args[0].value)}])).values()].sort((a,b)=>(a.code+':'+a.key).localeCompare(b.code+':'+b.key));
- return {dialect,programs,fields,requirements:{financial:fields.some(field=>field.code==='EmployeeInformation'&&field.key==='basicSalary'),workforce:fields.some(field=>field.code.startsWith('Employee')&&field.key!=='basicSalary')}};
+ const variables=[...new Set(sourceCalls.filter(call=>call.code==='FormulaID'&&!programs.has(String(call.args[0]?.value))).map(call=>String(call.args[0]?.value)))].sort();
+ return {dialect,programs,fields,variables,requirements:{financial:fields.some(field=>field.code==='EmployeeInformation'&&field.key==='basicSalary'),workforce:fields.some(field=>field.code.startsWith('Employee')&&field.key!=='basicSalary')}};
 }
 /** Every value comes from an authorized native source. This engine cannot read storage or post pay. */
 export function evaluateAttendanceFormula(library:AttendanceFormulaLibrary,code:string,days:readonly AttendanceFormulaDay[]){

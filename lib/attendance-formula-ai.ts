@@ -19,5 +19,6 @@ export function attendanceFormulaDraftPrompt(raw:unknown){const request=attendan
  'Functions: {#FormulaID}("exact variable ID"), {#ConditionID}("condition ID"), closed field calls, {#Date}("YYYY-MM-DD"), {#Rounding}(decimal, decimal places) with ties away from zero. Conditions may return Decimal or Boolean as declared. Use exact decimal arithmetic and explicit units. Never infer statutory compliance. Explain assumptions for human review.',
  ].join(' '),prompt:JSON.stringify({requirement:request.requirement,variables:implementedAttendanceFormulaVariables().map(({id,type,unit,aggregation})=>({id,type,unit,aggregation})),fields:ATTENDANCE_FORMULA_FIELDS}),maxTokens:6000,timeoutMs:30000};}
 export function adjudicateAttendanceFormulaDraft(raw:string){if(typeof raw!=='string'||raw.length>262144)throw Error('invalid_output');const result=proposal.parse(JSON.parse(raw));if(!result.source?.trim())return {...result,source:null,valid:false};
- compileAttendanceFormulaLibrary({formulas:[{code:'ATTENDANCE_DRAFT',source:result.source}],conditions:result.conditions},'ATTENDANCE_DRAFT');
+ const compiled=compileAttendanceFormulaLibrary({formulas:[{code:'ATTENDANCE_DRAFT',source:result.source}],conditions:result.conditions});
+ const allowed=new Set(implementedAttendanceFormulaVariables().map(variable=>variable.id));if(compiled.variables.some(id=>!allowed.has(id)))throw Error('source_unavailable');
  return {...result,valid:!result.questions.length};}

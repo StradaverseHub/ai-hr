@@ -14,6 +14,7 @@ import type {AttendanceFormulaDay,AttendanceFormulaFact} from '../../lib/attenda
 import type {FormulaValue} from '../../lib/pay-formula-registry';
 import {addDaysIso,datesBetween,isoWeekdayOf} from '../../lib/roster-month';
 import {isCalendarDate} from '../../lib/calendar-date';
+import {fullFlexiIntervals} from '../../lib/full-flexi-time';
 import {todayInKualaLumpur} from '../../lib/hr-date';
 import {recordedOvertimeWorkIntervals,canonicalOvertimeInputTx} from './overtime-input';
 import {OvertimeOwnerError,type CanonicalOvertimeSnapshot} from './overtime-patterns';
@@ -35,7 +36,8 @@ export async function readAttendanceFormulaDaysTx(tx:Tx,ctx:SessionContext,p:{co
  const from=addDaysIso(p.from,-1),to=addDaysIso(p.to,1);
  const records=await tx.select().from(attendance).where(and(eq(attendance.tenantId,ctx.tenantId),eq(attendance.employmentId,p.employmentId),gte(attendance.attendanceDate,from),lte(attendance.attendanceDate,to))).orderBy(asc(attendance.attendanceDate),asc(attendance.id));
  if(new Set(records.map(row=>row.attendanceDate)).size!==records.length)throw Error('Attendance day identity is ambiguous.');
- const punches=await tx.select().from(attendancePunch).where(and(eq(attendancePunch.tenantId,ctx.tenantId),eq(attendancePunch.employmentId,p.employmentId),gte(attendancePunch.attendanceDate,from),lte(attendancePunch.attendanceDate,to),isNull(attendancePunch.voidedAt))).orderBy(asc(attendancePunch.attendanceDate),asc(attendancePunch.punchAt),asc(attendancePunch.id));
+ const punches=await tx.select().from(attendancePunch).where(and(eq(attendancePunch.tenantId,ctx.tenantId),eq(attendancePunch.employmentId,p.employmentId),gte(attendancePunch.attendanceDate,from),lte(attendancePunch.attendanceDate,to),isNull(attendancePunch.voidedAt))).orderBy(asc(attendancePunch.attendanceDate),asc(attendancePunch.punchAt),asc(attendancePunch.id)).limit(8193);
+ if(punches.length>8192)throw Error('The attendance clock source exceeds the supported review limit.');
  const leave=await approvedLeaveMeasurementsTx(tx,{employmentIds:[p.employmentId],from,to,today:todayInKualaLumpur()});
  const typeIds=[...new Set([...leave.values()].flatMap(value=>value.types))];
  const types=typeIds.length?await tx.select({id:leaveType.id,code:leaveType.code}).from(leaveType).where(inArray(leaveType.id,typeIds)).orderBy(asc(leaveType.id)):[];
@@ -59,7 +61,7 @@ export async function readAttendanceFormulaDaysTx(tx:Tx,ctx:SessionContext,p:{co
   string('PID',subject.row.personId,'effective-employment');dateValue('StartWork',datedEmployment.get(date)?.hiredOn,'dated-employment-information');
   const end=[subject.row.resignationDate,subject.row.lastWorkingDate,subject.row.terminatedOn].filter((value):value is string=>!!value).sort()[0];dateValue('LastWork',end,'effective-employment');flag('isResigned',!!end&&end<date,'effective-employment');
   for(const [prefix,offset]of [['Yesterday',-1],['Tomorrow',1]] as const){const adjacent=addDaysIso(date,offset),other=records.find(record=>record.attendanceDate===adjacent);string(prefix+'NormalDayType',other?.dayType);const am=leaveCodes(adjacent,'AM'),pm=leaveCodes(adjacent,'PM');if(am!==null&&pm!==null)string(prefix+'LeaveCode',[...new Set([am,pm].filter(Boolean))].sort().join(','),'approved-leave');}
-  for(const [half,suffix]of [['AM','1stHalf'],['PM','2ndHalf']] as const){const codes=leaveCodes(date,half);if(codes!==null){string('LeaveCode'+suffix,codes,'approved-leave');string('LeaveCode'+suffix+'All',codes,'approved-leave');}const evidence=leave.get(p.employmentId+':'+date);if(!evidence?.unknownTypes.length&&evidence?.leave!==null&&!evidence?.leave?.some(piece=>piece.session==='hourly'||piece.session==='full_day'&&piece.days!==1))decimal('LeaveValue'+suffix,(evidence?.leave??[]).filter(piece=>piece.session===half||piece.session==='full_day').reduce((sum,piece)=>sum+(piece.session==='full_day'?piece.days/2:piece.days),0),'approved-leave');}
+  for(const [half,suffix]of [['AM','1stHalf'],['PM','2ndHalf']] as const){const codes=leaveCodes(date,half);if(codes!==null){string('LeaveCode'+suffix,codes,'approved-leave');}const evidence=leave.get(p.employmentId+':'+date);if(!evidence?.unknownTypes.length&&evidence?.leave!==null&&!evidence?.leave?.some(piece=>piece.session==='hourly'||piece.session==='full_day'&&piece.days!==1))decimal('LeaveValue'+suffix,(evidence?.leave??[]).filter(piece=>piece.session===half||piece.session==='full_day').reduce((sum,piece)=>sum+(piece.session==='full_day'?piece.days/2:piece.days),0),'approved-leave');}
   const leaveEvidence=leave.get(p.employmentId+':'+date);if(leaveEvidence?.leave&&!leaveEvidence.unknownTypes.length){const pieces=leaveEvidence.leave;if(pieces.every(piece=>piece.minutes!==null))decimal('OnLeaveDurationMins',pieces.reduce((sum,piece)=>sum+piece.minutes!,0),'approved-leave');}else if(!leaveEvidence)decimal('OnLeaveDurationMins',0,'approved-leave-empty');
   const nativeSnapshot=snapshots.get(date);
   for(const request of p.fields??[]){
@@ -96,11 +98,16 @@ export async function readAttendanceFormulaDaysTx(tx:Tx,ctx:SessionContext,p:{co
   if(schedule.startAbs!==null)decimal('EarlyInShift',Math.max(0,schedule.startAbs-punch.inAbs));
   if(punch.outAbs!==null&&schedule.endAbs!==null)decimal('LateOut',Math.max(0,punch.outAbs-schedule.endAbs));
   if(overtime){decimal('OTAdjustment',overtime.minutes-overtime.rawMinutes);}
-  const positioned=recordedOvertimeWorkIntervals(row,dayPunches);
+  const rawPairs=fullFlexiIntervals(dayPunches,row.checkInAt,trace.schedule.dailyCutoffMinutes??null);
+  if(dayPunches.length<=128&&rawPairs.complete&&new Set(dayPunches.map(part=>part.punchAt+':'+part.direction)).size===dayPunches.length&&!(review?.state==='known'&&review.evidence.requiresReview)){const ordered=rawPairs.intervals;decimal('UnproductiveTime',ordered.at(-1)!.outAbs-ordered[0].inAbs-ordered.reduce((sum,part)=>sum+part.outAbs-part.inAbs,0),'canonical-closed-pair-gap-measurement');}
+  const captured=recordedOvertimeWorkIntervals(row,dayPunches);
+  const positioned=captured?.every(part=>Number.isSafeInteger(Number(part.startEpochSeconds)/60)&&Number.isSafeInteger(part.elapsedSeconds/60))?captured:null;
   if(positioned&&schedule.startAbs!==null&&schedule.endAbs!==null){
    const base=Date.parse(date+'T00:00:00+08:00')/1000;
    const work:AttendancePolicyInterval[]=positioned.map(interval=>({from:(Number(interval.startEpochSeconds)-base)/60,to:(Number(interval.startEpochSeconds)-base+interval.elapsedSeconds)/60}));
-   if(placement?.state==='known'&&placement.scheduled.from===schedule.startAbs&&placement.scheduled.to===schedule.endAbs){
+   const frozen=trace.formulaSchedule;
+   const frozenMatches=frozen?.v===1&&context?.state==='policy'&&JSON.stringify(frozen.breakPeriods)===JSON.stringify(context.schedule.breakPeriods)&&frozen.flexibleBreakMinutes===context.schedule.flexibleBreakMinutes&&frozen.flexiDuration===context.schedule.flexiDuration;
+   if(frozenMatches&&placement?.state==='known'&&placement.scheduled.from===schedule.startAbs&&placement.scheduled.to===schedule.endAbs){
     const net=subtract(work,placement.unpaidWindows,4320);
     decimal('ShiftWorkingMins',count(intersect(net,[{from:schedule.startAbs,to:schedule.endAbs}],4320),4320),'canonical-net-positioned-work');
     const approved=plans?intersect(net,plans,4320):snapshot?.input.approval.status==='notRequired'?net:undefined;

@@ -14,7 +14,7 @@ describe('Attendance authoring proposal boundary',()=>{
  it('accepts only the deterministic Attendance language and attached closed conditions',()=>{
   expect(adjudicateAttendanceFormulaDraft(proposal('Return {#FormulaID}("TotalWorkingMins") / 60'))).toMatchObject({valid:true});
   expect(adjudicateAttendanceFormulaDraft(proposal('Return {#ConditionID}("LIMIT")',{conditions:[{code:'LIMIT',description:'Fictional local numeric condition',type:'decimal',source:'Return 10'}]}))).toMatchObject({valid:true});
-  for(const source of ['Return process.env.SECRET','Return {#Fetch}("private")','Return {#FormulaID}("CallbackInShift")','Return {#ConditionID}("MISSING")','Return {#EmployeeInformation}("bankAccount")'])expect(()=>adjudicateAttendanceFormulaDraft(proposal(source))).toThrow();
+  for(const source of ['Return process.env.SECRET','Return {#Fetch}("private")','Return {#FormulaID}("ZoneACollection")','Return {#FormulaID}("OTAssignWorkHour")','Return {#FormulaID}("CallbackInShift")','Return {#FormulaID}("Flex1Interval")','Return {#ConditionID}("MISSING")','Return {#EmployeeInformation}("bankAccount")'])expect(()=>adjudicateAttendanceFormulaDraft(proposal(source))).toThrow();
   expect(()=>adjudicateAttendanceFormulaDraft(proposal('Return 1',{activate:true}))).toThrow();
   expect(()=>adjudicateAttendanceFormulaDraft('x'.repeat(262145))).toThrow();
  });

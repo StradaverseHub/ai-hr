@@ -16,3 +16,9 @@ describe('native Attendance formula source custody',()=>{
  it('binds the exact source and detects a subsequent attendance change',async()=>{const f=await fixture();await checkIn(f.ctx,{employmentId:f.employmentId,date:f.date,time:'09:00'});await checkOut(f.ctx,{employmentId:f.employmentId,date:f.date,time:'19:00'});const before=await read(f);await checkIn(f.ctx,{employmentId:f.employmentId,date:f.date,time:'20:00'});await checkOut(f.ctx,{employmentId:f.employmentId,date:f.date,time:'21:00'});expect((await read(f)).sourceDigest).not.toBe(before.sourceDigest);});
  it('rejects a real other tenant and an employee caller without administrative authority',async()=>{const f=await fixture();const other=await seedBase(),foreign=adminCtx(other);await expect(withTenant(foreign,tx=>readAttendanceFormulaDaysTx(tx,foreign,{...f,from:f.date,to:f.date}))).rejects.toThrow();const employee:SessionContext={...f.ctx,userId:undefined,roles:['employee'],grants:[{role:'employee',companyId:null}]};await expect(withTenant(employee,tx=>readAttendanceFormulaDaysTx(tx,employee,{...f,from:f.date,to:f.date}))).rejects.toThrow();});
 });
+
+it('measures the reporter clock-pair gap as60minutes without deducting it twice from recorded work',async()=>{
+ const f=await fixture();for(const [direction,time]of [['in','08:00'],['out','12:00'],['in','13:00'],['out','17:00']] as const){if(direction==='in')await checkIn(f.ctx,{employmentId:f.employmentId,date:f.date,time});else await checkOut(f.ctx,{employmentId:f.employmentId,date:f.date,time});}
+ const source=await read(f);expect(source.days[0].values.UnproductiveTime).toMatchObject({state:'known',value:{type:'decimal',value:'60'}});
+ expect(evaluateAttendanceFormula({conditions:[],formulas:[{code:'GAP',source:'Return {#FormulaID}("UnproductiveTime")'}]},'GAP',source.days).amount).toBe('60');
+});

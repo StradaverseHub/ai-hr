@@ -27,7 +27,13 @@ it('lists only scoped formula metadata, searches actual identities and reads pri
  const proof=await testAttendanceFormula(f.ctx,{...f}),detail=await readAttendanceFormulaTest(f.ctx,{id:f.id,testId:proof.id});expect(detail.payload).toEqual(proof.payload);const savedView=await getAttendanceFormula(f.ctx,f.id);expect(savedView.tests[0]).not.toHaveProperty('payload');expect(savedView.latest.registryVersion).toBeTruthy();expect(savedView.latest.evaluatorVersion).toBeTruthy();
  await expect(searchAttendanceFormulaEmployees(f.ctx,{id:f.id,revisionId:'10000000-0000-4000-8000-000000000099',date:f.date,query:'',page:1})).rejects.toThrow(/current/);
 });
-it('refuses a test period before the effective date',async()=>{
+it('permits historical validation of a future-effective rule without applying pay',async()=>{
  const f=await fixture(),version=await saveAttendanceFormula(f.ctx,{configuration:{...f.configuration,effectiveFrom:'2099-01-01'}});
- await expect(testAttendanceFormula(f.ctx,{...f,...version})).rejects.toThrow(/effective date/);
+ const proof=await testAttendanceFormula(f.ctx,{...f,...version});expect(proof.passed).toBe(true);expect((await getAttendanceFormula(f.ctx,version.id)).status).toBe('inactive');
+});
+
+it('distinguishes the current saved revision from a still-active prior version',async()=>{
+ const f=await saved(),proof=await testAttendanceFormula(f.ctx,{...f});await activateAttendanceFormula(f.ctx,{...f,testId:proof.id});
+ await saveAttendanceFormula(f.ctx,{id:f.id,expectedRevisionId:f.revisionId,configuration:{...f.configuration,description:'Fictional next-version draft'}});
+ const view=await getAttendanceFormula(f.ctx,f.id);expect(view.latest.ordinal).toBe(2);expect(view.activeOrdinal).toBe(1);expect(view.activeRevisionId).toBe(f.revisionId);
 });
