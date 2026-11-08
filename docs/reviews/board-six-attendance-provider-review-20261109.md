@@ -4,19 +4,21 @@
 
 This packet requests repository-owner provisional authorization for one exact source binding and one new bounded authoring purpose. It is not an approval record, specialist certification, a release receipt, or staging acceptance. Until the owner answers this packet, the literal approval registry remains unchanged from the earlier approved renewal.
 
-The concrete implementation checkpoint is `128bb3efa78f72ef03a7ab2a44822dd81569b990` on `codex/board-staging-integration-20261108` (PR234). All six approved board items stay one staging release: Pay Item company availability, Rewards dashboard, Rewards setup, Action Centre naming, Maybank V7.4, and Attendance Formula Builder. The three answered Attendance rounds define Before/After Shift, remove callbacks, and document same-category aliases. Maybank hashing remains blank as answered on the board.
+The concrete implementation checkpoint is `eec5214d660d028d335793c0534bba7dfa8ef887` on `codex/board-staging-integration-20261108` (PR234). All six approved board items stay one staging release: Pay Item company availability, Rewards dashboard, Rewards setup, Action Centre naming, Maybank V7.4, and Attendance Formula Builder. The three answered Attendance rounds define Before/After Shift, remove callbacks, and document same-category aliases. Maybank hashing remains blank as answered on the board.
 
 ## Exact source binding
 
-The generated transitive provider closure contains **1,481 files**, with fingerprint:
+The generated transitive provider closure contains **1,483 files**, with fingerprint:
 
-`32c29274f42a5569a4a4e44754d015e5bfe17b3df2e6198cd472f0a6398531f1`
+`570c80d812ddc68f2ac373ce28ce6f6cedc07967b6085c7ae965c3b0adf60389`
 
-The earlier owner-approved literal binding is `e5a7cf8cb8331fe4816bdad18b0d17feae665708ac38443082f210201bba4879`. That exact earlier approval is retained as history and cannot approve this changed source automatically.
+The latest incoming owner-approved literal binding is `b203d15b703aeca5c9af694eb3dee01941bff6e4ca785e7d10191bf697aa298e`, preserved byte-for-byte from qualified System Labels source `4ae7953eb0283abcba914c29ecef719887ad6fca` and its actual human decision in `system-labels-source-binding-2026-11.md`. The earlier six-item coordinator approval to `e5a7cf8cb8331fe4816bdad18b0d17feae665708ac38443082f210201bba4879` remains historical. Neither exact approval authorizes this combined fingerprint automatically.
 
 Renew only `sourceDigest` in the same **28 existing approved records**, preserving every contract ID, status, reviewer, evidence reference and timestamp. Preserve the two original pending records byte-for-byte: `structured_canonical_records_v1` and `attendance_trend_analysis_v1`. A reverse substitution must reproduce all original registry bytes before adding the separately requested new record.
 
-The closure has 53 changed covered paths since that earlier approval. Attendance native readers, immutable result/review/approval owners, ordinary Payroll source integration, canonical overtime coverage and leave/TOIL checks expand local application behavior. Those native facts do not enter the new authoring payload. Maybank serialization/settings remain native bank-file generation. Rewards changes preserve native access and confidentiality. Translated copy, permissions, navigation and the explicit new source root are included in the fingerprint. Existing provider transports and their credentials are unchanged. The appended migration/source evidence does not grant a provider access to its data.
+The closure has 62 changed covered paths compared with the qualified incoming System Labels source. Attendance native readers, immutable result/review/approval owners, ordinary Payroll source integration, canonical overtime coverage and leave/TOIL checks expand local application behavior. Those native facts do not enter the new authoring payload. Maybank serialization/settings remain native bank-file generation. Rewards changes preserve native access and confidentiality. Translated copy, permissions, navigation and the explicit new source root are included in the fingerprint. Existing provider transports and their credentials are unchanged. The appended migration/source evidence does not grant a provider access to its data.
+
+The incoming source passed full run42499232469 and owns staging lease67; its installation/acceptance is not inferred from that pass. The normal merge preserves its System Labels company-scope controls and all prior history. Our seven still-unapplied migrations move from3300–3303/3600–3602 to3700–3706 above the incoming3400 watermark, with every SQL payload hash unchanged. The717-row candidate preserves the incoming710-row source prefix. Actual installed ordered hashes/baseline must be refreshed before final admission. No installed SQL is edited. The previous proposed fingerprint32c29274 was never submitted for human approval; this packet supersedes it before asking.
 
 ## Attendance authoring purpose
 
@@ -30,9 +32,9 @@ The model returns bounded JSON with proposed source, attached conditions, explan
 
 ## Evidence and release limits
 
-Hosted behavior checks at their original source commits cover payload exclusion, explicit consent, malicious requests, invalid output, native scope/entitlements and stop controls; transports use synthetic fixtures. No real provider call is claimed. Native result, pricing, recurring-item conflict, overtime source/count/physical-coverage replay and idempotent transfer checks passed in run42499416364 at2901. Its original selected job still failed one editor transition test, and its compiler failed a fixture annotation; those failures are retained. Run42500572517 at8e5 passed the whole compiler and editor/route checks. Run42500987470 at128bb passed33 authoring/language/capture checks; its whole compiler is still running at packet preparation. These results retain their own source identities.
+Hosted behavior checks at their original source commits cover payload exclusion, explicit consent, malicious requests, invalid output, native scope/entitlements and stop controls; transports use synthetic fixtures. No real provider call is claimed. Native result, pricing, recurring-item conflict, overtime source/count/physical-coverage replay and idempotent transfer checks passed in run42499416364 at2901. Its original selected job still failed one editor transition test, and its compiler failed a fixture annotation; those failures are retained. Run42500572517 at8e5 passed the whole compiler and editor/route checks. Run42500987470 at128bb passed33 authoring/language/capture checks; its whole compiler also completed successfully. These results retain their own source identities.
 
-All28 original desktop/mobile component captures were reviewed across six locales. The fresh finish reviewer required visible condition-error feedback and source formatting/indentation; checkpoint128bb implements these fixes. The same reviewer inspected all32 recaptured desktop/mobile images at128bb, scored both fixes resolved and found no observed regressions. Its ship verdict covers those fixes; the initial review matched incumbent typography, material, ground, composition and mobile containment. The ordinary-extension documentation handoff follows that verdict. Fictional component captures do not establish authenticated installed journeys.
+All28 original desktop/mobile component captures were reviewed across six locales. The fresh finish reviewer required visible condition-error feedback and source formatting/indentation; checkpoint128bb implements these fixes. The same reviewer inspected all32 recaptured desktop/mobile images at128bb, scored both fixes resolved and found no observed regressions. Its ship verdict covers those fixes; the initial review matched incumbent typography, material, ground, composition and mobile containment. The ordinary-extension documenter completed `board-attendance-design-review-20261108.md`, preserving PRODUCT.md, DESIGN.md and the sidecar. The later System Labels merge does not change the Attendance editor/result/shared-source components, their Attendance translations or global styles; its normal native scope behavior still requires combined qualification. Fictional component captures do not establish authenticated installed journeys.
 
 Original full run42466795197 belongs to4f9cbd7a3 and remains failed. The immutable impact reconstruction for the expanded Attendance/Payroll/schema source selects full coverage, and the new test inventory changes original unit identities. The existing cross-source recovery policy requires identical units/suite/controller/baseline and therefore cannot adopt that earlier plan for this expanded candidate. This concrete coverage invalidation requires current combined qualification; it is not a default full retry for one failed test. The final exact source still requires authenticated hosted qualification, current staging baseline and ordered-ledger reconciliation, shared lease admission, build/source/migration/service arrival and changed authenticated journeys.
 
@@ -50,8 +52,12 @@ This request authorizes neither production installation nor production-package p
 - `core/attendance.ts`
 - `core/company-refs.ts`
 - `core/leave.ts`
+- `core/notifications.ts`
+- `core/pay-component-company.ts`
+- `core/pay-components.ts`
 - `core/payroll-attendance-allowance.ts`
 - `core/payroll-formula-inputs.ts`
+- `core/payroll-individual-txn.ts`
 - `core/payroll-overtime-pattern.ts`
 - `core/payroll-view.ts`
 - `core/payroll.ts`
@@ -70,6 +76,7 @@ This request authorizes neither production installation nor production-package p
 - `lib/attendance-formula-periods.ts`
 - `lib/attendance-formula-posting.ts`
 - `lib/maybank-payment-settings.ts`
+- `lib/pay-component-company.ts`
 - `lib/pay-formula-language.ts`
 - `lib/permissions.ts`
 - `lib/product-context/destinations.ts`
@@ -90,6 +97,10 @@ This request authorizes neither production installation nor production-package p
 - `packs/payroll/service.ts`
 - `packs/rewards/access-policy.ts`
 - `packs/rewards/coverage.ts`
+- `packs/rewards/dashboard-model.ts`
+- `packs/rewards/governance-model.ts`
 - `packs/rewards/maintenance.ts`
+- `packs/rewards/notification-recipients.ts`
+- `packs/rewards/preparation-model.ts`
 - `packs/rewards/service.ts`
 - `scripts/ai-provider-data-source-manifest.mjs`
