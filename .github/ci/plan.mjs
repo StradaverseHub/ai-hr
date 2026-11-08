@@ -7,10 +7,10 @@ import {createHash} from 'node:crypto';
 import {singletonSources,singletonSourceMaximum,assertSingletonCoverage} from './singleton-protocol.mjs';
 import {employeeLifecycleUnit} from './employee-lifecycle-profile.mjs';
 import {assertEmployeeLifecycleSourceClosure} from './employee-lifecycle-sources.mjs';
-import {CI_POLICY} from './policy-version.mjs';
 import {inspectPdfToolScope} from './pdf-tool-scope.mjs';
-import {buildUnits,hash,CI_EXECUTION} from './manifest.mjs';
+import {buildUnits,hash} from './manifest.mjs';
 import {candidateEnvironment,nativePreparationEnvironment} from './candidate-environment.mjs';
+import {buildPlanFromObservedSources,groupsFromClassifierOutput} from './plan-observed.mjs';
 export {hash};
 export function createPlan(cwd = process.cwd()) {
   const git = (...args) => execFileSync('git', ['-c','safe.directory='+cwd,'-c','core.fsmonitor=false','-c','core.hooksPath=/dev/null',...args], {cwd, env:nativePreparationEnvironment(process.env),encoding: 'utf8',timeout:10000,killSignal:'SIGTERM'}).trim();
@@ -28,22 +28,17 @@ export function createPlan(cwd = process.cwd()) {
   const loader=classifierRuntime==='native'?['--experimental-strip-types']:['--import','tsx'];
   const classified = execFileSync(process.execPath, [...loader, 'scripts/gate-db-classify.ts', 'explain'], {
     cwd, env:candidateEnvironment(process.env), timeout:15000,killSignal:'SIGTERM', input: suite.join('\n') + '\n', encoding: 'utf8', maxBuffer: 16 * 1024 * 1024,
-  }).trim().split('\n').map(line => line.split('\t'));
-  const groups = {nodb: [], db: []};
-  for (const [kind, file] of classified) {
-    if (!['DB', 'NODB'].includes(kind) || !suite.includes(file)) throw Error('Invalid classifier output');
-    groups[kind === 'DB' ? 'db' : 'nodb'].push(file);
-  }
-  if (JSON.stringify([...groups.db, ...groups.nodb].sort()) !== JSON.stringify(suite)) throw Error('Classifier does not partition the suite exactly');
+  });
+  const groups=groupsFromClassifierOutput(suite,classified);
   const browsers = tracked.filter(f => f.endsWith('.browser.test.tsx')).sort();
   const pdfTooling=inspectPdfToolScope(cwd);
   const units = buildUnits(suite,groups,browsers);
-  for(const unit of units)if(employeeLifecycleUnit(unit))assertEmployeeLifecycleSourceClosure(singletonSources(unit),JSON.parse(readFileSync(resolve(cwd,'db/migrations/meta/_journal.json'),'utf8')));
+  let migrationJournal;
+  for(const unit of units)if(employeeLifecycleUnit(unit)){migrationJournal=JSON.parse(readFileSync(resolve(cwd,'db/migrations/meta/_journal.json'),'utf8'));assertEmployeeLifecycleSourceClosure(singletonSources(unit),migrationJournal);}
   const singletonSourceHashes=Object.fromEntries(units.filter(u=>u.singleton).map(unit=>[unit.id,Object.fromEntries(singletonSources(unit).map(file=>{
    const path=resolve(cwd,file);if(realpathSync(path)!==path||!lstatSync(path).isFile()||lstatSync(path).size>singletonSourceMaximum(file))throw Error('Unsafe singleton source');
    return [file,createHash('sha256').update(readFileSync(path)).digest('hex')];
   }))]));
-  const body = {schemaVersion: 2, policyVersion: CI_POLICY, sha, controller: process.env.AIHR_CI_CONTROL_HEAD ?? 'local', migrationBase: process.env.AIHR_CI_MIGRATION_BASE ?? null, runtime:{node:process.versions.node,platform:process.platform,arch:process.arch}, execution:CI_EXECUTION, pdfTooling, singletonSources:singletonSourceHashes, suite, units};
-  return {...body, fingerprint: hash(body)};
+  return buildPlanFromObservedSources({sha,controller:process.env.AIHR_CI_CONTROL_HEAD??'local',migrationBase:process.env.AIHR_CI_MIGRATION_BASE??null,runtime:{node:process.versions.node,platform:process.platform,arch:process.arch},suite,groups,browsers,pdfTooling,singletonSourceHashes,migrationJournal});
 }
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) console.log(JSON.stringify(createPlan(), null, 2));

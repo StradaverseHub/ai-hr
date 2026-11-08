@@ -14,6 +14,19 @@ const commentOnly=Object.freeze({
 const sha=b=>createHash('sha256').update(b).digest('hex');
 const reference=/\b(?:pdftoppm|pdftotext|pdfinfo|pymupdf|fitz)\b/i;
 const relevant=/^(?:app|components|core|db|lib|localization|mobile|packs|scripts|test)\/.+\.(?:ts|tsx|js|mjs|cjs|mts|cts|py|sh|sql)$/;
+/** Closed census shape/integrity only; actual complete bytes remain the read owner's obligation. */
+export function validatePdfToolScope(scope){
+ assert(scope&&Object.keys(scope).sort().join('|')==='consumers|referenceFingerprint|referenceSources|scannedSources|strategy'&&scope.strategy==='audited-external-pdf-suite-v1');
+ assert.deepEqual(scope.consumers,[...PDF_TOOL_CONSUMERS]);
+ const paths=[...PDF_TOOL_CONSUMERS,...Object.keys(commentOnly)].sort((a,b)=>a.localeCompare(b));
+ assert(Array.isArray(scope.referenceSources)&&scope.referenceSources.length===paths.length&&Number.isSafeInteger(scope.scannedSources)&&scope.scannedSources>=paths.length);
+ for(const [index,row]of scope.referenceSources.entries()){
+  assert(row&&Object.keys(row).sort().join('|')==='kind|path|sha256'&&row.path===paths[index]&&typeof row.sha256==='string'&&/^[a-f0-9]{64}$/.test(row.sha256));
+  assert.equal(row.kind,PDF_TOOL_CONSUMERS.includes(row.path)?'tool-suite':'byte-pinned-comment-only');
+  if(Object.hasOwn(commentOnly,row.path))assert.equal(row.sha256,commentOnly[row.path]);
+ }
+ assert.equal(scope.referenceFingerprint,sha(JSON.stringify(scope.referenceSources)),'PDF census fingerprint differs');return scope;
+}
 export function classifyPdfToolSources(sources){
  const seen=new Set(),references=[];
  for(const row of sources){
@@ -26,10 +39,18 @@ export function classifyPdfToolSources(sources){
  assert(seen.size>0,'Nonempty complete tool-scope inventory required');
  assert(PDF_TOOL_CONSUMERS.every(path=>references.some(r=>r.path===path))&&Object.keys(commentOnly).every(path=>references.some(r=>r.path===path)),'Audited PDF source inventory changed; review scope before planning');
  references.sort((a,b)=>a.path.localeCompare(b.path));
- return {strategy:'audited-external-pdf-suite-v1',consumers:[...PDF_TOOL_CONSUMERS],referenceSources:references,scannedSources:seen.size,referenceFingerprint:sha(JSON.stringify(references))};
+ return validatePdfToolScope({strategy:'audited-external-pdf-suite-v1',consumers:[...PDF_TOOL_CONSUMERS],referenceSources:references,scannedSources:seen.size,referenceFingerprint:sha(JSON.stringify(references))});
+}
+/** Complete tracked names and bounded actual bytes are supplied by their existing owner.
+ * This course performs no Git/filesystem/process operation and grants no admission. */
+export function inspectPdfToolScopeFromTracked(tracked,readBoundedSource){
+ assert(Array.isArray(tracked)&&tracked.length>0&&new Set(tracked).size===tracked.length&&tracked.every(path=>typeof path==='string'&&!path.includes('\0')&&!path.includes('\\')&&!path.startsWith('/')&&path.split('/').every(part=>part!==''&&part!=='.'&&part!=='..')),'Complete unique tracked source inventory required');
+ assert(typeof readBoundedSource==='function','Actual bounded source reader required');
+ const paths=tracked.filter(path=>relevant.test(path)).sort();
+ function* sources(){for(const path of paths)yield {path,bytes:readBoundedSource(path)};}
+ return classifyPdfToolSources(sources());
 }
 export function inspectPdfToolScope(cwd){
- const paths=execFileSync('git',['ls-files'],{cwd,encoding:'utf8',maxBuffer:8*1024**2}).trim().split('\n').filter(p=>relevant.test(p)).sort();
- function* sources(){for(const path of paths){const p=join(cwd,path),s=lstatSync(p);assert(s.isFile()&&!s.isSymbolicLink()&&s.size<=16*1024**2,'Regular bounded tool-scope source required');yield {path,bytes:readFileSync(p)};}}
- return classifyPdfToolSources(sources());
+ const tracked=execFileSync('git',['ls-files'],{cwd,encoding:'utf8',maxBuffer:8*1024**2}).trim().split('\n');
+ return inspectPdfToolScopeFromTracked(tracked,path=>{const p=join(cwd,path),s=lstatSync(p);assert(s.isFile()&&!s.isSymbolicLink()&&s.size<=16*1024**2,'Regular bounded tool-scope source required');return readFileSync(p);});
 }
