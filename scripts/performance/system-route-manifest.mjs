@@ -23,6 +23,12 @@ export const managerRoutes=Object.freeze([
  '/','/approvals','/approvals/history','/performance/home','/claims','/tasks','/org','/delegations','/leave/tracker',
 ]);
 export const routePools=Object.freeze({employee:employeeRoutes,manager:managerRoutes,companyHR:hrRoutes,groupHR:Object.freeze([...hrRoutes,'/control-tower/agents/spending','/control-tower/agents/provider','/control-tower/agents/build-list'])});
+/** Benchmark cohort metadata selects pressure routes; authentication grants remain server-owned. */
+export function routePool(user){
+ if(!user||typeof user!=='object'||typeof user.role!=='string'||!Object.hasOwn(routePools,user.role))
+  throw new RangeError('Unknown performance fixture role');
+ return routePools[user.role];
+}
 const concreteReadRoutes=new Set(Object.values(routePools).flat());
 export const wholeSystemRouteCount=concreteReadRoutes.size;
 /** Keep known static views distinct; discard arbitrary query values from measurement labels. */

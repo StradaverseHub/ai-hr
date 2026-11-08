@@ -1,8 +1,8 @@
 import {existsSync,readFileSync} from 'node:fs';
 import {expect,it} from 'vitest';
-import {validateNavigationScenarioPlan,type NavigationFixtureRole,type NavigationScenario} from '../scripts/performance/navigation-protocol';
+import {validateNavigationScenarioPlan,fixtureNavigationActor,type NavigationFixtureRole,type NavigationScenario} from '../scripts/performance/navigation-protocol';
 import {CENTRE_TABS,CENTRE_SECTIONS} from '../lib/ai-centre/centre-nav';
-import {readRouteForMeasurement,routePools,wholeSystemRouteCount,additionalBrowserRoutes} from '../scripts/performance/system-route-manifest.mjs';
+import {readRouteForMeasurement,routePool,routePools,wholeSystemRouteCount,additionalBrowserRoutes} from '../scripts/performance/system-route-manifest.mjs';
 it('counts the actual distinct route pools and binds every concrete path to an existing page',()=>{
  const unique=new Set(Object.values(routePools).flat());expect(wholeSystemRouteCount).toBe(unique.size);expect(unique.size).toBeGreaterThan(60);
  for(const [role,paths]of Object.entries(routePools)){
@@ -81,4 +81,25 @@ it('excludes intentionally denied administrator destinations from usable-route p
  expect(denied.some(scenario=>scenario.role==='manager'&&scenario.href==='/admin/claims')).toBe(true);
  for(const scenario of denied)expect(routePools[scenario.role]).not.toContain(scenario.href);
  expect(missingUsablePressure(denied,routePools)).toEqual([]);
+});
+
+
+it('selects the complete benchmark role pool from explicit fixture metadata',()=>{
+ const cases=[
+  {role:'employee',index:4,count:30,required:'/me/payslip',excluded:'/admin/personnel'},
+  {role:'manager',index:2,count:16,required:'/approvals/history',excluded:'/admin/personnel'},
+  {role:'companyHR',index:1,count:69,required:'/analytics',excluded:'/control-tower/agents/spending'},
+  {role:'groupHR',index:0,count:72,required:'/control-tower/agents/spending',excluded:'/me/payslip'},
+ ]as const;
+ for(const expected of cases){
+  // Every real fixture cohort starts with an employee grant; it cannot redefine the workload role.
+  const actor={...fixtureNavigationActor(expected.index),roles:['employee'],grants:[{role:'employee',companyId:'fixture-company'}]},selected=routePool(actor);
+  expect(actor.role).toBe(expected.role);
+  expect(selected).toBe(routePools[expected.role]);expect(selected).toHaveLength(expected.count);
+  expect(selected).toContain(expected.required);expect(selected).not.toContain(expected.excluded);
+ }
+});
+it('refuses absent and non-catalogue benchmark roles instead of selecting another cohort',()=>{
+ for(const actor of [undefined,null,{},'employee',{role:null},{role:1}])expect(()=>routePool(actor)).toThrow(RangeError);
+ for(const role of ['', 'unknown','__proto__','constructor','toString'])expect(()=>routePool({role})).toThrow(RangeError);
 });

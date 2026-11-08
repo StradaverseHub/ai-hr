@@ -1,0 +1,157 @@
+{
+  "kind": "PERFORMANCE_PILOT_ROLE_POOL_BINDING_SOURCE_ONLY_NOT_RUNTIME_OR_RELEASE",
+  "schemaVersion": 1,
+  "parentCandidateCommit": "a5194c1aa2f904e78c35728be7a95a2d477a0ff8",
+  "currentSourceCommit": "Resolved by clean Git commit containing this record, supplied externally; no self-reference.",
+  "releaseAuthorized": false,
+  "stagingAuthorized": false,
+  "productionAuthorized": false,
+  "testsExecuted": false,
+  "runtimeExecuted": false,
+  "scope": {
+    "codeTestOwners": 3,
+    "existingAdrAppended": 1,
+    "newNonruntimeRecord": 1,
+    "wholeParentInverseAndCurrentPins": [
+      {
+        "before": {
+          "commit": "a5194c1aa2f904e78c35728be7a95a2d477a0ff8",
+          "path": "scripts/performance/system-load.mjs",
+          "bytes": 98971,
+          "sha256": "ecf1b52c881812e9a9b2e29c2df37501871be9c3809d7b38351a0e169907e5b7",
+          "gitBlob": "bd2d7637abc5199778c7b0c501b3e89ba968a24c",
+          "mode": "100644",
+          "reconstruction": "Read entire immutable Git <commit>:<path>; do not execute historical bytes."
+        },
+        "current": {
+          "path": "scripts/performance/system-load.mjs",
+          "bytes": 98981,
+          "sha256": "12eed95ddf60bb91bfcbef4bde8434ddfe54f98047c42348751873d24007ba13",
+          "gitBlob": "67b9c6a07374dadfc29fd0e9f0971a9774961d5f"
+        }
+      },
+      {
+        "before": {
+          "commit": "a5194c1aa2f904e78c35728be7a95a2d477a0ff8",
+          "path": "scripts/performance/system-route-manifest.mjs",
+          "bytes": 3711,
+          "sha256": "01a4988c25ef6953f80ffc0a94e3719280cc24bbc4f806445c7208ac28925fac",
+          "gitBlob": "0d7e31eaf7da3b5dea2da48513ed2ba2852b0eb5",
+          "mode": "100644",
+          "reconstruction": "Read entire immutable Git <commit>:<path>; do not execute historical bytes."
+        },
+        "current": {
+          "path": "scripts/performance/system-route-manifest.mjs",
+          "bytes": 4040,
+          "sha256": "bfd3d484f4c104f2e75c77b2c0e1bbb8ce592d3e6504a41c52d9b4233b25d7a2",
+          "gitBlob": "6725388e586cf59e051bb4600051dc0a27b1a6f7"
+        }
+      },
+      {
+        "before": {
+          "commit": "a5194c1aa2f904e78c35728be7a95a2d477a0ff8",
+          "path": "test/performance-route-manifest.test.ts",
+          "bytes": 6297,
+          "sha256": "08b1b993fc32cf1594ff028c4535ff0c40eef73f821d8de0304651036a1623b7",
+          "gitBlob": "239375ad392cf14bd8c5a5e13985679a21149afb",
+          "mode": "100644",
+          "reconstruction": "Read entire immutable Git <commit>:<path>; do not execute historical bytes."
+        },
+        "current": {
+          "path": "test/performance-route-manifest.test.ts",
+          "bytes": 7712,
+          "sha256": "82aa337cc1c31952d99fd2d54c189607186a34df235aa97104e4d2a8ab86ca74",
+          "gitBlob": "641ea1a27604d96ec86ed30099aa69d2ce252507"
+        }
+      },
+      {
+        "before": {
+          "commit": "a5194c1aa2f904e78c35728be7a95a2d477a0ff8",
+          "path": "docs/adr/2026-11-07-navigation-coverage.md",
+          "bytes": 4566,
+          "sha256": "312987ee7242efe038e3df3ba1cd5aa934c0090eb8619666a45a09d2213ae7f8",
+          "gitBlob": "059590dbe9b8a10ffa0ebb0cc233d6e8a383588e",
+          "mode": "100644",
+          "reconstruction": "Read entire immutable Git <commit>:<path>; do not execute historical bytes."
+        },
+        "current": {
+          "path": "docs/adr/2026-11-07-navigation-coverage.md",
+          "bytes": 5925,
+          "sha256": "2df4b5c07fd1cb5763c4492c69a1b13a4ae2326efa353ef5ba0b22cd573610c2",
+          "gitBlob": "c7ced1b34eb6bc451bf4fa7a4cfb9dade215a58a"
+        }
+      }
+    ]
+  },
+  "sourceCause": {
+    "deletedBy": "892396254abf5a2324d81edbce91f650a7377d12",
+    "wholeOriginalDeclaration": "const routePool=user=>routePools[user.role];",
+    "remainingActualCallLines": [
+      246,
+      552
+    ],
+    "observation": "Missing declaration/import in a519 source; no newly executed ReferenceError claimed. Independent actual native boot uses a different driver and is not causally diagnosed by this source defect."
+  },
+  "correction": {
+    "manifest": "Pure routePool(user) validates a nonnull object, string role and own catalogue key, then returns the complete original frozen role pool. No suite argument/filter/fallback or authentication-grant inference.",
+    "driver": "Only the existing manifest named-import list changes; both callers and all remaining driver bytes are whole.",
+    "tests": "Actual existing fixtureNavigationActor supplies four real cohort projections at indices4/2/1/0; independent expected roles/cardinalities/sentinels and baseline employee grant distinguish groupHR from employee. Actual exported helper is called. Missing/unknown/prototype-key roles refuse. Driver top-level I/O is not imported.",
+    "historicalCoverage": "Original pilot always selected full routePools for every suite. Smaller measuredRoutePools remain unchanged inputs for non-whole-system steady cycles."
+  },
+  "sourceCensus": {
+    "originalManifestLiteralSourceWhole": true,
+    "distinctReadRoutes": 91,
+    "roleRouteObligations": 187,
+    "rolePoolSizes": {
+      "employee": 30,
+      "manager": 16,
+      "companyHR": 69,
+      "groupHR": 72
+    },
+    "originalManifestTestCallbackDefinitions": 9,
+    "currentManifestTestCallbackDefinitions": 11,
+    "oldNineCallbackBodiesAndTitleExpressionsWhole": true,
+    "newPureBehaviorCallbacks": 2,
+    "actualDriverImport": {
+      "imported": "routePool",
+      "local": "routePool",
+      "line": 32
+    },
+    "actualDriverCalls": [
+      {
+        "line": 246,
+        "text": "routePool(user)"
+      },
+      {
+        "line": 552,
+        "text": "routePool(user)"
+      }
+    ],
+    "driverLocalShadows": [],
+    "allOtherDriverBytesWhole": true
+  },
+  "preserved": "All literal routes/order, actors, real native authentication/grants/roles, scope/denial fences, business logic, steady scheduler, source/runtime/profile authority, 2/4/8 budgets, waits, heap, pools, latency/Busy/error/lock assertions, process budgets, workflows and deployment holds unchanged. No load adapter or generic framework introduced.",
+  "historicalBindings": {
+    "noActiveRestorationRowsForTheseThreePaths": true,
+    "recordsRetainedWhole": [
+      "docs/qualification/native-nodb-source-convergence-source-20261108.json",
+      "docs/qualification/compiler-classifier-development-convergence-source-20261108.json",
+      "docs/qualification/steady-route-coverage-scheduler-tests.json",
+      "docs/qualification/steady-route-coverage-scheduler.md"
+    ],
+    "reason": "Historical records keep original identities and claims; no blind hash repin or PASS transfer. Root-owned aggregate build/source graph must be regenerated and qualified against its actual composed commit."
+  },
+  "externalReviewProvenance": {
+    "artifactBasename": "aihr-performance-route-pool-binding-external-source-proof-20261109.json",
+    "bytes": 2183,
+    "sha256": "231325bec31e7cb91626e6b462f793c73ed71d5631952f3afeeb3c8de61055ee",
+    "sourceOnly": true
+  },
+  "proposedExistingHostedSelectors": [
+    "test/performance-route-manifest.test.ts",
+    "test/performance-route-scheduling.test.ts",
+    "test/navigation-fixture-bindings.test.ts"
+  ],
+  "qualification": "UNRUN. Root plus DIFFERENT peer full frozen source/data review before uploads or existing standard hosted checks. Actual browser preflight remains the integration outcome; source proof and helper tests do not establish all-module, worker-load, zero Busy or release acceptance.",
+  "selfReferenceRule": "Record has no executable consumer, stores immutable parent Git preimages/current four-source pins only and excludes its own hash; final commit/hash supplied externally. No Base64 nested history."
+}
