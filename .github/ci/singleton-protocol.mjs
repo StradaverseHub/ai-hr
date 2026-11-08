@@ -23,6 +23,7 @@ const measured=[
 export const SINGLETON_FILES=Object.freeze({
  ...Object.fromEntries(measured.map(file=>[file,'controlled-database-v1'])),
  'test/runtime-ready-admission-native.test.ts':'linux-systemd-nginx-v1',
+ 'test/runtime-next-host-view-native.test.ts':'linux-systemd-nginx-v1',
  'test/notification-worker-lifecycle.test.ts':'notification-cluster-v1',
  'test/runtime-next-admission-native.test.ts':'linux-next-postgres-v1',
 });
@@ -51,6 +52,11 @@ export function singletonSources(unit){
  assertSingletonUnit(unit);
  return [unit.files[0],'test/helpers/ci-singleton-admission.ts','.github/ci/singleton-protocol.mjs','.github/ci/policy-version.mjs',
   'vitest.config.ts','vitest.nodb.config.ts',...(unit.kind==='db'?['test/db-names.ts','test/global-setup.ts','test/env.ts']:['deploy/admission/test_native.py']),
+  ...(unit.files[0]==='test/runtime-next-host-view-native.test.ts'?[
+   'deploy/admission/test_next_host_view_native.py','deploy/admission/next_profile.py','.github/ci/runtime_inventory.py',
+   '.github/ci/singleton-profiles.mjs','.github/ci/run-unit.mjs','.github/ci/plan.mjs','.github/ci/manifest.mjs',
+   '.github/ci/candidate-environment.mjs','.github/actions/setup-alpha/action.yml','.github/workflows/alpha-staging.yml',
+   'scripts/gate-db-classify.ts']:[]),
   ...(nativeNextUnit(unit)?[...Object.values(NATIVE_HELPER_SOURCES),'.github/ci/native-next-helper-sources.mjs','.github/ci/native-next-build-packet.mjs',
    '.github/ci/native-next-installation.mjs','.github/ci/native-next-build-inputs.mjs','.github/ci/candidate-environment.mjs','.github/ci/build-artifact.mjs',
    'test/helpers/native-next-fixture.ts','scripts/performance/native-next-boot-browser.mjs',
