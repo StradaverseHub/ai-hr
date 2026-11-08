@@ -115,3 +115,11 @@ contract. It retains exact four-key tokenless startup and fixed PATH/LANG/LC_ALL
 values; no alternate environment key is accepted. The source-only cause remains
 an inference until the actual test owner runs. Production adapter, its native
 input checks, all control counts and all time budgets are unchanged.
+
+
+The subsequent isolated frontier correction starts the test-owner monotonic clock
+at the first main line, before loading the actual adapter/kernel or admitting
+source/native inputs. It passes only positive20-elapsed to the unchanged kernel.
+Startup therefore consumes that same20s work frontier; it never resets at launch.
+The full6s settlement remains reserved inside28s process/30s wrapper. All helpers,
+counts and production173/180s controls remain unchanged, and behavior is UNRUN.
