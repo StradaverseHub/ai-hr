@@ -4,7 +4,7 @@ export type LabelAssignment = {companyId:string;companyIds:string[]|null;criteri
 export class LabelAssignmentError extends Error {
   constructor(readonly reason:'invalidCompany'|'invalidCriteria'|'invalidCriteriaCompany'|'globalAdminRequired'|'criteriaCompaniesRequired',message:string){super(message);}
 }
-export function resolveLabelAssignment(values:Record<string,string>,companies:readonly LabelCompany[],groupAdmin:boolean):LabelAssignment {
+export function resolveLabelAssignment(values:Readonly<Partial<Record<string,string>>>,companies:readonly LabelCompany[],groupAdmin:boolean):LabelAssignment {
   const company=values.Company?.trim()??'',criteria=values.Criteria?.trim().toLowerCase()??'',shared=values['Criteria Companies']?.trim()??'';
   if(criteria&&!['global','companies'].includes(criteria))throw new LabelAssignmentError('invalidCriteria','Criteria must be global or companies.');
   const resolve=(value:string)=>{
