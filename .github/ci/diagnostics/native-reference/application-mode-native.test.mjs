@@ -2,9 +2,9 @@
  * or the five actual application API negatives. No host/AST/binder overrides. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtempSync,writeFileSync,readFileSync,readdirSync,rmSync} from 'node:fs';
+import {mkdtempSync,writeFileSync,readFileSync,readdirSync,rmSync,realpathSync} from 'node:fs';
 import {tmpdir} from 'node:os';
-import {join,basename,realpathSync} from 'node:path';
+import {join,basename} from 'node:path';
 import {compilerOwner} from './worker.mjs';
 import {observeNativeUsageResolution} from './application-mode.mjs';
 const fixtures=Object.freeze({

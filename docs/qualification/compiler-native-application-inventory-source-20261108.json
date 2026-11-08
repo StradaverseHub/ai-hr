@@ -1,7 +1,7 @@
 {
   "version": 1,
   "kind": "COMPILER_NATIVE_APPLICATION_INVENTORY_SOURCE_NOT_QUALIFICATION",
-  "sourceRef": "codex/compiler-native-parent-context-20261108",
+  "sourceRef": "codex/compiler-native-mode-import-20261108",
   "reviewedIntegration": "1ffaffae266870a0b298ec8094433eeeb0dcb57e",
   "reviewedDesign": "047a0748b41bad3b2abde1c170f1a01c16f97687",
   "requiredCurrentSharedAncestor": "29d9edcbc4368be871688e9fdf35347676a7841c",
@@ -21,7 +21,7 @@
     ".github/ci/diagnostics/native-reference/admission.test.mjs": "3e0f32e5ad02a70bfff5e11eeecb5608a2a14c658773522be6f7aa89f464769a",
     ".github/ci/diagnostics/native-reference/application-inputs.mjs": "7a765d7af7f711d0c9c65026f45efed8f66be3fd74ecdc5137deb337713d3727",
     ".github/ci/diagnostics/native-reference/application-inventory.mjs": "5743026bf5cd081b60ffd8e6e88f994111c5ab9399fe850089030a5309f7a592",
-    ".github/ci/diagnostics/native-reference/application-mode-native.test.mjs": "8ff5aa87208c02163f38e33387e22d1b382c8dfecb8946a21d573a55d4a25155",
+    ".github/ci/diagnostics/native-reference/application-mode-native.test.mjs": "e46adda140eeb022c7056fcfc4acb93c0b8a8e3797cc959745a128982c73f788",
     ".github/ci/diagnostics/native-reference/application-mode.mjs": "b8dee0b836e1047d3574cf5ca30515c521096fef383741aa87d56202243957dd",
     ".github/ci/diagnostics/native-reference/application-mode.test.mjs": "22eac521d26f34ecb5133afeeb8fa6e488fb1bb1e4101dca6d7a4c90b03b47a7",
     ".github/ci/diagnostics/native-reference/application-owner-inverse.json": "8584d652e8e62ae358a286adbc9535de49b3c2fc03d40d2b5fc17da0597f828c",
@@ -154,6 +154,19 @@
     "semanticOrBinderRequested": false,
     "pureGuardCasesPrepared": 4,
     "tinyNativeCasesPrepared": 2,
+    "behaviorExecuted": false
+  },
+  "nativeUsageFixtureImportRecovery": {
+    "predecessor": "e54ce369f28d2b336a5413c11498fbe340613876",
+    "predecessorManifestSha256": "935d60dda14b2fc3f7f3c351d13acc5138d779a70a10958d7b7cd4300ab090f0",
+    "predecessorFixtureSha256": "8ff5aa87208c02163f38e33387e22d1b382c8dfecb8946a21d573a55d4a25155",
+    "failedControlRun": "42463255503",
+    "failedArtifact": "13610398997",
+    "failedArtifactZipSha256": "18f659d8600b1d0f254ac18dfa9533eb89c3ab84943c8b0a7f9b59fb5cf3f54e",
+    "scope": "IMPORT_NAMESPACE_ONLY_NO_FIXTURE_BODY_OR_ASSERTION_CHANGE",
+    "unchangedSourceGuardCasesPassedAtPredecessor": 19,
+    "unchangedPythonCasesPassedAtPredecessor": 9,
+    "nativeFixtureCasesStillPending": 2,
     "behaviorExecuted": false
   }
 }
