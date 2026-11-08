@@ -1,0 +1,72 @@
+{
+  "kind": "WHOLE_E2DF_PARENT_FILE_INVERSES_NOT_PERMISSION_OR_RELEASE",
+  "base": "e2dfc879d571f2fae7d38f20c9e244d0ec78383f",
+  "files": {
+    "core/profile-edit.ts": {
+      "originalSha256": "ee23bd32c43a9999e013eb4e4b8983870fa0fa74b1094ff5dc5ad7e1490afef2",
+      "currentSha256": "65bc1fe3d92a39c5df30e0f32f46da3b2e3a8044f3e4912d3c182d872ab411a4",
+      "changes": [
+        {
+          "start": 156,
+          "end": 166,
+          "before": " };\n return existingTx?run(existingTx):withTenant(ctx,async tx=>{await tx.execute(sql`SET TRANSACTION READ ONLY`);return run(tx);});\n",
+          "after": "}\n\n/** Display-only caller-owned RC/RO transaction. No policy object, lock option or permission\n * receipt is accepted. A future composed payroll reader must join canonical History BEFORE\n * invoking this owner, because native policy/principal admission joins Access here.\n * This adapter neither owns that History barrier nor authorizes any command/provider effect. */\nexport async function readOwnProfileWorkspacePresentationTx(tx:Tx,ctx:SessionContext,p:{employmentId?:string}={}):Promise<EssWorkspace>{\n const policy=await freshProfilePresentationPolicyTx(tx,ctx);\n await assertAiPrincipalTx(tx,policy.ctx);\n return readOwnProfileWorkspaceRowsTx(tx,policy,p.employmentId,false);\n"
+        },
+        {
+          "start": 118,
+          "end": 127,
+          "before": "  const {subject,master}=await profileSubjectTx(tx,policy.ctx,p.employmentId,false,Boolean(existingTx));\n  const rows=await mastersTx(tx,policy.ctx,subject,Boolean(existingTx));\n",
+          "after": "  return readOwnProfileWorkspaceRowsTx(tx,policy,p.employmentId,Boolean(existingTx));\n };\n return existingTx?run(existingTx):withTenant(ctx,async tx=>{await tx.execute(sql`SET TRANSACTION READ ONLY`);return run(tx);});\n}\n\n/** One canonical workspace projection. Only private callers choose physical row locking. */\nasync function readOwnProfileWorkspaceRowsTx(tx:Tx,policy:ProfilePresentationPolicy,employmentId:string|undefined,forUpdate:boolean):Promise<EssWorkspace>{\n  const {subject,master}=await profileSubjectTx(tx,policy.ctx,employmentId,false,forUpdate);\n  const rows=await mastersTx(tx,policy.ctx,subject,forUpdate);\n"
+        },
+        {
+          "start": 0,
+          "end": 1,
+          "before": "",
+          "after": "import {assertAiPrincipalTx} from './ai-principal';\n"
+        }
+      ]
+    },
+    "lib/ai/provider-data-source-manifest.ts": {
+      "originalSha256": "92a5b5213db7c51698d48d712dccb7aa61096cede8e4d2c673bdcef39ed656ba",
+      "currentSha256": "75040e1e20f88a878dc78e6a813a3a556addd8e18e723d4afae2d1b1ced70936",
+      "changes": [
+        {
+          "start": 1,
+          "end": 2,
+          "before": "export const PROVIDER_DATA_TRANSFORM_SOURCE_DIGEST = \"fa64944fa991a89f2d3c682b4f2c8c33a9040e1b41d0efd4531f64421aa8c096\" as const;\n",
+          "after": "export const PROVIDER_DATA_TRANSFORM_SOURCE_DIGEST = \"3fe9f9389d116e04dafb22006d26de5ff9a3072a33d464b622a809a224c2edd8\" as const;\n"
+        }
+      ]
+    },
+    "lib/ai/module-agent-source-manifest.ts": {
+      "originalSha256": "5bf07ce98cf897be431201bf7ee9cb896d99681393d905a6c9b20a7e8450e914",
+      "currentSha256": "7845514d80f5d82df6b82efc2167cf8c0169605bc3fe93c57eb3b882287eb52e",
+      "changes": [
+        {
+          "start": 2,
+          "end": 3,
+          "before": "export const MODULE_AGENT_SOURCE_DIGEST = \"210567d30486763dce401c69b24ba2d88081b5e86596afdd191c1bbb2875b8dd\" as const;\n",
+          "after": "export const MODULE_AGENT_SOURCE_DIGEST = \"d8f05ee673bfe860d69c1903ff4bc9ca5836984f920d1d326f60d15bbc4e2dd1\" as const;\n"
+        }
+      ]
+    },
+    "test/navigation-v3-ess-leaf-source.test.ts": {
+      "originalSha256": "7bf7f4c750b68c1baa77535fb6bd72761103b3f29e13c1938a442cb3d78cb311",
+      "currentSha256": "36a27db18038f5a07c8efe4eb5f6d8d7fe02a39d06cd62c3480ad233840c5db7",
+      "changes": [
+        {
+          "start": 21,
+          "end": 22,
+          "before": " const source=read(name),row=inverse.files[name];expect(row).toBeDefined();expect(sha(source)).toBe(row.currentSha256);\n",
+          "after": " const source=precedingEssSource(name),row=inverse.files[name];expect(row).toBeDefined();expect(sha(source)).toBe(row.currentSha256);\n"
+        },
+        {
+          "start": 12,
+          "end": 20,
+          "before": "",
+          "after": "/** Compose this successor's whole-file inverse before the immutable d45 leaf inverse. */\nfunction precedingEssSource(name:string){\n let source=read(name);const successor=JSON.parse(read('test/fixtures/navigation-v3-workspace-source-inverse.json')) as Inverse;\n expect(successor.base).toBe('e2dfc879d571f2fae7d38f20c9e244d0ec78383f');const row=successor.files[name];if(!row)return source;\n expect(sha(source)).toBe(row.currentSha256);const lines=source.match(/[^\\n]*\\n|[^\\n]+$/g)??[];let frontier=lines.length;\n for(const edit of row.changes){expect(edit.start>=0&&edit.start<=edit.end&&edit.end<=frontier).toBe(true);expect(lines.slice(edit.start,edit.end).join('')).toBe(edit.after);lines.splice(edit.start,edit.end-edit.start,...(edit.before.match(/[^\\n]*\\n|[^\\n]+$/g)??[]));frontier=edit.start;}\n source=lines.join('');expect(sha(source)).toBe(row.originalSha256);return source;\n}\n"
+        }
+      ]
+    }
+  }
+}

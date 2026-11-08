@@ -10,8 +10,16 @@ const read=(name:string)=>readFileSync(resolve(root,name),'utf8');
 const sha=(text:string)=>createHash('sha256').update(text).digest('hex');
 type Inverse={base:string;files:Record<string,{originalSha256:string;currentSha256:string;changes:{start:number;end:number;before:string;after:string}[]}>};
 const inverse=JSON.parse(read('test/fixtures/navigation-v3-ess-leaf-source-inverse.json')) as Inverse;
+/** Compose this successor's whole-file inverse before the immutable d45 leaf inverse. */
+function precedingEssSource(name:string){
+ let source=read(name);const successor=JSON.parse(read('test/fixtures/navigation-v3-workspace-source-inverse.json')) as Inverse;
+ expect(successor.base).toBe('e2dfc879d571f2fae7d38f20c9e244d0ec78383f');const row=successor.files[name];if(!row)return source;
+ expect(sha(source)).toBe(row.currentSha256);const lines=source.match(/[^\n]*\n|[^\n]+$/g)??[];let frontier=lines.length;
+ for(const edit of row.changes){expect(edit.start>=0&&edit.start<=edit.end&&edit.end<=frontier).toBe(true);expect(lines.slice(edit.start,edit.end).join('')).toBe(edit.after);lines.splice(edit.start,edit.end-edit.start,...(edit.before.match(/[^\n]*\n|[^\n]+$/g)??[]));frontier=edit.start;}
+ source=lines.join('');expect(sha(source)).toBe(row.originalSha256);return source;
+}
 function original(name:string){
- const source=read(name),row=inverse.files[name];expect(row).toBeDefined();expect(sha(source)).toBe(row.currentSha256);
+ const source=precedingEssSource(name),row=inverse.files[name];expect(row).toBeDefined();expect(sha(source)).toBe(row.currentSha256);
  const lines=source.match(/[^\n]*\n|[^\n]+$/g)??[];let frontier=lines.length;
  for(const edit of row.changes){expect(edit.start>=0&&edit.start<=edit.end&&edit.end<=frontier).toBe(true);expect(lines.slice(edit.start,edit.end).join('')).toBe(edit.after);lines.splice(edit.start,edit.end-edit.start,...(edit.before.match(/[^\n]*\n|[^\n]+$/g)??[]));frontier=edit.start;}
  const restored=lines.join('');expect(sha(restored)).toBe(row.originalSha256);return restored;

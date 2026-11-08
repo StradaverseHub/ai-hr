@@ -1,3 +1,4 @@
+import {assertAiPrincipalTx} from './ai-principal';
 import {appendEvent,actorOf} from '../db/events';
 import {profileFieldApproval,profileLegacyPrimaryApprovalRequired} from '../lib/profile-edit-policy-value';
 import {splitProfileSubmission} from '../lib/profile-submission-policy';
@@ -115,8 +116,15 @@ export function readOwnProfileWorkspace(ctx:SessionContext,p:{employmentId?:stri
   // display owns a complete native read-only transaction and shared policy/revocation barrier.
   const policy=presentation??await(existingTx?freshProfileEditPolicyTx(tx,ctx):freshProfilePresentationPolicyTx(tx,ctx));
   if(presentation&&!existingTx)await tx.execute(sql`select app.access_profile_policy_read_lock()`);
-  const {subject,master}=await profileSubjectTx(tx,policy.ctx,p.employmentId,false,Boolean(existingTx));
-  const rows=await mastersTx(tx,policy.ctx,subject,Boolean(existingTx));
+  return readOwnProfileWorkspaceRowsTx(tx,policy,p.employmentId,Boolean(existingTx));
+ };
+ return existingTx?run(existingTx):withTenant(ctx,async tx=>{await tx.execute(sql`SET TRANSACTION READ ONLY`);return run(tx);});
+}
+
+/** One canonical workspace projection. Only private callers choose physical row locking. */
+async function readOwnProfileWorkspaceRowsTx(tx:Tx,policy:ProfilePresentationPolicy,employmentId:string|undefined,forUpdate:boolean):Promise<EssWorkspace>{
+  const {subject,master}=await profileSubjectTx(tx,policy.ctx,employmentId,false,forUpdate);
+  const rows=await mastersTx(tx,policy.ctx,subject,forUpdate);
   const mayEdit=(await myOwnEmploymentSubjectsTx(tx,policy.ctx,{profileEdit:true})).some(row=>row.employmentId===subject.id);
   const values={...readonlyValues('person',master),...registryValues('person',master),...registryValues('compliance',master)};
   const age=PERSONNEL_FIELDS.find(field=>field.owner==='person'&&field.ownerField==='age');if(age)values[age.id]=childAgeYears(master.dateOfBirth);
@@ -146,8 +154,16 @@ export function readOwnProfileWorkspace(ctx:SessionContext,p:{employmentId?:stri
   const addressVisible=PERSONNEL_FIELDS.filter(field=>field.owner==='person'&&field.ownerField.startsWith('permanent')).every(field=>visible.has(field.id));
   const safe=safeValues(projectEssVisible(values,visible),id=>maskedProfileBaseline(policy.ctx,subject,rows,id));
   return {approvals:Object.fromEntries(PERSONNEL_FIELDS.filter(field=>visible.has(field.id)&&policy.editable.has(field.id)).map(field=>[field.id,profileFieldApproval(getSetting(policy.ctx,'ess.profile_change_fields'),field)])),visible:[...visible],employmentId:subject.id,personId:subject.personId,country:subject.country,...safe,registers:registers.map(row=>({...row,values:projectEssVisible(row.values,visible),baselines:projectEssVisible(row.baselines,visible),primary:essFactVisible(visible,'emergency','priority')&&row.primary})).filter(row=>Object.keys(row.values).length>0),editable:mayEdit?[...policy.editable].filter(id=>visible.has(id)):[],legacyPrimaryEditable:mayEdit?[...policy.legacyPrimary].filter(id=>visible.has(id)&&!profileLegacyPrimaryApprovalRequired(getSetting(policy.ctx,'ess.profile_change_fields'),id)):[],addressReview:addressVisible&&addressNeedsReview(master),legacyAddress:addressVisible?legacyAddress(master):{},statutoryAvailable:Boolean(rows.pack),fieldReadOnlyReasons:projectEssVisible(fieldReadOnlyReasons,visible)} satisfies EssWorkspace;
- };
- return existingTx?run(existingTx):withTenant(ctx,async tx=>{await tx.execute(sql`SET TRANSACTION READ ONLY`);return run(tx);});
+}
+
+/** Display-only caller-owned RC/RO transaction. No policy object, lock option or permission
+ * receipt is accepted. A future composed payroll reader must join canonical History BEFORE
+ * invoking this owner, because native policy/principal admission joins Access here.
+ * This adapter neither owns that History barrier nor authorizes any command/provider effect. */
+export async function readOwnProfileWorkspacePresentationTx(tx:Tx,ctx:SessionContext,p:{employmentId?:string}={}):Promise<EssWorkspace>{
+ const policy=await freshProfilePresentationPolicyTx(tx,ctx);
+ await assertAiPrincipalTx(tx,policy.ctx);
+ return readOwnProfileWorkspaceRowsTx(tx,policy,p.employmentId,false);
 }
 
 /** Validation and baseline comparison run again at approval, never trusting the editor or stored JSON. */
