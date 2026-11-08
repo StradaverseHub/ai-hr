@@ -71,7 +71,7 @@ it('handles future route cardinality through a bounded explicit revision or refu
  expect(()=>planSteadyRouteCoverage({pools:routePools,users,thinkTimeMs:5000,steadyHoldMs:30000})).toThrow(/capacity/);
 });
 it('uses the same slot scheduler in the real driver and preserves complete native mutation ownership',()=>{
- const driver=readFileSync(new URL('../scripts/performance/system-load.mjs',import.meta.url),'utf8'),mixed=readFileSync(new URL('../scripts/performance/mixed-workflows.mjs',import.meta.url),'utf8');
+ const driver=readFileSync(new URL('../scripts/performance/system-load-owner.mjs',import.meta.url),'utf8'),mixed=readFileSync(new URL('../scripts/performance/mixed-workflows.mjs',import.meta.url),'utf8');
  expect(driver).toContain('navigationScheduler?.reserve(');expect(driver).toContain('navigationScheduler.complete(lease,usable)');
  expect(driver).toContain('await mixedWorkflows.run(user,iteration)');expect(driver).toContain('await pause(i*20)');
  expect(driver).not.toContain('iteration===0&&user.role===\'groupHR\'?firstGroupRoutes');
