@@ -1,0 +1,70 @@
+{
+  "kind": "WHOLE_PARENT_SOURCE_INVERSES_NOT_EXECUTION",
+  "base": "0273d581872dd9876642a7700aa98fefda716c0a",
+  "files": {
+    ".github/ci/verify-shards.mjs": {
+      "parentSha256": "f44a9d6dd2f6d3664f64f587c2d62258ac7962ce2d3d67ac377e62f35b7c0ee9",
+      "currentSha256": "2117efbd40830b9cb6439093803d46167e98bd62eacf9f21e27007a6aee39236",
+      "changes": [
+        {
+          "before": "/** Refuse omitted, repeated, skipped, failed, foreign-revision or zero-test evidence. */\nimport {readdirSync, readFileSync, writeFileSync} from 'node:fs';\nimport {join, relative, resolve} from 'node:path';\nimport {fileURLToPath} from 'node:url';\nimport {validatePostgresEvidence} from './postgres-evidence.mjs';\n",
+          "after": "/** Refuse omitted, repeated, skipped, failed, foreign-revision or zero-test evidence. */\nimport {writeFileSync} from 'node:fs';\nimport {relative, resolve} from 'node:path';\nimport {fileURLToPath} from 'node:url';\nimport {validatePostgresEvidence} from './postgres-evidence.mjs';\n"
+        },
+        {
+          "before": "import {verifyEmployeeLifecycleUnit} from './employee-lifecycle-witness.mjs';\nimport {collectEmployeeLifecycleWitness} from './employee-lifecycle-api.mjs';\nimport {validateSingletonBinding} from './singleton-protocol.mjs';\nexport function verifyUnitReport(plan, report, witness) {\n",
+          "after": "import {verifyEmployeeLifecycleUnit} from './employee-lifecycle-witness.mjs';\nimport {collectEmployeeLifecycleWitness} from './employee-lifecycle-api.mjs';\nimport {readUnitReportDirectories} from './unit-report-directories.mjs';\nimport {validateSingletonBinding} from './singleton-protocol.mjs';\nexport function verifyUnitReport(plan, report, witness) {\n"
+        },
+        {
+          "before": "  if (!dir || !output) throw Error('Usage: verify-shards.mjs <report-directory> <receipt-output>');\n  const plan=createPlan();\n  const reports=plan.units.map(unit=>JSON.parse(readFileSync(join(dir,'unit-'+unit.id,'unit-'+unit.id+'.json'),'utf8')));\n  const employeeUnits=await collectEmployeeLifecycleWitness(plan,plan.units);\n  const receipt = verifyReports(plan, reports, {runId:process.env.GITHUB_RUN_ID,attempt:process.env.GITHUB_RUN_ATTEMPT,employeeUnits});\n",
+          "after": "  if (!dir || !output) throw Error('Usage: verify-shards.mjs <report-directory> <receipt-output>');\n  const plan=createPlan();\n  const reports=[...readUnitReportDirectories(resolve(dir),plan.units,{mode:'full'})].map(entry=>entry.report);\n  const employeeUnits=await collectEmployeeLifecycleWitness(plan,plan.units);\n  const receipt = verifyReports(plan, reports, {runId:process.env.GITHUB_RUN_ID,attempt:process.env.GITHUB_RUN_ATTEMPT,employeeUnits});\n"
+        }
+      ]
+    },
+    ".github/ci/singleton-commissioning.mjs": {
+      "parentSha256": "17a5c4cdfdf3ef71b07708732ab2da0c0662861689d6cb44d4be1fd2d1dfbda6",
+      "currentSha256": "3b793c3cf660179acff986a0b515ce951ad2785a678dfcc26f98afef0d53b166",
+      "changes": [
+        {
+          "before": "/** Selected native profile commissioning is development evidence, never a full gate. */\nimport {readFileSync,writeFileSync,readdirSync,lstatSync,appendFileSync} from 'node:fs';\nimport {resolve,join} from 'node:path';\nimport {fileURLToPath} from 'node:url';\nimport {isDeepStrictEqual} from 'node:util';\n",
+          "after": "/** Selected native profile commissioning is development evidence, never a full gate. */\nimport {readFileSync,writeFileSync,lstatSync,appendFileSync} from 'node:fs';\nimport {resolve} from 'node:path';\nimport {fileURLToPath} from 'node:url';\nimport {isDeepStrictEqual} from 'node:util';\n"
+        },
+        {
+          "before": "import {collectEmployeeLifecycleWitness} from './employee-lifecycle-api.mjs';\nimport {employeeLifecycleMatrixRow} from './employee-lifecycle-profile.mjs';\nexport const COMMISSION_TITLE='Singleton commissioning only';\nexport function commissioningIntent(eventName,inputs={},attempt){\n",
+          "after": "import {collectEmployeeLifecycleWitness} from './employee-lifecycle-api.mjs';\nimport {employeeLifecycleMatrixRow} from './employee-lifecycle-profile.mjs';\nimport {readUnitReportDirectories} from './unit-report-directories.mjs';\nexport const COMMISSION_TITLE='Singleton commissioning only';\nexport function commissioningIntent(eventName,inputs={},attempt){\n"
+        },
+        {
+          "before": "  const plan=createPlan(),selection=JSON.parse(readBounded(args[0],1024*1024));\n  if(!isDeepStrictEqual(selection,selectCommissioning(plan,ids)))throw Error('Frozen commissioning intent drift');\n  const folders=readdirSync(args[1]);if(folders.length>16)throw Error('Excessive commissioning reports');\n  for(const folder of folders)if(!selection.selected.some(id=>folder==='commission-unit-'+id))throw Error('Foreign commissioning artifact directory');\n  const employeeUnits=await collectEmployeeLifecycleWitness(plan,plan.units.filter(unit=>selection.selected.includes(unit.id)));\n  // Each artifact retains its OWN directory; raw native bytes never merge.\n  function* entries(){for(const id of selection.selected){const file=join(args[1],'commission-unit-'+id,'unit-'+id+'.json');try{const bytes=readBounded(file,64*1024*1024);yield {bytes,report:JSON.parse(bytes)};}catch(error){if(error.code!=='ENOENT')throw error;}}}\n  const summary=summarizeCommissioning(plan,selection,entries(),{runId:process.env.GITHUB_RUN_ID,attempt:process.env.GITHUB_RUN_ATTEMPT,employeeUnits});\n  writeFileSync(args[2],JSON.stringify(summary,null,2)+'\\n',{flag:'wx'});\n  appendFileSync(process.env.GITHUB_STEP_SUMMARY,`Selected native profiles: ${summary.outcomes.filter(o=>o.outcome==='verified').length}/${summary.selected.length} verified; ${summary.omitted.length} units omitted. Incomplete development evidence; release authorization is false.\\n`);\n",
+          "after": "  const plan=createPlan(),selection=JSON.parse(readBounded(args[0],1024*1024));\n  if(!isDeepStrictEqual(selection,selectCommissioning(plan,ids)))throw Error('Frozen commissioning intent drift');\n  const selectedUnits=selection.selected.map(id=>plan.units.find(unit=>unit.id===id));\n  const employeeUnits=await collectEmployeeLifecycleWitness(plan,plan.units.filter(unit=>selection.selected.includes(unit.id)));\n  // Each artifact retains its OWN directory; raw native bytes never merge.\n  const entries=readUnitReportDirectories(resolve(args[1]),selectedUnits,{mode:'commissioning'});\n  const summary=summarizeCommissioning(plan,selection,entries,{runId:process.env.GITHUB_RUN_ID,attempt:process.env.GITHUB_RUN_ATTEMPT,employeeUnits});\n  writeFileSync(args[2],JSON.stringify(summary,null,2)+'\\n',{flag:'wx'});\n  appendFileSync(process.env.GITHUB_STEP_SUMMARY,`Selected native profiles: ${summary.outcomes.filter(o=>o.outcome==='verified').length}/${summary.selected.length} verified; ${summary.omitted.length} units omitted. Incomplete development evidence; release authorization is false.\\n`);\n"
+        }
+      ]
+    },
+    ".github/ci/employee-lifecycle-sources.mjs": {
+      "parentSha256": "17e34d6be9c5643b6d530e3ce9f74802503d3888488bcb13dc9e2b9bf486ab96",
+      "currentSha256": "80db405706af787565e9f827f3688d2c1dfad3cd62b2cd7e393f87297ffa63ec",
+      "changes": [
+        {
+          "before": " \".github/ci/singleton-profiles.mjs\",\n \".github/ci/singleton-protocol.mjs\",\n \".github/ci/verify-shards.mjs\",\n \".github/workflows/alpha-staging.yml\",\n",
+          "after": " \".github/ci/singleton-profiles.mjs\",\n \".github/ci/singleton-protocol.mjs\",\n \".github/ci/unit-report-directories.mjs\",\n \".github/ci/unit-report-directories.test.mjs\",\n \".github/ci/verify-shards.mjs\",\n \".github/workflows/alpha-staging.yml\",\n"
+        },
+        {
+          "before": " \"test/analytics-termination-lateral.test.ts\",\n \"test/attendance-shared-submission-bridge.test.ts\",\n \"test/db-names.ts\",\n \"test/dom-setup.ts\",\n",
+          "after": " \"test/analytics-termination-lateral.test.ts\",\n \"test/attendance-shared-submission-bridge.test.ts\",\n \"test/ci-unit-report-directory-contract.test.ts\",\n \"test/db-names.ts\",\n \"test/dom-setup.ts\",\n"
+        },
+        {
+          "before": "export const EMPLOYEE_LIFECYCLE_CONTROLLER_PATHS=Object.freeze(EMPLOYEE_LIFECYCLE_SOURCES.filter(file=>file.startsWith('.github/')));\nexport const EMPLOYEE_LIFECYCLE_CRITICAL=Object.freeze([\n \".github/actions/setup-alpha/action.yml\",\n \".github/ci/employee-lifecycle-always-stop.mjs\",\n",
+          "after": "export const EMPLOYEE_LIFECYCLE_CONTROLLER_PATHS=Object.freeze(EMPLOYEE_LIFECYCLE_SOURCES.filter(file=>file.startsWith('.github/')));\nexport const EMPLOYEE_LIFECYCLE_CRITICAL=Object.freeze([\n \".github/ci/unit-report-directories.mjs\",\n \".github/ci/unit-report-directories.test.mjs\",\n \"test/ci-unit-report-directory-contract.test.ts\",\n \".github/actions/setup-alpha/action.yml\",\n \".github/ci/employee-lifecycle-always-stop.mjs\",\n"
+        }
+      ]
+    },
+    ".github/ci/employee-lifecycle-sources.test.mjs": {
+      "parentSha256": "f6b01c8a349d4003d421c0f2c88687c4e7ef50c01e043a81f7c994666f2a0f21",
+      "currentSha256": "73ace5ecae2b8ae8321233ce48b99b94e5dcd0734d7fb88cf0bc1d05e2f6d196",
+      "changes": [
+        {
+          "before": "import {singletonSources} from './singleton-protocol.mjs';\nconst journal=JSON.parse(readFileSync(new URL('../../db/migrations/meta/_journal.json',import.meta.url),'utf8'));\nconst independentOwners=['.github/ci/run-unit.mjs','.github/ci/employee-lifecycle.mjs','.github/ci/employee-lifecycle-profile.json','.github/ci/employee-lifecycle-context.mjs','.github/ci/employee-lifecycle-supervisor.py','.github/ci/employee-lifecycle-always-stop.mjs','.github/ci/employee-postgres-policy.py','.github/ci/employee-postgres-resource.py','.github/ci/owned-process.py','.github/ci/employee-lifecycle-api.mjs','.github/ci/employee-lifecycle-evidence.mjs','.github/ci/employee-lifecycle-extract.py','.github/ci/employee-lifecycle-witness.mjs','.github/ci/employee-lifecycle-native.mjs','.github/ci/employee-native-log-codec.mjs','.github/ci/release-ci.mjs','.github/ci/verify-shards.mjs','test/performance/employee-choice-lifecycle-admission.ts','test/helpers/ci-singleton-admission.ts','test/harness.ts','db/client.ts','db/schema.ts','db/migrations/meta/_journal.json','test/fixtures/employee-choice-native-purpose.sql','test/fixtures/employee-choice-exact-ascii-purpose.sql','core/employee-choice.ts','lib/hr-date.ts'];\nconst fingerprint=paths=>createHash('sha256').update(JSON.stringify(paths.map(file=>[file,'c'.repeat(64)]))).digest('hex');\ntest('all five source-registered units retain the actual canonical SQL history and one complete source owner',()=>{\n",
+          "after": "import {singletonSources} from './singleton-protocol.mjs';\nconst journal=JSON.parse(readFileSync(new URL('../../db/migrations/meta/_journal.json',import.meta.url),'utf8'));\nconst independentOwners=['.github/ci/unit-report-directories.mjs','.github/ci/unit-report-directories.test.mjs','test/ci-unit-report-directory-contract.test.ts','.github/ci/run-unit.mjs','.github/ci/employee-lifecycle.mjs','.github/ci/employee-lifecycle-profile.json','.github/ci/employee-lifecycle-context.mjs','.github/ci/employee-lifecycle-supervisor.py','.github/ci/employee-lifecycle-always-stop.mjs','.github/ci/employee-postgres-policy.py','.github/ci/employee-postgres-resource.py','.github/ci/owned-process.py','.github/ci/employee-lifecycle-api.mjs','.github/ci/employee-lifecycle-evidence.mjs','.github/ci/employee-lifecycle-extract.py','.github/ci/employee-lifecycle-witness.mjs','.github/ci/employee-lifecycle-native.mjs','.github/ci/employee-native-log-codec.mjs','.github/ci/release-ci.mjs','.github/ci/verify-shards.mjs','test/performance/employee-choice-lifecycle-admission.ts','test/helpers/ci-singleton-admission.ts','test/harness.ts','db/client.ts','db/schema.ts','db/migrations/meta/_journal.json','test/fixtures/employee-choice-native-purpose.sql','test/fixtures/employee-choice-exact-ascii-purpose.sql','core/employee-choice.ts','lib/hr-date.ts'];\nconst fingerprint=paths=>createHash('sha256').update(JSON.stringify(paths.map(file=>[file,'c'.repeat(64)]))).digest('hex');\ntest('all five source-registered units retain the actual canonical SQL history and one complete source owner',()=>{\n"
+        }
+      ]
+    }
+  }
+}

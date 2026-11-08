@@ -8,7 +8,7 @@ import {fileURLToPath} from 'node:url';
 import {singletonSources,assertSingletonUnit,validateSingletonHost,validateSingletonBinding,nativeNextUnit,singletonControllerPath} from './singleton-protocol.mjs';
 import {readProtectedBootstrap,readProtectedNativeEvent} from './native-next-installation.mjs';
 import {nativePreparationEnvironment} from './candidate-environment.mjs';
-const git=(cwd,...args)=>execFileSync('git',['-c','safe.directory='+cwd,'-c','core.fsmonitor=false','-c','core.hooksPath=/dev/null','-C',cwd,...args],{env:nativePreparationEnvironment(process.env),encoding:'utf8'}).trim();
+const git=(cwd,...args)=>execFileSync('git',['-c','safe.directory='+cwd,'-c','core.fsmonitor=false','-c','core.hooksPath=/dev/null','-C',cwd,...args],{env:nativePreparationEnvironment(process.env),encoding:'utf8',timeout:10000,killSignal:'SIGTERM'}).trim();
 export function actualSingletonHost(plan,unit,dir,env=process.env){
  const workspace=realpathSync(env.GITHUB_WORKSPACE),temp=realpathSync(env.RUNNER_TEMP),source=realpathSync(join(workspace,'source')),
   automation=realpathSync(singletonControllerPath(unit,workspace,env.GITHUB_RUN_ID));

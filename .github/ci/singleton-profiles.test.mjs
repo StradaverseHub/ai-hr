@@ -11,7 +11,7 @@ import {requiredHostedSingletons} from '../../scripts/gate-singleton-scope.mjs';
 const browser=['test/fictional.browser.test.tsx'];
 function fixture(file='test/runtime-ready-admission-native.test.ts'){
  const kind=singletonKind(singletonDescriptor(file).profile),units=buildUnits([file],{db:kind==='db'?[file]:[],nodb:kind==='nodb'?[file]:[]},browser),unit=units[0];
- const body={schemaVersion:2,policyVersion:'aihr-staging-ci/v20',sha:'a'.repeat(40),controller:'b'.repeat(40),migrationBase:'d'.repeat(40),runtime:{node:'22.23.3',platform:'linux',arch:'x64'},execution:CI_EXECUTION,suite:[file],units,
+ const body={schemaVersion:2,policyVersion:'aihr-staging-ci/v21',sha:'a'.repeat(40),controller:'b'.repeat(40),migrationBase:'d'.repeat(40),runtime:{node:'22.23.3',platform:'linux',arch:'x64'},execution:CI_EXECUTION,suite:[file],units,
   singletonSources:{[unit.id]:Object.fromEntries(singletonSources(unit).map(path=>[path,'c'.repeat(64)]))}};
  const plan={...body,fingerprint:protocolHash(body)},witness={runId:123,attempt:1};
  const prerequisites=kind==='db'?{kind:'fresh-job-postgres-cluster',workers:1,database:{schemaVersion:2,profileVersion:2,configuredCapBytes:2113929216,peakBudgetBytes:2147483648,errors:{},memoryLimit:2113929216,memorySwap:2113929216,memoryMax:2113929216,memorySwapMax:0,memoryPeak:1500000000,memoryEvents:{max:0,oom:0,oom_kill:0},state:{Running:true,OOMKilled:false,Dead:false},settings:{jit:'on',jitAvailable:true,serverVersionNum:'160015'},name:`aihr-ci-123-1-${unit.id}`}}:
@@ -29,7 +29,7 @@ test('every registered infrastructure file remains exactly once in its native cl
  const native=Object.keys(SINGLETON_FILES),ordinary=['test/ordinary-db.test.ts','test/ordinary-nodb.test.ts'];
  const db=native.filter(f=>singletonKind(singletonDescriptor(f).profile)==='db').concat(ordinary[0]),nodb=native.filter(f=>!db.includes(f)).concat(ordinary[1]),suite=[...db,...nodb].sort();
  const units=buildUnits(suite,{db,nodb},browser),special=units.filter(u=>u.singleton);
- assert.equal(special.length,21);assert.deepEqual(units.filter(u=>u.kind!=='browser').flatMap(u=>u.files).sort(),suite);
+ assert.equal(special.length,26);assert.deepEqual(units.filter(u=>u.kind!=='browser').flatMap(u=>u.files).sort(),suite);
  assert(special.every(u=>u.files.length===1&&u.singleton.workers===1));assert.equal(requiredEvidence({suite,units}).units.length,units.length);
  for(const unit of special){const changed=structuredClone(units);changed.find(u=>u.id===unit.id).singleton.workers=2;assert.throws(()=>requiredEvidence({suite,units:changed}));}
  assert.throws(()=>buildUnits([native[0]],{db:[],nodb:[native[0]]},browser));
@@ -78,7 +78,7 @@ test('source admissions and full workflow never manufacture focused variables or
  assert(run.includes('env.AIHR_CI_SINGLETON_BINDING=singleton.path'));assert(!/env\.AIHR_FOCUSED_[A-Z_]+\s*=/.test(run));assert(admission.includes('execFileSync(process.execPath,[script]'));
  const root=fileURLToPath(new URL('../../',import.meta.url)),tracked=new Set(execFileSync('git',['ls-files','test'],{cwd:root,encoding:'utf8'}).trim().split('\n'));
  for(const [file,profile]of Object.entries(SINGLETON_FILES))if(profile==='controlled-database-v1'&&tracked.has(file)){
-  const text=readFileSync(new URL('../../'+file,import.meta.url),'utf8');assert(text.includes('admitSingletonTest('));assert(!text.includes('.skipIf('));assert(!text.includes('AIHR_FOCUSED_EVIDENCE_DIR'));
+  const text=readFileSync(new URL('../../'+file,import.meta.url),'utf8');assertSingletonCoverage([file],path=>readFileSync(new URL('../../'+path,import.meta.url),'utf8'));assert(!text.includes('.skipIf('));assert(!text.includes('AIHR_FOCUSED_EVIDENCE_DIR'));
  }
 });
 test('discovered future focused-only guards fail planning until their actual full admission is implemented',()=>{
@@ -260,4 +260,16 @@ test('Rewards native policy and original read family retain complete isolated so
  assert(wrapper.indexOf("admitSingletonTest('")<wrapper.indexOf('registerRewardsAuditPolicyNativeCases();'));
  const existing=readFileSync(new URL('../../test/rewards-audited-read-prototype.test.ts',import.meta.url),'utf8');
  assert(existing.indexOf("admitSingletonTest('")<existing.indexOf('beforeAll(async()=>'));
+});
+
+test('only the exact five delegated entries may use the shared FIRST actual singleton admission owner',async()=>{
+ const {EMPLOYEE_LIFECYCLE_PROFILE}=await import('./employee-lifecycle-profile.mjs');
+ const helper='test/performance/employee-choice-lifecycle-admission.ts',read=path=>readFileSync(new URL('../../'+path,import.meta.url),'utf8');
+ for(const {file}of EMPLOYEE_LIFECYCLE_PROFILE.files){
+  assertSingletonCoverage([file],read);
+  for(const change of [text=>text.replace(/admitEmployeeChoiceLifecycle\((?:file|'[^']+')\)/g,'unadmitted()'),text=>text.replace("from './performance/employee-choice-lifecycle-admission'","from './performance/foreign'"),text=>text.replaceAll(file,'test/employee-choice-foreign.test.ts')])assert.throws(()=>assertSingletonCoverage([file],path=>path===file?change(read(path)):read(path)));
+  assert.throws(()=>assertSingletonCoverage([file],path=>path===helper?read(path).replace('const admission=admitSingletonTest(file);','const admission=JSON.parse("{}");'):read(path)));
+  assert.throws(()=>assertSingletonCoverage([file],path=>path===helper?read(path).replace('const admission=admitSingletonTest(file);','const caller=true;const admission=admitSingletonTest(file);'):read(path)));
+ }
+ assert.throws(()=>assertSingletonCoverage(['test/analytics-termination-lateral.test.ts'],()=>"admitEmployeeChoiceLifecycle('test/analytics-termination-lateral.test.ts');"));
 });

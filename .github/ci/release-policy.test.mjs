@@ -56,6 +56,26 @@ test('A self-consistent reduced manifest cannot authorize omission from independ
 });
 test('A v1 witness cannot be relabelled as v2 by topology or receipt edits',()=>{const p=proof();p.plan.policyVersion='aihr-staging-ci/v1';assert.throws(()=>validateProof(p));});
 
+test('v21 refuses a coherently rehashed v20 plan and a retained v20 receipt',()=>{
+ assert.equal(CI_POLICY,'aihr-staging-ci/v21');
+ const current=proof();assert.equal(validateProof(current).policyVersion,CI_POLICY);
+ const legacy=proof();legacy.plan.policyVersion='aihr-staging-ci/v20';
+ const {fingerprint:old,...body}=legacy.plan;legacy.plan.fingerprint=hash(body);
+ legacy.reports=legacy.reports.map(report=>({...report,fingerprint:legacy.plan.fingerprint}));
+ legacy.receipt=verifyReports(legacy.plan,legacy.reports);
+ legacy.expectedPlan=structuredClone(legacy.plan);
+ assert.equal(legacy.receipt.policyVersion,'aihr-staging-ci/v20');
+ assert.throws(()=>validateProof(legacy),/plan policy/);
+ const mixed=proof();mixed.receipt.policyVersion='aihr-staging-ci/v20';
+ assert.throws(()=>validateProof(mixed),/receipt differs/);
+ // Changing the plan version and recomputing its digest cannot authenticate
+ // the old reports/receipt under the current independently reconstructed plan.
+ legacy.plan.policyVersion=CI_POLICY;
+ const {fingerprint:legacyFingerprint,...relabelled}=legacy.plan;
+ legacy.plan.fingerprint=hash(relabelled);legacy.expectedPlan=structuredClone(legacy.plan);
+ assert.throws(()=>validateProof(legacy));
+});
+
 for(const [name,change] of [
  ['missing terminal',r=>{delete r.databaseTerminalEvidence;}],
  ['null terminal',r=>{r.databaseTerminalEvidence=null;}],

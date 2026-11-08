@@ -6,8 +6,8 @@ import {employeeChoiceBenchmarkOwner} from './performance/employee-choice-benchm
 import {installEmployeeChoiceNativePrototype,employeeChoicePrototypeSignature,type EmployeeChoiceNativeInstallation} from './performance/employee-choice-native-purpose-owner';
 import {employeeChoicePlanLogging,type EmployeeChoicePlanLogging} from './performance/employee-choice-auto-explain';
 import {employeeChoiceNativeCaseOwner} from './performance/employee-choice-native-case-owner';
-import {admitEmployeeChoiceNativeControl} from './performance/employee-choice-native-control-admission';
-admitEmployeeChoiceNativeControl(); // Before ANY file query; constructors below remain lazy.
+import {admitEmployeeChoiceLifecycle} from './performance/employee-choice-lifecycle-admission';
+admitEmployeeChoiceLifecycle('test/employee-choice-benchmark-owner-native.test.ts'); // Before ANY file query; constructors below remain lazy.
 const cases=employeeChoiceNativeCaseOwner();
 afterAll(()=>cases.drain());
 it('owns the exact prototype and settings witness before a rolled-back or lost COMMIT response',context=>cases.run(context,async owned=>{

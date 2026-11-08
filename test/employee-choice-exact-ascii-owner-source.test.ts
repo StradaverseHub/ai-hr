@@ -4,6 +4,7 @@ import {createHash} from 'node:crypto';
 import {readFileSync} from 'node:fs';
 import {expect,it} from 'vitest';
 import {z} from 'zod';
+import {employeeChoiceRestorationSourceInverse} from './performance/employee-choice-restoration-source';
 const sha=(value:string)=>createHash('sha256').update(value).digest('hex');
 const baseline=readFileSync('test/fixtures/employee-choice-exact-ascii-owner-76b.source','utf8');
 const factory=readFileSync('test/performance/employee-choice-exact-ascii-owner-factory.ts','utf8');
@@ -11,6 +12,7 @@ const patch=z.object({version:z.literal(1),kind:z.literal('REVIEWABLE_SOURCE_PRO
  z.object({kind:z.literal('same'),text:z.string()}).strict(),z.object({kind:z.literal('change'),before:z.string(),after:z.string()}).strict(),
 ])).min(1).max(1000)}).strict().parse(JSON.parse(readFileSync('test/fixtures/employee-choice-exact-ascii-owner-inverse.json','utf8')));
 function inverse(actual:string){
+ actual=employeeChoiceRestorationSourceInverse('test/performance/employee-choice-exact-ascii-owner-factory.ts',actual);
  let offset=0,result='';for(const step of patch.steps){const next=step.kind==='same'?step.text:step.after;if(actual.slice(offset,offset+next.length)!==next)throw Error('Exact reviewed source chunk required');offset+=next.length;result+=step.kind==='same'?step.text:step.before;}
  if(offset!==actual.length||sha(actual)!==patch.factorySha256||sha(result)!==patch.baselineSha256)throw Error('Complete reviewed source identity required');return result;
 }

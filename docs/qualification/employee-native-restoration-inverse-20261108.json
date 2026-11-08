@@ -1,0 +1,420 @@
+{
+  "kind": "WHOLE_PREDECESSOR_SOURCE_INVERSES_NOT_RUNTIME",
+  "base": "ee5722312689fc88d8a9253c232945e6f2599900",
+  "files": {
+    ".github/ci/employee-lifecycle-native.mjs": {
+      "parentSha256": "6b8690a1171f18b656721f23e0e793c948842bcce8bb123e0691b91c20b90426",
+      "currentSha256": "7f39580cc54029ab9aac7bd281e0fb06e52e0fb35b2d5da511582a750babb81c",
+      "changes": [
+        {
+          "startLine": 31,
+          "endLine": 48,
+          "before": "",
+          "after": " assert.deepEqual(report.terminalWitnesses,{prototype:true,logging:true,complete:true});\n const prototypeWitness=report.prototypeCleanupWitness,loggingWitness=report.loggingCleanupWitness,prototypeSource=plan.singletonSources[unit.id]['test/fixtures/employee-choice-native-purpose.sql'];\n assert(/^[a-f0-9]{64}$/.test(prototypeSource));\n let installedHash,retainedSecurity;\n if(ascii){\n  const witness=prototypeWitness.witness;assert.equal(prototypeWitness.ownedBeforeCommit,true);assert.equal(prototypeWitness.phase,'candidate');assert.equal(employeeRestorationHash(witness),prototypeWitness.nativeIdentitySha256);\n  assert.equal(witness.database,report.planBackend.database);assert.equal(witness.sourceSha256,sha(sourceSql));assert.equal(witness.originalSourceSha256,prototypeSource);assert(witness.original&&witness.candidate);\n  assert.deepEqual(prototypeWitness.proof?.installed?.identity,witness.original.identity);assert.equal(prototypeWitness.proof?.installed?.definition,witness.original.definition);\n  installedHash=employeeRestorationHash(prototypeWitness.proof.installed);retainedSecurity=witness.security;\n }else{\n  assert.equal(prototypeWitness.database,report.planBackend.database);assert.equal(prototypeWitness.sourceSha256,prototypeSource);assert.equal(report.function.sourceSha256,prototypeSource);\n  installedHash=prototypeWitness.nativeIdentitySha256;retainedSecurity=report.function.security;assert.equal(prototypeWitness.proof?.installed?.definition,report.function.signature);\n }\n verifyEmployeePrototypeRestoration(prototypeWitness.proof,{database:report.planBackend.database,sourceSha256:prototypeSource,installedSha256:installedHash,securitySha256:employeeRestorationHash(retainedSecurity)});\n verifyEmployeeLoggingRestoration(loggingWitness.proof,{database:report.planBackend.database,beforeSha256:loggingWitness.beforeSha256,instrumentedSha256:loggingWitness.instrumentedSha256});\n assert.equal(report.instrumentationConfig.beforeSha256,loggingWitness.beforeSha256);assert.equal(report.instrumentationConfig.instrumentedSha256,loggingWitness.instrumentedSha256);\n\n"
+        },
+        {
+          "startLine": 5,
+          "endLine": 6,
+          "before": "",
+          "after": "import {employeeRestorationHash,verifyEmployeePrototypeRestoration,verifyEmployeeLoggingRestoration} from './employee-restoration-proof.mjs';\n"
+        }
+      ]
+    },
+    ".github/ci/employee-lifecycle-sources.mjs": {
+      "parentSha256": "80db405706af787565e9f827f3688d2c1dfad3cd62b2cd7e393f87297ffa63ec",
+      "currentSha256": "25937a3c1e60c6f738898e420c4b7d567de1fa5b3d2a50a2795749146ee3ea1f",
+      "changes": [
+        {
+          "startLine": 3455,
+          "endLine": 3460,
+          "before": "",
+          "after": " \".github/ci/employee-restoration-proof.mjs\",\n \"test/employee-choice-restoration-proof.test.ts\",\n \"test/performance/employee-choice-restoration-cleanup.ts\",\n \"test/performance/employee-choice-restoration-source.ts\",\n \"docs/qualification/employee-native-restoration-inverse-20261108.json\",\n"
+        },
+        {
+          "startLine": 3401,
+          "endLine": 3403,
+          "before": "",
+          "after": " \"test/performance/employee-choice-restoration-cleanup.ts\",\n \"test/performance/employee-choice-restoration-source.ts\",\n"
+        },
+        {
+          "startLine": 3313,
+          "endLine": 3314,
+          "before": "",
+          "after": " \"test/employee-choice-restoration-proof.test.ts\",\n"
+        },
+        {
+          "startLine": 2234,
+          "endLine": 2235,
+          "before": "",
+          "after": " \"docs/qualification/employee-native-restoration-inverse-20261108.json\",\n"
+        },
+        {
+          "startLine": 42,
+          "endLine": 43,
+          "before": "",
+          "after": " \".github/ci/employee-restoration-proof.mjs\",\n"
+        }
+      ]
+    },
+    ".github/ci/employee-lifecycle-sources.test.mjs": {
+      "parentSha256": "73ace5ecae2b8ae8321233ce48b99b94e5dcd0734d7fb88cf0bc1d05e2f6d196",
+      "currentSha256": "868437262dcaf38c5638b5b86a8fcc1176c3283d325c93f896377739e8b7f44c",
+      "changes": [
+        {
+          "startLine": 8,
+          "endLine": 9,
+          "before": "const independentOwners=['.github/ci/unit-report-directories.mjs','.github/ci/unit-report-directories.test.mjs','test/ci-unit-report-directory-contract.test.ts','.github/ci/run-unit.mjs','.github/ci/employee-lifecycle.mjs','.github/ci/employee-lifecycle-profile.json','.github/ci/employee-lifecycle-context.mjs','.github/ci/employee-lifecycle-supervisor.py','.github/ci/employee-lifecycle-always-stop.mjs','.github/ci/employee-postgres-policy.py','.github/ci/employee-postgres-resource.py','.github/ci/owned-process.py','.github/ci/employee-lifecycle-api.mjs','.github/ci/employee-lifecycle-evidence.mjs','.github/ci/employee-lifecycle-extract.py','.github/ci/employee-lifecycle-witness.mjs','.github/ci/employee-lifecycle-native.mjs','.github/ci/employee-native-log-codec.mjs','.github/ci/release-ci.mjs','.github/ci/verify-shards.mjs','test/performance/employee-choice-lifecycle-admission.ts','test/helpers/ci-singleton-admission.ts','test/harness.ts','db/client.ts','db/schema.ts','db/migrations/meta/_journal.json','test/fixtures/employee-choice-native-purpose.sql','test/fixtures/employee-choice-exact-ascii-purpose.sql','core/employee-choice.ts','lib/hr-date.ts'];\n",
+          "after": "const independentOwners=[\".github/ci/employee-restoration-proof.mjs\",\"test/employee-choice-restoration-proof.test.ts\",\"test/performance/employee-choice-restoration-cleanup.ts\",\"test/performance/employee-choice-restoration-source.ts\",\"docs/qualification/employee-native-restoration-inverse-20261108.json\",'.github/ci/unit-report-directories.mjs','.github/ci/unit-report-directories.test.mjs','test/ci-unit-report-directory-contract.test.ts','.github/ci/run-unit.mjs','.github/ci/employee-lifecycle.mjs','.github/ci/employee-lifecycle-profile.json','.github/ci/employee-lifecycle-context.mjs','.github/ci/employee-lifecycle-supervisor.py','.github/ci/employee-lifecycle-always-stop.mjs','.github/ci/employee-postgres-policy.py','.github/ci/employee-postgres-resource.py','.github/ci/owned-process.py','.github/ci/employee-lifecycle-api.mjs','.github/ci/employee-lifecycle-evidence.mjs','.github/ci/employee-lifecycle-extract.py','.github/ci/employee-lifecycle-witness.mjs','.github/ci/employee-lifecycle-native.mjs','.github/ci/employee-native-log-codec.mjs','.github/ci/release-ci.mjs','.github/ci/verify-shards.mjs','test/performance/employee-choice-lifecycle-admission.ts','test/helpers/ci-singleton-admission.ts','test/harness.ts','db/client.ts','db/schema.ts','db/migrations/meta/_journal.json','test/fixtures/employee-choice-native-purpose.sql','test/fixtures/employee-choice-exact-ascii-purpose.sql','core/employee-choice.ts','lib/hr-date.ts'];\n"
+        }
+      ]
+    },
+    "test/employee-choice-exact-ascii-owner-source.test.ts": {
+      "parentSha256": "49a950ce097cb876063731c6c5440a8778144398f78d460f7d3996fc4d3ce0e3",
+      "currentSha256": "fcf64ec74dabb477c0fdec59b1585f21e1c35144490d96d2f0b4939c1ddf126f",
+      "changes": [
+        {
+          "startLine": 14,
+          "endLine": 15,
+          "before": "",
+          "after": " actual=employeeChoiceRestorationSourceInverse('test/performance/employee-choice-exact-ascii-owner-factory.ts',actual);\n"
+        },
+        {
+          "startLine": 6,
+          "endLine": 7,
+          "before": "",
+          "after": "import {employeeChoiceRestorationSourceInverse} from './performance/employee-choice-restoration-source';\n"
+        }
+      ]
+    },
+    "test/employee-choice-exact-ascii-plan.test.ts": {
+      "parentSha256": "9a2f4c67ebcfc6e7671ad19e71629fbf27976723ccde972f0ddab9cef1dafd62",
+      "currentSha256": "350830e5dd359e6b3e35166163f785c88e9487233d300c8c46f26936b56fb186",
+      "changes": [
+        {
+          "startLine": 434,
+          "endLine": 436,
+          "before": " }\n // Measurement completion and target acceptance are separate. Preserve every\n // actual port/raw plan/cleanup fact BEFORE this strict existing1000ms gate.\n",
+          "after": " }catch(error){report.complete=false;failures.push(error);}\n if(failures.length===1)throw failures[0];if(failures.length)throw new AggregateError(failures,'Native cleanup and terminal publication refused');\n"
+        },
+        {
+          "startLine": 428,
+          "endLine": 431,
+          "before": " try{await lifetime.finish(cleanupOwned);}finally{\n",
+          "after": " const failures:unknown[]=[];\n try{await lifetime.finish(cleanupOwned);}catch(error){failures.push(error);}\n try{\n"
+        },
+        {
+          "startLine": 419,
+          "endLine": 420,
+          "before": "",
+          "after": " if(failures.length)poison(new AggregateError(failures,'Owned native restoration uncertain'));\n"
+        },
+        {
+          "startLine": 411,
+          "endLine": 413,
+          "before": "   expect(await employeeChoiceNativePrototypeOwner(metadata.getQuery).security()).toEqual(installation.security);metadata.getPhase();prototypeWitness.restorationAccepted=true;\n",
+          "after": "   expect(await employeeChoiceNativePrototypeOwner(metadata.getQuery).security()).toEqual(installation.security);\n   prototypeWitness.proof=await installation.restoration();metadata.getPhase();prototypeWitness.restorationAccepted=true;\n"
+        },
+        {
+          "startLine": 406,
+          "endLine": 407,
+          "before": "   const [actual]=await owner.client`select coalesce((select s.setconfig from pg_db_role_setting s where s.setdatabase=(select oid from pg_database where datname=current_database()) and s.setrole=0),'{}'::text[])as config`;\n   const config:unknown=actual.config;if(!Array.isArray(config)||config.some(entry=>typeof entry!=='string'||entry.indexOf('=')<1))throw Error('Complete terminal native settings required');\n   expect(createHash('sha256').update(JSON.stringify(config)).digest('hex')).toBe(logging.beforeSha256);metadata!.getPhase();loggingWitness.restorationAccepted=true;\n",
+          "after": "   loggingWitness.proof=await logging.restoration();metadata!.getPhase();loggingWitness.restorationAccepted=true;\n"
+        },
+        {
+          "startLine": 398,
+          "endLine": 399,
+          "before": " const finish=async(name:string,work:()=>Promise<unknown>)=>{telemetry(()=>progress({kind:'cleanup-started',phase:name}));try{await work();telemetry(()=>progress({kind:'cleanup-completed',phase:name}));return true;}catch(error){failures.push(error);const errors=(report.cleanupFailures??=[])as string[];errors.push(name);return false;}};\n",
+          "after": " const finish=(name:string,work:()=>Promise<unknown>)=>cleanup.run(name,work,status=>progress({kind:'cleanup-'+status,phase:name}));\n"
+        },
+        {
+          "startLine": 395,
+          "endLine": 397,
+          "before": " const prototypeWitness=priorPrototype&&typeof priorPrototype==='object'&&!Array.isArray(priorPrototype)?{...priorPrototype,restorationAccepted:false}:{restorationAccepted:false};\n const loggingWitness=priorLogging&&typeof priorLogging==='object'&&!Array.isArray(priorLogging)?{...priorLogging,restorationAccepted:false}:{restorationAccepted:false};\n",
+          "after": " const prototypeWitness:Record<string,unknown>=priorPrototype&&typeof priorPrototype==='object'&&!Array.isArray(priorPrototype)?{...priorPrototype,proof:undefined,restorationAccepted:false}:{restorationAccepted:false};\n const loggingWitness:Record<string,unknown>=priorLogging&&typeof priorLogging==='object'&&!Array.isArray(priorLogging)?{...priorLogging,proof:undefined,restorationAccepted:false}:{restorationAccepted:false};\n"
+        },
+        {
+          "startLine": 392,
+          "endLine": 394,
+          "before": " const failures:unknown[]=[],terminal=employeeChoiceAsciiTerminalWitness();\n const telemetry=(write:()=>void)=>{try{write();}catch(error){failures.push(error);report.cleanupTelemetryRefused=true;report.complete=false;}};\n",
+          "after": " const terminal=employeeChoiceAsciiTerminalWitness(),cleanup=employeeChoiceRestorationCleanup(()=>{report.cleanupTelemetryRefused=true;report.complete=false;},name=>{const errors=(report.cleanupFailures??=[])as string[];errors.push(name);});\n const {failures,telemetry}=cleanup;\n"
+        },
+        {
+          "startLine": 9,
+          "endLine": 10,
+          "before": "",
+          "after": "import {employeeChoiceRestorationCleanup} from './performance/employee-choice-restoration-cleanup';\n"
+        }
+      ]
+    },
+    "test/employee-choice-native-owner-factory-source.test.ts": {
+      "parentSha256": "471f3cb7b08165cb9928819086a1a739591d4434877924e0d1e795b00efafc54",
+      "currentSha256": "5c8a442b67ea31bdbb22f065e59cd7898d08d0de7e7666df866a585877da7bd8",
+      "changes": [
+        {
+          "startLine": 17,
+          "endLine": 18,
+          "before": " expect(()=>employeeChoiceNativeOwnerInverse(factory.replace('async function readNativeSecurity(query:ISql){','async function foreign(){'))).toThrow('boundary');\n",
+          "after": " const original=employeeChoiceRestorationSourceInverse('test/performance/employee-choice-native-purpose-owner-factory.ts',factory);expect(()=>employeeChoiceNativeOwnerInverse(original.replace('async function readNativeSecurity(query:ISql){','async function foreign(){'))).toThrow('boundary');\n"
+        },
+        {
+          "startLine": 14,
+          "endLine": 16,
+          "before": "  expect(factory).toContain(before);expect(sha(employeeChoiceNativeOwnerInverse(factory.replace(before,after)))).not.toBe(sha(baseline));\n",
+          "after": "  expect(factory).toContain(before);expect(()=>employeeChoiceRestorationSourceInverse('test/performance/employee-choice-native-purpose-owner-factory.ts',factory.replace(before,after))).toThrow();\n  const original=employeeChoiceRestorationSourceInverse('test/performance/employee-choice-native-purpose-owner-factory.ts',factory);expect(sha(employeeChoiceNativeOwnerInverse(original.replace(before,after)))).not.toBe(sha(baseline));\n"
+        },
+        {
+          "startLine": 10,
+          "endLine": 11,
+          "before": " expect(employeeChoiceNativeOwnerInverse(factory)).toBe(baseline);\n",
+          "after": " expect(employeeChoiceNativeOwnerInverse(employeeChoiceRestorationSourceInverse('test/performance/employee-choice-native-purpose-owner-factory.ts',factory))).toBe(baseline);\n"
+        },
+        {
+          "startLine": 5,
+          "endLine": 6,
+          "before": "",
+          "after": "import {employeeChoiceRestorationSourceInverse} from './performance/employee-choice-restoration-source';\n"
+        }
+      ]
+    },
+    "test/employee-choice-native-owner-factory.test.ts": {
+      "parentSha256": "5496c9431c466009af9ac422824e2f9de67e0c8610ec2888ee2809f7637abd56",
+      "currentSha256": "86f18bb75c07d7f9ba74ab25939cc27986978b9d4ed2f152c8d34237b914a612",
+      "changes": [
+        {
+          "startLine": 78,
+          "endLine": 97,
+          "before": "}));\n",
+          "after": " const [db]=await scope.getQuery()`select current_database()as database`;let logging:Awaited<ReturnType<typeof employeeChoicePlanLogging>>|undefined;\n await employeeChoicePlanLogging(db.database,value=>{logging=value;registerCleanup(async()=>{await value.restore();await value.restoration();});});\n if(!logging)throw Error('Native logging ownership not adopted');await logging.restore();await logging.restoration();\n const nativeRow=async()=>{const [row]=await scope.getQuery()`select (select to_jsonb(s)from pg_db_role_setting s where s.setdatabase=(select oid from pg_database where datname=current_database())and s.setrole=0)as value`;return employeeLoggingNativeRow(row.value) as {setconfig:string[]}|null;};\n const before=await nativeRow();let changed:Awaited<ReturnType<typeof nativeRow>>|undefined;\n const prior=before?.setconfig.find(entry=>entry.startsWith('application_name='))?.slice('application_name='.length),quoted=(value:string)=>\"'\"+value.replace(/'/g,\"''\")+\"'\";\n const restoreKnown=async()=>{\n  const actual=await nativeRow();if(isDeepStrictEqual(actual,before))return;if(changed===undefined)throw Error('Known native setting mutation has no complete postimage');expect(actual).toEqual(changed);\n  await scope.getQuery().begin(async tx=>{const [row]=await tx`select (select to_jsonb(s)from pg_db_role_setting s where s.setdatabase=(select oid from pg_database where datname=current_database())and s.setrole=0)as value`;expect(row.value).toEqual(changed);await tx.unsafe('alter database \"'+db.database+'\" '+(prior===undefined?'reset application_name':'set application_name to '+quoted(prior)));});\n  expect(await nativeRow()).toEqual(before);\n };\n registerCleanup(restoreKnown); // Own before/post intent before the mutation COMMIT can be lost.\n await scope.getQuery().begin(async tx=>{\n  const [row]=await tx`select (select to_jsonb(s)from pg_db_role_setting s where s.setdatabase=(select oid from pg_database where datname=current_database())and s.setrole=0)as value`;expect(row.value).toEqual(before);\n  await tx.unsafe('alter database \"'+db.database+'\" set application_name to '+quoted('employee_restoration_known_foreign_guard'));\n  const [after]=await tx`select (select to_jsonb(s)from pg_db_role_setting s where s.setdatabase=(select oid from pg_database where datname=current_database())and s.setrole=0)as value`;changed=employeeLoggingNativeRow(after.value) as {setconfig:string[]}|null;expect(changed).not.toEqual(before);\n });\n await expect(logging.restore()).rejects.toThrow();expect(await nativeRow()).toEqual(changed);await restoreKnown();await logging.restore();await logging.restoration();\n},true));\n"
+        },
+        {
+          "startLine": 73,
+          "endLine": 74,
+          "before": "",
+          "after": " const installedIdentity=structuredClone(committed.installed);await expect(rolledBack!.remove()).rejects.toThrow();await committed.unchanged();expect(committed.installed).toEqual(installedIdentity);\n"
+        },
+        {
+          "startLine": 67,
+          "endLine": 68,
+          "before": "it('owns preCOMMIT rollback/lost-delivery witnesses and refuses altered native metadata before exact guarded removal',context=>controlled(context,async(scope,adopt)=>{\n",
+          "after": "it('owns preCOMMIT rollback/lost-delivery witnesses and refuses altered native metadata before exact guarded removal',context=>controlled(context,async(scope,adopt,registerCleanup)=>{\n"
+        },
+        {
+          "startLine": 42,
+          "endLine": 48,
+          "before": "   const errors:unknown[]=[];\n   try{owned.enterCleanup();await scope.beginCleanup();if(defaultBinding)owner.client=scope.getQuery();}catch(error){errors.push(error);}\n   for(const resource of resources.reverse())try{await resource.remove();}catch(error){errors.push(error);}\n   try{expect(scope.statements.filter(row=>row.carrier==='cleanup'&&row.text==='drop function '+employeeChoicePrototypeSignature)).toHaveLength(1);}catch(error){errors.push(error);}\n   try{expect((await scope.getQuery()`select to_regprocedure(${employeeChoicePrototypeSignature})as present`)[0].present).toBeNull();if(before!==undefined)expect(await facts(scope)).toBe(before);}catch(error){errors.push(error);}\n",
+          "after": "   const errors:unknown[]=[];let ready=false;\n   try{owned.enterCleanup();await scope.beginCleanup();if(defaultBinding)owner.client=scope.getQuery();ready=true;}catch(error){errors.push(error);}\n   if(ready)for(const close of [...extraCleanup].reverse())try{await close();}catch(error){errors.push(error);}\n   if(ready)for(const resource of resources.reverse())try{await resource.remove();}catch(error){errors.push(error);}\n   try{if(!ready)throw Error('Native factory cleanup handoff uncertain');expect(scope.statements.filter(row=>row.carrier==='cleanup'&&row.text==='drop function '+employeeChoicePrototypeSignature)).toHaveLength(1);}catch(error){errors.push(error);}\n   try{if(!ready)throw Error('Native factory cleanup handoff uncertain');expect((await scope.getQuery()`select to_regprocedure(${employeeChoicePrototypeSignature})as present`)[0].present).toBeNull();if(before!==undefined)expect(await facts(scope)).toBe(before);}catch(error){errors.push(error);}\n"
+        },
+        {
+          "startLine": 39,
+          "endLine": 40,
+          "before": "  try{await scope.identity();before=await facts(scope);if(defaultBinding)owner.client=scope.workSql;await work(scope,resource=>{resources.push(resource);});}\n",
+          "after": "  try{await scope.identity();before=await facts(scope);if(defaultBinding)owner.client=scope.workSql;await work(scope,resource=>{resources.push(resource);},close=>{extraCleanup.push(close);});}\n"
+        },
+        {
+          "startLine": 37,
+          "endLine": 38,
+          "before": "  const scope=employeeChoiceNativeFactoryFixture(owned.signal,owned.cleanupDeadline),resources:EmployeeChoiceNativeInstallation[]=[];\n",
+          "after": "  const scope=employeeChoiceNativeFactoryFixture(owned.signal,owned.cleanupDeadline),resources:EmployeeChoiceNativeInstallation[]=[],extraCleanup:(()=>Promise<void>)[]=[];\n"
+        },
+        {
+          "startLine": 35,
+          "endLine": 36,
+          "before": "function controlled(context:TestContext,work:(scope:Fixture,adopt:(resource:EmployeeChoiceNativeInstallation)=>void)=>Promise<void>,defaultBinding=false){\n",
+          "after": "function controlled(context:TestContext,work:(scope:Fixture,adopt:(resource:EmployeeChoiceNativeInstallation)=>void,registerCleanup:(close:()=>Promise<void>)=>void)=>Promise<void>,defaultBinding=false){\n"
+        },
+        {
+          "startLine": 5,
+          "endLine": 8,
+          "before": "",
+          "after": "import {isDeepStrictEqual} from 'node:util';\nimport {employeeChoicePlanLogging} from './performance/employee-choice-auto-explain';\nimport {employeeLoggingNativeRow} from '../.github/ci/employee-restoration-proof.mjs';\n"
+        }
+      ]
+    },
+    "test/employee-choice-native-purpose-plan.test.ts": {
+      "parentSha256": "2d43363f21e30554a4a7f987614ac93f21d7dc29beda0dcbdf2a9fe6f612569b",
+      "currentSha256": "c9f47bb51008c7157ed25ff969323ab2a6229f4f1f0a8d7630fb61d5a6371f50",
+      "changes": [
+        {
+          "startLine": 400,
+          "endLine": 405,
+          "before": "  if(report.complete!==true){report.phase='incomplete';const targets=report.wholePortTargets as Record<string,{allUnderTarget:boolean|null}>|undefined;if(targets)for(const row of Object.values(targets))row.allUnderTarget=null;}save();\n }\n",
+          "after": "  if(report.complete!==true){report.phase='incomplete';const targets=report.wholePortTargets as Record<string,{allUnderTarget:boolean|null}>|undefined;if(targets)for(const row of Object.values(targets))row.allUnderTarget=null;}\n  const nativeTarget=(report.wholePortTargets as Record<string,{allUnderTarget:boolean|null}>|undefined)?.native;report.performanceTargetPassed=report.complete===true?nativeTarget?.allUnderTarget===true:null;save();\n }catch(error){report.complete=false;failures.push(error);}\n if(failures.length===1)throw failures[0];if(failures.length)throw new AggregateError(failures,'Native cleanup and terminal publication refused');\n if(report.complete===true)expect(report.performanceTargetPassed,'All18 native whole ports must meet the unchanged1000ms target').toBe(true);\n"
+        },
+        {
+          "startLine": 396,
+          "endLine": 399,
+          "before": " try{await lifetime.finish(cleanupOwned);}finally{\n",
+          "after": " const failures:unknown[]=[];\n try{await lifetime.finish(cleanupOwned);}catch(error){failures.push(error);}\n try{\n"
+        },
+        {
+          "startLine": 393,
+          "endLine": 394,
+          "before": " report.phase=report.complete?'complete':'incomplete';save();if(failures.length)throw new AggregateError(failures,'Owned prototype cleanup failed');\n",
+          "after": " report.phase=report.complete?'complete':'incomplete';telemetry(save);if(failures.length)throw new AggregateError(failures,'Owned prototype cleanup failed');\n"
+        },
+        {
+          "startLine": 389,
+          "endLine": 390,
+          "before": " report.complete=!failedCase&&!blocked&&report.preparationComplete===true&&report.actualPlansComplete===true&&report.instrumentationRestored===true&&report.authorityComplete===true&&report.cleanupComplete===true\n",
+          "after": " report.complete=!failedCase&&!blocked&&report.preparationComplete===true&&report.actualPlansComplete===true&&report.instrumentationRestored===true&&report.authorityComplete===true&&report.cleanupComplete===true&&terminal.snapshot().complete===true&&prototypeWitness.restorationAccepted===true&&loggingWitness.restorationAccepted===true\n"
+        },
+        {
+          "startLine": 371,
+          "endLine": 388,
+          "before": " const failures:unknown[]=[];const finish=async(name:string,work:()=>Promise<unknown>)=>{progress({kind:'cleanup-started',phase:name});try{await work();progress({kind:'cleanup-completed',phase:name});}catch(error){failures.push(error);const errors=(report.cleanupFailures??=[])as string[];errors.push(name);}};\n await finish('owned-cleanup-carrier',async()=>ownedPools?.beginCleanup());\n await finish('plan-client',async()=>plansSession?.close());await finish('native-follower',async()=>planLog?.close());await finish('plan-config',async()=>logging?.restore());await finish('timing-client',async()=>timing?.close());\n await finish('prototype-function',async()=>installation?.remove());await finish('pools',closeAll);await finish('owned-pools',async()=>ownedPools?.close());\n report.cleanupComplete=failures.length===0;\n",
+          "after": " const terminal=employeeChoiceAsciiTerminalWitness(),cleanup=employeeChoiceRestorationCleanup(()=>{report.cleanupTelemetryRefused=true;report.complete=false;},name=>{const errors=(report.cleanupFailures??=[])as string[];errors.push(name);});\n const {failures,telemetry}=cleanup;\n const priorPrototype=report.prototypeCleanupWitness,priorLogging=report.loggingCleanupWitness;\n const prototypeWitness:Record<string,unknown>=priorPrototype&&typeof priorPrototype==='object'&&!Array.isArray(priorPrototype)?{...priorPrototype,proof:undefined,restorationAccepted:false}:{restorationAccepted:false};\n const loggingWitness:Record<string,unknown>=priorLogging&&typeof priorLogging==='object'&&!Array.isArray(priorLogging)?{...priorLogging,proof:undefined,restorationAccepted:false}:{restorationAccepted:false};\n report.prototypeCleanupWitness=prototypeWitness;report.loggingCleanupWitness=loggingWitness;report.terminalWitnesses=terminal.snapshot();telemetry(save);\n const finish=(name:string,work:()=>Promise<unknown>)=>cleanup.run(name,work,status=>progress({kind:'cleanup-'+status,phase:name}));\n const cleanupDeadline=Number(process.hrtime.bigint())/1e6+Math.min(26000,Math.max(0,employeeChoiceBenchmarkBounds.totalMs-lifetime.snapshot().elapsedMs));\n const ready=await finish('owned-cleanup-carrier',async()=>{if(!ownedPools)throw Error('Owned setup absent');await ownedPools.beginCleanup(cleanupDeadline);});\n await finish('plan-client',async()=>plansSession?.close());await finish('native-follower',async()=>planLog?.close());await finish('timing-client',async()=>timing?.close());\n if(ready){\n  await finish('plan-config',()=>terminal.prove('logging',async()=>{if(!logging)throw Error('PreCOMMIT logging witness missing');await logging.restore();loggingWitness.proof=await logging.restoration();loggingWitness.restorationAccepted=true;}));\n  await finish('prototype-function',()=>terminal.prove('prototype',async()=>{if(!installation)throw Error('PreCOMMIT prototype witness missing');await installation.remove();prototypeWitness.proof=await installation.restoration();prototypeWitness.restorationAccepted=true;}));\n }else failures.push(Error('Global owned cleanup handoff refused; semantic restoration not admitted'));\n await finish('pools',closeAll);await finish('owned-pools',async()=>ownedPools?.close());\n report.terminalWitnesses=terminal.snapshot();report.cleanupComplete=failures.length===0;\n if(failures.length)poison(new AggregateError(failures,'Owned native restoration uncertain'));\n"
+        },
+        {
+          "startLine": 7,
+          "endLine": 9,
+          "before": "",
+          "after": "import {employeeChoiceAsciiTerminalWitness} from './performance/employee-choice-ascii-terminal-witness';\nimport {employeeChoiceRestorationCleanup} from './performance/employee-choice-restoration-cleanup';\n"
+        }
+      ]
+    },
+    "test/performance/employee-choice-auto-explain.ts": {
+      "parentSha256": "db4eeea5172dd75617548acb11e574f68d70bc09260fdb2a96a68c6ac93ee30a",
+      "currentSha256": "e4d1eaed529b6fb9f20ec53b30a5a22bf875915a1231e6c8b1fea14977fd3332",
+      "changes": [
+        {
+          "startLine": 56,
+          "endLine": 58,
+          "before": "  const [after]=await tx`select setconfig as config from pg_db_role_setting where setdatabase=(select oid from pg_database where datname=current_database()) and setrole=0`;\n  expect(after.config).toEqual(expected);\n  adopt?.(resource); // Exact before/expected witness owned before COMMIT response.\n",
+          "after": "  const after=await settings(tx);expect(values(after)).toEqual(expected);if(after===null)throw Error('Instrumented native row absent');instrumented=structuredClone(after);\n  adopt?.(resource); // Exact full native before/postimage owned before COMMIT response.\n"
+        },
+        {
+          "startLine": 54,
+          "endLine": 55,
+          "before": "  expect(await settings(tx)).toEqual(before);\n",
+          "after": "  expect(await settings(tx)).toEqual(beforeRow);\n"
+        },
+        {
+          "startLine": 50,
+          "endLine": 53,
+          "before": "   restored=true;\n  }};\n",
+          "after": "   await restoration();restored=true; // Fresh native observation AFTER COMMIT, before the success latch.\n  },\n  async restoration(){if(!restored)throw Error('Native logging restoration has not settled');return restoration();}};\n"
+        },
+        {
+          "startLine": 48,
+          "endLine": 49,
+          "before": "    const [after]=await tx`select coalesce((select setconfig from pg_db_role_setting where setdatabase=(select oid from pg_database where datname=current_database()) and setrole=0),'{}'::text[]) as config`;\n    expect(after.config).toEqual(before);\n",
+          "after": "    expect(await settings(tx)).toEqual(beforeRow);\n"
+        },
+        {
+          "startLine": 41,
+          "endLine": 44,
+          "before": "    if(JSON.stringify(observed)===JSON.stringify(before))return; // Exact rolled-back predecessor.\n    expect(observed).toEqual(expected); // Refuse unknown/concurrent changes; never RESET ALL.\n",
+          "after": "    if(isDeepStrictEqual(observed,beforeRow))return; // Exact rolled-back predecessor, including row absence.\n    if(instrumented===undefined)throw Error('Native logging postimage was not adopted');\n    expect(observed).toEqual(instrumented); // Refuse unknown/concurrent changes; never RESET ALL.\n"
+        },
+        {
+          "startLine": 38,
+          "endLine": 39,
+          "before": "   if(restored)return;\n",
+          "after": "   if(restored){await restoration();return;}\n"
+        },
+        {
+          "startLine": 29,
+          "endLine": 36,
+          "before": " let restored=false;\n",
+          "after": " let restored=false,instrumented:NativeSettings|undefined;\n const restoration=async()=>{\n  if(instrumented===undefined)throw Error('Native logging postimage was not adopted');\n  const identity=await nativeIdentity(),after=await settings();\n  const value={version:1,kind:'NATIVE_EMPLOYEE_LOGGING_RESTORATION_NOT_RELEASE',database,identity,before:structuredClone(beforeRow),instrumented:structuredClone(instrumented),after,beforeSha256:hash(before),instrumentedSha256:hash(expected),beforeNativeSha256:employeeRestorationHash(beforeRow),instrumentedNativeSha256:employeeRestorationHash(instrumented),afterNativeSha256:employeeRestorationHash(after)};\n  return verifyEmployeeLoggingRestoration(value,{database,beforeSha256:hash(before),instrumentedSha256:hash(expected)});\n };\n"
+        },
+        {
+          "startLine": 18,
+          "endLine": 24,
+          "before": " const [identity]=await owner.client`select current_user as role,current_database() as database,inet_server_addr()='127.0.0.1'::inet as loopback`;\n expect(identity).toEqual({role:'postgres',database,loopback:true});\n const before=await settings(),previous=new Map(before.map(value=>{const index=value.indexOf('=');return[value.slice(0,index),value.slice(index+1)];}));\n",
+          "after": " const nativeIdentity=async()=>{const [identity]=await owner.client`select current_user as role,session_user as login,current_database() as database,(select oid::text from pg_database where datname=current_database())as \"databaseOid\",inet_server_addr()='127.0.0.1'::inet as loopback`;employeeRestorationIdentity(identity,database);return identity;};\n await nativeIdentity();\n const beforeRow=await settings(),before=values(beforeRow),previous=new Map(before.map(value=>{const index=value.indexOf('=');return[value.slice(0,index),value.slice(index+1)];}));\n // Canonical ALTER DATABASE RESET removes its last logical row. Never collapse\n // an unexplained manually-created empty predecessor into native row absence.\n if(beforeRow!==null&&before.length===0)throw Error('Existing empty native settings row cannot be restored by canonical instrumentation');\n"
+        },
+        {
+          "startLine": 9,
+          "endLine": 16,
+          "before": "async function settings(client:Pick<typeof owner.client,'unsafe'>=owner.client){const [row]=await client.unsafe<{config:unknown}[]>(\"select coalesce((select s.setconfig from pg_db_role_setting s where s.setdatabase=(select oid from pg_database where datname=current_database()) and s.setrole=0),'{}'::text[]) as config\");\n const value:unknown=row?.config;if(!Array.isArray(value)||value.some(entry=>typeof entry!=='string'||entry.indexOf('=')<1))throw Error('Native database settings array required');\n return value.map(entry=>String(entry));}\nexport type EmployeeChoicePlanLogging={settings:typeof changes;beforeSha256:string;instrumentedSha256:string;restore:()=>Promise<void>};\n",
+          "after": "type NativeSettings={setdatabase:unknown;setrole:unknown;setconfig:string[]}|null;\nasync function settings(client:Pick<typeof owner.client,'unsafe'>=owner.client):Promise<NativeSettings>{\n const [row]=await client.unsafe<{config:unknown}[]>(\"select (select to_jsonb(s) from pg_db_role_setting s where s.setdatabase=(select oid from pg_database where datname=current_database()) and s.setrole=0) as config\");\n if(!row)throw Error('Native database settings row required');return employeeLoggingNativeRow(row.config) as NativeSettings;\n}\nconst values=(row:NativeSettings)=>row===null?[]:row.setconfig;\nexport type EmployeeChoicePlanLogging={settings:typeof changes;beforeSha256:string;instrumentedSha256:string;restore:()=>Promise<void>;restoration:()=>Promise<unknown>};\n"
+        },
+        {
+          "startLine": 5,
+          "endLine": 7,
+          "before": "const changes={session_preload_libraries:'auto_explain','auto_explain.log_min_duration':'0','auto_explain.log_parameter_max_length':'0',\n 'auto_explain.log_analyze':'on','auto_explain.log_buffers':'on','auto_explain.log_settings':'on','auto_explain.log_format':'json',\n 'auto_explain.log_timing':'off','auto_explain.log_nested_statements':'on','auto_explain.sample_rate':'1'}as const;\n",
+          "after": "import {employeeLoggingNativeRow,employeeRestorationHash,verifyEmployeeLoggingRestoration,employeePlanLoggingChanges,employeeRestorationIdentity} from '../../.github/ci/employee-restoration-proof.mjs';\nconst changes=employeePlanLoggingChanges;\n"
+        },
+        {
+          "startLine": 2,
+          "endLine": 3,
+          "before": "",
+          "after": "import {isDeepStrictEqual} from 'node:util';\n"
+        }
+      ]
+    },
+    "test/performance/employee-choice-exact-ascii-owner-factory.ts": {
+      "parentSha256": "1d289fead9e6edfd010c6b8ff9afad2e39a4dc2602d4e8ad307a9b64e1fb4c39",
+      "currentSha256": "0d8345cfe218a4a0d89054cc84c320c1681e04f268451530aaeb9f4c5274d690",
+      "changes": [
+        {
+          "startLine": 66,
+          "endLine": 67,
+          "before": "  return{database:nativeOriginal.database,sourceSha256,originalSourceSha256:nativeOriginal.sourceSha256,installed:structuredClone(installed),security:structuredClone(nativeOriginal.security),unchanged,remove:custody.remove};\n",
+          "after": "  return{database:nativeOriginal.database,sourceSha256,originalSourceSha256:nativeOriginal.sourceSha256,installed:structuredClone(installed),security:structuredClone(nativeOriginal.security),unchanged,remove:custody.remove,restoration:()=>originalWitness().original.restoration()};\n"
+        },
+        {
+          "startLine": 45,
+          "endLine": 46,
+          "before": "   if(removed)return;const {original}=originalWitness();\n",
+          "after": "   if(removed){await originalWitness().original.remove();return;}const {original}=originalWitness();\n"
+        }
+      ]
+    },
+    "test/performance/employee-choice-native-purpose-owner-factory.ts": {
+      "parentSha256": "481e5f20b38d02325570147c146428066213560d9066aa3141869454924a3e13",
+      "currentSha256": "65c9b170f78eac82f0db5baa69f59e260d53b8b917f7e0c154a9b7acab4e9a76",
+      "changes": [
+        {
+          "startLine": 78,
+          "endLine": 80,
+          "before": "   expect(await readNativeSecurity(getQuery())).toEqual(security);\n  }};\n",
+          "after": "   expect(await readNativeSecurity(getQuery())).toEqual(security);await restored();removed=true;\n  },async restoration(){if(!removed)throw Error('Native removal has not settled');return restored();}};\n"
+        },
+        {
+          "startLine": 76,
+          "endLine": 77,
+          "before": "   await getQuery().unsafe('drop function '+employeeChoicePrototypeSignature);removed=true;\n",
+          "after": "   await getQuery().unsafe('drop function '+employeeChoicePrototypeSignature);\n"
+        },
+        {
+          "startLine": 74,
+          "endLine": 75,
+          "before": "   if(present.count===0){expect(await readNativeSecurity(getQuery())).toEqual(security);removed=true;return;}\n",
+          "after": "   if(present.count===0){await restored();removed=true;return;}\n"
+        },
+        {
+          "startLine": 70,
+          "endLine": 71,
+          "before": "   if(removed)return;\n",
+          "after": "   if(removed){await restored();return;}\n"
+        },
+        {
+          "startLine": 66,
+          "endLine": 68,
+          "before": " installed=created;\n resource={database,sourceSha256:createHash('sha256').update(source).digest('hex'),installed:created,security,\n",
+          "after": " installed=structuredClone(created);\n resource={database,sourceSha256:createHash('sha256').update(source).digest('hex'),installed:structuredClone(created),security:structuredClone(security),\n"
+        },
+        {
+          "startLine": 41,
+          "endLine": 49,
+          "before": "",
+          "after": " const restored=async()=>{\n  if(!installed)throw Error('Native prototype witness missing');\n  const [identity]=await getQuery()`select current_user as role,session_user as login,current_database() as database,(select oid::text from pg_database where datname=current_database())as \"databaseOid\",inet_server_addr()='127.0.0.1'::inet as loopback`;\n  const [absence]=await getQuery()`select to_regprocedure(${employeeChoicePrototypeSignature})is null as absent,(select count(*)::int from pg_proc where pronamespace='app'::regnamespace and proname='employee_choice_native_prototype')as overloads`;\n  const after=await readNativeSecurity(getQuery());\n  const value={version:1,kind:'NATIVE_EMPLOYEE_PROTOTYPE_RESTORATION_NOT_RELEASE',database,identity,sourceSha256:employeeChoicePrototypeSqlSha256,installed:structuredClone(installed),installedSha256:employeeRestorationHash(installed),beforeSecurity:structuredClone(security),afterSecurity:after,beforeSecuritySha256:employeeRestorationHash(security),afterSecuritySha256:employeeRestorationHash(after),securityCounts:Object.fromEntries(Object.entries(security).map(([name,rows])=>[name,rows.length])),signatureAbsent:absence.absent,overloads:absence.overloads};\n  return verifyEmployeePrototypeRestoration(value,{database,sourceSha256:employeeChoicePrototypeSqlSha256,installedSha256:employeeRestorationHash(installed),securitySha256:employeeRestorationHash(security)});\n };\n"
+        },
+        {
+          "startLine": 17,
+          "endLine": 18,
+          "before": "export type EmployeeChoiceNativeInstallation={database:string;sourceSha256:string;installed:{definition:string;identity:unknown};security:Awaited<ReturnType<typeof readNativeSecurity>>;unchanged:()=>Promise<void>;remove:()=>Promise<void>};\n",
+          "after": "export type EmployeeChoiceNativeInstallation={database:string;sourceSha256:string;installed:{definition:string;identity:unknown};security:Awaited<ReturnType<typeof readNativeSecurity>>;unchanged:()=>Promise<void>;remove:()=>Promise<void>;restoration:()=>Promise<unknown>};\n"
+        },
+        {
+          "startLine": 5,
+          "endLine": 6,
+          "before": "",
+          "after": "import {employeeRestorationHash,verifyEmployeePrototypeRestoration} from '../../.github/ci/employee-restoration-proof.mjs';\n"
+        }
+      ]
+    }
+  }
+}

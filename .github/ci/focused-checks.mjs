@@ -11,15 +11,12 @@ import {assertSingletonSelection} from './singleton-protocol.mjs';
 import {restrictedPortRequest,executeDatabaseSetup,runRestrictedPortQualification,SOURCE_PINS} from './restricted-port-qualification.mjs';
 import {capturePostgresEvidence, validatePostgresEvidence, postgresProfileFromEnv, V15_POSTGRES_PROFILE} from './postgres-evidence.mjs';
 import {compilerProcIdentity,boundedCompilerBytes} from './diagnostics/native-reference/admission.mjs';
+import {EMPLOYEE_LIFECYCLE_PROFILE} from './employee-lifecycle-profile.mjs';
 
 const postgres = fileURLToPath(new URL('./postgres.sh', import.meta.url));
 const hash = text => createHash('sha256').update(text).digest('hex');
 const git = (cwd, ...args) => execFileSync('git', args, {cwd, encoding: 'utf8'}).trim();
-export const employeeBenchmarkFile='test/employee-choice-native-purpose-plan.test.ts';
-export const employeeNativeControlFile='test/employee-choice-benchmark-owner-native.test.ts';
-export const employeeNativeFactoryFile='test/employee-choice-native-owner-factory.test.ts';
-export const employeeAsciiPurposeFile='test/employee-choice-exact-ascii-purpose.test.ts';
-export const employeeAsciiPlanFile='test/employee-choice-exact-ascii-plan.test.ts';
+export const [employeeBenchmarkFile,employeeNativeControlFile,employeeNativeFactoryFile,employeeAsciiPurposeFile,employeeAsciiPlanFile]=EMPLOYEE_LIFECYCLE_PROFILE.files.map(row=>row.file);
 export const compilerReferenceFile='test/compiler-native-reference-fixture.test.ts';
 export const compilerApplicationInventoryFile='test/compiler-native-application-inventory.test.ts';
 const benchmarkSupervisor=fileURLToPath(new URL('./employee-benchmark-supervisor.py',import.meta.url));

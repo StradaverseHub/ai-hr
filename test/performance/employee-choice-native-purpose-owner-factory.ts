@@ -3,6 +3,7 @@ import {readFileSync} from 'node:fs';
 import {createHash} from 'node:crypto';
 import {expect} from 'vitest';
 import type {ISql,Sql} from 'postgres';
+import {employeeRestorationHash,verifyEmployeePrototypeRestoration} from '../../.github/ci/employee-restoration-proof.mjs';
 import {workerDb} from '../db-names';
 export const employeeChoicePrototypeSignature='app.employee_choice_native_prototype(uuid,uuid,uuid,text[],jsonb,uuid[],date,uuid[],uuid,uuid,uuid,text,text,text,uuid,bigint,integer,text,text,uuid[])';
 const sha=(file:string)=>createHash('sha256').update(readFileSync(file)).digest('hex');
@@ -14,7 +15,7 @@ async function readNativeSecurity(query:ISql){
   grants:Array.from(await query`select table_schema,table_name,grantee,privilege_type,is_grantable from information_schema.role_table_grants where table_schema in('public','app') order by table_schema,table_name,grantee,privilege_type`),
   roleEdges:Array.from(await query`select * from pg_auth_members order by roleid,member`)};
 }
-export type EmployeeChoiceNativeInstallation={database:string;sourceSha256:string;installed:{definition:string;identity:unknown};security:Awaited<ReturnType<typeof readNativeSecurity>>;unchanged:()=>Promise<void>;remove:()=>Promise<void>};
+export type EmployeeChoiceNativeInstallation={database:string;sourceSha256:string;installed:{definition:string;identity:unknown};security:Awaited<ReturnType<typeof readNativeSecurity>>;unchanged:()=>Promise<void>;remove:()=>Promise<void>;restoration:()=>Promise<unknown>};
 /** Fixed native owner only. Caller owns actual admission, bounded carriers and
  * work→cleanup transition; this creates no pool or authorization token. */
 export function employeeChoiceNativePrototypeOwner(getQuery:()=>Sql){
@@ -38,6 +39,14 @@ async function install(adopt?:(value:EmployeeChoiceNativeInstallation)=>void):Pr
   const [current]=await getQuery()`select pg_get_functiondef(p.oid) as definition,to_jsonb(p) as identity from pg_proc p where p.oid=${employeeChoicePrototypeSignature}::regprocedure`;
   expect(current).toEqual({definition:installed.definition,identity:installed.identity});
  };
+ const restored=async()=>{
+  if(!installed)throw Error('Native prototype witness missing');
+  const [identity]=await getQuery()`select current_user as role,session_user as login,current_database() as database,(select oid::text from pg_database where datname=current_database())as "databaseOid",inet_server_addr()='127.0.0.1'::inet as loopback`;
+  const [absence]=await getQuery()`select to_regprocedure(${employeeChoicePrototypeSignature})is null as absent,(select count(*)::int from pg_proc where pronamespace='app'::regnamespace and proname='employee_choice_native_prototype')as overloads`;
+  const after=await readNativeSecurity(getQuery());
+  const value={version:1,kind:'NATIVE_EMPLOYEE_PROTOTYPE_RESTORATION_NOT_RELEASE',database,identity,sourceSha256:employeeChoicePrototypeSqlSha256,installed:structuredClone(installed),installedSha256:employeeRestorationHash(installed),beforeSecurity:structuredClone(security),afterSecurity:after,beforeSecuritySha256:employeeRestorationHash(security),afterSecuritySha256:employeeRestorationHash(after),securityCounts:Object.fromEntries(Object.entries(security).map(([name,rows])=>[name,rows.length])),signatureAbsent:absence.absent,overloads:absence.overloads};
+  return verifyEmployeePrototypeRestoration(value,{database,sourceSha256:employeeChoicePrototypeSqlSha256,installedSha256:employeeRestorationHash(installed),securitySha256:employeeRestorationHash(security)});
+ };
  let resource:EmployeeChoiceNativeInstallation|undefined;
  await getQuery().begin(async tx=>{
   await tx`select set_config('aihr.employee_choice_probe.database',${database},true)`;
@@ -55,20 +64,20 @@ async function install(adopt?:(value:EmployeeChoiceNativeInstallation)=>void):Pr
  expect(Array.from(acl)).toEqual([{grantor:'postgres',grantee:'ai_hr_app',privilege_type:'EXECUTE',is_grantable:false},{grantor:'postgres',grantee:'postgres',privilege_type:'EXECUTE',is_grantable:false}]);
  // BORROWED_TRANSACTION_SECURITY: never reacquire a max1 owner pool.
  expect(await readNativeSecurity(tx)).toEqual(security);
- installed=created;
- resource={database,sourceSha256:createHash('sha256').update(source).digest('hex'),installed:created,security,
+ installed=structuredClone(created);
+ resource={database,sourceSha256:createHash('sha256').update(source).digest('hex'),installed:structuredClone(created),security:structuredClone(security),
   async unchanged(){await owned();expect(await readNativeSecurity(getQuery())).toEqual(security);},
   async remove(){
-   if(removed)return;
+   if(removed){await restored();return;}
    const [present]=await getQuery()`select count(*)::int as count from pg_proc where pronamespace='app'::regnamespace and proname='employee_choice_native_prototype'`;
    // Predecessor guard established complete absence. A rolled-back/lost COMMIT
    // may leave that exact predecessor; never drop an unrecognized replacement.
-   if(present.count===0){expect(await readNativeSecurity(getQuery())).toEqual(security);removed=true;return;}
+   if(present.count===0){await restored();removed=true;return;}
    await owned();
-   await getQuery().unsafe('drop function '+employeeChoicePrototypeSignature);removed=true;
+   await getQuery().unsafe('drop function '+employeeChoicePrototypeSignature);
    expect((await getQuery()`select to_regprocedure(${employeeChoicePrototypeSignature}) as function`)[0].function).toBeNull();
-   expect(await readNativeSecurity(getQuery())).toEqual(security);
-  }};
+   expect(await readNativeSecurity(getQuery())).toEqual(security);await restored();removed=true;
+  },async restoration(){if(!removed)throw Error('Native removal has not settled');return restored();}};
  // Own the native OID/body/metadata witness BEFORE the COMMIT response can be
  // lost. Cleanup accepts only this exact result or the guarded absent predecessor.
  adopt?.(resource);

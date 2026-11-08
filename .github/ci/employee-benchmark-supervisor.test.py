@@ -183,7 +183,13 @@ class ClosedEntryModels(unittest.TestCase):
                 with patch.dict(os.environ, {**env, 'AIHR_FOCUSED_TESTS': json.dumps(selected)}):
                     stage, command, _ = module.request_command({**request, 'stage': expected_stage})
                     self.assertEqual(stage, expected_stage)
-                    self.assertEqual(command, ['pnpm', 'exec', 'vitest', 'run', fixed_file, '--reporter=default', '--reporter=json', '--outputFile.json=' + str(destination / 'db.vitest.json')])
+                    prefix = [request['node'], str(Path.cwd() / 'node_modules/vitest/vitest.mjs'), 'run'] if expected_stage in ('ascii-purpose', 'ascii-plan') else ['pnpm', 'exec', 'vitest', 'run']
+                    self.assertEqual(command, [*prefix, fixed_file, '--reporter=default', '--reporter=json', '--outputFile.json=' + str(destination / 'db.vitest.json')])
+                    if expected_stage in ('ascii-purpose', 'ascii-plan'):
+                        # No env unsetting or eligibility waiver is performed.
+                        with patch.dict(os.environ, {'NODE_PATH': '/fixed-untrusted-startup-control'}):
+                            self.assertEqual(module.request_command({**request, 'stage': expected_stage})[1], command)
+                            self.assertEqual(os.environ['NODE_PATH'], '/fixed-untrusted-startup-control')
                     for other in {'benchmark', 'native-controls', 'native-factory', 'ascii-purpose', 'ascii-plan'} - {expected_stage}:
                         with self.assertRaises(ValueError):
                             module.request_command({**request, 'stage': other})
@@ -197,6 +203,13 @@ class SharedKernelModels(unittest.TestCase):
         archive = json.loads((folder / 'owned-process-extraction.json').read_text())
         self.assertEqual(archive['base'], 'c73c8e15400890e5dfcb0d32d178929a5522ab5c')
         current = (folder / 'employee-benchmark-supervisor.py').read_text()
+        registry_inverse = json.loads((folder / 'employee-lifecycle-focused-inverse.json').read_text())
+        self.assertEqual(registry_inverse['base'], '7168310233f4bdf9dbe9308c1b783a8592c1ca8c')
+        self.assertEqual(hashlib.sha256(current.encode()).hexdigest(), registry_inverse['currentSha256'])
+        for change in reversed(registry_inverse['changes']):
+            self.assertEqual(current.count(change['after']), 1)
+            current = current.replace(change['after'], change['before'])
+        self.assertEqual(hashlib.sha256(current.encode()).hexdigest(), registry_inverse['oldSha256'])
         extension = json.loads((folder / 'employee-ascii-adapter-inverse.json').read_text())
         self.assertEqual(extension['base'], '756e834dc0db88b5131547bc6d5108284201ab48')
         self.assertEqual(hashlib.sha256(current.encode()).hexdigest(), extension['currentAdapterSha256'])
@@ -252,6 +265,8 @@ class SharedKernelModels(unittest.TestCase):
             kernel = source / 'owned-process.py'
             adapter.write_bytes((folder / adapter.name).read_bytes())
             kernel.write_bytes((folder / kernel.name).read_bytes())
+            registry = source / 'employee-lifecycle-profile.json'
+            registry.write_bytes((folder / registry.name).read_bytes())
             cached = Path(importlib.util.cache_from_source(str(kernel)))
             cached.parent.mkdir()
             poison = compile("raise RuntimeError('MODEL_POISON_PYC')", str(kernel), 'exec', dont_inherit=True)
@@ -281,6 +296,7 @@ class SharedKernelModels(unittest.TestCase):
             self.assertEqual(fixed.supervise.__code__.co_filename, str(kernel))
             self.assertEqual(fixed._owned_process.REASONS, module._owned_process.REASONS)
             self.assertEqual(kernel.read_bytes(), (folder / kernel.name).read_bytes())
+            self.assertEqual(registry.read_bytes(), (folder / registry.name).read_bytes())
             self.assertEqual(cached.read_bytes(), importlib.util.MAGIC_NUMBER + struct.pack('<III', 0, int(actual.st_mtime) & 0xffffffff, actual.st_size) + marshal.dumps(poison))
 
 if __name__ == '__main__':

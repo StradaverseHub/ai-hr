@@ -5,13 +5,15 @@ import {fileURLToPath} from 'node:url';
 import {readFileSync,realpathSync,lstatSync} from 'node:fs';
 import {createHash} from 'node:crypto';
 import {singletonSources,singletonSourceMaximum,assertSingletonCoverage} from './singleton-protocol.mjs';
+import {employeeLifecycleUnit} from './employee-lifecycle-profile.mjs';
+import {assertEmployeeLifecycleSourceClosure} from './employee-lifecycle-sources.mjs';
 import {CI_POLICY} from './policy-version.mjs';
 import {inspectPdfToolScope} from './pdf-tool-scope.mjs';
 import {buildUnits,hash,CI_EXECUTION} from './manifest.mjs';
 import {candidateEnvironment,nativePreparationEnvironment} from './candidate-environment.mjs';
 export {hash};
 export function createPlan(cwd = process.cwd()) {
-  const git = (...args) => execFileSync('git', ['-c','safe.directory='+cwd,'-c','core.fsmonitor=false','-c','core.hooksPath=/dev/null',...args], {cwd, env:nativePreparationEnvironment(process.env),encoding: 'utf8'}).trim();
+  const git = (...args) => execFileSync('git', ['-c','safe.directory='+cwd,'-c','core.fsmonitor=false','-c','core.hooksPath=/dev/null',...args], {cwd, env:nativePreparationEnvironment(process.env),encoding: 'utf8',timeout:10000,killSignal:'SIGTERM'}).trim();
   const sha = git('rev-parse', 'HEAD');
   if (git('status', '--porcelain')) throw Error('CI requires a clean candidate');
   if (process.env.AIHR_CI_HEAD && process.env.AIHR_CI_HEAD !== sha) throw Error('CI checkout does not match requested HEAD');
@@ -25,7 +27,7 @@ export function createPlan(cwd = process.cwd()) {
   if(classifierRuntime==='native'&&(major!==22||minor<18))throw Error('Native classifier requires Node 22.18+');
   const loader=classifierRuntime==='native'?['--experimental-strip-types']:['--import','tsx'];
   const classified = execFileSync(process.execPath, [...loader, 'scripts/gate-db-classify.ts', 'explain'], {
-    cwd, env:candidateEnvironment(process.env), input: suite.join('\n') + '\n', encoding: 'utf8', maxBuffer: 16 * 1024 * 1024,
+    cwd, env:candidateEnvironment(process.env), timeout:15000,killSignal:'SIGTERM', input: suite.join('\n') + '\n', encoding: 'utf8', maxBuffer: 16 * 1024 * 1024,
   }).trim().split('\n').map(line => line.split('\t'));
   const groups = {nodb: [], db: []};
   for (const [kind, file] of classified) {
@@ -36,6 +38,7 @@ export function createPlan(cwd = process.cwd()) {
   const browsers = tracked.filter(f => f.endsWith('.browser.test.tsx')).sort();
   const pdfTooling=inspectPdfToolScope(cwd);
   const units = buildUnits(suite,groups,browsers);
+  for(const unit of units)if(employeeLifecycleUnit(unit))assertEmployeeLifecycleSourceClosure(singletonSources(unit),JSON.parse(readFileSync(resolve(cwd,'db/migrations/meta/_journal.json'),'utf8')));
   const singletonSourceHashes=Object.fromEntries(units.filter(u=>u.singleton).map(unit=>[unit.id,Object.fromEntries(singletonSources(unit).map(file=>{
    const path=resolve(cwd,file);if(realpathSync(path)!==path||!lstatSync(path).isFile()||lstatSync(path).size>singletonSourceMaximum(file))throw Error('Unsafe singleton source');
    return [file,createHash('sha256').update(readFileSync(path)).digest('hex')];

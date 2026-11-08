@@ -164,9 +164,31 @@ test('full-CI receipt reader accepts only owned bounded direct regular auxiliary
   rmSync(path);symlinkSync(join(temp,'foreign'),path);assert.throws(()=>readFullCiRoleReceipt(dir,binding,c.sourceHashes,temp));rmSync(path);mkdirSync(path);assert.throws(()=>readFullCiRoleReceipt(dir,binding,c.sourceHashes,temp));rmSync(path,{recursive:true});writeFileSync(path,'x'.repeat(32769));assert.throws(()=>readFullCiRoleReceipt(dir,binding,c.sourceHashes,temp));writeFileSync(path,'{}');assert.throws(()=>readFullCiRoleReceipt(dir,binding,c.sourceHashes,temp));writeFileSync(path,JSON.stringify(receipt));assert.throws(()=>readFullCiRoleReceipt(dir,binding,c.sourceHashes,join(temp,'foreign')));
  }finally{rmSync(temp,{recursive:true,force:true});}
 });
+function assertFullCiProvisioningWiring(source){
+ const start=source.indexOf('export async function main(){');assert(start>=0);source=source.slice(start);
+ const reset=source.indexOf("if (reset.status !== 0)"),context=source.indexOf('const roleContext=roleProfile===fullRoleMode?actualFullCiRoleContext(',reset),migration=source.indexOf('const migrate = ',context),receipt=source.indexOf('rolePrerequisites=readFullCiRoleReceipt(',migration),environment=source.indexOf('const env = {...candidateEnvironment(process.env)',receipt),vitest=source.indexOf('const child = ',environment);
+ assert(reset>=0&&context>reset&&migration>context&&receipt>migration&&environment>receipt&&vitest>environment);
+ const line=at=>source.slice(at,source.indexOf('\n',at)).trim();
+ assert(source.includes("const reset = lifecycle?fixedStage('reset'):spawnSync('bash', [postgres, 'reset'], {stdio: 'inherit', env: {...process.env, AIHR_CI_UNIT: id}});"));
+ assert.equal(line(migration),"const migrate = lifecycle?fixedStage('migrate',roleContext?.env??candidateEnvironment(process.env)):roleContext?spawnSync('pnpm', ['db:migrate'], {stdio: 'inherit',env:roleContext.env}):spawnSync('pnpm', ['db:migrate'], {stdio: 'inherit',env:candidateEnvironment(process.env)});");
+ assert.equal(line(vitest),"const child = lifecycle?fixedStage(lifecycleProfile.stage,env):spawnSync('pnpm', args, {stdio: 'inherit', env});");
+ assert.doesNotMatch(line(environment),/roleContext|AIHR_CI_ROLE_|AIHR_CI_DISPOSABLE_ROLE/);
+ assert.match(source,/report\.batches\.push\(\{exitCode,databaseEvidence,\.\.\.\(rolePrerequisites\?\{rolePrerequisites\}:\{\}\)/);
+}
 test('full-CI provisioning is wired only between successful DB reset and migration, never Vitest/globalsetup',()=>{
- const source=readFileSync(new URL('./run-unit.mjs',import.meta.url),'utf8'),reset=source.indexOf("if (reset.status !== 0)"),context=source.indexOf('const roleContext=roleProfile===fullRoleMode?actualFullCiRoleContext(',reset),migration=source.indexOf("const migrate = roleContext?spawnSync('pnpm', ['db:migrate']",context),receipt=source.indexOf('rolePrerequisites=readFullCiRoleReceipt(',migration),vitest=source.indexOf("const child = spawnSync('pnpm', args",receipt);
- assert(reset>=0&&context>reset&&migration>context&&receipt>migration&&vitest>receipt);assert.match(source.slice(migration,receipt),/env:roleContext\.env/);assert.match(source.slice(vitest,vitest+100),/stdio: 'inherit', env/);assert.doesNotMatch(source.slice(source.indexOf('const env = {...process.env'),vitest),/roleContext|AIHR_CI_ROLE_|AIHR_CI_DISPOSABLE_ROLE/);assert.match(source,/report\.batches\.push\(\{exitCode,databaseEvidence,\.\.\.\(rolePrerequisites\?\{rolePrerequisites\}:\{\}\)/);
+ assertFullCiProvisioningWiring(readFileSync(new URL('./run-unit.mjs',import.meta.url),'utf8'));
+});
+test('both owned and ordinary provisioning branches retain ordering and never give role setup authority to Vitest',()=>{
+ const source=readFileSync(new URL('./run-unit.mjs',import.meta.url),'utf8');
+ for(const [before,after]of [
+  ["if (reset.status !== 0)","if (reset.status === 0)"],
+  ['const roleContext=roleProfile===fullRoleMode?','const roleContext=undefined;const unused=roleProfile===fullRoleMode?'],
+  ["lifecycle?fixedStage('reset')","lifecycle?fixedStage('migrate')"],
+  ["lifecycle?fixedStage('migrate',roleContext?.env??candidateEnvironment(process.env))","lifecycle?fixedStage('migrate',candidateEnvironment(process.env))"],
+  ["{stdio: 'inherit',env:roleContext.env}","{stdio: 'inherit',env:candidateEnvironment(process.env)}"],
+  ["lifecycle?fixedStage(lifecycleProfile.stage,env)","lifecycle?fixedStage('migrate',env)"],
+  ['const env = {...candidateEnvironment(process.env),','const env = {...roleContext.env,'],
+ ]){assert.equal(source.split(before).length-1,1);assert.throws(()=>assertFullCiProvisioningWiring(source.replace(before,after)));}
 });
 
 import {gunzipSync} from 'node:zlib';
@@ -182,7 +204,7 @@ test('actual pinned7c57 ordinary migration profile performs no new source reads 
  const owners=profileOwners(actualLegacy7c57);assert.equal(inspectFullCiRoleApplicability(owners.read,owners.present),'ordinary');assert.deepEqual(owners.reads,['package.json','db/migrations/meta/_journal.json']);assert.equal(JSON.parse(actualLegacy7c57['package.json']).scripts['db:migrate'],'drizzle-kit migrate');
  // The known immutable Git snapshot has no0859 journal row/file and none of the3 new helper sources.
  assert.equal(JSON.parse(actualLegacy7c57['db/migrations/meta/_journal.json']).entries.some(row=>row.tag.includes('employee_draft_discard_custody')),false);for(const path of Object.keys(actualFullHandshakeV1))assert.equal(owners.present(path),false);
- const source=readFileSync(new URL('./run-unit.mjs',import.meta.url),'utf8');const profile=source.indexOf("const roleProfile=unit.kind==='db'?actualFullCiRoleApplicability():null"),reset=source.indexOf("const reset = spawnSync('bash'",profile),context=source.indexOf('const roleContext=roleProfile===fullRoleMode?',reset);assert(profile>=0&&reset>profile&&context>reset);assert.match(source,/const migrate = roleContext\?spawnSync\('pnpm', \['db:migrate'\], \{stdio: 'inherit',env:roleContext.env\}\):spawnSync\('pnpm', \['db:migrate'\], \{stdio: 'inherit',env:candidateEnvironment\(process.env\)\}\);/);assert.match(source,/if\(roleContext\)rolePrerequisites=readFullCiRoleReceipt/);
+ const source=readFileSync(new URL('./run-unit.mjs',import.meta.url),'utf8');const profile=source.indexOf("const roleProfile=unit.kind==='db'?actualFullCiRoleApplicability():null"),reset=source.indexOf("const reset = lifecycle?fixedStage('reset'):spawnSync('bash'",profile),context=source.indexOf('const roleContext=roleProfile===fullRoleMode?',reset);assert(profile>=0&&reset>profile&&context>reset);assertFullCiProvisioningWiring(source);assert.match(source,/if\(roleContext\)rolePrerequisites=readFullCiRoleReceipt/);
 });
 test('required0859 and frozen three-source handshake demand the strict full receipt, without fallback',()=>{
  const files=requiredRoleProfile(),owners=profileOwners(files);assert.equal(inspectFullCiRoleApplicability(owners.read,owners.present),'full_ci_disposable');assert(owners.reads.includes('scripts/lib/discard-premigration.ts'));
