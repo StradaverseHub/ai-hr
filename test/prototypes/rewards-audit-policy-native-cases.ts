@@ -71,6 +71,16 @@ export function registerRewardsAuditPolicyNativeCases(){
  afterEach(async()=>{await ownership.drain();await Promise.all([...caseSockets].map(connection=>connection.end({timeout:0})));caseSockets.clear();await fixture?.finishCase();vi.restoreAllMocks();vi.unstubAllEnvs();});
  afterAll(async()=>{await ownership.drain();await controller.close(fixture!==undefined,async()=>{if(!fixture)throw Error('Unknown policy ownership');await fixture.close();});});
  const owner=controller.owner;
+ type NativeRoot={xid:string;pid:number;started:string};
+ async function rootIdentity(tx:TransactionSql):Promise<NativeRoot>{const [row]=await tx`select pg_current_xact_id()::text as xid,pg_backend_pid()as pid,(select backend_start::text from pg_stat_activity where pid=pg_backend_pid())as started`;if(!row||typeof row.xid!=='string'||typeof row.pid!=='number'||typeof row.started!=='string')throw Error('Actual native root identity required');return{xid:row.xid,pid:row.pid,started:row.started};}
+ async function allFrames(tenant:string){return Array.from(await owner.client`select to_jsonb(f)as value from reward_audit_policy_private.floor_frame f where tenant_id=${tenant}::uuid order by root_xid`).map(row=>row.value);}
+ async function exactFrames(tenant:string,before:readonly unknown[],roots:readonly NativeRoot[]){
+  expect(new Set(roots.map(root=>root.xid)).size).toBe(roots.length);
+  const added=Array.from(await owner.client`select jsonb_build_object('tenant_id',${tenant}::uuid,'root_xid',r.xid::xid8,'backend_pid',r.pid,'backend_started_at',r.started::timestamptz,'policy_version',1,'observed_floor',false)as value from jsonb_to_recordset(${JSON.stringify(roots)}::text::jsonb)as r(xid text,pid integer,started text)`).map(row=>row.value);
+  const complete=(rows:readonly unknown[])=>rows.map(row=>JSON.stringify(row)).sort();
+  expect(complete(await allFrames(tenant))).toEqual(complete([...before,...added]));
+ }
+
  async function backend(connection:ReturnType<typeof postgres>){const [row]=await connection`select pg_backend_pid()as pid,(select backend_start::text from pg_stat_activity where pid=pg_backend_pid())as started`;if(!row||typeof row.pid!=='number'||typeof row.started!=='string')throw Error('Actual native session identity required');return{pid:row.pid,started:row.started};}
  async function blocking(context:TestContext,waiting:{pid:number;started:string},holder:{pid:number;started:string}){
   const until=Date.now()+200;
@@ -223,10 +233,10 @@ export function registerRewardsAuditPolicyNativeCases(){
   });
  });
  nativeIt(12,async()=>{
-  const f=await setup();
+  const f=await setup(),before=await allFrames(f.b.tenantId),roots:NativeRoot[]=[];
   for(const mode of ['repeatable read','serializable']){
    const connection=app();await connection.begin('isolation level '+mode,async tx=>{
-    await stamp(tx,f.ctx);await tx`set constraints all immediate`;
+    await stamp(tx,f.ctx);roots.push(await rootIdentity(tx));await tx`set constraints all immediate`;
     // Actual event trigger -> History lock -> fixed-snapshot uniqueness probe.
     // A second append reuses only the bound floor bit and still advances head.
     for(const index of [1,2])expect((await tx`insert into public.domain_event(tenant_id,aggregate_type,aggregate_id,event_type,actor_type,actor_id)values(${f.b.tenantId}::uuid,'policy-fixture',${randomUUID()}::uuid,${'policy.probe-'+mode+'-'+index},'user',${f.ctx.userId!}::uuid)returning chain_seq::int as seq`)[0].seq).toBeNull();
@@ -236,7 +246,30 @@ export function registerRewardsAuditPolicyNativeCases(){
   }
   // Native private state is observable only by the test owner. Every observed
   // committed false frame is real; no caller-supplied verified flags exist.
-  expect((await owner.client`select count(*)::int as n from reward_audit_policy_private.floor_frame where tenant_id=${f.b.tenantId}::uuid and not observed_floor`)[0].n).toBe(2);
+  await exactFrames(f.b.tenantId,before,roots);
+  // App LOGIN retains no private INSERT privilege. The independent owner
+  // control observes the SAME constraint timing after the SAME real helper,
+  // in its actual RR/SERIALIZABLE transaction, rather than resetting it first.
+  for(const mode of ['repeatable read','serializable']){
+   const ownedBefore=await allFrames(f.b.tenantId);
+   const ownRoot=await owner.client.begin('isolation level '+mode,async tx=>{
+    expect((await tx`select current_user=session_user and current_user::regrole::oid=(select relowner from pg_class where oid='public.domain_event'::regclass)as native_owner,current_setting('transaction_isolation')as isolation,current_setting('transaction_read_only')as readonly,current_setting('statement_timeout')as statement,current_setting('lock_timeout')as lock`)[0]).toEqual({native_owner:true,isolation:mode,readonly:'off',statement:'20s',lock:'300ms'});
+    const identity=await rootIdentity(tx);await tx`set constraints all immediate`;
+    expect((await tx`select app._domain_event_next(${f.b.tenantId}::uuid)as pre`)[0].pre).toEqual({armed:false,priorSeq:null,priorHash:null});
+    await tx`savepoint observe_restored_marker_timing`;
+    try{
+     // A leaked DEFERRED state would make THIS INSERT succeed, so the
+     // refusal assertion fails before any later SET CONSTRAINTS or COMMIT.
+     await refusal(tx`insert into reward_audit_policy_private.floor_marker(tenant_id,policy_version)values(${f.b.tenantId}::uuid,1)`,'55000');
+    }finally{
+     // Even the deliberately broken-state regression cannot commit a fake
+     // floor: always remove its row and queued trigger before the outer TX.
+     await tx`rollback to savepoint observe_restored_marker_timing`;await tx`release savepoint observe_restored_marker_timing`;
+    }
+    expect((await tx`select 1 as usable,not exists(select 1 from reward_audit_policy_private.floor_marker where tenant_id=${f.b.tenantId}::uuid)as no_marker`)[0]).toEqual({usable:1,no_marker:true});return identity;
+   });
+   await exactFrames(f.b.tenantId,ownedBefore,[ownRoot]);
+  }
  });
  nativeIt(13,async context=>{
   const f=await setup();
@@ -265,26 +298,26 @@ export function registerRewardsAuditPolicyNativeCases(){
   expect((await owner.client`select count(*)::int as n from reward_audit_private.receipt where tenant_id=${f.b.tenantId}::uuid`)[0].n).toBe(2);
  });
  nativeIt(14,async context=>{
-  const f=await setup(),first=app(),second=app(),holder=app();
+  const f=await setup(),first=app(),second=app(),holder=app(),before=await allFrames(f.b.tenantId),roots:NativeRoot[]=[];
   const firstIdentity=await backend(first),secondIdentity=await backend(second),holderIdentity=await backend(holder);
   await owned().fixture.withProbeBarrier(f.b.tenantId,async key=>{
    await holder`select pg_advisory_lock(${key}::text::bigint)`;let a:Promise<unknown>|undefined,b:Promise<unknown>|undefined;
    try{
-    a=first.begin('isolation level repeatable read',async tx=>{await stamp(tx,f.ctx);return(await tx`insert into public.domain_event(tenant_id,aggregate_type,aggregate_id,event_type,actor_type,actor_id)values(${f.b.tenantId}::uuid,'policy-fixture',${randomUUID()}::uuid,'policy.two-rr-first','user',${f.ctx.userId!}::uuid)returning chain_seq::int as seq`)[0];});void a.catch(()=>{});
+    a=first.begin('isolation level repeatable read',async tx=>{await stamp(tx,f.ctx);roots.push(await rootIdentity(tx));return(await tx`insert into public.domain_event(tenant_id,aggregate_type,aggregate_id,event_type,actor_type,actor_id)values(${f.b.tenantId}::uuid,'policy-fixture',${randomUUID()}::uuid,'policy.two-rr-first','user',${f.ctx.userId!}::uuid)returning chain_seq::int as seq`)[0];});void a.catch(()=>{});
     await blocking(context,firstIdentity,holderIdentity);
-    b=second.begin('isolation level repeatable read',async tx=>{await stamp(tx,f.ctx);return(await tx`insert into public.domain_event(tenant_id,aggregate_type,aggregate_id,event_type,actor_type,actor_id)values(${f.b.tenantId}::uuid,'policy-fixture',${randomUUID()}::uuid,'policy.two-rr-second','user',${f.ctx.userId!}::uuid)returning chain_seq::int as seq`)[0];});void b.catch(()=>{});
+    b=second.begin('isolation level repeatable read',async tx=>{await stamp(tx,f.ctx);roots.push(await rootIdentity(tx));return(await tx`insert into public.domain_event(tenant_id,aggregate_type,aggregate_id,event_type,actor_type,actor_id)values(${f.b.tenantId}::uuid,'policy-fixture',${randomUUID()}::uuid,'policy.two-rr-second','user',${f.ctx.userId!}::uuid)returning chain_seq::int as seq`)[0];});void b.catch(()=>{});
     await blocking(context,secondIdentity,firstIdentity);
     expect((await holder`select pg_advisory_unlock(${key}::text::bigint)as released`)[0].released).toBe(true);
     expect(await a).toEqual({seq:null});expect(await b).toEqual({seq:null});
     expect(await owner.client`select tenant_id from reward_audit_policy_private.floor_marker where tenant_id=${f.b.tenantId}::uuid`).toHaveLength(0);
-    expect((await owner.client`select count(*)::int as n from reward_audit_policy_private.floor_frame where tenant_id=${f.b.tenantId}::uuid and not observed_floor`)[0].n).toBe(2);
+    expect(roots).toHaveLength(2);await exactFrames(f.b.tenantId,before,roots);
    }finally{
     await holder`select pg_advisory_unlock_all()`;await Promise.allSettled([a,b].filter((value):value is Promise<unknown>=>value!==undefined));
    }
   });
  });
  nativeIt(15,async context=>{
-  const f=await setup(),readerConnection=reader(),writer=app(),holder=app(),observed=deferred(),finalize=deferred();let receiptId:string|undefined;
+  const f=await setup(),readerConnection=reader(),writer=app(),holder=app(),observed=deferred(),finalize=deferred(),before=await allFrames(f.b.tenantId),roots:NativeRoot[]=[];let receiptId:string|undefined;
   const readerIdentity=await backend(readerConnection),writerIdentity=await backend(writer),holderIdentity=await backend(holder);
   await setSetting(f.b.tenantId,'audit.hash_chain_enabled',true);
   const abort=()=>finalize.resolve();context.signal.addEventListener('abort',abort,{once:true});
@@ -298,7 +331,7 @@ export function registerRewardsAuditPolicyNativeCases(){
    await owned().fixture.withProbeBarrier(f.b.tenantId,async key=>{
     await holder`select pg_advisory_lock(${key}::text::bigint)`;
     try{
-     command=writer.begin('isolation level repeatable read',async tx=>{await stamp(tx,f.ctx);return(await tx`insert into public.domain_event(tenant_id,aggregate_type,aggregate_id,event_type,actor_type,actor_id)values(${f.b.tenantId}::uuid,'policy-fixture',${randomUUID()}::uuid,'policy.probe-before-first-floor','user',${f.ctx.userId!}::uuid)returning chain_seq::int as seq`)[0];});void command.catch(()=>{});
+     command=writer.begin('isolation level repeatable read',async tx=>{await stamp(tx,f.ctx);roots.push(await rootIdentity(tx));return(await tx`insert into public.domain_event(tenant_id,aggregate_type,aggregate_id,event_type,actor_type,actor_id)values(${f.b.tenantId}::uuid,'policy-fixture',${randomUUID()}::uuid,'policy.probe-before-first-floor','user',${f.ctx.userId!}::uuid)returning chain_seq::int as seq`)[0];});void command.catch(()=>{});
      await blocking(context,writerIdentity,holderIdentity);finalize.resolve();
      await blocking(context,readerIdentity,writerIdentity);
      expect((await holder`select pg_advisory_unlock(${key}::text::bigint)as released`)[0].released).toBe(true);
@@ -307,7 +340,7 @@ export function registerRewardsAuditPolicyNativeCases(){
    });
    expect((await owner.client`select receipt_id from reward_audit_policy_private.floor_marker where tenant_id=${f.b.tenantId}::uuid`)[0].receipt_id).toBe(receiptId);
    expect((await owner.client`select count(*)::int as n from reward_audit_private.receipt where id=${receiptId!}::uuid`)[0].n).toBe(1);
-   expect((await owner.client`select count(*)::int as n from reward_audit_policy_private.floor_frame where tenant_id=${f.b.tenantId}::uuid and not observed_floor`)[0].n).toBe(1);
+   expect(roots).toHaveLength(1);await exactFrames(f.b.tenantId,before,roots);
    expect((await event(app(),f.ctx,'policy.fresh-after-transient-probe')).chain_seq).toBe(1);
   }finally{finalize.resolve();await Promise.allSettled([receipt,...(command?[command]:[])]);context.signal.removeEventListener('abort',abort);}
  });
