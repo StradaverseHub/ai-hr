@@ -3,6 +3,15 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {validateNativeBuildMetadata,provisionNativeNextBuild,captureNativeNextInstallation,nativeHelperClosure,NATIVE_HELPER_SOURCES} from './native-next-build-packet.mjs';
 import {singletonSources,singletonDescriptor} from './singleton-protocol.mjs';
+import {installationShape} from './native-next-installation.mjs';
+test('native installation witness requires V2 relocated bytes and refuses a historical V1 digest',()=>{
+ const value={version:1,kind:'LOCKED_HOSTED_INSTALL_BEFORE_CANDIDATE_VERIFICATION',
+  node:{path:'/opt/node',sha256:'1'.repeat(64),bytes:100},lockSha256:'2'.repeat(64),packageSha256:'3'.repeat(64),
+  dependencies:{normalization:'ROOT_COPY_DEPENDENCIES_V2',sha256:'4'.repeat(64),entries:10,bytes:200}};
+ assert.equal(installationShape(value),value);
+ assert.throws(()=>installationShape({...value,dependencies:{...value.dependencies,normalization:'ROOT_COPY_DEPENDENCIES_V1'}}));
+ assert.throws(()=>installationShape({...value,dependencies:{...value.dependencies,normalization:'caller-claimed-relocation'}}));
+});
 function fixture(){
  const expected={source:'a'.repeat(40),controller:'b'.repeat(40),runId:123,controllerBranch:'codex/native-next-ci'};
  const repository={id:1333414856,full_name:'StradaverseHub/ai-hr'},now=Date.parse('2026-11-08T01:10:00Z');

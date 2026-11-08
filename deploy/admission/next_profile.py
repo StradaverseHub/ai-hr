@@ -27,6 +27,7 @@ MAX_FILE = 256 * 1024 * 1024
 MAX_TOTAL = 4 * 1024 * 1024 * 1024
 SHA = re.compile(r'[a-f0-9]{64}')
 SAFE_PATH = re.compile(r'/[A-Za-z0-9_./@-]+')
+SYSTEM_LIBRARY_PATH = re.compile(r'/usr/lib/[A-Za-z0-9_./@+-]+')
 EXTRA_PROPERTIES = ('ProtectSystem', 'ProtectHome', 'PrivateMounts', 'NoNewPrivileges', 'CapabilityBoundingSet',
                     'RestrictNamespaces', 'BindPaths', 'BindReadOnlyPaths', 'ReadWritePaths',
                     'ReadOnlyPaths', 'Slice', 'CPUQuotaPerSecUSec', 'MemoryHigh', 'MemoryMax')
@@ -51,6 +52,17 @@ def path(value: Any, require) -> pathlib.Path:
     require(isinstance(value, str) and SAFE_PATH.fullmatch(value) is not None
             and str(pathlib.PurePosixPath(value)) == value and '..' not in value.split('/'),
             'Unsafe managed Next path')
+    return pathlib.Path(value)
+
+
+def system_library_path(value: Any, require) -> pathlib.Path:
+    # Real ELF mappings include names such as libstdc++.so.6. Canonical absolute
+    # system libraries have a distinct grammar; managed/config/producer paths
+    # retain their existing stricter grammar. This never reaches a shell.
+    require(isinstance(value, str) and len(value.encode()) <= 4096
+            and SYSTEM_LIBRARY_PATH.fullmatch(value) is not None
+            and str(pathlib.PurePosixPath(value)) == value
+            and '..' not in value.split('/'), 'Unsafe native system library path')
     return pathlib.Path(value)
 
 
@@ -243,7 +255,7 @@ class NextRuntime:
         result = {}
         for row in rows:
             closed(row, {'path', 'sha256'}, self.require)
-            file = path(row['path'], self.require)
+            file = system_library_path(row['path'], self.require)
             self.require(str(file).startswith('/usr/lib/') and isinstance(row['sha256'], str)
                          and SHA.fullmatch(row['sha256']) is not None and str(file) not in result,
                          'Unsupported native system runtime member')
@@ -483,9 +495,9 @@ class NextRuntime:
         closed(typed, {'BindPaths', 'BindReadOnlyPaths', 'RestrictNamespaces', 'CapabilityBoundingSet'}, require)
         for name in ('RestrictNamespaces', 'CapabilityBoundingSet'):
             item = typed[name]
+            # get-property serializes one typed variant, unlike call's body list.
             require(isinstance(item, dict) and set(item) == {'type', 'data'} and item['type'] == 't'
-                    and isinstance(item['data'], list) and len(item['data']) == 1
-                    and type(item['data'][0]) is int and item['data'][0] == 0,
+                    and type(item['data']) is int and item['data'] == 0,
                     'Typed worker privilege/namespace restriction differs')
         for name, expected in (
                 ('BindReadOnlyPaths', [[root, root, False, 0]]),

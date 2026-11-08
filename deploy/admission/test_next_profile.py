@@ -30,6 +30,26 @@ I = load('next_profile_shared_inventory', ROOT / '.github/ci/runtime_inventory.p
 sha = lambda raw: hashlib.sha256(raw).hexdigest()
 
 class NextProfileTests(unittest.TestCase):
+    def test_native_library_plus_names_preserve_all_other_path_boundaries(self):
+        names = ['/usr/lib/x86_64-linux-gnu/libstdc++.so.6.0.33',
+                 '/usr/lib/x86_64-linux-gnu/libgcc_s.so.1']
+        for name in names:
+            self.assertEqual(str(N.system_library_path(name, C.require)), name)
+        with self.assertRaises(C.Refused):
+            N.path(names[0], C.require)
+        self.manifest['systemFiles'] = [{'path': name, 'sha256': sha(b'synthetic-native')} for name in sorted(names)]
+        self.write_metadata()
+        self.assertEqual(list(self.runtime().system_files), sorted(names))
+        bad = ['/usr/lib', '/usr/lib/', '/usr/lib//libstdc++.so',
+               '/usr/lib/../lib/libstdc++.so', '/usr/lib/./libstdc++.so',
+               '/usr/lib/libstdc++.so/', '/opt/libstdc++.so',
+               '/usr/library/libstdc++.so', 'usr/lib/libstdc++.so',
+               '/usr/lib/libstdc++.so;id', '/usr/lib/libstdc++.so\\x',
+               '/usr/lib/libstdc++.so\x00', '/usr/lib/' + 'x' * 4096]
+        for name in bad:
+            with self.subTest(name=name), self.assertRaises(C.Refused):
+                N.system_library_path(name, C.require)
+
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(prefix='aihr-next-profile-source-')
         self.root = pathlib.Path(self.temp.name).resolve()
@@ -389,15 +409,23 @@ class NextProfileTests(unittest.TestCase):
             'MemoryHigh': 'infinity', 'MemoryMax': 'infinity',
             'ExecStart': '{ path=' + str(self.node) + ' ; argv[]=' + str(self.node)
                 + ' --max-old-space-size=2048 ' + root + '/node_modules/next/dist/bin/next start --hostname 127.0.0.1 ; ignore_errors=no ; pid=0 ; }'})
-        typed = {'CapabilityBoundingSet': {'type': 't', 'data': [0]},
-            'RestrictNamespaces': {'type': 't', 'data': [0]},
+        typed = {'CapabilityBoundingSet': {'type': 't', 'data': 0},
+            'RestrictNamespaces': {'type': 't', 'data': 0},
             'BindReadOnlyPaths': {'type': 'a(ssbt)', 'data': [[root, root, False, 0]]},
             'BindPaths': {'type': 'a(ssbt)', 'data': [[row['source'], root + '/' + row['target'], False, 0]
                 for row in self.value['unitCacheMounts'][unit]]}}
         with patch.object(runtime, 'cache_sources', return_value={}):
             runtime.unit_configuration(unit, props, typed)  # Declaration validation only.
-            for key, value in [('CapabilityBoundingSet', {'type': 't', 'data': [False]}),
-                               ('RestrictNamespaces', {'type': 't', 'data': [1]}),
+            for key, value in [('CapabilityBoundingSet', {'type': 't', 'data': False}),
+                               ('CapabilityBoundingSet', {'type': 't', 'data': 1}),
+                               ('CapabilityBoundingSet', {'type': 't', 'data': [0]}),
+                               ('RestrictNamespaces', {'type': 't', 'data': 1}),
+                               ('RestrictNamespaces', {'type': 't', 'data': [0]}),
+                               ('RestrictNamespaces', {'type': 't', 'data': '0'}),
+                               ('RestrictNamespaces', {'type': 't', 'data': 0.0}),
+                               ('RestrictNamespaces', {'type': 's', 'data': 0}),
+                               ('RestrictNamespaces', {'type': 't', 'data': None}),
+                               ('RestrictNamespaces', {'type': 't', 'data': 0, 'approved': True}),
                                ('BindPaths', {'type': 'a(ssbt)', 'data': []}),
                                ('BindReadOnlyPaths', {'type': 'a(ssbt)', 'data': [[root, root, False, 4096]]})]:
                 with self.assertRaises(C.Refused):

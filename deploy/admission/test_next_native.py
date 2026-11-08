@@ -5,9 +5,11 @@ executes stdlib preparation/controllers; all Next/probe/browser JS is nonroot.
 The existing fake-backend native protocol test remains a separate 240s gate.
 """
 import contextlib
+import ast
 import hashlib
 import http.client
 import importlib.util
+import io
 import json
 import os
 import pathlib
@@ -21,6 +23,7 @@ import stat
 import subprocess
 import sys
 import time
+import types
 
 TOTAL_DEADLINE = time.monotonic() + 480
 DEADLINE = TOTAL_DEADLINE - 30  # Cleanup has reserved time inside the same envelope.
@@ -28,6 +31,7 @@ SAFE_ENV = {'PATH': '/usr/sbin:/usr/bin:/sbin:/bin', 'LANG': 'C', 'LC_ALL': 'C'}
 UNITS = ['aihr-web@1.service', 'aihr-web@2.service']
 PROXY = 'aihr-admission-nginx.service'
 SLICE = 'aihr-native-next.slice'
+FIXTURE_CGROUP = '/aihr.slice/aihr-native.slice/aihr-native-next.slice'
 BROWSER = 'aihr-native-next-browser.service'
 ROOTS = ['/etc/aihr-admission', '/usr/local/lib/aihr-admission', '/etc/nginx/aihr-admission',
          '/run/aihr-admission', '/var/lib/aihr-admission', '/var/cache/aihr']
@@ -42,6 +46,386 @@ report = {'version': 1, 'kind': 'ACTUAL_NEXT_TWO_WORKER_NATIVE_BOOT_ONLY', 'comp
           '500-actor-steady-load', 'protected-installation', 'cross-build-compatibility']}
 evidence = None
 evidence_fd = None
+PREPACKAGE_GUARDS = {
+    **{'fixture-root-' + str(index): 'directory-absence' for index in range(6)},
+    **{'fixture-unit-' + str(index): 'unit-absence' for index in (0, 1, 2, 4)},
+    'empty-home-parent': 'empty-home', 'empty-home': 'empty-home',
+    **{'sealed-helper-' + str(index): 'sealed-helpers' for index in range(6)},
+    'node-hint': 'node-hint', 'node-stat': 'node-stat',
+    'node-before-read': 'node-read', 'node-after-read': 'node-read',
+    'node-installed-bytes': 'node-read',
+    **{code: 'slice-absence' for code in ('slice-metadata', 'slice-paths', 'slice-file-absent',
+        'slice-member-units', 'slice-cgroup-absent')},
+}
+PREPACKAGE_STAGES = frozenset(PREPACKAGE_GUARDS.values()) | {'owned-directories', 'node-install'}
+CONFIGURATION_STAGES = frozenset({'principal', 'cache-sources', 'tls', 'unit-files',
+    'manager-reload', 'guarded-profile', 'check-only', 'proxy-start', 'empty-publication'})
+# Exact complete controller messages only. Never copy raw stderr, profile values,
+# native unit contents, private paths or exception text into public evidence.
+CONFIGURATION_REASONS = {
+    'Managed path is missing': 'managed-path-missing',
+    'Managed paths must not be symlinks': 'managed-path-link',
+    'Managed path has an unexpected owner': 'managed-path-owner',
+    'Managed path is writable by another principal': 'managed-path-writable',
+    'Unexpected managed path type': 'managed-path-type',
+    'Managed Next profile could not be verified': 'next-profile-verification',
+    'Managed Next release inventory is unverified': 'next-release-verification',
+    'Managed Next native configuration is unverified': 'next-native-configuration',
+    'Managed Next package identity differs': 'package-identity',
+    'Managed private runtime defaults differ': 'private-runtime-defaults',
+    'Owned hosted app-role database required': 'app-database-scope',
+    'Compiled bytes differ from exact format2 member': 'compiled-format2-member',
+    'Unknown compiled envelope member': 'compiled-envelope-member',
+    'Managed aggregate resource envelope differs': 'aggregate-envelope',
+    'Managed resource envelope digest differs': 'aggregate-digest',
+    'Managed package ownership or mode differs': 'package-owner-mode',
+    'Managed package bytes differ': 'package-bytes',
+    'Incomplete managed package inventory': 'package-inventory',
+    'Managed package contains application prerender data': 'application-prerender',
+    'Compiled dependency alias target differs': 'compiled-alias-target',
+    'Compiled external dependency identity differs': 'compiled-external-identity',
+    'Worker service identity differs from its profile': 'unit-command-identity',
+    'Privileged-hook credential source is not qualified': 'unit-credential-source',
+    'Privileged-hook environment source is not qualified': 'unit-environment-source',
+    'Unsupported privileged-hook environment file syntax': 'unit-environment-file-syntax',
+    'Managed worker sandbox/resource declarations differ': 'unit-sandbox-declarations',
+    'Typed worker privilege/namespace restriction differs': 'unit-typed-restrictions',
+    'Exact typed nonrecursive cache/release binds required': 'unit-typed-binds',
+    'Only the exact stock Next command is supported': 'stock-next-command',
+}
+OBSERVER_PATHS = {'controller': '/usr/local/lib/aihr-admission/controller.py',
+    'next-profile': '/usr/local/lib/aihr-admission/next_profile.py',
+    'inventory': '/usr/local/lib/aihr-admission/runtime_inventory.py'}
+OBSERVER_BINDING_STAGES = frozenset({'entry', 'input', 'observer-source', 'controller-source',
+    'next-profile-source', 'inventory-source', 'profile-source', 'source-binding', 'controller-main', 'source-recheck'})
+observer_binding_stage = 'entry'
+OBSERVER_EXCEPTIONS = frozenset({'AssertionError', 'AttributeError', 'EOFError', 'FileNotFoundError',
+    'ImportError', 'IndexError', 'KeyError', 'ModuleNotFoundError', 'NotADirectoryError', 'OSError',
+    'OverflowError', 'PermissionError', 'RuntimeError', 'SyntaxError', 'TimeoutError', 'TypeError',
+    'UnicodeDecodeError', 'UnicodeError', 'ValueError', 'ZeroDivisionError', 'JSONDecodeError'})
+
+
+def observer_code_identity(code):
+    """Exact semantic code fields; independent of marshal string sharing/interning."""
+    def constant(value):
+        if isinstance(value, types.CodeType):
+            return ['code', observer_code_identity(value).hex()]
+        if value is None or value is Ellipsis:
+            return ['none' if value is None else 'ellipsis']
+        if type(value) in (bool, int, str):
+            return [type(value).__name__, str(value)]
+        if isinstance(value, bytes):
+            return ['bytes', value.hex()]
+        if isinstance(value, float):
+            return ['float', value.hex()]
+        if isinstance(value, complex):
+            return ['complex', value.real.hex(), value.imag.hex()]
+        if isinstance(value, tuple):
+            return ['tuple', [constant(item) for item in value]]
+        if isinstance(value, frozenset):
+            return ['frozenset', sorted((constant(item) for item in value), key=lambda item: json.dumps(item, sort_keys=True))]
+        raise AssertionError('Unsupported observer code constant')
+    value = {name: getattr(code, name) for name in ('co_argcount', 'co_posonlyargcount', 'co_kwonlyargcount',
+        'co_nlocals', 'co_stacksize', 'co_flags', 'co_filename', 'co_name', 'co_qualname', 'co_firstlineno',
+        'co_names', 'co_varnames', 'co_freevars', 'co_cellvars')}
+    value.update({name: getattr(code, name).hex() for name in ('co_code', 'co_linetable', 'co_exceptiontable')})
+    value['co_consts'] = [constant(item) for item in code.co_consts]
+    return hashlib.sha256(json.dumps(value, sort_keys=True, separators=(',', ':'), ensure_ascii=True).encode()).digest()
+
+
+def observer_catalog(sources):
+    """Source models can exercise this pure compiler; only the root entry binds files."""
+    require(isinstance(sources, dict) and set(sources) == set(OBSERVER_PATHS), 'Closed observer sources required')
+    result = {}
+    for owner, raw in sources.items():
+        require(isinstance(raw, bytes) and 0 < len(raw) <= 1024 * 1024, 'Observer source exceeds bound')
+        filename = OBSERVER_PATHS[owner]
+        tree = ast.parse(raw, filename)
+        lines = set()
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Call) and (
+                    isinstance(node.func, ast.Name) and node.func.id in ('require', 'check')
+                    or isinstance(node.func, ast.Attribute) and node.func.attr in ('require', 'check')):
+                lines.update(range(node.lineno, node.end_lineno + 1))
+        code = compile(raw, filename, 'exec', dont_inherit=True)
+        codes = set()
+        def gather(value):
+            codes.add(observer_code_identity(value))
+            for child in value.co_consts:
+                if isinstance(child, types.CodeType):
+                    gather(child)
+        gather(code)
+        result[owner] = {'module': code, 'codes': frozenset(codes), 'lines': frozenset(lines)}
+    return result
+
+
+def observer_location(frame, catalog):
+    for owner, filename in OBSERVER_PATHS.items():
+        if frame.f_code.co_filename == filename and frame.f_globals.get('__file__') == filename:
+            trusted = catalog[owner]
+            if (frame.f_lineno in trusted['lines'] and
+                    observer_code_identity(frame.f_code) in trusted['codes']):
+                return {'classification': 'guard', 'owner': owner, 'line': frame.f_lineno}
+    return {'classification': 'foreign-guard'}
+
+
+class ObserverStream(io.TextIOBase):
+    """Never allocate an unbounded copy of private controller output."""
+    def __init__(self, maximum):
+        self.maximum, self.parts, self.length, self.overflow = maximum, [], 0, False
+
+    def write(self, text):
+        count = len(text)
+        amount = len(text.encode('utf8')) if count <= self.maximum else self.maximum + 1
+        if self.length + amount <= self.maximum and not self.overflow:
+            self.parts.append(text)
+            self.length += amount
+        else:
+            self.parts.clear()
+            self.overflow = True
+        return count
+
+    def text(self):
+        return ''.join(self.parts) if not self.overflow else ''
+
+
+def observe_controller_main(controller, catalog):
+    """Call the unmodified main and ALWAYS the original require; restore both globals."""
+    original, argv = controller.require, sys.argv
+    for function in (original, controller.main):
+        require(function.__globals__ is controller.__dict__
+                and observer_code_identity(function.__code__) in catalog['controller']['codes'],
+                'Observer controller code identity differs')
+    guard = None
+    stdout, stderr = ObserverStream(65536), ObserverStream(1024)
+    def observed(*args, **kwargs):
+        nonlocal guard
+        try:
+            return original(*args, **kwargs)
+        except controller.Refused:
+            try:
+                location = observer_location(sys._getframe(1), catalog)
+            except Exception:
+                location = {'classification': 'foreign-guard'}
+            if guard is None or location['classification'] == 'foreign-guard':
+                guard = location
+            raise
+    controller.require = observed
+    sys.argv = [OBSERVER_PATHS['controller'], 'check-only']
+    exception = None
+    try:
+        with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+            try:
+                code = controller.main()
+            except BaseException as error:
+                exception = type(error).__name__ if type(error).__name__ in OBSERVER_EXCEPTIONS else 'unknown'
+                code = error.code if isinstance(error, SystemExit) and type(error.code) is int and 0 <= error.code <= 255 else 1
+    finally:
+        controller.require = original
+        sys.argv = argv
+    require(type(code) is int and 0 <= code <= 255, 'Observer controller exit differs')
+    if code == 0:
+        value = json.loads(stdout.text()) if not stdout.overflow else None
+        require(isinstance(value, dict) and set(value) == {'kind', 'installationAvailable', 'releaseEligible',
+                'rootBoundaryInspected', 'typedEmptyCredentialsVerified', 'immutableEntriesInspected', 'remainingInstallationGates'}
+                and value['kind'] == 'ADMISSION_CHECKONLY' and value['installationAvailable'] is False
+                and value['releaseEligible'] is False and value['rootBoundaryInspected'] is True
+                and value['typedEmptyCredentialsVerified'] is True and type(value['immutableEntriesInspected']) is int
+                and 0 <= value['immutableEntriesInspected'] <= 4_000_000
+                and value['remainingInstallationGates'] == ['authenticated-format3-grant-and-shared-lease',
+                    'complete-nginx-runtime-and-include-inventory', 'resource-envelope-admission',
+                    'old-new-build-and-server-action-compatibility', 'real-next-transport-and-worker-qualification']
+                and not stderr.overflow and stderr.text() == '' and not exception
+                and (guard is None or guard['classification'] != 'foreign-guard'), 'Observer success output is unqualified')
+        return code, stdout.text(), None
+    diagnostic = guard or {'classification': 'cli-refusal'}
+    if guard is None:
+        for name in OBSERVER_EXCEPTIONS:
+            if exception == name or stderr.text() == 'Admission failed: ' + name + '; reconcile before retry\n':
+                diagnostic = {'classification': 'cli-exception', 'exception': name}
+                break
+    return code, '', diagnostic
+
+
+def observer_read(file, maximum):
+    """Fixed root paths only, pinned descriptor and complete nonwritable ancestor chain."""
+    file = pathlib.Path(file)
+    current = pathlib.Path('/')
+    for part in file.parts[1:]:
+        current /= part
+        info = current.lstat()
+        require(info.st_uid == 0 and not stat.S_ISLNK(info.st_mode) and not info.st_mode & 0o022,
+                'Observer root path is unqualified')
+    require(stat.S_ISREG(info.st_mode) and info.st_nlink == 1 and 0 < info.st_size <= maximum,
+            'Observer root file is unqualified')
+    fd = os.open(file, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    try:
+        require(identity(os.fstat(fd)) == identity(info), 'Observer root file changed')
+        with os.fdopen(os.dup(fd), 'rb') as stream:
+            raw = stream.read(maximum + 1)
+        require(len(raw) == info.st_size and identity(os.fstat(fd)) == identity(info) == identity(file.lstat()),
+                'Observer root file changed')
+        return raw
+    finally:
+        os.close(fd)
+
+
+def observer_input(raw):
+    require(isinstance(raw, bytes) and 0 < len(raw) <= 4096, 'Closed observer input exceeds bound')
+    try:
+        expected = json.loads(raw)
+    except (ValueError, UnicodeError):
+        raise AssertionError('Closed observer input differs') from None
+    require(isinstance(expected, dict) and set(expected) == {'version', 'kind', 'observerSha256', 'profileSha256', 'sourceHashes'}
+            and type(expected['version']) is int and expected['version'] == 1
+            and expected['kind'] == 'SOURCE_BOUND_INSTALLED_CHECKONLY_OBSERVER'
+            and isinstance(expected['sourceHashes'], dict) and set(expected['sourceHashes']) == set(OBSERVER_PATHS)
+            and all(isinstance(value, str) and re.fullmatch(r'[a-f0-9]{64}', value) for value in
+                [expected['observerSha256'], expected['profileSha256'], *expected['sourceHashes'].values()]),
+            'Closed observer input differs')
+    require((json.dumps(expected, sort_keys=True, separators=(',', ':'), ensure_ascii=True, allow_nan=False) + '\n').encode() == raw,
+            'Observer input must be canonical')
+    return expected
+
+
+def observer_bind(expected, own_raw, sources, profile_raw):
+    require(isinstance(own_raw, bytes) and 0 < len(own_raw) <= 1024 * 1024
+            and hashlib.sha256(own_raw).hexdigest() == expected['observerSha256'], 'Observer source identity differs')
+    require(isinstance(sources, dict) and set(sources) == set(OBSERVER_PATHS)
+            and all(isinstance(raw, bytes) and 0 < len(raw) <= 1024 * 1024 for raw in sources.values()),
+            'Closed observer sources required')
+    require(all(hashlib.sha256(raw).hexdigest() == expected['sourceHashes'][owner] for owner, raw in sources.items()),
+            'Observer installed source identity differs')
+    require(isinstance(profile_raw, bytes) and 0 < len(profile_raw) <= 32768
+            and hashlib.sha256(profile_raw).hexdigest() == expected['profileSha256'], 'Observer profile identity differs')
+    profile = json.loads(profile_raw)
+    require(isinstance(profile, dict) and type(profile.get('version')) is int and profile['version'] == 2
+            and profile.get('controllerDigest') == expected['sourceHashes']['controller']
+            and profile.get('trustedModules') == {'next_profile.py': expected['sourceHashes']['next-profile'],
+                'runtime_inventory.py': expected['sourceHashes']['inventory']}, 'Observer profile source binding differs')
+    return observer_catalog(sources)
+
+
+def observer_entry():
+    global observer_binding_stage
+    observer_binding_stage = 'entry'
+    require(sys.platform == 'linux' and os.geteuid() == 0, 'Observer requires owned Linux root')
+    own = pathlib.Path(__file__).absolute()
+    require(re.fullmatch(r'/var/lib/aihr-native-build/[1-9][0-9]{0,19}/[A-Za-z0-9_-]{1,100}/helpers/test_next_native.py', str(own)) is not None,
+            'Observer requires sealed fixture source')
+    observer_binding_stage = 'input'
+    expected = observer_input(sys.stdin.buffer.read(4097))
+    observer_binding_stage = 'observer-source'
+    require(stat.S_IMODE(own.lstat().st_mode) == 0o400, 'Observer requires sealed fixture mode')
+    own_raw = observer_read(own, 1024 * 1024)
+    sources = {}
+    for owner, filename in OBSERVER_PATHS.items():
+        observer_binding_stage = owner + '-source'
+        sources[owner] = observer_read(filename, 1024 * 1024)
+    observer_binding_stage = 'profile-source'
+    profile_raw = observer_read('/etc/aihr-admission/profile.json', 32768)
+    observer_binding_stage = 'source-binding'
+    catalog = observer_bind(expected, own_raw, sources, profile_raw)
+    controller = types.ModuleType('source_bound_actual_controller')
+    controller.__file__ = OBSERVER_PATHS['controller']
+    exec(catalog['controller']['module'], controller.__dict__)
+    observer_binding_stage = 'controller-main'
+    code, stdout, diagnostic = observe_controller_main(controller, catalog)
+    observer_binding_stage = 'source-recheck'
+    require(all(observer_read(OBSERVER_PATHS[owner], 1024 * 1024) == raw for owner, raw in sources.items())
+            and observer_read('/etc/aihr-admission/profile.json', 32768) == profile_raw,
+            'Observer installed source changed during CHECKONLY')
+    if diagnostic is not None:
+        sys.stderr.write(json.dumps({'version': 1, 'kind': 'SOURCE_BOUND_CHECKONLY_REFUSAL', **diagnostic}, sort_keys=True) + '\n')
+    else:
+        sys.stdout.write(stdout)
+    return code
+
+
+def observer_diagnostic(raw, catalog):
+    """Only closed source points/classes survive; foreign/private bytes remain generic."""
+    invalid = {'reason': 'controller-observer-refused'}
+    if not isinstance(raw, bytes) or not 0 < len(raw) <= 2048:
+        return invalid
+    try:
+        value = json.loads(raw)
+        if (not isinstance(value, dict) or value.get('version') != 1 or type(value['version']) is not int
+                or value.get('kind') != 'SOURCE_BOUND_CHECKONLY_REFUSAL'
+                or (json.dumps(value, sort_keys=True) + '\n').encode() != raw):
+            return invalid
+        classification = value.get('classification')
+        if classification == 'guard' and set(value) == {'version', 'kind', 'classification', 'owner', 'line'}:
+            owner, line = value['owner'], value['line']
+            if (isinstance(owner, str) and owner in OBSERVER_PATHS and type(line) is int
+                    and line in catalog[owner]['lines']):
+                return {'reason': 'controller-source-guard', 'sourceGuard': {'owner': owner, 'line': line}}
+        elif classification == 'cli-exception' and set(value) == {'version', 'kind', 'classification', 'exception'}:
+            if isinstance(value['exception'], str) and value['exception'] in OBSERVER_EXCEPTIONS:
+                return {'reason': 'controller-exception', 'exception': value['exception']}
+        elif classification in ('foreign-guard', 'cli-refusal', 'binding-refusal') and set(value) == {'version', 'kind', 'classification'}:
+            return {'reason': {'foreign-guard': 'controller-foreign-guard', 'cli-refusal': 'controller-direct-refusal',
+                               'binding-refusal': 'controller-observer-binding'}[classification]}
+        elif classification == 'binding-refusal' and set(value) == {'version', 'kind', 'classification', 'stage'}:
+            if isinstance(value['stage'], str) and value['stage'] in OBSERVER_BINDING_STAGES:
+                return {'reason': 'controller-observer-binding', 'bindingStage': value['stage']}
+    except (ValueError, UnicodeError, TypeError, KeyError):
+        pass
+    return invalid
+
+
+def observer_bound_catalog(expected):
+    sources = {owner: observer_read(filename, 1024 * 1024) for owner, filename in OBSERVER_PATHS.items()}
+    require(all(hashlib.sha256(raw).hexdigest() == expected['sourceHashes'][owner] for owner, raw in sources.items()),
+            'Observer installed source identity differs')
+    return observer_catalog(sources)
+
+
+def configuration_phase(stage):
+    require(isinstance(stage, str) and stage in CONFIGURATION_STAGES, 'Unknown closed configuration stage')
+    report['configuration'] = {'stage': stage, 'declarationsVerified': False,
+                               'actualNextBootVerified': False}
+    save()
+
+
+def configuration_reason(stderr):
+    if not isinstance(stderr, bytes) or len(stderr) > 1024:
+        return 'controller-refused'
+    for message, code in CONFIGURATION_REASONS.items():
+        if stderr == ('Admission refused: ' + message + '\n').encode():
+            return code
+    return 'controller-refused'
+
+
+def configuration_control(operation, observer=None):
+    require(isinstance(operation, str) and operation in ('check-only', 'status'), 'Unsupported closed configuration operation')
+    expected = 'check-only' if operation == 'check-only' else 'empty-publication'
+    require(report.get('currentPhase') == 'protected-native-configuration'
+            and report.get('configuration', {}).get('stage') == expected,
+            'Closed configuration operation phase differs')
+    try:
+        result = control(operation, check=False) if observer is None else control(operation, check=False, observer=observer)
+    except subprocess.TimeoutExpired:
+        report['configuration']['reason'] = 'controller-timeout'
+        save()
+        raise AssertionError('Protected native configuration operation timed out') from None
+    if result.returncode != 0:
+        if observer is None:
+            report['configuration']['reason'] = configuration_reason(result.stderr)
+        else:
+            require(type(result.returncode) is int and -128 <= result.returncode <= 255, 'Invalid observer process exit')
+            report['configuration']['exit'] = {'classification': 'signal' if result.returncode < 0 else 'nonzero', 'status': result.returncode}
+            if result.returncode < 0:
+                report['configuration']['reason'] = 'controller-signal'
+            else:
+                try:
+                    preliminary = observer_diagnostic(result.stderr, {})
+                    diagnostic = preliminary if preliminary['reason'] == 'controller-observer-binding' else observer_diagnostic(result.stderr, observer_bound_catalog(observer))
+                    report['configuration'].update(diagnostic)
+                except (OSError, ValueError, AssertionError, TypeError, KeyError):
+                    report['configuration']['reason'] = 'controller-observer-binding'
+        save()
+        raise AssertionError('Protected native configuration operation refused')
+    return result
 
 
 def require(condition, reason):
@@ -55,9 +439,9 @@ def left(maximum=30):
     return min(maximum, value)
 
 
-def run(arguments, *, check=True, timeout=30, env=None, input=None):
+def run(arguments, *, check=True, timeout=30, env=None, input=None, cwd=None):
     result = subprocess.run(arguments, env=SAFE_ENV if env is None else env, input=input,
-                            capture_output=True, timeout=left(timeout))
+                            capture_output=True, timeout=left(timeout), cwd=cwd)
     if check:
         require(result.returncode == 0, 'Bounded native subprocess refused')
     return result
@@ -141,6 +525,23 @@ def phase(name):
     save()
 
 
+def prepackage_phase(stage):
+    # Closed source labels only: never reflect an exception, path, environment
+    # value or caller-selected reason into the uploaded public evidence.
+    require(isinstance(stage, str) and stage in PREPACKAGE_STAGES, 'Unknown native prepackage stage')
+    phase('prepackage-' + stage)
+
+
+def prepackage_guard(condition, code):
+    require(isinstance(code, str) and code in PREPACKAGE_GUARDS, 'Unknown native prepackage guard')
+    stage = PREPACKAGE_GUARDS[code]
+    require(report.get('currentPhase') == 'prepackage-' + stage, 'Native prepackage guard phase differs')
+    if not condition:
+        report['prepackageGuardFailure'] = {'stage': stage, 'code': code}
+        save()
+    require(condition, 'Closed native prepackage guard refused')
+
+
 def until(callback, name, seconds=60):
     deadline = time.monotonic() + left(seconds)
     while time.monotonic() < deadline:
@@ -162,9 +563,15 @@ def port(used):
     raise AssertionError('Cannot allocate bounded distinct fixture endpoints')
 
 
-def control(operation, unit=None, check=True):
-    result = run(['/usr/bin/python3', '-I', '-B', '/usr/local/lib/aihr-admission/controller.py', operation]
-                 + ([unit] if unit else []), check=False, timeout=60)
+def control(operation, unit=None, check=True, observer=None):
+    if observer is None:
+        result = run(['/usr/bin/python3', '-I', '-B', '/usr/local/lib/aihr-admission/controller.py', operation]
+                     + ([unit] if unit else []), check=False, timeout=60)
+    else:
+        require(operation == 'check-only' and unit is None, 'Observer accepts only fixed CHECKONLY')
+        result = run(['/usr/bin/python3', '-I', '-B', str(pathlib.Path(__file__).absolute()), '--observe-check-only'],
+                     input=(json.dumps(observer, sort_keys=True, separators=(',', ':'), ensure_ascii=True, allow_nan=False) + '\n').encode(),
+                     check=False, timeout=60)
     require(not check or result.returncode == 0, 'Protected admission operation refused: ' + operation)
     return result
 
@@ -205,10 +612,16 @@ def cold(unit):
 
 def fixture_directories():
     global created_home, created_empty_parent
-    for name in ROOTS:
-        require(not os.path.lexists(name), 'Refuse pre-existing fixture directory')
-    for unit in [*UNITS, PROXY, SLICE, BROWSER]:
-        require(props(unit).get('LoadState') == 'not-found', 'Refuse pre-existing fixture unit')
+    prepackage_phase('directory-absence')
+    for index, name in enumerate(ROOTS):
+        prepackage_guard(not os.path.lexists(name), 'fixture-root-' + str(index))
+    prepackage_phase('unit-absence')
+    for index, unit in enumerate([*UNITS, PROXY, SLICE, BROWSER]):
+        if unit == SLICE:
+            continue  # A fragmentless slice is synthesized loaded by systemd.
+        prepackage_guard(props(unit).get('LoadState') == 'not-found', 'fixture-unit-' + str(index))
+    slice_absence()
+    prepackage_phase('owned-directories')
     for name in ROOTS:
         os.mkdir(name, 0o755)
         os.chmod(name, 0o755)
@@ -216,6 +629,7 @@ def fixture_directories():
         owned_paths[name] = (info.st_dev, info.st_ino)
     for name in ('/run/aihr-admission/ports', '/var/lib/aihr-admission/private'):
         os.mkdir(name, 0o700)
+    prepackage_phase('empty-home')
     home = pathlib.Path('/var/empty/aihr')
     if not os.path.lexists(home.parent):
         home.parent.mkdir(mode=0o755)
@@ -223,15 +637,206 @@ def fixture_directories():
         info = home.parent.stat()
         created_empty_parent = (info.st_dev, info.st_ino)
     parent_info = home.parent.lstat()
-    require(stat.S_ISDIR(parent_info.st_mode) and parent_info.st_uid == 0 and not parent_info.st_mode & 0o022
-            and home.parent.resolve() == home.parent, 'Protected empty-home parent required')
+    prepackage_guard(stat.S_ISDIR(parent_info.st_mode) and parent_info.st_uid == 0 and not parent_info.st_mode & 0o022
+            and home.parent.resolve() == home.parent, 'empty-home-parent')
     if not home.exists():
         home.mkdir(mode=0o755)
         home.chmod(0o755)
         created_home = True
         owned_paths[str(home)] = (home.stat().st_dev, home.stat().st_ino)
-    require(home.stat().st_uid == 0 and not home.is_symlink() and not home.stat().st_mode & 0o022
-            and not any(home.iterdir()), 'Native empty home differs')
+    prepackage_guard(home.stat().st_uid == 0 and not home.is_symlink() and not home.stat().st_mode & 0o022
+            and not any(home.iterdir()), 'empty-home')
+
+
+def fixed_properties(raw, wanted):
+    prepackage_guard(isinstance(raw, bytes) and len(raw) <= 1024**2, 'slice-metadata')
+    rows = {}
+    for line in raw.decode('utf8').strip().splitlines():
+        key, separator, value = line.partition('=')
+        prepackage_guard(separator == '=' and key in wanted and key not in rows
+                         and len(value) <= 4096 and '\0' not in value, 'slice-metadata')
+        rows[key] = value
+    prepackage_guard(set(rows) == set(wanted), 'slice-metadata')
+    return rows
+
+
+def directory_identity(info):
+    # System directories have unrelated live entries. Pin directory identity,
+    # type and authority; unit-leaf absence is checked separately without links.
+    return info.st_dev, info.st_ino, info.st_mode, info.st_uid, info.st_gid
+
+
+@contextlib.contextmanager
+def manager_directory(supplied):
+    """Read only a real manager lookup directory through root-owned pinned parents.
+
+    Ubuntu's root-owned /lib -> usr/lib directory alias is admitted locally;
+    unit-file links themselves are never followed. No global secure_path change.
+    """
+    source = pathlib.Path(supplied)
+    prepackage_guard(source.is_absolute() and len(supplied) <= 4096 and '..' not in source.parts
+                     and str(source) == supplied and len(source.parts) <= 16
+                     and supplied.startswith(('/etc/systemd/', '/run/systemd/', '/usr/lib/systemd/',
+                                              '/usr/local/lib/systemd/', '/lib/systemd/')), 'slice-paths')
+    aliases = []
+    for index in range(1, len(source.parts)):
+        ancestor = pathlib.Path(*source.parts[:index + 1])
+        try:
+            info = ancestor.lstat()
+        except FileNotFoundError:
+            break
+        prepackage_guard(info.st_uid == 0 and (stat.S_ISDIR(info.st_mode) or stat.S_ISLNK(info.st_mode))
+                         and (stat.S_ISLNK(info.st_mode) or not info.st_mode & 0o022), 'slice-paths')
+        aliases.append((ancestor, stat.S_ISLNK(info.st_mode), identity(info) if stat.S_ISLNK(info.st_mode) else directory_identity(info)))
+    resolved = source.resolve()
+    prepackage_guard(str(resolved).startswith(('/etc/systemd/', '/run/systemd/', '/usr/lib/systemd/',
+                                              '/usr/local/lib/systemd/')) and len(resolved.parts) <= 16, 'slice-paths')
+    descriptors, pins, missing = [], [], None
+    try:
+        current = os.open('/', os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+        descriptors.append(current)
+        root_info = os.fstat(current)
+        prepackage_guard(root_info.st_uid == 0 and not root_info.st_mode & 0o022, 'slice-paths')
+        for part in resolved.parts[1:]:
+            try:
+                before = os.stat(part, dir_fd=current, follow_symlinks=False)
+            except FileNotFoundError:
+                missing = (current, part)
+                break
+            prepackage_guard(stat.S_ISDIR(before.st_mode) and before.st_uid == 0
+                             and not before.st_mode & 0o022, 'slice-paths')
+            child = os.open(part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=current)
+            descriptors.append(child)
+            prepackage_guard(directory_identity(os.fstat(child)) == directory_identity(before), 'slice-paths')
+            pins.append((current, part, child, directory_identity(before)))
+            current = child
+        yield None if missing else current
+        for parent, name, child, before in pins:
+            prepackage_guard(directory_identity(os.fstat(child)) == before
+                             and directory_identity(os.stat(name, dir_fd=parent, follow_symlinks=False)) == before, 'slice-paths')
+        if missing:
+            parent, name = missing
+            try:
+                os.stat(name, dir_fd=parent, follow_symlinks=False)
+            except FileNotFoundError:
+                pass
+            else:
+                prepackage_guard(False, 'slice-paths')
+        for ancestor, link, before in aliases:
+            after = ancestor.lstat()
+            prepackage_guard((identity(after) if link else directory_identity(after)) == before, 'slice-paths')
+    finally:
+        for descriptor in reversed(descriptors):
+            os.close(descriptor)
+
+
+def slice_leaf_absence(directory):
+    for name in (SLICE, SLICE + '.d'):
+        try:
+            os.stat(name, dir_fd=directory, follow_symlinks=False)
+        except FileNotFoundError:
+            continue
+        prepackage_guard(False, 'slice-file-absent')  # Includes dangling links.
+
+
+def slice_absence():
+    prepackage_phase('slice-absence')
+    keys = ('Id', 'LoadState', 'ActiveState', 'SubState', 'FragmentPath', 'SourcePath',
+            'DropInPaths', 'Transient', 'ControlGroup', 'Following')
+    row = fixed_properties(systemctl('show', SLICE, '--all', '--property=' + ','.join(keys)).stdout, keys)
+    expected = {'Id': SLICE, 'ActiveState': 'inactive', 'SubState': 'dead', 'FragmentPath': '',
+                'SourcePath': '', 'DropInPaths': '', 'Transient': 'no', 'ControlGroup': '', 'Following': ''}
+    prepackage_guard(row['LoadState'] in ('loaded', 'not-found')
+                     and all(row[key] == value for key, value in expected.items()), 'slice-metadata')
+    raw = systemctl('show', '--property=UnitPath', '--value').stdout
+    prepackage_guard(len(raw) <= 65536, 'slice-paths')
+    paths = raw.decode('utf8').strip().split()
+    prepackage_guard(0 < len(paths) <= 64 and len(set(paths)) == len(paths)
+                     and '/etc/systemd/system' in paths, 'slice-paths')
+    for path in paths:
+        with manager_directory(path) as directory:
+            if directory is not None:
+                slice_leaf_absence(directory)
+    raw = systemctl('show', '--all', '--no-pager', '--property=Id,Slice', '*.service', '*.scope').stdout
+    prepackage_guard(0 < len(raw) <= 1024**2, 'slice-member-units')
+    blocks = raw.decode('utf8').strip().split('\n\n')
+    prepackage_guard(0 < len(blocks) <= 2048, 'slice-member-units')
+    seen = set()
+    for block in blocks:
+        member = fixed_properties(block.encode(), ('Id', 'Slice'))
+        prepackage_guard(member['Id'].endswith(('.service', '.scope')) and member['Id'] not in seen
+                         and member['Slice'] != SLICE, 'slice-member-units')
+        seen.add(member['Id'])
+    prepackage_guard(not os.path.lexists('/sys/fs/cgroup' + FIXTURE_CGROUP), 'slice-cgroup-absent')
+    report['slicePreflight'] = {'fixedImplicitSliceAbsenceVerified': True, 'lookupDirectories': len(paths),
+                              'associatedUnitsInspected': len(seen), 'existingKernelCgroup': False}
+    save()
+
+
+FORMAT2_REFUSALS = {
+    b'Build bundle refused: generated semver wrapper does not belong to this runtime source\n': 'format2-installer-runtime-prefix',
+    b'Build bundle refused: canonical distinct producer source required for installer comparison\n': 'format2-installer-origin',
+    b'Build bundle refused: runtime prefix outside generated NODE_PATH\n': 'format2-installer-prefix-site',
+    b'Build bundle refused: unsupported generated semver wrapper\n': 'format2-installer-shape',
+}
+
+
+def receive_compiled_package(helper, binding, release):
+    require(report.get('currentPhase') == 'existing-format2-exact-receiver', 'Compiled receiver phase differs')
+    try:
+        result = run(['/usr/bin/python3', '-I', '-B', str(helper / 'build-bundle.py'), 'unpack-with-origin',
+            binding['archivePath'], binding['manifestPath'], str(release / '.next'), str(release),
+            binding['buildSourcePath']], timeout=60, check=False)
+    except subprocess.TimeoutExpired:
+        report['format2ReceiverFailure'] = {'code': 'format2-receiver-timeout'}
+        save()
+        raise AssertionError('Bounded compiled package receiver refused') from None
+    if result.returncode != 0:
+        report['format2ReceiverFailure'] = {'code': FORMAT2_REFUSALS.get(result.stderr, 'format2-receiver-refused')}
+        save()
+        raise AssertionError('Bounded compiled package receiver refused')
+
+
+PROBE_STAGES = ('admission', 'next-version', 'sharp-image', 'font-layout', 'next-config', 'executable-maps')
+PROBE_REFUSALS = {(json.dumps({'version': 1, 'kind': 'NATIVE_DEPENDENCY_PROBE_REFUSAL', 'stage': stage},
+                           separators=(',', ':')) + '\n').encode(): 'probe-' + stage for stage in PROBE_STAGES}
+PROBE_PROGRESS = tuple((json.dumps({'version': 1, 'kind': 'NATIVE_DEPENDENCY_PROBE_STAGE_ENTERED', 'stage': stage},
+                                 separators=(',', ':')) + '\n').encode() for stage in PROBE_STAGES)
+FIXED_RUNTIME = pathlib.Path('/var/lib/aihr-admission/release')
+
+
+def probe_diagnostic(raw):
+    # Only an exact ordered prefix can supply a last-entered source stage.
+    # Raw child output, including a fatal VM traceback, never enters evidence.
+    bounded = isinstance(raw, bytes) and len(raw) <= 65536
+    remaining, entered = raw[:4096] if isinstance(raw, bytes) and not bounded else raw if isinstance(raw, bytes) else b'', None
+    for stage, line in zip(PROBE_STAGES, PROBE_PROGRESS):
+        if not remaining.startswith(line):
+            break
+        entered, remaining = stage, remaining[len(line):]
+    code = PROBE_REFUSALS.get(remaining, 'probe-refused') if bounded else 'probe-refused'
+    if code != 'probe-' + str(entered):
+        code = 'probe-refused'
+    return {'code': code, **({'lastEnteredStage': entered} if entered else {})}
+
+
+def native_dependency_probe(node, release):
+    require(report.get('currentPhase') == 'nonroot-stock-native-dependency-probe', 'Native dependency probe phase differs')
+    require(release == FIXED_RUNTIME and release.resolve() == release, 'Exact copied runtime working directory required')
+    try:
+        result = run(['/usr/sbin/runuser', '-u', 'nobody', '--preserve-environment', '--', node, '--max-old-space-size=256',
+            '/usr/local/lib/aihr-admission/next_dependency_probe.cjs', str(release)], timeout=30, check=False, cwd=str(release),
+            env={'NODE_ENV': 'production', 'NEXT_TELEMETRY_DISABLED': '1', 'HOME': '/var/empty/aihr', 'PATH': '/usr/bin:/bin'})
+    except subprocess.TimeoutExpired as error:
+        diagnostic = probe_diagnostic(error.stderr)
+        report['dependencyProbeFailure'] = {**diagnostic, 'code': 'probe-timeout'}
+        save()
+        raise AssertionError('Bounded native dependency probe refused') from None
+    if result.returncode != 0:
+        report['dependencyProbeFailure'] = probe_diagnostic(result.stderr)
+        save()
+        raise AssertionError('Bounded native dependency probe refused')
+    return json.loads(result.stdout)
 
 
 def package(plan, helper, binding):
@@ -273,9 +878,7 @@ def package(plan, helper, binding):
     # Exact original format2 receiver/wire. This executes only the protected
     # stdlib tool, never application config or Node as root.
     phase('existing-format2-exact-receiver')
-    run(['/usr/bin/python3', '-I', '-B', str(helper / 'build-bundle.py'), 'unpack-with-origin',
-         binding['archivePath'], binding['manifestPath'], str(release / '.next'), str(release),
-         binding['buildSourcePath']], timeout=60)
+    receive_compiled_package(helper, binding, release)
     (release / '.next').chmod(0o755)
     compiled = json.loads(pathlib.Path(binding['manifestPath']).read_bytes())
     # The unchanged receiver honors its caller's umask. These are exact trusted
@@ -299,12 +902,19 @@ def package(plan, helper, binding):
     (release / '.next/cache').chmod(0o755)
     release.chmod(0o755)
     phase('nonroot-stock-native-dependency-probe')
-    probe = json.loads(run(['/usr/sbin/runuser', '-u', 'nobody', '--', plan['nodePath'], '--max-old-space-size=256',
-        '/usr/local/lib/aihr-admission/next_dependency_probe.cjs', str(release)], timeout=30,
-        env={'NODE_ENV': 'production', 'NEXT_TELEMETRY_DISABLED': '1', 'HOME': '/var/empty/aihr', 'PATH': '/usr/bin:/bin'}).stdout)
+    probe = native_dependency_probe(plan['nodePath'], release)
     require(probe['kind'] == 'NONROOT_NATIVE_DEPENDENCY_PROBE_NOT_APPLICATION_ACCEPTANCE'
-            and probe['runtime'] == N.RUNTIME and probe['imageBytes'] > 20 and probe['cjkGlyphs'] == 2,
+            and probe['runtime'] == N.RUNTIME and probe['imageBytes'] > 20 and probe['cjkGlyphs'] == 2
+            and type(probe['uid']) is int and probe['uid'] == pwd.getpwnam('nobody').pw_uid
+            and probe['copiedRuntimeCwdVerified'] is True and probe['privateHomeVerified'] is True,
             'Actual installed dependency/runtime probe differs')
+    require(isinstance(probe['executableFiles'], list) and 0 < len(probe['executableFiles']) <= 512
+            and all(isinstance(name, str) and name.startswith('/') and len(name) <= 4096 for name in probe['executableFiles']),
+            'Bounded actual executable mapping proof required')
+    report['dependencyProbe'] = {'kind': probe['kind'], 'uid': probe['uid'], 'copiedRuntimeCwdVerified': True,
+        'privateHomeVerified': True, 'imageBytes': probe['imageBytes'], 'cjkGlyphs': 2,
+        'mappedExecutableFiles': len(probe['executableFiles']), 'actualNextBootVerified': False}
+    save()
     phase('complete-root-immutable-package-inventory')
     rows = []
     with I.PinnedTree(release, require) as tree:
@@ -332,6 +942,16 @@ def package(plan, helper, binding):
     node = {'path': plan['nodePath'], 'sha256': root_digest(plan['nodePath'])}
     libraries = sorted(file for file in probe['executableFiles'] if file.startswith('/usr/lib/'))
     require(0 < len(libraries) <= 256, 'Bounded native system closure required')
+    # Input-free actual mapping observations only; never publish a pathname.
+    # This distinguishes the prior generic path refusal from its hypothesis.
+    report['nativeSystemLibraryPaths'] = {'count': len(libraries),
+        'plusNamed': sum('+' in file for file in libraries),
+        'legacyGrammarRefused': sum(N.SAFE_PATH.fullmatch(file) is None for file in libraries)}
+    save()
+    for file in libraries:
+        require(str(N.system_library_path(file, require)) == file,
+                'Actual native library path grammar differs')
+
     manifest = {'version': 1, 'source': plan['candidate'], 'build': binding['nextBuildId'], 'runtime': N.RUNTIME,
         'node': node, 'systemFiles': [{'path': file, 'sha256': root_digest(file)} for file in libraries],
         'producerSourcePath': binding['buildSourcePath'], 'entries': sorted(rows, key=lambda row: row['path'])}
@@ -355,30 +975,35 @@ def package(plan, helper, binding):
 
 
 def install_helpers(helper, plan, binding):
+    prepackage_phase('sealed-helpers')
     destination = pathlib.Path('/usr/local/lib/aihr-admission')
-    for name in ('controller.py', 'next_profile.py', 'runtime_inventory.py', 'next_fixture_poststart.py',
-                 'next_fixture_filesystem.py', 'next_dependency_probe.cjs'):
+    for index, name in enumerate(('controller.py', 'next_profile.py', 'runtime_inventory.py', 'next_fixture_poststart.py',
+                 'next_fixture_filesystem.py', 'next_dependency_probe.cjs')):
         source = helper / name
         info = source.lstat()
-        require(info.st_uid == 0 and stat.S_ISREG(info.st_mode) and info.st_nlink == 1
-                and stat.S_IMODE(info.st_mode) == 0o400, 'Expected sealed helper source')
+        prepackage_guard(info.st_uid == 0 and stat.S_ISREG(info.st_mode) and info.st_nlink == 1
+                and stat.S_IMODE(info.st_mode) == 0o400, 'sealed-helper-' + str(index))
         write(destination / name, source.read_bytes(), 0o644)
     source = pathlib.Path(plan['nodePath'])
     installed_node = binding['installation']['node']
-    require(plan['nodePath'] == installed_node['path'], 'Node hint differs from pre-candidate executable witness')
+    prepackage_phase('node-hint')
+    prepackage_guard(plan['nodePath'] == installed_node['path'], 'node-hint')
+    prepackage_phase('node-stat')
     before = source.lstat()
-    require(source.resolve() == source and stat.S_ISREG(before.st_mode) and before.st_uid in (0, plan['runnerUid'])
+    prepackage_guard(source.resolve() == source and stat.S_ISREG(before.st_mode) and before.st_uid in (0, plan['runnerUid'])
             and not before.st_mode & 0o022 and 0 < before.st_size <= 256 * 1024**2,
-            'Hosted installed Node binary differs')
+            'node-stat')
+    prepackage_phase('node-read')
     fd = os.open(source, os.O_RDONLY | os.O_NOFOLLOW)
     try:
-        require(identity(os.fstat(fd)) == identity(before), 'Hosted Node changed before copy')
+        prepackage_guard(identity(os.fstat(fd)) == identity(before), 'node-before-read')
         with os.fdopen(os.dup(fd), 'rb') as stream:
             raw = stream.read(256 * 1024**2 + 1)
-        require(len(raw) == before.st_size and identity(os.fstat(fd)) == identity(before) == identity(source.lstat()),
-                'Hosted Node changed during copy')
-        require(len(raw) == installed_node['bytes'] and hashlib.sha256(raw).hexdigest() == installed_node['sha256'],
-                'Hosted Node bytes differ from pre-candidate executable witness')
+        prepackage_guard(len(raw) == before.st_size and identity(os.fstat(fd)) == identity(before) == identity(source.lstat()),
+                'node-after-read')
+        prepackage_guard(len(raw) == installed_node['bytes'] and hashlib.sha256(raw).hexdigest() == installed_node['sha256'],
+                'node-installed-bytes')
+        prepackage_phase('node-install')
         write(destination / 'node', raw, 0o755)
     finally:
         os.close(fd)
@@ -386,17 +1011,102 @@ def install_helpers(helper, plan, binding):
     plan['nodePath'] = str(destination / 'node')
 
 
-def configure(plan, binding, N, release, runtime_package):
+class OwnedPostgresScope:
+    """Register ONLY this job's existing zero-swap Docker scope with its manager.
+
+    This fixes persistence before any manager reload, never repairs drift after
+    work or weakens the independently captured final PostgreSQL resource witness.
+    """
+    STAGES = frozenset({'registered', 'before-config-reload', 'after-config-reload',
+                        'before-cleanup-reload', 'after-cleanup-reload', 'final'})
+    FORMAT = ('{"id":{{json .Id}},"name":{{json .Name}},'
+              '"owner":{{json (index .Config.Labels "aihr-owner")}},'
+              '"pid":{{json .State.Pid}},"started":{{json .State.StartedAt}},'
+              '"running":{{json .State.Running}},"memory":{{json .HostConfig.Memory}},'
+              '"swap":{{json .HostConfig.MemorySwap}}}')
+
+    def __init__(self, plan):
+        require(isinstance(plan.get('runId'), str) and re.fullmatch(r'[1-9][0-9]{0,19}', plan['runId'])
+                and isinstance(plan.get('unit'), str) and re.fullmatch(r'db-[a-f0-9]{16}', plan['unit']),
+                'Fixed native PostgreSQL job identity required')
+        self.name = 'aihr-ci-' + plan['runId'] + '-1-' + plan['unit']
+        driver = self.docker('info', '--format', '{{.CgroupDriver}} {{.CgroupVersion}}').stdout.strip()
+        require(driver == b'systemd 2', 'Owned native PostgreSQL requires systemd unified cgroups')
+        self.identity = self.inspect()
+        self.scope = 'docker-' + self.identity['id'] + '.scope'
+        self.group = '/system.slice/' + self.scope
+        # Kernel zero must already exist. Register its intended persistence;
+        # never reset an already drifting workload to manufacture acceptance.
+        self.observe(require_manager_zero=False)
+        systemctl('set-property', '--runtime', self.scope, 'MemorySwapMax=0', timeout=10)
+        self.snapshot('registered')
+
+    @staticmethod
+    def docker(*args):
+        return run(['/usr/bin/docker', '--host', 'unix:///var/run/docker.sock', *args], timeout=10)
+
+    def inspect(self):
+        raw = self.docker('inspect', '--format', self.FORMAT, self.name).stdout
+        require(isinstance(raw, bytes) and 0 < len(raw) <= 4096, 'Bounded native container identity required')
+        row = json.loads(raw)
+        require(isinstance(row, dict) and set(row) == {'id', 'name', 'owner', 'pid', 'started', 'running', 'memory', 'swap'}
+                and isinstance(row['id'], str) and re.fullmatch(r'[a-f0-9]{64}', row['id'])
+                and row['name'] == '/' + self.name and row['owner'] == self.name
+                and type(row['pid']) is int and row['pid'] > 1 and row['running'] is True
+                and isinstance(row['started'], str) and re.fullmatch(r'[0-9TZ:.+-]{20,40}', row['started'])
+                and type(row['memory']) is int and row['memory'] == 2113929216
+                and type(row['swap']) is int and row['swap'] == 2113929216,
+                'Actual owned native PostgreSQL container differs')
+        return row
+
+    def observe(self, require_manager_zero=True):
+        require(self.inspect() == self.identity, 'Native PostgreSQL container changed')
+        keys = {'Id', 'LoadState', 'ActiveState', 'ControlGroup', 'MemorySwapMax'}
+        raw = systemctl('show', self.scope, '--property=' + ','.join(sorted(keys)), timeout=10).stdout
+        require(isinstance(raw, bytes) and 0 < len(raw) <= 16384, 'Bounded native PostgreSQL manager fields required')
+        row = {}
+        for line in raw.decode('utf8').strip().splitlines():
+            key, separator, value = line.partition('=')
+            require(separator == '=' and key in keys and key not in row
+                    and len(value) <= 4096 and '\0' not in value, 'Closed native PostgreSQL manager fields required')
+            row[key] = value
+        require(set(row) == keys, 'Complete native PostgreSQL manager fields required')
+        require(row['Id'] == self.scope and row['LoadState'] == 'loaded' and row['ActiveState'] == 'active'
+                and row['ControlGroup'] == self.group,
+                'Native PostgreSQL manager scope is foreign or inactive')
+        require(pathlib.Path('/proc', str(self.identity['pid']), 'cgroup').read_bytes() == ('0::' + self.group + '\n').encode(),
+                'Actual PostgreSQL native PID belongs to another scope')
+        require(not require_manager_zero or row['MemorySwapMax'] == '0', 'Native PostgreSQL manager swap limit drifted')
+        raw = self.docker('exec', self.name, 'cat', '/sys/fs/cgroup/memory.max', '/sys/fs/cgroup/memory.swap.max').stdout
+        require(raw == b'2113929216\n0\n', 'Native PostgreSQL kernel resource limit drifted')
+        require(self.inspect() == self.identity, 'Native PostgreSQL identity changed during scope observation')
+        return {'memoryMax': 2113929216, 'memorySwapMax': 0, 'managerSwapMax': row['MemorySwapMax']}
+
+    def snapshot(self, stage):
+        require(stage in self.STAGES, 'Unknown native PostgreSQL scope observation')
+        value = self.observe()
+        observations = report.setdefault('ownedPostgresScope', {'version': 1, 'kind': 'JOB_OWNED_PERSISTENT_ZERO_SWAP',
+            'containerIdentitySha256': hashlib.sha256(json.dumps(self.identity, sort_keys=True).encode()).hexdigest(),
+            'scopeOnly': True, 'observations': []})
+        require(len(observations['observations']) < len(self.STAGES), 'Native PostgreSQL observations exceed bound')
+        require(stage not in {row['stage'] for row in observations['observations']}, 'Duplicate native PostgreSQL scope observation')
+        observations['observations'].append({'stage': stage, **value})
+        save()
+
+
+def configure(plan, binding, N, release, runtime_package, postgres_scope):
     phase('protected-native-configuration')
+    configuration_phase('principal')
     nobody = pwd.getpwnam('nobody')
     require(nobody.pw_uid == 65534 and nobody.pw_gid == 65534, 'Expected fixed nonroot app principal')
     used = {3443}
     pool, control_port = [port(used) for _ in range(32)], port(used)
     envelope = {'version': 1, 'kind': 'HOSTED_NEXT_SAME_BUILD_V1', 'workers': 2,
         'suite': 'workflow-preflight', 'cpuOversubscriptionDiagnostic': False, 'slice': SLICE,
-        'cgroupPath': '/aihr.slice/aihr-native.slice/aihr-native-next.slice', 'cpuQuotaPercent': 400,
+        'cgroupPath': FIXTURE_CGROUP, 'cpuQuotaPercent': 400,
         'memoryHighBytes': 7168 * 1024**2, 'memoryMaxBytes': 8192 * 1024**2, 'memorySwapMaxBytes': 0,
         'totalHeapMiB': 4096, 'totalWebConnections': 16, 'totalWaitingBudget': 2048, 'tasksMax': 1024}
+    configuration_phase('cache-sources')
     mounts = {}
     for slot, unit in enumerate(UNITS, 1):
         mounts[unit] = []
@@ -410,6 +1120,7 @@ def configure(plan, binding, N, release, runtime_package):
             source.chmod(0o700)
             mounts[unit].append({'source': str(source), 'target': target})
     nginx = pathlib.Path('/etc/nginx/aihr-admission/fixture.conf')
+    configuration_phase('tls')
     run(['/usr/bin/openssl', 'req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-days', '1', '-subj', '/CN=localhost',
          '-addext', 'subjectAltName=DNS:localhost', '-keyout', '/etc/nginx/aihr-admission/tls.key',
          '-out', '/etc/nginx/aihr-admission/tls.crt'], timeout=15)
@@ -501,13 +1212,18 @@ BindReadOnlyPaths={release}:{release}:norbind
 Slice={SLICE}
 UMask=0077
 '''
+    configuration_phase('unit-files')
     for name, contents in files.items():
         file = pathlib.Path('/etc/systemd/system', name)
         require(not os.path.lexists(file), 'Fixture unit destination already exists')
         write(file, contents, 0o644)
         info = file.stat()
         owned_units[name] = (info.st_dev, info.st_ino)
+    configuration_phase('manager-reload')
+    postgres_scope.snapshot('before-config-reload')
     systemctl('daemon-reload')
+    postgres_scope.snapshot('after-config-reload')
+    configuration_phase('guarded-profile')
     C = load('actual_next_controller', pathlib.Path('/usr/local/lib/aihr-admission/controller.py'))
     profile = {'version': 2, 'epoch': os.urandom(16).hex(), 'source': plan['candidate'], 'build': binding['nextBuildId'],
         'resourceEnvelopeDigest': C.digest(envelope), 'resourceEnvelope': envelope,
@@ -525,14 +1241,23 @@ UMask=0077
             'releaseDirectory': str(release), 'workerUid': nobody.pw_uid,
             'commandDigest': C.command_identity(props(unit)['ExecStart']), 'executable': plan['nodePath']}
     write(C.PROFILE, N.canonical(profile))
-    check = json.loads(control('check-only').stdout)
+    configuration_phase('check-only')
+    observer = {'version': 1, 'kind': 'SOURCE_BOUND_INSTALLED_CHECKONLY_OBSERVER',
+        'observerSha256': binding['helpers']['test_next_native.py']['sha256'],
+        'profileSha256': hashlib.sha256(N.canonical(profile)).hexdigest(),
+        'sourceHashes': {'controller': profile['controllerDigest'], 'next-profile': profile['trustedModules']['next_profile.py'],
+                         'inventory': profile['trustedModules']['runtime_inventory.py']}}
+    check = json.loads(configuration_control('check-only', observer=observer).stdout)
     require(check.get('kind') == 'ADMISSION_CHECKONLY' and check.get('rootBoundaryInspected') is True
             and check.get('installationAvailable') is False, 'Non-starting boundary inspection did not qualify')
     require(all(props(unit)['MainPID'] == '0' for unit in UNITS), 'CHECKONLY started an application worker')
     report['checkOnlyDidNotStartWorkers'] = True
     write(pathlib.Path('/run/aihr-admission/permit-' + UNITS[0]), b'owned cold gate\n')
+    configuration_phase('proxy-start')
     systemctl('start', PROXY, timeout=60)
-    require(status()['workers'] == [], 'Empty proxy unexpectedly published worker')
+    configuration_phase('empty-publication')
+    require(json.loads(configuration_control('status').stdout)['workers'] == [], 'Empty proxy unexpectedly published worker')
+    report['configuration']['declarationsVerified'] = True
     report['nativeIngress'] = {'nginx': run(['/usr/sbin/nginx', '-v'], check=False).stderr.decode().strip(),
         'tls': True, 'proxyNextUpstream': 'off', 'buffering': False, 'requestBuffering': False,
         'nodeProxyUsed': False, 'webWorkers': 2, 'steadyLoadCapacityClaim': False}
@@ -700,7 +1425,7 @@ def require_stopped(unit):
                     pending.append(pathlib.Path(entry.path))
 
 
-def cleanup():
+def cleanup(postgres_scope):
     # Never remove a package under an unowned/replaced live service declaration.
     for unit, expected in owned_units.items():
         path = pathlib.Path('/etc/systemd/system', unit)
@@ -722,7 +1447,10 @@ def cleanup():
             systemctl('reset-failed', unit, check=False)
             pathlib.Path('/etc/systemd/system', unit).unlink()
     if owned_units:
-        systemctl('daemon-reload', check=False)
+        require(postgres_scope is not None, 'Owned PostgreSQL reload guard absent')
+        postgres_scope.snapshot('before-cleanup-reload')
+        systemctl('daemon-reload')
+        postgres_scope.snapshot('after-cleanup-reload')
     require(shutil.rmtree.avoids_symlink_attacks, 'Descriptor-safe cleanup unavailable')
     for name in reversed(ROOTS):
         if name in owned_paths:
@@ -801,11 +1529,13 @@ def main():
             and browser_input['evidenceDirectory'] == plan['evidenceDirectory'], 'Private browser input binding differs')
     save()
     succeeded = False
+    postgres_scope = None
     try:
+        postgres_scope = OwnedPostgresScope(plan)
         fixture_directories()
         install_helpers(helper, plan, binding)
         N, release, runtime_package = package(plan, helper, binding)
-        C = configure(plan, binding, N, release, runtime_package)
+        C = configure(plan, binding, N, release, runtime_package, postgres_scope)
         browser_core(plan, binding, C)
         release_workers(C)
         succeeded = True
@@ -817,7 +1547,9 @@ def main():
     finally:
         DEADLINE = TOTAL_DEADLINE
         try:
-            cleanup()
+            cleanup(postgres_scope)
+            if postgres_scope is not None:
+                postgres_scope.snapshot('final')
             report['ownedRuntimeCleaned'] = True
         except BaseException:
             report['ownedRuntimeCleaned'] = False
@@ -831,6 +1563,14 @@ def main():
 
 
 if __name__ == '__main__':
+    if sys.argv[1:] == ['--observe-check-only']:
+        try:
+            observer_code = observer_entry()
+        except BaseException:
+            sys.stderr.write(json.dumps({'version': 1, 'kind': 'SOURCE_BOUND_CHECKONLY_REFUSAL',
+                'classification': 'binding-refusal', 'stage': observer_binding_stage if isinstance(observer_binding_stage, str) and observer_binding_stage in OBSERVER_BINDING_STAGES else 'entry'}, sort_keys=True) + '\n')
+            observer_code = 1
+        sys.exit(observer_code)
     def interrupted(_signum, _frame):
         raise RuntimeError('Owned native fixture interrupted')
     signal.signal(signal.SIGTERM, interrupted)

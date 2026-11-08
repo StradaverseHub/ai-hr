@@ -52,6 +52,13 @@ it('boots two actual same-build Next workers through protected native admission 
    checkOnlyDidNotStartWorkers:true,coldBusinessRequests:0,allStoppedGenerationsReclaimed:true,
    rawBindAndProcessFamilyBarriersPreserved:true,ownedRuntimeCleaned:true});
   expect(report.nativeIngress).toMatchObject({tls:true,nodeProxyUsed:false,webWorkers:2,steadyLoadCapacityClaim:false,proxyNextUpstream:'off'});
+  expect(report.slicePreflight).toMatchObject({fixedImplicitSliceAbsenceVerified:true,existingKernelCgroup:false});
+  expect(report.slicePreflight.lookupDirectories).toBeGreaterThan(0);expect(report.slicePreflight.lookupDirectories).toBeLessThanOrEqual(64);
+  expect(report.slicePreflight.associatedUnitsInspected).toBeGreaterThan(0);expect(report.slicePreflight.associatedUnitsInspected).toBeLessThanOrEqual(2048);
+  expect(report.dependencyProbe).toMatchObject({kind:'NONROOT_NATIVE_DEPENDENCY_PROBE_NOT_APPLICATION_ACCEPTANCE',
+   copiedRuntimeCwdVerified:true,privateHomeVerified:true,cjkGlyphs:2,actualNextBootVerified:false});
+  expect(report.dependencyProbe.uid).toBeGreaterThan(0);expect(report.dependencyProbe.imageBytes).toBeGreaterThan(20);
+  expect(report.dependencyProbe.mappedExecutableFiles).toBeGreaterThan(0);expect(report.dependencyProbe.mappedExecutableFiles).toBeLessThanOrEqual(512);
   expect(report.workers).toHaveLength(3);expect(new Set(report.workers.map((row:{port:number})=>row.port)).size).toBe(2);
   for(const row of report.workers){
    expect(row.kernel.namespace).toMatchObject({actualKernelMountsVerified:true,actualEnvironmentVerified:true});
@@ -62,8 +69,12 @@ it('boots two actual same-build Next workers through protected native admission 
   expect(report.package).toMatchObject({source:candidate,sameCanonicalBuildPacket:true,actionKeyOverride:false});
   expect(report.package.actionManifestSha256).toMatch(/^[a-f0-9]{64}$/);
   expect(report.installation).toMatchObject({preCandidateWitnessMatched:true,
-   dependencies:{normalization:'ROOT_COPY_DEPENDENCIES_V1'}});
+   dependencies:{normalization:'ROOT_COPY_DEPENDENCIES_V2'}});
   expect(report.installation.dependencies.sha256).toMatch(/^[a-f0-9]{64}$/);
+  expect(report.ownedPostgresScope).toMatchObject({version:1,kind:'JOB_OWNED_PERSISTENT_ZERO_SWAP',scopeOnly:true});
+  expect(report.ownedPostgresScope.containerIdentitySha256).toMatch(/^[a-f0-9]{64}$/);
+  expect(report.ownedPostgresScope.observations).toEqual(['registered','before-config-reload','after-config-reload',
+   'before-cleanup-reload','after-cleanup-reload','final'].map(stage=>({stage,memoryMax:2113929216,memorySwapMax:0,managerSwapMax:'0'})));
   expect(report.remaining).toContain('500-actor-steady-load');
  }finally{
   for(const[key,value]of original){if(value===undefined)delete process.env[key];else process.env[key]=value;}

@@ -1,0 +1,46 @@
+{
+  "kind": "CLOSED_NATIVE_NEXT_CONFIGURATION_DIAGNOSTIC_SOURCE_ONLY",
+  "base": "e3a6fe85c00ab082dc0270dd026c1de67f3e1f07",
+  "sourceRef": "codex/native-next-configuration-diagnostic-20261108",
+  "qualification": "NOT_RUN; independent/root review before hosted source/controller then new-source actual canonical-build commission",
+  "selectors": [
+    "test/runtime-next-prepackage-diagnostic.test.ts"
+  ],
+  "nativeSelector": "test/runtime-next-admission-native.test.ts",
+  "nativeUnit": "db-ef098640eeb0a97b",
+  "diagnosticModels": 21,
+  "unchangedCjsModels": 5,
+  "fixtureSeconds": 480,
+  "controllerSeconds": 60,
+  "probeSeconds": 30,
+  "probeHeapMiB": 256,
+  "exactFailureGuardObserved": false,
+  "controllerProfileInventoryWireOrAdmissionChanged": false,
+  "releaseAuthorized": false,
+  "production": "HELD",
+  "retainedFailure": {
+    "run": 42427076648,
+    "nativeJob": 128568928408,
+    "nativeMs": 173013.558224,
+    "failed": 1,
+    "skipped": 0,
+    "currentPhase": "protected-native-configuration",
+    "ownedRuntimeCleaned": true,
+    "actualNextBootVerified": false,
+    "nonrootStockDependencyProbePassed": true,
+    "canonicalBuildArtifact": 13596266983,
+    "nativeArtifact": 13596331608
+  },
+  "sourceSha256": {
+    "deploy/admission/test_next_native.py": "0bcab49ddd7643d4a73ab13eb69484a49e01c237ec751227df8ac834207a16aa",
+    "deploy/admission/test_next_prepackage_diagnostic.py": "72ce18fc50e48bcbdd90841120bf359677dc760a6c30bf251bdf573c37af066a",
+    "test/runtime-next-prepackage-diagnostic.test.ts": "358edd7bc88328395e6d591a751b88b088512323852f0a46b1963d86bbc92e8f",
+    "deploy/admission/controller.py": "c83fa023e51137fcaae007e2e4f756388096fe47bccf3254bfc870f466686dd6",
+    "deploy/admission/next_profile.py": "b530fbcd59a917a6bd1116cf637b78bca0c510abd3624e5305263e0a5d4a5403",
+    ".github/ci/runtime_inventory.py": "b4207c2e82ee07692f4fd3814b2d5ab7f5d86a9b7471139c2ed56e4f2e86563d",
+    ".github/ci/build-bundle.py": "2045da6a701e96d926fae02f915727902d898bf98d011bfc6e3ae8cffc15ca6e",
+    "deploy/admission/next_dependency_probe.cjs": "04e62c6ecc41acc84bee60b8ff6829b74e9ddd139652a2c57fd650497cf462c8",
+    "test/runtime-next-dependency-probe.test.ts": "9efd2a7de8013e68b813b78e2b1b7d522f2af9c08704e6e5bf3ec16bc55a4a04",
+    "docs/qualification/native-next-configuration-diagnostic-20261108.md": "0caee48630d1a2aea7ca6ad94749cb28888dc946a4730290bc9f866053601042"
+  }
+}
