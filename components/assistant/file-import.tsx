@@ -20,7 +20,7 @@ export function AssistantFileImport({normalComposer,instruction:providedInstruct
   {!source&&busy===null&&normalComposer}
   <section aria-label={t('title')} className="space-y-3 rounded-xl border border-border bg-card p-4">
   <div className="flex flex-wrap items-center justify-between gap-2"><h2 className="text-sm font-medium">{t('title')}</h2>
-   <ActionButton aria-busy={busy} type="button" disabled={busy!==null} className="inline-flex min-h-11 items-center gap-2 rounded-md border px-3 text-sm hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-50" onClick={()=>picker.current?.click()}><Paperclip aria-hidden className="size-4"/>{t('attach')}</ActionButton>
+   <ActionButton aria-busy={busy==='read'} type="button" disabled={busy!==null} className="inline-flex min-h-11 items-center gap-2 rounded-md border px-3 text-sm hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-50" onClick={()=>picker.current?.click()}><Paperclip aria-hidden className="size-4"/>{t('attach')}</ActionButton>
    <input ref={picker} type="file" accept=".pdf,.xlsx,.xls,.csv" className="sr-only" aria-label={t('attach')} tabIndex={-1} onChange={event=>void load(Array.from(event.target.files??[]))}/>
   </div>
   <p className="text-xs text-muted-foreground">{t('hint')}</p>
