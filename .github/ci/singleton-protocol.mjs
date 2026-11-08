@@ -54,7 +54,7 @@ export function assertSingletonUnit(unit){
 const componentSources=Object.freeze({
  'test/access-editor-native-owner-presentation.test.ts':Object.freeze([
   'db/migrations/3211_access_editor_native_owner_presentation.sql',
-  'test/fixtures/access-editor-native-owner.ts','test/fixtures/access-editor-cleanup-lifetime.ts','test/fixtures/access-editor-catalogue-diagnostic.ts',
+  'test/fixtures/access-editor-native-owner.ts','test/fixtures/access-editor-cleanup-lifetime.ts','test/fixtures/access-editor-catalogue-diagnostic.ts','test/fixtures/access-editor-owner-dependencies.ts',
   'test/fixtures/access-editor-owned-work.ts','test/fixtures/access-editor-original739-journal.json',
   'test/fixtures/access-editor-locked-baseline.ts',
  ]),

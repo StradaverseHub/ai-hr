@@ -11,6 +11,8 @@ import {createDb} from '../../db/client';
 import {workerDb} from '../db-names';
 import {accessCleanupBounds,accessCleanupLifetime,requireAccessCleanupOid} from './access-editor-cleanup-lifetime';
 import {accessEditorCatalogueDiagnostic,writeAccessEditorCatalogueDiagnostic} from './access-editor-catalogue-diagnostic';
+import {accessOwnerDependencyExpectation,assertAccessOwnerDependencies,accessSharedDependency} from './access-editor-owner-dependencies';
+import {z} from 'zod';
 const sha=(value:string|Buffer)=>createHash('sha256').update(value).digest('hex');
 const quote=(name:string)=>'"'+name.replaceAll('"','""')+'"';
 export async function accessEditorNativeOwnerFixture(signal:AbortSignal,poison:(error:Error)=>void,evidenceDirectory:string){
@@ -148,6 +150,26 @@ export async function accessEditorNativeOwnerFixture(signal:AbortSignal,poison:(
    for(const table of tables){active();const rows=await construction.unsafe('select to_jsonb(t)as value from '+quote(table.schemaname)+'.'+quote(table.tablename)+' t order by to_jsonb(t)::text');result[table.schemaname+'.'+table.tablename]={count:rows.length,sha256:sha(JSON.stringify(rows))};}
    return result;
   }
+  // A rollback-only native control establishes the bootstrap-owner omission.
+  // No magic owner OID/count assumption; no control object enters the inventory.
+  active();const [dependencyBinding]=await construction`select (select oid from pg_database where datname=current_database())as database,'pg_authid'::regclass::oid as "roleCatalog",'pg_namespace'::regclass::oid as "namespaceCatalog",'pg_proc'::regclass::oid as "functionCatalog",'pg_class'::regclass::oid as "relationCatalog",'pg_type'::regclass::oid as "typeCatalog",${oldOwner}::oid as "oldOwner",${newOwner}::oid as "newOwner"`;
+  expect(Number(dependencyBinding.database)).toBe(databaseOid);
+  const rollbackPin=Error('Owned native pin control always rolls back');
+  const nativePinState:{value?:{tableOid:number;typeOid:number;arrayTypeOid:number;ownerBefore:number;ownerAfter:number;database:number;relationCatalog:number;typeCatalog:number;roleCatalog:number;before:z.infer<typeof accessSharedDependency>[];after:z.infer<typeof accessSharedDependency>[]}}={};
+  active();const pinRefusal=await construction.begin(async tx=>{
+   active();expect((await tx`select to_regclass('public._aihr_access_owner_pin_control')as object`)[0].object).toBeNull();
+   active();await tx`create table public._aihr_access_owner_pin_control(id integer)`;
+   active();const [identity]=await tx`select c.oid,c.relowner,c.reltype as type_oid,t.typarray as array_type_oid from pg_class c join pg_type t on t.oid=c.reltype where c.oid='public._aihr_access_owner_pin_control'::regclass`;expect(Number(identity.relowner)).toBe(oldOwner);
+   active();const before=z.array(accessSharedDependency).parse(Array.from(await tx`select dbid,classid,objid,objsubid,refclassid,refobjid,deptype from pg_shdepend where dbid=${dependencyBinding.database}::oid and (classid=${dependencyBinding.relationCatalog}::oid and objid=${identity.oid}::oid or classid=${dependencyBinding.typeCatalog}::oid and objid in(${identity.type_oid}::oid,${identity.array_type_oid}::oid))and deptype='o'order by classid,objid,refclassid,refobjid`));expect(before).toEqual([]);
+   active();await tx.unsafe('ALTER TABLE public._aihr_access_owner_pin_control OWNER TO '+quote(role));
+   active();const [changed]=await tx`select relowner from pg_class where oid=${identity.oid}::oid`;expect(Number(changed.relowner)).toBe(newOwner);
+   active();const after=z.array(accessSharedDependency).parse(Array.from(await tx`select dbid,classid,objid,objsubid,refclassid,refobjid,deptype from pg_shdepend where dbid=${dependencyBinding.database}::oid and (classid=${dependencyBinding.relationCatalog}::oid and objid=${identity.oid}::oid or classid=${dependencyBinding.typeCatalog}::oid and objid in(${identity.type_oid}::oid,${identity.array_type_oid}::oid))and deptype='o'order by classid,objid,refclassid,refobjid`));
+   expect(after).toEqual([{dbid:Number(dependencyBinding.database),classid:Number(dependencyBinding.relationCatalog),objid:Number(identity.oid),objsubid:0,refclassid:Number(dependencyBinding.roleCatalog),refobjid:newOwner,deptype:'o'}]);
+   nativePinState.value={tableOid:Number(identity.oid),typeOid:Number(identity.type_oid),arrayTypeOid:Number(identity.array_type_oid),ownerBefore:oldOwner,ownerAfter:newOwner,database:Number(dependencyBinding.database),relationCatalog:Number(dependencyBinding.relationCatalog),typeCatalog:Number(dependencyBinding.typeCatalog),roleCatalog:Number(dependencyBinding.roleCatalog),before,after};
+   throw rollbackPin;
+  }).then(()=>undefined,(error:unknown)=>error);expect(pinRefusal).toBe(rollbackPin);const nativePin=nativePinState.value;if(!nativePin)throw Error('Actual native owner-pin control missing');
+  active();const [pinAbsent]=await construction`select to_regclass('public._aihr_access_owner_pin_control')is null as object_absent,not exists(select 1 from pg_type where oid in(${nativePin.typeOid}::oid,${nativePin.arrayTypeOid}::oid))as types_absent,not exists(select 1 from pg_depend where classid=${dependencyBinding.relationCatalog}::oid and objid=${nativePin.tableOid}::oid or refclassid=${dependencyBinding.relationCatalog}::oid and refobjid=${nativePin.tableOid}::oid or classid=${dependencyBinding.typeCatalog}::oid and objid in(${nativePin.typeOid}::oid,${nativePin.arrayTypeOid}::oid)or refclassid=${dependencyBinding.typeCatalog}::oid and refobjid in(${nativePin.typeOid}::oid,${nativePin.arrayTypeOid}::oid))as local_dependencies_absent,not exists(select 1 from pg_shdepend where dbid=${dependencyBinding.database}::oid and(classid=${dependencyBinding.relationCatalog}::oid and objid=${nativePin.tableOid}::oid or classid=${dependencyBinding.typeCatalog}::oid and objid in(${nativePin.typeOid}::oid,${nativePin.arrayTypeOid}::oid)))as dependencies_absent`;expect(pinAbsent).toEqual({object_absent:true,types_absent:true,local_dependencies_absent:true,dependencies_absent:true});
+  const pinControl={...nativePin,rollbackComplete:true as const,objectAbsent:true as const,typesAbsent:true as const,localDependenciesAbsent:true as const,dependenciesAbsent:true as const};
   const before=await catalog(),beforeData=await dataFacts();
   const transfer=await construction.begin(async tx=>{
    active();expect((await tx`select current_database()as database,pg_backend_pid()as pid`)[0].database).toBe(name);
@@ -162,12 +184,16 @@ export async function accessEditorNativeOwnerFixture(signal:AbortSignal,poison:(
    return{relations:Array.from(relations),types:Array.from(types),functions:Array.from(functions)};
   });
   const afterNormalized=await catalog(true);
-  const comparison=accessEditorCatalogueDiagnostic(before,afterNormalized);
+  const ownershipExpectation=accessOwnerDependencyExpectation(before,transfer,dependencyBinding,pinControl);
+  const expectedAfterTransfer={...before,sharedDependencies:ownershipExpectation.expectedSharedDependencies};
+  const comparison=accessEditorCatalogueDiagnostic(expectedAfterTransfer,afterNormalized);
   const dependencyFacts=Array.from(await construction`select d.dbid,d.classid::regclass::text as class,d.classid,d.objid,d.objsubid,d.refclassid::regclass::text as reference_class,d.refclassid,d.refobjid,d.deptype,pg_describe_object(d.classid,d.objid,d.objsubid)as object_description from pg_shdepend d where d.dbid=(select oid from pg_database where datname=current_database())order by d.classid,d.objid,d.objsubid,d.refclassid,d.refobjid,d.deptype`);
   const [nativeFacts]=await construction`select current_user as current,session_user as session,current_database()as database,pg_backend_pid()as pid,current_setting('server_version_num')as server_version,(select jsonb_agg(jsonb_build_object('oid',r.oid::int,'name',r.rolname,'super',r.rolsuper,'bypass',r.rolbypassrls,'inherit',r.rolinherit,'login',r.rolcanlogin)order by r.oid)from pg_roles r where r.oid in(${oldOwner}::oid,${newOwner}::oid))as roles`;
-  const retained=writeAccessEditorCatalogueDiagnostic(evidenceDirectory,{nativeFacts,kind:'ACTUAL_ACCESS_NATIVE_OWNER_CATALOGUE_DIAGNOSTIC_NOT_ACCEPTANCE',source:process.env.AIHR_CI_HEAD,controller:process.env.AIHR_CI_CONTROL_HEAD,run:process.env.GITHUB_RUN_ID,attempt:process.env.GITHUB_RUN_ATTEMPT,complete:true,releaseAuthorized:false,point:'after-owned-transfer-before-3211',oldOwner,newOwner,transfer,rawNativeSharedDependencies:dependencyFacts,...comparison});console.info('Retained Access native catalogue diagnostic',JSON.stringify(retained));
-  // This original oracle remains unchanged: diagnostics cannot waive a mismatch.
-  expect(afterNormalized).toEqual(before);expect(await dataFacts()).toEqual(beforeData);
+  const retained=writeAccessEditorCatalogueDiagnostic(evidenceDirectory,{nativeFacts,kind:'ACTUAL_ACCESS_NATIVE_OWNER_CATALOGUE_DIAGNOSTIC_NOT_ACCEPTANCE',source:process.env.AIHR_CI_HEAD,controller:process.env.AIHR_CI_CONTROL_HEAD,run:process.env.GITHUB_RUN_ID,attempt:process.env.GITHUB_RUN_ATTEMPT,complete:true,releaseAuthorized:false,point:'after-owned-transfer-before-3211',oldOwner,newOwner,transfer,ownershipExpectation,rawNativeSharedDependencies:dependencyFacts,...comparison});console.info('Retained Access native catalogue diagnostic',JSON.stringify(retained));
+  // Preserve the full18-section oracle; only independently expected native
+  // bootstrap-to-nonpinned owner edges differ. No ACL/foreign edge is removed.
+  assertAccessOwnerDependencies(ownershipExpectation,afterNormalized.sharedDependencies,dependencyFacts.map(({dbid,classid,objid,objsubid,refclassid,refobjid,deptype})=>({dbid,classid,objid,objsubid,refclassid,refobjid,deptype})));
+  expect(afterNormalized).toEqual(expectedAfterTransfer);expect(await dataFacts()).toEqual(beforeData);
   const [identity]=await native.client`select current_user as current,session_user as session,current_database()as database,r.rolsuper,r.rolinherit,r.rolbypassrls,r.rolcreatedb,r.rolcreaterole,r.rolreplication,
    app.acting_as_owner()as native_owner,row_security_active('public.access_configuration'::regclass)as forced_rls,current_setting('statement_timeout')as statement_budget,current_setting('lock_timeout')as lock_budget from pg_roles r where r.rolname=current_user`;
   expect(identity).toEqual({current:role,session:role,database:name,rolsuper:false,rolinherit:false,rolbypassrls:false,rolcreatedb:false,rolcreaterole:false,rolreplication:false,native_owner:true,forced_rls:true,statement_budget:'20s',lock_budget:'300ms'});
