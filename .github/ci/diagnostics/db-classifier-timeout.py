@@ -18,7 +18,7 @@ from types import ModuleType
 
 ROOT = Path(__file__).resolve().parents[3]
 SELECTOR = 'test/gate-db-classifier-timeout-diagnostic.test.ts'
-MANIFEST = 'docs/qualification/db-classifier-owner-loss-correction-source-20261108.json'
+MANIFEST = 'docs/qualification/db-classifier-profile-absolute-invocation-source-20261108.json'
 CLASSIFIER_SHA = 'cc77445ba5b8a702a5f8f4a4292bdcb99275d520ae4f13b16442a17e78f3f916'
 KERNEL_SHA = 'cb1a2cc2879267f8834dc11ea0e1c52f8326b0bd4e45dcd94ccf2ac43463f28c'
 LOG_MAX = 16 * 1024**2
