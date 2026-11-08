@@ -5216,6 +5216,13 @@
       "when": 1793330002845,
       "tag": "3211_access_editor_native_owner_presentation",
       "breakpoints": true
+    },
+    {
+      "idx": 2800,
+      "version": "7",
+      "when": 1793330003100,
+      "tag": "3500_ai_centre_architecture_compatibility",
+      "breakpoints": true
     }
   ]
 }

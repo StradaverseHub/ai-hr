@@ -51,6 +51,7 @@ export const APPROVED_UPGRADE_TAIL=[
  {idx:2500,when:1793330002800,tag:'3200_ai_centre_controls'},
  {idx:2501,when:1793330002801,tag:'3201_ai_centre_function_coverage'},
  ...PERFORMANCE_MIGRATION_IDENTITIES.map(({idx,when,tag})=>({idx,when,tag})),
+ {idx:2800,when:1793330003100,tag:'3500_ai_centre_architecture_compatibility'},
 ] as const;
 // Final pending 2109/2126 bytes reviewed from engine 128bc2539; no applied-prefix hashes change.
 const APPROVED_UPGRADE_HASHES:Record<string,string>={
@@ -94,6 +95,7 @@ const APPROVED_UPGRADE_HASHES:Record<string,string>={
  '3200_ai_centre_controls':'2182ae4a614d0b847f399af18f9cfc43e82d3c9fd6f42ca960bfe22ebf4f10e2',
  '3201_ai_centre_function_coverage':'0c7239f512174c0d941dcb441cf98bd3a685a8e4d65973dc92f136dfb6b78d8a',
  ...Object.fromEntries(PERFORMANCE_MIGRATION_IDENTITIES.map(({tag,hash})=>[tag,hash])),
+ '3500_ai_centre_architecture_compatibility':'34038f25e56c2ab58335774a8350ad26c1e858e2d2bceef5e246db0547d822c6',
 };
 export function assertApprovedUpgradeTail(entries:{idx:number;when:number;tag:string}[]){
  expect(entries).toHaveLength(671+APPROVED_UPGRADE_TAIL.length);
