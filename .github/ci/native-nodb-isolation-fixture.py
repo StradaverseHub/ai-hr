@@ -616,6 +616,132 @@ def supervise(root, state, operation):
     print(json.dumps({'operation': operation, 'kernel': result, 'body': body}))
 
 
+def location_fields(value):
+    if type(value) is not dict or set(value) not in ({'frames'}, {'frames', 'exception'}):
+        return None
+    frames = value['frames']
+    if type(frames) is not list or len(frames) > 8:
+        return None
+    for row in frames:
+        if (type(row) is not dict or set(row) != {'function', 'line'}
+                or type(row['function']) is not str or row['function'] not in FAILURE_FUNCTIONS or type(row['line']) is not int
+                or not 1 <= row['line'] <= 4096):
+            return None
+    if 'exception' in value and (type(value['exception']) is not str or value['exception'] not in {kind.__name__ for kind in FAILURE_BUILTINS}):
+        return None
+    clean = {'frames': [{'function': row['function'], 'line': row['line']} for row in frames]}
+    if 'exception' in value:
+        clean['exception'] = value['exception']
+    return clean if len(canonical(clean)) <= 1024 else None
+
+
+def child_source_locations(root, operation):
+    need(operation in ('fault', 'git', 'hook', 'probe'))
+    packets = []
+    for origin, suffix in (('supervisor', '.role-stderr'), ('command', '.stderr')):
+        try:
+            raw = secure_read(root / ('private/' + operation + suffix), 65536)
+        except (FileNotFoundError, ValueError):
+            continue  # Unavailable/unsafe/oversized input never becomes proof.
+        for line in raw.splitlines()[:32]:  # Two fixed streams, at most64 lines.
+            prefix = b'Native UID failure locations '
+            if not line.startswith(prefix) or len(line) > len(prefix) + 1024 or len(packets) >= 2:
+                continue
+            try:
+                clean = location_fields(json.loads(line[len(prefix):]))
+            except (ValueError, UnicodeError, RecursionError, TypeError):
+                continue
+            if clean is not None:
+                packets.append({'kind': 'UNTRUSTED_DIAGNOSTIC_NOT_PROOF', 'origin': origin, **clean})
+    return packets
+
+
+def partial_component_diagnostics(root, state):
+    # Root-private fixed writers only. Validate exact schema and construct fresh
+    # scalar summaries; never copy arbitrary JSON, process rows or raw streams.
+    def read_optional(name):
+        try:
+            return json.loads(secure_read(root / ('private/' + name), 65536))
+        except FileNotFoundError:
+            return None
+
+    def process_shape(row):
+        need(type(row) is dict and set(row) == {'pid', 'start', 'parent', 'uids', 'gids', 'groups'})
+        need(all(type(row[key]) is int and 0 <= row[key] < 2**63 for key in ('pid', 'start', 'parent')))
+        for key, length in (('uids', 4), ('gids', 4), ('groups', None)):
+            need(type(row[key]) is list and (len(row[key]) == length if length is not None else len(row[key]) <= 65536))
+            need(all(type(value) is int and 0 <= value < 2**32 for value in row[key]))
+
+    need(type(state['code']) is dict and set(state['code']) == set(CODE))
+    for row in state['code'].values():
+        need(type(row) is dict and set(row) == {'bytes', 'sha256'} and type(row['bytes']) is int
+             and 0 < row['bytes'] <= 1024**2 and re.fullmatch(r'[a-f0-9]{64}', row['sha256']))
+    result = {'kind': 'PARTIAL_COMPONENT_DIAGNOSTICS_NOT_ADMISSION', 'source': state['sourceSha'], 'run': state['run'],
+              'protectedSourceCopies': len(CODE), 'committedGitComparisonQualified': False,
+              'vendor': None, 'allocation': None, 'closedRoles': [], 'roleOutcomes': []}
+    vendor = read_optional('node-vendor-controls.json')
+    if vendor is not None:
+        fields = {'kind', 'bytes', 'vendorSha256', 'positiveHeldCopyVerified', 'equalSizeAlteredCopyRejectedBySha',
+                  'alteredCopyNeverExecutableOrPublished', 'rootProtectedBeforeHooks', 'releaseAuthorized'}
+        need(type(vendor) is dict and set(vendor) == fields and vendor['kind'] == 'PINNED_NODE_VENDOR_BYTES_BEFORE_HOOKS'
+             and type(vendor['bytes']) is int and vendor['bytes'] == NODE_VENDOR_BYTES
+             and vendor['vendorSha256'] == NODE_VENDOR_SHA256 and vendor['releaseAuthorized'] is False)
+        flags = ('positiveHeldCopyVerified', 'equalSizeAlteredCopyRejectedBySha', 'alteredCopyNeverExecutableOrPublished', 'rootProtectedBeforeHooks')
+        need(all(vendor[key] is True for key in flags))
+        result['vendor'] = {'bytes': NODE_VENDOR_BYTES, 'vendorSha256': NODE_VENDOR_SHA256,
+                            **{key: True for key in flags}}
+    allocation = read_optional('allocation-controls.json')
+    if allocation is not None:
+        keys = ('missingRootReceiptRefusedDespiteEmptyCensus', 'primaryGidRefused', 'supplementaryGidRefused',
+                'foreignActorsUntouchedByIdentityRefusal', 'disposedOnlyByActualParentOwner')
+        need(type(allocation) is dict and set(allocation) == set(keys) and all(allocation[key] is True for key in keys))
+        result['allocation'] = {key: True for key in keys}
+    held_total = 0
+    for operation in ('allocation', 'fault', 'git', 'hook', 'probe'):
+        closed = read_optional(operation + '.role-closed.json')
+        if closed is not None:
+            keys = {'operation', 'owner', 'rootFamiliesClosed', 'cleanupKnown', 'liveDescendantsBeforeClosure',
+                    'actualHeldIdentities', 'anchorsReapedAfterClosure', 'faultRootFollowerCaptured', 'source', 'run'}
+            need(type(closed) is dict and set(closed) == keys and closed['operation'] == operation
+                 and closed['source'] == state['sourceSha'] and closed['run'] == state['run']
+                 and closed['rootFamiliesClosed'] is True and closed['cleanupKnown'] is True
+                 and type(closed['liveDescendantsBeforeClosure']) is bool and type(closed['faultRootFollowerCaptured']) is bool)
+            process_shape(closed['owner']); need(type(closed['actualHeldIdentities']) is list and len(closed['actualHeldIdentities']) <= 128)
+            for row in closed['actualHeldIdentities']:
+                process_shape(row)
+            held_total += len(closed['actualHeldIdentities']); need(held_total <= 128)
+            anchors = closed['anchorsReapedAfterClosure']; need(type(anchors) is list and len(anchors) <= 2)
+            exits = []
+            for row in anchors:
+                need(type(row) is dict and set(row) == {'identity', 'exit'} and type(row['exit']) is int and -64 <= row['exit'] <= 255)
+                process_shape(row['identity']); exits.append(row['exit'])
+            result['closedRoles'].append({'operation': operation, 'heldIdentities': len(closed['actualHeldIdentities']),
+                'reservedChildExits': exits, 'rootFamiliesClosed': True,
+                'liveDescendantsBeforeClosure': closed['liveDescendantsBeforeClosure'],
+                'faultRootFollowerCaptured': closed['faultRootFollowerCaptured']})
+        outcome = read_optional(operation + '.role-outcome.json')
+        if outcome is not None:
+            keys = {'kind', 'operation', 'source', 'run', 'childExit', 'stderrPresent',
+                    'liveDescendantsBeforeClosure', 'stdoutWithinBound', 'childSourceLocations'}
+            need(type(outcome) is dict and set(outcome) == keys and outcome['kind'] == 'CLOSED_ROOT_ROLE_DIAGNOSTIC'
+                 and outcome['operation'] == operation and operation != 'allocation' and closed is not None
+                 and outcome['source'] == state['sourceSha'] and outcome['run'] == state['run']
+                 and type(outcome['childExit']) is int and -64 <= outcome['childExit'] <= 255
+                 and all(type(outcome[key]) is bool for key in ('stderrPresent', 'liveDescendantsBeforeClosure', 'stdoutWithinBound')))
+            need(outcome['childExit'] in exits and outcome['liveDescendantsBeforeClosure'] == closed['liveDescendantsBeforeClosure'])
+            locations = outcome['childSourceLocations']; need(type(locations) is list and len(locations) <= 2)
+            clean_locations = []
+            for packet in locations:
+                need(type(packet) is dict and set(packet) in ({'kind', 'origin', 'frames'}, {'kind', 'origin', 'frames', 'exception'})
+                     and packet['kind'] == 'UNTRUSTED_DIAGNOSTIC_NOT_PROOF' and packet['origin'] in ('supervisor', 'command'))
+                clean = location_fields({key: packet[key] for key in ('frames', 'exception') if key in packet}); need(clean is not None)
+                clean_locations.append({'kind': 'UNTRUSTED_DIAGNOSTIC_NOT_PROOF', 'origin': packet['origin'], **clean})
+            result['roleOutcomes'].append({'operation': operation, 'childExit': outcome['childExit'],
+                'stderrPresent': outcome['stderrPresent'], 'liveDescendantsBeforeClosure': outcome['liveDescendantsBeforeClosure'],
+                'stdoutWithinBound': outcome['stdoutWithinBound'], 'childSourceLocations': clean_locations})
+    return result
+
+
 def run_role(root, operation):
     require_identity_free()
     state = json.loads(secure_read(root / 'private/state.json', 65536))
@@ -631,6 +757,13 @@ def run_role(root, operation):
             family.wait(child)
         finally:
             receipt = family.close()
+    need(type(child.returncode) is int and -64 <= child.returncode <= 255)
+    write_new(root / ('private/' + operation + '.role-outcome.json'), canonical({
+        'kind': 'CLOSED_ROOT_ROLE_DIAGNOSTIC', 'operation': operation, 'source': state['sourceSha'], 'run': state['run'],
+        'childExit': child.returncode, 'stderrPresent': error_path.lstat().st_size > 0,
+        'liveDescendantsBeforeClosure': receipt['liveDescendantsBeforeClosure'],
+        'stdoutWithinBound': output_path.lstat().st_size <= 65536,
+        'childSourceLocations': child_source_locations(root, operation)}))
     require_identity_free()
     output, error = secure_read(output_path, 65536), secure_read(error_path, 65536)
     if operation == 'fault':
@@ -950,6 +1083,8 @@ def finish(root, state):
         'kind': 'UID_ISOLATION_COMPONENT_UNAVAILABLE', 'source': state['sourceSha'],
         'nativeSixOperationJoinVerified': False, 'nativeApiContextIssued': False,
         'semanticParentVerified': False, 'normalNoDbVerified': False, 'releaseAuthorized': False}
+    if not completed:
+        report['partialDiagnostics'] = partial_component_diagnostics(root, state)
     report.update(complete=completed, ownedAccountRemoved=True, uidActorsRemaining=0, gidActorsRemaining=0, rootFamiliesClosed=True,
                   privateFailurePrefixRetained=True, rootPrivateSourceRetained=True)
     publish(state, report)
@@ -1007,7 +1142,7 @@ def main():
 
 # Immutable source symbols only. This is failure-location data, never a cause
 # assertion, trace rendering, exception message, executable source or authority.
-FAILURE_FUNCTIONS = frozenset(('<dictcomp>', '<genexpr>', '<lambda>', '<listcomp>', '<module>', '<setcomp>', 'Capabilities', 'Header', 'Iovec', 'RootFamily', '__init__', 'allocate', 'allocation_controls', 'bind', 'bootstrap_read', 'canonical', 'capture', 'close', 'copy_node', 'custody', 'digest', 'exited', 'failure_locations', 'finish', 'hooks', 'identity_actors', 'kernel', 'load_state', 'main', 'need', 'node_budget', 'node_identity', 'node_is_vendor', 'prepare', 'probe', 'process', 'protect_vendor_node', 'publish', 'refused', 'require_identity_free', 'restrict', 'restricted', 'restricted_status', 'root_fault', 'root_for_run', 'run_role', 'secure_read', 'settle', 'spawn', 'supervise', 'uid_actors', 'value_refused', 'wait', 'write_new'))
+FAILURE_FUNCTIONS = frozenset(('<dictcomp>', '<genexpr>', '<lambda>', '<listcomp>', '<module>', '<setcomp>', 'Capabilities', 'Header', 'Iovec', 'RootFamily', '__init__', 'allocate', 'allocation_controls', 'bind', 'bootstrap_read', 'canonical', 'capture', 'child_source_locations', 'close', 'copy_node', 'custody', 'digest', 'exited', 'failure_locations', 'finish', 'hooks', 'identity_actors', 'kernel', 'load_state', 'location_fields', 'main', 'need', 'node_budget', 'node_identity', 'node_is_vendor', 'partial_component_diagnostics', 'prepare', 'probe', 'process', 'process_shape', 'protect_vendor_node', 'publish', 'read_optional', 'refused', 'require_identity_free', 'restrict', 'restricted', 'restricted_status', 'root_fault', 'root_for_run', 'run_role', 'secure_read', 'settle', 'spawn', 'supervise', 'uid_actors', 'value_refused', 'wait', 'write_new'))
 FAILURE_BUILTINS = (ValueError, OSError, FileNotFoundError, ProcessLookupError,
                     PermissionError, TimeoutError, KeyError, TypeError, AssertionError,
                     RuntimeError, OverflowError, MemoryError, RecursionError, ImportError,
