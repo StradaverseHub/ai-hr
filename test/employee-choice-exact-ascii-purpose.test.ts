@@ -85,6 +85,13 @@ afterAll(()=>lifetime.finish(async()=>{
  const metadataReady=await finish(async()=>{if(!metadata)throw Error('Owned metadata unavailable');await metadata.beginCleanup(deadline);});
  if(setupReady&&metadataReady){for(const value of [...custodies].reverse())await finish(()=>value.remove());}
  else errors.push(Error('Global native cleanup handoff refused; semantic restoration not admitted'));
+ // Preserve the actual closed runtime observation BEFORE shutdown replaces its
+ // reason. A reporter failure remains a failure and cannot skip any cleanup.
+ await finish(async()=>{
+  const value=JSON.stringify({kind:'ACTUAL_ASCII_RUNTIME_OBSERVATION_NOT_QUALIFICATION',runtime:exactAsciiPrototypeRuntimeEvidence(),releaseAuthorized:false})+'\n';
+  if(Buffer.byteLength(value)>16384)throw Error('Closed runtime observation exceeds bound');
+  writeFileSync(join(resolve(process.env.AIHR_FOCUSED_EVIDENCE_DIR!),'employee-choice-exact-ascii-purpose','runtime-before-shutdown.json'),value,{flag:'wx',mode:0o600});
+ });
  await finish(async()=>{closeExactAsciiPrototypeRuntime();});await finish(async()=>metadata?.close());await finish(closeAll);await finish(async()=>ownedPools?.close());
  if(errors.length)throw new AggregateError(errors,'Owned ASCII purpose restoration and settlement refused');
 }));
