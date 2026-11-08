@@ -213,3 +213,15 @@ no compiler command or release decision.
   fixture qualification; no application rewrite or ordinary compiler switch.
 - Complete fixed-source native measurement, then current integration measurement.
 - Authenticated normal CI/release adoption only with complete retained evidence.
+
+## Stock database type-boundary experiment: guard-only control
+
+The ordinary whole compiler at source0f50 exhausted its unchanged12GiB heap again after the six Letters await-arm changes; its23 selected native/pure controls passed, which does not establish the compiler cause or a whole typecheck PASS. This experiment is separate from the unqualified native Program/binder context above. The dominant heap cause and current source-coordinate event counts remain unknown.
+
+A direct0f50 CONTROL adds one compile-only, uncalled contract owner, preserving `db/client.ts` byte-whole. Its OLD oracle is the actual unannotated installed `drizzle(pool)` expression with the existing pool type. Finite positive assignments and checked negative cases preserve the complete native Db/Tx API, protected ancestry, `$client`, generic/overloaded method inference, selected rows and nullable joins, writes/CTEs, SQL results and nested transactions. No guard function is invoked, no database opens, and this is not a runtime harness or reduced compiler project.
+
+The prospective direct CONTROL child may name full native interfaces and annotate the existing database value; it must keep this guard file byte-whole and preserve emitted application statements, all original roots, configuration, schema generic, dependencies, pool/transaction/RLS authority and budgets. No hand-written method subset, cast, widened key/row or partial public facade is permitted. Both actual stock full-Program cells need identical cold diagnostic instrumentation and the same added guard root. Source review cannot prove the contracts compile. A separately reviewed closed hosted trace mode and actual unchanged ordinary whole-TSC PASS are still required; no upload, native-context qualification or release follows from this source experiment.
+
+## Corrected positive native type fixture
+
+The original unrun CONTROL3f654de6352ee7a211f2b707d21a0ae552f75cd4 and CANDIDATEf9ffa0bd0e9425fa228ffdf90b3f4a344276603d omitted required person.primaryEmail from one positive insert contract. Root and independent full source review identified the same soleP2 before any publication or compiler run. This fresh direct0f50 CONTROL adds the fictional required email only to that positive input, preserving every other guard byte and all12 checked negative controls. The original frozen pair remains source-review history, never a runtime failure or passing compiler baseline. Its prospective direct child must reuse this corrected guard whole and the original application's exact type-only delta. All compatibility, trace, ordinary gate and release claims remain open.

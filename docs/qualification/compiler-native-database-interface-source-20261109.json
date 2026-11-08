@@ -1,0 +1,109 @@
+{
+  "kind": "COMPILER_NATIVE_DATABASE_BOUNDARY_CONTROL_SOURCE_ONLY_UNRUN",
+  "phase": "CONTROL",
+  "parent": "0f50e869e9e74f012803e8aafe1f3350e8792605",
+  "sourceRef": "codex/compiler-native-db-control-email-20261109",
+  "sameGuardRootRequiredForCandidate": true,
+  "scope": [
+    "db/client.ts",
+    "test/types/database-client-native-contract.ts",
+    "docs/adr/2026-11-08-native-compiler-reference-boundaries.md",
+    "docs/qualification/compiler-native-database-interface-source-20261109.json"
+  ],
+  "currentPins": [
+    {
+      "path": "db/client.ts",
+      "bytes": 22595,
+      "sha256": "bdd700ea682bafbf0cad2c255b8dacb96c13d82dc7fa0ae9446d4a1da265cd3f"
+    },
+    {
+      "path": "test/types/database-client-native-contract.ts",
+      "bytes": 7540,
+      "sha256": "99a8278db7e0009402b5c9afc5caaf5c429b60eb3e0741d80dbd4ad259427014"
+    },
+    {
+      "path": "docs/adr/2026-11-08-native-compiler-reference-boundaries.md",
+      "bytes": 16436,
+      "sha256": "12a5e4bbf3528c82dd94bc5a99e5854174fdeff4b510749311aad5c16f7279f0"
+    }
+  ],
+  "actualParentPreimages": [
+    {
+      "path": "db/client.ts",
+      "commit": "0f50e869e9e74f012803e8aafe1f3350e8792605",
+      "gitBlob": "0c4f28e00393a763608b506d608a3cf7df542c57",
+      "bytes": 22595,
+      "sha256": "bdd700ea682bafbf0cad2c255b8dacb96c13d82dc7fa0ae9446d4a1da265cd3f"
+    },
+    {
+      "path": "docs/adr/2026-11-08-native-compiler-reference-boundaries.md",
+      "commit": "0f50e869e9e74f012803e8aafe1f3350e8792605",
+      "gitBlob": "b818bb8d192fb240d94864c7da6ed7e68fe72f73",
+      "bytes": 13816,
+      "sha256": "fe1b9c6ba3a998c440b0daa2ffbd97b663107d7cb046eef404753e0a60059c23"
+    }
+  ],
+  "wholeParentAdrInverse": {
+    "method": "Remove this exact appended UTF8 suffix, then require whole actual parent Git bytes.",
+    "suffix": "\n## Stock database type-boundary experiment: guard-only control\n\nThe ordinary whole compiler at source0f50 exhausted its unchanged12GiB heap again after the six Letters await-arm changes; its23 selected native/pure controls passed, which does not establish the compiler cause or a whole typecheck PASS. This experiment is separate from the unqualified native Program/binder context above. The dominant heap cause and current source-coordinate event counts remain unknown.\n\nA direct0f50 CONTROL adds one compile-only, uncalled contract owner, preserving `db/client.ts` byte-whole. Its OLD oracle is the actual unannotated installed `drizzle(pool)` expression with the existing pool type. Finite positive assignments and checked negative cases preserve the complete native Db/Tx API, protected ancestry, `$client`, generic/overloaded method inference, selected rows and nullable joins, writes/CTEs, SQL results and nested transactions. No guard function is invoked, no database opens, and this is not a runtime harness or reduced compiler project.\n\nThe prospective direct CONTROL child may name full native interfaces and annotate the existing database value; it must keep this guard file byte-whole and preserve emitted application statements, all original roots, configuration, schema generic, dependencies, pool/transaction/RLS authority and budgets. No hand-written method subset, cast, widened key/row or partial public facade is permitted. Both actual stock full-Program cells need identical cold diagnostic instrumentation and the same added guard root. Source review cannot prove the contracts compile. A separately reviewed closed hosted trace mode and actual unchanged ordinary whole-TSC PASS are still required; no upload, native-context qualification or release follows from this source experiment.\n\n## Corrected positive native type fixture\n\nThe original unrun CONTROL3f654de6352ee7a211f2b707d21a0ae552f75cd4 and CANDIDATEf9ffa0bd0e9425fa228ffdf90b3f4a344276603d omitted required person.primaryEmail from one positive insert contract. Root and independent full source review identified the same soleP2 before any publication or compiler run. This fresh direct0f50 CONTROL adds the fictional required email only to that positive input, preserving every other guard byte and all12 checked negative controls. The original frozen pair remains source-review history, never a runtime failure or passing compiler baseline. Its prospective direct child must reuse this corrected guard whole and the original application's exact type-only delta. All compatibility, trace, ordinary gate and release claims remain open.\n",
+    "parentSha256": "fe1b9c6ba3a998c440b0daa2ffbd97b663107d7cb046eef404753e0a60059c23"
+  },
+  "dbClientWhole": true,
+  "guardOwner": {
+    "path": "test/types/database-client-native-contract.ts",
+    "oldOracle": "Uncalled originalNativeInference returns actual stock drizzle(pool), pool ReturnType<typeof postgres>. No reference to new boundary in oracle.",
+    "negativeExpectErrorDirectives": 12,
+    "runtimeInvocations": 0,
+    "newExplicitCompilerRoot": "SOURCE_DERIVED_FROM_UNCHANGED_**/*.ts_INCLUDE_NOT_ACTUAL_CHECKER_CENSUS",
+    "hostedTypeCorrectness": "UNRUN_NOT_ESTABLISHED",
+    "functionDeclarations": 5,
+    "exportedUncalledGuardFunctions": 4,
+    "positiveInsertPremise": "Includes required person.primaryEmail as fictional compile-only@example.invalid; all other prior guard bytes whole."
+  },
+  "retainedEvidence": {
+    "run": 42526453652,
+    "source": "0f50e869e9e74f012803e8aafe1f3350e8792605",
+    "ordinaryWholeTypecheck": "12GiBV8OOM_NO_TS_DIAGNOSTICS_NOT_PASS",
+    "selectedControls": "23PASS at actual0f50; not qualification of this control",
+    "dominantHeapCause": "UNKNOWN"
+  },
+  "planRefs": [
+    {
+      "path": "/private/tmp/aihr-compiler-next-full-api-boundary-source-proposal-20261109.md",
+      "sha256": "7cc0fc1c66f1e937045fc6219965229efb9cc32abff33d35dbf3e490ab1e99dc"
+    },
+    {
+      "path": "/private/tmp/aihr-compiler-matched-trace-required-control-addendum-20261109.md",
+      "sha256": "40c5525ac537dd6ed0461ae2a8a5284359be511457cc695f558a06af602747a2"
+    }
+  ],
+  "acyclicity": "Self hash excluded; immutable parent Git refs and exact ADR append inverse, no nested history dump. Candidate must preserve this complete guard root.",
+  "runtimeQualified": false,
+  "nativeContextQualified": false,
+  "releaseAuthorized": false,
+  "repositoryImportsTestsCompilerNativeDbNetworkExecuted": false,
+  "historicalSourceFinding": {
+    "priority": 2,
+    "originalControl": "3f654de6352ee7a211f2b707d21a0ae552f75cd4",
+    "originalCandidate": "f9ffa0bd0e9425fa228ffdf90b3f4a344276603d",
+    "meaning": "SOURCE_REVIEW_ONLY_UNRUN_REQUIRED_PRIMARY_EMAIL_OMISSION",
+    "peerProof": {
+      "path": "/private/tmp/aihr-compiler-db-pair-independent-full-source-review-20261109.json",
+      "sha256": "e91eb1de1d127016f2fc3ee414e74171a5976175177778920d544b0aa6ff97bd"
+    },
+    "wholeOriginalGuard": {
+      "source": "3f654de6352ee7a211f2b707d21a0ae552f75cd4",
+      "path": "test/types/database-client-native-contract.ts",
+      "gitBlob": "386c43c403ff1e7d6848da4bd6b693aa88ab7fc9",
+      "bytes": 7496,
+      "sha256": "40cf37537be467ea89d269b235406e54f49edc1c9085d645071159b6f4163857"
+    },
+    "onlyGuardReplacement": {
+      "before": "{tenantId,fullName:'Compile-only fictional identity'}",
+      "after": "{tenantId,fullName:'Compile-only fictional identity',primaryEmail:'compile-only@example.invalid'}"
+    },
+    "originalPairPreservedUnpublished": true,
+    "all12NegativeDirectiveAndOtherGuardBytesWhole": true,
+    "runtimeFailureOrPassClaim": false
+  }
+}
