@@ -1,0 +1,58 @@
+{
+  "kind": "NATIVE_CGROUP_TOPOLOGY_SOURCE_NOT_READINESS",
+  "base": "faf953df4298a5f48eb3249ca05f1c1040ade9ce",
+  "sourceRef": "codex/native-next-cgroup-cap-diagnosis-20261108",
+  "sourceSha256": {
+    "deploy/admission/test_next_host_view_native.py": "771658bbdc45a2430ea47c4f3658e34fb798953a8c147f4baca0836bf14f94cb",
+    "deploy/admission/test_next_host_view.py": "6261fa6c252226d44720ba0de7163ae38c3ef7f71d58418ffb9a64f3b7f19e08",
+    "deploy/admission/next_cleanup_phase_inverse.json": "3a96b8e6dfb4e566c947585626ee1c6fdcd87948a23328c797b6185923fab00a",
+    "test/runtime-next-host-view-native.test.ts": "73c57a46d73c4becef5ed821c4a7ec29cd37bda2b46771a8c7076307830bb479",
+    "test/runtime-next-host-view.test.ts": "5ada8cc29c983202f0e866fb2cd9aa332dd7b579f539acb70312fd952cdeb683",
+    "docs/qualification/native-next-cgroup-topology-diagnostic-20261108.md": "09c3d3f8f18691418e3f7ce3753d799f4e34b47a271a341a331d220cfe615c90"
+  },
+  "unchangedSha256": {
+    "deploy/admission/next_profile.py": "5b16cea3c023e744ec492f5ed68e6195873eebeb5075800060a21abd71e3b245",
+    ".github/ci/runtime_inventory.py": "b4207c2e82ee07692f4fd3814b2d5ab7f5d86a9b7471139c2ed56e4f2e86563d",
+    "deploy/admission/controller.py": "c83fa023e51137fcaae007e2e4f756388096fe47bccf3254bfc870f466686dd6",
+    "deploy/admission/test_next_native.py": "fc3aecec867e853e9d00dd874fc1412242d44b26964162f24a2e18caf1f4889b",
+    ".github/ci/singleton-protocol.mjs": "5d345725b4ebd27b8e9c300bab67cc205d3c4d2398bdda3365f8a9247140a385",
+    ".github/ci/singleton-profiles.mjs": "77273888e8bfce114a5ff9235b05e7fba688e25da68dc7046e2845648f73a78c",
+    "test/helpers/ci-singleton-admission.ts": "52b21da08ae38fae1a51096213318841081042d109f6fed647bab23d3e8a755d",
+    ".github/ci/run-unit.mjs": "025f379e3edb2d0ac7c3c7b4ba9b55e77db31fcec2cfd5ac6825e509a543805a",
+    ".github/ci/plan.mjs": "e1a1102a17a10c9e09113087e1089b58cad55a866f68522fa47502e3d0b5b241",
+    ".github/ci/manifest.mjs": "6fd081b890148a35014927200e1b0ae9053d565895b68b400eab08e49b858143",
+    ".github/workflows/alpha-staging.yml": "43d409be84f24ad1c01f5112fe4bf82fe111665a17cbbcd2dc6438c43cfb68f3",
+    ".github/actions/setup-alpha/action.yml": "13bb384ff8b5cab52e9f894a109aaf46384e221ac156ffc289d752e3b334f150",
+    "package.json": "7f67e35d869a29d2cb58d65c6f63413afc63db2cc6c6cf9dacb5086bce70ec2c",
+    "pnpm-lock.yaml": "0413a070eca23d390fabdcd78cb63b2dcf4b0b69fe90408c7b57a4f672d21dbd"
+  },
+  "plannedSelectors": [
+    {
+      "file": "test/runtime-next-host-view.test.ts",
+      "cases": 1,
+      "underlyingModels": 20
+    },
+    {
+      "file": "test/runtime-next-host-view-native.test.ts",
+      "cases": 1,
+      "requiresActualSingletonHost": true
+    }
+  ],
+  "workSeconds": 20,
+  "cleanupSeconds": 7,
+  "transportReserveSeconds": 3,
+  "nativeTotalSeconds": 30,
+  "originalResourceGuardChanged": false,
+  "originalFailure": {
+    "run": "42448521845",
+    "artifact": "13604833469",
+    "result": "1FAIL; Missing nonroot ancestor resource cap; ownedRuntimeCleaned:true",
+    "missingTierObserved": false,
+    "missingControllerObserved": false
+  },
+  "localBehaviorExecuted": false,
+  "resourceReadinessQualified": false,
+  "nextApplicationVerified": false,
+  "releaseAuthorized": false,
+  "productionHeld": true
+}

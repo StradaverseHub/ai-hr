@@ -31,4 +31,18 @@ it('proves privileged cache overlays and bounded owned stop with actual systemd2
  expect(report.hostPlaceholderOwnership).toEqual(Array(3).fill({uid:0,mode:0o755}));
  expect(report.sourceSha256).toEqual(Object.fromEntries([['probe.py','deploy/admission/test_next_host_view_native.py'],['next_profile.py','deploy/admission/next_profile.py'],['runtime_inventory.py','.github/ci/runtime_inventory.py']].map(([name,path])=>[name,createHash('sha256').update(readFileSync(path)).digest('hex')])));
  expect(report.stopElapsedMs).toBeLessThanOrEqual(4000);
+ expect(report.resourceReadinessQualified).toBe(false);
+ const topology=report.resourceTopology;
+ expect(topology).toMatchObject({kind:'ACTUAL_UNCHANGED_RESOURCE_METHOD_DIAGNOSTIC_NOT_READINESS',
+  actualProcessUnchanged:true,profileConstructorVerified:false,nextApplicationVerified:false,releaseEligible:false});
+ expect(typeof topology.resourceReady).toBe('boolean');
+ if(topology.resourceReady)expect(topology.guardReason).toBe('resource-check-accepted');
+ else expect(topology.guardReason).toMatch(/^(?:missing-nonroot-cap|ancestor-memory-too-low|ancestor-cpu-too-low|resource-check-refused)$/);
+ expect(topology.after).toEqual(topology.before);
+ expect(topology.before.map((row:{tier:string})=>row.tier)).toEqual(['worker','aggregate','root']);
+ for(const row of topology.before){
+  expect(Object.keys(row).sort()).toEqual(['cpu','memory','tier']);
+  for(const kind of ['cpu','memory']){expect(Object.keys(row[kind]).sort()).toEqual(['available','capPresent','subtreeEnabled']);for(const value of Object.values(row[kind]))expect(typeof value).toBe('boolean');}
+ }
+ expect(topology.kernelVersion).toMatch(/^[A-Za-z0-9.+_-]{1,128}$/);
 },35000);

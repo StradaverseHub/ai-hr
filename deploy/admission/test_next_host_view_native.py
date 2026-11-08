@@ -10,6 +10,7 @@ import importlib.util
 import json
 import os
 import pathlib
+import re
 import signal
 import stat
 import subprocess
@@ -19,6 +20,9 @@ import time
 ROOT = pathlib.Path('/var/lib/aihr-next-host-conformance')
 UNIT = 'aihr-next-host-conformance.service'
 FOREIGN = 'aihr-next-foreign-conformance.service'
+AGGREGATE = 'aihrnexthostresource.slice'
+AGGREGATE_GROUP = '/' + AGGREGATE
+UNITS = (UNIT, FOREIGN, AGGREGATE)
 RELEASE = ROOT / 'release'
 TOTAL_DEADLINE = time.monotonic() + 27
 DEADLINE = TOTAL_DEADLINE - 7  #20s conformance work +7s owned cleanup;3s transport reserve.
@@ -51,18 +55,36 @@ def command(*arguments, check=True, cap=3):
 
 
 def properties(unit, cap=3):
-    require(unit in (UNIT, FOREIGN), 'Unknown native conformance unit')
+    require(unit in UNITS, 'Unknown native conformance unit')
     result = command('/usr/bin/systemctl', '--system', 'show', unit,
-        '--property=LoadState,InvocationID,MainPID,ControlPID,ActiveState,SubState,ControlGroup,FragmentPath,DropInPaths,KillMode,Delegate,User,NoNewPrivileges,TimeoutStopUSec,SendSIGKILL,RuntimeMaxUSec', cap=cap)
+        '--property=LoadState,InvocationID,MainPID,ControlPID,ActiveState,SubState,ControlGroup,FragmentPath,SourcePath,Transient,DropInPaths,KillMode,Delegate,User,NoNewPrivileges,TimeoutStopUSec,SendSIGKILL,RuntimeMaxUSec', cap=cap)
     require(len(result.stdout) <= 8192, 'Native conformance metadata exceeds bound')
     return dict(line.split('=', 1) for line in result.stdout.decode().splitlines() if '=' in line)
 
 
+def declaration_absent(name):
+    require(name in UNITS, 'Unknown native declaration')
+    if os.path.lexists('/etc/systemd/system/' + name):
+        return False
+    actual = properties(name, cap=.2)
+    if name != AGGREGATE:
+        return actual.get('LoadState') == 'not-found'
+    # systemd synthesizes implicit slices. An inactive, fragment/dropin-free
+    # declaration with no kernel group is absence; a loaded file is not.
+    return (actual.get('LoadState') in ('not-found', 'loaded')
+            and actual.get('ActiveState') == 'inactive'
+            and actual.get('SubState') == 'dead'
+            and actual.get('FragmentPath', '') == actual.get('DropInPaths', '') == ''
+            and actual.get('SourcePath', '') == '' and actual.get('Transient', 'no') == 'no'
+            and actual.get('ControlGroup', '') in ('', AGGREGATE_GROUP)
+            and not os.path.lexists('/sys/fs/cgroup' + AGGREGATE_GROUP))
+
+
 def family_stopped(unit, cap=3):
     actual = properties(unit, cap=cap)
-    if actual.get('MainPID') != '0' or actual.get('ControlPID') != '0' or actual.get('ActiveState') not in ('inactive', 'failed'):
+    if (actual.get('MainPID', '0') if unit == AGGREGATE else actual.get('MainPID')) != '0' or (actual.get('ControlPID', '0') if unit == AGGREGATE else actual.get('ControlPID')) != '0' or actual.get('ActiveState') not in ('inactive', 'failed'):
         return False
-    expected = '/system.slice/' + unit
+    expected = AGGREGATE_GROUP if unit == AGGREGATE else AGGREGATE_GROUP + '/' + unit if unit == UNIT else '/system.slice/' + unit
     require(actual.get('ControlGroup', '') in ('', expected), 'Native conformance cgroup changed')
     directory = pathlib.Path('/sys/fs/cgroup' + expected)
     if not directory.exists():
@@ -70,6 +92,131 @@ def family_stopped(unit, cap=3):
     require(not directory.is_symlink(), 'Native conformance cgroup is a link')
     events = dict(line.split() for line in (directory / 'cgroup.events').read_text().splitlines())
     return events.get('populated') == '0' and not (directory / 'cgroup.procs').read_text().strip()
+
+
+def aggregate_directory():
+    return pathlib.Path('/sys/fs/cgroup' + AGGREGATE_GROUP)
+
+
+def slice_occupants(N):
+    """No slice stop may signal an unowned descendant, even during cleanup."""
+    directory = aggregate_directory()
+    if not os.path.lexists(directory):
+        return
+    secure(directory, 0, directory=True)
+    require(N.kernel_text(directory / 'cgroup.procs', secure, require) == '', 'Foreign aggregate process; retain slice')
+    # The only possible service child is fixed, and Delegate=no forbids
+    # it creating a further hierarchy. Refuse every directory beyond it.
+    entries = list(directory.iterdir());require(len(entries) <= 256, 'Aggregate metadata exceeds bound')
+    for entry in entries:
+        info = entry.lstat()
+        require(not stat.S_ISLNK(info.st_mode), 'Linked aggregate metadata; retain slice')
+        if stat.S_ISDIR(info.st_mode):
+            require(entry.name == UNIT, 'Foreign slice child; retain slice')
+            secure(entry, 0, directory=True)
+            children = list(entry.iterdir());require(len(children) <= 256, 'Worker metadata exceeds bound')
+            for child in children:
+                mode = child.lstat().st_mode
+                require(not stat.S_ISDIR(mode) and not stat.S_ISLNK(mode), 'Nested foreign slice child; retain slice')
+
+
+def resource_process(actual):
+    """Actual fixed app PID/start/executable/cgroup, never a caller JSON PID."""
+    pid = actual.get('MainPID', '')
+    require(pid.isdigit() and int(pid) > 1 and actual.get('ControlGroup') == AGGREGATE_GROUP + '/' + UNIT,
+            'Native resource process scope differs')
+    proc = pathlib.Path('/proc') / pid
+    raw = (proc / 'stat').read_text(); end = raw.rfind(')'); fields = raw[end + 2:].split()
+    require(end > 0 and len(fields) >= 20 and fields[0] not in ('Z', 'X'), 'Native resource process is not live')
+    require((proc / 'exe').resolve() == pathlib.Path('/usr/bin/python3').resolve()
+            and (proc / 'cmdline').read_bytes().split(b'\0') ==
+            [b'/usr/bin/python3', b'-I', b'-B', os.fsencode(ROOT / 'probe.py'), b'app', b''],
+            'Native resource process executable differs')
+    require((proc / 'cgroup').read_text() == '0::' + AGGREGATE_GROUP + '/' + UNIT + '\n', 'Native resource process cgroup differs')
+    return (int(pid), fields[19])
+
+
+def resource_guard_reason(error):
+    return {'Missing nonroot ancestor resource cap': 'missing-nonroot-cap',
+            'Ancestor memory cap is below accepted app envelope': 'ancestor-memory-too-low',
+            'Ancestor CPU cap is below accepted app envelope': 'ancestor-cpu-too-low'}.get(str(error), 'resource-check-refused')
+
+
+def resource_topology(N, I, invocation, files, source_hashes):
+    """Closed observation of the UNCHANGED real resource method, not readiness."""
+    aggregate = pathlib.Path('/sys/fs/cgroup' + AGGREGATE_GROUP)
+    directories = [('worker', aggregate / UNIT), ('aggregate', aggregate), ('root', pathlib.Path('/sys/fs/cgroup'))]
+    identities = {}
+    def custody():
+        for name in (UNIT, AGGREGATE):
+            limit()
+            file = pathlib.Path('/etc/systemd/system', name);secure(file, 0)
+            info = file.lstat()
+            require((info.st_dev, info.st_ino) == files[name], 'Native resource declaration replaced')
+            actual = properties(name)
+            require(actual.get('FragmentPath') == str(file) and actual.get('DropInPaths') == ''
+                    and actual.get('SourcePath', '') == '' and actual.get('Transient', 'no') == 'no', 'Native resource declaration differs')
+        for name, digest in source_hashes.items():
+            limit()
+            file = ROOT / name;secure(file, 0)
+            require(hashlib.sha256(file.read_bytes()).hexdigest() == digest, 'Native resource helper changed')
+    def capture():
+        rows = []
+        for tier, directory in directories:
+            limit()
+            secure(directory, 0, directory=True)
+            info = directory.lstat(); identity = (info.st_dev, info.st_ino)
+            if tier in identities:
+                require(identities[tier] == identity, 'Native resource tier replaced')
+            else:
+                identities[tier] = identity
+            available = N.kernel_text(directory / 'cgroup.controllers', secure, require).split()
+            enabled = N.kernel_text(directory / 'cgroup.subtree_control', secure, require).split()
+            require(len(available) <= 32 and len(set(available)) == len(available) and len(enabled) <= 32
+                    and len(set(enabled)) == len(enabled) and all(re.fullmatch(r'[a-z_]+', word) for word in available + enabled),
+                    'Native controller metadata differs')
+            require(set(enabled) <= set(available), 'Enabled native controller is unavailable')
+            row = {'tier': tier}
+            for controller, filename in (('memory', 'memory.max'), ('cpu', 'cpu.max')):
+                file = directory / filename
+                try:
+                    metadata = file.lstat()
+                except FileNotFoundError:
+                    present = False
+                else:
+                    secure(file, 0);require(stat.S_ISREG(metadata.st_mode), 'Native resource cap type differs');present = True
+                row[controller] = {'capPresent': present, 'available': controller in available, 'subtreeEnabled': controller in enabled}
+            rows.append(row)
+        return rows
+    custody()
+    before_unit = properties(UNIT);N.require_owned_invocation(before_unit, invocation, require)
+    identity = resource_process(before_unit);slice_occupants(N)
+    before = capture()
+    runtime = object.__new__(N.NextRuntime)
+    runtime.require, runtime.secure_path, runtime.inventory = require, secure, I
+    runtime.value = {'units': {UNIT: {}}, 'resourceEnvelope': {'cgroupPath': AGGREGATE_GROUP,
+        'memoryHighBytes': 7168 * 1024**2, 'memoryMaxBytes': 8192 * 1024**2, 'tasksMax': 1024,
+        'cpuOversubscriptionDiagnostic': False}}
+    # Never copy or patch resource_state. Its guard still rejects a missing
+    # nonroot cap. This report records that refusal without accepting a worker.
+    verdict, reason = False, 'resource-check-refused'
+    try:
+        limit()
+        evidence = runtime.resource_state(UNIT, before_unit)
+    except AssertionError as error:
+        reason = resource_guard_reason(error)
+    else:
+        limit()
+        require(evidence.get('aggregateCapsVerified') is True, 'Actual resource result differs')
+        verdict, reason = True, 'resource-check-accepted'
+    after = capture();after_unit = properties(UNIT);N.require_owned_invocation(after_unit, invocation, require)
+    require(resource_process(after_unit) == identity and after == before, 'Native resource topology changed during observation')
+    custody()
+    kernel = os.uname().release
+    require(re.fullmatch(r'[A-Za-z0-9.+_-]{1,128}', kernel) is not None, 'Kernel version syntax differs')
+    return {'kind': 'ACTUAL_UNCHANGED_RESOURCE_METHOD_DIAGNOSTIC_NOT_READINESS', 'before': before, 'after': after,
+            'resourceReady': verdict, 'guardReason': reason, 'actualProcessUnchanged': True,
+            'kernelVersion': kernel, 'profileConstructorVerified': False, 'nextApplicationVerified': False, 'releaseEligible': False}
 
 
 def rows(N):
@@ -222,19 +369,23 @@ def cleanup(files, invocations, N, owned_root):
                 require(N is not None, 'Native invocation owner unavailable')
                 N.require_owned_invocation(actual, invocations.get(name), require)
             else:
-                require(actual.get('MainPID') == actual.get('ControlPID') == '0'
+                require((actual.get('MainPID', '0') if name == AGGREGATE else actual.get('MainPID')) ==
+                        (actual.get('ControlPID', '0') if name == AGGREGATE else actual.get('ControlPID')) == '0'
                         and actual.get('ActiveState') in ('inactive', 'failed'), 'Unknown native conformance family')
+            if name == AGGREGATE:
+                slice_occupants(N)
             safe.append(name)
         except BaseException as error:
             errors.append(error)
     # Queue every independently proven stop BEFORE awaiting any native family.
-    for index, name in enumerate(safe):
+    services = [name for name in safe if name != AGGREGATE]
+    for index, name in enumerate(services):
         try:
             command('/usr/bin/systemctl', '--system', 'stop', '--no-block', name,
-                    cap=phase_cap(queue_end, .25, len(safe)-index))
+                    cap=phase_cap(queue_end, .25, len(services)-index))
         except BaseException as error:
             errors.append(error)
-    pending = set(safe)
+    pending = set(services)
     while pending and time.monotonic() < min(DEADLINE, settlement_end):
         for name in list(pending):
             try:
@@ -248,10 +399,23 @@ def cleanup(files, invocations, N, owned_root):
         errors.append(AssertionError('Conformance families did not settle before disposal frontier'))
     if errors:
         raise BaseExceptionGroup('Native conformance stop/custody refused; retain paths', errors)
-    for name in (UNIT, FOREIGN):
+    if AGGREGATE in safe:
+        slice_occupants(N)
+        actual = properties(AGGREGATE, cap=phase_cap(settlement_end, .2))
+        if actual.get('InvocationID'):
+            N.require_owned_invocation(actual, invocations.get(AGGREGATE), require)
+        # Every service is already natively stopped. No slice stop may signal
+        # a remaining process, including one in the accepted worker's child.
+        directory = pathlib.Path('/sys/fs/cgroup' + AGGREGATE_GROUP)
+        if os.path.lexists(directory):
+            require(N.key_values(N.kernel_text(directory / 'cgroup.events', secure, require), require).get('populated') == 0,
+                    'Live slice descendant retained')
+        command('/usr/bin/systemctl', '--system', 'stop', '--no-block', AGGREGATE, cap=phase_cap(settlement_end, .2))
+        while not family_stopped(AGGREGATE, cap=phase_cap(settlement_end, .1)):
+            time.sleep(.01)
+    for name in UNITS:
         if name not in files:
-            require(not os.path.lexists('/etc/systemd/system/' + name)
-                    and properties(name, cap=.2).get('LoadState') == 'not-found',
+            require(declaration_absent(name),
                     'Untracked native declaration; retain all paths')
     if owned_root is not None:
         root_custody(owned_root, N)
@@ -264,8 +428,7 @@ def cleanup(files, invocations, N, owned_root):
         limit();file.unlink()
     if files:
         command('/usr/bin/systemctl', '--system', 'daemon-reload', cap=.4)
-    require(all(not os.path.lexists('/etc/systemd/system/' + name)
-                and properties(name, cap=.2).get('LoadState') == 'not-found' for name in (UNIT, FOREIGN)),
+    require(all(declaration_absent(name) for name in UNITS),
             'Native conformance service or declaration remains after disposal')
     if owned_root is not None:
         remove_owned_root(owned_root, N)
@@ -283,15 +446,16 @@ def main():
             and evidence.name == 'runtime-next-host-view-native.json' and evidence.parent.resolve() == evidence.parent and not evidence.exists()
             and not evidence.is_symlink(), 'Private admitted evidence path required')
     require(not os.path.lexists(ROOT), 'Foreign conformance directory retained')
-    for unit in (UNIT, FOREIGN):
-        require(not os.path.lexists('/etc/systemd/system/' + unit)
-                and properties(unit).get('LoadState') == 'not-found', 'Foreign native unit retained')
+    for unit in UNITS:
+        require(declaration_absent(unit), 'Foreign native unit retained')
     version = command('/usr/bin/systemctl', '--version').stdout.splitlines()[0]
-    require(version.startswith(b'systemd 255 '), 'Native conformance requires actual systemd255')
+    require(version.startswith(b'systemd 255 ') and len(version) <= 256 and all(32 <= byte <= 126 for byte in version),
+            'Native conformance requires actual systemd255')
     primary = None
     owned_root, N = None, None
     files, invocations, report = {}, {}, {'version': 1, 'kind': 'ACTUAL_SYSTEMD_HOST_CACHE_CONFORMANCE_NOT_NEXT',
-        'complete': False, 'nextApplicationVerified': False, 'releaseEligible': False}
+        'complete': False, 'nextApplicationVerified': False, 'releaseEligible': False,
+        'resourceReadinessQualified': False, 'systemdVersion': version.decode()}
     try:
         ROOT.mkdir(mode=0o755)
         info = ROOT.lstat()
@@ -319,9 +483,11 @@ def main():
         unit += 'ExecStartPre=+/usr/bin/python3 -I -B ' + str(ROOT / 'probe.py') + ' hook\n'
         unit += 'ExecStart=/usr/bin/python3 -I -B ' + str(ROOT / 'probe.py') + ' app\n'
         unit += 'ExecStartPost=+/usr/bin/python3 -I -B ' + str(ROOT / 'probe.py') + ' hook\n'
+        unit += 'Slice=' + AGGREGATE + '\nDelegate=no\n'
         unit += 'BindReadOnlyPaths=' + str(RELEASE) + ':' + str(RELEASE) + ':norbind\n'
         unit += ''.join('BindPaths=' + row['source'] + ':' + str(RELEASE / row['target']) + ':norbind\n' for row in rows(N)[UNIT])
-        for name, content in [(UNIT, unit), (FOREIGN, '[Service]\nUser=nobody\nNoNewPrivileges=yes\nExecStart=/usr/bin/sleep 15\nTimeoutStopSec=1s\nKillMode=control-group\n')]:
+        aggregate = '[Slice]\nCPUAccounting=yes\nMemoryAccounting=yes\nCPUQuota=400%\nMemoryHigh=7168M\nMemoryMax=8192M\nMemorySwapMax=0\nTasksMax=1024\n'
+        for name, content in [(UNIT, unit), (FOREIGN, '[Service]\nUser=nobody\nNoNewPrivileges=yes\nExecStart=/usr/bin/sleep 15\nTimeoutStopSec=1s\nKillMode=control-group\n'), (AGGREGATE, aggregate)]:
             file = pathlib.Path('/etc/systemd/system', name)
             with file.open('x') as output:
                 output.write(content)
@@ -333,15 +499,19 @@ def main():
                 result = command('/usr/bin/systemctl', '--system', 'start', name, check=check)
             except BaseException as error:
                 failures.append(error)
-            try:
-                # Failed/timed-out StartUnit may already own a native invocation.
-                file = pathlib.Path('/etc/systemd/system', name);info = file.lstat()
-                require((info.st_dev, info.st_ino) == files[name] and info.st_uid == 0, 'Native start declaration changed')
-                actual = properties(name)
-                if actual.get('InvocationID'):
-                    invocations[name] = actual['InvocationID']
-            except BaseException as error:
-                failures.append(error)
+            # Failed/timed-out StartUnit may already activate BOTH its service
+            # and slice. Capture each independently before propagating failure.
+            for observed in (name, AGGREGATE) if name == UNIT else (name,):
+                try:
+                    file = pathlib.Path('/etc/systemd/system', observed);info = file.lstat()
+                    require((info.st_dev, info.st_ino) == files[observed] and info.st_uid == 0, 'Native start declaration changed')
+                    actual = properties(observed)
+                    require(actual.get('FragmentPath') == str(file) and actual.get('DropInPaths') == '', 'Native start source differs')
+                    if actual.get('InvocationID'):
+                        N.require_owned_invocation(actual, actual['InvocationID'], require)
+                        invocations[observed] = actual['InvocationID']
+                except BaseException as error:
+                    failures.append(error)
             if len(failures) == 1:
                 raise failures[0]
             if failures:
@@ -353,8 +523,18 @@ def main():
                 and actual.get('KillMode') == 'control-group' and actual.get('Delegate') == 'no'
                 and actual.get('TimeoutStopUSec') == '3s' and actual.get('SendSIGKILL') == 'yes'
                 and actual.get('RuntimeMaxUSec') == '15s', 'Effective native conformance service differs')
+        actual_slice = properties(AGGREGATE)
+        require(actual_slice.get('FragmentPath') == '/etc/systemd/system/' + AGGREGATE
+                and actual_slice.get('DropInPaths') == '' and actual_slice.get('SourcePath', '') == ''
+                and actual_slice.get('Transient', 'no') == 'no', 'Effective aggregate source differs')
         start_owned(UNIT)
         started = properties(UNIT);invocations[UNIT] = started['InvocationID']
+        slice_state = properties(AGGREGATE)
+        require(slice_state.get('ActiveState') == 'active' and slice_state.get('ControlGroup') == AGGREGATE_GROUP,
+                'Actual resource slice did not activate')
+        N.require_owned_invocation(slice_state, slice_state.get('InvocationID'), require)
+        invocations[AGGREGATE] = slice_state['InvocationID']
+        report['resourceTopology'] = resource_topology(N, I, started['InvocationID'], files, report['sourceSha256'])
         hook_report = json.loads((ROOT / 'hook-proof.json').read_text())
         require(hook_report['nativeNamespaceVerified'] is True, 'Actual hook proof missing')
         with I.PinnedTree(RELEASE, require) as tree:

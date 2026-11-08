@@ -44,6 +44,55 @@ class HostViewModels(unittest.TestCase):
             return N.immutable_cache_view(str(self.root), tree, {}, 65534, require,
                                          lambda *_args, **_kwargs: None, os.getuid())
 
+    def test_resource_guard_diagnostic_returns_only_closed_source_reasons(self):
+        for message, reason in [('Missing nonroot ancestor resource cap', 'missing-nonroot-cap'),
+                                ('Ancestor memory cap is below accepted app envelope', 'ancestor-memory-too-low'),
+                                ('Ancestor CPU cap is below accepted app envelope', 'ancestor-cpu-too-low')]:
+            self.assertEqual(H.resource_guard_reason(AssertionError(message)), reason)
+        for message in ['private secret /home/fictional', 'Missing nonroot ancestor resource cap\n', '']:
+            self.assertEqual(H.resource_guard_reason(AssertionError(message)), 'resource-check-refused')
+
+    def test_implicit_slice_absence_never_adopts_a_source_dropin_transient_or_kernel_group(self):
+        value = {'LoadState': 'loaded', 'ActiveState': 'inactive', 'SubState': 'dead', 'FragmentPath': '',
+                 'DropInPaths': '', 'SourcePath': '', 'Transient': 'no', 'ControlGroup': ''}
+        with patch.object(H, 'properties', return_value=value), patch.object(H.os.path, 'lexists', return_value=False):
+            self.assertTrue(H.declaration_absent(H.AGGREGATE))
+            for changes in ({'FragmentPath': '/foreign/unit'}, {'DropInPaths': '/foreign/dropin'},
+                            {'SourcePath': '/foreign/source'}, {'Transient': 'yes'}, {'ControlGroup': '/foreign'},
+                            {'ActiveState': 'active'}, {'SubState': 'running'}):
+                with patch.object(H, 'properties', return_value=value | changes):
+                    self.assertFalse(H.declaration_absent(H.AGGREGATE))
+        with patch.object(H, 'properties', return_value=value), \
+                patch.object(H.os.path, 'lexists', side_effect=lambda path: str(path).startswith('/sys/fs/cgroup')):
+            self.assertFalse(H.declaration_absent(H.AGGREGATE))
+
+    def test_slice_unknown_process_foreign_directory_and_nested_directory_are_retained(self):
+        group = self.root / 'synthetic-group';group.mkdir();(group / 'cgroup.procs').write_text('')
+        worker = group / H.UNIT;worker.mkdir()
+        with patch.object(H, 'aggregate_directory', return_value=group), patch.object(H, 'secure'), \
+                patch.object(N, 'kernel_text', side_effect=lambda path, *_args: path.read_text().strip()):
+            H.slice_occupants(N)
+            foreign = group / 'foreign.service';foreign.mkdir()
+            with self.assertRaisesRegex(AssertionError, 'Foreign slice child'):
+                H.slice_occupants(N)
+            foreign.rmdir();nested = worker / 'foreign';nested.mkdir()
+            with self.assertRaisesRegex(AssertionError, 'Nested foreign'):
+                H.slice_occupants(N)
+            nested.rmdir();(group / 'cgroup.procs').write_text('999\n')
+            with self.assertRaisesRegex(AssertionError, 'Foreign aggregate process'):
+                H.slice_occupants(N)
+
+    def test_resource_diagnostic_calls_the_unchanged_method_and_does_not_claim_full_profile_admission(self):
+        source = pathlib.Path(H.__file__).read_text()
+        self.assertIn('runtime = object.__new__(N.NextRuntime)', source)
+        self.assertIn('evidence = runtime.resource_state(UNIT, before_unit)', source)
+        self.assertNotIn('N.NextRuntime.resource_state =', source)
+        self.assertIn("'profileConstructorVerified': False", source)
+        self.assertIn("'resourceReadinessQualified': False", source)
+        self.assertIn("TOTAL_DEADLINE - 7", source)
+        for fixed in ('CPUQuota=400%', 'MemoryHigh=7168M', 'MemoryMax=8192M', 'MemorySwapMax=0', 'TasksMax=1024'):
+            self.assertIn(fixed, source)
+
     def test_host_empty_placeholders_keep_exact_mode_and_complete_native_identity(self):
         result = self.view()
         self.assertFalse(result['overlaid']);self.assertEqual(set(result['placeholders']), set(N.CACHE_TARGETS))
