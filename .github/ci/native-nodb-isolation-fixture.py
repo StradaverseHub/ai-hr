@@ -546,6 +546,93 @@ def probe(root, request):
             'targetIdentitiesStable': all(process(item['pid']) == item for item in request['targets'])}
 
 
+def fixed_git_ancestors(source):
+    need(source == '/home/runner/work/ai-hr/ai-hr')
+    rows = []
+    for label, path in (('root', '/'), ('home', '/home'), ('runner', '/home/runner'),
+                        ('work', '/home/runner/work'), ('repository', '/home/runner/work/ai-hr'),
+                        ('workspace', '/home/runner/work/ai-hr/ai-hr')):
+        row = {'label': label, 'lstatSuccess': False, 'isDirectory': False,
+               'effectiveTraverse': os.access(path, os.X_OK, effective_ids=True)}
+        try:
+            info = os.lstat(path)
+        except OSError:
+            pass
+        else:
+            row.update(lstatSuccess=True, isDirectory=stat.S_ISDIR(info.st_mode),
+                       uid=info.st_uid, gid=info.st_gid, mode=stat.S_IMODE(info.st_mode))
+        rows.append(row)
+    return rows
+
+
+def git_status_fields(value):
+    keys = {'kind', 'codeIndex', 'restrictedUid', 'restrictedGid', 'ancestors'}
+    if type(value) is not dict or value.get('kind') not in ('exit', 'timeout'):
+        return None
+    if set(value) != (keys | {'returncode'} if value['kind'] == 'exit' else keys):
+        return None
+    if (type(value['codeIndex']) is not int or not 0 <= value['codeIndex'] < 4
+            or type(value['restrictedUid']) is not bool or type(value['restrictedGid']) is not bool):
+        return None
+    if value['kind'] == 'exit' and (type(value['returncode']) is not int or not -64 <= value['returncode'] <= 255):
+        return None
+    rows = value['ancestors']
+    labels = ('root', 'home', 'runner', 'work', 'repository', 'workspace')
+    if type(rows) is not list or len(rows) != len(labels):
+        return None
+    clean_rows = []
+    for label, row in zip(labels, rows):
+        fields = {'label', 'lstatSuccess', 'isDirectory', 'effectiveTraverse'}
+        if type(row) is not dict or type(row.get('lstatSuccess')) is not bool:
+            return None
+        if (set(row) != (fields | {'uid', 'gid', 'mode'} if row['lstatSuccess'] else fields)
+                or row['label'] != label or type(row['isDirectory']) is not bool
+                or type(row['effectiveTraverse']) is not bool or not row['lstatSuccess'] and row['isDirectory']):
+            return None
+        if row['lstatSuccess'] and (any(type(row[key]) is not int or not 0 <= row[key] < 2**32 for key in ('uid', 'gid'))
+                                   or type(row['mode']) is not int or not 0 <= row['mode'] <= 0o7777):
+            return None
+        clean_rows.append({key: row[key] for key in ('label', 'lstatSuccess', 'isDirectory', 'effectiveTraverse', 'uid', 'gid', 'mode') if key in row})
+    clean = {'kind': value['kind'], 'codeIndex': value['codeIndex'], 'restrictedUid': value['restrictedUid'],
+             'restrictedGid': value['restrictedGid'], 'ancestors': clean_rows}
+    if value['kind'] == 'exit':
+        clean['returncode'] = value['returncode']
+    return clean if len(canonical(clean)) <= 2048 else None
+
+
+def git_failure_diagnostic(index, error, ancestors):
+    if type(error) not in (subprocess.CalledProcessError, subprocess.TimeoutExpired):
+        return
+    value = {'kind': 'exit' if type(error) is subprocess.CalledProcessError else 'timeout',
+             'codeIndex': index, 'restrictedUid': os.geteuid() == UID, 'restrictedGid': os.getegid() == GID,
+             'ancestors': ancestors}
+    if type(error) is subprocess.CalledProcessError:
+        value['returncode'] = error.returncode
+    clean = git_status_fields(value)
+    if clean is not None:
+        sys.stderr.write('Native UID fixed Git status ' + canonical(clean).decode('ascii'))
+
+
+def child_git_status(root):
+    # Revisit only the same fixed command stream/first32 lines already bounded
+    # by child_source_locations. This adds no path, stream or input extent.
+    try:
+        raw = secure_read(root / 'private/git.stderr', 65536)
+    except (FileNotFoundError, ValueError):
+        return None
+    for line in raw.splitlines()[:32]:
+        prefix = b'Native UID fixed Git status '
+        if not line.startswith(prefix) or len(line) > len(prefix) + 2048:
+            continue
+        try:
+            clean = git_status_fields(json.loads(line[len(prefix):]))
+        except (ValueError, UnicodeError, RecursionError, TypeError):
+            continue
+        if clean is not None:
+            return {'kind': 'UNTRUSTED_DIAGNOSTIC_NOT_PROOF', 'status': clean}
+    return None
+
+
 def restricted(root, state, operation):
     request = json.loads(secure_read(root / 'request.json', 65536)) if operation == 'probe' else None
     K = kernel(root) if operation == 'hook' else None
@@ -574,12 +661,20 @@ def restricted(root, state, operation):
         print(json.dumps(probe(root, request)))
     elif operation == 'git':
         hashes = {}
-        for name, relative in CODE.items():
+        ancestors = fixed_git_ancestors(state['source'])
+        for index, (name, relative) in enumerate(CODE.items()):
             argv = ['/usr/bin/git', '-c', 'safe.directory=' + state['source'], '-c', 'core.fsmonitor=false',
                     '-c', 'core.hooksPath=/dev/null', '-c', 'core.pager=cat', '-C', state['source'],
                     'show', state['sourceSha'] + ':' + relative]
-            result = subprocess.run(argv, env=dict(os.environ), stdin=subprocess.DEVNULL,
-                                    capture_output=True, check=True, timeout=2)
+            try:
+                result = subprocess.run(argv, env=dict(os.environ), stdin=subprocess.DEVNULL,
+                                        capture_output=True, check=True, timeout=2)
+            except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as failure:
+                try:
+                    git_failure_diagnostic(index, failure, ancestors)
+                except BaseException:
+                    pass
+                raise  # Preserve the original Git exception and failure path.
             need(not result.stderr and 0 < len(result.stdout) <= 1024**2)
             hashes[name] = {'bytes': len(result.stdout), 'sha256': digest(result.stdout)}
         print(json.dumps(hashes))
@@ -723,7 +818,8 @@ def partial_component_diagnostics(root, state):
         if outcome is not None:
             keys = {'kind', 'operation', 'source', 'run', 'childExit', 'stderrPresent',
                     'liveDescendantsBeforeClosure', 'stdoutWithinBound', 'childSourceLocations'}
-            need(type(outcome) is dict and set(outcome) == keys and outcome['kind'] == 'CLOSED_ROOT_ROLE_DIAGNOSTIC'
+            allowed_keys = (keys, keys | {'fixedGitStatus'}) if operation == 'git' else (keys,)
+            need(type(outcome) is dict and set(outcome) in allowed_keys and outcome['kind'] == 'CLOSED_ROOT_ROLE_DIAGNOSTIC'
                  and outcome['operation'] == operation and operation != 'allocation' and closed is not None
                  and outcome['source'] == state['sourceSha'] and outcome['run'] == state['run']
                  and type(outcome['childExit']) is int and -64 <= outcome['childExit'] <= 255
@@ -736,9 +832,16 @@ def partial_component_diagnostics(root, state):
                      and packet['kind'] == 'UNTRUSTED_DIAGNOSTIC_NOT_PROOF' and packet['origin'] in ('supervisor', 'command'))
                 clean = location_fields({key: packet[key] for key in ('frames', 'exception') if key in packet}); need(clean is not None)
                 clean_locations.append({'kind': 'UNTRUSTED_DIAGNOSTIC_NOT_PROOF', 'origin': packet['origin'], **clean})
-            result['roleOutcomes'].append({'operation': operation, 'childExit': outcome['childExit'],
+            clean_outcome = {'operation': operation, 'childExit': outcome['childExit'],
                 'stderrPresent': outcome['stderrPresent'], 'liveDescendantsBeforeClosure': outcome['liveDescendantsBeforeClosure'],
-                'stdoutWithinBound': outcome['stdoutWithinBound'], 'childSourceLocations': clean_locations})
+                'stdoutWithinBound': outcome['stdoutWithinBound'], 'childSourceLocations': clean_locations}
+            if 'fixedGitStatus' in outcome:
+                packet = outcome['fixedGitStatus']
+                need(type(packet) is dict and set(packet) == {'kind', 'status'}
+                     and packet['kind'] == 'UNTRUSTED_DIAGNOSTIC_NOT_PROOF')
+                clean = git_status_fields(packet['status']); need(clean is not None)
+                clean_outcome['fixedGitStatus'] = {'kind': 'UNTRUSTED_DIAGNOSTIC_NOT_PROOF', 'status': clean}
+            result['roleOutcomes'].append(clean_outcome)
     return result
 
 
@@ -758,12 +861,17 @@ def run_role(root, operation):
         finally:
             receipt = family.close()
     need(type(child.returncode) is int and -64 <= child.returncode <= 255)
-    write_new(root / ('private/' + operation + '.role-outcome.json'), canonical({
+    outcome = {
         'kind': 'CLOSED_ROOT_ROLE_DIAGNOSTIC', 'operation': operation, 'source': state['sourceSha'], 'run': state['run'],
         'childExit': child.returncode, 'stderrPresent': error_path.lstat().st_size > 0,
         'liveDescendantsBeforeClosure': receipt['liveDescendantsBeforeClosure'],
         'stdoutWithinBound': output_path.lstat().st_size <= 65536,
-        'childSourceLocations': child_source_locations(root, operation)}))
+        'childSourceLocations': child_source_locations(root, operation)}
+    if operation == 'git':
+        packet = child_git_status(root)
+        if packet is not None:
+            outcome['fixedGitStatus'] = packet
+    write_new(root / ('private/' + operation + '.role-outcome.json'), canonical(outcome))
     require_identity_free()
     output, error = secure_read(output_path, 65536), secure_read(error_path, 65536)
     if operation == 'fault':
@@ -1142,7 +1250,7 @@ def main():
 
 # Immutable source symbols only. This is failure-location data, never a cause
 # assertion, trace rendering, exception message, executable source or authority.
-FAILURE_FUNCTIONS = frozenset(('<dictcomp>', '<genexpr>', '<lambda>', '<listcomp>', '<module>', '<setcomp>', 'Capabilities', 'Header', 'Iovec', 'RootFamily', '__init__', 'allocate', 'allocation_controls', 'bind', 'bootstrap_read', 'canonical', 'capture', 'child_source_locations', 'close', 'copy_node', 'custody', 'digest', 'exited', 'failure_locations', 'finish', 'hooks', 'identity_actors', 'kernel', 'load_state', 'location_fields', 'main', 'need', 'node_budget', 'node_identity', 'node_is_vendor', 'partial_component_diagnostics', 'prepare', 'probe', 'process', 'process_shape', 'protect_vendor_node', 'publish', 'read_optional', 'refused', 'require_identity_free', 'restrict', 'restricted', 'restricted_status', 'root_fault', 'root_for_run', 'run_role', 'secure_read', 'settle', 'spawn', 'supervise', 'uid_actors', 'value_refused', 'wait', 'write_new'))
+FAILURE_FUNCTIONS = frozenset(('<dictcomp>', '<genexpr>', '<lambda>', '<listcomp>', '<module>', '<setcomp>', 'Capabilities', 'Header', 'Iovec', 'RootFamily', '__init__', 'allocate', 'allocation_controls', 'bind', 'bootstrap_read', 'canonical', 'capture', 'child_git_status', 'child_source_locations', 'close', 'copy_node', 'custody', 'digest', 'exited', 'failure_locations', 'finish', 'fixed_git_ancestors', 'git_failure_diagnostic', 'git_status_fields', 'hooks', 'identity_actors', 'kernel', 'load_state', 'location_fields', 'main', 'need', 'node_budget', 'node_identity', 'node_is_vendor', 'partial_component_diagnostics', 'prepare', 'probe', 'process', 'process_shape', 'protect_vendor_node', 'publish', 'read_optional', 'refused', 'require_identity_free', 'restrict', 'restricted', 'restricted_status', 'root_fault', 'root_for_run', 'run_role', 'secure_read', 'settle', 'spawn', 'supervise', 'uid_actors', 'value_refused', 'wait', 'write_new'))
 FAILURE_BUILTINS = (ValueError, OSError, FileNotFoundError, ProcessLookupError,
                     PermissionError, TimeoutError, KeyError, TypeError, AssertionError,
                     RuntimeError, OverflowError, MemoryError, RecursionError, ImportError,

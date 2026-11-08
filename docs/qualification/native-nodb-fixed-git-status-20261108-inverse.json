@@ -1,0 +1,203 @@
+{
+  "kind": "EXACT_LINE_EDITS_WHOLE_FCCC_RECONSTRUCTION",
+  "parent": "fccc1f5db895d048734d585c3ab7dd55c1f29c14",
+  "path": ".github/ci/native-nodb-isolation-fixture.py",
+  "parentBlob": "bc7e93e2b9bd1bd20d7676a49911d6cc19747d66",
+  "parentSha256": "91c0ed5d5e82d2b54b243e2d7da49b47f78add7da51f44376a0cc8669132bef5",
+  "currentSha256": "6e6ab7d8b279fc8bd46ba4a50a135f299dd7549a40436008bc5a4765a69b4050",
+  "reverseLineEdits": [
+    {
+      "currentStartLine": 549,
+      "currentLines": [
+        "def fixed_git_ancestors(source):\n",
+        "    need(source == '/home/runner/work/ai-hr/ai-hr')\n",
+        "    rows = []\n",
+        "    for label, path in (('root', '/'), ('home', '/home'), ('runner', '/home/runner'),\n",
+        "                        ('work', '/home/runner/work'), ('repository', '/home/runner/work/ai-hr'),\n",
+        "                        ('workspace', '/home/runner/work/ai-hr/ai-hr')):\n",
+        "        row = {'label': label, 'lstatSuccess': False, 'isDirectory': False,\n",
+        "               'effectiveTraverse': os.access(path, os.X_OK, effective_ids=True)}\n",
+        "        try:\n",
+        "            info = os.lstat(path)\n",
+        "        except OSError:\n",
+        "            pass\n",
+        "        else:\n",
+        "            row.update(lstatSuccess=True, isDirectory=stat.S_ISDIR(info.st_mode),\n",
+        "                       uid=info.st_uid, gid=info.st_gid, mode=stat.S_IMODE(info.st_mode))\n",
+        "        rows.append(row)\n",
+        "    return rows\n",
+        "\n",
+        "\n",
+        "def git_status_fields(value):\n",
+        "    keys = {'kind', 'codeIndex', 'restrictedUid', 'restrictedGid', 'ancestors'}\n",
+        "    if type(value) is not dict or value.get('kind') not in ('exit', 'timeout'):\n",
+        "        return None\n",
+        "    if set(value) != (keys | {'returncode'} if value['kind'] == 'exit' else keys):\n",
+        "        return None\n",
+        "    if (type(value['codeIndex']) is not int or not 0 <= value['codeIndex'] < 4\n",
+        "            or type(value['restrictedUid']) is not bool or type(value['restrictedGid']) is not bool):\n",
+        "        return None\n",
+        "    if value['kind'] == 'exit' and (type(value['returncode']) is not int or not -64 <= value['returncode'] <= 255):\n",
+        "        return None\n",
+        "    rows = value['ancestors']\n",
+        "    labels = ('root', 'home', 'runner', 'work', 'repository', 'workspace')\n",
+        "    if type(rows) is not list or len(rows) != len(labels):\n",
+        "        return None\n",
+        "    clean_rows = []\n",
+        "    for label, row in zip(labels, rows):\n",
+        "        fields = {'label', 'lstatSuccess', 'isDirectory', 'effectiveTraverse'}\n",
+        "        if type(row) is not dict or type(row.get('lstatSuccess')) is not bool:\n",
+        "            return None\n",
+        "        if (set(row) != (fields | {'uid', 'gid', 'mode'} if row['lstatSuccess'] else fields)\n",
+        "                or row['label'] != label or type(row['isDirectory']) is not bool\n",
+        "                or type(row['effectiveTraverse']) is not bool or not row['lstatSuccess'] and row['isDirectory']):\n",
+        "            return None\n",
+        "        if row['lstatSuccess'] and (any(type(row[key]) is not int or not 0 <= row[key] < 2**32 for key in ('uid', 'gid'))\n",
+        "                                   or type(row['mode']) is not int or not 0 <= row['mode'] <= 0o7777):\n",
+        "            return None\n",
+        "        clean_rows.append({key: row[key] for key in ('label', 'lstatSuccess', 'isDirectory', 'effectiveTraverse', 'uid', 'gid', 'mode') if key in row})\n",
+        "    clean = {'kind': value['kind'], 'codeIndex': value['codeIndex'], 'restrictedUid': value['restrictedUid'],\n",
+        "             'restrictedGid': value['restrictedGid'], 'ancestors': clean_rows}\n",
+        "    if value['kind'] == 'exit':\n",
+        "        clean['returncode'] = value['returncode']\n",
+        "    return clean if len(canonical(clean)) <= 2048 else None\n",
+        "\n",
+        "\n",
+        "def git_failure_diagnostic(index, error, ancestors):\n",
+        "    if type(error) not in (subprocess.CalledProcessError, subprocess.TimeoutExpired):\n",
+        "        return\n",
+        "    value = {'kind': 'exit' if type(error) is subprocess.CalledProcessError else 'timeout',\n",
+        "             'codeIndex': index, 'restrictedUid': os.geteuid() == UID, 'restrictedGid': os.getegid() == GID,\n",
+        "             'ancestors': ancestors}\n",
+        "    if type(error) is subprocess.CalledProcessError:\n",
+        "        value['returncode'] = error.returncode\n",
+        "    clean = git_status_fields(value)\n",
+        "    if clean is not None:\n",
+        "        sys.stderr.write('Native UID fixed Git status ' + canonical(clean).decode('ascii'))\n",
+        "\n",
+        "\n",
+        "def child_git_status(root):\n",
+        "    # Revisit only the same fixed command stream/first32 lines already bounded\n",
+        "    # by child_source_locations. This adds no path, stream or input extent.\n",
+        "    try:\n",
+        "        raw = secure_read(root / 'private/git.stderr', 65536)\n",
+        "    except (FileNotFoundError, ValueError):\n",
+        "        return None\n",
+        "    for line in raw.splitlines()[:32]:\n",
+        "        prefix = b'Native UID fixed Git status '\n",
+        "        if not line.startswith(prefix) or len(line) > len(prefix) + 2048:\n",
+        "            continue\n",
+        "        try:\n",
+        "            clean = git_status_fields(json.loads(line[len(prefix):]))\n",
+        "        except (ValueError, UnicodeError, RecursionError, TypeError):\n",
+        "            continue\n",
+        "        if clean is not None:\n",
+        "            return {'kind': 'UNTRUSTED_DIAGNOSTIC_NOT_PROOF', 'status': clean}\n",
+        "    return None\n",
+        "\n",
+        "\n"
+      ],
+      "parentLines": []
+    },
+    {
+      "currentStartLine": 664,
+      "currentLines": [
+        "        ancestors = fixed_git_ancestors(state['source'])\n",
+        "        for index, (name, relative) in enumerate(CODE.items()):\n"
+      ],
+      "parentLines": [
+        "        for name, relative in CODE.items():\n"
+      ]
+    },
+    {
+      "currentStartLine": 669,
+      "currentLines": [
+        "            try:\n",
+        "                result = subprocess.run(argv, env=dict(os.environ), stdin=subprocess.DEVNULL,\n",
+        "                                        capture_output=True, check=True, timeout=2)\n",
+        "            except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as failure:\n",
+        "                try:\n",
+        "                    git_failure_diagnostic(index, failure, ancestors)\n",
+        "                except BaseException:\n",
+        "                    pass\n",
+        "                raise  # Preserve the original Git exception and failure path.\n"
+      ],
+      "parentLines": [
+        "            result = subprocess.run(argv, env=dict(os.environ), stdin=subprocess.DEVNULL,\n",
+        "                                    capture_output=True, check=True, timeout=2)\n"
+      ]
+    },
+    {
+      "currentStartLine": 821,
+      "currentLines": [
+        "            allowed_keys = (keys, keys | {'fixedGitStatus'}) if operation == 'git' else (keys,)\n",
+        "            need(type(outcome) is dict and set(outcome) in allowed_keys and outcome['kind'] == 'CLOSED_ROOT_ROLE_DIAGNOSTIC'\n"
+      ],
+      "parentLines": [
+        "            need(type(outcome) is dict and set(outcome) == keys and outcome['kind'] == 'CLOSED_ROOT_ROLE_DIAGNOSTIC'\n"
+      ]
+    },
+    {
+      "currentStartLine": 835,
+      "currentLines": [
+        "            clean_outcome = {'operation': operation, 'childExit': outcome['childExit'],\n"
+      ],
+      "parentLines": [
+        "            result['roleOutcomes'].append({'operation': operation, 'childExit': outcome['childExit'],\n"
+      ]
+    },
+    {
+      "currentStartLine": 837,
+      "currentLines": [
+        "                'stdoutWithinBound': outcome['stdoutWithinBound'], 'childSourceLocations': clean_locations}\n",
+        "            if 'fixedGitStatus' in outcome:\n",
+        "                packet = outcome['fixedGitStatus']\n",
+        "                need(type(packet) is dict and set(packet) == {'kind', 'status'}\n",
+        "                     and packet['kind'] == 'UNTRUSTED_DIAGNOSTIC_NOT_PROOF')\n",
+        "                clean = git_status_fields(packet['status']); need(clean is not None)\n",
+        "                clean_outcome['fixedGitStatus'] = {'kind': 'UNTRUSTED_DIAGNOSTIC_NOT_PROOF', 'status': clean}\n",
+        "            result['roleOutcomes'].append(clean_outcome)\n"
+      ],
+      "parentLines": [
+        "                'stdoutWithinBound': outcome['stdoutWithinBound'], 'childSourceLocations': clean_locations})\n"
+      ]
+    },
+    {
+      "currentStartLine": 864,
+      "currentLines": [
+        "    outcome = {\n"
+      ],
+      "parentLines": [
+        "    write_new(root / ('private/' + operation + '.role-outcome.json'), canonical({\n"
+      ]
+    },
+    {
+      "currentStartLine": 869,
+      "currentLines": [
+        "        'childSourceLocations': child_source_locations(root, operation)}\n",
+        "    if operation == 'git':\n",
+        "        packet = child_git_status(root)\n",
+        "        if packet is not None:\n",
+        "            outcome['fixedGitStatus'] = packet\n",
+        "    write_new(root / ('private/' + operation + '.role-outcome.json'), canonical(outcome))\n"
+      ],
+      "parentLines": [
+        "        'childSourceLocations': child_source_locations(root, operation)}))\n"
+      ]
+    },
+    {
+      "currentStartLine": 1253,
+      "currentLines": [
+        "FAILURE_FUNCTIONS = frozenset(('<dictcomp>', '<genexpr>', '<lambda>', '<listcomp>', '<module>', '<setcomp>', 'Capabilities', 'Header', 'Iovec', 'RootFamily', '__init__', 'allocate', 'allocation_controls', 'bind', 'bootstrap_read', 'canonical', 'capture', 'child_git_status', 'child_source_locations', 'close', 'copy_node', 'custody', 'digest', 'exited', 'failure_locations', 'finish', 'fixed_git_ancestors', 'git_failure_diagnostic', 'git_status_fields', 'hooks', 'identity_actors', 'kernel', 'load_state', 'location_fields', 'main', 'need', 'node_budget', 'node_identity', 'node_is_vendor', 'partial_component_diagnostics', 'prepare', 'probe', 'process', 'process_shape', 'protect_vendor_node', 'publish', 'read_optional', 'refused', 'require_identity_free', 'restrict', 'restricted', 'restricted_status', 'root_fault', 'root_for_run', 'run_role', 'secure_read', 'settle', 'spawn', 'supervise', 'uid_actors', 'value_refused', 'wait', 'write_new'))\n"
+      ],
+      "parentLines": [
+        "FAILURE_FUNCTIONS = frozenset(('<dictcomp>', '<genexpr>', '<lambda>', '<listcomp>', '<module>', '<setcomp>', 'Capabilities', 'Header', 'Iovec', 'RootFamily', '__init__', 'allocate', 'allocation_controls', 'bind', 'bootstrap_read', 'canonical', 'capture', 'child_source_locations', 'close', 'copy_node', 'custody', 'digest', 'exited', 'failure_locations', 'finish', 'hooks', 'identity_actors', 'kernel', 'load_state', 'location_fields', 'main', 'need', 'node_budget', 'node_identity', 'node_is_vendor', 'partial_component_diagnostics', 'prepare', 'probe', 'process', 'process_shape', 'protect_vendor_node', 'publish', 'read_optional', 'refused', 'require_identity_free', 'restrict', 'restricted', 'restricted_status', 'root_fault', 'root_for_run', 'run_role', 'secure_read', 'settle', 'spawn', 'supervise', 'uid_actors', 'value_refused', 'wait', 'write_new'))\n"
+      ]
+    }
+  ],
+  "absentAtParent": [
+    "docs/qualification/native-nodb-fixed-git-status-20261108.md",
+    "docs/qualification/native-nodb-fixed-git-status-20261108-inverse.json",
+    "docs/qualification/native-nodb-fixed-git-status-20261108-source.json"
+  ]
+}
