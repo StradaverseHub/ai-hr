@@ -13,7 +13,11 @@ import {attendanceBridgeFixture} from './helpers/attendance-bridge-fixture';
 import {attendanceOwnerProcess} from './helpers/attendance-bridge-owner-process';
 import {OWNER_MODES,type OwnerMode} from './helpers/attendance-bridge-owner-protocol';
 import {workerDb} from './db-names';
+import {admitSingletonTest} from './helpers/ci-singleton-admission';
 
+// A lost owned child cannot lend this database to another file. Admission binds
+// the complete proof/Python closure to one fresh, one-worker hosted job cluster.
+admitSingletonTest('test/attendance-shared-submission-bridge.test.ts');
 const source=readFileSync('db/migrations/3101_attendance_shared_workflow.sql','utf8');
 const predecessor=/CREATE OR REPLACE FUNCTION app\.attendance_workflow_links\(\) RETURNS trigger\s+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS \$\$([\s\S]*?)\$\$;/.exec(source);
 if(!predecessor)throw Error('Exact immutable shared-workflow predecessor required');

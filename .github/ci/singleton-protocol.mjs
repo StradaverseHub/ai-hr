@@ -8,6 +8,7 @@ export const SINGLETON_VERSION=1;
 const measured=[
  'test/access-editor-native-owner-presentation.test.ts',
  'test/analytics-termination-lateral.test.ts',
+ 'test/attendance-shared-submission-bridge.test.ts',
  'test/employee-choice-assignment-membership-plan.test.ts',
  'test/employee-choice-organisation-plan.test.ts',
  'test/leave-inquiry-read-cost.test.ts',
@@ -52,6 +53,15 @@ export function assertSingletonUnit(unit){
 // Fixed reviewed component closure. These are source bindings, not privileges,
 // new profiles, skip exemptions or permission to execute an arbitrary candidate.
 const componentSources=Object.freeze({
+ 'test/attendance-shared-submission-bridge.test.ts':Object.freeze([
+  'db/migrations/0592_attendance_workflow_v4.sql','db/migrations/3101_attendance_shared_workflow.sql',
+  'db/migrations/3110_attendance_workflow_owner_rls.sql','db/migrations/3210_attendance_shared_workflow_submission_lock.sql',
+  'test/harness.ts','db/client.ts','db/schema.ts','core/attendance-workflow.ts','core/attendance.ts','core/org.ts','lib/hr-date.ts',
+  'test/helpers/attendance-bridge-fixture.ts','test/helpers/attendance-bridge-owned-phase.ts',
+  'test/helpers/attendance-bridge-owner-catalogue.ts','test/helpers/attendance-bridge-owner-process.ts',
+  'test/helpers/attendance-bridge-owner-proof.ts','test/helpers/attendance-bridge-owner-protocol.ts',
+  'test/helpers/attendance-bridge-owner-worker.ts','test/helpers/attendance-bridge-pidfd.py','test/helpers/attendance-bridge-pidfd.ts',
+ ]),
  'test/access-editor-native-owner-presentation.test.ts':Object.freeze([
   'db/migrations/3211_access_editor_native_owner_presentation.sql',
   'test/fixtures/access-editor-native-owner.ts','test/fixtures/access-editor-cleanup-lifetime.ts','test/fixtures/access-editor-catalogue-diagnostic.ts','test/fixtures/access-editor-owner-dependencies.ts',
