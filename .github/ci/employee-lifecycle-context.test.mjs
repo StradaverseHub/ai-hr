@@ -33,7 +33,43 @@ test('actual admission excludes caller mode/boolean/factory override and hashes 
 });
 test('normal fixed commands never accept caller argv or source callbacks and use the qualified kernel',()=>{
  const source=readFileSync(new URL('./employee-lifecycle-supervisor.py',import.meta.url),'utf8');assert.match(source,/'testContext', 'sequence'/);assert.match(source,/native_parent\(parent\)/);assert.match(source,/commands\[stage\]/);assert.doesNotMatch(source,/request\['argv'\]|shell=True|eval\(|exec_module/);
- const kernel=readFileSync(new URL('./owned-process.py',import.meta.url));assert.equal(employeeLifecycleHash(kernel),'cb1a2cc2879267f8834dc11ea0e1c52f8326b0bd4e45dcd94ccf2ac43463f28c');
+ // Actual17 native controls42451455766 (afdf/ZIP833caa9e...ab0d6), plus
+ // actual2f720 clock and2aa UID paths qualify the unchanged9d primitive only.
+ // This source gate does not qualify normal-five/SixOp/API/compiler/release.
+ const kernel=readFileSync(new URL('./owned-process.py',import.meta.url));
+ const inverse=readFileSync(new URL('./compiler-file-window-inverse.json',import.meta.url));
+ const registry=readFileSync(new URL('./employee-lifecycle-profile.json',import.meta.url));
+ const prior='cb1a2cc2879267f8834dc11ea0e1c52f8326b0bd4e45dcd94ccf2ac43463f28c';
+ const current='9d48394fdc1897c53b5fcd5a581fc53b016c111fcc9aa69679daeb732faf2129';
+ const changes=[
+  {before:'file_clock=None, mandatory=False):',after:'file_clock=None, file_seconds=900, mandatory=False):'},
+  {before:'    require(type(seconds) in (int, float) and 0 < seconds <= 960)\n',after:'    require(type(seconds) in (int, float) and 0 < seconds <= 960)\n    require(type(file_seconds) in (int, float) and 0 < file_seconds <= 960)\n'},
+  {before:'benchmark_start + 900',after:'benchmark_start + file_seconds'},
+ ];
+ const call="result = _kernel.supervise(argv, seconds, event, clock=clock, file_clock=file_clock if test and profile['clockDirectory'] is not None else None, mandatory=stage == 'stop')";
+ function verifyPurpose(actual,mapBytes,normal,profileBytes){
+  assert(Buffer.isBuffer(actual)&&Buffer.isBuffer(mapBytes)&&Buffer.isBuffer(profileBytes));
+  assert.equal(employeeLifecycleHash(actual),current,'Exact later-natively-tested kernel required');
+  assert.equal(employeeLifecycleHash(mapBytes),'6dc7a68c49921b085b9292972fa92e3b413fc01dbb21510578431712172d97ea');
+  const map=JSON.parse(mapBytes.toString('utf8'));
+  assert.deepEqual(Object.keys(map).sort(),['kind','base','qualifiedKernelSha256','currentKernelSha256','defaultFileSeconds','compilerFileSeconds','changes'].sort());
+  assert.equal(map.kind,'CLOSED_PURPOSE_FILE_WINDOW_EXTENSION_NOT_PROCESS_OWNERSHIP_REPLACEMENT');assert.equal(map.base,'756e834dc0db88b5131547bc6d5108284201ab48');
+  assert.equal(map.currentKernelSha256,current);assert.equal(map.qualifiedKernelSha256,prior);assert.equal(map.defaultFileSeconds,900);assert.equal(map.compilerFileSeconds,720);assert.deepEqual(map.changes,changes);
+  let complete=actual.toString('utf8');for(const change of [...map.changes].reverse()){assert.equal(complete.split(change.after).length,2);complete=complete.replace(change.after,change.before);}
+  assert.equal(employeeLifecycleHash(complete),prior,'ENTIRE qualified predecessor must reconstruct');
+  assert.equal(employeeLifecycleHash(normal),'7f4c2d78cb4baff9f150b45e85c0b834b1fb998f5353916ff2cdd71dfa7a3bc8');
+  assert.deepEqual(normal.split('\n').map(line=>line.trim()).filter(line=>line.includes('_kernel.supervise(')),[call]);
+  assert(!normal.includes('file_seconds')&&!call.includes('**'));
+  assert(normal.includes('require(started <= observed <= now and observed + 900 <= started + seconds)'));
+  assert.equal(employeeLifecycleHash(profileBytes),'90972f3b57d62a473dafa3a48b671137234cf43de33c964b0eea00f0af05979e');const profile=JSON.parse(profileBytes.toString('utf8'));
+  assert.equal(profile.normalJobSeconds,1800);assert.equal(profile.focusedJobSeconds,1170);assert.equal(profile.settlementSeconds,6);
+  assert.deepEqual(profile.files.filter(row=>row.clockDirectory!==null).map(row=>[row.fileSeconds,row.stageSeconds,row.workSeconds,row.cleanupSeconds]),[[900,960,840,60],[900,960,840,60],[900,960,840,60]]);
+ }
+ verifyPurpose(kernel,inverse,source,registry);
+ for(const changed of [kernel.subarray(1),Buffer.concat([kernel,Buffer.from('\n')]),Buffer.from(kernel.toString().replace('benchmark_start + file_seconds','benchmark_start + 960'))])assert.throws(()=>verifyPurpose(changed,inverse,source,registry));
+ for(const edit of [value=>value.qualifiedKernelSha256=current,value=>value.base='0'.repeat(40),value=>value.defaultFileSeconds=720,value=>value.compilerFileSeconds=900,value=>value.changes.pop(),value=>value.changes.push({...value.changes[0]}),value=>value.changes[0].after+='changed',value=>value.unknown=true]){const value=JSON.parse(inverse.toString());edit(value);assert.throws(()=>verifyPurpose(kernel,Buffer.from(JSON.stringify(value)),source,registry));}
+ for(const changed of [source.replace(call,call.replace(', mandatory=',', file_seconds=720, mandatory=')),source.replace(call,call.replace(', mandatory=',', **caller, mandatory=')),source.replace(call,call.replace(', mandatory=',', file_seconds=window(), mandatory=')),source.replace('observed + 900','observed + 720'),source+'\n'])assert.throws(()=>verifyPurpose(kernel,inverse,changed,registry));
+ for(const edit of [value=>value.files[0].fileSeconds=720,value=>value.files[0].stageSeconds=961,value=>value.files[0].workSeconds=841,value=>value.settlementSeconds=7]){const value=JSON.parse(registry.toString());edit(value);assert.throws(()=>verifyPurpose(kernel,inverse,source,Buffer.from(JSON.stringify(value))));}
 });
 test('stop precedes EVERY terminal collection/publication and failure produces an incomplete bounded proof',()=>{
  const source=readFileSync(new URL('./employee-lifecycle.mjs',import.meta.url),'utf8'),tail=source.slice(source.indexOf('export function closeEmployeeLifecycle'));

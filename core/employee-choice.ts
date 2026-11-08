@@ -7,6 +7,7 @@ import {organisationFilterChoices} from '../lib/organisation-choice-label';
 import {isAdmin} from '../lib/authz-model';
 import {isCalendarDate} from '../lib/calendar-date';
 import {ALL_ROW_CEILING} from '../lib/pagination';
+import {employeeChoiceExactAsciiPredicate} from './employee-choice-ascii';
 import {EMPLOYEE_CHOICE_PAGE_SIZE,EMPLOYEE_CHOICE_MAX_PAGE_SIZE,type EmployeeChoice,type EmployeeChoiceInput,type EmployeeChoicePage} from '../lib/employee-choice';
 
 export class EmployeeChoiceInputError extends Error{}
@@ -85,9 +86,11 @@ async function readChoicePageTx(tx:Tx,ctx:SessionContext,p:EmployeeChoiceServerI
  signal?.throwIfAborted();
   await assertAiPresentationPrincipalTx(tx,ctx);signal?.throwIfAborted();
   if(labelMode==='labels'&&!isAdmin(ctx))throw new EmployeeChoiceAccessError('Employee catalogue labels require current administration access');
+  const exactAscii=employeeChoiceExactAsciiPredicate(sql`${person.fullName}`,sql`coalesce(${employment.employeeCode},'')`,q);
+  const pageWhere=exactAscii?sql`${where} and ${exactAscii}`:where;
   const base=sql`select ${columns(labelMode==='labels')} ${from}`;
   let rows:EmployeeChoice[]=[],total=0;
-  if(!q){
+  if(!q||exactAscii){
    // One native population walk supplies both the exact count and bounded page.
    // An empty/out-of-range page needs a separate count; it must never imply total=0.
    // The immediate native assignment_no_overlap constraint (also guarded by
@@ -96,15 +99,15 @@ async function readChoicePageTx(tx:Tx,ctx:SessionContext,p:EmployeeChoiceServerI
    // project the bounded page's native assignment and label joins.
    const population=organisationFilter?from:employeeIdentityFrom(ctx.tenantId);
    const page=await tx.execute<EmployeeChoice&{total:number}>(organisationFilter?sql`select ${columns(labelMode==='labels')},(count(*) over())::int as total ${from}
-    where ${where} order by ${person.fullName},${employment.id},${assignment.id} limit ${limit} offset ${offset}`:sql`
+    where ${pageWhere} order by ${person.fullName},${employment.id},${assignment.id} limit ${limit} offset ${offset}`:sql`
     with employee_choice_page as materialized(select ${employment.id},(count(*) over())::int as total ${population}
-     where ${where} order by ${person.fullName},${employment.id} limit ${limit} offset ${offset})
+     where ${pageWhere} order by ${person.fullName},${employment.id} limit ${limit} offset ${offset})
     select ${columns(labelMode==='labels')},employee_choice_page.total ${from}
      join employee_choice_page on employee_choice_page.id=${employment.id} where ${scoped}
      order by ${person.fullName},${employment.id},${assignment.id}`);
    signal?.throwIfAborted();
    if(page.length){total=page[0].total;rows=page.map(({total:count,...row})=>row);}
-   else{const [count]=await tx.execute<{total:number}>(sql`select count(*)::int as total ${population} where ${where}`);total=count.total;signal?.throwIfAborted();}
+   else{const [count]=await tx.execute<{total:number}>(sql`select count(*)::int as total ${population} where ${pageWhere}`);total=count.total;signal?.throwIfAborted();}
   }else{
    // PostgreSQL locale lower/ILIKE is not ECMAScript lower/includes. ASCII-only rows
    // admit exact native candidates; every non-ASCII row remains a conservative candidate.

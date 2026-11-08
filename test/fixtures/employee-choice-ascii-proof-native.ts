@@ -12,7 +12,8 @@ import {workerDb} from '../db-names';
 import {asciiProofInputs,asciiProofLimits,asciiProofRuntime,asciiProofSha,asciiProofSourceBytes} from './employee-choice-ascii-observation';
 import {asciiProofLifetime} from './employee-choice-ascii-proof-lifetime';
 const files=['test/fixtures/employee-choice-ascii-observation.ts','test/fixtures/employee-choice-ascii-proof-native.ts','test/fixtures/employee-choice-ascii-scalar-corpus.sql',
- 'test/fixtures/employee-choice-ascii-proof-lifetime.ts','test/fixtures/employee-choice-ascii-vectors.sql','test/employee-choice-ascii-observation.test.ts','test/employee-choice-exact-ascii-proof.test.ts','test/fixtures/unicode-17.0.0/LICENSE.txt',...Object.values(asciiProofInputs).map(value=>value.file)];
+ 'test/fixtures/employee-choice-ascii-proof-lifetime.ts','test/fixtures/employee-choice-ascii-vectors.sql','test/employee-choice-ascii-observation.test.ts','test/employee-choice-exact-ascii-proof.test.ts',
+ 'core/employee-choice-ascii.ts','package.json','pnpm-lock.yaml','test/fixtures/unicode-17.0.0/LICENSE.txt',...Object.values(asciiProofInputs).map(value=>value.file)];
 export function asciiProofExecutable(){
  assert.equal(process.platform,'linux');const fd=openSync('/proc/self/exe',constants.O_RDONLY);
  try{
