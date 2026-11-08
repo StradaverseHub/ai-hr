@@ -119,3 +119,16 @@ workflow-owned container cleanup succeeded. The original failure and all passes 
 that run/source identity. A sole nine-case-file retry is the existing focused controller's
 supported affected area; the other 59 valid passes are retained, without relabeling them.
 All nine case names, all other assertions, the oracle and resource budgets remain unchanged.
+
+## Source review aligns the fixture hire with the checked mapping date
+
+Independent source review of the unrun 25521a2 child found that its 2020 hire preceded the
+other-company mapping published effective today. The canonical hiring owner derives tags
+as of the hire date and therefore would not retain that mapped Business Unit in 2020.
+The follow-on fixture hires on the actual checked mapping date, captures the canonical
+hire result, and asserts through the real application connection that the stored current
+employment company, assignment company, Business Unit and both dates match before running
+the unchanged population statement. No backdated Business Unit or manual assignment write
+is introduced. This was a source-review finding; no 25521a2 runtime failure is claimed.
+The privacy correction, all other cases/assertions/budgets and product/native guards remain
+whole. Native population/row-count evidence remains pending the affected hosted retry.

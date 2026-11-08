@@ -202,7 +202,13 @@ it('returns at most authorized-ID upload rows with a large genuine unrelated pop
  await setupCompanyStructureFixture(f.ctx,[{companyId:company.id,businessUnitId:bu.id}],today);
  const [department]=await owner.db.insert(s.department).values({tenantId:f.b.tenantId,companyId:company.id,name:'Fictional unrelated upload department'}).returning();
  // Native policy-pair membership requires a real current employment/assignment, beyond company tags.
- await hireEmployee(f.ctx,{person:{fullName:'Fictional unrelated upload employee',primaryEmail:randomUUID()+'@example.invalid'},companyId:company.id,departmentId:department.id,businessUnitId:bu.id,employmentType:'full_time',hiredOn:'2020-01-01'});
+ const unrelated=await hireEmployee(f.ctx,{person:{fullName:'Fictional unrelated upload employee',primaryEmail:randomUUID()+'@example.invalid'},companyId:company.id,departmentId:department.id,businessUnitId:bu.id,employmentType:'full_time',hiredOn:today});
+ const stored=await database.withTenant(f.ctx,tx=>tx.execute<{employmentCompanyId:string;companyId:string;businessUnitId:string|null;hiredOn:string;validFrom:string}>(sql`
+  select e.company_id as "employmentCompanyId",a.company_id as "companyId",a.business_unit_id as "businessUnitId",e.hired_on::text as "hiredOn",a.valid_from::text as "validFrom"
+  from employment e join assignment a on a.employment_id=e.id and a.tenant_id=e.tenant_id
+  where e.id=${unrelated.employmentId}::uuid and e.tenant_id=app.current_tenant_id() and a.superseded_at is null
+   and a.valid_from<=${today}::date and (a.valid_to is null or a.valid_to>${today}::date)`));
+ expect([...stored]).toEqual([{employmentCompanyId:company.id,companyId:company.id,businessUnitId:bu.id,hiredOn:today,validFrom:today}]);
  // Historical fixture rows use the actual owner, bound tenant and every existing native trigger.
  await owner.withTenant(f.ctx,async tx=>{
   await tx.execute(sql`insert into reward_uploaded_review(unit_id,tenant_id) values(${f.unitId}::uuid,${f.b.tenantId}::uuid)`);
