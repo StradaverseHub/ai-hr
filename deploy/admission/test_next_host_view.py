@@ -322,21 +322,52 @@ class HostViewModels(unittest.TestCase):
         unit_info = types.SimpleNamespace(st_mode=stat.S_IFREG | 0o644, st_uid=0, st_dev=1, st_ino=2)
         foreign_info = types.SimpleNamespace(st_mode=stat.S_IFDIR | 0o755, st_uid=0,
             st_dev=replacement.st_dev, st_ino=replacement.st_ino)
-        calls, unlinks = [], []
+        absent = {'LoadState': 'loaded', 'ActiveState': 'inactive', 'SubState': 'dead',
+                  'FragmentPath': '', 'DropInPaths': '', 'SourcePath': '',
+                  'Transient': 'no', 'ControlGroup': ''}
+        absent_paths = {'/etc/systemd/system/' + name for name in H.UNITS}
+        absent_paths.add('/sys/fs/cgroup' + H.AGGREGATE_GROUP)
         def info(file):
             return foreign_info if file == root else unit_info
-        with patch.object(H, 'ROOT', root), patch.object(H, 'TOTAL_DEADLINE', 1000), \
-                patch.object(H.time, 'monotonic', return_value=100), patch.object(pathlib.Path, 'lstat', side_effect=info, autospec=True), \
-                patch.object(H, 'properties', side_effect=lambda unit, cap=3: {'LoadState': 'loaded', 'InvocationID': 'a'*32} if unit == H.UNIT else {'LoadState': 'not-found'}), \
-                patch.object(H, 'family_stopped', return_value=True), \
-                patch.object(H, 'command', side_effect=lambda *args, **_kwargs: calls.append(args)), \
-                patch.object(pathlib.Path, 'unlink', side_effect=lambda *_args: unlinks.append(True)):
-            with self.assertRaisesRegex(AssertionError, 'root replaced'):
-                H.cleanup({H.UNIT: (1, 2)}, {H.UNIT: 'a'*32}, N, (original.st_dev, original.st_ino))
-        self.assertIn(('/usr/bin/systemctl', '--system', 'stop', '--no-block', H.UNIT), calls)
-        self.assertEqual(unlinks, [])
-        self.assertFalse(any('reset-failed' in call for call in calls))
-        self.assertEqual((root / 'foreign').read_text(), 'retain foreign native identity')
+        # First preserve the earlier unknown-declaration refusal. Only the
+        # complete implicit-slice facts may reach the later root-inode guard.
+        for complete, reason in ((False, 'Untracked native declaration'), (True, 'root replaced')):
+            with self.subTest(complete_aggregate_absence=complete):
+                calls, unlinks, observed_units, observed_paths = [], [], [], []
+                def properties(unit, cap=3):
+                    observed_units.append(unit)
+                    if unit == H.UNIT:
+                        return {'LoadState': 'loaded', 'InvocationID': 'a'*32}
+                    if unit == H.AGGREGATE and complete:
+                        return dict(absent)
+                    return {'LoadState': 'not-found'}
+                def lexists(path):
+                    self.assertIn(str(path), absent_paths)
+                    observed_paths.append(str(path))
+                    return False
+                with patch.object(H, 'ROOT', root), patch.object(H, 'TOTAL_DEADLINE', 1000), \
+                        patch.object(H.time, 'monotonic', return_value=100), patch.object(pathlib.Path, 'lstat', side_effect=info, autospec=True), \
+                        patch.object(H, 'properties', side_effect=properties), patch.object(H.os.path, 'lexists', side_effect=lexists), \
+                        patch.object(H, 'root_custody', wraps=H.root_custody) as root_guard, \
+                        patch.object(H, 'remove_owned_root', wraps=H.remove_owned_root) as dispose, \
+                        patch.object(H, 'family_stopped', return_value=True), \
+                        patch.object(H, 'command', side_effect=lambda *args, **_kwargs: calls.append(args)), \
+                        patch.object(pathlib.Path, 'unlink', side_effect=lambda *_args: unlinks.append(True)):
+                    with self.assertRaisesRegex(AssertionError, reason) as refusal:
+                        H.cleanup({H.UNIT: (1, 2)}, {H.UNIT: 'a'*32}, N, (original.st_dev, original.st_ino))
+                    self.assertEqual(str(refusal.exception), 'Conformance root replaced; retain paths' if complete
+                                     else 'Untracked native declaration; retain all paths')
+                    if complete:
+                        root_guard.assert_called_once_with((original.st_dev, original.st_ino), N)
+                        self.assertIn('/sys/fs/cgroup' + H.AGGREGATE_GROUP, observed_paths)
+                    else:
+                        root_guard.assert_not_called()
+                    dispose.assert_not_called()
+                self.assertIn(H.AGGREGATE, observed_units)
+                self.assertIn(('/usr/bin/systemctl', '--system', 'stop', '--no-block', H.UNIT), calls)
+                self.assertEqual(unlinks, [])
+                self.assertFalse(any('reset-failed' in call for call in calls))
+                self.assertEqual((root / 'foreign').read_text(), 'retain foreign native identity')
         # Separate synthetic mount fact: even a matching owned root cannot be
         # disposed through a same-device host bind. No actual mount is claimed.
         with patch.object(H, 'ROOT', root), patch.object(H, 'DEADLINE', 107), \
@@ -377,6 +408,16 @@ class HostViewModels(unittest.TestCase):
                 self.assertEqual(source.count(change['after']), 1)
                 source = source.replace(change['after'], change['before'])
             self.assertEqual(hashlib.sha256(source.encode()).hexdigest(), digest)
+        # Fixture recovery must not silently rewrite any other original model.
+        recovery = json.loads((ROOT / 'deploy/admission/next_cgroup_control_guard_order_inverse.json').read_text())
+        self.assertEqual(recovery['base'], '26105ef7e53b088ffec8dc701606a70ce32677d1')
+        source = pathlib.Path(__file__).read_text()
+        self.assertEqual(hashlib.sha256(source.encode()).hexdigest(), recovery['currentSha256'])
+        lines = source.splitlines(keepends=True)
+        for change in recovery['changes']:
+            self.assertEqual(''.join(lines[change['start']:change['end']]), change['after'])
+            lines[change['start']:change['end']] = change['before'].splitlines(keepends=True)
+        self.assertEqual(hashlib.sha256(''.join(lines).encode()).hexdigest(), recovery['originalSha256'])
 
 
 if __name__ == '__main__':
