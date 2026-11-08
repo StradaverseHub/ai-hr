@@ -11,10 +11,11 @@ import * as s from '../db/schema';
 import {attendanceMonthSummary,attendanceMonthSummaryPage} from '../packs/attendance/service';
 import {createPolicy,assignPolicy} from '../core/payroll-policy';
 import {requestLeave,decideLeave} from '../core/leave';
+import {applyLeaveAdjustmentBatch} from '../packs/leave/service';
 import {parsePageQuery,paginateRows} from '../lib/pagination';
 import {attendanceMonthSummaryOriginal} from './helpers/attendance-month-summary-original';
 import {observeNativeRead} from './helpers/native-read-observer';
-import {adminCtx,closeAll,createAppUser,migrateTestDb,owner,resetDb,seedBase,setModule,type Base} from './harness';
+import {adminCtx,closeAll,createAppUser,ledgerBalance,migrateTestDb,owner,resetDb,seedBase,setModule,type Base} from './harness';
 
 beforeAll(migrateTestDb);beforeEach(resetDb);afterAll(closeAll);
 const month={month:'2026-05',today:'2026-05-04'};
@@ -65,10 +66,17 @@ it('retains exact legacy versus scheduled absence and partial/full approved leav
  await owner.db.update(s.assignment).set({validFrom:'2026-05-05'}).where(eq(s.assignment.employmentId,employees[1].employmentId));
  await owner.db.insert(s.attendance).values({tenantId:b.tenantId,employmentId:employees[0].employmentId,attendanceDate:'2026-05-04',status:'absent',dayType:'workday',workedMinutes:0,otMinutes:0});
  await owner.db.update(s.leaveType).set({allowNegativeBalance:true,durations:['full_day','half_day_am']}).where(eq(s.leaveType.id,b.annualLeaveTypeId));
+ // Submission's allow-negative switch does not waive the approval floor. Seed
+ // positive fixture balance through the existing audited adjustment owner.
+ const credit=await applyLeaveAdjustmentBatch(ctx,{leaveTypeIds:[b.annualLeaveTypeId],days:2,effectiveOn:'2026-05-05',
+  reason:'Fictional attendance partial/full approval balance',targetMode:'individual',employmentIds:[employees[1].employmentId]});
+ expect(credit).toMatchObject({targeted:1,written:1,skipped:0});
+ expect(await ledgerBalance(employees[1].employmentId,b.annualLeaveTypeId)).toBe(2);
  const half=await requestLeave(ctx,{employmentId:employees[1].employmentId,leaveTypeId:b.annualLeaveTypeId,startDate:'2026-05-05',endDate:'2026-05-05',durationType:'half_day_am'});
  await decideLeave(ctx,{leaveRequestId:half.leaveRequestId,decision:'approved'});
  const full=await requestLeave(ctx,{employmentId:employees[1].employmentId,leaveTypeId:b.annualLeaveTypeId,startDate:'2026-05-06',endDate:'2026-05-06'});
  await decideLeave(ctx,{leaveRequestId:full.leaveRequestId,decision:'approved'});
+ expect(await ledgerBalance(employees[1].employmentId,b.annualLeaveTypeId)).toBe(0.5);
  const p={month:'2026-05',today:'2026-05-06',companyIds:[b.companyId],page:parsePageQuery()};
  const legacy=await attendanceMonthSummaryPage(ctx,p);expect(legacy.rows).toEqual(await attendanceMonthSummaryOriginal(ctx,p));
  expect(legacy.rows[0]).toMatchObject({present:1,absent:2});expect(legacy.rows[1]).toMatchObject({absent:1,leaveDays:1});
