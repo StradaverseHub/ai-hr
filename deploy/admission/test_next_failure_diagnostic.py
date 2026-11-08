@@ -332,6 +332,19 @@ class FailureDiagnosticModels(unittest.TestCase):
 
     def test_complete_original_native_authority_and_cleanup_source_bytes_are_preserved(self):
         source = self.sources['fixture'].decode()
+        # Verify/reverse the complete new observation layer, then the existing
+        # CPU constructor layer, before the original cleanup inverse consumes it.
+        for filename in ('next_environment_observation_inverse.json', 'next_cpu_weight_constructor_inverse.json'):
+            layer = json.loads(pathlib.Path(__file__).with_name(filename).read_text())
+            row = layer['files']['deploy/admission/test_next_native.py']
+            self.assertEqual(hashlib.sha256(source.encode()).hexdigest(), row['currentSha256'])
+            lines, frontier = source.splitlines(keepends=True), len(source.splitlines(keepends=True))
+            for edit in row['changes']:
+                self.assertTrue(0 <= edit['start'] <= edit['end'] <= frontier)
+                self.assertEqual(''.join(lines[edit['start']:edit['end']]), edit['after'])
+                lines[edit['start']:edit['end']] = edit['before'].splitlines(keepends=True);frontier = edit['start']
+            source = ''.join(lines)
+            self.assertEqual(hashlib.sha256(source.encode()).hexdigest(), row['originalSha256'])
         repair = json.loads(pathlib.Path(__file__).with_name('next_cleanup_phase_inverse.json').read_text())
         self.assertEqual(repair['base'], 'f37f9d629458b7d2bf4a34bdb3a0891e32af96e2')
         row = repair['files']['deploy/admission/test_next_native.py']

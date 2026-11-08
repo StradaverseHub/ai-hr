@@ -1250,6 +1250,14 @@ UMask=0077
             'releaseDirectory': str(release), 'workerUid': nobody.pw_uid,
             'commandDigest': C.command_identity(props(unit)['ExecStart']), 'executable': plan['nodePath']}
     write(C.PROFILE, N.canonical(profile))
+    # Private native observation custody only; contains no environment data.
+    observation_context = {'version': 1, 'profileSha256': hashlib.sha256(N.canonical(profile)).hexdigest(),
+        'sources': {name: binding['helpers'][name]['sha256']
+                    for name in ('next_fixture_poststart.py', 'next_profile.py')},
+        'units': {unit: {'device': owned_units[unit][0], 'inode': owned_units[unit][1],
+            'sha256': hashlib.sha256(pathlib.Path('/etc/systemd/system', unit).read_bytes()).hexdigest()}
+            for unit in UNITS}}
+    write(pathlib.Path('/etc/aihr-admission/observation.json'), N.canonical(observation_context))
     configuration_phase('check-only')
     observer = {'version': 1, 'kind': 'SOURCE_BOUND_INSTALLED_CHECKONLY_OBSERVER',
         'observerSha256': binding['helpers']['test_next_native.py']['sha256'],
@@ -1844,6 +1852,47 @@ def runtime_journal_observation(raw, unit, invocation, python_exe, reasons):
             'literalRefusals': refusals, 'closedExceptions': exceptions}
 
 
+
+def runtime_environment_journal_observation(raw, unit, invocation, python_exe, sources, binding):
+    """Separate closed helper branch; controller message matching is unchanged."""
+    require(unit in UNITS and re.fullmatch(r'[a-f0-9]{32}', invocation)
+            and isinstance(python_exe, str) and python_exe.startswith('/usr/bin/'), 'Closed environment journal identity required')
+    require(isinstance(raw, bytes) and len(raw) <= RUNTIME_DIAGNOSTIC_MAX, 'Environment journal bound refused')
+    require(type(sources) is dict and set(sources) == {'next-profile', 'poststart'}, 'Closed environment observer sources required')
+    for owner, name in (('next-profile', 'next_profile.py'), ('poststart', 'next_fixture_poststart.py')):
+        require(isinstance(sources[owner], bytes) and 0 < len(sources[owner]) <= 1024**2
+                and hashlib.sha256(sources[owner]).hexdigest() == binding['helpers'][name]['sha256'],
+                'Environment observer source identity differs')
+    N = types.ModuleType('sealed_environment_journal_receiver')
+    N.__file__ = OBSERVER_PATHS['next-profile']
+    exec(compile(sources['next-profile'], N.__file__, 'exec', dont_inherit=True), N.__dict__)
+    commands = {prefix + ' -I -B /usr/local/lib/aihr-admission/next_fixture_poststart.py ' + unit
+                for prefix in ('/usr/bin/python3', python_exe)}
+    def unique(pairs):
+        value = {}
+        for key, item in pairs:
+            require(key not in value, 'Duplicate environment journal field')
+            value[key] = item
+        return value
+    result = []
+    lines = raw.splitlines()
+    require(len(lines) <= 64, 'Environment journal record bound refused')
+    for line in lines:
+        row = json.loads(line, object_pairs_hook=unique)
+        if not (type(row) is dict and row.get('_UID') == '0' and row.get('_EXE') == python_exe
+                and row.get('_SYSTEMD_UNIT') == unit and row.get('_SYSTEMD_INVOCATION_ID') == invocation
+                and type(row.get('_CMDLINE')) is str and row['_CMDLINE'] in commands):
+            continue
+        message = row.get('MESSAGE')
+        if type(message) is not str or not message.startswith(N.ENVIRONMENT_OBSERVATION_PREFIX):
+            continue
+        require(len(message.encode()) <= 4096, 'Environment journal message bound refused')
+        value = json.loads(message[len(N.ENVIRONMENT_OBSERVATION_PREFIX):], object_pairs_hook=unique)
+        result.append(N.validate_environment_observation(value, RUNTIME_DIAGNOSTIC_UNITS[unit]))
+        require(len(result) == 1, 'Duplicate environment observer record refused')
+    return result
+
+
 def runtime_owned_declaration(unit):
     """Positive ownership only from this fixture's captured native declaration."""
     require(unit in RUNTIME_DIAGNOSTIC_UNITS, 'Closed diagnostic owned unit required')
@@ -1961,6 +2010,17 @@ def runtime_failure_diagnostic(kind, error, binding):
             require(code == 0, 'Diagnostic journal read refused')
             require(runtime_owned_declaration(unit), 'Diagnostic journal ownership changed')
             journals.append(runtime_journal_observation(raw, unit, invocations[unit], str(python_path), reasons))
+            # Optional helper observation has independent source/schema custody;
+            # its failure cannot discard original controller literal diagnostics.
+            try:
+                require(time.monotonic() < deadline - 0.05, 'Environment diagnostic budget unavailable')
+                poststart = observer_read('/usr/local/lib/aihr-admission/next_fixture_poststart.py', 1024**2)
+                observed = runtime_environment_journal_observation(raw, unit, invocations[unit], str(python_path),
+                    {'next-profile': sources['next-profile'], 'poststart': poststart}, binding)
+                require(runtime_owned_declaration(unit), 'Environment diagnostic declaration changed')
+                value.setdefault('environmentObservations', []).extend(observed)
+            except BaseException:
+                value['environmentObservationUnavailable'] = True
         require(time.monotonic() <= deadline, 'Diagnostic aggregate budget exhausted')
         value.update({'classification': 'bounded-sealed-source-observations', 'journals': journals,
                       'unavailableWorkerJournals': unavailable})

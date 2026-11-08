@@ -1062,3 +1062,175 @@ def key_values(text, require):
         require(len(fields) == 2 and fields[0] not in result and fields[1].isdigit(), 'Invalid native resource counters')
         result[fields[0]] = int(fields[1])
     return result
+
+# Observation vocabulary ONLY. This is deliberately separate from all admission
+# allowlists above. Exact known names map to fixed public labels; no prefix match.
+ENVIRONMENT_OBSERVATION_NAMES = types.MappingProxyType({
+    'NOTIFY_SOCKET': 'systemd-notify', 'FDSTORE': 'systemd-fdstore',
+    'CREDENTIALS_DIRECTORY': 'systemd-credentials', 'MAINPID': 'systemd-mainpid',
+    'MANAGERPID': 'systemd-managerpid', 'LISTEN_FDS': 'systemd-listen-fds',
+    'LISTEN_PID': 'systemd-listen-pid', 'LISTEN_FDNAMES': 'systemd-listen-names',
+    'WATCHDOG_PID': 'systemd-watchdog-pid', 'WATCHDOG_USEC': 'systemd-watchdog-usec',
+    'RUNTIME_DIRECTORY': 'systemd-runtime-directory', 'STATE_DIRECTORY': 'systemd-state-directory',
+    'CACHE_DIRECTORY': 'systemd-cache-directory', 'LOGS_DIRECTORY': 'systemd-logs-directory',
+    'CONFIGURATION_DIRECTORY': 'systemd-config-directory', 'LOG_NAMESPACE': 'systemd-log-namespace',
+    'TERM': 'systemd-terminal', 'XDG_RUNTIME_DIR': 'systemd-xdg-runtime',
+    'XDG_SEAT': 'systemd-xdg-seat', 'XDG_VTNR': 'systemd-xdg-vtnr',
+    'SERVICE_RESULT': 'systemd-service-result', 'EXIT_CODE': 'systemd-exit-code',
+    'EXIT_STATUS': 'systemd-exit-status', 'MONITOR_SERVICE_RESULT': 'systemd-monitor-result',
+    'MONITOR_EXIT_CODE': 'systemd-monitor-exit-code', 'MONITOR_EXIT_STATUS': 'systemd-monitor-exit-status',
+    'MONITOR_INVOCATION_ID': 'systemd-monitor-invocation', 'MONITOR_UNIT': 'systemd-monitor-unit',
+    'PIDFILE': 'systemd-pidfile', 'REMOTE_ADDR': 'systemd-remote-address',
+    'REMOTE_PORT': 'systemd-remote-port', 'TRIGGER_UNIT': 'systemd-trigger-unit',
+    'TRIGGER_PATH': 'systemd-trigger-path', 'TRIGGER_TIMER_REALTIME_USEC': 'systemd-trigger-realtime',
+    'TRIGGER_TIMER_MONOTONIC_USEC': 'systemd-trigger-monotonic',
+    'NEXT_PRIVATE_START_TIME': 'next-start-time', 'NEXT_RUNTIME': 'next-runtime',
+    '__NEXT_PRIVATE_ORIGIN': 'next-origin', 'LANGUAGE': 'locale-language',
+    **{'LC_' + key: 'locale-' + key.lower() for key in ('CTYPE', 'NUMERIC', 'TIME', 'COLLATE',
+       'MONETARY', 'MESSAGES', 'PAPER', 'NAME', 'ADDRESS', 'TELEPHONE', 'MEASUREMENT', 'IDENTIFICATION')},
+    'LANG': 'locale-lang', 'LC_ALL': 'locale-all', 'TZ': 'process-timezone',
+    'PWD': 'process-pwd', 'SHLVL': 'process-shell-level', '_': 'process-underscore',
+    '__NEXT_PROCESSED_ENV': 'next-processed-environment', 'NEXT_DEPLOYMENT_ID': 'next-deployment',
+})
+ENVIRONMENT_OBSERVATION_PREFIX = 'AIHR_OWNED_INITIAL_ENVIRONMENT_V1 '
+ENVIRONMENT_OBSERVATION_MAX = 8192  # Fits within the existing131072-byte journal transport.
+ENVIRONMENT_COUNTS_KEYS = frozenset({'parseComplete', 'allowedCount', 'forbiddenPresent',
+    'unqualifiedCount', 'knownUnqualified', 'otherUnqualifiedCount'})
+ENVIRONMENT_NATIVE_KEYS = ENVIRONMENT_COUNTS_KEYS | frozenset({'version', 'kind', 'subject',
+    'sourceVerified', 'invocationMatched', 'processStable', 'nextApplicationVerified', 'releaseEligible'})
+
+
+def environment_observation_values(raw):
+    # Private intermediate only. No returned key/value map reaches telemetry.
+    if not isinstance(raw, bytes) or not 0 < len(raw) <= 1024**2 or not raw.endswith(b'\0'):
+        raise ValueError('Environment observation parse refused')
+    values = {}
+    for entry in raw[:-1].split(b'\0'):
+        key, separator, value = entry.decode('utf8').partition('=')
+        if not separator or not key or key in values:
+            raise ValueError('Environment observation parse refused')
+        values[key] = value
+    return values
+
+
+def environment_observation_counts(raw):
+    """Pure classification carries NO source/process/invocation authority."""
+    values = environment_observation_values(raw)
+    allowed = APP_ENVIRONMENT | FLEET_ENVIRONMENT | SYSTEMD_ENVIRONMENT
+    unqualified = set(values) - allowed
+    known = {label: name in unqualified for name, label in ENVIRONMENT_OBSERVATION_NAMES.items()}
+    return {'parseComplete': True, 'allowedCount': len(set(values) & allowed),
+        'forbiddenPresent': any(forbidden_environment(key) for key in values),
+        'unqualifiedCount': len(unqualified), 'knownUnqualified': known,
+        'otherUnqualifiedCount': len(unqualified - set(ENVIRONMENT_OBSERVATION_NAMES))}
+
+
+def validate_environment_observation(value, subject):
+    """Closed receiver; provenance is independently supplied by the journal owner."""
+    if not isinstance(value, dict) or set(value) != ENVIRONMENT_NATIVE_KEYS:
+        raise ValueError('Environment observation schema refused')
+    if (type(value['version']) is not int or value['version'] != 1
+            or value['kind'] != 'ACTUAL_OWNED_INITIAL_ENVIRONMENT_OBSERVATION_NOT_ADMISSION'
+            or subject not in ('worker-1', 'worker-2', 'host-component') or value['subject'] != subject
+            or any(value[key] is not True for key in ('parseComplete', 'sourceVerified', 'invocationMatched', 'processStable'))
+            or value['nextApplicationVerified'] is not False or value['releaseEligible'] is not False
+            or type(value['forbiddenPresent']) is not bool):
+        raise ValueError('Environment observation identity refused')
+    for key in ('allowedCount', 'unqualifiedCount', 'otherUnqualifiedCount'):
+        if type(value[key]) is not int or not 0 <= value[key] <= 1024**2:
+            raise ValueError('Environment observation count refused')
+    known = value['knownUnqualified']
+    if (not isinstance(known, dict) or set(known) != set(ENVIRONMENT_OBSERVATION_NAMES.values())
+            or any(type(item) is not bool for item in known.values())
+            or value['unqualifiedCount'] != sum(known.values()) + value['otherUnqualifiedCount']
+            or value['allowedCount'] + value['unqualifiedCount'] > 1024**2
+            or len(canonical(value)) > ENVIRONMENT_OBSERVATION_MAX):
+        raise ValueError('Environment observation vocabulary refused')
+    # Always-allowed fixed labels cannot truthfully describe unqualified fields.
+    if known['locale-lang'] or known['locale-all']:
+        raise ValueError('Environment observation allowed locale refused')
+    return value
+
+
+def environment_process_read(directory, name, bound, deadline):
+    import time
+    if name not in ('stat', 'cmdline', 'cgroup', 'environ'):
+        raise ValueError('Environment observation proc field refused')
+    fd = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=directory)
+    try:
+        data = bytearray()
+        while True:
+            if time.monotonic() >= deadline:
+                raise TimeoutError('Environment observation deadline')
+            block = os.read(fd, min(65536, bound + 1 - len(data)))
+            if not block:
+                return bytes(data)
+            data.extend(block)
+            if len(data) > bound:
+                raise ValueError('Environment observation proc bound refused')
+    finally:
+        os.close(fd)
+
+
+def observe_owned_environment(expected, custody, deadline):
+    """Native authority only after protected custody + two pinned live checks.
+
+    The full hook supplies its systemd MAINPID and INVOCATION_ID, protected fixed
+    fixture context and exact stock declaration. The host component supplies its
+    existing owned invocation. No command, extra process or admission is invoked.
+    """
+    import time
+    if (not isinstance(expected, dict) or set(expected) != {'pid', 'invocation', 'uid', 'executable',
+            'cwd', 'cgroup', 'argv', 'title', 'subject'} or type(expected['pid']) is not int
+            or expected['pid'] <= 1 or type(expected['uid']) is not int or expected['uid'] != 65534
+            or re.fullmatch(r'[a-f0-9]{32}', expected['invocation']) is None
+            or time.monotonic() >= deadline):
+        raise ValueError('Environment observation expectation refused')
+    custody()
+    proc = pathlib.Path('/proc', str(expected['pid']))
+    fd = os.open(proc, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    try:
+        before = os.fstat(fd)
+        if before.st_uid != expected['uid']:
+            raise ValueError('Environment observation principal refused')
+        def current():
+            info = os.fstat(fd)
+            if (info.st_dev, info.st_ino, info.st_uid) != (before.st_dev, before.st_ino, before.st_uid):
+                raise ValueError('Environment observation process changed')
+            named = proc.stat()
+            if (named.st_dev, named.st_ino, named.st_uid) != (before.st_dev, before.st_ino, before.st_uid):
+                raise ValueError('Environment observation process replaced')
+            raw = environment_process_read(fd, 'stat', 65536, deadline)
+            fields = raw[raw.rfind(b')') + 2:].split()
+            if (raw.split(b' ', 1)[0] != str(expected['pid']).encode() or len(fields) < 20
+                    or fields[0] in (b'Z', b'X', b'x') or not fields[19].isdigit()):
+                raise ValueError('Environment observation live identity refused')
+            if (os.readlink('exe', dir_fd=fd) != expected['executable']
+                    or os.readlink('cwd', dir_fd=fd) != expected['cwd']
+                    or environment_process_read(fd, 'cgroup', 65536, deadline).decode().strip() != '0::' + expected['cgroup']):
+                raise ValueError('Environment observation executable scope refused')
+            command = environment_process_read(fd, 'cmdline', 65536, deadline)
+            argv = b'\0'.join(part.encode() for part in expected['argv']) + b'\0'
+            # Node legitimately replaces argv with its exact stock Next title.
+            # The protected declaration still binds the complete original argv.
+            title = expected['title']
+            if command != argv and not (type(title) is str and command.rstrip(b'\0') == title.encode()):
+                raise ValueError('Environment observation command refused')
+            return fields[19]
+        identity = current()
+        raw = environment_process_read(fd, 'environ', 1024**2, deadline)
+        values = environment_observation_values(raw)
+        if values.get('INVOCATION_ID') != expected['invocation']:
+            raise ValueError('Environment observation invocation refused')
+        result = environment_observation_counts(raw)
+        if current() != identity:
+            raise ValueError('Environment observation start identity changed')
+        custody()
+        if time.monotonic() >= deadline:
+            raise TimeoutError('Environment observation deadline')
+        result.update({'version': 1, 'kind': 'ACTUAL_OWNED_INITIAL_ENVIRONMENT_OBSERVATION_NOT_ADMISSION',
+            'subject': expected['subject'], 'sourceVerified': True, 'invocationMatched': True,
+            'processStable': True, 'nextApplicationVerified': False, 'releaseEligible': False})
+        return validate_environment_observation(result, expected['subject'])
+    finally:
+        os.close(fd)

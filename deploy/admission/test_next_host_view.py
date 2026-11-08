@@ -407,10 +407,28 @@ class HostViewModels(unittest.TestCase):
         self.assertTrue(root.exists());self.assertEqual(len(list(root.iterdir())), 1)
 
     def test_both_complete_predecessor_fixtures_reconstruct_without_dropping_old_guards(self):
+        observation = json.loads((ROOT / 'deploy/admission/next_environment_observation_inverse.json').read_text())
+        self.assertEqual(observation['base'], '7a6d0b100583d07b1f61d6c8605257d117a26ed9')
+        def current(name):
+            source = (ROOT / name).read_text()
+            if name not in observation['files']:
+                return source
+            row = observation['files'][name]
+            self.assertEqual(hashlib.sha256(source.encode()).hexdigest(), row['currentSha256'])
+            lines, frontier = source.splitlines(keepends=True), len(source.splitlines(keepends=True))
+            for edit in row['changes']:
+                self.assertTrue(0 <= edit['start'] <= edit['end'] <= frontier)
+                self.assertEqual(''.join(lines[edit['start']:edit['end']]), edit['after'])
+                lines[edit['start']:edit['end']] = edit['before'].splitlines(keepends=True);frontier = edit['start']
+            restored = ''.join(lines)
+            self.assertEqual(hashlib.sha256(restored.encode()).hexdigest(), row['originalSha256'])
+            return restored
+        for name in observation['files']:
+            current(name)
         layer = json.loads((ROOT / 'deploy/admission/next_cpu_weight_constructor_inverse.json').read_text())
         self.assertEqual(layer['base'], '6115dd5a6a6e1f2d2dedf4723e0e8ca2b568da65')
         def predecessor(name):
-            text = (ROOT / name).read_text();row = layer['files'][name]
+            text = current(name);row = layer['files'][name]
             self.assertEqual(hashlib.sha256(text.encode()).hexdigest(), row['currentSha256'])
             lines, frontier = text.splitlines(keepends=True), len(text.splitlines(keepends=True))
             for edit in row['changes']:

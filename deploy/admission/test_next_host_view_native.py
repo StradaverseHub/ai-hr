@@ -226,6 +226,42 @@ def resource_topology(N, I, invocation, files, source_hashes):
             'kernelVersion': kernel, 'profileConstructorVerified': False, 'nextApplicationVerified': False, 'releaseEligible': False}
 
 
+def initial_environment_observation(N, started, files, source_hashes):
+    """Same existing native service and invocation; no extra process or unit."""
+    require(signal.getitimer(signal.ITIMER_REAL) == (0.0, 0.0), 'Host environment observation timer occupied')
+    old_handler = signal.getsignal(signal.SIGALRM)
+    def expired(_signal, _frame):
+        raise TimeoutError('Host environment observation deadline')
+    def custody():
+        file = pathlib.Path('/etc/systemd/system', UNIT)
+        secure(file, 0)
+        info = file.lstat()
+        require((info.st_dev, info.st_ino) == files[UNIT], 'Host environment declaration replaced')
+        require(hashlib.sha256(file.read_bytes()).hexdigest() == declaration_sha, 'Host environment declaration changed')
+        for name, wanted in source_hashes.items():
+            file = ROOT / name;secure(file, 0)
+            require(file.stat().st_size <= 256 * 1024
+                    and hashlib.sha256(file.read_bytes()).hexdigest() == wanted, 'Host environment source changed')
+    declaration_sha = hashlib.sha256(pathlib.Path('/etc/systemd/system', UNIT).read_bytes()).hexdigest()
+    try:
+        deadline = min(DEADLINE, time.monotonic() + 1)
+        require(deadline > time.monotonic(), 'Host environment observation budget unavailable')
+        signal.signal(signal.SIGALRM, expired)
+        signal.setitimer(signal.ITIMER_REAL, max(.001, deadline - time.monotonic()))
+        result = N.observe_owned_environment({'pid': int(started['MainPID']), 'invocation': started['InvocationID'],
+            'uid': 65534, 'executable': str(pathlib.Path('/usr/bin/python3').resolve(strict=True)),
+            'cwd': str(RELEASE), 'cgroup': AGGREGATE_GROUP + '/' + UNIT,
+            'argv': ['/usr/bin/python3', '-I', '-B', str(ROOT / 'probe.py'), 'app'],
+            'title': None, 'subject': 'host-component'}, custody, deadline)
+        require(result['knownUnqualified']['locale-language'] and result['knownUnqualified']['locale-numeric']
+                and result['knownUnqualified']['process-pwd'] and result['otherUnqualifiedCount'] >= 1,
+                'Actual synthetic initial environment observations absent')
+        return result
+    finally:
+        signal.setitimer(signal.ITIMER_REAL, 0)
+        signal.signal(signal.SIGALRM, old_handler)
+
+
 def rows(N):
     return {UNIT: [{'source': str(ROOT / 'mutable' / str(index)), 'target': target}
                    for index, target in enumerate(N.CACHE_TARGETS)]}
@@ -487,6 +523,12 @@ def main():
         (ROOT / 'other-source').mkdir(mode=0o700);os.chown(ROOT / 'other-source', 65534, 65534)
         (ROOT / 'source-link').symlink_to(ROOT / 'mutable/0')
         unit = '[Service]\nType=simple\nUser=nobody\nNoNewPrivileges=yes\nProtectSystem=strict\nPrivateMounts=yes\nKillMode=control-group\nTimeoutStopSec=3s\nSendSIGKILL=yes\nRuntimeMaxSec=15s\n'
+        # Fictional literal values only. No manager-environment mutation.
+        environment_file = ROOT / 'observation.env'
+        environment_file.write_text('LANGUAGE=C\nLC_NUMERIC=C\nPWD=fictional-observation\nAIHR_OBSERVATION_CANARY=fictional-private-canary\n')
+        environment_file.chmod(0o600)
+        unit += 'WorkingDirectory=' + str(RELEASE) + '\nEnvironmentFile=' + str(environment_file) + '\n'
+        unit += 'Environment=AIHR_APP_WORKERS=2 AIHR_DB_TOTAL_CONNECTIONS=16 AIHR_DB_POOL_MAX=8\n'
         unit += 'ExecStartPre=+/usr/bin/python3 -I -B ' + str(ROOT / 'probe.py') + ' hook\n'
         unit += 'ExecStart=/usr/bin/python3 -I -B ' + str(ROOT / 'probe.py') + ' app\n'
         unit += 'ExecStartPost=+/usr/bin/python3 -I -B ' + str(ROOT / 'probe.py') + ' hook\n'
@@ -537,6 +579,7 @@ def main():
                 and actual_slice.get('Transient') == 'no', 'Effective aggregate source differs')
         start_owned(UNIT)
         started = properties(UNIT);invocations[UNIT] = started['InvocationID']
+        report['initialEnvironmentObservation'] = initial_environment_observation(N, started, files, report['sourceSha256'])
         slice_state = properties(AGGREGATE)
         require(slice_state.get('ActiveState') == 'active' and slice_state.get('ControlGroup') == AGGREGATE_GROUP,
                 'Actual resource slice did not activate')

@@ -32,6 +32,36 @@ it('proves privileged cache overlays and bounded owned stop with actual systemd2
  expect(report.sourceSha256).toEqual(Object.fromEntries([['probe.py','deploy/admission/test_next_host_view_native.py'],['next_profile.py','deploy/admission/next_profile.py'],['runtime_inventory.py','.github/ci/runtime_inventory.py']].map(([name,path])=>[name,createHash('sha256').update(readFileSync(path)).digest('hex')])));
  expect(report.stopElapsedMs).toBeLessThanOrEqual(4000);
  expect(report.resourceReadinessQualified).toBe(false);
+ const observed=report.initialEnvironmentObservation;
+ expect(observed).toMatchObject({version:1,kind:'ACTUAL_OWNED_INITIAL_ENVIRONMENT_OBSERVATION_NOT_ADMISSION',
+  subject:'host-component',sourceVerified:true,invocationMatched:true,processStable:true,parseComplete:true,
+  nextApplicationVerified:false,releaseEligible:false});
+ expect(observed.knownUnqualified).toMatchObject({'locale-language':true,'locale-numeric':true,'process-pwd':true,
+  'locale-lang':false,'locale-all':false});
+ expect(Object.keys(observed).sort()).toEqual(['version','kind','subject','sourceVerified','invocationMatched','processStable',
+  'parseComplete','allowedCount','forbiddenPresent','unqualifiedCount','knownUnqualified','otherUnqualifiedCount',
+  'nextApplicationVerified','releaseEligible'].sort());
+ const knownLabels=['systemd-notify','systemd-fdstore','systemd-credentials','systemd-mainpid','systemd-managerpid',
+  'systemd-listen-fds','systemd-listen-pid','systemd-listen-names','systemd-watchdog-pid','systemd-watchdog-usec',
+  'systemd-runtime-directory','systemd-state-directory','systemd-cache-directory','systemd-logs-directory',
+  'systemd-config-directory','systemd-log-namespace','systemd-terminal','systemd-xdg-runtime','systemd-xdg-seat',
+  'systemd-xdg-vtnr','systemd-service-result','systemd-exit-code','systemd-exit-status','systemd-monitor-result',
+  'systemd-monitor-exit-code','systemd-monitor-exit-status','systemd-monitor-invocation','systemd-monitor-unit',
+  'systemd-pidfile','systemd-remote-address','systemd-remote-port','systemd-trigger-unit','systemd-trigger-path',
+  'systemd-trigger-realtime','systemd-trigger-monotonic','next-start-time','next-runtime','next-origin',
+  'locale-language','locale-ctype','locale-numeric','locale-time','locale-collate','locale-monetary','locale-messages',
+  'locale-paper','locale-name','locale-address','locale-telephone','locale-measurement','locale-identification',
+  'locale-lang','locale-all','process-timezone','process-pwd','process-shell-level','process-underscore',
+  'next-processed-environment','next-deployment'];
+ expect(Object.keys(observed.knownUnqualified).sort()).toEqual(knownLabels.sort());
+ expect(typeof observed.forbiddenPresent).toBe('boolean');
+ expect(Object.values(observed.knownUnqualified).every(value=>typeof value==='boolean')).toBe(true);
+ for(const key of ['allowedCount','unqualifiedCount','otherUnqualifiedCount'])expect(Number.isInteger(observed[key])&&observed[key]>=0&&observed[key]<=1024*1024).toBe(true);
+ expect(observed.allowedCount+observed.unqualifiedCount).toBeLessThanOrEqual(1024*1024);
+ expect(Buffer.byteLength(JSON.stringify(observed))).toBeLessThanOrEqual(4096);
+ expect(observed.unqualifiedCount).toBe(Object.values(observed.knownUnqualified).filter(Boolean).length+observed.otherUnqualifiedCount);
+ expect(observed.otherUnqualifiedCount).toBeGreaterThanOrEqual(1);
+ expect(JSON.stringify(observed)).not.toMatch(/fictional-private-canary|AIHR_OBSERVATION_CANARY|fictional-observation/);
  const topology=report.resourceTopology;
  expect(topology).toMatchObject({kind:'ACTUAL_UNCHANGED_RESOURCE_METHOD_DIAGNOSTIC_NOT_READINESS',
   actualProcessUnchanged:true,profileConstructorVerified:false,nextApplicationVerified:false,releaseEligible:false});
