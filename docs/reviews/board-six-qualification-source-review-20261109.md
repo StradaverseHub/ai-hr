@@ -1,0 +1,28 @@
+# Six-item qualification repair: exact source review
+
+## Decision requested
+
+Renew the **same 29 existing approved provider-data records** from fingerprint `570c80d812ddc68f2ac373ce28ce6f6cedc07967b6085c7ae965c3b0adf60389` to **`6d36d3f44cd79a5b386685e8e60176c45a50a61c188999251ecb9e5f4206bb16`**. This includes the already human-approved `authored_attendance_formula_v1`; it introduces no additional provider purpose or dataset. Preserve both pending contracts (`structured_canonical_records_v1`, `attendance_trend_analysis_v1`) and every existing record's contract ID, status, reviewer, evidence and review timestamp. Only the sourceDigest of the 29 approved records would change after an actual human approves this exact renewal.
+
+The earlier actual approval remains evidence for its exact570c source. It does not automatically approve a changed fingerprint. The source-owned rule in [provider-data-reviews.ts](../../lib/ai/provider-data-reviews.ts) requires actual human approval and immutable evidence before editing the literal registry. No renewal has been applied by this review document.
+
+## Why the source changed
+
+Complete frozen qualification [42508994094](https://github.com/StradaverseHub/ai-hr/actions/runs/42508994094), candidate `ebc539814c4bdd0b878248db5c4f374d13c42488`, controller `00a27edbe7de417dd97b0a82bdab48b8e79214a7`, baseline `4ae7953eb0283abcba914c29ecef719887ad6fca`, finished before any repair:78 jobs passed, nine test batches failed, the dependent verifier failed, and one job was skipped. Build, whole compiler, migration checks and all three browser engines passed. The failed run stays failed; its original source and logs are preserved privately.
+
+Repairs `b2dac482be8ca6dba29ed4d20c3689ce99c118f6` and `4f558babdee526aa79bf337b4626baa57e8cb37b` address its actual findings:
+
+- The existing bank payee-residency control now uses the canonical Personnel descriptor and form binding. It remains a nullable, current bank-owner field, with no new employee-import, report or employee self-service authority. Its import exclusion has an explicit explanation in all six locales. Residency is never inferred from tax residency or citizenship.
+- Three missing direct company/tenant foreign keys are added to the still-unapplied Attendance configuration migration. Its existing indirect formula keys and all other restrictions remain. All710 applied SQL payloads and the journal prefix remain untouched; no additional migration or changed money calculation is introduced.
+- The three new pages receive real public navigation guidance, semantic declarations, guide links and fictional evaluation turns. The guidance returns literal page, purpose, navigation and human-decision wording only. It reads no saved formula, test, result, employee, review, recommendation, budget or configuration, and performs no effect. Each owner requires administrator authority and the corresponding module. Guidance is folded into the existing `product_guidance` context tool; no additional model-facing tool is added. Harness spec27 preserves every prior digest and changes only these three public topics.
+- Loading boundaries use the shared loading shell. Regression fixtures explicitly account for the two new nullable banking columns, the approved Maybank formats, and the actual function boundary of the Attendance pay-code reader. The new Attendance draft caller is registered under its existing `pay_rule_draft` configuration feature.
+
+The privacy closure remains1483 files. Its changed covered sources are `core/explainers/capabilities.ts`, `core/harness/spec.ts`, `core/product-context/tools.ts`, `core/semantic-model/entities-setup.ts`, `core/semantic-model/types.ts`, `lib/personnel-field-registry.ts`, `lib/personnel-import-contract.ts`, and the six message catalogues. The manifest generator and its root list are unchanged. The module-agent fingerprint is `111222d486956a29170ab90653273f8fa73f33cf1aa15191e871377487297424`.
+
+## Verification and limits
+
+Focused development run [42511432383](https://github.com/StradaverseHub/ai-hr/actions/runs/42511432383), sourceb2da, has133 passing database checks across12 files, including the repaired populated upgrades, tenant keys, AI inventory, page guidance, semantic/corpus coverage and the unchanged model tool ceiling. Its pure/DOM partition has129 passes and three failures, which the subsequent4f55 repair addresses. Its six-locale Maybank component captures are separately retained with their actual producing source; component rendering is not an installed journey or bank acceptance. Final focused run [42511914316](https://github.com/StradaverseHub/ai-hr/actions/runs/42511914316) at4f55 is pending at this document's creation. These are development results, not release authority.
+
+Independent immutable Git impact reconstruction retains the original full failure and marks the repair delta full with unknown risk: changed SQL requires a fresh migration rehearsal; shared Personnel metadata, semantic disclosure and harness topics affect their transitive consumers; loading and field binding require browser coverage. Final release evidence must cover those invalidated areas under the authenticated policy. No receipt is fabricated, relabeled or waived.
+
+This review authorizes nothing by itself. A real owner response to the exact fingerprint renewal is required before registry edits. Staging qualification, an owned queue lease, protected administrator authentication, exact web/worker source and build arrival, full ordered migration hashes, health and changed authenticated journeys remain separate requirements. The six items stay grouped. Production installation and package publication are outside this request.
