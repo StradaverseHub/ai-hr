@@ -7,10 +7,11 @@ import {client,withTenant,type SessionContext,type Tx} from '../db/client';
 import {setMandateStopSwitch,setManagerRevocationPolicy} from '../core/mandates/mandates';
 import {adminCtx,closeAll,createAppUser,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
 let base:Base,ctx:SessionContext;
+const groupCtx=(base:Base):SessionContext=>({...adminCtx(base),grants:[{role:'hr_admin',companyId:null}]});
 beforeAll(migrateTestDb);afterAll(closeAll);
-beforeEach(async()=>{await resetDb();base=await seedBase();ctx=adminCtx(base);});
+beforeEach(async()=>{await resetDb();base=await seedBase();ctx=groupCtx(base);});
 const facts=(tenantId:string)=>owner.client`select tenant_id,stopped,version,manager_may_revoke,changed_by_user_id from teras_mandate_control where tenant_id=${tenantId}`;
-const events=(tenantId:string)=>owner.client`select tenant_id,aggregate_type,aggregate_id,event_type,actor_type,actor_id,payload from domain_event where tenant_id=${tenantId}and aggregate_type='teras-mandate-control' order by sequence`;
+const events=(tenantId:string)=>owner.client`select tenant_id,aggregate_type,aggregate_id,event_type,actor_type,actor_id,payload from domain_event where tenant_id=${tenantId} and aggregate_type='teras-mandate-control' order by sequence`;
 async function boundedReady(ready:Promise<void>,running:Promise<unknown>){
  let timer:ReturnType<typeof setTimeout>|undefined;
  try{await Promise.race([ready,running.then(()=>{throw Error('Native transaction finished before expected entry');}),new Promise<never>((_,reject)=>{timer=setTimeout(()=>reject(Error('Native transaction never entered')),2500);})]);}finally{clearTimeout(timer);}
@@ -38,11 +39,11 @@ it('retains initialization, exact stop generations, policy updates while stopped
  await expect(setManagerRevocationPolicy(stale,true)).rejects.toMatchObject({cause:{code:'42501'}});
  await expect(withTenant(stale,tx=>tx.execute(sql`insert into teras_mandate_control(tenant_id,changed_by_user_id)values(${base.tenantId},${ordinary})`))).rejects.toMatchObject({cause:{code:'42501'}});
  await expect(withTenant({...ctx,userId:ordinary,roles:['employee'],grants:[{role:'employee',companyId:null}]},tx=>tx.execute(sql`insert into teras_mandate_control(tenant_id,changed_by_user_id)values(${base.tenantId},${ordinary})`))).rejects.toMatchObject({cause:{code:'42501'}});
- await expect(withTenant(ctx,async tx=>{await tx.execute(sql`update teras_mandate_control set stopped=true,changed_by_user_id=${ctx.userId}where tenant_id=${base.tenantId}`);throw Error('Fictional rollback');})).rejects.toThrow('Fictional rollback');
+ await expect(withTenant(ctx,async tx=>{await tx.execute(sql`update teras_mandate_control set stopped=true,changed_by_user_id=${ctx.userId} where tenant_id=${base.tenantId}`);throw Error('Fictional rollback');})).rejects.toThrow('Fictional rollback');
  expect(await facts(base.tenantId)).toEqual(before);expect(await events(base.tenantId)).toEqual(audit);
- const other=await seedBase(),otherCtx=adminCtx(other);expect(await setMandateStopSwitch(otherCtx,true,{expectedGeneration:0})).toMatchObject({stopped:true,version:1,managerMayRevoke:false});
+ const other=await seedBase(),otherCtx=groupCtx(other);expect(await setMandateStopSwitch(otherCtx,true,{expectedGeneration:0})).toMatchObject({stopped:true,version:1,managerMayRevoke:false});
  expect(await setMandateStopSwitch(otherCtx,false,{expectedGeneration:1})).toMatchObject({stopped:false,version:2});
- const third=await seedBase(),thirdCtx=adminCtx(third);
+ const third=await seedBase(),thirdCtx=groupCtx(third);
  await withTenant(thirdCtx,tx=>tx.execute(sql`insert into teras_mandate_control(tenant_id,changed_by_user_id)values(${third.tenantId},${thirdCtx.userId})`));
  expect((await facts(third.tenantId))[0]).toEqual({tenant_id:third.tenantId,stopped:false,version:1,manager_may_revoke:false,changed_by_user_id:thirdCtx.userId});
 },60000);
@@ -54,7 +55,7 @@ it('orders real raw UPDATE and the unchanged stop setter before rows in both gen
  const save=()=>{if(process.env.AIHR_FOCUSED_EVIDENCE_DIR)writeFileSync(join(process.env.AIHR_FOCUSED_EVIDENCE_DIR,'ai-centre-mandate-competing-writers.json'),JSON.stringify(report,null,2));};
  expect(client.options.max).toBeGreaterThanOrEqual(2);expect(owner.client.options.max).toBeGreaterThanOrEqual(2);
  const[identity]=await client`select current_user as role,session_user as login,current_database()as database`;expect(identity.role).toBe('ai_hr_app');expect(identity.login).toBe('ai_hr_app');report.applicationLogin=identity;
- const foreign=await seedBase();await setMandateStopSwitch(adminCtx(foreign),true);const foreignBefore=await facts(foreign.tenantId);
+ const foreign=await seedBase();await setMandateStopSwitch(groupCtx(foreign),true);const foreignBefore=await facts(foreign.tenantId);
  await setManagerRevocationPolicy(ctx,false);let version=1;
  const courses:unknown[]=[];
  try{for(const first of ['raw','stop']as const){
@@ -65,7 +66,7 @@ it('orders real raw UPDATE and the unchanged stop setter before rows in both gen
   try{
    if(first==='raw'){
     raw=withTenant(ctx,async tx=>{await limits(tx);const[pid]=await tx.execute<{pid:number}>(sql`select pg_backend_pid()as pid`);rawPid=pid.pid;holderPid=pid.pid;
-     await tx.execute(sql`update teras_mandate_control set manager_may_revoke=not manager_may_revoke,changed_by_user_id=${ctx.userId}where tenant_id=${base.tenantId}`);entered();await hold;
+     await tx.execute(sql`update teras_mandate_control set manager_may_revoke=not manager_may_revoke,changed_by_user_id=${ctx.userId} where tenant_id=${base.tenantId}`);entered();await hold;
     });await boundedReady(ready,raw);
     stop=watched(setMandateStopSwitch(ctx,true,{expectedGeneration:version+1,reason:'Fictional ordered raw first'}));
     for(let poll=0;poll<100;poll++){
@@ -91,14 +92,14 @@ it('orders real raw UPDATE and the unchanged stop setter before rows in both gen
     }
     expect(stopPid,'real setter must wait at its actual audit INSERT').toBeTypeOf('number');
     raw=withTenant(ctx,async tx=>{await limits(tx);const[pid]=await tx.execute<{pid:number}>(sql`select pg_backend_pid()as pid`);rawPid=pid.pid;rawEntered();
-     return tx.execute(sql`update teras_mandate_control set manager_may_revoke=not manager_may_revoke,changed_by_user_id=${ctx.userId}where tenant_id=${base.tenantId}`);
+     return tx.execute(sql`update teras_mandate_control set manager_may_revoke=not manager_may_revoke,changed_by_user_id=${ctx.userId} where tenant_id=${base.tenantId}`);
     });await boundedReady(rawReady,raw);
     for(let poll=0;poll<100;poll++){
      const[state]=await owner.client`select ${stopPid}::integer=any(pg_blocking_pids(${rawPid}::integer))as blocked,
-      exists(select 1 from pg_locks where pid=${rawPid}and locktype='advisory'and not granted and objsubid=1
+      exists(select 1 from pg_locks where pid=${rawPid} and locktype='advisory'and not granted and objsubid=1
        and classid::bigint=((hashtextextended(${'access-configuration:'+base.tenantId},0)>>32)&4294967295)
        and objid::bigint=(hashtextextended(${'access-configuration:'+base.tenantId},0)&4294967295))as access_wait,
-      exists(select 1 from pg_locks where pid=${rawPid}and locktype='tuple')as tuple_lock`;
+      exists(select 1 from pg_locks where pid=${rawPid} and locktype='tuple')as tuple_lock`;
      if(state.blocked){expect(state.access_wait).toBe(true);expect(state.tuple_lock).toBe(false);blocked=true;break;}await new Promise(resolve=>setTimeout(resolve,20));
     }
    }

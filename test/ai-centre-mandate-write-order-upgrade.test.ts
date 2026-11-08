@@ -129,15 +129,15 @@ it('upgrades actual historical709 through3500 to3501 as the real non-super owner
   expect((await facts()).find(row=>row.row.tenant_id===tenantId)?.row).toMatchObject({stopped:false,version:8,changed_by_user_id:userId});
   await migration.client.begin(async tx=>{await tx`select set_config('app.tenant_id',${tenantId},true)`;await tx`update teras_mandate_control set version=999,changed_at=now()where tenant_id=${tenantId}`;});
   expect((await facts()).find(row=>row.row.tenant_id===tenantId)?.row.version).toBe(8);
-  await expect(migration.client.begin(async tx=>{await tx`select set_config('app.tenant_id',${tenantId},true)`;await tx`update teras_mandate_control set tenant_id=${tenantId}where tenant_id=${foreignTenant}`;})).rejects.toMatchObject({code:'42501',message:'Mandate control row differs from bound tenant'});
+  await expect(migration.client.begin(async tx=>{await tx`select set_config('app.tenant_id',${tenantId},true)`;await tx`update teras_mandate_control set tenant_id=${tenantId} where tenant_id=${foreignTenant}`;})).rejects.toMatchObject({code:'42501',message:'Mandate control row differs from bound tenant'});
   const ownerTenant=randomUUID();await storage.client`insert into tenant(id,workos_org_id,name)values(${ownerTenant},${randomUUID()},'Fictional bound owner initialization')`;
   await migration.client.begin(async tx=>{await tx`select set_config('app.tenant_id',${ownerTenant},true)`;await tx`insert into teras_mandate_control(tenant_id,changed_by_user_id)values(${ownerTenant},${userId})`;});
   expect((await facts()).find(row=>row.row.tenant_id===ownerTenant)?.row).toMatchObject({stopped:false,version:1,manager_may_revoke:false});
   const[actualApp]=await application.client`select current_user as role,session_user as login,current_database()as database,inet_server_addr()='127.0.0.1'::inet as loopback`;
   expect(actualApp).toEqual({role:'ai_hr_app',login:'ai_hr_app',database,loopback:true});report.applicationLogin=actualApp;
   await expect(application.client`update teras_mandate_control set stopped=true where tenant_id=${tenantId}`).rejects.toMatchObject({code:'42501'});
-  await application.withTenant(ctx,tx=>tx.execute(sql`update teras_mandate_control set stopped=true,changed_by_user_id=${userId}where tenant_id=${tenantId}`));
-  await application.withTenant(ctx,tx=>tx.execute(sql`update teras_mandate_control set manager_may_revoke=true,changed_by_user_id=${userId}where tenant_id=${tenantId}`));
+  await application.withTenant(ctx,tx=>tx.execute(sql`update teras_mandate_control set stopped=true,changed_by_user_id=${userId} where tenant_id=${tenantId}`));
+  await application.withTenant(ctx,tx=>tx.execute(sql`update teras_mandate_control set manager_may_revoke=true,changed_by_user_id=${userId} where tenant_id=${tenantId}`));
   expect((await facts()).find(row=>row.row.tenant_id===tenantId)?.row).toMatchObject({stopped:true,manager_may_revoke:true,version:10});
   const beforeIllegal=await facts(),foreignCourses:unknown[]=[];
   // Independent real foreign AI holder. Illegal row operations must finish denied
@@ -150,7 +150,7 @@ it('upgrades actual historical709 through3500 to3501 as the real non-super owner
    const startApp=()=>application.withTenant(ctx,async tx=>{await tx.execute(sql`set local lock_timeout='5s'`);await tx.execute(sql`set local statement_timeout='10s'`);
     const[identity]=await tx.execute<{pid:number}>(sql`select pg_backend_pid()as pid`);appPid=identity.pid;appStarted();await go;
     if(operation==='insert')await tx.execute(sql`insert into teras_mandate_control(tenant_id,changed_by_user_id)values(${foreignTenant},${userId})`);
-    else await tx.execute(sql`update teras_mandate_control set tenant_id=${foreignTenant},changed_by_user_id=${userId}where tenant_id=${tenantId}`);
+    else await tx.execute(sql`update teras_mandate_control set tenant_id=${foreignTenant},changed_by_user_id=${userId} where tenant_id=${tenantId}`);
    }).then(()=>({}),error=>({error})).finally(()=>{appDone=true;});
    const startHolder=()=>migration!.client.begin(async tx=>{await tx`set local lock_timeout='5s'`;await tx`set local statement_timeout='10s'`;
     const[identity]=await tx`select pg_backend_pid()as pid,hashtext(${tenantId})<>hashtext(${foreignTenant})as distinct_keys`;expect(identity.distinct_keys).toBe(true);holderPid=identity.pid as number;
@@ -166,8 +166,8 @@ it('upgrades actual historical709 through3500 to3501 as the real non-super owner
     }
     let timer:ReturnType<typeof setTimeout>|undefined,result:{error?:unknown};
     try{result=await Promise.race([appPromise,new Promise<never>((_,reject)=>{timer=setTimeout(()=>reject(Error('Foreign row did not deny while foreign AI remained held')),Math.max(1,2500-(Date.now()-dispatchedAt)));})]);}finally{clearTimeout(timer);}
-    const[state]=await storage.client`select exists(select 1 from pg_locks where pid=${holderPid}and locktype='advisory'and granted and objsubid=2)as holder_still_locked,
-     exists(select 1 from pg_locks where pid=${appPid}and locktype='advisory'and classid::bigint=(hashtext('ai-control')::bigint+4294967296)%4294967296 and objid::bigint=(hashtext(${foreignTenant})::bigint+4294967296)%4294967296 and objsubid=2)as app_foreign_lock`;
+    const[state]=await storage.client`select exists(select 1 from pg_locks where pid=${holderPid} and locktype='advisory'and granted and objsubid=2)as holder_still_locked,
+     exists(select 1 from pg_locks where pid=${appPid} and locktype='advisory'and classid::bigint=(hashtext('ai-control')::bigint+4294967296)%4294967296 and objid::bigint=(hashtext(${foreignTenant})::bigint+4294967296)%4294967296 and objsubid=2)as app_foreign_lock`;
     const error=result.error as{cause?:{code?:string;message?:string};code?:string;message?:string}|undefined,native=error?.cause??error;
     foreignCourses.push({operation,first,appPid,holderPid,holderStillLocked:state.holder_still_locked,appForeignLock:state.app_foreign_lock,sawForeignWait,deniedCode:native?.code});report.foreignCourses=foreignCourses;save();
     expect(native).toMatchObject({code:'42501',message:'Mandate control row differs from bound tenant'});expect(state).toEqual({holder_still_locked:true,app_foreign_lock:false});expect(sawForeignWait).toBe(false);

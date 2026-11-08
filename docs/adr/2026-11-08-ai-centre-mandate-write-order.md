@@ -117,3 +117,31 @@ ACL/RLS/defaults/lock order, journal and every native case remain byte exact.
 Only the candidate3501 SQL test hash changes with these aliases. Original failed
 runs are retained; affected database retries await root and independent review.
 This source correction grants no native PASS, provider or deployment approval.
+
+## Native fixture correction after the alias retry
+
+Both planned5442aa969cbaea30b33811b7c3d537ffcc0e37f1 runs finished under actual
+controller82859db9a598d5a83e6da9a60d3643b6969c04c3, attempt1. Run42491195102
+reached the native upgrade case: actual owner LOGIN, historical709→746→747,
+whole38-pending rollback, seventeen drift refusals and isolated DB/role cleanup
+were recorded before its owner OLD-foreign query failed with actual42601 at
+line132. A bound parameter immediately followed by WHERE formed an invalid token.
+Foreign-lock proof beyond that point remains unexecuted, not a successful denial.
+
+Run42491197158 executed all45 cases:43 existing native cases passed and only the
+two new ordinary cases failed. They stopped at the unchanged product's explicit
+group-admin guard because adminCtx carries roles but no grants. seedBase already
+creates the matching real group-wide HR role_assignment; this is fixture context
+construction, not missing native authority. Those actual43 passes and the seven
+source-owner passes from50b1/run42489600800 retain their original identities.
+
+This test-only correction inserts twelve spaces at scalar parameter/keyword
+boundaries in the two new fixture files. It also derives the four genuine seeded
+administrator contexts from one helper carrying their existing group-wide grant.
+The other eleven spacing sites are latent source findings, not eleven observed
+native failures. Ordinary/stale negative contexts, every assertion and operation
+order remain; no product guard is replaced or relaxed. Both migration SQL files,
+all migration hashes/journal and existing native files remain byte exact.
+Only the three failed new cases require retry after dual source review; original
+failures and partial native evidence remain retained. No native PASS or release
+approval is granted by this correction.
