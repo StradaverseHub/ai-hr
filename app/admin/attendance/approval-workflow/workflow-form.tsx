@@ -124,7 +124,7 @@ export function RoutingSwitch({ companyId, type, enabled }: {
     const v3 = useTranslations('attendanceWorkflow.v3');
     const t = useTranslations('attendanceWorkflow'), router = useRouter();
     const [pending, start] = useTransition(), [error, setError] = useState('');
-    return <div><button aria-busy={pending} type="button" disabled={pending} className="text-primary underline underline-offset-2" onClick={() => start(async () => {
+    return <div><Button guardNavigation aria-busy={pending} type="button" variant="ghost" disabled={pending} className="text-primary underline underline-offset-2" onClick={() => start(async () => {
             setError('');
             try {
                 const { setAttendanceWorkflowEnabledAction } = await import('./actions');
@@ -132,5 +132,5 @@ export function RoutingSwitch({ companyId, type, enabled }: {
                 if (!result.ok) setError(result.error);
                 else router.refresh();
             } catch { setError(t('requestFailed')); }
-        })}>{enabled ? t('disableRouting') : t('enableRouting')}</button>{error && <p role="alert" className="text-red-700">{error}</p>}</div>;
+        })}>{enabled ? t('disableRouting') : t('enableRouting')}</Button>{error && <p role="alert" className="text-red-700">{error}</p>}</div>;
 }
