@@ -108,7 +108,7 @@ async function validateEmployeeReferencesTx(tx:Tx,p:{companyId:string;rules:Allo
     if(c.field==='businessUnitId'){const rows=await tx.select({id:businessUnit.id}).from(businessUnit).where(and(inArray(businessUnit.id,c.values),isNull(businessUnit.archivedAt),visibleLabelIdsCondition(businessUnit,'business_unit',[p.companyId])));if(rows.length!==c.values.length)throw new Error('Business units must be available to the policy company');}
     if(c.field==='positionId'){const rows=await tx.select({id:position.id}).from(position).where(and(inArray(position.id,c.values),isNull(position.archivedAt),visibleLabelIdsCondition(position,'position',[p.companyId])));if(rows.length!==c.values.length)throw new Error('Positions must be available to the policy company');}
     if(c.field==='gradeId'){const rows=await tx.select({id:jobGrade.id}).from(jobGrade).where(and(inArray(jobGrade.id,c.values),isNull(jobGrade.archivedAt)));if(rows.length!==c.values.length)throw new Error('Choose active job grades');}
-    if(c.field==='branch'||c.field==='division'||c.field==='employmentCategory'){
+    if(['branch','division','region','line','section','team','base','employmentCategory'].includes(c.field)){
       const category=c.field==='employmentCategory'?'category':c.field;
       const rows=await tx.select({value:profileOption.value}).from(profileOption).where(and(eq(profileOption.category,category),eq(profileOption.isActive,true),inArray(profileOption.value,c.values)));
       // Legacy v2/v3 categories retain their original Personnel-value vocabulary.
@@ -548,7 +548,7 @@ async function evaluateAllowancesTx(tx:Tx,ctx:SessionContext,p:{policyId:string;
       let candidate=false;
       for(const period of evaluated){
         const {asOf:date,facts,pass}=allowanceEmployeePeriodMatch(rules.employee,input.employmentId,input,period);
-        period.employeeSelection={asOf:date??null,facts:facts??null,pass,factSources:{companyId:'dated-company-segments',departmentId:'dated-assignment',businessUnitId:'dated-assignment-with-department-fallback',positionId:'dated-assignment',employmentType:'dated-assignment',gradeId:'current-personnel-profile-no-historical-version',employmentCategory:'current-personnel-profile-no-historical-version',status:'employment-tenure',branch:'current-personnel-profile-no-historical-version',division:'current-personnel-profile-no-historical-version'}};
+        period.employeeSelection={asOf:date??null,facts:facts??null,pass,factSources:{companyId:'dated-company-segments',departmentId:'dated-assignment',businessUnitId:'dated-assignment-with-department-fallback',positionId:'dated-assignment',employmentType:'dated-assignment',gradeId:'current-personnel-profile-no-historical-version',employmentCategory:'current-personnel-profile-no-historical-version',status:'employment-tenure',branch:'current-personnel-profile-no-historical-version',division:'current-personnel-profile-no-historical-version',region:'current-personnel-profile-no-historical-version',line:'current-personnel-profile-no-historical-version',section:'current-personnel-profile-no-historical-version',team:'current-personnel-profile-no-historical-version',base:'current-personnel-profile-no-historical-version'}};
         if(!pass){
           period.qualified=false;period.amount='0.00';period.reasons.push('employeeCriteriaFailed');
         }else candidate=true;

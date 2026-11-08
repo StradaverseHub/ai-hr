@@ -20,7 +20,7 @@ const configuration=z.object({
  outputUnit:z.enum(['amount','minutes','hours','days']),purpose:z.enum(['earning','deduction','overtime']),
  eligibility:z.discriminatedUnion('mode',[z.object({mode:z.literal('all')}).strict(),z.object({mode:z.literal('selected'),employmentIds:z.array(z.uuid().transform(value=>value.toLowerCase())).min(1).max(2000).refine(ids=>new Set(ids.map(id=>id.toLowerCase())).size===ids.length,'Choose each employee once.')}).strict(),z.object({mode:z.literal('criteria'),expression:z.unknown().transform(value=>validateAllowanceEmployeeExpression(value))}).strict()]),
  posting:z.discriminatedUnion('kind',[z.object({kind:z.literal('exclusive')}).strict(),z.object({kind:z.literal('sum')}).strict(),z.object({kind:z.literal('priority'),priority:z.number().int().min(1).max(10000)}).strict()]),
- library:z.object({formulas:z.array(formula).min(1).max(64),conditions:z.array(formula.extend({type:z.enum(['decimal','boolean']).optional()}).strict()).max(64)}).strict(),
+ library:z.object({formulas:z.array(formula).min(1).max(64),conditions:z.array(formula.extend({description:z.string().trim().max(1000).optional(),type:z.enum(['decimal','boolean']).optional()}).strict()).max(64)}).strict(),
 }).strict();
 /** Configuration selects only closed owners; source values, permissions and activation proof are absent. */
 export function validateAttendanceFormulaConfiguration(raw:unknown):AttendanceFormulaConfiguration{

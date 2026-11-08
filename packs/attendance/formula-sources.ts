@@ -39,7 +39,7 @@ export async function readAttendanceFormulaDaysTx(tx:Tx,ctx:SessionContext,p:{co
  const leave=await approvedLeaveMeasurementsTx(tx,{employmentIds:[p.employmentId],from,to,today:todayInKualaLumpur()});
  const typeIds=[...new Set([...leave.values()].flatMap(value=>value.types))];
  const types=typeIds.length?await tx.select({id:leaveType.id,code:leaveType.code}).from(leaveType).where(inArray(leaveType.id,typeIds)).orderBy(asc(leaveType.id)):[];
- const leaveCodes=(date:string,half:'AM'|'PM')=>{const evidence=leave.get(p.employmentId+':'+date);if(evidence?.leave===null||evidence?.unknownTypes.length)return null;const rows=(evidence?.leave??[]).filter(piece=>piece.session==='full_day'||piece.session===half);const codes=rows.map(piece=>types.find(type=>type.id===piece.typeId)?.code);return codes.some(code=>!code)?null:[...new Set(codes as string[])].sort().join(',');};
+ const leaveCodes=(date:string,half:'AM'|'PM')=>{const evidence=leave.get(p.employmentId+':'+date);if(evidence?.leave===null||evidence?.unknownTypes.length||evidence?.leave?.some(piece=>piece.session==='hourly'))return null;const rows=(evidence?.leave??[]).filter(piece=>piece.session==='full_day'||piece.session===half);const codes=rows.map(piece=>types.find(type=>type.id===piece.typeId)?.code);return codes.some(code=>!code)?null:[...new Set(codes as string[])].sort().join(',');};
  const snapshots=new Map<string,CanonicalOvertimeSnapshot>();
  for(const row of records){try{snapshots.set(row.attendanceDate,await canonicalOvertimeInputTx(tx,ctx,{employmentId:p.employmentId,date:row.attendanceDate}));}catch(error){if(!(error instanceof OvertimeOwnerError)||error.code!=='unavailable')throw error;}}
  const [companyFields]=p.fields?.some(field=>field.code==='CompanyCode')?await tx.select({code:company.companyLabel,name:company.legalName}).from(company).where(and(eq(company.tenantId,ctx.tenantId),eq(company.id,p.companyId))):[];
@@ -59,8 +59,8 @@ export async function readAttendanceFormulaDaysTx(tx:Tx,ctx:SessionContext,p:{co
   string('PID',subject.row.personId,'effective-employment');dateValue('StartWork',datedEmployment.get(date)?.hiredOn,'dated-employment-information');
   const end=[subject.row.resignationDate,subject.row.lastWorkingDate,subject.row.terminatedOn].filter((value):value is string=>!!value).sort()[0];dateValue('LastWork',end,'effective-employment');flag('isResigned',!!end&&end<date,'effective-employment');
   for(const [prefix,offset]of [['Yesterday',-1],['Tomorrow',1]] as const){const adjacent=addDaysIso(date,offset),other=records.find(record=>record.attendanceDate===adjacent);string(prefix+'NormalDayType',other?.dayType);const am=leaveCodes(adjacent,'AM'),pm=leaveCodes(adjacent,'PM');if(am!==null&&pm!==null)string(prefix+'LeaveCode',[...new Set([am,pm].filter(Boolean))].sort().join(','),'approved-leave');}
-  for(const [half,suffix]of [['AM','1stHalf'],['PM','2ndHalf']] as const){const codes=leaveCodes(date,half);if(codes!==null){string('LeaveCode'+suffix,codes,'approved-leave');string('LeaveCode'+suffix+'All',codes,'approved-leave');}const evidence=leave.get(p.employmentId+':'+date);if(!evidence?.unknownTypes.length&&evidence?.leave!==null)decimal('LeaveValue'+suffix,(evidence?.leave??[]).filter(piece=>piece.session===half||piece.session==='full_day').reduce((sum,piece)=>sum+(piece.session==='full_day'?piece.days/2:piece.days),0),'approved-leave');}
-  const leaveEvidence=leave.get(p.employmentId+':'+date);if(leaveEvidence?.leave&&!leaveEvidence.unknownTypes.length){const hourly=leaveEvidence.leave.filter(piece=>piece.session==='hourly');if(hourly.every(piece=>piece.minutes!==null))decimal('OnLeaveDurationMins',hourly.reduce((sum,piece)=>sum+piece.minutes!,0),'approved-leave');}else if(!leaveEvidence)decimal('OnLeaveDurationMins',0,'approved-leave-empty');
+  for(const [half,suffix]of [['AM','1stHalf'],['PM','2ndHalf']] as const){const codes=leaveCodes(date,half);if(codes!==null){string('LeaveCode'+suffix,codes,'approved-leave');string('LeaveCode'+suffix+'All',codes,'approved-leave');}const evidence=leave.get(p.employmentId+':'+date);if(!evidence?.unknownTypes.length&&evidence?.leave!==null&&!evidence?.leave?.some(piece=>piece.session==='hourly'||piece.session==='full_day'&&piece.days!==1))decimal('LeaveValue'+suffix,(evidence?.leave??[]).filter(piece=>piece.session===half||piece.session==='full_day').reduce((sum,piece)=>sum+(piece.session==='full_day'?piece.days/2:piece.days),0),'approved-leave');}
+  const leaveEvidence=leave.get(p.employmentId+':'+date);if(leaveEvidence?.leave&&!leaveEvidence.unknownTypes.length){const pieces=leaveEvidence.leave;if(pieces.every(piece=>piece.minutes!==null))decimal('OnLeaveDurationMins',pieces.reduce((sum,piece)=>sum+piece.minutes!,0),'approved-leave');}else if(!leaveEvidence)decimal('OnLeaveDurationMins',0,'approved-leave-empty');
   const nativeSnapshot=snapshots.get(date);
   for(const request of p.fields??[]){
    const descriptor=ATTENDANCE_FORMULA_FIELDS.find(field=>field.function===request.code&&field.key===request.key)!;
@@ -88,7 +88,7 @@ export async function readAttendanceFormulaDaysTx(tx:Tx,ctx:SessionContext,p:{co
   const plans=activePlans?.every(request=>request.positionedPlan.state==='recorded')?union(activePlans.flatMap(request=>request.positionedPlan.state==='recorded'?request.positionedPlan.intervals:[]),4320):undefined;
   if(plans)decimal('ScheduleOT',count(plans,4320),'canonical-positioned-approved-plans');
   decimal('FirstIn',punch.inAbs);decimal('LastOut',punch.outAbs);decimal('FirstInLastOutMins',punch.spanMinutes);decimal('ShiftStart',schedule.startAbs);decimal('ShiftEnd',schedule.endAbs);
-  string('ShiftID',schedule.shiftId);string('ShiftGroupID',schedule.ruleId);decimal('ScheduleWorkingTime',schedule.normalMinutesOverride??schedule.scheduledMinutes);decimal('ShiftWorkingMins',schedule.normalMinutesOverride??schedule.scheduledMinutes);
+  string('ShiftID',schedule.shiftId);string('ShiftGroupID',schedule.ruleId);decimal('ScheduleWorkingTime',schedule.normalMinutesOverride??schedule.scheduledMinutes);
   if(schedule.startAbs!==null)string('ShiftStartTime',String(Math.floor(schedule.startAbs/60)%24).padStart(2,'0')+':'+String(schedule.startAbs%60).padStart(2,'0'));
   if(schedule.endAbs!==null)string('ShiftEndTime',String(Math.floor(schedule.endAbs/60)%24).padStart(2,'0')+':'+String(schedule.endAbs%60).padStart(2,'0'));
   if(lateness){decimal('InGracePeriod',lateness.graceMinutes);decimal('LateInShiftRaw',Math.max(0,lateness.checkInAbs-lateness.startAbs));decimal('LateWithinGracePeriod',Math.min(Math.max(0,lateness.checkInAbs-lateness.startAbs),lateness.graceMinutes));}
@@ -102,6 +102,7 @@ export async function readAttendanceFormulaDaysTx(tx:Tx,ctx:SessionContext,p:{co
    const work:AttendancePolicyInterval[]=positioned.map(interval=>({from:(Number(interval.startEpochSeconds)-base)/60,to:(Number(interval.startEpochSeconds)-base+interval.elapsedSeconds)/60}));
    if(placement?.state==='known'&&placement.scheduled.from===schedule.startAbs&&placement.scheduled.to===schedule.endAbs){
     const net=subtract(work,placement.unpaidWindows,4320);
+    decimal('ShiftWorkingMins',count(intersect(net,[{from:schedule.startAbs,to:schedule.endAbs}],4320),4320),'canonical-net-positioned-work');
     const approved=plans?intersect(net,plans,4320):snapshot?.input.approval.status==='notRequired'?net:undefined;
     for(const [zone,window]of [['A',{from:0,to:schedule.startAbs}],['B',{from:schedule.endAbs,to:4320}]] as const){
      const covered=window.to>window.from?intersect(net,[window],4320):[];
@@ -120,7 +121,7 @@ export async function readAttendanceFormulaDaysTx(tx:Tx,ctx:SessionContext,p:{co
   const snapshot=snapshots.get(date),facts=snapshot?.input.facts;
   const field=(key:keyof NonNullable<typeof facts>)=>{const value=facts?.[key];return value?.state==='known'?value.value:null;};
   const end=[subject.row.resignationDate,subject.row.lastWorkingDate,subject.row.terminatedOn].filter((value):value is string=>!!value).sort()[0];
-  return {date,facts:{companyId:p.companyId,departmentId:field('departmentId'),businessUnitId:field('businessUnitId'),positionId:field('positionId'),gradeId:field('gradeId'),employmentType:field('employmentType'),employmentCategory:field('employmentCategory'),branch:field('orgBranch'),division:field('orgDivision'),status:end&&end<date?'terminated':'active'}};
+  return {date,facts:{companyId:p.companyId,departmentId:field('departmentId'),businessUnitId:field('businessUnitId'),positionId:field('positionId'),gradeId:field('gradeId'),employmentType:field('employmentType'),employmentCategory:field('employmentCategory'),branch:field('orgBranch'),division:field('orgDivision'),region:field('orgRegion'),line:field('orgLine'),section:field('orgSection'),team:field('orgTeam'),base:field('orgBase'),status:end&&end<date?'terminated':'active'}};
  }):[];
  return {days,sourceDigest,eligibilityFacts};
 }

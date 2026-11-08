@@ -2,7 +2,7 @@ import {ATTENDANCE_FORMULA_CATALOG_VERSION,ATTENDANCE_FORMULA_VARIABLES,ATTENDAN
 import {parsePayFormula,validatePayFormula,evaluatePayFormula,addFormulaDecimal,type FormulaDialect,type FormulaProgram,type FormulaTraceEvent,type FormulaRequest} from './pay-formula-language';
 import {payFormulaFunction,type FormulaFunction,type FormulaValue} from './pay-formula-registry';
 export type AttendanceFormulaDefinition={code:string;source:string};
-export type AttendanceFormulaLibrary={formulas:readonly AttendanceFormulaDefinition[];conditions:readonly (AttendanceFormulaDefinition&{type?:'decimal'|'boolean'})[]};
+export type AttendanceFormulaLibrary={formulas:readonly AttendanceFormulaDefinition[];conditions:readonly (AttendanceFormulaDefinition&{description?:string;type?:'decimal'|'boolean'})[]};
 export type AttendanceFormulaFact={state:'known';value:FormulaValue;source:string;revision:string}|{state:'unavailable';reason:string};
 export type AttendanceFormulaDay={date:string;values:Readonly<Record<string,AttendanceFormulaFact>>};
 const idPattern=/^[A-Za-z][A-Za-z0-9_]{0,63}$/;
@@ -35,7 +35,7 @@ export function compileAttendanceFormulaLibrary(library:AttendanceFormulaLibrary
 /** Every value comes from an authorized native source. This engine cannot read storage or post pay. */
 export function evaluateAttendanceFormula(library:AttendanceFormulaLibrary,code:string,days:readonly AttendanceFormulaDay[]){
  if(!days.length||days.length>62||new Set(days.map(day=>day.date)).size!==days.length||days.some((day,i)=>i>0&&day.date<=days[i-1].date))throw Error('Supply a nonempty ordered attendance period of at most 62 dates.');
- const {dialect,programs}=compileAttendanceFormulaLibrary(library),conditionTypes=new Map(library.conditions.map(c=>[c.code,c.type??'decimal'])),cache=new Map<string,string>(),trace:{formula:string;event:FormulaTraceEvent}[]=[];let totalSteps=0;
+ const {dialect,programs}=compileAttendanceFormulaLibrary(library),conditionTypes=new Map(library.conditions.map(c=>[c.code,c.type??'decimal'])),cache=new Map<string,string>(),trace:{formula:string;event:FormulaTraceEvent;request?:FormulaRequest}[]=[];let totalSteps=0;
  const fact=(key:string):FormulaValue=>{
   const variable=attendanceFormulaVariable(key),values=days.map(day=>{const value=day.values[key];if(!value||value.state!=='known'||!value.source||!value.revision)throw Error(`Attendance variable ${key} is unavailable for ${day.date}.`);return value.value;});
   if(variable?.aggregation==='sum'){let sum='0';for(const value of values){if(value.type!=='decimal')throw Error('The attendance source returned an incompatible unit.');sum=addFormulaDecimal(sum,value.value);}return {type:'decimal',value:sum};}
@@ -43,6 +43,6 @@ export function evaluateAttendanceFormula(library:AttendanceFormulaLibrary,code:
   if(values.some(value=>JSON.stringify(value)!==JSON.stringify(values[0])))throw Error(`Attendance variable ${key} differs across this period; use a daily formula.`);
   return values[0];
  };
- const run=(id:string):string=>{const hit=cache.get(id);if(hit!==undefined)return hit;const program=programs.get(id);if(!program)throw Error('Formula is unavailable in the tested version.');const result=evaluatePayFormula(program,{resolve:request=>{const key=String(request.args[0]?.value);if(request.code==='FormulaID')return programs.has(key)?{type:'decimal',value:run(key)}:fact(key);if(request.code==='ConditionID'){const value=run(key);return conditionTypes.get(key)==='boolean'?{type:'boolean',value:value==='1'}:{type:'decimal',value};}return fact(request.code+':'+key);},trace:event=>{if(trace.length>=6000)throw Error('Attendance dependency trace exceeds its limit.');trace.push({formula:id,event});}},{...dialect,returnType:conditionTypes.get(id)??'decimal'});totalSteps+=result.steps;if(totalSteps>12000)throw Error('Attendance dependency evaluation exceeded its limit.');cache.set(id,result.amount);return result.amount;};
+ const run=(id:string):string=>{const hit=cache.get(id);if(hit!==undefined)return hit;let lastRead:FormulaRequest|undefined;const program=programs.get(id);if(!program)throw Error('Formula is unavailable in the tested version.');const result=evaluatePayFormula(program,{resolve:request=>{lastRead=request;const key=String(request.args[0]?.value);if(request.code==='FormulaID')return programs.has(key)?{type:'decimal',value:run(key)}:fact(key);if(request.code==='ConditionID'){const value=run(key);return conditionTypes.get(key)==='boolean'?{type:'boolean',value:value==='1'}:{type:'decimal',value};}return fact(request.code+':'+key);},trace:event=>{if(trace.length>=6000)throw Error('Attendance dependency trace exceeds its limit.');trace.push({formula:id,event,...(event.kind==='read'&&lastRead?{request:lastRead}:{})});}},{...dialect,returnType:conditionTypes.get(id)??'decimal'});totalSteps+=result.steps;if(totalSteps>12000)throw Error('Attendance dependency evaluation exceeded its limit.');cache.set(id,result.amount);return result.amount;};
  return {amount:run(code),trace,registryVersion:ATTENDANCE_FORMULA_CATALOG_VERSION};
 }

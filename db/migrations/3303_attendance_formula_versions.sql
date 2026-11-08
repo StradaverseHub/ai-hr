@@ -13,6 +13,7 @@ CREATE TABLE public.attendance_formula_revision (
  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),tenant_id uuid NOT NULL REFERENCES public.tenant(id),
  company_id uuid NOT NULL REFERENCES public.company(id),formula_id uuid NOT NULL,ordinal integer NOT NULL CHECK(ordinal>0),
  pay_component_id uuid NOT NULL REFERENCES public.pay_component(id),definition jsonb NOT NULL,
+ registry_version text NOT NULL,evaluator_version text NOT NULL,
  content_hash text NOT NULL CHECK(content_hash~'^[a-f0-9]{64}$'),read_requirements jsonb NOT NULL,
  created_by uuid NOT NULL REFERENCES public.app_user(id),created_at timestamptz NOT NULL DEFAULT now(),
  UNIQUE(formula_id,ordinal),UNIQUE(id,formula_id,tenant_id,company_id),

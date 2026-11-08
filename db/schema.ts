@@ -11712,7 +11712,7 @@ export const attendanceFormula = pgTable('attendance_formula', {
 export const attendanceFormulaRevision = pgTable('attendance_formula_revision', {
  id:id(),tenantId:tenantId(),companyId:uuid('company_id').notNull().references(()=>company.id),formulaId:uuid('formula_id').notNull().references(()=>attendanceFormula.id),ordinal:integer('ordinal').notNull(),
  payComponentId:uuid('pay_component_id').notNull().references(()=>payComponent.id),definition:jsonb('definition').$type<import('../lib/attendance-formula-model').AttendanceFormulaConfiguration>().notNull(),
- contentHash:text('content_hash').notNull(),readRequirements:jsonb('read_requirements').$type<{financial:boolean;workforce:boolean}>().notNull(),createdBy:uuid('created_by').notNull().references(()=>appUser.id),createdAt:createdAt(),
+ registryVersion:text('registry_version').notNull(),evaluatorVersion:text('evaluator_version').notNull(),contentHash:text('content_hash').notNull(),readRequirements:jsonb('read_requirements').$type<{financial:boolean;workforce:boolean}>().notNull(),createdBy:uuid('created_by').notNull().references(()=>appUser.id),createdAt:createdAt(),
 },t=>[uniqueIndex('attendance_formula_revision_ordinal_uq').on(t.formulaId,t.ordinal)]);
 export const attendanceFormulaTest = pgTable('attendance_formula_test', {
  id:id(),tenantId:tenantId(),companyId:uuid('company_id').notNull().references(()=>company.id),formulaId:uuid('formula_id').notNull().references(()=>attendanceFormula.id),revisionId:uuid('revision_id').notNull().references(()=>attendanceFormulaRevision.id),

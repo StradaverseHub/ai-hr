@@ -1,6 +1,8 @@
 /** Client-safe, versioned employee inclusion. Missing facts never pass a negative comparison. */
 import { ALLOWANCE_EMPLOYEE_FIELDS, type AllowanceEmployeeField } from './attendance-allowance-vocabulary';
-export const ALLOWANCE_EMPLOYEE_FIELDS_V4 = [...ALLOWANCE_EMPLOYEE_FIELDS, 'branch', 'division'] as const;
+export const ALLOWANCE_EMPLOYEE_ORG_FIELDS_V4 = ['branch','division','region','line','section','team','base'] as const;
+export const ALLOWANCE_EMPLOYEE_FIELDS_V4 = [...ALLOWANCE_EMPLOYEE_FIELDS, ...ALLOWANCE_EMPLOYEE_ORG_FIELDS_V4] as const;
+export const isAllowanceEmployeeOrgField=(field:string)=>ALLOWANCE_EMPLOYEE_ORG_FIELDS_V4.some(value=>value===field);
 export type AllowanceEmployeeFieldV4 = typeof ALLOWANCE_EMPLOYEE_FIELDS_V4[number];
 export type AllowanceEmployeeComparison = 'is' | 'isNot' | 'in' | 'notIn';
 export type AllowanceEmployeeLeaf = {
@@ -11,7 +13,7 @@ export type AllowanceEmployeeGroup = {
   id: string; type: 'group'; logic: 'and' | 'or'; children: AllowanceEmployeeExpression[];
 };
 export type AllowanceEmployeeExpression = AllowanceEmployeeLeaf | AllowanceEmployeeGroup;
-export type AllowanceEmployeeFactsV4 = Record<AllowanceEmployeeField, string | null> & Partial<Record<'branch' | 'division', string | null>>;
+export type AllowanceEmployeeFactsV4 = Record<AllowanceEmployeeField, string | null> & Partial<Record<typeof ALLOWANCE_EMPLOYEE_ORG_FIELDS_V4[number], string | null>>;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 export function validateAllowanceEmployeeExpression(raw: unknown): AllowanceEmployeeGroup {
   let count = 0;

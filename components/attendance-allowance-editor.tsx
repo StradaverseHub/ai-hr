@@ -11,7 +11,7 @@ import { AllowanceEmployeePreview } from '@/components/allowance-employee-previe
 import { AllowanceEmployeePicker } from '@/components/allowance-employee-picker';
 import { AllowanceEmployeeExpressionEditor, newAllowanceEmployeeGroup } from '@/components/allowance-employee-expression-editor';
 import { AllowanceEmployeeExpressionView } from '@/components/allowance-employee-expression';
-import { ALLOWANCE_EMPLOYEE_FIELDS_V4 } from '@/lib/allowance-employee-expression';
+import { isAllowanceEmployeeOrgField, ALLOWANCE_EMPLOYEE_FIELDS_V4 } from '@/lib/allowance-employee-expression';
 import { ALLOWANCE_METRICS_V3 } from '@/lib/attendance-allowance-expression';
 import type { allowanceSetupOptions, getAllowancePolicy } from '@/packs/attendance/service';
 type Options=Awaited<ReturnType<typeof allowanceSetupOptions>>;
@@ -19,7 +19,7 @@ type Policy=NonNullable<Awaited<ReturnType<typeof getAllowancePolicy>>>;
 const selected=(event:React.ChangeEvent<HTMLSelectElement>)=>Array.from(event.currentTarget.selectedOptions,o=>o.value);
 export function AttendanceAllowanceEditor({options,components,policy,action,initialValueLabels={}}:{initialValueLabels?:Record<string,string>;options:Options;components:{id:string;code:string;name:string;kind:string}[];policy?:Policy;action:(state:{error:string|null},formData:FormData)=>Promise<{error:string|null}>}){
   const t=useTranslations('allowanceV2'),v=useTranslations('allowanceV3'),v4=useTranslations('allowanceV4');
-  const employeeLabels={fields:Object.fromEntries(ALLOWANCE_EMPLOYEE_FIELDS_V4.map(field=>[field,field==='branch'||field==='division'?v4(field):t(`employeeFields.${field}`)])),operators:Object.fromEntries(['is','isNot','in','notIn'].map(operator=>[operator,v4(`operators.${operator}`)])),and:t('and'),or:t('or')};
+  const employeeLabels={fields:Object.fromEntries(ALLOWANCE_EMPLOYEE_FIELDS_V4.map(field=>[field,isAllowanceEmployeeOrgField(field)?v4(field):t(`employeeFields.${field}`)])),operators:Object.fromEntries(['is','isNot','in','notIn'].map(operator=>[operator,v4(`operators.${operator}`)])),and:t('and'),or:t('or')};
   const expressionLabels={all:v('all'),any:v('any'),unrestricted:v('unrestricted'),unknown:v('unknown'),pass:t('pass'),fail:t('fail'),unknownMeasurement:v('unknownMeasurement'),allLeaveTypes:v('allLeaveTypes'),leaveTypes:v('leaveTypes'),metrics:Object.fromEntries(ALLOWANCE_METRICS_V3.map(field=>[field,t(`metrics.${field}`)])),operators:Object.fromEntries(ALLOWANCE_OPERATORS.map(operator=>[operator,t(`operators.${operator}`)])),units:Object.fromEntries(['hours','minutes','days','occurrences'].map(unit=>[unit,t(`units.${unit}`)]))};
   const [valueLabels,setValueLabels]=useState(initialValueLabels);
   const reportLabels=useCallback((field:string,rows:{id:string;label:string}[])=>setValueLabels(previous=>{const additions=Object.fromEntries(rows.map(row=>[`${field}:${row.id}`,row.label]));return Object.keys(additions).some(key=>previous[key]!==additions[key])?{...previous,...additions}:previous;}),[]);
@@ -133,7 +133,7 @@ export function AttendanceAllowanceEditor({options,components,policy,action,init
       {advanced&&<div className="space-y-2 text-sm">
         <p>{t(`selectionModes.${rules.employee.mode}`)} · {t('employeeLogic')}: {rules.employee.logic.toUpperCase()}</p>
         {rules.employee.mode==='selected'&&<p>{v4('includedCount',{count:rules.employee.employmentIds.length})}</p>}
-        {rules.v===4&&rules.employee.mode==='criteria'&&rules.employee.expression&&<AllowanceEmployeeExpressionView node={rules.employee.expression} labels={employeeLabels} valueLabel={(field,value)=>valueLabels[`${field}:${value}`]??(field==='branch'||field==='division'?value:employeeOptions(field as AllowanceEmployeeField).find(row=>row.id===value)?.label??value)}/>}
+        {rules.v===4&&rules.employee.mode==='criteria'&&rules.employee.expression&&<AllowanceEmployeeExpressionView node={rules.employee.expression} labels={employeeLabels} valueLabel={(field,value)=>valueLabels[`${field}:${value}`]??(isAllowanceEmployeeOrgField(field)?value:employeeOptions(field as AllowanceEmployeeField).find(row=>row.id===value)?.label??value)}/>}
         {rules.employee.mode==='criteria'&&rules.employee.criteria.map((c,i)=><p key={i}>{t(`employeeFields.${c.field}`)} {t(`operators.${c.operator}`)} {c.values.map(value=>employeeOptions(c.field).find(v=>v.id===value)?.label??value).join(', ')}</p>)}
         <p>{t('dayTypes')}: {rules.attendance.dayKinds.length?rules.attendance.dayKinds.map(k=>t(`dayKinds.${k}`)).join(', '):t('allDays')}</p>
         <p>{t('shifts')}: {rules.attendance.shiftIds.length?rules.attendance.shiftIds.map(id=>options.shifts.find(s=>s.id===id)?.label??id).join(', '):t('allShifts')}</p>

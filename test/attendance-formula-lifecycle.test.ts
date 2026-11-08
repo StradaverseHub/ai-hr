@@ -4,7 +4,7 @@ import {adminCtx,closeAll,migrateTestDb,owner,resetDb,seedBase,type Base} from '
 import {withTenant} from '../db/client';
 import {hireEmployee} from '../core/org';
 import {seedPayComponentCatalog} from '../core/pay-components';
-import {checkIn,checkOut,setAttendancePolicy,saveAttendanceFormula,testAttendanceFormula,activateAttendanceFormula,changeAttendanceFormulaStatus,getAttendanceFormula} from '../packs/attendance/service';
+import {checkIn,checkOut,setAttendancePolicy,saveAttendanceFormula,testAttendanceFormula,activateAttendanceFormula,changeAttendanceFormulaStatus,getAttendanceFormula,attendanceFormulaSetup,listAttendanceFormulas,searchAttendanceFormulaEmployees,readAttendanceFormulaTest} from '../packs/attendance/service';
 import {attendanceFormula,attendanceFormulaRevision,payComponent} from '../db/schema';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import type {AttendanceFormulaConfiguration} from '../lib/attendance-formula-model';
@@ -18,4 +18,16 @@ describe('native Attendance formula lifecycle',()=>{
  it('refuses stale actual attendance and an old version',async()=>{const f=await saved(),proof=await testAttendanceFormula(f.ctx,{...f});await checkIn(f.ctx,{employmentId:f.employmentId,date:f.date,time:'20:00'});await checkOut(f.ctx,{employmentId:f.employmentId,date:f.date,time:'21:00'});await expect(activateAttendanceFormula(f.ctx,{...f,testId:proof.id})).rejects.toThrow(/changed/);const changed={...f.configuration,description:'Second immutable definition'};await saveAttendanceFormula(f.ctx,{id:f.id,expectedRevisionId:f.revisionId,configuration:changed});await expect(activateAttendanceFormula(f.ctx,{...f,testId:proof.id})).rejects.toThrow(/current/);});
  it('serializes concurrent saves against one expected version',async()=>{const f=await saved();const outcomes=await Promise.allSettled(['First','Second'].map(description=>saveAttendanceFormula(f.ctx,{id:f.id,expectedRevisionId:f.revisionId,configuration:{...f.configuration,description}})));expect(outcomes.filter(outcome=>outcome.status==='fulfilled')).toHaveLength(1);expect(outcomes.filter(outcome=>outcome.status==='rejected')).toHaveLength(1);expect((await getAttendanceFormula(f.ctx,f.id)).versions).toHaveLength(2);});
  it('denies a real foreign tenant and makes every recorded version append-only',async()=>{const f=await saved(),other=await seedBase(),foreign=adminCtx(other);await expect(getAttendanceFormula(foreign,f.id)).rejects.toThrow();expect(await withTenant(foreign,tx=>tx.select().from(attendanceFormula).where(eq(attendanceFormula.id,f.id)))).toEqual([]);await expect(owner.db.update(attendanceFormulaRevision).set({contentHash:'a'.repeat(64)}).where(eq(attendanceFormulaRevision.id,f.revisionId))).rejects.toThrow();});
+});
+
+it('lists only scoped formula metadata, searches actual identities and reads private evidence on demand',async()=>{
+ const f=await saved(),options=await attendanceFormulaSetup(f.ctx,[base.companyId]);expect(options.companies.map(row=>row.id)).toContain(base.companyId);expect(options.payItems.map(row=>row.id)).toContain(f.configuration.payItemId);
+ const rows=await listAttendanceFormulas(f.ctx,{companyIds:[base.companyId],query:'WORKED'});expect(rows).toHaveLength(1);expect(rows[0]).toMatchObject({code:'WORKED_HOURS',status:'inactive'});expect(JSON.stringify(rows)).not.toContain('TotalWorkingMins');
+ const choices=await searchAttendanceFormulaEmployees(f.ctx,{id:f.id,revisionId:f.revisionId,date:f.date,query:'Fictional formula lifecycle',page:1});expect(choices.rows.map(row=>row.id)).toEqual([f.employmentId]);
+ const proof=await testAttendanceFormula(f.ctx,{...f}),detail=await readAttendanceFormulaTest(f.ctx,{id:f.id,testId:proof.id});expect(detail.payload).toEqual(proof.payload);const savedView=await getAttendanceFormula(f.ctx,f.id);expect(savedView.tests[0]).not.toHaveProperty('payload');expect(savedView.latest.registryVersion).toBeTruthy();expect(savedView.latest.evaluatorVersion).toBeTruthy();
+ await expect(searchAttendanceFormulaEmployees(f.ctx,{id:f.id,revisionId:'10000000-0000-4000-8000-000000000099',date:f.date,query:'',page:1})).rejects.toThrow(/current/);
+});
+it('refuses a test period before the effective date',async()=>{
+ const f=await fixture(),version=await saveAttendanceFormula(f.ctx,{configuration:{...f.configuration,effectiveFrom:'2099-01-01'}});
+ await expect(testAttendanceFormula(f.ctx,{...f,...version})).rejects.toThrow(/effective date/);
 });
