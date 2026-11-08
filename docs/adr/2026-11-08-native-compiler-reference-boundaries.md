@@ -23,7 +23,8 @@ actual source/controller. No production/staging command is part of this design.
 ## Proposed decision
 
 Measure genuine native project references next, with actual immutable project
-configurations and the unmodified pinned native compiler executable. Use a
+configurations and the unmodified pinned native compiler executable for every
+implementation project. Use a
 source-bound generated solution and complete project ownership inventory. Native
 references and native declaration outputs own cross-project resolution. No
 CompilerHost monkey patch, fake .d.ts, source-to-declaration path substitution,
@@ -112,8 +113,43 @@ exact originally resolved external declaration/package context. They are real
 retained source inputs, with complete edges/bytes, not stubs; they cannot import
 unowned implementation sources, invent exports or add a new ambient truth. Native
 source/context drift blocks. Keep the previous five independent type refusals
-against source and emitted API, and directly check owned emitted declarations
-without broadening the original skipLibCheck policy for external dependencies.
+against source and emitted API. Validate every owned emitted declaration in a separate genuine native
+phase, described below, without broadening original external dependency policy.
+
+
+### Native declaration validation
+
+A precise exception to the implementation-project CLI route is required here.
+The original skipLibCheck=true skips semantic checks of ALL declaration files,
+including our own fresh outputs. Project references do not make those owned
+declarations immune to that rule. Do not claim validation from option presence
+or ordinary consumer success, and do not classify a failed native CLI as PASS.
+
+Use one separate fresh process with the pinned public TypeScript Program API
+and its UNMODIFIED default CompilerHost. Read the exact retained disk-only native
+project configs/references and complete current output bytes. Never override
+getSourceFile, fileExists, readFile, realpath, module/type resolution or project
+reference redirection; no synthetic in-memory source or old diagnostic host is
+accepted. Native references still determine every cross-project resolution.
+
+This validation Program uses skipLibCheck=false and noEmit=true. Collect ALL
+options/global/syntactic diagnostics, plus getSemanticDiagnostics for EVERY
+actual owned emitted declaration SourceFile. Request no third-party semantic
+check: original external skipLibCheck policy remains unchanged. Assert exact
+nonempty owned output membership, no duplicates/missing/foreign identities,
+exact file bytes and no referenced implementation fallback. Retain the full
+diagnostic arrays and native source identities. Any unplanned diagnostic fails.
+Do not catch/relabel diagnostics or convert a CLI nonzero result into success.
+
+Run actual owned unresolved-type and original five-code API negatives, with
+external-preexisting-error controls proving that external semantic policy has
+not been widened and owned semantic checking cannot silently introduce any.
+Controlled invalid declarations are real retained disk fixtures, not a patched
+resolver or memory-only substitute. Native fixture/source ownership separates
+intentional negatives from application outputs. This phase and all controls
+spend the SAME aggregate720s/per-child12GiB/output budgets; they are not free
+checks outside the envelope. The actual native declaration validation remains
+unexecuted and unqualified until these observations pass.
 
 ## Alternatives and trade-offs
 

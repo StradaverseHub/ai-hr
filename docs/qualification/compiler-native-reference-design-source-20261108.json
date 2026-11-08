@@ -5,7 +5,7 @@
   "retainedDiagnosticRun": 42423098585,
   "sourceRef": "codex/compiler-native-reference-design-20261108",
   "sourceSha256": {
-    "docs/adr/2026-11-08-native-compiler-reference-boundaries.md": "29982aacddfb2d5831b35ea81dabb11cbef9c53f788dbf24532b26cc02f94d89",
+    "docs/adr/2026-11-08-native-compiler-reference-boundaries.md": "c3ab9f632950d2f791364ab310bc40a26b0ef0a6dcf2a5d66b0c209ce435b432",
     ".github/ci/diagnostics/compiler-boundary.mjs": "5fa67c973118053b1760e7adc288d8e429834b468ac38f28040a1e3cd74195d8",
     ".github/ci/diagnostics/compiler-boundary-policy.mjs": "cf1aef49f7aad7394e3a8de31e1b31e1da80667fbbc9c8f2da16db5795c28ed7",
     ".github/ci/diagnostics/compiler-boundary-worker.mjs": "5d1986d983cc0a2f5d87670704cb83acaaaf41a26d8068958c83ba89e727c00e",
@@ -20,5 +20,6 @@
   "ordinaryCompilerQualified": false,
   "releaseAuthorized": false,
   "productionHeld": true,
-  "nativeJsonEmission": "ordinary native JS+JSON+declarations, private output only; no bespoke asset copy"
+  "nativeJsonEmission": "ordinary native JS+JSON+declarations, private output only; no bespoke asset copy",
+  "ownedDeclarationValidation": "fresh native public Program API with UNMODIFIED default CompilerHost, disk-only native references, complete owned semantic diagnostics under skipLibCheck=false; original external semantic policy unchanged"
 }
