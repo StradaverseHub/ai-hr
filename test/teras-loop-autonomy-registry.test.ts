@@ -66,7 +66,7 @@ describe('what each loop can do at each level',()=>{
    return (m?.[1]??'').split(',').map(value=>value.trim().replace(/'/g,'')).filter(Boolean).sort();};
   expect(allowed('teras_loop_level_cap')).toEqual(['loop_missed_clock_outs','loop_missing_employee_data'].sort());
   expect(allowed('teras_loop_level_change_cap')).toEqual(['loop_missed_clock_outs','loop_missing_employee_data'].sort());
-  const policy=readFileSync(new URL('../db/migrations/3802_attendance_prepare_review_only.sql',import.meta.url),'utf8');
+  const policy=readFileSync(new URL('../db/migrations/4002_attendance_prepare_review_only.sql',import.meta.url),'utf8');
   expect(policy).toContain("p_worker='loop_missed_clock_outs'");expect(policy).toContain('teras_clock_out_review_only_guard');
  });
  it('only a loop declares an autonomy, and a loop must declare one that fits the contract',()=>{

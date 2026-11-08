@@ -1,3 +1,25 @@
+# Board 3 after payroll — 9 November 2026 (unapplied reallocation)
+
+The agreed release order is the six-item Board batch, payroll PR236, then Board 3 PR238.
+Payroll reserves3900 at idx3200 / when1793330003500, above Board 3's former
+3800–3802 timestamps. To prevent those still-unapplied additions being skipped,
+branch codex/board3-staging-20261109 supersedes only its own reservations:
+
+| Former tag | New tag | idx | when |
+| --- | --- | ---: | ---: |
+|3800_attendance_workflow_lifecycle_scope|4000_attendance_workflow_lifecycle_scope|3300|1793330003600|
+|3801_personnel_employment_filter_projection|4001_personnel_employment_filter_projection|3301|1793330003601|
+|3802_attendance_prepare_review_only|4002_attendance_prepare_review_only|3302|1793330003602|
+
+All three SQL payloads remain byte-identical; only filenames, journal allocations and
+one test's file reference change. The fresh read-only audit covered6645refs,
+1067committed journal blobs and811readable worktree journals, finding peer maximum
+3900 / idx3200 / when1793330003500. The last independent installation observation
+was healthy4ae7953 with710rows through1793330003000; earlier releases are still
+qualifying, not accepted here. Preserve every incoming applied SQL/hash/journal row.
+Refresh the actual accepted source, complete ledger and peer reservations at admission;
+this allocation grants no lease, installation or acceptance authority.
+
 # Missed clock-out Prepare/review-only — 9 November 2026 (unapplied reservation)
 
 Branch codex/board3-loop-review-20261109 reserves 3802_attendance_prepare_review_only,
