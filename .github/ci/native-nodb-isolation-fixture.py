@@ -18,6 +18,7 @@ import select
 import stat
 import subprocess
 import sys
+import tempfile
 import time
 import types
 
@@ -208,7 +209,8 @@ class RootFamily:
         self.fault_captured = False
         write_new(root / ('private/' + operation + '.role-start.json'), canonical({
             'owner': self.owner, 'source': self.source,
-            'run': root.name, 'operation': operation, 'cleanupKnown': False}))
+            'run': root.name, 'operation': operation, 'cleanupKnown': False,
+            'workDeadlineNs': str(int(self.started * 10**9) + 10 * 10**9)}))
 
     def bind(self, row):
         key = (row['pid'], row['start'])
@@ -546,6 +548,146 @@ def probe(root, request):
             'targetIdentitiesStable': all(process(item['pid']) == item for item in request['targets'])}
 
 
+def public_git_store(root, state):
+    # Root-only prehook plumbing. It is NOT a restricted Git witness. The live
+    # outer RootFamily enforces its original clock and owns every root child.
+    need(os.geteuid() == 0 and not SECRET_KEYS.intersection(os.environ))
+    started = json.loads(secure_read(root / 'private/git.role-start.json', 65536))
+    need(started['source'] == state['sourceSha'] and started['run'] == state['run']
+         and started['operation'] == 'git' and started['owner'] == process(os.getppid())
+         and re.fullmatch(r'[1-9][0-9]{0,19}', started['workDeadlineNs']))
+    deadline = int(started['workDeadlineNs'])
+    need(deadline + (6 + 10 + 120) * 10**9 < int(state['anchorNs']) + 1800 * 10**9)
+    store = root / 'public-git'
+    prefix = ['/usr/bin/git', '--no-pager', '--no-replace-objects', '--no-lazy-fetch',
+              '-c', 'core.fsmonitor=false', '-c', 'core.hooksPath=/dev/null', '-c', 'core.pager=cat',
+              '-c', 'protocol.allow=never', '-c', 'gc.auto=0', '-c', 'maintenance.auto=false',
+              '-c', 'core.sharedRepository=0', '-c', 'safe.directory=' + state['source'], '-C', str(root)]
+    environment = {**SAFE, 'GIT_CONFIG_SYSTEM': '/dev/null', 'GIT_NO_LAZY_FETCH': '1',
+                   'GIT_TERMINAL_PROMPT': '0', 'GIT_ASKPASS': '/bin/false', 'GIT_SSH_COMMAND': '/bin/false'}
+
+    def budget():
+        remaining = (deadline - time.monotonic_ns()) / 10**9
+        need(remaining > 0)
+        return remaining
+
+    def plumbing(args, raw=None, maximum=1024**2):
+        budget()
+        # Fixed private anonymous FDs bound stdout/stderr memory without exposing
+        # their contents. Every command shares this SAME actual role deadline.
+        with tempfile.TemporaryFile(dir=root / 'private') as out, tempfile.TemporaryFile(dir=root / 'private') as err:
+            result = subprocess.run(prefix + args, input=raw, env=environment, stdout=out, stderr=err,
+                                    check=True, timeout=min(2, budget()))
+            budget(); need(result.returncode == 0 and os.fstat(out.fileno()).st_size <= maximum
+                           and os.fstat(err.fileno()).st_size <= 65536)
+            out.seek(0); value = out.read(maximum + 1); need(len(value) <= maximum)
+            return value
+
+    objects = {}
+    def original(kind, oid):
+        need(kind in ('commit', 'tree', 'blob') and re.fullmatch(r'[a-f0-9]{40}', oid) and oid not in objects)
+        args = ['--git-dir', str(Path(state['source']) / '.git')]
+        need(plumbing(args + ['cat-file', '-t', oid], maximum=64) == (kind + '\n').encode())
+        length = plumbing(args + ['cat-file', '-s', oid], maximum=64)
+        need(re.fullmatch(rb'(?:0|[1-9][0-9]{0,6})\n', length))
+        size = int(length); need(0 < size <= 1024**2)
+        raw = plumbing(args + ['cat-file', kind, oid]); need(len(raw) == size)
+        need(hashlib.sha1((kind + ' ' + str(size) + '\0').encode() + raw).hexdigest() == oid)
+        need(len(objects) < 9 and sum(len(item[1]) for item in objects.values()) + size <= MAX)
+        objects[oid] = (kind, raw)
+        return raw
+
+    def entry(raw, selected, mode):
+        cursor = 0; matches = []
+        while cursor < len(raw):
+            space = raw.find(b' ', cursor); zero = raw.find(b'\0', space + 1)
+            need(cursor < space < zero and zero - space <= 4097 and zero + 21 <= len(raw))
+            if raw[space + 1:zero] == selected:
+                need(raw[cursor:space] == mode); matches.append(raw[zero + 1:zero + 21].hex())
+            cursor = zero + 21
+        need(cursor == len(raw) and len(matches) == 1)
+        return matches[0]
+
+    commit = original('commit', state['sourceSha'])
+    first = commit.split(b'\n', 1)[0]; need(re.fullmatch(rb'tree [a-f0-9]{40}', first))
+    tree = original('tree', first[5:].decode('ascii'))
+    github = original('tree', entry(tree, b'.github', b'40000'))
+    ci = original('tree', entry(github, b'ci', b'40000'))
+    workflows = original('tree', entry(github, b'workflows', b'40000'))
+    for name, relative in CODE.items():
+        parts = relative.split('/'); need(parts[:2] in (['.github', 'ci'], ['.github', 'workflows']) and len(parts) == 3)
+        oid = entry(ci if parts[1] == 'ci' else workflows, parts[2].encode('ascii'), b'100644')
+        raw = original('blob', oid)
+        need({'bytes': len(raw), 'sha256': digest(raw)} == state['code'][name]
+             and raw == secure_read(root / name, 1024**2))
+    need(len(objects) == 9)
+    store.mkdir(mode=0o700)
+    directory_fd = os.open(store, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    try:
+        held = os.fstat(directory_fd)
+        need(held.st_uid == 0 and stat.S_IMODE(held.st_mode) == 0o700)
+        plumbing(['--git-dir', str(store), 'init', '--bare', '--template=', '--object-format=sha1', '--initial-branch=fixture-public'], maximum=4096)
+        config = plumbing(['--git-dir', str(store), 'config', '--local', '--no-includes', '--null', '--list'], maximum=4096)
+        rows = config.split(b'\0'); need(rows.pop() == b'')
+        settings = dict(row.split(b'\n', 1) for row in rows); need(len(settings) == len(rows))
+        expected = {b'core.repositoryformatversion': b'0', b'core.filemode': b'true', b'core.bare': b'true'}
+        need(settings == expected or settings == {**expected, b'extensions.objectformat': b'sha1'})
+        need(secure_read(store / 'HEAD', 4096) == b'ref: refs/heads/fixture-public\n')
+        for oid, (kind, raw) in objects.items():
+            actual = plumbing(['--git-dir', str(store), 'hash-object', '-t', kind, '-w', '--stdin', '--no-filters'], raw, 64)
+            need(actual == (oid + '\n').encode())
+        # Re-read original raw object bodies from the new store BEFORE sealing.
+        for oid, (kind, raw) in objects.items():
+            need(plumbing(['--git-dir', str(store), 'cat-file', kind, oid]) == raw)
+        expected_files = {'config', 'HEAD'} | {'objects/' + oid[:2] + '/' + oid[2:] for oid in objects}
+        expected_dirs = {'objects', 'objects/info', 'objects/pack', 'refs', 'refs/heads', 'refs/tags'} | {'objects/' + oid[:2] for oid in objects}
+        files = set(); directories = []
+        for path in store.rglob('*'):
+            budget(); info = path.lstat(); relative = str(path.relative_to(store))
+            need(info.st_uid == 0 and not info.st_mode & 0o022)
+            if stat.S_ISDIR(info.st_mode):
+                need(relative in expected_dirs); directories.append(path)
+            else:
+                need(stat.S_ISREG(info.st_mode) and relative in expected_files and info.st_nlink == 1
+                     and 0 < info.st_size <= 1024**2); files.add(relative)
+                fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
+                try:
+                    actual = os.fstat(fd); need((actual.st_dev, actual.st_ino, actual.st_uid, actual.st_nlink, actual.st_size)
+                                               == (info.st_dev, info.st_ino, 0, 1, info.st_size))
+                    os.fchmod(fd, 0o444); os.fsync(fd)
+                    need(path.lstat() == os.fstat(fd) and stat.S_IMODE(os.fstat(fd).st_mode) == 0o444)
+                finally:
+                    os.close(fd)
+        need(files == expected_files)
+        for path in sorted(directories, key=lambda value: len(value.parts), reverse=True):
+            os.chmod(path, 0o555, follow_symlinks=False)
+        need((store.lstat().st_dev, store.lstat().st_ino) == (held.st_dev, held.st_ino))
+        os.fchmod(directory_fd, 0o555); os.fsync(directory_fd); budget()
+        need(store.lstat() == os.fstat(directory_fd) and stat.S_IMODE(os.fstat(directory_fd).st_mode) == 0o555)
+    finally:
+        os.close(directory_fd)
+    return {'kind': 'PUBLIC_CANONICAL_PARTIAL_GIT_STORE_NOT_NORMAL_GIT', 'source': state['sourceSha'], 'run': state['run'],
+            'objects': 9, 'rawBytes': sum(len(raw) for kind, raw in objects.values()), 'codeBlobs': 4,
+            'originalCommitAndObjectIdentitiesExact': True, 'sealedProtectedCodeBytesExact': True,
+            'freshRootReadonlyBeforeHooks': True, 'restrictedFourSourceReadsExact': False,
+            'normalFiveGitStagesVerified': False, 'releaseAuthorized': False}
+
+
+def public_git_fields(value, state):
+    flags = ('originalCommitAndObjectIdentitiesExact', 'sealedProtectedCodeBytesExact',
+             'freshRootReadonlyBeforeHooks', 'restrictedFourSourceReadsExact')
+    keys = {'kind', 'source', 'run', 'objects', 'rawBytes', 'codeBlobs', 'normalFiveGitStagesVerified', 'releaseAuthorized'} | set(flags)
+    need(type(value) is dict and set(value) == keys
+         and value['kind'] == 'PUBLIC_CANONICAL_PARTIAL_GIT_STORE_NOT_NORMAL_GIT'
+         and value['source'] == state['sourceSha'] and value['run'] == state['run']
+         and type(value['objects']) is int and value['objects'] == 9 and type(value['codeBlobs']) is int and value['codeBlobs'] == 4
+         and type(value['rawBytes']) is int and 0 < value['rawBytes'] <= MAX
+         and all(value[key] is True for key in flags)
+         and value['normalFiveGitStagesVerified'] is False and value['releaseAuthorized'] is False)
+    return {key: value[key] for key in ('kind', 'source', 'run', 'objects', 'rawBytes', 'codeBlobs', *flags,
+                                      'normalFiveGitStagesVerified', 'releaseAuthorized')}
+
+
 def fixed_git_ancestors(source):
     need(source == '/home/runner/work/ai-hr/ai-hr')
     rows = []
@@ -663,9 +805,10 @@ def restricted(root, state, operation):
         hashes = {}
         ancestors = fixed_git_ancestors(state['source'])
         for index, (name, relative) in enumerate(CODE.items()):
-            argv = ['/usr/bin/git', '-c', 'safe.directory=' + state['source'], '-c', 'core.fsmonitor=false',
-                    '-c', 'core.hooksPath=/dev/null', '-c', 'core.pager=cat', '-C', state['source'],
-                    'show', state['sourceSha'] + ':' + relative]
+            argv = ['/usr/bin/git', '--no-pager', '--no-replace-objects', '--no-lazy-fetch',
+                    '-c', 'safe.directory=' + str(root / 'public-git'), '-c', 'core.fsmonitor=false',
+                    '-c', 'core.hooksPath=/dev/null', '-c', 'core.pager=cat', '-c', 'protocol.allow=never',
+                    '--git-dir', str(root / 'public-git'), 'show', state['sourceSha'] + ':' + relative]
             try:
                 result = subprocess.run(argv, env=dict(os.environ), stdin=subprocess.DEVNULL,
                                         capture_output=True, check=True, timeout=2)
@@ -685,6 +828,9 @@ def restricted(root, state, operation):
 def supervise(root, state, operation):
     need(operation in ('fault', 'git', 'hook', 'probe') and os.geteuid() == 0 and not SECRET_KEYS.intersection(os.environ))
     K = kernel(root)
+    need(K.own_children() == [])
+    public_store = public_git_store(root, state) if operation == 'git' else None
+    need(K.own_children() == [])
     output = root / ('private/' + operation + '.stdout')
     error = root / ('private/' + operation + '.stderr')
     with output.open('xb') as out, error.open('xb') as err:
@@ -694,8 +840,15 @@ def supervise(root, state, operation):
             os.dup2(err.fileno(), 2)
             argv = (['/usr/bin/python3', '-I', '-B', str(root / 'fixture.py'), '--root-fault'] if operation == 'fault' else
                     ['/usr/bin/python3', '-I', '-B', str(root / 'fixture.py'), '--restricted', operation])
+            seconds = 10
+            if operation == 'git':
+                started = json.loads(secure_read(root / 'private/git.role-start.json', 65536))
+                seconds = (int(started['workDeadlineNs']) - time.monotonic_ns()) / 10**9
+                need(0 < seconds <= 10)
+            # The outer live RootFamily clock also covers K entry/settlement;
+            # public preparation never grants a fresh ten-second work interval.
             result = K.supervise(argv,
-                                 10, lambda event: K.append_event(root / ('private/' + operation + '.jsonl'), event), mandatory=True)
+                                 seconds, lambda event: K.append_event(root / ('private/' + operation + '.jsonl'), event), mandatory=True)
         finally:
             os.dup2(saved[0], 1)
             os.dup2(saved[1], 2)
@@ -706,6 +859,8 @@ def supervise(root, state, operation):
     if operation == 'git':
         need(json.loads(raw) == state['code'])
         body = {'committedFixtureSourcesExact': True, 'files': state['code']}
+        public_store['restrictedFourSourceReadsExact'] = True
+        write_new(root / 'private/public-git-source-controls.json', canonical(public_git_fields(public_store, state)))
     else:
         body = json.loads(raw)
     print(json.dumps({'operation': operation, 'kernel': result, 'body': body}))
@@ -791,6 +946,9 @@ def partial_component_diagnostics(root, state):
                 'foreignActorsUntouchedByIdentityRefusal', 'disposedOnlyByActualParentOwner')
         need(type(allocation) is dict and set(allocation) == set(keys) and all(allocation[key] is True for key in keys))
         result['allocation'] = {key: True for key in keys}
+    public_store = read_optional('public-git-source-controls.json')
+    if public_store is not None:
+        result['publicGitSourceCustody'] = public_git_fields(public_store, state)
     held_total = 0
     for operation in ('allocation', 'fault', 'git', 'hook', 'probe'):
         closed = read_optional(operation + '.role-closed.json')
@@ -1100,6 +1258,7 @@ def custody(root, state):
                   'credentialBearingAncestorTargets': len(targets), 'result': row,
                   'nodeVendorControls': json.loads(secure_read(root / 'private/node-vendor-controls.json', 65536)),
                   'allocationControls': json.loads(secure_read(root / 'private/allocation-controls.json', 65536)),
+                  'publicGitSourceCustody': public_git_fields(json.loads(secure_read(root / 'private/public-git-source-controls.json', 65536)), state),
                   'nativeRootFailureControl': hooks_packet['rows'][0],
                   'rootRoleClosures': [json.loads(secure_read(root / ('private/' + operation + '.role-closed.json'), 65536))
                                        for operation in ('allocation', 'fault', 'git', 'hook', 'probe')],
@@ -1250,7 +1409,7 @@ def main():
 
 # Immutable source symbols only. This is failure-location data, never a cause
 # assertion, trace rendering, exception message, executable source or authority.
-FAILURE_FUNCTIONS = frozenset(('<dictcomp>', '<genexpr>', '<lambda>', '<listcomp>', '<module>', '<setcomp>', 'Capabilities', 'Header', 'Iovec', 'RootFamily', '__init__', 'allocate', 'allocation_controls', 'bind', 'bootstrap_read', 'canonical', 'capture', 'child_git_status', 'child_source_locations', 'close', 'copy_node', 'custody', 'digest', 'exited', 'failure_locations', 'finish', 'fixed_git_ancestors', 'git_failure_diagnostic', 'git_status_fields', 'hooks', 'identity_actors', 'kernel', 'load_state', 'location_fields', 'main', 'need', 'node_budget', 'node_identity', 'node_is_vendor', 'partial_component_diagnostics', 'prepare', 'probe', 'process', 'process_shape', 'protect_vendor_node', 'publish', 'read_optional', 'refused', 'require_identity_free', 'restrict', 'restricted', 'restricted_status', 'root_fault', 'root_for_run', 'run_role', 'secure_read', 'settle', 'spawn', 'supervise', 'uid_actors', 'value_refused', 'wait', 'write_new'))
+FAILURE_FUNCTIONS = frozenset(('<dictcomp>', '<genexpr>', '<lambda>', '<listcomp>', '<module>', '<setcomp>', 'Capabilities', 'Header', 'Iovec', 'RootFamily', '__init__', 'allocate', 'allocation_controls', 'bind', 'bootstrap_read', 'budget', 'canonical', 'capture', 'child_git_status', 'child_source_locations', 'close', 'copy_node', 'custody', 'digest', 'entry', 'exited', 'failure_locations', 'finish', 'fixed_git_ancestors', 'git_failure_diagnostic', 'git_status_fields', 'hooks', 'identity_actors', 'kernel', 'load_state', 'location_fields', 'main', 'need', 'node_budget', 'node_identity', 'node_is_vendor', 'original', 'partial_component_diagnostics', 'plumbing', 'prepare', 'probe', 'process', 'process_shape', 'protect_vendor_node', 'public_git_fields', 'public_git_store', 'publish', 'read_optional', 'refused', 'require_identity_free', 'restrict', 'restricted', 'restricted_status', 'root_fault', 'root_for_run', 'run_role', 'secure_read', 'settle', 'spawn', 'supervise', 'uid_actors', 'value_refused', 'wait', 'write_new'))
 FAILURE_BUILTINS = (ValueError, OSError, FileNotFoundError, ProcessLookupError,
                     PermissionError, TimeoutError, KeyError, TypeError, AssertionError,
                     RuntimeError, OverflowError, MemoryError, RecursionError, ImportError,
