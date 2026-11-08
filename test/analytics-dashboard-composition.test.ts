@@ -1,8 +1,7 @@
 import {randomUUID} from 'node:crypto';
 import {writeFileSync} from 'node:fs';
 import {join} from 'node:path';
-import {eq,sql,type SQL} from 'drizzle-orm';
-import {PgDialect} from 'drizzle-orm/pg-core';
+import {eq,sql} from 'drizzle-orm';
 import {afterAll,beforeAll,beforeEach,expect,it,vi} from 'vitest';
 import * as database from '../db/client';
 import type {SessionContext,Tx} from '../db/client';
@@ -17,6 +16,7 @@ import {createEntitlementTemplate} from '../core/entitlement-template';
 import {CARRY_FORFEIT_REASON_CAP} from '../core/leave';
 import {parsePageQuery} from '../lib/pagination';
 import {adminCtx,closeAll,createAppUser,migrateTestDb,owner,resetDb,seedBase} from './harness';
+import {observeNativeRead as observe,type NativeReadQuery as Query} from './helpers/native-read-observer';
 
 beforeAll(migrateTestDb);beforeEach(resetDb);afterAll(closeAll);
 const input=():AnalyticsDashboardInput=>({from:'2026-01-01',to:'2026-06-30',year:2026,filters:{},
@@ -39,41 +39,6 @@ async function standaloneDashboard(ctx:SessionContext,scope:string[]|undefined,p
  const carryForward=await carryForwardReportPage(ctx,scope,{year,filter,companyId:filters.companyId,page:pages.carryForward});
  const masterCount=await masterDataCount(ctx,scope,{filter});
  return {hc,hires,terms,turnover,changeJobs,demographics,nationality,leaveUtil,leaveBalances,sickTrend,movement,carryForward,masterCount};
-}
-type Query={sql:string;params:unknown[];rows?:number};
-type Properties={role:string;isolation:string;readOnly:boolean;pid:number};
-function observe(options:{after?:(query:Query)=>Promise<void>;fail?:{matches:(query:Query)=>boolean;error:Error}}={}){
- const actual=database.withTenant,dialect=new PgDialect(),queries:Query[]=[],properties:Properties[]=[];
- const state={active:0,maxActive:0};
- const run=async<T>(query:Query,work:()=>PromiseLike<T>):Promise<T>=>{
-  queries.push(query);state.active++;state.maxActive=Math.max(state.maxActive,state.active);
-  try{
-   if(options.fail?.matches(query))throw options.fail.error;
-   const result=await work();if(Array.isArray(result))query.rows=result.length;
-   await options.after?.(query);return result;
-  }finally{state.active--;}
- };
- const wrap=(query:object):object=>new Proxy(query,{get(target,key,receiver){
-  const value=Reflect.get(target,key,receiver);
-  if(key==='then')return (resolve:(rows:unknown)=>unknown,reject:(error:unknown)=>unknown)=>{
-   const prepared=(target as {toSQL:()=>Query}).toSQL();
-   return run(prepared,()=>Reflect.apply(value,target,[(rows:unknown)=>rows])).then(resolve,reject);
-  };
-  return typeof value==='function'? (...args:unknown[])=>{
-   const result=Reflect.apply(value,target,args);return result&&typeof result==='object'&&'then' in result?wrap(result):result;
-  }:value;
- }});
- const spy=vi.spyOn(database,'withTenant').mockImplementation(<T>(ctx:SessionContext,read:(tx:Tx)=>Promise<T>,opts?:Parameters<typeof database.withTenant>[2])=>actual(ctx,async tx=>{
-  const [facts]=await tx.execute<Properties>(sql`select current_user as role,current_setting('transaction_isolation') as isolation,
-    current_setting('transaction_read_only')='on' as "readOnly",pg_backend_pid() as pid`);
-  properties.push(facts);
-  return read(new Proxy(tx,{get(target,key,receiver){
-   if(key==='select'||key==='selectDistinct')return (...args:unknown[])=>wrap(Reflect.apply(target[key],target,args));
-   if(key==='execute')return (query:SQL)=>run(dialect.sqlToQuery(query),()=>target.execute(query));
-   const value=Reflect.get(target,key,receiver);return typeof value==='function'?value.bind(target):value;
-  }}));
- },opts));
- return {queries,properties,state,restore:()=>spy.mockRestore()};
 }
 async function fixture(){
  const b=await seedBase(),ctx=adminCtx(b),employees=[];

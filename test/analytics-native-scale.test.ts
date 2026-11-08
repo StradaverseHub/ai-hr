@@ -1,4 +1,5 @@
-import {writeFileSync} from 'node:fs';
+import {writeFileSync,readFileSync} from 'node:fs';
+import {createHash} from 'node:crypto';
 import {join} from 'node:path';
 import {cpus,totalmem} from 'node:os';
 import {afterAll,beforeAll,expect,it} from 'vitest';
@@ -9,6 +10,35 @@ import {
 import {parsePageQuery} from '../lib/pagination';
 import {closeAll,migrateTestDb} from './harness';
 import {seedPersonnelNativeFixture} from './performance/personnel-native-fixture';
+import {observeNativeRead} from './helpers/native-read-observer';
+
+// Structural statement shapes from the actual canonical read bodies. This labels
+// observations, never chooses a query/permission or infers a slow business report.
+const analyticsStatementClassifierVersion='analytics-statement-shapes/v1';
+function classifyAnalyticsStatement(text:string):string{
+ const query=text.toLowerCase().replace(/\s+/g,' ');
+ if(query.includes('public.app_user u'))return 'principal';
+ for(const [marker,label]of [
+  ['analytics_headcount','headcount'],['analytics_newhires_page','hires-page'],
+  ['analytics_terminations_page','terminations-page'],['analytics_changejobtransactions_page','change-jobs-page'],
+  ['analytics_master_count','master-count'],
+ ]as const)if(query.includes(marker))return label;
+ if(query.startsWith('declare analytics_carry_identities '))return 'carry-identities-declare';
+ if(query.startsWith('fetch forward 512 from analytics_carry_identities'))return 'carry-identities-fetch';
+ if(query.startsWith('close analytics_carry_identities'))return 'carry-identities-close';
+ if(query.includes('analytics_carry_population'))return 'carry-population';
+ if(query.includes('"gender"')&&query.includes('"date_of_birth"'))return 'demographic-dimensions';
+ if(query.startsWith('select distinct ')&&query.includes('"epf_citizenship"'))return 'nationality';
+ if(/^select count\(\*\) from "employment" where /.test(query))return 'turnover-count';
+ if(query.includes('from "leave_ledger"')&&query.includes("'in_lieu_accrual'"))return 'leave-utilisation';
+ if(query.startsWith('select "leave_type"."name", coalesce(sum(')&&query.includes('from "leave_ledger"'))return 'leave-balance';
+ if(query.includes('to_char("employment"."hired_on"'))return 'movement-hires';
+ if(query.includes('to_char("employment"."terminated_on"'))return 'movement-leavers';
+ if(query.includes('from "leave_type"'))return 'leave-type-support';
+ if(query.includes('from "leave_ledger"'))return 'leave-ledger-support';
+ if(query.includes('from "entitlement_template'))return 'entitlement-template-support';
+ return 'unclassified';
+}
 
 beforeAll(migrateTestDb);afterAll(closeAll);
 it('measures actual native 50k Analytics reads and complete-export baselines on the same runner',async()=>{
@@ -69,5 +99,37 @@ it('measures actual native 50k Analytics reads and complete-export baselines on 
   hires:{total:dashboard.hires.state.total,rows:dashboard.hires.rows.length},terms:{total:dashboard.terms.state.total,rows:dashboard.terms.rows.length},
   changes:{total:dashboard.changeJobs.state.total,rows:dashboard.changeJobs.rows.length},carry:{total:dashboard.carryForward.state.total,rows:dashboard.carryForward.rows.length},
   transportBytes:Buffer.byteLength(JSON.stringify(dashboard)),independentNativeFixtureFacts:true};
+ // A second, explicitly instrumented course follows the untouched unobserved
+ // timing and independent facts. Instrumentation/warmth prevents a speedup claim.
+ const probe=observeNativeRead({captureQueries:false,classify:classifyAnalyticsStatement});
+ let instrumented:Awaited<ReturnType<typeof analyticsDashboard>>;
+ try{
+  instrumented=await timed('dashboardSnapshotInstrumentedMs',()=>analyticsDashboard(ctx,[b.companyId],{
+   from:'2020-01-01',to:'2026-01-01',year:2020,filters:{},
+   pages:{hires:page,terms:page,changeJobs:page,carryForward:page},
+  }));
+ }finally{probe.restore();report.dashboardQueryTelemetry={...probe.telemetry(),complete:false};save();}
+ expect(instrumented!).toEqual(dashboard);
+ expect(probe.properties).toHaveLength(1);
+ expect(probe.properties[0]).toMatchObject({role:'ai_hr_app',isolation:'repeatable read',readOnly:true});
+ expect(probe.state).toEqual({active:0,maxActive:1});expect(probe.queries).toEqual([]);
+ const telemetry=probe.telemetry();
+ expect(telemetry.detailComplete).toBe(true);expect(telemetry.totals.statements).toBeGreaterThan(0);
+ expect(telemetry.totals.failed).toBe(0);expect(telemetry.totals.unknownRowCounts).toBe(0);
+ expect(telemetry.summaries.reduce((sum,row)=>sum+row.count,0)).toBe(telemetry.totals.statements);
+ expect(telemetry.summaries.reduce((sum,row)=>sum+row.returnedRows,0)).toBe(telemetry.totals.returnedRows);
+ for(const row of telemetry.samples){
+  expect(row.digest).toMatch(/^[a-f0-9]{64}$/);expect(row.succeeded).toBe(true);
+  expect(Number.isFinite(row.elapsedMs)&&row.elapsedMs>=0).toBe(true);
+  expect(Number.isSafeInteger(row.returnedRows)&&(row.returnedRows??-1)>=0).toBe(true);
+ }
+ const instrumentedElapsedMs=(report.timings as Record<string,number>).dashboardSnapshotInstrumentedMs;
+ expect(telemetry.totals.elapsedMs).toBeLessThanOrEqual(instrumentedElapsedMs);
+ report.dashboardQueryTelemetry={...telemetry,complete:true,classifierVersion:analyticsStatementClassifierVersion,
+  classifierSourceSha256:createHash('sha256').update(readFileSync(new URL('./analytics-native-scale.test.ts',import.meta.url))).digest('hex'),
+  observerSourceSha256:createHash('sha256').update(readFileSync(new URL('./helpers/native-read-observer.ts',import.meta.url))).digest('hex'),
+  instrumentedElapsedMs,nonQueryObservedMs:instrumentedElapsedMs-telemetry.totals.elapsedMs,
+  actualTransactions:probe.properties.length,role:probe.properties[0].role,isolation:probe.properties[0].isolation,readOnly:probe.properties[0].readOnly,
+  sameCompleteDto:true,limitations:'Second observed call; includes observer overhead and warmed data. Statement awaits exclude after-query callbacks; nonquery remainder includes admission, test identity probe and client aggregation.'};
  report.exactNativePopulationAndResults=true;report.complete=true;save();
 },300000);
