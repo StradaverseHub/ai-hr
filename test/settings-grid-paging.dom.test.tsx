@@ -93,7 +93,7 @@ function renderProfileGrid() {
 
 /** The Code cells actually drawn, in order. A saved Profile Option renders its code as text, not an input. */
 const codeCells = (c: HTMLElement) =>
-  [...c.querySelectorAll('tbody tr td:first-child')].map((td) => td.textContent ?? '');
+  [...c.querySelectorAll('tbody tr td:first-child')].map((td) => td.querySelector(':scope > span')?.textContent?.trim() ?? '');
 
 describe('9da61c86 — the master-data grids render one page at a time', () => {
   it('opens on the first 25 of 328, and says so', () => {

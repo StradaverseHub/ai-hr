@@ -81,13 +81,14 @@ export type GradeGroupRow = {
   name: string;
   archived: boolean;
   gradeIds: string[];
+  scopeCompanyIds?:string[]|null;
 };
 
 export async function listGradeGroups(ctx: SessionContext): Promise<GradeGroupRow[]> {
   // Read-only — no events (CLAUDE.md skip rule).
   return withTenant(ctx, async (tx) => {
     const groups = await tx
-      .select({ id: gradeGroup.id, name: gradeGroup.name, archivedAt: gradeGroup.archivedAt })
+      .select({ id: gradeGroup.id, name: gradeGroup.name, archivedAt: gradeGroup.archivedAt,scopeCompanyIds:gradeGroup.scopeCompanyIds })
       .from(gradeGroup)
       .orderBy(asc(gradeGroup.name));
     const members = await tx
@@ -103,6 +104,7 @@ export async function listGradeGroups(ctx: SessionContext): Promise<GradeGroupRo
       id: g.id,
       name: g.name,
       archived: g.archivedAt != null,
+      scopeCompanyIds:g.scopeCompanyIds,
       gradeIds: byGroup.get(g.id) ?? [],
     }));
   });
@@ -110,7 +112,7 @@ export async function listGradeGroups(ctx: SessionContext): Promise<GradeGroupRo
 
 export async function createGradeGroup(
   ctx: SessionContext,
-  p: { name: string; gradeIds?: string[] },
+  p: { name: string; gradeIds?: string[]; scopeCompanyIds?:string[]|null },
   existingTx?: Tx,
 ) {
   p=structuredClone(p);ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
@@ -121,7 +123,7 @@ export async function createGradeGroup(
     await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     const [row] = await tx
       .insert(gradeGroup)
-      .values({ tenantId: ctx.tenantId, name })
+      .values({ tenantId: ctx.tenantId, name,scopeCompanyIds:p.scopeCompanyIds??null })
       .returning({ id: gradeGroup.id })
       .catch((e) => {
         if (String((e as { code?: string })?.code) === '23505') {
@@ -136,7 +138,7 @@ export async function createGradeGroup(
       aggregateId: row.id,
       eventType: 'grade-group.created',
       actor: actorOf(ctx),
-      payload: { name, gradeIds },
+      payload: { name, gradeIds,scopeCompanyIds:p.scopeCompanyIds??null },
     });
     return row;
   });

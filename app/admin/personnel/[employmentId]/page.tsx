@@ -373,7 +373,7 @@ export default async function EmployeePage({
     listDepartments(s, { companyIds: [emp.companyId] }),
     reportingLinesFor(s, employmentId),
     listWorkforcePickOptions(s),
-    listJobGrades(s),
+    listJobGrades(s,{companyId:orgScopeCompanyId}),
     delegationsFor(s, employmentId),
   ]);
   // Pay + statutory (salary, IC, bank, tax) are HR-admin-only on this directory page — never load or
@@ -719,7 +719,7 @@ export default async function EmployeePage({
   // country / relationship). Active options only for the pickers; the ProfileOptionSelect renders any
   // out-of-catalog stored value as a pre-selected extra so a Save never blanks legacy data.
   const profileOptions = admin
-    ? await listAllProfileOptions(s, { activeOnly: true })
+    ? await listAllProfileOptions(s, { activeOnly: true,companyId:orgScopeCompanyId })
     : ({
         religion: [],
         race: [],

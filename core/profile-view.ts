@@ -35,7 +35,7 @@ export async function readOwnProfileFacts(ctx:SessionContext,employmentId:string
  const today=todayInKualaLumpur();
  const [emp,assignments,salaries,lines,movements,catalog,photo,payItems,cp38,shifts,leave,requests]=await Promise.all([
   employeeDetail(ctx,employmentId),assignmentHistory(ctx,employmentId),compensationHistoryDetailed(ctx,employmentId),withTenant(ctx,tx=>ownReportingManagersTx(tx,employmentId)),ownMovementHistory(ctx,employmentId),
-  listAllProfileOptions(ctx,{activeOnly:true}),hasPersonPhoto(ctx,subject.personId),
+  listAllProfileOptions(ctx,{activeOnly:true,companyId:subject.currentCompanyId}),hasPersonPhoto(ctx,subject.personId),
   payrollOn?listEmploymentPayComponents(ctx,employmentId):[],payrollOn?listCp38(ctx,{employmentId}):[],attendanceOn?shiftArrangementHistory(ctx,employmentId):[],
   leaveOn?withTenant(ctx,async tx=>{
    const balances=await leaveBalancesTx(tx,ctx,employmentId,undefined,{asOf:today});

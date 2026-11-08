@@ -36789,5 +36789,15 @@
       "6": "Thứ Bảy",
       "7": "Chủ Nhật"
     }
+  },
+  "systemLabelExchange": {
+    "export": "Xuất",
+    "exporting": "Đang xuất…",
+    "failed": "Xuất thất bại. Vui lòng thử lại.",
+    "scopeHelp": "Để trống Criteria, Criteria Companies và Company để áp dụng Toàn cục (Tất cả công ty). Thông tin công ty giới hạn nhãn cho các công ty đã chọn. Nhập toàn cục cần quản trị viên tập đoàn.",
+    "global": "Toàn cục (Tất cả công ty)",
+    "companies": "{count} công ty đã chọn",
+    "assignment": "Phạm vi",
+    "failedRows": "{count} dòng thất bại. Tải báo cáo lỗi để xem chi tiết."
   }
 }

@@ -1,4 +1,26 @@
+# System Labels company scope — 8 November 2026 (unapplied reservation)
+
+Branch codex/board1-system-labels-plan-20261108 reserves 3400_system_label_company_scope, idx2700 / when1793330003000. A fresh scan of 495 distinct committed journals and readable registered worktree journals found maximum idx2603 / when1793330002903 through3303. A read-only live survey matched 709 applied entries with watermark1793330002801, below this reservation. Preserve the full current main/alpha prefix and the then-installed prefix. Recheck live ledger and peer claims before admission; this is source allocation only.
+
 # Coordinated migration reservations
+
+## Six board items after System Labels — 9 November 2026 (unapplied reallocation)
+
+The qualified, published System Labels source4ae7953eb owns incoming release
+lease67 and migration3400 (idx2700 / when1793330003000). Preserve its710-row
+source prefix; actual installed arrival and complete ordered hashes still require
+independent confirmation before admission. No incoming acceptance is inferred here.
+
+This coordinator moves only its seven still-unapplied migrations3300–3303 and
+3600–3602 to3700–3706, idx3000–3006 / when1793330003300–1793330003306, preserving
+their dependency order and every SQL payload byte. This supersedes those earlier
+source reservations below. The717-row candidate retains the incoming prefix;
+no applied file, journal row, hash or pending foreign reservation is rewritten.
+A refreshed read-only survey found1057 distinct journals and781 readable worktree
+journals, with maxima3602/2902/1793330003202, all owned here; peer3500/3501 remain
+reserved to their owner and are not silently included. Refresh peers, refs and the
+actual live ledger before release. This reservation grants no lease or deployment.
+
 
 ## Attendance Formula overtime binding — 8 November 2026 (unapplied)
 

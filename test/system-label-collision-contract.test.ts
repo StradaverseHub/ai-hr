@@ -48,12 +48,12 @@ describe('inherited label collision single-owner contracts',()=>{
   expect(analyseStart).toBeGreaterThan(-1);expect(analyseEnd).toBeGreaterThan(analyseStart);
   const analyse=workbook.slice(analyseStart,analyseEnd);
   expect(analyse.length).toBeGreaterThan(100);
-  const orgStart=analyse.indexOf('if((ORGANISATION_LABEL_KINDS as readonly string[]).includes(row.sheet)){'),orgEnd=analyse.indexOf('}else if((EMPLOYMENT_LABEL_CATEGORIES',orgStart);
+  const orgStart=analyse.indexOf('if((ORGANISATION_LABEL_KINDS as readonly string[]).includes(row.sheet)){'),orgEnd=analyse.indexOf('}else if((PROFILE_LABEL_CATEGORIES',orgStart);
   expect(orgStart).toBeGreaterThan(-1);expect(orgEnd).toBeGreaterThan(orgStart);
   expect(analyse.slice(orgStart,orgEnd)).toContain("if(incumbentKeys.has(key))throw new LabelImportRowError('existing',existingCodeMessage)");
   // Incumbents remain visible refusals with no before image; only selected new rows reach creates.
   expect(analyse).toContain("outcome:'error',message:'',before:null");
-  expect(analyse).toContain("result.reason=error instanceof LabelImportRowError?error.reason:'invalidRow'");
+  expect(analyse).toContain("result.reason=error instanceof LabelImportRowError||error instanceof LabelAssignmentError?error.reason:'invalidRow'");
   expect(analyse).toContain("result.outcome='error';result.selected=false");
   expect(analyse).toContain("writes.filter(write=>output.some(row=>row.selected&&row.outcome==='add'&&row.sheet+':'+row.row===write.key))");
   expect(analyse).toContain('bulkSaveLabels(ctx,kind,{creates,updates:[]},tx)');

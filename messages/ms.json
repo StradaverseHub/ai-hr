@@ -36789,5 +36789,15 @@
       "6": "Sabtu",
       "7": "Ahad"
     }
+  },
+  "systemLabelExchange": {
+    "export": "Eksport",
+    "exporting": "Mengeksport…",
+    "failed": "Eksport gagal. Sila cuba lagi.",
+    "scopeHelp": "Biarkan Criteria, Criteria Companies dan Company kosong untuk Global (Semua Syarikat). Maklumat syarikat mengehadkan label kepada syarikat tersebut. Import global memerlukan pentadbir kumpulan.",
+    "global": "Global (Semua Syarikat)",
+    "companies": "{count} syarikat dipilih",
+    "assignment": "Penetapan",
+    "failedRows": "{count} baris gagal. Muat turun laporan ralat untuk semakan."
   }
 }
