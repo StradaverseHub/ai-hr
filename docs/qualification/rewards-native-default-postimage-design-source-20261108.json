@@ -1,0 +1,27 @@
+{
+  "kind": "REWARDS_NATIVE_DEFAULT_POSTIMAGE_DESIGN_ONLY",
+  "base": "bb2a568cf514c3dc280fc64a6aabfcaa96527c38",
+  "failedRun": 42435887136,
+  "implementationStarted": false,
+  "checksRunLocally": false,
+  "fixedSignature": "app._domain_event_next(uuid,boolean)",
+  "observedDefaultLocationsNotAcceptanceConstants": [
+    268,
+    87
+  ],
+  "sourceSha256": {
+    "docs/qualification/rewards-native-default-postimage-design-20261108.md": "6baa19db76271d732839c126e230356d8896708d31b7de7c45086041e754215a",
+    "test/prototypes/rewards-audit-policy-owner.ts": "23e1895df04d442fc91d13ebe6f0093681d36d119eac6dd4ed4f88fe819f04f1",
+    "test/prototypes/rewards-audit-policy-contract.ts": "ec8cc6cf092b4c4fbb10d88dce9d87d7b0822405b52e7e2663d75b287dbb32cc",
+    "test/prototypes/rewards-audited-read-owner-factory.ts": "a7788b3bfe779a5f42a4914ff7418e3ac31dfbd435bd4ce5ee53f9739b368b40",
+    "test/prototypes/rewards-audited-read.sql": "cad7076c1263888257084dbf5b2eef77ebb6e360dbf08ae38e2029a00a58b654",
+    "test/prototypes/rewards-audit-policy.sql": "634b83c911c972011111c4f63993cc82cf465aa00dd67c4e6042d91d10c9ce2c",
+    "test/prototypes/rewards-audit-policy-predecessors.json": "74081562bffb8e7012801fed4a60abbee5a6e0a760e9b29b70c6aa8a087a9b83",
+    "test/prototypes/rewards-audited-read-family.ts": "d6a65d87aaa11816b04e85110e9dc60a8e3dd6badfcf812e92db966351550312",
+    "db/migrations/0863_assistant_bank_effect_closure.sql": "8381b76568d5910b791df7a1cb73d2939467f5709a12c11f5f5ddd01d727f264",
+    "db/migrations/0864_assistant_catalogue_effect_closure.sql": "09421f02fbe27b231395acd36cd4bab6d3e9a6943705cee73741851adef9efb3"
+  },
+  "requiresRootDesignApproval": true,
+  "releaseAuthorized": false,
+  "productionHeld": true
+}
