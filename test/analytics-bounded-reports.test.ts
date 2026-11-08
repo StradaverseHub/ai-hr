@@ -3,7 +3,7 @@ import {eq,inArray,sql} from 'drizzle-orm';
 import {afterAll,beforeAll,beforeEach,expect,it,vi} from 'vitest';
 import * as database from '../db/client';
 import type {SessionContext,Tx} from '../db/client';
-import {assignment,company,department,employment,leaveLedger,leaveType,person,roleAssignment} from '../db/schema';
+import {assignment,company,department,employment,leaveLedger,leaveType,person,position,roleAssignment} from '../db/schema';
 import {hireEmployee,terminateEmployment,transferEmployee} from '../core/org';
 import {
  analyticsManagerSelection,carryForwardReport,carryForwardReportPage,changeJobTransactions,changeJobTransactionsPage,
@@ -11,6 +11,7 @@ import {
 } from '../core/analytics';
 import * as templates from '../core/entitlement-template';
 import {parsePageQuery} from '../lib/pagination';
+import {observeNativeRead} from './helpers/native-read-observer';
 import {adminCtx,closeAll,createAppUser,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
 
 beforeAll(migrateTestDb);beforeEach(resetDb);afterAll(closeAll);
@@ -210,3 +211,100 @@ it('keeps per-employee entitlement eligibility and calculates only selected carr
   expect(selectedBatches).toHaveLength(1);expect(selectedBatches[0].slice().sort()).toEqual(page.rows.map(row=>row.employmentId).sort());
  }finally{spy.mockRestore();}
 });
+
+
+it('uses one materialized exact-count envelope for empty, tied first/last and past-end change-job pages',async()=>{
+ const b=await seedBase(),ctx=adminCtx(b),query={from:'2021-01-01',to:'2021-12-31'};
+ const emptyProbe=observeNativeRead();
+ try{
+  const empty=await changeJobTransactionsPage(ctx,[],{...query,page:first});
+  expect(empty.rows).toEqual([]);expect(empty.state).toMatchObject({total:0,from:0,to:0,hasNext:false});
+ }finally{emptyProbe.restore();}
+ const emptyStatements=emptyProbe.queries.filter(row=>row.sql.includes('analytics_changeJobTransactions_page'));
+ expect(emptyStatements).toHaveLength(1);expect(emptyStatements[0].rows).toBe(1);
+ expect(emptyStatements[0].sql.match(/ as materialized /gi)).toHaveLength(1);
+ expect(emptyStatements[0].sql.match(/inner join "assignment" "prior_assignment"/g)).toHaveLength(1);
+ const {ids}=await seedRows(b,28,{name:i=>i===27?'Fictional earlier change':'Fictional tied change'});
+ const positions=await owner.db.insert(position).values(ids.map((_,i)=>({tenantId:b.tenantId,companyId:b.companyId,title:'Fictional position '+String(i).padStart(2,'0')}))).returning({id:position.id,title:position.title});
+ const expected:{employmentId:string;assignmentId:string;name:string;effectiveOn:string;toPosition:string}[]=[];
+ for(const [i,id]of ids.entries()){
+  const effectiveOn=i===26?'2021-01-01':'2021-12-31';
+  await owner.db.update(assignment).set({validTo:effectiveOn}).where(eq(assignment.employmentId,id));
+  const successorId=randomUUID();
+  await owner.db.insert(assignment).values({id:successorId,tenantId:b.tenantId,employmentId:id,companyId:b.companyId,departmentId:b.deptB,positionId:positions[i].id,employmentType:'full_time',validFrom:effectiveOn});
+  expected.push({employmentId:id,assignmentId:successorId,name:i===27?'Fictional earlier change':'Fictional tied change',effectiveOn,toPosition:positions[i].title});
+ }
+ expected.sort((a,b)=>b.effectiveOn.localeCompare(a.effectiveOn)||a.name.localeCompare(b.name)||a.employmentId.localeCompare(b.employmentId)||a.assignmentId.localeCompare(b.assignmentId));
+ const expectedRows=expected.map(({name,effectiveOn,toPosition})=>({name,company:'Acme Sdn Bhd',fromDepartment:'Finance',toDepartment:'Operations',fromPosition:null,toPosition,effectiveOn}));
+ const probe=observeNativeRead();
+ try{
+  const page1=await changeJobTransactionsPage(ctx,[b.companyId],{...query,page:first});
+  const page2=await changeJobTransactionsPage(ctx,[b.companyId],{...query,page:parsePageQuery({page:'1'})});
+  const beyond=await changeJobTransactionsPage(ctx,[b.companyId],{...query,page:parsePageQuery({page:'2'})});
+  expect(page1.rows).toEqual(expectedRows.slice(0,25));expect(page1.state).toMatchObject({total:28,from:1,to:25,hasNext:true});
+  expect(page2.rows).toEqual(expectedRows.slice(25));expect(page2.state).toMatchObject({total:28,from:26,to:28,hasNext:false,hasPrev:true});
+  expect(beyond.rows).toEqual([]);expect(beyond.state).toMatchObject({total:28,from:0,to:0,hasNext:false,hasPrev:true});
+  expect([...page1.rows,...page2.rows].every(row=>typeof row.effectiveOn==='string')).toBe(true);
+  expect(JSON.parse(JSON.stringify([...page1.rows,...page2.rows]))).toEqual(expectedRows);
+ }finally{probe.restore();}
+ const statements=probe.queries.filter(row=>row.sql.includes('analytics_changeJobTransactions_page'));
+ expect(statements).toHaveLength(3);expect(statements.map(row=>row.rows)).toEqual([25,3,1]);
+ expect(probe.state).toEqual({active:0,maxActive:1});
+ await expect(changeJobTransactionsPage(ctx,[],{...query,page:{...first,offset:1}})).rejects.toThrow('Invalid analytics page');
+});
+
+it('retains exact predecessor multiplicity, corrections, both-side filters and genesis/termination exclusions',async()=>{
+ const b=await seedBase(),ctx=adminCtx(b),{ids,people}=await seedRows(b,3),effectiveOn='2021-05-01';
+ const [zeroId,successorId]=[randomUUID(),randomUUID()].sort();
+ const [target]=await owner.db.insert(position).values({tenantId:b.tenantId,companyId:b.companyId,title:'Fictional changed position'}).returning({id:position.id});
+ await owner.db.update(assignment).set({validTo:effectiveOn}).where(eq(assignment.employmentId,ids[0]));
+ await owner.db.insert(assignment).values([
+  {id:zeroId,tenantId:b.tenantId,employmentId:ids[0],companyId:b.companyId,departmentId:b.deptB,employmentType:'full_time',validFrom:effectiveOn,validTo:effectiveOn},
+  {tenantId:b.tenantId,employmentId:ids[0],companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',validFrom:'2018-01-01',validTo:effectiveOn,supersededAt:new Date()},
+  {tenantId:b.tenantId,employmentId:ids[0],companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',validFrom:'2017-01-01',validTo:'2018-01-01'},
+  {id:successorId,tenantId:b.tenantId,employmentId:ids[0],companyId:b.companyId,departmentId:b.deptB,positionId:target.id,employmentType:'full_time',validFrom:effectiveOn},
+ ]);
+ await terminateEmployment(ctx,{employmentId:ids[1],terminationDate:effectiveOn,terminationType:'voluntary'});
+ const request={from:effectiveOn,to:effectiveOn,page:first};
+ const full=await changeJobTransactions(ctx,[],request),actual=await changeJobTransactionsPage(ctx,[],request);
+ // [D,D) is empty under the real no-overlap exclusion. It is both a
+ // successor and an exact-boundary predecessor, legitimately yielding 2x2.
+ expect(actual.rows.slice().sort((a,b)=>JSON.stringify(a).localeCompare(JSON.stringify(b)))).toEqual(full.slice().sort((a,b)=>JSON.stringify(a).localeCompare(JSON.stringify(b))));expect(actual.state.total).toBe(4);
+ expect(actual.rows.map(row=>row.fromDepartment).sort()).toEqual(['Finance','Finance','Operations','Operations']);
+ expect(actual.rows.map(row=>row.toPosition)).toEqual([null,null,'Fictional changed position','Fictional changed position']);
+ expect(actual.rows.every(row=>row.name==='Fictional report 00000'&&row.fromPosition===null&&row.effectiveOn===effectiveOn)).toBe(true);
+ expect((await changeJobTransactionsPage(ctx,[],{...request,filter:{departmentId:b.deptA}})).state.total).toBe(2);
+ expect((await changeJobTransactionsPage(ctx,[],{...request,filter:{departmentId:b.deptB}})).state.total).toBe(4);
+ for(const q of ['%', 'Fictional report 0000_', 'example.invalid'])expect((await changeJobTransactionsPage(ctx,[],{...request,filter:{q}})).state.total).toBe(4);
+ expect((await changeJobTransactionsPage(ctx,[],{...request,filter:{q:'Definitely absent'}})).rows).toEqual([]);
+ expect((await changeJobTransactionsPage(ctx,[],{...request,from:'2021-05-02'})).state.total).toBe(0);
+ // Correct the canonical predecessor. Its other, still-canonical matching
+ // predecessor remains; neither arbitrary-nearest nor DISTINCT is permitted.
+ await owner.db.update(assignment).set({supersededAt:new Date()}).where(sql`${assignment.employmentId}=${ids[0]} and ${assignment.validFrom}='2020-01-01'`);
+ const corrected=await changeJobTransactionsPage(ctx,[],request);
+ expect(corrected.state.total).toBe(2);expect(corrected.rows.map(row=>row.fromDepartment)).toEqual(['Operations','Operations']);
+ expect((await changeJobTransactionsPage(ctx,[],{...request,filter:{departmentId:b.deptA}})).rows).toEqual([]);
+ const foreign=await seedBase();expect((await changeJobTransactionsPage(ctx,[foreign.companyId],request)).state.total).toBe(0);
+ const foreignEmployee=await hireEmployee(adminCtx(foreign),{person:{fullName:'Fictional foreign change',primaryEmail:'foreign-change@example.invalid'},companyId:foreign.companyId,departmentId:foreign.deptA,employmentType:'full_time',hiredOn:'2020-01-01'});
+ await transferEmployee(adminCtx(foreign),{employmentId:foreignEmployee.employmentId,effectiveDate:effectiveOn,departmentId:foreign.deptB});
+ expect((await changeJobTransactionsPage(ctx,[],request)).state.total).toBe(2);
+ const userId=await createAppUser(b.tenantId,people[2],'employee'),employee:SessionContext={tenantId:b.tenantId,userId,personId:people[2],roles:['employee']};
+ expect((await changeJobTransactionsPage(employee,[],request)).rows).toEqual([]);
+ await owner.db.delete(roleAssignment).where(eq(roleAssignment.appUserId,b.adminUserId));
+ const refused=observeNativeRead();
+ try{await expect(changeJobTransactionsPage(ctx,[],request)).rejects.toThrow('calling authority');}finally{refused.restore();}
+ expect(refused.queries.some(row=>row.sql.includes('analytics_changeJobTransactions_page'))).toBe(false);
+});
+
+
+it('counts the complete change-job relation beyond All and preserves complete export rows',async()=>{
+ const b=await seedBase(),ctx=adminCtx(b),{ids}=await seedRows(b,2052);
+ await owner.db.update(assignment).set({validTo:'2021-01-01'}).where(inArray(assignment.employmentId,ids));
+ for(let offset=0;offset<ids.length;offset+=500)await owner.db.insert(assignment).values(ids.slice(offset,offset+500).map(employmentId=>({tenantId:b.tenantId,employmentId,companyId:b.companyId,departmentId:b.deptB,employmentType:'full_time'as const,validFrom:'2021-01-01'})));
+ const request={from:'2021-01-01',to:'2021-01-01'};
+ const all=await changeJobTransactionsPage(ctx,[],{...request,page:parsePageQuery({size:'all'})});
+ expect(all.rows).toHaveLength(2000);expect(all.state).toMatchObject({total:2052,truncated:true,from:1,to:2000});
+ const last=await changeJobTransactionsPage(ctx,[],{...request,page:parsePageQuery({page:'82'})});
+ expect(last.rows.map(row=>row.name)).toEqual(['Fictional report 02050','Fictional report 02051']);expect(last.state.total).toBe(2052);
+ const full=await changeJobTransactions(ctx,[],request);expect(full).toHaveLength(2052);expect(all.rows).toEqual(full.slice(0,2000));
+},120000);

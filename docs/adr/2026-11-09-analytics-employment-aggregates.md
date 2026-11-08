@@ -131,3 +131,82 @@ actual statement objects and every original timing remain unchanged.
 `transactionSettled` and `complete` become true only after the outer timed
 dashboard await returns through COMMIT. A callback/commit failure retains its
 partial receipt, and the test observer is always restored in `finally`.
+
+## Follow-up: one exact change-job page envelope
+
+This isolated source candidate is a direct child of
+`0bbef1ea9d11ad2ce00d94e21d9a70cd859f7c2d`. The authenticated later 48a46
+course diagnosed an empty change-job page SELECT followed by a separate exact
+count SELECT; their observed waits are historical measurements of that source,
+not a causal speed prediction for this candidate. No new behavior or timing has
+been executed locally. The one-second and complete application/browser goals
+remain open.
+
+Only `changeJobTransactionsPageTx` changes in product code, with a private typed
+transport mapper. One explicit MATERIALIZED CTE contains the whole original
+`changeJobTransactionsRowsTx` SELECT. The count and the ordered limited page
+consume that same relation. The count is exact, including a past-end page; a
+LEFT JOIN returns one transport envelope when the page is empty. Its absent
+assignment ID maps to no business row. Dates still pass through the canonical
+Assignment date-column decoder. Ordering remains effective date descending,
+name, employment ID and assignment ID. Parameters use public Drizzle SQL and
+execute APIs; no session internals, new filters, DISTINCT, nearest-predecessor
+selection, estimated count, cache, index or concurrent borrowed work is added.
+
+The original successor range/non-superseded predicate, INNER exact-boundary
+non-superseded predecessor join, department-either-side predicate, free name/email
+query and native scope semantics remain whole. Every other Analytics function,
+export, admission, principal/JIT policy, money calculation and cursor owner is
+unchanged. A native department value cannot currently be NULL under the actual
+NOT NULL/FK and same-tenant label constraints; the public nullable label types
+remain. Tests exercise actual nullable Position labels and the wholly null
+empty envelope instead of disabling native constraints to fabricate a department.
+
+The bounded-report owner adds three native cases: empty/first/last/past-end
+pages with name/employment ties and string dates; exact-boundary multiplicity,
+assignment ties, corrected predecessors, both department sides, wildcard/email,
+genesis/termination exclusion, scope/foreign fences and fresh-principal refusal;
+and an exact 2,052-row population past the All ceiling with complete export.
+The multiplicity fixture uses an allowed zero-length `[D,D)` historical range,
+which is empty for the existing no-overlap exclusion. It does not insert
+nonempty overlapping current ranges or relax a constraint. Two composition
+cases retain complete thirteen-DTO parity behind a held Access writer without
+audit writes, and prove settlement/release when the envelope fails. All old
+callbacks and assertions remain, except the two explicitly justified census
+expectations below. Existing native snapshot-mutation and read-only controls
+remain whole.
+
+For the original empty-change 50k fixture, one envelope replaces two statements.
+The source expectation is therefore 121 instead of 122 statements. Its one
+sentinel transports the same one count row formerly returned by the fallback,
+so the independently required row census remains 90,089. These are assertions
+for a future native run, not rewritten receipts. Every older result remains
+bound to its actual source, including the older 125-statement JIT course.
+
+The existing native-scale test preserves every original timing, full export,
+50k fact, four aggregate replay arms and seven aggregate plans before any new
+fixture mutation. Its public SQL capture admits only the fixed product envelope
+execute shape in addition to its existing SELECT builders. After those courses,
+two separately named diagnostics observe the actual admitted app RR/RO/JIT-off
+snapshot: the original empty 50k population, then the same 50k employees with
+two owned abutting assignment histories. Each validates independently expected
+DTO/count/transport facts, one product envelope, one native plan with one
+materialized producer and two consumers, and identical actual app identity
+before/after. The two inserted rows are deleted and their exact owned
+predecessors reopened in `finally`, with original population/closed counts
+checked after restoration. No product query is replaced by test SQL.
+
+There are seven original plus two new sanitized, content-free plan objects,
+with the existing 256-node detail bound per plan. The original 300-second case,
+profile, pools and cleanup owner remain. These warmed extended callbacks have
+separate timing names; they cannot establish a whole-dashboard or cold speedup.
+The separate JIT owner changes only its prospective Analytics census assertion;
+its three cases, five shape digests, twenty plans, cancellation, rollback,
+identity, fingerprint and restoration controls remain whole. Hosted native fit,
+source-qualified performance and all broader acceptance remain unknown.
+
+The compact nonruntime source record uses whole-parent immutable Git blob
+references and verified inverse hunks for the five changed owners. Existing
+historical qualification maps and receipts remain byte-exact; the record does
+not embed them or transfer their runtime status. Root and a different peer must
+fully review this frozen source before existing hosted selectors run it.

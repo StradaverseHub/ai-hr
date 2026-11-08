@@ -746,21 +746,37 @@ export async function changeJobTransactionsPage(ctx:SessionContext,scopeIds:stri
   return withAnalyticsPresentation(ctx,tx=>changeJobTransactionsPageTx(tx,scope,input,page));
 }
 
+type ChangeJobPageEnvelope = {total:number} & (
+  | ({assignmentId:string} & ChangeJobRow)
+  | {assignmentId:null;name:null;company:null;fromDepartment:null;toDepartment:null;fromPosition:null;toPosition:null;effectiveOn:null}
+);
+
+/** The LEFT JOIN's absent assignment is transport only; never a business row.
+ * Raw execute bypasses select-field decoding, so retain the column's date decoder. */
+function changeJobPageRow(row:ChangeJobPageEnvelope):ChangeJobRow|null {
+  if(row.assignmentId===null)return null;
+  return {name:row.name,company:row.company,fromDepartment:row.fromDepartment,toDepartment:row.toDepartment,
+    fromPosition:row.fromPosition,toPosition:row.toPosition,effectiveOn:assignment.validFrom.mapFromDriverValue(row.effectiveOn)};
+}
+
 async function changeJobTransactionsPageTx(tx:Tx,scope:string[]|undefined,input:PeriodReportInput,page:PageQuery):Promise<AnalyticsReportPage<ChangeJobRow>> {
-    const source=changeJobTransactionsRowsTx(tx,scope,input).as('analytics_changeJobTransactions_page');
-    const rows=await tx.select({
-      name:source.name,
-      company:source.company,
-      fromDepartment:source.fromDepartment,
-      toDepartment:source.toDepartment,
-      fromPosition:source.fromPosition,
-      toPosition:source.toPosition,
-      effectiveOn:source.effectiveOn,
-      total:sql<number>`count(*) over()::int`,
-    }).from(source).orderBy(desc(source.effectiveOn),source.name,source.employmentId,source.assignmentId).limit(page.limit).offset(page.offset);
-    // An empty page still reports the full population (including an out-of-range page).
-    const total=rows.length?Number(rows[0].total):Number((await tx.select({total:count()}).from(source))[0]?.total??0);
-    return {rows:rows.map(({total,...row})=>row),state:pageState(page,total,rows.length)};
+    const source=changeJobTransactionsRowsTx(tx,scope,input);
+    // Exactly one evaluation of the unchanged relation feeds both the exact
+    // population count and the bounded page, including an empty/past-end page.
+    const envelope=await tx.execute<ChangeJobPageEnvelope>(sql`
+      with analytics_changeJobTransactions_page as materialized (${source.getSQL()})
+      select population.total, selected.assignment_id as "assignmentId", selected.name, selected.company,
+        selected."fromDepartment", selected."toDepartment", selected."fromPosition", selected."toPosition", selected."effectiveOn"
+      from (select count(*)::int as total from analytics_changeJobTransactions_page) population
+      left join (
+        select * from analytics_changeJobTransactions_page
+        order by "effectiveOn" desc, name, employment_id, assignment_id
+        limit ${page.limit} offset ${page.offset}
+      ) selected on true
+      order by selected."effectiveOn" desc, selected.name, selected.employment_id, selected.assignment_id
+    `);
+    const rows=envelope.map(changeJobPageRow).filter((row):row is ChangeJobRow=>row!==null);
+    return {rows,state:pageState(page,Number(envelope[0].total),rows.length)};
 }
 // ───────────────────────── Dimension distributions (visual charts) ─────────────────────────
 // Every distribution is filter-aware and tallied in JS (small result sets) so the Unknown / Unassigned

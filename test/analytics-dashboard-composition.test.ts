@@ -181,3 +181,37 @@ it('settles the original report failure before starting another borrowed reader'
  expect(probe.queries.some(query=>query.sql.includes('analytics_terminations_page'))).toBe(false);
  expect(probe.state).toEqual({active:0,maxActive:1});expect(probe.properties).toHaveLength(1);
 });
+
+
+it('preserves all thirteen DTOs behind held Access for empty, nonempty and past-end change-job envelopes',async()=>{
+ const f=await fixture();
+ const [before]=await owner.client`select count(*)::int as count from domain_event where tenant_id=${f.b.tenantId}::uuid`;
+ for(const kind of ['empty','nonempty','past-end']as const){
+  const p=input();if(kind==='empty')p.filters.q='Definitely absent';
+  if(kind==='past-end')p.pages.changeJobs=parsePageQuery({page:'99'});
+  const expected=await standaloneDashboard(f.ctx,[f.b.companyId],p),probe=observe();
+  try{await owner.client.begin(async writer=>{
+   await writer`select pg_advisory_xact_lock(hashtextextended(${'access-configuration:'+f.b.tenantId},0))`;
+   const actual=await analyticsDashboard(f.ctx,[f.b.companyId],p);
+   expect(actual).toEqual(expected);expect(Object.keys(actual)).toHaveLength(13);
+   expect(actual.changeJobs.rows).toHaveLength(kind==='nonempty'?1:0);
+   expect(actual.changeJobs.state.total).toBe(kind==='empty'?0:1);
+  });}finally{probe.restore();}
+  expect(probe.properties).toHaveLength(1);expect(probe.properties[0]).toMatchObject({role:'ai_hr_app',isolation:'repeatable read',readOnly:true});
+  const statements=probe.queries.filter(query=>query.sql.includes('analytics_changeJobTransactions_page'));
+  expect(statements).toHaveLength(1);expect(statements[0].rows).toBe(1);expect(probe.state).toEqual({active:0,maxActive:1});
+ }
+ const [after]=await owner.client`select count(*)::int as count from domain_event where tenant_id=${f.b.tenantId}::uuid`;
+ expect(after).toEqual(before);
+});
+
+it('settles change-job envelope failure before later reports and releases its native presentation owner',async()=>{
+ const f=await fixture(),failure=Error('Controlled change-job envelope failure');
+ const probe=observe({fail:{matches:query=>query.sql.includes('analytics_changeJobTransactions_page'),error:failure}});
+ try{await expect(analyticsDashboard(f.ctx,[f.b.companyId],input())).rejects.toBe(failure);}finally{probe.restore();}
+ expect(probe.queries.filter(query=>query.sql.includes('analytics_changeJobTransactions_page'))).toHaveLength(1);
+ expect(probe.queries.some(query=>query.sql.includes('"date_of_birth"'))).toBe(false);
+ expect(probe.state).toEqual({active:0,maxActive:1});expect(probe.properties).toHaveLength(1);
+ const expected=await standaloneDashboard(f.ctx,[f.b.companyId],input());
+ expect(await analyticsDashboard(f.ctx,[f.b.companyId],input())).toEqual(expected);
+});
