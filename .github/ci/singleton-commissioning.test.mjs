@@ -114,11 +114,30 @@ test('native hybrid commissioning consumes one canonical build while ordinary un
  const native=w.slice(w.indexOf('  native-test:\n'),w.indexOf('  browser:\n'));
  const ordinary=w.slice(w.indexOf('  test:\n'),w.indexOf('  native-test:\n'));
  assert(native.includes('needs: [resolve, plan, build]'));assert(native.includes('needs.plan.outputs.native_matrix'));
- assert(native.includes("GH_TOKEN: '${{ github.token }}'"));assert(native.includes('playwright install --with-deps chromium'));
+ assert(native.includes("GH_TOKEN: '${{ github.token }}'"));
+ // Chromium moved behind the protected pre-package owner. Prove that complete
+ // source wiring rather than requiring a stale direct workflow shell command.
+ assert(native.includes("native_controller: 'true'"));
+ assert(native.includes('automation/.github/ci/native-controller-owner.mjs\" run-unit'));
+ const setup=readFileSync(new URL('../actions/setup-alpha/action.yml',import.meta.url),'utf8');
+ const bootstrapAt=setup.indexOf('name: Protect native CI owner before package invocations');
+ const setupAt=setup.indexOf('name: Install native dependencies through the protected owner');
+ assert(bootstrapAt>=0&&setupAt>bootstrapAt);
+ const protectedSetup=setup.slice(setupAt,setup.indexOf('name: Install native SDK dependencies',setupAt));
+ assert(protectedSetup.includes("inputs.native_controller == 'true'"));
+ assert(protectedSetup.includes('automation/.github/ci/native-controller-owner.mjs\" setup'));
+ const launcher=readFileSync(new URL('./native-controller-owner.mjs',import.meta.url),'utf8');
+ const setupBranch=launcher.slice(launcher.indexOf("if(operation==='setup')"),launcher.indexOf("if(operation==='ensure-main')"));
+ assert(setupBranch.includes("execFileSync('pnpm',['install','--frozen-lockfile'],{env:child"));
+ assert(setupBranch.includes("execFileSync('pnpm',['exec','playwright','install','--with-deps','chromium'],{env:child"));
  assert(native.includes('fail-fast: false'));assert(native.includes('timeout-minutes: 120'));assert(!native.includes('AIHR_FOCUSED'));
  assert(ordinary.includes('needs: [resolve, plan]'));assert(!ordinary.includes('needs: [resolve, plan, build]'));
  assert(w.includes("needs.plan.outputs.has_native == 'true'"));assert(w.includes('test, native-test, browser]'));
  const owner=readFileSync(new URL('./run-unit.mjs',import.meta.url),'utf8');
- assert(owner.includes('await provisionNativeNextBuild(plan,unit,dir)'));assert(owner.includes('delete env.GH_TOKEN;delete env.GITHUB_TOKEN'));
+ assert(owner.includes('await provisionNativeNextBuild(plan,unit,dir,process.env,installation)'));
+ const captureAt=owner.indexOf('const installation=captureNativeNextInstallation();');
+ const classifyAt=owner.indexOf('plan = createPlan()');
+ assert(captureAt>=0&&classifyAt>captureAt,'Retained installation capture must precede candidate classification');
+ assert(owner.includes('delete env.GH_TOKEN;delete env.GITHUB_TOKEN'));
  assert(owner.includes("nativeNextUnit(unit)?'native-test':'test'"));
 });

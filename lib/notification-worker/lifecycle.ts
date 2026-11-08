@@ -2,7 +2,8 @@
 import type {Sql} from 'postgres';
 export type NativeNotificationScope={tenant_id:string;standing:string;consumer:'notifications'|'assessment-reminders'|null;entitlement_facts:unknown};
 export type NativeNotificationEvent={event_id:string;aggregate_type:string;aggregate_id:string;event_type:string;subject_employment_id:string|null;payload:unknown;event_sequence:string};
-export type NotificationWorkerFailure='projection-unimplemented'|'scope-changed'|'budget-exhausted'|'database-refusal';
+/** `interrupted` requires the additive UNINSTALLED process-stage native profile. */
+export type NotificationWorkerFailure='projection-unimplemented'|'scope-changed'|'budget-exhausted'|'database-refusal'|'interrupted';
 export class NotificationProjectionUnavailable extends Error{constructor(){super('Canonical narrow-worker projection is not implemented');}}
 /** A dedicated max1 direct connection owns the native backend-bound run across commits.
  * Native state, not this object or its arguments, establishes every authorization. */

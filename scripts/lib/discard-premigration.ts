@@ -78,7 +78,7 @@ export type FullCiRoleBinding=Readonly<{mode:typeof FULL_CI_ROLE_MODE;candidate:
 export type FullCiRoleReceipt=FullCiRoleBinding&Readonly<{schemaVersion:1;kind:typeof FULL_CI_ROLE_KIND;phase:'before_initial_candidate_migration';scope:typeof FULL_CI_ROLE_SCOPE;helperSha256:string;wrapperSha256:string;orchestrationSha256:string;fixture:Readonly<{mode:typeof FULL_CI_ROLE_MODE;roles:readonly unknown[];edges:readonly unknown[];postgres:Readonly<{versionNumber:number;versionText:string;session:string;current:string}>}>}>;
 export type FullCiRoleAdmission=Readonly<{binding:FullCiRoleBinding;admin:string;evidenceDirectory:string;sourceDigests:Readonly<{helper:string;wrapper:string;orchestration:string}>}>;
 /** Injected observations keep this module driver/IO-free. Runtime adapters use only fixed argv. */
-export type FullCiRoleHost=Readonly<{platform:string;cwd:string;realpath(path:string):string;read(path:string):string;git(cwd:string,args:readonly string[]):string;observePlan(cwd:string):unknown}>;
+export type FullCiRoleHost=Readonly<{platform:string;cwd:string;realpath(path:string):string;read(path:string):string;git(cwd:string,args:readonly string[]):string;observePlan(cwd:string):unknown;nativeBootstrap?():unknown}>;
 const fullFail=(reason:string):never=>{throw Error('Full CI disposable role prerequisites refused: '+reason);};
 const fullNeed=(value:unknown,reason:string):void=>{if(!value)fullFail(reason);};
 const fullSha=(value:unknown,length=40)=>typeof value==='string'&&new RegExp('^[a-f0-9]{'+length+'}$').test(value);
@@ -112,7 +112,13 @@ export function inspectFullCiRoleAdmission(env:FocusedIntentEnvironment,host:Ful
  fullNeed(workspace&&temp&&eventPath&&isAbsolute(workspace)&&isAbsolute(temp)&&isAbsolute(eventPath),'absolute paths');
  const workspaceReal=host.realpath(workspace!),tempReal=host.realpath(temp!);
  fullNeed(workspaceReal===resolve(workspace!)&&tempReal===resolve(temp!),'workspace/temp symlink');
- const source=join(workspaceReal,'source'),controller=join(workspaceReal,'automation');
+ const protectedOwner=env.GITHUB_JOB==='native-test'?fullRecord(host.nativeBootstrap?.()):null;
+ const protectedRoot='/var/lib/aihr-native-controller/'+env.GITHUB_RUN_ID;
+ if(protectedOwner)fullNeed(protectedOwner.runId===env.GITHUB_RUN_ID&&protectedOwner.candidate===env.AIHR_CI_HEAD
+  &&protectedOwner.controller===env.AIHR_CI_CONTROL_HEAD&&protectedOwner.workspace===workspaceReal
+  &&protectedOwner.automation===protectedRoot+'/automation'&&protectedOwner.protectedNodePath===protectedRoot+'/node'
+  &&fullSha(protectedOwner.eventSha256,64),'protected native bootstrap identity');
+ const source=join(workspaceReal,'source'),controller=protectedOwner?protectedRoot+'/automation':join(workspaceReal,'automation');
  fullNeed(host.realpath(source)===source&&host.realpath(controller)===controller&&host.realpath(host.cwd)===source&&resolve(host.cwd)===source,'fixed checkouts');
  for(const [path,sha] of [[source,env.AIHR_CI_HEAD],[controller,env.AIHR_CI_CONTROL_HEAD]] as const){
   fullNeed(host.git(path,['rev-parse','--show-toplevel']).trim()===path&&host.git(path,['rev-parse','HEAD']).trim()===sha,'actual checkout HEAD');
@@ -120,8 +126,9 @@ export function inspectFullCiRoleAdmission(env:FocusedIntentEnvironment,host:Ful
  }
  const evidence=join(tempReal,'aihr-ci');
  fullNeed((hints?.evidence??evidence)===evidence&&host.realpath(evidence)===evidence,'direct evidence directory');
- fullNeed(host.realpath(eventPath!)===resolve(eventPath!)&&resolve(eventPath!).startsWith(tempReal+'/')&&resolve(eventPath!).endsWith('/event.json'),'actual event path');
+ fullNeed(host.realpath(eventPath!)===resolve(eventPath!)&&(protectedOwner?eventPath===protectedRoot+'/event.json':resolve(eventPath!).startsWith(tempReal+'/')&&resolve(eventPath!).endsWith('/event.json')),'actual event path');
  const rawEvent=host.read(eventPath!);fullNeed(rawEvent.length<=4*1024*1024,'event bound');
+ if(protectedOwner)fullNeed(fullHash(rawEvent)===protectedOwner.eventSha256,'protected native event bytes');
  let parsedEvent:unknown;try{parsedEvent=JSON.parse(rawEvent);}catch{fullFail('event JSON');}
  const event=fullRecord(parsedEvent),repo=fullRecord(event.repository);
  fullNeed(repo.full_name==='StradaverseHub/ai-hr'&&repo.id===1333414856,'event repository');

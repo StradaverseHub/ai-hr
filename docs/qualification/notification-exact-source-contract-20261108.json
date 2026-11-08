@@ -1,0 +1,57 @@
+{
+  "kind": "UNINSTALLED_EXACT_BINARY_NOTIFICATION_SOURCE_CONTRACT",
+  "base": "7a1ca9b5d6c533f4ec738af384877fa40597c96f",
+  "sourceRef": "codex/notification-exact-source-contract-20261108",
+  "releaseAuthorized": false,
+  "production": "HELD",
+  "qualification": "NOT_RUN",
+  "installed": false,
+  "apiVersion": 3,
+  "publicApis": 13,
+  "canonicalHelpers": 2300,
+  "admissionCallsTwentyEventCase": 132,
+  "nativeCases": 56,
+  "originalNativeCasesRetained": 52,
+  "pairedNativeCases": 6,
+  "pureCases": 10,
+  "selectors": {
+    "native": [
+      "test/notification-worker-lifecycle.test.ts"
+    ],
+    "paired": [
+      "test/notification-worker-native-plan-diagnostic.test.ts"
+    ],
+    "pure": [
+      "test/notification-worker-plan-parser.test.ts",
+      "test/notification-worker-diagnostic-ownership.test.ts"
+    ]
+  },
+  "nativeGuardBodies": {
+    "oldLogin": "49533d66467b0468d6cb4c1fb0697fe5",
+    "newLogin": "c3a8691c5ff07123a8f63f009d8567ad",
+    "oldProfile": "52f4cceff05b3a26e36f1334241d63d9",
+    "newProfile": "f77a9b37429e8e2d7d4f350ef91487e5"
+  },
+  "retained7a": {
+    "nativeRun": 42414411213,
+    "passed": 51,
+    "failed": 1,
+    "skipped": 0,
+    "failure": "unchanged eight-batch30s timeout",
+    "pairedRun": 42414408516,
+    "pairedPassed": 6,
+    "pureRun": 42414427391,
+    "purePassed": 9,
+    "admissionCalls": 132,
+    "noMeasuredTimeImprovement": true
+  },
+  "sourceSha256": {
+    "test/fixtures/notification-worker/exact-source.sql": "8dc4149dc289873db6f911b8198a13118c66b72fda30c30d55015da76beead5e",
+    "test/fixtures/notification-worker/exact-source-cases.ts": "962824bd4feb509c1168a3a896d0a663439bcefbfa185a897bb094bc3cbbf966",
+    "test/fixtures/notification-worker/process-cases.ts": "48103eb78c7b60fa1a5f068bf2b768b0381867f8aa579f52b053fb47ec9e9519",
+    "test/fixtures/notification-worker/admission-plan-summary.ts": "b1eef02cbd8c073734292f45f308875f027c9f4d79b71520b0f0f1dcab112b4e",
+    "test/notification-worker-native-plan-diagnostic.test.ts": "fb3877a6a9afb765fd5a1cc8bcab9075ac894224f18080c5c897ca4adb87bd96",
+    "test/notification-worker-plan-parser.test.ts": "16df1b6f5af700518e89478ec7f29ffc64312d0163813ae19e32567f87acb3e3",
+    "docs/qualification/notification-exact-source-contract-20261108.md": "0709e743f547031bf578882e92402873cdb06fe2e13571571efb15ed858df6f8"
+  }
+}

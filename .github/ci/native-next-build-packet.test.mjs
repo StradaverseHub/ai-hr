@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {validateNativeBuildMetadata,provisionNativeNextBuild} from './native-next-build-packet.mjs';
+import {validateNativeBuildMetadata,provisionNativeNextBuild,captureNativeNextInstallation,nativeHelperClosure,NATIVE_HELPER_SOURCES} from './native-next-build-packet.mjs';
+import {singletonSources,singletonDescriptor} from './singleton-protocol.mjs';
 function fixture(){
  const expected={source:'a'.repeat(40),controller:'b'.repeat(40),runId:123,controllerBranch:'codex/native-next-ci'};
  const repository={id:1333414856,full_name:'StradaverseHub/ai-hr'},now=Date.parse('2026-11-08T01:10:00Z');
@@ -36,12 +37,33 @@ for(const [name,mutate]of [
 test('provisioning refuses an ordinary DB singleton before any API or filesystem operation',async()=>{
  await assert.rejects(provisionNativeNextBuild({}, {singleton:{profile:'notification-cluster-v1'}},'/foreign',{}),/registered hybrid/);
 });
+test('native provisioning rejects fabricated late installation facts before API or packet operations',async()=>{
+ const unit={singleton:{profile:'linux-next-postgres-v1'}},plan={sha:'a'.repeat(40),controller:'b'.repeat(40)};
+ for(const snapshot of [undefined,{}, {sha:plan.sha,controller:plan.controller,source:process.cwd(),installation:{captured:true}}])
+  await assert.rejects(provisionNativeNextBuild(plan,unit,'/foreign',{},snapshot),/Original pre-classifier installation capture required/);
+ assert.equal(captureNativeNextInstallation({GITHUB_JOB:'test'}),null);
+ assert.equal(captureNativeNextInstallation({GITHUB_JOB:'selected-tests'}),null);
+});
 test('private archives, packet and binding stay outside uploaded evidence, and original release inspector stays strict',()=>{
  const source=readFileSync(new URL('./native-next-build-packet.mjs',import.meta.url),'utf8');
  assert(source.includes("const root=join(temporary,unit.id+'-native-build-private')"));
  assert(source.includes("assert.equal(directory,join(temporary,'aihr-ci'))"));
  assert(source.includes('downloadCiArchives([metadata.artifact]'));assert(source.includes('inspectCiNativeBuildPacket(packetDirectory,metadata.expected)'));
  assert(source.includes("'-I','-B'"));
+});
+test('privileged helper closure is finite, committed on both sides and sealed before returning candidate hints',()=>{
+ assert.equal(Object.keys(NATIVE_HELPER_SOURCES).length,11);
+ const file='test/runtime-next-admission-native.test.ts',unit={kind:'db',files:[file],singleton:singletonDescriptor(file)};
+ const sources=singletonSources(unit);for(const path of Object.values(NATIVE_HELPER_SOURCES))assert(sources.includes(path));
+ assert(sources.includes('.github/ci/native-next-helper-sources.mjs'));
+ assert.throws(()=>nativeHelperClosure({sha:'HEAD',controller:'HEAD'},'/caller'),/Exact native helper/);
+ const source=readFileSync(new URL('./native-next-build-packet.mjs',import.meta.url),'utf8');
+ assert(source.indexOf('const NATIVE_HELPER_BYTES=')<source.indexOf('export async function provisionNativeNextBuild'));
+ assert(source.indexOf('helpers=nativeHelperClosure(')<source.indexOf("execFileSync('pnpm'"));
+ assert(source.includes('bytes.equals(from(automation,plan.controller))&&bytes.equals(from(source,plan.sha))'));
+ assert(source.includes("execFileSync('sudo',['-n','/usr/bin/python3','-I','-B','-c',NATIVE_BUILD_SEALER,'--seal']"));
+ assert(source.includes('JSON.stringify({binding,unit:unit.id,runnerTemp:temporary,runnerUid:process.getuid(),helpers})'));
+ assert(!source.includes("writeFileSync(bindingPath"));assert(source.includes("const sealedRoot='/var/lib/aihr-native-build/'"));
 });
 
 function prFixture(){

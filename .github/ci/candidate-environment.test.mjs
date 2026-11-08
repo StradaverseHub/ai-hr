@@ -1,6 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {spawnSync} from 'node:child_process';
+import {spawnSync,execFileSync} from 'node:child_process';
+import {mkdtempSync,mkdirSync,writeFileSync,readFileSync,rmSync,unlinkSync,statSync,utimesSync} from 'node:fs';
+import {join} from 'node:path';
+import {tmpdir} from 'node:os';
+import {createPlan} from './plan.mjs';
 import {candidateEnvironment,nativePreparationEnvironment} from './candidate-environment.mjs';
 import {fullCiRoleMigrationEnvironment} from './run-unit.mjs';
 test('all candidate execution contexts drop platform/provider credentials without mutating owner authentication',()=>{
@@ -27,4 +31,35 @@ test('only the four declared purpose database URLs survive; preparation closes a
  assert.deepEqual(result,owned);
  const prepared=nativePreparationEnvironment({...owned,PLATFORM_DATABASE_URL:'postgres://fictional-owner@control.invalid/other',RANDOM_DATABASE_URL:'postgres://fictional-owner@control.invalid/other',PGHOST:'outside.invalid'});
  assert.deepEqual(prepared,Object.fromEntries(keys.map(k=>[k,'postgres://nobody:nothing@127.0.0.1:1/no_database'])));
+});
+test('real Git clean filters cannot inherit the metadata owner token or database capabilities',()=>{
+ const root=mkdtempSync(join(tmpdir(),'aihr-git-metadata-')),repo=join(root,'source'),filter=join(root,'filter.mjs'),witness=join(root,'witness.json');
+ const keys=['GH_TOKEN','GITHUB_TOKEN','PGPASSWORD','DATABASE_URL','MIGRATION_DATABASE_URL','TEST_DATABASE_URL','TEST_MIGRATION_DATABASE_URL','AIHR_CI_HEAD'];
+ const original=new Map(keys.map(key=>[key,process.env[key]]));
+ try{
+  mkdirSync(repo);
+  writeFileSync(filter,`import{readFileSync,writeFileSync}from'node:fs';const input=readFileSync(0);writeFileSync(${JSON.stringify(witness)},JSON.stringify({tokenAbsent:!process.env.GH_TOKEN&&!process.env.GITHUB_TOKEN,passwordAbsent:!process.env.PGPASSWORD,databasesClosed:['DATABASE_URL','MIGRATION_DATABASE_URL','TEST_DATABASE_URL','TEST_MIGRATION_DATABASE_URL'].every(key=>process.env[key]==='postgres://nobody:nothing@127.0.0.1:1/no_database')}));process.stdout.write(input);`);
+  const git=(...args)=>execFileSync('git',['-c','core.hooksPath=/dev/null','-c','core.fsmonitor=false',...args],{cwd:repo,env:nativePreparationEnvironment(process.env),encoding:'utf8',timeout:10000,stdio:['ignore','pipe','pipe']});
+  git('init','--quiet');
+  const quote=value=>"'"+value.replaceAll("'","'\\''")+"'";
+  git('config','filter.aihr-metadata-test.clean',[process.execPath,filter].map(quote).join(' '));
+  writeFileSync(join(repo,'.gitattributes'),'tracked.txt filter=aihr-metadata-test\n');writeFileSync(join(repo,'tracked.txt'),'before\n');
+  git('add','.');git('-c','user.name=Fictional CI','-c','user.email=ci@example.invalid','commit','--quiet','-m','Fictional metadata control');
+  const tracked=join(repo,'tracked.txt'),indexed=statSync(tracked);
+  unlinkSync(witness);writeFileSync(tracked,'after!\n');
+  // A different size lets Git report dirty from index metadata without ever
+  // invoking the clean filter. Equal size plus an independently changed mtime
+  // require content conversion; the missing-witness assertion stays mandatory.
+  utimesSync(tracked,indexed.atime,new Date(indexed.mtimeMs-2000));
+  const changed=statSync(tracked);assert.equal(changed.size,indexed.size);
+  assert(Math.abs(changed.mtimeMs-indexed.mtimeMs)>=1000,'Tracked metadata must differ independently of content size');
+  for(const key of keys)process.env[key]=key.endsWith('_URL')?'postgres://fictional-owner@control.invalid/private':'fictional-sentinel';
+  delete process.env.AIHR_CI_HEAD;
+  assert.throws(()=>createPlan(repo),/CI requires a clean candidate/);
+  assert.deepEqual(JSON.parse(readFileSync(witness,'utf8')),{tokenAbsent:true,passwordAbsent:true,databasesClosed:true});
+  assert.equal(process.env.GH_TOKEN,'fictional-sentinel');
+ }finally{
+  for(const[key,value]of original){if(value===undefined)delete process.env[key];else process.env[key]=value;}
+  rmSync(root,{recursive:true,force:true});
+ }
 });

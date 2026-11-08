@@ -557,19 +557,39 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
       - uses: ./automation/.github/actions/setup-alpha
-        with: {capacity_profile: "${{ github.run_attempt == 1 && 'bounded-suite-setup' || 'legacy' }}"}
-      - name: Source-bound PDF dependencies for this complete unit
-        env: {UNIT: '${{ matrix.unit }}'}
-        run: node ../automation/.github/ci/pdf-tools.mjs --unit "$UNIT"
-      - name: Provision actual nonroot Chromium driver
-        run: pnpm exec playwright install --with-deps chromium
-      - name: Preserve suite headroom after native tooling
-        if: ${{ github.run_attempt == 1 }}
-        run: bash ../automation/.github/ci/prepare-runner.sh
-        env: {AIHR_CI_CAPACITY_PROFILE: bounded-suite-ready}
-      - run: git rev-parse --verify -q refs/heads/main >/dev/null || git branch main origin/main
-      - run: node ../automation/.github/ci/run-unit.mjs "$UNIT" "$RUNNER_TEMP/aihr-ci"
-        env: {UNIT: '${{ matrix.unit }}', GH_TOKEN: '${{ github.token }}'}
+        with: {capacity_profile: "${{ github.run_attempt == 1 && 'bounded-suite-setup' || 'legacy' }}", native_controller: 'true'}
+      - name: Prepare candidate reference through protected native owner
+        run: '"/var/lib/aihr-native-controller/$GITHUB_RUN_ID/node" "/var/lib/aihr-native-controller/$GITHUB_RUN_ID/automation/.github/ci/native-controller-owner.mjs" ensure-main'
+        env:
+          LD_PRELOAD: ''
+          LD_LIBRARY_PATH: ''
+          LD_AUDIT: ''
+          GLIBC_TUNABLES: ''
+          NODE_OPTIONS: ''
+          NODE_PATH: ''
+          NODE_EXTRA_CA_CERTS: ''
+          BASH_ENV: /dev/null
+          ENV: /dev/null
+          SHELLOPTS: ''
+          BASHOPTS: ''
+      # run-unit captures the retained installed closure BEFORE createPlan's
+      # candidate classifier, then prepares its source-bound PDF prerequisite.
+      - name: Run complete unit through protected native owner
+        run: '"/var/lib/aihr-native-controller/$GITHUB_RUN_ID/node" "/var/lib/aihr-native-controller/$GITHUB_RUN_ID/automation/.github/ci/native-controller-owner.mjs" run-unit "$UNIT" "$RUNNER_TEMP/aihr-ci"'
+        env:
+          UNIT: '${{ matrix.unit }}'
+          GH_TOKEN: '${{ github.token }}'
+          LD_PRELOAD: ''
+          LD_LIBRARY_PATH: ''
+          LD_AUDIT: ''
+          GLIBC_TUNABLES: ''
+          NODE_OPTIONS: ''
+          NODE_PATH: ''
+          NODE_EXTRA_CA_CERTS: ''
+          BASH_ENV: /dev/null
+          ENV: /dev/null
+          SHELLOPTS: ''
+          BASHOPTS: ''
       - name: Retain actual PDF setup diagnostics with the unit evidence
         if: always()
         run: |

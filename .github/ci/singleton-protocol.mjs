@@ -3,8 +3,10 @@ import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
 import {validatePostgresEvidence} from './postgres-evidence.mjs';
 import {CI_POLICY} from './policy-version.mjs';
+import {NATIVE_HELPER_SOURCES} from './native-next-helper-sources.mjs';
 export const SINGLETON_VERSION=1;
 const measured=[
+ 'test/access-editor-native-owner-presentation.test.ts',
  'test/analytics-termination-lateral.test.ts',
  'test/employee-choice-assignment-membership-plan.test.ts',
  'test/employee-choice-organisation-plan.test.ts',
@@ -23,10 +25,12 @@ export const SINGLETON_FILES=Object.freeze({
  ...Object.fromEntries(measured.map(file=>[file,'controlled-database-v1'])),
  'test/runtime-ready-admission-native.test.ts':'linux-systemd-nginx-v1',
  'test/notification-worker-lifecycle.test.ts':'notification-cluster-v1',
+ 'test/notification-worker-native-plan-diagnostic.test.ts':'notification-cluster-v1',
  'test/runtime-next-admission-native.test.ts':'linux-next-postgres-v1',
 });
 export const singletonProfile=file=>Object.hasOwn(SINGLETON_FILES,file)?SINGLETON_FILES[file]:null;
 export const nativeNextUnit=unit=>unit?.singleton?.profile==='linux-next-postgres-v1';
+export const singletonControllerPath=(unit,workspace,runId)=>nativeNextUnit(unit)?'/var/lib/aihr-native-controller/'+runId+'/automation':workspace+'/automation';
 export const singletonJobName=unit=>nativeNextUnit(unit)?`native-test (${unit.id})`:unit.kind==='browser'?`browser (${unit.engine})`:`test (${unit.id})`;
 export const singletonKind=profile=>profile==='linux-systemd-nginx-v1'?'nodb':'db';
 export function assertSingletonSelection(files){assert(!files.some(file=>singletonProfile(file))||files.length===1,'Infrastructure-sensitive focused tests require an actual sole-file selection');}
@@ -45,11 +49,38 @@ export function assertSingletonUnit(unit){
  assert.deepEqual(unit.singleton,expected,'Changed singleton execution profile');assert.equal(unit.kind,singletonKind(expected.profile));
  return expected;
 }
+// Fixed reviewed component closure. These are source bindings, not privileges,
+// new profiles, skip exemptions or permission to execute an arbitrary candidate.
+const componentSources=Object.freeze({
+ 'test/access-editor-native-owner-presentation.test.ts':Object.freeze([
+  'db/migrations/3211_access_editor_native_owner_presentation.sql',
+  'test/fixtures/access-editor-native-owner.ts','test/fixtures/access-editor-cleanup-lifetime.ts','test/fixtures/access-editor-catalogue-diagnostic.ts','test/fixtures/access-editor-owner-dependencies.ts',
+  'test/fixtures/access-editor-owned-work.ts','test/fixtures/access-editor-original739-journal.json',
+  'test/fixtures/access-editor-locked-baseline.ts',
+ ]),
+ 'test/notification-worker-native-plan-diagnostic.test.ts':Object.freeze([
+  'test/harness.ts','lib/notification-worker/lifecycle.ts','lib/notification-worker/projection.ts',
+  'lib/assessment-reminder-mail.ts','test/fixtures/notification-worker/owner-fixture.ts',
+  'test/fixtures/notification-worker/database.ts','test/fixtures/notification-worker/diagnostic-ownership.ts',
+  'test/fixtures/notification-worker/plan-logging.ts','test/fixtures/notification-worker/auto-explain.ts',
+  'test/fixtures/notification-worker/admission-plan-summary.ts',
+  'test/fixtures/notification-worker/lifecycle.sql','test/fixtures/notification-worker/projection.sql',
+  'test/fixtures/notification-worker/assessment.sql','test/fixtures/notification-worker/process.sql',
+  'test/fixtures/notification-worker/query-shape.sql','test/fixtures/notification-worker/exact-source.sql',
+ ]),
+});
 export function singletonSources(unit){
  assertSingletonUnit(unit);
  return [unit.files[0],'test/helpers/ci-singleton-admission.ts','.github/ci/singleton-protocol.mjs','.github/ci/policy-version.mjs',
-  'vitest.config.ts','vitest.nodb.config.ts',...(unit.kind==='db'?['test/db-names.ts','test/global-setup.ts','test/env.ts']:['deploy/admission/test_native.py']),
-  ...(nativeNextUnit(unit)?['deploy/admission/test_next_native.py','deploy/admission/next_profile.py','deploy/admission/controller.py','.github/ci/runtime_inventory.py','.github/ci/native-next-build-packet.mjs','.github/ci/native-next-build-inputs.mjs','.github/ci/candidate-environment.mjs','.github/ci/build-artifact.mjs']:[])].sort();
+  'vitest.config.ts','vitest.nodb.config.ts',...(componentSources[unit.files[0]]??[]),...(unit.kind==='db'?['test/db-names.ts','test/global-setup.ts','test/env.ts']:['deploy/admission/test_native.py']),
+  ...(nativeNextUnit(unit)?[...Object.values(NATIVE_HELPER_SOURCES),'.github/ci/native-next-helper-sources.mjs','.github/ci/native-next-build-packet.mjs',
+   '.github/ci/native-next-installation.mjs','.github/ci/native-next-build-inputs.mjs','.github/ci/candidate-environment.mjs','.github/ci/build-artifact.mjs',
+   'test/helpers/native-next-fixture.ts','scripts/performance/native-next-boot-browser.mjs',
+   'scripts/performance/fixture-workload.mjs','scripts/performance/next-source-proof.mjs',
+   '.github/ci/native-controller-bootstrap.py','.github/ci/native-controller-owner.mjs','.github/ci/prepare-runner.sh',
+   '.github/ci/run-unit.mjs','.github/ci/plan.mjs','.github/ci/singleton-profiles.mjs',
+   '.github/actions/setup-alpha/action.yml','.github/workflows/alpha-staging.yml',
+   'scripts/migrate-with-focused-prerequisites.ts','scripts/lib/discard-premigration.ts','test/helpers/personnel-draft-discard-ci-role-fixture.ts']:[])].sort();
 }
 export const protocolHash=value=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const fullSha=value=>typeof value==='string'&&/^[a-f0-9]{40}$/.test(value);
@@ -114,7 +145,7 @@ export function validateSingletonHost({env,event,layout,plan,unit}){
  for(const [key,value]of Object.entries({GITHUB_ACTIONS:'true',CI:'true',RUNNER_ENVIRONMENT:'github-hosted',RUNNER_OS:'Linux',GITHUB_REPOSITORY:'StradaverseHub/ai-hr',GITHUB_REPOSITORY_ID:'1333414856',GITHUB_WORKFLOW:'alpha-staging-ci',GITHUB_JOB:nativeNextUnit(unit)?'native-test':'test',GITHUB_RUN_ATTEMPT:'1'}))assert.equal(env[key],value,key);
  assert(positive(env.GITHUB_RUN_ID));assert.equal(env.AIHR_CI_HEAD,plan.sha);assert.equal(env.AIHR_CI_CONTROL_HEAD,plan.controller);assert.equal(env.GITHUB_SHA,plan.controller);
  assert.equal(layout.platform,'linux');assert.equal(layout.sourceHead,plan.sha);assert.equal(layout.controllerHead,plan.controller);assert.equal(layout.sourceClean,true);assert.equal(layout.controllerClean,true);
- assert.equal(layout.source,layout.workspace+'/source');assert.equal(layout.automation,layout.workspace+'/automation');assert.equal(layout.cwd,layout.source);assert.equal(layout.evidence,layout.temp+'/aihr-ci');
+ assert.equal(layout.source,layout.workspace+'/source');assert.equal(layout.automation,singletonControllerPath(unit,layout.workspace,env.GITHUB_RUN_ID));assert.equal(layout.cwd,layout.source);assert.equal(layout.evidence,layout.temp+'/aihr-ci');
  assert(!Object.keys(env).some(key=>key.startsWith('AIHR_FOCUSED_')),'Focused and full singleton intent cannot mix');
  assert(env.TEST_DB_NAMESPACE===undefined||env.TEST_DB_NAMESPACE==='');
  assert.equal(event?.repository?.full_name,'StradaverseHub/ai-hr');assert.equal(String(event.repository.id),'1333414856');
