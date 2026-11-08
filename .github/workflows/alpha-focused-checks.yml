@@ -181,7 +181,7 @@ jobs:
       - name: Ensure owned database cleanup after interrupted checks
         if: always()
         run: |
-          if [ "$AIHR_FOCUSED_TESTS" = '["test/employee-choice-native-purpose-plan.test.ts"]' ] || [ "$AIHR_FOCUSED_TESTS" = '["test/employee-choice-benchmark-owner-native.test.ts"]' ]; then
+          if [ "$AIHR_FOCUSED_TESTS" = '["test/employee-choice-native-purpose-plan.test.ts"]' ] || [ "$AIHR_FOCUSED_TESTS" = '["test/employee-choice-benchmark-owner-native.test.ts"]' ] || [ "$AIHR_FOCUSED_TESTS" = '["test/employee-choice-native-owner-factory.test.ts"]' ]; then
             node ../automation/.github/ci/focused-checks.mjs cleanup "$RUNNER_TEMP/aihr-focused"
           else
             bash ../automation/.github/ci/postgres.sh stop

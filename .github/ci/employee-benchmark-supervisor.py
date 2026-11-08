@@ -17,7 +17,8 @@ from pathlib import Path
 
 FILE = 'test/employee-choice-native-purpose-plan.test.ts'
 CONTROL_FILE = 'test/employee-choice-benchmark-owner-native.test.ts'
-LIMITS = {'git-head': 10, 'git-status': 10, 'git-tracked': 10, 'evidence': 30, 'classifier': 15, 'reset': 60, 'migrate': 60, 'benchmark': 960, 'native-controls': 180,
+FACTORY_FILE = 'test/employee-choice-native-owner-factory.test.ts'
+LIMITS = {'git-head': 10, 'git-status': 10, 'git-tracked': 10, 'evidence': 30, 'classifier': 15, 'reset': 60, 'migrate': 60, 'benchmark': 960, 'native-controls': 180, 'native-factory': 206,
           'stats': 10, 'logs': 10, 'inspect': 10, 'stop': 9}
 REASONS = {'complete', 'command-failed', 'deadline', 'monitor-died', 'handshake-refused',
            'protocol-refused', 'descendants-survived', 'session-escaped', 'group-uncertain', 'owner-interrupted'}
@@ -283,11 +284,13 @@ def request_command(request):
     temp = Path(os.environ['RUNNER_TEMP']).resolve()
     require(destination.is_absolute() and destination.resolve() == destination and temp in destination.parents)
     selection = json.loads(os.environ['AIHR_FOCUSED_TESTS'])
-    require(selection in ([FILE], [CONTROL_FILE]))
+    require(selection in ([FILE], [CONTROL_FILE], [FACTORY_FILE]))
     if stage == 'benchmark':
         require(selection == [FILE])
     if stage == 'native-controls':
         require(selection == [CONTROL_FILE])
+    if stage == 'native-factory':
+        require(selection == [FACTORY_FILE])
     require(os.environ.get('GITHUB_ACTIONS') == 'true' and os.environ.get('RUNNER_ENVIRONMENT') == 'github-hosted')
     require(re.fullmatch(r'[1-9][0-9]{0,19}', os.environ['GITHUB_RUN_ID']) is not None
             and re.fullmatch(r'[1-9][0-9]{0,3}', os.environ['GITHUB_RUN_ATTEMPT']) is not None)
@@ -301,6 +304,7 @@ def request_command(request):
         'reset': ['bash', str(control / '.github/ci/postgres.sh'), 'reset'],
         'migrate': ['pnpm', 'db:migrate'],
         'native-controls': ['pnpm', 'exec', 'vitest', 'run', CONTROL_FILE, '--reporter=default', '--reporter=json', '--outputFile.json=' + str(destination / 'db.vitest.json')],
+        'native-factory': ['pnpm', 'exec', 'vitest', 'run', FACTORY_FILE, '--reporter=default', '--reporter=json', '--outputFile.json=' + str(destination / 'db.vitest.json')],
         'benchmark': ['pnpm', 'exec', 'vitest', 'run', FILE, '--reporter=default', '--reporter=json', '--outputFile.json=' + str(destination / 'db.vitest.json')],
         'stats': ['bash', str(control / '.github/ci/postgres.sh'), 'stats'],
         'logs': ['docker', 'logs', name],
@@ -330,6 +334,10 @@ def job_budget(stage, anchor, env, boot, now):
         require(seconds >= 900)
     if stage == 'native-controls':
         require(seconds >= 180)
+    if stage == 'native-factory':
+        # Original global setup allowance128s + three complete26s owners.
+        # This is not the two-case180s profile or the900s benchmark clock.
+        require(seconds >= 128 + 3 * 26)
     require(seconds > 0)
     return seconds, elapsed
 
