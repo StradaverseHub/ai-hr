@@ -24,10 +24,12 @@
  */
 import { and, desc, eq, isNull } from 'drizzle-orm';
 import { agentSwitchStatesTx } from './agent-principal';
-import { withTenant, type SessionContext } from '../db/client';
+import { withTenant, type SessionContext, type Tx } from '../db/client';
 import * as schema from '../db/schema';
 import { resolveActiveAiConfig } from './ai-config';
-import { isModuleEnabled, settingEnabled } from './entitlements';
+import { isModuleEnabled, settingEnabled,resolveEntitlementsTx } from './entitlements';
+import {isAdmin} from '../lib/authz-model';
+import {assertAiPresentationPrincipalTx} from './ai-principal';
 import { mayUseAssistant } from './assistant-grant';
 import { DETECTORS } from './payroll-anomaly-detectors';
 
@@ -133,15 +135,7 @@ export async function agentStatuses(ctx: SessionContext): Promise<AgentStatus[]>
   const planDrafterOn = settingEnabled(ctx, 'feedback.ai_planning_enabled');
 
   const [lastSweep, aiConfigured, assistant, switches] = await Promise.all([
-    withTenant(ctx, async (tx) => {
-      const [row] = await tx
-        .select({ at: schema.payrollAnomalyVerdict.computedAt })
-        .from(schema.payrollAnomalyVerdict)
-        .where(isNull(schema.payrollAnomalyVerdict.supersededAt))
-        .orderBy(desc(schema.payrollAnomalyVerdict.computedAt))
-        .limit(1);
-      return row?.at ?? null;
-    }),
+    withTenant(ctx, latestSweepTx),
     // The narrator and the assistant both need a provider; neither can run on the platform's goodwill.
     withTenant(ctx, (tx) => resolveActiveAiConfig(tx, ctx)).then((c) => c != null),
     mayUseAssistant(ctx).then((a) => a.allowed),
@@ -167,15 +161,12 @@ export async function agentStatuses(ctx: SessionContext): Promise<AgentStatus[]>
     {
       id: 'detectors',
       kind: 'deterministic',
-      active: payrollOn,
-      reasonKey: payrollOn ? 'detectorsOn' : 'moduleOff',
+      ...builtInStatusFields('detectors',payrollOn,lastSweep,sweepFresh),
     },
     {
       id: 'sweep',
       kind: 'deterministic',
-      active: sweepFresh,
-      // "Never run" and "ran a fortnight ago" are different faults and get different sentences.
-      reasonKey: lastSweep == null ? 'sweepNever' : sweepFresh ? 'sweepOn' : 'sweepStale',
+      ...builtInStatusFields('sweep',payrollOn,lastSweep,sweepFresh),
     },
     {
       id: 'narrator',
@@ -190,14 +181,9 @@ export async function agentStatuses(ctx: SessionContext): Promise<AgentStatus[]>
       reasonKey: assistant ? 'assistantOn' : 'assistantNoGrant',
     },
     {
-      // r235, ADR-0083 §2.5 — the action layer. DETERMINISTIC, and saying so on a page about AI is the
-      // point: the thing that proposes closing an exception is the SAME predicate the readiness screen
-      // uses, not a model with an opinion. It sits beside `autonomy` deliberately — one row says work is
-      // now proposed, the next says nothing is done without a person, and the pair is the honest answer.
       id: 'actions',
       kind: 'deterministic',
-      active: payrollOn,
-      reasonKey: payrollOn ? 'actionsOn' : 'moduleOff',
+      ...builtInStatusFields('actions',payrollOn,lastSweep,sweepFresh),
     },
     {
       // ADR-0084 §2.6, r238 — the FIRST surface in this product where a model can create a finding rather
@@ -277,14 +263,40 @@ export async function agentStatuses(ctx: SessionContext): Promise<AgentStatus[]>
       offByDesign: !planDrafterOn,
     },
     {
-      // ADR-0083 §2.5 replaced 0074's global dial with per-action-type autonomy, and NONE is granted.
-      // Rendered as a row rather than omitted: an operator reading this page is entitled to know that
-      // nothing acts on its own, and to see that it is a decision rather than an oversight.
       id: 'autonomy',
       kind: 'deterministic',
-      active: false,
-      reasonKey: 'autonomyByDesign',
-      offByDesign: true,
+      ...builtInStatusFields('autonomy',payrollOn,lastSweep,sweepFresh),
     },
   ];
+}
+
+
+export type WorkersBuiltInStatus=AgentStatus&Readonly<{id:'detectors'|'sweep'|'actions'|'autonomy'}>;
+/** One pure display derivation, shared with the unchanged full roster semantics. */
+function builtInStatusFields(id:WorkersBuiltInStatus['id'],payrollOn:boolean,lastSweep:Date|null,sweepFresh:boolean):Pick<WorkersBuiltInStatus,'active'|'reasonKey'|'offByDesign'>{
+ switch(id){
+  case 'detectors':return {active:payrollOn,reasonKey:payrollOn?'detectorsOn':'moduleOff'};
+  case 'sweep':return {active:sweepFresh,reasonKey:lastSweep==null?'sweepNever':sweepFresh?'sweepOn':'sweepStale'};
+  case 'actions':return {active:payrollOn,reasonKey:payrollOn?'actionsOn':'moduleOff'};
+  case 'autonomy':return {active:false,reasonKey:'autonomyByDesign',offByDesign:true};
+ }
+}
+async function latestSweepTx(tx:Tx):Promise<Date|null>{
+      const [row] = await tx
+        .select({ at: schema.payrollAnomalyVerdict.computedAt })
+        .from(schema.payrollAnomalyVerdict)
+        .where(isNull(schema.payrollAnomalyVerdict.supersededAt))
+        .orderBy(desc(schema.payrollAnomalyVerdict.computedAt))
+        .limit(1);
+      return row?.at ?? null;
+}
+/** Only the four statuses actually displayed on Workers. No unused provider, Assistant
+ * eligibility, narrative or specialist-attribution query is performed for this purpose. */
+export async function workersBuiltInStatusesTx(tx:Tx,supplied:SessionContext,at:Date):Promise<readonly WorkersBuiltInStatus[]>{
+ const ctx={...supplied,roles:supplied.roles?.slice(),grants:supplied.grants?.map(grant=>({...grant}))},now=at.getTime();
+ if(!ctx.userId||ctx.agent||!isAdmin(ctx)||!Number.isFinite(now))throw new Error('Current Workers presentation authority required.');
+ await assertAiPresentationPrincipalTx(tx,ctx);
+ const fresh={...ctx,entitlements:await resolveEntitlementsTx(tx,ctx.tenantId)},lastSweep=await latestSweepTx(tx);
+ const payrollOn=isModuleEnabled(fresh,'payroll'),sweepFresh=lastSweep!=null&&now-lastSweep.getTime()<SWEEP_FRESH_DAYS*24*60*60*1000;
+ return Object.freeze((['detectors','sweep','actions','autonomy'] as const).map(id=>Object.freeze({id,kind:'deterministic' as const,...builtInStatusFields(id,payrollOn,lastSweep,sweepFresh)})));
 }

@@ -14,11 +14,12 @@
  * none is built here and nothing is sent anywhere (§11.3 change 6: no auto-linking of identities, ADR-0117).
  *
  * Both read only the caller's tenant (tenant filter plus RLS) and are for group administrators. */
-import {and,count,eq,gte,ne} from 'drizzle-orm';
-import {withTenant,type SessionContext} from '../../db/client';
+import {and,count,eq,gte,ne,type SQL} from 'drizzle-orm';
+import type {SelectedFields} from 'drizzle-orm/pg-core';
+import {withTenant,type SessionContext,type Tx} from '../../db/client';
 import {terasMandate,terasOutcomeFollowup,terasOutcomeRecord,terasWorkerControl} from '../../db/teras-schema';
 import {mandateAgentIdentity,mandateState} from '../mandates/mandates';
-import {WORKER_SWITCH_IDENTITY} from './controls';
+import {WORKER_SWITCH_IDENTITY,workerPageContextTx} from './controls';
 import {terasEntity} from '../semantic-model/generate';
 import {listWorkers,WorkerRegistryRefused} from './views';
 import {registeredWorkers,type WorkerDeclaration,type WorkerFamily} from './workers';
@@ -44,14 +45,18 @@ function workerOf(agentIdentity:string,jobType:string|null,reads:readonly {tool:
 }
 const bump=(counts:Counts,key:string,by=1)=>{counts[key]=(counts[key]??0)+by;};
 
+/** Same join/scope owner for both full export and page-only column projections. */
+function summaryRecordsTx<T extends SelectedFields>(tx:Tx,fields:T,tenantId:string,since:SQL|undefined){
+ return tx.select(fields).from(terasOutcomeRecord).leftJoin(terasMandate,and(eq(terasMandate.tenantId,terasOutcomeRecord.tenantId),eq(terasMandate.id,terasOutcomeRecord.mandateId)))
+  .where(and(eq(terasOutcomeRecord.tenantId,tenantId),ne(terasOutcomeRecord.agentIdentity,WORKER_SWITCH_IDENTITY),since));
+}
+
 export async function outcomeSummary(ctx:SessionContext,options:Readonly<{since?:Date}>={}):Promise<OutcomeSummary>{
  if(!ctx.userId||ctx.agent||!isGroupAdmin(ctx))throw new WorkerRegistryRefused('not_administrator');
  return withTenant(ctx,async tx=>{
   const since=options.since?gte(terasOutcomeRecord.startedAt,options.since):undefined;
-  const records=await tx.select({id:terasOutcomeRecord.id,agentIdentity:terasOutcomeRecord.agentIdentity,mandateId:terasOutcomeRecord.mandateId,
-   jobType:terasMandate.jobType,reads:terasOutcomeRecord.reads,outcomeKind:terasOutcomeRecord.outcomeKind,humanInvolvement:terasOutcomeRecord.humanInvolvement,notice:terasOutcomeRecord.notice})
-   .from(terasOutcomeRecord).leftJoin(terasMandate,and(eq(terasMandate.tenantId,terasOutcomeRecord.tenantId),eq(terasMandate.id,terasOutcomeRecord.mandateId)))
-   .where(and(eq(terasOutcomeRecord.tenantId,ctx.tenantId),ne(terasOutcomeRecord.agentIdentity,WORKER_SWITCH_IDENTITY),since));
+  const records=await summaryRecordsTx(tx,{id:terasOutcomeRecord.id,agentIdentity:terasOutcomeRecord.agentIdentity,mandateId:terasOutcomeRecord.mandateId,
+   jobType:terasMandate.jobType,reads:terasOutcomeRecord.reads,outcomeKind:terasOutcomeRecord.outcomeKind,humanInvolvement:terasOutcomeRecord.humanInvolvement,notice:terasOutcomeRecord.notice},ctx.tenantId,since);
   const decisions=await tx.select({recordId:terasOutcomeFollowup.recordId,decision:terasOutcomeFollowup.decision,n:count()}).from(terasOutcomeFollowup)
    .innerJoin(terasOutcomeRecord,and(eq(terasOutcomeRecord.tenantId,terasOutcomeFollowup.tenantId),eq(terasOutcomeRecord.id,terasOutcomeFollowup.recordId)))
    .where(and(eq(terasOutcomeFollowup.tenantId,ctx.tenantId),since)).groupBy(terasOutcomeFollowup.recordId,terasOutcomeFollowup.decision);
@@ -122,4 +127,16 @@ export async function exportAgentRegistry(ctx:SessionContext,options:Readonly<{s
  }
  return Object.freeze({kind:'teras.agent_registry_export' as const,version:AGENT_REGISTRY_EXPORT_VERSION,generatedAt:now.toISOString(),tenantId:ctx.tenantId,
   agents:Object.freeze(agents),outcomes,adapters:Object.freeze({entraAgentId:null,googleAgentIdentity:null})});
+}
+
+/** Only the visible family totals and record count. Full outcome/registry exports keep
+ * their decisions, mandate and per-worker contracts; the page does not read those facts. */
+export type PageOutcomeSummary=Pick<OutcomeSummary,'records'|'byFamily'>;
+export async function outcomeSummaryPageTx(tx:Tx,supplied:SessionContext,options:Readonly<{since?:Date}>={}):Promise<PageOutcomeSummary>{
+ const sinceDate=options.since?new Date(options.since.getTime()):undefined,ctx=await workerPageContextTx(tx,supplied);
+ const since=sinceDate?gte(terasOutcomeRecord.startedAt,sinceDate):undefined;
+ const records=await summaryRecordsTx(tx,{agentIdentity:terasOutcomeRecord.agentIdentity,jobType:terasMandate.jobType,reads:terasOutcomeRecord.reads},ctx.tenantId,since);
+ const families=new Map(registeredWorkers().map(worker=>[worker.id,worker.family])),byFamily:Counts={};
+ for(const record of records){const id=workerOf(record.agentIdentity,record.jobType??null,record.reads??[]);bump(byFamily,families.get(id)??'unregistered');}
+ return Object.freeze({records:records.length,byFamily:Object.freeze(byFamily)});
 }

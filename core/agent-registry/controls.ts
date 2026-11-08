@@ -12,11 +12,12 @@ import {assertAiCentreRunningTx} from '../ai-centre-control';
 import {and,eq,inArray,sql} from 'drizzle-orm';
 import {withTenant,type SessionContext,type Tx} from '../../db/client';
 import {actorOf,appendEvent} from '../../db/events';
-import {terasMandateControl,terasWorkerControl,type TerasAttestedProvider,type TerasSwitchedWorker} from '../../db/teras-schema';
+import {terasMandateControl,terasMandateJobTypeEnablement,terasWorkerControl,type TerasAttestedProvider,type TerasSwitchedWorker} from '../../db/teras-schema';
 import {isGroupAdmin} from '../../lib/authz-model';
-import {agentSwitchStatesTx} from '../agent-principal';
+import {agentSwitchStatesTx,type AgentSwitchState} from '../agent-principal';
 import {resolveActiveAiConfig} from '../ai-config';
-import {isModuleEnabled} from '../entitlements';
+import {isModuleEnabled,resolveEntitlementsTx} from '../entitlements';
+import {assertAiPresentationPrincipalTx} from '../ai-principal';
 import {readMandateKeysTx} from '../mandates/mandates';
 import {newRunId,writeOutcomeRecordTx} from '../outcome-record/record';
 import {registeredWorker,registeredWorkers,type WorkerDeclaration} from './workers';
@@ -47,6 +48,52 @@ export type WorkerSwitchState=Readonly<{on:boolean;
  owner:'tenant_setting'|'ai_provider'|'job_type'|'worker_control';
  /** A tenant setting that is on but not attributed to an administrator does not run under the principal. */
  detail:'off'|'on'|'unattributed'}>;
+
+/** Render facts from the common reader in this same transaction. These cannot admit a run,
+ * issue a provider configuration or replace the native calling-principal proof. */
+export type WorkerPageReadFacts=Readonly<{providerUsable:boolean;agentSwitches:readonly AgentSwitchState[];at:Date}>;
+export function captureWorkerPageReadFacts(supplied:WorkerPageReadFacts):WorkerPageReadFacts{
+ if(typeof supplied.providerUsable!=='boolean'||!(supplied.at instanceof Date)||!Number.isFinite(supplied.at.getTime()))throw new WorkerControlRefused('invalid');
+ return Object.freeze({providerUsable:supplied.providerUsable,at:new Date(supplied.at.getTime()),
+  agentSwitches:Object.freeze(supplied.agentSwitches.map(row=>Object.freeze({...row,...(row.state==='attributed'?{at:new Date(row.at.getTime())}:{})})))});
+}
+
+/** Independently admit each exported page reader in its ACTUAL supplied RR/RO transaction.
+ * The returned context is ordinary captured display data, never a transferable authority proof. */
+export async function workerPageContextTx(tx:Tx,supplied:SessionContext):Promise<SessionContext>{
+ const ctx={...supplied,roles:supplied.roles?.slice(),grants:supplied.grants?.map(grant=>({...grant}))};
+ if(!ctx.userId||ctx.agent||!isGroupAdmin(ctx))throw new WorkerControlRefused('not_administrator');
+ await assertAiPresentationPrincipalTx(tx,ctx);
+ const [native]=await tx.execute<{allowed:boolean}>(sql`select app.is_group_admin() as allowed`);
+ if(native?.allowed!==true)throw new WorkerControlRefused('not_administrator');
+ return {...ctx,entitlements:await resolveEntitlementsTx(tx,ctx.tenantId)};
+}
+
+/** The closed registry's switches for a display, without executing a live run gate.
+ * Metadata rows are batched; attributed settings and usable provider are the common reader's facts. */
+export async function workerPageSwitchesTx(tx:Tx,supplied:SessionContext,suppliedFacts:WorkerPageReadFacts):Promise<Readonly<{stopped:boolean;switches:ReadonlyMap<string,WorkerSwitchState>}>>{
+ const facts=captureWorkerPageReadFacts(suppliedFacts),ctx=await workerPageContextTx(tx,supplied),workers=registeredWorkers();
+ const controlled=[...new Set(workers.flatMap(worker=>worker.switch.kind==='worker_control'?[worker.switch.workerId]:[]))];
+ const jobs=[...new Set(workers.flatMap(worker=>worker.switch.kind==='job_type'?[worker.switch.jobType]:[]))];
+ const controls=controlled.length?await tx.select({workerId:terasWorkerControl.workerId,enabled:terasWorkerControl.enabled}).from(terasWorkerControl)
+  .where(and(eq(terasWorkerControl.tenantId,ctx.tenantId),inArray(terasWorkerControl.workerId,controlled))):[];
+ const enablements=jobs.length?await tx.select({jobType:terasMandateJobTypeEnablement.jobType,enabled:terasMandateJobTypeEnablement.enabled}).from(terasMandateJobTypeEnablement)
+  .where(and(eq(terasMandateJobTypeEnablement.tenantId,ctx.tenantId),inArray(terasMandateJobTypeEnablement.jobType,jobs))):[];
+ const stopped=await tenantStoppedTx(tx,ctx.tenantId),switches=new Map<string,WorkerSwitchState>();
+ for(const worker of workers){
+  const sw=worker.switch;
+  if(sw.kind==='tenant_setting'){
+   const state=facts.agentSwitches.find(row=>row.feature===sw.feature);
+   const detail=state?.state==='attributed'?'on':state?.state==='unattributed'?'unattributed':'off';
+   switches.set(worker.id,Object.freeze({on:detail==='on',owner:'tenant_setting',detail}));
+  }else{
+   const on=sw.kind==='ai_provider'?facts.providerUsable:sw.kind==='job_type'?enablements.find(row=>row.jobType===sw.jobType)?.enabled===true
+    :controls.find(row=>row.workerId===sw.workerId)?.enabled===true;
+   switches.set(worker.id,Object.freeze({on,owner:sw.kind,detail:on?'on':'off'}));
+  }
+ }
+ return Object.freeze({stopped,switches});
+}
 
 /** The worker's switch as of this transaction. */
 export async function workerSwitchStateTx(tx:Tx,ctx:SessionContext,worker:WorkerDeclaration):Promise<WorkerSwitchState>{

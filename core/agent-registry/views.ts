@@ -8,15 +8,16 @@
  * Rates reuse the Control Tower agreement view (core/control-tower.ts agreementView) for workers recorded in
  * the agent proposal ledger, and the outcome record follow-ups for Teras workers. A rate whose denominator is
  * zero is null, never 0, with the same discipline as agreementView. Group administrators only. */
-import {and,count,desc,eq,inArray,max,sql} from 'drizzle-orm';
+import {and,count,desc,eq,inArray,max,sql,type SQL} from 'drizzle-orm';
 import {withTenant,type SessionContext,type Tx} from '../../db/client';
 import {agentProposal,domainEvent} from '../../db/schema';
 import {terasLoopRun,terasMandate,terasOutcomeFollowup,terasOutcomeRecord} from '../../db/teras-schema';
 import type {LoopId} from '../loops/types';
 import {isGroupAdmin} from '../../lib/authz-model';
-import {agreementView,type AgreementView} from '../control-tower';
+import {agreementView,workerAgreementPageRatesTx,type AgreementView} from '../control-tower';
+import type {ProposalRates} from '../agent-proposal';
 import {mandateState,type MandateState} from '../mandates/mandates';
-import {tenantStoppedTx,workerGateFromState,workerSwitchStateTx,type WorkerGate,type WorkerSwitchState} from './controls';
+import {captureWorkerPageReadFacts,workerPageContextTx,workerPageSwitchesTx,tenantStoppedTx,workerGateFromState,workerSwitchStateTx,type WorkerGate,type WorkerSwitchState,type WorkerPageReadFacts} from './controls';
 import {registeredWorker,registeredWorkers,type WorkerDeclaration} from './workers';
 
 export class WorkerRegistryRefused extends Error{constructor(readonly reason:'not_administrator'|'not_found'){super('Worker registry refused: '+reason);this.name='WorkerRegistryRefused';}}
@@ -28,11 +29,20 @@ export type WorkerRow=Readonly<{id:string;label:string;family:WorkerDeclaration[
  switch:WorkerSwitchState;stopped:boolean;stopHonoured:boolean;stopPending:string|null;gate:WorkerGate;
  lastRunAt:Date|null;metrics:WorkerMetricsView;mandates:Readonly<{active:number;total:number}>|null}>;
 
+
+/** One predicate owner for the registry's existing source-specific tool partition. */
+function outcomeWorkerTools(record:Extract<WorkerDeclaration['record'],{kind:'outcome_record'}>){
+ return record.tools?sql`(${sql.join(record.tools.map(tool=>sql`${terasOutcomeRecord.reads} @> ${JSON.stringify([{tool}])}::jsonb`),sql` or `)})`:undefined;
+}
+function eventWorkerSource(record:Extract<WorkerDeclaration['record'],{kind:'domain_event'}>){
+ return record.source?sql`${domainEvent.payload}->>'source'=${record.source}`:undefined;
+}
+
 /** When the worker last ran, from where its declaration says runs are recorded. */
 async function lastRunTx(tx:Tx,tenantId:string,worker:WorkerDeclaration):Promise<Date|null>{
  const record=worker.record;
  if(record.kind==='outcome_record'){
-  const tools=record.tools?sql`(${sql.join(record.tools.map(tool=>sql`${terasOutcomeRecord.reads} @> ${JSON.stringify([{tool}])}::jsonb`),sql` or `)})`:undefined;
+  const tools=outcomeWorkerTools(record);
   const [row]=await tx.select({at:max(terasOutcomeRecord.startedAt)}).from(terasOutcomeRecord)
    .where(and(eq(terasOutcomeRecord.tenantId,tenantId),eq(terasOutcomeRecord.agentIdentity,record.agentIdentity),tools));
   return row?.at??null;
@@ -56,7 +66,7 @@ async function lastRunTx(tx:Tx,tenantId:string,worker:WorkerDeclaration):Promise
  }
  const [row]=await tx.select({at:max(domainEvent.occurredAt)}).from(domainEvent)
   .where(and(eq(domainEvent.tenantId,tenantId),eq(domainEvent.eventType,record.eventType),
-   record.source?sql`${domainEvent.payload}->>'source'=${record.source}`:undefined));
+   eventWorkerSource(record)));
  return row?.at??null;
 }
 
@@ -73,12 +83,17 @@ async function followupMetricsTx(tx:Tx,tenantId:string,agentIdentity:string):Pro
 }
 function agreementMetrics(view:AgreementView|null,types:readonly string[]):WorkerMetricsView{
  if(!view)return Object.freeze({measured:false,acceptanceRate:null,reversalRate:null,decided:0,reason:'The agreement view could not be read.'});
- const rows=view.rates.filter(row=>types.includes(row.type));
+ const metrics=agreementPageMetrics(view.rates,types);
+ return Object.freeze({...metrics,reason:metrics.measured?null:view.blockedBy.length?`Not measured yet: ${view.blockedBy.join(', ')}.`:'Nobody has decided on one of its suggestions yet.'});
+}
+
+export type PageWorkerMetrics=Pick<WorkerMetricsView,'measured'|'acceptanceRate'|'reversalRate'|'decided'>;
+/** The original aggregation, shared by the full service and the smaller page DTO. */
+function agreementPageMetrics(rates:readonly ProposalRates[],types:readonly string[]):PageWorkerMetrics{
+ const rows=rates.filter(row=>types.includes(row.type));
  const approved=rows.reduce((n,row)=>n+row.approved,0),declined=rows.reduce((n,row)=>n+row.declined,0);
- // agreementView already blanks reversal rates that are not yet honest; keep its null.
  const reversal=rows.length===1?rows[0].reversalRate:null;
- return Object.freeze({measured:approved+declined>0,acceptanceRate:rate(approved,approved+declined),reversalRate:reversal,decided:approved+declined,
-  reason:approved+declined>0?null:view.blockedBy.length?`Not measured yet: ${view.blockedBy.join(', ')}.`:'Nobody has decided on one of its suggestions yet.'});
+ return Object.freeze({measured:approved+declined>0,acceptanceRate:rate(approved,approved+declined),reversalRate:reversal,decided:approved+declined});
 }
 
 async function rowsFor(ctx:SessionContext,workers:readonly WorkerDeclaration[]):Promise<WorkerRow[]>{
@@ -129,7 +144,7 @@ export async function workerDetail(ctx:SessionContext,workerId:string):Promise<W
   if(record.kind==='outcome_record'||record.kind==='mandate_runs'){
    const rows=record.kind==='outcome_record'
     ?await tx.select({record:terasOutcomeRecord}).from(terasOutcomeRecord).where(and(eq(terasOutcomeRecord.tenantId,ctx.tenantId),eq(terasOutcomeRecord.agentIdentity,record.agentIdentity),
-      record.tools?sql`(${sql.join(record.tools.map(tool=>sql`${terasOutcomeRecord.reads} @> ${JSON.stringify([{tool}])}::jsonb`),sql` or `)})`:undefined))
+      outcomeWorkerTools(record)))
       .orderBy(desc(terasOutcomeRecord.startedAt),desc(terasOutcomeRecord.id)).limit(RECENT)
     :await tx.select({record:terasOutcomeRecord}).from(terasOutcomeRecord)
       .innerJoin(terasMandate,and(eq(terasMandate.tenantId,terasOutcomeRecord.tenantId),eq(terasMandate.id,terasOutcomeRecord.mandateId)))
@@ -149,7 +164,7 @@ export async function workerDetail(ctx:SessionContext,workerId:string):Promise<W
    recentRuns=rows.map(item=>Object.freeze({at:item.at,runId:item.runId,outcomeKind:item.status==='ran'?'prepared':'stopped',humanInvolvement:'none',decision:null,mandateId:null}));
   }else{
    const rows=await tx.select({at:domainEvent.occurredAt}).from(domainEvent).where(and(eq(domainEvent.tenantId,ctx.tenantId),eq(domainEvent.eventType,record.eventType),
-    record.source?sql`${domainEvent.payload}->>'source'=${record.source}`:undefined)).orderBy(desc(domainEvent.occurredAt)).limit(RECENT);
+    eventWorkerSource(record))).orderBy(desc(domainEvent.occurredAt)).limit(RECENT);
    recentRuns=rows.map(item=>Object.freeze({at:item.at,runId:null,outcomeKind:null,humanInvolvement:null,decision:null,mandateId:null}));
   }
   const mandates=worker.authority.kind==='mandate'
@@ -159,4 +174,108 @@ export async function workerDetail(ctx:SessionContext,workerId:string):Promise<W
    :[];
   return Object.freeze({worker:row,recentRuns:Object.freeze(recentRuns),mandates:Object.freeze(mandates)});
  });
+}
+
+/** Exact fields rendered by the Workers registry; omitted ownership/read-scope/reason
+ * fields are not fabricated into a full WorkerRow. Full legacy services stay available. */
+export type PageWorkerRow=Pick<WorkerRow,'id'|'label'|'family'|'trigger'|'effect'|'authority'|'switch'|'stopped'|'stopHonoured'|'gate'|'lastRunAt'|'mandates'>&Readonly<{metrics:PageWorkerMetrics}>;
+export type PageWorkerRun=Omit<WorkerRun,'mandateId'>;
+export type PageWorkerMandate=Pick<WorkerMandateRow,'id'|'state'|'validUntil'|'revokedBy'>;
+export type PageWorkerDetail=Readonly<{worker:Pick<WorkerRow,'id'|'label'>;recentRuns:readonly PageWorkerRun[];mandates:readonly PageWorkerMandate[]}>;
+
+/** Every old last-run answer is MAX(timestamp) over the same tenant/RLS/source predicate.
+ * FILTER permits one scan per record kind; it neither deduplicates records nor chooses a tie row. */
+async function pageLastRunsTx(tx:Tx,tenantId:string,workers:readonly WorkerDeclaration[]):Promise<ReadonlyMap<string,Date|null>>{
+ const out=new Map<string,Date|null>(workers.map(worker=>[worker.id,null]));
+ const collect=(group:readonly {worker:WorkerDeclaration}[],rows:readonly Record<string,Date|null>[])=>{
+  group.forEach(({worker},i)=>out.set(worker.id,rows[0]?.['worker_'+i]??null));
+ };
+ const outcome=workers.flatMap(worker=>worker.record.kind==='outcome_record'?[{worker,record:worker.record}]:[]);
+ if(outcome.length){
+  const predicates=outcome.map(({record})=>and(eq(terasOutcomeRecord.agentIdentity,record.agentIdentity),outcomeWorkerTools(record))!);
+  const columns:Record<string,SQL<Date|null>>=Object.fromEntries(predicates.map((predicate,i)=>['worker_'+i,sql<Date|null>`max(${terasOutcomeRecord.startedAt}) filter(where ${predicate})`.mapWith(terasOutcomeRecord.startedAt)]));
+  collect(outcome,await tx.select(columns).from(terasOutcomeRecord).where(and(eq(terasOutcomeRecord.tenantId,tenantId),sql`(${sql.join(predicates,sql` or `)})`)));
+ }
+ const mandate=workers.flatMap(worker=>worker.record.kind==='mandate_runs'?[{worker,record:worker.record}]:[]);
+ if(mandate.length){
+  const columns:Record<string,SQL<Date|null>>=Object.fromEntries(mandate.map(({record},i)=>['worker_'+i,sql<Date|null>`max(${terasOutcomeRecord.startedAt}) filter(where ${terasMandate.jobType}=${record.jobType})`.mapWith(terasOutcomeRecord.startedAt)]));
+  collect(mandate,await tx.select(columns).from(terasOutcomeRecord).innerJoin(terasMandate,and(eq(terasMandate.tenantId,terasOutcomeRecord.tenantId),eq(terasMandate.id,terasOutcomeRecord.mandateId)))
+   .where(and(eq(terasOutcomeRecord.tenantId,tenantId),inArray(terasMandate.jobType,mandate.map(({record})=>record.jobType)))));
+ }
+ const proposals=workers.flatMap(worker=>worker.record.kind==='agent_proposal'?[{worker,record:worker.record}]:[]);
+ if(proposals.length){
+  const columns:Record<string,SQL<Date|null>>=Object.fromEntries(proposals.map(({record},i)=>['worker_'+i,sql<Date|null>`max(${agentProposal.proposedAt}) filter(where ${inArray(agentProposal.proposalType,[...record.proposalTypes])})`.mapWith(agentProposal.proposedAt)]));
+  collect(proposals,await tx.select(columns).from(agentProposal).where(and(eq(agentProposal.tenantId,tenantId),inArray(agentProposal.proposalType,[...new Set(proposals.flatMap(({record})=>record.proposalTypes))]))));
+ }
+ const loops=workers.filter(worker=>worker.record.kind==='loop_runs');
+ if(loops.length){
+  const columns:Record<string,SQL<Date|null>>=Object.fromEntries(loops.map((worker,i)=>['worker_'+i,sql<Date|null>`max(${terasLoopRun.startedAt}) filter(where ${terasLoopRun.workerId}=${worker.id})`.mapWith(terasLoopRun.startedAt)]));
+  collect(loops.map(worker=>({worker})),await tx.select(columns).from(terasLoopRun).where(and(eq(terasLoopRun.tenantId,tenantId),sql`(${sql.join(loops.map(worker=>sql`${terasLoopRun.workerId}=${worker.id}`),sql` or `)})`)));
+ }
+ const events=workers.flatMap(worker=>worker.record.kind==='domain_event'?[{worker,record:worker.record}]:[]);
+ if(events.length){
+  const predicates=events.map(({record})=>and(eq(domainEvent.eventType,record.eventType),eventWorkerSource(record))!);
+  const columns:Record<string,SQL<Date|null>>=Object.fromEntries(predicates.map((predicate,i)=>['worker_'+i,sql<Date|null>`max(${domainEvent.occurredAt}) filter(where ${predicate})`.mapWith(domainEvent.occurredAt)]));
+  collect(events,await tx.select(columns).from(domainEvent).where(and(eq(domainEvent.tenantId,tenantId),sql`(${sql.join(predicates,sql` or `)})`)));
+ }
+ return out;
+}
+
+/** One supplied snapshot, no provider issuance, nested transaction or execution gate. */
+export async function listWorkersPageTx(tx:Tx,supplied:SessionContext,suppliedFacts:WorkerPageReadFacts):Promise<readonly PageWorkerRow[]>{
+ const facts=captureWorkerPageReadFacts(suppliedFacts),ctx=await workerPageContextTx(tx,supplied),workers=registeredWorkers();
+ const types=[...new Set(workers.flatMap(worker=>worker.metrics.kind==='agreement_view'?worker.metrics.proposalTypes:[]))];
+ const rates=await workerAgreementPageRatesTx(tx,ctx,types),states=await workerPageSwitchesTx(tx,ctx,facts),lastRuns=await pageLastRunsTx(tx,ctx.tenantId,workers);
+ const mandates=await tx.select({jobType:terasMandate.jobType,validFrom:terasMandate.validFrom,validUntil:terasMandate.validUntil,revokedAt:terasMandate.revokedAt})
+  .from(terasMandate).where(eq(terasMandate.tenantId,ctx.tenantId));
+ const rows:PageWorkerRow[]=[];
+ for(const worker of workers){
+  const fullMetric=worker.metrics.kind==='outcome_followups'&&worker.record.kind==='outcome_record'?await followupMetricsTx(tx,ctx.tenantId,worker.record.agentIdentity):null;
+  const metrics=worker.metrics.kind==='agreement_view'?agreementPageMetrics(rates,worker.metrics.proposalTypes):fullMetric
+   ?Object.freeze({measured:fullMetric.measured,acceptanceRate:fullMetric.acceptanceRate,reversalRate:fullMetric.reversalRate,decided:fullMetric.decided})
+   :Object.freeze({measured:false,acceptanceRate:null,reversalRate:null,decided:0});
+  const sw=states.switches.get(worker.id);if(!sw)throw new Error('Registered worker display switch missing.');
+  const job=worker.authority.kind==='mandate'?worker.authority.jobType:null,own=job===null?null:mandates.filter(row=>row.jobType===job);
+  rows.push(Object.freeze({id:worker.id,label:worker.label,family:worker.family,trigger:worker.trigger,effect:worker.effect,authority:worker.authority,
+   switch:sw,stopped:states.stopped,stopHonoured:worker.stop.honoured,gate:workerGateFromState(sw.on,states.stopped),lastRunAt:lastRuns.get(worker.id)??null,metrics,
+   mandates:own?Object.freeze({active:own.filter(row=>mandateState(row,facts.at)==='active').length,total:own.length}):null}));
+ }
+ return Object.freeze(rows);
+}
+
+/** Detail does not re-read the entire worker row, agreement or provider just for id/label. */
+export async function workerDetailPageTx(tx:Tx,supplied:SessionContext,workerId:string,at:Date):Promise<PageWorkerDetail>{
+ const id=workerId,now=new Date(at.getTime()),ctx=await workerPageContextTx(tx,supplied),worker=registeredWorker(id);
+ if(!worker)throw new WorkerRegistryRefused('not_found');
+ if(!Number.isFinite(now.getTime()))throw new WorkerRegistryRefused('not_found');
+ const record=worker.record;let recentRuns:PageWorkerRun[]=[];
+ if(record.kind==='outcome_record'||record.kind==='mandate_runs'){
+  const fields={id:terasOutcomeRecord.id,at:terasOutcomeRecord.startedAt,runId:terasOutcomeRecord.runId,outcomeKind:terasOutcomeRecord.outcomeKind,humanInvolvement:terasOutcomeRecord.humanInvolvement};
+  const runs=record.kind==='outcome_record'
+   ?await tx.select(fields).from(terasOutcomeRecord).where(and(eq(terasOutcomeRecord.tenantId,ctx.tenantId),eq(terasOutcomeRecord.agentIdentity,record.agentIdentity),
+    outcomeWorkerTools(record)))
+    .orderBy(desc(terasOutcomeRecord.startedAt),desc(terasOutcomeRecord.id)).limit(RECENT)
+   :await tx.select(fields).from(terasOutcomeRecord).innerJoin(terasMandate,and(eq(terasMandate.tenantId,terasOutcomeRecord.tenantId),eq(terasMandate.id,terasOutcomeRecord.mandateId)))
+    .where(and(eq(terasOutcomeRecord.tenantId,ctx.tenantId),eq(terasMandate.jobType,record.jobType))).orderBy(desc(terasOutcomeRecord.startedAt),desc(terasOutcomeRecord.id)).limit(RECENT);
+  const ids=runs.map(run=>run.id),followups=ids.length?await tx.select({recordId:terasOutcomeFollowup.recordId,decision:terasOutcomeFollowup.decision,at:terasOutcomeFollowup.at}).from(terasOutcomeFollowup)
+   .where(and(eq(terasOutcomeFollowup.tenantId,ctx.tenantId),inArray(terasOutcomeFollowup.recordId,ids))).orderBy(terasOutcomeFollowup.at):[];
+  recentRuns=runs.map(run=>Object.freeze({at:run.at,runId:run.runId,outcomeKind:run.outcomeKind,humanInvolvement:run.humanInvolvement,
+   decision:followups.filter(item=>item.recordId===run.id&&item.decision).at(-1)?.decision??null}));
+ }else if(record.kind==='agent_proposal'){
+  const runs=await tx.select({at:agentProposal.proposedAt,decision:agentProposal.decision}).from(agentProposal)
+   .where(and(eq(agentProposal.tenantId,ctx.tenantId),inArray(agentProposal.proposalType,[...record.proposalTypes]))).orderBy(desc(agentProposal.proposedAt)).limit(RECENT);
+  recentRuns=runs.map(run=>Object.freeze({at:run.at,runId:null,outcomeKind:null,humanInvolvement:null,decision:run.decision}));
+ }else if(record.kind==='loop_runs'){
+  const runs=await tx.select({at:terasLoopRun.startedAt,runId:terasLoopRun.runId,status:terasLoopRun.status}).from(terasLoopRun)
+   .where(and(eq(terasLoopRun.tenantId,ctx.tenantId),sql`${terasLoopRun.workerId}=${worker.id}`)).orderBy(desc(terasLoopRun.startedAt),desc(terasLoopRun.id)).limit(RECENT);
+  recentRuns=runs.map(run=>Object.freeze({at:run.at,runId:run.runId,outcomeKind:run.status==='ran'?'prepared':'stopped',humanInvolvement:'none',decision:null}));
+ }else{
+  const runs=await tx.select({at:domainEvent.occurredAt}).from(domainEvent).where(and(eq(domainEvent.tenantId,ctx.tenantId),eq(domainEvent.eventType,record.eventType),
+   eventWorkerSource(record))).orderBy(desc(domainEvent.occurredAt)).limit(RECENT);
+  recentRuns=runs.map(run=>Object.freeze({at:run.at,runId:null,outcomeKind:null,humanInvolvement:null,decision:null}));
+ }
+ const mandates=worker.authority.kind==='mandate'?(await tx.select({id:terasMandate.id,validFrom:terasMandate.validFrom,validUntil:terasMandate.validUntil,revokedAt:terasMandate.revokedAt,revokedBy:terasMandate.revokedBy}).from(terasMandate)
+  .where(and(eq(terasMandate.tenantId,ctx.tenantId),eq(terasMandate.jobType,worker.authority.jobType))).orderBy(desc(terasMandate.createdAt),desc(terasMandate.id)))
+  .map(row=>Object.freeze({id:row.id,state:mandateState(row,now),validUntil:row.validUntil,revokedBy:row.revokedBy})):[];
+ return Object.freeze({worker:Object.freeze({id:worker.id,label:worker.label}),recentRuns:Object.freeze(recentRuns),mandates:Object.freeze(mandates)});
 }

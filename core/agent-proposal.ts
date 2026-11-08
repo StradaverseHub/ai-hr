@@ -46,7 +46,7 @@ import {assertAiCentreRunningTx} from './ai-centre-control';
  */
 import { createHash } from 'node:crypto';
 import { eq, gte, sql } from 'drizzle-orm';
-import { withTenant, type SessionContext } from '../db/client';
+import { withTenant, type SessionContext, type Tx } from '../db/client';
 import * as schema from '../db/schema';
 
 /**
@@ -257,7 +257,13 @@ export async function proposalRates(
   const since = p?.sinceDays
     ? new Date(Date.now() - p.sinceDays * 24 * 60 * 60 * 1000)
     : null;
-  const rows = await withTenant(ctx, async (tx) =>
+  return withTenant(ctx,tx=>proposalRatesTx(tx,since));
+}
+
+/** Pure existing query/arithmetic owner. Caller owns admission, tenant GUCs and transaction.
+ * This seam never records, adjudicates, closes or reverses a proposal. */
+export async function proposalRatesTx(tx:Tx,since:Date|null=null):Promise<ProposalRates[]>{
+  const rows = await
     tx
       .select({
         type: schema.agentProposal.proposalType,
@@ -270,8 +276,7 @@ export async function proposalRates(
       })
       .from(schema.agentProposal)
       .where(since ? gte(schema.agentProposal.proposedAt, since) : undefined)
-      .groupBy(schema.agentProposal.proposalType),
-  );
+      .groupBy(schema.agentProposal.proposalType);
 
   const rate = (n: number, d: number) => (d === 0 ? null : n / d);
   return rows

@@ -17,12 +17,13 @@
  * NOTHING HERE COMPUTES OR TOUCHES MONEY. It reads verdicts and batch rows. Same guarantee as the layer it reports on.
  */
 import { and, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
-import { withTenant, type SessionContext } from '../db/client';
+import { withTenant, type SessionContext, type Tx } from '../db/client';
 import * as schema from '../db/schema';
-import { proposalRates, type ProposalRates } from './agent-proposal';
+import { proposalRates,proposalRatesTx, type ProposalRates } from './agent-proposal';
 import { classifyClosures } from './recurrence-mining';
 import { resolveActiveAiConfig } from './ai-config';
 import { agentSwitchStatesTx } from './agent-principal';
+import {workerPageContextTx} from './agent-registry/controls';
 
 /** ADR-0074 §"the reframe": the target the whole design serves. */
 export const TARGET_AUTO_CLEAR_RATE = 0.95;
@@ -236,6 +237,21 @@ export type AgreementBlocker = 'no_provider' | 'no_agent_on' | 'nothing_proposed
  */
 const REVERSAL_HAS_A_WRITER = true;
 
+/** Shared surface arithmetic: only tested closure reversals may be displayed. */
+function surfacedAgreementRate(r:ProposalRates,closuresHeld:number):ProposalRates{
+ if(!REVERSAL_HAS_A_WRITER||r.type!=='close_fixed_upstream'||r.reversed+closuresHeld===0)return {...r,reversalRate:null};
+ return r;
+}
+
+/** Current Workers metrics have no closure-reversal consumer. This is a smaller page
+ * projection, not an AgreementView with invented empty blockers or closure facts. */
+export async function workerAgreementPageRatesTx(tx:Tx,supplied:SessionContext,types:readonly string[]):Promise<readonly ProposalRates[]>{
+ const selected=types.slice();
+ if(selected.includes('close_fixed_upstream'))throw new Error('A closure worker requires the tested-closure agreement reader.');
+ await workerPageContextTx(tx,supplied);
+ return Object.freeze((await proposalRatesTx(tx)).filter(row=>selected.includes(row.type)).map(row=>surfacedAgreementRate(row,0)));
+}
+
 export type AgreementView = {
   rates: ProposalRates[];
   /** Empty only when at least one rate is actually measurable. */
@@ -279,15 +295,7 @@ export async function agreementView(ctx: SessionContext): Promise<AgreementView>
   // The core arithmetic is left exactly as it is — it is correct, other callers and
   // test/agent-proposal.test.ts depend on it, and bending shared arithmetic to suit one screen is how a
   // number becomes wrong somewhere else. The BLANKING happens here, at the surface that would mislead.
-  const rates: ProposalRates[] = measured.map((r) => {
-    if (!REVERSAL_HAS_A_WRITER) return { ...r, reversalRate: null };
-    // Only `close_fixed_upstream` has a reversal writer. Any other type's reversal count is still
-    // structurally zero, so its rate is still a fabrication and stays blank.
-    if (r.type !== 'close_fixed_upstream') return { ...r, reversalRate: null };
-    // Tested = the ones already reversed (they failed) plus the ones a clean next cycle vindicated.
-    // Nothing tested yet ⇒ nothing to report, however many were approved.
-    return r.reversed + closuresHeld === 0 ? { ...r, reversalRate: null } : r;
-  });
+  const rates: ProposalRates[] = measured.map((r) => surfacedAgreementRate(r,closuresHeld));
   const proposals = rates.reduce((n, r) => n + r.total, 0);
 
   // A provider enables human-triggered drafts only. Scheduled model spending is not admitted; only

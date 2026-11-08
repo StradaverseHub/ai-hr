@@ -1,0 +1,394 @@
+{
+  "kind": "WORKERS_PAGE_DISPLAY_SERVICE_SOURCE_ONLY_UNQUALIFIED",
+  "parentCommit": "d45829993342fcb6de225bb567668f94de898b3e",
+  "sourceRef": "codex/workers-page-presentation-20261109",
+  "exactChangedPaths": [
+    "core/control-domains.ts",
+    "core/control-tower.ts",
+    "core/agent-proposal.ts",
+    "core/agent-registry/views.ts",
+    "core/agent-registry/export.ts",
+    "core/agent-registry/controls.ts",
+    "test/agent-registry-page-presentation.test.ts",
+    "docs/adr/2026-11-09-ai-management-section-projection.md",
+    "docs/qualification/workers-page-presentation-source-20261109.json"
+  ],
+  "status": {
+    "sourceImplementation": "AUTHORED",
+    "externalSourceParse": "COMPLETE_NOT_RUNTIME",
+    "nativeTests": "UNRUN",
+    "hostedTests": "UNRUN",
+    "compiler": "UNRUN",
+    "routeComposition": "OPEN_OUTSIDE_SLICE",
+    "workersNativeCatalogueCustody": "OPEN_COMMON41_NOT_WORKERS_PROOF",
+    "aggregateSourceGraphBinding": "OPEN",
+    "disclosureBinding": "OPEN",
+    "staging": "HELD",
+    "production": "HELD"
+  },
+  "wholeParentPreimages": [
+    {
+      "path": "core/control-domains.ts",
+      "commit": "d45829993342fcb6de225bb567668f94de898b3e",
+      "mode": "100644",
+      "kind": "blob",
+      "gitBlob": "491c8151b249ca0f77d1fb984618cc05f7ee8a4d",
+      "bytes": 14352,
+      "sha256": "3ead84fda6ce08da7ac138544a917ec1d1f0b75c45c7b9dd3102f4d7b70fa0f3",
+      "wholeGitBytesIndependentlyReadTwice": true
+    },
+    {
+      "path": "core/control-tower.ts",
+      "commit": "d45829993342fcb6de225bb567668f94de898b3e",
+      "mode": "100644",
+      "kind": "blob",
+      "gitBlob": "73e77c5c4fe51564bdb398b2e834e3c9e6e6cf6c",
+      "bytes": 15488,
+      "sha256": "704cfc2a00ce77c25edb676059aa31f159cd5391d327f9404978f98fa9016e74",
+      "wholeGitBytesIndependentlyReadTwice": true
+    },
+    {
+      "path": "core/agent-proposal.ts",
+      "commit": "d45829993342fcb6de225bb567668f94de898b3e",
+      "mode": "100644",
+      "kind": "blob",
+      "gitBlob": "44993b3d31fce10ad177cb5496f3e74d57cb770f",
+      "bytes": 13914,
+      "sha256": "962a029b5cff0ec43ea4d4ec780cebba0380019564a44f3afdaf7658f9ede638",
+      "wholeGitBytesIndependentlyReadTwice": true
+    },
+    {
+      "path": "core/agent-registry/views.ts",
+      "commit": "d45829993342fcb6de225bb567668f94de898b3e",
+      "mode": "100644",
+      "kind": "blob",
+      "gitBlob": "92f298c9ceb61b624e411e2859d3b56dc1ece6a0",
+      "bytes": 13318,
+      "sha256": "fe8c5c30adbef31ab6db541c019d6651544df71ab1f31daacd1133cf3959f097",
+      "wholeGitBytesIndependentlyReadTwice": true
+    },
+    {
+      "path": "core/agent-registry/export.ts",
+      "commit": "d45829993342fcb6de225bb567668f94de898b3e",
+      "mode": "100644",
+      "kind": "blob",
+      "gitBlob": "daeb633e027b4c5daabebcca5ad627e04fc94ea6",
+      "bytes": 11099,
+      "sha256": "0133a74f4b728e8ceca3e306b126864d975c1e8beceea0679abfff4303438095",
+      "wholeGitBytesIndependentlyReadTwice": true
+    },
+    {
+      "path": "core/agent-registry/controls.ts",
+      "commit": "d45829993342fcb6de225bb567668f94de898b3e",
+      "mode": "100644",
+      "kind": "blob",
+      "gitBlob": "cba205162ed46e71d9b4cf50032c20cd16a4b5fd",
+      "bytes": 13807,
+      "sha256": "0371372b00ea597897202162724ba6541d93b1f0b983583d8b580f0ca89e6586",
+      "wholeGitBytesIndependentlyReadTwice": true
+    },
+    {
+      "path": "docs/adr/2026-11-09-ai-management-section-projection.md",
+      "commit": "d45829993342fcb6de225bb567668f94de898b3e",
+      "mode": "100644",
+      "kind": "blob",
+      "gitBlob": "85d86f95dc9034b9f0ff98211215395edfab3ab3",
+      "bytes": 13268,
+      "sha256": "7b9c1565609c913ef8a68d9ef8815f39571821cc3e8942729cfdee4203378b08",
+      "wholeGitBytesIndependentlyReadTwice": true
+    }
+  ],
+  "newPathsAbsentFromParent": [
+    "test/agent-registry-page-presentation.test.ts",
+    "docs/qualification/workers-page-presentation-source-20261109.json"
+  ],
+  "currentPins": [
+    {
+      "path": "core/control-domains.ts",
+      "bytes": 15472,
+      "sha256": "4c5b469c3d6bd32d9220194715427ec7584b1649617c18f9e511ac7208ce970f"
+    },
+    {
+      "path": "core/control-tower.ts",
+      "bytes": 15973,
+      "sha256": "ab648bf82ee1cccc438c766228e85727d22709cfeffcda30b53e28df70a5b37d"
+    },
+    {
+      "path": "core/agent-proposal.ts",
+      "bytes": 14208,
+      "sha256": "540ed7fbe04f9ab97bb4815575e7f1234d17a1565090b6e67fd17fecb00ca495"
+    },
+    {
+      "path": "core/agent-registry/views.ts",
+      "bytes": 24788,
+      "sha256": "517dde8ead4b33a07a6bfb5985a6ec26f2166508da30cf79138cacb1d1cc2dcf"
+    },
+    {
+      "path": "core/agent-registry/export.ts",
+      "bytes": 12540,
+      "sha256": "deeca6fb6b288db937d734c5aee414aebfc1c9a98ca3d59003b742ee4d993179"
+    },
+    {
+      "path": "core/agent-registry/controls.ts",
+      "bytes": 17677,
+      "sha256": "224a9277cb4da88af96da8aaf6f87cf1ebb3fe622f8e723698d38dd329ae63c9"
+    },
+    {
+      "path": "test/agent-registry-page-presentation.test.ts",
+      "bytes": 29778,
+      "sha256": "820223811de86f9bd5ab0b479987e2a94b8246284384c9d66d3f84f363770276"
+    },
+    {
+      "path": "docs/adr/2026-11-09-ai-management-section-projection.md",
+      "bytes": 16886,
+      "sha256": "c5f10da237d9f61772f1f9278208809734b8ba0641fb88bd25190e058a88f190"
+    }
+  ],
+  "protectedWholeParentPins": [
+    {
+      "path": "test/agent-registry-workers.test.ts",
+      "commit": "d45829993342fcb6de225bb567668f94de898b3e",
+      "mode": "100644",
+      "kind": "blob",
+      "gitBlob": "9d7f0bc4bbb958e32e3f4d2c14240fc14639c5be",
+      "bytes": 19274,
+      "sha256": "1250d29169d41209b19146b121afe31821647c4a822b80c90f2563d6509b1271",
+      "wholeGitBytesIndependentlyReadTwice": true,
+      "currentWholeParent": true
+    },
+    {
+      "path": "test/control-tower-agreement.test.ts",
+      "commit": "d45829993342fcb6de225bb567668f94de898b3e",
+      "mode": "100644",
+      "kind": "blob",
+      "gitBlob": "d8834b69b587685f590f2f3062a7dbac176dcc59",
+      "bytes": 6438,
+      "sha256": "bfce3500e5ef4501062a87034ef0b4e48ecdf1681c0dd71860156653af8d18d6",
+      "wholeGitBytesIndependentlyReadTwice": true,
+      "currentWholeParent": true
+    },
+    {
+      "path": "test/agent-proposal.test.ts",
+      "commit": "d45829993342fcb6de225bb567668f94de898b3e",
+      "mode": "100644",
+      "kind": "blob",
+      "gitBlob": "732fa0993a90fe34c6d3fd685cb770969bc5f18b",
+      "bytes": 14538,
+      "sha256": "a98a505e589a0b56ebe6c90206cde40dc5ee14f0341ad9f3d62570f6d5908360",
+      "wholeGitBytesIndependentlyReadTwice": true,
+      "currentWholeParent": true
+    },
+    {
+      "path": "test/ai-centre.test.ts",
+      "commit": "d45829993342fcb6de225bb567668f94de898b3e",
+      "mode": "100644",
+      "kind": "blob",
+      "gitBlob": "b6f319a9ab78ab6130da0c6ea74cd24e8f6e3d22",
+      "bytes": 23560,
+      "sha256": "a67f8862aed73bce63e88c54a3e74f78d8e930b570590e69649aebbf428f7c67",
+      "wholeGitBytesIndependentlyReadTwice": true,
+      "currentWholeParent": true
+    },
+    {
+      "path": "test/control-tower-menu.test.ts",
+      "commit": "d45829993342fcb6de225bb567668f94de898b3e",
+      "mode": "100644",
+      "kind": "blob",
+      "gitBlob": "45b53ab9c990dee4a33a74ba7baab44212ec727b",
+      "bytes": 12612,
+      "sha256": "4470dbb1cac924b7e708ce75bb2a07f0bf50ad7edd0ae45833cb8665874971cc",
+      "wholeGitBytesIndependentlyReadTwice": true,
+      "currentWholeParent": true
+    },
+    {
+      "path": "core/agent-registry/workers.ts",
+      "commit": "d45829993342fcb6de225bb567668f94de898b3e",
+      "mode": "100644",
+      "kind": "blob",
+      "gitBlob": "e2704409364eb026452d95dd957beb6d38eea80c",
+      "bytes": 25053,
+      "sha256": "faf7e606ca4b33d1f01c6ff41dab79fe028b04df5ab4326946e435339d128b50",
+      "wholeGitBytesIndependentlyReadTwice": true,
+      "currentWholeParent": true
+    },
+    {
+      "path": "core/ai-principal.ts",
+      "commit": "d45829993342fcb6de225bb567668f94de898b3e",
+      "mode": "100644",
+      "kind": "blob",
+      "gitBlob": "85630db56130b32196d12e7ffd04fbb27fb88b22",
+      "bytes": 3793,
+      "sha256": "3a77b8ed03ca1b9895310f6a7535473bbfd9a31d6c6d003612bd71e0dcbd6d21",
+      "wholeGitBytesIndependentlyReadTwice": true,
+      "currentWholeParent": true
+    },
+    {
+      "path": "core/ai-centre-control.ts",
+      "commit": "d45829993342fcb6de225bb567668f94de898b3e",
+      "mode": "100644",
+      "kind": "blob",
+      "gitBlob": "f7e47027ec8964b4c25732b7294e6c2a1f72147f",
+      "bytes": 3376,
+      "sha256": "90b4b0161664f5f17cc0f4cc548def2cc00271d117b1852301a29aa5769db33a",
+      "wholeGitBytesIndependentlyReadTwice": true,
+      "currentWholeParent": true
+    },
+    {
+      "path": "core/ai-provider-snapshot.ts",
+      "commit": "d45829993342fcb6de225bb567668f94de898b3e",
+      "mode": "100644",
+      "kind": "blob",
+      "gitBlob": "21556843d8972922ec2e439bd8e2e893f0655295",
+      "bytes": 11272,
+      "sha256": "945a01c642f23e7a7603b2d917e5b2a47db6547121a41a29082b1542f6c09a4c",
+      "wholeGitBytesIndependentlyReadTwice": true,
+      "currentWholeParent": true
+    },
+    {
+      "path": "core/ai-provider-row.ts",
+      "commit": "d45829993342fcb6de225bb567668f94de898b3e",
+      "mode": "100644",
+      "kind": "blob",
+      "gitBlob": "da6028cae15f546e557f1ca62b6f38c873b256db",
+      "bytes": 2122,
+      "sha256": "cfdb19a9c3c325862ccae535c8aba377e0952bec3270616996dded3774fddfe8",
+      "wholeGitBytesIndependentlyReadTwice": true,
+      "currentWholeParent": true
+    },
+    {
+      "path": "core/agent-principal.ts",
+      "commit": "d45829993342fcb6de225bb567668f94de898b3e",
+      "mode": "100644",
+      "kind": "blob",
+      "gitBlob": "6ee2faa2f96a7414532f08904e59c53052a4fb73",
+      "bytes": 7198,
+      "sha256": "411ac66d9b6cc8cf754ef1bf2a04785f96018e466c76c4e7acd2919cd27c7dd7",
+      "wholeGitBytesIndependentlyReadTwice": true,
+      "currentWholeParent": true
+    },
+    {
+      "path": "core/mandates/mandates.ts",
+      "commit": "d45829993342fcb6de225bb567668f94de898b3e",
+      "mode": "100644",
+      "kind": "blob",
+      "gitBlob": "9098392e8c83989d69ea5254c84f550952ac4c2d",
+      "bytes": 17327,
+      "sha256": "f4deafef68d764f6405d29e8ae66b7a186f050718c0429b989bd188e96e34014",
+      "wholeGitBytesIndependentlyReadTwice": true,
+      "currentWholeParent": true
+    },
+    {
+      "path": "app/control-tower/agents/features/page.tsx",
+      "commit": "d45829993342fcb6de225bb567668f94de898b3e",
+      "mode": "100644",
+      "kind": "blob",
+      "gitBlob": "fa0d21c33f6f67ba0561aaaf332f712c666012fe",
+      "bytes": 1531,
+      "sha256": "1ce2e7d1e9a73aea4c4a40e3bf3820eba4ec4bcc19df965b09d36101b27e6da3",
+      "wholeGitBytesIndependentlyReadTwice": true,
+      "currentWholeParent": true
+    },
+    {
+      "path": "app/control-tower/agents/screen.tsx",
+      "commit": "d45829993342fcb6de225bb567668f94de898b3e",
+      "mode": "100644",
+      "kind": "blob",
+      "gitBlob": "472be5ce84060fbe8c5c1ec15750fefc85fb05b3",
+      "bytes": 46040,
+      "sha256": "a137c62df804c0c4e6e40f11d3ecca1e295fabb3b817fb1d440225e38a172d12",
+      "wholeGitBytesIndependentlyReadTwice": true,
+      "currentWholeParent": true
+    },
+    {
+      "path": "app/control-tower/agents/centre-controls.tsx",
+      "commit": "d45829993342fcb6de225bb567668f94de898b3e",
+      "mode": "100644",
+      "kind": "blob",
+      "gitBlob": "5ea79c424d48de56e2c3087453359ab269e1979b",
+      "bytes": 5462,
+      "sha256": "3ce6b612fec0b328103b5221b673714e59f4548bf37be243211cfc4293d18915",
+      "wholeGitBytesIndependentlyReadTwice": true,
+      "currentWholeParent": true
+    }
+  ],
+  "externalSourceEvidence": {
+    "artifactBasename": "aihr-workers-page-external-ast-review-20261109.json",
+    "sha256": "de938cfc2a1f60861889f4c50d7076ee1bf6b96571e80d502b704231e5536bd8",
+    "bytes": 30301,
+    "scope": "External Babel syntax/data/whole-parent inspection only. No repository module imported, no test or compiler execution."
+  },
+  "authoredControls": {
+    "registrations": 18,
+    "expandedNativeCases": 28,
+    "coverage": [
+      "20-worker/five-record-kind visible legacy parity",
+      "actual RRRO app checkout and batch-query observation",
+      "closed four-built-in read purpose",
+      "agreement/summary/detail unused-query omission",
+      "null denominators and tested-closure refusal",
+      "exact recent20 and latest-follow-up semantics",
+      "tool discriminator, private-to-asker and cross-tenant refusal",
+      "real encrypted/corrupt fictional keys and zero provider/network issuance",
+      "mandate boundaries and revoked state",
+      "RC RW/RO refusal and company/group scope",
+      "employee/foreign/mismatched/revoked/archived/relinked/blocked principals",
+      "admitted snapshot versus later revocation",
+      "held Access and AI Stop writers, each commit and rollback",
+      "database RO, failed-query rollback and real native cancellation",
+      "mutable input capture before suspension"
+    ],
+    "result": "AUTHORED_UNRUN"
+  },
+  "legacyDisposition": {
+    "sevenReadFunctions": "Only approved exact pure query/arithmetic/predicate extraction; no full DTO shrink. Full agentStatuses remains14 rows. Existing full command/admission paths remain present.",
+    "otherTopLevelDeclarations": "Whole-parent comparison recorded in external source evidence.",
+    "existingTestCallbacks": "All five protected existing test files whole."
+  },
+  "querySemantics": {
+    "lastRun": "Each original answer is MAX(timestamp). One FILTER aggregate per source family preserves the exact original tenant/RLS/identity/tool/job/proposal/loop/event-source predicates; no timestamp tie row is selected.",
+    "detail": "Same recent20 order and follow-up latest-decision rule; only rendered columns plus internal linkage read.",
+    "summary": "Same left join, tenant/excluded-switch/since predicate and workerOf tool discriminator.",
+    "facts": "Common validated provider/switch facts are display data, not authority, execution configuration, cache or substitute for actual native transaction proof."
+  },
+  "runtimeOwnerClosure": {
+    "changedOwners": [
+      "core/control-domains.ts",
+      "core/control-tower.ts",
+      "core/agent-proposal.ts",
+      "core/agent-registry/views.ts",
+      "core/agent-registry/export.ts",
+      "core/agent-registry/controls.ts"
+    ],
+    "pageEntryPoints": [
+      "workersBuiltInStatusesTx",
+      "workerAgreementPageRatesTx",
+      "workerPageContextTx",
+      "workerPageSwitchesTx",
+      "listWorkersPageTx",
+      "workerDetailPageTx",
+      "outcomeSummaryPageTx"
+    ],
+    "sharedPureOwners": [
+      "latestSweepTx",
+      "builtInStatusFields",
+      "proposalRatesTx",
+      "surfacedAgreementRate",
+      "agreementPageMetrics",
+      "outcomeWorkerTools",
+      "eventWorkerSource",
+      "summaryRecordsTx"
+    ],
+    "nativeQualification": "Actual Workers/Teras SELECT helpers, RLS, controls and role custody need bounded catalogue preimages before native qualification. Existing common41 survey does not establish them.",
+    "route": "No route, inventory, render controls, SAVEPOINT recovery or native SQL owner changed. Root later composes one transaction after common reader freeze."
+  },
+  "proposedHostedSelectors": [
+    "test/agent-registry-page-presentation.test.ts",
+    "test/agent-registry-workers.test.ts",
+    "test/control-tower-agreement.test.ts",
+    "test/agent-proposal.test.ts",
+    "test/ai-centre.test.ts",
+    "test/control-tower-menu.test.ts"
+  ],
+  "mandatoryReview": "Root plus a different independent peer FULL source/data review before hosted execution. Passing prior unrelated/source-specific courses do not qualify this slice.",
+  "immutableEvidenceMethod": "Whole parent preimages use immutable exact commit/path/Git blob/mode plus SHA256 and whole-byte counts; no duplicated historical maps or new runtime Git reader/decoder."
+}
