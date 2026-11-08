@@ -1,0 +1,33 @@
+{
+  "kind": "COMPLETE_ADDITION_ONLY_SOURCE_INVERSE_NOT_RUNTIME_CLEANUP",
+  "base": "42aef592777b713a9d218f4ba94522e8249ccbb7",
+  "existingOwnerEdits": [],
+  "addedPaths": [
+    ".github/ci/diagnostics/db-classifier-timeout-inverse.json",
+    ".github/ci/diagnostics/db-classifier-timeout-profile.mjs",
+    ".github/ci/diagnostics/db-classifier-timeout.py",
+    ".github/ci/diagnostics/db-classifier-timeout.test.py",
+    "docs/qualification/db-classifier-timeout-diagnostic-20261108.md",
+    "docs/qualification/db-classifier-timeout-diagnostic-design-20261108.md",
+    "docs/qualification/db-classifier-timeout-diagnostic-source-20261108.json",
+    "test/gate-db-classifier-timeout-controls.test.ts",
+    "test/gate-db-classifier-timeout-diagnostic.test.ts"
+  ],
+  "unchangedSources": {
+    "scripts/gate-db-classify.ts": "cc77445ba5b8a702a5f8f4a4292bdcb99275d520ae4f13b16442a17e78f3f916",
+    ".github/ci/plan.mjs": "c8579a354b03654e453f83990561255f28217110ee1d6a14d3e19510830d2952",
+    ".github/ci/owned-process.py": "cb1a2cc2879267f8834dc11ea0e1c52f8326b0bd4e45dcd94ccf2ac43463f28c",
+    ".github/ci/focused-checks.mjs": "8344d6a312adbfdd4a49fb4ea34565264e7aa96a222c252a0d4289e0de3a1b77",
+    ".github/workflows/alpha-focused-checks.yml": "b80b0ca5884c3e0e39ee898068526fcb28f4fc4df64ecd72ddcd10b903d5138d",
+    ".github/actions/setup-alpha/action.yml": "13bb384ff8b5cab52e9f894a109aaf46384e221ac156ffc289d752e3b334f150",
+    "test/r417-gate-db-classify.test.ts": "3e98f97f697900c55784ff2de4c898314e6899fbd1cded922469c4fba0d6282b",
+    "test/gate-db-classify-cycle-regression.test.ts": "842dfd47a4305bb170c7cc53d3a104b1b613844ade12ff97a642a1aedc535ac0",
+    "package.json": "7f67e35d869a29d2cb58d65c6f63413afc63db2cc6c6cf9dacb5086bce70ec2c",
+    "pnpm-lock.yaml": "0413a070eca23d390fabdcd78cb63b2dcf4b0b69fe90408c7b57a4f672d21dbd",
+    "vitest.config.ts": "a2d0d96b3a1f18c322ea76a208de4a0b217b13258cff01f48e3a1f754dba318d",
+    "vitest.nodb.config.ts": "594bae2433c451ae3a1f83139fe4cce0fbe8415c751e374dcf4359814a2f429d",
+    "test/env.ts": "e8f9c2584f15c4701fc6ea032a3f5c90ea4581e64919bf1c535d79dda6677cf7",
+    "test/db-names.ts": "f6052b4e43c16d364dab4401403e30354b25b02f3f2166e1f0247133f9e2d55b"
+  },
+  "applied": false
+}
