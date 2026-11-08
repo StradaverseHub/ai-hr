@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {constants,openSync,writeSync,closeSync,lstatSync,fstatSync,readSync,realpathSync} from 'node:fs';
 import {join} from 'node:path';
 export const PROGRESS_STAGES=Object.freeze({
- adapter:Object.freeze(['environment','paths','dependencies','launch','kernel-settlement']),
+ adapter:Object.freeze(['environment','paths','dependencies','loader-source','contract-input','cancellation-input','launch','kernel-settlement']),
  worker:Object.freeze(['entry','source','environment','artifacts','plan-member','plan-import','plan-reconstruction','verifier-import','comparator-import','baseline-unit','baseline-members','oid-shift-unit','oid-shift-members','commission','canonical-comparison','result','clean-source','publication'])
 });
 const statuses=['entered','complete','refused'];

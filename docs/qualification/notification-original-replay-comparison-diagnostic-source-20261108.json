@@ -1,17 +1,18 @@
 {
   "kind": "ORIGINAL_COMPARISON_PHASE_DIAGNOSTIC_SOURCE_NOT_EXECUTED",
   "base": "d78bda4f141dd9193aa0c84df2b177440d5c4032",
-  "sourceRef": "codex/original-replay-comparison-diagnostic-20261108",
+  "sourceRef": "codex/original-replay-dependency-frontiers-20261108",
   "sourceSha256": {
-    ".github/ci/diagnostics/catalogue-original-replay/adapter.py": "38e70ffafc8a77eff0064eb3cc97ae736e5507b250be0ded95bcc209cc2c3512",
+    ".github/ci/diagnostics/catalogue-original-replay/adapter.py": "642270c3aa53eb7f3b4a9f2a9a5f6f023a2580705930f4b7e6610f4c8549516b",
     ".github/ci/diagnostics/catalogue-original-replay/parent.mjs": "972936b9b1d06582a694608ca600375dc61a82a29694a58f0e3a82a1b32c5eae",
     ".github/ci/diagnostics/catalogue-original-replay/policy.mjs": "2e72e42f301cf2f363be8e151e99c0764924542ea2647f1acf92b586b5babd85",
-    ".github/ci/diagnostics/catalogue-original-replay/policy.test.mjs": "dc1b5913b34c96505ca3f4003f45669e83a644649dc0101e5858b8b7147e6dcb",
-    ".github/ci/diagnostics/catalogue-original-replay/progress-inverse.json": "f78c067847d852440255390db829e208fe6ca631916143429feab31f013e7496",
-    ".github/ci/diagnostics/catalogue-original-replay/progress.mjs": "b7ae915ea6eea4c3c3412afac5faa806aad07674cbb1f07d1e0f4741d472004f",
+    ".github/ci/diagnostics/catalogue-original-replay/policy.test.mjs": "7344074f47cba31c439b1d1705f2b7d69cac5a0b70d3535e1133645d4b4ed6b8",
+    ".github/ci/diagnostics/catalogue-original-replay/progress-inverse.json": "5e96f047a07db3ac44d833a6cd91d0f71d1e754cf2ef8f2fb4a77a8448cbbba0",
+    ".github/ci/diagnostics/catalogue-original-replay/progress.mjs": "7de5f2c99f62fc5525b6c66a730c8d666fbde8d6d7f96b26fc94769cae1ce3a6",
     ".github/ci/diagnostics/catalogue-original-replay/worker.mjs": "4cb6a7e56e9b64f3b4a701c5bb15a7d4b6b2f2883264130337ce09cfb2632c50",
     "docs/qualification/notification-original-replay-comparison-diagnostics-20261108.md": "0e827d4b80bea4608fdb93af79e63d6a7312f6b4c11b67a8128921d234c9e91e",
-    "test/notification-original-replay-policy.test.ts": "f88311da0995519539e4ad4b897e9df51c6c790484ebf55b95f7236c8505b01c"
+    "docs/qualification/notification-original-replay-dependency-frontiers-20261108.md": "dadf686464a33aa619e623673b6ef08b00ed02877b7726450666e5343a89dd65",
+    "test/notification-original-replay-policy.test.ts": "f754e6bd0898aadb916225f079b0376bef572f76e28cb11e758b698ab95383c3"
   },
   "unchangedSha256": {
     ".github/ci/archive-downloads.mjs": "b575b2bd899444556ae952569dc62c07df878bc4347075e262b65c614b0abf30",
@@ -51,7 +52,7 @@
     "cause": "UNKNOWN"
   },
   "retainedControlsRun": "42449511187",
-  "metadataModels": 22,
+  "metadataModels": 23,
   "unchangedLinuxControls": 6,
   "originalPairRun": "42440920409",
   "diagnosticAuthority": "NONE",
@@ -60,5 +61,14 @@
   "testsExecuted": false,
   "releaseAuthorized": false,
   "productionHeld": true,
-  "featureAliasMustNotMergeIntoApplicationRelease": true
+  "featureAliasMustNotMergeIntoApplicationRelease": true,
+  "dependencyRefusalRun": "42452591676",
+  "dependencyRefusalSource": "2cfb925f7fb360728e0714607e6bf937ed7c6ad2",
+  "prospectiveMetadataControlCount": 23,
+  "retainedPredecessorControls": {
+    "source": "2cfb925f7fb360728e0714607e6bf937ed7c6ad2",
+    "runId": "42452425023",
+    "metadataModels": 22,
+    "linuxControls": 6
+  }
 }

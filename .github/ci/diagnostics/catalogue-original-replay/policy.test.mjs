@@ -137,3 +137,9 @@ test('adapter diagnostics cannot change the qualified kernel, command, budgets o
  assert(adapter.includes("began = time.monotonic()\n    _progress = Progress()"));assert(adapter.includes('began + 173'));assert(adapter.includes('time.monotonic() - began < 180'));assert(adapter.includes("KERNEL_SHA = 'cb1a2cc2879267f8834dc11ea0e1c52f8326b0bd4e45dcd94ccf2ac43463f28c'"));
  assert(parent.includes('await closedComparisonDiagnostic(done,privateRoot'));assert(parent.includes('assert(!error&&!expired&&size<=65536&&exit.code===0&&exit.signal===null'));assert(parent.includes("completed:true,familySettled:true"));
 });
+
+test('dependency observations preserve the original package, loader, contract and native FIFO refusals in order',async()=>{
+ const{readFileSync}=await import('node:fs'),source=readFileSync(new URL('adapter.py',import.meta.url),'utf8');
+ const snippets=["_progress.next('dependencies')","package = (original / 'node_modules/tsx/package.json').resolve()","['version'] == '4.22.4'","_progress.next('loader-source')","loader = (original / 'node_modules/tsx/dist/loader.mjs').resolve()","_progress.next('contract-input')","contract = json.loads(fixed_bytes(Path(__file__).with_name('contract.json'), 131072))","_progress.next('cancellation-input')","kernel.require(stat.S_ISFIFO(os.fstat(0).st_mode))","_progress.next('launch')"];
+ let previous=-1;for(const text of snippets){const at=source.indexOf(text);assert(at>previous);assert.equal(source.indexOf(text,at+1),-1);previous=at;}
+});

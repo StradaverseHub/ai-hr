@@ -130,7 +130,7 @@ class Cancellation:
 
 class Progress:
     """Best-effort phase observations, never a process/admission receipt."""
-    stages = ('environment', 'paths', 'dependencies', 'launch', 'kernel-settlement')
+    stages = ('environment', 'paths', 'dependencies', 'loader-source', 'contract-input', 'cancellation-input', 'launch', 'kernel-settlement')
 
     def __init__(self):
         self.fd = None
@@ -228,8 +228,10 @@ def main():
     package = (original / 'node_modules/tsx/package.json').resolve()
     kernel.require((original / 'node_modules') in package.parents
                    and json.loads(fixed_bytes(package, 262144))['version'] == '4.22.4')
+    _progress.next('loader-source')
     loader = (original / 'node_modules/tsx/dist/loader.mjs').resolve()
     kernel.require((original / 'node_modules') in loader.parents and loader.is_file())
+    _progress.next('contract-input')
     contract = json.loads(fixed_bytes(Path(__file__).with_name('contract.json'), 131072))
     fixed = {'PATH': '/usr/bin:/bin', 'LANG': 'C', 'LC_ALL': 'C', 'TZ': 'UTC',
              'GIT_CONFIG_NOSYSTEM': '1', 'GIT_CONFIG_GLOBAL': '/dev/null', 'GIT_OPTIONAL_LOCKS': '0',
@@ -239,6 +241,7 @@ def main():
              'AIHR_ORIGINAL_REPLAY_SCOPE': 'old-plan-comparison-only'}
     for name in ('DATABASE_URL', 'MIGRATION_DATABASE_URL', 'TEST_DATABASE_URL', 'TEST_MIGRATION_DATABASE_URL'):
         fixed[name] = 'postgres://nobody:nothing@127.0.0.1:1/no_database'
+    _progress.next('cancellation-input')
     kernel.require(stat.S_ISFIFO(os.fstat(0).st_mode))
     os.set_blocking(0, False)
     # Keep six seconds for the unchanged kernel settlement and one for fixed
