@@ -1,33 +1,40 @@
 /** TEST-only observation of the original classification before LabelBulkError.
  * No SQL, raw message, authority, replacement error or business result escapes. */
-import type {pgErrorChain,pgSqlState} from '../../lib/db-error';
+import type {pgErrorChain} from '../../lib/db-error';
+import {types} from 'node:util';
 import {rewardPolicyNativeGuards} from './rewards-audit-policy-native-guards';
 export type RewardPolicyNativeSaveObservation=Readonly<{sqlstate:string|null;nativeGuard?:typeof rewardPolicyNativeGuards[number]['code']}>;
 export type RewardPolicyNativeSaveSnapshot=Readonly<{complete:boolean;observations:readonly RewardPolicyNativeSaveObservation[]}>;
-export function rewardPolicyNativeSaveObservation(actualChain:typeof pgErrorChain,actualState:typeof pgSqlState){
+export function rewardPolicyNativeSaveObservation(actualChain:typeof pgErrorChain){
  const rows:RewardPolicyNativeSaveObservation[]=[],seen=new Set<unknown>();let active=false,used=false,uncertain=false;
- // Identity comes from the original native object, not a reconstructed record.
- // Descriptor reads never call another error getter or copy raw query text.
- function identity(error:unknown,code:string|null){
+ // Follow only original own DATA edges at the depth actually selected from
+ // the already-returned chain. Accessors, inherited/opaque paths and proxies
+ // cannot attest the native cause identity; never call a trap to resolve them.
+ function identity(error:unknown,code:string,index:number){
   let current=error;const visited=new Set<unknown>();
-  for(let depth=0;depth<4&&current!==null&&typeof current==='object'&&!visited.has(current);depth++){
+  for(let depth=0;depth<=index;depth++){
+   if(current===null||typeof current!=='object'||types.isProxy(current)||visited.has(current))return undefined;
    visited.add(current);const state=Object.getOwnPropertyDescriptor(current,'code');
-   if(code!==null&&state&&'value'in state&&state.value===code)return current;
-   const cause=Object.getOwnPropertyDescriptor(current,'cause');current=cause&&'value'in cause?cause.value:undefined;
+   if(state&&!('value'in state))return undefined;
+   if(depth===index)return state&&'value'in state&&state.value===code?current:undefined;
+   const cause=Object.getOwnPropertyDescriptor(current,'cause');
+   if(!cause||!('value'in cause))return undefined;current=cause.value;
   }
-  return error;
+  return undefined;
  }
  function chain(error:unknown):ReturnType<typeof pgErrorChain>{
   const original=actualChain(error); // preserve actual array/result/throw identity
   if(active){try{
-   // The actual pgSqlState uses its own lexical pgErrorChain; this extra native
-   // classification cannot recurse through the imported admin observation seam.
-   const sqlstate=actualState(error)??null;
-   if(sqlstate!==null&&!/^[0-9A-Z]{5}$/.test(sqlstate)){uncertain=true;return original;}
-   const originalError=identity(error,sqlstate);
+   // EXACT lib/db-error.pgSqlState first-valid-five-character selection over
+   // the ORIGINAL pgErrorChain array. Never call a classifier on error again.
+   const selected=original.find((l) => /^[0-9A-Z]{5}$/.test(l.code ?? ''));
+   const sqlstate=selected?.code??null;
+   if(sqlstate===null){uncertain=true;return original;}
+   const originalError=identity(error,sqlstate,original.indexOf(selected!));
+   if(originalError===undefined){uncertain=true;return original;}
    if(!seen.has(originalError)){
     if(rows.length===64){uncertain=true;return original;}seen.add(originalError);
-    const native=original.find(link=>link.code===sqlstate),known=rewardPolicyNativeGuards.find(guard=>guard.message===native?.message&&guard.sqlstates.some(code=>code===sqlstate));
+    const known=rewardPolicyNativeGuards.find(guard=>guard.message===selected?.message&&guard.sqlstates.some(code=>code===sqlstate));
     rows.push(Object.freeze({sqlstate,...(known?{nativeGuard:known.code}:{})}));
    }
   }catch{uncertain=true;}}

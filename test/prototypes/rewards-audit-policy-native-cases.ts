@@ -475,7 +475,7 @@ export function registerRewardsAuditPolicyNativeCases(evidenceDirectory:string){
   const abort=()=>{finalize.resolve();finish.resolve();};context.signal.addEventListener('abort',abort,{once:true});
   const control=controlledPolicyWait(ownership.poison),receipt=control.start(()=>connection.begin('isolation level repeatable read',async tx=>{await stamp(tx,f.ctx);const [row]=await tx`select reward_audit_read.begin_read('libraries','salary',${f.year})as id`;observed.resolve();await finalize.promise;context.signal.throwIfAborted();return(await tx`select * from reward_audit_read.finalize_read(${row.id}::uuid)`)[0];}));
   let armedCallbacks=0;
-  const actualBulk=adminOwner.bulkSaveLabels,actualSqlState=nativeErrorOwner.pgSqlState,actualErrorChain=nativeErrorOwner.pgErrorChain;
+  const actualBulk=adminOwner.bulkSaveLabels,actualErrorChain=nativeErrorOwner.pgErrorChain;
   await control.run(async()=>{
    await control.ready(observed.promise,receipt,context.signal,'Actual older read exited before Catalogue PRE');await setSetting(f.b.tenantId,'audit.hash_chain_enabled',false);
    const exercise=async()=>{
@@ -483,7 +483,7 @@ export function registerRewardsAuditPolicyNativeCases(evidenceDirectory:string){
     // the real canonical owner; no owner result or authorization is fabricated.
     // admin captures pgSqlState at module initialization. Its live imported
     // pgErrorChain sees the ORIGINAL 42501 before LabelBulkError drops cause.
-    const nativeSave=rewardPolicyNativeSaveObservation(actualErrorChain,actualSqlState);
+    const nativeSave=rewardPolicyNativeSaveObservation(actualErrorChain);
     const errors=vi.spyOn(nativeErrorOwner,'pgErrorChain').mockImplementation(nativeSave.chain);
     const callback=vi.spyOn(adminOwner,'bulkSaveLabels').mockImplementation(async(...args:Parameters<typeof adminOwner.bulkSaveLabels>)=>{
      const [ctx,kind,,tx]=args;
