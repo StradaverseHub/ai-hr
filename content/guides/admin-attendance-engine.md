@@ -39,3 +39,9 @@ Review the pattern's company and effective settings before saving. Saving a draf
 ## Payroll handoff
 
 Review planned overtime, actual attendance and approval results before consolidating attendance into payroll. Corrected attendance and approved overtime are inputs; payroll processing and review remain explicit actions.
+
+## Author attendance formulas
+
+Open [Formula Builder](/admin/attendance/settings/formula-builder) to review saved versions, or [New formula](/admin/attendance/settings/formula-builder/new) to start one. Choose the intended company and an available Pay Item, set the period and eligibility, and review the variables and public examples. Save a version before testing it against authorised attendance data. Review the evidence before explicitly activating that version. Changing a formula does not change an earlier calculation or a Payroll run.
+
+The optional drafting helper receives only the wording you enter and the public formula grammar after the required disclosure. It proposes source for you to review; it cannot save, activate, approve a result or transfer money. Calculate results through the native Attendance workflow, review and approve the exact current result, then separately transfer eligible results to a matching regular draft Payroll run. Missing source data, changed pricing, overlapping contributions or missing authority must be resolved through the native owner before transfer.

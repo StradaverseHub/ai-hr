@@ -15,3 +15,29 @@ Original complete run 42507922790 at 53da938d25642ca8f7981b13dfd3e07aa9df565a re
 Pricing now lives inside `packs/payroll/individual-calculation.ts`. Shared payroll processing and simulation use the identical inline NULL comparison instead of importing the full entry-pricing module. The pricing body, SQL, locks, formulas, amounts and migration bytes are unchanged. The boundary guard now also protects the private pack-local implementation from outsiders, without expanding the debt allowlist. Historical upgrade checks retain every prior-column comparison and independently assert the new NULL default.
 
 The same-purpose technical source binding advances the same 28 approved literal digests to 75fb3c6797d8cc1498dabcea8c5a74658ecbe92112e4d854df61b0e392f2bd71 (1464 covered files), retaining all original human metadata and both pending/refused contracts. No provider prompt, operation, adapter, contract, data category, consent or authority changes. This records an agent reassessment under the owner's implementation/staging request, not a new human hash approval. Original failed evidence is preserved; the repaired financial dependency graph requires an immutable impact assessment and corresponding hosted verification before release.
+
+## Prepared integration with qualified six-item source
+
+This preparation retains frozen six-item source `e70686353134de3471f08fe7a27e937f14fdcc95`, its complete717-entry journal and every SQL byte, then appends only the still-unapplied3900 payroll entry-method migration. It is preparation, not an installed-source or acceptance claim. The owner's 9 November2026 instruction fully authorizes coordination and staging release; original human approvals of the existing29 purposes and both pending contracts remain retained.
+
+The merge preserves native Pay Item company applicability. Explicit formula/Amount preview and saving now invoke the same effective-date/company restriction owner; private Amount rows already saved keep their recorded final value when configuration changes later. Regression coverage separately checks allowed restricted-company entry, denial of formula and Amount preview/saving for an excluded company, and preserved historical payment. Shared Payroll final-amount/legacy-NULL semantics, quantities, deterministic saved-formula simulation and locking remain intact.
+
+Against the incoming source, the provider-covered changed files are:
+
+- `core/pay-formula-runtime.ts`
+- `core/payroll-formula-inputs.ts`
+- `core/payroll-individual-txn.ts`
+- `core/payroll.ts`
+- `db/schema.ts`
+- `messages/en.json`
+- `messages/ms.json`
+- `messages/ta.json`
+- `messages/th.json`
+- `messages/vi.json`
+- `messages/zh.json`
+- `packs/payroll/individual-calculation.ts`
+- `packs/payroll/service.ts`
+
+No provider adapter, prompt, outgoing transform/contract, destination, consent or purpose changes. The changes concern native payroll pricing/writes and UI copy. Under the existing same-purpose technical source-reassessment procedure and the owner's delegated implementation/release authority, exactly29 already-approved sourceDigest fields are bound to `d07ea90de7dee35f341e66cf22ae0eb4ae30bfe7b4b27e4b993bea17573ccf5d` (1484 covered files). Reversing those literals reproduces the incoming registry byte for byte. All human reviewer/evidence/timestamps and both pending/refused records remain unchanged. This is an agent technical reassessment; it does not claim a fresh human inspection of this hash or authorize a new disclosure.
+
+Current peer4000–4002 reservations remain untouched. Actual incoming arrival/handback, allocation/watermark recheck and complete final-source qualification remain required before the payroll release.

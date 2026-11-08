@@ -1,3 +1,4 @@
+import {verifyAttendanceFormulaPayrollSourcesTx} from './payroll-attendance-allowance';
 import {personnelGroupingReadinessTx} from './personnel-quality';
 import {payrollEmploymentPredicate,outstandingPaymentPredicate,payrollCompensationEffectiveOn,payrollEmploymentEnd,payrollRunContextsTx,type PayrollEligibilityRun} from './payroll-employment-eligibility';
 import {PayrollTaxBasisError} from '../lib/payroll-tax-basis';
@@ -4278,6 +4279,7 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
     const dim = daysInMonth(pYear, pMonth);
     // Formula cash is always a Payroll input, including when individual transaction pay is disabled.
     // Read under the batch lock without employee/source locks (the inverse would deadlock Attendance writers).
+    await verifyAttendanceFormulaPayrollSourcesTx(tx,ctx,p.batchId);
     const formulaCash = await readPayrollOvertimePatternCashTx(tx, ctx, { batchId: p.batchId });
     const formulaSchedule = await loadBatchCutOffSchedule(tx, batch.companyId);
     const formulaWindow = await unionTypeWindow(tx, formulaSchedule, batch.companyId, 'overtime', payPeriod);
@@ -8409,6 +8411,7 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
 /** app.payroll_close_anomaly_gate source version when the batch has no verdict row at all. */
 const NO_ANOMALY_VERDICT_SOURCE_VERSION=createHash('md5').update('').digest('hex');
 async function preparePayrollCloseTx(tx:Tx,ctx:SessionContext,p:{batchId:string},reviewed=false){
+    await verifyAttendanceFormulaPayrollSourcesTx(tx,ctx,p.batchId);
     await lockPayrollOvertimeBatchContextTx(tx,ctx,p.batchId);
     const [batch] = await tx
       .select({

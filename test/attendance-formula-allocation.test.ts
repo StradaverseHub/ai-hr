@@ -1,0 +1,3 @@
+import {expect,it} from 'vitest';import {allocateAttendanceFormulaCents as allocate} from '../lib/attendance-formula-allocation';
+it('retains every cent in a stable largest-remainder allocation without inventing physical minutes',()=>{expect(allocate('100',[60,60,60])).toEqual(['34','33','33']);expect(allocate('101',[30,90])).toEqual(['25','76']);expect(allocate('0',[60])).toEqual(['0']);});
+it('refuses missing, fractional and unbounded physical coverage',()=>{for(const weights of [[],[0],[1.5],[4321],[-1]])expect(()=>allocate('100',weights)).toThrow();expect(()=>allocate('-1',[1])).toThrow();});

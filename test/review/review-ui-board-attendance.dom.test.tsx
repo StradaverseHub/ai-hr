@@ -1,0 +1,48 @@
+/** Hosted real-component captures with fictional evidence; not an authenticated installed journey. */
+import * as React from 'react';
+import {afterEach,expect,it,vi} from 'vitest';
+import {cleanup,fireEvent,render,screen,waitFor} from '@testing-library/react';
+import {NextIntlClientProvider} from 'next-intl';
+import {AttendanceFormulaEditor} from '../../app/admin/attendance/settings/formula-builder/editor';
+import {AttendanceFormulaPayItems} from '../../components/attendance-formula-pay-items';
+import {PageHeader} from '../../components/ui';
+import {aiReviewDomHtml,captureAiReviewScreenshots} from '../helpers/ai-review-screenshots';
+import en from '../../messages/en.json';import ms from '../../messages/ms.json';import zh from '../../messages/zh.json';import viLocale from '../../messages/vi.json';import ta from '../../messages/ta.json';import th from '../../messages/th.json';
+const mocks=vi.hoisted(()=>({search:vi.fn(),test:vi.fn()}));
+vi.mock('next/navigation',()=>({useRouter:()=>({refresh(){},replace(){}})}));
+vi.mock('../../app/admin/attendance/settings/formula-builder/actions',()=>({draftAttendanceFormulaAction:vi.fn(),saveAttendanceFormulaAction:vi.fn(),testAttendanceFormulaAction:mocks.test,activateAttendanceFormulaAction:vi.fn(),statusAttendanceFormulaAction:vi.fn(),readAttendanceFormulaTestAction:vi.fn(),searchAttendanceFormulaEmployeesAction:mocks.search}));
+vi.mock('../../app/attendance/individual/[date]/formula-actions',()=>({calculateAttendancePayItemAction:vi.fn(),reviewAttendancePayItemAction:vi.fn(),readAttendancePayItemAction:vi.fn(),transferAttendancePayItemsAction:vi.fn()}));
+vi.mock('../../app/admin/attendance-allowance/actions',()=>({searchAllowanceEmployeesAction:vi.fn(),resolveAllowanceEmployeesAction:vi.fn(),allowanceEmployeeChoicesAction:vi.fn()}));
+afterEach(cleanup);
+const companyId='10000000-0000-4000-8000-000000000001',payItemId='20000000-0000-4000-8000-000000000001',id='30000000-0000-4000-8000-000000000001',revisionId='40000000-0000-4000-8000-000000000001',employeeId='50000000-0000-4000-8000-000000000001',date='2026-11-08';
+const definition={code:'ATTENDANCE_PAY',description:'Fictional daily attendance earning',companyId,payItemId,effectiveFrom:'2026-01-01',period:{method:'daily'},outputUnit:'amount',purpose:'earning',eligibility:{mode:'all'},posting:{kind:'exclusive'},library:{formulas:[{code:'ATTENDANCE_PAY',source:'Return {#ConditionID}("WORKED_HOURS") * 15'}],conditions:[{code:'WORKED_HOURS',description:'Recorded hours',type:'decimal',source:'Return {#FormulaID}("TotalWorkingMins") / 60'}]}};
+const saved={formula:{id,companyId,code:definition.code},latest:{id:revisionId,ordinal:1,definition},versions:[{id:revisionId,ordinal:1,createdAt:new Date(date+'T00:00:00Z')}],tests:[],events:[],status:'inactive',activeRevisionId:null,activeOrdinal:null};
+const options:Parameters<typeof AttendanceFormulaEditor>[0]['options']={companies:[{id:companyId,label:'Fictional Manufacturing Sdn Bhd',currency:'MYR'}],payItems:[{id:payItemId,code:'ATTENDANCE',name:'Fictional attendance pay',kind:'allowance',companyIds:[companyId]}]};
+const proof={id:'60000000-0000-4000-8000-000000000001',revisionId,employmentId:employeeId,periodFrom:date,periodTo:date,payload:{result:{amount:'120',trace:[{formula:'WORKED_HOURS',event:{kind:'read',code:'FormulaID',value:{type:'decimal',value:'480'},loc:{line:1,column:8,offset:7}},request:{code:'FormulaID',args:[{type:'string',value:'TotalWorkingMins'}],loc:{line:1,column:8,offset:7}}},{formula:'WORKED_HOURS',event:{kind:'arithmetic',operator:'/',left:'480',right:'60',result:'8',loc:{line:1,column:8,offset:7}}},{formula:'ATTENDANCE_PAY',event:{kind:'arithmetic',operator:'*',left:'8',right:'15',result:'120',loc:{line:1,column:8,offset:7}}},{formula:'ATTENDANCE_PAY',event:{kind:'return',value:{type:'decimal',value:'120'},loc:{line:1,column:1,offset:0}}}]},days:[{date,values:{TotalWorkingMins:{state:'known',value:{type:'decimal',value:'480'},source:'fictional-recorded-attendance',revision:'fictional-source-1'}}}]}};
+for(const [locale,messages]of Object.entries({en,ms,zh,vi:viLocale,ta,th}))it(locale+' shows actual-data review, result history and controlled Payroll transfer',async()=>{
+ const errors:unknown[]=[];mocks.search.mockResolvedValue({ok:true,value:{rows:[{id:employeeId,code:'FX001',name:'Fictional Employee'}],hasMore:false,period:{from:date,to:date}}});mocks.test.mockResolvedValue({ok:true,value:{proof,saved}});
+ const frame=(children:React.ReactNode)=><NextIntlClientProvider locale={locale} messages={messages} timeZone="Asia/Kuala_Lumpur" onError={error=>errors.push(error)}>{children}</NextIntlClientProvider>;
+ const editor=render(frame(<div className="space-y-6"><PageHeader title={messages.attendanceFormula.title} description={messages.attendanceFormula.subtitle}/><AttendanceFormulaEditor initial={saved as unknown as NonNullable<Parameters<typeof AttendanceFormulaEditor>[0]['initial']>} options={options} today={date}/></div>));
+ fireEvent.click(screen.getByRole('button',{name:messages.attendanceFormula.search}));await waitFor(()=>expect(screen.getByLabelText(messages.attendanceFormula.employee)).toBeTruthy());await waitFor(()=>expect(screen.getByRole('button',{name:messages.attendanceFormula.search})).toBeEnabled());
+ fireEvent.change(screen.getByLabelText(messages.attendanceFormula.employee),{target:{value:employeeId}});fireEvent.click(screen.getByRole('button',{name:messages.attendanceFormula.runTest}));await waitFor(()=>expect(screen.getByRole('checkbox',{name:messages.attendanceFormula.activationReview})).toBeTruthy());
+ expect(screen.getByRole('button',{name:messages.attendanceFormula.activate})).toBeDisabled();
+ await captureAiReviewScreenshots(aiReviewDomHtml(editor.container),locale,'feedback-attendance-editor','Actual Attendance editor after fictional data Test; unchecked activation review; no server or provider call');
+ if(locale==='en'){
+  fireEvent.click(screen.getByRole('button',{name:messages.attendanceFormula.variables}));fireEvent.change(screen.getByLabelText(messages.attendanceFormula.searchVariables),{target:{value:'InShiftOT'}});
+  expect(screen.getByText('ZoneAInShiftOT')).toBeTruthy();expect(screen.getByText('ZoneBPreInShiftOT')).toBeTruthy();await captureAiReviewScreenshots(aiReviewDomHtml(editor.container),locale,'feedback-attendance-library','Actual variable library; documented aliases and conditional availability; fictional teaching values');
+  fireEvent.click(screen.getByRole('button',{name:messages.attendanceFormula.references}));fireEvent.click(screen.getByText(messages.attendanceFormula.referenceNames.ot15));await captureAiReviewScreenshots(aiReviewDomHtml(editor.container),locale,'feedback-attendance-references','Actual editable standard references; fictional rates; no policy or statutory claim');
+  fireEvent.click(screen.getByRole('button',{name:messages.attendanceFormula.conditions}));fireEvent.click(screen.getByRole('button',{name:messages.attendanceFormula.addCondition}));
+  const condition=screen.getAllByRole('textbox',{name:messages.attendanceFormula.conditionExpression})[1];fireEvent.change(condition,{target:{value:'Return process.env.SECRET'}});
+  expect(document.getElementById('attendance-source-validation')?.textContent).toContain('CONDITION_2:');expect(screen.getByRole('button',{name:messages.attendanceFormula.save})).toBeDisabled();
+  await captureAiReviewScreenshots(aiReviewDomHtml(editor.container),locale,'feedback-attendance-condition-error','Actual condition edit with visible named validation next to disabled Save; fictional draft');
+  fireEvent.change(condition,{target:{value:'If True Then\nReturn 1\nElse\nReturn 0\nEnd If'}});fireEvent.click(screen.getAllByRole('button',{name:messages.attendanceFormula.formatSource})[1]);
+  expect(condition).toHaveValue('If True Then\n    Return 1\nElse\n    Return 0\nEnd If');expect(screen.getByRole('button',{name:messages.attendanceFormula.save})).toBeEnabled();
+  await captureAiReviewScreenshots(aiReviewDomHtml(editor.container),locale,'feedback-attendance-condition-recovered','Actual condition formatted and validated; Save enabled but never clicked; unsaved fictional draft');
+ }
+ editor.unmount();
+ const result={id:'70000000-0000-4000-8000-000000000001',companyId,formulaId:id,revisionId,employmentId:employeeId,periodFrom:date,periodTo:date,payComponentId:payItemId,quantity:'120',unit:'amount',rate:null,amount:'120.00',createdAt:new Date(date+'T00:00:00Z')};
+ const rows=[{result,code:definition.code,version:1,definition,payCode:'ATTENDANCE',payName:'Fictional attendance pay',state:'approved'},{result:{...result,id:'70000000-0000-4000-8000-000000000002',amount:'100.00',quantity:'100'},code:definition.code,version:1,definition,payCode:'ATTENDANCE',payName:'Fictional attendance pay',state:'superseded'}];
+ const results=render(frame(<div className="space-y-6"><PageHeader title="FX001 · Fictional Employee" description={date}/><AttendanceFormulaPayItems employmentId={employeeId} date={date} choices={[{id,code:definition.code,description:definition.description,method:'daily'}]} rows={rows as unknown as Parameters<typeof AttendanceFormulaPayItems>[0]['rows']} runs={[{id:'80000000-0000-4000-8000-000000000001',companyId,companyName:'Fictional Manufacturing Sdn Bhd',period:'2026-11',cycleId:null,cycleName:null}]}/></div>));
+ expect(screen.getByRole('button',{name:messages.attendanceFormula.transferToPayroll})).toBeDisabled();expect(errors).toEqual([]);
+ await captureAiReviewScreenshots(aiReviewDomHtml(results.container),locale,'feedback-attendance-results','Actual Individual Attendance Pay Items component; fictional approved/superseded results; no financial write or installed journey');
+},180000);

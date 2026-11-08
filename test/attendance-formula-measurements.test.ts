@@ -1,0 +1,24 @@
+import {describe,it,expect} from 'vitest';
+import {attendanceFormulaRecordedMeasurements as measure} from '../core/attendance-formula-measurements';
+import type {AttendanceTraceV1} from '../core/attendance-trace';
+const trace=(patch:Partial<AttendanceTraceV1>={}):AttendanceTraceV1=>({v:1,schedule:{source:'default-shift',dayType:'workday',startAbs:540,endAbs:1020,scheduledMinutes:420,normalMinutesOverride:null,crossesMidnight:false,breakMinutes:60,breakSpanned:60,ruleId:null},punch:{inAbs:540,outAbs:1020,spanMinutes:480,workedMinutes:420},lateness:null,latenessDeduction:null,earlyOut:null,earlyOutDeduction:null,overtime:null,formulaSchedule:{v:1,flexiDuration:false,durationOnly:false,flexibleBreakMinutes:null,halfDayBefore:'13:00',shiftCode:'FICTIONAL',shiftName:'Fictional shift',scheduleDayKind:'full',breakPeriods:[{start:'12:00',end:'13:00',clockingRequired:true}]},...patch});
+describe('frozen schedule formula measurements',()=>{
+ it('does not retrofit mutable current breaks onto an older attendance trace',()=>{const old=trace();delete old.formulaSchedule;expect(measure(old,[{from:540,to:1020}])).toEqual({values:{},breaks:null});});
+ it('keeps declared break duration separate from work during an unused break',()=>{const result=measure(trace(),[{from:540,to:1020}]).values;expect(result).toMatchObject({Break1Interval:60,Break2Interval:0,ActualShiftBreak:60,UnUtilisedBreak:60,LateOnShiftBreak:0,EarlyOutOnShiftBreak:0,Flex1Interval:0});});
+ it('measures early break departure and late return from a real gap rather than treating absence as zero',()=>{const result=measure(trace(),[{from:540,to:710},{from:795,to:1020}]).values;expect(result).toMatchObject({Break1Interval:60,LateOnShiftBreak:15,EarlyOutOnShiftBreak:10,UnUtilisedBreak:0});expect(measure(trace(),[{from:795,to:1020}]).values).not.toHaveProperty('LateOnShiftBreak');});
+ it('reports flexi closed-working intervals separately from the native break allowance',()=>{const f=trace();f.formulaSchedule={...f.formulaSchedule!,flexiDuration:true,breakPeriods:[{start:'12:00',end:'13:00',flexible:true,flexibleMinutes:30}]};f.schedule.breakMinutes=30;f.schedule.breakSpanned=30;expect(measure(f,[{from:540,to:720},{from:780,to:1020}]).values).toMatchObject({Flex1Interval:180,Flex2Interval:240,Flex3Interval:0,Break1FlexUsed:30,FlexiBreakOnShift:30});});
+ it('does not invent per-row allocation of a clamped or whole-shift flexible allowance',()=>{const f=trace();f.formulaSchedule={...f.formulaSchedule!,breakPeriods:[{start:'12:00',end:'13:00',flexible:true,flexibleMinutes:60}]};f.schedule.breakSpanned=20;expect(measure(f,[{from:540,to:560}]).values).not.toHaveProperty('Break1FlexUsed');f.formulaSchedule.flexibleBreakMinutes=20;expect(measure(f,[{from:540,to:1020}]).values).not.toHaveProperty('Break1FlexUsed');});
+ it('requires the captured break split to reconcile to the native worked duration',()=>{const f=trace();f.formulaBreaks={v:1,actualBefore:10,actualAfter:20,actualShift:30};expect(measure(f,[{from:540,to:1020}]).values).toMatchObject({ActualPreOTBreak:10,ActualPostOTBreak:20,ActualShiftBreak:30});f.formulaBreaks.actualAfter=21;expect(measure(f,[{from:540,to:1020}]).values).not.toHaveProperty('ActualPostOTBreak');});
+});
+
+it('does not claim an unused fixed break or a late return when break clocks were not required',()=>{const f=trace();f.formulaSchedule!.breakPeriods![0].clockingRequired=false;const result=measure(f,[{from:540,to:1020}]).values;expect(result).not.toHaveProperty('UnUtilisedBreak');expect(result).not.toHaveProperty('LateOnShiftBreak');});
+
+it('does not position a scalar break allowance into invented first/second shift halves',()=>{const f=trace();f.formulaSchedule!.breakPeriods=null;const value=measure(f,[{from:540,to:1020}]).values;expect(value).not.toHaveProperty('ShiftFirstHalfWorkingMins');expect(value).not.toHaveProperty('ShiftSecondHalfWorkingMins');});
+it('reuses the native positioned-break owner for fixed-shift halves',()=>{expect(measure(trace(),[{from:540,to:1020}]).values).toMatchObject({ShiftWorkingMins:420,ShiftFirstHalfWorkingMins:180,ShiftSecondHalfWorkingMins:240});});
+
+it('consolidates all three legacy in-shift OT IDs into one physical break-work category',()=>{
+ const result=measure(trace(),[{from:540,to:735},{from:765,to:1020}]).values;
+ expect(result).toMatchObject({ZoneAInShiftOT:30,ZoneBPreInShiftOT:30,ZoneBPostInShiftOT:30,ShiftWorkingMins:420});
+ const unknown=trace();unknown.formulaSchedule!.breakPeriods![0].flexible=true;
+ expect(measure(unknown,[{from:540,to:1020}]).values).not.toHaveProperty('ZoneAInShiftOT');
+});

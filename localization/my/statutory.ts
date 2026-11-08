@@ -571,6 +571,7 @@ export { IncompleteCustomHolderError };
 /** Just the salary-payment bank columns + the custom-payment-holder controls (item ef720d3a). Used by the
  *  dedicated Bank Information card, which saves independently of the full statutory row. */
 export type BankInput = {
+  bankPayeeResidency?:'resident'|'non_resident'|null;
   personId: string;
   /** Optional Personnel nomination; its current employment/person ownership is resolved in the owner Tx. */
   employmentId?: string;
@@ -591,6 +592,7 @@ export type BankInput = {
  * Appends an `employee.bank.updated` DomainEvent (before/after) per substrate discipline.
  */
 function normalizedBankValuesMY(p:BankInput){
+  if(p.bankPayeeResidency!==undefined&&p.bankPayeeResidency!==null&&!['resident','non_resident'].includes(p.bankPayeeResidency))throw new Error('Choose a valid bank payee residency.');
   const enableName = p.enableCustomHolderName ?? false;
   const enableId = p.enableCustomHolderId ?? false;
   const holderName = (p.customHolderName ?? '').trim() || null;
@@ -605,6 +607,7 @@ function normalizedBankValuesMY(p:BankInput){
   });
   if (gap) throw new IncompleteCustomHolderError(gap);
   return {
+    ...(p.bankPayeeResidency!==undefined?{bankPayeeResidency:p.bankPayeeResidency}:{}),
     bankName: (p.bankName ?? '').trim() || null,
     bankAccountNo: (p.bankAccountNo ?? '').trim() || null,
     // When a switch is off we null its stored value so a disabled holder can't linger and be resolved later.
@@ -654,6 +657,7 @@ export async function setBankProfileMY(ctx: SessionContext, p: BankInput,
     const [existing] = await tx
       .select({
         id: employeeStatutoryMy.id,
+        bankPayeeResidency: employeeStatutoryMy.bankPayeeResidency,
         bankName: employeeStatutoryMy.bankName,
         bankAccountNo: employeeStatutoryMy.bankAccountNo,
         enableCustomHolderName: employeeStatutoryMy.enableCustomHolderName,
@@ -683,6 +687,7 @@ export async function setBankProfileMY(ctx: SessionContext, p: BankInput,
       payload: {
         personId: p.personId,
         before: {
+          ...(p.bankPayeeResidency!==undefined?{bankPayeeResidency:existing.bankPayeeResidency}:{}),
           bankName: existing.bankName,
           bankAccountNo: existing.bankAccountNo,
           enableCustomHolderName: existing.enableCustomHolderName,

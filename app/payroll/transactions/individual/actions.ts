@@ -7,7 +7,7 @@ import { scopedAdmin } from '@/lib/scope';
 import { BatchNotDraftError, PayrollPermissionDeniedError, batchEditImpact } from '@/core/payroll';
 import { listIndividualTxnsAcross, listUnattachedTxnSummary } from '@/core/payroll-view';
 import { buildTxnPanel, type TxnPanel } from './existing-context';
-import {previewIndividualTxnInput} from '@/packs/payroll/service';
+import {previewIndividualTxnInput,PayComponentCompanyError} from '@/packs/payroll/service';
 import { deriveIndividualTxnAmount, TxnEffectiveDateInvalidError, TxnQuantityRequiredError } from '@/core/pay-components';
 import { PayRuleEvalError } from '@/core/pay-rule';
 import {PayFormulaError} from '@/lib/pay-formula-model';
@@ -88,7 +88,7 @@ const txnErrorKey = (e: unknown): string =>
               ? 'duplicateRow'
               : e instanceof ComponentRequiredError
                 ? 'componentRequired'
-                : e instanceof InvalidTxnComponentError
+                : e instanceof InvalidTxnComponentError || e instanceof PayComponentCompanyError
                   ? 'componentInvalid'
                   : // c11e81aa — the chosen Pay Cycle is unknown, archived, another company's, or
                     // disagrees with the run the row is already on. One key: what the operator has to do

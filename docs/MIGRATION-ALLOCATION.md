@@ -4,6 +4,58 @@ Branch codex/board1-system-labels-plan-20261108 reserves 3400_system_label_compa
 
 # Coordinated migration reservations
 
+## Six board items after System Labels — 9 November 2026 (unapplied reallocation)
+
+The qualified, published System Labels source4ae7953eb owns incoming release
+lease67 and migration3400 (idx2700 / when1793330003000). Preserve its710-row
+source prefix; actual installed arrival and complete ordered hashes still require
+independent confirmation before admission. No incoming acceptance is inferred here.
+
+This coordinator moves only its seven still-unapplied migrations3300–3303 and
+3600–3602 to3700–3706, idx3000–3006 / when1793330003300–1793330003306, preserving
+their dependency order and every SQL payload byte. This supersedes those earlier
+source reservations below. The717-row candidate retains the incoming prefix;
+no applied file, journal row, hash or pending foreign reservation is rewritten.
+A refreshed read-only survey found1057 distinct journals and781 readable worktree
+journals, with maxima3602/2902/1793330003202, all owned here; peer3500/3501 remain
+reserved to their owner and are not silently included. Refresh peers, refs and the
+actual live ledger before release. This reservation grants no lease or deployment.
+
+
+## Attendance Formula overtime binding — 8 November 2026 (unapplied)
+
+Reserve3602_attendance_formula_overtime_binding, idx2902 / when1793330003202.
+A fresh full origin fetch and survey found1056 journal blobs and809 readable
+worktrees, with maxima3601/2901/1793330003201, all owned by this coordinator.
+The new evidence remains below the existing overtime parent and settlement.
+No current assignment/version UUID is substituted. Refresh the live ledger and
+peer claims at release admission; this reservation grants no staging lease.
+
+
+## Attendance Formula calculation evidence — 8 November 2026 (unapplied)
+
+The board coordinator reserves3600_attendance_formula_results at idx2900 /
+when1793330003200, plus3601_attendance_formula_payroll_source at idx2901 /
+when1793330003201. Both extend the existing Attendance/Payroll owners. Fresh main/alpha82859db9a preserve the709-row installed prefix.
+A read-only survey found1054 distinct journals,805 readable worktrees and
+maxima3501 / idx2801 / when1793330003101. An independent live comparison
+matched all709 ordered hashes through1793330002801. This is a reservation
+only; refresh peer claims and live ledger at release admission.
+
+
+## Attendance Formula Builder — 8 November 2026 (unapplied source reservation)
+
+Branch `codex/board-staging-integration-20261108` reserves
+`3303_attendance_formula_versions`, idx2603 / when1793330002903, after its existing
+3300–3302 reservations. A refreshed read-only survey found1049 distinct journal blobs,
+725 readable worktree journals and maxima3302 / idx2602 / when1793330002902.
+Freshly fetched main and alpha remain29d9edcbc; the integrated incoming9dd3847b4
+prefix is preserved. An independent read-only staging ledger comparison matched all709
+ordered rows against9dd3847b4, through1793330002801. The foreign release lease remains
+owned by its controller; this reservation neither installs SQL nor authorizes deployment.
+Recheck peers, refs and the complete live ledger at admission. These new tables hold
+formula configuration and testing/audit evidence, not another payroll or OT settlement ledger.
+
 ## AI centre after accepted PR233 — 8 November 2026 (unapplied reallocation)
 
 The installed PR233 source `29d9edcbc4368be871688e9fdf35347676a7841c`
@@ -1835,3 +1887,25 @@ The earlier `3700_individual_transaction_calculation_method` reservation above i
 A fresh full public-ref fetch followed by a read-only survey of 3,561 and 3,619 distinct repository heads, 504 unique committed journal blobs and 804 readable registered worktree journals found maximum tag3801 / idx3101 / when1793330003401. Two conflicted journals were scanned conservatively for both sides; 283 missing registered paths were recorded rather than treated as current source. Independently, the live ledger still matches all710 ordered receipts of installed4ae7953eb, watermark1793330003000. Actual survey details and ledger proof are retained privately.
 
 This branch reserves **3900_individual_transaction_calculation_method**, **idx3200 / when1793330003500**. The four-line SQL payload is byte-identical to the prior unapplied file, SHA256 `f6f4a31109f66bc5c9038315e249829c2655b870db98a9cbb1ede9cfdab958d4`; only its path and owning journal/test pins move. The current710-entry applied prefix is unchanged. Recheck the actual accepted six-item source, newer peer claims and complete ordered live ledger before integration/admission. This is source allocation only; no migration or staging deployment has occurred.
+## Six approved board items — 8 November 2026 (unapplied)
+
+Branch codex/board-open-items-20261108 reserves 3300_pay_item_company_applicability
+at idx2600 / when1793330002900. Fresh origin main/alpha remain 29d9edcbc.
+A full origin fetch and read-only survey of 1043 distinct historical journal blobs
+and 671 readable registered worktrees found highest competing file3211,
+idx2545 and when1793330002845. Read-only staging had 706 applied migrations
+through1793330002701. The canonical journal prefix and applied SQL bytes remain
+unchanged. Refresh the exact ordered target ledger and peer reservations before
+integration or release; this reservation grants no installation priority.
+
+The same approved-item coordinator reserves 3301_rewards_unit_preparation at
+idx2601 / when1793330002901, immediately after its owned 3300. Preparation
+extends the existing governance history. Existing reviews retain explicitly
+legacy visibility; no doer/checker history is manufactured. New annual review
+creation requires the preparation release. No live migration has been applied.
+
+The same coordinator reserves 3302_maybank_payment_arrangement at idx2602 /
+when1793330002902. A fresh full fetch and survey of 1046 journals and 686
+readable registered worktrees found no higher competing reservation than its
+owned 3301/2601/1793330002901. This adds explicit Maybank arrangement metadata
+and a separate, nullable payee banking-residency fact; no tax residency is copied.

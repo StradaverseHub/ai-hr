@@ -60,6 +60,8 @@ export type CompanyRef = {
   /** The column that references `company.id`. */
   column: string;
   disposition: CompanyRefDisposition;
+  /** A retained UUID array has an owning trigger and bounded predicate rather than a physical FK. */
+  referenceKind?: 'uuid-array';
   /**
    * `config` only: rows matching one of these conditions REFUSE with `reason` instead of being deleted.
    * `{r}` is replaced by the table's alias. Used for `usage_snapshot`, whose zero rows are setup noise and
@@ -119,6 +121,7 @@ export const COMPANY_REFERRERS: readonly CompanyRef[] = [
   // cannot count, so one fixed SECURITY DEFINER boolean answers for all four (repair fragment
   // guards-fixtures). They refuse rather than cascade: they are audit of what a person reviewed or what a
   // model was asked, and they leave only through their own expiry/retention owners.
+  {table:'pay_component',column:'applied_company_ids',referenceKind:'uuid-array',disposition:'other',existsFunction:'app.pay_component_company_in_use',note:'Selected-company Pay Items retain their configured company identities.'},
   {table:'ai_agent_promotion',column:'company_id',disposition:'other',existsFunction:'app.ai_assistance_company_in_use',note:'Company-scoped promotion history retains its company without exposing private candidate or promotion rows.'},
   {table:'assistant_own_leave_review',column:'allocation_effective_company_id',disposition:'other',existsFunction:'app.ai_assistance_company_in_use',note:'A retained cost-allocation review preserves its effective-dated company as well as its original company; expose only a scoped retention boolean.'},
   {table:'assistant_own_leave_review',column:'company_id',disposition:'other',existsFunction:'app.ai_assistance_company_in_use',note:'A reviewed Assistant action custody record scoped to this company is retained audit; expose only a scoped retention boolean.'},
@@ -135,6 +138,15 @@ export const COMPANY_REFERRERS: readonly CompanyRef[] = [
   {table:'teras_loop_case',column:'company_id',disposition:'other',note:'A loop\'s case for the company or one of its employments (0960): references, dates and counts only, written by the agent principal, never deleted (no DELETE privilege); an employment case also goes if its employment is deleted (ON DELETE CASCADE). Administrators of the company read its cases.'},
   {table:'teras_loop_run',column:'company_id',disposition:'other',note:'A loop run\'s outcome record for the company (0960): append-only, no DELETE privilege and a trigger refuses UPDATE and DELETE, so it is never cascaded. Administrators of the company read its runs; a run that reached no company has no company_id.'},
   // AI v2 P2-2b (migration 0965): the payroll Audit loop's evidence is append-only audit of a company's payroll, never cascaded.
+  {table:'attendance_formula_ot_binding',column:'company_id',disposition:'other',note:'Immutable Attendance formula overtime evidence below the existing settlement owner.'},
+  {table:'attendance_formula_ot_binding_result',column:'company_id',disposition:'other',note:'Immutable Attendance formula overtime evidence below the existing settlement owner.'},
+  {table:'attendance_formula_ot_binding_day',column:'company_id',disposition:'other',note:'Immutable Attendance formula overtime evidence below the existing settlement owner.'},
+  {table:'attendance_formula_result',column:'company_id',disposition:'other',note:'Immutable Attendance calculation evidence retained with Payroll traceability.'},
+  {table:'attendance_formula_result_event',column:'company_id',disposition:'other',note:'Append-only Attendance calculation review and transfer history.'},
+  {table:'attendance_formula',column:'company_id',disposition:'other',note:'Retained Attendance formula configuration, immutable versions and private testing/audit evidence; never erased through company setup.'},
+  {table:'attendance_formula_revision',column:'company_id',disposition:'other',note:'Retained Attendance formula configuration, immutable versions and private testing/audit evidence; never erased through company setup.'},
+  {table:'attendance_formula_test',column:'company_id',disposition:'other',note:'Retained Attendance formula configuration, immutable versions and private testing/audit evidence; never erased through company setup.'},
+  {table:'attendance_formula_event',column:'company_id',disposition:'other',note:'Retained Attendance formula configuration, immutable versions and private testing/audit evidence; never erased through company setup.'},
   {table:'payroll_audit_capture',column:'company_id',disposition:'other',note:'Append-only, hash-chained payroll audit evidence (migration 0965): no DELETE privilege and a trigger refuses UPDATE and DELETE, so a company with captured payroll evidence is never deleted.'},
   {table:'payroll_audit_finding',column:'company_id',disposition:'other',note:'Append-only control findings of the payroll Audit loop (migration 0965), retained as audit evidence.'},
   {table:'payroll_audit_disposition',column:'company_id',disposition:'other',note:'Append-only dispositions of payroll Audit loop findings (migration 0965), retained as audit evidence.'},

@@ -1,5 +1,6 @@
 import {lockPayComponentCatalogReadTx} from './pay-component-catalog-lock';
 import {priceIndividualTxnInputTx,type IndividualCalculationMethod} from '../packs/payroll/individual-calculation';
+import { assertPayComponentCompaniesTx } from './pay-component-company';
 import {payrollEmploymentPredicate,type PayrollEligibilityRun} from './payroll-employment-eligibility';
 /**
  * 1.2.2 Individual Transaction (ADR-0056, amended by f1564110 Phase 2) — a pure dated one-off payroll
@@ -736,6 +737,7 @@ export function createIndividualTxn(
     if (!emp || emp.companyId !== target.companyId) {
       throw new CompanyMismatchError(emp?.companyId ?? 'unknown', target.companyId);
     }
+    await assertPayComponentCompaniesTx(tx, ctx, [{componentId:p.componentId, employmentId:p.employmentId, effectiveDate:p.txnDate}]);
     const [row] = await tx
       .insert(payrollIndividualTxn)
       .values({
@@ -1195,6 +1197,8 @@ export async function createIndividualTxnsBulkTx(
     // (earning/deduction) row REQUIRES a component while INDIVIDUAL_TXN_PAY_ENABLED is on.
     await assertTxnComponents(tx, validated, individualTxnPayEnabled(ctx));
 
+    await assertPayComponentCompaniesTx(tx, ctx, employmentIds.flatMap(employmentId => validated.map(row => ({componentId:row.componentId,employmentId,effectiveDate:row.txnDate}))));
+
     // Cartesian insert: the validated grid is recorded once per selected employee. Outer loop = employees so
     // each row's subjectEmploymentId / payload employmentId names the right payee.
     const ids: string[] = [];
@@ -1350,6 +1354,7 @@ export async function insertIndividualTxnsTx(
     if (!(r.amount > 0)) throw new AmountNotPositiveError(r.amount);
   }
   await assertTxnComponents(tx, p.rows, individualTxnPayEnabled(ctx));
+  await assertPayComponentCompaniesTx(tx, ctx, p.rows.map(row => ({componentId:row.componentId,employmentId:row.employmentId,effectiveDate:row.txnDate})));
   for (const r of p.rows) {
     const [row] = await tx
       .insert(payrollIndividualTxn)
@@ -1438,6 +1443,7 @@ export function updateIndividualTxn(
           ? existing.componentId
           : null;
     await assertTxnComponents(tx, [{ kind: nextKind, componentId: nextComponentId }], false);
+    await assertPayComponentCompaniesTx(tx, ctx, [{componentId:nextComponentId,employmentId:existing.employmentId,effectiveDate:nextDate}]);
     // c11e81aa — the company comes from the ROW (attached rows get it from their batch either way), so a
     // cycle from another company is refused here rather than stored and acted on at generate time.
     const nextIntendedCycleId = await resolveIntendedCycleId(tx, {

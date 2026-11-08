@@ -33,7 +33,7 @@ export function RewardReviewList({rows:all,filters,emptyReason,year,canConfigure
    </label>}
    <label className="space-y-1 text-sm"><span className="block">{t('stage')}</span><select name="stage" defaultValue={filters.stage??''} className={inputCls}><option value="">{t('reviewList.all')}</option>{rewardStages.map(stage=><option key={stage} value={stage}>{t(`stages.${stage}`)}</option>)}<option value="returned">{t('reviewList.returned')}</option></select></label>
    <label className="flex min-h-10 items-center gap-2 text-sm"><input type="checkbox" name="waiting" value="1" defaultChecked={filters.waiting==='1'}/>{t('reviewList.waitingOnly')}</label>
-   <Button type="submit">{t('reviewList.apply')}</Button><Link href="/rewards" className="py-2 text-sm text-primary hover:underline">{t('reviewList.clear')}</Link>
+   <Button type="submit">{t('reviewList.apply')}</Button><Link href="/rewards/reviews" className="py-2 text-sm text-primary hover:underline">{t('reviewList.clear')}</Link>
   </form>}
   {budgetRows.length > 0 && <details className="rounded-lg border border-border p-4">
     <summary className="cursor-pointer font-semibold">{t('budget')} · {t('reviewList.all')}</summary>

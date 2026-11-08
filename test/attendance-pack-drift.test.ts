@@ -29,6 +29,11 @@ const root = fileURLToPath(new URL('..', import.meta.url));
 
 /** The pack's implementation modules (extensionless, as import specifiers resolve them). */
 const BOUNDARIES = [
+  // Formula lifecycle and native projections are pack implementation, guarded in BOTH lists.
+  'core/attendance-formulas',
+  'core/attendance-formula-ai',
+  'core/attendance-formula-measurements',
+  'core/attendance-formula-leave',
   'core/attendance',
   'core/attendance-allowance',
   'core/attendance-allowance-context',
@@ -59,6 +64,10 @@ const BOUNDARIES = [
 const ALWAYS_ALLOWED = [
   'packs/attendance/', // the pack itself: wiring (index.ts) + service facade
   'core/attendance.ts', // implementation files import each other freely
+  'core/attendance-formulas.ts',
+  'core/attendance-formula-ai.ts',
+  'core/attendance-formula-measurements.ts',
+  'core/attendance-formula-leave.ts',
   'core/attendance-allowance.ts',
   'core/attendance-allowance-context.ts',
   'core/attendance-shortfall.ts',

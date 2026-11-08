@@ -1,4 +1,5 @@
 'use client';
+import {DEFAULT_MAYBANK_PAYMENT_SETTINGS} from '@/lib/maybank-payment-settings';
 import { CompanyDisplayGroupFields } from './company-display-group-fields';
 import type { CompanyDisplayGroup, CompanyDisplayGroupOption } from '@/lib/company-display-group';
 
@@ -174,6 +175,7 @@ export type PanelBankProfile = {
   swiftCode: string | null;
   currency: string;
   isPrimary: boolean;
+  maybankPaymentSettings?:import('@/lib/maybank-payment-settings').MaybankPaymentSettings|null;
   fileContactName?:string|null;fileContactPhone?:string|null;fileStateCode?:string|null;requirePayeeIdCheck?:boolean;
 };
 
@@ -248,7 +250,7 @@ function BankAccountForm({
   profile: PanelBankProfile | null;
   onCancel?: () => void;
 }) {
-  const t = useTranslations('admin.organization');
+  const t = useTranslations('admin.organization'),mb=useTranslations('maybankPayment');
   const p = profile;
   // Legacy-tolerant: a stored bank key no longer in the master is still offered so editing any OTHER field
   // cannot silently drop it (same posture as OptionSelect).
@@ -278,6 +280,7 @@ function BankAccountForm({
           </optgroup>
         </select>
       </Field>
+      {selectedBank==='maybank'&&<fieldset className="space-y-3 sm:col-span-2"><input type="hidden" name="maybankSettingsPresent" value="1"/><legend className="font-medium">{mb('settings')}</legend><Field label={mb('version')}><select name="maybankVersion" aria-label={mb('version')} defaultValue={p?.maybankPaymentSettings?.version??DEFAULT_MAYBANK_PAYMENT_SETTINGS.version} className={inputCls}><option value="7.4">Maybank2E-RC V7.4</option></select></Field><p className="text-xs text-muted-foreground">{mb('hashHelp')}</p><Field label={mb('hashArrangement')}><select name="maybankHashMode" aria-label={mb('hashArrangement')} defaultValue={p?.maybankPaymentSettings?.hashMode??DEFAULT_MAYBANK_PAYMENT_SETTINGS.hashMode} className={inputCls}><option value="unconfirmed">{mb('unconfirmed')}</option><option value="not-required">{mb('noHash')}</option></select></Field><div className="grid gap-3 sm:grid-cols-3"><Field label={t('ocbcContactName')}><input name="fileContactName" defaultValue={p?.fileContactName??''} maxLength={40} className={inputCls}/></Field><Field label={t('ocbcContactPhone')}><input name="fileContactPhone" defaultValue={p?.fileContactPhone??''} maxLength={20} className={inputCls}/></Field><Field label={mb('stateCode')}><select name="fileStateCode" aria-label={mb('stateCode')} defaultValue={p?.fileStateCode??''} className={inputCls}><option value="">{mb('notConfigured')}</option>{[['01','Johor'],['02','Kedah'],['03','Kelantan'],['04','Melaka'],['05','Negeri Sembilan'],['06','Pahang'],['07','Pulau Pinang'],['08','Perak'],['09','Perlis'],['10','Selangor'],['11','Terengganu'],['12','Sabah'],['13','Sarawak'],['14','Wilayah Persekutuan']].map(([code,name])=><option key={code} value={code}>{code} · {name}</option>)}</select></Field></div><Field label={mb('zakatClass')}><select name="maybankZakatClass" aria-label={mb('zakatClass')} defaultValue={p?.maybankPaymentSettings?.zakatClassification??'1'} className={inputCls}>{[['1','Pendapatan'],['2','Harta'],['3','Perniagaan'],['4','Sumbangan Wajib'],['5','Wakaf Potongan Gaji']].map(([code,name])=><option key={code} value={code}>{code} · {name}</option>)}</select></Field><p className="text-xs text-muted-foreground">{mb('mappingHelp')}</p></fieldset>}
       {selectedBank==='ocbc_bank'&&<fieldset className="space-y-3 sm:col-span-2"><input type="hidden" name="bankFileSettingsPresent" value="1"/><legend className="font-medium">{t('ocbcFileSettings')}</legend><p className="text-xs text-muted-foreground">{t('ocbcFileSettingsHelp')}</p><div className="grid gap-3 sm:grid-cols-3">
         <Field label={t('ocbcContactName')}><input name="fileContactName" defaultValue={p?.fileContactName??''} maxLength={40} className={inputCls}/></Field>
         <Field label={t('ocbcContactPhone')}><input name="fileContactPhone" defaultValue={p?.fileContactPhone??''} inputMode="numeric" pattern="[0-9]{1,20}" maxLength={20} className={inputCls}/></Field>

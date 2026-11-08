@@ -4,6 +4,7 @@ import {withTenant,type SessionContext,type Tx} from '../../db/client';
 import {PayFormulaError} from '../../lib/pay-formula-model';
 import {isTransactionEffectiveDate} from '../../lib/transaction-effective-date';
 import {lockPayComponentCatalogReadTx} from '../../core/pay-component-catalog-lock';
+import {assertPayComponentCompaniesTx} from '../../core/pay-component-company';
 import type {PayRule} from '../../core/pay-rule';
 
 export type IndividualCalculationMethod='amount'|'formula';
@@ -18,6 +19,8 @@ export async function priceIndividualTxnInputTx(tx:Tx,ctx:SessionContext,p:Indiv
  if(item.rule?.kind!=='formula_builder')throw new PayFormulaError('The Pay Item no longer has an assigned Formula ID. Reopen the transaction.');
  const [allowed]=await tx.execute<{ok:boolean}>(sql`select app.can_admin_payroll_for(${p.companyId}::uuid) and exists(select 1 from employment where id=${p.employmentId}::uuid and company_id=${p.companyId}::uuid and tenant_id=${ctx.tenantId}::uuid) as ok`);
  if(!allowed?.ok)throw new PayFormulaError('Transaction calculation is unavailable.');
+ if(!/^\d{4}-(0[1-9]|1[0-2])$/.test(p.payPeriod)||!isTransactionEffectiveDate(p.txnDate))throw new PayFormulaError('Choose a valid payroll month and effective date.');
+ await assertPayComponentCompaniesTx(tx,ctx,[{componentId:p.componentId,employmentId:p.employmentId,effectiveDate:p.txnDate}]);
  if(p.method==='amount'){
   if(p.unit!=='amount'||p.quantity!=null)throw new PayFormulaError('Amount input must not include a quantity.');
   if(!Number.isFinite(p.amount)||p.amount<=0)throw new PayFormulaError('Enter a positive transaction amount.');
@@ -25,7 +28,6 @@ export async function priceIndividualTxnInputTx(tx:Tx,ctx:SessionContext,p:Indiv
  }
  if(!['qty','hours','days','units'].includes(p.unit??'')||!Number.isFinite(p.quantity)||!(p.quantity!>0))throw new PayFormulaError('Enter a positive quantity, hours, days or units.');
  if(Number(p.quantity!.toFixed(2))!==p.quantity)throw new PayFormulaError('Enter a quantity with at most two decimal places.');
- if(!/^\d{4}-(0[1-9]|1[0-2])$/.test(p.payPeriod)||!isTransactionEffectiveDate(p.txnDate))throw new PayFormulaError('Choose a valid payroll month and effective date.');
  let cycleId=p.cycleId??null;
  if(p.batchId){
   const [batch]=await tx.execute<{cycleId:string|null;runType:string}>(sql`select payroll_cycle_id as "cycleId",run_type as "runType" from payroll_batch where id=${p.batchId}::uuid and company_id=${p.companyId}::uuid and tenant_id=${ctx.tenantId}::uuid and pay_period=${p.payPeriod}`);

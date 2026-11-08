@@ -1686,6 +1686,7 @@ async function applyBankSection(
   await pack.statutory.setBank(s, {
     personId,
     employmentId:String(formData.get('employmentId')),
+    ...(formData.has('bankPayeeResidency')?{bankPayeeResidency:(String(formData.get('bankPayeeResidency')??'')||null) as 'resident'|'non_resident'|null}:{}),
     bankName: (formData.get('bankName') as string) || null,
     bankAccountNo: (formData.get('bankAccountNo') as string) || null,
     enableCustomHolderName: formData.get('enableCustomHolderName') === 'on',

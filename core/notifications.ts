@@ -4,7 +4,7 @@ import {currentFollowupTargetsTx} from './automatic-followups';
 import type { Tx as AiReadTx } from '../db/client';
 import { withCanonicalAiReadTx } from './ai-read-transaction';
 import { assessmentReviewTaskRecipientsTx,assessmentReminderRecipientsTx } from '../packs/performance/service';
-import { rewardUploadCheckerRecipients,rewardAccessSuspensionEventRecipients,rewardNotificationRecipients,rewardPoolNotificationRecipients } from '../packs/rewards/notification-recipients';
+import { rewardUploadCheckerRecipients,rewardAccessSuspensionEventRecipients,rewardNotificationRecipients,rewardPoolNotificationRecipients,rewardPreparationNotificationRecipients } from '../packs/rewards/notification-recipients';
 /**
  * Notification engine (ADR-0034) — 34-2 registry + dispatch + reads. A sweep reads new domain events after a
  * per-tenant cursor and turns the mapped ones into recipient-scoped notifications. Gated by the per-tenant
@@ -364,6 +364,21 @@ const REGISTRY: Record<string, Spec | Spec[]> = {
     kind: 'rewards.review', category: 'rewards',
     render: (p, ev) => renderRewardRouted(p, ev),
     recipients: (tx, ev, payload) => rewardNotificationRecipients(tx, ev.aggregateId, payload?.to),
+  },
+  'reward-unit.preparation-released': {
+    kind:'rewards.preparation-released',category:'rewards',
+    recipients:(tx,event,payload)=>rewardPreparationNotificationRecipients(tx,event.aggregateId,payload?.to,true),
+    render:(_payload,event)=>({severity:'action',title:'rewardsPreparation.releaseNotificationTitle',body:'rewardsPreparation.releaseNotificationBody',linkPath:`/rewards/${event.aggregateId}`}),
+  },
+  'reward-unit.preparation-changed': {
+    kind:'rewards.preparation-changed',category:'rewards',
+    recipients:(tx,event,payload)=>rewardPreparationNotificationRecipients(tx,event.aggregateId,payload?.to,false),
+    render:(_payload,event)=>({severity:'action',title:'rewardsPreparation.changeNotificationTitle',body:'rewardsPreparation.changeNotificationBody',linkPath:`/rewards/${event.aggregateId}`}),
+  },
+  'reward-unit.preparation-invalidated': {
+    kind:'rewards.preparation-invalidated',category:'rewards',
+    recipients:(tx,event,payload)=>rewardPreparationNotificationRecipients(tx,event.aggregateId,payload?.to,false),
+    render:(_payload,event)=>({severity:'action',title:'rewardsPreparation.changeNotificationTitle',body:'rewardsPreparation.changeNotificationBody',linkPath:`/rewards/${event.aggregateId}`}),
   },
   'reward-unit.final-pool-changed': {
     kind:'rewards.final-pool-changed',category:'rewards',
