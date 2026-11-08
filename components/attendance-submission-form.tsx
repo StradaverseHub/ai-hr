@@ -35,6 +35,7 @@ export function AttendanceSubmissionForm({ action, className, children, onSubmit
       } catch (failure) {
         if (isRedirectError(failure)) {
           if (!('handled' in failure && failure.handled === true)) throw failure;
+          onSubmitted?.();
           return;
         }
         setError(t('requestFailed'));
