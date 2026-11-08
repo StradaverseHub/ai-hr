@@ -232,7 +232,10 @@ async function matrix(variant:Variant,session:Awaited<ReturnType<typeof employee
  const fullSearch=await call('full-server-search-population',0,async()=>{const start=performance.now(),page=await database.withTenant(ctx,tx=>variant==='current'
   ?baseline.readEmployeeChoicesTx(tx,ctx,fullSearchInput,signal):prototype.readEmployeeChoicesTx(tx,ctx,fullSearchInput,signal),{readOnlySnapshot:true});elapsed=performance.now()-start;return page;});
  expect(fullSearch.total).toBe(50000);expect(fullSearch.rows.map(row=>row.employmentId)).toEqual(completeFixtureIds.slice(48000));
- expect(fullSearch.selected?.employmentId).toBe(completeFixtureIds.at(-1));expect(stable(fullSearch)).toEqual(stable(full));
+ expect(fullSearch.selected?.employmentId).toBe(completeFixtureIds.at(-1));
+ const expectedSearchFilters={...full.filters,query:fullSearchInput.query};
+ expect(fullSearch.filters).toEqual(expectedSearchFilters);
+ expect(stable(fullSearch)).toEqual({...stable(full),filters:expectedSearchFilters});
  if(phase==='timing'){
   ports[variant+':full-server-search-population']={ms:elapsed};const telemetry=(report.resourcePhases??=[])as unknown[];telemetry.push({variant,case:'full-server-search-population',before:fullSearchBefore,after:resources()});
   if(variant==='current')pages.set('full-server-search-population',stable(fullSearch));else expect(stable(fullSearch)).toEqual(pages.get('full-server-search-population'));
