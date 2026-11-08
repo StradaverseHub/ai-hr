@@ -1,0 +1,424 @@
+{
+  "kind": "AI_MANIFEST_HOSTED_REFRESH_SOURCE_ONLY_NOT_QUALIFICATION",
+  "parent": "89bc471c88bbaf4c612ddf8678f147da4251ffc7",
+  "sourceRef": "codex/ai-manifest-hosted-refresh-20261109",
+  "currentSources": [
+    {
+      "path": ".github/workflows/alpha-focused-checks.yml",
+      "bytes": 18767,
+      "sha256": "66181ae8d72945bda4ca6b37a35990f2defa783a5535106c9a295386c220751b"
+    },
+    {
+      "path": ".github/ci/ai-manifest-refresh.mjs",
+      "bytes": 11946,
+      "sha256": "c94729a7ec77c8e11448a172662514a7595883d3883e99b2c3b686e50d3a7ab9"
+    },
+    {
+      "path": ".github/ci/ai-manifest-refresh.test.mjs",
+      "bytes": 10744,
+      "sha256": "35526ecc51bb5f4e0a090a9202a5bba9fcbbc0aad2ba3aec24a4fbff29c58f44"
+    },
+    {
+      "path": "docs/adr/2026-11-08-authenticated-singleton-ci-profiles.md",
+      "bytes": 14219,
+      "sha256": "1ca3af359e8108aa8b277052e52ebf627bbec6311f5e6caf1e85b45a262bd47e"
+    },
+    {
+      "path": ".github/ci/diagnostics/native-reference/application-owner-inverse.json",
+      "bytes": 146832,
+      "sha256": "73374a4b95b74a74c3a60262a812a7af86c74e59b0dc3e08c2140554e24daf26"
+    },
+    {
+      "path": "docs/qualification/compiler-native-application-inventory-source-20261108.json",
+      "bytes": 20678,
+      "sha256": "da28a6798706cfcef3e19fd3733302009ef4bd68c5838afae98de55d11f9f227"
+    }
+  ],
+  "parentWholeGitPreimages": [
+    {
+      "path": ".github/workflows/alpha-focused-checks.yml",
+      "commit": "89bc471c88bbaf4c612ddf8678f147da4251ffc7",
+      "gitBlob": "e993882d7e92f28bd4f75f31556f5a971dfe47f6",
+      "bytes": 16493,
+      "sha256": "d9ed6026eae9d56904b42bcddb6644bc0132943e27142a415dc3bb8c78c47765"
+    },
+    {
+      "path": "docs/qualification/shared-database-prerequisite-source-index-20261109.json",
+      "commit": "89bc471c88bbaf4c612ddf8678f147da4251ffc7",
+      "gitBlob": "2509b76200d1ade15c5055eae39e560d61f4fd68",
+      "bytes": 8688886,
+      "sha256": "fe1be13bde20378dd953205662f61b4700d9972c8b20b822bcac3b7c8abc4257"
+    },
+    {
+      "path": "docs/adr/2026-11-08-authenticated-singleton-ci-profiles.md",
+      "commit": "89bc471c88bbaf4c612ddf8678f147da4251ffc7",
+      "gitBlob": "a58c4a376e619378818c742ef99a7f9bf1c375d6",
+      "bytes": 11433,
+      "sha256": "04343f26b77b480bae86edc9d463649ad8c94cc3597cae2102cd442aea0316ff"
+    },
+    {
+      "path": ".github/ci/diagnostics/native-reference/application-owner-inverse.json",
+      "commit": "89bc471c88bbaf4c612ddf8678f147da4251ffc7",
+      "gitBlob": "228852d82ddb559a0b6268e5619c41211f6030c7",
+      "bytes": 128007,
+      "sha256": "8584d652e8e62ae358a286adbc9535de49b3c2fc03d40d2b5fc17da0597f828c"
+    },
+    {
+      "path": "docs/qualification/compiler-native-application-inventory-source-20261108.json",
+      "commit": "89bc471c88bbaf4c612ddf8678f147da4251ffc7",
+      "gitBlob": "2fb96110e4a3ea5bf401ac770020f1c5626c75ef",
+      "bytes": 20678,
+      "sha256": "3f880adcd092e3bcdb535bfca53151d0c5772120cd0c483d9708be0a46233028"
+    }
+  ],
+  "newPathsAbsentAtParent": [
+    ".github/ci/ai-manifest-refresh.mjs",
+    ".github/ci/ai-manifest-refresh.test.mjs",
+    "docs/qualification/ai-manifest-hosted-refresh-source-provenance-20261109.json"
+  ],
+  "sourceIndexCurrentSelfHashExcluded": "docs/qualification/shared-database-prerequisite-source-index-20261109.json",
+  "registryChange": {
+    "onlyPath": ".github/workflows/alpha-focused-checks.yml",
+    "vertices": 3495,
+    "oldOrderAndAllOther3494RowsWhole": true,
+    "newHelperAndModelNotApplicationRuntimeMembers": true,
+    "runtimeEdgesAndAll27MembershipListsUnchanged": true,
+    "all749SqlAnd747JournalMembershipUnchanged": true
+  },
+  "historicalRecords": {
+    "all11EmployeeWholePredecessorRestorationRowsUnchanged": true
+  },
+  "newModelCases": 13,
+  "normalOffRoute": {
+    "allOldJobsRetained": true,
+    "onlyExclusivityPredicatesAndNewModelArgChange": true
+  },
+  "sourceOnly": true,
+  "testsExecuted": false,
+  "localRepositoryBehaviorExecuted": false,
+  "releaseAuthorized": false,
+  "providerApprovalRenewed": false,
+  "nativeAuthorized": false,
+  "originalFailuresRetained": [
+    "42518172062",
+    "42518834654"
+  ],
+  "provenanceNoNestedBase64": true,
+  "currentIntegrationGaps": [
+    {
+      "path": ".github/ci/diagnostics/native-reference/application-owner-inverse.json",
+      "workflowExpectedAtHistoricalRecord": "45346ff9a29861aef88326033f4c4f72eee359b8623f9bbebb304a658ed631da",
+      "parentWorkflowActual": "d9ed6026eae9d56904b42bcddb6644bc0132943e27142a415dc3bb8c78c47765",
+      "qualificationNotClaimed": true,
+      "status": "PREEXISTING_TWO_ROW_GAP_GENUINELY_REPAIRED_CURRENT_TO_SAME_WHOLE_PREDECESSOR",
+      "reader": ".github/ci/diagnostics/native-reference/application.test.mjs:60-63",
+      "normalDiscoveredWrapper": "test/compiler-native-application-controls.test.ts",
+      "namespace": "Current checkout via import.meta.url; no fixed5c/13d source target or historical-directory redirect",
+      "requiredFutureRepair": "Owned actual current-workflow-to-SAMEwhole1ffaffae predecessor inverse composition and matching reader controls; preserve original target bytes and do not replace expected source hash alone",
+      "notRepairedInThisLease": false,
+      "additionalParentStalePath": ".github/ci/focused-checks.mjs",
+      "additionalParentStaleActual": "057055f45e5078af63846b65221ffdd12d94a2c4966f840f80efc46fb2ea5e11",
+      "all7CurrentRowsAndOriginalGitPredecessorsVerified": true,
+      "strictReverseOperations": {
+        "workflow": 16,
+        "focused-checks.mjs": 21
+      }
+    }
+  ],
+  "activeInventoryMapRecovery": {
+    "path": "docs/qualification/compiler-native-application-inventory-source-20261108.json",
+    "currentConsumer": ".github/ci/diagnostics/native-reference/application-mode.test.mjs current componentSources loop",
+    "membership": 105,
+    "changedCurrentBindings": [
+      {
+        "path": ".github/ci/ci.test.mjs",
+        "oldSha256": "07d2726db8f096e3997f6915c165eeb81ee33a7fafaa855dbe95876b0ff73fa7",
+        "currentSha256": "d5921d67e4b1a290ca8afa40c80dc1823d742fb41b93876742673fd8bdcc65f5"
+      },
+      {
+        "path": ".github/ci/diagnostics/native-reference/application-owner-inverse.json",
+        "oldSha256": "8584d652e8e62ae358a286adbc9535de49b3c2fc03d40d2b5fc17da0597f828c",
+        "currentSha256": "73374a4b95b74a74c3a60262a812a7af86c74e59b0dc3e08c2140554e24daf26"
+      },
+      {
+        "path": ".github/ci/employee-benchmark-supervisor.py",
+        "oldSha256": "68a47dce71197e7fc1f57702cbc1dc99495ac58d5cf43243c702c82873467926",
+        "currentSha256": "0d15951255cd2066ec6febde8c15d2738d4a0c22fda550c3d96ece3d63254258"
+      },
+      {
+        "path": ".github/ci/employee-benchmark-supervisor.test.py",
+        "oldSha256": "d95721c1172ed25318eb1d209a6d4aa5d7ce2e741c177bce103920c38e08490d",
+        "currentSha256": "6ade2b3227cbc9c227c2d9fcfe37536a193017f4b99cfbc80eefe05220e7a19c"
+      },
+      {
+        "path": ".github/ci/focused-checks.mjs",
+        "oldSha256": "b5fbf10dc46d6a5089015fed3e15d571e4a0301ab3b1b737228a67f6e4d553f2",
+        "currentSha256": "057055f45e5078af63846b65221ffdd12d94a2c4966f840f80efc46fb2ea5e11"
+      },
+      {
+        "path": ".github/ci/plan.mjs",
+        "oldSha256": "9c90a5addbedfff0abf360adfe28d64bc4dfdccc6b09ddc1a90cc69c32662342",
+        "currentSha256": "83ed8d67ae92af8f7b3fdf8532ed9833db7160d2aec618ae395c58fbbc36a11d"
+      },
+      {
+        "path": ".github/ci/policy-version.mjs",
+        "oldSha256": "6b184db22189d6402016980e31b8a5d770e35860ea20577d3e863b65b645baf7",
+        "currentSha256": "cbb9871c2e11c3f7434bdcb0fe25cd2c8323f683d588d892ec9dbff194232c97"
+      },
+      {
+        "path": ".github/ci/singleton-protocol.mjs",
+        "oldSha256": "2e1a46f82c812114bedb53f9ffc1a4fdf9eb37b909e99dd8b24a22f8bd53bb64",
+        "currentSha256": "a5b02e31304383880ccac5773b76cec0334a44de6683d8f7869e3a95bf40fb92"
+      },
+      {
+        "path": ".github/workflows/alpha-focused-checks.yml",
+        "oldSha256": "45346ff9a29861aef88326033f4c4f72eee359b8623f9bbebb304a658ed631da",
+        "currentSha256": "66181ae8d72945bda4ca6b37a35990f2defa783a5535106c9a295386c220751b"
+      },
+      {
+        "path": "scripts/gate-db-classify.ts",
+        "oldSha256": "cc77445ba5b8a702a5f8f4a4292bdcb99275d520ae4f13b16442a17e78f3f916",
+        "currentSha256": "2a8c7a347ffc0ac6c090de12def4c8f6f3a055db2780f90d7fdf596e4c76b654"
+      }
+    ],
+    "other95BindingsWhole": true,
+    "allOtherMapFieldsWhole": true,
+    "strictCurrentToWhole89bcChanges": [
+      {
+        "start": 89,
+        "end": 90,
+        "after": "    \"scripts/gate-db-classify.ts\": \"2a8c7a347ffc0ac6c090de12def4c8f6f3a055db2780f90d7fdf596e4c76b654\",\n",
+        "before": "    \"scripts/gate-db-classify.ts\": \"cc77445ba5b8a702a5f8f4a4292bdcb99275d520ae4f13b16442a17e78f3f916\",\n"
+      },
+      {
+        "start": 62,
+        "end": 64,
+        "after": "    \".github/ci/singleton-protocol.mjs\": \"a5b02e31304383880ccac5773b76cec0334a44de6683d8f7869e3a95bf40fb92\",\n    \".github/workflows/alpha-focused-checks.yml\": \"66181ae8d72945bda4ca6b37a35990f2defa783a5535106c9a295386c220751b\",\n",
+        "before": "    \".github/ci/singleton-protocol.mjs\": \"2e1a46f82c812114bedb53f9ffc1a4fdf9eb37b909e99dd8b24a22f8bd53bb64\",\n    \".github/workflows/alpha-focused-checks.yml\": \"45346ff9a29861aef88326033f4c4f72eee359b8623f9bbebb304a658ed631da\",\n"
+      },
+      {
+        "start": 54,
+        "end": 56,
+        "after": "    \".github/ci/plan.mjs\": \"83ed8d67ae92af8f7b3fdf8532ed9833db7160d2aec618ae395c58fbbc36a11d\",\n    \".github/ci/policy-version.mjs\": \"cbb9871c2e11c3f7434bdcb0fe25cd2c8323f683d588d892ec9dbff194232c97\",\n",
+        "before": "    \".github/ci/plan.mjs\": \"9c90a5addbedfff0abf360adfe28d64bc4dfdccc6b09ddc1a90cc69c32662342\",\n    \".github/ci/policy-version.mjs\": \"6b184db22189d6402016980e31b8a5d770e35860ea20577d3e863b65b645baf7\",\n"
+      },
+      {
+        "start": 47,
+        "end": 50,
+        "after": "    \".github/ci/employee-benchmark-supervisor.py\": \"0d15951255cd2066ec6febde8c15d2738d4a0c22fda550c3d96ece3d63254258\",\n    \".github/ci/employee-benchmark-supervisor.test.py\": \"6ade2b3227cbc9c227c2d9fcfe37536a193017f4b99cfbc80eefe05220e7a19c\",\n    \".github/ci/focused-checks.mjs\": \"057055f45e5078af63846b65221ffdd12d94a2c4966f840f80efc46fb2ea5e11\",\n",
+        "before": "    \".github/ci/employee-benchmark-supervisor.py\": \"68a47dce71197e7fc1f57702cbc1dc99495ac58d5cf43243c702c82873467926\",\n    \".github/ci/employee-benchmark-supervisor.test.py\": \"d95721c1172ed25318eb1d209a6d4aa5d7ce2e741c177bce103920c38e08490d\",\n    \".github/ci/focused-checks.mjs\": \"b5fbf10dc46d6a5089015fed3e15d571e4a0301ab3b1b737228a67f6e4d553f2\",\n"
+      },
+      {
+        "start": 29,
+        "end": 30,
+        "after": "    \".github/ci/diagnostics/native-reference/application-owner-inverse.json\": \"73374a4b95b74a74c3a60262a812a7af86c74e59b0dc3e08c2140554e24daf26\",\n",
+        "before": "    \".github/ci/diagnostics/native-reference/application-owner-inverse.json\": \"8584d652e8e62ae358a286adbc9535de49b3c2fc03d40d2b5fc17da0597f828c\",\n"
+      },
+      {
+        "start": 13,
+        "end": 14,
+        "after": "    \".github/ci/ci.test.mjs\": \"d5921d67e4b1a290ca8afa40c80dc1823d742fb41b93876742673fd8bdcc65f5\",\n",
+        "before": "    \".github/ci/ci.test.mjs\": \"07d2726db8f096e3997f6915c165eeb81ee33a7fafaa855dbe95876b0ff73fa7\",\n"
+      }
+    ],
+    "preexisting9SourceIdentitiesAndWholeDiffs": [
+      {
+        "path": ".github/ci/ci.test.mjs",
+        "priorDigest": "07d2726db8f096e3997f6915c165eeb81ee33a7fafaa855dbe95876b0ff73fa7",
+        "priorCommit": "1ffaffae266870a0b298ec8094433eeeb0dcb57e",
+        "priorGitBlob": "d7c5a4f4a95fb1d8843fe98d1953d0dc9851904c",
+        "priorBytes": 63485,
+        "currentCommit": "89bc471c88bbaf4c612ddf8678f147da4251ffc7",
+        "currentGitBlob": "109d5738665781e4c89eb18eb142e9959de81870",
+        "currentBytes": 68071,
+        "currentDigest": "d5921d67e4b1a290ca8afa40c80dc1823d742fb41b93876742673fd8bdcc65f5",
+        "wholeDiffBytes": 11638,
+        "wholeDiffSha256": "e420c1bff8c72066b5be092a4ae19d05c2a29af08e0372a13dca38602903be6e",
+        "sourceSemanticInvariants": "Existing source-data model recovery uses whole browser fixture, explicit candidateRoot and native-root/plan report refusal; reset-role-migrate-receipt-Vitest order guards retained.",
+        "latestCurrentOwnerCommit": "2bc5b5981a895aab1f2f1f18c064695cc729e4a6",
+        "wholeDiffReconstructableFromGitRefs": true
+      },
+      {
+        "path": ".github/ci/employee-benchmark-supervisor.py",
+        "priorDigest": "68a47dce71197e7fc1f57702cbc1dc99495ac58d5cf43243c702c82873467926",
+        "priorCommit": "ec3f4622c0137642593e56a8376156da9ca92225",
+        "priorGitBlob": "1b2928d03be8a1906ae9a42717b8567ee8dff5b1",
+        "priorBytes": 10844,
+        "currentCommit": "89bc471c88bbaf4c612ddf8678f147da4251ffc7",
+        "currentGitBlob": "82fa7b463a6a703d480e3615846e6736abc2cd0e",
+        "currentBytes": 11254,
+        "currentDigest": "0d15951255cd2066ec6febde8c15d2738d4a0c22fda550c3d96ece3d63254258",
+        "wholeDiffBytes": 4416,
+        "wholeDiffSha256": "cf74662df965f58a36a1d37698b788ad5c0c24c2cb5efdc1b0ef46504773a99c",
+        "sourceSemanticInvariants": "Source-owned fixed five-file profile registry; ASCII stages invoke same verified Node/Vitest directly; inherited NODE_PATH remains observable/refused; owned kernel unchanged.",
+        "latestCurrentOwnerCommit": "064d031ac5a6d3ac2d5fed08d068e89e56ecde23",
+        "wholeDiffReconstructableFromGitRefs": true
+      },
+      {
+        "path": ".github/ci/employee-benchmark-supervisor.test.py",
+        "priorDigest": "d95721c1172ed25318eb1d209a6d4aa5d7ce2e741c177bce103920c38e08490d",
+        "priorCommit": "afdf383fa71dacdd19f7130c17b178aeed32cd83",
+        "priorGitBlob": "385650585a198012f3a42525f09540b2a8ae2b11",
+        "priorBytes": 21245,
+        "currentCommit": "89bc471c88bbaf4c612ddf8678f147da4251ffc7",
+        "currentGitBlob": "76b631b797d077cf4d1827fa83319d14c92dae57",
+        "currentBytes": 22735,
+        "currentDigest": "6ade2b3227cbc9c227c2d9fcfe37536a193017f4b99cfbc80eefe05220e7a19c",
+        "wholeDiffBytes": 4375,
+        "wholeDiffSha256": "06b7988a2a0bda29222b17af9c94c784730f923ff90a15e45de8ec9563d7b561",
+        "sourceSemanticInvariants": "Tests source-owned profile restoration before historical adapter/kernel inverse; poison-pyc proof copies exact profile; does not sanitize inherited startup controls.",
+        "latestCurrentOwnerCommit": "4f902acf69e437736673d895589d18e71c7a61a2",
+        "wholeDiffReconstructableFromGitRefs": true
+      },
+      {
+        "path": ".github/ci/focused-checks.mjs",
+        "priorDigest": "b5fbf10dc46d6a5089015fed3e15d571e4a0301ab3b1b737228a67f6e4d553f2",
+        "priorCommit": "51edc2cbc274fe89cd923f9adc0fc1951df0f332",
+        "priorGitBlob": "f6174b50adcc40baa54691c6e6b145c0424fd46b",
+        "priorBytes": 29022,
+        "currentCommit": "89bc471c88bbaf4c612ddf8678f147da4251ffc7",
+        "currentGitBlob": "a74845ab778a5cf8e5c3a669309e8598d6bf4f8d",
+        "currentBytes": 29853,
+        "currentDigest": "057055f45e5078af63846b65221ffdd12d94a2c4966f840f80efc46fb2ea5e11",
+        "wholeDiffBytes": 5911,
+        "wholeDiffSha256": "9fcf2f4f5a1e3a90c0309ca089cc508e8fd4b4bd7e5b597a3856b4b10912f1f7",
+        "sourceSemanticInvariants": "Reviewed source a12 closed two-runtime semantic cells; normal off stays FOCUSED_ONLY; actual DB classification, fixed8 cases, stoppedDB and runtime-native checks required; no normal release authority.",
+        "latestCurrentOwnerCommit": "a12ffc4684ad21e669b3d475f4e6efc49dfeb2fc",
+        "wholeDiffReconstructableFromGitRefs": true
+      },
+      {
+        "path": ".github/ci/plan.mjs",
+        "priorDigest": "9c90a5addbedfff0abf360adfe28d64bc4dfdccc6b09ddc1a90cc69c32662342",
+        "priorCommit": "bb2a568cf514c3dc280fc64a6aabfcaa96527c38",
+        "priorGitBlob": "00a4d39391a99a50b6fb56a4df29c27cf2093edf",
+        "priorBytes": 3763,
+        "currentCommit": "89bc471c88bbaf4c612ddf8678f147da4251ffc7",
+        "currentGitBlob": "36aa405c661765fb9350000e46192db1e4dc95eb",
+        "currentBytes": 5614,
+        "currentDigest": "83ed8d67ae92af8f7b3fdf8532ed9833db7160d2aec618ae395c58fbbc36a11d",
+        "wholeDiffBytes": 4922,
+        "wholeDiffSha256": "116a77ec82727cca08ff3e21bf0f7a8748a23912e63adb76667cb3baacdb09cb",
+        "sourceSemanticInvariants": "Shared DD candidateRoot threaded; cached stage-0 regular tracked journal/SQL inventory required; complete suite/classifier preserved, classifier15s/Git10s bounded.",
+        "latestCurrentOwnerCommit": "dd899f911fc90170c4af2d90a1fd42b10ce8afd1",
+        "wholeDiffReconstructableFromGitRefs": true
+      },
+      {
+        "path": ".github/ci/policy-version.mjs",
+        "priorDigest": "6b184db22189d6402016980e31b8a5d770e35860ea20577d3e863b65b645baf7",
+        "priorCommit": "da0e3a4039f882250c7b0980e5d8b4da55ea4517",
+        "priorGitBlob": "ab3328fa3b8951d8f933440290ae5c2e2254b6e4",
+        "priorBytes": 46,
+        "currentCommit": "89bc471c88bbaf4c612ddf8678f147da4251ffc7",
+        "currentGitBlob": "2fa0597a6653d98ef9d4d03d785103f8568e8d99",
+        "currentBytes": 46,
+        "currentDigest": "cbb9871c2e11c3f7434bdcb0fe25cd2c8323f683d588d892ec9dbff194232c97",
+        "wholeDiffBytes": 287,
+        "wholeDiffSha256": "53c0fc6e351d7b384bd182eae292208c50ce2f87c7aa2e02cb0ec929ba61e3b8",
+        "sourceSemanticInvariants": "Literal v20\u2192v21 policy allocation only; no executable timer, resource or admission change.",
+        "latestCurrentOwnerCommit": "517c5a697f9260b9342ce612125c6325bf334131",
+        "wholeDiffReconstructableFromGitRefs": true
+      },
+      {
+        "path": ".github/ci/singleton-protocol.mjs",
+        "priorDigest": "2e1a46f82c812114bedb53f9ffc1a4fdf9eb37b909e99dd8b24a22f8bd53bb64",
+        "priorCommit": "bb2a568cf514c3dc280fc64a6aabfcaa96527c38",
+        "priorGitBlob": "d0dce0aa5b1edfc9abcf1b214ab6edf064547000",
+        "priorBytes": 17320,
+        "currentCommit": "89bc471c88bbaf4c612ddf8678f147da4251ffc7",
+        "currentGitBlob": "1d7e404f250230b4590d5e0064f44157ab8ada77",
+        "currentBytes": 93524,
+        "currentDigest": "a5b02e31304383880ccac5773b76cec0334a44de6683d8f7869e3a95bf40fb92",
+        "wholeDiffBytes": 84005,
+        "wholeDiffSha256": "99edcd00008983b511a076436846a5b49be983ae49b30e4f9739289ce4533e8b",
+        "sourceSemanticInvariants": "Shared DD candidateRoot canonical journal+physical SQL and common runtime prerequisites unioned after raw specialized arrays; whole sole-file native profile/caps retained. Actual DD source unchanged here.",
+        "latestCurrentOwnerCommit": "dd899f911fc90170c4af2d90a1fd42b10ce8afd1",
+        "wholeDiffReconstructableFromGitRefs": true
+      },
+      {
+        "path": ".github/workflows/alpha-focused-checks.yml",
+        "priorDigest": "45346ff9a29861aef88326033f4c4f72eee359b8623f9bbebb304a658ed631da",
+        "priorCommit": "51edc2cbc274fe89cd923f9adc0fc1951df0f332",
+        "priorGitBlob": "13fd6ae79a02a257fc625e5c32c72e3badd3397a",
+        "priorBytes": 15861,
+        "currentCommit": "89bc471c88bbaf4c612ddf8678f147da4251ffc7",
+        "currentGitBlob": "e993882d7e92f28bd4f75f31556f5a971dfe47f6",
+        "currentBytes": 18767,
+        "currentDigest": "66181ae8d72945bda4ca6b37a35990f2defa783a5535106c9a295386c220751b",
+        "wholeDiffBytes": 2776,
+        "wholeDiffSha256": "1b9ac66d46bc1e39f6fe8e9cedba2e2ca1e433addedb4982301bca40cb419abe",
+        "sourceSemanticInvariants": "Existing a12 two-runtime choice changes exactly reviewed Node22/24 semantic-cell/runtime/artifact binding; new refresh difference source-qualified separately; normal cell off default preserved.",
+        "latestCurrentOwnerCommit": "a12ffc4684ad21e669b3d475f4e6efc49dfeb2fc",
+        "wholeDiffReconstructableFromGitRefs": true
+      },
+      {
+        "path": "scripts/gate-db-classify.ts",
+        "priorDigest": "cc77445ba5b8a702a5f8f4a4292bdcb99275d520ae4f13b16442a17e78f3f916",
+        "priorCommit": "0455b908428a1685e7b4814319be674bc0bcdb66",
+        "priorGitBlob": "869b6112a12a42e0cd687f86e6573ee59bff2251",
+        "priorBytes": 9833,
+        "currentCommit": "89bc471c88bbaf4c612ddf8678f147da4251ffc7",
+        "currentGitBlob": "948d0543eb550a084a6fa1591f31115595364a44",
+        "currentBytes": 12220,
+        "currentDigest": "2a8c7a347ffc0ac6c090de12def4c8f6f3a055db2780f90d7fdf596e4c76b654",
+        "wholeDiffBytes": 6495,
+        "wholeDiffSha256": "0c639baec51b1406eb339643f3f217e6d8da1367df7251399632cdbf9479ff65",
+        "sourceSemanticInvariants": "Complete reachable-helper hazard graph with reverse propagation closes cycles before clean verdicts; request-local complete Reader strings/nulls memoized; unknown reads/imports remain hazardous, no dropped roots.",
+        "latestCurrentOwnerCommit": "52ddeb6f61a726e9c8a0c7f3c47b88fc5910b548",
+        "wholeDiffReconstructableFromGitRefs": true
+      }
+    ],
+    "newTenthBinding": ".github/ci/diagnostics/native-reference/application-owner-inverse.json",
+    "allHistoricalInversesAndOriginalTargetsPreserved": true,
+    "actual27ControlsHostedExecutionStillRequired": true,
+    "sourceRefFieldPreservedAsOriginalOwnerProvenanceNotNewRunIdentity": true
+  },
+  "preexistingNativeApplicationClosureGap": {
+    "status": "OPEN_NOT_NATIVE_QUALIFICATION",
+    "scope": "Existing105 source pins are metadata current-byte checks, not a proven transitive current executable closure",
+    "directCurrentImportEdgesOutside105": [
+      {
+        "from": ".github/ci/focused-checks.mjs",
+        "directCurrentInputAbsent105": ".github/ci/employee-lifecycle-profile.mjs"
+      },
+      {
+        "from": ".github/ci/focused-checks.mjs",
+        "directCurrentInputAbsent105": ".github/ci/employee-ascii-runtime-qualification.mjs"
+      },
+      {
+        "from": ".github/ci/plan.mjs",
+        "directCurrentInputAbsent105": ".github/ci/employee-lifecycle-profile.mjs"
+      },
+      {
+        "from": ".github/ci/plan.mjs",
+        "directCurrentInputAbsent105": ".github/ci/employee-lifecycle-sources.mjs"
+      },
+      {
+        "from": ".github/ci/plan.mjs",
+        "directCurrentInputAbsent105": ".github/ci/pdf-tool-scope.mjs"
+      },
+      {
+        "from": ".github/ci/plan.mjs",
+        "directCurrentInputAbsent105": ".github/ci/candidate-environment.mjs"
+      },
+      {
+        "from": ".github/ci/singleton-protocol.mjs",
+        "directCurrentInputAbsent105": ".github/ci/native-next-helper-sources.mjs"
+      },
+      {
+        "from": ".github/ci/singleton-protocol.mjs",
+        "directCurrentInputAbsent105": ".github/ci/rewards-native-sources.mjs"
+      },
+      {
+        "from": ".github/ci/singleton-protocol.mjs",
+        "directCurrentInputAbsent105": ".github/ci/employee-lifecycle-profile.mjs"
+      },
+      {
+        "from": ".github/ci/singleton-protocol.mjs",
+        "directCurrentInputAbsent105": ".github/ci/employee-lifecycle-sources.mjs"
+      }
+    ],
+    "membershipNotExpandedByThisLease": true,
+    "nativeApplicationExecutionAuthorized": false,
+    "completeNativeGraphOrCompilerOrNormalFiveQualified": false
+  }
+}

@@ -3,6 +3,10 @@ run-name: Focused only · ${{ inputs.candidate_ref }}
 on:
   workflow_dispatch:
     inputs:
+      refresh_ai_source_manifests:
+        description: Artifact-only fixed AI source generator refresh; requires selected_tests=[] and all optional work off
+        default: false
+        type: boolean
       candidate_ref:
         description: Existing same-repository candidate branch
         required: true
@@ -91,7 +95,7 @@ env:
   TEST_MIGRATION_DATABASE_URL: postgres://nobody:nothing@127.0.0.1:1/no_database
 jobs:
   resolve:
-    if: ${{ github.repository == 'StradaverseHub/ai-hr' }}
+    if: ${{ !inputs.refresh_ai_source_manifests && github.repository == 'StradaverseHub/ai-hr' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     outputs:
@@ -106,7 +110,7 @@ jobs:
         uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
         with: {node-version: '22.23.3'}
       - name: Focused controller regression checks
-        run: node --experimental-strip-types --test .github/ci/focused-checks.test.mjs .github/ci/postgres-evidence.test.mjs .github/ci/runner-capacity.test.mjs .github/ci/duration-order.test.mjs .github/ci/r395-write-split.test.mjs .github/ci/attendance-unclocked-split.test.mjs .github/ci/restricted-port-qualification.test.mjs .github/ci/build-heap.test.mjs .github/ci/next-application-cache.test.mjs .github/ci/next-build-cache-policy.test.mjs .github/ci/orchestrator-browser.test.mjs
+        run: node --experimental-strip-types --test .github/ci/focused-checks.test.mjs .github/ci/postgres-evidence.test.mjs .github/ci/runner-capacity.test.mjs .github/ci/duration-order.test.mjs .github/ci/r395-write-split.test.mjs .github/ci/attendance-unclocked-split.test.mjs .github/ci/restricted-port-qualification.test.mjs .github/ci/build-heap.test.mjs .github/ci/next-application-cache.test.mjs .github/ci/next-build-cache-policy.test.mjs .github/ci/orchestrator-browser.test.mjs .github/ci/ai-manifest-refresh.test.mjs
       - name: Validate bounded manifest
         id: selection
         run: node .github/ci/focused-checks.mjs selection
@@ -119,6 +123,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           STAGING_BASE_SHA: ${{ vars.STAGING_DEPLOYED_SHA }}
   selected-tests:
+    if: ${{ !inputs.refresh_ai_source_manifests }}
     needs: resolve
     runs-on: ubuntu-24.04
     # The fictional-data model ceiling probe needs the focused DB guard, which admits only this job, so the
@@ -209,7 +214,7 @@ jobs:
           if-no-files-found: error
           retention-days: 14
   typecheck:
-    if: ${{ inputs.run_typecheck }}
+    if: ${{ !inputs.refresh_ai_source_manifests && inputs.run_typecheck }}
     needs: resolve
     runs-on: ubuntu-24.04
     timeout-minutes: 30
@@ -231,7 +236,7 @@ jobs:
       - run: pnpm exec next typegen
       - run: bash ../automation/.github/ci/typecheck.sh
   linux-build:
-    if: ${{ inputs.run_build }}
+    if: ${{ !inputs.refresh_ai_source_manifests && inputs.run_build }}
     needs: resolve
     runs-on: ubuntu-24.04
     timeout-minutes: 30
@@ -277,7 +282,7 @@ jobs:
           retention-days: 14
 
   native-typecheck:
-    if: ${{ inputs.run_native_typecheck }}
+    if: ${{ !inputs.refresh_ai_source_manifests && inputs.run_native_typecheck }}
     needs: resolve
     runs-on: ubuntu-24.04
     timeout-minutes: 20
@@ -303,7 +308,7 @@ jobs:
 
 
   native-bundle:
-    if: ${{ inputs.run_native_bundle }}
+    if: ${{ !inputs.refresh_ai_source_manifests && inputs.run_native_bundle }}
     needs: resolve
     runs-on: ubuntu-24.04
     timeout-minutes: 20
@@ -331,7 +336,7 @@ jobs:
           EXPO_NO_TELEMETRY: '1'
 
   native-swift-models:
-    if: ${{ inputs.run_native_swift_models }}
+    if: ${{ !inputs.refresh_ai_source_manifests && inputs.run_native_swift_models }}
     needs: resolve
     runs-on: macos-15
     timeout-minutes: 15
@@ -350,3 +355,42 @@ jobs:
           persist-credentials: false
       - name: Compile and exercise native proof handoff models
         run: bash automation/.github/ci/native-proof-models.sh "$GITHUB_WORKSPACE/source"
+
+  refresh-ai-source-manifests:
+    if: ${{ inputs.refresh_ai_source_manifests && github.repository == 'StradaverseHub/ai-hr' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: ${{ github.workflow_sha }}
+          path: automation
+          persist-credentials: false
+      - name: Pin dependency-free manifest runtime
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with: {node-version: '22.23.3'}
+      - name: Refuse nonexclusive refresh intent before candidate resolution
+        run: node automation/.github/ci/ai-manifest-refresh.mjs --selection
+      - name: Resolve exact same-repository source using the existing resolver
+        id: candidate
+        run: node automation/.github/ci/resolve.mjs
+        env:
+          GH_TOKEN: ${{ github.token }}
+          STAGING_BASE_SHA: ${{ vars.STAGING_DEPLOYED_SHA }}
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: ${{ steps.candidate.outputs.sha }}
+          path: source
+          persist-credentials: false
+      - name: Generate and recheck only the two static source manifests
+        working-directory: source
+        run: node ../automation/.github/ci/ai-manifest-refresh.mjs
+        env:
+          AIHR_CI_HEAD: ${{ steps.candidate.outputs.sha }}
+      - name: Retain generated source data without approving or publishing it
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: ai-source-manifest-refresh-data
+          path: ${{ runner.temp }}/ai-manifest-refresh/
+          if-no-files-found: error
+          retention-days: 14

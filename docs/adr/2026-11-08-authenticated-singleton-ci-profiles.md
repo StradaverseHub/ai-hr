@@ -170,3 +170,45 @@ units and normal complete compiler/build/full witness. The unchanged full gate
 must not be dispatched before the new controller is qualified. Retain original
 failures and valid unaffected evidence. No source upload, test result, staging
 acceptance or production installation is claimed by this ADR.
+## Artifact-only AI manifest refresh, 9 November 2026
+
+Normal commissioning run42518172062 at exact89bc failed before native execution:
+both frozen AI manifest checks refused. Its mandatory934 controls and later
+fixed integrity checks passed, but no JIT case or PostgreSQL cluster ran. The
+original failure remains evidence; controller-only inventory success does not
+replace this normal admission boundary.
+
+The existing focused workflow now has an explicit boolean
+`refresh_ai_source_manifests` defaultfalse. When true it requires literal empty
+selected_tests, all optional work false, ASCII off and evaluation/provider fields
+empty. Every ordinary job is excluded. The exclusive standard-hosted source job
+uses the existing same-repository resolver and separately clean exact controller
+and candidate checkouts. It compares the three reviewed generator/scope files,
+then invokes only the existing provider generator, existing agent generator, and
+their two checks. Provider generation precedes agent generation because the
+agent input includes the generated provider manifest. A single240s work deadline,
+per-child60s timeout and1MiB output bound prevent renewed per-stage allowances.
+
+Only the two fixed generated TypeScript files may change. The original source
+commit/tree, approval bytes,30 approval rows, generator/scope bytes and all other
+tracked/untracked source paths remain guarded. The sole bounded artifact contains
+those two files and their source-member/digest receipt. All release, test, native
+and provider authorization flags are false. No candidate hooks, package install,
+provider, database, compiler, application build, Git push or deployment executes.
+The read token used by the existing resolver is scoped to that step and is absent
+from the fixed child environment.
+
+Refreshing source identity does not renew human approval. All28 original approval
+provenances and2 pending records remain byteexact; a later provider call still
+requires its actual digest-bound approval owner. Authenticated generated output
+must become a separately reviewed source successor with honest current source
+bindings before any new normal commissioning request. This source-only addition
+does not qualify the currently held JIT, HOST, normal-five, API or release gates.
+
+The new13 actual generator/selection/refusal models join the existing focused
+controller regression command without changing its old arguments or order. They
+run on the normal refresh-off controller course. Refresh-on executes no tests and
+cannot label source generation as a test pass. No new model or generator ran
+locally while authoring this change; only external source parsers and Git/data
+hash/inverse checks were used. Publication and hosted execution require separate
+root and independent full review.

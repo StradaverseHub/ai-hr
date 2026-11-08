@@ -76107,9 +76107,9 @@
     },
     {
       "path": ".github/workflows/alpha-focused-checks.yml",
-      "bytes": 16493,
-      "sha256": "d9ed6026eae9d56904b42bcddb6644bc0132943e27142a415dc3bb8c78c47765",
-      "gitBlob": "e993882d7e92f28bd4f75f31556f5a971dfe47f6",
+      "bytes": 18767,
+      "sha256": "66181ae8d72945bda4ca6b37a35990f2defa783a5535106c9a295386c220751b",
+      "gitBlob": "f1a2decddf8a0f0eb9887ba4dac34c5b1ba788f2",
       "origins": [
         "PRESERVED_SPECIALIZED_COMPONENT"
       ],
@@ -179304,7 +179304,8 @@
   ],
   "newRecords": [
     "docs/qualification/shared-database-fixture-recovery-source-provenance-20261109.json",
-    "docs/qualification/shared-database-artifact-identity-source-provenance-20261109.json"
+    "docs/qualification/shared-database-artifact-identity-source-provenance-20261109.json",
+    "docs/qualification/ai-manifest-hosted-refresh-source-provenance-20261109.json"
   ],
   "status": "ARTIFACT_IDENTITY_SOURCE_AUTHORED_UNRUN_AWAITING_DUAL_FULL_REVIEW",
   "historicalArchitectureBase": "f3a7b5001329d3731de1e8db469807aceab70cec",
@@ -179346,5 +179347,6 @@
     "singletonGeneratedCases": 51,
     "firstControllerTapExpected": 934,
     "noAutomaticRetryOrNativeCommissioning": true
-  }
+  },
+  "manifestRefreshSourceProvenance": "docs/qualification/ai-manifest-hosted-refresh-source-provenance-20261109.json"
 }
