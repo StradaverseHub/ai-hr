@@ -14,7 +14,7 @@ import {
 } from '../core/analytics';
 import * as templates from '../core/entitlement-template';
 import {parsePageQuery} from '../lib/pagination';
-import {pgSqlState} from '../lib/db-error';
+import {pgErrorChain,pgSqlState} from '../lib/db-error';
 import {observeNativeRead} from './helpers/native-read-observer';
 import {adminCtx,closeAll,createAppUser,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
 
@@ -318,7 +318,12 @@ it('counts the complete change-job relation beyond All and preserves complete ex
 type CarryBoundaryStage='abort'|'seed-start'|'seed-return'|'seed-batch-return'|'pair-start'|'pair-return'|'ordered-start'|'ordered-return'|'phase-start'|'rename-reset'|'rename-return'|'active-batch-return'|'unicode-late-return'|'page-start'|'fetch-return'|'oracle-complete'|'phase-complete'|'drain-start'|'drain-complete'|'final';
 type CarryBoundaryEvent={stage:CarryBoundaryStage;epochMs:number;elapsedMs:number;phase:number;page:number;rows?:number;nativeMs?:number;assertionMs?:number;returned?:boolean};
 type CarryBoundaryIdentity={pid:number;started:string;database:string;login:string;role:string;isolation:string;readOnly:boolean};
-type CarryBoundarySlot={epoch:number;armed:boolean;closing:boolean;active:number;pending:Set<Promise<unknown>>;identity?:CarryBoundaryIdentity;cancel?:Promise<void>;tag:string};
+type CarryFailureOperation='prepare'|'control-prepare'|'control-visibility'|'control-cancel'|'control-idle'|'native-fixture'|'native-command'|'native-read'|'held-fixture'|'held-command'|'held-read'|'body'|'holder-uncertain'|'abort';
+type CarryFailurePoint='entry'|'begin'|'bounds'|'identity'|'work'|'commit'|'rollback'|'settlement';
+type CarryFailureClass='Error'|'TypeError'|'RangeError'|'SyntaxError'|'ReferenceError'|'URIError'|'EvalError'|'AggregateError'|'AbortError'|'TimeoutError'|'PostgresError'|'DrizzleQueryError'|'NonError'|'Unknown';
+type CarryFailureFact={operation:CarryFailureOperation;point:CarryFailurePoint;exceptionClass:CarryFailureClass;sqlState:string|null;category:'postgres'|'constraint'|'transaction-rollback'|'lock-unavailable'|'query-cancelled'|'connection'|'deadline-or-cancel'|'javascript'|'non-error'|'unknown';stage:CarryBoundaryStage|'UNOBSERVED';phase:number;page:number};
+type CarryPrivateFailure={error:unknown;fact:CarryFailureFact};
+type CarryBoundarySlot={kind:'fixture'|'command'|'read';epoch:number;armed:boolean;closing:boolean;active:number;pending:Set<Promise<unknown>>;identity?:CarryBoundaryIdentity;cancel?:Promise<void>;tag:string};
 /** B1-only lifetime owner. Private native identities never enter the bounded receipt. */
 class CarryBoundaryScope{
  readonly events:CarryBoundaryEvent[]=[];phase=-1;page=-1;stopped=false;settled=false;poisoned=false;
@@ -327,8 +332,9 @@ class CarryBoundaryScope{
  private control?:Awaited<ReturnType<typeof owner.client.reserve>>;private readonly identities:CarryBoundaryIdentity[]=[];private idleVerified=false;private controlUncertain=false;private controlIdentity?:CarryBoundaryIdentity;private visibleTargets=0;
  nativeOperations=0;nativeAwaitMs=0;
  private evidenceFailed=false;private ownerDatabase='';private ownerLogin='';private cancellationIssued=false;private cancellationSettled=true;private cancellationResult:'not-issued'|'pending'|'no-match'|'accepted'|'refused'|'unavailable'='not-issued';
+ private originalFailure?:CarryPrivateFailure;private secondaryControlFailure?:CarryPrivateFailure;private rollbackFailure?:CarryPrivateFailure;private abortFailure?:CarryPrivateFailure;private holderRetained=false;
  private observerInstalled=false;private observerRestored=false;private resolverInstalled=false;private resolverRestored=false;
- private readonly abort=()=>{this.stopped=true;this.event('abort');for(const slot of this.slots)this.cancel(slot);};
+ private readonly abort=()=>{this.stopped=true;this.abortFailure={error:this.signal.reason,fact:this.failureFact(this.signal.reason,'abort','entry')};this.event('abort');for(const slot of this.slots)this.cancel(slot);};
  constructor(private readonly signal:AbortSignal){signal.addEventListener('abort',this.abort,{once:true});if(signal.aborted)this.abort();}
  check(){if(this.stopped||this.signal.aborted)throw this.signal.reason??new Error('Carry boundary aborted');}
  event(stage:CarryBoundaryStage,extra:Partial<Pick<CarryBoundaryEvent,'rows'|'nativeMs'|'assertionMs'|'returned'>>={}){
@@ -339,8 +345,44 @@ class CarryBoundaryScope{
   const directory=process.env.AIHR_FOCUSED_EVIDENCE_DIR;if(!directory)return;
   const report={kind:'NATIVE_CARRY_BOUNDARY_PHASES_COMPONENT_ONLY',releaseEligible:false,source:process.env.AIHR_CI_HEAD,controller:process.env.AIHR_CI_CONTROL_HEAD,
    runId:process.env.GITHUB_RUN_ID,attempt:process.env.GITHUB_RUN_ATTEMPT,complete:this.settled&&!this.bodyFailed&&!this.poisoned&&!this.evidenceFailed,
+   originalFailure:this.originalFailure?.fact??'UNOBSERVED',secondaryControlFailure:this.secondaryControlFailure?.fact??'UNOBSERVED',rollbackFailure:this.rollbackFailure?.fact??'UNOBSERVED',abortObservation:this.abortFailure?.fact??'UNOBSERVED',branchObservations:{cancellation:this.cancellationIssued?'OBSERVED':'UNOBSERVED',controlUncertainty:this.controlUncertain?'OBSERVED':'UNOBSERVED',retainedHolder:this.holderRetained?'OBSERVED':'UNOBSERVED'},
    stopped:this.stopped,settled:this.settled,poisoned:this.poisoned,cancellationIssued:this.cancellationIssued,cancellationSettled:this.cancellationSettled,cancellationResult:this.cancellationResult,observerInstalled:this.observerInstalled,observerRestored:this.observerRestored,resolverInstalled:this.resolverInstalled,resolverRestored:this.resolverRestored,idleVerified:this.idleVerified,controlUncertain:this.controlUncertain,nativeIdentities:this.identities.length,nativeOperations:this.nativeOperations,nativeAwaitMs:this.nativeAwaitMs,rowTypeChecks:this.events.filter(event=>event.stage==='fetch-return').reduce((n,event)=>n+2*(event.rows??0),0),distinctControlVerified:this.controlIdentity!==undefined&&this.visibleTargets===this.identities.length,active:[...this.slots].reduce((n,s)=>n+s.active,0),held:this.slots.size,events:this.events};
   try{const bytes=JSON.stringify(report);if(Buffer.byteLength(bytes)>65536){this.evidenceFailed=true;return;}writeFileSync(join(directory,'analytics-carry-boundaries.json'),bytes);}catch{this.evidenceFailed=true;}
+ }
+ /** Classify only bounded enums and a validated SQLSTATE. Raw errors stay private. */
+ private failureFact(error:unknown,operation:CarryFailureOperation,point:CarryFailurePoint):CarryFailureFact{
+  const fact:CarryFailureFact={operation,point,exceptionClass:'Unknown',sqlState:null,category:'unknown',stage:this.events.at(-1)?.stage??'UNOBSERVED',phase:this.phase,page:this.page};
+  try{
+   const chain=pgErrorChain(error),code=pgSqlState(error);
+   if(code!==undefined&&/^[0-9A-Z]{5}$/.test(code)&&chain.some(link=>link.name==='PostgresError'&&link.code===code))fact.sqlState=code;
+   const connectionFailure=chain.some(link=>link.name!=='PostgresError'&&(link.code==='ECONNREFUSED'||link.code==='ECONNRESET'||link.code==='ETIMEDOUT'||link.code==='ENOTFOUND'||link.code==='EHOSTUNREACH'||link.code==='ENETUNREACH'||link.code==='EPIPE'||link.code==='EAI_AGAIN'));
+   if(error instanceof Error){
+    switch(error.name){
+     case 'TypeError':fact.exceptionClass='TypeError';break;case 'RangeError':fact.exceptionClass='RangeError';break;
+     case 'SyntaxError':fact.exceptionClass='SyntaxError';break;case 'ReferenceError':fact.exceptionClass='ReferenceError';break;
+     case 'URIError':fact.exceptionClass='URIError';break;case 'EvalError':fact.exceptionClass='EvalError';break;
+     case 'AggregateError':fact.exceptionClass='AggregateError';break;case 'AbortError':fact.exceptionClass='AbortError';break;
+     case 'TimeoutError':fact.exceptionClass='TimeoutError';break;case 'PostgresError':fact.exceptionClass='PostgresError';break;
+     case 'DrizzleQueryError':fact.exceptionClass='DrizzleQueryError';break;default:fact.exceptionClass='Error';
+    }
+    fact.category='javascript';
+   }else{fact.exceptionClass='NonError';fact.category='non-error';}
+   if(fact.sqlState!==null){
+    const state=fact.sqlState;
+    fact.category=state==='55P03'?'lock-unavailable':state==='57014'?'query-cancelled':state.startsWith('23')?'constraint':state.startsWith('40')?'transaction-rollback':state.startsWith('08')?'connection':'postgres';
+   }else if(connectionFailure)fact.category='connection';
+   else if((this.signal.aborted&&error===this.signal.reason)||fact.exceptionClass==='AbortError'||fact.exceptionClass==='TimeoutError')fact.category='deadline-or-cancel';
+  }catch{/* Classification must never replace the private original error. */}
+  return fact;
+ }
+ private remember(error:unknown,operation:CarryFailureOperation,point:CarryFailurePoint,secondary?:'control'|'rollback'){
+  const failure={error,fact:this.failureFact(error,operation,point)};
+  if(this.originalFailure===undefined)this.originalFailure=failure;
+  else{
+   if(secondary==='control'&&this.secondaryControlFailure===undefined&&(error!==this.originalFailure.error||operation!==this.originalFailure.fact.operation||point!==this.originalFailure.fact.point))this.secondaryControlFailure=failure;
+   if(secondary==='rollback'&&this.rollbackFailure===undefined)this.rollbackFailure=failure;
+  }
+  this.save();
  }
  async prepare(){
   try{this.check();if(owner.client.options.max<2)throw new Error('Carry boundary owner control capacity unavailable');
@@ -348,46 +390,47 @@ class CarryBoundaryScope{
   const facts=await this.controlTransaction(async connection=>{
    const [facts]=await connection<CarryBoundaryIdentity[]>`select pg_backend_pid() as pid,a.backend_start::text as started,current_database() as database,session_user as login,current_user as role,current_setting('transaction_isolation') as isolation,current_setting('transaction_read_only')='on' as "readOnly" from pg_stat_activity a where a.pid=pg_backend_pid()`;
    return facts;
-  });
+  },'control-prepare');
   this.check();if(!facts?.database||facts.login!=='postgres'||facts.role!=='postgres'||facts.isolation!=='read committed'||facts.readOnly||!Number.isSafeInteger(facts.pid)||facts.pid<=0||!facts.started)throw new Error('Carry boundary owner context unavailable');
   this.controlIdentity=facts;this.ownerDatabase=facts.database;this.ownerLogin=facts.login;
-  }catch(error){this.poisoned=true;throw error;}
+  }catch(error){this.poisoned=true;this.remember(error,'prepare','work');throw error;}
  }
  /** ReservedSql's pinned runtime exposes tagged SQL/release, not its declared .begin. */
- private async controlTransaction<T>(work:(connection:Awaited<ReturnType<typeof owner.client.reserve>>)=>Promise<T>):Promise<T>{
-  const control=this.control;if(!control){this.controlUncertain=true;this.poisoned=true;throw new Error('Carry boundary reserved control unavailable');}
+ private async controlTransaction<T>(work:(connection:Awaited<ReturnType<typeof owner.client.reserve>>)=>Promise<T>,operation:CarryFailureOperation):Promise<T>{
+  const control=this.control;if(!control){const error=new Error('Carry boundary reserved control unavailable');this.controlUncertain=true;this.poisoned=true;this.remember(error,operation,'entry','control');throw error;}
+  let point:CarryFailurePoint='begin';
   try{
-   await control`begin`;await control`set local statement_timeout='1s'`;await control`set local lock_timeout='300ms'`;
-   if(this.controlIdentity){
+   await control`begin`;point='bounds';await control`set local statement_timeout='1s'`;await control`set local lock_timeout='300ms'`;
+   point='identity';if(this.controlIdentity){
     const [current]=await control<Pick<CarryBoundaryIdentity,'pid'|'started'|'database'|'login'|'role'>[]>`select pg_backend_pid() as pid,a.backend_start::text as started,current_database() as database,session_user as login,current_user as role from pg_stat_activity a where a.pid=pg_backend_pid()`;
     const original=this.controlIdentity;
     if(!current||current.pid!==original.pid||current.started!==original.started||current.database!==original.database||current.login!==original.login||current.role!==original.role)throw new Error('Carry boundary reserved physical identity changed');
    }
-   const result=await work(control);await control`commit`;return result;
+   point='work';const result=await work(control);point='commit';await control`commit`;return result;
   }catch(error){
-   this.controlUncertain=true;this.poisoned=true;
-   try{await control`rollback`;}catch{this.controlUncertain=true;this.poisoned=true;}
+   this.controlUncertain=true;this.poisoned=true;this.remember(error,operation,point,'control');
+   try{await control`rollback`;}catch(rollbackError){this.controlUncertain=true;this.poisoned=true;this.remember(rollbackError,operation,'rollback','rollback');}
    throw error;
   }
  }
  private cancel(slot:CarryBoundarySlot){
   if(this.cancellationIssued||!this.slots.has(slot)||!slot.armed||slot.closing||slot.active!==1||!slot.identity)return;
-  this.cancellationIssued=true;this.cancellationSettled=false;this.cancellationResult='pending';const identity=slot.identity,tag=slot.tag;
+  this.cancellationIssued=true;this.cancellationSettled=false;this.cancellationResult='pending';this.save();const identity=slot.identity,tag=slot.tag;
   // Publish before native work. This promise must never await the target callback/body.
-  const control=this.control;if(!control){this.controlUncertain=true;this.poisoned=true;return;}
+  const control=this.control;if(!control){this.controlUncertain=true;this.poisoned=true;this.remember(new Error('Carry boundary cancellation control unavailable'),'control-cancel','entry','control');return;}
   slot.cancel=Promise.resolve().then(()=>this.controlTransaction(async connection=>{
    const result=await connection<{cancelled:boolean}[]>`select pg_cancel_backend(a.pid) as cancelled from pg_stat_activity a
     where a.pid=${identity.pid} and a.backend_start::text=${identity.started} and a.datname=${identity.database}
      and a.usename=${identity.login} and a.application_name=${tag} and a.state='active' and a.backend_type='client backend'`;
    if(result.length>1||result.some(row=>typeof row.cancelled!=='boolean'))throw new Error('Carry boundary cancellation reply refused');
    this.cancellationResult=result.length===0?'no-match':result[0].cancelled?'accepted':'refused';
-  })).catch(()=>{this.cancellationResult='unavailable';this.poisoned=true;}).finally(()=>{this.cancellationSettled=true;});
+  },'control-cancel')).catch(error=>{this.cancellationResult='unavailable';this.poisoned=true;this.remember(error,'control-cancel','work');}).finally(()=>{this.cancellationSettled=true;this.save();});
  }
  private async native<T>(slot:CarryBoundarySlot,work:()=>Promise<T>):Promise<T>{
   this.check();if(slot.closing||!slot.armed)throw new Error('Carry boundary transaction is closing');
   if(slot.active!==0){this.poisoned=true;throw new Error('Concurrent carry boundary native work');}
   const started=performance.now();slot.active++;const pending=Promise.resolve().then(()=>{this.check();return work();});slot.pending.add(pending);
-  try{const result=await pending;this.check();return result;}finally{this.nativeOperations++;this.nativeAwaitMs+=performance.now()-started;slot.active--;slot.pending.delete(pending);}
+  try{const result=await pending;this.check();return result;}catch(error){this.remember(error,slot.kind==='fixture'?'native-fixture':slot.kind==='command'?'native-command':'native-read','work');throw error;}finally{this.nativeOperations++;this.nativeAwaitMs+=performance.now()-started;slot.active--;slot.pending.delete(pending);}
  }
  private guard<T extends object>(value:T,slot:CarryBoundarySlot):T{
   return new Proxy(value,{get:(target,key)=>{
@@ -399,7 +442,7 @@ class CarryBoundaryScope{
   }});
  }
  async held<T>(tx:Tx,kind:'fixture'|'command'|'read',body:(guarded:Tx)=>Promise<T>):Promise<T>{
-  this.check();const slot:CarryBoundarySlot={epoch:++this.nextEpoch,armed:false,closing:false,active:0,pending:new Set(),tag:'carry-boundary-'+randomUUID()};this.slots.add(slot);
+  this.check();const slot:CarryBoundarySlot={kind,epoch:++this.nextEpoch,armed:false,closing:false,active:0,pending:new Set(),tag:'carry-boundary-'+randomUUID()};this.slots.add(slot);
   let outcome:{ok:true;value:T}|{ok:false;error:unknown};
   try{
    await tx.execute(sql`set local statement_timeout='20s'`);await tx.execute(sql`set local lock_timeout='300ms'`);
@@ -416,14 +459,14 @@ class CarryBoundaryScope{
      const [visible]=await connection<{matches:number}[]>`select count(*)::int as matches from pg_stat_activity
      where pid=${identity.pid} and backend_start::text=${identity.started} and datname=${identity.database} and usename=${identity.login} and application_name=${slot.tag}`;
     if(visible?.matches!==1)throw new Error('Carry boundary native control target unavailable');
-   });this.visibleTargets++;
+   },'control-visibility');this.visibleTargets++;
    slot.identity=identity;this.identities.push(identity);slot.armed=true;this.check();outcome={ok:true,value:await body(this.guard(tx,slot))};
-  }catch(error){if(!slot.identity)this.poisoned=true;outcome={ok:false,error};}
+  }catch(error){if(!slot.identity)this.poisoned=true;this.remember(error,kind==='fixture'?'held-fixture':kind==='command'?'held-command':'held-read','work');outcome={ok:false,error};}
   // Synchronous admission frontier: no later abort may enqueue against this epoch.
   slot.closing=true;slot.armed=false;
   if(slot.pending.size)await Promise.allSettled([...slot.pending]);
   if(slot.cancel)await slot.cancel;
-  if(slot.active!==0||this.controlUncertain){this.poisoned=true;this.save();await new Promise<never>(()=>{});}
+  if(slot.active!==0||this.controlUncertain){if(this.originalFailure===undefined)this.remember(new Error('Carry boundary native settlement unavailable'),'holder-uncertain','settlement');this.poisoned=true;this.holderRetained=true;this.save();await new Promise<never>(()=>{});}
   this.slots.delete(slot);
   if(!outcome.ok)throw outcome.error;this.check();return outcome.value;
  }
@@ -433,7 +476,7 @@ class CarryBoundaryScope{
  markResolverRestored(){this.resolverRestored=true;}
  run(body:()=>Promise<void>){
   if(this.pending)throw new Error('Carry boundary body already owned');
-  this.pending=Promise.resolve().then(body).catch(error=>{this.bodyFailed=true;throw error;});
+  this.pending=Promise.resolve().then(body).catch(error=>{this.remember(error,'body','work');this.bodyFailed=true;throw error;});
   void this.pending.catch(()=>{});return this.pending;
  }
  finish(){
@@ -450,7 +493,7 @@ class CarryBoundaryScope{
        where pid=${identity.pid} and backend_start::text=${identity.started} and datname=${identity.database} and usename=${identity.login}`;
       if(activity.length>1||activity.some(row=>row.state!=='idle'||row.xactStart!==null)){this.poisoned=true;throw new Error('Carry boundary original backend not idle');}
      }
-    });this.idleVerified=true;control.release();this.control=undefined;
+    },'control-idle');this.idleVerified=true;control.release();this.control=undefined;
    }else if(this.identities.length){this.poisoned=true;throw new Error('Carry boundary idle observer unavailable');}
    this.signal.removeEventListener('abort',this.abort);this.restore?.();this.observerRestored=this.observerInstalled;this.restore=undefined;
    this.event('drain-complete');this.event('final');
