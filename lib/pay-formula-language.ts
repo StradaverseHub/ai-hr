@@ -5,7 +5,7 @@ import {isCalendarDate} from './calendar-date';
 import {PAY_FORMULA_FIELD_TYPES,PAY_FORMULA_REGISTRY_VERSION,payFormulaFunction,type FormulaType,type FormulaValue,type FormulaFunction} from './pay-formula-registry';
 export type {FormulaType,FormulaValue} from './pay-formula-registry';
 /** Explicit closed vocabularies share this bounded engine without adding Attendance tokens to Payroll. */
-export type FormulaDialect={version:string;lookup:(code:string)=>FormulaFunction|undefined;fieldType?:(code:string,field:string)=>FormulaType|undefined};
+export type FormulaDialect={version:string;extendedSyntax?:boolean;returnType?:'decimal'|'boolean';lookup:(code:string)=>FormulaFunction|undefined;fieldType?:(code:string,field:string)=>FormulaType|undefined};
 const payrollDialect:FormulaDialect={version:PAY_FORMULA_REGISTRY_VERSION,lookup:payFormulaFunction};
 export const PAY_FORMULA_EVALUATOR_VERSION='payroll-formula-1';
 export const PAY_FORMULA_LIMITS={source:24000,tokens:6000,statements:512,nodes:3000,depth:24,steps:6000,explanations:64,explanationLength:12000,string:4096} as const;
@@ -63,7 +63,7 @@ export type FormulaRequest={code:string;args:FormulaValue[];loc:FormulaLocation}
 export type FormulaDependency={kind:'calculated'|'unprorated'|'input'|'history'|'accumulation';code:string;parameters:string[];loc:FormulaLocation};
 export type FormulaAnalysis={dependencies:FormulaDependency[];calls:FormulaRequest[];functions:string[];registryVersion:string;evaluatorVersion:string};
 type Token={kind:'number'|'identifier'|'string'|'call'|'symbol'|'newline'|'comment'|'eof';text:string;loc:FormulaLocation};
-function tokenize(source:string):Token[]{
+function tokenize(source:string,extendedSyntax=false):Token[]{
  if(typeof source!=='string'||!source.trim())fail('source','Enter a formula');if(source.length>PAY_FORMULA_LIMITS.source)fail('limit','Formula source is too long');assertPayFormulaCompleteSource(source);
  const out:Token[]=[];let i=0,line=1,column=1;
  const push=(kind:Token['kind'],text:string,loc:FormulaLocation)=>{out.push({kind,text,loc});if(out.length>PAY_FORMULA_LIMITS.tokens)fail('limit','Formula contains too many tokens',loc);};
@@ -74,11 +74,20 @@ function tokenize(source:string):Token[]{
   if(c==='"'){let value='',closed=false;i++;column++;while(i<source.length){if(source[i]==='"'){if(source[i+1]==='"'){value+='"';i+=2;column+=2;continue;}i++;column++;closed=true;break;}if(/[\r\n]/.test(source[i]))fail('string','A string must finish on the same line',loc);value+=source[i++];column++;if(value.length>PAY_FORMULA_LIMITS.string)fail('limit','String is too long',loc);}if(!closed)fail('string','Unterminated string',loc);push('string',value,loc);continue;}
   if(c==='{'){const m=/^\{#([A-Za-z][A-Za-z0-9_]*)\}/.exec(source.slice(i));if(!m)fail('token','Use an approved {#Variable} token',loc);push('call',m[1],loc);i+=m[0].length;column+=m[0].length;continue;}
   const n=/^(?:\d+(?:\.\d*)?|\.\d+)/.exec(source.slice(i));if(n){push('number',n[0],loc);i+=n[0].length;column+=n[0].length;continue;}
-  const name=/^[A-Za-z_][A-Za-z0-9_]*/.exec(source.slice(i));if(name){if(name[0].length>64)fail('identifier','Variable name is too long',loc);const alias:Record<string,string>={andalso:'And',orelse:'Or'};if(name[0].toLowerCase()==='endif'){push('identifier','End',loc);push('identifier','If',loc);}else if(name[0].toLowerCase()==='endselect'){push('identifier','End',loc);push('identifier','Select',loc);}else push('identifier',alias[name[0].toLowerCase()]??name[0],loc);i+=name[0].length;column+=name[0].length;continue;}
+  const name=/^[A-Za-z_][A-Za-z0-9_]*/.exec(source.slice(i));if(name){if(name[0].length>64)fail('identifier','Variable name is too long',loc);const alias:Record<string,string>={andalso:'And',orelse:'Or'};if(extendedSyntax&&name[0].toLowerCase()==='endif'){push('identifier','End',loc);push('identifier','If',loc);}else if(extendedSyntax&&name[0].toLowerCase()==='endselect'){push('identifier','End',loc);push('identifier','Select',loc);}else push('identifier',extendedSyntax?(alias[name[0].toLowerCase()]??name[0]):name[0],loc);i+=name[0].length;column+=name[0].length;continue;}
   const op=/^(?:<=|>=|<>|[()+\-*/=&,< >])/.exec(source.slice(i));if(op){push('symbol',op[0],loc);i+=op[0].length;column+=op[0].length;continue;}
   fail('token',`Unsupported character ${JSON.stringify(c)}`,loc);
  }
- out.push({kind:'eof',text:'',loc:{line,column}});return out;
+ out.push({kind:'eof',text:'',loc:{line,column}});
+ if(!extendedSyntax)return out;
+ const normalized:Token[]=[];
+ for(let index=0;index<out.length;index++){
+  const token=out[index],next=out[index+1],previous=out[index-1];
+  if(token.kind==='identifier'&&token.text.toLowerCase()==='else'&&next?.kind==='identifier'&&next.text.toLowerCase()==='if'){normalized.push({...token,text:'ElseIf'});index++;continue;}
+  if(token.kind==='newline'&&previous?.kind!=='comment'&&(next?.kind==='identifier'&&['and','or'].includes(next.text.toLowerCase())||previous?.kind==='identifier'&&['and','or'].includes(previous.text.toLowerCase())))continue;
+  normalized.push(token);
+ }
+ return normalized;
 }
 const precedence:Readonly<Record<string,number>>={Or:1,And:2,'=':3,'<>':3,'<':3,'<=':3,'>':3,'>=':3,'&':4,'+':5,'-':5,'*':6,'/':6};
 const reserved=new Set(['dim','as','if','then','elseif','else','end','return','and','or','not','true','false','decimal','string','boolean','date','constructor','prototype','__proto__']);
@@ -123,7 +132,7 @@ class Parser{
   if(word==='dim'){const name=this.next();if(name.kind!=='identifier')fail('identifier','A variable name is required',name.loc);validName(name.text,name.loc);this.expect('As');const typeToken=this.next(),type=typeToken.text.toLowerCase();if(!['decimal','string','boolean','date'].includes(type))fail('type','Use Decimal, String, Boolean or Date',typeToken.loc);this.expect('=');return {kind:'declare',name:name.text,type:type as FormulaType,value:this.expression(),loc:t.loc};}
   if(word==='return')return {kind:'return',value:this.expression(),loc:t.loc};
   if(t.kind==='call'&&word==='explain'){this.expect('(');const value=this.expression();this.expect(')');return {kind:'explain',value,loc:t.loc};}
-  if(word==='select'){
+  if(word==='select'&&this.dialect.extendedSyntax){
    this.expect('Case');const selected=this.expression();this.lineEnd();if(this.token().kind==='comment')this.next();this.newlines();
    const branches:{condition:FormulaExpression;body:FormulaStatement[]}[]=[];let otherwise:FormulaStatement[]=[];
    while(this.is('Case')){const at=this.next().loc;
@@ -147,7 +156,7 @@ class Parser{
  }
  parse():FormulaProgram{const program:FormulaProgram={version:1,statements:this.block()};if(this.token().kind!=='eof')fail('syntax','Unexpected statement terminator',this.token().loc);return program;}
 }
-export function parsePayFormula(source:string,dialect:FormulaDialect=payrollDialect):FormulaProgram{const program=new Parser(tokenize(source),undefined,dialect).parse();validatePayFormula(program,dialect);return program;}
+export function parsePayFormula(source:string,dialect:FormulaDialect=payrollDialect):FormulaProgram{const program=new Parser(tokenize(source,dialect.extendedSyntax),undefined,dialect).parse();validatePayFormula(program,dialect);return program;}
 export function applyFormulaAmount(amount:string,options:{factor?:string;rounding?:'none'|'up'|'down'|'nearest'}={}):string{
  let n=decimal(multiplyFormulaDecimal(amount,options.factor??'1'));n=roundedDivision(n,TEN**BigInt(10))*TEN**BigInt(10);
  const whole=n/SCALE,remainder=n%SCALE;
@@ -236,7 +245,7 @@ function analyzeProgram(program:unknown,sink?:PayFormulaError[],dialect:FormulaD
     case 'declare':{const name=validName(statement.name,loc).toLowerCase();if(scope.has(name))fail('identifier','Variable is already declared in this scope',loc);if(!['decimal','string','boolean','date'].includes(statement.type))fail('type','Unknown declaration type',loc);if(infer(statement.value,scope,depth+1)!==statement.type)fail('type','Declaration value does not match its type',loc);scope.set(name,statement.type);break;}
     case 'assign':{const name=validName(statement.name,loc).toLowerCase(),type=scope.get(name);if(!type)fail('identifier','Assign only to a previously declared variable',loc);if(infer(statement.value,scope,depth+1)!==type)fail('type','Assignment value does not match its declaration',loc);break;}
     case 'explain':infer(statement.value,scope,depth+1);break;
-    case 'return':if(infer(statement.value,scope,depth+1)!=='decimal')fail('return','A payroll formula must return a Decimal amount',loc);returned=true;break;
+    case 'return':if(infer(statement.value,scope,depth+1)!==(dialect.returnType??'decimal'))fail('return',dialect.returnType==='boolean'?'A condition must return a Boolean value':'A payroll formula must return a Decimal amount',loc);returned=true;break;
     case 'if':{if(!Array.isArray(statement.branches)||!statement.branches.length||statement.branches.length>64||!Array.isArray(statement.otherwise))fail('condition','A bounded condition and branch list is required',loc);let all=true;
      for(const branch of statement.branches){if(!object(branch))fail('condition','A condition branch is required',loc);guard(()=>{if(infer(branch.condition,scope,depth+1)!=='boolean')fail('type','If/ElseIf needs a Boolean condition',loc);},()=>undefined);if(!block(branch.body,new Map(scope),depth+1))all=false;}
      const elseReturns=block(statement.otherwise,new Map(scope),depth+1);returned=all&&elseReturns;break;}
@@ -339,6 +348,6 @@ export function evaluatePayFormula(program:FormulaProgram,runtime:FormulaRuntime
    case 'if':{let selected=statement.otherwise,chosen=false;for(const [index,branch] of statement.branches.entries()){const condition=expression(branch.condition,env);if(condition.type!=='boolean')fail('type','Condition must be Boolean',statement.loc);trace?.({kind:'condition',branch:index,value:condition.value,loc:branch.condition.loc});if(condition.value){selected=branch.body;chosen=true;break;}}if(!chosen&&statement.otherwise.length)trace?.({kind:'otherwise',loc:statement.loc});const value=block(selected,new Map(env));if(value)return value;break;}
   }}return undefined;
  };
- const result=block(program.statements,new Map());if(!result||result.type!=='decimal')fail('return','Formula did not return a Decimal amount');
- return {amount:normalizeFormulaDecimal(result.value),explanations,reads,steps,registryVersion:dialect.version,evaluatorVersion:PAY_FORMULA_EVALUATOR_VERSION};
+ const result=block(program.statements,new Map());if(!result||result.type!==(dialect.returnType??'decimal'))fail('return','Formula did not return its declared type');
+ return {amount:result.type==='decimal'?normalizeFormulaDecimal(result.value):result.value===true?'1':'0',explanations,reads,steps,registryVersion:dialect.version,evaluatorVersion:PAY_FORMULA_EVALUATOR_VERSION};
 }
