@@ -1,0 +1,83 @@
+{
+  "kind": "CLASSIFIER_DIAGNOSTIC_OWNER_LOSS_WHOLE_PARENT_SOURCE_INVERSE_NOT_RUNTIME_CLEANUP",
+  "base": "3134c159cb62b22ce677c65dd0747672ab2e5774",
+  "files": {
+    ".github/ci/diagnostics/db-classifier-timeout.py": {
+      "originalSha256": "7a0dbcb6d94fff93986b19d8b3869f609b5f0bb1993465acd92e77c04adba1c3",
+      "currentSha256": "4295085aad7671e31115d239a228ed477f7d3627595b045eb003bbe9dd864e38",
+      "changes": [
+        {
+          "start": 310,
+          "end": 312,
+          "before": "    def clock():\n        if state['start'] is None:\n            actual = time.monotonic(); state['start'] = actual; return actual\n        # No callback error may interrupt the kernel's mandatory cleanup clock.\n        try:\n            if parent_fd is not None and select.select([parent_fd], [], [], 0)[0] and not state['ownerLost']:\n                state['ownerLost'] = True; os.kill(os.getpid(), signal.SIGTERM)  # Only SELF, after kernel installed its interrupt handler.\n            drain()\n            if not state['settling'] and phase != 'inventory': sampler.sample(time.monotonic() - state['start'])\n        except BaseException as error:\n            name = type(error).__name__\n            if name not in state['transportFailures']:\n                state['transportFailures'].append(name); errors.append(error)\n        return time.monotonic()  # Fresh ACTUAL time, never a shifted work clock.\n",
+          "after": "    clock = phase_clock(state, parent_fd=lambda: parent_fd, drain=drain, sampler=sampler,\n                        phase=phase, errors=lambda: errors)\n"
+        },
+        {
+          "start": 292,
+          "end": 293,
+          "before": "",
+          "after": "                require_upstream_before_ack(parent_fd, state)\n"
+        },
+        {
+          "start": 235,
+          "end": 283,
+          "before": "",
+          "after": "\n\ndef require_upstream_before_ack(descriptor, state):\n    # The qualified kernel emits session-admitted before ACK and swallows a\n    # refused event into its mandatory no-ACK cleanup. Never admit late work.\n    require(descriptor is not None)\n    if select.select([descriptor], [], [], 0)[0]:\n        state['ownerLost'] = True\n        state['transportFailures'].append('upstream-owner-lost-before-workload-ack')\n        require(False)\n\n\ndef qualified_kernel_interrupt(handler):\n    # Exact code object AND globals from the hash-verified loaded kernel, not a\n    # caller bool, source filename alone or a same-named foreign Python function.\n    return (callable(handler) and getattr(handler, '__globals__', None) is K.__dict__\n            and any(isinstance(code, type(K.supervise.__code__)) and code.co_name == 'interrupt'\n                    and getattr(handler, '__code__', None) is code for code in K.supervise.__code__.co_consts))\n\n\ndef phase_clock(state, *, parent_fd, drain, sampler, phase, errors):\n    \"\"\"Internal read/cleanup clock seam, never a command or admission interface.\"\"\"\n    def clock():\n        if state['start'] is None:\n            actual = time.monotonic(); state['start'] = actual; return actual\n        # The kernel also calls its clock during pre-handler/no-ACK pidfd-open\n        # failure cleanup. Owner loss must never SELF-TERM under a default or\n        # foreign handler and interrupt that mandatory cleanup.\n        try:\n            descriptor = parent_fd()\n            if descriptor is not None and select.select([descriptor], [], [], 0)[0] and not state['ownerLost']:\n                state['ownerLost'] = True\n                if qualified_kernel_interrupt(signal.getsignal(signal.SIGTERM)):\n                    os.kill(os.getpid(), signal.SIGTERM)  # Exact active kernel handler, SELF only.\n                else:\n                    state['transportFailures'].append('upstream-owner-lost-without-qualified-handler')\n            drain()\n            if not state['settling'] and phase != 'inventory': sampler.sample(time.monotonic() - state['start'])\n        except BaseException as error:\n            name = type(error).__name__\n            if name not in state['transportFailures']:\n                state['transportFailures'].append(name)\n            # Distinct failures of the same class must remain distinct causes.\n            errors().append(error)\n        return time.monotonic()  # Fresh ACTUAL time, never a shifted work clock.\n    return clock\n\n\n"
+        },
+        {
+          "start": 20,
+          "end": 21,
+          "before": "MANIFEST = 'docs/qualification/db-classifier-timeout-diagnostic-source-20261108.json'\n",
+          "after": "MANIFEST = 'docs/qualification/db-classifier-owner-loss-correction-source-20261108.json'\n"
+        }
+      ]
+    },
+    ".github/ci/diagnostics/db-classifier-timeout.test.py": {
+      "originalSha256": "e8cf39ae7325ddef1b116929a4eb2f046694cc4a88b849747a97e3a8a135e097",
+      "currentSha256": "09d88695e114c6f1c3b04f568953307ff2775900e7b1277b6d43d07a51c83209",
+      "changes": [
+        {
+          "start": 73,
+          "end": 169,
+          "before": "",
+          "after": "    def state(self):\n        return {'start': None, 'settling': False, 'transportFailures': [], 'ownerLost': False}\n\n    def kernel_handler(self, globals_=None):\n        code = next(code for code in M.K.supervise.__code__.co_consts\n                    if isinstance(code, types.CodeType) and code.co_name == 'interrupt')\n        self.assertEqual(code.co_freevars, ('stopped',))\n        cell = (lambda value: lambda: value)(False).__closure__[0]\n        return types.FunctionType(code, M.K.__dict__ if globals_ is None else globals_, 'interrupt', closure=(cell,)), cell\n\n    def test_prehandler_no_ack_pidfd_failure_clock_never_self_terms_and_retains_owner_loss(self):\n        # The real qualified kernel has this exact clock-before-handler failure\n        # branch; model the callback seam without launching or signalling a process.\n        source = M.kernel_path.read_text()\n        start = source.index('    try:\\n        descriptor = os.pidfd_open(child)')\n        finish = source.index('    started = clock(); deadline = started + seconds', start)\n        self.assertIn('until = clock() + 3', source[start:finish])\n        self.assertLess(finish, source.index('    for sig in (signal.SIGTERM, signal.SIGINT):', finish))\n        state, errors, work = self.state(), [], []\n        clock = M.phase_clock(state, parent_fd=lambda: 99, drain=lambda: work.append('drain'),\n            sampler=types.SimpleNamespace(sample=lambda _elapsed: work.append('sample')), phase='baseline', errors=lambda: errors)\n        with patch.object(M.time, 'monotonic', side_effect=[100.0, 100.1, 100.2]), \\\n                patch.object(M.select, 'select', return_value=([99], [], [])), \\\n                patch.object(M.signal, 'getsignal', return_value=signal.SIG_DFL), patch.object(M.os, 'kill') as kill:\n            self.assertEqual(clock(), 100.0)\n            self.assertEqual(clock(), 100.2)\n            kill.assert_not_called()\n        self.assertTrue(state['ownerLost'])\n        self.assertEqual(state['transportFailures'], ['upstream-owner-lost-without-qualified-handler'])\n        self.assertEqual(work, ['drain', 'sample']); self.assertEqual(errors, [])\n\n    def test_owner_loss_between_poll_and_session_admission_refuses_before_native_workload_ack(self):\n        state = self.state()\n        with patch.object(M.select, 'select', return_value=([99], [], [])), patch.object(M.os, 'kill') as kill:\n            with self.assertRaises(ValueError):\n                M.require_upstream_before_ack(99, state)\n            kill.assert_not_called()\n        self.assertTrue(state['ownerLost'])\n        self.assertEqual(state['transportFailures'], ['upstream-owner-lost-before-workload-ack'])\n        current = self.state()\n        with patch.object(M.select, 'select', return_value=([], [], [])):\n            M.require_upstream_before_ack(99, current)\n        self.assertFalse(current['ownerLost']); self.assertEqual(current['transportFailures'], [])\n        # Bind the actual source call order to the reviewed kernel's guarded\n        # emit/ACK boundary; this is not a fabricated native admission receipt.\n        source = SOURCE.read_text(); begin = source.index('    def event(packet):', source.index('def _run_phase('))\n        gate = source.index('require_upstream_before_ack(parent_fd, state)', begin)\n        self.assertLess(gate, source.index(\"atomic_json(out / (phase + '-clock.json')\", begin))\n        self.assertNotIn('mandatory=True', source[source.index('def _run_phase('):])\n\n    def test_exact_active_kernel_handler_interrupts_only_self_once_and_keeps_actual_clock(self):\n        handler, stopped = self.kernel_handler(); self.assertTrue(M.qualified_kernel_interrupt(handler))\n        state, errors, work = self.state(), [], []; state['start'] = 100.0\n        clock = M.phase_clock(state, parent_fd=lambda: 99, drain=lambda: work.append('drain'),\n            sampler=types.SimpleNamespace(sample=lambda _elapsed: work.append('sample')), phase='profile', errors=lambda: errors)\n        with patch.object(M.time, 'monotonic', side_effect=[100.1, 100.2, 100.3, 100.4]), \\\n                patch.object(M.select, 'select', return_value=([99], [], [])), \\\n                patch.object(M.signal, 'getsignal', return_value=handler), patch.object(M.os, 'getpid', return_value=456), \\\n                patch.object(M.os, 'kill', side_effect=lambda _pid, sig: handler(sig, None)) as kill:\n            self.assertEqual(clock(), 100.2); self.assertEqual(clock(), 100.4)\n            kill.assert_called_once_with(456, signal.SIGTERM)\n        self.assertIs(stopped.cell_contents, True); self.assertTrue(state['ownerLost'])\n        self.assertEqual(work, ['drain', 'sample', 'drain', 'sample']); self.assertEqual(errors, [])\n        self.assertEqual(state['transportFailures'], [])\n\n    def test_foreign_globals_or_spoofed_filename_never_authorize_self_signal_during_cleanup(self):\n        foreign, _ = self.kernel_handler({})\n        spoof = (lambda _signal, _frame: None)\n        spoof = types.FunctionType(spoof.__code__.replace(co_filename=str(M.kernel_path), co_name='interrupt'), M.K.__dict__)\n        for handler in (foreign, spoof):\n            self.assertFalse(M.qualified_kernel_interrupt(handler))\n            state, errors, work = self.state(), [], []; state['start'] = 100.0; state['settling'] = True\n            clock = M.phase_clock(state, parent_fd=lambda: 99, drain=lambda: work.append('drain'),\n                sampler=types.SimpleNamespace(sample=lambda _elapsed: self.fail('No sampler during cleanup')),\n                phase='profile', errors=lambda: errors)\n            with patch.object(M.time, 'monotonic', return_value=101.0), \\\n                    patch.object(M.select, 'select', return_value=([99], [], [])), \\\n                    patch.object(M.signal, 'getsignal', return_value=handler), patch.object(M.os, 'kill') as kill:\n                self.assertEqual(clock(), 101.0); kill.assert_not_called()\n            self.assertTrue(state['ownerLost']); self.assertEqual(work, ['drain']); self.assertEqual(errors, [])\n            self.assertEqual(state['transportFailures'], ['upstream-owner-lost-without-qualified-handler'])\n\n    def test_distinct_drain_errors_of_same_class_survive_without_throwing_through_kernel_clock(self):\n        first, second = OSError('fictional-first'), OSError('fictional-second')\n        state, errors = self.state(), []; state['start'] = 100.0; state['settling'] = True\n        drain = unittest.mock.Mock(side_effect=[first, second])\n        clock = M.phase_clock(state, parent_fd=lambda: None, drain=drain,\n            sampler=types.SimpleNamespace(sample=lambda _elapsed: self.fail('No sampler during cleanup')),\n            phase='baseline', errors=lambda: errors)\n        with patch.object(M.time, 'monotonic', side_effect=[101.0, 102.0]):\n            self.assertEqual(clock(), 101.0); self.assertEqual(clock(), 102.0)\n        self.assertEqual(drain.call_count, 2); self.assertEqual(errors, [first, second])\n        self.assertIs(errors[0], first); self.assertIs(errors[1], second)\n        self.assertEqual(state['transportFailures'], ['OSError'])\n\n\n"
+        },
+        {
+          "start": 10,
+          "end": 11,
+          "before": "",
+          "after": "from unittest.mock import patch\n"
+        },
+        {
+          "start": 4,
+          "end": 6,
+          "before": "",
+          "after": "import signal\nimport types\n"
+        }
+      ]
+    },
+    "test/gate-db-classifier-timeout-controls.test.ts": {
+      "originalSha256": "475ad25c12ec2140c666b972539cb952dec8310d891f23c686c7f746deca6904",
+      "currentSha256": "549793e5d2e63c8e1fb3daa42fc2e4baeeeded0d1013b2cc1c2209c42bdac24e",
+      "changes": [
+        {
+          "start": 5,
+          "end": 6,
+          "before": " const output=(result.stdout??'')+(result.stderr??'');expect(result.error).toBeUndefined();expect(result.signal).toBeNull();expect(result.status,output).toBe(0);expect(result.stdout).toBe('');expect(output).toMatch(/Ran 8 tests in [0-9.]+s\\n\\nOK\\n$/);process.stdout.write(output);\n",
+          "after": " const output=(result.stdout??'')+(result.stderr??'');expect(result.error).toBeUndefined();expect(result.signal).toBeNull();expect(result.status,output).toBe(0);expect(result.stdout).toBe('');expect(output).toMatch(/Ran 13 tests in [0-9.]+s\\n\\nOK\\n$/);process.stdout.write(output);\n"
+        },
+        {
+          "start": 3,
+          "end": 4,
+          "before": "it('checks eight fixed diagnostic source and counter controls without skips',()=>{\n",
+          "after": "it('checks thirteen fixed diagnostic source and counter controls without skips',()=>{\n"
+        }
+      ]
+    }
+  },
+  "addedPaths": [
+    ".github/ci/diagnostics/db-classifier-owner-loss-correction-inverse.json",
+    "docs/qualification/db-classifier-owner-loss-correction-20261108.md",
+    "docs/qualification/db-classifier-owner-loss-correction-source-20261108.json"
+  ]
+}

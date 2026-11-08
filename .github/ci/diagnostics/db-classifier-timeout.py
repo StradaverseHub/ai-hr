@@ -18,7 +18,7 @@ from types import ModuleType
 
 ROOT = Path(__file__).resolve().parents[3]
 SELECTOR = 'test/gate-db-classifier-timeout-diagnostic.test.ts'
-MANIFEST = 'docs/qualification/db-classifier-timeout-diagnostic-source-20261108.json'
+MANIFEST = 'docs/qualification/db-classifier-owner-loss-correction-source-20261108.json'
 CLASSIFIER_SHA = 'cc77445ba5b8a702a5f8f4a4292bdcb99275d520ae4f13b16442a17e78f3f916'
 KERNEL_SHA = 'cb1a2cc2879267f8834dc11ea0e1c52f8326b0bd4e45dcd94ccf2ac43463f28c'
 LOG_MAX = 16 * 1024**2
@@ -233,6 +233,54 @@ def main():
             raise
 
 
+
+
+def require_upstream_before_ack(descriptor, state):
+    # The qualified kernel emits session-admitted before ACK and swallows a
+    # refused event into its mandatory no-ACK cleanup. Never admit late work.
+    require(descriptor is not None)
+    if select.select([descriptor], [], [], 0)[0]:
+        state['ownerLost'] = True
+        state['transportFailures'].append('upstream-owner-lost-before-workload-ack')
+        require(False)
+
+
+def qualified_kernel_interrupt(handler):
+    # Exact code object AND globals from the hash-verified loaded kernel, not a
+    # caller bool, source filename alone or a same-named foreign Python function.
+    return (callable(handler) and getattr(handler, '__globals__', None) is K.__dict__
+            and any(isinstance(code, type(K.supervise.__code__)) and code.co_name == 'interrupt'
+                    and getattr(handler, '__code__', None) is code for code in K.supervise.__code__.co_consts))
+
+
+def phase_clock(state, *, parent_fd, drain, sampler, phase, errors):
+    """Internal read/cleanup clock seam, never a command or admission interface."""
+    def clock():
+        if state['start'] is None:
+            actual = time.monotonic(); state['start'] = actual; return actual
+        # The kernel also calls its clock during pre-handler/no-ACK pidfd-open
+        # failure cleanup. Owner loss must never SELF-TERM under a default or
+        # foreign handler and interrupt that mandatory cleanup.
+        try:
+            descriptor = parent_fd()
+            if descriptor is not None and select.select([descriptor], [], [], 0)[0] and not state['ownerLost']:
+                state['ownerLost'] = True
+                if qualified_kernel_interrupt(signal.getsignal(signal.SIGTERM)):
+                    os.kill(os.getpid(), signal.SIGTERM)  # Exact active kernel handler, SELF only.
+                else:
+                    state['transportFailures'].append('upstream-owner-lost-without-qualified-handler')
+            drain()
+            if not state['settling'] and phase != 'inventory': sampler.sample(time.monotonic() - state['start'])
+        except BaseException as error:
+            name = type(error).__name__
+            if name not in state['transportFailures']:
+                state['transportFailures'].append(name)
+            # Distinct failures of the same class must remain distinct causes.
+            errors().append(error)
+        return time.monotonic()  # Fresh ACTUAL time, never a shifted work clock.
+    return clock
+
+
 def _run_phase(phase, binding, report):
     """Fixed caller only. No exported command selection or acceptance API."""
     require(phase in ('inventory', 'baseline', 'profile')); source, evidence, node, _declaration = admit(); out = evidence / 'db-classifier-timeout'
@@ -242,6 +290,7 @@ def _run_phase(phase, binding, report):
     def event(packet):
         try:
             if packet['kind'] == 'session-admitted':
+                require_upstream_before_ack(parent_fd, state)
                 atomic_json(out / (phase + '-clock.json'), {**binding, 'workSeconds': seconds, 'startSeconds': state['start']})
                 sampler.admit(packet)
             if packet['kind'] == 'group-stop-before-reap': state['settling'] = True
@@ -259,20 +308,8 @@ def _run_phase(phase, binding, report):
                 if count + len(raw) > LOG_MAX:
                     state['transportFailures'].append('combined-native-output-bound'); return
                 require(os.write(outputs[index], raw) == len(raw))
-    def clock():
-        if state['start'] is None:
-            actual = time.monotonic(); state['start'] = actual; return actual
-        # No callback error may interrupt the kernel's mandatory cleanup clock.
-        try:
-            if parent_fd is not None and select.select([parent_fd], [], [], 0)[0] and not state['ownerLost']:
-                state['ownerLost'] = True; os.kill(os.getpid(), signal.SIGTERM)  # Only SELF, after kernel installed its interrupt handler.
-            drain()
-            if not state['settling'] and phase != 'inventory': sampler.sample(time.monotonic() - state['start'])
-        except BaseException as error:
-            name = type(error).__name__
-            if name not in state['transportFailures']:
-                state['transportFailures'].append(name); errors.append(error)
-        return time.monotonic()  # Fresh ACTUAL time, never a shifted work clock.
+    clock = phase_clock(state, parent_fd=lambda: parent_fd, drain=drain, sampler=sampler,
+                        phase=phase, errors=lambda: errors)
 
     result, errors = None, []
     def attempt(work):
