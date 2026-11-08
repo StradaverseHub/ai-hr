@@ -1,4 +1,4 @@
-/** Actual3103 append over the complete populated fe26 prefix, via ordinary migrator only. */
+/** Historical3103 component over its exact archived739 prefix; NOT actual706/707 installation proof. */
 import {createHash,randomUUID} from 'node:crypto';
 import {copyFileSync,mkdtempSync,mkdirSync,readFileSync,rmSync,writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
@@ -23,8 +23,8 @@ it('preserves populated permissions/history and atomically refuses a drifted pre
  expect(process.env.GITHUB_ACTIONS).toBe('true');expect(process.env.RUNNER_ENVIRONMENT).toBe('github-hosted');
  const pool=process.env.VITEST_POOL_ID??process.env.VITEST_WORKER_ID;expect(pool).toBeTruthy();expect(process.env.WORKER_DB).not.toBe('0');
  const source=new URL(process.env.TEST_MIGRATION_DATABASE_URL!);expect(source.hostname).toBe('127.0.0.1');expect(source.pathname).toBe('/'+workerDb(pool!));expect(source.username).not.toBe('ai_hr_app');
- const journal=JSON.parse(readFileSync('db/migrations/meta/_journal.json','utf8')),prefix=journal.entries.slice(0,739),componentJournal={...journal,entries:journal.entries.slice(0,740)};
- expect(journal.entries.length).toBeGreaterThanOrEqual(740);expect(componentJournal.entries).toHaveLength(740);expect(componentJournal.entries.at(-1)).toEqual(append);
+ const journal=JSON.parse(readFileSync('test/fixtures/access-editor-original739-journal.json','utf8')),prefix=journal.entries,componentJournal={...journal,entries:[...prefix,append]};
+ expect(prefix).toHaveLength(739);expect(componentJournal.entries).toHaveLength(740);expect(componentJournal.entries.at(-1)).toEqual(append);
  expect(sha(JSON.stringify(prefix))).toBe('2f2bf63ad7197b2b9042dee26f1a701539addc7f146cce14914fdc8ec1006a05');
  expect(sha(JSON.stringify(prefix.map((entry:{tag:string})=>[entry.tag,sha(readFileSync('db/migrations/'+entry.tag+'.sql'))])))).toBe('feb775454a5577ca5ec1b8e86a56bf5a57f3b27d7f7b4aa47735142e678a5d00');
  expect(sha(readFileSync('db/migrations/'+append.tag+'.sql'))).toBe(appendHash);
