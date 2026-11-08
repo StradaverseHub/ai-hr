@@ -440,8 +440,13 @@ def left(maximum=30):
 
 
 def run(arguments, *, check=True, timeout=30, env=None, input=None, cwd=None):
-    result = subprocess.run(arguments, env=SAFE_ENV if env is None else env, input=input,
-                            capture_output=True, timeout=left(timeout), cwd=cwd)
+    try:
+        result = subprocess.run(arguments, env=SAFE_ENV if env is None else env, input=input,
+                                capture_output=True, timeout=left(timeout), cwd=cwd)
+    except BaseException as error:
+        runtime_command_observation(arguments, error=error)
+        raise
+    runtime_command_observation(arguments, result=result)
     if check:
         require(result.returncode == 0, 'Bounded native subprocess refused')
     return result
@@ -1471,6 +1476,281 @@ def cleanup(postgres_scope):
         parent.rmdir()
 
 
+# Read-only failure diagnostics. These observations cannot grant admission,
+# replace a product predicate, establish cleanup or change an original outcome.
+RUNTIME_DIAGNOSTIC_UNITS = {unit: label for unit, label in zip(
+    [*UNITS, PROXY, BROWSER, SLICE], ['worker-1', 'worker-2', 'proxy', 'browser', 'slice'])}
+RUNTIME_STATE_KEYS = frozenset({'Id', 'LoadState', 'ActiveState', 'SubState', 'InvocationID',
+    'MainPID', 'ControlPID', 'Result', 'ExecMainCode', 'ExecMainStatus'})
+RUNTIME_DIAGNOSTIC_MAX = 131072
+RUNTIME_PHASES = frozenset({'actual-browser-start-first', 'actual-browser-start-second-cold',
+    'actual-browser-admit-second', 'actual-browser-browser-core-finished',
+    'actual-browser-two-worker-boot', 'drain-stop-and-actual-bind-reclamation'})
+
+
+def runtime_command_label(arguments):
+    if not isinstance(arguments, list) or arguments[:2] != ['/usr/bin/systemctl', '--system']:
+        return None
+    tail = arguments[2:]
+    if tail == ['daemon-reload']:
+        return 'manager-reload'
+    for unit, label in RUNTIME_DIAGNOSTIC_UNITS.items():
+        for verb in ('start', 'stop', 'reset-failed'):
+            if tail == [verb, unit] or tail == [verb, '--no-block', unit]:
+                return verb + '-' + label
+        if tail == ['show', unit, '--property=LoadState,InvocationID,MainPID,ControlPID,ActiveState,SubState,ExecStart,ExecReload,FragmentPath,ControlGroup']:
+            return 'properties-' + label
+    if tail == ['show', BROWSER, '--property=Description,Transient']:
+        return 'browser-owner-check'
+    return None
+
+
+def runtime_command_observation(arguments, result=None, error=None):
+    # No caller label, argument, stderr, private command output or exception text.
+    label = runtime_command_label(arguments)
+    if label is None:
+        return
+    values = report.setdefault('runtimeCommands', [])
+    if len(values) >= 32:
+        report['runtimeCommandsComplete'] = False
+        return
+    code = getattr(result, 'returncode', None)
+    values.append({'command': label, 'returnCode': code if type(code) is int and -255 <= code <= 255 else None,
+                   'outcome': 'timeout' if isinstance(error, subprocess.TimeoutExpired)
+                       else 'exception' if error is not None else 'returned'})
+
+
+def runtime_catalog(sources, fixture_path):
+    paths = dict(OBSERVER_PATHS, fixture=fixture_path)
+    require(isinstance(sources, dict) and set(sources) == set(paths), 'Closed diagnostic sources required')
+    result, reasons = {}, {}
+    for owner, filename in paths.items():
+        raw = sources[owner]
+        require(isinstance(raw, bytes) and 0 < len(raw) <= 1024**2, 'Bounded diagnostic source required')
+        tree = ast.parse(raw, filename)
+        calls, guards = set(), set()
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            calls.update(range(node.lineno, node.end_lineno + 1))
+            if (isinstance(node.func, ast.Name) and node.func.id in ('require', 'check')
+                    or isinstance(node.func, ast.Attribute) and node.func.attr in ('require', 'check')):
+                guards.update(range(node.lineno, node.end_lineno + 1))
+                if (owner != 'fixture' and len(node.args) == 2
+                        and isinstance(node.args[1], ast.Constant) and type(node.args[1].value) is str
+                        and 0 < len(node.args[1].value.encode()) <= 1024):
+                    reasons.setdefault('Admission refused: ' + node.args[1].value, []).append(
+                        {'owner': owner, 'line': node.lineno})
+        code, codes = compile(raw, filename, 'exec', dont_inherit=True), set()
+        def gather(value):
+            codes.add(observer_code_identity(value))
+            for item in value.co_consts:
+                if isinstance(item, types.CodeType):
+                    gather(item)
+        gather(code)
+        result[owner] = {'path': filename, 'codes': frozenset(codes),
+                         'calls': frozenset(calls), 'guards': frozenset(guards)}
+    return result, reasons
+
+
+def runtime_exception_observation(error, catalog):
+    frames, current, count = [], error.__traceback__, 0
+    while current is not None:
+        count += 1
+        if count > 32:
+            return {'classification': 'stack-bound-exceeded'}
+        frame = current.tb_frame
+        for owner, source in catalog.items():
+            if (frame.f_code.co_filename == source['path'] and frame.f_globals.get('__file__') == source['path']
+                    and current.tb_lineno in source['calls']
+                    and observer_code_identity(frame.f_code) in source['codes']):
+                frames.append({'owner': owner, 'line': current.tb_lineno,
+                               'kind': 'guard' if current.tb_lineno in source['guards'] else 'call'})
+        current = current.tb_next
+    name = type(error).__name__
+    return {'classification': 'sealed-source-exception' if frames else 'unmatched-source-exception',
+            'exception': name if name in OBSERVER_EXCEPTIONS | {'TimeoutExpired', 'CalledProcessError',
+                'SystemExit', 'KeyboardInterrupt'} else 'unknown', 'frames': frames}
+
+
+def runtime_state_observation(raw):
+    require(isinstance(raw, bytes) and len(raw) <= RUNTIME_DIAGNOSTIC_MAX, 'Diagnostic state bound refused')
+    rows = {}
+    for block in raw.decode('utf8').strip().split('\n\n'):
+        values = {}
+        for line in block.splitlines():
+            key, separator, value = line.partition('=')
+            require(separator and key in RUNTIME_STATE_KEYS and key not in values,
+                    'Closed diagnostic state fields required')
+            values[key] = value
+        unit = values.get('Id')
+        require(unit in RUNTIME_DIAGNOSTIC_UNITS and unit not in rows, 'Closed diagnostic unit required')
+        require({'Id', 'LoadState', 'ActiveState', 'SubState', 'InvocationID'} <= set(values),
+                'Complete diagnostic state identity required')
+        rows[unit] = values
+    require(set(rows) == set(RUNTIME_DIAGNOSTIC_UNITS), 'Complete fixed unit snapshot required')
+    result, invocations = [], {}
+    known = {'LoadState': {'loaded', 'not-found', 'masked', 'error', 'bad-setting', 'merged', 'stub'},
+        'ActiveState': {'active', 'reloading', 'inactive', 'failed', 'activating', 'deactivating', 'maintenance', 'refreshing'},
+        'SubState': {'dead', 'running', 'start-pre', 'start', 'start-post', 'stop', 'stop-sigterm', 'stop-sigkill',
+            'stop-post', 'failed', 'exited', 'waiting', 'auto-restart', 'condition', 'listening'},
+        'Result': {'success', 'resources', 'timeout', 'exit-code', 'signal', 'core-dump', 'watchdog',
+            'start-limit-hit', 'oom-kill', 'protocol', 'exec-condition', 'dependency'}}
+    for unit, label in RUNTIME_DIAGNOSTIC_UNITS.items():
+        values = rows[unit]
+        public = {'unit': label}
+        for key, allowed in known.items():
+            public[key] = values.get(key) if values.get(key) in allowed else 'unknown'
+        for key in ('ExecMainCode', 'ExecMainStatus'):
+            value = values.get(key, '')
+            public[key] = int(value) if re.fullmatch(r'[0-9]{1,3}', value) and int(value) <= 255 else None
+        invocation = values['InvocationID']
+        public['hasInvocation'] = re.fullmatch(r'[a-f0-9]{32}', invocation) is not None
+        if unit in UNITS and public['hasInvocation']:
+            invocations[unit] = invocation
+        result.append(public)
+    return result, invocations
+
+
+def runtime_journal_observation(raw, unit, invocation, python_exe, reasons):
+    require(unit in UNITS and re.fullmatch(r'[a-f0-9]{32}', invocation)
+            and isinstance(python_exe, str) and python_exe.startswith('/usr/bin/'), 'Closed journal identity required')
+    require(isinstance(raw, bytes) and len(raw) <= RUNTIME_DIAGNOSTIC_MAX, 'Diagnostic journal bound refused')
+    records, trusted, refusals, exceptions = 0, 0, [], []
+    commands = {prefix + ' -I -B ' + OBSERVER_PATHS['controller'] + ' ' + operation + ' ' + unit
+                for prefix in ('/usr/bin/python3', python_exe) for operation in ('reserve', 'admit', 'cleanup')}
+    for line in raw.splitlines():
+        records += 1
+        require(records <= 64, 'Diagnostic journal record bound refused')
+        row = json.loads(line)
+        if not (isinstance(row, dict) and row.get('_UID') == '0' and row.get('_EXE') == python_exe
+                and row.get('_SYSTEMD_UNIT') == unit and row.get('_SYSTEMD_INVOCATION_ID') == invocation
+                and type(row.get('_CMDLINE')) is str and row['_CMDLINE'] in commands):
+            continue
+        trusted += 1
+        message = row.get('MESSAGE')
+        if type(message) is not str:
+            continue
+        if message in reasons:
+            sites = reasons[message]
+            require(len(sites) <= 16, 'Ambiguous literal diagnostic exceeds bound')
+            refusals.append({'classification': 'sealed-literal-refusal', 'sites': sites})
+        else:
+            for name in OBSERVER_EXCEPTIONS:
+                if message == 'Admission failed: ' + name + '; reconcile before retry':
+                    exceptions.append(name)
+                    break
+    return {'unit': RUNTIME_DIAGNOSTIC_UNITS[unit], 'records': records, 'trustedControllerRecords': trusted,
+            'literalRefusals': refusals, 'closedExceptions': exceptions}
+
+
+def runtime_diagnostic_read(arguments, deadline):
+    """Bound both pipe bytes and process lifetime; raw output is never evidence."""
+    require(time.monotonic() < deadline - 0.05, 'Diagnostic budget unavailable')
+    child = subprocess.Popen(arguments, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, env=SAFE_ENV)
+    selector, raw, stopped, result = None, bytearray(), False, None
+    try:
+        selector = selectors.DefaultSelector()
+        selector.register(child.stdout, selectors.EVENT_READ)
+        while time.monotonic() < deadline - 0.05:
+            events = selector.select(max(0, deadline - 0.05 - time.monotonic()))
+            if not events:
+                break
+            block = os.read(child.stdout.fileno(), 65537)
+            if not block:
+                result = child.wait(timeout=max(0.001, deadline - time.monotonic()))
+                stopped = True
+                return result, bytes(raw)
+            raw.extend(block)
+            require(len(raw) <= RUNTIME_DIAGNOSTIC_MAX, 'Diagnostic raw pipe bound refused')
+        raise TimeoutError('Diagnostic budget exhausted')
+    finally:
+        cleanup_errors = False
+        try:
+            if selector is not None:
+                selector.close()
+        except BaseException:
+            cleanup_errors = True
+        if not stopped:
+            try:
+                child.kill()
+            except BaseException:
+                cleanup_errors = True
+            try:
+                child.wait(timeout=max(0.001, deadline - time.monotonic()))
+            except BaseException:
+                report['diagnosticChildrenSettled'] = False
+                cleanup_errors = True
+        try:
+            child.stdout.close()
+        except BaseException:
+            cleanup_errors = True
+        if cleanup_errors:
+            raise RuntimeError('Bounded diagnostic transport cleanup refused') from None
+
+
+def runtime_failure_diagnostic(kind, error, binding):
+    # Every failure, including unavailable time/source/IO, is observational only.
+    # The original exception is always rethrown by the caller; cleanup is separate.
+    if type(kind) is not str or kind not in ('primary', 'cleanup'):
+        return
+    current_phase = report.get('currentPhase')
+    value = {'classification': 'unavailable', 'reason': 'budget-or-source-or-io-unavailable',
+             'phase': current_phase if type(current_phase) is str and current_phase in RUNTIME_PHASES else 'other-native-phase'}
+    report.setdefault('runtimeFailureDiagnostics', {})[kind] = value
+    deadline = min(DEADLINE, time.monotonic() + 2)
+    try:
+        require(time.monotonic() < deadline - 0.05, 'Diagnostic budget unavailable')
+        own_path = str(pathlib.Path(__file__).absolute())
+        sources = {'fixture': observer_read(own_path, 1024**2)}
+        require(hashlib.sha256(sources['fixture']).hexdigest() == binding['helpers']['test_next_native.py']['sha256'],
+                'Diagnostic fixture identity differs')
+        for owner, path in OBSERVER_PATHS.items():
+            require(time.monotonic() < deadline - 0.05, 'Diagnostic budget unavailable')
+            sources[owner] = observer_read(path, 1024**2)
+            require(hashlib.sha256(sources[owner]).hexdigest() == binding['helpers'][pathlib.Path(path).name]['sha256'],
+                    'Diagnostic installed source identity differs')
+        catalog, reasons = runtime_catalog(sources, own_path)
+        value['exception'] = runtime_exception_observation(error, catalog)
+        for unit, expected in owned_units.items():
+            require(unit in RUNTIME_DIAGNOSTIC_UNITS, 'Closed diagnostic owned unit required')
+            info = pathlib.Path('/etc/systemd/system', unit).lstat()
+            require(stat.S_ISREG(info.st_mode) and info.st_uid == 0 and not info.st_mode & 0o022
+                    and (info.st_dev, info.st_ino) == expected, 'Diagnostic unit ownership differs')
+        require(time.monotonic() < deadline - 0.05, 'Diagnostic budget unavailable')
+        code, raw = runtime_diagnostic_read(['/usr/bin/systemctl', '--system', 'show', '--all', '--no-pager',
+            '--property=' + ','.join(sorted(RUNTIME_STATE_KEYS)), *RUNTIME_DIAGNOSTIC_UNITS], deadline)
+        value['stateCommandReturnCode'] = code
+        states, invocations = runtime_state_observation(raw)
+        value['states'] = states
+        python_path = pathlib.Path('/usr/bin/python3').resolve(strict=True)
+        require(str(python_path).startswith('/usr/bin/'), 'Diagnostic Python identity differs')
+        current = pathlib.Path('/')
+        for part in python_path.parts[1:]:
+            current /= part
+            python_info = current.lstat()
+            require(python_info.st_uid == 0 and not stat.S_ISLNK(python_info.st_mode)
+                    and not python_info.st_mode & 0o022, 'Diagnostic Python ancestor differs')
+        require(stat.S_ISREG(python_info.st_mode), 'Diagnostic Python identity differs')
+        journals = []
+        for unit in UNITS:
+            if unit not in invocations:
+                continue
+            # Read no previous or foreign invocation. journald's trusted UID/exe/
+            # unit/invocation/argv fields are revalidated before literal matching.
+            code, raw = runtime_diagnostic_read(['/usr/bin/journalctl', '--system', '--no-pager', '--quiet',
+                '--output=json', '--output-fields=_UID,_EXE,_CMDLINE,_SYSTEMD_UNIT,_SYSTEMD_INVOCATION_ID,MESSAGE',
+                '--lines=64', '_SYSTEMD_UNIT=' + unit, '_SYSTEMD_INVOCATION_ID=' + invocations[unit]], deadline)
+            require(code == 0, 'Diagnostic journal read refused')
+            journals.append(runtime_journal_observation(raw, unit, invocations[unit], str(python_path), reasons))
+        require(time.monotonic() <= deadline, 'Diagnostic aggregate budget exhausted')
+        value.update({'classification': 'bounded-sealed-source-observations', 'journals': journals})
+    except BaseException:
+        # Never publish exception messages, command arguments or unknown native
+        # values. Already verified source locations remain useful if IO refuses.
+        value['incomplete'] = True
+
+
 def main():
     global evidence, evidence_fd, DEADLINE
     require(sys.platform == 'linux' and os.geteuid() == 0 and len(sys.argv) == 2, 'Root Linux native fixture requires one private plan')
@@ -1541,6 +1821,7 @@ def main():
         succeeded = True
     except BaseException as error:
         report['failureType'] = type(error).__name__
+        runtime_failure_diagnostic('primary', error, binding)
         report['complete'] = False
         save()
         raise
@@ -1551,7 +1832,8 @@ def main():
             if postgres_scope is not None:
                 postgres_scope.snapshot('final')
             report['ownedRuntimeCleaned'] = True
-        except BaseException:
+        except BaseException as error:
+            runtime_failure_diagnostic('cleanup', error, binding)
             report['ownedRuntimeCleaned'] = False
             report['complete'] = False
             save()
