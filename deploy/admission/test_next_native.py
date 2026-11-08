@@ -457,8 +457,8 @@ def systemctl(*args, check=True, timeout=30):
     return run(['/usr/bin/systemctl', '--system', *args], check=check, timeout=timeout)
 
 
-def props(unit):
-    raw = systemctl('show', unit, '--property=LoadState,InvocationID,MainPID,ControlPID,ActiveState,SubState,ExecStart,ExecReload,FragmentPath,ControlGroup').stdout.decode()
+def props(unit, timeout=30):
+    raw = systemctl('show', unit, '--property=LoadState,InvocationID,MainPID,ControlPID,ActiveState,SubState,ExecStart,ExecReload,FragmentPath,ControlGroup', timeout=timeout).stdout.decode()
     return dict(line.split('=', 1) for line in raw.splitlines() if '=' in line)
 
 
@@ -1484,8 +1484,22 @@ def cleanup(postgres_scope):
     # One aggregate deadline, including telemetry, all native stop attempts,
     # absence proofs, manager reload and descriptor-only filesystem disposal.
     global DEADLINE
-    DEADLINE = min(TOTAL_DEADLINE, time.monotonic() + 30)
+    started = time.monotonic()
+    DEADLINE = min(TOTAL_DEADLINE, started + 30)
+    admission_end, queue_end, settlement_end = started + 6, started + 8, started + 15
     errors, safe = [], []
+    def phase_timeout(frontier, cap, slots=1):
+        remaining = min(DEADLINE, frontier) - time.monotonic()
+        require(remaining > 0, 'Owned cleanup phase deadline exceeded')
+        return min(cap, remaining / max(1, slots))
+    # Reserve a fair observation slot for every other independently owned unit
+    # and both browser properties. A single30s show must not consume all custody.
+    admission_slots = sum(unit != SLICE for unit in owned_units) + 2
+    def metadata_timeout():
+        nonlocal admission_slots
+        value = phase_timeout(admission_end, .75, admission_slots)
+        admission_slots = max(0, admission_slots - 1)
+        return value
     def attempt(work):
         try:
             return work()
@@ -1500,7 +1514,7 @@ def cleanup(postgres_scope):
                     and (info.st_dev, info.st_ino) == expected,
                     'Owned unit changed; preserve uncertain runtime for diagnosis')
             if unit != SLICE:
-                actual = props(unit)
+                actual = props(unit, timeout=metadata_timeout())
                 invocation = actual.get('InvocationID', '')
                 if invocation:
                     require(managed_runtime_module is not None, 'Native runtime owner missing')
@@ -1511,10 +1525,10 @@ def cleanup(postgres_scope):
             safe.append(unit)
         attempt(admit)
     def browser_admit():
-        transient = props(BROWSER)
+        transient = props(BROWSER, timeout=metadata_timeout())
         if transient.get('LoadState') == 'not-found':
             return
-        actual = systemctl('show', BROWSER, '--property=Description,Transient', timeout=2).stdout.decode()
+        actual = systemctl('show', BROWSER, '--property=Description,Transient', timeout=metadata_timeout()).stdout.decode()
         require('Transient=yes\n' in actual and 'Description=Owned actual Next browser ' + report['runId'] + '\n' in actual,
                 'Unexpected browser transient unit; preserve uncertain runtime')
         require(managed_runtime_module is not None, 'Native runtime owner missing')
@@ -1524,13 +1538,14 @@ def cleanup(postgres_scope):
     # Enqueue ALL independently admitted service stops before awaiting any one.
     # A foreign slice occupant cannot be killed through stop(slice).
     services = [unit for unit in [BROWSER, *reversed(UNITS), PROXY] if unit in safe]
-    for unit in services:
-        attempt(lambda unit=unit: systemctl('stop', '--no-block', unit, timeout=2))
+    for index, unit in enumerate(services):
+        attempt(lambda unit=unit, slots=len(services)-index: systemctl('stop', '--no-block', unit,
+            timeout=phase_timeout(queue_end, .5, slots)))
     pending = set(services)
-    while pending and time.monotonic() < DEADLINE:
+    while pending and time.monotonic() < min(DEADLINE, settlement_end):
         for unit in list(pending):
             try:
-                require_stopped(unit)
+                require_stopped(unit, props(unit, timeout=phase_timeout(settlement_end, .25, len(pending))))
                 pending.remove(unit)
             except AssertionError:
                 pass
@@ -1538,14 +1553,14 @@ def cleanup(postgres_scope):
                 errors.append(error)
                 pending.remove(unit)
         if pending:
-            time.sleep(max(0, min(0.025, DEADLINE - time.monotonic())))
+            time.sleep(max(0, min(0.025, min(DEADLINE, settlement_end) - time.monotonic())))
     if pending:
         errors.append(AssertionError('Owned runtime family did not settle within cleanup deadline'))
     if SLICE in safe:
         def stop_empty_slice():
             # cgroup absence/emptiness is checked BEFORE stop, so a newly arrived
             # foreign child service remains untouched and keeps package custody.
-            actual = props(SLICE)
+            actual = props(SLICE, timeout=phase_timeout(started + 18, .5))
             require(actual.get('MainPID', '0') == actual.get('ControlPID', '0') == '0', 'Native slice process identity differs')
             group = actual.get('ControlGroup', '')
             require(group == FIXTURE_CGROUP or not group, 'Native slice cgroup differs')
@@ -1557,8 +1572,8 @@ def cleanup(postgres_scope):
                         child = any(entry.is_dir(follow_symlinks=False) for entry in entries)
                     require(not (directory / 'cgroup.procs').read_text().strip() and not child,
                             'Foreign native slice occupant; preserve runtime')
-            systemctl('stop', SLICE, timeout=2)
-            require_stopped(SLICE)
+            systemctl('stop', SLICE, timeout=phase_timeout(started + 18, 2))
+            require_stopped(SLICE, props(SLICE, timeout=phase_timeout(started + 18, .5)))
         attempt(stop_empty_slice)
     # Reap the exact launcher owned by Popen, never a reconstructed numeric PID.
     if browser is not None:

@@ -43,23 +43,23 @@ def limit(cap=3):
     return min(cap, left)
 
 
-def command(*arguments, check=True):
-    result = subprocess.run(arguments, env=ENV, capture_output=True, timeout=limit())
+def command(*arguments, check=True, cap=3):
+    result = subprocess.run(arguments, env=ENV, capture_output=True, timeout=limit(cap))
     if check:
         require(result.returncode == 0, 'Fixed native conformance command refused')
     return result
 
 
-def properties(unit):
+def properties(unit, cap=3):
     require(unit in (UNIT, FOREIGN), 'Unknown native conformance unit')
     result = command('/usr/bin/systemctl', '--system', 'show', unit,
-        '--property=LoadState,InvocationID,MainPID,ControlPID,ActiveState,SubState,ControlGroup,FragmentPath,DropInPaths,KillMode,Delegate,User,NoNewPrivileges,TimeoutStopUSec,SendSIGKILL,RuntimeMaxUSec')
+        '--property=LoadState,InvocationID,MainPID,ControlPID,ActiveState,SubState,ControlGroup,FragmentPath,DropInPaths,KillMode,Delegate,User,NoNewPrivileges,TimeoutStopUSec,SendSIGKILL,RuntimeMaxUSec', cap=cap)
     require(len(result.stdout) <= 8192, 'Native conformance metadata exceeds bound')
     return dict(line.split('=', 1) for line in result.stdout.decode().splitlines() if '=' in line)
 
 
-def family_stopped(unit):
-    actual = properties(unit)
+def family_stopped(unit, cap=3):
+    actual = properties(unit, cap=cap)
     if actual.get('MainPID') != '0' or actual.get('ControlPID') != '0' or actual.get('ActiveState') not in ('inactive', 'failed'):
         return False
     expected = '/system.slice/' + unit
@@ -145,6 +145,132 @@ def app():
         signal.pause()
 
 
+def root_custody(owned_root, N):
+    """Validate ownership and actual host mounts before ANY path disposal."""
+    require(owned_root is not None and N is not None, 'Owned root custody unavailable; retain paths')
+    before = ROOT.lstat()
+    require(stat.S_ISDIR(before.st_mode) and before.st_uid == 0
+            and stat.S_IMODE(before.st_mode) == 0o755
+            and (before.st_dev, before.st_ino) == owned_root, 'Conformance root replaced; retain paths')
+    proc = os.open('/proc/self', os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        mounts = N.parse_mountinfo(N.read_proc(proc, 'mountinfo', 4 * 1024 * 1024, require), require)
+    finally:
+        os.close(proc)
+    require(not any(row['target'] == str(ROOT) or row['target'].startswith(str(ROOT) + '/') for row in mounts),
+            'Foreign host mount; retain conformance paths')
+    limit()
+    return before
+
+
+def remove_owned_root(owned_root, N):
+    """No pathname-only adoption, foreign mount, symlink parent or unbounded walk."""
+    before = root_custody(owned_root, N)
+    root = os.open(ROOT, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    count = 0
+    def walk(fd, depth):
+        nonlocal count
+        limit();require(depth <= 32, 'Conformance cleanup depth exceeds bound')
+        with os.scandir(fd) as entries:
+            for entry in entries:
+                limit();count += 1
+                require(count <= 2048, 'Conformance cleanup members exceed bound')
+                info = os.stat(entry.name, dir_fd=fd, follow_symlinks=False)
+                require(info.st_dev == before.st_dev, 'Conformance cleanup device changed')
+                if stat.S_ISDIR(info.st_mode):
+                    child = os.open(entry.name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=fd)
+                    try:
+                        held = os.fstat(child)
+                        require((held.st_dev, held.st_ino) == (info.st_dev, info.st_ino), 'Conformance child changed')
+                        walk(child, depth + 1)
+                        after = os.stat(entry.name, dir_fd=fd, follow_symlinks=False)
+                        require((after.st_dev, after.st_ino) == (held.st_dev, held.st_ino), 'Conformance child replaced')
+                    finally:
+                        os.close(child)
+                    limit();os.rmdir(entry.name, dir_fd=fd)
+                else:
+                    limit();os.unlink(entry.name, dir_fd=fd)
+    try:
+        held = os.fstat(root)
+        require((held.st_dev, held.st_ino) == owned_root, 'Conformance root changed while opening')
+        walk(root, 0)
+    finally:
+        os.close(root)
+    limit();after = ROOT.lstat()
+    require((after.st_dev, after.st_ino) == owned_root, 'Conformance root replaced before disposal')
+    ROOT.rmdir()
+
+
+def cleanup(files, invocations, N, owned_root):
+    """Seven seconds TOTAL, including fair custody, all stops and real disposal."""
+    global DEADLINE
+    started = time.monotonic()
+    DEADLINE = min(TOTAL_DEADLINE, started + 7)
+    admission_end, queue_end, settlement_end = started + .75, started + 1.25, started + 4.5
+    errors, safe = [], []
+    def phase_cap(frontier, cap, slots=1):
+        remaining = min(DEADLINE, frontier) - time.monotonic()
+        require(remaining > 0, 'Conformance cleanup phase exceeded')
+        return min(cap, remaining / max(1, slots))
+    for index, (name, identity) in enumerate(files.items()):
+        try:
+            file = pathlib.Path('/etc/systemd/system', name);info = file.lstat()
+            require(stat.S_ISREG(info.st_mode) and (info.st_dev, info.st_ino) == identity and info.st_uid == 0,
+                    'Conformance unit replaced')
+            actual = properties(name, cap=phase_cap(admission_end, .25, len(files)-index))
+            if actual.get('InvocationID'):
+                require(N is not None, 'Native invocation owner unavailable')
+                N.require_owned_invocation(actual, invocations.get(name), require)
+            else:
+                require(actual.get('MainPID') == actual.get('ControlPID') == '0'
+                        and actual.get('ActiveState') in ('inactive', 'failed'), 'Unknown native conformance family')
+            safe.append(name)
+        except BaseException as error:
+            errors.append(error)
+    # Queue every independently proven stop BEFORE awaiting any native family.
+    for index, name in enumerate(safe):
+        try:
+            command('/usr/bin/systemctl', '--system', 'stop', '--no-block', name,
+                    cap=phase_cap(queue_end, .25, len(safe)-index))
+        except BaseException as error:
+            errors.append(error)
+    pending = set(safe)
+    while pending and time.monotonic() < min(DEADLINE, settlement_end):
+        for name in list(pending):
+            try:
+                if family_stopped(name, cap=phase_cap(settlement_end, .1, len(pending))):
+                    pending.remove(name)
+            except BaseException as error:
+                errors.append(error);pending.remove(name)
+        if pending:
+            time.sleep(max(0, min(.02, min(DEADLINE, settlement_end)-time.monotonic())))
+    if pending:
+        errors.append(AssertionError('Conformance families did not settle before disposal frontier'))
+    if errors:
+        raise BaseExceptionGroup('Native conformance stop/custody refused; retain paths', errors)
+    for name in (UNIT, FOREIGN):
+        if name not in files:
+            require(not os.path.lexists('/etc/systemd/system/' + name)
+                    and properties(name, cap=.2).get('LoadState') == 'not-found',
+                    'Untracked native declaration; retain all paths')
+    if owned_root is not None:
+        root_custody(owned_root, N)
+    else:
+        require(not os.path.lexists(ROOT), 'Unknown root construction; retain paths')
+    for name in safe:
+        file = pathlib.Path('/etc/systemd/system', name);info = file.lstat()
+        require((info.st_dev, info.st_ino) == files[name] and info.st_uid == 0, 'Conformance disposal identity changed')
+        command('/usr/bin/systemctl', '--system', 'reset-failed', name, check=False, cap=.2)
+        limit();file.unlink()
+    if files:
+        command('/usr/bin/systemctl', '--system', 'daemon-reload', cap=.4)
+    require(all(not os.path.lexists('/etc/systemd/system/' + name)
+                and properties(name, cap=.2).get('LoadState') == 'not-found' for name in (UNIT, FOREIGN)),
+            'Native conformance service or declaration remains after disposal')
+    if owned_root is not None:
+        remove_owned_root(owned_root, N)
+
+
 def main():
     global DEADLINE
     os.umask(0o022)  # Dedicated synthetic public fixture; evidence stays explicit0600.
@@ -162,11 +288,16 @@ def main():
                 and properties(unit).get('LoadState') == 'not-found', 'Foreign native unit retained')
     version = command('/usr/bin/systemctl', '--version').stdout.splitlines()[0]
     require(version.startswith(b'systemd 255 '), 'Native conformance requires actual systemd255')
-    ROOT.mkdir(mode=0o755)
     primary = None
+    owned_root, N = None, None
     files, invocations, report = {}, {}, {'version': 1, 'kind': 'ACTUAL_SYSTEMD_HOST_CACHE_CONFORMANCE_NOT_NEXT',
         'complete': False, 'nextApplicationVerified': False, 'releaseEligible': False}
     try:
+        ROOT.mkdir(mode=0o755)
+        info = ROOT.lstat()
+        require(stat.S_ISDIR(info.st_mode) and info.st_uid == 0 and stat.S_IMODE(info.st_mode) == 0o755,
+                'Native conformance root construction differs')
+        owned_root = (info.st_dev, info.st_ino)
         for name, source in [('probe.py', pathlib.Path(__file__)), ('next_profile.py', pathlib.Path(__file__).with_name('next_profile.py')),
                              ('runtime_inventory.py', pathlib.Path(__file__).resolve().parents[2] / '.github/ci/runtime_inventory.py')]:
             data = source.read_bytes();require(0 < len(data) <= 256 * 1024, 'Bounded source closure required')
@@ -284,47 +415,19 @@ def main():
         report['complete'] = False
         report['primaryFailure'] = 'native-assertion' if isinstance(error, AssertionError) else 'bounded-operation-refused'
     finally:
-        DEADLINE = TOTAL_DEADLINE
         errors = []
-        for name, identity in files.items():
-            try:
-                file = pathlib.Path('/etc/systemd/system', name);info = file.lstat()
-                require((info.st_dev, info.st_ino) == identity and info.st_uid == 0, 'Conformance unit replaced')
-                actual = properties(name)
-                if actual.get('InvocationID'):
-                    require(actual['InvocationID'] == invocations.get(name), 'Conformance invocation unknown')
-                command('/usr/bin/systemctl', '--system', 'stop', '--no-block', name)
-            except BaseException as error:
-                errors.append(error)
-        for name in files:
-            try:
-                while not family_stopped(name):
-                    limit();time.sleep(0.02)
-                require(properties(name).get('ControlPID') == '0', 'Conformance control process remains')
-            except BaseException as error:
-                errors.append(error)
-        if not errors:
-            try:
-                for name in files:
-                    file = pathlib.Path('/etc/systemd/system', name);info = file.lstat()
-                    require((info.st_dev, info.st_ino) == files[name] and info.st_uid == 0, 'Conformance disposal identity changed')
-                    command('/usr/bin/systemctl', '--system', 'reset-failed', name, check=False)
-                    file.unlink()
-                command('/usr/bin/systemctl', '--system', 'daemon-reload')
-                require(all(properties(name).get('LoadState') == 'not-found' for name in files),
-                        'Native conformance service remains loaded after disposal')
-                # Fixed owned root; all processes are natively absent first.
-                import shutil
-                require(shutil.rmtree.avoids_symlink_attacks, 'Native safe disposal unavailable')
-                shutil.rmtree(ROOT)
-                limit()
-            except BaseException as error:
-                errors.append(error)
+        try:
+            cleanup(files, invocations, N, owned_root)
+        except BaseException as error:
+            errors.append(error)
         report['ownedRuntimeCleaned'] = not errors
         report['complete'] = report['complete'] and not errors
-        with evidence.open('x') as output:
-            os.fchmod(output.fileno(), 0o600);os.fchown(output.fileno(), parent.st_uid, parent.st_gid)
-            output.write(json.dumps(report))
+        try:
+            with evidence.open('x') as output:
+                os.fchmod(output.fileno(), 0o600);os.fchown(output.fileno(), parent.st_uid, parent.st_gid)
+                output.write(json.dumps(report))
+        except BaseException as error:
+            errors.append(error)
         failures = ([primary] if primary is not None else []) + errors
         if len(failures) == 1:
             raise failures[0]

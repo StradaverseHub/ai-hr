@@ -1,5 +1,7 @@
 """Synthetic descriptor/policy/settlement models only; no sudo/systemd/app/DB."""
 import importlib.util
+import hashlib
+import json
 import os
 import pathlib
 import stat
@@ -12,14 +14,15 @@ ROOT = pathlib.Path(__file__).resolve().parents[2]
 
 
 def load(name, file):
-    spec = importlib.util.spec_from_file_location(name, file)
-    module = importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
+    module = types.ModuleType(name);module.__file__ = str(file)
+    exec(compile(file.read_bytes(), str(file), 'exec', dont_inherit=True), module.__dict__)
     return module
 
 
 N = load('model_cache_view', ROOT / 'deploy/admission/next_profile.py')
 I = load('model_cache_inventory', ROOT / '.github/ci/runtime_inventory.py')
 F = load('model_cache_cleanup', ROOT / 'deploy/admission/test_next_native.py')
+H = load('model_host_cleanup', ROOT / 'deploy/admission/test_next_host_view_native.py')
 
 
 def require(value, reason):
@@ -113,10 +116,14 @@ class HostViewModels(unittest.TestCase):
         with self.assertRaises(AssertionError):
             N.require_owned_invocation(dict(actual, LoadState='not-found'), 'a' * 32, require)
 
-    def cleanup_model(self, *, foreign_browser=False, failed_stop=False, foreign_slice=False, success=False):
+    def cleanup_model(self, *, foreign_browser=False, failed_stop=False, foreign_slice=False,
+                      success=False, stalled_metadata=False, stalled_stop=False, settle_after=0):
         units = [*F.UNITS, F.PROXY] + ([F.SLICE] if foreign_slice else [])
-        calls, unlinks = [], []
-        def props(unit):
+        calls, unlinks, clock = [], [], [100.0]
+        def props(unit, timeout=30):
+            if stalled_metadata and unit == F.UNITS[0]:
+                clock[0] += timeout
+                raise TimeoutError('fixed stalled metadata')
             if unit == F.BROWSER:
                 return {'LoadState': 'loaded' if foreign_browser else 'not-found', 'InvocationID': 'b' * 32}
             if unit == F.SLICE:
@@ -129,14 +136,19 @@ class HostViewModels(unittest.TestCase):
                 return types.SimpleNamespace(stdout=b'Transient=yes\nDescription=Owned actual Next browser 1\n')
             if failed_stop and args == ('stop', '--no-block', F.UNITS[1]):
                 raise OSError('fixed source close failure')
+            if stalled_stop and args == ('stop', '--no-block', F.UNITS[1]):
+                clock[0] += kwargs['timeout']
+                raise TimeoutError('fixed stalled stop queue')
             return types.SimpleNamespace(stdout=b'', returncode=0)
         info = types.SimpleNamespace(st_mode=stat.S_IFREG | 0o644, st_uid=0, st_dev=1, st_ino=2)
         patches = [patch.object(F, 'owned_units', {unit: (1, 2) for unit in units}),
             patch.object(F, 'owned_invocations', {unit: 'a' * 32 for unit in units}),
             patch.object(F, 'managed_runtime_module', N), patch.object(F, 'report', {'runId': '1'}),
-            patch.object(F, 'TOTAL_DEADLINE', 1000), patch.object(F.time, 'monotonic', return_value=100),
+            patch.object(F, 'TOTAL_DEADLINE', 1000), patch.object(F.time, 'monotonic', side_effect=lambda: clock[0]),
+            patch.object(F.time, 'sleep', side_effect=lambda seconds: clock.__setitem__(0, clock[0]+seconds)),
             patch.object(F, 'props', side_effect=props), patch.object(F, 'systemctl', side_effect=command),
-            patch.object(F, 'require_stopped', return_value=None), patch.object(F, 'browser', None),
+            patch.object(F, 'require_stopped', side_effect=lambda *_args: require(clock[0] >= 100+settle_after, 'fixed native stop pending')),
+            patch.object(F, 'browser', None),
             patch.object(pathlib.Path, 'lstat', return_value=info),
             patch.object(pathlib.Path, 'unlink', side_effect=lambda *_args, **_kwargs: unlinks.append(True))]
         if foreign_slice:
@@ -160,6 +172,7 @@ class HostViewModels(unittest.TestCase):
                 self.last_cleanup_errors = outcome.exception.exceptions
             self.assertLessEqual(F.DEADLINE - 100, 30)
         self.assertEqual(len(unlinks), len(units) if success else 0)
+        self.last_cleanup_clock = clock[0]
         return calls
 
     def test_foreign_browser_refusal_still_stops_every_other_owned_service_and_keeps_paths(self):
@@ -196,8 +209,122 @@ class HostViewModels(unittest.TestCase):
         self.assertIn("'--property=TimeoutStopSec=3s'", source)
         self.assertIn("'--property=SendSIGKILL=yes'", source)
         self.assertIn("'--property=RuntimeMaxSec=300s'", source)
-        self.assertIn('DEADLINE = min(TOTAL_DEADLINE, time.monotonic() + 30)', source)
+        self.assertIn('DEADLINE = min(TOTAL_DEADLINE, started + 30)', source)
         self.assertIn('raise BaseExceptionGroup', source)
+
+    def test_stalled_full_metadata_reserves_other_unit_observations_and_stop_queue(self):
+        calls = self.cleanup_model(stalled_metadata=True)
+        self.assertNotIn(('stop', '--no-block', F.UNITS[0]), calls)
+        for unit in [F.UNITS[1], F.PROXY]:
+            self.assertIn(('stop', '--no-block', unit), calls)
+        self.assertLessEqual(self.last_cleanup_clock, 100.75)
+        self.assertTrue(any(isinstance(error, TimeoutError) for error in self.last_cleanup_errors))
+
+    def test_stalled_full_stop_queue_does_not_consume_other_owned_stops(self):
+        calls = self.cleanup_model(stalled_stop=True)
+        for unit in [*F.UNITS, F.PROXY]:
+            self.assertIn(('stop', '--no-block', unit), calls)
+        self.assertLessEqual(self.last_cleanup_clock, 100.5)
+
+    def test_full_five_second_native_stop_fits_settlement_without_spending_disposal_reserve(self):
+        calls = self.cleanup_model(success=True, settle_after=5)
+        self.assertGreaterEqual(self.last_cleanup_clock, 105)
+        self.assertLess(self.last_cleanup_clock, 115)
+        for unit in [*F.UNITS, F.PROXY]:
+            self.assertIn(('stop', '--no-block', unit), calls)
+
+    def test_native_seven_second_cleanup_keeps_independent_stop_after_metadata_or_queue_stall(self):
+        for stalled in ('metadata', 'queue'):
+            clock, calls, unlinks = [100.0], [], []
+            files = {H.UNIT: (1, 2), H.FOREIGN: (1, 2)}
+            info = types.SimpleNamespace(st_mode=stat.S_IFREG | 0o644, st_uid=0, st_dev=1, st_ino=2)
+            def properties(unit, cap=3):
+                if stalled == 'metadata' and unit == H.UNIT:
+                    clock[0] += cap
+                    raise TimeoutError('fixed stalled conformance metadata')
+                return {'LoadState': 'loaded', 'InvocationID': 'a'*32}
+            def command(*args, **kwargs):
+                calls.append(args)
+                self.assertLessEqual(kwargs['cap'], .25)
+                if stalled == 'queue' and args[-1] == H.UNIT:
+                    clock[0] += kwargs['cap']
+                    raise TimeoutError('fixed stalled conformance queue')
+            with patch.object(H, 'TOTAL_DEADLINE', 1000), patch.object(H.time, 'monotonic', side_effect=lambda: clock[0]), \
+                    patch.object(H, 'properties', side_effect=properties), patch.object(H, 'command', side_effect=command), \
+                    patch.object(H, 'family_stopped', return_value=True), patch.object(pathlib.Path, 'lstat', return_value=info), \
+                    patch.object(pathlib.Path, 'unlink', side_effect=lambda *_args: unlinks.append(True)):
+                with self.assertRaises(BaseExceptionGroup):
+                    H.cleanup(files, {name: 'a'*32 for name in files}, N, None)
+                self.assertEqual(H.DEADLINE, 107)
+            self.assertIn(('/usr/bin/systemctl', '--system', 'stop', '--no-block', H.FOREIGN), calls)
+            if stalled == 'metadata':
+                self.assertNotIn(('/usr/bin/systemctl', '--system', 'stop', '--no-block', H.UNIT), calls)
+            else:
+                self.assertIn(('/usr/bin/systemctl', '--system', 'stop', '--no-block', H.UNIT), calls)
+            self.assertEqual(unlinks, [])
+
+    def test_replaced_root_is_refused_before_any_unit_or_directory_disposal(self):
+        root = self.root / 'owned';root.mkdir();original = root.stat();root.rename(self.root / 'held')
+        root.mkdir();(root / 'foreign').write_text('retain foreign native identity')
+        replacement = root.stat();self.assertNotEqual(original.st_ino, replacement.st_ino)
+        unit_info = types.SimpleNamespace(st_mode=stat.S_IFREG | 0o644, st_uid=0, st_dev=1, st_ino=2)
+        foreign_info = types.SimpleNamespace(st_mode=stat.S_IFDIR | 0o755, st_uid=0,
+            st_dev=replacement.st_dev, st_ino=replacement.st_ino)
+        calls, unlinks = [], []
+        def info(file):
+            return foreign_info if file == root else unit_info
+        with patch.object(H, 'ROOT', root), patch.object(H, 'TOTAL_DEADLINE', 1000), \
+                patch.object(H.time, 'monotonic', return_value=100), patch.object(pathlib.Path, 'lstat', side_effect=info, autospec=True), \
+                patch.object(H, 'properties', side_effect=lambda unit, cap=3: {'LoadState': 'loaded', 'InvocationID': 'a'*32} if unit == H.UNIT else {'LoadState': 'not-found'}), \
+                patch.object(H, 'family_stopped', return_value=True), \
+                patch.object(H, 'command', side_effect=lambda *args, **_kwargs: calls.append(args)), \
+                patch.object(pathlib.Path, 'unlink', side_effect=lambda *_args: unlinks.append(True)):
+            with self.assertRaisesRegex(AssertionError, 'root replaced'):
+                H.cleanup({H.UNIT: (1, 2)}, {H.UNIT: 'a'*32}, N, (original.st_dev, original.st_ino))
+        self.assertIn(('/usr/bin/systemctl', '--system', 'stop', '--no-block', H.UNIT), calls)
+        self.assertEqual(unlinks, [])
+        self.assertFalse(any('reset-failed' in call for call in calls))
+        self.assertEqual((root / 'foreign').read_text(), 'retain foreign native identity')
+        # Separate synthetic mount fact: even a matching owned root cannot be
+        # disposed through a same-device host bind. No actual mount is claimed.
+        with patch.object(H, 'ROOT', root), patch.object(H, 'DEADLINE', 107), \
+                patch.object(H.time, 'monotonic', return_value=100), \
+                patch.object(pathlib.Path, 'lstat', return_value=foreign_info), \
+                patch.object(N, 'read_proc', return_value=b'fixed synthetic mount input'), \
+                patch.object(N, 'parse_mountinfo', return_value=[{'target': str(root / 'foreign-mount')}]), \
+                patch.object(H.os, 'unlink') as unlink:
+            with self.assertRaisesRegex(AssertionError, 'Foreign host mount'):
+                H.remove_owned_root((replacement.st_dev, replacement.st_ino), N)
+            unlink.assert_not_called()
+
+    def test_descriptor_disposal_checks_aggregate_deadline_between_actual_owned_members(self):
+        root = self.root / 'disposal';root.mkdir();(root / 'one').write_text('owned');(root / 'two').write_text('owned')
+        identity = root.stat();clock = [100.0];actual_unlink = os.unlink;removed = []
+        def unlink(name, **kwargs):
+            actual_unlink(name, **kwargs);removed.append(name);clock[0] += .1
+        with patch.object(H, 'ROOT', root), patch.object(H, 'DEADLINE', 100.05), \
+                patch.object(H.time, 'monotonic', side_effect=lambda: clock[0]), \
+                patch.object(H, 'root_custody', return_value=identity), patch.object(H.os, 'unlink', side_effect=unlink):
+            with self.assertRaisesRegex(AssertionError, 'deadline'):
+                H.remove_owned_root((identity.st_dev, identity.st_ino), N)
+        self.assertEqual(len(removed), 1)
+        self.assertTrue(root.exists());self.assertEqual(len(list(root.iterdir())), 1)
+
+    def test_both_complete_predecessor_fixtures_reconstruct_without_dropping_old_guards(self):
+        inverse = json.loads((ROOT / 'deploy/admission/next_cleanup_phase_inverse.json').read_text())
+        expected = {'deploy/admission/test_next_native.py': '730f34682797f8ecef52b98181ab12f786081caebe1d24f1552d24d6d4ef8632',
+                    'deploy/admission/test_next_host_view_native.py': '6d2cb72060fef1d816724e71ccef374b75cc6cd4fca77bbe0471042064a91c7a'}
+        self.assertEqual(inverse['kind'], 'NATIVE_NEXT_CLEANUP_PHASE_SOURCE_INVERSE_NOT_EXECUTION')
+        self.assertEqual(inverse['base'], 'f37f9d629458b7d2bf4a34bdb3a0891e32af96e2')
+        self.assertEqual(set(inverse['files']), set(expected))
+        for name, digest in expected.items():
+            row = inverse['files'][name];source = (ROOT / name).read_text()
+            self.assertEqual(row['originalSha256'], digest)
+            self.assertEqual(hashlib.sha256(source.encode()).hexdigest(), row['currentSha256'])
+            for change in reversed(row['changes']):
+                self.assertEqual(source.count(change['after']), 1)
+                source = source.replace(change['after'], change['before'])
+            self.assertEqual(hashlib.sha256(source.encode()).hexdigest(), digest)
 
 
 if __name__ == '__main__':

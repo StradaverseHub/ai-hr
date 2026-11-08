@@ -332,6 +332,15 @@ class FailureDiagnosticModels(unittest.TestCase):
 
     def test_complete_original_native_authority_and_cleanup_source_bytes_are_preserved(self):
         source = self.sources['fixture'].decode()
+        repair = json.loads(pathlib.Path(__file__).with_name('next_cleanup_phase_inverse.json').read_text())
+        self.assertEqual(repair['base'], 'f37f9d629458b7d2bf4a34bdb3a0891e32af96e2')
+        row = repair['files']['deploy/admission/test_next_native.py']
+        self.assertEqual(row['originalSha256'], '730f34682797f8ecef52b98181ab12f786081caebe1d24f1552d24d6d4ef8632')
+        self.assertEqual(hashlib.sha256(source.encode()).hexdigest(), row['currentSha256'])
+        for change in reversed(row['changes']):
+            self.assertEqual(source.count(change['after']), 1)
+            source = source.replace(change['after'], change['before'])
+        self.assertEqual(hashlib.sha256(source.encode()).hexdigest(), row['originalSha256'])
         begin = source.index('\ndef record_owned_invocation(')
         finish = source.index('\n\n# Read-only failure diagnostics.', begin)
         self.assertEqual(hashlib.sha256(source[begin:finish].encode()).hexdigest(), 'aaabbea8bdff81e1b17d4a69c564613ee75a37638692d90d15238eca8a83e7a5')
