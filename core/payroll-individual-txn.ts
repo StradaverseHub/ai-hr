@@ -1,5 +1,5 @@
 import {lockPayComponentCatalogReadTx} from './pay-component-catalog-lock';
-import {priceIndividualTxnInputTx,type IndividualCalculationMethod} from './payroll-individual-calculation';
+import {priceIndividualTxnInputTx,type IndividualCalculationMethod} from '../packs/payroll/individual-calculation';
 import {payrollEmploymentPredicate,type PayrollEligibilityRun} from './payroll-employment-eligibility';
 /**
  * 1.2.2 Individual Transaction (ADR-0056, amended by f1564110 Phase 2) — a pure dated one-off payroll

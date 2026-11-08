@@ -54,9 +54,10 @@ it.each([562,563])('upgrades populated payroll and Rewards from %i through the c
  async function historicalRows(){
   const result:Record<string,unknown>={};
   for(const table of oldTables){
-   // Compare the historical columns. The two new defaults are asserted independently below.
+   // Compare the historical columns. New columns/defaults are asserted independently below.
    const expression=table==='payroll_input'?"to_jsonb(t)-'reward_provenance'"
-    :table==='reward_unit'?"to_jsonb(t)-'uploaded_award_digest'":'to_jsonb(t)';
+    :table==='reward_unit'?"to_jsonb(t)-'uploaded_award_digest'"
+    :table==='payroll_individual_txn'?"to_jsonb(t)-'calculation_method'":'to_jsonb(t)';
    result[table]=await storage.client.unsafe(`select ${expression} as row from public.${table} t where tenant_id=ANY($1::uuid[]) order by (${expression})::text`,[fixtures.map(f=>f.tenant)]);
   }
   return result;
@@ -104,6 +105,7 @@ it.each([562,563])('upgrades populated payroll and Rewards from %i through the c
   for(const table of ['reward_unit','reward_entry','reward_decision','payroll_input','payroll_individual_txn','payslip'])expect(before[table]).toHaveLength(2);
   expect(before.reward_policy_group_target).toHaveLength(4);
   const approvedUpgrade=await migrateApprovedUpgrade(storage);
+  expect(await storage.client`select calculation_method from payroll_individual_txn order by id`).toEqual([{calculation_method:null},{calculation_method:null}]);
   expect(retainedUpgradeSnapshot(await historicalRows(),approvedUpgrade)).toEqual(retainedUpgradeSnapshot(before!));
   const upgraded=await ledger();expect(upgraded).toHaveLength(journal.entries.length);expect(upgraded.slice(0,start)).toEqual(baseline);
   expect(upgraded.map(row=>({hash:row.hash,when:Number(row.created_at)}))).toEqual(orderedManifest.map(m=>({hash:m.hash,when:m.folderMillis})));

@@ -1,4 +1,3 @@
-import {individualTxnUsesLegacyFormula} from './payroll-individual-calculation';
 import {personnelGroupingReadinessTx} from './personnel-quality';
 import {payrollEmploymentPredicate,outstandingPaymentPredicate,payrollCompensationEffectiveOn,payrollEmploymentEnd,payrollRunContextsTx,type PayrollEligibilityRun} from './payroll-employment-eligibility';
 import {PayrollTaxBasisError} from '../lib/payroll-tax-basis';
@@ -5354,14 +5353,14 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
                 orpUnpaidLeave: false,
                 prorates: t.calculationMethod!=null||postEmploymentIds.has(t.employmentId)?false:(t.compProrates ?? false),
                 prorateOverride: null,
-                rule: t.compRule?.kind==='formula_builder'&&individualTxnUsesLegacyFormula(t.calculationMethod)?t.compRule:null, // keyed amount is authoritative — never re-derive via a catalog rule
+                rule: t.compRule?.kind==='formula_builder'&&(t.calculationMethod==null)?t.compRule:null, // keyed amount is authoritative — never re-derive via a catalog rule
                 // r168 verification — a BATCH row. Forcing rule:null here is what let it satisfy the
                 // fixed_allowances aggregate; this says plainly that it is a one-off, not a recurring
                 // catalog allowance, so the aggregate skips it.
                 oneOff: true,
                 // 61bf109d — a null rule short-circuits to `amount`, so the rank is inert here; 0 keeps the
                 // one-off row in the first resolution group, exactly where an unranked row belonged before.
-                resolutionOrder:t.compRule?.kind==='formula_builder'&&individualTxnUsesLegacyFormula(t.calculationMethod)?(t.compResolutionOrder??0):0,
+                resolutionOrder:t.compRule?.kind==='formula_builder'&&(t.calculationMethod==null)?(t.compResolutionOrder??0):0,
                 // LHDN PCB 2026 classification rides the catalog row (feedback 09b554e9).
                 epfBonus2012: t.compEpfBonus2012 ?? false,
                 pcbRemunerationType: t.compPcbRemunerationType ?? null,

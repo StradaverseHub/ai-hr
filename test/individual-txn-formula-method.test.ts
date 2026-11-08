@@ -7,7 +7,7 @@ import {setCompensation} from '../core/comp';
 import {setStatutoryProfileMY} from '../localization/my/statutory';
 import {seedPayComponentCatalog,upsertPayComponent} from '../core/pay-components';
 import {savePayFormula} from '../core/pay-formula';
-import {previewIndividualTxnInput} from '../core/payroll-individual-calculation';
+import {previewIndividualTxnInput} from '../packs/payroll/individual-calculation';
 import {createIndividualTxnsBulk,updateIndividualTxn,getIndividualTxn} from '../core/payroll-individual-txn';
 import {createBatch,generatePayslips} from '../core/payroll';
 import {closeAll,entitledCtx,migrateTestDb,owner,resetDb,seedBase,setModule,setSetting,type Base} from './harness';

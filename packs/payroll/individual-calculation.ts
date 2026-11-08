@@ -1,16 +1,14 @@
 /** Explicit entry pricing. Legacy ledger rows keep their original payroll interpretation. */
 import {sql} from 'drizzle-orm';
-import {withTenant,type SessionContext,type Tx} from '../db/client';
-import {PayFormulaError} from '../lib/pay-formula-model';
-import {isTransactionEffectiveDate} from '../lib/transaction-effective-date';
-import {lockPayComponentCatalogReadTx} from './pay-component-catalog-lock';
-import type {PayRule} from './pay-rule';
+import {withTenant,type SessionContext,type Tx} from '../../db/client';
+import {PayFormulaError} from '../../lib/pay-formula-model';
+import {isTransactionEffectiveDate} from '../../lib/transaction-effective-date';
+import {lockPayComponentCatalogReadTx} from '../../core/pay-component-catalog-lock';
+import type {PayRule} from '../../core/pay-rule';
 
 export type IndividualCalculationMethod='amount'|'formula';
 export type IndividualCalculationInput={componentId:string|null;employmentId:string;companyId:string;payPeriod:string;txnDate:string;quantity:number|null;unit:string|null;amount:number;cycleId?:string|null;batchId?:string|null;method:IndividualCalculationMethod};
 
-/** NULL is the historical raw-formula-input path. Both explicit methods store a final transaction amount. */
-export function individualTxnUsesLegacyFormula(method:string|null|undefined){return method==null;}
 export async function priceIndividualTxnInputTx(tx:Tx,ctx:SessionContext,p:IndividualCalculationInput){
  if(!['amount','formula'].includes(p.method))throw new PayFormulaError('Choose a supported transaction input method.');
  if(!p.componentId)throw new PayFormulaError('Choose a Pay Item with an assigned Formula ID.');
@@ -37,8 +35,8 @@ export async function priceIndividualTxnInputTx(tx:Tx,ctx:SessionContext,p:Indiv
   if(!cycleId){const cycles=await tx.execute<{id:string}>(sql`select id from payroll_cycle where company_id=${p.companyId}::uuid and tenant_id=${ctx.tenantId}::uuid and archived_at is null and run_type=${batch.runType}`);if(cycles.length!==1)throw new PayFormulaError('Choose the exact configured payroll cycle before calculating.');cycleId=cycles[0].id;}
  }
  if(!cycleId){const cycles=await tx.execute<{id:string}>(sql`select id from payroll_cycle where company_id=${p.companyId}::uuid and tenant_id=${ctx.tenantId}::uuid and archived_at is null and run_type='regular'`);if(cycles.length!==1)throw new PayFormulaError('Choose the configured payroll cycle before calculating.');cycleId=cycles[0].id;}
- const {loadSavedFormulaProgramTx}=await import('./pay-formula');
- const {simulatePayFormulaTx}=await import('./pay-formula-runtime');
+ const {loadSavedFormulaProgramTx}=await import('../../core/pay-formula');
+ const {simulatePayFormulaTx}=await import('../../core/pay-formula-runtime');
  const formula=await loadSavedFormulaProgramTx(tx,ctx,item.rule.formulaId,p.companyId);
  // The selected payroll month owns payroll sources; retain an out-of-month work date on the ledger.
  const end=new Date(Date.UTC(Number(p.payPeriod.slice(0,4)),Number(p.payPeriod.slice(5)),0)).toISOString().slice(0,10);
