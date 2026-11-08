@@ -26,8 +26,8 @@ it('refuses incomplete or forged constructor allocation instead of accepting mat
 it('pins the actual producer tenant closure and one bounded existing-connection read before its private publish',()=>{
  const source=readFileSync(new URL('../scripts/performance/system-fixture.mjs',import.meta.url),'utf8');
  expect(source).toContain('users.push({index,tenant:t,tenantId:b.tenantId,company:c');
- const begin=source.index("await fixturePhase(null,'navigation-seed-ownership'");expect(begin).toBeGreaterThan(0);
- const check=source.slice(begin,source.index("const fixturePath=",begin));
+ const begin=source.indexOf("await fixturePhase(null,'navigation-seed-ownership'");expect(begin).toBeGreaterThan(0);
+ const check=source.slice(begin,source.indexOf("const fixturePath=",begin));
  expect(check.match(/owner\.client`/g)).toHaveLength(1);expect(check).toContain('order by u.id,e.id limit 501');
  for(const join of ['p.tenant_id=u.tenant_id','e.tenant_id=p.tenant_id','c.tenant_id=e.tenant_id'])expect(check).toContain(join);
  expect(check).toContain('assertNavigationFixtureSeedOwnership(users,tenants,rows)');expect(check).not.toMatch(/writeFile|console|JSON\.stringify|createPool|new Pool/);

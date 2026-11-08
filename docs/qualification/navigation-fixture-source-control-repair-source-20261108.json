@@ -1,0 +1,76 @@
+{
+  "kind": "SOURCE_ONLY_TWO_TEST_API_TYPOS_NOT_NATIVE_OR_ADMISSION",
+  "base": "82a6f9eb24fd8863c6dbec1713c03cae1d83933d",
+  "currentSourceHashes": {
+    "scripts/performance/system-fixture.mjs": "24fb24941b077e6b4478b906456341c987ad5da86912a10b6e34203659d0e09f",
+    "scripts/performance/navigation-fixture-bindings.ts": "18df9ab9227212520e291a52b5cf1542e394e600d49ac262c6a956ec02dccb9f",
+    "scripts/performance/navigation-fixture-ownership.ts": "172845c630e1b547b9a2d5f246835065e5b132f17193e1ce868fb18bece24aab",
+    "scripts/performance/navigation-expected-inputs.ts": "0eeaca927ca301cd17a77dfda15e3814dc52935ae43148d8b1317b758b20cef1",
+    "test/helpers/navigation-fixture.ts": "8d5d015e7f751ba7ec7d2da1bcb28e7efdd1b581534d289b90e89ff8732a4317",
+    "test/navigation-fixture-bindings.test.ts": "4054fe2363f08226ffd9c3514f10b5874f46b2e914c6266721f3524fd27a73ed",
+    "test/navigation-fixture-ownership.test.ts": "2f4172838e703c4d1db74f4a10ff1e9b62652183aa69095ad9d197998580f309",
+    "test/navigation-expected-inputs.test.ts": "47c04b61007c3041b8c84d18d7f55918ee1bed454d069cbef521777fc88e0da6",
+    "docs/qualification/navigation-fixture-expected-inputs-20261108.md": "a6c76c6f02461ca3f24c5879f66380af9498754a6de7cd5b46723000b9b09a95",
+    "docs/qualification/navigation-expected-fixture-scope-20261108.md": "ef66fd83e2d4c6fcd9e98675bf2a4a416f3ac5d6b120997f89a3d27c9d0907a4",
+    "docs/qualification/navigation-fixture-source-control-repair-20261108.md": "4850670746ab0e1b5c6f89051dc3e07f44e6d3ac627e4a401a858cad2f30c1a7"
+  },
+  "wholeParentPreimageHashes": {
+    "test/navigation-fixture-ownership.test.ts": "08ed985db2eb72afb136754eb1c1f240bc6d856980792e2151e9eb16cd95033f"
+  },
+  "wholeParentIndex": {
+    "path": "docs/qualification/navigation-expected-fixture-scope-source-20261108.json",
+    "sha256": "3c630141fd39f065bb59c0d40cb686033e6e76b597bf2d65597e53e50d5cce2e"
+  },
+  "wholePreservedHashes": {
+    "scripts/performance/navigation-browser-capture.ts": "3a2b060ed4387fc61fc20b27a5a1cfa6e971ad4224e7d3efddb8aa5e51ac3255",
+    "scripts/performance/navigation-protocol.ts": "fa1ae7aa43fa8bd0ffdaca456a0a7261c9dec4d83a7036bc08e302739a85f43a",
+    "scripts/performance/navigation-scenarios.json": "a48db724639d47ffa57c078d1fa3a47db8c76ff6ff9042adc192fb4de8042dc5",
+    "scripts/performance/navigation-entry.ts": "af01bdaec1bcd89272b7ae517b76a70dee974226d1d78f88c7717a63a9a0f919",
+    "scripts/performance/navigation-coverage.ts": "e6782def6b2796e2dade4a6008d59e28a425c6b83405466ab28803b7635ae0a1",
+    "scripts/performance/navigation-capture-verifier.ts": "406ea9d6e8f748b8f9917a443ede9fb4633f015c292b207cce07caf9a2019889",
+    "scripts/performance/system-load.mjs": "ecf1b52c881812e9a9b2e29c2df37501871be9c3809d7b38351a0e169907e5b7",
+    "scripts/performance/system-runner.mjs": "3a7a78372799134475fc7b9566ddfe0967d9584ee3e342c184000a64ae77938a",
+    "scripts/performance/fixture-workload.mjs": "8bef41b3e403683dbb399b1fd0f4a4f2feb3c673e4f72c6a141b0666e0161c51",
+    "scripts/performance/assistant-history-seed.mjs": "495f7ff59be4837937dfdcc120c67caa415118dfe7e5248968c14bc048478b48",
+    "core/org.ts": "9391e8b0a047b32ecc21c2a594461cfbe384b579844a88614cf355f0b942d471",
+    "db/schema.ts": "8333f7a44c82fc43411dd4735314a555c4a69e0f805f0dc6b29e62c997ea9112",
+    "lib/navigation/catalogue.ts": "cb7f60dba8210a7d513e13a572405f21496898f5d272367c9f0c03f9ab48d5fa",
+    "lib/personnel-record-navigation.ts": "f0072c35644befcc53d5c3161baaafc5cd13142d6337e4e5ba9778ee25f87672",
+    "components/personnel-tabs.tsx": "e02bab3299ac05100e88ec6a929bb66bebdb890a534319281a581a620fc28e02",
+    "scripts/performance/navigation-obligations.json": "9bffdd700dd7953b200be04e66688fb496f77a92f255136108f7500d5aac14df"
+  },
+  "retainedSource82Passed14Dependencies": {
+    "test/navigation-expected-inputs.test.ts": "47c04b61007c3041b8c84d18d7f55918ee1bed454d069cbef521777fc88e0da6",
+    "test/navigation-fixture-bindings.test.ts": "4054fe2363f08226ffd9c3514f10b5874f46b2e914c6266721f3524fd27a73ed",
+    "test/helpers/navigation-fixture.ts": "8d5d015e7f751ba7ec7d2da1bcb28e7efdd1b581534d289b90e89ff8732a4317",
+    "scripts/performance/navigation-expected-inputs.ts": "0eeaca927ca301cd17a77dfda15e3814dc52935ae43148d8b1317b758b20cef1",
+    "scripts/performance/navigation-fixture-bindings.ts": "18df9ab9227212520e291a52b5cf1542e394e600d49ac262c6a956ec02dccb9f",
+    "scripts/performance/fixture-workload.mjs": "8bef41b3e403683dbb399b1fd0f4a4f2feb3c673e4f72c6a141b0666e0161c51",
+    "scripts/performance/navigation-protocol.ts": "fa1ae7aa43fa8bd0ffdaca456a0a7261c9dec4d83a7036bc08e302739a85f43a",
+    "scripts/performance/navigation-entry.ts": "af01bdaec1bcd89272b7ae517b76a70dee974226d1d78f88c7717a63a9a0f919",
+    "lib/ai-centre/centre-nav.ts": "60b2acb781c24fabcce7fa22624ca4d0b660337e14ad4aa90c9b190517bf6b5f",
+    "package.json": "7f67e35d869a29d2cb58d65c6f63413afc63db2cc6c6cf9dacb5086bce70ec2c",
+    "pnpm-lock.yaml": "0413a070eca23d390fabdcd78cb63b2dcf4b0b69fe90408c7b57a4f672d21dbd"
+  },
+  "actualFailure": {
+    "runId": 42484149453,
+    "artifactId": 13619071669,
+    "zipSha256": "14f9aca725ad985f9ad8125b30197e3426eb572c5ea1c02c6c254dd788a55b64",
+    "passed": 17,
+    "failed": 1,
+    "pending": 0,
+    "todo": 0,
+    "case": "pins the actual producer tenant closure and one bounded existing-connection read before its private publish",
+    "error": "TypeError: source.index is not a function"
+  },
+  "changedExecutableSource": "two source.index calls become source.indexOf in one existing test only",
+  "caseNamesAndAssertionsWhole": true,
+  "failedSelectorRetry": {
+    "file": "test/navigation-fixture-ownership.test.ts",
+    "cases": 4,
+    "executed": false
+  },
+  "native500OwnershipVerified": false,
+  "issuerImplemented": false,
+  "releaseAuthorized": false
+}
