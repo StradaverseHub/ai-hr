@@ -36,3 +36,10 @@ for(const [name,change] of [
 test('no-DB metadata packet cannot carry database diagnostics',()=>{
  const p=packet();p['focused.json'].groups={NODB:['test/control.test.ts'],DB:[]};p['nodb.vitest.json']=p['db.vitest.json'];delete p['db.vitest.json'];for(const n of ['postgres.log','postgres-state.json','postgres-stats.txt',...names])delete p[n];assert.equal(extract(p).status,0);p[names[0]]={};assert.notEqual(extract(p).status,0);
 });
+
+test('the exact metadata profile admits the observed239-member screenshot packet without raising byte/member limits for v2',()=>{
+ const p=packet();p['focused.json'].groups={NODB:['test/control.test.ts'],DB:[]};p['nodb.vitest.json']=p['db.vitest.json'];delete p['db.vitest.json'];for(const n of ['postgres.log','postgres-state.json','postgres-stats.txt',...names])delete p[n];
+ for(let i=0;i<237;i++)p[`ui-screenshots/fixture-${i}.png`]='opaque diagnostic';
+ assert.equal(Object.keys(p).length,239);assert.equal(extract(p).status,0);assert.notEqual(extract(p,false).status,0);
+ p['ui-screenshots/one-too-many.png']='opaque diagnostic';assert.notEqual(extract(p).status,0);
+});

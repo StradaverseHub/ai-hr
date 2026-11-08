@@ -7,7 +7,7 @@ archive,destination=map(pathlib.Path,sys.argv[1:3])
 prerequisites={'personnel-draft-discard-premigration-role-prerequisites.json','personnel-draft-discard-role-prerequisites.json'}
 with zipfile.ZipFile(archive) as z:
     entries=z.infolist()
-    if len(entries)>128 or sum(i.file_size for i in entries)>128*1024*1024:
+    if len(entries)>(239 if metadata else 128) or sum(i.file_size for i in entries)>128*1024*1024:
         raise ValueError('Repair packet exceeds bounds')
     names=set()
     for i in entries:
