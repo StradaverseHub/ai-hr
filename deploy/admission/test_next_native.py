@@ -942,6 +942,16 @@ def package(plan, helper, binding):
     node = {'path': plan['nodePath'], 'sha256': root_digest(plan['nodePath'])}
     libraries = sorted(file for file in probe['executableFiles'] if file.startswith('/usr/lib/'))
     require(0 < len(libraries) <= 256, 'Bounded native system closure required')
+    # Input-free actual mapping observations only; never publish a pathname.
+    # This distinguishes the prior generic path refusal from its hypothesis.
+    report['nativeSystemLibraryPaths'] = {'count': len(libraries),
+        'plusNamed': sum('+' in file for file in libraries),
+        'legacyGrammarRefused': sum(N.SAFE_PATH.fullmatch(file) is None for file in libraries)}
+    save()
+    for file in libraries:
+        require(str(N.system_library_path(file, require)) == file,
+                'Actual native library path grammar differs')
+
     manifest = {'version': 1, 'source': plan['candidate'], 'build': binding['nextBuildId'], 'runtime': N.RUNTIME,
         'node': node, 'systemFiles': [{'path': file, 'sha256': root_digest(file)} for file in libraries],
         'producerSourcePath': binding['buildSourcePath'], 'entries': sorted(rows, key=lambda row: row['path'])}

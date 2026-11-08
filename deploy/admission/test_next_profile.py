@@ -30,6 +30,26 @@ I = load('next_profile_shared_inventory', ROOT / '.github/ci/runtime_inventory.p
 sha = lambda raw: hashlib.sha256(raw).hexdigest()
 
 class NextProfileTests(unittest.TestCase):
+    def test_native_library_plus_names_preserve_all_other_path_boundaries(self):
+        names = ['/usr/lib/x86_64-linux-gnu/libstdc++.so.6.0.33',
+                 '/usr/lib/x86_64-linux-gnu/libgcc_s.so.1']
+        for name in names:
+            self.assertEqual(str(N.system_library_path(name, C.require)), name)
+        with self.assertRaises(C.Refused):
+            N.path(names[0], C.require)
+        self.manifest['systemFiles'] = [{'path': name, 'sha256': sha(b'synthetic-native')} for name in sorted(names)]
+        self.write_metadata()
+        self.assertEqual(list(self.runtime().system_files), sorted(names))
+        bad = ['/usr/lib', '/usr/lib/', '/usr/lib//libstdc++.so',
+               '/usr/lib/../lib/libstdc++.so', '/usr/lib/./libstdc++.so',
+               '/usr/lib/libstdc++.so/', '/opt/libstdc++.so',
+               '/usr/library/libstdc++.so', 'usr/lib/libstdc++.so',
+               '/usr/lib/libstdc++.so;id', '/usr/lib/libstdc++.so\\x',
+               '/usr/lib/libstdc++.so\x00', '/usr/lib/' + 'x' * 4096]
+        for name in bad:
+            with self.subTest(name=name), self.assertRaises(C.Refused):
+                N.system_library_path(name, C.require)
+
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(prefix='aihr-next-profile-source-')
         self.root = pathlib.Path(self.temp.name).resolve()
