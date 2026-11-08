@@ -119,7 +119,7 @@ export async function verifyRepairedCi({candidatePath,originalPath,runId,baselin
  const focused=[];
  for(const id of focusedRunIds.slice().sort((a,b)=>a-b)){
   const m=metadata(id),authenticated=validateRepairFocusedMetadata({...m,expected:{runId:id,controller,workflowId:workflow.id,after:source.run.updated_at}});
-  const f=await collectRecoveryEvidence(id,join(dir,'focused-'+id),{reuse,repairPackets:true}),artifact=f.artifacts[0],packet=f.parsed.get(artifact.name);
+  const f=await collectRecoveryEvidence(id,join(dir,'focused-'+id),{reuse,repairPackets:delta.metadataProfile?'six-metadata-v1':true}),artifact=f.artifacts[0],packet=f.parsed.get(artifact.name);
   assert(isDeepStrictEqual(m,facts(f)),'Focused metadata changed during download');
   const report=packet.get('focused.json'),database=report?.groups?.DB?.length>0,resultName=database?'db.vitest.json':'nodb.vitest.json';
   assert(isDeepStrictEqual([...packet.keys()].sort(),[resultName,'focused.json'].sort()),'Exact homogeneous focused packet required');
