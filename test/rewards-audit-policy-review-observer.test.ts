@@ -189,7 +189,7 @@ function observerSqlBoundaries(text:string){
 it('checks both sides of every scalar interpolation in the actual observer SQL templates, including committed ACL proof queries',()=>{
  const helper=readFileSync('test/prototypes/rewards-audit-policy-review-observer.ts','utf8'),actual=observerSqlBoundaries(helper);
  expect(new Set(actual.tags)).toEqual(new Set(['sql','owner.client','tx','nested','other']));
- expect(actual.tags).toHaveLength(50);expect(actual.boundaries).toHaveLength(47);expect(actual.bad).toEqual([]);
+ expect(actual.tags).toHaveLength(53);expect(actual.boundaries).toHaveLength(47);expect(actual.bad).toEqual([]);
  // Exact two-boundary predecessor mutation is red even though TypeScript parses.
  const previous=helper.replace('${root.pid} and b.backend_started_at','${root.pid}and b.backend_started_at').replace('::xid8 and a.datname=${database} and a.usename', '::xid8 and a.datname=${database}and a.usename');
  expect(previous).not.toBe(helper);expect(observerSqlBoundaries(previous).bad).toHaveLength(2);
@@ -208,4 +208,13 @@ it('detects newly joined SQL identifiers at every actual interpolation rather th
  expect(()=>observerSqlBoundaries('unexpected`select ${value}`')).toThrow('Unknown observer SQL tag');
  expect(()=>observerSqlBoundaries('sql`select ${value}')).toThrow('Observer TypeScript syntax required');
  expect(observerSqlBoundaries("sql`select id=${value}::uuid,(${other})` ").bad).toEqual([]);
+});
+
+import {reviewObservationRestorationObservation} from './prototypes/rewards-audit-policy-review-observer-contract';
+it('keeps app restoration observations separate from native authority and never reflects private function profiles',()=>{
+ const root={pid:123,started:'2026-11-08 00:00:00.123456+00',xid:'123',login:'ai_hr_app',database:'fictional-owned-db'};
+ const row={kind:'UNINSTALLED_REWARDS_OBSERVER_RESTORATION_OBSERVATION',releaseAuthorized:false,action:reviewObservationActions[0],mutation:'execute',stage:'first-effective',allowed:false,root};
+ for(const mutation of ['execute','cost'])for(const stage of ['first-effective','current-profile','fresh-effective','positive-read'])for(const allowed of [true,false])expect(reviewObservationRestorationObservation.parse({...row,mutation,stage,allowed})).toEqual({...row,mutation,stage,allowed});
+ for(const changed of [{...row,profile:{private:'payload'}},{...row,releaseAuthorized:true},{...row,allowed:'true'},{...row,mutation:'flush'},{...row,stage:'cache-proven'},{...row,root:{...root,xid:'123\n'}}])expect(()=>reviewObservationRestorationObservation.parse(changed)).toThrow();
+ expect(JSON.stringify(reviewObservationRestorationObservation.parse(row))).not.toContain('profile');
 });

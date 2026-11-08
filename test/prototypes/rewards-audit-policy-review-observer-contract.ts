@@ -6,6 +6,9 @@ export const reviewObservationScope=z.object({tenantId:z.guid(),userId:z.guid(),
 export const reviewObservationRoot=z.object({pid:z.number().int().min(2),started:z.string().min(20).max(80),xid:z.string().regex(/^[1-9][0-9]{0,19}(?![\s\S])/),login:z.literal('ai_hr_app'),database:z.string().min(1)}).strict();
 /** Closed native ACL observations only; never principal/capability admission. */
 export const reviewObservationAclObservation=z.object({kind:z.literal('UNINSTALLED_REWARDS_OBSERVER_ACL_OBSERVATION'),releaseAuthorized:z.literal(false),action:z.enum(reviewObservationActions),stage:z.enum(['owner-before-revoke','owner-after-commit','app-first-effective','app-direct','app-after-effective']),allowed:z.boolean(),root:reviewObservationRoot}).strict();
+/** Same-app restoration observations; owner catalogue equality alone is not a
+ * positive app baseline for the next independent native mutation. */
+export const reviewObservationRestorationObservation=z.object({kind:z.literal('UNINSTALLED_REWARDS_OBSERVER_RESTORATION_OBSERVATION'),releaseAuthorized:z.literal(false),action:z.enum(reviewObservationActions),mutation:z.enum(['execute','cost']),stage:z.enum(['first-effective','current-profile','fresh-effective','positive-read']),allowed:z.boolean(),root:reviewObservationRoot}).strict();
 const pre=z.object({armed:z.boolean(),priorSeq:z.number().int().nullable(),priorHash:z.string().nullable()}).strict().nullable();
 export const reviewObservationResult=z.object({phase:z.enum(['armed','written','recorded','completed']).nullable(),pre}).strict();
 export function reviewObservationNativeBody(source:string){

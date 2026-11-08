@@ -10,7 +10,7 @@ import type {SessionContext,Tx} from '../../db/client';
 import {pgSqlState} from '../../lib/db-error';
 import type {RewardsAuditOwnerDependencies} from './rewards-audited-read-owner-factory';
 import {controlledPolicyWait} from './rewards-audit-policy-controlled-wait';
-import {reviewObservationNativeBody,reviewObservationAclObservation,reviewObservationScope,reviewObservationRoot,reviewObservationResult,runReviewObservationRefusal,type ReviewObservationAction} from './rewards-audit-policy-review-observer-contract';
+import {reviewObservationNativeBody,reviewObservationAclObservation,reviewObservationRestorationObservation,reviewObservationScope,reviewObservationRoot,reviewObservationResult,runReviewObservationRefusal,type ReviewObservationAction} from './rewards-audit-policy-review-observer-contract';
 
 const source=readFileSync('test/prototypes/rewards-audit-policy-review-observer.sql','utf8');
 const functionBody=reviewObservationNativeBody(source);
@@ -146,6 +146,27 @@ export async function createRewardPolicyReviewObserver(owner:RewardsAuditOwnerDe
   signal.throwIfAborted();return root;
  }
  async function read(tx:Tx,reviewId:string,action:Action,signal:AbortSignal){signal.throwIfAborted();const [row]=await tx.execute(sql`select reward_policy_test.read_review(${reviewId}::uuid,${action}::text)as value`);signal.throwIfAborted();return reviewObservationResult.parse(row?.value);}
+ async function restoredAppBaseline(tx:Tx,reviewId:string,action:Action,root:Root,kind:'execute'|'cost',signal:AbortSignal){
+  signal.throwIfAborted();await assertImage();signal.throwIfAborted();
+  if(mutation||!expected)throw Error('Native observer mutation restoration has not settled');
+  const observe=(stage:z.infer<typeof reviewObservationRestorationObservation>['stage'],allowed:boolean)=>{
+   console.info(JSON.stringify(reviewObservationRestorationObservation.parse({kind:'UNINSTALLED_REWARDS_OBSERVER_RESTORATION_OBSERVATION',releaseAuthorized:false,action,mutation:kind,stage,allowed,root})));
+  };
+  // Retain the FIRST same-app effective sample. It is observation, not a claim
+  // about when the backend applies catalogue invalidation from owner COMMIT.
+  const [first]=await tx.execute(sql`select has_function_privilege(session_user,'reward_policy_test.read_review(uuid,text)','EXECUTE')as allowed`);
+  signal.throwIfAborted();
+  const [current]=await tx.execute(sql`select pg_backend_pid()as pid,(select backend_start::text from pg_stat_activity where pid=pg_backend_pid())as started,pg_current_xact_id()::text as xid,session_user::text as login,current_database()as database,
+   (select to_jsonb(p)from pg_proc p where p.oid='reward_policy_test.read_review(uuid,text)'::regprocedure)as profile`);
+  signal.throwIfAborted();const {profile,...identity}=current;expect(reviewObservationRoot.parse(identity)).toEqual(root);
+  observe('first-effective',z.boolean().parse(first.allowed));expect(profile).toEqual(expected.functions[0]);observe('current-profile',true);
+  const [fresh]=await tx.execute(sql`select has_function_privilege(session_user,'reward_policy_test.read_review(uuid,text)','EXECUTE')as allowed`);
+  signal.throwIfAborted();observe('fresh-effective',z.boolean().parse(fresh.allowed));expect(fresh.allowed).toBe(true);
+  // Actual unchanged SECURITY DEFINER observer validates its complete native
+  // profile, principal/root binding and private PRE shape. Never grant raw data
+  // privileges, flush a cache or change an expected refusal to reach this point.
+  await read(tx,reviewId,action,signal);signal.throwIfAborted();observe('positive-read',true);
+ }
  async function refused(tx:Tx,signal:AbortSignal,work:(nested:Tx)=>Promise<unknown>,code='42501'){
   await runRewardPolicyReviewTxRefusal(tx,signal,work,error=>{
    expect(error,'the actual native statement must refuse').toBeDefined();expect(pgSqlState(error)).toBe(code);
@@ -217,9 +238,11 @@ export async function createRewardPolicyReviewObserver(owner:RewardsAuditOwnerDe
    signal.throwIfAborted();observe('app-after-effective',after.allowed,actualRoot);
    await refused(tx,signal,nested=>read(nested,reviewId,action,signal));
   },restoreMutation);
+  await restoredAppBaseline(tx,reviewId,action,root,'execute',signal);
   signal.throwIfAborted();await controlledPolicyWait(poison).run(async()=>{
    await startMutation('cost',signal);signal.throwIfAborted();await refused(tx,signal,nested=>read(nested,reviewId,action,signal),'55000');
   },restoreMutation);
+  await restoredAppBaseline(tx,reviewId,action,root,'cost',signal);
   signal.throwIfAborted();
   await owner.client.begin(async other=>{
    await runReviewObservationRefusal<TransactionSql>(signal,{
