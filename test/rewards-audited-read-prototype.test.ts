@@ -22,8 +22,9 @@ import {rewardAuditPrototypeOwnership} from './prototypes/rewards-audited-read-o
 import {rewardAuditProjectorProcess} from './prototypes/rewards-audit-projector-process';
 import {rewardAuditProjectionRace} from './prototypes/rewards-audit-projection-race';
 import * as baseline from './prototypes/rewards-audited-read-baseline';
-const selected:unknown=JSON.parse(process.env.AIHR_FOCUSED_TESTS??'[]');
-if(process.env.GITHUB_ACTIONS!=='true'||process.env.RUNNER_ENVIRONMENT!=='github-hosted'||process.env.GITHUB_REPOSITORY!=='StradaverseHub/ai-hr'||process.env.GITHUB_RUN_ATTEMPT!=='1'||!Array.isArray(selected)||selected.length!==1||selected[0]!=='test/rewards-audited-read-prototype.test.ts')throw Error('Exact sole hosted Rewards prototype required; normal-CI registration remains pending');
+import {admitSingletonTest} from './helpers/ci-singleton-admission';
+// This fixed LOGIN/DDL family owns an entire fresh hosted job cluster.
+admitSingletonTest('test/rewards-audited-read-prototype.test.ts');
 const realWithTenant=database.withTenant;
 const ownership=rewardAuditPrototypeOwnership();
 function caseIt(name:string,work:(context:TestContext)=>Promise<void>){it(name,context=>ownership.phase(context,()=>work(context)));}

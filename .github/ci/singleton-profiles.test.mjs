@@ -28,7 +28,7 @@ test('every registered infrastructure file remains exactly once in its native cl
  const native=Object.keys(SINGLETON_FILES),ordinary=['test/ordinary-db.test.ts','test/ordinary-nodb.test.ts'];
  const db=native.filter(f=>singletonKind(singletonDescriptor(f).profile)==='db').concat(ordinary[0]),nodb=native.filter(f=>!db.includes(f)).concat(ordinary[1]),suite=[...db,...nodb].sort();
  const units=buildUnits(suite,{db,nodb},browser),special=units.filter(u=>u.singleton);
- assert.equal(special.length,19);assert.deepEqual(units.filter(u=>u.kind!=='browser').flatMap(u=>u.files).sort(),suite);
+ assert.equal(special.length,21);assert.deepEqual(units.filter(u=>u.kind!=='browser').flatMap(u=>u.files).sort(),suite);
  assert(special.every(u=>u.files.length===1&&u.singleton.workers===1));assert.equal(requiredEvidence({suite,units}).units.length,units.length);
  for(const unit of special){const changed=structuredClone(units);changed.find(u=>u.id===unit.id).singleton.workers=2;assert.throws(()=>requiredEvidence({suite,units:changed}));}
  assert.throws(()=>buildUnits([native[0]],{db:[],nodb:[native[0]]},browser));
@@ -180,4 +180,51 @@ test('Attendance owned child and pidfd proof cannot share a job or omit its actu
  const text=readFileSync(new URL('../../'+file,import.meta.url),'utf8');
  assert(text.indexOf("admitSingletonTest('"+file+"')")<text.indexOf('beforeAll(async()=>'));
  assert(!/\.(?:skipIf|runIf)\s*\(/.test(text));
+});
+
+
+test('Rewards native policy and original read family retain complete isolated source-bound jobs',()=>{
+ const files=['test/rewards-audit-policy-native.test.ts','test/rewards-audited-read-prototype.test.ts'];
+ const critical=[
+  '.github/ci/rewards-native-sources.mjs','test/prototypes/rewards-audit-policy-native-cases.ts',
+  'test/prototypes/rewards-audit-policy-owner.ts','test/prototypes/rewards-audit-policy-controller.ts',
+  'test/prototypes/rewards-audit-policy-lifetime.ts','test/prototypes/rewards-audit-policy-controlled-wait.ts',
+  'test/prototypes/rewards-audit-policy-contract.ts','test/prototypes/rewards-audit-policy.sql',
+  'test/prototypes/rewards-audit-policy-predecessors.json','test/prototypes/rewards-audit-policy-reader-process.ts',
+  'test/prototypes/rewards-audit-policy-reader-child.ts','test/prototypes/rewards-audit-startup.ts',
+  'test/prototypes/rewards-audited-read-family.ts','test/prototypes/rewards-audited-read-owner-factory.ts',
+  'test/prototypes/rewards-audited-read-owner.ts','test/prototypes/rewards-audited-read-ownership.ts',
+  'test/prototypes/rewards-audited-read-port.ts','test/prototypes/rewards-audited-read.sql',
+  'test/prototypes/rewards-audited-read-predecessors.json','test/prototypes/rewards-audit-projection-race.ts',
+  'test/prototypes/rewards-audit-projector-process.ts','test/prototypes/rewards-audit-projector-child.ts',
+  'test/harness.ts','test/rewards-setup-fixture.ts','db/client.ts','db/schema.ts','db/events.ts',
+  'core/org.ts','core/comp.ts','core/admin.ts','core/audit-chain.ts','core/audit-chain-arming.ts',
+  'core/assistant-actions/bank-maintenance-review-store.ts','core/assistant-actions/position-archive-review-store.ts',
+  'packs/rewards/setup-query-owner.ts','packs/rewards/setup-legacy-query-port.ts',
+  'localization/registry.ts','lib/hr-date.ts','db/migrations/meta/_journal.json',
+  'db/migrations/0863_assistant_bank_effect_closure.sql','db/migrations/0864_assistant_catalogue_effect_closure.sql',
+  'db/migrations/3210_attendance_shared_workflow_submission_lock.sql','db/migrations/3211_access_editor_native_owner_presentation.sql',
+ ];
+ const journal=JSON.parse(readFileSync(new URL('../../db/migrations/meta/_journal.json',import.meta.url)));
+ for(const file of files){
+  const f=fixture(file),sources=singletonSources(f.unit);
+  assert.deepEqual(f.unit.singleton,{version:1,profile:'controlled-database-v1',workers:1,isolation:'job-postgres-cluster'});
+  assert.equal(f.unit.kind,'db');assert.deepEqual(f.unit.files,[file]);assert.equal(new Set(sources).size,sources.length);
+  validateSingletonHost(f);validateSingletonBinding(f.binding,f.plan,f.unit,f.witness);
+  for(const entry of journal.entries)assert(sources.includes('db/migrations/'+entry.tag+'.sql'));
+  for(const source of critical){
+   assert(sources.includes(source),source);assert(readFileSync(new URL('../../'+source,import.meta.url)).length>0);
+   const changed=structuredClone(f);delete changed.plan.singletonSources[changed.unit.id][source];delete changed.binding.sourceHashes[source];
+   const{fingerprint:_fingerprint,...body}=changed.plan;changed.plan.fingerprint=protocolHash(body);changed.binding.fingerprint=changed.plan.fingerprint;
+   assert.throws(()=>validateSingletonBinding(changed.binding,changed.plan,changed.unit,changed.witness));
+  }
+  assert.throws(()=>assertSingletonSelection([file,'test/ordinary.test.ts']));
+  assert.throws(()=>assertSingletonCoverage([file],()=>"it('unadmitted',()=>{});"));
+  const text=readFileSync(new URL('../../'+file,import.meta.url),'utf8');
+  assert(text.includes("admitSingletonTest('"+file+"')"));assert(!/AIHR_FOCUSED_|\.(?:skipIf|runIf)\s*\(/.test(text));
+ }
+ const wrapper=readFileSync(new URL('../../test/rewards-audit-policy-native.test.ts',import.meta.url),'utf8');
+ assert(wrapper.indexOf("admitSingletonTest('")<wrapper.indexOf('registerRewardsAuditPolicyNativeCases();'));
+ const existing=readFileSync(new URL('../../test/rewards-audited-read-prototype.test.ts',import.meta.url),'utf8');
+ assert(existing.indexOf("admitSingletonTest('")<existing.indexOf('beforeAll(async()=>'));
 });

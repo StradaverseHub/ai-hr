@@ -4,6 +4,7 @@ import {createHash} from 'node:crypto';
 import {validatePostgresEvidence} from './postgres-evidence.mjs';
 import {CI_POLICY} from './policy-version.mjs';
 import {NATIVE_HELPER_SOURCES} from './native-next-helper-sources.mjs';
+import {REWARDS_NATIVE_SOURCES} from './rewards-native-sources.mjs';
 export const SINGLETON_VERSION=1;
 const measured=[
  'test/access-editor-native-owner-presentation.test.ts',
@@ -13,6 +14,8 @@ const measured=[
  'test/employee-choice-organisation-plan.test.ts',
  'test/leave-inquiry-read-cost.test.ts',
  'test/payroll-audit-processing-rc.test.ts',
+ 'test/rewards-audit-policy-native.test.ts',
+ 'test/rewards-audited-read-prototype.test.ts',
  'test/performance/attendance-punch-index.profile.test.ts',
  'test/performance/claims-preview-index.profile.test.ts',
  'test/performance/leave-pending-index.profile.test.ts',
@@ -53,6 +56,8 @@ export function assertSingletonUnit(unit){
 // Fixed reviewed component closure. These are source bindings, not privileges,
 // new profiles, skip exemptions or permission to execute an arbitrary candidate.
 const componentSources=Object.freeze({
+ 'test/rewards-audit-policy-native.test.ts':Object.freeze(['.github/ci/rewards-native-sources.mjs',...REWARDS_NATIVE_SOURCES]),
+ 'test/rewards-audited-read-prototype.test.ts':Object.freeze(['.github/ci/rewards-native-sources.mjs',...REWARDS_NATIVE_SOURCES]),
  'test/attendance-shared-submission-bridge.test.ts':Object.freeze([
   'db/migrations/0592_attendance_workflow_v4.sql','db/migrations/3101_attendance_shared_workflow.sql',
   'db/migrations/3110_attendance_workflow_owner_rls.sql','db/migrations/3210_attendance_shared_workflow_submission_lock.sql',
