@@ -10,7 +10,7 @@ import {bindPlanWitnessIdentity} from './manifest.mjs';
 import {assertNativeBuildMatches} from './singleton-protocol.mjs';
 import {randomUUID} from 'node:crypto';
 import {employeeLifecycleUnit} from './employee-lifecycle-profile.mjs';
-import {readEmployeeLifecycleArchive} from './employee-lifecycle-api.mjs';
+import {readEmployeeLifecycleArchive,readEmployeeLifecycleControllerFacts} from './employee-lifecycle-api.mjs';
 import {createPlan,hash} from './plan.mjs';
 import {admitAiManifests} from './ai-manifest-admission.mjs';
 import {downloadCiArchives,readCiArchive} from './archive-downloads.mjs';
@@ -90,14 +90,14 @@ function readEmployeeArchives({plan,run,jobs,artifacts,dir,sourceRoot}){
  const selected=plan.units.filter(unit=>employeeLifecycleUnit(unit));
  if(!selected.length)return new Map();
  const destination=join(dir,'employee-byte-replay-'+randomUUID());mkdirSync(destination,{mode:0o700});
- const result=new Map();
+ const result=new Map(),controllerFacts=readEmployeeLifecycleControllerFacts(plan.controller);
  for(const unit of selected){
   const matchingJobs=jobs.filter(job=>job.name===`test (${unit.id})`),matchingArtifacts=artifacts.filter(artifact=>artifact.name==='unit-'+unit.id);
   if(matchingJobs.length!==1||matchingArtifacts.length!==1)throw Error('Employee API job/archive inventory differs');
   const job=matchingJobs[0],artifact=matchingArtifacts[0],archivePath=join(dir,artifact.name+'.zip');
   const archive=readCiArchive(artifact,archivePath);verifyArtifactBytes(artifact,archive);
   if(archive.length!==artifact.size_in_bytes)throw Error('Employee API/archive byte size differs');
-  result.set(unit.id,readEmployeeLifecycleArchive({plan,unit,run,job,artifact,archivePath,destination:join(destination,unit.id),sourceRoot}));
+  result.set(unit.id,readEmployeeLifecycleArchive({plan,unit,run,job,artifact,archivePath,destination:join(destination,unit.id),sourceRoot,controllerFacts}));
  }
  return result;
 }

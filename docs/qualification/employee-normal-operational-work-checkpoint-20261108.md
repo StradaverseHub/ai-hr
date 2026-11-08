@@ -80,3 +80,22 @@ PG/always-stop implementation. The current isolated source intentionally lacks
 those three root-owned files; the complete planner must refuse them. Policyv20 is
 unchanged; no future policy number is allocated here. No release, staging or
 production acceptance is asserted.
+
+Controller provenance is now an explicit separate conjunction. The fixed API
+owner reads its exact clean controller commit, obtains the whitelisted54-path CI
+owner tree/blob inventory, descriptor-reads those files and verifies each real Git
+blob identity plus SHA256. Git overrides, replacement objects, credentials and DB
+capabilities are closed for this metadata reader. The opaque in-memory owner
+facts cannot be replaced by caller JSON. Candidate singleton source hashes remain
+separate; identical source/controller byte maps are allowed but not required.
+Release revalidation repeats the actual controller reads and archive replay.
+Synthetic tests deliberately use separate candidate/controller maps and refuse
+missing, foreign, malformed or mismatched controller facts. They are models,
+not authenticated API or native execution evidence.
+
+The new native verifier has one raw replay body, also exposed with the fixed
+`RAW_NATIVE_PLAN_REPLAY_NOT_LIFECYCLE_OR_SPEED` result kind. This supports honest
+replay of retained historical log bytes without changing their focused-only
+registration, failed target or restoration-publication facts. Final normal-unit
+acceptance still requires all lifecycle, current source, restoration and speed
+conjunctions. No parser flags or compatibility bypass is introduced.

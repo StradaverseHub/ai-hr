@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
 import {EMPLOYEE_LIFECYCLE_PROFILE} from './employee-lifecycle-profile.mjs';
-import {validateEmployeeLifecycleTransport} from './employee-lifecycle-api.mjs';
+import {validateEmployeeLifecycleTransport,readEmployeeLifecycleArchive,employeeLifecycleControllerBlob} from './employee-lifecycle-api.mjs';
 const repository={id:1333414856,full_name:'StradaverseHub/ai-hr'},source='a'.repeat(40),controller='b'.repeat(40);
 function fixture(row=EMPLOYEE_LIFECYCLE_PROFILE.files[0]){
  const descriptor={version:1,profile:'controlled-database-v1',workers:1,isolation:'job-postgres-cluster'};
@@ -27,4 +27,13 @@ test('PR API head is source while independent same-repository alpha merge is con
 });
 test('commissioning requires its distinct actual artifact inventory and remains transport only',()=>{
  const value=fixture();value.run.display_title='Singleton commissioning only · source';assert.throws(()=>validate(value));value.artifact.name='commission-unit-'+value.unit.id;assert.equal(validate(value).artifact.name,value.artifact.name);
+});
+
+test('caller-provided controller JSON cannot replace independently owned clean-commit facts',()=>{
+ const value=fixture();assert.throws(()=>readEmployeeLifecycleArchive({...value,controllerFacts:{controller},sourceRoot:'/foreign',archivePath:'/foreign.zip',destination:'/foreign-output'}),/Controller facts must originate/);
+});
+test('actual Git blob identity frames byte length, rejects changed content and never trusts a claimed SHA256',()=>{
+ assert.equal(employeeLifecycleControllerBlob(Buffer.from('abc'),'f2ba8f84ab5c1bce84a7b441cb1959cfc7093b7f'),createHash('sha256').update('abc').digest('hex'));
+ assert.equal(employeeLifecycleControllerBlob(Buffer.from('é'),'4b04fff51468d8ab5201ab02b725dc477bc7cb45'),createHash('sha256').update('é').digest('hex'));
+ for(const [bytes,blob]of [[Buffer.from('abd'),'f2ba8f84ab5c1bce84a7b441cb1959cfc7093b7f'],[Buffer.alloc(0),'e69de29bb2d1d6434b8b29ae775ad8c2e48c5391'],[Buffer.from('abc'),'0'.repeat(64)],['abc','f2ba8f84ab5c1bce84a7b441cb1959cfc7093b7f']])assert.throws(()=>employeeLifecycleControllerBlob(bytes,blob));
 });

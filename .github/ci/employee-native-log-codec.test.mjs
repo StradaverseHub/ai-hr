@@ -28,3 +28,14 @@ test('the entire SQL, native population and exact cardinality reader prefix rema
  const current=read(work.source),importLine="import {employeeChoicePlanLimits as nativeLimits,employeeChoicePlanWork as nativeWork} from '../../.github/ci/employee-native-log-codec.mjs';\n";
  assert(current.startsWith(importLine+prefix));assert(!current.slice(importLine.length+prefix.length).includes('tx.execute'));
 });
+test('owned native log publication and descriptor/store behavior reconstruct byte-for-byte outside the extracted decoder',()=>{
+ const proof=JSON.parse(read('docs/qualification/employee-native-log-codec-inverse-20261108.json')),inverse=proof.typedPartWriterInverse;let current=read(inverse.source);assert.equal(sha(current),inverse.currentSha256);
+ for(const {before,after}of [...inverse.changes].reverse()){assert.equal(current.split(after).length-1,1);current=current.replace(after,before);}
+ assert.equal(current,proof.originalSources[inverse.source].bytes);assert.equal(sha(current),originals[inverse.source]);
+});
+test('all original exported type aliases remain exact in the thin typed adapters',()=>{
+ const proof=JSON.parse(read('docs/qualification/employee-native-log-codec-inverse-20261108.json'));
+ for(const file of ['test/performance/employee-choice-auto-explain-parser.ts','test/performance/employee-choice-native-log-stream.ts','test/performance/employee-choice-native-log-parts.ts']){
+  const types=value=>value.split('\n').filter(line=>line.startsWith('export type ')).sort();assert.deepEqual(types(read(file)),types(proof.originalSources[file].bytes));
+ }
+});

@@ -267,5 +267,24 @@
         "count": 1
       }
     ]
+  },
+  "typedPartWriterInverse": {
+    "source": "test/performance/employee-choice-native-log-parts.ts",
+    "changes": [
+      {
+        "before": "import {gzipSync,gunzipSync,inflateRawSync} from 'node:zlib';",
+        "after": "import {gzipSync} from 'node:zlib';\nimport {employeeChoiceNativeLogPartBytes as decodePart,employeeChoiceNativeLogBounds as nativeBounds} from '../../.github/ci/employee-native-log-codec.mjs';"
+      },
+      {
+        "before": "export const employeeChoiceNativeLogBounds=Object.freeze({partRawBytes:8*MiB,rawAggregateBytes:128*MiB,gzipAggregateBytes:32*MiB,indexBytes:2*MiB,parts:128,recordBytes:64*MiB,phaseBytes:64*MiB,memberBytes:64*MiB,checkpointMs:20000});",
+        "after": "export const employeeChoiceNativeLogBounds=nativeBounds;"
+      },
+      {
+        "before": "export function employeeChoiceNativeLogPartBytes(gzip:Buffer,part:Pick<NativeLogPart,'rawBytes'|'gzipBytes'|'rawSha256'|'gzipSha256'>){\n if(!Number.isSafeInteger(part.rawBytes)||part.rawBytes<1||part.rawBytes>employeeChoiceNativeLogBounds.partRawBytes||gzip.length>employeeChoiceNativeLogBounds.memberBytes\n  ||gzip.length!==part.gzipBytes||sha(gzip)!==part.gzipSha256||gzip.length<18||gzip[0]!==31||gzip[1]!==139||gzip[2]!==8||gzip[3]!==0||gzip.readUInt32LE(gzip.length-4)!==part.rawBytes)throw Error('Exact single native gzip member required');\n // A native raw-deflate decoder reports the exact consumed stream length. This\n // rejects trailing/concatenated members even if a final empty member or equal\n // ISIZE could otherwise mask their presence. gunzip separately validates CRC.\n const stream:unknown=inflateRawSync(gzip.subarray(10,gzip.length-8),{info:true,maxOutputLength:employeeChoiceNativeLogBounds.partRawBytes});\n if(!stream||typeof stream!=='object'||!('engine'in stream)||!stream.engine||typeof stream.engine!=='object'||!('bytesWritten'in stream.engine)\n  ||stream.engine.bytesWritten!==gzip.length-18||!('buffer'in stream)||!Buffer.isBuffer(stream.buffer))throw Error('Trailing or concatenated native gzip member');\n const raw=gunzipSync(gzip,{maxOutputLength:employeeChoiceNativeLogBounds.partRawBytes});\n if(raw.length!==part.rawBytes||sha(raw)!==part.rawSha256||!raw.equals(stream.buffer))throw Error('Native raw part bytes differ');return raw;\n}",
+        "after": "export function employeeChoiceNativeLogPartBytes(gzip:Buffer,part:Pick<NativeLogPart,'rawBytes'|'gzipBytes'|'rawSha256'|'gzipSha256'>):Buffer{return decodePart(gzip,part);}\n"
+      }
+    ],
+    "currentSha256": "d63072e9c42c345d4a8a383b3729f3cf19498e2690414cff0259ddb8cb5c24a4",
+    "originalSha256": "9e4f031ce19b8f851d5b284f1709dbdb8e351a325e2c04173fd89e352a84e1a9"
   }
 }

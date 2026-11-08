@@ -3430,6 +3430,7 @@ export const EMPLOYEE_LIFECYCLE_SOURCES=Object.freeze([
  "vitest.config.ts",
  "vitest.nodb.config.ts"
 ]);
+export const EMPLOYEE_LIFECYCLE_CONTROLLER_PATHS=Object.freeze(EMPLOYEE_LIFECYCLE_SOURCES.filter(file=>file.startsWith('.github/')));
 export const EMPLOYEE_LIFECYCLE_CRITICAL=Object.freeze([
  ".github/actions/setup-alpha/action.yml",
  ".github/ci/employee-lifecycle-always-stop.mjs",

@@ -6,7 +6,7 @@ export type NativeCallExpectation={port:'page'|'ids'|'project';rows:number;match
 export type PlanMarker={label:string;begin:string;end:string;native:boolean;expectedNativeRows?:number;expectedNativeCalls?:readonly NativeCallExpectation[]};
 type Invocation={expectedRows:number;nestedRows:unknown;functionRows:unknown;nestedDurationMs:number};
 type Membership={kind:string;matchedIds:number;unnestRows:unknown;unnestLoops:number;membershipRows:unknown;membershipLoops:number;hashedSubplan:unknown;linearMatchedArrayRefused:boolean};
-type Pagination=NativePageExpectation&{kind:string;k:number;r:number;direction:string;rowGoal:number;unusedSourceSortLimitLoops:number;sortMethod:unknown};
+type Pagination=NativePageExpectation&{kind:string;k:number;r:number;direction:'ascending'|'descending';rowGoal:number;unusedSourceSortLimitLoops:number;sortMethod:unknown};
 type Projection={kind:string;pageRows:number;boundedSources:number;probes:number;tupleWork:number;fullAssignmentSourceWork:number};
 type Calls=Invocation&{port:NativeCallExpectation['port'];membership?:Membership;serverScope?:Membership&{scopeIds:unknown};pagination?:Pagination;assignmentHydration?:Projection};
 export function employeeChoiceAutoExplainMessages(log:string,pid:number):AutoExplainMessage[]{return native.employeeChoiceAutoExplainMessages(log,pid);}
