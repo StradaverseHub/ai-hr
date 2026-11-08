@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "fixture": "system-load-v1",
   "engine": "chromium",
-  "scope": "14 reviewed destinations/48 source cases: 10 native link destinations/40 cases and 4 HR-only direct route/content destinations/8 cases. Existing native fictional hire, payroll, attendance, reward prerequisite and sealed saved-history owners supply independent expected facts. Direct entry never qualifies native menu coverage. Policies and unseeded Ask roles assert explicit controls/empty state only. Remaining catalogue, dynamic menus, query views and unrepresented roles stay unverified.",
+  "scope": "Partial native navigation development proof: 48 preserved scenarios plus four non-HR native Payroll/Analytics hidden-menu and direct-route refusal cases. The 222-declaration and dynamic-family universe remains incomplete.",
   "scenarios": [
     {
       "id": "submenu.claims.types.companyHR.usable",
@@ -1101,6 +1101,58 @@
         }
       ],
       "entry": "shell-menu"
+    },
+    {
+      "entry": "shell-menu",
+      "shellVisibility": "hidden",
+      "id": "shell.payrollProcess.employee.hidden-denied",
+      "destinationId": "shell.payrollProcess",
+      "role": "employee",
+      "href": "/payroll",
+      "originHref": "/",
+      "outcome": "denied",
+      "readiness": "controls",
+      "steps": [],
+      "checks": []
+    },
+    {
+      "entry": "shell-menu",
+      "shellVisibility": "hidden",
+      "id": "shell.payrollProcess.manager.hidden-denied",
+      "destinationId": "shell.payrollProcess",
+      "role": "manager",
+      "href": "/payroll",
+      "originHref": "/",
+      "outcome": "denied",
+      "readiness": "controls",
+      "steps": [],
+      "checks": []
+    },
+    {
+      "entry": "shell-menu",
+      "shellVisibility": "hidden",
+      "id": "shell.analytics.employee.hidden-denied",
+      "destinationId": "shell.analytics",
+      "role": "employee",
+      "href": "/analytics",
+      "originHref": "/",
+      "outcome": "denied",
+      "readiness": "controls",
+      "steps": [],
+      "checks": []
+    },
+    {
+      "entry": "shell-menu",
+      "shellVisibility": "hidden",
+      "id": "shell.analytics.manager.hidden-denied",
+      "destinationId": "shell.analytics",
+      "role": "manager",
+      "href": "/analytics",
+      "originHref": "/",
+      "outcome": "denied",
+      "readiness": "controls",
+      "steps": [],
+      "checks": []
     }
   ]
 }

@@ -2,7 +2,7 @@
 /** DOM adapter controls only. These do not qualify an actual application/browser. */
 import {afterEach,expect,it} from 'vitest';
 import type {Page} from 'playwright';
-import {clickNativeShellDestination} from '../scripts/performance/navigation-shell-browser';
+import {clickNativeShellDestination,assertNativeShellDestinationHidden} from '../scripts/performance/navigation-shell-browser';
 class DomLocator {
  constructor(private readonly nodes:()=>Element[]){}
  async count(){return this.nodes().length;}
@@ -46,4 +46,25 @@ it('refuses duplicate and absent destinations without clicking any substitute ro
 it('refuses invalid addresses and obeys the caller deadline before traversing disclosures',async()=>{
  const clicks=fixture();await expect(clickNativeShellDestination(page(),'https://outside.invalid',()=>90000)).rejects.toThrow('reviewed static');
  await expect(clickNativeShellDestination(page(),'/analytics',()=>{throw Error('original deadline');})).rejects.toThrow('original deadline');expect(clicks).toEqual([]);
+});
+
+it('observes absence through every native workspace/disclosure before a separate direct-route refusal',async()=>{
+ const clicks=fixture({denied:true});await assertNativeShellDestinationHidden(page(),'/analytics',()=>90000);
+ expect(clicks).toEqual(['workspace','nav-flyout-insights','nested']);
+ expect(document.querySelector('main button')!.getAttribute('aria-expanded')).toBe('false');
+});
+it('rejects visible, collapsed, disabled and later-mounted native destination anchors as hidden proof',async()=>{
+ for(const state of ['collapsed','visible','disabled','later-mounted']){
+  const clicks=fixture({denied:state==='later-mounted'});
+  const anchor=document.querySelector('nav a');
+  if(state==='visible'){document.getElementById('nav-flyout-insights')!.removeAttribute('hidden');document.getElementById('nested')!.removeAttribute('hidden');}
+  if(state==='disabled')anchor!.setAttribute('aria-disabled','true');
+  if(state==='later-mounted')document.querySelector('[aria-controls="nested"]')!.addEventListener('click',()=>{document.getElementById('nested')!.innerHTML='<a href="/analytics">Newly mounted</a>';});
+  await expect(assertNativeShellDestinationHidden(page(),'/analytics',()=>90000)).rejects.toThrow('still rendered');
+  expect(clicks).not.toContain('destination');
+ }
+});
+it('keeps the original caller deadline and traversal bound for hidden observations',async()=>{
+ const clicks=fixture({denied:true});await expect(assertNativeShellDestinationHidden(page(),'/analytics',()=>{throw Error('same original deadline');})).rejects.toThrow('same original deadline');
+ expect(clicks).toEqual([]);
 });

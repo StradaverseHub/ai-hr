@@ -10,7 +10,7 @@ import {fixtureNavigationActor,navigationExpectedText,NAVIGATION_CAPTURE_MEMBER,
 import {navigationCleanHead,navigationSourceIdentity} from './navigation-source';
 import {readNavigationFixtureBindings} from './navigation-fixture-bindings';
 import {navigationScenarioEntry} from './navigation-entry';
-import {clickNativeShellDestination} from './navigation-shell-browser';
+import {clickNativeShellDestination,assertNativeShellDestinationHidden} from './navigation-shell-browser';
 const BASE='https://localhost:3443';
 const failuresSelector={busy:'main[data-personnel-busy],main[data-page-busy],main [data-personnel-busy],main [data-page-busy]',
  unavailable:'main [data-read-unavailable],main [data-today-unavailable]',alerts:'main [role="alert"]'} as const;
@@ -82,9 +82,16 @@ async function captureScenario(page:Page,actorIndex:number,scenario:NavigationSc
   await installFailureObserver(page);
   const cookies=await page.context().cookies(BASE);
   assert(cookies.some(cookie=>cookie.name==='__Host-aihr_internal'&&cookie.value&&cookie.secure&&cookie.httpOnly&&cookie.path==='/'),'Native authenticated fixture session missing');
-  const origin=await page.goto(BASE+(scenario.outcome==='denied'?scenario.href:scenario.originHref),{waitUntil:'domcontentloaded',timeout:remaining()});
+  const observeHidden=scenario.shellVisibility==='hidden';
+  const origin=await page.goto(BASE+(scenario.outcome==='denied'&&!observeHidden?scenario.href:scenario.originHref),{waitUntil:'domcontentloaded',timeout:remaining()});
   assert(origin?.status()===200,'Navigation origin did not finish successfully');
   const originFailures=await capturedFailures(page);for(const key of ['busy','unavailable','alerts']as const)failures[key]+=originFailures[key];
+  if(observeHidden){
+   await assertNativeShellDestinationHidden(page,scenario.href,remaining);
+   const shellFailures=await capturedFailures(page);for(const key of ['busy','unavailable','alerts']as const)failures[key]+=shellFailures[key];
+   const refused=await page.goto(BASE+scenario.href,{waitUntil:'domcontentloaded',timeout:remaining()});
+   assert(refused?.status()===200,'Native denied route did not finish successfully');
+  }
   if(scenario.outcome==='usable'&&entry.kind==='shell-menu')await clickNativeShellDestination(page,scenario.href,remaining);
   if(scenario.outcome==='usable'&&entry.selector){
    const anchor=page.locator(entry.selector);
@@ -144,7 +151,7 @@ async function captureScenario(page:Page,actorIndex:number,scenario:NavigationSc
   const usableWith=sample();remaining();
   return {entry:entry.kind,scenarioId:scenario.id,destinationId:scenario.destinationId,role:actor.role,actorIndex,href:scenario.href,outcome:scenario.outcome,readiness:scenario.readiness,
    status:200,finalPath:target.pathname,internalSessionObserved:true,fixtureIdentityObserved:true,elapsedMs:performance.now()-started,checks,failures,
-   ...(startedWith?{startedWith}:{}),...(usableWith?{usableWith}:{})};
+   ...(observeHidden?{shellHiddenObserved:true as const}:{}),...(startedWith?{startedWith}:{}),...(usableWith?{usableWith}:{})};
  }finally{page.off('response',response);page.off('pageerror',pageError);page.off('console',consoleError);}
 }
 /** The runner retains both phases in the same fixed artifact member. No credentials/content. */

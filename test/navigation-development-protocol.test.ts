@@ -8,7 +8,7 @@ function capture(plan:NavigationScenarioPlan,phase:'baseline'|'loaded'='baseline
  return {schemaVersion:1,protocol:NAVIGATION_CAPTURE_VERSION,releaseAuthorized:false,fixture:plan.fixture,engine:plan.engine,...expected,phase,runAttempt:1,complete:true,
   observations:plan.scenarios.map(s=>({entry:s.entry??'canonical-link',scenarioId:s.id,destinationId:s.destinationId,role:s.role,actorIndex:indices[s.role],href:s.href,outcome:s.outcome,readiness:s.readiness,
    status:200,finalPath:s.outcome==='denied'?'/':s.href,internalSessionObserved:true,fixtureIdentityObserved:true,elapsedMs:120,
-   checks:s.checks.map(c=>({id:c.id,passed:true,observedCount:c.kind==='count'||c.kind==='fixture-roster-rows'?c.minimum:1})),failures:{busy:0,unavailable:0,alerts:0,http500:0,pageErrors:0},
+   ...(s.shellVisibility==='hidden'?{shellHiddenObserved:true}:{}),checks:s.checks.map(c=>({id:c.id,passed:true,observedCount:c.kind==='count'||c.kind==='fixture-roster-rows'?c.minimum:1})),failures:{busy:0,unavailable:0,alerts:0,http500:0,pageErrors:0},
    ...(phase==='loaded'?{startedWith:{active:500,inSteadyWindow:true},usableWith:{active:500,inSteadyWindow:true}}:{})}))};
 }
 describe('closed source-reviewed navigation development protocol (not authenticated execution)',()=>{
@@ -23,16 +23,27 @@ describe('closed source-reviewed navigation development protocol (not authentica
   for(const href of ['https://evil.invalid','//evil.invalid','/x\\y','/x#private','/x\n'])expect(localNavigationHref(href)).toBe(false);
  });
  it('keeps source scenarios explicitly partial and includes positive and denied native roles',()=>{
-  const plan=validateNavigationScenarioPlan(readPlan());expect(plan.scenarios).toHaveLength(48);
+  const plan=validateNavigationScenarioPlan(readPlan());expect(plan.scenarios).toHaveLength(52);
   expect(new Set(plan.scenarios.map(s=>s.destinationId)).size).toBe(14);
-  for(const id of new Set(plan.scenarios.map(s=>s.destinationId))){const cases=plan.scenarios.filter(s=>s.destinationId===id);expect(new Set(cases.map(s=>s.role)).size).toBe(cases[0].entry==='direct-route-content'||cases[0].entry==='shell-menu'?2:4);}
-  expect(validateNavigationCapture(capture(plan),plan,expected).observations).toHaveLength(48);
+  for(const id of new Set(plan.scenarios.map(s=>s.destinationId))){const cases=plan.scenarios.filter(s=>s.destinationId===id);expect(new Set(cases.map(s=>s.role)).size).toBe(['shell.personnelAdmin','shell.rosterManager'].includes(id)?2:4);}
+  expect(validateNavigationCapture(capture(plan),plan,expected).observations).toHaveLength(52);
   expect(validateNavigationCapture(capture(plan,'loaded'),plan,{...expected,phase:'loaded'}).phase).toBe('loaded');
  });
  it('rejects heading-only proof, URL query context not yet observed, unknown steps, and duplicate scenario IDs',()=>{
   for(const edit of [(p:any)=>p.scenarios[0].checks[0].selector='main h1',(p:any)=>p.scenarios[0].href+='?different=scope',
    (p:any)=>p.scenarios[0].steps[0].kind='submit',(p:any)=>p.scenarios.push(p.scenarios[0])]){
    const plan=readPlan();edit(plan);expect(()=>validateNavigationScenarioPlan(plan)).toThrow();
+  }
+ });
+ it('requires explicit native hidden-shell proof only for the four new denied cases',()=>{
+  const plan=validateNavigationScenarioPlan(readPlan());
+  for(const edit of [(c:any)=>delete c.observations[48].shellHiddenObserved,(c:any)=>c.observations[48].shellHiddenObserved=false,
+   (c:any)=>c.observations[0].shellHiddenObserved=true,(c:any)=>c.observations[48].finalPath='/payroll']){
+   const value=capture(plan);edit(value);expect(()=>validateNavigationCapture(value,plan,expected)).toThrow();
+  }
+  for(const edit of [(p:any)=>p.scenarios[0].shellVisibility='hidden',(p:any)=>p.scenarios[48].outcome='usable',
+   (p:any)=>p.scenarios[48].shellVisibility='disabled',(p:any)=>p.scenarios[48].entry='direct-route-content']){
+   const value=readPlan();edit(value);expect(()=>validateNavigationScenarioPlan(value)).toThrow();
   }
  });
  it('refuses cross-source/role claims, missing checks, handled failures, and incomplete captures',()=>{

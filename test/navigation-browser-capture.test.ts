@@ -1,15 +1,17 @@
 /** Collector behavior contracts with a mocked page/source, never executed app coverage. */
 import {afterEach,beforeEach,describe,expect,it,vi} from 'vitest';
 import type {Page} from 'playwright';
-const source=vi.hoisted(()=>({sha:'a'.repeat(40),controller:'b'.repeat(40)}));
+const source=vi.hoisted(()=>({sha:'a'.repeat(40),controller:'b'.repeat(40),hidden:false}));
 vi.mock('../scripts/performance/navigation-source',()=>({
  navigationCleanHead:()=>source.sha,
- navigationSourceIdentity:()=>({harnessSha256:'c'.repeat(64),scenarioSha256:'d'.repeat(64),plan:{schemaVersion:1,fixture:'system-load-v1',engine:'chromium',scope:'Unit collector contract only',scenarios:[{
+ navigationSourceIdentity:()=>({harnessSha256:'c'.repeat(64),scenarioSha256:'d'.repeat(64),plan:{schemaVersion:1,fixture:'system-load-v1',engine:'chromium',scope:'Unit collector contract only',scenarios:source.hidden?[{entry:'shell-menu',shellVisibility:'hidden',id:'unit.employee.hidden',destinationId:'shell.payrollProcess',role:'employee',href:'/payroll',originHref:'/',outcome:'denied',readiness:'controls',steps:[],checks:[]}]:[{
   id:'unit.employee',destinationId:'submenu.unit',role:'employee',href:'/unit',originHref:'/unit',outcome:'usable',readiness:'controls',
   steps:[{kind:'open-details',selector:'main details:has(input[name="unit"])'}],checks:[{id:'input',kind:'enabled',tag:'input',selector:'main input[name="unit"]'}],
  }]}}),
 }));
 vi.mock('../scripts/performance/navigation-fixture-bindings',()=>({readNavigationFixtureBindings:()=>new Map([[4,{actorName:'PERF Person 0004',actorEmployeeCode:'PERF0004',firstCompanyPersonName:'PERF Person 0000',activeHeadcount:'50',historicalPayrollMonth:'2026-07',seedToday:'2026-11-07',seedMonth:'2026-11',rosterScope:{}}]])}));
+const shell=vi.hoisted(()=>({hidden:vi.fn(),click:vi.fn()}));
+vi.mock('../scripts/performance/navigation-shell-browser',()=>({assertNativeShellDestinationHidden:shell.hidden,clickNativeShellDestination:shell.click}));
 import {createNavigationCaptureCollector} from '../scripts/performance/navigation-browser-capture';
 const actorName='PERF Person 0004',otherActorName='PERF Person 0005';
 function fictionalPage({accountName=actorName,accountCount=1,anchorCount=1,detailsCount=1}:{accountName?:string;accountCount?:number;anchorCount?:number;detailsCount?:number}={}){
@@ -39,10 +41,11 @@ function fictionalPage({accountName=actorName,accountCount=1,anchorCount=1,detai
  const page={
   on:vi.fn(),off:vi.fn(),addInitScript:vi.fn(),
   context:()=>({cookies:async()=>[{name:'__Host-aihr_internal',value:'fictional-private-cookie',secure:true,httpOnly:true,path:'/'}]}),
-  async goto(){now+=1000;return {status:()=>200};},
-  async waitForURL(predicate:(url:URL)=>boolean){expect(predicate(new URL('https://localhost:3443/unit'))).toBe(true);},
+  async goto(href:string){operations.push('goto:'+new URL(href).pathname);now+=1000;return {status:()=>200};},
+  async waitForURL(predicate:(url:URL)=>boolean){expect(predicate(new URL('https://localhost:3443'+(source.hidden?'/':'/unit')))).toBe(true);},
   async evaluate(){return {busy:0,unavailable:0,alerts:0};},
   locator(selector:string){
+   if(selector==='main [data-navigation-destination="shell.payrollProcess"]')return locator(selector,0);
    if(selector==='body')return body;
    if(selector==='button[data-tour="account"]')return locator(selector,accountCount,{requiresWait:true});
    if(selector==='a[data-navigation-destination="submenu.unit"]')return locator(selector,anchorCount,{tag:'A',href:'/unit',requiresWait:true});
@@ -54,6 +57,7 @@ function fictionalPage({accountName=actorName,accountCount=1,anchorCount=1,detai
  return {page,body,waits,operations};
 }
 beforeEach(()=>{
+ source.hidden=false;shell.hidden.mockReset();shell.click.mockReset();
  vi.stubEnv('GITHUB_ACTIONS','true');vi.stubEnv('RUNNER_ENVIRONMENT','github-hosted');vi.stubEnv('GITHUB_REPOSITORY','StradaverseHub/ai-hr');
  vi.stubEnv('AIHR_PERFORMANCE_ROLE_FIXTURE','true');vi.stubEnv('DATABASE_URL','postgres://ai_hr_app@127.0.0.1:5433/ai_hr_dev');
  vi.stubEnv('AIHR_CI_HEAD',source.sha);vi.stubEnv('AIHR_CI_CONTROL_HEAD',source.controller);vi.stubEnv('GITHUB_RUN_ID','123');vi.stubEnv('GITHUB_RUN_ATTEMPT','1');
@@ -68,6 +72,22 @@ describe('native identity and streamed navigation capture boundaries',()=>{
   }
   expect(waits.map(row=>row.timeout)).toEqual(waits.map(row=>row.timeout).sort((a,b)=>b-a));
   expect(waits[0].timeout).toBe(89000);expect(waits.at(-1)!.timeout).toBeLessThan(89000);
+ });
+ it('observes the hidden native shell before exercising and recording the actual direct-route refusal',async()=>{
+  source.hidden=true;const {page,operations}=fictionalPage(),collector=createNavigationCaptureCollector({phase:'loaded'});
+  shell.hidden.mockImplementation(async(_page:Page,href:string,remaining:()=>number)=>{expect(href).toBe('/payroll');expect(remaining()).toBeLessThan(90000);operations.push('native-shell-hidden');});
+  await collector.captureActor(page,4,()=>({active:500,inSteadyWindow:true}));
+  const row=collector.finish().observations[0];expect(row.shellHiddenObserved).toBe(true);expect(row.finalPath).toBe('/');expect(row.outcome).toBe('denied');
+  expect(row.startedWith).toEqual({active:500,inSteadyWindow:true});expect(row.usableWith).toEqual({active:500,inSteadyWindow:true});
+  expect(operations.filter(operation=>operation.startsWith('goto:')||operation==='native-shell-hidden')).toEqual(['goto:/','native-shell-hidden','goto:/payroll']);
+  expect(shell.click).not.toHaveBeenCalled();
+ });
+ it('refuses a rendered denied menu before direct navigation and never seals incomplete evidence',async()=>{
+  source.hidden=true;const {page,operations}=fictionalPage(),collector=createNavigationCaptureCollector({phase:'baseline'});
+  shell.hidden.mockRejectedValue(Error('Denied destination is still rendered in the native shell'));
+  await expect(collector.captureActor(page,4)).rejects.toThrow('still rendered');
+  expect(operations.filter(operation=>operation.startsWith('goto:'))).toEqual(['goto:/']);
+  expect(()=>collector.finish()).toThrow('identity or completeness');
  });
  it.each([otherActorName,actorName+' extra'])('rejects authenticated account %s even when workforce content contains the expected actor',async accountName=>{
   const {page,body}=fictionalPage({accountName}),collector=createNavigationCaptureCollector({phase:'baseline'});
