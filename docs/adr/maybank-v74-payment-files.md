@@ -1,6 +1,6 @@
 # Maybank2E-RC V7.4 payment files
 
-Status: candidate implementation; the reporter’s hashing-arrangement question is posted on feedback 566a19dc. Not installed or bank-accepted.
+Status: candidate implementation with the reporter-approved initial blank hash. Not installed or bank-accepted.
 
 ## Owners and admission
 
@@ -8,7 +8,7 @@ CountryPack.bankPaymentFiles remains the jurisdiction seam. The existing bank ex
 
 Salary uses the company’s primary MYR account. Statutory categories use the existing company_statutory_authority bankProfileId and payment reference for EPF, SOCSO, LHDN or Zakat. Every Maybank preview and generation rechecks the exact company/category/account. No account is borrowed from another company. The existing OCBC account-selection flow is preserved.
 
-A Maybank profile must explicitly select V7.4. Hash mode defaults to unconfirmed and refuses generation. The private bank document describes domestic hashing as conditional and statutory hashing as optional, but instructs readers to obtain the formula from the bank; no formula appears in the supplied attachment. The only implemented alternative is an administrator’s explicit record that the bank does not require hashing. A hash-required arrangement remains unsupported pending the bank-issued algorithm. No guessed hash or silent zero is emitted.
+Maybank profiles use V7.4 and default to blank hash fields under the reporter’s answer below. An explicit hashing-details hold refuses generation. The supplied attachment instructs readers to obtain any required formula from the bank; no formula appears in it. A hash-required arrangement remains unsupported pending the bank-issued algorithm. No guessed hash is emitted.
 
 Bank payee residency is a separate nullable fact on the existing personnel banking record, maintained by its canonical scoped HR bank writer and audit. It applies to the actual payee, including a custom holder. It is not inferred from tax residency or EPF citizenship. Missing residency refuses salary generation.
 
@@ -24,4 +24,4 @@ The header’s generic employer-reference length conflicts with its Zakat-specif
 
 ## Reporter answer — initial blank hash
 
-On8November2026 the reporter answered the board question: “No. Just proceed with blank first”. The initial MaybankV7.4 arrangement therefore leaves the documented hash positions empty. Existing unconfigured Maybank profiles resolve that same default, while an explicit hashing-details hold still refuses generation. The UI no longer claims the bank confirmed an arrangement. Actual Maybank upload validation remains required before a bank-accepted claim; generation does not settle a payment.
+On 8 November 2026 the reporter answered the board question: “No. Just proceed with blank first”. The initial Maybank V7.4 arrangement therefore leaves the documented hash positions empty. Existing unconfigured Maybank profiles resolve that same default, while an explicit hashing-details hold still refuses generation. The UI no longer claims the bank confirmed an arrangement. Actual Maybank upload validation remains required before a bank-accepted claim; generation does not settle a payment.

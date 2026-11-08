@@ -278,6 +278,8 @@ async function requireAdmin(tx: Tx, companyId: string) {
 async function load(tx: Tx, unitId: string, lock = false,capability:import('./access-policy-model').RewardCapability='review.view') {
   idSchema.parse(unitId);
   if(lock)await assertRewardWritableTx(tx);
+  const [preparation]=await tx.execute<{value:RewardPreparationView|null}>(sql`select app.reward_preparation_view(${unitId}::uuid) as value`);
+  if(preparation?.value?.uploaded&&!preparation.value.released&&!preparation.value.canInspect)throw new RewardError('This uploaded review needs an independent current-file check before it is available.');
   const query = tx.select().from(rewardUnit).where(eq(rewardUnit.id, unitId));
   const [unit] = await (lock ? query.for('update') : query);
   if (!unit || unit.deletedAt) throw new RewardError('Reward unit not found or access has been removed.');
