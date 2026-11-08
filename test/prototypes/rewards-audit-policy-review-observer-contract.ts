@@ -13,3 +13,13 @@ export function reviewObservationNativeBody(source:string){
  if(!body.startsWith('\nDECLARE ')||!tail.slice(body.length-4).startsWith(end))throw Error('Exact test observer source required');
  return body;
 }
+
+import {controlledPolicyWait} from './rewards-audit-policy-controlled-wait';
+/** Open/work are new admissions; rollback is mandatory cleanup after real open. */
+export async function runReviewObservationRefusal(signal:AbortSignal,open:()=>PromiseLike<unknown>,work:()=>PromiseLike<unknown>,verify:(error:unknown)=>void,rollback:()=>Promise<void>,poison:(error:Error)=>void){
+ signal.throwIfAborted();await open();
+ await controlledPolicyWait(poison).run(async()=>{
+  signal.throwIfAborted();let error:unknown;try{await work();}catch(caught){error=caught;}
+  signal.throwIfAborted();verify(error);
+ },rollback);
+}

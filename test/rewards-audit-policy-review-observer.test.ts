@@ -29,7 +29,7 @@ it('keeps the port outside app business SQL, denies raw private reads on both si
  const helper=readFileSync('test/prototypes/rewards-audit-policy-review-observer.ts','utf8'),cases=readFileSync('test/prototypes/rewards-audit-policy-native-cases.ts','utf8');
  expect(source).toContain('STABLE SECURITY DEFINER');expect(source).not.toMatch(/\bEXECUTE\s+(?:format|p_)/i);
  expect(source).toContain('x.backend_started_at=(SELECT backend_start FROM pg_stat_activity WHERE pid=pg_backend_pid())AND x.root_xid=pg_current_xact_id()');
- expect(helper).toContain('await privateDenied(tx,reviewId,action)');expect(helper.match(/await privateDenied\(tx,reviewId,action\)/g)).toHaveLength(3);
+ expect(helper).toContain('await privateDenied(tx,reviewId,action,signal)');expect(helper.match(/await privateDenied\(tx,reviewId,action,signal\)/g)).toHaveLength(3);
  expect(helper).toContain('await tx`rollback to savepoint owned_observer_constructor`');
  expect(helper).toContain('revoke execute on function reward_policy_test.read_review(uuid,text)from ai_hr_app');
  const calls=Array.from(cases.matchAll(/nativeIt\((\d+),/g),match=>Number(match[1]));expect(calls).toEqual(Array.from({length:24},(_,index)=>index));
@@ -45,4 +45,18 @@ it('separates test PRE observation failures from canonical owners while preservi
  await expect(diagnostic.callback('catalogue-test-pre',()=>Promise.reject(native))).rejects.toBe(native);await diagnostic.drain();
  expect(diagnostic.snapshot()).toEqual({kind:'UNINSTALLED_REWARDS_POLICY_FAILURE_DIAGNOSTIC',releaseAuthorized:false,complete:true,observations:[{kind:'callback-returned',phase:'bank-test-pre'},{kind:'callback-refused',phase:'catalogue-test-pre',sqlstate:'42501'}]});
  expect(JSON.stringify(diagnostic.snapshot())).not.toContain('private');
+});
+
+import {runReviewObservationRefusal} from './prototypes/rewards-audit-policy-review-observer-contract';
+it('abort during real-open admission prevents negative work and waits for unconditional rollback before settling',async()=>{
+ const abort=new AbortController(),primary=Error('owned abort');let open!:()=>void,rollback!:()=>void,entered!:()=>void,rolling!:()=>void;
+ const started=new Promise<void>(done=>{entered=done;}),rollbackStarted=new Promise<void>(done=>{rolling=done;}),events:string[]=[];
+ const pending=runReviewObservationRefusal(abort.signal,()=>{entered();return new Promise<void>(done=>{open=done;});},async()=>{events.push('forbidden-work');},()=>{events.push('forbidden-verify');},()=>{events.push('rollback');rolling();return new Promise<void>(done=>{rollback=done;});},()=>{});
+ let settled=false;const outcome=pending.catch(error=>{settled=true;return error;});await started;abort.abort(primary);open();await rollbackStarted;expect(settled).toBe(false);expect(events).toEqual(['rollback']);rollback();expect(await outcome).toBe(primary);
+});
+it('abort after an actual expected failure blocks another refusal while rollback failure retains both identities and poisons admission',async()=>{
+ const abort=new AbortController(),primary=Error('owned abort'),cleanup=Error('rollback uncertainty'),native=Object.assign(Error('actual native model'),{code:'42501'}),poisoned:Error[]=[];let work=0,verify=0,opens=0;
+ const failure=await runReviewObservationRefusal(abort.signal,async()=>{opens++;},async()=>{work++;abort.abort(primary);throw native;},()=>{verify++;},async()=>{throw cleanup;},error=>poisoned.push(error)).then(()=>undefined,error=>error);
+ expect(failure).toBeInstanceOf(AggregateError);expect(failure.errors).toContain(primary);expect(failure.errors).toContain(cleanup);expect(poisoned).toHaveLength(1);expect(verify).toBe(0);
+ await expect(runReviewObservationRefusal(abort.signal,async()=>{opens++;},async()=>{work++;},()=>{},async()=>{},()=>{})).rejects.toBe(primary);expect(opens).toBe(1);expect(work).toBe(1);
 });

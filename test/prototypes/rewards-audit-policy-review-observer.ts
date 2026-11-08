@@ -1,6 +1,7 @@
 /** Disposable TEST capability only. Never imported by an application service. */
 import {readFileSync} from 'node:fs';
 import {randomUUID} from 'node:crypto';
+import {isDeepStrictEqual} from 'node:util';
 import {sql} from 'drizzle-orm';
 import {expect} from 'vitest';
 import {z} from 'zod';
@@ -9,7 +10,7 @@ import type {SessionContext,Tx} from '../../db/client';
 import {pgSqlState} from '../../lib/db-error';
 import type {RewardsAuditOwnerDependencies} from './rewards-audited-read-owner-factory';
 import {controlledPolicyWait} from './rewards-audit-policy-controlled-wait';
-import {reviewObservationNativeBody,reviewObservationScope,reviewObservationRoot,reviewObservationResult,type ReviewObservationAction} from './rewards-audit-policy-review-observer-contract';
+import {reviewObservationNativeBody,reviewObservationScope,reviewObservationRoot,reviewObservationResult,runReviewObservationRefusal,type ReviewObservationAction} from './rewards-audit-policy-review-observer-contract';
 
 const source=readFileSync('test/prototypes/rewards-audit-policy-review-observer.sql','utf8');
 const functionBody=reviewObservationNativeBody(source);
@@ -18,14 +19,15 @@ type Root=z.infer<typeof reviewObservationRoot>;
 const snapshotSchema=z.object({schemas:z.array(z.unknown()).length(2),functions:z.array(z.unknown()).length(1),relations:z.array(z.unknown()).length(2),dependencies:z.array(z.unknown()),shared:z.array(z.unknown())}).strict();
 type Snapshot=z.infer<typeof snapshotSchema>;
 
-export async function createRewardPolicyReviewObserver(owner:RewardsAuditOwnerDependencies['owner'],database:string,poison:(error:Error)=>void){
+export async function createRewardPolicyReviewObserver(owner:RewardsAuditOwnerDependencies['owner'],database:string,poison:(error:Error)=>void,constructorSignal:AbortSignal){
  let expected:Snapshot|undefined,closed=false,installationObserved=false;
  const bindings=new Map<string,Root>(),proved=new Set<Action>();
+ let mutation:{kind:'execute'|'cost';next?:Snapshot}|undefined;
  async function namespaces(){const [row]=await owner.client`select to_regnamespace('reward_policy_test')is not null as exposed,to_regnamespace('reward_policy_test_private')is not null as private`;return row;}
- async function business(tx:ISql){const [row]=await tx`select reward_audit_private.relation_metadata('app.assistant_own_leave_review'::regclass)as value`;return row.value;}
+ async function business(tx:ISql,signal?:AbortSignal){signal?.throwIfAborted();const [row]=await tx`select reward_audit_private.relation_metadata('app.assistant_own_leave_review'::regclass)as value`;return row.value;}
  const originalBusiness=await business(owner.client);
- async function image(tx:ISql):Promise<Snapshot>{
-  const [row]=await tx`select
+ async function image(tx:ISql,signal?:AbortSignal):Promise<Snapshot>{
+  signal?.throwIfAborted();const [row]=await tx`select
    (select jsonb_agg(to_jsonb(n)order by n.nspname)from pg_namespace n where n.nspname in('reward_policy_test','reward_policy_test_private'))as schemas,
    (select jsonb_agg(to_jsonb(p)order by p.oid)from pg_proc p where p.pronamespace in('reward_policy_test'::regnamespace,'reward_policy_test_private'::regnamespace))as functions,
    (select jsonb_agg(jsonb_build_object('name',r.oid::regclass::text,'details',reward_audit_private.relation_metadata(r.oid))order by r.oid)from pg_class r where r.relnamespace in('reward_policy_test'::regnamespace,'reward_policy_test_private'::regnamespace)and r.relkind not in('i','I'))as relations,
@@ -33,14 +35,14 @@ export async function createRewardPolicyReviewObserver(owner:RewardsAuditOwnerDe
    (select coalesce(jsonb_agg(to_jsonb(d)order by d.dbid,d.classid,d.objid,d.objsubid,d.refclassid,d.refobjid,d.deptype),'[]'::jsonb)from pg_shdepend d where d.dbid=(select oid from pg_database where datname=current_database())and d.classid='pg_proc'::regclass and d.objid='reward_policy_test.read_review(uuid,text)'::regprocedure)as shared`;
   return snapshotSchema.parse(row);
  }
- async function install(tx:TransactionSql){
-  await tx`select set_config('aihr.reward_policy_observer.database',${database},true)`;
-  await tx.unsafe(source);
-  const [native]=await tx`select p.prosrc as body,p.prosecdef as definer,p.provolatile as volatility,p.proconfig as settings,
+ async function install(tx:TransactionSql,signal:AbortSignal){
+  signal.throwIfAborted();await tx`select set_config('aihr.reward_policy_observer.database',${database},true)`;
+  signal.throwIfAborted();await tx.unsafe(source);
+  signal.throwIfAborted();const [native]=await tx`select p.prosrc as body,p.prosecdef as definer,p.provolatile as volatility,p.proconfig as settings,
    p.proargnames as names,pg_get_function_result(p.oid)as result,p.proowner=(select relowner from pg_class where oid='public.domain_event'::regclass)as native_owner
    from pg_proc p where p.oid='reward_policy_test.read_review(uuid,text)'::regprocedure`;
   expect(native).toEqual({body:functionBody,definer:true,volatility:'s',settings:['search_path=pg_catalog, pg_temp'],names:['p_review','p_action'],result:'jsonb',native_owner:true});
-  const [acl]=await tx`select
+  signal.throwIfAborted();const [acl]=await tx`select
    has_schema_privilege('ai_hr_app','reward_policy_test','USAGE')as schema_usage,
    has_schema_privilege('ai_hr_app','reward_policy_test_private','USAGE')as private_usage,
    has_function_privilege('ai_hr_app','reward_policy_test.read_review(uuid,text)','EXECUTE')as execute,
@@ -51,18 +53,18 @@ export async function createRewardPolicyReviewObserver(owner:RewardsAuditOwnerDe
    not exists(select 1 from pg_class r where r.relnamespace='reward_policy_test_private'::regnamespace and(has_table_privilege('ai_hr_app',r.oid,'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER')or has_any_column_privilege('ai_hr_app',r.oid,'SELECT,INSERT,UPDATE,REFERENCES')))as private_tables_denied,
    not has_column_privilege('ai_hr_app','app.assistant_own_leave_review','bank_audit_preimage','SELECT')and not has_column_privilege('ai_hr_app','app.assistant_own_leave_review','catalogue_audit_preimage','SELECT')and not has_column_privilege('ai_hr_app','app.assistant_own_leave_review','catalogue_native_phase','SELECT')as original_private_columns_denied`;
   expect(acl).toEqual({schema_usage:true,private_usage:false,execute:true,exact_acl:true,exact_schemas:true,owner_only_tables:true,dedicated_roles_denied:true,private_tables_denied:true,original_private_columns_denied:true});
-  await tx`insert into reward_policy_test_private.config values(true,current_database(),current_user::regrole::oid,'ai_hr_app'::regrole::oid,false,
+  signal.throwIfAborted();await tx`insert into reward_policy_test_private.config values(true,current_database(),current_user::regrole::oid,'ai_hr_app'::regrole::oid,false,
    (select to_jsonb(p)from pg_proc p where p.oid='reward_policy_test.read_review(uuid,text)'::regprocedure),
    (select to_jsonb(p)from pg_proc p where p.oid='reward_audit_private.relation_metadata(oid)'::regprocedure),
    (select jsonb_agg(to_jsonb(n)order by n.nspname)from pg_namespace n where n.nspname in('reward_policy_test','reward_policy_test_private')),
    (select jsonb_agg(jsonb_build_object('name',r.oid::regclass::text,'details',reward_audit_private.relation_metadata(r.oid))order by r.oid)from pg_class r where r.relnamespace in('reward_policy_test'::regnamespace,'reward_policy_test_private'::regnamespace)and r.relkind not in('i','I'))) `;
-  await tx`update reward_policy_test_private.config set enabled=true`;
-  expect(await business(tx)).toEqual(originalBusiness);return image(tx);
+  signal.throwIfAborted();await tx`update reward_policy_test_private.config set enabled=true`;
+  expect(await business(tx,signal)).toEqual(originalBusiness);return image(tx,signal);
  }
  async function assertImage(){if(closed||!expected)throw Error('Owned test observer is closed');expect(await image(owner.client)).toEqual(expected);expect(await business(owner.client)).toEqual(originalBusiness);}
  async function clear(){
   await assertImage();
-  const [row]=await owner.client`select not exists(select 1 from reward_policy_test_private.binding b join pg_stat_activity a on a.pid=b.backend_pid and a.backend_start=b.backend_started_at and a.datname=${database} join pg_locks l on l.pid=a.pid where l.locktype='transactionid'and l.granted and l.mode='ExclusiveLock'and l.transactionid=b.root_xid::xid)as settled`;
+  const [row]=await owner.client`with roots as(select backend_pid as pid,backend_started_at as started,root_xid as xid from reward_policy_test_private.binding union select r.pid,r.started::timestamptz,r.xid::xid8 from jsonb_to_recordset(${JSON.stringify([...bindings.values()])}::text::jsonb)as r(pid integer,started text,xid text))select not exists(select 1 from roots b join pg_stat_activity a on a.pid=b.pid and a.backend_start=b.started and a.datname=${database} join pg_locks l on l.pid=a.pid where l.locktype='transactionid'and l.granted and l.mode='ExclusiveLock'and l.transactionid=b.xid::xid)as settled`;
   expect(row.settled,'actual native observed root transactions must settle before fixture reset').toBe(true);
   await owner.client`delete from reward_policy_test_private.binding`;bindings.clear();
  }
@@ -70,7 +72,7 @@ export async function createRewardPolicyReviewObserver(owner:RewardsAuditOwnerDe
   const actual=await namespaces();
   if(actual.exposed===false&&actual.private===false){if(installationObserved&&!closed)throw Error('Owned test observer disappeared before cleanup');closed=true;return;}
   if(!expected)throw Error('Unknown test observer installation; retained');
-  await clear();
+  await restoreMutation();await clear();
   await owner.client.begin(async tx=>{
    expect(await image(tx)).toEqual(expected);expect(await business(tx)).toEqual(originalBusiness);
    await tx`drop function reward_policy_test.read_review(uuid,text)`;
@@ -83,14 +85,42 @@ export async function createRewardPolicyReviewObserver(owner:RewardsAuditOwnerDe
  try{
   expect(await namespaces()).toEqual({exposed:false,private:false});
   await owner.client.begin(async tx=>{
-   await tx`savepoint owned_observer_constructor`;
-   await install(tx);await tx`rollback to savepoint owned_observer_constructor`;await tx`release savepoint owned_observer_constructor`;
+   constructorSignal.throwIfAborted();await tx`savepoint owned_observer_constructor`;
+   await controlledPolicyWait(poison).run(async()=>{await install(tx,constructorSignal);},async()=>{await tx`rollback to savepoint owned_observer_constructor`;await tx`release savepoint owned_observer_constructor`;});
+   constructorSignal.throwIfAborted();
    const [absent]=await tx`select to_regnamespace('reward_policy_test')is null and to_regnamespace('reward_policy_test_private')is null as absent`;
-   expect(absent.absent).toBe(true);expect(await business(tx)).toEqual(originalBusiness);
-   expected=await install(tx); // complete native intent BEFORE possible COMMIT
+   expect(absent.absent).toBe(true);expect(await business(tx,constructorSignal)).toEqual(originalBusiness);
+   expected=await install(tx,constructorSignal); // complete native intent BEFORE possible COMMIT
   });
-  await assertImage();installationObserved=true;
+  constructorSignal.throwIfAborted();await assertImage();constructorSignal.throwIfAborted();installationObserved=true;
  }catch(error){await controlledPolicyWait(poison).run(async()=>{throw error;},close);throw error;}
+ async function startMutation(kind:'execute'|'cost',signal:AbortSignal){
+  signal.throwIfAborted();await assertImage();signal.throwIfAborted();
+  if(mutation)throw Error('Previous native observer mutation has not restored');
+  const intent:{kind:'execute'|'cost';next?:Snapshot}={kind};mutation=intent;
+  await owner.client.begin(async tx=>{
+   expect(await image(tx,signal)).toEqual(expected);signal.throwIfAborted();
+   if(kind==='execute')await tx`revoke execute on function reward_policy_test.read_review(uuid,text)from ai_hr_app`;
+   else await tx`alter function reward_policy_test.read_review(uuid,text)cost 101`;
+   signal.throwIfAborted();intent.next=await image(tx,signal); // full native intent BEFORE possible COMMIT
+   signal.throwIfAborted();
+  });
+ }
+ async function restoreMutation(){
+  const intent=mutation;if(!intent)return;
+  if(!expected)throw Error('Native observer restore preimage absent');
+  const actual=await image(owner.client);
+  if(isDeepStrictEqual(actual,expected)){mutation=undefined;return;}
+  if(!intent.next)throw Error('Unknown observer mutation postimage; retained');
+  expect(actual).toEqual(intent.next);
+  await owner.client.begin(async tx=>{
+   expect(await image(tx)).toEqual(intent.next);
+   if(intent.kind==='execute')await tx`grant execute on function reward_policy_test.read_review(uuid,text)to ai_hr_app`;
+   else await tx`alter function reward_policy_test.read_review(uuid,text)cost 100`;
+   expect(await image(tx)).toEqual(expected);
+  });
+  await assertImage();mutation=undefined;
+ }
  async function bind(tx:Tx,ctx:SessionContext,reviewId:string,action:Action,signal:AbortSignal){
   signal.throwIfAborted();await assertImage();signal.throwIfAborted();
   const scope=reviewObservationScope.parse({tenantId:ctx.tenantId,userId:ctx.userId,reviewId,action});
@@ -106,16 +136,14 @@ export async function createRewardPolicyReviewObserver(owner:RewardsAuditOwnerDe
   }
   signal.throwIfAborted();return root;
  }
- async function read(tx:Tx,reviewId:string,action:Action){const [row]=await tx.execute(sql`select reward_policy_test.read_review(${reviewId}::uuid,${action}::text)as value`);return reviewObservationResult.parse(row?.value);}
- async function refused(tx:Tx,work:()=>Promise<unknown>,code='42501'){
-  await tx.execute(sql`savepoint owned_test_observer_refusal`);
-  await controlledPolicyWait(poison).run(async()=>{
-   let error:unknown;try{await work();}catch(caught){error=caught;}
+ async function read(tx:Tx,reviewId:string,action:Action,signal:AbortSignal){signal.throwIfAborted();const [row]=await tx.execute(sql`select reward_policy_test.read_review(${reviewId}::uuid,${action}::text)as value`);signal.throwIfAborted();return reviewObservationResult.parse(row?.value);}
+ async function refused(tx:Tx,signal:AbortSignal,work:()=>Promise<unknown>,code='42501'){
+  await runReviewObservationRefusal(signal,()=>tx.execute(sql`savepoint owned_test_observer_refusal`),work,error=>{
    expect(error,'the actual native statement must refuse').toBeDefined();expect(pgSqlState(error)).toBe(code);
-  },async()=>{await tx.execute(sql`rollback to savepoint owned_test_observer_refusal`);await tx.execute(sql`release savepoint owned_test_observer_refusal`);});
+  },async()=>{await tx.execute(sql`rollback to savepoint owned_test_observer_refusal`);await tx.execute(sql`release savepoint owned_test_observer_refusal`);},poison);
  }
- async function privateDenied(tx:Tx,reviewId:string,action:Action){
-  await refused(tx,()=>tx.execute(action==='employees.bank.maintain'
+ async function privateDenied(tx:Tx,reviewId:string,action:Action,signal:AbortSignal){
+  await refused(tx,signal,()=>tx.execute(action==='employees.bank.maintain'
    ?sql`select bank_audit_preimage from app.assistant_own_leave_review where id=${reviewId}::uuid`
    :sql`select catalogue_native_phase,catalogue_audit_preimage from app.assistant_own_leave_review where id=${reviewId}::uuid`));
  }
@@ -125,16 +153,16 @@ export async function createRewardPolicyReviewObserver(owner:RewardsAuditOwnerDe
   expect(foreignScope.tenantId).not.toBe(ctx.tenantId);expect(foreignScope.userId).not.toBe(ctx.userId);
   const [realForeign]=await owner.client`select exists(select 1 from public.app_user where id=${foreignScope.userId}::uuid and tenant_id=${foreignScope.tenantId}::uuid and archived_at is null)as actual`;
   expect(realForeign.actual).toBe(true);
-  await refused(tx,()=>read(tx,randomUUID(),action));
-  await refused(tx,()=>read(tx,reviewId,action==='employees.bank.maintain'?'org.position.archive':'employees.bank.maintain'));
-  await refused(tx,()=>tx.execute(sql`select reward_policy_test.read_review(null,${action}::text)`));
-  await refused(tx,()=>tx.execute(sql`select reward_policy_test.read_review(${'not-a-uuid'}::uuid,${action}::text)`),'22P02');
-  await refused(tx,async()=>{await tx.execute(sql`select set_config('app.user_id',${foreignScope.userId},true)`);return read(tx,reviewId,action);});
-  await refused(tx,async()=>{
-   await tx.execute(sql`select set_config('app.tenant_id',${foreignScope.tenantId},true),set_config('app.user_id',${foreignScope.userId},true)`);
-   const [actual]=await tx.execute(sql`select app.principal_snapshot_current()as current`);expect(actual.current).toBe(true);return read(tx,reviewId,action);
+  await refused(tx,signal,()=>read(tx,randomUUID(),action,signal));
+  await refused(tx,signal,()=>read(tx,reviewId,action==='employees.bank.maintain'?'org.position.archive':'employees.bank.maintain',signal));
+  await refused(tx,signal,()=>tx.execute(sql`select reward_policy_test.read_review(null,${action}::text)`));
+  await refused(tx,signal,()=>tx.execute(sql`select reward_policy_test.read_review(${'not-a-uuid'}::uuid,${action}::text)`),'22P02');
+  await refused(tx,signal,async()=>{await tx.execute(sql`select set_config('app.user_id',${foreignScope.userId},true)`);signal.throwIfAborted();return read(tx,reviewId,action,signal);});
+  await refused(tx,signal,async()=>{
+   await tx.execute(sql`select set_config('app.tenant_id',${foreignScope.tenantId},true),set_config('app.user_id',${foreignScope.userId},true)`);signal.throwIfAborted();
+   const [actual]=await tx.execute(sql`select app.principal_snapshot_current()as current`);signal.throwIfAborted();expect(actual.current).toBe(true);return read(tx,reviewId,action,signal);
   });
-  await refused(tx,async()=>{await tx.execute(sql`set local role ai_hr_app`);return read(tx,reviewId,action);});
+  await refused(tx,signal,async()=>{await tx.execute(sql`set local role ai_hr_app`);signal.throwIfAborted();return read(tx,reviewId,action,signal);});
   const restoreBinding=async()=>{
    expect(await owner.client`update reward_policy_test_private.binding set backend_pid=${root.pid},backend_started_at=${root.started}::text::timestamptz,root_xid=${root.xid}::text::xid8 where review_id=${reviewId}::uuid returning review_id`).toHaveLength(1);
   };
@@ -144,33 +172,32 @@ export async function createRewardPolicyReviewObserver(owner:RewardsAuditOwnerDe
     const changed=field==='pid'?await owner.client`update reward_policy_test_private.binding set backend_pid=pg_backend_pid()where review_id=${reviewId}::uuid returning backend_pid<>${root.pid}as distinct_identity`
      :field==='start'?await owner.client`update reward_policy_test_private.binding set backend_started_at=(select backend_start from pg_stat_activity where pid=pg_backend_pid())where review_id=${reviewId}::uuid returning backend_started_at<>${root.started}::text::timestamptz as distinct_identity`
      :await owner.client`update reward_policy_test_private.binding set root_xid=pg_current_xact_id()where review_id=${reviewId}::uuid returning root_xid<>${root.xid}::text::xid8 as distinct_identity`;
-    expect(Array.from(changed)).toEqual([{distinct_identity:true}]);signal.throwIfAborted();await refused(tx,()=>read(tx,reviewId,action));
+    expect(Array.from(changed)).toEqual([{distinct_identity:true}]);signal.throwIfAborted();await refused(tx,signal,()=>read(tx,reviewId,action,signal));
    },restoreBinding);
   }
   signal.throwIfAborted();await controlledPolicyWait(poison).run(async()=>{
-   await owner.client`revoke execute on function reward_policy_test.read_review(uuid,text)from ai_hr_app`;
-   signal.throwIfAborted();await refused(tx,()=>read(tx,reviewId,action));
-  },async()=>{await owner.client`grant execute on function reward_policy_test.read_review(uuid,text)to ai_hr_app`;await assertImage();});
+   await startMutation('execute',signal);signal.throwIfAborted();await refused(tx,signal,()=>read(tx,reviewId,action,signal));
+  },restoreMutation);
   signal.throwIfAborted();await controlledPolicyWait(poison).run(async()=>{
-   await owner.client`alter function reward_policy_test.read_review(uuid,text)cost 101`;
-   signal.throwIfAborted();await refused(tx,()=>read(tx,reviewId,action),'55000');
-  },async()=>{await owner.client`alter function reward_policy_test.read_review(uuid,text)cost 100`;await assertImage();});
+   await startMutation('cost',signal);signal.throwIfAborted();await refused(tx,signal,()=>read(tx,reviewId,action,signal),'55000');
+  },restoreMutation);
+  signal.throwIfAborted();
   await owner.client.begin(async other=>{
-   await other`savepoint owned_observer_wrong_login`;
+   signal.throwIfAborted();await other`savepoint owned_observer_wrong_login`;
    await controlledPolicyWait(poison).run(async()=>{
-    let error:unknown;try{await other`select reward_policy_test.read_review(${reviewId}::uuid,${action}::text)`;}catch(caught){error=caught;}
-    expect(error).toBeDefined();expect(pgSqlState(error)).toBe('42501');
+    signal.throwIfAborted();let error:unknown;try{await other`select reward_policy_test.read_review(${reviewId}::uuid,${action}::text)`;}catch(caught){error=caught;}
+    signal.throwIfAborted();expect(error).toBeDefined();expect(pgSqlState(error)).toBe('42501');
    },async()=>{await other`rollback to savepoint owned_observer_wrong_login`;await other`release savepoint owned_observer_wrong_login`;});
   });
-  signal.throwIfAborted();await assertImage();await privateDenied(tx,reviewId,action);await read(tx,reviewId,action);proved.add(action);
+  signal.throwIfAborted();await assertImage();await privateDenied(tx,reviewId,action,signal);await read(tx,reviewId,action,signal);proved.add(action);
  }
  return{clear,close,assertImage,
   async observe(tx:Tx,ctx:SessionContext,reviewId:string,action:Action,signal:AbortSignal,foreign?:Readonly<{tenantId:string;userId:string}>){
-   signal.throwIfAborted();await privateDenied(tx,reviewId,action);signal.throwIfAborted();
+   signal.throwIfAborted();await privateDenied(tx,reviewId,action,signal);signal.throwIfAborted();
    const root=await bind(tx,ctx,reviewId,action,signal);signal.throwIfAborted();
    if(foreign&&!proved.has(action))await prove(tx,ctx,reviewId,action,root,foreign,signal);
-   signal.throwIfAborted();const value=await read(tx,reviewId,action);
-   signal.throwIfAborted();await privateDenied(tx,reviewId,action);signal.throwIfAborted();return value;
+   signal.throwIfAborted();const value=await read(tx,reviewId,action,signal);
+   signal.throwIfAborted();await privateDenied(tx,reviewId,action,signal);signal.throwIfAborted();return value;
   },
  };
 }

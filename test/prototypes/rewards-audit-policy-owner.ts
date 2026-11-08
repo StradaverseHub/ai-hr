@@ -148,7 +148,7 @@ export async function rewardsAuditPolicyFixtureOwner(dependencies:RewardsAuditOw
    await tx`insert into reward_audit_policy_private.relation_contract select c.oid,reward_audit_private.relation_metadata(c.oid)from pg_class c where c.relnamespace='reward_audit_policy_private'::regnamespace or c.oid in('reward_audit_private.receipt'::regclass,'reward_audit_private.admission'::regclass)`;
    await tx`insert into reward_audit_policy_private.trigger_contract select t.oid,to_jsonb(t)from pg_trigger t where t.tgrelid in(select object_oid from reward_audit_policy_private.relation_contract)`;
    await tx`update reward_audit_policy_private.config set enabled=true`;await tx`select reward_audit_policy_private.assert_profile()`;
-  });installed=true;observer=await createRewardPolicyReviewObserver(owner,base.database,poison);
+  });installed=true;observer=await createRewardPolicyReviewObserver(owner,base.database,poison,control.signal);
  }catch(error){await controlledPolicyWait(poison).run(async()=>{throw error;},closeOwned);throw error;}
  return{
   ...base,
