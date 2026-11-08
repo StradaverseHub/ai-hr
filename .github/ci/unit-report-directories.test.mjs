@@ -1,7 +1,7 @@
 /** Real filesystem report-inventory controls, not native/API/test acceptance. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtempSync,mkdirSync,writeFileSync,rmSync,symlinkSync,linkSync,renameSync,truncateSync,chmodSync,realpathSync} from 'node:fs';
+import {mkdtempSync,mkdirSync,writeFileSync,rmSync,rmdirSync,symlinkSync,linkSync,renameSync,truncateSync,chmodSync,realpathSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {createHash} from 'node:crypto';
@@ -23,7 +23,7 @@ test('full inventory retains ordinary, browser, legacy native and employee units
 }));
 test('full mode requires exactly every planned artifact directory and never ignores a foreign substitute',()=>fixture(root=>{
  make(root,ordinary);refused(()=>read(root,[ordinary,browser]));make(root,browser);read(root,[ordinary,browser]);mkdirSync(join(root,'unit-foreign'));refused(()=>read(root,[ordinary,browser]));
- rmSync(join(root,'unit-foreign'));renameSync(folder(root,browser,'full'),join(root,'unit-foreign'));refused(()=>read(root,[ordinary,browser]));
+ rmdirSync(join(root,'unit-foreign'));renameSync(folder(root,browser,'full'),join(root,'unit-foreign'));refused(()=>read(root,[ordinary,browser]));
 }));
 test('commissioning admits only a selected subset and the actual summary retains missing instead of verified',()=>fixture(root=>{
  const plan={sha:'a'.repeat(40),controller:'b'.repeat(40),migrationBase:'c'.repeat(40),fingerprint:'d'.repeat(64),units:[employee]},selection=selectCommissioning(plan,[employee.id]);
@@ -51,7 +51,7 @@ test('symlink root, artifact directory, report and ancillary member cannot be fo
  rmSync(path,{recursive:true});symlinkSync(foreign,path);refused(()=>read(directory,[ordinary]));
 }));
 test('hardlinked, directory-shaped, empty or oversized matching reports refuse without loading oversized contents',()=>fixture(root=>{
- const path=make(root,ordinary),report=join(path,'unit-'+ordinary.id+'.json'),alias=join(path,'aliased.json');linkSync(report,alias);refused(()=>read(root,[ordinary]));rmSync(alias);rmSync(report);mkdirSync(report);refused(()=>read(root,[ordinary]));rmSync(report);writeFileSync(report,'');refused(()=>read(root,[ordinary]));truncateSync(report,UNIT_REPORT_DIRECTORY_BOUNDS.memberBytes+1);refused(()=>read(root,[ordinary]));
+ const path=make(root,ordinary),report=join(path,'unit-'+ordinary.id+'.json'),alias=join(path,'aliased.json');linkSync(report,alias);refused(()=>read(root,[ordinary]));rmSync(alias);rmSync(report);mkdirSync(report);refused(()=>read(root,[ordinary]));rmdirSync(report);writeFileSync(report,'');refused(()=>read(root,[ordinary]));truncateSync(report,UNIT_REPORT_DIRECTORY_BOUNDS.memberBytes+1);refused(()=>read(root,[ordinary]));
 }));
 test('malformed UTF8, JSON and an ID that differs from its exact report filename refuse',()=>fixture(root=>{
  const path=make(root,ordinary),report=join(path,'unit-'+ordinary.id+'.json');
