@@ -150,6 +150,7 @@ class NextRuntime:
         self.value, self.secure_path, self.require, self.uid = value, secure_path, require, uid
         self.package_trees = {}
         self.verified = {}
+        self.cache_views = {}
         closed(value['trustedModules'], {'next_profile.py', 'runtime_inventory.py'}, require)
         self.inventory = load_verified_module(helper_directory, 'runtime_inventory.py',
             value['trustedModules']['runtime_inventory.py'], secure_path, require, uid)
@@ -369,12 +370,17 @@ class NextRuntime:
         root, require = pathlib.Path(spec['releaseDirectory']), self.require
         self.metadata_current()
         if str(root) in self.verified:
+            view = immutable_cache_view(str(root), self.package_trees[str(root)], self.value['unitCacheMounts'],
+                next(iter(self.value['units'].values()))['workerUid'], require, self.secure_path, self.uid)
+            require(view == self.cache_views[str(root)], 'Native cache view changed during controller operation')
             self.package_trees[str(root)].assert_unchanged()
             return self.verified[str(root)]
         self.secure_path(root, self.uid, directory=True)
         tree = self.inventory.PinnedTree(root, require)
         self.package_trees[str(root)] = tree
         try:
+            cache_view = immutable_cache_view(str(root), tree, self.value['unitCacheMounts'],
+                next(iter(self.value['units'].values()))['workerUid'], require, self.secure_path, self.uid)
             observed = {}
             def walk(base=''):
                 with tree.directory(base) as directory:
@@ -385,11 +391,10 @@ class NextRuntime:
                         relative(key, require)
                         before = os.stat(name, dir_fd=directory, follow_symlinks=False)
                         if key in CACHE_TARGETS:
-                            require(stat.S_ISDIR(before.st_mode) and before.st_uid == self.uid
-                                    and not stat.S_IMODE(before.st_mode) & 0o022,
-                                    'Unsafe immutable cache mountpoint')
-                            with tree.directory(key) as cache:
-                                require(not os.listdir(cache), 'Cold immutable cache mountpoint is not empty')
+                            # Host placeholders and actual overlays were independently
+                            # fenced above. Never inventory mutable cache contents or
+                            # pin their changing directory mtime as immutable code.
+                            require(key in cache_view['placeholders'], 'Missing native cache placeholder proof')
                             continue
                         require(key in self.rows and len(observed) < MAX_ENTRIES, 'Unknown managed package member')
                         wanted = self.rows[key]
@@ -421,10 +426,9 @@ class NextRuntime:
                                 require(before.st_size == wanted['size'] and h.hexdigest() == wanted['sha256'],
                                         'Managed package bytes differ')
             walk()
-            for cache in CACHE_TARGETS:
-                point = tree.metadata(cache)
-                require(stat.S_ISDIR(point.st_mode) and point.st_uid == self.uid
-                        and not stat.S_IMODE(point.st_mode) & 0o022, 'Missing or unsafe cache mountpoint')
+            require(immutable_cache_view(str(root), tree, self.value['unitCacheMounts'],
+                next(iter(self.value['units'].values()))['workerUid'], require, self.secure_path, self.uid)
+                == cache_view, 'Native cache view changed while hashing immutable code')
             require(set(observed) == set(self.rows), 'Incomplete managed package inventory')
             require(tree.read_bytes('.next/BUILD_ID', 1024).decode().strip() == self.value['build'],
                     'Managed package build differs')
@@ -448,6 +452,7 @@ class NextRuntime:
             result = {'entries': len(observed), 'root': (root.stat().st_dev, root.stat().st_ino),
                       'systemFiles': len(self.system_files), 'actionManifestSha256': self.rows.get('.next/server/server-reference-manifest.json', {}).get('sha256')}
             require(result['actionManifestSha256'] is not None, 'Immutable action manifest required')
+            self.cache_views[str(root)] = cache_view
             self.verified[str(root)] = result
             return result
         except BaseException:
@@ -818,6 +823,177 @@ def open_beneath(directory: int, name: str, require) -> int:
     except BaseException:
         os.close(current)
         raise
+
+
+@contextlib.contextmanager
+def system_manager_root(require, secure_path):
+    """One fixed kernel magic-link exception, never a caller-selected proc PID.
+
+    No namespace is entered and no capability is granted. Every subsequent
+    filesystem step is descriptor-relative and refuses symlinks. PID1 must be
+    the actual protected system manager, in its original root/mount namespace.
+    """
+    with contextlib.ExitStack() as stack:
+        secure_path(pathlib.Path('/proc/1'), 0, directory=True)
+        require(os.readlink('/proc/self') == str(os.getpid()), 'Native proc identity differs')
+        proc = os.open('/proc/1', os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+        stack.callback(os.close, proc)
+        require(os.fstat(proc).st_uid == 0, 'Native system manager proc owner differs')
+        def fixed(name, limit):
+            fd = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=proc)
+            try:
+                result = bytearray()
+                while len(result) <= limit:
+                    part = os.read(fd, min(4096, limit + 1 - len(result)))
+                    if not part:
+                        break
+                    result.extend(part)
+                require(len(result) <= limit, 'Native system manager facts exceed bound')
+                return bytes(result)
+            finally:
+                os.close(fd)
+        def start_token(raw):
+            require(raw.startswith(b'1 (systemd) '), 'PID1 is not the native root system manager')
+            fields = raw[len(b'1 (systemd) '):].split()
+            require(len(fields) >= 20 and fields[19].isdigit(), 'Native system manager start identity differs')
+            return fields[19]
+        started = start_token(fixed('stat', 65536))
+        require(b'\nUid:\t0\t0\t0\t0\n' in fixed('status', 65536),
+                'PID1 is not the native root system manager')
+        executable = pathlib.Path('/usr/lib/systemd/systemd')
+        secure_path(executable, 0)
+        # exe/root/ns/mnt are these exact kernel-maintained links, not an
+        # extension to secure_path or descriptor-relative symlink policy.
+        exe = os.open('exe', os.O_RDONLY | os.O_NONBLOCK, dir_fd=proc)
+        stack.callback(os.close, exe)
+        expected = executable.stat()
+        require(os.readlink('exe', dir_fd=proc) == str(executable)
+                and file_identity(os.fstat(exe)) == file_identity(expected),
+                'Native system manager executable differs')
+        namespace = os.open('ns/mnt', os.O_RDONLY, dir_fd=proc)
+        stack.callback(os.close, namespace)
+        ns = os.fstat(namespace)
+        require(os.readlink('root', dir_fd=proc) == '/', 'Native system manager root differs')
+        root = os.open('root', os.O_RDONLY | os.O_DIRECTORY, dir_fd=proc)
+        stack.callback(os.close, root)
+        identity = file_identity(os.fstat(root))
+        require(os.fstat(root).st_uid == 0 and not stat.S_IMODE(os.fstat(root).st_mode) & 0o022,
+                'Native system manager root is writable')
+        yield root, (ns.st_dev, ns.st_ino)
+        # stat includes mutable scheduling fields. Bind the non-reusable native
+        # start field, not incidental runtime counters from a busy PID1.
+        after = fixed('stat', 65536)
+        require(started == start_token(after)
+                and file_identity(os.stat('root', dir_fd=proc)) == identity
+                and (os.stat('ns/mnt', dir_fd=proc).st_dev, os.stat('ns/mnt', dir_fd=proc).st_ino)
+                == (ns.st_dev, ns.st_ino)
+                and file_identity(os.stat('exe', dir_fd=proc)) == file_identity(expected),
+                'Native system manager identity changed')
+
+
+def immutable_cache_view(release, tree, mounts_by_unit, worker_uid, require, secure_path, package_uid=0):
+    """Actual descriptor/mount observations; this does not authorize a profile.
+
+    The production caller supplies only its already closed protected profile.
+    The separate native conformance fixture supplies its owned synthetic tree.
+    """
+    own_proc = os.open('/proc/self', os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        mounts = parse_mountinfo(read_proc(own_proc, 'mountinfo', 4 * 1024 * 1024, require), require)
+    finally:
+        os.close(own_proc)
+    descendants = {row['target'] for row in mounts if row['target'].startswith(release + '/')}
+    expected_targets = {release + '/' + target for target in CACHE_TARGETS}
+    require(not descendants or descendants == expected_targets,
+            'Unknown or partial managed package overlay')
+    if not descendants:
+        # Host/CHECKONLY remains the original strict empty immutable package.
+        points = {}
+        for target in CACHE_TARGETS:
+            before = tree.metadata(target)
+            require(stat.S_ISDIR(before.st_mode) and before.st_uid == package_uid
+                    and stat.S_IMODE(before.st_mode) == 0o755,
+                    'Unsafe immutable cache mountpoint')
+            with tree.directory(target, record=False) as fd:
+                require(not os.listdir(fd), 'Cold immutable cache mountpoint is not empty')
+            points[target] = file_identity(before)
+        return {'overlaid': False, 'placeholders': points}
+    with contextlib.ExitStack() as stack:
+        host_root, host_namespace = stack.enter_context(system_manager_root(require, secure_path))
+        self_namespace = os.stat('/proc/self/ns/mnt')
+        require((self_namespace.st_dev, self_namespace.st_ino) != host_namespace,
+                'Cache overlays are not in a distinct service namespace')
+        require(package_uid == 0, 'Overlaid package must be protected by root')
+        host_release = os.dup(host_root)
+        try:
+            for part in pathlib.Path(release).parts[1:]:
+                child = os.open(part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=host_release)
+                os.close(host_release); host_release = child
+                info = os.fstat(host_release)
+                require(info.st_uid == 0 and not stat.S_IMODE(info.st_mode) & 0o022,
+                        'Native host package ancestor is not protected')
+        except BaseException:
+            os.close(host_release)
+            raise
+        stack.callback(os.close, host_release)
+        host_info = os.fstat(host_release)
+        visible = os.fstat(tree.fd)
+        require((visible.st_dev, visible.st_ino) == (host_info.st_dev, host_info.st_ino),
+                'Visible package differs from the native host package')
+        points = {}
+        for target in CACHE_TARGETS:
+            # Every host parent must retain the protected root ownership; a
+            # symlink, writable ancestor or app-owned placeholder is never cold.
+            current = os.dup(host_release)
+            try:
+                for part in target.split('/'):
+                    child = os.open(part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=current)
+                    os.close(current); current = child
+                    info = os.fstat(current)
+                    require(info.st_uid == 0 and not stat.S_IMODE(info.st_mode) & 0o022,
+                            'Unsafe native host cache ancestor')
+                info = os.fstat(current)
+                require(stat.S_IMODE(info.st_mode) == 0o755 and not os.listdir(current),
+                        'Cold native host cache mountpoint differs')
+                points[target] = file_identity(info)
+            finally:
+                os.close(current)
+        observed = {}
+        for target in CACHE_TARGETS:
+            with tree.directory(target, record=False) as fd:
+                info = os.fstat(fd)
+                observed[target] = {'device': info.st_dev, 'inode': info.st_ino, 'uid': info.st_uid,
+                    'mode': stat.S_IMODE(info.st_mode), 'readOnly': bool(os.fstatvfs(fd).f_flag & os.ST_RDONLY)}
+        matches = []
+        for unit, rows in mounts_by_unit.items():
+            require(isinstance(rows, list) and len(rows) == 3
+                    and [row['target'] for row in rows] == list(CACHE_TARGETS),
+                    'Closed cache declarations required')
+            sources = {}
+            for row in rows:
+                source = pathlib.Path(row['source'])
+                secure_path(source.parent, 0, directory=True)
+                before = source.lstat()
+                require(stat.S_ISDIR(before.st_mode) and before.st_uid == worker_uid
+                        and stat.S_IMODE(before.st_mode) == 0o700,
+                        'Unsafe declared mutable cache source')
+                sources[row['target']] = (source, before)
+            if all((observed[target]['device'], observed[target]['inode'])
+                   == (before.st_dev, before.st_ino) for target, (_, before) in sources.items()):
+                proof = validate_namespace(mounts, release, (host_info.st_dev, host_info.st_ino),
+                    {'device': visible.st_dev, 'inode': visible.st_ino,
+                     'readOnly': bool(os.fstatvfs(tree.fd).f_flag & os.ST_RDONLY)},
+                    sources, observed, worker_uid, require)
+                matches.append((unit, proof))
+        require(len(matches) == 1, 'Visible cache sources do not match one exact protected unit')
+        return {'overlaid': True, 'placeholders': points, 'unit': matches[0][0], 'namespace': matches[0][1]}
+
+
+def require_owned_invocation(properties, expected, require):
+    """A native observation is checked against prior custody, never adopted here."""
+    require(isinstance(expected, str) and re.fullmatch(r'[0-9a-f]{32}', expected) is not None
+            and properties.get('InvocationID') == expected and properties.get('LoadState') == 'loaded',
+            'Unowned replacement invocation; preserve runtime')
 
 
 def read_proc(directory: int, name: str, limit: int, require) -> bytes:

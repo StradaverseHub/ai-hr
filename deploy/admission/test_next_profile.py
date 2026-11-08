@@ -102,6 +102,7 @@ class NextProfileTests(unittest.TestCase):
         self.format2['files'].sort(key=lambda row: row['path'])
         for cache in N.CACHE_TARGETS:
             (self.release / cache).mkdir(parents=True)
+            (self.release / cache).chmod(0o755)
         self.manifest = {'version': 1, 'source': 'a' * 40, 'build': 'source-model-build', 'runtime': N.RUNTIME,
             'node': {'path': str(self.node), 'sha256': sha(self.node.read_bytes())},
             'systemFiles': [{'path': '/usr/lib/aihr-synthetic-native.so', 'sha256': sha(b'synthetic-native')}],

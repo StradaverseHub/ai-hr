@@ -35,10 +35,11 @@ FIXTURE_CGROUP = '/aihr.slice/aihr-native.slice/aihr-native-next.slice'
 BROWSER = 'aihr-native-next-browser.service'
 ROOTS = ['/etc/aihr-admission', '/usr/local/lib/aihr-admission', '/etc/nginx/aihr-admission',
          '/run/aihr-admission', '/var/lib/aihr-admission', '/var/cache/aihr']
-owned_paths, owned_units = {}, {}
+owned_paths, owned_units, owned_invocations = {}, {}, {}
 created_home = False
 created_empty_parent = None
 browser = None
+managed_runtime_module = None
 report = {'version': 1, 'kind': 'ACTUAL_NEXT_TWO_WORKER_NATIVE_BOOT_ONLY', 'complete': False,
           'releaseEligible': False, 'fullApplicationJourneysVerified': False,
           'hostInstallationVerified': False, 'actualNextBootVerified': False,
@@ -1100,6 +1101,8 @@ class OwnedPostgresScope:
 
 
 def configure(plan, binding, N, release, runtime_package, postgres_scope):
+    global managed_runtime_module
+    managed_runtime_module = N
     phase('protected-native-configuration')
     configuration_phase('principal')
     nobody = pwd.getpwnam('nobody')
@@ -1259,7 +1262,7 @@ UMask=0077
     report['checkOnlyDidNotStartWorkers'] = True
     write(pathlib.Path('/run/aihr-admission/permit-' + UNITS[0]), b'owned cold gate\n')
     configuration_phase('proxy-start')
-    systemctl('start', PROXY, timeout=60)
+    owned_start(PROXY, timeout=60)
     configuration_phase('empty-publication')
     require(json.loads(configuration_control('status').stdout)['workers'] == [], 'Empty proxy unexpectedly published worker')
     report['configuration']['declarationsVerified'] = True
@@ -1304,11 +1307,13 @@ def browser_core(plan, binding, C):
         '--property=User=' + runner.pw_name, '--property=Group=' + str(plan['runnerGid']),
         '--property=MemoryMax=2G', '--property=MemorySwapMax=0', '--property=TasksMax=512',
         '--property=NoNewPrivileges=yes', '--property=KillMode=control-group',
+        '--property=TimeoutStopSec=3s', '--property=SendSIGKILL=yes', '--property=RuntimeMaxSec=300s',
         '--property=Description=Owned actual Next browser ' + plan['runId'],
         '--setenv=HOME=' + runner.pw_dir, '--setenv=PATH=/usr/bin:/bin', '--setenv=LANG=C.UTF-8',
         plan['nodePath'], '--max-old-space-size=512', driver, plan['browserInputPath']]
     browser = subprocess.Popen(args, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
         stderr=subprocess.DEVNULL, env=environment, start_new_session=True)
+    until(lambda: record_owned_invocation(BROWSER, transient=True), 'owned native browser invocation', seconds=5)
     expected = ['start-first', 'start-second-cold', 'admit-second', 'browser-core-finished']
     completed, first, second, proofs = [], None, None, []
     selector = selectors.DefaultSelector()
@@ -1331,12 +1336,12 @@ def browser_core(plan, binding, C):
             operation = expected[index]
             phase('actual-browser-' + operation)
             if operation == 'start-first':
-                systemctl('start', UNITS[0], timeout=90)
+                owned_start(UNITS[0], timeout=90)
                 first = until(lambda: ready(UNITS[0]), 'first actual Next worker READY')
                 proofs.append(native_worker(C, first, plan, binding))
                 result = {'port': first['port']}
             elif operation == 'start-second-cold':
-                systemctl('start', '--no-block', UNITS[1])
+                owned_start(UNITS[1], nonblocking=True)
                 second = until(lambda: cold(UNITS[1]), 'second actual Next healthy but unpublished')
                 require(second['port'] != first['port'], 'Cold endpoint reused current peer endpoint')
                 proofs.append(native_worker(C, second, plan, binding))
@@ -1407,8 +1412,9 @@ def release_workers(C):
     report['rawBindAndProcessFamilyBarriersPreserved'] = True
 
 
-def require_stopped(unit):
-    actual = props(unit)
+def require_stopped(unit, actual=None):
+    if actual is None:
+        actual = props(unit)
     require(actual.get('MainPID', '0') == '0' and actual.get('ControlPID', '0') == '0'
             and actual.get('ActiveState') in ('inactive', 'failed'), 'Owned runtime process remains; preserve package')
     group = actual.get('ControlGroup', '')
@@ -1430,47 +1436,225 @@ def require_stopped(unit):
                     pending.append(pathlib.Path(entry.path))
 
 
+def record_owned_invocation(unit, transient=False):
+    actual = props(unit)
+    invocation = actual.get('InvocationID', '')
+    if actual.get('LoadState') == 'not-found' or not invocation:
+        return False
+    require(re.fullmatch(r'[0-9a-f]{32}', invocation) is not None, 'Native owned invocation invalid')
+    if transient:
+        require(unit == BROWSER and browser is not None, 'No owned browser launch')
+        description = systemctl('show', unit, '--property=Description,Transient', timeout=2).stdout.decode()
+        require('Transient=yes\n' in description
+                and 'Description=Owned actual Next browser ' + report['runId'] + '\n' in description,
+                'Owned browser declaration differs')
+    else:
+        file = pathlib.Path('/etc/systemd/system', unit)
+        info = file.lstat()
+        require((info.st_dev, info.st_ino) == owned_units.get(unit) and info.st_uid == 0,
+                'Owned service declaration changed at invocation capture')
+    prior = owned_invocations.get(unit)
+    require(prior is None or prior == invocation, 'Owned native invocation unexpectedly changed')
+    owned_invocations[unit] = invocation
+    return True
+
+
+def owned_start(unit, *, timeout=30, nonblocking=False):
+    require(unit in [*UNITS, PROXY] and unit in owned_units, 'Closed owned service start required')
+    errors, result = [], None
+    try:
+        result = systemctl('start', *(['--no-block'] if nonblocking else []), unit, timeout=timeout)
+    except BaseException as error:
+        errors.append(error)
+    try:
+        if nonblocking:
+            until(lambda: record_owned_invocation(unit), 'new native owned invocation', seconds=5)
+        else:
+            require(record_owned_invocation(unit), 'Native owned start produced no invocation')
+    except BaseException as error:
+        errors.append(error)
+    if len(errors) == 1:
+        raise errors[0]
+    if errors:
+        raise BaseExceptionGroup('Owned native start or identity capture refused', errors)
+    return result
+
+
 def cleanup(postgres_scope):
-    # Never remove a package under an unowned/replaced live service declaration.
+    # One aggregate deadline, including telemetry, all native stop attempts,
+    # absence proofs, manager reload and descriptor-only filesystem disposal.
+    global DEADLINE
+    DEADLINE = min(TOTAL_DEADLINE, time.monotonic() + 30)
+    errors, safe = [], []
+    def attempt(work):
+        try:
+            return work()
+        except BaseException as error:
+            errors.append(error)
+            return None
     for unit, expected in owned_units.items():
-        path = pathlib.Path('/etc/systemd/system', unit)
-        info = path.lstat()
-        require(stat.S_ISREG(info.st_mode) and info.st_uid == 0 and (info.st_dev, info.st_ino) == expected,
-                'Owned unit changed; preserve uncertain runtime for diagnosis')
-    transient = props(BROWSER)
-    if transient.get('LoadState') != 'not-found':
-        actual = systemctl('show', BROWSER, '--property=Description,Transient').stdout.decode()
+        def admit(unit=unit, expected=expected):
+            path = pathlib.Path('/etc/systemd/system', unit)
+            info = path.lstat()
+            require(stat.S_ISREG(info.st_mode) and info.st_uid == 0
+                    and (info.st_dev, info.st_ino) == expected,
+                    'Owned unit changed; preserve uncertain runtime for diagnosis')
+            if unit != SLICE:
+                actual = props(unit)
+                invocation = actual.get('InvocationID', '')
+                if invocation:
+                    require(managed_runtime_module is not None, 'Native runtime owner missing')
+                    managed_runtime_module.require_owned_invocation(actual, owned_invocations.get(unit), require)
+                else:
+                    require(actual.get('MainPID') == actual.get('ControlPID') == '0'
+                            and actual.get('ActiveState') in ('inactive', 'failed'), 'Unowned native service remains')
+            safe.append(unit)
+        attempt(admit)
+    def browser_admit():
+        transient = props(BROWSER)
+        if transient.get('LoadState') == 'not-found':
+            return
+        actual = systemctl('show', BROWSER, '--property=Description,Transient', timeout=2).stdout.decode()
         require('Transient=yes\n' in actual and 'Description=Owned actual Next browser ' + report['runId'] + '\n' in actual,
                 'Unexpected browser transient unit; preserve uncertain runtime')
-        systemctl('stop', BROWSER, check=False, timeout=10)
-        require_stopped(BROWSER)
-        systemctl('reset-failed', BROWSER, check=False)
-    for unit in [*reversed(UNITS), PROXY, SLICE]:
+        require(managed_runtime_module is not None, 'Native runtime owner missing')
+        managed_runtime_module.require_owned_invocation(transient, owned_invocations.get(BROWSER), require)
+        safe.append(BROWSER)
+    attempt(browser_admit)
+    # Enqueue ALL independently admitted service stops before awaiting any one.
+    # A foreign slice occupant cannot be killed through stop(slice).
+    services = [unit for unit in [BROWSER, *reversed(UNITS), PROXY] if unit in safe]
+    for unit in services:
+        attempt(lambda unit=unit: systemctl('stop', '--no-block', unit, timeout=2))
+    pending = set(services)
+    while pending and time.monotonic() < DEADLINE:
+        for unit in list(pending):
+            try:
+                require_stopped(unit)
+                pending.remove(unit)
+            except AssertionError:
+                pass
+            except BaseException as error:
+                errors.append(error)
+                pending.remove(unit)
+        if pending:
+            time.sleep(max(0, min(0.025, DEADLINE - time.monotonic())))
+    if pending:
+        errors.append(AssertionError('Owned runtime family did not settle within cleanup deadline'))
+    if SLICE in safe:
+        def stop_empty_slice():
+            # cgroup absence/emptiness is checked BEFORE stop, so a newly arrived
+            # foreign child service remains untouched and keeps package custody.
+            actual = props(SLICE)
+            require(actual.get('MainPID', '0') == actual.get('ControlPID', '0') == '0', 'Native slice process identity differs')
+            group = actual.get('ControlGroup', '')
+            require(group == FIXTURE_CGROUP or not group, 'Native slice cgroup differs')
+            if group:
+                directory = pathlib.Path('/sys/fs/cgroup' + group)
+                if directory.exists():
+                    require(not directory.is_symlink(), 'Native slice cgroup is a link')
+                    with os.scandir(directory) as entries:
+                        child = any(entry.is_dir(follow_symlinks=False) for entry in entries)
+                    require(not (directory / 'cgroup.procs').read_text().strip() and not child,
+                            'Foreign native slice occupant; preserve runtime')
+            systemctl('stop', SLICE, timeout=2)
+            require_stopped(SLICE)
+        attempt(stop_empty_slice)
+    # Reap the exact launcher owned by Popen, never a reconstructed numeric PID.
+    if browser is not None:
+        def launcher_settle():
+            if browser.poll() is None:
+                browser.terminate()
+                try:
+                    browser.wait(timeout=left(1))
+                except subprocess.TimeoutExpired:
+                    browser.kill()
+                    browser.wait(timeout=left(1))
+            require(browser.poll() is not None, 'Owned browser launcher remains live')
+        attempt(launcher_settle)
+    def no_host_mounts():
+        # Same-filesystem bind mounts are not detected by st_dev alone. A fixed
+        # bounded host observation must exclude them BEFORE any path disposal.
+        owner = managed_runtime_module
+        if owner is None:
+            module = pathlib.Path('/usr/local/lib/aihr-admission/next_profile.py')
+            require(module.exists(), 'Protected mount observation owner unavailable')
+            raw = observer_read(module, 1024 * 1024)
+            expected = report.get('sealedHelpers', {}).get('next_profile.py', {}).get('sha256')
+            require(isinstance(expected, str) and hashlib.sha256(raw).hexdigest() == expected,
+                    'Protected cleanup observer source differs')
+            owner = types.ModuleType('owned_cleanup_mount_observer')
+            owner.__file__ = str(module)
+            exec(compile(raw, str(module), 'exec'), owner.__dict__)
+        proc = os.open('/proc/self', os.O_RDONLY | os.O_DIRECTORY)
+        try:
+            mounts = owner.parse_mountinfo(owner.read_proc(proc, 'mountinfo', 4 * 1024 * 1024, require), require)
+        finally:
+            os.close(proc)
+        require(not any(row['target'] == root or row['target'].startswith(root + '/')
+                        for root in owned_paths for row in mounts), 'Foreign host mount; preserve fixture paths')
+    attempt(no_host_mounts)
+    if errors:
+        raise BaseExceptionGroup('Owned native stop/absence refused; preserve all fixture paths', errors)
+    for unit in safe:
+        systemctl('reset-failed', unit, check=False, timeout=1)
         if unit in owned_units:
-            systemctl('stop', unit, check=False, timeout=15)
-            require_stopped(unit)
-            systemctl('reset-failed', unit, check=False)
-            pathlib.Path('/etc/systemd/system', unit).unlink()
+            path = pathlib.Path('/etc/systemd/system', unit)
+            info = path.lstat()
+            require((info.st_dev, info.st_ino) == owned_units[unit] and info.st_uid == 0,
+                    'Owned unit changed before disposal')
+            path.unlink()
     if owned_units:
         require(postgres_scope is not None, 'Owned PostgreSQL reload guard absent')
         postgres_scope.snapshot('before-cleanup-reload')
-        systemctl('daemon-reload')
+        systemctl('daemon-reload', timeout=2)
         postgres_scope.snapshot('after-cleanup-reload')
-    require(shutil.rmtree.avoids_symlink_attacks, 'Descriptor-safe cleanup unavailable')
+    def remove_tree(path, expected):
+        info = os.lstat(path)
+        require(stat.S_ISDIR(info.st_mode) and info.st_uid == 0
+                and (info.st_dev, info.st_ino) == expected, 'Owned fixture directory changed')
+        root = os.open(path, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+        count = 0
+        def walk(fd, depth):
+            nonlocal count
+            require(depth <= 128, 'Owned cleanup depth exceeds bound')
+            with os.scandir(fd) as entries:
+                for entry in entries:
+                    left();count += 1
+                    require(count <= 500000, 'Owned cleanup member count exceeds bound')
+                    before = os.stat(entry.name, dir_fd=fd, follow_symlinks=False)
+                    require(before.st_dev == info.st_dev, 'Unexpected cleanup mount; preserve runtime')
+                    if stat.S_ISDIR(before.st_mode):
+                        child = os.open(entry.name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=fd)
+                        try:
+                            held = os.fstat(child)
+                            require((held.st_dev, held.st_ino) == (before.st_dev, before.st_ino), 'Cleanup directory changed')
+                            walk(child, depth + 1)
+                            after = os.stat(entry.name, dir_fd=fd, follow_symlinks=False)
+                            require((after.st_dev, after.st_ino) == (held.st_dev, held.st_ino), 'Cleanup directory replaced')
+                        finally:
+                            os.close(child)
+                        os.rmdir(entry.name, dir_fd=fd)
+                    else:
+                        os.unlink(entry.name, dir_fd=fd)  # unlink links; never follow them
+        try:
+            held = os.fstat(root)
+            require((held.st_dev, held.st_ino) == expected, 'Cleanup root changed')
+            walk(root, 0)
+        finally:
+            os.close(root)
+        left();after = os.lstat(path)
+        require((after.st_dev, after.st_ino) == expected, 'Cleanup root replaced')
+        os.rmdir(path)
     for name in reversed(ROOTS):
         if name in owned_paths:
-            info = os.lstat(name)
-            require(stat.S_ISDIR(info.st_mode) and info.st_uid == 0
-                    and (info.st_dev, info.st_ino) == owned_paths[name], 'Owned fixture directory changed')
-            shutil.rmtree(name)
+            remove_tree(name, owned_paths[name])
     if created_home:
-        home = pathlib.Path('/var/empty/aihr')
-        info = home.lstat()
+        left();home = pathlib.Path('/var/empty/aihr');info = home.lstat()
         require((info.st_dev, info.st_ino) == owned_paths[str(home)] and info.st_uid == 0, 'Owned empty home changed')
         home.rmdir()
     if created_empty_parent is not None:
-        parent = pathlib.Path('/var/empty')
-        info = parent.lstat()
+        left();parent = pathlib.Path('/var/empty');info = parent.lstat()
         require(stat.S_ISDIR(info.st_mode) and info.st_uid == 0
                 and (info.st_dev, info.st_ino) == created_empty_parent, 'Owned empty-home parent changed')
         parent.rmdir()
@@ -1828,6 +2012,7 @@ def main():
             and browser_input['evidenceDirectory'] == plan['evidenceDirectory'], 'Private browser input binding differs')
     save()
     succeeded = False
+    primary_failure = None
     postgres_scope = None
     try:
         postgres_scope = OwnedPostgresScope(plan)
@@ -1839,6 +2024,7 @@ def main():
         release_workers(C)
         succeeded = True
     except BaseException as error:
+        primary_failure = error
         report['failureType'] = type(error).__name__
         runtime_failure_diagnostic('primary', error, binding)
         report['complete'] = False
@@ -1856,6 +2042,8 @@ def main():
             report['ownedRuntimeCleaned'] = False
             report['complete'] = False
             save()
+            if primary_failure is not None:
+                raise BaseExceptionGroup('Native Next operation and owned cleanup both refused', [primary_failure, error])
             raise
         report['complete'] = succeeded
         save()
