@@ -16,7 +16,7 @@ const text=(raw:string|undefined,max:number,label:string,required=true)=>{const 
 const digits=(raw:string|undefined,max:number,label:string,exact?:number)=>{const value=text(raw,max,label);if(!/^\d+$/.test(value)||exact!==undefined&&value.length!==exact)fail(`${label}: enter ${exact??'at most '+max} digits.`);return value;};
 function amount(value:number|undefined,label:string,max=15){if(!Number.isSafeInteger(value)||value!<0)fail(`${label}: a nonnegative saved amount in cents is required.`);const n=value!;const result=`${Math.floor(n/100)}.${String(n%100).padStart(2,'0')}`;if(result.length>max)fail(`${label}: amount exceeds the bank field.`);return result;}
 const sum=(values:number[])=>{const n=values.reduce((a,b)=>a+b,0);if(!Number.isSafeInteger(n))fail('Payment total exceeds supported precision.');return n;};
-const record=(count:number,fields:Record<number,string>)=>{const columns=Array<string>(count).fill('');for(const [index,value]of Object.entries(fields))columns[Number(index)-1]=value;return columns.join('|');};
+const record=(count:number,fields:Record<number,string|undefined>)=>{const columns=Array<string>(count).fill('');for(const [index,value]of Object.entries(fields))if(value!==undefined)columns[Number(index)-1]=value;return columns.join('|');};
 // Receiving BICs verified against the bank-published directory, 8 Nov 2026:
 // https://www.rhbgroup.com/myreflex/premium/articles/article/bulk_csv_file/index.html (BICSWIFT appendix).
 // The supplied Maybank writer uses these only as receiving SWIFT identities, never RHB layout/amount/hash rules.
