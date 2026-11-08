@@ -1,0 +1,419 @@
+{
+  "kind": "EXACT_EMPLOYEE_DEPARTMENT_FACET_DISPOSABLE_INDEX_PROBE_SOURCE_ONLY_UNRUN",
+  "parent": "1f6843ebfa672f7ab7e49901ecdb03c267b08c3d",
+  "sourceRef": "codex/employee-choice-department-facet-probe-20261109",
+  "exactThreePaths": [
+    "test/employee-choice-unicode-scale.test.ts",
+    "docs/adr/2026-11-07-employee-choice-organisation-plan.md",
+    "docs/qualification/employee-choice-department-facet-probe-source-20261109.json"
+  ],
+  "currentSourceRows": [
+    {
+      "path": "test/employee-choice-unicode-scale.test.ts",
+      "current": {
+        "bytes": 34548,
+        "sha256": "808929ab73836a94a671b5ea8d119f465a19b4e5d45531ebc1ab9d635545ecab"
+      },
+      "wholeActualParent": {
+        "source": "1f6843ebfa672f7ab7e49901ecdb03c267b08c3d",
+        "gitBlob": "33ffb2d7a2e627feebdf6be2343350b3d28cf2a7",
+        "bytes": 4455,
+        "sha256": "67acc9503022ee957ecbaf2db05834704893300cfb45c58a12ab3aacad760a4b"
+      },
+      "inverseHunks": [
+        {
+          "currentStart": 82,
+          "currentEnd": 122,
+          "currentRangeSha256": "00359217ba01074e72a1211e6c509bd474b559a69fa43f0fa80f2405ea870d7a",
+          "parentStart": 82,
+          "parentEnd": 82,
+          "parentText": ""
+        },
+        {
+          "currentStart": 342,
+          "currentEnd": 415,
+          "currentRangeSha256": "804431ed0731bfde79aca03cc2a5da621137377f4032bda20e1b7328f4018bd7",
+          "parentStart": 302,
+          "parentEnd": 358,
+          "parentText": "import {afterAll,beforeAll,expect,it,vi} from 'vitest';\n"
+        },
+        {
+          "currentStart": 632,
+          "currentEnd": 839,
+          "currentRangeSha256": "0a3e8a7d12b8ac91390efd29b7daaec3e0465258b4dde50a7fd977f0e354efc7",
+          "parentStart": 575,
+          "parentEnd": 625,
+          "parentText": "import {closeAll,migrateTestDb} from './harness';\n"
+        },
+        {
+          "currentStart": 922,
+          "currentEnd": 2585,
+          "currentRangeSha256": "b65c732688d9b78b75d0ec50d5827d28ca4048c5a023564b0e15bdddfbd03bc5",
+          "parentStart": 708,
+          "parentEnd": 847,
+          "parentText": "beforeAll(migrateTestDb);afterAll(closeAll);\nit('measures exact full and missing searches over the real 50k Unicode population',async()=>{\n"
+        },
+        {
+          "currentStart": 3088,
+          "currentEnd": 3490,
+          "currentRangeSha256": "b845e68852c853072526d27119a3c8d9229fd13b263a4dce778f0adf51d5c6f9",
+          "parentStart": 1350,
+          "parentEnd": 1540,
+          "parentText": " const {b,ctx,expectedFirst,expectedLast,organisationTagSample}=await seedPersonnelNativeFixture(50000,report,name=>{report.phase=name;save();},save,'Fictional retained Personnel \u4eba\u54e1 ');\n"
+        },
+        {
+          "currentStart": 3715,
+          "currentEnd": 3968,
+          "currentRangeSha256": "14859af104aad13d797c495532e41a353c62fc5e1eef8488ea697504e209c7ee",
+          "parentStart": 1765,
+          "parentEnd": 1765,
+          "parentText": ""
+        },
+        {
+          "currentStart": 4162,
+          "currentEnd": 4306,
+          "currentRangeSha256": "b3c6b2cd8738b2b5f89f1da085c1b5460ae90b5a64978e3c75152bb9d94a906a",
+          "parentStart": 1959,
+          "parentEnd": 2073,
+          "parentText": "  await tx.execute(sql`set local lock_timeout='300ms'`);await tx.execute(sql`set local statement_timeout='20s'`);\n"
+        },
+        {
+          "currentStart": 4409,
+          "currentEnd": 4429,
+          "currentRangeSha256": "43ad8ca67e000b12da2ffe3f4d0a52bd825e9bddf981650097dd4c26d387f679",
+          "parentStart": 2176,
+          "parentEnd": 2176,
+          "parentText": ""
+        },
+        {
+          "currentStart": 4561,
+          "currentEnd": 5122,
+          "currentRangeSha256": "62acc559cc272fe544cc45714088b0af6b6c4f844e6950c4890e3788f65b56f5",
+          "parentStart": 2308,
+          "parentEnd": 2456,
+          "parentText": "    try{return await target.execute(query);}catch(error){entry.error=String(error);throw error;}finally{entry.ms=performance.now()-started;save();}\n"
+        },
+        {
+          "currentStart": 5257,
+          "currentEnd": 32064,
+          "currentRangeSha256": "6c6b0e9ab29f85aceefc26982fe6efaa6e78b6c5b53779368f83a0c6ae25800d",
+          "parentStart": 2591,
+          "parentEnd": 2591,
+          "parentText": ""
+        },
+        {
+          "currentStart": 32070,
+          "currentEnd": 32276,
+          "currentRangeSha256": "926656e2029403bf80c17a727696dda3878cb8f943089e9ba699592b6a746608",
+          "parentStart": 2597,
+          "parentEnd": 2788,
+          "parentText": "  let started=performance.now();const first=await readEmployeeChoices(ctx,{companyIds:[b.companyId],query:'\u4eba\u54e1',selectedId:expectedLast.at(-1)});timings.firstMs=performance.now()-started;\n"
+        },
+        {
+          "currentStart": 32588,
+          "currentEnd": 32770,
+          "currentRangeSha256": "dfddd84a44849b3d8e1f169fa9311d6a249197a178b0f222fd4f8c9cef2ed70c",
+          "parentStart": 3100,
+          "parentEnd": 3267,
+          "parentText": "  started=performance.now();const deep=await readEmployeeChoices(ctx,{companyIds:[b.companyId],query:'\u4eba\u54e1',offset:49975});timings.deepMs=performance.now()-started;\n"
+        },
+        {
+          "currentStart": 32871,
+          "currentEnd": 33092,
+          "currentRangeSha256": "c9ba9536fa7517cbaa533cd8fc80f24eba5408dffed61f902e6dcce4f9545653",
+          "parentStart": 3368,
+          "parentEnd": 3574,
+          "parentText": "  started=performance.now();const missing=await readEmployeeChoices(ctx,{companyIds:[b.companyId],query:'absent-unicode-choice',selectedId:expectedLast.at(-1)});timings.missingMs=performance.now()-started;\n"
+        },
+        {
+          "currentStart": 33223,
+          "currentEnd": 33480,
+          "currentRangeSha256": "aea9c362f6057caf18a22e38e95774dd89dd7fbfd819730d3be1a1ee6e0a122c",
+          "parentStart": 3705,
+          "parentEnd": 3947,
+          "parentText": "  started=performance.now();const filtered=await readEmployeeChoices(ctx,{companyIds:[b.companyId],query:'\u4eba\u54e1',departmentId:b.deptA,status:'active',selectedId:expectedLast.at(-1)});timings.organisationFilteredMs=performance.now()-started;\n"
+        },
+        {
+          "currentStart": 33940,
+          "currentEnd": 34537,
+          "currentRangeSha256": "4d22d69f1fc6e97a9943135edf2396efd9b9160d755228b0d07d437310e27814",
+          "parentStart": 4407,
+          "parentEnd": 4444,
+          "parentText": " }finally{spy.mockRestore();save();}\n"
+        }
+      ]
+    },
+    {
+      "path": "docs/adr/2026-11-07-employee-choice-organisation-plan.md",
+      "current": {
+        "bytes": 7106,
+        "sha256": "54492806839118ab6920bdecb9b46029c94fcbcc91acbbb7a19c81e76b6512d5"
+      },
+      "wholeActualParent": {
+        "source": "1f6843ebfa672f7ab7e49901ecdb03c267b08c3d",
+        "gitBlob": "e998fdeb1848a04877671554b942652b63f2ea61",
+        "bytes": 3068,
+        "sha256": "b15ea75acb9587019bc939f3daa8f8f81b716637bffe8944a985d894bbe971b9"
+      },
+      "inverseHunks": [
+        {
+          "currentStart": 3068,
+          "currentEnd": 7106,
+          "currentRangeSha256": "fbe0f3516a8693ca19674f8e997d119d634d268ccc4c5f83c496fbf890f85502",
+          "parentStart": 3068,
+          "parentEnd": 3068,
+          "parentText": ""
+        }
+      ]
+    }
+  ],
+  "newRecordAbsentFromParent": "docs/qualification/employee-choice-department-facet-probe-source-20261109.json",
+  "protectedWholeParentPins": [
+    {
+      "path": "core/employee-choice.ts",
+      "source": "1f6843ebfa672f7ab7e49901ecdb03c267b08c3d",
+      "gitBlob": "71257dab2ceafa1b52b7f6eab6549d240eb41b73",
+      "bytes": 19091,
+      "sha256": "a8ce69b0e4919e0df561676714523705daa9bc0df5d402ac36cdb2be977f53b4"
+    },
+    {
+      "path": "core/ai-principal.ts",
+      "source": "1f6843ebfa672f7ab7e49901ecdb03c267b08c3d",
+      "gitBlob": "85630db56130b32196d12e7ffd04fbb27fb88b22",
+      "bytes": 3793,
+      "sha256": "3a77b8ed03ca1b9895310f6a7535473bbfd9a31d6c6d003612bd71e0dcbd6d21"
+    },
+    {
+      "path": "db/client.ts",
+      "source": "1f6843ebfa672f7ab7e49901ecdb03c267b08c3d",
+      "gitBlob": "0c4f28e00393a763608b506d608a3cf7df542c57",
+      "bytes": 22595,
+      "sha256": "bdd700ea682bafbf0cad2c255b8dacb96c13d82dc7fa0ae9446d4a1da265cd3f"
+    },
+    {
+      "path": "db/schema.ts",
+      "source": "1f6843ebfa672f7ab7e49901ecdb03c267b08c3d",
+      "gitBlob": "c80eb3180eebc7bf9fb9a30367e4b00746b22592",
+      "bytes": 820303,
+      "sha256": "8333f7a44c82fc43411dd4735314a555c4a69e0f805f0dc6b29e62c997ea9112"
+    },
+    {
+      "path": "db/capacity.ts",
+      "source": "1f6843ebfa672f7ab7e49901ecdb03c267b08c3d",
+      "gitBlob": "ed70c91ac1a4dd51bf588a77ffdb52027db64440",
+      "bytes": 1112,
+      "sha256": "e3452749d6dc3f62de919c24af2f0667d71bd05b9606f9aec799bdd3afe70db3"
+    },
+    {
+      "path": "test/harness.ts",
+      "source": "1f6843ebfa672f7ab7e49901ecdb03c267b08c3d",
+      "gitBlob": "2239a072cbc922366ebb0ad1f3ec7c85c8668685",
+      "bytes": 50558,
+      "sha256": "ab992137979341edd6bc15ba47e38d99d3e96994b788f15afde27cea3ed6db9e"
+    },
+    {
+      "path": "test/db-names.ts",
+      "source": "1f6843ebfa672f7ab7e49901ecdb03c267b08c3d",
+      "gitBlob": "65149f85259a21323851cb9e9dbaa33782e99e2f",
+      "bytes": 5140,
+      "sha256": "f6052b4e43c16d364dab4401403e30354b25b02f3f2166e1f0247133f9e2d55b"
+    },
+    {
+      "path": "test/performance/personnel-native-fixture.ts",
+      "source": "1f6843ebfa672f7ab7e49901ecdb03c267b08c3d",
+      "gitBlob": "57046e76314873112959932ea562b52aca77b40b",
+      "bytes": 5736,
+      "sha256": "3b72cd22e8e97c730192454bca58b87795e362654b6a26250a2fe3cf752bc4fa"
+    },
+    {
+      "path": "lib/db-error.ts",
+      "source": "1f6843ebfa672f7ab7e49901ecdb03c267b08c3d",
+      "gitBlob": "7be7be336c56c119cab0ffd954f53b7b30bdfbf9",
+      "bytes": 2544,
+      "sha256": "8a4d042732efaaca9467bd0120a1dc1099c33279ff7aec61a37ab89b46f8bbb9"
+    },
+    {
+      "path": "tsconfig.json",
+      "source": "1f6843ebfa672f7ab7e49901ecdb03c267b08c3d",
+      "gitBlob": "68581393e4d0778b4011b57c6d9d904cf8ecd335",
+      "bytes": 676,
+      "sha256": "0ee72fb11a698bad9b18c39223569adf5758727272b35bfa99ec7bfa57c3530a"
+    },
+    {
+      "path": "package.json",
+      "source": "1f6843ebfa672f7ab7e49901ecdb03c267b08c3d",
+      "gitBlob": "12091ae79d969edc6146e2d63f40342948b1237b",
+      "bytes": 6300,
+      "sha256": "7f67e35d869a29d2cb58d65c6f63413afc63db2cc6c6cf9dacb5086bce70ec2c"
+    },
+    {
+      "path": "pnpm-lock.yaml",
+      "source": "1f6843ebfa672f7ab7e49901ecdb03c267b08c3d",
+      "gitBlob": "86269692f041fb333f44371d004f9a2afe999e3b",
+      "bytes": 356104,
+      "sha256": "0413a070eca23d390fabdcd78cb63b2dcf4b0b69fe90408c7b57a4f672d21dbd"
+    },
+    {
+      "path": ".github/ci/run-unit.mjs",
+      "source": "1f6843ebfa672f7ab7e49901ecdb03c267b08c3d",
+      "gitBlob": "33650098be7bd3b628c7f2ab12dcfa385b7836c7",
+      "bytes": 27406,
+      "sha256": "8048da93f5563509f41414a86c0232bc0de9a36e9759db7a4772ee273111ffd2"
+    },
+    {
+      "path": "scripts/gate-db-classify.ts",
+      "source": "1f6843ebfa672f7ab7e49901ecdb03c267b08c3d",
+      "gitBlob": "948d0543eb550a084a6fa1591f31115595364a44",
+      "bytes": 12220,
+      "sha256": "2a8c7a347ffc0ac6c090de12def4c8f6f3a055db2780f90d7fdf596e4c76b654"
+    },
+    {
+      "path": "db/migrations/meta/_journal.json",
+      "source": "1f6843ebfa672f7ab7e49901ecdb03c267b08c3d",
+      "gitBlob": "3ba4ce0e97252c35528232169ab9780cbbe23acb",
+      "bytes": 115315,
+      "sha256": "c288908efd8c5ecdad8162599b8160a6ae22cd84442f956812632ed097b01052"
+    }
+  ],
+  "originalEvidence": {
+    "runId": 42529942392,
+    "source": "1f6843ebfa672f7ab7e49901ecdb03c267b08c3d",
+    "controller": "00a27edbe7de417dd97b0a82bdab48b8e79214a7",
+    "all7Terminal": true,
+    "singleCasePassed": true,
+    "authentication": {
+      "path": "/private/tmp/aihr-employee-unicode-1f684-evidence-42529942392/authentication.json",
+      "bytes": 7329,
+      "sha256": "a2edba0c081392ece489452e93a5e1f8fd10a60b2322878cd389ef226f064449"
+    },
+    "oldCaseDurationMs": 224914,
+    "wholeReadMs": [
+      3647.9389920000103,
+      3391.418000000005,
+      4539.175714000012,
+      5604.4679539999925
+    ],
+    "repeatedFacetMs": [
+      2547.5511580000166,
+      2544.651273000025,
+      2560.255069000006,
+      2638.1740690000006
+    ],
+    "historicalOnlyNoPassingEvidenceTransferred": true
+  },
+  "actualTarget": {
+    "sourceOwner": "core/employee-choice.ts private readOptions departments SELECT",
+    "notOtherFacetOrPrototypeOwner": true,
+    "exactCapturedSqlSha256": "95900f68e826391eea261670dbeff344a7ef75e2ba921090ceef1ed949de172e",
+    "sqlBytes": 934,
+    "parameters": 6,
+    "actualOriginalSQLObjectForwardedAndReused": true,
+    "noQueryOrFixtureMirror": true,
+    "cause": "UNKNOWN_UNUSED_DEPARTMENT_ASSIGNMENT_SCAN_HYPOTHESIS",
+    "nativeIndexCatalogue": "UNRUN_NOT_INFERRED_FROM_STATIC_DDL"
+  },
+  "caseCensus": {
+    "cases": 1,
+    "name": "measures exact full and missing searches over the real 50k Unicode population",
+    "capMs": 300000,
+    "allOriginal14ExpectAndMatcherExpressionsWhole": true,
+    "original4ReadCallsWhole": true,
+    "original4TimingAssignmentsWhole": true,
+    "currentExpectCalls": 71,
+    "retainedFixtureEmployees": 50000,
+    "originalRawStatementArrayExpected": 305,
+    "probeTargetStatements": {
+      "counterbalancedExplainAnalyze": 4,
+      "independentFinanceParitySelects": 3
+    },
+    "metadataAdmissionDdlAndDriverTransactionStatements": "ADDITIONAL; not represented as7 totalSQL statements",
+    "newCaseOrTimeoutIncrease": false,
+    "executed": false
+  },
+  "lifecycle": {
+    "pendingWholePromiseOwnedBeforeMicrotaskFirstAwait": true,
+    "actualVitestTestContextSignalAndFinishedDrain": true,
+    "afterAllCloseOnlyAfterWholeInvocationSettles": true,
+    "noConcurrentClientEnd0OrPromiseRaceInTest": true,
+    "newTestOwnedSqlAndDdlRefuseAfterSignal": true,
+    "originalAdmittedFixtureMayFinishItsOwnedTransactionBeforeGuardedCallbacksRefuseNextBatch": true,
+    "driverCommitRollbackFinalizationAndOriginalFixtureContinuationsNotClaimedBlocked": true,
+    "unconfirmedObserverTransactionReservationRetainedForQuiescentTeardownOrOwnedJobStop": true,
+    "noSuccessAfterAbort": true,
+    "probeMs": 60000,
+    "activeMs": 50000,
+    "cleanupInsideProbeMs": 10000,
+    "wholeCaseMs": 300000,
+    "finalSaveDrainAllowanceMs": 5000,
+    "requireRemainingBeforeProbeMs": 65000,
+    "wholeSlotAdmission": true,
+    "nativeFit": "UNKNOWN_OVERFLOW_FAILS_NO_CAP_RAISE"
+  },
+  "nativeProtocol": {
+    "physicalRealm": "Canonical workerDb and exact existing loopback URLs/actual app and owner LOGIN/DBoid/server transport/version/cluster metadata",
+    "appAuthority": "Existing withTenant RRRO + actual assertAiPresentationPrincipalTx, fresh native rowSecurity and boundtenantuser; identical defaults all7targetreadTx",
+    "settings": "No planner/JIT/RLS/schema/pool change. Existing app20s statement/300ms lock; owner metadata/drop<=5s andCREATE<=20s local controls. NoANALYZE/VACUUM/stat reset.",
+    "existingPoolsOnly": "One bounded reserved metadata connection from existing owner max10, no pool constructor; actual pool config guarded, no Web budget claim.",
+    "fixedOneIndex": "public.employee_choice_department_probe_20261109 on public.assignment(tenant_id,department_id,employment_id) WHEREvalid_toISNULLANDsuperseded_atISNULL",
+    "catalogueBeforeDdl": "Complete bounded actual indexes/table/flags/policies/population; unexpected equivalent/name/version/realm refuses, no incumbent drop.",
+    "states": [
+      "OLD",
+      "INDEX",
+      "INDEX",
+      "OLD"
+    ],
+    "indexCustody": "Actual createdOID/definition/owner insideTxn, separate observedCOMMIT; exact ownedidentity required for atmostoneDROP, ambiguous/failed outcome retained. NoDROPforeign orDDLafterabort.",
+    "restoration": "Exact original structuralindex/policy/population rows, actual rollback orabsence facts; no fake cleanup on uncertainty.",
+    "pidWitness": "Each app/ownertransaction backendPID plus backend_start epoch; reservedobserver FIRSTpg_stat_activity call is finalcurrent snapshot. Each requested originalbackend is exactidle/outsideTxn OR explicitly absent/reused/closed, never unobserved-idle.",
+    "independentExpectedDto": "Exactlyfixturecompany/Finance option; nullcode/BU fields, unused Operations andforeign excluded, realcapturedresults equal independentlyknown inputs.",
+    "comparison": "TIMINGOFF counters/wall/execution only, not native-node selftime; actual node/index use observed without forcing plan; table-estimate drift marks comparison ineligible."
+  },
+  "privateEvidence": {
+    "owner": "ExistingAIHR_FOCUSED_EVIDENCE_DIR optional save behavior",
+    "rawMember": "employee-choice-department-facet-private.json",
+    "rawPlansEachBytes": 1048576,
+    "all4RawPlanPayloadBytes": 4194304,
+    "allNonPlanNativeMetadataIncludingEveryCataloguePolicyTablePopulationRolePidBytes": 65536,
+    "fixedCompactFramingBytes": 1024,
+    "planNodes": 2048,
+    "planDepth": 64,
+    "catalogueRowsEachClass": 100,
+    "overflow": "FAIL_CLOSED_RETAIN_BOUNDED_PARTIAL_ATTEMPT_OWNED_CLEANUP",
+    "publicAddition": "Closed phase/node-type labels, counters/durations/hashes/flags only. No params/private identities/raw SQL/new rawerror text. Original String(error) spy behavior remains fromparent.",
+    "futureRawPlansOrRootInspectionClaimed": false,
+    "runtimeArtifactExistsOrInspected": false
+  },
+  "externalSourceEvidence": {
+    "path": "/private/tmp/aihr-employee-department-facet-external-ast-20261109.json",
+    "bytes": 2362,
+    "sha256": "10ccde3c3ad4ae41a0fbdacd45a5814ba75192a5f4b4f6e98b3da01d006f1093",
+    "meaning": "External Babel/source comparisons only; no compiler or repository module executed."
+  },
+  "fourthIndexDiscovery": {
+    "leased": false,
+    "neededCurrentOwnerFound": false,
+    "observedReferences": "Only eight historical classifier/source-custody JSONrecords named the test; no currentruntimeindex path was edited or rebound. All currentnative/source/disclosure integration remainsOPEN."
+  },
+  "plan": {
+    "path": "/private/tmp/aihr-employee-department-facet-probe-source-plan-20261109.md",
+    "sha256": "da6fd9c846f37b740d489f041f4c7bc6a7e139deb9454fd44353c7197dd97155",
+    "rootSteer": "No end0 concurrentwith admittedoriginalfixture; newprobeSQL blockedonactualsignal; actualwholepending drained. Backendstartwitness/completeaggregate64KiB native metadata bounds refined beforefreeze."
+  },
+  "prospectiveVerification": {
+    "selectors": [
+      "test/employee-choice-unicode-scale.test.ts"
+    ],
+    "cases": 1,
+    "capMs": 300000,
+    "oldPrototype6OrUnrelatedRerun": false,
+    "requiresRootAndDifferentPeerFullBeforePublishAndActualHostedAuth": true,
+    "PGcapacityOomHealthOwnedStopEvidence": "REQUIRED_UNRUN"
+  },
+  "acyclicity": "Selfhash excluded; actualimmutableparentGitrefs and bounded reversals, no Base64/nested history copies. This source record has no runtime consumer.",
+  "productionIndexMigrationAllocationApproved": false,
+  "sourceApprovalRenewed": false,
+  "runtimeQualified": false,
+  "browserLoadOrReleaseQualified": false,
+  "repositoryImportsTestsCompilerNativeDbNetworkExecuted": false,
+  "publicationOrDispatchAuthorized": false
+}
