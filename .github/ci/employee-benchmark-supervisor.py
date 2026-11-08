@@ -15,14 +15,13 @@ import sys
 import time
 from pathlib import Path
 
-FILE = 'test/employee-choice-native-purpose-plan.test.ts'
-CONTROL_FILE = 'test/employee-choice-benchmark-owner-native.test.ts'
-FACTORY_FILE = 'test/employee-choice-native-owner-factory.test.ts'
-ASCII_PURPOSE_FILE = 'test/employee-choice-exact-ascii-purpose.test.ts'
-ASCII_PLAN_FILE = 'test/employee-choice-exact-ascii-plan.test.ts'
-FILE_CLOCK_DIRECTORIES = {'benchmark': 'employee-choice-native-purpose', 'ascii-purpose': 'employee-choice-exact-ascii-purpose', 'ascii-plan': 'employee-choice-exact-ascii'}
-LIMITS = {'git-head': 10, 'git-status': 10, 'git-tracked': 10, 'evidence': 30, 'classifier': 15, 'reset': 60, 'migrate': 60, 'benchmark': 960, 'native-controls': 180, 'native-factory': 206, 'ascii-purpose': 960, 'ascii-plan': 960,
-          'stats': 10, 'logs': 10, 'inspect': 10, 'stop': 9}
+# The same fixed source registry owns both focused and normal file identities.
+_registry = json.loads(Path(__file__).resolve().with_name('employee-lifecycle-profile.json').read_bytes())
+_files = _registry['files']
+FILE, CONTROL_FILE, FACTORY_FILE, ASCII_PURPOSE_FILE, ASCII_PLAN_FILE = [row['file'] for row in _files]
+FILE_CLOCK_DIRECTORIES = {row['stage']: row['clockDirectory'] for row in _files if row['clockDirectory'] is not None}
+LIMITS = {'git-head': 10, 'git-status': 10, 'git-tracked': 10, 'evidence': 30, 'classifier': 15, 'reset': 60, 'migrate': 60,
+          'stats': 10, 'logs': 10, 'inspect': 10, 'stop': 9, **{row['stage']: row['stageSeconds'] for row in _files}}
 # Compile the fixed source-owned sibling bytes directly. -I/-B do not stop
 # SourceFileLoader from reading an ignored timestamp-valid .pyc.
 from types import ModuleType

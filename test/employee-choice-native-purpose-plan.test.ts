@@ -1,3 +1,4 @@
+import {admitEmployeeChoiceLifecycle} from './performance/employee-choice-lifecycle-admission';
 /** Controlled development prototype. Full singleton registration/admission remains a separate gate. */
 import {execFileSync} from 'node:child_process';
 import {createHash,randomUUID} from 'node:crypto';
@@ -30,10 +31,7 @@ import {closeAll,migrateTestDb,owner} from './harness';
 import {capturePostgresEvidence,postgresProfileFromEnv,validatePostgresEvidence} from '../.github/ci/postgres-evidence.mjs';
 
 const file='test/employee-choice-native-purpose-plan.test.ts';
-const selection:unknown=JSON.parse(process.env.AIHR_FOCUSED_TESTS??'[]');
-// This temporary focused experimental route is not a normal-CI profile witness.
-// Accepted integration must register the complete file and call admitSingletonTest.
-const requested=process.env.GITHUB_ACTIONS==='true'&&Array.isArray(selection)&&selection.length===1&&selection[0]===file;
+const lifecycle=admitEmployeeChoiceLifecycle(file);
 beforeAll(async()=>{initializeEvidence();
  const startNs=process.hrtime.bigint();lifetime.start(Number(startNs)/1e6);
  const clock={version:1,run:process.env.GITHUB_RUN_ID,attempt:process.env.GITHUB_RUN_ATTEMPT,startNs:String(startNs)};
@@ -62,7 +60,7 @@ const report:Record<string,unknown>={kind:'NATIVE_EMPLOYEE_CHOICE_PAGE_ASSIGNMEN
  retainedC5Timeout:{run:42430111658,source:'c5eaabdfbcdcdffff0dfb9b33b1a6d01b20e9966',outcome:'job20min-timeout-plus5min-force-cancel',artifactsAvailable:false,executionLogsAvailable:false,actualStalledPhase:'UNKNOWN',applicationSqlCauseProven:false},retainedCancelledRun:{run:42414058820,source:'3e9ebeafc0cd41326790c3435b009090db9b0dac',conclusion:'cancelled',annotation:'The job has exceeded the maximum execution time of 20m0s',executionLogsAvailable:false,artifactsAvailable:false,benchmarkOrCleanupAcceptance:false},
  control:{commit:'f1515376df082438ca025fb65d01a8a3330a8796',sourceSha256:'ce1e3559addbffa4b4e780594ebcc5fcf917ddffde79a6155cc7fbcecdbcfbd5'},
  topology:'Timing variants share one actual app backend; plan-only variants share a second actual app backend. PIDs are distinct and never relabeled.',
- registration:'TEMPORARY_SOLE_FOCUSED_DEVELOPMENT_ONLY; complete normal-CI singleton admission remains pending',
+ registration:lifecycle.mode,
  supplementalPlanPortsPerVariant:2,expectedActualPlanPhases:44,expectedActualNativeCallPairs:27,
  retainedSignalStatusProof:{source:'4c7a5fef03e185b1d0024e0dc994272c0c12bf88',run:42424586841,actualPlanPhases:42,actualNativeCallPairs:25,correctnessAndCleanupPassed:true,allUnderTarget:false,broadSearchMs:1001.312,deepBroadSearchMs:1077.001},
  assignmentProjectionProof:'No organization filter: preserve identity matching/count/order, then hydrate Assignment only for independently selected native page keys; actual1/25/2000 current Assignment probes and zero full-source work required.',
@@ -89,7 +87,7 @@ const signal=lifetime.signal;
 const active=()=>{if(blocked)throw blocked;lifetime.active();signal.throwIfAborted();};
 const poison=(error:Error)=>{blocked=error;lifetime.stop('owner-uncertain');};
 function initializeEvidence(){
- const base=resolve(process.env.AIHR_FOCUSED_EVIDENCE_DIR!);expect(realpathSync(base)).toBe(base);expect(lstatSync(base).uid).toBe(process.getuid!());
+ const base=lifecycle.evidenceDirectory;expect(realpathSync(base)).toBe(base);expect(lstatSync(base).uid).toBe(process.getuid!());
  output=join(base,'employee-choice-native-purpose');mkdirSync(output,{mode:0o700});
  evidenceWriter=employeeChoiceBenchmarkEvidence(output,{source:process.env.AIHR_CI_HEAD!,controller:process.env.AIHR_CI_CONTROL_HEAD!,run:process.env.GITHUB_RUN_ID!,attempt:process.env.GITHUB_RUN_ATTEMPT!});save();
 }
@@ -105,9 +103,8 @@ async function bounded(context:TestContext,name:string,work:()=>Promise<void>,se
 
 function evidence(){
  active();const profile=postgresProfileFromEnv(process.env);
- // The genuine temporary focused provisioner owns db-1; normal registered units
- // must supply their actual hashed unit identity during accepted integration.
- const unit=process.env.AIHR_CI_UNIT??'db-1',value=capturePostgresEvidence(unit,profile);validatePostgresEvidence(value,{postgres:profile});return value;
+ // Actual admission owns the mode-specific unit; normal has no db-1 fallback.
+ const unit=lifecycle.databaseUnit,value=capturePostgresEvidence(unit,profile);validatePostgresEvidence(value,{postgres:profile});return value;
 }
 function resources(){active();progress({kind:'telemetry-started',phase:String(report.phase??'setup')});const value=evidence(),text=execFileSync('docker',['exec',value.name,'cat','/sys/fs/cgroup/cpu.stat'],{encoding:'utf8',timeout:10000,maxBuffer:65536});
  active();progress({kind:'telemetry-completed',phase:String(report.phase??'setup')});return {database:value,cpu:Object.fromEntries(text.trim().split('\n').map(line=>{const [key,count]=line.split(/\s+/);return[key,Number(count)];})),scope:'Owned-container counters outside timed port calls; cumulative peak, not per-request memory'};}
@@ -261,7 +258,7 @@ async function matrix(variant:Variant,session:Awaited<ReturnType<typeof employee
  save();
 }
 
-it.skipIf(!requested)('prepares exactly50k fictional current-root facts and a guarded unnumbered function',{timeout:300000},context=>bounded(context,'prepare',async()=>{
+it('prepares exactly50k fictional current-root facts and a guarded unnumbered function',{timeout:300000},context=>bounded(context,'prepare',async()=>{
  expect(process.env.RUNNER_ENVIRONMENT).toBe('github-hosted');active();
  progress({kind:'prototype-install-started'});installation=await installEmployeeChoiceNativePrototype(value=>{installation=value;report.prototypeCleanupWitness={database:value.database,sourceSha256:value.sourceSha256,nativeIdentitySha256:createHash('sha256').update(JSON.stringify(value.installed)).digest('hex'),restorationAccepted:false};progress({kind:'prototype-native-witness-owned-before-commit'});save();});progress({kind:'prototype-install-completed'});active();report.function={signature:installation.installed.definition,sourceSha256:installation.sourceSha256,security:installation.security};
  fixture=await seedPersonnelNativeFixture(50000,report,phase=>{active();report.phase=phase;progress({kind:'fixture-progress',phase});save();},save,'Fictional retained Personnel 人員 ');
@@ -281,14 +278,14 @@ it.skipIf(!requested)('prepares exactly50k fictional current-root facts and a gu
  report.timingBackend=timing.defaults;report.preparationComplete=true;await installation.unchanged();save();
 },true));
 
-it.skipIf(!requested).for(variants)('measures all18 actual whole ports with %s implementation',{timeout:300000},(variant,context)=>bounded(context,'timing:'+variant,async()=>{
+it.for(variants)('measures all18 actual whole ports with %s implementation',{timeout:300000},(variant,context)=>bounded(context,'timing:'+variant,async()=>{
  expect(timing).toBeTruthy();const spy=timing!.install();
  await preserveDiagnosticFailure(async()=>{const stats=(report.plannerStatistics??={})as Record<string,unknown>;stats['timing:'+variant]=await employeeChoicePlannerSnapshot();
   await matrix(variant,timing!,'timing');const complete=(report.performanceVariants??=[])as string[];complete.push(variant);save();
  },async()=>{spy.mockRestore();await timing!.verify('variant-complete');await installation!.unchanged();});
 }));
 
-it.skipIf(!requested)('captures real nested native plans on a separate bound app PID with exact owned-DB config restoration',{timeout:300000},context=>bounded(context,'plans',async()=>{
+it('captures real nested native plans on a separate bound app PID with exact owned-DB config restoration',{timeout:300000},context=>bounded(context,'plans',async()=>{
  let restoreSpy=()=>{},verifyLatestPlans:(()=>void)|undefined;
  await preserveDiagnosticFailure(async()=>{
  progress({kind:'logging-config-started'});logging=await employeeChoicePlanLogging(installation!.database,value=>{logging=value;report.loggingCleanupWitness={beforeSha256:value.beforeSha256,instrumentedSha256:value.instrumentedSha256,restorationAccepted:false};progress({kind:'logging-native-witness-owned-before-commit'});save();});progress({kind:'logging-config-completed'});report.instrumentationConfig={beforeSha256:logging.beforeSha256,instrumentedSha256:logging.instrumentedSha256,settings:logging.settings};
@@ -362,7 +359,7 @@ it.skipIf(!requested)('captures real nested native plans on a separate bound app
 }));
 
 let authorityFixture:Awaited<ReturnType<typeof createAssignmentAuthorityFixture>>|undefined,expectedAuthority:Awaited<ReturnType<typeof assertAssignmentAuthority>>|undefined;
-it.skipIf(!requested).for(variants)('preserves actual current-root native authority/history with %s implementation',{timeout:300000},(variant,context)=>bounded(context,'authority:'+variant,async()=>{
+it.for(variants)('preserves actual current-root native authority/history with %s implementation',{timeout:300000},(variant,context)=>bounded(context,'authority:'+variant,async()=>{
  authorityFixture??=await createAssignmentAuthorityFixture();const spy=timing!.install(),port=vi.spyOn(current,'readEmployeeChoices').mockImplementation(pageReader(variant));
  await preserveDiagnosticFailure(async()=>{const value=await assertAssignmentAuthority(authorityFixture!);if(variant==='current')expectedAuthority=value;else expect(value).toEqual(expectedAuthority);
   const authority=(report.authority??={})as Record<string,unknown>;authority[variant]=value;report.authorityComplete=variants.every(name=>Object.hasOwn(authority,name));save();

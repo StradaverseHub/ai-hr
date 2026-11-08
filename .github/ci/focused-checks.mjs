@@ -14,11 +14,8 @@ import {capturePostgresEvidence, validatePostgresEvidence, postgresProfileFromEn
 const postgres = fileURLToPath(new URL('./postgres.sh', import.meta.url));
 const hash = text => createHash('sha256').update(text).digest('hex');
 const git = (cwd, ...args) => execFileSync('git', args, {cwd, encoding: 'utf8'}).trim();
-export const employeeBenchmarkFile='test/employee-choice-native-purpose-plan.test.ts';
-export const employeeNativeControlFile='test/employee-choice-benchmark-owner-native.test.ts';
-export const employeeNativeFactoryFile='test/employee-choice-native-owner-factory.test.ts';
-export const employeeAsciiPurposeFile='test/employee-choice-exact-ascii-purpose.test.ts';
-export const employeeAsciiPlanFile='test/employee-choice-exact-ascii-plan.test.ts';
+import {EMPLOYEE_LIFECYCLE_PROFILE} from './employee-lifecycle-profile.mjs';
+export const [employeeBenchmarkFile,employeeNativeControlFile,employeeNativeFactoryFile,employeeAsciiPurposeFile,employeeAsciiPlanFile]=EMPLOYEE_LIFECYCLE_PROFILE.files.map(row=>row.file);
 const benchmarkSupervisor=fileURLToPath(new URL('./employee-benchmark-supervisor.py',import.meta.url));
 const closed = 'postgres://nobody:nothing@127.0.0.1:1/no_database';
 const databaseKeys = ['DATABASE_URL', 'MIGRATION_DATABASE_URL', 'TEST_DATABASE_URL', 'TEST_MIGRATION_DATABASE_URL'];
