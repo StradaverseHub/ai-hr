@@ -4,6 +4,16 @@ import assert from 'node:assert/strict';
 import {EventEmitter} from 'node:events';
 import {directChildren} from './direct-children.mjs';
 import {CONTRACT,validateOriginalMetadata,originalReconstructionEnvironment,publicFailure,publishPublicFailure,validatePublicComparison} from './policy.mjs';
+function predecessorAdapter(readFileSync,createHash){
+ const inverse=JSON.parse(readFileSync(new URL('input-inverse.json',import.meta.url),'utf8'));
+ assert.equal(inverse.base,'fe8c3aad28991cb9477a0040f500fc59982d6a4b');
+ const row=inverse.files['.github/ci/diagnostics/catalogue-original-replay/adapter.py'];
+ let text=readFileSync(new URL('adapter.py',import.meta.url),'utf8');
+ const sha=value=>createHash('sha256').update(value).digest('hex');assert.equal(sha(text),row.currentSha256);
+ let lines=text.match(/[^\n]*\n|[^\n]+$/g)??[],frontier=lines.length;
+ for(const edit of row.changes){assert(0<=edit.start&&edit.start<=edit.end&&edit.end<=frontier);assert.equal(lines.slice(edit.start,edit.end).join(''),edit.after);lines.splice(edit.start,edit.end-edit.start,...(edit.before.match(/[^\n]*\n|[^\n]+$/g)??[]));frontier=edit.start;}
+ text=lines.join('');assert.equal(sha(text),row.originalSha256);return text;
+}
 const clone=value=>structuredClone(value);
 function metadata(){return{run:{...clone(CONTRACT.run),repository:{...CONTRACT.repository,private:false},head_repository:clone(CONTRACT.repository)},jobs:{total_count:14,jobs:clone(CONTRACT.jobs)},artifacts:{total_count:4,artifacts:CONTRACT.artifacts.map(({members,...row})=>clone(row))},workflow:{...CONTRACT.workflow,state:'active'}};}
 function comparison(){return{kind:'VERIFIED_ORIGINAL_CATALOGUE_PAIR_NOT_PROFILE',originalRun:String(CONTRACT.run.id),originalCandidate:CONTRACT.originalCandidate,originalController:CONTRACT.originalController,originalPlanFingerprint:CONTRACT.originalPlanFingerprint,originalPlanReconstructed:true,units:CONTRACT.pairs.map(p=>({id:p.unit,tests:1,files:[p.file],sourceMembers:1738})),members:CONTRACT.pairs.flatMap(p=>['notification-canonical-source.json','notification-canonical-raw.json','notification-canonical-normalized.json','notification-canonical-report.json',`personnel-dd-full-role-${p.unit}-offset-0.json`].map(name=>({mode:p.mode,name,bytes:10,sha256:'a'.repeat(64)}))),comparison:{functionCount:2308,defaultFunctions:7,shiftedFunctions:100,exactRawDefaultsEqual:true},expectedProfileAuthorized:false,releaseAuthorized:false,completeSuite:false};}
@@ -129,7 +139,7 @@ test('diagnostic IO awaits actual CLOSE and observes final phase without changin
 test('diagnostic additions exactly reconstruct all four original acceptance and ownership sources',async()=>{
  const{readFileSync}=await import('node:fs'),{createHash}=await import('node:crypto'),proof=JSON.parse(readFileSync(new URL('progress-inverse.json',import.meta.url),'utf8')),sha=bytes=>createHash('sha256').update(bytes).digest('hex');
  assert.equal(proof.base,'d78bda4f141dd9193aa0c84df2b177440d5c4032');assert.deepEqual(Object.keys(proof.files).sort(),['adapter.py','parent.mjs','policy.mjs','worker.mjs']);
- for(const[name,entry]of Object.entries(proof.files)){let text=readFileSync(new URL(name,import.meta.url),'utf8');assert.equal(sha(text),entry.currentSha256);let frontier=text.length;for(const edit of entry.edits){assert(Number.isSafeInteger(edit.start)&&Number.isSafeInteger(edit.end)&&edit.start>=0&&edit.start<=edit.end&&edit.end<=frontier);text=text.slice(0,edit.start)+edit.original+text.slice(edit.end);frontier=edit.start;}assert.equal(sha(text),entry.originalSha256);}
+ for(const[name,entry]of Object.entries(proof.files)){let text=name==='adapter.py'?predecessorAdapter(readFileSync,createHash):readFileSync(new URL(name,import.meta.url),'utf8');assert.equal(sha(text),entry.currentSha256);let frontier=text.length;for(const edit of entry.edits){assert(Number.isSafeInteger(edit.start)&&Number.isSafeInteger(edit.end)&&edit.start>=0&&edit.start<=edit.end&&edit.end<=frontier);text=text.slice(0,edit.start)+edit.original+text.slice(edit.end);frontier=edit.start;}assert.equal(sha(text),entry.originalSha256);}
 });
 test('adapter diagnostics cannot change the qualified kernel, command, budgets or terminal receipt',async()=>{
  const{readFileSync}=await import('node:fs'),{PROGRESS_STAGES}=await import('./progress.mjs'),adapter=readFileSync(new URL('adapter.py',import.meta.url),'utf8'),parent=readFileSync(new URL('parent.mjs',import.meta.url),'utf8');
@@ -138,8 +148,8 @@ test('adapter diagnostics cannot change the qualified kernel, command, budgets o
  assert(parent.includes('await closedComparisonDiagnostic(done,privateRoot'));assert(parent.includes('assert(!error&&!expired&&size<=65536&&exit.code===0&&exit.signal===null'));assert(parent.includes("completed:true,familySettled:true"));
 });
 
-test('dependency observations preserve the original package, loader, contract and native FIFO refusals in order',async()=>{
+test('dependency observations preserve the original package, loader, contract and fixed native producer admission in order',async()=>{
  const{readFileSync}=await import('node:fs'),source=readFileSync(new URL('adapter.py',import.meta.url),'utf8');
- const snippets=["_progress.next('dependencies')","package = (original / 'node_modules/tsx/package.json').resolve()","['version'] == '4.22.4'","_progress.next('loader-source')","loader = (original / 'node_modules/tsx/dist/loader.mjs').resolve()","_progress.next('contract-input')","contract = json.loads(fixed_bytes(Path(__file__).with_name('contract.json'), 131072))","_progress.next('cancellation-input')","kernel.require(stat.S_ISFIFO(os.fstat(0).st_mode))","_progress.next('launch')"];
+ const snippets=["_progress.next('dependencies')","package = (original / 'node_modules/tsx/package.json').resolve()","['version'] == '4.22.4'","_progress.next('loader-source')","loader = (original / 'node_modules/tsx/dist/loader.mjs').resolve()","_progress.next('contract-input')","contract = json.loads(fixed_bytes(Path(__file__).with_name('contract.json'), 131072))","_progress.next('cancellation-input')","native_input = NativeInput(0, node, Path(__file__).with_name('parent.mjs'),","_progress.next('launch')"];
  let previous=-1;for(const text of snippets){const at=source.indexOf(text);assert(at>previous);assert.equal(source.indexOf(text,at+1),-1);previous=at;}
 });

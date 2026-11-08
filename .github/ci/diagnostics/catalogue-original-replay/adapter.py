@@ -5,6 +5,8 @@ import os
 import re
 import select
 import signal
+import socket
+import struct
 import stat
 import sys
 import time
@@ -50,6 +52,141 @@ kernel.__file__ = str(KERNEL_PATH)
 exec(compile(_kernel_bytes, str(KERNEL_PATH), 'exec', dont_inherit=True), kernel.__dict__)
 
 
+class InputRefused(ValueError):
+    """Closed guard names only, never descriptor/argument/proc contents."""
+
+
+def input_require(condition, reason):
+    if not condition:
+        raise InputRefused(reason)
+
+
+def proc_bytes(directory, name, maximum):
+    descriptor = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=directory)
+    try:
+        data = bytearray()
+        while len(data) <= maximum:
+            piece = os.read(descriptor, min(4096, maximum + 1 - len(data)))
+            if not piece:
+                break
+            data.extend(piece)
+        input_require(0 < len(data) <= maximum, 'parent-metadata')
+        return bytes(data)
+    finally:
+        os.close(descriptor)
+
+
+class NativeInput:
+    """The fixed Node parent's anonymous Linux stream, not a general IPC API.
+
+    Constructor arguments are internal source composition. Production fixes fd0,
+    Node/source/cwd below; there are no command/environment selection switches.
+    Peer credentials identify the socket creator; pidfd and fresh proc identity
+    separately prove that creator is still our exact live parent.
+    """
+    def __init__(self, descriptor, node, parent_source, parent_sha, parent_cwd):
+        self.descriptor, self.node = descriptor, Path(node)
+        self.source, self.source_sha, self.cwd = Path(parent_source), parent_sha, Path(parent_cwd)
+        self.pid, self.pidfd, self.channel = os.getppid(), None, None
+        self.identity = None
+        try:
+            input_require(sys.platform == 'linux' and hasattr(socket, 'SO_DOMAIN')
+                          and hasattr(os, 'pidfd_open'), 'native-platform')
+            self.fd_identity = self._descriptor()
+            input_require(stat.S_ISSOCK(self.fd_identity[2]), 'descriptor-kind')
+            self.channel = socket.socket(fileno=os.dup(descriptor))
+            input_require(self.channel.getsockopt(socket.SOL_SOCKET, socket.SO_DOMAIN) == socket.AF_UNIX,
+                          'socket-domain')
+            input_require(self.channel.getsockopt(socket.SOL_SOCKET, socket.SO_TYPE) == socket.SOCK_STREAM,
+                          'socket-type')
+            input_require(self.channel.getsockopt(socket.SOL_SOCKET, socket.SO_ACCEPTCONN) == 0,
+                          'socket-listener')
+            input_require(self.channel.getsockname() in ('', b''), 'socket-address')
+            try:
+                peer = self.channel.getpeername()
+            except OSError:
+                raise InputRefused('socket-connected') from None
+            input_require(peer in ('', b''), 'socket-address')
+            self.credentials = struct.unpack('3i', self.channel.getsockopt(socket.SOL_SOCKET,
+                socket.SO_PEERCRED, struct.calcsize('3i')))
+            input_require(self.credentials == (self.pid, os.getuid(), os.getgid()), 'socket-peer')
+            self.pidfd = os.pidfd_open(self.pid)
+            os.set_inheritable(self.pidfd, False)
+            self.identity = self._parent()
+            self.check()
+            os.set_blocking(descriptor, False)
+        except BaseException as error:
+            self.close(error)
+            raise
+
+    def _descriptor(self):
+        info = os.fstat(self.descriptor)
+        return (info.st_dev, info.st_ino, info.st_mode, info.st_uid, info.st_gid)
+
+    def _parent(self):
+        input_require(os.getppid() == self.pid and not select.select([self.pidfd], [], [], 0)[0], 'parent-live')
+        directory = os.open('/proc/' + str(self.pid), os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+        try:
+            raw = proc_bytes(directory, 'stat', 65536).decode('ascii')
+            suffix = raw[raw.rindex(')') + 2:].split()
+            input_require(suffix[0] not in ('Z', 'X', 'x') and len(suffix) > 19, 'parent-live')
+            start = suffix[19]
+            input_require(re.fullmatch(r'[1-9][0-9]*', start) is not None, 'parent-identity')
+            status = dict(line.split(':', 1) for line in proc_bytes(directory, 'status', 65536).decode('ascii').splitlines() if ':' in line)
+            input_require(status['Uid'].split() == [str(os.getuid())] * 4
+                          and status['Gid'].split() == [str(os.getgid())] * 4, 'parent-credentials')
+            executable = os.stat('exe', dir_fd=directory)
+            wanted = self.node.stat()
+            input_require(stat.S_ISREG(executable.st_mode) and (executable.st_dev, executable.st_ino)
+                          == (wanted.st_dev, wanted.st_ino), 'parent-executable')
+            # Fixed kernel proc links only. Neither path is supplied by IPC.
+            input_require(os.path.samefile('/proc/' + str(self.pid) + '/cwd', self.cwd), 'parent-cwd')
+            argv = proc_bytes(directory, 'cmdline', 65536).split(b'\0')
+            input_require(len(argv) == 3 and argv[-1] == b'', 'parent-argv')
+            args = [part.decode('utf8', errors='strict') for part in argv[:-1]]
+            input_require(args[0] in ('node', str(self.node)), 'parent-argv')
+            entry = Path(args[1])
+            input_require(entry == self.source or not entry.is_absolute() and self.cwd / entry == self.source,
+                          'parent-entry')
+            input_require(hashlib.sha256(fixed_bytes(self.source, 131072)).hexdigest() == self.source_sha,
+                          'parent-source')
+            input_require(os.getppid() == self.pid and not select.select([self.pidfd], [], [], 0)[0], 'parent-live')
+            return (self.pid, start, executable.st_dev, executable.st_ino)
+        finally:
+            os.close(directory)
+
+    def check(self):
+        input_require(self._descriptor() == self.fd_identity, 'descriptor-changed')
+        input_require(self.channel.getsockopt(socket.SOL_SOCKET, socket.SO_DOMAIN) == socket.AF_UNIX
+                      and self.channel.getsockopt(socket.SOL_SOCKET, socket.SO_TYPE) == socket.SOCK_STREAM
+                      and self.channel.getsockopt(socket.SOL_SOCKET, socket.SO_ACCEPTCONN) == 0
+                      and self.channel.getsockname() in ('', b'') and self.channel.getpeername() in ('', b''),
+                      'socket-changed')
+        input_require(struct.unpack('3i', self.channel.getsockopt(socket.SOL_SOCKET, socket.SO_PEERCRED,
+                      struct.calcsize('3i'))) == self.credentials, 'socket-peer')
+        input_require(self._parent() == self.identity, 'parent-identity')
+
+    def close(self, primary=None):
+        failures = []
+        if self.channel is not None:
+            try:
+                self.channel.close()
+            except BaseException as error:
+                failures.append(error)
+            finally:
+                self.channel = None
+        if self.pidfd is not None:
+            try:
+                os.close(self.pidfd)
+            except BaseException as error:
+                failures.append(error)
+            finally:
+                self.pidfd = None
+        if failures:
+            raise BaseExceptionGroup('Native input closure refused',
+                                     ([primary] if primary is not None else []) + failures)
+
+
 class Cancellation:
     """One main-thread, nonblocking callback. Never changes the native clock.
 
@@ -57,8 +194,9 @@ class Cancellation:
     Group-stop disables polling before kernel cleanup restores that handler.
     No watcher, fork, thread, second process loop or numeric signal exists here.
     """
-    def __init__(self, descriptor, soft_deadline, publish):
+    def __init__(self, descriptor, soft_deadline, publish, *, verify=None):
         self.descriptor = descriptor
+        self.verify = verify
         self.soft_deadline = soft_deadline
         self.publish = publish
         self.cancelled = False
@@ -69,6 +207,8 @@ class Cancellation:
 
     def poll(self):
         try:
+            if self.verify is not None:
+                self.verify()
             if select.select([self.descriptor], [], [], 0)[0]:
                 # EOF and ANY unexpected input both refuse. Never retain bytes.
                 os.read(self.descriptor, 1)
@@ -242,31 +382,36 @@ def main():
     for name in ('DATABASE_URL', 'MIGRATION_DATABASE_URL', 'TEST_DATABASE_URL', 'TEST_MIGRATION_DATABASE_URL'):
         fixed[name] = 'postgres://nobody:nothing@127.0.0.1:1/no_database'
     _progress.next('cancellation-input')
-    kernel.require(stat.S_ISFIFO(os.fstat(0).st_mode))
-    os.set_blocking(0, False)
+    native_input = NativeInput(0, node, Path(__file__).with_name('parent.mjs'),
+        '972936b9b1d06582a694608ca600375dc61a82a29694a58f0e3a82a1b32c5eae', workspace)
     # Keep six seconds for the unchanged kernel settlement and one for fixed
     # metadata/terminal work inside the parent's existing180s hard envelope.
-    control = Cancellation(0, began + 173, lambda packet: kernel.append_event(private / 'worker-supervisor.jsonl', packet))
-    seconds = began + 173 - time.monotonic()
-    kernel.require(0 < seconds <= 173)
-    os.environ.clear()
-    os.environ.update(fixed)
-    os.chdir(original)
-    _progress.next('launch')
+    control = Cancellation(0, began + 173, lambda packet: kernel.append_event(private / 'worker-supervisor.jsonl', packet),
+                           verify=native_input.check)
     try:
-        receipt = kernel.supervise([str(node), '--import', str(loader), str(Path(__file__).with_name('worker.mjs'))],
-                                   seconds, control.event, clock=control.clock, mandatory=False)
+        seconds = began + 173 - time.monotonic()
+        kernel.require(0 < seconds <= 173)
+        os.environ.clear()
+        os.environ.update(fixed)
+        os.chdir(original)
+        _progress.next('launch')
+        try:
+            receipt = kernel.supervise([str(node), '--import', str(loader), str(Path(__file__).with_name('worker.mjs'))],
+                                       seconds, control.event, clock=control.clock, mandatory=False)
+        finally:
+            # The group-stop event already disabled polling before restoration;
+            # this also closes every refusal path that never admitted a session.
+            control.disable()
+        _progress.next('kernel-settlement')
+        completed = control.completed(receipt) and time.monotonic() - began < 180
+        terminal = {'kind': 'ORIGINAL_CATALOGUE_SHARED_OWNER_TERMINAL', 'completed': completed,
+                    'familySettled': receipt['reaped'] and receipt['groupQuiescent'] and not receipt['escapedSession']}
+        _progress.finish('complete' if completed else 'refused')
+        sys.stdout.write(json.dumps(terminal, separators=(',', ':')) + '\n')
+        return 0 if completed else 1
     finally:
-        # The group-stop event already disabled polling before restoration;
-        # this also closes every refusal path that never admitted a session.
-        control.disable()
-    _progress.next('kernel-settlement')
-    completed = control.completed(receipt) and time.monotonic() - began < 180
-    terminal = {'kind': 'ORIGINAL_CATALOGUE_SHARED_OWNER_TERMINAL', 'completed': completed,
-                'familySettled': receipt['reaped'] and receipt['groupQuiescent'] and not receipt['escapedSession']}
-    _progress.finish('complete' if completed else 'refused')
-    sys.stdout.write(json.dumps(terminal, separators=(',', ':')) + '\n')
-    return 0 if completed else 1
+        native_input.close(sys.exception())
+
 
 
 if __name__ == '__main__':

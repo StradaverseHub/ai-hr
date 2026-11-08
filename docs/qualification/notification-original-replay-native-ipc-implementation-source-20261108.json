@@ -1,0 +1,71 @@
+{
+  "kind": "ORIGINAL_REPLAY_FIXED_NATIVE_INPUT_SOURCE_ONLY_NOT_COMPARISON_QUALIFICATION",
+  "base": "1bbf5dd609c9698530a29222ddd4dace8d9cb691",
+  "originalCodeBase": "fe8c3aad28991cb9477a0040f500fc59982d6a4b",
+  "sourceRef": "codex/original-replay-native-ipc-implementation-20261108",
+  "sourceSha256": {
+    ".github/ci/diagnostics/catalogue-original-replay/adapter.py": "ee69beb43503978edfd32f8f791466e65ec2149bda927cae463191b5fd09486b",
+    ".github/ci/diagnostics/catalogue-original-replay/policy.test.mjs": "cd26a8fe4bd7fe53b9ec08d5647fe680010d74bef0b0c894a488697924febdd4",
+    "test/notification-original-replay-policy.test.ts": "29b2edc8fef0fff08908dbdaeec6b8d5e9fee8fa27379529938242709b17deb0",
+    ".github/ci/diagnostics/catalogue-original-replay/input-controls-owner.py": "81c1d3e08e422b91c01774165543064d606259fedc3d1c8371af4fd61123304b",
+    ".github/ci/diagnostics/catalogue-original-replay/input-controls.mjs": "ec9800ed6f24d62f59618e3cc11a897775d9d7141c34c753b668651cd904a99a",
+    ".github/ci/diagnostics/catalogue-original-replay/input-descriptor.py": "c51e5b398d3168ecac2be1e03f4589acd306bf17a87ec231d335df997bcd9ddd",
+    ".github/ci/diagnostics/catalogue-original-replay/input-inverse.json": "906723e8fd5493c9bcdf620b4ddc80dbb0d0197510eb4d0d0390364a6071443b",
+    ".github/ci/diagnostics/catalogue-original-replay/input-parent.mjs": "28b1ea17193ba5a36c74c38a93eab624a2c53a8ab9cc0a550d34fd18af79e914",
+    ".github/ci/diagnostics/catalogue-original-replay/input-policy.test.mjs": "ff5da99bf490b1b6e4feea8033e7ca4cd985e94fab2f3bb0e60ca94eaad32e7f",
+    ".github/ci/diagnostics/catalogue-original-replay/input-probe.py": "576edad5587e15011c01075002cd843f11d4091412f06072dcad12aba96b109a",
+    "docs/qualification/notification-original-replay-native-ipc-implementation-20261108.md": "510a3d82de1f4da8bb2cbe8297caf46c74436ff34f9770b14cea4aebf297aa9d"
+  },
+  "unchangedSha256": {
+    ".github/ci/owned-process.py": "cb1a2cc2879267f8834dc11ea0e1c52f8326b0bd4e45dcd94ccf2ac43463f28c",
+    ".github/ci/diagnostics/catalogue-original-replay/adapter.test.py": "2ec05ce162593b188d7b1ee6e4e7f5cc025a0c4d139567f6a0b77b80d228e5da",
+    ".github/ci/diagnostics/catalogue-original-replay/adapter-controls.mjs": "c32b5fe02a5dbc61267d6ab5bc05338a9b2cb5369a0361afed542f9c9313a253",
+    ".github/ci/diagnostics/catalogue-original-replay/parent.mjs": "972936b9b1d06582a694608ca600375dc61a82a29694a58f0e3a82a1b32c5eae",
+    ".github/ci/diagnostics/catalogue-original-replay/worker.mjs": "4cb6a7e56e9b64f3b4a701c5bb15a7d4b6b2f2883264130337ce09cfb2632c50",
+    ".github/ci/diagnostics/catalogue-original-replay/contract.json": "9dbd0469d25156479da20f0bd68f7218ac3664e542c7ffbf5fb8aa86397b9f70",
+    ".github/ci/diagnostics/catalogue-original-replay/policy.mjs": "2e72e42f301cf2f363be8e151e99c0764924542ea2647f1acf92b586b5babd85",
+    ".github/ci/diagnostics/catalogue-original-replay/progress.mjs": "7de5f2c99f62fc5525b6c66a730c8d666fbde8d6d7f96b26fc94769cae1ce3a6",
+    ".github/ci/diagnostics/catalogue-original-replay/progress-inverse.json": "5e96f047a07db3ac44d833a6cd91d0f71d1e754cf2ef8f2fb4a77a8448cbbba0",
+    ".github/ci/diagnostics/catalogue-original-replay/direct-children.mjs": "69d88cc9a3e4835297d34ff0f22e5dbf17b5b3e1a59af701561196fcd9612a60",
+    ".github/workflows/notification-original-catalogue-replay.yml": "fa96efbaef6138f867ba2b60d05dd84d6f2d8e13b3ff547c211b1fba3dd4f743",
+    ".github/workflows/alpha-staging-diagnostics.yml": "fa96efbaef6138f867ba2b60d05dd84d6f2d8e13b3ff547c211b1fba3dd4f743",
+    "docs/qualification/notification-original-replay-native-ipc-design-20261108.md": "72d9fab4c310b1e82e29ea5cdccaed292f7ccd36fef4bae97780ddf8a7a50c38",
+    "docs/qualification/notification-original-replay-native-ipc-design-source-20261108.json": "a531cdabfeced0512c84597b27853c8a1327e96910027317040545e848f8b2b1"
+  },
+  "productionInput": "fixed-fd0-unnamed-connected-nonlistening-AF_UNIX-SOCK_STREAM-exact-live-Node-parent",
+  "sharedKernelSha256": "cb1a2cc2879267f8834dc11ea0e1c52f8326b0bd4e45dcd94ccf2ac43463f28c",
+  "productionWorkSeconds": 173,
+  "productionParentSeconds": 180,
+  "retainedMetadataCases": 23,
+  "retainedCallbackCases": 6,
+  "newPureCases": 6,
+  "newNativeIntentions": 8,
+  "newWrapperCases": 4,
+  "nativeControlEnvelope": {
+    "driverLocalStopSeconds": 10,
+    "sharedKernelWorkSeconds": 20,
+    "sharedKernelSettlementSeconds": 6,
+    "processSeconds": 28,
+    "wrapperSeconds": 30
+  },
+  "requestedSelectors": [
+    "test/notification-original-replay-policy.test.ts"
+  ],
+  "observedFailure": {
+    "run": 42453442704,
+    "artifact": 13606841282,
+    "archiveSha256": "e69d1c4937a3a0d65f4facd60f4ab8218aa9a8d16f9eb209989930097620f907",
+    "adapterStage": "cancellation-input",
+    "adapterStatus": "refused",
+    "worker": "unavailable",
+    "nativeDescriptorObserved": false
+  },
+  "retainedControlRun": 42453080847,
+  "allNewBehavior": "UNRUN",
+  "noLocalBehaviorExecuted": true,
+  "originalComparisonQualified": false,
+  "expectedProfileAuthorized": false,
+  "releaseAuthorized": false,
+  "nonmergeableFeatureDiagnostic": true,
+  "productionHeld": true
+}

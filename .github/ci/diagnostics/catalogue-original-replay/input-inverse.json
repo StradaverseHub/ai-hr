@@ -1,0 +1,122 @@
+{
+  "kind": "ORIGINAL_REPLAY_IPC_WHOLE_SOURCE_INVERSE_NOT_EXECUTION",
+  "base": "fe8c3aad28991cb9477a0040f500fc59982d6a4b",
+  "files": {
+    ".github/ci/diagnostics/catalogue-original-replay/adapter.py": {
+      "originalSha256": "642270c3aa53eb7f3b4a9f2a9a5f6f023a2580705930f4b7e6610f4c8549516b",
+      "currentSha256": "ee69beb43503978edfd32f8f791466e65ec2149bda927cae463191b5fd09486b",
+      "changes": [
+        {
+          "start": 412,
+          "end": 414,
+          "before": "        # The group-stop event already disabled polling before restoration;\n        # this also closes every refusal path that never admitted a session.\n        control.disable()\n    _progress.next('kernel-settlement')\n    completed = control.completed(receipt) and time.monotonic() - began < 180\n    terminal = {'kind': 'ORIGINAL_CATALOGUE_SHARED_OWNER_TERMINAL', 'completed': completed,\n                'familySettled': receipt['reaped'] and receipt['groupQuiescent'] and not receipt['escapedSession']}\n    _progress.finish('complete' if completed else 'refused')\n    sys.stdout.write(json.dumps(terminal, separators=(',', ':')) + '\\n')\n    return 0 if completed else 1\n",
+          "after": "        native_input.close(sys.exception())\n\n"
+        },
+        {
+          "start": 391,
+          "end": 411,
+          "before": "        receipt = kernel.supervise([str(node), '--import', str(loader), str(Path(__file__).with_name('worker.mjs'))],\n                                   seconds, control.event, clock=control.clock, mandatory=False)\n",
+          "after": "        seconds = began + 173 - time.monotonic()\n        kernel.require(0 < seconds <= 173)\n        os.environ.clear()\n        os.environ.update(fixed)\n        os.chdir(original)\n        _progress.next('launch')\n        try:\n            receipt = kernel.supervise([str(node), '--import', str(loader), str(Path(__file__).with_name('worker.mjs'))],\n                                       seconds, control.event, clock=control.clock, mandatory=False)\n        finally:\n            # The group-stop event already disabled polling before restoration;\n            # this also closes every refusal path that never admitted a session.\n            control.disable()\n        _progress.next('kernel-settlement')\n        completed = control.completed(receipt) and time.monotonic() - began < 180\n        terminal = {'kind': 'ORIGINAL_CATALOGUE_SHARED_OWNER_TERMINAL', 'completed': completed,\n                    'familySettled': receipt['reaped'] and receipt['groupQuiescent'] and not receipt['escapedSession']}\n        _progress.finish('complete' if completed else 'refused')\n        sys.stdout.write(json.dumps(terminal, separators=(',', ':')) + '\\n')\n        return 0 if completed else 1\n"
+        },
+        {
+          "start": 388,
+          "end": 390,
+          "before": "    control = Cancellation(0, began + 173, lambda packet: kernel.append_event(private / 'worker-supervisor.jsonl', packet))\n    seconds = began + 173 - time.monotonic()\n    kernel.require(0 < seconds <= 173)\n    os.environ.clear()\n    os.environ.update(fixed)\n    os.chdir(original)\n    _progress.next('launch')\n",
+          "after": "    control = Cancellation(0, began + 173, lambda packet: kernel.append_event(private / 'worker-supervisor.jsonl', packet),\n                           verify=native_input.check)\n"
+        },
+        {
+          "start": 384,
+          "end": 386,
+          "before": "    kernel.require(stat.S_ISFIFO(os.fstat(0).st_mode))\n    os.set_blocking(0, False)\n",
+          "after": "    native_input = NativeInput(0, node, Path(__file__).with_name('parent.mjs'),\n        '972936b9b1d06582a694608ca600375dc61a82a29694a58f0e3a82a1b32c5eae', workspace)\n"
+        },
+        {
+          "start": 209,
+          "end": 211,
+          "before": "",
+          "after": "            if self.verify is not None:\n                self.verify()\n"
+        },
+        {
+          "start": 198,
+          "end": 199,
+          "before": "",
+          "after": "        self.verify = verify\n"
+        },
+        {
+          "start": 196,
+          "end": 197,
+          "before": "    def __init__(self, descriptor, soft_deadline, publish):\n",
+          "after": "    def __init__(self, descriptor, soft_deadline, publish, *, verify=None):\n"
+        },
+        {
+          "start": 54,
+          "end": 189,
+          "before": "",
+          "after": "class InputRefused(ValueError):\n    \"\"\"Closed guard names only, never descriptor/argument/proc contents.\"\"\"\n\n\ndef input_require(condition, reason):\n    if not condition:\n        raise InputRefused(reason)\n\n\ndef proc_bytes(directory, name, maximum):\n    descriptor = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=directory)\n    try:\n        data = bytearray()\n        while len(data) <= maximum:\n            piece = os.read(descriptor, min(4096, maximum + 1 - len(data)))\n            if not piece:\n                break\n            data.extend(piece)\n        input_require(0 < len(data) <= maximum, 'parent-metadata')\n        return bytes(data)\n    finally:\n        os.close(descriptor)\n\n\nclass NativeInput:\n    \"\"\"The fixed Node parent's anonymous Linux stream, not a general IPC API.\n\n    Constructor arguments are internal source composition. Production fixes fd0,\n    Node/source/cwd below; there are no command/environment selection switches.\n    Peer credentials identify the socket creator; pidfd and fresh proc identity\n    separately prove that creator is still our exact live parent.\n    \"\"\"\n    def __init__(self, descriptor, node, parent_source, parent_sha, parent_cwd):\n        self.descriptor, self.node = descriptor, Path(node)\n        self.source, self.source_sha, self.cwd = Path(parent_source), parent_sha, Path(parent_cwd)\n        self.pid, self.pidfd, self.channel = os.getppid(), None, None\n        self.identity = None\n        try:\n            input_require(sys.platform == 'linux' and hasattr(socket, 'SO_DOMAIN')\n                          and hasattr(os, 'pidfd_open'), 'native-platform')\n            self.fd_identity = self._descriptor()\n            input_require(stat.S_ISSOCK(self.fd_identity[2]), 'descriptor-kind')\n            self.channel = socket.socket(fileno=os.dup(descriptor))\n            input_require(self.channel.getsockopt(socket.SOL_SOCKET, socket.SO_DOMAIN) == socket.AF_UNIX,\n                          'socket-domain')\n            input_require(self.channel.getsockopt(socket.SOL_SOCKET, socket.SO_TYPE) == socket.SOCK_STREAM,\n                          'socket-type')\n            input_require(self.channel.getsockopt(socket.SOL_SOCKET, socket.SO_ACCEPTCONN) == 0,\n                          'socket-listener')\n            input_require(self.channel.getsockname() in ('', b''), 'socket-address')\n            try:\n                peer = self.channel.getpeername()\n            except OSError:\n                raise InputRefused('socket-connected') from None\n            input_require(peer in ('', b''), 'socket-address')\n            self.credentials = struct.unpack('3i', self.channel.getsockopt(socket.SOL_SOCKET,\n                socket.SO_PEERCRED, struct.calcsize('3i')))\n            input_require(self.credentials == (self.pid, os.getuid(), os.getgid()), 'socket-peer')\n            self.pidfd = os.pidfd_open(self.pid)\n            os.set_inheritable(self.pidfd, False)\n            self.identity = self._parent()\n            self.check()\n            os.set_blocking(descriptor, False)\n        except BaseException as error:\n            self.close(error)\n            raise\n\n    def _descriptor(self):\n        info = os.fstat(self.descriptor)\n        return (info.st_dev, info.st_ino, info.st_mode, info.st_uid, info.st_gid)\n\n    def _parent(self):\n        input_require(os.getppid() == self.pid and not select.select([self.pidfd], [], [], 0)[0], 'parent-live')\n        directory = os.open('/proc/' + str(self.pid), os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)\n        try:\n            raw = proc_bytes(directory, 'stat', 65536).decode('ascii')\n            suffix = raw[raw.rindex(')') + 2:].split()\n            input_require(suffix[0] not in ('Z', 'X', 'x') and len(suffix) > 19, 'parent-live')\n            start = suffix[19]\n            input_require(re.fullmatch(r'[1-9][0-9]*', start) is not None, 'parent-identity')\n            status = dict(line.split(':', 1) for line in proc_bytes(directory, 'status', 65536).decode('ascii').splitlines() if ':' in line)\n            input_require(status['Uid'].split() == [str(os.getuid())] * 4\n                          and status['Gid'].split() == [str(os.getgid())] * 4, 'parent-credentials')\n            executable = os.stat('exe', dir_fd=directory)\n            wanted = self.node.stat()\n            input_require(stat.S_ISREG(executable.st_mode) and (executable.st_dev, executable.st_ino)\n                          == (wanted.st_dev, wanted.st_ino), 'parent-executable')\n            # Fixed kernel proc links only. Neither path is supplied by IPC.\n            input_require(os.path.samefile('/proc/' + str(self.pid) + '/cwd', self.cwd), 'parent-cwd')\n            argv = proc_bytes(directory, 'cmdline', 65536).split(b'\\0')\n            input_require(len(argv) == 3 and argv[-1] == b'', 'parent-argv')\n            args = [part.decode('utf8', errors='strict') for part in argv[:-1]]\n            input_require(args[0] in ('node', str(self.node)), 'parent-argv')\n            entry = Path(args[1])\n            input_require(entry == self.source or not entry.is_absolute() and self.cwd / entry == self.source,\n                          'parent-entry')\n            input_require(hashlib.sha256(fixed_bytes(self.source, 131072)).hexdigest() == self.source_sha,\n                          'parent-source')\n            input_require(os.getppid() == self.pid and not select.select([self.pidfd], [], [], 0)[0], 'parent-live')\n            return (self.pid, start, executable.st_dev, executable.st_ino)\n        finally:\n            os.close(directory)\n\n    def check(self):\n        input_require(self._descriptor() == self.fd_identity, 'descriptor-changed')\n        input_require(self.channel.getsockopt(socket.SOL_SOCKET, socket.SO_DOMAIN) == socket.AF_UNIX\n                      and self.channel.getsockopt(socket.SOL_SOCKET, socket.SO_TYPE) == socket.SOCK_STREAM\n                      and self.channel.getsockopt(socket.SOL_SOCKET, socket.SO_ACCEPTCONN) == 0\n                      and self.channel.getsockname() in ('', b'') and self.channel.getpeername() in ('', b''),\n                      'socket-changed')\n        input_require(struct.unpack('3i', self.channel.getsockopt(socket.SOL_SOCKET, socket.SO_PEERCRED,\n                      struct.calcsize('3i'))) == self.credentials, 'socket-peer')\n        input_require(self._parent() == self.identity, 'parent-identity')\n\n    def close(self, primary=None):\n        failures = []\n        if self.channel is not None:\n            try:\n                self.channel.close()\n            except BaseException as error:\n                failures.append(error)\n            finally:\n                self.channel = None\n        if self.pidfd is not None:\n            try:\n                os.close(self.pidfd)\n            except BaseException as error:\n                failures.append(error)\n            finally:\n                self.pidfd = None\n        if failures:\n            raise BaseExceptionGroup('Native input closure refused',\n                                     ([primary] if primary is not None else []) + failures)\n\n\n"
+        },
+        {
+          "start": 7,
+          "end": 9,
+          "before": "",
+          "after": "import socket\nimport struct\n"
+        }
+      ]
+    },
+    ".github/ci/diagnostics/catalogue-original-replay/policy.test.mjs": {
+      "originalSha256": "7344074f47cba31c439b1d1705f2b7d69cac5a0b70d3535e1133645d4b4ed6b8",
+      "currentSha256": "cd26a8fe4bd7fe53b9ec08d5647fe680010d74bef0b0c894a488697924febdd4",
+      "changes": [
+        {
+          "start": 152,
+          "end": 153,
+          "before": " const snippets=[\"_progress.next('dependencies')\",\"package = (original / 'node_modules/tsx/package.json').resolve()\",\"['version'] == '4.22.4'\",\"_progress.next('loader-source')\",\"loader = (original / 'node_modules/tsx/dist/loader.mjs').resolve()\",\"_progress.next('contract-input')\",\"contract = json.loads(fixed_bytes(Path(__file__).with_name('contract.json'), 131072))\",\"_progress.next('cancellation-input')\",\"kernel.require(stat.S_ISFIFO(os.fstat(0).st_mode))\",\"_progress.next('launch')\"];\n",
+          "after": " const snippets=[\"_progress.next('dependencies')\",\"package = (original / 'node_modules/tsx/package.json').resolve()\",\"['version'] == '4.22.4'\",\"_progress.next('loader-source')\",\"loader = (original / 'node_modules/tsx/dist/loader.mjs').resolve()\",\"_progress.next('contract-input')\",\"contract = json.loads(fixed_bytes(Path(__file__).with_name('contract.json'), 131072))\",\"_progress.next('cancellation-input')\",\"native_input = NativeInput(0, node, Path(__file__).with_name('parent.mjs'),\",\"_progress.next('launch')\"];\n"
+        },
+        {
+          "start": 150,
+          "end": 151,
+          "before": "test('dependency observations preserve the original package, loader, contract and native FIFO refusals in order',async()=>{\n",
+          "after": "test('dependency observations preserve the original package, loader, contract and fixed native producer admission in order',async()=>{\n"
+        },
+        {
+          "start": 141,
+          "end": 142,
+          "before": " for(const[name,entry]of Object.entries(proof.files)){let text=readFileSync(new URL(name,import.meta.url),'utf8');assert.equal(sha(text),entry.currentSha256);let frontier=text.length;for(const edit of entry.edits){assert(Number.isSafeInteger(edit.start)&&Number.isSafeInteger(edit.end)&&edit.start>=0&&edit.start<=edit.end&&edit.end<=frontier);text=text.slice(0,edit.start)+edit.original+text.slice(edit.end);frontier=edit.start;}assert.equal(sha(text),entry.originalSha256);}\n",
+          "after": " for(const[name,entry]of Object.entries(proof.files)){let text=name==='adapter.py'?predecessorAdapter(readFileSync,createHash):readFileSync(new URL(name,import.meta.url),'utf8');assert.equal(sha(text),entry.currentSha256);let frontier=text.length;for(const edit of entry.edits){assert(Number.isSafeInteger(edit.start)&&Number.isSafeInteger(edit.end)&&edit.start>=0&&edit.start<=edit.end&&edit.end<=frontier);text=text.slice(0,edit.start)+edit.original+text.slice(edit.end);frontier=edit.start;}assert.equal(sha(text),entry.originalSha256);}\n"
+        },
+        {
+          "start": 6,
+          "end": 16,
+          "before": "",
+          "after": "function predecessorAdapter(readFileSync,createHash){\n const inverse=JSON.parse(readFileSync(new URL('input-inverse.json',import.meta.url),'utf8'));\n assert.equal(inverse.base,'fe8c3aad28991cb9477a0040f500fc59982d6a4b');\n const row=inverse.files['.github/ci/diagnostics/catalogue-original-replay/adapter.py'];\n let text=readFileSync(new URL('adapter.py',import.meta.url),'utf8');\n const sha=value=>createHash('sha256').update(value).digest('hex');assert.equal(sha(text),row.currentSha256);\n let lines=text.match(/[^\\n]*\\n|[^\\n]+$/g)??[],frontier=lines.length;\n for(const edit of row.changes){assert(0<=edit.start&&edit.start<=edit.end&&edit.end<=frontier);assert.equal(lines.slice(edit.start,edit.end).join(''),edit.after);lines.splice(edit.start,edit.end-edit.start,...(edit.before.match(/[^\\n]*\\n|[^\\n]+$/g)??[]));frontier=edit.start;}\n text=lines.join('');assert.equal(sha(text),row.originalSha256);return text;\n}\n"
+        }
+      ]
+    },
+    "test/notification-original-replay-policy.test.ts": {
+      "originalSha256": "f754e6bd0898aadb916225f079b0376bef572f76e28cb11e758b698ab95383c3",
+      "currentSha256": "29b2edc8fef0fff08908dbdaeec6b8d5e9fee8fa27379529938242709b17deb0",
+      "changes": [
+        {
+          "start": 10,
+          "end": 19,
+          "before": "",
+          "after": "\nit('proves eight actual fixed Node transport and peer-liveness intentions without replay or API authority',{timeout:30000},async()=>{\n const result=spawnSync('/usr/bin/python3',['-I','-B','.github/ci/diagnostics/catalogue-original-replay/input-controls-owner.py'],{env:{PATH:'/usr/bin:/bin',LANG:'C',IPC_TEST_NODE:process.execPath},encoding:'utf8',timeout:28000,maxBuffer:1024*1024});expect(result.error).toBeUndefined();expect(result.signal).toBeNull();expect(result.status,result.stderr).toBe(0);expect(result.stderr).toBe('');expect(result.stdout).toBe('Original replay native input controls complete:8\\nOriginal replay native input supervised complete:8\\n');\n});\n\nit('retains six strict transport observation and complete predecessor controls',()=>{\n const result=spawnSync(process.execPath,['--test','.github/ci/diagnostics/catalogue-original-replay/input-policy.test.mjs'],{encoding:'utf8',timeout:10000,maxBuffer:1024*1024});const output=(result.stdout??'')+(result.stderr??'');expect(result.error).toBeUndefined();expect(result.signal).toBeNull();expect(result.status,output).toBe(0);\n for(const[name,n]of [['tests',6],['pass',6],['fail',0],['cancelled',0],['skipped',0],['todo',0]])expect(output).toMatch(new RegExp('# '+name+' '+n+'(?:\\\\r?\\\\n)'));process.stdout.write(output);\n});\n"
+        }
+      ]
+    }
+  },
+  "unchangedSha256": {
+    ".github/ci/owned-process.py": "cb1a2cc2879267f8834dc11ea0e1c52f8326b0bd4e45dcd94ccf2ac43463f28c",
+    ".github/ci/diagnostics/catalogue-original-replay/adapter.test.py": "2ec05ce162593b188d7b1ee6e4e7f5cc025a0c4d139567f6a0b77b80d228e5da",
+    ".github/ci/diagnostics/catalogue-original-replay/adapter-controls.mjs": "c32b5fe02a5dbc61267d6ab5bc05338a9b2cb5369a0361afed542f9c9313a253",
+    ".github/ci/diagnostics/catalogue-original-replay/parent.mjs": "972936b9b1d06582a694608ca600375dc61a82a29694a58f0e3a82a1b32c5eae",
+    ".github/ci/diagnostics/catalogue-original-replay/worker.mjs": "4cb6a7e56e9b64f3b4a701c5bb15a7d4b6b2f2883264130337ce09cfb2632c50",
+    ".github/ci/diagnostics/catalogue-original-replay/contract.json": "9dbd0469d25156479da20f0bd68f7218ac3664e542c7ffbf5fb8aa86397b9f70",
+    ".github/ci/diagnostics/catalogue-original-replay/policy.mjs": "2e72e42f301cf2f363be8e151e99c0764924542ea2647f1acf92b586b5babd85",
+    ".github/ci/diagnostics/catalogue-original-replay/progress.mjs": "7de5f2c99f62fc5525b6c66a730c8d666fbde8d6d7f96b26fc94769cae1ce3a6",
+    ".github/ci/diagnostics/catalogue-original-replay/progress-inverse.json": "5e96f047a07db3ac44d833a6cd91d0f71d1e754cf2ef8f2fb4a77a8448cbbba0",
+    ".github/ci/diagnostics/catalogue-original-replay/direct-children.mjs": "69d88cc9a3e4835297d34ff0f22e5dbf17b5b3e1a59af701561196fcd9612a60",
+    ".github/workflows/notification-original-catalogue-replay.yml": "fa96efbaef6138f867ba2b60d05dd84d6f2d8e13b3ff547c211b1fba3dd4f743",
+    ".github/workflows/alpha-staging-diagnostics.yml": "fa96efbaef6138f867ba2b60d05dd84d6f2d8e13b3ff547c211b1fba3dd4f743"
+  }
+}
