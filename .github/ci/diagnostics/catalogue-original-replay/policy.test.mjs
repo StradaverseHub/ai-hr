@@ -78,3 +78,10 @@ test('a failed stop cannot skip another owned stop or permit early finish before
  let settled=false;const draining=owner.finish().then(result=>{settled=true;return result;});a.emit('close',1,null);await Promise.resolve();assert.equal(settled,false);b.emit('close',1,null);
  assert.deepEqual(await draining,{cancelled:true,stopFailed:true});assert.throws(()=>owner.start(()=>new EventEmitter()));
 });
+
+test('the registered manual diagnostic route is byte-identical to the reviewed closed replay workflow',async()=>{
+ const{readFileSync}=await import('node:fs');
+ const reviewed=readFileSync(new URL('../../../workflows/notification-original-catalogue-replay.yml',import.meta.url));
+ const registered=readFileSync(new URL('../../../workflows/alpha-staging-diagnostics.yml',import.meta.url));
+ assert(reviewed.equals(registered));assert(!/inputs:|push:|pull_request:/.test(registered.toString('utf8')));
+});
