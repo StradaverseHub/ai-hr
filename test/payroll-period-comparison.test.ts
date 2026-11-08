@@ -242,3 +242,31 @@ describe('recorded explanations', () => {
     expect(result.summary?.joiners).toBe(1); expect(result.reasonCounts.unclassified).toBe(1);
   });
 });
+
+describe('approved full reconciliation presentation',()=>{
+ it('lists explicit recorded totals and contribution keys without reconstructing absent amounts',async()=>{
+  const {recordedPayrollReconciliationItems,recordedPayrollComparisonCodes}=await import('../lib/payroll-comparison-source');
+  const saved=recordedPayrollReconciliationItems({epfEmployee:550,epfEmployer:650,componentLines:[{code:'ALLOW01',amount:'800.00'}],reportContext:{version:1,payingCompanyId:companyId,currency:'MYR',itemization:'complete'}},{'@total/netPay':'5250.00','@total/grossPay':'5800.00'});
+  expect(recordedPayrollComparisonCodes(saved)).toEqual(expect.arrayContaining(['ALLOW01','@total/netPay','@total/grossPay','@statutory/epfEmployee','@statutory/epfEmployer']));
+  expect(recordedPayrollComparisonAmount('5000',saved,'@total/netPay',companyId)).toBe('5250.00');
+  expect(recordedPayrollComparisonAmount('5000',saved,'@statutory/epfEmployee',companyId)).toBe('550.00');
+  expect(recordedPayrollComparisonAmount('5000',saved,'@statutory/socsoEmployee',companyId)).toBeNull();
+  expect(recordedPayrollComparisonAmount('5000',saved,'UNPAID',companyId)).toBe('0.00');
+ });
+ it('keeps unchanged employees and shows New only for a known-currency zero baseline',()=>{
+  const result=compare([source('a','unchanged','previous','5000'),source('b','unchanged','current','5000'),source('c','new','current','4500')],[identity('unchanged'),identity('new',{hireDate:'2026-10-01'})],{filters:{...filters,onlyVariances:false,minVariance:'0.00'}});
+  expect(result.rows).toHaveLength(2);
+  const unchanged=result.rows.find(r=>r.employmentId==='unchanged')!,joined=result.rows.find(r=>r.employmentId==='new')!;
+  expect(unchanged).toMatchObject({variance:'0.00',variancePct:'0.00'});expect(payrollComparisonCell(joined,'variancePct')).toBe('New');
+  expect(payrollComparisonCell({...joined,currency:null},'variancePct')).toBeNull();
+  expect(payrollComparisonFilters({payItemCodes:['BASIC','@total/netPay','BASIC']},definition).payItemCodes).toEqual(['BASIC','@total/netPay']);
+ });
+});
+
+it('keeps a real Pay Item code distinct from reserved recorded payroll totals',async()=>{
+ const {recordedPayrollReconciliationItems}=await import('../lib/payroll-comparison-source');
+ const saved=recordedPayrollReconciliationItems({componentLines:[{code:'__NETPAY__',amount:'77.00'}]},{'@total/netPay':'5000.00'});
+ expect(recordedPayrollComparisonAmount('0',saved,'__NETPAY__',companyId)).toBe('77.00');
+ expect(recordedPayrollComparisonAmount('0',saved,'@total/netPay',companyId)).toBe('5000.00');
+ expect(()=>validatePayrollComparisonDefinition({...definition,payItemCode:'@total/invented'})).toThrow();
+});

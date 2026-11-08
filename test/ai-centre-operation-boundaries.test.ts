@@ -63,7 +63,7 @@ beforeAll(migrateTestDb);afterAll(closeAll);
 beforeEach(async()=>{await resetDb();const base=await seedBase();ctx={...await entitledCtx(base),grants:[{role:'hr_admin',companyId:null}]};});
 describe('every newly inventoried public operation uses the real control owner',()=>{
  it('covers exactly the append-only migration registration',()=>{
-  const registered=[...readFileSync('db/migrations/3000_ai_centre_function_coverage.sql','utf8').matchAll(/\('read:operation_([^']+)',true\)/g)].map(match=>match[1]).sort();
+  const registered=[...readFileSync('db/migrations/3201_ai_centre_function_coverage.sql','utf8').matchAll(/\('read:operation_([^']+)',true\)/g)].map(match=>match[1]).sort();
   expect(boundaries.map(([key])=>key).sort()).toEqual(registered);
   expect(new Set(registered).size).toBe(41);
  });

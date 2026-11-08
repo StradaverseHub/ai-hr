@@ -1,3 +1,4 @@
+vi.mock('next/navigation',()=>({useRouter:()=>({refresh:vi.fn()})}));
 // @vitest-environment jsdom
 /** Authored UNRUN: actual native editor controls; catalogue mode forbids every unrelated request. */
 import React from 'react';

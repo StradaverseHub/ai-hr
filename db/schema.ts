@@ -10817,6 +10817,10 @@ export const attendanceWorkflowTemplate = pgTable('attendance_workflow_template'
     version: integer('version').notNull(), active: boolean('active').notNull().default(false), lineageId: uuid('lineage_id').notNull(),
     supersededAt: timestamp('superseded_at', { withTimezone: true }), createdAt: createdAt(),
 }, t => [uniqueIndex('attendance_workflow_current_code').on(t.tenantId, t.companyId, t.code).where(sql `superseded_at IS NULL`), uniqueIndex('attendance_workflow_lineage_version').on(t.lineageId, t.version)]);
+/** Company assignments are immutable facts belonging to one retained definition version. */
+export const attendanceWorkflowCompany = pgTable('attendance_workflow_company', {
+ tenantId:tenantId(),templateId:uuid('template_id').notNull().references(()=>attendanceWorkflowTemplate.id),companyId:uuid('company_id').notNull().references(()=>company.id),
+},t=>[primaryKey({columns:[t.templateId,t.companyId]})]);
 export const attendanceWorkflowSetting = pgTable('attendance_workflow_setting', {
     id: id(), tenantId: tenantId(), companyId: uuid('company_id').notNull().references(() => company.id),
     applicationType: text('application_type').notNull().$type<'irregularity' | 'self_overtime'>(), enabled: boolean('enabled').notNull().default(false),

@@ -37,11 +37,11 @@ export async function scopedSession(): Promise<{ s: SessionContext; scopeIds: st
 }
 
 /** Admin-gated variant: redirects non-admins, then returns the session + active company scope. */
-export async function scopedAdmin(): Promise<{ s: SessionContext; scopeIds: string[] }> {
+export async function scopedAdmin(): Promise<{ s: SessionContext; scopeIds: string[]; allowedCompanyIds?:string[] }> {
   const s = await requireAdmin();
   const allowed = await allowedCompanies(s);
   const scopeIds = await getScopeIds(allowed.map((c) => c.id));
-  return { s, scopeIds };
+  return { s, scopeIds, allowedCompanyIds:allowed.map(company=>company.id) };
 }
 
 /**

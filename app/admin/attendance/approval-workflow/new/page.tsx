@@ -7,12 +7,16 @@ import { PageHeader, pageWideCls } from '@/components/ui';
 import { WorkflowForm } from '../workflow-form';
 import { companyWorkflowHref, workflowContext, workflowRoot, type WorkflowQuery } from '../navigation';
 export default async function NewAttendanceWorkflowPage({ searchParams }: { searchParams: Promise<WorkflowQuery> }) {
-  const { s, scopeIds } = await scopedAdmin(), t = await getTranslations('attendanceWorkflow');
-  let context;
-  try { context = workflowContext(await searchParams, scopeIds); } catch { notFound(); }
+  const { s, scopeIds,allowedCompanyIds } = await scopedAdmin(), t = await getTranslations('attendanceWorkflow');
+  let context:ReturnType<typeof workflowContext>;
+  const query=await searchParams;
+  if(query.companyId!==undefined&&typeof query.companyId!=='string')notFound();
+  const applicationType=query.applicationType??'irregularity';
+  if(applicationType!=='irregularity'&&applicationType!=='self_overtime')notFound();
+  try { context = typeof query.companyId==='string'?workflowContext({...query,applicationType}, allowedCompanyIds??scopeIds):scopeIds[0]?{companyId:scopeIds[0],applicationType}:null; } catch { notFound(); }
   if (!context) redirect(workflowRoot);
   const [options, workflows] = await Promise.all([
-    attendanceApplicationFilterOptions(s, [context.companyId]),
+    attendanceApplicationFilterOptions(s, allowedCompanyIds??scopeIds),
     listAttendanceWorkflows(s, [context.companyId]),
   ]);
   const defaultPriority = nextAttendanceWorkflowPriority(workflows

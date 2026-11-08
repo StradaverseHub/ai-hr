@@ -1,5 +1,22 @@
 # Coordinated migration reservations
 
+## AI centre after accepted PR233 — 8 November 2026 (unapplied reallocation)
+
+The installed PR233 source `29d9edcbc4368be871688e9fdf35347676a7841c`
+ends with 707 ordered migrations through `3110_attendance_workflow_owner_rls`,
+idx 2410 / timestamp 1793330002710. Preserve that complete applied prefix
+and every SQL byte. The owner-authorized PR233-first release order moves only
+PR230's still-unapplied source reservations: `2700_ai_centre_controls` becomes
+`3200_ai_centre_controls` (idx 2500 / when 1793330002800), and
+`3000_ai_centre_function_coverage` becomes `3201_ai_centre_function_coverage`
+(idx 2501 / when 1793330002801). Both SQL payloads remain byte-identical.
+The old 2700/3000 reservations below are superseded and were never installed.
+A refreshed survey found pending journals through tag 3103 / idx 2403 /
+when 1793330002703; the separately checked 3110 reservation was free and is
+now applied. The peer owner acknowledged that 3200/3201 remain reserved here.
+Recheck actual refs, peer claims and installed ledger at admission. This is
+source allocation, not deployment authority.
+
 This record owns **unapplied reservations**, not the deployed database. Refresh canonical branch
 journals and the actual staging watermark before journal integration or application. Preserve every
 applied SQL/hash and exact journal prefix. Reservations do not authorize deployment or skipping the
@@ -1777,3 +1794,27 @@ journals were also checked; none had a higher competing claim. The original
 alpha journal prefix and SQL bytes are preserved. This is an unapplied source
 reservation: recheck freshly fetched integration journals, peer WIP and the exact
 installed ordered ledger before integration or release admission.
+
+## Four approved feedback items — 7 November 2026 (unapplied)
+
+Branch codex/approved-four-20261107 reserves 3100_pay_formula_saved_availability at idx2400 / when1793330002700 and 3101_attendance_shared_workflow at idx2401 / when1793330002701. Fresh main/alpha are 4a5a9de8c. A scan of local/remote ref journals and readable registered worktree journals found highest competing timestamp1793330002601 (3001_employment_membership_initplan). Read-only staging reports704 applied entries through1793330002200. Preserve all existing SQL bytes and the canonical journal prefix; recheck the exact ordered installation ledger and peer reservations at integration/admission. Neither reservation grants installation priority or deployment authority.
+
+
+## PR233 real-owner RLS forward repair — 8 November 2026 (unapplied)
+
+PR233 reserves `3110_attendance_workflow_owner_rls`, idx `2410`, when
+`1793330002710`. A fresh coordinated survey found no collision for this file,
+index or timestamp. PR230's next reservations remain `3200`/`3201`, idx
+`2500`/`2501`, when `1793330002800`/`1793330002801`.
+
+Staging has already applied the exact `3100`/`3101` bytes from `d4536294f`;
+all 706 ordered hashes and the original 704-entry prefix matched. Its live
+workflow lookup exposed a forced-RLS error under the non-superuser migration
+owner that superuser-owned test functions had hidden. This forward tail enables
+row-security evaluation on five existing security-definer functions, preserving
+their bodies, permission/tenant checks, policies, grants and original records.
+The non-superuser owner regression and hosted requalification remain required.
+
+Unapplied peer `3102`/`3103` drafts must reallocate above the actually installed
+prefix when integrating; no lower timestamp may be silently skipped. This is a
+source reservation, not evidence that the repair is applied or accepted.

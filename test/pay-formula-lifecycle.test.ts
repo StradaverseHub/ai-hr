@@ -31,19 +31,19 @@ it('requires an exact successful saved revision and retains the old active revis
  await expect(setPayFormulaActive(ctx,{...newer,testId:t.id,active:true})).rejects.toThrow(/successful test/);
  await expect(testPayFormula(ctx,{...s,context})).rejects.toThrow(/Save/);
 });
-it('only offers tested and active formulas for new Pay Item assignments', async () => {
+it('offers all successfully saved formulas without a mandatory test or activation', async () => {
  const formula = await saved('PICKABLE', 'Return 25');
  const offered = async () => (await payFormulaOptions(ctx)).activeFormulas.map(option => option.formulaId);
- expect(await offered()).not.toContain('PICKABLE');
+ expect(await offered()).toContain('PICKABLE');
  const receipt = await testPayFormula(ctx, { ...formula, context });
  expect(receipt.passed).toBe(true);
- expect(await offered()).not.toContain('PICKABLE');
+ expect(await offered()).toContain('PICKABLE');
  await setPayFormulaActive(ctx, { ...formula, active: true, testId: receipt.id });
  expect(await offered()).toContain('PICKABLE');
  await upsertPayComponent(ctx, { ...settings, code: 'PICKED', rule: { kind: 'formula_builder', formulaId: 'PICKABLE', dependencies: [] } });
  expect((await listPayComponents(ctx)).find(item => item.code === 'PICKED')?.rule).toMatchObject({ formulaId: 'PICKABLE' });
  await setPayFormulaActive(ctx, { id: formula.id, active: false });
- expect(await offered()).not.toContain('PICKABLE');
+ expect(await offered()).toContain('PICKABLE');
  expect((await listPayComponents(ctx)).find(item => item.code === 'PICKED')?.rule).toMatchObject({ formulaId: 'PICKABLE' });
 });
 it('binds server dependencies and locks a used identity while retaining receipts after deactivation',async()=>{
@@ -53,7 +53,7 @@ it('binds server dependencies and locks a used identity while retaining receipts
  await expect(savePayFormula(ctx,{id:s.id,expectedRevisionId:s.revisionId,formulaId:'RENAMED',description:'Cannot rename',method:'write',source:'Return 2'})).rejects.toThrow();
  await expect(deletePayComponent(ctx,row.id)).rejects.toBeInstanceOf(PayComponentInUseError);
  await expect(deletePayFormula(ctx,{id:s.id,reason:'Cannot erase a used formula'})).rejects.toThrow(/retained/);
- await setPayFormulaActive(ctx,{id:s.id,active:false});await expect(withTenant(ctx,tx=>loadActiveFormulaProgramTx(tx,ctx,'LINKED'))).rejects.toThrow(/inactive/);
+ await setPayFormulaActive(ctx,{id:s.id,active:false});expect((await withTenant(ctx,tx=>loadActiveFormulaProgramTx(tx,ctx,'LINKED'))).revisionId).toBe(s.revisionId);
  await upsertPayComponent(ctx,{...settings,code:'BUILDER',name:'Updated inactive display name',rule:row.rule});
  const view=await getPayFormula(ctx,s.id);expect(view?.status).toBe('inactive');expect(view?.tests.some(t=>t.id===s.test.id)).toBe(true);expect(view?.usage.map(u=>u.id)).toContain(row.id);
 });
@@ -97,4 +97,15 @@ it('refuses an already-retained incomplete source at native test, activation and
 it('saves, tests and activates a completed formula containing ordinary MISSING words',async()=>{
  const good=await activated('COMPLETED_MISSING_WORD','Dim Note As String = "MISSING is an ordinary word"\n\' MISSING documentation\nReturn 9');
  expect(good.test.amount).toBe('9');expect((await withTenant(ctx,tx=>loadActiveFormulaProgramTx(tx,ctx,'COMPLETED_MISSING_WORD',base.companyId))).revisionId).toBe(good.revisionId);
+});
+it('pins the latest successful saved revision without test or activation and atomically refreshes linked dependencies',async()=>{
+ const s=await saved('IMMEDIATE','Return 25');
+ await upsertPayComponent(ctx,{...settings,code:'IMMEDIATE_ITEM',rule:{kind:'formula_builder',formulaId:'IMMEDIATE',dependencies:['FORGED']}});
+ expect(await withTenant(ctx,tx=>loadActiveFormulaProgramTx(tx,ctx,'IMMEDIATE'))).toMatchObject({revisionId:s.revisionId,dependencies:[]});
+ const changed=await savePayFormula(ctx,{id:s.id,expectedRevisionId:s.revisionId,formulaId:'IMMEDIATE',description:'Latest successfully saved revision',method:'write',source:'Return {#PayItem}("BASIC") / 20'});
+ expect(await withTenant(ctx,tx=>loadActiveFormulaProgramTx(tx,ctx,'IMMEDIATE'))).toMatchObject({revisionId:changed.revisionId,dependencies:['BASIC']});
+ expect((await listPayComponents(ctx)).find(row=>row.code==='IMMEDIATE_ITEM')?.rule).toMatchObject({dependencies:['BASIC']});
+ await expect(savePayFormula(ctx,{id:s.id,expectedRevisionId:changed.revisionId,formulaId:'IMMEDIATE',description:'Cycle must fail',method:'write',source:'Return {#PayItem}("IMMEDIATE_ITEM")'})).rejects.toThrow(/circular/);
+ expect((await getPayFormula(ctx,s.id))?.latest.id).toBe(changed.revisionId);
+ expect((await getPayFormula(ctx,s.id))?.capabilities).toMatchObject({activate:false,deactivate:false});
 });

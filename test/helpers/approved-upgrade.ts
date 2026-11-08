@@ -44,11 +44,18 @@ export const APPROVED_UPGRADE_TAIL=[
  {idx:1656,when:1793330001856,tag:'2406_payroll_reconciliation_generation'},
  {idx:1660,when:1793330001860,tag:'2460_payroll_individual_import_queue'},
  {idx:1900,when:1793330002200,tag:'2600_onboarding_current_personnel'},
- {idx:2000,when:1793330002300,tag:'2700_ai_centre_controls'},
- {idx:2300,when:1793330002600,tag:'3000_ai_centre_function_coverage'},
+ {idx:2400,when:1793330002700,tag:'3100_pay_formula_saved_availability'},
+ {idx:2401,when:1793330002701,tag:'3101_attendance_shared_workflow'},
+ {idx:2410,when:1793330002710,tag:'3110_attendance_workflow_owner_rls'},
+ {idx:2500,when:1793330002800,tag:'3200_ai_centre_controls'},
+ {idx:2501,when:1793330002801,tag:'3201_ai_centre_function_coverage'},
 ] as const;
 // Final pending 2109/2126 bytes reviewed from engine 128bc2539; no applied-prefix hashes change.
 const APPROVED_UPGRADE_HASHES:Record<string,string>={
+ '3100_pay_formula_saved_availability':'7bc0ab95aea27bae36f9be299784d3d391b4a315aa0302a9c42c2dbf9996b1b8',
+ '3101_attendance_shared_workflow':'f32d12965f2788dc673f0c09e128996a653341bbcf6933e47f211da021617169',
+ '3110_attendance_workflow_owner_rls':'39fc4b31666120cb4befe263b8b30433d6752dbaa52cda6cdbe350b3077f8f16',
+
  '2106_account_management_subject':'d4bbd5d20d9b40294b31d022a3ec0cf29e9a290f10749493c4934db31c5cdd67',
  '2107_probation_module_permission':'da94777be8e2b3f4365851eb785a64baaf9c54e9fb64808f7c72379ee94732f8',
  '2108_rewards_entity_classification':'8f485227fba437d5a24bc8b762630c670c38364d98d10e85802ce6e05bddd1c6',
@@ -82,8 +89,8 @@ const APPROVED_UPGRADE_HASHES:Record<string,string>={
  '2406_payroll_reconciliation_generation':'38979689c8df2b486fdd1c104de7dd94e872ba8e0838e1d51cc8be119fa99113',
  '2460_payroll_individual_import_queue':'5919c5fde5796a08c13d2a37174becaa20f86abb896e2aa66be5d3b222a79f4c',
  '2600_onboarding_current_personnel':'ef82561ecfca93f3feab8f38918c3449569b68afe944085cceb8bafd25ab60be',
- '2700_ai_centre_controls':'2182ae4a614d0b847f399af18f9cfc43e82d3c9fd6f42ca960bfe22ebf4f10e2',
- '3000_ai_centre_function_coverage':'0c7239f512174c0d941dcb441cf98bd3a685a8e4d65973dc92f136dfb6b78d8a',
+ '3200_ai_centre_controls':'2182ae4a614d0b847f399af18f9cfc43e82d3c9fd6f42ca960bfe22ebf4f10e2',
+ '3201_ai_centre_function_coverage':'0c7239f512174c0d941dcb441cf98bd3a685a8e4d65973dc92f136dfb6b78d8a',
 };
 export function assertApprovedUpgradeTail(entries:{idx:number;when:number;tag:string}[]){
  expect(entries).toHaveLength(671+APPROVED_UPGRADE_TAIL.length);

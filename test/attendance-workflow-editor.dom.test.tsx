@@ -23,7 +23,7 @@ afterEach(() => { cleanup(); __resetUnsavedGuards(); vi.restoreAllMocks(); });
 describe('company workflow editor outcomes', () => {
   it('fixes company/type for creation and saves all four multi-valued criteria without losing values when searching', async () => {
     form(null);
-    expect(screen.getByLabelText('Company')).toBeDisabled();
+    expect(screen.getByRole('button',{name:'Company'})).toBeEnabled();
     expect(screen.getByLabelText('Application type')).toBeDisabled();
     expect(screen.getByLabelText('Application type')).toHaveValue('self_overtime');
     for (const [label, names] of [['Department', ['Finance', 'People']], ['Business Unit', ['Operations', 'Services']], ['Job Grade', ['Grade 1', 'Grade 2']], ['Division', ['North', 'South']]] as const) {

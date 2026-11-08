@@ -42,7 +42,7 @@ describe('one switch owner per AI feature (0692)', () => {
 
   it('reads the live switch key from the table, with no hard-coded CASE left', () => {
     const wrapper = live('FUNCTION app._ai_control_context(');
-    expect(wrapper.file).toBe('db/migrations/2700_ai_centre_controls.sql');
+    expect(wrapper.file).toBe('db/migrations/3200_ai_centre_controls.sql');
     expect(read(wrapper.file)).toContain('ALTER FUNCTION app._ai_control_context(text,boolean) RENAME TO _ai_control_context_before_centre;');
     expect(wrapper.body).toContain('FROM app._ai_control_context_before_centre(wanted_feature,forced_pause) c');
     expect(wrapper.body).toContain('c.feature_paused OR EXISTS(SELECT 1 FROM public.teras_mandate_control t WHERE t.tenant_id=app.current_tenant_id() AND t.stopped)');

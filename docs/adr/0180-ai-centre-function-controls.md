@@ -41,3 +41,12 @@ The covered provider-source bytes change because controls are in the execution c
 ## Operational follow-up
 
 The remaining lean-HR work follows the agreed plan: consolidate exception handling and reminders, measure active human handling time and service quality, then evaluate a pilot spanning two payroll cycles. Configurable automation alone does not establish a staffing target. Production installation requires a separate explicit request under repository release policy.
+
+
+### Staging order after PR233 (8 November 2026)
+
+The accepted PR233 prefix contains707 migrations through3110. Only the
+still-unapplied AI Centre migrations are reallocated:2700 to3200
+(idx2500/when1793330002800),3000 to3201(idx2501/when1793330002801).
+SQL bytes and the complete applied707-entry prefix are unchanged. Populated
+upgrade evidence must cover707 to709 entries on the exact combined source.
