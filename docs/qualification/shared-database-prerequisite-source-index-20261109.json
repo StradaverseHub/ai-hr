@@ -148107,8 +148107,8 @@
     {
       "path": "lib/ai/module-agent-source-manifest.ts",
       "bytes": 352,
-      "sha256": "9067d4a3aa3ac247a28ba380b0c798efb4d61ef916734746573dd3ffe86402dd",
-      "gitBlob": "ad815168efc091c898dea4d732d9e82fa384c762",
+      "sha256": "a50d3733d5fe7ea072a18f831a38df0484d445d7b8eaa3ca219bfa5e4756dc2b",
+      "gitBlob": "d851f1a974cff35e7132dd9e5ee15959dcbf5702",
       "origins": [
         "PRESERVED_SPECIALIZED_COMPONENT"
       ],
@@ -148763,8 +148763,8 @@
     {
       "path": "lib/ai/provider-data-source-manifest.ts",
       "bytes": 228,
-      "sha256": "27e06e532b72c1a04e8fb40743bc5f13d557d0ae183e4a0df40827085f4faac7",
-      "gitBlob": "b982e5decc99ac17252e173a0f7bf0534f622b3b",
+      "sha256": "849ce5e2af7fbad00a1525a0f36fe4bc059a75d53014159001090f91931cdfa0",
+      "gitBlob": "dbae480b8d93108d6f33aa0279b73639b516f36d",
       "origins": [
         "PRESERVED_SPECIALIZED_COMPONENT"
       ],
@@ -179305,7 +179305,8 @@
   "newRecords": [
     "docs/qualification/shared-database-fixture-recovery-source-provenance-20261109.json",
     "docs/qualification/shared-database-artifact-identity-source-provenance-20261109.json",
-    "docs/qualification/ai-manifest-hosted-refresh-source-provenance-20261109.json"
+    "docs/qualification/ai-manifest-hosted-refresh-source-provenance-20261109.json",
+    "docs/qualification/ai-manifest-authenticated-source-adoption-20261109.json"
   ],
   "status": "ARTIFACT_IDENTITY_SOURCE_AUTHORED_UNRUN_AWAITING_DUAL_FULL_REVIEW",
   "historicalArchitectureBase": "f3a7b5001329d3731de1e8db469807aceab70cec",
@@ -179348,5 +179349,6 @@
     "firstControllerTapExpected": 934,
     "noAutomaticRetryOrNativeCommissioning": true
   },
-  "manifestRefreshSourceProvenance": "docs/qualification/ai-manifest-hosted-refresh-source-provenance-20261109.json"
+  "manifestRefreshSourceProvenance": "docs/qualification/ai-manifest-hosted-refresh-source-provenance-20261109.json",
+  "authenticatedManifestAdoptionProvenance": "docs/qualification/ai-manifest-authenticated-source-adoption-20261109.json"
 }

@@ -1,0 +1,219 @@
+{
+  "kind": "AUTHENTICATED_STATIC_MANIFEST_SOURCE_ADOPTION_NOT_APPROVAL_OR_TEST_TRANSFER",
+  "schemaVersion": 1,
+  "parentCommit": "b81442c4fa312ca552e2ce2aca86942d8b2f843f",
+  "sourceBranch": "codex/ai-manifest-source-adoption-20261109",
+  "sourceOnly": true,
+  "releaseAuthorized": false,
+  "testAuthorized": false,
+  "nativeAuthorized": false,
+  "providerAuthorized": false,
+  "aggregateQualified": false,
+  "scope": "Exact isolated b814 successor only; broader alpha29-approved-plus2-pending inventory is not adopted. No prior PASS is rebound to this successor.",
+  "authority": {
+    "rootArtifactReviewPath": "/private/tmp/aihr-manifest-b814-on-root-full-artifact-review-20261109.json",
+    "rootArtifactReviewSha256": "f2cbcaddae2937057c0f3bebce31220a7e2058dcf87cc2ea8e967a7b8dffb678"
+  },
+  "historicalOff": {
+    "runId": 42521783746,
+    "source": "b81442c4fa312ca552e2ce2aca86942d8b2f843f",
+    "controller": "b81442c4fa312ca552e2ce2aca86942d8b2f843f",
+    "authenticationSha256": "2f4a34b41f502e5ce8361527d4d4fdc4c0a9770b5f783e3a60daac2ffe16b2c4",
+    "claim": "13 controller models and27 metadata controls at original b814 identity only"
+  },
+  "historicalOn": {
+    "runId": 42522318134,
+    "source": "b81442c4fa312ca552e2ce2aca86942d8b2f843f",
+    "controller": "b81442c4fa312ca552e2ce2aca86942d8b2f843f",
+    "attempt": 1,
+    "originalTree": "f3e31e6493093d15dfe348d4ff8134ded918d0ed",
+    "authenticationSha256": "4c5d0d0a582c4ba943ade5a2348081e68d1f70f90307cc4b6e8bd668571ebe5f",
+    "artifactId": 13633613488,
+    "artifactZipBytes": 95568,
+    "artifactZipSha256": "cf833a8af72779748e027fae6f8405ae15e9111556df41453bef142447519b94",
+    "members": [
+      {
+        "path": "provider-data-source-manifest.ts",
+        "bytes": 228,
+        "sha256": "849ce5e2af7fbad00a1525a0f36fe4bc059a75d53014159001090f91931cdfa0"
+      },
+      {
+        "path": "module-agent-source-manifest.ts",
+        "bytes": 352,
+        "sha256": "a50d3733d5fe7ea072a18f831a38df0484d445d7b8eaa3ca219bfa5e4756dc2b"
+      },
+      {
+        "path": "refresh.json",
+        "bytes": 314851,
+        "sha256": "be02d57497a46fa7d41a588df564e420d6fdc9e3bbc5eca7d00bc2c08f426c5d"
+      }
+    ],
+    "claim": "Source data generation only; approvals were not renewed. Exact two TS artifact bytes adopted."
+  },
+  "parentIndex": {
+    "path": "docs/qualification/shared-database-prerequisite-source-index-20261109.json",
+    "commit": "b81442c4fa312ca552e2ce2aca86942d8b2f843f",
+    "gitBlob": "a85329ac570a5a080cac6c08cf55515a8263f720",
+    "bytes": 8689089,
+    "sha256": "0d17cdf044c285f57ff56ea5165532d715f8314f0226d8d8a1fc511de8aee421",
+    "storage": "Immutable Git object; no nested full-index copy"
+  },
+  "exact2LiteralAndRegistryRowInverses": [
+    {
+      "path": "lib/ai/provider-data-source-manifest.ts",
+      "parentGitBlob": "b982e5decc99ac17252e173a0f7bf0534f622b3b",
+      "parentBytes": 228,
+      "parentSha256": "27e06e532b72c1a04e8fb40743bc5f13d557d0ae183e4a0df40827085f4faac7",
+      "parentLiteral": "/** GENERATED exact privacy transform sources. Regenerate after any listed dependency changes. */\nexport const PROVIDER_DATA_TRANSFORM_SOURCE_DIGEST = \"6375c8ceaa5f473e0e8cfa67c66dcf9ca0bd7dfb04d7365fed09a70ac1a5c4af\" as const;\n",
+      "currentLiteral": "/** GENERATED exact privacy transform sources. Regenerate after any listed dependency changes. */\nexport const PROVIDER_DATA_TRANSFORM_SOURCE_DIGEST = \"2166c8dc499d0b4418a908ec9b2728d6610ff326abf3a0248758fa6ade1a1a5a\" as const;\n",
+      "currentBytes": 228,
+      "currentSha256": "849ce5e2af7fbad00a1525a0f36fe4bc059a75d53014159001090f91931cdfa0",
+      "currentGitBlob": "dbae480b8d93108d6f33aa0279b73639b516f36d",
+      "parentRegistryRow": {
+        "path": "lib/ai/provider-data-source-manifest.ts",
+        "bytes": 228,
+        "sha256": "27e06e532b72c1a04e8fb40743bc5f13d557d0ae183e4a0df40827085f4faac7",
+        "gitBlob": "b982e5decc99ac17252e173a0f7bf0534f622b3b",
+        "origins": [
+          "PRESERVED_SPECIALIZED_COMPONENT"
+        ],
+        "specializedOwners": [
+          "test/module-read-jit-diagnostic.test.ts",
+          "test/rewards-audit-policy-native.test.ts",
+          "test/rewards-audited-read-prototype.test.ts",
+          "test/employee-choice-native-purpose-plan.test.ts",
+          "test/employee-choice-benchmark-owner-native.test.ts",
+          "test/employee-choice-native-owner-factory.test.ts",
+          "test/employee-choice-exact-ascii-purpose.test.ts",
+          "test/employee-choice-exact-ascii-plan.test.ts"
+        ],
+        "requiredByRuntimeEntries": [
+          "test/module-read-jit-diagnostic.test.ts",
+          "test/rewards-audit-policy-native.test.ts",
+          "test/rewards-audited-read-prototype.test.ts",
+          "test/employee-choice-native-purpose-plan.test.ts",
+          "test/employee-choice-benchmark-owner-native.test.ts",
+          "test/employee-choice-native-owner-factory.test.ts",
+          "test/employee-choice-exact-ascii-purpose.test.ts",
+          "test/employee-choice-exact-ascii-plan.test.ts"
+        ]
+      },
+      "currentRegistryRow": {
+        "path": "lib/ai/provider-data-source-manifest.ts",
+        "bytes": 228,
+        "sha256": "849ce5e2af7fbad00a1525a0f36fe4bc059a75d53014159001090f91931cdfa0",
+        "gitBlob": "dbae480b8d93108d6f33aa0279b73639b516f36d",
+        "origins": [
+          "PRESERVED_SPECIALIZED_COMPONENT"
+        ],
+        "specializedOwners": [
+          "test/module-read-jit-diagnostic.test.ts",
+          "test/rewards-audit-policy-native.test.ts",
+          "test/rewards-audited-read-prototype.test.ts",
+          "test/employee-choice-native-purpose-plan.test.ts",
+          "test/employee-choice-benchmark-owner-native.test.ts",
+          "test/employee-choice-native-owner-factory.test.ts",
+          "test/employee-choice-exact-ascii-purpose.test.ts",
+          "test/employee-choice-exact-ascii-plan.test.ts"
+        ],
+        "requiredByRuntimeEntries": [
+          "test/module-read-jit-diagnostic.test.ts",
+          "test/rewards-audit-policy-native.test.ts",
+          "test/rewards-audited-read-prototype.test.ts",
+          "test/employee-choice-native-purpose-plan.test.ts",
+          "test/employee-choice-benchmark-owner-native.test.ts",
+          "test/employee-choice-native-owner-factory.test.ts",
+          "test/employee-choice-exact-ascii-purpose.test.ts",
+          "test/employee-choice-exact-ascii-plan.test.ts"
+        ]
+      }
+    },
+    {
+      "path": "lib/ai/module-agent-source-manifest.ts",
+      "parentGitBlob": "ad815168efc091c898dea4d732d9e82fa384c762",
+      "parentBytes": 352,
+      "parentSha256": "9067d4a3aa3ac247a28ba380b0c798efb4d61ef916734746573dd3ffe86402dd",
+      "parentLiteral": "/** GENERATED static source manifest of the AI behaviour surface (scripts/ai-agent-source-scope.mjs).\n * Regenerate/check after all integration; no runtime source reads. */\nexport const MODULE_AGENT_SOURCE_DIGEST = \"464b37e83599bf57bd9667d08af476839e030f5999552e95a9fa809a1925bb05\" as const;\nexport const MODULE_AGENT_SOURCE_FILE_COUNT = 473 as const;\n",
+      "currentLiteral": "/** GENERATED static source manifest of the AI behaviour surface (scripts/ai-agent-source-scope.mjs).\n * Regenerate/check after all integration; no runtime source reads. */\nexport const MODULE_AGENT_SOURCE_DIGEST = \"b8662d778986af9b9c0674ab853fe76324a15ba016f74f7c7c9fa8d650af6d6a\" as const;\nexport const MODULE_AGENT_SOURCE_FILE_COUNT = 480 as const;\n",
+      "currentBytes": 352,
+      "currentSha256": "a50d3733d5fe7ea072a18f831a38df0484d445d7b8eaa3ca219bfa5e4756dc2b",
+      "currentGitBlob": "d851f1a974cff35e7132dd9e5ee15959dcbf5702",
+      "parentRegistryRow": {
+        "path": "lib/ai/module-agent-source-manifest.ts",
+        "bytes": 352,
+        "sha256": "9067d4a3aa3ac247a28ba380b0c798efb4d61ef916734746573dd3ffe86402dd",
+        "gitBlob": "ad815168efc091c898dea4d732d9e82fa384c762",
+        "origins": [
+          "PRESERVED_SPECIALIZED_COMPONENT"
+        ],
+        "specializedOwners": [
+          "test/employee-choice-native-purpose-plan.test.ts",
+          "test/employee-choice-benchmark-owner-native.test.ts",
+          "test/employee-choice-native-owner-factory.test.ts",
+          "test/employee-choice-exact-ascii-purpose.test.ts",
+          "test/employee-choice-exact-ascii-plan.test.ts"
+        ],
+        "requiredByRuntimeEntries": [
+          "test/employee-choice-native-purpose-plan.test.ts",
+          "test/employee-choice-benchmark-owner-native.test.ts",
+          "test/employee-choice-native-owner-factory.test.ts",
+          "test/employee-choice-exact-ascii-purpose.test.ts",
+          "test/employee-choice-exact-ascii-plan.test.ts"
+        ]
+      },
+      "currentRegistryRow": {
+        "path": "lib/ai/module-agent-source-manifest.ts",
+        "bytes": 352,
+        "sha256": "a50d3733d5fe7ea072a18f831a38df0484d445d7b8eaa3ca219bfa5e4756dc2b",
+        "gitBlob": "d851f1a974cff35e7132dd9e5ee15959dcbf5702",
+        "origins": [
+          "PRESERVED_SPECIALIZED_COMPONENT"
+        ],
+        "specializedOwners": [
+          "test/employee-choice-native-purpose-plan.test.ts",
+          "test/employee-choice-benchmark-owner-native.test.ts",
+          "test/employee-choice-native-owner-factory.test.ts",
+          "test/employee-choice-exact-ascii-purpose.test.ts",
+          "test/employee-choice-exact-ascii-plan.test.ts"
+        ],
+        "requiredByRuntimeEntries": [
+          "test/employee-choice-native-purpose-plan.test.ts",
+          "test/employee-choice-benchmark-owner-native.test.ts",
+          "test/employee-choice-native-owner-factory.test.ts",
+          "test/employee-choice-exact-ascii-purpose.test.ts",
+          "test/employee-choice-exact-ascii-plan.test.ts"
+        ]
+      }
+    }
+  ],
+  "parentIndexReplay": {
+    "replaceExactly2RegistryRowsWithParentRows": true,
+    "removeLastNewRecord": "docs/qualification/ai-manifest-authenticated-source-adoption-20261109.json",
+    "removeOnlyNewKey": "authenticatedManifestAdoptionProvenance",
+    "serialization": "JSON.stringify(value,null,2) plus LF; independently replay to entire immutable parent Git bytes"
+  },
+  "preserved": {
+    "otherRegistryRows": 3493,
+    "registryMembership": 3495,
+    "runtimeRegistrations": 27,
+    "canonicalJournalSql": 747,
+    "physicalSql": 749,
+    "all11EmployeeRestorationRowsWhole": true,
+    "all105CompilerCurrentMetadataRowsWhole": true,
+    "allApprovalBytesWhole": true,
+    "approved": 28,
+    "pending": 2,
+    "all3GeneratorAndScopeBytesWhole": true,
+    "allRuntimeCodeTestsWorkflowsProfilesAndCapsWhole": true
+  },
+  "independentStaticDataValidation": {
+    "method": "External Git/source data reconstruction only; no repository generator/import/test execution",
+    "providerMembers": 1489,
+    "providerDigest": "2166c8dc499d0b4418a908ec9b2728d6610ff326abf3a0248758fa6ade1a1a5a",
+    "agentMembers": 480,
+    "agentDigest": "b8662d778986af9b9c0674ab853fe76324a15ba016f74f7c7c9fa8d650af6d6a",
+    "agentPhase": "Actual successor source with exact provider postimage",
+    "indexAndThisRecordOutsideBothActualScopes": true
+  },
+  "requiredNext": "Freeze and root plus different-peer FULL source review before publication or any genuine normal commissioning. Separate7fc source must generate its own outputs."
+}
