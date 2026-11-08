@@ -843,7 +843,9 @@
         "privateHint": "文本保持私密。私密筛选五分钟后到期；添加条件可缩小结果，清除后可重新开始。",
         "currentFieldsHint": "仅包含当前雇佣字段。历史、委托和重复记录请使用专用页面。使用私密或仅适用于雇佣的筛选时，草稿会隐藏。",
         "privateActive": "私密筛选已启用",
-        "privateExpired": "私密筛选已到期或不可用。请重新应用。"
+        "privateExpired": "私密筛选已到期或不可用。请重新应用。",
+        "superiorId": "直属上司 · 员工编号",
+        "superiorName": "直属上司 · 姓名"
       }
     },
     "switcher": {

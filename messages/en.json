@@ -843,7 +843,9 @@
         "privateHint": "Text stays private. Active private filters expire after five minutes; add criteria to narrow them, or clear to start again.",
         "currentFieldsHint": "Current Employment fields only. History, delegations and repeated records use their dedicated screens. Drafts are hidden while private or Employment-only filters are active.",
         "privateActive": "Private filters active",
-        "privateExpired": "Private filters expired or unavailable. Apply them again."
+        "privateExpired": "Private filters expired or unavailable. Apply them again.",
+        "superiorId": "Direct Superior · Employee ID",
+        "superiorName": "Direct Superior · Name"
       }
     },
     "switcher": {

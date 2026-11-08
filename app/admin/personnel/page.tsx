@@ -183,7 +183,7 @@ async function renderPersonnelPage(sp: PersonnelSearchParams) {
 
   const columns = savedColumns.selected;
   const allLabels=await getTranslations();
-  const employmentFilterFields=scopeIds.every(id=>maintainIds.has(id))?PERSONNEL_EMPLOYMENT_FILTERS.map(f=>({...f,label:personnelFieldLabel(PERSONNEL_FIELDS.find(d=>d.tab==='Employment'&&d.owner==='employment'&&d.ownerField===f.key)!, (key,fallback)=>allLabels.has(key)?allLabels(key):fallback)})):[];
+  const employmentFilterFields=scopeIds.every(id=>maintainIds.has(id))?PERSONNEL_EMPLOYMENT_FILTERS.map(f=>({...f,label:f.key==='directSuperiorEmployeeCode'?t('controls.superiorId'):f.key==='directSuperiorFullName'?t('controls.superiorName'):personnelFieldLabel(PERSONNEL_FIELDS.find(d=>d.tab==='Employment'&&['employment','directSuperior'].includes(d.owner)&&(d.owner==='directSuperior'?'directSuperior'+d.ownerField[0].toUpperCase()+d.ownerField.slice(1):d.ownerField)===f.key)!, (key,fallback)=>allLabels.has(key)?allLabels(key):fallback)})):[];
 
   // What crosses into the prompt is PLAIN DATA (booleans, strings, numbers and a pre-formatted sample
   // code) for the reason app/admin/personnel/new/page.tsx spells out at length: both the prompt and its
@@ -378,7 +378,7 @@ async function renderPersonnelPage(sp: PersonnelSearchParams) {
           // group `shrink-0` — without wrapping, a narrow window would scroll the PAGE sideways rather
           // than stacking the controls, which is the one thing a full-width change must not introduce.
           <div className="flex flex-wrap items-center justify-end gap-2 sm:gap-3">
-            <PersonnelOrganisationFilters key={scopeIds.slice().sort().join(',')+'?'+personnelQueryParams(sp).toString()} fields={filterFields} values={filterValues} employmentFields={employmentFilterFields} companies={organisationChoices.companies} labels={filterLabels} companySearchLabel={to('companySearch')} canInspectDuplicates={organisationChoices.canInspectDuplicates} duplicateHint={to('duplicateHint')} dataTour="people-search"/>
+            <PersonnelOrganisationFilters key={scopeIds.slice().sort().join(',')+'?'+personnelQueryParams(sp).toString()} fields={filterFields} values={filterValues} employmentFields={employmentFilterFields} columnFields={(['code','name','email','reportingTo','costCenter','workLocation','jobGrade'] as const).map(key=>({key,label:t(COLUMN_LABEL_KEY[key]),type:'text'}))} companies={organisationChoices.companies} labels={filterLabels} companySearchLabel={to('companySearch')} canInspectDuplicates={organisationChoices.canInspectDuplicates} duplicateHint={to('duplicateHint')} dataTour="people-search"/>
             {canCreate && (
               <CreateEmployeeDialog
                 triggerLabel={t('createNewEmployee')}
