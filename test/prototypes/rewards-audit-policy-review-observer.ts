@@ -137,13 +137,13 @@ export async function createRewardPolicyReviewObserver(owner:RewardsAuditOwnerDe
   signal.throwIfAborted();return root;
  }
  async function read(tx:Tx,reviewId:string,action:Action,signal:AbortSignal){signal.throwIfAborted();const [row]=await tx.execute(sql`select reward_policy_test.read_review(${reviewId}::uuid,${action}::text)as value`);signal.throwIfAborted();return reviewObservationResult.parse(row?.value);}
- async function refused(tx:Tx,signal:AbortSignal,work:()=>Promise<unknown>,code='42501'){
-  await runReviewObservationRefusal(signal,()=>tx.execute(sql`savepoint owned_test_observer_refusal`),work,error=>{
+ async function refused(tx:Tx,signal:AbortSignal,work:(nested:Tx)=>Promise<unknown>,code='42501'){
+  await runReviewObservationRefusal<Tx>(signal,run=>tx.transaction(run),work,error=>{
    expect(error,'the actual native statement must refuse').toBeDefined();expect(pgSqlState(error)).toBe(code);
-  },async()=>{await tx.execute(sql`rollback to savepoint owned_test_observer_refusal`);await tx.execute(sql`release savepoint owned_test_observer_refusal`);},poison);
+  },poison);
  }
  async function privateDenied(tx:Tx,reviewId:string,action:Action,signal:AbortSignal){
-  await refused(tx,signal,()=>tx.execute(action==='employees.bank.maintain'
+  await refused(tx,signal,nested=>nested.execute(action==='employees.bank.maintain'
    ?sql`select bank_audit_preimage from app.assistant_own_leave_review where id=${reviewId}::uuid`
    :sql`select catalogue_native_phase,catalogue_audit_preimage from app.assistant_own_leave_review where id=${reviewId}::uuid`));
  }
@@ -153,16 +153,16 @@ export async function createRewardPolicyReviewObserver(owner:RewardsAuditOwnerDe
   expect(foreignScope.tenantId).not.toBe(ctx.tenantId);expect(foreignScope.userId).not.toBe(ctx.userId);
   const [realForeign]=await owner.client`select exists(select 1 from public.app_user where id=${foreignScope.userId}::uuid and tenant_id=${foreignScope.tenantId}::uuid and archived_at is null)as actual`;
   expect(realForeign.actual).toBe(true);
-  await refused(tx,signal,()=>read(tx,randomUUID(),action,signal));
-  await refused(tx,signal,()=>read(tx,reviewId,action==='employees.bank.maintain'?'org.position.archive':'employees.bank.maintain',signal));
-  await refused(tx,signal,()=>tx.execute(sql`select reward_policy_test.read_review(null,${action}::text)`));
-  await refused(tx,signal,()=>tx.execute(sql`select reward_policy_test.read_review(${'not-a-uuid'}::uuid,${action}::text)`),'22P02');
-  await refused(tx,signal,async()=>{await tx.execute(sql`select set_config('app.user_id',${foreignScope.userId},true)`);signal.throwIfAborted();return read(tx,reviewId,action,signal);});
-  await refused(tx,signal,async()=>{
-   await tx.execute(sql`select set_config('app.tenant_id',${foreignScope.tenantId},true),set_config('app.user_id',${foreignScope.userId},true)`);signal.throwIfAborted();
-   const [actual]=await tx.execute(sql`select app.principal_snapshot_current()as current`);signal.throwIfAborted();expect(actual.current).toBe(true);return read(tx,reviewId,action,signal);
+  await refused(tx,signal,nested=>read(nested,randomUUID(),action,signal));
+  await refused(tx,signal,nested=>read(nested,reviewId,action==='employees.bank.maintain'?'org.position.archive':'employees.bank.maintain',signal));
+  await refused(tx,signal,nested=>nested.execute(sql`select reward_policy_test.read_review(null,${action}::text)`));
+  await refused(tx,signal,nested=>nested.execute(sql`select reward_policy_test.read_review(${'not-a-uuid'}::uuid,${action}::text)`),'22P02');
+  await refused(tx,signal,async nested=>{await nested.execute(sql`select set_config('app.user_id',${foreignScope.userId},true)`);signal.throwIfAborted();return read(nested,reviewId,action,signal);});
+  await refused(tx,signal,async nested=>{
+   await nested.execute(sql`select set_config('app.tenant_id',${foreignScope.tenantId},true),set_config('app.user_id',${foreignScope.userId},true)`);signal.throwIfAborted();
+   const [actual]=await nested.execute(sql`select app.principal_snapshot_current()as current`);signal.throwIfAborted();expect(actual.current).toBe(true);return read(nested,reviewId,action,signal);
   });
-  await refused(tx,signal,async()=>{await tx.execute(sql`set local role ai_hr_app`);signal.throwIfAborted();return read(tx,reviewId,action,signal);});
+  await refused(tx,signal,async nested=>{await nested.execute(sql`set local role ai_hr_app`);signal.throwIfAborted();return read(nested,reviewId,action,signal);});
   const restoreBinding=async()=>{
    expect(await owner.client`update reward_policy_test_private.binding set backend_pid=${root.pid},backend_started_at=${root.started}::text::timestamptz,root_xid=${root.xid}::text::xid8 where review_id=${reviewId}::uuid returning review_id`).toHaveLength(1);
   };
@@ -172,22 +172,22 @@ export async function createRewardPolicyReviewObserver(owner:RewardsAuditOwnerDe
     const changed=field==='pid'?await owner.client`update reward_policy_test_private.binding set backend_pid=pg_backend_pid()where review_id=${reviewId}::uuid returning backend_pid<>${root.pid} as distinct_identity`
      :field==='start'?await owner.client`update reward_policy_test_private.binding set backend_started_at=(select backend_start from pg_stat_activity where pid=pg_backend_pid())where review_id=${reviewId}::uuid returning backend_started_at<>${root.started}::text::timestamptz as distinct_identity`
      :await owner.client`update reward_policy_test_private.binding set root_xid=pg_current_xact_id()where review_id=${reviewId}::uuid returning root_xid<>${root.xid}::text::xid8 as distinct_identity`;
-    expect(Array.from(changed)).toEqual([{distinct_identity:true}]);signal.throwIfAborted();await refused(tx,signal,()=>read(tx,reviewId,action,signal));
+    expect(Array.from(changed)).toEqual([{distinct_identity:true}]);signal.throwIfAborted();await refused(tx,signal,nested=>read(nested,reviewId,action,signal));
    },restoreBinding);
   }
   signal.throwIfAborted();await controlledPolicyWait(poison).run(async()=>{
-   await startMutation('execute',signal);signal.throwIfAborted();await refused(tx,signal,()=>read(tx,reviewId,action,signal));
+   await startMutation('execute',signal);signal.throwIfAborted();
+   const [actual]=await tx.execute(sql`select has_function_privilege(session_user,'reward_policy_test.read_review(uuid,text)','EXECUTE')as allowed`);signal.throwIfAborted();expect(actual.allowed).toBe(false);
+   await refused(tx,signal,nested=>read(nested,reviewId,action,signal));
   },restoreMutation);
   signal.throwIfAborted();await controlledPolicyWait(poison).run(async()=>{
-   await startMutation('cost',signal);signal.throwIfAborted();await refused(tx,signal,()=>read(tx,reviewId,action,signal),'55000');
+   await startMutation('cost',signal);signal.throwIfAborted();await refused(tx,signal,nested=>read(nested,reviewId,action,signal),'55000');
   },restoreMutation);
   signal.throwIfAborted();
   await owner.client.begin(async other=>{
-   signal.throwIfAborted();await other`savepoint owned_observer_wrong_login`;
-   await controlledPolicyWait(poison).run(async()=>{
-    signal.throwIfAborted();let error:unknown;try{await other`select reward_policy_test.read_review(${reviewId}::uuid,${action}::text)`;}catch(caught){error=caught;}
-    signal.throwIfAborted();expect(error).toBeDefined();expect(pgSqlState(error)).toBe('42501');
-   },async()=>{await other`rollback to savepoint owned_observer_wrong_login`;await other`release savepoint owned_observer_wrong_login`;});
+   await runReviewObservationRefusal<TransactionSql>(signal,run=>other.savepoint(run),nested=>nested`select reward_policy_test.read_review(${reviewId}::uuid,${action}::text)`,error=>{
+    expect(error).toBeDefined();expect(pgSqlState(error)).toBe('42501');
+   },poison);
   });
   signal.throwIfAborted();await assertImage();await privateDenied(tx,reviewId,action,signal);await read(tx,reviewId,action,signal);proved.add(action);
  }

@@ -14,12 +14,31 @@ export function reviewObservationNativeBody(source:string){
  return body;
 }
 
-import {controlledPolicyWait} from './rewards-audit-policy-controlled-wait';
-/** Open/work are new admissions; rollback is mandatory cleanup after real open. */
-export async function runReviewObservationRefusal(signal:AbortSignal,open:()=>PromiseLike<unknown>,work:()=>PromiseLike<unknown>,verify:(error:unknown)=>void,rollback:()=>Promise<void>,poison:(error:Error)=>void){
- signal.throwIfAborted();await open();
- await controlledPolicyWait(poison).run(async()=>{
-  signal.throwIfAborted();let error:unknown;try{await work();}catch(caught){error=caught;}
-  signal.throwIfAborted();verify(error);
- },rollback);
+/** The real driver's nested owner MUST roll back before returning the original
+ * callback failure. Raw SQL SAVEPOINT cannot isolate postgres.js error custody.
+ * A model scope is not native rollback proof; the native caller supplies only
+ * Drizzle tx.transaction or postgres TransactionSql.savepoint. */
+export async function runReviewObservationRefusal<Lease>(signal:AbortSignal,scope:(work:(lease:Lease)=>Promise<never>)=>PromiseLike<unknown>,work:(lease:Lease)=>PromiseLike<unknown>,verify:(error:unknown)=>void,poison:(error:Error)=>void){
+ signal.throwIfAborted();
+ const unexpected=Error('Native test observer statement unexpectedly returned');
+ let entered=false,callbackFailed=false,callbackError:unknown,ownerFailed=false,ownerError:unknown,returned=false;
+ try{
+  await scope(async lease=>{
+   if(entered)throw Error('Repeated native test observer scope admission');entered=true;
+   try{
+    signal.throwIfAborted();await work(lease);signal.throwIfAborted();returned=true;throw unexpected;
+   }catch(error){callbackFailed=true;callbackError=error;throw error;}
+  });
+ }catch(error){ownerFailed=true;ownerError=error;}
+ if(!entered||!callbackFailed||!ownerFailed||!Object.is(callbackError,ownerError)){
+  const errors:unknown[]=[],add=(error:unknown)=>{if(!errors.some(value=>Object.is(value,error)))errors.push(error);};
+  if(callbackFailed)add(callbackError);if(ownerFailed)add(ownerError);if(signal.aborted)add(signal.reason);
+  if(!ownerFailed)add(Error('Native test observer nested owner returned without rollback refusal'));
+  const failed=()=>errors.length===1?errors[0]:new AggregateError(errors,'Native test observer callback and nested rollback refused');
+  try{poison(Error('Native test observer nested rollback uncertain; successors refused',{cause:failed()}));}catch(error){add(error);}
+  throw failed();
+ }
+ // Driver settlement is mandatory even after abort. Verification is a NEW
+ // admission and cannot run until that settlement and a fresh signal check.
+ signal.throwIfAborted();if(returned)throw unexpected;verify(callbackError);
 }

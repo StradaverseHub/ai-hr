@@ -32,7 +32,12 @@ BEGIN
  OR c.owner_oid IS DISTINCT FROM current_user::regrole::oid
  OR c.owner_oid IS DISTINCT FROM (SELECT relowner FROM pg_class WHERE oid='public.domain_event'::regclass)
  OR c.login_oid IS DISTINCT FROM 'ai_hr_app'::regrole::oid
- OR (SELECT to_jsonb(p)FROM pg_proc p WHERE p.oid='reward_policy_test.read_review(uuid,text)'::regprocedure)IS DISTINCT FROM c.function_details
+ THEN RAISE EXCEPTION 'Owned test review observer profile changed' USING ERRCODE='55000';END IF;
+ -- Check CURRENT native permission before profile comparison. A retained call
+ -- must not rely on an earlier executor's EXECUTE admission after revocation.
+ IF has_function_privilege(session_user,'reward_policy_test.read_review(uuid,text)','EXECUTE')IS NOT TRUE
+ THEN RAISE EXCEPTION 'Owned test review observation refused' USING ERRCODE='42501';END IF;
+ IF (SELECT to_jsonb(p)FROM pg_proc p WHERE p.oid='reward_policy_test.read_review(uuid,text)'::regprocedure)IS DISTINCT FROM c.function_details
  OR (SELECT to_jsonb(p)FROM pg_proc p WHERE p.oid='reward_audit_private.relation_metadata(oid)'::regprocedure)IS DISTINCT FROM c.decoder_details
  THEN RAISE EXCEPTION 'Owned test review observer profile changed' USING ERRCODE='55000';END IF;
  SELECT jsonb_agg(to_jsonb(n)ORDER BY n.nspname)INTO actual FROM pg_namespace n WHERE n.nspname IN('reward_policy_test','reward_policy_test_private');
