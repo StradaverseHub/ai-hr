@@ -29,7 +29,7 @@ test('every registered infrastructure file remains exactly once in its native cl
  const native=Object.keys(SINGLETON_FILES),ordinary=['test/ordinary-db.test.ts','test/ordinary-nodb.test.ts'];
  const db=native.filter(f=>singletonKind(singletonDescriptor(f).profile)==='db').concat(ordinary[0]),nodb=native.filter(f=>!db.includes(f)).concat(ordinary[1]),suite=[...db,...nodb].sort();
  const units=buildUnits(suite,{db,nodb},browser),special=units.filter(u=>u.singleton);
- assert.equal(special.length,26);assert.deepEqual(units.filter(u=>u.kind!=='browser').flatMap(u=>u.files).sort(),suite);
+ assert.equal(special.length,27);assert.deepEqual(units.filter(u=>u.kind!=='browser').flatMap(u=>u.files).sort(),suite);
  assert(special.every(u=>u.files.length===1&&u.singleton.workers===1));assert.equal(requiredEvidence({suite,units}).units.length,units.length);
  for(const unit of special){const changed=structuredClone(units);changed.find(u=>u.id===unit.id).singleton.workers=2;assert.throws(()=>requiredEvidence({suite,units:changed}));}
  assert.throws(()=>buildUnits([native[0]],{db:[],nodb:[native[0]]},browser));
@@ -272,4 +272,24 @@ test('only the exact five delegated entries may use the shared FIRST actual sing
   assert.throws(()=>assertSingletonCoverage([file],path=>path===helper?read(path).replace('const admission=admitSingletonTest(file);','const caller=true;const admission=admitSingletonTest(file);'):read(path)));
  }
  assert.throws(()=>assertSingletonCoverage(['test/analytics-termination-lateral.test.ts'],()=>"admitEmployeeChoiceLifecycle('test/analytics-termination-lateral.test.ts');"));
+});
+
+
+test('shared module JIT diagnostic owns one unchanged controlled database and cannot omit any actual imported source',()=>{
+ const file='test/module-read-jit-diagnostic.test.ts',f=fixture(file),sources=singletonSources(f.unit);
+ assert.deepEqual(f.unit.singleton,{version:1,profile:'controlled-database-v1',workers:1,isolation:'job-postgres-cluster'});
+ assert.equal(f.unit.kind,'db');assert.deepEqual(f.unit.files,[file]);assert.equal(new Set(sources).size,sources.length);
+ assert.equal(sources.length,1549);assert.equal(createHash('sha256').update(JSON.stringify(sources)).digest('hex'),'2987dc2d5196fa7497e1f9675af7481b058f7be2058f355136f1640ac4cff79c');
+ validateSingletonHost(f);validateSingletonBinding(f.binding,f.plan,f.unit,f.witness);
+ for(const source of sources){
+  const bytes=readFileSync(new URL('../../'+source,import.meta.url));assert(bytes.length>0&&bytes.length<=singletonSourceMaximum(source),source);
+  const changed=structuredClone(f);delete changed.plan.singletonSources[changed.unit.id][source];delete changed.binding.sourceHashes[source];
+  const{fingerprint:_fingerprint,...body}=changed.plan;changed.plan.fingerprint=protocolHash(body);changed.binding.fingerprint=changed.plan.fingerprint;
+  assert.throws(()=>validateSingletonBinding(changed.binding,changed.plan,changed.unit,changed.witness),source);
+ }
+ assert.throws(()=>assertSingletonSelection([file,'test/ordinary.test.ts']));assert.throws(()=>assertSingletonCoverage([file],()=>"it('unadmitted',()=>{});"));
+ const text=readFileSync(new URL('../../'+file,import.meta.url),'utf8');
+ assert(text.indexOf("admitSingletonTest('"+file+"')")<text.indexOf('beforeAll(migrateTestDb)'));
+ assert(!/AIHR_FOCUSED_|\.(?:skipIf|runIf)\s*\(/.test(text));
+ assertSingletonCoverage([file],path=>readFileSync(new URL('../../'+path,import.meta.url),'utf8'));
 });
