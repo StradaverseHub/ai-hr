@@ -64,7 +64,8 @@ describe.each(Object.keys(kinds) as (keyof typeof kinds)[])('delegated %s decisi
  it.each(['approved','rejected'] as const)('the native service records the stand-in as the final %s actor, with no Personnel inheritance',async decision=>{
   const k=kinds[name],id=await k.create();await noPersonnel();
   if(name==='attendance'&&decision==='approved')await withTenant(delegate,async tx=>{
-   const identity=await tx.execute(sql`select * from app.delegated_request_effect_identity(${id}::uuid,'attendance')`);expect(identity).toHaveLength(1);
+   // Routed requests use their frozen workflow authority, never the legacy-only identity seam.
+   const identity=await tx.execute(sql`select * from app.delegated_request_effect_identity(${id}::uuid,'attendance')`);expect(identity).toHaveLength(0);
   });
   await k.native(id,decision);
   const [row]=await owner.db.execute<{status:string}>(sql`select status::text as status from ${sql.raw(k.table)} where id=${id}::uuid`);expect(row.status).toBe(decision);
