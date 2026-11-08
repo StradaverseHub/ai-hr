@@ -9,6 +9,7 @@ import {admitCompilerApplicationInventory,readCompilerApplicationInventoryClock}
 import {observeLoadedNativeInput,stableNativeInput,withinInputRoot,APPLICATION_INPUT_LIMITS} from './application-inputs.mjs';
 import {assertFixedInventoryConfig} from './application-protocol.mjs';
 import {REFERENCE_LIMITS} from './graph.mjs';
+import {observeNativeUsageResolution} from './application-mode.mjs';
 
 function observeNativeApplication(ts,source,config,check){
  assertFixedInventoryConfig(source,config);check();const dependencyRoot=join(source,'node_modules');assert.equal(realpathSync(dependencyRoot),dependencyRoot);
@@ -28,9 +29,10 @@ function observeNativeApplication(ts,source,config,check){
  };
  for(const file of loaded){check();const from=resolve(file.fileName),seen=new WeakSet();
   const module=(literal,kind)=>{
-   const mode=program.getModeForUsageLocation(file,literal),resolved=ts.resolveModuleName(literal.text,file.fileName,parsed.options,ts.sys,undefined,undefined,mode);
-   const result=target(resolved.resolvedModule);add({from,kind,specifier:literal.text,position:literal.pos,end:literal.end,mode:mode??null,target:result});
-   if(!result)gaps.push({kind:'unresolved-public-module-or-ambient-provider',from,specifier:literal.text,position:literal.pos});
+   const native=observeNativeUsageResolution(ts,program,file,literal,parsed.options),result=native.resolutionAttempted?target(native.resolvedModule):null;
+   add({from,kind,specifier:literal.text,position:literal.pos,end:literal.end,literalKind:literal.kind,mode:native.mode,modeObserved:native.modeObserved,resolutionAttempted:native.resolutionAttempted,nativeParentKind:native.nativeParentKind,target:result});
+   if(!native.modeObserved)gaps.push({kind:'native-usage-parent-unavailable',from,referenceKind:kind,specifier:literal.text,position:literal.pos,end:literal.end,literalKind:literal.kind});
+   else if(!result)gaps.push({kind:'unresolved-public-module-or-ambient-provider',from,specifier:literal.text,position:literal.pos});
   };
   function visit(node){
    check();if(seen.has(node))return;seen.add(node);

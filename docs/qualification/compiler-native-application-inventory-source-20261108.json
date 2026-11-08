@@ -1,7 +1,7 @@
 {
   "version": 1,
   "kind": "COMPILER_NATIVE_APPLICATION_INVENTORY_SOURCE_NOT_QUALIFICATION",
-  "sourceRef": "codex/compiler-application-control-import-20261108",
+  "sourceRef": "codex/compiler-native-parent-context-20261108",
   "reviewedIntegration": "1ffaffae266870a0b298ec8094433eeeb0dcb57e",
   "reviewedDesign": "047a0748b41bad3b2abde1c170f1a01c16f97687",
   "requiredCurrentSharedAncestor": "29d9edcbc4368be871688e9fdf35347676a7841c",
@@ -21,9 +21,13 @@
     ".github/ci/diagnostics/native-reference/admission.test.mjs": "3e0f32e5ad02a70bfff5e11eeecb5608a2a14c658773522be6f7aa89f464769a",
     ".github/ci/diagnostics/native-reference/application-inputs.mjs": "7a765d7af7f711d0c9c65026f45efed8f66be3fd74ecdc5137deb337713d3727",
     ".github/ci/diagnostics/native-reference/application-inventory.mjs": "5743026bf5cd081b60ffd8e6e88f994111c5ab9399fe850089030a5309f7a592",
+    ".github/ci/diagnostics/native-reference/application-mode-native.test.mjs": "8ff5aa87208c02163f38e33387e22d1b382c8dfecb8946a21d573a55d4a25155",
+    ".github/ci/diagnostics/native-reference/application-mode.mjs": "b8dee0b836e1047d3574cf5ca30515c521096fef383741aa87d56202243957dd",
+    ".github/ci/diagnostics/native-reference/application-mode.test.mjs": "22eac521d26f34ecb5133afeeb8fa6e488fb1bb1e4101dca6d7a4c90b03b47a7",
     ".github/ci/diagnostics/native-reference/application-owner-inverse.json": "8584d652e8e62ae358a286adbc9535de49b3c2fc03d40d2b5fc17da0597f828c",
+    ".github/ci/diagnostics/native-reference/application-parent-context-inverse.json": "176db10f6b9cb53a70aa5bf6f1c201317eb9cbd94882f902e1f966fff66ec816",
     ".github/ci/diagnostics/native-reference/application-protocol.mjs": "a3daa34c48285dd3ea17573245730fdcdb9f03a79f462a77735eff059a056376",
-    ".github/ci/diagnostics/native-reference/application-worker.mjs": "65feb472c0a2f539fa4d3d812e12c67ab79943e483a35c82e3b8c7c23f8f6f33",
+    ".github/ci/diagnostics/native-reference/application-worker.mjs": "01720f51a8d831698a02bc05c899a6e7ba81addaaaf7d70506637d13a4fd6315",
     ".github/ci/diagnostics/native-reference/application.test.mjs": "24ec548eb6a159f4860b44ab51934048a02d4237e4df8da37bc3fb52f569394b",
     ".github/ci/diagnostics/native-reference/config.mjs": "4dcc669c3abf1d9d08863b36ec8958508195445e926a242f5b7a27d5bd57fe95",
     ".github/ci/diagnostics/native-reference/dependency-custody-inverse.json": "d32319321ced719bc1898cf6a26d6bc5225fe14d1806f2285cc44f06499a2fa2",
@@ -65,6 +69,7 @@
     "docs/qualification/compiler-native-package-context-20261108.md": "6cb18fafa9cc412ac1d8249b66367331911174b6994bb02351a57cd2c2b314d3",
     "docs/qualification/compiler-native-package-context-design-20261108.md": "5c259bae3fd9c47f16c548210c95f5d789ad081311623802bbc8094919ca800b",
     "docs/qualification/compiler-native-package-context-design-source-20261108.json": "08a1cccdb92a94a4e3324ddd7a9d75a1532985266440f69be1d02a3672d354c2",
+    "docs/qualification/compiler-native-parent-context-20261108.md": "5118b1cf40f650e841fa88c5133b6ac0b6b64b8194049b43eab763717c678229",
     "docs/qualification/compiler-owned-controls-recovery-20261108.md": "fc56c99214ee76ad4e6e90021906260c503dc00374db8d0563a1a1b0ed6f9b86",
     "docs/qualification/compiler-readonly-dependency-custody-20261108.md": "f8b2263c0e7b36479cf9aa08eaa48363bd6d7456f1db49db7356197983176e3a",
     "docs/qualification/compiler-reference-owned-source-20261108.json": "837069a38e0a7b687508683b7936a92df744efb329df9b0e108de5983132c224",
@@ -79,12 +84,13 @@
     "scripts/gate-singleton-scope.mjs": "2bb9ee27128c3f6c2569fb6eeb784b82dfe8fec46dc14b61c8decadd22540be7",
     "scripts/test-duration-order.mjs": "09579d75363a8a1d4b514591e6dc6c4bef4b25f6599f8026e595c595dbdbb822",
     "scripts/test-duration-sequencer.mjs": "1865d0ad3fe4f61dc964ae684fa3c8cbc1e0166b1cb8210d6be03f1ba69245a6",
-    "test/compiler-native-application-controls.test.ts": "359b3c92103011d6df4a4d45fa00b17ff91c960d47f3f64e75a4c1cc4cc97cd9",
+    "test/compiler-native-application-controls.test.ts": "b39f2f1e09dd618043477c2222ca71bfc504b7e2c34aa0cb579191b8e48c71f1",
     "test/compiler-native-application-inventory.test.ts": "ce54419739e2b498fd75213b3ef3dca93f1b66056189fc6e9269cfa2a2d656db",
     "test/compiler-native-reference-fixture.test.ts": "d3d4eb099a881a08f309779bc045188e4888c384ad05d41c448eb8333ad86ea3",
     "test/compiler-native-reference-graph.test.ts": "1ccd72e69524542ef5e43116cc5eb171d55392e3b480a48df95b20a63fdd7c0f",
     "test/compiler-native-reference-process.test.ts": "a544911c24e4cf2517aa80d083c943e03466a9f12cd2bcb0a55a6922fa0cba8d",
     "test/compiler-native-reference-supervisor.test.ts": "d1c0813bc2d60f557c08ea3086bb77fe1b76e9e8ab679d074e72717c44c4945f",
+    "test/compiler-native-usage-mode.test.ts": "f8b0de03552e342c6f8df3384abafb4777d73dc455b43281c1489538e9f5c89f",
     "test/db-names.ts": "f6052b4e43c16d364dab4401403e30354b25b02f3f2166e1f0247133f9e2d55b",
     "test/dom-setup.ts": "5340b53cd4102b3e56e2c82391ac25dfc1a3c55868e83d34ad61be80a27a170d",
     "test/employee-choice-benchmark-supervisor.test.ts": "6828c736aa4f9871433e10bd2156447e358370f1a73fc0b86b1f63841d5bc3fe",
@@ -122,9 +128,10 @@
     }
   },
   "sourceControlsPrepared": {
-    "ordinaryMetadataCases": 15,
+    "ordinaryMetadataCases": 19,
     "pythonAdapterCases": 9,
-    "addedFocusedCases": 3
+    "addedFocusedCases": 3,
+    "tinyNativeUsageModeCases": 2
   },
   "testsExecuted": false,
   "metadataExecuted": false,
@@ -134,5 +141,19 @@
   "originalApplicationFiveNegativesQualified": false,
   "ordinarySingletonRegistration": "OPEN_FOR_BOTH_COMPILER_DIAGNOSTICS",
   "releaseAuthorized": false,
-  "sourceOnlyPredecessor": "51edc2cbc274fe89cd923f9adc0fc1951df0f332"
+  "sourceOnlyPredecessor": "51edc2cbc274fe89cd923f9adc0fc1951df0f332",
+  "parentContextRecovery": {
+    "base": "267dcb7b8bf8866268734944aa8af2adaa2d6696",
+    "failedNativeRun": "42461765785",
+    "failedArtifact": "13610316597",
+    "failedArtifactZipSha256": "cf78c0199b2642e415548d7b14bba6e33667650fd5ffa6f5e20fd82256c71292",
+    "wholeInverse": ".github/ci/diagnostics/native-reference/application-parent-context-inverse.json",
+    "missingActualParent": "RETAINED_UNKNOWN_CONTEXT_NO_MODE_OR_RESOLVER_CALL",
+    "defaultProgramUnchanged": true,
+    "parentMutation": false,
+    "semanticOrBinderRequested": false,
+    "pureGuardCasesPrepared": 4,
+    "tinyNativeCasesPrepared": 2,
+    "behaviorExecuted": false
+  }
 }
