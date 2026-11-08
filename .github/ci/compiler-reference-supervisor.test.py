@@ -27,6 +27,25 @@ class CompilerSupervisorControls(unittest.TestCase):
             with self.assertRaises(ValueError):
                 M.fixed_command(stage, Path('/owned/node'), Path('/owned/controller'), Path('/owned/evidence'))
 
+    def test_application_route_is_separate_fixed_sole_command_and_refuses_crosspurpose(self):
+        args = M.fixed_command('compiler-application-inventory', Path('/owned/node'), Path('/owned/controller'), Path('/owned/evidence'), purpose='application')
+        self.assertEqual(args, ['pnpm', 'exec', 'vitest', 'run', '--config', 'vitest.nodb.config.ts', M.APPLICATION_FILE,
+            '--reporter=default', '--reporter=json', '--outputFile.json=/owned/evidence/nodb.vitest.json'])
+        for purpose, stage in (('reference', 'compiler-application-inventory'), ('application', 'compiler-reference'), ('arbitrary', 'compiler-application-inventory')):
+            with self.subTest(purpose=purpose, stage=stage), self.assertRaises(ValueError):
+                M.fixed_command(stage, Path('/owned/node'), Path('/owned/controller'), Path('/owned/evidence'), purpose=purpose)
+        self.assertNotEqual(M.PURPOSES['reference']['manifest'], M.PURPOSES['application']['manifest'])
+        self.assertNotEqual(M.PURPOSES['reference']['clock'], M.PURPOSES['application']['clock'])
+        self.assertNotEqual(M.PURPOSES['reference']['journal'], M.PURPOSES['application']['journal'])
+
+    def test_application_budget_keeps_same_full848_and_refuses_insufficient_aggregate_tail(self):
+        env = {'GITHUB_RUN_ID': '123', 'GITHUB_RUN_ATTEMPT': '1', 'AIHR_FOCUSED_JOB_MONOTONIC_NS': '100000000000'}
+        anchor = {'version': 1, 'run': '123', 'attempt': '1', 'job': 'selected-tests', 'bootId': 'owned-model',
+                  'startNs': '100000000000', 'wallTimeNs': '1234567890000000000'}
+        self.assertEqual(M.job_budget('compiler-application-inventory', anchor, env, 'owned-model', 200), (848, 100))
+        with self.assertRaises(ValueError):
+            M.job_budget('compiler-application-inventory', anchor, env, 'owned-model', 297)
+
     def test_actual_job_envelope_requires_full848_plus120_tail_and6_settlement(self):
         env = {'GITHUB_RUN_ID': '123', 'GITHUB_RUN_ATTEMPT': '1', 'AIHR_FOCUSED_JOB_MONOTONIC_NS': '100000000000'}
         anchor = {'version': 1, 'run': '123', 'attempt': '1', 'job': 'selected-tests', 'bootId': 'owned-model',

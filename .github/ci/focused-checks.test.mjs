@@ -119,7 +119,7 @@ test('only the exact sole three-case native factory uses its own supervised rout
  assert.equal(isEmployeeChoiceNativeControls([employeeNativeControlFile]),true);assert.equal(isEmployeeChoiceNativeControls([employeeNativeFactoryFile]),false);assert.equal(isEmployeeChoiceBenchmark([employeeNativeFactoryFile]),false);
  const workflow=readFileSync(new URL('../workflows/alpha-focused-checks.yml',import.meta.url),'utf8'),anchor=workflow.indexOf('- name: Anchor first executable focused job step'),checkout=workflow.indexOf('- uses: actions/checkout@',anchor);
  assert(anchor>=0&&checkout>anchor);assert(workflow.includes("'[\"test/employee-choice-native-owner-factory.test.ts\"]'"));
- const owner=readFileSync(new URL('./focused-checks.mjs',import.meta.url),'utf8');assert(owner.includes("stage(compiler?'compiler-reference':nativeFactory?'native-factory':nativeControls?'native-controls':asciiPurpose?'ascii-purpose':asciiPlan?'ascii-plan':'benchmark'"));
+ const owner=readFileSync(new URL('./focused-checks.mjs',import.meta.url),'utf8');assert(owner.includes("stage(compiler?compilerPurpose(files).stage:nativeFactory?'native-factory':nativeControls?'native-controls':asciiPurpose?'ascii-purpose':asciiPlan?'ascii-plan':'benchmark'"));
  assert(owner.includes('!isEmployeeChoiceNativeFactory(files)'));
 });
 
@@ -173,4 +173,23 @@ test('actual same native PID/start refuses settlement while different historical
  requireCompilerMonitorsAbsent([{pid:actual.pid,start:actual.start+1}]);
  for(const row of [{pid:0,start:1},{pid:actual.pid,start:'1'},null])assert.throws(()=>requireCompilerMonitorsAbsent([row]));
  assert.equal(compilerProcIdentity(process.pid).start,actual.start);
+});
+
+
+test('application inventory has its distinct sole selector and rejects mixed or duplicate selections before staging',async()=>{
+ const {isCompilerApplicationInventory,compilerApplicationInventoryFile,isCompilerReferenceFixture,compilerReferenceFile,parseSelection}=await import('./focused-checks.mjs');
+ assert(isCompilerApplicationInventory([compilerApplicationInventoryFile]));assert(!isCompilerReferenceFixture([compilerApplicationInventoryFile]));
+ for(const selected of [[],[compilerReferenceFile],[compilerApplicationInventoryFile,compilerReferenceFile],[compilerApplicationInventoryFile+'.extra']])assert(!isCompilerApplicationInventory(selected));
+ assert.deepEqual(parseSelection(JSON.stringify([compilerApplicationInventoryFile])),[compilerApplicationInventoryFile]);
+ for(const selected of [[compilerApplicationInventoryFile,compilerReferenceFile],[compilerApplicationInventoryFile,...files],[compilerApplicationInventoryFile,compilerApplicationInventoryFile]])assert.throws(()=>parseSelection(JSON.stringify(selected)));
+ const workflow=readFileSync(new URL('../workflows/alpha-focused-checks.yml',import.meta.url),'utf8');assert(workflow.includes(`elif [ "$AIHR_RESOLVED_FOCUSED_TESTS" = '["${compilerApplicationInventoryFile}"]' ]; then`));
+});
+test('application ownership stream requires its own actual terminal stage and never borrows miniature settlement',async()=>{
+ const {parseCompilerSettlementRows}=await import('./focused-checks.mjs'),rows=compilerRows();for(const row of rows)if(row.stage==='compiler-reference')row.stage='compiler-application-inventory';
+ assert.equal(parseCompilerSettlementRows(compilerStream(rows),compilerContext,'application').length,9);
+ assert.throws(()=>parseCompilerSettlementRows(compilerStream(rows),compilerContext));assert.throws(()=>parseCompilerSettlementRows(compilerStream(compilerRows()),compilerContext,'application'));
+ assert.throws(()=>parseCompilerSettlementRows(compilerStream(rows),compilerContext,'arbitrary'));
+});
+test('failed metadata prefix closes BOTH compiler purposes before a native process can start',()=>{
+ for(const failed of ['classifier','git-head','compiler-application-inventory']){const calls=[],stage=focusedBenchmarkStageFrontier(name=>{calls.push(name);return{status:1};});stage(failed);for(const terminal of ['compiler-reference','compiler-application-inventory'])assert.throws(()=>stage(terminal));assert.deepEqual(calls,[failed]);}
 });

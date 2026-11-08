@@ -17,9 +17,14 @@ from pathlib import Path
 from types import ModuleType
 
 FILE = 'test/compiler-native-reference-fixture.test.ts'
+APPLICATION_FILE = 'test/compiler-native-application-inventory.test.ts'
+PURPOSES = {
+    'reference': {'file': FILE, 'stage': 'compiler-reference', 'manifest': 'docs/qualification/compiler-reference-owned-source-20261108.json', 'kind': 'COMPILER_REFERENCE_OWNED_PROCESS_SOURCE_NOT_QUALIFICATION', 'clock': 'compiler-reference-clock', 'clockKind': 'OWNED_COMPILER_REFERENCE_720_CLOCK', 'journal': 'compiler-supervisor.jsonl'},
+    'application': {'file': APPLICATION_FILE, 'stage': 'compiler-application-inventory', 'manifest': 'docs/qualification/compiler-native-application-inventory-source-20261108.json', 'kind': 'COMPILER_NATIVE_APPLICATION_INVENTORY_SOURCE_NOT_QUALIFICATION', 'clock': 'compiler-application-inventory-clock', 'clockKind': 'OWNED_COMPILER_APPLICATION_INVENTORY_720_CLOCK', 'journal': 'compiler-application-inventory-supervisor.jsonl'},
+}
 LIMITS = {'git-head': 10, 'git-status': 10, 'git-tracked': 10,
           'controller-head': 10, 'controller-status': 10, 'classifier': 15,
-          'compiler-reference': 848}
+          'compiler-reference': 848, 'compiler-application-inventory': 848}
 ROOT = Path(__file__).resolve().parents[2]
 KERNEL = ROOT / '.github/ci/owned-process.py'
 _kernel = ModuleType('compiler_owned_process');_kernel.__file__ = str(KERNEL)
@@ -45,6 +50,10 @@ def bounded(path, maximum):
 def request_command(request):
     require(type(request) is dict and list(request) == ['stage', 'node', 'controller', 'destination'])
     stage = request['stage'];require(stage in LIMITS)
+    selected = json.loads(os.environ.get('AIHR_FOCUSED_TESTS', 'null'))
+    matches = [(name, value) for name, value in PURPOSES.items() if selected == [value['file']]]
+    require(len(matches) == 1);purpose, profile = matches[0]
+    require(stage not in ('compiler-reference', 'compiler-application-inventory') or stage == profile['stage'])
     require(sys.platform == 'linux' and os.geteuid() > 0
             and os.environ.get('GITHUB_ACTIONS') == os.environ.get('CI') == 'true'
             and os.environ.get('RUNNER_ENVIRONMENT') == 'github-hosted'
@@ -54,7 +63,7 @@ def request_command(request):
             and os.environ.get('GITHUB_JOB') == 'selected-tests'
             and os.environ.get('GITHUB_EVENT_NAME') == 'workflow_dispatch'
             and os.environ.get('GITHUB_RUN_ATTEMPT') == '1'
-            and json.loads(os.environ['AIHR_FOCUSED_TESTS']) == [FILE])
+            and json.loads(os.environ['AIHR_FOCUSED_TESTS']) == [profile['file']])
     require(re.fullmatch(r'[1-9][0-9]{0,19}', os.environ['GITHUB_RUN_ID']) is not None
             and all(re.fullmatch(r'[a-f0-9]{40}', os.environ[key]) is not None
                     for key in ('AIHR_CI_HEAD', 'AIHR_CI_CONTROL_HEAD')))
@@ -65,10 +74,10 @@ def request_command(request):
             and Path.cwd().resolve() == source and ROOT == control and request['controller'] == str(control)
             and request['destination'] == str(destination) and os.path.samefile(node, '/proc/%s/exe' % os.getppid())
             and Path('/proc/self/exe').resolve() == Path('/usr/bin/python3').resolve())
-    declaration = 'docs/qualification/compiler-reference-owned-source-20261108.json'
+    declaration = profile['manifest']
     raw = bounded(control / declaration, 131072)
     require(raw == bounded(source / declaration, 131072))
-    manifest = json.loads(raw);require(manifest['kind'] == 'COMPILER_REFERENCE_OWNED_PROCESS_SOURCE_NOT_QUALIFICATION')
+    manifest = json.loads(raw);require(manifest['kind'] == profile['kind'])
     for name, wanted in manifest['componentSources'].items():
         require(isinstance(name, str) and not name.startswith('/') and '..' not in name.split('/')
                 and re.fullmatch(r'[a-f0-9]{64}', wanted) is not None)
@@ -76,19 +85,21 @@ def request_command(request):
                 and hashlib.sha256(bounded(source / name, 4 * 1024**2)).hexdigest() == wanted)
     require(all(name in manifest['componentSources'] for name in
                 ('.github/ci/compiler-reference-supervisor.py', '.github/ci/owned-process.py',
-                 '.github/ci/focused-checks.mjs', '.github/ci/diagnostics/native-reference/admission.mjs', FILE)))
-    return stage, fixed_command(stage, node, control, destination), destination, manifest
+                 '.github/ci/focused-checks.mjs', '.github/ci/diagnostics/native-reference/admission.mjs', profile['file'])))
+    return stage, fixed_command(stage, node, control, destination, purpose=purpose), destination, manifest, purpose
 
 
-def fixed_command(stage, node, control, destination):
-    require(stage in LIMITS)
+def fixed_command(stage, node, control, destination, *, purpose='reference'):
+    require(purpose in PURPOSES and stage in LIMITS)
+    profile = PURPOSES[purpose]
+    require(stage not in ('compiler-reference', 'compiler-application-inventory') or stage == profile['stage'])
     commands = {
         'git-head': ['git', 'rev-parse', 'HEAD'], 'git-status': ['git', 'status', '--porcelain'],
         'git-tracked': ['git', 'ls-files', '--stage', '-z', '--', 'test'],
         'controller-head': ['git', '-C', str(control), 'rev-parse', 'HEAD'],
         'controller-status': ['git', '-C', str(control), 'status', '--porcelain'],
         'classifier': [str(node), '--import', 'tsx', 'scripts/gate-db-classify.ts', 'explain'],
-        'compiler-reference': ['pnpm', 'exec', 'vitest', 'run', '--config', 'vitest.nodb.config.ts', FILE,
+        profile['stage']: ['pnpm', 'exec', 'vitest', 'run', '--config', 'vitest.nodb.config.ts', profile['file'],
             '--reporter=default', '--reporter=json', '--outputFile.json=' + str(destination / 'nodb.vitest.json')],
     }
     return commands[stage]
@@ -104,7 +115,7 @@ def job_budget(stage, anchor, env, boot, now):
     elapsed = now - int(anchor['startNs']) / 1e9
     require(0 <= elapsed < 1170)
     seconds = min(LIMITS[stage], 1170 - elapsed - 120 - 6)
-    require(seconds > 0 and (stage != 'compiler-reference' or seconds >= 848))
+    require(seconds > 0 and (stage not in ('compiler-reference', 'compiler-application-inventory') or seconds >= 848))
     return seconds, elapsed
 
 
@@ -173,15 +184,16 @@ def published_bytes(path, maximum):
         os.close(fd)
 
 
-def compiler_clock(destination, started, now, seconds, binding):
-    path = destination / 'compiler-reference-clock.json'
+def compiler_clock(destination, started, now, seconds, binding, *, purpose='reference'):
+    require(purpose in PURPOSES);profile = PURPOSES[purpose]
+    path = destination / (profile['clock'] + '.json')
     raw = published_bytes(path, 2048)
     if raw is None:
         return None
     require(not path.lstat().st_mode & 0o077)
     value = json.loads(raw)
     require(type(value) is dict and set(value) == {'version', 'kind', 'run', 'attempt', 'source', 'controller', 'monitor', 'wrapper', 'startNs'}
-            and type(value['version']) is int and value['version'] == 1 and value['kind'] == 'OWNED_COMPILER_REFERENCE_720_CLOCK'
+            and type(value['version']) is int and value['version'] == 1 and value['kind'] == profile['clockKind']
             and all(value[key] == binding[key] for key in ('run', 'attempt', 'source', 'controller'))
             and re.fullmatch(r'[1-9][0-9]{0,19}', value['startNs']) is not None)
     require(all(type(value[key]) is dict and set(value[key]) == {'pid', 'start'}
@@ -202,7 +214,7 @@ def compiler_clock(destination, started, now, seconds, binding):
     require(current['pid'] == monitor['pid'])
     observed = int(value['startNs']) / 1e9
     require(started <= observed <= now and observed + 720 <= started + seconds)
-    pending, ack = destination / 'compiler-reference-clock-ack.pending', destination / 'compiler-reference-clock-ack.json'
+    pending, ack = destination / (profile['clock'] + '-ack.pending'), destination / (profile['clock'] + '-ack.json')
     fd = os.open(pending, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
     try:
         require(os.write(fd, raw) == len(raw))
@@ -215,7 +227,8 @@ def compiler_clock(destination, started, now, seconds, binding):
 
 def main():
     require(len(sys.argv) == 2)
-    stage, argv, destination, _manifest = request_command(json.loads(sys.argv[1]))
+    stage, argv, destination, _manifest, purpose = request_command(json.loads(sys.argv[1]))
+    profile = PURPOSES[purpose]
     binding = {'source': os.environ['AIHR_CI_HEAD'], 'controller': os.environ['AIHR_CI_CONTROL_HEAD'],
         'run': os.environ['GITHUB_RUN_ID'], 'attempt': os.environ['GITHUB_RUN_ATTEMPT']}
     seconds, elapsed = job_budget(stage, json.loads(os.environ['AIHR_FOCUSED_JOB_ANCHOR']), os.environ,
@@ -233,12 +246,12 @@ def main():
         clean[key] = 'postgres://nobody:nothing@127.0.0.1:1/no_database'
     os.environ.clear();os.environ.update(clean)
     def event(packet):
-        _kernel.append_event(destination / 'compiler-supervisor.jsonl', {**binding, 'stage': stage,
+        _kernel.append_event(destination / profile['journal'], {**binding, 'stage': stage,
             'operation': operation, 'writer': {'pid': writer['pid'], 'start': writer['start']},
             'owner': {'pid': owner['pid'], 'start': owner['start']}, 'releaseAuthorized': False, **packet})
     event({'kind': 'stage-started', 'budgetSeconds': seconds, 'jobElapsedSeconds': elapsed})
     result = supervise_parent(argv, seconds, event, parent=owner['pid'],
-        file_clock=(lambda begun, now: compiler_clock(destination, begun, now, seconds, binding)) if stage == 'compiler-reference' else None)
+        file_clock=(lambda begun, now: compiler_clock(destination, begun, now, seconds, binding, purpose=purpose)) if stage == profile['stage'] else None)
     return 0 if result['reason'] == 'complete' and result['groupQuiescent'] and result['reaped'] and not result['escapedSession'] else 1
 
 

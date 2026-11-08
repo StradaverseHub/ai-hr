@@ -183,6 +183,8 @@ jobs:
         run: |
           if [ "$AIHR_RESOLVED_FOCUSED_TESTS" = '["test/compiler-native-reference-fixture.test.ts"]' ]; then
             node ../automation/.github/ci/focused-checks.mjs compiler-settled "$RUNNER_TEMP/aihr-focused"
+          elif [ "$AIHR_RESOLVED_FOCUSED_TESTS" = '["test/compiler-native-application-inventory.test.ts"]' ]; then
+            node ../automation/.github/ci/focused-checks.mjs compiler-settled "$RUNNER_TEMP/aihr-focused"
           elif [ "$AIHR_FOCUSED_TESTS" = '["test/employee-choice-native-purpose-plan.test.ts"]' ] || [ "$AIHR_FOCUSED_TESTS" = '["test/employee-choice-benchmark-owner-native.test.ts"]' ] || [ "$AIHR_FOCUSED_TESTS" = '["test/employee-choice-native-owner-factory.test.ts"]' ] || [ "$AIHR_FOCUSED_TESTS" = '["test/employee-choice-exact-ascii-purpose.test.ts"]' ] || [ "$AIHR_FOCUSED_TESTS" = '["test/employee-choice-exact-ascii-plan.test.ts"]' ]; then
             node ../automation/.github/ci/focused-checks.mjs cleanup "$RUNNER_TEMP/aihr-focused"
           else
@@ -190,7 +192,7 @@ jobs:
           fi
         env:
           AIHR_RESOLVED_FOCUSED_TESTS: ${{ needs.resolve.outputs.tests }}
-          AIHR_CI_UNIT: ${{ needs.resolve.outputs.tests != '["test/compiler-native-reference-fixture.test.ts"]' && 'db-1' || '' }}
+          AIHR_CI_UNIT: ${{ needs.resolve.outputs.tests != '["test/compiler-native-reference-fixture.test.ts"]' && needs.resolve.outputs.tests != '["test/compiler-native-application-inventory.test.ts"]' && 'db-1' || '' }}
       - if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
