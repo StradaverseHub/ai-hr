@@ -412,7 +412,7 @@ export function registerRewardsAuditPolicyNativeCases(evidenceDirectory:string){
   },async()=>{finalize.resolve();},()=>context.signal.removeEventListener('abort',abort));
  });
  async function bankFirstFloorRace(context:TestContext,counterexample:boolean){
-  const f=await setup(),pack=requirePackFor('MY');
+  const f=await setup(),pack=requirePackFor('MY'),foreign=counterexample?await seedBase():undefined;
   // seedBase has a real global HR grant; legacy adminCtx supplies only roles.
   // Prove that the SAME live identity passes AI admission but its incomplete
   // explicit report snapshot refuses, before rebinding from native facts.
@@ -439,9 +439,11 @@ export function registerRewardsAuditPolicyNativeCases(evidenceDirectory:string){
    const exercise=async()=>{
     const command=control.start(()=>database.withTenant(ctx,async tx=>{
      await tx.execute(sql`select app.assistant_bank_review_arm(${prepared.actionId}::uuid)`);
-     const [frame]=await tx.execute<{pid:number;started:string;pre:{armed:boolean;priorSeq:null;priorHash:null};history:boolean}>(sql`select pg_backend_pid()as pid,(select backend_start::text from pg_stat_activity where pid=pg_backend_pid())as started,bank_audit_preimage as pre,exists(select 1 from pg_locks where pid=pg_backend_pid()and locktype='advisory'and granted and mode='ExclusiveLock'and objsubid=1 and classid=((hashtext(${'audit-chain:'+f.b.tenantId})::bigint>>32)&4294967295)::oid and objid=(hashtext(${'audit-chain:'+f.b.tenantId})::bigint&4294967295)::oid)as history from app.assistant_own_leave_review where id=${prepared.actionId}::uuid`);
+     if(!diagnostics)throw Error('Owned Bank test observation diagnostic required');
+     const actualPre=await diagnostics.callback('bank-test-pre',()=>owned().fixture.observeReview(tx,ctx,prepared.actionId,Bank.action,context.signal,foreign?{tenantId:foreign.tenantId,userId:foreign.adminUserId}:undefined));
+     const [frame]=await tx.execute<{pid:number;started:string;history:boolean}>(sql`select pg_backend_pid()as pid,(select backend_start::text from pg_stat_activity where pid=pg_backend_pid())as started,exists(select 1 from pg_locks where pid=pg_backend_pid()and locktype='advisory'and granted and mode='ExclusiveLock'and objsubid=1 and classid=((hashtext(${'audit-chain:'+f.b.tenantId})::bigint>>32)&4294967295)::oid and objid=(hashtext(${'audit-chain:'+f.b.tenantId})::bigint&4294967295)::oid)as history`);
      // Derive both physical advisory-key halves natively, including sign.
-     expect(frame.history).toBe(true);expect(frame.pre).toEqual({armed:false,priorSeq:null,priorHash:null});bankPid=frame.pid;bankStart=frame.started;bankEntered.resolve();await finishBank.promise;context.signal.throwIfAborted();
+     expect(frame.history).toBe(true);expect(actualPre.pre).toEqual({armed:false,priorSeq:null,priorHash:null});bankPid=frame.pid;bankStart=frame.started;bankEntered.resolve();await finishBank.promise;context.signal.throwIfAborted();
      const native=await pack.statutory.setBank(ctx,{personId:f.person.personId,...fields},tx);
      const events=await tx.execute<{id:string}>(sql`select id from public.domain_event where tenant_id=${f.b.tenantId}::uuid and aggregate_id=${native.id}::uuid and event_type='employee.bank.updated'and xmin=pg_current_xact_id()::xid`);expect(events).toHaveLength(1);
      await tx.execute(sql`select app.assistant_assigned_review_complete(${prepared.actionId}::uuid,${Bank.action},${prepared.reviewedDigest},${events[0].id}::uuid)`);return events[0].id;
@@ -464,7 +466,7 @@ export function registerRewardsAuditPolicyNativeCases(evidenceDirectory:string){
  nativeIt(16,context=>bankFirstFloorRace(context,true));
  nativeIt(17,context=>bankFirstFloorRace(context,false));
  async function catalogueFirstFloorRace(context:TestContext,counterexample:boolean){
-  const f=await setup(),human={action:'org.position.archive' as const,contractVersion:1 as const,positionId:f.b.positionId,expectedArchived:false,archived:true};
+  const f=await setup(),foreign=counterexample?await seedBase():undefined,human={action:'org.position.archive' as const,contractVersion:1 as const,positionId:f.b.positionId,expectedArchived:false,archived:true};
   const prepared=(await positionArchiveReviews.prepare(f.ctx,human)).review;
   const before=Array.from(await owner.client`select to_jsonb(p)as value from public.position p where p.tenant_id=${f.b.tenantId}::uuid order by p.id`),financial=await money(f.b.tenantId);
   const connection=reader(),observed=deferred(),finalize=deferred(),entered=deferred(),finish=deferred();
@@ -482,9 +484,11 @@ export function registerRewardsAuditPolicyNativeCases(evidenceDirectory:string){
     const callback=vi.spyOn(adminOwner,'bulkSaveLabels').mockImplementation(async(...args:Parameters<typeof adminOwner.bulkSaveLabels>)=>{
      const [ctx,kind,,tx]=args;
      if(tx&&ctx.tenantId===f.b.tenantId&&kind==='position'){
-      const [frame]=await tx.execute<{phase:string|null;pre:unknown;pid:number;started:string;history:boolean}>(sql`select catalogue_native_phase as phase,catalogue_audit_preimage as pre,pg_backend_pid()as pid,(select backend_start::text from pg_stat_activity where pid=pg_backend_pid())as started,exists(select 1 from pg_locks where pid=pg_backend_pid()and locktype='advisory'and granted and mode='ExclusiveLock'and objsubid=1 and classid=((hashtext(${'audit-chain:'+f.b.tenantId})::bigint>>32)&4294967295)::oid and objid=(hashtext(${'audit-chain:'+f.b.tenantId})::bigint&4294967295)::oid)as history from app.assistant_own_leave_review where id=${prepared.actionId}::uuid`);
-      if(frame?.phase==='armed'){
-       armedCallbacks++;expect(armedCallbacks).toBe(1);expect(frame.history).toBe(true);expect(frame.pre).toEqual({armed:false,priorSeq:null,priorHash:null});
+      if(!diagnostics)throw Error('Owned Catalogue test observation diagnostic required');
+      const actualPre=await diagnostics.callback('catalogue-test-pre',()=>owned().fixture.observeReview(tx,ctx,prepared.actionId,human.action,context.signal,foreign?{tenantId:foreign.tenantId,userId:foreign.adminUserId}:undefined));
+      const [frame]=await tx.execute<{pid:number;started:string;history:boolean}>(sql`select pg_backend_pid()as pid,(select backend_start::text from pg_stat_activity where pid=pg_backend_pid())as started,exists(select 1 from pg_locks where pid=pg_backend_pid()and locktype='advisory'and granted and mode='ExclusiveLock'and objsubid=1 and classid=((hashtext(${'audit-chain:'+f.b.tenantId})::bigint>>32)&4294967295)::oid and objid=(hashtext(${'audit-chain:'+f.b.tenantId})::bigint&4294967295)::oid)as history`);
+      if(actualPre.phase==='armed'){
+       armedCallbacks++;expect(armedCallbacks).toBe(1);expect(frame.history).toBe(true);expect(actualPre.pre).toEqual({armed:false,priorSeq:null,priorHash:null});
        expect((await owner.client`select exists(select 1 from pg_stat_activity where pid=${frame.pid} and backend_start=${frame.started}::text::timestamptz and usename='ai_hr_app')as actual`)[0].actual).toBe(true);
        entered.resolve();await finish.promise;context.signal.throwIfAborted();
       }

@@ -228,6 +228,8 @@ test('Rewards native policy and original read family retain complete isolated so
   'test/prototypes/rewards-audit-native-postimage.ts',
   'test/prototypes/rewards-audit-owner-context-original.json',
   'test/prototypes/rewards-audit-policy-owner.ts','test/prototypes/rewards-audit-policy-controller.ts',
+  'test/prototypes/rewards-audit-policy-review-observer.ts','test/prototypes/rewards-audit-policy-review-observer.sql',
+  'test/prototypes/rewards-audit-policy-review-observer-contract.ts',
   'test/prototypes/rewards-audit-policy-diagnostic.ts',
   'test/prototypes/rewards-audit-policy-observation-context.ts',
   'test/prototypes/rewards-audit-policy-native-guards.ts','test/prototypes/rewards-audit-policy-native-progress.ts',

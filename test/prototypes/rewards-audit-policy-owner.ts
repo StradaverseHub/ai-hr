@@ -7,6 +7,7 @@ import {z} from 'zod';
 import {establishAuditCanonicalCustody} from './rewards-audit-default-custody';
 import type {AuditDefaultControl} from './rewards-audit-default-controller-process';
 import {controlledPolicyWait} from './rewards-audit-policy-controlled-wait';
+import {createRewardPolicyReviewObserver} from './rewards-audit-policy-review-observer';
 import {rewardsAuditCanonicalTruthContract,rewardsAuditPolicyReplacementBodies} from './rewards-audit-policy-contract';
 import {createRewardsAuditFixtureOwner,type RewardsAuditOwnerDependencies} from './rewards-audited-read-owner-factory';
 const canonicalPath='core/audit-chain-arming.ts',source=readFileSync('test/prototypes/rewards-audited-read.sql','utf8');
@@ -23,6 +24,7 @@ export async function rewardsAuditPolicyFixtureOwner(dependencies:RewardsAuditOw
  await establishAuditCanonicalCustody(dependencies,control,poison);
  const base=await createRewardsAuditFixtureOwner(dependencies),originals:FunctionRow[]=[],changed:FunctionRow[]=[];
  const sockets=new Set<ReturnType<typeof postgres>>();
+ let observer:Awaited<ReturnType<typeof createRewardPolicyReviewObserver>>|undefined;
  async function finishSockets(){const owned=Array.from(sockets);sockets.clear();await Promise.all(owned.map(socket=>socket.end({timeout:0})));await base.finishCase();}
  type FunctionImage={row:FunctionRow;dependencies:unknown;sharedDependencies:unknown};
  const imageSchema=z.object({row:rowSchema,dependencies:z.array(z.record(z.string(),z.unknown())),sharedDependencies:z.array(z.record(z.string(),z.unknown()))}).strict();
@@ -82,6 +84,29 @@ export async function rewardsAuditPolicyFixtureOwner(dependencies:RewardsAuditOw
  }
  async function restoreProbeCheckpoint(){if(!probeIntent)return;await restoreIntent(probeIntent,'probe');probeIntent=undefined;}
  async function restoreCounterexample(){if(!counterexampleIntent)return;await restoreIntent(counterexampleIntent,'next');counterexampleIntent=undefined;}
+ async function closeOwned(){
+   await finishSockets();
+   await observer?.close();
+   if(!observer){const [unknown]=await owner.client`select to_regnamespace('reward_policy_test')is not null or to_regnamespace('reward_policy_test_private')is not null as present`;if(unknown.present)throw Error('Unknown test observer retained before base restoration');}
+   if(installed){
+    await restoreCounterexample();await restoreProbeCheckpoint();
+    await owner.client.begin(async tx=>{
+     await tx`set local statement_timeout='2s'`;await tx`set local lock_timeout='300ms'`;await tx`select reward_audit_policy_private.assert_profile()`;
+     for(const current of changed){
+      const old=originals.find(row=>row.signature===current.signature);if(!old)throw Error('Native restore preimage absent');
+      const prior=originalImages.get(current.signature);if(!prior)throw Error('Complete native restore preimage absent');
+      const actual=await image(tx,current.signature);expect(actual.row).toEqual(current);
+      const restore=await reference(tx,actual,old.body);expect(restore).toEqual(prior);await apply(tx,actual,restore);
+      expect(await tx`update reward_audit_private.function_contract c set details=${JSON.stringify(old.details)}::text::jsonb where c.signature=${old.signature}::regprocedure and c.details=${JSON.stringify(current.details)}::text::jsonb returning c.signature`).toHaveLength(1);
+     }
+     expect(await tx`delete from reward_audit_private.function_contract where signature='reward_audit_read.reconcile_receipt(uuid)'::regprocedure returning signature`).toHaveLength(1);
+     await tx`drop function reward_audit_read.reconcile_receipt(uuid)`;
+     await tx`drop schema reward_audit_policy_private cascade`;await tx`select reward_audit_private.assert_profile()`;
+    });installed=false;
+    for(const original of originals)expect((await definition(owner,original.signature)).details).toEqual(original.details);
+   }
+   await base.close();
+ }
  try{
   const bindings=rewardsAuditPolicyReplacementBodies();
   for(const expected of closure.functions){const actual=await definition(owner,expected.signature);expect(actual.body).toBe(expected.body);expect(createHash('md5').update(actual.body).digest('hex')).toBe(expected.bodyMd5);originals.push(actual);}
@@ -123,10 +148,11 @@ export async function rewardsAuditPolicyFixtureOwner(dependencies:RewardsAuditOw
    await tx`insert into reward_audit_policy_private.relation_contract select c.oid,reward_audit_private.relation_metadata(c.oid)from pg_class c where c.relnamespace='reward_audit_policy_private'::regnamespace or c.oid in('reward_audit_private.receipt'::regclass,'reward_audit_private.admission'::regclass)`;
    await tx`insert into reward_audit_policy_private.trigger_contract select t.oid,to_jsonb(t)from pg_trigger t where t.tgrelid in(select object_oid from reward_audit_policy_private.relation_contract)`;
    await tx`update reward_audit_policy_private.config set enabled=true`;await tx`select reward_audit_policy_private.assert_profile()`;
-  });installed=true;
- }catch(error){await controlledPolicyWait(poison).run(async()=>{throw error;},()=>base.close());throw error;}
+  });installed=true;observer=await createRewardPolicyReviewObserver(owner,base.database,poison);
+ }catch(error){await controlledPolicyWait(poison).run(async()=>{throw error;},closeOwned);throw error;}
  return{
   ...base,
+  observeReview:(...args:Parameters<NonNullable<typeof observer>['observe']>)=>{if(!observer)throw Error('Owned test observer unavailable');return observer.observe(...args);},
   connect(kind:'reader'|'projector'){const connection=postgres(kind==='reader'?base.readerUrl:base.projectorUrl,{max:1,connect_timeout:2,connection:{statement_timeout:20000,lock_timeout:300}});sockets.add(connection);return connection;},
   finishCase:finishSockets,
   /** Native synchronization only: never simulates a unique conflict or result. */
@@ -148,28 +174,8 @@ export async function rewardsAuditPolicyFixtureOwner(dependencies:RewardsAuditOw
   },
   /** Private owner fixture configuration, not installed startup provenance or an API. */
   async protectedFixtureFallback(value:boolean){await owner.client`select reward_audit_policy_private.assert_profile()`;await owner.client`update reward_audit_policy_private.config set fallback_armed=${value}`;},
-  async reset(){if(counterexampleIntent||probeIntent){const error=Error('Unsettled native policy instrumentation; successor refused');poison(error);throw error;}await owner.client`select reward_audit_policy_private.assert_profile()`;await owner.client`truncate reward_audit_policy_private.observation,reward_audit_policy_private.floor_frame,reward_audit_policy_private.floor_marker`;await base.reset();await owner.client`update reward_audit_policy_private.config set fallback_armed=false`;},
-  async close(){
-   await finishSockets();
-   if(installed){
-    await restoreCounterexample();await restoreProbeCheckpoint();
-    await owner.client.begin(async tx=>{
-     await tx`set local statement_timeout='2s'`;await tx`set local lock_timeout='300ms'`;await tx`select reward_audit_policy_private.assert_profile()`;
-     for(const current of changed){
-      const old=originals.find(row=>row.signature===current.signature);if(!old)throw Error('Native restore preimage absent');
-      const prior=originalImages.get(current.signature);if(!prior)throw Error('Complete native restore preimage absent');
-      const actual=await image(tx,current.signature);expect(actual.row).toEqual(current);
-      const restore=await reference(tx,actual,old.body);expect(restore).toEqual(prior);await apply(tx,actual,restore);
-      expect(await tx`update reward_audit_private.function_contract c set details=${JSON.stringify(old.details)}::text::jsonb where c.signature=${old.signature}::regprocedure and c.details=${JSON.stringify(current.details)}::text::jsonb returning c.signature`).toHaveLength(1);
-     }
-     expect(await tx`delete from reward_audit_private.function_contract where signature='reward_audit_read.reconcile_receipt(uuid)'::regprocedure returning signature`).toHaveLength(1);
-     await tx`drop function reward_audit_read.reconcile_receipt(uuid)`;
-     await tx`drop schema reward_audit_policy_private cascade`;await tx`select reward_audit_private.assert_profile()`;
-    });installed=false;
-    for(const original of originals)expect((await definition(owner,original.signature)).details).toEqual(original.details);
-   }
-   await base.close();
-  },
+  async reset(){await observer?.clear();if(counterexampleIntent||probeIntent){const error=Error('Unsettled native policy instrumentation; successor refused');poison(error);throw error;}await owner.client`select reward_audit_policy_private.assert_profile()`;await owner.client`truncate reward_audit_policy_private.observation,reward_audit_policy_private.floor_frame,reward_audit_policy_private.floor_marker`;await base.reset();await owner.client`update reward_audit_policy_private.config set fallback_armed=false`;},
+  close:closeOwned,
  };
 }
 export type RewardsAuditPolicyFixtureOwner=Awaited<ReturnType<typeof rewardsAuditPolicyFixtureOwner>>;

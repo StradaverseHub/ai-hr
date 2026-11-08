@@ -1,6 +1,6 @@
 /** Test-only observations. No messages, SQL, parameters, stack or authority output. */
 import {rewardPolicyNativeGuards} from './rewards-audit-policy-native-guards';
-const phases=['tenant-callback','agent-guard','bank-actor','bank-interval','bank-source','bank-metadata-parse','bank-stored-parse','catalogue-lock','catalogue-source','catalogue-confirm','catalogue-native-save','catalogue-metadata-parse','catalogue-stored-parse']as const;
+const phases=['tenant-callback','agent-guard','bank-actor','bank-interval','bank-source','bank-metadata-parse','bank-stored-parse','bank-test-pre','catalogue-test-pre','catalogue-lock','catalogue-source','catalogue-confirm','catalogue-native-save','catalogue-metadata-parse','catalogue-stored-parse']as const;
 export type RewardPolicyCallbackPhase=typeof phases[number];
 type Phase=RewardPolicyCallbackPhase;
 type CallbackObservation=Readonly<{kind:'callback-refused';phase:Phase;sqlstate:string|null;nativeGuard?:typeof rewardPolicyNativeGuards[number]['code']}>;
