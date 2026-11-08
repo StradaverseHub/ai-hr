@@ -15,7 +15,7 @@
   "releaseAuthorized": false,
   "productionHeld": true,
   "sourceSha256": {
-    "docs/qualification/notification-native-source-provenance-20261108.md": "32ccf19f2682acfb4a758e2a7669507e5591c261d1d88779fb82fa68c0203540",
+    "docs/qualification/notification-native-source-provenance-20261108.md": "c1e4945e99fc8b1f89963fa4927defd07fb99e76f4f0dc329b85bfa1104dfccc",
     "docs/qualification/notification-native-composed-body-provenance-20261108.json": "df0c2f068ab4d0cca14f0024acf33953cd87267d41bb35040b8588b4b8b1bbbd",
     "docs/qualification/notification-native-default-source-provenance-20261108.json": "f696bb33586fe8b267ee0d149163459d38e45f1bdbb4e20b43c35086a5539948"
   }

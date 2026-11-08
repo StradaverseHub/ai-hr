@@ -22,7 +22,8 @@ journal, three prerequisite source records and one explicitly unlisted SQL file:
 745 records total. Offline verification independently checked every UTF-8 byte
 count, SHA-256 and Git blob ID, each actual ordered ledger hash/timestamp, and
 exact equality of all745 source files with this7041 child. The unlisted3211 SQL
-is retained as UNAPPLIED, not represented as a ledger row or source of effects.
+is retained as SOURCE_ONLY_NOT_IN_JOURNAL_NOT_CLAIMED_APPLIED, not represented as
+a ledger row or source of effects. This does not prove it was never executed manually.
 This740-ledger lineage is not the later combined743 staging lineage.
 
 | Retained complete member | SHA-256 |
