@@ -210,7 +210,7 @@ describe('existing irregularity application identity and stages',()=>{
     const {correctionId}=await requestAttendanceCorrection(self,{employmentId:e.employmentId,date:DATE(),checkIn:'08:00',checkOut:'19:00',reason:'Employee original request',remark:'Employee original remark'});
     const before=(await owner.db.select().from(s.attendanceCorrection).where(eq(s.attendanceCorrection.id,correctionId)))[0];
     const editor=(await attendanceDayEditor(adminCtx(b),e.employmentId,DATE()))!;
-    const result=await amendExistingAttendanceApplication(adminCtx(b),{employmentId:e.employmentId,date:DATE(),correctionId,baseline:editor.baseline,reason:'Administrator checked the gate log',checkIn:'08:00',checkOut:'18:00'});expect(result.status).toBe('approved');
+    const result=await amendExistingAttendanceApplication(adminCtx(b),{expectedStageIndex:0,employmentId:e.employmentId,date:DATE(),correctionId,baseline:editor.baseline,reason:'Administrator checked the gate log',checkIn:'08:00',checkOut:'18:00'});expect(result.status).toBe('approved');
     const after=(await owner.db.select().from(s.attendanceCorrection).where(eq(s.attendanceCorrection.id,correctionId)))[0];
     expect(after.proposedCheckOut).toBe(before.proposedCheckOut);expect(after.reason).toBe(before.reason);expect(after.remark).toBe(before.remark);const requested=(await owner.db.select().from(s.domainEvent).where(and(eq(s.domainEvent.aggregateId,correctionId),eq(s.domainEvent.eventType,'attendance-correction.requested'))))[0];expect(requested.actorId).toBe(userId);
     expect(after.adminAmendment).toMatchObject({checkOut:'18:00',actorId:b.adminUserId});expect((await day(e.employmentId)).checkOutAt).toBe('18:00:00');

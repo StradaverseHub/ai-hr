@@ -1,4 +1,4 @@
-import {seedAttendanceSubmissionBase} from './helpers/attendance-submission-fixture';
+import {configureAttendanceSubmissionFixtures,seedAttendanceSubmissionBase} from './helpers/attendance-submission-fixture';
 import { randomUUID } from 'node:crypto';
 import sharp from 'sharp';
 import { captureEmployeeClock } from '../core/attendance-clock';
@@ -226,6 +226,7 @@ describe('approved attendance clock-data corrections', () => {
     await setReportingLine(a, { subordinateEmploymentId: employmentId, managerEmploymentId: manager.employmentId, lineType: 'administrative', validFrom: '2026-09-01' });
     const managerUserId = await createAppUser(b.tenantId, manager.personId, 'manager');
     const decider = { ...a, userId: managerUserId, personId: manager.personId, roles: ['manager'], grants: [{ role: 'manager', companyId: destination.id }] };
+    await configureAttendanceSubmissionFixtures(b,[destination.id]);
     const original = await attendanceClockData(scoped, employmentId, date);
     expect(original.rows).toHaveLength(2); // Destination HR can operate the subject.
     expect(await withTenant(decider, tx => tx.select().from(schema.payslip).where(eq(schema.payslip.batchId, batchId)))).toHaveLength(0);

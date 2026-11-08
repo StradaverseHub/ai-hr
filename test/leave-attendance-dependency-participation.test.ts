@@ -60,7 +60,7 @@ describe('Attendance roots join leave dependency ownership before existing locks
     case 'decide':return decideAttendanceCorrection(f.admin,{ expectedStageIndex: 0,correctionId,decision:'approved'});
     case 'own-cancel':return cancelOwnAttendanceCorrection(f.self,{correctionId});
     case 'admin-cancel':return cancelAttendanceApplication(f.admin,{correctionId,kind:'cancelled',reason:'Fictional administrator cancellation'});
-    case 'amend':return amendExistingAttendanceApplication(f.admin,{employmentId:f.employmentId,date,correctionId,baseline:editor!.baseline,reason:'Fictional verified administrator correction',checkIn:'09:00',checkOut:'18:00'});
+    case 'amend':return amendExistingAttendanceApplication(f.admin,{expectedStageIndex:0,employmentId:f.employmentId,date,correctionId,baseline:editor!.baseline,reason:'Fictional verified administrator correction',checkIn:'09:00',checkOut:'18:00'});
     case 'web':return captureEmployeeClock(f.self,capture);
    }
   };

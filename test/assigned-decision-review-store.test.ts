@@ -176,8 +176,10 @@ describe.each(['claim','attendance','toil'] as const)('ADR-0151 assigned %s deci
   await expect(call(mgr,manager.personId,subject.personId)).resolves.toBeDefined();
   const [held]=await owner.db.execute<{n:number}>(sql`select count(*)::int as n from app.assistant_own_leave_review where user_id=${self.userId}::uuid`);expect(held.n).toBe(0);
   expect(await native(k(),id)).toEqual(before);
-  // Non-vacuity: the native service itself still lets a super_admin decide their own item; only the Assistant refuses.
-  await k().nativeDecide(self,id);expect((await native(k(),id)).status).not.toBe('pending');
+  // Configured Attendance routes independently refuse self-approval in the native owner.
+  // Claim/TOIL retain their existing native policy; the Assistant remains stricter for those kinds.
+  if(name==='attendance'){await expect(k().nativeDecide(self,id)).rejects.toThrow(/own/);expect(await native(k(),id)).toEqual(before);}
+  else {await k().nativeDecide(self,id);expect((await native(k(),id)).status).not.toBe('pending');}
  });
 
  it('rechecks the Assistant grant on confirmation but still lets the decider discard',async()=>{

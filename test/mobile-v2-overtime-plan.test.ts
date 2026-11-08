@@ -162,7 +162,7 @@ describe('submit', () => {
 
   it('never writes under another person’s or another tenant’s employment, and refuses a revoked session', async () => {
     const employee = await hire('Ian Inside'), colleague = await hire('Carla Colleague');
-    const other = await seedBase();
+    const other = await seedAttendanceSubmissionBase();
     const foreigner = await hire('Farah Foreign', other);
     caller = employee.ctx;
     const body = { requestId: randomUUID(), date: PLAN_DAY, plannedStart: '18:00', plannedEnd: '20:00', reason: 'r' };
