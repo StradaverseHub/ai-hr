@@ -409,15 +409,23 @@ class NextProfileTests(unittest.TestCase):
             'MemoryHigh': 'infinity', 'MemoryMax': 'infinity',
             'ExecStart': '{ path=' + str(self.node) + ' ; argv[]=' + str(self.node)
                 + ' --max-old-space-size=2048 ' + root + '/node_modules/next/dist/bin/next start --hostname 127.0.0.1 ; ignore_errors=no ; pid=0 ; }'})
-        typed = {'CapabilityBoundingSet': {'type': 't', 'data': [0]},
-            'RestrictNamespaces': {'type': 't', 'data': [0]},
+        typed = {'CapabilityBoundingSet': {'type': 't', 'data': 0},
+            'RestrictNamespaces': {'type': 't', 'data': 0},
             'BindReadOnlyPaths': {'type': 'a(ssbt)', 'data': [[root, root, False, 0]]},
             'BindPaths': {'type': 'a(ssbt)', 'data': [[row['source'], root + '/' + row['target'], False, 0]
                 for row in self.value['unitCacheMounts'][unit]]}}
         with patch.object(runtime, 'cache_sources', return_value={}):
             runtime.unit_configuration(unit, props, typed)  # Declaration validation only.
-            for key, value in [('CapabilityBoundingSet', {'type': 't', 'data': [False]}),
-                               ('RestrictNamespaces', {'type': 't', 'data': [1]}),
+            for key, value in [('CapabilityBoundingSet', {'type': 't', 'data': False}),
+                               ('CapabilityBoundingSet', {'type': 't', 'data': 1}),
+                               ('CapabilityBoundingSet', {'type': 't', 'data': [0]}),
+                               ('RestrictNamespaces', {'type': 't', 'data': 1}),
+                               ('RestrictNamespaces', {'type': 't', 'data': [0]}),
+                               ('RestrictNamespaces', {'type': 't', 'data': '0'}),
+                               ('RestrictNamespaces', {'type': 't', 'data': 0.0}),
+                               ('RestrictNamespaces', {'type': 's', 'data': 0}),
+                               ('RestrictNamespaces', {'type': 't', 'data': None}),
+                               ('RestrictNamespaces', {'type': 't', 'data': 0, 'approved': True}),
                                ('BindPaths', {'type': 'a(ssbt)', 'data': []}),
                                ('BindReadOnlyPaths', {'type': 'a(ssbt)', 'data': [[root, root, False, 4096]]})]:
                 with self.assertRaises(C.Refused):

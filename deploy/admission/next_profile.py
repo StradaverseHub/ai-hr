@@ -495,9 +495,9 @@ class NextRuntime:
         closed(typed, {'BindPaths', 'BindReadOnlyPaths', 'RestrictNamespaces', 'CapabilityBoundingSet'}, require)
         for name in ('RestrictNamespaces', 'CapabilityBoundingSet'):
             item = typed[name]
+            # get-property serializes one typed variant, unlike call's body list.
             require(isinstance(item, dict) and set(item) == {'type', 'data'} and item['type'] == 't'
-                    and isinstance(item['data'], list) and len(item['data']) == 1
-                    and type(item['data'][0]) is int and item['data'][0] == 0,
+                    and type(item['data']) is int and item['data'] == 0,
                     'Typed worker privilege/namespace restriction differs')
         for name, expected in (
                 ('BindReadOnlyPaths', [[root, root, False, 0]]),
