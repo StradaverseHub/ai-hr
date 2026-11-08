@@ -76,7 +76,7 @@ describe('Company-aware System Labels imports and canonical consumers',()=>{
  it('refuses blank global imports for a real company administrator and permits their own company input',async()=>{
   const [user]=await owner.db.insert(s.appUser).values({tenantId:b.tenantId,workosUserId:'fictional-scoped-label-admin'}).returning();
   await owner.db.insert(s.roleAssignment).values({tenantId:b.tenantId,appUserId:user.id,role:'hr_admin',companyId:b.companyId});
-  const ctx={...adminCtx(b),userId:user.id};
+  const ctx={...adminCtx(b),userId:user.id,grants:[{role:'hr_admin',companyId:b.companyId}]};
   const bytes=await book({department:[{Code:'SCOPED_ADMIN_GLOBAL'},{Code:'SCOPED_ADMIN_OWN',Company:b.companyId}]}),preview=await previewSystemLabelImport(ctx,bytes);
   expect(preview.rows[0]).toMatchObject({outcome:'error',reason:'globalAdminRequired'});
   expect(preview.rows[1]).toMatchObject({outcome:'add',after:{Criteria:'companies'}});

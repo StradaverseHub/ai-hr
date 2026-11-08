@@ -1,5 +1,5 @@
 import {readFileSync} from 'node:fs';
-import {sql,asc} from 'drizzle-orm';
+import {sql,asc,eq} from 'drizzle-orm';
 import {beforeAll,beforeEach,afterAll,describe,it,expect} from 'vitest';
 import {adminCtx,migrateTestDb,resetDb,seedBase,owner,closeAll,type Base} from './harness';
 import {createProfileOption} from '../core/profile-options';
@@ -14,10 +14,12 @@ describe('System Labels populated-baseline migration rehearsal',()=>{
   const option=await createProfileOption(adminCtx(b),{category:'division',value:'MIGRATION_PRESERVED',label:'Existing division'});
   const grade=await createJobGrade(adminCtx(b),{code:'MIGRATION_GRADE',name:'Existing grade'});
   const group=await createGradeGroup(adminCtx(b),{name:'Existing group',gradeIds:[grade.id]});
-  const before={options:await owner.db.select().from(s.profileOption).orderBy(asc(s.profileOption.id)),grades:await owner.db.select().from(s.jobGrade).orderBy(asc(s.jobGrade.id)),groups:await owner.db.select().from(s.gradeGroup).orderBy(asc(s.gradeGroup.id)),members:await owner.db.select().from(s.gradeGroupMember).orderBy(asc(s.gradeGroupMember.id))};
+  const before={options:await owner.db.select().from(s.profileOption).where(eq(s.profileOption.tenantId,b.tenantId)).orderBy(asc(s.profileOption.id)),grades:await owner.db.select().from(s.jobGrade).where(eq(s.jobGrade.tenantId,b.tenantId)).orderBy(asc(s.jobGrade.id)),groups:await owner.db.select().from(s.gradeGroup).where(eq(s.gradeGroup.tenantId,b.tenantId)).orderBy(asc(s.gradeGroup.id)),members:await owner.db.select().from(s.gradeGroupMember).where(eq(s.gradeGroupMember.tenantId,b.tenantId)).orderBy(asc(s.gradeGroupMember.id))};
   const rolledBack=new Error('Rehearsal completed; restore fixture schema');
   let rehearsed=false;
   try{await owner.db.transaction(async tx=>{
+   // Only this newly seeded tenant is the legacy fixture; retained catalogues from other tests can
+   // contain post-migration scoped records that could not exist in the preceding schema.
    // Model the real preceding schema inside this rollback-only disposable fixture transaction.
    await tx.execute(sql.raw(`DO $$ DECLARE p record; f record; BEGIN
     FOR p IN SELECT schemaname,tablename,policyname FROM pg_policies WHERE schemaname='public' AND policyname LIKE 'label_scope_%' LOOP
@@ -30,10 +32,10 @@ describe('System Labels populated-baseline migration rehearsal',()=>{
     ALTER TABLE grade_group DROP COLUMN scope_company_ids CASCADE;
    END $$;`));
    await tx.execute(sql.raw(migration));
-   expect(await tx.select().from(s.profileOption).orderBy(asc(s.profileOption.id))).toEqual(before.options);
-   expect(await tx.select().from(s.jobGrade).orderBy(asc(s.jobGrade.id))).toEqual(before.grades);
-   expect(await tx.select().from(s.gradeGroup).orderBy(asc(s.gradeGroup.id))).toEqual(before.groups);
-   expect(await tx.select().from(s.gradeGroupMember).orderBy(asc(s.gradeGroupMember.id))).toEqual(before.members);
+   expect(await tx.select().from(s.profileOption).where(eq(s.profileOption.tenantId,b.tenantId)).orderBy(asc(s.profileOption.id))).toEqual(before.options);
+   expect(await tx.select().from(s.jobGrade).where(eq(s.jobGrade.tenantId,b.tenantId)).orderBy(asc(s.jobGrade.id))).toEqual(before.grades);
+   expect(await tx.select().from(s.gradeGroup).where(eq(s.gradeGroup.tenantId,b.tenantId)).orderBy(asc(s.gradeGroup.id))).toEqual(before.groups);
+   expect(await tx.select().from(s.gradeGroupMember).where(eq(s.gradeGroupMember.tenantId,b.tenantId)).orderBy(asc(s.gradeGroupMember.id))).toEqual(before.members);
    expect(before.options.find(r=>r.id===option.id)?.scopeCompanyIds).toBeNull();
    expect(before.grades.find(r=>r.id===grade.id)?.scopeCompanyIds).toBeNull();
    expect(before.groups.find(r=>r.id===group.id)?.scopeCompanyIds).toBeNull();
