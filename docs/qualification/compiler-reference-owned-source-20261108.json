@@ -1,7 +1,7 @@
 {
   "version": 1,
   "kind": "COMPILER_REFERENCE_OWNED_PROCESS_SOURCE_NOT_QUALIFICATION",
-  "sourceRef": "codex/compiler-native-json-context-20261108",
+  "sourceRef": "codex/compiler-native-json-semantic-custody-20261108",
   "historicalUnrunPrototype": "fcd898ed1a4c4d886f70ac700fd1aff417240564",
   "reviewedConfiguredRootRepair": "665eee3c36557dc750736a6d9a4fd8caedb1b83e",
   "qualifiedKernelPredecessor": "756e834dc0db88b5131547bc6d5108284201ab48",
@@ -18,7 +18,7 @@
     ".github/ci/diagnostics/native-reference/admission.test.mjs": "3e0f32e5ad02a70bfff5e11eeecb5608a2a14c658773522be6f7aa89f464769a",
     ".github/ci/diagnostics/native-reference/config.mjs": "4dcc669c3abf1d9d08863b36ec8958508195445e926a242f5b7a27d5bd57fe95",
     ".github/ci/diagnostics/native-reference/dependency-custody-inverse.json": "d32319321ced719bc1898cf6a26d6bc5225fe14d1806f2285cc44f06499a2fa2",
-    ".github/ci/diagnostics/native-reference/fixture.mjs": "c8f25a05521ee8e89e00b27cf0214af182790bb233daea2be1865ab0f1c5382a",
+    ".github/ci/diagnostics/native-reference/fixture.mjs": "436d8c4e5484cd47585c4babadbf2b3a8c16ce6844e08281bbb8c22ba29c34ea",
     ".github/ci/diagnostics/native-reference/graph.mjs": "c555b649e7cebb95e5135af87ab7275d248c4c9b3a27b8742e7f8407944bace3",
     ".github/ci/diagnostics/native-reference/graph.test.mjs": "cc9187838c5f5d402917dbe355e004ade36807b95ef0373d15b347ed29f8940f",
     ".github/ci/diagnostics/native-reference/outputs.mjs": "f80442a765b03277548faffd076b0e13b037bef633cda8b013443d043eb8427d",
@@ -42,7 +42,7 @@
     ".github/workflows/alpha-focused-checks.yml": "f3f454d5474a02af38b18b97579e5854bd8897979f6e1ca61f72c1855ae1d991",
     ".github/workflows/alpha-staging-diagnostics.yml": "52c18222811f9ec289cc4fdbe01a58bcca70a671dad4209cd1cab7ae032c43cd",
     "docs/qualification/compiler-native-input-stat-diagnostic-20261108.md": "add5be85743f9361ed21c2cc5c9812e570c5afa93ea3970f57cbccd8f33cad8e",
-    "docs/qualification/compiler-native-json-context-20261108.md": "1a914cbc8973c71b31f26391982273805bdfe2bbfd16e15987cebc35b19a05a5",
+    "docs/qualification/compiler-native-json-context-20261108.md": "4f690fd761ff0a9b7cc6ef256c220a1786610472c27b171877581f60320d5b03",
     "docs/qualification/compiler-owned-controls-recovery-20261108.md": "fc56c99214ee76ad4e6e90021906260c503dc00374db8d0563a1a1b0ed6f9b86",
     "docs/qualification/compiler-readonly-dependency-custody-20261108.md": "f8b2263c0e7b36479cf9aa08eaa48363bd6d7456f1db49db7356197983176e3a",
     "docs/qualification/compiler-reference-owned-supervision-20261108.md": "bdfcad6547d89647259848c61a9c898d3b81d7d7d4d0ca573c77aa119a386624",
@@ -131,5 +131,13 @@
     "runId": "42453982432",
     "phase": "post-consumer-json-oracle",
     "ordinaryCompilerQualified": false
+  },
+  "unrunReviewCorrection": {
+    "source": "531a61dbfb8069cfb40d241b9e390e1194eb7a05",
+    "reason": "native-emitted-json-formatting-differs",
+    "sourceBytes": 45,
+    "nativeEmittedBytes": 48,
+    "semanticEqualityRequired": true,
+    "runTransferred": false
   }
 }
