@@ -6,7 +6,7 @@ import * as schema from '../db/schema';
 import { hireEmployee } from '../core/org';
 import { setCompensation } from '../core/comp';
 import { createAppUser,owner,closeAll,resetDb,migrateTestDb,seedBase,setModule,entitledCtx,type Base } from './harness';
-import { createApprovedRewardUnit } from './rewards-setup-fixture';
+import { createPreparingRewardUnit as createApprovedRewardUnit } from './rewards-setup-fixture';
 import { initializeRewardGovernanceFixture,refreshRewardFixtureBudget } from './rewards-governance-fixture';
 import { setRewardMember } from './rewards-access-fixture';
 import { getRewardUnit,getRewardUnitGovernance,refreshRewardSources,importRewardFacts,getRewardPreparationStatus,getRewardPreparationChecklist,changeRewardPreparation,saveRewardUnitInputs,decideRewardUnit,rewardPreparationNotices,rewardDashboard,getRewardDashboardPreference,saveRewardDashboardPreference } from '../packs/rewards/service';
