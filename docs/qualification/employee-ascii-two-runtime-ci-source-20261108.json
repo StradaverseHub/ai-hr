@@ -10,17 +10,19 @@
   },
   "current": {
     ".github/ci/employee-lifecycle-native.mjs": "f7692b8255143b90d6c2f54f848ef3e07967ed6597c5c9d3a68128b8574928e3",
-    ".github/ci/employee-lifecycle-sources.mjs": "8002f395f615868ee51ad71340c0df7370d152611a0df4a3f21be2b97952622c",
-    ".github/ci/employee-lifecycle-sources.test.mjs": "36f5030c502c44f207139cc9e2a74e004e28c56a52d8e2465a210f2137082cfd",
+    ".github/ci/employee-lifecycle-sources.mjs": "6cec7d46dbd7f26e628dab30b41fffa7e5f2de10efbb8861dc06aba2306771f5",
+    ".github/ci/employee-lifecycle-sources.test.mjs": "e1bf0d3e07420da90b330bfd9d19deaf73dbdc1fe29f1cb323e0dfe89ba17dbf",
     ".github/ci/focused-checks.mjs": "057055f45e5078af63846b65221ffdd12d94a2c4966f840f80efc46fb2ea5e11",
     ".github/workflows/alpha-focused-checks.yml": "d9ed6026eae9d56904b42bcddb6644bc0132943e27142a415dc3bb8c78c47765",
-    "docs/qualification/employee-native-restoration-inverse-20261108.json": "e2d029a6ccb6de7359302752d605c642f6e446ad82a7595cf00afc5bba770d33",
+    "docs/qualification/employee-native-restoration-inverse-20261108.json": "318a51f38d8af4bee39d417ead19d2a34a4037aea5a3f15e3dc7587cdfd3b18f",
     "test/performance/employee-choice-benchmark-harness.ts": "e4cc3c70a7c3e39a6bcc0294a9bd623e48d4c097395a804860e4eefa47973c5f",
     ".github/ci/employee-ascii-compiled-source.mjs": "5e61c0886a3f46c2b3539d65f746ebc0b4245c4cb9b9010756584df6c82696f2",
     ".github/ci/employee-ascii-compiled-source.test.mjs": "33ad1612e5f5e3c0095c4a702545e85481bc3a8f1cf320b749f7e4b47a21c4d4",
     ".github/ci/employee-ascii-runtime-qualification.mjs": "c6840d9352628fc1e7c525a187944fe2ded01f6cd91666d8a7b6041119e6f08d",
-    "docs/qualification/employee-ascii-ci-restoration-parent-inverse-20261108.json": "80e946c1db4c5f607324ae352341b7ef8d6af403def3dc6a52bae8f0f1329b50",
-    "docs/qualification/employee-ascii-two-runtime-ci-20261108.md": "5d1f99cedd135062e700a0b8e8af1adaa46631d5a84e5486ba2b41b9a382e488"
+    "docs/qualification/employee-ascii-ci-restoration-parent-inverse-20261108.json": "6b4a2ee439a61eda842e5d715ffd4ba358005be45c7beb30cc94208b97b3e1c4",
+    "docs/qualification/employee-ascii-two-runtime-ci-20261108.md": "f14d37a25a9770c2bf05406cf108b8f446fa7d2d6faafb055e05ae6250dcb76e",
+    ".github/ci/employee-lifecycle-context.test.mjs": "589c079c57de3bdb9a41db2a0cd0e4c1c7457cbea1da34fa7bdb9f993bf11bab",
+    ".github/ci/employee-lifecycle-profile.test.mjs": "bbd28f51554a6f8aa1e1ba3ae0f0aaa55bee46fa611badf2da2659105326a885"
   },
   "wholeParentPreimages": {
     ".github/ci/employee-lifecycle-native.mjs": {
@@ -100,20 +102,22 @@
     "test/employee-choice-lifecycle-contract.test.ts": "29ddef4903b493fde0e5a58df13a3ed13dda803266789f8a009a67a431be221f",
     "test/employee-choice-lifecycle-evidence-contract.test.ts": "3ab985a46e87597441cdd21dc738bbe485ce7909ba529e620d6b935ed5fd93fc",
     "test/employee-choice-exact-ascii-owner-source.test.ts": "fcf64ec74dabb477c0fdec59b1585f21e1c35144490d96d2f0b4939c1ddf126f",
-    "test/employee-choice-ascii-observation.test.ts": "4f235a0deb6c30ffac0785c23bc4e565bb61141f9e35f1dcea668072de711bcd"
+    "test/employee-choice-ascii-observation.test.ts": "4f235a0deb6c30ffac0785c23bc4e565bb61141f9e35f1dcea668072de711bcd",
+    ".github/ci/compiler-file-window-inverse.json": "6dc7a68c49921b085b9292972fa92e3b413fc01dbb21510578431712172d97ea"
   },
   "sourceClosure": {
     "old": 3447,
-    "current": 3473,
+    "current": 3474,
     "allOldMembersAndOrderPreserved": true,
-    "previous": 3471,
+    "previous": 3473,
     "actualOrderedJournalEntries": 745,
     "physicalSqlFiles": 747,
     "unjournaledSqlFiles": [
       "db/migrations/2301_attendance_workflow_submission_shared_lock.sql",
       "db/migrations/3103_access_editor_presentation.sql"
     ],
-    "actualJournalAndPhysicalSqlFullyCovered": true
+    "actualJournalAndPhysicalSqlFullyCovered": true,
+    "newActualReadOwner": ".github/ci/compiler-file-window-inverse.json"
   },
   "selfExcluded": true,
   "noRuntimeExecution": true,
@@ -162,5 +166,54 @@
     "onlyChangedRestorationRow": ".github/ci/employee-lifecycle-sources.mjs",
     "allOther10RowsWhole": true,
     "sourceFindingNotRuntimeFailure": true
+  },
+  "primitiveDelegationSuccessor": {
+    "parent": "39006c0df498b602f206c507d7a37ee1112f8130",
+    "changedPaths": [
+      ".github/ci/employee-lifecycle-context.test.mjs",
+      ".github/ci/employee-lifecycle-profile.test.mjs",
+      ".github/ci/employee-lifecycle-sources.mjs",
+      ".github/ci/employee-lifecycle-sources.test.mjs",
+      "docs/qualification/employee-native-restoration-inverse-20261108.json",
+      "docs/qualification/employee-ascii-ci-restoration-parent-inverse-20261108.json",
+      "docs/qualification/employee-ascii-two-runtime-ci-20261108.md",
+      "docs/qualification/employee-ascii-two-runtime-ci-source-20261108.json"
+    ],
+    "modelCaseCount": 18,
+    "other16LifecycleCallbacksWhole": true,
+    "threeSourceModelCallbacksWhole": true,
+    "onlyChangedRestorationRows": [
+      ".github/ci/employee-lifecycle-sources.mjs",
+      ".github/ci/employee-lifecycle-sources.test.mjs"
+    ],
+    "allOther9MapRowsWhole": true,
+    "nativePrimitiveProvenance": {
+      "controls": {
+        "run": 42451455766,
+        "source": "afdf383fa71dacdd19f7130c17b178aeed32cd83",
+        "artifact": 13605409030,
+        "zipSha256": "833caa9e1e4efea200583da82c987d11ab33756ec116c6a71a28a3140c8ab0d6",
+        "actualCases": 17
+      },
+      "miniatureRun": 42456864450,
+      "uidRun": 42492490975,
+      "currentKernelSha256": "9d48394fdc1897c53b5fcd5a581fc53b016c111fcc9aa69679daeb732faf2129",
+      "wholeQualifiedPredecessorSha256": "cb1a2cc2879267f8834dc11ea0e1c52f8326b0bd4e45dcd94ccf2ac43463f28c",
+      "defaultNormalFileSeconds": 900,
+      "blanketNormalQualification": false
+    },
+    "affectedWrapperNestedCases": [
+      18,
+      13,
+      28
+    ],
+    "normalNoDbVerified": false,
+    "ordinaryCompilerQualified": false,
+    "releaseAuthorized": false,
+    "originalModelFailureRetained": 42498303645,
+    "semanticCellRunsRetainedAt39006": [
+      42499626287,
+      42499637093
+    ]
   }
 }

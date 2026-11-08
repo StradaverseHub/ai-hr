@@ -12,6 +12,7 @@ export const EMPLOYEE_LIFECYCLE_SOURCES=Object.freeze([
  ".github/ci/build-transport-extract.py",
  ".github/ci/candidate-environment.mjs",
  ".github/ci/compiler-cache-protocol.mjs",
+ ".github/ci/compiler-file-window-inverse.json",
  ".github/ci/db-duration-hints.json",
  ".github/ci/db-scheduling.mjs",
  ".github/ci/diagnostics/native-reference/admission.mjs",
@@ -3555,7 +3556,8 @@ export const EMPLOYEE_LIFECYCLE_CRITICAL=Object.freeze([
  ".github/ci/restricted-port-qualification.mjs",
  ".github/ci/diagnostics/native-reference/admission.mjs",
  "lib/ai/centre-activity.ts",
- "core/ai-centre-control.ts"
+ "core/ai-centre-control.ts",
+ ".github/ci/compiler-file-window-inverse.json"
 ]);
 /** Independently required owners and the actual canonical ordered SQL journal
  * cannot be omitted by coherently recomputing a binding fingerprint. */

@@ -86,8 +86,8 @@ or second live SQL algorithm was introduced.
 
 ## Source custody and review boundaries
 
-Existing lifecycle closure3447 paths is preserved and extended by26 actual
-owners to3473. The independent three existing source-model bodies/names remain;
+Existing lifecycle closure3447 paths is preserved and extended by27 actual
+owners to3474. The independent three existing source-model bodies/names remain;
 required-owner data now includes actual core/shared harness/compiled helper/
 runtime collector/proof inputs and both delegated model paths. All five original
 profiles remain unchanged. The current runtime snapshot reuses this existing
@@ -125,3 +125,33 @@ whole025 preimage to the SAME complete ee572 predecessor. The other ten map rows
 remain whole; all eleven current inverses must still replay exactly. Complete
 previous025 map/source Git preimages augment the preserved b4/630 records.
 This is an unrun source-integrity repair, not a repaired runtime failure.
+
+## Evidence-backed primitive and fixed delegation source models
+
+Original model42498303645 remains FAILED43/44outer57/59nested. Later independent
+evidence audit9fb29e3b authenticates actual9d primitive17-controlPASS42451455766
+(sourceafdf;artifact13605409030ZIP833caa9e1e4efea200583da82c987d11ab33756ec116c6a71a28a3140c8ab0d6),
+miniature720-clock42456864450 and UID42492490975. The initial blocked checkpoint
+label was not the final evidence state of identical9d bytes. The repaired source
+model binds wholecurrent9d, existing exact3-hunk inverse to WHOLEqualifiedcb1, and
+actual unchanged7f4 normal caller/default900/profile. Unknown bytes, changed
+inverse/windows/caller,720normal override, kwargs and caller-selected window
+refuse. This is finite primitive provenance with restricted source-purpose
+preservation, not a blind repin, a PASS-on-unqualified-refusal model, or normal
+five/SixOp/API/compiler/release qualification. No kernel/runtime gate changed.
+
+The other repaired source case follows exact whole630 two wrappers, closed
+purpose/file contract and shared admission before hooks; wrongpurpose/import,
+foreignfile,missing/moved admission and focusedskip refuse. Three direct entries
+retain direct admission guards. Other16lifecycle callbacks/18names/budgets and
+three independent source callbacks remain whole. The one newly READ existing
+compiler inverse is added as critical source owner:3473→3474, all old order and
+745journal/747physicalSQL preserved. Exactly2source-map rows recompose to SAME
+wholeee572;9otherrows and complete39006 preimages are retained.
+
+Affected hosted recovery, only after dual FULL: three wrappers18+13+28 because
+the new source-owner/controller inputs invalidate prior13+28. Other41outer PASS
+cases remain at39006 with true identities. Node22/24 semantic8case receipts
+42499626287/42499637093 remain at39006, eachdistinctdevelopmentkind with allnormal/
+compiler/release/package flagsfalse. They neither repair nor relabel the model
+failure. Product/helper/controller/workflow/worker/profile bytes stay unchanged.

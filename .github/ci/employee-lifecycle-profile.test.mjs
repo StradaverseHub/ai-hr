@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
+import {createHash} from 'node:crypto';
 import {EMPLOYEE_LIFECYCLE_PROFILE as profile,employeeLifecycleFile,employeeLifecycleStage,validateEmployeeLifecycleProfile,employeeLifecycleNormalBudget,employeeLifecycleFrontier,validateEmployeeLifecycleTestResult,employeeLifecycleUnit,employeeLifecycleMatrixRow} from './employee-lifecycle-profile.mjs';
 test('one complete closed registry retains all five independent case counts and native envelopes',()=>{
  assert.deepEqual(profile.files.map(row=>[row.file,row.stage,row.cases,row.stageSeconds,row.fileSeconds,row.planPhases,row.callPairs]),[
@@ -26,7 +27,29 @@ test('every actual Vitest file count must match independently expected6/2/3/9/6 
 });
 test('all five entries call the actual shared admission before their hooks and contain no focused skip gate',()=>{
  const helper=readFileSync(new URL('../../test/performance/employee-choice-lifecycle-admission.ts',import.meta.url),'utf8');assert.match(helper,/const admission=admitSingletonTest\(file\)/);assert.match(helper,/employeeLifecycleProcess\(context.parent.pid\)/);assert.match(helper,/supervisor ancestor required/);
- for(const row of profile.files){const bytes=readFileSync(new URL('../../'+row.file,import.meta.url),'utf8');assert.match(bytes,/admitEmployeeChoiceLifecycle\(/);assert.doesNotMatch(bytes,/skipIf\(!requested\)|AIHR_FOCUSED_EVIDENCE_DIR|AIHR_CI_UNIT\?\?'db-1'/);}
+ const shared=readFileSync(new URL('../../test/performance/employee-choice-benchmark-harness.ts',import.meta.url),'utf8');
+ const contract=readFileSync(new URL('../../test/performance/employee-choice-benchmark-contract.ts',import.meta.url),'utf8');
+ const delegated={'test/employee-choice-native-purpose-plan.test.ts':'classic','test/employee-choice-exact-ascii-plan.test.ts':'exact-ascii'};
+ const prefix="export function registerEmployeeChoiceBenchmark(purpose:EmployeeChoiceBenchmarkPurpose){\nconst contract=employeeChoiceBenchmarkContract(purpose),ascii=purpose==='exact-ascii',prototype=ascii?exactAscii:classic;\nconst file=contract.file;\nconst lifecycle=admitEmployeeChoiceLifecycle(file);\nbeforeAll(async()=>{initializeEvidence();";
+ function verifyDelegation(file,purpose,entry,harness,contracts){
+  assert.equal(delegated[file],purpose);assert(['classic','exact-ascii'].includes(purpose));
+  assert.equal(entry,`/** Fixed existing native benchmark entry. The shared owner admits its exact\n * real lifecycle profile before any hooks, constructors or SQL. */\nimport {registerEmployeeChoiceBenchmark} from './performance/employee-choice-benchmark-harness';\nregisterEmployeeChoiceBenchmark('${purpose}');\n`);
+  assert.equal(createHash('sha256').update(harness).digest('hex'),'e4cc3c70a7c3e39a6bcc0294a9bd623e48d4c097395a804860e4eefa47973c5f');
+  assert.equal(createHash('sha256').update(contracts).digest('hex'),'b19775a87ccab9951d8ab49bf1807e38cea1efb7fbba91d6d7731d19f0ee16b5');
+  assert(harness.startsWith("import {admitEmployeeChoiceLifecycle} from './employee-choice-lifecycle-admission';"));assert.equal(harness.split(prefix).length,2);
+  assert(harness.indexOf('const lifecycle=admitEmployeeChoiceLifecycle(file);')<harness.indexOf('beforeAll('));
+  assert(contracts.includes("if(!Object.hasOwn(contracts,purpose))throw Error('Unknown closed employee benchmark purpose')"));
+  assert(contracts.includes((purpose==='classic'?'classic':"'exact-ascii'")+":Object.freeze({file:'"+file+"'"));
+  assert.doesNotMatch(harness,/skipIf\(!requested\)|AIHR_FOCUSED_EVIDENCE_DIR|AIHR_CI_UNIT\?\?'db-1'/);
+ }
+ for(const row of profile.files){const bytes=readFileSync(new URL('../../'+row.file,import.meta.url),'utf8');assert.doesNotMatch(bytes,/skipIf\(!requested\)|AIHR_FOCUSED_EVIDENCE_DIR|AIHR_CI_UNIT\?\?'db-1'/);
+  if(!Object.hasOwn(delegated,row.file)){assert.match(bytes,/admitEmployeeChoiceLifecycle\(/);continue;}
+  const purpose=delegated[row.file];verifyDelegation(row.file,purpose,bytes,shared,contract);
+  assert.throws(()=>verifyDelegation(row.file,purpose,bytes.replace("registerEmployeeChoiceBenchmark('"+purpose+"')","registerEmployeeChoiceBenchmark('foreign')"),shared,contract));
+  assert.throws(()=>verifyDelegation(row.file,purpose,bytes.replace('employee-choice-benchmark-harness','foreign-harness'),shared,contract));
+  for(const changed of [shared.replace('const lifecycle=admitEmployeeChoiceLifecycle(file);',''),shared.replace('const lifecycle=admitEmployeeChoiceLifecycle(file);\nbeforeAll','beforeAll\nconst lifecycle=admitEmployeeChoiceLifecycle(file);'),shared+"\nskipIf(!requested)"])assert.throws(()=>verifyDelegation(row.file,purpose,bytes,changed,contract));
+  assert.throws(()=>verifyDelegation(row.file,purpose,bytes,shared,contract.replace("file:'"+row.file+"'","file:'test/foreign.test.ts'")));
+ }
 });
 test('normal adapter reuses the exact source kernel and preserves actual telemetry failure before mandatory stop',()=>{
  const source=readFileSync(new URL('./employee-lifecycle-supervisor.py',import.meta.url),'utf8');assert.match(source,/exec\(compile\(_kernel_path.read_bytes\(\)/);assert.match(source,/_kernel.supervise\(argv, seconds, event/);assert.match(source,/if stage != 'stop':\n            return 1/);assert.doesNotMatch(source,/os.killpg|Popen|start_new_session|AIHR_FOCUSED_.*=/);assert.match(source,/observed \+ 900 <= started \+ seconds/);

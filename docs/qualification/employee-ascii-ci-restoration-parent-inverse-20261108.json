@@ -57,5 +57,65 @@
     "sameRestorationBase": "ee5722312689fc88d8a9253c232945e6f2599900",
     "oldB4And630PreimagesPreserved": true,
     "sourceFindingNotRuntimeFailure": true
+  },
+  "primitiveDelegationSuccessor": {
+    "parent": "39006c0df498b602f206c507d7a37ee1112f8130",
+    "changedModelCallbacks": [
+      ".github/ci/employee-lifecycle-context.test.mjs",
+      ".github/ci/employee-lifecycle-profile.test.mjs"
+    ],
+    "affectedRestorationRows": [
+      ".github/ci/employee-lifecycle-sources.mjs",
+      ".github/ci/employee-lifecycle-sources.test.mjs"
+    ],
+    "sameRestorationBase": "ee5722312689fc88d8a9253c232945e6f2599900",
+    "actualWhole39006Preimages": {
+      ".github/ci/employee-lifecycle-context.test.mjs": {
+        "gitBlob": "64e150a2c23824d9c83e3d955fae4face49f8e19",
+        "sha256": "cf64eaa21eca20b40df7bd2f53a6d2805b7c4fb57de9087b318a1ebe40440a4e",
+        "bytes": 6458
+      },
+      ".github/ci/employee-lifecycle-profile.test.mjs": {
+        "gitBlob": "545093e9249fa098d41ca25e87aa30e39264fa3f",
+        "sha256": "205af728c4879c85071cae883f2e13f2e851bb2856fb75028a544d34187b4b83",
+        "bytes": 7092
+      },
+      ".github/ci/employee-lifecycle-sources.mjs": {
+        "gitBlob": "6999fa9cc44ea9f62f6a0662b4a945ef17afde05",
+        "sha256": "8002f395f615868ee51ad71340c0df7370d152611a0df4a3f21be2b97952622c",
+        "bytes": 153231
+      },
+      ".github/ci/employee-lifecycle-sources.test.mjs": {
+        "gitBlob": "edc5943c4e7b13c57558b3cce7b8a2c928068f6b",
+        "sha256": "36f5030c502c44f207139cc9e2a74e004e28c56a52d8e2465a210f2137082cfd",
+        "bytes": 5051
+      },
+      "docs/qualification/employee-native-restoration-inverse-20261108.json": {
+        "gitBlob": "e1d22de13669d529beef759fc47f60093583f03e",
+        "sha256": "e2d029a6ccb6de7359302752d605c642f6e446ad82a7595cf00afc5bba770d33",
+        "bytes": 135022
+      },
+      "docs/qualification/employee-ascii-ci-restoration-parent-inverse-20261108.json": {
+        "gitBlob": "b950163f85bb86f0534b1f86d5f898b90e522575",
+        "sha256": "80e946c1db4c5f607324ae352341b7ef8d6af403def3dc6a52bae8f0f1329b50",
+        "bytes": 2831
+      },
+      "docs/qualification/employee-ascii-two-runtime-ci-20261108.md": {
+        "gitBlob": "f16d10ef8ecac4b889d983b2857f1ffb3d0f95ff",
+        "sha256": "5d1f99cedd135062e700a0b8e8af1adaa46631d5a84e5486ba2b41b9a382e488",
+        "bytes": 8300
+      },
+      "docs/qualification/employee-ascii-two-runtime-ci-source-20261108.json": {
+        "gitBlob": "6166c072b369fa2ca058b74a1f42bf82b04a6015",
+        "sha256": "b3f54f697743839d05941b5b58d36ca5c6fbd76aaee19e23fa69b365610838a3",
+        "bytes": 10586
+      }
+    },
+    "newReadInput": ".github/ci/compiler-file-window-inverse.json",
+    "currentKernelSha256": "9d48394fdc1897c53b5fcd5a581fc53b016c111fcc9aa69679daeb732faf2129",
+    "qualifiedPredecessorSha256": "cb1a2cc2879267f8834dc11ea0e1c52f8326b0bd4e45dcd94ccf2ac43463f28c",
+    "default900PurposePreserved": true,
+    "blanketNormalQualification": false,
+    "originalFailedRun": 42498303645
   }
 }

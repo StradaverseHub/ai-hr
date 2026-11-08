@@ -28,145 +28,151 @@
     },
     ".github/ci/employee-lifecycle-sources.mjs": {
       "parentSha256": "80db405706af787565e9f827f3688d2c1dfad3cd62b2cd7e393f87297ffa63ec",
-      "currentSha256": "8002f395f615868ee51ad71340c0df7370d152611a0df4a3f21be2b97952622c",
+      "currentSha256": "6cec7d46dbd7f26e628dab30b41fffa7e5f2de10efbb8861dc06aba2306771f5",
       "changes": [
         {
-          "startLine": 3532,
-          "endLine": 3558,
+          "startLine": 3533,
+          "endLine": 3560,
           "before": " \"test/performance/employee-choice-lifecycle-admission.ts\"\n",
-          "after": " \"test/performance/employee-choice-lifecycle-admission.ts\",\n \"core/employee-choice-ascii.ts\",\n \"test/performance/employee-choice-benchmark-contract.ts\",\n \"test/performance/employee-choice-benchmark-harness.ts\",\n \".github/ci/employee-ascii-compiled-source.mjs\",\n \".github/ci/employee-ascii-compiled-source.test.mjs\",\n \".github/ci/employee-ascii-runtime-qualification.mjs\",\n \".github/ci/employee-ascii-runtime-qualification.test.mjs\",\n \"test/employee-ascii-runtime-qualification-model.test.ts\",\n \"test/employee-choice-inline-ascii-native.test.ts\",\n \"test/fixtures/employee-choice-ascii-proof-native.ts\",\n \"test/fixtures/employee-choice-ascii-observation.ts\",\n \"test/fixtures/employee-choice-ascii-proof-lifetime.ts\",\n \"test/fixtures/employee-choice-ascii-scalar-corpus.sql\",\n \"test/fixtures/employee-choice-ascii-vectors.sql\",\n \"test/employee-choice-exact-ascii-proof.test.ts\",\n \"test/employee-choice-ascii-observation.test.ts\",\n \"test/fixtures/unicode-17.0.0/LICENSE.txt\",\n \"test/fixtures/unicode-17.0.0/UnicodeData.txt\",\n \"test/fixtures/unicode-17.0.0/SpecialCasing.txt\",\n \".github/ci/focused-checks.mjs\",\n \".github/workflows/alpha-focused-checks.yml\",\n \".github/ci/restricted-port-qualification.mjs\",\n \".github/ci/diagnostics/native-reference/admission.mjs\",\n \"lib/ai/centre-activity.ts\",\n \"core/ai-centre-control.ts\"\n"
+          "after": " \"test/performance/employee-choice-lifecycle-admission.ts\",\n \"core/employee-choice-ascii.ts\",\n \"test/performance/employee-choice-benchmark-contract.ts\",\n \"test/performance/employee-choice-benchmark-harness.ts\",\n \".github/ci/employee-ascii-compiled-source.mjs\",\n \".github/ci/employee-ascii-compiled-source.test.mjs\",\n \".github/ci/employee-ascii-runtime-qualification.mjs\",\n \".github/ci/employee-ascii-runtime-qualification.test.mjs\",\n \"test/employee-ascii-runtime-qualification-model.test.ts\",\n \"test/employee-choice-inline-ascii-native.test.ts\",\n \"test/fixtures/employee-choice-ascii-proof-native.ts\",\n \"test/fixtures/employee-choice-ascii-observation.ts\",\n \"test/fixtures/employee-choice-ascii-proof-lifetime.ts\",\n \"test/fixtures/employee-choice-ascii-scalar-corpus.sql\",\n \"test/fixtures/employee-choice-ascii-vectors.sql\",\n \"test/employee-choice-exact-ascii-proof.test.ts\",\n \"test/employee-choice-ascii-observation.test.ts\",\n \"test/fixtures/unicode-17.0.0/LICENSE.txt\",\n \"test/fixtures/unicode-17.0.0/UnicodeData.txt\",\n \"test/fixtures/unicode-17.0.0/SpecialCasing.txt\",\n \".github/ci/focused-checks.mjs\",\n \".github/workflows/alpha-focused-checks.yml\",\n \".github/ci/restricted-port-qualification.mjs\",\n \".github/ci/diagnostics/native-reference/admission.mjs\",\n \"lib/ai/centre-activity.ts\",\n \"core/ai-centre-control.ts\",\n \".github/ci/compiler-file-window-inverse.json\"\n"
         },
         {
-          "startLine": 3481,
-          "endLine": 3486,
+          "startLine": 3482,
+          "endLine": 3487,
           "before": "",
           "after": " \".github/ci/employee-restoration-proof.mjs\",\n \"test/employee-choice-restoration-proof.test.ts\",\n \"test/performance/employee-choice-restoration-cleanup.ts\",\n \"test/performance/employee-choice-restoration-source.ts\",\n \"docs/qualification/employee-native-restoration-inverse-20261108.json\",\n"
         },
         {
-          "startLine": 3427,
-          "endLine": 3429,
+          "startLine": 3428,
+          "endLine": 3430,
           "before": "",
           "after": " \"test/performance/employee-choice-restoration-cleanup.ts\",\n \"test/performance/employee-choice-restoration-source.ts\",\n"
         },
         {
-          "startLine": 3401,
-          "endLine": 3402,
+          "startLine": 3402,
+          "endLine": 3403,
           "before": "",
           "after": " \"test/performance/employee-choice-benchmark-harness.ts\",\n"
         },
         {
-          "startLine": 3399,
-          "endLine": 3400,
+          "startLine": 3400,
+          "endLine": 3401,
           "before": "",
           "after": " \"test/performance/employee-choice-benchmark-contract.ts\",\n"
         },
         {
-          "startLine": 3370,
-          "endLine": 3373,
+          "startLine": 3371,
+          "endLine": 3374,
           "before": "",
           "after": " \"test/fixtures/unicode-17.0.0/LICENSE.txt\",\n \"test/fixtures/unicode-17.0.0/SpecialCasing.txt\",\n \"test/fixtures/unicode-17.0.0/UnicodeData.txt\",\n"
         },
         {
-          "startLine": 3341,
-          "endLine": 3345,
+          "startLine": 3342,
+          "endLine": 3346,
           "before": "",
           "after": " \"test/fixtures/employee-choice-ascii-proof-lifetime.ts\",\n \"test/fixtures/employee-choice-ascii-proof-native.ts\",\n \"test/fixtures/employee-choice-ascii-scalar-corpus.sql\",\n \"test/fixtures/employee-choice-ascii-vectors.sql\",\n"
         },
         {
-          "startLine": 3330,
-          "endLine": 3331,
+          "startLine": 3331,
+          "endLine": 3332,
           "before": "",
           "after": " \"test/employee-choice-restoration-proof.test.ts\",\n"
         },
         {
-          "startLine": 3324,
-          "endLine": 3325,
+          "startLine": 3325,
+          "endLine": 3326,
           "before": "",
           "after": " \"test/employee-choice-inline-ascii-native.test.ts\",\n"
         },
         {
-          "startLine": 3322,
-          "endLine": 3323,
+          "startLine": 3323,
+          "endLine": 3324,
           "before": "",
           "after": " \"test/employee-choice-exact-ascii-proof.test.ts\",\n"
         },
         {
-          "startLine": 3317,
-          "endLine": 3319,
+          "startLine": 3318,
+          "endLine": 3320,
           "before": "",
           "after": " \"test/employee-ascii-runtime-qualification-model.test.ts\",\n \"test/employee-choice-ascii-observation.test.ts\",\n"
         },
         {
-          "startLine": 2288,
-          "endLine": 2289,
+          "startLine": 2289,
+          "endLine": 2290,
           "before": "",
           "after": " \"lib/ai/centre-activity.ts\",\n"
         },
         {
-          "startLine": 2246,
-          "endLine": 2247,
+          "startLine": 2247,
+          "endLine": 2248,
           "before": "",
           "after": " \"docs/qualification/employee-native-restoration-inverse-20261108.json\",\n"
         },
         {
-          "startLine": 2165,
-          "endLine": 2167,
+          "startLine": 2166,
+          "endLine": 2168,
           "before": "",
           "after": " \"db/migrations/3200_ai_centre_controls.sql\",\n \"db/migrations/3201_ai_centre_function_coverage.sql\",\n"
         },
         {
-          "startLine": 955,
-          "endLine": 956,
+          "startLine": 956,
+          "endLine": 957,
           "before": "",
           "after": " \"core/employee-choice-ascii.ts\",\n"
         },
         {
-          "startLine": 701,
-          "endLine": 702,
+          "startLine": 702,
+          "endLine": 703,
           "before": "",
           "after": " \"core/ai-centre-control.ts\",\n"
         },
         {
-          "startLine": 77,
-          "endLine": 78,
+          "startLine": 78,
+          "endLine": 79,
           "before": "",
           "after": " \".github/workflows/alpha-focused-checks.yml\",\n"
         },
         {
-          "startLine": 68,
-          "endLine": 69,
+          "startLine": 69,
+          "endLine": 70,
           "before": "",
           "after": " \".github/ci/restricted-port-qualification.mjs\",\n"
         },
         {
-          "startLine": 49,
-          "endLine": 50,
+          "startLine": 50,
+          "endLine": 51,
           "before": "",
           "after": " \".github/ci/focused-checks.mjs\",\n"
         },
         {
-          "startLine": 47,
-          "endLine": 48,
+          "startLine": 48,
+          "endLine": 49,
           "before": "",
           "after": " \".github/ci/employee-restoration-proof.mjs\",\n"
         },
         {
-          "startLine": 16,
-          "endLine": 21,
+          "startLine": 17,
+          "endLine": 22,
           "before": "",
           "after": " \".github/ci/diagnostics/native-reference/admission.mjs\",\n \".github/ci/employee-ascii-compiled-source.mjs\",\n \".github/ci/employee-ascii-compiled-source.test.mjs\",\n \".github/ci/employee-ascii-runtime-qualification.mjs\",\n \".github/ci/employee-ascii-runtime-qualification.test.mjs\",\n"
+        },
+        {
+          "startLine": 14,
+          "endLine": 15,
+          "before": "",
+          "after": " \".github/ci/compiler-file-window-inverse.json\",\n"
         }
       ]
     },
     ".github/ci/employee-lifecycle-sources.test.mjs": {
       "parentSha256": "73ace5ecae2b8ae8321233ce48b99b94e5dcd0734d7fb88cf0bc1d05e2f6d196",
-      "currentSha256": "36f5030c502c44f207139cc9e2a74e004e28c56a52d8e2465a210f2137082cfd",
+      "currentSha256": "e1bf0d3e07420da90b330bfd9d19deaf73dbdc1fe29f1cb323e0dfe89ba17dbf",
       "changes": [
         {
           "startLine": 8,
-          "endLine": 11,
+          "endLine": 12,
           "before": "const independentOwners=['.github/ci/unit-report-directories.mjs','.github/ci/unit-report-directories.test.mjs','test/ci-unit-report-directory-contract.test.ts','.github/ci/run-unit.mjs','.github/ci/employee-lifecycle.mjs','.github/ci/employee-lifecycle-profile.json','.github/ci/employee-lifecycle-context.mjs','.github/ci/employee-lifecycle-supervisor.py','.github/ci/employee-lifecycle-always-stop.mjs','.github/ci/employee-postgres-policy.py','.github/ci/employee-postgres-resource.py','.github/ci/owned-process.py','.github/ci/employee-lifecycle-api.mjs','.github/ci/employee-lifecycle-evidence.mjs','.github/ci/employee-lifecycle-extract.py','.github/ci/employee-lifecycle-witness.mjs','.github/ci/employee-lifecycle-native.mjs','.github/ci/employee-native-log-codec.mjs','.github/ci/release-ci.mjs','.github/ci/verify-shards.mjs','test/performance/employee-choice-lifecycle-admission.ts','test/helpers/ci-singleton-admission.ts','test/harness.ts','db/client.ts','db/schema.ts','db/migrations/meta/_journal.json','test/fixtures/employee-choice-native-purpose.sql','test/fixtures/employee-choice-exact-ascii-purpose.sql','core/employee-choice.ts','lib/hr-date.ts'];\n",
-          "after": "const independentOwners=[\".github/ci/employee-restoration-proof.mjs\",\"test/employee-choice-restoration-proof.test.ts\",\"test/performance/employee-choice-restoration-cleanup.ts\",\"test/performance/employee-choice-restoration-source.ts\",\"docs/qualification/employee-native-restoration-inverse-20261108.json\",'.github/ci/unit-report-directories.mjs','.github/ci/unit-report-directories.test.mjs','test/ci-unit-report-directory-contract.test.ts','.github/ci/run-unit.mjs','.github/ci/employee-lifecycle.mjs','.github/ci/employee-lifecycle-profile.json','.github/ci/employee-lifecycle-context.mjs','.github/ci/employee-lifecycle-supervisor.py','.github/ci/employee-lifecycle-always-stop.mjs','.github/ci/employee-postgres-policy.py','.github/ci/employee-postgres-resource.py','.github/ci/owned-process.py','.github/ci/employee-lifecycle-api.mjs','.github/ci/employee-lifecycle-evidence.mjs','.github/ci/employee-lifecycle-extract.py','.github/ci/employee-lifecycle-witness.mjs','.github/ci/employee-lifecycle-native.mjs','.github/ci/employee-native-log-codec.mjs','.github/ci/release-ci.mjs','.github/ci/verify-shards.mjs','test/performance/employee-choice-lifecycle-admission.ts','test/helpers/ci-singleton-admission.ts','test/harness.ts','db/client.ts','db/schema.ts','db/migrations/meta/_journal.json','test/fixtures/employee-choice-native-purpose.sql','test/fixtures/employee-choice-exact-ascii-purpose.sql','core/employee-choice.ts','lib/hr-date.ts'];\nindependentOwners.push(\"core/employee-choice-ascii.ts\",\"test/performance/employee-choice-benchmark-contract.ts\",\"test/performance/employee-choice-benchmark-harness.ts\",\".github/ci/employee-ascii-compiled-source.mjs\",\".github/ci/employee-ascii-compiled-source.test.mjs\",\".github/ci/employee-ascii-runtime-qualification.mjs\",\".github/ci/employee-ascii-runtime-qualification.test.mjs\",\"test/employee-ascii-runtime-qualification-model.test.ts\",\"test/employee-choice-inline-ascii-native.test.ts\",\"test/fixtures/employee-choice-ascii-proof-native.ts\",\"test/fixtures/employee-choice-ascii-observation.ts\",\"test/fixtures/employee-choice-ascii-proof-lifetime.ts\",\"test/fixtures/employee-choice-ascii-scalar-corpus.sql\",\"test/fixtures/employee-choice-ascii-vectors.sql\",\"test/employee-choice-exact-ascii-proof.test.ts\",\"test/employee-choice-ascii-observation.test.ts\",\"test/fixtures/unicode-17.0.0/LICENSE.txt\",\"test/fixtures/unicode-17.0.0/UnicodeData.txt\",\"test/fixtures/unicode-17.0.0/SpecialCasing.txt\",\".github/ci/focused-checks.mjs\",\".github/workflows/alpha-focused-checks.yml\");\nindependentOwners.push(\".github/ci/restricted-port-qualification.mjs\",\".github/ci/diagnostics/native-reference/admission.mjs\",\"lib/ai/centre-activity.ts\",\"core/ai-centre-control.ts\");\n"
+          "after": "const independentOwners=[\".github/ci/employee-restoration-proof.mjs\",\"test/employee-choice-restoration-proof.test.ts\",\"test/performance/employee-choice-restoration-cleanup.ts\",\"test/performance/employee-choice-restoration-source.ts\",\"docs/qualification/employee-native-restoration-inverse-20261108.json\",'.github/ci/unit-report-directories.mjs','.github/ci/unit-report-directories.test.mjs','test/ci-unit-report-directory-contract.test.ts','.github/ci/run-unit.mjs','.github/ci/employee-lifecycle.mjs','.github/ci/employee-lifecycle-profile.json','.github/ci/employee-lifecycle-context.mjs','.github/ci/employee-lifecycle-supervisor.py','.github/ci/employee-lifecycle-always-stop.mjs','.github/ci/employee-postgres-policy.py','.github/ci/employee-postgres-resource.py','.github/ci/owned-process.py','.github/ci/employee-lifecycle-api.mjs','.github/ci/employee-lifecycle-evidence.mjs','.github/ci/employee-lifecycle-extract.py','.github/ci/employee-lifecycle-witness.mjs','.github/ci/employee-lifecycle-native.mjs','.github/ci/employee-native-log-codec.mjs','.github/ci/release-ci.mjs','.github/ci/verify-shards.mjs','test/performance/employee-choice-lifecycle-admission.ts','test/helpers/ci-singleton-admission.ts','test/harness.ts','db/client.ts','db/schema.ts','db/migrations/meta/_journal.json','test/fixtures/employee-choice-native-purpose.sql','test/fixtures/employee-choice-exact-ascii-purpose.sql','core/employee-choice.ts','lib/hr-date.ts'];\nindependentOwners.push(\"core/employee-choice-ascii.ts\",\"test/performance/employee-choice-benchmark-contract.ts\",\"test/performance/employee-choice-benchmark-harness.ts\",\".github/ci/employee-ascii-compiled-source.mjs\",\".github/ci/employee-ascii-compiled-source.test.mjs\",\".github/ci/employee-ascii-runtime-qualification.mjs\",\".github/ci/employee-ascii-runtime-qualification.test.mjs\",\"test/employee-ascii-runtime-qualification-model.test.ts\",\"test/employee-choice-inline-ascii-native.test.ts\",\"test/fixtures/employee-choice-ascii-proof-native.ts\",\"test/fixtures/employee-choice-ascii-observation.ts\",\"test/fixtures/employee-choice-ascii-proof-lifetime.ts\",\"test/fixtures/employee-choice-ascii-scalar-corpus.sql\",\"test/fixtures/employee-choice-ascii-vectors.sql\",\"test/employee-choice-exact-ascii-proof.test.ts\",\"test/employee-choice-ascii-observation.test.ts\",\"test/fixtures/unicode-17.0.0/LICENSE.txt\",\"test/fixtures/unicode-17.0.0/UnicodeData.txt\",\"test/fixtures/unicode-17.0.0/SpecialCasing.txt\",\".github/ci/focused-checks.mjs\",\".github/workflows/alpha-focused-checks.yml\");\nindependentOwners.push(\".github/ci/restricted-port-qualification.mjs\",\".github/ci/diagnostics/native-reference/admission.mjs\",\"lib/ai/centre-activity.ts\",\"core/ai-centre-control.ts\");\nindependentOwners.push('.github/ci/compiler-file-window-inverse.json');\n"
         }
       ]
     },
