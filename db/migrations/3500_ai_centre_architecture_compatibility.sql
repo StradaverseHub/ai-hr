@@ -102,7 +102,7 @@ BEGIN
  IF current_setting('transaction_read_only')='on' THEN
   PERFORM pg_advisory_xact_lock_shared(hashtext('ai-control'),hashtext(tid::text));
  ELSE PERFORM pg_advisory_xact_lock(hashtext('ai-control'),hashtext(tid::text)); END IF;
- RETURN NOT EXISTS(SELECT 1 FROM app.ai_agent_action_pause p WHERE p.tenant_id=tid AND p.action_id=wanted_action AND p.paused);
+ RETURN NOT EXISTS(SELECT 1 FROM app.ai_agent_action_pause p WHERE p.tenant_id=tid AND p.action_id=wanted_action AND p.paused) AND NOT EXISTS(SELECT 1 FROM public.teras_mandate_control c WHERE c.tenant_id=tid AND c.stopped);
 END $$;
 --> statement-breakpoint
 CREATE OR REPLACE FUNCTION app.ai_agent_action_unpaused(wanted_action text) RETURNS boolean
@@ -127,7 +127,7 @@ BEGIN
   ('app._ai_control_context_for_purpose(text,boolean,boolean)','1ef73e989fb4a6132bbeb87da9d939a8','search_path=public, pg_temp'),
   ('app._ai_control_context_before_centre(text,boolean)','a9ea819594d4adbde182910b573287da','search_path=public, pg_temp'),
   ('app._ai_control_context(text,boolean)','6fed6382d06a984f065d4b5e45d82941','search_path=pg_catalog, public, pg_temp'),
-  ('app.ai_agent_action_unpaused_before_centre(text)','4e4a28ce82612c9d3ef3531e58a92202','search_path=public, pg_temp'),
+  ('app.ai_agent_action_unpaused_before_centre(text)','a1ae73ad6d4f47b598df29412507bccb','search_path=public, pg_temp'),
   ('app.ai_agent_action_unpaused(text)','78c47da2aa44829087308d36d8cc66b1','search_path=pg_catalog, public, pg_temp')
  ) AS e(signature,body_hash,configuration) LOOP
   SELECT * INTO p FROM pg_proc WHERE oid=to_regprocedure(expected.signature);

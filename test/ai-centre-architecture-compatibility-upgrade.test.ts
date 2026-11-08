@@ -214,11 +214,11 @@ it('upgrades populated709 atomically, preserves real native owners/wrappers and 
    // failed observation. Never release the owning pool with an unawaited sibling.
    const completion=await reader;
    if(writerFailure)throw writerFailure;if(completion&&'error'in completion)throw completion.error;
-   expect(completion?.rows?.[0],port+' observes the committed stop').toEqual({allowed:false});
    concurrentPorts.push({port,appPid,writerPid,blocked,allowed:completion?.rows?.[0].allowed});
+   report.rawConcurrentPorts=concurrentPorts;save();
+   expect(completion?.rows?.[0],port+' observes the committed stop').toEqual({allowed:false});
    await application.withTenant(ctx,tx=>tx.execute(sql`update teras_mandate_control set stopped=false,changed_by_user_id=${userId} where tenant_id=${tenantId}`));
   }
-  report.rawConcurrentPorts=concurrentPorts;save();
   await application.withTenant(ctx,tx=>tx.execute(sql`insert into ai_control_policy(tenant_id,scope_key,kind,subject_id,enabled,updated_by_user_id) values(${tenantId},${'company:'+companyId},'company',${companyId},false,${userId})`));
   expect((await check())[0]).toEqual({allowed:false,agent:true});
   const deniedScope=await migration.withTenant(ctx,tx=>tx.execute<{company_ids:string[]}>(sql`select company_ids from app._ai_control_context('hr_assistant',false)`));expect(deniedScope[0].company_ids).toEqual([companyId]);

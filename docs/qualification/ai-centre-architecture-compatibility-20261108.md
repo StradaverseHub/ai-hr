@@ -103,3 +103,23 @@ The51 DB passes retain0b15/run42484550879 identity; the seven source-owner passe
 retain7e491/run42483981970 identity. Only the populated-upgrade fixture needs a
 new hosted retry after dual review. Actual migration-owner LOGIN, whole-batch
 rollback,44+1 drift and held-stop probes remain unexecuted, with no result claimed.
+
+The sole-fixture run42485119088, attempt1, sourcec1562ad1a8ae16a9ebaa2a6f3e457ecfe5e7b6a9 /
+controller9dd, finished all planned jobs with the one case failed. It proved real
+non-super owner LOGIN with exact memberships, populated historical709→746 stock
+upgrade, whole36 rollback,44+1 drift refusals and owned DB/role absence cleanup.
+The raw agent port then returned allowed=true after genuinely waiting behind a
+writer that committed stopped=true. This reproduces the prior snapshot hypothesis;
+the old public wrapper's outer expression alone did not provide a fresh stop read.
+Artifact13618694595 is preserved; ZIP SHA256
+88f75c064e3b98fae9441899f10138e9b4750516b138282232e70c40750bf06b.
+
+This source repair checks native stop in the private before-centre agent owner,
+in its RETURN statement after the unchanged AI lock. The public wrapper stays
+byte-exact3200; action policy, ACL, ownership, lock order, generation and all prior
+SQL/journal tuples are preserved. Its private postimage MD5 and approved3500 hash
+track the exact changed body. The native probe now saves each actual port's PID,
+blocker and returned allowance before asserting false, retaining failed outcomes
+without claiming completion. All waits, assertions and cleanup remain intact.
+The repaired sole-fixture course remains UNRUN until dual review and hosted retry;
+the later company/action-pause and idempotence tail was not reached by the old run.
