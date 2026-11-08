@@ -128,7 +128,7 @@ describe('native checked preparation of new annual Rewards reviews',()=>{
  it('prevents even an inspection seat from advancing preparation and restarts an already-routed review on a controlled change',async()=>{
   const initial=await getRewardUnit(gr,unitId);
   await expect(decideRewardUnit(gr,unitId,initial.unit.revision,'approve','Fictional premature approval')).rejects.toThrow(/independently checked/);
-  await expect(withTenant(gr,tx=>tx.update(schema.rewardUnit).set({status:'gr'}).where(eq(schema.rewardUnit.id,unitId)))).rejects.toThrow(/independently checked/);
+  await expect(withTenant(gr,tx=>tx.update(schema.rewardUnit).set({status:'gr'}).where(eq(schema.rewardUnit.id,unitId)))).rejects.toMatchObject({cause:{message:expect.stringMatching(/independently checked/)}});
   await confirmAll();await change(checker,{kind:'release'});
   await withTenant(gr,tx=>tx.update(schema.rewardUnit).set({status:'gr'}).where(eq(schema.rewardUnit.id,unitId)));
   const routed=await getRewardPreparationChecklist(gr,unitId);expect(routed.canEdit).toBe(false);expect(routed.canReopen).toBe(true);
