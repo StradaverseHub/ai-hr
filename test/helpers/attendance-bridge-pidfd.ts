@@ -4,6 +4,16 @@ import {spawn} from 'node:child_process';
 import {openSync,readSync,closeSync} from 'node:fs';
 import {resolve} from 'node:path';
 
+export const PIDFD_BOUND='BOUND\n',PIDFD_SIGNALLED='SIGNALLED\n';
+const COMPLETE_PROTOCOL=PIDFD_BOUND+PIDFD_SIGNALLED;
+const MAX_PROTOCOL_BYTES=Buffer.byteLength(COMPLETE_PROTOCOL,'ascii');
+export function pidfdOutput(previous:string,chunk:Buffer,killSent:boolean){
+ assert(Buffer.byteLength(previous,'latin1')+chunk.length<=MAX_PROTOCOL_BYTES,'Owned child pidfd output bound');
+ const value=previous+chunk.toString('latin1');
+ assert(COMPLETE_PROTOCOL.startsWith(value)&&(!value.includes('SIGNALLED')||killSent),'Owned child pidfd protocol differs');
+ return value;
+}
+
 export function directChildIdentity(pid:number){
  assert(Number.isSafeInteger(pid)&&pid>1);
  const descriptor=openSync('/proc/'+pid+'/stat','r');let raw:string;
@@ -25,21 +35,20 @@ export function holdChildPidfd(pid:number){
  const exited=new Promise<void>((yes,no)=>{
   helper.once('error',()=>{rejectBound(Error('Owned child pidfd helper refused'));});
   helper.stdout.on('data',(chunk:Buffer)=>{
-   if(output.length+chunk.length>15){protocolBroken=true;rejectBound(Error('Owned child pidfd output bound'));helper.stdin.end();return;}
-   output+=chunk.toString('ascii');
-   if(!'BOUND\nSIGNALLED\n'.startsWith(output)||(output.includes('SIGNALLED')&&!killSent)){
-    protocolBroken=true;rejectBound(Error('Owned child pidfd protocol differs'));helper.stdin.end();
-   }else if(output.startsWith('BOUND\n')&&!bound){bound=true;resolveBound();}
+   try{output=pidfdOutput(output,chunk,killSent);}
+   catch{protocolBroken=true;rejectBound(Error('Owned child pidfd protocol differs'));helper.stdin.end();return;}
+   if(output.startsWith(PIDFD_BOUND)&&!bound){bound=true;resolveBound();}
   });
   helper.stderr.on('data',()=>{protocolBroken=true;rejectBound(Error('Owned child pidfd helper refused'));});
   helper.stdin.on('error',()=>{protocolBroken=true;rejectBound(Error('Owned child pidfd pipe refused'));});
-  helper.once('close',(code,signal)=>{closed=true;const valid=code===0&&signal===null&&bound&&!protocolBroken&&(output==='BOUND\n'||output==='BOUND\nSIGNALLED\n');
+  helper.once('close',(code,signal)=>{closed=true;const valid=code===0&&signal===null&&bound&&!protocolBroken&&output===(killSent?COMPLETE_PROTOCOL:PIDFD_BOUND);
    if(valid)yes();else{const error=Error('Owned child pidfd closure refused');rejectBound(error);no(error);}});
  });void exited.catch(()=>undefined);
  const timer=setTimeout(()=>{rejectBound(Error('Owned child pidfd startup deadline'));helper.stdin.end();},2000);
  void ready.then(()=>clearTimeout(timer),()=>clearTimeout(timer));
  return{ready,kill:()=>{
+  if(killSent)return; // One request only; close() still requires its actual acknowledgement/exit.
   assert(bound&&!closed,'Owned child pidfd is not bound');
-  if(!killSent){killSent=true;helper.stdin.end('KILL\n');}
+  killSent=true;helper.stdin.end('KILL\n');
  },close:async()=>{if(!killSent&&!closed)helper.stdin.end();await exited;}};
 }

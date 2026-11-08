@@ -1,6 +1,6 @@
 /** Fixed disposable test worker. Subscribe to stop BEFORE importing any app/pool. */
 import assert from 'node:assert/strict';
-import {ownerInput,ownedDatabaseUrls,OwnerWorkFrontier,type OwnerInput} from './attendance-bridge-owner-protocol';
+import {ownerInput,ownedDatabaseUrls,OwnerWorkFrontier,OwnerRefusal,ownerStage,type OwnerStage} from './attendance-bridge-owner-protocol';
 import type postgres from 'postgres';
 import type {ProofResult} from './attendance-bridge-owner-proof';
 
@@ -10,6 +10,7 @@ let stopped!:()=>void;
 const stopSignal=new Promise<void>(resolve=>{stopped=resolve;});
 const stop=()=>{frontier.stop();stopped();};
 let started=false;
+let activeStage:OwnerStage='admission';
 process.on('SIGTERM',stop);
 process.on('disconnect',stop);
 process.on('message',(value:unknown)=>{
@@ -19,15 +20,18 @@ process.on('message',(value:unknown)=>{
  }
  if(started){process.exitCode=1;stop();return;}
  started=true;
- void main(value).catch(()=>finish(undefined));
+ void main(value).catch(error=>finish(undefined,error));
 });
 function send(value:unknown):Promise<void>{return new Promise((resolve,reject)=>{
  if(!process.connected||!process.send){reject(Error('Owned parent IPC closed'));return;}
  process.send(value,error=>error?reject(Error('Owned parent IPC refused')):resolve());
 });}
-async function finish(report:ProofResult|undefined){
- try{await frontier.closeAll();if(report)await send({kind:'owner-result',report});else process.exitCode=1;}
- catch{process.exitCode=1;}
+async function finish(report:ProofResult|undefined,error?:unknown){
+ try{await frontier.closeAll();}catch{report=undefined;activeStage='work-settlement';}
+ try{
+  if(report)await send({kind:'owner-result',report});
+  else{process.exitCode=1;await send({kind:'owner-refusal',stage:error instanceof OwnerRefusal?ownerStage(error.stage):activeStage});}
+ }catch{process.exitCode=1;}
  finally{if(process.connected)process.disconnect();}
 }
 async function main(value:unknown){
@@ -49,17 +53,18 @@ async function main(value:unknown){
   return pools;
  };
  const stage=async(name:string)=>{await send({kind:'owner-stage',stage:name});await stopSignal;frontier.check();};
- let result:ProofResult|undefined;
+ let result:ProofResult|undefined,refusal:unknown;
  try{
   const proof=await frontier.construct(async()=>{
-   if(input.mode==='stop-late-pool')await stageBeforeImport();
+   if(input.mode==='stop-late-pool'){activeStage='late-pools';await stageBeforeImport();}
    try{return await import('./attendance-bridge-owner-proof');}
    finally{actualPools();} // Includes pools created before a failed/late import.
   },()=>[]);
   result= input.mode==='role-collision'
-   ?await proof.collisionControl(input,frontier,()=>frontier.closeAll(),stage)
-   :await proof.runOwnerProof(input,frontier,()=>frontier.closeAll(),stage);
- }catch{
+   ?await proof.collisionControl(input,frontier,()=>frontier.closeAll(),stage,name=>{activeStage=name;})
+   :await proof.runOwnerProof(input,frontier,()=>frontier.closeAll(),stage,name=>{activeStage=name;});
+ }catch(error){
+  refusal=error;
   if(input.mode==='stop-late-pool'&&frontier.isStopped()){
    await frontier.closeAll();const pools=actualPools();assert(pools.length>=2);
    for(const pool of pools)await assert.rejects(async()=>{await pool.unsafe('select 1');},error=>
@@ -68,6 +73,6 @@ async function main(value:unknown){
     ownedOidCaptured:false,faultObserved:true,nonemptyApprover:false,canonicalRequestWritten:false,unchangedForcedRls:false};
   }
  }
- await finish(result);
+ await finish(result,refusal);
  async function stageBeforeImport(){await send({kind:'owner-stage',stage:'late-constructor'});await stopSignal;}
 }

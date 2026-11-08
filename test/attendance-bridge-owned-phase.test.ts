@@ -36,3 +36,11 @@ it('failed restoration permanently poisons reset, afterAll admission and every l
  await expect(phases.drain()).rejects.toBe(failure);expect(()=>phases.assertReady()).toThrow(failure);
  expect(()=>phases.start(async()=>{calls.push('forbidden');},async()=>{})).toThrow(failure);expect(calls).toEqual(['work']);
 });
+it('retains both the original work failure and failed restoration rather than replacing the first with cleanup',async()=>{
+ const phases=new AttendanceBridgeOwnedPhases(),work=Error('Original work failure'),restore=Error('Actual restoration failure');
+ const phase=phases.start(async()=>{throw work;},async()=>{throw restore;});
+ let caught:unknown;try{await phase.result;}catch(error){caught=error;}
+ expect(caught).toBeInstanceOf(AggregateError);if(!(caught instanceof AggregateError))throw Error('Both owned failures must be retained');
+ expect(caught.errors).toEqual([work,restore]);await expect(phase.stopAndDrain()).rejects.toBe(caught);
+ await expect(phases.drain()).rejects.toBe(caught);expect(()=>phases.assertReady()).toThrow(caught);
+});

@@ -5,6 +5,10 @@ import type {Base} from '../harness';
 
 export const OWNER_MODES=['positive','rollback-before-commit','lost-after-commit','stop-late-pool','stop-fixture','role-collision','restore-guard-drift'] as const;
 export type OwnerMode=typeof OWNER_MODES[number];
+export const OWNER_STAGES=['admission','fixture','forced-rls-before','access-catalogue','ownership-create','owned-witness','guard-drift','restricted-identity','native-bridge','app-login','app-approvers','request-write','forced-rls-after','work-settlement','owned-restore','final-audit','late-pools','collision']as const;
+export type OwnerStage=typeof OWNER_STAGES[number];
+export class OwnerRefusal extends Error{constructor(readonly stage:OwnerStage,foreignRole=false){super(foreignRole?'Unowned native role cannot be restored or dropped':'Closed owned Attendance proof refused');}}
+export function ownerStage(value:unknown):OwnerStage{assert(typeof value==='string'&&OWNER_STAGES.includes(value as OwnerStage),'Unknown closed owner stage');return value as OwnerStage;}
 export type OwnerInput={version:1;kind:'OWNED_ATTENDANCE_BRIDGE_COMPONENT';base:Base;role:string;mode:OwnerMode};
 export type OwnerReport={kind:'ATTENDANCE_OWNER_POSITIVE'|'ATTENDANCE_OWNER_FAULT';mode:OwnerMode;
  complete:boolean;allCatalogueRestored:boolean;roleAbsent:boolean;ownedOidCaptured:boolean;faultObserved:boolean;

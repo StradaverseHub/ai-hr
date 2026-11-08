@@ -13,12 +13,19 @@ export class AttendanceBridgeOwnedPhases {
   }};
   this.pending.add(phase); // Registered before work's first microtask or checkout.
   const result=Promise.resolve().then(async()=>{
+   let workFailed=false,workFailure:unknown;
    try{
-    await work(async action=>{if(stopped||this.poisoned)throw Error('Attendance bridge phase stopped');const value=await action();return value;});
+    try{await work(async action=>{if(stopped||this.poisoned)throw Error('Attendance bridge phase stopped');const value=await action();return value;});}
+    catch(error){workFailed=true;workFailure=error;}
    }finally{
-    try{await restore();}catch(error){this.poisoned=error instanceof Error?error:new Error('Attendance bridge restoration failed',{cause:error});throw this.poisoned;}
+    try{await restore();}catch(error){
+     this.poisoned=workFailed&&workFailure!==error?new AggregateError([workFailure,error],'Attendance bridge work and restoration failed'):
+      error instanceof Error?error:new Error('Attendance bridge restoration failed',{cause:error});
+     throw this.poisoned;
+    }
     finally{this.pending.delete(phase);settle();}
    }
+   if(workFailed)throw workFailure;
   });
   void result.catch(()=>undefined); // A deadline may detach the test's await; drain still owns settlement.
   return{result,stopAndDrain:phase.stopAndDrain};

@@ -4,9 +4,9 @@ import {spawn} from 'node:child_process';
 import {resolve} from 'node:path';
 import {expect,it} from 'vitest';
 import {AttendanceBridgeOwnedPhases} from './helpers/attendance-bridge-owned-phase';
-import {OwnerWorkFrontier,childEnvironment,ownedDatabaseUrls,ownerReport} from './helpers/attendance-bridge-owner-protocol';
+import {OwnerWorkFrontier,childEnvironment,ownedDatabaseUrls,ownerReport,ownerStage,OwnerRefusal} from './helpers/attendance-bridge-owner-protocol';
 import {assertOwnedRole,type OwnerSnapshot} from './helpers/attendance-bridge-owner-catalogue';
-import {directChildIdentity,holdChildPidfd} from './helpers/attendance-bridge-pidfd';
+import {directChildIdentity,holdChildPidfd,pidfdOutput} from './helpers/attendance-bridge-pidfd';
 
 const gate=()=>{let open!:()=>void;const promise=new Promise<void>(resolve=>{open=resolve;});return{promise,open};};
 it('registers a late constructor, stops every next callback and waits for its actual resource closure',async()=>{
@@ -57,12 +57,18 @@ it('closes inherited credentials and refuses non-worker, foreign host, role and 
  expect(env.PATH).toBe('/opt/node/bin:/usr/bin:/bin');expect(env.DATABASE_URL).toBe(urls.app);
  for(const value of [app.replace('127.0.0.1','foreign.invalid'),app.replace('ai_hr_app','postgres'),app+'?options=-c+role%3Dpostgres',app.replace('ai_hr_test_w1','ai_hr_dev'),app+'#private'])expect(()=>ownedDatabaseUrls(value,owner,'ai_hr_test_w1',tag)).toThrow('Closed owned Attendance database capability required');
  expect(()=>ownerReport({kind:'ATTENDANCE_OWNER_FAULT',private:'private'})).toThrow();
+ expect(new OwnerRefusal(ownerStage('access-catalogue')).stage).toBe('access-catalogue');
+ for(const value of ['private TOKEN=fictional',{},null]){
+  let refusal:unknown;try{ownerStage(value);}catch(error){refusal=error;}
+  expect(refusal).toBeInstanceOf(Error);if(!(refusal instanceof Error))throw Error('Closed owner stage must refuse');
+  expect(refusal.message).toBe('Unknown closed owner stage');expect(refusal.message).not.toContain('TOKEN=');
+ }
 });
 it('binds a real detached direct child to a kernel pidfd while stale-start and foreign-parent controls cannot signal it',async()=>{
  expect(process.platform).toBe('linux');expect(process.getuid?.()).not.toBe(0);
  const child=spawn(process.execPath,['-e','setTimeout(()=>process.exit(0),5000)'],{detached:true,stdio:'ignore',env:{PATH:'/usr/bin:/bin'}});
  const exited=new Promise<{code:number|null;signal:NodeJS.Signals|null}>(yes=>{child.once('error',()=>{});child.once('close',(code,signal)=>yes({code,signal}));});
- let held:ReturnType<typeof holdChildPidfd>|undefined,bound=false;
+ let held:ReturnType<typeof holdChildPidfd>|undefined,bound=false;const failures:unknown[]=[];
  try{
   assert(child.pid);held=holdChildPidfd(child.pid);await held.ready;bound=true;const identity=directChildIdentity(child.pid);
   for(const args of [[identity.parent, String(BigInt(identity.start)+BigInt(1))],[identity.parent+1,identity.start]]as const){
@@ -73,6 +79,38 @@ it('binds a real detached direct child to a kernel pidfd while stale-start and f
    expect(await result).toEqual({code:1,signal:null});expect(invalid).toBe(false);expect(stdout).toBe('');expect(stderr).toBe('Owned child binding refused\n');
    expect(directChildIdentity(identity.pid)).toEqual(identity);
   }
-  held.kill();expect(await exited).toEqual({code:null,signal:'SIGKILL'});await held.close();held=undefined;
- }finally{if(held&&bound)held.kill();await exited;if(held)await held.close();}
+  held.kill();held.kill();expect(await exited).toEqual({code:null,signal:'SIGKILL'});await held.close();held.kill();held=undefined;
+ }catch(error){failures.push(error);}
+ finally{
+  try{if(held&&bound)held.kill();}catch(error){failures.push(error);}
+  try{await exited;}catch(error){failures.push(error);}
+  try{if(held)await held.close();}catch(error){failures.push(error);}
+ }
+ if(failures.length>1)throw new AggregateError(failures,'Owned pidfd control and cleanup failed');
+ if(failures.length)throw failures[0];
 },10000);
+it('a closed unused pidfd never gains authority to signal the still-live original child',async()=>{
+ expect(process.platform).toBe('linux');expect(process.getuid?.()).not.toBe(0);
+ const child=spawn(process.execPath,['-e','setTimeout(()=>process.exit(0),2500)'],{detached:true,stdio:'ignore',env:{PATH:'/usr/bin:/bin'}});
+ const exited=new Promise<{code:number|null;signal:NodeJS.Signals|null}>(yes=>{child.once('error',()=>{});child.once('close',(code,signal)=>yes({code,signal}));});
+ let held:ReturnType<typeof holdChildPidfd>|undefined;const failures:unknown[]=[];
+ try{
+  assert(child.pid);held=holdChildPidfd(child.pid);await held.ready;const identity=directChildIdentity(child.pid);
+  const released=held;await released.close();held=undefined;
+  expect(()=>released.kill()).toThrow('pidfd is not bound');expect(directChildIdentity(identity.pid)).toEqual(identity);
+  expect(await exited).toEqual({code:0,signal:null});
+ }catch(error){failures.push(error);}
+ finally{try{await exited;}catch(error){failures.push(error);}try{if(held)await held.close();}catch(error){failures.push(error);}}
+ if(failures.length>1)throw new AggregateError(failures,'Closed pidfd control and cleanup failed');
+ if(failures.length)throw failures[0];
+},10000);
+it('accepts the complete signal acknowledgement at every chunk boundary while extra, reordered, unsolicited and non-ASCII bytes refuse',()=>{
+ const complete=Buffer.from('BOUND\nSIGNALLED\n','ascii');
+ for(let split=0;split<=complete.length;split++){
+  const first=pidfdOutput('',complete.subarray(0,split),true);
+  expect(pidfdOutput(first,complete.subarray(split),true)).toBe('BOUND\nSIGNALLED\n');
+ }
+ for(const raw of [Buffer.from('BOUND\nSIGNALLED\nX'),Buffer.from('SIGNALLED\nBOUND\n'),Buffer.from('BOUND\nBOUND\n'),Buffer.from([0xc2,0x4f,0x55,0x4e,0x44,0x0a])])expect(()=>pidfdOutput('',raw,true)).toThrow();
+ expect(()=>pidfdOutput('',complete,false)).toThrow();
+ expect(pidfdOutput('',Buffer.from('BOUND\n'),false)).toBe('BOUND\n');
+});

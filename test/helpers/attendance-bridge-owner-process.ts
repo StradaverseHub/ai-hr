@@ -5,7 +5,7 @@ import {randomUUID} from 'node:crypto';
 import {resolve} from 'node:path';
 import postgres from 'postgres';
 import {BRIDGE_SNAPSHOT,type OwnerSnapshot} from './attendance-bridge-owner-catalogue';
-import {ownerInput,ownerReport,ownedDatabaseUrls,childEnvironment,type OwnerInput} from './attendance-bridge-owner-protocol';
+import {ownerInput,ownerReport,ownerStage,ownedDatabaseUrls,childEnvironment,type OwnerInput,type OwnerStage} from './attendance-bridge-owner-protocol';
 import type {ProofResult} from './attendance-bridge-owner-proof';
 import {holdChildPidfd} from './attendance-bridge-pidfd';
 
@@ -29,7 +29,7 @@ export function attendanceOwnerProcess(inputValue:OwnerInput,environment:NodeJS.
   assert(!finished&&!stopped);assert.equal(process.platform,'linux');
   const result=Promise.resolve().then(async()=>{
    let observer:postgres.Sql|undefined,baseline:OwnerSnapshot|undefined,report:ProofResult|undefined;
-   let workFailure:unknown;
+   let workFailure:unknown,refusalStage:OwnerStage|undefined;
    try{
     assert(!stopped);
     const observerUrl=new URL(urls.owner);observerUrl.searchParams.set('application_name',tag+'_observer');
@@ -56,8 +56,11 @@ export function attendanceOwnerProcess(inputValue:OwnerInput,environment:NodeJS.
        assert.deepEqual(Object.keys(value).sort(),['kind','stage']);assert('stage'in value);
        assert((input.mode==='stop-late-pool'&&value.stage==='late-constructor')||(input.mode==='stop-fixture'&&value.stage==='fixture-frontier'));
        stop();
+      }else if(value.kind==='owner-refusal'){
+       assert.deepEqual(Object.keys(value).sort(),['kind','stage']);assert('stage'in value&&!refusalStage&&!report);
+       refusalStage=ownerStage(value.stage);
       }else{
-       assert(!report&&value.kind==='owner-result'&&'report'in value);
+       assert(!report&&!refusalStage&&value.kind==='owner-result'&&'report'in value);
        assert.deepEqual(Object.keys(value).sort(),['kind','report']);
        report=ownerReport(value.report);
       }
@@ -76,7 +79,7 @@ export function attendanceOwnerProcess(inputValue:OwnerInput,environment:NodeJS.
      assert.deepEqual(report.appIdentity,{session:'ai_hr_app',current:'ai_hr_app',super:false,bypass:false});
      assert.deepEqual(report.restrictedIdentity,{name:input.role,super:false,bypass:false,parentSet:false,statementTimeout:'5s',lockTimeout:'300ms'});
     }else assert(report.faultObserved);
-   }catch{workFailure=Error('Owned Attendance component execution refused');}
+   }catch{workFailure=Error(refusalStage?'Owned Attendance child refused at '+refusalStage:'Owned Attendance component execution refused');}
    finally{
     stop();
     try{
@@ -99,7 +102,7 @@ export function attendanceOwnerProcess(inputValue:OwnerInput,environment:NodeJS.
     }catch{cleanupFailure=Error('Owned Attendance process/backend/catalogue restoration uncertain');}
     finally{if(observer)try{await observer.end({timeout:1});}catch{cleanupFailure=Error('Owned Attendance observer closure uncertain');}}
    }
-   if(cleanupFailure)throw cleanupFailure;
+   if(cleanupFailure){if(workFailure)cleanupFailure=new AggregateError([workFailure,cleanupFailure],'Owned Attendance work and cleanup refused');throw cleanupFailure;}
    if(workFailure)throw workFailure;
    assert(report);return report;
   });
