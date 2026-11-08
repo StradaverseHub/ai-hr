@@ -1,0 +1,38 @@
+{
+  "kind": "UID_FEASIBILITY_SOURCE_COMPONENT_NOT_NATIVE_NODB_OR_API_ADMISSION",
+  "base": "268081539f5360dc656bc23a14f17becf8e2924c",
+  "approvedContractSha256": "86a3111af6d6a2408182d5675b6f6077f40f91c51e04bdbe7c908ad6609d939f",
+  "sourceSha256": {
+    ".github/ci/native-nodb-isolation-fixture.py": "d54d4b8f4c9058f5a9fc691a9f4dbaaecf185fec8268fa05063d5a21025d84cb",
+    ".github/workflows/alpha-focused-checks.yml": "4550682fb8ae12eff22752ec443040d4423b0c6d9252e0fcd225a559e64c95ca",
+    ".github/workflows/native-nodb-isolation-fixture.yml": "db9aab592f24b11001aaf01974be50f661ebcec539cd846b59b7b142b43b5a57",
+    "docs/qualification/native-nodb-credential-role-contract-v2-20261108.md": "86a3111af6d6a2408182d5675b6f6077f40f91c51e04bdbe7c908ad6609d939f",
+    "docs/qualification/native-nodb-uid-isolation-component-20261108.md": "c83d9d6e7b8c20e627a4f0d78af2bd62ab207ad86dfe9b98987bdda27eda7de9",
+    "docs/qualification/native-nodb-uid-isolation-component-inverse-20261108.json": "894b29592be747a383b0f91ec82d3172f69fea68b702acdf18136e1dba7c1c2a"
+  },
+  "unchangedSha256": {
+    ".github/ci/manifest.mjs": "6fd081b890148a35014927200e1b0ae9053d565895b68b400eab08e49b858143",
+    ".github/ci/native-controller-bootstrap.py": "1892e07813e688275d4aed7f903f1b87dc37007e2878d21ed19c85cd0a01d2f3",
+    ".github/ci/native-controller-owner.mjs": "1dc53cf05e9fd7c63fda70b9853e8686d34ead6c67b4a71db5ad0864384c2372",
+    ".github/ci/native-nodb-profiles.mjs": "54e25dfac2f13c34745bc98f34858ae9eb092dd86f7af2bc39d2b6a08310c90a",
+    ".github/ci/normal-test-matrices.mjs": "624bba7add5393d04871d34ee0028899aa44ee53dede83433b33880ee8473234",
+    ".github/ci/owned-process.py": "9d48394fdc1897c53b5fcd5a581fc53b016c111fcc9aa69679daeb732faf2129",
+    ".github/ci/policy-version.mjs": "cbb9871c2e11c3f7434bdcb0fe25cd2c8323f683d588d892ec9dbff194232c97",
+    ".github/ci/run-unit.mjs": "8048da93f5563509f41414a86c0232bc0de9a36e9759db7a4772ee273111ffd2",
+    ".github/workflows/alpha-staging.yml": "950aea0b0ef72f611ab65ebff1007a53013111417883b2f3647187548d4e2c9e",
+    "scripts/gate.sh": "85135bf54ca839f17ca62b55109642c4d6bfc05662dd2f6eb73a53928dc426a8"
+  },
+  "wholePreimageCount": 1,
+  "wholeAbsentCount": 6,
+  "externalSourceParse": {
+    "python": 2,
+    "yaml": 2,
+    "repositoryImportsExecuted": false
+  },
+  "nativeSixOperationJoinVerified": false,
+  "nativeApiContextIssued": false,
+  "semanticParentVerified": false,
+  "normalNoDbVerified": false,
+  "nativeExecution": "not-run",
+  "releaseAuthorized": false
+}

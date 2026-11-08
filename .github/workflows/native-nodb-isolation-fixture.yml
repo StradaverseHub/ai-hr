@@ -1,0 +1,80 @@
+name: native-nodb-isolation-fixture
+run-name: Dedicated UID feasibility only · ${{ github.sha }}
+on:
+  workflow_call:
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: native-nodb-uid-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  isolation:
+    if: ${{ github.repository == 'StradaverseHub/ai-hr' && github.run_attempt == 1 }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: /usr/bin/bash --noprofile --norc -e -o pipefail {0}
+    env:
+      BASH_ENV: /dev/null
+      ENV: /dev/null
+      LD_PRELOAD: ''
+      LD_LIBRARY_PATH: ''
+      LD_AUDIT: ''
+      PYTHONPATH: ''
+      PYTHONHOME: ''
+      NODE_OPTIONS: ''
+      NODE_PATH: ''
+    steps:
+      - name: Anchor first executable fixture step
+        run: |
+          /usr/bin/python3 -I -B - <<'PYTHON'
+          import json, os, time
+          from pathlib import Path
+          path = Path('/home/runner/work/_temp/aihr-native-uid-anchor.json')
+          fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+          try:
+              value = {'run': os.environ['GITHUB_RUN_ID'], 'sha': os.environ['GITHUB_SHA'],
+                       'bootId': Path('/proc/sys/kernel/random/boot_id').read_text().strip(), 'startNs': str(time.monotonic_ns())}
+              raw = (json.dumps(value, sort_keys=True, separators=(',', ':')) + '\n').encode()
+              assert os.write(fd, raw) == len(raw)
+              os.fsync(fd)
+          finally:
+              os.close(fd)
+          PYTHON
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with:
+          node-version: '22.23.3'
+          package-manager-cache: false
+      - name: Prepare private artifact destination
+        run: mkdir -m 700 "$RUNNER_TEMP/aihr-native-uid-isolation"
+      - name: Protect source and allocate dedicated UID before fixed candidate hook
+        run: |
+          exec /usr/bin/sudo -n --preserve-env=GITHUB_RUN_ID,GITHUB_SHA,GITHUB_WORKSPACE,GITHUB_ACTIONS,RUNNER_ENVIRONMENT,GITHUB_REPOSITORY,GITHUB_JOB,GITHUB_RUN_ATTEMPT /usr/bin/python3 -I -B "$GITHUB_WORKSPACE/.github/ci/native-nodb-isolation-fixture.py" prepare
+      - name: Probe actual token-bearing ancestor custody after hook settlement
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          exec /usr/bin/sudo -n --preserve-env=GH_TOKEN,GITHUB_RUN_ID,GITHUB_SHA /usr/bin/python3 -I -B "/var/lib/aihr-native-nodb-isolation/$GITHUB_RUN_ID/fixture.py" custody
+      - name: Settle owned actors and publish component result
+        if: always()
+        run: |
+          if [ -f "/var/lib/aihr-native-nodb-isolation/$GITHUB_RUN_ID/fixture.py" ]; then
+            exec /usr/bin/sudo -n --preserve-env=GITHUB_RUN_ID /usr/bin/python3 -I -B "/var/lib/aihr-native-nodb-isolation/$GITHUB_RUN_ID/fixture.py" finish
+          else
+            exit 1
+          fi
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: native-uid-isolation-component
+          path: ${{ runner.temp }}/aihr-native-uid-isolation/
+          if-no-files-found: error
+          retention-days: 14

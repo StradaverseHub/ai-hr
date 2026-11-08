@@ -15,6 +15,11 @@ on:
         description: JSON array of 1–64 tracked unit/DOM test paths; candidate classifier owns DB selection
         required: true
         type: string
+      run_native_uid_isolation_fixture:
+        description: Opt-in dedicated UID feasibility component only; no native NoDB/API admission
+        required: false
+        default: false
+        type: boolean
       qualify_restricted_port_prerequisites:
         description: Opt-in exact581 populated restricted-port prerequisite rehearsal before migrations; requires real Personnel DB files and whole typecheck
         default: false
@@ -84,6 +89,12 @@ env:
   TEST_DATABASE_URL: postgres://nobody:nothing@127.0.0.1:1/no_database
   TEST_MIGRATION_DATABASE_URL: postgres://nobody:nothing@127.0.0.1:1/no_database
 jobs:
+  uid-isolation-component:
+    if: ${{ inputs.run_native_uid_isolation_fixture && github.repository == 'StradaverseHub/ai-hr' && github.run_attempt == 1 }}
+    uses: ./.github/workflows/native-nodb-isolation-fixture.yml
+    permissions:
+      contents: read
+      actions: read
   resolve:
     if: ${{ github.repository == 'StradaverseHub/ai-hr' }}
     runs-on: ubuntu-24.04
