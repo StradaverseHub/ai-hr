@@ -133,6 +133,19 @@ jobs:
       AIHR_EVAL_BUDGET_USD: ${{ inputs.eval_budget_usd }}
       AIHR_EVAL_ALLOWED_PROVIDERS: ${{ inputs.eval_allowed_providers }}
     steps:
+      - name: Anchor first executable focused job step (not runner allocation time)
+        working-directory: ${{ runner.temp }}
+        run: |
+          python3 -I -B - <<'PYTHON'
+          import json, os, time
+          from pathlib import Path
+          start = str(time.monotonic_ns())
+          anchor = {'version': 1, 'run': os.environ['GITHUB_RUN_ID'], 'attempt': os.environ['GITHUB_RUN_ATTEMPT'],
+                    'job': os.environ['GITHUB_JOB'], 'bootId': Path('/proc/sys/kernel/random/boot_id').read_text().strip(), 'startNs': start, 'wallTimeNs': str(time.time_ns())}
+          with open(os.environ['GITHUB_ENV'], 'a') as output:
+              output.write('AIHR_FOCUSED_JOB_MONOTONIC_NS=' + start + '\n')
+              output.write('AIHR_FOCUSED_JOB_ANCHOR=' + json.dumps(anchor, separators=(',', ':')) + '\n')
+          PYTHON
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
           ref: ${{ github.workflow_sha }}
@@ -167,7 +180,12 @@ jobs:
         run: node scripts/report-test-profile.mjs "$RUNNER_TEMP/aihr-focused/harness-profile" "$RUNNER_TEMP/aihr-focused/profile-summary.json"
       - name: Ensure owned database cleanup after interrupted checks
         if: always()
-        run: bash ../automation/.github/ci/postgres.sh stop
+        run: |
+          if [ "$AIHR_FOCUSED_TESTS" = '["test/employee-choice-native-purpose-plan.test.ts"]' ] || [ "$AIHR_FOCUSED_TESTS" = '["test/employee-choice-benchmark-owner-native.test.ts"]' ] || [ "$AIHR_FOCUSED_TESTS" = '["test/employee-choice-native-owner-factory.test.ts"]' ]; then
+            node ../automation/.github/ci/focused-checks.mjs cleanup "$RUNNER_TEMP/aihr-focused"
+          else
+            bash ../automation/.github/ci/postgres.sh stop
+          fi
         env:
           AIHR_CI_UNIT: db-1
       - if: always()
