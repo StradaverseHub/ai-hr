@@ -1,8 +1,8 @@
 {
   "kind": "ATTENDANCE_SHARED_SUBMISSION_STAGING_BRIDGE_SOURCE_NOT_RELEASE",
   "base": "29d9edcbc4368be871688e9fdf35347676a7841c",
-  "sourceRef": "codex/attendance-bridge-restoration-guards-20261108",
-  "qualification": "NOT_RUN; root and independent review before hosted native checks",
+  "sourceRef": "codex/attendance-bridge-owned-process-20261108",
+  "qualification": "NOT_RUN; no local behavior/compiler/build/DB/process checks; root and independent review required before hosted qualification",
   "rootAllocation": {
     "tag": "3210_attendance_shared_workflow_submission_lock",
     "idx": 2528,
@@ -18,9 +18,10 @@
   },
   "selectors": [
     "test/attendance-shared-submission-bridge.test.ts",
-    "test/attendance-bridge-owned-phase.test.ts"
+    "test/attendance-bridge-owned-phase.test.ts",
+    "test/attendance-bridge-owner-process.test.ts"
   ],
-  "declaredNativeCases": 17,
+  "declaredNativeCases": 23,
   "nativeGuardFaultCases": 13,
   "testBudgetsMs": {
     "nativeConcurrency": 30000,
@@ -50,27 +51,46 @@
   "releaseAuthorized": false,
   "sourceSha256": {
     "db/migrations/3210_attendance_shared_workflow_submission_lock.sql": "4c627ce23deeda3195511e0ea1b6887cce6b7f39faeb538b061e82885acdb00d",
-    "test/attendance-shared-submission-bridge.test.ts": "72ed195ec0c399cadbefafb6849d4df62fe6ea9d8a76fe8f41b68cbb4d1ae0bc",
+    "test/attendance-shared-submission-bridge.test.ts": "27074e1b1c2da1c76da30efb27210a4e3a21f78c7a788a52e7da343f032f4c98",
     "db/migrations/3101_attendance_shared_workflow.sql": "f32d12965f2788dc673f0c09e128996a653341bbcf6933e47f211da021617169",
     "db/migrations/3110_attendance_workflow_owner_rls.sql": "39fc4b31666120cb4befe263b8b30433d6752dbaa52cda6cdbe350b3077f8f16",
     "db/migrations/0592_attendance_workflow_v4.sql": "0df1b69443381e2561451ba290543942ea01bfbc64e6c5e1c387c824e25773ff",
-    "docs/adr/2026-11-08-attendance-shared-submission-staging-bridge.md": "1ed3f7455c860d21b7f0a269d874e8c0ce879702d0d76aa3b544bea910f32d96",
+    "docs/adr/2026-11-08-attendance-shared-submission-staging-bridge.md": "d367269a5fd532b13c4b1d949683cebf80089bb153d232458f69d26274203e97",
     "docs/qualification/attendance-staging-sql-compatibility-map-20261108.md": "0a38fd8263b41db83ab44d318d34d9393c4a837006efc8c7e8f51cbda37f3aa9",
     "test/attendance-bridge-owned-phase.test.ts": "2d9b3ca60f9b4ad9e606cc643085da4534e6fbf7a9c472f7aedcc9d6d923b207",
-    "test/helpers/attendance-bridge-owned-phase.ts": "24b248c45bfbab3b10c3749a8b174ac2284c7aeead7e8bb173a4b92f843c0ef0"
+    "test/helpers/attendance-bridge-owned-phase.ts": "55031f51499724c016c4925669e93999c7469068a9d0815fff97e0808f061c32",
+    "test/helpers/attendance-bridge-pidfd.ts": "a874971c91ec629f4ec6d1ce466f7e561e6b4b49543d4f113e02e46f37902644",
+    "test/helpers/attendance-bridge-owner-process.ts": "1b987bda3b5fe311386f7d7009c07fa4324485d93a56be1749091251041c244d",
+    "test/helpers/attendance-bridge-owner-protocol.ts": "60a4d5c489fff827d51f9b2e05393b5850d2f6d4705e555aacf185baf6f169b1",
+    "test/helpers/attendance-bridge-owner-proof.ts": "c3c4fc44b438fae3495d75979723ba8995e160ff0a6c72401db64824647d95b7",
+    "test/helpers/attendance-bridge-fixture.ts": "9ac27bd7382f9523bcad7f3ca29e99b8ff02da39c828b13b32ac406447310e43",
+    "test/helpers/attendance-bridge-pidfd.py": "0546d50c7ba933f6876824f810945361c898a15b2704a4e7912f9c475b63e467",
+    "test/helpers/attendance-bridge-owner-catalogue.ts": "b9236ae4fdcc7fa46bf74ac2f5cf946e50133a0a068ad731d31980a07e2e0462",
+    "test/helpers/attendance-bridge-owner-worker.ts": "02ae637695884de903918f746c663f341d17150e2333f7809f20d1fc567fa52f",
+    "test/attendance-bridge-owner-process.test.ts": "513d88f18acecdb44fb467cef293a4bb738220b38dafc5d2c3c79706ca2d4ab0"
   },
-  "repairParent": "e19a8907d87b9b7fad2fde81cf13990acdfaa19c",
+  "repairParent": "68a0b3e06e71829549716886e1f8f3ab39542a50",
   "pureOwnedRestorationCases": 4,
   "restrictedOwnerNativeLimits": {
-    "statementMs": 5000,
+    "workConnectMs": 3000,
+    "workStatementMs": 5000,
     "lockMs": 300,
-    "ownershipDDLStatements": 1,
+    "workDeadlineMs": 70000,
+    "stopToPidfdForceExitMs": 20000,
+    "restoreConnectMs": 3000,
     "restorationDDLStatements": 1,
     "completeAuditStatements": 1,
-    "postStopSubstantiveSqlIntervals": 3,
-    "postStopSqlBudgetMs": 15000,
-    "reservedSettlementAndBookkeepingMs": 15000,
-    "poolOrSharedBorrowedSettingsChanged": false
+    "restoreStatementMs": 5000,
+    "workPoolCloseMs": 1000,
+    "restoreCloseMs": 1000,
+    "observerConnectMs": 2000,
+    "observerStatementMs": 2000,
+    "observerCloseMs": 1000,
+    "familyObservationMs": 1000,
+    "configuredPostStopTimedWaitsMs": 26000,
+    "finishHookMs": 30000,
+    "poolOrSharedBorrowedSettingsChanged": false,
+    "stoppedCanonicalUnitInternalsClaimedCancelled": false
   },
   "restoration": {
     "registeredBeforeFirstMicrotask": true,
@@ -78,6 +98,21 @@
     "resetAndTeardownDrainFirst": true,
     "uncertainRestorationPoisonsSuccessors": true,
     "uncertainCommitUsesNativeRoleWitness": true,
-    "completeRawFunctionCatalogueAndRoleAbsenceRequired": true
-  }
+    "completeRawFunctionCatalogueAndRoleAbsenceRequired": true,
+    "nativeOidBeforeOwnershipCommit": true,
+    "fullRoleFlagsIncidentMembershipsOwnedObjectWitness": true,
+    "generatedNameAloneNeverAuthorizesDrop": true,
+    "actualPidfdDirectChildBeforeAppInput": true,
+    "actualChildExitFamilyAndZeroTaggedBackendsRequired": true,
+    "faultLostResponseIsControlledNotNetwork": true
+  },
+  "pureAndRealProcessCases": 6,
+  "addedNativeFaultCases": [
+    "rollback-before-commit",
+    "lost-after-commit",
+    "stop-late-pool",
+    "stop-fixture",
+    "role-collision",
+    "restore-guard-drift"
+  ]
 }

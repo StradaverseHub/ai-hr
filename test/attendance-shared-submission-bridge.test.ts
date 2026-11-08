@@ -4,14 +4,15 @@ import {readFileSync} from 'node:fs';
 import type postgres from 'postgres';
 import {and,eq,inArray,sql} from 'drizzle-orm';
 import {afterAll,beforeAll,beforeEach,expect,it,onTestFinished} from 'vitest';
-import {withTenant,type SessionContext} from '../db/client';
+import {withTenant} from '../db/client';
 import * as s from '../db/schema';
-import {hireEmployee} from '../core/org';
-import {checkIn,checkOut,requestAttendanceCorrection} from '../core/attendance';
-import {prepareAttendanceWorkflowSnapshotTx,saveAttendanceWorkflow,setAttendanceWorkflowEnabled} from '../core/attendance-workflow';
-import {todayInKualaLumpur} from '../lib/hr-date';
-import {adminCtx,closeAll,createAppUser,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
+import {setAttendanceWorkflowEnabled} from '../core/attendance-workflow';
+import {closeAll,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
 import {AttendanceBridgeOwnedPhases} from './helpers/attendance-bridge-owned-phase';
+import {attendanceBridgeFixture} from './helpers/attendance-bridge-fixture';
+import {attendanceOwnerProcess} from './helpers/attendance-bridge-owner-process';
+import {OWNER_MODES,type OwnerMode} from './helpers/attendance-bridge-owner-protocol';
+import {workerDb} from './db-names';
 
 const source=readFileSync('db/migrations/3101_attendance_shared_workflow.sql','utf8');
 const predecessor=/CREATE OR REPLACE FUNCTION app\.attendance_workflow_links\(\) RETURNS trigger\s+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS \$\$([\s\S]*?)\$\$;/.exec(source);
@@ -33,7 +34,6 @@ const catalogue=async(connection:Native)=>{
  const [row]=await connection.unsafe<{value:unknown}[]>(`select ${catalogueExpression} as value`,[functionIds]);
  return row.value;
 };
-const quote=(name:string)=>{if(!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name))throw Error('Owned SQL identity required');return '"'+name+'"';};
 const rollback=new Error('Rollback only this native bridge control');
 const ownershipPhases=new AttendanceBridgeOwnedPhases();
 async function rolledBack(work:(connection:postgres.TransactionSql)=>Promise<void>){
@@ -98,26 +98,8 @@ it.for(mutations)('refuses %s before changing any native function, relation or t
  });
 });
 
-async function fixture(){
- const root=adminCtx(b);
- async function actor(name:string){const hired=await hireEmployee(root,{person:{fullName:name,primaryEmail:randomUUID()+'@example.invalid'},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:'2020-01-01'});const userId=await createAppUser(b.tenantId,hired.personId,'employee');return{...hired,ctx:{...root,userId,personId:hired.personId,roles:['employee'],grants:[{role:'employee',companyId:b.companyId}]}satisfies SessionContext};}
- const worker=await actor('Fictional shared submission'),reviewer=await actor('Fictional frozen reviewer');
- const [other]=await owner.db.insert(s.company).values({tenantId:b.tenantId,legalName:'Fictional second workflow company'}).returning();
- const template=await saveAttendanceWorkflow(root,{companyId:b.companyId,companyIds:[b.companyId,other.id],applicationType:'irregularity',routingVersion:4,code:'BRIDGE_SHARED',name:'Immutable shared route',priority:1,active:true,criteria:{employeeIds:[worker.employmentId]},stages:[{name:'Level 1',mode:'any_one',sources:[{kind:'specific_employee',employmentIds:[reviewer.employmentId]}],hrAlternative:false}],cc:[]});
- const ids:string[]=[];
- for(let index=0;index<2;index++){
-  const date=new Date(todayInKualaLumpur()+'T12:00:00Z');date.setUTCDate(date.getUTCDate()-index);const on=date.toISOString().slice(0,10);
-  await checkIn(root,{employmentId:worker.employmentId,date:on,time:'08:00',manual:true});await checkOut(root,{employmentId:worker.employmentId,date:on,time:'17:00',manual:true});
-  ids.push((await requestAttendanceCorrection(worker.ctx,{employmentId:worker.employmentId,date:on,checkIn:'09:00',checkOut:'18:00',reason:'Fictional native trigger proof'})).correctionId);
- }
- await setAttendanceWorkflowEnabled(root,b.companyId,'irregularity',true);
- const prepared=await withTenant(worker.ctx,tx=>prepareAttendanceWorkflowSnapshotTx(tx,worker.ctx,worker.employmentId,'irregularity'));
- if(!prepared)throw Error('Nonempty actual canonical workflow snapshot required');
- expect(prepared.selected.id).toBe(template.id);
- expect(await owner.db.select({id:s.attendanceWorkflowRequest.id}).from(s.attendanceWorkflowRequest).where(inArray(s.attendanceWorkflowRequest.correctionId,ids))).toEqual([]);
- const values=(id:string)=>({tenantId:b.tenantId,correctionId:id,employmentId:worker.employmentId,companyId:b.companyId,templateId:prepared.selected.id,templateCode:prepared.selected.code,templateName:prepared.selected.name,templateVersion:prepared.selected.version,applicationType:'irregularity' as const,routingVersion:prepared.validated.routingVersion,stages:prepared.stages,cc:prepared.cc});
- return{root,worker,reviewer,template,other,ids,values,key:b.tenantId+':attendance-workflow:'+b.companyId+':irregularity'};
-}
+const fixture=()=>attendanceBridgeFixture(b);
+
 const gate=()=>{let open!:()=>void;const promise=new Promise<void>(resolve=>{open=resolve;});return{promise,open};};
 async function within<T>(promise:Promise<T>,milliseconds:number){let timer:ReturnType<typeof setTimeout>|undefined;try{return await Promise.race([promise,new Promise<never>((_,reject)=>{timer=setTimeout(()=>reject(Error('Actual native lock proof deadline')),milliseconds);})]);}finally{clearTimeout(timer);}}
 
@@ -152,88 +134,27 @@ it('retains canonical subject, shared-company assignment, version and resolved-r
  expect(await owner.client`select company_id from attendance_workflow_company where template_id=${f.template.id}::uuid order by company_id`).toEqual([b.companyId,f.other.id].sort().map(company_id=>({company_id})));
 },30000);
 
-// Each complete ownership DDL batch is one statement, so its 5s deadline
-// bounds every function change together, rather than restarting per function.
-const ownerBatch=(commands:string[],onlyIfRole?:string)=>{
- const commandsBody=commands.map(command=>"EXECUTE '"+command.replaceAll("'","''")+"';").join('\n');
- const body=onlyIfRole?`IF EXISTS(SELECT 1 FROM pg_catalog.pg_roles WHERE rolname='${onlyIfRole.replaceAll("'","''")}') THEN\n${commandsBody}\nEND IF;`:commandsBody;
- if(body.includes('$bridge_ownership$'))throw Error('Owned DDL delimiter collision');
- return 'DO $bridge_ownership$ BEGIN\n'+body+'\nEND; $bridge_ownership$;';
-};
-type OwnedStep=<T>(action:()=>PromiseLike<T>)=>Promise<T>;
-async function limits(connection:Native,step:OwnedStep=action=>action()){
- await step(()=>connection.unsafe("SET LOCAL statement_timeout='5s'"));
- await step(()=>connection.unsafe("SET LOCAL lock_timeout='300ms'"));
-}
-
-it('executes the exact bridge as a real restricted owner and serves a distinct app LOGIN through unchanged forced RLS',async()=>{
- let restore:(()=>Promise<void>)|undefined;
- const phase=ownershipPhases.start(async step=>{
-  const f=await step(fixture),role='bridge_owner_'+randomUUID().replaceAll('-','');
-  const [parent]=await step(()=>owner.client<{name:string}[]>`select pg_get_userbyid(relowner) as name from pg_class where oid='public.attendance_workflow_request'::regclass`);
-  const functions=await step(()=>owner.client<{signature:string;owner:string;facts:Record<string,unknown>}[]>`select p.oid::regprocedure::text as signature,pg_get_userbyid(p.proowner) as owner,to_jsonb(p) as facts from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='app' and p.prosecdef and p.prokind='f' order by p.oid`);
-  expect(functions.length).toBeGreaterThan(helperNames.length);
-  const [forcedBefore]=await step(()=>owner.client<{rows:unknown}[]>`select jsonb_agg(jsonb_build_object('oid',oid,'owner',relowner,'rls',relrowsecurity,'force',relforcerowsecurity) order by oid) as rows from pg_class where relnamespace='public'::regnamespace and relforcerowsecurity`);
-  expect(forcedBefore.rows).not.toBeNull();
-  const access=await step(()=>owner.client<{name:string;rls:boolean;force:boolean}[]>`select relname as name,relrowsecurity as rls,relforcerowsecurity as force from pg_class where relnamespace='public'::regnamespace and relname in ('access_capability','access_configuration','access_group','access_group_grant','access_membership','access_user_override') order by relname`);
-  expect(access).toEqual(['access_capability','access_configuration','access_group','access_group_grant','access_membership','access_user_override'].map(name=>({name,rls:true,force:true})));
-  const [targetBefore]=await step(()=>owner.client<{definition:string}[]>`select pg_get_functiondef('app.attendance_workflow_links()'::regprocedure) as definition`);
-  const before=await step(()=>catalogue(owner.client));
-  // Install restoration before attempting COMMIT: an uncertain commit response
-  // must not leave us relying on a local `created` flag.
-  restore=async()=>{
-   await owner.client.begin(async connection=>{
-    await limits(connection);
-    await connection.unsafe(ownerBatch([
-     `ALTER TABLE public.attendance_workflow_request OWNER TO ${quote(parent.name)}`,
-     ...functions.map(fn=>`ALTER FUNCTION ${fn.signature} OWNER TO ${quote(fn.owner)}`),
-     targetBefore.definition,`DROP ROLE ${quote(role)}`,
-    ],role));
-    // One snapshot covers every captured raw catalogue field and role absence.
-    const [restored]=await connection.unsafe<{catalogue:unknown;functions:Record<string,unknown>[];rolePresent:boolean;statementTimeout:string;lockTimeout:string}[]>(`select ${catalogueExpression} as catalogue,
-     (select jsonb_agg(to_jsonb(p) order by p.oid) from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='app' and p.prosecdef and p.prokind='f') as functions,
-     exists(select 1 from pg_roles where rolname=$2) as "rolePresent",current_setting('statement_timeout') as "statementTimeout",current_setting('lock_timeout') as "lockTimeout"`,[functionIds,role]);
-    expect(restored.catalogue).toEqual(before);
-    expect(restored.functions).toEqual(functions.map(row=>row.facts));
-    expect(restored.rolePresent).toBe(false);
-    expect(restored.statementTimeout).toBe('5s');expect(restored.lockTimeout).toBe('300ms');
-   });
-  };
-  await step(()=>owner.client.begin(async connection=>{
-   await limits(connection,step);
-   await step(()=>connection.unsafe(ownerBatch([
-    `CREATE ROLE ${quote(role)} NOLOGIN NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE INHERIT`,
-    `GRANT ${quote(parent.name)} TO ${quote(role)} WITH INHERIT TRUE, SET FALSE, ADMIN FALSE`,
-    ...functions.map(fn=>`ALTER FUNCTION ${fn.signature} OWNER TO ${quote(role)}`),
-    `ALTER TABLE public.attendance_workflow_request OWNER TO ${quote(role)}`,definition,
-   ])));
-  }));
-  await step(()=>owner.client.begin(async connection=>{
-   await limits(connection,step);await step(()=>connection.unsafe(`SET LOCAL ROLE ${quote(role)}`));
-   const [identity]=await step(()=>connection<{name:string;super:boolean;bypass:boolean;parentSet:boolean;statementTimeout:string;lockTimeout:string}[]>`select current_user as name,rolsuper as super,rolbypassrls as bypass,pg_has_role(current_user,${parent.name},'SET') as "parentSet",current_setting('statement_timeout') as "statementTimeout",current_setting('lock_timeout') as "lockTimeout" from pg_roles where rolname=current_user`);
-   expect(identity).toEqual({name:role,super:false,bypass:false,parentSet:false,statementTimeout:'5s',lockTimeout:'300ms'});
-   await step(()=>connection.unsafe(bridge));
-   const [actual]=await step(()=>connection<{body:string}[]>`select prosrc as body from pg_proc where oid='app.attendance_workflow_links()'::regprocedure`);
-   expect(actual.body).toBe(expectedBody);
-  }));
-  await step(()=>withTenant(f.root,async tx=>{
-   await step(()=>tx.execute(sql`SET LOCAL statement_timeout='5s'`));await step(()=>tx.execute(sql`SET LOCAL lock_timeout='300ms'`));
-   const [identity]=await step(()=>tx.execute<{session:string;current:string;super:boolean;bypass:boolean}>(sql`select session_user as session,current_user as current,rolsuper as super,rolbypassrls as bypass from pg_roles where rolname=current_user`));
-   expect(identity).toEqual({session:'ai_hr_app',current:'ai_hr_app',super:false,bypass:false});
-   const candidates=await step(()=>tx.execute<{id:string}>(sql`select id from app.attendance_workflow_v3_approver_options(ARRAY[${b.companyId}::uuid,${f.other.id}::uuid])`));
-   expect(candidates.map(row=>row.id)).toContain(f.reviewer.employmentId);
-  }));
-  await step(()=>withTenant(f.worker.ctx,async tx=>{
-   await step(()=>tx.execute(sql`SET LOCAL statement_timeout='5s'`));await step(()=>tx.execute(sql`SET LOCAL lock_timeout='300ms'`));
-   await step(()=>tx.execute(sql`select pg_advisory_xact_lock_shared(hashtextextended(${f.key},0))`));
-   await step(()=>tx.insert(s.attendanceWorkflowRequest).values(f.values(f.ids[0])));
-  }));
-  const [forcedAfter]=await step(()=>owner.client.begin(async connection=>{
-   await limits(connection,step);
-   return step(()=>connection<{rows:unknown}[]>`select jsonb_agg(jsonb_build_object('oid',oid,'owner',relowner,'rls',relrowsecurity,'force',relforcerowsecurity) order by oid) as rows from pg_class where relnamespace='public'::regnamespace and relforcerowsecurity`);
-  }));
-  expect(forcedAfter).toEqual(forcedBefore);
- },async()=>{if(restore)await restore();});
+async function isolatedOwner(mode:OwnerMode){
+ const pool=process.env.VITEST_POOL_ID??process.env.VITEST_WORKER_ID;
+ if(!pool||!/^\d+$/.test(pool))throw Error('Actual owned worker database identity required');
+ const child=attendanceOwnerProcess({version:1,kind:'OWNED_ATTENDANCE_BRIDGE_COMPONENT',base:b,
+  role:'bridge_owner_'+randomUUID().replaceAll('-',''),mode},process.env,workerDb(pool));
+ let result:Awaited<ReturnType<typeof child.run>>|undefined;
+ const phase=ownershipPhases.start(async step=>{result=await step(()=>child.run());},()=>child.stopAndDrain(),child.stop);
  onTestFinished(()=>phase.stopAndDrain());
  await phase.result;
+ if(!result)throw Error('Owned Attendance component result missing');
+ expect(result.complete).toBe(true);expect(result.allCatalogueRestored).toBe(true);expect(result.roleAbsent).toBe(true);
+ return result;
+}
+it('executes the exact bridge as a real restricted owner and serves a distinct app LOGIN through unchanged forced RLS',async()=>{
+ const result=await isolatedOwner('positive');
+ expect(result).toMatchObject({kind:'ATTENDANCE_OWNER_POSITIVE',ownedOidCaptured:true,nonemptyApprover:true,canonicalRequestWritten:true,unchangedForcedRls:true,faultObserved:false});
+ expect(result.appIdentity).toEqual({session:'ai_hr_app',current:'ai_hr_app',super:false,bypass:false});
+ expect(result.restrictedIdentity).toMatchObject({super:false,bypass:false,parentSet:false,statementTimeout:'5s',lockTimeout:'300ms'});
+},90000);
+it.for(OWNER_MODES.filter(mode=>mode!=='positive'))('settles real owned child fault %s before any later reset or teardown SQL',async mode=>{
+ const result=await isolatedOwner(mode);
+ expect(result).toMatchObject({kind:'ATTENDANCE_OWNER_FAULT',faultObserved:true,allCatalogueRestored:true,roleAbsent:true});
+ expect(result.ownedOidCaptured).toBe(mode==='rollback-before-commit'||mode==='lost-after-commit'||mode==='restore-guard-drift');
 },90000);
