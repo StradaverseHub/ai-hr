@@ -12,3 +12,6 @@ describe('frozen schedule formula measurements',()=>{
 });
 
 it('does not claim an unused fixed break or a late return when break clocks were not required',()=>{const f=trace();f.formulaSchedule!.breakPeriods![0].clockingRequired=false;const result=measure(f,[{from:540,to:1020}]).values;expect(result).not.toHaveProperty('UnUtilisedBreak');expect(result).not.toHaveProperty('LateOnShiftBreak');});
+
+it('does not position a scalar break allowance into invented first/second shift halves',()=>{const f=trace();f.formulaSchedule!.breakPeriods=null;const value=measure(f,[{from:540,to:1020}]).values;expect(value).not.toHaveProperty('ShiftFirstHalfWorkingMins');expect(value).not.toHaveProperty('ShiftSecondHalfWorkingMins');});
+it('reuses the native positioned-break owner for fixed-shift halves',()=>{expect(measure(trace(),[{from:540,to:1020}]).values).toMatchObject({ShiftWorkingMins:420,ShiftFirstHalfWorkingMins:180,ShiftSecondHalfWorkingMins:240});});

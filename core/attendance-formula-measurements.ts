@@ -1,5 +1,6 @@
 /** Read-only projections from the calculation's frozen schedule and proved closed clocks. */
 import type {AttendanceTraceV1} from './attendance-trace';
+import {attendancePolicyWorkPlacement} from './attendance-policy-schedule';
 import {anchorAttendanceClockMinute} from './attendance-timeline';
 import {breakRowMinutes,externalBreakBounds} from './shift-break-rules';
 import {intersectAttendancePolicyIntervals as intersect,subtractAttendancePolicyIntervals as subtract,unionAttendancePolicyIntervals as union,attendancePolicyIntervalMinutes as minutes,type AttendancePolicyInterval} from '../lib/attendance-policy-intervals';
@@ -25,7 +26,9 @@ export function attendanceFormulaRecordedMeasurements(trace:AttendanceTraceV1,ph
   return {...row,...bounds};
  });
  if(rows.some(row=>row.from<0||row.to<=row.from||row.to>4320))return {values,breaks:null};
- if(selected&&!frozen.flexiDuration&&!frozen.durationOnly&&frozen.flexibleBreakMinutes===null&&!rows.some(row=>!row.paid&&row.flexible)){const half=anchorAttendanceClockMinute(clock(frozen.halfDayBefore),start,trace.schedule.dailyCutoffMinutes);if(half>start&&half<end){const net=subtract(selected,rows.filter(row=>!row.paid),4320);values.ShiftFirstHalfWorkingMins=minutes(intersect(net,[{from:start,to:half}],4320),4320);values.ShiftSecondHalfWorkingMins=minutes(intersect(net,[{from:half,to:end}],4320),4320);}}
+ const label=(n:number)=>String(Math.floor(n/60)%24).padStart(2,'0')+':'+String(n%60).padStart(2,'0');
+ const placement=attendancePolicyWorkPlacement({start:label(start),end:label(end),crossesMidnight:trace.schedule.crossesMidnight,dailyCutoffMinutes:trace.schedule.dailyCutoffMinutes??null,durationOnly:frozen.durationOnly,flexiDuration:frozen.flexiDuration,dayType:trace.schedule.dayType,breakMinutes:trace.schedule.breakMinutes,breakPeriods:frozen.breakPeriods,flexibleBreakMinutes:frozen.flexibleBreakMinutes,otWindows:null,includeGraceInLateness:trace.lateness?.includeGrace??false,includeGraceInEarlyOut:trace.earlyOut?.includeGrace??false});
+ if(selected&&placement.state==='known'&&!frozen.flexiDuration){const net=subtract(selected,placement.unpaidWindows,4320);values.ShiftWorkingMins=minutes(intersect(net,[{from:start,to:end}],4320),4320);const half=anchorAttendanceClockMinute(clock(frozen.halfDayBefore),start,trace.schedule.dailyCutoffMinutes);if(half>start&&half<end){values.ShiftFirstHalfWorkingMins=minutes(intersect(net,[{from:start,to:half}],4320),4320);values.ShiftSecondHalfWorkingMins=minutes(intersect(net,[{from:half,to:end}],4320),4320);}}
  const regions={PreOT:rows.filter(row=>row.breakType==='before_shift'),PostOT:rows.filter(row=>row.breakType==='after_shift'),Shift:rows.filter(row=>!row.breakType||row.breakType==='in_shift')};
  for(const [region,breaks]of Object.entries(regions)){
   values['BreakOn'+region]=breaks.filter(row=>!row.flexible).reduce((sum,row)=>sum+row.to-row.from,0);

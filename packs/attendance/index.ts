@@ -10,6 +10,9 @@
  *
  * - Services (implementation files, reachable from outside ONLY via `packs/attendance/service`):
  *   `core/attendance.ts` (clock in/out, corrections, summaries, punch import),
+ *   `core/attendance-formulas.ts` + `core/attendance-formula-ai.ts` (versioned authoring, actual-data
+ *   tests and guarded suggestions), `core/attendance-formula-{measurements,leave}.ts` (read-only
+ *   native time/approved-leave projections; no money ledger),
  *   `core/attendance-rotation.ts` (immutable dated shift cycles),
  *   `core/attendance-rule.ts` (lateness/early-out/OT rule library), `core/attendance-calc.ts`
  *   (7c834696 stage 1 — the pure lateness/early-out/OT-band arithmetic), `core/attendance-derive.ts`

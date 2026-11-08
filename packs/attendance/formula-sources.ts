@@ -135,14 +135,13 @@ export async function readAttendanceFormulaDaysTx(tx:Tx,ctx:SessionContext,p:{co
     const net=subtract(work,placement.unpaidWindows,4320);
     decimal('ShiftWorkingMins',count(intersect(net,[{from:schedule.startAbs,to:schedule.endAbs}],4320),4320),'canonical-net-positioned-work');
     const approved=snapshot?.input.approval.status==='notRequired'&&!activePlans?.length?net:plans?intersect(net,plans,4320):undefined;
-    for(const [id,value]of Object.entries(attendanceFormulaOvertimeMeasurements({net,approved:approved??null,start:schedule.startAbs,end:schedule.endAbs,crossesMidnight:schedule.crossesMidnight})))decimal(id,value,'canonical-positioned-work-and-approval');
+    for(const [id,value]of Object.entries(attendanceFormulaOvertimeMeasurements({net,approved:approved??null,eligible:context?.state==='policy'&&context.placement.state==='known'?intersect(net,context.placement.eligibilityWindows,4320):null,start:schedule.startAbs,end:schedule.endAbs,crossesMidnight:schedule.crossesMidnight})))decimal(id,value,'canonical-positioned-work-and-approval');
     for(const [zone,window]of [['A',{from:0,to:schedule.startAbs}],['B',{from:schedule.endAbs,to:4320}]] as const){
      const covered=window.to>window.from?intersect(net,[window],4320):[];
      decimal('Zone'+zone+'WorkingMins',count(covered,4320),'canonical-net-positioned-work');if(zone==='A')decimal('EarlyIn',count(covered,4320),'canonical-net-before-shift-work');
      const classes=context?.state==='policy'?covered.flatMap(part=>{const output:string[]=[];for(let offset=Math.floor(part.from/1440);offset<=Math.floor((part.to-1)/1440);offset++){const proof=context.calendar.find(proof=>proof.date===addDaysIso(date,offset));if(proof?.state!=='known')return ['unavailable'];output.push(proof.dayClass);}return output;}):[];
      if(classes.length&&new Set(classes).size===1&&classes[0]!=='unavailable'){string('Zone'+zone+'DayType',classes[0],'canonical-dated-calendar');if(zone==='A')string('ZoneADayTypeDesc',classes[0],'canonical-dated-calendar');}
     }
-    if(approved)decimal('OTAssignmentInShift',count(intersect(approved,[{from:schedule.startAbs,to:schedule.endAbs}],4320),4320),'canonical-positioned-approval');
    }
    if(punch.spanMinutes!==null)decimal('OutOfOfficeDurationMins',Math.max(0,punch.spanMinutes-count(work,4320)),'canonical-positioned-work');
   }
