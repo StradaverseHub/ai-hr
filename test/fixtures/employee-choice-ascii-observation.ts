@@ -2,6 +2,9 @@
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
 import {closeSync,constants,fstatSync,openSync,readSync} from 'node:fs';
+import {sql} from 'drizzle-orm';
+import {PgDialect} from 'drizzle-orm/pg-core';
+import {employeeChoiceAsciiObservation,EMPLOYEE_CHOICE_ASCII_NODES,EMPLOYEE_CHOICE_ASCII_UNICODE} from '../../core/employee-choice-ascii';
 export const asciiProofLimits=Object.freeze({maximumBytes:16*1024*1024,scalarCount:1112063,maximumCodePoint:0x10ffff,sentinel:'\ue000'});
 export const asciiProofInputs=Object.freeze({
  unicode:{file:'test/fixtures/unicode-17.0.0/UnicodeData.txt',bytes:2198209,sha256:'2e1efc1dcb59c575eedf5ccae60f95229f706ee6d031835247d843c11d96470c'},
@@ -17,7 +20,9 @@ export function asciiProofSourceBytes(file:string,maximum=16*1024*1024){
   assert.equal(count,before.size,'Proof source changed length');const after=fstatSync(fd);for(const key of ['dev','ino','size','mtimeMs','ctimeMs']as const)assert.equal(after[key],before[key]);return buffer.subarray(0,count);
  }finally{closeSync(fd);}
 }
-export const asciiProofNativeExpression="translate(replace(original,U&'\\0130',U&'i\\0307'),'ABCDEFGHIJKLMNOPQRSTUVWXYZ'||U&'\\212A','abcdefghijklmnopqrstuvwxyzk')";
+const observationQuery=new PgDialect().sqlToQuery(employeeChoiceAsciiObservation(sql.raw('original')));
+assert.equal(observationQuery.params.length,0,'Fixed proof field cannot create parameters');
+export const asciiProofNativeExpression=observationQuery.sql;
 export function asciiProofQuerySql(file:'scalar'|'vectors'){
  const template=asciiProofSourceBytes(`test/fixtures/employee-choice-ascii-${file==='scalar'?'scalar-corpus':'vectors'}.sql`).toString('utf8'),token='/* EXACT_ASCII_OBSERVATION_TRANSFORM */';
  assert.equal(template.split(token).length,2,'Exactly one fixed transform site required');return template.replace(token,asciiProofNativeExpression);
@@ -104,9 +109,12 @@ export function compareScalarCorpus(actual:Buffer,expected:Buffer){
 }
 export type AsciiProofVersions=Readonly<Record<string,string|undefined>>;
 export const asciiProofVersion=Object.freeze({node:'22.23.3',icu:'78.3',unicode:'17.0',v8:'12.4.254.21-node.57'});
-/** Proof experiment eligibility only. This is NOT application admission. The
- * actual binary/complete versions are sealed in its authenticated evidence. */
-export function asciiProofRuntime(versions:AsciiProofVersions){return Object.entries(asciiProofVersion).every(([key,value])=>versions[key]===value);}
+/** Closed proof runtime family only, never application admission. Full observed
+ * binary/V8/ICU identity and actual parity remain in each new native receipt. The
+ * unchanged prototype additionally retains its original22-only binary witness. */
+export function asciiProofRuntime(versions:AsciiProofVersions){return EMPLOYEE_CHOICE_ASCII_NODES.some(node=>versions.node===node)
+ &&versions.unicode===EMPLOYEE_CHOICE_ASCII_UNICODE&&versions.icu===asciiProofVersion.icu
+ &&typeof versions.v8==='string'&&/^\d+\.\d+\.\d+(?:\.\d+)?-node\.\d+$/.test(versions.v8);}
 export function asciiProofQuery(raw:string,versions:AsciiProofVersions){
  const q=raw.trim().toLowerCase();return{raw,q,mode:q.includes('\0')?'impossible':!q?'none':asciiProofRuntime(versions)&&/^[\x00-\x7f]*$/.test(q)?'native-ascii-proof':'javascript-fallback'};
 }

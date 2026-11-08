@@ -131,8 +131,8 @@ BEGIN
   SELECT p.* FROM employee_choice_population p WHERE (p_company IS NULL OR p."companyId"=p_company)
    AND (p_department IS NULL OR p."departmentId"=p_department) AND (p_unit IS NULL OR p."businessUnitId"=p_unit)
    AND (p_status='' OR p.status=p_status)
-   AND (p_search_mode<>'exact-ascii' OR position((SELECT n.value FROM employee_choice_exact_needle n) IN convert_to(translate(replace(p.name,U&'\0130',U&'i\0307'),'ABCDEFGHIJKLMNOPQRSTUVWXYZ'||U&'\212A','abcdefghijklmnopqrstuvwxyzk'),'UTF8'))>0
-    OR position((SELECT n.value FROM employee_choice_exact_needle n) IN convert_to(translate(replace(coalesce(p."employeeCode",''),U&'\0130',U&'i\0307'),'ABCDEFGHIJKLMNOPQRSTUVWXYZ'||U&'\212A','abcdefghijklmnopqrstuvwxyzk'),'UTF8'))>0)
+   AND (p_search_mode<>'exact-ascii' OR position((SELECT n.value FROM employee_choice_exact_needle n) IN convert_to(/* EMPLOYEE_CHOICE_ASCII_NAME */,'UTF8'))>0
+    OR position((SELECT n.value FROM employee_choice_exact_needle n) IN convert_to(/* EMPLOYEE_CHOICE_ASCII_CODE */,'UTF8'))>0)
  ),
  employee_choice_count AS MATERIALIZED(
   SELECT count(*)::bigint AS n FROM employee_choice_matching

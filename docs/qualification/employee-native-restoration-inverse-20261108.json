@@ -346,19 +346,49 @@
     },
     "test/performance/employee-choice-exact-ascii-owner-factory.ts": {
       "parentSha256": "1d289fead9e6edfd010c6b8ff9afad2e39a4dc2602d4e8ad307a9b64e1fb4c39",
-      "currentSha256": "0d8345cfe218a4a0d89054cc84c320c1681e04f268451530aaeb9f4c5274d690",
+      "currentSha256": "7025275d14ad8d1504943b0bba75e9a0cde71e390ec3a646842991e88e97fcc2",
       "changes": [
         {
-          "startLine": 66,
-          "endLine": 67,
+          "startLine": 84,
+          "endLine": 85,
           "before": "  return{database:nativeOriginal.database,sourceSha256,originalSourceSha256:nativeOriginal.sourceSha256,installed:structuredClone(installed),security:structuredClone(nativeOriginal.security),unchanged,remove:custody.remove};\n",
-          "after": "  return{database:nativeOriginal.database,sourceSha256,originalSourceSha256:nativeOriginal.sourceSha256,installed:structuredClone(installed),security:structuredClone(nativeOriginal.security),unchanged,remove:custody.remove,restoration:()=>originalWitness().original.restoration()};\n"
+          "after": "  return{database:nativeOriginal.database,sourceSha256,templateSha256,originalSourceSha256:nativeOriginal.sourceSha256,installed:structuredClone(installed),security:structuredClone(nativeOriginal.security),unchanged,remove:custody.remove,restoration:()=>originalWitness().original.restoration()};\n"
         },
         {
-          "startLine": 45,
-          "endLine": 46,
+          "startLine": 63,
+          "endLine": 64,
           "before": "   if(removed)return;const {original}=originalWitness();\n",
           "after": "   if(removed){await originalWitness().original.remove();return;}const {original}=originalWitness();\n"
+        },
+        {
+          "startLine": 61,
+          "endLine": 62,
+          "before": "   witness(){const {original,before}=originalWitness();return structuredClone({database:original.database,sourceSha256,originalSourceSha256:original.sourceSha256,original:before,candidate:state.candidate??null,security:original.security});},\n",
+          "after": "   witness(){const {original,before}=originalWitness();return structuredClone({database:original.database,sourceSha256,templateSha256,originalSourceSha256:original.sourceSha256,original:before,candidate:state.candidate??null,security:original.security});},\n"
+        },
+        {
+          "startLine": 43,
+          "endLine": 44,
+          "before": "  const source=readFileSync(sourceFile,'utf8');expect(createHash('sha256').update(source).digest('hex')).toBe(sourceSha256);\n",
+          "after": "  const source=exactAsciiEmployeeChoiceSource();\n"
+        },
+        {
+          "startLine": 31,
+          "endLine": 32,
+          "before": "export type ExactAsciiNativeWitness=Readonly<{database:string;sourceSha256:string;originalSourceSha256:string;original:Definition;candidate:Definition|null;security:EmployeeChoiceNativeInstallation['security']}>;\n",
+          "after": "export type ExactAsciiNativeWitness=Readonly<{database:string;sourceSha256:string;templateSha256:string;originalSourceSha256:string;original:Definition;candidate:Definition|null;security:EmployeeChoiceNativeInstallation['security']}>;\n"
+        },
+        {
+          "startLine": 14,
+          "endLine": 29,
+          "before": "",
+          "after": "const templateSha256='e1468e77942f4f2dc557d729be7eb42683d844bc92288e127fd2b6a095ad6b92';\n/** One fixed renderer for installation and the native plan harness. The protected\n * consumer independently reconstructs these reviewed bytes; this is no issuer. */\nexport function exactAsciiEmployeeChoiceSource():string{\n const template=readFileSync(sourceFile,'utf8');expect(createHash('sha256').update(template).digest('hex')).toBe(templateSha256);\n let source=template;\n for(const [marker,field] of [['/* EMPLOYEE_CHOICE_ASCII_NAME */','p.name'],['/* EMPLOYEE_CHOICE_ASCII_CODE */','coalesce(p.\"employeeCode\",\\'\\')']] as const){\n  expect(source.split(marker)).toHaveLength(2);\n  const rendered=new PgDialect().sqlToQuery(employeeChoiceAsciiObservation(sql.raw(field)));expect(rendered.params).toEqual([]);\n  source=source.replace(marker,rendered.sql);\n }\n // Every installed byte must still equal the reviewed original prototype SQL.\n expect(createHash('sha256').update(source).digest('hex')).toBe(sourceSha256);\n return source;\n}\n"
+        },
+        {
+          "startLine": 5,
+          "endLine": 8,
+          "before": "",
+          "after": "import {sql} from 'drizzle-orm';\nimport {PgDialect} from 'drizzle-orm/pg-core';\nimport {employeeChoiceAsciiObservation} from '../../core/employee-choice-ascii';\n"
         }
       ]
     },
