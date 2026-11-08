@@ -13,6 +13,7 @@ import {setCompensation} from '../core/comp';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {cancelRewardReview,emptyRewardCalendar,listRewardUnits,rewardConfigurationListView,rewardCoverageForUnits,saveRewardCalendar,type RewardConfigurationFilters} from '../packs/rewards/service';
 import {rewardUnitCoverage} from '../packs/rewards/coverage';
+import {rewardRulesChoices} from '../packs/rewards/applied-rules';
 import {saveUploadedRewards,confirmUploadedRewards,refreshUploadedRewardSources} from '../packs/rewards/uploaded-awards';
 import {beginRewardViewAs,endRewardViewAs} from '../packs/rewards/access-policy';
 import {emptyFacts} from '../packs/rewards/model';
@@ -116,6 +117,12 @@ it('keeps RC supplied-Tx admission and omitted observation while the bounded que
  }finally{observed.restore();}
  expect(await rewardConfigurationListView(f.ctx,[f.b.companyId])).toEqual(expected);
  expect(await rewardCoverageForUnits(f.ctx,[f.unitId])).toEqual(await withModulePresentationRead(f.ctx,'rewards',tx=>rewardUnitCoverage(tx,[f.unitId])));
+ const expectedRules=await database.withTenant(f.ctx,tx=>tx.execute<{id:string;cycleId:string;cycle:string;companyId:string;company:string;year:number}>(sql`
+  select u.id,c.id as "cycleId",c.name as cycle,u.company_id as "companyId",co.legal_name as company,c.year
+  from reward_unit u join reward_cycle c on c.id=u.cycle_id and c.tenant_id=u.tenant_id join company co on co.id=u.company_id and co.tenant_id=u.tenant_id
+  where u.id=${f.unitId}::uuid and u.tenant_id=app.current_tenant_id() and app.reward_capability(u.id,'rules.view')`));
+ expect(expectedRules.map(row=>row.id)).toEqual([f.unitId]);
+ expect(await rewardRulesChoices(f.ctx,[f.b.companyId])).toEqual([...expectedRules]);
 },60000);
 
 it('retains native upload pending/null distinctions across doer/checker and refresh, including View as disclosure',async()=>{

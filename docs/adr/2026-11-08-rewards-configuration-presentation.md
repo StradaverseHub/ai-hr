@@ -73,3 +73,12 @@ Native tests will run only through standard hosted Actions after root and indepe
 source review. No repository behavior has run locally. A row-return reduction is a proposed
 boundedness improvement; there is no measured elapsed-time claim, full Rewards qualification,
 staging acceptance, provider approval renewal or production authorization.
+
+## Native Rules choice consumer coverage
+
+The same nine native cases now exercise the actual ordinary `rewardRulesChoices` consumer
+inside the existing bounded-predicate/RC case. An independent application-role native SELECT
+joins the seeded review/cycle/company and checks `reward_capability(id,'rules.view')`; its
+IDs must equal the known nonempty seeded unit ID before comparing the complete choice DTO.
+This test-only child preserves every earlier assertion, case name and budget. Product owners,
+SQL/journal and all other source remain whole. Native execution is still pending review.
