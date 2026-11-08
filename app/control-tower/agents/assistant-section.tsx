@@ -1,3 +1,4 @@
+import { ActionButton } from '@/components/ui/action-button';
 import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
 import type { SessionContext } from '@/db/client';
@@ -62,7 +63,7 @@ export async function AiAssistantSection({session:s,searchParams}:{session:Sessi
           <div className="grid gap-x-6 sm:grid-cols-2 lg:grid-cols-3">{PAGE_AREAS.map(area=><label key={area} className="flex min-h-11 items-center gap-2 text-sm"><input type="checkbox" name="hidden" value={area} defaultChecked={launcher.hiddenAreas.includes(area)} className="size-4"/>{areas(area)}</label>)}</div>
         </fieldset>
         <p className="text-xs text-muted-foreground">{t('launcherVisibility')}</p>
-        <button type="submit" className={btnPrimary}>{t('save')}</button>
+        <ActionButton type="submit" className={btnPrimary}>{t('save')}</ActionButton>
       </form>}
     </Card>
     <Card id="ai-chat-retention" className="scroll-mt-4 p-5">

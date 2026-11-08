@@ -1,5 +1,6 @@
 'use client';
 
+import { ActionButton } from '@/components/ui/action-button';
 import { useState } from 'react';
 import { feedbackBoardStatus, feedbackStatusTone as statusTone } from '@/lib/feedback-release';
 // r399: board rows prefetch the item on hover/focus (components/intent-link.tsx), so opening one skips the shell.
@@ -82,30 +83,30 @@ export function BulkTable({
           <span className="text-sm font-medium">{t('bulkSelected', { count: ids.length })}</span>
           <span className="text-xs text-muted-foreground">{t('bulkPageScope')}</span>
           <div className="ml-auto flex items-center gap-2">
-            <button
+            <ActionButton
               type="submit"
               name="action"
               value="approve"
               className="rounded-md bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-emerald-700"
             >
               {t('bulkApprove')}
-            </button>
-            <button
+            </ActionButton>
+            <ActionButton
               type="submit"
               name="action"
               value="cancel"
               className="rounded-md bg-rose-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-rose-700"
             >
               {t('bulkCancel')}
-            </button>
-            <button
+            </ActionButton>
+            <ActionButton
               type="submit"
               name="action"
               value="restore"
               className="rounded-md border border-border px-3 py-1.5 text-xs font-medium hover:bg-muted"
             >
               {t('bulkRestore')}
-            </button>
+            </ActionButton>
             <button
               type="button"
               onClick={() => setSelected(new Set())}

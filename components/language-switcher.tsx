@@ -1,5 +1,6 @@
 'use client';
 
+import { ActionButton } from '@/components/ui/action-button';
 import { useState, useTransition } from 'react';
 import { useLocale } from 'next-intl';
 import { Check, Languages, LoaderCircle } from 'lucide-react';
@@ -44,7 +45,7 @@ export function LanguageSwitcher() {
           Language
         </div>
         {locales.map((loc) => (
-          <button
+          <ActionButton
             key={loc}
             type="submit"
             name="locale"
@@ -58,7 +59,7 @@ export function LanguageSwitcher() {
           >
             <span className="truncate">{localeNames[loc]}</span>
             {loc === activeLocale && <Check className="size-4 shrink-0 text-primary" />}
-          </button>
+          </ActionButton>
         ))}
       </form>
     </div>

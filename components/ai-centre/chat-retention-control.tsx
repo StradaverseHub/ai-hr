@@ -56,7 +56,7 @@ export function ChatRetentionControl({ keepDays, mayChange }: { keepDays: number
         {t('option', { days })}
       </label>)}</div>
     </fieldset>
-    <button type="submit" disabled={pending || choice === null || choice === saved} className={btnPrimary + ' min-h-11'}>{t('save')}</button>
+    <button aria-busy={pending} type="submit" disabled={pending || choice === null || choice === saved} className={btnPrimary + ' min-h-11'}>{t('save')}</button>
     {status && <p role={status.kind} className="text-sm">{status.text}</p>}
     {confirming && choice !== null && <ConfirmDialog
       title={t('confirmTitle')}

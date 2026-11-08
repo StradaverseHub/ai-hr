@@ -213,7 +213,7 @@ export function RosterImport({
         </div>
 
         <div className="mt-4 flex flex-wrap items-center gap-2">
-          <Button onClick={() => runDryRun(csv, fileName)} disabled={pending || reading || !csv.trim()}>
+          <Button aria-busy={pending} onClick={() => runDryRun(csv, fileName)} disabled={pending || reading || !csv.trim()}>
             {pending && !committed ? t('checking') : t('check')}
           </Button>
           <span className="text-xs text-muted-foreground">{t('monthGuardHint', { month })}</span>
@@ -273,7 +273,7 @@ export function RosterImport({
           <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-4 py-3">
             <h2 className="text-sm font-semibold">{committed ? t('resultTitle') : t('previewTitle')}</h2>
             {!committed && (
-              <Button onClick={commit} disabled={pending || shown.changed === 0} size="sm">
+              <Button aria-busy={pending} onClick={commit} disabled={pending || shown.changed === 0} size="sm">
                 {pending ? t('saving') : t('save', { count: shown.changed })}
               </Button>
             )}

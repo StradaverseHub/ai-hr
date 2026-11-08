@@ -206,6 +206,14 @@ describe('"Passes every check"',()=>{
 
 describe('the decision the approver makes beside it',()=>{
  const form=(fields:Record<string,string>)=>{const data=new FormData();for(const [k,v] of Object.entries(fields))data.set(k,v);return data;};
+ it('seals only a final approval, not an intermediate approval step',async()=>{
+  fx.decideLeave.mockResolvedValueOnce({status:'pending'}).mockResolvedValueOnce({status:'approved'});
+  const request=form({id:LR_PASS,decision:'approved'});
+  await expect(approveLeaveAction(request)).rejects.toThrow('NEXT_REDIRECT');
+  expect(fx.redirects.at(-1)).toBe('/approvals?toast=Approval+stage+recorded');
+  await expect(approveLeaveAction(request)).rejects.toThrow('NEXT_REDIRECT');
+  expect(fx.redirects.at(-1)).toBe('/approvals?toast=Leave+approved&approvalSeal=1');
+ });
  it('posts the record with each decision control',()=>{
   const view=wrap(<LeaveDecideControls id={LR_PASS} labels={{approve:'Approve',reject:'Reject',rejectReason:'Reason'}} nav={{category:'leave',sort:''}} recommendationRecordId={RECORD_PASS}/>);
   expect([...view.container.querySelectorAll('input[name="recommendationRecordId"]')].map(input=>(input as HTMLInputElement).value)).toEqual([RECORD_PASS]);
@@ -311,6 +319,6 @@ describe('the per-date decision (slice 3 follow-up)',()=>{
   // A follow-up that cannot be written never fails the committed decision.
   fx.follow.mockReset();fx.follow.mockRejectedValue(Error('Fixture record outage'));fx.decideLeaveDates.mockResolvedValueOnce({status:'approved'});
   await expect(decideLeaveDatesAction(form({id:LR_PASS,decisions,recommendationRecordId:RECORD_PASS}))).rejects.toThrow('NEXT_REDIRECT');
-  expect(fx.redirects[fx.redirects.length-1]).toBe('/approvals?toast=Leave+decided');
+  expect(fx.redirects[fx.redirects.length-1]).toBe('/approvals?toast=Leave+decided&approvalSeal=1');
  });
 });

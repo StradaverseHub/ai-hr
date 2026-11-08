@@ -1,3 +1,4 @@
+import { ExportDownloadLink } from '@/components/export-download-link';
 import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
 import type { getAssessmentFinalBands } from '@/packs/performance/service';
@@ -19,7 +20,7 @@ export async function FinalBandsView({v,error}:{v:Awaited<ReturnType<typeof getA
    <span>{t(`groupModes.${v.session.mode}`)}{v.session.mode==='blend'&&` · ${f('weights',{bg:v.session.bgWeight,group:100-v.session.bgWeight})}`}</span>
    <span>{f('counts',{total:v.rows.length,decided,locked})}</span>
    {open&&clear>0&&<form action={finalBandsAction}>{fields}<input type="hidden" name="action" value="accept_agreed"/><ConfirmSubmit description={f('acceptConfirm',{count:clear})} variant="secondary">{f('acceptClear',{count:clear})}</ConfirmSubmit></form>}
-   <a href={`/performance/assessment/calibration/${id}/final-bands`} className="text-primary hover:underline">{f('download')}</a>
+   <ExportDownloadLink href={`/performance/assessment/calibration/${id}/final-bands`} className="text-primary hover:underline">{f('download')}</ExportDownloadLink>
    <Link href={`/performance/assessment/calibration/${id}`} className="text-primary hover:underline">{f('groupView')}</Link>
   </div>
   {open&&<details className="rounded-md border border-border px-4 py-3"><summary className="cursor-pointer text-sm font-medium">{f('configure')}</summary><form action={finalBandsAction} className="mt-4 flex flex-wrap items-end gap-4">{fields}<input type="hidden" name="revision" value={v.session.revision}/><input type="hidden" name="action" value="mode"/>

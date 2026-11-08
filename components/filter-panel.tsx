@@ -5,7 +5,7 @@
  * floating panel holding all of a listing page's filter fields, plus removable active-filter chips
  * rendered below the page header.
  *
- * Pure UI reskin — the panel wraps a plain GET <form action={action}> so the page's searchParams
+ * Pure UI reskin — the panel wraps a GET form with progressive enhancement so the page's searchParams
  * contract (e.g. ?q=&company=&dept=&status=&type=) and the server-side query path are identical to
  * the old inline filter row. Chips are plain <Link>s that drop exactly one param, so removal works
  * without JavaScript too. All strings arrive PRE-TRANSLATED via props (no t() in this island),
@@ -17,6 +17,7 @@
  */
 
 import { useEffect, useRef, useState, type MouseEvent } from 'react';
+import Form from 'next/form';
 import Link from 'next/link';
 import * as Dialog from '@radix-ui/react-dialog';
 import { Filter, X } from 'lucide-react';
@@ -149,7 +150,7 @@ export function FilterPanel({ action, fields, values, labels, hidden, dataTour, 
   }, [open, dialog]);
 
   const form = (
-    <form method="get" action={action} className="min-h-0 space-y-3 overflow-y-auto">
+    <Form action={action} scroll={false} prefetch={false} className="min-h-0 space-y-3 overflow-y-auto">
       {(hidden ?? []).map(([k, v], i) => (
         <input key={`${k}-${i}`} type="hidden" name={k} value={v} />
       ))}
@@ -243,7 +244,7 @@ export function FilterPanel({ action, fields, values, labels, hidden, dataTour, 
           </Link>
         )}
       </div>
-    </form>
+    </Form>
   );
   const trigger = (
     <button

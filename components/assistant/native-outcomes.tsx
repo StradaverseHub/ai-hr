@@ -1,3 +1,4 @@
+import { ActionButton } from '@/components/ui/action-button';
 import {createHash,randomUUID} from 'node:crypto';
 import type {SessionContext} from '../../db/client';
 import type {NativeOutcomeWorkspace} from '../../core/module-native-outcome-workspace';
@@ -41,7 +42,7 @@ export async function NativeOutcomes({jobId,status,selectedLink}:{jobId:string;s
   {checked&&<div role="status" className="space-y-2 rounded-md bg-muted p-3 text-sm"><p>{t('checked')}</p><p>{t(actionKey(checked.action))}</p><p>{t('notQuality')}</p></div>}
   {workspace.choices.length?<NativeOutcomeForm key={key} jobId={workspace.jobId} nonce={randomUUID()} options={workspace.choices.map(choice=>({value:JSON.stringify(choice.reference),label:t(actionKey(choice.reference.action))+' · '+formatted(choice.createdAt)}))} messages={{choose:t('choose'),consent:t('consent'),save:t('save'),pending:t('pending'),recover:t('recover')}}/>:<p className="text-sm">{t('empty')}</p>}
   {workspace.truncated&&<p className="text-sm text-muted-foreground">{t('bounded')}</p>}
-  {workspace.links.length>0&&<div className="space-y-2"><h3 className="text-sm font-medium">{t('history')}</h3>{workspace.links.map(link=><form key={link.associationId} action={reopenNativeOutcomeAction} className="flex flex-wrap items-center gap-3"><input type="hidden" name="jobId" value={workspace.jobId}/><input type="hidden" name="associationId" value={link.associationId}/><span className="text-sm">{t(actionKey(link.action))} · {formatted(link.createdAt)}</span><button type="submit" className={control}>{t('reopen')}</button></form>)}</div>}
+  {workspace.links.length>0&&<div className="space-y-2"><h3 className="text-sm font-medium">{t('history')}</h3>{workspace.links.map(link=><form key={link.associationId} action={reopenNativeOutcomeAction} className="flex flex-wrap items-center gap-3"><input type="hidden" name="jobId" value={workspace.jobId}/><input type="hidden" name="associationId" value={link.associationId}/><span className="text-sm">{t(actionKey(link.action))} · {formatted(link.createdAt)}</span><ActionButton type="submit" className={control}>{t('reopen')}</ActionButton></form>)}</div>}
   <p className="text-xs text-muted-foreground">{t('notQuality')}</p>
  </section>;
 }

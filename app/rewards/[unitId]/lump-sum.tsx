@@ -23,7 +23,7 @@ export function UnitLumpSum({ value: v }: { value: UnitLumpValue }) {
   const [mode, setMode] = useState<Mode>(v.lumpUnitCents == null ? 'auto' : v.lumpUnitCents === 0 ? 'withhold' : 'set');
   const [amount, setAmount] = useState(v.lumpUnitCents ? String(v.lumpUnitCents / 100) : '');
   const [reason, setReason] = useState(v.reason ?? ''), [confirming, setConfirming] = useState(false);
-  const [preview, setPreview] = useState<Preview | null>(null), [error, setError] = useState(''), [, start] = useTransition();
+  const [preview, setPreview] = useState<Preview | null>(null), [error, setError] = useState(''), [previewPending, start] = useTransition();
   const money = (cents: number) => formatMoney(cents / 100, 'MYR');
   const percent = (bp: number | null) => bp == null ? '—' : `${new Intl.NumberFormat(locale, { minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(bp / 100)}%`;
   const typed = amount.trim() === '' ? null : Math.round(Number(amount) * 100);
@@ -45,7 +45,7 @@ export function UnitLumpSum({ value: v }: { value: UnitLumpValue }) {
     ['set', t('lumpChoice.set'), t('lumpChoice.setHelp')],
     ['withhold', t('lumpChoice.withhold'), t('lumpChoice.withholdHelp')],
   ];
-  return <div className="space-y-4">
+  return <div className="space-y-4" aria-busy={previewPending} data-action-region>
     {v.decision && <p role="note" className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-950 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-100">
       {t('lumpChoice.withheldNote', { name: v.decision.actorName ?? t('lumpChoice.someone'), date: v.decision.at ?? '—' })}{v.decision.reason ? ` “${v.decision.reason}”` : ''}</p>}
     {v.editable ? <form action={lumpAction} className="space-y-3">

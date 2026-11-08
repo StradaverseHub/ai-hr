@@ -66,6 +66,7 @@ export default defineConfig({
       '@testing-library/react',
       'next-intl',
       'next/link',
+      'next/form',
       'next/image',
       'next/navigation',
       'lucide-react',

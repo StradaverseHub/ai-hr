@@ -1,3 +1,4 @@
+import { ExportDownloadLink } from '@/components/export-download-link';
 import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
@@ -264,15 +265,15 @@ export default async function AuditPage({
             </Link>
             <span className="ml-auto flex items-center gap-3 text-xs">
               <span className="text-muted-foreground">{t('exportAs')}</span>
-              <a href={exportHref('csv')} className="text-primary hover:underline">
+              <ExportDownloadLink href={exportHref('csv')} className="text-primary hover:underline">
                 {t('exportCsv')}
-              </a>
-              <a href={exportHref('xlsx')} className="text-primary hover:underline">
+              </ExportDownloadLink>
+              <ExportDownloadLink href={exportHref('xlsx')} className="text-primary hover:underline">
                 {t('exportExcel')}
-              </a>
-              <a href={exportHref('pdf')} className="text-primary hover:underline">
+              </ExportDownloadLink>
+              <ExportDownloadLink href={exportHref('pdf')} className="text-primary hover:underline">
                 {t('exportPdf')}
-              </a>
+              </ExportDownloadLink>
             </span>
           </div>
         </form>

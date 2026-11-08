@@ -134,7 +134,7 @@ export function AdjustmentForm({
   const [preview, setPreview] = useState<AdjustmentPreview | null>(null);
   /** What Step 4 shows back to the operator, snapshotted alongside the count — see refreshPreview. */
   const [summary, setSummary] = useState<ReviewSummary | null>(null);
-  const [, startPreview] = useTransition();
+  const [previewPending, startPreview] = useTransition();
   /**
    * r288 (8521e160) — DID THE LAST COUNT FAIL?
    *
@@ -364,7 +364,7 @@ export function AdjustmentForm({
 
   return (
     <form
-      ref={formRef}
+      ref={formRef} aria-busy={previewPending} data-action-region
       action={action}
       className="space-y-5"
       // ONE listener for the whole form: any change anywhere re-asks for the count, which is what keeps the

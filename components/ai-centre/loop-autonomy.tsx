@@ -1,3 +1,4 @@
+import { ActionButton } from '@/components/ui/action-button';
 import Link from 'next/link';
 import { getFormatter, getTranslations } from 'next-intl/server';
 import type { LoopAutonomyDetail, AutonomyActionView, AutonomyCompany } from '@/core/loops/autonomy-views';
@@ -133,7 +134,7 @@ function ActionsTable({ t, requests, loop, actions, day, when, label }: { t: Tra
                 <td className="px-4 py-3 text-right">{item.canUndo && (
                   <form action={undoLoopActionFromDetailAction}>
                     <input type="hidden" name="loop" value={loop} /><input type="hidden" name="action" value={item.id} />
-                    <button type="submit" className={cn(btnGhost, TARGET)} aria-label={`${undo} · ${item.personName ?? what}`}>{undo}</button>
+                    <ActionButton type="submit" className={cn(btnGhost, TARGET)} aria-label={`${undo} · ${item.personName ?? what}`}>{undo}</ActionButton>
                   </form>
                 )}</td>
               </tr>
@@ -178,7 +179,7 @@ export async function LoopSamplesCard({ autonomy, loop }: { autonomy: LoopAutono
               ? <p data-loop-sample-reviewed className="text-xs text-muted-foreground">{t('sample.reviewed', { name: sample.reviewed.byName ?? t('anAdministrator'), date: when(sample.reviewed.at) })}</p>
               : sample.canReview && <form action={reviewLoopSampleAction}>
                 <input type="hidden" name="loop" value={loop} /><input type="hidden" name="company" value={sample.companyId} /><input type="hidden" name="week" value={sample.weekStart} />
-                <button type="submit" className={cn(btnGhost, TARGET)} aria-label={`${t('sample.markReviewed')} · ${sample.companyName}`}>{t('sample.markReviewed')}</button>
+                <ActionButton type="submit" className={cn(btnGhost, TARGET)} aria-label={`${t('sample.markReviewed')} · ${sample.companyName}`}>{t('sample.markReviewed')}</ActionButton>
               </form>}
           </div>
           {sample.actions.length === 0 ? <p className="px-4 pb-4 text-sm text-muted-foreground">{t('sample.none')}</p>

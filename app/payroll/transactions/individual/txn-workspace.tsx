@@ -2166,15 +2166,15 @@ export function TxnWorkspace({
                 {formErrorBlock}
 
                 <div className="flex flex-wrap items-center gap-2">
-                  <Button type="button" size="sm" onClick={() => submitForm(false)} disabled={isPending}>
+                  <Button aria-busy={isPending} type="button" size="sm" onClick={() => submitForm(false)} disabled={isPending}>
                     {isPending ? t('saving') : t('save')}
                   </Button>
                   {form.mode === 'create' && (
-                    <Button type="button" size="sm" variant="secondary" onClick={() => submitForm(true)} disabled={isPending}>
+                    <Button aria-busy={isPending} type="button" size="sm" variant="secondary" onClick={() => submitForm(true)} disabled={isPending}>
                       {t('saveAndAnother')}
                     </Button>
                   )}
-                  <Button type="button" size="sm" variant="outline" onClick={requestCloseForm} disabled={isPending}>
+                  <Button aria-busy={isPending} type="button" size="sm" variant="outline" onClick={requestCloseForm} disabled={isPending}>
                     {t('cancel')}
                   </Button>
                 </div>
@@ -2419,7 +2419,7 @@ export function TxnWorkspace({
                 </div>
 
                 <div className="flex flex-wrap items-center gap-2">
-                  <Button type="button" size="sm" variant="secondary" onClick={addDailyLine} disabled={isPending}>
+                  <Button aria-busy={isPending} type="button" size="sm" variant="secondary" onClick={addDailyLine} disabled={isPending}>
                     {t('dayGridAddDate')}
                   </Button>
                 </div>
@@ -2483,10 +2483,10 @@ export function TxnWorkspace({
                 <div className="flex flex-wrap items-center gap-2">
                   {/* ONE save for every line. Not "save each row" — the service writes the whole set in one
                       transaction, so a failure on line nine cannot leave lines one to eight behind. */}
-                  <Button type="button" size="sm" onClick={() => submitDaily()} disabled={isPending}>
+                  <Button aria-busy={isPending} type="button" size="sm" onClick={() => submitDaily()} disabled={isPending}>
                     {isPending ? t('saving') : t('dayGridSave')}
                   </Button>
-                  <Button type="button" size="sm" variant="outline" onClick={requestCloseForm} disabled={isPending}>
+                  <Button aria-busy={isPending} type="button" size="sm" variant="outline" onClick={requestCloseForm} disabled={isPending}>
                     {t('cancel')}
                   </Button>
                 </div>
@@ -2786,7 +2786,7 @@ export function TxnWorkspace({
                           <td colSpan={8} className="px-3 py-2.5 text-xs">
                             <div className="flex flex-wrap items-center gap-3">
                               <span className="text-red-700 dark:text-red-400">{t('deleteTxnBody')}</span>
-                              <Button type="button" size="sm" variant="destructive" onClick={() => doDelete(r.id)} disabled={isPending}>
+                              <Button aria-busy={isPending} type="button" size="sm" variant="destructive" onClick={() => doDelete(r.id)} disabled={isPending}>
                                 {t('delete')}
                               </Button>
                               <Button type="button" size="sm" variant="outline" onClick={() => setConfirmDeleteId(null)}>
@@ -2915,7 +2915,7 @@ export function TxnWorkspace({
               {/* 4e403268 — Save is offered when EITHER machine would actually save. Offering it for an
                   invalid grid would put the operator one click from a refusal they cannot see the cause
                   of, because the failing row is behind a modal. */}
-              <Button
+              <Button aria-busy={isPending}
                 type="button"
                 size="sm"
                 disabled={
@@ -2970,10 +2970,10 @@ export function TxnWorkspace({
               })}
             </p>
             <div className="mt-4 flex flex-wrap justify-end gap-2">
-              <Button type="button" size="sm" variant="outline" onClick={cancelScopeConfirm} disabled={isPending}>
+              <Button aria-busy={isPending} type="button" size="sm" variant="outline" onClick={cancelScopeConfirm} disabled={isPending}>
                 {t('cancel')}
               </Button>
-              <Button type="button" size="sm" onClick={scopeConfirm.retry} disabled={isPending}>
+              <Button aria-busy={isPending} type="button" size="sm" onClick={scopeConfirm.retry} disabled={isPending}>
                 {isPending ? t('scopeConfirmBusy') : t('scopeConfirmContinue')}
               </Button>
             </div>

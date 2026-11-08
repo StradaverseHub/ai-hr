@@ -70,7 +70,7 @@ function Composer({employmentId,target,send}:Props){
      {receipt&&<p role="status" className="rounded-lg border border-border p-3 text-sm">{t(receipt.state==='erased'?'erased':'sent')}</p>}
      <div className="flex flex-wrap justify-end gap-3">
       <Dialog.Close asChild><Button type="button" variant="outline" className="min-h-11">{t(locked?'close':'cancel')}</Button></Dialog.Close>
-      {!receipt&&<Button type="submit" className="min-h-11" disabled={pending||!valid}>
+      {!receipt&&<Button aria-busy={pending} type="submit" className="min-h-11" disabled={pending||!valid}>
        {t(pending?'sending':uncertain?'retry':'send')}
       </Button>}
      </div>

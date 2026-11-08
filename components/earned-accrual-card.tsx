@@ -323,7 +323,7 @@ export function EarnedAccrualCard({
           clearAllLabel={t('multiSelectClearAll')}
           selectedCount={(n) => t('multiSelectSelectedCount', { count: n })}
         />
-        <Button type="button" size="sm" onClick={onPreview} disabled={pending}>
+        <Button aria-busy={pending} type="button" size="sm" onClick={onPreview} disabled={pending}>
           {pending && rows === null ? t('earnedPreviewingButton') : t('earnedPreviewButton')}
         </Button>
       </div>
@@ -435,10 +435,10 @@ export function EarnedAccrualCard({
 
           {/* Step 3 — Confirm / Cancel / Export. */}
           <div className="flex flex-wrap items-center gap-2">
-            <Button type="button" size="sm" onClick={onRun} disabled={pending || committed || rows.length === 0}>
+            <Button aria-busy={pending} type="button" size="sm" onClick={onRun} disabled={pending || committed || rows.length === 0}>
               {pending && rows !== null ? t('earnedRunningButton') : t('earnedRunButton')}
             </Button>
-            <Button type="button" variant="ghost" size="sm" onClick={onCancel} disabled={pending}>
+            <Button aria-busy={pending} type="button" variant="ghost" size="sm" onClick={onCancel} disabled={pending}>
               {t('earnedCancelButton')}
             </Button>
             <Button

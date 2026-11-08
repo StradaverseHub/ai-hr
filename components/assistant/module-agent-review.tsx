@@ -1,4 +1,5 @@
 /** Management forms select source-owned candidates. No model response or evidence token enters props. */
+import { ActionButton } from '@/components/ui/action-button';
 import {getLocale,getTranslations} from 'next-intl/server';
 import {Card,inputCls,btnPrimary} from '../ui';
 import type {agentReviewWorkspaceTx} from '../../core/module-agent-releases';
@@ -25,7 +26,7 @@ export async function ModuleAgentReview({view}:{view:View}){
      <span className="mt-1 block text-xs text-muted-foreground">{native('candidateIntro')}</span>
      <select name="nativeSignalId" defaultValue="" className={`${inputCls} mt-1 min-h-11 w-full`}><option value="">{native('candidateNone')}</option>{view.ownNativeSignalChoices.map(signal=><option key={signal.associationId} value={signal.associationId}>{jobs(`module_${signal.module}`)} · {native(`action_${signal.action.replace(/[.-]/g,'_')}`)}</option>)}</select></label>}
     {view.nativeSignalChoicesTruncated&&<p className="text-xs text-muted-foreground">{native('bounded')}</p>}
-    <button type="submit" className={`${btnPrimary} min-h-11`}>{t('create')}</button>
+    <ActionButton type="submit" className={`${btnPrimary} min-h-11`}>{t('create')}</ActionButton>
    </form>
    <div className="space-y-1"><h3 className="text-sm font-medium">{t('candidates')}</h3>
     {view.candidates.length?view.candidates.map(row=>{const pairing=row.progress?.comparison;return <div key={row.id} className="text-xs text-muted-foreground"><p>{label(row)}</p><p>{row.verifiedSignalCount===null?t('signalsUnknown'):t('signalsCount',{count:row.verifiedSignalCount})}</p>
@@ -42,23 +43,23 @@ export async function ModuleAgentReview({view}:{view:View}){
     <form action={evaluateAgentCandidateAction} className="space-y-2">
      <label className="block text-sm">{t('choose')}<select name="candidateId" className={`${inputCls} mt-1 w-full`}>{reviewable.map(row=><option key={row.id} value={row.id}>{label(row)}</option>)}</select></label>
      <label className="flex items-start gap-2 text-xs"><input required type="checkbox" name="consented" value="yes" className="mt-0.5"/><span>{t('consent',{requests:PROMPT_HOLDOUT_REQUEST_LIMIT})}</span></label>
-     <button type="submit" className={`${btnPrimary} min-h-11`}>{t('evaluate')}</button>
+     <ActionButton type="submit" className={`${btnPrimary} min-h-11`}>{t('evaluate')}</ActionButton>
     </form>
     <form action={promoteAgentCandidateAction} className="space-y-2">
      <label className="block text-sm">{t('choose')}<select name="candidateId" className={`${inputCls} mt-1 w-full`}>{reviewable.map(row=><option key={row.id} value={row.id}>{label(row)}</option>)}</select></label>
      <div className="grid grid-cols-2 gap-3"><label className="text-xs">{t('maxJobs')}<input name="maxJobs" type="number" min={1} max={100} defaultValue={5} required className={`${inputCls} mt-1 w-full`}/></label>
       <label className="text-xs">{t('hours')}<input name="hours" type="number" min={1} max={24} defaultValue={1} required className={`${inputCls} mt-1 w-full`}/></label></div>
-     <p className="text-xs text-muted-foreground">{t('pending')}</p><button type="submit" className={`${btnPrimary} min-h-11`}>{t('promote')}</button>
+     <p className="text-xs text-muted-foreground">{t('pending')}</p><ActionButton type="submit" className={`${btnPrimary} min-h-11`}>{t('promote')}</ActionButton>
     </form>
    </>}
    <form action={tryAgentCandidateAction} className="space-y-2">
     <label className="block text-sm">{t('fixture')}<select name="fixtureId" className={`${inputCls} mt-1 w-full`}>{trials.map(row=><option key={row.id} value={row.id}>{row.question}</option>)}</select></label>
     <label className="flex items-start gap-2 text-xs"><input required type="checkbox" name="consented" value="yes" className="mt-0.5"/><span>{t('consent',{requests:1})}</span></label>
-    <button type="submit" className={`${btnPrimary} min-h-11`}>{t('tryout')}</button>
+    <ActionButton type="submit" className={`${btnPrimary} min-h-11`}>{t('tryout')}</ActionButton>
    </form>
    {view.promotions.filter(row=>!row.retired).length>0&&<form action={rollbackAgentCandidateAction} className="space-y-2">
     <label className="block text-sm">{t('rollback')}<select name="promotionId" className={`${inputCls} mt-1 w-full`}>{view.promotions.filter(row=>!row.retired).map(row=><option key={row.id} value={row.id}>{t(row.kind==='read_plan_prompt_v1'?'kindPrompt':'kindRoute')} · {row.version} · {row.used}/{row.maximum}</option>)}</select></label>
-    <button type="submit" className="min-h-11 rounded-md border px-3 text-sm">{t('rollback')}</button>
+    <ActionButton type="submit" className="min-h-11 rounded-md border px-3 text-sm">{t('rollback')}</ActionButton>
    </form>}
   </div></details></Card>;
 }
@@ -70,13 +71,13 @@ async function ConversationCandidateReview({view}:{view:View}){
   <form action={createConversationCandidateAction} className="space-y-2"><input type="hidden" name="version" value={view.nextVersion}/><label className="block text-sm">{shared('variant')}<select name="variant" defaultValue="focused_v1" className={`${inputCls} mt-1 min-h-11 w-full`}><option value="baseline_v1">{t('baseline')}</option><option value="focused_v1">{t('focused')}</option></select></label>
    {view.ownSignalChoices.length>0&&<fieldset><legend className="text-sm">{shared('signalsTitle')}</legend><p className="text-xs text-muted-foreground">{shared('signalsConsent')}</p>{view.ownSignalChoices.map(signal=><label key={signal.id} className="flex min-h-11 items-center gap-2 text-sm"><input type="checkbox" name="signalId" value={signal.id}/>{shared(`signal_${signal.outcome}`)}</label>)}</fieldset>}
    {view.ownNativeSignalChoices.length>0&&<label className="block text-sm">{native('candidateTitle')}<span className="block text-xs text-muted-foreground">{native('candidateIntro')}</span><select name="nativeSignalId" defaultValue="" className={`${inputCls} min-h-11 w-full`}><option value="">{native('candidateNone')}</option>{view.ownNativeSignalChoices.map(signal=><option key={signal.associationId} value={signal.associationId}>{jobs(`module_${signal.module}`)} · {native(`action_${signal.action.replace(/[.-]/g,'_')}`)}</option>)}</select></label>}
-   <button type="submit" className={`${btnPrimary} min-h-11`}>{t('create')}</button></form>
+   <ActionButton type="submit" className={`${btnPrimary} min-h-11`}>{t('create')}</ActionButton></form>
   <ul className="space-y-3">{rows.map(row=><li key={row.id} className="space-y-1 text-sm"><p className="font-medium">{t('record',{version:row.version})}</p><p>{row.progress?t('progress',{completed:row.progress.completedCases,total:row.progress.totalCases,failures:row.progress.knownFailures}):t('unknown')}</p>
    {row.progress&&<><p>{shared(row.progress.state!=='complete'?'qualityPending':row.progress.comparison.qualityImproved?'qualityGain':'qualityNoGain')}</p><dl className="grid gap-3 sm:grid-cols-2">{(['baseline','candidate'] as const).map(arm=>{const stats=row.progress!.comparison[arm];return <div key={arm}><dt className="font-medium">{shared(arm==='baseline'?'baselineArm':'candidateArm')}</dt><dd>{t('metrics',{correct:stats.correct,security:stats.securityFailures,p50:metric(stats.p50Ms),p95:metric(stats.p95Ms),input:metric(stats.inputTokens),output:metric(stats.outputTokens),credits:metric(stats.costCredits)})}</dd></div>;})}</dl></>}
   </li>)}</ul>{!rows.length&&<p className="text-sm text-muted-foreground">{t('noCandidates')}</p>}
-  {reviewable.length>0&&<><form action={evaluateConversationCandidateAction} className="space-y-2"><label className="block text-sm">{t('choose')}<select name="candidateId" className={`${inputCls} mt-1 min-h-11 w-full`}>{reviewable.map(row=><option key={row.id} value={row.id}>{t('record',{version:row.version})}</option>)}</select></label><label className="flex items-start gap-2 text-sm"><input type="checkbox" name="consented" value="yes" required className="mt-1"/>{t('consent')}</label><button type="submit" className={`${btnPrimary} min-h-11`}>{t('evaluate')}</button></form>
-   <form action={promoteConversationCandidateAction} className="space-y-2"><label className="block text-sm">{t('choose')}<select name="candidateId" className={`${inputCls} mt-1 min-h-11 w-full`}>{reviewable.map(row=><option key={row.id} value={row.id}>{t('record',{version:row.version})}</option>)}</select></label><div className="grid grid-cols-2 gap-3"><label>{shared('maxJobs')}<input className={inputCls} name="maxJobs" type="number" min={1} max={100} defaultValue={5} required/></label><label>{shared('hours')}<input className={inputCls} name="hours" type="number" min={1} max={24} defaultValue={1} required/></label></div><p className="text-xs text-muted-foreground">{t('condition')}</p><button type="submit" className={`${btnPrimary} min-h-11`}>{t('promote')}</button></form></>}
-  {promotions.map(row=><form key={row.id} action={rollbackAgentCandidateAction} className="flex flex-wrap items-center gap-2 text-sm"><input type="hidden" name="promotionId" value={row.id}/><span>{t('record',{version:row.version})} · {row.used}/{row.maximum}</span>{!row.retired&&<button type="submit" className="min-h-11 px-3 underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">{shared('rollback')}</button>}</form>)}
+  {reviewable.length>0&&<><form action={evaluateConversationCandidateAction} className="space-y-2"><label className="block text-sm">{t('choose')}<select name="candidateId" className={`${inputCls} mt-1 min-h-11 w-full`}>{reviewable.map(row=><option key={row.id} value={row.id}>{t('record',{version:row.version})}</option>)}</select></label><label className="flex items-start gap-2 text-sm"><input type="checkbox" name="consented" value="yes" required className="mt-1"/>{t('consent')}</label><ActionButton type="submit" className={`${btnPrimary} min-h-11`}>{t('evaluate')}</ActionButton></form>
+   <form action={promoteConversationCandidateAction} className="space-y-2"><label className="block text-sm">{t('choose')}<select name="candidateId" className={`${inputCls} mt-1 min-h-11 w-full`}>{reviewable.map(row=><option key={row.id} value={row.id}>{t('record',{version:row.version})}</option>)}</select></label><div className="grid grid-cols-2 gap-3"><label>{shared('maxJobs')}<input className={inputCls} name="maxJobs" type="number" min={1} max={100} defaultValue={5} required/></label><label>{shared('hours')}<input className={inputCls} name="hours" type="number" min={1} max={24} defaultValue={1} required/></label></div><p className="text-xs text-muted-foreground">{t('condition')}</p><ActionButton type="submit" className={`${btnPrimary} min-h-11`}>{t('promote')}</ActionButton></form></>}
+  {promotions.map(row=><form key={row.id} action={rollbackAgentCandidateAction} className="flex flex-wrap items-center gap-2 text-sm"><input type="hidden" name="promotionId" value={row.id}/><span>{t('record',{version:row.version})} · {row.used}/{row.maximum}</span>{!row.retired&&<ActionButton type="submit" className="min-h-11 px-3 underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">{shared('rollback')}</ActionButton>}</form>)}
   <OwnClearForm kind="conversation" action={eraseConversationMetadataAction} label={t('erase')} className="min-h-11 text-sm underline"/>
  </section>;
 }

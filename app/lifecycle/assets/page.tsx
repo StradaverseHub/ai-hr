@@ -1,3 +1,4 @@
+import { ExportDownloadLink } from '@/components/export-download-link';
 import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
 import { Button, Card, ErrorBanner, PageHeader, tableWrapCls, tbodyCls, theadCls, thCls } from '@/components/ui';
@@ -34,7 +35,7 @@ export default async function AssetsPage({ searchParams }: { searchParams: Promi
         <select name="status" defaultValue={sp.status ?? ''} className={sel} aria-label={t('common.status')}><option value="">{t('common.status')}: {t('common.all')}</option>{ASSET_STATUSES.map((x) => <option key={x} value={x}>{t(`assetStatus.${x}`)}</option>)}</select>
         <label className="flex items-center gap-1.5"><input type="checkbox" name="expiring" value="1" defaultChecked={sp.expiring === '1'} className="size-4" />{t('assets.expiring')}</label>
         <Button type="submit" size="sm" variant="outline">{t('common.filter')}</Button>
-        {level >= LEVEL.manager && <a className="ml-auto text-primary underline-offset-2 hover:underline" href="/lifecycle/export/assets">{t('common.exportCsv')}</a>}
+        {level >= LEVEL.manager && <ExportDownloadLink className="ml-auto text-primary underline-offset-2 hover:underline" href="/lifecycle/export/assets">{t('common.exportCsv')}</ExportDownloadLink>}
       </form>
       <form action={bulkAssetStatusAction}>
         <Card className={tableWrapCls}>

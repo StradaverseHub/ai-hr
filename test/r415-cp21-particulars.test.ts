@@ -55,6 +55,9 @@ vi.mock('next-intl/server', () => ({
 }));
 
 import { renderToStaticMarkup } from 'react-dom/server';
+import { createElement } from 'react';
+import { NextIntlClientProvider } from 'next-intl';
+import messages from '../messages/en.json';
 import { GET as pdfGET } from '../app/payroll/cp21/[employmentId]/pdf/route';
 import Cp21PreviewPage from '../app/payroll/cp21/[employmentId]/preview/page';
 import EventPage from '../app/payroll/statutory-forms/event/page';
@@ -504,12 +507,13 @@ describe('r415 · the PDF route and the preview', () => {
   });
 
   it('the preview renders the A4 viewer, carries the typed answers, and names what it dropped', async () => {
-    const html = renderToStaticMarkup(
-      await Cp21PreviewPage({
+    const html = renderToStaticMarkup(createElement(NextIntlClientProvider, {
+      locale: 'en', messages,
+      children: await Cp21PreviewPage({
         params: Promise.resolve({ employmentId }),
         searchParams: Promise.resolve({ a3: '2026-04-15', a16: '2026-04-01', a18: 'yes' }),
       }),
-    );
+    }));
     expect(html).toContain('data-statutory-pdf-viewer');
     expect(html).toContain('aspect-[210/297]');
     expect(html).toContain(`/payroll/cp21/${employmentId}/pdf?a3=2026-04-15&amp;a18=yes&amp;inline=1`);

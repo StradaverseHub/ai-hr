@@ -54,7 +54,7 @@ export function ChartCard({
         {!isEmpty && (
           <div className="inline-flex items-center gap-1.5" aria-label={exportLabel}>
             {FORMATS.map(({ fmt, label }) => (
-              <button
+              <button aria-busy={busy}
                 key={fmt}
                 type="button"
                 disabled={busy}

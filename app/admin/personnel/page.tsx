@@ -1,5 +1,6 @@
 import {ResponsiveActions} from '@/components/responsive-actions';
 import {personnelPrivateSearchAvailable} from '@/core/personnel-private-search';
+import { ExportDownloadLink } from '@/components/export-download-link';
 import { organisationChoiceLabels } from '@/lib/organisation-choice-label';
 import {personnelMaintenanceCompanyIds} from '@/core/workforce-access';
 import Link from 'next/link';
@@ -377,13 +378,13 @@ async function renderPersonnelPage(sp: PersonnelSearchParams) {
               saveAction={saveEmployeeColumnsAction}
               resetAction={resetEmployeeColumnsAction}
             />
-            <a
+            <ExportDownloadLink
               href={exportHref}
               aria-label={t('exportAria')}
               className="rounded-lg border border-border px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-accent"
             >
               {t('exportXlsx')}
-            </a>
+            </ExportDownloadLink>
             </ResponsiveActions>
           </div>
         }

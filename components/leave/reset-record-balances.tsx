@@ -1,3 +1,4 @@
+import { ExportDownloadLink } from '@/components/export-download-link';
 import { getTranslations } from 'next-intl/server';
 
 import type { SessionContext } from '@/db/client';
@@ -91,9 +92,9 @@ export async function ResetRecordBalances({ s, capture }: { s: SessionContext; c
             <button type="submit" className={btnPrimary}>
               {t('show')}
             </button>
-            <a href={csvHref} className="text-sm underline">
+            <ExportDownloadLink href={csvHref} className="text-sm underline">
               {t('downloadCsv')}
-            </a>
+            </ExportDownloadLink>
           </form>
 
           {/* The two counts stated plainly: the whole point of the record is that the number of rows taken

@@ -1,4 +1,5 @@
 'use client';
+import { ActionButton } from '@/components/ui/action-button';
 import {useTranslations} from 'next-intl';
 import {ProtectedInputHelp} from '@/components/assistant/protected-input-help';
 
@@ -412,7 +413,7 @@ export function ReportBuilder({
           <div className="mt-4">
             <div className="mb-2 flex items-center justify-between">
               <h4 className="text-sm font-semibold">{labels.preview}</h4>
-              <button
+              <button aria-busy={pending}
                 type="button"
                 onClick={runPreview}
                 disabled={pending || columns.length === 0}
@@ -724,7 +725,7 @@ export function ReportBuilder({
               disabled={!aiEnabled}
               className={`${inputCls} resize-none disabled:opacity-60`}
             />
-            <button
+            <button aria-busy={pending}
               type="button"
               onClick={runAi}
               disabled={!aiEnabled || pending || !aiText.trim()}
@@ -774,9 +775,9 @@ export function ReportBuilder({
           {reportId && (
             <form action={saveAsTemplateAction}>
               <input type="hidden" name="id" value={reportId} />
-              <button type="submit" className="rounded-lg border border-border px-3 py-2 text-sm font-medium hover:bg-accent/60">
+              <ActionButton type="submit" className="rounded-lg border border-border px-3 py-2 text-sm font-medium hover:bg-accent/60">
                 {labels.saveAsTemplate}
-              </button>
+              </ActionButton>
             </form>
           )}
           <form action={saveReportAction}>
@@ -784,13 +785,13 @@ export function ReportBuilder({
             <input type="hidden" name="name" value={name} />
             <input type="hidden" name="shared" value={shared ? 'true' : 'false'} />
             <input type="hidden" name="spec" value={JSON.stringify(buildSpec())} />
-            <button
+            <ActionButton
               type="submit"
               disabled={columns.length === 0 || !name.trim()}
               className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50"
             >
               {labels.save}
-            </button>
+            </ActionButton>
           </form>
         </div>
       </div>

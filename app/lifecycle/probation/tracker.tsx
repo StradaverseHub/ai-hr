@@ -1,4 +1,5 @@
 'use client';
+import { ExportDownloadLink } from '@/components/export-download-link';
 import Link from 'next/link';
 import type {ReactNode} from 'react';
 import {useTranslations} from 'next-intl';
@@ -9,7 +10,7 @@ import type {TrackerFilters} from './tracker-filters';
 function filterQuery(filters:TrackerFilters,offset?:number){const query=new URLSearchParams();for(const[key,value]of Object.entries({...filters,offset:offset??filters.offset})){if(value!==undefined&&value!==''&&key!=='limit')query.set(key,String(value));}return query.toString();}
 export function ProbationTracker({data,filters,configure,warning}:{data:Awaited<ReturnType<typeof probationSummaryRows>>;filters:TrackerFilters;configure:boolean;warning?:ReactNode}){
  const t=useTranslations('probation'),options=data.options;
- return <main><header className="v9-heading"><div><h1>{t('tracker.title')}</h1><p>{t('tracker.scope')}</p></div><div className="probation-actions"><a className="v9-button" href={'/lifecycle/probation/export?'+filterQuery(filters)} data-unsaved-guard="ignore"><Download size={16}/>{t('export')}</a>{configure&&<Link className="v9-button" href="/lifecycle/probation/settings"><Settings size={16}/>{t('settings.title')}</Link>}</div></header>
+ return <main><header className="v9-heading"><div><h1>{t('tracker.title')}</h1><p>{t('tracker.scope')}</p></div><div className="probation-actions"><ExportDownloadLink className="v9-button" href={'/lifecycle/probation/export?'+filterQuery(filters)} data-unsaved-guard="ignore"><Download size={16}/>{t('export')}</ExportDownloadLink>{configure&&<Link className="v9-button" href="/lifecycle/probation/settings"><Settings size={16}/>{t('settings.title')}</Link>}</div></header>
   {warning}
   <section className="probation-stats" aria-label={t('tracker.summary')}>{(['overdue','end_passed','ending14','low_result','kpi_submit','kpi_ack'] as const).map(flag=><Link className="v9-button" aria-current={filters.flag===flag?'page':undefined} href={'/lifecycle/probation?'+filterQuery({...filters,flag:filters.flag===flag?undefined:flag},0)} key={flag} data-flag={flag}>{t('tracker.flags.'+flag)} <strong>{data.totals[flag]}</strong></Link>)}</section>
   <TrackerFilterPanel key={filterQuery(filters)} options={options} filters={filters} configure={configure}/>
