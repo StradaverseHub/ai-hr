@@ -23,7 +23,7 @@ import * as exactAscii from './employee-choice-exact-ascii-reader';
 import {employeeChoiceBenchmarkContract,employeeChoiceBenchmarkCases,employeeChoiceBenchmarkNativeCalls,type EmployeeChoiceBenchmarkCase,type EmployeeChoiceBenchmarkPurpose} from './employee-choice-benchmark-contract';
 import {employeeChoicePrototypeCarriers} from './employee-choice-prototype-carriers';
 import {employeeChoiceNativePrototypeOwner,employeeChoicePrototypeSignature} from './employee-choice-native-purpose-owner-factory';
-import {exactAsciiEmployeeChoiceOwner,type ExactAsciiInstallation,type ExactAsciiOwnership} from './employee-choice-exact-ascii-owner-factory';
+import {exactAsciiEmployeeChoiceOwner,exactAsciiEmployeeChoiceSource,type ExactAsciiInstallation,type ExactAsciiOwnership} from './employee-choice-exact-ascii-owner-factory';
 import {exactAsciiPrototypeRuntimeEvidence,closeExactAsciiPrototypeRuntime} from './employee-choice-exact-ascii-runtime';
 import {exactAsciiExtraAssignmentWork} from './employee-choice-exact-ascii-plan-work';
 import {assignment,businessUnit} from '../../db/schema';
@@ -305,7 +305,7 @@ it('captures real nested native plans on a separate bound app PID with exact own
  expect(configuration).toEqual({duration:'0',parameters:'0',nested:'on',analyze:'on',buffers:'on',settings:'on',format:'json',timing:'off'});
  report.planBackendSettings=configuration;report.preloadLibraryProof='Exact owner-verified database settings before new app backend plus actual same-PID nested plans; no application privilege added';save();
  const markers:PlanMarker[]=[],startedAt=new Date().toISOString(),spy=plansSession.install();restoreSpy=()=>spy.mockRestore();
- const container=evidence(),pid=plansSession.defaults.pid,source=readFileSync(contract.sql,'utf8'),body=employeeChoiceNativeBody(source);
+ const container=evidence(),pid=plansSession.defaults.pid,source=purpose==='exact-ascii'?exactAsciiEmployeeChoiceSource():readFileSync(contract.sql,'utf8'),body=employeeChoiceNativeBody(source);
  const actualContainer=execFileSync('docker',['inspect','--format','{{.Id}} {{.Name}}',container.name],{encoding:'utf8',timeout:10000,maxBuffer:4096}).trim().split(' ');
  if(actualContainer.length!==2||!/^[a-f0-9]{64}$/.test(actualContainer[0])||actualContainer[1]!=='/'+container.name)throw Error('Exact owned native log container required');
  const containerId=actualContainer[0];

@@ -12,6 +12,7 @@ import {restrictedPortRequest,executeDatabaseSetup,runRestrictedPortQualificatio
 import {capturePostgresEvidence, validatePostgresEvidence, postgresProfileFromEnv, V15_POSTGRES_PROFILE} from './postgres-evidence.mjs';
 import {compilerProcIdentity,boundedCompilerBytes} from './diagnostics/native-reference/admission.mjs';
 import {EMPLOYEE_LIFECYCLE_PROFILE} from './employee-lifecycle-profile.mjs';
+import {employeeAsciiSelection,captureEmployeeAsciiCell,finishEmployeeAsciiCell} from './employee-ascii-runtime-qualification.mjs';
 
 const postgres = fileURLToPath(new URL('./postgres.sh', import.meta.url));
 const hash = text => createHash('sha256').update(text).digest('hex');
@@ -180,10 +181,13 @@ export function runFocused(destination) {
   }
   const qualifyPort = restrictedPortRequest(process.env.AIHR_QUALIFY_RESTRICTED_PORT, groups, process.env.AIHR_RESTRICTED_PORT_TYPECHECK);
   const postgresProfile = groups.DB.length ? assertFocusedPostgresProfile(process.env) : null;
+  const asciiCell=captureEmployeeAsciiCell(files);
+  if(asciiCell)assert.deepEqual(groups,{NODB:[],DB:files},'Actual ASCII cells require complete DB classification');
 
   const identity = focusedPlanIdentity({sha, controller, files, groups, classifierHash: hash(readFileSync(classifier)),
-    execution: {workers: compilerApplication?1:2, postgres: postgresProfile, ...(qualifyPort?{restrictedPortPrerequisite:{version:2,sourcePins:SOURCE_PINS}}:{})}});
-  const report = {kind: 'FOCUSED_ONLY', releaseEligible: false, schemaVersion: 1, sha, controller,
+    execution: {workers: compilerApplication?1:2, postgres: postgresProfile, ...(qualifyPort?{restrictedPortPrerequisite:{version:2,sourcePins:SOURCE_PINS}}:{}),...(asciiCell?{employeeAsciiCell:asciiCell.cell}:{})}});
+  const report = {kind: asciiCell?'EMPLOYEE_ASCII_RUNTIME_QUALIFICATION_ONLY':'FOCUSED_ONLY', releaseEligible: false, schemaVersion: 1, sha, controller,
+    ...(asciiCell?{normalCompilerQualified:false,releaseAuthorized:false}:{}),
     runId: process.env.GITHUB_RUN_ID, attempt: process.env.GITHUB_RUN_ATTEMPT,
     runtime: {node: process.versions.node, platform: process.platform, arch: process.arch},
     startedAt: new Date().toISOString(), ...identity, manifestHash: hash(JSON.stringify(files)), batches: [], exitCode: 1};
@@ -248,11 +252,15 @@ export function runFocused(destination) {
         }
       }
       };
-      const dispose=()=>{if ((supervised?stage('stop',{stdio:'inherit',env:pgEnv}):spawnSync('bash', [postgres, 'stop'], {stdio: 'inherit', env: pgEnv})).status !== 0) report.exitCode = 1;};
+      const dispose=()=>{const stopped=supervised?stage('stop',{stdio:'inherit',env:pgEnv}):spawnSync('bash', [postgres, 'stop'], {stdio: 'inherit', env: pgEnv});if(asciiCell)report.qualificationDatabaseStopped=!stopped.error&&stopped.status===0;if(stopped.status !== 0) report.exitCode = 1;};
       if(supervised)finalizeFocusedBenchmark(terminal,dispose,()=>{report.exitCode=1;report.databaseTerminalCaptureError='terminal-persistence-refused';});else{terminal();dispose();}
     }
     report.endedAt = new Date().toISOString();
     report.healthAfter = hostHealth();
+    if(asciiCell){
+      report.employeeAsciiQualification={kind:'EMPLOYEE_ASCII_CELL_UNAVAILABLE_NOT_PROOF',complete:false,cell:asciiCell.cell,releaseAuthorized:false,normalNoDbVerified:false};
+      if(report.exitCode===0){try{report.employeeAsciiQualification=finishEmployeeAsciiCell(asciiCell,report,dir);}catch{report.exitCode=1;report.employeeAsciiQualificationRefused=true;}}
+    }
     writeFileSync(join(dir, 'focused.json'), JSON.stringify(report, null, 2) + '\n', {flag: 'wx'});
     appendFileSync(process.env.GITHUB_STEP_SUMMARY, `## Focused development checks\nCandidate: ${sha}\nController: ${controller}\nSelected files: ${files.length}\nExit: ${report.exitCode}\n\nFOCUSED ONLY — no release receipt, full coverage or deployment approval.\n`);
     };
@@ -330,6 +338,7 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
   const command = process.argv[2];
   if (command === 'selection' && process.argv.length === 3) {
     const files = parseSelection(process.env.AIHR_FOCUSED_TESTS);
+    employeeAsciiSelection(files);
     appendFileSync(process.env.GITHUB_OUTPUT, `tests=${JSON.stringify(files)}\n`);
   } else if (command === 'run' && process.argv.length === 4) process.exitCode = runFocused(process.argv[3]);
   else if(command === 'compiler-settled' && process.argv.length === 4)process.exitCode=cleanupCompilerReference(process.argv[3]);

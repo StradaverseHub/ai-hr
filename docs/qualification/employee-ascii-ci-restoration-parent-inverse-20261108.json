@@ -1,0 +1,41 @@
+{
+  "kind": "WHOLE_PARENT_MAP_GIT_PREIMAGE_NOT_EXECUTION",
+  "parent": "b4dbb63ca6a8c76d74a9fa764d7737dcdda7da47",
+  "path": "docs/qualification/employee-native-restoration-inverse-20261108.json",
+  "gitBlob": "f6f802d434996c84b8dbb60f9203814fb4e574e1",
+  "sha256": "5988caedc80f897bff10ea8e9dea6b0e0ff95be0ddef69d6840ff94242236325",
+  "bytes": 45191,
+  "updatedRows": [
+    ".github/ci/employee-lifecycle-native.mjs",
+    ".github/ci/employee-lifecycle-sources.mjs",
+    ".github/ci/employee-lifecycle-sources.test.mjs",
+    "test/employee-choice-exact-ascii-plan.test.ts",
+    "test/employee-choice-native-purpose-plan.test.ts"
+  ],
+  "unchangedRows": [
+    "test/employee-choice-exact-ascii-owner-source.test.ts",
+    "test/employee-choice-native-owner-factory-source.test.ts",
+    "test/employee-choice-native-owner-factory.test.ts",
+    "test/performance/employee-choice-auto-explain.ts",
+    "test/performance/employee-choice-exact-ascii-owner-factory.ts",
+    "test/performance/employee-choice-native-purpose-owner-factory.ts"
+  ],
+  "basePreserved": "ee5722312689fc88d8a9253c232945e6f2599900",
+  "coordinates": "ZERO_BASED_HALF_OPEN",
+  "actual630EntryPreimages": {
+    "test/employee-choice-exact-ascii-plan.test.ts": {
+      "gitBlob": "6bd44084ff337810cb15930420e76ad5110b3c4a",
+      "sha256": "350830e5dd359e6b3e35166163f785c88e9487233d300c8c46f26936b56fb186",
+      "bytes": 49169,
+      "currentShared630Sha256": "65a248b53a80c1e78e1149e147ebee953c28010b407a10e44922a1ecc0a1eafd",
+      "oldMapExpectedSha256": "350830e5dd359e6b3e35166163f785c88e9487233d300c8c46f26936b56fb186"
+    },
+    "test/employee-choice-native-purpose-plan.test.ts": {
+      "gitBlob": "56b163a8bfb60ff200676fce7c70c7471653075c",
+      "sha256": "c9f47bb51008c7157ed25ff969323ab2a6229f4f1f0a8d7630fb61d5a6371f50",
+      "bytes": 45844,
+      "currentShared630Sha256": "91ab7878478676531d720ba91c945b1aae527f5470d9a6151d2098b9786234ab",
+      "oldMapExpectedSha256": "c9f47bb51008c7157ed25ff969323ab2a6229f4f1f0a8d7630fb61d5a6371f50"
+    }
+  }
+}

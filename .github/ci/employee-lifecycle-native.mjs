@@ -3,6 +3,7 @@
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
 import {isDeepStrictEqual} from 'node:util';
+import {employeeAsciiCompiledSource,employeeAsciiSourceWitness} from './employee-ascii-compiled-source.mjs';
 import {employeeRestorationHash,verifyEmployeePrototypeRestoration,verifyEmployeeLoggingRestoration} from './employee-restoration-proof.mjs';
 import {employeeChoiceNativeLogBounds as bounds,employeeChoiceNativeLogPartBytes,employeeChoiceNativeLogRecords,employeeChoiceNativePlanPhases,employeeChoiceNativeInvocations,employeeChoiceSqlFingerprint,employeeChoiceNativeBody,employeeChoicePlanWork} from './employee-native-log-codec.mjs';
 const sha=value=>createHash('sha256').update(value).digest('hex');
@@ -35,7 +36,7 @@ export function verifyEmployeeLifecycleNativePlans({plan,unit,profile,members,so
  let installedHash,retainedSecurity;
  if(ascii){
   const witness=prototypeWitness.witness;assert.equal(prototypeWitness.ownedBeforeCommit,true);assert.equal(prototypeWitness.phase,'candidate');assert.equal(employeeRestorationHash(witness),prototypeWitness.nativeIdentitySha256);
-  assert.equal(witness.database,report.planBackend.database);assert.equal(witness.sourceSha256,sha(sourceSql));assert.equal(witness.originalSourceSha256,prototypeSource);assert(witness.original&&witness.candidate);
+  assert.equal(witness.database,report.planBackend.database);employeeAsciiSourceWitness(witness,sourceSql);assert.equal(witness.originalSourceSha256,prototypeSource);assert(witness.original&&witness.candidate);
   assert.deepEqual(prototypeWitness.proof?.installed?.identity,witness.original.identity);assert.equal(prototypeWitness.proof?.installed?.definition,witness.original.definition);
   installedHash=employeeRestorationHash(prototypeWitness.proof.installed);retainedSecurity=witness.security;
  }else{
@@ -73,7 +74,7 @@ export function replayEmployeeLifecycleNativeLog({plan,unit,profile,members,sour
  assert.equal(compressed,index.gzipBytes);assert.equal(rawBytes,index.rawBytes);for(const key of members.keys())if(key.startsWith(directory+'/native-log-part-'))assert(partNames.has(key.slice(directory.length+1)),'Unindexed native part');
  function* channel(name){let count=0;const hash=createHash('sha256');for(const part of index.parts.filter(part=>part.channel===name)){assert.equal(part.start,count);const bytes=employeeChoiceNativeLogPartBytes(read(part.file,bounds.memberBytes),part);count+=bytes.length;hash.update(bytes);yield{start:part.start,bytes};}assert.equal(count,index.channels[name].bytes);assert.equal(hash.digest('hex'),index.channels[name].sha256);}
  const selected=report.nativeLog.channel,other=selected==='stdout'?'stderr':'stdout';for(const record of employeeChoiceNativeLogRecords(channel(other)))assert.notEqual(record.pid,binding.pid,'Native PID split between unorderable channels');
- const body=employeeChoiceNativeBody(sourceSql.toString('utf8')),bodyHash=employeeChoiceSqlFingerprint(body);let phaseCount=0,pairs=0;
+ const body=employeeChoiceNativeBody((ascii?employeeAsciiCompiledSource(sourceSql):sourceSql).toString('utf8')),bodyHash=employeeChoiceSqlFingerprint(body);let phaseCount=0,pairs=0;
  for(const {label,entries}of employeeChoiceNativePlanPhases(channel(selected),binding.pid,markers,body)){
   assert.equal(label,expectedLabels[phaseCount++]);if(!label.startsWith('native:'))continue;
   const marker=markers.find(row=>row.label===label),invocations=employeeChoiceNativeInvocations(entries,body,marker.expectedNativeCalls);pairs+=invocations.length;const distinct=[];
