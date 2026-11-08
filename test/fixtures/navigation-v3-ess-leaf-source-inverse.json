@@ -1,0 +1,246 @@
+{
+  "kind": "ESS_CANONICAL_LEAF_WHOLE_PARENT_SOURCE_INVERSE_NOT_EXECUTION",
+  "base": "d45c1fbc4e91aa0edb261b52e4fa8016e223740e",
+  "files": {
+    "core/comp.ts": {
+      "originalSha256": "510048ed7f9f23b73e85d369481166a6f7793e9336bc278f69205130ec922712",
+      "currentSha256": "2a7e2ec744ab622875c60326f3c6bc0294fa90e09f4179c92f408707d6c86904",
+      "changes": [
+        {
+          "start": 954,
+          "end": 969,
+          "before": "      .orderBy(desc(compensation.validFrom)),\n  ) as Promise<CompensationHistoryRow[]>;\n",
+          "after": "      .orderBy(desc(compensation.validFrom))\n  );\n}\n\n/** Low-level transaction query only; caller retains native tenant/principal and any\n * required payroll History-before-Access admission. No policy or permission is minted. */\nexport function compensationHistoryDetailedTx(tx: Tx, employmentId: string): Promise<CompensationHistoryRow[]> {\n  return readCompensationHistoryRowsTx(tx, employmentId) as Promise<CompensationHistoryRow[]>;\n}\n\nexport function compensationHistoryDetailed(\n  ctx: SessionContext,\n  employmentId: string,\n): Promise<CompensationHistoryRow[]> {\n  return withTenant(ctx, (tx) => readCompensationHistoryRowsTx(tx, employmentId)) as Promise<CompensationHistoryRow[]>;\n"
+        },
+        {
+          "start": 928,
+          "end": 930,
+          "before": "export function compensationHistoryDetailed(\n  ctx: SessionContext,\n  employmentId: string,\n): Promise<CompensationHistoryRow[]> {\n  return withTenant(ctx, (tx) =>\n",
+          "after": "function readCompensationHistoryRowsTx(tx: Tx, employmentId: string) {\n  return (\n"
+        }
+      ]
+    },
+    "core/cp38.ts": {
+      "originalSha256": "cac1d85a816703eaf3f5e6ada3cd5c6c7d322077584c507c059e136e09f9bf01",
+      "currentSha256": "b56dbaf942a20cb4c228da4f06b04411f85f917dbdff7f4133a6c017ff11c758",
+      "changes": [
+        {
+          "start": 68,
+          "end": 78,
+          "before": "",
+          "after": "}\n\n/** Low-level transaction query only; caller retains native tenant/principal and any\n * required payroll History-before-Access admission. No policy or permission is minted. */\nexport function listCp38Tx(tx: Tx, p: { employmentId: string }): Promise<Cp38Row[]> {\n  return readCp38RowsTx(tx, p);\n}\n\nexport function listCp38(ctx: SessionContext, p: { employmentId: string }): Promise<Cp38Row[]> {\n  return withTenant(ctx, (tx) => readCp38RowsTx(tx, p));\n"
+        },
+        {
+          "start": 66,
+          "end": 67,
+          "before": "      .orderBy(desc(employeeCp38.validFrom), desc(employeeCp38.id)),\n",
+          "after": "      .orderBy(desc(employeeCp38.validFrom), desc(employeeCp38.id))\n"
+        },
+        {
+          "start": 51,
+          "end": 53,
+          "before": "export function listCp38(ctx: SessionContext, p: { employmentId: string }): Promise<Cp38Row[]> {\n  return withTenant(ctx, (tx) =>\n",
+          "after": "function readCp38RowsTx(tx: Tx, p: { employmentId: string }) {\n  return (\n"
+        }
+      ]
+    },
+    "core/pay-components.ts": {
+      "originalSha256": "183bb891fa196813e073146584076f80e8801dc81e4fb6462143bb809ae58822",
+      "currentSha256": "71a0c3924ad6403d7c547b8dd700c43899a6803a626f92b0ddca3f0710564b92",
+      "changes": [
+        {
+          "start": 261,
+          "end": 271,
+          "before": "",
+          "after": "}\n\n/** Low-level transaction query only; caller retains native tenant/principal and any\n * required payroll History-before-Access admission. No policy or permission is minted. */\nexport function listEmploymentPayComponentsTx(tx: Tx, employmentId: string) {\n  return readEmploymentPayComponentRowsTx(tx, employmentId);\n}\n\nexport function listEmploymentPayComponents(ctx: SessionContext, employmentId: string) {\n  return withTenant(ctx, (tx) => readEmploymentPayComponentRowsTx(tx, employmentId));\n"
+        },
+        {
+          "start": 259,
+          "end": 260,
+          "before": "      .orderBy(payComponent.code, employmentPayComponent.validFrom),\n",
+          "after": "      .orderBy(payComponent.code, employmentPayComponent.validFrom)\n"
+        },
+        {
+          "start": 226,
+          "end": 228,
+          "before": "export function listEmploymentPayComponents(ctx: SessionContext, employmentId: string) {\n  return withTenant(ctx, (tx) =>\n",
+          "after": "function readEmploymentPayComponentRowsTx(tx: Tx, employmentId: string) {\n  return (\n"
+        }
+      ]
+    },
+    "core/profile-options.ts": {
+      "originalSha256": "56601ac82e702b30ab5ea6cfc8a1d61c55961096dadd3fcd92365fb4bb909e68",
+      "currentSha256": "95f610ccf822e71e78615cb6a93bdfe66c930bc52f062abefe4b89052dcc9816",
+      "changes": [
+        {
+          "start": 298,
+          "end": 313,
+          "before": "  });\n",
+          "after": "}\n\n/** Low-level catalogue query on the supplied native transaction; no permission or purpose admission. */\nexport function listAllProfileOptionsTx(\n  tx: Tx,\n  opts: { activeOnly?: boolean } = {},\n): Promise<Record<ProfileOptionCategory, ProfileOptionRow[]>> {\n  return readAllProfileOptionRowsTx(tx, opts);\n}\n\nexport async function listAllProfileOptions(\n  ctx: SessionContext,\n  opts: { activeOnly?: boolean } = {},\n): Promise<Record<ProfileOptionCategory, ProfileOptionRow[]>> {\n  return withTenant(ctx, async (tx) => readAllProfileOptionRowsTx(tx, opts));\n"
+        },
+        {
+          "start": 274,
+          "end": 274,
+          "before": "  return withTenant(ctx, async (tx) => {\n",
+          "after": ""
+        },
+        {
+          "start": 270,
+          "end": 272,
+          "before": "export async function listAllProfileOptions(\n  ctx: SessionContext,\n",
+          "after": "async function readAllProfileOptionRowsTx(\n  tx: Tx,\n"
+        }
+      ]
+    },
+    "core/profile-view.ts": {
+      "originalSha256": "6214dc9a591ddddb0bd6d3ca851b10f751c2b84a2952fb40c33cd4824c8e028c",
+      "currentSha256": "d3cd7f2595e5d4582c8a81ed2a48ba81a008ef409c666684f1edd1e04d8bb72b",
+      "changes": [
+        {
+          "start": 88,
+          "end": 89,
+          "before": "  const profile=await withTenant(ctx,async tx=>{\n   const groupOn=await scheduleGroupLookupTx(tx,[employmentId],today,today),groupId=groupOn(employmentId,today);\n   const [group]=groupId?await tx.select({name:attendanceRule.name,label:attendanceRule.label}).from(attendanceRule).where(eq(attendanceRule.id,groupId)).limit(1):[];\n   const periods=shifts.filter(row=>row.effectiveFrom<=today&&(!row.effectiveTo||row.effectiveTo>=today));\n   const current=periods.length===1?periods[0]:null;\n   const [legacyShift]=!shifts.length&&emp.defaultShiftId?await tx.select({code:shift.code,name:shift.name}).from(shift).where(eq(shift.id,emp.defaultShiftId)).limit(1):[];\n   return {scheduleGroupName:group?scheduleGroupDisplayName(group):null,backupShiftCode:current?.shiftCode??legacyShift?.code??null,backupShiftName:current?.shiftName??legacyShift?.name??null,shiftEffectiveFrom:current?.effectiveFrom??null};\n  });Object.assign(values,project('attendanceProfile',profile));\n",
+          "after": "  const profile=await withTenant(ctx,async tx=>ownProfileAttendanceSummaryTx(tx,{employmentId,today,defaultShiftId:emp.defaultShiftId,shifts}));Object.assign(values,project('attendanceProfile',profile));\n"
+        },
+        {
+          "start": 10,
+          "end": 11,
+          "before": "import {shiftArrangementHistory,scheduleGroupLookupTx,scheduleGroupDisplayName} from '../packs/attendance/service';\n",
+          "after": "import {shiftArrangementHistory,ownProfileAttendanceSummaryTx} from '../packs/attendance/service';\n"
+        },
+        {
+          "start": 3,
+          "end": 3,
+          "before": "import {eq} from 'drizzle-orm';\nimport {attendanceRule,shift} from '../db/schema';\n",
+          "after": ""
+        }
+      ]
+    },
+    "core/read.ts": {
+      "originalSha256": "cd8f9fab9556c28b083995a3de41d15b74241676cd77277ea97dfbda0b1bb429",
+      "currentSha256": "151119af3e5fa26f567cbcfb714ae83499d9ef7f21a55ba8cc69512db98c5e5b",
+      "changes": [
+        {
+          "start": 3404,
+          "end": 3414,
+          "before": "",
+          "after": "}\n\n/** Low-level transaction query only; caller retains native tenant/principal and any\n * required payroll History-before-Access admission. No policy or permission is minted. */\nexport function assignmentHistoryTx(tx: Tx, employmentId: string) {\n  return readAssignmentHistoryRowsTx(tx, employmentId);\n}\n\nexport function assignmentHistory(ctx: SessionContext, employmentId: string) {\n  return withTenant(ctx, (tx) => readAssignmentHistoryRowsTx(tx, employmentId));\n"
+        },
+        {
+          "start": 3402,
+          "end": 3403,
+          "before": "      .orderBy(desc(assignment.validFrom),desc(assignment.id)),\n",
+          "after": "      .orderBy(desc(assignment.validFrom),desc(assignment.id))\n"
+        },
+        {
+          "start": 3373,
+          "end": 3375,
+          "before": "export function assignmentHistory(ctx: SessionContext, employmentId: string) {\n  return withTenant(ctx, (tx) =>\n",
+          "after": "function readAssignmentHistoryRowsTx(tx: Tx, employmentId: string) {\n  return (\n"
+        }
+      ]
+    },
+    "core/shift-arrangement.ts": {
+      "originalSha256": "dd98c7ee17a4dd555d8516bc0d0eb985f028a75534e11bd806c57b681808afec",
+      "currentSha256": "fa8948b6ce2b396ca04e9b725860c57e8b42dcf645dde014d168ced7f3674f7b",
+      "changes": [
+        {
+          "start": 517,
+          "end": 532,
+          "before": "  });\n",
+          "after": "}\n\n/** Low-level transaction query only; it grants no own-person or presentation authority. */\nexport function shiftArrangementHistoryTx(\n  tx: Tx,\n  employmentId: string,\n): Promise<ShiftArrangementHistoryRow[]> {\n  return readShiftArrangementHistoryRowsTx(tx, employmentId);\n}\n\nexport function shiftArrangementHistory(\n  ctx: SessionContext,\n  employmentId: string,\n): Promise<ShiftArrangementHistoryRow[]> {\n  return withTenant(ctx, async (tx) => readShiftArrangementHistoryRowsTx(tx, employmentId));\n"
+        },
+        {
+          "start": 474,
+          "end": 474,
+          "before": "  return withTenant(ctx, async (tx) => {\n",
+          "after": ""
+        },
+        {
+          "start": 470,
+          "end": 472,
+          "before": "export function shiftArrangementHistory(\n  ctx: SessionContext,\n",
+          "after": "async function readShiftArrangementHistoryRowsTx(\n  tx: Tx,\n"
+        },
+        {
+          "start": 30,
+          "end": 31,
+          "before": "import { withTenant, type SessionContext } from '../db/client';\n",
+          "after": "import { withTenant, type SessionContext, type Tx } from '../db/client';\n"
+        }
+      ]
+    },
+    "lib/ai/module-agent-source-manifest.ts": {
+      "originalSha256": "d24842140150c81335fc0e8bfce48177aa09864911aa9a4a1475910f1a7d52c8",
+      "currentSha256": "5bf07ce98cf897be431201bf7ee9cb896d99681393d905a6c9b20a7e8450e914",
+      "changes": [
+        {
+          "start": 2,
+          "end": 3,
+          "before": "export const MODULE_AGENT_SOURCE_DIGEST = \"391d1212d82d6f947a1306341bbdbd91f253b8ac8d8e38443379313323d7dca9\" as const;\n",
+          "after": "export const MODULE_AGENT_SOURCE_DIGEST = \"210567d30486763dce401c69b24ba2d88081b5e86596afdd191c1bbb2875b8dd\" as const;\n"
+        }
+      ]
+    },
+    "lib/ai/provider-data-source-manifest.ts": {
+      "originalSha256": "aa0b4efa3631a39ea0ee0cb04939a606cfcf66c39c6f5cfa1b54ab117bdaea36",
+      "currentSha256": "92a5b5213db7c51698d48d712dccb7aa61096cede8e4d2c673bdcef39ed656ba",
+      "changes": [
+        {
+          "start": 1,
+          "end": 2,
+          "before": "export const PROVIDER_DATA_TRANSFORM_SOURCE_DIGEST = \"5e08349b13b32671cc3a6f73fdf66eb8d2561d0123a0317564d6329f297cdecc\" as const;\n",
+          "after": "export const PROVIDER_DATA_TRANSFORM_SOURCE_DIGEST = \"fa64944fa991a89f2d3c682b4f2c8c33a9040e1b41d0efd4531f64421aa8c096\" as const;\n"
+        }
+      ]
+    },
+    "packs/attendance/service.ts": {
+      "originalSha256": "522b44d170c3a952684adaf47d0bc31f8053a154282c7d452a29aa60a25c505b",
+      "currentSha256": "b2ebfea6c42f0572fc5e86cd19e7b4ee141e6748c2681d95b7d46167ef69016d",
+      "changes": [
+        {
+          "start": 119,
+          "end": 122,
+          "before": "",
+          "after": "\n// Exact own-profile attendance leaf; caller owns all subject/presentation admission.\nexport {ownProfileAttendanceSummaryTx} from './own-profile-read';\n"
+        },
+        {
+          "start": 66,
+          "end": 67,
+          "before": "export {shiftArrangementHistory} from '../../core/shift-arrangement';\n",
+          "after": "export {shiftArrangementHistory,shiftArrangementHistoryTx} from '../../core/shift-arrangement';\n"
+        }
+      ]
+    },
+    "packs/payroll/service.ts": {
+      "originalSha256": "b2891f52330092205565dfa094caa6d0ffe6366e567795c4568b35d2d0115b79",
+      "currentSha256": "40d73da2289a1244b1e62195874c7bea870b49a71362a9d59b461aa33d53a82c",
+      "changes": [
+        {
+          "start": 99,
+          "end": 102,
+          "before": "",
+          "after": "\n// Shared History must already be owned before Access by a future composed Tx purpose.\nexport {compensationHistoryDetailedTx} from '../../core/comp';\n"
+        },
+        {
+          "start": 73,
+          "end": 75,
+          "before": "export {listEmploymentPayComponents} from '../../core/pay-components';\nexport {listCp38} from '../../core/cp38';\n",
+          "after": "export {listEmploymentPayComponents,listEmploymentPayComponentsTx} from '../../core/pay-components';\nexport {listCp38,listCp38Tx} from '../../core/cp38';\n"
+        }
+      ]
+    },
+    "test/employee-draft-presentation-manifests.test.ts": {
+      "originalSha256": "e63a0900f096fd2d99b762e27c444c136bd8fec0b6a260f6417db1863e6f639f",
+      "currentSha256": "8c548396ea4b7aa5ba78df0160673f83f4c08eaa17b4130785bc8d4ab25fb2bf",
+      "changes": [
+        {
+          "start": 11,
+          "end": 12,
+          "before": "  {script:'scripts/ai-provider-data-source-manifest.mjs',files:1486,digest:PROVIDER_DATA_TRANSFORM_SOURCE_DIGEST},\n",
+          "after": "  {script:'scripts/ai-provider-data-source-manifest.mjs',files:1487,digest:PROVIDER_DATA_TRANSFORM_SOURCE_DIGEST},\n"
+        }
+      ]
+    }
+  }
+}

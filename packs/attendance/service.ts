@@ -64,7 +64,7 @@ export {resolveOvertimePolicyDatedToilQualificationTx, resolveOvertimeToilDurati
 export {formulaOvertimeForRowsTx, formulaOvertimeCashForRowsTx, type FormulaOvertimeCashRecord} from './overtime-records';
 
 // Own-profile read surface; canonical owner and RLS remain unchanged.
-export {shiftArrangementHistory} from '../../core/shift-arrangement';
+export {shiftArrangementHistory,shiftArrangementHistoryTx} from '../../core/shift-arrangement';
 
 export { previewCardImport, commitCardImport, cardImportExisting, assertCardImportAccess } from '../../core/attendance-card-import';
 export { setEmploymentCardId } from '../../core/attendance-card';
@@ -117,3 +117,6 @@ export {lockAttendanceDayScheduleIntervalTx} from './day-adjustment';
 
 // AI v2 W2: the pure day classifier the Attendance Request screen groups by, for the chat correction preparer.
 export {classifyDay,KIND_OF_SECTION,type ExceptionDay} from './exceptions';
+
+// Exact own-profile attendance leaf; caller owns all subject/presentation admission.
+export {ownProfileAttendanceSummaryTx} from './own-profile-read';

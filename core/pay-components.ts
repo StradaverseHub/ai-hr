@@ -224,8 +224,8 @@ const flagsOf = (c: Pick<PayComponentSeed, 'includedInEpf' | 'includedInSocsoEis
  * `active` vs `ended` from validTo against today. `prorates` (catalog) is selected so the UI can render the
  * resolved prorate (override ?? catalog).
  */
-export function listEmploymentPayComponents(ctx: SessionContext, employmentId: string) {
-  return withTenant(ctx, (tx) =>
+function readEmploymentPayComponentRowsTx(tx: Tx, employmentId: string) {
+  return (
     tx
       .select({
         id: employmentPayComponent.id,
@@ -257,8 +257,18 @@ export function listEmploymentPayComponents(ctx: SessionContext, employmentId: s
           isNull(employmentPayComponent.supersededAt),
         ),
       )
-      .orderBy(payComponent.code, employmentPayComponent.validFrom),
+      .orderBy(payComponent.code, employmentPayComponent.validFrom)
   );
+}
+
+/** Low-level transaction query only; caller retains native tenant/principal and any
+ * required payroll History-before-Access admission. No policy or permission is minted. */
+export function listEmploymentPayComponentsTx(tx: Tx, employmentId: string) {
+  return readEmploymentPayComponentRowsTx(tx, employmentId);
+}
+
+export function listEmploymentPayComponents(ctx: SessionContext, employmentId: string) {
+  return withTenant(ctx, (tx) => readEmploymentPayComponentRowsTx(tx, employmentId));
 }
 
 /** One row of `listEmploymentPayComponents`, which `getEmploymentPayComponent` returns exactly one of. */

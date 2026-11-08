@@ -3371,8 +3371,8 @@ export function countEmployeesInScope(
 }
 
 /** All effective-dated assignment versions (newest first) — the bitemporal history. */
-export function assignmentHistory(ctx: SessionContext, employmentId: string) {
-  return withTenant(ctx, (tx) =>
+function readAssignmentHistoryRowsTx(tx: Tx, employmentId: string) {
+  return (
     tx
       .select({
         id: assignment.id,
@@ -3400,8 +3400,18 @@ export function assignmentHistory(ctx: SessionContext, employmentId: string) {
       .leftJoin(businessUnit, eq(businessUnit.id, assignment.businessUnitId))
       .leftJoin(location,eq(location.id,assignment.locationId))
       .where(and(eq(assignment.employmentId, employmentId), isNull(assignment.supersededAt)))
-      .orderBy(desc(assignment.validFrom),desc(assignment.id)),
+      .orderBy(desc(assignment.validFrom),desc(assignment.id))
   );
+}
+
+/** Low-level transaction query only; caller retains native tenant/principal and any
+ * required payroll History-before-Access admission. No policy or permission is minted. */
+export function assignmentHistoryTx(tx: Tx, employmentId: string) {
+  return readAssignmentHistoryRowsTx(tx, employmentId);
+}
+
+export function assignmentHistory(ctx: SessionContext, employmentId: string) {
+  return withTenant(ctx, (tx) => readAssignmentHistoryRowsTx(tx, employmentId));
 }
 
 /** R37 (2F-2): resolve a leave-type name to the viewer's locale, falling back to the default name.

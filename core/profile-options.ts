@@ -268,11 +268,10 @@ export function listProfileOptions(
 }
 
 /** All categories in one round-trip (the admin CRUD page). Keyed by category. */
-export async function listAllProfileOptions(
-  ctx: SessionContext,
+async function readAllProfileOptionRowsTx(
+  tx: Tx,
   opts: { activeOnly?: boolean } = {},
 ): Promise<Record<ProfileOptionCategory, ProfileOptionRow[]>> {
-  return withTenant(ctx, async (tx) => {
     const where = opts.activeOnly ? eq(profileOption.isActive, true) : undefined;
     const rows = await tx
       .select()
@@ -297,7 +296,21 @@ export async function listAllProfileOptions(
       }
     }
     return out;
-  });
+}
+
+/** Low-level catalogue query on the supplied native transaction; no permission or purpose admission. */
+export function listAllProfileOptionsTx(
+  tx: Tx,
+  opts: { activeOnly?: boolean } = {},
+): Promise<Record<ProfileOptionCategory, ProfileOptionRow[]>> {
+  return readAllProfileOptionRowsTx(tx, opts);
+}
+
+export async function listAllProfileOptions(
+  ctx: SessionContext,
+  opts: { activeOnly?: boolean } = {},
+): Promise<Record<ProfileOptionCategory, ProfileOptionRow[]>> {
+  return withTenant(ctx, async (tx) => readAllProfileOptionRowsTx(tx, opts));
 }
 
 /**

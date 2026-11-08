@@ -71,8 +71,8 @@ export * from '../../core/payroll-attendance-allowance';
 export * from '../../core/payroll-overtime-pattern';
 
 // Own-profile read surfaces; no administrative mutations are re-exported here.
-export {listEmploymentPayComponents} from '../../core/pay-components';
-export {listCp38} from '../../core/cp38';
+export {listEmploymentPayComponents,listEmploymentPayComponentsTx} from '../../core/pay-components';
+export {listCp38,listCp38Tx} from '../../core/cp38';
 
 // Shared personal/admin document vocabulary; these owners derive only saved snapshots.
 export { selectPayslipInformation, payslipInformationData } from '../../core/payslip-information';
@@ -97,3 +97,6 @@ export {draftPayFormula} from '../../core/pay-formula-ai';
 export {tryLockPayrollHistoryReadTx} from '../../core/payroll-history-lock';
 
 export {payFormulaPermittedDraftFieldsTx} from '../../core/pay-formula-personnel';
+
+// Shared History must already be owned before Access by a future composed Tx purpose.
+export {compensationHistoryDetailedTx} from '../../core/comp';

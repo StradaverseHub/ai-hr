@@ -1,8 +1,6 @@
 /** Own-only safe projections over canonical owners. No administrator row crosses this boundary. */
 import {projectEssVisible,essFactVisible} from '../lib/personnel-ess-visibility';
 import {readProfilePresentationPolicy,type ProfilePresentationPolicy} from './profile-edit-policy';
-import {eq} from 'drizzle-orm';
-import {attendanceRule,shift} from '../db/schema';
 import type {SessionContext} from '../db/client';
 import {withTenant} from '../db/client';
 import {myOwnEmploymentSubjects,employeeDetail,assignmentHistory,ownReportingManagersTx,leaveRequestsFor} from './read';
@@ -10,7 +8,7 @@ import {compensationHistoryDetailed} from './comp';
 import {ownMovementHistory,ownMovementDetail} from './movement';
 import {listAllProfileOptions} from './profile-options';
 import {listEmploymentPayComponents,listCp38} from '../packs/payroll/service';
-import {shiftArrangementHistory,scheduleGroupLookupTx,scheduleGroupDisplayName} from '../packs/attendance/service';
+import {shiftArrangementHistory,ownProfileAttendanceSummaryTx} from '../packs/attendance/service';
 import {leaveBalancesTx,leaveEntitlementBreakdownTx,ownBenefitSchemeViewTx,serviceYearsMonthsDaysAt} from '../packs/leave/service';
 import {isModuleEnabled} from './entitlements';
 import {todayInKualaLumpur} from '../lib/hr-date';
@@ -88,14 +86,7 @@ export async function readOwnProfileFacts(ctx:SessionContext,employmentId:string
   }
  }
  if(attendanceOn){
-  const profile=await withTenant(ctx,async tx=>{
-   const groupOn=await scheduleGroupLookupTx(tx,[employmentId],today,today),groupId=groupOn(employmentId,today);
-   const [group]=groupId?await tx.select({name:attendanceRule.name,label:attendanceRule.label}).from(attendanceRule).where(eq(attendanceRule.id,groupId)).limit(1):[];
-   const periods=shifts.filter(row=>row.effectiveFrom<=today&&(!row.effectiveTo||row.effectiveTo>=today));
-   const current=periods.length===1?periods[0]:null;
-   const [legacyShift]=!shifts.length&&emp.defaultShiftId?await tx.select({code:shift.code,name:shift.name}).from(shift).where(eq(shift.id,emp.defaultShiftId)).limit(1):[];
-   return {scheduleGroupName:group?scheduleGroupDisplayName(group):null,backupShiftCode:current?.shiftCode??legacyShift?.code??null,backupShiftName:current?.shiftName??legacyShift?.name??null,shiftEffectiveFrom:current?.effectiveFrom??null};
-  });Object.assign(values,project('attendanceProfile',profile));
+  const profile=await withTenant(ctx,async tx=>ownProfileAttendanceSummaryTx(tx,{employmentId,today,defaultShiftId:emp.defaultShiftId,shifts}));Object.assign(values,project('attendanceProfile',profile));
  }
  const choices:Record<string,{value:string;label:string}[]>={};
  for(const field of PERSONNEL_FIELDS){

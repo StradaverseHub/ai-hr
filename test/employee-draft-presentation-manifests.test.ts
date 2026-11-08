@@ -9,7 +9,7 @@ it('checks both generated source identities against the actual clean frozen cand
  expect(result.kind).toBe('AI_SOURCE_MANIFEST_ADMISSION');expect(result.releaseAuthorized).toBe(false);
  expect(result.candidate).toBe(process.env.AIHR_CI_HEAD);
  expect(result.checks).toEqual([
-  {script:'scripts/ai-provider-data-source-manifest.mjs',files:1486,digest:PROVIDER_DATA_TRANSFORM_SOURCE_DIGEST},
+  {script:'scripts/ai-provider-data-source-manifest.mjs',files:1487,digest:PROVIDER_DATA_TRANSFORM_SOURCE_DIGEST},
   {script:'scripts/ai-agent-source-manifest.mjs',files:MODULE_AGENT_SOURCE_FILE_COUNT,digest:MODULE_AGENT_SOURCE_DIGEST},
  ]);
 // Existing admission has four10s Git calls and two60s checks; this test adds

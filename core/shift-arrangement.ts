@@ -28,7 +28,7 @@
  *   · periods can never overlap, because each simply runs until the next begins.
  */
 import { and, asc, desc, eq, ilike, isNull, or, sql } from 'drizzle-orm';
-import { withTenant, type SessionContext } from '../db/client';
+import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
 import { lockLeaveDependenciesTx } from '../packs/leave/service';
 // 8cd601d0 — `attendanceRule` is the SCHEDULE GROUP table (870b79e2 named it; there is no second table
@@ -468,11 +468,10 @@ export type ShiftArrangementHistoryRow = {
  * the list, which is exactly what "saving twice for one date replaces that entry" promises the reporter.
  * Read-only, RLS-scoped (see_employment), no DomainEvent.
  */
-export function shiftArrangementHistory(
-  ctx: SessionContext,
+async function readShiftArrangementHistoryRowsTx(
+  tx: Tx,
   employmentId: string,
 ): Promise<ShiftArrangementHistoryRow[]> {
-  return withTenant(ctx, async (tx) => {
     const rows = await tx
       .select({
         id: employmentShiftArrangement.id,
@@ -516,7 +515,21 @@ export function shiftArrangementHistory(
         recordedOnRelease: i === 0 && r.createdBy == null,
       };
     }).reverse(); // ascending while previous-shift is resolved, newest-first for the screen
-  });
+}
+
+/** Low-level transaction query only; it grants no own-person or presentation authority. */
+export function shiftArrangementHistoryTx(
+  tx: Tx,
+  employmentId: string,
+): Promise<ShiftArrangementHistoryRow[]> {
+  return readShiftArrangementHistoryRowsTx(tx, employmentId);
+}
+
+export function shiftArrangementHistory(
+  ctx: SessionContext,
+  employmentId: string,
+): Promise<ShiftArrangementHistoryRow[]> {
+  return withTenant(ctx, async (tx) => readShiftArrangementHistoryRowsTx(tx, employmentId));
 }
 
 // ── 0bade264 (r209) · SCHEDULE ASSIGNMENT — every employee's current arrangement, in one read ────────

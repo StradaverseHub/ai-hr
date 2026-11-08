@@ -926,11 +926,8 @@ export type CompensationHistoryRow = {
  * stored columns). The former second query resolving "Last Updated By" was removed with the on-screen
  * audit columns (7c7c2f80) — that detail belongs to the Audit Trail (compensation.updated events).
  */
-export function compensationHistoryDetailed(
-  ctx: SessionContext,
-  employmentId: string,
-): Promise<CompensationHistoryRow[]> {
-  return withTenant(ctx, (tx) =>
+function readCompensationHistoryRowsTx(tx: Tx, employmentId: string) {
+  return (
     tx
       .select({
         id: compensation.id,
@@ -955,8 +952,21 @@ export function compensationHistoryDetailed(
       .leftJoin(appUser, eq(appUser.id, domainEvent.actorId))
       .leftJoin(person, eq(person.id, appUser.personId))
       .where(and(eq(compensation.employmentId, employmentId), isNull(compensation.supersededAt)))
-      .orderBy(desc(compensation.validFrom)),
-  ) as Promise<CompensationHistoryRow[]>;
+      .orderBy(desc(compensation.validFrom))
+  );
+}
+
+/** Low-level transaction query only; caller retains native tenant/principal and any
+ * required payroll History-before-Access admission. No policy or permission is minted. */
+export function compensationHistoryDetailedTx(tx: Tx, employmentId: string): Promise<CompensationHistoryRow[]> {
+  return readCompensationHistoryRowsTx(tx, employmentId) as Promise<CompensationHistoryRow[]>;
+}
+
+export function compensationHistoryDetailed(
+  ctx: SessionContext,
+  employmentId: string,
+): Promise<CompensationHistoryRow[]> {
+  return withTenant(ctx, (tx) => readCompensationHistoryRowsTx(tx, employmentId)) as Promise<CompensationHistoryRow[]>;
 }
 
 /** Next per-tenant employee code. Call INSIDE an existing transaction (e.g. during hire). */

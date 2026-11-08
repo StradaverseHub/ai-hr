@@ -49,8 +49,8 @@ export type Cp38Row = {
 };
 
 /** All CP38 rows (incl. superseded/closed) for an employment, latest-effective first. Read-only. */
-export function listCp38(ctx: SessionContext, p: { employmentId: string }): Promise<Cp38Row[]> {
-  return withTenant(ctx, (tx) =>
+function readCp38RowsTx(tx: Tx, p: { employmentId: string }) {
+  return (
     tx
       .select({
         id: employeeCp38.id,
@@ -64,8 +64,18 @@ export function listCp38(ctx: SessionContext, p: { employmentId: string }): Prom
       })
       .from(employeeCp38)
       .where(eq(employeeCp38.employmentId, p.employmentId))
-      .orderBy(desc(employeeCp38.validFrom), desc(employeeCp38.id)),
+      .orderBy(desc(employeeCp38.validFrom), desc(employeeCp38.id))
   );
+}
+
+/** Low-level transaction query only; caller retains native tenant/principal and any
+ * required payroll History-before-Access admission. No policy or permission is minted. */
+export function listCp38Tx(tx: Tx, p: { employmentId: string }): Promise<Cp38Row[]> {
+  return readCp38RowsTx(tx, p);
+}
+
+export function listCp38(ctx: SessionContext, p: { employmentId: string }): Promise<Cp38Row[]> {
+  return withTenant(ctx, (tx) => readCp38RowsTx(tx, p));
 }
 
 /**
