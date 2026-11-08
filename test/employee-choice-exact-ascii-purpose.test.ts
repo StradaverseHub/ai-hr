@@ -17,6 +17,7 @@ import * as prototype from './performance/employee-choice-exact-ascii-reader';
 import {nativeEmployeeChoiceQuery} from './performance/employee-choice-native-purpose-reader';
 import * as legacy from './performance/employee-choice-native-purpose-reader';
 import {exactAsciiPrototypeRuntimeEvidence,closeExactAsciiPrototypeRuntime} from './performance/employee-choice-exact-ascii-runtime';
+import {observeExactAsciiLaunch} from './performance/employee-choice-exact-ascii-launch-observation';
 import {createAssignmentAuthorityFixture,assertAssignmentAuthority} from './performance/employee-choice-assignment-authority';
 import {pgSqlState} from '../lib/db-error';
 import {adminCtx,closeAll,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
@@ -88,7 +89,7 @@ afterAll(()=>lifetime.finish(async()=>{
  // Preserve the actual closed runtime observation BEFORE shutdown replaces its
  // reason. A reporter failure remains a failure and cannot skip any cleanup.
  await finish(async()=>{
-  const value=JSON.stringify({kind:'ACTUAL_ASCII_RUNTIME_OBSERVATION_NOT_QUALIFICATION',runtime:exactAsciiPrototypeRuntimeEvidence(),releaseAuthorized:false})+'\n';
+  const value=JSON.stringify({kind:'ACTUAL_ASCII_RUNTIME_OBSERVATION_NOT_QUALIFICATION',runtime:exactAsciiPrototypeRuntimeEvidence(),launch:observeExactAsciiLaunch(),releaseAuthorized:false})+'\n';
   if(Buffer.byteLength(value)>16384)throw Error('Closed runtime observation exceeds bound');
   writeFileSync(join(resolve(process.env.AIHR_FOCUSED_EVIDENCE_DIR!),'employee-choice-exact-ascii-purpose','runtime-before-shutdown.json'),value,{flag:'wx',mode:0o600});
  });
