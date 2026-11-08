@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 /** Synthetic DOM/codec adapter controls only; no native page/session/load proof. */
 import {readFileSync} from 'node:fs';
+import {resolve} from 'node:path';
 import {afterEach,expect,it} from 'vitest';
 import type {Page} from 'playwright';
 import {observeNavigationUIContent,observePublicNavigationUIContent} from '../scripts/performance/navigation-browser-ui';
@@ -8,7 +9,7 @@ import {projectNavigationFixtureBindings} from '../scripts/performance/navigatio
 import {projectNavigationExpectedInputs,navigationExpectedInputBytes,parseNavigationExpectedInputBytes,type NavigationExpectedInputs} from '../scripts/performance/navigation-expected-inputs';
 import {validateNavigationScenarioPlan,type NavigationScenario,type NavigationCheck} from '../scripts/performance/navigation-protocol';
 import {fictionalNavigationFixture,navigationFixtureUuid as uuid} from './helpers/navigation-fixture';
-const plan=validateNavigationScenarioPlan(JSON.parse(readFileSync(new URL('../scripts/performance/navigation-scenarios.json',import.meta.url),'utf8')));
+const plan=validateNavigationScenarioPlan(JSON.parse(readFileSync(resolve(process.cwd(),'scripts/performance/navigation-scenarios.json'),'utf8')));
 const identity={candidateSha:'a'.repeat(40),controllerSha:'b'.repeat(40),runId:123,attempt:1 as const,buildId:'fictional-ui-control'};
 type Actor=NavigationExpectedInputs['actorInputs'][number];
 function inputs(fixture=fictionalNavigationFixture()){
@@ -122,9 +123,9 @@ it('does not invent saved history for a decoded none-history actor or accept an 
  }
 });
 it('keeps the common UI owner free of private readers, native admission, session/context creation and load-state evidence',()=>{
- const source=readFileSync(new URL('../scripts/performance/navigation-browser-ui.ts',import.meta.url),'utf8');
+ const source=readFileSync(resolve(process.cwd(),'scripts/performance/navigation-browser-ui.ts'),'utf8');
  expect(source).not.toMatch(/node:(?:fs|path|child_process)|process\.|WeakMap|WeakSet|readFile|openSync|fixture\.json|\.context\(|newPage|cookies\(|performance\.now|loadState|active:500|internalSessionObserved|fixtureIdentityObserved|releaseAuthorized/);
- const collector=readFileSync(new URL('../scripts/performance/navigation-browser-capture.ts',import.meta.url),'utf8');
+ const collector=readFileSync(resolve(process.cwd(),'scripts/performance/navigation-browser-capture.ts'),'utf8');
  expect(collector).toContain('const checks=await observeNavigationUIContent(page,scenario,actorIndex,bindings,remaining);');
  expect(collector).toContain("const cookies=await page.context().cookies(BASE);");expect(collector).toContain("page.off('response',response);page.off('pageerror',pageError);page.off('console',consoleError);");
  expect(plan.scenarios).toHaveLength(52);expect(new Set(plan.scenarios.map(row=>row.destinationId)).size).toBe(14);
