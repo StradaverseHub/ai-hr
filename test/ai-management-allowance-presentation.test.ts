@@ -6,6 +6,7 @@ import * as database from '../db/client';
 import type {SessionContext,Tx} from '../db/client';
 import * as s from '../db/schema';
 import {previewBulkAssistantAccess,previewBulkAssistantAccessPage,previewBulkAssistantAccessPageTx,bulkAssistantDepartments,bulkAssistantDepartmentsPage,bulkAssistantDepartmentsPageTx,setAssistantPermission,type BulkAssistantScope} from '../core/ai-management';
+import {setLabelCriteria} from '../core/system-labels';
 import {pgSqlState} from '../lib/db-error';
 import {openaiAdapter} from '../lib/ai/providers/openai';
 import {anthropicAdapter} from '../lib/ai/providers/anthropic';
@@ -45,8 +46,13 @@ async function login(name:string,p:Readonly<{role?:'employee'|'manager';departme
 }
 async function roster(){
  const d=await dates(),[other]=await owner.db.insert(s.company).values({tenantId:b.tenantId,legalName:'Zed Allowances Company'}).returning();
+ await setLabelCriteria(group,{kind:'department',labelId:b.deptB,isGlobal:false,companyIds:[b.companyId,other.id]});
+ const criteria=await owner.client<{isGlobal:boolean;companyIds:string[]}[]>`select d.is_global as "isGlobal",array(select lca.company_id::text from public.label_company_assignment lca where lca.tenant_id=d.tenant_id and lca.label_kind='department' and lca.label_id=d.id order by lca.company_id) as "companyIds" from public.department d where d.tenant_id=${b.tenantId}::uuid and d.id=${b.deptB}::uuid`;
+ expect(criteria).toEqual([{isGlobal:false,companyIds:[b.companyId,other.id].sort()}]);
  const a=await login('Needle%token Needle_token Needle\\token 公司',{assignmentCompany:null,validTo:d.today});
  const m=await login('NeedleXtoken',{role:'manager'}),c=await login('Fictional other assignment company',{departmentId:b.deptB,assignmentCompany:other.id});
+ const assigned=await owner.client<{companyId:string;departmentId:string}[]>`select coalesce(a.company_id,e.company_id)::text as "companyId",a.department_id::text as "departmentId" from public.assignment a join public.employment e on e.id=a.employment_id and e.tenant_id=a.tenant_id where a.tenant_id=${b.tenantId}::uuid and a.id=${c.assignmentId}::uuid and e.id=${c.employmentId}::uuid`;
+ expect(assigned).toEqual([{companyId:other.id,departmentId:b.deptB}]);
  const expired=await login('Fictional expired assignment',{validTo:d.yesterday}),superseded=await login('Fictional superseded assignment',{superseded:true});
  const future=await login('Fictional future assignment',{validFrom:d.tomorrow}),archived=await login('Fictional archived login',{archived:true});
  const blocked=await login('Fictional login-blocked person',{terminatedOn:d.yesterday});

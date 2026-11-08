@@ -1,7 +1,7 @@
 {
   "kind": "AI_MANAGEMENT_SECTION_SOURCE_ONLY_NOT_QUALIFICATION",
   "base": "cd47c63c77d26431ee33de38b75790c62924a1ad",
-  "sourceRef": "codex/ai-management-allowance-presentation-20261109",
+  "sourceRef": "codex/ai-management-allowance-fixture-label-criteria-20261109",
   "currentSourceSha256": {
     "app/control-tower/agents/centre-controls.tsx": "3ce6b612fec0b328103b5221b673714e59f4548bf37be243211cfc4293d18915",
     "app/control-tower/agents/screen.tsx": "a137c62df804c0c4e6e40f11d3ecca1e295fabb3b817fb1d440225e38a172d12",
@@ -18,7 +18,7 @@
     "test/automatic-followup-features.dom.test.tsx": "c442c9253dd293a278e7998fec67451d0732dc78a117c1752ff8ddb51467b6e2",
     "lib/ai/management-sections.ts": "d7efd0b96f9875c560c6b075c9ff1688a7bf0851684adbdab45c399f3cb5c783",
     "test/ai-management-section-projection.test.ts": "55d2463ecd033a32e7dae12b436bde9fb0c883ff685d51f62c213c0af34156f2",
-    "docs/adr/2026-11-09-ai-management-section-projection.md": "34e7ec43795fb9af5f951edf9af5ca33a55df98cb7b58705e0bdd9891b218e28",
+    "docs/adr/2026-11-09-ai-management-section-projection.md": "8078a8e523b34ec3d72d078e965476d0e76c8547b1e1871ffd8760b19b88677a",
     "test/ai-management-contract.test.ts": "26311cc5725a931b951cf8825f0355c8c752eaaeb3210153f1fbc9c127a7a808",
     "docs/qualification/ai-management-hosted-fixture-recovery-source-20261109.json": "a64ae179f8a3c9379d1f014a8f5c302b9642ff9837fb053144320ae5026fff91",
     "components/ai-centre/how-it-works.tsx": "e3e4e132419a5676d3be77c82883093b81d824ed2237ad03d508b4a232084265",
@@ -35,7 +35,7 @@
     "docs/qualification/ai-management-common-presentation-source-20261109.json": "fa453f8aa4783d0761144cdaf0d01000de87b59ed4d0a94de3d1945fd538445e",
     "docs/qualification/ai-management-common-page-error-recovery-source-20261109.json": "8d77ae2e2f9600185b579822ad167f90c0859e8fe685bf70a51b514607f55f08",
     "docs/qualification/ai-management-common-page-error-view-fixture-source-20261109.json": "1dade27d2c480c29d00123ccd818072e67f74e12233a535a586767ea06dc1e81",
-    "test/ai-management-allowance-presentation.test.ts": "18d4e9d2603f16d21f395f2791e5daee8362fc2bedccf7488fde32eb0a1a87a9",
+    "test/ai-management-allowance-presentation.test.ts": "19f416b1b87aeb8e4a6b5c1295dae2b1c1e2933f6e1e3a085ea0acbf5d68c6d4",
     "docs/qualification/ai-management-allowance-presentation-source-20261109.json": "12eb90e952bffc852d6a2be31597d258280cd160fd28aa52df88cbed67f6124c"
   },
   "selfExcluded": "docs/qualification/ai-management-section-projection-source-20261109.json",
@@ -623,6 +623,51 @@
     "routeAdoption": false,
     "sourceOnly": true,
     "runtimeQualified": false,
-    "releaseAuthorized": false
+    "releaseAuthorized": false,
+    "fixtureCriteriaCorrection": {
+      "parent": "19be4cc783ec5e7d8cba157d530b2c136612d504",
+      "record": "docs/qualification/ai-management-allowance-fixture-label-criteria-repair-20261109.json",
+      "wholeParentIndex": {
+        "path": "docs/qualification/ai-management-section-projection-source-20261109.json",
+        "bytes": 41452,
+        "sha256": "16e980cd9f75867659b4143bec00cb5a075c9c18f0388a5e26c4816c8902acf3",
+        "commit": "19be4cc783ec5e7d8cba157d530b2c136612d504",
+        "gitBlob": "2cb06b6117558edd96ec26ee4f32faa9b1fa8812",
+        "mode": "100644"
+      },
+      "previousAffectedPins": [
+        {
+          "path": "test/ai-management-allowance-presentation.test.ts",
+          "bytes": 21209,
+          "sha256": "18d4e9d2603f16d21f395f2791e5daee8362fc2bedccf7488fde32eb0a1a87a9",
+          "commit": "19be4cc783ec5e7d8cba157d530b2c136612d504",
+          "gitBlob": "e6ac8ec40e864ea07f018a4a8ba4d40e2b28bd30",
+          "mode": "100644"
+        },
+        {
+          "path": "docs/adr/2026-11-09-ai-management-section-projection.md",
+          "bytes": 22265,
+          "sha256": "34e7ec43795fb9af5f951edf9af5ca33a55df98cb7b58705e0bdd9891b218e28",
+          "commit": "19be4cc783ec5e7d8cba157d530b2c136612d504",
+          "gitBlob": "6ba4d6a9e9d3cbaa3d8611cc42f783557f7f73b4",
+          "mode": "100644"
+        }
+      ],
+      "original19beSourceRecordRetainedWholeAsHistoricalSourceOnly": true,
+      "scope": "Fixture only: canonical setLabelCriteria before other-company assignment; independent stored Criteria and effective assignment assertions. No production owner change.",
+      "casePreservation": {
+        "registrations": 13,
+        "expandedCases": 17,
+        "allRegistrationBodiesWhole": true,
+        "all59OldDirectExpectCallsWhole": true,
+        "addedFixtureConstructionExpectCalls": 2,
+        "allNamesAndCapsWhole": true
+      },
+      "nativeStatus": "AUTHORED_UNRUN_NO_OLD_PASS_TRANSFER",
+      "sourceOnly": true,
+      "currentSourceGraphAndDisclosureBinding": "OPEN",
+      "runtimeQualified": false,
+      "releaseAuthorized": false
+    }
   }
 }
