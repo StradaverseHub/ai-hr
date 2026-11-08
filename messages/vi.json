@@ -4457,7 +4457,7 @@
     "myDayPending": "Đang chờ phê duyệt — không thể gửi thêm yêu cầu sửa cho ngày này.",
     "myDaySubmit": "Gửi yêu cầu sửa",
     "myDaySubmitted": "Đã gửi yêu cầu sửa để phê duyệt.",
-    "myDayWorkflowUnavailable": "Không có tuyến phê duyệt khả dụng. Hãy nhờ HR kiểm tra việc phân công quy trình.",
+    "myDayWorkflowUnavailable": "Vui lòng liên hệ quản trị viên nhân sự.",
     "myRecords": {
       "title": "Tổng quan chấm công",
       "intro": "Chấm công của chính bạn, mỗi ngày theo lịch trong khoảng đã chọn là một dòng. Những ngày đi trễ, thiếu giờ hoặc chấm công không đủ được đánh dấu ở cột Ghi chú bên cạnh trạng thái.",
@@ -26909,7 +26909,9 @@
     "notEligibleForCompanies": "Không đủ điều kiện duyệt cho mọi công ty đã chọn. Kiểm tra việc làm, tài khoản và quyền duyệt.",
     "noEmployeeMatches": "Không có nhân viên phù hợp.",
     "previousEmployees": "Nhân viên trước",
-    "nextEmployees": "Thêm nhân viên"
+    "nextEmployees": "Thêm nhân viên",
+    "submissionContactHr": "Vui lòng liên hệ quản trị viên nhân sự.",
+    "submissionSending": "Đang gửi…"
   },
   "attendanceHistory": {
     "title": "Lịch sử đơn",

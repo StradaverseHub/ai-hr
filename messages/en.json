@@ -4457,7 +4457,7 @@
     "myDayPending": "Pending approval — another correction cannot be submitted for this date.",
     "myDaySubmit": "Submit correction",
     "myDaySubmitted": "Correction submitted for approval.",
-    "myDayWorkflowUnavailable": "No usable approval route is available. Ask HR to check the workflow assignment.",
+    "myDayWorkflowUnavailable": "Please Contact the HR Administrator.",
     "myRecords": {
       "title": "Attendance Overview",
       "intro": "Your own attendance, one row for every calendar day in the range. Late, short and incomplete days are marked in the Note column beside the status.",
@@ -26909,7 +26909,9 @@
     "notEligibleForCompanies": "Not eligible to approve for every selected company. Check employment, linked login and company approval rights.",
     "noEmployeeMatches": "No employees match your search.",
     "previousEmployees": "Previous employees",
-    "nextEmployees": "More employees"
+    "nextEmployees": "More employees",
+    "submissionContactHr": "Please Contact the HR Administrator.",
+    "submissionSending": "Submitting…"
   },
   "attendanceHistory": {
     "title": "Application History",

@@ -1,3 +1,4 @@
+import { AttendanceWorkflowSubmissionError } from '../lib/attendance-workflow-submission';
 import { nextAttendanceWorkflowPriority } from '@/lib/attendance-workflow';
 import { randomUUID } from 'node:crypto';
 import {getTableColumns as templateColumnsOf, and, asc, desc, eq, inArray, isNull, isNotNull, sql } from 'drizzle-orm';
@@ -257,32 +258,54 @@ export async function setAttendanceWorkflowEnabled(ctx: SessionContext, companyI
         await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: 'attendance-workflow-setting', aggregateId: companyId, eventType: 'attendance-workflow.routing.changed', actor: actorOf(ctx), payload: { companyId, applicationType, before: previous?.enabled ?? false, after: enabled } });
     });
 }
-/** In the correction submission transaction. Old rows have no snapshot and always keep legacy routing. */
+/** New requests require a configured route. Existing rows retain their immutable snapshot/legacy decisions. */
 export async function prepareAttendanceWorkflowSnapshotTx(tx:Tx,ctx:SessionContext,employmentId:string,applicationType:AttendanceApplicationType){
     assertModuleGate(ctx,'attendance');
     const [subject] = await tx.select({ companyId: employment.companyId }).from(employment).where(eq(employment.id, employmentId)).limit(1);
     if (!subject)
         throw new AttendanceWorkflowError('scope', 'The employee is not visible.');
+    // Match the lifecycle owner's exclusive lock before any company lock.
+    await tx.execute(sql`select pg_advisory_xact_lock_shared(hashtextextended(${ctx.tenantId + ':attendance-workflow-scope:' + applicationType},0))`);
     await companyLock(tx, ctx.tenantId, subject.companyId, applicationType);
     const [config] = await tx.select().from(setting).where(and(eq(setting.companyId, subject.companyId), eq(setting.applicationType, applicationType)));
     if (!config?.enabled)
-        return null;
-    const candidates = await tx.select().from(template).where(and(applies(subject.companyId), eq(template.applicationType, applicationType), eq(template.active, true), isNull(template.supersededAt))).orderBy(asc(template.priority), asc(template.id));
+        throw new AttendanceWorkflowSubmissionError('noMatch');
+    const candidates = await tx.select().from(template).where(and(applies(subject.companyId), eq(template.applicationType, applicationType), eq(template.active, true), isNull(template.supersededAt), isNull(template.retiredAt))).orderBy(asc(template.priority), asc(template.id));
     const matches: typeof candidates = [];
     for (const row of candidates)
         if ((await workflowTargets(tx, row.criteria, subject.companyId, [employmentId])).includes(employmentId))
             matches.push(row);
     if (!matches.length)
-        throw new AttendanceWorkflowError('noMatch', 'Attendance workflow routing is enabled, but no active template matches this employee and application type. Ask HR to configure the assignment.');
+        throw new AttendanceWorkflowSubmissionError('noMatch');
     if (matches.filter(row => row.priority === matches[0].priority).length !== 1)
-        throw new AttendanceWorkflowError('tie', 'More than one attendance workflow matches at the highest priority. Ask HR to resolve the conflicting assignments.');
-    const selected = matches[0], validated = attendanceWorkflowConfiguration(selected);
+        throw new AttendanceWorkflowSubmissionError('tie');
+    const selected = matches[0];
+    try {
+    const validated = attendanceWorkflowConfiguration(selected);
     const resolved=validated.routingVersion===4?await resolveV4(tx,employmentId,validated.stages,validated.cc):{stages:await resolveStages(tx,employmentId,validated.stages,validated.routingVersion),cc:[]};
     const {stages,cc}=resolved;
     return {subject,selected,validated,stages,cc};
+    } catch (error) {
+      if (error instanceof AttendanceLevelError || error instanceof AttendanceWorkflowError || error instanceof AttendanceCcError)
+        throw new AttendanceWorkflowSubmissionError('unresolved');
+      throw error;
+    }
+}
+export async function ownAttendanceSubmissionRoute(ctx:SessionContext, employmentId:string, applicationType:AttendanceApplicationType) {
+  return withTenant(ctx,async tx=>{
+    const [subject]=await tx.select({personId:employment.personId}).from(employment).where(eq(employment.id,employmentId)).limit(1);
+    if(!ctx.personId || subject?.personId!==ctx.personId) throw new AttendanceWorkflowError('scope','The employee is not visible.');
+    try {
+      const route=await prepareAttendanceWorkflowSnapshotTx(tx,ctx,employmentId,applicationType);
+      return {available:true as const,name:route.selected.name,stages:route.stages};
+    } catch(error) {
+      if(error instanceof AttendanceWorkflowSubmissionError) return {available:false as const};
+      throw error;
+    }
+  });
 }
 export async function snapshotAttendanceWorkflowTx(tx: Tx, ctx: SessionContext, correctionId: string, employmentId: string, applicationType: AttendanceApplicationType) {
-    const prepared=await prepareAttendanceWorkflowSnapshotTx(tx,ctx,employmentId,applicationType);if(!prepared)return null;
+    const prepared=await prepareAttendanceWorkflowSnapshotTx(tx,ctx,employmentId,applicationType);
     const {subject,selected,validated,stages,cc}=prepared;
     const [snapshot] = await tx.insert(request).values({ tenantId: ctx.tenantId, correctionId, employmentId, companyId: subject.companyId, templateId: selected.id, templateCode: selected.code, templateName: selected.name, templateVersion: selected.version, applicationType, routingVersion: validated.routingVersion, stages, cc }).returning();
     await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: 'attendance-correction', aggregateId: correctionId, eventType: 'attendance-workflow.resolved', actor: actorOf(ctx), subjectEmploymentId: employmentId, payload: { workflowRequestId: snapshot.id, templateId: selected.id, templateVersion: selected.version, stages } });

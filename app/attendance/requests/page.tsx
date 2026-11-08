@@ -1,9 +1,11 @@
+import type { AttendanceSubmissionAction } from '@/components/attendance-submission-form';
+import { ownAttendanceSubmissionRoute } from '@/packs/attendance/service';
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { CalendarPlus } from 'lucide-react';
 import { getSession } from '@/lib/session';
-import { myEmployment, reportingLinesFor } from '@/core/read';
+import { myEmployment } from '@/core/read';
 import { attendanceForEmploymentRange, myAttendanceCorrections } from '@/packs/attendance/service';
 import {
   Button,
@@ -137,17 +139,15 @@ export default async function AttendanceIrregularityPage({
   const from = addDays(today, -CORRECTION_WINDOW_DAYS);
   const to = addDays(today, -1); // yesterday — see the header note on why today is out.
 
-  const [days, requests, lines] = await Promise.all([
+  const [days, requests, route] = await Promise.all([
     attendanceForEmploymentRange(s, me.employmentId, from, to),
     // Read for ONE thing now: which dates already have a request waiting. The list itself moved to
     // /attendance/request-status; what stays here is the marker on the row, which is a different statement.
     myAttendanceCorrections(s, me.employmentId, { limit: 200 }),
-    reportingLinesFor(s, me.employmentId),
+    ownAttendanceSubmissionRoute(s, me.employmentId, 'irregularity'),
   ]);
-  // Who a request goes to. Resolved from the administrative reporting line — the edge assertCanDecide
-  // routes an attendance decision along — falling back to HR rather than blank, because "nobody" is never
-  // the answer: an employee with no line still has their request decided, by HR. The employee NEVER picks.
-  const approver = lines.managers.find((m) => m.lineType === 'administrative')?.name ?? t('otGoesToUnknown');
+  const routeCopy = await getTranslations('attendanceWorkflow');
+  const approver = route.available ? route.stages.map(stage => stage.approvers.map(actor => actor.name).join(' / ')).join('; ') : routeCopy('submissionContactHr');
 
   // An employee who is not on clocking at all has no attendance rows, and every scheduled day in the
   // window would then read as an unexplained absence — a wall of red for somebody whose company simply
@@ -422,7 +422,7 @@ type T = Awaited<ReturnType<typeof getTranslations<'me'>>>;
 type CorrectionRequest = {
   copy: CorrectionCopy;
   approver: string;
-  submitAction: (formData: FormData) => void | Promise<void>;
+  submitAction: AttendanceSubmissionAction;
   minDate: string;
   maxDate: string;
 };

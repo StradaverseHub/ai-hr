@@ -1,11 +1,12 @@
 'use client';
 
+import { AttendanceSubmissionForm, AttendanceSubmissionButton, type AttendanceSubmissionAction } from '@/components/attendance-submission-form';
 import { useState, type ComponentProps, type ReactNode } from 'react';
 import Link from 'next/link';
 import * as Dialog from '@radix-ui/react-dialog';
 import { Button, Field, inputCls } from '@/components/ui';
 
-type Action = (fd: FormData) => void | Promise<void>;
+type Action = AttendanceSubmissionAction;
 
 /**
  * c6bb5f5a — the attendance-correction request form, stated ONCE and mounted twice.
@@ -93,7 +94,7 @@ export function CorrectionForm({
   onSubmitted?: () => void;
 }) {
   return (
-    <form action={submitAction} onSubmit={onSubmitted} className="space-y-2.5 p-4">
+    <AttendanceSubmissionForm action={submitAction} onSubmitted={onSubmitted} className="space-y-2.5 p-4">
       <input type="hidden" name="section" value={section} />
       <input type="hidden" name="requestKind" value={requestKind} />
       {day ? (
@@ -166,11 +167,11 @@ export function CorrectionForm({
       <p className="text-[11px] text-muted-foreground">{copy.originalKept}</p>
       <div className="flex items-center justify-end gap-2 pt-1">
         {cancel}
-        <Button type="submit" size="sm">
+        <AttendanceSubmissionButton type="submit" size="sm">
           {copy.submit}
-        </Button>
+        </AttendanceSubmissionButton>
       </div>
-    </form>
+    </AttendanceSubmissionForm>
   );
 }
 

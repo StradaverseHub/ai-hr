@@ -4457,7 +4457,7 @@
     "myDayPending": "Menunggu kelulusan — pembetulan lain tidak boleh dihantar untuk tarikh ini.",
     "myDaySubmit": "Hantar pembetulan",
     "myDaySubmitted": "Pembetulan dihantar untuk kelulusan.",
-    "myDayWorkflowUnavailable": "Tiada laluan kelulusan yang boleh digunakan. Minta HR menyemak penetapan aliran kerja.",
+    "myDayWorkflowUnavailable": "Sila hubungi Pentadbir HR.",
     "myRecords": {
       "title": "Ringkasan Kehadiran",
       "intro": "Kehadiran anda sendiri, satu baris bagi setiap hari kalendar dalam julat ini. Hari yang lewat, kurang jam atau tidak lengkap ditandakan dalam kolum Nota di sebelah status.",
@@ -26909,7 +26909,9 @@
     "notEligibleForCompanies": "Tidak layak meluluskan untuk semua syarikat terpilih. Semak pekerjaan, akaun log masuk dan hak kelulusan.",
     "noEmployeeMatches": "Tiada pekerja sepadan dengan carian.",
     "previousEmployees": "Pekerja sebelumnya",
-    "nextEmployees": "Lagi pekerja"
+    "nextEmployees": "Lagi pekerja",
+    "submissionContactHr": "Sila hubungi Pentadbir HR.",
+    "submissionSending": "Sedang menghantar…"
   },
   "attendanceHistory": {
     "title": "Sejarah Permohonan",

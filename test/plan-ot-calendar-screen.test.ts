@@ -269,8 +269,8 @@ describe('E · the two right-hand panels, and what happened to their keys', () =
     expect(MESSAGES.en.me.otStaysOnCalendarHelp).toContain('You stay on this calendar afterwards.');
   });
   it('does not name a reporting-line superior as the configured workflow approver', () => {
-    expect(APPLY).toContain('listAttendanceWorkflowSettings(s, [me.companyId])');
-    expect(APPLY).toContain("workflowEnabled ? t('otWorkflowGoesTo')");
+    expect(APPLY).toContain("ownAttendanceSubmissionRoute(s, me.employmentId, 'self_overtime')");
+    expect(APPLY).toContain("routeCopy('submissionContactHr')");
     expect(LIST).toContain('p.assignedApproverNames');
     expect(MESSAGES.en.me.overtimeRequestHelp).not.toContain('goes to your superior');
     for (const messages of Object.values(MESSAGES)) {

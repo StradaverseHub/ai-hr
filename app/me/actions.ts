@@ -1,4 +1,6 @@
 'use server';
+import { AttendanceWorkflowSubmissionError } from '@/lib/attendance-workflow-submission';
+
 
 import { AttendanceLevelError } from '@/lib/attendance-workflow-v3';
 import { attendanceWorkflowErrorMessage } from '@/lib/attendance-workflow-error-message';
@@ -595,6 +597,7 @@ export async function myRequestCorrection(formData: FormData) {
       });
     }
   } catch (e) {
+    if (e instanceof AttendanceWorkflowSubmissionError) return { error: await attendanceWorkflowErrorMessage(e) };
     redirect(`${REQUESTS_PAGE}?section=${section}&error=${encodeURIComponent(await attendanceWorkflowErrorMessage(e))}`);
   }
   revalidatePath(REQUESTS_PAGE);
@@ -664,7 +667,7 @@ const PLAN_OT_PAGE = '/attendance/plan-ot';
  * localizeLeaveError already use in this file.
  */
 async function localizeOvertimeRequestError(e: unknown): Promise<string> {
-  if (e instanceof AttendanceLevelError) return attendanceWorkflowErrorMessage(e);
+  if (e instanceof AttendanceLevelError || e instanceof AttendanceWorkflowSubmissionError) return attendanceWorkflowErrorMessage(e);
   if (e instanceof OvertimePlanAlreadyApprovedError || e instanceof OvertimeAlreadyCountedError) {
     const t = await getTranslations('me');
     return e instanceof OvertimeAlreadyCountedError
@@ -750,6 +753,7 @@ export async function myRequestOvertime(formData: FormData) {
     // bad figure, refusal, success) and asserts every one of them carries the date. A second refusal
     // redirect for the localized case would have been the easy shape and would have broken that guard —
     // and the guard is right, because a refusal that loses the date resets the form to tomorrow.
+    if (e instanceof AttendanceWorkflowSubmissionError) return { error: await attendanceWorkflowErrorMessage(e) };
     const msg = await localizeOvertimeRequestError(e);
     redirect(`${PLAN_OT_PAGE}/apply?date=${encodeURIComponent(date)}&error=${encodeURIComponent(msg)}`);
   }

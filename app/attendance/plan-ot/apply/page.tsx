@@ -1,3 +1,4 @@
+import { AttendanceSubmissionForm, AttendanceSubmissionButton } from '@/components/attendance-submission-form';
 import {exactOvertimeMinutesText,overtimeCapAssessment} from '@/lib/overtime-records';
 import {FormulaOvertimeDuration} from '@/components/formula-overtime-record';
 import type {ReactNode} from 'react';
@@ -5,14 +6,14 @@ import { formatMinutesToHM } from '@/lib/overtime-duration';
 import Link from 'next/link';
 import { getLocale, getTranslations } from 'next-intl/server';
 import { getSession } from '@/lib/session';
-import { myEmployment, reportingLinesFor } from '@/core/read';
+import { myEmployment } from '@/core/read';
 import {
   attendanceForEmploymentRange,
   myOvertimePlans,
   otMonthToDateDuration,
   otPlanCalendarMonth,
   type OtPlanCalendarDay,
-  listAttendanceWorkflowSettings,
+  ownAttendanceSubmissionRoute,
 } from '@/packs/attendance/service';
 import { Button, Card, ErrorBanner, Field, PageHeader, inputCls, pageWideCls } from '@/components/ui';
 import { OtPlanCalendar, type OtCalendarCell, type OtCalendarPlanStatus } from '@/components/ot-plan-calendar';
@@ -98,10 +99,10 @@ export default async function ApplyOtPlanPage({
   const { from: monthFrom, to: monthTo } = monthRange(month);
   const isPast = date <= today;
 
-  const [calendar, cap, lines, monthPlans, actual, workflowSettings] = await Promise.all([
+  const [calendar, cap, route, monthPlans, actual] = await Promise.all([
     otPlanCalendarMonth(s, me.employmentId, month),
     otMonthToDateDuration(s, me.employmentId, date),
-    reportingLinesFor(s, me.employmentId),
+    ownAttendanceSubmissionRoute(s, me.employmentId, 'self_overtime'),
     // The month's own plans — the dots on the grid, the counts in the summary, and "what you already
     // filed" on the day card. Windowed rather than `limit`-ed: a heavy month of overtime must not push
     // an older month's dots off the calendar just because the list happened to be capped at 100.
@@ -109,10 +110,9 @@ export default async function ApplyOtPlanPage({
     // "What you actually clocked", for ONE date and only when that date has happened. The existing
     // Records read, asked for a one-day window; there is no new read behind this block.
     isPast ? attendanceForEmploymentRange(s, me.employmentId, date, date) : Promise.resolve([]),
-    listAttendanceWorkflowSettings(s, [me.companyId]),
   ]);
-  const workflowEnabled = workflowSettings.some(setting => setting.applicationType === 'self_overtime' && setting.enabled);
-  const approver = workflowEnabled ? t('otWorkflowGoesTo') : lines.managers.find((m) => m.lineType === 'administrative')?.name ?? t('otGoesToUnknown');
+  const routeCopy = await getTranslations('attendanceWorkflow');
+  const approver = route.available ? route.stages.map(stage => stage.approvers.map(actor => actor.name).join(' / ')).join('; ') : routeCopy('submissionContactHr');
 
   const day: OtPlanCalendarDay | undefined = calendar.find((d) => d.date === date);
   const clocked = actual[0];
@@ -369,7 +369,7 @@ export default async function ApplyOtPlanPage({
 
           <Card className="p-4">
             {/* React supplies the Server Action's POST and multipart encoding, including file uploads. */}
-            <form action={myRequestOvertime} className="space-y-3">
+            <AttendanceSubmissionForm action={myRequestOvertime} className="space-y-3">
               <h2 className="text-sm font-semibold">{t('otCalOvertimeHeading')}</h2>
 
               {/* The client island: the planned window, the derived hours and the reason category. The
@@ -409,11 +409,10 @@ export default async function ApplyOtPlanPage({
               <p className="text-[11px] text-muted-foreground">{t('maAttachmentHelp')}</p>
 
               <Field label={t('otGoesToLabel')}>
-                {/* Informational only: submission freezes the matching company workflow, while legacy
-                    routing follows the reporting line. No caller-supplied approver is posted. */}
+                {/* Informational preview only. Submission re-resolves and freezes its own route. */}
                 <div className={`${inputCls} flex items-center bg-muted/40`}>{approver}</div>
               </Field>
-              <p className="text-[11px] text-muted-foreground">{t(workflowEnabled ? 'otWorkflowGoesToHelp' : 'otGoesToHelp')}</p>
+              <p className="text-[11px] text-muted-foreground">{route.available ? t('otWorkflowGoesToHelp') : routeCopy('submissionContactHr')}</p>
 
               {/* On a phone Submit is pinned to the bottom of the screen with the date beside it, which is
                   what the approved picture draws; from `lg` up it is an ordinary footer row again.
@@ -423,11 +422,11 @@ export default async function ApplyOtPlanPage({
                   disagree with the layout for the 768–1023px band. */}
               <div className="sticky bottom-0 -mx-4 -mb-4 flex items-center justify-between gap-3 rounded-b-[1.25rem] border-t border-border bg-card px-4 py-3 lg:static lg:mx-0 lg:mb-0 lg:rounded-none lg:border-0 lg:bg-transparent lg:px-0 lg:pb-0">
                 <p className="text-[11px] text-muted-foreground">{t('otStaysOnCalendarHelp')}</p>
-                <Button type="submit" size="sm" className="shrink-0">
+                <AttendanceSubmissionButton type="submit" size="sm" className="shrink-0">
                   {t('otSubmitPlan')}
-                </Button>
+                </AttendanceSubmissionButton>
               </div>
-            </form>
+            </AttendanceSubmissionForm>
             {/* NO STANDING "you already have an approved plan" NOTE HERE, deliberately. It used to render
                 unconditionally, with no query behind it, so a brand-new employee opening this form for the
                 first time was told they already had a plan and should withdraw it. The real refusal is

@@ -1,4 +1,5 @@
 'use server';
+import { AttendanceWorkflowSubmissionError } from '@/lib/attendance-workflow-submission';
 import { AttendanceLevelError, attendanceLevelProblemToken } from '@/lib/attendance-workflow-v3';
 
 import {attendancePolicyLocalWorkInstant} from '@/lib/attendance-policy-unclocked-work';
@@ -83,6 +84,7 @@ export async function saveAttendanceClockDataAction(formData: FormData) {
     if(raw.length>40000) throw new Error('Invalid clock data');
     ({correctionId}=await requestAttendanceCorrection(s,{employmentId,date,reason,clockChanges:JSON.parse(raw)}));
   } catch(e) {
+    if (e instanceof AttendanceWorkflowSubmissionError) fail('myDayWorkflowUnavailable');
     if (e instanceof AttendanceLevelError) redirect(`${back}&workflowProblem=${encodeURIComponent(attendanceLevelProblemToken(e.problem))}`);
     fail(e instanceof ClockDataChangedError ? 'clockDataChanged' : e instanceof AttendancePayrollClosedError ? 'clockDataPayrollClosed' : 'correctionRejected');
   }

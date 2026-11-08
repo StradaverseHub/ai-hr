@@ -4457,7 +4457,7 @@
     "myDayPending": "待审批 — 此日期无法再次提交更正。",
     "myDaySubmit": "提交更正",
     "myDaySubmitted": "更正已提交审批。",
-    "myDayWorkflowUnavailable": "没有可用的审批流程。请联系人力资源部门检查流程分配。",
+    "myDayWorkflowUnavailable": "请联系 HR 管理员。",
     "myRecords": {
       "title": "考勤概览",
       "intro": "你自己的考勤，所选范围内每个日历日一行。迟到、工时不足和打卡不完整的日子会在状态旁的备注栏标示。",
@@ -26909,7 +26909,9 @@
     "notEligibleForCompanies": "不具备为所有选定公司审批的资格。请检查任职、关联登录及公司审批权限。",
     "noEmployeeMatches": "没有符合搜索条件的员工。",
     "previousEmployees": "上一页员工",
-    "nextEmployees": "更多员工"
+    "nextEmployees": "更多员工",
+    "submissionContactHr": "请联系 HR 管理员。",
+    "submissionSending": "正在提交…"
   },
   "attendanceHistory": {
     "title": "申请历史",
