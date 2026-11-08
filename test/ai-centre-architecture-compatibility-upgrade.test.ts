@@ -35,6 +35,9 @@ type NativeFunction={signature:string;oid:number;definition:string;body:string;a
 
 it('upgrades populated709 atomically, preserves real native owners/wrappers and refuses drift and raw stopped admissions',async()=>{
  const journal=JSON.parse(readFileSync('db/migrations/meta/_journal.json','utf8')) as {entries:{idx:number;when:number;tag:string}[]};
+ // This qualified component owns the exact3500 boundary; the separate3501 fixture
+ // executes and checks the later write-order append against its actual747 boundary.
+ journal.entries=journal.entries.slice(0,journal.entries.findIndex(row=>row.tag==='3500_ai_centre_architecture_compatibility')+1);
  const boundary=journal.entries.findIndex(row=>row.tag==='2103_system_performance_read_guards');expect(boundary).toBe(709);
  expect(journal.entries.at(-1)).toMatchObject({idx:2800,when:1793330003100,tag:'3500_ai_centre_architecture_compatibility'});
  const token=randomUUID().replaceAll('-',''),database='ai_hr_ai_compat_'+token,role='aihr_ai_compat_'+token;
