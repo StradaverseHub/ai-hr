@@ -996,10 +996,12 @@ describe('Statutory tab: each body is a row (3c2f55d7 rev 2, relaid out by efe42
    * Pinned at source because the failure mode is a later round "tidying" the fields back onto the tab,
    * which no behavioural test on the screen would notice at all.
    */
-  it('the tab is the registrations card beside a read-only list that LINKS to the dedicated screen', () => {
+  it('keeps the Statutory tab as a read-only list linking to setup after registrations move to General', () => {
     const pane = panel.slice(panel.indexOf("cn('space-y-4', tab === 'statutory'"), panel.indexOf('{/* end Statutory tab */}'));
-    expect(pane, 'two columns on a wide screen, stacked on a narrow one').toContain('flex flex-col gap-4 lg:flex-row');
-    expect(pane, 'the registrations card is a fixed-width column of its own').toContain('lg:w-72');
+    // Approved 6a2b463a removes the redundant registrations column, not the authority list or its link.
+    expect(pane, 'the removed registrations column stays removed').not.toContain('lg:w-72');
+    expect(pane, 'no duplicate registration editor remains').not.toContain('name="ssmRegistrationNo"');
+    expect(pane).not.toContain('name="myinvoisTin"');
     expect(pane, 'and the list is navigation, not decoration').toMatch(/<nav aria-label=\{t\('authoritiesTitle'\)\}>/);
     expect(pane, 'the list takes the rest').toContain('min-w-0 flex-1');
     // Never behind a condition of its own: only `isMY` decides whether the tab has a list at all.
@@ -1014,19 +1016,11 @@ describe('Statutory tab: each body is a row (3c2f55d7 rev 2, relaid out by efe42
     expect(panel, 'the workspace selection is gone').not.toContain('setStatutoryBody');
   });
 
-  /**
-   * ⚠️ REPLACES r352'S "the tab has ONE Save, and every card under the bar carries a section marker".
-   *
-   * That case was the half that resolved 65b22c00's finding 1: the audit left the SSM / MyInvois card with
-   * its own button because a scope on this tab would have sat above eight body editors it did not own, and
-   * r352 took the Save buttons off those editors so the bar DID own them.
-   *
-   * r353 is the reporter contesting the editors' presence on the tab at all. With them gone the scope has
-   * one two-field card left to own, which is the "worse than none" finding 1 named in the same breath — so
-   * the card takes its own Save back and the scope goes. Both halves are asserted, because "the bar
-   * disappeared" and "the card lost its Save" look identical from the outside and only one of them is right.
+  /** Approved 6a2b463a relocates the sole SSM/TIN editor into General's consolidated Save.
+   * Statutory still has no local editor or Save. The separate payment-setup screen continues to
+   * own its authority forms and lifecycle controls; moving registrations must not duplicate them.
    */
-  it('the tab has NO consolidated Save, and the registrations card submits itself', () => {
+  it('keeps Statutory read-only and gives the single General registration editor to its consolidated Save', () => {
     const pane = panel.slice(panel.indexOf("cn('space-y-4', tab === 'statutory'"), panel.indexOf('{/* end Statutory tab */}'));
     expect(pane, 'no scope over one card').not.toContain('<TabSaveScope');
     expect(pane, 'and no statutory tab key for one to key on').not.toContain('tabKey="statutory"');
@@ -1035,9 +1029,18 @@ describe('Statutory tab: each body is a row (3c2f55d7 rev 2, relaid out by efe42
     expect(stripComments(panel), 'and so is the section-label map it needed').not.toContain(
       'statutorySectionLabels',
     );
-    // THE CARD'S OWN SAVE IS BACK — the retired caption returning to service, not a new string.
-    expect(pane, 'bucket (a) with its own control again').toContain("t('saveStatutoryIdentity')");
-    expect(pane, 'as a real submit').toMatch(/<Button type="submit"/);
+    // Approved 6a2b463a moved the sole SSM/TIN editor into General's existing Save scope.
+    const general = panel.slice(panel.indexOf("cn('space-y-4', tab === 'general'"), panel.indexOf('{/* end General tab */}'));
+    const registration = general.match(/<form\b[^>]*data-save-section="registration"[\s\S]*?<\/form>/)?.[0] ?? '';
+    expect(general.length, 'the General pane slice must resolve').toBeGreaterThan(100);
+    expect(registration, 'the single registration section must resolve').not.toBe('');
+    expect(registration).toContain('name="ssmRegistrationNo"');
+    expect(registration).toContain('name="myinvoisTin"');
+    expect(panel.match(/name="ssmRegistrationNo"/g), 'there is only one SSM editor').toHaveLength(1);
+    expect(panel.match(/name="myinvoisTin"/g), 'there is only one TIN editor').toHaveLength(1);
+    expect(registration, 'the General Save owns it, without a competing button').not.toMatch(/<(?:Button|ActionButton|button)\b/);
+    expect(pane, 'the retired section caption stays removed').not.toContain("t('statutoryIdentityMY')");
+    expect(pane, 'the old standalone Save stays removed').not.toContain("t('saveStatutoryIdentity')");
     // NO SECTION MARKERS LEFT ON THIS TAB. A marker with no scope above it is inert, and inert markup that
     // looks like a contract is how the next round re-adds half a feature.
     expect(pane, 'no marker survives the scope').not.toContain('data-save-section');
@@ -1067,33 +1070,26 @@ describe('Statutory tab: each body is a row (3c2f55d7 rev 2, relaid out by efe42
     expect(clear, 'and it is not inside the card Save').not.toContain("t('authoritySave')");
   });
 
-  /**
-   * ⚠️ THE PACK FLAG ON THE REGISTRATIONS CARD IS `filingCountry`, NOT `country`, AND IT STAYS THAT WAY
-   * AFTER r353 REMOVED THE SCOPE THAT FORCED IT. This is a DATA guard, not a naming one, and it is kept
-   * deliberately rather than reverted — which is the whole reason the case is worth reading.
-   *
-   * `lib/tab-save-dom.ts` `syncCarriedValues` treats a HIDDEN input as a mirror of any VISIBLE control with
-   * the same name in a sibling section of the same scope, and copies the visible value into it — the
-   * behaviour the personnel cards need. Every statutory body's editor carries a visible `country` for its
-   * postal address (a country NAME from the ISO list). The moment r352 put the registrations card in that
-   * scope, its hidden `name="country"` was overwritten with "Malaysia" and posted into `packFor()`: EVERY
-   * identity save died with "No statutory pack for Malaysia".
-   *
-   * The card is outside a scope again, so that exact door is shut. The name stays for two reasons. ONE:
-   * `setCompanyStatutoryAction` reads `country` and defaults an absent one to 'MY', which is the only value
-   * this MY-only card ever posted — so `filingCountry` is not merely harmless, it is what makes the default
-   * the live path. TWO: the SAME collision is live on the dedicated screen, where a body's filing control
-   * and its visible postal `country` are on one form; one name for one concept, on both screens.
+  /** Keep the historical country-name collision closed after moving registrations into General.
+   * The client uses filingCountry, while the consolidated writer chooses the actual company's pack
+   * and preserves partial-patch semantics. A posted address value cannot select a statutory owner.
    */
-  it('the registrations card posts its pack flag under a name no address field can collide with', () => {
-    const pane = panel.slice(panel.indexOf("cn('space-y-4', tab === 'statutory'"), panel.indexOf('{/* end Statutory tab */}'));
-    const form = pane.slice(pane.indexOf('action={actions.setStatutory}'), pane.indexOf('</form>'));
+  it('keeps General registration fields separate from address country and uses the actual company pack', () => {
+    const general = panel.slice(panel.indexOf("cn('space-y-4', tab === 'general'"), panel.indexOf('{/* end General tab */}'));
+    const form = general.match(/<form\b[^>]*data-save-section="registration"[\s\S]*?<\/form>/)?.[0] ?? '';
+    expect(general.length, 'the General pane slice must resolve').toBeGreaterThan(100);
+    expect(form, 'the consolidated registration form must resolve').not.toBe('');
     expect(form).toContain('<input type="hidden" name="filingCountry" value="MY" />');
-    expect(form, 'a hidden country here would be overwritten by a body address').not.toContain('name="country"');
-    // The action that receives it still defaults an absent `country` to MY rather than throwing.
-    expect(ACTIONS_SRC, 'the MY-only default is the live path').toContain(
-      "const country = String(formData.get('country') ?? 'MY');",
-    );
+    expect(form, 'a hidden country would mirror an address value').not.toContain('name="country"');
+    const writer = ACTIONS_SRC.slice(ACTIONS_SRC.indexOf('async function applyCompanyRegistrationSection'), ACTIONS_SRC.indexOf('export async function saveCompanyGeneralTabAction'));
+    expect(writer.length, 'the narrow General registration writer must resolve').toBeGreaterThan(100);
+    expect(writer, 'the actual company chooses the pack').toContain('packFor(companyRow.country)');
+    expect(writer, 'a posted country must not select the statutory owner').not.toContain("fd.get('country')");
+    expect(writer, 'SSM uses partial-patch presence semantics').toContain("ssmRegistrationNo: postedField(fd, 'ssmRegistrationNo')");
+    expect(writer, 'TIN uses partial-patch presence semantics').toContain("myinvoisTin: postedField(fd, 'myinvoisTin')");
+    expect(writer, 'this editor cannot change the contribution rate').not.toContain('hrdfStatus:');
+    // The compatibility action remains safe for its older callers; it still defaults only an absent country.
+    expect(ACTIONS_SRC).toContain("const country = String(formData.get('country') ?? 'MY');");
   });
 
   /**
