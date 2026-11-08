@@ -13,8 +13,9 @@ function dialectFor(library:AttendanceFormulaLibrary):FormulaDialect{
  return {version:ATTENDANCE_FORMULA_CATALOG_VERSION,extendedSyntax:true,lookup:code=>functions.find(f=>f.code.toLowerCase()===code.toLowerCase())??(['Rounding','Date'].includes(payFormulaFunction(code)?.code??'')?payFormulaFunction(code):undefined),fieldType:(code,field)=>code==='ConditionID'?(library.conditions.find(condition=>condition.code===field)?.type??'decimal'):code==='FormulaID'?attendanceFormulaVariable(field)?.type??(library.formulas.some(f=>f.code===field)?'decimal':undefined):ATTENDANCE_FORMULA_FIELDS.find(descriptor=>descriptor.function===code&&descriptor.key===field)?.type};
 }
 export function compileAttendanceFormulaLibrary(library:AttendanceFormulaLibrary){
+ if(JSON.stringify(library).length>262144)throw Error('The complete attendance dependency plan exceeds 256 KB.');
  if(library.formulas.length>64||library.conditions.length>64)throw Error('Keep at most 64 formulas and 64 conditions in one dependency plan.');
- const names=new Set<string>();for(const item of [...library.formulas,...library.conditions]){if(!idPattern.test(item.code)||names.has(item.code)||attendanceFormulaVariable(item.code))throw Error('Choose unique formula and condition IDs outside the variable library.');names.add(item.code);}
+ const names=new Set<string>();for(const item of [...library.formulas,...library.conditions]){if(!idPattern.test(item.code)||names.has(item.code.toLowerCase())||ATTENDANCE_FORMULA_VARIABLES.some(variable=>variable.id.toLowerCase()===item.code.toLowerCase()))throw Error('Choose unique formula and condition IDs outside the variable library.');names.add(item.code.toLowerCase());}
  const dialect=dialectFor(library),programs=new Map<string,FormulaProgram>();
  const conditionTypes=new Map(library.conditions.map(condition=>[condition.code,condition.type??'decimal']));
  for(const item of [...library.formulas,...library.conditions])programs.set(item.code,parsePayFormula(item.source,{...dialect,returnType:conditionTypes.get(item.code)??'decimal'}));
