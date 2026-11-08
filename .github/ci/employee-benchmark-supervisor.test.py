@@ -2,6 +2,11 @@
 import importlib.util
 import os
 import json
+import ast
+import hashlib
+import marshal
+import struct
+from types import ModuleType
 import time
 import tempfile
 from unittest.mock import patch
@@ -9,8 +14,9 @@ from pathlib import Path
 import sys
 import unittest
 
-spec = importlib.util.spec_from_file_location('supervisor', Path(__file__).with_name('employee-benchmark-supervisor.py'))
-module = importlib.util.module_from_spec(spec); spec.loader.exec_module(module)
+adapter_source = Path(__file__).resolve().with_name('employee-benchmark-supervisor.py')
+module = ModuleType('supervisor'); module.__file__ = str(adapter_source)
+exec(compile(adapter_source.read_bytes(), str(adapter_source), 'exec', dont_inherit=True), module.__dict__)
 
 class NativeSupervisor(unittest.TestCase):
     def run_owned(self, argv, seconds=1, **options):
@@ -129,7 +135,7 @@ class ClosedEntryModels(unittest.TestCase):
                 if argv != ['bash', str(control / '.github/ci/postgres.sh'), 'stop']:
                     os._exit(95)
                 original_exec(sys.executable, [sys.executable, '-I', '-B', '-c', 'from pathlib import Path;Path('+repr(str(marker))+').write_text("STOPPED")'], values)
-            with patch.dict(os.environ, env), patch.object(sys, 'argv', [__file__, json.dumps(request)]), patch.object(module, 'append_event', side_effect=OSError('PRIVATE_PAYLOAD')), patch.object(module.os, 'execvpe', side_effect=child_edge):
+            with patch.dict(os.environ, env), patch.object(sys, 'argv', [__file__, json.dumps(request)]), patch.object(module, 'append_event', side_effect=OSError('PRIVATE_PAYLOAD')), patch.object(module._owned_process.os, 'execvpe', side_effect=child_edge):
                 self.assertEqual(module.main(), 1)
             self.assertEqual(marker.read_text(), 'STOPPED')
             self.assertEqual(module.own_children(), [])
@@ -152,6 +158,83 @@ class ClosedEntryModels(unittest.TestCase):
             for selected in [[], [module.FACTORY_FILE, module.CONTROL_FILE], [module.FACTORY_FILE, module.FACTORY_FILE], [module.FACTORY_FILE + '.extra']]:
                 with patch.dict(os.environ, {**env, 'AIHR_FOCUSED_TESTS': json.dumps(selected)}), self.assertRaises(ValueError):
                     module.request_command({**request, 'stage': 'native-factory'})
+
+class SharedKernelModels(unittest.TestCase):
+    def test_complete_c73_adapter_reconstruction_and_exact_extracted_helpers(self):
+        folder = Path(__file__).resolve().parent
+        archive = json.loads((folder / 'owned-process-extraction.json').read_text())
+        self.assertEqual(archive['base'], 'c73c8e15400890e5dfcb0d32d178929a5522ab5c')
+        current = (folder / 'employee-benchmark-supervisor.py').read_text()
+        shared = (folder / 'owned-process.py').read_text()
+        span = shared[shared.index('REASONS = '):]
+        self.assertEqual(hashlib.sha256(span.encode()).hexdigest(), archive['extractedSpanSha256'])
+        self.assertEqual(current.count(archive['loader']), 1)
+        original = current.replace(archive['loader'], span)
+        self.assertEqual(hashlib.sha256(original.encode()).hexdigest(), archive['originalSha256'])
+
+    def test_fixed_sibling_and_actual_kernel_globals_have_no_second_command_or_process_loop(self):
+        kernel = module._owned_process
+        self.assertEqual(Path(kernel.__file__).resolve(), Path(__file__).resolve().with_name('owned-process.py'))
+        self.assertIs(module.supervise, kernel.supervise)
+        self.assertIs(module.supervise.__globals__, kernel.__dict__)
+        self.assertIs(module.append_event, kernel.append_event)
+        tree = ast.parse(Path(kernel.__file__).read_text())
+        self.assertEqual([node.name for node in tree.body if isinstance(node, ast.FunctionDef)],
+                         ['require', 'identity', 'live_group', 'own_children', 'subreaper', 'settle_adopted', 'write_packet', 'append_event', 'supervise'])
+        self.assertEqual([alias.name for node in tree.body if isinstance(node, ast.Import) for alias in node.names],
+                         ['json', 'ctypes', 'os', 're', 'select', 'stat', 'signal', 'sys', 'time'])
+        self.assertEqual([(node.module, [alias.name for alias in node.names]) for node in tree.body if isinstance(node, ast.ImportFrom)], [('pathlib', ['Path'])])
+        self.assertEqual([node.targets[0].id for node in tree.body if isinstance(node, ast.Assign)], ['REASONS'])
+        self.assertEqual([type(node).__name__ for node in tree.body if not isinstance(node, (ast.Import, ast.ImportFrom, ast.Assign, ast.FunctionDef))], ['Expr'])
+        self.assertIsInstance(tree.body[0], ast.Expr)
+        self.assertIsInstance(tree.body[0].value, ast.Constant)
+        self.assertIsInstance(tree.body[0].value.value, str)
+        self.assertFalse(any(isinstance(node, ast.If) for node in tree.body))
+        # Patch the ACTUAL shared function globals: a CLI alias would be a no-op.
+        # Refusal must precede subreaper admission and any fork/native workload.
+        with patch.object(kernel, 'own_children', return_value=[123]), patch.object(kernel, 'subreaper') as admission:
+            with self.assertRaises(ValueError):
+                module.supervise([sys.executable, '-I', '-B', '-c', 'pass'], .1, lambda _: None)
+            admission.assert_not_called()
+
+    def test_actual_fixed_loader_executes_source_despite_valid_poison_cache_and_search_path_hooks(self):
+        folder = Path(__file__).resolve().parent
+        with tempfile.TemporaryDirectory(prefix='aihr-owned-kernel-cache-') as name:
+            private = Path(name).resolve(); source = private / 'controller'; source.mkdir()
+            adapter = source / 'employee-benchmark-supervisor.py'
+            kernel = source / 'owned-process.py'
+            adapter.write_bytes((folder / adapter.name).read_bytes())
+            kernel.write_bytes((folder / kernel.name).read_bytes())
+            cached = Path(importlib.util.cache_from_source(str(kernel)))
+            cached.parent.mkdir()
+            poison = compile("raise RuntimeError('MODEL_POISON_PYC')", str(kernel), 'exec', dont_inherit=True)
+            actual = kernel.stat()
+            # CPython timestamp/size header matches the REAL source file exactly.
+            # This is a private negative-control fixture, never a repository pyc.
+            cached.write_bytes(importlib.util.MAGIC_NUMBER + struct.pack('<III', 0, int(actual.st_mtime) & 0xffffffff, actual.st_size) + marshal.dumps(poison))
+            old = importlib.util.spec_from_file_location('old_cache_reader_control', kernel)
+            old_module = importlib.util.module_from_spec(old)
+            with self.assertRaisesRegex(RuntimeError, '^MODEL_POISON_PYC$'):
+                old.loader.exec_module(old_module)
+            hook = private / 'untrusted-search'; hook.mkdir()
+            for filename in ('owned-process.py', 'owned_process.py', 'aihr_owned_process.py'):
+                (hook / filename).write_text("raise RuntimeError('MODEL_SEARCH_PATH_HOOK')")
+            fixed = ModuleType('actual_fixed_adapter_control'); fixed.__file__ = str(adapter)
+            before = Path.cwd()
+            try:
+                os.chdir(hook)
+                with patch.object(sys, 'path', [str(hook), *sys.path]), patch.dict(os.environ, {'PYTHONPATH': str(hook)}):
+                    # Run the ACTUAL adapter source, including its fixed loader;
+                    # __name__ is not __main__, so no closed hosted CLI is called.
+                    exec(compile(adapter.read_bytes(), str(adapter), 'exec', dont_inherit=True), fixed.__dict__)
+            finally:
+                os.chdir(before)
+            self.assertEqual(Path(fixed._owned_process.__file__), kernel)
+            self.assertIs(fixed.supervise.__globals__, fixed._owned_process.__dict__)
+            self.assertEqual(fixed.supervise.__code__.co_filename, str(kernel))
+            self.assertEqual(fixed._owned_process.REASONS, module._owned_process.REASONS)
+            self.assertEqual(kernel.read_bytes(), (folder / kernel.name).read_bytes())
+            self.assertEqual(cached.read_bytes(), importlib.util.MAGIC_NUMBER + struct.pack('<III', 0, int(actual.st_mtime) & 0xffffffff, actual.st_size) + marshal.dumps(poison))
 
 if __name__ == '__main__':
     unittest.main()
