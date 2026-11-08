@@ -49,9 +49,13 @@ export const APPROVED_UPGRADE_TAIL=[
  {idx:2410,when:1793330002710,tag:'3110_attendance_workflow_owner_rls'},
  {idx:2500,when:1793330002800,tag:'3200_ai_centre_controls'},
  {idx:2501,when:1793330002801,tag:'3201_ai_centre_function_coverage'},
+ {idx:2600,when:1793330002900,tag:'3300_pay_item_company_applicability'},
+ {idx:2601,when:1793330002901,tag:'3301_rewards_unit_preparation'},
 ] as const;
 // Final pending 2109/2126 bytes reviewed from engine 128bc2539; no applied-prefix hashes change.
 const APPROVED_UPGRADE_HASHES:Record<string,string>={
+ '3300_pay_item_company_applicability':'ff67d0990fce26f759b7d0e07a6805aced04e70af893c98dcf41c23774aa9c3c',
+ '3301_rewards_unit_preparation':'975ba6d0641cd6987a3987845f4963100b350342c36e752d607b71ca2d2d9941',
  '3100_pay_formula_saved_availability':'7bc0ab95aea27bae36f9be299784d3d391b4a315aa0302a9c42c2dbf9996b1b8',
  '3101_attendance_shared_workflow':'f32d12965f2788dc673f0c09e128996a653341bbcf6933e47f211da021617169',
  '3110_attendance_workflow_owner_rls':'39fc4b31666120cb4befe263b8b30433d6752dbaa52cda6cdbe350b3077f8f16',
@@ -174,6 +178,14 @@ export function retainedUpgradeRows(name:string,rows:unknown[],witness?:Approved
   const field=wrapper&&typeof wrapper==='object'&&Object.keys(wrapper).length===1&&('row' in wrapper||'value' in wrapper)?('row' in wrapper?'row':'value'):null;
   const row=(field?wrapper[field]:parsed) as Row;
   let normalized=row;
+  if((tableName==='reward_unit'||tableName==='units')&&Object.hasOwn(row,'preparation_required')){
+   expect(row.preparation_required,'historical reviews retain unrecorded preparation, never fabricated release proofs').toBe(false);
+   const {preparation_required:_preparation,...original}=normalized;normalized=original;
+  }
+  if(tableName==='pay_component'&&Object.hasOwn(row,'applied_company_ids')){
+   expect(row.applied_company_ids,'legacy Pay Items retain all-company availability').toBeNull();
+   const {applied_company_ids:_companies,...original}=normalized;normalized=original;
+  }
   if(tableName==='company'&&row.display_group_field===null&&row.display_group_option_id===null){
    const {display_group_field:_field,display_group_option_id:_option,...original}=row;
    normalized=original;

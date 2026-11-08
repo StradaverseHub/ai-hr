@@ -9,7 +9,7 @@ import { createAppUser,owner,closeAll,resetDb,migrateTestDb,seedBase,setModule,e
 import { createPreparingRewardUnit as createApprovedRewardUnit } from './rewards-setup-fixture';
 import { initializeRewardGovernanceFixture,refreshRewardFixtureBudget } from './rewards-governance-fixture';
 import { setRewardMember } from './rewards-access-fixture';
-import { getRewardUnit,getRewardUnitGovernance,refreshRewardSources,importRewardFacts,getRewardPreparationStatus,getRewardPreparationChecklist,changeRewardPreparation,saveRewardUnitInputs,decideRewardUnit,rewardPreparationNotices,rewardDashboard,getRewardDashboardPreference,saveRewardDashboardPreference } from '../packs/rewards/service';
+import { getRewardUnit,getRewardUnitGovernance,refreshRewardSources,importRewardFacts,getRewardPreparationStatus,getRewardPreparationChecklist,changeRewardPreparation,saveRewardUnitInputs,decideRewardUnit,rewardPreparationNotices,rewardDashboard,getRewardDashboardPreference,saveRewardDashboardPreference,rewardAccessAdministration,previewRewardAccessChange,saveRewardAccessChange } from '../packs/rewards/service';
 import {dispatchNotificationsFromSweep} from '../core/notifications';
 import { REWARD_PREPARATION_STEPS } from '../packs/rewards/preparation-model';
 
@@ -180,6 +180,21 @@ describe('native checked preparation of new annual Rewards reviews',()=>{
   await expect(getRewardPreparationStatus(reviewer,unitId)).rejects.toThrow(/access/);expect(await rewardPreparationNotices(reviewer)).toEqual([]);
  });
 
+ it('keeps access administration available without disclosing a preparing review',async()=>{
+  const [person]=await owner.db.insert(schema.person).values({tenantId:base.tenantId,fullName:'Fictional unseated HR administrator',primaryEmail:randomUUID()+'@fixture.test'}).returning();
+  const userId=await createAppUser(base.tenantId,person.id,'hr_admin'),admin:SessionContext={...gr,userId,personId:person.id,roles:['hr_admin'],grants:[{role:'hr_admin',companyId:null}]};
+  await expect(getRewardUnit(admin,unitId)).rejects.toThrow();
+  expect(await withTenant(admin,tx=>tx.select({source:schema.rewardEntry.source}).from(schema.rewardEntry).where(eq(schema.rewardEntry.unitId,unitId)))).toEqual([]);
+  const administration=await rewardAccessAdministration(admin,[base.companyId]);expect(administration.reviews.map(row=>row.id)).toContain(unitId);
+  expect(JSON.stringify(administration.reviews)).not.toContain('basicCents');expect(JSON.stringify(administration.reviews)).not.toContain('policy');
+  const input={unitId,revision:(await getRewardUnit(gr,unitId)).unit.revision,before:null,after:{userId:reviewer.userId!,role:'gr'},reason:'Fictional HR administrator proposes another preparation checker'};
+  const preview=await previewRewardAccessChange(admin,input);const saved=await saveRewardAccessChange(admin,input,preview.digest);
+  expect(saved.requestId).toBeTruthy();
+  const requests=await owner.db.select().from(schema.rewardAccessRequest).where(eq(schema.rewardAccessRequest.id,saved.requestId));expect(requests).toHaveLength(1);
+  await expect(getRewardUnit(admin,unitId)).rejects.toThrow();
+  expect((await rewardAccessAdministration({...admin,tenantId:randomUUID()},[base.companyId])).reviews).toEqual([]);
+ });
+
  it.each([false,true])('preserves native owner RLS behavior with preparation released=%s',async released=>{
   if(released){await confirmAll();await change(checker,{kind:'release'});}
   const role='board_rewards_owner_'+randomUUID().replaceAll('-',''),rollback=new Error('Rollback this ownership parity fixture');
@@ -187,7 +202,7 @@ describe('native checked preparation of new annual Rewards reviews',()=>{
    await connection.unsafe(`CREATE ROLE "${role}" NOLOGIN NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE INHERIT`);
    const [identity]=await connection`select pg_get_userbyid(relowner) as name from pg_class where oid='public.app_user'::regclass`;
    const parent=String(identity.name);expect(parent).toMatch(/^[A-Za-z_][A-Za-z0-9_]*$/);
-   await connection.unsafe(`GRANT "${parent}" TO "${role}"`);
+   await connection.unsafe(`GRANT "${parent}",ai_hr_app TO "${role}"`);
    const [attributes]=await connection`select rolsuper,rolbypassrls from pg_roles where rolname=${role}`;
    expect(attributes).toMatchObject({rolsuper:false,rolbypassrls:false});
    // Preserve dedicated reader/invalidator identities and their forced-RLS policies. Only native

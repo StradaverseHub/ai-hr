@@ -520,7 +520,7 @@ export async function getRewardConfiguration(ctx: SessionContext, unitId: string
     if (!unit || unit.deletedAt) throw new RewardError('Reward unit not found or access has been removed.');
     const roles = await rolesFor(tx, unitId);
     const [prep]=await tx.execute<{value:RewardPreparationView|null}>(sql`select app.reward_preparation_view(${unitId}::uuid) as value`);
-    if(unit.kind==='annual'&&!prep?.value?.setupVisible)throw new RewardError('You do not have access to Unit set-up.');
+    if(prep?.value?.required&&!prep.value.setupVisible)throw new RewardError('You do not have access to Unit set-up.');
     const [admin] = await tx.execute<{ ok: boolean }>(sql`select app.reward_admin(${unit.companyId}::uuid) as ok`);
     if (!admin?.ok && !roles.includes('gr')) throw new RewardError('Rewards configuration requires company administrator or Group Rewards access.');
     const [cycle] = await tx.select({ name: rewardCycle.name, year: rewardCycle.year }).from(rewardCycle).where(eq(rewardCycle.id, unit.cycleId));
@@ -530,7 +530,7 @@ export async function getRewardConfiguration(ctx: SessionContext, unitId: string
     const [libraryBinding]=await tx.execute<{bound:boolean}>(sql`select exists(select 1 from reward_unit_setup where unit_id=${unitId}::uuid and tenant_id=${ctx.tenantId}::uuid) as bound`);
     return { libraryBound:libraryBinding?.bound??false,unit:{...unit,policy:redactPatPolicy(effectiveRewardPolicy(unit.policy,await governanceStateTx(tx,unitId)),roles)}, cycle, name: bu?.name ?? 'Business unit', members,canReadPat:roles.includes('gr'),policyOrigin:originRow?.origin??null,
       canConfigure: !(prep?.value?.required&&prep.value.released) && roles.includes('gr') && unit.status === 'draft' && unit.kind === 'annual',
-      canManageMembers: !!admin?.ok && roles.includes('gr') && unit.status === 'draft',
+      canManageMembers: !!admin?.ok && unit.status === 'draft',
     };
   });
 }

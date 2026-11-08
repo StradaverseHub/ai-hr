@@ -1,10 +1,10 @@
 /** Review lifecycle and access administration. These projections never load the pay roster. */
 import { createHash, randomUUID } from 'node:crypto';
-import { and, asc, desc, eq, gte, inArray, isNull, lte, or, sql } from 'drizzle-orm';
+import { and, asc, eq, gte, inArray, isNull, lte, or, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import type { SessionContext, Tx } from '../../db/client';
 import { actorOf, appendEvent } from '../../db/events';
-import { appUser, assignment, businessUnit, company, employment, person, position, rewardCycle, rewardMember, rewardUnit } from '../../db/schema';
+import { appUser, assignment, businessUnit, company, employment, person, position, rewardMember, rewardUnit } from '../../db/schema';
 import { todayInKualaLumpur } from '../../lib/hr-date';
 import { withRewardsTenant } from '../../core/module-gate';
 import { rewardRoles, type RewardRole } from './model';
@@ -27,9 +27,12 @@ async function admin(tx: Tx, companyId: string) {
     if (!r?.ok)
         throw new RewardMaintenanceError('scope');
 }
+type MaintenanceUnit=Pick<typeof rewardUnit.$inferSelect,'id'|'tenantId'|'companyId'|'businessUnitId'|'cycleId'|'kind'|'status'|'revision'|'deletedAt'>;
+const maintenanceColumns=sql`id,tenant_id as "tenantId",company_id as "companyId",business_unit_id as "businessUnitId",cycle_id as "cycleId",kind,status,revision,deleted_at as "deletedAt"`;
 async function adminUnit(tx: Tx, id: string, revision?: number, lock = false) {
-    const q = tx.select().from(rewardUnit).where(and(eq(rewardUnit.id, uuid.parse(id)), isNull(rewardUnit.deletedAt)));
-    const [unit] = await (lock ? q.for('update') : q);
+    uuid.parse(id);
+    if(lock)await tx.execute(sql`select app.reward_access_lock_unit(${id}::uuid)`);
+    const [unit]=await tx.execute<MaintenanceUnit>(sql`select ${maintenanceColumns} from app.reward_maintenance_units(${id}::uuid,true)`);
     if (!unit)
         throw new RewardMaintenanceError('missing');
     await admin(tx, unit.companyId);
@@ -69,9 +72,9 @@ type AccessRow = {
     validFrom?:string;validTo?:string|null;coversUserId?:string|null;
 };
 async function accessState(tx: Tx, unitId: string, revision: number, lock: boolean) {
-    const query=tx.select().from(rewardUnit).where(and(eq(rewardUnit.id,uuid.parse(unitId)),isNull(rewardUnit.deletedAt)));
+    uuid.parse(unitId);
     if(lock)await tx.execute(sql`select app.reward_access_lock_unit(${unitId}::uuid)`);
-    const [unit]=await query;
+    const [unit]=await tx.execute<MaintenanceUnit>(sql`select ${maintenanceColumns} from app.reward_maintenance_units(${unitId}::uuid,false)`);
     if(!unit)throw new RewardMaintenanceError('missing');
     const [scope]=await tx.execute<{ok:boolean}>(sql`select app.reward_access_scope(${unit.id}::uuid) as ok`);
     if(!scope?.ok)throw new RewardMaintenanceError('scope');
@@ -81,7 +84,7 @@ async function accessState(tx: Tx, unitId: string, revision: number, lock: boole
     return { unit, current };
 }
 /** One change against a unit's membership as it stands (a batch passes its accumulating state). */
-async function applyAccess(tx: Tx, ctx: SessionContext, unit: typeof rewardUnit.$inferSelect, current: AccessRow[], input: RewardAccessChange) {
+async function applyAccess(tx: Tx, ctx: SessionContext, unit: MaintenanceUnit, current: AccessRow[], input: RewardAccessChange) {
     const [allowed]=await tx.execute<{ok:boolean}>(sql`select app.reward_access_change_allowed(${JSON.stringify(input)}::jsonb) as ok`);
     if(!allowed?.ok)throw new RewardMaintenanceError('scope');
     if (input.before && !current.some(m => pairKey(m) === pairKey(input.before!)))
@@ -223,13 +226,13 @@ export async function decideRewardAccessRequest(ctx:SessionContext,requestId:str
  });
 }
 /** The Rewards membership scope can cross the user's Personnel company selector. This only returns access-admin scope. */
-export async function rewardAccessCompanies(ctx:SessionContext){return withRewardsTenant(ctx,tx=>tx.selectDistinct({id:company.id}).from(rewardUnit).innerJoin(company,eq(company.id,rewardUnit.companyId)).where(and(isNull(rewardUnit.deletedAt),sql`app.reward_access_scope(${rewardUnit.id})`)));}
+export async function rewardAccessCompanies(ctx:SessionContext){return withRewardsTenant(ctx,tx=>tx.selectDistinct({id:company.id}).from(sql`app.reward_maintenance_units(NULL::uuid,false) as reward_unit`).innerJoin(company,eq(company.id,rewardUnit.companyId)).where(and(isNull(rewardUnit.deletedAt),sql`app.reward_access_scope(${rewardUnit.id})`)));}
 /** BU CEO seat suggestion: business_unit.head_employment_id → employment.person_id → that person's own active login.
  *  Never matched by email; an ambiguous person (several logins) gets no suggestion. Suggestions are never applied. */
 async function buHeadSuggestions(tx: Tx, ctx: SessionContext, unitIds: string[]) {
     if (!unitIds.length)
         return [];
-    const rows = await tx.select({ unitId: rewardUnit.id, userId: appUser.id }).from(rewardUnit).innerJoin(businessUnit, eq(businessUnit.id, rewardUnit.businessUnitId)).innerJoin(employment, eq(employment.id, businessUnit.headEmploymentId)).innerJoin(appUser, and(eq(appUser.personId, employment.personId), eq(appUser.tenantId, ctx.tenantId), activeRewardLogin())).innerJoin(person, and(eq(person.id, appUser.personId), visibleCandidate)).where(inArray(rewardUnit.id, unitIds)).orderBy(asc(rewardUnit.id), asc(appUser.id));
+    const rows = await tx.select({ unitId: rewardUnit.id, userId: appUser.id }).from(sql`app.reward_maintenance_units(NULL::uuid,false) as reward_unit`).innerJoin(businessUnit, eq(businessUnit.id, rewardUnit.businessUnitId)).innerJoin(employment, eq(employment.id, businessUnit.headEmploymentId)).innerJoin(appUser, and(eq(appUser.personId, employment.personId), eq(appUser.tenantId, ctx.tenantId), activeRewardLogin())).innerJoin(person, and(eq(person.id, appUser.personId), visibleCandidate)).where(inArray(rewardUnit.id, unitIds)).orderBy(asc(rewardUnit.id), asc(appUser.id));
     return unitIds.flatMap(unitId => { const mine = rows.filter(r => r.unitId === unitId); return mine.length === 1 ? [mine[0]] : []; });
 }
 const copySchema = z.object({ fromCycleId: uuid, toCycleId: uuid, companyIds: z.array(uuid).min(1).max(500) }).strict().refine(v => v.fromCycleId !== v.toCycleId);
@@ -239,7 +242,7 @@ export type RewardAccessCopyProposal = { change: RewardAccessChange; suggested: 
 export async function previewRewardAccessCopy(ctx: SessionContext, raw: unknown) {
     const input = copySchema.parse(raw);
     return withRewardsTenant(ctx, async (tx) => {
-        const units = await tx.select({ id: rewardUnit.id, companyId: rewardUnit.companyId, businessUnitId: rewardUnit.businessUnitId, cycleId: rewardUnit.cycleId, status: rewardUnit.status, revision: rewardUnit.revision, accessMode:sql<string>`case when app.reward_access_manage(${rewardUnit.id}) then 'manage' else 'propose' end`,exemption:sql<string|null>`app.reward_access_exemption(${rewardUnit.id})` }).from(rewardUnit).where(and(inArray(rewardUnit.cycleId, [input.fromCycleId, input.toCycleId]), inArray(rewardUnit.companyId, input.companyIds), eq(rewardUnit.kind, 'annual'), isNull(rewardUnit.deletedAt), sql `app.reward_access_scope(${rewardUnit.id})`)).orderBy(asc(rewardUnit.id));
+        const units = await tx.select({ id: rewardUnit.id, companyId: rewardUnit.companyId, businessUnitId: rewardUnit.businessUnitId, cycleId: rewardUnit.cycleId, status: rewardUnit.status, revision: rewardUnit.revision, accessMode:sql<string>`case when app.reward_access_manage(${rewardUnit.id}) then 'manage' else 'propose' end`,exemption:sql<string|null>`app.reward_access_exemption(${rewardUnit.id})` }).from(sql`app.reward_maintenance_units(NULL::uuid,false) as reward_unit`).where(and(inArray(rewardUnit.cycleId, [input.fromCycleId, input.toCycleId]), inArray(rewardUnit.companyId, input.companyIds), eq(rewardUnit.kind, 'annual'), isNull(rewardUnit.deletedAt), sql `app.reward_access_scope(${rewardUnit.id})`)).orderBy(asc(rewardUnit.id));
         const key = (u: { companyId: string; businessUnitId: string }) => `${u.companyId}:${u.businessUnitId}`;
         const sources = new Map<string, typeof units[number]>();
         for (const u of units)
@@ -275,7 +278,14 @@ export async function rewardAccessAdministration(ctx: SessionContext, companyIds
     return withRewardsTenant(ctx, async (tx) => {
         if (!ids.length)
             return { reviews: [], members: [], users: [], candidates: [], suggestions: [] };
-        const reviews = await tx.select({ id: rewardUnit.id, companyId: company.id, company: company.legalName, businessUnitId: businessUnit.id, unit: sql<string> `coalesce(nullif(trim(${businessUnit.label}),''),${businessUnit.code})`, cycleId: rewardCycle.id, cycle: rewardCycle.name, year: rewardCycle.year, kind: rewardUnit.kind, status: rewardUnit.status, revision: rewardUnit.revision, accessMode:sql<string>`case when app.reward_access_manage(${rewardUnit.id}) then 'manage' else 'propose' end`,exemption:sql<string|null>`app.reward_access_exemption(${rewardUnit.id})` }).from(rewardUnit).innerJoin(company, eq(company.id, rewardUnit.companyId)).innerJoin(businessUnit, eq(businessUnit.id, rewardUnit.businessUnitId)).innerJoin(rewardCycle, eq(rewardCycle.id, rewardUnit.cycleId)).where(and(inArray(rewardUnit.companyId, ids), isNull(rewardUnit.deletedAt), sql `app.reward_access_scope(${rewardUnit.id})`)).orderBy(desc(rewardCycle.year), asc(rewardCycle.name), asc(company.legalName), asc(businessUnit.code), asc(rewardUnit.id));
+        const reviews=await tx.execute<Pick<MaintenanceUnit,'id'|'companyId'|'businessUnitId'|'cycleId'|'kind'|'status'|'revision'>&{company:string;unit:string;cycle:string;year:number;accessMode:string;exemption:string|null}>(sql`
+          select u.id,c.id as "companyId",c.legal_name as company,b.id as "businessUnitId",coalesce(nullif(trim(b.label),''),b.code) as unit,
+           r.id as "cycleId",r.name as cycle,r.year,u.kind,u.status,u.revision,
+           case when app.reward_access_manage(u.id) then 'manage' else 'propose' end as "accessMode",app.reward_access_exemption(u.id) as exemption
+          from app.reward_maintenance_units(NULL::uuid,false) u
+          join company c on c.id=u.company_id join business_unit b on b.id=u.business_unit_id join reward_cycle r on r.id=u.cycle_id
+          where u.company_id=ANY(${`{${ids.join(',')}}`}::uuid[])
+          order by r.year desc,r.name,c.legal_name,b.code,u.id`);
         if (!reviews.length)
             return { reviews: [], members: [], users: [], candidates: [], suggestions: [] };
         await tx.execute(sql`select app.reward_access_observe(NULL::uuid)`);
@@ -321,21 +331,10 @@ export async function deleteRewardReview(ctx: SessionContext, unitId: string, re
     if (confirmation !== unitId)
         throw new RewardMaintenanceError('confirmation');
     return withRewardsTenant(ctx, async (tx) => {
-        const [unit] = await tx.select().from(rewardUnit).where(eq(rewardUnit.id, unitId)).for('update');
-        if (!unit)
-            throw new RewardMaintenanceError('missing');
-        await admin(tx, unit.companyId);
-        if (unit.deletedAt)
-            return { alreadyDeleted: true };
-        if (unit.revision !== revision)
-            throw new RewardMaintenanceError('changed');
-        const [r] = await tx.execute<{
-            reason: RewardDeletionReason | null;
-        }>(sql `select app.reward_deletion_reason(${unitId}::uuid) as reason`);
-        if (r.reason)
-            throw new RewardMaintenanceError('used');
-        await tx.update(rewardUnit).set({ deletedAt: new Date(), deletedBy: ctx.userId!, revision: revision + 1, updatedAt: new Date() }).where(eq(rewardUnit.id, unitId));
-        await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: 'reward-unit', aggregateId: unitId, eventType: 'reward-unit.deleted', actor: actorOf(ctx), payload: { cycleId: unit.cycleId, revision: revision + 1, retainedSnapshots: true } });
+        const [row]=await tx.execute<{value:{error?:RewardMaintenanceCode;alreadyDeleted?:boolean;cycleId?:string;revision?:number}}>(sql`select app.reward_maintenance_delete(${unitId}::uuid,${revision}) as value`);
+        if(row.value.error)throw new RewardMaintenanceError(row.value.error);
+        if(row.value.alreadyDeleted)return {alreadyDeleted:true};
+        await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: 'reward-unit', aggregateId: unitId, eventType: 'reward-unit.deleted', actor: actorOf(ctx), payload: { cycleId: row.value.cycleId, revision: row.value.revision, retainedSnapshots: true } });
         return { alreadyDeleted: false };
     });
 }

@@ -338,3 +338,35 @@ DO $$ DECLARE native_owner name; BEGIN
 END $$;
 REVOKE ALL ON FUNCTION app.reward_preparation_notification_recipients(uuid,text,boolean) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.reward_preparation_notification_recipients(uuid,text,boolean) TO ai_hr_app;
+--> statement-breakpoint
+-- Access maintenance needs review identity and routing state, never financial policy or entries.
+-- Retain its original native scope owner while raw preparing reviews remain withheld.
+CREATE FUNCTION app.reward_maintenance_units(p_unit uuid,p_admin_only boolean DEFAULT false)
+RETURNS TABLE(id uuid,tenant_id uuid,company_id uuid,business_unit_id uuid,cycle_id uuid,kind text,status text,revision integer,deleted_at timestamptz)
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,app SET row_security=on AS $$
+ SELECT u.id,u.tenant_id,u.company_id,u.business_unit_id,u.cycle_id,u.kind::text,u.status::text,u.revision,u.deleted_at
+ FROM public.reward_unit u WHERE u.tenant_id=app.current_tenant_id() AND(p_unit IS NULL OR u.id=p_unit)
+ AND((u.deleted_at IS NULL AND app.reward_access_scope(u.id)) OR(p_admin_only AND app.reward_admin(u.company_id)))
+ AND(NOT p_admin_only OR app.reward_admin(u.company_id))
+$$;
+CREATE FUNCTION app.reward_maintenance_delete(p_unit uuid,p_revision integer) RETURNS jsonb
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,app SET row_security=on AS $$
+DECLARE u public.reward_unit; refusal text;
+BEGIN
+ SELECT * INTO u FROM public.reward_unit WHERE id=p_unit AND tenant_id=app.current_tenant_id() FOR UPDATE;
+ IF NOT FOUND THEN RETURN jsonb_build_object('error','missing'); END IF;
+ IF NOT app.reward_admin(u.company_id) THEN RETURN jsonb_build_object('error','scope'); END IF;
+ IF u.deleted_at IS NOT NULL THEN RETURN jsonb_build_object('alreadyDeleted',true); END IF;
+ IF u.revision<>p_revision THEN RETURN jsonb_build_object('error','changed'); END IF;
+ refusal:=app.reward_deletion_reason(u.id);
+ IF refusal IS NOT NULL THEN RETURN jsonb_build_object('error','used'); END IF;
+ UPDATE public.reward_unit SET deleted_at=now(),deleted_by=app.current_user_id(),revision=revision+1,updated_at=now() WHERE id=u.id AND tenant_id=u.tenant_id;
+ RETURN jsonb_build_object('alreadyDeleted',false,'cycleId',u.cycle_id,'revision',u.revision+1);
+END $$;
+DO $$ DECLARE native_owner name; BEGIN
+ SELECT pg_get_userbyid(proowner) INTO native_owner FROM pg_proc WHERE oid='app.reward_roles_preparation_audience(uuid)'::regprocedure;
+ EXECUTE format('ALTER FUNCTION app.reward_maintenance_units(uuid,boolean) OWNER TO %I',native_owner);
+ EXECUTE format('ALTER FUNCTION app.reward_maintenance_delete(uuid,integer) OWNER TO %I',native_owner);
+END $$;
+REVOKE ALL ON FUNCTION app.reward_maintenance_units(uuid,boolean),app.reward_maintenance_delete(uuid,integer) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.reward_maintenance_units(uuid,boolean),app.reward_maintenance_delete(uuid,integer) TO ai_hr_app;
