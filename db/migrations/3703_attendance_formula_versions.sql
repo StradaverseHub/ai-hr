@@ -114,4 +114,7 @@ CREATE TRIGGER attendance_formula_event_bind BEFORE INSERT ON public.attendance_
 
 --> statement-breakpoint
 -- Independent child restriction for this authoring purpose; disclosure review remains fail-closed.
-INSERT INTO app.ai_centre_function_kind(function_key,default_enabled) VALUES('read:operation_attendance_formula_draft',true);
+INSERT INTO app.ai_centre_function_kind(function_key,default_enabled) VALUES('read:operation_attendance_formula_draft',true),
+ ('read:attendance_formula_library_guidance',true),
+ ('read:attendance_formula_authoring_guidance',true),
+ ('read:reward_reviews_guidance',true);
