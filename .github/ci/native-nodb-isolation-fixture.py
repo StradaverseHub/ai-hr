@@ -14,6 +14,7 @@ import grp
 import re
 import resource
 import signal
+import select
 import stat
 import subprocess
 import sys
@@ -149,10 +150,11 @@ def process(pid):
     status = dict(line.split(':', 1) for line in Path('/proc/%s/status' % pid).read_text().splitlines() if ':' in line)
     return {'pid': pid, 'start': int(fields[19]), 'parent': int(fields[1]),
             'uids': [int(part) for part in status['Uid'].split()],
-            'gids': [int(part) for part in status['Gid'].split()]}
+            'gids': [int(part) for part in status['Gid'].split()],
+            'groups': [int(part) for part in status['Groups'].split()]}
 
 
-def uid_actors():
+def identity_actors(*, uid_only=False):
     found = []
     for entry in Path('/proc').iterdir():
         if not entry.name.isdecimal():
@@ -161,9 +163,293 @@ def uid_actors():
             item = process(int(entry.name))
         except (FileNotFoundError, ProcessLookupError):
             continue
-        if UID in item['uids']:
+        if UID in item['uids'] or (not uid_only and (GID in item['gids'] or GID in item['groups'])):
             found.append(item)
     return found
+
+
+def uid_actors():
+    return identity_actors(uid_only=True)
+
+
+def require_identity_free():
+    # A numeric GID can already be used without an NSS group or matching UID.
+    need(not identity_actors())
+
+
+class RootFamily:
+    """Actual child ownership only, held within this one live root subreaper.
+
+    No JSON/argv/group search can recreate a family. Its fresh supervisor stays
+    WNOWAIT-reserved until all observed descendants/adopted children are dead and
+    reaped. A missing closed receipt makes later account removal unavailable.
+    """
+    def __init__(self, root, operation):
+        need(operation in ('allocation', 'fault', 'git', 'hook', 'probe') and os.geteuid() == 0)
+        self.root, self.operation = root, operation
+        self.K = kernel(root)
+        need(self.K.own_children() == [] and signal.getsignal(signal.SIGCHLD) == signal.SIG_DFL
+             and len(list(Path('/proc/self/task').iterdir())) == 1)
+        self.previous = self.K.subreaper(True)
+        self.bindings, self.children = {}, []
+        self.started = time.monotonic()
+        self.closed = False
+        state = json.loads(secure_read(root / 'private/state.json', 65536))
+        self.source = state['sourceSha']
+        self.owner = process(os.getpid())
+        elapsed = time.monotonic_ns() - int(state['anchorNs'])
+        need(0 <= elapsed and elapsed + (16 + 10 + 120) * 10**9 < 1800 * 10**9)
+        self.prior_rows = sum(len(json.loads(secure_read(path, 65536))['actualHeldIdentities'])
+                              for path in (root / 'private').glob('*.role-closed.json'))
+        need(self.prior_rows < 128)
+        self.fault_captured = False
+        write_new(root / ('private/' + operation + '.role-start.json'), canonical({
+            'owner': self.owner, 'source': self.source,
+            'run': root.name, 'operation': operation, 'cleanupKnown': False}))
+
+    def bind(self, row):
+        key = (row['pid'], row['start'])
+        if key in self.bindings:
+            return
+        need(self.prior_rows + len(self.bindings) < 128)
+        descriptor = os.pidfd_open(row['pid'])
+        try:
+            current = process(row['pid'])
+            need(current['start'] == row['start'])
+            # Reparenting to this actual subreaper preserves the same family.
+            if current['parent'] not in (row['parent'], os.getpid()):
+                parents = [(parent, fd) for parent, fd in self.bindings.values()
+                           if parent['pid'] == current['parent'] and not self.exited(fd)]
+                need(len(parents) == 1 and process(current['parent'])['start'] == parents[0][0]['start'])
+            self.bindings[key] = (current, descriptor)
+        except BaseException:
+            os.close(descriptor)
+            raise
+
+    def spawn(self, argv, *, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL):
+        child = subprocess.Popen(argv, env={**SAFE, 'GITHUB_RUN_ID': self.root.name},
+                                 stdin=subprocess.DEVNULL, stdout=stdout, stderr=stderr,
+                                 start_new_session=True, close_fds=True)
+        self.children.append(child)
+        row = process(child.pid); need(row['parent'] == os.getpid())
+        self.bind(row)
+        return child
+
+    @staticmethod
+    def exited(descriptor):
+        return bool(select.select([descriptor], [], [], 0)[0])
+
+    def capture(self):
+        snapshot = {}
+        for entry in Path('/proc').iterdir():
+            if not entry.name.isdecimal():
+                continue
+            need(len(snapshot) < 65536)
+            try:
+                row = process(int(entry.name))
+            except (FileNotFoundError, ProcessLookupError):
+                continue
+            snapshot[row['pid']] = row
+        # All direct children are ours: this single-threaded owner began with
+        # none, creates only fixed children, and privately enabled subreaping.
+        owned = {pid for (pid, start), (_, fd) in self.bindings.items()
+                 if not self.exited(fd) and pid in snapshot and snapshot[pid]['start'] == start}
+        owned.update(row['pid'] for row in snapshot.values() if row['parent'] == os.getpid())
+        while True:
+            expanded = owned | {row['pid'] for row in snapshot.values() if row['parent'] in owned}
+            if expanded == owned:
+                break
+            owned = expanded
+            need(len(owned) <= 128)
+        for pid in sorted(owned):
+            try:
+                self.bind(snapshot[pid])
+            except (FileNotFoundError, ProcessLookupError):
+                continue
+        if self.operation == 'fault' and not self.fault_captured:
+            marker = self.root / 'private/fault-root-follower.json'
+            if marker.exists():
+                row = json.loads(secure_read(marker, 4096))
+                key = (row['pid'], row['start'])
+                if key in self.bindings:
+                    actual, fd = self.bindings[key]
+                    need(not self.exited(fd) and actual['uids'] == [0] * 4 and UID not in actual['uids'])
+                    write_new(self.root / 'private/fault-owner-captured.json', canonical({'captured': True}))
+                    self.fault_captured = True
+
+    def wait(self, child):
+        # Do not poll()/communicate()/wait(): Popen would release the root anchor
+        # before orphaned pre-drop commands had been captured and settled.
+        while time.monotonic() < self.started + 10:
+            self.capture()
+            if os.waitid(os.P_PID, child.pid, os.WEXITED | os.WNOHANG | os.WNOWAIT) is not None:
+                return
+            time.sleep(.01)
+        raise TimeoutError('Fixed root role work budget')
+
+    def close(self):
+        deadline = min(time.monotonic(), self.started + 10) + 6
+        anchor_pids = {child.pid for child in self.children}
+        unknown = False
+        residual = False
+        try:
+            self.capture()
+            residual = any(row['pid'] not in anchor_pids and not self.exited(fd)
+                           for row, fd in self.bindings.values())
+            # Stop the captured closure while all supervisor PIDs remain reserved.
+            # Repeat capture until no running family member can fork a new branch.
+            while time.monotonic() < deadline:
+                self.capture()
+                live = [(row, fd) for row, fd in self.bindings.values() if not self.exited(fd)]
+                for row, fd in live:
+                    try:
+                        signal.pidfd_send_signal(fd, signal.SIGSTOP)
+                    except ProcessLookupError:
+                        pass
+                stopped = True
+                for row, fd in live:
+                    if self.exited(fd):
+                        continue
+                    try:
+                        raw = Path('/proc/%s/stat' % row['pid']).read_bytes()
+                        fields = raw[raw.rfind(b')') + 2:].split()
+                        need(int(fields[19]) == row['start'])
+                        stopped = stopped and fields[0] in (b'T', b't', b'Z', b'X')
+                    except (FileNotFoundError, ProcessLookupError):
+                        continue
+                if stopped:
+                    before = len(self.bindings); self.capture()
+                    if before == len(self.bindings):
+                        break
+                time.sleep(.01)
+            else:
+                need(False)
+            # Bound descendants first, reserved supervisors last. No global UID,
+            # GID, root PID, process-group or argv-based signal is authorized.
+            ordered = sorted(self.bindings.values(), key=lambda pair: pair[0]['pid'] in anchor_pids)
+            for row, fd in ordered:
+                if not self.exited(fd):
+                    try:
+                        signal.pidfd_send_signal(fd, signal.SIGKILL)
+                    except ProcessLookupError:
+                        pass
+            while time.monotonic() < deadline:
+                self.capture()
+                for pid in self.K.own_children():
+                    if pid not in anchor_pids and os.waitid(os.P_PID, pid, os.WEXITED | os.WNOHANG | os.WNOWAIT) is not None:
+                        os.waitpid(pid, 0)
+                if all(self.exited(fd) for _, fd in self.bindings.values()) and set(self.K.own_children()) <= anchor_pids:
+                    break
+                time.sleep(.01)
+            else:
+                need(False)
+            statuses = []
+            for child in self.children:
+                row = next(row for row, _ in self.bindings.values() if row['pid'] == child.pid)
+                need(os.waitid(os.P_PID, child.pid, os.WEXITED | os.WNOHANG | os.WNOWAIT) is not None)
+                statuses.append({'identity': row, 'exit': child.wait(timeout=max(.001, deadline - time.monotonic()))})
+            need(self.K.own_children() == [] and time.monotonic() <= deadline)
+            self.closed = True
+            receipt = {'operation': self.operation, 'owner': self.owner, 'rootFamiliesClosed': True, 'cleanupKnown': True,
+                       'liveDescendantsBeforeClosure': residual,
+                       'actualHeldIdentities': [row for row, _ in self.bindings.values()],
+                       'anchorsReapedAfterClosure': statuses, 'faultRootFollowerCaptured': self.fault_captured,
+                       'source': self.source, 'run': self.root.name}
+            write_new(self.root / ('private/' + self.operation + '.role-closed.json'), canonical(receipt))
+            return receipt
+        except BaseException:
+            unknown = True
+            # Even on observation failure, only already-held actual pidfds may
+            # receive a final signal. Unknown closure never publishes success.
+            for _, fd in self.bindings.values():
+                if not self.exited(fd):
+                    try:
+                        signal.pidfd_send_signal(fd, signal.SIGKILL)
+                    except ProcessLookupError:
+                        pass
+            raise
+        finally:
+            for _, fd in self.bindings.values():
+                os.close(fd)
+            if self.closed and not unknown:
+                self.K.subreaper(self.previous)
+
+
+def value_refused(operation):
+    try:
+        operation()
+    except ValueError:
+        return True
+    need(False)
+
+
+def allocation_controls(root):
+    family = RootFamily(root, 'allocation')
+    try:
+        require_identity_free()
+        try:
+            settle(root)
+        except FileNotFoundError:
+            pass
+        else:
+            need(False)
+        children = [family.spawn(['/usr/bin/python3', '-I', '-B', str(root / 'fixture.py'), '--foreign-gid', kind])
+                    for kind in ('primary', 'supplementary')]
+        while time.monotonic() < family.started + 10:
+            family.capture()
+            paths = [root / ('private/foreign-gid-' + kind + '.json') for kind in ('primary', 'supplementary')]
+            if all(path.exists() for path in paths):
+                rows = [json.loads(secure_read(path, 4096)) for path in paths]
+                need(all(row['pid'] == child.pid and UID not in row['uids'] for row, child in zip(rows, children)))
+                need(GID in rows[0]['gids'] and GID in rows[1]['groups'] and GID not in rows[1]['gids'])
+                need(not uid_actors() and {row['pid'] for row in identity_actors()} >= {child.pid for child in children})
+                need(value_refused(require_identity_free))
+                # This exact cleanup identity precondition refuses; it does not
+                # kill either foreign-UID GID-only actor or remove any account.
+                need(value_refused(lambda: settle(root)))
+                need(all(process(row['pid']) == row for row in rows))
+                need(all(not family.exited(fd) for _, fd in family.bindings.values()))
+                break
+            time.sleep(.01)
+        else:
+            need(False)
+    finally:
+        receipt = family.close()
+    require_identity_free()
+    write_new(root / 'private/allocation-controls.json', canonical({'missingRootReceiptRefusedDespiteEmptyCensus': True, 'primaryGidRefused': True,
+              'supplementaryGidRefused': True, 'foreignActorsUntouchedByIdentityRefusal': True,
+              'disposedOnlyByActualParentOwner': receipt['rootFamiliesClosed']}))
+
+
+def root_fault(root):
+    need(os.geteuid() == 0 and not SECRET_KEYS.intersection(os.environ))
+    monitor = process(os.getppid()); supervisor = process(monitor['parent'])
+    descriptors = []
+    try:
+        for row in (supervisor, monitor):
+            descriptor = os.pidfd_open(row['pid']); descriptors.append(descriptor)
+            need(process(row['pid']) == row and row['uids'] == [0] * 4)
+        child = os.fork()
+        if child == 0:
+            for descriptor in descriptors:
+                os.close(descriptor)
+            os.setsid()
+            write_new(root / 'private/fault-root-follower.json', canonical(process(os.getpid())))
+            while True:
+                signal.pause()
+        deadline = time.monotonic() + 3
+        while not (root / 'private/fault-owner-captured.json').exists():
+            need(time.monotonic() < deadline)
+            time.sleep(.01)
+        need(json.loads(secure_read(root / 'private/fault-owner-captured.json', 4096)) == {'captured': True})
+        # Actual native failure interleaving: both original live bound ancestors
+        # die while a pre-drop UID0 follower survives in another session.
+        for descriptor in descriptors:
+            signal.pidfd_send_signal(descriptor, signal.SIGKILL)
+        os._exit(91)
+    finally:
+        for descriptor in descriptors:
+            os.close(descriptor)
 
 
 def restrict(root):
@@ -299,7 +585,7 @@ def restricted(root, state, operation):
 
 
 def supervise(root, state, operation):
-    need(operation in ('git', 'hook', 'probe') and os.geteuid() == 0 and not SECRET_KEYS.intersection(os.environ))
+    need(operation in ('fault', 'git', 'hook', 'probe') and os.geteuid() == 0 and not SECRET_KEYS.intersection(os.environ))
     K = kernel(root)
     output = root / ('private/' + operation + '.stdout')
     error = root / ('private/' + operation + '.stderr')
@@ -308,7 +594,9 @@ def supervise(root, state, operation):
         try:
             os.dup2(out.fileno(), 1)
             os.dup2(err.fileno(), 2)
-            result = K.supervise(['/usr/bin/python3', '-I', '-B', str(root / 'fixture.py'), '--restricted', operation],
+            argv = (['/usr/bin/python3', '-I', '-B', str(root / 'fixture.py'), '--root-fault'] if operation == 'fault' else
+                    ['/usr/bin/python3', '-I', '-B', str(root / 'fixture.py'), '--restricted', operation])
+            result = K.supervise(argv,
                                  10, lambda event: K.append_event(root / ('private/' + operation + '.jsonl'), event), mandatory=True)
         finally:
             os.dup2(saved[0], 1)
@@ -326,30 +614,29 @@ def supervise(root, state, operation):
 
 
 def run_role(root, operation):
-    need(not uid_actors())
+    require_identity_free()
     state = json.loads(secure_read(root / 'private/state.json', 65536))
     elapsed = time.monotonic_ns() - int(state['anchorNs'])
-    # Next complete role, one actor settlement, two account commands and the
-    # unchanged artifact tail must all fit the same first-step job envelope.
     need(0 <= elapsed and elapsed + (16 + 6 + 10 + 120) * 10**9 < 1800 * 10**9)
-    started = time.monotonic()
-    child = subprocess.Popen(['/usr/bin/python3', '-I', '-B', str(root / 'fixture.py'), '--supervise', operation],
-                             env={**SAFE, 'GITHUB_RUN_ID': os.environ['GITHUB_RUN_ID']},
-                             stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                             start_new_session=True, close_fds=True)
-    descriptor = os.pidfd_open(child.pid)
-    write_new(root / ('private/' + operation + '.supervisor.json'), canonical(process(child.pid)))
-    try:
+    family = RootFamily(root, operation)
+    output_path = root / ('private/' + operation + '.role-stdout')
+    error_path = root / ('private/' + operation + '.role-stderr')
+    with output_path.open('xb') as out, error_path.open('xb') as err:
         try:
-            output, error = child.communicate(timeout=10)
-        except subprocess.TimeoutExpired:
-            signal.pidfd_send_signal(descriptor, signal.SIGTERM)
-            output, error = child.communicate(timeout=max(.001, started + 16 - time.monotonic()))
-        need(time.monotonic() <= started + 16 and child.returncode == 0 and not error
-             and len(output) <= 65536 and not uid_actors())
-        return json.loads(output)
-    finally:
-        os.close(descriptor)
+            child = family.spawn(['/usr/bin/python3', '-I', '-B', str(root / 'fixture.py'), '--supervise', operation],
+                                 stdout=out, stderr=err)
+            family.wait(child)
+        finally:
+            receipt = family.close()
+    require_identity_free()
+    output, error = secure_read(output_path, 65536), secure_read(error_path, 65536)
+    if operation == 'fault':
+        need(child.returncode == -signal.SIGKILL and not output and not error and family.fault_captured
+             and receipt['liveDescendantsBeforeClosure'] is True)
+        return {'operation': operation, 'nativeRootPreDropOrphanFailureObserved': True, 'rootClosure': receipt}
+    need(child.returncode == 0 and not error and len(output) <= 65536
+         and receipt['liveDescendantsBeforeClosure'] is False)
+    return json.loads(output)
 
 
 def prepare():
@@ -383,7 +670,7 @@ def prepare():
         except KeyError:
             continue
         need(False)
-    need(not uid_actors())
+    require_identity_free()
     BASE.mkdir(mode=0o755, exist_ok=True)
     need(BASE.lstat().st_uid == 0 and stat.S_IMODE(BASE.lstat().st_mode) == 0o755 and BASE.resolve() == BASE)
     root = root_for_run(); root.mkdir(mode=0o755)
@@ -400,6 +687,15 @@ def prepare():
              'code': code, 'nodeSha256': digest(raw), 'anchorNs': anchor['startNs'], 'bootId': anchor['bootId'],
              'startedNs': str(time.monotonic_ns())}
     write_new(root / 'private/state.json', canonical(state))
+    os.execve('/usr/bin/python3', ['/usr/bin/python3', '-I', '-B', str(root / 'fixture.py'), 'allocate'],
+              {**SAFE, 'GITHUB_RUN_ID': state['run']})
+
+
+def allocate(root, state):
+    need(os.geteuid() == 0 and not SECRET_KEYS.intersection(os.environ))
+    require_identity_free()
+    allocation_controls(root)
+    require_identity_free()
     subprocess.run(['/usr/sbin/groupadd', '--gid', str(GID), ACCOUNT], env=SAFE, check=True, timeout=5)
     need(grp.getgrgid(GID).gr_name == ACCOUNT and grp.getgrgid(GID).gr_mem == [])
     write_new(root / 'private/group-created.json', canonical({'name': ACCOUNT, 'gid': GID}))
@@ -415,18 +711,19 @@ def prepare():
 
 
 def hooks(root, state):
-    rows = [run_role(root, 'git'), run_role(root, 'hook')]
-    need(not uid_actors())
+    rows = [run_role(root, 'fault'), run_role(root, 'git'), run_role(root, 'hook')]
+    require_identity_free()
     write_new(root / 'private/hooks-closed.json', canonical({'rows': rows, 'settled': True}))
 
 
 def custody(root, state):
     need(os.geteuid() == 0 and int(os.environ['SUDO_UID']) == state['runner']
          and os.environ.get('GITHUB_SHA') == state['sourceSha'] and os.environ.get('GH_TOKEN'))
-    need(json.loads(secure_read(root / 'private/hooks-closed.json', 65536))['settled'] is True and not uid_actors())
+    hooks_packet = json.loads(secure_read(root / 'private/hooks-closed.json', 65536))
+    need(hooks_packet['settled'] is True and not identity_actors())
     targets = []; pid = os.getpid()
     for _ in range(32):
-        item = process(pid); need(UID not in item['uids'] and GID not in item['gids'])
+        item = process(pid); need(UID not in item['uids'] and GID not in item['gids'] and GID not in item['groups'])
         environment_fd = os.open('/proc/%s/environ' % pid, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
         try:
             raw_environment = bytearray()
@@ -459,10 +756,14 @@ def custody(root, state):
         write_new(root / 'request.json', canonical({'targets': targets, 'ownerPid': os.getpid(), 'ownerFd': fd,
                   'privateFile': str(private_file), 'markerAddress': ctypes.addressof(marker)}), 0o444)
         row = run_role(root, 'probe')
-        need(row['body']['allAccessRefused'] is True and row['body']['targetIdentitiesStable'] is True and not uid_actors())
+        need(row['body']['allAccessRefused'] is True and row['body']['targetIdentitiesStable'] is True and not identity_actors())
         report = {'kind': 'ACTUAL_DEDICATED_UID_ISOLATION_COMPONENT_ONLY', 'run': state['run'], 'source': state['sourceSha'],
                   'hooksSettledBeforeTokenStep': True, 'actualTokenEnvironmentPresent': True,
                   'credentialBearingAncestorTargets': len(targets), 'result': row,
+                  'allocationControls': json.loads(secure_read(root / 'private/allocation-controls.json', 65536)),
+                  'nativeRootFailureControl': hooks_packet['rows'][0],
+                  'rootRoleClosures': [json.loads(secure_read(root / ('private/' + operation + '.role-closed.json'), 65536))
+                                       for operation in ('allocation', 'fault', 'git', 'hook', 'probe')],
                   'nativeSixOperationJoinVerified': False, 'nativeApiContextIssued': False,
                   'semanticParentVerified': False, 'normalNoDbVerified': False, 'releaseAuthorized': False}
         write_new(root / 'private/component.json', canonical(report))
@@ -470,51 +771,22 @@ def custody(root, state):
         os.close(fd)
 
 
-def terminate_bound(item, argv=None):
-    try:
-        before = process(item['pid'])
-    except (FileNotFoundError, ProcessLookupError):
-        return
-    need(before['start'] == item['start'])
-    if argv is not None:
-        actual = Path('/proc/%s/cmdline' % item['pid']).read_bytes()
-        need(actual == b'\0'.join(part.encode() for part in argv) + b'\0')
-    descriptor = os.pidfd_open(item['pid'])
-    try:
-        need(process(item['pid']) == before)
-        signal.pidfd_send_signal(descriptor, signal.SIGKILL)
-    except ProcessLookupError:
-        pass
-    finally:
-        os.close(descriptor)
-
-
 def settle(root):
-    # Account allocation is exclusive and root-recorded before any test exists.
-    # Cleanup uses actual current identities plus pidfds, never kill(pid) or a
-    # caller's claimed receipt/argv. Uncertain or reused identities refuse.
-    deadline = time.monotonic() + 6
-    for operation in ('git', 'hook', 'probe'):
-        lease = root / ('private/' + operation + '.supervisor.json')
-        if lease.exists():
-            item = json.loads(secure_read(lease, 65536))
-            terminate_bound(item, ['/usr/bin/python3', '-I', '-B', str(root / 'fixture.py'), '--supervise', operation])
-        ledger = root / ('private/' + operation + '.jsonl')
-        if ledger.exists():
-            raw = secure_read(ledger, 131072)
-            for line in raw.splitlines():
-                row = json.loads(line)
-                if row.get('kind') == 'session-admitted':
-                    item = {'pid': row['pid'], 'start': row['start']}
-                    terminate_bound(item, ['/usr/bin/python3', '-I', '-B', str(root / 'fixture.py'), '--supervise', operation])
-    while True:
-        actors = uid_actors()
-        if not actors:
-            return True
-        need(time.monotonic() < deadline)
-        for actor in actors:
-            terminate_bound(actor)
-        time.sleep(.01)
+    # Every role settles its own actual root/UID closure before its live owner
+    # exits. Cleanup cannot reconstruct that authority from JSON or argv.
+    require_identity_free()
+    state = load_state()[1]
+    for path in (root / 'private').glob('*.role-start.json'):
+        operation = path.name.removesuffix('.role-start.json')
+        need(operation in ('allocation', 'fault', 'git', 'hook', 'probe'))
+        started = json.loads(secure_read(path, 65536))
+        closed = json.loads(secure_read(root / ('private/' + operation + '.role-closed.json'), 65536))
+        need(started['run'] == closed['run'] == root.name and started['source'] == closed['source'] == state['sourceSha']
+             and started['operation'] == closed['operation'] == operation and started['owner'] == closed['owner']
+             and closed['rootFamiliesClosed'] is True
+             and closed['cleanupKnown'] is True and len(closed['actualHeldIdentities']) <= 128)
+    require_identity_free()
+    return True
 
 
 def publish(state, value):
@@ -559,7 +831,7 @@ def finish(root, state):
         user = None
     if user is not None:
         need(json.loads(secure_read(user_receipt, 65536)) == {'name': ACCOUNT, 'uid': UID, 'gid': GID}
-             and user.pw_name == ACCOUNT and user.pw_gid == GID and not uid_actors())
+             and user.pw_name == ACCOUNT and user.pw_gid == GID and not identity_actors())
         subprocess.run(['/usr/sbin/userdel', ACCOUNT], env=SAFE, check=True, timeout=5)
     try:
         group = grp.getgrgid(GID)
@@ -567,7 +839,7 @@ def finish(root, state):
         group = None
     if group is not None:
         need(json.loads(secure_read(group_receipt, 65536)) == {'name': ACCOUNT, 'gid': GID}
-             and group.gr_name == ACCOUNT and not group.gr_mem)
+             and group.gr_name == ACCOUNT and not group.gr_mem and not identity_actors())
         subprocess.run(['/usr/sbin/groupdel', ACCOUNT], env=SAFE, check=True, timeout=5)
     for lookup, identity in ((pwd.getpwuid, UID), (grp.getgrgid, GID)):
         try:
@@ -575,12 +847,12 @@ def finish(root, state):
         except KeyError:
             continue
         need(False)
-    need(clean and not uid_actors())
+    need(clean and not identity_actors())
     report = json.loads(secure_read(root / 'private/component.json', 65536)) if completed else {
         'kind': 'UID_ISOLATION_COMPONENT_UNAVAILABLE', 'source': state['sourceSha'],
         'nativeSixOperationJoinVerified': False, 'nativeApiContextIssued': False,
         'semanticParentVerified': False, 'normalNoDbVerified': False, 'releaseAuthorized': False}
-    report.update(complete=completed, ownedAccountRemoved=True, uidActorsRemaining=0,
+    report.update(complete=completed, ownedAccountRemoved=True, uidActorsRemaining=0, gidActorsRemaining=0, rootFamiliesClosed=True,
                   privateFailurePrefixRetained=True, rootPrivateSourceRetained=True)
     publish(state, report)
     need(completed)
@@ -604,11 +876,24 @@ def main():
             need(os.read(reader, 1) == b'A')
             os.close(reader)
         return
-    need(sys.argv[1:] and sys.argv[1] in ('prepare', 'hooks', 'custody', 'finish', '--supervise', '--restricted'))
+    need(sys.argv[1:] and sys.argv[1] in ('prepare', 'allocate', 'hooks', 'custody', 'finish', '--supervise', '--restricted', '--foreign-gid', '--root-fault'))
     if sys.argv[1:] == ['prepare']:
         prepare(); return
     root, state = load_state()
-    if sys.argv[1:] == ['hooks']:
+    if sys.argv[1:] == ['allocate']:
+        allocate(root, state)
+    elif sys.argv[1:] == ['--root-fault']:
+        root_fault(root)
+    elif len(sys.argv) == 3 and sys.argv[1] == '--foreign-gid':
+        need(os.geteuid() == 0 and sys.argv[2] in ('primary', 'supplementary') and not SECRET_KEYS.intersection(os.environ))
+        if sys.argv[2] == 'primary':
+            os.setgroups([]); os.setresgid(GID, GID, GID)
+        else:
+            os.setgroups([GID])
+        write_new(root / ('private/foreign-gid-' + sys.argv[2] + '.json'), canonical(process(os.getpid())))
+        while True:
+            signal.pause()
+    elif sys.argv[1:] == ['hooks']:
         hooks(root, state)
     elif sys.argv[1:] == ['custody']:
         custody(root, state)
@@ -626,7 +911,7 @@ if __name__ == '__main__':
     try:
         main()
     except BaseException:
-        if os.geteuid() == 0 and sys.argv[1:2] in (['hooks'], ['custody'], ['finish']):
+        if os.geteuid() == 0 and sys.argv[1:2] in (['allocate'], ['hooks'], ['custody'], ['finish']):
             try:
                 root, state = load_state()
                 stage = sys.argv[1]
