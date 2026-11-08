@@ -1,4 +1,5 @@
 'use client';
+import { ActionButton } from '@/components/ui/action-button';
 import {DerivedOrganisationFields,useDerivedOrganisation} from '@/components/derived-organisation-fields';
 
 // Movement tab redesign (78853b97), comparison redesign (08913328) — client half of "New Event".
@@ -797,7 +798,7 @@ export function MovementNewEvent({
             {t('form.save')}
           </ConfirmSubmit>
         ) : (
-          <button className={btnPrimary}>{edit ? t('form.saveCorrection') : t('form.save')}</button>
+          <ActionButton actionKind="saving" className={btnPrimary}>{edit ? t('form.saveCorrection') : t('form.save')}</ActionButton>
         )}
       </div>
     </form>

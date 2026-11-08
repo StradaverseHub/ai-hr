@@ -1,3 +1,4 @@
+import { ActionButton } from '@/components/ui/action-button';
 import { ExportDownloadLink } from '@/components/export-download-link';
 import {taxBasisNoticeReferences} from '@/packs/payroll/service';
 import {taxBasisNoticeStrings} from '@/lib/payroll-tax-basis-notice-labels';
@@ -454,7 +455,7 @@ export default async function StatutoryFormPage({
                 <input type="hidden" name="periodKey" value={periodKey} />
                 <input type="hidden" name="year" value={year} />
                 <input type="hidden" name="month" value={month} />
-                <button className={btnPrimary}>{t('recordGeneration')}</button>
+                <ActionButton actionKind="generating" className={btnPrimary}>{t('recordGeneration')}</ActionButton>
               </form>
             </>
           }

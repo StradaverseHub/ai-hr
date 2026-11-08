@@ -1,3 +1,4 @@
+import {ActionFormStatus} from '@/components/ui/action-form-status';
 import { ActionButton } from '@/components/ui/action-button';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
@@ -174,7 +175,7 @@ export default async function PromoteLoopPage({ params, searchParams }: { params
           {target !== null && target >= 2 ? (<>
             <h2 className="text-sm font-semibold">{t('promote.limitsTitle', { n: target })}</h2>
             {view.canChange ? (
-              <form id="autonomy-promote" action={setLoopLevelAction} className="mt-3 space-y-4">
+              <form id="autonomy-promote" action={setLoopLevelAction} className="mt-3 space-y-4"><ActionFormStatus formId="autonomy-promote"/>
                 <input type="hidden" name="loop" value={id} /><input type="hidden" name="company" value={view.companyId} />
                 <input type="hidden" name="toLevel" value={target} /><input type="hidden" name="expectedLevel" value={level} />
                 {limitFields(MAX_ACTIONS_PER_NIGHT, UNDO_WINDOW_DAYS)}
@@ -198,8 +199,8 @@ export default async function PromoteLoopPage({ params, searchParams }: { params
             <ActionButton type="submit" className={cn(btnPrimary, TARGET)}>{t('promote.submit', { n: target, company: view.companyName })}</ActionButton>
           </form>
         ) : (
-          <button type="submit" form="autonomy-promote" disabled={!cert?.met} aria-describedby={cert?.met ? undefined : 'autonomy-not-met'}
-            className={cn(btnPrimary, TARGET)}>{t('promote.submit', { n: target, company: view.companyName })}</button>
+          <ActionButton actionKind="submitting" type="submit" form="autonomy-promote" disabled={!cert?.met} aria-describedby={cert?.met ? undefined : 'autonomy-not-met'}
+            className={cn(btnPrimary, TARGET)}>{t('promote.submit', { n: target, company: view.companyName })}</ActionButton>
         ))}
         {target !== null && <Link href={loopHref} className={cn(btnGhost, TARGET)}>{t('promote.notYet')}</Link>}
         {view.canChange && moveTo !== null && (

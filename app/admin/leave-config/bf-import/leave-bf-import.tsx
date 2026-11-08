@@ -248,13 +248,13 @@ export function LeaveBfImport({ runs, showRunLog = true, historyOnly = false, on
       <Card id="leave-bf-import-form" className="scroll-mt-6 p-5">
         {/* Step 1 — the template, in both forms. The Excel one carries the reporter's headings. */}
         <div className="mb-4 flex flex-wrap items-center gap-2">
-          <button
+          <ActionButton guardNavigation={false} actionKind="generating"
             type="button"
-            onClick={() => void downloadXlsxTemplate()}
+            onClick={() => downloadXlsxTemplate()}
             className="rounded-lg border border-border px-3 py-1.5 text-sm font-medium transition-colors hover:bg-muted"
           >
             {t('downloadTemplateXlsx')}
-          </button>
+          </ActionButton>
           <DownloadTemplate spec={leaveBfImportTemplate} onDownloaded={() => setTemplateTaken(true)} />
         </div>
 
@@ -921,7 +921,7 @@ function ImportLog({
                       {/* A rolled-back run is not offered again; a run that wrote nothing has nothing to
                           undo. Two clicks, because this moves days. */}
                       {!run.reversedAt && run.ledgerRows > 0 && (
-                        <ActionButton aria-busy={busy}
+                        <ActionButton guardNavigation aria-busy={busy}
                           type="button"
                           disabled={busy}
                           onClick={() => (confirmId === run.id ? onRollback(run.id) : setConfirmId(run.id))}

@@ -1,3 +1,4 @@
+import { ActionButton } from '@/components/ui/action-button';
 import { EarnedCreditCells } from '@/components/leave/earned-credit-cells';
 import { getLocale, getTranslations } from 'next-intl/server';
 import Link from 'next/link';
@@ -429,10 +430,10 @@ export default async function LeaveConfigLeaveCreditPage({
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
                   <form action={runToilExpiryAction}>
-                    <button className={btnPrimary}>{tToil('processButton')}</button>
+                    <ActionButton actionKind="submitting" className={btnPrimary}>{tToil('processButton')}</ActionButton>
                   </form>
                   <form action={closeReplacementLeaveYearAction}>
-                    <button className={btnPrimary}>{tToil('closeYearButton')}</button>
+                    <ActionButton actionKind="saving" className={btnPrimary}>{tToil('closeYearButton')}</ActionButton>
                   </form>
                 </div>
               </div>

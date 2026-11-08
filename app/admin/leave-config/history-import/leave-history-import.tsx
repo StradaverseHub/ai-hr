@@ -1,4 +1,5 @@
 'use client';
+import { ActionButton } from '@/components/ui/action-button';
 import {useAssistantImportIntake} from '@/components/assistant/import-handoff';
 
 import { useMemo, useRef, useState, useTransition } from 'react';
@@ -228,13 +229,13 @@ export function LeaveHistoryImport({ runs, showRunLog = true, historyOnly = fals
       <Card id="leave-history-import-form" className="scroll-mt-6 p-5">
         {/* Step 1 — the template, in both forms. The Excel one carries the reporter's headings. */}
         <div className="mb-4 flex flex-wrap items-center gap-2">
-          <button
+          <ActionButton guardNavigation={false} actionKind="generating"
             type="button"
-            onClick={() => void downloadXlsxTemplate()}
+            onClick={() => downloadXlsxTemplate()}
             className="rounded-lg border border-border px-3 py-1.5 text-sm font-medium transition-colors hover:bg-muted"
           >
             {t('downloadTemplateXlsx')}
-          </button>
+          </ActionButton>
           <DownloadTemplate spec={leaveHistoryImportTemplate} onDownloaded={() => setTemplateTaken(true)} />
         </div>
 

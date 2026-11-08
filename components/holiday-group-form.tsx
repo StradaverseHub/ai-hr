@@ -1,3 +1,4 @@
+import { ActionButton } from '@/components/ui/action-button';
 import { getTranslations } from 'next-intl/server';
 import Link from 'next/link';
 import { Card, Field, SectionHeader, btnPrimary, inputCls } from '@/components/ui';
@@ -182,7 +183,7 @@ export async function HolidayGroupForm({
       </Card>
 
       <div className="flex items-center gap-3">
-        <button className={btnPrimary}>{t('save')}</button>
+        <ActionButton actionKind="saving" className={btnPrimary}>{t('save')}</ActionButton>
         <Link
           href="/admin/holidays/groups"
           className="text-sm text-muted-foreground transition-colors hover:text-foreground"

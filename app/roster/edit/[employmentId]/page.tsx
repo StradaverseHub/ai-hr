@@ -1,3 +1,4 @@
+import { ActionButton } from '@/components/ui/action-button';
 import Link from 'next/link';
 import { getLocale, getTranslations } from 'next-intl/server';
 import { scopedAdmin } from '@/lib/scope';
@@ -181,7 +182,7 @@ export default async function RosterEditPage({
                     <option value="clear">{t('clear')}</option>
                   </select>
                 </label>
-                <button className={btnPrimary}>{t('rowEditSave')}</button>
+                <ActionButton actionKind="saving" className={btnPrimary}>{t('rowEditSave')}</ActionButton>
                 <Link href={listHref} className="rounded-md border border-border px-2.5 py-1 text-sm hover:bg-muted">
                   {t('rowEditCancel')}
                 </Link>

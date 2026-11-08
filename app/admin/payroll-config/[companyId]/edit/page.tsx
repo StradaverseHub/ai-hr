@@ -1,3 +1,4 @@
+import { ActionButton } from '@/components/ui/action-button';
 import { notFound } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { scopedSession } from '@/lib/scope';
@@ -127,7 +128,7 @@ export default async function EditPayrollConfigPage({
           </div>
 
           <div className="flex items-center gap-3">
-            <button className={btnPrimary}>{t('save')}</button>
+            <ActionButton actionKind="saving" className={btnPrimary}>{t('save')}</ActionButton>
             <a
               href={configCompanyHref(company.id, q)}
               className="text-sm font-medium text-muted-foreground hover:text-foreground"

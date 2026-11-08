@@ -66,7 +66,7 @@ export function ShiftImportPanel() {
           <input type="file" accept=".xlsx" className="ml-2" disabled={busy}
             onChange={event => { setFile(event.target.files?.[0] ?? null); setPreview(null); setSummary(null); setError(''); }} />
         </label>
-        <ActionButton aria-busy={busy} type="button" className={btnPrimary} disabled={!file || busy} onClick={() => void run('preview')}>Preview import</ActionButton>
+        <ActionButton guardNavigation={false} aria-busy={busy} type="button" className={btnPrimary} disabled={!file || busy} onClick={() => void run('preview')}>Preview import</ActionButton>
         {busy && <p role="status">Processing workbook…</p>}
         {error && <p role="alert" className="text-destructive">{error}</p>}
         {preview && <div className="space-y-2">
@@ -74,8 +74,8 @@ export function ShiftImportPanel() {
           <ul className="max-h-48 list-disc overflow-y-auto pl-5">
             {preview.rows.map(row => <li key={row.row}>Row {row.row} · {row.code} · {row.update ? 'Update' : 'Create'}</li>)}
           </ul>
-          <ActionButton aria-busy={busy} type="button" className={btnPrimary} disabled={busy || !preview.rows.length} onClick={() => void run('confirm')}>Confirm create and update</ActionButton>
-          {issues.length > 0 && <ActionButton aria-busy={busy} type="button" className="ml-3 text-primary underline" disabled={busy} onClick={() => void run('errors')}>Download errors</ActionButton>}
+          <ActionButton guardNavigation aria-busy={busy} type="button" className={btnPrimary} disabled={busy || !preview.rows.length} onClick={()=>run('confirm')}>Confirm create and update</ActionButton>
+          {issues.length > 0 && <ActionButton guardNavigation={false} aria-busy={busy} type="button" className="ml-3 text-primary underline" disabled={busy} onClick={() => void run('errors')}>Download errors</ActionButton>}
         </div>}
         {summary && <p role="status">Created {summary.created}, updated {summary.updated}, skipped {summary.skipped}, failed {summary.failed}.</p>}
         {issues.length > 0 && <ul className="max-h-48 list-disc overflow-y-auto pl-5">

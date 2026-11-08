@@ -1,3 +1,4 @@
+import { ActionButton } from '@/components/ui/action-button';
 import { getTranslations } from 'next-intl/server';
 import { Card, ErrorBanner, Field, SectionHeader, btnPrimary, inputCls } from '@/components/ui';
 import type { SessionContext } from '@/db/client';
@@ -36,7 +37,7 @@ export async function WholeGroupRoles({ session, error }: { session: SessionCont
         <Field label={t('reason')}>
           <input name="reason" className={inputCls} minLength={10} maxLength={2000} required />
         </Field>
-        <button className={btnPrimary} type="submit">{t('grant')}</button>
+        <ActionButton actionKind="saving" className={btnPrimary} type="submit">{t('grant')}</ActionButton>
       </form>
       {directory.map(row => (
         <div key={row.userId + ':' + row.role} className="space-y-2 border-t py-3">
@@ -50,7 +51,7 @@ export async function WholeGroupRoles({ session, error }: { session: SessionCont
               <Field label={t('reason')}>
                 <input name="reason" className={inputCls} minLength={10} maxLength={2000} required />
               </Field>
-              <button type="submit" className={btnPrimary}>{t(row.active ? 'revoke' : 'grant')}</button>
+              <ActionButton actionKind="saving" type="submit" className={btnPrimary}>{t(row.active ? 'revoke' : 'grant')}</ActionButton>
             </form>}
         </div>
       ))}

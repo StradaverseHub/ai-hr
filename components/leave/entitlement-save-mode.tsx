@@ -1,5 +1,6 @@
 'use client';
 
+import { ActionButton } from '@/components/ui/action-button';
 import { createContext, useContext, useState, type ReactNode } from 'react';
 import { useTranslations } from 'next-intl';
 
@@ -211,8 +212,8 @@ export function EntitlementSaveModeSubmit({ createLabel }: { createLabel: string
   const c = useCtx();
   const save = useEntitlementSaveMode({ ...c, createLabel });
   return (
-    <button type="submit" className={btnPrimary}>
+    <ActionButton actionKind="saving" type="submit" className={btnPrimary}>
       {save.label}
-    </button>
+    </ActionButton>
   );
 }

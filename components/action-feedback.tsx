@@ -2,6 +2,7 @@
 
 import {createContext,useCallback,useContext,useEffect,useMemo,useRef,useState,type ReactNode} from 'react';
 import {useTranslations} from 'next-intl';
+import {isHandledActionRedirect} from '@/lib/action-feedback-result';
 import {registerUnsavedGuard} from '@/lib/unsaved-changes';
 
 export type ActionKind='processing'|'saving'|'updating'|'uploading'|'submitting'|'generating'|'deleting'|'loading';
@@ -67,7 +68,10 @@ export function useActionFeedback({kind='processing',important=true}:{kind?:Acti
   if(running.current)return;running.current=true;setState({status:'processing',message:labels[kind]});
   const report=(message:string,progress?:number)=>{if(mounted.current)setState({status:'processing',message,...(typeof progress==='number'&&Number.isFinite(progress)&&progress>=0&&progress<=100?{progress}: {})});};
   let outcome:ActionOutcome<T>;
-  try{outcome=await work(report);}catch{outcome={status:'uncertain',message:labels.uncertain};}
+  try{outcome=await work(report);}catch(error){
+   if(isHandledActionRedirect(error)){if(mounted.current)setState({status:'idle',message:''});return;}
+   outcome={status:'uncertain',message:labels.uncertain};
+  }
   finally{running.current=false;}
   if(mounted.current)setState({status:outcome.status,message:outcome.message??labels[outcome.status]});
   return outcome;

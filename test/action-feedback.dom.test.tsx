@@ -4,9 +4,11 @@ import {act,cleanup,fireEvent,render,screen,waitFor} from '@testing-library/reac
 import {ActionFeedback,ActionFeedbackProvider,useActionFeedback} from '@/components/action-feedback';
 import {ActionButton} from '@/components/ui/action-button';
 
+const notices=vi.hoisted(()=>({error:vi.fn()}));
+vi.mock('sonner',()=>({toast:notices}));
 vi.mock('next-intl',()=>({useTranslations:()=>((key:string)=>(({processing:'Processing…',saving:'Saving…',uploading:'Uploading…',leave:'Leave unfinished action?',uncertain:'Check the result before repeating.',failed:'Action failed.',cancelled:'Cancelled.',success:'Completed.'} as Record<string,string>)[key]??key))}));
 vi.mock('react-dom',async importOriginal=>({...await importOriginal<typeof import('react-dom')>(),useFormStatus:()=>({pending:false,data:null,method:null,action:null})}));
-afterEach(()=>{cleanup();vi.restoreAllMocks();});
+afterEach(()=>{cleanup();vi.restoreAllMocks();notices.error.mockClear();});
 function deferred<T>(){let resolve!:(value:T)=>void,reject!:(error:Error)=>void;const promise=new Promise<T>((yes,no)=>{resolve=yes;reject=no;});return {promise,resolve,reject};}
 
 describe('owned action processing feedback',()=>{
@@ -32,6 +34,20 @@ describe('owned action processing feedback',()=>{
   render(<ActionFeedbackProvider><ActionButton type="button" aria-busy guardNavigation={false}>Preview</ActionButton></ActionFeedbackProvider>);
   const event=new Event('beforeunload',{cancelable:true});window.dispatchEvent(event);expect(event.defaultPrevented).toBe(false);
  });
+ it('protects only the activated mutation when Save and Preview share a pending flag',async()=>{
+  let operation=deferred<void>();
+  function Editor(){const [pending,setPending]=useState(false);const run=async()=>{setPending(true);try{await operation.promise;}finally{setPending(false);}};return <><ActionButton type="button" guardNavigation aria-busy={pending} onClick={run}>Save</ActionButton><ActionButton type="button" guardNavigation={false} aria-busy={pending} onClick={run}>Preview</ActionButton></>;}
+  render(<ActionFeedbackProvider><Editor/></ActionFeedbackProvider>);fireEvent.click(screen.getByRole('button',{name:'Preview'}));
+  const previewLeave=new Event('beforeunload',{cancelable:true});window.dispatchEvent(previewLeave);expect(previewLeave.defaultPrevented).toBe(false);
+  await act(async()=>operation.resolve());operation=deferred<void>();fireEvent.click(screen.getByRole('button',{name:'Save'}));
+  const saveLeave=new Event('beforeunload',{cancelable:true});window.dispatchEvent(saveLeave);expect(saveLeave.defaultPrevented).toBe(true);
+  await act(async()=>operation.resolve());const settled=new Event('beforeunload',{cancelable:true});window.dispatchEvent(settled);expect(settled.defaultPrevented).toBe(false);
+ });
+ it('accepts a framework-handled redirect without displaying an uncertain-result error',async()=>{
+  const redirect=Object.assign(new Error('NEXT_REDIRECT'),{digest:'NEXT_REDIRECT;push;/saved;303;',handled:true});
+  render(<ActionFeedbackProvider><ActionButton type="button" guardNavigation onClick={async()=>{throw redirect;}}>Save</ActionButton></ActionFeedbackProvider>);
+  fireEvent.click(screen.getByRole('button',{name:'Save'}));await waitFor(()=>expect(screen.getByRole('button',{name:'Save'})).toBeEnabled());expect(notices.error).not.toHaveBeenCalled();expect(screen.queryByText('Completed.')).toBeNull();
+ });
  it('blocks two native submits in the same event turn and permits a later independent submission',async()=>{
   let count=0;render(<ActionFeedbackProvider><form onSubmit={event=>{event.preventDefault();count++;}}><ActionButton>Save</ActionButton></form></ActionFeedbackProvider>);
   const form=screen.getByRole('button',{name:'Save'}).closest('form')!;
@@ -55,4 +71,9 @@ describe('explicit action outcomes',()=>{
   function Form(){const feedback=useActionFeedback();return <><button onClick={()=>feedback.run(async()=>({status:'cancelled',message:'Upload cancelled by server'}))}>Cancel</button><ActionFeedback state={feedback.state}/></>;}
   render(<ActionFeedbackProvider><Form/></ActionFeedbackProvider>);fireEvent.click(screen.getByRole('button',{name:'Cancel'}));await waitFor(()=>expect(screen.getByText('Upload cancelled by server')).toBeInTheDocument());
  });
+ it('clears the explicit action guard for an accepted redirect without inventing a success outcome',async()=>{
+  function Form(){const feedback=useActionFeedback();return <><button onClick={()=>feedback.run(async()=>{throw Object.assign(new Error('NEXT_REDIRECT'),{digest:'NEXT_REDIRECT;push;/saved;303;',handled:true});})}>Save</button><ActionFeedback state={feedback.state}/></>;}
+  render(<ActionFeedbackProvider><Form/></ActionFeedbackProvider>);fireEvent.click(screen.getByRole('button',{name:'Save'}));await waitFor(()=>expect(screen.getAllByRole('status')).toHaveLength(1));expect(screen.queryByRole('alert')).toBeNull();expect(screen.queryByText('Completed.')).toBeNull();
+ });
+
 });

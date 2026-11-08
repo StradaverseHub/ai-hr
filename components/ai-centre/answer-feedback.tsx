@@ -61,7 +61,7 @@ export function AnswerFeedback({ turnId, copy }: { turnId: string; copy: AnswerF
       <div data-answer-feedback="thanks" role="status" className="flex items-center gap-2 text-xs text-muted-foreground">
         <span>{copy.thanks}</span>
         {canChange && (
-          <ActionButton aria-busy={busy} type="button" onClick={() => setStage('choose')} disabled={busy}
+          <ActionButton guardNavigation={false} aria-busy={busy} type="button" onClick={() => setStage('choose')} disabled={busy}
             className={`inline-flex min-h-9 items-center font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${TARGET}`}>
             {copy.change}
           </ActionButton>
@@ -73,7 +73,7 @@ export function AnswerFeedback({ turnId, copy }: { turnId: string; copy: AnswerF
     return (
       <div data-answer-feedback="reasons" role="group" aria-label={copy.reasonsLabel} className="flex flex-wrap items-center gap-2">
         {ANSWER_REASONS.map(reason => (
-          <ActionButton aria-busy={busy} key={reason} type="button" onClick={() => giveReason(reason)} disabled={busy} className={CHIP} data-answer-reason={reason}>{copy.reasons[reason]}</ActionButton>
+          <ActionButton guardNavigation aria-busy={busy} key={reason} type="button" onClick={() => giveReason(reason)} disabled={busy} className={CHIP} data-answer-reason={reason}>{copy.reasons[reason]}</ActionButton>
         ))}
         <Button aria-busy={busy} type="button" variant="ghost" size="sm" onClick={() => setStage('thanks')} disabled={busy} className={`text-muted-foreground ${TARGET}`}>{copy.cancel}</Button>
       </div>

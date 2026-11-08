@@ -10,6 +10,7 @@ export function NavigationFeedback() {
   const query = useSearchParams()?.toString() ?? '';
   const t = useTranslations('common');
   const [pending, setPending] = useState<ReturnType<typeof navigationKind>>(null);
+  const [unconfirmed,setUnconfirmed]=useState(false);
   const clear = useRef<() => void>(() => {});
   const committed = useRef('');
 
@@ -24,15 +25,15 @@ export function NavigationFeedback() {
     function reset() {
       clearTimeout(delay);
       clearTimeout(deadline);
-      setPending(null);
+      setPending(null);setUnconfirmed(false);
     }
     clear.current = reset;
     function show(kind: ReturnType<typeof navigationKind>) {
       reset();
       if (!kind) return;
       delay = setTimeout(() => setPending(kind), 120);
-      // App Router exposes a start hook but no cancellation event for an abandoned transition.
-      deadline = setTimeout(reset, 20_000);
+      // A timer is not proof of completion. Keep an honest unresolved-navigation status until a route commits.
+      deadline = setTimeout(()=>setUnconfirmed(true),20_000);
     }
     function start(event: Event) {
       const url = (event as CustomEvent<string>).detail;
@@ -63,7 +64,7 @@ export function NavigationFeedback() {
     };
   }, []);
 
-  return <div className="atelier-navigation-feedback" data-pending={pending ?? undefined} role="status">
-    <span className="sr-only">{pending ? t('loading') : ''}</span>
+  return <div className="atelier-navigation-feedback action-navigation-feedback" data-pending={pending ?? undefined} data-unconfirmed={unconfirmed||undefined} aria-busy={pending!==null} role="status">
+    <span className="sr-only">{pending ? t(unconfirmed?'actionFeedback.navigationUnconfirmed':'loading') : ''}</span>
   </div>;
 }

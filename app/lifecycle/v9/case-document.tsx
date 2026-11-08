@@ -38,16 +38,16 @@ export function CaseDocument({ c, document, template, actor, busy, command, conf
         <span>{personnelMergeLabels.get(key)}</span>
         <input className="v9-input" disabled={busy} value={personnel[key] ?? ''} onChange={event => setPersonnel(previous => ({ ...previous, [key]: event.target.value }))} />
       </label>)}
-      <button type="button" className="v9-button" disabled={busy || !missingPersonnel.some(key => personnel[key]?.trim())}
+      <ActionButton guardNavigation={true} aria-busy={busy} actionKind="saving" type="button" className="v9-button" disabled={busy || !missingPersonnel.some(key => personnel[key]?.trim())}
         onClick={async () => {
           const values = Object.fromEntries(missingPersonnel.filter(key => personnel[key]?.trim()).map(key => [key, personnel[key]]));
           if ((await execute({ type: 'documentFillPersonnel', id: document.id, values })).ok) setPersonnel({});
-        }}>Save values for this document</button>
+        }}>Save values for this document</ActionButton>
     </section>}
-    {canEditFields && (document.templateType ?? template?.type) !== 'Attachment' && document.blocks.some(block => ['heading','subheading','text'].includes(block.type)) && <ActionButton aria-busy={busy} type="button" className="v9-button" disabled={busy || dirty} onClick={() => setEditingText(true)}>Edit for this person</ActionButton>}
+    {canEditFields && (document.templateType ?? template?.type) !== 'Attachment' && document.blocks.some(block => ['heading','subheading','text'].includes(block.type)) && <ActionButton guardNavigation={false} aria-busy={busy} type="button" className="v9-button" disabled={busy || dirty} onClick={() => setEditingText(true)}>Edit for this person</ActionButton>}
     {editingText && canEditFields && <DocumentTextEditor document={document} person={c.facts?.name ?? 'this person'} busy={busy} command={execute} close={() => setEditingText(false)}/>}
-    {canEditFields && fields.length > 0 && <ActionButton aria-busy={busy} type="button" className="v9-button" disabled={busy || !dirty} onClick={() => execute({ type: 'documentSave', id: document.id, values: Object.fromEntries(fields.filter(f => values[f.id] !== undefined).map(f => [f.id, values[f.id]])) })}>Save HR fields</ActionButton>}
-    {editable && document.status === 'draft' && <ActionButton aria-busy={busy} type="button" className="v9-button" disabled={busy || dirty} onClick={() => execute({ type: 'documentRefresh', id: document.id })}>Refresh Personnel values</ActionButton>}
+    {canEditFields && fields.length > 0 && <ActionButton guardNavigation aria-busy={busy} type="button" className="v9-button" disabled={busy || !dirty} onClick={() => execute({ type: 'documentSave', id: document.id, values: Object.fromEntries(fields.filter(f => values[f.id] !== undefined).map(f => [f.id, values[f.id]])) })}>Save HR fields</ActionButton>}
+    {editable && document.status === 'draft' && <ActionButton guardNavigation aria-busy={busy} type="button" className="v9-button" disabled={busy || dirty} onClick={() => execute({ type: 'documentRefresh', id: document.id })}>Refresh Personnel values</ActionButton>}
     {needsSignature&&hrStep==='before'&&config&&<label className="v9-field"><span>HR signatory for this document</span><select disabled={busy||dirty} value={document.signatoryUserId??''} onChange={e=>void execute({type:'documentSignatory',id:document.id,userId:e.target.value})}><option value="" disabled>Choose a permitted signatory</option>{document.signatoryUserId&&!allowed.includes(document.signatoryUserId)&&<option value={document.signatoryUserId} disabled>Previously designated signer</option>}{allowed.map(id=><option key={id} value={id}>{users.find(user=>user.id===id)?.name??(id===actor.id?actor.name:'Permitted signer')}{id===config.companies?.find(company=>company.companyId===c.facts?.company)?.signatoryUserId?' (company default)':''}</option>)}</select></label>}
     {needsSignature && (signatory ? <>{dirty && <p className="v9-notice">Save your changes before signing this document.</p>}<SignatureInput name={actor.name} busy={busy || dirty} submit={signature => execute({ type: 'documentSign', id: document.id, signature })}/></> : <p className="v9-notice">This document is waiting for the designated company HR signatory.</p>)}
   </div>;

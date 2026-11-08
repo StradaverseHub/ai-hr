@@ -1,3 +1,4 @@
+import { ActionButton } from '@/components/ui/action-button';
 import { ExportDownloadLink } from '@/components/export-download-link';
 import { organisationChoiceLabels, organisationFilterChoices } from '@/lib/organisation-choice-label';
 import { getLocale, getTranslations } from 'next-intl/server';
@@ -560,7 +561,7 @@ export default async function RosterPage({
                     <input type="date" name="to" required defaultValue={view.to} className={inputCls} />
                   </span>
                 </label>
-                <button className={btnPrimary}>{t('generate')}</button>
+                <ActionButton actionKind="generating" className={btnPrimary}>{t('generate')}</ActionButton>
               </form>
             )}
             <p className="text-xs text-muted-foreground">{t('generateHint')}</p>
@@ -603,7 +604,7 @@ export default async function RosterPage({
                   {t('copyTargetStart')}
                   <input type="date" name="targetFrom" required defaultValue={view.from} className={inputCls} />
                 </label>
-                <button className={btnPrimary}>{t('copyButton')}</button>
+                <ActionButton actionKind="saving" className={btnPrimary}>{t('copyButton')}</ActionButton>
               </form>
             )}
             <p className="text-xs text-muted-foreground">{t('copyHint')}</p>

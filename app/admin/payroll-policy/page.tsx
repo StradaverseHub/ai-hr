@@ -1,3 +1,4 @@
+import { ActionButton } from '@/components/ui/action-button';
 import { getTranslations } from 'next-intl/server';
 import Link from 'next/link';
 import { scopedAdmin } from '@/lib/scope';
@@ -171,16 +172,16 @@ export default async function PayrollPolicyPage({
                           <form action={copyPolicyAction}>
                             <input type="hidden" name="id" value={p.id} />
                             <input type="hidden" name="name" value={`${p.name} ${t('copySuffix')}`} />
-                            <button className="text-xs font-medium text-muted-foreground hover:text-foreground hover:underline">
+                            <ActionButton actionKind="saving" className="text-xs font-medium text-muted-foreground hover:text-foreground hover:underline">
                               {t('copy')}
-                            </button>
+                            </ActionButton>
                           </form>
                           <form action={setStatusAction}>
                             <input type="hidden" name="id" value={p.id} />
                             <input type="hidden" name="status" value={p.status === 'active' ? 'inactive' : 'active'} />
-                            <button className="text-xs font-medium text-muted-foreground hover:text-foreground hover:underline">
+                            <ActionButton actionKind="saving" className="text-xs font-medium text-muted-foreground hover:text-foreground hover:underline">
                               {p.status === 'active' ? t('deactivate') : t('activate')}
-                            </button>
+                            </ActionButton>
                           </form>
                           <form action={deletePolicyAction}>
                             <input type="hidden" name="id" value={p.id} />

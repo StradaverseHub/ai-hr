@@ -1,4 +1,5 @@
 'use client';
+import { ActionButton } from '@/components/ui/action-button';
 import {SystemLabelScope} from '../system-label-scope';
 
 import {SystemLabelExportButton} from '../system-label-export-button';
@@ -145,7 +146,7 @@ export function GradeGroupConfig({
             {grades.length === 0 && <span className="text-xs text-muted-foreground">{t('noGrades')}</span>}
           </div>
         </div>
-        <button className={btnPrimary}>{t('addGroup')}</button>
+        <ActionButton actionKind="saving" className={btnPrimary}>{t('addGroup')}</ActionButton>
       </form>
     </div>
   );

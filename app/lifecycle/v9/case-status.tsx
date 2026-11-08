@@ -1,4 +1,5 @@
 'use client';
+import {useActionFeedbackLabels,usePendingAction} from '@/components/action-feedback';
 import { ActionButton } from '@/components/ui/action-button';
 import { useEffect, useId, useRef, useState } from 'react';
 import type { Item, Task } from '@/lib/lifecycle-v9-model';
@@ -6,6 +7,7 @@ type Status = Task['status'] | Item['status'];
 const labels: Record<Status, string> = { todo: 'To do', progress: 'In progress', done: 'Done', notNeeded: 'Not needed', notReturned: 'Not returned' };
 export function CaseStatus({ name, kind, value, reason, busy, editable, documentLinked = false, compact = false, change }: { name: string; kind: 'task' | 'item'; value: Status; reason: string; busy: boolean; editable: boolean; documentLinked?: boolean; compact?: boolean; change: (status: Status, reason: string) => Promise<{ ok: boolean; error?: string }> }) {
   const [pending, setPending] = useState<'notNeeded' | 'notReturned' | null>(null), [text, setText] = useState(''), [error, setError] = useState(''), [saving, setSaving] = useState(false);
+  const feedbackLabels=useActionFeedbackLabels();usePendingAction(saving,feedbackLabels.saving,true);
   const dialog = useRef<HTMLDialogElement>(null), fieldId = useId(), disabled = busy || saving || !editable;
   useEffect(() => { if (pending) dialog.current?.showModal(); }, [pending]);
   async function apply(status: Status, reason: string) {
@@ -24,6 +26,6 @@ export function CaseStatus({ name, kind, value, reason, busy, editable, document
   return <div className="v9-stack">{compact?<details><summary aria-label={`Change status for ${name}`}>Change status</summary>{select}</details>:select}
     {(value === 'notNeeded' || value === 'notReturned') && <div className="v9-muted">{reason}<button type="button" className="v9-link" disabled={disabled} onClick={() => choose(value)}>Edit reason</button></div>}
     {!pending && error && <p role="alert" className="v9-error">{error}</p>}
-    {pending && <dialog ref={dialog} className="v9-dialog" aria-label={`${labels[pending]}: ${name}`} onCancel={event => { if (saving) event.preventDefault(); else setPending(null); }}><header><h2>{labels[pending]}: {name}</h2><ActionButton guardNavigation aria-busy={saving} type="button" className="v9-button" disabled={saving} aria-label="Close reason" onClick={() => setPending(null)}>Close</ActionButton></header><div className="v9-stack"><label className="v9-field" htmlFor={fieldId}>Reason required<textarea id={fieldId} rows={4} maxLength={4000} value={text} disabled={busy || saving} onChange={event => setText(event.target.value)}/></label>{error && <p className="v9-notice v9-error" role="alert">{error}</p>}<button type="button" className="v9-button v9-button-primary" disabled={disabled || !text.trim()} onClick={() => void apply(pending, text.trim())}>{saving ? 'Saving…' : 'Confirm'}</button></div></dialog>}
+    {pending && <dialog ref={dialog} className="v9-dialog" aria-label={`${labels[pending]}: ${name}`} onCancel={event => { if (saving) event.preventDefault(); else setPending(null); }}><header><h2>{labels[pending]}: {name}</h2><ActionButton guardNavigation aria-busy={saving} type="button" className="v9-button" disabled={saving} aria-label="Close reason" onClick={() => setPending(null)}>Close</ActionButton></header><div className="v9-stack"><label className="v9-field" htmlFor={fieldId}>Reason required<textarea id={fieldId} rows={4} maxLength={4000} value={text} disabled={busy || saving} onChange={event => setText(event.target.value)}/></label>{error && <p className="v9-notice v9-error" role="alert">{error}</p>}<ActionButton guardNavigation={true} aria-busy={saving} actionKind="saving" type="button" className="v9-button v9-button-primary" disabled={disabled || !text.trim()} onClick={()=>apply(pending, text.trim())}>{saving ? 'Saving…' : 'Confirm'}</ActionButton></div></dialog>}
   </div>;
 }

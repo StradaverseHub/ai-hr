@@ -50,7 +50,7 @@ export function HistoryWorkflow({codes}:{codes:Code[]}){
    <p className="text-xs text-muted-foreground">{PAYROLL_HISTORY_HEADERS.join(' · ')}</p>
    <label className="block text-sm font-medium">{t('file')}<input type="file" accept=".csv,.xls,.xlsx" disabled={busy!==null} className="mt-2 block w-full rounded-lg border p-3 text-sm" onChange={event=>{setFile(event.target.files?.[0]??null);operation.current=null;setPreview(null);setDone(false);setError(null);}}/></label>
    {file&&file.size>10*1024*1024&&<p role="alert" className="text-sm text-destructive">{t('tooLarge')}</p>}
-   <button type="button" onClick={validate} disabled={!file||file.size>10*1024*1024||busy!==null} className={button+' bg-primary text-primary-foreground'}>{busy==='validate'?t('validating'):t('validate')}</button>
+   <ActionButton guardNavigation={false} aria-busy={busy==='validate'} actionKind="uploading" type="button" onClick={validate} disabled={!file||file.size>10*1024*1024||busy!==null} className={button+' bg-primary text-primary-foreground'}>{busy==='validate'?t('validating'):t('validate')}</ActionButton>
   </section>
   {error&&<p role="alert" className="rounded-lg border border-destructive/30 p-4 text-sm text-destructive">{error}</p>}
   {preview&&<section className="space-y-5 rounded-xl border bg-card p-5"><div className="flex flex-wrap justify-between gap-3"><h2 className="font-semibold">{done?t('results'):t('preview')}</h2><Link className="text-sm font-medium text-primary underline" href={'/payroll/history-import/logs/'+preview.attemptId}>{t('openLog')}</Link></div>
@@ -67,9 +67,9 @@ export function HistoryWorkflow({codes}:{codes:Code[]}){
     <label className="flex items-start gap-3 text-sm"><input type="checkbox" className="mt-1" checked={confirmed} onChange={event=>setConfirmed(event.target.checked)} disabled={busy!==null}/><span>{t('confirmation')}</span></label>
     <div className="flex flex-wrap gap-3">
      {replaceable.length>0?<>
-      <button type="button" className={button+' bg-primary text-primary-foreground'} onClick={()=>commit('ticked')} disabled={blocked||ticked.size===0||!acknowledged}>{busy==='confirm'?t('importing'):t('confirmOverwrite')}</button>
-      {preview.plan.counts.created>0&&<button type="button" className={button} onClick={()=>commit('new')} disabled={blocked}>{t('importNewOnly')}</button>}
-     </>:<button type="button" className={button+' bg-primary text-primary-foreground'} onClick={()=>commit('all')} disabled={blocked}>{busy==='confirm'?t('importing'):t('import')}</button>}
+      <ActionButton guardNavigation={true} aria-busy={busy==='confirm'} actionKind="submitting" type="button" className={button+' bg-primary text-primary-foreground'} onClick={()=>commit('ticked')} disabled={blocked||ticked.size===0||!acknowledged}>{busy==='confirm'?t('importing'):t('confirmOverwrite')}</ActionButton>
+      {preview.plan.counts.created>0&&<ActionButton guardNavigation={true} aria-busy={busy==='confirm'} actionKind="submitting" type="button" className={button} onClick={()=>commit('new')} disabled={blocked}>{t('importNewOnly')}</ActionButton>}
+     </>:<ActionButton guardNavigation={true} aria-busy={busy==='confirm'} actionKind="submitting" type="button" className={button+' bg-primary text-primary-foreground'} onClick={()=>commit('all')} disabled={blocked}>{busy==='confirm'?t('importing'):t('import')}</ActionButton>}
      <button type="button" className={button} onClick={()=>{setPreview(null);setConfirmed(false);setTicked(new Set());setAcknowledged(false);operation.current=null;}} disabled={busy!==null}>{t('cancel')}</button></div>
    </div>}
   </section>}

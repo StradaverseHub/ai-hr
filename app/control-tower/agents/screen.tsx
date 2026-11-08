@@ -90,7 +90,7 @@ export async function AiManagementScreen({session:s,section,searchParams,childre
     <label className="text-xs">{t('monthly')}<input aria-label={`${label} · ${t('monthly')}`} className={`${inputCls} mt-1`} type="number" min="0" max="1000000000000" step="1" name="monthlyTokens" defaultValue={u.tokens.limit??''} placeholder={t('unlimited')}/></label>
     <label className="text-xs">{t('concurrent')}<input aria-label={`${label} · ${t('concurrent')}`} className={`${inputCls} mt-1`} type="number" min="0" max="1000000" step="1" name="maxConcurrent" defaultValue={u.maxConcurrent??''} placeholder={t('unlimited')}/></label>
     <label className="text-xs">{t('access')}<select aria-label={`${label} · ${t('access')}`} name="enabled" defaultValue={String(u.enabled)} className={`${inputCls} mt-1`}><option value="true">{t('allowed')}</option><option value="false">{t('paused')}</option></select></label>
-    <button className={btnPrimary} type="submit">{t('save')}</button>
+    <ActionButton actionKind="saving" className={btnPrimary} type="submit">{t('save')}</ActionButton>
   </>;
   const formGrid = 'grid items-end gap-3 md:grid-cols-2 xl:grid-cols-[minmax(10rem,1fr)_minmax(7rem,10rem)_minmax(8rem,12rem)_minmax(7rem,10rem)_minmax(6rem,8rem)_auto]';
   // WP14 / R19 — per-feature caps: the shared feature row (0694) holds the same three limits; its on/off switch stays
@@ -336,7 +336,7 @@ export async function AiManagementScreen({session:s,section,searchParams,childre
       <form action={setAiSpendBudgetAction} className="mt-4 flex flex-wrap items-end gap-3">
         <label htmlFor="ai-spend-monthly" className="text-sm">{t('spendMonthly')}<input id="ai-spend-monthly" className={inputCls} name="monthlyUsd" inputMode="decimal" defaultValue={view.spend.budgets.find(b=>b.scopeKey==='tenant')?.monthlyNanos!=null?nanosToUsd(view.spend.budgets.find(b=>b.scopeKey==='tenant')!.monthlyNanos!):''}/></label>
         <label htmlFor="ai-spend-root" className="text-sm">{t('spendRoot')}<input id="ai-spend-root" className={inputCls} name="rootUsd" inputMode="decimal" defaultValue={view.spend.budgets.find(b=>b.scopeKey==='tenant')?.rootNanos!=null?nanosToUsd(view.spend.budgets.find(b=>b.scopeKey==='tenant')!.rootNanos!):''}/></label>
-        <button className={btnPrimary}>{t('save')}</button>
+        <ActionButton actionKind="saving" className={btnPrimary}>{t('save')}</ActionButton>
       </form></Card>}
     {(section==='provider'||section==='assistant')&&children}
     {section==='orchestrator'&&queue&&<section id="orchestrator" aria-labelledby="ai-orchestrator-heading" className="scroll-mt-4 rounded-xl border border-border p-5"><h2 id="ai-orchestrator-heading" className="font-semibold">{t('orchestrator')}</h2><p className="my-3 max-w-4xl text-sm text-muted-foreground">{t('orchestratorHelp')}</p><OrchestrationWorkQueue view={queue} refresh={sp.refresh} canViewRuns={isGroupAdmin(s)}/></section>}

@@ -1,3 +1,4 @@
+import { ActionButton } from '@/components/ui/action-button';
 import { getTranslations } from 'next-intl/server';
 import Link from 'next/link';
 import { requireAdmin } from '@/lib/authz';
@@ -119,9 +120,9 @@ export default async function HolidayGroupsPage({
                         </Link>
                         <form action={deleteHolidayGroupAction}>
                           <input type="hidden" name="id" value={g.id} />
-                          <button className="text-sm text-muted-foreground transition-colors hover:text-red-500">
+                          <ActionButton actionKind="deleting" className="text-sm text-muted-foreground transition-colors hover:text-red-500">
                             {t('deleteAction')}
-                          </button>
+                          </ActionButton>
                         </form>
                       </div>
                     </td>

@@ -1,4 +1,5 @@
 'use client';
+import { ActionButton } from '@/components/ui/action-button';
 import {useAssistantImportIntake} from '@/components/assistant/import-handoff';
 import {PersonnelImportEvaluationPanel,type PersonnelImportEvaluationHandle,type PersonnelImportEvaluationStatus} from '@/components/personnel-import-evaluation-panel';
 import {employeeImportSourceFingerprint,personnelImportLocalDigest,personnelImportLocalBytesDigest} from '@/lib/personnel-import-evaluation-client';
@@ -541,13 +542,13 @@ unknownSheet:t('headerAssistance.unknownSheet'),aiTitle:t('headerAssistance.aiTi
           {/* d8471481 — the Excel template is the PRIMARY one now (text-typed identity columns +
               a live Reference sheet). The CSV template stays beside it: the reporter's existing
               files are CSV and removing that path would break a workflow that works. */}
-          <button
+          <ActionButton guardNavigation={false} actionKind="generating"
             type="button"
-            onClick={() => void downloadXlsxTemplate()}
+            onClick={() => downloadXlsxTemplate()}
             className="rounded-lg border border-border px-3 py-1.5 text-sm font-medium transition-colors hover:bg-muted"
           >
             {t('downloadTemplateXlsx')}
-          </button>
+          </ActionButton>
           <DownloadTemplate spec={employeeTemplate} onDownloaded={() => setTemplateDownloaded(true)} />
           <button type="button" onClick={downloadFamilyCsv} className="rounded-lg border border-border px-3 py-1.5 text-sm hover:bg-muted">{t('sectionFamily')} CSV</button>
           {PERSONNEL_REGISTER_KINDS.map(kind=><button key={kind} type="button" onClick={()=>downloadRegisterCsv(kind)} className="rounded-lg border border-border px-3 py-1.5 text-sm hover:bg-muted">{registerLabel(kind)} CSV</button>)}

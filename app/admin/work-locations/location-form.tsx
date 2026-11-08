@@ -1,3 +1,4 @@
+import { ActionButton } from '@/components/ui/action-button';
 import { organisationChoiceLabels } from '@/lib/organisation-choice-label';
 import Link from 'next/link';
 import { Card, ErrorBanner, Field, SectionHeader, btnGhost, btnPrimary, inputCls } from '@/components/ui';
@@ -120,7 +121,7 @@ export function LocationForm({
         <p className="text-xs text-muted-foreground">{t('branchHint')}</p>
 
         <div className="flex flex-wrap items-center gap-2">
-          <button className={btnPrimary}>{t('save')}</button>
+          <ActionButton actionKind="saving" className={btnPrimary}>{t('save')}</ActionButton>
           <Link href={cancelHref} className={btnGhost}>
             {t('cancel')}
           </Link>

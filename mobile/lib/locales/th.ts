@@ -593,7 +593,7 @@ const messages: Record<MessageKey, string> = {
   attRefusalFuture: "ไม่สามารถแก้ไขวันในอนาคตได้",
   attRefusalPending: "มีคำขอสำหรับวันนี้ที่รอการตัดสินใจอยู่แล้ว",
   attRefusalPayrollClosed: "วันนี้อยู่ในงวดเงินเดือนที่ปิดแล้ว กรุณาขอให้ HR เปิดใหม่",
-  attRefusalWorkflow: "ไม่มีสายการอนุมัติสำหรับคำขอนี้ กรุณาติดต่อ HR",
+  attRefusalWorkflow: "กรุณาติดต่อผู้ดูแลระบบ HR",
   attRefusalInvalid: "คำขอไม่ได้รับการยอมรับ",
   attRefusalNotWithdrawable: "ไม่สามารถถอนคำขอนี้ได้แล้ว",
   attCorrectionTitle: "การแก้ไข, {date}",

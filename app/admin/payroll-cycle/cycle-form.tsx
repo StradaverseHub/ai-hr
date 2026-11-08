@@ -1,3 +1,4 @@
+import { ActionButton } from '@/components/ui/action-button';
 import { getTranslations } from 'next-intl/server';
 import { PAYROLL_CYCLE_RUN_TYPES, type PayrollCycleRow } from '@/core/payroll-cycle';
 import { Card, Field, SectionHeader, btnPrimary, inputCls } from '@/components/ui';
@@ -91,7 +92,7 @@ export async function CycleForm({
         {/* 4157a498 — say what the code is FOR, or nobody fills it in and every import file fails. */}
         <p className="text-xs text-muted-foreground sm:col-span-3">{t('codeHelp')}</p>
         <div className="flex items-center gap-3 sm:col-span-3">
-          <button className={btnPrimary}>{cycle ? t('saveChanges') : t('addCycle')}</button>
+          <ActionButton actionKind="saving" className={btnPrimary}>{cycle ? t('saveChanges') : t('addCycle')}</ActionButton>
           <a
             href={cycleCompanyHref(companyId, q)}
             className="text-sm font-medium text-muted-foreground hover:text-foreground"

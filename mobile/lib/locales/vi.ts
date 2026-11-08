@@ -593,7 +593,7 @@ const messages: Record<MessageKey, string> = {
   attRefusalFuture: "Không thể điều chỉnh ngày trong tương lai.",
   attRefusalPending: "Đã có một yêu cầu cho ngày này đang chờ quyết định.",
   attRefusalPayrollClosed: "Ngày này thuộc kỳ lương đã chốt. Hãy đề nghị HR mở lại.",
-  attRefusalWorkflow: "Không có quy trình phê duyệt nào cho yêu cầu này. Hãy liên hệ HR.",
+  attRefusalWorkflow: "Vui lòng liên hệ Quản trị viên HR.",
   attRefusalInvalid: "Yêu cầu không được chấp nhận.",
   attRefusalNotWithdrawable: "Đơn này không còn có thể rút lại.",
   attCorrectionTitle: "Điều chỉnh, {date}",

@@ -315,7 +315,8 @@
       "failed": "操作失败。已尽可能保留您输入的信息。",
       "cancelled": "操作已取消。",
       "success": "操作已完成。",
-      "downloadReady": "文件已准备好：{name}。保存操作由浏览器处理。"
+      "downloadReady": "文件已准备好：{name}。保存操作由浏览器处理。",
+      "navigationUnconfirmed": "页面跳转比预期更久。请先检查页面，再重试。"
     }
   },
   "nav": {

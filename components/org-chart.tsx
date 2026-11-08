@@ -2,6 +2,7 @@
 
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import Link from 'next/link';
+import {ExportDownloadForm} from '@/components/export-download-form';
 import {createPortal} from 'react-dom';
 import { useTranslations } from 'next-intl';
 import { ChevronDown, ChevronUp, Minus, Plus, Search } from 'lucide-react';
@@ -269,7 +270,7 @@ export function OrgChart({ employees, edges, filter, canExport=false }: { employ
         <button type="button" className="rounded border px-3 py-2" onClick={()=>{const view=viewportRef.current;if(view&&box.w)setScale(Math.max(.1,Math.min(1,(view.clientWidth-32)/box.w)));}}>{t('fit')}</button>
         <button type="button" className="rounded border px-3 py-2" onClick={()=>setHorizontal(value=>!value)}>{t(horizontal?'vertical':'horizontal')}</button>
       </div>
-      {canExport&&filter&&<form action="/org/export" method="post" className="mb-4 flex flex-wrap items-end gap-2 rounded-lg border p-3 text-xs">
+      {canExport&&filter&&<ExportDownloadForm action="/org/export" className="mb-4 flex flex-wrap items-end gap-2 rounded-lg border p-3 text-xs">
         <input type="hidden" name="filter" value={JSON.stringify({...filter,query})}/><input type="hidden" name="collapsed" value={JSON.stringify([...effCollapsed])}/><input type="hidden" name="horizontal" value={String(horizontal)}/>
         <label>{t('export.scope')}<select name="scope" value={exportScope} onChange={e=>setExportScope(e.target.value)} className="ms-1 rounded border p-2"><option value="current">{t('export.current')}</option><option value="branch">{t('export.branch')}</option></select></label>
         {exportScope==='branch'&&<select name="root" value={branch} onChange={e=>setBranch(e.target.value)} required className="rounded border p-2"><option value="">{t('export.choose')}</option>{employees.map(e=><option key={e.employmentId} value={e.employmentId}>{e.name}</option>)}</select>}
@@ -278,7 +279,7 @@ export function OrgChart({ employees, edges, filter, canExport=false }: { employ
         <select name="pagination" aria-label={t('export.pagination')} className="rounded border p-2"><option value="fit">{t('export.fit')}</option><option value="pages">{t('export.pages')}</option></select>
         <label><input type="checkbox" name="confidential" value="true" defaultChecked/> {t('export.confidential')}</label>
         <button className="rounded bg-primary px-3 py-2 text-primary-foreground">{t('export.button')}</button>
-      </form>}
+      </ExportDownloadForm>}
       <div ref={viewportRef} className="max-h-[70vh] overflow-auto pb-2 touch-pan-x touch-pan-y" onPointerDown={e=>{if((e.target as HTMLElement).closest('button,a,input,select'))return;const view=viewportRef.current!;pan.current={x:e.clientX,y:e.clientY,left:view.scrollLeft,top:view.scrollTop};e.currentTarget.setPointerCapture?.(e.pointerId);}} onPointerMove={e=>{if(!pan.current)return;const view=viewportRef.current!;view.scrollLeft=pan.current.left-(e.clientX-pan.current.x);view.scrollTop=pan.current.top-(e.clientY-pan.current.y);}} onPointerUp={()=>{pan.current=null;}} onPointerCancel={()=>{pan.current=null;}}>
 
         <div

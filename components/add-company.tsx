@@ -1,5 +1,6 @@
 'use client';
 
+import { ActionButton } from '@/components/ui/action-button';
 import { useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { btnPrimary, btnGhost, inputCls } from './ui';
@@ -90,7 +91,7 @@ export function CompaniesCardHeader({
             </select>
           </label>
           <div className="flex items-center gap-2 sm:col-span-4">
-            <button className={btnPrimary}>{t('addCompany')}</button>
+            <ActionButton actionKind="saving" className={btnPrimary}>{t('addCompany')}</ActionButton>
             <button type="button" onClick={() => setOpen(false)} className={btnGhost}>
               {tc('cancel')}
             </button>

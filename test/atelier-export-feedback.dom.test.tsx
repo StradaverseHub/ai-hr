@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
 import en from '../messages/en.json';
+import {ExportDownloadForm} from '../components/export-download-form';
 import { ExportDownloadLink } from '../components/export-download-link';
 
 const notices = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn() }));
@@ -54,4 +55,13 @@ describe('export feedback', () => {
     expect(save).not.toHaveBeenCalled();
     expect(notices.success).not.toHaveBeenCalled();
   });
+  it('keeps a POST export form disabled until complete attachment bytes arrive and preserves its submitted options',async()=>{
+    let resolve!:(response:Response)=>void;const fetcher=vi.fn((_input:RequestInfo|URL,_options?:RequestInit)=>new Promise<Response>(done=>{resolve=done;}));vi.stubGlobal('fetch',fetcher);
+    vi.stubGlobal('URL',class extends URL {static createObjectURL=()=> 'blob:chart';static revokeObjectURL=()=>{};});vi.spyOn(HTMLAnchorElement.prototype,'click').mockImplementation(()=>{});
+    render(<NextIntlClientProvider locale="en" messages={en}><ExportDownloadForm action="/org/export"><input name="scope" defaultValue="branch"/><input name="root" defaultValue="employee-1"/><button type="submit">Create PDF</button></ExportDownloadForm></NextIntlClientProvider>);
+    const button=screen.getByRole('button',{name:'Create PDF'}),form=button.closest('form')!;fireEvent.submit(form);fireEvent.submit(form);expect(fetcher).toHaveBeenCalledTimes(1);expect(button).toBeDisabled();expect(notices.success).not.toHaveBeenCalled();
+    const options=fetcher.mock.calls[0][1] as RequestInit,body=options.body as FormData;expect(options.method).toBe('POST');expect(body.get('scope')).toBe('branch');expect(body.get('root')).toBe('employee-1');
+    resolve(new Response('PDF',{headers:{'Content-Disposition':'attachment; filename="chart.pdf"'}}));await waitFor(()=>expect(notices.success).toHaveBeenCalledWith('File prepared: chart.pdf. Your browser handles saving it.'));expect(button).toBeEnabled();
+  });
+
 });

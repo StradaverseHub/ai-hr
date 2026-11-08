@@ -285,9 +285,9 @@ export default async function DashboardCardConfigPage({
                                   value={c.status === 'active' ? 'inactive' : 'active'}
                                 />
                                 {returnFields}
-                                <button className="text-xs font-medium text-muted-foreground hover:text-foreground hover:underline">
+                                <ActionButton actionKind="saving" className="text-xs font-medium text-muted-foreground hover:text-foreground hover:underline">
                                   {c.status === 'active' ? t('deactivate') : t('activate')}
-                                </button>
+                                </ActionButton>
                               </form>
                               <form action={deleteCardAction}>
                                 <input type="hidden" name="id" value={c.id} />

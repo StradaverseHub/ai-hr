@@ -1,3 +1,4 @@
+import { ActionButton } from '@/components/ui/action-button';
 import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
@@ -281,12 +282,12 @@ export default async function HolidaysPage({
                           <form action={deleteHolidayAction} className="inline-flex">
                             <input type="hidden" name="id" value={h.id} />
                             {filterFields}
-                            <button
+                            <ActionButton actionKind="deleting"
                               title={t('remove')}
                               className={`${rowActionMutedCls} cursor-pointer hover:text-red-500`}
                             >
                               {t('remove')}
-                            </button>
+                            </ActionButton>
                           </form>
                         </div>
                       </td>

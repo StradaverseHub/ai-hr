@@ -1,3 +1,4 @@
+import { ActionButton } from '@/components/ui/action-button';
 import { publicLoginPresentation } from '@/lib/login-presentation-server';
 import { internalSelected, internalIssuer } from '@/lib/internal-auth/config';
 import { client } from '@/db/client';
@@ -48,7 +49,7 @@ export default async function InviteActivatePage({
     if (!invitation) return <main className="mx-auto flex min-h-dvh max-w-md flex-col justify-center gap-4 px-6"><h1 className="text-2xl font-semibold">{t('invite.invalidTitle')}</h1><p>{t('invite.invalidBody')}</p><a className="underline" href="/login">{t('reset.backToLogin')}</a></main>;
     if (identity && (identity.issuer !== internalIssuer(invitation.tenant_id) || identity.email?.toLowerCase() !== invitation.email.toLowerCase())) {
       const copy = await getTranslations('internalAuth');
-      return <main className="flex min-h-dvh items-center justify-center bg-muted/30 px-5 py-10"><section className="w-full max-w-md space-y-6 rounded-2xl border border-border bg-background p-6 shadow-sm sm:p-8"><h1 className="text-2xl font-semibold">{copy('switchAccountTitle')}</h1><p className="text-sm leading-relaxed text-muted-foreground">{copy('switchAccountHelp')}</p><form action={switchInvitationAccount}><input type="hidden" name="token" value={token}/><button className="min-h-11 w-full rounded-lg bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground">{copy('switchAccountSubmit')}</button></form></section></main>;
+      return <main className="flex min-h-dvh items-center justify-center bg-muted/30 px-5 py-10"><section className="w-full max-w-md space-y-6 rounded-2xl border border-border bg-background p-6 shadow-sm sm:p-8"><h1 className="text-2xl font-semibold">{copy('switchAccountTitle')}</h1><p className="text-sm leading-relaxed text-muted-foreground">{copy('switchAccountHelp')}</p><form action={switchInvitationAccount}><input type="hidden" name="token" value={token}/><ActionButton actionKind="saving" className="min-h-11 w-full rounded-lg bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground">{copy('switchAccountSubmit')}</ActionButton></form></section></main>;
     }
     return <InternalAuthForm mode={identity ? 'accept' : 'invite'} invitation={token} returnTo="/" presentation={await publicLoginPresentation()}/>;
   }

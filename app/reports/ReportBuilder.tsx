@@ -766,10 +766,10 @@ export function ReportBuilder({
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-border bg-card p-4">
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-xs text-muted-foreground">{labels.exportHint}</span>
-          <button type="button" onClick={() => exportAs('csv')} disabled={columns.length === 0} className="rounded-lg border border-border px-2.5 py-1 text-xs font-medium hover:bg-accent/60 disabled:opacity-50">{labels.exportCsv}</button>
-          <button type="button" onClick={() => exportAs('xlsx')} disabled={columns.length === 0} className="rounded-lg border border-border px-2.5 py-1 text-xs font-medium hover:bg-accent/60 disabled:opacity-50">{labels.exportXlsx}</button>
-          <button type="button" onClick={() => exportAs('pdf')} disabled={columns.length === 0} className="rounded-lg border border-border px-2.5 py-1 text-xs font-medium hover:bg-accent/60 disabled:opacity-50">{labels.exportPdf}</button>
-          <button type="button" onClick={() => exportAs('docx')} disabled={columns.length === 0} className="rounded-lg border border-border px-2.5 py-1 text-xs font-medium hover:bg-accent/60 disabled:opacity-50">{labels.exportDocx}</button>
+          <ActionButton guardNavigation={false} actionKind="generating" type="button" onClick={() => exportAs('csv')} disabled={columns.length === 0} className="rounded-lg border border-border px-2.5 py-1 text-xs font-medium hover:bg-accent/60 disabled:opacity-50">{labels.exportCsv}</ActionButton>
+          <ActionButton guardNavigation={false} actionKind="generating" type="button" onClick={() => exportAs('xlsx')} disabled={columns.length === 0} className="rounded-lg border border-border px-2.5 py-1 text-xs font-medium hover:bg-accent/60 disabled:opacity-50">{labels.exportXlsx}</ActionButton>
+          <ActionButton guardNavigation={false} actionKind="generating" type="button" onClick={() => exportAs('pdf')} disabled={columns.length === 0} className="rounded-lg border border-border px-2.5 py-1 text-xs font-medium hover:bg-accent/60 disabled:opacity-50">{labels.exportPdf}</ActionButton>
+          <ActionButton guardNavigation={false} actionKind="generating" type="button" onClick={() => exportAs('docx')} disabled={columns.length === 0} className="rounded-lg border border-border px-2.5 py-1 text-xs font-medium hover:bg-accent/60 disabled:opacity-50">{labels.exportDocx}</ActionButton>
         </div>
         <div className="flex items-center gap-2">
           {reportId && (

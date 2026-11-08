@@ -284,7 +284,7 @@ export function NotificationCenter({
               <>
                 {unread > 0 && (
                   <div className="flex justify-end border-b border-border px-4 py-1.5">
-                    <ActionButton type="button" onClick={markAll} aria-busy={marking} disabled={marking} className="text-xs font-medium text-primary hover:underline">
+                    <ActionButton guardNavigation type="button" onClick={markAll} aria-busy={marking} disabled={marking} className="text-xs font-medium text-primary hover:underline">
                       {t('markAllRead')}
                     </ActionButton>
                   </div>

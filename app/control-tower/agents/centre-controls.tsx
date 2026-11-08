@@ -1,3 +1,4 @@
+import { ActionButton } from '@/components/ui/action-button';
 import Link from 'next/link';
 import {getTranslations} from 'next-intl/server';
 import {Card,SectionHeader,btnGhost,btnPrimary} from '@/components/ui';
@@ -32,7 +33,7 @@ export async function AiCentreControls({session}:{session:SessionContext}){
     <p className="text-sm text-muted-foreground">{t('pending',{count:state.pending})}</p>
     <form action={setAiCentreStopAction}>
      <input type="hidden" name="generation" value={state.generation}/><input type="hidden" name="stopped" value={String(!state.stopped)}/>
-     <button type="submit" className={state.stopped?btnGhost:btnPrimary}>{t(state.stopped?'resume':'stop')}</button>
+     <ActionButton actionKind="saving" type="submit" className={state.stopped?btnGhost:btnPrimary}>{t(state.stopped?'resume':'stop')}</ActionButton>
     </form>
    </>}
    <p className="text-xs text-muted-foreground">{t('resumeHelp')}</p>
@@ -45,7 +46,7 @@ export async function AiCentreControls({session}:{session:SessionContext}){
      {row.control==='read'?controls===null||controls.get(row.key)===undefined?<span role="status" className="text-sm text-muted-foreground">{t('unknown')}</span>:<form action={setAiCentreFunctionAction} className="flex items-center gap-3">
       <span className="text-sm text-muted-foreground">{t(controls.get(row.key)===false?'off':'on')}</span>
       <input type="hidden" name="function" value={row.key}/><input type="hidden" name="enabled" value={String(controls.get(row.key)===false)}/>
-      <button type="submit" className={btnGhost} aria-label={`${t(controls.get(row.key)===false?'enable':'disable')} · ${functionName(row)}`}>{t(controls.get(row.key)===false?'enable':'disable')}</button>
+      <ActionButton actionKind="saving" type="submit" className={btnGhost} aria-label={`${t(controls.get(row.key)===false?'enable':'disable')} · ${functionName(row)}`}>{t(controls.get(row.key)===false?'enable':'disable')}</ActionButton>
      </form>:row.control==='existing'?<Link href={row.href} className="inline-flex min-h-11 items-center text-sm font-medium text-primary hover:underline">{t('configure')}</Link>:<span className="text-sm text-muted-foreground">{t(row.control==='platform'?'platform':'required')}</span>}
     </li>)}</ul>
    </details>
@@ -57,7 +58,7 @@ export async function AiCentreControls({session}:{session:SessionContext}){
     <span className="text-sm">{label(job.jobType)}</span><form action={setAiCentreJobAction}>
      <input type="hidden" name="jobType" value={job.jobType}/><input type="hidden" name="enabled" value={String(!job.enabled)}/>
      <input type="hidden" name="maxValidityDays" value={job.maxValidityDays}/><input type="hidden" name="maxRunsPerDay" value={job.maxRunsPerDay}/>
-     <button className={btnGhost} type="submit" aria-label={`${t(job.enabled?'disable':'enable')} · ${label(job.jobType)}`}>{t(job.enabled?'disable':'enable')}</button>
+     <ActionButton actionKind="saving" className={btnGhost} type="submit" aria-label={`${t(job.enabled?'disable':'enable')} · ${label(job.jobType)}`}>{t(job.enabled?'disable':'enable')}</ActionButton>
     </form>
    </li>)}</ul>}
   </Card>

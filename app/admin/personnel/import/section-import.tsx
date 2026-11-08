@@ -1,4 +1,5 @@
 'use client';
+import { ActionButton } from '@/components/ui/action-button';
 import {BankImportProgress} from './bank-import-progress';
 import { personnelTemplateReferenceLists } from '@/lib/personnel-template-reference';
 import { useNricPolicyMessage } from '@/components/nric-policy-message';
@@ -297,13 +298,13 @@ export function SectionImport({ section, reference, onCommitPendingChange }: { s
 
         <StepHeading num={1} label={t('sectionStep1')} />
         <div className="flex flex-wrap items-center gap-2">
-          <button
+          <ActionButton guardNavigation={false} actionKind="generating"
             type="button"
-            onClick={() => void downloadTemplate()}
+            onClick={() => downloadTemplate()}
             className="rounded-lg border border-border px-3 py-1.5 text-sm font-medium transition-colors hover:bg-muted"
           >
             {t('sectionDownloadTemplate', { section: label })}
-          </button>
+          </ActionButton>
           <button type="button" onClick={downloadCsvTemplate} className="rounded-lg border border-border px-3 py-1.5 text-sm hover:bg-muted">CSV</button>
         </div>
 

@@ -593,7 +593,7 @@ const messages: Record<MessageKey, string> = {
   attRefusalFuture: "无法更正未来的日期。",
   attRefusalPending: "当天已有一项申请正在等待决定。",
   attRefusalPayrollClosed: "当天位于已关闭的薪资期间。请联系 HR 重新开启。",
-  attRefusalWorkflow: "此申请没有可用的审批流程。请联系 HR。",
+  attRefusalWorkflow: "请联系 HR 管理员。",
   attRefusalInvalid: "申请未被接受。",
   attRefusalNotWithdrawable: "此申请已无法撤回。",
   attCorrectionTitle: "更正，{date}",

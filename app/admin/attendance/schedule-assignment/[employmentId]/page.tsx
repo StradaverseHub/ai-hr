@@ -1,3 +1,4 @@
+import { ActionButton } from '@/components/ui/action-button';
 import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
@@ -302,7 +303,7 @@ export default async function ShiftArrangementPage({
                 ))}
               </select>
             </Field>
-            <button className={btnPrimary}>{t('groupSave')}</button>
+            <ActionButton actionKind="saving" className={btnPrimary}>{t('groupSave')}</ActionButton>
           </div>
           <p className="text-xs text-muted-foreground">{t('groupHint')}</p>
           {scheduleGroupOptions.length === 0 && (
@@ -343,7 +344,7 @@ export default async function ShiftArrangementPage({
             }))}
           />
           <div className="flex items-center gap-3">
-            <button className={btnPrimary}>{t('panelSave')}</button>
+            <ActionButton actionKind="saving" className={btnPrimary}>{t('panelSave')}</ActionButton>
             <Link href={listHref} className="text-sm text-muted-foreground hover:text-foreground hover:underline">
               {t('detailCancel')}
             </Link>

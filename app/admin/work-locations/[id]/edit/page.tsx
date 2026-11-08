@@ -1,3 +1,4 @@
+import { ActionButton } from '@/components/ui/action-button';
 import { notFound } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
@@ -92,13 +93,13 @@ export default async function EditLocationPage({
             <form action={restoreLocationAction}>
               <input type="hidden" name="locationId" value={site.id} />
               <input type="hidden" name="returnTo" value={backHref} />
-              <button className={btnGhost}>{t('restore')}</button>
+              <ActionButton actionKind="saving" className={btnGhost}>{t('restore')}</ActionButton>
             </form>
           ) : (
             <form action={archiveLocationAction}>
               <input type="hidden" name="locationId" value={site.id} />
               <input type="hidden" name="returnTo" value={backHref} />
-              <button className={btnGhost}>{t('archive')}</button>
+              <ActionButton actionKind="deleting" className={btnGhost}>{t('archive')}</ActionButton>
             </form>
           )}
         </div>

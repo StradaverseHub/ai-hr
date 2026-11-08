@@ -315,7 +315,8 @@
       "failed": "Tindakan gagal. Maklumat yang dimasukkan dikekalkan jika boleh.",
       "cancelled": "Tindakan dibatalkan.",
       "success": "Tindakan selesai.",
-      "downloadReady": "Fail disediakan: {name}. Pelayar anda mengendalikan penyimpanan."
+      "downloadReady": "Fail disediakan: {name}. Pelayar anda mengendalikan penyimpanan.",
+      "navigationUnconfirmed": "Navigasi mengambil masa lebih lama daripada dijangka. Semak halaman sebelum mencuba lagi."
     }
   },
   "nav": {

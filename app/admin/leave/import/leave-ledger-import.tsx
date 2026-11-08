@@ -1,4 +1,5 @@
 'use client';
+import { ActionButton } from '@/components/ui/action-button';
 import { useNricPolicyMessage } from '@/components/nric-policy-message';
 
 import { useRef, useState, useTransition } from 'react';
@@ -284,13 +285,13 @@ export function LeaveLedgerImport() {
             {t('loadSample')}
           </Button>
           <DownloadTemplate spec={leaveImportTemplate} />
-          <button
+          <ActionButton guardNavigation={false} actionKind="generating"
             type="button"
-            onClick={() => void downloadXlsxTemplate()}
+            onClick={() => downloadXlsxTemplate()}
             className="rounded-lg border border-border px-3 py-1.5 text-sm font-medium transition-colors hover:bg-muted"
           >
             {t('downloadTemplateXlsx')}
-          </button>
+          </ActionButton>
         </div>
 
         <details className="mt-4 border-t border-border pt-3 text-xs">

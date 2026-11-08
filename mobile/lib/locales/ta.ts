@@ -593,7 +593,7 @@ const messages: Record<MessageKey, string> = {
   attRefusalFuture: "எதிர்கால நாளைத் திருத்த முடியாது.",
   attRefusalPending: "இந்த நாளுக்கான கோரிக்கை ஒன்று ஏற்கெனவே முடிவுக்காகக் காத்திருக்கிறது.",
   attRefusalPayrollClosed: "இந்த நாள் மூடப்பட்ட ஊதியக் காலத்தில் உள்ளது. அதை மீண்டும் திறக்க HR-இடம் கேட்கவும்.",
-  attRefusalWorkflow: "இந்தக் கோரிக்கைக்கு ஒப்புதல் வழி எதுவும் இல்லை. HR-ஐத் தொடர்புகொள்ளவும்.",
+  attRefusalWorkflow: "தயவுசெய்து HR நிர்வாகியைத் தொடர்புகொள்ளவும்.",
   attRefusalInvalid: "கோரிக்கை ஏற்கப்படவில்லை.",
   attRefusalNotWithdrawable: "இந்த விண்ணப்பத்தை இனி திரும்பப் பெற முடியாது.",
   attCorrectionTitle: "திருத்தம், {date}",

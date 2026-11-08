@@ -1,3 +1,4 @@
+import { ActionButton } from '@/components/ui/action-button';
 import {payrollReconciliationItemLabel} from '@/lib/payroll-reconciliation-items';
 import {Fragment} from 'react';
 import { ExportDownloadLink } from '@/components/export-download-link';
@@ -52,7 +53,7 @@ export default async function PayrollComparisonPage({params,searchParams}:{param
     {!result.available&&<div role="alert" className="rounded-xl border border-destructive/30 bg-destructive/5 p-4 text-sm"><p className="font-semibold">{t('unavailable')}</p><ul className="mt-2 list-inside list-disc">{result.issues.map((issue,index)=><li key={index}>{t(`issues.${issue.code}`)} · {issue.period} · {options.companies.find(company=>company.id===issue.companyId)?.name??issue.companyId}</li>)}</ul></div>}
     {!!result.unavailablePayItems?.length&&<p role="status" className="rounded-lg border border-border p-3 text-sm">{t('itemsUnavailable',{codes:result.unavailablePayItems.join(', ')})}</p>}
     {run.contextUnavailable&&<p role="status" className="rounded-lg border border-border p-3 text-sm text-muted-foreground">{t('contextUnavailable')}</p>}
-    {builtIn&&run.canEdit&&<details className="rounded-lg border border-border p-4"><summary className="cursor-pointer text-sm font-medium">{t('saveTemplate')}</summary><form action={saveReconciliationTemplateAction.bind(null,query({employeeSearch:null,page:1}))} className="mt-3 flex flex-wrap items-end gap-2"><label className="text-sm">{t('reportName')}<input className={input} name="name" required maxLength={150}/></label><button className="rounded-md border border-border px-3 py-2 text-sm">{t('saveTemplate')}</button></form></details>}
+    {builtIn&&run.canEdit&&<details className="rounded-lg border border-border p-4"><summary className="cursor-pointer text-sm font-medium">{t('saveTemplate')}</summary><form action={saveReconciliationTemplateAction.bind(null,query({employeeSearch:null,page:1}))} className="mt-3 flex flex-wrap items-end gap-2"><label className="text-sm">{t('reportName')}<input className={input} name="name" required maxLength={150}/></label><ActionButton actionKind="saving" className="rounded-md border border-border px-3 py-2 text-sm">{t('saveTemplate')}</ActionButton></form></details>}
     <Card className="p-5"><form key={query()} className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4" method="get">
       {returnQuery&&<input type="hidden" name="returnQuery" value={returnQuery}/>}
       {builtIn&&<><input type="hidden" name="payItemCode" value={ALL_RECORDED_PAY_ITEMS}/><ReconciliationPayItemFilter items={payItems.filter(item=>item.code!==ALL_RECORDED_PAY_ITEMS)} selected={run.definition.payItemCode===ALL_RECORDED_PAY_ITEMS?filters.payItemCodes??[]:[run.definition.payItemCode]}/></>}
@@ -103,7 +104,7 @@ export default async function PayrollComparisonPage({params,searchParams}:{param
         <details><summary className="cursor-pointer text-primary">{t('hrRemarkEdit')}</summary>
           <form className="mt-2 grid min-w-48 gap-2" action={savePayrollReconciliationRemarkAction.bind(null,query(),row.companyId,row.employmentId,row.currency,row.payItemCode??null,row.hrRemark?.revision??0)}>
             <label className="grid gap-1 text-xs">{t('hrRemark')}<textarea name="remark" className={input} maxLength={1000} rows={3} defaultValue={row.hrRemark?.body??''}/></label>
-            <button className="justify-self-start rounded-md border border-border px-2 py-1 text-xs">{t('hrRemarkSave')}</button>
+            <ActionButton actionKind="saving" className="justify-self-start rounded-md border border-border px-2 py-1 text-xs">{t('hrRemarkSave')}</ActionButton>
           </form>
         </details>
       </div>:column.id==='payItemCode'&&value?<span>{value}{payItems.find(item=>item.code===value)?.name&&<span className="block text-xs text-muted-foreground">{payItems.find(item=>item.code===value)?.name}</span>}</span>:column.id==='employeeName'&&!filters.employmentId?<Link className="text-primary underline" href={'?'+query({employmentId:row.employmentId,employeeSearch:null,page:1})}>{value??t('notAvailable')}</Link>:value??t('notAvailable')}</td>;

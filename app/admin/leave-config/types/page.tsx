@@ -1,3 +1,4 @@
+import { ActionButton } from '@/components/ui/action-button';
 import { organisationChoiceLabels } from '@/lib/organisation-choice-label';
 import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
@@ -602,7 +603,7 @@ export default async function LeaveConfigTypesPage({
               </Field>
               <div className="col-span-full mt-1 flex justify-end gap-2">
                 <AddLeaveTypeCancel>{t('cancel')}</AddLeaveTypeCancel>
-                <button className={btnPrimary}>{t('save')}</button>
+                <ActionButton actionKind="saving" className={btnPrimary}>{t('save')}</ActionButton>
               </div>
             </form>
           }

@@ -1,3 +1,4 @@
+import { ActionButton } from '@/components/ui/action-button';
 import { getTranslations } from 'next-intl/server';
 import type { SessionContext } from '@/db/client';
 import { listShiftsForTenant, listShiftOtWindows } from '@/core/roster';
@@ -15,7 +16,7 @@ export async function ShiftPaySettings({s}:{s:SessionContext}) {
         <ShiftOtWindowFields defaultRows={(windows.get(sh.id)??[]).map(w=>({id:w.id,label:w.label??'',startTime:w.startTime.slice(0,5),endTime:w.endTime.slice(0,5),endNextDay:w.endNextDay,minMinutes:w.minMinutes==null?'':String(w.minMinutes),maxMinutes:w.maxMinutes==null?'':String(w.maxMinutes),adjustAfterMinutes:w.adjustAfterMinutes==null?'':String(w.adjustAfterMinutes),adjustDeltaMinutes:w.adjustDeltaMinutes==null?'':String(w.adjustDeltaMinutes)}))}/>
         <div className="grid gap-3 sm:grid-cols-2"><Field label={t('diffLabel')}><select name="differentialKind" defaultValue={sh.differential?.kind??''} className={inputCls}><option value="">{t('diffNone')}</option><option value="percent">{t('diffPercent')}</option><option value="flat_hourly">{t('diffFlatHourly')}</option><option value="flat_per_shift">{t('diffPerShift')}</option></select></Field><Field label={t('diffValue')}><input name="differentialValue" type="number" min="0" step="0.01" defaultValue={sh.differential?.value??''} className={inputCls}/></Field></div>
         <label className="flex items-start gap-2 text-sm"><input type="checkbox" name="confirmClear" value="1" className="mt-1 accent-primary"/>{tb('confirmClear')}</label>
-        <button className={btnPrimary}>{t('saveShift')}</button>
+        <ActionButton actionKind="saving" className={btnPrimary}>{t('saveShift')}</ActionButton>
       </form></details>)}</div>
   </Card>;
 }

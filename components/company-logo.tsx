@@ -1,5 +1,6 @@
 'use client';
 
+import { ActionButton } from '@/components/ui/action-button';
 /**
  * The company logo: the read-only mark, and the edit affordance next to it (item 3c2f55d7 rev 2).
  *
@@ -140,16 +141,16 @@ export function CompanyLogoEdit({
             onChange={onPick}
             className="w-full text-xs text-muted-foreground file:mr-2 file:rounded-md file:border-0 file:bg-accent file:px-2 file:py-1 file:text-xs file:text-foreground"
           />
-          <button className="inline-flex h-7 items-center justify-center rounded-md bg-primary px-2 text-xs font-medium text-primary-foreground transition duration-150 ease-snappy hover:bg-primary/90 active:scale-[0.98]">
+          <ActionButton actionKind="saving" className="inline-flex h-7 items-center justify-center rounded-md bg-primary px-2 text-xs font-medium text-primary-foreground transition duration-150 ease-snappy hover:bg-primary/90 active:scale-[0.98]">
             {hasLogo ? labels.replace : labels.upload}
-          </button>
+          </ActionButton>
         </form>
         {hasLogo && (
           <form action={removeAction} className="w-full">
             <input type="hidden" name="companyId" value={companyId} />
-            <button className="inline-flex h-7 w-full items-center justify-center rounded-md border border-input px-2 text-xs font-medium text-destructive transition duration-150 ease-snappy hover:bg-accent active:scale-[0.98]">
+            <ActionButton actionKind="deleting" className="inline-flex h-7 w-full items-center justify-center rounded-md border border-input px-2 text-xs font-medium text-destructive transition duration-150 ease-snappy hover:bg-accent active:scale-[0.98]">
               {labels.remove}
-            </button>
+            </ActionButton>
           </form>
         )}
       </PhotoEditMenu>

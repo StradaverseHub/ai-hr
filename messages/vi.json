@@ -315,7 +315,8 @@
       "failed": "Thao tác thất bại. Thông tin đã nhập được giữ lại khi có thể.",
       "cancelled": "Đã hủy thao tác.",
       "success": "Đã hoàn tất thao tác.",
-      "downloadReady": "Đã chuẩn bị tệp: {name}. Trình duyệt của bạn sẽ xử lý việc lưu tệp."
+      "downloadReady": "Đã chuẩn bị tệp: {name}. Trình duyệt của bạn sẽ xử lý việc lưu tệp.",
+      "navigationUnconfirmed": "Việc chuyển trang lâu hơn dự kiến. Hãy kiểm tra trang trước khi thử lại."
     }
   },
   "nav": {

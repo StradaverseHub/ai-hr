@@ -76,7 +76,7 @@ export function TaxBasisWorkflow({options,initialSelection}:{options:TaxBasisOpt
             {pages>1&&<nav aria-label={t('employeePagination')} className="flex items-center justify-end gap-3 text-xs"><button type="button" className={button} disabled={employeePage===0} onClick={()=>setEmployeePage(page=>page-1)}>{t('previous')}</button><span>{t('page',{current:employeePage+1,total:pages})}</span><button type="button" className={button} disabled={employeePage+1===pages} onClick={()=>setEmployeePage(page=>page+1)}>{t('next')}</button></nav>}
           </div>}
         </fieldset>
-        <div className="flex justify-end"><button type="button" className={button} onClick={generatePreview} disabled={!canRecalculate||!companyId||!year||(!all&&selected.length===0)}>{t(busy==='preview'?'previewing':'previewAction')}</button></div>
+        <div className="flex justify-end"><ActionButton guardNavigation={false} aria-busy={busy==='preview'} actionKind="generating" type="button" className={button} onClick={generatePreview} disabled={!canRecalculate||!companyId||!year||(!all&&selected.length===0)}>{t(busy==='preview'?'previewing':'previewAction')}</ActionButton></div>
       </fieldset>
     </section>
     {error&&<p role="alert" className="rounded-lg border border-destructive/30 p-4 text-sm text-destructive">{error}</p>}
@@ -96,7 +96,7 @@ export function TaxBasisWorkflow({options,initialSelection}:{options:TaxBasisOpt
             <ul className="my-4 max-h-44 overflow-y-auto rounded-lg border border-border p-3 text-sm">{eligible.map(employee=><li key={employee.id} className="py-1">{employee.employeeNo} · {employee.name}</li>)}</ul>
             <p className="text-xs text-muted-foreground">{t('excludedHint',{blocked:preview.blockedCount,unchanged:preview.unchangedCount})}</p><p className="mt-3 text-xs text-muted-foreground">{t('preserved')}</p>
             <label className="mt-4 flex items-start gap-3 text-sm"><input className="mt-1" type="checkbox" checked={acknowledged} disabled={busy!==null} onChange={event=>setAcknowledged(event.target.checked)}/><span>{t('acknowledge')}</span></label>
-            <div className="mt-6 flex flex-wrap justify-end gap-3"><AlertDialog.Cancel asChild><ActionButton aria-busy={busy} type="button" className={button} disabled={busy!==null}>{t('cancel')}</ActionButton></AlertDialog.Cancel><ActionButton aria-busy={busy} type="button" className={primary} onClick={confirm} disabled={busy!==null||!acknowledged}>{t(busy==='confirm'?'processing':'confirmAction')}</ActionButton></div>
+            <div className="mt-6 flex flex-wrap justify-end gap-3"><AlertDialog.Cancel asChild><ActionButton aria-busy={busy} type="button" className={button} disabled={busy!==null}>{t('cancel')}</ActionButton></AlertDialog.Cancel><ActionButton guardNavigation aria-busy={busy} type="button" className={primary} onClick={confirm} disabled={busy!==null||!acknowledged}>{t(busy==='confirm'?'processing':'confirmAction')}</ActionButton></div>
           </AlertDialog.Content></AlertDialog.Portal>
         </AlertDialog.Root>
       </div>

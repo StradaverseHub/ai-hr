@@ -1,3 +1,4 @@
+import { ActionButton } from '@/components/ui/action-button';
 import { AttendanceSettingsNavigation } from '@/components/attendance-settings-navigation';
 import { getTranslations } from 'next-intl/server';
 import Link from 'next/link';
@@ -263,33 +264,33 @@ export default async function ShiftSettingsPage({
                                 edit form. */}
                             <form action={copyShiftAction}>
                               <input type="hidden" name="shiftId" value={sh.id} />
-                              <button className="text-xs font-medium text-primary hover:underline">{t('copyShift')}</button>
+                              <ActionButton actionKind="saving" className="text-xs font-medium text-primary hover:underline">{t('copyShift')}</ActionButton>
                             </form>
                             {deactivated ? (
                               <form action={unarchiveShiftAction}>
                                 <input type="hidden" name="shiftId" value={sh.id} />
-                                <button className="text-xs font-medium text-emerald-700 hover:underline dark:text-emerald-400">
+                                <ActionButton actionKind="deleting" className="text-xs font-medium text-emerald-700 hover:underline dark:text-emerald-400">
                                   {t('unarchiveShift')}
-                                </button>
+                                </ActionButton>
                               </form>
                             ) : (
                               <form action={archiveShiftAction}>
                                 <input type="hidden" name="shiftId" value={sh.id} />
-                                <button className="text-xs font-medium text-rose-600 hover:underline dark:text-rose-400">
+                                <ActionButton actionKind="deleting" className="text-xs font-medium text-rose-600 hover:underline dark:text-rose-400">
                                   {t('archiveShift')}
-                                </button>
+                                </ActionButton>
                               </form>
                             )}
                             {/* R17 3e8350db — hard Delete (distinct from Archive). The service blocks a
                                 referenced shift and tells HR to archive instead. */}
                             <form action={deleteShiftAction}>
                               <input type="hidden" name="shiftId" value={sh.id} />
-                              <button
+                              <ActionButton actionKind="deleting"
                                 className="text-xs font-medium text-rose-700 hover:underline dark:text-rose-300"
                                 title={t('deleteShiftHint')}
                               >
                                 {t('deleteShift')}
-                              </button>
+                              </ActionButton>
                             </form>
                           </div>
                         </td>

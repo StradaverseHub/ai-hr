@@ -315,7 +315,8 @@
       "failed": "The action failed. Your entered information has been kept where possible.",
       "cancelled": "Action cancelled.",
       "success": "Action completed.",
-      "downloadReady": "File prepared: {name}. Your browser handles saving it."
+      "downloadReady": "File prepared: {name}. Your browser handles saving it.",
+      "navigationUnconfirmed": "Navigation is taking longer than expected. Check the page before trying again."
     }
   },
   "nav": {

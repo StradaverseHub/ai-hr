@@ -1,3 +1,4 @@
+import { ActionButton } from '@/components/ui/action-button';
 import { loginOrganization } from '@/lib/internal-auth/login-navigation';
 import { internalSelected, internalConfig } from '@/lib/internal-auth/config';
 import { safeReturnTo } from '@/lib/identity/config';
@@ -86,12 +87,12 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
               {t('login.notLinkedBody', { email })}
             </p>
             <form action={signOutUnlinkedAction} className="mt-6">
-              <button
+              <ActionButton actionKind="saving"
                 type="submit"
                 className="w-full rounded-lg border border-border bg-background px-3 py-2.5 text-sm font-medium text-foreground transition-colors hover:bg-muted"
               >
                 {t('login.notLinkedSignOut')}
-              </button>
+              </ActionButton>
             </form>
           </div>
         </main>

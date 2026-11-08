@@ -896,7 +896,7 @@ export default async function EmployeePage({
       <input type="hidden" name="tab" value="profile" data-tab-tracker="" />
       {emergencyFields(c)}
       <div className="flex justify-end sm:col-span-2">
-        <button className={btnPrimary}>{c ? t('emergency.save') : t('emergency.add')}</button>
+        <ActionButton actionKind="saving" className={btnPrimary}>{c ? t('emergency.save') : t('emergency.add')}</ActionButton>
       </div>
     </form>
   );
@@ -1331,7 +1331,7 @@ export default async function EmployeePage({
         </PersonnelField>
       </div>
       <div className="flex justify-end sm:col-span-2">
-        <button className={btnPrimary}>{t('payComponentSave')}</button>
+        <ActionButton actionKind="saving" className={btnPrimary}>{t('payComponentSave')}</ActionButton>
       </div>
     </form>
   );
@@ -1470,7 +1470,7 @@ export default async function EmployeePage({
         </PersonnelField>
       </div>
       <div className="flex justify-end sm:col-span-2">
-        <button className={btnPrimary}>{r ? t('cp38Save') : t('cp38Add')}</button>
+        <ActionButton actionKind="saving" className={btnPrimary}>{r ? t('cp38Save') : t('cp38Add')}</ActionButton>
       </div>
     </form>
   );
@@ -1668,7 +1668,7 @@ export default async function EmployeePage({
               <PersonnelField fieldId="payroll.leave_encashment.reason" mode="record">
                 <input {...personnelInput('payroll.leave_encashment.reason','record')} placeholder={t('encashmentReasonPlaceholder')} className={inputCls} />
               </PersonnelField>
-              <button className={btnPrimary}>{t('encashmentAdjust')}</button>
+              <ActionButton actionKind="saving" className={btnPrimary}>{t('encashmentAdjust')}</ActionButton>
             </form>
           </div>
           <p className="px-4 pb-4 text-xs text-muted-foreground">{t('encashmentHint')}</p>
@@ -1972,7 +1972,7 @@ export default async function EmployeePage({
         otherPanel={<div className="grid grid-cols-1 items-end gap-3 sm:grid-cols-2">{dependentFields('other', d)}</div>}
       />
       <div className="flex justify-end">
-        <button className={btnPrimary}>{d ? t('family.save') : t('family.add')}</button>
+        <ActionButton actionKind="saving" className={btnPrimary}>{d ? t('family.save') : t('family.add')}</ActionButton>
       </div>
     </form>
   );
@@ -2193,7 +2193,7 @@ export default async function EmployeePage({
       <input type="hidden" name="tab" value="qualification" data-tab-tracker="" />
       {qualificationFields(q)}
       <div className="flex justify-end sm:col-span-2">
-        <button className={btnPrimary}>{q ? t('qualification.save') : t('qualification.add')}</button>
+        <ActionButton actionKind="saving" className={btnPrimary}>{q ? t('qualification.save') : t('qualification.add')}</ActionButton>
       </div>
     </form>
   );
@@ -3904,7 +3904,7 @@ export default async function EmployeePage({
             </PersonnelField>
           </div>
           <div className="flex items-center gap-3">
-            <button className={btnPrimary}>{t('employmentInfo.companyChangeSave')}</button>
+            <ActionButton actionKind="saving" className={btnPrimary}>{t('employmentInfo.companyChangeSave')}</ActionButton>
             <Link
               href={`/admin/personnel/${emp.employmentId}${tab ? `?tab=${encodeURIComponent(tab)}` : ''}`}
               className="text-xs text-primary underline"
@@ -4295,7 +4295,7 @@ export default async function EmployeePage({
               </PersonnelField>
             </div>
             <div>
-              <button className={btnPrimary}>{t('directSuperiorSave')}</button>
+              <ActionButton actionKind="saving" className={btnPrimary}>{t('directSuperiorSave')}</ActionButton>
             </div>
           </form>
         )}
@@ -4379,7 +4379,7 @@ export default async function EmployeePage({
               <DateField {...personnelControl('employment.approval_delegations.validto','edit')} className={inputCls} label={personnelLabel('employment.approval_delegations.validto')} />
             </PersonnelField>
             <div>
-              <button className={btnPrimary}>{t('delegationAdd')}</button>
+              <ActionButton actionKind="saving" className={btnPrimary}>{t('delegationAdd')}</ActionButton>
             </div>
           </form>
         )}
@@ -4729,7 +4729,7 @@ export default async function EmployeePage({
                       {t('photoReplace')}
                     </ConfirmSubmit>
                   ) : (
-                    <button className={`${btnPrimary} h-7 px-2 text-xs`}>{t('photoUpload')}</button>
+                    <ActionButton actionKind="saving" className={`${btnPrimary} h-7 px-2 text-xs`}>{t('photoUpload')}</ActionButton>
                   )}
                 </form>
                 {photoExists && (

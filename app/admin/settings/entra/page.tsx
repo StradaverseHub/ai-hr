@@ -1,3 +1,4 @@
+import { ActionButton } from '@/components/ui/action-button';
 import { CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
@@ -33,20 +34,20 @@ export default async function EntraPage({searchParams}:{searchParams:Promise<{er
         <label className="flex items-start gap-2 text-sm"><input type="checkbox" name="provisioningEnabled" defaultChecked={config?.provisioningEnabled}/>{t('provisioningEnabled')}</label>
         <label className="flex items-start gap-2 text-sm"><input type="checkbox" name="immutableMatchingConfirmed" defaultChecked={config?.immutableMatchingConfirmed}/>{t('matching')}</label>
         <p className="text-sm text-muted-foreground">{t('hybridHelp')}</p>
-        <button className={btnPrimary}>{t('save')}</button>
+        <ActionButton actionKind="saving" className={btnPrimary}>{t('save')}</ActionButton>
       </form>
-      {config&&<form action={testEntra} className="mt-4"><button className={btnGhost}>{t('test')}</button></form>}
+      {config&&<form action={testEntra} className="mt-4"><ActionButton actionKind="saving" className={btnGhost}>{t('test')}</ActionButton></form>}
     </CardContent></Card>
     <Card><CardHeader><CardTitle>{t('linkTitle')}</CardTitle></CardHeader><CardContent>
       <p className="mb-4 text-sm text-muted-foreground">{t('linkHelp')}</p>
       <form action={bindEntra} className="space-y-4">
         <div className="grid gap-4 sm:grid-cols-2"><Field label={t('userId')}><select name="target" className={inputCls} required defaultValue=""><option value="" disabled>{t('selectUser')}</option>{accounts.map(account=><option key={account.user_id} value={account.person_id+':'+account.user_id}>{account.full_name} · {account.user_id}</option>)}</select></Field><Field label={t('objectId')}><input className={inputCls} name="objectId" required minLength={36} maxLength={36}/></Field></div>
         <label className="flex items-start gap-2 text-sm"><input required type="checkbox" name="confirmed"/>{t('linkConfirm')}</label>
-        <button className={btnPrimary}>{t('link')}</button>
+        <ActionButton actionKind="saving" className={btnPrimary}>{t('link')}</ActionButton>
       </form>
     </CardContent></Card>
     <Card><CardHeader><CardTitle>{t('queue')}</CardTitle></CardHeader><CardContent>
-      {!records.length?<p className="text-sm text-muted-foreground">{t('empty')}</p>:<div className="overflow-x-auto"><table className="w-full text-left text-sm"><thead><tr><th className="p-3">{t('personId')}</th><th className="p-3">{t('status')}</th><th className="p-3">{t('attempts')}</th><th className="p-3">{t('action')}</th></tr></thead><tbody>{records.map(row=><tr className="border-t border-border" key={row.person_id}><td className="break-all p-3">{accounts.find(account=>account.person_id===row.person_id)?.full_name||row.person_id}{config&&<span className="block text-xs text-muted-foreground">hr-{row.person_id.replaceAll('-','')}@{config.domain}</span>}</td><td className="p-3">{t(`states.${row.status}`)}</td><td className="p-3 tabular-nums">{row.attempts}</td><td className="p-3">{['failed','rejected'].includes(row.status)&&<form action={retryEntra}><input type="hidden" name="personId" value={row.person_id}/><button className={btnGhost}>{t('retry')}</button></form>}{row.status==='uncertain'&&<form action={reconcileEntra} className="space-y-2"><input type="hidden" name="personId" value={row.person_id}/><label className="flex gap-2"><input type="checkbox" name="confirmed" required/>{t('reconcileConfirm')}</label><button className={btnGhost}>{t('reconcile')}</button></form>}</td></tr>)}</tbody></table></div>}
+      {!records.length?<p className="text-sm text-muted-foreground">{t('empty')}</p>:<div className="overflow-x-auto"><table className="w-full text-left text-sm"><thead><tr><th className="p-3">{t('personId')}</th><th className="p-3">{t('status')}</th><th className="p-3">{t('attempts')}</th><th className="p-3">{t('action')}</th></tr></thead><tbody>{records.map(row=><tr className="border-t border-border" key={row.person_id}><td className="break-all p-3">{accounts.find(account=>account.person_id===row.person_id)?.full_name||row.person_id}{config&&<span className="block text-xs text-muted-foreground">hr-{row.person_id.replaceAll('-','')}@{config.domain}</span>}</td><td className="p-3">{t(`states.${row.status}`)}</td><td className="p-3 tabular-nums">{row.attempts}</td><td className="p-3">{['failed','rejected'].includes(row.status)&&<form action={retryEntra}><input type="hidden" name="personId" value={row.person_id}/><ActionButton actionKind="saving" className={btnGhost}>{t('retry')}</ActionButton></form>}{row.status==='uncertain'&&<form action={reconcileEntra} className="space-y-2"><input type="hidden" name="personId" value={row.person_id}/><label className="flex gap-2"><input type="checkbox" name="confirmed" required/>{t('reconcileConfirm')}</label><ActionButton actionKind="saving" className={btnGhost}>{t('reconcile')}</ActionButton></form>}</td></tr>)}</tbody></table></div>}
       <p className="mt-4 text-sm text-muted-foreground">{t('queueHelp')}</p>
     </CardContent></Card>
   </div>;

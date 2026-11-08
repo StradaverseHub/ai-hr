@@ -1,5 +1,6 @@
 import { payComponentCompanyChoices } from '@/packs/payroll/service';
 import { CompanyApplicability } from './company-applicability';
+import { ActionButton } from '@/components/ui/action-button';
 import {isModuleEnabled} from '@/core/entitlements';
 import {payFormulaOptions} from '@/packs/payroll/service';
 import { packFor } from '@/localization/registry';
@@ -272,10 +273,10 @@ export async function ComponentForm({
           <Link href={LIST} className="text-sm font-medium text-muted-foreground hover:text-foreground">
             {t('cancelEdit')}
           </Link>
-          <button name="intent" value="saveAndNew" className={btnGhost}>
+          <ActionButton actionKind="saving" name="intent" value="saveAndNew" className={btnGhost}>
             {t('saveAndNew')}
-          </button>
-          <button className={btnPrimary}>{editing ? t('saveChanges') : t('saveComponent')}</button>
+          </ActionButton>
+          <ActionButton actionKind="saving" className={btnPrimary}>{editing ? t('saveChanges') : t('saveComponent')}</ActionButton>
         </div>
       </form>
     </div>

@@ -1,5 +1,6 @@
 'use client';
 
+import { ActionButton } from '@/components/ui/action-button';
 /**
  * ═══ 15e5bd93 REVISION 4 (r372) — ONE SCREEN, EVERY BODY OPEN, ONE SAVE ════════════════════════════
  *
@@ -513,9 +514,9 @@ function StatutoryBodyCard({
           <input type="hidden" name="companyId" value={companyId} />
           <input type="hidden" name="authority" value={authority} />
           <input type="hidden" name="returnTo" value={RETURN_TO_SETUP} />
-          <button className="text-xs font-medium text-rose-600 hover:underline dark:text-rose-400">
+          <ActionButton actionKind="deleting" className="text-xs font-medium text-rose-600 hover:underline dark:text-rose-400">
             {t('authorityClear')}
-          </button>
+          </ActionButton>
         </form>
       )}
     </section>

@@ -1,3 +1,4 @@
+import { ActionButton } from '@/components/ui/action-button';
 import { getTranslations } from 'next-intl/server';
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
@@ -142,7 +143,7 @@ export default async function PayComponentsPage({
           <SectionHeader title={t('catalogTitle')} count={rows.length} />
           {components.length === 0 && (
             <form action={seedCatalogAction}>
-              <button className={btnPrimary}>{t('seedDefaults')}</button>
+              <ActionButton actionKind="saving" className={btnPrimary}>{t('seedDefaults')}</ActionButton>
             </form>
           )}
         </div>
@@ -277,7 +278,7 @@ export default async function PayComponentsPage({
                         <form action={archiveComponentAction}>
                           <input type="hidden" name="id" value={c.id} />
                           <input type="hidden" name="archived" value="false" />
-                          <button className="text-xs font-medium text-primary hover:underline">{t('activate')}</button>
+                          <ActionButton actionKind="deleting" className="text-xs font-medium text-primary hover:underline">{t('activate')}</ActionButton>
                         </form>
                       ) : (
                         <form action={archiveComponentAction}>

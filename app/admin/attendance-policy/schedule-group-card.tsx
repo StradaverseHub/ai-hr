@@ -1,3 +1,4 @@
+import { ActionButton } from '@/components/ui/action-button';
 import { getTranslations } from 'next-intl/server';
 import Link from 'next/link';
 import type { AttendanceRuleView } from '@/core/attendance-rule';
@@ -139,13 +140,13 @@ export async function ScheduleGroupCard({ rules }: { rules: readonly AttendanceR
                     </Link>
                     <form action={copyAttendanceRuleAction}>
                       <input type="hidden" name="ruleId" value={r.id} />
-                      <button className="text-primary hover:underline">{tr('duplicate')}</button>
+                      <ActionButton actionKind="saving" className="text-primary hover:underline">{tr('duplicate')}</ActionButton>
                     </form>
                     <form action={setAttendanceRuleStatusAction}>
                       <input type="hidden" name="ruleId" value={r.id} />
                       {/* The TARGET status, read as a VALUE by the action (a hidden field is always submitted). */}
                       <input type="hidden" name="status" value={r.status === 'active' ? 'inactive' : 'active'} />
-                      <button
+                      <ActionButton actionKind="saving"
                         className={
                           r.status === 'active'
                             ? 'text-rose-600 hover:underline dark:text-rose-400'
@@ -153,7 +154,7 @@ export async function ScheduleGroupCard({ rules }: { rules: readonly AttendanceR
                         }
                       >
                         {r.status === 'active' ? tr('deactivate') : tr('activate')}
-                      </button>
+                      </ActionButton>
                     </form>
                     {!r.isDefault && (
                       <form action={deleteAttendanceRuleAction}>

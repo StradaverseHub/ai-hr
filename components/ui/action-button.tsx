@@ -2,6 +2,8 @@
 
 import {forwardRef,useEffect,useRef,useState,type ButtonHTMLAttributes,type MouseEvent} from 'react';
 import {toast} from 'sonner';
+import {isHandledActionRedirect} from '@/lib/action-feedback-result';
+import {useExternalActionFormPending} from './action-form-status';
 import {useFormStatus} from 'react-dom';
 import {useActionFeedbackLabels,usePendingAction,type ActionKind} from '@/components/action-feedback';
 
@@ -11,25 +13,30 @@ type Props=ButtonHTMLAttributes<HTMLButtonElement>&{pendingLabel?:string;actionK
 export const ActionButton=forwardRef<HTMLButtonElement,Props>(function ActionButton(
  {children,disabled,pendingLabel,actionKind='processing',guardNavigation,onClick,'aria-busy':explicitBusy,...props},ref,
 ){
- const form=useFormStatus(),labels=useActionFeedbackLabels();
+ const form=useFormStatus(),externalFormPending=useExternalActionFormPending(props.form),labels=useActionFeedbackLabels();
  const [callbackPending,setCallbackPending]=useState(false);
- const activating=useRef(false),mounted=useRef(true);
+ const activating=useRef(false),mounted=useRef(true),activated=useRef(false),currentPending=useRef(false);
  useEffect(()=>{mounted.current=true;return()=>{mounted.current=false;};},[]);
- const formPending=props.type!=='button'&&props.type!=='reset'&&form.pending;
+ const formPending=props.type!=='button'&&props.type!=='reset'&&(form.pending||externalFormPending);
  const pending=formPending||callbackPending||explicitBusy===true||explicitBusy==='true';
+ currentPending.current=pending;
+ useEffect(()=>{if(!pending)activated.current=false;},[pending]);
  const label=pendingLabel??labels[actionKind];
  const content=pendingLabel??(actionKind==='processing'&&(explicitBusy===true||explicitBusy==='true')?children:label);
- usePendingAction(pending,label,guardNavigation??(props.type!=='button'&&form.method!=='get'));
+ // A dormant Save can share a pending flag with Preview. Only the activated callback owns its guard.
+ const important=guardNavigation??(props.type!=='button'&&form.method!=='get');
+ usePendingAction(pending,label,important&&(props.type!=='button'||activated.current));
  const click=(event:MouseEvent<HTMLButtonElement>)=>{
   if(pending||activating.current){event.preventDefault();return;}
-  activating.current=true;
+  activating.current=true;activated.current=true;
+  setTimeout(()=>{if(!currentPending.current)activated.current=false;},0);
   // Guard another activation in this event turn; after React commits, the real pending owner takes over.
   queueMicrotask(()=>{activating.current=false;});
   const result=onClick?.(event) as unknown;
   if(result&&typeof (result as Promise<unknown>).then==='function'&&(props.type==='button'||!event.currentTarget.form||event.defaultPrevented)){
    setCallbackPending(true);
    // The callback owns its confirmed success/error messaging. A rejected callback must remain visible.
-   void Promise.resolve(result).then(()=>{if(mounted.current)setCallbackPending(false);},()=>{if(mounted.current){setCallbackPending(false);toast.error(labels.uncertain);}});
+   void Promise.resolve(result).then(()=>{if(mounted.current)setCallbackPending(false);},error=>{if(mounted.current){setCallbackPending(false);if(!isHandledActionRedirect(error))toast.error(labels.uncertain);}});
   }
  };
  return <button {...props} ref={ref} onClick={click} disabled={disabled||pending}
