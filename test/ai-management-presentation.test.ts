@@ -22,7 +22,9 @@ import {gatewayAdapter} from '../lib/ai/providers/gateway';
 import {openrouterAdapter} from '../lib/ai/providers/openrouter';
 import {observeNativeRead} from './helpers/native-read-observer';
 import {adminCtx,closeAll,migrateTestDb,owner,resetDb,seedBase,setModule,type Base} from './harness';
-import {EntitlementsResolutionFailedError} from '../core/entitlements';
+import {EntitlementsResolutionFailedError,resolveEntitlementsTx} from '../core/entitlements';
+import {agentSwitchStatesTx} from '../core/agent-principal';
+import {assertAiPresentationPrincipalTx} from '../core/ai-principal';
 
 let b:Base,group:SessionContext;
 const attempted=vi.fn();
@@ -200,9 +202,18 @@ it('recovers a prior session resolution error only for PAGE purposes using curre
  for(const code of ['assistant','payroll','claims'])await setModule(b.tenantId,code,'active');
  await saveAiProviderConfig(group,{provider:'openai',model:'fictional-common-recovered-model',apiKey:'fictional-common-recovered-key',makeActive:true});
  await setAiFeature(group,'claims_triage',true);
- const [switchEvent]=await owner.client<{id:string}[]>`select id from public.domain_event where tenant_id=${b.tenantId}::uuid
-  and event_type='tenant-setting.changed' and payload->>'key'='claims.input_triage_enabled' order by occurred_at desc,sequence desc limit 1`;
- expect(switchEvent?.id).toBeTruthy();
+ const [switchEvent]=await owner.client<{id:string;at:string;actor_id:string;label:string}[]>`select e.id,e.occurred_at::text as at,e.actor_id,coalesce(p.full_name,u.workos_user_id) as label
+  from public.domain_event e join public.app_user u on u.id=e.actor_id and u.tenant_id=e.tenant_id left join public.person p on p.id=u.person_id
+  where e.tenant_id=${b.tenantId}::uuid and e.event_type='tenant-setting.changed' and e.aggregate_type='tenant-setting'
+   and e.aggregate_id=${b.tenantId}::uuid and e.payload->>'key'='claims.input_triage_enabled' order by e.occurred_at desc,e.sequence desc limit 1`;
+ expect(switchEvent?.id).toBeTruthy();expect(switchEvent.actor_id).toBe(group.userId);expect(switchEvent.label).toBeTruthy();
+ const switchAt=new Date(switchEvent.at);expect(Number.isFinite(switchAt.getTime())).toBe(true);
+ const nativeSwitches=await database.withTenant(group,async tx=>{
+  await assertAiPresentationPrincipalTx(tx,group);
+  const fresh={...group,entitlements:await resolveEntitlementsTx(tx,group.tenantId)};
+  return agentSwitchStatesTx(tx,fresh);
+ },{readOnlySnapshot:true});
+ expect(nativeSwitches.find(row=>row.feature==='claims_triage')).toEqual({feature:'claims_triage',state:'attributed',userId:group.userId,eventId:switchEvent.id,at:switchAt});
  const recovering:SessionContext={...group,entitlements:undefined,entitlementsError:'fictional earlier session snapshot failure'};
  const before=await events();
  for(const section of ['features','allowances'] as const){
@@ -210,7 +221,7 @@ it('recovers a prior session resolution error only for PAGE purposes using curre
   expect(view.provider).toEqual({provider:'openai',model:'fictional-common-recovered-model'});
   expect(view.features.find(row=>row.id==='claims_triage')).toMatchObject({enabled:true,state:'scheduled'});
   expect(view.features.find(row=>row.id==='payroll_explanation')).toMatchObject({enabled:true,state:'ready'});
-  expect(view.agentSwitches.find(row=>row.feature==='claims_triage')).toMatchObject({state:'attributed',userId:group.userId,eventId:switchEvent.id});
+  expect(view.agentSwitches.claims_triage).toEqual({state:'attributed',by:switchEvent.label,at:switchAt});
  }
  expect(await events()).toEqual(before);expect(recovering.entitlements).toBeUndefined();expect(recovering.entitlementsError).toBe('fictional earlier session snapshot failure');
  // The historical full API keeps its original error-bearing-context refusal.
@@ -218,11 +229,11 @@ it('recovers a prior session resolution error only for PAGE purposes using curre
  await setModule(b.tenantId,'claims','disabled');
  const currentOff=await aiManagementPageView(recovering,'features');
  expect(currentOff.features.find(row=>row.id==='claims_triage')).toMatchObject({enabled:true,state:'module'});
- expect(currentOff.agentSwitches.find(row=>row.feature==='claims_triage')).toMatchObject({state:'attributed',userId:group.userId,eventId:switchEvent.id});
+ expect(currentOff.agentSwitches.claims_triage).toEqual({state:'attributed',by:switchEvent.label,at:switchAt});
  await setAiFeature(group,'claims_triage',false);
  const switchedOff=await aiManagementPageView(recovering,'features');
  expect(switchedOff.features.find(row=>row.id==='claims_triage')).toMatchObject({enabled:false,state:'paused'});
- expect(switchedOff.agentSwitches.find(row=>row.feature==='claims_triage')).toEqual({feature:'claims_triage',state:'off'});
+ expect(switchedOff.agentSwitches.claims_triage).toEqual({state:'off'});
  expect(recovering.entitlements).toBeUndefined();expect(recovering.entitlementsError).toBe('fictional earlier session snapshot failure');
 });
 

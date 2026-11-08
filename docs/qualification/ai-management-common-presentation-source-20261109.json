@@ -60,8 +60,8 @@
     "core/ai-spend-management.ts": "932659860f919825d0533ecba0b1ad258e7a1f3a0abfd153bba0f7b51089e945",
     "core/ai-management-presentation.ts": "407e1d7d07fe61248b11080f2fd81c25e02d387c4ca2bc13792c470c5596454d",
     "test/ai-management-section-projection.test.ts": "55d2463ecd033a32e7dae12b436bde9fb0c883ff685d51f62c213c0af34156f2",
-    "test/ai-management-presentation.test.ts": "28a0739993280eab71debfb57e625ee2e78c09ef947752f329c75ae9f1972706",
-    "docs/adr/2026-11-09-ai-management-section-projection.md": "7c92fd92327ac82e8509367e383f10a311c4588bbf2392a27be070a4caab3b10"
+    "test/ai-management-presentation.test.ts": "56da5668f693bc096e729659ceeb8ab2fa50bc77686595cf93f375b2416c908d",
+    "docs/adr/2026-11-09-ai-management-section-projection.md": "85ebcbafed5e3db49cd2d20044520d3e8181f2267cb1cb9c695f7a61a3b1bd1b"
   },
   "historicalWholeProtectedSpendOwner": {
     "status": "HISTORICAL_D458_ONLY_NOT_CURRENT_WHOLE_FILE",
@@ -530,6 +530,14 @@
     },
     "original9CommonCasesWhole": true,
     "sourceOnly": true,
-    "nativeAbiStillUnallocated": true
+    "nativeAbiStillUnallocated": true,
+    "historicalFrozenSource": "ab8e5f1843a0102ad9f1fe04c936147cdcd49c69",
+    "fixtureCorrection": {
+      "parent": "ab8e5f1843a0102ad9f1fe04c936147cdcd49c69",
+      "record": "docs/qualification/ai-management-common-page-error-view-fixture-source-20261109.json",
+      "recordSha256": "1dade27d2c480c29d00123ccd818072e67f74e12233a535a586767ea06dc1e81",
+      "sameCaseNamesCapsAndProductionBytes": true,
+      "sourceOnly": true
+    }
   }
 }

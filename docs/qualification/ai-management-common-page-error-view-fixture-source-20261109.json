@@ -1,0 +1,288 @@
+{
+  "kind": "AI_COMMON_RECOVERY_PAGE_SWITCH_DTO_FIXTURE_CORRECTION_SOURCE_ONLY",
+  "parent": "ab8e5f1843a0102ad9f1fe04c936147cdcd49c69",
+  "sourceRef": "codex/ai-management-common-page-error-view-fixture-20261109",
+  "scope": [
+    "test/ai-management-presentation.test.ts",
+    "docs/adr/2026-11-09-ai-management-section-projection.md",
+    "docs/qualification/ai-management-section-projection-source-20261109.json",
+    "docs/qualification/ai-management-common-presentation-source-20261109.json",
+    "docs/qualification/ai-management-common-page-error-view-fixture-source-20261109.json"
+  ],
+  "wholeActualParentGitPreimages": [
+    {
+      "commit": "ab8e5f1843a0102ad9f1fe04c936147cdcd49c69",
+      "path": "test/ai-management-presentation.test.ts",
+      "gitBlob": "245132caafd83926e33b3840d4b5c473153d2f15",
+      "mode": "100644",
+      "bytes": 23389,
+      "sha256": "28a0739993280eab71debfb57e625ee2e78c09ef947752f329c75ae9f1972706"
+    },
+    {
+      "commit": "ab8e5f1843a0102ad9f1fe04c936147cdcd49c69",
+      "path": "docs/adr/2026-11-09-ai-management-section-projection.md",
+      "gitBlob": "981d639023534db88079f88d04666a720a488b1d",
+      "mode": "100644",
+      "bytes": 19043,
+      "sha256": "7c92fd92327ac82e8509367e383f10a311c4588bbf2392a27be070a4caab3b10"
+    },
+    {
+      "commit": "ab8e5f1843a0102ad9f1fe04c936147cdcd49c69",
+      "path": "docs/qualification/ai-management-section-projection-source-20261109.json",
+      "gitBlob": "d27ebdd567bac231f819dcb31dc82434a54e7fec",
+      "mode": "100644",
+      "bytes": 36851,
+      "sha256": "4a20b5fa181adbf9bacf16719dba7b275428304e89c1db636e3927a5038a1a96"
+    },
+    {
+      "commit": "ab8e5f1843a0102ad9f1fe04c936147cdcd49c69",
+      "path": "docs/qualification/ai-management-common-presentation-source-20261109.json",
+      "gitBlob": "471a996ce3c94e29b2b657e546f9adf69d4aaad8",
+      "mode": "100644",
+      "bytes": 29663,
+      "sha256": "5ea498b8085d993963efb6fd3ce8e6be455729da02b30c52a129d6c88dd2a7d5"
+    }
+  ],
+  "newRecordAbsentFromParent": true,
+  "historicalAb8RecoveryRecord": {
+    "disposition": "WHOLE_HISTORICAL_AB8_SOURCE_NOT_CURRENT_TEST_PIN",
+    "whole": {
+      "commit": "ab8e5f1843a0102ad9f1fe04c936147cdcd49c69",
+      "path": "docs/qualification/ai-management-common-page-error-recovery-source-20261109.json",
+      "gitBlob": "d16f4885ac227fa97aba84e1854cc5bc4ae3d9a5",
+      "mode": "100644",
+      "bytes": 19212,
+      "sha256": "8d77ae2e2f9600185b579822ad167f90c0859e8fe685bf70a51b514607f55f08"
+    }
+  },
+  "currentSourceSha256": {
+    "test/ai-management-presentation.test.ts": "56da5668f693bc096e729659ceeb8ab2fa50bc77686595cf93f375b2416c908d",
+    "docs/adr/2026-11-09-ai-management-section-projection.md": "85ebcbafed5e3db49cd2d20044520d3e8181f2267cb1cb9c695f7a61a3b1bd1b"
+  },
+  "wholeImmediateParentInverses": {
+    "test/ai-management-presentation.test.ts": {
+      "coordinates": "ZERO_BASED_HALF_OPEN_CURRENT_LINES_DESCENDING",
+      "changes": [
+        {
+          "startLine": 235,
+          "endLine": 236,
+          "after": " expect(switchedOff.agentSwitches.claims_triage).toEqual({state:'off'});\n",
+          "before": " expect(switchedOff.agentSwitches.find(row=>row.feature==='claims_triage')).toEqual({feature:'claims_triage',state:'off'});\n"
+        },
+        {
+          "startLine": 231,
+          "endLine": 232,
+          "after": " expect(currentOff.agentSwitches.claims_triage).toEqual({state:'attributed',by:switchEvent.label,at:switchAt});\n",
+          "before": " expect(currentOff.agentSwitches.find(row=>row.feature==='claims_triage')).toMatchObject({state:'attributed',userId:group.userId,eventId:switchEvent.id});\n"
+        },
+        {
+          "startLine": 223,
+          "endLine": 224,
+          "after": "  expect(view.agentSwitches.claims_triage).toEqual({state:'attributed',by:switchEvent.label,at:switchAt});\n",
+          "before": "  expect(view.agentSwitches.find(row=>row.feature==='claims_triage')).toMatchObject({state:'attributed',userId:group.userId,eventId:switchEvent.id});\n"
+        },
+        {
+          "startLine": 204,
+          "endLine": 216,
+          "after": " const [switchEvent]=await owner.client<{id:string;at:string;actor_id:string;label:string}[]>`select e.id,e.occurred_at::text as at,e.actor_id,coalesce(p.full_name,u.workos_user_id) as label\n  from public.domain_event e join public.app_user u on u.id=e.actor_id and u.tenant_id=e.tenant_id left join public.person p on p.id=u.person_id\n  where e.tenant_id=${b.tenantId}::uuid and e.event_type='tenant-setting.changed' and e.aggregate_type='tenant-setting'\n   and e.aggregate_id=${b.tenantId}::uuid and e.payload->>'key'='claims.input_triage_enabled' order by e.occurred_at desc,e.sequence desc limit 1`;\n expect(switchEvent?.id).toBeTruthy();expect(switchEvent.actor_id).toBe(group.userId);expect(switchEvent.label).toBeTruthy();\n const switchAt=new Date(switchEvent.at);expect(Number.isFinite(switchAt.getTime())).toBe(true);\n const nativeSwitches=await database.withTenant(group,async tx=>{\n  await assertAiPresentationPrincipalTx(tx,group);\n  const fresh={...group,entitlements:await resolveEntitlementsTx(tx,group.tenantId)};\n  return agentSwitchStatesTx(tx,fresh);\n },{readOnlySnapshot:true});\n expect(nativeSwitches.find(row=>row.feature==='claims_triage')).toEqual({feature:'claims_triage',state:'attributed',userId:group.userId,eventId:switchEvent.id,at:switchAt});\n",
+          "before": " const [switchEvent]=await owner.client<{id:string}[]>`select id from public.domain_event where tenant_id=${b.tenantId}::uuid\n  and event_type='tenant-setting.changed' and payload->>'key'='claims.input_triage_enabled' order by occurred_at desc,sequence desc limit 1`;\n expect(switchEvent?.id).toBeTruthy();\n"
+        },
+        {
+          "startLine": 24,
+          "endLine": 27,
+          "after": "import {EntitlementsResolutionFailedError,resolveEntitlementsTx} from '../core/entitlements';\nimport {agentSwitchStatesTx} from '../core/agent-principal';\nimport {assertAiPresentationPrincipalTx} from '../core/ai-principal';\n",
+          "before": "import {EntitlementsResolutionFailedError} from '../core/entitlements';\n"
+        }
+      ]
+    },
+    "docs/adr/2026-11-09-ai-management-section-projection.md": {
+      "coordinates": "ZERO_BASED_HALF_OPEN_CURRENT_LINES_DESCENDING",
+      "changes": [
+        {
+          "startLine": 154,
+          "endLine": 161,
+          "after": "\n\n## Common recovery fixture follows the existing PAGE switch DTO\n\nSource review of the unrun `ab8e5f1843a0102ad9f1fe04c936147cdcd49c69` recovery child found that its first new control asserted the native switch array's user/event fields on the PAGE's keyed display DTO. The fixture now checks the actual `agentSwitches.claims_triage` value: attributed state, independently queried fixture actor label and canonical event timestamp, or the off state alone. A separate real app RR/RO transaction first proves the native presentation principal and checks the native switch owner's user/event attribution against that independently read event. Product DTOs, disclosure, authority and all production bytes are unchanged.\n\nThe `ab8` source record remains whole historical evidence. The genuine resolver SQL-failure case, original nine common native cases and seventeen projection cases remain whole with the same names, assertions and caps. The same ten registrations/eleven common cases are authored UNRUN; no native ABI allocation, hosted result, source approval or release qualification is claimed.\n",
+          "before": ""
+        }
+      ]
+    }
+  },
+  "metadataWholeParentReplay": {
+    "method": "Restore the named field values from actual immutable whole parent Git JSON, or remove fields absent there. Indent=2 plus newline must equal whole parent bytes/SHA. No current index or current common record is hashed by this new record.",
+    "addresses": {
+      "docs/qualification/ai-management-common-presentation-source-20261109.json": [
+        [
+          "currentSourceSha256",
+          "test/ai-management-presentation.test.ts"
+        ],
+        [
+          "currentSourceSha256",
+          "docs/adr/2026-11-09-ai-management-section-projection.md"
+        ],
+        [
+          "pageErrorRecovery",
+          "historicalFrozenSource"
+        ],
+        [
+          "pageErrorRecovery",
+          "fixtureCorrection"
+        ]
+      ],
+      "docs/qualification/ai-management-section-projection-source-20261109.json": [
+        [
+          "currentSourceSha256",
+          "test/ai-management-presentation.test.ts"
+        ],
+        [
+          "currentSourceSha256",
+          "docs/adr/2026-11-09-ai-management-section-projection.md"
+        ],
+        [
+          "currentSourceSha256",
+          "docs/qualification/ai-management-common-presentation-source-20261109.json"
+        ],
+        [
+          "currentSourceSha256",
+          "docs/qualification/ai-management-common-page-error-view-fixture-source-20261109.json"
+        ],
+        [
+          "commonPresentationPreparation",
+          "recordSha256"
+        ],
+        [
+          "commonPageErrorRecovery",
+          "historicalFrozenSource"
+        ],
+        [
+          "commonPageErrorRecovery",
+          "fixtureCorrection"
+        ]
+      ]
+    }
+  },
+  "wholeProtectedOwnerPins": [
+    {
+      "commit": "ab8e5f1843a0102ad9f1fe04c936147cdcd49c69",
+      "path": "core/ai-management.ts",
+      "gitBlob": "38aab17797d49139cc30c9f01d9b124bd303b92d",
+      "mode": "100644",
+      "bytes": 46756,
+      "sha256": "6556da7c659352b993eafe7a9b9e8157aed102bcfcef34a90a23e6cfbd6853c7"
+    },
+    {
+      "commit": "ab8e5f1843a0102ad9f1fe04c936147cdcd49c69",
+      "path": "core/ai-management-presentation.ts",
+      "gitBlob": "a30c0d94f9c17cda949cf1f5fb0108178e39084e",
+      "mode": "100644",
+      "bytes": 2118,
+      "sha256": "407e1d7d07fe61248b11080f2fd81c25e02d387c4ca2bc13792c470c5596454d"
+    },
+    {
+      "commit": "ab8e5f1843a0102ad9f1fe04c936147cdcd49c69",
+      "path": "core/ai-spend-management.ts",
+      "gitBlob": "676867c709b289646b70da313a94bc3a9cafab9d",
+      "mode": "100644",
+      "bytes": 3650,
+      "sha256": "932659860f919825d0533ecba0b1ad258e7a1f3a0abfd153bba0f7b51089e945"
+    },
+    {
+      "commit": "ab8e5f1843a0102ad9f1fe04c936147cdcd49c69",
+      "path": "core/ai-provider-snapshot.ts",
+      "gitBlob": "21556843d8972922ec2e439bd8e2e893f0655295",
+      "mode": "100644",
+      "bytes": 11272,
+      "sha256": "945a01c642f23e7a7603b2d917e5b2a47db6547121a41a29082b1542f6c09a4c"
+    },
+    {
+      "commit": "ab8e5f1843a0102ad9f1fe04c936147cdcd49c69",
+      "path": "core/ai-provider-row.ts",
+      "gitBlob": "da6028cae15f546e557f1ca62b6f38c873b256db",
+      "mode": "100644",
+      "bytes": 2122,
+      "sha256": "cfdb19a9c3c325862ccae535c8aba377e0952bec3270616996dded3774fddfe8"
+    },
+    {
+      "commit": "ab8e5f1843a0102ad9f1fe04c936147cdcd49c69",
+      "path": "core/ai-principal.ts",
+      "gitBlob": "85630db56130b32196d12e7ffd04fbb27fb88b22",
+      "mode": "100644",
+      "bytes": 3793,
+      "sha256": "3a77b8ed03ca1b9895310f6a7535473bbfd9a31d6c6d003612bd71e0dcbd6d21"
+    },
+    {
+      "commit": "ab8e5f1843a0102ad9f1fe04c936147cdcd49c69",
+      "path": "core/agent-principal.ts",
+      "gitBlob": "6ee2faa2f96a7414532f08904e59c53052a4fb73",
+      "mode": "100644",
+      "bytes": 7198,
+      "sha256": "411ac66d9b6cc8cf754ef1bf2a04785f96018e466c76c4e7acd2919cd27c7dd7"
+    },
+    {
+      "commit": "ab8e5f1843a0102ad9f1fe04c936147cdcd49c69",
+      "path": "core/entitlements.ts",
+      "gitBlob": "d20c047c91cfadf816781d5eac9844432cc101e5",
+      "mode": "100644",
+      "bytes": 56779,
+      "sha256": "e1762b36f490b3aaf79afedbe5f7bc363a16e79e85b78fbefea04d68c8e05055"
+    },
+    {
+      "commit": "ab8e5f1843a0102ad9f1fe04c936147cdcd49c69",
+      "path": "db/client.ts",
+      "gitBlob": "0c4f28e00393a763608b506d608a3cf7df542c57",
+      "mode": "100644",
+      "bytes": 22595,
+      "sha256": "bdd700ea682bafbf0cad2c255b8dacb96c13d82dc7fa0ae9446d4a1da265cd3f"
+    },
+    {
+      "commit": "ab8e5f1843a0102ad9f1fe04c936147cdcd49c69",
+      "path": "db/schema.ts",
+      "gitBlob": "c80eb3180eebc7bf9fb9a30367e4b00746b22592",
+      "mode": "100644",
+      "bytes": 820303,
+      "sha256": "8333f7a44c82fc43411dd4735314a555c4a69e0f805f0dc6b29e62c997ea9112"
+    },
+    {
+      "commit": "ab8e5f1843a0102ad9f1fe04c936147cdcd49c69",
+      "path": "test/ai-management-section-projection.test.ts",
+      "gitBlob": "5df82cc2c3bfadf52da9a2ab2347010fa559c1bc",
+      "mode": "100644",
+      "bytes": 28902,
+      "sha256": "55d2463ecd033a32e7dae12b436bde9fb0c883ff685d51f62c213c0af34156f2"
+    },
+    {
+      "commit": "ab8e5f1843a0102ad9f1fe04c936147cdcd49c69",
+      "path": "docs/qualification/ai-management-common-page-error-recovery-source-20261109.json",
+      "gitBlob": "d16f4885ac227fa97aba84e1854cc5bc4ae3d9a5",
+      "mode": "100644",
+      "bytes": 19212,
+      "sha256": "8d77ae2e2f9600185b579822ad167f90c0859e8fe685bf70a51b514607f55f08"
+    }
+  ],
+  "actualDtoOwner": {
+    "path": "core/ai-management.ts",
+    "lines": "174-175_at_parent_ab8",
+    "shape": "keyed Partial<Record<AgentFeature,{state:attributed,by:string|null,at:Date}|{state:unattributed|off}>>",
+    "nativeOwner": "core/agent-principal.ts:agentSwitchStatesTx",
+    "noNewPageFields": true
+  },
+  "correction": {
+    "onlyNewFirstRecoveryCallbackChanged": true,
+    "genuineIndependentFixtureActorLabelAndCanonicalEventTimestamp": true,
+    "nativeUserEventAttributionSeparatelyCheckedInActualAppRrroPrincipalTx": true,
+    "keyedAttributedDisplayExactlyStateByAt": true,
+    "keyedOffDisplayExactlyStateOff": true,
+    "allProductionBytesWhole": true,
+    "second55P03CallbackWhole": true,
+    "old9CommonAnd17ProjectionNamesBodiesCapsWhole": true,
+    "same10Registrations11CommonExpanded": true,
+    "allFiveProductInverseObjectsWhole": true,
+    "allThreeCommonImmediateInverseObjectsWhole": true,
+    "oldAb8RecordWhole": true
+  },
+  "sourceOnly": true,
+  "nativeAndHosted": "UNRUN",
+  "nativeAbi": "PRIVATE_UNALLOCATED_GUARDS_UNRESOLVED",
+  "globalSourceGraphOrDisclosureApprovalsRenewed": false,
+  "releaseAuthorized": false,
+  "productionHeld": true
+}

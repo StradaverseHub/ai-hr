@@ -18,7 +18,7 @@
     "test/automatic-followup-features.dom.test.tsx": "c442c9253dd293a278e7998fec67451d0732dc78a117c1752ff8ddb51467b6e2",
     "lib/ai/management-sections.ts": "d7efd0b96f9875c560c6b075c9ff1688a7bf0851684adbdab45c399f3cb5c783",
     "test/ai-management-section-projection.test.ts": "55d2463ecd033a32e7dae12b436bde9fb0c883ff685d51f62c213c0af34156f2",
-    "docs/adr/2026-11-09-ai-management-section-projection.md": "7c92fd92327ac82e8509367e383f10a311c4588bbf2392a27be070a4caab3b10",
+    "docs/adr/2026-11-09-ai-management-section-projection.md": "85ebcbafed5e3db49cd2d20044520d3e8181f2267cb1cb9c695f7a61a3b1bd1b",
     "test/ai-management-contract.test.ts": "26311cc5725a931b951cf8825f0355c8c752eaaeb3210153f1fbc9c127a7a808",
     "docs/qualification/ai-management-hosted-fixture-recovery-source-20261109.json": "a64ae179f8a3c9379d1f014a8f5c302b9642ff9837fb053144320ae5026fff91",
     "components/ai-centre/how-it-works.tsx": "e3e4e132419a5676d3be77c82883093b81d824ed2237ad03d508b4a232084265",
@@ -31,9 +31,10 @@
     "docs/qualification/ai-provider-active-row-decoder-source-20261109.json": "7db18eb59a7eeafe0d82ade9e8bfac7305cca4cd5fe489e194b47891b06886a8",
     "core/ai-spend-management.ts": "932659860f919825d0533ecba0b1ad258e7a1f3a0abfd153bba0f7b51089e945",
     "core/ai-management-presentation.ts": "407e1d7d07fe61248b11080f2fd81c25e02d387c4ca2bc13792c470c5596454d",
-    "test/ai-management-presentation.test.ts": "28a0739993280eab71debfb57e625ee2e78c09ef947752f329c75ae9f1972706",
-    "docs/qualification/ai-management-common-presentation-source-20261109.json": "5ea498b8085d993963efb6fd3ce8e6be455729da02b30c52a129d6c88dd2a7d5",
-    "docs/qualification/ai-management-common-page-error-recovery-source-20261109.json": "8d77ae2e2f9600185b579822ad167f90c0859e8fe685bf70a51b514607f55f08"
+    "test/ai-management-presentation.test.ts": "56da5668f693bc096e729659ceeb8ab2fa50bc77686595cf93f375b2416c908d",
+    "docs/qualification/ai-management-common-presentation-source-20261109.json": "fa453f8aa4783d0761144cdaf0d01000de87b59ed4d0a94de3d1945fd538445e",
+    "docs/qualification/ai-management-common-page-error-recovery-source-20261109.json": "8d77ae2e2f9600185b579822ad167f90c0859e8fe685bf70a51b514607f55f08",
+    "docs/qualification/ai-management-common-page-error-view-fixture-source-20261109.json": "1dade27d2c480c29d00123ccd818072e67f74e12233a535a586767ea06dc1e81"
   },
   "selfExcluded": "docs/qualification/ai-management-section-projection-source-20261109.json",
   "wholeParentGitPreimages": {
@@ -537,7 +538,7 @@
   "commonPresentationPreparation": {
     "parent": "d45829993342fcb6de225bb567668f94de898b3e",
     "record": "docs/qualification/ai-management-common-presentation-source-20261109.json",
-    "recordSha256": "5ea498b8085d993963efb6fd3ce8e6be455729da02b30c52a129d6c88dd2a7d5",
+    "recordSha256": "fa453f8aa4783d0761144cdaf0d01000de87b59ed4d0a94de3d1945fd538445e",
     "wholeParentIndex": {
       "commit": "d45829993342fcb6de225bb567668f94de898b3e",
       "path": "docs/qualification/ai-management-section-projection-source-20261109.json",
@@ -576,6 +577,14 @@
     "legacyFullErrorBehaviorSame": true,
     "old9CommonPlus2NewAuthoredNotExecuted": true,
     "sourceOnly": true,
-    "runtimeQualified": false
+    "runtimeQualified": false,
+    "historicalFrozenSource": "ab8e5f1843a0102ad9f1fe04c936147cdcd49c69",
+    "fixtureCorrection": {
+      "parent": "ab8e5f1843a0102ad9f1fe04c936147cdcd49c69",
+      "record": "docs/qualification/ai-management-common-page-error-view-fixture-source-20261109.json",
+      "recordSha256": "1dade27d2c480c29d00123ccd818072e67f74e12233a535a586767ea06dc1e81",
+      "sameCaseNamesCapsAndProductionBytes": true,
+      "sourceOnly": true
+    }
   }
 }
