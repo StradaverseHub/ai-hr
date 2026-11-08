@@ -1046,34 +1046,71 @@ export function carryForwardReport(ctx:SessionContext,scopeIds:string[]|undefine
 }
 
 /** Calculate only the requested rows, retaining the existing localeCompare order.
- * Identity sorting is intentionally O(population) minimal names/IDs, not a claim
- * of fully bounded native collation. Expensive ledger/template reads are page-only. */
+ * Every identity is scanned and counted; only the requested rank prefix is retained.
+ * Deep pages can still retain the population. Ledger/template reads are page-only. */
 export async function carryForwardReportPage(ctx:SessionContext,scopeIds:string[]|undefined,p:CarryForwardInput&{page:PageQuery}):Promise<AnalyticsReportPage<CarryForwardReportRow>>{
   const page=validatedReportPage(p.page),scope=scopeIds?.slice(),input={year:p.year,companyId:p.companyId,filter:p.filter?{...p.filter}:undefined};
   return withAnalyticsPresentation(ctx,tx=>carryForwardReportPageTx(tx,scope,input,page));
+}
+
+type CarryPageIdentity = {employmentId:string;name:string};
+type RankedCarryPageIdentity = CarryPageIdentity & {sourceOrdinal:number};
+
+/** The old stable name sort used the cursor's UUID order to break equal comparisons. */
+function carryPageIdentityOrder(a:RankedCarryPageIdentity,b:RankedCarryPageIdentity):number {
+  return a.name.localeCompare(b.name)||a.sourceOrdinal-b.sourceOrdinal;
+}
+function carryPageRetentionLimit(page:PageQuery):number {
+  return page.offset>Number.MAX_SAFE_INTEGER-page.limit?Number.MAX_SAFE_INTEGER:page.offset+page.limit;
+}
+/** A max heap retains the earliest rank prefix without allocating the requested size. */
+function retainCarryPageIdentity(heap:RankedCarryPageIdentity[],candidate:RankedCarryPageIdentity,retain:number):void {
+  if(heap.length<retain){
+    let index=heap.length;heap.push(candidate);
+    while(index>0){
+      const parent=Math.floor((index-1)/2);
+      if(carryPageIdentityOrder(heap[parent],candidate)>=0)break;
+      heap[index]=heap[parent];index=parent;
+    }
+    heap[index]=candidate;
+    return;
+  }
+  if(carryPageIdentityOrder(candidate,heap[0])>=0)return;
+  let index=0;
+  for(;;){
+    const left=index*2+1;if(left>=heap.length)break;
+    const right=left+1,child=right<heap.length&&carryPageIdentityOrder(heap[right],heap[left])>0?right:left;
+    if(carryPageIdentityOrder(heap[child],candidate)<=0)break;
+    heap[index]=heap[child];index=child;
+  }
+  heap[index]=candidate;
 }
 
 async function carryForwardReportPageTx(tx:Tx,scope:string[]|undefined,input:CarryForwardInput,page:PageQuery):Promise<AnalyticsReportPage<CarryForwardReportRow>> {
     const [annual]=await tx.select({id:leaveType.id}).from(leaveType).where(eq(leaveType.code,'ANNUAL')).limit(1);
     if(!annual)return {rows:[],state:pageState(page,0,0)};
     const population=carryForwardPopulationTx(tx,scope,input).as('analytics_carry_population');
-    const identities:{employmentId:string;name:string}[]=[];
+    const identities:RankedCarryPageIdentity[]=[],retain=carryPageRetentionLimit(page);
+    let total=0;
     await tx.execute(sql`declare analytics_carry_identities no scroll cursor for
       select ${population.employmentId} as "employmentId",${population.name} as name from ${population}
       order by ${population.employmentId}`);
     for(;;){
-      const batch=await tx.execute<{employmentId:string;name:string}>(sql`fetch forward 512 from analytics_carry_identities`);
-      identities.push(...batch);
-      if(batch.length<512)break;
+      const batch=await tx.execute<CarryPageIdentity>(sql`fetch forward 4096 from analytics_carry_identities`);
+      for(const identity of batch){
+        if(!Number.isSafeInteger(total+1))throw new Error('Analytics population count exceeds safe integer');
+        retainCarryPageIdentity(identities,{...identity,sourceOrdinal:total},retain);total++;
+      }
+      if(batch.length<4096)break;
     }
     await tx.execute(sql`close analytics_carry_identities`);
     // At year-end December, every valid hire month is <= the as-of month.
     // earnedCycleStart therefore starts in input.year for calendar AND anniversary
     // populations admitted above. No financial eligibility is inferred from a cap.
-    identities.sort((a,b)=>a.name.localeCompare(b.name));
-    const selected=identities.slice(page.offset,page.offset+page.limit).map(row=>row.employmentId);
+    identities.sort(carryPageIdentityOrder);
+    const selected=identities.slice(page.offset,retain).map(row=>row.employmentId);
     const rows=selected.length?await carryForwardRowsTx(tx,scope,input,selected):[];
-    return {rows,state:pageState(page,identities.length,rows.length)};
+    return {rows,state:pageState(page,total,rows.length)};
 }
 async function carryForwardRowsTx(tx:Tx,scopeIds:string[]|undefined,p:CarryForwardInput,selectedIds?:string[]):Promise<CarryForwardReportRow[]>{
   if(selectedIds?.length===0)return [];

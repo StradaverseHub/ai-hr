@@ -19,7 +19,7 @@ import {originalEmploymentAggregatesTx} from './helpers/analytics-employment-agg
 
 // Structural statement shapes from the actual canonical read bodies. This labels
 // observations, never chooses a query/permission or infers a slow business report.
-const analyticsStatementClassifierVersion='analytics-statement-shapes/v4';
+const analyticsStatementClassifierVersion='analytics-statement-shapes/v5';
 function classifyAnalyticsStatement(text:string):string{
  const query=text.toLowerCase().replace(/\s+/g,' ');
  if(text==='set local jit=off')return 'presentation-jit-policy';
@@ -30,7 +30,7 @@ function classifyAnalyticsStatement(text:string):string{
   ['analytics_master_count','master-count'],
  ]as const)if(query.includes(marker))return label;
  if(query.startsWith('declare analytics_carry_identities '))return 'carry-identities-declare';
- if(query.startsWith('fetch forward 512 from analytics_carry_identities'))return 'carry-identities-fetch';
+ if(query.startsWith('fetch forward 512 from analytics_carry_identities')||query.startsWith('fetch forward 4096 from analytics_carry_identities'))return 'carry-identities-fetch';
  if(query.startsWith('close analytics_carry_identities'))return 'carry-identities-close';
  if(query.includes('analytics_carry_population'))return 'carry-population';
  if(query.includes('analytics_turnover_leavers'))return 'turnover-aggregate';
@@ -178,8 +178,12 @@ it('measures actual native 50k Analytics reads and complete-export baselines on 
  // The empty change-job page now returns its one count envelope instead
  // of an empty page SELECT followed by a separate count SELECT.
  // Nationality retains its single independently expected Unknown bucket.
- expect(telemetry.totals.statements).toBe(121);
+ // Fixed4096 carry batches replace98 FETCHes with13; all50,000 identities
+ // still cross the driver and every other23 statement/row source remains.
+ expect(telemetry.totals.statements).toBe(36);
  expect(telemetry.totals.returnedRows).toBe(90089);
+ const carryFetch=telemetry.summaries.filter(row=>row.classification==='carry-identities-fetch');
+ expect(carryFetch).toHaveLength(1);expect(carryFetch[0]).toMatchObject({count:13,returnedRows:50000,unknownRowCounts:0,failed:0});
  const changeJobSummary=telemetry.summaries.filter(row=>row.classification==='change-jobs-page');
  expect(changeJobSummary).toHaveLength(1);expect(changeJobSummary[0]).toMatchObject({count:1,returnedRows:1,failed:0});
  const employmentAggregates=telemetry.summaries.filter(row=>row.classification==='turnover-aggregate'||row.classification==='movement-aggregate');

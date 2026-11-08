@@ -36,7 +36,7 @@ export function classifyNativeStatement(text:string){
  if(q.includes('analytics_master_count'))return 'master-count';
  if(q.includes('\"gender\"')&&q.includes('\"date_of_birth\"'))return 'demographic-dimensions';
  if(q.startsWith('select \"employee_statutory_my\".\"epf_citizenship\", count(distinct \"person\".\"id\")')&&q.endsWith('group by \"employee_statutory_my\".\"epf_citizenship\"'))return 'nationality';
- if(q.startsWith('fetch forward 512 from analytics_carry_identities'))return 'carry-identities-fetch';
+ if(q.startsWith('fetch forward 512 from analytics_carry_identities')||q.startsWith('fetch forward 4096 from analytics_carry_identities'))return 'carry-identities-fetch';
  return 'unclassified';
 }
 type Settings={pid:number;role:string;login:string;jit:string;available:boolean;version:string;above:string;inline:string;optimize:string;work:string;hash:string;cache:string;statement:string;lock:string;rls:string};

@@ -210,3 +210,43 @@ references and verified inverse hunks for the five changed owners. Existing
 historical qualification maps and receipts remain byte-exact; the record does
 not embed them or transfer their runtime status. Root and a different peer must
 fully review this frozen source before existing hosted selectors run it.
+
+## Carry page rank selection — bounded source candidate, 9 November 2026
+
+The actual817f ordinary course returned50,000 carry identities in98 fixed512-row
+FETCHes. This candidate changes the page reader to fixed4096-row FETCHes and
+retains only the requested rank prefix in a max heap. Every native occurrence
+is still read and counted. The comparator remains the existing runtime
+`name.localeCompare`; native cursor input ordinal breaks equal comparisons,
+matching the old stable full-array sort without adding a SQL collation.
+The UUID-ordered population, DECLARE, normal CLOSE, permissions, one RR/RO
+transaction and the complete export/financial owners remain unchanged.
+
+The retained prefix is at most `min(population, offset + limit)`, plus one fixed
+batch. Safe arithmetic saturates a rank limit without allocating it. Deep pages
+can retain the full population; this is no fixed global memory or subsecond
+claim. All keeps its existing2000-row disclosure ceiling and complete total.
+Only the selected IDs enter the unchanged historical entitlement/ledger reader.
+Any cursor or comparator failure propagates to the existing transaction owner;
+no retry or cleanup query can replace the original failure.
+
+Three added bounded native controls use actual app RR/RO cursor rows as the old
+stable-sort oracle, exercise fixed-batch boundaries/Unicode ties/All/deep pages
+and cause a genuine native FETCH failure by closing the owned fixture cursor.
+A composition control verifies that failure settles before the later master
+report. Original callbacks remain whole except two explicit census assertions.
+Current constraints forbid fabricating duplicate current Assignment matches;
+duplicate names and concurrent distinct Employments are legal fixtures.
+
+On the same50k source fixture the prospective census is23 unchanged statements
+plus13 FETCHes=36, retaining90,089 driver rows. The two classifiers retain512
+history and recognize only the additional fixed4096 shape. All seven aggregate,
+two envelope and twenty JIT plans/limits remain. The ten unchanged financial
+regressions are affected selectors alongside bounded/composition/native-scale;
+the three-case JIT selector remains a separate sole-file course.
+
+This is source implementation awaiting whole-source review and actual hosted
+qualification. It does not transfer817f evidence or qualify one-second loading,
+browser preflight, worker counts, zero Busy or staging. Historical indices stay
+historical; the compact nonruntime source record binds actual immediate-parent
+preimages and protected owners without becoming a runtime dependency.

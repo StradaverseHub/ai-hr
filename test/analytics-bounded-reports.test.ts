@@ -1,5 +1,6 @@
 import {randomUUID} from 'node:crypto';
-import {eq,inArray,sql} from 'drizzle-orm';
+import {eq,inArray,sql,type SQL} from 'drizzle-orm';
+import {PgDialect} from 'drizzle-orm/pg-core';
 import {afterAll,beforeAll,beforeEach,expect,it,vi} from 'vitest';
 import * as database from '../db/client';
 import type {SessionContext,Tx} from '../db/client';
@@ -11,6 +12,7 @@ import {
 } from '../core/analytics';
 import * as templates from '../core/entitlement-template';
 import {parsePageQuery} from '../lib/pagination';
+import {pgSqlState} from '../lib/db-error';
 import {observeNativeRead} from './helpers/native-read-observer';
 import {adminCtx,closeAll,createAppUser,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
 
@@ -307,4 +309,141 @@ it('counts the complete change-job relation beyond All and preserves complete ex
  const last=await changeJobTransactionsPage(ctx,[],{...request,page:parsePageQuery({page:'82'})});
  expect(last.rows.map(row=>row.name)).toEqual(['Fictional report 02050','Fictional report 02051']);expect(last.state.total).toBe(2052);
  const full=await changeJobTransactions(ctx,[],request);expect(full).toHaveLength(2052);expect(all.rows).toEqual(full.slice(0,2000));
+},120000);
+
+type ObservedCarryIdentity={employmentId:string;name:string};
+type ObservedCarryProperties={role:string;isolation:string;readOnly:boolean;pid:number};
+/** Case-private observation of the actual app cursor; rows never leave test memory.
+ * The original RowList is returned unchanged, and the oracle below sorts this SAME stream. */
+function observeCarryCursor(failAfterFirstFetch=false){
+ const actual=database.withTenant,dialect=new PgDialect(),rows:ObservedCarryIdentity[]=[],batches:number[]=[],queries:string[]=[],properties:ObservedCarryProperties[]=[];
+ const state={active:0,maxActive:0};let originalFetchFailure:unknown,controlClosed=false;
+ const spy=vi.spyOn(database,'withTenant').mockImplementation(<T>(context:SessionContext,read:(tx:Tx)=>Promise<T>,options?:Parameters<typeof database.withTenant>[2])=>actual(context,async tx=>{
+  const [facts]=await tx.execute<ObservedCarryProperties>(sql`select current_user as role,current_setting('transaction_isolation')as isolation,
+   current_setting('transaction_read_only')='on'as "readOnly",pg_backend_pid()as pid`);
+  properties.push(facts);
+  return read(new Proxy(tx,{get(target,key,receiver){
+   if(key==='execute')return async(statement:SQL)=>{
+    const compiled=dialect.sqlToQuery(statement),text=compiled.sql.trim().toLowerCase().replace(/\s+/g,' ');
+    queries.push(text);state.active++;state.maxActive=Math.max(state.maxActive,state.active);
+    try{
+     let result:Awaited<ReturnType<Tx['execute']>>;
+     try{result=await target.execute(statement);}catch(error){
+      if(text==='fetch forward 4096 from analytics_carry_identities')originalFetchFailure=error;
+      throw error;
+     }
+     if(text==='fetch forward 4096 from analytics_carry_identities'){
+      expect(compiled.params).toEqual([]);expect(Array.isArray(result)).toBe(true);expect(result.length).toBeLessThanOrEqual(4096);
+      batches.push(result.length);
+      for(const row of result){
+       expect(typeof row.employmentId).toBe('string');expect(typeof row.name).toBe('string');
+       rows.push({employmentId:row.employmentId as string,name:row.name as string});
+      }
+      if(failAfterFirstFetch&&!controlClosed){
+       // A real same-session CLOSE makes the NEXT unmodified product FETCH fail natively.
+       await target.execute(sql`close analytics_carry_identities`);controlClosed=true;
+      }
+     }
+     return result;
+    }finally{state.active--;}
+   };
+   const value=Reflect.get(target,key,receiver);return typeof value==='function'?value.bind(target):value;
+  }}));
+ },options));
+ return {rows,batches,queries,properties,state,get originalFetchFailure(){return originalFetchFailure;},
+  get controlClosed(){return controlClosed;},restore:()=>spy.mockRestore()};
+}
+function expectCarryCursorPage(probe:ReturnType<typeof observeCarryCursor>,page:ReturnType<typeof parsePageQuery>,result:Awaited<ReturnType<typeof carryForwardReportPage>>,total:number){
+ const expected=probe.rows.slice().sort((a,b)=>a.name.localeCompare(b.name)).slice(page.offset,page.offset+page.limit);
+ expect(result.rows.map(row=>row.employmentId)).toEqual(expected.map(row=>row.employmentId));
+ expect(result.state.total).toBe(total);expect(probe.rows).toHaveLength(total);
+ expect(probe.properties).toHaveLength(1);expect(probe.properties[0]).toMatchObject({role:'ai_hr_app',isolation:'repeatable read',readOnly:true});
+ expect(probe.state).toEqual({active:0,maxActive:1});
+ const lastFetch=probe.queries.lastIndexOf('fetch forward 4096 from analytics_carry_identities'),closed=probe.queries.indexOf('close analytics_carry_identities');
+ expect(lastFetch).toBeGreaterThan(-1);expect(closed).toBeGreaterThan(lastFetch);
+ expect(probe.queries.filter(query=>query==='close analytics_carry_identities')).toHaveLength(1);
+}
+async function expectCarryPidSettled(pid:number){
+ const activity=await owner.client<{state:string;xactStart:string|null}[]>`select state,xact_start as "xactStart" from pg_stat_activity where pid=${pid}`;
+ expect(activity.length).toBeLessThanOrEqual(1);
+ if(activity.length)expect(activity[0]).toMatchObject({state:'idle',xactStart:null});
+}
+
+it('preserves stable same-native-stream carry pages across fixed4096 fetch boundaries',async()=>{
+ const b=await seedBase(),ctx=adminCtx(b),seeded=await seedRows(b,4095);
+ const paired=await hireEmployee(ctx,{companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:'2020-01-01',
+  person:{fullName:'Excluded carry paired',primaryEmail:randomUUID()+'@example.invalid'}});
+ const concurrent=await hireEmployee(ctx,{companyId:b.companyId,departmentId:b.deptB,employmentType:'part_time',hiredOn:'2020-01-01',person:{id:paired.personId}});
+ const ordered=await owner.db.select({employmentId:employment.id,personId:employment.personId}).from(employment).where(eq(employment.companyId,b.companyId)).orderBy(employment.id);
+ expect(ordered).toHaveLength(4097);
+ const latePerson=ordered.at(-1)!.personId,lateEmployment=ordered.at(-1)!.employmentId;
+ const unicode=['éclair','Eclair','e\u0301clair','Ångström','Zulu','同名','😀','éclair'];
+ const actualResolver=templates.buildTemplateEntitlementResolver,selectedBatches:string[][]=[];
+ const resolver=vi.spyOn(templates,'buildTemplateEntitlementResolver').mockImplementation((tx,p)=>{selectedBatches.push(p.employmentIds.slice());return actualResolver(tx,p);});
+ try{
+  for(const n of [0,511,512,513,4095,4096,4097]){
+   // One Person may own two legal distinct Employments. Select counts through
+   // real Person names without trying to hide only one of that Person's rows.
+   const activePeople=n<=4095?seeded.people.slice(0,n):[...seeded.people.slice(0,n===4096?4094:4095),paired.personId];
+   await owner.db.update(person).set({fullName:sql`'Excluded carry ' || ${person.id}::text`}).where(eq(person.tenantId,b.tenantId));
+   for(let start=0;start<activePeople.length;start+=500)await owner.db.update(person).set({fullName:sql`'Carry boundary z ' || ${person.id}::text`}).where(inArray(person.id,activePeople.slice(start,start+500)));
+   const unicodePeople=activePeople.filter(id=>id!==latePerson).slice(0,unicode.length);
+   for(const [index,name]of unicode.entries())if(unicodePeople[index])await owner.db.update(person).set({fullName:'Carry boundary '+name}).where(eq(person.id,unicodePeople[index]));
+   if(activePeople.includes(latePerson))await owner.db.update(person).set({fullName:'Carry boundary 000 late winner'}).where(eq(person.id,latePerson));
+   const pages=[first];
+   if(n===4097)for(const size of [25,50,100,200])pages.push(parsePageQuery({size:String(size),page:String(Math.floor((n-1)/size))}));
+   for(const page of pages){
+    selectedBatches.length=0;const probe=observeCarryCursor();
+    let result:Awaited<ReturnType<typeof carryForwardReportPage>>;
+    try{result=await carryForwardReportPage(ctx,[b.companyId],{year:2026,filter:{q:'Carry boundary %'},page});}finally{probe.restore();}
+    expectCarryCursorPage(probe,page,result!,n);
+    expect(probe.batches).toEqual(n<4096?[n]:n===4096?[4096,0]:[4096,1]);
+    expect(new Set(probe.rows.map(row=>row.employmentId)).size).toBe(n);
+    if(n){
+     for(const name of unicode)expect(probe.rows.some(row=>row.name==='Carry boundary '+name)).toBe(true);
+     expect(probe.rows.filter(row=>row.name==='Carry boundary éclair')).toHaveLength(2);
+    }
+    if(result!.rows.length){
+     expect(selectedBatches).toHaveLength(1);expect(selectedBatches[0].slice().sort()).toEqual(result!.rows.map(row=>row.employmentId).sort());
+    }else expect(selectedBatches).toEqual([]);
+    if(n>=4096)expect(probe.rows.filter(row=>row.employmentId===paired.employmentId||row.employmentId===concurrent.employmentId)).toHaveLength(2);
+    if(n===4097&&page.page===0){
+     expect(probe.rows.at(-1)?.employmentId).toBe(lateEmployment);
+     expect(result!.rows.map(row=>row.employmentId)).toContain(lateEmployment);
+    }
+   }
+  }
+ }finally{resolver.mockRestore();}
+},120000);
+
+it('retains full carry population and exports for All and safe very-deep page arithmetic',async()=>{
+ const b=await seedBase(),ctx=adminCtx(b);await seedRows(b,4097);
+ const full=await carryForwardReport(ctx,[b.companyId],{year:2026});
+ expect(full).toHaveLength(4097);
+ const pages=[parsePageQuery({size:'all'}),...([25,50,100,200]as const).map(size=>parsePageQuery({size:String(size),page:'1'}))];
+ const veryDeep=parsePageQuery({size:'25',page:String(Math.floor(Number.MAX_SAFE_INTEGER/25))});
+ expect(Number.isSafeInteger(veryDeep.offset)).toBe(true);expect(Number.isSafeInteger(veryDeep.offset+veryDeep.limit)).toBe(false);
+ pages.push(veryDeep);
+ for(const page of pages){
+  const probe=observeCarryCursor();let result:Awaited<ReturnType<typeof carryForwardReportPage>>;
+  try{result=await carryForwardReportPage(ctx,[b.companyId],{year:2026,page});}finally{probe.restore();}
+  expectCarryCursorPage(probe,page,result!,4097);expect(probe.batches).toEqual([4096,1]);
+  expect(result!.rows).toEqual(full.slice(page.offset,page.offset+page.limit));
+  if(page.size==='all')expect(result!.state).toMatchObject({total:4097,from:1,to:2000,truncated:true});
+  if(page===veryDeep)expect(result!).toMatchObject({rows:[],state:{total:4097,from:0,to:0,hasPrev:true}});
+ }
+},120000);
+
+it('propagates an actual native carry FETCH failure and settles its borrowed transaction',async()=>{
+ const b=await seedBase(),ctx=adminCtx(b);await seedRows(b,4096);
+ const probe=observeCarryCursor(true);let caught:unknown;
+ try{await carryForwardReportPage(ctx,[b.companyId],{year:2026,page:first});}catch(error){caught=error;}finally{probe.restore();}
+ expect(probe.controlClosed).toBe(true);expect(probe.batches).toEqual([4096]);
+ expect(probe.originalFetchFailure).toBeDefined();expect(caught).toBe(probe.originalFetchFailure);expect(pgSqlState(caught)).toBe('34000');
+ expect(probe.queries.filter(query=>query==='fetch forward 4096 from analytics_carry_identities')).toHaveLength(2);
+ expect(probe.queries).not.toContain('close analytics_carry_identities');expect(probe.state).toEqual({active:0,maxActive:1});
+ expect(probe.properties).toHaveLength(1);expect(probe.properties[0]).toMatchObject({role:'ai_hr_app',isolation:'repeatable read',readOnly:true});
+ await expectCarryPidSettled(probe.properties[0].pid);
+ const full=await carryForwardReport(ctx,[b.companyId],{year:2026}),fresh=await carryForwardReportPage(ctx,[b.companyId],{year:2026,page:first});
+ expect(fresh.state.total).toBe(4096);expect(fresh.rows).toEqual(full.slice(0,25));
 },120000);

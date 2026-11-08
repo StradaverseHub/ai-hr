@@ -212,7 +212,9 @@ it('enforces effectiveOFF thirteen-report Analytics under each parent mode and p
  for(const [sample,mode]of (['on','off','off','on']as JitMode[]).entries()){
   const page=parsePageQuery();const result=await probe.run('analytics-whole-'+(sample+1),mode,()=>analyticsDashboard(fixture.ctx,[fixture.b.companyId],{
    from:'2020-01-01',to:'2026-01-01',year:2020,filters:{},pages:{hires:page,terms:page,changeJobs:page,carryForward:page}}));
-  assertDashboard(result.value);expect(result.receipt).toMatchObject({complete:true,requestedJit:mode,effectiveJitAfterProductPolicy:'off',effectiveJitAtCompletion:'off',policyCommandCount:1,census:{statements:121,rows:90089,unknownRows:0,failed:0},defaultsRestoredSamePid:true,transactionCalls:1});
+  assertDashboard(result.value);expect(result.receipt).toMatchObject({complete:true,requestedJit:mode,effectiveJitAfterProductPolicy:'off',effectiveJitAtCompletion:'off',policyCommandCount:1,census:{statements:36,rows:90089,unknownRows:0,failed:0},defaultsRestoredSamePid:true,transactionCalls:1});
+  const carryFetch=result.queries.filter(query=>query.classification==='carry-identities-fetch');
+  expect(carryFetch).toHaveLength(13);expect(carryFetch.reduce((total,query)=>total+(query.rows??0),0)).toBe(50000);
   const policy=result.queries.filter(query=>query.text==='set local jit=off');expect(policy).toHaveLength(1);expect(policy[0]).toMatchObject({params:[],rows:0,ordinal:2});
   const nationality=result.queries.filter(q=>q.classification==='nationality');expect(nationality).toHaveLength(1);expect(nationality[0].rows).toBe(1);
   if(baseline){expect(result.value).toEqual(baseline);expect(probe.sameQueries(statements!,result.queries)).toBe(true);}else{baseline=result.value;statements=result.queries;}
