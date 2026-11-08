@@ -1,0 +1,295 @@
+{
+  "kind": "AI_ALLOWANCE_PREVIEW_DEPARTMENTS_PRESENTATION_SOURCE_ONLY_UNQUALIFIED",
+  "parent": "66d5ef887dd8a281c2aaa8a6e670c6fddd5391e9",
+  "sourceRef": "codex/ai-management-allowance-presentation-20261109",
+  "scope": [
+    "core/ai-management.ts",
+    "test/ai-management-allowance-presentation.test.ts",
+    "docs/adr/2026-11-09-ai-management-section-projection.md",
+    "docs/qualification/ai-management-section-projection-source-20261109.json",
+    "docs/qualification/ai-management-allowance-presentation-source-20261109.json"
+  ],
+  "wholeActualParentGitPreimages": [
+    {
+      "path": "core/ai-management.ts",
+      "sha256": "6556da7c659352b993eafe7a9b9e8157aed102bcfcef34a90a23e6cfbd6853c7",
+      "bytes": 46756,
+      "commit": "66d5ef887dd8a281c2aaa8a6e670c6fddd5391e9",
+      "mode": "100644",
+      "gitBlob": "38aab17797d49139cc30c9f01d9b124bd303b92d",
+      "wholeGitBytesVerified": true
+    },
+    {
+      "path": "docs/adr/2026-11-09-ai-management-section-projection.md",
+      "sha256": "85ebcbafed5e3db49cd2d20044520d3e8181f2267cb1cb9c695f7a61a3b1bd1b",
+      "bytes": 20140,
+      "commit": "66d5ef887dd8a281c2aaa8a6e670c6fddd5391e9",
+      "mode": "100644",
+      "gitBlob": "43e72ee5676796b4e8976547a21337d47b908203",
+      "wholeGitBytesVerified": true
+    },
+    {
+      "path": "docs/qualification/ai-management-section-projection-source-20261109.json",
+      "sha256": "4318d2c965d388c65fc62db36a8d9a8f4af8e6db75c7b59f957f8394e62d3a14",
+      "bytes": 37449,
+      "commit": "66d5ef887dd8a281c2aaa8a6e670c6fddd5391e9",
+      "mode": "100644",
+      "gitBlob": "daf16f9af4ea8c1b1010c62a2ea621cc76e60bde",
+      "wholeGitBytesVerified": true
+    }
+  ],
+  "newPathsAbsentFromParent": [
+    "test/ai-management-allowance-presentation.test.ts",
+    "docs/qualification/ai-management-allowance-presentation-source-20261109.json"
+  ],
+  "currentSourceSha256": {
+    "core/ai-management.ts": "c4b60d3e243eeb23a59feb5a26308b40cf5e89892698a3ba3caaf5cb38429dee",
+    "test/ai-management-allowance-presentation.test.ts": "18d4e9d2603f16d21f395f2791e5daee8362fc2bedccf7488fde32eb0a1a87a9",
+    "docs/adr/2026-11-09-ai-management-section-projection.md": "34e7ec43795fb9af5f951edf9af5ca33a55df98cb7b58705e0bdd9891b218e28"
+  },
+  "wholeImmediateParentInverses": {
+    "core/ai-management.ts": {
+      "coordinates": "ZERO_BASED_HALF_OPEN_CURRENT_LINES_DESCENDING",
+      "changes": [
+        {
+          "startLine": 461,
+          "endLine": 471,
+          "after": "}\n/** PAGE choices prove current group scope before any department/company fact. */\nexport async function bulkAssistantDepartmentsPageTx(tx:Tx,supplied:SessionContext):Promise<{id:string;label:string}[]>{\n  const ctx=captureControlContext(supplied);\n  await currentBulkPresentationAdminTx(tx,ctx);\n  return bulkAssistantDepartmentRowsTx(tx,ctx);\n}\nexport async function bulkAssistantDepartmentsPage(supplied:SessionContext):Promise<{id:string;label:string}[]>{\n  const ctx=captureControlContext(supplied);\n  return withTenant(ctx,tx=>bulkAssistantDepartmentsPageTx(tx,ctx),{readOnlySnapshot:true});\n",
+          "before": "  });\n"
+        },
+        {
+          "startLine": 452,
+          "endLine": 457,
+          "after": "    return bulkAssistantDepartmentRowsTx(tx,ctx);\n  });\n}\n/** Exact legacy department query shared by the full RC and PAGE read purposes. */\nasync function bulkAssistantDepartmentRowsTx(tx:Tx,ctx:SessionContext):Promise<{id:string;label:string}[]>{\n",
+          "before": ""
+        },
+        {
+          "startLine": 379,
+          "endLine": 402,
+          "after": "\n/** Actual read-only snapshot authority, never a substitute for apply/grant admission. */\nasync function currentBulkPresentationAdminTx(tx:Tx,ctx:SessionContext):Promise<void>{\n  assertAdmin(ctx);\n  if(!ctx.userId||ctx.agent||!isGroupAdmin(ctx))throw new AiControlError('Only a group administrator may preview shared AI permissions.');\n  await assertAiPresentationPrincipalTx(tx,ctx);\n  const [group]=await tx.execute<{allowed:boolean}>(sql`select app.is_group_admin() as allowed`);\n  if(group?.allowed!==true)throw new AiControlError('Current AI administration access could not be confirmed.');\n}\n/** PAGE preview in the caller's actual RR/RO transaction; input is captured before suspension. */\nexport async function previewBulkAssistantAccessPageTx(tx:Tx,supplied:SessionContext,scopeValue:unknown,enabled:boolean):Promise<BulkAssistantPreview>{\n  const ctx=captureControlContext(supplied),scope=bulkScope(scopeValue);\n  if(typeof enabled!=='boolean')throw new AiControlError('Choose grant or revoke.');\n  await currentBulkPresentationAdminTx(tx,ctx);\n  const {matched,changing}=await bulkTargetsTx(tx,ctx,scope,enabled);\n  return {matched:matched.length,changing:changing.length};\n}\n/** Independent PAGE owner. Preview never promises a later confirmed apply will succeed. */\nexport async function previewBulkAssistantAccessPage(supplied:SessionContext,scopeValue:unknown,enabled:boolean):Promise<BulkAssistantPreview>{\n  const ctx=captureControlContext(supplied),scope=bulkScope(scopeValue);\n  if(typeof enabled!=='boolean')throw new AiControlError('Choose grant or revoke.');\n  return withTenant(ctx,tx=>previewBulkAssistantAccessPageTx(tx,ctx,scope,enabled),{readOnlySnapshot:true});\n}\n",
+          "before": ""
+        },
+        {
+          "startLine": 13,
+          "endLine": 14,
+          "after": "import { assertAiPrincipalTx,assertAiPresentationPrincipalTx } from './ai-principal';\n",
+          "before": "import { assertAiPrincipalTx } from './ai-principal';\n"
+        }
+      ]
+    },
+    "docs/adr/2026-11-09-ai-management-section-projection.md": {
+      "coordinates": "ZERO_BASED_HALF_OPEN_CURRENT_LINES_DESCENDING",
+      "changes": [
+        {
+          "startLine": 161,
+          "endLine": 169,
+          "after": "\n## Allowances preview and department presentation owners\n\nAllowances gains explicit public and borrowed-transaction PAGE APIs for bulk preview and department choices. Each captures principal claims and validated scope input before suspension, then proves the actual database-enforced RR/RO principal and native group administrator before reading targets. These readers do not require an Assistant grant, module entitlement, provider configuration or running execution gate. Preview is descriptive; every later grant/apply command retains its fresh authority, exclusive Access barrier, confirmed-count comparison and audit behavior.\n\n`bulkScope` and `bulkTargetsTx` remain whole shared owners: Kuala Lumpur current/inclusive assignment dates, supersession, assignment-company fallback, active/unblocked login, role and explicit-user membership, UUID deduplication, escaped search, ID order and live-grant counts do not change. Only the existing department query is extracted into one pure Tx data owner, retaining its exact tenant/company join, archive exclusion, coalesced label, ordering and500 cap. The old RC department wrapper keeps its original admission/empty-result behavior and delegates that same query; the old RC preview and all writers remain whole.\n\nThe new fictional native fixture independently specifies every scope/count, literal Unicode/wildcard/login search, legal employment multiplicity and dated membership boundaries, department labels/order/ties/500 cap, input capture, actual modes/native scope refusals, reads behind held Access revocation through commit/rollback, t0/next-snapshot visibility, genuine target SQL lock failures, enforced read-only DML refusal and actual cancellation/rollback with zero external transport. Old AI tests remain whole and existing bulk apply/grant/audit regressions remain affected verification. The controls are authored UNRUN. No route composition, optional invalid-versus-empty cohort behavior, schema/native ABI/role, provider or command owner changes. Current source/disclosure/native closure and rendered/worker qualification remain open; production stays held.\n",
+          "before": ""
+        }
+      ]
+    }
+  },
+  "metadataWholeParentReplay": {
+    "path": "docs/qualification/ai-management-section-projection-source-20261109.json",
+    "method": "Restore each listed JSON address from the immutable whole66d5 parent index (remove address if absent), serialize indent2+newline, and require whole parent bytes/hash. No nested payload copy.",
+    "addresses": [
+      [
+        "currentSourceSha256",
+        "core/ai-management.ts"
+      ],
+      [
+        "currentSourceSha256",
+        "docs/adr/2026-11-09-ai-management-section-projection.md"
+      ],
+      [
+        "currentSourceSha256",
+        "test/ai-management-allowance-presentation.test.ts"
+      ],
+      [
+        "currentSourceSha256",
+        "docs/qualification/ai-management-allowance-presentation-source-20261109.json"
+      ],
+      [
+        "wholeProductParentInverses",
+        "core/ai-management.ts"
+      ],
+      [
+        "sourceRef"
+      ],
+      [
+        "allowancePresentationPreparation"
+      ]
+    ]
+  },
+  "protectedWholeParentPins": [
+    {
+      "path": "test/ai-management.test.ts",
+      "sha256": "2bc9659cb731c284ca8a307461a2d55574fc2b4e4f246475f98dd159c2919015",
+      "bytes": 44749,
+      "commit": "66d5ef887dd8a281c2aaa8a6e670c6fddd5391e9",
+      "mode": "100644",
+      "gitBlob": "c92b1ed2a5b19df8f5842c5e1973a712f8e60eb3",
+      "wholeGitBytesVerified": true
+    },
+    {
+      "path": "test/ai-management-contract.test.ts",
+      "sha256": "26311cc5725a931b951cf8825f0355c8c752eaaeb3210153f1fbc9c127a7a808",
+      "bytes": 34538,
+      "commit": "66d5ef887dd8a281c2aaa8a6e670c6fddd5391e9",
+      "mode": "100644",
+      "gitBlob": "020ba50cc63d555e3e2008706bd6d2cec3ba76dd",
+      "wholeGitBytesVerified": true
+    },
+    {
+      "path": "test/ai-management-presentation.test.ts",
+      "sha256": "56da5668f693bc096e729659ceeb8ab2fa50bc77686595cf93f375b2416c908d",
+      "bytes": 24372,
+      "commit": "66d5ef887dd8a281c2aaa8a6e670c6fddd5391e9",
+      "mode": "100644",
+      "gitBlob": "6912aaa18ad5ae245b792114a0abf6f73ba238c6",
+      "wholeGitBytesVerified": true
+    },
+    {
+      "path": "test/ai-management-section-projection.test.ts",
+      "sha256": "55d2463ecd033a32e7dae12b436bde9fb0c883ff685d51f62c213c0af34156f2",
+      "bytes": 28902,
+      "commit": "66d5ef887dd8a281c2aaa8a6e670c6fddd5391e9",
+      "mode": "100644",
+      "gitBlob": "5df82cc2c3bfadf52da9a2ab2347010fa559c1bc",
+      "wholeGitBytesVerified": true
+    },
+    {
+      "path": "core/ai-principal.ts",
+      "sha256": "3a77b8ed03ca1b9895310f6a7535473bbfd9a31d6c6d003612bd71e0dcbd6d21",
+      "bytes": 3793,
+      "commit": "66d5ef887dd8a281c2aaa8a6e670c6fddd5391e9",
+      "mode": "100644",
+      "gitBlob": "85630db56130b32196d12e7ffd04fbb27fb88b22",
+      "wholeGitBytesVerified": true
+    },
+    {
+      "path": "core/assistant-grant.ts",
+      "sha256": "fa6fe191d8d1bc90508aa21540310932af76feffa7291cdf5ce0dddf43452287",
+      "bytes": 10497,
+      "commit": "66d5ef887dd8a281c2aaa8a6e670c6fddd5391e9",
+      "mode": "100644",
+      "gitBlob": "b15f6b1df5edff604655a512cc312d95a2343324",
+      "wholeGitBytesVerified": true
+    },
+    {
+      "path": "core/access-configuration-lock.ts",
+      "sha256": "9bc7cd8706b1db3d9b223943d4161cbaec5bd8860c436e46195dc9277292f29e",
+      "bytes": 1892,
+      "commit": "66d5ef887dd8a281c2aaa8a6e670c6fddd5391e9",
+      "mode": "100644",
+      "gitBlob": "821a3ca3d4f08caff5a035674ea1932abf457cd8",
+      "wholeGitBytesVerified": true
+    },
+    {
+      "path": "db/client.ts",
+      "sha256": "bdd700ea682bafbf0cad2c255b8dacb96c13d82dc7fa0ae9446d4a1da265cd3f",
+      "bytes": 22595,
+      "commit": "66d5ef887dd8a281c2aaa8a6e670c6fddd5391e9",
+      "mode": "100644",
+      "gitBlob": "0c4f28e00393a763608b506d608a3cf7df542c57",
+      "wholeGitBytesVerified": true
+    },
+    {
+      "path": "lib/hr-date.ts",
+      "sha256": "bcd1a856837061eb50adf459e4c3512ccb0bd145967bfcf7bf496b1f46c84823",
+      "bytes": 4757,
+      "commit": "66d5ef887dd8a281c2aaa8a6e670c6fddd5391e9",
+      "mode": "100644",
+      "gitBlob": "b109878e178c1175aced19e8512e6aff0226da62",
+      "wholeGitBytesVerified": true
+    },
+    {
+      "path": "app/control-tower/agents/screen.tsx",
+      "sha256": "a137c62df804c0c4e6e40f11d3ecca1e295fabb3b817fb1d440225e38a172d12",
+      "bytes": 46040,
+      "commit": "66d5ef887dd8a281c2aaa8a6e670c6fddd5391e9",
+      "mode": "100644",
+      "gitBlob": "472be5ce84060fbe8c5c1ec15750fefc85fb05b3",
+      "wholeGitBytesVerified": true
+    }
+  ],
+  "contracts": {
+    "sameBulkScopeAndBulkTargetsTxWhole": true,
+    "departmentSqlObjectWholeAndShared": true,
+    "oldDepartmentRcWrapperOnlyPureTxDelegation": true,
+    "allOther54OriginalTopLevelDeclarationsWhole": true,
+    "allOld88AiNativeTestFilesWhole": true,
+    "allApplyGrantRevokeAuditConfirmedCountAndLiveBarriersWhole": true,
+    "pagePrincipalAndNativeGroupBeforeTargetFacts": true,
+    "allInputClaimsAndValidatedScopeCapturedBeforeAwait": true,
+    "noModuleAssistantGrantProviderOrRunningGateSubstitute": true,
+    "pageApisDoNotIssueAuthorityOrWrite": true,
+    "oldOriginalProductInverseTargetSha256": "2e2c25f9ad2685ed6072da4aaa4929604ddecb4d5a323b3acf9966ab63473a01",
+    "otherFourProductInverseObjectsWhole": true,
+    "noSchemaSqlNativeAbiRoleOrResourceChange": true
+  },
+  "newApis": [
+    "previewBulkAssistantAccessPage",
+    "previewBulkAssistantAccessPageTx",
+    "bulkAssistantDepartmentsPage",
+    "bulkAssistantDepartmentsPageTx"
+  ],
+  "nativeSourceRoots": {
+    "preview": [
+      "public.app_user",
+      "public.person",
+      "public.employment",
+      "public.assignment",
+      "public.role_assignment",
+      "public.assistant_grant"
+    ],
+    "departments": [
+      "public.department",
+      "public.company"
+    ],
+    "principal": [
+      "public.app_user",
+      "app.login_blocked",
+      "app.principal_snapshot_current",
+      "app.is_group_admin"
+    ],
+    "custody": "Use common catalogue custody only where exact current identities/execution contexts coincide. This source slice does not prove future747/selected-alpha native state or all-linked-route closure."
+  },
+  "authoredNativeFixture": {
+    "registrations": 13,
+    "expandedCases": 17,
+    "status": "UNRUN",
+    "independentOracles": [
+      "allfive scope kinds and grant/revoke live-changing counts",
+      "KL inclusivevalidTo/current/expired/superseded/future/companyfallback with unmasked endpoint",
+      "UUID-list dedup, legal second employment EXISTS multiplicity, foreign/archive/login-blocked exclusion",
+      "Unicode/literalpercent/underscore/backslash name and no-person login search, trimmed100char needle",
+      "department labeltrim/fallback/companyorder/UUIDties/500cap",
+      "captured public and borrowed scope/principal inputs",
+      "real APP RRRO, raw3mode refusal, native companygroupfalse and stale/foreign/revoked/synthetic refusal",
+      "heldAccessrevocation commit/rollback and coherent admittedsnapshot/next-call refusal",
+      "actual targettable55P03, databaseRO25006 and native cancellation57014 with awaited rollback/recovery",
+      "zero provider/fetch and noGETDML retainedsourcefacts"
+    ]
+  },
+  "externalSourceEvidence": {
+    "basename": "aihr-allowance-presentation-external-source-review-20261109.json",
+    "sha256": "e232291700dd2d2c9a0b2f7242824e3c05fd6fe6ed766fbfbe916d549c992319",
+    "bytes": 4077,
+    "scope": "External syntax/AST/source-data only;54 original declarations, exact shared departmentexecute source,88 oldAI test files and authored case census. No repo module imported or tests/compiler executed."
+  },
+  "proposedHostedSelectors": [
+    "test/ai-management-allowance-presentation.test.ts",
+    "test/ai-management.test.ts",
+    "test/ai-management-contract.test.ts",
+    "test/ai-management-presentation.test.ts",
+    "test/ai-management-section-projection.test.ts"
+  ],
+  "integrationDisposition": "No route/screen adoption. Existing optional invalid-preview/empty-department cohorts remain unchanged; full common/Provider/Workers/Assistant routes are not closed by this source slice. Separate root-owned composition/native/context and current source/disclosure binding remain OPEN.",
+  "nativeAndHosted": "UNRUN",
+  "runtimeQualified": false,
+  "sourceGraphApprovalRenewed": false,
+  "releaseAuthorized": false,
+  "productionHeld": true,
+  "repositoryBehaviorImportsCompilerNativeSqlNetworkExecuted": false
+}

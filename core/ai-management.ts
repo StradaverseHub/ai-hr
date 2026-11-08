@@ -11,7 +11,7 @@ import { getAiConfigView, resolveActiveAiConfig } from './ai-config';
 import { grantAssistant, revokeAssistant } from './assistant-grant';
 import { lockAccessConfigurationTx } from './access-configuration-lock';
 import { setTenantSetting } from './tenant-settings';
-import { assertAiPrincipalTx } from './ai-principal';
+import { assertAiPrincipalTx,assertAiPresentationPrincipalTx } from './ai-principal';
 import { isZeroCapped } from './ai-zero-cap';
 import {aiSpendStatusTx,aiSpendPresentationStatusTx} from './ai-spend-management';
 import {readAiManagementPresentationTx} from './ai-management-presentation';
@@ -377,6 +377,29 @@ async function bulkTargetsTx(tx: Tx, ctx: SessionContext, scope: BulkAssistantSc
   const matched = Array.from(rows);
   return { matched, changing: matched.filter(row => row.live !== enabled).map(row => row.id) };
 }
+
+/** Actual read-only snapshot authority, never a substitute for apply/grant admission. */
+async function currentBulkPresentationAdminTx(tx:Tx,ctx:SessionContext):Promise<void>{
+  assertAdmin(ctx);
+  if(!ctx.userId||ctx.agent||!isGroupAdmin(ctx))throw new AiControlError('Only a group administrator may preview shared AI permissions.');
+  await assertAiPresentationPrincipalTx(tx,ctx);
+  const [group]=await tx.execute<{allowed:boolean}>(sql`select app.is_group_admin() as allowed`);
+  if(group?.allowed!==true)throw new AiControlError('Current AI administration access could not be confirmed.');
+}
+/** PAGE preview in the caller's actual RR/RO transaction; input is captured before suspension. */
+export async function previewBulkAssistantAccessPageTx(tx:Tx,supplied:SessionContext,scopeValue:unknown,enabled:boolean):Promise<BulkAssistantPreview>{
+  const ctx=captureControlContext(supplied),scope=bulkScope(scopeValue);
+  if(typeof enabled!=='boolean')throw new AiControlError('Choose grant or revoke.');
+  await currentBulkPresentationAdminTx(tx,ctx);
+  const {matched,changing}=await bulkTargetsTx(tx,ctx,scope,enabled);
+  return {matched:matched.length,changing:changing.length};
+}
+/** Independent PAGE owner. Preview never promises a later confirmed apply will succeed. */
+export async function previewBulkAssistantAccessPage(supplied:SessionContext,scopeValue:unknown,enabled:boolean):Promise<BulkAssistantPreview>{
+  const ctx=captureControlContext(supplied),scope=bulkScope(scopeValue);
+  if(typeof enabled!=='boolean')throw new AiControlError('Choose grant or revoke.');
+  return withTenant(ctx,tx=>previewBulkAssistantAccessPageTx(tx,ctx,scope,enabled),{readOnlySnapshot:true});
+}
 /** How many logins the change covers, and how many it would actually change. Read-only. */
 export async function previewBulkAssistantAccess(ctx: SessionContext, scopeValue: unknown, enabled: boolean): Promise<BulkAssistantPreview> {
   assertAdmin(ctx);
@@ -427,11 +450,25 @@ export async function bulkAssistantDepartments(ctx: SessionContext): Promise<{ i
   if (!isGroupAdmin(ctx)) return [];
   return withTenant(ctx, async tx => {
     await tx.execute(sql`SET TRANSACTION READ ONLY`);
+    return bulkAssistantDepartmentRowsTx(tx,ctx);
+  });
+}
+/** Exact legacy department query shared by the full RC and PAGE read purposes. */
+async function bulkAssistantDepartmentRowsTx(tx:Tx,ctx:SessionContext):Promise<{id:string;label:string}[]>{
     const rows = await tx.execute<{ id: string; label: string }>(sql`select d.id, coalesce(nullif(trim(d.label),''),d.name)||' · '||c.legal_name as label
       from public.department d join public.company c on c.id=d.company_id and c.tenant_id=d.tenant_id
       where d.tenant_id=${ctx.tenantId}::uuid and d.archived_at is null order by c.legal_name, coalesce(nullif(trim(d.label),''),d.name), d.id limit 500`);
     return Array.from(rows);
-  });
+}
+/** PAGE choices prove current group scope before any department/company fact. */
+export async function bulkAssistantDepartmentsPageTx(tx:Tx,supplied:SessionContext):Promise<{id:string;label:string}[]>{
+  const ctx=captureControlContext(supplied);
+  await currentBulkPresentationAdminTx(tx,ctx);
+  return bulkAssistantDepartmentRowsTx(tx,ctx);
+}
+export async function bulkAssistantDepartmentsPage(supplied:SessionContext):Promise<{id:string;label:string}[]>{
+  const ctx=captureControlContext(supplied);
+  return withTenant(ctx,tx=>bulkAssistantDepartmentsPageTx(tx,ctx),{readOnlySnapshot:true});
 }
 
 /** A group allowance: one per role, company or department, applied to each login in it (0662). Group
