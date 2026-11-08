@@ -1,0 +1,14 @@
+{
+  "kind": "WHOLE_PARENT_ABSENCE_SOURCE_ONLY_REGISTRY_NOT_ADMISSION",
+  "base": "e5e45a7d76e6d07f20436f6dc0b20fa4a2429026",
+  "files": {},
+  "addedPaths": [
+    ".github/ci/diagnostics/compiler-normal-profile.mjs",
+    ".github/ci/native-nodb-profiles.mjs",
+    ".github/ci/normal-test-matrices.mjs",
+    "test/normal-native-nodb-registry.test.ts",
+    "docs/qualification/normal-native-nodb-registry-20261108.md",
+    "docs/qualification/normal-native-nodb-registry-inverse-20261108.json",
+    "docs/qualification/normal-native-nodb-registry-source-20261108.json"
+  ]
+}
