@@ -40,6 +40,7 @@ import {rewardPolicyReaderProcess} from './rewards-audit-policy-reader-process';
 import {controlledPolicyWait} from './rewards-audit-policy-controlled-wait';
 import {waitRewardPolicyNativeProgress} from './rewards-audit-policy-native-progress';
 import {rewardsPolicyDiagnostics} from './rewards-audit-policy-diagnostic';
+import {rewardPolicyNativeSaveObservation} from './rewards-audit-policy-native-save-observation';
 
 // Registered by Vitest BEFORE the review-store imports evaluate their factory
 // specs. A case-time spy cannot replace those already captured function values.
@@ -474,13 +475,16 @@ export function registerRewardsAuditPolicyNativeCases(evidenceDirectory:string){
   const abort=()=>{finalize.resolve();finish.resolve();};context.signal.addEventListener('abort',abort,{once:true});
   const control=controlledPolicyWait(ownership.poison),receipt=control.start(()=>connection.begin('isolation level repeatable read',async tx=>{await stamp(tx,f.ctx);const [row]=await tx`select reward_audit_read.begin_read('libraries','salary',${f.year})as id`;observed.resolve();await finalize.promise;context.signal.throwIfAborted();return(await tx`select * from reward_audit_read.finalize_read(${row.id}::uuid)`)[0];}));
   let armedCallbacks=0;
-  const actualBulk=adminOwner.bulkSaveLabels,actualSqlState=nativeErrorOwner.pgSqlState,actualErrorChain=nativeErrorOwner.pgErrorChain;const nativeRefusals:Array<{code:string;message:string}>=[];
+  const actualBulk=adminOwner.bulkSaveLabels,actualSqlState=nativeErrorOwner.pgSqlState,actualErrorChain=nativeErrorOwner.pgErrorChain;
   await control.run(async()=>{
    await control.ready(observed.promise,receipt,context.signal,'Actual older read exited before Catalogue PRE');await setSetting(f.b.tenantId,'audit.hash_chain_enabled',false);
    const exercise=async()=>{
     // Transparent observation: every callback forwards unchanged arguments to
     // the real canonical owner; no owner result or authorization is fabricated.
-    const errors=vi.spyOn(nativeErrorOwner,'pgSqlState').mockImplementation(error=>{const code=actualSqlState(error);if(code){const native=actualErrorChain(error).find(link=>link.code===code);nativeRefusals.push({code,message:native?.message??''});}return code;});
+    // admin captures pgSqlState at module initialization. Its live imported
+    // pgErrorChain sees the ORIGINAL 42501 before LabelBulkError drops cause.
+    const nativeSave=rewardPolicyNativeSaveObservation(actualErrorChain,actualSqlState);
+    const errors=vi.spyOn(nativeErrorOwner,'pgErrorChain').mockImplementation(nativeSave.chain);
     const callback=vi.spyOn(adminOwner,'bulkSaveLabels').mockImplementation(async(...args:Parameters<typeof adminOwner.bulkSaveLabels>)=>{
      const [ctx,kind,,tx]=args;
      if(tx&&ctx.tenantId===f.b.tenantId&&kind==='position'){
@@ -491,6 +495,8 @@ export function registerRewardsAuditPolicyNativeCases(evidenceDirectory:string){
        armedCallbacks++;expect(armedCallbacks).toBe(1);expect(frame.history).toBe(true);expect(actualPre.pre).toEqual({armed:false,priorSeq:null,priorHash:null});
        expect((await owner.client`select exists(select 1 from pg_stat_activity where pid=${frame.pid} and backend_start=${frame.started}::text::timestamptz and usename='ai_hr_app')as actual`)[0].actual).toBe(true);
        entered.resolve();await finish.promise;context.signal.throwIfAborted();
+       // Open only AFTER deliberate observer negatives and native PRE checks.
+       return nativeSave.armed(()=>actualBulk(...args));
       }
      }
      return actualBulk(...args);
@@ -500,14 +506,14 @@ export function registerRewardsAuditPolicyNativeCases(evidenceDirectory:string){
      await control.ready(entered.promise,command,context.signal,'Actual Catalogue command exited before armed callback');
      finalize.resolve();await receipt.value();finish.resolve();
      if(counterexample){
-      await expect(command.value()).rejects.toThrow();expect(nativeRefusals).toContainEqual({code:'42501',message:'Catalogue audit decision changed before native INSERT'});control.consume(command,await command.value().catch((error:unknown)=>error));
+      await expect(command.value()).rejects.toThrow();const nativeRefusals=nativeSave.knownRefusals();expect(nativeRefusals).toContainEqual({code:'42501',message:'Catalogue audit decision changed before native INSERT'});control.consume(command,await command.value().catch((error:unknown)=>error));
       expect(Array.from(await owner.client`select to_jsonb(p)as value from public.position p where p.tenant_id=${f.b.tenantId}::uuid order by p.id`)).toEqual(before);
      }else{
       expect(await command.value()).toMatchObject({kind:'completed',receipt:{receipt:{positionId:f.b.positionId,archived:true}}});
       expect((await owner.client`select p.archived_at is not null as archived,e.chain_seq is null and e.hash is null and e.prev_hash is null as retained_unarmed,app._domain_event_preimage_for(e)='{"armed":false,"priorSeq":null,"priorHash":null}'::jsonb as same_pre from public.position p join app.assistant_own_leave_review r on r.receipt_subject_id=p.id join public.domain_event e on e.id=r.receipt_event_id where r.id=${prepared.actionId}::uuid`)[0]).toEqual({archived:true,retained_unarmed:true,same_pre:true});
      }
-     expect(armedCallbacks).toBe(1);
-    },async()=>{finalize.resolve();finish.resolve();},async()=>{await controlledPolicyWait(ownership.poison).run(async()=>{callback.mockRestore();},async()=>{errors.mockRestore();});});
+     expect(armedCallbacks).toBe(1);expect(nativeSave.snapshot().complete).toBe(true);
+    },async()=>{finalize.resolve();finish.resolve();},async()=>{await controlledPolicyWait(ownership.poison).run(async()=>{callback.mockRestore();},async()=>{errors.mockRestore();if(!diagnostics)throw Error('Owned Catalogue error diagnostic required');diagnostics.nativeSave(nativeSave.snapshot());});});
    };
    if(counterexample)await owned().fixture.withFreshFloorCounterexample(exercise);else await exercise();
    expect(await money(f.b.tenantId)).toEqual(financial);expect((await event(app(),f.ctx,'policy.after-catalogue-first-floor')).chain_seq).toBe(1);

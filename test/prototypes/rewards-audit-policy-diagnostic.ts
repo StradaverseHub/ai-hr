@@ -1,5 +1,6 @@
 /** Test-only observations. No messages, SQL, parameters, stack or authority output. */
 import {rewardPolicyNativeGuards} from './rewards-audit-policy-native-guards';
+import type {RewardPolicyNativeSaveSnapshot} from './rewards-audit-policy-native-save-observation';
 const phases=['tenant-callback','agent-guard','bank-actor','bank-interval','bank-source','bank-metadata-parse','bank-stored-parse','bank-test-pre','catalogue-test-pre','catalogue-lock','catalogue-source','catalogue-confirm','catalogue-native-save','catalogue-metadata-parse','catalogue-stored-parse']as const;
 export type RewardPolicyCallbackPhase=typeof phases[number];
 type Phase=RewardPolicyCallbackPhase;
@@ -7,7 +8,7 @@ type CallbackObservation=Readonly<{kind:'callback-refused';phase:Phase;sqlstate:
 const steps=['writer-entered','writer-stamped','writer-insert-submitted','receipt-finalize-submitted']as const;
 export type RewardPolicySourceStep=typeof steps[number];
 export type RewardPolicyWaitObservation=Readonly<{kind:'wait-unavailable';waitingPresent:boolean;holderPresent:boolean;waitingActive:boolean;waitingOnLock:boolean;ownedBlocking:boolean;waitingFloorWrite:boolean;waitingHistoryLock:boolean;waitingStatementOlderThanWindow:boolean}>;
-type Observation=CallbackObservation|RewardPolicyWaitObservation|Readonly<{kind:'callback-returned';phase:Phase}>|Readonly<{kind:'source-callback-step';phase:RewardPolicySourceStep}>;
+type Observation=Readonly<{kind:'native-save-classification';phase:'catalogue-native-save';sqlstate:string|null;nativeGuard?:typeof rewardPolicyNativeGuards[number]['code']}>|CallbackObservation|RewardPolicyWaitObservation|Readonly<{kind:'callback-returned';phase:Phase}>|Readonly<{kind:'source-callback-step';phase:RewardPolicySourceStep}>;
 function sqlstate(error:unknown):string|null{
  const seen=new Set<unknown>();let current=error;
  for(let depth=0;depth<4&&current!==null&&typeof current==='object'&&!seen.has(current);depth++){
@@ -50,6 +51,13 @@ export function rewardsPolicyDiagnostics(){
    try{const value=work();returned(phase);return value;}catch(error){refused(phase,error);throw error;}
   },
   async drain(){while(pending.size)await Promise.all([...pending]);},
+  nativeSave(snapshot:RewardPolicyNativeSaveSnapshot){
+   if(!snapshot.complete)overflow=true;
+   for(const row of snapshot.observations){
+    if(row.sqlstate!==null&&(typeof row.sqlstate!=='string'||!/^[0-9A-Z]{5}$/.test(row.sqlstate))||row.nativeGuard!==undefined&&!rewardPolicyNativeGuards.some(guard=>guard.code===row.nativeGuard&&guard.sqlstates.some(code=>code===row.sqlstate))){overflow=true;continue;}
+    add({kind:'native-save-classification',phase:'catalogue-native-save',sqlstate:row.sqlstate,...(row.nativeGuard?{nativeGuard:row.nativeGuard}:{})});
+   }
+  },
   step(phase:RewardPolicySourceStep){
    if(!steps.includes(phase))throw Error('Closed source observation step required');add({kind:'source-callback-step',phase});
   },
