@@ -1,0 +1,13 @@
+{
+  "kind": "WHOLE_PARENT_ABSENCE_FOR_ADDED_SOURCE_ONLY_STAGE_NOT_ADMISSION",
+  "base": "c5e36cb03095527ba1fb6a0e8fc2bf54080f2c46",
+  "files": {},
+  "addedPaths": [
+    ".github/ci/diagnostics/classifier-witness-profile.mjs",
+    ".github/ci/diagnostics/classifier-witness-graph.mjs",
+    "test/gate-db-classifier-independent-graph.test.ts",
+    "docs/qualification/classifier-witness-source-replay-stage1-20261108.md",
+    "docs/qualification/classifier-witness-source-replay-stage1-inverse-20261108.json",
+    "docs/qualification/classifier-witness-source-replay-stage1-source-20261108.json"
+  ]
+}
