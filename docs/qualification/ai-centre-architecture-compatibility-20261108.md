@@ -64,3 +64,10 @@ implemented here. Assistant read lock upgrades and RR/RO presentation adoption
 remain separate work. Generated AI manifests remain stale on the composite;
 no approval is renewed and real provider use remains unapproved. All six-stream
 browser/load/staging gates and the production hold remain in force.
+
+The isolated correction child of4e0629b62467a3e0e4b793ecf2f2de9cfeac6113
+additionally requires the whole-pending-batch refusal's exact final3500 private
+context predecessor message with SQLSTATE55000 on the stock driver's native
+DrizzleQueryError.cause. An earlier migration's55000 cannot satisfy that oracle.
+All runtime SQL, journal entries, cases and existing
+assertions remain intact; this stronger native course is still UNRUN.

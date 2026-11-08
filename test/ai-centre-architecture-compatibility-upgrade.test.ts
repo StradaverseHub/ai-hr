@@ -121,7 +121,8 @@ it('upgrades populated709 atomically, preserves real native owners/wrappers and 
   await storage.client.unsafe(oldContext.definition.replace('AS $function$','AS $function$\n-- genuine unknown installed private owner'));
   report.phase='whole-batch-rollback';save();
   const drifted=await beforeCatalogue();
-  await expect(migrate(migration.db,{migrationsFolder:directory})).rejects.toMatchObject({code:'55000'});
+  await expect(migrate(migration.db,{migrationsFolder:directory})).rejects.toMatchObject({cause:{code:'55000',
+   message:'Unexpected AI Centre compatibility predecessor: app._ai_control_context_before_centre(text,boolean)'}});
   expect(await ledger()).toEqual(originalLedger);expect(await beforeCatalogue()).toEqual(drifted);expect(await facts()).toEqual(originalFacts);
   expect((await storage.client`select to_regprocedure(${helper}) as helper,to_regclass('public.notification_event_processing') as queue`)[0]).toEqual({helper:null,queue:null});
   await storage.client.unsafe(oldContext.definition);
