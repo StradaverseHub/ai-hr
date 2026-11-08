@@ -1,5 +1,12 @@
 /** Actual app LOGIN/RLS and borrowed native RRRO controls; no mocked data or providers. */
 import {randomUUID} from 'node:crypto';
+import {readFileSync,writeFileSync,mkdirSync,realpathSync,lstatSync,existsSync,renameSync} from 'node:fs';
+import {join,resolve} from 'node:path';
+import {employeeChoiceBenchmarkOwner} from './performance/employee-choice-benchmark-owner';
+import {employeeChoicePrototypeCarriers} from './performance/employee-choice-prototype-carriers';
+import {employeeChoiceReadFrontier} from './performance/employee-choice-sql-frontier';
+import {exactAsciiEmployeeChoiceOwner,type ExactAsciiInstallation,type ExactAsciiOwnership} from './performance/employee-choice-exact-ascii-owner-factory';
+import {employeeChoicePrototypeSignature} from './performance/employee-choice-native-purpose-owner-factory';
 import {employeeChoiceBenchmarkLifetime} from './performance/employee-choice-benchmark-lifetime';
 import {preserveDiagnosticFailure} from './performance/employee-choice-native-purpose-session';
 import {sql,type SQL} from 'drizzle-orm';
@@ -10,35 +17,77 @@ import * as prototype from './performance/employee-choice-exact-ascii-reader';
 import {nativeEmployeeChoiceQuery} from './performance/employee-choice-native-purpose-reader';
 import * as legacy from './performance/employee-choice-native-purpose-reader';
 import {exactAsciiPrototypeRuntimeEvidence,closeExactAsciiPrototypeRuntime} from './performance/employee-choice-exact-ascii-runtime';
-import {installExactAsciiEmployeeChoicePrototype as installEmployeeChoiceNativePrototype} from './performance/employee-choice-exact-ascii-owner';
 import {createAssignmentAuthorityFixture,assertAssignmentAuthority} from './performance/employee-choice-assignment-authority';
 import {pgSqlState} from '../lib/db-error';
 import {adminCtx,closeAll,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
-let installation:Awaited<ReturnType<typeof installEmployeeChoiceNativePrototype>>|undefined,b:Base,started=false;
-const realWithTenant=database.withTenant,lifetime=employeeChoiceBenchmarkLifetime(closeAll,()=>{});
+const file='test/employee-choice-exact-ascii-purpose.test.ts',selection:unknown=JSON.parse(process.env.AIHR_FOCUSED_TESTS??'null');
+if(process.env.GITHUB_ACTIONS!=='true'||process.env.CI!=='true'||process.env.RUNNER_ENVIRONMENT!=='github-hosted'||process.env.RUNNER_OS!=='Linux'||process.env.GITHUB_JOB!=='selected-tests'||process.env.GITHUB_REPOSITORY!=='StradaverseHub/ai-hr'||process.env.GITHUB_WORKFLOW!=='alpha-focused-checks'||process.env.GITHUB_EVENT_NAME!=='workflow_dispatch'||process.env.GITHUB_RUN_ATTEMPT!=='1'||!(/^[1-9][0-9]{0,19}(?![\s\S])/).test(process.env.GITHUB_RUN_ID??'')||!(/^[0-9a-f]{40}(?![\s\S])/).test(process.env.AIHR_CI_HEAD??'')||!(/^[0-9a-f]{40}(?![\s\S])/).test(process.env.AIHR_CI_CONTROL_HEAD??'')||!Array.isArray(selection)||selection.length!==1||selection[0]!==file)throw Error('Exact sole owned ASCII purpose qualification required; normal CI registration pending');
+let installation:ExactAsciiInstallation|undefined,b:Base,started=false;
+let ownedPools:ReturnType<typeof employeeChoiceBenchmarkOwner>|undefined,metadata:ReturnType<typeof employeeChoicePrototypeCarriers>|undefined;
+const custodies=new Set<ExactAsciiOwnership>();
+const realWithTenant=database.withTenant,lifetime=employeeChoiceBenchmarkLifetime(async()=>{const results=await Promise.allSettled([ownedPools?.stop(),metadata?.stop()]);const errors=results.filter(value=>value.status==='rejected');if(errors.length)throw new AggregateError(errors,'Owned ASCII purpose work stop refused');},()=>{});
 function bounded(context:TestContext,name:string,work:()=>Promise<void>){
  const abort=()=>lifetime.stop('case-aborted');context.signal.addEventListener('abort',abort,{once:true});if(context.signal.aborted)abort();
  const pending=lifetime.run(name,work);context.onTestFinished(async()=>{try{await pending.catch(()=>{});await lifetime.drain();}finally{context.signal.removeEventListener('abort',abort);}});return pending;
 }
 function nativeIt(name:string,work:()=>Promise<void>,timeout=30000){it(name,context=>bounded(context,name,async()=>{
  const spy=vi.spyOn(database,'withTenant').mockImplementation(<T>(ctx:database.SessionContext,run:(tx:database.Tx)=>Promise<T>,options?:Parameters<typeof database.withTenant>[2])=>{
-  lifetime.active();return realWithTenant(ctx,async tx=>{lifetime.active();await tx.execute(sql`set local statement_timeout='20s'`);await tx.execute(sql`set local lock_timeout='300ms'`);return run(tx);},options?.readOnlySnapshot?{...options,readSignal:lifetime.signal}:options);
+  lifetime.active();if(!ownedPools)throw Error('Owned ASCII application carrier missing');return ownedPools.watchWork(realWithTenant(ctx,tx=>ownedPools!.ownWork(async()=>{lifetime.active();await tx.execute(sql`set local statement_timeout='20s'`);await tx.execute(sql`set local lock_timeout='300ms'`);return run(employeeChoiceReadFrontier(tx,()=>lifetime.active()));}),options?.readOnlySnapshot?{...options,readSignal:lifetime.signal}:options));
  });
  await preserveDiagnosticFailure(work,async()=>{spy.mockRestore();});
 }),timeout);}
 it('constructs the guarded unchanged-grant native experiment under an owned300s lifetime',context=>{
- started=true;lifetime.start();return bounded(context,'construction',async()=>{
-  try{expect(exactAsciiPrototypeRuntimeEvidence().status).toBe('uninitialized');await migrateTestDb();lifetime.active();installation=await installEmployeeChoiceNativePrototype();}
-  catch(error){lifetime.stop('setup-failed');throw error;}
+ started=true;const startNs=process.hrtime.bigint();lifetime.start(Number(startNs)/1e6);return bounded(context,'construction',async()=>{
+  try{
+   const base=resolve(process.env.AIHR_FOCUSED_EVIDENCE_DIR!);expect(realpathSync(base)).toBe(base);expect(lstatSync(base).uid).toBe(process.getuid!());
+   const output=join(base,'employee-choice-exact-ascii-purpose');mkdirSync(output,{mode:0o700});
+   const clock={version:1,run:process.env.GITHUB_RUN_ID,attempt:process.env.GITHUB_RUN_ATTEMPT,startNs:String(startNs)};
+   writeFileSync(join(output,'benchmark-clock.pending'),JSON.stringify(clock),{flag:'wx',mode:0o600});renameSync(join(output,'benchmark-clock.pending'),join(output,'benchmark-clock.json'));
+   const ack=join(output,'benchmark-clock-ack.json'),waiting=performance.now();
+   while(!existsSync(ack)){if(performance.now()-waiting>3000)throw Error('External ASCII purpose full-envelope admission missing');await new Promise(resolve=>setTimeout(resolve,20));}expect(JSON.parse(readFileSync(ack,'utf8'))).toEqual(clock);
+   ownedPools=employeeChoiceBenchmarkOwner(lifetime.signal,()=>{},()=>lifetime.active());metadata=employeeChoicePrototypeCarriers(lifetime.signal,()=>lifetime.active());
+   expect(exactAsciiPrototypeRuntimeEvidence().status).toBe('uninitialized');await migrateTestDb();lifetime.active();await metadata.identity();
+   const native=exactAsciiEmployeeChoiceOwner(metadata.getQuery,metadata.getPhase);
+   // Expected actual rollback controls settle before another install. No close
+   // failure or cause-chain SQLSTATE is consumed as a successful refusal.
+   for(const target of ['original','candidate']as const){
+    const sentinel=Error('Fixed ASCII '+target+' preCOMMIT rollback'),owned:{value?:ExactAsciiOwnership}={},phases:string[]=[];
+    await expect(native.install((value,phase)=>{owned.value=value;custodies.add(value);phases.push(phase);if(phase===target)throw sentinel;})).rejects.toBe(sentinel);
+    expect(phases).toEqual(target==='original'?['original']:['original','candidate']);if(!owned.value)throw Error('PreCOMMIT ASCII custody missing');await owned.value.remove();
+    expect((await metadata.getQuery()`select to_regprocedure(${employeeChoicePrototypeSignature})as present`)[0].present).toBeNull();
+   }
+   const delivery=Error('Fixed ASCII lost return AFTER actual COMMIT');
+   await expect((async()=>{installation=await native.install(value=>{custodies.add(value);});throw delivery;})()).rejects.toBe(delivery);
+   if(!installation)throw Error('Actual committed ASCII result unavailable');await installation.unchanged();
+   // Only fixture metadata is altered. Unknown state must remain present and
+   // cannot authorize guessed restoration/drop through the retained witness.
+   const installed=installation,last=[...custodies].at(-1);if(!last)throw Error('Committed ASCII custody missing');
+   const detached=last.witness();detached.original.identity.prosrc='fixed foreign report mutation';expect(last.witness().original.identity.prosrc).not.toBe(detached.original.identity.prosrc);await installed.unchanged();
+   await metadata.getQuery().unsafe('alter function '+employeeChoicePrototypeSignature+' set jit=on');
+   try{await expect(last.remove()).rejects.toThrow();expect((await metadata.getQuery()`select to_regprocedure(${employeeChoicePrototypeSignature})is not null as present`)[0].present).toBe(true);}
+   finally{await metadata.getQuery().unsafe('alter function '+employeeChoicePrototypeSignature+' set jit=off');}await installed.unchanged();
+   const body=installed.installed.identity.prosrc;if(typeof body!=='string'||installed.installed.definition.split(body).length!==2)throw Error('Exact owned candidate body boundary required');
+   await metadata.getQuery().unsafe(installed.installed.definition.replace(body,body+'\n-- fixed hostile native body\n'));
+   try{await expect(last.remove()).rejects.toThrow();expect((await metadata.getQuery()`select to_regprocedure(${employeeChoicePrototypeSignature})is not null as present`)[0].present).toBe(true);}
+   finally{await metadata.getQuery().unsafe(installed.installed.definition);}await installed.unchanged();
+   expect(exactAsciiPrototypeRuntimeEvidence().status).toBe('uninitialized');
+  }catch(error){lifetime.stop('setup-failed');throw error;}
  });
 },300000);
 beforeEach(context=>{
- if(!started)return;lifetime.active();if(!installation)throw Error('Unknown exact ASCII construction; successor refused');
+ if(!started)return;lifetime.active();if(!installation||!ownedPools)throw Error('Unknown exact ASCII construction; successor refused');ownedPools.installCarrier();
  return bounded(context,'fixture-reset',async()=>{await resetDb();lifetime.active();b=await seedBase();});
 });
-afterAll(()=>lifetime.finish(async()=>{await preserveDiagnosticFailure(async()=>{await installation?.remove();},async()=>{
- await preserveDiagnosticFailure(async()=>{closeExactAsciiPrototypeRuntime();},closeAll);
-});}));
+afterAll(()=>lifetime.finish(async()=>{
+ const errors:unknown[]=[],finish=async(work:()=>Promise<unknown>)=>{try{await work();return true;}catch(error){errors.push(error);return false;}};
+ const deadline=Number(process.hrtime.bigint())/1e6+Math.min(26000,Math.max(0,900000-lifetime.snapshot().elapsedMs));
+ const setupReady=await finish(async()=>{if(!ownedPools)throw Error('Owned setup unavailable');await ownedPools.beginCleanup(deadline);});
+ const metadataReady=await finish(async()=>{if(!metadata)throw Error('Owned metadata unavailable');await metadata.beginCleanup(deadline);});
+ if(setupReady&&metadataReady){for(const value of [...custodies].reverse())await finish(()=>value.remove());}
+ else errors.push(Error('Global native cleanup handoff refused; semantic restoration not admitted'));
+ await finish(async()=>{closeExactAsciiPrototypeRuntime();});await finish(async()=>metadata?.close());await finish(closeAll);await finish(async()=>ownedPools?.close());
+ if(errors.length)throw new AggregateError(errors,'Owned ASCII purpose restoration and settlement refused');
+}));
 const stable=({contextId:_contextId,...page}:Awaited<ReturnType<typeof current.readEmployeeChoices>>)=>page;
 const actor=()=>({...adminCtx(b),grants:[{role:'hr_admin',companyId:null}]});
 const prepared=(limit=25,offset=0)=>({filters:{query:'',companyId:'',departmentId:'',businessUnitId:'',status:''},offset,limit,labelMode:'names' as const,q:''});
