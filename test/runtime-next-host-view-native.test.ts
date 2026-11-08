@@ -30,7 +30,7 @@ it('proves privileged cache overlays and bounded owned stop with actual systemd2
  expect(report.privilegedHookView.sourceRefusals).toEqual(['foreign-source','link-source','same-path-inode-replaced']);
  expect(report.hostPlaceholderOwnership).toEqual(Array(3).fill({uid:0,mode:0o755}));
  expect(report.sourceSha256).toEqual(Object.fromEntries([['probe.py','deploy/admission/test_next_host_view_native.py'],['next_profile.py','deploy/admission/next_profile.py'],['runtime_inventory.py','.github/ci/runtime_inventory.py'],['next_preparation.py','deploy/admission/test_next_native.py'],['controller.py','deploy/admission/controller.py']].map(([name,path])=>[name,createHash('sha256').update(readFileSync(path)).digest('hex')])));
- expect(report.admissionHandoff).toEqual({kind:'ACTUAL_SAME_PID_EXEC_JOURNAL_AVAILABILITY_NOT_ADMISSION',state:'observed',
+ expect(report.admissionHandoff).toEqual({kind:'ACTUAL_SAME_PID_EXEC_JOURNAL_AVAILABILITY_NOT_ADMISSION',state:'observed',refusalCode:0,
   beforePairVerified:true,afterPairVerified:true,samePidObserved:true,exactDistinctArgvObserved:true,actualSharedEmitterTransportVerified:true,
   fullControllerAdmissionVerified:false,nextApplicationVerified:false,releaseEligible:false});
  expect(report.resourceTopology.admissionHandoff).toEqual(report.admissionHandoff);

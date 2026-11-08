@@ -1,11 +1,11 @@
 {
   "kind": "EXACT_SOURCE_CENSUS_NOT_EXECUTED_CASE_EVENTS",
-  "base": "db93cee9427302d4d05642f77c12ac07a16d133b",
-  "sourceRef": "codex/next-host-history-controller-rewind-20261109",
+  "base": "615274a2556686946610c66ccd1422506338946c",
+  "sourceRef": "codex/next-host-handoff-refusal-20261109",
   "focusedFiles": 10,
   "focusedWrappers": 14,
-  "underlying": 311,
-  "python": 263,
+  "underlying": 323,
+  "python": 275,
   "nodeTap": 45,
   "directVm": 3,
   "pythonOrder": "standard unittest prefix test (NOT test_), class-name then method-name sort; no per-case event claim before actual Actions",
@@ -1147,6 +1147,66 @@
         },
         {
           "class": "AdmitTimingModels",
+          "method": "test_handoff_refusal_01_real_pair_is_code_zero_and_never_admission",
+          "line": 378
+        },
+        {
+          "class": "AdmitTimingModels",
+          "method": "test_handoff_refusal_02_preflight_code_one_precedes_any_read",
+          "line": 383
+        },
+        {
+          "class": "AdmitTimingModels",
+          "method": "test_handoff_refusal_03_read_code_two_does_not_clear_mandatory_settlement",
+          "line": 394
+        },
+        {
+          "class": "AdmitTimingModels",
+          "method": "test_handoff_refusal_04_nonzero_status_code_three_precedes_bad_raw",
+          "line": 406
+        },
+        {
+          "class": "AdmitTimingModels",
+          "method": "test_handoff_refusal_05_input_and_line_codes_four_five_preserve_bounds",
+          "line": 410
+        },
+        {
+          "class": "AdmitTimingModels",
+          "method": "test_handoff_refusal_06_json_code_six_does_not_reflect_private_rows",
+          "line": 419
+        },
+        {
+          "class": "AdmitTimingModels",
+          "method": "test_handoff_refusal_07_origin_argv_pid_codes_seven_eight_nine_short_circuit",
+          "line": 425
+        },
+        {
+          "class": "AdmitTimingModels",
+          "method": "test_handoff_refusal_08_pair_codes_ten_eleven_keep_cached_metadata_untrusted",
+          "line": 438
+        },
+        {
+          "class": "AdmitTimingModels",
+          "method": "test_handoff_refusal_09_codec_codes_twelve_thirteen_keep_before_order",
+          "line": 450
+        },
+        {
+          "class": "AdmitTimingModels",
+          "method": "test_handoff_refusal_10_shape_codes_fourteen_fifteen_keep_before_order",
+          "line": 458
+        },
+        {
+          "class": "AdmitTimingModels",
+          "method": "test_handoff_refusal_11_same_pid_clock_codes_sixteen_seventeen_are_ordered",
+          "line": 465
+        },
+        {
+          "class": "AdmitTimingModels",
+          "method": "test_handoff_refusal_12_unexpected_invalid_code_privacy_and_exact_size",
+          "line": 477
+        },
+        {
+          "class": "AdmitTimingModels",
           "method": "test_host_clock_reverse_truncated_duplicate_or_missing_pairs_reject",
           "line": 256
         },
@@ -1231,7 +1291,7 @@
           "line": 342
         }
       ],
-      "count": 34
+      "count": 46
     },
     {
       "wrapper": "test/runtime-next-prepackage-diagnostic.test.ts",
@@ -1589,5 +1649,11 @@
         ".github/ci/runtime_inventory.py": "b4207c2e82ee07692f4fd3814b2d5ab7f5d86a9b7471139c2ed56e4f2e86563d"
       }
     }
-  }
+  },
+  "handoffRefusalAddedPureMethods": 12,
+  "executedLocally": false,
+  "affectedFocusedFiles": 7,
+  "affectedOuterWrappers": 11,
+  "affectedPythonCases": 203,
+  "affectedUnderlyingCases": 251
 }

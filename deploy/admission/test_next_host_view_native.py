@@ -394,65 +394,95 @@ def host_manager_snapshot(N, preparation, ledger, ordinal):
 
 
 
-def unavailable_admission_handoff():
+class _HandoffRefusal(AssertionError):
+    """One closed source category; never private native data or exception text."""
+    def __init__(self, code):
+        require(type(code) is int and 1 <= code <= 18, 'Closed handoff refusal code required')
+        self.code = code
+        super().__init__('Closed handoff observation refused')
+
+
+def _handoff_require(value, code):
+    if not value:
+        raise _HandoffRefusal(code)
+
+
+def unavailable_admission_handoff(refusal_code=18):
+    require(type(refusal_code) is int and 1 <= refusal_code <= 18, 'Closed handoff refusal code required')
     return {'kind': 'ACTUAL_SAME_PID_EXEC_JOURNAL_AVAILABILITY_NOT_ADMISSION', 'state': 'unavailable',
         'beforePairVerified': False, 'afterPairVerified': False, 'samePidObserved': False,
         'exactDistinctArgvObserved': False, 'actualSharedEmitterTransportVerified': False,
-        'fullControllerAdmissionVerified': False, 'nextApplicationVerified': False, 'releaseEligible': False}
+        'fullControllerAdmissionVerified': False, 'nextApplicationVerified': False, 'releaseEligible': False,
+        'refusalCode': refusal_code}
 
 
 def parse_host_admission_handoff(raw, invocation, python_exe, preparation):
     """HOST-only native origin predicates; never a full Next authority route."""
-    require(type(raw) is bytes and len(raw) <= 131072 and re.fullmatch(r'[a-f0-9]{32}', invocation)
-            and type(python_exe) is str and python_exe.startswith('/usr/bin/'), 'Closed handoff input required')
+    _handoff_require(type(raw) is bytes and len(raw) <= 131072 and type(invocation) is str
+            and re.fullmatch(r'[a-f0-9]{32}', invocation)
+            and type(python_exe) is str and python_exe.startswith('/usr/bin/'), 4)
     lines, messages, pids = raw.splitlines(), {'before': [], 'after': []}, {'before': [], 'after': []}
-    require(0 < len(lines) < 64, 'Handoff journal unavailable or possibly truncated')
+    _handoff_require(0 < len(lines) < 64, 5)
     commands = {prefix + ' -I -B ' + str(ROOT / 'probe.py') + ' ' + mode: group
                 for prefix in ('/usr/bin/python3', python_exe)
                 for mode, group in (('hook-pre', 'before'), ('hook-pre-handoff', 'after'))}
     for line in lines:
-        row = json.loads(line, object_pairs_hook=preparation.admission_unique_fields)
+        try:
+            row = json.loads(line, object_pairs_hook=preparation.admission_unique_fields)
+        except ValueError:
+            raise _HandoffRefusal(6) from None
         message = row.get('MESSAGE') if type(row) is dict else None
         if type(message) is not str or not message.startswith(preparation.ADMISSION_PHASE_PREFIX):
             continue
-        require(row.get('_UID') == '0' and row.get('_EXE') == python_exe
+        _handoff_require(row.get('_UID') == '0' and row.get('_EXE') == python_exe
                 and row.get('_SYSTEMD_UNIT') == UNIT and row.get('_SYSTEMD_INVOCATION_ID') == invocation
-                and row.get('_TRANSPORT') == 'stdout' and '_LINE_BREAK' not in row
-                and type(row.get('_CMDLINE')) is str and row['_CMDLINE'] in commands
-                and type(row.get('_PID')) is str and re.fullmatch(r'[1-9][0-9]{0,9}', row['_PID'])
-                and int(row['_PID']) <= 2147483647, 'Handoff exact native origin unavailable')
+                and row.get('_TRANSPORT') == 'stdout' and '_LINE_BREAK' not in row, 7)
+        _handoff_require(type(row.get('_CMDLINE')) is str and row['_CMDLINE'] in commands, 8)
+        _handoff_require(type(row.get('_PID')) is str and re.fullmatch(r'[1-9][0-9]{0,9}', row['_PID'])
+                and int(row['_PID']) <= 2147483647, 9)
         group = commands[row['_CMDLINE']]
         messages[group].append(message)
         pids[group].append(row['_PID'])
     parsed = {}
     for group in ('before', 'after'):
-        require(len(messages[group]) == len(pids[group]) == 2 and len(set(pids[group])) == 1,
-                'Handoff complete distinct argv pairs unavailable')
-        parsed[group] = preparation.parse_admission_phase_messages(messages[group], len(lines))
+        # Keep the existing interleaved order, not the numerical code order.
+        _handoff_require(len(messages[group]) == len(pids[group]) == 2 and len(set(pids[group])) == 1,
+                10 if group == 'before' else 11)
+        try:
+            parsed[group] = preparation.parse_admission_phase_messages(messages[group], len(lines))
+        except ValueError:
+            raise _HandoffRefusal(12 if group == 'before' else 13) from None
         rows = parsed[group]['events']
-        require([row['p'] for row in rows] == [0, 0] and [row['e'] for row in rows] == ['enter', 'return']
+        _handoff_require([row['p'] for row in rows] == [0, 0] and [row['e'] for row in rows] == ['enter', 'return']
                 and not parsed[group]['activeStageCodes'] and parsed[group]['traceComplete'] is False,
-                'Handoff is only a component codec pair')
-    require(pids['before'][0] == pids['after'][0]
-            and parsed['before']['events'][-1]['t'] <= parsed['after']['events'][0]['t'],
-            'Handoff same PID or clock order unavailable')
+                14 if group == 'before' else 15)
+    _handoff_require(pids['before'][0] == pids['after'][0], 16)
+    _handoff_require(parsed['before']['events'][-1]['t'] <= parsed['after']['events'][0]['t'], 17)
     result = unavailable_admission_handoff()
     result.update(state='observed', beforePairVerified=True, afterPairVerified=True, samePidObserved=True,
-        exactDistinctArgvObserved=True, actualSharedEmitterTransportVerified=True)
+        exactDistinctArgvObserved=True, actualSharedEmitterTransportVerified=True, refusalCode=0)
     return result
 
 
 def host_admission_handoff(preparation, invocation):
     """Called inside existing resource custody + live invocation before/after."""
     try:
-        python_exe = str(pathlib.Path('/usr/bin/python3').resolve(strict=True))
-        secure(pathlib.Path(python_exe), 0)
-        deadline = min(DEADLINE, time.monotonic() + limit(.5))
-        code, raw = preparation.runtime_diagnostic_read(['/usr/bin/journalctl', '--system', '--no-pager', '--quiet',
-            '--output=json', '--output-fields=_UID,_EXE,_CMDLINE,_PID,_SYSTEMD_UNIT,_SYSTEMD_INVOCATION_ID,_TRANSPORT,_LINE_BREAK,MESSAGE',
-            '--lines=64', '_SYSTEMD_UNIT=' + UNIT, '_SYSTEMD_INVOCATION_ID=' + invocation], deadline)
-        require(code == 0, 'Handoff bounded native journal read refused')
+        try:
+            python_exe = str(pathlib.Path('/usr/bin/python3').resolve(strict=True))
+            secure(pathlib.Path(python_exe), 0)
+            deadline = min(DEADLINE, time.monotonic() + limit(.5))
+        except BaseException:
+            raise _HandoffRefusal(1) from None
+        try:
+            code, raw = preparation.runtime_diagnostic_read(['/usr/bin/journalctl', '--system', '--no-pager', '--quiet',
+                '--output=json', '--output-fields=_UID,_EXE,_CMDLINE,_PID,_SYSTEMD_UNIT,_SYSTEMD_INVOCATION_ID,_TRANSPORT,_LINE_BREAK,MESSAGE',
+                '--lines=64', '_SYSTEMD_UNIT=' + UNIT, '_SYSTEMD_INVOCATION_ID=' + invocation], deadline)
+        except BaseException:
+            raise _HandoffRefusal(2) from None
+        _handoff_require(code == 0, 3)
         return parse_host_admission_handoff(raw, invocation, python_exe, preparation)
+    except _HandoffRefusal as error:
+        return unavailable_admission_handoff(error.code)
     except BaseException:
         return unavailable_admission_handoff()
 

@@ -263,7 +263,7 @@ class AdmitTimingModels(unittest.TestCase):
         for error in failures:
             with patch.object(H,'secure'),patch.object(H,'limit',return_value=.5),patch.object(F,'runtime_diagnostic_read',side_effect=error) as read:
                 value=H.host_admission_handoff(F,'a'*32)
-            self.assertEqual(value,H.unavailable_admission_handoff());self.assertEqual(read.call_count,1);self.assertNotIn('fictional-secret',json.dumps(value))
+            self.assertEqual(value,H.unavailable_admission_handoff(2));self.assertEqual(read.call_count,1);self.assertNotIn('fictional-secret',json.dumps(value))
 
     def test_actual_prestart_is_one_fixed_same_pid_exec_with_observer_closed_first(self):
         value=observer();stream=value.stream;calls=[]
@@ -351,5 +351,148 @@ class AdmitTimingModels(unittest.TestCase):
         path='deploy/admission/test_next_host_view_native.py';old=base64.b64decode(inverse['files'][path]['originalBase64']).decode()
         self.assertEqual(function(old,'hook'),function((ROOT/path).read_text(),'hook'))
         for path,digest in inverse['unchangedOwners'].items():self.assertEqual(hashlib.sha256((ROOT/path).read_bytes()).hexdigest(),digest)
+
+
+    def _read_handoff_result(self, data=None, status=0, invocation='a'*32, error=None):
+        with patch.object(H.pathlib.Path,'resolve',return_value=pathlib.Path('/usr/bin/python3.12')), \
+                patch.object(H,'secure'),patch.object(H,'limit',return_value=.5), \
+                patch.object(H.time,'monotonic',return_value=100),patch.object(H,'DEADLINE',200), \
+                patch.object(F,'runtime_diagnostic_read',return_value=(status,raw(host_rows()) if data is None else data),side_effect=error) as read:
+            value=H.host_admission_handoff(F,invocation)
+        read.assert_called_once_with(['/usr/bin/journalctl','--system','--no-pager','--quiet','--output=json',
+            '--output-fields=_UID,_EXE,_CMDLINE,_PID,_SYSTEMD_UNIT,_SYSTEMD_INVOCATION_ID,_TRANSPORT,_LINE_BREAK,MESSAGE',
+            '--lines=64','_SYSTEMD_UNIT='+H.UNIT,'_SYSTEMD_INVOCATION_ID='+invocation],100.5)
+        return value
+
+    def _assert_handoff_result(self, value, code):
+        positive=code==0
+        self.assertEqual(value,{'kind':'ACTUAL_SAME_PID_EXEC_JOURNAL_AVAILABILITY_NOT_ADMISSION',
+            'state':'observed' if positive else 'unavailable','beforePairVerified':positive,'afterPairVerified':positive,
+            'samePidObserved':positive,'exactDistinctArgvObserved':positive,'actualSharedEmitterTransportVerified':positive,
+            'fullControllerAdmissionVerified':False,'nextApplicationVerified':False,'releaseEligible':False,'refusalCode':code})
+        self.assertIs(type(value['refusalCode']),int)
+        for name in ('beforePairVerified','afterPairVerified','samePidObserved','exactDistinctArgvObserved',
+                'actualSharedEmitterTransportVerified','fullControllerAdmissionVerified','nextApplicationVerified','releaseEligible'):
+            self.assertIs(type(value[name]),bool)
+
+    def test_handoff_refusal_01_real_pair_is_code_zero_and_never_admission(self):
+        self._assert_handoff_result(self._read_handoff_result(),0)
+        # Unrelated non-packet rows stay ignorable under the original line cap.
+        self._assert_handoff_result(self._read_handoff_result(raw([{'MESSAGE':'fictional unrelated log'}]+host_rows())),0)
+
+    def test_handoff_refusal_02_preflight_code_one_precedes_any_read(self):
+        for target in ('resolve','secure','limit'):
+            patches={'resolve':patch.object(H.pathlib.Path,'resolve',side_effect=OSError('fictional-private-path')),
+                'secure':patch.object(H,'secure',side_effect=AssertionError('fictional-private-owner')),
+                'limit':patch.object(H,'limit',side_effect=AssertionError('fictional-private-deadline'))}
+            with self.subTest(target=target),patch.object(F,'runtime_diagnostic_read') as read, \
+                    patch.object(H.pathlib.Path,'resolve',return_value=pathlib.Path('/usr/bin/python3.12')), \
+                    patch.object(H,'secure'),patch.object(H,'limit',return_value=.5),patches[target]:
+                value=H.host_admission_handoff(F,'a'*32)
+            read.assert_not_called();self._assert_handoff_result(value,1)
+
+    def test_handoff_refusal_03_read_code_two_does_not_clear_mandatory_settlement(self):
+        for error in (TimeoutError('fictional-private-timeout'),RuntimeError('fictional-private-settlement'),KeyboardInterrupt('fictional-private-async')):
+            def refused(*_args):
+                F.report['diagnosticChildrenSettled']=False
+                raise error
+            with self.subTest(error=type(error).__name__),patch.object(F,'report',{}):
+                self._assert_handoff_result(self._read_handoff_result(error=refused),2)
+                self.assertIs(F.report['diagnosticChildrenSettled'],False)
+        source=pathlib.Path(H.__file__).read_text()
+        final=source.index("report['admissionHandoffTransportSettled'] = not")
+        self.assertLess(final,source.index("errors.append(RuntimeError('Component diagnostic transport settlement unavailable'))",final))
+
+    def test_handoff_refusal_04_nonzero_status_code_three_precedes_bad_raw(self):
+        for status in (-1,1,127):
+            with self.subTest(status=status):self._assert_handoff_result(self._read_handoff_result(b'fictional-private-invalid-json',status),3)
+
+    def test_handoff_refusal_05_input_and_line_codes_four_five_preserve_bounds(self):
+        for data in ('fictional-private-string',b'x'*131073):
+            with self.subTest(kind=type(data).__name__):self._assert_handoff_result(self._read_handoff_result(data),4)
+        for invocation in ('','not-an-invocation'):
+            self._assert_handoff_result(self._read_handoff_result(b'bad-json',invocation=invocation),4)
+        for data in (b'',b'\n'*64,raw(host_rows()+[{}]*60)):
+            self._assert_handoff_result(self._read_handoff_result(data),5)
+        self._assert_handoff_result(self._read_handoff_result(raw(host_rows()+[{}]*59)),0)
+
+    def test_handoff_refusal_06_json_code_six_does_not_reflect_private_rows(self):
+        duplicate=b'{"MESSAGE":"fictional-private-row","MESSAGE":"fictional-private-duplicate"}\n'
+        for data in (b'fictional-private-malformed\n',b'\xff\n',duplicate,duplicate+raw(host_rows())):
+            value=self._read_handoff_result(data);self._assert_handoff_result(value,6)
+            self.assertNotIn('fictional-private',json.dumps(value))
+
+    def test_handoff_refusal_07_origin_argv_pid_codes_seven_eight_nine_short_circuit(self):
+        changes=[(7,key,value) for key,value in [('_UID','1001'),('_EXE','/bin/fictional-private'),
+            ('_SYSTEMD_UNIT','fictional-private.service'),('_SYSTEMD_INVOCATION_ID','b'*32),('_TRANSPORT','journal'),('_LINE_BREAK','eof')]]
+        changes += [(8,'_CMDLINE',None),(8,'_CMDLINE','fictional-private-command')]
+        changes += [(9,'_PID',value) for value in (None,'0','02345','2147483648','12345678901','fictional-private-pid')]
+        for code,key,value in changes:
+            rows=host_rows();rows[0][key]=value
+            with self.subTest(code=code,key=key):self._assert_handoff_result(self._read_handoff_result(raw(rows)),code)
+        rows=host_rows();rows[0].update(_UID='1001',_CMDLINE='fictional-private-command',_PID='0')
+        self._assert_handoff_result(self._read_handoff_result(raw(rows)),7)
+        rows[0]['_UID']='0';self._assert_handoff_result(self._read_handoff_result(raw(rows)),8)
+        rows[0]['_CMDLINE']=host_rows()[0]['_CMDLINE'];self._assert_handoff_result(self._read_handoff_result(raw(rows)),9)
+
+    def test_handoff_refusal_08_pair_codes_ten_eleven_keep_cached_metadata_untrusted(self):
+        for rows,code in ((host_rows()[2:],10),(host_rows()[:2],11),(host_rows()+host_rows(),10)):
+            self._assert_handoff_result(self._read_handoff_result(raw(rows)),code)
+        for command in ('hook-pre','hook-pre-handoff'):
+            rows=host_rows()
+            for row in rows:row['_CMDLINE']='/usr/bin/python3 -I -B '+str(H.ROOT/'probe.py')+' '+command
+            self._assert_handoff_result(self._read_handoff_result(raw(rows)),10)
+        rows=host_rows();rows[1]['_PID']='2346'
+        self._assert_handoff_result(self._read_handoff_result(raw(rows)),10)
+        rows=host_rows();rows[3]['_PID']='2346'
+        self._assert_handoff_result(self._read_handoff_result(raw(rows)),11)
+
+    def test_handoff_refusal_09_codec_codes_twelve_thirteen_keep_before_order(self):
+        for index,code in ((0,12),(2,13)):
+            rows=host_rows();rows[index]['MESSAGE']=F.ADMISSION_PHASE_PREFIX+'fictional-private-malformed'
+            self._assert_handoff_result(self._read_handoff_result(raw(rows)),code)
+        rows=host_rows()[:2];rows[0]['MESSAGE']=F.ADMISSION_PHASE_PREFIX+'fictional-private-malformed'
+        # Before decoder refusal precedes the later missing after pair.
+        self._assert_handoff_result(self._read_handoff_result(raw(rows)),12)
+
+    def test_handoff_refusal_10_shape_codes_fourteen_fifteen_keep_before_order(self):
+        for index,code in ((1,14),(3,15)):
+            rows=host_rows();row=json.loads(rows[index]['MESSAGE'][len(F.ADMISSION_PHASE_PREFIX):]);row['e']='raised'
+            rows[index]['MESSAGE']=F.ADMISSION_PHASE_PREFIX+json.dumps(row,separators=(',',':'))
+            self._assert_handoff_result(self._read_handoff_result(raw(rows)),code)
+            if index==1:self._assert_handoff_result(self._read_handoff_result(raw(rows[:2])),14)
+
+    def test_handoff_refusal_11_same_pid_clock_codes_sixteen_seventeen_are_ordered(self):
+        rows=host_rows();rows[2]['MESSAGE']=pair(1)[0];rows[3]['MESSAGE']=pair(1)[1]
+        self._assert_handoff_result(self._read_handoff_result(raw(rows)),17)
+        for row in rows[2:]:row['_PID']='2346'
+        self._assert_handoff_result(self._read_handoff_result(raw(rows)),16)
+        rows=host_rows()
+        for row in rows[2:]:row['_PID']='2346'
+        self._assert_handoff_result(self._read_handoff_result(raw(rows)),16)
+        # The existing non-strict clock relation permits a shared boundary.
+        rows=host_rows();rows[2]['MESSAGE']=pair(11)[0];rows[3]['MESSAGE']=pair(11)[1]
+        self._assert_handoff_result(self._read_handoff_result(raw(rows)),0)
+
+    def test_handoff_refusal_12_unexpected_invalid_code_privacy_and_exact_size(self):
+        for error in (KeyError('fictional-private-unknown'),KeyboardInterrupt('fictional-private-async')):
+            with patch.object(H,'parse_host_admission_handoff',side_effect=error):
+                self._assert_handoff_result(self._read_handoff_result(),18)
+        for code in (True,False,None,'1',0,-1,19,1.0):
+            for make in (H.unavailable_admission_handoff,H._HandoffRefusal):
+                with self.subTest(code=code,make=make.__name__),self.assertRaises(AssertionError):make(code)
+        baseline={'kind':'ACTUAL_SAME_PID_EXEC_JOURNAL_AVAILABILITY_NOT_ADMISSION','state':'unavailable',
+            'beforePairVerified':False,'afterPairVerified':False,'samePidObserved':False,'exactDistinctArgvObserved':False,
+            'actualSharedEmitterTransportVerified':False,'fullControllerAdmissionVerified':False,'nextApplicationVerified':False,'releaseEligible':False}
+        self.assertEqual(len(json.dumps(baseline,separators=(',',':')).encode()),340)
+        self.assertEqual(len(json.dumps(baseline).encode()),359)
+        for code in range(1,19):
+            value=H.unavailable_admission_handoff(code);self._assert_handoff_result(value,code)
+            self.assertEqual(len(json.dumps(value,separators=(',',':')).encode()),356+(code>=10))
+            self.assertEqual(len(json.dumps(value).encode()),377+(code>=10))
+            self.assertNotIn('fictional-private',json.dumps(value))
+        worst=H.unavailable_admission_handoff(18)
+        self.assertEqual(2*(len(json.dumps(worst,separators=(',',':')).encode())-340),34)
+        self.assertEqual(2*(len(json.dumps(worst).encode())-359),38)
 
 if __name__=='__main__':unittest.main()
