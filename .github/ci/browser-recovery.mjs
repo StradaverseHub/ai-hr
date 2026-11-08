@@ -76,13 +76,13 @@ export async function verifyBrowserRecoveredCi({candidatePath,runId,baseline,bro
  const source=await collectRecoveryEvidence(runId,dir,{reuse,prefetchDirectory:process.env.AIHR_CI_PREFETCH_DIR||undefined});
  assert(isDeepStrictEqual(originalMetadata,facts(source)),'Original metadata changed during collection');
  const plan=planAt(candidatePath,controller,baseline),freshPlan=planAt(candidatePath,browserProducerController,baseline);
- const assessment=assessResumeSource({...source,expectedPlan:plan,expected:{candidate,controller,baseline,runId}});
+ const assessment=assessResumeSource({...source,expectedPlan:plan,expected:{candidate,controller,baseline,runId}},candidatePath);
  const fresh=await collectRecoveryEvidence(browserRunId,join(dir,'browser-'+browserRunId),{reuse});assert(isDeepStrictEqual(browserMetadata,facts(fresh)),'Browser metadata changed during collection');
  const packet=fresh.parsed.get('diagnostic-complete-image-browser-firefox'),binding=fresh.parsed.get('browser-recovery-runtime-firefox');
  assert(binding?.size===1&&binding.has('image-binding.json'),'Exact runtime binding packet required');
  assert(packet?.has('unit-browser-firefox.json')&&[...packet.keys()].every(n=>/^(unit-browser-firefox|health-before-browser-firefox|browser-firefox-batch-\d+)\.json$/.test(n)),'Unexpected Firefox packet member');
  const reports=plan.units.map(u=>source.parsed.get('unit-'+u.id)?.get(`unit-${u.id}.json`));
- const recovery=verifyBrowserRecovery({plan,freshPlan,assessment,run:source.run,jobs:source.jobs,reports,fresh:{...fresh,producer,binding:binding.get('image-binding.json'),report:packet.get('unit-browser-firefox.json')},verificationController,verificationDiagnostic,producerDiagnostic,reviewedController,lockSha256:createHash('sha256').update(readFileSync(join(candidatePath,'pnpm-lock.yaml'))).digest('hex')});
+ const recovery=verifyBrowserRecovery({plan,freshPlan,assessment,run:source.run,jobs:source.jobs,reports,fresh:{...fresh,producer,binding:binding.get('image-binding.json'),report:packet.get('unit-browser-firefox.json')},verificationController,verificationDiagnostic,producerDiagnostic,reviewedController,lockSha256:createHash('sha256').update(readFileSync(join(candidatePath,'pnpm-lock.yaml'))).digest('hex')},candidatePath);
  const since=new Date(Date.parse(source.run.created_at)-86400000).toISOString(),rows=pages('actions/runs?created='+encodeURIComponent('>='+since),'workflow_runs').filter(r=>[WORKFLOW_ID,BROWSER_WORKFLOW_ID].includes(r.workflow_id)||r.path==='.github/workflows/alpha-focused-checks.yml');
  for(const status of ['queued','in_progress','waiting','requested','pending'])rows.push(...pages('actions/runs?status='+status,'workflow_runs'));
  recovery.history=validateBrowserHistory({source,rows,candidateBranch,browserRunId,auxiliaryRunIds});

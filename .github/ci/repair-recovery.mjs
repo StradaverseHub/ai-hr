@@ -95,7 +95,7 @@ export async function verifyRepairedCi({candidatePath,originalPath,runId,baselin
  assert(isDeepStrictEqual(originalMetadata,facts(source)),'Original metadata changed during download');
  const archived=source.parsed.get('gate-plan')?.get('ci-plan.json');assert(archived,'Original full plan missing');
  const sourcePlan=planAt(originalPath,{controller,baseline,runtime:archived.runtime}),expected={candidate:original,controller,baseline,runId};
- const assessment=assessResumeSource({...source,expectedPlan:sourcePlan,expected});
+ const assessment=assessResumeSource({...source,expectedPlan:sourcePlan,expected},originalPath);
  for(const name of ['migrations','controller-tests','deployment-hold'])assert(source.jobs.find(j=>j.name===name)?.conclusion==='success','Unsupported failed prerequisite: '+name);
  assert(source.jobs.find(j=>j.name==='verify')?.conclusion==='failure','Original dependent verifier must remain failed');
  const plan=planAt(candidatePath,{controller,baseline,runtime:archived.runtime}),impactContext=reconstructRepairImpact({cwd:candidatePath,base:original,head:candidate,controller:verificationController});
@@ -123,7 +123,7 @@ export async function verifyRepairedCi({candidatePath,originalPath,runId,baselin
  const p={candidate,controller,baseline,runId:buildRunId,controllerBranch:built.run.head_branch},build=await sourceBoundBuild({candidatePath,dir,p,jobs:built.jobs});
  const history=latestHistory({source,focusedWorkflowId:workflow.id,candidateBranch,focusedRunIds,buildRunId});
  const reports=sourcePlan.units.map(u=>source.parsed.get('unit-'+u.id)?.get(`unit-${u.id}.json`));
- const recovery=verifyRepairRecovery({sourcePlan,plan,assessment,sourceRun:source.run,reports,focused,impactContext,classifierHash:hash(readFileSync(join(candidatePath,'scripts/gate-db-classify.ts'),'utf8')),verificationController,verificationDiagnostic,reviewedController,buildRun:built.run,build,history});
+ const recovery=verifyRepairRecovery({sourcePlan,plan,assessment,sourceRun:source.run,reports,focused,impactContext,classifierHash:hash(readFileSync(join(candidatePath,'scripts/gate-db-classify.ts'),'utf8')),verificationController,verificationDiagnostic,reviewedController,buildRun:built.run,build,history},originalPath);
  recovery.delta=delta;recovery.originalArtifacts=source.artifacts.map(a=>({id:a.id,name:a.name,digest:a.digest}));recovery.originalJobConclusions=source.jobs.map(j=>({id:j.id,name:j.name,conclusion:j.conclusion}));
  assert(cleanHead(candidatePath)===candidate&&cleanHead(originalPath)===original&&cleanHead(controllerRoot)===verificationController,'Source/controller changed while verifying');
  assert([baseline,candidate].includes(api('git/ref/heads/alpha').object?.sha),'Alpha moved away from exact staging baseline/candidate');

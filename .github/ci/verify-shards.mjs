@@ -10,7 +10,7 @@ import {verifyEmployeeLifecycleUnit} from './employee-lifecycle-witness.mjs';
 import {collectEmployeeLifecycleWitness} from './employee-lifecycle-api.mjs';
 import {readUnitReportDirectories} from './unit-report-directories.mjs';
 import {validateSingletonBinding} from './singleton-protocol.mjs';
-export function verifyUnitReport(plan, report, witness) {
+export function verifyUnitReport(plan, report, witness, candidateRoot) {
   const unit = plan.units.find(u => u.id === report?.id);
   if (!unit) throw Error('Unknown CI unit');
   let tests = 0;
@@ -19,7 +19,7 @@ export function verifyUnitReport(plan, report, witness) {
   if(plan.pdfTooling&&unit.kind!=='browser')validatePdfSetupProof(plan,unit,report.pdfToolSetup);
   if(unit.kind==='db')validatePostgresEvidence(report.databaseTerminalEvidence,plan.execution);
   if(unit.singleton){
-    validateSingletonBinding(report.singleton,plan,unit,witness);
+    validateSingletonBinding(report.singleton,plan,unit,witness,candidateRoot);
     if(unit.kind==='db')validatePostgresEvidence(report.singleton.prerequisites.database,plan.execution);
     if(report.batches.length!==1)throw Error('Singleton must retain one complete invocation');
   }else if(report.singleton!==undefined)throw Error('Unplanned singleton proof');
@@ -48,12 +48,12 @@ export function verifyUnitReport(plan, report, witness) {
   if(!employee&&report.employeeLifecycle!==undefined)throw Error('Unplanned employee lifecycle proof');
   return {id: unit.id, tests, files: files.slice(),...(employee?{employeeLifecycle:employee}:{})};
 }
-export function verifyReports(plan, reports, witness) {
+export function verifyReports(plan, reports, witness, candidateRoot) {
   if (!Array.isArray(reports) || reports.length !== plan.units.length) throw Error('Expected exactly one report per CI unit');
   const seen = new Set(),employees=[]; let tests = 0;
   for (const report of reports) {
     if (seen.has(report?.id)) throw Error('Unknown or duplicated CI unit');
-    const verified = verifyUnitReport(plan, report, witness); seen.add(verified.id); tests += verified.tests;if(verified.employeeLifecycle)employees.push(verified.employeeLifecycle);
+    const verified = verifyUnitReport(plan, report, witness, candidateRoot); seen.add(verified.id); tests += verified.tests;if(verified.employeeLifecycle)employees.push(verified.employeeLifecycle);
   }
   return {schemaVersion: 1, policyVersion: plan.policyVersion, sha: plan.sha, controller: plan.controller, migrationBase: plan.migrationBase, result: 'PASS', tier: 'ci', suiteFiles: plan.suite.length,
     browserFiles: plan.units.filter(u => u.kind === 'browser').reduce((n, u) => n + u.files.length, 0),
@@ -62,10 +62,10 @@ export function verifyReports(plan, reports, witness) {
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const [dir, output] = process.argv.slice(2);
   if (!dir || !output) throw Error('Usage: verify-shards.mjs <report-directory> <receipt-output>');
-  const plan=createPlan();
+  const candidateRoot=resolve(process.cwd()),plan=createPlan(candidateRoot);
   const reports=[...readUnitReportDirectories(resolve(dir),plan.units,{mode:'full'})].map(entry=>entry.report);
   const employeeUnits=await collectEmployeeLifecycleWitness(plan,plan.units);
-  const receipt = verifyReports(plan, reports, {runId:process.env.GITHUB_RUN_ID,attempt:process.env.GITHUB_RUN_ATTEMPT,employeeUnits});
+  const receipt = verifyReports(plan, reports, {runId:process.env.GITHUB_RUN_ID,attempt:process.env.GITHUB_RUN_ATTEMPT,employeeUnits},candidateRoot);
   writeFileSync(output, JSON.stringify(receipt, null, 2) + '\n', {flag: 'wx'});
   console.log(`CI complete: ${receipt.suiteFiles} suite files, ${receipt.browserFiles} browser files, ${receipt.tests} passing assertions.`);
 }

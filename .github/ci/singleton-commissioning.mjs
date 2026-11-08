@@ -24,7 +24,7 @@ export function selectCommissioning(plan,ids){
  for(const id of ids){const matches=plan.units.filter(u=>u.id===id);if(matches.length!==1||!matches[0].singleton)throw Error('Commissioning requires exact registered complete singleton units');assertSingletonUnit(matches[0]);}
  return {schemaVersion:1,kind:'SELECTED_PROFILE_COMMISSIONING_ONLY',candidate:plan.sha,controller:plan.controller,baseline:plan.migrationBase,fingerprint:plan.fingerprint,selected:[...ids].sort(),omitted:plan.units.filter(u=>!ids.includes(u.id)).map(u=>u.id).sort(),completeSuite:false,releaseAuthorized:false};
 }
-export function summarizeCommissioning(plan,selection,entries,witness){
+export function summarizeCommissioning(plan,selection,entries,witness,candidateRoot){
  if(!/^[1-9][0-9]*$/.test(String(witness?.runId))||String(witness?.attempt)!=='1')throw Error('Invalid commissioning witness');
  if(!isDeepStrictEqual(selection,selectCommissioning(plan,selection?.selected)))throw Error('Commissioning selection differs from the complete source plan');
  if(typeof entries?.[Symbol.iterator]!=='function')throw Error('Invalid commissioning reports');
@@ -34,8 +34,10 @@ export function summarizeCommissioning(plan,selection,entries,witness){
   if(typeof bytes!=='string'||!isDeepStrictEqual(JSON.parse(bytes),report))throw Error('Commissioning raw report bytes differ from parsed evidence');
   if(!selection.selected.includes(report?.id)||seen.has(report.id))throw Error('Unknown or duplicated commissioning report');
   seen.add(report.id);
+  const unit=plan.units.find(unit=>unit.id===report.id);
+  if(unit.singleton&&unit.kind==='db'&&report.singleton!==undefined&&(typeof candidateRoot!=='string'||candidateRoot.length===0))throw Error('Explicit candidate root required for present database singleton report');
   let verified,error;
-  try{verified=verifyUnitReport(plan,report,witness);}catch(e){error=String(e.message).slice(0,500);}
+  try{verified=verifyUnitReport(plan,report,witness,candidateRoot);}catch(e){error=String(e.message).slice(0,500);}
   outcomes.push({id:report.id,reportHash:hash(bytes),outcome:verified?'verified':'refused',...(verified?{tests:verified.tests}:{error})});
  }
  for(const id of selection.selected)if(!seen.has(id))outcomes.push({id,outcome:'missing'});
@@ -57,13 +59,13 @@ if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url)){
   appendFileSync(process.env.GITHUB_OUTPUT,'test_matrix='+JSON.stringify({include:ordinary.map(id=>employeeLifecycleMatrixRow(plan.units.find(u=>u.id===id)))})+'\n'+'native_matrix='+JSON.stringify({unit:native})+'\n'+'has_tests='+String(ordinary.length>0)+'\n'+'has_native='+String(native.length>0)+'\n');
  }else if(mode==='summary'){
   if(!ids)throw Error('Commissioning summary requires explicit intent');
-  const plan=createPlan(),selection=JSON.parse(readBounded(args[0],1024*1024));
+  const candidateRoot=resolve(process.cwd()),plan=createPlan(candidateRoot),selection=JSON.parse(readBounded(args[0],1024*1024));
   if(!isDeepStrictEqual(selection,selectCommissioning(plan,ids)))throw Error('Frozen commissioning intent drift');
   const selectedUnits=selection.selected.map(id=>plan.units.find(unit=>unit.id===id));
   const employeeUnits=await collectEmployeeLifecycleWitness(plan,plan.units.filter(unit=>selection.selected.includes(unit.id)));
   // Each artifact retains its OWN directory; raw native bytes never merge.
   const entries=readUnitReportDirectories(resolve(args[1]),selectedUnits,{mode:'commissioning'});
-  const summary=summarizeCommissioning(plan,selection,entries,{runId:process.env.GITHUB_RUN_ID,attempt:process.env.GITHUB_RUN_ATTEMPT,employeeUnits});
+  const summary=summarizeCommissioning(plan,selection,entries,{runId:process.env.GITHUB_RUN_ID,attempt:process.env.GITHUB_RUN_ATTEMPT,employeeUnits},candidateRoot);
   writeFileSync(args[2],JSON.stringify(summary,null,2)+'\n',{flag:'wx'});
   appendFileSync(process.env.GITHUB_STEP_SUMMARY,`Selected native profiles: ${summary.outcomes.filter(o=>o.outcome==='verified').length}/${summary.selected.length} verified; ${summary.omitted.length} units omitted. Incomplete development evidence; release authorization is false.\n`);
   if(!summary.selectedProfilesVerified)process.exitCode=1;

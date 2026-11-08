@@ -1,10 +1,48 @@
 import test from 'node:test';
+import {mkdtempSync as modelMkdtemp,mkdirSync as modelMkdir,readdirSync as modelReaddir,writeFileSync as modelWrite,rmSync as modelRemove} from 'node:fs';
+import {tmpdir as modelTmpdir} from 'node:os';
+
+import {realpathSync,readFileSync as readModelSource} from 'node:fs';
+import {fileURLToPath as modelFileURLToPath} from 'node:url';
+import {createHash as modelCreateHash} from 'node:crypto';
+import {buildUnits as buildDatabaseModelUnits} from './manifest.mjs';
+import {singletonSources} from './singleton-protocol.mjs';
+import {join as modelJoin} from 'node:path';
 import assert from 'node:assert/strict';
 import {assessRepairCoverage} from './resume-repair.mjs';
-import {fixture, put} from './resume-test-fixtures.mjs';
+import {fixture, put, remove} from './resume-test-fixtures.mjs';
 import {hash, buildUnits} from './manifest.mjs';
-function repair() {
-  const sourceEvidence = fixture(), candidate = 'd'.repeat(40);
+
+
+function differentDatabaseRoot(){
+ const root=realpathSync(modelMkdtemp(modelJoin(modelTmpdir(),'shared-prerequisite-other-source-'))),journal='db/migrations/meta/_journal.json';
+ modelMkdir(modelJoin(root,'db/migrations/meta'),{recursive:true});
+ for(const file of modelReaddir(modelJoin(modelRoot,'db/migrations')).filter(file=>file.endsWith('.sql')))modelWrite(modelJoin(root,'db/migrations',file),'-- fictional source input\n');
+ const data=JSON.parse(readModelSource(modelJoin(modelRoot,journal),'utf8'));
+ data.entries.push({...data.entries.at(-1),idx:data.entries.length,tag:'9999_distinct_current_model'});
+ modelWrite(modelJoin(root,journal),JSON.stringify(data));modelWrite(modelJoin(root,'db/migrations/9999_distinct_current_model.sql'),'-- fictional new source input\n');return root;
+}
+// Source-data model only: actual hosted/source authentication belongs to the real adapters.
+const modelRoot=realpathSync(modelFileURLToPath(new URL('../../',import.meta.url)));
+function databaseModel(f,root=modelRoot){
+ const plan=f.expectedPlan,old=plan.units.find(unit=>unit.kind==='db'),oldId=old.id,file='test/notification-worker-lifecycle.test.ts';
+ const browser=plan.units.find(unit=>unit.kind==='browser');assert(browser,'Existing model browser inventory required');
+ const unit=buildDatabaseModelUnits([file],{db:[file],nodb:[]},browser.files)[0],report=f.reports.find(report=>report.id===oldId),runId=f.expected.runId??100;
+ f.expected.runId=runId;plan.suite=[...plan.suite.filter(path=>!old.files.includes(path)),file].sort();plan.units=plan.units.map(row=>row.id===oldId?unit:row);
+ const journal='db/migrations/meta/_journal.json',journalHash=modelCreateHash('sha256').update(readModelSource(modelJoin(root,journal))).digest('hex');
+ plan.singletonSources={[unit.id]:Object.fromEntries(singletonSources(unit,root).map(path=>[path,path===journal?journalHash:'c'.repeat(64)]))};
+ const {fingerprint,...body}=plan;plan.fingerprint=modelCreateHash('sha256').update(JSON.stringify(body)).digest('hex');
+ report.id=unit.id;report.files=unit.files;report.batches[0].result.testResults=[{name:report.cwd+'/'+file,status:'passed',assertionResults:[{status:'passed'}]}];
+ report.batches[0].result.numTotalTests=1;report.batches[0].result.numPassedTests=1;
+ const resource=report.databaseTerminalEvidence;resource.name=`aihr-ci-${runId}-1-${unit.id}`;report.batches[0].databaseEvidence=structuredClone(resource);
+ report.singleton={schemaVersion:1,mode:'full-ci-singleton',candidate:plan.sha,controller:plan.controller,runId:String(runId),attempt:'1',unit:unit.id,fingerprint:plan.fingerprint,file,profile:unit.singleton.profile,sourceHashes:plan.singletonSources[unit.id],evidenceDirectory:'/tmp/model/aihr-ci',prerequisites:{kind:'fresh-job-postgres-cluster',workers:1,database:structuredClone(resource)}};
+ for(const row of f.reports)row.fingerprint=plan.fingerprint;
+ if(f.jobs)f.jobs.find(job=>job.name===`test (${oldId})`).name=`test (${unit.id})`;
+ if(f.archives){remove(f,'unit-'+oldId);put(f,'gate-plan','ci-plan.json',plan);for(const row of f.reports)put(f,'unit-'+row.id,`unit-${row.id}.json`,row);}
+ return f;
+}
+function repair(root) {
+  const sourceEvidence = root?databaseModel(fixture(),root):fixture(), candidate = 'd'.repeat(40);
   const {fingerprint: unused, ...body} = {...structuredClone(sourceEvidence.expectedPlan), sha: candidate};
   const candidatePlan = {...body, fingerprint: hash(body)};
   const impact = {policyVersion: 3, tier: 'impact', risk: 'moderate', changed: ['core/example.ts'], reasons: [],
@@ -37,6 +75,13 @@ test('Unaffected units retain their original SHA/report hash and new candidate b
   assert.equal(result.requiresGitAncestryAndInputRevalidation, true);
   assert.equal(result.requiresFreshGitHubApiAndLatestFailureHistoryValidation, true);
   assert(result.freshPrerequisites.includes('typecheck')); assert(result.freshPrerequisites.includes('build'));
+  const current=differentDatabaseRoot();try{
+   const db=repair(modelRoot),unit=db.sourceEvidence.expectedPlan.units.find(unit=>unit.singleton),fresh=databaseModel(fixture(),current).expectedPlan;
+   const {fingerprint,...body}={...fresh,sha:db.candidate};db.candidatePlan={...body,fingerprint:hash(body)};
+   assert.notDeepEqual(fresh.singletonSources[unit.id],db.sourceEvidence.expectedPlan.singletonSources[unit.id]);
+   assert.throws(()=>assessRepairCoverage(db),/Explicit candidate root/);assert.throws(()=>assessRepairCoverage({...db,sourceCandidateRoot:modelRoot}),/Explicit candidate root/);
+   assert(assessRepairCoverage(db,modelRoot).carry.some(row=>row.id===unit.id));assert(assessRepairCoverage(db,current).fresh.some(row=>row.id===unit.id));
+  }finally{modelRemove(current,{recursive:true,force:true});}
 });
 test('High-risk deployment/database/verification work keeps all coverage fresh', () => {
   const f = repair(); alterImpact(f, plan => {

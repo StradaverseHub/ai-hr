@@ -1,6 +1,8 @@
 /** Infrastructure annotations never remove files or grant release authority. */
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
+import {closeSync,constants,fstatSync,lstatSync,openSync,readSync,readdirSync,realpathSync} from 'node:fs';
+import {isAbsolute,join,resolve} from 'node:path';
 import {validatePostgresEvidence} from './postgres-evidence.mjs';
 import {CI_POLICY} from './policy-version.mjs';
 import {NATIVE_HELPER_SOURCES} from './native-next-helper-sources.mjs';
@@ -643,10 +645,79 @@ const componentSources=Object.freeze({
  * All other sources, including unknown or noncanonical spellings, retain 4 MiB.
  * @param {string} file exact repository-relative source member */
 export function singletonSourceMaximum(file){return file==='messages/ta.json'?8*1024*1024:4*1024*1024;}
-export function singletonSources(unit){
+const commonPrerequisiteSources=Object.freeze([
+ '.github/ci/candidate-environment.mjs','.github/ci/db-scheduling.mjs',
+ '.github/ci/employee-lifecycle-profile.mjs','.github/ci/employee-lifecycle-sources.mjs',
+ '.github/ci/native-next-helper-sources.mjs','.github/ci/native-next-installation.mjs',
+ '.github/ci/policy-version.mjs','.github/ci/postgres-evidence.mjs','.github/ci/rewards-native-sources.mjs',
+ '.github/ci/singleton-protocol.mjs','scripts/test-duration-order.mjs','scripts/test-duration-sequencer.mjs',
+ 'test/db-names.ts','test/helpers/ci-singleton-admission.ts','test/env.ts','vitest.config.ts','vitest.nodb.config.ts',
+ '.github/ci/employee-lifecycle-profile.json','.github/ci/db-duration-hints.json','package.json','pnpm-lock.yaml','tsconfig.json',
+]);
+const databasePrerequisiteSources=Object.freeze([
+ '.github/ci/notification-catalogue-replay.mjs','db/schema.ts','drizzle.config.ts',
+ 'lib/personnel-choice-vocabulary.ts','lib/profile-routing-policy.ts','packs/catalog.ts',
+ 'scripts/lib/discard-premigration.ts','scripts/migrate-with-focused-prerequisites.ts','scripts/seed-catalogs.ts',
+ 'test/global-setup.ts','test/helpers/personnel-draft-discard-ci-role-fixture.ts','test/profile.ts',
+]);
+const canonicalJournal='db/migrations/meta/_journal.json';
+// These are fingerprint inputs, not an extra migration execution list.
+const physicalOnlySql=Object.freeze([
+ 'db/migrations/2301_attendance_workflow_submission_shared_lock.sql',
+ 'db/migrations/3103_access_editor_presentation.sql',
+]);
+function canonicalPrerequisiteFile(candidateRoot,file){
+ const path=join(candidateRoot,file);
+ assert.equal(realpathSync(path),path,'Canonical database source path required');
+ const stat=lstatSync(path);
+ assert(stat.isFile()&&!stat.isSymbolicLink()&&stat.size<=singletonSourceMaximum(file),'Bounded regular database source required');
+ return {path,stat};
+}
+/** Data only: the actual planner/host/release owner has already pinned this
+ * explicit root to plan.sha. No cwd/controller fallback, Git call, cache,
+ * serialized authority object or import-time filesystem observation. */
+function canonicalDatabasePrerequisiteSources(candidateRoot){
+ assert(typeof candidateRoot==='string'&&isAbsolute(candidateRoot)&&resolve(candidateRoot)===candidateRoot,
+  'Explicit canonical candidate root required for DB singleton source binding');
+ assert.equal(realpathSync(candidateRoot),candidateRoot,'Canonical candidate root required');
+ const directory=join(candidateRoot,'db/migrations');
+ assert.equal(realpathSync(directory),directory,'Canonical migration directory required');
+ assert(lstatSync(directory).isDirectory(),'Migration directory required');
+ const {path}=canonicalPrerequisiteFile(candidateRoot,canonicalJournal);
+ const fd=openSync(path,constants.O_RDONLY|constants.O_NOFOLLOW|constants.O_NONBLOCK);
+ let bytes;
+ try{
+  const before=fstatSync(fd);
+  assert(before.isFile()&&before.size>0&&before.size<=singletonSourceMaximum(canonicalJournal),'Bounded canonical journal required');
+  bytes=Buffer.alloc(before.size);
+  let offset=0;
+  while(offset<bytes.length){const count=readSync(fd,bytes,offset,bytes.length-offset,offset);assert(count>0,'Canonical journal truncated');offset+=count;}
+  assert.equal(readSync(fd,Buffer.alloc(1),0,1,offset),0,'Canonical journal grew while reading');
+  const after=fstatSync(fd);
+  assert(before.dev===after.dev&&before.ino===after.ino&&before.size===after.size&&before.mtimeMs===after.mtimeMs&&before.ctimeMs===after.ctimeMs,
+   'Canonical journal changed while reading');
+ }finally{closeSync(fd);}
+ const journal=JSON.parse(bytes.toString('utf8'));
+ assert(journal&&typeof journal==='object'&&!Array.isArray(journal)&&Array.isArray(journal.entries)&&journal.entries.length>0,
+  'Canonical migration journal entries required');
+ const ordered=journal.entries.map(entry=>{
+  assert(entry&&typeof entry==='object'&&!Array.isArray(entry)&&typeof entry.tag==='string'&&/^[A-Za-z0-9_-]{1,180}(?![\s\S])/.test(entry.tag),
+   'Canonical migration tag required');
+  return 'db/migrations/'+entry.tag+'.sql';
+ });
+ assert.equal(new Set(ordered).size,ordered.length,'Duplicate canonical migration tag');
+ assert(physicalOnlySql.every(file=>!ordered.includes(file)),'Fingerprint-only SQL is not a journal migration');
+ const sql=[...ordered,...physicalOnlySql].sort();
+ const physical=readdirSync(directory).filter(name=>name.endsWith('.sql')).map(name=>'db/migrations/'+name).sort();
+ assert.deepEqual(physical,sql,'Canonical journal and physical SQL inputs differ');
+ for(const file of sql)canonicalPrerequisiteFile(candidateRoot,file);
+ return {sources:[canonicalJournal,...sql],journalSha256:createHash('sha256').update(bytes).digest('hex')};
+}
+function singletonSourceInputs(unit,candidateRoot){
  assertSingletonUnit(unit);
- const sources=[unit.files[0],'test/helpers/ci-singleton-admission.ts','.github/ci/singleton-protocol.mjs','.github/ci/policy-version.mjs',
-  'vitest.config.ts','vitest.nodb.config.ts',...(componentSources[unit.files[0]]??[]),...(unit.kind==='db'?['test/db-names.ts','test/global-setup.ts','test/env.ts']:['deploy/admission/test_native.py']),
+ const database=unit.kind==='db'?canonicalDatabasePrerequisiteSources(candidateRoot):null;
+ const sources=[unit.files[0],...commonPrerequisiteSources,...(componentSources[unit.files[0]]??[]),
+  ...(database?[...databasePrerequisiteSources,...database.sources]:['deploy/admission/test_native.py']),
   ...(nativeNextUnit(unit)?[...Object.values(NATIVE_HELPER_SOURCES),'.github/ci/native-next-helper-sources.mjs','.github/ci/native-next-build-packet.mjs',
    '.github/ci/native-next-installation.mjs','.github/ci/native-next-build-inputs.mjs','.github/ci/candidate-environment.mjs','.github/ci/build-artifact.mjs',
    'test/helpers/native-next-fixture.ts','scripts/performance/native-next-boot-browser.mjs',
@@ -654,9 +725,10 @@ export function singletonSources(unit){
    '.github/ci/native-controller-bootstrap.py','.github/ci/native-controller-owner.mjs','.github/ci/prepare-runner.sh',
    '.github/ci/run-unit.mjs','.github/ci/plan.mjs','.github/ci/singleton-profiles.mjs',
    '.github/actions/setup-alpha/action.yml','.github/workflows/alpha-staging.yml',
-   'scripts/migrate-with-focused-prerequisites.ts','scripts/lib/discard-premigration.ts','test/helpers/personnel-draft-discard-ci-role-fixture.ts']:[])].sort();
- return employeeLifecycleFile(unit.files[0])?[...new Set(sources)]:sources;
+   'scripts/migrate-with-focused-prerequisites.ts','scripts/lib/discard-premigration.ts','test/helpers/personnel-draft-discard-ci-role-fixture.ts']:[])];
+ return {sources:[...new Set(sources)].sort(),journalSha256:database?.journalSha256};
 }
+export function singletonSources(unit,candidateRoot){return singletonSourceInputs(unit,candidateRoot).sources;}
 export const protocolHash=value=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const fullSha=value=>typeof value==='string'&&/^[a-f0-9]{40}$/.test(value);
 const digest=value=>typeof value==='string'&&/^[a-f0-9]{64}$/.test(value);
@@ -684,7 +756,7 @@ export function validateNativeBuildPrerequisite(p,expected){
  for(const key of ['archiveSha256','manifestSha256','provenanceSha256'])assert(digest(p[key]));
  assert(/^sha256:[a-f0-9]{64}$/.test(p.artifactDigest));assert(/^[A-Za-z0-9_-]{1,512}$/.test(p.nextBuildId));
 }
-export function validateSingletonBinding(binding,plan,unit,witness){
+export function validateSingletonBinding(binding,plan,unit,witness,candidateRoot){
  const descriptor=assertSingletonUnit(unit);
  assert(binding&&Object.keys(binding).sort().join('|')===['schemaVersion','mode','candidate','controller','runId','attempt','unit','fingerprint','file','profile','sourceHashes','evidenceDirectory','prerequisites'].sort().join('|'),'Closed singleton binding required');
  assert.equal(binding.schemaVersion,1);assert.equal(binding.mode,'full-ci-singleton');
@@ -696,7 +768,10 @@ export function validateSingletonBinding(binding,plan,unit,witness){
  assert(witness&&positive(String(witness.runId))&&String(witness.attempt)==='1','Authenticated first-attempt full-CI context required');
  assert.equal(binding.runId,String(witness.runId));assert.equal(binding.attempt,'1');
  assert.deepEqual(binding.sourceHashes,plan.singletonSources?.[unit.id],'Singleton source binding differs');
- assert.deepEqual(Object.keys(binding.sourceHashes??{}).sort(),singletonSources(unit));
+ const inputs=singletonSourceInputs(unit,candidateRoot);
+ assert.deepEqual(Object.keys(binding.sourceHashes??{}).sort(),inputs.sources);
+ if(unit.kind==='db')assert.equal(plan.singletonSources?.[unit.id]?.[canonicalJournal],inputs.journalSha256,
+  'Canonical journal bytes differ from independently reconstructed candidate plan');
  for(const value of Object.values(binding.sourceHashes))assert(digest(value),'Invalid singleton source hash');
  assert(typeof binding.evidenceDirectory==='string'&&binding.evidenceDirectory.startsWith('/')&&!binding.evidenceDirectory.includes('\0'));
  const p=binding.prerequisites;

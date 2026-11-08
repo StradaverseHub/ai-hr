@@ -1,4 +1,13 @@
 import test from 'node:test';
+import {mkdtempSync as modelMkdtemp,mkdirSync as modelMkdir,readdirSync as modelReaddir,writeFileSync as modelWrite,rmSync as modelRemove} from 'node:fs';
+import {tmpdir as modelTmpdir} from 'node:os';
+
+import {realpathSync,readFileSync as readModelSource} from 'node:fs';
+import {fileURLToPath as modelFileURLToPath} from 'node:url';
+import {createHash as modelCreateHash} from 'node:crypto';
+import {buildUnits as buildDatabaseModelUnits} from './manifest.mjs';
+import {singletonSources} from './singleton-protocol.mjs';
+import {join as modelJoin} from 'node:path';
 import assert from 'node:assert/strict';
 import {spawnSync} from 'node:child_process';
 import {mkdtempSync,rmSync,readFileSync} from 'node:fs';
@@ -11,6 +20,34 @@ import {hash} from './plan.mjs';
 import {buildUnits,requiredEvidence,CI_EXECUTION} from './manifest.mjs';
 import {assessHealth} from './host-health.mjs';
 import {bindStaging,STAGING} from './operator-release.mjs';
+
+
+function differentDatabaseRoot(){
+ const root=realpathSync(modelMkdtemp(modelJoin(modelTmpdir(),'shared-prerequisite-other-source-'))),journal='db/migrations/meta/_journal.json';
+ modelMkdir(modelJoin(root,'db/migrations/meta'),{recursive:true});
+ for(const file of modelReaddir(modelJoin(modelRoot,'db/migrations')).filter(file=>file.endsWith('.sql')))modelWrite(modelJoin(root,'db/migrations',file),'-- fictional source input\n');
+ const data=JSON.parse(readModelSource(modelJoin(modelRoot,journal),'utf8'));
+ data.entries.push({...data.entries.at(-1),idx:data.entries.length,tag:'9999_distinct_current_model'});
+ modelWrite(modelJoin(root,journal),JSON.stringify(data));modelWrite(modelJoin(root,'db/migrations/9999_distinct_current_model.sql'),'-- fictional new source input\n');return root;
+}
+// Source-data model only: actual hosted/source authentication belongs to the real adapters.
+const modelRoot=realpathSync(modelFileURLToPath(new URL('../../',import.meta.url)));
+function databaseModel(f,root=modelRoot){
+ const plan=f.expectedPlan,old=plan.units.find(unit=>unit.kind==='db'),oldId=old.id,file='test/notification-worker-lifecycle.test.ts';
+ const browser=plan.units.find(unit=>unit.kind==='browser');assert(browser,'Existing model browser inventory required');
+ const unit=buildDatabaseModelUnits([file],{db:[file],nodb:[]},browser.files)[0],report=f.reports.find(report=>report.id===oldId),runId=f.expected.runId??100;
+ f.expected.runId=runId;plan.suite=[...plan.suite.filter(path=>!old.files.includes(path)),file].sort();plan.units=plan.units.map(row=>row.id===oldId?unit:row);
+ const journal='db/migrations/meta/_journal.json',journalHash=modelCreateHash('sha256').update(readModelSource(modelJoin(root,journal))).digest('hex');
+ plan.singletonSources={[unit.id]:Object.fromEntries(singletonSources(unit,root).map(path=>[path,path===journal?journalHash:'c'.repeat(64)]))};
+ const {fingerprint,...body}=plan;plan.fingerprint=modelCreateHash('sha256').update(JSON.stringify(body)).digest('hex');
+ report.id=unit.id;report.files=unit.files;report.batches[0].result.testResults=[{name:report.cwd+'/'+file,status:'passed',assertionResults:[{status:'passed'}]}];
+ report.batches[0].result.numTotalTests=1;report.batches[0].result.numPassedTests=1;
+ const resource=report.databaseTerminalEvidence;resource.name=`aihr-ci-${runId}-1-${unit.id}`;report.batches[0].databaseEvidence=structuredClone(resource);
+ report.singleton={schemaVersion:1,mode:'full-ci-singleton',candidate:plan.sha,controller:plan.controller,runId:String(runId),attempt:'1',unit:unit.id,fingerprint:plan.fingerprint,file,profile:unit.singleton.profile,sourceHashes:plan.singletonSources[unit.id],evidenceDirectory:'/tmp/model/aihr-ci',prerequisites:{kind:'fresh-job-postgres-cluster',workers:1,database:structuredClone(resource)}};
+ for(const row of f.reports)row.fingerprint=plan.fingerprint;
+ if(f.jobs)f.jobs.find(job=>job.name===`test (${oldId})`).name=`test (${unit.id})`;
+ return f;
+}
 const candidate='a'.repeat(40),controller='c'.repeat(40),baseline='b'.repeat(40),runId=123,now=Date.now();
 const expected={candidate,controller,baseline,runId,now};
 function run(){return {id:runId,repository:{id:REPOSITORY_ID,full_name:REPOSITORY},head_repository:{id:REPOSITORY_ID},workflow_id:WORKFLOW_ID,path:WORKFLOW_PATH,event:'workflow_dispatch',head_branch:'main',head_sha:controller,status:'completed',conclusion:'success',run_attempt:1,created_at:new Date(now).toISOString()};}
@@ -25,7 +62,11 @@ function proof(){
  const reports=units.map(u=>({schemaVersion:1,sha:candidate,fingerprint:plan.fingerprint,id:u.id,cwd:'/candidate',files:u.files,exitCode:0,...(u.kind==='db'?{databaseTerminalEvidence:databaseEvidence()}:{}),batches:[{exitCode:0,...(u.kind==='db'?{databaseEvidence:databaseEvidence()}:{}),result:{success:true,numFailedTests:0,numFailedTestSuites:0,numTotalTests:u.files.length,numPassedTests:u.files.length,testResults:u.files.map(file=>({name:'/candidate/'+file,status:'passed',assertionResults:[{status:'passed'}]}))}}]}));
  return {plan,reports,receipt:verifyReports(plan,reports),expectedPlan:structuredClone(plan),p:expected};
 }
-test('A complete same-policy witness validates without creating any local full receipt',()=>{assert.equal(validateRun(run(),expected),true);assert.equal(validateJobs(jobs(),proof().expectedPlan),true);assert.equal(validateArtifacts(artifacts(),expected,proof().expectedPlan),true);const v=validateProof(proof());assert.equal(v.tier,'ci');assert.equal(v.tests,11);assert.equal(v.suiteFiles,8);});
+test('A complete same-policy witness validates without creating any local full receipt',()=>{assert.equal(validateRun(run(),expected),true);assert.equal(validateJobs(jobs(),proof().expectedPlan),true);assert.equal(validateArtifacts(artifacts(),expected,proof().expectedPlan),true);const v=validateProof(proof());assert.equal(v.tier,'ci');assert.equal(v.tests,11);assert.equal(v.suiteFiles,8);
+ const p=proof();databaseModel({expectedPlan:p.plan,reports:p.reports,expected:p.p});p.expectedPlan=structuredClone(p.plan);p.receipt=verifyReports(p.plan,p.reports,{runId,attempt:1},modelRoot);
+ assert.equal(validateProof(p,modelRoot).tests,p.receipt.tests);assert.throws(()=>validateProof(p));assert.throws(()=>validateProof({...p,candidateRoot:modelRoot}));
+ const other=differentDatabaseRoot();try{assert.throws(()=>validateProof(p,other),/Canonical journal bytes differ|deep/);}finally{modelRemove(other,{recursive:true,force:true});}
+});
 for(const [name,change] of [
  ['wrong controller',r=>r.head_sha=candidate],['wrong workflow',r=>r.workflow_id=99],['fork',r=>r.head_repository.id=99],['wrong repository',r=>r.repository.id=99],['PR event',r=>r.event='pull_request'],['other controller branch',r=>r.head_branch='feature'],['partial rerun',r=>r.run_attempt=2],['unfinished run',r=>r.status='in_progress'],['failed run',r=>r.conclusion='failure'],['old run',r=>r.created_at='2020-01-01T00:00:00Z']
 ])test('Refuse '+name,()=>{const r=run();change(r);assert.throws(()=>validateRun(r,expected));});

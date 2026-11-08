@@ -53,7 +53,7 @@ function cases(result,files,cwd){
  assert(positive(count)&&result.numTotalTests===count&&result.numPassedTests===count,'Focused assertion totals differ');return found;
 }
 /** All metadata and archives must first be authenticated by the API/byte adapter. */
-export function verifyFocusedRecovery({plan,assessment,run,jobs,reports,focused,classifierHash,verificationController}){
+export function verifyFocusedRecovery({plan,assessment,run,jobs,reports,focused,classifierHash,verificationController},candidateRoot){
  assert(sha(verificationController)&&assessment.sourceRun?.id===run.id&&assessment.sha===plan.sha&&assessment.controller===plan.controller&&assessment.baseline===plan.migrationBase&&assessment.fingerprint===plan.fingerprint,'Recovery source identity differs');
  assert(run.conclusion==='failure'&&run.status==='completed'&&run.run_attempt===1,'Original failed first attempt must remain failed');
  const required=requiredEvidence(plan),failed=new Set(assessment.rerun.map(x=>x.id));
@@ -92,7 +92,7 @@ export function verifyFocusedRecovery({plan,assessment,run,jobs,reports,focused,
  for(const unit of plan.units){
   const report=reports.find(r=>r.id===unit.id);
   if(!failed.has(unit.id)){
-   const result=verifyUnitReport(plan,report,{runId:run.id,attempt:1}),source=assessment.reusable.find(r=>r.id===unit.id);
+   const result=verifyUnitReport(plan,report,{runId:run.id,attempt:1},candidateRoot),source=assessment.reusable.find(r=>r.id===unit.id);
    assert(source?.reportHash===hash(report),'Retained report changed');tests+=result.tests;units.push({id:unit.id,kind:'retained',files:result.files,tests:result.tests,reportHash:hash(report),source:source.source});continue;
   }
   assert(!unit.singleton,'Singleton replacement requires its authenticated full-unit profile; generic focused recovery is not supported');

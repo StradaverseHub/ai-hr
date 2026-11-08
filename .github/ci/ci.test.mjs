@@ -1,15 +1,43 @@
 import {readFileSync} from 'node:fs';
 import test from 'node:test';
+import {realpathSync,readFileSync as readModelSource} from 'node:fs';
+import {fileURLToPath as modelFileURLToPath} from 'node:url';
+import {createHash as modelCreateHash} from 'node:crypto';
+import {buildUnits as buildDatabaseModelUnits} from './manifest.mjs';
+import {singletonSources} from './singleton-protocol.mjs';
+import {fixture as databaseBaseFixture} from './resume-test-fixtures.mjs';
+import {join as modelJoin} from 'node:path';
 import assert from 'node:assert/strict';
 import {verifyReports} from './verify-shards.mjs';
 import {candidateRequest,repository} from './resolve.mjs';
+
+// Source-data model only: actual hosted/source authentication belongs to the real adapters.
+const modelRoot=realpathSync(modelFileURLToPath(new URL('../../',import.meta.url)));
+function databaseModel(f,root=modelRoot){
+ const plan=f.expectedPlan,old=plan.units.find(unit=>unit.kind==='db'),oldId=old.id,file='test/notification-worker-lifecycle.test.ts';
+ const browser=plan.units.find(unit=>unit.kind==='browser');assert(browser,'Existing model browser inventory required');
+ const unit=buildDatabaseModelUnits([file],{db:[file],nodb:[]},browser.files)[0],report=f.reports.find(report=>report.id===oldId),runId=f.expected.runId??100;
+ f.expected.runId=runId;plan.suite=[...plan.suite.filter(path=>!old.files.includes(path)),file].sort();plan.units=plan.units.map(row=>row.id===oldId?unit:row);
+ const journal='db/migrations/meta/_journal.json',journalHash=modelCreateHash('sha256').update(readModelSource(modelJoin(root,journal))).digest('hex');
+ plan.singletonSources={[unit.id]:Object.fromEntries(singletonSources(unit,root).map(path=>[path,path===journal?journalHash:'c'.repeat(64)]))};
+ const {fingerprint,...body}=plan;plan.fingerprint=modelCreateHash('sha256').update(JSON.stringify(body)).digest('hex');
+ report.id=unit.id;report.files=unit.files;report.batches[0].result.testResults=[{name:report.cwd+'/'+file,status:'passed',assertionResults:[{status:'passed'}]}];
+ report.batches[0].result.numTotalTests=1;report.batches[0].result.numPassedTests=1;
+ const resource=report.databaseTerminalEvidence;resource.name=`aihr-ci-${runId}-1-${unit.id}`;report.batches[0].databaseEvidence=structuredClone(resource);
+ report.singleton={schemaVersion:1,mode:'full-ci-singleton',candidate:plan.sha,controller:plan.controller,runId:String(runId),attempt:'1',unit:unit.id,fingerprint:plan.fingerprint,file,profile:unit.singleton.profile,sourceHashes:plan.singletonSources[unit.id],evidenceDirectory:'/tmp/model/aihr-ci',prerequisites:{kind:'fresh-job-postgres-cluster',workers:1,database:structuredClone(resource)}};
+ for(const row of f.reports)row.fingerprint=plan.fingerprint;
+ if(f.jobs)f.jobs.find(job=>job.name===`test (${oldId})`).name=`test (${unit.id})`;
+ return f;
+}
 const sha='a'.repeat(40),base='b'.repeat(40);
 function sample(){
  const plan={sha,controller:'c'.repeat(40),fingerprint:'fixture',suite:['test/example.test.ts'],units:[{id:'nodb-1',files:['test/example.test.ts'],kind:'nodb'}]};
  const report={schemaVersion:1,sha,fingerprint:'fixture',id:'nodb-1',cwd:'/candidate',files:['test/example.test.ts'],exitCode:0,batches:[{exitCode:0,result:{success:true,numFailedTests:0,numFailedTestSuites:0,numTotalTests:1,numPassedTests:1,testResults:[{name:'/candidate/test/example.test.ts',status:'passed',assertionResults:[{status:'passed'}]}]}}]};
  return {plan,report};
 }
-test('Complete execution retains exact candidate and controller identity',()=>{const {plan,report}=sample();const receipt=verifyReports(plan,[report]);assert.equal(receipt.sha,sha);assert.equal(receipt.controller,plan.controller);assert.equal(receipt.tests,1);});
+test('Complete execution retains exact candidate and controller identity',()=>{const {plan,report}=sample();const receipt=verifyReports(plan,[report]);assert.equal(receipt.sha,sha);assert.equal(receipt.controller,plan.controller);assert.equal(receipt.tests,1);
+ const db=databaseModel(databaseBaseFixture());assert.equal(verifyReports(db.expectedPlan,db.reports,{runId:100,attempt:1},modelRoot).tests,5);assert.throws(()=>verifyReports(db.expectedPlan,db.reports,{runId:100,attempt:1}));assert.throws(()=>verifyReports(db.expectedPlan,db.reports.filter(report=>!report.singleton)));
+});
 for(const [name,change] of [
  ['foreign commit',r=>r.sha=base],
  ['missing suite',r=>r.files=[]],
