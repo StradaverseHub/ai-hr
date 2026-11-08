@@ -60,7 +60,7 @@ it('upgrades the exact seven migrations under restricted ownership and removes e
   // confidentiality cases remain the separate unchanged release qualification.
   const snapshot=async()=>({companies:await db`select * from company where tenant_id=${tenant} order by id`,users:await db`select * from app_user where tenant_id=${tenant} order by id`,tenants:await db`select * from tenant where id=${tenant}`});
   const before=await snapshot();expect(before.companies).toHaveLength(1);expect(before.users).toHaveLength(1);expect(before.tenants).toHaveLength(1);
-  const ledger=()=>db`select id::text,hash,created_at::text from drizzle.__drizzle_migrations order by id`;
+  const ledger=()=>db`select id::text,hash,created_at::text from drizzle.__drizzle_migrations order by drizzle.__drizzle_migrations.id`;
   const prefix=await ledger();expect(prefix).toHaveLength(710);
   // Missing owner-transfer privileges reproduce the restricted installation failure and roll back fully.
   await expect(migrate(drizzle(restricted),{migrationsFolder:'db/migrations'})).rejects.toMatchObject({cause:expect.objectContaining({code:'42501',message:expect.stringMatching(/must be able to SET ROLE|must be member of role/)})});
