@@ -74,6 +74,22 @@ rootDir is the actual source root; output/build-info files belong to separate
 owned RUNNER_TEMP directories, never checkout or node_modules. No emitted JS is
 installed or served. Output and input containment/hashes are independently bound.
 
+All native projects share ONE private RUNNER_TEMP emitted tree mirroring the
+actual whole source rootDir. Each project retains its own disk config and unique
+build-info file. A separate outDir per project with the whole source rootDir
+would leave unchanged cross-project relative declaration/JSON imports pointing
+into the wrong output tree. The native shared mirror preserves those paths
+without alias, resolver, import rewrite or copied assets. Only serial fresh
+native compiler processes write it. Precompute exact output ownership from
+native parsed source membership before emission: each implementation and its
+native JS/declaration paths has one owner; any duplicate/conflicting declaration
+or JS writer refuses. A shared JSON context may repeat only for the EXACT same
+original source/hash and native output path/bytes. Retain those repetitions as
+native observations, not synthetic copies. Small actual native fixtures must
+prove cross-project relative declarations plus JSON, and missing/colliding
+output negatives before any full-graph qualification. This layout adds no
+runtime artifact, application install or ordinary compiler authority.
+
 Start cold with no output or build info. Native producer references must finish
 before a dependent process starts. Run a fresh native compiler process per
 project in native dependency order using -p on its composite config; ordinary
