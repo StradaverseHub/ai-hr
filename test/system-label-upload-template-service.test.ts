@@ -33,14 +33,14 @@ describe('Labels template scope and initial state through canonical writers',()=
     expect(await applySystemLabelImport(adminCtx(b),{bytes,token:preview.token})).toMatchObject({imported:1,skipped:0});
     expect((await owner.db.select().from(s.profileOption).where(eq(s.profileOption.value,'PROTECTED_GUIDE_NEW')))[0].isActive).toBe(false);
   });
-  it('preserves Active, Inactive and blank and refuses invalid state for all thirteen status categories',async()=>{
+  it('preserves Active, Inactive and blank and refuses invalid state for all twenty-two status categories',async()=>{
     const categories=LABEL_TEMPLATE_DEFINITIONS.filter(definition=>definition.kind!=='grade_groups').map(definition=>definition.kind);
     const data=Object.fromEntries(categories.map((kind,index)=>[kind,['Active','Inactive','','Not a status'].map((status,row)=>dataRow(kind,`B22_${index}_${row}`,status))]));
     const bytes=book(data),preview=await previewSystemLabelImport(adminCtx(b),bytes);
-    expect(preview.rows.filter(row=>row.outcome==='add')).toHaveLength(39);
-    expect(preview.rows.filter(row=>row.reason==='invalidStatus')).toHaveLength(13);
+    expect(preview.rows.filter(row=>row.outcome==='add')).toHaveLength(66);
+    expect(preview.rows.filter(row=>row.reason==='invalidStatus')).toHaveLength(22);
     expect(preview.rows.filter(row=>row.reason==='invalidStatus').every(row=>row.row===6)).toBe(true);
-    expect(await applySystemLabelImport(adminCtx(b),{bytes,token:preview.token})).toMatchObject({imported:39,skipped:13,updated:0});
+    expect(await applySystemLabelImport(adminCtx(b),{bytes,token:preview.token})).toMatchObject({imported:66,skipped:0,failed:22,updated:0});
     for(const kind of ORGANISATION_LABEL_KINDS){
       const table={department:s.department,position:s.position,cost_center:s.costCenter,business_unit:s.businessUnit}[kind];
       const index=categories.indexOf(kind),code={department:s.department.name,position:s.position.title,cost_center:s.costCenter.code,business_unit:s.businessUnit.code}[kind];
@@ -54,13 +54,13 @@ describe('Labels template scope and initial state through canonical writers',()=
       const [grade]=await owner.db.select().from(s.jobGrade).where(eq(s.jobGrade.code,`B22_${gradeIndex}_${suffix}`));expect(grade.archivedAt!==null).toBe(inactive);
     }
     for(const category of EMPLOYMENT_LABEL_CATEGORIES){
-      const index=categories.indexOf(category),picker=await listProfileOptions(adminCtx(b),category,{activeOnly:true});
+      const index=categories.indexOf(category),picker=await listProfileOptions(adminCtx(b),category,{activeOnly:true,companyId:b.companyId});
       expect(picker.some(row=>row.value===`B22_${index}_0`)).toBe(true);
       expect(picker.some(row=>row.value===`B22_${index}_1`)).toBe(false);
       expect(picker.some(row=>row.value===`B22_${index}_2`)).toBe(true);
     }
     const events=await owner.db.select().from(s.domainEvent).where(sql`${s.domainEvent.eventType} in ('department.created','position.created','cost-center.created','business-unit.created','job-grade.created','profile-option.created')`);
-    expect(events.filter(event=>JSON.stringify(event.payload).includes('B22_'))).toHaveLength(39);
+    expect(events.filter(event=>JSON.stringify(event.payload).includes('B22_'))).toHaveLength(66);
     expect(events.some(event=>(event.payload as {archived?:boolean}).archived===true)).toBe(true);
     expect(events.some(event=>(event.payload as {active?:boolean}).active===false)).toBe(true);
     expect(events.some(event=>(event.payload as {isActive?:boolean}).isActive===false)).toBe(true);

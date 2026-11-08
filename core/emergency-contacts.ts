@@ -193,7 +193,7 @@ export async function validateEmergencyContactInputTx(tx:Tx, personId:string|nul
     const relationship=trimOrNull(input.relationship);
     if(relationship && relationship!==existing?.relationship &&
       !(personId && (await storedRelationships(tx,personId)).includes(relationship)))
-      await assertProfileValueAllowed(tx,'relationship',relationship,null);
+      {const [scope]=await tx.execute<{company:string|null}>(sql`select app.system_label_person_company(${personId}::uuid) as company`);await assertProfileValueAllowed(tx,'relationship',relationship,null,scope?.company??null);}
     patch.relationship=relationship;
   }
   for(const key of ['mobilePhone','homePhone','address','remarks'] as const)
@@ -382,11 +382,13 @@ export async function writeSingleEmergencyContactInTx(
 
   const relationship = p.emergencyContactRelationship;
   if (relationship !== undefined) {
+    const [scope]=await tx.execute<{company:string|null}>(sql`select app.system_label_person_company(${personId}::uuid) as company`);
     await assertProfileValueAllowed(
       tx,
       'relationship',
       trimOrNull(relationship),
       current?.relationship ?? null,
+      scope?.company??null,
     );
   }
 

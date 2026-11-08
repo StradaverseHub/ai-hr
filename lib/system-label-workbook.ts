@@ -5,7 +5,7 @@ import { legacyLabelWorkbookStream } from './system-label-xls';
 import * as XLSX from 'xlsx';
 import { LABEL_IMPORT_DEFINITIONS, LABEL_TEMPLATE_DEFINITIONS, LABEL_TEMPLATE_NOTE, ORGANISATION_LABEL_KINDS, type LabelImportRow, type LabelImportPreviewRow } from './system-label-definition';
 
-export const LABEL_WORKBOOK_GENERATION=2;
+export const LABEL_WORKBOOK_GENERATION=3;
 export const LABEL_WORKBOOK_MAX_BYTES = 5_000_000;
 export const LABEL_WORKBOOK_MAX_ROWS = 500;
 export const LABEL_WORKBOOK_TOTAL_ROWS = 7000;
@@ -18,10 +18,10 @@ export function systemLabelTemplate(references: { companies: string[][]; grades:
   const instructions = [
     ['System Labels — Organisation Labels'],
     ['Keep worksheet names and headers. Enter literal values; formulas are refused. Maximum 500 data rows per sheet, 7000 per workbook, 5 MB.'],
-    ['Company uses the exact company name from Reference (or its ID when names are ambiguous). Company is required for company-linked labels.'],
-    ['Criteria: global or companies. Criteria Companies is the complete selected-company list, separated by semicolons; it may exclude the creation Company. Global requires a group administrator.'],
+    ['Leave Criteria, Criteria Companies and Company all blank for Global (All Companies). Global imports require a group administrator.'],
+    ['Company alone means only that company. Criteria Companies is a semicolon-separated list. If Company is also supplied, it must appear in that list. Explicit global leaves both company fields blank.'],
     ['Import adds new codes only. An existing code in any company in that category is blocked, including archived codes. Edit existing records on the System Labels page.'],
-    ['Division through Category, Grades and Grade Groups are tenant-wide; they have no Company or Criteria column.'],
+    ['The same Global and selected-company rules apply to all 23 categories. Review the resolved assignment before importing.'],
     ['Code is the new identifier. Department Code maps to Name; Position Code maps to Title.'],
     ['Cost Centre and Business Unit Description are required names. Other descriptions and labels are optional.'],
     ['Head Employee Code must belong to the origin company. Blank leaves a new code without a head.'],
@@ -136,19 +136,24 @@ export function readSystemLabelWorkbook(bytes: Buffer, options:{generation?:numb
     const newLayout=!!template&&values[0]?.[0]===LABEL_TEMPLATE_NOTE&&values[0].slice(1).every(value=>!value);
     if(template&&!newLayout)throw new Error(`Headers do not match the template in ${sheet}.`);
     const headerRow=newLayout?1:0,headers=values[headerRow];
-    const columns=newLayout?template!.columns.map(([,field])=>field):definition.columns;
+    const oldColumns=definition.scope==='tenant'?(definition.kind==='grade_groups'?['Name','Grade Codes']:definition.columns.filter(c=>!['Criteria','Criteria Companies','Company'].includes(c))):definition.columns;
+    const oldTemplate=template?.columns.filter(([,field])=>definition.scope==='company'||!['Criteria','Criteria Companies','Company'].includes(field));
+    const oldLayout=newLayout&&JSON.stringify(headers)===JSON.stringify(oldTemplate?.map(([header])=>header));
+    const oldExport=!newLayout&&(JSON.stringify(headers)===JSON.stringify(oldColumns)||JSON.stringify(headers)===JSON.stringify([...oldColumns,'Status']));
+    const columns=newLayout?(oldLayout?oldTemplate!:template!.columns).map(([,field])=>field):oldExport?oldColumns:definition.columns;
     const businessHeaders=newLayout?template!.columns.map(([header])=>header):definition.columns;
     const legacyColumns=definition.columns.map(column=>column==='Criteria'?'Scope':column==='Criteria Companies'?'Shared Companies':column);
     const matches=(columns:readonly string[])=>JSON.stringify(headers)===JSON.stringify(columns)||JSON.stringify(headers)===JSON.stringify([...columns,'Status']);
-    const legacy=!newLayout&&definition.scope==='company' && (options.generation??LABEL_WORKBOOK_GENERATION)===2 && matches(legacyColumns);
-    if (!(newLayout?JSON.stringify(headers)===JSON.stringify(businessHeaders):matches(definition.columns)) && !legacy)throw new Error(`Headers do not match the template in ${sheet}.`);
+    const legacy=!newLayout&&definition.scope==='company' && [2,3].includes(options.generation??LABEL_WORKBOOK_GENERATION) && matches(legacyColumns);
+    if (!(newLayout?JSON.stringify(headers)===JSON.stringify(businessHeaders)||oldLayout:matches(definition.columns)||oldExport) && !legacy)throw new Error(`Headers do not match the template in ${sheet}.`);
     let dataRows=0;
     for (let i = headerRow+1; i < values.length; i++) {
       if (!values[i].some(v => String(v).trim())) continue;
       if (++dataRows>LABEL_WORKBOOK_MAX_ROWS||rows.length>=LABEL_WORKBOOK_TOTAL_ROWS)throw new Error('Worksheet limit: 500 data rows per worksheet and 7000 per workbook. Narrow the selected lists.');
       const fields = Object.fromEntries(columns.map((c, n) => [c, String(values[i][n] ?? '').trim()]));
-      if(!newLayout&&headers[definition.columns.length]==='Status')fields.Status=String(values[i][definition.columns.length]??'').trim();
+      if(!newLayout&&headers[columns.length]==='Status')fields.Status=String(values[i][columns.length]??'').trim();
       if (Object.values(fields).some(v => v.length > 1000)) throw new Error(`A value is too long in ${sheet}, row ${i + 1}.`);
+      if(['Criteria','Criteria Companies','Company'].every(field=>!fields[field]))for(const field of ['Criteria','Criteria Companies','Company'])delete fields[field];
       if(legacy) {
         const scope=fields.Criteria;
         if(scope==='own'||scope==='shared') {
@@ -169,7 +174,7 @@ export function systemLabelErrorWorkbook(rows: LabelImportPreviewRow[]): Uint8Ar
   const wb = XLSX.utils.book_new();
   const data = [
     ['Worksheet', 'Row', 'Code', 'Result', 'Message'],
-    ...rows.filter(r => r.outcome === 'error'||r.outcome === 'skip').map(r => [safe(r.sheet), r.row, safe(r.values.Code??r.values.Name??''), r.outcome, safe(r.message)]),
+    ...rows.filter(r => r.outcome === 'error'||r.outcome === 'skip').map(r => [safe(r.sheet), r.row, safe(r.values.Code||r.values.Name||''), r.outcome, safe(r.message)]),
   ];
   const sheet = XLSX.utils.aoa_to_sheet(data), widths = [24, 8, 38, 12, 88];
   sheet['!cols'] = widths.map(wch => ({ wch }));
@@ -223,9 +228,9 @@ const templateFieldHelp:Record<string,string>={
   Label:'Display label. Job Grade requires a label. For Division through Category, blank uses Code.',
   Description:'Optional detail, except Cost Centres and Business Units require this name.',
   'Head Employee Code':'Optional active employee from the creation company. Enter the employee code, or the exact code — name shown in Sample. This identifies a person, not Yes/No.',
-  Company:'Creation company: exact permitted company name or its ID if the name is ambiguous. This does not automatically include the company in Criteria.',
-  Criteria:'companies or global. Global requires a group administrator and leaves Criteria Companies blank.',
-  'Criteria Companies':'For companies, enter the complete nonempty list of permitted company names or IDs separated by semicolons. Include the creation company only if it should use this code.',
+  Company:'Optional permitted company name or ID. Company alone means that company only. Leave all three company fields blank for Global (All Companies).',
+  Criteria:'Optional companies or global. All three scope fields blank means Global (All Companies), requiring a group administrator. Explicit global leaves both company fields blank.',
+  'Criteria Companies':'Optional semicolon-separated permitted company names or IDs. Company must appear in this list if both are supplied. Companies criteria requires at least one company.',
   Status:'Active or Inactive for new rows only. Blank defaults to Active. Other values are refused. Existing codes never change status through import.',
   Rank:'Whole number. Blank defaults to zero.',
   Name:'Required new Grade Group name. Existing group names are skipped.',
@@ -245,7 +250,7 @@ export async function buildSystemLabelUploadTemplate(p:LabelTemplateData):Promis
     ['Import adds new codes only. Existing codes in this category, for any company, including inactive codes, are skipped. Other valid new rows can still import after preview.'],
     ['Status accepts Active or Inactive where present; blank means Active. Grade Groups has no Status. Import never updates, restores or deletes existing records.'],
     ['Maximum 5 MB, 500 filled data rows per category and 7000 per workbook. Suggestions do not block typing or saving; the application validates your completed file.'],
-    ['Company is creation ownership. Criteria independently controls availability. Division through Category, Job Grade and Grade Groups are tenant-wide shared lists.'],
+    ['Leave Criteria, Criteria Companies and Company all blank for Global (All Companies). Global imports require a group administrator. Company alone means that company only; a company list means those companies only.'],
     ['Sample has up to three permitted current Active rows per category. An (example) row is fictional and appears only when there is no permitted current example.'],
     ['Sample is grey and protected against accidental edits without a password. This is not encryption or a security boundary.'],
     [],['Worksheet','Column','How to complete it'],
@@ -265,7 +270,7 @@ export async function buildSystemLabelUploadTemplate(p:LabelTemplateData):Promis
   for(const definition of LABEL_TEMPLATE_DEFINITIONS){
     const rows=p.samples[definition.kind]??[];
     if(rows.length>3)throw new Error('A Sample category exceeds three examples.');
-    sampleRows.push([], [definition.sheet,...((ORGANISATION_LABEL_KINDS as readonly string[]).includes(definition.kind)?['Company-linked: creation ownership and Criteria are independent.']:['Tenant-wide shared list.'])],definition.columns.map(([header])=>header));
+    sampleRows.push([], [definition.sheet,...((ORGANISATION_LABEL_KINDS as readonly string[]).includes(definition.kind)?['Company-linked labels. Blank scope fields import as Global.']:['Global or selected-company list.'])],definition.columns.map(([header])=>header));
     for(const row of rows.length?rows:[fictionalSample(definition.kind)])sampleRows.push(definition.columns.map(([,field])=>safe(row[field]??'')));
   }
   const sample=XLSX.utils.aoa_to_sheet(sampleRows);sample['!cols']=Array.from({length:8},()=>({wch:30}));sample['!protect']={};
@@ -313,13 +318,13 @@ export async function buildSystemLabelWorkbook(p:{references:LabelWorkbookRefere
   const wb=XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet([
     ['System Labels'],['Keep worksheet names and headers. Maximum 500 data rows per list, 7000 per workbook, 5 MB.'],
-    ['Import adds new codes only. Existing codes in that category, for any company, are blocked. Company is creation ownership; Criteria controls availability independently.'],
+    ['Import adds new codes only. Existing codes in that category are blocked. Leave all three company fields blank for Global (All Companies); global imports require a group administrator.'],
     ['Use the System Labels page to edit existing records. Uploading current data never updates or overwrites its saved values.'],
     ['Status accepts Active or Inactive for new codes; blank means Active. Archived / Inactive from older exports means Inactive. Grade Groups has no editable status. Removed workbook rows never delete records.'],
     ['Review new additions and blocked rows before confirming. Downloaded files may contain records you can view but cannot edit.'],
     ['Every supported data sheet is checked. Blocked rows are skipped; other valid new codes may be imported.'],
     ['Company and Head dropdowns provide reference values; heads must belong to the origin company.'],
-    ['Criteria Companies and Grade Codes accept semicolon-separated values. Global leaves Criteria Companies blank; companies requires a nonempty complete list, including the creation Company only when it should use the code. Dropdowns offer one value at a time; upload validates the completed list.'],
+    ['Company alone means that company only. Criteria Companies and Grade Codes accept semicolon-separated values. If both company fields are supplied, Company must be in the list. Explicit global requires both company fields blank. Global exports retain stored origin Company for review; clear that origin before importing a new global code.'],
   ]),'Instructions');
   for(const d of definitions){
     const values=p.rows?.[d.kind]??[];

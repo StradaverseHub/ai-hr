@@ -34,20 +34,19 @@ export default async function ProfileOptionsPage({ searchParams }: { searchParam
       <SystemLabelImportTools />
       <ErrorBanner message={error} />
 
-      {totalCount === 0 ? (
+      {totalCount === 0 && (
         <Card className="flex flex-wrap items-center justify-between gap-3 p-4">
           <p className="text-sm text-muted-foreground">{t('emptyAll')}</p>
           <form action={seedProfileOptionsAction}>
             <Button type="submit">{t('seedDefaults')}</Button>
           </form>
         </Card>
-      ) : (
+      )}
         <ProfileOptionsGrid
           categories={[...PERSON_PROFILE_CATEGORIES]}
           data={all}
           actions={{ save: saveProfileOptionsAction, remove: removeProfileOptionAction }}
         />
-      )}
     </div>
   );
 }

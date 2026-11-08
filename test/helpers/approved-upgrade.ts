@@ -49,10 +49,12 @@ export const APPROVED_UPGRADE_TAIL=[
  {idx:2410,when:1793330002710,tag:'3110_attendance_workflow_owner_rls'},
  {idx:2500,when:1793330002800,tag:'3200_ai_centre_controls'},
  {idx:2501,when:1793330002801,tag:'3201_ai_centre_function_coverage'},
+ {idx:2700,when:1793330003000,tag:'3400_system_label_company_scope'},
  {idx:3000,when:1793330003300,tag:'3700_individual_transaction_calculation_method'},
 ] as const;
 // Final pending 2109/2126 bytes reviewed from engine 128bc2539; no applied-prefix hashes change.
 const APPROVED_UPGRADE_HASHES:Record<string,string>={
+ '3400_system_label_company_scope':'58067b76694141c5fc824c66acc24fda05c273dd7d3d85654418e0f52a01b69e',
  '3700_individual_transaction_calculation_method':'f6f4a31109f66bc5c9038315e249829c2655b870db98a9cbb1ede9cfdab958d4',
  '3100_pay_formula_saved_availability':'7bc0ab95aea27bae36f9be299784d3d391b4a315aa0302a9c42c2dbf9996b1b8',
  '3101_attendance_shared_workflow':'f32d12965f2788dc673f0c09e128996a653341bbcf6933e47f211da021617169',

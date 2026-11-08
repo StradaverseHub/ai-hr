@@ -11,7 +11,7 @@ describe('System Labels Excel contract',()=>{
     expect(wb.SheetNames).toEqual(['Instructions',...LABEL_IMPORT_DEFINITIONS.map(d=>d.kind),'Reference']);
     expect(readSystemLabelWorkbook(bytes)).toEqual([]);
     expect(LABEL_IMPORT_DEFINITIONS.find(d=>d.kind==='department')?.columns).toContain('Head Employee Code');
-    expect(LABEL_IMPORT_DEFINITIONS.find(d=>d.kind==='division')?.columns).not.toContain('Company');
+    expect(LABEL_IMPORT_DEFINITIONS.find(d=>d.kind==='division')?.columns).toContain('Company');
     expect(wb.SheetNames).not.toContain('employment_type');
     for(const d of LABEL_IMPORT_DEFINITIONS) {
       const cells=d.columns.map(c=>c==='Rank'||c==='Sort Order'?'2':c);
@@ -45,6 +45,6 @@ it('accepts only the bounded previous header generation and converts legacy own/
  const definition=LABEL_IMPORT_DEFINITIONS.find(row=>row.kind==='department')!,headers=definition.columns.map(column=>column==='Criteria'?'Scope':column==='Criteria Companies'?'Shared Companies':column);
  const bytes=workbook('department',[headers,['Origin','shared','Other','CODE','Label','Description','']]);
  const [row]=readSystemLabelWorkbook(bytes);expect(row.values).toMatchObject({Criteria:'companies','Criteria Companies':'Origin;Other'});expect(row.warnings?.length).toBeGreaterThan(0);
- expect(()=>readSystemLabelWorkbook(bytes,{generation:3})).toThrow('Headers');
+ expect(()=>readSystemLabelWorkbook(bytes,{generation:4})).toThrow('Headers');
  expect(()=>readSystemLabelWorkbook(workbook('department',[headers,['Origin','own','Other','CODE','Label','Description','']]))).toThrow('Legacy own');
 });

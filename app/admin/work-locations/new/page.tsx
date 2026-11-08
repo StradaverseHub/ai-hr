@@ -45,7 +45,7 @@ export default async function NewLocationPage({
   const company = companies.find((c) => c.id === wanted);
   if (!company) notFound();
 
-  const branchOptions = await listProfileOptions(s, 'branch', { activeOnly: true });
+  const branchOptions = await listProfileOptions(s, 'branch', { activeOnly: true,companyId:company.id });
 
   // WHAT WAS TYPED, echoed by a refused save (app/admin/actions.ts), wins over the blank form — a
   // cleared Branch included, so a link the operator removed does not come back pre-picked.

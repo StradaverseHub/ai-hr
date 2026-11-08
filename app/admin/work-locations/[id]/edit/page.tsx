@@ -53,7 +53,7 @@ export default async function EditLocationPage({
   const site = locations.find((l) => l.id === rawId);
   if (!site) notFound();
 
-  const branchOptions = await listProfileOptions(s, 'branch', { activeOnly: true });
+  const branchOptions = await listProfileOptions(s, 'branch', { activeOnly: true,companyId:site.companyId });
 
   // WHAT IS ON FILE, as the form's raw strings — then WHAT WAS TYPED when a refusal echoed it, which wins.
   const onFile: LocationFormValues = {

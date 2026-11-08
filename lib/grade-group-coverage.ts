@@ -31,7 +31,13 @@
  */
 
 /** A grade group as both surfaces receive it: identity, the operator's own name, and its member grades. */
-export type GradeGroupOption = { id: string; name: string; gradeIds: string[] };
+export type GradeGroupOption = { id: string; name: string; gradeIds: string[]; scopeCompanyIds?: string[] | null };
+
+/** A scoped group may expand only within companies its definition covers. No company means all companies. */
+export function gradeGroupsForCompanies(groups: readonly GradeGroupOption[], companyIds: readonly string[]): GradeGroupOption[] {
+  return groups.filter((g) => g.scopeCompanyIds == null ||
+    (companyIds.length > 0 && companyIds.every((id) => g.scopeCompanyIds!.includes(id))));
+}
 
 const uniq = (xs: string[]): string[] => [...new Set(xs)];
 

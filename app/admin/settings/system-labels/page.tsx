@@ -201,7 +201,7 @@ export default async function SystemLabelsPage({
     <div className="min-w-0 flex-1">
       <Card>
         <GradeGroupConfig
-          gradeGroups={gradeGroups.map((g) => ({ id: g.id, name: g.name, gradeIds: g.gradeIds, archived: g.archived }))}
+          gradeGroups={gradeGroups.map((g) => ({ id: g.id, name: g.name, gradeIds: g.gradeIds, archived: g.archived,scopeCompanyIds:g.scopeCompanyIds }))}
           grades={grades.filter((g) => g.archivedAt == null).map((g) => ({ id: g.id, name: g.name }))}
           actions={{
             createGradeGroup: createGradeGroupAction,
