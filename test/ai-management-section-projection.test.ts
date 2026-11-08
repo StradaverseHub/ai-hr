@@ -150,7 +150,7 @@ it('preserves default, role, company, department and individual allowance preced
 it('retains Kuala Lumpur day boundaries and reported zero versus missing observations in the actual run-history owner',async()=>{
  const [clock]=await owner.client`select date_trunc('day',now() at time zone 'Asia/Kuala_Lumpur') at time zone 'Asia/Kuala_Lumpur' as day_start`;
  const at=new Date(clock.day_start),before=new Date(at.getTime()-1);
- const zero=await usage(b.adminUserId,'completed',1,0,{startedAt:at,openrouterAccountCostCredits:'0',observedRoundTripMs:12.5,providerObservationStatus:'reported'});
+ const zero=await usage(b.adminUserId,'completed',1,0,{provider:'openrouter',startedAt:at,openrouterAccountCostCredits:'0',observedRoundTripMs:12.5,providerObservationStatus:'reported'});
  const missing=await usage(b.adminUserId,'completed',1,null,{startedAt:before,providerObservationStatus:'missing'});
  const full=await aiManagementView(group),page=await aiManagementPageView(group,'runs');expect(page).toEqual(expectedPage(full,'runs'));
  const self=full.users.find(u=>u.id===b.adminUserId)!;expect(self.daily.used).toBe(1);

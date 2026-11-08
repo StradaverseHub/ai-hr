@@ -63,3 +63,13 @@ The new shared leaf is an actual runtime dependency of the Employee source owner
 through existing management/navigation imports. Its static source binding needs
 coherent integration review; this slice does not silently claim the previous
 member count or global source qualification. No CI registry/framework is changed.
+
+## Hosted fixture recovery after1b78
+
+Original focused run42509856754 at1b78/controller00a27 completed its planned batch with failures. Its Node report recorded90PASS/2FAIL; the separate DOM viewport failures remain outside this correction. Full artifact authentication belongs to the independent CI owner. No original failure is relabelled.
+
+The existing SQL-inventory case selected the actual final3500 wrapper but incorrectly required3200's historical ALTER RENAME there. Its rename assertion now names3200; a closed468-byte comparison requires the final CREATE OR REPLACE wrapper's complete FUNCTION definition to equal the installed3200 oracle. Added source assertions cover native MD5/owner/ACL/OID/attribute custody; the original delegation/centre-stop/inventory checks remain. No generic SQL parser or filename waiver is introduced.
+
+The new KL-boundary fixture's reported-zero row used the helper's default openai provider. The actual23514 cause was ai_model_run_observation_fields:0625 permits reported accounting only for openrouter. Only that fictional zero row now overrides provider to openrouter; every zero/missing/day-boundary assertion and the native constraint remain unchanged. No provider request occurs.
+
+This recovery changes two test owners only, retaining all6 existing contract cases and16 expanded projection cases, their caps, and all other callbacks. Its parent source index is retained by exact1b78 Git commit/blob/hash/byte provenance; current hashes and the small recovery record identify the new source without duplicating historical contents. Product, SQL/journal, authority, approvals and all DOM files remain whole1b78. The corrected source is unrun pending root and independent peer review; no retry, browser or release claim follows.

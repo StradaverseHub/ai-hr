@@ -1,7 +1,7 @@
 {
   "kind": "AI_MANAGEMENT_SECTION_SOURCE_ONLY_NOT_QUALIFICATION",
   "base": "cd47c63c77d26431ee33de38b75790c62924a1ad",
-  "sourceRef": "codex/ai-management-section-projection-20261109",
+  "sourceRef": "codex/ai-management-hosted-fixture-recovery-20261109",
   "currentSourceSha256": {
     "app/control-tower/agents/centre-controls.tsx": "3ce6b612fec0b328103b5221b673714e59f4548bf37be243211cfc4293d18915",
     "app/control-tower/agents/screen.tsx": "a137c62df804c0c4e6e40f11d3ecca1e295fabb3b817fb1d440225e38a172d12",
@@ -17,8 +17,10 @@
     "test/ai-probe-history-page.dom.test.tsx": "5a542bb1006998a816ac04326f98862b97f79a7e65fb275288e51bb26f48e778",
     "test/automatic-followup-features.dom.test.tsx": "6073798a23f0a48fbcfb871e4c42cdd33c5e321a22104b08c5ff2f8c0da9522c",
     "lib/ai/management-sections.ts": "d7efd0b96f9875c560c6b075c9ff1688a7bf0851684adbdab45c399f3cb5c783",
-    "test/ai-management-section-projection.test.ts": "faa9cd23815cefaac34f10b62f4b3260178ffc6599429f2e209e86b420d92f0f",
-    "docs/adr/2026-11-09-ai-management-section-projection.md": "4e22bbd109cdd9530d519878194e5eaf59b47f038b1b21b0e5843e93b86ef127"
+    "test/ai-management-section-projection.test.ts": "5b1d12868bed27cf5791ece99a77321d54c96aa228f1dd7963c405aba07bafd5",
+    "docs/adr/2026-11-09-ai-management-section-projection.md": "0b5d045397ed19325e1f70636c84cd4d4f3ddb44770eb313e7e66ab5015061ef",
+    "test/ai-management-contract.test.ts": "26311cc5725a931b951cf8825f0355c8c752eaaeb3210153f1fbc9c127a7a808",
+    "docs/qualification/ai-management-hosted-fixture-recovery-source-20261109.json": "a64ae179f8a3c9379d1f014a8f5c302b9642ff9837fb053144320ae5026fff91"
   },
   "selfExcluded": "docs/qualification/ai-management-section-projection-source-20261109.json",
   "wholeParentGitPreimages": {
@@ -376,5 +378,30 @@
   "releaseAuthorized": false,
   "productionHeld": true,
   "candidateCommit": "Recorded externally after freeze; no self-hash cycle",
-  "selfAbsentFromParent": true
+  "selfAbsentFromParent": true,
+  "hostedFixtureRecovery": {
+    "parent": "1b78bee247e47c8d9ae85209bb3b0e852aedb321",
+    "record": "docs/qualification/ai-management-hosted-fixture-recovery-source-20261109.json",
+    "originalParentIndex": {
+      "commit": "1b78bee247e47c8d9ae85209bb3b0e852aedb321",
+      "gitBlob": "abb54720b5950ea72453008fdce9c89291bec44d",
+      "sha256": "365a131f360aeb1400070a2476444e05d506b5f4111ced5e557d777dee4946f5",
+      "bytes": 23897
+    },
+    "oldSourceRef": "codex/ai-management-section-projection-20261109",
+    "currentTestSourceSha256": {
+      "test/ai-management-contract.test.ts": "26311cc5725a931b951cf8825f0355c8c752eaaeb3210153f1fbc9c127a7a808",
+      "test/ai-management-section-projection.test.ts": "5b1d12868bed27cf5791ece99a77321d54c96aa228f1dd7963c405aba07bafd5"
+    },
+    "existingSourceProofsScope": "The inherited four proof records remain historical original3630/1b78 source evidence; this new recovery is source-only and its actual frozen inverse/AST proof is recorded externally.",
+    "caseCounts": {
+      "contract": 6,
+      "projectionExpanded": 16
+    },
+    "oldFailureRetained": true,
+    "noDomOrProductOrSqlOrApprovalChange": true,
+    "runtimeQualified": false,
+    "published": false,
+    "releaseAuthorized": false
+  }
 }
