@@ -1,0 +1,77 @@
+{
+  "kind": "EXACT_ASCII_OBSERVATION_PROOF_ONLY_NOT_RELEASE",
+  "base": "2049054e88202fdcacf31c6a50ffef391634daea",
+  "sourceRef": "codex/employee-choice-exact-ascii-native-proof-20261108",
+  "status": "NOT_RUN; root and independent review required before hosted checks",
+  "selectors": {
+    "pure": {
+      "file": "test/employee-choice-ascii-observation.test.ts",
+      "cases": 8
+    },
+    "native": {
+      "file": "test/employee-choice-exact-ascii-proof.test.ts",
+      "cases": 3,
+      "classification": "ordinary DB; built-in read-only SELECT only"
+    }
+  },
+  "limits": {
+    "caseMs": 30000,
+    "hookMs": 30000,
+    "sqlMs": 20000,
+    "lockMs": 300,
+    "connectionStartupSeconds": 2,
+    "corpusMemberBytes": 16777216,
+    "reportMemberBytes": 1048576,
+    "focusedZipBytes": 67108864,
+    "nativePoolMaximum": 1,
+    "runtimeBinaryStreamChunkBytes": 65536,
+    "runtimeBinaryFileBytes": 268435456
+  },
+  "scalarCount": 1112063,
+  "contextVectors": 85,
+  "literalQueryVectors": 130,
+  "experimentalVersions": {
+    "node": "22.23.3",
+    "v8": "12.4.254.21-node.57",
+    "icu": "78.3",
+    "unicode": "17.0"
+  },
+  "rawSourceSizes": {
+    "test/fixtures/unicode-17.0.0/UnicodeData.txt": 2198209,
+    "test/fixtures/unicode-17.0.0/SpecialCasing.txt": 17049,
+    "test/fixtures/unicode-17.0.0/LICENSE.txt": 1995
+  },
+  "sourceSha256": {
+    "test/employee-choice-ascii-observation.test.ts": "4f235a0deb6c30ffac0785c23bc4e565bb61141f9e35f1dcea668072de711bcd",
+    "test/employee-choice-exact-ascii-proof.test.ts": "8e68b8257885ecf748fd542d83bad7302716d488006a0ca750f1cb980db65019",
+    "test/fixtures/employee-choice-ascii-observation.ts": "a6b0a1cc58224abbdf29e0e0613977b4cc4f18534dbb7ee3ec65bb2d2a5fb6cd",
+    "test/fixtures/employee-choice-ascii-proof-lifetime.ts": "41cb3ec2c5305942f4cc5e5f90e12544251f45f73d1949b20a2f2a5aad9e01cf",
+    "test/fixtures/employee-choice-ascii-proof-native.ts": "3a7dbeba04c4dad5d79057bc36eee125b98e1f9a843533aacb76311747f5ca68",
+    "test/fixtures/employee-choice-ascii-scalar-corpus.sql": "dbc6337f825d80e9a9d329499c0981049ec6d22d5dd595bfd373e976a3f96c0e",
+    "test/fixtures/employee-choice-ascii-vectors.sql": "a29302206116a6c6d5edbd8fd35edcd20da4b8a62df3152186620d3b50cd1055",
+    "test/fixtures/unicode-17.0.0/UnicodeData.txt": "2e1efc1dcb59c575eedf5ccae60f95229f706ee6d031835247d843c11d96470c",
+    "test/fixtures/unicode-17.0.0/SpecialCasing.txt": "efc25faf19de21b92c1194c111c932e03d2a5eaf18194e33f1156e96de4c9588",
+    "test/fixtures/unicode-17.0.0/LICENSE.txt": "e7a93b009565cfce55919a381437ac4db883e9da2126fa28b91d12732bc53d96",
+    "docs/qualification/employee-choice-exact-ascii-native-proof-20261108.md": "3517b81844d2e7a390aa0e2cf30ee46cfabcb39bbb8493a998a287db1fb35610"
+  },
+  "unchangedSha256": {
+    "core/employee-choice.ts": "ce1e3559addbffa4b4e780594ebcc5fcf917ddffde79a6155cc7fbcecdbcfbd5",
+    "test/fixtures/employee-choice-native-purpose.sql": "d72e6ded4a07cbbb848856c35391e1e56fdd02ad793c71a18360754e11fe8efc",
+    "test/performance/employee-choice-native-purpose-owner.ts": "debe9a5ff2f92e45160f53a1975667ae6dcd266dfc52f90bbfce40c0909ec426",
+    "test/performance/employee-choice-native-purpose-reader.ts": "08e50db545dc32af18bddee7eae36a902ceacfbabc2c14a841b8a5b2b82cfd22",
+    "test/performance/employee-choice-native-current-baseline.ts": "fc1a1603aa7a032a0450dfca98eddd6068de5a1913478d25e5e7e90eea8e3816",
+    "db/client.ts": "bdd700ea682bafbf0cad2c255b8dacb96c13d82dc7fa0ae9446d4a1da265cd3f",
+    "vitest.config.ts": "a2d0d96b3a1f18c322ea76a208de4a0b217b13258cff01f48e3a1f754dba318d",
+    "tsconfig.json": "0ee72fb11a698bad9b18c39223569adf5758727272b35bfa99ec7bfa57c3530a",
+    ".github/ci/focused-checks.mjs": "d8554ccd191d4b92247c111c6c89c13f7922d48a9bc0c5c00a809957259948ab",
+    ".github/ci/run-unit.mjs": "bc575f3da243b652b79865a91df55a812804bfbada55c9401e958734e1ce93dc",
+    "scripts/gate-db-classify.ts": "cc77445ba5b8a702a5f8f4a4292bdcb99275d520ae4f13b16442a17e78f3f916",
+    "docs/qualification/employee-choice-exact-ascii-proof-plan-20261108.md": "a2a54b399f10027d8d6c1b06116898372efc13571e6e87a7df0e728b7f81941a"
+  },
+  "sourceFilesChanged": "proof files only; application and existing native lookup unchanged",
+  "applicationChanged": false,
+  "nativeLookupSqlChanged": false,
+  "profileActivated": false,
+  "releaseAuthorized": false,
+  "productionHeld": true
+}
