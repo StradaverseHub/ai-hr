@@ -1,0 +1,12 @@
+{
+  "kind": "WHOLE55EF_PARENT_ABSENCE_FOR_ADDED_FS_SOURCE_HELPER_NOT_ADMISSION",
+  "base": "55ef73b09da42a1bd96bdcd9857f16b47f50d9e5",
+  "files": {},
+  "addedPaths": [
+    ".github/ci/diagnostics/classifier-witness-snapshot.mjs",
+    "test/gate-db-classifier-source-snapshot.test.ts",
+    "docs/qualification/classifier-witness-source-snapshot-stage2-20261108.md",
+    "docs/qualification/classifier-witness-source-snapshot-stage2-inverse-20261108.json",
+    "docs/qualification/classifier-witness-source-snapshot-stage2-source-20261108.json"
+  ]
+}
