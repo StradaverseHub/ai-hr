@@ -20,14 +20,13 @@ CONTROL_FILE = 'test/employee-choice-benchmark-owner-native.test.ts'
 FACTORY_FILE = 'test/employee-choice-native-owner-factory.test.ts'
 LIMITS = {'git-head': 10, 'git-status': 10, 'git-tracked': 10, 'evidence': 30, 'classifier': 15, 'reset': 60, 'migrate': 60, 'benchmark': 960, 'native-controls': 180, 'native-factory': 206,
           'stats': 10, 'logs': 10, 'inspect': 10, 'stop': 9}
-# Fixed source-owned sibling import; never resolve a kernel through PYTHONPATH.
-import importlib.util
+# Compile the fixed source-owned sibling bytes directly. -I/-B do not stop
+# SourceFileLoader from reading an ignored timestamp-valid .pyc.
+from types import ModuleType
 _kernel_path = Path(__file__).resolve().with_name('owned-process.py')
-_kernel_spec = importlib.util.spec_from_file_location('aihr_owned_process', _kernel_path)
-if _kernel_spec is None or _kernel_spec.loader is None:
-    raise ValueError('Closed process kernel import refused')
-_owned_process = importlib.util.module_from_spec(_kernel_spec)
-_kernel_spec.loader.exec_module(_owned_process)
+_owned_process = ModuleType('aihr_owned_process')
+_owned_process.__file__ = str(_kernel_path)
+exec(compile(_kernel_path.read_bytes(), str(_kernel_path), 'exec', dont_inherit=True), _owned_process.__dict__)
 require = _owned_process.require
 append_event = _owned_process.append_event
 supervise = _owned_process.supervise

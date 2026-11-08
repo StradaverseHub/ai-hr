@@ -4,6 +4,9 @@ import os
 import json
 import ast
 import hashlib
+import marshal
+import struct
+from types import ModuleType
 import time
 import tempfile
 from unittest.mock import patch
@@ -192,6 +195,45 @@ class SharedKernelModels(unittest.TestCase):
             with self.assertRaises(ValueError):
                 module.supervise([sys.executable, '-I', '-B', '-c', 'pass'], .1, lambda _: None)
             admission.assert_not_called()
+
+    def test_actual_fixed_loader_executes_source_despite_valid_poison_cache_and_search_path_hooks(self):
+        folder = Path(__file__).resolve().parent
+        with tempfile.TemporaryDirectory(prefix='aihr-owned-kernel-cache-') as name:
+            private = Path(name).resolve(); source = private / 'controller'; source.mkdir()
+            adapter = source / 'employee-benchmark-supervisor.py'
+            kernel = source / 'owned-process.py'
+            adapter.write_bytes((folder / adapter.name).read_bytes())
+            kernel.write_bytes((folder / kernel.name).read_bytes())
+            cached = Path(importlib.util.cache_from_source(str(kernel)))
+            cached.parent.mkdir()
+            poison = compile("raise RuntimeError('MODEL_POISON_PYC')", str(kernel), 'exec', dont_inherit=True)
+            actual = kernel.stat()
+            # CPython timestamp/size header matches the REAL source file exactly.
+            # This is a private negative-control fixture, never a repository pyc.
+            cached.write_bytes(importlib.util.MAGIC_NUMBER + struct.pack('<III', 0, int(actual.st_mtime) & 0xffffffff, actual.st_size) + marshal.dumps(poison))
+            old = importlib.util.spec_from_file_location('old_cache_reader_control', kernel)
+            old_module = importlib.util.module_from_spec(old)
+            with self.assertRaisesRegex(RuntimeError, '^MODEL_POISON_PYC$'):
+                old.loader.exec_module(old_module)
+            hook = private / 'untrusted-search'; hook.mkdir()
+            for filename in ('owned-process.py', 'owned_process.py', 'aihr_owned_process.py'):
+                (hook / filename).write_text("raise RuntimeError('MODEL_SEARCH_PATH_HOOK')")
+            fixed = ModuleType('actual_fixed_adapter_control'); fixed.__file__ = str(adapter)
+            before = Path.cwd()
+            try:
+                os.chdir(hook)
+                with patch.object(sys, 'path', [str(hook), *sys.path]), patch.dict(os.environ, {'PYTHONPATH': str(hook)}):
+                    # Run the ACTUAL adapter source, including its fixed loader;
+                    # __name__ is not __main__, so no closed hosted CLI is called.
+                    exec(compile(adapter.read_bytes(), str(adapter), 'exec', dont_inherit=True), fixed.__dict__)
+            finally:
+                os.chdir(before)
+            self.assertEqual(Path(fixed._owned_process.__file__), kernel)
+            self.assertIs(fixed.supervise.__globals__, fixed._owned_process.__dict__)
+            self.assertEqual(fixed.supervise.__code__.co_filename, str(kernel))
+            self.assertEqual(fixed._owned_process.REASONS, module._owned_process.REASONS)
+            self.assertEqual(kernel.read_bytes(), (folder / kernel.name).read_bytes())
+            self.assertEqual(cached.read_bytes(), importlib.util.MAGIC_NUMBER + struct.pack('<III', 0, int(actual.st_mtime) & 0xffffffff, actual.st_size) + marshal.dumps(poison))
 
 if __name__ == '__main__':
     unittest.main()
