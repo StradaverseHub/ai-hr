@@ -57,6 +57,11 @@ class PhaseTracker:
         message = PHASE_PREFIX.encode() + (json.dumps(value, sort_keys=True, separators=(',', ':')) + '\n').encode()
         if len(message) > 1024:
             raise ValueError('Observer phase bound refused')
+        # Latch BEFORE publishing: an asynchronous abort after a complete terminal
+        # write must never admit a second terminal/failure frame. Unknown writes
+        # retain this terminal latch as well as the broken-transport latch.
+        if result != 'entered':
+            self.terminal = True
         # One bounded framed write. Never retry an uncertain or partial record.
         try:
             if time.monotonic() >= self.deadline:
@@ -66,8 +71,7 @@ class PhaseTracker:
         except BaseException:
             self.broken = True
             raise
-        if result != 'entered':
-            self.terminal = True
+        return None
 
     def enter(self, phase):
         if self.terminal or self.broken or phase not in PHASES or PHASES.index(phase) != self.index + 1:

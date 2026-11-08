@@ -6,6 +6,6 @@ it('checks closed environment observations, strict ownership and unconditional a
   {encoding:'utf8',timeout:10000,maxBuffer:1024*1024});
  const output=(result.stdout??'')+(result.stderr??'');
  expect(result.error).toBeUndefined();expect(result.signal).toBeNull();expect(result.status,output).toBe(0);
- expect(result.stdout).toBe('');expect(output).toMatch(/Ran 24 tests in /);expect(output).toMatch(/\nOK\s*$/);
+ expect(result.stdout).toBe('');expect(output).toMatch(/Ran 25 tests in /);expect(output).toMatch(/\nOK\s*$/);
  expect(output).not.toMatch(/skipped|FAILED|ERROR|FAIL:/);process.stdout.write(output);
 });

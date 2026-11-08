@@ -1,10 +1,12 @@
 """Source models only; no native/root/systemd/app/DB or environment discovery."""
 import ast
+import base64
 import copy
 import hashlib
 import json
 import pathlib
 import signal
+import sys
 import types
 import unittest
 from unittest.mock import patch
@@ -358,9 +360,18 @@ class PhaseDiagnosticModels(unittest.TestCase):
     def test_every_original_native_check_and_environment_validator_remains_whole_source_exact(self):
         layer=json.loads((ROOT/'deploy/admission/next_phase_observation_inverse.json').read_text())
         self.assertEqual(layer['base'], '847139e7a2f29faf7a00ffaf17b80739d53acc0e')
+        terminal=json.loads((ROOT/'deploy/admission/next_phase_terminal_latch_inverse.json').read_text())
+        self.assertEqual(terminal['base'], '74de8af009aa0ed39d8077343d9662b5dc31bbc8')
         originals={}
         for name,row in layer['files'].items():
-            source=(ROOT/name).read_text();self.assertEqual(hashlib.sha256(source.encode()).hexdigest(), row['currentSha256'])
+            source=(ROOT/name).read_text()
+            if name in terminal['files']:
+                fixed=terminal['files'][name];self.assertEqual(hashlib.sha256(source.encode()).hexdigest(), fixed['currentSha256'])
+                lines=source.splitlines(keepends=True)
+                for edit in fixed['changes']:
+                    self.assertEqual(''.join(lines[edit['start']:edit['end']]), edit['after']);lines[edit['start']:edit['end']]=edit['before'].splitlines(keepends=True)
+                source=''.join(lines);self.assertEqual(hashlib.sha256(source.encode()).hexdigest(), fixed['originalSha256'])
+            self.assertEqual(hashlib.sha256(source.encode()).hexdigest(), row['currentSha256'])
             lines=source.splitlines(keepends=True)
             for edit in row['changes']:
                 self.assertEqual(''.join(lines[edit['start']:edit['end']]), edit['after']);lines[edit['start']:edit['end']]=edit['before'].splitlines(keepends=True)
@@ -372,6 +383,60 @@ class PhaseDiagnosticModels(unittest.TestCase):
         self.assertEqual(reduced, original)
         name='deploy/admission/test_next_native.py';self.assertEqual(function((ROOT/name).read_text(),'runtime_environment_journal_observation'),function(originals[name],'runtime_environment_journal_observation'))
         name='deploy/admission/next_fixture_poststart.py';self.assertEqual(function((ROOT/name).read_text(),'main'),function(originals[name],'main'))
+
+    def test_actual_post_write_async_abort_cannot_publish_a_second_terminal_frame(self):
+        inverse=json.loads((ROOT/'deploy/admission/next_phase_terminal_latch_inverse.json').read_text())
+        row=inverse['files']['deploy/admission/next_fixture_poststart.py']
+        parent=base64.b64decode(row['originalBase64']).decode()
+        self.assertEqual(hashlib.sha256(parent.encode()).hexdigest(), row['originalSha256'])
+        old=types.ModuleType('exact74_terminal_latch_parent');old.__file__=P.__file__
+        exec(compile(parent, old.__file__, 'exec', dont_inherit=True), old.__dict__)
+        def exercise(module, text):
+            tree=ast.parse(text);owner=next(node for node in tree.body if isinstance(node,ast.ClassDef) and node.name=='PhaseTracker')
+            write=next(node for node in owner.body if isinstance(node,ast.FunctionDef) and node.name=='write')
+            native_try=next(node for node in write.body if isinstance(node,ast.Try))
+            boundary=next(node.lineno for node in write.body if node.lineno>native_try.end_lineno)
+            code=module.PhaseTracker.write.__code__;self.assertEqual(code.co_firstlineno, write.lineno)
+            packets=[];state={'terminalWritten':False,'interrupted':False}
+            def output(_fd, message):
+                value=json.loads(message[len(module.PHASE_PREFIX):]);packets.append(value)
+                if value['result']=='finished':state['terminalWritten']=True
+                return len(message)
+            def interrupt(frame, event, _arg):
+                if (frame.f_code is code and event=='line' and frame.f_lineno==boundary
+                        and state['terminalWritten'] and not state['interrupted']):
+                    state['interrupted']=True
+                    raise KeyboardInterrupt('Fictional exact post-write interruption')
+                return interrupt
+            with patch.object(module.time, 'monotonic', return_value=1), patch.object(module.os, 'write', side_effect=output):
+                tracker=module.PhaseTracker(F.UNITS[0], 2)
+                for phase in module.PHASES:tracker.enter(phase)
+                previous=sys.gettrace()
+                try:
+                    sys.settrace(interrupt)
+                    with self.assertRaises(KeyboardInterrupt):tracker.finish()
+                finally:
+                    sys.settrace(previous)
+                self.assertIs(sys.gettrace(), previous)
+                tracker.fail(KeyboardInterrupt('Fictional original best-effort error path'))
+            self.assertTrue(state['terminalWritten'] and state['interrupted'])
+            return packets
+        # Run both actual byte-bound owners at the real post-try boundary: old
+        # publishes finished+failed; new latches before write and publishes one.
+        previous=exercise(old,parent);current=exercise(P,(ROOT/'deploy/admission/next_fixture_poststart.py').read_text())
+        self.assertEqual([row['result'] for row in previous if row['result']!='entered'], ['finished','failed'])
+        self.assertEqual([row['result'] for row in current if row['result']!='entered'], ['finished'])
+        self.assertEqual(len(previous),15);self.assertEqual(len(current),14)
+        # A terminal write that is partial or throws remains terminal/uncertain;
+        # even the actual best-effort failure path cannot try another record.
+        for outcome in (1, OSError('Fictional uncertain terminal transport')):
+            with patch.object(P.time, 'monotonic', return_value=1), patch.object(P.os, 'write', side_effect=lambda _fd, message: len(message)):
+                tracker=P.PhaseTracker(F.UNITS[0],2)
+                for phase in P.PHASES:tracker.enter(phase)
+            with patch.object(P.time, 'monotonic', return_value=1), patch.object(P.os, 'write', side_effect=outcome if isinstance(outcome,BaseException) else lambda _fd,_message: outcome) as write:
+                with self.assertRaises(OSError):tracker.finish()
+                tracker.fail(KeyboardInterrupt('Fictional later abort'))
+                self.assertEqual(write.call_count,1);self.assertTrue(tracker.terminal and tracker.broken)
 
 
 if __name__ == '__main__':
