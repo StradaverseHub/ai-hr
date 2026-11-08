@@ -38,7 +38,8 @@ async function traverseNativeShellDestination(page:Page,href:string,remaining:()
    // every mounted native shell, including collapsed and alternate workspaces.
    if(mode==='hidden')assert(await target.count()===0,'Denied destination is still rendered in the native shell');
    const links=await visible(target);assert(links.length<=1,'Native shell destination is ambiguous');
-   if(links.length){
+   if(mode==='hidden')assert(links.length===0,'Denied destination became visible in the native shell');
+   if(mode==='click'&&links.length){
     assert(await links[0].getAttribute('href')===href&&await links[0].isEnabled(),'Native shell destination changed or is unavailable');
     await links[0].click({timeout:remaining()});return;
    }
@@ -55,7 +56,9 @@ async function traverseNativeShellDestination(page:Page,href:string,remaining:()
    await page.locator(roots.map(root=>root+' button[aria-controls='+JSON.stringify(id)+'][aria-expanded="true"]').join(','))
     .waitFor({state:'visible',timeout:remaining()});
   }
+  if(mode==='hidden')assert(await target.count()===0,'Denied destination appeared before native workspace observation completed');
  }
+ if(mode==='hidden')assert(await target.count()===0,'Denied destination appeared before native shell observation completed');
  if(mode==='click')throw Error('Reviewed destination is absent from the actual native shell');
 }
 export async function clickNativeShellDestination(page:Page,href:string,remaining:()=>number){
