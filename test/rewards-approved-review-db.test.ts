@@ -148,7 +148,8 @@ describe('approved Rewards review SQL custody',()=>{
   const checks=await owner.db.select().from(schema.notification).where(eq(schema.notification.recipientEmploymentId,checkerEmployment.id));expect(checks.some(n=>n.linkPath===`/rewards/${uploadedId}/uploaded`)).toBe(true);
   await expect(confirmUploadedRewards(doer,uploadedId,2,'Doer attempted self confirmation')).rejects.toThrow(/different/);
   const aliasLogin=await createAppUser(b.tenantId,maker.personId,'employee');const alias={...doer,userId:aliasLogin};await owner.db.insert(schema.rewardMember).values({tenantId:b.tenantId,unitId:uploadedId,userId:aliasLogin,role:'gr'});await expect(confirmUploadedRewards(alias,uploadedId,2,'Same person attempted alternate login approval')).rejects.toThrow(/different/);
-  await expect(withTenant(buCtx,tx=>tx.execute(sql`update reward_unit set status='bg',approved_digest=${'a'.repeat(64)} where id=${uploadedId}::uuid returning id`))).rejects.toThrow();
+  expect(await withTenant(buCtx,tx=>tx.execute(sql`update reward_unit set status='bg',approved_digest=${'a'.repeat(64)} where id=${uploadedId}::uuid returning id`))).toEqual([]);
+  const [withheld]=await owner.db.select({status:schema.rewardUnit.status,digest:schema.rewardUnit.approvedDigest}).from(schema.rewardUnit).where(eq(schema.rewardUnit.id,uploadedId));expect(withheld).toEqual({status:'draft',digest:null});
   await confirmUploadedRewards(checker,uploadedId,2,'Independent reviewer checked source and totals');
   await refreshUploadedRewardSources(doer,uploadedId,2,'Rebuild dated sources before replacing the award file');
   await expect(getRewardUnit(buCtx,uploadedId)).rejects.toThrow(/independent/);

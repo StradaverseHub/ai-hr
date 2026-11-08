@@ -198,7 +198,8 @@ describe('native checked preparation of new annual Rewards reviews',()=>{
   expect(saved.requestId).toBeTruthy();
   const requests=await owner.db.select().from(schema.rewardAccessRequest).where(eq(schema.rewardAccessRequest.id,saved.requestId));expect(requests).toHaveLength(1);
   await expect(getRewardUnit(admin,unitId)).rejects.toThrow();
-  expect((await rewardAccessAdministration({...admin,tenantId:randomUUID()},[base.companyId])).reviews).toEqual([]);
+  const foreign=await seedBase();await setModule(foreign.tenantId,'rewards','active');
+  expect((await rewardAccessAdministration(await entitledCtx(foreign),[base.companyId])).reviews).toEqual([]);
  });
 
  it.each([false,true])('preserves native owner RLS behavior with preparation released=%s',async released=>{
