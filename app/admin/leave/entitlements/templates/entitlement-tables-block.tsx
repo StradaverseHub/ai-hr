@@ -266,9 +266,8 @@ export async function loadEntitlementTablesData(s: SessionContext): Promise<Enti
     ruleCounts,
     templateDeleteBlocks: deleteBlocks.templates,
     criteriaSections,
-    // Only the three fields the two consumers need — a `GradeGroupOption` is plain serialisable data, and
-    // the rule form is a CLIENT component, so nothing beyond id / name / membership may cross to it.
-    gradeGroups: gradeGroups.map((g) => ({ id: g.id, name: g.name, gradeIds: g.gradeIds })),
+    // Plain data, including the scope needed to keep group expansion within the selected companies.
+    gradeGroups: gradeGroups.map((g) => ({ id: g.id, name: g.name, gradeIds: g.gradeIds, scopeCompanyIds: g.scopeCompanyIds })),
     archivedMemberGrades,
     activeGrades: activeGrades.map((g) => ({ id: g.id, name: g.name })),
     today,
