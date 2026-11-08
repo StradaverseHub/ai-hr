@@ -40,7 +40,7 @@ export default async function RewardUnitPage({ params, searchParams }: { params:
   const nav = await getTranslations('nav');
   const preparation = await getRewardPreparationStatus(s,unitId);
   const prepText=await getTranslations('rewardsPreparation');
-  if(preparation.required&&!preparation.released&&!preparation.setupVisible)return <div className="space-y-4"><PageHeader title={prepText('review')}/><p role="status">{prepText('preparing')}</p><p className="text-sm text-muted-foreground">{preparation.expectedRelease?prepText('expectedOn',{date:preparation.expectedRelease}):prepText('datePending')}</p><Link href="/rewards" className="text-primary hover:underline">{prepText('back')}</Link></div>;
+  if(!preparation.released&&!preparation.setupVisible&&!(preparation.uploaded&&preparation.canInspect))return <div className="space-y-4"><PageHeader title={prepText('review')}/><p role="status">{prepText('preparing')}</p><p className="text-sm text-muted-foreground">{preparation.expectedRelease?prepText('expectedOn',{date:preparation.expectedRelease}):prepText('datePending')}</p><Link href="/rewards" className="text-primary hover:underline">{prepText('back')}</Link></div>;
   const v = await getRewardUnit(s, unitId); const { unit } = v;const u=await getTranslations('rewardUploaded'),a=await getTranslations('rewardAdvisor');
   if(unit.kind==='annual'&&sp.view==='rules')redirect(`/rewards/rules?unit=${encodeURIComponent(unitId)}`);
   if(unit.kind==='annual'&&sp.view&&['data','excluded'].includes(sp.view))redirect(`/rewards/${encodeURIComponent(unitId)}/setup#${sp.view}`);

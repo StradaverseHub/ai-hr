@@ -38,11 +38,30 @@ DO $$ DECLARE definition text; original_owner name; BEGIN
  GRANT EXECUTE ON FUNCTION app.reward_roles_preparation_audience(uuid) TO ai_hr_reward_preparation_reader;
 END $$;
 --> statement-breakpoint
+-- Uploaded awards retain their own current-version independent check; never fabricate six
+-- standard-plan confirmations. The private projection must not recurse through legacy PUBLIC RLS.
+GRANT SELECT(unit_id,tenant_id,current_version,checked_version,refresh_required) ON public.reward_uploaded_review TO ai_hr_reward_preparation_reader;
+GRANT EXECUTE ON FUNCTION app.reward_access(uuid),app.reward_roles(uuid),app.reward_not_viewing_as() TO ai_hr_reward_preparation_reader;
+DO $$ DECLARE p record; BEGIN
+ FOR p IN SELECT polname,pg_get_expr(polqual,polrelid) AS expression FROM pg_policy
+  WHERE polrelid='public.reward_uploaded_review'::regclass AND 0=ANY(polroles) AND polcmd IN('r','*') AND polqual IS NOT NULL LOOP
+  EXECUTE format('ALTER POLICY %I ON public.reward_uploaded_review USING(CASE WHEN current_user=''ai_hr_reward_preparation_reader'' THEN false ELSE (%s) END)',p.polname,p.expression);
+ END LOOP;
+END $$;
+CREATE POLICY reward_preparation_upload_read ON public.reward_uploaded_review FOR SELECT TO ai_hr_reward_preparation_reader USING(tenant_id=app.current_tenant_id());
+CREATE FUNCTION app.reward_preparation_upload_state(p_unit uuid) RETURNS jsonb
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,app SET row_security=on AS $$
+ SELECT jsonb_build_object('present',true,'released',coalesce(current_version>0 AND checked_version=current_version AND NOT refresh_required,false))
+ FROM public.reward_uploaded_review WHERE unit_id=p_unit AND tenant_id=app.current_tenant_id()
+$$;
+ALTER FUNCTION app.reward_preparation_upload_state(uuid) OWNER TO ai_hr_reward_preparation_reader;
+REVOKE ALL ON FUNCTION app.reward_preparation_upload_state(uuid) FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
 CREATE FUNCTION app.reward_preparation_released(p_unit uuid) RETURNS boolean
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,app SET row_security=on AS $$
  SELECT EXISTS(SELECT 1 FROM public.reward_unit u LEFT JOIN public.reward_governance g
  ON g.unit_id=u.id AND g.tenant_id=u.tenant_id WHERE u.id=p_unit AND u.tenant_id=app.current_tenant_id()
- AND u.deleted_at IS NULL AND (u.kind<>'annual' OR NOT u.preparation_required OR g.state->'preparation'->>'state'='released'))
+ AND u.deleted_at IS NULL AND (u.kind<>'annual' OR NOT u.preparation_required OR CASE WHEN app.reward_preparation_upload_state(u.id)->>'present'='true' THEN (app.reward_preparation_upload_state(u.id)->>'released')::boolean ELSE g.state->'preparation'->>'state'='released' END))
 $$;
 ALTER FUNCTION app.reward_preparation_released(uuid) OWNER TO ai_hr_reward_preparation_reader;
 REVOKE ALL ON FUNCTION app.reward_preparation_released(uuid) FROM PUBLIC,ai_hr_app;
@@ -113,7 +132,7 @@ GRANT EXECUTE ON FUNCTION app.reward_preparation_audience_allowed(uuid) TO ai_hr
 --> statement-breakpoint
 CREATE FUNCTION app.reward_preparation_view(p_unit uuid) RETURNS jsonb
 LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,app SET row_security=on AS $$
-DECLARE u record; g jsonb; full_state jsonb; roles text[]; privileged boolean; actors jsonb; actor_person uuid; independent boolean; bindings jsonb; origin jsonb; history jsonb; identity jsonb;
+DECLARE u record; g jsonb; full_state jsonb; roles text[]; privileged boolean; actors jsonb; actor_person uuid; independent boolean; bindings jsonb; origin jsonb; history jsonb; identity jsonb; upload_state jsonb; is_upload boolean;
 BEGIN
  roles:=ARRAY(SELECT app.reward_roles_preparation_audience(p_unit));
  IF cardinality(roles)=0 OR NOT app.reward_preparation_audience_allowed(p_unit) THEN RETURN NULL; END IF;
@@ -121,10 +140,11 @@ BEGIN
  IF NOT FOUND THEN RETURN NULL; END IF;
  SELECT state INTO full_state FROM public.reward_governance WHERE unit_id=p_unit AND tenant_id=app.current_tenant_id();
  g:=full_state->'preparation';
- privileged:=roles && ARRAY['gr','ctro','ec'];
+ upload_state:=app.reward_preparation_upload_state(p_unit);is_upload:=coalesce((upload_state->>'present')::boolean,false);
+ privileged:=roles && ARRAY['gr','ctro','ec'] AND NOT is_upload;
  identity:=app.reward_preparation_context(p_unit,g);actor_person:=(identity->>'personId')::uuid;
  actors:=identity->'actorNames';history:=identity->'history';
- independent:=actor_person IS NOT NULL AND 'gr'=ANY(roles) AND NOT EXISTS(SELECT 1
+ independent:=NOT is_upload AND actor_person IS NOT NULL AND 'gr'=ANY(roles) AND NOT EXISTS(SELECT 1
  FROM jsonb_each(coalesce(g->'steps','{}'::jsonb)) proof
  WHERE proof.value->>'actorPersonId' IS NULL OR (proof.value->>'actorPersonId')::uuid=actor_person);
  IF privileged THEN
@@ -138,7 +158,7 @@ BEGIN
   origin:=app.reward_policy_unit_origin(p_unit);
 
  END IF;
- RETURN jsonb_build_object('unitId',u.id,'required',u.kind='annual' AND u.preparation_required,
+ RETURN jsonb_build_object('unitId',u.id,'required',u.kind='annual' AND u.preparation_required AND NOT is_upload,'uploaded',is_upload,'canInspect',roles && ARRAY['gr','ctro','ec'],
   'released',app.reward_preparation_released(p_unit),'setupVisible',privileged,'isGr','gr'=ANY(roles),
   'expectedRelease',g->'expectedRelease','preparation',CASE WHEN privileged THEN g ELSE NULL END,
   'personId',actor_person,'namedDoer',actor_person IS NOT NULL AND 'gr'=ANY(roles),'independentChecker',independent,

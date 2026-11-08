@@ -1855,7 +1855,7 @@ export async function rewardPromotionNominations(ctx: SessionContext, companyIds
 
 // The unit's existing governance record is the sole owner of preparation evidence.
 export type RewardPreparationView = {
- unitId:string;required:boolean;released:boolean;setupVisible:boolean;isGr:boolean;
+ unitId:string;required:boolean;released:boolean;setupVisible:boolean;isGr:boolean;uploaded?:boolean;canInspect?:boolean;
  expectedRelease:string|null;preparation:import('./preparation-model').RewardPreparation|null;
  applied:{salary:{name:string;version:number;confirmed:boolean};bonus:{name:string;version:number;confirmed:boolean}}|null;origin:{name:string;revision:number;versionId:string}|null;
  history:{id:string;kind:string;reason:string;actorName:string|null;at:string}[];
@@ -1926,7 +1926,8 @@ export async function changeRewardPreparation(ctx:SessionContext,unitId:string,r
   const {unit,roles,entries}=await load(tx,unitId,true);
   if(command.kind==='reopen'){assertRevision(unit,revision);if(unit.kind!=='annual'||!roles.includes('gr')||['posted','withdrawn','rejected'].includes(unit.status))throw new RewardError('Group Rewards can reopen only a live annual review.');}
   else{governanceAuthority(unit,roles,revision);await assertRewardCapabilityTx(tx,unitId,'snapshot.refresh');}
-  const [admission]=await tx.execute<{required:boolean}>(sql`select preparation_required as required from public.reward_unit where id=${unitId}::uuid and tenant_id=${ctx.tenantId}::uuid`);
+  const [admission]=await tx.execute<{required:boolean;uploaded:boolean}>(sql`select coalesce((value->>'required')::boolean,false) as required,coalesce((value->>'uploaded')::boolean,false) as uploaded from (select app.reward_preparation_view(${unitId}::uuid) as value) mode`);
+  if(admission?.uploaded)throw new RewardError('Use Uploaded awards and its independent current-file check for this review.');
   if(!admission?.required)throw new RewardError('Legacy review preparation history is not recorded. New annual reviews use the checked release process.');
   const before=await governanceStateTx(tx,unitId),after=structuredClone(before??emptyGovernance());
   const preparation=after.preparation??emptyRewardPreparation();after.preparation=preparation;
