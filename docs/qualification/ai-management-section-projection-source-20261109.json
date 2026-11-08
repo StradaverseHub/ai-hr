@@ -283,7 +283,7 @@
     "newNativeCases": 16,
     "existingDomCases": 71,
     "existingDomFiles": 7,
-    "preservedDomExpectCallExpressions": 294,
+    "preservedDomExpectCallExpressions": 147,
     "existingTimingOuterCases": 1,
     "newTimingCurrentWorkersCourses": 2,
     "historicalCoursesMarked": true,
