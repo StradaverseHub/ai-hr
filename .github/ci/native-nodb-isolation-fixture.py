@@ -940,7 +940,7 @@ def failure_locations(error):
 if __name__ == '__main__':
     try:
         main()
-    except BaseException:
+    except BaseException as failure:
         if os.geteuid() == 0 and sys.argv[1:2] in (['allocate'], ['hooks'], ['custody'], ['finish']):
             try:
                 root, state = load_state()
@@ -952,7 +952,7 @@ if __name__ == '__main__':
                             'complete': False, 'cleanupKnown': False, 'nativeSixOperationJoinVerified': False,
                             'nativeApiContextIssued': False, 'semanticParentVerified': False,
                             'normalNoDbVerified': False, 'releaseAuthorized': False})
-            except BaseException as failure:
+            except BaseException:
                 pass
         try:
             failure_locations(failure)

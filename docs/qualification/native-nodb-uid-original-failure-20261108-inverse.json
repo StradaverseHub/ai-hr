@@ -1,0 +1,23 @@
+{
+  "kind": "EXACT_TWO_REPLACEMENT_WHOLE_PARENT_RECONSTRUCTION",
+  "parent": "be6edf8060376bf3ca2d4b24687dd7ceea1ee3ad",
+  "path": ".github/ci/native-nodb-isolation-fixture.py",
+  "parentBlob": "2675a7482b69b5211e426baf0757eaa63e6a7d8b",
+  "parentSha256": "f49aba955412f0af1b65413af9838b853ee5b0249c4ea2543c2481eca1436626",
+  "currentSha256": "0ef9f84e8749637521ab0fd2b362c0761a53ff5647a18d2fee0e9d55b6ca58d3",
+  "replacements": [
+    {
+      "current": "    except BaseException as failure:\n        if os.geteuid() == 0 and sys.argv[1:2]",
+      "parent": "    except BaseException:\n        if os.geteuid() == 0 and sys.argv[1:2]"
+    },
+    {
+      "current": "            except BaseException:\n                pass\n        try:\n            failure_locations(failure)",
+      "parent": "            except BaseException as failure:\n                pass\n        try:\n            failure_locations(failure)"
+    }
+  ],
+  "absentAtParent": [
+    "docs/qualification/native-nodb-uid-original-failure-20261108.md",
+    "docs/qualification/native-nodb-uid-original-failure-20261108-source.json",
+    "docs/qualification/native-nodb-uid-original-failure-20261108-inverse.json"
+  ]
+}
