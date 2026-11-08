@@ -134,3 +134,44 @@ The independent runner PG witness must still prove normal profile2,
 cap2113929216, peak budget2147483648, JITon, zero OOM, health and cleanup. Off-arm
 results remain diagnostic even if faster. Any product-policy proposal requires
 separate source review and normal qualification. Production remains HELD.
+
+
+## Fixture maintenance successor
+
+The reviewed d424c7c4d83e91b9d7332b906a6ba6dfe9ac1e5b source had no native
+execution. PostgreSQL profile provisioning does not disable autovacuum. The
+actual retained Attendance receipt42486240322 contains automatic analyze lock
+skips. The fixture explicitly analyzes seven personnel tables plus Attendance,
+but neither that fixture nor global setup vacuums them. Whole pg_class and
+pg_statistic fingerprints can therefore change from background maintenance.
+Such drift is a strict STABILITY refusal with cause UNCLASSIFIED; it does not
+by itself establish an application mutation.
+
+The minimal successor runs ONE fixture-owner VACUUM(ANALYZE) on the complete
+current disposable worker database BEFORE its first fingerprint or app probe.
+This covers the whole catalogue/statistics invariant rather than eight selected
+tables. It reserves one connection from the EXISTING owner pool, verifies the
+canonical workerDb identity plus actual postgres LOGIN/same backend PID, and
+records native autovacuum/count/threshold settings. The installed postgres3.4.9
+reserve implementation has release() but no physical end() on its returned
+carrier; no unsupported connection-close method is called.
+
+Only that reserved maintenance session temporarily receives statement_timeout45s
+and lock_timeout5s via set_config(false), outside a transaction because VACUUM is
+not a transaction-block command. Native numeric settings prove those bounds.
+Started status/time saves BEFORE awaiting the sole command; completed/refused,
+end/duration and restoration save afterwards. All native work settles before
+exact original settings/same-PID verification and release. If restoration or
+release is uncertain the actual owner pool closes within five seconds; the
+contaminated carrier is never released. Original and cleanup errors aggregate.
+There is no second observer, progress-poll loop, retry, extra pool, global
+setting, autovacuum disable or dropped fingerprint field. App defaults, original
+all-arm comparisons and all three strict fingerprint assertions remain whole.
+
+Maintenance completion reduces pending work; it cannot guarantee no later
+background drift. The original full50k Attendance case leaves roughly101s of
+nominal space relative to its300s limit, but the new preparation controls,
+fingerprints and maintenance cost have not been measured. The same three300s
+cases,30s hooks and20min focused outer limit remain. Preserve any timeout; no
+capacity increase or performance acceptance follows from this source proposal.
+The1549-member path list is unchanged; current three source hashes change.

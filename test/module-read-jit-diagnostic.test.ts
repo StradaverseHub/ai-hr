@@ -14,12 +14,13 @@ import {parsePageQuery} from '../lib/pagination';
 import {closeAll,migrateTestDb,owner,setModule} from './harness';
 import {admitSingletonTest} from './helpers/ci-singleton-admission';
 import {seedPersonnelNativeFixture} from './performance/personnel-native-fixture';
-import {actualDriverPins,createModuleReadJitProbe,digest,nativeModuleFingerprint,type CapturedStatement,type JitMode} from './performance/module-read-jit-probe';
+import {actualDriverPins,createModuleReadJitProbe,digest,maintainModuleReadFixture,nativeModuleFingerprint,type CapturedStatement,type JitMode} from './performance/module-read-jit-probe';
 
 const admission=admitSingletonTest('test/module-read-jit-diagnostic.test.ts');
 const report:Record<string,unknown>={kind:'SHARED_MODULE_READ_JIT_DIAGNOSTIC_ONLY',releaseEligible:false,complete:false,cleanupComplete:false,
  host:{cpus:cpus().length,cpuModels:[...new Set(cpus().map(cpu=>cpu.model))],memoryBytes:totalmem()},
  limits:{cases:3,caseMs:300000,defaultHookMs:30000,focusedOuterMs:1200000,fullSingletonOuterMs:7200000,profileVersion:2,configuredPgCapBytes:2113929216,pgPeakBudgetBytes:2147483648,normalProfileJit:'on'},
+ fingerprintDriftMeaning:'STABILITY_REFUSAL_CAUSE_UNCLASSIFIED; background maintenance is possible, and drift alone does not prove an application mutation.',
  warmth:'Fixture creation/ANALYZE warm buffers and functions. Every arm discards plans; no storage-cold claim or paired production speed acceptance.',
  planCoverage:'Five actual captured SELECT objects, twenty plans. Cursor DECLARE/FETCH/CLOSE remains in whole read census and is not EXPLAIN-rewritten.'};
 let probe:Awaited<ReturnType<typeof createModuleReadJitProbe>>|undefined;
@@ -58,6 +59,8 @@ it('prepares one fictional50000 fixture and proves actual unprepared driver, exc
   (select count(*)::int from leave_ledger where tenant_id=${fixture.b.tenantId}::uuid)as ledger`;
  expect(facts).toEqual({employees:50000,current:40000,ended:10000,assignments:50000,attendance:40000,worked:'19200000',ledger:0});
  report.fixtureFacts=facts;report.fixturePool={ownerMax:owner.client.options.max,ordinaryAppMax:database.client.options.max,ordinaryAppClosedBeforeMeasurements:true};
+ await maintainModuleReadFixture(report,save);
+ expect(report.fixtureMaintenance).toMatchObject({complete:true,status:'completed',defaultsRestoredSamePid:true,released:true,newPools:0,reservedOwnerConnections:1,retries:0});
  fingerprint=await nativeModuleFingerprint();report.initialFingerprint=fingerprint;
  probe=await createModuleReadJitProbe(fixture.ctx,save);report.fixtureAndOwnerPreparationMs=performance.now()-start;save();
  // Real held native snapshot demonstrates refusal of a second owner; no fake Tx.

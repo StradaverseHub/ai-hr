@@ -13,6 +13,7 @@ import type {SessionContext,Tx} from '../../db/client';
 import {withModulePresentationRead} from '../../core/module-presentation-read';
 import {assertAiPresentationPrincipalTx} from '../../core/ai-principal';
 import {owner} from '../harness';
+import {workerDb} from '../db-names';
 
 export type JitMode='on'|'off';
 export type CapturedStatement={statement:SQL;text:string;params:unknown[];digest:string;classification:string;ordinal:number;rows:number|null;elapsedMs:number;succeeded:boolean};
@@ -37,6 +38,52 @@ export function classifyNativeStatement(text:string){
  return 'unclassified';
 }
 type Settings={pid:number;role:string;login:string;jit:string;available:boolean;version:string;above:string;inline:string;optimize:string;work:string;hash:string;cache:string;statement:string;lock:string;rls:string};
+
+/** One bounded fixture-only maintenance command; never a paired app setting. */
+export async function maintainModuleReadFixture(report:Record<string,unknown>,save:()=>void){
+ const maintenance:Record<string,unknown>={kind:'WHOLE_OWNED_WORKER_VACUUM_ANALYZE',status:'reserving',complete:false,
+  statementLimitMs:45000,lockLimitMs:5000,newPools:0,reservedOwnerConnections:1,retries:0};
+ report.fixtureMaintenance=maintenance;save();
+ const connection=await owner.client.reserve();
+ let defaults:Settings|undefined,primary:unknown,failed=false,restored=false;
+ const settings=async()=>{const [row]=await connection.unsafe(settingSql,[],{prepare:false});return row as unknown as Settings;};
+ try{
+  defaults=await settings();const pool=process.env.VITEST_POOL_ID??process.env.VITEST_WORKER_ID;assert(pool&&/^[1-9][0-9]*$/.test(pool));
+  const [native]=await connection`select current_database()as database,pg_backend_pid()as pid,
+   current_setting('autovacuum')as autovacuum,current_setting('track_counts')as "trackCounts",
+   current_setting('autovacuum_naptime')as "naptime",current_setting('autovacuum_max_workers')as "maxWorkers",
+   current_setting('autovacuum_vacuum_threshold')as "vacuumThreshold",current_setting('autovacuum_vacuum_scale_factor')as "vacuumScale",
+   current_setting('autovacuum_vacuum_insert_threshold')as "insertThreshold",current_setting('autovacuum_vacuum_insert_scale_factor')as "insertScale",
+   current_setting('autovacuum_analyze_threshold')as "analyzeThreshold",current_setting('autovacuum_analyze_scale_factor')as "analyzeScale"`;
+  assert.equal(native.database,workerDb(pool));assert.equal(native.pid,defaults.pid);assert.equal(defaults.role,'postgres');assert.equal(defaults.login,'postgres');
+  assert.equal(native.autovacuum,'on');assert.equal(native.trackCounts,'on');maintenance.native=native;maintenance.defaults=defaults;
+  await connection`select set_config('statement_timeout','45s',false),set_config('lock_timeout','5s',false)`;
+  const [bounds]=await connection`select pg_backend_pid()as pid,(select setting::integer from pg_settings where name='statement_timeout')as "statementMs",(select setting::integer from pg_settings where name='lock_timeout')as "lockMs"`;
+  assert.deepEqual(bounds,{pid:defaults.pid,statementMs:45000,lockMs:5000});maintenance.actualBounds=bounds;
+  maintenance.status='started';maintenance.startedAtMs=Date.now();save();const start=performance.now();
+  try{await connection.unsafe('vacuum(analyze)',[],{prepare:false});maintenance.status='completed';maintenance.commandCompleted=true;}
+  finally{maintenance.endedAtMs=Date.now();maintenance.elapsedMs=performance.now()-start;}
+ }catch(error){failed=true;primary=error;maintenance.status='refused';}
+ finally{
+  // VACUUM is top-level/autocommit. Every native command above has settled before
+  // session restoration; no aborted transaction is queried or carrier reused.
+  try{
+   assert(defaults,'Maintenance default custody unavailable');
+   await connection`select set_config('statement_timeout',${defaults.statement},false),set_config('lock_timeout',${defaults.lock},false)`;
+   assert.deepEqual(await settings(),defaults);restored=true;maintenance.defaultsRestoredSamePid=true;
+  }catch(error){maintenance.defaultsRestoredSamePid=false;primary=failed?new AggregateError([primary,error],'Maintenance restoration failed'):error;failed=true;}
+  if(restored){try{connection.release();maintenance.released=true;}catch(error){restored=false;primary=failed?new AggregateError([primary,error],'Maintenance release failed'):error;failed=true;}}
+  if(!restored){
+   // Installed reserve() has release(), but no physical .end(). Poison the real
+   // owner pool instead of returning uncertain session settings to another user.
+   maintenance.ownerPoolPoisoned=true;
+   try{await owner.client.end({timeout:5});maintenance.poisonedPoolClosed=true;}catch(error){primary=failed?new AggregateError([primary,error],'Maintenance pool close failed'):error;failed=true;}
+  }
+  if(failed)maintenance.status='refused';maintenance.complete=!failed&&maintenance.status==='completed'&&restored;
+  try{save();}catch(error){primary=failed?new AggregateError([primary,error],'Maintenance receipt persistence failed'):error;failed=true;}
+ }
+ if(failed){maintenance.status='refused';maintenance.complete=false;throw primary;}
+}
 
 /** Hash native content on the server; receipts contain no HR rows or SQL bodies. */
 export async function nativeModuleFingerprint(){
