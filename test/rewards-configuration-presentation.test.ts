@@ -208,5 +208,5 @@ it('returns at most authorized-ID upload rows with a large genuine unrelated pop
   expect(receipt.oldRows).toBe(count+1);expect(receipt.newRows).toBe(1);expect(receipt.newRows).toBeLessThanOrEqual(actual.all.length);
   // Facade has exactly one extra statement: its unchanged native audit prephase.
   expect(receipt.newStatements).toBe(receipt.oldStatements+1);expect(after.properties).toHaveLength(2);expect(after.state).toEqual({active:0,maxActive:1});receipt.complete=true;
- }finally{after.restore();if(process.env.VITEST_ARTIFACT_DIR)writeFileSync(join(process.env.VITEST_ARTIFACT_DIR,'rewards-configuration-presentation-row-census.json'),JSON.stringify(receipt,null,2)+'\n');}
+ }finally{after.restore();if(process.env.AIHR_FOCUSED_EVIDENCE_DIR)writeFileSync(join(process.env.AIHR_FOCUSED_EVIDENCE_DIR,'rewards-configuration-presentation-row-census.json'),JSON.stringify(receipt,null,2)+'\n');}
 },90000);

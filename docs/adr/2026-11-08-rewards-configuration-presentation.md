@@ -82,3 +82,12 @@ joins the seeded review/cycle/company and checks `reward_capability(id,'rules.vi
 IDs must equal the known nonempty seeded unit ID before comparing the complete choice DTO.
 This test-only child preserves every earlier assertion, case name and budget. Product owners,
 SQL/journal and all other source remain whole. Native execution is still pending review.
+
+## Focused row-census evidence owner correction
+
+Full source review found that the new optional row-census output used `VITEST_ARTIFACT_DIR`,
+which the intended focused controller does not supply. The receipt now uses the existing
+`AIHR_FOCUSED_EVIDENCE_DIR` owner from that controller. When this variable is absent, the
+ordinary test keeps running its assertions without writing this optional focused receipt.
+There is no alternate output claim or release-receipt adoption. All product, fixture, case,
+assertion, oracle and resource-budget bytes remain unchanged. Native execution is pending.
