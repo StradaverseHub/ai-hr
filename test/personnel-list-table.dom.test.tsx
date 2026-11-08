@@ -19,7 +19,6 @@ it('separates accessible reorder handles, sorting and private column criteria wh
  expect(within(view.container.querySelector('tbody tr')!).getByText('Example employee')).toBeVisible();
  fireEvent.click(screen.getByRole('button',{name:'joinDate'}));expect(controls.replace).toHaveBeenCalledWith(expect.stringContaining('sort=joinDate'),{scroll:false});expect(controls.replace.mock.calls[0][0]).not.toContain('page=');
  const input=screen.getByLabelText('Filter name');fireEvent.change(input,{target:{value:'PRIVATE-FICTIONAL-NAME'}});expect(input).toHaveAttribute('form','personnel-column-filter');expect(view.container.querySelector('#personnel-column-filter')).toHaveAttribute('method','post');expect(view.container.querySelector('#personnel-column-filter')).toHaveAttribute('action','/admin/personnel/search');
- await captureAiReviewScreenshots(aiReviewDomHtml(view.container),'en','personnel-organisation-results','Approved column-filter and header-reorder listing; real Personnel components with fictional records; no installed acceptance','atelier');
 });
 it('reverts optimistic order and reports a failed preference write',async()=>{
  controls.save.mockRejectedValueOnce(new Error('fixture'));const view=make();fireEvent.keyDown(screen.getByRole('button',{name:'Move name'}),{key:'ArrowLeft'});expect(await screen.findByRole('alert')).toHaveTextContent(en.people.list.controls.saveFailed);expect([...view.container.querySelectorAll('th')].map(node=>node.getAttribute('data-column'))).toEqual(['code','name','joinDate']);
@@ -31,3 +30,11 @@ it('retains criteria in editable headers while preserving hidden fields and term
  const form=view.container.querySelector<HTMLFormElement>('#personnel-column-filter')!;
  expect(form.querySelector('input[name="term"]')).toHaveValue('PRIVATE-IDENTITY');expect(form.querySelector('input[name="field.employment.orgDivision"]')).toHaveValue('Private Division');expect(form).toHaveAttribute('action','/admin/personnel/search');
 });
+
+// Browser evidence is a separate CI-only operation: this helper cold-compiles full application CSS,
+// loads the shipped script fonts and captures two Chrome viewports. Keep interaction cases at 5s;
+// use the same bounded browser budget as the existing Personnel capture cases, rather than relaxing them.
+it('captures the actual listing controls in desktop and phone viewports',async()=>{
+ const view=make();
+ await captureAiReviewScreenshots(aiReviewDomHtml(view.container),'en','feedback-personnel-column-controls','Approved column-filter and header-reorder listing; real Personnel components with fictional records; no installed acceptance','atelier');
+},120000);

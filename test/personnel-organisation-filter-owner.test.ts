@@ -166,7 +166,8 @@ it('retains identity permission provenance when another column filter narrows an
 
 it('replaces a Company criterion against the full authorised population and retains editable criteria',async()=>{
  const [otherCompany]=await owner.db.insert(s.company).values({tenantId:b.tenantId,legalName:'Fictional Company B'}).returning();
- const a=await hire('Company A person');const other=await hireEmployee(ctx,{person:{fullName:'Company B person',primaryEmail:'company-b@fixture.test'},companyId:otherCompany.id,employmentType:'full_time',hiredOn:'2024-01-01'});
+ const [otherDepartment]=await owner.db.insert(s.department).values({tenantId:b.tenantId,companyId:otherCompany.id,name:'Company B department'}).returning();
+ const a=await hire('Company A person');const other=await hireEmployee(ctx,{person:{fullName:'Company B person',primaryEmail:'company-b@fixture.test'},companyId:otherCompany.id,departmentId:otherDepartment.id,employmentType:'full_time',hiredOn:'2024-01-01'});
  const scope=[b.companyId,otherCompany.id];
  const first=await createPersonnelPrivateSearch(ctx,{text:'',companyIds:scope,columnFilters:[{field:'company',operator:'equals',value:b.companyId}]});
  const changed=await createPersonnelPrivateSearch(ctx,{text:'',companyIds:scope,previousToken:first,columnFilters:[{field:'company',operator:'equals',value:otherCompany.id}]});
