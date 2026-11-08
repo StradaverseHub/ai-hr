@@ -7,23 +7,10 @@ import { listCompanies, listDepartments } from '@/core/read';
 import { listCostCenters } from '@/core/admin';
 import {
   analyticsDateRange,
-  carryForwardReportPage,
-  changeJobTransactionsPage,
-  demographicsByNationality,
-  headcountSummary,
-  leaveBalancesSummary,
-  leaveUtilisation,
-  masterDataCount,
+  analyticsDashboard,
   analyticsManagerSelection,
-  movementByMonth,
-  newHiresPage,
   parseAnalyticsFilters,
   parseReportYear,
-  sickLeaveTrend,
-  terminationsPage,
-  turnoverRateFiltered,
-  workforceDemographics,
-  type ReportFilter,
 } from '@/core/analytics';
 import { Pager } from '@/components/pager';
 import { parsePageQuery } from '@/lib/pagination';
@@ -51,7 +38,6 @@ export default async function AnalyticsPage({
   const { from, to } = analyticsDateRange(get);
   // Single filter source of truth — the same parse the export route uses (no screen/export drift).
   const filters = parseAnalyticsFilters(get);
-  const filter: ReportFilter = { departmentId: filters.departmentId, q: filters.q };
   const reportYear = parseReportYear(get);
 
   const [departments, companies, costCentres, managerSelection] = await Promise.all([
@@ -61,22 +47,13 @@ export default async function AnalyticsPage({
     analyticsManagerSelection(s, scopeIds, filters.managerEmploymentId),
   ]);
 
-  const [hc, hires, terms, turnover, changeJobs, demographics, nationality, leaveUtil, leaveBalances, sickTrend, movement, carryForward] =
-    await Promise.all([
-      headcountSummary(s, scopeIds, { asOf: to }),
-      newHiresPage(s, scopeIds, { from, to, filter, page: parsePageQuery({page:sp.hirePage,size:sp.hireSize}) }),
-      terminationsPage(s, scopeIds, { from, to, filter, page: parsePageQuery({page:sp.termPage,size:sp.termSize}) }),
-      turnoverRateFiltered(s, scopeIds, { from, to, filters }),
-      changeJobTransactionsPage(s, scopeIds, { from, to, filter, page: parsePageQuery({page:sp.changePage,size:sp.changeSize}) }),
-      workforceDemographics(s, scopeIds, { asOf: to, filters }),
-      demographicsByNationality(s, scopeIds, { asOf: to, filters }),
-      leaveUtilisation(s, scopeIds, filters),
-      leaveBalancesSummary(s, scopeIds, filters),
-      sickLeaveTrend(s, scopeIds, { from, to, filters }),
-      movementByMonth(s, scopeIds, { from, to, filters }),
-      carryForwardReportPage(s, scopeIds, { year: reportYear, filter, companyId: filters.companyId, page: parsePageQuery({page:sp.carryPage,size:sp.carrySize}) }),
-    ]);
-  const masterCount = await masterDataCount(s, scopeIds, { filter });
+  const {hc,hires,terms,turnover,changeJobs,demographics,nationality,leaveUtil,leaveBalances,sickTrend,movement,carryForward,masterCount} =
+    await analyticsDashboard(s,scopeIds,{from,to,year:reportYear,filters,pages:{
+      hires:parsePageQuery({page:sp.hirePage,size:sp.hireSize}),
+      terms:parsePageQuery({page:sp.termPage,size:sp.termSize}),
+      changeJobs:parsePageQuery({page:sp.changePage,size:sp.changeSize}),
+      carryForward:parsePageQuery({page:sp.carryPage,size:sp.carrySize}),
+    }});
 
   // Carry the period + scoping filters onto every export link.
   const filterQs =

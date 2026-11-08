@@ -1,0 +1,11 @@
+# Real 50,000-employment Analytics dashboard course
+
+Source-only child of frozen `0dff80e443395ebe3ae672c4f16002510376d01c`. The production composition, seven native controls and bounded DOM assertions remain whole.
+
+The existing native-scale case now invokes the actual `analyticsDashboard` owner against its same 50,000-person/employment/assignment fixture and records `dashboardSnapshotMs` separately from every retained standalone timing. Its period covers all 50,000 hires and 10,000 terminations. Independent expected facts assert 40,000 active headcount/demographic/master members, exact ordered 25-row hire/termination/carry pages and complete totals, Unknown person/nationality buckets, zero job changes, the two native movement months, 10,000 leavers over a 45,000 average headcount (22.2%), and empty ledger/sick-type data from the actual fixture. No result is substituted with a sibling report's output as its expected value.
+
+All earlier assertions, timings, deep page, complete 40,000-row master export and complete 50,000-row hire export remain unchanged. The added dashboard result records its actual report totals/page sizes and serialized size. This is the same component-only fictional-data report with release eligibility false, not a full browser/load/zero-blocking or release witness.
+
+The original 300,000 ms case budget and fixture size remain unchanged. Before this extension, the historical `42369891494` artifact (`01d44d3f32aac2c889abfd9ba676774eabcafc80`, controller `4a5a9de8c7c4c7a92dcce5d55a14b736336a87e7`) measured 184,612.189 ms for that earlier whole case and 51,322.357 ms across its standalone report timings. Those bytes predate later query fixes, so they are only a planning lead. The added current dashboard is unmeasured; an estimated additional 60–100 seconds under those earlier scan costs could bring the case near its budget. A real timeout must be retained and diagnosed; no latency assertion, budget increase, skipped original assertion or fabricated completion is introduced.
+
+Root and independent source review precede public upload and standard GitHub-hosted focused checks. No whole typecheck is silently repeated while the separately observed compiler OOM remains unresolved. No local repository behavior, tests, imports, generators, compiler, database or build are executed. Production remains held.

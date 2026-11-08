@@ -14,7 +14,8 @@ import {anchorAttendanceClockMinute as anchorToShift} from './attendance-timelin
 import {isCalendarDate} from '../lib/calendar-date';
 import {assertAiPresentationPrincipalTx} from './ai-principal';
 import {settleReadGroup} from '../lib/settle-read-group';
-import {parsePageQuery,pageState,type PageQuery,type PageState} from '../lib/pagination';
+import {parsePageQuery,pageState,PAGE_SIZE_OPTIONS,type PageQuery,type PageState} from '../lib/pagination';
+import {withModulePresentationRead} from './module-presentation-read';
 import {summarizeOvertimeRecords,type FormulaOvertimeRecord,type OvertimeRecordSummary} from '../lib/overtime-records';
 import { exceptionDecisionsTx } from './schedule-group-controls';
 import { provenCompanyDatesTx } from './employment-company';
@@ -3359,7 +3360,15 @@ export function attendanceMonthSummary(
     const monthEnd = new Date(Date.UTC(y, m, 0)).toISOString().slice(0, 10);
     const today = p.today ?? todayInKualaLumpur(); // absence only up to today (clamped in absence-days.ts)
 
-    const emps = await tx
+    const emps = await attendanceMonthEmployeesSourceTx(tx,p.companyIds).orderBy(person.fullName);
+    return hydrateAttendanceMonthEmployeesTx(tx,ctx,p,emps,{monthStart,monthEnd,today});
+  });
+}
+
+/** This is the original month-summary population: no Assignment join, hire-as-of
+ * predicate or stable tie-breaker. Undefined/empty scope retains native RLS only. */
+function attendanceMonthEmployeesSourceTx(tx:Tx,companyIds?:string[]){
+  return tx
       .select({
         employmentId: employment.id,
         name: person.fullName,
@@ -3372,12 +3381,19 @@ export function attendanceMonthSummary(
       .where(
         and(
           isNull(employment.terminatedOn),
-          p.companyIds && p.companyIds.length
-            ? inArray(employment.companyId, p.companyIds)
+          companyIds && companyIds.length
+            ? inArray(employment.companyId, companyIds)
             : undefined,
         ),
-      )
-      .orderBy(person.fullName);
+      );
+}
+
+type AttendanceMonthWindow={monthStart:string;monthEnd:string;today:string};
+/** Exact original financial hydration body, shared without changing full readers.
+ * The complete reader invokes it once; only the display owner partitions identities. */
+async function hydrateAttendanceMonthEmployeesTx(tx:Tx,ctx:SessionContext,p:{measurement?:'raw'},
+ emps:Awaited<ReturnType<typeof attendanceMonthEmployeesSourceTx>>,window:AttendanceMonthWindow):Promise<MonthSummaryRow[]>{
+ const {monthStart,monthEnd,today}=window;
     if (emps.length === 0) return [];
     const empIds = emps.map((e) => e.employmentId);
 
@@ -3513,7 +3529,45 @@ export function attendanceMonthSummary(
         over45hWeek: [...weekMinutes.values()].some((v) => v > WEEK_LIMIT_MINUTES),
       };
     });
-  });
+}
+
+/** Capture only the existing shared page contract. Huge parsed offsets remain an
+ * empty past-end page after counting, without sending an unsafe OFFSET to SQL. */
+function attendanceMonthPageQuery(input:PageQuery):PageQuery{
+ const page={...input};
+ if(!Number.isSafeInteger(page.page)||page.page<0||!Number.isFinite(page.offset)||page.offset<0||
+  !(page.size==='all'||PAGE_SIZE_OPTIONS.some(size=>size===page.size))||
+  page.limit!==(page.size==='all'?ALL_ROW_CEILING:page.size)||page.offset!==(page.size==='all'?0:page.page*page.limit)){
+  throw new Error('Invalid attendance month page');
+ }
+ return page;
+}
+
+/** Display-only month overview: one authorized module snapshot owns the exact
+ * count, SQL identity window and original per-employment financial projection. */
+export async function attendanceMonthSummaryPage(ctx:SessionContext,
+ supplied:{month:string;companyIds?:string[];today?:string;page:PageQuery}):Promise<{rows:MonthSummaryRow[];state:PageState}>{
+ const p={month:supplied.month,companyIds:supplied.companyIds?.slice(),today:supplied.today,page:attendanceMonthPageQuery(supplied.page)};
+ return withModulePresentationRead(ctx,'attendance',async(tx,currentCtx)=>{
+  const monthStart=`${p.month}-01`,[y,m]=p.month.split('-').map(Number);
+  const monthEnd=new Date(Date.UTC(y,m,0)).toISOString().slice(0,10),today=p.today??todayInKualaLumpur();
+  const population=attendanceMonthEmployeesSourceTx(tx,p.companyIds).as('attendance_month_population');
+  const [counted]=await tx.select({total:sql<number>`count(*)`.mapWith(Number)}).from(population);
+  const total=counted?.total??0;
+  // The existing route parser admits00/13 months. A nonempty full reader would
+  // fail its native attendance date cast even on a past-end page. Keep that
+  // narrow compatibility behavior without adding a query to valid windows.
+  if(total>0&&!isCalendarDate(monthStart))await tx.execute(sql`select ${monthStart}::date as "monthStart",${monthEnd}::date as "monthEnd"`);
+  if(p.page.offset>=total)return {rows:[],state:pageState(p.page,total,0)};
+  const emps=await attendanceMonthEmployeesSourceTx(tx,p.companyIds).orderBy(person.fullName).limit(p.page.limit).offset(p.page.offset);
+  const rows:MonthSummaryRow[]=[];
+  // One month has at most31 unique dates per employment.1000 identities keep
+  // each original formula projection below its unchanged50000-row input bound.
+  for(let start=0;start<emps.length;start+=1000){
+   rows.push(...await hydrateAttendanceMonthEmployeesTx(tx,currentCtx,{},emps.slice(start,start+1000),{monthStart,monthEnd,today}));
+  }
+  return {rows,state:pageState(p.page,total,rows.length)};
+ });
 }
 
 // ───────────────────── Corrections (ADR-0011 Phase B) ─────────────────────
