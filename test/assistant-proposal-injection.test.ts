@@ -36,6 +36,13 @@ const h=vi.hoisted(()=>{
  const clarificationSource=vi.fn(()=>{throw Error('No clarification source in injection fixture');}),clarificationCurrent=vi.fn(()=>{throw Error('No clarification current-source check in injection fixture');});
  return {state,fakeTx,converse,seal,run,prepare,replay,dispose,clarificationSource,clarificationCurrent};
 });
+// This suite explicitly doubles database boundaries. Stop/generation/function authority is
+// exercised against the real database in ai-centre-controls and assistant-read-session tests.
+vi.mock('../core/ai-centre-control',()=>({
+ withAiCentreActivity:async(_ctx:unknown,work:()=>Promise<unknown>)=>work(),
+ withAiCentreFunction:async(_ctx:unknown,_key:unknown,work:()=>Promise<unknown>)=>work(),
+ assertAiCentreRunningTx:async()=>0,
+}));
 vi.mock('../db/client',()=>({withTenant:async(_ctx:unknown,fn:(tx:unknown)=>Promise<unknown>)=>fn(h.fakeTx())}));
 vi.mock('../lib/ai',()=>({converse:h.converse}));
 vi.mock('../core/assistant-grant',()=>({assertMayUseAssistant:async()=>undefined}));
@@ -51,7 +58,7 @@ vi.mock('../core/entitlements',()=>({resolveEntitlementsTx:async()=>({})}));
 vi.mock('../core/assistant-disclosure-read',()=>({assistantSourceReplay:()=>h.replay}));
 vi.mock('../core/assistant-clarification',()=>({ownAssistantClarification:async()=>{throw Error('no clarification');},assistantClarificationSourceExchangeId:()=>null,assistantClarificationThreadId:()=>undefined,assistantClarificationContextSource:h.clarificationSource,assertOwnAssistantClarificationCurrentTx:h.clarificationCurrent}));
 vi.mock('../core/assistant-tools',()=>{const tool={spec:{name:'my_leave_requests',description:'fixture',inputSchema:{type:'object'}},module:null,run:h.run};return {ASSISTANT_TOOLS:[tool],toolsFor:()=>[tool],specsFor:()=>[tool.spec]};});
-vi.mock('../core/assistant-read-session',()=>({withAssistantRead:async(_ctx:unknown,_module:unknown,consume:(session:unknown)=>Promise<unknown>)=>consume({}),withAssistantAdmissionReadsTx:async(_ctx:unknown,_tx:unknown,consume:(session:unknown)=>Promise<unknown>)=>consume({})}));
+vi.mock('../core/assistant-read-session',()=>({assistantFunctionAllowed:async()=>true,withAssistantRead:async(_ctx:unknown,_module:unknown,consume:(session:unknown)=>Promise<unknown>)=>consume({}),withAssistantAdmissionReadsTx:async(_ctx:unknown,_tx:unknown,consume:(session:unknown)=>Promise<unknown>)=>consume({})}));
 vi.mock('../lib/ai/assistant-disclosure',()=>({sealAssistantDisclosure:h.seal,assistantSourceDigest:()=>'fixture-digest'}));
 vi.mock('../core/assistant-readable-modules',()=>({assistantReadableModules:()=>h.state.readable}));
 // The caller's own facts, read once per question by the core owner; the catalogue itself is derived for real.

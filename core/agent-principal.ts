@@ -1,3 +1,4 @@
+import {assertAiCentreRunningTx} from './ai-centre-control';
 /**
  * ADR-0151 §4.5 (amendment 2026-10-29). The tenant's named agent principal for unattended Automatic-tier
  * work: the nightly orchestrator pass and its two specialists. Not a login and never an administrator —
@@ -84,6 +85,7 @@ export const attributedEnablements = (states: readonly AgentSwitchState[]): Agen
  *  switch-on event the run started with (switching off and on again mid-run ends the old authority). */
 export async function agentSpecialistCurrentTx(tx: Tx, ctx: SessionContext, feature: AgentFeature): Promise<boolean> {
   if (!isAgentContext(ctx)) return false;
+  await assertAiCentreRunningTx(tx,ctx);
   const held = ctx.agent.enablements.find(e => e.feature === feature);
   if (!held) return false;
   const now = (await agentSwitchStatesTx(tx, ctx)).find(s => s.feature === feature);

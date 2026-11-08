@@ -1,3 +1,4 @@
+import {assertAiCentreRunningTx} from '../ai-centre-control';
 /** ADR-0170 §3.13 step 5 — the per-tenant worker switches and the run gate.
  *
  * Each registered worker's switch is read from the owner that already holds it (./workers.ts): the tenant
@@ -81,6 +82,11 @@ export function workerGateFromState(on:boolean,stopped:boolean):WorkerGate{
 export async function workerRunGateTx(tx:Tx,ctx:SessionContext,workerId:string):Promise<WorkerGate>{
  const worker=registeredWorker(workerId);
  if(!worker)return Object.freeze({run:false,reasons:Object.freeze(['not_registered' as const])});
+ // Serialize with the stop writer and reject work from an older generation.
+ try{await assertAiCentreRunningTx(tx,ctx);}catch(error){
+  if(error instanceof Error&&error.name==='AiAllowanceError')return Object.freeze({run:false,reasons:Object.freeze(['stopped' as const])});
+  throw error;
+ }
  const {on}=await workerSwitchStateTx(tx,ctx,worker);
  return workerGateFromState(on,await tenantStoppedTx(tx,ctx.tenantId));
 }

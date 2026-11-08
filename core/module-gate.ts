@@ -1,3 +1,5 @@
+import {aiCentreActivity} from '../lib/ai/centre-activity';
+import {assertAiCentreRunningTx} from './ai-centre-control';
 /**
  * THE SERVICE-DEEP MODULE GATE — one import line per service file, every entry point in it gated.
  *
@@ -182,6 +184,7 @@ export function withModuleTenant(code: string) {
   ): Promise<T> {
     assertModuleGate(ctx, code);
     return withTenant(ctx, async tx => {
+      if(code==='performance'&&aiCentreActivity(ctx.tenantId))await assertAiCentreRunningTx(tx,ctx);
       if (code === 'payroll') await lockPayrollHistoryReadTx(tx,ctx.tenantId);
       return fn(tx);
     }, options);

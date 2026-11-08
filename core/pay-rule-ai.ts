@@ -1,3 +1,4 @@
+import {withAiCentreFunction} from './ai-centre-control';
 import { adjudicateAiPayRule } from '../packs/payroll/ai-rule-proposal';
 /**
  * AI-assisted pay-rule drafting (Payroll Setup — configurable pay-rule engine). DRAFT-ONLY, one-shot.
@@ -93,7 +94,11 @@ async function assertPayRuleDraftAuthorTx(tx:Tx,ctx:SessionContext){
  * will enforce on save (an AI-suggested per_day/per_hour rule on a prorating component is rejected here, not
  * after a green "Use this"). Returns the rule + explanation for the admin to review; NEVER writes anything.
  */
-export async function draftPayRule(
+export async function draftPayRule(...args:Parameters<typeof draftPayRuleActivity>):Promise<Awaited<ReturnType<typeof draftPayRuleActivity>>>{
+ args=structuredClone(args);
+ return withAiCentreFunction(args[0],'read:operation_pay_rule_draft',()=>draftPayRuleActivity(...args));
+}
+async function draftPayRuleActivity(
   ctx: SessionContext,
   p: { description: string; componentCode?: string | null; componentProrates?: boolean },
 ): Promise<DraftResult> {

@@ -1,3 +1,4 @@
+import {setAiCentreReadControl} from '../core/ai-centre-inventory';
 /** Spec v23 — each topic of a topic tool keeps exactly its capability's own gate, over the real tool provider, the real
  * capabilities and real module and worker switches on fictional data (core/harness/tools.ts topicBindings,
  * core/explainers/capabilities.ts terasCapabilitiesFor).
@@ -39,6 +40,22 @@ const scope=()=>({companyId:base.companyId,locale:'en'});
 const bound=async(ctx:SessionContext,provider=nativeToolProvider)=>(await provider(ctx,scope(),true)).bindings;
 const named=async(ctx:SessionContext,name:string)=>{const binding=(await bound(ctx)).find(row=>row.name===name);if(!binding)throw Error(name+' is not bound');return binding;};
 
+describe('AI centre topic-family switches',()=>{
+ it('can disable a topic family while preserving unrelated tools and all child settings',async()=>{
+  const group=await person('Fictional Topic Switch Owner',[{role:'hr_admin',companyId:null}]);
+  const operations=await named(group,'operations_status');
+  expect(await operations.run({topic:'loops'})).toMatchObject({ok:true});
+  await setAiCentreReadControl(group,'read:operations_status',false);
+  await expect(operations.run({topic:'loops'})).rejects.toMatchObject({reason:'paused'});
+  const guidance=await named(group,'product_guidance');
+  expect(await guidance.run({topic:'password_policy',query:'Password settings'})).toMatchObject({ok:true});
+  await setAiCentreReadControl(group,'read:operations_status',true);
+  expect(await operations.run({topic:'loops'})).toMatchObject({ok:true});
+  await setAiCentreReadControl(group,'read:loops_overview',false);
+  await expect(operations.run({topic:'loops'})).rejects.toMatchObject({reason:'paused'});
+  expect(await operations.run({topic:'ai_quality'})).toMatchObject({ok:true});
+ });
+});
 describe('operations_status',()=>{
  it('is bound for administrators only',async()=>{
   const employee=await person('Fictional Topic Employee',[{role:'employee',companyId:null}]);

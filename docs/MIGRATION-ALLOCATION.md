@@ -1,5 +1,44 @@
 # Coordinated migration reservations
 
+## Architecture / AI Centre compatibility — 8 November 2026 (reserved, uninstalled)
+
+Reserve `3500_ai_centre_architecture_compatibility`, idx2800 / when1793330003100,
+and `3501_ai_centre_mandate_write_order`, idx2801 / when1793330003101.
+These are append-only source reservations; their SQL, exact guarded preimages
+and populated upgrade/native concurrency qualification are still pending.
+Preserve the complete canonical709 prefix, architecture36 suffix, all existing
+SQL bytes and journal tuples. No installed migration is rewritten.
+
+A fresh full-origin fetch and stable read-only survey covered6460refs,
+3495root trees,708migration trees,496committed journals and752readable worktrees.
+Prior maxima were3400 / idx2700 / when1793330003000; two foreign malformed
+journals were preserved and their literal claims included. A subsequent stable
+document-reservation scan covered6462refs,336distinct allocation documents and
+726worktree documents; neither new tag, index nor timestamp was claimed.
+The read-only staging catalogue observed709applied rows through1793330002801,
+with the same complete row set as the earlier audit. The two documented
+historical source/ledger hash exceptions remain unchanged; this is not a new
+identity waiver. Recheck actual refs, competing WIP and the target ledger before
+admission. Source reservation grants no installation or deployment authority.
+Production remains held.
+
+## AI centre after accepted PR233 — 8 November 2026 (unapplied reallocation)
+
+The installed PR233 source `29d9edcbc4368be871688e9fdf35347676a7841c`
+ends with 707 ordered migrations through `3110_attendance_workflow_owner_rls`,
+idx 2410 / timestamp 1793330002710. Preserve that complete applied prefix
+and every SQL byte. The owner-authorized PR233-first release order moves only
+PR230's still-unapplied source reservations: `2700_ai_centre_controls` becomes
+`3200_ai_centre_controls` (idx 2500 / when 1793330002800), and
+`3000_ai_centre_function_coverage` becomes `3201_ai_centre_function_coverage`
+(idx 2501 / when 1793330002801). Both SQL payloads remain byte-identical.
+The old 2700/3000 reservations below are superseded and were never installed.
+A refreshed survey found pending journals through tag 3103 / idx 2403 /
+when 1793330002703; the separately checked 3110 reservation was free and is
+now applied. The peer owner acknowledged that 3200/3201 remain reserved here.
+Recheck actual refs, peer claims and installed ledger at admission. This is
+source allocation, not deployment authority.
+
 ## Closed staging architecture reconciliation — 8 November 2026 (draft, uninstalled)
 
 Root reserves36 suffix entries at idx2510–2545 / when1793330002810–1793330002845,
@@ -441,6 +480,28 @@ This record owns **unapplied reservations**, not the deployed database. Refresh 
 journals and the actual staging watermark before journal integration or application. Preserve every
 applied SQL/hash and exact journal prefix. Reservations do not authorize deployment or skipping the
 owning release gate.
+
+## AI centre function coverage — 7 November 2026 (unapplied source reservation)
+
+Branch `codex/ai-centre-staging-integration-20261107` reserves
+`3000_ai_centre_function_coverage`, idx 2300, when 1793330002600.
+A fresh read-only scan of 3023 distinct ref heads, 480 distinct committed
+journals and 355 readable worktree journals found maximum tag 2902,
+idx 2234 and timestamp 1793330002534. One conflicted foreign worktree
+journal was scanned conservatively for both sides' reservations and preserved.
+The earlier proposed 2701 allocation is already used elsewhere and is not used here.
+Preserve the exact approved PR229 prefix through 2600, then the existing
+unapplied 2700 reservation. No installed SQL bytes are changed. Recheck the
+actual installed watermark and peer claims at admission; this is source allocation only.
+
+## AI centre controls — 7 November 2026 (unapplied source reservation)
+
+Branch `codex/ai-centre-controls-stop-all-20261107` reserves
+`2700_ai_centre_controls`, idx 2000, when 1793330002300. A read-only scan
+of 5520 refs, 474 distinct journals and registered worktree journals found
+maximum tag 2600, idx 1900 and when 1793330002200. Preserve the current
+alpha journal prefix through 2406. Recheck peer claims and the actual installed
+watermark before integration or application. This is source allocation only.
 
 ## Payroll reconciliation remarks — 6 November 2026 (provisional)
 

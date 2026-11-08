@@ -3,6 +3,8 @@ import {randomUUID} from 'node:crypto';
 import {beforeEach,expect,it,vi} from 'vitest';
 const h=vi.hoisted(()=>({guard:vi.fn(),company:vi.fn(),prepare:vi.fn(),read:vi.fn(),claim:vi.fn(),complete:vi.fn(),fail:vi.fn(),generate:vi.fn(),resolve:vi.fn(),active:vi.fn(),register:vi.fn(),tx:{},network:0}));
 vi.mock('../db/client',()=>({withTenant:async(_ctx:unknown,fn:(tx:unknown)=>unknown)=>fn(h.tx)}));
+// Pure owner/protocol fixture: real stop/epoch authority is exercised by ai-centre-controls.test.ts.
+vi.mock('../core/ai-centre-control',()=>({withAiCentreActivity:async(_ctx:unknown,work:()=>Promise<unknown>)=>{await Promise.resolve();return work();},assertAiCentreRunningTx:vi.fn().mockResolvedValue(0)}));
 vi.mock('../core/ai-principal',()=>({assertAiPrincipalTx:h.guard}));
 vi.mock('../core/workforce-access',()=>({assertWorkforceCompanyTx:h.company}));
 vi.mock('../core/personnel-import-evaluation',()=>({assertEmployeeImportEvaluationActiveTx:h.active,registerEmployeeImportEvaluationRunTx:h.register}));

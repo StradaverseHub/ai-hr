@@ -2,6 +2,7 @@
 import { sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { AiAllowanceError, AiGatewayError } from '../lib/ai/types';
+import { trackAiCentreFunctions } from '../lib/ai/centre-activity';
 import { assertAiPrincipalTx } from './ai-principal';
 import { assertMayUseAssistant } from './assistant-grant';
 import { assertModuleEnabled, resolveEntitlementsTx } from './entitlements';
@@ -56,6 +57,20 @@ function createReads(ctx: SessionContext, tx: Tx, active: () => boolean,interpre
 }
 /** Closed canonical methods only: no transaction handle, session constructor or effect function. */
 export type AssistantReadSession = ReturnType<typeof createReads>;
+
+/** Narrow a tool through its actual opaque read owner. Opening another tenant transaction here
+ * would wait on the Access/stop locks already held by this owner. No transaction escapes. */
+export async function assistantFunctionAllowed(ctx: SessionContext, session: AssistantReadSession, key: string): Promise<boolean> {
+  const owner = owners.get(session), principal = principalKey(ctx);
+  if (!owner?.active || owner.principal !== principal) return unavailable();
+  try {
+    const [row] = await owner.tx.execute<{ allowed: boolean }>(sql`select app.ai_centre_read_allowed(${key}) as allowed`);
+    if (!owner.active || owner.principal !== principal) return unavailable();
+    if(row?.allowed!==true)return false;
+    trackAiCentreFunctions(ctx.tenantId,[key]);
+    return true;
+  } catch { return unavailable(); }
+}
 
 async function guard(tx: Tx, ctx: SessionContext, module: string | null) {
   await assertAiPrincipalTx(tx, ctx);

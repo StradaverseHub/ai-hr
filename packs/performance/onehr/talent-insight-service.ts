@@ -1,3 +1,4 @@
+import {withAiCentreFunction} from '../../../core/ai-centre-control';
 import {generatePerformanceNativeOutline} from './provider-source-draft';
 import {createHash} from 'node:crypto';
 import {and,eq,sql} from 'drizzle-orm';
@@ -22,7 +23,12 @@ export async function getAssessmentTalentEvidenceTx(tx:Tx,ctx:SessionContext,rev
 async function configTx(tx:Tx,ctx:SessionContext){try{return await assessmentAiConfigTx(tx,ctx,'review');}catch{return null;}}
 const fingerprint=(source:unknown,cfg:ResolvedAiConfig|null)=>createHash('sha256').update(JSON.stringify({v:2,operation:'native_outline_selection',source,writer:cfg?{provider:cfg.provider,model:cfg.model}:null})).digest('hex');
 /** One actor, person and BG cohort. No private manager drafts or another actor's cached insight. */
-export async function getAssessmentTalentInsight(ctx:SessionContext,reviewId:string,sessionId:string,{generate=false}:{generate?:boolean}={}){
+export async function getAssessmentTalentInsight(...args:Parameters<typeof getAssessmentTalentInsightActivity>):Promise<Awaited<ReturnType<typeof getAssessmentTalentInsightActivity>>>{
+ args=structuredClone(args);
+ if(!args[3]?.generate)return getAssessmentTalentInsightActivity(...args);
+ return withAiCentreFunction(args[0],'read:operation_talent_insight',()=>getAssessmentTalentInsightActivity(...args));
+}
+async function getAssessmentTalentInsightActivity(ctx:SessionContext,reviewId:string,sessionId:string,{generate=false}:{generate?:boolean}={}){
  ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(g=>({...g}))};
  z.uuid().parse(reviewId);z.uuid().parse(sessionId);
  const {source,cfg,cached}=await withPerformanceTenant(ctx,async tx=>{const source=await getAssessmentTalentEvidenceTx(tx,ctx,reviewId,sessionId),cfg=await configTx(tx,ctx),[cached]=await tx.select().from(assessmentSummary).where(and(eq(assessmentSummary.reviewId,reviewId),eq(assessmentSummary.contextId,sessionId),eq(assessmentSummary.actorUserId,ctx.userId!),eq(assessmentSummary.kind,'talent')));return {source,cfg,cached};});

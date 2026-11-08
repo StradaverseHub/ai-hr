@@ -1,3 +1,4 @@
+import {withAiCentreFunction} from './ai-centre-control';
 /** Native paid BASIC comparison → closed aggregate analysis. This is a source adapter only, not a
  * new payroll calculator, permission owner, privacy approval, UI rollout or provider fallback. */
 import {createHash} from 'node:crypto';
@@ -42,7 +43,12 @@ function capture<T>(input:T):T{
  * Employment counts are checked against native headcounts, never substituted for person support.
  * Native headcount has no native percentage/band, so it is deliberately not emitted as a metric.
  */
-export async function generatePrivatePayrollComparisonAnalysis(ctx:SessionContext,spec:CustomReportSpec,scope:readonly string[],raw:Record<string,unknown>):Promise<string>{
+export async function generatePrivatePayrollComparisonAnalysis(supplied:SessionContext,spec:CustomReportSpec,scope:readonly string[],raw:Record<string,unknown>):Promise<string>{
+ const ctx={...supplied,roles:supplied.roles?.slice(),grants:supplied.grants?.map(grant=>({...grant}))};
+ const capturedSpec=capture(spec),capturedScope=capture(scope),requested=capture(raw);
+ return withAiCentreFunction(ctx,'read:operation_payroll_comparison',()=>generatePrivatePayrollComparisonAnalysisActivity(ctx,capturedSpec,capturedScope,requested));
+}
+async function generatePrivatePayrollComparisonAnalysisActivity(ctx:SessionContext,spec:CustomReportSpec,scope:readonly string[],raw:Record<string,unknown>):Promise<string>{
  const capturedSpec=capture(spec),capturedScope=capture(scope),requested=capture(raw);
  if(capturedSpec.datasetId!==PAYROLL_COMPARISON_DATASET||!Array.isArray(capturedScope)||!capturedScope.length||capturedScope.length>100||capturedScope.some(id=>typeof id!=='string'))return unavailable();
  // New native report selectors and templates are for HR review. Keep the provider-facing

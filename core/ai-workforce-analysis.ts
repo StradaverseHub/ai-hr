@@ -1,3 +1,4 @@
+import {withAiCentreFunction} from './ai-centre-control';
 import {createHash} from 'node:crypto';
 import {types as nodeTypes} from 'node:util';
 /** Native workforce analysis source. This is an explanation of the existing employment-headcount
@@ -72,6 +73,9 @@ function projection(source:WorkforceHeadcountSource){
  * the actual private-analysis admission transaction. The returned text remains untrusted explanation. */
 export async function generateWorkforceAnalysis(supplied:SessionContext,options:WorkforceAnalysisOptions):Promise<string>{
  const ctx={...supplied,roles:supplied.roles?.slice(),grants:supplied.grants?.map(grant=>({...grant}))},selected=selection(options);
+ return withAiCentreFunction(ctx,'read:operation_workforce_analysis',()=>generateWorkforceAnalysisActivity(ctx,selected));
+}
+async function generateWorkforceAnalysisActivity(ctx:SessionContext,selected:Selection):Promise<string>{
  const configuration=await withTenant(ctx,async tx=>{const fresh=await authorizeSourceTx(tx,ctx,selected);return resolveActiveAiConfig(tx,fresh,'report_insight');});
  if(!configuration)return unavailable();
  let originalFingerprint:string|undefined;

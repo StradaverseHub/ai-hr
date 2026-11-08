@@ -1,3 +1,4 @@
+import {withAiCentreFunction} from '../ai-centre-control';
 /** AI v2 Phase 2, P2-5 — the production model behind "Read the values" (core/handbook/extract.ts PolicyValueModel).
  *
  * One draft request through the governed gateway, under the reviewed-contract machinery every provider call uses: the
@@ -23,6 +24,7 @@ export function gatewayPolicyValueModel(supplied:SessionContext):PolicyValueMode
  const ctx:SessionContext={...supplied,roles:supplied.roles?.slice(),grants:supplied.grants?.map(grant=>({...grant}))};
  return Object.freeze({async propose(input){
   const source=Object.freeze({text:input.text,settings:input.settings.map(s=>Object.freeze({setting:s.setting,meaning:s.meaning,targets:[...s.targets]}))});
+  return withAiCentreFunction(ctx,'read:operation_policy_values',async()=>{
   const configured=await withTenant(ctx,tx=>resolveActiveAiConfig(tx,ctx,'hr_assistant'));
   if(!configured)throw new Error('AI Centre has no provider configured.');
   const bound=withAiAdmissionCheck(configured,'hr_assistant',async tx=>{
@@ -34,5 +36,6 @@ export function gatewayPolicyValueModel(supplied:SessionContext):PolicyValueMode
    if(task.operation!=='draft')throw new Error('The prepared AI request could not be confirmed.');
    return await generateDraft(task.configuration,task.args as GenerateArgs);
   }finally{task.dispose();}
+  });
  }});
 }

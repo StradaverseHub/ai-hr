@@ -1,3 +1,4 @@
+import {withAiCentreFunction} from '../../../core/ai-centre-control';
 import {generatePerformanceNativeOutline} from './provider-source-draft';
 import {createHash} from 'node:crypto';
 import {and,eq,sql} from 'drizzle-orm';
@@ -28,7 +29,12 @@ export async function getAssessmentTalentIdpReadingTx(tx:Tx,ctx:SessionContext,r
 async function configTx(tx:Tx,ctx:SessionContext){try{return await assessmentAiConfigTx(tx,ctx,'idp');}catch{return null;}}
 const fingerprint=(source:IdpFitSource,cfg:ResolvedAiConfig|null)=>createHash('sha256').update(JSON.stringify({v:3,operation:'native_outline_selection',source,writer:cfg?{provider:cfg.provider,model:cfg.model}:null})).digest('hex');
 /** Other approvers get a fresh plain reading of saved facts, never the owner's draft-based AI cache. */
-export async function getAssessmentIdpFit(ctx:SessionContext,reviewId:string,{generate=false,sessionId}:{generate?:boolean;sessionId?:string}={}){
+export async function getAssessmentIdpFit(...args:Parameters<typeof getAssessmentIdpFitActivity>):Promise<Awaited<ReturnType<typeof getAssessmentIdpFitActivity>>>{
+ args=structuredClone(args);
+ if(!args[2]?.generate)return getAssessmentIdpFitActivity(...args);
+ return withAiCentreFunction(args[0],'read:operation_idp_fit',()=>getAssessmentIdpFitActivity(...args));
+}
+async function getAssessmentIdpFitActivity(ctx:SessionContext,reviewId:string,{generate=false,sessionId}:{generate?:boolean;sessionId?:string}={}){
  ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(g=>({...g}))};
  z.uuid().parse(reviewId);if(sessionId)z.uuid().parse(sessionId);
  const {source,visibility,canGenerate,cfg,cached}=await withPerformanceTenant(ctx,tx=>readingTx(tx,ctx,reviewId,sessionId));

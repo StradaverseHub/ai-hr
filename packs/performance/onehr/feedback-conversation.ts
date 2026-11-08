@@ -1,3 +1,4 @@
+import {withAiCentreFunction} from '../../../core/ai-centre-control';
 import {issuePerformanceMessageSpendTaskTx,type PerformanceMessageSpendTask} from '../../../core/ai-spend-task';
 import {assertPerformanceProviderSourceTx} from './provider-source-authority';
 import {assessmentHelp} from './help';
@@ -39,7 +40,11 @@ export async function getFeedbackConversation(ctx:SessionContext,reviewId:string
  });
 }
 /** Each colleague request owns its private context, so the same framework IDs cannot update another colleague. */
-export async function sendFeedbackMessage(ctx:SessionContext,reviewId:string,contextId:string,expected:number|null,requestId:string,text:string,intent:'guide'|'draft'='guide'){
+export async function sendFeedbackMessage(...args:Parameters<typeof sendFeedbackMessageActivity>):Promise<Awaited<ReturnType<typeof sendFeedbackMessageActivity>>>{
+ args=structuredClone(args);
+ return withAiCentreFunction(args[0],'read:operation_performance_feedback',()=>sendFeedbackMessageActivity(...args));
+}
+async function sendFeedbackMessageActivity(ctx:SessionContext,reviewId:string,contextId:string,expected:number|null,requestId:string,text:string,intent:'guide'|'draft'='guide'){
  ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(g=>({...g}))};
  z.uuid().parse(requestId);z.enum(['guide','draft']).parse(intent);const words=z.string().trim().min(1).max(2500).parse(text),card=await authorized(ctx,reviewId,contextId);
  const previous=await withPerformanceTenant(ctx,async tx=>{

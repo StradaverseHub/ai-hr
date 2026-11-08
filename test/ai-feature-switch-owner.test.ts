@@ -46,11 +46,17 @@ describe('one switch owner per AI feature (0692)', () => {
   it('reads the live switch key from the table, with no hard-coded CASE left', () => {
     const context = live('FUNCTION app._ai_control_context_for_purpose(');
     expect(context.file).toBe('db/migrations/2138_ai_pause_company_discovery.sql');
-    const fullContext=live('FUNCTION app._ai_control_context(').body;
     const pause=live('FUNCTION app.ai_action_unpaused(').body;
-    expect(fullContext).toContain('app._ai_control_context_for_purpose(wanted_feature,forced_pause,false)');
+    // The installed centre stop wrapper must survive later pause-discovery optimisation.
+    const beforeCentre=read(context.file);
+    expect(beforeCentre).toContain('RETURN QUERY SELECT * FROM app._ai_control_context_for_purpose(wanted_feature,forced_pause,false)');
     expect(pause).toContain('app._ai_control_context_for_purpose(wanted_feature,forced_pause,true)');
-    expect(fullContext).not.toContain('SELECT s.setting_key');
+    const wrapper = live('FUNCTION app._ai_control_context(');
+    expect(wrapper.file).toBe('db/migrations/3200_ai_centre_controls.sql');
+    expect(read(wrapper.file)).toContain('ALTER FUNCTION app._ai_control_context(text,boolean) RENAME TO _ai_control_context_before_centre;');
+    expect(wrapper.body).toContain('FROM app._ai_control_context_before_centre(wanted_feature,forced_pause) c');
+    expect(wrapper.body).toContain('c.feature_paused OR EXISTS(SELECT 1 FROM public.teras_mandate_control t WHERE t.tenant_id=app.current_tenant_id() AND t.stopped)');
+    expect(wrapper.body).not.toContain('SELECT s.setting_key');
     expect(context.body).not.toMatch(/CASE\s+wanted_feature/);
     for (const [, key] of settingBacked) expect(context.body).not.toContain(`'${key}'`);
     expect(context.body).toContain('SELECT s.setting_key INTO switch_key FROM app.ai_feature_setting s WHERE s.feature_id=wanted_feature');

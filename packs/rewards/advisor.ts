@@ -1,3 +1,4 @@
+import {withAiCentreFunction} from '../../core/ai-centre-control';
 import 'server-only';
 import {createHash} from 'node:crypto';
 import {and,eq,sql} from 'drizzle-orm';
@@ -66,7 +67,11 @@ async function recordAdvisorFailure(ctx:SessionContext,id:string,entryId:string,
   if(row?.visible)await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'reward-unit',aggregateId:id,eventType:'reward-unit.advisor-suggestion-failed',actor:actorOf(ctx),payload:{entryId,outcome}});
  });
 }
-export async function generateRewardAdvisor(ctx:SessionContext,id:string,entryId:string){z.uuid().parse(entryId);
+export async function generateRewardAdvisor(...args:Parameters<typeof generateRewardAdvisorActivity>):Promise<Awaited<ReturnType<typeof generateRewardAdvisorActivity>>>{
+ args=structuredClone(args);
+ return withAiCentreFunction(args[0],'read:operation_rewards_advice',()=>generateRewardAdvisorActivity(...args));
+}
+async function generateRewardAdvisorActivity(ctx:SessionContext,id:string,entryId:string){z.uuid().parse(entryId);
  const before=await withRewardReviewExtension(ctx,id,false,async(tx,{unit,roles,entries},calculated,commands)=>{await assertAdvisorReviewTx(tx,unit);const settings=await rewardAdvisorSettingTx(tx,id);if(!settings.settings.enabled)throw Error('Group Rewards has not enabled the advisor for this review.');if(unit.status!=='draft'||!canEditStage(unit.status,roles))throw Error('Suggestions are available during your editable review stage.');const entry=entries.find(e=>e.id===entryId);if(!entry||!visibleEntry(entry,roles,ctx.personId))throw Error('Employee unavailable.');await assertRewardCapabilityTx(tx,id,'figures.edit');const {policy,controls}=await annualRewardCalculationTx(tx,unit,entries);const candidate=buildRewardAdvisorCandidates(entries,policy,{...controls,poolStatus:advisorPoolStatus('poolStatus' in calculated?calculated.poolStatus:undefined)},settings.settings.longWithoutIncreaseYears).candidates.find(e=>e.entryId===entryId)!;if(!candidate.recommendation)throw Error('Complete and verify the employee inputs and final pools before requesting a suggestion.');const sourceDigest=await advisorFingerprintTx(tx,id);
  const pending=await advisorPendingProposalTx(tx,id,sourceDigest,entries,{entryId,recommendation:candidate.recommendation});
  const rechecked=await commands.recalculate(pending.entries);
