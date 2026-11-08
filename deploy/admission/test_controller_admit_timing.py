@@ -495,7 +495,6 @@ class AdmitTimingModels(unittest.TestCase):
         self.assertEqual(2*(len(json.dumps(worst,separators=(',',':')).encode())-340),34)
         self.assertEqual(2*(len(json.dumps(worst).encode())-359),38)
 
-if __name__=='__main__':unittest.main()
 class FreshChildOriginModels(unittest.TestCase):
     def rows(self):
         result=[]
@@ -544,3 +543,19 @@ class FreshChildOriginModels(unittest.TestCase):
         with patch.object(H,'_held_host_file',return_value=b'{"version":1,"invocation":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}'),patch.object(H.pathlib.Path,'lstat') as stat_,patch.object(H.pathlib.Path,'unlink') as unlink:
             with self.assertRaises(AssertionError):H._forget_record('post-child-ready.json','a'*32,(stat_.return_value.st_dev,stat_.return_value.st_ino))
             unlink.assert_not_called()
+        old, new = 'a'*32, 'b'*32
+        candidates = ['', old, old, new]
+        self.assertEqual([H._new_invocation_ready(value, old) for value in candidates], [False, False, False, True])
+        self.assertTrue(H._new_invocation_ready(new, None))
+        for candidate, previous in [(True,old),('foreign',old),(new,''),(new,False)]:
+            with self.subTest(candidate=candidate),self.assertRaises(AssertionError):H._new_invocation_ready(candidate,previous)
+        for now, accepted in [(105.94,True),(105.95,False),(106,False)]:
+            with self.subTest(now=now),patch.object(H,'STARTED',100),patch.object(H,'TOTAL_DEADLINE',127),patch.object(H,'DEADLINE',120),patch.object(H,'PHASE_DEADLINE',107),patch.object(H,'WORK_PHASE_ACTIVE',True),patch.object(H.time,'monotonic',return_value=now):
+                if accepted:H._admit_initial_observer_slot()
+                else:
+                    with self.assertRaises(AssertionError):H._admit_initial_observer_slot()
+        with patch.object(H,'WORK_PHASE_ACTIVE',False),self.assertRaises(AssertionError):H._admit_initial_observer_slot()
+
+
+if __name__ == '__main__':
+    unittest.main()

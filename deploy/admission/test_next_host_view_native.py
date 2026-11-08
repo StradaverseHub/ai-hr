@@ -60,6 +60,23 @@ def _advance_work_phase(offset):
     PHASE_DEADLINE = STARTED + offset
 
 
+def _new_invocation_ready(candidate, previous):
+    """Pure identity decision only; no source/process/native admission proof."""
+    require(previous is None or type(previous) is str and re.fullmatch(r'[a-f0-9]{32}', previous),
+            'Previous invocation identity invalid')
+    if candidate == '':
+        return False
+    require(type(candidate) is str and re.fullmatch(r'[a-f0-9]{32}', candidate), 'Candidate invocation identity invalid')
+    return candidate != previous
+
+
+def _admit_initial_observer_slot():
+    # The unchanged observer owns a full1s slice. A50ms admission reserve is
+    # stricter than the existing first7s frontier, never a refreshed allowance.
+    require(WORK_PHASE_ACTIVE and PHASE_DEADLINE == STARTED + 7, 'Initial observer outside first phase')
+    require(limit() > 1.05, 'Full initial observer slot unavailable')
+
+
 def command(*arguments, check=True, cap=3):
     result = subprocess.run(arguments, env=ENV, capture_output=True, timeout=limit(cap))
     if check:
@@ -155,7 +172,7 @@ def resource_guard_reason(error):
             'Ancestor CPU cap is below accepted app envelope': 'ancestor-cpu-too-low'}.get(str(error), 'resource-check-refused')
 
 
-def resource_topology(N, I, invocation, files, source_hashes, preparation=None, identities=None):
+def resource_topology(N, I, invocation, files, source_hashes, preparation=None, post_family=None):
     """Closed observation of the UNCHANGED real resource method, not readiness."""
     aggregate = pathlib.Path('/sys/fs/cgroup' + AGGREGATE_GROUP)
     directories = [('worker', aggregate / UNIT), ('aggregate', aggregate), ('root', pathlib.Path('/sys/fs/cgroup'))]
@@ -211,7 +228,7 @@ def resource_topology(N, I, invocation, files, source_hashes, preparation=None, 
     before_unit = properties(UNIT);N.require_owned_invocation(before_unit, invocation, require)
     identity = resource_process(before_unit);slice_occupants(N)
     before = capture()
-    handoff = fresh_child_handoff(preparation, invocation, identities) if preparation is not None and identities is not None else None
+    handoff = fresh_child_handoff(preparation, invocation, post_family) if preparation is not None and post_family is not None else None
     runtime = object.__new__(N.NextRuntime)
     runtime.require, runtime.secure_path, runtime.inventory = require, secure, I
     runtime.value = {'units': {UNIT: {}}, 'resourceEnvelope': {'cgroupPath': AGGREGATE_GROUP,
@@ -1017,6 +1034,7 @@ def main():
             'Native conformance requires actual systemd255')
     primary = None
     owned_root, N, preparation = None, None, None
+    declarations = {}  # Exact bytes created by this owned fixture, not observed foreign source.
     files, invocations, report = {}, {}, {'version': 1, 'kind': 'ACTUAL_SYSTEMD_HOST_CACHE_CONFORMANCE_NOT_NEXT',
         'complete': False, 'nextApplicationVerified': False, 'releaseEligible': False,
         'resourceReadinessQualified': False, 'systemdVersion': version.decode()}
@@ -1076,33 +1094,69 @@ def main():
             with file.open('x') as output:
                 output.write(content)
             file.chmod(0o644);info = file.lstat();files[name] = (info.st_dev, info.st_ino)
+            declarations[name] = hashlib.sha256(content.encode()).hexdigest()
         command('/usr/bin/systemctl', '--system', 'daemon-reload')
         require(host_manager_snapshot(N, preparation, projection_ledger, 1) == manager_unsets,
                 'Host manager projection changed during reload')
         report['managerEnvironmentPreparation']['stable'] = True
         def start_owned(name, check=True, nonblocking=False):
-            if name == UNIT and name in invocations:
+            previous = invocations.get(name)
+            if name == UNIT and previous is not None:
                 require(family_stopped(name), 'Previous owned generation still live')
+                N.require_owned_invocation(properties(name), previous, require)
+            require(hashlib.sha256(_held_host_file(pathlib.Path('/etc/systemd/system', name), 65536)).hexdigest() == declarations[name],
+                    'Native start source differs before request')
             result, failures = None, []
             try:
-                result = command('/usr/bin/systemctl', '--system', 'start', *(['--no-block'] if nonblocking else []), name, check=check)
+                # Preserve a capture tail even when the request times out. Each
+                # subsequent service/slice capture receives its own fair share.
+                result = command('/usr/bin/systemctl', '--system', 'start', *(['--no-block'] if nonblocking else []),
+                    name, check=check, cap=limit() / 2)
             except BaseException as error:
                 failures.append(error)
-            # Failed/timed-out StartUnit may already activate BOTH its service
-            # and slice. Capture each independently before propagating failure.
-            for observed in (name, AGGREGATE) if name == UNIT else (name,):
+            observed_names = (name, AGGREGATE) if name == UNIT else (name,)
+            try:
+                capture_end = time.monotonic() + limit()
+            except BaseException as error:
+                failures.append(error);capture_end = time.monotonic()
+            # A failed/timed-out request may still activate either source. Never
+            # let the UNIT's wait consume the slice's independent capture share.
+            for index, observed in enumerate(observed_names):
                 try:
-                    file = pathlib.Path('/etc/systemd/system', observed);info = file.lstat()
-                    require((info.st_dev, info.st_ino) == files[observed] and info.st_uid == 0, 'Native start declaration changed')
-                    actual = properties(observed)
-                    while nonblocking and not actual.get('InvocationID'):
-                        limit();time.sleep(.02);actual = properties(observed)
-                    require(actual.get('FragmentPath') == str(file) and actual.get('DropInPaths') == '', 'Native start source differs')
-                    if actual.get('InvocationID'):
-                        N.require_owned_invocation(actual, actual['InvocationID'], require)
-                        if observed == AGGREGATE and observed in invocations:
-                            require(actual['InvocationID'] == invocations[observed], 'Owned slice invocation changed')
-                        invocations[observed] = actual['InvocationID']
+                    file = pathlib.Path('/etc/systemd/system', observed);secure(file, 0)
+                    info = file.lstat();require((info.st_dev, info.st_ino) == files[observed], 'Native start declaration changed')
+                    declaration = declarations[observed]
+                    require(hashlib.sha256(_held_host_file(file, 65536)).hexdigest() == declaration, 'Native capture source differs')
+                    observed_previous = previous if observed == name else invocations.get(observed)
+                    now = time.monotonic()
+                    capture_slot = now + max(0, capture_end - now) / (len(observed_names) - index)
+                    while True:
+                        remaining = capture_slot - time.monotonic()
+                        require(remaining > 0, 'Native new invocation capture unavailable')
+                        current = file.lstat()
+                        require((current.st_dev, current.st_ino) == files[observed] and current.st_uid == 0
+                                and hashlib.sha256(_held_host_file(file, 65536)).hexdigest() == declaration, 'Native start declaration changed while waiting')
+                        actual = properties(observed, cap=min(3, remaining))
+                        require(actual.get('FragmentPath') == str(file) and actual.get('DropInPaths') == ''
+                                and actual.get('SourcePath') == '' and actual.get('Transient') == 'no', 'Native start source differs')
+                        candidate = actual.get('InvocationID', '')
+                        if observed == AGGREGATE and observed_previous is not None:
+                            require(candidate == observed_previous, 'Owned slice invocation changed')
+                            ready = True
+                        else:
+                            ready = _new_invocation_ready(candidate, observed_previous)
+                        if ready:
+                            N.require_owned_invocation(actual, candidate, require)
+                            current = file.lstat()
+                            require((current.st_dev, current.st_ino) == files[observed]
+                                    and hashlib.sha256(_held_host_file(file, 65536)).hexdigest() == declaration, 'Native capture source changed')
+                            invocations[observed] = candidate
+                            break
+                        # Old/empty ID remains unadopted until a genuinely new
+                        # invocation is observable; no new source or budget.
+                        remaining = capture_slot - time.monotonic()
+                        require(remaining > 0, 'Native new invocation capture unavailable')
+                        time.sleep(min(.02, remaining))
                 except BaseException as error:
                     failures.append(error)
             if len(failures) == 1:
@@ -1124,7 +1178,9 @@ def main():
         start_owned(UNIT, nonblocking=True)
         first_family = _await_post_family(N, files, invocations)
         started = properties(UNIT);N.require_owned_invocation(started, invocations[UNIT], require)
+        _admit_initial_observer_slot()
         report['initialEnvironmentObservation'], report['initialEnvironmentHookObservation'], report['initialEnvironmentKeyNameObservation'], report['initialEnvironmentPlainKeyNameObservation'] = initial_environment_observation(N, started, files, report['sourceSha256'])
+        limit()  # Refuse immediately if scheduling consumed the admitted reserve.
         slice_state = properties(AGGREGATE)
         require(slice_state.get('ActiveState') == 'active' and slice_state.get('ControlGroup') == AGGREGATE_GROUP,
                 'Actual resource slice did not activate')
@@ -1199,7 +1255,9 @@ def main():
         # A real fourth mount, not a synthetic mountinfo payload, must fail the
         # same production helper before any application command can start.
         file = pathlib.Path('/etc/systemd/system', UNIT)
-        file.write_text(unit + 'BindPaths=' + str(ROOT / 'other-source') + ':' + str(RELEASE / '.next/foreign-cache') + ':norbind\n')
+        extra_unit = unit + 'BindPaths=' + str(ROOT / 'other-source') + ':' + str(RELEASE / '.next/foreign-cache') + ':norbind\n'
+        file.write_text(extra_unit)
+        declarations[UNIT] = hashlib.sha256(extra_unit.encode()).hexdigest()
         command('/usr/bin/systemctl', '--system', 'daemon-reload')
         extra = start_owned(UNIT, check=False)
         invocations[UNIT] = properties(UNIT)['InvocationID']

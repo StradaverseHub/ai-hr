@@ -196,5 +196,147 @@
   ],
   "repositoryExecutionPerformed": false,
   "runtimeEvidenceTransferred": false,
-  "releaseEligible": false
+  "releaseEligible": false,
+  "postReviewRepairParent": {
+    "parent": "dae090b042680a17d7a282be47ac057bd98d7c18",
+    "sourceRef": "codex/next-poststart-fresh-child-repair-20261109",
+    "parentDisposition": "UNPUBLISHED_SOURCEFAIL_NO_HOSTED_ATTEMPT",
+    "reviewSha256": "3d502c42df33f0bf6eac569f34cf022f77b73d2fa338f55b00aac86ee967bb0b",
+    "files": [
+      {
+        "path": ".github/ci/singleton-profiles.test.mjs",
+        "commit": "dae090b042680a17d7a282be47ac057bd98d7c18",
+        "gitBlob": "3f87e13d64286620c2130f40b17688dc9fe78ded",
+        "sha256": "d5c74998d10ab3782723685849cdd2ac7eba914fe10ddc3d647a3d2db6e4ad9d",
+        "bytes": 18806
+      },
+      {
+        "path": ".github/ci/singleton-protocol.mjs",
+        "commit": "dae090b042680a17d7a282be47ac057bd98d7c18",
+        "gitBlob": "c6fcb7062ec515899c5bc4e69006bc1eaf7fd023",
+        "sha256": "1dfff5d0e14ccd748508f9cd1ba07541307e5f7fea944af9bdc9bb7cc7333403",
+        "bytes": 14460
+      },
+      {
+        "path": "deploy/admission/next_bootstrap_session_inverse.json",
+        "commit": "dae090b042680a17d7a282be47ac057bd98d7c18",
+        "gitBlob": "cd8e8d530cd1c39d037e1b4a32f6ac21d508d37b",
+        "sha256": "9c3614bd8d04921fab9437d63c49de347f1b58e055f0523c26665b5c2025bd4a",
+        "bytes": 3051080
+      },
+      {
+        "path": "deploy/admission/next_controller_admit_terminal_inverse.json",
+        "commit": "dae090b042680a17d7a282be47ac057bd98d7c18",
+        "gitBlob": "8c5cdef7526a6d4c60063d0d0c55d2c2b7f0bdf1",
+        "sha256": "b717fd21b56afc5b5ed7823708b2ee0eef05c9f21a61f95702c1001ccff5bd31",
+        "bytes": 21583352
+      },
+      {
+        "path": "deploy/admission/next_controller_admit_timing_inverse.json",
+        "commit": "dae090b042680a17d7a282be47ac057bd98d7c18",
+        "gitBlob": "965025ef12b3b0c10351365bb38bcb10844ce6fe",
+        "sha256": "c9492c71a3e708739a3b4291aacff2145cec4a8544fc11fe40a4e58822525a5f",
+        "bytes": 7428016
+      },
+      {
+        "path": "deploy/admission/next_fixture_poststart.py",
+        "commit": "dae090b042680a17d7a282be47ac057bd98d7c18",
+        "gitBlob": "e894328c0fc442f07be4de71ed0c90420abbc714",
+        "sha256": "79b408916df2ada1d7d5c7b9c6d16c722026573b1070abb1721df42210af3559",
+        "bytes": 20658
+      },
+      {
+        "path": "deploy/admission/next_host_key_receipt_inverse.json",
+        "commit": "dae090b042680a17d7a282be47ac057bd98d7c18",
+        "gitBlob": "d8535d39aba7dfb7cc81518c7d2fb2284aaf8c33",
+        "sha256": "470fe7404d23820b069094c597d80bbba30ebd31f093b4cec830383ed9c0b46d",
+        "bytes": 634444
+      },
+      {
+        "path": "deploy/admission/next_manager_environment_inverse.json",
+        "commit": "dae090b042680a17d7a282be47ac057bd98d7c18",
+        "gitBlob": "8b6cc9a188acdd7334ec80e2cfda693f3b5c5ba7",
+        "sha256": "6e3bf30adcd761396e693b53221b99acfdba5ba4dc05feed06bdf03081a1db1c",
+        "bytes": 1336902
+      },
+      {
+        "path": "deploy/admission/test_controller_admit_timing.py",
+        "commit": "dae090b042680a17d7a282be47ac057bd98d7c18",
+        "gitBlob": "df62ea3796944a8776f2318a87e2fb98e0f2b5a8",
+        "sha256": "f860464a6f42e7717fb509de8db46d8b165d97712514f0208ea3a3df42f68bb2",
+        "bytes": 39960
+      },
+      {
+        "path": "deploy/admission/test_next_environment_observation.py",
+        "commit": "dae090b042680a17d7a282be47ac057bd98d7c18",
+        "gitBlob": "cfc833cf78b3704bb8716430f00cadb5fea2559a",
+        "sha256": "e058563ea5e6f5bcd9cfe05cf0670c61e5a8e12b075fa4ac5a7bd2b676398cdd",
+        "bytes": 58377
+      },
+      {
+        "path": "deploy/admission/test_next_host_view_native.py",
+        "commit": "dae090b042680a17d7a282be47ac057bd98d7c18",
+        "gitBlob": "f1d3aec4b9f5eb572f8cccfe927467e044a8ca3b",
+        "sha256": "d7545c593578eb7676cbc1f4240d029cde829d437c1b7216ffc2ecbcf3de4fd3",
+        "bytes": 74059
+      },
+      {
+        "path": "deploy/admission/test_next_plain_key_names.py",
+        "commit": "dae090b042680a17d7a282be47ac057bd98d7c18",
+        "gitBlob": "72c48b1e24c02f2a48070cfe2ba3a989fdb73d4c",
+        "sha256": "72c6b56ed5e037d249038fcb6cf8f660d7113c06ec3cfc91cd1e7db747a5251c",
+        "bytes": 22870
+      },
+      {
+        "path": "docs/qualification/native-next-controller-admit-timing-census-20261109.json",
+        "commit": "dae090b042680a17d7a282be47ac057bd98d7c18",
+        "gitBlob": "ca488a9dc9b1b6baba8ce1a27e441e8ee740142f",
+        "sha256": "036b5274186cb4a7604cc61cce17cc50c68a2c062b0a0059371e1eaead689212",
+        "bytes": 64255
+      },
+      {
+        "path": "docs/qualification/native-next-controller-admit-timing-implementation-20261109.md",
+        "commit": "dae090b042680a17d7a282be47ac057bd98d7c18",
+        "gitBlob": "70d7d0581a0626c442e2025bac6c885243658618",
+        "sha256": "438a28367ab4f646e377566d7a465207a916155ed7d38452a67478180871c71b",
+        "bytes": 18955
+      },
+      {
+        "path": "docs/qualification/native-next-controller-admit-timing-source-20261109.json",
+        "commit": "dae090b042680a17d7a282be47ac057bd98d7c18",
+        "gitBlob": "ce1215cf24a52a22904dd5de588250ff6501ee0d",
+        "sha256": "73133b42145a1674be88aacc661a10dae1b5143c0251b002cc6a1d4894e78c59",
+        "bytes": 28892
+      },
+      {
+        "path": "docs/qualification/native-next-fresh-child-parent-source-20261109.json",
+        "commit": "dae090b042680a17d7a282be47ac057bd98d7c18",
+        "gitBlob": "93071475679f49be0d4a0ca23baa6d586cf21cf8",
+        "sha256": "078029ae59da65da479866ba16d70dab8e7238c68518c598d7ee54814d18dc7c",
+        "bytes": 8620
+      },
+      {
+        "path": "test/runtime-native-controller-admit-timing.test.ts",
+        "commit": "dae090b042680a17d7a282be47ac057bd98d7c18",
+        "gitBlob": "e53d7a4d3545072c87abcaf4deb8b6d6fd2b4e48",
+        "sha256": "fcbfed5a6e9275d19d544c4d3ff06c616730c1138163ecfa7190e6dff343b07f",
+        "bytes": 831
+      },
+      {
+        "path": "test/runtime-next-environment-observation.test.ts",
+        "commit": "dae090b042680a17d7a282be47ac057bd98d7c18",
+        "gitBlob": "57d900fc8c8c5565840e29b410b51b075c8afc03",
+        "sha256": "6072e68bb82bf5270a4afe8d0849ab8507846765c553ebd9ad2a8cd060237757",
+        "bytes": 838
+      },
+      {
+        "path": "test/runtime-next-host-view-native.test.ts",
+        "commit": "dae090b042680a17d7a282be47ac057bd98d7c18",
+        "gitBlob": "837c380c6eb46b9baafe967e62c94d0a7506103a",
+        "sha256": "6aa3a31ec85f404d15686e6d7f89a69ad965928899e73fc80b41d58b2b1e7217",
+        "bytes": 13216
+      }
+    ],
+    "runtimeEvidenceTransferred": false
+  }
 }

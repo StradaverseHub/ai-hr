@@ -1,7 +1,7 @@
 {
   "kind": "EXACT_SOURCE_CENSUS_NOT_EXECUTED_CASE_EVENTS",
   "base": "ffe8ced4d5ef226aad2da56d11a35483ffa35728",
-  "sourceRef": "codex/next-poststart-fresh-child-20261109",
+  "sourceRef": "codex/next-poststart-fresh-child-repair-20261109",
   "focusedFiles": 10,
   "focusedWrappers": 14,
   "underlying": 333,
@@ -1323,22 +1323,22 @@
         {
           "class": "FreshChildOriginModels",
           "method": "test_fresh_origin_foreign_privilege_argv_linebreak_and_source_binding_refuse",
-          "line": 524
+          "line": 523
         },
         {
           "class": "FreshChildOriginModels",
           "method": "test_fresh_origin_missing_duplicate_cached_pid_and_incomplete_newline_refuse",
-          "line": 516
+          "line": 515
         },
         {
           "class": "FreshChildOriginModels",
           "method": "test_fresh_origin_real_codec_requires_distinct_private_live_identities",
-          "line": 509
+          "line": 508
         },
         {
           "class": "FreshChildOriginModels",
           "method": "test_fresh_schedule_absolute_frontiers_and_invocation_bound_records_are_not_authority",
-          "line": 534
+          "line": 533
         }
       ],
       "count": 50
@@ -1712,5 +1712,101 @@
     "addedTimingMethods": 4,
     "runtimeExecuted": false,
     "nativeWorkFitUnknown": true
+  },
+  "directFileSourceDiscovery": {
+    "basis": "AST top-level __main__/unittest.main position versus authored class method definitions; no imports/execution/runtime PASS",
+    "files": [
+      {
+        "source": "deploy/admission/test_next_environment_observation.py",
+        "unittestMainLine": 764,
+        "authoredMethods": 43,
+        "definedBeforeMain": 43,
+        "definedAfterMain": 0,
+        "allAuthoredBeforeMain": true
+      },
+      {
+        "source": "deploy/admission/test_next_host_view.py",
+        "unittestMainLine": 498,
+        "authoredMethods": 21,
+        "definedBeforeMain": 21,
+        "definedAfterMain": 0,
+        "allAuthoredBeforeMain": true
+      },
+      {
+        "source": "deploy/admission/test_next_failure_diagnostic.py",
+        "unittestMainLine": 433,
+        "authoredMethods": 22,
+        "definedBeforeMain": 22,
+        "definedAfterMain": 0,
+        "allAuthoredBeforeMain": true
+      },
+      {
+        "source": "deploy/admission/test_next_plain_key_names.py",
+        "unittestMainLine": 307,
+        "authoredMethods": 25,
+        "definedBeforeMain": 25,
+        "definedAfterMain": 0,
+        "allAuthoredBeforeMain": true
+      },
+      {
+        "source": "deploy/admission/test_next_manager_environment.py",
+        "unittestMainLine": 209,
+        "authoredMethods": 25,
+        "definedBeforeMain": 25,
+        "definedAfterMain": 0,
+        "allAuthoredBeforeMain": true
+      },
+      {
+        "source": "deploy/admission/test_next_bootstrap_session.py",
+        "unittestMainLine": 351,
+        "authoredMethods": 27,
+        "definedBeforeMain": 27,
+        "definedAfterMain": 0,
+        "allAuthoredBeforeMain": true
+      },
+      {
+        "source": "deploy/admission/test_next_profile.py",
+        "unittestMainLine": 517,
+        "authoredMethods": 16,
+        "definedBeforeMain": 16,
+        "definedAfterMain": 0,
+        "allAuthoredBeforeMain": true
+      },
+      {
+        "source": "deploy/admission/test_state.py",
+        "unittestMainLine": 630,
+        "authoredMethods": 25,
+        "definedBeforeMain": 25,
+        "definedAfterMain": 0,
+        "allAuthoredBeforeMain": true
+      },
+      {
+        "source": "deploy/admission/test_controller_admit_timing.py",
+        "unittestMainLine": 560,
+        "authoredMethods": 50,
+        "definedBeforeMain": 50,
+        "definedAfterMain": 0,
+        "allAuthoredBeforeMain": true
+      },
+      {
+        "source": "deploy/admission/test_next_prepackage_diagnostic.py",
+        "unittestMainLine": 522,
+        "authoredMethods": 31,
+        "definedBeforeMain": 31,
+        "definedAfterMain": 0,
+        "allAuthoredBeforeMain": true
+      }
+    ]
+  },
+  "sourceReviewRepair": {
+    "parent": "dae090b042680a17d7a282be47ac057bd98d7c18",
+    "findings": [
+      "F1",
+      "F2",
+      "F3",
+      "F4"
+    ],
+    "newMethodCount": 0,
+    "actualExecution": false
   }
 }
