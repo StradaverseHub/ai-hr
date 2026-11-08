@@ -2517,7 +2517,7 @@ export type PendingMoneyDoor =
 
 /** Exact immutable cash evidence; presentation does not create or reprice a contribution. */
 export type PendingOvertimeCashEvidence = {
-  sourceId: string; calculationId: string | null;
+  sourceId: string; calculationId: string;
   formulaBindingId?: string; sourceRevision: number; settlementId: string;
   lineId: string; earningItemId: string; date: string; currency: string; minorScale: number; amountMinorUnits: string;
 };

@@ -28757,7 +28757,8 @@
       }
     },
     "positionSearch": "Tìm chức danh",
-    "loadMorePositions": "Tải thêm chức danh"
+    "loadMorePositions": "Tải thêm chức danh",
+    "attendanceFormulaBinding": "Bộ kết quả công thức chấm công: {id}"
   },
   "systemTestingWorkspace": {
     "title": "Kiểm thử hệ thống",
@@ -36765,6 +36766,27 @@
       "posted": "Đã chuyển lương",
       "reversed": "Đã hoàn tác"
     },
-    "status": "Trạng thái"
+    "status": "Trạng thái",
+    "variableRequirements": {
+      "approvedCoverage": "Cần thời gian làm đủ điều kiện có vị trí và bằng chứng phê duyệt gốc. Đơn yêu cầu hoặc khoảng chấm công không tự cấp quyền OT.",
+      "approvedLeave": "Cần vị trí nghỉ đã duyệt đúng ngày và ca đã lưu. Dữ liệu nghỉ thiếu hoặc mơ hồ sẽ từ chối kết quả.",
+      "toilSource": "Cần mô-đun Nghỉ/TOIL và bằng chứng tích lũy chưa hoàn tác. Không tạo tín dụng hay số dư nghỉ.",
+      "clockGeometry": "Cần lịch đã lưu và cặp chấm công đóng đầy đủ được xác minh. Không suy đoán giờ nghỉ linh hoạt hoặc không có vị trí.",
+      "adjacentDate": "Cần bằng chứng ngày liền kề thực tế trong cùng công ty có hiệu lực. Ngày bị thiếu vẫn không khả dụng.",
+      "datedCalendar": "Cần phân loại lịch theo ngày từ hệ thống gốc. Phân loại hỗn hợp cần tính theo ngày.",
+      "recordedSource": "Cần ngày chấm công đầy đủ và nguồn đã lưu. Dữ kiện thiếu vẫn không khả dụng."
+    },
+    "exampleValue": "Ví dụ minh họa: {value}",
+    "searchPayItem": "Tìm khoản lương",
+    "regularRun": "Đợt thường",
+    "weekdays": {
+      "1": "Thứ Hai",
+      "2": "Thứ Ba",
+      "3": "Thứ Tư",
+      "4": "Thứ Năm",
+      "5": "Thứ Sáu",
+      "6": "Thứ Bảy",
+      "7": "Chủ Nhật"
+    }
   }
 }

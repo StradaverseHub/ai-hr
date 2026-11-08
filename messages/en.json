@@ -28757,7 +28757,8 @@
       }
     },
     "positionSearch": "Search positions",
-    "loadMorePositions": "Load more positions"
+    "loadMorePositions": "Load more positions",
+    "attendanceFormulaBinding": "Attendance formula result set: {id}"
   },
   "systemTestingWorkspace": {
     "title": "System Testing",
@@ -36765,6 +36766,27 @@
       "posted": "Posted to Payroll",
       "reversed": "Reversed"
     },
-    "status": "Status"
+    "status": "Status",
+    "variableRequirements": {
+      "approvedCoverage": "Requires positioned eligible work and native approval evidence. A request or a clock span alone cannot authorize overtime.",
+      "approvedLeave": "Requires approved dated leave positions and the frozen shift. Incomplete or ambiguous leave refuses a result.",
+      "toilSource": "Requires the Leave/TOIL module and retained non-reversed accrual evidence. No credit or leave balance is created.",
+      "clockGeometry": "Requires the frozen schedule and complete, corroborated closed clock pairs. Flexible or unpositioned breaks cannot be guessed.",
+      "adjacentDate": "Requires evidence for the actual neighboring date within the same effective company. Missing adjacent days remain unavailable.",
+      "datedCalendar": "Requires the native dated calendar classification. Mixed classifications require daily calculations.",
+      "recordedSource": "Requires a complete recorded Attendance day and its frozen source. Missing facts remain unavailable."
+    },
+    "exampleValue": "Illustrative example: {value}",
+    "searchPayItem": "Search Pay Items",
+    "regularRun": "Regular run",
+    "weekdays": {
+      "1": "Monday",
+      "2": "Tuesday",
+      "3": "Wednesday",
+      "4": "Thursday",
+      "5": "Friday",
+      "6": "Saturday",
+      "7": "Sunday"
+    }
   }
 }

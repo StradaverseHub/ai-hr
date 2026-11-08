@@ -48,3 +48,21 @@ it('posts an approved earning through the native source projector once and refus
  await checkIn(f.ctx,{employmentId:f.employmentId,date:f.date,time:'20:00'});await checkOut(f.ctx,{employmentId:f.employmentId,date:f.date,time:'21:00'});
  await expect(withTenant(f.ctx,tx=>verifyAttendanceFormulaPayrollSourcesTx(tx,f.ctx,batchId))).rejects.toThrow(/changed/);
 });
+
+it('prices typed time through the Pay Item rate and applies its own rounding exactly once',async()=>{
+ const f=await saved(),{priceAttendanceFormulaQuantity}=await import('../packs/payroll/service'),[component]=await owner.db.select().from(payComponent).where(eq(payComponent.id,f.configuration.payItemId));
+ const hourly={...component,rule:{kind:'per_hour' as const,rate:20.12},roundingMethod:'up'};
+ expect(priceAttendanceFormulaQuantity(hourly,{quantity:'1.25',unit:'hours'})).toEqual({amount:'26.00',rate:'20.12'});
+ expect(priceAttendanceFormulaQuantity(hourly,{quantity:'20.12',unit:'amount'})).toEqual({amount:'21.00',rate:null});
+ expect(priceAttendanceFormulaQuantity({...component,rule:{kind:'per_day',rate:30.17},roundingMethod:'none'},{quantity:'0.5',unit:'days'})).toEqual({amount:'15.09',rate:'30.17'});
+ expect(()=>priceAttendanceFormulaQuantity(hourly,{quantity:'1',unit:'days'})).toThrow(/unit/);
+ expect(()=>priceAttendanceFormulaQuantity({...hourly,code:'BASIC'},{quantity:'100',unit:'amount'})).toThrow();
+});
+
+it('refuses a competing recurring Payroll item instead of silently paying the same code twice',async()=>{
+ const f=await active(),result=await calculateAttendanceFormulaResult(f.ctx,f),{setModule,entitledCtx}=await import('./harness');await setModule(base.tenantId,'typed_pay_components','active');f.ctx=await entitledCtx(base);
+ await reviewAttendanceFormulaResult(f.ctx,{resultId:result.id,command:'review',reason:'Checked source'});await reviewAttendanceFormulaResult(f.ctx,{resultId:result.id,command:'approve',reason:'Approved fixture'});
+ const {employmentPayComponent}=await import('../db/schema');await owner.db.insert(employmentPayComponent).values({tenantId:base.tenantId,employmentId:f.employmentId,componentId:f.configuration.payItemId,amount:'50.00',validFrom:'2024-01-01'});
+ const {createBatch,transferAttendanceFormulaResults}=await import('../packs/payroll/service'),{batchId}=await createBatch(f.ctx,{companyId:base.companyId,payPeriod:f.date.slice(0,7)});
+ await expect(transferAttendanceFormulaResults(f.ctx,{batchId,resultIds:[result.id],reason:'Must refuse the recurring conflict'})).rejects.toThrow(/recurring Payroll item/);
+});

@@ -1,16 +1,18 @@
 /** Payroll-owned projection of attendance allowance sources. Never overwrites unrelated batch inputs. */
 import {bindAttendanceFormulaOvertimeTx,readPayrollOvertimePatternCashTx} from './payroll-overtime-pattern';
+import type {AttendanceFormulaConfiguration} from '../lib/attendance-formula-model';
 import {planAttendanceFormulaPosting} from '../lib/attendance-formula-posting';
 import {attendanceFormulaEligibleForPeriodTx,readAttendanceFormulaResultTx,attendanceFormulaResultStateTx,replayAttendanceFormulaResultTx,appendAttendanceFormulaResultEventTx} from '../packs/attendance/service';
-import {multiplyFormulaDecimal,divideFormulaDecimal,roundFormulaDecimal} from '../lib/pay-formula-language';
+import {applyFormulaAmount,multiplyFormulaDecimal,divideFormulaDecimal,roundFormulaDecimal} from '../lib/pay-formula-language';
 import { and, eq, inArray, isNotNull, ne, sql } from 'drizzle-orm';
 import { withTenant,type SessionContext,type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
-import { employment,payComponent, payrollBatch, payrollBatchComponent, payrollAttendanceAllowanceSource, attendanceAllowanceResult,attendanceFormulaResult } from '../db/schema';
+import { employment,payComponent, payrollBatch, payrollBatchComponent, payrollAttendanceAllowanceSource, attendanceAllowanceResult,attendanceFormulaResult,payrollCycle,company } from '../db/schema';
 import { BatchNotDraftError,resolveBatchScopeFilter,type BatchScope } from './payroll';
 import { allowanceCents, allowanceMoney } from '../lib/attendance-allowance-rules';
 import { assertModuleEnabled } from './entitlements';
 import { isUnsupportedTaxableComponent } from './pay-components';
+import {BASIC_PAY_CODE,isStatutoryComponent} from './pay-rule';
 import { assertPayComponentReady } from '../lib/pay-component-contract';
 export class AllowancePayrollConflictError extends Error {
   constructor(message='An unrelated payroll input uses this pay code. Review it in Payroll before transferring.') { super(message); this.name='AllowancePayrollConflictError'; }
@@ -32,6 +34,7 @@ export async function projectAttendanceAllowanceTx(tx:Tx,ctx:SessionContext,p:{b
   if(other.length) throw new AllowancePayrollConflictError('This policy and payment month already belongs to another payroll run');
   const scope=await resolveBatchScopeFilter(tx,batch.scope as BatchScope|null);
   if(scope.employmentIds&&p.contributions.some(c=>!scope.employmentIds!.includes(c.employmentId)))throw new Error('Allowance recipient is outside the payroll run scope');
+  if(formula&&p.contributions.length){const recurring=await tx.execute<{id:string}>(sql`select e.id from employment_pay_component e join attendance_formula_result r on r.employment_id=e.employment_id and r.pay_component_id=e.component_id and r.tenant_id=e.tenant_id where e.tenant_id=app.current_tenant_id() and r.id=any(array[${sql.join(p.contributions.map(row=>sql`${row.resultId}::uuid`),sql`, `)}]::uuid[]) and e.superseded_at is null and e.valid_from<=r.period_to and(e.valid_to is null or e.valid_to>=r.period_from) limit 1`);if(recurring.length)throw new AllowancePayrollConflictError('A recurring Payroll item already uses this employee, Pay Item and period. Review that existing input before transferring.');}
   const componentIds=[...new Set(p.contributions.map(c=>c.componentId))];
   if(componentIds.length){const components=await tx.select({code:payComponent.code,pendingInputKind:payComponent.pendingInputKind}).from(payComponent).where(inArray(payComponent.id,componentIds));for(const component of components)assertPayComponentReady(component);}
   const previous=await tx.select().from(payrollAttendanceAllowanceSource).where(and(eq(payrollAttendanceAllowanceSource.batchId,p.batchId),eq(ownerColumn,ownerId)));
@@ -46,6 +49,7 @@ export async function projectAttendanceAllowanceTx(tx:Tx,ctx:SessionContext,p:{b
   // conflicts, even if their value happens to equal this policy's amount.
   for(const key of touched.values()){
     const sources=await tx.select().from(payrollAttendanceAllowanceSource).where(and(eq(payrollAttendanceAllowanceSource.batchId,p.batchId),eq(payrollAttendanceAllowanceSource.employmentId,key.employmentId),eq(payrollAttendanceAllowanceSource.componentId,key.componentId)));
+    if(sources.some(source=>formula?source.policyId!==null:source.formulaId!==null))throw new AllowancePayrollConflictError('This employee and Pay Item already belongs to another Attendance configuration owner. Use one owner before transferring.');
     const [current]=await tx.select().from(payrollBatchComponent).where(and(eq(payrollBatchComponent.batchId,p.batchId),eq(payrollBatchComponent.employmentId,key.employmentId),eq(payrollBatchComponent.componentId,key.componentId))).for('update');
     const expected=allowanceMoney(sources.reduce((n,r)=>n+allowanceCents(r.amount),BigInt(0)));
     if(current ? !sources.length||current.notes!==marker||current.amount!==expected : sources.length>0) throw new AllowancePayrollConflictError();
@@ -86,15 +90,18 @@ export function listAttendanceAllowancePayCodes(ctx:SessionContext){
 /** Pay Item owns quantity pricing. The Attendance engine supplies a typed quantity, never a rate. */
 export function priceAttendanceFormulaQuantity(component:typeof payComponent.$inferSelect,p:{quantity:string;unit:'amount'|'minutes'|'hours'|'days'}){
  assertPayComponentReady(component);
- if(component.archivedAt||component.isNonPayable||isUnsupportedTaxableComponent(component)||!['allowance','deduction'].includes(component.kind))throw Error('Choose an active payable earning or deduction Pay Item.');
+ if(component.archivedAt||component.isNonPayable||component.code.trim().toUpperCase()===BASIC_PAY_CODE||isStatutoryComponent(component.code,component.kind)||isUnsupportedTaxableComponent(component)||!['allowance','deduction'].includes(component.kind))throw Error('Choose an active payable earning or deduction Pay Item.');
  const rule=component.rule;
  let amount=p.quantity,rate:string|null=null;
- if(p.unit==='amount'){if(rule&&rule.kind!=='fixed')throw Error('An amount formula needs a fixed-amount Pay Item; quantity-priced items require matching hours or days.');}
+ // A complete formula amount is already priced, as with Native's other source-owned amounts.
+ // Only quantity output asks the catalogue to supply a rate; generation must not reprice either.
+ if(p.unit==='amount'){}
  else if((p.unit==='minutes'||p.unit==='hours')&&rule?.kind==='per_hour'){
   rate=String(rule.rate);amount=multiplyFormulaDecimal(p.unit==='minutes'?divideFormulaDecimal(p.quantity,'60'):p.quantity,rate);
  }else if(p.unit==='days'&&rule?.kind==='per_day'){rate=String(rule.rate);amount=multiplyFormulaDecimal(p.quantity,rate);}
  else throw Error('The formula output unit does not match the Pay Item pricing rule.');
- amount=roundFormulaDecimal(amount,2);if(amount.startsWith('-')||allowanceCents(amount)>BigInt('999999999999'))throw Error('The calculated amount exceeds the supported Payroll amount.');
+ const rounding=component.roundingMethod??'none';if(!['none','up','down','nearest'].includes(rounding))throw Error('The Pay Item rounding rule is unsupported.');
+ amount=applyFormulaAmount(roundFormulaDecimal(amount,2),{rounding:rounding as 'none'|'up'|'down'|'nearest'});if(amount.startsWith('-')||allowanceCents(amount)>BigInt('999999999999'))throw Error('The calculated amount exceeds the supported Payroll amount.');
  return {amount:allowanceMoney(allowanceCents(amount)),rate};
 }
 
@@ -107,7 +114,7 @@ export function transferAttendanceFormulaResults(ctx:SessionContext,p:{batchId:s
  const [batch]=await tx.select().from(payrollBatch).where(eq(payrollBatch.id,p.batchId));
  if(!batch||batch.status!=='draft'||batch.runType!=='regular'||results.some(row=>row.companyId!==batch.companyId||row.periodTo.slice(0,7)!==batch.payPeriod))throw Error('Use the matching company regular draft Payroll run and calculation ending month.');
  const [authority]=await tx.execute<{allowed:boolean}>(sql`select app.can_admin_payroll_for(${batch.companyId}::uuid) as allowed`);if(!authority?.allowed)throw Error('Payroll financial authority is required.');
- const candidates=[];
+ const candidates:(typeof results[number]&{posting:AttendanceFormulaConfiguration['posting'];purpose:AttendanceFormulaConfiguration['purpose']})[]=[];
  for(const result of results){
   const state=await attendanceFormulaResultStateTx(tx,result.id),replay=await replayAttendanceFormulaResultTx(tx,ctx,result);
   if(state?.kind==='posted'){const [source]=await tx.select().from(payrollAttendanceAllowanceSource).where(eq(payrollAttendanceAllowanceSource.formulaResultId,result.id));if(replay.configuration.purpose==='overtime'){const [binding]=await tx.execute<{ok:boolean}>(sql`select true as ok from attendance_formula_ot_binding_result r join attendance_formula_ot_binding b on b.id=r.binding_id where r.result_id=${result.id}::uuid and r.tenant_id=app.current_tenant_id() and b.batch_id=${batch.id}::uuid and exists(select 1 from overtime_source_settlement s where s.formula_binding_id=b.id and s.released_at is null) limit 1`);if(!binding?.ok)throw Error('The result belongs to another overtime Payroll contribution.');}else if(source?.batchId!==batch.id||source.amount!==result.amount)throw Error('The result belongs to another Payroll contribution.');}
@@ -145,5 +152,5 @@ export async function verifyAttendanceFormulaPayrollSourcesTx(tx:Tx,ctx:SessionC
 }
 export function attendanceFormulaPayrollRuns(ctx:SessionContext,companyIds:string[]){return withTenant(ctx,async tx=>{
  if(!companyIds.length)return [];if(companyIds.length>500)throw Error('Narrow the Payroll company scope.');
- return tx.select({id:payrollBatch.id,companyId:payrollBatch.companyId,period:payrollBatch.payPeriod,cycleId:payrollBatch.payrollCycleId}).from(payrollBatch).where(and(inArray(payrollBatch.companyId,companyIds),eq(payrollBatch.status,'draft'),eq(payrollBatch.runType,'regular'),sql`app.can_admin_payroll_for(${payrollBatch.companyId})`)).orderBy(payrollBatch.payPeriod,payrollBatch.id).limit(101);
+ return tx.select({id:payrollBatch.id,companyId:payrollBatch.companyId,companyName:company.legalName,period:payrollBatch.payPeriod,cycleId:payrollBatch.payrollCycleId,cycleName:payrollCycle.name}).from(payrollBatch).innerJoin(company,eq(company.id,payrollBatch.companyId)).leftJoin(payrollCycle,eq(payrollCycle.id,payrollBatch.payrollCycleId)).where(and(inArray(payrollBatch.companyId,companyIds),eq(payrollBatch.status,'draft'),eq(payrollBatch.runType,'regular'),sql`app.can_admin_payroll_for(${payrollBatch.companyId})`)).orderBy(payrollBatch.payPeriod,payrollBatch.id).limit(101);
 });}

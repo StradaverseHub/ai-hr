@@ -69,7 +69,7 @@ export async function readPayrollOvertimeCoverageTx(tx:Tx,ctx:SessionContext,p:{
  return {keys,days,employmentIds:[...new Set([...covered.filter(r=>r.companyId===p.companyId).map(r=>r.employmentId),...unresolved.map(r=>r.employmentId)])],unresolved};
 }
 
-export type PayrollOvertimePatternLine={sourceId:string;calculationId:string|null;formulaBindingId?:string;sourceRevision:number;settlementId:string;employmentId:string;date:string;dayType:'workday'|'rest_day'|'holiday';lineId:string;earningItemId:string;earningItemCode:string;earningItemName:string;treatment:{epf:boolean;socso:boolean;pcb:boolean;hrdf:boolean};floorEvidence:{countryMinimumApplicable:boolean;minimumMinorUnits:string;periodEnd:string};amountMinorUnits:string;payableMinutes:OvertimeExact;evidence:OvertimeLine|{bindingKind:'attendanceFormula';formulaBindingId:string;resultId:string;revisionId:string;mapping:{earningItemId:string;currency:string};quantity:string;unit:string;rate:string|null;sourceHash:string;allocation:{date:string;physicalMinutes:number;countedMinutes:number;amountMinorUnits:string}}};
+export type PayrollOvertimePatternLine={sourceId:string;calculationId:string;formulaBindingId?:string;sourceRevision:number;settlementId:string;employmentId:string;date:string;dayType:'workday'|'rest_day'|'holiday';lineId:string;earningItemId:string;earningItemCode:string;earningItemName:string;treatment:{epf:boolean;socso:boolean;pcb:boolean;hrdf:boolean};floorEvidence:{countryMinimumApplicable:boolean;minimumMinorUnits:string;periodEnd:string};amountMinorUnits:string;payableMinutes:OvertimeExact;evidence:OvertimeLine|{bindingKind:'attendanceFormula';formulaBindingId:string;resultId:string;revisionId:string;mapping:{earningItemId:string;currency:string};quantity:string;unit:string;rate:string|null;sourceHash:string;allocation:{date:string;physicalMinutes:number;countedMinutes:number;amountMinorUnits:string}}};
 export type PayrollOvertimePatternCash={lines:PayrollOvertimePatternLine[];byEmployment:Map<string,PayrollOvertimePatternLine[]>};
 
 type CalculationRead=NonNullable<Awaited<ReturnType<typeof readOvertimeCalculationTx>>>;
@@ -339,7 +339,7 @@ export async function attendanceFormulaOvertimeFloorTx(tx:Tx,ctx:SessionContext,
 
 type FormulaOtPart={date:string;dayClass:string;dayType:'workday'|'rest_day'|'holiday';minutes:number;physicalMinutes:number;roundedMinutes:number;roundingCountAttributions:unknown[];intervals:{from:number;to:number}[]};
 type FormulaOtResult=typeof import('../db/schema').attendanceFormulaResult.$inferSelect;
-type FormulaOtDay={sourceId:string;sourceDate:string;sourceRevision:number;calculationId:string|null;sourceHash:string;coverage:string;parts:FormulaOtPart[]};
+type FormulaOtDay={sourceId:string;sourceDate:string;sourceRevision:number;calculationId:string;sourceHash:string;coverage:string;parts:FormulaOtPart[]};
 const FORMULA_OT_BINDING_VERSION='attendance-formula-overtime-1';
 async function attendanceFormulaOvertimeProofTx(tx:Tx,ctx:SessionContext,results:FormulaOtResult[],batch:typeof payrollBatch.$inferSelect,lockSources:boolean){
  if(!results.length||results.length>128||results.some(row=>row.companyId!==batch.companyId||row.employmentId!==results[0].employmentId||row.periodFrom!==results[0].periodFrom||row.periodTo!==results[0].periodTo))fail('coverage');
@@ -365,7 +365,10 @@ async function attendanceFormulaOvertimeProofTx(tx:Tx,ctx:SessionContext,results
  const lines=ordered.flatMap((result,resultIndex)=>{const allocated=allocateAttendanceFormulaCents(allowanceCents(result.amount).toString(),parts.map(part=>part.minutes));return parts.map((part,index)=>({resultId:result.id,revisionId:result.revisionId,sourceId:part.sourceId,date:part.date,dayType:part.dayType,componentId:result.payComponentId,amountMinorUnits:allocated[index],physicalMinutes:part.physicalMinutes,countedMinutes:resultIndex===0?part.minutes:0}));});
  for(const floor of money.floors){const total=lines.filter(line=>line.date===floor.date).reduce((sum,line)=>sum+BigInt(line.amountMinorUnits),BigInt(0));if(total<BigInt(floor.minimumMinorUnits))fail('statutoryFloor');}
  const proof={version:FORMULA_OT_BINDING_VERSION,companyId:batch.companyId,employmentId,from,to,batchId:batch.id,payPeriod:batch.payPeriod,results:ordered.map(row=>({id:row.id,formulaId:row.formulaId,revisionId:row.revisionId,sourceHash:row.sourceHash,payComponentId:row.payComponentId,quantity:row.quantity,unit:row.unit,rate:row.rate,amount:row.amount})),days,money,lines};
- if(Buffer.byteLength(JSON.stringify(proof))>8*1024*1024)fail('unavailable');return proof;
+ const encoded=JSON.stringify(proof);if(Buffer.byteLength(encoded)>8*1024*1024)fail('unavailable');
+ // Compare the durable JSON representation: database timestamps become ISO strings and
+ // undefined optional properties are absent, exactly as PostgreSQL jsonb retains them.
+ return JSON.parse(encoded) as typeof proof;
 }
 /** One immutable evidence binding can have many real formula results and dated source parents.
  * Every parent still reserves through the existing cash/TOIL owner, once. No invented assignment. */

@@ -28757,7 +28757,8 @@
       }
     },
     "positionSearch": "搜索职位",
-    "loadMorePositions": "加载更多职位"
+    "loadMorePositions": "加载更多职位",
+    "attendanceFormulaBinding": "考勤公式结果集：{id}"
   },
   "systemTestingWorkspace": {
     "title": "系统测试",
@@ -36765,6 +36766,27 @@
       "posted": "已传至薪资",
       "reversed": "已冲销"
     },
-    "status": "状态"
+    "status": "状态",
+    "variableRequirements": {
+      "approvedCoverage": "需要定位明确的合资格工作及原有批准证据。仅有申请或打卡跨度不能授权加班。",
+      "approvedLeave": "需要已批准且定位明确的日期休假及冻结班次。休假信息不完整或含糊将拒绝结果。",
+      "toilSource": "需要休假／TOIL模块及未冲销的计提证据。不会创建积分或休假余额。",
+      "clockGeometry": "需要冻结排班及完整、可核实的闭合打卡配对。不会猜测弹性或未定位的休息时间。",
+      "adjacentDate": "需要同一有效雇佣公司内实际相邻日期的证据。缺失相邻日期将保持不可用。",
+      "datedCalendar": "需要原有按日期的日历分类。混合分类需按日计算。",
+      "recordedSource": "需要完整记录的考勤日及冻结来源。缺失事实保持不可用。"
+    },
+    "exampleValue": "说明性示例：{value}",
+    "searchPayItem": "搜索薪资项目",
+    "regularRun": "常规批次",
+    "weekdays": {
+      "1": "星期一",
+      "2": "星期二",
+      "3": "星期三",
+      "4": "星期四",
+      "5": "星期五",
+      "6": "星期六",
+      "7": "星期日"
+    }
   }
 }

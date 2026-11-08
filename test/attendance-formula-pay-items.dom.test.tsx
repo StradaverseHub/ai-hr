@@ -10,9 +10,9 @@ vi.mock('../app/attendance/individual/[date]/formula-actions',()=>({calculateAtt
 // This test owns result review and transfer intent. The separately tested editor owns trace rendering.
 vi.mock('../app/admin/attendance/settings/formula-builder/editor',()=>({TestEvidence:()=> <div>Actual result evidence</div>}));
 afterEach(()=>{cleanup();vi.clearAllMocks();});
-const base={employmentId:'E',date:'2026-11-08',choices:[{id:'F',code:'WORKED',description:'Fictional earning',method:'daily'}],runs:[{id:'B',companyId:'C',period:'2026-11',cycleId:null}]};
+const base={employmentId:'E',date:'2026-11-08',choices:[{id:'F',code:'WORKED',description:'Fictional earning',method:'daily'}],runs:[{id:'B',companyId:'C',companyName:'Fictional company',period:'2026-11',cycleId:null,cycleName:null}]};
 const result={id:'R',companyId:'C',formulaId:'F',revisionId:'V',employmentId:'E',periodFrom:'2026-11-08',periodTo:'2026-11-08',payComponentId:'P',quantity:'60',unit:'minutes',rate:'20',amount:'20.00',createdAt:new Date('2026-11-08T00:00:00Z')};
-const row={result,code:'WORKED',definition:{description:'Fictional earning',period:{method:'daily'}},payCode:'ATT',payName:'Attendance earning',state:'approved'};
+const row={result,code:'WORKED',version:1,definition:{description:'Fictional earning',period:{method:'daily'}},payCode:'ATT',payName:'Attendance earning',state:'approved'};
 const mount=(state='approved')=>render(<NextIntlClientProvider locale="en" messages={en}><AttendanceFormulaPayItems {...base} rows={[{...row,state}] as unknown as Parameters<typeof AttendanceFormulaPayItems>[0]['rows']}/></NextIntlClientProvider>);
 it('requires selected approved results, draft run and a reason before explicit transfer',async()=>{
  mocks.transfer.mockResolvedValue({ok:true,value:{posted:['R'],excluded:[],idempotent:false}});mount();

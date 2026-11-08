@@ -17,3 +17,7 @@ describe('answered before/after overtime distinctions',()=>{
 });
 
 it('does not turn early clocked work into eligible overtime when the native policy enables only after-shift OT',()=>{expect(measure({net:[{from:420,to:1080}],approved:[{from:420,to:1080}],eligible:[{from:1020,to:1080}],start:540,end:1020,crossesMidnight:false})).toMatchObject({ZoneAWorkingMins:120,ApproveZoneAOT:0,ZoneAPreOT:0,ApproveZoneBOT:60,OTAssignmentInShift:0});});
+
+it('keeps separately reported break work out of normal before/after OT quantities, including paid breaks',()=>{
+ expect(measure({net:[{from:420,to:1080}],eligible:[{from:420,to:1080}],approved:[{from:420,to:1080}],start:540,end:1020,crossesMidnight:false,breaks:[{from:450,to:480},{from:1035,to:1050}]})).toMatchObject({ZoneAWorkingMins:120,ZoneBWorkingMins:60,ApproveZoneAOT:90,ApproveZoneBOT:45});
+});

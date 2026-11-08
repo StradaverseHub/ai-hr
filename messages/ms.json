@@ -28757,7 +28757,8 @@
       }
     },
     "positionSearch": "Cari jawatan",
-    "loadMorePositions": "Muatkan lebih banyak jawatan"
+    "loadMorePositions": "Muatkan lebih banyak jawatan",
+    "attendanceFormulaBinding": "Set hasil formula kehadiran: {id}"
   },
   "systemTestingWorkspace": {
     "title": "Ujian Sistem",
@@ -36765,6 +36766,27 @@
       "posted": "Dipos ke Gaji",
       "reversed": "Dibalikkan"
     },
-    "status": "Status"
+    "status": "Status",
+    "variableRequirements": {
+      "approvedCoverage": "Memerlukan kerja layak berposisi dan bukti kelulusan asli. Permintaan atau rentang jam sahaja tidak meluluskan OT.",
+      "approvedLeave": "Memerlukan kedudukan cuti bertarikh diluluskan dan syif dibekukan. Cuti kabur atau tidak lengkap menolak hasil.",
+      "toilSource": "Memerlukan modul Cuti/TOIL dan bukti akruan tidak dibalikkan. Tiada kredit atau baki cuti dicipta.",
+      "clockGeometry": "Memerlukan jadual dibekukan serta pasangan jam tertutup yang lengkap dan disahkan. Rehat fleksibel atau tanpa posisi tidak diteka.",
+      "adjacentDate": "Memerlukan bukti tarikh bersebelahan sebenar dalam syarikat efektif sama. Hari bersebelahan hilang kekal tidak tersedia.",
+      "datedCalendar": "Memerlukan pengelasan kalendar bertarikh asli. Pengelasan bercampur memerlukan pengiraan harian.",
+      "recordedSource": "Memerlukan hari Kehadiran direkod lengkap dan sumber dibekukan. Fakta hilang kekal tidak tersedia."
+    },
+    "exampleValue": "Contoh ilustrasi: {value}",
+    "searchPayItem": "Cari Item Gaji",
+    "regularRun": "Larian biasa",
+    "weekdays": {
+      "1": "Isnin",
+      "2": "Selasa",
+      "3": "Rabu",
+      "4": "Khamis",
+      "5": "Jumaat",
+      "6": "Sabtu",
+      "7": "Ahad"
+    }
   }
 }
