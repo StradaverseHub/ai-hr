@@ -5,6 +5,7 @@ import {V9_NAVIGATION, V9_SHARED_NAVIGATION} from '../lifecycle-v9-navigation';
 import {modulePackById} from '../../packs/registry';
 import {navigationPlacement, type NavigationPlacement} from '../navigation-workspaces';
 import {MODULE_SUBMENU_REGISTRIES} from './module-submenus';
+import {PERSONNEL_RECORD_TABS,PERSONNEL_RECORD_RETIRED_NAVIGATION} from '../personnel-record-navigation';
 import {CENTRE_TABS,CENTRE_SECTIONS,PAYROLL_CYCLE_PAGES} from '../ai-centre/centre-nav';
 import {SECURITY_PAGES} from '../security-center-navigation';
 import {PERFORMANCE_AREA_TABS} from '../../packs/performance/onehr/tab-model';
@@ -276,4 +277,18 @@ export function resolveNavigationCatalogue(facts:ShellNavigationFacts){
   if(!duplicateOf)seen.set(row.href,declaration.id);
  }
  return {...catalogue,issues,rows,resolution};
+}
+
+/** Unbound record-local declarations stay separate from static click addresses.
+ * A template/choice is not a fixture record, resolved URL, availability or receipt. */
+export function declaredParameterizedNavigationCatalogue(){
+ const sourceOwner='lib/personnel-record-navigation.ts',pageOwner='app/admin/personnel/[employmentId]/page.tsx',rendererOwner='components/personnel-tabs.tsx';
+ return {
+  declarations:PERSONNEL_RECORD_TABS.map(descriptor=>({id:descriptor.id,sourceKey:descriptor.id,sourceOwner,pageOwner,rendererOwner,
+   family:'personnel-record' as const,kind:'client-tab' as const,routeTemplate:'/admin/personnel/[employmentId]' as const,
+   queryKey:'tab' as const,choiceKey:descriptor.key,descriptor,nativeBinding:'unbound' as const,nativeDisposition:'unresolved' as const})),
+  retired:PERSONNEL_RECORD_RETIRED_NAVIGATION.map(descriptor=>({id:descriptor.id,sourceKey:descriptor.id,sourceOwner,pageOwner,rendererOwner,
+   family:'personnel-record' as const,kind:'retired-client-tab' as const,descriptor,nativeBinding:'unbound' as const,nativeDisposition:'unresolved' as const})),
+  remainingFamilies:'uncomposed' as const,runtimeAcceptance:false as const,releaseAuthorized:false as const,
+ };
 }

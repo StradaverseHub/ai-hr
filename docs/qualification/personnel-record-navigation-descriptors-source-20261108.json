@@ -1,0 +1,69 @@
+{
+  "kind": "SOURCE_ONLY_NOT_EXECUTION_OR_ADMISSION",
+  "parent": "6d4d08f50be71abb3b7a441a935c8c044797deeb",
+  "sourceHashes": {
+    "lib/personnel-record-navigation.ts": "f0072c35644befcc53d5c3161baaafc5cd13142d6337e4e5ba9778ee25f87672",
+    "app/admin/personnel/[employmentId]/page.tsx": "a247f83b768d1638ecbf082486b134d735345b04b94a225174f88144ef0f21fe",
+    "components/personnel-tabs.tsx": "e02bab3299ac05100e88ec6a929bb66bebdb890a534319281a581a620fc28e02",
+    "lib/navigation/catalogue.ts": "cb7f60dba8210a7d513e13a572405f21496898f5d272367c9f0c03f9ab48d5fa",
+    "scripts/performance/navigation-protocol.ts": "fa1ae7aa43fa8bd0ffdaca456a0a7261c9dec4d83a7036bc08e302739a85f43a",
+    "scripts/performance/navigation-obligations.json": "81da2e369bf16db166f43e00fc3b45cd2b6f24f0b10a880163f24734ffd278c3",
+    "test/navigation-obligations.test.ts": "d2d57635eadfde11265510a8852cbe400c989300fde50b34bfdf33c280396b04",
+    "test/personnel-record-navigation.test.ts": "e5a4609ffd50e8240fb6994b3e77832f8957d129e49a86eaf19dfc533af35dab",
+    "test/personnel-record-navigation.dom.test.tsx": "7842dd5ccab03d37f117c0036a7f8bc1ac5444ff5896425fcfecbab666813fad",
+    "docs/qualification/personnel-record-navigation-descriptors-20261108.md": "48cda554346aed3cc60eec00deb91ddaf36212af850dc0a579bf394a4709872d"
+  },
+  "wholeParentPreimageHashes": {
+    "app/admin/personnel/[employmentId]/page.tsx": "39aa4821c6a833974e452666028f40fba0a0c936809ee8e5e257e38bc953cec8",
+    "components/personnel-tabs.tsx": "f29984e95997e67278bf0f4b1495062a4b93073febf3827617e9c12611c8d3fc",
+    "lib/navigation/catalogue.ts": "4c0c582cd6344a0501cd40560f38d95991d4c584c3f45c6ef3e888fa02035612",
+    "scripts/performance/navigation-protocol.ts": "221d7cb2c9df5c11d4ab0e626ec35e893ca78916036d14389c8b8362555741c1",
+    "scripts/performance/navigation-obligations.json": "6b6b122bf8f10d1b8a679a628a70d4956405fe7e397c4ff8d2727e5fd076b947",
+    "test/navigation-obligations.test.ts": "c26c0ee14f62d343139f55a8f02010309a3ccb9f1cadd47deedd84fc199af515"
+  },
+  "parentAbsences": [
+    "lib/personnel-record-navigation.ts",
+    "test/personnel-record-navigation.test.ts",
+    "test/personnel-record-navigation.dom.test.tsx",
+    "docs/qualification/personnel-record-navigation-descriptors-20261108.md"
+  ],
+  "wholePreservedHashes": {
+    "lib/personnel-tab-sections.ts": "e31ef748fbb2812f35df0db9ac6a6704269612df94f609c8716c8e528925bc67",
+    "test/personnel-tabs-accessibility.dom.test.tsx": "5b08d2be6d79921ceeb44625e49bf4c0b1b864aab45fc0e9f7ed152499fc9d11",
+    "test/personnel-tabs-simplify.test.ts": "077e90fcb7f6f466419fdcdaf61862c77d5518cdae5b5b27b3d8a9c16c47d1ca",
+    "scripts/performance/navigation-scenarios.json": "a48db724639d47ffa57c078d1fa3a47db8c76ff6ff9042adc192fb4de8042dc5",
+    "scripts/performance/navigation-browser-capture.ts": "3a2b060ed4387fc61fc20b27a5a1cfa6e971ad4224e7d3efddb8aa5e51ac3255",
+    "scripts/performance/navigation-shell-browser.ts": "4cd97d9caac1bf1475121b40917e394ccbfad39cbece2051ffcfc00a73ea10ca",
+    "scripts/performance/navigation-fixture-bindings.ts": "22a465d202dc2db0fa4319033ccc82ed92a7142f0372052fd1537dc85482e2fb",
+    "scripts/performance/navigation-coverage.ts": "e6782def6b2796e2dade4a6008d59e28a425c6b83405466ab28803b7635ae0a1",
+    "scripts/performance/navigation-coverage-ledger.json": "e096a2f9c5bbec4953840debbe1e04674c39abf7d96dc35496825fa0f026bcc2",
+    "scripts/performance/system-load.mjs": "ecf1b52c881812e9a9b2e29c2df37501871be9c3809d7b38351a0e169907e5b7",
+    "scripts/performance/system-fixture.mjs": "4109fb3a4e65eee74310fdde0eda8fc55ede340573edd059363fc2be4bfdad0b",
+    "scripts/performance/system-runner.mjs": "3a7a78372799134475fc7b9566ddfe0967d9584ee3e342c184000a64ae77938a"
+  },
+  "wholePageInverse": true,
+  "wholeComponentTypeOnlyInverse": true,
+  "genericClientTabsAndFollowingExportsWholeHash": "8c342986fc4481ab2bd3c451fceb7dc3835b2772509c861a1f0a9df60fe38a99",
+  "original48Plus4WholeObjectsPreserved": true,
+  "staticCatalogueDeclarations": 222,
+  "parameterizedSourceDescriptors": {
+    "rendered": 10,
+    "retired": 1,
+    "nativeBinding": "unbound"
+  },
+  "sourceCensus": {
+    "families": 46,
+    "parameterizedPages": 120
+  },
+  "externalAst": {
+    "package": "@babel/parser",
+    "version": "7.29.12",
+    "strictScopeParse": true,
+    "files": 8,
+    "execution": "source-as-data-only"
+  },
+  "hostedTests": "not-run",
+  "nativeBrowser": "not-run",
+  "runtimeAcceptance": false,
+  "releaseAuthorized": false
+}

@@ -169,6 +169,7 @@ import { getScheduleRotation,listAttendanceRules, listClockingLocations, listEmp
 import { setClockingControlAction } from './actions';
 import { DocumentsSection } from './documents-section';
 import { PersonnelTabs, type PersonnelTabKey } from '@/components/personnel-tabs';
+import {PERSONNEL_RECORD_TABS} from '@/lib/personnel-record-navigation';
 // 420ebab5 part two — the Profile tab's one Save/Discard, and the consolidated action behind it.
 import { TabSaveScope } from '@/components/tab-save-scope';
 // c002b3c3 — the Personnel module's Search Employee switcher (shared with the listing).
@@ -761,35 +762,8 @@ export default async function EmployeePage({
     }
   };
 
-  // Tab labels (people.detail.tabs.*). Six tabs regrouping the existing sections below; the page still
-  // loads all data once, so switching tabs is instant and keeps the viewer on the same employee.
-  const tabs: { key: 'profile' | 'family' | 'job' | 'careerMovement' | 'attendance' | 'bankStatutory' | 'payroll' | 'leave' | 'documents' | 'qualification'; label: string }[] = [
-    { key: 'profile', label: t('tabs.profile') },
-    { key: 'family', label: t('tabs.family') },
-    { key: 'job', label: t('tabs.job') },
-    // Movement (5296d984, redesigned by 78853b97): the Employment History timeline — a Hired-first
-    // projection over the domain_event ledger — plus a single New Event entry point that folds in the
-    // former Transfer / Terminate / Blacklist boxes (their audited services are reused via
-    // core/movement.ts). The Employment tab keeps the "how they work" master data (reporting lines,
-    // delegations); the "events that change employment over time" live here, right after Employment.
-    { key: 'careerMovement', label: t('tabs.careerMovement') },
-    // Attendance Information (feedback 1fbe9891): consolidates the attendance-related master data that
-    // was previously split across Employment (Work Location + Shift Arrangement) and Others (Clocking
-    // Locations & Geofencing) into one dedicated tab. Same cards, same server actions — only regrouped.
-    // Positioned right after Employment so the operational attendance setup sits next to the role/posting.
-    { key: 'attendance', label: t('tabs.attendance') },
-    // Bank & Statutory (feedback 40ef71a0): the Statutory (Malaysia) card — which already co-locates the
-    // salary-payment bank fields alongside EPF/SOCSO/EIS/PCB — is relocated here out of the Payroll tab,
-    // giving all pay-related master data its own clearly-named home. Positioned before Payroll.
-    { key: 'bankStatutory', label: t('tabs.bankStatutory') },
-    { key: 'payroll', label: t('tabs.payroll') },
-    { key: 'leave', label: t('tabs.leave') },
-    { key: 'documents', label: t('tabs.documents') },
-    // Qualification (feedback a949184a): the employee's academic / professional qualification history —
-    // a list-and-dialog register mirroring the Family tab's table + dialogForm pattern. Placed after
-    // Documents per the request's tab-order example.
-    { key: 'qualification', label: t('tabs.qualification') },
-  ];
+  // The canonical ten-tab declaration owns order and label keys; data/panels stay here.
+  const tabs = PERSONNEL_RECORD_TABS.map(tab => ({key:tab.key,label:t(tab.labelKey)}));
 
   // 9d13221c — Age beside Date of Birth: completed whole years from the stored DOB to today, recomputed on
   // every render so each profile open shows that day's exact age (it increments the day the birthday

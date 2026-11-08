@@ -3348,16 +3348,18 @@
       "currentSourceOwners": [
         {
           "path": "app/admin/personnel/[employmentId]/page.tsx",
-          "sha256": "39aa4821c6a833974e452666028f40fba0a0c936809ee8e5e257e38bc953cec8"
+          "sha256": "a247f83b768d1638ecbf082486b134d735345b04b94a225174f88144ef0f21fe"
         },
         {
           "path": "components/personnel-tabs.tsx",
-          "sha256": "f29984e95997e67278bf0f4b1495062a4b93073febf3827617e9c12611c8d3fc"
+          "sha256": "e02bab3299ac05100e88ec6a929bb66bebdb890a534319281a581a620fc28e02"
+        },
+        {
+          "path": "lib/personnel-record-navigation.ts",
+          "sha256": "f0072c35644befcc53d5c3161baaafc5cd13142d6337e4e5ba9778ee25f87672"
         }
       ],
-      "historicalOwnersAbsentFromCurrentSource": [
-        "lib/personnel-record-navigation.ts"
-      ],
+      "historicalOwnersAbsentFromCurrentSource": [],
       "fixtureLeadsNotAuthority": [
         "person/employment/employeeCode from hireEmployee",
         "company from seedBase/company rows",
@@ -3369,7 +3371,8 @@
       "nativeFixtureBinding": "unbound",
       "usableOracle": "unreviewed-per-leaf",
       "baseline": "not-executed",
-      "steady500": "not-executed"
+      "steady500": "not-executed",
+      "sourceDescriptorComposition": "ten-rendered-tabs-and-retired-others-only; native records and all data/roles/oracles remain unbound"
     },
     {
       "id": "personnel-draft",
@@ -3381,7 +3384,7 @@
         },
         {
           "path": "components/personnel-tabs.tsx",
-          "sha256": "f29984e95997e67278bf0f4b1495062a4b93073febf3827617e9c12611c8d3fc"
+          "sha256": "e02bab3299ac05100e88ec6a929bb66bebdb890a534319281a581a620fc28e02"
         },
         {
           "path": "lib/employee-draft-schema.ts",
@@ -3413,16 +3416,14 @@
         },
         {
           "path": "components/personnel-tabs.tsx",
-          "sha256": "f29984e95997e67278bf0f4b1495062a4b93073febf3827617e9c12611c8d3fc"
+          "sha256": "e02bab3299ac05100e88ec6a929bb66bebdb890a534319281a581a620fc28e02"
         },
         {
           "path": "lib/personnel-ess-model.ts",
           "sha256": "c0e1929a8339bc34daf53dd8db1d3290aeb3f579ca0510e1d2de4f03becf2eb6"
         }
       ],
-      "historicalOwnersAbsentFromCurrentSource": [
-        "lib/personnel-record-navigation.ts"
-      ],
+      "historicalOwnersAbsentFromCurrentSource": [],
       "fixtureLeadsNotAuthority": [
         "own person/employment identity",
         "published historical payslip",
@@ -3433,7 +3434,10 @@
       "nativeFixtureBinding": "unbound",
       "usableOracle": "unreviewed-per-leaf",
       "baseline": "not-executed",
-      "steady500": "not-executed"
+      "steady500": "not-executed",
+      "historicalOwnersPresentWithoutFamilyComposition": [
+        "lib/personnel-record-navigation.ts"
+      ]
     },
     {
       "id": "personnel-movement",
@@ -4549,7 +4553,7 @@
       "currentSourceOwners": [
         {
           "path": "lib/navigation/catalogue.ts",
-          "sha256": "4c0c582cd6344a0501cd40560f38d95991d4c584c3f45c6ef3e888fa02035612"
+          "sha256": "cb7f60dba8210a7d513e13a572405f21496898f5d272367c9f0c03f9ab48d5fa"
         }
       ],
       "historicalOwnersAbsentFromCurrentSource": [],
@@ -4581,7 +4585,7 @@
         },
         {
           "path": "lib/navigation/catalogue.ts",
-          "sha256": "4c0c582cd6344a0501cd40560f38d95991d4c584c3f45c6ef3e888fa02035612"
+          "sha256": "cb7f60dba8210a7d513e13a572405f21496898f5d272367c9f0c03f9ab48d5fa"
         },
         {
           "path": "lib/navigation/module-submenus.ts",

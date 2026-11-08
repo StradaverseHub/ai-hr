@@ -37,7 +37,8 @@ describe('finite current navigation obligations, never qualification',()=>{
    for(const owner of row.currentSourceOwners)expect(createHash('sha256').update(readFileSync(new URL(owner.path,root))).digest('hex')).toBe(owner.sha256);
    for(const path of row.historicalOwnersAbsentFromCurrentSource)expect(existsSync(new URL(path,root))).toBe(false);
   }
-  expect(census.families.find((row:any)=>row.id==='personnel-record').historicalOwnersAbsentFromCurrentSource).toContain('lib/personnel-record-navigation.ts');
+  expect(census.families.find((row:any)=>row.id==='personnel-record').currentSourceOwners.some((owner:any)=>owner.path==='lib/personnel-record-navigation.ts')).toBe(true);
+  expect(census.families.find((row:any)=>row.id==='self-profile').historicalOwnersPresentWithoutFamilyComposition).toContain('lib/personnel-record-navigation.ts');
  });
  it('keeps actual execution and resources unresolved while accounting for all proposed cases',()=>{
   const plan=JSON.parse(read('scripts/performance/navigation-scenarios.json'));
