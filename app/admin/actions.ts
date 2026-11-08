@@ -123,7 +123,7 @@ import {
   type LocationFormValues,
 } from './work-locations/location-fields';
 import { withQueryParam, workLocationsReturnTo } from '@/lib/return-to';
-import { countEmployeesInScope, listEmployeePickOptions } from '@/core/read';
+import { countEmployeesInScope, listEmployeePickOptions, listCompanies } from '@/core/read';
 import { ESS_VIEW_COMPONENT_KEYS, type EssViewConfig } from '@/core/ess-view';
 import { LEAVE_EXPLANATION_KEYS, type LeaveFormulaConfig } from '@/core/leave-formula';
 import { requireAdmin } from '@/lib/authz';
@@ -1695,10 +1695,24 @@ async function applyCompanyDetailsSection(s: Session, fd: FormData): Promise<voi
   });
 }
 
+/** Only the registration fields rendered on General may be submitted through its consolidated Save. */
+async function applyCompanyRegistrationSection(s: Session, fd: FormData): Promise<void> {
+  const companyId = String(fd.get('companyId'));
+  const [companyRow] = (await listCompanies(s, { adminOnly: true })).filter(c => c.id === companyId);
+  const pack = companyRow?.country === 'MY' ? packFor(companyRow.country) : undefined;
+  if (!pack) {
+    const t = await getTranslations('admin.organization');
+    throw new Error(t('registration.saveFailed'));
+  }
+  await pack.companyStatutory.set(s, {
+    companyId, ssmRegistrationNo: postedField(fd, 'ssmRegistrationNo'), myinvoisTin: postedField(fd, 'myinvoisTin'),
+  });
+}
+
 /**
  * 65b22c00 — ONE "Save Changes" for Organization → a company → General.
  *
- * WHAT IT IS NOT. It is not a blanket write. Each of the three cards reaches a DIFFERENT service with a
+ * WHAT IT IS NOT. It is not a blanket write. Each General section reaches its owner service with a
  * different payload, so this unpacks each card's OWN FormData — the same fields, the same hidden inputs,
  * the same absences — and hands it to that card's own `apply*Section` helper, the very same one the
  * per-card action calls, in the DECLARED order. Nothing here writes a table.
@@ -1712,7 +1726,7 @@ async function applyCompanyDetailsSection(s: Session, fd: FormData): Promise<voi
  *
  * IT RETURNS RATHER THAN REDIRECTS, unlike every per-card action on this screen. A redirect cannot say
  * WHICH write failed, and the classification requires a per-section failure rather than one
- * all-or-nothing error. It is also what makes "stay on the screen" free for these three: there is no
+ * all-or-nothing error. It is also what makes "stay on the screen" free for these field edits: there is no
  * redirect to stay on the right side of — `revalidatePath` plus the client's own `router.refresh()` is
  * the whole of it.
  */
@@ -1732,6 +1746,7 @@ export async function saveCompanyGeneralTabAction(formData: FormData): Promise<T
 
   const writers: Record<string, (s: Session, fd: FormData) => Promise<void>> = {
     company: applyCompanyDetailsSection,
+    registration: applyCompanyRegistrationSection,
     cycle: applyDefaultCycleSection,
     parent: applyParentSection,
   };

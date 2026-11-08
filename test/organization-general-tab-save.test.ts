@@ -119,6 +119,17 @@ describe('§1 the one Save reaches each card’s own writer', () => {
     expect(row.parentCompanyId).toBe(other);
   });
 
+  it('saves only the registration fields without clearing statutory body numbers or HRDF rate', async () => {
+    const pack = (await import('../localization/registry')).packFor('MY')!;
+    await pack.companyStatutory.set(ADMIN, {companyId:b.companyId,epfEmployerNo:'EPF-KEPT',socsoEmployerCode:'SOCSO-KEPT',hrdfStatus:'optional'});
+    const result=await saveCompanyGeneralTabAction(payload(b.companyId,{registration:{ssmRegistrationNo:'SSM-NEW',myinvoisTin:'TIN-NEW',hrdfStatus:'mandatory',epfEmployerNo:'FORGED'}}));
+    expect(result).toEqual({ok:true,saved:['registration']});
+    expect(await pack.companyStatutory.get(ADMIN,b.companyId)).toMatchObject({ssmRegistrationNo:'SSM-NEW',myinvoisTin:'TIN-NEW',epfEmployerNo:'EPF-KEPT',socsoEmployerCode:'SOCSO-KEPT',hrdfStatus:'optional'});
+    const cleared=await saveCompanyGeneralTabAction(payload(b.companyId,{registration:{myinvoisTin:''}}));
+    expect(cleared.ok).toBe(true);
+    expect(await pack.companyStatutory.get(ADMIN,b.companyId)).toMatchObject({ssmRegistrationNo:'SSM-NEW',myinvoisTin:null,hrdfStatus:'optional'});
+  });
+
   it('an UNTOUCHED card is never written — its service is not called at all', async () => {
     await saveCompanyGeneralTabAction(
       payload(b.companyId, { parent: { parentCompanyId: other } }),
@@ -184,7 +195,7 @@ describe('§2 the fence on the server', () => {
   });
 
   it('every id in the declared order has a writer, and the order is the reading order', () => {
-    expect([...COMPANY_GENERAL_TAB_SECTION_ORDER]).toEqual(['company', 'cycle', 'parent']);
+    expect([...COMPANY_GENERAL_TAB_SECTION_ORDER]).toEqual(['company', 'registration', 'cycle', 'parent']);
     const src = read('app/admin/actions.ts');
     const map = src.slice(src.indexOf('const writers: Record<string'), src.indexOf('const saved: string[] = [];'));
     for (const id of COMPANY_GENERAL_TAB_SECTION_ORDER) expect(map, id).toMatch(new RegExp(`\\b${id}:`));
@@ -403,7 +414,6 @@ describe('§3 the bucket, pinned from the RENDERED panel and not from the audit'
       'archive',
       'bankEditor',
       'remove',
-      'statutoryIdentity',
     ]);
     for (const f of unmarked) expect(f.body, f.attrs.slice(0, 80)).toMatch(/<button\b/);
     // …and the three that ARE marked lost theirs: that is what "one Save" means.
@@ -464,33 +474,20 @@ describe('§3 the bucket, pinned from the RENDERED panel and not from the audit'
    * STATUTORY tab. The failure it was written against is the card drifting onto General as a side effect
    * of a save-button change, and every round has had a save-button change in it.
    */
-  it('the statutory registrations card keeps its own Save, on the STATUTORY tab, never moved to General', () => {
+  it('moves the sole SSM/TIN editor into the General Save (approved 6a2b463a), leaving Statutory read-only', () => {
     const html = markup({ statutory: null });
-    const en = JSON.parse(read('messages/en.json')).admin.organization as Record<string, string>;
-    // Its OWN button is back — the retired caption returning to service, not a new string.
-    expect(html, 'bucket (a) with its own control, as finding 1 left it').toContain(en.saveStatutoryIdentity);
-    const form = formsIn(html).find((f) => f.body.includes('name="ssmRegistrationNo"'));
-    expect(form, 'the registrations form is rendered').toBeTruthy();
-    expect(form!.attrs, 'and it is NOT a section of a consolidated Save any more').not.toContain('data-save-section');
-    expect(form!.body, 'it submits itself').toMatch(/<button[^>]*type="submit"/);
-    // THERE IS ONE SCOPE ON THIS SCREEN AGAIN, and the card is outside it — which is the position claim.
-    // Pinned against the General pane's own end marker so it cannot be satisfied by ordering luck.
+    const form = formsIn(html).find(f => f.body.includes('name="ssmRegistrationNo"'));
+    expect(form).toBeTruthy();
+    expect(form!.attrs).toContain('data-save-section="registration"');
+    expect(form!.body).not.toMatch(/<button[^>]*type="submit"/);
     const panel = read('components/company-panel.tsx');
-    const generalPane = panel.slice(
-      panel.indexOf("cn('space-y-4', tab === 'general'"),
-      panel.indexOf('{/* end General tab */}'),
-    );
-    expect(generalPane, 'the card did not drift onto General').not.toContain('name="ssmRegistrationNo"');
-    const statutoryPane = panel.slice(
-      panel.indexOf("cn('space-y-4', tab === 'statutory'"),
-      panel.indexOf('{/* end Statutory tab */}'),
-    );
-    expect(statutoryPane, 'it is still where r226 put it').toContain('name="ssmRegistrationNo"');
-    expect(html.indexOf('data-tab-save-scope="general"'), 'the General scope is rendered').toBeGreaterThan(-1);
-    expect(html, 'and the statutory scope is gone with the editors it owned').not.toContain(
-      'data-tab-save-scope="statutory"',
-    );
-    // And General's own vocabulary never grew an identity section on the way past.
-    expect(COMPANY_GENERAL_TAB_SECTION_ORDER as readonly string[]).not.toContain('identity');
+    const generalPane = panel.slice(panel.indexOf("cn('space-y-4', tab === 'general'"), panel.indexOf('{/* end General tab */}'));
+    const statutoryPane = panel.slice(panel.indexOf("cn('space-y-4', tab === 'statutory'"), panel.indexOf('{/* end Statutory tab */}'));
+    expect(generalPane).toContain('name="ssmRegistrationNo"');
+    expect(generalPane).toContain('name="myinvoisTin"');
+    expect(statutoryPane).not.toContain('name="ssmRegistrationNo"');
+    expect(statutoryPane).not.toContain('name="myinvoisTin"');
+    expect(html).toContain('data-tab-save-scope="general"');
+    expect(html).not.toContain('data-tab-save-scope="statutory"');
   });
 });

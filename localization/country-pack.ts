@@ -476,6 +476,8 @@ export interface CountryPack {
 
   /** Company-level statutory registration (employer numbers, HRDF band, …). */
   companyStatutory: {
+    /** Creation-only defaults, written atomically with the new company. Never a lazy backfill. */
+    initialize?: (ctx: SessionContext, tx: Tx, companyId: string) => Promise<void>;
     set: MyCompanyStatutoryModule['setCompanyStatutoryMY'];
     get: MyCompanyStatutoryModule['getCompanyStatutoryMY'];
     /** Every company's statutory registration row (the group Organization admin panel). */

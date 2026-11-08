@@ -36,7 +36,7 @@ const fmt = (p: {
   const common = {
     id: p.id,
     authority: 'TEST-AUTHORITY',
-    group: p.group,
+    ...(p.group === 'salary' ? { group: p.group, bankKey: 'test_bank' } : { group: p.group }),
     rank: p.rank,
     labelKey: 'epfBorangA',
     descriptionKey: 'epfBorangADesc',

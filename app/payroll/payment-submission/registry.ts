@@ -127,7 +127,6 @@ type FormatCommon = {
    * caller can ask "is this the EPF one" and do something different. See the header.
    */
   authority: string;
-  group: SubmissionGroupKey;
   /** Sort key within the group. Declared, so position is a decision and not an accident of array order. */
   rank: number;
   /** i18n key under `payroll.paymentSubmission.format`. */
@@ -163,7 +162,11 @@ type FormatCommon = {
   periodKind: 'month' | 'month-cycle' | 'month-runs';
   /** REQUIRED. See `FormatVerification` — the registry's whole ratchet. */
   verification: FormatVerification;
-};
+} & (
+  // A salary descriptor must name its payer bank so account grouping cannot drift into a second list.
+  | { group: 'salary'; bankKey: string }
+  | { group: Exclude<SubmissionGroupKey, 'salary'>; bankKey?: never }
+);
 
 /**
  * A format, available or not.
@@ -196,12 +199,12 @@ const LHDN_CP39_EDATA = 'my.lhdn.cp39-edata';
  * separate preview/POST flow, so no GET can allocate a bank TapeID or create a generation record.
  */
 export const SUBMISSION_FORMATS: readonly SubmissionFormat[] = [
-  { id: 'my.maybank74.salary', authority: 'Maybank', group: 'salary', rank: 20, labelKey: 'maybankSalary', descriptionKey: 'maybankSalaryDesc', periodKind: 'month-cycle', verification: 'field-table-only', available: true, transport: 'bank-post', testIndicator: false },
+  { id: 'my.maybank74.salary', bankKey: 'maybank', authority: 'Maybank', group: 'salary', rank: 20, labelKey: 'maybankSalary', descriptionKey: 'maybankSalaryDesc', periodKind: 'month-cycle', verification: 'field-table-only', available: true, transport: 'bank-post', testIndicator: false },
   { id: 'my.maybank74.kwsp', authority: 'Maybank', group: 'bankStatutory', rank: 50, labelKey: 'maybankKwsp', descriptionKey: 'maybankKwspDesc', periodKind: 'month', verification: 'field-table-only', available: true, transport: 'bank-post', testIndicator: false },
   { id: 'my.maybank74.socso', authority: 'Maybank', group: 'bankStatutory', rank: 60, labelKey: 'maybankSocso', descriptionKey: 'maybankSocsoDesc', periodKind: 'month', verification: 'field-table-only', available: true, transport: 'bank-post', testIndicator: false },
   { id: 'my.maybank74.lhdn', authority: 'Maybank', group: 'bankStatutory', rank: 70, labelKey: 'maybankLhdn', descriptionKey: 'maybankLhdnDesc', periodKind: 'month', verification: 'field-table-only', available: true, transport: 'bank-post', testIndicator: false },
   { id: 'my.maybank74.zakat', authority: 'Maybank', group: 'bankStatutory', rank: 80, labelKey: 'maybankZakat', descriptionKey: 'maybankZakatDesc', periodKind: 'month', verification: 'field-table-only', available: true, transport: 'bank-post', testIndicator: false },
-  { id: 'my.ocbc.salary', authority: 'OCBC', group: 'salary', rank: 10, labelKey: 'ocbcSalary', descriptionKey: 'ocbcSalaryDesc', periodKind: 'month-cycle', verification: 'field-table-only', available: true, transport: 'bank-post', testIndicator: false },
+  { id: 'my.ocbc.salary', bankKey: 'ocbc_bank', authority: 'OCBC', group: 'salary', rank: 10, labelKey: 'ocbcSalary', descriptionKey: 'ocbcSalaryDesc', periodKind: 'month-cycle', verification: 'field-table-only', available: true, transport: 'bank-post', testIndicator: false },
   { id: 'my.ocbc.kwsp', authority: 'OCBC', group: 'bankStatutory', rank: 10, labelKey: 'ocbcKwsp', descriptionKey: 'ocbcKwspDesc', periodKind: 'month', verification: 'field-table-only', available: true, transport: 'bank-post', testIndicator: true },
   { id: 'my.ocbc.socso', authority: 'OCBC', group: 'bankStatutory', rank: 20, labelKey: 'ocbcSocso', descriptionKey: 'ocbcSocsoDesc', periodKind: 'month', verification: 'field-table-only', available: true, transport: 'bank-post', testIndicator: true },
   { id: 'my.ocbc.lhdn', authority: 'OCBC', group: 'bankStatutory', rank: 30, labelKey: 'ocbcLhdn', descriptionKey: 'ocbcLhdnDesc', periodKind: 'month', verification: 'field-table-only', available: true, transport: 'bank-post', testIndicator: false },

@@ -18,11 +18,10 @@
  *     migration and every historical domain event still reads the same.
  *   - `code` — the BNM 2-digit interbank routing code. This is what money routes on.
  *
- * `disbursementFormat` records whether ai-hr can BUILD that bank's bulk salary-disbursement file. Widening
- * the picker without widening the builders is the trap called out in the build plan: a company could save a
- * profile here and only discover at file-build time that no format exists. Rather than hide the wider list
- * (the reporter asked for one shared list), the format is modelled explicitly so the UI can say so up front
- * and `disbursementFormatFor()` can refuse rather than guess.
+ * `disbursementFormat` is legacy exporter-family metadata retained for existing records and audits.
+ * It is not proof of a current Salary File Format. The payment-submission registry owns executable
+ * availability; company selectors group this master through lib/salary-file-capabilities.ts using
+ * those available descriptors. OCBC's current writer is intentionally independent of the legacy flag.
  */
 
 /** Bulk salary-disbursement file formats ai-hr knows how to emit. CIMB + Public Bank share IBG Autopay. */
@@ -37,7 +36,7 @@ export type MyBank = {
   canonical: string;
   /** Accepted spellings for free-text → bank resolution (employee bank names). */
   aliases: string[];
-  /** The bulk-payment file format ai-hr can emit for this bank, or null if none is implemented yet. */
+  /** Legacy exporter family, retained independently of current Salary File Format availability. */
   disbursementFormat: DisbursementFormat | null;
 };
 
@@ -94,9 +93,9 @@ export function isMyBankKey(key: string | null | undefined): boolean {
   return !!key && BY_KEY.has(key);
 }
 
-/** Banks ai-hr can build a bulk salary-disbursement file for. */
+/** Legacy catalogue flags, retained for compatibility; current selectors use salary-file-capabilities. */
 export const DISBURSEMENT_CAPABLE_BANKS: readonly MyBank[] = MY_BANKS.filter((b) => b.disbursementFormat !== null);
-/** Banks selectable as a company account but with NO salary-file format implemented yet. */
+/** The remainder of the legacy catalogue, not the current executable format list. */
 export const DISBURSEMENT_UNSUPPORTED_BANKS: readonly MyBank[] = MY_BANKS.filter((b) => b.disbursementFormat === null);
 
 /**

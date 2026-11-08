@@ -475,6 +475,7 @@ export async function createCompany(
         defaultPayrollCycle,
       })
       .returning({ id: company.id });
+    await packFor(country)?.companyStatutory.initialize?.(ctx, tx, row.id);
     if (p.displayGroup) await saveCompanyDisplayGroupTx(tx, ctx, row.id, p.displayGroup);
     // Organization Module (361e3b15) — the actual pain fix: seed the six standard payroll cycles inside THIS
     // transaction (tx-injection, the provisionTenant/seedCompanyCatalogs precedent) so a company added via the

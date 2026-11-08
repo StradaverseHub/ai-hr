@@ -289,8 +289,8 @@ describe('Bank Account tab: one shared Malaysian bank master', () => {
 
   it('renders the picker from the shared master (lib/my-banks)', () => {
     expect(panel.includes("from '@/lib/my-banks'")).toBe(true);
-    expect(panel.includes('DISBURSEMENT_CAPABLE_BANKS.map')).toBe(true);
-    expect(panel.includes('DISBURSEMENT_UNSUPPORTED_BANKS.map')).toBe(true);
+    expect(panel.includes('bankGroups.supported.map')).toBe(true);
+    expect(panel.includes('bankGroups.other.map')).toBe(true);
   });
 
   it('separates banks with no salary-file format into a labelled group', () => {
@@ -315,7 +315,7 @@ describe('shared Malaysian bank master (lib/my-banks)', () => {
     expect(new Set(MY_BANKS.map((b) => b.key)).size).toBe(MY_BANKS.length);
   });
 
-  it('marks exactly the banks whose bulk salary-file format is implemented', () => {
+  it('preserves legacy exporter metadata separately from current Salary File Format availability', () => {
     // Extending this set means teaching the file builders that bank's layout at the same time.
     expect(DISBURSEMENT_CAPABLE_BANKS.map((b) => b.key)).toEqual(['maybank', 'cimb', 'public_bank', 'rhb']);
   });
@@ -454,8 +454,8 @@ describe('Statutory tab: per-authority payment setup', () => {
     );
   });
 
-  it('keeps the statutory IDENTITY form on the tab, alongside the list (the two are different things)', () => {
-    expect(panel.includes("t('statutoryIdentityMY')")).toBe(true);
+  it('moves registrations to General while preserving the statutory authority list (approved 6a2b463a)', () => {
+    expect(panel.includes("t('companyRegistrationDetails')")).toBe(true);
     expect(panel.includes("t('authoritiesTitle')")).toBe(true);
   });
 
@@ -506,8 +506,8 @@ describe('Statutory tab: per-authority payment setup', () => {
     ]) {
       expect(statutoryPane, `${input} moved off the tab`).not.toContain(input);
     }
-    expect(statutoryPane, 'what remains is SSM').toContain('name="ssmRegistrationNo"');
-    expect(statutoryPane, 'and MyInvois').toContain('name="myinvoisTin"');
+    expect(statutoryPane, 'SSM moved to General').not.toContain('name="ssmRegistrationNo"');
+    expect(statutoryPane, 'MyInvois moved to General').not.toContain('name="myinvoisTin"');
     expect(stripComments(ROW_SRC), 'a row renders no field at all').not.toMatch(/<input\b/);
     expect(stripComments(ROW_SRC), 'and no form').not.toMatch(/<form\b/);
   });
@@ -636,8 +636,8 @@ describe('Statutory tab: one body, one card, both of its numbers (r226)', () => 
     }
   });
 
-  it('keeps SSM and MyInvois on the Statutory tab, where the two files that read SSM expect them', () => {
-    expect(panel).toContain("t('statutoryIdentityMY')");
+  it('preserves the single SSM/TIN editor in General and the statutory file readers (approved 6a2b463a)', () => {
+    expect(panel).toContain("t('companyRegistrationDetails')");
     expect(panel).toContain('name="ssmRegistrationNo"');
     expect(panel).toContain('name="myinvoisTin"');
     /**

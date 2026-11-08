@@ -1,3 +1,4 @@
+import { formatsInGroup } from '@/app/payroll/payment-submission/registry';
 import { companyDisplayGroupOptions, companyDisplayGroups } from '@/core/company-display-group';
 import { companyRegistrationOverview } from '@/core/company-registration-readiness';
 import { RegistrationClassification } from '../registration-classification';
@@ -179,6 +180,7 @@ export default async function CompanyMaintenancePage({
         codesInUse={companyCodeHolders(companies)}
         statutory={statutory}
         bankProfiles={bankProfiles}
+        salaryFileCapabilities={formatsInGroup('salary').flatMap(format => format.group === 'salary' ? [{ bankKey: format.bankKey, available: format.available }] : [])}
         statutoryAuthorities={authorities}
         signatories={signatories.filter((sg) => sg.companyId === companyId)}
         stateOptions={stateOpts.map((o) => ({ value: o.value, label: o.label }))}

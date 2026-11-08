@@ -65,7 +65,7 @@ import {
   validateStatutoryRuleset,
 } from './statutory-config';
 import { companyRegistrationReadinessMY } from './company-registration-readiness';
-import { getCompanyStatutoryMY, listCompanyStatutoryMY, setCompanyStatutoryMY } from './company-statutory';
+import { initializeCompanyStatutoryMY, getCompanyStatutoryMY, listCompanyStatutoryMY, setCompanyStatutoryMY } from './company-statutory';
 import { eaCompaniesInYear, eaStatement, MY_PLANNED_FORMS, MY_REPORTS, MY_STATUTORY_LINKS } from './reports';
 import { cp39PaymentFile } from './cp39-file';
 import { pcb2iiStatement } from './pcb2ii';
@@ -145,6 +145,7 @@ export const myPack: CountryPack = {
     validateEpfElection,
   },
   companyStatutory: {
+    initialize: initializeCompanyStatutoryMY,
     set: setCompanyStatutoryMY,
     get: getCompanyStatutoryMY,
     // Rung 5c — the group Organization admin panel reads every company's statutory row through the pack.

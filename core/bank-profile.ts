@@ -136,8 +136,8 @@ export async function upsertCompanyBankProfile(ctx: SessionContext, p: CompanyBa
         currency,
         isPrimary,
         created,
-        // Whether ai-hr can build this bank's salary file. Logged so a later "why did the file fail"
-        // investigation can see the account was saved against an unsupported bank knowingly.
+        // Legacy exporter-family metadata kept stable for audit compatibility. The payment-submission
+        // registry separately owns current Salary File Format availability.
         disbursementFormat: disbursementFormatFor(p.bank),
       },
     });

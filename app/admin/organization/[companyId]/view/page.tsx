@@ -159,6 +159,8 @@ export default async function CompanyViewPage({
                 { label: t('legalName'), value: c.name },
                 { label: t('companyCode'), value: val(c.companyLabel) },
                 { label: t('regNo'), value: val(c.registrationNo) },
+                ...(isMY ? [{ label: t('ssmRegistrationNo'), value: val(statutory?.ssmRegistrationNo) },
+                  { label: t('myinvoisTin'), value: val(statutory?.myinvoisTin) }] : []),
                 { label: t('industry'), value: val(c.industry) },
                 { label: t('businessType'), value: val(c.businessType) },
                 { label: t('website'), value: val(c.website) },
@@ -263,15 +265,7 @@ export default async function CompanyViewPage({
       {tab === 'statutory' &&
         (isMY ? (
           <>
-            <Section index={1} label={t('statutoryIdentityMY')}>
-              <Kv
-                items={[
-                  { label: t('ssmRegistrationNo'), value: val(statutory?.ssmRegistrationNo) },
-                  { label: t('myinvoisTin'), value: val(statutory?.myinvoisTin) },
-                ]}
-              />
-            </Section>
-            <Section index={2} label={t('authoritiesTitle')}>
+            <Section index={1} label={t('authoritiesTitle')}>
               <ul className="space-y-5">
                 {STATUTORY_AUTHORITIES.map((a) => {
                   const r = authorities.find((x) => x.authority === a) ?? null;

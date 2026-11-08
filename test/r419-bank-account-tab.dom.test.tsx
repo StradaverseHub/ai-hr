@@ -89,6 +89,7 @@ function panel(
         companies={[{ id: 'c1', name: 'Demo Sdn Bhd' }]}
         statutory={null}
         bankProfiles={bankProfiles}
+        salaryFileCapabilities={[{bankKey:'ocbc_bank',available:true},{bankKey:'maybank',available:true}]}
         statutoryAuthorities={statutoryAuthorities as never}
         signatories={[]}
         stateOptions={[]}
@@ -242,4 +243,16 @@ describe('Remove asks first', () => {
     expect(text).not.toContain('4321');
     expect(text).not.toContain('ending');
   });
+});
+
+
+it('groups current OCBC and Maybank Salary File Formats above legacy account banks, which remain selectable',async()=>{
+ const {user}=setup([]);await user.click(addButton());
+ const select=document.querySelector<HTMLSelectElement>('select[name="bank"]')!;
+ const other=within(select).getByRole('group',{name:ORG.bankNoFileFormatGroup});
+ expect(Array.from(select.children).filter(el=>el.tagName==='OPTION').map(el=>(el as HTMLOptionElement).value)).toEqual(['','maybank','ocbc_bank']);
+ expect(within(other).getByRole('option',{name:'CIMB Bank'})).toBeTruthy();
+ expect(within(other).getByRole('option',{name:'Public Bank'})).toBeTruthy();
+ expect(within(other).getByRole('option',{name:'RHB Bank'})).toBeTruthy();
+ await user.selectOptions(select,'cimb');expect(select.value).toBe('cimb');
 });
