@@ -1,6 +1,7 @@
 import {writeFileSync} from 'node:fs';
 import {join} from 'node:path';
-import {randomUUID} from 'node:crypto';
+import {createHash,randomUUID} from 'node:crypto';
+import {isDeepStrictEqual} from 'node:util';
 import {eq,inArray,sql,type SQL} from 'drizzle-orm';
 import {PgDialect} from 'drizzle-orm/pg-core';
 import {afterAll,beforeAll,beforeEach,expect,it,vi} from 'vitest';
@@ -318,12 +319,116 @@ it('counts the complete change-job relation beyond All and preserves complete ex
 type CarryBoundaryStage='abort'|'seed-start'|'seed-return'|'seed-batch-return'|'pair-start'|'pair-return'|'ordered-start'|'ordered-return'|'phase-start'|'rename-reset'|'rename-return'|'active-batch-return'|'unicode-late-return'|'page-start'|'fetch-return'|'oracle-complete'|'phase-complete'|'drain-start'|'drain-complete'|'final';
 type CarryBoundaryEvent={stage:CarryBoundaryStage;epochMs:number;elapsedMs:number;phase:number;page:number;rows?:number;nativeMs?:number;assertionMs?:number;returned?:boolean};
 type CarryBoundaryIdentity={pid:number;started:string;database:string;login:string;role:string;isolation:string;readOnly:boolean};
-type CarryFailureOperation='prepare'|'control-prepare'|'control-visibility'|'control-cancel'|'control-idle'|'native-fixture'|'native-command'|'native-read'|'held-fixture'|'held-command'|'held-read'|'body'|'holder-uncertain'|'abort';
+type CarryFailureOperation='prepare'|'control-prepare'|'control-visibility'|'control-cancel'|'control-idle'|'native-fixture'|'native-command'|'native-read'|'native-estimate'|'held-fixture'|'held-command'|'held-read'|'body'|'holder-uncertain'|'abort';
 type CarryFailurePoint='entry'|'begin'|'bounds'|'identity'|'work'|'commit'|'rollback'|'settlement';
 type CarryFailureClass='Error'|'TypeError'|'RangeError'|'SyntaxError'|'ReferenceError'|'URIError'|'EvalError'|'AggregateError'|'AbortError'|'TimeoutError'|'PostgresError'|'DrizzleQueryError'|'NonError'|'Unknown';
 type CarryFailureFact={operation:CarryFailureOperation;point:CarryFailurePoint;exceptionClass:CarryFailureClass;sqlState:string|null;category:'postgres'|'constraint'|'transaction-rollback'|'lock-unavailable'|'query-cancelled'|'connection'|'deadline-or-cancel'|'javascript'|'non-error'|'unknown';stage:CarryBoundaryStage|'UNOBSERVED';phase:number;page:number};
 type CarryPrivateFailure={error:unknown;fact:CarryFailureFact};
-type CarryBoundarySlot={kind:'fixture'|'command'|'read';epoch:number;armed:boolean;closing:boolean;active:number;pending:Set<Promise<unknown>>;identity?:CarryBoundaryIdentity;cancel?:Promise<void>;tag:string};
+type CarryBoundarySlot={kind:'fixture'|'command'|'read';epoch:number;armed:boolean;closing:boolean;active:number;pending:Set<Promise<unknown>>;identity?:CarryBoundaryIdentity;estimateContext?:unknown;cancel?:Promise<void>;tag:string};
+const CARRY_DECLARE_PREFIX = 'declare analytics_carry_identities no scroll cursor for\n      select ';
+const CARRY_EXPLAIN_PREFIX = 'explain(verbose,settings,format json) ';
+const CARRY_ESTIMATE_MEMBER = 'analytics-carry-first-fetch-estimate-private.json';
+const CARRY_PLAN_BYTES = 1024 * 1024;
+const CARRY_CONTEXT_BYTES = 8 * 1024;
+const CARRY_FRAMING_BYTES = 4 * 1024;
+const CARRY_SQL_BYTES = 64 * 1024;
+const CARRY_PLAN_NODES = 2048;
+const CARRY_PLAN_DEPTH = 64;
+const CARRY_ESTIMATE_GUCS = [
+  'jit', 'jit_above_cost', 'jit_inline_above_cost', 'jit_optimize_above_cost',
+  'cursor_tuple_fraction', 'work_mem', 'hash_mem_multiplier', 'max_parallel_workers_per_gather',
+  'enable_seqscan', 'enable_indexscan', 'enable_indexonlyscan', 'enable_bitmapscan',
+  'enable_nestloop', 'enable_hashjoin', 'enable_mergejoin', 'plan_cache_mode',
+  'effective_cache_size', 'random_page_cost', 'seq_page_cost', 'row_security', 'search_path',
+  'statement_timeout', 'lock_timeout',
+] as const;
+const CARRY_ESTIMATE_RELATIONS = ['employment', 'person', 'company', 'assignment', 'department'] as const;
+const CARRY_PLAN_TYPES = new Set([
+  'Result', 'ProjectSet', 'ModifyTable', 'Append', 'Merge Append', 'Recursive Union', 'BitmapAnd',
+  'BitmapOr', 'Seq Scan', 'Sample Scan', 'Gather', 'Gather Merge', 'Index Scan', 'Index Only Scan',
+  'Bitmap Index Scan', 'Bitmap Heap Scan', 'Tid Scan', 'Tid Range Scan', 'Subquery Scan', 'Function Scan',
+  'Table Function Scan', 'Values Scan', 'CTE Scan', 'Named Tuplestore Scan', 'WorkTable Scan',
+  'Foreign Scan', 'Custom Scan', 'Nested Loop', 'Merge Join', 'Hash Join', 'Materialize', 'Memoize',
+  'Sort', 'Incremental Sort', 'Group', 'Aggregate', 'WindowAgg', 'Unique', 'SetOp', 'LockRows', 'Limit', 'Hash',
+]);
+class CarryEstimateOverflow extends Error {}
+const carryEstimateHash = (text: string) => createHash('sha256').update(text).digest('hex');
+function carryEstimateRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+function carryEstimatedNumber(node: Record<string, unknown>, key: string) {
+  const value = node[key];
+  if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) {
+    throw new Error('Carry estimate cost or cardinality unavailable');
+  }
+  return value;
+}
+function carryEstimatePlan(raw: unknown) {
+  if (!Array.isArray(raw) || raw.length !== 1 || !carryEstimateRecord(raw[0]) ||
+      !carryEstimateRecord(raw[0].Plan) || 'Execution Time' in raw[0]) {
+    throw new Error('Carry estimate JSON envelope refused');
+  }
+  const root = raw[0].Plan;
+  const pending: {node: unknown; depth: number}[] = [{node: root, depth: 0}];
+  let nodes = 0;
+  let rootNodeType = '';
+  while (pending.length) {
+    const entry = pending.pop()!;
+    if (++nodes > CARRY_PLAN_NODES || entry.depth > CARRY_PLAN_DEPTH) {
+      throw new CarryEstimateOverflow('Carry estimate plan structure exceeds its bound');
+    }
+    const node = entry.node;
+    if (!carryEstimateRecord(node)) throw new Error('Carry estimate plan node unavailable');
+    const nodeType = node['Node Type'];
+    if (typeof nodeType !== 'string' || !CARRY_PLAN_TYPES.has(nodeType) ||
+        Object.keys(node).some(key => key.startsWith('Actual '))) {
+      throw new Error('Carry estimate plan node refused');
+    }
+    if (nodes === 1) rootNodeType = nodeType;
+    for (const key of ['Startup Cost', 'Total Cost', 'Plan Rows', 'Plan Width']) carryEstimatedNumber(node, key);
+    if (node.Plans !== undefined) {
+      if (!Array.isArray(node.Plans)) throw new Error('Carry estimate child plans refused');
+      if (node.Plans.length > CARRY_PLAN_NODES - nodes - pending.length) {
+        throw new CarryEstimateOverflow('Carry estimate child plan count exceeds its bound');
+      }
+      for (const child of node.Plans) pending.push({node: child, depth: entry.depth + 1});
+    }
+  }
+  const serialized = JSON.stringify(raw);
+  const bytes = Buffer.byteLength(serialized);
+  if (bytes > CARRY_PLAN_BYTES) throw new CarryEstimateOverflow('Carry estimate JSON exceeds its byte bound');
+  return {
+    serialized,
+    bytes,
+    sha256: carryEstimateHash(serialized),
+    nodes,
+    rootNodeType,
+    startupCost: carryEstimatedNumber(root, 'Startup Cost'),
+    totalCost: carryEstimatedNumber(root, 'Total Cost'),
+    estimatedRows: carryEstimatedNumber(root, 'Plan Rows'),
+  };
+}
+type CarryEstimateSummary = {
+  status: 'UNOBSERVED' | 'STARTED' | 'CAPTURED' | 'FAILED' | 'OVERFLOW' | 'UNAVAILABLE';
+  nativeOperations: number;
+  nativeAwaitMs: number;
+  elapsedMs?: number;
+  originalSqlSha256?: string;
+  estimateSqlSha256?: string;
+  parameterCount?: number;
+  contextVerified?: true;
+  planSha256?: string;
+  planBytes?: number;
+  nodes?: number;
+  rootNodeType?: string;
+  startupCost?: number;
+  totalCost?: number;
+  estimatedRows?: number;
+  privateMemberSha256?: string;
+  privateMemberBytes?: number;
+  originalDeclarationAdmitted?: true;
+  failure?: CarryFailureFact;
+};
 /** B1-only lifetime owner. Private native identities never enter the bounded receipt. */
 class CarryBoundaryScope{
  readonly events:CarryBoundaryEvent[]=[];phase=-1;page=-1;stopped=false;settled=false;poisoned=false;
@@ -331,6 +436,10 @@ class CarryBoundaryScope{
  private pending?:Promise<void>;private finishing?:Promise<void>;private restore?:()=>void;private bodyFailed=false;
  private control?:Awaited<ReturnType<typeof owner.client.reserve>>;private readonly identities:CarryBoundaryIdentity[]=[];private idleVerified=false;private controlUncertain=false;private controlIdentity?:CarryBoundaryIdentity;private visibleTargets=0;
  nativeOperations=0;nativeAwaitMs=0;
+ private readonly estimateDirectory = process.env.AIHR_FOCUSED_EVIDENCE_DIR;
+ private readonly firstEstimate: CarryEstimateSummary = {status:'UNOBSERVED', nativeOperations:0, nativeAwaitMs:0};
+ private estimateEpoch?: number;
+ private estimateAccounting = false;
  private evidenceFailed=false;private ownerDatabase='';private ownerLogin='';private cancellationIssued=false;private cancellationSettled=true;private cancellationResult:'not-issued'|'pending'|'no-match'|'accepted'|'refused'|'unavailable'='not-issued';
  private originalFailure?:CarryPrivateFailure;private secondaryControlFailure?:CarryPrivateFailure;private rollbackFailure?:CarryPrivateFailure;private abortFailure?:CarryPrivateFailure;private holderRetained=false;
  private observerInstalled=false;private observerRestored=false;private resolverInstalled=false;private resolverRestored=false;
@@ -345,7 +454,7 @@ class CarryBoundaryScope{
   const directory=process.env.AIHR_FOCUSED_EVIDENCE_DIR;if(!directory)return;
   const report={kind:'NATIVE_CARRY_BOUNDARY_PHASES_COMPONENT_ONLY',releaseEligible:false,source:process.env.AIHR_CI_HEAD,controller:process.env.AIHR_CI_CONTROL_HEAD,
    runId:process.env.GITHUB_RUN_ID,attempt:process.env.GITHUB_RUN_ATTEMPT,complete:this.settled&&!this.bodyFailed&&!this.poisoned&&!this.evidenceFailed,
-   originalFailure:this.originalFailure?.fact??'UNOBSERVED',secondaryControlFailure:this.secondaryControlFailure?.fact??'UNOBSERVED',rollbackFailure:this.rollbackFailure?.fact??'UNOBSERVED',abortObservation:this.abortFailure?.fact??'UNOBSERVED',branchObservations:{cancellation:this.cancellationIssued?'OBSERVED':'UNOBSERVED',controlUncertainty:this.controlUncertain?'OBSERVED':'UNOBSERVED',retainedHolder:this.holderRetained?'OBSERVED':'UNOBSERVED'},
+   firstFetchEstimate:this.firstEstimate,originalFailure:this.originalFailure?.fact??'UNOBSERVED',secondaryControlFailure:this.secondaryControlFailure?.fact??'UNOBSERVED',rollbackFailure:this.rollbackFailure?.fact??'UNOBSERVED',abortObservation:this.abortFailure?.fact??'UNOBSERVED',branchObservations:{cancellation:this.cancellationIssued?'OBSERVED':'UNOBSERVED',controlUncertainty:this.controlUncertain?'OBSERVED':'UNOBSERVED',retainedHolder:this.holderRetained?'OBSERVED':'UNOBSERVED'},
    stopped:this.stopped,settled:this.settled,poisoned:this.poisoned,cancellationIssued:this.cancellationIssued,cancellationSettled:this.cancellationSettled,cancellationResult:this.cancellationResult,observerInstalled:this.observerInstalled,observerRestored:this.observerRestored,resolverInstalled:this.resolverInstalled,resolverRestored:this.resolverRestored,idleVerified:this.idleVerified,controlUncertain:this.controlUncertain,nativeIdentities:this.identities.length,nativeOperations:this.nativeOperations,nativeAwaitMs:this.nativeAwaitMs,rowTypeChecks:this.events.filter(event=>event.stage==='fetch-return').reduce((n,event)=>n+2*(event.rows??0),0),distinctControlVerified:this.controlIdentity!==undefined&&this.visibleTargets===this.identities.length,active:[...this.slots].reduce((n,s)=>n+s.active,0),held:this.slots.size,events:this.events};
   try{const bytes=JSON.stringify(report);if(Buffer.byteLength(bytes)>65536){this.evidenceFailed=true;return;}writeFileSync(join(directory,'analytics-carry-boundaries.json'),bytes);}catch{this.evidenceFailed=true;}
  }
@@ -429,8 +538,33 @@ class CarryBoundaryScope{
  private async native<T>(slot:CarryBoundarySlot,work:()=>Promise<T>):Promise<T>{
   this.check();if(slot.closing||!slot.armed)throw new Error('Carry boundary transaction is closing');
   if(slot.active!==0){this.poisoned=true;throw new Error('Concurrent carry boundary native work');}
-  const started=performance.now();slot.active++;const pending=Promise.resolve().then(()=>{this.check();return work();});slot.pending.add(pending);
-  try{const result=await pending;this.check();return result;}catch(error){this.remember(error,slot.kind==='fixture'?'native-fixture':slot.kind==='command'?'native-command':'native-read','work');throw error;}finally{this.nativeOperations++;this.nativeAwaitMs+=performance.now()-started;slot.active--;slot.pending.delete(pending);}
+  const estimate = this.estimateAccounting;
+  const started=performance.now();slot.active++;
+  const pending=Promise.resolve().then(()=>{
+    this.check();
+    if (estimate) this.firstEstimate.nativeOperations++;
+    return work();
+  });
+  slot.pending.add(pending);
+  try {
+    const result=await pending;
+    this.check();
+    return result;
+  } catch (error) {
+    const operation = estimate ? 'native-estimate' : slot.kind==='fixture' ? 'native-fixture' :
+      slot.kind==='command' ? 'native-command' : 'native-read';
+    this.remember(error,operation,'work');
+    throw error;
+  } finally {
+    if (estimate) {
+      this.firstEstimate.nativeAwaitMs += performance.now() - started;
+    } else {
+      this.nativeOperations++;
+      this.nativeAwaitMs += performance.now() - started;
+    }
+    slot.active--;
+    slot.pending.delete(pending);
+  }
  }
  private guard<T extends object>(value:T,slot:CarryBoundarySlot):T{
   return new Proxy(value,{get:(target,key)=>{
@@ -441,14 +575,175 @@ class CarryBoundaryScope{
    return(...args:unknown[])=>{this.check();const next=Reflect.apply(member,target,args);return next!==null&&typeof next==='object'?this.guard(next,slot):next;};
   }});
  }
+ private firstEstimatePage() {
+   return Boolean(this.estimateDirectory) && this.phase === 0 && this.page === 0;
+ }
+ async estimateFirstDeclaration(target: Tx, context: SessionContext, observedPid: number | undefined,
+     statement: SQL, dialect: PgDialect, compiled: ReturnType<PgDialect['sqlToQuery']>) {
+   const directory = this.estimateDirectory;
+   if (!directory || !this.firstEstimatePage()) return;
+   if (this.firstEstimate.status !== 'UNOBSERVED') {
+     const error = new Error('Carry estimate already attempted in the first read epoch');
+     this.remember(error, 'native-estimate', 'entry');
+     throw error;
+   }
+   const started = performance.now();
+   const admit = (remainingMs: number) => {
+     this.check();
+     if (120000 - (performance.now() - this.started) < remainingMs) {
+       throw new Error('Original carry case lifetime cannot admit its complete estimate slot');
+     }
+   };
+   try {
+     admit(70000);
+     const [slot] = this.slots;
+     const identity = slot?.identity;
+     if (this.estimateAccounting || this.slots.size !== 1 ||
+         !slot || slot.kind !== 'read' || slot.epoch !== this.estimateEpoch || !slot.armed || slot.closing ||
+         slot.active !== 0 || slot.pending.size !== 0 || !identity || identity.pid !== observedPid ||
+         identity.database !== this.ownerDatabase || identity.role !== 'ai_hr_app' || identity.login !== 'ai_hr_app' ||
+         identity.isolation !== 'repeatable read' || !identity.readOnly) {
+       throw new Error('Carry estimate requires the first owned read epoch');
+     }
+     const packet = slot.estimateContext;
+     if (!carryEstimateRecord(packet) || Object.keys(packet).length !== 5 ||
+         !context.userId || packet.tenant !== context.tenantId || packet.user !== context.userId ||
+         typeof packet.serverVersionNum !== 'string' || !/^16\d{4}$/.test(packet.serverVersionNum)) {
+       throw new Error('Carry estimate native context unavailable');
+     }
+     const {settings, relations} = packet;
+     if (!carryEstimateRecord(settings) || Object.keys(settings).length !== CARRY_ESTIMATE_GUCS.length ||
+         !CARRY_ESTIMATE_GUCS.every(name => {
+           const value = settings[name];
+           return typeof value === 'string' && Buffer.byteLength(value) <= 256;
+         }) || settings.statement_timeout !== '20s' || settings.lock_timeout !== '300ms' || settings.row_security !== 'on' ||
+         !carryEstimateRecord(relations) || Object.keys(relations).length !== CARRY_ESTIMATE_RELATIONS.length ||
+         !CARRY_ESTIMATE_RELATIONS.every(name => relations[name] === true)) {
+       throw new Error('Carry estimate native settings or RLS context refused');
+     }
+     const metadata = {identity: {
+       pid: identity.pid, backendStart: identity.started, database: identity.database,
+       role: identity.role, login: identity.login, isolation: identity.isolation, readOnly: identity.readOnly,
+     }, context: packet};
+     const metadataBytes = Buffer.byteLength(JSON.stringify(metadata));
+     if (metadataBytes > CARRY_CONTEXT_BYTES) throw new CarryEstimateOverflow('Carry estimate context exceeds its byte bound');
+     if (!compiled.sql.startsWith(CARRY_DECLARE_PREFIX)) throw new Error('Carry estimate declaration prefix refused');
+     const explain = sql`explain(verbose,settings,format json) ${statement}`;
+     const wrapped = dialect.sqlToQuery(explain);
+     if (Buffer.byteLength(compiled.sql) > CARRY_SQL_BYTES || Buffer.byteLength(wrapped.sql) > CARRY_SQL_BYTES ||
+         compiled.params.length > 64 || wrapped.params.length > 64) {
+       throw new CarryEstimateOverflow('Carry estimate compiled statement exceeds its bound');
+     }
+     if (wrapped.sql !== CARRY_EXPLAIN_PREFIX + compiled.sql || !isDeepStrictEqual(wrapped.params, compiled.params)) {
+       throw new Error('Carry estimate did not retain the complete declaration and parameters');
+     }
+     this.firstEstimate.originalSqlSha256 = carryEstimateHash(compiled.sql);
+     this.firstEstimate.estimateSqlSha256 = carryEstimateHash(wrapped.sql);
+     this.firstEstimate.parameterCount = compiled.params.length;
+     this.firstEstimate.contextVerified = true;
+     admit(70000);
+     this.firstEstimate.status = 'STARTED';
+     this.save();
+     let result: readonly {"QUERY PLAN": unknown}[];
+     this.estimateAccounting = true;
+     try {
+       result = await target.execute<{"QUERY PLAN": unknown}>(explain);
+     } finally {
+       this.estimateAccounting = false;
+     }
+     if (!Array.isArray(result) || result.length !== 1 || !carryEstimateRecord(result[0]) ||
+         Object.keys(result[0]).length !== 1 || this.firstEstimate.nativeOperations !== 1) {
+       throw new Error('Carry estimate requires one native JSON row and operation');
+     }
+     const {serialized, sha256, bytes, nodes, rootNodeType, startupCost, totalCost, estimatedRows} =
+       carryEstimatePlan(result[0]['QUERY PLAN']);
+     const frame = {
+       kind: 'NATIVE_CARRY_FIRST_FETCH_DECLARE_ESTIMATE_COMPONENT_ONLY', releaseEligible: false,
+       source: process.env.AIHR_CI_HEAD, controller: process.env.AIHR_CI_CONTROL_HEAD,
+       runId: process.env.GITHUB_RUN_ID, attempt: process.env.GITHUB_RUN_ATTEMPT, phase: 0, page: 0,
+       planEncoding: 'POSTGRES_JSON_DECODED_AND_RESERIALIZED', planSha256: sha256, planBytes: bytes,
+       originalSqlSha256: this.firstEstimate.originalSqlSha256, estimateSqlSha256: this.firstEstimate.estimateSqlSha256,
+       parameterCount: this.firstEstimate.parameterCount, metadata,
+     };
+     const header = JSON.stringify(frame);
+     const payload = header.slice(0, -1) + ',"plan":' + serialized + '}';
+     const payloadBytes = Buffer.byteLength(payload);
+     if (payloadBytes - bytes - metadataBytes > CARRY_FRAMING_BYTES ||
+         payloadBytes > CARRY_PLAN_BYTES + CARRY_CONTEXT_BYTES + CARRY_FRAMING_BYTES) {
+       throw new CarryEstimateOverflow('Carry estimate member exceeds its framing bound');
+     }
+     this.check();
+     writeFileSync(join(directory, CARRY_ESTIMATE_MEMBER), payload, {flag: 'wx', mode: 0o600});
+     this.firstEstimate.status = 'CAPTURED';
+     Object.assign(this.firstEstimate, {
+       planSha256: sha256, planBytes: bytes, nodes, rootNodeType, startupCost, totalCost,
+       estimatedRows, privateMemberBytes: payloadBytes, privateMemberSha256: carryEstimateHash(payload),
+     });
+     const originalAgain = dialect.sqlToQuery(statement);
+     if (originalAgain.sql !== compiled.sql || !isDeepStrictEqual(originalAgain.params, compiled.params)) {
+       throw new Error('Carry declaration changed during estimate observation');
+     }
+     admit(50000);
+     this.firstEstimate.originalDeclarationAdmitted = true;
+   } catch (error) {
+     if (this.firstEstimate.status !== 'CAPTURED') {
+       this.firstEstimate.status = error instanceof CarryEstimateOverflow ? 'OVERFLOW' :
+         this.firstEstimate.nativeOperations ? 'FAILED' : 'UNAVAILABLE';
+     }
+     this.firstEstimate.failure = this.failureFact(error, 'native-estimate', 'work');
+     this.remember(error, 'native-estimate', 'work');
+     throw error;
+   } finally {
+     this.firstEstimate.elapsedMs = performance.now() - started;
+     this.save();
+   }
+ }
  async held<T>(tx:Tx,kind:'fixture'|'command'|'read',body:(guarded:Tx)=>Promise<T>):Promise<T>{
   this.check();const slot:CarryBoundarySlot={kind,epoch:++this.nextEpoch,armed:false,closing:false,active:0,pending:new Set(),tag:'carry-boundary-'+randomUUID()};this.slots.add(slot);
+  const observeEstimate = kind === 'read' && this.firstEstimatePage() && this.estimateEpoch === undefined;
+  if (observeEstimate) this.estimateEpoch = slot.epoch;
   let outcome:{ok:true;value:T}|{ok:false;error:unknown};
   try{
    await tx.execute(sql`set local statement_timeout='20s'`);await tx.execute(sql`set local lock_timeout='300ms'`);
    await tx.execute(sql`select set_config('application_name',${slot.tag},true)`);
-   const [identity]=await tx.execute<CarryBoundaryIdentity>(sql`select pg_backend_pid() as pid,a.backend_start::text as started,current_database() as database,
-    session_user as login,current_user as role,current_setting('transaction_isolation') as isolation,current_setting('transaction_read_only')='on' as "readOnly"
+   const estimateColumns = observeEstimate ? sql`, jsonb_build_object(
+     'tenant',app.current_tenant_id()::text,'user',app.current_user_id()::text,
+     'serverVersionNum',current_setting('server_version_num'),
+     'relations',jsonb_build_object(
+       'employment',row_security_active('public.employment'::regclass),
+       'person',row_security_active('public.person'::regclass),
+       'company',row_security_active('public.company'::regclass),
+       'assignment',row_security_active('public.assignment'::regclass),
+       'department',row_security_active('public.department'::regclass)
+     ),
+     'settings',jsonb_build_object(
+       'jit',current_setting('jit'),
+       'jit_above_cost',current_setting('jit_above_cost'),
+       'jit_inline_above_cost',current_setting('jit_inline_above_cost'),
+       'jit_optimize_above_cost',current_setting('jit_optimize_above_cost'),
+       'cursor_tuple_fraction',current_setting('cursor_tuple_fraction'),
+       'work_mem',current_setting('work_mem'),
+       'hash_mem_multiplier',current_setting('hash_mem_multiplier'),
+       'max_parallel_workers_per_gather',current_setting('max_parallel_workers_per_gather'),
+       'enable_seqscan',current_setting('enable_seqscan'),
+       'enable_indexscan',current_setting('enable_indexscan'),
+       'enable_indexonlyscan',current_setting('enable_indexonlyscan'),
+       'enable_bitmapscan',current_setting('enable_bitmapscan'),
+       'enable_nestloop',current_setting('enable_nestloop'),
+       'enable_hashjoin',current_setting('enable_hashjoin'),
+       'enable_mergejoin',current_setting('enable_mergejoin'),
+       'plan_cache_mode',current_setting('plan_cache_mode'),
+       'effective_cache_size',current_setting('effective_cache_size'),
+       'random_page_cost',current_setting('random_page_cost'),
+       'seq_page_cost',current_setting('seq_page_cost'),
+       'row_security',current_setting('row_security'),
+       'search_path',current_setting('search_path'),
+       'statement_timeout',current_setting('statement_timeout'),
+       'lock_timeout',current_setting('lock_timeout')
+     )
+   ) as "estimateContext"` : sql``;
+   const [identity]=await tx.execute<CarryBoundaryIdentity & {estimateContext?: unknown}>(sql`select pg_backend_pid() as pid,a.backend_start::text as started,current_database() as database,
+    session_user as login,current_user as role,current_setting('transaction_isolation') as isolation,current_setting('transaction_read_only')='on' as "readOnly"${estimateColumns}
     from pg_stat_activity a where a.pid=pg_backend_pid()`);
    if(!identity||!Number.isSafeInteger(identity.pid)||identity.pid<=0||!identity.started||identity.database!==this.ownerDatabase
     ||identity.login!==(kind==='fixture'?this.ownerLogin:'ai_hr_app')||identity.role!==(kind==='fixture'?this.ownerLogin:'ai_hr_app')
@@ -460,7 +755,7 @@ class CarryBoundaryScope{
      where pid=${identity.pid} and backend_start::text=${identity.started} and datname=${identity.database} and usename=${identity.login} and application_name=${slot.tag}`;
     if(visible?.matches!==1)throw new Error('Carry boundary native control target unavailable');
    },'control-visibility');this.visibleTargets++;
-   slot.identity=identity;this.identities.push(identity);slot.armed=true;this.check();outcome={ok:true,value:await body(this.guard(tx,slot))};
+   slot.identity=identity;slot.estimateContext=identity.estimateContext;this.identities.push(identity);slot.armed=true;this.check();outcome={ok:true,value:await body(this.guard(tx,slot))};
   }catch(error){if(!slot.identity)this.poisoned=true;this.remember(error,kind==='fixture'?'held-fixture':kind==='command'?'held-command':'held-read','work');outcome={ok:false,error};}
   // Synchronous admission frontier: no later abort may enqueue against this epoch.
   slot.closing=true;slot.armed=false;
@@ -498,6 +793,7 @@ class CarryBoundaryScope{
    this.signal.removeEventListener('abort',this.abort);this.restore?.();this.observerRestored=this.observerInstalled;this.restore=undefined;
    this.event('drain-complete');this.event('final');
    if(!this.bodyFailed){
+    if (this.estimateDirectory && (this.firstEstimate.status !== 'CAPTURED' || !this.firstEstimate.originalDeclarationAdmitted)) this.evidenceFailed=true;
     const count=(stage:CarryBoundaryStage)=>this.events.filter(event=>event.stage===stage).length;
     const rows=(stage:CarryBoundaryStage)=>this.events.filter(event=>event.stage===stage).reduce((n,event)=>n+(event.rows??0),0);
     if(this.stopped||!this.observerRestored||!this.resolverRestored||!this.cancellationSettled||this.events.length!==125||count('phase-complete')!==7||count('page-start')!==11||count('fetch-return')!==17||count('oracle-complete')!==11
@@ -527,6 +823,7 @@ function observeCarryCursor(failAfterFirstFetch=false,scope?:CarryBoundaryScope)
   const invoke=(native:Tx)=>read(new Proxy(native,{get(target,key,receiver){
    if(key==='execute')return async(statement:SQL)=>{
     const compiled=dialect.sqlToQuery(statement),text=compiled.sql.trim().toLowerCase().replace(/\s+/g,' ');
+    if (scope && text.startsWith('declare ')) await scope.estimateFirstDeclaration(target, context, facts?.pid, statement, dialect, compiled);
     queries.push(text);state.active++;state.maxActive=Math.max(state.maxActive,state.active);
     try{
      let result:Awaited<ReturnType<Tx['execute']>>;const nativeStarted=performance.now();

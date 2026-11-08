@@ -70,8 +70,8 @@
     {
       "path": "test/analytics-bounded-reports.test.ts",
       "current": {
-        "bytes": 60345,
-        "sha256": "f7a1d89e0c44c93103dab5f58a5acbb00868bcefafff430280ba1f775c19756d"
+        "bytes": 75979,
+        "sha256": "45eb8f3edf116492c99a269d41d3b260ee607bc46cce4ac5fe0afff7509015c1"
       },
       "wholeParent": {
         "source": "817f28a45d4411bdf7e940576f2087460dd24e0a",
@@ -82,64 +82,56 @@
       "inverseHunks": [
         {
           "currentStart": 0,
-          "currentEnd": 71,
-          "currentRangeSha256": "5b681c827b61c0ef2961acb3206c4b6ef88218b49140b9e23a0ce8a47531bfcc",
+          "currentEnd": 267,
+          "currentRangeSha256": "d795292664a66a334e5f1c5a50f1bdbab95869f0527e96bbb448b3d89907d2c9",
           "parentStart": 0,
-          "parentEnd": 0,
-          "parentText": ""
-        },
-        {
-          "currentStart": 111,
-          "currentEnd": 211,
-          "currentRangeSha256": "90018f27ce9d9fe4d085921960e61ead04c03ab0859318f9f17d1fcd230c821a",
-          "parentStart": 40,
           "parentEnd": 84,
-          "parentText": "import {eq,inArray,sql} from 'drizzle-orm';\n"
+          "parentText": "import {randomUUID} from 'node:crypto';\nimport {eq,inArray,sql} from 'drizzle-orm';\n"
         },
         {
-          "currentStart": 944,
-          "currentEnd": 1001,
+          "currentStart": 1000,
+          "currentEnd": 1057,
           "currentRangeSha256": "0a5d4782cd01789df0ad1c3e39c33c18f5e168844ba2cd9ef0247c28f0a1cdf0",
           "parentStart": 817,
           "parentEnd": 817,
           "parentText": ""
         },
         {
-          "currentStart": 1174,
-          "currentEnd": 1355,
+          "currentStart": 1230,
+          "currentEnd": 1411,
           "currentRangeSha256": "4f1dd75454c739679550565fe319f075872fdcd2b7d3dd66cef0cd02738c5154",
           "parentStart": 990,
           "parentEnd": 1055,
           "parentText": "beforeAll(migrateTestDb);beforeEach(resetDb);afterAll(closeAll);\n"
         },
         {
-          "currentStart": 1435,
-          "currentEnd": 1586,
+          "currentStart": 1491,
+          "currentEnd": 1642,
           "currentRangeSha256": "41a8d2a80e5415df2b71f7201baf655cfc66c5c081207036cb943181d1547497",
           "parentStart": 1135,
           "parentEnd": 1246,
           "parentText": "async function seedRows(b:Base,n:number,p:{terminatedOn?:string;name?:(i:number)=>string;hiredOn?:string}={}){\n"
         },
         {
-          "currentStart": 2127,
-          "currentEnd": 2505,
+          "currentStart": 2183,
+          "currentEnd": 2561,
           "currentRangeSha256": "3924cff6b434dc0f4d2f6d427912bdbd32cbe56f0c8bc152eb954a4880685cdb",
           "parentStart": 1787,
           "parentEnd": 2114,
           "parentText": "  await owner.db.insert(person).values(personRows);\n  await owner.db.insert(employment).values(employmentRows);\n  await owner.db.insert(assignment).values(employmentRows.map(row=>({tenantId:b.tenantId,employmentId:row.id,companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time' as const,validFrom:row.hiredOn})));\n"
         },
         {
-          "currentStart": 2597,
-          "currentEnd": 2662,
+          "currentStart": 2653,
+          "currentEnd": 2718,
           "currentRangeSha256": "b94d87d956b178ede1c4a6e3bb607bff8ee119b074888ac58e5883c740578dcb",
           "parentStart": 2206,
           "parentEnd": 2206,
           "parentText": ""
         },
         {
-          "currentStart": 27493,
-          "currentEnd": 60345,
-          "currentRangeSha256": "1de76ad54c9f2595c54a0b724ba1a3828740e6813fe9d113926916b387942c2e",
+          "currentStart": 27549,
+          "currentEnd": 75979,
+          "currentRangeSha256": "50900db157d9a302036394bf67536f85f0277b8adf5e389ecddbf10c988bda97",
           "parentStart": 27037,
           "parentEnd": 27037,
           "parentText": ""
@@ -281,8 +273,8 @@
     {
       "path": "docs/adr/2026-11-09-analytics-employment-aggregates.md",
       "current": {
-        "bytes": 20868,
-        "sha256": "40692f1df8e323c2a772dd2ae803680922b15f71aaa620c9f47fdaeb6f6c44cf"
+        "bytes": 23651,
+        "sha256": "72ff563852d94eedae9a0c4b41cbee055b3e54f305ef051ac233b6bfc3ae604f"
       },
       "wholeParent": {
         "source": "817f28a45d4411bdf7e940576f2087460dd24e0a",
@@ -293,8 +285,8 @@
       "inverseHunks": [
         {
           "currentStart": 13334,
-          "currentEnd": 20868,
-          "currentRangeSha256": "da91ff5744d43c5f9949c219fd0f73101c90d85124f6e462db0b5d0c9b2ec4a1",
+          "currentEnd": 23651,
+          "currentRangeSha256": "c1938a4172f24e1c456e9d0833180f821f061200b55a321b48b2bbf6292a03a1",
           "parentStart": 13334,
           "parentEnd": 13334,
           "parentText": ""
@@ -671,7 +663,7 @@
     "sourceOnly": true,
     "parentSource": "fca1bdd3f9afcf598c643ac2c4cfb482a21bb824",
     "recordPath": "docs/qualification/analytics-carry-boundary-owned-settlement-source-20261109.json",
-    "recordSha256": "59209876e167ae5996d63599ec8fefb9d1531329dc3ae9ba71c73ca90d9d3545",
+    "recordSha256": "e6c4c8e893198c39d99eff72b33e15fd63f24d0492c05173067369f36cdb1801",
     "historicalFca1CoursesNotRelabeled": true,
     "currentRuntimeQualification": false
   },
@@ -680,6 +672,23 @@
     "independentReviewSha256": "0798ab2cf826b36d05f67c6c86fecc3e61d2d4b913f8edae6570ba24dfe4028c",
     "sourceOnly": true,
     "runtimeBranches": "UNOBSERVED until actually entered",
+    "currentRuntimeQualified": false
+  },
+  "firstFetchEstimateFollowup": {
+    "sourceOnly": true,
+    "directParentSource": "9e83e60fee71352275b61ec6c4288ac88dbcf42e",
+    "wholeParentIndex": {
+      "path": "docs/qualification/analytics-carry-selection-source-20261109.json",
+      "source": "9e83e60fee71352275b61ec6c4288ac88dbcf42e",
+      "gitBlob": "7ef6c10e176facf55d763b0e4883cb2802cdc53a",
+      "bytes": 25142,
+      "sha256": "8942d35fe0fd8e833a19361d204b445ec4da1b7bfacce2473aca2f33a8ab8253"
+    },
+    "recordSection": "firstFetchEstimateFollowup",
+    "priorActualRun": 42534758273,
+    "priorAuthenticationSha256": "ef1d529c2d2a76d44194576b630bb433d2af46346039b3ac80ffc73be0d047d6",
+    "currentNativeEstimateStatus": "UNRUN",
+    "sameSevenPredecessorTargetsRetained": true,
     "currentRuntimeQualified": false
   }
 }
