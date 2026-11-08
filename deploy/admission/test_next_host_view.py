@@ -409,21 +409,24 @@ class HostViewModels(unittest.TestCase):
     def test_both_complete_predecessor_fixtures_reconstruct_without_dropping_old_guards(self):
         observation = json.loads((ROOT / 'deploy/admission/next_environment_observation_inverse.json').read_text())
         self.assertEqual(observation['base'], '7a6d0b100583d07b1f61d6c8605257d117a26ed9')
+        phase = json.loads((ROOT / 'deploy/admission/next_phase_observation_inverse.json').read_text())
+        self.assertEqual(phase['base'], '847139e7a2f29faf7a00ffaf17b80739d53acc0e')
         def current(name):
             source = (ROOT / name).read_text()
-            if name not in observation['files']:
-                return source
-            row = observation['files'][name]
-            self.assertEqual(hashlib.sha256(source.encode()).hexdigest(), row['currentSha256'])
-            lines, frontier = source.splitlines(keepends=True), len(source.splitlines(keepends=True))
-            for edit in row['changes']:
-                self.assertTrue(0 <= edit['start'] <= edit['end'] <= frontier)
-                self.assertEqual(''.join(lines[edit['start']:edit['end']]), edit['after'])
-                lines[edit['start']:edit['end']] = edit['before'].splitlines(keepends=True);frontier = edit['start']
-            restored = ''.join(lines)
-            self.assertEqual(hashlib.sha256(restored.encode()).hexdigest(), row['originalSha256'])
-            return restored
-        for name in observation['files']:
+            for layer in (phase, observation):
+                if name not in layer['files']:
+                    continue
+                row = layer['files'][name]
+                self.assertEqual(hashlib.sha256(source.encode()).hexdigest(), row['currentSha256'])
+                lines, frontier = source.splitlines(keepends=True), len(source.splitlines(keepends=True))
+                for edit in row['changes']:
+                    self.assertTrue(0 <= edit['start'] <= edit['end'] <= frontier)
+                    self.assertEqual(''.join(lines[edit['start']:edit['end']]), edit['after'])
+                    lines[edit['start']:edit['end']] = edit['before'].splitlines(keepends=True);frontier = edit['start']
+                source = ''.join(lines)
+                self.assertEqual(hashlib.sha256(source.encode()).hexdigest(), row['originalSha256'])
+            return source
+        for name in set(phase['files']) | set(observation['files']):
             current(name)
         layer = json.loads((ROOT / 'deploy/admission/next_cpu_weight_constructor_inverse.json').read_text())
         self.assertEqual(layer['base'], '6115dd5a6a6e1f2d2dedf4723e0e8ca2b568da65')

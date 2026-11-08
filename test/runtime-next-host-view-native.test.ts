@@ -62,6 +62,11 @@ it('proves privileged cache overlays and bounded owned stop with actual systemd2
  expect(observed.unqualifiedCount).toBe(Object.values(observed.knownUnqualified).filter(Boolean).length+observed.otherUnqualifiedCount);
  expect(observed.otherUnqualifiedCount).toBeGreaterThanOrEqual(1);
  expect(JSON.stringify(observed)).not.toMatch(/fictional-private-canary|AIHR_OBSERVATION_CANARY|fictional-observation/);
+ const hooks=report.initialEnvironmentHookObservation;
+ expect(Object.keys(hooks).sort()).toEqual(['kind','stages','fullHelperVerified','nextApplicationVerified','releaseEligible'].sort());
+ expect(hooks).toEqual({kind:'ACTUAL_SHARED_OBSERVER_HOOKS_NOT_FULL_HELPER_OR_NEXT',
+  stages:['declaration-before','process-before','environment-read','environment-classified','process-after','custody-after'],
+  fullHelperVerified:false,nextApplicationVerified:false,releaseEligible:false});
  const topology=report.resourceTopology;
  expect(topology).toMatchObject({kind:'ACTUAL_UNCHANGED_RESOURCE_METHOD_DIAGNOSTIC_NOT_READINESS',
   actualProcessUnchanged:true,profileConstructorVerified:false,nextApplicationVerified:false,releaseEligible:false});

@@ -1172,7 +1172,7 @@ def environment_process_read(directory, name, bound, deadline):
         os.close(fd)
 
 
-def observe_owned_environment(expected, custody, deadline):
+def observe_owned_environment(expected, custody, deadline, *, _phase=None):
     """Native authority only after protected custody + two pinned live checks.
 
     The full hook supplies its systemd MAINPID and INVOCATION_ID, protected fixed
@@ -1186,7 +1186,9 @@ def observe_owned_environment(expected, custody, deadline):
             or re.fullmatch(r'[a-f0-9]{32}', expected['invocation']) is None
             or time.monotonic() >= deadline):
         raise ValueError('Environment observation expectation refused')
+    if _phase is not None: _phase('declaration-before')
     custody()
+    if _phase is not None: _phase('process-before')
     proc = pathlib.Path('/proc', str(expected['pid']))
     fd = os.open(proc, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
     try:
@@ -1218,13 +1220,17 @@ def observe_owned_environment(expected, custody, deadline):
                 raise ValueError('Environment observation command refused')
             return fields[19]
         identity = current()
+        if _phase is not None: _phase('environment-read')
         raw = environment_process_read(fd, 'environ', 1024**2, deadline)
+        if _phase is not None: _phase('environment-classified')
         values = environment_observation_values(raw)
         if values.get('INVOCATION_ID') != expected['invocation']:
             raise ValueError('Environment observation invocation refused')
         result = environment_observation_counts(raw)
+        if _phase is not None: _phase('process-after')
         if current() != identity:
             raise ValueError('Environment observation start identity changed')
+        if _phase is not None: _phase('custody-after')
         custody()
         if time.monotonic() >= deadline:
             raise TimeoutError('Environment observation deadline')

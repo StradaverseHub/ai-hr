@@ -15,6 +15,79 @@ CONTEXT = pathlib.Path('/etc/aihr-admission/observation.json')
 PROFILE = pathlib.Path('/etc/aihr-admission/profile.json')
 
 
+# Diagnostic states only. None establishes source/process/environment/admission authority.
+PHASE_PREFIX = 'AIHR_OWNED_ENV_OBSERVER_PHASE_V1 '
+PHASES = ('timer-armed', 'context-read', 'profile-bound', 'helpers-bound',
+    'observer-loaded', 'main-selector', 'declaration-before', 'process-before',
+    'environment-read', 'environment-classified', 'process-after', 'custody-after',
+    'environment-packet')
+
+
+def validate_phase_observation(value, subject):
+    if (type(value) is not dict or set(value) != {'version', 'kind', 'subject', 'sequence', 'phase', 'result', 'cause'}
+            or type(value['version']) is not int or value['version'] != 1
+            or value['kind'] != 'OWNED_OBSERVER_PHASE_NOT_ENVIRONMENT_OR_ADMISSION'
+            or subject not in ('worker-1', 'worker-2') or value['subject'] != subject
+            or type(value['sequence']) is not int or value['phase'] not in PHASES
+            or value['result'] not in ('entered', 'failed', 'finished')
+            or value['cause'] not in ('none', 'refused', 'budget', 'io', 'other')):
+        raise ValueError('Closed observer phase required')
+    index = PHASES.index(value['phase'])
+    if (value['result'] == 'entered' and (value['sequence'] != index or value['cause'] != 'none')
+            or value['result'] == 'failed' and (value['sequence'] != index + 1 or value['cause'] == 'none')
+            or value['result'] == 'finished' and (index != len(PHASES) - 1
+                or value['sequence'] != len(PHASES) or value['cause'] != 'none')):
+        raise ValueError('Observer phase transition refused')
+    return value
+
+
+class PhaseTracker:
+    """Private bounded helper telemetry. A copied phase packet proves no native state."""
+    def __init__(self, unit, deadline):
+        self.subject, self.deadline = 'worker-' + unit[9], deadline
+        self.index, self.terminal, self.broken = -1, False, False
+
+    def write(self, result, cause='none'):
+        if self.broken or self.terminal or time.monotonic() >= self.deadline:
+            raise TimeoutError('Observer phase budget unavailable')
+        value = validate_phase_observation({'version': 1,
+            'kind': 'OWNED_OBSERVER_PHASE_NOT_ENVIRONMENT_OR_ADMISSION', 'subject': self.subject,
+            'sequence': self.index if result == 'entered' else self.index + 1,
+            'phase': PHASES[self.index], 'result': result, 'cause': cause}, self.subject)
+        message = PHASE_PREFIX.encode() + (json.dumps(value, sort_keys=True, separators=(',', ':')) + '\n').encode()
+        if len(message) > 1024:
+            raise ValueError('Observer phase bound refused')
+        # One bounded framed write. Never retry an uncertain or partial record.
+        try:
+            if time.monotonic() >= self.deadline:
+                raise TimeoutError('Observer phase budget exhausted')
+            if os.write(1, message) != len(message):
+                raise OSError('Observer phase write incomplete')
+        except BaseException:
+            self.broken = True
+            raise
+        if result != 'entered':
+            self.terminal = True
+
+    def enter(self, phase):
+        if self.terminal or self.broken or phase not in PHASES or PHASES.index(phase) != self.index + 1:
+            raise ValueError('Observer phase order refused')
+        self.index += 1
+        self.write('entered')
+
+    def finish(self):
+        if self.index != len(PHASES) - 1:
+            raise ValueError('Incomplete observer phases')
+        self.write('finished')
+
+    def fail(self, error):
+        if self.index < 0 or self.terminal or self.broken or time.monotonic() >= self.deadline:
+            return
+        cause = 'budget' if isinstance(error, TimeoutError) else 'io' if isinstance(error, OSError) else \
+            'refused' if isinstance(error, (ValueError, AssertionError)) else 'other'
+        self.write('failed', cause)
+
+
 def protected_read(file, bound):
     current = pathlib.Path('/')
     for part in file.parts[1:]:
@@ -46,7 +119,9 @@ def protected_read(file, bound):
         os.close(fd)
 
 
-def full_observation(unit, deadline):
+def full_observation(unit, deadline, phase=None):
+    mark = phase if phase is not None else lambda _stage: None
+    mark('context-read')
     raw_context, context_identity = protected_read(CONTEXT, 65536)
     context = json.loads(raw_context)
     if (type(context) is not dict or set(context) != {'version', 'profileSha256', 'sources', 'units'}
@@ -54,6 +129,7 @@ def full_observation(unit, deadline):
             or set(context['sources']) != {'next_fixture_poststart.py', 'next_profile.py'}
             or set(context['units']) != {'aihr-web@1.service', 'aihr-web@2.service'}):
         raise ValueError('Observation context refused')
+    mark('profile-bound')
     raw_profile, _ = protected_read(PROFILE, 1024**2)
     if hashlib.sha256(raw_profile).hexdigest() != context['profileSha256']:
         raise ValueError('Observation profile differs')
@@ -65,6 +141,7 @@ def full_observation(unit, deadline):
     declarations = context['units'][unit]
     if type(declarations) is not dict or set(declarations) != {'device', 'inode', 'sha256'}:
         raise ValueError('Observation declaration context refused')
+    mark('helpers-bound')
     sources = {}
     for name in context['sources']:
         raw, _ = protected_read(HELPER / name, 1024**2)
@@ -74,6 +151,7 @@ def full_observation(unit, deadline):
     if (pathlib.Path(__file__) != HELPER / 'next_fixture_poststart.py'
             or profile['trustedModules']['next_profile.py'] != context['sources']['next_profile.py']):
         raise ValueError('Observation owner source differs')
+    mark('observer-loaded')
     N = types.ModuleType('sealed_initial_environment_observer')
     N.__file__ = str(HELPER / 'next_profile.py')
     exec(compile(sources['next_profile.py'], N.__file__, 'exec', dont_inherit=True), N.__dict__)
@@ -98,6 +176,7 @@ def full_observation(unit, deadline):
             actual, _ = protected_read(HELPER / name, 1024**2)
             if actual != expected:
                 raise ValueError('Observation source changed')
+    mark('main-selector')
     main_pid = os.environ.get('MAINPID', '')
     if re.fullmatch(r'[1-9][0-9]{0,9}', main_pid) is None:
         raise ValueError('Observation main identity unavailable')
@@ -106,7 +185,8 @@ def full_observation(unit, deadline):
         'cgroup': profile['resourceEnvelope']['cgroupPath'] + '/' + unit,
         'argv': [spec['executable'], '--max-old-space-size=2048',
             spec['releaseDirectory'] + '/node_modules/next/dist/bin/next', 'start', '--hostname', '127.0.0.1'],
-        'title': 'next-server (v16.4.1)', 'subject': 'worker-' + unit[9]}, custody, deadline)
+        'title': 'next-server (v16.4.1)', 'subject': 'worker-' + unit[9]}, custody, deadline, _phase=mark)
+    mark('environment-packet')
     message = N.ENVIRONMENT_OBSERVATION_PREFIX.encode() + N.canonical(result)
     if len(message) > 4096:
         raise ValueError('Observation journal record bound refused')
@@ -122,15 +202,30 @@ def best_effort_observation(unit):
         return
     def expired(_signal, _frame):
         raise TimeoutError('Observation deadline')
+    tracker = None
     try:
         signal.signal(signal.SIGALRM, expired)
         deadline = time.monotonic() + 1
         signal.setitimer(signal.ITIMER_REAL, 1)
-        message = full_observation(unit, deadline)
-        os.write(1, message)
-    except BaseException:
-        # No unknown exception, native field or private source is reflected.
-        pass
+        tracker = PhaseTracker(unit, deadline)
+        tracker.enter('timer-armed')
+        message = full_observation(unit, deadline, tracker.enter)
+        if time.monotonic() >= deadline:
+            raise TimeoutError('Environment packet budget exhausted')
+        try:
+            if os.write(1, message) != len(message):
+                raise OSError('Environment packet write incomplete')
+        except BaseException:
+            tracker.broken = True
+            raise
+        tracker.finish()
+    except BaseException as error:
+        # No error text/type/native field is reflected; terminal observation is optional.
+        if tracker is not None:
+            try:
+                tracker.fail(error)
+            except BaseException:
+                pass
     finally:
         signal.setitimer(signal.ITIMER_REAL, 0)
         signal.signal(signal.SIGALRM, old_handler)

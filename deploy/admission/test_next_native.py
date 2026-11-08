@@ -1893,6 +1893,88 @@ def runtime_environment_journal_observation(raw, unit, invocation, python_exe, s
     return result
 
 
+def runtime_environment_journal_diagnostic(raw, unit, invocation, python_exe, sources, binding):
+    """New phase failure cannot discard an original validated environment observation."""
+    observed = runtime_environment_journal_observation(raw, unit, invocation, python_exe, sources, binding)
+    try:
+        return _runtime_environment_phase_diagnostic(raw, unit, invocation, python_exe, sources, observed)
+    except BaseException:
+        return {'observations': observed, 'diagnostic': {'kind': 'CLOSED_OBSERVER_PHASE_DIAGNOSTIC_NOT_ENVIRONMENT_OR_ADMISSION',
+            'unit': RUNTIME_DIAGNOSTIC_UNITS[unit], 'state': 'receiver-unavailable', 'phases': [],
+            'census': None, 'phaseUnavailable': True}}
+
+
+def _runtime_environment_phase_diagnostic(raw, unit, invocation, python_exe, sources, observed):
+    # Original source and outer JSON/duplicate/transport checks have completed.
+    P = types.ModuleType('sealed_observer_phase_receiver')
+    P.__file__ = '/usr/local/lib/aihr-admission/next_fixture_poststart.py'
+    N = types.ModuleType('sealed_observer_prefix_owner')
+    N.__file__ = OBSERVER_PATHS['next-profile']
+    exec(compile(sources['poststart'], P.__file__, 'exec', dont_inherit=True), P.__dict__)
+    exec(compile(sources['next-profile'], N.__file__, 'exec', dont_inherit=True), N.__dict__)
+    commands = {prefix + ' -I -B /usr/local/lib/aihr-admission/next_fixture_poststart.py ' + unit
+                for prefix in ('/usr/bin/python3', python_exe)}
+    controllers = {prefix + ' -I -B /usr/local/lib/aihr-admission/controller.py admit ' + unit
+                   for prefix in ('/usr/bin/python3', python_exe)}
+    census = {'kind': 'UNTRUSTED_PREFIX_TRANSPORT_COUNTS_NOT_HELPER_OR_ENVIRONMENT_PROOF',
+        'records': 0, 'environmentCandidates': 0, 'phaseCandidates': 0, 'trustedHelperCandidates': 0,
+        'metadataMatches': dict.fromkeys(('uid', 'executable', 'unit', 'invocation'), 0),
+        'commandClasses': dict.fromkeys(('helper', 'controller', 'other-or-missing'), 0)}
+    phases, unavailable = [], False
+    def unique(pairs):
+        value = {}
+        for key, item in pairs:
+            require(key not in value, 'Duplicate observer phase field')
+            value[key] = item
+        return value
+    for line in raw.splitlines():
+        row = json.loads(line);census['records'] += 1
+        message = row.get('MESSAGE') if type(row) is dict else None
+        if type(message) is not str:
+            continue
+        phase = message.startswith(P.PHASE_PREFIX)
+        environment = message.startswith(N.ENVIRONMENT_OBSERVATION_PREFIX)
+        if not (phase or environment):
+            continue
+        census['phaseCandidates' if phase else 'environmentCandidates'] += 1
+        matches = {'uid': row.get('_UID') == '0', 'executable': row.get('_EXE') == python_exe,
+            'unit': row.get('_SYSTEMD_UNIT') == unit, 'invocation': row.get('_SYSTEMD_INVOCATION_ID') == invocation}
+        for key, matched in matches.items():
+            census['metadataMatches'][key] += int(matched)
+        command = row.get('_CMDLINE')
+        classification = 'helper' if type(command) is str and command in commands else \
+            'controller' if type(command) is str and command in controllers else 'other-or-missing'
+        census['commandClasses'][classification] += 1
+        trusted = all(matches.values()) and classification == 'helper'
+        if trusted:
+            census['trustedHelperCandidates'] += 1
+        if not phase or not trusted:
+            continue
+        try:
+            require(len(message.encode()) <= 1024, 'Observer phase message bound refused')
+            value = P.validate_phase_observation(json.loads(message[len(P.PHASE_PREFIX):], object_pairs_hook=unique), RUNTIME_DIAGNOSTIC_UNITS[unit])
+            # Full-helper ledger starts at timer-armed. Host hook subsequences do
+            # not become full-helper execution evidence through this receiver.
+            require(not phases or phases[-1]['result'] == 'entered', 'Observer phase after terminal')
+            require(value['sequence'] == len(phases) and len(phases) < 14, 'Observer phase sequence refused')
+            if value['result'] != 'entered':
+                require(phases and value['phase'] == phases[-1]['phase'], 'Observer terminal phase differs')
+            phases.append(value)
+        except BaseException:
+            unavailable = True
+    # Never publish a partial accepted ledger after a malformed/duplicate/foreign
+    # transition. Census remains explicitly untrusted; valid original observations survive.
+    if unavailable:
+        phases = []
+    state = 'environment-observed' if observed else 'phase-only' if phases else \
+        'untrusted-candidates-only' if census['environmentCandidates'] + census['phaseCandidates'] else 'no-candidates'
+    if unavailable:
+        state = 'receiver-unavailable'
+    return {'observations': observed, 'diagnostic': {'kind': 'CLOSED_OBSERVER_PHASE_DIAGNOSTIC_NOT_ENVIRONMENT_OR_ADMISSION',
+        'unit': RUNTIME_DIAGNOSTIC_UNITS[unit], 'state': state, 'phases': phases, 'census': census,
+        'phaseUnavailable': unavailable}}
+
+
 def runtime_owned_declaration(unit):
     """Positive ownership only from this fixture's captured native declaration."""
     require(unit in RUNTIME_DIAGNOSTIC_UNITS, 'Closed diagnostic owned unit required')
@@ -2015,10 +2097,11 @@ def runtime_failure_diagnostic(kind, error, binding):
             try:
                 require(time.monotonic() < deadline - 0.05, 'Environment diagnostic budget unavailable')
                 poststart = observer_read('/usr/local/lib/aihr-admission/next_fixture_poststart.py', 1024**2)
-                observed = runtime_environment_journal_observation(raw, unit, invocations[unit], str(python_path),
+                diagnostic = runtime_environment_journal_diagnostic(raw, unit, invocations[unit], str(python_path),
                     {'next-profile': sources['next-profile'], 'poststart': poststart}, binding)
                 require(runtime_owned_declaration(unit), 'Environment diagnostic declaration changed')
-                value.setdefault('environmentObservations', []).extend(observed)
+                value.setdefault('environmentObservations', []).extend(diagnostic['observations'])
+                value.setdefault('environmentObserverDiagnostics', []).append(diagnostic['diagnostic'])
             except BaseException:
                 value['environmentObservationUnavailable'] = True
         require(time.monotonic() <= deadline, 'Diagnostic aggregate budget exhausted')

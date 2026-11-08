@@ -1,4 +1,5 @@
 """Source models only; no native/root/systemd/app/DB or environment discovery."""
+import ast
 import copy
 import hashlib
 import json
@@ -37,7 +38,7 @@ class EnvironmentObservationModels(unittest.TestCase):
         return dict(pid=42, invocation='a'*32, uid=65534, executable='/owned/node', cwd='/owned/release',
             cgroup='/owned/worker', argv=['/owned/node', 'start'], title=None, subject='worker-1')
 
-    def observe(self, *, uid=65534, invocation=None, field=None, second_ticks=None, custody=None, named_inode=2):
+    def observe(self, *, uid=65534, invocation=None, field=None, second_ticks=None, custody=None, named_inode=2, phase=None):
         expected = self.expected()
         stat_calls = 0
         def read(_fd, name, _bound, _deadline):
@@ -61,7 +62,7 @@ class EnvironmentObservationModels(unittest.TestCase):
                 patch.object(N.os, 'fstat', return_value=info), patch.object(pathlib.Path, 'stat', return_value=types.SimpleNamespace(st_uid=uid, st_dev=1, st_ino=named_inode)), \
                 patch.object(N.os, 'readlink', side_effect=lambda name, **_kw: '/foreign' if name == field else '/owned/node' if name == 'exe' else '/owned/release'), \
                 patch.object(N, 'environment_process_read', side_effect=read):
-            value = N.observe_owned_environment(expected, own, float('inf'))
+            value = N.observe_owned_environment(expected, own, float('inf'), _phase=phase)
         return value, calls
 
     def value(self):
@@ -249,6 +250,128 @@ class EnvironmentObservationModels(unittest.TestCase):
                 N.environment_process_read(100, 'environ', 1024**2, 0)
             read.assert_not_called()
             close.assert_called_once_with(100)
+
+
+class PhaseDiagnosticModels(unittest.TestCase):
+    def base(self):
+        return EnvironmentObservationModels()
+
+    def packet(self, phase='timer-armed', result='entered', cause='none'):
+        index = P.PHASES.index(phase)
+        return {'version': 1, 'kind': 'OWNED_OBSERVER_PHASE_NOT_ENVIRONMENT_OR_ADMISSION',
+            'subject': 'worker-1', 'sequence': index if result == 'entered' else index + 1,
+            'phase': phase, 'result': result, 'cause': cause}
+
+    def journal(self, value, changes=None):
+        return self.base().journal(message=P.PHASE_PREFIX+json.dumps(value), changes=changes)
+
+    def receive(self, raw):
+        sources, binding = self.base().sources()
+        return F.runtime_environment_journal_diagnostic(raw, F.UNITS[0], 'a'*32, '/usr/bin/python3.12', sources, binding)
+
+    def test_actual_tracker_emits_exact_bounded_closed_order_without_native_authority(self):
+        messages = []
+        with patch.object(P.time, 'monotonic', return_value=1), patch.object(P.os, 'write', side_effect=lambda _fd, message: messages.append(message) or len(message)):
+            tracker = P.PhaseTracker(F.UNITS[0], 2)
+            for phase in P.PHASES:
+                tracker.enter(phase)
+            tracker.finish()
+        self.assertEqual(len(messages), 14)
+        self.assertLessEqual(sum(map(len, messages))+4096, 18432)
+        packets = [json.loads(message[len(P.PHASE_PREFIX):]) for message in messages]
+        self.assertEqual([row['phase'] for row in packets[:-1]], list(P.PHASES))
+        self.assertEqual([row['sequence'] for row in packets], list(range(14)))
+        for message, row in zip(messages, packets):
+            self.assertTrue(message.endswith(b'\n'));self.assertLessEqual(len(message), 1024)
+            self.assertIs(P.validate_phase_observation(row, 'worker-1'), row)
+            self.assertNotIn('sourceVerified', row);self.assertNotIn('processStable', row)
+        result = self.receive(b''.join(self.journal(row) for row in packets))
+        self.assertEqual(result['observations'], []);self.assertEqual(result['diagnostic']['state'], 'phase-only')
+        self.assertEqual(result['diagnostic']['phases'], packets)
+
+    def test_closed_failure_families_never_publish_private_errors_or_extra_fields(self):
+        for error, cause in ((ValueError('PRIVATE-VALUE'), 'refused'), (AssertionError('PRIVATE-VALUE'), 'refused'),
+                (TimeoutError('PRIVATE-VALUE'), 'budget'), (OSError('PRIVATE-VALUE'), 'io'), (KeyboardInterrupt('PRIVATE-VALUE'), 'other')):
+            messages = []
+            with patch.object(P.time, 'monotonic', return_value=1), patch.object(P.os, 'write', side_effect=lambda _fd, message: messages.append(message) or len(message)):
+                tracker=P.PhaseTracker(F.UNITS[0], 2);tracker.enter(P.PHASES[0]);tracker.fail(error)
+            terminal=json.loads(messages[-1][len(P.PHASE_PREFIX):]);self.assertEqual(terminal['cause'], cause)
+            self.assertEqual(terminal['result'], 'failed');self.assertNotIn('PRIVATE-VALUE', b''.join(messages).decode())
+        for changed in ({'sourceVerified': True}, {'phase': 'PRIVATE'}, {'sequence': True}, {'cause': 'PRIVATE'}, {'result': 'ready'}, {'subject': 'host-component'}):
+            with self.assertRaises(ValueError):P.validate_phase_observation(self.packet() | changed, 'worker-1')
+
+    def test_partial_write_expiry_and_occupied_timer_never_retry_or_start_more_observation(self):
+        with patch.object(P.time, 'monotonic', return_value=1), patch.object(P.os, 'write', return_value=1) as write:
+            tracker=P.PhaseTracker(F.UNITS[0], 2)
+            with self.assertRaises(OSError):tracker.enter(P.PHASES[0])
+            tracker.fail(OSError('PRIVATE'));self.assertEqual(write.call_count, 1)
+        with patch.object(P.time, 'monotonic', return_value=2), patch.object(P.os, 'write') as write:
+            tracker=P.PhaseTracker(F.UNITS[0], 2)
+            with self.assertRaises(TimeoutError):tracker.enter(P.PHASES[0])
+            tracker.fail(TimeoutError('PRIVATE'));write.assert_not_called()
+        with patch.object(P.signal, 'getitimer', return_value=(1.0, 0.0)), patch.object(P.os, 'write') as write, patch.object(P, 'full_observation') as observe, patch.object(P.signal, 'setitimer') as timer:
+            P.best_effort_observation(F.UNITS[0]);write.assert_not_called();observe.assert_not_called();timer.assert_not_called()
+
+    def test_real_best_effort_failure_reports_only_its_entered_phase_and_restores_original_timer(self):
+        messages, timers = [], []
+        with patch.object(P.time, 'monotonic', return_value=1), patch.object(P.signal, 'getitimer', return_value=(0.0, 0.0)), \
+                patch.object(P.signal, 'getsignal', return_value=signal.SIG_DFL), patch.object(P.signal, 'signal'), \
+                patch.object(P.signal, 'setitimer', side_effect=lambda *args: timers.append(args)), \
+                patch.object(P.os, 'write', side_effect=lambda _fd, message: messages.append(message) or len(message)), \
+                patch.object(P, 'full_observation', side_effect=ValueError('PRIVATE')):
+            P.best_effort_observation(F.UNITS[0])
+        packets=[json.loads(message[len(P.PHASE_PREFIX):]) for message in messages]
+        self.assertEqual(packets, [self.packet(), self.packet(result='failed', cause='refused')])
+        self.assertEqual(timers, [(signal.ITIMER_REAL, 1), (signal.ITIMER_REAL, 0)])
+
+    def test_census_preserves_untrusted_controller_foreign_and_missing_metadata_without_reflection(self):
+        command='/usr/bin/python3 -I -B /usr/local/lib/aihr-admission/controller.py admit '+F.UNITS[0]
+        raw=self.journal(self.packet(), {'_CMDLINE':command})+self.journal(self.packet(), {'_UID':'65534', '_CMDLINE':'PRIVATE'})
+        result=self.receive(raw)['diagnostic'];self.assertEqual(result['state'], 'untrusted-candidates-only');self.assertEqual(result['phases'], [])
+        self.assertEqual(result['census']['phaseCandidates'], 2);self.assertEqual(result['census']['trustedHelperCandidates'], 0)
+        self.assertEqual(result['census']['commandClasses'], {'helper':0,'controller':1,'other-or-missing':1})
+        self.assertNotIn('PRIVATE', json.dumps(result))
+        self.assertEqual(self.receive(self.base().journal(message='PRIVATE'))['diagnostic']['state'], 'no-candidates')
+        for field in ('_UID','_EXE','_SYSTEMD_UNIT','_SYSTEMD_INVOCATION_ID','_CMDLINE'):
+            diagnostic=self.receive(self.journal(self.packet(), {field:'PRIVATE'}))['diagnostic']
+            self.assertEqual(diagnostic['phases'], []);self.assertEqual(diagnostic['state'], 'untrusted-candidates-only')
+
+    def test_bad_phase_ledgers_and_optional_receiver_failure_never_discard_original_valid_observation(self):
+        valid=self.base().journal();first=self.journal(self.packet())
+        for broken in (first+first, self.journal(self.packet(P.PHASES[1])), first+self.journal(self.packet(result='failed',cause='io'))+first,
+                self.journal(self.packet() | {'profile':'PRIVATE'}), self.base().journal(message=P.PHASE_PREFIX+'{"version":1,"version":1}')):
+            result=self.receive(valid+broken);self.assertEqual(result['observations'], [self.base().value()])
+            self.assertEqual(result['diagnostic']['state'], 'receiver-unavailable');self.assertTrue(result['diagnostic']['phaseUnavailable']);self.assertEqual(result['diagnostic']['phases'], [])
+        with patch.object(F, '_runtime_environment_phase_diagnostic', side_effect=RuntimeError('PRIVATE')):
+            result=self.receive(valid)
+        self.assertEqual(result['observations'], [self.base().value()]);self.assertIsNone(result['diagnostic']['census']);self.assertNotIn('PRIVATE', json.dumps(result))
+
+    def test_shared_native_hook_subsequence_is_exact_and_never_a_full_helper_ledger(self):
+        stages=[];value,_=self.base().observe(phase=stages.append)
+        self.assertEqual(stages, ['declaration-before','process-before','environment-read','environment-classified','process-after','custody-after'])
+        self.assertFalse(value['nextApplicationVerified'] or value['releaseEligible'])
+        diagnostic=self.receive(b''.join(self.journal(self.packet(stage)) for stage in stages))['diagnostic']
+        self.assertEqual(diagnostic['state'], 'receiver-unavailable');self.assertEqual(diagnostic['phases'], [])
+        with self.assertRaisesRegex(OSError, 'PRIVATE'):
+            self.base().observe(phase=lambda _stage: (_ for _ in ()).throw(OSError('PRIVATE')))
+
+    def test_every_original_native_check_and_environment_validator_remains_whole_source_exact(self):
+        layer=json.loads((ROOT/'deploy/admission/next_phase_observation_inverse.json').read_text())
+        self.assertEqual(layer['base'], '847139e7a2f29faf7a00ffaf17b80739d53acc0e')
+        originals={}
+        for name,row in layer['files'].items():
+            source=(ROOT/name).read_text();self.assertEqual(hashlib.sha256(source.encode()).hexdigest(), row['currentSha256'])
+            lines=source.splitlines(keepends=True)
+            for edit in row['changes']:
+                self.assertEqual(''.join(lines[edit['start']:edit['end']]), edit['after']);lines[edit['start']:edit['end']]=edit['before'].splitlines(keepends=True)
+            originals[name]=''.join(lines);self.assertEqual(hashlib.sha256(originals[name].encode()).hexdigest(), row['originalSha256'])
+        def function(text,name):
+            tree=ast.parse(text);return ast.get_source_segment(text,next(node for node in tree.body if isinstance(node,ast.FunctionDef) and node.name==name))
+        name='deploy/admission/next_profile.py';original=originals[name];current=(ROOT/name).read_text()
+        reduced='\n'.join(line for line in current.split('\n') if 'if _phase is not None: _phase(' not in line).replace(', *, _phase=None):', '):')
+        self.assertEqual(reduced, original)
+        name='deploy/admission/test_next_native.py';self.assertEqual(function((ROOT/name).read_text(),'runtime_environment_journal_observation'),function(originals[name],'runtime_environment_journal_observation'))
+        name='deploy/admission/next_fixture_poststart.py';self.assertEqual(function((ROOT/name).read_text(),'main'),function(originals[name],'main'))
 
 
 if __name__ == '__main__':
