@@ -1,0 +1,20 @@
+import {afterAll,beforeAll,beforeEach,describe,it,expect} from 'vitest';
+import {eq} from 'drizzle-orm';
+import {adminCtx,closeAll,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
+import {hireEmployee} from '../core/org';
+import {checkIn,checkOut,setAttendancePolicy} from '../packs/attendance/service';
+import {withTenant} from '../db/client';
+import {attendance} from '../db/schema';
+import {todayInKualaLumpur} from '../lib/hr-date';
+import {readAttendanceFormulaDaysTx} from '../packs/attendance/formula-sources';
+import {evaluateAttendanceFormula} from '../lib/attendance-formula-language';
+let base:Base;
+beforeAll(migrateTestDb);afterAll(closeAll);beforeEach(async()=>{await resetDb();base=await seedBase();});
+async function fixture(){const ctx=adminCtx(base),date=todayInKualaLumpur();const hired=await hireEmployee(ctx,{person:{fullName:'Fictional formula employee',primaryEmail:'formula-source@example.test'},companyId:base.companyId,departmentId:base.deptA,employmentType:'full_time',hiredOn:'2024-01-01'});await setAttendancePolicy(ctx,{companyId:base.companyId,workStart:'09:00',workEnd:'17:00',breakMinutes:0,lateAfter:'09:00',halfDayBefore:'13:00',workingDays:[1,2,3,4,5,6,7]});return {ctx,date,employmentId:hired.employmentId,companyId:base.companyId};}
+const read=(f:Awaited<ReturnType<typeof fixture>>)=>withTenant(f.ctx,tx=>readAttendanceFormulaDaysTx(tx,f.ctx,{...f,from:f.date,to:f.date}));
+describe('native Attendance formula source custody',()=>{
+ it('evaluates actual recorded attendance through the same deterministic engine used by tests',async()=>{const f=await fixture();await checkIn(f.ctx,{employmentId:f.employmentId,date:f.date,time:'09:00'});await checkOut(f.ctx,{employmentId:f.employmentId,date:f.date,time:'19:00'});const source=await read(f);expect(source.days).toHaveLength(1);expect(source.days[0].values.TotalWorkingMins).toMatchObject({state:'known',value:{type:'decimal',value:'600'}});expect(evaluateAttendanceFormula({conditions:[],formulas:[{code:'HOURS',source:'Return {#FormulaID}("TotalWorkingMins") / 60'}]},'HOURS',source.days).amount).toBe('10');expect(JSON.stringify(source.days)).not.toContain('basicSalary');});
+ it('refuses an incomplete day instead of manufacturing a zero result',async()=>{const f=await fixture();await checkIn(f.ctx,{employmentId:f.employmentId,date:f.date,time:'09:00'});const source=await read(f);expect(source.days[0].values.TotalWorkingMins.state).toBe('unavailable');expect(()=>evaluateAttendanceFormula({conditions:[],formulas:[{code:'HOURS',source:'Return {#FormulaID}("TotalWorkingMins") / 60'}]},'HOURS',source.days)).toThrow(/unavailable/);});
+ it('binds the exact source and detects a subsequent attendance change',async()=>{const f=await fixture();await checkIn(f.ctx,{employmentId:f.employmentId,date:f.date,time:'09:00'});await checkOut(f.ctx,{employmentId:f.employmentId,date:f.date,time:'19:00'});const before=await read(f);await owner.db.update(attendance).set({workedMinutes:590}).where(eq(attendance.employmentId,f.employmentId));expect((await read(f)).sourceDigest).not.toBe(before.sourceDigest);});
+ it('rejects a real other tenant and an employee caller without administrative authority',async()=>{const f=await fixture();const other=await seedBase(),foreign=adminCtx(other);await expect(withTenant(foreign,tx=>readAttendanceFormulaDaysTx(tx,foreign,{...f,from:f.date,to:f.date}))).rejects.toThrow();const employee={...f.ctx,userId:null,roles:['employee'],grants:[{role:'employee',companyId:null}]};await expect(withTenant(employee,tx=>readAttendanceFormulaDaysTx(tx,employee,{...f,from:f.date,to:f.date}))).rejects.toThrow();});
+});
