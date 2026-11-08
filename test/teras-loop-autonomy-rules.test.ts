@@ -14,14 +14,14 @@ import {LOOP_IDS} from '../core/loops/types';
 
 describe('the cap on automatic action',()=>{
  // Wave 1 integration: the Phase 2 Salary payroll loop (pay) is capped with them.
- it('keeps probation, payroll inputs, passports and salary payroll at Prepare, and lets only missed clock-outs and missing employee data above it',()=>{
-  expect([...CAPPED_LOOPS].sort()).toEqual(['loop_document_expiry','loop_payroll_inputs','loop_probation_ending','loop_salary_payroll']);
+ it('keeps probation, payroll inputs, passports and salary payroll at Prepare, and lets only missing employee data above it',()=>{
+  expect([...CAPPED_LOOPS].sort()).toEqual(['loop_document_expiry','loop_missed_clock_outs','loop_payroll_inputs','loop_probation_ending','loop_salary_payroll']);
   expect(Object.fromEntries(LOOP_IDS.map(id=>[id,[maxLevel(id),promotableTo(id)]]))).toEqual({
-   loop_probation_ending:[1,1],loop_payroll_inputs:[1,1],loop_missing_employee_data:[3,3],loop_missed_clock_outs:[3,3],loop_document_expiry:[1,1],
+   loop_probation_ending:[1,1],loop_payroll_inputs:[1,1],loop_missing_employee_data:[3,3],loop_missed_clock_outs:[1,1],loop_document_expiry:[1,1],
    loop_salary_payroll:[1,1]});
  });
 
- it.each(['loop_probation_ending','loop_payroll_inputs','loop_document_expiry','loop_salary_payroll'] as const)('%s can never be set above Prepare',id=>{
+ it.each(['loop_probation_ending','loop_payroll_inputs','loop_document_expiry','loop_salary_payroll','loop_missed_clock_outs'] as const)('%s can never be set above Prepare',id=>{
   expect(levelAllowed(id,0)).toBe(true);expect(levelAllowed(id,1)).toBe(true);
   for(const level of [2,3,4,1.5,-1,Number.NaN])expect(levelAllowed(id,level)).toBe(false);
  });
@@ -34,7 +34,7 @@ describe('the cap on automatic action',()=>{
    expect(promotableTo('loop_missed_clock_outs',raised),category).toBe(1);
   }
   // A ceiling outside the ladder is bounded too.
-  expect(maxLevel('loop_missed_clock_outs',{categories:['attendance'],ceiling:9 as never,actor:true,criteria:[]})).toBe(3);
+  expect(maxLevel('loop_missing_employee_data',{categories:['attendance'],ceiling:9 as never,actor:true,criteria:[]})).toBe(3);
   expect(maxLevel('loop_missed_clock_outs',{categories:['attendance'],ceiling:-2 as never,actor:true,criteria:[]})).toBe(1);
   // No automatic step: never above Prepare.
   expect(promotableTo('loop_missed_clock_outs',{categories:['attendance'],ceiling:3,actor:false,criteria:[]})).toBe(1);

@@ -1,3 +1,13 @@
+# Missed clock-out Prepare/review-only — 9 November 2026 (unapplied reservation)
+
+Branch codex/board3-loop-review-20261109 reserves 3802_attendance_prepare_review_only,
+idx3102 / when1793330003402. The refreshed read-only audit scanned 6615 refs,
+1063 committed journal blobs and 1086 worktrees (801 parseable plus two conflicted
+WIP journals), with peer maximum3801. The installed ledger contains710 entries
+through watermark1793330003000. Preserve the full current source prefix through
+3800/3801 and all applied SQL bytes. This is a source reservation; recheck peer
+claims and the installed ledger before admission. It grants no deployment authority.
+
 # Attendance workflow lifecycle and scope — 9 November 2026 (unapplied reservation)
 
 Branch codex/board3-workflow-20261109 reserves 3800_attendance_workflow_lifecycle_scope,

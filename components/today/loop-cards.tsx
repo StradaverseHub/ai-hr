@@ -4,7 +4,6 @@ import {ArrowDown,CheckCircle2,ListChecks} from 'lucide-react';
 import type {LoopCard} from '@/core/loops/cards';
 import {ProposalCard} from '@/components/ai-centre/proposal-card';
 import {ClockOutLoopCard,type ClockOutCardCopy} from './clock-out-loop-card';
-import {AutoFixLoopCard,type AutoFixCardCopy} from './auto-fix-loop-card';
 
 /** Today (AI v2 W8): the cards the loops prepared, in "Needs you". Each is the one AI Centre card (ProposalCard) with
  * the loop's own facts, and its one action opens the owning service's own page, where the person confirms or changes
@@ -35,10 +34,6 @@ export async function LoopCards({cards,locale}:{cards:readonly LoopCard[];locale
  const [ta,tr]=await Promise.all([getTranslations('today.autonomy'),getTranslations('aiCentre.autonomy.actions.reasons')]);
  const item=(entry:{personName:string|null;date:string|null;reason:string|null})=>[entry.personName??ta('someone'),...(entry.date?[day(locale,entry.date,'short')]:[]),
   ...(entry.reason?[tr(entry.reason)]:[])].join(' · ');
- const autoFix:AutoFixCardCopy={undo:ta('undo'),undoing:ta('undoing'),undone:ta('undone'),error:ta('refused.unavailable'),actionsLabel:ta('actionsLabel'),
-  refused:{not_confirmed:ta('refused.unavailable'),invalid:ta('refused.unavailable'),unavailable:ta('refused.unavailable'),expired:ta('refused.expired'),
-   changed:ta('refused.changed'),access:ta('refused.access'),ask_hr:ta('refused.ask_hr')}};
- const instant=(iso:string)=>new Intl.DateTimeFormat(locale,{dateStyle:'medium',timeStyle:'short',timeZone:'Asia/Kuala_Lumpur'}).format(new Date(iso));
  return <>{cards.map(card=>{
   if(card.kind==='clockOut')return <li key={card.caseId} data-today-loop="clockOut">
    <ClockOutLoopCard caseId={card.caseId} icon={<Clock/>} title={t('clockOutTitle',{time:card.proposedCheckOut,date:day(locale,card.date,'short')})} awaitingLabel={t('awaiting')}
@@ -68,8 +63,8 @@ export async function LoopCards({cards,locale}:{cards:readonly LoopCard[];locale
     href={card.href} cta={t('payrollCta')}/>
   </li>;
   if(card.kind==='autoFixed')return <li key={card.actionId} data-today-loop="autoFixed">
-   <AutoFixLoopCard actionId={card.actionId} icon={<CheckCircle2/>} title={ta('autoFixedTitle',{time:card.checkOut,date:day(locale,card.date,'short')})}
-    meta={[ta('autoFixedRoster'),ta('autoFixedSource',{loop:t('names.loop_missed_clock_outs')}),ta('autoFixedUntil',{date:instant(card.undoUntil)}),ta('autoFixedNote')]} copy={autoFix}/>
+   <ProposalCard tone="finding" icon={<CheckCircle2/>} title={ta('autoFixedTitle',{time:card.checkOut,date:day(locale,card.date,'short')})}
+    meta={[ta('autoFixedRoster'),ta('autoFixedSource',{loop:t('names.loop_missed_clock_outs')}),ta('refused.human_review_required')]} href={`/attendance/my-records/${card.date}${card.employmentId?`?employmentId=${encodeURIComponent(card.employmentId)}`:''}`} cta={ta('reviewCorrection')}/>
   </li>;
   if(card.kind==='movedDown')return <li key={card.changeId} data-today-loop="movedDown">
    <ProposalCard tone="finding" icon={<ArrowDown/>}
@@ -77,16 +72,16 @@ export async function LoopCards({cards,locale}:{cards:readonly LoopCard[];locale
     meta={[ta('movedDownShare',{corrected:card.corrected,applied:card.applied}),
      ...card.corrections.map(item=>ta(item.kind==='undone'?'correctionUndone':'correctionChanged',{name:item.personName??ta('someone'),
       date:item.date?day(locale,item.date,'short'):'—',by:ta(item.by==='hr'?'byHr':'byEmployee')})),
-     ...(card.more>0?[ta('correctionMore',{count:card.more})]:[]),ta('movedDownNote')]}
+     ...(card.more>0?[ta('correctionMore',{count:card.more})]:[]),ta(card.workerId==='loop_missed_clock_outs'?'refused.human_review_required':'movedDownNote')]}
     href={card.href} cta={ta('movedDownCta')}/>
   </li>;
   if(card.kind==='acted')return <li key={`acted:${card.workerId}:${card.companyId}`} data-today-loop="acted">
    <ProposalCard tone="finding" icon={<CheckCircle2/>} title={ta('actedTitle',{loop:t(`names.${card.workerId}`),count:card.count,company:card.companyName??'—'})}
-    meta={[...card.items.map(item),...(card.more>0?[ta('correctionMore',{count:card.more})]:[]),ta('actedNote')]} href={card.href} cta={ta('movedDownCta')}/>
+    meta={[...card.items.map(item),...(card.more>0?[ta('correctionMore',{count:card.more})]:[]),ta(card.workerId==='loop_missed_clock_outs'?'refused.human_review_required':'actedNote')]} href={card.href} cta={ta('movedDownCta')}/>
   </li>;
   if(card.kind==='sample')return <li key={`sample:${card.workerId}:${card.companyId}`} data-today-loop="sample">
    <ProposalCard tone="decide" icon={<ListChecks/>} title={ta('sampleTitle',{loop:t(`names.${card.workerId}`),company:card.companyName??'—'})}
-    meta={[ta('sampleMeta',{size:card.size,total:card.total}),ta('sampleNote')]} href={card.href} cta={ta('sampleCta')}/>
+    meta={[ta('sampleMeta',{size:card.size,total:card.total}),ta(card.workerId==='loop_missed_clock_outs'?'refused.human_review_required':'sampleNote')]} href={card.href} cta={ta('sampleCta')}/>
   </li>;
   if(card.kind==='leftAlone')return <li key={`left:${card.workerId}:${card.companyId}`} data-today-loop="leftAlone">
    <ProposalCard tone="finding" icon={<Clock/>} title={ta('leftAloneTitle',{loop:t(`names.${card.workerId}`),count:card.count,company:card.companyName??'—'})}

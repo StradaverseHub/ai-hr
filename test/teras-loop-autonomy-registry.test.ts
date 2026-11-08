@@ -12,7 +12,7 @@ import {LOOP_IDS,isLoopId} from '../core/loops/types';
 describe('what each loop can do at each level',()=>{
  it('the registry ceiling and automatic step match the cap in code and the steps built, for every loop',()=>{
   expect(Object.fromEntries(LOOP_IDS.map(id=>{const autonomy=registeredWorker(id)!.autonomy!;return [id,[autonomy.ceiling,autonomy.act!==null]];}))).toEqual({
-   loop_probation_ending:[1,false],loop_payroll_inputs:[1,false],loop_missing_employee_data:[3,true],loop_missed_clock_outs:[3,true],loop_document_expiry:[1,false],
+   loop_probation_ending:[1,false],loop_payroll_inputs:[1,false],loop_missing_employee_data:[3,true],loop_missed_clock_outs:[1,false],loop_document_expiry:[1,false],
    // AI v2 P2-2a: the Salary payroll loop (pay) stays at Prepare.
    loop_salary_payroll:[1,false]});
   for(const id of LOOP_IDS){
@@ -39,9 +39,9 @@ describe('what each loop can do at each level',()=>{
  });
  // Wave 1 integration: the Prepare-only cap holds for every loop, the Phase 2 Salary payroll and Audit loops included, in
  // the registry, in code and in the database (migration 0963's two CHECKs list the only loops that may act).
- it('the cap holds for every loop: only missed clock-outs and missing employee data may go above Prepare',()=>{
+ it('the cap holds for every loop: only missing employee data may go above Prepare',()=>{
   const loops=registeredWorkers().filter(worker=>worker.record.kind==='loop_runs');
-  const acting=['loop_missed_clock_outs','loop_missing_employee_data'];
+  const acting=['loop_missing_employee_data'];
   expect(loops.map(worker=>worker.id).sort()).toEqual([...LOOP_IDS,'loop_payroll_audit'].sort());
   for(const worker of loops){
    const capped=!acting.includes(worker.id);
@@ -59,12 +59,15 @@ describe('what each loop can do at each level',()=>{
   for(const category of CAPPED_CATEGORIES)expect(maxLevel('loop_salary_payroll',{categories:[category],ceiling:3,actor:true,criteria:['prepared']}),category).toBe(1);
   // The Audit loop has no level of its own: the level service accepts only a LoopId, so it is refused there.
   expect(isLoopId('loop_payroll_audit')).toBe(false);
-  // The database repeats the cap: both CHECKs of 0963 allow a level above Prepare for exactly the two acting loops.
+  // Original CHECK bytes preserve historical promotions. The appended policy guard/effective owner
+  // narrows new execution without falsifying the former installation's stored records.
   const sql=readFileSync(new URL('../db/migrations/2004_teras_loop_autonomy.sql',import.meta.url),'utf8');
   const allowed=(name:string)=>{const m=new RegExp(`CONSTRAINT ${name} CHECK \\((?:to_)?level<=1 OR worker_id IN \\(([^)]*)\\)\\)`).exec(sql);
    return (m?.[1]??'').split(',').map(value=>value.trim().replace(/'/g,'')).filter(Boolean).sort();};
-  expect(allowed('teras_loop_level_cap')).toEqual([...acting].sort());
-  expect(allowed('teras_loop_level_change_cap')).toEqual([...acting].sort());
+  expect(allowed('teras_loop_level_cap')).toEqual(['loop_missed_clock_outs','loop_missing_employee_data'].sort());
+  expect(allowed('teras_loop_level_change_cap')).toEqual(['loop_missed_clock_outs','loop_missing_employee_data'].sort());
+  const policy=readFileSync(new URL('../db/migrations/3802_attendance_prepare_review_only.sql',import.meta.url),'utf8');
+  expect(policy).toContain("p_worker='loop_missed_clock_outs'");expect(policy).toContain('teras_clock_out_review_only_guard');
  });
  it('only a loop declares an autonomy, and a loop must declare one that fits the contract',()=>{
   for(const worker of registeredWorkers())expect(worker.autonomy!==undefined,worker.id).toBe(worker.record.kind==='loop_runs');

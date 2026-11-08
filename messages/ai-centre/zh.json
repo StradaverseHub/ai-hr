@@ -1036,7 +1036,8 @@
         "unavailable": "无法撤销，请重试。",
         "invalid": "无法理解该请求。",
         "reviewed": "已记录样本审核。",
-        "review_failed": "无法记录审核，请重试。"
+        "review_failed": "无法记录审核，请重试。",
+        "human_review_required": "此历史下班记录需要新的人工审核考勤更正。请查看当天记录；系统未执行自动撤销。"
       },
       "figures": {
         "applied": "{days} 天内的修正",
@@ -1241,7 +1242,10 @@
         "byLoopForEmployeeUnnamed": "AI Centre 循环（{loop}），应员工要求，负责人：{sponsor}",
         "byLoopForHrUnnamed": "AI Centre 循环（{loop}），应 HR 要求，负责人：{sponsor}",
         "madeBy": "由{actor}提交并批准。"
-      }
+      },
+      "clockOutReviewOnly": "漏打下班卡仅保持在准备阶段。请审核已准备的更正，并通过已配置的人工审批流程提交。过去的自动操作仍保留在历史记录中。",
+      "reviewCorrection": "审核更正",
+      "reviewRequiredStatus": "需要人工审核"
     },
     "payrollCycle": {
       "title": "薪资周期：{month}",
@@ -2278,7 +2282,8 @@
         "expired": "撤销期限已过。请联系 HR 更改。",
         "changed": "它已被更改。请打开您的考勤日查看。",
         "access": "您无法撤销此项。",
-        "ask_hr": "目前无法在此撤销。请联系 HR 撤销。"
+        "ask_hr": "目前无法在此撤销。请联系 HR 撤销。",
+        "human_review_required": "此历史下班记录需要新的人工审核考勤更正。请查看当天记录；系统未执行自动撤销。"
       },
       "autoFixedTitle": "{date} 的下班卡已设为 {time}",
       "autoFixedRoster": "您的排班结束时间",
@@ -2303,7 +2308,8 @@
       "sampleNote": "在“执行并审核”级别，HR 审核此样本，而不是每一项操作。",
       "sampleCta": "审核样本",
       "leftAloneTitle": "{loop}在{company}留下 {count, plural, other {# 项}}由当事人处理",
-      "leftAloneNote": "有条件未满足，因此由当事人自行确认。"
+      "leftAloneNote": "有条件未满足，因此由当事人自行确认。",
+      "reviewCorrection": "审核更正"
     }
   },
   "why": {

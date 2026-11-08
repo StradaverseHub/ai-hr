@@ -1,38 +1,18 @@
-/** AI v2 Phase 2 P2-1 — Undo on an automatic loop action, by the employee it concerns or by HR, within its window.
- *
- * Undo is a compensating correction through the owner, recorded as its own row and event, never a delete or an edit of
- * the action (migration 0963 teras_loop_action_undo, append-only, at most one per action):
- *  1. The action is read as the caller under row-level security: the employee reads their own, an administrator those
- *     of employments they administer. It must be applied, not undone yet, and before its deadline.
- *  2. Whose authority compensates: HR's own, for an administrator of the employment undoing someone else's day. For the
- *     employee's own undo, the loop compensates its own action under its sponsor's CURRENT authority, re-read from the
- *     database (the same resolution the runner uses), and records the employee who asked; a sponsor who lost
- *     administrator access cannot, and the employee is told to ask HR.
- *  3. The owner compensates, and THE PERSON'S UNDO IS RECORDED AS THAT PERSON (Phase 2 hardening, 4 November 2026):
- *     - HR's undo is HR's own act under HR's own authority, with no loop attribution: the compensating correction or the
- *       withdrawal is HR's, and so is its event;
- *     - the employee's own undo of a missed clock-out needs an administrator's authority for the compensating correction,
- *       so only that correction carries the loop's attribution naming the employee who asked (core/loops/attribution.ts);
- *       the attribution is then cleared, so nothing else in the transaction is the agent's;
- *     - a withdrawn request has no owner record but its notice event, written as the person who asked.
- *     In the same transaction the undo row (undone by that person) and the `teras-loop.action.undone` event, whose actor
- *     is that person, are written. The database refuses the undo row after the deadline, for an action not applied, or
- *     by anyone who does not administer the employment.
- * The case then reopens on the loop's next run as a card for the person to confirm their own time. Only the person's
- * explicit press undoes (`confirm: true`). Errors are bounded to a refusal code. No model. Never throws. */
+/** Historical loop actions remain readable. Missed-clock-out undo requires a new human review
+ * without an automatic application or recorded undo. The missing-data request loop retains its
+ * existing authorised withdrawal, atomically recorded with its notice and undo receipt. */
 import {and,eq,sql} from 'drizzle-orm';
 import {withTenant,type Grant,type SessionContext} from '../../db/client';
 import {appendEvent} from '../../db/events';
 import {employment} from '../../db/schema';
 import {terasLoopAction,terasLoopActionUndo} from '../../db/teras-autonomy-schema';
 import {isAdmin} from '../../lib/authz-model';
-import {LoopUndoRefused,compensateClockOutTx} from './act-clock-outs';
+import {LoopUndoRefused} from './act-clock-outs';
 import {withdrawRequestTx} from './act-requests';
-import {attributionForTx,clearLoopAttributionTx,setLoopAttributionTx} from './attribution';
 import type {UndoneBy} from './autonomy-types';
 import type {LoopId} from './types';
 
-export type LoopUndoRefusal='not_confirmed'|'invalid'|'unavailable'|'expired'|'changed'|'access'|'ask_hr';
+export type LoopUndoRefusal='not_confirmed'|'invalid'|'unavailable'|'expired'|'changed'|'access'|'ask_hr'|'human_review_required';
 export type LoopUndoResult=Readonly<{kind:'undone';by:UndoneBy}>|Readonly<{kind:'refused';reason:LoopUndoRefusal}>;
 const refused=(reason:LoopUndoRefusal):LoopUndoResult=>Object.freeze({kind:'refused' as const,reason});
 const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -78,6 +58,8 @@ export async function undoLoopAction(supplied:SessionContext,input:Readonly<{act
   if(now.getTime()>seen.undoUntil.getTime())return refused('expired');
   const own=!!ctx.personId&&seen.personId===ctx.personId;
   if(!own&&!seen.admin)return refused('access');
+  // Keep historical records intact; the attendance editor starts a separately authorised human review.
+  if(seen.workerId==='loop_missed_clock_outs')return refused('human_review_required');
   // 2. Whose authority compensates.
   const by:UndoneBy=own?'employee':'hr';
   const authority=own?await currentAuthority(ctx,seen.sponsorUserId):ctx;
@@ -90,17 +72,7 @@ export async function undoLoopAction(supplied:SessionContext,input:Readonly<{act
     .where(and(eq(terasLoopAction.tenantId,ctx.tenantId),eq(terasLoopAction.id,actionId))).limit(1);
    if(!current||current.state!=='applied'||current.undone!==null)throw new LoopUndoRefused('changed');
    let compensationRef:string;
-   if(seen.workerId==='loop_missed_clock_outs'){
-    // Only the employee's own undo borrows the sponsor's authority, so only its correction names the loop (and the
-    // employee who asked); HR's undo is HR's own correction.
-    if(!own)compensationRef=await compensateClockOutTx(tx,authority,{actionId,employmentId:seen.employmentId,facts:current.facts,by});
-    else{
-     await setLoopAttributionTx(tx,await attributionForTx(tx,{workerId:seen.workerId,principalId:seen.agentPrincipalId,actionId,employmentId:seen.employmentId,
-      sponsorUserId:seen.sponsorUserId,askedBy:by,askedByUserId:ctx.userId!}));
-     compensationRef=await compensateClockOutTx(tx,authority,{actionId,employmentId:seen.employmentId,facts:current.facts,by});
-     await clearLoopAttributionTx(tx);
-    }
-   }else compensationRef=await withdrawRequestTx(tx,authority,{actionId,employmentId:seen.employmentId,facts:current.facts,by,askedByUserId:ctx.userId!});
+   compensationRef=await withdrawRequestTx(tx,authority,{actionId,employmentId:seen.employmentId,facts:current.facts,by,askedByUserId:ctx.userId!});
    await tx.insert(terasLoopActionUndo).values({actionId,tenantId:ctx.tenantId,undoneBy:by,undoneByUserId:ctx.userId!,compensationRef});
    await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'teras-loop-action',aggregateId:actionId,eventType:'teras-loop.action.undone',
     actor:{type:'user',id:ctx.userId!},subjectEmploymentId:seen.employmentId,payload:{workerId:seen.workerId,by,compensationRef,date:current.facts.date??null}});

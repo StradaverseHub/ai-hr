@@ -28,7 +28,7 @@ import {DEMOTION_RULE,promotableTo,shouldDemote} from './autonomy';
 import {demoteLoopLevelTx,levelIn,loopLevelsTx} from './levels';
 import {userNameTx} from './attribution';
 import {loopAttribution,type LoopAttribution} from '../../lib/ai-centre/loop-attribution';
-import {CLOCK_OUT_ACT_VERSION,LoopActRefused,applyClockOut,appliedRecordOf,clockOutCandidate,evaluateClockOut,observeClockOuts} from './act-clock-outs';
+import {LoopActRefused} from './act-clock-outs';
 import {REQUEST_ACT_VERSION,applyRequest,evaluateRequest,requestCandidate,requestFacts,sentRecordOf} from './act-requests';
 
 const DAY_MS=86_400_000;
@@ -52,16 +52,6 @@ type Actor=Readonly<{version:string;
  closeFacts:((item:Item,facts:LoopFacts)=>LoopFacts)|null}>;
 
 const ACTORS:Partial<Record<LoopId,Actor>>={
- loop_missed_clock_outs:{version:CLOCK_OUT_ACT_VERSION,
-  candidate:row=>{const data=clockOutCandidate(row);return data?{caseId:data.caseId,employmentId:data.employmentId,data,
-   facts:{date:data.date,checkIn:data.checkIn,checkOut:data.proposedCheckOut}}:null;},
-  evaluate:(sponsor,item,limits)=>evaluateClockOut(sponsor,item.data as Parameters<typeof evaluateClockOut>[1],limits),
-  apply:async(sponsor,p)=>{const result=await applyClockOut(sponsor,{item:p.item.data as Parameters<typeof applyClockOut>[1]['item'],actionId:p.actionId,
-   undoUntil:p.undoUntil,principalId:p.principalId,workerId:p.workerId,attribution:p.attribution,condition:p.limits.condition});
-   return {ownerRef:result.ownerRef,facts:{...p.item.facts,addedPunchId:result.addedPunchId}};},
-  recordOf:async(sponsor,actionId)=>{const record=await appliedRecordOf(sponsor,actionId);return record?{ownerRef:record.ownerRef,at:record.at,facts:{addedPunchId:record.addedPunchId}}:null;},
-  observe:observeClockOuts,
-  closeFacts:(item,facts)=>({...facts,recordedCheckOut:item.facts.checkOut,autoApplied:true})},
  loop_missing_employee_data:{version:REQUEST_ACT_VERSION,
   candidate:row=>{const data=requestCandidate(row);return data?{caseId:data.caseId,employmentId:data.employmentId,data,facts:requestFacts(data)}:null;},
   evaluate:(sponsor,item)=>evaluateRequest(sponsor,item.data as Parameters<typeof evaluateRequest>[1]),

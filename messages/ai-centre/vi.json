@@ -1036,7 +1036,8 @@
         "unavailable": "Không thể hoàn tác. Hãy thử lại.",
         "invalid": "Không hiểu yêu cầu đó.",
         "reviewed": "Đã ghi nhận việc xem xét mẫu.",
-        "review_failed": "Không thể ghi nhận việc xem xét. Hãy thử lại."
+        "review_failed": "Không thể ghi nhận việc xem xét. Hãy thử lại.",
+        "human_review_required": "Bản ghi chấm công ra trước đây cần một yêu cầu chỉnh sửa mới được con người xét duyệt. Hãy xem ngày đó; chưa thực hiện hoàn tác tự động."
       },
       "figures": {
         "applied": "Số lần sửa trong {days} ngày",
@@ -1241,7 +1242,10 @@
         "byLoopForEmployeeUnnamed": "Vòng lặp AI Centre ({loop}), theo yêu cầu của nhân viên, người bảo trợ: {sponsor}",
         "byLoopForHrUnnamed": "Vòng lặp AI Centre ({loop}), theo yêu cầu của HR, người bảo trợ: {sponsor}",
         "madeBy": "Được tạo và duyệt bởi {actor}."
-      }
+      },
+      "clockOutReviewOnly": "Các lần thiếu chấm công ra chỉ ở mức Chuẩn bị. Hãy xem bản chỉnh sửa đã chuẩn bị và gửi qua quy trình phê duyệt của con người đã cấu hình. Các thao tác tự động trước đây vẫn được lưu trong lịch sử.",
+      "reviewCorrection": "Xem chỉnh sửa",
+      "reviewRequiredStatus": "Cần con người xét duyệt"
     },
     "payrollCycle": {
       "title": "Chu kỳ lương: {month}",
@@ -2278,7 +2282,8 @@
         "expired": "Thời hạn hoàn tác đã hết. Hãy nhờ HR thay đổi.",
         "changed": "Nó đã thay đổi. Hãy mở ngày chấm công của bạn để kiểm tra.",
         "access": "Bạn không thể hoàn tác mục này.",
-        "ask_hr": "Hiện không thể hoàn tác từ đây. Hãy nhờ HR hoàn tác."
+        "ask_hr": "Hiện không thể hoàn tác từ đây. Hãy nhờ HR hoàn tác.",
+        "human_review_required": "Bản ghi chấm công ra trước đây cần một yêu cầu chỉnh sửa mới được con người xét duyệt. Hãy xem ngày đó; chưa thực hiện hoàn tác tự động."
       },
       "autoFixedTitle": "Giờ ra được đặt thành {time} cho {date}",
       "autoFixedRoster": "Giờ kết thúc ca của bạn",
@@ -2303,7 +2308,8 @@
       "sampleNote": "Ở cấp Thực hiện và kiểm tra, HR xem xét mẫu này thay vì từng hành động.",
       "sampleCta": "Xem xét mẫu",
       "leftAloneTitle": "{loop} để lại {count, plural, other {# mục}} cho mọi người tại {company}",
-      "leftAloneNote": "Một điều kiện không đạt, nên người đó tự xác nhận."
+      "leftAloneNote": "Một điều kiện không đạt, nên người đó tự xác nhận.",
+      "reviewCorrection": "Xem chỉnh sửa"
     }
   },
   "why": {

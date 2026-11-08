@@ -19,7 +19,7 @@ const BADGE = 'rounded-full border border-border px-2.5 py-1 text-xs font-medium
 const percent = (value: number) => `${(Math.round(value * 1000) / 10).toString()}%`;
 const isDate = (value: unknown): value is string => typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value);
 
-export const AUTONOMY_NOTICES = ['undone', 'expired', 'changed', 'access', 'ask_hr', 'unavailable', 'invalid', 'reviewed', 'review_failed'] as const;
+export const AUTONOMY_NOTICES = ['undone', 'expired', 'changed', 'access', 'ask_hr', 'unavailable', 'invalid', 'reviewed', 'review_failed', 'human_review_required'] as const;
 export type AutonomyNotice = (typeof AUTONOMY_NOTICES)[number];
 
 /** The header badges: each level the loop stands at, with the companies there ("Act within limits · A, B"). */
@@ -40,7 +40,7 @@ export async function LoopLevelBadges({ autonomy }: { autonomy: LoopAutonomyDeta
 
 /** The action figures over the window, once the loop has acted at least once. */
 export async function LoopAutonomyFigures({ autonomy }: { autonomy: LoopAutonomyDetail }) {
-  if (!autonomy.hasActor || (autonomy.figures.applied === 0 && !autonomy.companies.some(item => item.level >= 2))) return null;
+  if ((!autonomy.hasActor && autonomy.figures.applied===0) || (autonomy.figures.applied === 0 && !autonomy.companies.some(item => item.level >= 2))) return null;
   const t = await getTranslations('aiCentre.autonomy');
   const tile = (label: string, value: string) => (
     <div className="min-w-0 rounded-xl border border-border bg-card p-4">
@@ -61,7 +61,7 @@ export async function LoopLevelsCard({ autonomy, loop, notice }: { autonomy: Loo
   const [t, f] = await Promise.all([getTranslations('aiCentre.autonomy'), getFormatter()]);
   const day = (date: Date) => f.dateTime(date, { dateStyle: 'medium', timeZone: 'Asia/Kuala_Lumpur' });
   const capped = touchesCapped(LOOP_AUTONOMY[loop].categories);
-  const help = autonomy.promotableTo > 1 ? t('companiesHelp') : capped ? t('capped') : autonomy.maxLevel > 1 ? t('noActor') : t('stayPrepare');
+  const help = loop==='loop_missed_clock_outs' ? t('clockOutReviewOnly') : autonomy.promotableTo > 1 ? t('companiesHelp') : capped ? t('capped') : autonomy.maxLevel > 1 ? t('noActor') : t('stayPrepare');
   const good = notice === 'undone' || notice === 'reviewed';
   return (
     <Card className="overflow-hidden">
@@ -96,7 +96,7 @@ export async function LoopLevelsCard({ autonomy, loop, notice }: { autonomy: Loo
 type Translator = (key: string, values?: Record<string, string | number>) => string;
 const wrap = (t: (key: never, values?: never) => string): Translator => (key, values) => t(key as never, values as never);
 /** What one action did and where it stands, from its own record. */
-function describe(t: Translator, requests: boolean, day: (iso: string) => string, when: (date: Date) => string, item: AutonomyActionView) {
+function describe(t: Translator, requests: boolean, day: (iso: string) => string, when: (date: Date) => string, item: AutonomyActionView, reviewOnly=false) {
   const date = isDate(item.facts.date) ? day(item.facts.date) : '—';
   const time = typeof item.facts.checkOut === 'string' ? item.facts.checkOut : '—';
   const count = typeof item.facts.gaps === 'number' ? item.facts.gaps : 0;
@@ -106,6 +106,7 @@ function describe(t: Translator, requests: boolean, day: (iso: string) => string
   const status = item.undo ? t(requests ? (item.undo.by === 'employee' ? 'actions.status.withdrawnEmployee' : 'actions.status.withdrawnHr')
       : item.undo.by === 'employee' ? 'actions.status.undoneEmployee' : 'actions.status.undoneHr')
     : item.peopleChanged ? t('actions.status.changed')
+    : reviewOnly&&(item.state==='applied'||item.state==='applying') ? t('reviewRequiredStatus')
     : item.state === 'applied' ? (item.undoUntil.getTime() > Date.now() ? t(requests ? 'actions.status.sentOpen' : 'actions.status.fixed', { date: when(item.undoUntil) })
       : t(requests ? 'actions.status.sentClosed' : 'actions.status.fixedClosed'))
     : item.state === 'applying' ? t('actions.status.applying') : t('actions.status.toPerson');
@@ -124,14 +125,14 @@ function ActionsTable({ t, requests, loop, actions, day, when, label }: { t: Tra
             {key === 'action' ? <span className="sr-only">{t('actions.columns.action')}</span> : t(`actions.columns.${key}`)}</th>)}</tr></thead>
         <tbody className="divide-y divide-border">
           {actions.map(item => {
-            const { what, status } = describe(t, requests, day, when, item);
+            const { what, status } = describe(t, requests, day, when, item, loop==='loop_missed_clock_outs');
             return (
               <tr key={item.id} data-loop-action={item.undo ? 'undone' : item.state}>
                 <td className="px-4 py-3 tabular-nums">{when(item.at)}</td>
                 <td className="px-4 py-3">{item.personName ?? '—'}{item.companyName && <span className="block text-xs text-muted-foreground">{item.companyName}</span>}</td>
                 <td className="px-4 py-3">{what}</td>
                 <td className="px-4 py-3">{status}</td>
-                <td className="px-4 py-3 text-right">{item.canUndo && (
+                <td className="px-4 py-3 text-right">{item.reviewHref && <Link href={item.reviewHref} className={cn(btnGhost,TARGET)}>{t('reviewCorrection')}</Link>}{loop!=='loop_missed_clock_outs'&&item.canUndo && (
                   <form action={undoLoopActionFromDetailAction}>
                     <input type="hidden" name="loop" value={loop} /><input type="hidden" name="action" value={item.id} />
                     <ActionButton type="submit" className={cn(btnGhost, TARGET)} aria-label={`${undo} · ${item.personName ?? what}`}>{undo}</ActionButton>
@@ -148,7 +149,7 @@ function ActionsTable({ t, requests, loop, actions, day, when, label }: { t: Tra
 
 /** Recent automatic actions, each with Undo while its window is open and the viewer administers the employment. */
 export async function LoopActionsCard({ autonomy, loop }: { autonomy: LoopAutonomyDetail; loop: LoopId }) {
-  if (!autonomy.hasActor) return null;
+  if (!autonomy.hasActor && autonomy.actions.length===0) return null;
   const [t, f] = await Promise.all([getTranslations('aiCentre.autonomy'), getFormatter()]);
   const when = (date: Date) => f.dateTime(date, { dateStyle: 'medium', timeStyle: 'short', timeZone: 'Asia/Kuala_Lumpur' });
   const day = (iso: string) => f.dateTime(new Date(`${iso}T00:00:00Z`), { dateStyle: 'medium', timeZone: 'UTC' });

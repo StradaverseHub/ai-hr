@@ -1036,7 +1036,8 @@
         "unavailable": "It could not be undone. Try again.",
         "invalid": "That request was not understood.",
         "reviewed": "Sample review recorded.",
-        "review_failed": "The review could not be recorded. Try again."
+        "review_failed": "The review could not be recorded. Try again.",
+        "human_review_required": "This historical clock-out needs a new human-reviewed attendance correction. Review the day; no automatic undo has been made."
       },
       "figures": {
         "applied": "Fixes in {days} days",
@@ -1241,7 +1242,10 @@
         "byLoopForEmployeeUnnamed": "AI Centre loop ({loop}), at the employee’s request, sponsored by {sponsor}",
         "byLoopForHrUnnamed": "AI Centre loop ({loop}), at HR’s request, sponsored by {sponsor}",
         "madeBy": "Made and approved by the {actor}."
-      }
+      },
+      "clockOutReviewOnly": "Missed clock-outs stay at Prepare. Review the prepared correction and submit it through the configured human approval workflow. Existing automatic actions remain in history.",
+      "reviewCorrection": "Review correction",
+      "reviewRequiredStatus": "Human review required"
     },
     "payrollCycle": {
       "title": "Payroll cycle: {month}",
@@ -2278,7 +2282,8 @@
         "expired": "The undo window has closed. Ask HR to change it.",
         "changed": "It has already changed. Open your attendance day to check it.",
         "access": "You cannot undo this.",
-        "ask_hr": "It cannot be undone from here now. Ask HR to undo it."
+        "ask_hr": "It cannot be undone from here now. Ask HR to undo it.",
+        "human_review_required": "This historical clock-out needs a new human-reviewed attendance correction. Review the day; no automatic undo has been made."
       },
       "autoFixedTitle": "Clock-out set to {time} for {date}",
       "autoFixedRoster": "Your roster end",
@@ -2303,7 +2308,8 @@
       "sampleNote": "At Act and audit, HR reviews this sample instead of every action.",
       "sampleCta": "Review the sample",
       "leftAloneTitle": "{loop} left {count, plural, one {# item} other {# items}} for people in {company}",
-      "leftAloneNote": "A condition did not hold, so the person confirms it themselves."
+      "leftAloneNote": "A condition did not hold, so the person confirms it themselves.",
+      "reviewCorrection": "Review correction"
     }
   },
   "why": {

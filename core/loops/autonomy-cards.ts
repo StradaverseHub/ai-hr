@@ -25,7 +25,7 @@ const DAY_MS=86_400_000,MOVED_DOWN_DAYS=7,CORRECTIONS_SHOWN=5,LEFT_ALONE_DAYS=7;
 export type MovedDownCorrection=Readonly<{personName:string|null;date:string|null;kind:'undone'|'changed';by:UndoneBy|null}>;
 export type AutonomyCardItem=Readonly<{personName:string|null;date:string|null;reason:LoopActionReason|null}>;
 export type AutonomyCard=
- |Readonly<{kind:'autoFixed';actionId:string;date:string;checkOut:string;undoUntil:string}>
+ |Readonly<{kind:'autoFixed';actionId:string;date:string;checkOut:string;undoUntil:string;employmentId?:string}>
  |Readonly<{kind:'movedDown';changeId:string;workerId:LoopId;companyName:string|null;at:string;applied:number;corrected:number;
   corrections:readonly MovedDownCorrection[];more:number;href:string}>
  |Readonly<{kind:'acted';workerId:LoopId;companyId:string;companyName:string|null;count:number;items:readonly AutonomyCardItem[];more:number;href:string}>
@@ -42,7 +42,7 @@ export async function readAutonomyCardsTx(tx:Tx,ctx:SessionContext,p:Readonly<{s
  const now=p.now??new Date(),cards:AutonomyCard[]=[];
  // The employee's own: open undo windows on their own days.
  if(ctx.personId){
-  const own=await tx.select({id:terasLoopAction.id,facts:terasLoopAction.facts,undoUntil:terasLoopAction.undoUntil}).from(terasLoopAction)
+  const own=await tx.select({id:terasLoopAction.id,facts:terasLoopAction.facts,employmentId:terasLoopAction.employmentId,undoUntil:terasLoopAction.undoUntil}).from(terasLoopAction)
    .innerJoin(employment,eq(employment.id,terasLoopAction.employmentId))
    .leftJoin(terasLoopActionUndo,eq(terasLoopActionUndo.actionId,terasLoopAction.id))
    .where(and(eq(terasLoopAction.tenantId,ctx.tenantId),eq(terasLoopAction.workerId,'loop_missed_clock_outs'),eq(terasLoopAction.state,'applied'),
@@ -50,7 +50,7 @@ export async function readAutonomyCardsTx(tx:Tx,ctx:SessionContext,p:Readonly<{s
    .orderBy(desc(terasLoopAction.createdAt)).limit(5);
   for(const row of own){
    const {date,checkOut}=row.facts;
-   if(isDate(date)&&isClock(checkOut))cards.push(Object.freeze({kind:'autoFixed' as const,actionId:row.id,date,checkOut,undoUntil:row.undoUntil.toISOString()}));
+   if(isDate(date)&&isClock(checkOut))cards.push(Object.freeze({kind:'autoFixed' as const,actionId:row.id,date,checkOut,employmentId:row.employmentId,undoUntil:row.undoUntil.toISOString()}));
   }
  }
  // Administrators: loops that moved themselves down in a company in scope.

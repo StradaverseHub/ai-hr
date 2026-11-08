@@ -415,9 +415,7 @@ export const AGENT_LOOP_LEVELS=Object.freeze({
  loop_missing_employee_data:{0:WATCH,1:'Prepares a request card for the employee to fill in their own missing details',
   2:'Sends the employee the request itself, within the company\'s nightly limit; changes no record; HR can withdraw it within the undo window',
   3:'As Level 2; HR reviews a weekly sample of at least 10% and at least 5 requests instead of every one'},
- loop_missed_clock_outs:{0:WATCH,1:'Prepares a correction card for the employee, who confirms or changes the time',
-  2:'Sets the clock-out to the roster end through the attendance owner when the chosen condition holds, within the nightly limit; tells the employee; never creates overtime; undone by the employee or HR within the window',
-  3:'As Level 2; HR reviews a weekly sample of at least 10% and at least 5 fixes instead of every one'},
+ loop_missed_clock_outs:{0:WATCH,1:'Prepares a correction card for the employee; an authorised human approval workflow decides every correction'},
  loop_document_expiry:{0:WATCH,1:'Prepares a Today card for HR and a reminder card for the employee to renew the passport'},
  // AI v2 P2-2a and P2-2b: pay and statutory filing, so Prepare at most in every company.
  loop_salary_payroll:{0:WATCH,1:'Prepares each payroll run\'s checks for payroll HR (exceptions, net swing, rule versions, bank file against net pay); a person runs, approves and closes payroll'},

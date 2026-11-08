@@ -1036,7 +1036,8 @@
         "unavailable": "Ia tidak dapat dibuat asal. Cuba lagi.",
         "invalid": "Permintaan itu tidak difahami.",
         "reviewed": "Semakan sampel direkodkan.",
-        "review_failed": "Semakan tidak dapat direkodkan. Cuba lagi."
+        "review_failed": "Semakan tidak dapat direkodkan. Cuba lagi.",
+        "human_review_required": "Rekod keluar terdahulu ini memerlukan pembetulan kehadiran baharu yang disemak manusia. Semak hari tersebut; tiada pembatalan automatik dibuat."
       },
       "figures": {
         "applied": "Pembetulan dalam {days} hari",
@@ -1241,7 +1242,10 @@
         "byLoopForEmployeeUnnamed": "Gelung AI Centre ({loop}), atas permintaan pekerja, ditaja oleh {sponsor}",
         "byLoopForHrUnnamed": "Gelung AI Centre ({loop}), atas permintaan HR, ditaja oleh {sponsor}",
         "madeBy": "Dibuat dan diluluskan oleh {actor}."
-      }
+      },
+      "clockOutReviewOnly": "Rekod keluar yang tertinggal kekal pada peringkat Persediaan. Semak pembetulan yang disediakan dan hantar melalui aliran kelulusan manusia yang dikonfigurasi. Tindakan automatik terdahulu kekal dalam sejarah.",
+      "reviewCorrection": "Semak pembetulan",
+      "reviewRequiredStatus": "Semakan manusia diperlukan"
     },
     "payrollCycle": {
       "title": "Kitaran gaji: {month}",
@@ -2278,7 +2282,8 @@
         "expired": "Tempoh buat asal telah tamat. Minta HR mengubahnya.",
         "changed": "Ia telah berubah. Buka hari kehadiran anda untuk menyemaknya.",
         "access": "Anda tidak boleh membuat asal ini.",
-        "ask_hr": "Ia tidak boleh dibuat asal dari sini sekarang. Minta HR membuat asal."
+        "ask_hr": "Ia tidak boleh dibuat asal dari sini sekarang. Minta HR membuat asal.",
+        "human_review_required": "Rekod keluar terdahulu ini memerlukan pembetulan kehadiran baharu yang disemak manusia. Semak hari tersebut; tiada pembatalan automatik dibuat."
       },
       "autoFixedTitle": "Rekod keluar ditetapkan kepada {time} untuk {date}",
       "autoFixedRoster": "Tamat jadual tugas anda",
@@ -2303,7 +2308,8 @@
       "sampleNote": "Pada tahap Bertindak dan diaudit, HR menyemak sampel ini dan bukannya setiap tindakan.",
       "sampleCta": "Semak sampel",
       "leftAloneTitle": "{loop} meninggalkan {count, plural, one {# perkara} other {# perkara}} untuk orang di {company}",
-      "leftAloneNote": "Satu syarat tidak dipenuhi, jadi orang itu mengesahkannya sendiri."
+      "leftAloneNote": "Satu syarat tidak dipenuhi, jadi orang itu mengesahkannya sendiri.",
+      "reviewCorrection": "Semak pembetulan"
     }
   },
   "why": {

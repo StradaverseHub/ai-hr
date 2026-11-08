@@ -210,7 +210,7 @@ const DECLARATIONS:readonly WorkerDeclaration[]=[
   owners:['core/loops/missed-clock-outs.ts#detectMissedClockOuts','packs/attendance/service.ts#attendanceForEmploymentsRange'],
   trigger:LOOP_NIGHTLY,readScope:['attendance_request','absence'],effect:'prepare',
   authority:{kind:'tenant_switch',actsAs:'agent_principal'},switch:{kind:'worker_control',workerId:'loop_missed_clock_outs'},stop:{honoured:true},
-  record:{kind:'loop_runs'},metrics:{kind:'loop_cases',proposesValue:true},sponsor:{kind:'switched_on_by'},autonomy:{ceiling:3,act:{does:'Sets a missed clock-out to the roster end through the attendance owner, only when the chosen condition holds; never creates overtime',owner:'packs/attendance/service.ts#requestAttendanceCorrection',undo:'A compensating correction through the attendance owner, by the employee or HR'}}},
+  record:{kind:'loop_runs'},metrics:{kind:'loop_cases',proposesValue:true},sponsor:{kind:'switched_on_by'},autonomy:{ceiling:1,act:null}},
  {id:'loop_document_expiry',label:'Passports expiring',family:'preparer',
   owners:['core/loops/document-expiry.ts#detectDocumentExpiry','core/automatic-followups.ts#followupItemsTx'],
   trigger:LOOP_NIGHTLY,readScope:['followup_item'],effect:'prepare',

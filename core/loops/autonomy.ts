@@ -5,12 +5,11 @@
  *    at Prepare in every company, whatever its declaration or configuration says: maxLevel() computes the ceiling from
  *    the categories, never from a stored value, and the declarations are frozen at load. Migration 0963 repeats the
  *    cap in the database (teras_loop_level_cap), so a direct write cannot raise it either.
- *  - Of the five Phase 1 loops only missed clock-outs and missing employee data may stand above Prepare. Probation
+ *  - Missed clock-outs require human approval (owner, 9 November 2026); only missing employee data may stand above Prepare. Probation
  *    (employment status), payroll inputs (pay) and passports (owner decision) stay at Prepare, and so do the Phase 2
  *    Salary payroll loop (pay) and the payroll Audit loop (pay and statutory filing; not a LoopId, capped in 0963).
- *  - A loop moves above Prepare only if it has an automatic step built in code (`actor`): missed clock-outs sets the
- *    clock-out to the roster end through the attendance owner (core/loops/act-clock-outs.ts); missing employee data sends
- *    the request to the employee itself and changes no record (core/loops/act-requests.ts).
+ *  - Missing employee data may send the employee a request; it changes no employee record. Missed clock-outs
+ *    stay at Prepare: the employee submits a correction and configured human approvers decide it.
  *  - Level 3 (Act and audit) acts exactly as Level 2; instead of every action showing in HR's feed, HR reviews a weekly
  *    sample of at least 10% and at least 5 actions (core/loops/samples.ts). The employee is still told; undo and
  *    demotion are unchanged.
@@ -49,7 +48,7 @@ const DECLARATIONS:Record<LoopId,AutonomyDeclaration>={
  loop_payroll_inputs:{categories:['pay'],ceiling:1,actor:false,criteria:['prepared','rule_broken','days_at_level']},
  // The request to the employee would be sent automatically, never the change itself (owner, 3 November 2026).
  loop_missing_employee_data:{categories:['employee_record_request'],ceiling:3,actor:true,criteria:['prepared','rule_broken','days_at_level']},
- loop_missed_clock_outs:{categories:['attendance'],ceiling:3,actor:true,criteria:['prepared','changed','rule_broken','days_at_level']},
+ loop_missed_clock_outs:{categories:['attendance'],ceiling:1,actor:false,criteria:['prepared','changed','rule_broken','days_at_level']},
  // Passports stay at Prepare (owner, 3 November 2026).
  loop_document_expiry:{categories:['identity_document'],ceiling:1,actor:false,criteria:['prepared','rule_broken','days_at_level']},
  // AI v2 P2-2a: the Salary payroll loop is pay; it stays at Prepare in every company (owner decision 2: a person runs,
@@ -75,7 +74,7 @@ export const noticeAllowed=(id:LoopId)=>{const notice=LOOP_NOTICES[id];return !!
 
 /** The highest level a loop may ever reach, from its declaration. A capped category always gives Prepare. */
 export function maxLevel(id:LoopId,declaration:AutonomyDeclaration=LOOP_AUTONOMY[id]):AutonomyLevel{
- if(!declaration||touchesCapped(declaration.categories))return 1;
+ if(id==='loop_missed_clock_outs'||!declaration||touchesCapped(declaration.categories))return 1;
  const ceiling=Math.min(Math.max(0,Math.trunc(declaration.ceiling)),3) as AutonomyLevel;
  return ceiling<1?1:ceiling;
 }

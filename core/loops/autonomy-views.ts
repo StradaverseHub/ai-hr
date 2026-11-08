@@ -34,7 +34,7 @@ export type AutonomyCompany=Readonly<{companyId:string;companyName:string;level:
 export type AutonomySample=Readonly<{companyId:string;companyName:string;weekStart:string;total:number;actions:readonly AutonomyActionView[];
  reviewed:Readonly<{byName:string|null;at:Date;covered:number}>|null;canReview:boolean}>;
 export type AutonomyActionView=Readonly<{id:string;at:Date;personName:string|null;companyName:string|null;state:LoopActionState;reason:LoopActionReason|null;
- facts:LoopActionFacts;undoUntil:Date;undo:Readonly<{by:UndoneBy;at:Date}>|null;peopleChanged:boolean;canUndo:boolean}>;
+ facts:LoopActionFacts;undoUntil:Date;undo:Readonly<{by:UndoneBy;at:Date}>|null;peopleChanged:boolean;canUndo:boolean;reviewHref?:string}>;
 export type AutonomyFigures=Readonly<{applied:number;corrected:number;undoneByEmployee:number;correctedShare:number|null}>;
 export type LoopAutonomyDetail=Readonly<{workerId:LoopId;maxLevel:AutonomyLevel;promotableTo:AutonomyLevel;capped:boolean;hasActor:boolean;canChange:boolean;
  usesCondition:boolean;siteExitRecorded:boolean;windowDays:number;companies:readonly AutonomyCompany[];actions:readonly AutonomyActionView[];figures:AutonomyFigures;
@@ -57,7 +57,7 @@ export async function loopAutonomyDetail(ctx:SessionContext,workerId:unknown,opt
   const changes=await latestLevelChangesTx(tx,ctx.tenantId,workerId,companies.map(item=>item.id));
   const names=await namesTx(tx,[...new Set([...levels.values()].flatMap(row=>[row.changedByUserId,row.conditionSetByUserId].filter((id):id is string=>!!id)))]);
   const select=()=>tx.select({id:terasLoopAction.id,at:terasLoopAction.createdAt,personName:person.fullName,personId:employment.personId,companyName:company.legalName,
-   state:terasLoopAction.state,reason:terasLoopAction.reason,facts:terasLoopAction.facts,undoUntil:terasLoopAction.undoUntil,peopleChangedAt:terasLoopAction.peopleChangedAt,
+   state:terasLoopAction.state,reason:terasLoopAction.reason,facts:terasLoopAction.facts,employmentId:terasLoopAction.employmentId,undoUntil:terasLoopAction.undoUntil,peopleChangedAt:terasLoopAction.peopleChangedAt,
    undoneBy:terasLoopActionUndo.undoneBy,undoneAt:terasLoopActionUndo.undoneAt,admin:sql<boolean>`app.can_admin_employment(${terasLoopAction.employmentId})`})
    .from(terasLoopAction).leftJoin(terasLoopActionUndo,eq(terasLoopActionUndo.actionId,terasLoopAction.id))
    .leftJoin(employment,eq(employment.id,terasLoopAction.employmentId)).leftJoin(person,eq(person.id,employment.personId))
@@ -72,7 +72,8 @@ export async function loopAutonomyDetail(ctx:SessionContext,workerId:unknown,opt
    const undo=row.undoneBy&&row.undoneAt?Object.freeze({by:row.undoneBy,at:row.undoneAt}):null;
    return Object.freeze({id:row.id,at:row.at,personName:row.personName??null,companyName:row.companyName??null,state:row.state,reason:row.reason??null,facts:row.facts,
     undoUntil:row.undoUntil,undo,peopleChanged:row.peopleChangedAt!==null,
-    canUndo:row.state==='applied'&&!undo&&now.getTime()<=row.undoUntil.getTime()&&row.admin===true&&!own});
+    ...(workerId==='loop_missed_clock_outs'&&row.admin===true&&typeof row.facts.date==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(row.facts.date)?{reviewHref:`/attendance/individual/${row.facts.date}?emp=${encodeURIComponent(row.employmentId)}`} : {}),
+    canUndo:workerId!=='loop_missed_clock_outs'&&row.state==='applied'&&!undo&&now.getTime()<=row.undoUntil.getTime()&&row.admin===true&&!own});
   };
   // Level 3: each company's weekly sample, for HR to review instead of every action.
   const weekStart=currentWeekStart(now),samples:AutonomySample[]=[];

@@ -42,7 +42,7 @@ export default async function PromoteLoopPage({ params, searchParams }: { params
   const cert = view.certificate, loopHref = `/control-tower/loops/${encodeURIComponent(id)}`;
   const title = target === null ? t('promote.titleAt', { loop: t(`inSentence.${id}`), level: levelName(level), company: view.companyName })
     : t(`promote.titleTo.${levelKey(target)}`, { loop: t(`inSentence.${id}`), company: view.companyName });
-  const intro = target === null ? (view.capped ? t('capped') : view.maxLevel > 1 && !view.hasActor ? t('noActor') : view.maxLevel > 1 ? t('promote.top') : t('stayPrepare'))
+  const intro = id==='loop_missed_clock_outs' ? t('clockOutReviewOnly') : target === null ? (view.capped ? t('capped') : view.maxLevel > 1 && !view.hasActor ? t('noActor') : view.maxLevel > 1 ? t('promote.top') : t('stayPrepare'))
     : t(`promote.intro.${levelKey(target)}`);
   /** What a sample card was about, from its own facts, as the loop's page says it. */
   const what = (item: PromotionSample) => {
