@@ -47,7 +47,7 @@ function replayMembers(mode:'baseline'|'oid-shift'){
  const replayOwners=Object.fromEntries(Object.entries(replayOwnerPaths).map(([name,path])=>[name,record(path,'fixed replay '+name)]));
  const source={...frame,journal:record('db/migrations/meta/_journal.json',JSON.stringify({version:'7',dialect:'postgresql',entries:[entry]})),migrations:[{...entry,position:0,...record('db/migrations/0000_fixed_fixture.sql','select true;')}],unlistedSql:[],unlistedSqlDisposition:'SOURCE_ONLY_NOT_IN_JOURNAL_NOT_CLAIMED_APPLIED',prerequisites,replayOwners};
  const roles={roles:['ai_hr_app','ai_hr_draft_discard_port','ai_hr_owner'].map((name,index)=>({oid:index+1,name,login:name!=='ai_hr_draft_discard_port',inherit:true,super:false,createDb:false,createRole:false,replication:false,bypassRls:false,connectionLimit:-1,validUntil:null})),edges:[{role:'ai_hr_app',member:'ai_hr_draft_discard_port',grantor:'postgres',inherit:true,set:false,admin:false},{role:'ai_hr_draft_discard_port',member:'ai_hr_owner',grantor:'postgres',inherit:false,set:true,admin:false}]};
- const session={postmasterStart:'2026-11-08T00:00:00.123456Z',version:160015,versionText:'PostgreSQL 16.15 fixed comparison model',isolation:'repeatable read',readOnly:'on'};
+ const session={database:'ai_hr_test_w1',pid:125,backendStart:'2026-11-08 00:00:03.123456+00',postmasterStart:'2026-11-08T00:00:00.123456Z',snapshot:'100:100:',version:160015,versionText:'PostgreSQL 16.15 fixed comparison model',session:'postgres',current:'postgres',loopback:true,isolation:'repeatable read',readOnly:'on',statement:'20s',lock:'300ms',encoding:'UTF8',clientEncoding:'UTF8',searchPath:'pg_catalog',application:'aihr-canonical-inventory'};
  const binding={mode:FULL_CI_ROLE_MODE,candidate:frame.source,controller:frame.controller,runId:frame.run,attempt:frame.attempt,unit:frame.unit,offset:0,planFingerprint:frame.planFingerprint,batchSize:DB_BATCH_FILES,batchFiles:[mode==='baseline'?'test/notification-final-catalogue-baseline.test.ts':'test/notification-final-catalogue-oid-shift.test.ts']};
  const sources={helperSha256:prerequisites.helper.sha256,wrapperSha256:prerequisites.wrapper.sha256,orchestrationSha256:prerequisites.orchestration.sha256},replaySources={ownerSha256:replayOwners.owner.sha256,contractSha256:replayOwners.contract.sha256};
  const facts={objects:[{oid:20000}],dependencies:[{objid:20000}],shared:[]};
@@ -79,4 +79,33 @@ it('refuses corrupt/truncated/duplicate-key members, source and receipt drift ev
  report.complete=false;expect(()=>compareCanonicalReplayMembers(a,{...b,report:Buffer.from(nativeInventoryCanonical(report)+'\n')},expected)).toThrow();
  expect(()=>compareCanonicalReplayMembers(a,b,{...expected,candidate:'f'.repeat(40)})).toThrow();
  const duplicate=Buffer.from(b.raw.toString().replace('{','{"variation":"forged",'));expect(()=>compareCanonicalReplayMembers(a,{...b,raw:duplicate},expected)).toThrow();
+});
+
+it('refuses coherently rewritten native roles and closed session fields after every raw/report member digest is updated',()=>{
+ const a=replayMembers('baseline'),expected={candidate:'a'.repeat(40),controller:'b'.repeat(40)};
+ const rewrite=(change:(raw:Record<string,unknown>)=>void)=>{
+  const b=replayMembers('oid-shift'),raw:Record<string,unknown>=JSON.parse(b.raw.toString()),report:Record<string,unknown>=JSON.parse(b.report.toString());
+  change(raw);const bytes=Buffer.from(nativeInventoryCanonical(raw)+'\n');
+  for(const key of ['session','roles','ledger'])report[key]=raw[key];
+  const members=report.members;if(!Array.isArray(members))throw Error('Actual report members required');
+  report.members=members.map((member:Record<string,unknown>)=>member.file==='notification-canonical-raw.json'?{...member,bytes:bytes.length,sha256:hash(bytes)}:member);
+  return{...b,raw:bytes,report:Buffer.from(nativeInventoryCanonical(report)+'\n')};
+ };
+ for(const roles of [{roles:[],edges:[]},{roles:[],edges:[{role:'invented',member:'foreign'}]}]){
+  expect(()=>compareCanonicalReplayMembers(a,rewrite(raw=>{raw.roles=roles;}),expected)).toThrow('Captured native roles differ');
+ }
+ expect(()=>compareCanonicalReplayMembers(a,rewrite(raw=>{
+  const roles=raw.roles;if(!roles||typeof roles!=='object'||Array.isArray(roles))throw Error('Complete native roles required');
+  const list=Reflect.get(roles,'roles');if(!Array.isArray(list))throw Error('Actual native role rows required');
+  raw.roles={...roles,roles:list.map((role:Record<string,unknown>,index)=>index?role:{...role,bypassRls:true})};
+ }),expected)).toThrow('Captured native roles differ');
+ const changes:Record<string,unknown>[]=[{session:'ai_hr_app'},{current:'ai_hr_owner'},{loopback:false},{isolation:'read committed'},{readOnly:'off'},{statement:'0'},{lock:'20s'},{encoding:'LATIN1'},{clientEncoding:'LATIN1'},{searchPath:'public'},{application:'other'},{pid:0},{backendStart:1},{snapshot:1},{extra:true},{version:160016},{versionText:'PostgreSQL 16.16 changed'}];
+ for(const change of changes)expect(()=>compareCanonicalReplayMembers(a,rewrite(raw=>{
+  const session=raw.session;if(!session||typeof session!=='object'||Array.isArray(session))throw Error('Complete native session required');raw.session={...session,...change};
+ }),expected)).toThrow();
+ for(const field of ['database','pid','backendStart','postmasterStart','snapshot','version','versionText','session','current','loopback','isolation','readOnly','statement','lock','encoding','clientEncoding','searchPath','application']){
+  expect(()=>compareCanonicalReplayMembers(a,rewrite(raw=>{
+   const session=raw.session;if(!session||typeof session!=='object'||Array.isArray(session))throw Error('Complete native session required');const changed={...session};Reflect.deleteProperty(changed,field);raw.session=changed;
+  }),expected)).toThrow();
+ }
 });

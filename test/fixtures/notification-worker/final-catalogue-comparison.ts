@@ -8,6 +8,8 @@ import {inventoryHash,assertInventoryLedger,replayOwnerPaths} from './canonical-
 import {validateFullCiRoleReceipt} from '../../../.github/ci/run-unit.mjs';
 import {DB_BATCH_FILES} from '../../../.github/ci/manifest.mjs';
 import {FULL_CI_ROLE_MODE,FULL_CI_ROLE_SOURCE,fullCiRoleReceiptBasename} from '../../../scripts/lib/discard-premigration';
+import {catalogueReplayRoleHash} from '../../../.github/ci/notification-catalogue-replay.mjs';
+import {notificationCatalogueSessionSchema} from './catalogue-session';
 const object=z.record(z.string(),z.unknown());
 const rowSchema=object.refine(value=>typeof value.oid==='string'&&value.oid.length>0,'Native signature required');
 const nativeSchema=z.object({signature:z.string().min(1),raw:object}).passthrough();
@@ -88,7 +90,7 @@ export function compareCanonicalReplayMembers(baseline:CanonicalReplayMembers,sh
   const migrations=z.array(z.object({sha256:z.string(),when:z.number()}).passthrough()).min(1).parse(source.migrations);assertInventoryLedger({migrations},raw.ledger);
   const actual=normalizeNotificationCanonicalInventory(raw.inventory);assert.equal(actual.unknownColumns.length,0,'Unknown native columns remain unapproved');
   assert.equal(nativeInventoryCanonical(withoutFrame(normalized)),nativeInventoryCanonical(actual),'Normalized member differs from complete retained raw facts');
-  const inventory=object.parse(raw.inventory),functions=z.array(nativeSchema).parse(inventory.functions),session=object.parse(raw.session),prerequisite=object.parse(report.prerequisites);
+  const inventory=object.parse(raw.inventory),functions=z.array(nativeSchema).parse(inventory.functions),session=notificationCatalogueSessionSchema.parse(raw.session),prerequisite=object.parse(report.prerequisites);
   const frame=z.object({source:z.string(),controller:z.string(),run:z.string().regex(/^[1-9][0-9]*$/),attempt:z.literal('1'),unit:z.string().regex(/^db-[a-f0-9]{16}$/),planFingerprint:z.string().regex(/^[a-f0-9]{64}$/)}).passthrough().parse(source);
   const file=mode==='baseline'?'test/notification-final-catalogue-baseline.test.ts':'test/notification-final-catalogue-oid-shift.test.ts';
   const binding={mode:FULL_CI_ROLE_MODE,candidate:frame.source,controller:frame.controller,runId:frame.run,attempt:frame.attempt,unit:frame.unit,offset:0,planFingerprint:frame.planFingerprint,batchSize:DB_BATCH_FILES,batchFiles:[file]};
@@ -98,6 +100,9 @@ export function compareCanonicalReplayMembers(baseline:CanonicalReplayMembers,sh
   const actualProof=validateFullCiRoleReceipt(receipt,binding,{helperSha256:owners.prerequisites.helper.sha256,wrapperSha256:owners.prerequisites.wrapper.sha256,orchestrationSha256:owners.prerequisites.orchestration.sha256},{ownerSha256:owners.replay.owner.sha256,contractSha256:owners.replay.contract.sha256});
   assert.equal(nativeInventoryCanonical(actualProof),nativeInventoryCanonical(prerequisite.proof),'Canonical prerequisite proof differs from original receipt');
   const proof=object.parse(actualProof),replay=object.parse(proof.catalogueReplay),cluster=object.parse(replay.session);
+  const original=object.parse(receipt),fixture=object.parse(original.fixture),expectedRoles={roles:fixture.roles,edges:fixture.edges};
+  assert.equal(nativeInventoryCanonical(raw.roles),nativeInventoryCanonical(expectedRoles),'Captured native roles differ from the original prerequisite fixture');
+  assert.equal(catalogueReplayRoleHash(raw.roles),replay.roleCatalogSha256,'Captured native role hash differs from the original prerequisite');
   assert.equal(replay.mode,mode);assert.equal(session.postmasterStart,cluster.postmasterStart);assert.equal(session.version,cluster.versionNumber);assert.equal(session.versionText,cluster.versionText);assert.equal(session.isolation,'repeatable read');assert.equal(session.readOnly,'on');
   for(const key of ['session','roles','ledger'])assert.equal(nativeInventoryCanonical(report[key]),nativeInventoryCanonical(raw[key]),'Report/native fact binding differs');
   return{source,raw,normalized:actual,functions};
