@@ -15,6 +15,25 @@ let b:Base;
 const book=(rows:Record<string,Record<string,string>[]>)=>buildSystemLabelWorkbook({kinds:Object.keys(rows),rows,includeStatus:true,references:{companies:[],grades:[],employees:[]}});
 beforeAll(migrateTestDb);beforeEach(async()=>{await resetDb();b=await seedBase();});afterAll(closeAll);
 describe('Company-aware System Labels imports and canonical consumers',()=>{
+ it('keeps bounded native grade readers usable without exposing another company scope',async()=>{
+  const other=await createCompany(adminCtx(b),{legalName:'Other reader company'});
+  const global=await createJobGrade(adminCtx(b),{code:'READER_GLOBAL',name:'Reader global'});
+  const own=await createJobGrade(adminCtx(b),{code:'READER_OWN',name:'Reader own',scopeCompanyIds:[b.companyId]});
+  const hidden=await createJobGrade(adminCtx(b),{code:'READER_HIDDEN',name:'Reader hidden',scopeCompanyIds:[other.id]});
+  await owner.db.transaction(async tx=>{
+   await tx.execute(sql`select set_config('app.tenant_id',${b.tenantId},true),set_config('app.user_id',${b.adminUserId},true),set_config('app.roles','hr_admin',true),set_config('app.grants',${JSON.stringify([{role:'hr_admin',companyId:b.companyId}])},true)`);
+   for(const role of ['ai_hr_architecture_grade_guard','ai_hr_reward_setup_reader','ai_hr_reward_upload_reader','ai_hr_rewards_post_reader']){
+    await tx.execute(sql.raw('set local role '+role));
+    const rows=await tx.execute<{id:string}>(sql`select id from public.job_grade where tenant_id=${b.tenantId}::uuid and id=any(${[global.id,own.id,hidden.id]}::uuid[]) order by code`);
+    expect(rows.map(r=>r.id),role).toEqual([global.id,own.id]);
+    await tx.execute(sql`reset role`);
+   }
+   // The draft port's own table predicates remain authoritative; only its new policy helper is callable.
+   await tx.execute(sql`set local role ai_hr_draft_discard_port`);
+   const [scope]=await tx.execute<{global:boolean;own:boolean;hidden:boolean}>(sql`select app.system_label_scope_read(null::uuid[]) as global,app.system_label_scope_read(array[${b.companyId}::uuid]) as own,app.system_label_scope_read(array[${other.id}::uuid]) as hidden`);
+   expect(scope).toEqual({global:true,own:true,hidden:false});
+  });
+ });
  it('imports blank scope as global without requiring an entered owner',async()=>{
   const bytes=await book({department:[{Code:'BLANK_GLOBAL',Label:'Global department',Status:'Active'}]}),preview=await previewSystemLabelImport(adminCtx(b),bytes);
   expect(preview.rows[0]).toMatchObject({outcome:'add',after:{Criteria:'global','Criteria Companies':''}});

@@ -1,5 +1,5 @@
 /** Actual HTTP/UI journey on a disposable hosted-runner database, never an installation. */
-import {describe,it,expect,afterAll} from 'vitest';
+import {describe,it,expect,afterAll,afterEach} from 'vitest';
 import {spawn,execFileSync,type ChildProcess} from 'node:child_process';
 import {createWriteStream,mkdirSync,readFileSync,writeFileSync} from 'node:fs';
 import {join,resolve} from 'node:path';
@@ -25,6 +25,13 @@ async function stop(){
  await closeAll();
 }
 afterAll(stop,30000);
+afterEach(async ({task})=>{
+ if(task.result?.state!=='fail')return;
+ try{
+  for(const context of browser?.contexts()??[])for(const page of context.pages())console.error('Owned browser failure state:',page.url(),(await page.locator('body').innerText()).slice(0,4000));
+  if(serverLog&&typeof serverLog.path==='string')console.error('Owned Next server failure tail:',readFileSync(serverLog.path,'utf8').slice(-12000));
+ }catch(error){console.error('Browser diagnostic unavailable:',String(error));}
+},30000);
 describe('System Labels authenticated Excel browser journey',()=>{
  it('downloads, previews and imports actual authorized data, refuses restricted global imports, and renders six languages',async()=>{
   const url=new URL(process.env.TEST_DATABASE_URL!);

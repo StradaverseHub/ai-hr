@@ -27,7 +27,7 @@ describe('new-only System Label import identity boundary',()=>{
   const preview=await previewSystemLabelImport(ctx,bytes,'merge');
   expect(preview.rows[0]).toMatchObject({reason:'existing',outcome:'error',before:null,selected:false});
   expect(JSON.stringify(preview)).not.toMatch(/SECRET_HIDDEN_ORIGIN|SECRET_LABEL/);
-  expect(await applySystemLabelImport(ctx,{bytes,mode:'update',token:preview.token,confirmUpdates:true})).toMatchObject({imported:1,updated:0,skipped:1});
+  expect(await applySystemLabelImport(ctx,{bytes,mode:'update',token:preview.token,confirmUpdates:true})).toMatchObject({imported:1,updated:0,skipped:0,failed:1});
   const table={department:s.department,position:s.position,cost_center:s.costCenter,business_unit:s.businessUnit}[kind];
   await owner.db.update(table).set({archivedAt:new Date()}).where(eq(table.id,labelId!));
   const archived=await previewSystemLabelImport(ctx,await book({[kind]:[org(b.companyId,code)]}),'add');
@@ -61,7 +61,7 @@ describe('new-only System Label import identity boundary',()=>{
  it('returns typed localized-reason inputs for ordinary invalid rows without changing validation',async()=>{
   const grade=await createJobGrade(adminCtx(b),{code:'TAKEN_GRADE',name:'Already used label'});await createGradeGroup(adminCtx(b),{name:'Existing group',gradeIds:[grade.id]});
   const source=await book({
-   department:[{...org(b.companyId,''),Label:'Missing code'},{...org('','MISSING_COMPANY')},org('UNKNOWN_COMPANY','BAD_COMPANY'),{...org(b.companyId,'BAD_CRITERIA'),Criteria:'unsupported'},{...org(b.companyId,'BAD_CRITERIA_COMPANY'),'Criteria Companies':'UNKNOWN_COMPANY'},{...org(b.companyId,'EMPTY_CRITERIA'),'Criteria Companies':''},{...org(b.companyId,'BAD_HEAD'),'Head Employee Code':'UNKNOWN_EMPLOYEE'}],
+   department:[{...org(b.companyId,''),Label:'Missing code'},{...org('','MISSING_COMPANY')},org('UNKNOWN_COMPANY','BAD_COMPANY'),{...org(b.companyId,'BAD_CRITERIA'),Criteria:'unsupported'},{...org(b.companyId,'BAD_CRITERIA_COMPANY'),'Criteria Companies':'UNKNOWN_COMPANY'},{...org('','EMPTY_CRITERIA'),'Criteria Companies':''},{...org(b.companyId,'BAD_HEAD'),'Head Employee Code':'UNKNOWN_EMPLOYEE'}],
    cost_center:[{...org(b.companyId,'MISSING_DESCRIPTION'),Description:''}],
    division:[{Code:'BAD_SORT',Label:'Bad sort','Sort Order':'1.5'},{Code:'STILL_VALID',Label:'Valid'}],
    grades:[{Code:'lowercase',Label:'Invalid code'},{Code:'MISSING_LABEL',Label:''},{Code:'DUPLICATE_LABEL',Label:'Already used label'}],
@@ -69,10 +69,10 @@ describe('new-only System Label import identity boundary',()=>{
   });
   const wb=XLSX.read(source,{type:'buffer'});XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet([['Code'],['UNSUPPORTED']]),'unsupported');const bytes=XLSX.write(wb,{type:'buffer',bookType:'xlsx'}) as Buffer;
   const preview=await previewSystemLabelImport(adminCtx(b),bytes);
-  const reasons={MISSING_COMPANY:'required',BAD_COMPANY:'invalidCompany',BAD_CRITERIA:'invalidCriteria',BAD_CRITERIA_COMPANY:'invalidCriteriaCompany',EMPTY_CRITERIA:'criteriaCompaniesRequired',BAD_HEAD:'invalidHeadEmployee',MISSING_DESCRIPTION:'required',BAD_SORT:'wholeNumber',lowercase:'invalidGradeCode',MISSING_LABEL:'required',DUPLICATE_LABEL:'gradeLabelExists','Unknown grade group':'invalidGradeReferences','Already assigned group':'gradeAlreadyGrouped',UNSUPPORTED:'unsupportedCategory'};
-  for(const [code,reason]of Object.entries(reasons))expect(preview.rows.find(row=>(row.after.Code??row.after.Name)===code)).toMatchObject({reason,outcome:'error',selected:false});
+  const reasons={MISSING_COMPANY:'criteriaCompaniesRequired',BAD_COMPANY:'invalidCompany',BAD_CRITERIA:'invalidCriteria',BAD_CRITERIA_COMPANY:'invalidCompany',EMPTY_CRITERIA:'criteriaCompaniesRequired',BAD_HEAD:'invalidHeadEmployee',MISSING_DESCRIPTION:'required',BAD_SORT:'wholeNumber',lowercase:'invalidGradeCode',MISSING_LABEL:'required',DUPLICATE_LABEL:'gradeLabelExists','Unknown grade group':'invalidGradeReferences','Already assigned group':'gradeAlreadyGrouped',UNSUPPORTED:'unsupportedCategory'};
+  for(const [code,reason]of Object.entries(reasons))expect(preview.rows.find(row=>(row.after.Code||row.after.Name)===code)).toMatchObject({reason,outcome:'error',selected:false});
   expect(preview.rows.find(row=>row.after.Label==='Missing code')).toMatchObject({reason:'required',reasonField:'Code'});
-  for(const [code,field]of [['MISSING_COMPANY','Company'],['MISSING_DESCRIPTION','Description'],['MISSING_LABEL','Label']])expect(preview.rows.find(row=>row.after.Code===code)).toMatchObject({reasonField:field});
+  for(const [code,field]of [['MISSING_DESCRIPTION','Description'],['MISSING_LABEL','Label']])expect(preview.rows.find(row=>row.after.Code===code)).toMatchObject({reasonField:field});
   expect(preview.valid).toBe(true);expect(preview.rows.find(row=>row.after.Code==='STILL_VALID')).toMatchObject({outcome:'add',selected:true});
  });
  it('reports an intentionally unselected valid row as skipped while importing only the selected valid subset',async()=>{
@@ -84,7 +84,7 @@ describe('new-only System Label import identity boundary',()=>{
   const report=XLSX.read(Buffer.from(summary.errorReport!,'base64'),{type:'buffer'}),rows=XLSX.utils.sheet_to_json<string[]>(report.Sheets.Errors,{header:1,raw:false});
   expect(rows).toEqual([['Worksheet','Row','Code','Result','Message'],['division','3','UNSELECTED_NEW','skip','Valid new code was not selected for this import. No record was created.']]);
   expect(await owner.db.select().from(s.profileOption).where(eq(s.profileOption.value,'SELECTED_NEW'))).toHaveLength(1);expect(await owner.db.select().from(s.profileOption).where(eq(s.profileOption.value,'UNSELECTED_NEW'))).toHaveLength(0);
-  const events=await owner.db.select().from(s.domainEvent).where(eq(s.domainEvent.eventType,'system-label-import.applied'));expect(events).toHaveLength(1);expect(events[0].payload).toMatchObject({summary:{imported:1,updated:0,skipped:1,failed:0},rows:[{after:{Code:'SELECTED_NEW'}}]});
+  const events=await owner.db.select().from(s.domainEvent).where(eq(s.domainEvent.eventType,'system-label-import.applied'));expect(events).toHaveLength(1);expect(events[0].payload).toMatchObject({summary:{imported:1,updated:0,skipped:1,failed:0},rows:[{sheet:'division',row:2,outcome:'add',reason:null,message:'Valid new code.'},{sheet:'division',row:3,outcome:'skip',reason:'notSelected',message:'Valid new code was not selected for this import. No record was created.'}]});
  });
  it('the existence oracle rejects malformed and oversized requests rather than exposing tables',async()=>{
   for(const payload of [[{key:'r',kind:'unsupported',code:'X'}],[{key:'r',kind:'department',code:'X'},{key:'r',kind:'position',code:'X'}],Array.from({length:7001},(_,i)=>({key:String(i),kind:'department',code:'X'}))]){

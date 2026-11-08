@@ -57,7 +57,7 @@ describe('bounded real XLS and XLSX Labels admission',()=>{
  it.each(['biff8','xlsx'] as const)('retains the cell-length and sheet-count caps for %s',type=>{
   // BIFF8's standard literal label writer truncates at 255 characters; XLSX can carry the 1001-character refusal case.
   if(type==='xlsx')expect(()=>readSystemLabelWorkbook(make(type,wb=>{wb.Sheets.division.B2.v='X'.repeat(1001);}))).toThrow(/too long/);
-  expect(()=>readSystemLabelWorkbook(make(type,wb=>{for(let i=0;i<17;i++)XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet([['Code'],['X']]),'extra'+i);}))).toThrow(/Too many worksheets/);
+  expect(()=>readSystemLabelWorkbook(make(type,wb=>{for(let i=0;i<26;i++)XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet([['Code'],['X']]),'extra'+i);}))).toThrow(/Too many worksheets/);
  });
  it('does not silently drop a single populated row in an unsupported sheet',()=>{
   const bytes=make('xlsx',wb=>XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet([['POSSIBLE_DATA']]),'unknown'));

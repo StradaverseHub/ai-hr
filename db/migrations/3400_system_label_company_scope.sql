@@ -16,6 +16,9 @@ CREATE FUNCTION app.system_label_scope_admin(ids uuid[]) RETURNS boolean LANGUAG
 $$;
 REVOKE ALL ON FUNCTION app.system_label_scope_applies(uuid[],uuid),app.system_label_scope_read(uuid[]),app.system_label_scope_admin(uuid[]) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.system_label_scope_applies(uuid[],uuid),app.system_label_scope_read(uuid[]),app.system_label_scope_admin(uuid[]) TO ai_hr_app;
+-- Existing bounded readers still need the restrictive policy predicate. Their table grants and native
+-- tenant/actor guards remain unchanged; no write helper or PUBLIC execution is granted.
+GRANT EXECUTE ON FUNCTION app.system_label_scope_read(uuid[]) TO ai_hr_architecture_grade_guard,ai_hr_draft_discard_port,ai_hr_reward_setup_reader,ai_hr_reward_upload_reader,ai_hr_rewards_post_reader;
 --> statement-breakpoint
 -- Restrictive policies supplement existing tenant/actor policies; they never grant access by themselves.
 CREATE POLICY label_scope_read ON profile_option AS RESTRICTIVE FOR SELECT USING(app.system_label_scope_read(scope_company_ids));

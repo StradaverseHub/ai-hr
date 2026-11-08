@@ -49,9 +49,11 @@ export const APPROVED_UPGRADE_TAIL=[
  {idx:2410,when:1793330002710,tag:'3110_attendance_workflow_owner_rls'},
  {idx:2500,when:1793330002800,tag:'3200_ai_centre_controls'},
  {idx:2501,when:1793330002801,tag:'3201_ai_centre_function_coverage'},
+ {idx:2700,when:1793330003000,tag:'3400_system_label_company_scope'},
 ] as const;
 // Final pending 2109/2126 bytes reviewed from engine 128bc2539; no applied-prefix hashes change.
 const APPROVED_UPGRADE_HASHES:Record<string,string>={
+ '3400_system_label_company_scope':'0af7b24cf3a4f6585fd991b8d85a8121d11bcb74ef4cf26c203a4bf3e6956db5',
  '3100_pay_formula_saved_availability':'7bc0ab95aea27bae36f9be299784d3d391b4a315aa0302a9c42c2dbf9996b1b8',
  '3101_attendance_shared_workflow':'f32d12965f2788dc673f0c09e128996a653341bbcf6933e47f211da021617169',
  '3110_attendance_workflow_owner_rls':'39fc4b31666120cb4befe263b8b30433d6752dbaa52cda6cdbe350b3077f8f16',
