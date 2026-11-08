@@ -32,12 +32,14 @@ it('keeps the port outside app business SQL, denies raw private reads on both si
  expect(helper).toContain('await privateDenied(tx,reviewId,action,signal)');expect(helper.match(/await privateDenied\(tx,reviewId,action,signal\)/g)).toHaveLength(3);
  expect(helper).toContain('await tx`rollback to savepoint owned_observer_constructor`');
  expect(helper).toContain('revoke execute on function reward_policy_test.read_review(uuid,text)from ai_hr_app');
- expect(helper).toContain('runReviewObservationRefusal<Tx>(signal,run=>tx.transaction(run)');
- expect(helper).toContain('runReviewObservationRefusal<TransactionSql>(signal,run=>other.savepoint(run)');
- expect(helper).not.toContain('savepoint owned_test_observer_refusal');expect(helper).not.toContain('savepoint owned_observer_wrong_login');
+ expect(helper).toContain('runReviewObservationRefusal<Tx>(signal,{');expect(helper).toContain('},run=>tx.transaction(run),work,verify,poison)');
+ expect(helper).toContain('},run=>other.savepoint(run),nested=>nested`select reward_policy_test.read_review');
+ expect(helper).toContain('release savepoint owned_test_observer_refusal');expect(helper).toContain('release savepoint owned_observer_wrong_login');
  const executeGuard=source.indexOf("IF has_function_privilege(session_user,'reward_policy_test.read_review(uuid,text)','EXECUTE')IS NOT TRUE");
  expect(executeGuard).toBeGreaterThan(source.indexOf("OR c.login_oid IS DISTINCT FROM 'ai_hr_app'::regrole::oid"));
- expect(executeGuard).toBeLessThan(source.indexOf("IF (SELECT to_jsonb(p)FROM pg_proc p WHERE p.oid='reward_policy_test.read_review(uuid,text)'::regprocedure)"));
+ const directGuard=source.indexOf('IF NOT EXISTS(SELECT 1 FROM pg_proc p CROSS JOIN LATERAL aclexplode');
+ expect(executeGuard).toBeLessThan(directGuard);expect(directGuard).toBeLessThan(source.indexOf("IF (SELECT to_jsonb(p)FROM pg_proc p WHERE p.oid='reward_policy_test.read_review(uuid,text)'::regprocedure)"));
+ expect(source).toContain("AND g.grantee=c.login_oid AND g.grantor=c.owner_oid AND g.privilege_type='EXECUTE' AND g.is_grantable=false");
  const calls=Array.from(cases.matchAll(/nativeIt\((\d+),/g),match=>Number(match[1]));expect(calls).toEqual(Array.from({length:24},(_,index)=>index));
  expect(cases).toContain('expect(actualPre.pre).toEqual({armed:false,priorSeq:null,priorHash:null})');
 });
@@ -54,10 +56,11 @@ it('separates test PRE observation failures from canonical owners while preservi
 });
 
 import {runReviewObservationRefusal} from './prototypes/rewards-audit-policy-review-observer-contract';
+const settledFrame=()=>({open:async()=>{},rollback:async()=>{},release:async()=>{}});
 it('abort during real-open admission prevents negative work and waits for unconditional rollback before settling',async()=>{
  const abort=new AbortController(),primary=Error('owned abort');let open!:()=>void,rollback!:()=>void,entered!:()=>void,rolling!:()=>void;
  const started=new Promise<void>(done=>{entered=done;}),rollbackStarted=new Promise<void>(done=>{rolling=done;}),events:string[]=[];
- const pending=runReviewObservationRefusal(abort.signal,async run=>{
+ const pending=runReviewObservationRefusal(abort.signal,settledFrame(),async run=>{
   entered();await new Promise<void>(done=>{open=done;});
   try{return await run(undefined);}catch(error){events.push('rollback');rolling();await new Promise<void>(done=>{rollback=done;});throw error;}
  },async()=>{events.push('forbidden-work');},()=>{events.push('forbidden-verify');},()=>{});
@@ -65,14 +68,14 @@ it('abort during real-open admission prevents negative work and waits for uncond
 });
 it('abort after an actual expected failure blocks another refusal while rollback failure retains both identities and poisons admission',async()=>{
  const abort=new AbortController(),primary=Error('owned abort'),cleanup=Error('rollback uncertainty'),native=Object.assign(Error('actual native model'),{code:'42501'}),poisoned:Error[]=[];let work=0,verify=0,opens=0;
- const failure=await runReviewObservationRefusal(abort.signal,async run=>{opens++;try{return await run(undefined);}catch{throw cleanup;}},async()=>{work++;abort.abort(primary);throw native;},()=>{verify++;},error=>poisoned.push(error)).then(()=>undefined,error=>error);
+ const failure=await runReviewObservationRefusal(abort.signal,settledFrame(),async run=>{opens++;try{return await run(undefined);}catch{throw cleanup;}},async()=>{work++;abort.abort(primary);throw native;},()=>{verify++;},error=>poisoned.push(error)).then(()=>undefined,error=>error);
  expect(failure).toBeInstanceOf(AggregateError);expect(failure.errors).toContain(primary);expect(failure.errors).toContain(cleanup);expect(poisoned).toHaveLength(1);expect(verify).toBe(0);
- await expect(runReviewObservationRefusal(abort.signal,async run=>{opens++;return run(undefined);},async()=>{work++;},()=>{},()=>{})).rejects.toBe(primary);expect(opens).toBe(1);expect(work).toBe(1);
+ await expect(runReviewObservationRefusal(abort.signal,settledFrame(),async run=>{opens++;return run(undefined);},async()=>{work++;},()=>{},()=>{})).rejects.toBe(primary);expect(opens).toBe(1);expect(work).toBe(1);
 });
 it('uses the nested lease and verifies the identical native error only after its actual owner settles',async()=>{
  const abort=new AbortController(),native=Object.assign(Error('private native query'),{code:'42501'}),lease=Object.freeze({kind:'nested'}),events:string[]=[],poisoned:Error[]=[];
  let restore!:()=>void,rolling!:()=>void;const rollbackStarted=new Promise<void>(done=>{rolling=done;});
- const pending=runReviewObservationRefusal<typeof lease>(abort.signal,async run=>{
+ const pending=runReviewObservationRefusal<typeof lease>(abort.signal,settledFrame(),async run=>{
   events.push('open');try{return await run(lease);}catch(error){events.push('rollback');rolling();await new Promise<void>(done=>{restore=done;});events.push('settled');throw error;}
  },async actual=>{expect(actual).toBe(lease);events.push('nested-work');throw native;},error=>{expect(error).toBe(native);events.push('verify');},error=>poisoned.push(error));
  let complete=false;const observed=pending.then(()=>{complete=true;});await rollbackStarted;
@@ -81,25 +84,77 @@ it('uses the nested lease and verifies the identical native error only after its
 });
 it('unexpected native success is rolled back and fails without admitting verification or poisoning a settled owner',async()=>{
  const abort=new AbortController(),events:string[]=[],poisoned:Error[]=[];
- await expect(runReviewObservationRefusal(abort.signal,async run=>{
+ await expect(runReviewObservationRefusal(abort.signal,{open:async()=>{events.push('frame-open');},rollback:async()=>{events.push('frame-rollback');},release:async()=>{events.push('frame-release');}},async run=>{
   try{return await run(undefined);}catch(error){events.push('rollback-settled');throw error;}
  },async()=>{events.push('unexpected-return');},()=>{events.push('forbidden-verify');},error=>poisoned.push(error))).rejects.toThrow('Native test observer statement unexpectedly returned');
- expect(events).toEqual(['unexpected-return','rollback-settled']);expect(poisoned).toEqual([]);
+ expect(events).toEqual(['frame-open','unexpected-return','rollback-settled','frame-rollback','frame-release']);expect(poisoned).toEqual([]);
 });
 it('a different nested-owner failure preserves both identities and poisons admission instead of accepting the expected callback SQLSTATE',async()=>{
  const abort=new AbortController(),native=Object.assign(Error('native refusal'),{code:'42501'}),cleanup=Error('native rollback failed'),poisoned:Error[]=[];let verified=0;
- const failure=await runReviewObservationRefusal(abort.signal,async run=>{try{return await run(undefined);}catch{throw cleanup;}},async()=>{throw native;},()=>{verified++;},error=>poisoned.push(error)).then(()=>undefined,error=>error);
+ const failure=await runReviewObservationRefusal(abort.signal,settledFrame(),async run=>{try{return await run(undefined);}catch{throw cleanup;}},async()=>{throw native;},()=>{verified++;},error=>poisoned.push(error)).then(()=>undefined,error=>error);
  expect(failure).toBeInstanceOf(AggregateError);expect(failure.errors).toEqual([native,cleanup]);expect(verified).toBe(0);expect(poisoned).toHaveLength(1);expect(poisoned[0].cause).toBeInstanceOf(AggregateError);
 });
 it('a swallowed, unopened or repeated nested callback cannot manufacture rollback completion or repeat native work',async()=>{
  const abort=new AbortController(),native=Object.assign(Error('native refusal'),{code:'42501'});
  for(const mode of ['swallowed','unopened','repeated']){
   let calls=0,verified=0;const poisoned:Error[]=[];
-  const failure=await runReviewObservationRefusal(abort.signal,async run=>{
+  const failure=await runReviewObservationRefusal(abort.signal,settledFrame(),async run=>{
    if(mode==='unopened')throw Error('scope unavailable');
    try{await run(undefined);}catch{}
    if(mode==='repeated')return run(undefined);
   },async()=>{calls++;throw native;},()=>{verified++;},error=>poisoned.push(error)).then(()=>undefined,error=>error);
   expect(failure).toBeDefined();expect(calls).toBe(mode==='unopened'?0:1);expect(verified).toBe(0);expect(poisoned).toHaveLength(1);
  }
+});
+
+it('restores the actual parent frame only after the nested owner settles, then waits for release before verification',async()=>{
+ const abort=new AbortController(),native=Object.assign(Error('native refusal'),{code:'42501'}),events:string[]=[],poisoned:Error[]=[];
+ let finishOwner!:()=>void,ownerReady!:()=>void,finishRollback!:()=>void,rollbackReady!:()=>void,finishRelease!:()=>void,releaseReady!:()=>void;
+ const owning=new Promise<void>(done=>{ownerReady=done;}),rolling=new Promise<void>(done=>{rollbackReady=done;}),releasing=new Promise<void>(done=>{releaseReady=done;});
+ const pending=runReviewObservationRefusal(abort.signal,{
+  open:async()=>{events.push('frame-open');},
+  rollback:async()=>{events.push('frame-rollback');rollbackReady();await new Promise<void>(done=>{finishRollback=done;});},
+  release:async()=>{events.push('frame-release');releaseReady();await new Promise<void>(done=>{finishRelease=done;});},
+ },async run=>{try{return await run(undefined);}catch(error){events.push('owner-rollback');ownerReady();await new Promise<void>(done=>{finishOwner=done;});events.push('owner-settled');throw error;}},async()=>{events.push('work');throw native;},error=>{expect(error).toBe(native);events.push('verify');},error=>poisoned.push(error));
+ let settled=false;const outcome=pending.then(()=>{settled=true;});await owning;expect(events).toEqual(['frame-open','work','owner-rollback']);expect(settled).toBe(false);
+ finishOwner();await rolling;expect(events.at(-2)).toBe('owner-settled');expect(settled).toBe(false);finishRollback();await releasing;expect(settled).toBe(false);expect(events).not.toContain('verify');finishRelease();await outcome;
+ expect(events).toEqual(['frame-open','work','owner-rollback','owner-settled','frame-rollback','frame-release','verify']);expect(poisoned).toEqual([]);
+});
+it('abort during parent open still waits for open, mandatory rollback and release without admitting a nested owner',async()=>{
+ const abort=new AbortController(),primary=Error('abort during fence open'),events:string[]=[],poisoned:Error[]=[];let open!:()=>void,started!:()=>void;
+ const ready=new Promise<void>(done=>{started=done;});
+ const pending=runReviewObservationRefusal(abort.signal,{open:async()=>{started();await new Promise<void>(done=>{open=done;});events.push('opened');},rollback:async()=>{events.push('rollback');},release:async()=>{events.push('release');}},async()=>{events.push('forbidden-owner');},async()=>{events.push('forbidden-work');},()=>{events.push('forbidden-verify');},error=>poisoned.push(error));
+ let settled=false;const outcome=pending.catch(error=>{settled=true;return error;});await ready;abort.abort(primary);expect(settled).toBe(false);open();expect(await outcome).toBe(primary);expect(events).toEqual(['opened','rollback','release']);expect(poisoned).toEqual([]);
+});
+it('uncertain open always attempts parent rollback and poisons even when the subsequent frame cleanup settles',async()=>{
+ const abort=new AbortController(),openFailure=Error('open acknowledgement unavailable'),events:string[]=[],poisoned:Error[]=[];
+ await expect(runReviewObservationRefusal(abort.signal,{open:async()=>{throw openFailure;},rollback:async()=>{events.push('rollback');},release:async()=>{events.push('release');}},async()=>{events.push('forbidden-owner');},async()=>{},()=>{events.push('forbidden-verify');},error=>poisoned.push(error))).rejects.toBe(openFailure);
+ expect(events).toEqual(['rollback','release']);expect(poisoned).toHaveLength(1);expect(poisoned[0].cause).toBe(openFailure);
+});
+it('rollback or release uncertainty retains original native failure and poisons; a failed rollback never releases work',async()=>{
+ for(const stage of ['rollback','release']as const){
+  const abort=new AbortController(),native=Object.assign(Error('native refusal'),{code:'42501'}),cleanup=Error('uncertain '+stage),events:string[]=[],poisoned:Error[]=[];
+  const failure=await runReviewObservationRefusal(abort.signal,{open:async()=>{},rollback:async()=>{events.push('rollback');if(stage==='rollback')throw cleanup;},release:async()=>{events.push('release');throw cleanup;}},async run=>run(undefined),async()=>{throw native;},()=>{events.push('forbidden-verify');},error=>poisoned.push(error)).then(()=>undefined,error=>error);
+  expect(failure).toBeInstanceOf(AggregateError);expect(failure.errors).toEqual([native,cleanup]);expect(events).toEqual(stage==='rollback'?['rollback']:['rollback','release']);expect(poisoned).toHaveLength(1);
+ }
+});
+it('abort during parent rollback cannot skip release or settle early and never verifies an expected native denial',async()=>{
+ const abort=new AbortController(),primary=Error('abort during frame cleanup'),native=Object.assign(Error('native refusal'),{code:'42501'}),events:string[]=[],poisoned:Error[]=[];
+ let rollback!:()=>void,rolling!:()=>void,release!:()=>void,releasing!:()=>void;const began=new Promise<void>(done=>{rolling=done;}),released=new Promise<void>(done=>{releasing=done;});
+ const pending=runReviewObservationRefusal(abort.signal,{open:async()=>{},rollback:async()=>{events.push('rollback');rolling();await new Promise<void>(done=>{rollback=done;});},release:async()=>{events.push('release');releasing();await new Promise<void>(done=>{release=done;});}},async run=>run(undefined),async()=>{throw native;},()=>{events.push('forbidden-verify');},error=>poisoned.push(error));
+ let settled=false;const outcome=pending.catch(error=>{settled=true;return error;});await began;abort.abort(primary);rollback();await released;expect(settled).toBe(false);release();expect(await outcome).toBe(primary);expect(events).toEqual(['rollback','release']);expect(poisoned).toEqual([]);
+});
+import {reviewObservationAclObservation} from './prototypes/rewards-audit-policy-review-observer-contract';
+it('records only closed native ACL booleans with exact source-owned phases and real-root shape, never private payload or permission authority',()=>{
+ const root={pid:123,started:'2026-11-08 00:00:00.123456+00',xid:'123',login:'ai_hr_app',database:'fictional-owned-db'},row={kind:'UNINSTALLED_REWARDS_OBSERVER_ACL_OBSERVATION',releaseAuthorized:false,action:reviewObservationActions[0],stage:'app-first-effective',allowed:true,root};
+ expect(reviewObservationAclObservation.parse(row)).toEqual(row);
+ for(const stage of ['owner-before-revoke','owner-after-commit','app-first-effective','app-direct','app-after-effective'])for(const allowed of [true,false])expect(reviewObservationAclObservation.parse({...row,stage,allowed}).allowed).toBe(allowed);
+ for(const changed of [{...row,allowed:'false'},{...row,stage:'cache-proven'},{...row,releaseAuthorized:true},{...row,privateSql:'forbidden'},{...row,root:{...root,login:'owner'}}])expect(()=>reviewObservationAclObservation.parse(changed)).toThrow();
+ const helper=readFileSync('test/prototypes/rewards-audit-policy-review-observer.ts','utf8');
+ expect(helper).toContain("observe('app-first-effective',first.allowed,actualRoot)");expect(helper).toContain("observe('app-direct',direct.allowed,actualRoot);expect(direct.allowed).toBe(false)");expect(helper).not.toContain('expect(first.allowed).toBe(false)');expect(helper).not.toContain('expect(after.allowed).toBe(false)');
+});
+it('preserves distinct native, abort, frame and poisoning failures by identity while deduplicating the same callback-owner failure',async()=>{
+ const abort=new AbortController(),native=Object.assign(Error('native refusal'),{code:'42501'}),primary=Error('owned abort'),cleanup=Error('frame rollback failed'),poisonFailure=Error('poison hook failed');let releases=0;
+ const failure=await runReviewObservationRefusal(abort.signal,{open:async()=>{},rollback:async()=>{abort.abort(primary);throw cleanup;},release:async()=>{releases++;}},async run=>run(undefined),async()=>{throw native;},()=>{throw Error('forbidden verification');},()=>{throw poisonFailure;}).then(()=>undefined,error=>error);
+ expect(failure).toBeInstanceOf(AggregateError);expect(failure.errors).toEqual([native,primary,cleanup,poisonFailure]);expect(failure.errors.filter((error:unknown)=>error===native)).toHaveLength(1);expect(releases).toBe(0);
 });

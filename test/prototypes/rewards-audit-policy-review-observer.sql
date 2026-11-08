@@ -33,9 +33,16 @@ BEGIN
  OR c.owner_oid IS DISTINCT FROM (SELECT relowner FROM pg_class WHERE oid='public.domain_event'::regclass)
  OR c.login_oid IS DISTINCT FROM 'ai_hr_app'::regrole::oid
  THEN RAISE EXCEPTION 'Owned test review observer profile changed' USING ERRCODE='55000';END IF;
- -- Check CURRENT native permission before profile comparison. A retained call
- -- must not rely on an earlier executor's EXECUTE admission after revocation.
+ -- Retain the native effective-permission requirement before profile comparison.
+ -- The separate direct-grant check below also owns current-statement revocation.
  IF has_function_privilege(session_user,'reward_policy_test.read_review(uuid,text)','EXECUTE')IS NOT TRUE
+ THEN RAISE EXCEPTION 'Owned test review observation refused' USING ERRCODE='42501';END IF;
+ -- This fixed test capability admits ONLY the constructor's exact direct grant.
+ -- Read the CURRENT statement's pg_proc row as well as the native ACL check;
+ -- an open backend's effective-privilege cache alone is not revocation proof.
+ IF NOT EXISTS(SELECT 1 FROM pg_proc p CROSS JOIN LATERAL aclexplode(coalesce(p.proacl,acldefault('f',p.proowner)))g
+  WHERE p.oid='reward_policy_test.read_review(uuid,text)'::regprocedure
+  AND g.grantee=c.login_oid AND g.grantor=c.owner_oid AND g.privilege_type='EXECUTE' AND g.is_grantable=false)
  THEN RAISE EXCEPTION 'Owned test review observation refused' USING ERRCODE='42501';END IF;
  IF (SELECT to_jsonb(p)FROM pg_proc p WHERE p.oid='reward_policy_test.read_review(uuid,text)'::regprocedure)IS DISTINCT FROM c.function_details
  OR (SELECT to_jsonb(p)FROM pg_proc p WHERE p.oid='reward_audit_private.relation_metadata(oid)'::regprocedure)IS DISTINCT FROM c.decoder_details
