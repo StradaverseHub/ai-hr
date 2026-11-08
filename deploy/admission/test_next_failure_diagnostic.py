@@ -331,6 +331,16 @@ class FailureDiagnosticModels(unittest.TestCase):
         self.assertNotIn('ownedRuntimeCleaned', F.report)
 
     def test_complete_original_native_authority_and_cleanup_source_bytes_are_preserved(self):
+        capability = json.loads(pathlib.Path(__file__).with_name('next_key_name_capability_inverse.json').read_text())
+        self.assertEqual(capability['base'], '80a564ef2258613bc8b9489dcc6a3ac709442a34')
+        for name, row in capability['files'].items():
+            source = (pathlib.Path(__file__).resolve().parents[2] / name).read_text()
+            self.assertEqual(hashlib.sha256(source.encode()).hexdigest(), row['currentSha256'])
+            lines = source.splitlines(keepends=True)
+            for edit in row['changes']:
+                self.assertEqual(''.join(lines[edit['start']:edit['end']]), edit['after'])
+                lines[edit['start']:edit['end']] = edit['before'].splitlines(keepends=True)
+            self.assertEqual(hashlib.sha256(''.join(lines).encode()).hexdigest(), row['originalSha256'])
         source = self.sources['fixture'].decode()
         # Verify/reverse the complete new observation layer, then the existing
         # CPU constructor layer, before the original cleanup inverse consumes it.

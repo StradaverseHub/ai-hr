@@ -366,16 +366,20 @@ class PhaseDiagnosticModels(unittest.TestCase):
         self.assertEqual(terminal['base'], '74de8af009aa0ed39d8077343d9662b5dc31bbc8')
         key_layer=json.loads((ROOT/'deploy/admission/next_key_name_digest_inverse.json').read_text())
         self.assertEqual(key_layer['base'], '4d4375a489e152772a0f225057ec41c5534b9aa9')
+        capability=json.loads((ROOT/'deploy/admission/next_key_name_capability_inverse.json').read_text())
+        self.assertEqual(capability['base'], '80a564ef2258613bc8b9489dcc6a3ac709442a34')
         def restored4d(name):
             source=(ROOT/name).read_text()
-            if name in key_layer['files']:
-                row=key_layer['files'][name];self.assertEqual(hashlib.sha256(source.encode()).hexdigest(),row['currentSha256'])
+            for current_layer in (capability,key_layer):
+                if name not in current_layer['files']:
+                    continue
+                row=current_layer['files'][name];self.assertEqual(hashlib.sha256(source.encode()).hexdigest(),row['currentSha256'])
                 lines=source.splitlines(keepends=True)
                 for edit in row['changes']:
                     self.assertEqual(''.join(lines[edit['start']:edit['end']]),edit['after']);lines[edit['start']:edit['end']]=edit['before'].splitlines(keepends=True)
                 source=''.join(lines);self.assertEqual(hashlib.sha256(source.encode()).hexdigest(),row['originalSha256'])
             return source
-        for name in key_layer['files']:restored4d(name)
+        for name in set(capability['files']) | set(key_layer['files']):restored4d(name)
         originals={}
         for name,row in layer['files'].items():
             source=restored4d(name)
@@ -513,7 +517,10 @@ class KeyNameDigestModels(unittest.TestCase):
     def test_native_capture_seam_uses_one_existing_environ_read_and_keys_only_before_postchecks(self):
         reads,stages,captured=[],[],[]
         def capture(keys,count):
-            self.assertNotIsInstance(keys,dict)
+            self.assertIs(type(keys),tuple);self.assertFalse(hasattr(keys,'mapping'))
+            self.assertTrue(all(type(name) is str for name in keys))
+            self.assertNotIn('PRIVATE-VALUE',keys)
+            with self.assertRaises(TypeError):keys[0]='FICTIONAL_REPLACEMENT'
             captured.append(N.key_name_digests(keys,count))
         value,custody=self.base().observe(environment_values={'INVOCATION_ID':'a'*32,'FICTIONAL_UNKNOWN':'PRIVATE-VALUE'},
             read_calls=reads,key_names=capture,phase=stages.append)
@@ -521,6 +528,17 @@ class KeyNameDigestModels(unittest.TestCase):
         self.assertEqual(custody,['custody','custody']);self.assertEqual(stages,['declaration-before','process-before','environment-read','environment-classified','process-after','custody-after'])
         self.assertEqual(captured[0]['count'],value['otherUnqualifiedCount']);self.assertNotIn('PRIVATE-VALUE',json.dumps(captured))
         with self.assertRaises(ValueError):self.base().observe(key_names=capture,second_ticks=b'9999')
+        # Source-bound old capability counterexample; inspect the actual frozen
+        # parent's AST, then use only Python's builtin view on fictional data.
+        inverse=json.loads((ROOT/'deploy/admission/next_key_name_capability_inverse.json').read_text())
+        row=inverse['files']['deploy/admission/next_profile.py'];parent=base64.b64decode(row['originalBase64']).decode()
+        self.assertEqual(hashlib.sha256(parent.encode()).hexdigest(),row['originalSha256'])
+        owner=next(node for node in ast.parse(parent).body if isinstance(node,ast.FunctionDef) and node.name=='observe_owned_environment')
+        call=next(node for node in ast.walk(owner) if isinstance(node,ast.Call) and isinstance(node.func,ast.Name) and node.func.id=='_key_names')
+        self.assertEqual(ast.dump(call.args[0],include_attributes=False),ast.dump(ast.parse('values.keys()',mode='eval').body,include_attributes=False))
+        fictional={'FICTIONAL_NAME':'PRIVATE-VALUE'};view=fictional.keys();copy=tuple(fictional)
+        self.assertEqual(view.mapping['FICTIONAL_NAME'],'PRIVATE-VALUE');self.assertFalse(hasattr(copy,'mapping'))
+        fictional['FICTIONAL_LATER']='PRIVATE-LATER';self.assertEqual(copy,('FICTIONAL_NAME',))
 
     def test_terminal_v2_keeps_fourteen_rows_fifteen_messages_and_original_phase_codec(self):
         messages=[]

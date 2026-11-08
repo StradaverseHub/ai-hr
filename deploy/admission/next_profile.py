@@ -1284,7 +1284,7 @@ def observe_owned_environment(expected, custody, deadline, *, _phase=None, _key_
         if values.get('INVOCATION_ID') != expected['invocation']:
             raise ValueError('Environment observation invocation refused')
         result = environment_observation_counts(raw)
-        if _key_names is not None: _key_names(values.keys(), result['otherUnqualifiedCount'])
+        if _key_names is not None: _key_names(tuple(values), result['otherUnqualifiedCount'])
         if _phase is not None: _phase('process-after')
         if current() != identity:
             raise ValueError('Environment observation start identity changed')
