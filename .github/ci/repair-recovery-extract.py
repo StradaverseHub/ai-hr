@@ -4,6 +4,7 @@ if len(sys.argv) not in (3,4) or len(sys.argv)==4 and sys.argv[3]!='--six-metada
     raise ValueError('Unknown repair extractor mode')
 metadata=len(sys.argv)==4
 archive,destination=map(pathlib.Path,sys.argv[1:3])
+transfer='personnel-draft-discard-role-transfer.json'
 prerequisites={'personnel-draft-discard-premigration-role-prerequisites.json','personnel-draft-discard-role-prerequisites.json'}
 with zipfile.ZipFile(archive) as z:
     entries=z.infolist()
@@ -11,12 +12,12 @@ with zipfile.ZipFile(archive) as z:
         raise ValueError('Repair packet exceeds bounds')
     names=set()
     for i in entries:
-        allowed=(metadata and i.filename in prerequisites) or i.filename in {'focused.json','nodb.vitest.json','db.vitest.json','postgres.log','postgres-state.json','postgres-stats.txt'} or re.fullmatch(r'ui-screenshots/[A-Za-z0-9_-]+\.(png|json)',i.filename)
+        allowed=(metadata and i.filename in prerequisites|{transfer}) or i.filename in {'focused.json','nodb.vitest.json','db.vitest.json','postgres.log','postgres-state.json','postgres-stats.txt'} or re.fullmatch(r'ui-screenshots/[A-Za-z0-9_-]+\.(png|json)',i.filename)
         if not allowed or i.filename in names or i.is_dir() or stat.S_ISLNK(i.external_attr>>16) or i.flag_bits&1:
             raise ValueError('Unsafe, duplicate or unknown repair member')
         if i.file_size>(64*1024*1024 if i.filename in {'focused.json','nodb.vitest.json','db.vitest.json'} else 16*1024*1024):
             raise ValueError('Repair member exceeds bound')
-        if i.filename in prerequisites and i.file_size>1024*1024:
+        if i.filename in prerequisites|{transfer} and i.file_size>1024*1024:
             raise ValueError('Prerequisite diagnostic exceeds bound')
         names.add(i.filename)
     if 'focused.json' not in names:
@@ -47,6 +48,16 @@ with zipfile.ZipFile(archive) as z:
                 raise ValueError('Foreign prerequisite mode or runtime')
             if 'premigration' in name and (proof.get('attempt')!='1' or proof.get('phase')!='before_initial_candidate_migration' or proof.get('wrapperSha256')!='3050abc60faa490cdab416f9aeffc80b0b042daf3891ce2e34fbb42071bc7eec' or proof.get('orchestrationSha256')!='61f528c2570c90204e739a37652e7e79d6c3fc5905bbf849209d20c66709492a'):
                 raise ValueError('Foreign premigration producer')
+    if metadata:
+        has_transfer_test='test/personnel-draft-discard-role-transfer.test.ts' in report.get('files',[])
+        if (database and has_transfer_test)!=(transfer in names):
+            raise ValueError('Native role-transfer diagnostic selection differs')
+        if transfer in names:
+            proof=json.loads(z.read(transfer))
+            if proof.get('kind')!='PERSONNEL_DRAFT_DISCARD_RESTRICTED_LOGIN_OWNERSHIP_REHEARSAL' or proof.get('candidate')!=report['sha'] or proof.get('controller')!=report['controller'] or proof.get('runId')!=report.get('runId') or proof.get('attempt')!='1':
+                raise ValueError('Foreign native role-transfer diagnostic')
+            if proof.get('roleFixtureSha256')!='32aaff3dc2f8a80bfe3e69769422b234e0f607a5dad7c0f4b4cb27e5946a3c54' or proof.get('rehearsalSourceSha256')!='776ccad97d4cdf5ffdb6adab76fac764283b08e1d68ebdefcb84f40e8ad982a7' or proof.get('source',{}).get('sha256')!='dc873a3e08400580a6003bcfd43563b3f4c1832a27fa4c46cf722d9a825d2c8e' or proof.get('postgres',{}).get('versionNumber',0)//10000!=16:
+                raise ValueError('Native role-transfer source or runtime differs')
     destination.mkdir(mode=0o700)
     for name in sorted({'focused.json',result}):
         with (destination/name).open('xb') as out:out.write(z.read(name))
