@@ -4964,6 +4964,13 @@
       "when": 1793330002801,
       "tag": "3201_ai_centre_function_coverage",
       "breakpoints": true
+    },
+    {
+      "idx": 3000,
+      "version": "7",
+      "when": 1793330003300,
+      "tag": "3700_individual_transaction_calculation_method",
+      "breakpoints": true
     }
   ]
 }

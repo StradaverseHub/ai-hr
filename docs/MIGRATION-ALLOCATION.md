@@ -1818,3 +1818,7 @@ The non-superuser owner regression and hosted requalification remain required.
 Unapplied peer `3102`/`3103` drafts must reallocate above the actually installed
 prefix when integrating; no lower timestamp may be silently skipped. This is a
 source reservation, not evidence that the repair is applied or accepted.
+
+## Approved payroll input methods — 9 November 2026 (unapplied)
+
+Branch codex/open-feedback-20261108 reserves 3700_individual_transaction_calculation_method, idx 3000 / when 1793330003300. A read-only survey of 3,593 distinct ref heads, 500 distinct journals and 777 readable worktree journals found maximum tag 3602 / idx 2902 / when 1793330003202. Fresh main and alpha are 82859db9a; staging independently reports that same source/build, 709 applied rows and watermark 1793330002801. Preserve the canonical journal prefix and all applied SQL bytes. The new nullable column has no backfill: all existing rows keep legacy interpretation. Recheck peer reservations and the exact ordered installed ledger at release admission. This reservation grants no deployment authority.

@@ -7,6 +7,7 @@ import { scopedAdmin } from '@/lib/scope';
 import { BatchNotDraftError, PayrollPermissionDeniedError, batchEditImpact } from '@/core/payroll';
 import { listIndividualTxnsAcross, listUnattachedTxnSummary } from '@/core/payroll-view';
 import { buildTxnPanel, type TxnPanel } from './existing-context';
+import {previewIndividualTxnInput} from '@/packs/payroll/service';
 import { deriveIndividualTxnAmount, TxnEffectiveDateInvalidError, TxnQuantityRequiredError } from '@/core/pay-components';
 import { PayRuleEvalError } from '@/core/pay-rule';
 import {
@@ -286,6 +287,7 @@ export type TxnFormInput = {
   amount: number;
   quantity: number | null;
   unit: string | null;
+  calculationMethod?: 'amount' | 'formula';
   notes: string | null;
 };
 
@@ -435,6 +437,9 @@ export async function previewTxnAmountAction(input: {
   payPeriod: string;
   quantity: number | null;
   unit: string | null;
+  calculationMethod?: 'amount' | 'formula';
+  cycleId?: string | null;
+  batchId?: string | null;
   /**
    * 34062f81 — the Effective Date on the form, so the preview prices `calendar_days` against the same
    * month the save will. Empty/absent while the operator has not picked one yet ⇒ the pay month (the
@@ -447,6 +452,12 @@ export async function previewTxnAmountAction(input: {
   if (!input.componentId || !input.employmentId) return { ok: true, derived: false };
   if (!isPayPeriod(input.payPeriod)) return { ok: false, error: 'periodInvalid' };
   try {
+    if(input.calculationMethod){
+      const result=await previewIndividualTxnInput(s,{componentId:input.componentId,employmentId:input.employmentId,companyId:input.companyId,
+        payPeriod:input.payPeriod,txnDate:input.txnDate??input.payPeriod+'-01',quantity:input.quantity,unit:input.unit,amount:0,
+        method:input.calculationMethod,cycleId:input.cycleId,batchId:input.batchId});
+      return {ok:true,derived:true,amount:result.amount.toFixed(2),code:'',inputUnit:null,zeroDivisor:null};
+    }
     const d = await deriveIndividualTxnAmount(s, {
       componentId: input.componentId,
       employmentId: input.employmentId,
@@ -526,6 +537,7 @@ export async function previewTxnAmountsAction(input: {
   companyId: string;
   payPeriod: string;
   unit: string | null;
+  calculationMethod?: 'amount' | 'formula';
   /** Already deduplicated and normalised by the caller. Deduplicated and capped server-side regardless. */
   entries: { txnDate: string; quantity: string }[];
 }): Promise<TxnAmountsPreview> {
@@ -631,6 +643,7 @@ export async function createIndividualTxnDayGridAction(input: {
   kind: string;
   componentId: string | null;
   unit: string | null;
+  calculationMethod?: 'amount' | 'formula';
   /** c11e81aa — the chosen Pay Cycle for the WHOLE grid; see TxnFormInput.intendedCycleId. */
   intendedCycleId: string | null;
   lines: DayByDayLineInput[];
@@ -670,6 +683,7 @@ export async function createIndividualTxnDayGridAction(input: {
         amount,
         quantity: l.quantity,
         unit: input.unit,
+        calculationMethod: input.calculationMethod,
         notes: l.notes,
         componentId: input.componentId,
         // See the doc above: null IS 'manual'.
@@ -760,6 +774,7 @@ export async function createIndividualTxnAction(
           amount,
           quantity: input.quantity,
           unit: input.unit,
+          calculationMethod: input.calculationMethod,
           notes: input.notes,
           componentId: input.componentId,
         },
@@ -823,6 +838,7 @@ export async function updateIndividualTxnAction(
       amount,
       quantity: input.quantity,
       unit: input.unit,
+      calculationMethod: input.calculationMethod,
       notes: input.notes,
       componentId: input.componentId,
       ...(input.intendedCycleId !== undefined ? { intendedCycleId: input.intendedCycleId } : {}),

@@ -97,3 +97,5 @@ export {draftPayFormula} from '../../core/pay-formula-ai';
 export {tryLockPayrollHistoryReadTx} from '../../core/payroll-history-lock';
 
 export {payFormulaPermittedDraftFieldsTx} from '../../core/pay-formula-personnel';
+
+export {previewIndividualTxnInput} from '../../core/payroll-individual-calculation';

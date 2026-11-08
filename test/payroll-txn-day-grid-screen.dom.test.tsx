@@ -921,3 +921,25 @@ describe('c11e81aa · Day by day is not offered for a fixed-amount pay item', ()
     expect(within(picker).getByRole('option', { name: /OT1_5/ })).toBeEnabled();
   });
 });
+
+describe('approved formula transaction input methods',()=>{
+ const formulaItem:TxnPayItem={id:'formula-entry',code:'FORMULA_ENTRY',name:'Fictional formula entry',kind:'allowance',derives:false,inputUnit:null,variesByDay:false,formulaBuilder:true};
+ it('shows calculated quantity input, hides quantity for Amount, and ignores an obsolete calculation response',async()=>{
+  const user=userEvent.setup();renderWorkspace(EMPTY_PANEL,{payItems:[formulaItem]});await openAddForm(user);
+  await user.selectOptions(screen.getByRole('combobox',{name:'Payroll item'}),'c:formula-entry');
+  expect(screen.getByRole('combobox',{name:'Input type'})).toHaveValue('qty');expect(screen.getByLabelText('Quantity')).toBeVisible();expect(screen.getByLabelText('Calculated amount')).toHaveAttribute('readonly');
+  let finish!:(value:unknown)=>void;previewOneMock.mockImplementation(()=>new Promise(resolve=>{finish=resolve;}));
+  await user.type(screen.getByLabelText('Quantity'),'2');await waitFor(()=>expect(previewOneMock).toHaveBeenCalled());
+  await user.selectOptions(screen.getByRole('combobox',{name:'Input type'}),'amount');expect(screen.queryByLabelText('Quantity')).toBeNull();
+  await user.type(screen.getByLabelText('Amount'),'123.45');finish({ok:true,derived:true,amount:'999.00',code:'FORMULA_ENTRY',inputUnit:null,zeroDivisor:null});
+  await waitFor(()=>expect(screen.getByLabelText('Amount')).toHaveValue(123.45));
+  await user.selectOptions(screen.getByRole('combobox',{name:'Input type'}),'hours');expect(screen.getByLabelText('Quantity')).toHaveValue(null);expect(screen.getByLabelText('Calculated amount')).toHaveAttribute('readonly');
+ });
+ it('submits an explicit final Amount override with no quantity',async()=>{
+  const user=userEvent.setup();renderWorkspace(EMPTY_PANEL,{payItems:[formulaItem]});await openAddForm(user);
+  await user.selectOptions(screen.getByRole('combobox',{name:'Payroll item'}),'c:formula-entry');await user.selectOptions(screen.getByRole('combobox',{name:'Input type'}),'amount');
+  await user.type(screen.getByLabelText('Effective date'),'2026-08-10');await user.type(screen.getByLabelText('Amount'),'125');
+  await user.click(screen.getByRole('button',{name:'Save'}));await waitFor(()=>expect(createMock).toHaveBeenCalled());
+  expect(createMock.mock.calls[0][0]).toMatchObject({componentId:'formula-entry',unit:'amount',quantity:null,amount:125,calculationMethod:'amount'});expect(previewOneMock).not.toHaveBeenCalled();
+ });
+});

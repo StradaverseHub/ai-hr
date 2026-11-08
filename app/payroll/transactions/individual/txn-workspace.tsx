@@ -99,6 +99,7 @@ type ItemOption = {
   kind: TxnKind;
   fromMaster: boolean;
   derives: boolean;
+  formulaBuilder?: boolean;
   inputUnit: ItemInputUnit;
   /** c11e81aa — may this item be keyed DAY BY DAY? False for a fixed-amount item, whose figure is one
    *  figure for the month. See core/pay-rule.ts payRuleAllowsDayByDay for the rule and its reasoning. */
@@ -160,6 +161,7 @@ export type TxnPayItem = {
   /** 2da9937a — this item works its own amount out from its rule, so the Amount box is not the
    *  operator's to fill. Resolved on the server (payRuleDerivesAmount) from the stored rule. */
   derives: boolean;
+  formulaBuilder?: boolean;
   /** Which quantity that rule needs keyed (payRuleInputUnit). null ⇒ none. */
   inputUnit: ItemInputUnit;
   /** c11e81aa — may a one-off on this item be recorded day by day, or is its figure one figure for the
@@ -346,6 +348,7 @@ export function TxnWorkspace({
         kind: COMPONENT_KIND_TO_TXN[c.kind],
         fromMaster: true,
         derives: c.derives,
+        formulaBuilder: c.formulaBuilder===true,
         inputUnit: c.inputUnit,
         variesByDay: c.variesByDay,
         readsCalendarDays: c.readsCalendarDays === true,
@@ -853,11 +856,12 @@ export function TxnWorkspace({
 
   // ── 2da9937a — the amount the PAY ITEM works out, when it is not the operator's to type ──
   const pickedItem = form ? (itemByValue.get(form.item) ?? null) : daily ? (itemByValue.get(daily.item) ?? null) : null;
-  const derives = pickedItem?.derives === true;
+  const formulaBuilder = pickedItem?.formulaBuilder===true;
+  const derives = pickedItem?.derives === true || (formulaBuilder && form?.unit!=='amount');
   /** The quantity this item's rule needs keyed, or null when it needs none (qty_rate carries its own). */
   const requiredUnit: ItemInputUnit = derives ? pickedItem!.inputUnit : null;
   /** True once the operator has supplied that quantity — the point at which a figure can be asked for. */
-  const quantityReady = requiredUnit == null || (form?.unit === requiredUnit && Number(form?.quantity) > 0);
+  const quantityReady = formulaBuilder ? Number(form?.quantity)>0 : requiredUnit == null || (form?.unit === requiredUnit && Number(form?.quantity) > 0);
   /**
    * c11e81aa — may THIS item be keyed day by day? The answer comes off the pay item (payRuleAllowsDayByDay,
    * resolved on the server), never off the shape of the form: a fixed-amount item and an item with no rule
@@ -896,6 +900,7 @@ export function TxnWorkspace({
           // 34062f81 — the Effective Date is part of the question (`calendar_days` is its month's length),
           // so changing it re-asks and a reply for the previous date can never paint over this one.
           dayEntryDate(form?.txnDate ?? ''),
+          ...(formulaBuilder?[resolvedCycleId,resolvedBatchId]:[]),
         ].join('|')
       : '';
   const [derivedState, setDerivedState] = useState<{
@@ -907,7 +912,7 @@ export function TxnWorkspace({
   useEffect(() => {
     if (!derivedKey) return;
     let live = true;
-    const [componentId, employmentId, companyId, payPeriod, quantity, unit, txnDate] = derivedKey.split('|');
+    const [componentId, employmentId, companyId, payPeriod, quantity, unit, txnDate,cycleId,batchId] = derivedKey.split('|');
     previewTxnAmountAction({
       componentId: componentId!,
       employmentId: employmentId!,
@@ -916,6 +921,7 @@ export function TxnWorkspace({
       quantity: quantity === '' ? null : Number(quantity),
       unit: unit === '' ? null : unit!,
       txnDate: txnDate ? txnDate : null,
+      ...(formulaBuilder?{calculationMethod:'formula' as const,cycleId:cycleId||null,batchId:batchId||null}:{}),
     })
       .then((r) => {
         if (!live) return;
@@ -931,7 +937,7 @@ export function TxnWorkspace({
     return () => {
       live = false;
     };
-  }, [derivedKey]);
+  }, [derivedKey,formulaBuilder]);
   const derivedCurrent = derivedState.key === derivedKey && derivedKey !== '' ? derivedState : null;
   const derivedAmount = derives ? (derivedCurrent?.amount ?? null) : null;
   const derivedError = derives ? (derivedCurrent?.error ?? null) : null;
@@ -1082,7 +1088,7 @@ export function TxnWorkspace({
   /** 2da9937a — an item that calculates from hours (or days) OWNS the Input Type: the quantity has to land
    *  in the input its rule reads or the figure is meaningless, so it is set rather than offered. Items that
    *  do not calculate keep the operator's own choice (or none), exactly as before. */
-  const unitFor = (itemValue: string, current: string): string => itemByValue.get(itemValue)?.inputUnit ?? current;
+  const unitFor = (itemValue: string, current: string): string => itemByValue.get(itemValue)?.formulaBuilder ? 'qty' : itemByValue.get(itemValue)?.inputUnit ?? current;
 
   const blankForm = (period: string): FormState => ({
     mode: 'create',
@@ -1122,6 +1128,7 @@ export function TxnWorkspace({
       item: value,
       unit: unitFor(value, form?.unit ?? ''),
       amount: '',
+      quantity: '',
       ...(staleAutoNote ? { notes: '' } : {}),
     });
   };
@@ -1213,11 +1220,11 @@ export function TxnWorkspace({
         item: resolvedItem,
         txnDate: detail.txnDate,
         amount: Number(detail.amount).toString(),
-        quantity: detail.quantity != null ? Number(detail.quantity).toString() : '',
+        quantity: itemByValue.get(resolvedItem)?.formulaBuilder&&detail.calculationMethod==null?Number(detail.amount).toString():detail.quantity != null ? Number(detail.quantity).toString() : '',
         // 2da9937a — a row keyed BEFORE its pay item started calculating carries no unit (or the wrong
         // one). The Input Type select is disabled on a calculating item, so leaving the stored value would
         // strand the operator on a form they cannot make valid: the item's required input wins.
-        unit: unitFor(resolvedItem, detail.unit ?? ''),
+        unit: itemByValue.get(resolvedItem)?.formulaBuilder?(detail.calculationMethod==='amount'?'amount':detail.unit&&detail.unit!=='amount'?detail.unit:'qty'):unitFor(resolvedItem, detail.unit ?? ''),
         notes: detail.notes ?? '',
       });
     });
@@ -1247,7 +1254,8 @@ export function TxnWorkspace({
     // refusal about a field they cannot reach; what they can be missing is the QUANTITY the rule reads.
     // The check itself survives — it just moves onto the derived figure, which is what actually gets
     // stored, and which the service asserts again authoritatively.
-    if (opt.derives) {
+    if (opt.derives || (opt.formulaBuilder && f.unit!=='amount')) {
+      if(opt.formulaBuilder && !(Number(f.quantity)>0))return 'rowIncomplete';
       if (opt.inputUnit && (f.unit !== opt.inputUnit || !(Number(f.quantity) > 0))) {
         return opt.inputUnit === 'hours' ? 'quantityRequiredHours' : 'quantityRequiredDays';
       }
@@ -1319,7 +1327,7 @@ export function TxnWorkspace({
   const runSave = async (f: FormState, confirmed?: TxnScopeConfirm | null): Promise<TxnActionResult> => {
     if (!selected) return { ok: false, error: 'noEmployeesSelected' };
     const r = resolveItem(f);
-    const quantity = f.quantity.trim() === '' ? null : Number(f.quantity);
+    const quantity = f.unit==='amount'||f.quantity.trim() === '' ? null : Number(f.quantity);
     const unit = f.unit === '' ? null : f.unit;
     const common = {
       kind: r.kind,
@@ -1331,6 +1339,7 @@ export function TxnWorkspace({
       amount: effectiveAmount,
       quantity,
       unit,
+      ...(pickedItem?.formulaBuilder?{calculationMethod:f.unit==='amount'?'amount' as const:'formula' as const}:{}),
       notes: r.notes || null,
     };
     return f.mode === 'edit' && f.id
@@ -2061,11 +2070,11 @@ export function TxnWorkspace({
                   <Field label={t('inputType')}>
                     <select
                       value={form.unit}
-                      disabled={requiredUnit != null}
-                      onChange={(e) => patchForm({ unit: e.target.value })}
+                      disabled={!formulaBuilder && requiredUnit != null}
+                      onChange={(e) => patchForm({ unit: e.target.value, amount: '', quantity: '' })}
                       className={inputCls}
                     >
-                      <option value="">{t('inputTypeNone')}</option>
+                      {!formulaBuilder&&<option value="">{t('inputTypeNone')}</option>}
                       {UNITS.map((u) => (
                         <option key={u} value={u}>
                           {t(`unitLabel.${u}`)}
@@ -2073,7 +2082,7 @@ export function TxnWorkspace({
                       ))}
                     </select>
                   </Field>
-                  <Field label={requiredUnit ? t(`quantityLabel.${requiredUnit}` as never) : t('quantity')}>
+                  {form.unit!=='amount'&&<Field label={requiredUnit ? t(`quantityLabel.${requiredUnit}` as never) : t('quantity')}>
                     <input
                       type="number"
                       step="0.01"
@@ -2082,7 +2091,7 @@ export function TxnWorkspace({
                       onChange={(e) => patchForm({ quantity: e.target.value })}
                       className={`${inputCls} text-right`}
                     />
-                  </Field>
+                  </Field>}
                   {/* THE AMOUNT BOX. On an item that works its own amount out it is READ-ONLY and shows the
                       server's figure — the operator is being shown what will be paid, not asked for it. */}
                   <Field label={derives ? t('derivedAmountLabel') : t('colAmount')}>
