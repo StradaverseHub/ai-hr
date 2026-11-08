@@ -6,6 +6,8 @@ import {isTransactionEffectiveDate} from '../../lib/transaction-effective-date';
 import {lockPayComponentCatalogReadTx} from '../../core/pay-component-catalog-lock';
 import {assertPayComponentCompaniesTx} from '../../core/pay-component-company';
 import type {PayRule} from '../../core/pay-rule';
+import {loadSavedFormulaProgramTx} from '../../core/pay-formula';
+import {simulatePayFormulaTx} from '../../core/pay-formula-runtime';
 
 export type IndividualCalculationMethod='amount'|'formula';
 export type IndividualCalculationInput={componentId:string|null;employmentId:string;companyId:string;payPeriod:string;txnDate:string;quantity:number|null;unit:string|null;amount:number;cycleId?:string|null;batchId?:string|null;method:IndividualCalculationMethod};
@@ -37,8 +39,6 @@ export async function priceIndividualTxnInputTx(tx:Tx,ctx:SessionContext,p:Indiv
   if(!cycleId){const cycles=await tx.execute<{id:string}>(sql`select id from payroll_cycle where company_id=${p.companyId}::uuid and tenant_id=${ctx.tenantId}::uuid and archived_at is null and run_type=${batch.runType}`);if(cycles.length!==1)throw new PayFormulaError('Choose the exact configured payroll cycle before calculating.');cycleId=cycles[0].id;}
  }
  if(!cycleId){const cycles=await tx.execute<{id:string}>(sql`select id from payroll_cycle where company_id=${p.companyId}::uuid and tenant_id=${ctx.tenantId}::uuid and archived_at is null and run_type='regular'`);if(cycles.length!==1)throw new PayFormulaError('Choose the configured payroll cycle before calculating.');cycleId=cycles[0].id;}
- const {loadSavedFormulaProgramTx}=await import('../../core/pay-formula');
- const {simulatePayFormulaTx}=await import('../../core/pay-formula-runtime');
  const formula=await loadSavedFormulaProgramTx(tx,ctx,item.rule.formulaId,p.companyId);
  // The selected payroll month owns payroll sources; retain an out-of-month work date on the ledger.
  const end=new Date(Date.UTC(Number(p.payPeriod.slice(0,4)),Number(p.payPeriod.slice(5)),0)).toISOString().slice(0,10);

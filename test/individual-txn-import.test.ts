@@ -34,6 +34,28 @@ describe('durable Individual Transaction import',()=>{
  const validate=(method:IndividualImportMethod,rows:string[][],operationId=randomUUID())=>validateIndividualImport(adminCtx(base),{operationId,sourceName:`${method}.xlsx`,csv:csv(method,rows),method,scopeIds:[base.companyId]});
  const confirm=(id:string)=>confirmIndividualImport(adminCtx(base),{id,scopeIds:[base.companyId]});
  const revert=(id:string)=>revertIndividualImport(adminCtx(base),{id,scopeIds:[base.companyId],confirmProcessed:false});
+ const historicalReceipt=async()=>{
+  const input=await validate('monthly',[monthly()]);const saved=await confirm(input.id);
+  const [original]=await owner.db.select().from(schema.payrollTxnImportAttempt).where(eq(schema.payrollTxnImportAttempt.id,input.id));
+  const outcomes=structuredClone(original.outcomes);
+  for(const outcome of outcomes)if(outcome.snapshot){expect(outcome.snapshot.calculationMethod).toBeNull();delete outcome.snapshot.calculationMethod;}
+  // A physical pre-3900 receipt preserves every original field and event ID. No trigger is
+  // disabled and no stored completed receipt is rewritten to manufacture this witness.
+  const [legacy]=await owner.withTenant(adminCtx(base),tx=>tx.insert(schema.payrollTxnImportAttempt).values({...original,id:randomUUID(),operationId:randomUUID(),outcomes}).returning());
+  return {legacy,transactionId:saved.outcomes[0].transactionId!};
+ };
+ it('reverses an unchanged pre-method import while preserving its original receipt',async()=>{
+  const {legacy,transactionId}=await historicalReceipt();
+  const reversed=await revert(legacy.id);expect(reversed).toMatchObject({state:'reverted',written:1});expect(reversed.outcomes).toEqual(legacy.outcomes);
+  expect(await owner.db.select().from(schema.payrollIndividualTxn).where(eq(schema.payrollIndividualTxn.id,transactionId))).toHaveLength(0);
+ });
+ it.each(['amount','formula'] as const)('refuses a historical reversal after its interpretation changes to %s even when money is unchanged',async calculationMethod=>{
+  const {legacy,transactionId}=await historicalReceipt();
+  await owner.db.update(schema.payrollIndividualTxn).set({calculationMethod}).where(eq(schema.payrollIndividualTxn.id,transactionId));
+  await expect(revert(legacy.id)).rejects.toThrow('importRowsChanged');
+  expect((await readIndividualImport(adminCtx(base),legacy.id,[base.companyId])).state).toBe('completed');
+  expect(await owner.db.select().from(schema.payrollIndividualTxn).where(eq(schema.payrollIndividualTxn.id,transactionId))).toHaveLength(1);
+ });
  it('persists outcomes, independent month/date, exact ownership and retry-safe confirmation',async()=>{
   const op=randomUUID(),input=await validate('monthly',[monthly(),['UNKNOWN','','2026-08','IMP','BONUS','2026-08-03','amount','','20','bad']],op);
   expect(input.preview).toMatchObject({valid:1,invalid:1});const retry=await validate('monthly',[monthly(),['UNKNOWN','','2026-08','IMP','BONUS','2026-08-03','amount','','20','bad']],op);expect(retry.id).toBe(input.id);
